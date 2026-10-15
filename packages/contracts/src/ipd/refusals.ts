@@ -149,6 +149,13 @@ export const IPD_REFUSALS = {
   verbal_order_not_found: { rule: "This order was not a verbal order.", fix: "Open orders" },
   verbal_order_signed: { rule: "The verbal order is already signed.", fix: "Open orders" },
   not_a_narcotic: { rule: "Only a narcotic drug goes on the ward narcotic register.", fix: "Open MAR" },
+  // 2026-10-14 — the ward narcotic count.
+  ward_not_found: { rule: "No ward has this id.", fix: "Pick a ward" },
+  narcotic_count_incomplete: { rule: "Every controlled drug the register expects on the ward must be counted.", fix: "Count every drug" },
+  narcotic_count_not_found: { rule: "No narcotic count has this id.", fix: "Open narcotic register" },
+  narcotic_count_matched: { rule: "This count matched the register, so there is nothing to resolve.", fix: "Open narcotic register" },
+  narcotic_count_resolved: { rule: "This count exception is already resolved.", fix: "Open narcotic register" },
+  not_narcotic_resolver: { rule: "Only a nursing supervisor or a pharmacist closes a narcotic count exception.", fix: "Ask the supervisor" },
   issue_not_found: { rule: "No issue has this id.", fix: "Open issues" },
   return_exceeds_issue: { rule: "More units cannot come back than were issued.", fix: "Check the count" },
   allergy_flag_not_found: { rule: "No allergy flag has this id.", fix: "Open verify queue" },

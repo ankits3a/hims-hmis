@@ -251,11 +251,20 @@ export const ipdEmarNarcoticRegister = pgTable(
     actorId: text("actor_id").notNull(),
     witnessId: text("witness_id"),
     at: timestamp("at", { withTimezone: true }).notNull(),
+    /**
+     * Ward narcotic register (2026-10-14): the ward whose cabinet the units are in when the row is written — the
+     * patient's ward then. Null only on rows written before the column existed (staging; IPD is not live).
+     */
+    wardId: text("ward_id"),
+    /** The server's clock when the row was written (`at` is a give's own stamp, up to 2 min earlier). The shift count's cut. */
+    recordedAt: timestamp("recorded_at", { withTimezone: true }),
   },
   (t) => [
     index("ipd_emar_narcotic_order_idx").on(t.orderId, t.at),
+    index("ipd_emar_narcotic_ward_idx").on(t.wardId, t.recordedAt),
     // E4.3 review: `reversal` puts back a given dose later marked entered in error. Every row is in the issue's base unit.
-    check("ipd_emar_narcotic_kind_ck", sql`${t.kind} in ('received', 'given', 'wasted', 'returned', 'reversal')`),
+    // 2026-10-14: `transfer_out` / `transfer_in` move a patient's unused units with the patient to the new ward's cabinet.
+    check("ipd_emar_narcotic_kind_ck", sql`${t.kind} in ('received', 'given', 'wasted', 'returned', 'reversal', 'transfer_out', 'transfer_in')`),
     // A wastage is always witnessed by somebody else (§4.6).
     check("ipd_emar_narcotic_witness_ck", sql`${t.kind} <> 'wasted' or (${t.witnessId} is not null and ${t.witnessId} <> ${t.actorId})`),
   ],
@@ -327,4 +336,49 @@ export const ipdEmarAllergyFlags = pgTable(
     check("ipd_emar_allergy_flags_resolve_ck", sql`${t.resolvedAt} is null or ${t.doctorDecision} is not null`),
     index("ipd_emar_allergy_flags_open_idx").on(t.admissionId).where(sql`${t.resolvedAt} is null`),
   ],
+);
+
+/**
+ * 2026-10-14 — THE WARD NARCOTIC COUNT (NDPS / NABH: controlled drugs counted at every shift change by two nurses). One
+ * row per drug counted (ward × medicine × base unit); one submission shares `round_id`. `expected_qty` is what the
+ * register said at that instant: the last AGREED count (matched, or a mismatch resolved) plus every movement written after
+ * it. A non-zero `variance` is an exception for the nursing supervisor and the pharmacy until a resolution names it.
+ * APPEND-ONLY by trigger (`ipd_emar_forbid_mutation`), like the register.
+ */
+export const ipdNarcoticCounts = pgTable(
+  "ipd_narcotic_counts",
+  {
+    id: text("id").primaryKey(),
+    roundId: text("round_id").notNull(),
+    wardId: text("ward_id").notNull(),
+    medicineId: text("medicine_id").notNull(),
+    medicineName: text("medicine_name").notNull(),
+    unit: text("unit").notNull(),
+    expectedQty: doublePrecision("expected_qty").notNull(),
+    countedQty: doublePrecision("counted_qty").notNull(),
+    variance: doublePrecision("variance").notNull(),
+    /** The nursing shift the count closes or opens (`shiftOf`). */
+    shift: text("shift").notNull(),
+    countedBy: text("counted_by").notNull(),
+    witnessId: text("witness_id").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("ipd_narcotic_counts_ward_idx").on(t.wardId, t.medicineId, t.at),
+    check("ipd_narcotic_counts_witness_ck", sql`${t.witnessId} <> ${t.countedBy}`),
+    check("ipd_narcotic_counts_qty_ck", sql`${t.countedQty} >= 0`),
+  ],
+);
+
+/** A count exception closed: who (a nursing supervisor or a pharmacist), what was found. Once per count. Append-only. */
+export const ipdNarcoticCountResolutions = pgTable(
+  "ipd_narcotic_count_resolutions",
+  {
+    id: text("id").primaryKey(),
+    countId: text("count_id").notNull().references(() => ipdNarcoticCounts.id),
+    resolvedBy: text("resolved_by").notNull(),
+    note: text("note").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [uniqueIndex("ipd_narcotic_count_resolutions_count_ux").on(t.countId)],
 );

@@ -26,5 +26,7 @@ export const IPD_BED_SWAPPED_EVENT = "ipd.bed.swapped";
 /** OT's events (`modules/ot/events.ts`): a booking sets NPO for the surgery day; a cancellation lifts it. */
 export const OT_BOOKED_EVENT = "daycare.booked";
 export const OT_CANCELLED_EVENT = "case.cancelled";
+/** A case re-dated (postponed and re-listed): its NPO moves to the new day at once (2026-10-14). */
+export const OT_POSTPONED_EVENT = "case.postponed";
 /** A day's list published: diet re-reads that day's cases (OT moves a date with no event of its own). */
 export const OT_LIST_PUBLISHED_EVENT = "list.published";

@@ -199,6 +199,16 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `shelfItemForMedicine` / `recordIncident`, formulary `interactionRulesPresent`, materials `fefoPick` / `postMovements`.
   Web: `apps/web/src/screens/ipd-emar-bedside.tsx` (board D2 inside `/ipd/my-shift`), `apps/web/src/screens/ipd-pharmacy.tsx` (`/ipd/pharmacy`, the
   desk and `LabelPrint`), `apps/web/src/screens/ipd-mar.tsx` (`/ipd/mar`), `apps/web/src/lib/ipd-emar-api.ts`.
+- (2026-10-14) THE WARD NARCOTIC REGISTER (NDPS / NABH). `narcotic-ledger.ts` — `wardNarcoticBalances` (per ward × medicine ×
+  base unit: last agreed count + movements written after it), `followNarcoticsIn` (the transfer / swap seam), `r3`.
+  `narcotic.ts` — `recordNarcoticCount` (two nurses), `resolveNarcoticException`, `readNarcoticWard`,
+  `IPD_NARCOTIC_RESOLVER_ROLES`. `emar.ts` `confirmSecondNursePin` (the PIN throttle `secondCheck` and the count share).
+  `kernel/db/schema/ipd-emar.ts` — `ipd_emar_narcotic_register.ward_id` / `.recorded_at`, kinds `transfer_out` /
+  `transfer_in`, `ipd_narcotic_counts`, `ipd_narcotic_count_resolutions` (migration `ipd_narcotic_register`).
+  Events `ipd.narcotic.counted|count_mismatch|count_resolved` (`emar-events.ts`). Routes `GET /ipd/emar/narcotics`,
+  `POST /ipd/emar/narcotics/count|resolve` (`emar.controller.ts`). `packages/contracts/src/ipd/narcotic.ts`; intents
+  `record_narcotic_count`, `resolve_narcotic_exception`. Web: `apps/web/src/screens/ipd-narcotics.tsx` (`/ipd/narcotics`,
+  nav "Narcotics", `ipd.emar.view`).
 - (E5.3 #740, E5.4 #741) THE COPILOT DRAFTERS. `copilot-lines.ts` — pure: the `Fact` union, `renderLine` (the one place a fact
   becomes words), `chooseLines`, `quantitiesIn`, `boundPhrases`, `verifyReworded`, `verifyFreeText`, `applyRewordings`.
   `copilot-facts.ts` — `buildFacts` (one admission, one window), `factsHash`. `copilot-model.ts` — `askIpdModel` (the ONE door
@@ -1038,6 +1048,46 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - (E4.1) VERIFY BEFORE GO-LIVE (owed): the MEOWS rows against Singh et al. 2012 Table 1 (page cited as p. 13), the
   Brighton PEWS rows against Monaghan 2005 (page cited as p. 33) and the APLS age bands (Table 1.1) — printed pages and every
   threshold row, by a clinician, against the printed sources (`packages/contracts/src/ipd/ews.ts` marks each).
+
+### Ward narcotic register (2026-10-14, all DECIDED — NDPS Act / NABH MOM standard ward practice)
+- WARD OF A ROW: every register row carries the ward the patient was on when it was written (`wardOf`) and the server's
+  write time (`recorded_at`; a give's own `at` may be up to 2 min earlier). Rows from before the column have no ward and
+  are on no ward's balance (staging only).
+- BALANCE per ward × medicine × base unit = OPENING (the last AGREED count: variance 0, or a resolved mismatch) + received
+  + transfer_in + reversal − given − wasted − returned − transfer_out, over rows written AFTER the opening count. An
+  unresolved mismatch is not agreed: the next shift's count differs again, so a discrepancy keeps surfacing until closed.
+  A count's own expected uses the SAME cut (`wardNarcoticBalances(…, { cut: at })`: rows written after the count's
+  instant are left out) — review 2026-10-14: without it a dose stamped after the count's instant but committed before the
+  count read the register was counted twice. EVERY register write goes through `insertNarcoticRows`: it takes the
+  ward's advisory lock SHARED (the count and the resolution take it EXCLUSIVE, `lockNarcoticWard`) and restamps a row
+  whose `recorded_at` is not after the ward's latest count to that count's instant + 1 ms (`at` is never changed) — so a
+  row is either seen by a count or on the balance after it, never on none.
+- COUNT: the counting nurse (`ipd.emar.give`) + a second nurse by own username + PIN (the eMAR's atomic PIN throttle; a
+  nursing role; never the same person). Every drug with expected ≠ 0 must be counted (`narcotic_count_incomplete`); a drug
+  counted twice is refused the same way. The ward's advisory lock (`ipd.narcotic.ward:<id>`) serialises counts and
+  resolutions of one ward (exclusive) against every register write (shared). A mismatch: one notice per drug to the nursing fallback chain (supervisor → superintendent →
+  duty manager) AND every active `pharmacy` role holder (not the two counters), and `ipd.narcotic.count_mismatch`.
+  The PIN is never stored, not even inside the idempotency store's body hash. `countDue` is false when
+  the ward was counted this shift or in the 30 minutes before it began (the handover count).
+- RESOLVE: a `nursing_supervisor` / `nursing_superintendent` or a pharmacist (`ipd.emar.issue`), with a note, once per
+  count (unique index); a matched count is `narcotic_count_matched`; neither nurse of the count may close it
+  (`not_narcotic_resolver`, `ownCount`). No register adjustment row: the resolved count IS
+  the new opening. The notice is the exception; there is no Now card for it (owed if the wards ask).
+- TRANSFER (DECIDED, coordinator 2026-10-14, standard NDPS practice: a SHORTFALL BELONGS TO THE WARD that holds it —
+  never to the patient, never to another patient): `acceptHandover` and `swapBeds` call
+  `followNarcoticsIn(tx, actor, admissionId, at, { moveId, fromBedId })` in their transaction (`moveId` = the transfer's
+  id, or one id per swap). It moves min(the patient's own unused units on the ward LEFT during this stay there — rows
+  written since they last arrived on it — , what that ward's register still holds of the drug): `transfer_out` there,
+  `transfer_in` here, both with `act_id` = `moveId`. A shortfall stays on the old ward's books as its discrepancy (its
+  next count flags it; the supervisor resolves). Only the ward just left; a move inside one ward moves nothing; a move
+  whose rows exist moves nothing more (replay). Review 2026-10-14: before this, a remainder a short ward kept stayed the
+  patient's and a later move or a replay swept it again — out of another patient's units.
+- APPEND-ONLY: `ipd_narcotic_counts` and `ipd_narcotic_count_resolutions` take the eMAR's `ipd_emar_forbid_mutation`
+  triggers (UPDATE / DELETE / TRUNCATE refused, ENABLE ALWAYS). Every act appends its event. No money (0058).
+- NOT BUILT: per-ward cabinet stock that is not patient-issued (a ward imprest of narcotics) — the hospital issues
+  narcotics per patient from PHARM-OPD; a ward imprest would be a materials store per ward, a setup step plus a new
+  `received` source.
+
 - (E4.1) A new scheduler job (`sweepIpdNursing`, 60 s) moved the five job censuses and the worker pool (27 → 28).
 - (E4.1) `packages/contracts/src/ipd/ews.ts` lives in CONTRACTS (the phone scores at once with the same tables); the server re-scores every set and
   is the authority. Changing a table changes both sides in one commit.
@@ -1060,7 +1110,7 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - (E4.3) SEAMS LEFT OPEN: ward issue and returns are not on the running bill (`ipd_charge_lines` has no pharmacy source — a
   money change for the charges lane); the credit is recorded in units. Labels print from the browser (no `ipd_emar_label`
   print-outbox document; the band's precedent). Interaction findings depend on adopted formulary pairs (none → "no interaction
-  data"). The narcotic ward register counts issued / given / wasted / returned units, not a cabinet balance per ward.
+  data"). (Closed 2026-10-14: the ward narcotic register keeps a cabinet balance per ward — see "Ward narcotic register".)
   Infusion rate is free-typed (no pump feed, §5 Phase 2). The minute sweep rides `sweepIpdNursing` (no job, no pool client).
 
 ## 5. Callers

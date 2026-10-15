@@ -2,7 +2,7 @@ import { dietConsultsCard } from "./desk";
 import { IPD_ADMISSION_ENDED_EVENT_NAMES, IPD_TRANSFER_ACCEPTED_EVENT_NAME } from "../ipd";
 import {
   DIET_CLINICAL_VIEW, DIET_CONSUMER, DIET_KITCHEN, DIET_MANAGE, DIET_NPO, DIET_ORDER, DIET_SERVE, DIET_VIEW, IPD_ADMITTED_EVENT, IPD_BED_SWAPPED_EVENT,
-  OT_BOOKED_EVENT, OT_CANCELLED_EVENT, OT_LIST_PUBLISHED_EVENT,
+  OT_BOOKED_EVENT, OT_CANCELLED_EVENT, OT_LIST_PUBLISHED_EVENT, OT_POSTPONED_EVENT,
 } from "./names";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
@@ -39,6 +39,7 @@ export const dietManifest: ModuleManifest = {
     { event: OT_BOOKED_EVENT, consumer: DIET_CONSUMER },
     { event: OT_CANCELLED_EVENT, consumer: DIET_CONSUMER },
     { event: OT_LIST_PUBLISHED_EVENT, consumer: DIET_CONSUMER },
+    { event: OT_POSTPONED_EVENT, consumer: DIET_CONSUMER },
   ],
   desk: [
     // The dietician's Now card: consults waiting, oldest first (no money; alias for a sealed patient).
