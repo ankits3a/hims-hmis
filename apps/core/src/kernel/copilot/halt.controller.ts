@@ -12,7 +12,7 @@ import type { Actor } from "@hmis/contracts";
  * E0.3 — THE HALT SWITCH'S TWO DOORS (plan E0.3, decision 0064; spec
  * /opt/hmis-context/SPEC-copilot-halt-and-cap-2026-10-11.md). Buttons on /copilot-health call these.
  *
- *   halt                  `copilot.halt.set`          owner, the Medical Superintendent
+ *   halt                  `copilot.halt.set`          owner, the Medical Superintendent, the steward
  *   clear read/act/draft  `copilot.halt.clear`        owner, the Medical Superintendent, the steward
  *   clear global          `copilot.halt.clear_global` owner only
  *

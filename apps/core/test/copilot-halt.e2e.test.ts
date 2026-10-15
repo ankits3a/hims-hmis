@@ -122,19 +122,18 @@ describe("E0.3 + E0.5 — the copilot halt switch and the daily AI spend cap", (
   });
 
   /*
-    #581 — OWNER RULING 2026-10-15: the owner and the Medical Superintendent halt and clear; the copilot
-    steward (`quality_manager`) clears a read/act/draft halt; a GLOBAL clear is the owner's alone. The
+    #581 — OWNER RULING 2026-10-15: the owner, the Medical Superintendent and the copilot steward
+    (`quality_manager`) halt and clear a read/act/draft halt; a GLOBAL clear is the owner's alone. The
     duty manager and IT (`admin`) no longer touch the switch (the duty manager keeps the health page).
   */
-  it("#581: the steward clears but cannot halt; the duty manager and IT can neither halt nor clear", async () => {
+  it("#581: the steward halts and clears but cannot clear global; the duty manager and IT can neither halt nor clear", async () => {
     for (const r of ["quality_manager", "admin"]) await seededRole(r);
     const steward = await mkUser(db, "halt_steward", ["quality_manager"]);
     const it_ = await mkUser(db, "halt_it", ["admin"]);
-    await halt(steward.token, "act").expect(403);
-    await halt(owner.token, "act").expect(200);
+    await halt(steward.token, "act").expect(200);
     await health(steward.token);
     await clear(steward.token, "act").expect(200);
-    await halt(owner.token, "global").expect(200);
+    await halt(steward.token, "global").expect(200);
     await clear(steward.token, "global").expect(403);
     for (const who of [duty, it_]) {
       await halt(who.token, "act").expect(403);
@@ -144,7 +143,7 @@ describe("E0.3 + E0.5 — the copilot halt switch and the daily AI spend cap", (
     await health(duty.token);
     await clear(owner.token, "global").expect(200);
     const flips = (await db.select().from(events).orderBy(asc(events.seq))).filter((e) => e.name === "copilot.halt_set" || e.name === "copilot.halt_cleared");
-    expect(flips.map((e) => e.actorId)).toEqual([owner.id, steward.id, owner.id, owner.id]);
+    expect(flips.map((e) => e.actorId)).toEqual([steward.id, steward.id, steward.id, owner.id]);
   });
 
   it("done-means 5: a halted read path answers 'paused', reaches no model, and is ledgered `halted`; an act halt leaves reads answering", async () => {

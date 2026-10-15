@@ -967,7 +967,7 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // Therapeutics Committee practice). The pharmacy holds `formulary.manage` and NOT this: the
       // reviewer is never the department that wrote the text.
       "formulary.monograph.review",
-      // COPILOT HALT #581 (OWNER RULING 2026-10-15: the owner and the MS halt and clear, the steward clears) —
+      // COPILOT HALT #581 (OWNER RULING 2026-10-15: the owner, the MS and the steward halt and clear) —
       // the superintendent halts the copilot and clears a read/act/draft halt, and reads the health page
       // where those buttons are. Never a global clear: that stays the owner's alone.
       "copilot.health.read", "copilot.halt.set", "copilot.halt.clear",
@@ -1101,7 +1101,7 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   //
   // COPILOT LEDGER E0.1 / HALT E0.3 — the duty manager reads the copilot health page. OWNER RULING
   // 2026-10-15 (#581): the duty manager no longer halts or clears the copilot — the halt belongs to
-  // the owner and the MS, and the steward clears.
+  // the owner, the MS and the copilot steward.
   {
     roleKey: "duty_manager",
     permissions: ["auth.temp_role.grant", "roster.read", "copilot.health.read"],
@@ -1968,9 +1968,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * and the halt drill. No quality role existed, so this one is minted holding the health read and
    * nothing else. NOBODY is assigned to it by any seed — the owner names the steward.
    */
-  // OWNER RULING 2026-10-15 (#581) — the copilot steward CLEARS a read/act/draft halt; halting is the
-  // owner's and the MS's. A global clear stays the owner's alone.
-  { roleKey: "quality_manager", permissions: ["copilot.health.read", "copilot.halt.clear"] },
+  // OWNER RULING 2026-10-15 (#581) — the copilot steward halts (the monthly halt drill, G6d) and clears a
+  // read/act/draft halt, like the owner and the MS. A global clear stays the owner's alone.
+  { roleKey: "quality_manager", permissions: ["copilot.health.read", "copilot.halt.set", "copilot.halt.clear"] },
   /**
    * COPILOT LEDGER E0.1 (D2) — IT reads the copilot's health too (latency, failures, the cost meter
    * to come). `admin`'s `auth.*` set is `seed:admin`'s to write (GRANTED_BY_OTHER_SEEDS); this row
