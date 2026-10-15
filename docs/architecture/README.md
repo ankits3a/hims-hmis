@@ -112,7 +112,7 @@ flowchart LR
 | [attendance](modules/attendance.md) | — | — | 19 | 11 |
 | [billing](modules/billing.md) | membership, opd, patients, tariff | lab, opd, ordering, ot, partners, pharmacy, radiology | 51 | 16 |
 | [cds](modules/cds.md) | formulary | opd | 0 | 0 |
-| [formulary](modules/formulary.md) | — | cds, materials, opd, pharmacy | 31 | 13 |
+| [formulary](modules/formulary.md) | — | cds, materials, opd, pharmacy | 33 | 14 |
 | [lab](modules/lab.md) | billing, opd, patients, tariff | abdm, ordering, radiology | 78 | 25 |
 | [materials](modules/materials.md) | formulary | opd, ot, pharmacy | 120 | 39 |
 | [membership](modules/membership.md) | patients, tariff | billing, partners, pharmacy | 11 | 11 |
