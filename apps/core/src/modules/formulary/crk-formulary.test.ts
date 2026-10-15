@@ -185,6 +185,9 @@ describe("CRK formulary — drafted by a model, signed by Pharmacology", () => {
     await stockedHighAlert();
     const { entryId } = await save();
     expect(await sign(entryId, PROF_A, { highAlert: false })).toEqual({ status: "awaiting_second", version: 0, renewal: false });
+    // the entry carries the high-alert it was signed under, so every reader shows it
+    await sign(entryId, PROF_B);
+    expect(await signedCrkForGeneric(db, SCTID, "2026-10-15")).toMatchObject({ highAlert: true });
   });
 
   it("a new version waits beside the live one; signing it replaces the live text", async () => {

@@ -872,7 +872,7 @@ export const formularyCrkEntries = pgTable(
     modelInputTokens: integer("model_input_tokens").notNull().default(0),
     modelOutputTokens: integer("model_output_tokens").notNull().default(0),
     /* ── signing ── */
-    /** Set by a reviewer; a stocked item flagged high-alert makes the generic high-alert whatever this says. */
+    /** High-alert as last signed: the reviewer's flag, or any stocked item of the generic flagged high-alert. */
     highAlert: boolean("high_alert").notNull().default(false),
     /** A high-alert first signature waiting for its second. Cleared when the second lands, the text changes or the flag goes. */
     firstSignedBy: text("first_signed_by"),

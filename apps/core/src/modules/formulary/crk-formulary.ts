@@ -316,12 +316,12 @@ export async function signCrkEntry(
 
   if (waits) {
     await tx.update(formularyCrkEntries).set({
-      highAlert: flagged, firstSignedBy: actor.id, firstSignedAt: now, firstSignerDesignation: designation,
+      highAlert, firstSignedBy: actor.id, firstSignedAt: now, firstSignerDesignation: designation,
     }).where(eq(formularyCrkEntries.id, entryId));
   } else {
     const pair = kind === "second" || kind === "renewal_second";
     await tx.update(formularyCrkEntries).set({
-      highAlert: flagged, signedCrk: text, version, reviewDueOn: dueOn(now),
+      highAlert, signedCrk: text, version, reviewDueOn: dueOn(now),
       ...(pair
         ? {
           reviewedBy: row.firstSignedBy, reviewedAt: row.firstSignedAt, reviewerDesignation: row.firstSignerDesignation,
