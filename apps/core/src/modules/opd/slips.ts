@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, inArray, lt, ne } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, ne } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
 import { opdDepartments, opdDoctors, opdEncounters, opdQueueEntries, opdQueueSessions, resources } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
@@ -287,7 +287,7 @@ export const MRD_WINDOW_DAYS = 30;
 
 export type MrdSlipRow = SlipDayRow & { serviceDate: string };
 
-export async function mrdSlips(db: Db, actor: Actor, now: Date = new Date()): Promise<MrdSlipRow[]> {
+export async function mrdSlips(db: Db, actor: Actor, now: Date = new Date(), cap: number = DAY_CAP): Promise<MrdSlipRow[]> {
   const today = istDate(now);
   const from = istDate(new Date(now.getTime() - MRD_WINDOW_DAYS * 86_400_000));
   const encounters = await db.select().from(opdEncounters)
@@ -295,7 +295,8 @@ export async function mrdSlips(db: Db, actor: Actor, now: Date = new Date()): Pr
       gte(opdEncounters.serviceDate, from), lt(opdEncounters.serviceDate, today),
       ne(opdEncounters.status, "abandoned"), ne(opdEncounters.consultMode, "tele"),
     ))
-    .orderBy(asc(opdEncounters.serviceDate), asc(opdEncounters.openedAt)).limit(DAY_CAP);
+    // Newest days first, so a capped read drops the OLDEST days, never yesterday's (the list is re-sorted below).
+    .orderBy(desc(opdEncounters.serviceDate), desc(opdEncounters.openedAt)).limit(cap);
   const dayOf = new Map(encounters.map((e) => [e.id, e.serviceDate] as const));
   const rows = (await slipRows(db, actor, encounters)).filter((r) => r.state !== "filed");
   const t = (d: Date | null): number => d?.getTime() ?? 0;

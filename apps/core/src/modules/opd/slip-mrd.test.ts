@@ -123,6 +123,19 @@ describe("#659 — a missing slip goes to MRD at day end", () => {
     expect(await mrdSlips(db, clerk.actor, farLater)).toEqual([]);
   });
 
+  it("MRD4: when the window holds more visits than the read takes, the NEWEST days are kept — yesterday is never cut off", async () => {
+    const ram = await mkPatient(db, clerk.actor, { name: "Ram Prasad", sex: "male", phone: "9811100022", ageYears: 41 });
+    const sita = await mkPatient(db, clerk.actor, { name: "Sita Kumari", phone: "9811100033", ageYears: 22 });
+    const older = await arrive(ram.id);
+    await seeAndFinish(older, LATER(20));
+    const newer = await arrive(sita.id, TUE);
+    await seeAndFinish(newer, new Date(TUE.getTime() + 20 * 60_000));
+    const WED = new Date(TUE.getTime() + 86_400_000);
+    // A read capped at one visit: the newer day's missing slip is the one MRD must see.
+    expect((await mrdSlips(db, clerk.actor, WED, 1)).map((i) => i.encounterId)).toEqual([newer.encounterId]);
+    expect((await mrdSlips(db, clerk.actor, WED)).map((i) => i.encounterId)).toEqual([older.encounterId, newer.encounterId]);
+  });
+
   it("RT1: the doctor's list of a patient's pages carries the retake ask, so the button says it was asked", async () => {
     const asha = await mkPatient(db, clerk.actor);
     const a = await arrive(asha.id);
