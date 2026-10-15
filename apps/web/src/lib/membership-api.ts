@@ -110,6 +110,14 @@ export function fetchRecognition(input: { patientId?: string; codes?: string[] }
 /** The same route, typed with the counter's additions — the counter screen reads these, Desk One does not. */
 export type WireCounterRecognition = Omit<WireRecognition, "memberships"> & { memberships: WireCounterMembership[] };
 
+/**
+ * #657 — the cards linked to one patient, for the profile's "Card" line: the same recognition route
+ * asked by patient id alone (no code is presented, so the server records no recognition event).
+ */
+export function fetchPatientCards(patientId: string): Promise<WireCounterRecognition> {
+  return api("GET", `/membership/recognition?${new URLSearchParams({ patientId }).toString()}`);
+}
+
 export function fetchCounterRecognition(code: string): Promise<WireCounterRecognition> {
   return api("GET", `/membership/recognition?${new URLSearchParams({ codes: code }).toString()}`);
 }

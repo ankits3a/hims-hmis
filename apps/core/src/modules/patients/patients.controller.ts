@@ -38,6 +38,8 @@ import {
 } from "./merge";
 import type { MergeRequestListItem, VisitSummary } from "./merge";
 import { displayNameFor } from "./display-name";
+import { patientProfile } from "./profile";
+import type { PatientProfile } from "./profile";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
 
@@ -556,6 +558,42 @@ export class PatientsController {
       sealed: found.patient.isConfidential, reason: found.breakGlass?.reason ?? null,
     });
     return found;
+  }
+
+  /**
+   * #657 — THE PROFILE SCREEN'S READ (`profile.ts`). A readable record answers what `:id` answers
+   * plus "patient since · N visits", logged as the same `patient.detail` disclosure. A SEALED record
+   * the reader may not open answers the alias-only shape (alias, UHID, age, allergies — the board's
+   * restricted card) instead of a 404, logged as `patient.profile_alias` with `sealed: true`.
+   */
+  @RequirePermission("patients.read", "hospital")
+  @Get(":id/profile")
+  async profile(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<PatientProfile> {
+    const view = await patientProfile(this.db, actor, id);
+    if (!view) throw new NotFoundException(`unknown patient ${id}`);
+    await recordPhiAccess(this.db, view.view === "full"
+      ? { actor, patientId: view.patient.id, surface: "patient.detail", sealed: view.patient.isConfidential, reason: view.breakGlass?.reason ?? null }
+      : { actor, patientId: view.patient.id, surface: "patient.profile_alias", sealed: true, reason: null });
+    return view;
+  }
+
+  /**
+   * #657 — THE PROFILE'S LOGGED "SHOW" OF THE FULL MOBILE. The screen masks both numbers to the
+   * last four ("job needs the number"); Show posts here first. The record is resolved through the
+   * same sealed-record gate as `GET /patients/:id` (an unreadable one is a 404, nothing logged), one
+   * `patient.profile_mobile` access row is written, and the numbers come back for the screen to draw.
+   */
+  @RequirePermission("patients.read", "hospital")
+  @Post(":id/mobile-shown")
+  @HttpCode(200)
+  async mobileShown(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ phone: string | null; altPhone: string | null }> {
+    const found = await getPatient(this.db, actor, id);
+    if (!found) throw new NotFoundException(`unknown patient ${id}`);
+    await recordPhiAccess(this.db, {
+      actor, patientId: found.patient.id, surface: "patient.profile_mobile",
+      sealed: found.patient.isConfidential, reason: found.breakGlass?.reason ?? null,
+    });
+    return { phone: found.patient.phone, altPhone: found.patient.altPhone };
   }
 
   @RequirePermission("patients.update", "hospital")

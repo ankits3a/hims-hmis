@@ -16,6 +16,13 @@ import type { Db } from "../db/client";
 export type PhiSurface =
   | "patient.detail" | "patient.allergies"
   /**
+   * #657 — the patient profile's two own reads. `patient.profile_mobile` is the logged "Show" of the
+   * full mobile (the screen masks it to the last four by default); `patient.profile_alias` is the
+   * alias-only view of a restricted record a reader may not open (alias, UHID, age, allergies).
+   * Their own names, so the access log tells the profile apart from the merge review's Show.
+   */
+  | "patient.profile_mobile" | "patient.profile_alias"
+  /**
    * The desk's photograph of a paper slip, and they are TWO surfaces rather than one.
    *
    * Seeing that a document EXISTS on a patient's history and OPENING the prescription are different

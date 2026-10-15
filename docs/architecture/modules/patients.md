@@ -101,8 +101,8 @@ Source: `apps/core/src/modules/patients/`
 
 Foreign keys into: —
 
-## HTTP routes (31)
+## HTTP routes (33)
 
-- `patients.controller.ts` — 31: `/patients`, `/patients/:id`, `/patients/abha`, `/patients/documents`, `/patients/merge-requests`, `/patients/merge-visits`, `/patients/qr`, `/patients/search`
+- `patients.controller.ts` — 33: `/patients`, `/patients/:id`, `/patients/abha`, `/patients/documents`, `/patients/merge-requests`, `/patients/merge-visits`, `/patients/qr`, `/patients/search`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/patients`
