@@ -35,7 +35,7 @@ describe("recorded today — the home card", () => {
     expect(screen.getByTestId("recorded-lead")).toHaveTextContent("Not recorded: 7 of 48 consulted.");
     expect(screen.getByTestId("recorded-line")).toHaveTextContent("Slips photographed 41 of 48 consulted · typed 12 · not recorded 7");
     expect(screen.getByTestId("recorded-bar")).toHaveProp("accessibilityLabel", "41 of 48 consultations on record");
-    fireEvent.press(screen.getByTestId("recorded-scan"));
+    await fireEvent.press(screen.getByTestId("recorded-scan"));
     expect(on.scan).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId("recorded-by-doctor")).toBeNull();
   });
@@ -58,7 +58,7 @@ describe("recorded today — the home card", () => {
   it("the owner reads the hospital line and can open the list by doctor", async () => {
     const on = await show(R({ doctors: [{ ...C, id: "d1", name: "Dr. Chandan Kumar" }] }), ["onNow"], ["opd.reports.read", "staff.reports.read", "opd.prescription.transcribe"]);
     expect(screen.getByTestId("recorded-line")).toHaveTextContent("48 consulted · 9 prescribed on screen · 41 slips photographed · 12 typed");
-    fireEvent.press(screen.getByTestId("recorded-by-doctor"));
+    await fireEvent.press(screen.getByTestId("recorded-by-doctor"));
     expect(on.by).toHaveBeenCalledTimes(1);
   });
 

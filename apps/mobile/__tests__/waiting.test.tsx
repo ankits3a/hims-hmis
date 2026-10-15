@@ -53,20 +53,6 @@ const mountLoops = async (fetcher: typeof fetch) => await render(
 beforeEach(() => { mockPush.mockReset(); mockParams = {}; });
 
 describe("E1.4 / E1.5 waiting for me — phone", () => {
-  // First in the file: it mounts the session, and a session mounted after the bare card renders
-  // above did not reach sign-in inside this file (order effect seen 2026-10-11, not chased).
-  it("Open loops reads GET /me/waiting and lists the same lines; computer-only work says where", async () => {
-    mockParams = { kind: "lab.reportsBack" };
-    await mountLoops(server(WAITING_FIXTURE));
-    await screen.findByTestId("waiting-line-lab.criticalsMine", {}, { timeout: 5000 });
-    const drawn = screen.getAllByTestId(/^waiting-line-/).map((n) => n.props.testID.replace("waiting-line-", ""));
-    expect(drawn).toEqual(WAITING_EXPECTED.map(([k]) => k));
-    expect(screen.getByTestId("waiting-where-lab.reportsBack")).toHaveTextContent("On computer · Consult");
-    expect(seenKeys).toContain("GET /me/waiting");
-    fireEvent.press(screen.getByTestId("waiting-line-alerts.unanswered"));
-    expect(mockPush).toHaveBeenLastCalledWith("/alerts");
-  });
-
   it("the home card draws the shared fixture as the shared expected list (same as the web)", async () => {
     await render(<WaitingCard t={t} lines={waitingLines(WAITING_FIXTURE)} push={mockPush} nowMs={NOW} />);
     const drawn = screen.getAllByTestId(/^waiting-line-/).map((n) => n.props.testID.replace("waiting-line-", ""));
@@ -75,19 +61,39 @@ describe("E1.4 / E1.5 waiting for me — phone", () => {
     expect(screen.queryByText(/billing/i)).toBeNull();
   });
 
+  /*
+    #683 — EVERY `fireEvent` HERE IS AWAITED. In @testing-library/react-native 14 `fireEvent.press`
+    returns a promise wrapping an async `act()`. Left un-awaited, the presses below were still open
+    when the next test rendered ("overlapping act() calls"), and that render never committed: the
+    session test that followed this one never reached sign-in, and a bare card render drew nothing.
+    That was the order effect the old "first in the file" workaround hid; the file now passes in any
+    order (`jest --randomize`).
+  */
   it("each line opens its screen in one tap; the heading opens Open loops", async () => {
     await render(<WaitingCard t={t} lines={waitingLines(WAITING_FIXTURE)} push={mockPush} nowMs={NOW} />);
-    fireEvent.press(screen.getByTestId("waiting-line-alerts.unanswered"));
+    await fireEvent.press(screen.getByTestId("waiting-line-alerts.unanswered"));
     expect(mockPush).toHaveBeenLastCalledWith("/alerts");
-    fireEvent.press(screen.getByTestId("waiting-line-reminders.today"));
+    await fireEvent.press(screen.getByTestId("waiting-line-reminders.today"));
     expect(mockPush).toHaveBeenLastCalledWith("/reminders");
-    fireEvent.press(screen.getByTestId("waiting-line-roster.dutiesToday"));
+    await fireEvent.press(screen.getByTestId("waiting-line-roster.dutiesToday"));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: "/seat/[key]", params: { key: "myDuties" } });
-    fireEvent.press(screen.getByTestId("waiting-line-lab.reportsBack"));
+    await fireEvent.press(screen.getByTestId("waiting-line-lab.reportsBack"));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: "/loops", params: { kind: "lab.reportsBack" } });
-    fireEvent.press(screen.getByTestId("waiting-card-all"));
+    await fireEvent.press(screen.getByTestId("waiting-card-all"));
     expect(mockPush).toHaveBeenLastCalledWith("/loops");
     expect(mockPush).toHaveBeenCalledTimes(5);
+  });
+
+  it("Open loops reads GET /me/waiting and lists the same lines; computer-only work says where", async () => {
+    mockParams = { kind: "lab.reportsBack" };
+    await mountLoops(server(WAITING_FIXTURE));
+    await screen.findByTestId("waiting-line-lab.criticalsMine", {}, { timeout: 5000 });
+    const drawn = screen.getAllByTestId(/^waiting-line-/).map((n) => n.props.testID.replace("waiting-line-", ""));
+    expect(drawn).toEqual(WAITING_EXPECTED.map(([k]) => k));
+    expect(screen.getByTestId("waiting-where-lab.reportsBack")).toHaveTextContent("On computer · Consult");
+    expect(seenKeys).toContain("GET /me/waiting");
+    await fireEvent.press(screen.getByTestId("waiting-line-alerts.unanswered"));
+    expect(mockPush).toHaveBeenLastCalledWith("/alerts");
   });
 
   it("every kind has a one-tap target", () => {
