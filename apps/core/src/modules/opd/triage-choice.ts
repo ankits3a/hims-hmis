@@ -112,7 +112,7 @@ export async function chooseDepartments(
   const suggestions: TriageSuggestion[] = [];
   for (const [key] of ranked) {
     const dept = idOf.get(key);
-    if (dept !== undefined) suggestions.push({ departmentId: dept.id, reason: options[key] ?? dept.name });
+    if (dept !== undefined) suggestions.push({ departmentId: dept.id, reason: options[key] ?? dept.name, reasonKey: "opdTriage.reason.model" });
   }
   return suggestions.length > 0 ? suggestions : "unsure";
 }

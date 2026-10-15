@@ -673,7 +673,12 @@ export function getContinuity(
  * from the model or the deterministic keyword table, because advice whose origin is hidden gets
  * trusted too much.
  */
-export type WireTriageSuggestion = { departmentId: string; reason: string };
+export type WireTriageSuggestion = {
+  departmentId: string;
+  reason: string;
+  /** #622 — a fixed reason code, translated on screen (`opdTriage.reason.*`); never a model's own words. */
+  reasonKey: "opdTriage.reason.model" | "opdTriage.reason.keywords";
+};
 /** Set when the desk must NOT book: an emergency, refusing rather than ranking. See `red-flags.ts`. */
 export type WireRedFlag = { reasonKey: string; matched: string };
 export type WireTriage = {
