@@ -33,7 +33,8 @@ export type AdvisedTest = {
   serviceId: string;
   code: string;
   name: string;
-  pricePaise: number;
+  /** Issue #609 (DECIDED 2026-10-14): null when the tariff has no price for it — the slip says "Rate at counter", never ₹0. */
+  pricePaise: number | null;
 };
 
 /**

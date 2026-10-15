@@ -326,7 +326,7 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
   };
 
   const useSet = (set: WireRxSet): void => {
-    patch((d) => applySet(d, set.name, set.body, (id) => d.tests.find((x) => x.serviceId === id)?.pricePaise ?? 0, Date.now(), bandNow()));
+    patch((d) => applySet(d, set.name, set.body, (id) => d.tests.find((x) => x.serviceId === id)?.pricePaise ?? null, Date.now(), bandNow()));
     setDrawer(null);
   };
 
