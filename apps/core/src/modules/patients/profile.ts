@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
 import { opdDepartments, opdEncounters, patients } from "../../kernel/db/schema";
+import { istDayString } from "../../kernel/approvals/cumulative";
 import { getPatient, listMergedLoserIds, resolvePatientId } from "./registration";
 import type { PatientRow } from "./registration";
 import { listAllergies } from "./allergies";
@@ -76,13 +77,12 @@ export type PatientProfile =
     history: RestrictedHistoryRow[];
   };
 
-const IST_OFFSET_MS = 330 * 60_000;
-
-/** Age on the hospital's (IST) calendar: whole years, and whole months under one year. */
+/** Age on the hospital's (IST) calendar: whole years, and whole months under one year. The IST day comes from
+ *  the kernel's one clock (`istDayString`), not a fresh copy of the offset (`test/ist-clock-parity.test.ts`). */
 export function ageOnIstCalendar(dob: Date | null, now: Date): { years: number | null; months: number | null } {
   if (dob === null) return { years: null, months: null };
-  const today = new Date(now.getTime() + IST_OFFSET_MS);
-  const y = today.getUTCFullYear(), m = today.getUTCMonth(), d = today.getUTCDate();
+  const [y, m1, d] = istDayString(now).split("-").map(Number) as [number, number, number];
+  const m = m1 - 1;
   let months = (y - dob.getUTCFullYear()) * 12 + (m - dob.getUTCMonth());
   if (d < dob.getUTCDate()) months -= 1;
   months = Math.max(0, months);
