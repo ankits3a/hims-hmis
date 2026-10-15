@@ -16,6 +16,8 @@ import { approveRequest, rejectRequest } from "../../kernel/approvals/decisions"
 import { getApproval } from "../../kernel/approvals/worklist";
 import { createDraft, activateDefinition } from "../../kernel/workflow/definitions";
 import { registerPatient } from "./registration";
+import { approvalRejectedConsumer } from "./approval-consumer";
+import type { DispatchedEvent } from "../../kernel/events/subscriptions";
 import { recordAbhaVerifiedByAbdm } from "./abha-verified";
 import { addAllergy } from "./allergies";
 import { linkGuardian } from "./guardians";
@@ -269,6 +271,54 @@ describe("merge & unmerge (§11.5 — approval-gated, splittable)", () => {
     // The approval's own audit stays: exactly one approval.rejected event, with the MS's note.
     const rejectedEvents = await db.select().from(events).where(eq(events.name, "approval.rejected"));
     expect(rejectedEvents).toHaveLength(1);
+  });
+
+  /*
+    #653 — the refusal closes its request AT REFUSAL TIME, through the approvals → patients hook
+    (`approval-consumer.ts`, on `approval.rejected`), not on the next read. The rows are read straight
+    from the table so no lazy settle can close them behind the test's back.
+  */
+  it("#653: the approval.rejected hook closes a refused merge request without any read settling it", async () => {
+    const { mergeRequestId, approvalId } = await requestedMerge();
+    const other = await requestedMerge();
+    await rejectRequest(db, mrdHead, { approvalId, note: "different people" });
+    const statusOf = async (id: string): Promise<string> =>
+      (await db.select().from(patientMergeRequests).where(eq(patientMergeRequests.id, id)))[0]!.status;
+    expect(await statusOf(mergeRequestId)).toBe("requested");
+
+    const rows = await db.select().from(events).where(eq(events.name, "approval.rejected"));
+    const dispatched: DispatchedEvent[] = rows.map((r) => ({
+      seq: Number(r.seq), eventId: r.eventId, name: r.name, payload: r.payload,
+      patientId: r.patientId, correlationId: r.correlationId, occurredAt: r.occurredAt,
+    }));
+    expect(dispatched).toHaveLength(1);
+    const hook = approvalRejectedConsumer(db);
+    await hook(dispatched[0]!);
+    expect(await statusOf(mergeRequestId)).toBe("refused");
+    // Only the refused request is closed; the other one still waits on the MS.
+    expect(await statusOf(other.mergeRequestId)).toBe("requested");
+    // A redelivery is a no-op, and the approval's own audit is untouched.
+    await hook(dispatched[0]!);
+    expect(await statusOf(mergeRequestId)).toBe("refused");
+    expect(await db.select().from(events).where(eq(events.name, "approval.rejected"))).toHaveLength(1);
+  });
+
+  it("#653: the hook ignores other events and other approval types", async () => {
+    const { mergeRequestId, approvalId } = await requestedMerge();
+    await approveRequest(db, mrdHead, { approvalId, note: "same person" });
+    const hook = approvalRejectedConsumer(db);
+    const granted = (await db.select().from(events).where(eq(events.name, "approval.granted")))[0]!;
+    await hook({
+      seq: Number(granted.seq), eventId: granted.eventId, name: granted.name, payload: granted.payload,
+      patientId: granted.patientId, correlationId: granted.correlationId, occurredAt: granted.occurredAt,
+    });
+    // A rejected approval of another type naming this request's approval id is not a merge refusal.
+    await hook({
+      seq: 0, eventId: "x", name: "approval.rejected", patientId: null, correlationId: null, occurredAt: new Date(),
+      payload: { ...(granted.payload as Record<string, unknown>), typeKey: "billing_discount" },
+    });
+    const row = (await db.select().from(patientMergeRequests).where(eq(patientMergeRequests.id, mergeRequestId)))[0]!;
+    expect(row.status).toBe("requested");
   });
 
   it("BOARD: a merge still waiting is NOT closed by the settle — only a refusal closes one", async () => {

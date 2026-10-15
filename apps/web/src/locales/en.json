@@ -295,6 +295,8 @@
     }
   },
   "merge": {
+    "showMobile": "Show",
+    "showFailed": "Could not show. Try again.",
     "title": "Merge review",
     "heading": "Merge two records of one person",
     "left": "Record A",
