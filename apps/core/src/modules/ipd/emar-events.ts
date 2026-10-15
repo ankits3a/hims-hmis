@@ -96,3 +96,17 @@ export const IPD_EMAR_ALLERGY_CONSUMER = "ipd.emar_allergy_recheck";
 export const allergyFlagDecided = defineEvent("ipd.allergy_flag.decided", MODULE, z.object({
   flagId: id, orderId: id, admissionId: id, decision: z.enum(["stop", "continue"]), provenance: IpdProvenanceSchema,
 }));
+
+/**
+ * #787 (IP counter) — the OPD pharmacy counter charged a sale to an admission / took units of it back. THE AUDIT of the
+ * counter's charge to IP (with the stock ledger's rows and the charge lines, which carry the actor): ids, counts and the
+ * money total the pharmacist told the attendant — no drug name, no patient name. Not on the nursing topic.
+ */
+export const counterCharged = defineEvent("ipd.med.counter_charged", MODULE, z.object({
+  saleId: id, admissionId: id, storeId: id, lines: z.number().int(), units: z.number().int(), chargeLineIds: z.array(id), totalPaise: z.number().int(),
+  provenance: IpdProvenanceSchema,
+}));
+
+export const counterReturned = defineEvent("ipd.med.counter_returned", MODULE, z.object({
+  returnId: id, saleId: id, admissionId: id, itemId: id, units: z.number().int(), creditedUnits: z.number().int(), provenance: IpdProvenanceSchema,
+}));

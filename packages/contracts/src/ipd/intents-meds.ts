@@ -468,3 +468,56 @@ export const decideAllergyFlag = ipdIntent({
   events: ["ipd.allergy_flag.decided"],
   idempotent: true,
 });
+
+/**
+ * #787 (IP counter) — CHARGE TO IP: the OPD pharmacy counter sells to an admitted patient's attendant and the sale goes
+ * on the admission's running bill instead of taking cash. Stock leaves PHARM-OPD (FEFO, or the batch named); each batch
+ * is priced exactly as a ward issue is (the counter's own price at the sale instant, no member benefit). Refused for a
+ * patient not admitted, a discharged admission and an admission whose final bill is settled; a controlled drug goes to
+ * the ward only against an inpatient order. The answer carries the money: the pharmacist tells the attendant the amount.
+ */
+export const IPD_COUNTER_MAX_LINES = 20;
+export const counterCharge = ipdIntent({
+  input: ipdInput({
+    admissionId: IpdIdSchema,
+    lines: z.array(z.strictObject({
+      /** The formulary medicine on the counter's shelf (the shelf search's `medicineId`). */
+      medicineId: IpdIdSchema,
+      units: z.number().int().positive().max(500),
+      batchId: IpdIdSchema.optional(),
+    })).min(1).max(IPD_COUNTER_MAX_LINES),
+  }),
+  output: z.strictObject({
+    saleId: IpdIdSchema,
+    admissionId: IpdIdSchema,
+    lines: z.array(z.strictObject({ medicineId: IpdIdSchema, units: z.number().int().positive(), netPaise: z.number().int() })),
+    totalPaise: z.number().int(),
+  }),
+  refusals: [
+    "admission_not_found", "not_admitted", "ip_discharged", "ip_bill_settled", "medicine_not_stocked", "controlled_at_counter", "batch_mismatch",
+    "stock_short", "price_missing",
+  ],
+  actors: ["pharmacist"],
+  copilotProposable: false,
+  agentTier: "none",
+  undo: "reversal_line",
+  events: ["ipd.med.counter_charged"],
+  idempotent: true,
+});
+
+/**
+ * #787 (IP counter) — units of a counter sale come back: stock returns to the batches it left (newest-taken first) and the
+ * running bill is credited at the sale's own price, exactly as a ward return (a line a settled bill took goes to the bill
+ * desk as `return_after_bill`). `creditedUnits` is what really came off what the patient owes.
+ */
+export const counterReturn = ipdIntent({
+  input: ipdInput({ saleId: IpdIdSchema, itemId: IpdIdSchema, units: z.number().int().positive().max(500), reason: IpdNoteSchema }),
+  output: z.strictObject({ returnId: IpdIdSchema, units: z.number().int().positive(), creditedUnits: z.number().int().nonnegative() }),
+  refusals: ["counter_sale_not_found", "not_on_sale", "return_exceeds_issue"],
+  actors: ["pharmacist"],
+  copilotProposable: false,
+  agentTier: "none",
+  undo: "irreversible",
+  events: ["ipd.med.counter_returned"],
+  idempotent: true,
+});
