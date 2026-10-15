@@ -219,11 +219,32 @@ describe("the medicine-alias pipeline (decision 0051)", () => {
       ["Schedule H1", ALPRAX, "alprax 0.5"],
       ["Schedule X", KETAMINE, "ketamine 50"],
       ["an NDPS class on a moiety", TRAMADOL, "somethingol 50"],
-      ["a controlled NAME the flags missed", MORPHINE, "morphine 10"],
-    ])("NEVER a controlled medicine — %s — with both models certain", async (_why, target, term) => {
+      ["a moiety on the formulary's cited NDPS list, with no flag and no stored class", MORPHINE, "morphine 10"],
+    ])("NEVER a controlled medicine — %s — refused BEFORE either model is asked (#613)", async (_why, target, term) => {
       expect(isControlled(target)).toBe(true);
-      const p = ran(await proposeAlias(fakes([target], { confidence: 1, probability: 1 }).deps, term));
-      expect(p).toMatchObject({ state: "proposed", medicineId: target.id, refusal: "controlled_drug", ruleResult: "controlled_drug" });
+      const f = fakes([target], { confidence: 1, probability: 1 });
+      const p = ran(await proposeAlias(f.deps, term));
+      expect(p).toMatchObject({ state: "proposed", medicineId: null, refusal: "controlled_drug", ruleResult: "controlled_drug" });
+      expect(f.calls.choose).toHaveLength(0);
+      expect(f.calls.predicate).toHaveLength(0);
+    });
+
+    it("a controlled row near the term is never offered to the chooser, and is named to the reviewer only as what the term must not mean (#613)", async () => {
+      const doloT = row("m_dolot", "Dolo-T (tramadol hydrochloride and paracetamol) 37.5 mg + 325 mg oral tablet", { salts: ["paracetamol", "tramadol hydrochloride"], scheduleFlag: null, tier: 1 });
+      const f = fakes([DOLO650, doloT], { pick: "c1" });
+      const p = ran(await proposeAlias(f.deps, "dolo 650"));
+      expect(p).toMatchObject({ state: "suggestion", medicineId: "m_dolo650" });
+      expect(p.shown.map((r) => r.id)).toEqual(["m_dolo650"]);
+      const offered = JSON.stringify(f.calls.choose[0]?.questions);
+      expect(offered).not.toMatch(/tramadol/i);
+      expect(f.calls.predicate[0]?.state.other_candidates).toMatch(/Dolo-T/);
+    });
+
+    it("a product the term names outright that is controlled refuses the term, even below a plain one (#613)", async () => {
+      const tramadol = row("m_tram2", "Tramadol hydrochloride 50 mg oral capsule", { salts: ["tramadol hydrochloride"], scheduleFlag: null, generic: true, tier: 2 });
+      const f = fakes([PAN40, tramadol]);
+      expect(ran(await proposeAlias(f.deps, "tramadol 50"))).toMatchObject({ state: "proposed", medicineId: null, refusal: "controlled_drug" });
+      expect(f.calls.choose).toHaveLength(0);
     });
 
     it("says WHICH net caught a controlled medicine: the flag, the stored class, the cited NDPS list, then the name", () => {
@@ -231,7 +252,10 @@ describe("the medicine-alias pipeline (decision 0051)", () => {
       expect(controlledBy(TRAMADOL)).toBe("ndps_class");
       // Morphine is on the formulary's cited NDPS list; the staging catalogue gives it no flag and no class.
       expect(controlledBy(MORPHINE)).toBe("ndps_list");
-      expect(controlledBy(row("m_feb", "Febrex (fentanyl citrate) 50 mcg injection", { salts: [], scheduleFlag: null }))).toBe("ndps_list");
+      // The formulary answers by MOIETY, with its salt: "codeine phosphate" is codeine (#613).
+      expect(controlledBy(row("m_cod", "Somecough (codeine phosphate and chlorpheniramine) syrup", { salts: ["chlorpheniramine maleate", "codeine phosphate"], scheduleFlag: null }))).toBe("ndps_list");
+      // No moieties recorded: the formulary cannot say, so the listed word in the NAME still refuses — never looser.
+      expect(controlledBy(row("m_feb", "Febrex (fentanyl citrate) 50 mcg injection", { salts: [], scheduleFlag: null }))).toBe("name");
       // A benzodiazepine is not on that list (its Schedule entry was not read at source): the name is the last net.
       expect(controlledBy(row("m_clz", "Clonotril (clonazepam) 0.5 mg oral tablet", { salts: ["clonazepam"], scheduleFlag: null }))).toBe("name");
       expect(controlledBy(PAN40)).toBeNull();

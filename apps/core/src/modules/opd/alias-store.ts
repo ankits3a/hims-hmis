@@ -5,7 +5,7 @@ import type { Db } from "../../kernel/db/client";
 import { cdsAliases } from "../../kernel/db/schema";
 import { chooserFor, openAiDecisionsClient } from "../../kernel/inference/openai-decisions";
 import { openAiKeyFromFile } from "../../kernel/inference/openai-speech";
-import { aliasCandidatePool, medicinesByIds, saltsByIds } from "../formulary";
+import { aliasCandidatePool, medicinesByIds, ndpsClassOfMoieties, saltsByIds } from "../formulary";
 import type { NicknameLookup } from "../formulary";
 import { isControlled, normaliseTerm, readTerm } from "./alias-pipeline";
 import type { AliasDeps, AliasProposal } from "./alias-pipeline";
@@ -78,7 +78,8 @@ export async function controlledToday(db: Db, medicineId: string): Promise<{ con
   const salts = await saltsByIds(db, med.salts.map((x) => x.saltId));
   const rows = med.salts.map((x) => salts.get(x.saltId)).filter((x) => x !== undefined);
   return {
-    controlled: isControlled({ name: med.brandName, scheduleFlag: med.scheduleFlag, salts: rows.map((r) => r.name.toLowerCase()), ndps: rows.some((r) => r.ndpsClass !== null) }),
+    // #613 — NDPS as the formulary reads it: a stored class, else the cited list, by moiety.
+    controlled: isControlled({ name: med.brandName, scheduleFlag: med.scheduleFlag, salts: rows.map((r) => r.name.toLowerCase()), ndps: ndpsClassOfMoieties(rows.map((r) => ({ name: r.name, ndpsClass: r.ndpsClass }))) !== null }),
     moietySet: [...new Set(med.salts.map((x) => x.saltId))].sort().join("+"),
   };
 }

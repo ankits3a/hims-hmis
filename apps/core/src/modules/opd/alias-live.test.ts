@@ -249,6 +249,13 @@ describe("medicine nicknames — live", () => {
       expect((await stateOf(id))?.state).toBe("trusted");
     });
 
+    it("a SUGGESTION whose medicine has become controlled is demoted at its next tap, not kept (#613)", async () => {
+      const id = await nickname("pan forty", "m_pan40", "suggestion");
+      await db.update(formularyMedicines).set({ scheduleFlag: "H1" }).where(eq(formularyMedicines.id, "m_pan40"));
+      await act(doctors[0]!, id, "accepted");
+      expect(await stateOf(id)).toMatchObject({ state: "demoted", ruleResult: "controlled_drug", refusal: "controlled_drug" });
+    });
+
     it("three crosses in a row by two doctors demote it; a tap in between starts the count again", async () => {
       const id = await nickname("pan forty", "m_pan40");
       const [a, b] = doctors as [typeof doctors[0], typeof doctors[0]];
@@ -350,11 +357,34 @@ describe("medicine nicknames — live", () => {
       expect((await db.select().from(cdsAliases))[0]?.state).toBe(state);
     });
 
-    it("a controlled target on the cited NDPS list is refused with no schedule flag and no stored class", async () => {
+    it("a controlled target on the cited NDPS list is refused with no schedule flag and no stored class — before either model is asked (#613)", async () => {
       await typed("morphine ten", 2);
       const f = fakeDeps();
       expect(await runAliasProposals(db, f.deps, { perRun: 40, perDay: 300 }, NOW)).toEqual({ ran: true, proposed: 1, suggestion: 0, refused: 1, failed: 0 });
-      expect((await db.select().from(cdsAliases))[0]).toMatchObject({ term: "morphine ten", medicineId: "m_morph", state: "proposed", refusal: "controlled_drug", ruleResult: "controlled_drug" });
+      expect((await db.select().from(cdsAliases))[0]).toMatchObject({ term: "morphine ten", medicineId: null, state: "proposed", refusal: "controlled_drug", ruleResult: "controlled_drug" });
+      expect(f.calls).toEqual({ choose: 0, predicate: 0 });
+    });
+
+    it("the formulary's candidate rows carry its NDPS answer: a listed moiety with no stored class reads as NDPS (#613)", async () => {
+      const rows = await aliasCandidatePool(db, "morphine", ["10"]);
+      expect(rows.find((r) => r.id === "m_morph")).toMatchObject({ ndps: true, scheduleFlag: null });
+      expect((await aliasCandidatePool(db, "pan", ["40"])).every((r) => !r.ndps)).toBe(true);
+    });
+
+    it("a LIVE nickname whose medicine the formulary now reads as NDPS is taken back at the next run — suggestion and trusted alike (#613)", async () => {
+      const sug = await nickname("pan forty", "m_pan40", "suggestion");
+      const tru = await nickname("pan twenty", "m_pan20", "trusted");
+      const other = await nickname("pan d", "m_pand", "suggestion");
+      // A stored NDPS class arrives on pantoprazole (the pharmacy classified it): the formulary's data, no name involved.
+      await db.update(formularySalts).set({ ndpsClass: "psychotropic" } as never).where(eq(formularySalts.id, "s_panto"));
+      const f = fakeDeps();
+      await runAliasProposals(db, f.deps, { perRun: 40, perDay: 300 }, NOW);
+      expect(await stateOf(sug)).toMatchObject({ state: "demoted", ruleResult: "controlled_drug", refusal: "controlled_drug" });
+      expect(await stateOf(tru)).toMatchObject({ state: "demoted", ruleResult: "controlled_drug" });
+      expect((await stateOf(other))?.state).toBe("demoted"); // Pan-D holds pantoprazole too
+      const list = await listNicknames(db, { all: true, on: true }, NOW);
+      expect(list.items.find((r) => r.id === sug)).toMatchObject({ state: "removed", removedBy: null });
+      expect(f.calls).toEqual({ choose: 0, predicate: 0 });
     });
   });
 

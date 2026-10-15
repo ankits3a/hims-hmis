@@ -4,7 +4,8 @@ import type { Db } from "../../kernel/db/client";
 import { appendEvent } from "../../kernel/events/append";
 import { proposeAlias } from "./alias-pipeline";
 import type { AliasDeps } from "./alias-pipeline";
-import { aliasDepsFrom, saveAliasProposal } from "./alias-store";
+import { aliasDepsFrom, controlledToday, saveAliasProposal } from "./alias-store";
+import { complaintAliasDepsFrom, runComplaintAliasProposals } from "./complaint-alias";
 import type { AppConfig } from "../../kernel/config";
 import { aliasRunCompleted } from "./events";
 import { istDate, istDateTimeToUtc } from "./time";
@@ -38,8 +39,29 @@ export const MIN_TIMES_TYPED = 2;
 const STOP_AFTER_FAILURES = 3;
 const RUNNER: Actor = { type: "system", id: "opd-alias-runner" };
 
+/**
+ * #613 — THE RULES TAKE A LIVE NICKNAME BACK. A nickname is live ('suggestion' or 'trusted') only while
+ * its medicine is not controlled; the formulary can come to read it as controlled afterwards (a schedule
+ * flag arrives, the pharmacy classifies a moiety, the cited NDPS list names it). Each run re-reads every
+ * live nickname's medicine and demotes the controlled ones, saying why on the row. No model is asked.
+ */
+async function demoteControlledNicknames(db: Db, now: Date): Promise<number> {
+  const live = await db.execute(sql`select id, medicine_id from cds_aliases where kind = 'medicine' and state in ('suggestion', 'trusted') and medicine_id is not null`);
+  let demoted = 0;
+  for (const r of live.rows) {
+    const today = await controlledToday(db, String(r["medicine_id"]));
+    if (today === null || !today.controlled) continue;
+    const res = await db.execute(sql`
+      update cds_aliases set state = 'demoted', rule_result = 'controlled_drug', refusal = 'controlled_drug', updated_at = ${now.toISOString()}
+       where id = ${String(r["id"])} and state in ('suggestion', 'trusted')`);
+    demoted += res.rowCount ?? 0;
+  }
+  return demoted;
+}
+
 export async function runAliasProposals(db: Db, deps: AliasDeps, caps: AliasRunCaps, now: Date = new Date()): Promise<AliasRunReport> {
   if (!deps.enabled) return { ran: false };
+  await demoteControlledNicknames(db, now);
 
   const dayStart = istDateTimeToUtc(istDate(now), "00:00");
   const today = await db.execute(sql`select count(*)::int as n from cds_aliases where kind = 'medicine' and audited_at >= ${dayStart.toISOString()}`);
@@ -97,5 +119,9 @@ export async function runAliasProposals(db: Db, deps: AliasDeps, caps: AliasRunC
  */
 export async function runAliasJob(db: Db, config: AppConfig | undefined, now: Date = new Date()): Promise<AliasRunReport> {
   if (config === undefined || !config.aliases.enabled) return { ran: false };
-  return runAliasProposals(db, aliasDepsFrom(db, config), { perRun: config.aliases.perRun, perDay: config.aliases.perDay }, now);
+  const caps = { perRun: config.aliases.perRun, perDay: config.aliases.perDay };
+  const medicines = await runAliasProposals(db, aliasDepsFrom(db, config), caps, now);
+  // #613 — the complaint half, on its own caps and its own counts event.
+  await runComplaintAliasProposals(db, complaintAliasDepsFrom(db, config), caps, now);
+  return medicines;
 }

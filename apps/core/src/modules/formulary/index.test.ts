@@ -96,6 +96,8 @@ const SURFACE = [
   "medicinesByIds",
   "monographForMedicine", // the reviewed monograph a stocked product reaches through its generic link
   "ndpsClassByMedicine", // PHARMACY P6 — bounded by MAX_IDS, the strictest class of each medicine's moieties
+  "ndpsClassOfMoieties", // #613 — pure: stored class, else the cited list, strictest across moieties (learned nicknames)
+  "ndpsListEntryOf", // #613 — pure: the cited NDPS entry a moiety name is, or null
   "normalizeDrugName",
   "pageInteractions",
   "pageMappingWorklist",
