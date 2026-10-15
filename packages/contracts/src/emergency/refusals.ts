@@ -26,6 +26,17 @@ export const ER_REFUSALS = {
   pre_alert_closed: { rule: "The pre-alert has already arrived, lapsed or been cancelled.", fix: "Register without it" },
   examined_before_arrival: { rule: "The examination cannot be earlier than the arrival.", fix: "Fix the time" },
 
+  /* ═══ Triage, bays and the doctor (lane 2) ═══ */
+  down_triage_needs_reason: { rule: "A level less urgent than the proposal or the last level needs a reason.", fix: "Add reason" },
+  department_not_found: { rule: "No department has this code.", fix: "Pick department" },
+  already_in_bay: { rule: "The patient is already in a bay.", fix: "Move bay" },
+  not_in_bay: { rule: "The patient is not in a bay yet.", fix: "Place in bay" },
+  same_bay: { rule: "The patient is already in this bay.", fix: "Pick another bay" },
+  bay_not_found: { rule: "No bay has this id.", fix: "Open ER board" },
+  bay_not_emergency: { rule: "Only an emergency-class bed is an ER bay.", fix: "Pick an ER bay" },
+  bay_not_available: { rule: "The bay was just taken or is not free.", fix: "Pick another bay" },
+  not_a_doctor: { rule: "Only a doctor can be the ER doctor of record.", fix: "Pick a doctor" },
+
   /* ═══ The band ═══ */
   printer_offline: { rule: "The chosen printer is not answering.", fix: "Pick nearest printer" },
   band_already_printed: { rule: "A band is already printed for this episode.", fix: "Reprint band" },

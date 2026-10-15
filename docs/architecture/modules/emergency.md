@@ -11,9 +11,9 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/emergency/`
 · Notes: [MAP.md](../../../apps/core/src/modules/emergency/MAP.md)
 
-- **Depends on modules:** `billing`, `ipd`, `patients`
+- **Depends on modules:** `billing`, `ipd`, `patients`, `roster`, `tasks`
 - **Used by modules:** —
-- **Kernel used:** `approvals`, `auth`, `db`, `events`, `modules`, `printing`, `realtime`, `tokens`, `workflow`
+- **Kernel used:** `alerts`, `approvals`, `auth`, `db`, `events`, `modules`, `printing`, `realtime`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
 
@@ -29,9 +29,11 @@ Source: `apps/core/src/modules/emergency/`
   - `printErBand(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"print_er_band">>`
   - `reprintErBand(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"reprint_er_band">>`
 - `board.ts`
-  - `listErDoctors(db: Db, actor: Actor): Promise<ErDoctorOption[]>`
+  - `listErBays(db: Db, actor: Actor): Promise<ErBay[]>`
+  - `listErDoctors(db: Db, actor: Actor, permission: string = ER_ARRIVAL_REGISTER): Promise<ErDoctorOption[]>`
   - `readErBoard(db: Db, actor: Actor, opts: { wall?: boolean; now?: Date } = {}): Promise<ErBoard>`
   - `readErDesk(db: Db, actor: Actor, opts: { now?: Date } = {}): Promise<ErDeskView>`
+  - `readErEpisode(db: Db, actor: Actor, episodeId: string, opts: { now?: Date } = {}): Promise<ErEpisodeView>`
   - `searchErPatients(db: Db, actor: Actor, q: string, opts: { now?: Date } = {}): Promise<ErPatientHit[]>`
 - `emergency.module.ts`
   - `class EmergencyModule`
@@ -50,11 +52,26 @@ Source: `apps/core/src/modules/emergency/`
   - `ER_ARRIVAL_REGISTER`
   - `ER_BOARD_VIEW`
   - `ER_IDENTITY_LINK`
+  - `ER_TRIAGE`
 - `realtime.ts`
   - `ER_REALTIME_NAMES: string[]`
   - `ER_TOPIC_SPACES: TopicSpace[]`
   - `erTopicRouter: TopicRouter`
   - `erTopicsFor(e: Pick<TailedEvent, "name">): string[]`
+- `task-kinds.ts`
+  - `ER_RETRIAGE_TASK`
+  - `ER_TRIAGE_DUE_TASK`
+  - `ER_TRIAGE_SKILL`
+- `triage.ts`
+  - `ER_CLOCK_ACTOR: Actor`
+  - `ER_RETRIAGE_FALLBACK_ROLE`
+  - `assignErDoctor(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"assign_er_doctor">>`
+  - `moveBay(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"move_bay">>`
+  - `placeInBay(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"place_in_bay">>`
+  - `reTriage(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"re_triage">>`
+  - `recordErVitals(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_er_vitals">>`
+  - `sweepErTriageClocks(db: Db, now: Date): Promise<{ tasks: number; climbs: number }>`
+  - `triage(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"triage">>`
 - `workflow.ts`
   - `ER_ACTOR_ROLE_KEYS: Record<ErActorKind, readonly string[]>`
   - `ER_EPISODE_TRANSITIONS: readonly ErEpisodeTransition[]`
@@ -64,12 +81,12 @@ Source: `apps/core/src/modules/emergency/`
 
 ## Tables (`kernel/db/schema/emergency.ts`)
 
-`er_bands`, `er_episodes`, `er_pre_alerts`
+`er_bands`, `er_episodes`, `er_pre_alerts`, `er_triage_entries`
 
-Foreign keys into: `patients`
+Foreign keys into: `patients`, `resources`
 
-## HTTP routes (13)
+## HTTP routes (22)
 
-- `emergency.controller.ts` — 13: `/er/arrivals`, `/er/bands`, `/er/board`, `/er/desk`, `/er/doctors`, `/er/identity`, `/er/patients`, `/er/pre-alerts`
+- `emergency.controller.ts` — 22: `/er/arrivals`, `/er/bands`, `/er/bays`, `/er/board`, `/er/desk`, `/er/doctor`, `/er/doctors`, `/er/episodes`, `/er/identity`, `/er/patients`, `/er/pre-alerts`, `/er/triage`, `/er/triage-doctors`, `/er/vitals`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/emergency`
