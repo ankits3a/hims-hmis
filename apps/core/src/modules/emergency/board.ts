@@ -147,7 +147,8 @@ async function tilesFor(db: Db, actor: Actor, eps: readonly EpisodeRow[], at: Da
       // a pregnancy); the full board keeps it.
       ews: e.ewsKind === null ? null
         : { kind: wall ? null : e.ewsKind as ErEws["kind"], value: e.ewsValue ?? 0, band: e.ewsBand as ErEws["band"] },
-      ...(activations.has(e.id) ? { activations: activations.get(e.id)! } : {}),
+      // ER review 4 (2026-10-15): the activation clocks name clinical detail (STEMI, stroke, snakebite) — never on the wall.
+      ...(!wall && activations.has(e.id) ? { activations: activations.get(e.id)! } : {}),
       // Lane 8 (#815): the START / JumpSTART tag of a Code Yellow patient (colour and word on the tile).
       ...(e.mciTag === null ? {} : { mciTag: e.mciTag as ErMciTag }),
     });

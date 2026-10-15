@@ -90,7 +90,7 @@ export const recordCodeEvent = erIntent({
     && (i.kind !== "drug" || (i.drug !== undefined && i.dose !== undefined)) && (i.kind !== "milestone" || i.milestone !== undefined)
     && (i.kind !== "location" || i.place !== undefined), { message: "the event kind's own detail is required" }),
   output: z.strictObject({ eventId: ErIdSchema, at: ErInstantSchema, scribeId: ErUserRefSchema }),
-  refusals: ["code_not_found", "code_ended", "time_in_future", "milestone_unknown"],
+  refusals: ["code_not_found", "code_ended", "time_in_future", "milestone_unknown", "event_before_arrival"],
   actors: ["er_nurse", "doctor"],
   copilotProposable: false,
   agentTier: "none",
