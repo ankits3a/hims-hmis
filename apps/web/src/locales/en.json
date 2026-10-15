@@ -2638,7 +2638,7 @@
     "noMatch": {
       "title": "No card in the holder book matches {{code}}.",
       "body": "Check the digits, or search by the holder's mobile. If the partner's list has not reached us yet, a supervisor can allow it once (grace honour).",
-      "grace": "Grace honour needs a front office supervisor's approval before anything applies. Until then the visit is billed at the full rate."
+      "grace": "Grace honour needs a supervisor's approval before anything applies. Until then the visit is billed at the full rate."
     },
     "graceAsk": {
       "title": "Ask for grace honour",
