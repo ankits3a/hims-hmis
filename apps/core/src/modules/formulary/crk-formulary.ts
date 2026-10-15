@@ -449,7 +449,7 @@ export async function signedCrkForMedicines(db: Db | Tx, medicineIds: readonly s
   const names = await crkSigners(db, rows.flatMap((r) => [r.reviewedBy, r.secondReviewedBy].filter((x): x is string => x !== null)));
   return rows.flatMap((r) => {
     if (r.crk === null || r.reviewedBy === null || r.reviewedAt === null) return [];
-    const on = new Date(r.reviewedAt.getTime() + 5.5 * 3600_000).toISOString().slice(0, 10);
+    const on = istDate(r.reviewedAt);
     return [{
       medicineId: r.medicineId, genericSctid: r.genericSctid, name: r.name, crk: r.crk, highAlert: r.highAlert,
       label: crkLabel(names.get(r.reviewedBy) ?? r.reviewedBy, on), designation: r.designation,
