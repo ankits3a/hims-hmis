@@ -301,4 +301,100 @@ describe("membership recognition over HTTP", () => {
     expect(rows[0]).toMatchObject({ origin: "grace", verified: false });
     expect(await db.select().from(events).where(eq(events.name, "instrument.grace_honored"))).toHaveLength(1);
   });
+
+  // ── #658 — the counter's explicit act, and the counter's half of grace honour ──────────────
+
+  it("#658 — GET /membership/recognition with a presented code is a PURE READ: no instrument.recognised", async () => {
+    await issueCard({ id: "01HTESTCARD0000000000658A", cardCode: "ZZ-6580", holderName: "Invented Holder" });
+    const { token } = await deskUser(["membership.instrument.recognise"]);
+    const res = await request(server())
+      .get("/membership/recognition?codes=ZZ-6580").set("Authorization", `Bearer ${token}`).expect(200);
+    expect(res.body.memberships.map((m: { cardCode: string }) => m.cardCode)).toEqual(["ZZ-6580"]);
+    expect(await db.select().from(events).where(eq(events.name, "instrument.recognised"))).toHaveLength(0);
+  });
+
+  it("#658 — POST /membership/recognition records the presented code EXACTLY ONCE per call", async () => {
+    await issueCard({ id: "01HTESTCARD0000000000658B", cardCode: "ZZ-6581", holderName: "Invented Holder" });
+    const { token, actor } = await deskUser(["membership.instrument.recognise"]);
+    const res = await request(server())
+      .post("/membership/recognition").set("Authorization", `Bearer ${token}`)
+      .send({ codes: ["ZZ-6581"] }).expect(201);
+    expect(res.body.memberships[0]).toMatchObject({ cardCode: "ZZ-6581", standing: "usable", linked: false, nextAct: "reconcile" });
+    const written = await db.select().from(events).where(eq(events.name, "instrument.recognised"));
+    expect(written).toHaveLength(1);
+    expect(written[0]).toMatchObject({ actorId: actor.id });
+    expect(written[0]!.payload).toMatchObject({ code: "ZZ-6581", source: "card" });
+
+    // An empty presentation is not a card at the counter: refused, nothing written.
+    await request(server())
+      .post("/membership/recognition").set("Authorization", `Bearer ${token}`).send({ codes: [] }).expect(400);
+    expect(await db.select().from(events).where(eq(events.name, "instrument.recognised"))).toHaveLength(1);
+    // And the guard is the same string as the read.
+    const other = await deskUser(["membership.instrument.read"]);
+    await request(server())
+      .post("/membership/recognition").set("Authorization", `Bearer ${other.token}`).send({ codes: ["ZZ-6581"] }).expect(403);
+  });
+
+  it("#658 — the three grace routes for the counter are guarded by membership.grace_honor.request", async () => {
+    await request(server()).get("/membership/plans").expect(401);
+    const { token } = await deskUser(["membership.instrument.recognise"]);
+    await request(server()).get("/membership/plans").set("Authorization", `Bearer ${token}`).expect(403);
+    await request(server()).get("/membership/grace-honor/requests").set("Authorization", `Bearer ${token}`).expect(403);
+    await request(server()).post("/membership/grace-honor/request").set("Authorization", `Bearer ${token}`).send({}).expect(403);
+  });
+
+  it("#658 — plans for a grace request carry id, code and title only — no benefit, no money", async () => {
+    const { token } = await deskUser(["membership.grace_honor.request"]);
+    const res = await request(server()).get("/membership/plans").set("Authorization", `Bearer ${token}`).expect(200);
+    expect(res.body).toEqual({ items: [{ id: PLAN_ID, code: "INV-PLAN-A", title: "Invented Card" }] });
+  });
+
+  it("#658 — the counter ASKS, the approver grants, the counter honours: one request, never two", async () => {
+    const { patient } = await withTx(db, (tx) =>
+      registerPatient(tx, clerk, { name: "Invented Member", sex: "male", phone: "9700000658" }));
+    const desk = await deskUser(["membership.grace_honor.request"]);
+    const approver = await deskUser([], ["billing_manager"]);
+    await registerMembershipApprovalTypes(db, approver.actor);
+    const ask = { cardCode: "ZZ-6589", patientId: patient.id, planId: PLAN_ID, reason: "card issued last week" };
+
+    await request(server()).post("/membership/grace-honor/request").set("Authorization", `Bearer ${desk.token}`)
+      .send({ ...ask, reason: "" }).expect(400);
+    await request(server()).post("/membership/grace-honor/request").set("Authorization", `Bearer ${desk.token}`)
+      .send({ ...ask, planId: "01NOSUCHPLAN0000000000000" }).expect(404);
+    await request(server()).post("/membership/grace-honor/request").set("Authorization", `Bearer ${desk.token}`)
+      .send({ ...ask, patientId: "01NOSUCHPATIENT0000000000" }).expect(404);
+
+    const first = await request(server()).post("/membership/grace-honor/request")
+      .set("Authorization", `Bearer ${desk.token}`).send(ask).expect(201);
+    expect(first.body).toMatchObject({ status: "pending", alreadyAsked: false });
+    const again = await request(server()).post("/membership/grace-honor/request")
+      .set("Authorization", `Bearer ${desk.token}`).send(ask).expect(201);
+    expect(again.body).toEqual({ approvalId: first.body.approvalId, status: "pending", alreadyAsked: true });
+
+    // Asking honours nothing.
+    expect(await db.select().from(membershipInstances)).toEqual([]);
+
+    const listed = await request(server()).get("/membership/grace-honor/requests")
+      .set("Authorization", `Bearer ${desk.token}`).expect(200);
+    expect(listed.body.items).toHaveLength(1);
+    expect(listed.body.items[0]).toMatchObject({
+      approvalId: first.body.approvalId, cardCode: "ZZ-6589", patientId: patient.id, status: "pending",
+      honoured: false, note: "Invented Card: card issued last week",
+    });
+    expect(listed.body.items[0].holder).toMatchObject({ name: "Invented Member" });
+
+    // Another counter does not see this counter's requests.
+    const elsewhere = await deskUser(["membership.grace_honor.request"]);
+    const theirs = await request(server()).get("/membership/grace-honor/requests")
+      .set("Authorization", `Bearer ${elsewhere.token}`).expect(200);
+    expect(theirs.body.items).toEqual([]);
+
+    await approveRequest(db, approver.actor, { approvalId: first.body.approvalId, note: "honour it" });
+    await request(server()).post("/membership/grace-honor").set("Authorization", `Bearer ${desk.token}`)
+      .send({ ...ask, approvalId: first.body.approvalId, reason: "partner feed lag" }).expect(201);
+
+    const after = await request(server()).get("/membership/grace-honor/requests")
+      .set("Authorization", `Bearer ${desk.token}`).expect(200);
+    expect(after.body.items[0]).toMatchObject({ status: "granted", honoured: true });
+  });
 });
