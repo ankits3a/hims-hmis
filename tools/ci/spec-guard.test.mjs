@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { closedIssues, violations } from "./spec-guard.mjs";
+import { closedIssues, doneMeansIds, missingAcceptance, violations } from "./spec-guard.mjs";
 
 const SPECS = ["docs/specs/695-specs-in-git.md", "docs/specs/593-copilot-reminders.md"];
 
@@ -35,4 +35,48 @@ test("outside a pull_request event the guard does nothing and exits 0", async ()
     encoding: "utf8",
   });
   assert.match(out, /not a pull request/);
+});
+
+// ── #696 — a spec set to `status: built` needs one locked acceptance test per done-means id ──────────────
+
+const SPEC_BUILT = `---
+issue: 702
+status: built
+approved: 2026-10-14
+---
+# SPEC — something
+
+## Done means
+- D1 the first check
+- D2 the second check
+- D10 the tenth check
+
+## Notes
+- D99 is mentioned outside the section and is not an id here
+`;
+
+test("done-means ids are read from the Done means section only, in order", () => {
+  assert.deepEqual(doneMeansIds(SPEC_BUILT), ["D1", "D2", "D10"]);
+  assert.deepEqual(doneMeansIds("---\nstatus: built\n---\n## Done means\n- prose with no ids\n"), []);
+});
+
+test("built with a missing Dk acceptance test fails; D1 does not satisfy D10", () => {
+  const tests = [
+    { path: "apps/core/test/acceptance/x.test.ts", text: 'it("spec #702 D1: ...", () => {});\nit("spec #702 D2 ...", () => {});' },
+  ];
+  assert.deepEqual(missingAcceptance({ issue: 702, specText: SPEC_BUILT, tests }), ["spec #702 D10"]);
+});
+
+test("built with every Dk present passes; tests outside acceptance folders do not count", () => {
+  const tests = [
+    { path: "apps/core/test/acceptance/x.test.ts", text: 'it("spec #702 D1 and spec #702 D2", () => {});' },
+    { path: "apps/web/src/acceptance/y.test.tsx", text: 'it("spec #702 D10: the tenth", () => {});' },
+  ];
+  assert.deepEqual(missingAcceptance({ issue: 702, specText: SPEC_BUILT, tests }), []);
+  const outside = [{ path: "apps/core/src/x.test.ts", text: 'it("spec #702 D1 D2 D10")' }];
+  assert.equal(missingAcceptance({ issue: 702, specText: SPEC_BUILT, tests: outside }).length, 3);
+});
+
+test("a spec not set to built is not checked", () => {
+  assert.deepEqual(missingAcceptance({ issue: 702, specText: SPEC_BUILT.replace("status: built", "status: approved"), tests: [] }), []);
 });
