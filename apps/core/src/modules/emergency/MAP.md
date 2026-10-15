@@ -288,6 +288,12 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   statement-level TRUNCATE trigger would also stop the test suites' `truncateAll`; DECIDED to leave it (TRUNCATE needs the
   table owner, which only migrations and the test reset hold).
 
+- #881 (migration 0236): append-only triggers on er_triage_entries, er_doses, er_med_returns, er_procedures,
+  er_consents, er_advances, er_bills; write-once step guards on er_notes (draft -> signed once), er_codes (call, scribe,
+  end, debrief once each; `place` free) and er_charge_lines (priced once; reversed or moved once; then final). A new
+  UPDATE on these tables must be a step the guard allows — extend the trigger in a new migration, never bypass it.
+  Tests write settled rows directly (`guards-2026-10-15.test.ts`); never edit a guarded row to fake a state.
+
 ## 5. Seams owed to later lanes
 - Lane 3 built care. Still owed after lane 3: the ER bill desk prices `rate_pending` issue lines and settles (lane 6);
   radiology's own `INPATIENT_ADMISSION_NO_RE` does not know the ER number (a STAT scan is authorised by `stat` anyway);
