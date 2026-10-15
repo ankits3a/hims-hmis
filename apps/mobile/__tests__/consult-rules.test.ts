@@ -6,6 +6,8 @@ import {
   DOSES, FREQUENCIES, RX_FREQUENCIES, childDoseMissing, dosesFor, lineSignals, linesFrom, unanswered, warningsOf, wireLine,
 } from "../src/consult/rules";
 import type { ConsultDraft, ConsultLine, WirePrecheck } from "../src/consult/rules";
+import { warningBody, warningTitle } from "../src/consult/sheets";
+import { translate } from "../src/i18n";
 
 const food = { before: "before food", after: "after food" };
 const days = (n: number): string => `${String(n)} days`;
@@ -69,6 +71,27 @@ describe("phone consult — the reading rules (one file, shared; packages/contra
     // A reason belongs to the DRUG it was typed for: remove that line and the reason answers nothing.
     expect(unanswered(warningsOf({ ...NONE, allergyMatches: [{ lineIndex: 0, substance: "Penicillin" }] }, [line({ drug: "Ampicillin 250 mg" })]), reasons)).toHaveLength(1);
     expect(warningsOf(null, lines)).toEqual([]);
+  });
+
+  it("#621: a renal dose warning is always hard, its reason rides renalOverrides naming the generic, and the phone words it in a few words", () => {
+    const lines = [line({ drug: "Glycomet 500" })];
+    const p: WirePrecheck = {
+      ...NONE,
+      renal: [{
+        lineIndex: 0, genericId: "gen-metformin", genericName: "Metformin 500 mg oral tablet", kind: "band", severity: "reduce",
+        dose: "Max 1 g a day", egfr: 38, sampledAt: "2026-10-03T04:00:00.000Z", ageDays: 12, reason: null,
+      }],
+    };
+    const ws = warningsOf(p, lines);
+    expect(ws.map((w) => [w.kind, w.hard, w.lineIndex])).toEqual([["renal", true, 0]]);
+    expect(unanswered(ws, {})).toHaveLength(1);
+    const reasons = { [ws[0]!.key]: "nephrology advised" };
+    expect(overridesOf(ws, reasons)).toEqual({ renalOverrides: [{ lineIndex: 0, reason: "nephrology advised", genericId: "gen-metformin" }] });
+    const t = (k: string, v?: Record<string, string | number>) => translate("en", k, v);
+    expect(warningTitle(ws[0]!, t)).toBe("Kidney: Metformin 500 mg oral tablet");
+    expect(warningBody(ws[0]!, t)).toBe("eGFR 38, 12 d ago · Max 1 g a day");
+    const none = warningsOf({ ...NONE, renal: [{ ...p.renal![0]!, kind: "no_recent_kidney_function", severity: null, dose: null, egfr: null, ageDays: null, sampledAt: null, reason: "no_result" }] }, lines);
+    expect(warningBody(none[0]!, t)).toBe("No recent kidney function.");
   });
 
   it("NO DOSE FOR A CHILD (owner 2026-10-07): Repeat last and a set bring a child's medicines WITHOUT dose, frequency or days — unfinished, so they cannot be issued", () => {

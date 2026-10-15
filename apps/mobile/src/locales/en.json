@@ -894,7 +894,11 @@
         "duplicateBody": "The same medicine is already on this prescription or one still running.",
         "duplicateClass": "Another medicine of the same class is already given: {{cls}}.",
         "disease": "{{moiety}} with {{title}}",
-        "diseaseBody": "This patient's recorded diagnosis advises against it."
+        "diseaseBody": "This patient's recorded diagnosis advises against it.",
+        "renal": "Kidney: {{drug}}",
+        "renalBody": "eGFR {{egfr}}, {{days}} d ago · {{dose}}",
+        "renalNone": "No recent kidney function.",
+        "renalStale": "No recent kidney function: last eGFR {{days}} d ago."
       },
       "testSearch": "test name — CBC, X-ray chest",
       "testsBefore": "You advised these before for this diagnosis",

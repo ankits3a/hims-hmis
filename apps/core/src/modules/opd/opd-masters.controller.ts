@@ -45,6 +45,8 @@ const OPD_CONFLICT_CODES = new Set<OpdErrorCode>([
   // default, and a clinical refusal the client must render with an override dialog would arrive
   // looking like a malformed request. Plan 09's counter-side 500 is the same lesson one step milder.
   "interaction_conflict", "duplicate_salt_conflict",
+  // #621 — the renal dose warning is the same clinical refusal: 409 with `detail.renalHits` to render.
+  "renal_conflict",
   /**
    * VD-1 T5 — THE VITALS BAY'S THREE, AND THE LINE ABOVE IS WHY THEY ARE HERE.
    *

@@ -126,6 +126,9 @@ Source: `apps/core/src/modules/opd/`
   - types: `Eye`, `RxLine`, `TaperStep`
 - `flow-learning.ts`
   - `runFlowLearning(db: Db, enabled: boolean, now: Date = new Date()): Promise<FlowLearningReport>`
+- `kidney-function.ts`
+  - `registerKidneyFunctionReader(fn: KidneyFunctionReader): () => void`
+  - types: `KidneyFunctionReader`
 - `manifest.ts`
   - `opdManifest: ModuleManifest`
 - `masters.ts`
@@ -172,6 +175,7 @@ Source: `apps/core/src/modules/opd/`
   - types: `QueueNudge`
 - `rx-checks.ts`
   - `isCurrent(durationDays: number | null, issuedAt: Date, now: Date): { current: boolean; assumedCurrent: boolean }`
+  - types: `KidneyReading`, `RenalHit`
 - `skip-reasons.ts`
   - `SKIP_REASONS`
   - types: `SkipReason`

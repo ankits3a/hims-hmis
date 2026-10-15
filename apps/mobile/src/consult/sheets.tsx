@@ -534,12 +534,18 @@ export function warningTitle(w: LineWarning, t: T): string {
   if (w.kind === "allergy") return t("mobile.consult.warn.allergy", { substance: w.substance });
   if (w.kind === "interaction") return t("mobile.consult.warn.interaction", { a: w.saltPair[0], b: w.saltPair[1] });
   if (w.kind === "duplicate") return t("mobile.consult.warn.duplicate", { moiety: w.moiety });
+  if (w.kind === "renal") return t("mobile.consult.warn.renal", { drug: w.genericName });
   return t("mobile.consult.warn.disease", { moiety: w.moiety, title: w.title });
 }
 export function warningBody(w: LineWarning, t: T): string {
   if (w.kind === "interaction") return w.note;
   if (w.kind === "duplicate") return w.drugClass === null ? t("mobile.consult.warn.duplicateBody") : t("mobile.consult.warn.duplicateClass", { cls: w.drugClass });
   if (w.kind === "disease") return t("mobile.consult.warn.diseaseBody");
+  // #621 — short, one line at 390 px (owner 2026-10-09): the eGFR, its age, and the reviewed dose.
+  if (w.kind === "renal") {
+    if (w.egfr !== null) return t("mobile.consult.warn.renalBody", { egfr: w.egfr, days: w.ageDays ?? 0, dose: w.dose ?? "" });
+    return w.ageDays === null ? t("mobile.consult.warn.renalNone") : t("mobile.consult.warn.renalStale", { days: w.ageDays });
+  }
   return t("mobile.consult.warn.allergyBody");
 }
 

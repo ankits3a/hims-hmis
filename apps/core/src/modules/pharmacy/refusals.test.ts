@@ -5,7 +5,7 @@ import type { RxCheckOutcome } from "../opd";
  * The one definition of what the check refuses (verify, and PD-7 C3 before anything is chosen).
  * Pure: an outcome in, the refusals out, with the check's line indexes mapped back through `origIdx`.
  */
-const none: RxCheckOutcome = { allergyMatches: [], interactions: [], duplicates: [], drugDisease: [], unresolvedLineIndexes: [], unreviewedLineIndexes: [] };
+const none: RxCheckOutcome = { allergyMatches: [], interactions: [], duplicates: [], drugDisease: [], renal: [], unresolvedLineIndexes: [], unreviewedLineIndexes: [] };
 const ident = (i: number): number => i;
 const DX = { code: "K72.90", text: "Hepatic failure", codedOn: "2026-08-01", encounterId: "e" };
 

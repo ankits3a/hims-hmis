@@ -149,13 +149,20 @@ export type WirePrecheck = {
   interactions: { severity: "severe" | "moderate"; lineIndex: number; saltPair: [string, string]; note: string; against: { scope: string; lineIndex?: number } }[];
   duplicates: { moiety: string; lineIndex: number; hard: boolean; drugClass?: string; with?: string }[];
   drugDisease: { severity: "severe" | "moderate"; lineIndex: number; moiety: string; icd10Prefix: string; icd10Title: string; diagnosis: { text: string } }[];
+  /** #621 — renal dose warnings (always hard). Optional: an older server sends none. */
+  renal?: {
+    lineIndex: number; genericId: string; genericName: string; kind: "band" | "no_recent_kidney_function";
+    severity: "reduce" | "avoid" | null; dose: string | null; egfr: number | null; sampledAt: string | null; ageDays: number | null;
+    reason: "no_result" | "stale" | "no_dob" | "sex_not_binary" | "under_18" | null;
+  }[];
   notices?: unknown[];
 };
 export type LineWarning =
   | { kind: "allergy"; hard: true; lineIndex: number; key: string; substance: string }
   | { kind: "interaction"; hard: boolean; lineIndex: number; key: string; saltPair: [string, string]; note: string }
   | { kind: "duplicate"; hard: boolean; lineIndex: number; key: string; moiety: string; drugClass: string | null }
-  | { kind: "disease"; hard: boolean; lineIndex: number; key: string; moiety: string; icd10Prefix: string; title: string };
+  | { kind: "disease"; hard: boolean; lineIndex: number; key: string; moiety: string; icd10Prefix: string; title: string }
+  | { kind: "renal"; hard: true; lineIndex: number; key: string; genericId: string; genericName: string; egfr: number | null; ageDays: number | null; dose: string | null };
 
 /** A warning's identity: the line's DRUG and what the warning is about — so a reason typed for it survives a re-check and does not attach to another line. */
 export function warningsOf(p: WirePrecheck | null, lines: readonly ConsultLine[]): LineWarning[] {
@@ -169,6 +176,7 @@ export function warningsOf(p: WirePrecheck | null, lines: readonly ConsultLine[]
   }
   for (const h of p.duplicates) out.push({ kind: "duplicate", hard: h.hard, lineIndex: h.lineIndex, key: `duplicate|${drug(h.lineIndex)}|${h.moiety.toLowerCase()}`, moiety: h.moiety, drugClass: h.drugClass ?? null });
   for (const h of p.drugDisease) out.push({ kind: "disease", hard: h.severity === "severe", lineIndex: h.lineIndex, key: `disease|${drug(h.lineIndex)}|${h.moiety.toLowerCase()}|${h.icd10Prefix}`, moiety: h.moiety, icd10Prefix: h.icd10Prefix, title: h.icd10Title });
+  for (const h of p.renal ?? []) out.push({ kind: "renal", hard: true, lineIndex: h.lineIndex, key: `renal|${drug(h.lineIndex)}|${h.genericId}`, genericId: h.genericId, genericName: h.genericName, egfr: h.egfr, ageDays: h.ageDays, dose: h.dose });
   // One card per identity: the same pair can be reported from both of its lines.
   const seen = new Set<string>();
   return out.filter((w) => (seen.has(`${w.lineIndex}|${w.key}`) ? false : (seen.add(`${w.lineIndex}|${w.key}`), true)));
@@ -186,6 +194,7 @@ export function overridesOf(warnings: readonly LineWarning[], reasons: Readonly<
   interactionOverrides?: { lineIndex: number; reason: string; saltPair: [string, string] }[];
   duplicateOverrides?: { lineIndex: number; reason: string; moiety: string }[];
   drugDiseaseOverrides?: { lineIndex: number; reason: string; moiety: string; icd10Prefix: string }[];
+  renalOverrides?: { lineIndex: number; reason: string; genericId: string }[];
 } {
   const r = (w: LineWarning): string => (reasons[w.key] ?? "").trim();
   const hard = warnings.filter((w) => w.hard && r(w).length >= MIN_REASON);
@@ -193,9 +202,11 @@ export function overridesOf(warnings: readonly LineWarning[], reasons: Readonly<
   const i = hard.filter((w): w is Extract<LineWarning, { kind: "interaction" }> => w.kind === "interaction").map((w) => ({ lineIndex: w.lineIndex, reason: r(w), saltPair: w.saltPair }));
   const u = hard.filter((w): w is Extract<LineWarning, { kind: "duplicate" }> => w.kind === "duplicate").map((w) => ({ lineIndex: w.lineIndex, reason: r(w), moiety: w.moiety }));
   const dd = hard.filter((w): w is Extract<LineWarning, { kind: "disease" }> => w.kind === "disease").map((w) => ({ lineIndex: w.lineIndex, reason: r(w), moiety: w.moiety, icd10Prefix: w.icd10Prefix }));
+  const rn = hard.filter((w): w is Extract<LineWarning, { kind: "renal" }> => w.kind === "renal").map((w) => ({ lineIndex: w.lineIndex, reason: r(w), genericId: w.genericId }));
   return {
     ...(a.length > 0 ? { overrides: a } : {}), ...(i.length > 0 ? { interactionOverrides: i } : {}),
     ...(u.length > 0 ? { duplicateOverrides: u } : {}), ...(dd.length > 0 ? { drugDiseaseOverrides: dd } : {}),
+    ...(rn.length > 0 ? { renalOverrides: rn } : {}),
   };
 }
 
