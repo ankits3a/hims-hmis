@@ -13,6 +13,7 @@ Source: `apps/core/src/modules/patients/`
 - **Depends on modules:** —
 - **Used by modules:** `abdm`, `aerb`, `billing`, `ipd`, `lab`, `membership`, `opd`, `ot`, `partners`, `passes`, `pharmacy`, `radiology`, `transport`
 - **Kernel used:** `approvals`, `auth`, `config`, `crypto`, `db`, `desk`, `documents`, `events`, `modules`, `phi`, `search`, `tokens`, `workflow`
+- **Subscribes to events:** `approvalRejected`
 
 ## Public API (`index.ts`), by declaring file
 
@@ -30,6 +31,9 @@ Source: `apps/core/src/modules/patients/`
   - `addAllergy(tx: Tx, actor: Actor, patientId: string, input: { substance: string; reaction?: string; severity?: "mild" | "moderate" | "severe…`
   - `listAllergies(db: Db, patientId: string): Promise<AllergyRow[]>`
   - types: `AllergyRow`
+- `approval-consumer.ts`
+  - `PATIENTS_APPROVAL_REJECTED_CONSUMER`
+  - `approvalRejectedConsumer(db: Db): Handler`
 - `coverages.ts`
   - `coverageSumInsuredPaise(db: Db | Tx, coverageId: string): Promise<number | null>`
   - `listPatientCoverages(db: Db, actor: Actor, patientId: string, opts: { reason?: string } = {}): Promise<CoverageRow[]>`
@@ -102,8 +106,8 @@ Source: `apps/core/src/modules/patients/`
 
 Foreign keys into: —
 
-## HTTP routes (31)
+## HTTP routes (33)
 
-- `patients.controller.ts` — 31: `/patients`, `/patients/:id`, `/patients/abha`, `/patients/documents`, `/patients/merge-requests`, `/patients/merge-visits`, `/patients/qr`, `/patients/search`
+- `patients.controller.ts` — 33: `/patients`, `/patients/:id`, `/patients/abha`, `/patients/documents`, `/patients/merge-mobile-shown`, `/patients/merge-requests`, `/patients/merge-visits`, `/patients/qr`, `/patients/search`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/patients`

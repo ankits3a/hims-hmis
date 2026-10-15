@@ -11,7 +11,7 @@ import { events, schedulerHeartbeats } from "../db/schema";
 import { authManifest } from "../auth/manifest";
 import { workflowManifest } from "../workflow/manifest";
 import { approvalsManifest } from "../approvals/manifest";
-import { patientsManifest } from "../../modules/patients";
+import { PATIENTS_APPROVAL_REJECTED_CONSUMER, approvalRejectedConsumer, patientsManifest } from "../../modules/patients";
 import { tariffManifest } from "../../modules/tariff";
 import { opdManifest } from "../../modules/opd";
 import { billingManifest } from "../../modules/billing";
@@ -49,6 +49,7 @@ import * as materialsExpiryMod from "../../modules/materials/expiry";
 import * as otListsMod from "../../modules/ot/lists";
 import * as rollupMod from "../desk/rollup";
 import type { Db } from "../db/client";
+import type { Handler } from "../events/subscriptions";
 
 // D3/halt condition 7: no test in this file ever observes the advisory lock. Every test below
 // injects this always-true stub instead — the lock is proven separately (spike B2, quoted in
@@ -593,6 +594,11 @@ function censusRegistry(): ModuleRegistry {
   return registry;
 }
 
+/** #653 — the one handler `censusRegistry`'s manifests declare (patients' approvals → patients hook). */
+function censusConsumers(db: Db): Record<string, Handler> {
+  return { [PATIENTS_APPROVAL_REJECTED_CONSUMER]: approvalRejectedConsumer(db) };
+}
+
 function freshWorkerDb(): { db: Db; pool: Pool; close: () => Promise<void> } {
   const baseUrl = requireEnv("TEST_DATABASE_URL");
   const workerId = process.env.JEST_WORKER_ID ?? "1";
@@ -847,7 +853,7 @@ describe("Scheduler", () => {
       jest.useFakeTimers({ now: CENSUS_PIN });
       try {
         const scheduler = new Scheduler(fresh.db, fresh.pool, stubLocks(), CENSUS_DAILY_TICK_MS);
-        registerAllJobs(scheduler, fresh.db, registry, {}, CENSUS_INTERVALS);
+        registerAllJobs(scheduler, fresh.db, registry, censusConsumers(fresh.db), CENSUS_INTERVALS);
         expect(scheduler.jobs()).toEqual(THE_EIGHTEEN);
 
         // Fake milliseconds advanced so far, measured from the pin. The walk only moves forward,
@@ -958,7 +964,7 @@ describe("Scheduler", () => {
         pinDateOnly(NOW);
         try {
           const scheduler = new Scheduler(fresh.db, fresh.pool, stubLocks(), 10);
-          registerAllJobs(scheduler, fresh.db, registry, {}, CENSUS_INTERVALS);
+          registerAllJobs(scheduler, fresh.db, registry, censusConsumers(fresh.db), CENSUS_INTERVALS);
           scheduler.start();
           for (let i = 0; i < 400 && !invoked.includes("sweepGuardianMajority"); i += 1) {
             await new Promise((r) => setTimeout(r, 5)); // REAL setTimeout — only Date is faked
