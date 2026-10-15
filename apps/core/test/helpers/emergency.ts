@@ -16,7 +16,8 @@ import { addMedicine, addSalt } from "../../src/modules/formulary";
 import { activateLabDefinitions, labManifest } from "../../src/modules/lab";
 import { createStore, postMovement, registerItem } from "../../src/modules/materials";
 import { pharmacyManifest } from "../../src/modules/pharmacy";
-import { activateVersion, createDraftVersion, resolveActiveTariffVersion, setTariffItem, submitVersion, upsertGstCategory } from "../../src/modules/tariff";
+import { activateVersion, createDraftVersion, createService, resolveActiveTariffVersion, setTariffItem, submitVersion, upsertGstCategory } from "../../src/modules/tariff";
+import { ER_UAT_SAMPLE_RATES } from "../../scripts/fixtures/er-uat-sample-tariff";
 import { seedLabCatalogue, serviceIdForLabCode } from "../../scripts/seed-lab-catalogue";
 import type { OrderKindDecl } from "../../src/kernel/orders/kinds";
 import { ipdManifest } from "../../src/modules/ipd";
@@ -193,4 +194,35 @@ export async function mkErMlcWorld(db: Db): Promise<ErMlcWorld> {
   const desk2 = (await mkUser(db, "er.desk2", ["front_office"])).actor;
   await setPin(db, desk2.id, "2468");
   return { ...w, mortuary, witness, desk2, deskPin: { username: "er.desk2", pin: "2468" } };
+}
+
+// ═══ ER lane 6 (#813) — the ER bill: the sample ER tariff ACTIVE, the desk holding `er.bill` ═══
+
+export type ErBillWorld = ErMlcWorld & {
+  /** The ER bill desk: the front office (an open cashier drawer from the admit world) with `er.bill`. */
+  billDesk: Actor;
+  rates: Record<string, number>;
+};
+
+export async function mkErBillWorld(db: Db): Promise<ErBillWorld> {
+  const w = await mkErMlcWorld(db);
+  const registry = new ModuleRegistry();
+  registry.install(emergencyManifest);
+  await syncPermissions(db, registry);
+  for (const r of ["front_office", "duty_manager"]) await grantPermissionToRole(db, registry, r, "er.bill");
+  const ids = await withTx(db, async (tx) => {
+    const out: Record<string, string> = {};
+    for (const r of ER_UAT_SAMPLE_RATES) out[r.code] = (await createService(tx, w.tariffDrafter, { code: r.code, name: r.name, category: r.category })).serviceId;
+    return out;
+  });
+  const current = await resolveActiveTariffVersion(db, new Date());
+  const version = await withTx(db, async (tx) => {
+    const d = await createDraftVersion(tx, w.tariffDrafter, { copyFromVersionId: current!.versionId });
+    for (const r of ER_UAT_SAMPLE_RATES) await setTariffItem(tx, w.tariffDrafter, d.versionId, ids[r.code]!, r.pricePaise);
+    return d;
+  });
+  const submitted = await withTx(db, (tx) => submitVersion(tx, w.tariffDrafter, version.versionId));
+  await approveRequest(db, w.owner, { approvalId: submitted.approvalId, note: "er bill fixture tariff" });
+  await activateVersion(db, w.tariffActivator, version.versionId, new Date("2026-01-06T00:00:00Z"));
+  return { ...w, billDesk: w.admitDesk, rates: Object.fromEntries(ER_UAT_SAMPLE_RATES.map((r) => [r.code, r.pricePaise])) };
 }

@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
 import { ipdAdmissions } from "../../kernel/db/schema";
 import { admissionAdvisoryLock, readAdmission } from "./admission-core";
-import { postOrderLineIn } from "./charges";
+import { lockedVersion, postOrderLineIn, pricingFor, raiseException, insertLine } from "./charges";
+import { priceInvoiceLines, TariffError } from "../tariff";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -48,4 +49,48 @@ export async function carryErOrderLinesIn(
 /** The state of an admission the ER handed a patient to (the boarding sweep reads it; null when unknown). */
 export async function erAdmissionState(db: Db | Tx, admissionId: string): Promise<string | null> {
   return (await (db as Db).select({ state: ipdAdmissions.state }).from(ipdAdmissions).where(eq(ipdAdmissions.id, admissionId)))[0]?.state ?? null;
+}
+
+/**
+ * ER lane 6 (#813, 0076 §1: "on admission, the ER lines roll into the IP running bill") — ONE ER LINE that is not an
+ * order (registration, physician fee, observation, a procedure, a drug at its batch MRP) onto the running bill as an
+ * `ipd.er` line, component `er`, dated the ER service day, priced on the admission's locked tariff (a drug at the MRP the
+ * ER priced it, `prepaidUnitPaise`). One IP line per ER line ever (`ipd_charge_lines_er_line_ux`). A service with no rate
+ * raises the bill desk's `rate_missing` exception (keyed by the ER line) and posts nothing. Returns the IP line id or null.
+ */
+export async function carryErLineIn(
+  tx: Tx, actor: Actor, admissionId: string,
+  line: { erChargeLineId: string; serviceId: string; qty: number; prepaidUnitPaise?: number; serviceDate: string }, at: Date,
+): Promise<string | null> {
+  await admissionAdvisoryLock(tx, admissionId);
+  const db = tx as unknown as Db;
+  const a = await readAdmission(tx, admissionId);
+  const versionId = await lockedVersion(db, a);
+  if (a.tariffVersionId === null && versionId !== null) await tx.update(ipdAdmissions).set({ tariffVersionId: versionId }).where(eq(ipdAdmissions.id, a.id));
+  const fresh = await readAdmission(tx, admissionId);
+  const missing = async (code: string | null, reason: "rate_missing" | "tariff_missing") => {
+    await raiseException(tx, actor, fresh, {
+      date: line.serviceDate, component: "er", billedClass: null, code, reason, versionId, orderItemId: line.erChargeLineId,
+    }, at);
+    return null;
+  };
+  if (versionId === null) return missing(null, "tariff_missing");
+  const ctx = await pricingFor(db, new Map(), versionId, at);
+  const svc = ctx.services[line.serviceId];
+  if (svc === undefined) return missing(line.serviceId, "rate_missing");
+  if (line.prepaidUnitPaise === undefined && (ctx.tariff.items[svc.id] === undefined || !svc.active)) return missing(svc.code, "rate_missing");
+  let priced;
+  try {
+    [priced] = priceInvoiceLines(ctx, [{
+      lineId: line.erChargeLineId, serviceId: svc.id, qty: line.qty, supplyContext: "composite_healthcare",
+      ...(line.prepaidUnitPaise === undefined ? {} : { prepaidUnitPaise: line.prepaidUnitPaise }),
+    }]);
+  } catch (e) {
+    if (e instanceof TariffError) return missing(svc.code, "rate_missing");
+    throw e;
+  }
+  return insertLine(tx, {
+    admission: fresh, serviceDate: line.serviceDate, component: "er", billedClass: null, priced: priced!, code: svc.code, versionId,
+    source: "ipd.er", erChargeLineId: line.erChargeLineId, actor, at,
+  });
 }

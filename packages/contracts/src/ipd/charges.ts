@@ -10,7 +10,8 @@ import { IpdPayerSplitSchema } from "./payer";
  */
 
 /** #785: `ipd.order` — a lab or imaging order on a live admission, posted by the ordering door (one line per order item). */
-export const IPD_CHARGE_SOURCES = ["ipd.nightly", "ipd.visit", "ipd.reversal", "ipd.order"] as const;
+/** ER lane 6 (#813): `ipd.er` — an ER line (registration, physician, observation, procedure, drug) rolled in at admission. */
+export const IPD_CHARGE_SOURCES = ["ipd.nightly", "ipd.visit", "ipd.reversal", "ipd.order", "ipd.er"] as const;
 export const IpdChargeSourceSchema = z.enum(IPD_CHARGE_SOURCES);
 export type IpdChargeSource = z.infer<typeof IpdChargeSourceSchema>;
 
@@ -19,7 +20,9 @@ export type IpdChargeSource = z.infer<typeof IpdChargeSourceSchema>;
  * plus the two order departments, `lab` and `imaging` (priced per service from the tariff; no bed class).
  */
 export const IPD_ORDER_COMPONENTS = ["lab", "imaging"] as const;
-export const IPD_CHARGE_COMPONENTS = [...IPD_RATE_COMPONENTS, ...IPD_ORDER_COMPONENTS] as const;
+/** ER lane 6 (#813): `er` — the emergency department's own lines, carried onto the running bill at admission. */
+export const IPD_ER_COMPONENTS = ["er"] as const;
+export const IPD_CHARGE_COMPONENTS = [...IPD_RATE_COMPONENTS, ...IPD_ORDER_COMPONENTS, ...IPD_ER_COMPONENTS] as const;
 export const IpdChargeComponentSchema = z.enum(IPD_CHARGE_COMPONENTS);
 export type IpdChargeComponent = z.infer<typeof IpdChargeComponentSchema>;
 

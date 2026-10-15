@@ -16,6 +16,7 @@ import { cancelTask, getTask } from "../tasks";
 import { lockEpisode, moveEpisode, onceEr, provenanceOf, readEpisode, requireErPermission } from "./core";
 import { ErRefusal } from "./errors";
 import { erDeparted, erDispositionDecided, erHandedToUnit } from "./events";
+import { rollErLinesIn } from "./bill";
 import { mlcOfEpisode } from "./mlc";
 import { ER_DISPOSITION } from "./names";
 import { isActiveDoctor } from "./triage";
@@ -149,6 +150,7 @@ function admissionRefusal(err: unknown): unknown {
 
 /** Leaving the ER for the inpatient bed: the ER order lines onto the IP running bill (marked `moved`), then depart. */
 async function leaveForBedIn(tx: Tx, actor: Actor, e: EpisodeRow, admissionId: string, at: Date): Promise<string | null> {
+  await rollErLinesIn(tx, actor, e, admissionId, at); // lane 6 (#813): every other ER line rolls into the IP bill too
   const lines = await tx.select().from(erChargeLines).where(and(
     eq(erChargeLines.episodeId, e.id), eq(erChargeLines.source, "er.order"), inArray(erChargeLines.status, ["posted", "rate_missing"]),
     isNotNull(erChargeLines.orderItemId),

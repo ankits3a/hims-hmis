@@ -165,7 +165,7 @@ export const ER_INTENT_CATALOGUE = [
   "decide_disposition", "discharge_from_er", "hand_to_unit", "refer_out", "record_lama", "record_lwbs", "record_abscond",
   "record_er_death",
   // money (lane 6)
-  "settle_er_bill", "record_er_dues",
+  "settle_er_bill", "record_er_dues", "set_er_payer", "take_er_advance", "price_er_lines", "open_er_event_account",
   // codes and MCI (lanes 7, 8)
   "call_code", "record_code_event", "end_code", "declare_mci", "mci_tag", "stand_down_mci",
 ] as const;

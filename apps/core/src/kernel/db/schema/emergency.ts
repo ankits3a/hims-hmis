@@ -93,6 +93,12 @@ export const erEpisodes = pgTable(
     /* ═══ ER lane 3 (#810) — "stabilised", a clinical word only (lane 6 reads it; lane 5 copies it to the admission) ═══ */
     stabilisedAt: timestamp("stabilised_at", { withTimezone: true }),
     stabilisedBy: text("stabilised_by"),
+    /* ═══ ER lane 6 (#813) — the payer (0076 §3): self, PM-JAY, road-accident cashless, BNSS s.397, a mass-casualty event ═══ */
+    payer: text("payer").notNull().default("self"),
+    payerRef: text("payer_ref"),
+    coverCapPaise: integer("cover_cap_paise"),
+    coverUntil: timestamp("cover_until", { withTimezone: true }),
+    eventAccountId: text("event_account_id"),
     /* ═══ ER lane 5 (#812) — the disposition, the boarding admission, the last-seen time of LWBS / abscond ═══ */
     disposition: text("disposition"),
     dispositionReason: text("disposition_reason"),
@@ -122,6 +128,7 @@ export const erEpisodes = pgTable(
     check("er_episodes_disposition_ck", sql`${t.disposition} is null or ${t.disposition} in ('discharge', 'admit', 'refer_out')`),
     check("er_episodes_outcome_ck", sql`${t.outcome} is null or ${t.outcome} in ('discharged', 'admitted', 'referred_out', 'lama', 'absconded', 'lwbs', 'died')`),
     index("er_episodes_boarding_idx").on(t.boardingSince).where(sql`${t.boardingSince} is not null and ${t.state} = 'disposition_decided'`),
+    check("er_episodes_payer_ck", sql`${t.payer} in ('self', 'pmjay', 'road_accident', 'bnss_free', 'mci_event')`),
     index("er_episodes_retriage_due_idx").on(t.retriageDueAt).where(sql`${t.state} = 'triaged' and ${t.retriageDueAt} is not null`),
   ],
 );
@@ -582,5 +589,80 @@ export const erDepartureRecords = pgTable(
   (t) => [
     uniqueIndex("er_departure_records_episode_ux").on(t.episodeId),
     check("er_departure_records_kind_ck", sql`${t.kind} in ('discharge_summary', 'admission', 'referral', 'lama', 'lwbs', 'abscond', 'death')`),
+  ],
+);
+
+/* ═══════════════════════════════ ER lane 6 (#813) — the ER bill (money; the bill desk only) ═══════════════════════════════ */
+
+/** A mass-casualty event's account (0076 §4): charges post at full tariff; the owner decides afterwards. */
+export const erEventAccounts = pgTable("er_event_accounts", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+  openedBy: text("opened_by").notNull(),
+  openedAt: timestamp("opened_at", { withTimezone: true }).notNull(),
+});
+
+/** An advance taken at the ER desk after "stabilised": billing's receipt, applied when the bill settles. */
+export const erAdvances = pgTable(
+  "er_advances",
+  {
+    id: text("id").primaryKey(),
+    episodeId: text("episode_id").notNull().references(() => erEpisodes.id),
+    receiptId: text("receipt_id").notNull(),
+    amountPaise: integer("amount_paise").notNull(),
+    takenBy: text("taken_by").notNull(),
+    takenAt: timestamp("taken_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [index("er_advances_episode_idx").on(t.episodeId), check("er_advances_amount_ck", sql`${t.amountPaise} > 0`)],
+);
+
+/** The settled ER bill: one per episode (the invoice billing issued for the patient's share; dues held, never credit). */
+export const erBills = pgTable(
+  "er_bills",
+  {
+    id: text("id").primaryKey(),
+    episodeId: text("episode_id").notNull().references(() => erEpisodes.id),
+    settlement: text("settlement").notNull(),
+    payer: text("payer").notNull(),
+    totalPaise: integer("total_paise").notNull(),
+    payerPaise: integer("payer_paise").notNull(),
+    patientPaise: integer("patient_paise").notNull(),
+    paidPaise: integer("paid_paise").notNull(),
+    duesPaise: integer("dues_paise").notNull(),
+    invoiceId: text("invoice_id"),
+    invoiceNo: text("invoice_no"),
+    undertaking: jsonb("undertaking").$type<{ signerName: string; relation: string; documentRef: string }>(),
+    settledBy: text("settled_by").notNull(),
+    settledAt: timestamp("settled_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("er_bills_episode_ux").on(t.episodeId),
+    check("er_bills_settlement_ck", sql`${t.settlement} in ('paid', 'dues', 'nothing_payable')`),
+    check("er_bills_split_ck", sql`${t.payerPaise} + ${t.patientPaise} = ${t.totalPaise}`),
+    check("er_bills_dues_ck", sql`(${t.settlement} = 'dues') = (${t.duesPaise} > 0)`),
+  ],
+);
+
+/**
+ * A payer's claim for an ER bill (PM-JAY, road-accident cashless, a mass-casualty event): THE TPA DESK'S SEAM. The desk
+ * files it by hand (0076 §3); this row is what it reads (`listErClaims`) and closes.
+ */
+export const erPayerClaims = pgTable(
+  "er_payer_claims",
+  {
+    id: text("id").primaryKey(),
+    episodeId: text("episode_id").notNull().references(() => erEpisodes.id),
+    payer: text("payer").notNull(),
+    payerRef: text("payer_ref"),
+    eventAccountId: text("event_account_id"),
+    amountPaise: integer("amount_paise").notNull(),
+    status: text("status").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("er_payer_claims_episode_ux").on(t.episodeId),
+    check("er_payer_claims_payer_ck", sql`${t.payer} in ('pmjay', 'road_accident', 'bnss_free', 'mci_event')`),
+    check("er_payer_claims_status_ck", sql`${t.status} in ('to_file', 'filed', 'settled', 'rejected')`),
   ],
 );

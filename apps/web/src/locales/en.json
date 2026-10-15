@@ -17325,7 +17325,8 @@
       "visit": "Consultant visit",
       "cross_visit": "Cross-consultation",
       "lab": "Laboratory",
-      "imaging": "Imaging"
+      "imaging": "Imaging",
+      "er": "Emergency"
     },
     "class": {
       "general": "General ward",

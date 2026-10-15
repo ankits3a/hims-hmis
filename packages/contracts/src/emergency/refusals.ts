@@ -81,6 +81,19 @@ export const ER_REFUSALS = {
   died_before_arrival: { rule: "A death after arrival cannot be before the arrival; a body brought dead is recorded at the desk.", fix: "Fix the time" },
   mccd_required: { rule: "A death is recorded with its MCCD number, unless it is a medico-legal case already intimated to the police.", fix: "Enter MCCD number" },
 
+  /* ═══ The ER bill (lane 6) — the bill desk's words; no clinical screen shows them ═══ */
+  payer_ref_needed: { rule: "This payer needs its scheme or beneficiary reference.", fix: "Add reference" },
+  bnss_needs_mlc: { rule: "Free treatment by law applies to an MLC of sexual assault or acid attack.", fix: "Open the MLC" },
+  event_account_not_found: { rule: "No mass-casualty event account has this id.", fix: "Open event account" },
+  bill_settled: { rule: "The ER bill is already settled.", fix: "Open the bill" },
+  not_stabilised: { rule: "No money is asked or taken before the ER doctor records the patient stabilised.", fix: "Wait for stabilised" },
+  payer_pays_nothing: { rule: "This patient pays nothing under the payer recorded.", fix: "Check payer" },
+  lines_unpriced: { rule: "Some ER lines have no price yet.", fix: "Price lines" },
+  tender_short: { rule: "The money taken does not cover the patient's share; record the rest as dues.", fix: "Record dues" },
+  undertaking_needed: { rule: "Dues are recorded against a signed undertaking.", fix: "Add undertaking" },
+  patient_payable_forbidden: { rule: "This patient is treated free by law: nothing is payable.", fix: "Settle as nothing payable" },
+  rolled_to_ip: { rule: "The ER lines moved to the inpatient bill at admission; the IP bill settles them.", fix: "Open the IP bill" },
+
   /* ═══ The band ═══ */
   printer_offline: { rule: "The chosen printer is not answering.", fix: "Pick nearest printer" },
   band_already_printed: { rule: "A band is already printed for this episode.", fix: "Reprint band" },

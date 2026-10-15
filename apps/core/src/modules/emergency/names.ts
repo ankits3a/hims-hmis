@@ -38,3 +38,8 @@ export const ER_MLC = "er.mlc";
  * doctor role, LAMA a doctor or the duty manager. Nothing behind it names money.
  */
 export const ER_DISPOSITION = "er.disposition";
+/**
+ * ER lane 6 (#813) — THE ER BILL DESK: the payer, an advance after "stabilised", pricing, settling at departure or dues
+ * against an undertaking, a mass-casualty event account. Money: billing and desk roles only — never a clinician (0058).
+ */
+export const ER_BILL = "er.bill";

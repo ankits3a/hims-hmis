@@ -7,7 +7,7 @@
 // Importing this module DEFINES the re-triage task kind and its skill (the API and the worker both need them).
 import "./task-kinds";
 export { emergencyManifest } from "./manifest";
-export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_CARE, ER_DISPOSITION, ER_IDENTITY_LINK, ER_MLC, ER_TRIAGE } from "./names";
+export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_CARE, ER_BILL, ER_DISPOSITION, ER_IDENTITY_LINK, ER_MLC, ER_TRIAGE } from "./names";
 export { EmergencyModule } from "./emergency.module";
 export { ErError, ErRefusal, erRefusalStatus } from "./errors";
 export type { ErErrorCode } from "./errors";
@@ -50,3 +50,8 @@ export {
   ER_DISPO_ACTOR, decideDisposition, departIn, dischargeFromEr, handToUnit, recordAbscond, recordErDeathIntent, recordLama, recordLwbs, referOut,
   sweepErBoarding,
 } from "./dispo";
+// Lane 6 (#813) — the ER bill (money; the bill desk only): payer, advance, pricing, settle / dues, event account, roll-over.
+export {
+  composeErBill, listErClaims, observationBlocks, openErEventAccount, priceErLines, readErBill, readErBillDesk, rollErLinesIn, setErPayer,
+  settleErBill, takeErAdvance, visitFeeLines,
+} from "./bill";
