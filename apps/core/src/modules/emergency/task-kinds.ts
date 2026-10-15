@@ -38,6 +38,8 @@ export const ER_MLC_SKILL = "er_mlc";
 defineSkill(ER_MLC_SKILL, ["front_office", "er_nurse"]);
 defineTaskKind({
   kind: ER_MLC_INTIMATION_TASK, label: "MLC police intimation due", skill: ER_MLC_SKILL,
-  acceptWithinMin: 5, doneWithinMin: 30, escalateTo: "duty_manager",
+  // ER review (2026-10-15): the task's own rung is the casualty nurses'; the duty manager hears ONCE, 30 min later,
+  // from the MLC climb (`sweepErMlcClocks`) — never twice, never at +0.
+  acceptWithinMin: 5, doneWithinMin: 30, escalateTo: "er_nurse",
   proofNeeded: "none", verifyRequired: false, ladderMin: [0],
 });

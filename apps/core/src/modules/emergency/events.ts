@@ -101,5 +101,6 @@ export const ER_BOARD_EVENT_NAMES: readonly string[] = [
   erTriaged.name, erRetriaged.name, erVitalsRecorded.name, erPlaced.name, erMoved.name, erDoctorAssigned.name,
   erNoteRecorded.name, erNoteCosigned.name, erOrderPlaced.name, erMedIssued.name, erDoseRecorded.name, erVerbalSigned.name,
   erProcedureRecorded.name, erConsentRecorded.name, erCallRaised.name, erCallAnswered.name, erStabilised.name,
-  erMlcOpened.name,
+  // ER review (2026-10-15): NOT `er.mlc_opened` — the gateway forwards the whole payload (MLC number, category) to every
+  // board subscriber; the board shows the MLC mark on its next read.
 ];
