@@ -1,5 +1,3 @@
-import jsQR from "jsqr";
-
 /**
  * ═══ #659 — THE VISIT NUMBER, READ FROM THE PHOTOGRAPH ITSELF ═══
  *
@@ -71,6 +69,8 @@ export const qrReader: PhotoReader = {
         if (hit !== undefined) return hit;
       } catch { /* fall through to jsQR */ }
     }
+    // Loaded on demand: the app ships as one chunk, and only this desk ever needs jsQR.
+    const { default: jsQR } = await import("jsqr");
     return jsQR(px.data.data, px.data.width, px.data.height, { inversionAttempts: "dontInvert" })?.data ?? null;
   },
 };
