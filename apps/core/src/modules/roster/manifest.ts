@@ -1,4 +1,6 @@
 import { rosterCopilotTools } from "./copilot-tools";
+import { rosterLeaveCopilotTools } from "./copilot-acts";
+import { rosterLeaveWaiting, rosterWaiting } from "./waiting";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
 /**
@@ -54,5 +56,7 @@ export const rosterManifest: ModuleManifest = {
   subscriptions: [],
   // 20-U U9 — what the copilot may ask the roster: who is on, the unit on take, my duties, and a
   // cover DRAFT the person sends themselves (`./copilot-tools`).
-  copilotTools: rosterCopilotTools(),
+  copilotTools: [...rosterCopilotTools(), ...rosterLeaveCopilotTools],
+  /** E1.4 / E1.5 — my duties still to run today; E2.2 — leave to decide and my leave refused (`GET /me/waiting`); no desk card. */
+  desk: [rosterWaiting, rosterLeaveWaiting],
 };

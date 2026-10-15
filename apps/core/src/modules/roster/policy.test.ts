@@ -178,6 +178,10 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     cancelAbsence: { reaches: "requireRosterAct(", why: "as `requestAbsence`" },
     approveAbsence: { reaches: "decide(", why: "the shared decision path, which takes `publish` — approving a leave decides whether a ward has somebody in it" },
     rejectAbsence: { reaches: "decide(", why: "as `approveAbsence`" },
+    // E2.2 (decision 0069) — a person's own leave, and its decider.
+    fileOwnLeave: { reaches: "requestAbsence(", why: "the person's own leave through the one checked door; the user id is the actor's, never the body's" },
+    cancelOwnLeave: { reaches: "cancelAbsence(", why: "only the person's own, not yet begun, through the checked door" },
+    decideLeave: { reaches: "approveAbsence(", why: "approve, or refuse with a reason — both through `decide`, which takes `publish` at the leave's department" },
     recordAbsence: { reaches: "requireRosterAct(", why: "the CHECKED front door onto `recordAbsenceUnchecked`" },
     recordAbsences: { reaches: "recordAbsence(", why: "a bulk act cannot be a way round the checks a single one goes through" },
     // R8 — the one act in the validator's half of the phase. Everything else there READS.
@@ -342,6 +346,7 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     listFindings: "a read",
     acceptedFindingKeys: "a read — the set the publish gate honours, shared with it so the gate and the screen cannot disagree about what `accepted` means",
     fairnessOf: "PURE: counts nights, Sundays and holidays from rows it is handed. It reads no database and is the same answer for a roster somebody typed by hand as for one the proposer drafted",
+    staffToday: "a read for the owner's staff page, guarded by `read` (the route also asks `staff.reports.read`); composed from `onNowBoard`, it writes nothing",
     skeletonModeOn: "a read — and it answers `mine OR the whole hospital's`, because a department cannot be off skeleton cover on a day the hospital is on it",
     modeDeclarations: "a read: the day's checklist, withdrawn rows included",
     // 20-U U5c/U6 — reads of a person's own duties and of the requests they may see.
@@ -350,6 +355,15 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     myDutyRows: "a read of the ACTOR's own duties, asked with the actor's own id; guarded by `read`",
     myDuties: "a read — My duties, composed of the reads above; the reader's own and nobody else's",
     // MOBILE §3i (owner 2026-10-07) — what the bell says about a person's own duties, and the reminder sweep.
+    // E2.2 (decision 0069) — reads behind My leave and its bell rows.
+    checkLeave: "a read — the rules a leave request must meet (kind, days, overlap); shared by the screen and the copilot's recheck, writes nothing",
+    homeDepartmentOf: "a read — the department a person's leave waits in (their parent unit's, else one department-scoped role's)",
+    myLeave: "a read of the ACTOR's own leave, asked with the actor's own id",
+    leaveToDecide: "a read — the requests waiting for the reader's decision, filtered by the same `publish` check the decision asks",
+    leaveDeciders: "a read — who holds `publish` for a department, for the bell; no Actor",
+    leaveKindOf: "PURE: words in, a leave kind out (E2.2's chat); no database, no clock",
+    leaveDaysOf: "PURE: words and today's IST day in, the days out; no database, no clock of its own",
+    leaveForAlert: "a read — one leave worded for a bell row (a name, a kind, days; never the reason); called from the kernel alerts consumer, no Actor",
     coverForAlert: "a read — one cover or swap worded for a bell row (staff names, the duty's window, never the note); called from the kernel alerts consumer, no Actor",
     amendmentIsOfCover: "a read — whether an amendment was applied by an approved cover, so `duty_changed` is not announced twice; no Actor",
     dutyWindowsForAlert: "a read — the windows of a set of assignment ids, for the consumer's \"your duties changed\" row; no Actor",

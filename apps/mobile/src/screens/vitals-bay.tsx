@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AppState, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { AppState, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Text, TextInput } from "../text";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
@@ -7,10 +7,10 @@ import { ApiError, NetworkError } from "../api";
 import { useI18n } from "../i18n";
 import { useSession } from "../session";
 import { color, radius, space, TOUCH, type } from "../theme";
-import { Band, Button, MONO, Note, Tag } from "../ui";
+import { Band, Button, MONO, Note, Tag, KeyboardModal, KeyboardScrollView } from "../ui";
 import { AllergyStep } from "../vitals/allergy";
 import { AmendPanel } from "../vitals/amend";
-import { GuardianLink, GuardianSheet, guardianMayStandIn } from "../vitals/guardian";
+import { GuardianLink, GuardianSheet, GuardianUndoButton, guardianMayStandIn } from "../vitals/guardian";
 import { refusalText, vitalsApi, type VitalsApi, type WireVitalsSaveResult } from "../vitals/api";
 import { CaptureCore } from "../vitals/capture";
 import { heldFirstTake, holdFirstTake, releaseFirstTake, useDangerProtocol, type Protocol } from "../vitals/protocol";
@@ -218,6 +218,8 @@ export function VitalsBay({ scanned = null }: { scanned?: Scanned | null } = {})
   const [taken, setTaken] = useState<WireBenchRow | null>(null);
   const [raw, setRaw] = useState("");
   const [error, setError] = useState<string | null>(null);
+  /** #771 — the visit a locate answered `guardian_visit` for: "Undo — patient is here" is offered under the refusal. */
+  const [undoFor, setUndoFor] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [deskGen, setDeskGen] = useState(0);
   const [banner, setBanner] = useState<Banner | null>(null);
@@ -285,7 +287,7 @@ export function VitalsBay({ scanned = null }: { scanned?: Scanned | null } = {})
   }, [scanned, asOf, allRows, take, t]);
 
   const clearDesk = useCallback(() => {
-    setTaken(null); setError(null); setRestOffer(null); setRerun(null); setWhoOpen(false); setRaw(""); setAmending(false);
+    setTaken(null); setError(null); setUndoFor(null); setRestOffer(null); setRerun(null); setWhoOpen(false); setRaw(""); setAmending(false);
     setScanSaid(null);
     setDeskGen((g) => g + 1);
   }, []);
@@ -370,7 +372,7 @@ export function VitalsBay({ scanned = null }: { scanned?: Scanned | null } = {})
   const identify = useCallback(async (text: string) => {
     const r = resolveDoor(allRows, text);
     if (r.outcome === "empty") return;
-    setError(null);
+    setError(null); setUndoFor(null);
     if (r.outcome === "row") { take(r.row); return; }
     if (r.outcome === "ambiguous") {
       const m = ambiguousMessage(r.door, r.rows);
@@ -411,6 +413,8 @@ export function VitalsBay({ scanned = null }: { scanned?: Scanned | null } = {})
     }
     const m = missMessage(r.door, why);
     setError(t(`vitalsBay.identify.miss.${m.key}`, m.vars));
+    // #771 — a guardian's visit, and the patient is standing here after all: the bay may undo the mark.
+    if (why !== null && !why.onBench && why.reason === "guardian_visit" && why.encounterId !== undefined) setUndoFor(why.encounterId);
   }, [allRows, t, take, api, today, refresh]);
 
   const dueCount = rows.filter((r) => r.recallDue || r.escalation === "escalated" || r.escalation === "recheck_demanded").length;
@@ -528,7 +532,7 @@ export function VitalsBay({ scanned = null }: { scanned?: Scanned | null } = {})
           }
         />
       ) : (
-        <ScrollView ref={deskScroll} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: space.lg, gap: space.md, paddingBottom: space.xxl }}>
+        <KeyboardScrollView ref={deskScroll} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: space.lg, gap: space.md, paddingBottom: space.xxl }}>
           {bannerView}
           {rowInHand === null ? (
             <View style={s.card}>
@@ -545,6 +549,19 @@ export function VitalsBay({ scanned = null }: { scanned?: Scanned | null } = {})
                 <View style={{ flex: 1 }}><Button testID="begin" label={t("mobile.vitals.begin")} busy={busy} disabled={raw.trim() === ""} onPress={() => { void identify(raw); }} /></View>
               </View>
               {error !== null && <Note tone="bad" testID="identify-error">{error}</Note>}
+              {undoFor !== null && (
+                <GuardianUndoButton
+                  key={undoFor} api={api} encounterId={undoFor} testID="identify-undo-guardian"
+                  onDone={() => {
+                    const id = undoFor;
+                    setUndoFor(null); setError(null); buzz("ok");
+                    void refresh().then((fresh) => {
+                      const row = fresh === null ? null : matchOnBench(fresh, { kind: "encounter", encounterId: id });
+                      if (row !== null) take(row);
+                    });
+                  }}
+                />
+              )}
             </View>
           ) : (
             <>
@@ -583,10 +600,10 @@ export function VitalsBay({ scanned = null }: { scanned?: Scanned | null } = {})
               <Text style={s.faint}>{t("vitalsBay.session.dignity")}</Text>
             </>
           )}
-        </ScrollView>
+        </KeyboardScrollView>
       )}
 
-      <Modal visible={benchOpen} transparent animationType="slide" onRequestClose={() => setBenchOpen(false)}>
+      <KeyboardModal visible={benchOpen} transparent animationType="slide" onRequestClose={() => setBenchOpen(false)}>
         <Pressable style={s.scrim} testID="bench-scrim" onPress={() => setBenchOpen(false)}>
           <Pressable style={s.sheet} testID="bench-sheet" onPress={() => undefined}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
@@ -607,7 +624,7 @@ export function VitalsBay({ scanned = null }: { scanned?: Scanned | null } = {})
             <Text style={s.faint}>{t("vitalsBay.bench.valveNote")}</Text>
           </Pressable>
         </Pressable>
-      </Modal>
+      </KeyboardModal>
       <Scanner open={scanOpen} onClose={() => setScanOpen(false)} onRead={(data) => { setScanOpen(false); setRaw(/^(q1|rx1)\./.test(data) ? "" : data); void identify(data); }} />
       {guardianRow !== null && (
         <GuardianSheet api={api} encounterId={guardianRow.encounterId} onDone={() => onGuardian(guardianRow)} onClose={() => setGuardianRow(null)} />

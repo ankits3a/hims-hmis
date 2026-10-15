@@ -1,4 +1,8 @@
+import { useNavigate } from "@tanstack/react-router";
+import { ToCollect } from "../../components/to-collect";
 import { useTranslation } from "react-i18next";
+import { TeleDeskPay } from "../../components/tele-desk-pay";
+import { TeleMark } from "../../components/tele-mark";
 import { useAuth } from "../../lib/auth";
 import { useQuery } from "@tanstack/react-query";
 import { listPatientAppointments, patientTimeline, todayIst } from "../../lib/opd-api";
@@ -8,6 +12,7 @@ import { ageOf, initialsOf, rs, SEAT_STEPS, seatStepIndex, sexLetter, tokenLabel
 import { useDesk } from "./session";
 import { PhotoPanel } from "./photo";
 import { CreditChip } from "../../components/patient-credit";
+import { dateLocale } from "../../lib/date-locale";
 
 /**
  * ═══ THE DOSSIER — §3: "the left column IS the patient session" ═══
@@ -72,6 +77,8 @@ function Upcoming({ patientId }: { patientId: string }): React.ReactElement | nu
               <div key={a.id} data-testid="upcoming-row" style={{ padding: "7px 0", borderBottom: "1px solid var(--line2)" }}>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
                   <span className="mo" style={{ fontSize: 12, fontWeight: 700, color: "var(--green)" }}>{dayMonthIst(a.serviceDate)} · {slotClock(a.slotStart)}</span>
+                  <TeleMark mode={a.mode} size={13} />
+                  <TeleDeskPay appointment={a} compact />
                   {a.status === "needs_rebooking" ? <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--gold)" }}>{t("registrationCounter.upcoming.rebook")}</span> : null}
                 </div>
                 <div style={{ fontSize: 11.5, color: "var(--dim)" }}>{[doc?.displayName, dept].filter((x) => x !== undefined && x !== "").join(" · ")}</div>
@@ -156,7 +163,7 @@ function History({ patientId }: { patientId: string }): React.ReactElement | nul
                 className="tag"
                 style={{ flexShrink: 0, color: h.status === "completed" ? "var(--green)" : h.status === "abandoned" ? "var(--gold)" : "var(--faint)" }}
               >
-                {t(`registrationCounter.history.state.${h.status}`, { defaultValue: h.status })}
+                {h.type === "lab" ? t("profile.lv.kind") : t(`registrationCounter.history.state.${h.status}`, { defaultValue: h.status })}
               </span>
             </button>
           ))}
@@ -192,6 +199,7 @@ export function Dossier(): React.ReactElement {
   const d = useDesk();
   const { s } = d;
   const { t } = useTranslation();
+  const navigate = useNavigate();
 
   /* ── nobody in hand: the day's figures and the keys ── */
   if (s.person === null && !s.enrolling) {
@@ -215,6 +223,16 @@ export function Dossier(): React.ReactElement {
             <span className="mo" style={{ fontSize: 15, fontWeight: 600 }}>{stat.value}</span>
           </div>
         ))}
+
+        {/*
+          OWNER 2026-10-09 — "To collect": the patients this desk let through unpaid, under the day's
+          own figures, where the eye already goes between two patients. Collect opens the billing
+          chair on that visit (`/billing?encounterId=`), the road the OPD desk has always used.
+        */}
+        <ToCollect
+          style={{ marginTop: 22, padding: "10px 0 0", border: 0, borderTop: "1px solid var(--line)", borderRadius: 0, background: "transparent" }}
+          onCollect={(row) => { void navigate({ to: "/billing", search: { encounterId: row.encounterId } }); }}
+        />
 
         <div className="tag" style={{ marginTop: 26 }}>keys</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 9, fontSize: 11.5, color: "var(--dim)" }}>
@@ -457,7 +475,7 @@ export function Dossier(): React.ReactElement {
         {s.attributionCode === "" ? null : <span className="pill on">✓ slip {s.attributionCode}</span>}
         {s.future === null ? null : (
           <span className="pill on">
-            ✓ future {new Date(s.future.slotStart).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+            ✓ future {new Date(s.future.slotStart).toLocaleString(dateLocale(), { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
           </span>
         )}
         {freeReason === null && memberships.length === 0 && s.coupons.length === 0 && s.attributionCode === "" && s.future === null ? (

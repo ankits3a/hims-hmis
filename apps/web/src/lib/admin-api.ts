@@ -1,4 +1,5 @@
 import { api, ApiError } from "./api";
+import type { SelfIdentity } from "../../../../packages/contracts/src/self-identity";
 
 /**
  * PLAN 11e T6 — THE USER-ADMINISTRATION WIRE CONTRACT, transcribed from `users-admin.controller.ts`
@@ -97,6 +98,23 @@ export function signOutUserPhone(id: string, phoneId: string): Promise<{ session
 }
 
 /** Revokes NOTHING and forces NO password change — the two flows differ, deliberately (Q3). */
+/**
+ * STAFF ATTENDANCE (owner 2026-10-09) — a person's mobile and Aadhaar, the two things the attendance
+ * machine's list is matched by. The Aadhaar comes back MASKED (`XXXX XXXX 0124`); the server keeps
+ * only a keyed hash and the last four digits, so the number itself can never be read back here.
+ */
+export type AttendanceLinkState = "linked" | "not_linked" | "two_matches";
+export type WireUserIdentity = { userId: string; mobile: string | null; aadhaar: string | null; attendance: AttendanceLinkState };
+
+export function listUserIdentity(): Promise<{ aadhaarConfigured: boolean; users: WireUserIdentity[] }> {
+  return api("GET", "/admin/users/identity");
+}
+
+/** A string sets, `null` removes, an absent key leaves that field alone. */
+export function setUserIdentity(id: string, body: { mobile?: string | null; aadhaar?: string | null }): Promise<WireUserIdentity> {
+  return api("POST", `/admin/users/${id}/identity`, body);
+}
+
 export function resetPin(id: string, newPin: string): Promise<void> {
   return api("POST", `/admin/users/${id}/pin-reset`, { newPin });
 }
@@ -211,4 +229,19 @@ export function isPasswordChangeRequired(e: unknown): boolean {
   if (!(e instanceof ApiError) || e.status !== 403) return false;
   const body = e.body as { message?: unknown } | null;
   return body?.message === "password_change_required";
+}
+
+// ──────────────────── "Add your Aadhaar" (owner 2026-10-09) ────────────────────
+
+/**
+ * The signed-in person's OWN mobile-free identity: masked Aadhaar, the link word, and whether the
+ * shell should draw the "Add your Aadhaar" sticker. No id in the path — it is always the caller's.
+ */
+export function getMyIdentity(): Promise<SelfIdentity> {
+  return api("GET", "/me/identity");
+}
+
+/** The number travels in this one body and is dropped by the server after hashing. */
+export function saveMyAadhaar(aadhaar: string): Promise<SelfIdentity> {
+  return api("POST", "/me/identity", { aadhaar });
 }

@@ -6,12 +6,15 @@ import { useRouter } from "expo-router";
 import { useI18n } from "../i18n";
 import { useNotifications } from "../notifications";
 import { seatsFor } from "../seats";
+import { useLabMode } from "../lab/mode";
 import { useSession } from "../session";
 import { color, radius, space, TOUCH, type } from "../theme";
 import { APP_VERSION, APP_VERSION_CODE } from "../config";
 import { Band, Button, MONO, Note, Tag } from "../ui";
-import { checkForUpdate, type UpdateAnswer } from "../update";
-import { loadHome, type HeaderFacts } from "../home/load";
+import { checkForUpdate, updatesFromFeed, type UpdateAnswer } from "../update";
+import { loadHome, type HeaderFacts, type OwnerHome } from "../home/load";
+import { buildOwnerTiles, coldOwnerTiles, isWideTile, type OwnerTile } from "../owner/model";
+import { OwnerTiles } from "../owner/tiles";
 import { coldOf, homeCache, seenRequests, type ColdHome } from "../home/cache";
 import { onHomeFocus, takeHomeFocus } from "../home/focus";
 import { headerOf } from "../home/profile";
@@ -19,14 +22,19 @@ import { buildHome, rupees, type HomeAction, type HomeModel, type NeedCard, type
 import { ApprovalSheet, CoverSheet, clockText } from "../home/sheets";
 import { Spark } from "../home/spark";
 import { RecordedCard, type RecordingReport } from "../home/recorded";
+import { PaceCard, type MyPace } from "../home/pace";
 import { rosterApi } from "../roster/api";
+import { ALL_READ } from "../attendance/api";
+import { AttendanceCard, attendanceCache, useAttendanceHome } from "../attendance/home-card";
+import { AadhaarCard, AadhaarSheet, useSelfIdentity } from "../attendance/aadhaar-card";
+import { WaitingCard, useWaiting } from "../waiting/card";
 import { clockWords, type NeedKind, type Tone } from "../home/rules";
 
 /** Refreshed while the app is in front: every 30 s, and whenever it comes back to the front. */
 const REFRESH_MS = 30_000;
 /** The last home this phone drew, kept while the app is open — shown with "as of" when the network drops. */
-let lastHome: { sources: Sources; at: number; user: string; header: HeaderFacts; unread: number | null; recording?: RecordingReport | null } | null = null;
-export function _forgetHomeForTests(): void { lastHome = null; void homeCache.clear(); }
+let lastHome: { sources: Sources; at: number; user: string; header: HeaderFacts; unread: number | null; recording?: RecordingReport | null; owner?: OwnerHome | null; pace?: MyPace | null } | null = null;
+export function _forgetHomeForTests(): void { lastHome = null; void homeCache.clear(); void attendanceCache.clear(); }
 
 const TONE: Record<Tone, { edge: string; bg: string; fg: string }> = {
   red: { edge: color.red, bg: color.redSoft, fg: color.red },
@@ -56,13 +64,17 @@ function LockedTile({ t, n, testID }: { t: (key: string, vars?: Record<string, s
 export function SeatHome() {
   const { t } = useI18n();
   const router = useRouter();
-  const { state, logout, fetcher, call } = useSession();
+  const { state, fetcher, call } = useSession();
   const signedIn = state.status === "signedIn";
   const me = signedIn ? state.me : null;
   const user = signedIn ? state.me.actor.id : "";
   const permissions = useMemo(() => me?.permissions.hospital ?? [], [me]);
-  const seatKeys = useMemo(() => (me === null ? [] : seatsFor(me.permissions).map((s) => s.key)), [me]);
-  const [home, setHome] = useState<{ sources: Sources; at: number; header: HeaderFacts; unread: number | null; recording?: RecordingReport | null } | null>(() => (lastHome !== null && lastHome.user === user ? lastHome : null));
+  // Owner 2026-10-12 — the quick-lab screens show only while the lab runs Quick.
+  const labMode = useLabMode();
+  // Keyed on the list itself, so a mode read that hides nothing does not reload the home.
+  const seatList = me === null ? "" : seatsFor(me.permissions, labMode).map((s) => s.key).join(",");
+  const seatKeys = useMemo(() => (seatList === "" ? [] : seatList.split(",") as ReturnType<typeof seatsFor>[number]["key"][]), [seatList]);
+  const [home, setHome] = useState<{ sources: Sources; at: number; header: HeaderFacts; unread: number | null; recording?: RecordingReport | null; owner?: OwnerHome | null; pace?: MyPace | null } | null>(() => (lastHome !== null && lastHome.user === user ? lastHome : null));
   /** What this phone last drew before it was closed — counts only, shown when nothing can be read (`home/cache.ts`). */
   const [cold, setCold] = useState<ColdHome | null>(null);
   const [seen, setSeen] = useState<string[]>([]);
@@ -77,21 +89,35 @@ export function SeatHome() {
   const [said, setSaid] = useState<{ tone: "info" | "bad"; text: string } | null>(null);
   const [busyCover, setBusyCover] = useState<string | null>(null);
   const alive = useRef(true);
+  /* The person's own attendance: ONE read beside the home's, made by the home's own refresh (`attendance/home-card.tsx`). */
+  const attendance = useAttendanceHome(call, signedIn ? user : "");
+  const reloadAttendance = attendance.reload;
+  /* E1.4 / E1.5 — what is waiting for me: one read (`GET /me/waiting`), the card at the top of the home. */
+  const waiting = useWaiting(call, signedIn);
+  const reloadWaiting = waiting.reload;
+  /* "Add your Aadhaar" (owner 2026-10-09): the card at the top, while the server says this person owes one. */
+  const identity = useSelfIdentity(call, signedIn ? user : "");
+  const reloadIdentity = identity.reload;
+  const [aadhaarOpen, setAadhaarOpen] = useState(false);
   const refresh = useCallback(async (byHand = false) => {
     if (!signedIn) return;
     if (byHand) setRefreshing(true);
     const now = Date.now();
+    void reloadAttendance();
+    void reloadIdentity();
+    void reloadWaiting();
     const loaded = await loadHome(call, permissions, seatKeys, now);
     if (!alive.current) return;
     if (loaded.reached) {
-      lastHome = { sources: loaded.sources, at: now, user, header: loaded.header, unread: loaded.unread, recording: loaded.recording };
+      lastHome = { sources: loaded.sources, at: now, user, header: loaded.header, unread: loaded.unread, recording: loaded.recording, owner: loaded.owner, pace: loaded.pace };
       setHome(lastHome); setOnline(true);
-      void homeCache.save(coldOf(user, now, buildHome({ ...loaded.sources, nowMs: now })));
+      /* The owner's tiles are kept as a key and a number each — no sub-line, no name (`coldOwnerTiles`). */
+      void homeCache.save(coldOf(user, now, buildHome({ ...loaded.sources, nowMs: now }), loaded.owner === null ? null : coldOwnerTiles(buildOwnerTiles(loaded.owner.keys, loaded.owner.reads))));
     } else {
       setOnline(false);
     }
     if (byHand) setRefreshing(false);
-  }, [signedIn, call, permissions, seatKeys, user]);
+  }, [signedIn, call, permissions, seatKeys, user, reloadAttendance, reloadIdentity, reloadWaiting]);
   useEffect(() => {
     if (user === "") return;
     let gone = false;
@@ -110,6 +136,8 @@ export function SeatHome() {
     return () => { alive.current = false; clearInterval(timer); sub.remove(); };
   }, [refresh]);
   const model: HomeModel | null = useMemo(() => (home === null ? null : buildHome({ ...home.sources, seenRequests: seen, nowMs: online ? Date.now() : home.at })), [home, online, seen]);
+  /* The owner's and the Medical Superintendent's home: tiles in place of the blocks under "Needs you now" (owner 2026-10-09). */
+  const ownerTiles: OwnerTile[] | null = useMemo(() => (home?.owner == null ? null : buildOwnerTiles(home.owner.keys, home.owner.reads)), [home]);
   /* A notification about approvals, and exactly one waiting: its sheet opens — the tap said which. */
   useEffect(() => {
     if (focus !== "approval" || home === null) return;
@@ -165,7 +193,7 @@ export function SeatHome() {
     setAsked("yes");
   }, [fetcher]);
   if (state.status !== "signedIn") return null;
-  const seats = seatsFor(state.me.permissions);
+  const seats = seatsFor(state.me.permissions, labMode);
   const who = headerOf(state.me.profile, state.username, home?.header ?? null, t);
   const needs = model === null ? [] : showAll ? model.allNeeds : model.needs;
   const badgeOf = (key: string) => model?.work.find((w) => w.key === key) ?? null;
@@ -230,15 +258,17 @@ export function SeatHome() {
                 </View>
               )}
             </Pressable>
-            <Pressable onPress={() => { void homeCache.clear(); void logout(); }} accessibilityRole="button" hitSlop={8} testID="logout"
-              style={{ minHeight: 32, paddingHorizontal: 10, justifyContent: "center" }}>
-              <Text style={{ color: color.agentFg, fontSize: 13, fontWeight: "600" }}>{t("app.logout")}</Text>
-            </Pressable>
+            {/* PHONE SETTINGS (owner 2026-10-11) — Log out lives in Settings (the gear), as "Log out of this phone". */}
           </View>
         }
       />
+      {aadhaarOpen && (
+        <AadhaarSheet t={t} call={call} onClose={() => setAadhaarOpen(false)}
+          onSaved={(next, text) => { identity.set(next); setAadhaarOpen(false); setSaid({ tone: "info", text }); void reloadAttendance(); }} />
+      )}
       <ScrollView testID="home-scroll" contentContainerStyle={{ padding: space.lg, paddingBottom: space.xxl }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { void refresh(true); }} tintColor={color.green} />}>
+        <AadhaarCard t={t} me={identity.me} onOpen={() => { setSaid(null); setAadhaarOpen(true); }} />
         {update?.kind === "update" && !later && (
           <View testID="update-offer" style={{ backgroundColor: color.card, borderWidth: 2, borderColor: color.green, borderRadius: radius.lg, padding: space.lg, marginBottom: space.lg, gap: space.sm }}>
             <Text style={[type.heading, { color: color.ink }]}>{t("mobile.update.title")}</Text>
@@ -272,6 +302,16 @@ export function SeatHome() {
         <Text style={[type.small, { color: color.dim }]} testID="signed-in-as">
           {who.line ?? t("mobile.signedInAs", { name: state.username || state.me.actor.id })}
         </Text>
+        <WaitingCard t={t} lines={waiting.lines} push={router.push} />
+        <AttendanceCard t={t} home={attendance} onOpen={() => router.push("/attendance")}
+          onConfirm={(date) => router.push({ pathname: "/attendance", params: { confirm: date } })} />
+        {/* PHONE SETTINGS (owner 2026-10-11) — Reminders open from Settings; their notifications and the Waiting line stay. */}
+        {/* E2.2 — My leave: every person has it, so it is a line on every home, not a seat. */}
+        <Pressable testID="home-my-leave" accessibilityRole="button" onPress={() => router.push("/my-leave")}
+          style={{ minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: space.sm }}>
+          <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: "600", color: color.green }}>{t("myLeave.title")}</Text>
+          <Text style={{ fontSize: 14, color: color.faint }}>›</Text>
+        </Pressable>
         {!online && <View style={{ marginTop: space.sm }}><Note tone="warn" testID="home-offline">{t(home === null && cold === null ? "home.offline.nothing" : "home.offline.banner")}</Note></View>}
         {/* Cold and offline: the last numbers this phone drew, counts only, and nothing to tap. */}
         {model === null && cold !== null && !online && (
@@ -290,8 +330,12 @@ export function SeatHome() {
                 <Text style={{ fontFamily: MONO, fontSize: 11.5, fontWeight: "700", color: TONE[c.tone].fg }}>{clockText(t, clockWords(cold.at, c.sinceMs, c.dueMs))}</Text>
               </View>
             ))}
-            {cold.tiles.length > 0 && label("home.day")}
-            {cold.tiles.length > 0 && (
+            {cold.tiles.length > 3 && label("owner.today")}
+            {cold.tiles.length > 3 && (
+              <OwnerTiles t={t} tiles={cold.tiles.map((c) => ({ key: c.key as OwnerTile["key"], labelKey: c.labelKey, value: c.value ?? "—", failed: c.value === "—", sub: null, tone: "plain", wide: isWideTile(c.key, cold.tiles.map((x) => x.key)) }))} />
+            )}
+            {cold.tiles.length > 0 && cold.tiles.length <= 3 && label("home.day")}
+            {cold.tiles.length > 0 && cold.tiles.length <= 3 && (
               <View style={{ flexDirection: "row", gap: space.sm }}>
                 {cold.tiles.map((tile) => (
                   <View key={tile.key} style={{ flex: 1, backgroundColor: color.card, borderWidth: 1, borderColor: color.line, borderRadius: radius.md, padding: space.md }}>
@@ -321,8 +365,13 @@ export function SeatHome() {
               </View>
             ) : needs.map(needCard)}
 
-            {model.tiles.length > 0 && label("home.day")}
-            {model.tiles.length > 0 && (
+            {ownerTiles !== null && label("owner.today")}
+            {ownerTiles !== null && (
+              <OwnerTiles tiles={ownerTiles} t={t} onOpen={(key) => router.push({ pathname: "/owner/[page]", params: { page: key } })} />
+            )}
+
+            {ownerTiles === null && model.tiles.length > 0 && label("home.day")}
+            {ownerTiles === null && model.tiles.length > 0 && (
               <View style={{ flexDirection: "row", gap: space.sm }}>
                 {model.tiles.map((tile) => (
                   <View key={tile.key} testID={`tile-${tile.key}`} style={{ flex: 1, backgroundColor: color.card, borderWidth: 1, borderColor: color.line, borderRadius: radius.md, padding: space.md }}>
@@ -335,13 +384,18 @@ export function SeatHome() {
               </View>
             )}
 
-            <RecordedCard
-              r={home?.recording ?? null} seats={seatKeys} permissions={permissions} t={t}
-              onScan={() => router.push({ pathname: "/seat/[key]", params: { key: "slips" } })}
-              onByDoctor={() => router.push("/recording")}
-            />
+            {/* My pace, under "My day" — a doctor only; the owner's home is untouched (no measure is sent to it). */}
+            <PaceCard pace={home?.pace ?? null} t={t} onOpen={() => router.push("/pace")} />
 
-            {model.hospital !== null && model.hospital.byDepartment.length > 0 && (
+            {ownerTiles === null && (
+              <RecordedCard
+                r={home?.recording ?? null} seats={seatKeys} permissions={permissions} t={t}
+                onScan={() => router.push({ pathname: "/seat/[key]", params: { key: "slips" } })}
+                onByDoctor={() => router.push("/recording")}
+              />
+            )}
+
+            {ownerTiles === null && model.hospital !== null && model.hospital.byDepartment.length > 0 && (
               <View testID="home-departments" style={{ backgroundColor: color.card, borderWidth: 1, borderColor: color.line, borderRadius: radius.lg, paddingHorizontal: space.md, paddingVertical: space.sm }}>
                 <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 6 }}>
                   <Text style={{ fontSize: 13.5, fontWeight: "700", color: color.ink }}>{t("home.owner.byDept")}</Text>
@@ -360,7 +414,7 @@ export function SeatHome() {
                 ))}
               </View>
             )}
-            {model.onDuty.length > 0 && (
+            {ownerTiles === null && model.onDuty.length > 0 && (
               <View testID="home-on-duty" style={{ backgroundColor: color.card, borderWidth: 1, borderColor: color.line, borderRadius: radius.lg, paddingHorizontal: space.md, paddingVertical: space.sm }}>
                 <Text style={{ fontSize: 13.5, fontWeight: "700", color: color.ink, paddingVertical: 6 }}>{t("home.owner.onDuty")}</Text>
                 {model.onDuty.map((d) => (
@@ -392,7 +446,7 @@ export function SeatHome() {
               </View>
             )}
 
-            {model.analytics !== null && (
+            {ownerTiles === null && model.analytics !== null && (
               <View testID="home-30" style={{ backgroundColor: color.card, borderWidth: 1, borderColor: color.line, borderRadius: radius.lg, padding: space.md }}>
                 <Pressable testID="home-30-toggle" accessibilityRole="button" onPress={() => setOpen30((v) => !v)} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", minHeight: 32 }}>
                   <Text style={{ fontSize: 13.5, fontWeight: "700", color: color.ink }}>
@@ -453,19 +507,32 @@ export function SeatHome() {
             <Text style={{ color: color.faint, fontSize: 22 }}>›</Text>
           </Pressable>
         ))}
-        <Pressable testID="account-open" accessibilityRole="button" onPress={() => router.push("/account")}
-          style={({ pressed }) => ({ minHeight: TOUCH, flexDirection: "row", alignItems: "center", gap: space.md, paddingHorizontal: space.lg, borderWidth: 1, borderColor: color.line, borderRadius: radius.lg, backgroundColor: pressed ? color.wash : color.card })}>
-          <Text style={[type.body, { color: color.ink, fontWeight: "600", flex: 1 }]}>{t("mobile.account.open")}</Text>
-          <Text style={{ color: color.faint, fontSize: 22 }}>›</Text>
-        </Pressable>
+        {/*
+          STAFF ATTENDANCE for those the server lets see it: a holder of `attendance.all.read`, or
+          somebody who leads a team (the server said so in the home card's one read). Nobody else is
+          shown the row, and nothing is asked on their behalf.
+        */}
+        {(permissions.includes(ALL_READ) || attendance.me?.leadsTeam === true) && (
+          <Pressable testID="attendance-manage-open" accessibilityRole="button"
+            onPress={() => router.push({ pathname: "/attendance-staff", params: attendance.me?.leadsTeam === true ? { lead: "1" } : {} })}
+            style={({ pressed }) => ({ minHeight: TOUCH + 24, backgroundColor: pressed ? color.wash : color.card, borderWidth: 1, borderColor: color.line, borderRadius: radius.lg, padding: space.lg, marginBottom: space.md, flexDirection: "row", alignItems: "center", gap: space.md })}>
+            <View style={{ width: 8, alignSelf: "stretch", borderRadius: 4, backgroundColor: color.green }} />
+            <View style={{ flex: 1 }}>
+              <Text numberOfLines={1} style={[type.heading, { color: color.ink }]}>{t("attendance.manage.open")}</Text>
+              <Text numberOfLines={1} style={[type.small, { color: color.dim, marginTop: 2 }]}>{t(permissions.includes(ALL_READ) ? "attendance.manage.hintAll" : "attendance.manage.hintTeam")}</Text>
+            </View>
+            <Text style={{ color: color.faint, fontSize: 22 }}>›</Text>
+          </Pressable>
+        )}
+        {/* PHONE SETTINGS (owner 2026-10-11) — This phone and My account open from Settings. */}
         <View style={{ marginTop: space.md, gap: 6 }}>
           <Tag tone="faint">{`HMIS ${t("login.product")}`}</Tag>
           <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: space.md }}>
             <Text testID="app-version" style={[type.small, { color: color.faint, fontFamily: MONO }]}>{t("mobile.update.version", { version: APP_VERSION, code: APP_VERSION_CODE })}</Text>
-            <Pressable testID="update-check" accessibilityRole="button" hitSlop={8} disabled={asked === "checking"} onPress={() => { void checkNow(); }}
+            {updatesFromFeed() && <Pressable testID="update-check" accessibilityRole="button" hitSlop={8} disabled={asked === "checking"} onPress={() => { void checkNow(); }}
               style={{ minHeight: 36, justifyContent: "center" }}>
               <Text style={{ color: color.green, fontSize: 13, fontWeight: "700" }}>{t(asked === "checking" ? "mobile.update.checking" : "mobile.update.check")}</Text>
-            </Pressable>
+            </Pressable>}
           </View>
           {asked === "yes" && update?.kind === "latest" && <Text testID="update-latest" style={[type.small, { color: color.dim }]}>{t("mobile.update.latest", { version: APP_VERSION })}</Text>}
           {asked === "yes" && update?.kind === "unknown" && <Text testID="update-unknown" style={[type.small, { color: color.dim }]}>{t("mobile.update.failed")}</Text>}

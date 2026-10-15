@@ -51,6 +51,22 @@ export type InvoiceLineInput = {
    */
   capUnitPaise?: number;
   /**
+   * TELE-CALL (owner 2026-10-09) — **THE PATIENT HAS ALREADY PAID THIS AMOUNT FOR THIS LINE.**
+   *
+   * A tele-call is paid for at the desk before its slot, against a quote stamped on the appointment;
+   * its bill is raised days later, when the doctor has spoken to the patient. *"The owner pays once":*
+   * whatever the price list says by then — higher or lower — the line is raised at what was quoted
+   * and paid, so the invoice settles exactly against that advance. This is the unit price that
+   * replaces the version's as the STARTING price; every lawful bound after it (MRP, ceiling, the
+   * caller's cap) still applies in the same `min` chain, and the clamp record says the line was
+   * priced at a prepaid quote and what the list price was.
+   *
+   * INTERNAL ONLY. No HTTP body declares it (the zod line schemas strip it), so nobody composing a
+   * bill at a counter can re-price a line with it; its one caller is billing's
+   * `issuePrepaidConsultInvoice`. Refused beside `batchUnitPaise` — a pharmacy line prices from its batch.
+   */
+  prepaidUnitPaise?: number;
+  /**
    * PLAN 16c T0b — **THE LIST PRICE OF A DRUG IS THE MRP PRINTED ON ITS BATCH.**
    *
    * A pharmacy sells at the batch's MRP (capped by the NPPA ceiling, which rides `capUnitPaise`),
@@ -114,7 +130,9 @@ export type PricingContext = {
  * (D9) instead of inferring it from the number.
  */
 export type RegulatedClamp = {
-  boundApplied: "mrp" | "ceiling" | "caller_cap" | "batch_mrp";
+  boundApplied: "mrp" | "ceiling" | "caller_cap" | "batch_mrp" | "prepaid_quote";
+  /** The amount already paid for the line, when it was priced at a prepaid quote (tele-call, 2026-10-09). */
+  prepaidUnitPaise?: number | null;
   /** The version's price — or, when the version had none and the batch stood in, the batch price (16c T0b). */
   tariffPaise: number;
   mrpPaise: number | null;

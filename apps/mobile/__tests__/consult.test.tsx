@@ -1,3 +1,4 @@
+import { Linking } from "react-native";
 import { within, act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { doctorApi } from "../src/doctor/api";
@@ -599,5 +600,113 @@ describe("the doctor's consultation on the phone (decision 0048)", () => {
     expect(w.of("PUT /opd/visits/e13/consult/note").at(-1)!.body).toEqual({ rxDraft: [] });
     expect(await draftStore.load("e13")).toBeNull();
     expect(w.of("POST /opd/visits/e13/prescriptions")).toHaveLength(0);
+  });
+
+  // ——— tele-call (owner 2026-10-09) ———
+
+  const teleWorld = (enc: Record<string, unknown> = {}, extra: Record<string, Route> = {}) => {
+    const w = world(extra);
+    Object.assign(w.state.visit.encounter, { consultMode: "tele", teleOutcome: null, teleOutcomeAt: null, teleNoAnswerCount: 0, ...enc });
+    Object.assign(w.state.visit, { vitals: [], teleSlotAt: "2026-10-07T05:50:00.000Z" });
+    delete (w.state.visit as Record<string, unknown>).feeUnpaid;
+    delete (w.state.visit as Record<string, unknown>).feeBypass;
+    return w;
+  };
+  const writeNote = async (): Promise<void> => {
+    await press("open-notes"); await type("notes-input", "Fever settling."); await press("notes-drawer-done");
+  };
+
+  it("TELE-CALL: the card says Tele-call and the slot; Call patient asks the server for the number and opens the dialer; Complete and paper stay locked until Spoke", async () => {
+    const dial = jest.spyOn(Linking, "openURL").mockResolvedValue(true);
+    const w = teleWorld({}, {
+      "POST /opd/visits/e13/tele/call": () => ({ status: 200, body: { encounterId: "e13", telePhone: "9876543021", callStartedAt: "2026-10-07T05:51:00.000Z" } }),
+      "POST /opd/visits/e13/tele/outcome": () => ({ status: 200, body: { outcome: "spoke", final: true, encounter: { status: "in_consultation", consultMode: "tele", teleOutcome: "spoke", teleOutcomeAt: "2026-10-07T06:12:00.000Z", teleNoAnswerCount: 0 } } }),
+    });
+    const m = await mount(w);
+    await screen.findByTestId("visit-empty");
+    expect(screen.getByTestId("tele-card")).toHaveTextContent(/Tele-call.*11:20/);
+    expect(screen.queryByTestId("consult-vitals")).toBeNull();
+    await writeNote();
+    expect(screen.getByTestId("issue-complete").props.accessibilityState).toMatchObject({ disabled: true });
+    expect(screen.getByTestId("wrote-on-paper").props.accessibilityState).toMatchObject({ disabled: true });
+    await press("issue-complete");
+    expect(w.of("POST /opd/visits/e13/consult/complete")).toHaveLength(0);
+
+    expect(screen.queryByTestId("tele-number")).toBeNull(); // the number is not on the screen until it is asked for
+    await press("tele-call");
+    expect(await screen.findByTestId("tele-number")).toHaveTextContent("9876543021");
+    expect(dial).toHaveBeenCalledWith("tel:9876543021");
+    expect(screen.getByTestId("tele-no-answer")).toHaveTextContent("No answer");
+    expect(screen.getByTestId("tele-spoke-go")).toHaveTextContent("Spoke to patient");
+
+    await press("tele-spoke-go");
+    expect(await screen.findByTestId("tele-spoke")).toHaveTextContent("Spoke · 11:42");
+    expect(w.of("POST /opd/visits/e13/tele/outcome")[0]!.body).toEqual({ outcome: "spoke" });
+    expect(screen.queryByTestId("tele-call")).toBeNull();
+    await waitFor(() => expect(screen.getByTestId("issue-complete").props.accessibilityState).toMatchObject({ disabled: false }));
+    await press("issue-complete");
+    await waitFor(() => expect(m.onDone).toHaveBeenCalled());
+    expect(w.of("POST /opd/visits/e13/consult/complete")).toHaveLength(1);
+    // never a money word on the doctor's consult for a tele-call
+    dial.mockRestore();
+  });
+
+  it("TELE-CALL: nothing on the doctor's consult speaks of money", async () => {
+    const w = teleWorld();
+    await mount(w);
+    await screen.findByTestId("tele-panel");
+    expect(JSON.stringify(screen.toJSON())).not.toMatch(/paid|unpaid|fee|₹|receipt|advance/i);
+  });
+
+  it("TELE-CALL, no answer: the first hands the visit back with a sentence — held aside to retry", async () => {
+    const w = teleWorld({}, {
+      "POST /opd/visits/e13/tele/outcome": () => ({ status: 200, body: { outcome: "no_answer", final: false, encounter: { status: "waiting", consultMode: "tele", teleOutcome: "no_answer", teleNoAnswerCount: 1 } } }),
+    });
+    const m = await mount(w);
+    await screen.findByTestId("tele-panel");
+    expect(screen.queryByTestId("tele-tried")).toBeNull();
+    await press("tele-no-answer");
+    await waitFor(() => expect(m.onDone).toHaveBeenCalledWith("No answer — held aside to retry"));
+    expect(w.of("POST /opd/visits/e13/tele/outcome")[0]!.body).toEqual({ outcome: "no_answer" });
+  });
+
+  it("TELE-CALL, no answer: a visit already tried once says so, and the second goes to the desk", async () => {
+    const again = teleWorld({ teleOutcome: "no_answer", teleNoAnswerCount: 1 }, { "POST /opd/visits/e13/tele/outcome": () => ({ status: 200, body: { outcome: "no_answer", final: true, encounter: { status: "abandoned", consultMode: "tele", teleOutcome: "no_answer", teleNoAnswerCount: 2 } } }) });
+    const m2 = await mount(again);
+    expect(await screen.findByTestId("tele-tried")).toHaveTextContent("Tried once — no answer");
+    await press("tele-no-answer");
+    await waitFor(() => expect(m2.onDone).toHaveBeenCalledWith("No answer twice — sent to desk"));
+  });
+
+  it("TELE-CALL, the save fails (fix round): the doctor reads the server's neutral sentence — no money word — stays on the visit, and Complete stays locked", async () => {
+    const w = teleWorld({}, { "POST /opd/visits/e13/tele/outcome": () => ({ status: 409, body: { statusCode: 409, code: "tele_save_failed", message: "Could not save — try again", detail: { encounterId: "e13" } } }) });
+    const m = await mount(w);
+    await screen.findByTestId("tele-panel");
+    await writeNote();
+    await press("tele-spoke-go");
+    expect(await screen.findByTestId("tele-error")).toHaveTextContent(/^Could not save — try again$/);
+    expect(JSON.stringify(screen.toJSON())).not.toMatch(/paid|unpaid|fee|₹|receipt|advance|invoice|bill/i);
+    expect(screen.queryByTestId("tele-spoke")).toBeNull();
+    expect(screen.getByTestId("issue-complete").props.accessibilityState).toMatchObject({ disabled: true });
+    expect(m.onDone).not.toHaveBeenCalled();
+  });
+
+  it("TELE-CALL: a refusal is the server's words, and the doctor stays on the visit", async () => {
+    const w = teleWorld({}, { "POST /opd/visits/e13/tele/outcome": () => ({ status: 409, body: { code: "encounter_state_conflict", message: "a tele-call is made in consultation, not waiting" } }) });
+    const m = await mount(w);
+    await screen.findByTestId("tele-panel");
+    await press("tele-spoke-go");
+    expect(await screen.findByTestId("tele-error")).toHaveTextContent(/made in consultation/);
+    expect(m.onDone).not.toHaveBeenCalled();
+  });
+
+  it("an in-person visit shows no tele panel and is locked by nothing", async () => {
+    const plain = world();
+    await mount(plain);
+    await screen.findByTestId("visit-empty");
+    expect(screen.queryByTestId("tele-panel")).toBeNull();
+    expect(screen.getByTestId("consult-vitals")).toBeTruthy();
+    await writeNote();
+    expect(screen.getByTestId("issue-complete").props.accessibilityState).toMatchObject({ disabled: false });
   });
 });

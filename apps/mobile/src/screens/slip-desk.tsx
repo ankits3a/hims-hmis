@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
+import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { Text, TextInput } from "../text";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
@@ -17,7 +17,7 @@ import {
 } from "../slips/rules";
 import type { Quad, SlipDay, SlipKind, SlipPatient, SlipReadback, SlipRow } from "../slips/rules";
 import { color, radius, space, TOUCH, type } from "../theme";
-import { Band, Button, MONO, Note, Tag } from "../ui";
+import { Band, Button, MONO, Note, Tag, KeyboardModal, keyboardScroll } from "../ui";
 import { refusalText } from "../vitals/api";
 import { humanDate, istClock, tokenText } from "../vitals/rules";
 import { Scanner } from "../vitals/scanner";
@@ -676,14 +676,14 @@ export function SlipDesk({ scanned = null }: { scanned?: Scanned | null } = {}) 
           /* The crop is not scrolled: a finger on a corner must move the corner, never the page. */
           <View style={{ flex: 1, padding: space.lg, gap: space.sm }}>{body}</View>
         ) : (
-          <ScrollView ref={scroller} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: space.lg, gap: space.md, paddingBottom: space.xl }}>
+          <ScrollView {...keyboardScroll()} ref={scroller} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: space.lg, gap: space.md, paddingBottom: space.xl }}>
             {body}
           </ScrollView>
         )}
         {dock !== null && <View testID="slip-dock" style={[s.dock, { paddingBottom: Math.max(insets.bottom, space.md) }]}>{dock}</View>}
       </KeyboardAvoidingView>
 
-      <Modal visible={listOpen} transparent animationType="slide" onRequestClose={() => setListOpen(false)}>
+      <KeyboardModal visible={listOpen} transparent animationType="slide" onRequestClose={() => setListOpen(false)}>
         <Pressable style={s.scrim} testID="slip-list-scrim" onPress={() => setListOpen(false)}>
           <Pressable style={s.sheet} testID="slip-list" onPress={() => undefined}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
@@ -700,7 +700,7 @@ export function SlipDesk({ scanned = null }: { scanned?: Scanned | null } = {}) 
             {counts !== null && <Text style={s.faint}>{t("slipCapture.listFoot", { count: counts.filed })}</Text>}
           </Pressable>
         </Pressable>
-      </Modal>
+      </KeyboardModal>
       <Scanner open={scanOpen} onClose={() => setScanOpen(false)} onRead={(data) => { setScanOpen(false); setText(/^(q1|rx1)\./.test(data) ? "" : data); void resolve(data); }} />
       <HeldCard source={held1 === null ? null : { encounterId: held1.encounterId }} onClose={() => setHeld1(null)}
         onLocal={(action, visit) => { if (action !== "slip") return false; void resolve(visit.visitNo); return true; }} />

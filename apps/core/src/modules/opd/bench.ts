@@ -89,9 +89,13 @@ export type VisitOnBench =
      * WHY — so the bay can say it instead of "check the slip": no such visit; a visit of another
      * day (and which); withdrawn; the consultation already finished; or a visit that holds no place
      * in any doctor's queue (a pharmacy-only visit, or an entry that left the board).
+     * #770 — and the two visits `listBench` deliberately leaves off: a guardian came without the
+     * patient (`guardian_visit`), or the doctor consults by phone (`tele_visit`). Nobody to weigh.
      */
-    reason: "unknown_visit" | "other_day" | "abandoned" | "completed" | "not_queued";
+    reason: "unknown_visit" | "other_day" | "abandoned" | "completed" | "not_queued" | "guardian_visit" | "tele_visit";
     serviceDate?: string;
+    /** `guardian_visit` only: the visit the bay may undo the mark on ("Undo — patient is here", #771). */
+    encounterId?: string;
   };
 
 /**
@@ -106,6 +110,9 @@ export async function locateVisit(db: Db, input: { visitNo: string; serviceDate:
   if (encounter.serviceDate !== input.serviceDate) return { onBench: false, visitNo, reason: "other_day", serviceDate: encounter.serviceDate };
   if (encounter.status === "abandoned") return { onBench: false, visitNo, reason: "abandoned" };
   if (encounter.status === "completed") return { onBench: false, visitNo, reason: "completed" };
+  // #770 — the same two skips `listBench` makes, so locate never says "on the bench" of a row the bench hides.
+  if (encounter.patientAbsentAt !== null) return { onBench: false, visitNo, reason: "guardian_visit", encounterId: encounter.id };
+  if (encounter.consultMode === "tele") return { onBench: false, visitNo, reason: "tele_visit" };
   const live = await db
     .select({ id: opdQueueEntries.id }).from(opdQueueEntries)
     .where(and(eq(opdQueueEntries.encounterId, encounter.id), inArray(opdQueueEntries.status, [...BENCH_STATUSES])))
@@ -175,6 +182,8 @@ export async function listBench(
       without this it would sit on the bench as a row with no ✓ that no save could ever clear.
     */
     if (encounter.patientAbsentAt !== null) continue;
+    // Owner 2026-10-09 — a tele-call is nobody at the bay: its entry is born `waiting` and is never the bench's.
+    if (encounter.consultMode === "tele") continue;
     const doctor = doctorById.get(session.doctorId);
     if (doctor === undefined) continue;
     const state = (entry.benchState ?? null) as BenchState | null;

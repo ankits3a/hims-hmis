@@ -109,6 +109,10 @@ describe("ABDM S3 e2e — the hospital as HIU", () => {
     await request(app.getHttpServer()).get(`/abdm/hiu/patients/${fx.patientId}/records`).set(as(clerk.token)).expect(403);
   });
 
+  // The route reads the REAL clock, so the artefact's erase date must be ahead of it — the helper's
+  // fixed default (2026-10-10) turned this test red on that date.
+  const ERASE_AT = new Date(Date.now() + 30 * 86_400_000).toISOString();
+
   it("JWT callbacks → the push over HTTP with NO Authorization → the read, grouped and audited → REVOKED deletes it; a retried callback is handled once", async () => {
     await request(app.getHttpServer()).post("/abdm/hiu/consent-requests").set(as(doctor.token)).send({ encounterId: fx.encC }).expect(201);
     await callback("/consent/request/on-init", onInitBody(last(HIU_PATHS.consentInit).requestId, "cr-e2e")).expect(202);
@@ -116,7 +120,7 @@ describe("ABDM S3 e2e — the hospital as HIU", () => {
     await callback("/consent/request/notify", notifyBody("GRANTED", "cr-e2e", ["artefact-e2e"]), "notify-once").expect(202);
     await callback("/consent/request/notify", notifyBody("GRANTED", "cr-e2e", ["artefact-e2e"]), "notify-once").expect(202); // ABDM's retry
     expect(fake.hiuGateway.calls(HIU_PATHS.consentFetch)).toHaveLength(fetchesBefore + 1);
-    await callback("/consent/on-fetch", onFetchBody(last(HIU_PATHS.consentFetch).requestId, consentDetail(fake, { consentId: "artefact-e2e" }))).expect(202);
+    await callback("/consent/on-fetch", onFetchBody(last(HIU_PATHS.consentFetch).requestId, consentDetail(fake, { consentId: "artefact-e2e", eraseAt: ERASE_AT }))).expect(202);
     const hi = last(HIU_PATHS.hiRequest);
     await callback("/health-information/on-request", onHiRequestBody(hi.requestId, "txn-e2e")).expect(202);
     // a callback without ABDM's JWT is refused at the guard

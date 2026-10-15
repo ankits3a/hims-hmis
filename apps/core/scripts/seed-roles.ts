@@ -904,6 +904,23 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * not make the rota (the MS does), for the reason the owner does not write prescriptions.
        */
       "roster.read",
+      /**
+       * OWNER, 2026-10-09 — "nickname-Undo permission for owner role: yes".
+       *
+       * The Learning page in the staff app lists the medicine nicknames the suggestion system learned
+       * this week; taking one back (and putting it back) rides `opd.masters.manage`, the gate the two
+       * routes have carried since they shipped (decisions 0051, 0055). This role did not hold it, so
+       * the owner's own list had no Undo. No existing owner grant means "decide what the suggestion
+       * system has learned", so the routes' gate is NOT widened; the string is granted instead.
+       *
+       * IT OPENS MORE THAN THE UNDO, and that is said here rather than discovered: the same string
+       * guards the rest of OPD masters — departments, rooms, doctors and their schedules and leaves,
+       * the look-alike pairs, the voice settings, the vocabulary map. Acceptable: he is the owner.
+       * `opd.masters.read` is NOT added (nothing on the phone needs it), nor `opd.config.manage`.
+       * The grant is a capability only: seeding it writes one `role_permissions` row, flips no
+       * clinical gate and switches nothing on — nickname learning stays off until its own switch.
+       */
+      "opd.masters.manage",
       // PHARMACY P17 — the Schedule H1 register, and its unredacted copy for an inspector: the
       // licensee answers for the register.
       "pharmacy.register.read",
@@ -924,11 +941,28 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY P6 (patient messages) — the owner contracts the SMS / WhatsApp provider, so the owner may
       // record the ids its portals issue and read what was sent. DEFAULT — owner may change.
       "pharmacy.messages.manage",
+      // STAFF ATTENDANCE (owner 2026-10-09: "The owner and College+hospital attandance committe can
+      // access it inside their app") — everyone's attendance from the attendance machine, including
+      // the machine-listed people who have no login here.
+      "attendance.all.read",
+      // COPILOT LEDGER E0.1 (decision 0064, owner-approved spec 2026-10-10) — the copilot's health
+      // page: counts, routes and timings for a day. Aggregate only; it names nobody.
+      "copilot.health.read",
+      // COPILOT HALT E0.3 (plan, decision 0064; built overnight 2026-10-11, awaiting owner review) —
+      // the owner throws and clears every halt, and is the ONLY one who may clear a global halt.
+      "copilot.halt.set", "copilot.halt.clear", "copilot.halt.clear_global",
+      // LAB NUMBERS (owner 2026-10-13, #768) — the lab's counts and turnaround times. Aggregate only; names nobody.
+      "lab.metrics.read",
+      // HOSPITAL NUMBERS (owner 2026-10-13, #777) — imaging's and the pharmacy's counts, amounts and times. Aggregate only.
+      "radiology.metrics.read", "pharmacy.metrics.read",
     ],
   },
   {
     roleKey: "medical_superintendent",
     permissions: [
+      // STAFF ATTENDANCE (owner 2026-10-09: "the rules doesn't apply to owner/admin/superitendent/
+      // Unit head/committee") — the superintendent is among those who see everyone's attendance in full.
+      "attendance.all.read",
       // OWNER 2026-10-02 — the physician's review of a drug monograph the pharmacy wrote (Drugs and
       // Therapeutics Committee practice). The pharmacy holds `formulary.manage` and NOT this: the
       // reviewer is never the department that wrote the text.
@@ -1060,7 +1094,14 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // 20-U U6 (register I22) — and `roster.read`: the who-is-on board is where a ward flags a wrong
   // name on duty ("this is wrong"), and the duty manager is the person that flag is for. A READ: the
   // duty manager still drafts, publishes and approves nothing on a roster.
-  { roleKey: "duty_manager", permissions: ["auth.temp_role.grant", "roster.read"] },
+  //
+  // COPILOT HALT E0.3 (plan: "act scope: owner or duty manager clears — a false 2 a.m. halt must not
+  // block till morning") — the duty manager may halt the copilot and clear a read/act/draft halt, and
+  // reads the health page where those buttons are. Never a global clear: that is the owner's alone.
+  {
+    roleKey: "duty_manager",
+    permissions: ["auth.temp_role.grant", "roster.read", "copilot.health.read", "copilot.halt.set", "copilot.halt.clear"],
+  },
   /**
    * ═══ PLAN 07c T9 / DD14 — OWNER RULING 2026-08-29: ONE NAMED PERSON MAY OPEN THE ROWS ═══
    *
@@ -1442,6 +1483,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "orders.read",
       "orders.cancel",
       "billing.credit.extend",
+      // LAB NUMBERS (owner 2026-10-13, #768) — the lab head reads the lab's counts and turnaround times.
+      "lab.metrics.read",
     ],
   },
   {
@@ -1554,6 +1597,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "radiology.definitions.read",
       /** 18-S RS5 — the contrast injection and reaction (split off `radiology.acquire`). */
       "radiology.contrast.record",
+      /** HOSPITAL NUMBERS (owner 2026-10-13, #777) — the department head reads imaging's counts and turnaround times. */
+      "radiology.metrics.read",
       /**
        * 18-S RS5 T2 — the radiologist is the approver of `imaging_gate_override`, the prep bay's
        * "please override". The approvals spine's reachability invariant (every approver role holds
@@ -1829,6 +1874,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // copied). DEFAULT — owner may change.
       "pharmacy.reports.read",
       "pharmacy.reports.margin",
+      // HOSPITAL NUMBERS (owner 2026-10-13, #777) — the in-charge reads the pharmacy's numbers tab. DEFAULT — owner may change.
+      "pharmacy.metrics.read",
       // PHARMACY P6 — the pharmacist in charge holds the controlled-drug cabinet's key, witnesses, and records
       // its licences and the doctors trained to prescribe a narcotic drug. DEFAULT — owner may change.
       "pharmacy.ndps.custody",
@@ -1904,6 +1951,30 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "radiology.definitions.read",
     ],
   },
+  /**
+   * STAFF ATTENDANCE (owner 2026-10-09) — THE ATTENDANCE COMMITTEE. It holds `attendance.all.read`
+   * and NOTHING else: opening the app, one's own attendance and one's own notices need no
+   * permission at all. A meeting request about a "Confirm" day is sent to this role's holders.
+   * NOBODY is assigned to it here or in any seed — the owner assigns its members himself.
+   */
+  { roleKey: "attendance_committee", permissions: ["attendance.all.read"] },
+  /**
+   * COPILOT LEDGER E0.1 (decision 0064, owner-approved spec 2026-10-10, D2) — THE COPILOT STEWARD.
+   * Plan §5 names the quality manager as steward: the monthly name sample (G6c), the eval refresh
+   * and the halt drill. No quality role existed, so this one is minted holding the health read and
+   * nothing else. NOBODY is assigned to it by any seed — the owner names the steward.
+   */
+  // COPILOT HALT E0.3 — and throws the halt switch: the steward runs the monthly halt drill (G6d).
+  { roleKey: "quality_manager", permissions: ["copilot.health.read", "copilot.halt.set"] },
+  /**
+   * COPILOT LEDGER E0.1 (D2) — IT reads the copilot's health too (latency, failures, the cost meter
+   * to come). `admin`'s `auth.*` set is `seed:admin`'s to write (GRANTED_BY_OTHER_SEEDS); this row
+   * adds the one non-`auth` string, so `fullAdministrators` (which counts `auth.*` only) is unchanged.
+   */
+  // COPILOT HALT E0.3 — IT may halt a misbehaving copilot; clearing is the owner's or the duty manager's.
+  // LAB NUMBERS (owner 2026-10-13, #768) — admin reads the lab's counts and turnaround times too (owner's request).
+  // HOSPITAL NUMBERS (owner 2026-10-13, #777) — and imaging's and the pharmacy's (owner: "not just admin but owner").
+  { roleKey: "admin", permissions: ["copilot.health.read", "copilot.halt.set", "lab.metrics.read", "radiology.metrics.read", "pharmacy.metrics.read"] },
 ];
 
 /**
@@ -2160,6 +2231,10 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   // PHARMACY STAGE D5 — held IN ADDITION to a clinical role (DECIDED 2026-09-28, stage D doc; ICMR AMSP 2018).
   antimicrobial_steward: "Antimicrobial Steward (held with a clinical role; approves Reserve and restricted antimicrobials, never their own prescription)",
   // 18-S RS8b — the title names the separation: the resident's signature is not a final report.
+  // COPILOT LEDGER E0.1 — the steward (plan §5) and the IT administrator `seed:admin` creates.
+  quality_manager: "Quality Manager (copilot steward; reads the copilot's health page)",
+  admin: "Administrator",
+  attendance_committee: "Attendance Committee (reads everyone's attendance from the attendance machine; handles meeting requests)",
   radiology_resident: "Radiology Resident (drafts, issues prelims, calls criticals; signs for a consultant's co-sign — publishes nothing alone)",
 };
 

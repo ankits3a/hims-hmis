@@ -109,6 +109,8 @@ function within<T>(ms: number, run: Promise<T>, otherwise: T): Promise<T> {
 }
 
 export function devicePush(): PushPhone {
+  // iPhone (owner 2026-10-08): dormant in this version WHATEVER the build flag says — the server sends through
+  // Firebase only and the iPhone build carries no push entitlement (app.config.ts, `withoutApplePush`).
   if (Platform.OS !== "android" || !PUSH_IN_BUILD) return OFF;
   const N = load();
   if (N === null) return OFF;

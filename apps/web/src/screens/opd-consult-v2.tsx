@@ -8,12 +8,14 @@ import { LastVisitCard } from "../components/last-visit";
 import { GuardianCard } from "../components/patient-absent";
 import { TermInput, ownTerms } from "./opd-consult-suggest";
 import { clearReminder, fetchDoctorStock, fetchReminder, putReminder, referInternally } from "../lib/opd-api";
+import { QuickLabReports } from "./lab-quick-reports";
 import { briefRefill, briefResults, fetchPatientDispenses, fetchPatientImaging, fetchPatientResults, shortDay } from "../lib/brief-history";
 import { eyeTextOf } from "../lib/eye-line";
 import type { Eye } from "../lib/eye-line";
 import type {
   WireDoctorStock, WireExamFinding, WireRxHistoryItem, WireTimelineItem, WireVitals,
 } from "../lib/opd-api";
+import { dateLocale } from "../lib/date-locale";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -320,6 +322,10 @@ export function PatientBrief({ encounterId, patientId, patientName, onStart, sta
                 </li>
               ))}
             </ul>
+            {/* Decision 0061 — the lab's quick reports, labelled unsigned, never mixed into the signed lines above. */}
+            <div style={{ marginTop: 10 }}>
+              <QuickLabReports patientId={patientId} compact />
+            </div>
           </div>
           <div>
             <div className="tag">{t("opdConsultV2.onNow")}</div>
@@ -911,7 +917,7 @@ function PastVisitSections({ encounterId }: { encounterId: string }): React.Reac
 /** "2026-09-18" → "18 Sep 2026", the way a doctor reads a date (owner's walk, 2026-09-23). */
 export function fmtDay(iso: string): string {
   const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString(dateLocale(undefined, "en-GB"), { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 }
 
 export function HistoryBrowser({ visits, currentEncounterId }: {

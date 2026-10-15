@@ -1,4 +1,7 @@
-import { Body, Controller, Get, HttpCode, Inject, Param, Post, Put, Query } from "@nestjs/common";
+import { Body, Controller, ForbiddenException, Get, HttpCode, Inject, Param, Post, Put, Query } from "@nestjs/common";
+import type { StaffToday } from "@hmis/contracts";
+import { hasPermission } from "../../kernel/auth/permissions";
+import { staffToday } from "./staff-today";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { RosterError } from "./errors";
@@ -71,6 +74,24 @@ export class RosterBoardController {
         // the last scheduled print, never a promise; additive.
         lastPrint: await lastBoardPrint(this.db),
       };
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * THE OWNER'S STAFF PAGE IN THE STAFF APP (owner 2026-10-09) — `staff-today.ts`: how many are on
+   * duty now, who is on approved leave today (names only), the board's gaps, and the cover and leave
+   * requests still waiting. Read-only. `roster.read` is every doctor's; a list of who is away is the
+   * hospital's figures, so the reader must ALSO hold `staff.reports.read` (the owner, the Medical
+   * Superintendent, the staff auditor, the front-office supervisor) and is refused by that name.
+   */
+  @Get("staff-today")
+  @RequirePermission("roster.read", "hospital")
+  async staffTodayRoute(@CurrentActor() actor: Actor): Promise<StaffToday> {
+    if (actor.type !== "user" || !(await hasPermission(this.db, actor.id, "staff.reports.read", "hospital"))) {
+      throw new ForbiddenException("missing permission staff.reports.read");
+    }
+    try {
+      return await staffToday(this.db, actor, new Date());
     } catch (e) { toHttp(e); }
   }
 

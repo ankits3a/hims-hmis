@@ -255,24 +255,13 @@ function emptySide(): SideTotals {
   return { count: 0, grossPaise: 0, discountPaise: 0, taxablePaise: 0, cgstPaise: 0, sgstPaise: 0, roundingPaise: 0, netPaise: 0 };
 }
 
-export async function salesRegister(
-  db: Db, actor: Actor, input: ReportInput & { groupBy?: string }, now: Date = new Date(),
-): Promise<SalesRegister> {
-  await requireReportPermission(db, actor, REPORTS_READ, "the sales register");
-  const groupBy = (input.groupBy ?? "document") as SalesGroupBy;
-  if (!SALES_GROUPS.includes(groupBy)) throw new PharmacyError("invalid_range", `"${String(input.groupBy)}" is not a way to group the register (${SALES_GROUPS.join(", ")})`);
-  const range = reportRange(input.preset, reportToday(now), input);
-  const withMargin = await mayReadMargin(db, actor);
-  const store = await storeFilter(db, input.storeCode);
-  const p = await loadPeriod(db, range.from, range.to, store.id);
-
-  const itemIds = [...new Set([...p.docs.values()].flatMap((d) => d.lines.map((l) => l.itemId)))];
-  const batchIds = [...new Set([...p.docs.values()].flatMap((d) => d.lines.map((l) => l.batchId)))];
-  const [items, batches, payments, patients, operators] = await Promise.all([
-    itemsByIds(db, itemIds), batchesByIds(db, batchIds), invoicePayments(db, p.sales.map((s) => s.id)),
-    patientNames(db, actor, [...p.heads.values()].map((h) => h.patientId)),
-    userNames(db, [...[...p.docs.values()].map((d) => d.operatorId), ...p.refunds.map((n) => n.issuedBy)].filter((id) => id !== "")),
-  ]);
+/**
+ * #777 — the register's two line readers, lifted out of `salesRegister` so the hospital-numbers read
+ * (`pharmacySalesFigures`) folds the SAME lines the register prints and cannot drift from it.
+ */
+function lineReaders(
+  p: Period, items: Awaited<ReturnType<typeof itemsByIds>>, batches: Awaited<ReturnType<typeof batchesByIds>>, withMargin: boolean,
+): { saleLinesOf: (invoiceId: string) => SalesRegisterLine[]; refundLinesOf: (note: CreditNoteRead) => SalesRegisterLine[] } {
   const costOf = (batchId: string, qty: number): number => qty * (batches.get(batchId)?.landedCostPaise ?? 0);
 
   /** A register line per sale line: its main invoice line plus its pack residue, if any. */
@@ -321,6 +310,29 @@ export async function salesRegister(
     }
     return [...byLine.values()].map((l) => withProfit(l, costOf(l.batchId, l.qtyBase)));
   };
+
+  return { saleLinesOf, refundLinesOf };
+}
+
+export async function salesRegister(
+  db: Db, actor: Actor, input: ReportInput & { groupBy?: string }, now: Date = new Date(),
+): Promise<SalesRegister> {
+  await requireReportPermission(db, actor, REPORTS_READ, "the sales register");
+  const groupBy = (input.groupBy ?? "document") as SalesGroupBy;
+  if (!SALES_GROUPS.includes(groupBy)) throw new PharmacyError("invalid_range", `"${String(input.groupBy)}" is not a way to group the register (${SALES_GROUPS.join(", ")})`);
+  const range = reportRange(input.preset, reportToday(now), input);
+  const withMargin = await mayReadMargin(db, actor);
+  const store = await storeFilter(db, input.storeCode);
+  const p = await loadPeriod(db, range.from, range.to, store.id);
+
+  const itemIds = [...new Set([...p.docs.values()].flatMap((d) => d.lines.map((l) => l.itemId)))];
+  const batchIds = [...new Set([...p.docs.values()].flatMap((d) => d.lines.map((l) => l.batchId)))];
+  const [items, batches, payments, patients, operators] = await Promise.all([
+    itemsByIds(db, itemIds), batchesByIds(db, batchIds), invoicePayments(db, p.sales.map((s) => s.id)),
+    patientNames(db, actor, [...p.heads.values()].map((h) => h.patientId)),
+    userNames(db, [...[...p.docs.values()].map((d) => d.operatorId), ...p.refunds.map((n) => n.issuedBy)].filter((id) => id !== "")),
+  ]);
+  const { saleLinesOf, refundLinesOf } = lineReaders(p, items, batches, withMargin);
 
   const rows: SalesRegisterRow[] = [];
   for (const h of p.sales) {
@@ -556,6 +568,88 @@ export async function hsnReport(db: Db, actor: Actor, input: ReportInput, now: D
   return {
     from: range.from, to: range.to, preset: range.preset, storeCode: input.storeCode ?? null, rows,
     totals: { qty: sum("qty"), taxablePaise: sum("taxablePaise"), cgstPaise: sum("cgstPaise"), sgstPaise: sum("sgstPaise"), igstPaise: sum("igstPaise"), taxPaise: sum("taxPaise"), valuePaise: sum("valuePaise") },
+  };
+}
+
+// ═══════════════════════════════════ the period, in totals (the owner's app page) ═══════════════════════════════════
+
+export type SalesSplitRow = { key: SaleSource; bills: number; netPaise: number };
+/**
+ * The period's pharmacy bills as the register reads them (the same `loadPeriod`), folded to totals:
+ * how many bills, their net payable, the refunds issued in the period, and the same by where the sale
+ * came from — a prescription dispensed from the counter's queue, a walk-in sale, a downtime entry.
+ * No row, no patient. The caller has already been gated.
+ */
+export async function pharmacySalesTotals(db: Db, from: string, to: string): Promise<{ bills: number; netPaise: number; refundsPaise: number; split: SalesSplitRow[] }> {
+  const p = await loadPeriod(db, from, to, null);
+  const by = new Map<SaleSource, SalesSplitRow>();
+  for (const h of p.sales) {
+    const key = p.docs.get(h.id)?.source ?? "walk_in";
+    const row = by.get(key) ?? { key, bills: 0, netPaise: 0 };
+    row.bills += 1; row.netPaise += h.netPayablePaise;
+    by.set(key, row);
+  }
+  const order: SaleSource[] = ["dispense", "walk_in", "downtime"];
+  return {
+    bills: p.sales.length,
+    netPaise: p.sales.reduce((n, h) => n + h.netPayablePaise, 0),
+    refundsPaise: p.refunds.reduce((n, r) => n + r.netPaise, 0),
+    split: order.filter((k) => by.has(k)).map((k) => by.get(k)!),
+  };
+}
+
+// ═══════════════════════════════════ the period, for the hospital numbers (#777) ═══════════════════════════════════
+
+export type SalesFigureItem = { itemId: string; itemCode: string; itemName: string; qtyBase: number; amountPaise: number };
+export type SalesFigures = {
+  bills: number; salesPaise: number; returnsPaise: number; netPaise: number;
+  /** By net value (sales less the period's returns), highest first, as the office's top-selling list ranks them. */
+  topItems: SalesFigureItem[];
+  /** Only when the caller may read margin: the register's own net taxable, cost, profit and margin. */
+  margin: { revenuePaise: number; costPaise: number; profitPaise: number; marginBps: number | null } | null;
+};
+export const SALES_FIGURES_TOP = 10;
+
+/**
+ * #777 — THE PHARMACY TAB OF HOSPITAL NUMBERS, folded from the register's own period and lines
+ * (`loadPeriod`, `lineReaders`), so every figure equals the sales register's for the same days:
+ * bills and sales are its `totals.sales.count` / `.netPaise`, returns `totals.refunds.netPaise`, net
+ * `totals.net.netPaise`; an item's amount and quantity are its "by item" row (`netPaise`, `qtyBase`);
+ * margin is its `totals.profitPaise` over net taxable. NO PATIENT is read: the caller is gated
+ * already, and a count needs no name.
+ */
+export async function pharmacySalesFigures(db: Db, from: string, to: string, withMargin: boolean): Promise<SalesFigures> {
+  const p = await loadPeriod(db, from, to, null);
+  const itemIds = [...new Set([...p.docs.values()].flatMap((d) => d.lines.map((l) => l.itemId)))];
+  const batchIds = [...new Set([...p.docs.values()].flatMap((d) => d.lines.map((l) => l.batchId)))];
+  const [items, batches] = await Promise.all([itemsByIds(db, itemIds), batchesByIds(db, batchIds)]);
+  const { saleLinesOf, refundLinesOf } = lineReaders(p, items, batches, withMargin);
+
+  const byItem = new Map<string, SalesFigureItem>();
+  let costPaise = 0;
+  const fold = (lines: SalesRegisterLine[], sign: 1 | -1): void => {
+    for (const l of lines) {
+      const g = byItem.get(l.itemId) ?? { itemId: l.itemId, itemCode: l.itemCode, itemName: l.itemName, qtyBase: 0, amountPaise: 0 };
+      g.qtyBase += sign * l.qtyBase;
+      g.amountPaise += sign * l.netPaise;
+      byItem.set(l.itemId, g);
+      costPaise += sign * (l.costPaise ?? 0);
+    }
+  };
+  for (const h of p.sales) fold(saleLinesOf(h.id), 1);
+  for (const n of p.refunds) fold(refundLinesOf(n), -1);
+
+  const salesPaise = p.sales.reduce((n, h) => n + h.netPayablePaise, 0);
+  const returnsPaise = p.refunds.reduce((n, r) => n + r.netPaise, 0);
+  const revenuePaise = p.sales.reduce((n, h) => n + h.taxableBasePaise, 0) - p.refunds.reduce((n, r) => n + r.taxableBasePaise, 0);
+  return {
+    bills: p.sales.length, salesPaise, returnsPaise, netPaise: salesPaise - returnsPaise,
+    topItems: [...byItem.values()].filter((i) => i.amountPaise > 0)
+      .sort((a, b) => b.amountPaise - a.amountPaise || b.qtyBase - a.qtyBase || a.itemName.localeCompare(b.itemName))
+      .slice(0, SALES_FIGURES_TOP),
+    margin: withMargin
+      ? { revenuePaise, costPaise, profitPaise: revenuePaise - costPaise, marginBps: bps(revenuePaise - costPaise, revenuePaise) }
+      : null,
   };
 }
 

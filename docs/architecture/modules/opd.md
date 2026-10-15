@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/opd/`
 
 - **Depends on modules:** `billing`, `cds`, `formulary`, `materials`, `patients`, `roster`
-- **Used by modules:** `abdm`, `billing`, `lab`, `pharmacy`, `radiology`
+- **Used by modules:** `abdm`, `billing`, `lab`, `ordering`, `pharmacy`, `radiology`
 - **Kernel used:** `alerts`, `auth`, `config`, `copilot`, `crypto`, `db`, `desk`, `episodes`, `events`, `inference`, `modules`, `phi`, `printing`, `realtime`, `report`, `resources`, `search`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
@@ -40,6 +40,7 @@ Source: `apps/core/src/modules/opd/`
   - types: `AdvisedTest`, `ConsultStartGuard`, `VitalsStartGuard`
 - `encounters.ts`
   - `LAB_DEPARTMENT_CODE`
+  - `LAB_VISIT_TYPE`
   - `PHARMACY_VISIT_TYPE`
   - `counterState(db: Db, encounterId: string): Promise<CounterState | null>`
   - `findVisitByToken(db: Db, filter: { serviceDate: string; tokenNo: number }): Promise<EncounterRow | null>`
@@ -47,8 +48,8 @@ Source: `apps/core/src/modules/opd/`
   - `getVisit(db: Db, actor: Actor, encounterId: string): Promise<{ encounter: EncounterRow; queueEntries: QueueEntryRow[]; vitals: VitalsRow[];…`
   - `joinQueue(db: Db, actor: Actor, encounterId: string, now: Date = new Date()): Promise<JoinQueueResult>`
   - `listVisits(db: Db, filter: { status?: OpdVisitState; departmentId?: string; doctorId?: string; serviceDate?: string; patientId?: string; ty…`
-  - `openLabWalkin(db: Db, actor: Actor, input: OpenLabWalkinInput, now: Date = new Date()): Promise<OpenVisitResult>`
-  - `openLabWalkinInTx(tx: Tx, actor: Actor, input: OpenLabWalkinInput & { chainIds: string[] }, now: Date): Promise<OpenVisitResult>`
+  - `openLabWalkin(db: Db, actor: Actor, input: OpenLabWalkinInput, now: Date = new Date()): Promise<OpenVisitDeferredResult>`
+  - `openLabWalkinInTx(tx: Tx, actor: Actor, input: OpenLabWalkinInput & { chainIds: string[] }, now: Date): Promise<OpenVisitDeferredResult>`
   - `openPharmacyVisitInTx(tx: Tx, actor: Actor, input: { patientId: string; serviceDate: string }, now: Date): Promise<EncounterRow>`
   - `patientTimeline(db: Db, actor: Actor, patientId: string, limit = 50): Promise<TimelineItem[]>`
   - `reviewAnchorFor(db: Db | Tx, encounter: { patientId: string; departmentId: string | null; visitType: string; openedAt: Date; referredFromEn…`
@@ -88,6 +89,8 @@ Source: `apps/core/src/modules/opd/`
   - `dangerFlagSchema`
   - `dayReportPatientsListed`
   - `doctorLeaveScheduled`
+  - `flowFindingDismissed`
+  - `flowFindingTried`
   - `paperPrescriptionTranscribed`
   - `patientCheckedIn`
   - `prescriptionIssued`
@@ -102,12 +105,16 @@ Source: `apps/core/src/modules/opd/`
   - `queueSkipped`
   - `referralIssued`
   - `rxQrSignatureFailed`
+  - `teleBillFailed`
+  - `teleVisitsOpened`
   - `visitAbandoned`
   - `visitMovedDepartment`
   - `visitOpened`
   - `visitPatientAbsent`
+  - `visitPatientAbsentUndone`
   - `visitReclassified`
   - `visitTransferred`
+  - `visitVitalsMoved`
   - `vitalsAmended`
   - `vitalsDangerFlagged`
   - `vitalsRecheckDemanded`
@@ -117,6 +124,8 @@ Source: `apps/core/src/modules/opd/`
 - `fhir.ts`
   - `EYE_TEXT`
   - types: `Eye`, `RxLine`, `TaperStep`
+- `flow-learning.ts`
+  - `runFlowLearning(db: Db, enabled: boolean, now: Date = new Date()): Promise<FlowLearningReport>`
 - `manifest.ts`
   - `opdManifest: ModuleManifest`
 - `masters.ts`
@@ -128,6 +137,9 @@ Source: `apps/core/src/modules/opd/`
   - types: `DuplicateCandidate`
 - `opd.module.ts`
   - `class OpdModule`
+- `owner-reads.ts`
+  - `ownerAppointments(db: Db, range: DayRange, compare: DayRange | null): Promise<OwnerAppointments>`
+  - `ownerLearning(db: Db, actor: Actor, on: boolean, now: Date = new Date()): Promise<OwnerLearning>`
 - `prescription-drafts.ts`
   - `discardDraft(db: Db, actor: Actor, encounterId: string, now: Date = new Date()): Promise<DraftRow | null>`
   - `getPendingDraft(db: Db | Tx, encounterId: string): Promise<DraftRow | null>`
@@ -180,20 +192,21 @@ Source: `apps/core/src/modules/opd/`
 
 ## Tables (`kernel/db/schema/opd.ts`)
 
-`cds_aliases`, `cds_doctor_prefs`, `cds_rx_lines`, `opd_advice_templates`, `opd_appointments`, `opd_complaint_concepts`, `opd_complaint_term_usage`, `opd_complaint_terms`, `opd_config`, `opd_consult_layouts`, `opd_department_tokens`, `opd_departments`, `opd_doctor_leaves`, `opd_doctor_schedules`, `opd_doctors`, `opd_encounter_diagnoses`, `opd_encounters`, `opd_lasa_pairs`, `opd_patient_reminders`, `opd_prescription_drafts`, `opd_prescriptions`, `opd_queue_entries`, `opd_queue_sessions`, `opd_rx_sets`, `opd_section_records`, `opd_suggestion_events`, `opd_term_misses`, `opd_vitals`, `opd_voice_settings`, `opd_voice_usage`
+`cds_aliases`, `cds_doctor_prefs`, `cds_rx_lines`, `opd_advice_templates`, `opd_appointments`, `opd_complaint_concepts`, `opd_complaint_term_usage`, `opd_complaint_terms`, `opd_config`, `opd_consult_layouts`, `opd_department_tokens`, `opd_departments`, `opd_doctor_leaves`, `opd_doctor_schedules`, `opd_doctors`, `opd_encounter_diagnoses`, `opd_encounters`, `opd_flow_baselines`, `opd_flow_findings`, `opd_lasa_pairs`, `opd_patient_reminders`, `opd_prescription_drafts`, `opd_prescriptions`, `opd_queue_entries`, `opd_queue_sessions`, `opd_rx_sets`, `opd_section_records`, `opd_suggestion_events`, `opd_term_misses`, `opd_vitals`, `opd_voice_settings`, `opd_voice_usage`
 
-Foreign keys into: `patients`, `resources`
+Foreign keys into: `billing`, `patients`, `resources`
 
-## HTTP routes (154)
+## HTTP routes (165)
 
 - `opd-advice.controller.ts` — 3: `/opd/advice-templates`
 - `opd-cds.controller.ts` — 8: `/opd/cds`
 - `opd-masters.controller.ts` — 24: `/opd/config`, `/opd/definition`, `/opd/departments`, `/opd/doctors`, `/opd/layouts`, `/opd/leaves`, `/opd/me`, `/opd/rooms`
+- `opd-pace.controller.ts` — 1: `/me/performance`
 - `opd-paper.controller.ts` — 11: `/opd/paper`
 - `opd-phone-consult.controller.ts` — 20: `/opd/consult`, `/opd/rx-sets`, `/opd/visits`
-- `opd-queue.controller.ts` — 35: `/opd/patients`, `/opd/prescriptions`, `/opd/queues`, `/opd/visits`
-- `opd-reports.controller.ts` — 7: `/opd/reports`
-- `opd-visits.controller.ts` — 41: `/opd/appointments`, `/opd/bench`, `/opd/continuity`, `/opd/patients`, `/opd/scan`, `/opd/slips`, `/opd/slots`, `/opd/triage`, `/opd/visits`, `/opd/vitals`, `/opd/walk-in`
+- `opd-queue.controller.ts` — 37: `/opd/patients`, `/opd/prescriptions`, `/opd/queues`, `/opd/visits`
+- `opd-reports.controller.ts` — 12: `/opd/reports`
+- `opd-visits.controller.ts` — 44: `/opd/appointments`, `/opd/bench`, `/opd/continuity`, `/opd/patients`, `/opd/scan`, `/opd/slips`, `/opd/slots`, `/opd/triage`, `/opd/visits`, `/opd/vitals`, `/opd/walk-in`
 - `opd-vocabulary.controller.ts` — 5: `/opd/vocabulary`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/opd`

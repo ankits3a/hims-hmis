@@ -1,4 +1,8 @@
-import { Body, Controller, Get, Inject, Post, Query } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Inject, Post, Query } from "@nestjs/common";
+import { rangeProblem } from "@hmis/contracts";
+import type { OwnerPharmacy } from "@hmis/contracts";
+import { istDateOf } from "./config";
+import { ownerPharmacy } from "./owner-summary";
 import { z } from "zod";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
@@ -87,6 +91,26 @@ export class PharmacyReportsController {
   @Get("credit-notes")
   async creditNotes(@CurrentActor() actor: Actor, @Query() q: RangeQuery): Promise<CreditNoteRegister> {
     try { return await creditNoteRegister(this.db, actor, rangeOf(q), new Date()); } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * THE OWNER'S PHARMACY PAGE IN THE STAFF APP (owner 2026-10-09) — `owner-summary.ts`: totals for the
+   * IST days `from`..`to` (today when absent; at most 92, never the future) and a comparison range
+   * `cfrom`..`cto`. THE ONE ROUTE HERE NOT ON `pharmacy.reports.read`: it is the hospital's figures
+   * (`staff.reports.read` — the owner and the Medical Superintendent), counts for whoever holds that,
+   * and RUPEES only for a reader who also holds the pharmacy's reports. No patient, no bill number.
+   */
+  @RequirePermission("staff.reports.read", "hospital")
+  @Get("owner-summary")
+  async ownerSummary(@CurrentActor() actor: Actor, @Query() q: { from?: string; to?: string; cfrom?: string; cto?: string }): Promise<OwnerPharmacy> {
+    const now = new Date();
+    const today = istDateOf(now);
+    const from = q.from ?? q.to ?? today, to = q.to ?? q.from ?? today;
+    const bad = rangeProblem(from, to, today) ?? (q.cfrom === undefined && q.cto === undefined ? null : rangeProblem(q.cfrom, q.cto, today));
+    if (bad !== null) throw new BadRequestException({ message: `the range cannot be read: ${bad}`, code: "invalid_range" });
+    try {
+      return await ownerPharmacy(this.db, actor, { from, to }, q.cfrom === undefined ? null : { from: q.cfrom, to: q.cto! }, now);
+    } catch (e) { toHttp(e); }
   }
 
   @RequirePermission(REPORTS_READ, "hospital")

@@ -1,12 +1,18 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 import { fireEvent, render, screen } from "@testing-library/react-native";
-import { Linking } from "react-native";
+import { Linking, Platform } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { I18nProvider } from "../src/i18n";
 import { SeatHome } from "../src/screens/seat-home";
 import { SessionProvider, useSession } from "../src/session";
 import { apkUrl, checkForUpdate, parseLatest } from "../src/update";
+
+// THIS SUITE DESCRIBES THE ANDROID APP. jest-expo runs as an iPhone unless told otherwise, and on an
+// iPhone the update feed and the word "fingerprint" do not exist (__tests__/ios.test.tsx has its answers).
+const realOS = Platform.OS;
+beforeAll(() => { (Platform as { OS: string }).OS = "android"; });
+afterAll(() => { (Platform as { OS: string }).OS = realOS; });
 
 jest.mock("expo-secure-store", () => {
   const v: string | null = JSON.stringify({ token: "t1", username: "asha.devi" });

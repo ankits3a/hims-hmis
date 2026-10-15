@@ -165,6 +165,12 @@ export const pharmacyManifest: ModuleManifest = {
     "pharmacy.trays.check",
     /** STAGE D4 — set up an emergency tray, name its keepers and keep its list (item, par, expiry margin). The in-charge. */
     "pharmacy.trays.manage",
+    /**
+     * #777 (owner 2026-10-13) — the pharmacy tab of Hospital numbers (`GET /pharmacy/metrics`): bills, sales,
+     * returns, prescriptions dispensed, top items and goods received, aggregate only. Margin there still needs
+     * `pharmacy.reports.margin`. Held by `owner`, `admin` and `pharmacy_incharge`; any role may be granted it.
+     */
+    "pharmacy.metrics.read",
   ],
   /** T3 — D10: the Rx is at the counter before the patient is. Handler, worker install and census landed in the same commit. */
   subscriptions: [

@@ -99,3 +99,28 @@
   .pf .ev .r { white-space: normal; }
   .pf-drawer .grid2 { grid-template-columns: 1fr; }
 }
+
+/*
+ * OWNER 2026-10-11 — a history CARD (the Overview grid, the stacked Cards view) is narrower than the
+ * timeline, and a row that kept its visit number and "Open the visit" on the title's line squeezed the
+ * title to a few letters a line (owner's screenshot of the Visits card). In a card the title takes the
+ * whole first line and the row's right-hand items move under it.
+ */
+.pf .hv-card .ev { flex-wrap: wrap; row-gap: 2px; }
+.pf .hv-card .ev > div { flex: 1 1 calc(100% - 64px); min-width: 0; }
+.pf .hv-card .ev > div + .r { margin-left: 56px; }
+.pf .hv-card .ev .r { padding-left: 0; }
+.pf .hv-card .ev .r + .r { margin-left: auto; }
+
+/*
+ * Owner 2026-10-12 — the Appointments card said "Appointments" and then "Upcoming appointments" right under it,
+ * 18 px down: the heading twice. In a card the card's title names it; the upcoming rows need no second heading
+ * and the history heading shrinks to a sub-label. Drawn on its own (the list view, the Appointments tab) both
+ * headings stay as they were.
+ */
+.pf .pf-appt-h { margin: 18px 0 6px; font-size: 15px; font-weight: 600; }
+.pf .hv-card > .pf-appt-h { margin: 4px 0 0; font-size: 12.5px; font-weight: 600; color: var(--dim); }
+.pf .hv-card > .pf-appt-h.up { display: none; }
+/* The Lab card's quick-report block draws nothing when there are no quick reports; its empty box still took a
+   flex gap and a 10 px margin above the rows — the gap at the top of the Lab card. */
+.pf .hv-card .hv-ql:empty { display: none; }

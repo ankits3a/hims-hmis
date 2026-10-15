@@ -71,6 +71,15 @@ generated: { by: tools/arch/gen.mjs }
 | verb | path | controller |
 |---|---|---|
 | POST | `/copilot/ask` | `copilot/copilot.controller.ts` |
+| POST | `/copilot/confirm` | `copilot/copilot.controller.ts` |
+| POST | `/copilot/feedback` | `copilot/copilot.controller.ts` |
+| POST | `/copilot/halt/clear` | `copilot/halt.controller.ts` |
+| POST | `/copilot/halt` | `copilot/halt.controller.ts` |
+| GET | `/copilot/health` | `copilot/copilot.controller.ts` |
+| GET | `/copilot/notice` | `copilot/copilot.controller.ts` |
+| POST | `/copilot/notice` | `copilot/copilot.controller.ts` |
+| GET | `/copilot/setting` | `copilot/copilot.controller.ts` |
+| PUT | `/copilot/setting` | `copilot/copilot.controller.ts` |
 
 ## `desk`
 
@@ -81,6 +90,7 @@ generated: { by: tools/arch/gen.mjs }
 | GET | `/me/report.csv` | `desk/desk.controller.ts` |
 | GET | `/me/report` | `desk/desk.controller.ts` |
 | GET | `/me/team` | `desk/home.controller.ts` |
+| GET | `/me/waiting` | `desk/waiting.controller.ts` |
 | GET | `/staff/:userId/brief` | `desk/staff.controller.ts` |
 | POST | `/staff/:userId/drill` | `desk/staff.controller.ts` |
 | GET | `/staff/range` | `desk/staff.controller.ts` |
@@ -136,6 +146,14 @@ generated: { by: tools/arch/gen.mjs }
 | GET | `/print/jobs` | `printing/printing.controller.ts` |
 | POST | `/print/printed` | `printing/printing.controller.ts` |
 | POST | `/print/reprint` | `printing/printing.controller.ts` |
+
+## `reminders`
+
+| verb | path | controller |
+|---|---|---|
+| POST | `/reminders/:id/cancel` | `reminders/reminders.controller.ts` |
+| GET | `/reminders` | `reminders/reminders.controller.ts` |
+| POST | `/reminders` | `reminders/reminders.controller.ts` |
 
 ## `resources`
 

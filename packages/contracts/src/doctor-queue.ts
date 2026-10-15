@@ -7,7 +7,7 @@
  * changed); the phone reads the same path through `apps/mobile/src/doctor/rules.ts`. A rule changed
  * for the counter PC changes on the phone in the same commit.
  *
- * Nothing here DECIDES anything about a patient: who is callable, who is held for the bill, who may
+ * Nothing here DECIDES anything about a patient: who is callable, who may
  * be started or completed are the server's answers (`opd/queue.ts`, `opd/consultation.ts`). This file
  * only words and orders what the server sent.
  */
@@ -26,7 +26,6 @@ export type WireQueuePatient = {
  */
 export const SKIP_REASONS = ["absent", "stepped_out", "at_billing", "at_investigation", "not_ready", "other"] as const;
 export type WireSkipReason = (typeof SKIP_REASONS)[number];
-export type WireFeeStatus = "free" | "settled" | "credit" | "unsettled" | null;
 export type WireQueueEntryView = {
   id: string; seq: number; sessionId: string; encounterId: string; tokenNo: number;
   kind: "appointment" | "walk_in"; appointmentAt: string | null; status: string;
@@ -36,9 +35,15 @@ export type WireQueueEntryView = {
   parkedAt?: string | null; parkedBy?: string | null;
   skipReason?: WireSkipReason | null; skipNote?: string | null; skippedAt?: string | null;
   position: number | null; queueClass: string | null;
+  /**
+   * Owner 2026-10-09 — a tele-call. The doctor's line shows its slot time (`appointmentAt`) where a
+   * token number sits, and a phone icon; nothing about money ever rides on such a row. Optional: an
+   * older server sends none.
+   */
+  tele?: boolean;
   encounter: {
     id: string; patientId: string; visitType: string; dangerFlagged: boolean; status: string;
-    referredFromEncounterId?: string | null; feeBypassReason?: string | null; consultFeeOverrideReason?: string | null;
+    referredFromEncounterId?: string | null;
     /**
      * Owner 2026-10-07 — the guardian came with the reports; the patient did not, and no vitals were
      * taken. Same shape as `WirePatientAbsent` in `patient-absent.ts` (this file imports nothing).
@@ -47,16 +52,15 @@ export type WireQueueEntryView = {
     patientAbsent?: { relation: string; name: string | null; by: string; at: string } | null;
   };
   patient: WireQueuePatient | null;
-  feeStatus: WireFeeStatus;
 };
 export type WireQueueDoctor = { id: string; userId: string; displayName: string; code: string; departmentId: string; designation?: string | null };
 export type WireQueueSession = { id: string; doctorId: string; serviceDate: string; roomId: string | null; status: "not_started" | "in" | "out" | "closed" };
 export type WireQueueView = {
   session: WireQueueSession; doctor: WireQueueDoctor; ordered: WireQueueEntryView[];
   current: WireQueueEntryView | null; inConsult: WireQueueEntryView[];
-  left?: WireQueueEntryView[]; heldForPayment?: WireQueueEntryView[];
+  left?: WireQueueEntryView[];
   waitingVitals: number;
-  counts: { waiting: number; called: number; inConsult: number; done: number; left: number; heldForPayment?: number };
+  counts: { waiting: number; called: number; inConsult: number; done: number; left: number };
 };
 
 // ——— a row of the line ———
@@ -134,14 +138,6 @@ export function visitKind(e: Pick<WireQueueEntryView, "encounter">): "new" | "re
   if (typeof e.encounter.referredFromEncounterId === "string" && e.encounter.referredFromEncounterId !== "") return "referral";
   const v = e.encounter.visitType;
   return v === "revisit" || v === "renewal" ? v : "new";
-}
-
-/**
- * UNPAID is said only when the server said `unsettled`. `null` is "no status to report" and is not
- * unpaid (the wire's own note): a row the server declined to characterise is never stamped.
- */
-export function isUnpaid(e: Pick<WireQueueEntryView, "feeStatus">): boolean {
-  return e.feeStatus === "unsettled";
 }
 
 // ——— completing from a phone ———
@@ -422,4 +418,10 @@ export function shortDesignation(designation: string | null | undefined): string
 export function besideName(opts: { unit?: string | null; designation?: string | null }): string | null {
   const parts = [opts.unit ?? null, shortDesignation(opts.designation)].filter((x): x is string => x !== null && x !== "");
   return parts.length === 0 ? null : parts.join(" · ");
+}
+
+/** A tele-call's slot on the IST clock — "11:20" — the figure the doctor's line prints where a token sits. */
+export function teleSlotClock(iso: string | null | undefined): string {
+  if (iso == null) return "";
+  return new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
 }

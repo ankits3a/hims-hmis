@@ -4,9 +4,11 @@ import type { Handler } from "../events/subscriptions";
 import { SubscriptionBus } from "../events/subscriptions";
 import { runDispatchCycle } from "../events/dispatcher";
 import { runDueTimers } from "../workflow/timers";
+import { runDueReminders } from "../reminders/reminders";
 import { sweepExpiredTempRoles } from "../auth/temp-roles";
 import { sweepGuardianMajority } from "../../modules/patients/guardians";
 import { sweepAppointmentNoShows } from "../../modules/opd/appointments";
+import { openDueTeleVisits } from "../../modules/opd/tele";
 import { sweepQueueNudges } from "../../modules/opd/queue-nudges";
 import { sweepBatchExpiry } from "../../modules/materials";
 import { sweepLabNonReturn, sweepLabSla } from "../../modules/lab";
@@ -18,6 +20,7 @@ import { runReachLadder } from "../notify/reach";
 import type { ChannelAdapter, NotifyChannel } from "../notify/adapters";
 import { createEventPartitions } from "./partitions";
 import { retentionSweep } from "../retention/sweep";
+import { runCopilotAskPrune } from "../copilot/ledger";
 import { istDayString } from "../approvals/cumulative";
 import { sweepOverdueApprovals } from "../approvals/overdue";
 import { collectDeskProviders } from "../desk/registry";
@@ -28,7 +31,8 @@ import {
   sweepCriticalChaser, sweepImagingEscalations, sweepOverdueFollowups, sweepPeerSample, sweepUnreadWatchman,
 } from "../../modules/radiology";
 import { sweepOverdueQa } from "../../modules/aerb";
-import { runAliasJob } from "../../modules/opd";
+import { runAliasJob, runFlowLearning } from "../../modules/opd";
+import { syncAttendance } from "../../modules/attendance";
 import { collectResourceKinds } from "../resources/kinds";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
@@ -66,6 +70,8 @@ const RADIOLOGY_UNREAD_WATCHMAN_IST = "08:00";
 // clinic. Like its neighbours it is a code constant, not a deployment knob: WHAT retention does
 // is configurable (and off by default), WHEN it runs is a design decision.
 const RETENTION_SWEEP_IST = "01:15";
+/** E0.1 — the copilot ledger's own 180-day prune (owner ruling 2026-10-10, option a), after the sweep's slot. */
+const COPILOT_ASK_PRUNE_IST = "01:20";
 /**
  * PLAN 07c T8 / DD13 — the per-user daily rollup that the six-period briefs are served from.
  *
@@ -229,7 +235,8 @@ export function registerAllJobs(
    * (`proposeMedicineNicknames`, below). A parameter of its own rather than a wider `JobIntervals`:
    * it is not a cadence, and a census test that registers the grid has no reason to carry model
    * endpoints. Absent — every test that does not pass it — the job is registered, heartbeats, and
-   * does nothing, which is also exactly what it does with `ALIAS_PIPELINE_ENABLED` off.
+   * does nothing, which is also exactly what it does with `ALIAS_PIPELINE_ENABLED` off. The waits'
+   * learning reads its switch (`flowFindings.enabled`) from here too; absent, it runs (its default).
    */
   aliasConfig?: AppConfig,
 ): void {
@@ -240,10 +247,17 @@ export function registerAllJobs(
     every: intervals.workerDispatchIntervalMs,
     run: async (now) => { await runDispatchCycle(db, bus, { now }); },
   });
+  /*
+   * E1.2 (decision 0064, owner yes 2026-10-11) — personal reminders fire on THIS tick rather than as
+   * a job of their own: the 20 s cadence meets "within 60 s", and no new name moves the five job
+   * censuses (jobs.test, scheduler.test, worker-runtime e2e, alerts-parity, the prod alert rules).
+   * This job's staleness alert covers both. `finally`: a workflow timer that throws does not hold a
+   * person's reminder back a tick.
+   */
   scheduler.register({
     name: "runDueTimers",
     every: intervals.workerTimersIntervalMs,
-    run: async (now) => { await runDueTimers(db, now); },
+    run: async (now) => { try { await runDueTimers(db, now); } finally { await runDueReminders(db, now); } },
   });
   scheduler.register({
     name: "sweepExpiredTempRoles",
@@ -255,10 +269,24 @@ export function registerAllJobs(
     dailyIst: GUARDIAN_MAJORITY_IST,
     run: async (now) => { await sweepGuardianMajority(db, now); },
   });
+  /*
+    HOW LONG PATIENTS WAIT (owner 2026-10-09) — the waits' nightly learning rides this OPD job at 23:55
+    IST, AFTER the no-shows: the day's visits are done, and riding it adds no job, no census site and no
+    pool client. `FLOW_FINDINGS_ENABLED` (default true) switches it; it calls no outside service. A
+    failure is re-thrown with its own prefix so the heartbeat says which half failed — the no-shows
+    have already been swept by then.
+  */
   scheduler.register({
     name: "sweepAppointmentNoShows",
     dailyIst: APPOINTMENT_NO_SHOWS_IST,
-    run: async (now) => { await sweepAppointmentNoShows(db, now); },
+    run: async (now) => {
+      await sweepAppointmentNoShows(db, now);
+      try {
+        await runFlowLearning(db, aliasConfig?.flowFindings.enabled ?? true, now);
+      } catch (err) {
+        throw new Error(`flow learning: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
   });
   // PLAN 14 T8 / DD14 — the ELEVENTH job. It emits `batch.expiring` at the 90/60/30-day thresholds,
   // ONCE per batch per threshold (idempotent through `stock_batches.expiry_notified_thresholds`),
@@ -410,6 +438,18 @@ export function registerAllJobs(
         notifyRetainDays: intervals.notifyRetainDays,
       });
     },
+  });
+  /*
+    E0.1 (decision 0064) — THE COPILOT ASK PRUNE, owner ruling 2026-10-10 (option a). ALWAYS ON: it
+    does not read `retentionEnabled`, because ask rows are staff operational rows, not the patient
+    event records the inert retention sweep (owner ruling 6) and its legal holds govern. Census moved
+    by hand: jobs-count pins, the named arrays in `scheduler.test.ts` and `worker-runtime.e2e.test.ts`,
+    `alerts-parity.test.ts`, and `docker/prod/prometheus/alerts.yml`.
+  */
+  scheduler.register({
+    name: "pruneCopilotAsks",
+    dailyIst: COPILOT_ASK_PRUNE_IST,
+    run: async (now) => { await runCopilotAskPrune(db, { now }); },
   });
   // Plan 11c D6: THE TENTH JOB, and it is an `every` job whose cadence is a real operator key —
   // so unlike the eighth it widened `JobIntervals` (see the Pick above), and unlike the ninth the
@@ -631,5 +671,30 @@ export function registerAllJobs(
     name: "proposeMedicineNicknames",
     every: 3_600_000,
     run: async (now) => { await runAliasJob(db, aliasConfig, now); },
+  });
+  /*
+   * TELE-CALL (owner 2026-10-09) — a covered tele appointment becomes a visit in the doctor's line
+   * when its slot is reached. Every minute, because the slot is a time the patient was promised;
+   * `now` is threaded so the "is it due" comparison is the tick's own. A tick with nothing due
+   * runs one indexed read and writes nothing.
+   */
+  scheduler.register({
+    name: "openDueTeleVisits",
+    every: 60_000,
+    run: async (now) => { await openDueTeleVisits(db, now); },
+  });
+  /**
+   * STAFF ATTENDANCE (owner 2026-10-09) — HMIS's copy of the attendance system ("bioattend"), EVERY
+   * TWO MINUTES: the guide asks for punches every one to five, and 120 s sits inside the interval
+   * alert's 300 s. ONE job for punches, today, the half-hourly reference data and the nightly month
+   * re-read (`modules/attendance/sync.ts` stages them by their own cadences) — a name in the census
+   * per job, not per endpoint. OFF unless the API key file is there AND `ATTENDANCE_SYNC_ENABLED` is
+   * true: until then it beats and makes no call. It reads the whole config the alias job is handed
+   * (the base URL, the switch, the key file's path); absent — a census test — it does nothing.
+   */
+  scheduler.register({
+    name: "syncAttendance",
+    every: 120_000,
+    run: async (now) => { await syncAttendance(db, aliasConfig?.attendance, now); },
   });
 }

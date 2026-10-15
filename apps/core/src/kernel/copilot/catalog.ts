@@ -1,6 +1,9 @@
 import { hasPermission } from "../auth/permissions";
+import { toolHalted } from "./halt";
 import { CopilotError } from "./types";
+import type { CopilotHaltScope } from "../db/schema";
 import type { CopilotAnswer, CopilotToolCtx, CopilotToolDecl } from "./types";
+import type { CopilotIntent } from "./phrasebook";
 import type { ModuleRegistry } from "../modules/loader";
 
 /**
@@ -44,14 +47,42 @@ export function collectCopilotTools(
     claimed.add(t.intent);
 
     /*
+      E0.2 (#678) — A WRITE IS DECLARED BOTH WAYS OR NOT AT ALL. `kind: "act"` is what the act halt
+      stops and what confirm admits; the `act` block is the write confirm runs. One without the other
+      is either a write that slips the halt or an act tool with nothing to run.
+    */
+    if ((t.kind === "act") !== (t.act !== undefined)) {
+      throw new CopilotError(
+        "act_undeclared",
+        `copilot tool "${t.intent}" must declare kind "act" and an act block together — ` +
+          "a write without kind \"act\" slips the act halt, and kind \"act\" without a write has nothing to confirm",
+      );
+    }
+
+    /*
+      #678 — A DRAFT IS NAMED AND DECLARED TOGETHER. The plan's `draft_*` intents prepare something a
+      person then reviews; the draft halt stops tools declared `kind: "draft"`. A `draft_*` tool left
+      untagged answers straight through a draft halt, and a tagged tool not named `draft_*` hides
+      from whoever reads the phrasebook.
+    */
+    if (t.intent.startsWith("draft_") !== (t.kind === "draft")) {
+      throw new CopilotError(
+        "draft_undeclared",
+        `copilot tool "${t.intent}" must be named draft_* and declare kind "draft" together — ` +
+          "an untagged draft tool answers through a draft halt",
+      );
+    }
+
+    /*
       `collectDeskProviders`' refusal, verbatim in intent: a tool gated on a permission no manifest
       declares is a tool no role can ever reach, and it would sit in the catalog looking implemented
       forever. Boot is the only honest place to find that out.
     */
-    if (t.permission !== null && !declared.has(t.permission)) {
+    for (const p of t.permission === null ? [] : [t.permission, ...(t.alsoAdmits ?? [])]) {
+      if (declared.has(p)) continue;
       throw new CopilotError(
         "undeclared_permission",
-        `copilot tool "${t.intent}" declares permission "${t.permission}", which no manifest declares — ` +
+        `copilot tool "${t.intent}" declares permission "${p}", which no manifest declares — ` +
           "a tool gated on a permission nothing declares is a tool no role can ever reach",
       );
     }
@@ -80,13 +111,21 @@ export async function runTool(
   tool: CopilotToolDecl,
   ctx: CopilotToolCtx,
   can: PermissionCheck,
+  /** E0.3 — the halted scopes read for THIS ask (`readCopilotGate`); none by default. */
+  halts: ReadonlySet<CopilotHaltScope> = new Set(),
 ): Promise<CopilotAnswer> {
+  /*
+    E0.3 — THE HALT GOES FIRST, before the permission read: a paused copilot does no work at all for
+    the tool it stopped. Generic on the tool's declared kind (see `halt.ts`).
+  */
+  if (toolHalted(tool, halts)) return { key: "copilot.answer.paused", params: {} };
+
   /*
     BEFORE THE TOOL RUNS, exactly as `loadDesk` gates a card rather than running it and filtering
     after. Run-then-filter would do the work and read the data for an answer the person may not see,
     which is the only thing the permission is for.
   */
-  if (tool.permission !== null && !(await can(tool.permission))) {
+  if (!(await toolPermitted(tool, can))) {
     return { key: "copilot.answer.notPermitted", params: {} };
   }
 
@@ -109,4 +148,31 @@ export async function runTool(
     */
     return { key: "copilot.answer.failed", params: {} };
   }
+}
+
+/** May the asker reach this tool? Null permission: any authenticated user. Re-read on every call, no cache. */
+export async function toolPermitted(tool: Pick<CopilotToolDecl, "permission" | "alsoAdmits">, can: PermissionCheck): Promise<boolean> {
+  return tool.permission === null || admitted([tool.permission, ...(tool.alsoAdmits ?? [])], can);
+}
+
+/** Any one of the gate's permissions admits; asked in order, stopping at the first held. */
+async function admitted(permissions: readonly string[], can: PermissionCheck): Promise<boolean> {
+  for (const p of permissions) if (await can(p)) return true;
+  return false;
+}
+
+/**
+ * #676 — what "I did not understand" offers instead: the help sentence's abilities, in this order,
+ * kept to the ones THIS asker may use. A doctor is never offered what a patient owes (owner: the
+ * doctor never sees payment); a cashier is. Checked exactly as `runTool` checks, before anything runs.
+ */
+export const HELP_INTENTS: readonly CopilotIntent[] = ["visit_status", "queue_depth", "patient_dues", "my_day_report"];
+
+export async function helpIntentsFor(tools: readonly CopilotToolDecl[], can: PermissionCheck): Promise<CopilotIntent[]> {
+  const out: CopilotIntent[] = [];
+  for (const intent of HELP_INTENTS) {
+    const tool = tools.find((t) => t.intent === intent);
+    if (tool !== undefined && await toolPermitted(tool, can)) out.push(intent);
+  }
+  return out;
 }

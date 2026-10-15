@@ -114,6 +114,13 @@ function linkFor(refType: string | null, refId: string | null): string {
 export const NOTICE_KINDS: ReadonlySet<string> = new Set([
   "roster_cover_asked", "roster_cover_answered", "roster_cover_decided", "roster_duty_changed",
   "roster_month_published", "roster_duty_reminder", "opd_not_in", "opd_long_wait",
+  // STAFF ATTENDANCE (owner 2026-10-09) — "somebody asked to meet you about a day" and "your request
+  // was closed". Told, not answered by acknowledging a bell row: they never climb to WhatsApp or SMS.
+  "attendance_meeting_request", "attendance_request_closed",
+  // E1.2 — a person's own reminder: their bell and their phone, at the time they chose. Never relayed.
+  "personal_reminder",
+  // E2.2 — a leave waiting, and its answer: told on the bell and the phone, never relayed.
+  "roster_leave_requested", "roster_leave_decided",
 ]);
 
 export function laneOf(kind: string): ReachLane {

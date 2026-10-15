@@ -60,13 +60,13 @@ const money = (m: Partial<Money> & Pick<Money, "kind">): Money & { invoiceId: st
   invoiceNo: null, paidPaise: 0, newFeePaise: 0, differencePaise: 0, billingOfficeReason: null, ...m,
 });
 
-function mount(calls: Calls, opts: { billed?: boolean; feeOff?: boolean; money?: Money; maySettle?: boolean; fees?: { from: number; to: number }; extra?: Record<string, unknown> } = {}): void {
+function mount(calls: Calls, opts: { billed?: boolean; feeOff?: boolean; money?: Money; maySettle?: boolean; fees?: { from: number; to: number }; extra?: Record<string, unknown>; perms?: string[] } = {}): void {
   stubFetch({
     ...(opts.extra ?? {}),
     "GET /api/auth/me": {
       actor: { type: "user", id: "u1" },
       permissions: {
-        hospital: ["opd.visits.open", "patients.register", "patients.update", "billing.invoice.issue", "membership.instrument.recognise"],
+        hospital: ["opd.visits.open", "patients.register", "patients.update", "billing.invoice.issue", "membership.instrument.recognise", ...(opts.perms ?? [])],
         scoped: { department: {}, floor: {} },
       },
     },
@@ -152,6 +152,47 @@ async function seatInOrthoAndOpenMove(): Promise<ReturnType<typeof userEvent.set
 afterEach(() => { setToken(null); });
 
 describe("Wrong department — move patient (owner 2026-10-05)", () => {
+  it("OWNER 2026-10-11: a LAB visit in the history opens its tests, reports and bills — no OPD card, no Change department, no guardian-with-reports", async () => {
+    const calls: Calls = { moves: [], previews: [] };
+    mount(calls, {
+      perms: ["lab.reports.print"],
+      extra: {
+        "GET /api/opd/patients/p-1/timeline": { items: [{
+          encounterId: "e-lab", visitNo: "V2610110002", type: "lab", serviceDate: "2026-10-11", openedAt: "2026-10-11T04:00:00.000Z", status: "registered", visitType: "new",
+          doctorId: "doc-p", doctorName: "Dr Pathology", departmentId: "d-lab", departmentName: "Laboratory",
+          diagnosis: null, icd10Code: null, prescriptionLineCount: 0, dangerFlagged: false,
+        }] },
+        "GET /api/print/jobs": { jobs: [] },
+        "GET /api/billing/invoices": { items: [] },
+        "GET /api/opd/visits/e-lab": { encounter: { status: "registered", visitType: "new", serviceDate: "2026-10-11" }, patientAbsent: null },
+        "GET /api/lab/reports/patient/p-1": { patient: { id: "p-1", uhid: "U00110012", display: "Ramesh Kumar", restricted: false }, reports: [], pending: [] },
+        "GET /api/lab/quick/patient/p-1/printable": { items: [] },
+        "GET /api/lab/quick/patient/p-1/orders/printable": { items: [{
+          orderId: "o-1", orderNo: "L2610110001", encounterNo: "V2610110002", placedAt: "2026-10-11T04:00:00.000Z", stage: "sample_taken", quickId: null,
+          tests: [{ code: "CBC", nameEn: "Complete blood count" }, { code: "KFT", nameEn: "Kidney function tests" }],
+        }] },
+      },
+    });
+    await act(async () => { await router.navigate({ to: "/counter" }); });
+    await waitFor(() => expect(screen.getByTestId("desk-one")).toBeInTheDocument());
+    const user = userEvent.setup({ delay: null });
+    await user.type(screen.getByPlaceholderText("mobile · name · UHID"), "Ramesh");
+    await waitFor(() => expect(screen.getAllByRole("button", { name: /this is them/i })[0]).toBeInTheDocument());
+    await user.click(screen.getAllByRole("button", { name: /this is them/i })[0]!);
+    await waitFor(() => expect(screen.getAllByTestId("history-row").length).toBeGreaterThan(0), { timeout: 3000 });
+    expect(screen.getAllByTestId("history-row")[0]).toHaveTextContent("Lab visit");
+    await user.click(screen.getAllByTestId("history-row")[0]!);
+
+    const sheet = await screen.findByTestId("lab-visit-sheet");
+    expect(within(sheet).getByTestId("lab-visit-title")).toHaveTextContent("Lab visit V2610110002");
+    expect(await within(sheet).findByTestId("lv-order-L2610110001")).toHaveTextContent("Complete blood count, Kidney function tests");
+    expect(within(sheet).getByTestId("papers-sheet")).toBeInTheDocument(); // its bills
+    expect(screen.queryByTestId("visit-card")).toBeNull();
+    expect(screen.queryByTestId("visit-card-move")).toBeNull();
+    expect(screen.queryByTestId("papers-no-jobs")).toBeNull(); // no OPD slips section
+    expect(sheet).not.toHaveTextContent(/guardian with reports/i);
+  });
+
   it("names the move, previews the fee in the new department, asks why, and then holds the NEW visit", async () => {
     const calls: Calls = { moves: [], previews: [] };
     mount(calls);

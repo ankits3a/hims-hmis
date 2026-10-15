@@ -25,6 +25,7 @@ import { radiologyManifest } from "../../modules/radiology";
 import { pharmacyManifest } from "../../modules/pharmacy";
 import { labManifest } from "../../modules/lab";
 import { abdmManifest } from "../../modules/abdm";
+import { orderingManifest } from "../../modules/ordering";
 
 /**
  * Plan 11d / D2, Book row V4 — `ALL_MANIFESTS` is the ONE list, and a manifest installed outside
@@ -90,6 +91,7 @@ const MANIFEST_BY_IDENTIFIER: Record<string, ModuleManifest> = {
   radiologyManifest,
   pharmacyManifest, // PLAN 16c T3
   abdmManifest, // ABDM S2 — worker-only, the `notify` shape
+  orderingManifest, // DECISION 0067 — both processes
 };
 
 /** The argument of every `registry.install(<identifier>)` call, in source order. Throws if there are none. */
@@ -191,13 +193,18 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       // PHASE R (R1) — appended. Every department will owe the roster rows and it reaches into none
       // of them (D1), so nothing above depends on where it sits.
       "roster",
+      // STAFF ATTENDANCE (owner 2026-10-09) — appended. A leaf: it reads `auth.users` and nothing imports it.
+      "attendance",
+      // TEST ORDERING (decision 0067, 2026-10-10) — appended. It reaches into lab, radiology, opd and
+      // billing through their indexes; nothing imports it.
+      "ordering",
     ]);
-    expect(ALL_MANIFESTS).toHaveLength(23); // PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
+    expect(ALL_MANIFESTS).toHaveLength(25); // TEST ORDERING: 25; STAFF ATTENDANCE: 24; PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
     // Installable as a set: `ModuleRegistry.install` throws on a duplicate key, so this also
     // pins that no manifest appears twice.
     const registry = new ModuleRegistry();
     for (const manifest of ALL_MANIFESTS) registry.install(manifest);
-    expect(registry.all()).toHaveLength(23);
+    expect(registry.all()).toHaveLength(25);
   });
 
   it("V4: app.module.ts installs ALL_MANIFESTS and nothing else", () => {
@@ -210,7 +217,7 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     expect(manifestKeys(extras, "app.module.ts")).toEqual([]);
   });
 
-  it("the worker's registry differs from ALL_MANIFESTS in exactly eight enumerated, intentional ways", () => {
+  it("the worker's registry differs from ALL_MANIFESTS in exactly nine enumerated, intentional ways", () => {
     const workerKeys = manifestKeys(
       installArguments(readFileSync(WORKER_MODULE, "utf8"), "worker.module.ts"),
       "worker.module.ts",
@@ -329,7 +336,10 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     //      install nothing the worker uses and would make the (1b) count say something untrue about
     //      what the worker does.
     const appOnly = allKeys.filter((k) => !workerKeys.includes(k));
-    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster"]);
+    // (1k) STAFF ATTENDANCE — the TWENTY-FOURTH, `attendance`, APP-ONLY on the roster's terms: it
+    //      declares one permission and no subscription; the worker runs its job (`syncAttendance`)
+    //      and needs no permission to, so installing it there would catalog nothing and subscribe to nothing.
+    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance"]);
 
     /**
      * ═══ THE COUNT IS THE FRICTION, AND UNTIL NOW NOTHING ENFORCED IT ═══
@@ -409,7 +419,9 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "radiology",
       // PLAN 16c T3 — the pharmacy's `prescription.issued` consumer; installed in both processes.
       "pharmacy",
+      // DECISION 0067 — the free-test consumer (`ordering.free_tests`); installed in both processes.
+      "ordering",
     ]);
-    expect(workerKeys).toHaveLength(19); // PHASE O T1: 16 -> 17, `obligations`; ABDM S2: 17 -> 18, `abdm`; MOBILE M6b: 18 -> 19, `phone_push`
+    expect(workerKeys).toHaveLength(20); // DECISION 0067: 19 -> 20, `ordering`; // PHASE O T1: 16 -> 17, `obligations`; ABDM S2: 17 -> 18, `abdm`; MOBILE M6b: 18 -> 19, `phone_push`
   });
 });

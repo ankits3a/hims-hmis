@@ -8,6 +8,7 @@ import { normalizeVisitNo } from "./bench";
 import { doctorForUser } from "./masters";
 import { PATIENT_ABSENT_BAY_PERMISSION, PATIENT_ABSENT_DESK_PERMISSION } from "./patient-absent";
 import { feeMarksFor } from "./prestage";
+import { seesFees } from "./fee-view";
 import { istDate } from "./time";
 import type { PatientSummary } from "../patients";
 import type { EncounterRow } from "./encounters";
@@ -82,6 +83,12 @@ export type ScanVisit = {
    * decides, and still asks the fee door.
    */
   guardianOffer: boolean;
+  /**
+   * #771 — "Undo — patient is here" may be offered: the visit carries the guardian mark, the doctor
+   * does not have it yet (`waiting`, token not called), to a caller holding the bay's or the desk's
+   * grant — the conditions `undoPatientAbsent` checks. An offer only: that route decides.
+   */
+  guardianUndo: boolean;
   patient: PatientSummary;
 };
 
@@ -163,15 +170,23 @@ async function visitOf(db: Db, actor: Actor, encounter: EncounterRow, patient: P
   const guardianOffer = guardianOpen && actor.type === "user"
     && (await hasPermission(db, actor.id, PATIENT_ABSENT_BAY_PERMISSION, "hospital")
       || await hasPermission(db, actor.id, PATIENT_ABSENT_DESK_PERMISSION, "hospital"));
+  const undoOpen = encounter.patientAbsentAt !== null && encounter.status === "waiting" && encounter.consultStartedAt === null
+    && entry?.status === "waiting";
+  const guardianUndo = undoOpen && actor.type === "user"
+    && (await hasPermission(db, actor.id, PATIENT_ABSENT_BAY_PERMISSION, "hospital")
+      || await hasPermission(db, actor.id, PATIENT_ABSENT_DESK_PERMISSION, "hospital"));
   return {
     encounterId: encounter.id, patientId: encounter.patientId, visitNo: encounter.visitNo, serviceDate: encounter.serviceDate,
     tokenNo: entry?.tokenNo ?? null, departmentCode: department?.code ?? null, departmentName: department?.name ?? null,
     stage: stageOf(encounter, entry),
     vitalsDone: charts.length > 0 || encounter.patientAbsentAt !== null,
     slip: pages.length === 0 ? "none" : request !== null && !answered ? "retake" : "filed",
-    feeUnpaid: fee.feeUnpaid && fee.feeBypass === null,
+    // Owner 2026-10-09 — "Doctor's screens must not show money": a doctor's scan card is never told
+    // the fee is unpaid, unless that person also holds a desk's fee-seeing grant (`fee-view.ts`).
+    feeUnpaid: fee.feeUnpaid && fee.feeBypass === null && (doctor === null || await seesFees(db, actor)),
     mine: doctor !== null && encounter.doctorId === doctor.id,
     guardianOffer,
+    guardianUndo,
     patient,
   };
 }

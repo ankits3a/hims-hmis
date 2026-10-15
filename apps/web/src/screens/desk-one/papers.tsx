@@ -50,7 +50,11 @@ import { useDeskOptional } from "./session";
  * again, and when" stays answerable — which is the property that makes a reprint button lawful on a
  * document carrying a patient's name.
  */
-export function PapersSheet({ encounterId, when }: { encounterId: string; when: string | null }): React.ReactElement {
+export function PapersSheet({ encounterId, when, billsOnly = false }: {
+  encounterId: string; when: string | null;
+  /** Owner 2026-10-11 — a lab visit prints no OPD slips; its sheet is the bills alone. */
+  billsOnly?: boolean;
+}): React.ReactElement {
   /*
     ═══ OPTIONAL, BECAUSE THE SEAT THE OWNER NAMED DOES NOT MOUNT THE DESK ═══
 
@@ -116,6 +120,7 @@ export function PapersSheet({ encounterId, when }: { encounterId: string; when: 
 
   return (
     <div style={{ padding: "16px 18px" }} data-testid="papers-sheet">
+      {billsOnly ? null : (<>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
         <span style={{ fontSize: 15, fontWeight: 600 }}>{t("visitCard.papers.title")}</span>
         <span style={{ fontSize: 11.5, color: "var(--faint)" }}>
@@ -235,9 +240,10 @@ export function PapersSheet({ encounterId, when }: { encounterId: string; when: 
       {printSummary(rows).state === "failed" ? (
         <p style={{ margin: "8px 0 0", fontSize: 11.5, color: "var(--red)" }}>{printSummary(rows).text}</p>
       ) : null}
+      </>)}
 
       {/* ═══ THE MONEY ═══ */}
-      <div className="tag" style={{ marginTop: 20 }}>{t("visitCard.papers.bills")}</div>
+      <div className="tag" style={{ marginTop: billsOnly ? 0 : 20 }}>{t("visitCard.papers.bills")}</div>
       {bills.isPending ? (
         <div style={{ fontSize: 11.5, color: "var(--faint)", marginTop: 6 }}>{t("visitCard.papers.readingBills")}</div>
       ) : (bills.data?.items ?? []).length === 0 ? (

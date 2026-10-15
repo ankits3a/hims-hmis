@@ -55,6 +55,11 @@ export const billingConfig = pgTable("billing_config", {
   chargeRules: jsonb("charge_rules").notNull(), // { opdConsult: { new: serviceId, renewal: serviceId } }
   degradedTender: boolean("degraded_tender").notNull().default(false), // E-24
   caSigned: boolean("ca_signed").notNull().default(false),
+  // Owner 2026-10-09 — the hospital's own UPI id, for the QR the desk shows when it collects a
+  // tele-call's fee. Null = no QR; the desk collects at the counter only. No payment company is
+  // involved: the cashier still confirms the money and types the reference.
+  upiVpa: text("upi_vpa"),
+  upiPayeeName: text("upi_payee_name"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
 });
 

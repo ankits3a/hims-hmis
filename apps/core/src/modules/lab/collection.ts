@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, notInArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 
 import {
   labItems, labOrderables, labSpecimenItems, labSpecimens, orderItems, orders, patients,
@@ -470,6 +470,8 @@ export async function awaitingLabels(
       eq(orders.serviceDate, filter.serviceDate),
       inArray(orderItems.status, [...LIVE_ITEM_STATUSES]),
       notInArray(orderItems.id, onATube),
+      /** Owner 2026-10-11 — blood the quick chain already confirmed is not waiting for a label here. */
+      sql`not exists (select 1 from lab_quick_reports q where q.order_id = ${orders.id})`,
     ))
     .orderBy(asc(orders.placedAt));
   if (items.length === 0) return [];

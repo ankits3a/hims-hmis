@@ -20,7 +20,7 @@ function mockRoutes(handlers: Record<string, Handler>): void {
     return new Response(JSON.stringify(reply.body), { status: reply.status, headers: { "Content-Type": "application/json" } });
   }));
 }
-function asked(): { question: string; terms: string[] }[] {
+function asked(): { question: string; terms: string[]; screen?: string }[] {
   return vi.mocked(fetch).mock.calls
     .filter(([input, init]) => init?.method === "POST" && String(input).endsWith("/copilot/ask"))
     .map(([, init]) => JSON.parse(typeof init?.body === "string" ? init.body : "{}") as { question: string; terms: string[] });
@@ -72,7 +72,7 @@ describe("the desk's F2 — asking the counter agent (PD-7 C8)", () => {
     expect(box).toHaveFocus();
     await userEvent.type(box, "kitni crocin bachi hai{Enter}");
     expect(await screen.findByTestId("desk-answer")).toHaveTextContent("Crocin 500: 50 tablet on the shelf. The next sale takes batch CR-1, expiring 2027-03-31.");
-    expect(asked()).toEqual([{ question: "kitni crocin bachi hai", terms: ["Kamla Devi"] }]);
+    expect(asked()).toEqual([{ question: "kitni crocin bachi hai", terms: ["Kamla Devi"], screen: "home" }]); // E0.1: the asking screen rides along for the ledger (jsdom sits at "/")
   });
 
   it("'ye batch kab expire hoga' is about the ticket in hand: answered from the screen, and nothing is sent", async () => {

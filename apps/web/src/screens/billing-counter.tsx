@@ -1,3 +1,4 @@
+import { ToCollect } from "../components/to-collect";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearch } from "@tanstack/react-router";
@@ -1337,6 +1338,9 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
               </div>
             </div>
             )}
+
+            {/* OWNER 2026-10-09 — "To collect": the same block Desk One draws; Collect puts the visit on this counter. */}
+            <ToCollect onCollect={(row) => { setEncounterId(row.encounterId); }} />
 
             <div className="box" style={{ padding: 14 }}>
               <label className="tag" htmlFor="counter-encounter" style={{ display: "block", marginBottom: 5 }}>

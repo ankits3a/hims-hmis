@@ -112,7 +112,7 @@ describe("the OPD dispense counter over HTTP (16c T5)", () => {
     const asked = await as(fx.aide.token)(request(server()).post("/copilot/ask").send({ question: "kitni crocin bachi hai", terms: [] })).expect(200);
     expect(asked.body).toEqual({
       answer: { key: "copilot.answer.stockOnShelf", params: { name: "Crocin 500", qty: 50, uom: "tablet", batch: "CR-1", expiry: "2027-03-31" } },
-      source: "phrasebook", intent: "stock_on_shelf",
+      source: "phrasebook", intent: "stock_on_shelf", askId: expect.any(String),
     });
     const pending = await as(fx.pharmacist.token)(request(server()).post("/copilot/ask").send({ question: "kiska paisa pending hai", terms: [] })).expect(200);
     expect(pending.body).toMatchObject({ answer: { key: "copilot.answer.uncollectedNone" }, intent: "paid_not_collected" });

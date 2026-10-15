@@ -90,6 +90,10 @@ export type WireAppointment = {
   slotStart: string; slotEnd: string;
   status: "booked" | "checked_in" | "cancelled" | "no_show" | "needs_rebooking" | "rescheduled";
   note: string | null; encounterId: string | null; rescheduledToId: string | null; rescheduledFromId: string | null; cancelReason: string | null;
+  /** Owner 2026-10-09 — how the patient is seen. The number travels only on the contact read. */
+  mode?: "in_person" | "tele"; telePhone?: string | null;
+  /** The desk's money mark on a tele-call (list route only): what it costs, and whether that is met. */
+  teleDesk?: { amountPaise: number | null; covered: boolean } | null;
   /** present on the list route, absent on the write routes' bare row */
   patient?: { id?: string; uhid?: string | null; name?: string | null; alias?: string | null; phone?: string | null; administrativeGender?: string | null; dob?: string | null } | null;
 };
@@ -141,6 +145,8 @@ export function counterApi(call: Call) {
     feeQuote: (encounterId: string) => call<WireFeeQuote>("GET", `/billing/visits/${enc(encounterId)}/fee-quote`),
     issue: (body: WireIssueBody, key: string) => call<WireIssued>("POST", "/billing/invoices", body, key),
     cashSession: () => call<{ session: WireCashSession | null }>("GET", "/billing/sessions/current"),
+    /** Owner 2026-10-09 — "To collect": visits a desk let through unpaid, until the fee is settled. */
+    toCollect: () => call<{ items: import("../../../../packages/contracts/src/to-collect").WireToCollectRow[] }>("GET", "/billing/to-collect"),
     openCashSession: (floatPaise: number) => call<WireCashSession>("POST", "/billing/sessions", { floatPaise }),
     invoices: (encounterId: string) => call<{ items: WireInvoiceRow[] }>("GET", `/billing/invoices?encounterId=${enc(encounterId)}`),
 
@@ -155,10 +161,16 @@ export function counterApi(call: Call) {
     dayAppointments: async (serviceDate: string) => (await call<{ items: WireAppointment[] }>("GET", `/opd/appointments?serviceDate=${enc(serviceDate)}`)).items,
     /** The one read that carries telephone numbers; the server records each disclosure with its reason. */
     needsRebooking: async () => (await call<{ items: WireAppointment[] }>("GET", "/opd/appointments?needsRebooking=true&contact=true")).items,
-    book: (body: { patientId: string; doctorId: string; slotStart: string; note?: string }) => call<{ appointment: WireAppointment }>("POST", "/opd/appointments", body),
+    book: (body: { patientId: string; doctorId: string; slotStart: string; note?: string; mode?: "tele"; telePhone?: string }) => call<{ appointment: WireAppointment }>("POST", "/opd/appointments", body),
     reschedule: (appointmentId: string, body: { slotStart: string; doctorId?: string; reason?: string }) =>
       call<{ from: WireAppointment; to: WireAppointment }>("POST", `/opd/appointments/${enc(appointmentId)}/reschedule`, body),
     cancelAppointment: (appointmentId: string, reason: string) => call<{ appointment: WireAppointment }>("POST", `/opd/appointments/${enc(appointmentId)}/cancel`, { reason }),
+    /** What a tele-call costs, and — when the hospital has a UPI id — the QR for exactly that amount (rows of 0/1, encoded by the server). */
+    teleFee: (appointmentId: string) =>
+      call<{ amountPaise: number; covered: boolean; upi: { vpa: string; qr: string[] } | null }>("GET", `/opd/appointments/${enc(appointmentId)}/tele-fee`),
+    /** The desk takes a tele-call's fee: one advance receipt for exactly the quote. ONE key per intent. */
+    teleAdvance: (appointmentId: string, body: { amountPaise: number; tenders?: { mode: TenderMode; amountPaise: number; refText?: string }[] }, key: string) =>
+      call<{ amountPaise: number; receiptNo: string | null }>("POST", `/opd/appointments/${enc(appointmentId)}/advance`, body, key),
     /** An arrival: the booking BECOMES the visit (the walk-in's own answer shape). */
     checkIn: (appointmentId: string) => call<WireCheckIn>("POST", `/opd/appointments/${enc(appointmentId)}/check-in`),
 

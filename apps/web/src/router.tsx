@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getToken } from "./lib/api";
 import { useAuth } from "./lib/auth";
+import { shownInMode, useLabMode } from "./lib/lab-mode";
+import type { LabMode } from "./lib/lab-mode";
 import { KeyboardProvider, ShortcutLegend } from "./lib/keyboard";
 import { PaletteProvider, usePalette } from "./components/command-palette";
 import { switchLanguage } from "./lib/i18n";
@@ -14,6 +16,7 @@ import i18next from "./lib/i18n";
 import { AlertsBell } from "./components/alerts-bell";
 import { PrintingPanelHost, openPrintingPanel } from "./components/printing-panel";
 import { ModeBanner } from "./components/mode-banner";
+import { AadhaarSticker } from "./components/aadhaar-sticker";
 import { LoginScreen } from "./screens/login";
 import "./styles/paper-pine.css";
 import "./styles/shell.css";
@@ -21,7 +24,10 @@ import { PatientInHandProvider } from "./lib/patient-in-hand";
 import { PatientStrip } from "./components/patient-strip";
 import { Desk } from "./screens/desk";
 import { MyDay } from "./screens/my-day";
+import { MyLeave } from "./screens/my-leave";
 import { StaffReports } from "./screens/staff-reports";
+import { CopilotHealthScreen } from "./screens/copilot-health";
+import { CopilotNoticeHost } from "./components/copilot-notice";
 import { OpdReportScreen } from "./screens/opd-report";
 import { DeskOne } from "./screens/desk-one/desk-one";
 import { SeatShell } from "./screens/desk-one/seat-shell";
@@ -61,6 +67,7 @@ import { OtList } from "./screens/ot-list";
 import { OtBook } from "./screens/ot-book";
 import { OtCockpit } from "./screens/ot-cockpit";
 import { OtRecovery } from "./screens/ot-recovery";
+import { OutsideTests } from "./screens/outside-tests";
 import { LabDesk } from "./screens/lab-desk";
 import { PharmacyAuthorise } from "./screens/pharmacy-authorise";
 import { PharmacyDesk } from "./screens/pharmacy-desk/pharmacy-desk";
@@ -92,6 +99,10 @@ import { LabCollection } from "./screens/lab-collection";
 import { LabBench } from "./screens/lab-bench";
 import { LabVerify } from "./screens/lab-verify";
 import { LabReports } from "./screens/lab-reports";
+import { LabQuick } from "./screens/lab-quick";
+import { LabQBench, LabQCollect, LabQReports } from "./screens/lab-qchain";
+import { HospitalNumbers, NUMBERS_TABS } from "./screens/hospital-numbers";
+import type { NumbersTab } from "./screens/hospital-numbers";
 
 /**
  * PLAN 11h T6 — the shell's navigation, PAIRED WITH THE PERMISSION EACH SCREEN'S ROUTE ACTUALLY
@@ -126,7 +137,8 @@ const NAV_GROUPS: readonly NavGroup[] = ["desk", "patients", "opd", "imaging", "
  * manifest's own pairing (`nav-parity.test.ts` compares it); `anyOf` is only for a screen that gathers
  * several — the pharmacy office, whose menu entries each keep their old row's permission.
  */
-type NavEntry = { to: string; label: string; permission: string; group: NavGroup; anyOf?: readonly string[] };
+/** Owner 2026-10-12 — `labMode`: a lab menu shown only while the lab runs that mode (`lib/lab-mode.ts`). */
+type NavEntry = { to: string; label: string; permission: string; group: NavGroup; anyOf?: readonly string[]; labMode?: LabMode | "never" };
 const navVisible = (e: NavEntry, can: (p: string) => boolean): boolean => can(e.permission) || (e.anyOf ?? []).some((p) => can(p));
 /**
  * Past this many places the bar stops being a row and becomes a wall: an owner-shaped grant drew
@@ -243,6 +255,8 @@ const NAV: readonly NavEntry[] = [
   { to: "/ops/mode", label: "nav.opsMode", permission: "ops.mode.set", group: "admin" },
   { to: "/ops/downtime-kit", label: "nav.opsDowntimeKit", permission: "ops.downtime.generate", group: "admin" },
   { to: "/admin/users", label: "nav.adminUsers", permission: "auth.users.manage", group: "admin" },
+  // Decision 0067 — the outside-test list (ECG, echo …), `orderingManifest.menu`'s entry.
+  { to: "/ordering/outside-tests", label: "nav.outsideTests", permission: "tariff.services.manage", group: "admin" },
   // PLAN 18a T9 — the entries `radiologyManifest.menu` declares (three since 18-S RS2b), path and permission matching
   // it exactly. `nav-parity.test.ts` compares the two lists rather than trusting this comment.
   { to: "/radiology/reception", label: "nav.radiologyReception", permission: "radiology.schedule", group: "imaging" },
@@ -276,6 +290,8 @@ const NAV: readonly NavEntry[] = [
   // `desk`: reading a colleague's figures is supervision, not counter work, and putting it beside
   // the counter would make it look like part of a shift.
   { to: "/staff", label: "nav.staffReports", permission: "staff.reports.read", group: "admin" },
+  // E0.1 (decision 0064) — the copilot's health; path and permission match `deskManifest.menu`.
+  { to: "/copilot-health", label: "nav.copilotHealth", permission: "copilot.health.read", group: "admin" },
   // The OPD day report (owner, 2026-09-19): the hospital's day by department, PDF and CSV.
   { to: "/reports/opd-day", label: "nav.opdDayReport", permission: "opd.reports.read", group: "opd" },
   // 20-U U5a — who is on now, the hospital's unit board. `roster.read` matches `rosterManifest.menu`.
@@ -340,12 +356,24 @@ const NAV: readonly NavEntry[] = [
    * holds `reports.print` reaches the report through the desk rather than through a signing screen
    * they may not act on.
    */
-  { to: "/lab/desk", label: "nav.labDesk", permission: "lab.desk.operate", group: "lab" },
-  { to: "/lab/collection", label: "nav.labCollection", permission: "lab.collection.operate", group: "lab" },
-  { to: "/lab/bench", label: "nav.labBench", permission: "lab.accession.operate", group: "lab" },
-  { to: "/lab/verify", label: "nav.labVerify", permission: "lab.results.verify", group: "lab" },
+  { to: "/lab/desk", label: "nav.labDesk", permission: "lab.desk.operate", group: "lab", labMode: "full" },
+  { to: "/lab/collection", label: "nav.labCollection", permission: "lab.collection.operate", group: "lab", labMode: "full" },
+  { to: "/lab/bench", label: "nav.labBench", permission: "lab.accession.operate", group: "lab", labMode: "full" },
+  { to: "/lab/verify", label: "nav.labVerify", permission: "lab.results.verify", group: "lab", labMode: "full" },
   /** PLAN 17c T5 — the fifth lab seat, the report centre, on the counter's own permission. */
-  { to: "/lab/reports", label: "nav.labReports", permission: "lab.reports.print", group: "lab" },
+  { to: "/lab/reports", label: "nav.labReports", permission: "lab.reports.print", group: "lab", labMode: "full" },
+  { to: "/lab/quick", label: "nav.labQuick", permission: "lab.results.enter", group: "lab", anyOf: ["lab.desk.operate"], labMode: "never" },
+  // OWNER 2026-10-11 — the quick chain, the lab's everyday path: counter → collect → bench → reports.
+  { to: "/lab/counter", label: "nav.labCounter", permission: "lab.desk.operate", group: "lab", labMode: "quick" },
+  { to: "/lab/qcollect", label: "nav.labQCollect", permission: "lab.worklist.read", group: "lab", labMode: "quick" },
+  { to: "/lab/qbench", label: "nav.labQBench", permission: "lab.results.enter", group: "lab", labMode: "quick" },
+  { to: "/lab/qreports", label: "nav.labQReports", permission: "lab.reports.print", group: "lab", labMode: "quick" },
+  /**
+   * Owner 2026-10-13 (#768, #777) — Hospital numbers: the lab's, imaging's and the pharmacy's counts and times,
+   * read-only; a tab per grant. `permission` is `labManifest.menu`'s pairing; `anyOf` shows it to a holder
+   * of either other tab's grant. `/lab/metrics` forwards here.
+   */
+  { to: "/reports/numbers", label: "nav.hospitalNumbers", permission: "lab.metrics.read", group: "admin", anyOf: ["radiology.metrics.read", "pharmacy.metrics.read"] },
   // PHASE PD — the pharmacy desk: one ticket in hand, one screen. PARITY P1 retired `/pharmacy/counter` into it.
   { to: "/pharmacy/desk", label: "nav.pharmacyDesk", permission: "pharmacy.dispense.read", group: "pharmacy" },
   /*
@@ -399,7 +427,7 @@ declare module "@tanstack/react-router" {
  * that RENDERS `PaletteProvider`. A hook cannot read a context its own caller provides.
  */
 function ShellChrome(): React.ReactElement {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { username, can, logout } = useAuth();
   const navigate = useNavigate();
   const palette = usePalette();
@@ -430,7 +458,9 @@ function ShellChrome(): React.ReactElement {
     document.addEventListener("mousedown", close);
     return () => { document.removeEventListener("mousedown", close); };
   }, [openGroup]);
-  const folded = NAV.filter((e) => navVisible(e, can)).length > NAV_FOLD_AT;
+  const labModeNow = useLabMode();
+  const show = (e: NavEntry): boolean => navVisible(e, can) && shownInMode(e.labMode, labModeNow);
+  const folded = NAV.filter(show).length > NAV_FOLD_AT;
   /* The clock ticks in IST — a hospital clock in the browser's zone is a clock nobody can act on. */
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -479,7 +509,7 @@ function ShellChrome(): React.ReactElement {
           {t("app.menu")}
         </button>
         <div className="right">
-          <span className="mo clock">{istDateLabel()} · {istClock()} IST</span>
+          <span className="mo clock">{istDateLabel(new Date(), i18n.language.startsWith("hi") ? "hi-IN" : "en-IN")} · {istClock()} IST</span>
           {/*
             The search button the owner ruled stays in the header. It advertises F8 and not
             Ctrl+K: Chrome answers Ctrl+K with its own address bar first, which FD-9 measured.
@@ -539,7 +569,7 @@ function ShellChrome(): React.ReactElement {
       >
         {NAV_GROUPS.map((group) => {
           /* One link per screen: a path listed under two grants (paper consultations) shows once to a login holding both. */
-          const entries = NAV.filter((e) => e.group === group && navVisible(e, can))
+          const entries = NAV.filter((e) => e.group === group && show(e))
             .filter((e, i, all) => all.findIndex((x) => x.to === e.to) === i);
           if (entries.length === 0) return null;
           /* A group of one is a place, not a list: it stays a link even when the bar folds. */
@@ -575,7 +605,7 @@ function ShellChrome(): React.ReactElement {
             </span>
           );
         })}
-        {NAV.every((entry) => !navVisible(entry, can)) ? (
+        {NAV.every((entry) => !show(entry)) ? (
           /*
            * PLAN 11h T6 — AN EMPTY NAV IS A SENTENCE, NOT A BLANK BAR. A person whose role holds
            * none of these was shown sixteen links and refused by every one. Showing nothing at
@@ -615,6 +645,8 @@ function Shell(): React.ReactElement {
       <div className="flex min-h-screen flex-col">
       <ShellChrome />
         <ModeBanner />
+        {/* "Add your Aadhaar" (owner 2026-10-09): drawn only while the server says this person owes one. */}
+        <AadhaarSticker />
         {/*
           PLAN 07b T1 — the patient in hand, directly under the chrome and above every screen, so a
           clerk never has to find the same person twice. It renders nothing when nobody is in hand.
@@ -645,7 +677,7 @@ function Shell(): React.ReactElement {
 }
 
 /* The printing panel is this BROWSER's setting, so it is mounted once, above every screen (Desk One has no shell). */
-const rootRoute = createRootRoute({ component: () => <><Outlet /><PrintingPanelHost /></> });
+const rootRoute = createRootRoute({ component: () => <><Outlet /><PrintingPanelHost /><CopilotNoticeHost /></> });
 
 const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login", component: LoginScreen });
 
@@ -716,6 +748,13 @@ const staffReportsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/staff",
   component: StaffReports,
+});
+
+/** E0.1 (decision 0064) — one day's copilot totals; aggregate only, it names nobody. */
+const copilotHealthRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/copilot-health",
+  component: CopilotHealthScreen,
 });
 
 /**
@@ -1042,6 +1081,16 @@ const approvalsRoute = createRoute({
  * alerts bell's footer, and a settings page somebody visits twice a year does not earn a line
  * of chrome on every seat's sidebar for ever. The caddy SPA census gains it; the nav one does not.
  */
+/**
+ * E2.2 (decision 0069) — my leave, and a department head's "to decide". NO NAV ROW: every person
+ * holds it, so it is linked from the desk's close band and the Waiting-for-me lines (like `/me/reach`).
+ */
+const myLeaveRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/roster/leave",
+  component: MyLeave,
+});
+
 const myReachRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/me/reach",
@@ -1256,6 +1305,12 @@ const pharmacyDowntimeRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/pharmacy/downtime",
   beforeLoad: () => toOffice("/pharmacy/downtime"),
+});
+
+const outsideTestsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ordering/outside-tests",
+  component: OutsideTests,
 });
 
 const labDeskRoute = createRoute({
@@ -1496,6 +1551,63 @@ const labReportsRoute = createRoute({
   path: "/lab/reports",
   component: LabReports,
   /** PLAN 17-F F1 — the station shell draws its own header, lane and list. */
+  staticData: { fullViewport: true },
+});
+
+/** Decision 0061 — quick entry: search a patient, type values, an editable flagged report. */
+/** OWNER 2026-10-11 — the quick chain (spec SPEC-lab-quick-chain-2026-10-11.md). Each station draws its own shell. */
+const labCounterRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/lab/counter",
+  component: () => <LabDesk mode="counter" />,
+  staticData: { fullViewport: true },
+});
+const labQCollectRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/lab/qcollect",
+  component: LabQCollect,
+  staticData: { fullViewport: true },
+});
+const labQBenchRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/lab/qbench",
+  component: LabQBench,
+  staticData: { fullViewport: true },
+});
+const labQReportsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/lab/qreports",
+  component: LabQReports,
+  staticData: { fullViewport: true },
+});
+
+/**
+ * Owner 2026-10-13 (#768) — lab numbers. #777 folded it into Hospital numbers as the Lab tab; the old
+ * address (a bookmark, a link) forwards there with the Lab tab chosen.
+ */
+const labMetricsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/lab/metrics",
+  beforeLoad: () => { throw redirect({ to: "/reports/numbers", search: { tab: "lab" } }); },
+});
+
+/** Owner 2026-10-13 (#777) — Hospital numbers: Lab / Imaging / Pharmacy tabs, each on its own grant. */
+const hospitalNumbersRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/reports/numbers",
+  validateSearch: (search: Record<string, unknown>): { tab?: NumbersTab } => ({
+    tab: (NUMBERS_TABS as readonly unknown[]).includes(search.tab) ? (search.tab as NumbersTab) : undefined,
+  }),
+  component: function HospitalNumbersRoute() {
+    const { tab } = hospitalNumbersRoute.useSearch();
+    return <HospitalNumbers initialTab={tab} />;
+  },
+});
+
+const labQuickRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/lab/quick",
+  component: LabQuick,
   staticData: { fullViewport: true },
 });
 
@@ -1759,7 +1871,7 @@ export const router = createRouter({
     loginRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
@@ -1790,9 +1902,16 @@ export const router = createRouter({
       // cockpit, every lab screen is a place a person stands all day, so each carries a menu entry.
       // `caddyfile-parity.test.ts` pins the count and joins this task's Files list, which is the
       // S11 rule this repository has now applied to itself six times.
+      outsideTestsRoute,
       labDeskRoute, labCollectionRoute, labBenchRoute, labVerifyRoute,
       // PLAN 17c T5 — the fifth lab seat, the report centre (+1).
       labReportsRoute,
+      labQuickRoute,
+      // OWNER 2026-10-11 — the quick chain (+4).
+      labCounterRoute, labQCollectRoute, labQBenchRoute, labQReportsRoute,
+      labMetricsRoute,
+      // #777 — Hospital numbers (+1); `/lab/metrics` above now forwards to it.
+      hospitalNumbersRoute,
       // PLAN 18a T9 — 39 -> 44, imaging. FIVE routes and TWO nav links: the study console, the
       // report and the Form F are all reached from a study rather than browsed, and the Form F is
       // unlisted on purpose (see the route's own comment). `caddyfile-parity.test.ts` pins the
@@ -1815,6 +1934,8 @@ export const router = createRouter({
       rosterMonthRoute,
       // 20-U U5c — +1, `/roster/my-duties`. `caddyfile-parity.test.ts` pins the count, read off the failing run.
       rosterMyDutiesRoute,
+      // E2.2 — +1, `/roster/leave` (my leave). `caddyfile-parity.test.ts` pins the count.
+      myLeaveRoute,
       rosterEvidenceRoute,
       rosterAebasRoute,
     ]),

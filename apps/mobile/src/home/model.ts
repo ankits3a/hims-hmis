@@ -82,6 +82,12 @@ export type Sources = {
   /** The front desk: visits I opened that are still waiting, and bookings stranded by a doctor's leave. */
   deskWaiting?: CountSince | null;
   rebook?: CountSince | null;
+  /**
+   * Owner 2026-10-09 — "To collect": how many visits a desk let through unpaid, and how many of
+   * those patients are already seen or gone. COUNTS ONLY: the loader drops the amounts before they
+   * reach this model, so a cashier's home can never show a sum of money (blind count, 0014).
+   */
+  toCollect?: { count: number; gone: number } | null;
   /** What I asked for (a discount, a refund) — pending, and decided today. */
   myRequests?: WireMyRequest[] | null;
   /** Decided requests this phone has already shown and the person tapped "OK" on. */
@@ -249,6 +255,15 @@ export function buildHome(src: Sources): HomeModel {
     cards.push(need("rebook", "today", now, now, due, due === null ? "amber" : toneOf(now, due - 24 * 3_600_000, due), {
       count: rb.count, titleKey: "home.need.rebook", subKey: "home.need.rebookSub",
       clock: due === null ? null : clockWords(now, now, due, "due"), actions: [{ labelKey: "home.act.rebook", primary: true, action: { type: "seat", key: "counter" } }],
+    }));
+  }
+
+  /* ── the desk and the cashier: who was let through unpaid and has not paid yet (owner 2026-10-09) ── */
+  const tc = src.toCollect ?? null;
+  if (tc !== null && tc.count > 0) {
+    cards.push(need("to_collect", "today", now, now, null, tc.gone > 0 ? "amber" : "neutral", {
+      count: tc.count, titleKey: "home.need.toCollect", subKey: tc.gone > 0 ? "home.need.toCollectGone" : "home.need.toCollectSub", subVars: { n: tc.gone },
+      clock: null, actions: src.seats.includes("counter") ? [{ labelKey: "home.act.see", primary: false, action: { type: "seat", key: "counter" } }] : [],
     }));
   }
 

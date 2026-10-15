@@ -12,8 +12,8 @@ Source: `apps/core/src/modules/billing/`
 · Notes: [MAP.md](../../../apps/core/src/modules/billing/MAP.md)
 
 - **Depends on modules:** `membership`, `opd`, `patients`, `tariff`
-- **Used by modules:** `lab`, `opd`, `ot`, `partners`, `pharmacy`, `radiology`
-- **Kernel used:** `approvals`, `auth`, `config`, `crypto`, `db`, `desk`, `episodes`, `events`, `modules`, `phi`, `printing`, `report`, `search`, `tokens`, `workflow`
+- **Used by modules:** `lab`, `opd`, `ordering`, `ot`, `partners`, `pharmacy`, `radiology`
+- **Kernel used:** `approvals`, `auth`, `config`, `copilot`, `crypto`, `db`, `desk`, `episodes`, `events`, `modules`, `phi`, `printing`, `report`, `search`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
 
@@ -31,6 +31,8 @@ Source: `apps/core/src/modules/billing/`
 - `cash-law.ts`
   - types: `TenderInput`
 - `config.ts`
+  - `feeOffAt(rules: ChargeRules, kind: FeeKind, at: Date): boolean`
+  - `feeOffNow(rules: ChargeRules, kind: FeeKind): boolean`
   - `loadBillingConfig(db: Db | Tx): Promise<BillingConfig>`
   - types: `BillingConfig`
 - `credit-notes.ts`
@@ -83,6 +85,9 @@ Source: `apps/core/src/modules/billing/`
   - `encounterFeeStatuses(exec: Db | Tx, encounters: Pick<EncounterRow, "id" | "visitType">[]): Promise<Map<string, EncounterFeeStatus>>`
   - `standingInvoiceFor(exec: Db | Tx, encounterId: string): Promise<{ id: string; invoiceNo: string } | null>`
   - types: `EncounterFeeStatus`
+- `fee-switches.ts`
+  - `feeSwitchesView(db: Db, now: Date = new Date()): Promise<FeeSwitchesView>`
+  - `setFeeSwitch(db: Db, actor: Actor, kind: FeeKind, off: boolean, now: Date = new Date()): Promise<FeeSwitchesView>`
 - `idempotency.ts`
   - `withIdempotency(db: Db, scope: { actorId: string; route: string; key: string | undefined }, body: unknown, work: () => Promise<T>, now: Dat…`
 - `invoices.ts`
@@ -99,6 +104,9 @@ Source: `apps/core/src/modules/billing/`
   - types: `EncounterResolver`
 - `manifest.ts`
   - `billingManifest: ModuleManifest`
+- `owner-money.ts`
+  - `drawerState(status: string, variancePaise: number | null): DrawerState`
+  - `ownerMoney(exec: Db | Tx, range: DayRange, compare: DayRange | null, now: Date = new Date()): Promise<OwnerMoney>`
 - `patient-bills.ts`
   - `BILL_DEPARTMENTS`
   - `patientBillDetail(db: Db, actor: Actor, invoiceId: string): Promise<PatientBillDetail | null>`
@@ -146,11 +154,18 @@ Source: `apps/core/src/modules/billing/`
 - `settlement.ts`
   - `settlementState(netPayablePaise: number, creditedPaise: number, allocatedPaise: number): Settlement`
   - types: `Settlement`, `SettlementState`
+- `tele-advance.ts`
+  - `consultFeeAt(db: Db, input: { patientId: string; visitType: string; at: Date }): Promise<{ feeServiceId: string | null; paise: number }>`
+  - `issuePrepaidConsultInvoice(tx: Tx, actor: Actor, input: { draftId: string; patientId: string; encounterId: string; visitType: string; recei…`
 - `totals.ts`
   - `ROUNDING_RULES`
   - `roundTotalBy(rule: RoundingRule, totalPaise: number): { roundedPaise: number; roundingPaise: number }`
   - `totalInvoice(lines: PricedLine[], roundingRule: RoundingRule = "half_up"): InvoiceTotals`
   - types: `InvoiceTotals`, `RoundingRule`, `TaxSummaryRow`
+- `upi.ts`
+  - `loadUpiPayee(db: Db | Tx): Promise<UpiPayee | null>`
+  - `upiPayUri(payee: UpiPayee, amountPaise: number, note: string): string`
+  - types: `UpiPayee`
 - `visit-move.ts`
   - `carryMoneyToMovedVisit(tx: Tx, actor: Actor, input: { from: EncounterRow; to: EncounterRow; reason: string; tenders?: TenderInput[]; }, now…`
   - `maySettleMoveDifference(exec: Db | Tx, actor: Actor): Promise<boolean>`
@@ -164,8 +179,8 @@ Source: `apps/core/src/modules/billing/`
 
 Foreign keys into: `patients`
 
-## HTTP routes (49)
+## HTTP routes (51)
 
-- `billing.controller.ts` — 49: `/billing/allocations`, `/billing/charge-orphans`, `/billing/config`, `/billing/consult-prices`, `/billing/consult-terms`, `/billing/credit-requests`, `/billing/day-book`, `/billing/degraded`, `/billing/eie`, `/billing/fee-switches`, `/billing/gstr1`, `/billing/invoices`, `/billing/office`, `/billing/patients`, `/billing/receipts`, `/billing/recon`, `/billing/refunds`, `/billing/sessions`, `/billing/visits`, `/billing/worklist`
+- `billing.controller.ts` — 51: `/billing/allocations`, `/billing/charge-orphans`, `/billing/config`, `/billing/consult-prices`, `/billing/consult-terms`, `/billing/credit-requests`, `/billing/day-book`, `/billing/degraded`, `/billing/eie`, `/billing/fee-switches`, `/billing/gstr1`, `/billing/invoices`, `/billing/office`, `/billing/patients`, `/billing/receipts`, `/billing/recon`, `/billing/refunds`, `/billing/reports`, `/billing/sessions`, `/billing/to-collect`, `/billing/visits`, `/billing/worklist`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/billing`

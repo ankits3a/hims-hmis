@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError, NetworkError } from "../api";
 import { useI18n } from "../i18n";
 import { Text, TextInput } from "../text";
 import { color, radius, space, TOUCH, type } from "../theme";
-import { Button, MONO, Note } from "../ui";
+import { Button, MONO, Note, KeyboardModal, keyboardScroll } from "../ui";
 import { refusalText } from "../vitals/api";
 import type { CounterApi, TenderMode, WireDoctorSummary, WireMovePreview, WireMoveResult } from "./api";
 import { bookableToday, moveCollectPaise, moveFee, moveMoneyBlocks, moveMoneyLine, rs } from "./rules";
@@ -101,9 +101,9 @@ export function MoveDepartment({ api, visit, queues, labelOf, terms, onMoved, on
 
   const tone = line?.tone ?? "ok";
   return (
-    <Modal visible animationType="slide" onRequestClose={onClose}>
+    <KeyboardModal visible animationType="slide" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: color.paper }} testID="move-dept-panel">
-        <ScrollView contentContainerStyle={{ padding: space.lg, paddingTop: insets.top + space.lg, paddingBottom: space.xxl }} keyboardShouldPersistTaps="handled">
+        <ScrollView {...keyboardScroll()} contentContainerStyle={{ padding: space.lg, paddingTop: insets.top + space.lg, paddingBottom: space.xxl }} keyboardShouldPersistTaps="handled">
           <Text style={[type.heading, { color: color.ink }]}>{t("registrationCounter.move.title")}</Text>
           <Text style={[type.small, { color: color.dim, marginTop: 4 }]}>{t("registrationCounter.move.explain")}</Text>
 
@@ -193,7 +193,7 @@ export function MoveDepartment({ api, visit, queues, labelOf, terms, onMoved, on
           <Button testID="move-dept-cancel" kind="secondary" label={t("registrationCounter.move.cancel")} onPress={onClose} />
         </View>
       </View>
-    </Modal>
+    </KeyboardModal>
   );
 }
 

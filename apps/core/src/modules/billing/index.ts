@@ -68,6 +68,8 @@ export { runDailyClose, dayBook, gstr1Summary, chargeOrphans } from "./daily-clo
  * rather than copied: a second arithmetic on a tile is a figure nobody can defend.
  */
 export { cashierDay } from "./desk-provider";
+// The owner's money page in the staff app (owner 2026-10-09): sums and counts, read-only.
+export { drawerState, ownerMoney } from "./owner-money";
 export type { CashierDay } from "./desk-provider";
 export { collectionsBlind, isDrawerSupervisor, liveExpectedCashPaise, listSessions, mayReadExpectedCash } from "./sessions";
 export type { ChargeOrphanRow } from "./daily-close";
@@ -86,7 +88,8 @@ export type {
 
 export type { DayBook, Gstr1Row, DailyCloseResult } from "./daily-close";
 export { registerBillingApprovalTypes, BILLING_APPROVAL_TYPES } from "./approval-types";
-export { loadBillingConfig } from "./config";
+export { feeOffAt, feeOffNow, loadBillingConfig } from "./config";
+export { feeSwitchesView, setFeeSwitch } from "./fee-switches";
 export type { BillingConfig } from "./config";
 /**
  * RC-1 T3 — the token's paid stamp, both halves. `encounterFeeStatuses` is the batched projection
@@ -107,4 +110,9 @@ export { registerFeeStatusHook } from "./settle-hooks";
 export { registerBenefitSourceProvider } from "./benefit-sources";
 export type { BenefitSourceArgs, BenefitSourceProvider } from "./benefit-sources";
 export type { FeeStatusHook, FeeStatusVia } from "./settle-hooks";
+// Owner 2026-10-09 — tele-call: the consult fee for a patient on a date, with no visit behind it yet.
+export { consultFeeAt, issuePrepaidConsultInvoice } from "./tele-advance";
+// …and the hospital's own UPI id, for the QR the desk shows (no payment company; the cashier confirms).
+export { loadUpiPayee, upiPayUri } from "./upi";
+export type { UpiPayee } from "./upi";
 export * from "./events";

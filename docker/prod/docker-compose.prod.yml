@@ -111,6 +111,11 @@ services:
       # it into ./openai when the owner has placed it on the host). Absent, voice is off; the api
       # still boots and every other consult route works.
       HMIS_OPENAI_KEY_FILE: /run/hmis/openai/key.txt
+      # STAFF ATTENDANCE — the three bioattend secrets (deploy.sh step 2 copies them into ./bioattend
+      # when the owner has placed them on the host). Paths only; the values are read from the files.
+      HMIS_BIOATTEND_API_KEY_FILE: /run/hmis/bioattend/api-key.txt
+      HMIS_BIOATTEND_WEBHOOK_SECRET_FILE: /run/hmis/bioattend/webhook-secret.txt
+      HMIS_BIOATTEND_AADHAAR_KEY_FILE: /run/hmis/bioattend/aadhaar-key.txt
     # The slip desk's photographs. A NAMED VOLUME because the bytes must outlive a container
     # recreate the way pgdata does — a deploy that dropped them would lose every prescription the
     # desk had filed. The image creates /var/lib/hmis/documents owned by `node` so this volume
@@ -120,6 +125,7 @@ services:
       # The DIRECTORY, read-only — never the file (a single-file mount pins an inode; see caddy below).
       - ./firebase:/run/hmis/firebase:ro
       - ./openai:/run/hmis/openai:ro
+      - ./bioattend:/run/hmis/bioattend:ro
     expose:
       - "3000"
     depends_on:
@@ -161,8 +167,14 @@ services:
     # Same key, same directory mount as the api; absent, it logs one WARN and sends nothing.
     environment:
       HMIS_FCM_SERVICE_ACCOUNT_FILE: /run/hmis/firebase/service-account.json
+      # STAFF ATTENDANCE — the three bioattend secrets for the job that pulls attendance
+      # (`syncAttendance`). Same directory mount as the api.
+      HMIS_BIOATTEND_API_KEY_FILE: /run/hmis/bioattend/api-key.txt
+      HMIS_BIOATTEND_WEBHOOK_SECRET_FILE: /run/hmis/bioattend/webhook-secret.txt
+      HMIS_BIOATTEND_AADHAAR_KEY_FILE: /run/hmis/bioattend/aadhaar-key.txt
     volumes:
       - ./firebase:/run/hmis/firebase:ro
+      - ./bioattend:/run/hmis/bioattend:ro
     depends_on:
       db:
         condition: service_healthy

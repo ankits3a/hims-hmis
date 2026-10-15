@@ -3,9 +3,9 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters } from "../../../test/helpers/opd";
 import { issuePaidInvoice, mkCashier, openSessionFor, seedBillingBase } from "../../../test/helpers/billing";
 import { opdEncounters } from "../../kernel/db/schema";
-import { openUnpaidToken, registerConsultStartGuard, registerVitalsStartGuard, startConsultation } from "./consultation";
+import { completeConsultation, openUnpaidToken, registerConsultStartGuard, registerVitalsStartGuard, saveConsultNote, startConsultation } from "./consultation";
 import { grantFeeBypass, openVisit } from "./encounters";
-import { boardSnapshot, callNext, listQueue, summaryByDoctor } from "./queue";
+import { QUEUE_MONEY_KEYS, boardSnapshot, callNext, listQueue, queueWithoutMoney, summaryByDoctor } from "./queue";
 import { recordVitals } from "./vitals";
 import type { BillingBaseFixture } from "../../../test/helpers/billing";
 import type { Db } from "../../kernel/db/client";
@@ -14,21 +14,23 @@ const MON = new Date("2026-08-17T04:00:00.000Z");
 const adultOk = { heightCm: 165, weightKg: 60, sbp: 120, dbp: 80, pulse: 72, spo2: 98, tempC: 37.0 };
 
 /**
- * ═══ THE TOKEN WAITS FOR ITS BILL, AND THE DOCTOR CAN OPEN IT (OWNER RULING 2026-09-20) ═══
+ * ═══ THE DESK LET THEM THROUGH, SO THEY ARE IN THE DOCTOR'S LINE (OWNER RULING 2026-10-09) ═══
  *
- * Owner: *"the emergency at the bay doesn't open the doctor's door. It waits for bill to be paid
- * until doctor opens the token from his dashboard manually. Currently the doctor have no screen to
- * do it. But we need it to be built. Once the bill is paid then the token automatically moves to
- * the display board in the queue towards the doctor consultation."*
+ * Owner: *"walk-in rule, a (desk let through → patient shows in doctor's line, no mark)"* ·
+ * *"make sure that Doctor will not see 'paid' written or marked against any patient name or id.
+ * This is a hospital not a clinic."* · *"Doctor's screens must not show money."*
  *
- * THE BILLING MODULE IS REAL HERE AND NOT STUBBED, which is the opposite choice from
- * `vitals-fee-gate.test.ts` one door back, and deliberate. That suite owns a DOOR and stubs the
- * verdict; this one owns the claim that a token moves BY ITSELF when money lands, and a stubbed
- * ledger cannot make that claim — the whole design rests on the hold being the invoice ledger read
- * rather than a flag somebody remembers to clear. So the fee is made real (`seedBillingBase`), the
- * receipt is a real receipt, and the queue is asked again afterwards.
+ * This file used to pin the opposite (ruling 2026-09-20: the token waits for its bill until the
+ * doctor opens it). Both sides of the new rule are here: a visit with a recorded desk bypass is an
+ * ordinary waiting patient and its consultation starts with nobody typing a reason; a visit that is
+ * neither paid nor let through is stopped exactly where it was.
+ *
+ * THE BILLING MODULE IS REAL HERE AND NOT STUBBED for the queue rows (`seedBillingBase`): the fee
+ * status the desk's copy carries is the ledger, read. The consult door's verdict is a stub in
+ * `feeGate`'s exact shape, as in `vitals-fee-gate.test.ts`; `billing.e2e.test.ts` proves the real
+ * one over HTTP.
  */
-describe("an unsettled token is held out of the doctor's queue", () => {
+describe("a visit the desk let through unpaid is an ordinary patient in the doctor's line", () => {
   let db: Db;
   let teardown: () => Promise<void>;
   let base: BillingBaseFixture;
@@ -79,170 +81,171 @@ describe("an unsettled token is held out of the doctor's queue", () => {
   const queue = async (): Promise<NonNullable<Awaited<ReturnType<typeof listQueue>>>> =>
     (await listQueue(db, dra.actor, dra.doctorId, "2026-08-17", MON))!;
 
-  it("it is out of the callable order, in heldForPayment, and callNext cannot reach it", async () => {
-    const { encounterId, tokenNo } = await unpaidWaiting("Sunita Devi");
+  /** Every key of a JSON-shaped value, at any depth. */
+  const keysOf = (v: unknown, out = new Set<string>()): Set<string> => {
+    if (Array.isArray(v)) v.forEach((x) => keysOf(x, out));
+    else if (v !== null && typeof v === "object" && !(v instanceof Date)) {
+      for (const [k, x] of Object.entries(v)) { out.add(k); keysOf(x, out); }
+    }
+    return out;
+  };
+
+  it("it sits in the callable order in its own place, nothing is held, and callNext reaches it", async () => {
+    const first = await unpaidWaiting("Sunita Devi");
+    const paid = await mkPatient(db, clerk.actor, { name: "Paid Second" });
+    const open = await openVisit(db, clerk.actor, { patientId: paid.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    await grantFeeBypass(db, clerk.actor, open.encounter.id, "fixture: reaches the bay", MON);
+    await recordVitals(db, vd.actor, open.encounter.id, adultOk, MON);
+    await openSessionFor(db, cashier, 200_000);
+    await issuePaidInvoice(db, cashier, { patientId: paid.id, serviceId: base.consultNewServiceId, encounterId: open.encounter.id }, MON);
 
     const view = await queue();
-    expect(view.ordered).toHaveLength(0);
-    expect(view.heldForPayment.map((e) => e.tokenNo)).toEqual([tokenNo]);
-    expect(view.counts).toMatchObject({ waiting: 0, heldForPayment: 1 });
-    /* The doctor's rail is told WHY this patient has no bill — it is the desk's own sentence. */
-    expect(view.heldForPayment[0]!.encounter.feeBypassReason).toContain("emergency");
-    expect(view.heldForPayment[0]!.feeStatus).toBe("unsettled");
-    /* No position: a held token is not in the ordering, and giving it one would say it was. */
-    expect(view.heldForPayment[0]!.position).toBeNull();
+    expect(view.ordered.map((e) => [e.tokenNo, e.position])).toEqual([[first.tokenNo, 1], [open.queueEntry.tokenNo, 2]]);
+    expect(view.heldForPayment).toEqual([]);
+    expect(view.counts).toMatchObject({ waiting: 2, heldForPayment: 0 });
+    /* The DESK's copy still says who has not paid — collecting it is the desk's work. */
+    expect(view.ordered.map((e) => e.feeStatus)).toEqual(["unsettled", "settled"]);
+    expect(view.ordered[0]!.encounter.feeBypassReason).toContain("emergency");
 
-    /* CALL NEXT FINDS NOBODY — the token is not merely re-sorted, it is not in the running. */
     const called = await callNext(db, dra.actor, view.session.id, MON);
-    expect(called.entry).toBeNull();
-
-    const rows = await db.select().from(opdEncounters).where(eq(opdEncounters.id, encounterId));
-    expect(rows[0]!.status).toBe("waiting"); // …and nothing about the visit moved
+    expect(called.entry?.tokenNo).toBe(first.tokenNo);
   });
 
-  /**
-   * ═══ THE WHOLE STORY, END TO END — THE BAY'S OWN EMERGENCY SAVE (#268) MEETS THE HOLD ═══
-   *
-   * The helper above reaches this state through the FRONT DESK's waiver because that is the road
-   * that existed when this suite was written. The road the owner actually walked is the bay's red
-   * button: no clerk, no counter, one tap on a collapsing patient. It writes the same waiver in the
-   * nurse's name (#268), so it arrives at the same hold — and that sentence, not a clerk's, is what
-   * the doctor reads on the rail. Pinned here because the two rulings were made a day apart and
-   * nothing else asserts that they compose.
-   */
-  it("a patient charted by the BAY's emergency save arrives held, carrying the nurse's own sentence", async () => {
-    /*
-      THE VITALS DOOR'S VERDICT IS STUBBED AND THE HOLD IS NOT, which is the same split
-      `vitals-fee-gate.test.ts` draws one door back: billing registers the real `feeGate` on BOTH
-      doors in `billing.module.ts` and `billing.e2e.test.ts` proves that wiring over HTTP. What is
-      real here is everything this suite is about — the waiver the save writes, the ledger the hold
-      reads, and the doctor's own door. MEASURED, not assumed: without this line the save found an
-      OPEN door (no guard is registered in a unit test), waived nothing, and the row failed on
-      `feeWaived` — which is the test telling the truth about what a bare unit world contains.
-    */
+  it("a patient charted by the BAY's emergency save is in the line too", async () => {
     const unregisterVitals = registerVitalsStartGuard("test_fee_gate", () =>
       Promise.resolve({ ok: false as const, code: "fee_unsettled", detail: { visitType: "new" } }));
     const patient = await mkPatient(db, clerk.actor, { name: "Chandan Ram" });
     const open = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
-    /* No `grantFeeBypass` anywhere: the emergency save opens the fee gate itself and signs it. */
     const saved = await recordVitals(db, vd.actor, open.encounter.id, adultOk, MON, { emergency: true });
+    unregisterVitals();
     expect(saved.feeWaived).toBe(true);
     expect(saved.encounter.feeBypassBy).toBe(vd.id);
 
     const view = await queue();
-    expect(view.ordered).toHaveLength(0);
-    expect(view.heldForPayment.map((e) => e.tokenNo)).toEqual([open.queueEntry.tokenNo]);
-    expect(view.heldForPayment[0]!.encounter.feeBypassReason).toContain("vitals taken at the bay before billing");
-
-    /* And the doctor's own door is the only way through it, exactly as the owner ruled. */
-    const opened = await openUnpaidToken(db, dra.actor, open.encounter.id, "emergency — seeing him now", MON);
-    expect(opened.encounter.consultFeeOverrideBy).toBe(dra.userId);
-    expect((await queue()).ordered.map((e) => e.tokenNo)).toEqual([open.queueEntry.tokenNo]);
-    unregisterVitals();
+    expect(view.ordered.map((e) => e.tokenNo)).toEqual([open.queueEntry.tokenNo]);
+    expect(view.heldForPayment).toEqual([]);
   });
 
-  it("the hall is not told: the public board does not announce an unpaid token", async () => {
+  it("the hall board announces it and the desk summary counts it as waiting", async () => {
     const { tokenNo } = await unpaidWaiting("Ganesh Oraon");
 
     const board = await boardSnapshot(db, "2026-08-17", undefined, MON);
-    const mine = board.find((b) => b.doctorId === dra.doctorId)!;
-    expect(mine.next).not.toContain(tokenNo);
-    expect(mine.next).toEqual([]);
-    expect(mine.waitingCount).toBe(0);
-
-    /* The staff surface counts it separately — a figure the desk acts on, never shown in the hall. */
+    expect(board.find((b) => b.doctorId === dra.doctorId)).toMatchObject({ next: [tokenNo], waitingCount: 1 });
     const summary = await summaryByDoctor(db, deptId, "2026-08-17", MON);
-    expect(summary.find((s) => s.doctor.id === dra.doctorId)).toMatchObject({ waitingCount: 0, heldForPaymentCount: 1 });
+    expect(summary.find((s) => s.doctor.id === dra.doctorId)).toMatchObject({ waitingCount: 1, heldForPaymentCount: 0 });
   });
 
-  describe("the doctor opens it", () => {
-    it("names the doctor and the reason, returns the token to the order, and lets the consultation start", async () => {
+  describe("the consultation door", () => {
+    it("LET THROUGH → the consultation starts, is noted and is completed with no reason asked of the doctor", async () => {
       consultGateRefusing();
-      const { encounterId, tokenNo } = await unpaidWaiting("Rina Kumari");
-      /* Before: the doctor's own door is shut, exactly as the owner ruled on the bay's waiver. */
-      await expect(startConsultation(db, dra.actor, encounterId, MON)).rejects.toMatchObject({ code: "consult_gate_refused" });
+      const { encounterId } = await unpaidWaiting("Rina Kumari");
 
-      const opened = await openUnpaidToken(db, dra.actor, encounterId, "emergency — chest pain, seeing her now", MON);
-      expect(opened.encounter.consultFeeOverrideBy).toBe(dra.userId);
-      expect(opened.encounter.consultFeeOverrideReason).toBe("emergency — chest pain, seeing her now");
-
-      const view = await queue();
-      expect(view.ordered.map((e) => e.tokenNo)).toEqual([tokenNo]);
-      expect(view.heldForPayment).toHaveLength(0);
-      expect(view.counts).toMatchObject({ waiting: 1, heldForPayment: 0 });
-      /* Still unpaid, and still saying so: a decision about the ORDER never moves a rupee. */
-      expect(view.ordered[0]!.feeStatus).toBe("unsettled");
-      expect(view.ordered[0]!.encounter.consultFeeOverrideReason).toContain("chest pain");
-
-      const board = await boardSnapshot(db, "2026-08-17", undefined, MON);
-      expect(board.find((b) => b.doctorId === dra.doctorId)!.next).toEqual([tokenNo]);
-
-      /* AND THE DOOR OPENS, with the fee gate still refusing underneath it. */
       const started = await startConsultation(db, dra.actor, encounterId, MON);
       expect(started.encounter.status).toBe("in_consultation");
+      /* Nobody wrote a doctor's override: the desk's bypass is the only decision on this visit. */
+      expect(started.encounter.consultFeeOverrideBy).toBeNull();
+      expect(started.encounter.feeBypassBy).toBe(clerk.id);
+
+      const noted = await saveConsultNote(db, dra.actor, encounterId, { advice: "fluids" }, MON);
+      expect(noted.encounter.status).toBe("in_consultation");
+      const done = await completeConsultation(db, dra.actor, encounterId, { testsOrderedReturnToday: false }, MON);
+      expect(done.encounter.status).toBe("completed");
     });
 
-    it("excuses the MONEY and nothing else: a guard refusing for any other reason still refuses", async () => {
+    it("NEITHER PAID NOR LET THROUGH → the bay's pay-before-vitals door still stops the visit", async () => {
+      const unregisterVitals = registerVitalsStartGuard("test_fee_gate", () =>
+        Promise.resolve({ ok: false as const, code: "fee_unsettled", detail: { visitType: "new" } }));
+      const patient = await mkPatient(db, clerk.actor, { name: "Unpaid Walk-in" });
+      const open = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+      await expect(recordVitals(db, vd.actor, open.encounter.id, adultOk, MON)).rejects.toMatchObject({ code: "consult_gate_refused" });
+      unregisterVitals();
+      /* Never charted, so never `waiting`: the doctor's line does not have them. */
+      expect((await queue()).ordered).toEqual([]);
+    });
+
+    it("NEITHER PAID NOR LET THROUGH but already waiting (a receipt voided after vitals) → the consultation is still refused, in words without money", async () => {
+      consultGateRefusing();
+      const { encounterId } = await unpaidWaiting("Voided Receipt");
+      /* The state a void leaves: unpaid, and no desk decision on the visit. */
+      await db.update(opdEncounters).set({ feeBypassBy: null, feeBypassReason: null, feeBypassAt: null }).where(eq(opdEncounters.id, encounterId));
+
+      const refusal = await startConsultation(db, dra.actor, encounterId, MON).catch((e: unknown) => e as { code: string; message: string; detail: unknown });
+      expect(refusal).toMatchObject({ code: "consult_gate_refused", detail: { guard: "test_consult_fee_gate", code: "fee_unsettled" } });
+      /* The doctor's phone prints this sentence as it stands. */
+      expect((refusal as { message: string }).message).not.toMatch(/paid|fee|bill|₹|dues|held/i);
+      const rows = await db.select().from(opdEncounters).where(eq(opdEncounters.id, encounterId));
+      expect(rows[0]!.status).toBe("waiting");
+    });
+
+    it("excuses the MONEY and nothing else: a guard refusing for any other reason still refuses a let-through visit", async () => {
       unregister = registerConsultStartGuard("test_clinical_gate", () =>
         Promise.resolve({ ok: false as const, code: "patient_sealed", detail: {} }));
       const { encounterId } = await unpaidWaiting("Munna");
-      await openUnpaidToken(db, dra.actor, encounterId, "emergency — seeing him now", MON);
 
       await expect(startConsultation(db, dra.actor, encounterId, MON)).rejects.toMatchObject({
         code: "consult_gate_refused", detail: { code: "patient_sealed" },
       });
     });
+  });
 
-    it("is refused without a reason, refused to a doctor it is not, and not re-assigned by a second call", async () => {
+  /**
+   * THE RETIRED ROUTE STILL ANSWERS. No screen calls `consult/open-unpaid` any more, but a phone
+   * that has not updated may, and a visit a doctor opened this morning under the old rule must
+   * still start this afternoon.
+   */
+  describe("the doctor's own override, retired", () => {
+    it("an old app build's call is answered as before and breaks nothing", async () => {
+      consultGateRefusing();
       const { encounterId } = await unpaidWaiting("Phulwa Devi");
 
       await expect(openUnpaidToken(db, dra.actor, encounterId, "  ", MON)).rejects.toMatchObject({ code: "reason_required" });
-      /* The corridor rule: this is the treating doctor's session to spend, and nobody else's. */
       await expect(openUnpaidToken(db, drb.actor, encounterId, "I will see her", MON)).rejects.toMatchObject({ code: "not_your_patient" });
       await expect(openUnpaidToken(db, clerk.actor, encounterId, "the desk says so", MON)).rejects.toMatchObject({ code: "not_a_doctor" });
-
       const first = await openUnpaidToken(db, dra.actor, encounterId, "emergency — breathless", MON);
       const again = await openUnpaidToken(db, dra.actor, encounterId, "something else entirely", MON);
-      expect(again.encounter.consultFeeOverrideBy).toBe(first.encounter.consultFeeOverrideBy);
-      expect(again.encounter.consultFeeOverrideReason).toBe("emergency — breathless");
+      expect(again.encounter.consultFeeOverrideReason).toBe(first.encounter.consultFeeOverrideReason);
+
+      expect((await queue()).ordered).toHaveLength(1);
+      expect((await startConsultation(db, dra.actor, encounterId, MON)).encounter.status).toBe("in_consultation");
+    });
+
+    it("an override written before the ruling still opens the door for a visit with no desk bypass", async () => {
+      consultGateRefusing();
+      const { encounterId } = await unpaidWaiting("Opened This Morning");
+      await openUnpaidToken(db, dra.actor, encounterId, "emergency — seeing him now", MON);
+      await db.update(opdEncounters).set({ feeBypassBy: null, feeBypassReason: null, feeBypassAt: null }).where(eq(opdEncounters.id, encounterId));
+
+      expect((await startConsultation(db, dra.actor, encounterId, MON)).encounter.status).toBe("in_consultation");
     });
   });
 
   /**
-   * ═══ "ONCE THE BILL IS PAID THEN THE TOKEN AUTOMATICALLY MOVES" ═══
-   *
-   * Nobody calls anything. A receipt lands at the counter for this visit's consultation fee, and
-   * the next read of the queue has the token in it — because the hold IS the ledger, read. This is
-   * the row that would go red the day somebody replaces it with a stored flag.
+   * ═══ THE DOCTOR'S COPY OF THE QUEUE HAS NO MONEY KEY IN IT, ANYWHERE ═══
+   * `GET /opd/queues` hands this to every caller without a fee-seeing permission
+   * (`billing.e2e.test.ts` asks the route as a doctor and as the desk).
    */
-  it("when the bill is paid the token moves by itself — into the order and onto the board", async () => {
-    const { encounterId, patientId, tokenNo } = await unpaidWaiting("Ramesh Yadav");
-    expect((await queue()).heldForPayment).toHaveLength(1);
+  it("queueWithoutMoney: no fee status, no bypass reason, no override reason, nothing held — on every row", async () => {
+    consultGateRefusing();
+    const lineRow = await unpaidWaiting("In The Line");
+    const calledRow = await unpaidWaiting("Called One");
+    const withRow = await unpaidWaiting("With The Doctor");
+    await openUnpaidToken(db, dra.actor, lineRow.encounterId, "old build wrote this", MON);
+    await startConsultation(db, dra.actor, withRow.encounterId, MON);
+    const full = await queue();
+    await callNext(db, dra.actor, full.session.id, MON);
+    void calledRow;
 
-    await openSessionFor(db, cashier, 200_000);
-    await issuePaidInvoice(db, cashier, { patientId, serviceId: base.consultNewServiceId, encounterId }, MON);
-
-    const view = await queue();
-    expect(view.heldForPayment).toHaveLength(0);
-    expect(view.ordered.map((e) => e.tokenNo)).toEqual([tokenNo]);
-    expect(view.ordered[0]!.feeStatus).toBe("settled");
-    /* Nobody decided anything: the money moved, not a person. */
-    expect(view.ordered[0]!.encounter.consultFeeOverrideReason).toBeNull();
-
-    const board = await boardSnapshot(db, "2026-08-17", undefined, MON);
-    expect(board.find((b) => b.doctorId === dra.doctorId)).toMatchObject({ next: [tokenNo], waitingCount: 1 });
-
-    const called = await callNext(db, dra.actor, view.session.id, MON);
-    expect(called.entry?.tokenNo).toBe(tokenNo);
+    const mine = queueWithoutMoney(await queue());
+    expect(mine.ordered.length + (mine.current === null ? 0 : 1) + mine.inConsult.length).toBe(3);
+    expect(mine.current).not.toBeNull();
+    expect(mine.heldForPayment).toEqual([]);
+    const keys = keysOf({ ordered: mine.ordered, current: mine.current, inConsult: mine.inConsult, left: mine.left });
+    for (const k of QUEUE_MONEY_KEYS) expect(keys.has(k)).toBe(false);
+    expect([...keys].filter((k) => /fee|paid|bypass|override|amount|paise|unsettled|invoice|bill|dues/i.test(k))).toEqual([]);
+    expect(JSON.stringify(mine.ordered) + JSON.stringify(mine.current) + JSON.stringify(mine.inConsult)).not.toMatch(/unsettled|old build wrote this|emergency —/);
   });
 
-  /**
-   * THE HOSPITAL THAT HAS NOT CONFIGURED BILLING holds nothing — `encounterFeeStatuses` returns an
-   * empty map there, and a queue that emptied itself on day one of commissioning would be the
-   * worst possible first impression of this feature. Measured in its own db, without the billing
-   * seed the rest of this suite relies on.
-   */
-  it("an UNCONFIGURED hospital holds nothing", async () => {
+  it("an UNCONFIGURED hospital: the same line, and the desk's copy has no status to report", async () => {
     await truncateAll(db);
     await seedOpdBase(db);
     await activateOpdVisitDefinition(db);
@@ -255,5 +258,6 @@ describe("an unsettled token is held out of the doctor's queue", () => {
     const view = await queue();
     expect(view.heldForPayment).toHaveLength(0);
     expect(view.ordered.map((e) => e.tokenNo)).toEqual([tokenNo]);
+    expect(view.ordered[0]!.feeStatus).toBeNull();
   });
 });

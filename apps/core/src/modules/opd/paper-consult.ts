@@ -136,6 +136,8 @@ async function refusalBeforeWrite(
   if (actor.type !== "user") return "not_permitted";
   if (!(await hasPermission(tx as unknown as Db, actor.id, PAPER_CONSULT_PERMISSION, "hospital"))) return "not_permitted";
   if (e.type !== "opd") return "not_a_consultation";
+  // Owner 2026-10-09 — a tele-call the doctor has not spoken on cannot be closed "from paper": there is no paper.
+  if (e.consultMode === "tele" && e.teleOutcome !== "spoke") return "not_a_consultation";
   if (e.status === "abandoned") return "abandoned";
   if (e.status === "completed") return e.completedVia === "paper" ? "already_marked" : "doctor_completed";
   if (e.serviceDate !== istDate(now)) return "not_today";

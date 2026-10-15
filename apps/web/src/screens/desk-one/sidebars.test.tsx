@@ -51,8 +51,10 @@ function mount(opts: {
   memberships?: unknown[];
   coupons?: unknown[];
   storedPhotoFor?: string;
+  toCollect?: unknown[];
 } = {}): void {
   stubFetch({
+    ...(opts.toCollect === undefined ? {} : { "GET /api/billing/to-collect": { items: opts.toCollect } }),
     "GET /api/auth/me": {
       actor: { type: "user", id: "u1" },
       permissions: {
@@ -190,6 +192,21 @@ async function holdPatient(): Promise<void> {
 afterEach(() => { setToken(null); });
 
 describe("FD-14: the left column stops narrating the flow and starts carrying the patient", () => {
+  /**
+   * OWNER 2026-10-09 — "'To collect' list for desk". With nobody in hand the left column is where
+   * the desk reads its day; the visits it let through unpaid sit under those figures.
+   */
+  it("nobody in hand: the column lists who is still to collect from, gone first as the server sent them", async () => {
+    const r = (id: string, tokenNo: number, patientName: string, state: string): unknown => ({
+      encounterId: id, visitNo: `V${String(tokenNo)}`, serviceDate: "2026-10-09", patientId: `p-${id}`, patientName, uhid: "U1", isConfidential: false,
+      tokenNo, doctorName: "Dr. A", state, amountDuePaise: 10_000, letThroughBy: "Asha", letThroughAt: "2026-10-09T05:00:00.000Z", reason: "VIP", minutesSince: 12,
+    });
+    mount({ toCollect: [r("e-3", 9, "Seen And Gone", "done"), r("e-2", 7, "With Doctor", "with_doctor"), r("e-1", 5, "Waiting One", "waiting")] });
+    expect(await screen.findByTestId("to-collect-title", undefined, { timeout: 3000 })).toHaveTextContent("To collect · 3");
+    expect(screen.getByTestId("to-collect-row-e-3")).toHaveTextContent(/9.*Seen And Gone.*seen by the doctor.*₹100/);
+    expect(screen.getByTestId("to-collect-go-e-3")).toHaveTextContent("Collect");
+  });
+
   it("the flow is a strip of dots, not a paragraph of stage names", async () => {
     mount();
     await holdPatient();

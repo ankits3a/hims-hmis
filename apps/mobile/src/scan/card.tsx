@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useI18n } from "../i18n";
@@ -7,9 +7,9 @@ import { seatsFor } from "../seats";
 import { useSession } from "../session";
 import { Text } from "../text";
 import { color, radius, space, TOUCH } from "../theme";
-import { MONO } from "../ui";
+import { MONO, KeyboardModal, keyboardScroll } from "../ui";
 import { vitalsApi } from "../vitals/api";
-import { GuardianSheet } from "../vitals/guardian";
+import { GuardianSheet, GuardianUndoSheet } from "../vitals/guardian";
 import type { Door } from "../vitals/rules";
 import { scanApi, type ScanSource } from "./api";
 import * as model from "./model";
@@ -97,7 +97,7 @@ function Row({ label, sub, kind, onPress, testID }: { label: string; sub?: strin
   );
 }
 
-export function ActionCard({ looked, seats, onAct, onPick, onNewVisit, onAgain, onClose, onGuardian }: {
+export function ActionCard({ looked, seats, onAct, onPick, onNewVisit, onAgain, onClose, onGuardian, onGuardianUndo }: {
   /** `null` while the lookup is on its way. */
   looked: Looked | null;
   seats: readonly ReturnType<typeof seatsFor>[number]["key"][];
@@ -113,6 +113,8 @@ export function ActionCard({ looked, seats, onAct, onPick, onNewVisit, onAgain, 
    * when the server says it may be offered for this visit. It opens "Who came?"; it skips nothing.
    */
   onGuardian?: (visit: ScanVisit) => void;
+  /** #771 — "Undo — patient is here", when the server says it may be offered for this visit. */
+  onGuardianUndo?: (visit: ScanVisit) => void;
 }) {
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
@@ -137,8 +139,12 @@ export function ActionCard({ looked, seats, onAct, onPick, onNewVisit, onAgain, 
         {o.visit.guardianOffer === true && onGuardian !== undefined && (
           <Row testID="card-guardian" kind="amber" label={t("patientAbsent.short")} onPress={() => onGuardian(o.visit)} />
         )}
+        {o.visit.guardianUndo === true && onGuardianUndo !== undefined && (
+          <Row testID="card-guardian-undo" kind="amber" label={t("patientAbsent.undo")} onPress={() => onGuardianUndo(o.visit)} />
+        )}
         {plan.next === null
-          ? (o.visit.guardianOffer === true && onGuardian !== undefined ? null : <Text style={s.nothing} testID="card-nothing">{t("mobile.scan.nothing")}</Text>)
+          ? ((o.visit.guardianOffer === true && onGuardian !== undefined) || (o.visit.guardianUndo === true && onGuardianUndo !== undefined)
+            ? null : <Text style={s.nothing} testID="card-nothing">{t("mobile.scan.nothing")}</Text>)
           : plan.others.map((x) => offer(x, "plain"))}
         {plan.greyed.map((g) => <Row key={g.labelKey} testID={`card-off-${g.action}`} kind="off" label={t(g.labelKey)} sub={t(g.reasonKey)} />)}
       </>
@@ -175,17 +181,17 @@ export function ActionCard({ looked, seats, onAct, onPick, onNewVisit, onAgain, 
 
   const settled = looked !== null && o !== null;
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+    <KeyboardModal visible transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={s.scrim} onPress={onClose} accessibilityLabel={t("mobile.scan.close")} testID="card-scrim" />
       <View style={[s.sheet, { paddingBottom: insets.bottom + space.lg }]} testID="action-card">
         <View style={s.grab} />
-        <ScrollView style={{ flexGrow: 0 }} contentContainerStyle={{ gap: space.sm }} keyboardShouldPersistTaps="handled">
+        <ScrollView {...keyboardScroll()} style={{ flexGrow: 0 }} contentContainerStyle={{ gap: space.sm }} keyboardShouldPersistTaps="handled">
           {body}
           {settled && onAgain !== undefined && (o.outcome !== "visit") && <Row testID="card-again" kind="plain" label={t("mobile.scan.again")} onPress={onAgain} />}
           {settled && onAgain === undefined && o.outcome !== "visit" && o.outcome !== "ambiguous" && <Row testID="card-close" kind="plain" label={t("mobile.scan.close")} onPress={onClose} />}
         </ScrollView>
       </View>
-    </Modal>
+    </KeyboardModal>
   );
 }
 
@@ -201,11 +207,13 @@ export async function look(api: ReturnType<typeof scanApi>, source: ScanSource):
  * already names. `onLocal` lets the screen the row lives on do its own action in place (the
  * doctor's line starts its own patient); anything else opens the screen that owns it.
  */
-export function HeldCard({ source, onClose, onLocal, onGuardianDone }: {
+export function HeldCard({ source, onClose, onLocal, onGuardianDone, onGuardianUndone }: {
   source: ScanSource | null; onClose: () => void;
   onLocal?: (action: ScanAction, visit: ScanVisit) => boolean;
   /** The guardian was sent to the doctor from this card: a screen with its own banner says so itself. */
   onGuardianDone?: (visit: ScanVisit) => void;
+  /** #771 — the guardian mark was undone from this card. */
+  onGuardianUndone?: (visit: ScanVisit) => void;
 }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -216,6 +224,8 @@ export function HeldCard({ source, onClose, onLocal, onGuardianDone }: {
   const [looked, setLooked] = useState<Looked | null>(null);
   /** "Who came?" is up for this visit. It outlives the card that opened it. */
   const [guardian, setGuardian] = useState<ScanVisit | null>(null);
+  /** #771 — "Undo — patient is here" was pressed: the undo is on its way (or refused) for this visit. */
+  const [undoing, setUndoing] = useState<ScanVisit | null>(null);
   useEffect(() => { setAt(source); }, [source]);
   useEffect(() => {
     if (at === null) return;
@@ -232,11 +242,15 @@ export function HeldCard({ source, onClose, onLocal, onGuardianDone }: {
       />
     );
   }
+  if (undoing !== null) {
+    return <GuardianUndoSheet api={vitalsApi(call)} encounterId={undoing.encounterId} onDone={() => onGuardianUndone?.(undoing)} onClose={() => setUndoing(null)} />;
+  }
   if (source === null || at === null) return null;
   return (
     <ActionCard
       looked={looked} seats={seats} onClose={onClose}
       onGuardian={(visit) => { setGuardian(visit); onClose(); }}
+      onGuardianUndo={(visit) => { setUndoing(visit); onClose(); }}
       onPick={(c) => setAt({ encounterId: c.encounterId })}
       onAct={(action, visit) => {
         onClose();

@@ -6,6 +6,7 @@ import { createDb } from "../src/kernel/db/client";
 import { SYNTHETIC_DATA_KEY, assertSyntheticDataAllowed } from "./synthetic-door";
 import { labAnalytes, labOrderables, labReferenceRanges, labReflexRules, services } from "../src/kernel/db/schema";
 import { upsertAnalyte, upsertOrderable } from "../src/modules/lab/catalogue";
+import { LAB_CATALOGUE_STANDARD_DATA } from "./data/lab-catalogue-standard";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../src/kernel/db/client";
 
@@ -33,7 +34,7 @@ import type { Db } from "../src/kernel/db/client";
  * duplicates — the same idempotence `seed-roles` and `seed-ot` promise.
  */
 
-type Fixture = {
+export type LabCatalogueFixture = {
   analytes: {
     code: string; nameEn: string; nameHi?: string | null; resultType: "numeric" | "text" | "coded" | "formula";
     unit?: string | null; decimals?: number; formula?: string | null; formulaGuard?: string | null;
@@ -58,14 +59,20 @@ type Fixture = {
 };
 
 export const LAB_CATALOGUE_FIXTURE = resolve(__dirname, "..", "test", "fixtures", "lab-catalogue.json");
+/**
+ * Owner 2026-10-11 — the STANDARD catalogue: the golden fixture plus a large Indian lab's menu (583
+ * parameters, 331 tests). Its ranges are literature defaults marked for kit-insert review, so it is
+ * refused in production exactly as the fixture is. `LAB_CATALOGUE=standard` seeds it instead.
+ */
+export { LAB_CATALOGUE_STANDARD_DATA } from "./data/lab-catalogue-standard";
 
 /** Deterministic, so a re-run UPDATES the same rows instead of minting a parallel catalogue. */
 export function serviceIdForLabCode(code: string): string {
   return `LABSVC-${code}`;
 }
 
-export function loadLabCatalogue(path: string = LAB_CATALOGUE_FIXTURE): Fixture {
-  return JSON.parse(readFileSync(path, "utf8")) as Fixture;
+export function loadLabCatalogue(path: string = LAB_CATALOGUE_FIXTURE): LabCatalogueFixture {
+  return JSON.parse(readFileSync(path, "utf8")) as LabCatalogueFixture;
 }
 
 export type SeedLabCatalogueReport = {
@@ -86,7 +93,7 @@ export type SeedLabCatalogueReport = {
  * seed exactly as they guard a curator at a screen** (E33, T3 A9). A fixture that could bypass them
  * would be a way to load a catalogue no screen would accept.
  */
-export async function seedLabCatalogue(db: Db, actor: Actor, fixture: Fixture = loadLabCatalogue()): Promise<SeedLabCatalogueReport> {
+export async function seedLabCatalogue(db: Db, actor: Actor, fixture: LabCatalogueFixture = loadLabCatalogue()): Promise<SeedLabCatalogueReport> {
   // ── (1) the tariff side: one `services` row per orderable ──
   for (const o of fixture.orderables) {
     const id = serviceIdForLabCode(o.code);
@@ -196,7 +203,7 @@ async function main(): Promise<void> {
   const { db, pool } = createDb(url);
   const actor: Actor = { type: "user", id: process.env.SEED_ACTOR_ID ?? "seed-lab-catalogue" };
   try {
-    const report = await seedLabCatalogue(db, actor);
+    const report = await seedLabCatalogue(db, actor, process.env.LAB_CATALOGUE === "standard" ? LAB_CATALOGUE_STANDARD_DATA : undefined);
     console.log(`seed:lab-catalogue — ${JSON.stringify(report)}`);
   } finally {
     await pool.end();

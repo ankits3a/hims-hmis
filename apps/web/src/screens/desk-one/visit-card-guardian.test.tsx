@@ -32,6 +32,11 @@ function mount(detail: Record<string, unknown>, posted: unknown[]): void {
     "GET /api/print/jobs": { jobs: [] },
     "GET /api/billing/invoices": { items: [] },
     "GET /api/opd/visits/e-9": () => current,
+    "POST /api/opd/visits/e-9/patient-absent/undo": () => {
+      posted.push("undo");
+      current = { ...current, patientAbsent: null };
+      return { alreadyCleared: false };
+    },
     "POST /api/opd/visits/e-9/patient-absent": (init?: RequestInit) => {
       posted.push(JSON.parse(String(init?.body)));
       const patientAbsent = { relation: "mother", name: null, by: "u1", at: new Date().toISOString() };
@@ -103,5 +108,29 @@ describe("Desk One's visit card — guardian with reports", () => {
     expect(await within(card).findByTestId("visit-card-absent-error"))
       .toHaveTextContent("This visit has not been billed yet — take the fee at the counter first.");
     expect(within(card).queryByTestId("visit-card-absent-notice")).not.toBeInTheDocument();
+  });
+
+  /* #771 — the mark was a mistake: the card offers the undo while the visit waits for the doctor. */
+  it("a marked visit still waiting offers 'Undo — patient is here'; it posts and the notice goes", async () => {
+    const posted: unknown[] = [];
+    const patientAbsent = { relation: "son", name: null, by: "u1", at: new Date().toISOString() };
+    mount({ encounter: encounter({ status: "waiting" }), patientAbsent, queueEntries: [], vitals: [], prescriptions: [] }, posted);
+    const user = userEvent.setup({ delay: null });
+    renderWithProviders(<VisitCard encounterId="e-9" when={today} visit={item({ status: "waiting" })} />);
+    const card = await screen.findByTestId("visit-card");
+    const undo = await within(card).findByTestId("visit-card-absent-undo");
+    expect(undo).toHaveTextContent("Undo — patient is here");
+    await user.click(undo);
+    await waitFor(() => expect(posted).toEqual(["undo"]));
+    await waitFor(() => expect(within(card).queryByTestId("visit-card-absent-notice")).not.toBeInTheDocument());
+  });
+
+  it("a marked visit the doctor already has offers no undo", async () => {
+    const patientAbsent = { relation: "son", name: null, by: "u1", at: new Date().toISOString() };
+    mount({ encounter: encounter({ status: "in_consultation" }), patientAbsent, queueEntries: [], vitals: [], prescriptions: [] }, []);
+    renderWithProviders(<VisitCard encounterId="e-9" when={today} visit={item({ status: "in_consultation" })} />);
+    const card = await screen.findByTestId("visit-card");
+    await within(card).findByTestId("visit-card-absent-notice");
+    expect(within(card).queryByTestId("visit-card-absent-undo")).not.toBeInTheDocument();
   });
 });

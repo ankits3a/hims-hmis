@@ -291,6 +291,19 @@ export function refuseIfClosedOnPaper(encounter: EncounterRow): void {
 }
 
 /**
+ * ═══ A TELE-CALL IS NOT A CONSULTATION UNTIL THE DOCTOR HAS SPOKEN TO THE PATIENT (owner 2026-10-09) ═══
+ *
+ * The server's guard, not the screen's: completing the visit and issuing its prescription are both
+ * refused until `tele_outcome` is 'spoke' (`tele.ts` records it). A screen that greys a button is a
+ * courtesy; this is the rule. An in-person visit never reaches the throw.
+ */
+export function refuseTeleBeforeSpoke(encounter: EncounterRow): void {
+  if (encounter.consultMode === "tele" && encounter.teleOutcome !== "spoke") {
+    throw new OpdError("tele_outcome_required", "Call the patient first, then record that you spoke to them", { encounterId: encounter.id });
+  }
+}
+
+/**
  * Every consult-door verdict for a visit, first refusal first — WITHOUT the doctor's waiver applied.
  * `startConsultation` reads the registry itself; this is the same question for the one other caller
  * that closes a visit, the paper road (`paper-consult.ts`), which must not grow a second copy of
@@ -320,6 +333,10 @@ export async function consultDoorRefusal(
  * "bypassed at vitals" silently mean "bypassed at consultation", which is a clinical decision
  * nobody made. Two registries, two verdicts, one bypass column that each reads for itself.
  *
+ * OWNER RULING 2026-10-09: the decision has now been MADE — a visit the desk let through is seen
+ * by the doctor like any other (`startConsultation`). The registries stay two, and the consult door
+ * reads the bypass for itself, for ONE verdict code (`fee_unsettled`) and no other.
+ *
  * Dependency-inverted exactly as the consult registry is: OPD owns the registry and the thrown
  * refusal, billing hands in a verdict function and imports no OPD internals. Keyed, so a second
  * module init in one jest worker REPLACES rather than double-registers.
@@ -336,6 +353,11 @@ export function registerVitalsStartGuard(key: string, guard: VitalsStartGuard): 
   };
 }
 
+/** The desk (FD-32) or the bay's emergency save let this visit past the counter: who, and their sentence, are on the row. */
+export function deskLetThrough(encounter: Pick<EncounterRow, "feeBypassBy" | "feeBypassReason">): boolean {
+  return encounter.feeBypassBy !== null && encounter.feeBypassReason !== null;
+}
+
 /**
  * Every registered verdict, first refusal wins — or `{ok:true}` when the door has already been
  * opened for this visit: by the front desk at the counter, or (owner ruling 2026-09-20) by the bay
@@ -349,7 +371,7 @@ export function registerVitalsStartGuard(key: string, guard: VitalsStartGuard): 
 export async function vitalsGateVerdict(
   db: Db | Tx, encounter: EncounterRow,
 ): Promise<{ ok: true } | { ok: false; code: string; detail?: unknown }> {
-  if (encounter.feeBypassBy !== null && encounter.feeBypassReason !== null) return { ok: true };
+  if (deskLetThrough(encounter)) return { ok: true };
   for (const guard of vitalsStartGuards.values()) {
     const verdict = await guard(db, encounter);
     if (!verdict.ok) return verdict;
@@ -358,7 +380,13 @@ export async function vitalsGateVerdict(
 }
 
 /**
- * ══════════ THE DOCTOR OPENS THE TOKEN (OWNER RULING 2026-09-20) ══════════
+ * ══════════ THE DOCTOR OPENS THE TOKEN (OWNER RULING 2026-09-20) — RETIRED 2026-10-09 ══════════
+ *
+ * RETIRED by the owner's ruling of 2026-10-09 (*"Doctor's screens must not show money"*; a visit
+ * the desk let through is an ordinary patient — see `startConsultation`). Nothing holds a token
+ * any more, no screen calls this, and no guard requires it. It is KEPT, unchanged, because an app
+ * build installed before the ruling may still call it and must get the answer it expects, and
+ * because what it wrote before the ruling is still honoured. What follows is the 2026-09-20 text.
  *
  * Owner: *"the emergency at the bay doesn't open the doctor's door. It waits for bill to be paid
  * until doctor opens the token from his dashboard manually. Currently the doctor have no screen to
@@ -445,26 +473,48 @@ export async function startConsultation(
     throw new OpdError("encounter_state_conflict", `a consultation starts from waiting, not ${current.status}`);
   }
   // D8: every registered guard is consulted BEFORE any write. No guard registered ⇒ shipped behaviour.
-  for (const [key, guard] of consultStartGuards) {
+  /*
+    TELE-CALL (owner 2026-10-09). A tele visit EXISTS only because its appointment was covered at
+    the desk — an uncovered one opens no visit, so there is nothing here to hold and nothing to
+    waive. Its bill is raised when the doctor has spoken to the patient (`tele.ts`), so the
+    pay-before-consult guards, which ask for a settled invoice, are not asked of it.
+  */
+  for (const [key, guard] of current.consultMode === "tele" ? [] : consultStartGuards) {
     const verdict = await guard(db, current);
     if (!verdict.ok) {
       /*
-        ═══ THE DOCTOR HAS ALREADY DECIDED (OWNER RULING 2026-09-20) ═══
+        ═══ THE DESK LET THEM THROUGH, SO THE DOCTOR SEES THEM (OWNER RULING 2026-10-09) ═══
 
-        Owner: *"It waits for bill to be paid until doctor opens the token from his dashboard
-        manually."* `openUnpaidToken` is that decision, written down with a name and a sentence on
-        it, and this is where it is spent.
+        THE GUARD CHANGED HERE IS THE CONSULT-START FEE EXEMPTION. Owner, 2026-10-09: *"walk-in
+        rule, a (desk let through → patient shows in doctor's line, no mark)"* · *"make sure that
+        Doctor will not see 'paid' written or marked against any patient name or id. This is a
+        hospital not a clinic."* · *"Doctor's screens must not show money."*
 
-        IT EXCUSES ONE CODE AND NOT ONE GUARD. `fee_unsettled` is the money, and the money is the
-        only thing a doctor may decide to proceed without; a guard that starts refusing for a
-        clinical reason — a sealed patient, a closed session, a statute — must go on refusing a
-        doctor who has waived a BILL. Keying on the verdict rather than on the registry key is what
-        makes that true for guards this file has never heard of.
+        BEFORE (ruling 2026-09-20, decision 0037 §2): `fee_unsettled` was excused only when the
+        TREATING DOCTOR had opened the token with a typed reason (`consult_fee_override_by`); the
+        desk's bypass opened the bay and not this door.
+        NOW: `fee_unsettled` is also excused when the visit carries the desk's (or the bay's
+        emergency) recorded bypass — `deskLetThrough`, the same two columns, the same reason and
+        audit event `grantFeeBypass` has always written. The doctor is asked nothing. A visit
+        that is neither paid nor let through is refused exactly as before.
+
+        The doctor's own override is RETIRED, not removed: no screen calls `openUnpaidToken`,
+        nothing requires it, and it is still honoured so that a token a doctor opened before this
+        ruling — or an app build that has not updated — goes on working.
+
+        IT STILL EXCUSES ONE CODE AND NOT ONE GUARD. `fee_unsettled` is the money; a guard that
+        refuses for a clinical reason — a sealed patient, a closed session, a statute — goes on
+        refusing a visit the desk waved past a BILL. Keying on the verdict rather than on the
+        registry key is what makes that true for guards this file has never heard of.
       */
-      if (verdict.code === "fee_unsettled" && current.consultFeeOverrideBy !== null) continue;
+      if (verdict.code === "fee_unsettled" && (deskLetThrough(current) || current.consultFeeOverrideBy !== null)) continue;
       throw new OpdError(
         "consult_gate_refused",
-        `consult start refused by ${key}: ${verdict.code}`,
+        // The doctor's phone prints this sentence as it stands, and a doctor's screen says nothing
+        // about money (owner 2026-10-09). The code and the guard's name stay in `detail` for the desks.
+        verdict.code === "fee_unsettled"
+          ? "This patient is not ready for you yet — the front desk has to finish with them first."
+          : `consult start refused by ${key}: ${verdict.code}`,
         { guard: key, code: verdict.code, detail: verdict.detail },
       );
     }
@@ -682,6 +732,7 @@ export async function completeConsultation(
   if (current.status !== "in_consultation") {
     throw new OpdError("encounter_state_conflict", `a completion needs in_consultation, not ${current.status}`);
   }
+  refuseTeleBeforeSpoke(current);
   assertLeaseFor(current, input.note?.leaseToken, now);
   /*
     ═══ PRODUCTION 2026-09-23 — COMPLETE MUST NOT DROP A PRESCRIPTION NOBODY ISSUED (the server's half, 2026-10-06) ═══

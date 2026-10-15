@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { I18nProvider } from "../src/i18n";
 import { DeskOne } from "../src/screens/desk-one";
@@ -483,5 +483,203 @@ describe("appointments on the phone's Desk One", () => {
     expect(await screen.findByTestId("appt-a2")).toHaveTextContent(/आज · 09:30/);
     expect(screen.getByTestId("appt-checkin-a2")).toHaveTextContent("चेक-इन — मरीज़ आ गए हैं");
     expect(screen.getByTestId("person-book")).toHaveTextContent("अपॉइंटमेंट बुक करें");
+  });
+
+  // ——— tele-call, slice 1 (owner 2026-10-09) ———
+
+  it("TELE-CALL: the switch opens on In person; Tele-call asks for the patient's phone on a number pad (pre-filled when known) and Book waits for a real number", async () => {
+    const s = world({ routes: { "POST /opd/appointments": () => ({ status: 201, body: { appointment: appt({ mode: "tele", telePhone: "9876543021" }) } }) } });
+    await mount(s.fetcher);
+    await findAndHold();
+    await toConfirm();
+    expect(screen.getByTestId("book-mode-in_person").props.accessibilityState).toMatchObject({ checked: true });
+    expect(screen.getByTestId("book-mode-tele").props.accessibilityState).toMatchObject({ checked: false });
+    expect(screen.getByTestId("book-mode-tele")).toHaveTextContent("Tele-call");
+    expect(screen.queryByTestId("book-tele-phone")).toBeNull();
+
+    await fireEvent.press(screen.getByTestId("book-mode-tele"));
+    const phone = await screen.findByTestId("book-tele-phone");
+    expect(phone.props.value).toBe("9876543210"); // the patient's recorded mobile
+    expect(phone.props.keyboardType).toBe("number-pad");
+    expect(phone.props.accessibilityLabel).toBe("Patient's phone");
+    // Nothing about money is said on a tele-call booking in this slice.
+    expect(screen.queryByTestId("book-fee")).toBeNull();
+
+    await fireEvent.changeText(phone, "");
+    expect(screen.getByTestId("book-go").props.accessibilityState).toMatchObject({ disabled: true });
+    await fireEvent.press(screen.getByTestId("book-go"));
+    await fireEvent.changeText(screen.getByTestId("book-tele-phone"), "98765 4302");
+    expect(screen.getByTestId("book-go").props.accessibilityState).toMatchObject({ disabled: true });
+    expect(s.of("POST /opd/appointments")).toHaveLength(0);
+
+    await fireEvent.changeText(screen.getByTestId("book-tele-phone"), "+91 98765 43021");
+    expect(screen.getByTestId("book-go").props.accessibilityState).toMatchObject({ disabled: false });
+    await fireEvent.press(screen.getByTestId("book-go"));
+    expect(await screen.findByTestId("book-done-word")).toHaveTextContent("Booked");
+    expect(s.of("POST /opd/appointments")[0]!.body).toEqual({ patientId: "p1", doctorId: "d2", slotStart: at(D1, "04:00"), mode: "tele", telePhone: "9876543021" });
+    expect(within(screen.getByTestId("book-done")).getByLabelText("Tele-call")).toBeTruthy();
+    expect(screen.queryByTestId("book-done-fee")).toBeNull();
+  });
+
+  it("TELE-CALL: back on In person the empty phone no longer blocks, and the booking sent is the one it always was", async () => {
+    const s = world({ routes: { "POST /opd/appointments": () => ({ status: 201, body: { appointment: appt() } }) } });
+    await mount(s.fetcher);
+    await findAndHold();
+    await toConfirm();
+    await fireEvent.press(screen.getByTestId("book-mode-tele"));
+    await fireEvent.changeText(await screen.findByTestId("book-tele-phone"), "");
+    await fireEvent.press(screen.getByTestId("book-mode-in_person"));
+    expect(screen.queryByTestId("book-tele-phone")).toBeNull();
+    expect(screen.getByTestId("book-fee")).toBeTruthy();
+    await fireEvent.press(screen.getByTestId("book-go"));
+    expect(await screen.findByTestId("book-done-word")).toHaveTextContent("Booked");
+    expect(s.of("POST /opd/appointments")[0]!.body).toEqual({ patientId: "p1", doctorId: "d2", slotStart: at(D1, "04:00") });
+    expect(screen.getByTestId("book-done-fee")).toBeTruthy();
+  });
+
+  it("TELE-CALL: the patient's bookings and the desk's day mark a tele-call with an ICON named Tele-call — no word, and nothing on an in-person row", async () => {
+    const ahead = new Date(Date.now() + 2 * 3_600_000);
+    const mk = (id: string, name: string, over: Record<string, unknown>) => appt({
+      id, serviceDate: TODAY, slotStart: ahead.toISOString(), slotEnd: new Date(ahead.getTime() + 15 * 60_000).toISOString(),
+      patient: { id: `p-${id}`, uhid: `U-${id}`, name, alias: null, restricted: false }, patientId: `p-${id}`, ...over,
+    });
+    const s = world({
+      theirs: () => [appt({ id: "a1", mode: "tele", telePhone: null }), appt({ id: "a3", mode: "in_person", telePhone: null, serviceDate: D3, slotStart: at(D3, "04:00") })],
+      day: () => [mk("b1", "Meena Kumari", { mode: "tele" }), mk("b2", "Suresh Prasad", { mode: "in_person", doctorId: "d3" })],
+    });
+    await mount(s.fetcher);
+    await fireEvent.press(await screen.findByTestId("appts-open"));
+    const tele = await screen.findByTestId("desk-appt-b1");
+    expect(within(tele).getByLabelText("Tele-call").props).toMatchObject({ testID: "desk-appt-tele-b1", accessibilityRole: "image" });
+    expect(tele).not.toHaveTextContent(/tele/i);
+    expect(screen.queryByTestId("desk-appt-tele-b2")).toBeNull();
+    await fireEvent.press(screen.getByTestId("desk-appts-close"));
+
+    await findAndHold();
+    const mine = await screen.findByTestId("appt-a1");
+    expect(within(mine).getByLabelText("Tele-call").props).toMatchObject({ testID: "appt-tele-a1", accessibilityRole: "image" });
+    expect(mine).not.toHaveTextContent(/tele/i);
+    expect(screen.queryByTestId("appt-tele-a3")).toBeNull();
+  });
+
+  it("TELE-CALL: today's tele-call draws NO Check-in button — the card says its slot and its pay state — while an in-person booking today keeps its own", async () => {
+    const s = world({ theirs: () => [
+      appt({ id: "a2", mode: "tele", serviceDate: TODAY, slotStart: at(TODAY, "18:20"), slotEnd: at(TODAY, "18:29"), teleDesk: { amountPaise: 10_000, covered: true } }),
+      appt({ id: "a4", mode: "in_person", serviceDate: TODAY, slotStart: at(TODAY, "18:25"), slotEnd: at(TODAY, "18:29") }),
+    ] });
+    await mount(s.fetcher);
+    await findAndHold();
+    const tele = await screen.findByTestId("appt-a2");
+    expect(screen.queryByTestId("appt-checkin-a2")).toBeNull();
+    expect(tele).toHaveTextContent(/23:50/);
+    expect(screen.getByTestId("tele-money-a2")).toHaveTextContent(/^Paid$/);
+    expect(screen.getByTestId("appt-checkin-a4")).toBeTruthy();
+    expect(s.calls.some((c) => c.key.includes("check-in"))).toBe(false);
+  });
+
+  // ——— tele-call, slice 2: the desk collects (owner 2026-10-09) ———
+
+  it("TELE PAY: an unpaid tele-call says To pay; the cashier collects exactly that — UPI needs its reference — with one key, and the list is read again", async () => {
+    let paid = false;
+    const s = world({
+      perms: [...CASH_BOOKER, "billing.receipt.record"],
+      theirs: () => [appt({ id: "a1", mode: "tele", teleDesk: { amountPaise: 10_000, covered: paid } })],
+      routes: { "POST /opd/appointments/a1/advance": () => { paid = true; return { status: 201, body: { amountPaise: 10_000, receiptNo: "RCT/26-27/000091" } }; } },
+    });
+    await mount(s.fetcher);
+    await findAndHold();
+    expect(await screen.findByTestId("tele-money-a1")).toHaveTextContent("To pay ₹100");
+    await fireEvent.press(screen.getByTestId("tele-collect-a1"));
+    expect(await screen.findByTestId("tele-pay-title")).toHaveTextContent("Collect ₹100");
+    expect(screen.getByTestId("tele-mode-cash").props.accessibilityState).toMatchObject({ checked: true });
+    await fireEvent.press(screen.getByTestId("tele-mode-upi"));
+    expect(screen.getByTestId("tele-pay-go").props.accessibilityState).toMatchObject({ disabled: true });
+    await fireEvent.changeText(screen.getByTestId("tele-ref"), " 428311907755 ");
+    await fireEvent.press(screen.getByTestId("tele-pay-go"));
+    await waitFor(() => expect(screen.getByTestId("tele-money-a1")).toHaveTextContent(/^Paid$/));
+    const sent = s.of("POST /opd/appointments/a1/advance");
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.body).toEqual({ amountPaise: 10_000, tenders: [{ mode: "upi", amountPaise: 10_000, refText: "428311907755" }] });
+    expect(sent[0]!.idem).toMatch(/\S/);
+    expect(screen.queryByTestId("tele-collect-a1")).toBeNull();
+  });
+
+  it("TELE PAY: a refusal is the server's words; a lost answer keeps the SAME key for the second try", async () => {
+    let n = 0;
+    const s = world({
+      perms: [...CASH_BOOKER, "billing.receipt.record"],
+      theirs: () => [appt({ id: "a1", mode: "tele", teleDesk: { amountPaise: 10_000, covered: false } })],
+      routes: { "POST /opd/appointments/a1/advance": () => { n += 1; return n === 1 ? "offline" : { status: 409, body: { code: "no_open_session", message: "Open your cash session first" } }; } },
+    });
+    await mount(s.fetcher);
+    await findAndHold();
+    await fireEvent.press(await screen.findByTestId("tele-collect-a1"));
+    await fireEvent.press(await screen.findByTestId("tele-pay-go"));
+    expect(await screen.findByTestId("tele-pay-error")).toHaveTextContent(/No answer came back/);
+    await fireEvent.press(screen.getByTestId("tele-pay-go"));
+    await waitFor(() => expect(screen.getByTestId("tele-pay-error")).toHaveTextContent("Open your cash session first"));
+    const sent = s.of("POST /opd/appointments/a1/advance");
+    expect(sent).toHaveLength(2);
+    expect(sent[0]!.body).toEqual({ amountPaise: 10_000, tenders: [{ mode: "cash", amountPaise: 10_000 }] });
+    expect(sent[1]!.idem).toBe(sent[0]!.idem);
+  });
+
+  it("TELE PAY: without the receipt permission the amount is shown and no Collect; in person shows nothing", async () => {
+    const reader = world({ theirs: () => [appt({ id: "a1", mode: "tele", teleDesk: { amountPaise: 10_000, covered: false } }), appt({ id: "a3", serviceDate: D3, slotStart: at(D3, "04:00"), mode: "in_person" })] });
+    await mount(reader.fetcher);
+    await findAndHold();
+    expect(await screen.findByTestId("tele-money-a1")).toHaveTextContent("To pay ₹100");
+    expect(screen.queryByTestId("tele-collect-a1")).toBeNull();
+    expect(screen.queryByTestId("tele-money-a3")).toBeNull();
+  });
+
+  it("TELE PAY: a free follow-up has nothing to pay and is confirmed with no tender", async () => {
+    const s = world({
+      perms: [...CASH_BOOKER, "billing.receipt.record"],
+      theirs: () => [appt({ id: "a1", mode: "tele", teleDesk: { amountPaise: 0, covered: false } })],
+      routes: { "POST /opd/appointments/a1/advance": () => ({ status: 201, body: { amountPaise: 0, receiptNo: null } }) },
+    });
+    await mount(s.fetcher);
+    await findAndHold();
+    expect(await screen.findByTestId("tele-money-a1")).toHaveTextContent("Nothing to pay");
+    await fireEvent.press(screen.getByTestId("tele-collect-a1"));
+    await fireEvent.press(await screen.findByTestId("tele-pay-go"));
+    await waitFor(() => expect(s.of("POST /opd/appointments/a1/advance")).toHaveLength(1));
+    expect(s.of("POST /opd/appointments/a1/advance")[0]!.body).toEqual({ amountPaise: 0 });
+  });
+
+  it("UPI QR (slice 6): with the hospital's UPI id set, choosing UPI draws the QR and shows the id — the reference is still what marks it paid; with none, no QR", async () => {
+    const QR = ["1110111", "1000001", "1011101", "0000000", "1011101", "1000001", "1110111"];
+    const s = world({
+      perms: [...CASH_BOOKER, "billing.receipt.record"],
+      theirs: () => [appt({ id: "a1", mode: "tele", teleDesk: { amountPaise: 10_000, covered: false } })],
+      routes: { "GET /opd/appointments/a1/tele-fee": () => ({ status: 200, body: { amountPaise: 10_000, covered: false, upi: { vpa: "crkmch@sbi", qr: QR } } }) },
+    });
+    await mount(s.fetcher);
+    await findAndHold();
+    await fireEvent.press(await screen.findByTestId("tele-collect-a1"));
+    await screen.findByTestId("tele-pay-title");
+    expect(screen.queryByTestId("tele-upi")).toBeNull(); // cash is chosen: no QR in the way
+    await fireEvent.press(screen.getByTestId("tele-mode-upi"));
+    const qr = await screen.findByTestId("tele-upi-qr");
+    expect(qr.props).toMatchObject({ accessibilityRole: "image", accessibilityLabel: "UPI QR code" });
+    expect(screen.getByTestId("tele-upi")).toHaveTextContent("crkmch@sbi");
+    expect(screen.getByTestId("tele-pay-go").props.accessibilityState).toMatchObject({ disabled: true });
+    expect(s.of("POST /opd/appointments/a1/advance")).toHaveLength(0);
+  });
+
+  it("UPI QR: with no UPI id the sheet has the reference field and no QR", async () => {
+    const s = world({
+      perms: [...CASH_BOOKER, "billing.receipt.record"],
+      theirs: () => [appt({ id: "a1", mode: "tele", teleDesk: { amountPaise: 10_000, covered: false } })],
+      routes: { "GET /opd/appointments/a1/tele-fee": () => ({ status: 200, body: { amountPaise: 10_000, covered: false, upi: null } }) },
+    });
+    await mount(s.fetcher);
+    await findAndHold();
+    await fireEvent.press(await screen.findByTestId("tele-collect-a1"));
+    await fireEvent.press(await screen.findByTestId("tele-mode-upi"));
+    expect(await screen.findByTestId("tele-ref")).toBeTruthy();
+    await waitFor(() => expect(s.of("GET /opd/appointments/a1/tele-fee").length).toBeGreaterThan(0));
+    expect(screen.queryByTestId("tele-upi-qr")).toBeNull();
   });
 });

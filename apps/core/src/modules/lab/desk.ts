@@ -3,7 +3,7 @@ import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import {
   counterparties, invoiceLines, labItems, labOrderables, labSpecimens, opdDepartments, opdDoctors,
-  opdEncounters, opdQueueEntries, orderItems, orders, patients, users,
+  opdEncounters, opdQueueEntries, orderItems, orders, patientGuardians, patients, users,
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { placeOrder } from "../../kernel/orders/place";
@@ -12,6 +12,7 @@ import { issueInvoice } from "../billing";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { getEncounter, LAB_DEPARTMENT_CODE, openLabWalkinInTx } from "../opd";
 import { getPatientSummaries, listMergedLoserIds, resolvePatientId, searchPatients } from "../patients";
+import { fulfilBookingInTx } from "./bookings";
 import { duplicateWarnings } from "./duplicates";
 import { LabError } from "./errors";
 import { labAttributionUnverifiedFlagged, labOrderDesked } from "./events";
@@ -106,8 +107,15 @@ type DeskOrderBase = {
    * sets it; the counter's own order still needs the owner's credit approval to leave money unpaid.
    */
   holdUntilPaid?: { reason: string };
+  /**
+   * Owner 2026-10-11 — the patient ARRIVED for a booking: the booking closes in this order's own
+   * transaction (`fulfilBookingInTx`), so it is closed exactly when its order exists.
+   */
+  bookingId?: string;
   tags?: string[];
   placedAt?: Date;
+  /** A `system` actor's rule (decision 0067's free-test order); `placeOrder` refuses a system order without one. */
+  protocolRef?: string;
 };
 
 /**
@@ -230,6 +238,23 @@ export async function deskOrder(
   now: Date = new Date(),
 ): Promise<DeskOrderResult> {
   await assertMayDesk(tx, actor);
+  return placeLabOrder(tx, actor, decls, input, now);
+}
+
+/**
+ * THE SAME ATOM WITHOUT THE COUNTER (owner 2026-10-10, decision 0067). The ordering seam calls this
+ * for a doctor's own order (IPD and Emergency screens, when they come) and for the automatic order of
+ * a free test — a `system` actor naming its `protocolRef`. Who may place is then the kernel's
+ * question (`placeOrder`: `orders.place` + `lab.orders.place` for a user, a protocol for the system),
+ * and every check below — catalogue, consent, duplicates, the bill — is unchanged.
+ */
+export async function placeLabOrder(
+  tx: Tx,
+  actor: Actor,
+  decls: readonly OrderKindDecl[],
+  input: DeskOrderInput,
+  now: Date = new Date(),
+): Promise<DeskOrderResult> {
   if (input.items.length === 0) {
     throw new LabError("unknown_service", "a lab order with no tests asks the lab to do nothing");
   }
@@ -424,7 +449,7 @@ export async function deskOrder(
           kind: "lab", patientId: input.patientId, encounterNo: input.encounterNo,
           serviceDate: input.serviceDate, orderGroupId: input.orderGroupId,
           priority: input.priority ?? "routine", orderingClinicianId: input.orderingClinicianId,
-          placedAt: input.placedAt, items: placeItems,
+          placedAt: input.placedAt, items: placeItems, protocolRef: input.protocolRef,
         });
   const orderGroupId = input.orderGroupId ?? placed.orderId;
 
@@ -534,6 +559,10 @@ export async function deskOrder(
         reason: "no prescription image and no telephonic confirmation at the counter",
       },
     }));
+  }
+
+  if (input.bookingId !== undefined) {
+    await fulfilBookingInTx(tx, actor, input.bookingId, input.patientId, placed.orderId, now);
   }
 
   return {
@@ -707,6 +736,15 @@ export type DeskFindHit = {
     /** Through the alias rule — a sealed patient's legal name never leaves this reader. */
     display: string;
     administrativeGender: string; dob: string | null; restricted: boolean;
+    /**
+     * OWNER 2026-10-11 — what tells two Sunita Devis apart on a suggestion card: the guardian (an
+     * active `patient_guardians` row, else the registration's father/husband name, whose relation
+     * the form does not record) and the last four digits of a mobile, the patient's own first.
+     * Both are null for a sealed patient, whose card already shows only the alias.
+     */
+    guardian: { name: string; relation: string | null } | null;
+    phoneLast4: string | null;
+    phoneOf: "patient" | "guardian" | null;
   };
   visit: {
     encounterId: string; encounterNo: string; serviceDate: string; status: string;
@@ -716,6 +754,12 @@ export type DeskFindHit = {
     departmentName: string | null;
     referrerName: string | null;
     advised: DeskAdvisedLine[];
+    /**
+     * False on a SUGGESTION (`?suggest=1`, asked while the clerk types): the Rx lines are clinical
+     * content, logged as a read of the visit, so they are read once the clerk picks the person and
+     * never on a keystroke. The seat re-asks by the visit number before it fills the basket.
+     */
+    advisedLoaded: boolean;
   } | null;
   /** Lab orders already standing on that visit. */
   orders: { orderId: string; orderNo: string; status: string; itemCount: number }[];
@@ -749,7 +793,8 @@ async function advisedLinesFor(exec: Db | Tx, encounter: EncounterRow): Promise<
     .select()
     .from(labOrderables)
     .where(inArray(labOrderables.serviceId, serviceIds));
-  const byService = new Map(orderables.map((o) => [o.serviceId, o]));
+  /** A withdrawn test is shown but not orderable: `deskOrder` and the quick Start both refuse it. */
+  const byService = new Map(orderables.filter((o) => o.active).map((o) => [o.serviceId, o]));
   const placed = await (exec as Db)
     .select({ id: orderItems.id, serviceId: orderItems.serviceId, status: orderItems.status })
     .from(orderItems)
@@ -773,17 +818,36 @@ async function advisedLinesFor(exec: Db | Tx, encounter: EncounterRow): Promise<
 
 async function hitFor(
   exec: Db | Tx, actor: Actor, matchedOn: DeskFindHit["matchedOn"], patientId: string,
-  encounter: EncounterRow | null, tokenNo: number | null,
+  encounter: EncounterRow | null, tokenNo: number | null, suggest = false,
 ): Promise<DeskFindHit | null> {
   const [summary] = await getPatientSummaries(exec as Db, actor, [patientId]);
   if (!summary) return null;
-  const [sealedRow] = await (exec as Db).select({ sealed: patients.isConfidential }).from(patients).where(eq(patients.id, summary.id));
+  const [sealedRow] = await (exec as Db)
+    .select({ sealed: patients.isConfidential, phone: patients.phone, fatherHusbandName: patients.fatherHusbandName })
+    .from(patients).where(eq(patients.id, summary.id));
+  const [guardianRow] = summary.restricted ? [undefined] : await (exec as Db)
+    .select({ name: patientGuardians.name, relationship: patientGuardians.relationship, phone: patientGuardians.phone })
+    .from(patientGuardians)
+    .where(and(eq(patientGuardians.patientId, summary.id), eq(patientGuardians.status, "active")))
+    .orderBy(asc(patientGuardians.createdAt)).limit(1);
+  const last4 = (phone: string | null | undefined): string | null => {
+    const digits = (phone ?? "").replace(/\D/g, "");
+    return digits.length >= 4 ? digits.slice(-4) : null;
+  };
+  const ownLast4 = summary.restricted ? null : last4(sealedRow?.phone);
+  const guardianLast4 = summary.restricted ? null : last4(guardianRow?.phone);
+  const fhName = sealedRow?.fatherHusbandName?.trim() ?? "";
   const patient: DeskFindHit["patient"] = {
     id: summary.id, uhid: summary.uhid,
     display: summary.restricted ? (summary.alias ?? "—") : (summary.name ?? "—"),
     administrativeGender: summary.administrativeGender,
     dob: summary.dob ? summary.dob.toISOString().slice(0, 10) : null,
     restricted: summary.restricted,
+    guardian: summary.restricted ? null
+      : guardianRow ? { name: guardianRow.name, relation: guardianRow.relationship }
+      : fhName !== "" ? { name: fhName, relation: null } : null,
+    phoneLast4: ownLast4 ?? guardianLast4,
+    phoneOf: ownLast4 !== null ? "patient" : guardianLast4 !== null ? "guardian" : null,
   };
   if (!encounter) return { matchedOn, patient, visit: null, orders: [] };
   const [doctor] = encounter.doctorId === null ? [undefined]
@@ -806,10 +870,11 @@ async function hitFor(
     .groupBy(orders.id, orders.orderNo, orders.status);
   /**
    * The Rx lines are clinical content read off the visit, so the read is logged the way
-   * `getVisit` logs its own (`opd.visit`), once per visit returned — never per keystroke, because
-   * the seat asks on Enter.
+   * `getVisit` logs its own (`opd.visit`), once per visit returned — never per keystroke: a
+   * SUGGESTION (asked while the clerk types) carries no Rx lines and logs nothing, and the seat
+   * re-asks by the visit number once the clerk picks the person.
    */
-  await recordPhiAccess(exec as Db, {
+  if (!suggest) await recordPhiAccess(exec as Db, {
     /** Pass 1 F8 — `sealed` is the PATIENT's fact, not the reader's (`getReport`'s rule). */
     actor, patientId: summary.id, surface: "opd.visit", encounterId: encounter.id, sealed: sealedRow?.sealed ?? false, reason: null,
   });
@@ -820,7 +885,8 @@ async function hitFor(
       status: encounter.status, tokenNo: resolvedToken,
       doctorName: doctor?.displayName ?? null, doctorUserId: doctor?.userId ?? null, departmentName: dept?.name ?? null,
       referrerName: encounter.referrerName ?? null,
-      advised: await advisedLinesFor(exec, encounter),
+      advised: suggest ? [] : await advisedLinesFor(exec, encounter),
+      advisedLoaded: !suggest,
     },
     orders: standing,
   };
@@ -845,7 +911,10 @@ export async function labDoctors(db: Db): Promise<{ id: string; displayName: str
     .where(and(eq(opdDoctors.departmentId, dept.id), eq(opdDoctors.active, true))).orderBy(asc(opdDoctors.id));
 }
 
-export async function deskFind(db: Db, actor: Actor, q: string, serviceDate: string): Promise<DeskFindHit[]> {
+export async function deskFind(
+  db: Db, actor: Actor, q: string, serviceDate: string, opts: { suggest?: boolean } = {},
+): Promise<DeskFindHit[]> {
+  const suggest = opts.suggest === true;
   await assertMayDesk(db, actor);
   const query = q.trim();
   if (query.length === 0) return [];
@@ -863,7 +932,7 @@ export async function deskFind(db: Db, actor: Actor, q: string, serviceDate: str
     for (const r of rows) {
       if (seen.has(r.encounter.id) || r.encounter.status === "abandoned") continue;
       seen.add(r.encounter.id);
-      const hit = await hitFor(db, actor, "token", r.encounter.patientId, r.encounter, r.tokenNo);
+      const hit = await hitFor(db, actor, "token", r.encounter.patientId, r.encounter, r.tokenNo, suggest);
       if (hit) hits.push(hit);
     }
     return hits;
@@ -871,14 +940,14 @@ export async function deskFind(db: Db, actor: Actor, q: string, serviceDate: str
   if (VISIT_RE.test(query)) {
     const encounter = await getEncounter(db, query.toUpperCase());
     if (!encounter) return [];
-    const hit = await hitFor(db, actor, "visit", encounter.patientId, encounter, null);
+    const hit = await hitFor(db, actor, "visit", encounter.patientId, encounter, null, suggest);
     return hit ? [hit] : [];
   }
   if (ORDER_RE.test(query)) {
     const [order] = await db.select().from(orders).where(and(eq(orders.orderNo, query.toUpperCase()), eq(orders.kind, "lab")));
     if (!order) return [];
     const encounter = await getEncounter(db, order.encounterNo);
-    const hit = await hitFor(db, actor, "order", order.patientId, encounter, null);
+    const hit = await hitFor(db, actor, "order", order.patientId, encounter, null, suggest);
     return hit ? [hit] : [];
   }
   const people = await searchPatients(db, actor, query, 8);
@@ -886,7 +955,7 @@ export async function deskFind(db: Db, actor: Actor, q: string, serviceDate: str
   for (const p of people) {
     const encounter = await todaysEncounterFor(db, p.id, serviceDate);
     const lane = p.matchedOn.includes("uhid") ? "uhid" : p.matchedOn.includes("mobile") ? "mobile" : "name";
-    const hit = await hitFor(db, actor, lane, p.id, encounter, null);
+    const hit = await hitFor(db, actor, lane, p.id, encounter, null, suggest);
     if (hit) hits.push(hit);
   }
   return hits;

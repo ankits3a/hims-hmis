@@ -33,6 +33,7 @@
     "seed:aerb-demo": "tsx scripts/seed-aerb-demo.ts",
     "seed:radiology": "tsx scripts/seed-radiology.ts",
     "seed:lab-catalogue": "tsx scripts/seed-lab-catalogue.ts",
+    "seed:outside-tests": "tsx scripts/seed-outside-tests.ts",
     "seed:lab-demo": "tsx scripts/seed-lab-demo.ts",
     "import:holder-book": "tsx scripts/import-holder-book.ts",
     "import:item-master": "tsx scripts/import-item-master.ts",

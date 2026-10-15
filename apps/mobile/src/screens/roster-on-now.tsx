@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AppState, Linking, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { AppState, Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -14,7 +14,7 @@ import { clockLine, hm, said, shortDay, shortWhen, weekdayLong, weekdayShort } f
 import { useSession } from "../session";
 import { Text, TextInput } from "../text";
 import { color, radius, space, TOUCH, type } from "../theme";
-import { Band, Button, MONO, Note, Tag } from "../ui";
+import { Band, Button, MONO, Note, Tag, KeyboardModal } from "../ui";
 
 /**
  * WHO IS ON NOW, ON A PHONE (plan M5; owner 2026-10-06; board `docs/design/2026-09-20-roster/OnNow.dc.html`).
@@ -209,7 +209,7 @@ function WrongSheet({ b, api, t, onClose, onSent }: { b: WireOnNowBoard; api: Ro
     }
   };
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+    <KeyboardModal visible transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={s.scrim} onPress={onClose} accessibilityLabel="close" />
       <View style={[s.sheet, { paddingBottom: insets.bottom + space.lg }]} testID="wrong-sheet">
         <Text style={[type.heading, { color: color.ink }]}>{t("rosterOnNow.wrong.title")}</Text>
@@ -239,7 +239,7 @@ function WrongSheet({ b, api, t, onClose, onSent }: { b: WireOnNowBoard; api: Ro
         <Button kind="secondary" label={t("rosterOnNow.wrong.cancel")} onPress={onClose} />
         <Text style={s.small}>{t("rosterOnNow.wrong.hint")}</Text>
       </View>
-    </Modal>
+    </KeyboardModal>
   );
 }
 

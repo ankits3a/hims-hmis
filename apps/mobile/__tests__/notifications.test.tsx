@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-
 import { Linking } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { I18nProvider } from "../src/i18n";
-import { NotificationsProvider, PUSH_CATEGORIES, PUSH_LINK_CARD, PUSH_LINK_SEAT, SERVER_TIMEOUT_MS, _forgetOfferForTests, statusOf } from "../src/notifications";
+import { NotificationsProvider, PUSH_CATEGORIES, PUSH_LINK_CARD, PUSH_LINK_ROUTE, PUSH_LINK_SEAT, SERVER_TIMEOUT_MS, _forgetOfferForTests, statusOf } from "../src/notifications";
 import { noteOf, permissionOf, type PushNote, type PushPermission, type PushPhone } from "../src/push-phone";
 import { AccountScreen } from "../src/screens/account";
 import { NotificationsScreen } from "../src/screens/notifications";
@@ -182,7 +182,7 @@ describe("notifications on this phone (M6b)", () => {
     expect(ph.asked).toHaveBeenCalledTimes(1);
     expect(s.calls.find((c) => c.key === "PUT /auth/phone/notifications")?.body).toEqual({ token: ADDRESS, language: "en" });
     // One Android channel per category, named in the person's language.
-    expect(ph.channels).toHaveBeenCalledWith({ alert: "Alerts", roster: "Duty roster", queue: "Your queue", reminder: "Duty reminders", approvals: "Approvals" });
+    expect(ph.channels).toHaveBeenCalledWith({ alert: "Alerts", roster: "Duty roster", queue: "Your queue", reminder: "Duty reminders", approvals: "Approvals", personal: "My reminders" }); // E1.2 — an Android channel for one's own reminders
     await waitFor(() => expect(screen.queryByTestId("push-offer")).toBeNull());
   });
 
@@ -478,7 +478,7 @@ describe("the phone and the server use the same words (M6b)", () => {
 
   it("categories and links are the server's own lists, and every one has its words in both languages", () => {
     expect([...PUSH_CATEGORIES]).toEqual(list("PUSH_CATEGORIES"));
-    expect([...Object.keys(PUSH_LINK_SEAT), ...Object.keys(PUSH_LINK_CARD)].sort()).toEqual(list("PUSH_LINKS").sort());
+    expect([...Object.keys(PUSH_LINK_SEAT), ...Object.keys(PUSH_LINK_CARD), ...Object.keys(PUSH_LINK_ROUTE)].sort()).toEqual(list("PUSH_LINKS").sort());
     for (const dict of [en, hi]) {
       for (const c of PUSH_CATEGORIES) {
         expect(dict.mobile.push.category[c]).toBeTruthy();
@@ -523,6 +523,9 @@ describe("screenshots (M6b)", () => {
     jest.isolateModules(() => {
       jest.doMock("../src/config", () => ({ IS_PRODUCTION: true }));
       jest.doMock("expo-screen-capture", () => ({ preventScreenCaptureAsync: prevent }));
+      // FLAG_SECURE is Android's; jest-expo is an iPhone unless told otherwise (the iPhone's answer: ios.test.tsx).
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      (require("react-native") as { Platform: { OS: string } }).Platform.OS = "android";
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       privacy = require("../src/privacy") as typeof import("../src/privacy");
     });

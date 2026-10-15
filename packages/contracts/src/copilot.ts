@@ -35,8 +35,24 @@ export const COPILOT_ANSWER_KEYS = [
   "copilot.answer.failed",
   /** Neither the phrasebook nor the model recognised the question. */
   "copilot.answer.notUnderstood",
+  /** #676 — the same, plus what the asker may ask: `can` is a comma list of intents the client says in words. */
+  "copilot.answer.notUnderstoodCan",
   /** Routed to an intent no module has shipped a tool for yet. Honest rather than a 500. */
   "copilot.answer.noTool",
+  /** E0.3 — the copilot (or this kind of tool) is halted by the owner, IT, the steward or the duty manager. */
+  "copilot.answer.paused",
+
+  /* ═══ E0.2 — propose → confirm → act: the confirm tap's own answers (a tool's success answer is its own) ═══ */
+  /** A generic "done" for an act whose tool has no sentence of its own. */
+  "copilot.answer.actDone",
+  /** The proposal is older than its five minutes. */
+  "copilot.answer.actExpired",
+  /** The proposal is not genuine, not this person's, or names no act tool. */
+  "copilot.answer.actInvalid",
+  /** This proposal was already confirmed once; nothing more was written. */
+  "copilot.answer.actAlreadyDone",
+  /** Something changed between the proposal and the tap (the slot was taken). Nothing was written. */
+  "copilot.answer.actStateChanged",
 
   /* ═══ my_day_report — the owner's "it should do it and give it to the user" ═══ */
   "copilot.answer.dayReport",
@@ -79,6 +95,14 @@ export const COPILOT_ANSWER_KEYS = [
    * the number.
    */
   "copilot.answer.uhidCheckFailed",
+
+  /* ═══ patient_dues (billing, E1.6) — the counter's own outstanding; dues only, never the advance (owner 2026-10-11) ═══ */
+  /** "U00110012: ₹600.00 due · unpaid bills: 1 · oldest INV/26-27/000001 (2026-10-11)". */
+  "copilot.answer.duesOwed",
+  /** Nothing outstanding on any of the patient's bills. */
+  "copilot.answer.duesNone",
+  /** The question named a visit number or something else: a bill names a patient, so ask for the UHID. */
+  "copilot.answer.duesNeedUhid",
 
   /* ═══ queue_depth ═══ */
   "copilot.answer.queueShortest",
@@ -181,6 +205,125 @@ export const COPILOT_ANSWER_KEYS = [
   "copilot.answer.rosterCoverNobody",
   "copilot.answer.rosterCoverNoDuty",
   "copilot.answer.rosterCoverNoDutyOn",
+
+  /*
+    ═══ E2.1 — book / move an appointment from chat (spec SPEC-copilot-appt-2026-10-11) ═══
+    The ask answers with a pick (patients and three free times, each a signed proposal); the confirm
+    answers with what was written, read back from the row. `when` is an ISO instant.
+  */
+  "copilot.answer.apptPick",
+  "copilot.answer.apptPickTime",
+  "copilot.answer.apptWhichPatient",
+  "copilot.answer.apptNoPatient",
+  "copilot.answer.apptWhichDoctor",
+  "copilot.answer.apptDoctorUnclear",
+  "copilot.answer.apptNoSlots",
+  "copilot.answer.apptNoSlotsOn",
+  "copilot.answer.apptNoneToMove",
+  "copilot.answer.apptNoMobile",
+  "copilot.answer.apptBooked",
+  "copilot.answer.apptMoved",
+  "copilot.answer.apptSlotTaken",
+  "copilot.answer.apptDoctorOnLeave",
+  "copilot.answer.apptPast",
+  "copilot.answer.apptChanged",
+
+  /*
+    ═══ E2.2 — leave, and a duty cover or swap, from chat (spec SPEC-copilot-leave-swap-2026-10-11) ═══
+    `from` / `to` are IST days; `kind` is CL | EL | ML | comp_off and the clients say it in words. A
+    refusal's `why` is the decider's own text, read back to its person only — never stored by the copilot.
+  */
+  "copilot.answer.leavePick",
+  "copilot.answer.leavePickDay",
+  "copilot.answer.leavePickKind",
+  "copilot.answer.leavePickKindDay",
+  "copilot.answer.leaveWhichDays",
+  "copilot.answer.leaveInPast",
+  "copilot.answer.leaveOverlaps",
+  "copilot.answer.leaveTooLong",
+  "copilot.answer.leaveKindNotHere",
+  "copilot.answer.leaveFiled",
+  "copilot.answer.leaveNone",
+  "copilot.answer.leaveStatusRequested",
+  "copilot.answer.leaveStatusApproved",
+  "copilot.answer.leaveStatusRefused",
+  "copilot.answer.leaveStatusCancelled",
+  "copilot.answer.coverAsked",
+  "copilot.answer.swapAsked",
+  "copilot.answer.coverRefused",
+
+  /*
+    ═══ E2.3 — a reminder from chat (spec SPEC-copilot-reminders-2026-10-12) ═══
+    `when` is an ISO instant. The reminder's own words ride the pick payload only, never a param.
+  */
+  "copilot.answer.reminderPick",
+  "copilot.answer.reminderWhatTime",
+  "copilot.answer.reminderPast",
+  "copilot.answer.reminderWhat",
+  "copilot.answer.reminderTooLong",
+  "copilot.answer.reminderLimit",
+  "copilot.answer.reminderSet",
 ] as const;
 
 export type CopilotAnswerKey = (typeof COPILOT_ANSWER_KEYS)[number];
+
+/**
+ * E2.1 — the pick an appointment ask hands back in `answer.payload`: one row per patient (book) or per
+ * live appointment (move), each with up to three free times. `proposal` indexes the ask response's
+ * `proposals` — the signed proposal that time confirms. `when`/`at`/`from` are ISO instants.
+ */
+export type CopilotApptRow = {
+  patient: { name: string; uhid: string; ageSex: string; phoneLast4: string | null };
+  doctor: string;
+  mode: "in_person" | "tele";
+  /** move: where the appointment is now. */
+  from: string | null;
+  fromDoctor?: string;
+  /** A tele-call and no mobile on record: no times; the booking screen can take a number. */
+  noMobile: boolean;
+  times: { at: string; proposal: number }[];
+};
+/**
+ * E2.2 — a leave to confirm: the days, and one option per kind (one when the kind was said). `proposal`
+ * indexes the ask response's `proposals`. No reason is carried: the chat never takes one.
+ */
+export type CopilotLeavePick = {
+  kind: "leavePick";
+  from: string;
+  to: string;
+  days: number;
+  options: { leave: "CL" | "EL" | "ML" | "comp_off"; proposal: number }[];
+};
+
+/**
+ * E2.2 — a duty to hand on: the asker's duty, and per person who can take it a cover (`give` null) and
+ * the swaps they could give back (one of THEIR duties of the same post). Instants are ISO.
+ */
+export type CopilotCoverDuty = { istDate: string; night: boolean; startsAt: string; endsAt: string };
+export type CopilotCoverPick = {
+  kind: "coverPick";
+  duty: CopilotCoverDuty & { post: string };
+  options: { name: string; grade: string; teamName: string; crossUnit: boolean; give: CopilotCoverDuty | null; proposal: number }[];
+  /** People who could take it but are not offered here (more than the card holds). */
+  more: number;
+};
+
+/**
+ * E2.3 — a reminder to confirm: the person's own words, the first time it rings (ISO) and how it
+ * repeats (`ReminderRepeat`: none | daily | mon_sat | weekly). One option, so `proposal` is 0.
+ */
+export type CopilotReminderPick = {
+  kind: "reminderPick";
+  text: string;
+  at: string;
+  repeat: "none" | "daily" | "mon_sat" | "weekly";
+  proposal: number;
+};
+
+export type CopilotApptPick = {
+  kind: "apptPick";
+  action: "book" | "move";
+  /** The patient came from a search (mobile or name): the clerk taps the patient before a time. */
+  pickPatient: boolean;
+  rows: CopilotApptRow[];
+};

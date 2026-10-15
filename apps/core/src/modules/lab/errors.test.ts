@@ -108,6 +108,11 @@ const OWNED_BY: Record<LabErrorCode, string> = {
   release_approval_invalid: "reports.ts",
   /** 17-E T1 — the machine register. `instruments.ts` is the only file that names a machine. */
   unknown_instrument: "instruments.ts",
+  /** Owner 2026-10-11 — future lab bookings. */
+  booking_slot_unavailable: "bookings.ts",
+  unknown_booking: "bookings.ts",
+  booking_not_open: "bookings.ts",
+  lab_mode_off: "mode.ts",
 
   /**
    * 17-E T7 — the rerun rule is resolved in `results.ts`, which is where the contradiction lived,
@@ -174,7 +179,10 @@ describe("the lab error union (Plan 17 T2)", () => {
 
   it("the statuses say what they mean: 404 unknown, 409 race, 403 authority, 422 clinical stop", () => {
     expect(LAB_ERROR_CODES.filter((c) => labHttpStatus(c) === 404).sort()).toEqual([
-      "unknown_analyte", "unknown_instrument",
+      "unknown_analyte",
+      /** Owner 2026-10-11 — the named lab booking does not exist. */
+      "unknown_booking",
+      "unknown_instrument",
       /** 17-E T7b — the bridge's device row, refused in the module's vocabulary and not as an FK. */
       "unknown_interface",
       "unknown_item", "unknown_orderable", "unknown_patient", "unknown_report",
@@ -183,8 +191,13 @@ describe("the lab error union (Plan 17 T2)", () => {
     // A compare-and-set loser is a CONFLICT: the caller's correct response is to re-read, not to
     // fix its body.
     expect(LAB_ERROR_CODES.filter((c) => labHttpStatus(c) === 409).sort()).toEqual([
-      "addon_specimen_disposed", "already_received", "already_verified", "critical_already_closed",
-      "item_not_cancellable", "item_not_resultable", "no_active_order",
+      "addon_specimen_disposed", "already_received", "already_verified",
+      /** Owner 2026-10-11 — a full, past or closed slot; a booking already arrived, cancelled or missed. */
+      "booking_not_open", "booking_slot_unavailable",
+      "critical_already_closed",
+      "item_not_cancellable", "item_not_resultable",
+      /** Owner 2026-10-12 — the other lab mode is running; switching back is the fix, not a new body. */
+      "lab_mode_off", "no_active_order",
       /** 17-E T7 — there is nothing to choose between; the set is already signed; a newer row
        *  replaced this one. All three are re-read-and-retry, which is what 409 means. */
       "no_rerun_to_choose", "report_not_amendable", "rerun_choice_final", "result_superseded",

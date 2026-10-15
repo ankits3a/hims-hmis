@@ -1,5 +1,5 @@
-import { intentNames } from "./phrasebook";
-import type { CopilotIntent } from "./phrasebook";
+import { modelIntentNames } from "./phrasebook";
+import type { CopilotIntent, ModelIntent } from "./phrasebook";
 import type { RouteResult } from "./router";
 import type { ChoiceClient, ChoiceQuestion } from "../inference/types";
 
@@ -35,7 +35,7 @@ type Criterion = { what: string; not_for?: string; examples?: string[] };
  * `tsc` rather than silently never being chosen — the drift `router.ts` warns about for its own
  * menu. `none` is described too: a classifier with no "none of these" is forced to pick a tool.
  */
-const CRITERIA: Record<CopilotIntent | "none", Criterion> = {
+const CRITERIA: Record<ModelIntent | "none", Criterion> = {
   visit_status: {
     what: "whether ONE particular patient has been seen by the doctor, called in, or is still waiting",
     examples: ["<<P1>> gaya andar?", "was <<P1>> called in yet"],
@@ -163,7 +163,7 @@ export async function chooseRoute(
     THE SECOND WALL. The client already refuses a choice it did not offer; this refuses one that is
     not a tool the router knows, so the two can never drift into running something unmenued.
   */
-  const names: string[] = intentNames();
+  const names: string[] = modelIntentNames();
   if (!names.includes(tool.choice)) return "unsure";
 
   let slot: string | null = null;
@@ -174,5 +174,5 @@ export async function chooseRoute(
     if (subject !== undefined && subject.confidence >= minConfidence && present.includes(subject.choice)) slot = subject.choice;
   }
 
-  return { intent: tool.choice as CopilotIntent, slot, source: "model", cues: [] };
+  return { intent: tool.choice as CopilotIntent, slot, source: "model", via: "chooser", cues: [] };
 }

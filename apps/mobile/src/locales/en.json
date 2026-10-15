@@ -30,6 +30,9 @@
     "mismatch": "The two new passwords do not match"
   },
   "mobile": {
+    "location": {
+      "why": "HMIS checks your location once when you mark attendance, to confirm you are on hospital premises."
+    },
     "submitChange": "Change password",
     "wrongCurrent": "The current password is wrong",
     "policy": "The new password does not meet the rule above",
@@ -40,6 +43,11 @@
     "seatHint": "Only the screens your role allows are shown.",
     "none": "Your account has no phone screens yet. Ask the administrator.",
     "soon": "Coming in the next release",
+    "fineMoney": {
+      "faceId": "Face ID is asked before a money approval. Recorded with your name, time and note.",
+      "touchId": "Touch ID is asked before a money approval. Recorded with your name, time and note.",
+      "apple": "Touch ID / Face ID is asked before a money approval. Recorded with your name, time and note."
+    },
     "unlockTitle": "Unlock HMIS",
     "unlockPrompt": "Confirm it is you",
     "unlockAgain": "Unlock",
@@ -165,7 +173,6 @@
       "token": "Token {{token}}",
       "sealed": "Restricted record",
       "noName": "Name not on file",
-      "unpaidRow": "NOT PAID",
       "dangerRow": "DANGER",
       "referralRow": "Referral",
       "allergyTitle": "Allergies",
@@ -218,7 +225,6 @@
       "skipGo": "Skip token {{token}}",
       "skipped": "Token {{token}} skipped",
       "cancel": "Cancel",
-      "reasonNeeded": "Write the reason first.",
       "onComputer": "The consultation is written on the screen before this one; this is the patient's history.",
       "retry": "Try again",
       "followUpServerDefault": "Hospital default",
@@ -235,6 +241,16 @@
       "failed": "Could not check for an update just now.",
       "howTo": "The download opens in the browser. Tap the file when it finishes, then Install — your sign-in stays.",
       "version": "Version {{version}} · build {{code}}"
+    },
+    "tele": {
+      "title": "Tele-call",
+      "call": "Call patient",
+      "noAnswer": "No answer",
+      "spoke": "Spoke to patient",
+      "spokeAt": "Spoke · {{time}}",
+      "backInLine": "No answer — held aside to retry",
+      "toDesk": "No answer twice — sent to desk",
+      "triedOnce": "Tried once — no answer"
     },
     "counter": {
       "step": {
@@ -428,6 +444,24 @@
         "receipt": "Bill {{no}} · receipt {{receipt}} · {{amount}} by {{mode}}",
         "billed": "Bill {{no}} · {{amount}}"
       },
+      "telePay": {
+        "upiQr": "UPI QR code",
+        "toPay": "To pay {{amount}}",
+        "paid": "Paid",
+        "paidRefund": "Paid {{amount}} · refund on request",
+        "nothingToPay": "Nothing to pay",
+        "collect": "Collect {{amount}}",
+        "confirmFree": "Confirm",
+        "paidBy": "PAID BY",
+        "upiRef": "UPI reference",
+        "received": "Received {{amount}}",
+        "unknown": "No answer came back. Tap again: the server answers the same request, nothing is taken twice.",
+        "mode": {
+          "cash": "Cash",
+          "upi": "UPI",
+          "card": "Card"
+        }
+      },
       "appt": {
         "open": "Appointments today",
         "book": "Book an appointment",
@@ -473,6 +507,11 @@
         "confirm": "CHECK BEFORE YOU BOOK",
         "room": "Room {{room}}",
         "noteHint": "Note for the day (optional)",
+        "how": "HOW",
+        "inPerson": "In person",
+        "tele": "Tele-call",
+        "telePhone": "Patient's phone",
+        "telePhoneHint": "10-digit mobile number",
         "feeLater": "Nothing is collected now. The consultation fee is taken when the patient checks in.",
         "feeOff": "Nothing is collected now. Consultation is free at present: {{amount}}.",
         "pickFirst": "Pick a time",
@@ -668,14 +707,16 @@
         "roster": "Duty roster",
         "queue": "Your queue",
         "reminder": "Duty reminders",
-        "approvals": "Approvals"
+        "approvals": "Approvals",
+        "personal": "My reminders"
       },
       "categoryHint": {
         "alert": "Something is overdue or waiting on you.",
         "roster": "A colleague asks you to cover or swap, your request was answered, your duties changed or were published — or somebody flagged the duty board.",
         "queue": "Patients are ready and you are not in, or somebody has waited over 40 minutes.",
         "reminder": "A duty of yours starts in an hour — and the evening before a night or a 24-hour duty.",
-        "approvals": "A request waiting for your decision has passed its time."
+        "approvals": "A request waiting for your decision has passed its time.",
+        "personal": "Reminders you set for yourself."
       },
       "problem": {
         "notAllowed": "The phone has not allowed notifications yet. Tap Turn on again and choose Allow.",
@@ -689,6 +730,7 @@
       "screenshots": "Screenshots",
       "screenshotsBlocked": "Blocked in this app, to protect patients",
       "screenshotsAllowed": "Allowed in this staging build (test data only)",
+      "screenshotsSwitcher": "Not blocked on iPhone. The app is hidden in the app switcher.",
       "open": "This phone and my account",
       "title": "This phone",
       "signedInAs": "Signed in as {{name}}",
@@ -863,7 +905,7 @@
       "adviceHint": "anything else, for example: come back if the fever lasts beyond 3 days",
       "reviewAfter": "Review after",
       "reviewNone": "not needed",
-      "freeWindow": "Free follow-up window",
+      "freeWindow": "Follow-up window",
       "returnToday": "Tests ordered — the patient returns today with the reports (the visit stays open)",
       "returnTodayShort": "Returns today with reports",
       "sets": {
@@ -1047,6 +1089,22 @@
     "myDuties": {
       "title": "My duties",
       "hint": "Your duties this month, swaps and covers."
+    },
+    "qcounter": {
+      "title": "Quick counter",
+      "hint": "Walk-in or book a lab visit"
+    },
+    "qcollect": {
+      "title": "Quick Collect",
+      "hint": "Waiting for blood"
+    },
+    "qbench": {
+      "title": "Quick Bench",
+      "hint": "Enter results"
+    },
+    "qreports": {
+      "title": "Quick Reports",
+      "hint": "Hand over reports"
     }
   },
   "vitalsBay": {
@@ -1108,7 +1166,9 @@
           "other_day": "Visit {{visitNo}} is from {{date}}, not today — send them to the front desk for today's visit",
           "abandoned": "Visit {{visitNo}} was withdrawn at the front desk — send them back there",
           "completed": "Visit {{visitNo}} is already finished — the consultation is done",
-          "not_queued": "Visit {{visitNo}} is not in any doctor's queue — send them to the front desk"
+          "not_queued": "Visit {{visitNo}} is not in any doctor's queue — send them to the front desk",
+          "guardian_visit": "Guardian visit — no vitals",
+          "tele_visit": "Phone consult — no vitals"
         }
       }
     },
@@ -1365,15 +1425,6 @@
     "undoSkip": "Undo skip",
     "leftQueue": "Left the queue ({{n}})",
     "leftQueueHint": "Three skips takes a token out of the queue. The visit is still open — bring them back and they keep their turn.",
-    "heldQueue": "Waiting for the bill ({{n}})",
-    "heldQueueHint": "Ready for you, but the fee is not paid. They are not called and the hall board does not show them. Pay at the counter, or open one yourself.",
-    "heldWhy": "Sent through without paying: {{reason}}",
-    "openUnpaid": "See without payment",
-    "openUnpaidTitle": "Token {{token}} — see before the bill?",
-    "openUnpaidHint": "This puts the token back in your queue and lets you start the consultation although the fee is unpaid.",
-    "openUnpaidReason": "Why (shown at every desk after this one)",
-    "openUnpaidStillOwed": "The fee is still owed and the bill is still raised — only the order changes.",
-    "openUnpaidConfirm": "Open the token",
     "skipReason": {
       "absent": "Not at the door when called",
       "stepped_out": "Stepped out, back shortly",
@@ -1542,9 +1593,9 @@
     "resumeConsult": "Resume consultation",
     "vtShort": {
       "new": "New patient · first visit",
-      "revisit": "Revisit · free follow-up",
-      "renewal": "Renewal · fresh fee due",
-      "referral": "Referral · free within 7 days"
+      "revisit": "Revisit · follow-up",
+      "renewal": "Renewal · follow-up lapsed",
+      "referral": "Referral · first visit here"
     },
     "sinceThen": "Since then · lab and radiology",
     "noneSince": "none since",
@@ -1631,6 +1682,12 @@
   },
   "roster": {
     "refusal": {
+      "leave_in_past": "That day has already begun. Leave for a past or running day is entered by your department.",
+      "leave_overlaps": "You already have leave on one of those days. Take it back first or pick other days.",
+      "unknown_absence": "That leave is no longer on record.",
+      "unknown_absence_kind": "That kind of leave is entered by your department.",
+      "absence_already_decided": "Somebody has already decided this leave.",
+      "absence_self_approval": "You cannot decide your own leave.",
       "other": "The roster refused this ({{code}}). Nothing was changed.",
       "network": "The server could not be reached. Nothing was changed.",
       "not_permitted": "You may read this roster, but not change it. The unit's head or the medical superintendent can.",
@@ -1924,6 +1981,153 @@
       "nothingToMove": "Nothing needs moving. No declared leave has stranded a booking."
     }
   },
+  "attendance": {
+    "mark": {
+      "in": "Mark attendance · In",
+      "out": "Mark attendance · Out",
+      "checking": "Checking location…",
+      "continue": "Continue",
+      "cancel": "Cancel",
+      "done": {
+        "in": "Marked in",
+        "out": "Marked out"
+      },
+      "place": {
+        "inside": "inside premises",
+        "outside": "outside premises",
+        "not_shared": "location not shared",
+        "doubtful": "location doubtful"
+      },
+      "tag": {
+        "inside": "App ✓",
+        "outside": "App: outside",
+        "not_shared": "App: no location",
+        "doubtful": "App: doubtful"
+      },
+      "tooMany": "Too many marks today",
+      "failed": "Not marked — try again",
+      "offline": "No network — not marked",
+      "appMarks": "App marks",
+      "metres": "{{n}} m"
+    },
+    "aadhaar": {
+      "card": "Add your Aadhaar to see attendance",
+      "button": "Add Aadhaar",
+      "title": "Your Aadhaar",
+      "label": "Aadhaar number",
+      "hint": "12 digits · only last 4 kept",
+      "save": "Save",
+      "cancel": "Cancel",
+      "linked": "Attendance linked",
+      "saved": "Saved · attendance team will match",
+      "error": {
+        "aadhaar_invalid": "Not a valid Aadhaar",
+        "aadhaar_locked": "Already linked · ask admin",
+        "aadhaar_key_not_configured": "Not set up yet",
+        "too_many_attempts": "Too many tries · try tomorrow",
+        "failed": "Not saved · try again"
+      }
+    },
+    "title": "Attendance",
+    "mine": "My attendance",
+    "notLinked": "Attendance not linked",
+    "state": {
+      "not_checked_in": "Not checked in",
+      "checked_in": "✓ Checked in",
+      "checked_out": "Checked out"
+    },
+    "confirmRow": "⚠ Confirm · {{day}}",
+    "confirmMore": "+{{n}}",
+    "word": {
+      "present": "Present",
+      "absent": "Absent",
+      "leave": "Leave",
+      "off": "Off",
+      "partial": "Partial",
+      "confirm": "Confirm",
+      "unknown": "—"
+    },
+    "view": {
+      "day": "Day",
+      "week": "Week",
+      "month": "Month"
+    },
+    "previous": "Previous",
+    "next": "Next",
+    "today": "Today",
+    "dayLabel": "{{dow}} {{d}}",
+    "dateLabel": "{{dow}} {{d}} {{month}}",
+    "dow": { "0": "Mon", "1": "Tue", "2": "Wed", "3": "Thu", "4": "Fri", "5": "Sat", "6": "Sun" },
+    "dowLetter": { "0": "M", "1": "T", "2": "W", "3": "T", "4": "F", "5": "S", "6": "S" },
+    "month": {
+      "01": "January", "02": "February", "03": "March", "04": "April", "05": "May", "06": "June",
+      "07": "July", "08": "August", "09": "September", "10": "October", "11": "November", "12": "December"
+    },
+    "of": "{{n}} / {{of}}",
+    "in": "In",
+    "out": "Out",
+    "hours": "Hours",
+    "hoursValue": "{{n}} h",
+    "punches": "Punches",
+    "noPunches": "No punches",
+    "noRecord": "No record",
+    "offline": "No network",
+    "cannotRead": "Could not load",
+    "reason": {
+      "one_punch_only": "Only one punch that day",
+      "other": "Ask the attendance office"
+    },
+    "sheet": {
+      "title": "Confirm this day",
+      "ask": "Request meeting",
+      "open": "Request sent",
+      "seen": "Seen",
+      "closed": "Closed",
+      "resolved_by_correction": "Corrected",
+      "failed": "Not sent — try again",
+      "tooMany": "Too many open requests",
+      "notNeeded": "Already corrected",
+      "close": "Close"
+    },
+    "manage": {
+      "open": "Staff attendance",
+      "hintAll": "Everyone today · requests",
+      "hintTeam": "My team today",
+      "today": "Today",
+      "team": "My team",
+      "requests": "Requests",
+      "asOf": "as of {{time}}",
+      "notConnected": "Machine not connected",
+      "all": "All",
+      "noDept": "No department",
+      "search": "Search by name",
+      "nobody": "Nobody matches",
+      "countIn": "In",
+      "countNotIn": "Not in",
+      "countLate": "Late",
+      "countLeave": "Leave",
+      "notIn": "Not in",
+      "late": "Late",
+      "onePunch": "One punch",
+      "noLogin": "no login",
+      "notLinked": "Not linked",
+      "noTeam": "Nobody in your team yet"
+    },
+    "requests": {
+      "open": "Open",
+      "seen": "Seen",
+      "closed": "Closed",
+      "none": "No requests",
+      "markSeen": "Seen",
+      "close": "Close",
+      "note": "Note (optional)",
+      "confirmClose": "Close request",
+      "cancel": "Cancel",
+      "ageHours": "{{n}} h",
+      "ageDays": "{{n}} d",
+      "failed": "Not saved — try again"
+    }
+  },
   "home": {
     "now": "Needs you now",
     "all": "See all ({{n}})",
@@ -1969,6 +2173,9 @@
       "deskWaitingSub": "Seated by you, not yet with a doctor",
       "rebook": "appointments to re-book",
       "rebookSub": "The doctor is on leave that day",
+      "toCollect": "to collect",
+      "toCollectSub": "Let through unpaid at the desk",
+      "toCollectGone": "{{n}} already seen or gone",
       "myRequest": "Your request · {{what}}",
       "myRequestPending": "with the approver",
       "myRequestGranted": "Approved — you can go ahead",
@@ -2164,6 +2371,8 @@
     "ready": "ready"
   },
   "patientAbsent": {
+    "undo": "Undo — patient is here",
+    "undone": "Back on the bench",
     "action": "Patient not present — guardian with reports",
     "title": "Who came?",
     "hint": "No vitals. Fee unchanged.",
@@ -2200,7 +2409,8 @@
       "patient_absent_returning_only": "Only a returning patient (revisit or renewal) can skip vitals for a guardian.",
       "encounter_state_conflict": "This visit is no longer waiting for vitals.",
       "consult_gate_refused": "This visit has not been billed yet — take the fee at the counter first.",
-      "patient_absent_not_permitted": "Your account may not send a guardian's visit to the doctor."
+      "patient_absent_not_permitted": "Your account may not send a guardian's visit to the doctor.",
+      "patient_absent_undo_state_conflict": "The doctor has this visit — cannot undo."
     }
   },
   "recorded": {
@@ -2237,5 +2447,722 @@
     "offline": "No network — could not read the count.",
     "refused": "The server could not answer. Try again.",
     "noAccess": "There is no recording count for your login."
+  },
+  "toCollect": {
+    "title": "To collect",
+    "count": "To collect · {{n}}",
+    "none": "Nobody to collect from.",
+    "collect": "Collect",
+    "atCounter": "at the billing counter",
+    "why": "Let through by {{by}}, {{mins}} min ago — {{reason}}",
+    "state": {
+      "done": "seen by the doctor",
+      "left": "left the line",
+      "with_doctor": "with the doctor",
+      "waiting": "waiting"
+    }
+  },
+  "owner": {
+    "today": "Today",
+    "notLoaded": "This part did not load",
+    "byDoctor": "By doctor",
+    "tile": {
+      "money": "Money",
+      "opd": "OPD",
+      "recorded": "Recorded",
+      "appointments": "Appointments",
+      "pharmacy": "Pharmacy",
+      "staff": "Staff",
+      "learning": "Learning",
+      "wait": "Wait, minutes"
+    },
+    "sub": {
+      "missing": "{{n}} missing",
+      "allIn": "all recorded",
+      "noneYet": "none yet",
+      "rebook": "{{n}} to rebook",
+      "lowStock": "{{n}} low stock",
+      "bills": "bills today",
+      "gap": "{{n}} gap",
+      "gaps": "{{n}} gaps",
+      "onLeave": "{{n}} on leave",
+      "onDuty": "on duty now",
+      "nicknames": "new nicknames",
+      "learningOff": "switched off",
+      "toFix": "{{n}} to fix",
+      "waitUp": "▲ {{n}} min",
+      "waitDown": "▼ {{n}} min"
+    },
+    "period": {
+      "today": "Today",
+      "week": "Week",
+      "month": "Month",
+      "custom": "Custom"
+    },
+    "vs": {
+      "today": "vs same day last week",
+      "week": "vs last week to date",
+      "month": "vs last month to date",
+      "none": "Nothing to compare with yet"
+    },
+    "custom": {
+      "from": "From",
+      "to": "To",
+      "hint": "YYYY-MM-DD",
+      "show": "Show",
+      "bad_date": "Write dates as YYYY-MM-DD",
+      "order": "To is before From",
+      "too_long": "At most 92 days",
+      "future": "Not after today"
+    },
+    "month": {
+      "jan": "Jan",
+      "feb": "Feb",
+      "mar": "Mar",
+      "apr": "Apr",
+      "may": "May",
+      "jun": "Jun",
+      "jul": "Jul",
+      "aug": "Aug",
+      "sep": "Sep",
+      "oct": "Oct",
+      "nov": "Nov",
+      "dec": "Dec"
+    },
+    "money": {
+      "collected": "Collected",
+      "month": "Month so far",
+      "vsMonth": "vs {{month}}",
+      "lastMonthWas": "{{month}}: {{amount}}",
+      "cash": "Cash",
+      "upi": "UPI",
+      "card": "Card",
+      "cashiers": "Cashiers",
+      "drawer": {
+        "open": "open · not counted",
+        "exact": "counted · exact",
+        "short": "counted · short {{amount}}",
+        "excess": "counted · excess {{amount}}"
+      },
+      "refunds": "Refunds",
+      "paid": "{{n}} paid",
+      "discounts": "Discounts",
+      "letThrough": "Let through unpaid"
+    },
+    "recorded": {
+      "head": "On record",
+      "of": "{{on}} of {{of}}",
+      "notRecorded": "{{n}} not recorded",
+      "onScreen": "On screen",
+      "typed": "Paper, typed",
+      "photoOnly": "Paper, photo only",
+      "missing": "Not recorded",
+      "none": "No count for this login"
+    },
+    "appointments": {
+      "head": "Appointments",
+      "came": "Came",
+      "toCome": "To come",
+      "missed": "Missed",
+      "rebook": "Need rebooking",
+      "cancelled": "Cancelled",
+      "cameOf": "{{n}} came"
+    },
+    "pharmacy": {
+      "sales": "Sales",
+      "bills": "Bills",
+      "each": "{{amount}} each",
+      "billsN": "{{n}} bills",
+      "split": {
+        "dispense": "Prescriptions",
+        "walk_in": "Walk-in sales",
+        "downtime": "Entered after downtime"
+      },
+      "served": "Prescriptions served",
+      "stock": "Stock",
+      "now": "as it stands now",
+      "low": "Low stock",
+      "expiring": "Expiring in 60 days",
+      "asked": "Out of stock, asked for"
+    },
+    "staff": {
+      "title": "Staff today",
+      "onDuty": "On duty now",
+      "onLeave": "On leave today",
+      "nobody": "Nobody on leave",
+      "gaps": "Roster gaps",
+      "noGaps": "No gap in the next 24 hours",
+      "waiting": "Waiting",
+      "cover": "Cover requests",
+      "leaveAsked": "Leave requests",
+      "noAttendance": "No attendance record yet"
+    },
+    "learning": {
+      "title": "Learning this week",
+      "on": "Nickname learning is on",
+      "off": "Nickname learning is switched off",
+      "nicknames": "Nicknames",
+      "none": "Nothing new this week",
+      "undo": "Undo",
+      "putBack": "Put back",
+      "trusted": "trusted",
+      "doctor": "1 doctor",
+      "doctors": "{{n}} doctors",
+      "removed": "removed",
+      "crossedOff": "removed · crossed off",
+      "tapped": "Suggestions tapped",
+      "misses": "Words not understood",
+      "notSaved": "Not saved — try again"
+    },
+    "opd": {
+      "head": "OPD visits",
+      "byDept": "By department",
+      "none": "No visits in these days"
+    },
+    "wait": {
+      "title": "How long patients wait",
+      "avg": "Average, minutes",
+      "deskToVitals": "Desk → vitals",
+      "vitalsToDoctor": "Vitals → doctor",
+      "deskToDoctor": "Desk → doctor",
+      "consult": "In consultation",
+      "consultShort": "Consult",
+      "minutes": "{{n}} min",
+      "patients": "{{n}} patients",
+      "few": "Fewer than 5 patients",
+      "up": "▲ {{n}} min",
+      "down": "▼ {{n}} min",
+      "same": "same",
+      "byDept": "By department · desk → doctor",
+      "hospital": "Hospital",
+      "byHour": "By hour",
+      "byWeekday": "By weekday",
+      "toImprove": "To improve",
+      "nothing": "Nothing to fix this week",
+      "off": "Learning is switched off",
+      "fixed": "Fixed",
+      "vsUsual": "{{min}} min vs {{usual}} usual",
+      "dismiss": "Hide",
+      "tried": "Tried it",
+      "triedOn": "Tried on {{day}}",
+      "since": "Since then: {{min}} min",
+      "fixedBy": "Fixed: −{{n}} min",
+      "won": "{{n}} patient-minutes saved",
+      "hidden": "Hidden for 28 days",
+      "notSaved": "Not saved — try again",
+      "dropped": "{{n}} visits left out",
+      "whole": "Whole hospital",
+      "weekday": {
+        "0": "Mon",
+        "1": "Tue",
+        "2": "Wed",
+        "3": "Thu",
+        "4": "Fri",
+        "5": "Sat",
+        "6": "Sun"
+      },
+      "kind": {
+        "bay_peak": "Slow vitals {{day}} {{from}}–{{to}}",
+        "doctor_start_late": "Slow first hour {{day}}",
+        "dept_outlier": "Long wait for the doctor",
+        "week_regression": "This week {{pct}}% slower",
+        "consult_up": "Consults {{pct}}% longer this week"
+      },
+      "try": {
+        "bay_peak": "Add one person at the bay {{from}}–{{to}} {{day}}",
+        "doctor_start_late": "Start consultations on time {{day}} at {{from}}:00",
+        "dept_outlier": "Review doctor slots: {{pct}}% over the hospital",
+        "week_regression": "Check staff on duty against last month",
+        "consult_up": "Check consult load and slots"
+      }
+    }
+  },
+  "pace": {
+    "title": "My pace",
+    "sub": "Avg time per consultation",
+    "min": "{{n}} min",
+    "dept": "Dept",
+    "hospital": "Hospital",
+    "notEnough": "Not enough yet",
+    "none": "—",
+    "period": {
+      "today": "Today",
+      "7d": "7 days",
+      "30d": "30 days"
+    },
+    "count": "{{n}} consultations",
+    "paper": "Paper visits not counted",
+    "back": "Back",
+    "offline": "No network",
+    "refused": "Could not load",
+    "again": "Try again",
+    "noMeasure": "No measure for your login"
+  },
+  "reminders": {
+    "title": "Reminders",
+    "back": "Back",
+    "add": "New reminder",
+    "addShort": "+ Reminder",
+    "what": "What",
+    "hint": "No patient names",
+    "time": "Time (24 h)",
+    "save": "Save",
+    "cancel": "Cancel",
+    "none": "No reminders",
+    "saved": "Set for {{when}}",
+    "offline": "No signal",
+    "today": "Today {{time}}",
+    "tomorrow": "Tomorrow {{time}}",
+    "onDay": "{{day}} {{date}} · {{time}}",
+    "dayChip": "{{day}} {{date}}",
+    "day": {
+      "today": "Today",
+      "tomorrow": "Tomorrow"
+    },
+    "repeat": {
+      "none": "Once",
+      "daily": "Daily",
+      "mon_sat": "Mon–Sat",
+      "weekly": "Weekly"
+    },
+    "wd": {
+      "0": "Sun",
+      "1": "Mon",
+      "2": "Tue",
+      "3": "Wed",
+      "4": "Thu",
+      "5": "Fri",
+      "6": "Sat"
+    },
+    "problem": {
+      "text": "Type a few words",
+      "time": "Time like 16:00",
+      "past": "That time has gone",
+      "limit": "20 reminders is the most",
+      "refused": "Could not save"
+    }
+  },
+  "copilot": {
+    "notice": {
+      "text": "Copilot questions are logged for 180 days for safety and quality. No one sees a per-person list.",
+      "ok": "OK"
+    },
+    "can": {
+      "visit_status": "whether a patient has been seen",
+      "queue_depth": "how the queues look",
+      "patient_dues": "what a patient owes",
+      "my_day_report": "for your day report"
+    },
+    "answer": {
+      "leavePickDay": "{{kind}} on {{from}}. Check it, then Confirm.",
+      "leavePick": "{{kind}}, {{from}} to {{to}} ({{count}} days). Check it, then Confirm.",
+      "leavePickKindDay": "Leave on {{from}}. Pick the kind, then Confirm.",
+      "leavePickKind": "Leave from {{from}} to {{to}} ({{count}} days). Pick the kind, then Confirm.",
+      "leaveWhichDays": "Which days? Say \"kal\", \"20 Oct\" or \"20 to 22 Oct\".",
+      "leaveInPast": "That day has already begun. Your department enters leave for it.",
+      "leaveOverlaps": "You already have leave on one of those days.",
+      "leaveTooLong": "That is too long or too far ahead for one request. Use My leave.",
+      "leaveKindNotHere": "That kind of leave is entered by your department.",
+      "leaveFiled": "Leave asked: {{kind}}, {{from}} to {{to}}. Your department's head decides it.",
+      "leaveNone": "You have asked no leave in the last two weeks.",
+      "leaveStatusRequested": "Your {{kind}} from {{from}} is waiting for a decision.",
+      "leaveStatusApproved": "Your {{kind}} from {{from}} is approved by {{who}}.",
+      "leaveStatusRefused": "Your {{kind}} from {{from}} was not approved by {{who}}: {{why}}",
+      "leaveStatusCancelled": "Your {{kind}} from {{from}} was taken back.",
+      "coverAsked": "Asked {{name}} to take your duty. Their answer comes to My duties.",
+      "swapAsked": "Asked {{name}} for the swap. Their answer comes to My duties.",
+      "coverRefused": "That person can no longer take this duty. Ask again to see who can.",
+      "reminderPick": "Remind you {{when}}? Check it, then Confirm.",
+      "reminderWhatTime": "What time? Say \"4 baje\", \"kal subah 9\" or \"in 30 min\".",
+      "reminderPast": "That time has passed. Say a later time.",
+      "reminderWhat": "Remind you of what? Say it in a few words.",
+      "reminderTooLong": "Keep it under 80 letters.",
+      "reminderLimit": "You have 20 reminders. Clear one first.",
+      "reminderSet": "Reminder set {{when}}.",
+      "actDone": "Done.",
+      "actExpired": "That expired. Ask again.",
+      "actInvalid": "Cannot confirm that. Ask again.",
+      "actAlreadyDone": "Already done.",
+      "actStateChanged": "Something changed. Nothing done — ask again.",
+      "paused": "The copilot is paused just now. Use the screen for this.",
+      "notPermitted": "You do not have access to that. Ask whoever manages roles if you need it.",
+      "needSubject": "Which patient? Give me a UHID or the visit number from their slip.",
+      "failed": "I could not get an answer just now. Try the screen for this.",
+      "notUnderstood": "I did not understand that.",
+      "notUnderstoodCan": "I did not understand that. You can ask me {{can}}.",
+      "noTool": "I understood the question, but nothing here answers it yet.",
+      "dayReport": "Your day report for {{date}} — {{sections}} sections, ready below.",
+      "dayReportProvisional": "Your day so far on {{date}} — {{sections}} sections, ready below. The day has not closed, so these figures can still change.",
+      "dayReportEmpty": "Nothing recorded under your name on {{date}} yet.",
+      "visitSeen": "Yes — seen by the doctor, and the visit is closed. Token {{token}}.",
+      "visitInConsult": "With the doctor right now. Token {{token}}.",
+      "visitAwaitingResults": "Seen by the doctor, now waiting on test results before the visit closes. Token {{token}}.",
+      "visitWaiting": "Not yet — waiting in the queue on token {{token}}.",
+      "visitRegistered": "Not yet — registered, but not in a queue yet.",
+      "visitAbandoned": "That visit was abandoned. Token {{token}}.",
+      "visitUnknownPatient": "I could not find that patient.",
+      "visitNoneToday": "That patient has no visit on {{date}}.",
+      "visitUnknown": "I could not find that visit.",
+      "queueShortest": "Shortest open line is {{doctor}} — {{waiting}} waiting, about {{minutes}} minutes.",
+      "queueNoneOpen": "No doctor is holding a clinic today.",
+      "stockOnShelf": "{{name}}: {{qty}} {{uom}} on the shelf. The next sale takes batch {{batch}}, expiring {{expiry}}.",
+      "stockEmpty": "{{name}} is on the shelf list, but none can be sold now — out, expired, recalled or held for tickets.",
+      "stockSeveral": "{{n}} on this shelf match: {{items}}.",
+      "stockNotFound": "Nothing on this shelf is called “{{term}}”, and no salt by that name is on it.",
+      "stockNeedName": "Which medicine? Ask with its name — “kitni Mox 500 bachi hai”.",
+      "uncollected": "Paid and not yet collected ({{n}}): {{items}}.",
+      "uncollectedNone": "Nothing is paid and waiting to be collected.",
+      "uhidCheckFailed": "That UHID does not look right — check the digits. ({{uhid}})",
+      "duesOwed": "{{uhid}}: {{amount}} due · unpaid bills: {{count}} · oldest {{billNo}} ({{date}})",
+      "duesNone": "{{uhid}}: nothing due",
+      "duesNeedUhid": "Give the patient's UHID",
+      "shortBookDraft": "Drafted: note {{name}} in the short book? Confirm on the card.",
+      "shortBookAlready": "{{name}} is already in the short book.",
+      "shortBookNeedName": "Which medicine is out? Say it with the name — “Pan 40 khatam”.",
+      "purchaseDraftPlan": "Ready to draft — orders: {{orders}} · lines: {{lines}} · need a vendor: {{unassigned}}. Open the office to make the drafts.",
+      "purchaseDraftNothing": "Nothing to order: no item is at its reorder level and the short book is clear.",
+      "paymentRunPlan": "Ready to draft a payment run — vendors: {{vendors}} · bills: {{bills}} · ₹{{amount}} due by {{until}}. Open the office to make the draft.",
+      "paymentRunNothing": "Nothing falls due by {{until}} that a run does not already hold.",
+      "returnPlan": "Ready to draft returns — vendors: {{vendors}} · batches: {{batches}} · ₹{{amount}} at cost can go back ({{toDestroy}} can only be destroyed). Open the office to make the drafts.",
+      "returnNothing": "Nothing expired within its window, near expiry or recalled that a return does not already hold ({{toDestroy}} can only be destroyed).",
+      "duplicateItems": "{{pairs}} possible duplicate items ({{sameMedicine}} the same medicine twice). Open the office's Items side to review and merge them.",
+      "duplicateItemsNothing": "No two live items look like one thing twice.",
+      "rosterNeedDept": "Which department do you mean? Ask with its name — “ortho mein abhi on call kaun hai?”",
+      "rosterWhoIsOn": "In {{dept}} {{when}}, {{unit}} is on take until {{till}}. In the hospital: {{here}}. Faculty on call: {{fac}}.",
+      "rosterWhoNoTake": "In {{dept}} {{when}}, no unit is on take. In the hospital: {{here}}. Faculty on call: {{fac}}.",
+      "rosterWhoUnpublished": "{{dept}} has no published roster {{when}}, so I can't say who is on. The duty manager will know.",
+      "rosterWhoService": "The {{role}} {{when}} is {{who}}.",
+      "rosterWhoServiceNobody": "Nobody is rostered as {{role}} {{when}}.",
+      "rosterWhoServiceUnpublished": "No roster is published for the {{role}}, so I can't say who it is.",
+      "rosterUnitOnTake": "{{unit}} is {{dept}}'s unit on take {{when}} — from {{from}} until {{till}}. The backup unit is {{backup}}.",
+      "rosterUnitOnTakeNoBackup": "{{unit}} is {{dept}}'s unit on take {{when}} — from {{from}} until {{till}}. No backup unit is named.",
+      "rosterNoTake": "{{dept}} has no unit on take {{when}} — no published take cycle covers that time.",
+      "rosterMyNext": "Your next duty is on {{day}} ({{from}}–{{till}}), as {{post}} in {{unit}}.",
+      "rosterMyNextNight": "Your next night is on {{day}} ({{from}}–{{till}}), as {{post}} in {{unit}}.",
+      "rosterMyOnDay": "On {{day}} you are on duty: {{duties}}.",
+      "rosterMyNone": "You have no duty on a published roster in the next {{days}} days.",
+      "rosterMyNoNight": "You have no night on a published roster in the next {{days}} days.",
+      "rosterMyNoneOnDay": "You are not on duty on {{day}}.",
+      "rosterCoverDraft": "Your night on {{day}} ({{from}}–{{till}}): {{names}} can take it. Nothing is asked yet — tap one, then Confirm.",
+      "rosterCoverDraftDuty": "Your duty on {{day}} ({{from}}–{{till}}): {{names}} can take it. Nothing is asked yet — tap one, then Confirm.",
+      "rosterCoverAlready": "You have already asked someone to take your duty on {{day}} ({{from}}–{{till}}). Their answer will be on My duties.",
+      "rosterCoverNobody": "Nobody can take your duty on {{day}} ({{from}}–{{till}}) without breaking a rule — {{n}} people were checked. Your SR can still arrange it.",
+      "rosterCoverNoDuty": "You have no duty in the next {{days}} days to hand over.",
+      "rosterCoverNoDutyOn": "You are not on duty on {{day}}, so there is nothing to hand over.",
+      "apptPick": "Pick the patient, then a time.",
+      "apptPickTime": "{{patient}} with {{doctor}} — pick a time.",
+      "apptWhichPatient": "Which patient? Give the UHID, mobile or name.",
+      "apptNoPatient": "No patient found. Give the UHID or mobile.",
+      "apptWhichDoctor": "Which doctor? Write Dr and the name.",
+      "apptDoctorUnclear": "More than one doctor matches: {{doctors}}. Write the full name.",
+      "apptNoSlots": "No free time with {{doctor}} in the next 14 days.",
+      "apptNoSlotsOn": "No free time with {{doctor}} on {{day}}.",
+      "apptNoneToMove": "No upcoming appointment to move.",
+      "apptNoMobile": "No mobile on record for a tele-call. Use the booking screen.",
+      "apptBooked": "Booked: {{patient}} ({{uhid}}) with {{doctor}}, {{when}}.",
+      "apptMoved": "Moved: {{patient}} ({{uhid}}) to {{doctor}}, {{when}}.",
+      "apptSlotTaken": "That time was just taken. Nothing done — ask again.",
+      "apptDoctorOnLeave": "The doctor is on leave that day. Nothing done.",
+      "apptPast": "That time has passed. Nothing done — ask again.",
+      "apptChanged": "That appointment has changed. Nothing done — ask again."
+    },
+    "act": {
+      "leave": "Ask for this leave?",
+      "cover": "Hand on {{duty}}?",
+      "coverBy": "{{name}} takes it",
+      "swapWith": "Swap with {{name}}: you take {{give}}",
+      "dutyNight": "{{day}} night",
+      "dutyDay": "{{day}} duty",
+      "days_one": "{{from}}",
+      "days_other": "{{from}} – {{to}} · {{count}} days",
+      "dismiss": "Not now",
+      "confirm": "Confirm",
+      "cancel": "Cancel",
+      "tele": "Tele-call",
+      "inPerson": "In person",
+      "noMobile": "No mobile on record",
+      "from": "Now {{when}}",
+      "pickPatient": "Tap the patient",
+      "noTimes": "No free time",
+      "book": "Book this?",
+      "move": "Move to this?",
+      "reminder": "Set this reminder?",
+      "repeat_none": "Once",
+      "repeat_daily": "Every day",
+      "repeat_mon_sat": "Mon–Sat",
+      "repeat_weekly": "Every week",
+      "openReminders": "Reminders",
+      "viaCopilot": "via copilot"
+    },
+    "when": {
+      "now": "right now",
+      "at": "on {{day}} at {{time}}",
+      "stamp": "{{day}}, {{time}}",
+      "nobody": "nobody"
+    }
+  },
+  "copilotPhone": {
+    "open": "Ask",
+    "title": "Copilot",
+    "placeholder": "Type a question",
+    "ask": "Ask",
+    "wrong": "Wrong",
+    "marked": "Marked wrong",
+    "offline": "No signal",
+    "report": "Full report on computer",
+    "chip": {
+      "queue": "Shortest line?",
+      "myDuty": "My next duty",
+      "myNight": "My next night",
+      "myDay": "My day report"
+    }
+  },
+  "openLoops": {
+    "title": "Waiting for me",
+    "loops": "Open loops",
+    "all": "All ›",
+    "back": "Back",
+    "nothing": "Nothing waiting",
+    "kind": {
+      "lab": {
+        "criticalsMine_one": "Lab critical",
+        "criticalsMine_other": "Lab criticals",
+        "callsOpen_one": "Critical call open",
+        "callsOpen_other": "Critical calls open",
+        "reportsBack_one": "Lab report back",
+        "reportsBack_other": "Lab reports back"
+      },
+      "radiology": {
+        "criticalsMine_one": "Imaging critical",
+        "criticalsMine_other": "Imaging criticals",
+        "readsOverdue_one": "Study overdue",
+        "readsOverdue_other": "Studies overdue",
+        "unreadMine_one": "Imaging unread",
+        "unreadMine_other": "Imaging unread"
+      },
+      "alerts": {
+        "unanswered_one": "Alert unanswered",
+        "unanswered_other": "Alerts unanswered"
+      },
+      "reminders": {
+        "today_one": "Reminder today",
+        "today_other": "Reminders today"
+      },
+      "roster": {
+        "leaveToDecide_one": "Leave to decide",
+        "leaveToDecide_other": "Leaves to decide",
+        "leaveRefused_one": "Leave not approved",
+        "leaveRefused_other": "Leaves not approved",
+        "dutiesToday_one": "Duty today",
+        "dutiesToday_other": "Duties today"
+      }
+    },
+    "where": {
+      "lab": {
+        "criticalsMine": "On computer · Consult",
+        "callsOpen": "On computer · Lab bench",
+        "reportsBack": "On computer · Consult"
+      },
+      "radiology": {
+        "criticalsMine": "On computer · Consult",
+        "readsOverdue": "On computer · Reading room",
+        "unreadMine": "On computer · Consult"
+      }
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "back": "Back",
+    "language": "Language",
+    "tools": "Tools",
+    "copilot": "Copilot",
+    "copilotOn": "Copilot icon is on the top bar",
+    "copilotOff": "Off. Turn on to ask the copilot",
+    "account": "Account",
+    "logout": "Log out of this phone",
+    "offline": "No signal. Try again"
+  },
+  "myLeave": {
+    "title": "My leave",
+    "back": "Back",
+    "toDecide": "To decide",
+    "mine": "My requests",
+    "none": "No leave asked",
+    "ask": "Ask for leave",
+    "from": "First day",
+    "fromHint": "Today, or e.g. 12/11",
+    "badDay": "Write the first day as 12/11",
+    "daysLabel": "Days",
+    "reason": "Reason (optional)",
+    "reasonHint": "Only you and the decider read it",
+    "send": "Send",
+    "sent": "Sent to your head",
+    "cancel": "Take back",
+    "refusedBecause": "Not approved by {{who}}: {{why}}",
+    "theirReason": "Reason: {{why}}",
+    "approve": "Approve",
+    "refuse": "Refuse",
+    "refuseWhy": "Why (they read it)",
+    "refuseSend": "Refuse",
+    "span_one": "{{from}}–{{to}} · {{count}} day",
+    "span_other": "{{from}}–{{to}} · {{count}} days",
+    "kind": {
+      "CL": "Casual leave",
+      "EL": "Earned leave",
+      "ML": "Medical leave",
+      "comp_off": "Comp off"
+    },
+    "status": {
+      "requested": "Waiting",
+      "approved": "Approved",
+      "rejected": "Not approved",
+      "cancelled": "Taken back"
+    }
+  },
+  "quickLab": {
+    "loading": "Loading…",
+    "summary": "Summary",
+    "otherParams": "Other parameters",
+    "yearShort": "y",
+    "sex": {
+      "m": "M",
+      "f": "F",
+      "o": "O"
+    },
+    "collect": {
+      "find": "UHID or order no.",
+      "scan": "Scan card",
+      "waitingCount": "Waiting · {{n}}",
+      "waiting": "waiting {{minutes}} min",
+      "collected": "Blood collected",
+      "done": "{{name}} · {{sample}}",
+      "empty": "Nobody waiting",
+      "notWaiting": "Not waiting for blood",
+      "badCard": "Card not valid"
+    },
+    "bench": {
+      "count": "To report · {{n}}",
+      "collectedAt": "collected {{at}}",
+      "draft": "Draft",
+      "empty": "Bench is empty",
+      "calc": "CALC",
+      "saveDraft": "Save draft",
+      "saveComplete": "Save & Complete",
+      "draftSaved": "Draft saved",
+      "completed": "{{name}} · completed"
+    },
+    "reports": {
+      "count": "Ready · {{n}}",
+      "completedAt": "completed {{at}}",
+      "empty": "No reports ready",
+      "handedToday": "Handed over today · {{n}}",
+      "handOver": "Hand over",
+      "sendBack": "Send back to bench",
+      "handedOver": "{{name}} · handed over",
+      "sentBack": "{{name}} · sent back",
+      "notSigned": "Not signed",
+      "printOnPc": "Print at the desk PC",
+      "sharePdf": "Share PDF",
+      "shareUnavailable": "Sharing not available",
+      "shareFailed": "PDF not shared",
+      "shareNotRecorded": "Shared; not recorded"
+    },
+    "ast": {
+      "title": "Sensitivity",
+      "empty": "Pick a panel",
+      "add": "Add antibiotic",
+      "addFree": "Add “{{name}}”",
+      "mic": "MIC",
+      "micUnit": "MIC µg/mL",
+      "noGrowth": "No growth · no table",
+      "remove": "Remove {{name}}",
+      "S": "Sensitive",
+      "I": "Intermediate",
+      "R": "Resistant",
+      "panels": {
+        "ent_urine": "Entero · urine",
+        "ent_other": "Entero · other",
+        "pse_aci": "Pseudo / Acineto",
+        "staph_ent": "Staph / Entero",
+        "strep": "Strep"
+      }
+    },
+    "ast": {
+      "title": "Sensitivity",
+      "empty": "Pick a panel",
+      "add": "Add antibiotic",
+      "addFree": "Add “{{name}}”",
+      "mic": "MIC",
+      "micUnit": "MIC µg/mL",
+      "noGrowth": "No growth · no table",
+      "remove": "Remove {{name}}",
+      "S": "Sensitive",
+      "I": "Intermediate",
+      "R": "Resistant",
+      "panels": {
+        "ent_urine": "Entero · urine",
+        "ent_other": "Entero · other",
+        "pse_aci": "Pseudo / Acineto",
+        "staph_ent": "Staph / Entero",
+        "strep": "Strep"
+      }
+    },
+    "err": {
+      "lab_mode_off": "Lab is in Full mode",
+      "not_completed": "Report not complete",
+      "not_found": "Not found",
+      "forbidden": "Not allowed",
+      "conflict": "Changed elsewhere · reopen",
+      "offline": "No connection",
+      "failed": "Could not save"
+    }
+  },
+  "quickCounter": {
+    "find": "Name, UHID, phone or token",
+    "register": "Not found · Register at desk",
+    "noVisit": "No visit today",
+    "advised": "Advised today",
+    "advisedBy": "Advised by {{doctor}}",
+    "noAdvice": "No test advised today",
+    "free": "Lab is free · no bill",
+    "orderAdvised": "Order advised ({{n}})",
+    "walkIn": "Walk-in (today)",
+    "future": "Future appointment",
+    "recent": "Last tests",
+    "noHistory": "No lab tests yet",
+    "searchTests": "Search tests · CBC, LFT",
+    "chosen": "Tests · {{n}}",
+    "remove": "Remove",
+    "noParams": "No parameters listed",
+    "consentBy": "Consent taken by",
+    "pathologist": "Pathologist",
+    "send": "Send to Collect",
+    "next": "Next · bill ({{n}})",
+    "total": "Total",
+    "upiRef": "UPI reference",
+    "cardRef": "Card slip no. (optional)",
+    "collect": "Collect {{amount}} · Send to Collect",
+    "sendNoCharge": "Send to Collect",
+    "duplicates": "Done recently · tick to go on",
+    "sent": "{{name}} · sent to Quick Collect",
+    "booked": "Booked · {{name}} · {{day}} {{slot}}",
+    "today": "Today",
+    "pickDay": "Day",
+    "pickSlot": "Slot",
+    "pickTests": "Tests",
+    "full": "Full",
+    "left": "{{n}} left",
+    "bookPickSlot": "Pick a slot",
+    "book": "Book {{day}} {{slot}}",
+    "dayClosed": {
+      "past": "Day has passed",
+      "too_far": "Too far ahead",
+      "closed_day": "Lab closed"
+    },
+    "blocked": {
+      "no_lab_department": "No lab department",
+      "lab_department_inactive": "Lab department off",
+      "no_pathologist": "No pathologist"
+    }
   }
 }

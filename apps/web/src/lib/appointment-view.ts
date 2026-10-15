@@ -18,3 +18,9 @@ export {
   rowStateOf, bookCounts, bookOrder, rebookingToday, upcomingOf, slotClock, dayPartOf,
 } from "../../../../packages/contracts/src/appointment-book";
 export type { RowState, DayPart } from "../../../../packages/contracts/src/appointment-book";
+/*
+  Tele-call (owner 2026-10-09): the ten-digit number rule, by the same path and for the same reason
+  — the built contracts package is CommonJS, and the browser cannot take a value from it by name.
+*/
+export { telePhoneOf } from "../../../../packages/contracts/src/tele-call";
+export type { AppointmentMode } from "../../../../packages/contracts/src/tele-call";

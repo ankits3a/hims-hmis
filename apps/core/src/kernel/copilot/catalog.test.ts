@@ -56,6 +56,16 @@ describe("collectCopilotTools", () => {
     expect(() => collectCopilotTools(reg)).toThrow(/queue_depth/);
   });
 
+  it("refuses at boot a draft_* tool not declared kind \"draft\", and the reverse (#678)", () => {
+    // An untagged draft tool answers straight through a draft halt.
+    const untagged = registryOf([manifest("pharmacy", [tool({ intent: "draft_purchase_orders" })], ["opd.queue.read"])]);
+    expect(() => collectCopilotTools(untagged)).toThrow(/draft_purchase_orders/);
+    const misnamed = registryOf([manifest("opd", [tool({ kind: "draft" })], ["opd.queue.read"])]);
+    expect(() => collectCopilotTools(misnamed)).toThrow(/queue_depth/);
+    const tagged = registryOf([manifest("pharmacy", [tool({ intent: "draft_purchase_orders", kind: "draft" })], ["opd.queue.read"])]);
+    expect(collectCopilotTools(tagged)).toHaveLength(1);
+  });
+
   it("refuses at boot on a permission no manifest declares", () => {
     const reg = registryOf([manifest("opd", [tool({ permission: "opd.invented" })], ["opd.queue.read"])]);
     expect(() => collectCopilotTools(reg)).toThrow(/opd\.invented/);
@@ -65,6 +75,11 @@ describe("collectCopilotTools", () => {
     // `GET /me/report` has no @RequirePermission because loadReport takes no userId. See the type.
     const reg = registryOf([manifest("opd", [tool({ permission: null })], [])]);
     expect(collectCopilotTools(reg)).toHaveLength(1);
+  });
+
+  it("refuses at boot on an alsoAdmits permission no manifest declares (E1.6)", () => {
+    const reg = registryOf([manifest("billing", [tool({ alsoAdmits: ["billing.invented"] })], ["opd.queue.read"])]);
+    expect(() => collectCopilotTools(reg)).toThrow(/billing\.invented/);
   });
 
   it("checks kernel-owned tools in the same pass as the modules'", () => {
@@ -104,6 +119,25 @@ describe("runTool", () => {
     */
     let ran = false;
     const t = tool({ run: () => { ran = true; return Promise.resolve({ key: "copilot.answer.failed", params: {} }); } });
+    const out = await runTool(t, ctx(), () => Promise.resolve(false));
+    expect(out.key).toBe("copilot.answer.notPermitted");
+    expect(ran).toBe(false);
+  });
+
+  it("admits a user who holds only an alsoAdmits permission, and checks nothing past the first hit (E1.6)", async () => {
+    const asked: string[] = [];
+    const t = tool({ permission: "billing.dues.patient.read", alsoAdmits: ["billing.invoice.read"] });
+    const out = await runTool(t, ctx(), (p) => { asked.push(p); return Promise.resolve(p === "billing.invoice.read"); });
+    expect(out.key).toBe("copilot.answer.queueShortest");
+    expect(asked).toEqual(["billing.dues.patient.read", "billing.invoice.read"]);
+  });
+
+  it("refuses a user who holds neither the permission nor any alsoAdmits one (E1.6)", async () => {
+    let ran = false;
+    const t = tool({
+      permission: "billing.dues.patient.read", alsoAdmits: ["billing.invoice.read"],
+      run: () => { ran = true; return Promise.resolve({ key: "copilot.answer.failed", params: {} }); },
+    });
     const out = await runTool(t, ctx(), () => Promise.resolve(false));
     expect(out.key).toBe("copilot.answer.notPermitted");
     expect(ran).toBe(false);

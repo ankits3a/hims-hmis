@@ -1,5 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { act } from "react";
+import i18next from "i18next";
 import { setToken } from "../../lib/api";
 import { renderWithProviders } from "../../test-utils";
 import { PharmacyDesk } from "./pharmacy-desk";
@@ -93,6 +95,9 @@ describe("the desk's rules, pure (PD-3)", () => {
     expect(queuedDay("2026-09-20", now)).toBeNull();
     expect(queuedDay("2026-09-19", now)).toEqual({ kind: "yesterday" });
     expect(queuedDay("2026-09-17", now)).toEqual({ kind: "date", label: "17 Sept" });
+    // the desk's language, not a fixed English month
+    expect(queuedDay("2026-09-17", now, "hi")).toEqual({ kind: "date", label: new Intl.DateTimeFormat("hi-IN", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(Date.UTC(2026, 8, 17))) });
+    expect(ticketLabel("P2609190004", "2026-09-20", "hi")).not.toMatch(/Sep/);
   });
   it("the co-pilot names ONE offer: checked clear, enough on the shelf, cheapest — and says the saving", () => {
     const alt = (over: Partial<WireAlternative>): WireAlternative => ({
@@ -327,6 +332,24 @@ describe("PharmacyDesk (PD-3)", () => {
     expect(screen.getByTestId("queue-row-d1")).toHaveTextContent("18m");
   });
 
+  it("in Hindi the wordmark and an earlier day's date are Hindi too (walk 2026-10-14: 'PHARMACY DESK', '23 Sept')", async () => {
+    const istDay = (ms: number): string => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ms));
+    const old = row("d9", "Sunita Devi", { status: "queued", createdAt: ago(5 * 24 * 60), queuedOn: istDay(NOW - 5 * 24 * 60 * 60_000), dispenseNo: null });
+    mockRoutes(base({ "GET /api/pharmacy/queue": { status: 200, body: { items: [old, ...QUEUE] } } }));
+    await act(async () => { await i18next.changeLanguage("hi"); });
+    try {
+      renderWithProviders(<PharmacyDesk ticketId={null} />);
+      const r = await screen.findByTestId("queue-row-d9");
+      expect(r).not.toHaveTextContent(/Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec/);
+      expect(r.textContent).toMatch(/[\u0900-\u097F]/);
+      expect(screen.queryByText("PHARMACY DESK")).not.toBeInTheDocument();
+      // the header's date too: not "WED 14 OCT"
+      expect(screen.getByTestId("desk-top")).not.toHaveTextContent(/(MON|TUE|WED|THU|FRI|SAT|SUN) \d/);
+    } finally {
+      await act(async () => { await i18next.changeLanguage("en"); });
+    }
+  });
+
   it("PD-D6 — every keycap drawn is one this desk binds", async () => {
     mockRoutes(base());
     renderWithProviders(<PharmacyDesk ticketId={null} />);
@@ -378,5 +401,75 @@ describe("C1 — the line, checked against the shelf before anybody claims it (P
     expect(said).toHaveTextContent("3 tickets waiting. I have checked every line against this shelf — one is complete, one is missing something, one cannot be dispensed here.");
     await userEvent.click(within(said).getByRole("button", { name: "Show the line" }));
     expect(await screen.findByRole("dialog", { name: "Every ticket at this counter" })).toBeInTheDocument();
+  });
+});
+
+/*
+ * WALK 2026-10-14 — at 390 px the desk kept its three desktop columns: the work column wrapped one
+ * word per line and the line was cut off at the edge. At 900 px and below it is one column, the way
+ * Desk One is: the patient in hand as a strip on top, then the ticket, the line (or the bill) and the
+ * day behind tabs. jsdom has no `matchMedia`, so every other suite renders the wide desk unchanged.
+ */
+describe("the desk on a phone (≤900 px)", () => {
+  const phoneViewport = (on: boolean): void => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true, writable: true,
+      value: on
+        ? (query: string) => ({
+          matches: /max-width:\s*900px/.test(query), media: query, onchange: null,
+          addEventListener: () => undefined, removeEventListener: () => undefined,
+          addListener: () => undefined, removeListener: () => undefined, dispatchEvent: () => false,
+        })
+        : undefined,
+    });
+  };
+  beforeEach(() => { setToken("t"); navigate.mockReset(); resetDeskLog(); phoneViewport(true); });
+  afterEach(() => { vi.unstubAllGlobals(); phoneViewport(false); });
+
+  it("one column: the ticket first, the line and the day behind tabs; the header's extras behind Menu", async () => {
+    mockRoutes(base());
+    renderWithProviders(<PharmacyDesk ticketId={null} />);
+    const tabs = await screen.findByRole("tablist");
+    expect(within(tabs).getByRole("tab", { name: /ticket/i })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByTestId("desk-ticket-panel")).toBeVisible();
+    // the line is there, behind its tab — not squeezed beside the work
+    expect(await screen.findByTestId("queue-row-d1")).not.toBeVisible();
+    await userEvent.click(within(tabs).getByRole("tab", { name: /the line/i }));
+    expect(screen.getByTestId("queue-row-d1")).toBeVisible();
+    expect(screen.getByTestId("desk-ticket-panel")).not.toBeVisible();
+    await userEvent.click(within(tabs).getByRole("tab", { name: /your day/i }));
+    expect(screen.getByTestId("desk-dossier")).toBeVisible();
+    // the counter code and the clock live in the Menu, not in a header that cannot hold them
+    expect(screen.queryByText("PHARM-OPD")).toBeNull();
+    await userEvent.click(screen.getByTestId("desk-menu-toggle"));
+    expect(within(screen.getByTestId("desk-menu")).getByText("PHARM-OPD")).toBeInTheDocument();
+    // the waiting count stays in the row: it is the way to every line
+    expect(screen.getByTestId("desk-waiting")).toBeVisible();
+  });
+
+  it("a ticket in hand puts the patient on a strip at the top; the full record opens on a tap", async () => {
+    mockRoutes(base({ "GET /api/pharmacy/dispenses/d1": { status: 200, body: ticket("claimed", { claimedBy: ME } as Partial<WireDispense>) } }));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const strip = await screen.findByTestId("desk-strip");
+    expect(strip).toHaveTextContent("Ramesh Paswan");
+    expect(strip).toHaveTextContent("U00d1");
+    // the allergy is never folded away with the record
+    expect(within(strip).getByTestId("desk-strip-allergy")).toHaveTextContent("Amoxicillin");
+    expect(strip).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByTestId("desk-dossier")).not.toBeVisible();
+    await userEvent.click(strip);
+    expect(screen.getByTestId("desk-dossier")).toBeVisible();
+    // with somebody in hand the strip IS the record; there is no separate "your day" tab
+    expect(screen.queryByRole("tab", { name: /your day/i })).toBeNull();
+  });
+
+  it("the wide desk keeps its three columns and its header — no tabs, no strip, no Menu", async () => {
+    phoneViewport(false);
+    mockRoutes(base());
+    renderWithProviders(<PharmacyDesk ticketId={null} />);
+    expect(await screen.findByTestId("queue-row-d1")).toBeVisible();
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.queryByTestId("desk-menu-toggle")).toBeNull();
+    expect(screen.getByText("PHARM-OPD")).toBeInTheDocument();
   });
 });

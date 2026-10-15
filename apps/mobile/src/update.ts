@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import { APP_VERSION_CODE, UPDATE_FEED } from "./config";
 
 /**
@@ -11,12 +12,23 @@ import { APP_VERSION_CODE, UPDATE_FEED } from "./config";
  *
  * A check that cannot be made (no signal, the feed not served yet) is "unknown", and unknown says
  * nothing on start-up. It is never an error on a clinical screen.
+ *
+ * iPHONE (owner 2026-10-08): the iPhone app comes from the App Store, and the App Store updates it.
+ * An iPhone cannot install an APK, so on iOS the feed is never read, nothing is offered and the
+ * "Check for update" rows are not drawn (`updatesFromFeed`).
  */
 export type LatestBuild = { versionCode: number; versionName: string; apk: string; sha256: string; builtAt?: string; notes?: string };
 export type UpdateAnswer =
   | { kind: "update"; latest: LatestBuild; url: string }
   | { kind: "latest" }
-  | { kind: "unknown" };
+  | { kind: "unknown" }
+  /** iPhone: the App Store keeps the app current; the app asks nobody. */
+  | { kind: "store" };
+
+/** Does THIS phone learn of a new build from the hospital's own folder? Android and the browser preview: yes. iPhone: no. */
+export function updatesFromFeed(): boolean {
+  return Platform.OS !== "ios";
+}
 
 /** The feed is read as untrusted text: a body that is not exactly this shape is "unknown", never half-believed. */
 export function parseLatest(body: unknown): LatestBuild | null {
@@ -42,6 +54,7 @@ export function apkUrl(feed: string, apk: string): string {
 export async function checkForUpdate(
   fetcher: typeof fetch = fetch, installed: number = APP_VERSION_CODE, feed: string = UPDATE_FEED,
 ): Promise<UpdateAnswer> {
+  if (!updatesFromFeed()) return { kind: "store" };
   try {
     const res = await fetcher(feed, { method: "GET", headers: { Accept: "application/json" } });
     if (!res.ok) return { kind: "unknown" };

@@ -121,6 +121,8 @@
 				request>headers>X-Agent-Key replace REDACTED
 				request>headers>X-Totp-Code replace REDACTED
 				request>headers>Idempotency-Key replace REDACTED
+				request>headers>X-Bioattend-Signature replace REDACTED
+				request>headers>X-Bioattend-Timestamp replace REDACTED
 				request>uri query {
 					replace q REDACTED
 					replace text REDACTED

@@ -30,6 +30,15 @@ export const TextInput = forwardRef<RNTextInput, TextInputProps>(function TextIn
   return <RNTextInput ref={ref} {...rest} style={plexed(style, false)} />;
 });
 
+/** Whether any text field holds the keyboard right now (React Native's own focus registry). */
+export function anyInputFocused(): boolean {
+  try {
+    return RNTextInput.State?.currentlyFocusedInput?.() != null;
+  } catch {
+    return false;
+  }
+}
+
 /** The instance types, so `useRef<TextInput>(null)` reads as it did with the framework's own. */
 export type Text = RNText;
 export type TextInput = RNTextInput;

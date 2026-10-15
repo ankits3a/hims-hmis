@@ -387,6 +387,26 @@ describe("FD-16: the slot grid says what is free, what is taken, and what you pi
     const body = booked[0]!.body as { patientId: string; doctorId: string; slotStart: string };
     expect(body.patientId).toBe("p-1");
     expect(body.doctorId).toBe("doc-1");
+    expect(Object.keys(body).sort()).toEqual(["doctorId", "patientId", "slotStart"]); // an in-person booking sends nothing new
+  });
+
+  it("TELE-CALL (fix round): the booking stage draws the appointments screen's own In person | Tele-call switch — tele waits for a real number and books with mode and the ten digits; in person books what it always did", async () => {
+    const booked: { body: unknown }[] = [];
+    mount({ slots: [slot("10:30"), slot("10:45")], booked });
+    await openFutureTab();
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getAllByTestId("slot-free")[0]!);
+    expect(screen.getByRole("radio", { name: "In person" })).toBeChecked();
+    expect(screen.queryByLabelText("Patient's phone")).toBeNull();
+    await user.click(screen.getByRole("radio", { name: "Tele-call" }));
+    const phone = screen.getByLabelText("Patient's phone");
+    await user.clear(phone);
+    expect(screen.getByTestId("confirm-slot")).toBeDisabled();
+    await user.type(phone, "+91 98765 43021");
+    expect(screen.getByTestId("confirm-slot")).toBeEnabled();
+    await user.click(screen.getByTestId("confirm-slot"));
+    await waitFor(() => expect(booked).toHaveLength(1));
+    expect(booked[0]!.body).toMatchObject({ patientId: "p-1", doctorId: "doc-1", mode: "tele", telePhone: "9876543021" });
   });
 
   it("a taken slot cannot be picked at all", async () => {

@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters } from "../../../test/helpers/opd";
+import { seedBillingBase } from "../../../test/helpers/billing";
 import { opdEncounters, opdQueueEntries, permissions, rolePermissions } from "../../kernel/db/schema";
 import { completeConsultation, startConsultation } from "./consultation";
 import { abandonVisit, openVisit } from "./encounters";
@@ -104,6 +105,38 @@ describe("opd — the quick scan's one read", () => {
     await recordVitals(db, vd.actor, w.encounter.id, adultOk, MON);
     const after = await scanResolve(db, vd.actor, { by: "encounter", encounterId: w.encounter.id }, MON);
     expect(after).toMatchObject({ outcome: "visit", visit: { vitalsDone: true, guardianOffer: false } });
+  });
+
+  /* #771 — the guardian mark was a mistake: the card offers "Undo — patient is here" until the doctor has the visit. */
+  it("'Undo — patient is here' is offered on a guardian's visit to the bay and the desk only, and not once the doctor called it", async () => {
+    const asha = await mkPatient(db, clerk.actor);
+    const v = await open(asha.id);
+    const undo = async (actor: typeof vd.actor): Promise<boolean | undefined> => {
+      const r = await scanResolve(db, actor, { by: "encounter", encounterId: v.encounter.id }, MON);
+      if (r.outcome !== "visit") throw new Error("the visit was not found");
+      return r.visit.guardianUndo;
+    };
+    expect([await undo(vd.actor), await undo(clerk.actor)]).toEqual([false, false]); // no mark yet
+    await markPatientAbsent(db, vd.actor, v.encounter.id, { relation: "son", name: null }, MON);
+    expect([await undo(vd.actor), await undo(clerk.actor), await undo(reader.actor), await undo(dra.actor)]).toEqual([true, true, false, false]);
+    await callNext(db, dra.actor, v.sessionId, MON);
+    expect([await undo(vd.actor), await undo(clerk.actor)]).toEqual([false, false]);
+  });
+
+  /**
+   * Owner 2026-10-09 — *"Doctor's screens must not show money."* The card a DOCTOR's scan opens is
+   * never told the fee is unpaid; the bay's and the desk's cards still are (billing is real here).
+   */
+  it("an unpaid visit: the bay and the desk are told, a doctor's scan is not", async () => {
+    await seedBillingBase(db);
+    const asha = await mkPatient(db, clerk.actor);
+    const v = await open(asha.id);
+    const by = { by: "encounter" as const, encounterId: v.encounter.id };
+
+    expect(await scanResolve(db, vd.actor, by, MON)).toMatchObject({ outcome: "visit", visit: { feeUnpaid: true } });
+    expect(await scanResolve(db, clerk.actor, by, MON)).toMatchObject({ outcome: "visit", visit: { feeUnpaid: true } });
+    expect(await scanResolve(db, dra.actor, by, MON)).toMatchObject({ outcome: "visit", visit: { feeUnpaid: false, mine: true } });
+    expect(await scanResolve(db, drb.actor, by, MON)).toMatchObject({ outcome: "visit", visit: { feeUnpaid: false, mine: false } });
   });
 
   it("acts on a consultation are the treating doctor's alone — another doctor keeps the brief and loses the start", async () => {

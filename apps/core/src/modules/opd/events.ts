@@ -135,6 +135,23 @@ export const queueFeeStatusChanged = defineEvent("queue.fee_status_changed", MOD
   ]),
 }));
 
+/**
+ * Owner 2026-10-09 — the minute job that opens covered tele-calls at their slot. COUNTS ONLY: no
+ * patient, no number, no money. Written only for a tick that found something due.
+ */
+export const teleVisitsOpened = defineEvent("tele.visits_opened", MODULE, z.object({
+  serviceDate: isoDate, due: z.number().int().nonnegative(), opened: z.number().int().nonnegative(), failed: z.number().int().nonnegative(),
+}));
+
+/**
+ * Fix round 2026-10-09 — a tele-call's bill could not be raised, so the doctor's 'spoke' was NOT
+ * recorded. For the desk and billing side (the doctor is told only "Could not save — try again").
+ * `code` is the refusing error's own code; no amount and no number is carried.
+ */
+export const teleBillFailed = defineEvent("tele.bill_failed", MODULE, z.object({
+  encounterId: id, appointmentId: z.string().nullable(), code: z.string().min(1),
+}));
+
 export const patientCheckedIn = defineEvent("patient.checked_in", MODULE, z.object({
   encounterId: id, patientId: id, ...where,
   kind: z.enum(["arrival", "re_entry"]), // family lifecycle, type in payload (§10.5)
@@ -240,6 +257,29 @@ export const visitPatientAbsent = defineEvent("visit.patient_absent", MODULE, z.
   encounterId: id, patientId: id, ...where,
   relation: z.enum(["father", "mother", "spouse", "son", "daughter", "brother", "sister", "other_relative", "attendant"]),
   named: z.boolean(),
+}));
+
+/**
+ * #771 — the guardian mark was a mistake: the patient IS here. The mark is cleared and the token goes
+ * back to the bay (`undoPatientAbsent`). Carries the relation the mark named and whether a name was
+ * given, as `visit.patient_absent` does — never the name.
+ */
+export const visitPatientAbsentUndone = defineEvent("visit.patient_absent_undone", MODULE, z.object({
+  encounterId: id, patientId: id, ...where,
+  relation: z.enum(["father", "mother", "spouse", "son", "daughter", "brother", "sister", "other_relative", "attendant"]),
+  named: z.boolean(),
+  markedBy: id,
+}));
+
+/**
+ * #773 — a desk correction ("Wrong department? Move patient", "change the doctor") closed a visit
+ * whose vitals were already taken; its ACTIVE chart rows now belong to the replacement visit
+ * (`vitals-carry.ts`). The rows keep their recorder and time; this names the move.
+ */
+export const visitVitalsMoved = defineEvent("visit.vitals_moved", MODULE, z.object({
+  patientId: id, ...where,
+  fromEncounterId: id, toEncounterId: id,
+  vitalsIds: z.array(id).min(1),
 }));
 
 export const vitalsDangerFlagged = defineEvent("vitals.danger_flagged", MODULE, z.object({
@@ -587,3 +627,14 @@ export const aliasRunCompleted = defineEvent("alias.run_completed", MODULE, z.ob
 const aliasChange = z.object({ aliasId: id, term: z.string().min(1), medicineId: z.string().nullable(), previousState: z.string().min(1) });
 export const aliasUndone = defineEvent("alias.undone", MODULE, aliasChange);
 export const aliasRestored = defineEvent("alias.restored", MODULE, aliasChange);
+
+/**
+ * HOW LONG PATIENTS WAIT (owner 2026-10-09) — the two acts on a finding: × and "Tried it". WHO is the
+ * event's actor (the owner or the Medical Superintendent), WHEN its time; the payload is the finding
+ * and its numbers. No patient, no doctor, no clerk.
+ */
+const flowFindingAct = z.object({
+  findingId: id, type: z.string().min(1), scope: z.string().min(1), observedMin: z.number(), baselineMin: z.number(),
+});
+export const flowFindingDismissed = defineEvent("flow.finding_dismissed", MODULE, flowFindingAct);
+export const flowFindingTried = defineEvent("flow.finding_tried", MODULE, flowFindingAct);

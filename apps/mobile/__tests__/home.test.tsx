@@ -3,6 +3,13 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { I18nProvider } from "../src/i18n";
 import { SeatHome, _forgetHomeForTests } from "../src/screens/seat-home";
 import { SessionProvider, useSession } from "../src/session";
+import { Platform } from "react-native";
+
+// THIS SUITE DESCRIBES THE ANDROID APP. jest-expo runs as an iPhone unless told otherwise, and on an
+// iPhone the update feed and the word "fingerprint" do not exist (__tests__/ios.test.tsx has its answers).
+const realOS = Platform.OS;
+beforeAll(() => { (Platform as { OS: string }).OS = "android"; });
+afterAll(() => { (Platform as { OS: string }).OS = realOS; });
 
 jest.mock("expo-secure-store", () => {
   const store = new Map<string, string>([["hmis.session", JSON.stringify({ token: "t1", username: "abhi.owner", since: "2026-10-07T03:30:00.000Z" })]]);

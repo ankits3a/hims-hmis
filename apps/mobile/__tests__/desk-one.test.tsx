@@ -506,6 +506,46 @@ describe("Desk One on the phone", () => {
     expect(s.of("POST /print/reprint")[0]?.body).toEqual({ jobId: "j1" });
   });
 
+  /**
+   * OWNER 2026-10-09 — "'To collect' list for desk". The desk home says how many, the list opens,
+   * and Collect lands on the bill stage this desk has always used — quote, tender, receipt.
+   */
+  it("To collect: the desk home counts them, the list opens, and Collect settles through the bill stage — then the row is gone", async () => {
+    const owing = [{
+      encounterId: "e1", visitNo: "V2610060007", serviceDate: "2026-10-06", patientId: "p1", patientName: "Geeta Devi", uhid: "U00110049", isConfidential: false,
+      tokenNo: 7, doctorName: "Dr. Nitish Kumar Jha", state: "done", amountDuePaise: 30000, letThroughBy: "Asha Devi", letThroughAt: "2026-10-06T04:00:00.000Z", reason: "came by ambulance", minutesSince: 90,
+    }];
+    let paid = false;
+    const s = world({ routes: {
+      "GET /billing/to-collect": () => ({ status: 200, body: { items: paid ? [] : owing } }),
+      "POST /billing/invoices": () => { paid = true; return { status: 201, body: { invoiceId: "i1", invoiceNo: "INV/26-27/000101", receiptNo: "RCT/26-27/000088", totals: { netPayablePaise: 30000 } } }; },
+    } });
+    await mount(s.fetcher);
+    await fireEvent.press(await screen.findByTestId("to-collect-open"));
+    expect(screen.getByTestId("to-collect-open")).toHaveTextContent("To collect · 1");
+    expect(await screen.findByTestId("to-collect-row-e1")).toHaveTextContent(/7.*Geeta Devi.*seen by the doctor.*₹300/);
+
+    await fireEvent.press(await screen.findByTestId("to-collect-go-e1"));
+    expect(await screen.findByTestId("bill-total")).toHaveTextContent("₹300");
+    expect(s.of("GET /billing/visits/e1/fee-quote").length).toBeGreaterThan(0);
+    await fireEvent.press(await screen.findByTestId("tender-cash"));
+    await fireEvent.press(screen.getByTestId("settle"));
+    expect(await screen.findByTestId("issued")).toHaveTextContent(/INV\/26-27\/000101/);
+    expect(s.of("POST /billing/invoices")[0]!.body).toMatchObject({ patientId: "p1", encounterId: "e1" });
+
+    // Back on the desk home the count is read again: nobody is left, so the row is not drawn.
+    await fireEvent.press(screen.getByTestId("counter-back"));
+    await waitFor(() => expect(s.of("GET /billing/to-collect").length).toBeGreaterThan(1));
+    await waitFor(() => expect(screen.queryByTestId("to-collect-open")).toBeNull());
+  });
+
+  it("To collect: with nobody owing the desk home draws no such row", async () => {
+    const s = world({ routes: { "GET /billing/to-collect": () => ({ status: 200, body: { items: [] } }) } });
+    await mount(s.fetcher);
+    await waitFor(() => expect(s.of("GET /billing/to-collect")).toHaveLength(1));
+    expect(screen.queryByTestId("to-collect-open")).toBeNull();
+  });
+
   it("says it in Hindi", async () => {
     const s = world({ quote: () => FREE });
     await mount(s.fetcher, "hi");

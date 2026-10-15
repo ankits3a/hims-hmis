@@ -35,6 +35,13 @@ export const users = pgTable(
     // degrades to the in-app alert that already ships. No collection flow exists in this phase;
     // numbers are deployment data, seeded per hospital.
     phone: text("phone"),
+    /**
+     * STAFF ATTENDANCE (owner 2026-10-09: "Match by mobile or Aadhaar only") — the person's Aadhaar
+     * as the attendance system's KEYED HASH (`modules/attendance/aadhaar.ts`) and its last four
+     * digits for the masked display. The number itself is never stored, here or anywhere.
+     */
+    aadhaarHash: text("aadhaar_hash"),
+    aadhaarLast4: text("aadhaar_last4"),
     passwordHash: text("password_hash").notNull(),
     pinHash: text("pin_hash"),
     badgeVersion: integer("badge_version").notNull().default(0),

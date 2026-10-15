@@ -82,5 +82,11 @@ export const alertsManifest: ModuleManifest = {
     { event: "roster.cover_answered", consumer: "kernel.alerts" },
     { event: "roster.cover_decided", consumer: "kernel.alerts" },
     { event: "roster.duty_changed", consumer: "kernel.alerts" },
+    // E2.2 (owner 2026-10-11) — A LEAVE WAITING reaches its deciders; the ANSWER reaches the person,
+    // without the reason. The one-edit rule: `handleLeaveRequested` / `handleLeaveDecided` land in
+    // `consumer.ts` in THIS commit, or every leave lands in the escalation parser and fails delivery.
+    { event: "roster.absence_requested", consumer: "kernel.alerts" },
+    { event: "roster.absence_approved", consumer: "kernel.alerts" },
+    { event: "roster.absence_refused", consumer: "kernel.alerts" },
   ],
 };

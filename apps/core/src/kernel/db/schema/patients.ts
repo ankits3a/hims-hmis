@@ -191,6 +191,8 @@ export const patients = pgTable(
      * what keeps the ROLL itself cheap, since it runs once per active user per night.
      */
     index("patients_created_by_at_idx").on(t.createdBy, t.createdAt),
+    // E0.6 — the copilot's name mask reads today's registrations on every ask (kernel/copilot/names.ts).
+    index("patients_created_at_idx").on(t.createdAt),
     uniqueIndex("patients_uhid_ux").on(t.uhid),
     // Phone-first search (<300 ms budget): prefix LIKE needs text_pattern_ops under the
     // cluster's en_US.utf8 collation — a plain btree would be ignored by LIKE 'x%'.

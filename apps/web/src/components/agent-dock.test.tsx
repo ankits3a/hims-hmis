@@ -1,4 +1,6 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import i18next from "i18next";
+import "../lib/i18n";
 import userEvent from "@testing-library/user-event";
 import { AgentDock, logged } from "./agent-dock";
 import type { AgentLine } from "./agent-dock";
@@ -21,6 +23,20 @@ function line(text: string, kind: AgentLine["kind"] = "did"): AgentLine {
 }
 
 describe("AgentDock", () => {
+  it("names itself in the screen's language — /my-day in Hindi said 'DESK AGENT' (walk 2026-10-14)", async () => {
+    await act(async () => { await i18next.changeLanguage("hi"); });
+    try {
+      const hi = render(<AgentDock answer={null} log={[]} onAsk={() => undefined} placeholder="ask" idle="idle" />);
+      expect(screen.queryByText("DESK AGENT")).not.toBeInTheDocument();
+      expect(screen.getByText("डेस्क एजेंट")).toBeInTheDocument();
+      hi.unmount();
+    } finally {
+      await act(async () => { await i18next.changeLanguage("en"); });
+    }
+    render(<AgentDock answer={null} log={[]} onAsk={() => undefined} placeholder="ask" idle="idle" />);
+    expect(screen.getByText("DESK AGENT")).toBeInTheDocument();
+  });
+
   it("the question box shrinks on a phone instead of pushing the page 132 px wide (prod walk, /my-day at 390, 2026-09-27)", () => {
     render(<AgentDock answer={null} log={[]} onAsk={() => undefined} placeholder="ask" idle="idle" />);
     const box = screen.getByTestId("agent-ask");

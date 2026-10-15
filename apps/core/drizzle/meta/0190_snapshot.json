@@ -1,5 +1,5 @@
 {
-  "id": "844cf2b9-ad2a-46ab-b767-40d8b901be1a",
+  "id": "3c81dcdf-353f-4c12-b1a3-759436b2cc01",
   "prevId": "417b11e1-254c-4cc1-a65b-4e8eb9f0ab72",
   "version": "7",
   "dialect": "postgresql",
@@ -5299,6 +5299,37 @@
           "primaryKey": false,
           "notNull": false
         },
+        "mode": {
+          "name": "mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'in_person'"
+        },
+        "tele_phone": {
+          "name": "tele_phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "advance_receipt_id": {
+          "name": "advance_receipt_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "advance_quote_paise": {
+          "name": "advance_quote_paise",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "advance_quoted_at": {
+          "name": "advance_quoted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "booked_by": {
           "name": "booked_by",
           "type": "text",
@@ -5476,12 +5507,34 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "opd_appointments_advance_receipt_id_receipts_id_fk": {
+          "name": "opd_appointments_advance_receipt_id_receipts_id_fk",
+          "tableFrom": "opd_appointments",
+          "tableTo": "receipts",
+          "columnsFrom": [
+            "advance_receipt_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "opd_appointments_mode_ck": {
+          "name": "opd_appointments_mode_ck",
+          "value": "\"opd_appointments\".\"mode\" in ('in_person', 'tele')"
+        },
+        "opd_appointments_tele_phone_ck": {
+          "name": "opd_appointments_tele_phone_ck",
+          "value": "\"opd_appointments\".\"mode\" <> 'tele' or \"opd_appointments\".\"tele_phone\" is not null"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.opd_complaint_concepts": {
@@ -6996,6 +7049,44 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "consult_mode": {
+          "name": "consult_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'in_person'"
+        },
+        "tele_call_started_at": {
+          "name": "tele_call_started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tele_outcome": {
+          "name": "tele_outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tele_outcome_at": {
+          "name": "tele_outcome_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tele_outcome_by": {
+          "name": "tele_outcome_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tele_no_answer_count": {
+          "name": "tele_no_answer_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         },
         "paper_recheck_asked_by": {
           "name": "paper_recheck_asked_by",
@@ -9518,6 +9609,18 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "upi_vpa": {
+          "name": "upi_vpa",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "upi_payee_name": {
+          "name": "upi_payee_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "updated_at": {
           "name": "updated_at",
@@ -25014,188 +25117,6 @@
         "vendor_documents_type_ck": {
           "name": "vendor_documents_type_ck",
           "value": "\"vendor_documents\".\"type\" in ('drug_licence_20b', 'drug_licence_21b', 'gst_certificate', 'pan', 'cancelled_cheque', 'udyam', 'dpdp_processor_agreement', 'consignment_agreement', 'iso', 'aerb_type_approval')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.vendor_item_rates": {
-      "name": "vendor_item_rates",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "vendor_id": {
-          "name": "vendor_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "item_id": {
-          "name": "item_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "uom": {
-          "name": "uom",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "multiplier": {
-          "name": "multiplier",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "rate_paise": {
-          "name": "rate_paise",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "gst_rate_bps": {
-          "name": "gst_rate_bps",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "mrp_paise": {
-          "name": "mrp_paise",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "valid_from": {
-          "name": "valid_from",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "valid_to": {
-          "name": "valid_to",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source": {
-          "name": "source",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "ended_by": {
-          "name": "ended_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "ended_at": {
-          "name": "ended_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "vendor_item_rates_open_ux": {
-          "name": "vendor_item_rates_open_ux",
-          "columns": [
-            {
-              "expression": "vendor_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "item_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"vendor_item_rates\".\"ended_at\" is null",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "vendor_item_rates_item_idx": {
-          "name": "vendor_item_rates_item_idx",
-          "columns": [
-            {
-              "expression": "item_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "vendor_item_rates_vendor_id_vendors_id_fk": {
-          "name": "vendor_item_rates_vendor_id_vendors_id_fk",
-          "tableFrom": "vendor_item_rates",
-          "tableTo": "vendors",
-          "columnsFrom": [
-            "vendor_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "vendor_item_rates_item_id_items_id_fk": {
-          "name": "vendor_item_rates_item_id_items_id_fk",
-          "tableFrom": "vendor_item_rates",
-          "tableTo": "items",
-          "columnsFrom": [
-            "item_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "vendor_item_rates_money_ck": {
-          "name": "vendor_item_rates_money_ck",
-          "value": "\"vendor_item_rates\".\"rate_paise\" >= 0 and \"vendor_item_rates\".\"gst_rate_bps\" >= 0 and \"vendor_item_rates\".\"multiplier\" > 0 and (\"vendor_item_rates\".\"mrp_paise\" is null or \"vendor_item_rates\".\"mrp_paise\" > 0)"
-        },
-        "vendor_item_rates_period_ck": {
-          "name": "vendor_item_rates_period_ck",
-          "value": "\"vendor_item_rates\".\"valid_to\" is null or \"vendor_item_rates\".\"valid_to\" >= \"vendor_item_rates\".\"valid_from\""
-        },
-        "vendor_item_rates_ended_ck": {
-          "name": "vendor_item_rates_ended_ck",
-          "value": "(\"vendor_item_rates\".\"ended_at\" is null) = (\"vendor_item_rates\".\"ended_by\" is null)"
         }
       },
       "isRLSEnabled": false

@@ -1,6 +1,7 @@
 import { billingDeskProvider, billingPanelsDeskProvider } from "./desk-provider";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 import { invoiceSearchProvider } from "./search-provider";
+import { billingCopilotTools } from "./copilot-tools";
 
 /**
  * The billing module's declared surface (spec §4): the fifteen `billing.*` permissions the
@@ -32,11 +33,13 @@ export const billingManifest: ModuleManifest = {
     "billing.recon.upload", "billing.reports.read", "billing.config.write", "billing.eie.mark",
     // OWNER RULING 2026-09-30 — one patient's dues on the profile, for the front desk. It admits
     // `GET /billing/patients/:patientId/dues` ALONGSIDE `billing.invoice.read` (the guard's
-    // `alsoAdmits`) and opens nothing else.
+    // `alsoAdmits`), and since 2026-10-09 the desk's `GET /billing/to-collect`, and opens nothing else.
     "billing.dues.patient.read",
   ],
   // PLAN 11h T4 — invoices by number or by patient, on `billing.invoice.read`.
   search: [invoiceSearchProvider],
+  // E1.6 (decision 0064) — "what does this patient owe", answered with the counter's own figure.
+  copilotTools: billingCopilotTools,
   // No subscriptions: billing stays check-on-execute BY DESIGN (Global Constraint 1) — Plan 08.5
   // puts the dispatcher on a clock, but no billing route consumes an event; screens poll instead.
   subscriptions: [],

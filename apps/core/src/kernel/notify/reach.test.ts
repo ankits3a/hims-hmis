@@ -139,7 +139,8 @@ describe("runReachLadder", () => {
 
   /** MOBILE §3i — a notice has no ack that means anything, so the ladder must never start on one. */
   it("a NOTICE (a duty reminder, a cover asked, patients waiting) never climbs — at any age", async () => {
-    for (const kind of ["roster_duty_reminder", "roster_cover_asked", "roster_month_published", "opd_not_in", "opd_long_wait"]) {
+    // E1.2 — `personal_reminder`: a person's own reminder is told, never relayed to WhatsApp or SMS.
+    for (const kind of ["roster_duty_reminder", "roster_cover_asked", "roster_month_published", "opd_not_in", "opd_long_wait", "personal_reminder"]) {
       await seedAlert(asha, { kind, minutesAgo: 600 });
     }
     expect(await runReachLadder(db, NOW)).toBe(0);

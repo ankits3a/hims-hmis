@@ -163,7 +163,8 @@ const DAY_CAP = 2000;
 export async function slipDay(db: Db, actor: Actor, now: Date = new Date()): Promise<SlipDay> {
   const serviceDate = istDate(now);
   const encounters = await db.select().from(opdEncounters)
-    .where(and(eq(opdEncounters.serviceDate, serviceDate), ne(opdEncounters.status, "abandoned")))
+    // Owner 2026-10-09 — a tele-call leaves no paper to photograph: it is never on the slip desk's day.
+    .where(and(eq(opdEncounters.serviceDate, serviceDate), ne(opdEncounters.status, "abandoned"), ne(opdEncounters.consultMode, "tele")))
     .orderBy(asc(opdEncounters.openedAt)).limit(DAY_CAP);
   const ctx = await contextFor(db, encounters);
   const done = encounters.filter((e) => finished(e, ctx));
@@ -232,6 +233,7 @@ export async function findTodaysVisits(db: Db, actor: Actor, q: string, now: Dat
     .where(and(
       eq(opdEncounters.serviceDate, istDate(now)),
       ne(opdEncounters.status, "abandoned"),
+      ne(opdEncounters.consultMode, "tele"),
       inArray(opdEncounters.patientId, people.map((p) => p.id)),
     ))
     .orderBy(asc(opdEncounters.openedAt)).limit(20);

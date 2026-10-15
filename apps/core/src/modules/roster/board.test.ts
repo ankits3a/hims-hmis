@@ -13,6 +13,8 @@ import { recordAbsence } from "./absences";
 import { assign, draftPeriod, publishPeriod } from "./periods";
 import { publishCycle } from "./calendar";
 import { onNowBoard } from "./board";
+import { staffToday } from "./staff-today";
+import { rosterAssignments, rosterCoverRequests, staffAbsences } from "../../kernel/db/schema";
 import type { Db } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 
@@ -231,5 +233,43 @@ describe("roster — who is on now (20-U U5a)", () => {
     ]));
     // Medicine's take is continuous, so it has no take hole.
     expect(board.holes.filter((h) => h.departmentId === MED && (h.kind === "take_gap" || h.kind === "no_take_cycle"))).toEqual([]);
+  });
+
+  /**
+   * THE OWNER'S STAFF PAGE (owner 2026-10-09) — composed from the board above, so the two cannot
+   * disagree. No attendance: an approved leave is named (name only), a hole is a hole, and what is
+   * waiting is counted. Kind and reason never leave (D6).
+   */
+  it("staff today: who the board names, who is on approved leave, the gaps, and what waits — no kind, no reason", async () => {
+    await publishMedicineCycle();
+    await publishMedicineOctober();
+    const calm = await staffToday(db, ms, T0240, ON);
+    const board = await onNowBoard(db, T0240, ON);
+    expect(calm.day).toBe("2026-10-06");
+    expect(calm.onDuty).toBe(4); // SR, two JRs in the building and the faculty member on call
+    expect(calm.onLeave).toEqual([]);
+    expect(calm.waiting).toEqual({ cover: 0, coverLines: [], leave: 0 });
+    expect(calm.gaps.length).toBe(board.holes.filter((h) => h.to.getTime() > T0240.getTime()).length);
+    expect(calm.gaps).toEqual(expect.arrayContaining([{ department: "General Medicine", from: TUE_NIGHT.startsAt.toISOString(), what: expect.any(String) }]));
+
+    await withTx(db, (tx) => recordAbsence(tx, ms, {
+      userId: JR2, kind: "ML", reason: "fever", startsAt: ist("2026-10-05T18:00"), endsAt: ist("2026-10-07T00:00"),
+    }));
+    await db.insert(staffAbsences).values({
+      id: newId(), userId: JR, kind: "CL", status: "requested", requestedBy: JR, reason: "family function",
+      startsAt: ist("2026-10-06T00:00"), endsAt: ist("2026-10-08T00:00"), createdBy: JR, updatedBy: JR,
+    });
+    const duty = (await db.select().from(rosterAssignments).where(eq(rosterAssignments.userId, SR)))[0]!;
+    await db.insert(rosterCoverRequests).values({
+      id: newId(), kind: "cover", status: "asked", assignmentId: duty.id, periodId: duty.periodId, ownerId: SR, requestedBy: SR,
+      counterpartId: JR, departmentId: MED, createdBy: SR, updatedBy: SR,
+    });
+    const day = await staffToday(db, ms, T0240, ON);
+    expect(day.onDuty).toBe(3);
+    expect(day.onLeave).toEqual([{ userId: JR2, name: "Dr. Tanvi Shah" }]);
+    expect(day.waiting).toEqual({ cover: 1, coverLines: [{ department: "General Medicine", day: "2026-10-05" }], leave: 1 });
+    expect(JSON.stringify(day)).not.toMatch(/fever|family function|"ML"|"CL"|kind/);
+    /* A requested leave is not a leave: the person is still on the board and not on the list. */
+    expect(day.onLeave.map((p) => p.userId)).not.toContain(JR);
   });
 });

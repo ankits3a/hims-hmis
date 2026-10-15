@@ -52,6 +52,12 @@ const ASHA = {
 const PHONE_A = { id: "ph-a", model: "Redmi Note 12", osVersion: "Android 14", appVersion: "0.7.0 (8)", firstSeenAt: "2026-10-01T04:00:00.000Z", lastSeenAt: "2026-10-06T05:10:00.000Z", lastIp: "203.0.113.7", signedIn: true, signedInSince: "2026-10-06T03:30:00.000Z" };
 const PHONE_OLD = { id: "ph-old", model: null, osVersion: null, appVersion: null, firstSeenAt: "2026-09-01T04:00:00.000Z", lastSeenAt: "2026-09-02T04:00:00.000Z", lastIp: null, signedIn: false, signedInSince: null };
 
+/** The phones live in the person's drawer now (users board, 2026-10-09): open the person, then Phones. */
+async function openPhones(): Promise<void> {
+  await userEvent.click(await screen.findByTestId("admin-open-asha"));
+  await userEvent.click(await screen.findByTestId("admin-phones-asha"));
+}
+
 /**
  * MOBILE M6a — the phones panel on /admin/users (owner 2026-10-06: staff use personal phones).
  */
@@ -65,7 +71,7 @@ describe("AdminUsers — the phones a person is signed in on", () => {
       "GET /api/admin/users/u-asha/phones": { status: 200, body: { limit: 2, phones: [PHONE_A, PHONE_OLD] } },
     });
     renderWithProviders(<AdminUsers />);
-    await userEvent.click(await screen.findByTestId("admin-phones-asha"));
+    await openPhones();
     const panel = await screen.findByTestId("admin-phones-panel");
     expect(panel).toHaveTextContent("Phones — asha");
     const a = await within(panel).findByTestId("admin-phone-ph-a");
@@ -91,7 +97,7 @@ describe("AdminUsers — the phones a person is signed in on", () => {
       "POST /api/admin/users/u-asha/phones/ph-a/sign-out": () => { phones = [{ ...PHONE_A, signedIn: false, signedInSince: null }]; return { status: 200, body: { sessionsRevoked: 1 } }; },
     });
     renderWithProviders(<AdminUsers />);
-    await userEvent.click(await screen.findByTestId("admin-phones-asha"));
+    await openPhones();
     await userEvent.click(await screen.findByTestId("admin-phone-signout-ph-a"));
     expect(await screen.findByTestId("admin-phones-notice")).toHaveTextContent("Redmi Note 12 is signed out. The app on it asks for the password again.");
     expect(callsTo("POST", "/api/admin/users/u-asha/phones/ph-a/sign-out")).toHaveLength(1);
@@ -109,13 +115,13 @@ describe("AdminUsers — the phones a person is signed in on", () => {
       "POST /api/admin/users/u-asha/phones/ph-a/sign-out": { status: 404, body: { code: "phone_not_found" } },
     });
     renderWithProviders(<AdminUsers />);
-    await userEvent.click(await screen.findByTestId("admin-phones-asha"));
+    await openPhones();
     await userEvent.click(await screen.findByTestId("admin-phone-signout-ph-a"));
     expect(await screen.findByTestId("admin-phones-error")).toHaveTextContent("That phone is no longer on this person's list.");
     expect(screen.queryByTestId("admin-phones-notice")).not.toBeInTheDocument();
   });
 
-  it("a person with no phone says so; the list is only asked for when the panel is opened", async () => {
+  it("a person with no phone says so; the list is only asked for once the person is opened, never for the roster", async () => {
     mockRoutes({
       "GET /api/admin/users": { status: 200, body: { users: [ASHA] } },
       "GET /api/admin/users/u-asha/phones": { status: 200, body: { limit: 2, phones: [] } },
@@ -123,7 +129,7 @@ describe("AdminUsers — the phones a person is signed in on", () => {
     renderWithProviders(<AdminUsers />);
     await screen.findByTestId("admin-user-asha");
     expect(callsTo("GET", "/api/admin/users/u-asha/phones")).toHaveLength(0);
-    await userEvent.click(screen.getByTestId("admin-phones-asha"));
+    await openPhones();
     expect(await screen.findByTestId("admin-phones-none")).toHaveTextContent(/No phone has signed in with the staff app for this person yet\..*app 0\.7\.0 or newer.*log out of the app and sign in again/);
   });
 
@@ -135,7 +141,7 @@ describe("AdminUsers — the phones a person is signed in on", () => {
       "GET /api/admin/users/u-asha/phones": { status: 200, body: { limit: 2, notificationsConfigured: true, phones: [{ ...PHONE_A, notifications: true }, PHONE_QUIET, PHONE_OLD] } },
     });
     renderWithProviders(<AdminUsers />);
-    await userEvent.click(await screen.findByTestId("admin-phones-asha"));
+    await openPhones();
     expect(await screen.findByTestId("admin-phone-notifications-ph-a")).toHaveTextContent("Notifications on");
     expect(screen.getByTestId("admin-phone-test-ph-a")).toHaveTextContent("Send test notification");
     expect(screen.getByTestId("admin-phone-notifications-ph-q")).toHaveTextContent("Notifications off on this phone");
@@ -155,7 +161,7 @@ describe("AdminUsers — the phones a person is signed in on", () => {
       "GET /api/admin/users/u-asha/phones": { status: 200, body: { limit: 2, notificationsConfigured: false, phones: [{ ...PHONE_A, notifications: false }] } },
     });
     renderWithProviders(<AdminUsers />);
-    await userEvent.click(await screen.findByTestId("admin-phones-asha"));
+    await openPhones();
     expect(await screen.findByTestId("admin-phone-notifications-ph-a")).toHaveTextContent("Notifications are not set up on this server");
     expect(screen.getByTestId("admin-phone-test-ph-a")).toBeDisabled();
     expect(screen.getByTestId("admin-phone-test-why-ph-a")).toHaveTextContent("Notifications are not set up on this server, so a test cannot be sent.");
@@ -169,7 +175,7 @@ describe("AdminUsers — the phones a person is signed in on", () => {
       "POST /api/admin/users/u-asha/phones/ph-a/test-notification": () => ({ status: 200, body: { outcome } }),
     });
     renderWithProviders(<AdminUsers />);
-    await userEvent.click(await screen.findByTestId("admin-phones-asha"));
+    await openPhones();
     await userEvent.click(await screen.findByTestId("admin-phone-test-ph-a"));
     expect(await screen.findByTestId("admin-phones-notice")).toHaveTextContent("A test notification was sent to Redmi Note 12. It says only “Test — this phone can receive HMIS notifications.”");
     // The request carries no text: there is nothing an administrator can type into a colleague's lock screen.

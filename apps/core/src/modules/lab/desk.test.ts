@@ -3,8 +3,8 @@ import { newId } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { deactivateLabDepartment, seedLabDeskBase, serviceIdForLabCode, UNPRICED_LAB_CODE } from "../../../test/helpers/lab";
 import { withTx } from "../../kernel/db/client";
-import { events } from "../../kernel/db/schema";
-import { labItems, opdDepartments, opdDoctors, opdEncounters, opdQueueEntries, orderItems, orders, patients } from "../../kernel/db/schema";
+import { events, printJobs } from "../../kernel/db/schema";
+import { labItems, labOrderables, opdDepartments, opdDoctors, opdEncounters, opdQueueEntries, orderItems, orders, patientGuardians, patients, phiAccessLog } from "../../kernel/db/schema";
 import { invoices } from "../../kernel/db/schema";
 import { withIdempotency } from "../billing";
 import { BillingError } from "../billing";
@@ -384,6 +384,49 @@ describe("the reception seat (17c T1)", () => {
     expect(byUhid.map((h) => [h.matchedOn, h.patient.id, h.visit])).toEqual([["uhid", sunita.id, null]]);
   });
 
+  it("A1b: a SUGGESTION (asked while typing) carries no Rx lines and logs no visit read; the card's guardian and last-4 mobile come with every hit", async () => {
+    const { first } = await twoSameNameVisits();
+    await db.update(patients).set({ phone: "9041463343", fatherHusbandName: "Mohan Lal" }).where(eq(patients.id, fx.patientId));
+    await db.update(patients).set({ phone: null }).where(eq(patients.id, fx.otherPatientId));
+    await db.insert(patientGuardians).values({
+      id: newId(), patientId: fx.otherPatientId, name: "Sita Devi", phone: "98765 43210", relationship: "mother", createdBy: fx.desk.actor.id,
+    });
+    const reads = async (): Promise<number> =>
+      (await db.select().from(phiAccessLog).where(eq(phiAccessLog.encounterId, first))).length;
+    const before = await reads();
+    const suggested = await deskFind(db, fx.desk.actor, "Ram Kumar", fx.serviceDate, { suggest: true });
+    const mine = suggested.find((h) => h.patient.id === fx.patientId)!;
+    const other = suggested.find((h) => h.patient.id === fx.otherPatientId)!;
+    /** No Rx lines and no read logged — the mutant reads the visit on every keystroke. */
+    expect(mine.visit?.encounterId).toBe(first);
+    expect([mine.visit?.advised, mine.visit?.advisedLoaded]).toEqual([[], false]);
+    expect(await reads()).toBe(before);
+    /** The registration's father/husband name (no relation recorded) and the patient's own mobile. */
+    expect([mine.patient.guardian, mine.patient.phoneLast4, mine.patient.phoneOf]).toEqual([
+      { name: "Mohan Lal", relation: null }, "3343", "patient",
+    ]);
+    /** A guardian row wins, and with no own mobile the guardian's last four are shown. */
+    expect([other.patient.guardian, other.patient.phoneLast4, other.patient.phoneOf]).toEqual([
+      { name: "Sita Devi", relation: "mother" }, "3210", "guardian",
+    ]);
+    /** The pick: the same visit asked by its number reads the lines and logs the read once. */
+    const [enc] = await db.select().from(opdEncounters).where(eq(opdEncounters.id, first));
+    const picked = await deskFind(db, fx.desk.actor, enc!.visitNo, fx.serviceDate);
+    expect([picked[0]!.visit?.advised.length, picked[0]!.visit?.advisedLoaded]).toEqual([2, true]);
+    expect(await reads()).toBe(before + 1);
+  });
+
+  it("A1c: a test WITHDRAWN from the catalogue comes back not orderable — the desk never pre-ticks a line it will refuse", async () => {
+    const { first } = await twoSameNameVisits();
+    await db.update(labOrderables).set({ active: false }).where(eq(labOrderables.serviceId, serviceIdForLabCode("HBA1C")));
+    const [entry] = await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, first));
+    const hits = await deskFind(db, fx.desk.actor, `T-${String(entry!.tokenNo)}`, fx.serviceDate);
+    /** The doctor's line is still shown, greyed; the withdrawn one carries no orderable, so neither seat ticks it. */
+    expect(hits[0]!.visit?.advised.map((a) => [a.code, a.orderable === null])).toEqual([
+      ["CBC", false], ["HBA1C", true],
+    ]);
+  });
+
   it("A2: a WALK-IN order opens the lab visit and places the order in ONE transaction — a refused order opens no visit", async () => {
     /**
      * 17a's lesson (`d1f316b`): a fixture that stands in for a production REGISTRATION tests
@@ -410,6 +453,11 @@ describe("the reception seat (17c T1)", () => {
       .toEqual([placed.encounterNo, "external_prescription", fx.pathologist.id]);
     const [item] = await db.select().from(labItems).where(eq(labItems.orderItemId, placed.itemIds[0]!));
     expect(item!.chargeReason).toBe("lab_walkin");
+    /**
+     * Owner 2026-10-11 — the lab visit is not an OPD consultation: no OPD token slip and no A4 OPD sheet
+     * is queued for it ("I can see an OPD slip generated").
+     */
+    expect(await db.select().from(printJobs).where(eq(printJobs.encounterId, enc!.id))).toEqual([]);
 
     /**
      * ═══ THE REFUSED ATTEMPT IS A DIFFERENT PATIENT NOW, AND 17d T4 IS WHY ═══

@@ -330,12 +330,15 @@ describe("opd prescriptions (allergy hard-warning, versions, the signed e-Rx QR 
     expect(enc.visitNo).toMatch(/^V260817\d{4}$/);
     expect(print.encounter).toEqual({
       id: enc.id, visitNo: enc.visitNo, serviceDate: "2026-08-17", diagnosis: "Acute pharyngitis", icd10Code: "J02.9",
+      tele: false, // owner 2026-10-09 — an in-person sheet prints no tele line
       advice: "fluids", followUpDays: null, chiefComplaint: "fever 3d",
       // PLAN 07d T5 — `[]` when the doctor advised none, so the renderer needs no null branch. This
       // assertion is `toEqual` and not `toMatchObject` on purpose (see the two-numerator note in
       // the issue test above), and it CAUGHT this field arriving: a payload that grew something
       // nobody decided to add should fail here, which is exactly what it did.
       advisedTests: [],
+      // Decision 0067 — which advised tests are done outside; `[]` when none are.
+      outsideTestIds: [],
       // Decided 2026-09-25 (board "Ophthal"): the coded rows ride the print so it can name each
       // tag's eye. This note was saved in the older prose shape, so the row is uncoded.
       diagnoses: [{ text: "Acute pharyngitis", icd10Code: null, laterality: null }],

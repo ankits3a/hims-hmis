@@ -21,6 +21,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/billing/office` | `apps/web/src/screens/billing-office` |
 | `/billing/session` | `apps/web/src/screens/billing-session` |
 | `/change-password` | `apps/web/src/screens/change-password` |
+| `/copilot-health` | `apps/web/src/screens/copilot-health` |
 | `/counter` | `apps/web/src/screens/desk-one/desk-one` |
 | `/counter/figures` | `apps/web/src/screens/counter-figures` |
 | `/counter/instruments` | `apps/web/src/screens/counter-instruments` |
@@ -30,7 +31,13 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/formulary/admin` | `(redirect)` |
 | `/lab/bench` | `apps/web/src/screens/lab-bench` |
 | `/lab/collection` | `apps/web/src/screens/lab-collection` |
+| `/lab/counter` | `apps/web/src/screens/lab-desk` |
 | `/lab/desk` | `apps/web/src/screens/lab-desk` |
+| `/lab/metrics` | `(redirect)` |
+| `/lab/qbench` | `apps/web/src/screens/lab-qchain` |
+| `/lab/qcollect` | `apps/web/src/screens/lab-qchain` |
+| `/lab/qreports` | `apps/web/src/screens/lab-qchain` |
+| `/lab/quick` | `apps/web/src/screens/lab-quick` |
 | `/lab/reports` | `apps/web/src/screens/lab-reports` |
 | `/lab/verify` | `apps/web/src/screens/lab-verify` |
 | `/login` | `apps/web/src/screens/login` |
@@ -56,6 +63,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/opd/vitals/bay` | `(redirect)` |
 | `/ops/downtime-kit` | `apps/web/src/screens/ops-downtime-kit` |
 | `/ops/mode` | `apps/web/src/screens/ops-mode` |
+| `/ordering/outside-tests` | `apps/web/src/screens/outside-tests` |
 | `/ot/book` | `apps/web/src/screens/ot-book` |
 | `/ot/cockpit/$caseId` | `apps/web/src/screens/ot-cockpit` |
 | `/ot/list` | `apps/web/src/screens/ot-list` |
@@ -94,9 +102,11 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/radiology/usg` | `apps/web/src/screens/radiology-usg` |
 | `/radiology/worklist` | `apps/web/src/screens/radiology-worklist` |
 | `/registration` | `apps/web/src/screens/desk-one/desk-one` |
+| `/reports/numbers` | `apps/web/src/screens/hospital-numbers` |
 | `/reports/opd-day` | `apps/web/src/screens/opd-report` |
 | `/roster/aebas` | `apps/web/src/screens/roster-aebas` |
 | `/roster/evidence` | `apps/web/src/screens/roster-evidence` |
+| `/roster/leave` | `apps/web/src/screens/my-leave` |
 | `/roster/month` | `apps/web/src/screens/roster-month` |
 | `/roster/my-duties` | `apps/web/src/screens/roster-my-duties` |
 | `/roster/on-now` | `apps/web/src/screens/roster-on-now` |

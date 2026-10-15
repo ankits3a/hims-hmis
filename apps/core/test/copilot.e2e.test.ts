@@ -1,6 +1,6 @@
 import { Test } from "@nestjs/testing";
 import { INestApplication } from "@nestjs/common";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import request from "supertest";
 import { AppModule } from "../src/app.module";
 import { configureApp } from "../src/app.bootstrap";
@@ -8,7 +8,8 @@ import { requireEnv } from "../src/kernel/config";
 import { createRole, grantPermissionToRole, syncPermissions } from "../src/kernel/auth/permissions";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { ALL_MANIFESTS } from "../src/kernel/modules/manifests";
-import { phiAccessLog } from "../src/kernel/db/schema";
+import { ROLE_MODEL } from "../scripts/seed-roles";
+import { copilotAsks, phiAccessLog } from "../src/kernel/db/schema";
 import { opdEncounters } from "../src/kernel/db/schema/opd";
 import { formatUhid } from "../src/modules/patients/uhid";
 import { setupTestDb, truncateAll } from "./helpers/db";
@@ -239,8 +240,30 @@ describe("POST /copilot/ask — against a real database", () => {
 
     it("says honestly that it did not understand", async () => {
       const res = await ask(clerk.token, "what is the weather in mumbai").expect(200);
-      expect(res.body.answer.key).toBe("copilot.answer.notUnderstood");
+      expect(res.body.answer).toEqual({ key: "copilot.answer.notUnderstoodCan", params: { can: "visit_status,queue_depth,my_day_report" } });
       expect(res.body.source).toBe("none");
+    });
+
+    /*
+      #676 — the help sentence lists only what the asker may use, read from the seeded role model:
+      a doctor is never offered what a patient owes (owner: the doctor never sees payment); a cashier is.
+    */
+    it("offers a doctor no dues and a cashier dues, in the did-not-understand answer", async () => {
+      const as = async (roleKey: string): Promise<string> => {
+        await createRole(db, `${roleKey}_676`, roleKey);
+        for (const p of ROLE_MODEL.find((r) => r.roleKey === roleKey)?.permissions ?? []) await grantPermissionToRole(db, registry, `${roleKey}_676`, p);
+        const u = await mkUser(db, `${roleKey}_676_user`, [`${roleKey}_676`]);
+        const res = await ask(u.token, "what is the weather in mumbai").expect(200);
+        expect(res.body.answer.key).toBe("copilot.answer.notUnderstoodCan");
+        return res.body.answer.params.can as string;
+      };
+      expect((await as("doctor")).split(",")).not.toContain("patient_dues");
+      expect((await as("cashier")).split(",")).toContain("patient_dues");
+    });
+
+    it("offers a user who holds nothing only their own day report", async () => {
+      const res = await ask(stranger.token, "what is the weather in mumbai").expect(200);
+      expect(res.body.answer).toEqual({ key: "copilot.answer.notUnderstoodCan", params: { can: "my_day_report" } });
     });
 
     it("refuses an unauthenticated caller", async () => {
@@ -259,6 +282,37 @@ describe("POST /copilot/ask — against a real database", () => {
    * the same claim from outside: whatever the copilot answers, the reply it hands back carries no
    * identifier the caller did not already type. A response body is what leaves this process.
    */
+  /*
+    E0.6 — THE PHONE SENDS NO SCREEN `terms`. The server masks the names of the day's patients itself,
+    so a typed name never reaches a model or the ledger, and a placeholder minted from a server name
+    is never handed to a tool as its subject (spec /opt/hmis-context/SPEC-copilot-name-mask-2026-10-11.md).
+  */
+  describe("E0.6 — a patient's name typed with no screen terms", () => {
+    it("masks the name in the ledger and asks which patient rather than using the name as a subject", async () => {
+      const res = await ask(clerk.token, "has Asha been seen by doctor?").expect(200);
+      expect(res.body.intent).toBe("visit_status");
+      expect(res.body.answer.key).toBe("copilot.answer.needSubject");
+      const rows = await db.select().from(copilotAsks).orderBy(desc(copilotAsks.seq)).limit(1);
+      expect(rows[0]?.maskedQuestion).toBe("has <<P1>> been seen by doctor?");
+    });
+
+    it("masks a Devanagari spelling of a roman registration", async () => {
+      await ask(clerk.token, "has आशा देवी been seen by doctor?").expect(200);
+      const rows = await db.select().from(copilotAsks).orderBy(desc(copilotAsks.seq)).limit(1);
+      expect(rows[0]?.maskedQuestion).toBe("has <<P1>> been seen by doctor?");
+    });
+
+    it("leaves the web's own terms as they were: a screen term still reaches the tool", async () => {
+      const res = await request(app.getHttpServer())
+        .post("/copilot/ask")
+        .set("Authorization", `Bearer ${clerk.token}`)
+        .send({ question: "has Asha been seen by doctor?", terms: ["Asha"] })
+        .expect(200);
+      expect(res.body.intent).toBe("visit_status");
+      expect(res.body.answer.key).not.toBe("copilot.answer.needSubject");
+    });
+  });
+
   describe("what comes back", () => {
     it("never returns the patient's UHID in an answer's own parameters", async () => {
       const res = await ask(clerk.token, `has ${patient.uhid} been seen by doctor?`).expect(200);

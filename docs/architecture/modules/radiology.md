@@ -11,8 +11,8 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/radiology/`
 
 - **Depends on modules:** `aerb`, `billing`, `lab`, `opd`, `ot`, `patients`, `pcpndt`, `roster`, `tariff`
-- **Used by modules:** `abdm`
-- **Kernel used:** `approvals`, `auth`, `config`, `db`, `episodes`, `events`, `modules`, `notify`, `orders`, `phi`, `resources`, `tokens`, `workflow`
+- **Used by modules:** `abdm`, `ordering`
+- **Kernel used:** `approvals`, `auth`, `config`, `db`, `desk`, `episodes`, `events`, `modules`, `notify`, `orders`, `phi`, `report`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `approvalGranted`, `orderPlaced`
 
 ## Public API (`index.ts`), by declaring file
@@ -239,9 +239,10 @@ Source: `apps/core/src/modules/radiology/`
 - `manifest.ts`
   - `radiologyManifest: ModuleManifest`
 - `money.ts`
-  - `authorisationOf(study: AuthorisationStudyFacts, encounter: AuthorisationEncounterFacts): ImagingAuthorisation | null`
+  - `authorisationOf(study: AuthorisationStudyFacts, encounter: AuthorisationEncounterFacts, imagingFree = false): ImagingAuthorisation | null`
   - `encounterPayer(exec: Db | Tx, encounterNo: string): Promise<{ intendedPayer: string }>`
   - `hasBillDecision(exec: Db | Tx, studyId: string, kind: ImagingBillDecisionKind): Promise<boolean>`
+  - `imagingFreeAt(exec: Db | Tx, orderedAt: Date): Promise<boolean>`
   - `linkInvoiceLine(tx: Tx, studyId: string, invoiceLineId: string): Promise<{ studyId: string; invoiceLineId: string }>`
   - `openBillDecisions(exec: Db | Tx): Promise<{ id: string; studyId: string; kind: string; detail: unknown; raisedAt: Date }[]>`
   - `raiseBillDecision(tx: Tx, actor: Actor, input: { studyId: string; kind: ImagingBillDecisionKind; detail?: Record<string, unknown> | null })…`
@@ -419,7 +420,7 @@ Source: `apps/core/src/modules/radiology/`
 
 Foreign keys into: `billing`, `orders`, `patients`, `resources`, `tariff`
 
-## HTTP routes (113)
+## HTTP routes (114)
 
 - `radiology-acquisition.controller.ts` — 8: `/radiology/studies`
 - `radiology-bill-decisions.controller.ts` — 2: `/radiology/bill-decisions`
@@ -427,6 +428,7 @@ Foreign keys into: `billing`, `orders`, `patients`, `resources`, `tariff`
 - `radiology-floor.controller.ts` — 3: `/radiology/devices`, `/radiology/display`, `/radiology/portable`
 - `radiology-images.controller.ts` — 1: `/radiology/studies`
 - `radiology-ir.controller.ts` — 10: `/radiology/ir`, `/radiology/studies`
+- `radiology-metrics.controller.ts` — 1: `/radiology/metrics`
 - `radiology-mwl.controller.ts` — 1: `/radiology/mwl`
 - `radiology-orders.controller.ts` — 3: `/radiology/advised`, `/radiology/orders`
 - `radiology-pacs.controller.ts` — 5: `/radiology/pacs`

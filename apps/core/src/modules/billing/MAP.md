@@ -38,6 +38,7 @@ Every rupee is an integer paise; documents are append-only and corrected by new 
 - `fee-status.ts` + `settle-hooks.ts` — consult-fee status projection and the hook registry (OPD flips queue token).
 - `visit-move.ts` — money moves with a visit on OPD department move.
 - `report-reads.ts`, `accrual-view.ts`, `patient-bills.ts` — read-only views for other modules.
+- `copilot-tools.ts` — copilot intent `patient_dues` (E1.6, decision 0064): answers from `patientBalance` (the counter's own figure), dues only, UHID subject only; gate `billing.dues.patient.read` also admitting `billing.invoice.read` (never the doctor role).
 - Also present, not opened for this map: `gate.ts`, `recon*.ts`, `worklist.ts`, `office-needs.ts`, `credit-requests.ts`, `fee-switches.ts`, `consult-prices.ts`, `charge-rules.ts`, `search-provider.ts`, `desk-provider.ts`.
 - Tables: `kernel/db/schema/billing.ts` (16 tables, list in the architecture page).
 

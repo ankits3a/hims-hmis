@@ -149,6 +149,10 @@ export type PhiSurface =
    * deliberately asked about somebody by name.
    */
   | "copilot.visit_status"
+  /** E1.6 — "what does U00110012 owe": a typed question about one patient's dues (billing/copilot-tools.ts). */
+  | "copilot.patient_dues"
+  /** E2.1 — a patient offered for an appointment from the copilot chat (opd/copilot-appointments.ts). */
+  | "copilot.appointment"
   /**
    * ═══ PLAN 18a T3 / DD11 — THE FOUR IMAGING SURFACES, AND THIS IS AN APPEND AND NOTHING ELSE ═══
    *
@@ -272,7 +276,13 @@ export type PhiSurface =
    * as HIU), read in the consult's history ("Records from other hospitals"). One row per read that
    * returned any. Appended; nothing above changes.
    */
-  | "abdm.external_records";
+  | "abdm.external_records"
+  /**
+   * LAB QUICK MODE (decision 0061) — a patient's quick lab reports, read from the profile or the
+   * doctor's consult. Its own name: an unsigned quick report is a different disclosure from the
+   * signed values `lab.patient_results` names. Appended; nothing above changes.
+   */
+  | "lab.quick_reports";
 
 /** How the reader was connected to this patient's care AT THE MOMENT OF THE READ. */
 export type CareContext = "treating" | "serving" | "none";

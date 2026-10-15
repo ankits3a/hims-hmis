@@ -124,6 +124,13 @@ export type WireAppointment = {
   source: "desk" | "phone"; note: string | null; encounterId: string | null;
   rescheduledToId: string | null; rescheduledFromId: string | null; cancelReason: string | null; leaveId: string | null;
   bookedBy: string; bookedAt: string; updatedBy: string; updatedAt: string;
+  /** Owner 2026-10-09 — how the patient is seen. The number travels only on the contact read. */
+  mode?: "in_person" | "tele"; telePhone?: string | null;
+  /** The desk's money mark on a tele-call (list route only): what it costs, and whether that is met. */
+  teleDesk?: { amountPaise: number | null; covered: boolean };
+  /** E2.1 — booked or moved from the copilot chat (the server reads it from the copilot's act record). */
+  viaCopilot?: true;
+  advanceReceiptId?: string | null; advanceQuotePaise?: number | null; advanceQuotedAt?: string | null;
   /** present on the list route, absent on the write routes' bare row */
   patient?: WirePatientSummary | null;
 };
@@ -131,6 +138,8 @@ export type WireAppointment = {
 // ——— the encounter spine, the queue, vitals and the e-Rx ———
 
 export type WireEncounter = {
+  /** Owner 2026-10-09 — a tele-call, and the doctor's two answers. Optional: an older server sends none. */
+  consultMode?: string | null; teleOutcome?: string | null; teleOutcomeAt?: string | null; teleNoAnswerCount?: number | null;
   id: string; visitNo: string; patientId: string; type: string; status: OpdVisitStatus; workflowInstanceId: string;
   departmentId: string | null; doctorId: string | null; appointmentId: string | null; serviceDate: string;
   visitType: OpdVisitType; intendedPayer: string; referralSource: string | null; referrerName: string | null;
@@ -193,6 +202,8 @@ export type WireSkipReason = (typeof SKIP_REASONS)[number];
 export type WireQueueEntryView = WireQueueEntry & {
   position: number | null;
   queueClass: OpdQueueClass | null;
+  /** Owner 2026-10-09 — a tele-call: its slot time sits where a token does, with a phone icon. No money mark ever. */
+  tele?: boolean;
   encounter: {
     id: string; patientId: string; visitType: string; dangerFlagged: boolean; status: string;
     /** Owner ruling 2026-09-24 — an internal referral opened this visit. Optional: an older server sends none. */
@@ -226,7 +237,8 @@ export type WireQueueEntryView = WireQueueEntry & {
    * client must never recompute paid-ness from an invoice. `encounterFeeStatuses` is the one
    * projection; a second truth function is a board that can disagree with the gate.
    */
-  feeStatus: "free" | "settled" | "credit" | "unsettled" | null;
+  /** ABSENT on a tele-call's row (fix round 2026-10-09): such a row carries no money key at all. */
+  feeStatus?: "free" | "settled" | "credit" | "unsettled" | null;
 };
 
 /**
@@ -416,10 +428,14 @@ export type WireRxPrint = {
    */
   doctor: { unitNumber?: string; deptRegn?: string | null; code?: string | null; departmentName: string | null; unit?: string | null };
   encounter: {
+    /** Owner 2026-10-09 — a tele-call's prescription prints one boxed line saying nobody examined the patient. Optional: an older server sends none. */
+    tele?: boolean;
     id: string; visitNo: string; serviceDate: string; diagnosis: string | null; icd10Code: string | null;
     advice: string | null; followUpDays: number | null; chiefComplaint: string | null;
     /** PLAN 07d T5 — advised tests with the price AS OF the service date (DD4, E-9). */
     advisedTests: WireAdvisedTest[];
+    /** Decision 0067 — which advised tests are done OUTSIDE the hospital. Absent on an older server. */
+    outsideTestIds?: string[];
     /** The coded rows with each one's eye (board "Ophthal"). Absent on a payload from before it. */
     diagnoses?: { text: string; icd10Code: string | null; laterality: Eye | null }[];
   };
@@ -435,6 +451,8 @@ export type WireRxPrint = {
 export type WireTimelineItem = {
   /** Consult v2 — the visit's number, for the History browser. Optional: an older server sends none. */
   visitNo?: string;
+  /** Owner 2026-10-11 — `opd`, `lab` (the lab counter's walk-in) or `pharmacy`. Optional: an older server sends none (= opd). */
+  type?: string;
   encounterId: string; serviceDate: string; openedAt: string; status: string; visitType: string;
   doctorId: string | null; doctorName: string | null; departmentId: string | null; departmentName: string | null;
   diagnosis: string | null; icd10Code: string | null; prescriptionLineCount: number; dangerFlagged: boolean;
@@ -677,7 +695,7 @@ export function getSlots(doctorId: string, date: string): Promise<{ slots: WireS
 }
 
 export function bookAppointment(
-  body: { patientId: string; doctorId: string; slotStart: string; note?: string },
+  body: { patientId: string; doctorId: string; slotStart: string; note?: string; mode?: "tele"; telePhone?: string },
 ): Promise<{ appointment: WireAppointment }> {
   return api("POST", "/opd/appointments", body);
 }
@@ -805,6 +823,11 @@ export function markPatientAbsent(
   encounterId: string, body: { relation: GuardianRelation; name?: string | null },
 ): Promise<{ patientAbsent: WirePatientAbsent; alreadyMarked: boolean }> {
   return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/patient-absent`, body);
+}
+
+/** #771 — undo the guardian mark: the patient is here after all; the token goes back to the bay. Same grants as the mark. */
+export function undoPatientAbsent(encounterId: string): Promise<{ alreadyCleared: boolean }> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/patient-absent/undo`);
 }
 
 // ——— VD-2 T3 — the danger protocol and the bench state, on the wire ———

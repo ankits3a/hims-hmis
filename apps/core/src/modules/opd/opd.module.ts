@@ -22,6 +22,7 @@ import { OpdCdsController } from "./opd-cds.controller";
 import { OpdQueueController } from "./opd-queue.controller";
 import { OpdVisitsController } from "./opd-visits.controller";
 import { OpdPaperController } from "./opd-paper.controller";
+import { OpdPaceController } from "./opd-pace.controller";
 import { paperHookForDocument } from "./paper-consult";
 import { registerDocumentCapturedHook } from "../patients";
 import { OPD_TOPIC_SPACES, opdTopicRouter } from "./realtime";
@@ -55,7 +56,7 @@ class OpdRealtimeRegistrar implements OnModuleInit {
  */
 @Module({
   imports: [RealtimeModule],
-  controllers: [OpdMastersController, OpdVisitsController, OpdQueueController, OpdCdsController, OpdAdviceController, OpdVocabularyController, OpdReportsController, OpdPaperController, OpdPhoneConsultController],
+  controllers: [OpdMastersController, OpdVisitsController, OpdQueueController, OpdCdsController, OpdAdviceController, OpdVocabularyController, OpdReportsController, OpdPaperController, OpdPhoneConsultController, OpdPaceController],
   providers: [OpdRealtimeRegistrar],
 })
 export class OpdModule implements OnModuleInit {

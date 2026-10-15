@@ -346,7 +346,8 @@ export type DeskApi = {
   runTriage: (text: string) => void;
   assign: (departmentId: string, doctorId: string | null) => Promise<void>;
   unassign: () => void;
-  holdFutureSlot: (doctorId: string, slot: WireSlot, departmentName: string, doctorName: string) => Promise<void>;
+  /** `tele` is the booking's "how" (owner 2026-10-09): absent for an in-person booking, the number for a tele-call. */
+  holdFutureSlot: (doctorId: string, slot: WireSlot, departmentName: string, doctorName: string, tele?: { mode?: "tele"; telePhone?: string }) => Promise<void>;
   presentCoupon: (code: string) => void;
   presentSlip: (code: string) => void;
   /** `ref` is REQUIRED by the server for anything but cash; the bill stage arms and then calls. */

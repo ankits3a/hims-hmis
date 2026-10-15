@@ -157,6 +157,14 @@ describe("openVisitsToday — the filter, pinned without a screen", () => {
     expect(open.map((v) => v.encounterId)).toEqual(["e-ref"]);
     expect(open[0]!.referral).toEqual({ fromEncounterId: "e-gm", fromDepartmentName: "General Medicine", fromDoctorName: "Dr Arjun Sharma" });
   });
+
+  it("leaves out a LABORATORY visit — the lab counter's walk-in is not an OPD visit the desk seats or bills (owner 2026-10-11)", () => {
+    const items = [
+      row({ encounterId: "e-lab", visitNo: "V9", departmentName: "Laboratory", departmentCode: "LAB" }),
+      row({ encounterId: "e-med", visitNo: "V8", departmentCode: "MED" }),
+    ] as Parameters<typeof openVisitsToday>[0];
+    expect(openVisitsToday(items, TODAY).map((v) => v.encounterId)).toEqual(["e-med"]);
+  });
 });
 
 describe("DESK-FIXES A — reopening a patient with an UNPAID visit today bills that visit", () => {

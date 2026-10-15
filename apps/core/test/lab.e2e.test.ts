@@ -19,7 +19,7 @@ import { assignRole, createRole, grantPermissionToRole, syncPermissions } from "
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { ALL_MANIFESTS } from "../src/kernel/modules/manifests";
 import {
-  events, labAnalytes, labItems, labReferenceRanges, labReportDeliveries, labReports, labResults, labSpecimens, opdEncounters,
+  events, labAnalytes, labBookingSettings, labItems, labQuickReports, labReferenceRanges, labReportDeliveries, labReports, labResults, labSpecimens, opdEncounters,
   orderItems, orders,
 } from "../src/kernel/db/schema";
 import type { LabDeskFixture } from "./helpers/lab";
@@ -76,6 +76,11 @@ describe("the laboratory over HTTP (17b T8)", () => {
     await grantLabResultPermissions(db, fx);
     cashier = await mkCashier(db, "lab.e2e.cashier");
     await openSessionFor(db, cashier, 0);
+    /** Owner 2026-10-12 — the lab defaults to QUICK mode; these walks are the FULL lab's, so the lab runs full here. */
+    await db.insert(labBookingSettings).values({
+      id: "main", openAt: "07:30", closeAt: "12:30", slotMinutes: 15, perSlot: 4, daysAhead: 30, closedWeekdays: [0],
+      labMode: "full", updatedBy: "test",
+    });
   });
   afterEach(() => { fx.unregister(); });
 
@@ -142,6 +147,38 @@ describe("the laboratory over HTTP (17b T8)", () => {
     await request(server()).post("/lab/collection/labels").send({}).expect(401);
     await request(server()).post("/lab/bench/receive").send({}).expect(401);
     await request(server()).post("/lab/reports").send({}).expect(401);
+  });
+
+  /**
+   * ═══ OWNER 2026-10-12 — ONE LAB MODE AT A TIME ═══
+   *
+   * The admin switches quick ↔ full; the other mode's WORK routes answer 409 `lab_mode_off` (after
+   * the permission check, so a stranger still gets 403), and every switch is an event naming who.
+   * Reads of reports that already exist stay open in both modes.
+   */
+  it("the lab mode: read by any lab seat, switched by the lab admin only, and the other mode's work routes refuse", async () => {
+    const seat = await userWith(["lab.worklist.read", "lab.results.enter", "lab.collection.operate", "lab.reports.print"]);
+    const admin = await userWith(["lab.catalogue.read", "lab.catalogue.manage"]);
+    expect((await request(server()).get("/lab/desk/mode").set(...auth(seat.token)).expect(200)).body).toEqual({ mode: "full" });
+    await request(server()).put("/lab/desk/mode").set(...auth(seat.token)).send({ mode: "quick" }).expect(403);
+    await request(server()).put("/lab/desk/mode").set(...auth(admin.token)).send({ mode: "half" }).expect(400);
+
+    // full: the quick chain's queues refuse, the full collection queue answers
+    expect((await request(server()).get("/lab/quick/collect").set(...auth(seat.token)).expect(409)).body.code).toBe("lab_mode_off");
+    await request(server()).get(`/lab/collection/queue?serviceDate=${istDayString(new Date())}`).set(...auth(seat.token)).expect(200);
+
+    expect((await request(server()).put("/lab/desk/mode").set(...auth(admin.token)).send({ mode: "quick" }).expect(200)).body).toEqual({ mode: "quick" });
+    // quick: the other way round — and a stranger is still refused on permission first
+    await request(server()).get("/lab/quick/collect").set(...auth(seat.token)).expect(200);
+    const off = await request(server()).get(`/lab/collection/queue?serviceDate=${istDayString(new Date())}`).set(...auth(seat.token)).expect(409);
+    expect([off.body.code, off.body.message]).toEqual(["lab_mode_off", expect.stringMatching(/Full lab mode is off/)]);
+    const stranger = await userWith(["opd.visits.read"]);
+    await request(server()).get(`/lab/collection/queue?serviceDate=${istDayString(new Date())}`).set(...auth(stranger.token)).expect(403);
+    // reading what exists is never mode-gated
+    await request(server()).get(`/lab/reports/patient/${fx.patientId}`).set(...auth(seat.token)).expect(200);
+
+    const changed = (await db.select().from(events)).filter((e) => e.name === "lab.mode_changed");
+    expect(changed.map((e) => [e.actorId, e.payload])).toEqual([[admin.id, { from: "full", to: "quick" }]]);
   });
 
   it("403 WITH A TOKEN AND WITHOUT THE PERMISSION each family declares", async () => {
@@ -604,6 +641,49 @@ describe("the laboratory over HTTP (17b T8)", () => {
     const bad = await request(server()).post("/lab/bench/results").set(...auth(op.token))
       .send({ orderItemId: "i1" }).expect(400);
     expect(Array.isArray((bad.body as { message: unknown }).message)).toBe(true);
+  });
+
+  /**
+   * ═══ OWNER 2026-10-12 — SHARE PDF FROM THE PHONE (SPEC-phone-report-pdf-share-2026-10-12.md) ═══
+   *
+   * The phone makes the PDF itself; the server only RECORDS the share: one `lab.quick_report_shared`
+   * event naming who and which report. The report row is not touched (not handed over). Refused 403
+   * without the print grant, 409 `not_completed` on a draft, 409 `lab_mode_off` in Full mode.
+   */
+  it("POST /lab/quick/reports/:id/shared records who shared which completed report, and writes nothing else", async () => {
+    await db.update(labBookingSettings).set({ labMode: "quick" }).where(eq(labBookingSettings.id, "main"));
+    const op = await labOperator();
+    const placed = await request(server()).post("/lab/desk/orders").set(...auth(op.token)).send({
+      patientId: fx.patientId, encounterNo: fx.encounterNo, serviceDate: fx.serviceDate,
+      orderingClinicianId: fx.pathologist.id, items: [{ serviceId: serviceIdForLabCode("CBC") }], credit: { reason: "counter order" },
+    }).expect(201);
+    const quickId = (await request(server()).post(`/lab/quick/collect/${(placed.body as { orderId: string }).orderId}`)
+      .set(...auth(op.token)).send({}).expect(201)).body.id as string;
+    const analyteId = (await request(server()).get(`/lab/quick/reports/${quickId}`).set(...auth(op.token)).expect(200)).body.analyteIds[0] as string;
+    const save = (complete: boolean) => request(server()).put(`/lab/quick/reports/${quickId}`).set(...auth(op.token))
+      .send({ lines: [{ analyteId, value: "12.4" }], summary: "", complete }).expect(200);
+
+    await save(false);
+    const draft = await request(server()).post(`/lab/quick/reports/${quickId}/shared`).set(...auth(op.token)).send({}).expect(409);
+    expect(draft.body.code).toBe("not_completed");
+
+    await save(true);
+    const before = (await db.select().from(labQuickReports).where(eq(labQuickReports.id, quickId)))[0]!;
+    const counter = await userWith(["lab.reports.print"]);
+    await request(server()).post(`/lab/quick/reports/${quickId}/shared`).set(...auth(counter.token)).send({}).expect(201);
+    const stranger = await userWith(["lab.results.enter", "lab.results.read"]);
+    await request(server()).post(`/lab/quick/reports/${quickId}/shared`).set(...auth(stranger.token)).send({}).expect(403);
+    await request(server()).post("/lab/quick/reports/no-such-report/shared").set(...auth(counter.token)).send({}).expect(404);
+
+    const shared = (await db.select().from(events)).filter((e) => e.name === "lab.quick_report_shared");
+    expect(shared.map((e) => [e.actorId, e.patientId, e.payload])).toEqual([
+      [counter.id, fx.patientId, { reportId: quickId, patientId: fx.patientId, channel: "phone_share" }],
+    ]);
+    /** The share is a record, not a hand-over: the report row is as it was. */
+    expect((await db.select().from(labQuickReports).where(eq(labQuickReports.id, quickId)))[0]).toEqual(before);
+
+    await db.update(labBookingSettings).set({ labMode: "full" }).where(eq(labBookingSettings.id, "main"));
+    expect((await request(server()).post(`/lab/quick/reports/${quickId}/shared`).set(...auth(counter.token)).send({}).expect(409)).body.code).toBe("lab_mode_off");
   });
 
   /**

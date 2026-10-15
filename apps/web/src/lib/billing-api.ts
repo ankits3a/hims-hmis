@@ -266,6 +266,12 @@ export type WireDueRow = {
   creditExtended: boolean; seq: number;
 };
 
+/** Owner 2026-10-09 — "To collect": the visits the desk let through unpaid, until the fee is settled. */
+export type { WireToCollectRow } from "../../../../packages/contracts/src/to-collect";
+export function fetchToCollect(): Promise<{ items: import("../../../../packages/contracts/src/to-collect").WireToCollectRow[] }> {
+  return api("GET", "/billing/to-collect");
+}
+
 /** The tariff catalogue row the counter's line editor searches (`GET /tariff/services`). */
 export type WireService = {
   id: string; code: string; name: string; category: string;
@@ -473,7 +479,7 @@ export const fetchCreditRequest = (approvalId: string): Promise<WireCreditReques
   api<WireCreditRequest>("GET", `/billing/credit-requests/${encodeURIComponent(approvalId)}`);
 
 /** Owner, 2026-10-01 — the fee switches (`GET`/`PUT /billing/fee-switches`). Off means free. */
-export type FeeKind = "opdConsult" | "lab";
+export type FeeKind = "opdConsult" | "lab" | "imaging";
 export type WireFeeSwitches = {
   switches: { kind: FeeKind; off: boolean; changedAt: string | null; changedBy: string | null }[];
   consultPaise: { new: number | null; renewal: number | null };
