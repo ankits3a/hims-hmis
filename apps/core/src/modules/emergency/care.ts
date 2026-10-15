@@ -206,6 +206,9 @@ export async function issueErMed(db: Db, actor: Actor, raw: unknown, opts: Opts 
     const name = item?.name ?? input.ownMedicine!;
     const hits = await allergyHits(db, (await bandPerson(db, pre.patientId)).id, name, item?.formularyMedicineId ?? null);
     if (hits.length > 0 && input.allergyOverride === undefined) throw new ErRefusal("allergy_override_needed", { allergies: hits });
+    // ER review (2026-10-15): naming SOMEONE ELSE as the ordering doctor is a verbal order — their signature is owed and
+    // the 2-hour bell rings; no one is named as an orderer silently.
+    const verbal = input.verbal !== undefined || input.orderedBy !== actor.id;
     return withTx(db, async (tx) => {
       const e = await openEpisode(tx, input.episodeId);
       await requireDoctor(tx, input.orderedBy);
@@ -234,7 +237,7 @@ export async function issueErMed(db: Db, actor: Actor, raw: unknown, opts: Opts 
       await tx.insert(erMedIssues).values({
         id, episodeId: e.id, patientId: e.patientId, itemId: item?.id ?? null, ownMedicine: input.ownMedicine ?? null, name,
         doseWords: input.doseWords, route: input.route, units: input.units, highAlert, storeId, batches,
-        orderedBy: input.orderedBy, verbal: input.verbal !== undefined, allergyOverride: input.allergyOverride ?? null,
+        orderedBy: input.orderedBy, verbal, allergyOverride: input.allergyOverride ?? null,
         issuedBy: actor.id, issuedAt: at,
       });
       if (item !== null) {
@@ -248,10 +251,10 @@ export async function issueErMed(db: Db, actor: Actor, raw: unknown, opts: Opts 
         p.unidentified ? "Allergy: unknown" : hits.length > 0 ? `Allergy: ${hits.join(", ")} — override recorded` : "",
       ].filter((x) => x !== "");
       await appendEvent(tx, erMedIssued.make({
-        payload: { episodeId: e.id, issueId: id, units: input.units, highAlert, own: item === null, verbal: input.verbal !== undefined, provenance: provenanceOf(actor) },
+        payload: { episodeId: e.id, issueId: id, units: input.units, highAlert, own: item === null, verbal, provenance: provenanceOf(actor) },
         actor, correlationId: e.id, patientId: e.patientId, occurredAt: at,
       }));
-      return { issueId: id, highAlert, labels: item === null ? 0 : 1, verbal: input.verbal !== undefined, labelLines };
+      return { issueId: id, highAlert, labels: item === null ? 0 : 1, verbal, labelLines };
     });
   }, at);
 }
@@ -285,7 +288,10 @@ export async function giveErDose(db: Db, actor: Actor, raw: unknown, opts: Opts 
   const input: Input<"give_er_dose"> = ER_INTENTS.give_er_dose.input.parse(raw);
   await requireErPermission(db, actor, ER_CARE);
   const at = opts.now ?? new Date();
-  return onceEr(db, actor, "give_er_dose", input.idempotencyKey, input, async () => {
+  // ER review (2026-10-15): the second checker's PIN never reaches the idempotency store's request hash (an unsalted
+  // sha256 of a 4–6 digit PIN beside the other known fields is brute-forced in seconds).
+  const hashed = input.secondCheck === undefined ? input : { ...input, secondCheck: { username: input.secondCheck.username } };
+  return onceEr(db, actor, "give_er_dose", input.idempotencyKey, hashed, async () => {
     const issue = (await db.select().from(erMedIssues).where(eq(erMedIssues.id, input.issueId)))[0];
     if (issue === undefined) throw new ErRefusal("issue_not_found");
     let checker: string | null = null;
@@ -379,7 +385,7 @@ export async function recordConsent(db: Db, actor: Actor, raw: unknown, opts: Op
     await tx.insert(erConsents).values({
       id, episodeId: e.id, kind: input.kind, about: input.about, signedBy: input.signedBy, signerName: input.signerName ?? null,
       relation: input.relation ?? null, method: input.method, witnessName: input.witnessName ?? null,
-      secondDoctorId: input.secondDoctorId ?? null, language: input.language ?? null, recordedBy: actor.id, recordedAt: at,
+      secondDoctorId: input.signedBy === "emergency" ? input.secondDoctorId ?? null : null, language: input.language ?? null, recordedBy: actor.id, recordedAt: at,
     });
     await appendEvent(tx, erConsentRecorded.make({
       payload: { episodeId: e.id, consentId: id, kind: input.kind, signedBy: input.signedBy, provenance: provenanceOf(actor) },
@@ -495,9 +501,16 @@ export async function sweepErCareClocks(db: Db, now: Date): Promise<{ criticals:
   const open = await db.select({ id: erEpisodes.id, episodeNo: erEpisodes.episodeNo }).from(erEpisodes)
     .where(inArray(erEpisodes.state, [...ER_OPEN_STATE_VALUES]));
   const byNo = new Map(open.map((e) => [e.episodeNo, e.id] as const));
-  for (const c of await openCriticalsForEncounters(db, [...byNo.keys()])) {
+  const crits = await openCriticalsForEncounters(db, [...byNo.keys()]);
+  // ER review (2026-10-15): read the alert rows first and lock only where there is something to do (a first notice, or a
+  // climb that is due) — an alert already climbed, or not yet due, costs no transaction and no episode lock.
+  const seen = new Map(crits.length === 0 ? [] : (await db.select().from(erCriticalAlerts)
+    .where(inArray(erCriticalAlerts.callId, crits.map((c) => c.callId)))).map((r) => [r.callId, r] as const));
+  for (const c of crits) {
     const episodeId = byNo.get(c.encounterNo);
     if (episodeId === undefined) continue;
+    const prior = seen.get(c.callId);
+    if (prior !== undefined && (prior.climbedAt !== null || now.getTime() < prior.notifiedAt.getTime() + ER_CRITICAL_CLIMB_MIN * MIN)) continue;
     await withTx(db, async (tx) => {
       const e = await lockEpisode(tx, episodeId);
       const row = (await tx.select().from(erCriticalAlerts).where(eq(erCriticalAlerts.callId, c.callId)).for("update"))[0];
@@ -553,6 +566,9 @@ export async function sweepErCareClocks(db: Db, now: Date): Promise<{ criticals:
   ));
   for (const v of verbal) {
     await withTx(db, async (tx) => {
+      // Re-read under the row lock: an order signed (or told) since the select above is left alone.
+      const now0 = (await tx.select().from(erMedIssues).where(eq(erMedIssues.id, v.id)).for("update"))[0];
+      if (now0 === undefined || now0.verbalSignedAt !== null || now0.verbalNoticeAt !== null) return;
       const e = await readEpisode(tx, v.episodeId);
       await raiseNoticeIn(tx, {
         userId: v.orderedBy, kind: "er.verbal_unsigned", title: `Sign verbal order · ${e.episodeNo}`, body: `${v.name} · ${v.doseWords}`,
