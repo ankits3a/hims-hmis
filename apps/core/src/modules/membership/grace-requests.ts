@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, or } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, or, sql } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
 import { requestApproval } from "../../kernel/approvals/requests";
 import { istDayWindow } from "../../kernel/approvals/cumulative";
@@ -68,26 +68,29 @@ export async function requestGraceHonor(
   const [summary] = await getPatientSummaries(db, actor, [input.patientId]);
   if (summary === undefined) throw new PatientError("patient_not_found", `unknown patient ${input.patientId}`);
 
-  const pending = (await db
-    .select({ id: approvals.id })
-    .from(approvals)
-    .where(and(
-      eq(approvals.typeKey, GRACE_HONOR_APPROVAL_TYPE),
-      eq(approvals.subjectType, GRACE_HONOR_SUBJECT_TYPE),
-      eq(approvals.subjectId, cardCode),
-      eq(approvals.patientId, input.patientId),
-      eq(approvals.status, "pending"),
-    )))[0];
-  if (pending !== undefined) return { approvalId: pending.id, status: "pending", alreadyAsked: true };
-
-  const { approvalId } = await withTx(db, (tx) =>
-    requestApproval(tx, actor, {
+  // The look for a pending ask and the filing are ONE transaction under a lock keyed on the card and the
+  // patient, so two asks at the same moment file one approval and the second answers "already asked".
+  return withTx(db, async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`grace-ask|${cardCode}|${input.patientId}`}, 0))`);
+    const pending = (await tx
+      .select({ id: approvals.id })
+      .from(approvals)
+      .where(and(
+        eq(approvals.typeKey, GRACE_HONOR_APPROVAL_TYPE),
+        eq(approvals.subjectType, GRACE_HONOR_SUBJECT_TYPE),
+        eq(approvals.subjectId, cardCode),
+        eq(approvals.patientId, input.patientId),
+        eq(approvals.status, "pending"),
+      )))[0];
+    if (pending !== undefined) return { approvalId: pending.id, status: "pending" as const, alreadyAsked: true };
+    const { approvalId } = await requestApproval(tx, actor, {
       typeKey: GRACE_HONOR_APPROVAL_TYPE,
       subject: { type: GRACE_HONOR_SUBJECT_TYPE, id: cardCode },
       patientId: input.patientId,
       requestNote: `${plan.title}: ${reason}`,
-    }));
-  return { approvalId, status: "pending", alreadyAsked: false };
+    });
+    return { approvalId, status: "pending" as const, alreadyAsked: false };
+  });
 }
 
 const LIMIT = 50;

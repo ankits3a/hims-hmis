@@ -6,7 +6,7 @@ import { AppModule } from "../src/app.module";
 import { setupTestDb, truncateAll } from "./helpers/db";
 import { withTx } from "../src/kernel/db/client";
 import {
-  events, membershipInstances, membershipPlans, registrationConfig, roles, searchAudit,
+  approvals, events, membershipInstances, membershipPlans, registrationConfig, roles, searchAudit,
 } from "../src/kernel/db/schema";
 import { loadConfig, requireEnv } from "../src/kernel/config";
 import { createUser } from "../src/kernel/auth/identity";
@@ -397,4 +397,21 @@ describe("membership recognition over HTTP", () => {
       .set("Authorization", `Bearer ${desk.token}`).expect(200);
     expect(after.body.items[0]).toMatchObject({ status: "granted", honoured: true });
   });
+
+  it("#658 — two asks at the same moment file ONE approval; the other answers already asked", async () => {
+    const { patient } = await withTx(db, (tx) =>
+      registerPatient(tx, clerk, { name: "Invented Twin", sex: "male", phone: "9700000659" }));
+    const desk = await deskUser(["membership.grace_honor.request"]);
+    const approver = await deskUser([], ["billing_manager"]);
+    await registerMembershipApprovalTypes(db, approver.actor);
+    const ask = { cardCode: "ZZ-6590", patientId: patient.id, planId: PLAN_ID, reason: "card issued last week" };
+    const post = () => request(server()).post("/membership/grace-honor/request").set("Authorization", `Bearer ${desk.token}`).send(ask);
+    const [a, b] = await Promise.all([post(), post()]);
+    expect([a.status, b.status]).toEqual([201, 201]);
+    expect([a.body.alreadyAsked, b.body.alreadyAsked].sort()).toEqual([false, true]);
+    expect(a.body.approvalId).toBe(b.body.approvalId);
+    const rows = await db.select().from(approvals).where(eq(approvals.subjectId, "ZZ-6590"));
+    expect(rows).toHaveLength(1);
+  });
 });
+
