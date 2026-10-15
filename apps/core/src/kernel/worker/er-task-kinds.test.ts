@@ -11,4 +11,8 @@ describe("the worker process knows the emergency module's task kinds", () => {
     expect(taskKind("er_retriage")).toMatchObject({ skill: "er_triage", escalateTo: "er_nurse", doneWithinMin: 15 });
     expect(taskKind("er_triage_due")).toMatchObject({ skill: "er_triage", escalateTo: "er_nurse", doneWithinMin: 5 });
   });
+
+  it("ER lane 4 — the police-intimation kind is defined, on the MLC desk's skill, its own rung the casualty nurses'", () => {
+    expect(taskKind("er_mlc_intimation")).toMatchObject({ skill: "er_mlc", escalateTo: "er_nurse", doneWithinMin: 30 });
+  });
 });

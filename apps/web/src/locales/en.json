@@ -19383,6 +19383,14 @@
         "rule": "Another doctor countersigns.",
         "fix": "Ask a senior"
       },
+      "intimation_before_arrival": {
+        "rule": "A police intimation is never dated before the arrival.",
+        "fix": "Enter the real time"
+      },
+      "seal_already_collected": {
+        "rule": "This seal is already collected.",
+        "fix": "Pick the next step"
+      },
       "seal_not_collected": {
         "rule": "Collect under this seal first.",
         "fix": "Record collection"

@@ -66,6 +66,8 @@ export const ER_REFUSALS = {
   intimation_recorded: { rule: "The police intimation for this case is already recorded.", fix: "Add an addendum" },
   mlc_countersigned: { rule: "The case is already countersigned.", fix: "Open MLC desk" },
   countersign_own_mlc: { rule: "A case is countersigned by a doctor other than the one who opened it.", fix: "Ask a senior" },
+  intimation_before_arrival: { rule: "A police intimation is never dated before the patient arrived.", fix: "Enter the real time" },
+  seal_already_collected: { rule: "A seal is collected once; later links store or hand it over.", fix: "Pick the next step" },
   seal_not_collected: { rule: "Evidence is stored or handed over only after it is collected under this seal.", fix: "Record collection" },
   seal_already_handed_over: { rule: "The evidence under this seal is already handed over.", fix: "Open MLC desk" },
 

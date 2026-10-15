@@ -194,5 +194,14 @@ export async function mkErMlcWorld(db: Db): Promise<ErMlcWorld> {
   const witness = (await mkUser(db, "er.mortuary2", ["duty_manager"])).actor;
   const desk2 = (await mkUser(db, "er.desk2", ["front_office"])).actor;
   await setPin(db, desk2.id, "2468");
+  // ER review (2026-10-15): the MLC countersign is a consultant's (IPD's rule) — `w.doctor` is on the doctor master.
+  const onMaster = await db.select({ id: schema.opdDoctors.id }).from(schema.opdDoctors).where(eq(schema.opdDoctors.userId, w.doctor.id));
+  if (onMaster.length === 0) {
+    const deptId = newId();
+    await db.insert(schema.opdDepartments).values({ id: deptId, code: "ERMLC", name: "ER MLC test", createdBy: "t", updatedBy: "t" });
+    await db.insert(schema.opdDoctors).values({
+      id: newId(), userId: w.doctor.id, displayName: "Dr Faculty", code: "DR-ER-F1", registrationNo: "BMC/7", departmentId: deptId, createdBy: "t", updatedBy: "t",
+    });
+  }
   return { ...w, mortuary, witness, desk2, deskPin: { username: "er.desk2", pin: "2468" } };
 }
