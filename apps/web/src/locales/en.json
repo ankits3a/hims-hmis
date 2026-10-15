@@ -12446,6 +12446,10 @@
         "vendorBillNo": "Vendor's bill no.",
         "billDate": "Bill date",
         "interState": "Inter-state (IGST)",
+        "listRate": "List ₹",
+        "discount": "Disc",
+        "discountHint": "10% or ₹ off a pack",
+        "listLess": "list {{list}} − {{disc}}",
         "roundOff": "Round-off ₹",
         "received": "Received @ PO rate",
         "difference": "Difference",
@@ -12807,6 +12811,8 @@
       }
     },
     "reports": {
+      "discountPct": "Disc %",
+      "allVendors": "All vendors",
       "intro": "Every report reads; nothing is changed from here. Press a number to open one.",
       "back": "Reports",
       "export": "Export CSV",
@@ -12861,6 +12867,7 @@
       "name": {
         "sales": "Sales register",
         "purchases": "Purchase register",
+        "vendorDiscounts": "Vendor discounts",
         "margin": "Margin",
         "valuation": "Stock valuation",
         "nonMoving": "Non-moving stock",
@@ -12881,6 +12888,7 @@
       "about": {
         "sales": "Every sale and refund, by bill, item, doctor, patient, pharmacist or tender.",
         "purchases": "Supplier bills, our debit notes and vendor credits, with input GST.",
+        "vendorDiscounts": "Each vendor's trade discount on booked bills: gross, discount, taxable and GST.",
         "margin": "Taxable value less GRN cost, by item, category or doctor.",
         "valuation": "Stock on any day, at cost and at MRP, by batch, item or store.",
         "nonMoving": "Stock that has not moved in 30, 60, 90 or 180 days, and what to do with it.",

@@ -280,7 +280,10 @@ const levelBody = z.object({
 // ── PARITY P3 — supplier bills and payment runs ──
 const billLineBody = z.object({
   grnId: id, itemId: id, uom: z.string().min(1).max(32).nullish(), qtyPacks: z.number().int().nonnegative(),
-  ratePaise: paise.nonnegative(), gstRateBps: z.number().int().nonnegative().max(2_800),
+  // #637: the net rate may be left to the server when the list rate and its discount are given (`discountOf`).
+  ratePaise: paise.nonnegative().optional(), gstRateBps: z.number().int().nonnegative().max(2_800),
+  listRatePaise: paise.nonnegative().nullish(), discountBps: z.number().int().min(0).max(10_000).optional(),
+  discountPaise: paise.nonnegative().optional(),
 });
 const billBody = z.object({
   vendorId: id, vendorBillNo: z.string().min(1).max(64), billDate: dateStr, interState: z.boolean().optional(),

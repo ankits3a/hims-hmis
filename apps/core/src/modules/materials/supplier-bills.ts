@@ -14,7 +14,7 @@ import {
 import { MaterialsError } from "./errors";
 import { supplierBillAccepted, supplierBillCancelled, supplierBillDrafted, supplierBillMatched, supplierBillUpdated } from "./events";
 import { istDay } from "./grn";
-import { lineGstPaise } from "./purchase-orders";
+import { lineGstPaise, netRatePaise } from "./purchase-orders";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -62,9 +62,18 @@ export type BillLineInput = {
   /** The pack billed. Defaults to the item's purchase pack. */
   uom?: string | null;
   qtyPacks: number;
-  /** Rate per pack before GST. */
-  ratePaise: number;
+  /**
+   * Rate per pack before GST — the NET rate after the vendor's discount. With `listRatePaise` it may be left out (it is
+   * then list less the discount); given, it must equal that.
+   */
+  ratePaise?: number;
   gstRateBps: number;
+  /** #637 — the vendor's rate per pack BEFORE the trade discount, as printed on the bill. */
+  listRatePaise?: number | null;
+  /** #637 — the discount as a percent of the list rate, in basis points (1250 = 12.5%). Not with `discountPaise`. */
+  discountBps?: number;
+  /** #637 — the discount as an amount off the list rate, per pack, in paise. Not with `discountBps`. */
+  discountPaise?: number;
 };
 
 export type BillInput = {
@@ -80,6 +89,8 @@ export type BillInput = {
 export type BillLineView = {
   id: string; grnId: string; grnNo: string; itemId: string; itemCode: string; itemName: string; uom: string; multiplier: number;
   qtyPacks: number; ratePaise: number; taxablePaise: number; gstRateBps: number; cgstPaise: number; sgstPaise: number; igstPaise: number;
+  /** #637 — list rate per pack before the vendor's discount (null when none was named), the percent, the amount off per pack. */
+  listRatePaise: number | null; discountBps: number; discountPaise: number;
   totalPaise: number; expectedBase: number; expectedPacks: number; expectedRatePaise: number; expectedTaxablePaise: number;
   expectedGstRateBps: number; differencePaise: number; mismatch: BillMismatch[]; out: boolean;
 };
@@ -236,6 +247,7 @@ const packRate = (multiplier: number, rate: { paise: number; per: number }): num
 
 type ResolvedLine = {
   grnId: string; itemId: string; uom: string; multiplier: number; qtyPacks: number; ratePaise: number; taxablePaise: number;
+  listRatePaise: number | null; discountBps: number; discountPaise: number;
   gstRateBps: number; cgstPaise: number; sgstPaise: number; igstPaise: number;
   expectedBase: number; expectedRatePaise: number; expectedTaxablePaise: number; expectedGstRateBps: number;
   mismatch: BillMismatch[];
@@ -286,6 +298,34 @@ async function lockGrns(tx: Tx, vendorId: string, grnIds: readonly string[], exc
   return rows;
 }
 
+/**
+ * #637 (DECIDED $, as the PO line, #450) — a bill line's net rate per pack from what the vendor printed: no list rate →
+ * the rate as typed, no discount; a list rate with a percent → the net rate half up to the paisa (`netRatePaise`) and the
+ * amount off is list less that; with an amount per pack → list less the amount. A percent and an amount together, a
+ * discount above the list, or a typed rate that is not list less discount are refused.
+ */
+export function discountOf(l: Pick<BillLineInput, "ratePaise" | "listRatePaise" | "discountBps" | "discountPaise">, code = ""): {
+  ratePaise: number; listRatePaise: number | null; discountBps: number; discountPaise: number;
+} {
+  const bad = (why: string): MaterialsError => new MaterialsError("bill_invalid", `line for ${code}: ${why}`);
+  const bps = l.discountBps ?? 0;
+  const amt = l.discountPaise ?? 0;
+  if (l.listRatePaise == null) {
+    if (bps !== 0 || amt !== 0) throw bad("a discount needs the list rate it is taken off");
+    if (l.ratePaise === undefined) throw bad("the rate is missing");
+    return { ratePaise: l.ratePaise, listRatePaise: null, discountBps: 0, discountPaise: 0 };
+  }
+  const list = l.listRatePaise;
+  if (!Number.isSafeInteger(list) || list < 0 || list > MAX_RATE_PAISE) throw bad("the list rate is out of range");
+  if (!Number.isSafeInteger(bps) || bps < 0 || bps > 10_000 || !Number.isSafeInteger(amt) || amt < 0) throw bad("the discount is out of range");
+  if (bps !== 0 && amt !== 0) throw bad("give the discount as a percent or as an amount, not both");
+  if (amt > list) throw bad("the discount is more than the list rate");
+  const discountPaise = bps !== 0 ? list - netRatePaise(list, bps) : amt;
+  const ratePaise = list - discountPaise;
+  if (l.ratePaise !== undefined && l.ratePaise !== ratePaise) throw bad(`the rate ${String(l.ratePaise)} is not the list rate less the discount (${String(ratePaise)})`);
+  return { ratePaise, listRatePaise: list, discountBps: bps, discountPaise };
+}
+
 async function resolveLines(tx: Tx, vendorId: string, input: readonly BillLineInput[], interState: boolean, exceptBillId: string | null): Promise<{
   lines: ResolvedLine[]; grnRows: GrnRow[]; expectations: Map<string, Expectation>;
 }> {
@@ -310,16 +350,19 @@ async function resolveLines(tx: Tx, vendorId: string, input: readonly BillLineIn
     const multiplier = pack?.toBaseMultiplier ?? (wanted === undefined || wanted === "" || wanted === item.baseUom.toLowerCase() ? 1 : null);
     if (multiplier === null) throw new MaterialsError("bill_invalid", `item ${item.code} has no pack "${l.uom ?? ""}"`, { itemId: l.itemId });
     const okInt = (n: number, lo: number, hi: number): boolean => Number.isSafeInteger(n) && n >= lo && n <= hi;
-    if (!okInt(l.qtyPacks, 0, MAX_PACKS) || !okInt(l.ratePaise, 0, MAX_RATE_PAISE) || !okInt(l.gstRateBps, 0, 2_800)) {
+    const d = discountOf(l, item.code);
+    if (!okInt(l.qtyPacks, 0, MAX_PACKS) || !okInt(d.ratePaise, 0, MAX_RATE_PAISE) || !okInt(l.gstRateBps, 0, 2_800)) {
       throw new MaterialsError("bill_invalid", `line for ${item.code}: quantity, rate or GST is out of range`, { itemId: l.itemId });
     }
     const e = expectations.get(`${l.grnId}|${l.itemId}`);
     const expectedBase = e?.acceptedBase ?? 0;
     const rate = e?.rate ?? { paise: 0, per: 1 };
-    const taxablePaise = l.qtyPacks * l.ratePaise;
+    // GST is on the DISCOUNTED value: packs × net rate (#637).
+    const taxablePaise = l.qtyPacks * d.ratePaise;
     const split = splitGst(lineGstPaise(taxablePaise, l.gstRateBps), interState);
     const resolved = {
-      grnId: l.grnId, itemId: l.itemId, uom: pack?.uom ?? item.baseUom, multiplier, qtyPacks: l.qtyPacks, ratePaise: l.ratePaise,
+      grnId: l.grnId, itemId: l.itemId, uom: pack?.uom ?? item.baseUom, multiplier, qtyPacks: l.qtyPacks, ratePaise: d.ratePaise,
+      listRatePaise: d.listRatePaise, discountBps: d.discountBps, discountPaise: d.discountPaise,
       taxablePaise, gstRateBps: l.gstRateBps, ...split,
       expectedBase, expectedRatePaise: packRate(multiplier, rate), expectedTaxablePaise: valueAt(expectedBase, rate),
       expectedGstRateBps: e?.gstRateBps ?? item.gstRateBps ?? 0,
@@ -351,6 +394,7 @@ async function insertLines(tx: Tx, billId: string, lines: readonly ResolvedLine[
   await tx.insert(supplierBillLines).values(lines.map((l) => ({
     id: newId(), billId, grnId: l.grnId, itemId: l.itemId, uom: l.uom, multiplier: l.multiplier, qtyPacks: l.qtyPacks,
     ratePaise: l.ratePaise, taxablePaise: l.taxablePaise, gstRateBps: l.gstRateBps, cgstPaise: l.cgstPaise, sgstPaise: l.sgstPaise,
+    listRatePaise: l.listRatePaise, discountBps: l.discountBps, discountPaise: l.discountPaise,
     igstPaise: l.igstPaise, expectedBase: l.expectedBase, expectedRatePaise: l.expectedRatePaise,
     expectedTaxablePaise: l.expectedTaxablePaise, expectedGstRateBps: l.expectedGstRateBps,
     mismatch: l.mismatch.length === 0 ? null : l.mismatch.join(","),
@@ -411,7 +455,10 @@ const header = (b: Pick<BillRow, "id" | "billNo" | "vendorId" | "vendorBillNo" |
   ({ billId: b.id, billNo: b.billNo, vendorId: b.vendorId, vendorBillNo: b.vendorBillNo, totalPaise: b.totalPaise });
 
 type Change = { field: string; before: string | number | boolean | null; after: string | number | boolean | null };
-type LineMoney = { grnId: string; itemId: string; uom: string; qtyPacks: number; ratePaise: number; gstRateBps: number; taxablePaise: number };
+type LineMoney = {
+  grnId: string; itemId: string; uom: string; qtyPacks: number; ratePaise: number; gstRateBps: number; taxablePaise: number;
+  listRatePaise: number | null; discountBps: number; discountPaise: number;
+};
 
 /**
  * PARITY P5 — WHAT AN EDIT CHANGED, before and after, for the activity view: the header fields that
@@ -430,7 +477,7 @@ export function billChanges(before: BillRow, after: BillRow, beforeLines: readon
     const a = old.get(k);
     const b = now.get(k);
     const itemId = (a ?? b)!.itemId;
-    for (const f of ["uom", "qtyPacks", "ratePaise", "gstRateBps", "taxablePaise"] as const) {
+    for (const f of ["uom", "qtyPacks", "listRatePaise", "discountBps", "discountPaise", "ratePaise", "gstRateBps", "taxablePaise"] as const) {
       const x = a === undefined ? null : a[f];
       const y = b === undefined ? null : b[f];
       if (x !== y) out.push({ field: `lines.${itemId}.${f}`, before: x, after: y });
@@ -490,6 +537,12 @@ export async function createSupplierBill(
 }
 
 /** Header and, when given, the whole set of lines. A matched or held bill edited goes back to draft. */
+/** A stored line read back as the input that wrote it (an edit or a match re-resolves it), discount included. */
+const storedInput = (l: typeof supplierBillLines.$inferSelect): BillLineInput => ({
+  grnId: l.grnId, itemId: l.itemId, uom: l.uom, qtyPacks: l.qtyPacks, ratePaise: l.ratePaise, gstRateBps: l.gstRateBps,
+  ...(l.listRatePaise === null ? {} : { listRatePaise: l.listRatePaise, ...(l.discountBps !== 0 ? { discountBps: l.discountBps } : { discountPaise: l.discountPaise }) }),
+});
+
 export async function updateSupplierBill(
   db: Db, actor: Actor, billId: string, patch: Partial<BillInput>, now: Date = new Date(),
 ): Promise<BillView> {
@@ -506,7 +559,7 @@ export async function updateSupplierBill(
       const interState = patch.interState ?? b.interState;
       const beforeLines = await tx.select().from(supplierBillLines).where(eq(supplierBillLines.billId, billId));
       const inputLines: BillLineInput[] = patch.lines ?? beforeLines
-        .map((l) => ({ grnId: l.grnId, itemId: l.itemId, uom: l.uom, qtyPacks: l.qtyPacks, ratePaise: l.ratePaise, gstRateBps: l.gstRateBps }));
+        .map((l) => storedInput(l));
       const { lines, grnRows, expectations } = await resolveLines(tx, b.vendorId, inputLines, interState, billId);
       await tx.delete(supplierBillLines).where(eq(supplierBillLines.billId, billId));
       await insertLines(tx, billId, lines);
@@ -540,9 +593,7 @@ export async function matchSupplierBill(db: Db, actor: Actor, billId: string, no
     const b = await lockBill(tx, billId);
     if (b.status !== "draft") throw wrongStatus(b, "matching", ["draft"]);
     const current = await tx.select().from(supplierBillLines).where(eq(supplierBillLines.billId, billId));
-    const { lines, expectations } = await resolveLines(tx, b.vendorId, current.map((l) => ({
-      grnId: l.grnId, itemId: l.itemId, uom: l.uom, qtyPacks: l.qtyPacks, ratePaise: l.ratePaise, gstRateBps: l.gstRateBps,
-    })), b.interState, billId);
+    const { lines, expectations } = await resolveLines(tx, b.vendorId, current.map((l) => storedInput(l)), b.interState, billId);
     await tx.delete(supplierBillLines).where(eq(supplierBillLines.billId, billId));
     await insertLines(tx, billId, lines);
     const expectedTotalPaise = expectedTotalOf(expectations);
@@ -661,7 +712,7 @@ export async function cancelSupplierBill(db: Db, actor: Actor, billId: string, r
 export type BillDraft = {
   vendorId: string; vendorName: string; vendorGstin: string | null; msme: boolean; grnId: string; grnNo: string;
   purchaseOrderId: string | null; poNo: string | null; vendorBillNo: string; billDate: string; interState: boolean;
-  lines: (BillLineInput & { itemCode: string; itemName: string; uom: string; multiplier: number; expectedBase: number })[];
+  lines: (BillLineInput & { ratePaise: number; itemCode: string; itemName: string; uom: string; multiplier: number; expectedBase: number })[];
   expectedTotalPaise: number;
 };
 
@@ -701,9 +752,12 @@ export async function billDraftFromGrn(db: Db, actor: Actor, grnId: string, opts
     const whole = pack !== undefined && e.acceptedBase % pack.toBaseMultiplier === 0;
     const uom = whole ? pack.uom : item.baseUom;
     const multiplier = whole ? pack.toBaseMultiplier : 1;
+    // #637: the PO line's list rate and discount, when the bill is drafted in the PO's own pack.
+    const discounted = pl !== undefined && pl.listRatePaise !== null && pl.discountBps > 0 && pl.multiplier === multiplier;
     return {
       grnId: g.id, itemId: e.itemId, itemCode: item.code, itemName: item.name, uom, multiplier,
       qtyPacks: e.acceptedBase / multiplier, ratePaise: packRate(multiplier, e.rate), gstRateBps: e.gstRateBps, expectedBase: e.acceptedBase,
+      listRatePaise: discounted ? pl.listRatePaise : null, discountBps: discounted ? pl.discountBps : 0,
     };
   }).sort((a, b) => a.itemName.localeCompare(b.itemName));
   return {
@@ -782,6 +836,7 @@ async function readSupplierBill(db: Db, billId: string): Promise<BillView | unde
       return {
         id: l.id, grnId: l.grnId, grnNo, itemId: l.itemId, itemCode: code, itemName: name, uom: l.uom, multiplier: l.multiplier,
         qtyPacks: l.qtyPacks, ratePaise: l.ratePaise, taxablePaise: l.taxablePaise, gstRateBps: l.gstRateBps, cgstPaise: l.cgstPaise,
+        listRatePaise: l.listRatePaise, discountBps: l.discountBps, discountPaise: l.discountPaise,
         sgstPaise: l.sgstPaise, igstPaise: l.igstPaise, totalPaise: l.taxablePaise + l.cgstPaise + l.sgstPaise + l.igstPaise,
         expectedBase: l.expectedBase, expectedPacks: l.expectedBase / l.multiplier, expectedRatePaise: l.expectedRatePaise,
         expectedTaxablePaise: l.expectedTaxablePaise, expectedGstRateBps: l.expectedGstRateBps,

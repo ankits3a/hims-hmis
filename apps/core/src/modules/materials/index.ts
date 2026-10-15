@@ -160,11 +160,12 @@ export type { RecallSource, RecallStatus, RecallSummary, RecallView } from "./re
 // ── PHARMACY PARITY P5 — the office's reports: purchases, valuation, non-moving, the GSTR-2B books, a document by number ──
 export {
   BOOKED_BILL_STATUSES, NON_MOVING_PRESETS, batchesByIds, billsForReconciliation, findDocumentByNo, grnReceivedTotals, nonMovingStock, purchaseAdjustmentsBetween,
-  purchaseRegister, splitLikeDebitNote, stockValuationAt, supplierPaymentsBetween,
+  purchaseRegister, splitLikeDebitNote, stockValuationAt, supplierPaymentsBetween, vendorDiscountReport,
 } from "./reports";
 export type {
   BatchFacts, MaterialsDocKind, MaterialsDocRef, NonMovingReport, NonMovingRow, NonMovingSuggestion, PurchaseAdjustment, PurchaseRegister,
-  PurchaseRegisterLine, PurchaseRegisterRow, ReconBill, StockValuation, SupplierPaymentRead, ValuationGroup, ValuationRow,
+  PurchaseRegisterLine, PurchaseRegisterRow, ReconBill, StockValuation, SupplierPaymentRead, ValuationGroup, ValuationRow, VendorDiscountReport,
+  VendorDiscountRow,
 } from "./reports";
 
 // ── PHARMACY GAP CLOSURE C — daily stock (opening, in, out, closing), the loss-booking register, the item catalogue ──
