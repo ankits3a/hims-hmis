@@ -174,7 +174,8 @@
     "erPatient": "ER मरीज़",
     "erMlc": "MLC डेस्क",
     "erBill": "ER बिल डेस्क",
-    "erCodes": "ER कोड"
+    "erCodes": "ER कोड",
+    "erMci": "MCI बोर्ड"
   },
   "palette": {
     "title": "खोज",
@@ -19541,6 +19542,42 @@
       "not_code_leader": {
         "rule": "टीम लीडर डीब्रीफ़ दर्ज करते हैं।",
         "fix": "टीम लीडर से कहें"
+      },
+      "mci_role_needed": {
+        "rule": "केवल MS या ड्यूटी मैनेजर।",
+        "fix": "ड्यूटी मैनेजर बुलाएँ"
+      },
+      "mci_active": {
+        "rule": "कोड येलो पहले से चालू।",
+        "fix": "MCI बोर्ड खोलें"
+      },
+      "mci_not_found": {
+        "rule": "ऐसी घटना नहीं।",
+        "fix": "MCI बोर्ड खोलें"
+      },
+      "mci_stood_down": {
+        "rule": "घटना समाप्त हो चुकी।",
+        "fix": "MCI बोर्ड खोलें"
+      },
+      "mci_not_active": {
+        "rule": "कोड येलो चालू नहीं।",
+        "fix": "सामान्य तरह दर्ज करें"
+      },
+      "pack_not_found": {
+        "rule": "ऐसा पैक नहीं।",
+        "fix": "पैक नंबर जाँचें"
+      },
+      "pack_used": {
+        "rule": "पैक पहले ही उपयोग में।",
+        "fix": "वह मरीज़ खोलें"
+      },
+      "retag_needs_reason": {
+        "rule": "काले का दोबारा टैग कारण माँगता है।",
+        "fix": "कारण जोड़ें"
+      },
+      "surge_bed_not_overflow": {
+        "rule": "केवल ओवरफ़्लो बेड।",
+        "fix": "ओवरफ़्लो बेड चुनें"
       }
     },
     "esi": {
@@ -20314,5 +20351,65 @@
       "door": "दरवाज़े से",
       "activation": "बुलावे से"
     }
+  },
+  "erMci": {
+    "title": "सामूहिक हताहत",
+    "running": "कोड येलो · {{name}}",
+    "since": "{{time}} से",
+    "declare": "कोड येलो घोषित करें",
+    "name": "घटना",
+    "nameHint": "NH-30 बस टक्कर",
+    "place": "स्थान",
+    "declareGo": "कोड येलो घोषित करें",
+    "declareWho": "केवल MS या ड्यूटी मैनेजर।",
+    "declared": "कोड येलो घोषित",
+    "recent": "पिछली घटनाएँ",
+    "packs": "तैयार पैक",
+    "packsHint": "UHID + बैंड, डेस्क पर तैयार।",
+    "howMany": "कितने",
+    "mint": "पैक बनाएँ",
+    "minted": "{{n}} पैक बने",
+    "printPacks": "पैक प्रिंट करें",
+    "untagged": "टैग नहीं",
+    "tag": {
+      "red": "लाल · तुरंत",
+      "yellow": "पीला · देर से",
+      "green": "हरा · मामूली",
+      "black": "काला · अपेक्षित"
+    },
+    "total": "{{n}} मरीज़",
+    "out": {
+      "inDepartment": "{{n}} ER में",
+      "admitted": "{{n}} भर्ती",
+      "discharged": "{{n}} छुट्टी",
+      "referredOut": "{{n}} रेफ़र",
+      "died": "{{n}} मृत",
+      "left": "{{n}} चले गए"
+    },
+    "asOf": "{{time}} तक",
+    "bays": "ER बे {{free}}/{{total}} खाली",
+    "surge": "सर्ज बे {{free}}/{{total}} खाली",
+    "beds": "{{n}} वार्ड बेड खाली",
+    "packsLeft": "{{n}} पैक बचे",
+    "patients": "मरीज़",
+    "packNo": "पैक नंबर",
+    "register": "पैक दर्ज करें",
+    "registered": "{{alias}} · {{no}}",
+    "noPatients": "अभी कोई मरीज़ नहीं",
+    "retagWhy": "दोबारा टैग क्यों (काला)",
+    "tagged": "{{label}}: {{tag}}",
+    "command": "कमान",
+    "surgeTitle": "सर्ज बे",
+    "surgePick": "ओवरफ़्लो बेड चुनें",
+    "noOverflow": "कोई ओवरफ़्लो बेड नहीं",
+    "surgeGo": "{{n}} सर्ज बे खोलें",
+    "surgeOpened": "{{n}} सर्ज बे खुले",
+    "headCount": "गिनती",
+    "headCountHint": "ज़िले के लिए। सिर्फ़ गिनती, नाम नहीं।",
+    "printCount": "गिनती प्रिंट करें",
+    "standDown": "समाप्त करें",
+    "standDownSure": "हाँ, समाप्त करें",
+    "stoodDown": "समाप्त · {{n}} फिर ट्राइएज में",
+    "cancel": "रद्द"
   }
 }

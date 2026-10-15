@@ -174,7 +174,8 @@
     "erPatient": "ER patient",
     "erMlc": "MLC desk",
     "erBill": "ER bill desk",
-    "erCodes": "ER codes"
+    "erCodes": "ER codes",
+    "erMci": "MCI board"
   },
   "palette": {
     "title": "Search",
@@ -19541,6 +19542,42 @@
       "not_code_leader": {
         "rule": "The team leader records the debrief.",
         "fix": "Ask the team leader"
+      },
+      "mci_role_needed": {
+        "rule": "Only MS or duty manager.",
+        "fix": "Call duty manager"
+      },
+      "mci_active": {
+        "rule": "Code Yellow already running.",
+        "fix": "Open MCI board"
+      },
+      "mci_not_found": {
+        "rule": "No such event.",
+        "fix": "Open MCI board"
+      },
+      "mci_stood_down": {
+        "rule": "Event stood down.",
+        "fix": "Open MCI board"
+      },
+      "mci_not_active": {
+        "rule": "No Code Yellow running.",
+        "fix": "Register usual way"
+      },
+      "pack_not_found": {
+        "rule": "No such pack.",
+        "fix": "Check pack number"
+      },
+      "pack_used": {
+        "rule": "Pack already used.",
+        "fix": "Open that patient"
+      },
+      "retag_needs_reason": {
+        "rule": "Black re-tag needs a reason.",
+        "fix": "Add reason"
+      },
+      "surge_bed_not_overflow": {
+        "rule": "Only overflow beds.",
+        "fix": "Pick overflow bed"
       }
     },
     "esi": {
@@ -20314,5 +20351,65 @@
       "door": "from the door",
       "activation": "from the call"
     }
+  },
+  "erMci": {
+    "title": "Mass casualty",
+    "running": "Code Yellow · {{name}}",
+    "since": "Since {{time}}",
+    "declare": "Declare Code Yellow",
+    "name": "Event",
+    "nameHint": "Bus collision NH-30",
+    "place": "Place",
+    "declareGo": "Declare Code Yellow",
+    "declareWho": "MS or duty manager only.",
+    "declared": "Code Yellow declared",
+    "recent": "Past events",
+    "packs": "Pre-made packs",
+    "packsHint": "UHID + band, ready at the desk.",
+    "howMany": "How many",
+    "mint": "Make packs",
+    "minted": "{{n}} packs made",
+    "printPacks": "Print packs",
+    "untagged": "Not tagged",
+    "tag": {
+      "red": "Red · Immediate",
+      "yellow": "Yellow · Delayed",
+      "green": "Green · Minor",
+      "black": "Black · Expectant"
+    },
+    "total": "{{n}} patients",
+    "out": {
+      "inDepartment": "{{n}} in ER",
+      "admitted": "{{n}} admitted",
+      "discharged": "{{n}} discharged",
+      "referredOut": "{{n}} referred",
+      "died": "{{n}} died",
+      "left": "{{n}} left"
+    },
+    "asOf": "As of {{time}}",
+    "bays": "ER bays {{free}}/{{total}} free",
+    "surge": "Surge bays {{free}}/{{total}} free",
+    "beds": "{{n}} ward beds free",
+    "packsLeft": "{{n}} packs left",
+    "patients": "Patients",
+    "packNo": "Pack number",
+    "register": "Register pack",
+    "registered": "{{alias}} · {{no}}",
+    "noPatients": "No patients yet",
+    "retagWhy": "Why re-tag (Black)",
+    "tagged": "{{label}}: {{tag}}",
+    "command": "Command",
+    "surgeTitle": "Surge bays",
+    "surgePick": "Pick overflow beds",
+    "noOverflow": "No overflow beds",
+    "surgeGo": "Open {{n}} as surge bays",
+    "surgeOpened": "{{n}} surge bays open",
+    "headCount": "Head count",
+    "headCountHint": "For the district. Counts only, no names.",
+    "printCount": "Print head count",
+    "standDown": "Stand down",
+    "standDownSure": "Yes, stand down",
+    "stoodDown": "Stood down · {{n}} back to triage",
+    "cancel": "Cancel"
   }
 }
