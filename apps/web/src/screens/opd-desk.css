@@ -92,6 +92,15 @@
 .od-qm { display: flex; align-items: center; gap: 5px; flex-wrap: nowrap; overflow: hidden; white-space: nowrap; font-size: 11px; color: var(--dim); }
 .od-qr { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
 .od-qw { font-family: "IBM Plex Mono", monospace; font-size: 11.5px; color: var(--dim); flex-shrink: 0; }
+/* #660 — one group per doctor in the department's list: a head (doctor · room · now serving · waiting), then the line */
+.od-group { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.od-gh {
+  display: flex; flex-direction: column; gap: 1px; width: 100%; padding: 7px 10px; border: 0; border-radius: 8px;
+  background: var(--wash); font: inherit; color: var(--ink); text-align: left; cursor: pointer; min-width: 0;
+}
+.od-gh[aria-pressed="true"] { background: var(--green-soft); }
+.od-gh-n { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.od-gh-s { font-size: 11.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .od-empty { margin: 0; padding: 14px; font-size: 12.5px; color: var(--dim); background: var(--card); border: 1px dashed var(--line); border-radius: 8px; }
 .od-flash { margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--red-soft); border: 1px solid var(--red-line); font-size: 12.5px; font-weight: 600; color: var(--red); }
 .od-flash[data-cancelled="true"] { background: var(--card); border-color: var(--line); color: var(--dim); }
