@@ -1779,6 +1779,15 @@ A patient waiting for a bed past 2 hours is a task for the bed manager and reach
 the admission is recorded and the MS arbitrates.
 `er.disposition` is held by `doctor`, `er_nurse`, `front_office`, `duty_manager` and `medical_superintendent`.
 
+**Emergency bill (ER lane 6, issue #813, decision 0076, built 2026-10-15, awaiting owner review).** The ER bill desk at
+`/er/bill`: the ER tariff's own lines (registration and physician fee once per visit; observation per started 6 hours
+after the first 6), drugs at the batch MRP and every other line at the hospital tariff; no money asked or taken before the
+ER doctor records "stabilised"; settle at departure, or dues against a signed undertaking with the invoice held (never
+credit, 0013); ₹0 for PM-JAY, road-accident cashless (up to ₹1.5 lakh for 7 days), BNSS s.397 (sexual assault, acid
+attack: nothing patient-payable, ever) and a mass-casualty event account, each leaving a claim for the TPA desk; at
+admission every ER line rolls into the IP running bill. No ER clinical screen shows money.
+`er.bill` is held by `front_office`, `front_office_supervisor`, `cashier`, `billing_manager` and `duty_manager`.
+
 **Copilot halt switch and spend cap (plan E0.3/E0.5, decision 0064, built 2026-10-11, awaiting owner review).**
 `copilot.halt.set` (owner, admin, duty_manager, quality_manager) pauses the copilot by scope — read, act,
 draft or global; `copilot.halt.clear` (owner, duty_manager) clears read, act and draft; and

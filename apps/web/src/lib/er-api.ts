@@ -1,6 +1,6 @@
 import { ApiError, api } from "./api";
 import type {
-  ErBay, ErBoard, ErCareView, ErDeskView, ErDoctorOption, ErEpisodeView, ErItemOption, ErMlcDesk, ErMlcDetail, ErPatientHit, ErRefusalBody,
+  ErBay, ErBill, ErBillDesk, ErBoard, ErCareView, ErDeskView, ErDoctorOption, ErEpisodeView, ErItemOption, ErMlcDesk, ErMlcDetail, ErPatientHit, ErRefusalBody,
 } from "@hmis/contracts";
 
 /* ═══ ER lane 1 (#808) — `apps/core/src/modules/emergency/emergency.controller.ts`. The paths are the contract's
@@ -60,6 +60,12 @@ const ER_ROUTES = {
   dispoLwbs: "/er/dispo/lwbs",
   dispoAbscond: "/er/dispo/abscond",
   dispoDeath: "/er/dispo/death",
+  // lane 6 (#813) — the ER bill desk (money)
+  bill: "/er/bill",
+  billPayer: "/er/bill/payer",
+  billAdvance: "/er/bill/advance",
+  billPrice: "/er/bill/price",
+  billSettle: "/er/bill/settle",
 } as const;
 export const ER_BOARD_TOPIC = "er:board";
 export const ER_WALL_TOPIC = "erwall:board";
@@ -206,3 +212,12 @@ export const lamaApi = (body: Record<string, unknown>, k: string) => postK<Depar
 export const lwbsApi = (body: Record<string, unknown>, k: string = newKey()) => postK<DepartureOut>(ER_ROUTES.dispoLwbs, body, k);
 export const abscondApi = (body: Record<string, unknown>, k: string) => postK<DepartureOut & { policeToBeInformed: boolean }>(ER_ROUTES.dispoAbscond, body, k);
 export const deathApi = (body: Record<string, unknown>, k: string) => postK<DepartureOut>(ER_ROUTES.dispoDeath, body, k);
+
+/* ═══ lane 6 (#813) — the ER bill desk (money: desk and billing roles only) ═══ */
+export const ER_PAYER_KINDS = ["self", "pmjay", "road_accident", "bnss_free", "mci_event"] as const;
+export const fetchErBillDesk = () => api<ErBillDesk>("GET", ER_ROUTES.bill);
+export const fetchErBill = (episodeId: string) => api<ErBill>("GET", `${ER_ROUTES.bill}/${encodeURIComponent(episodeId)}`);
+export const setPayerApi = (body: Record<string, unknown>) => post<{ payer: string }>(ER_ROUTES.billPayer, body);
+export const advanceApi = (body: Record<string, unknown>) => post<{ receiptNo: string; amountPaise: number }>(ER_ROUTES.billAdvance, body);
+export const priceLinesApi = (episodeId: string) => post<{ priced: number; stillMissing: number }>(ER_ROUTES.billPrice, { episodeId });
+export const settleApi = (body: Record<string, unknown>, k: string) => postK<{ invoiceNo: string | null; duesPaise: number; paidPaise: number }>(ER_ROUTES.billSettle, body, k);

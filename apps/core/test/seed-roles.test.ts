@@ -1121,7 +1121,13 @@ const ER_PAIRS: readonly string[] = [
   // ER lane 5 (#812) — disposition: doctors, the casualty nurse, the ER desk, the duty manager (ER_DISPO_README_PROSE).
   "doctor/er.disposition", "er_nurse/er.disposition", "front_office/er.disposition", "duty_manager/er.disposition",
   "medical_superintendent/er.disposition",
+  // ER lane 6 (#813) — the ER bill desk (ER_BILL_README_PROSE). Never a doctor or nurse (0058).
+  "front_office/er.bill", "front_office_supervisor/er.bill", "cashier/er.bill", "billing_manager/er.bill", "duty_manager/er.bill",
 ];
+
+/** The README prose line authorising the ER bill desk (ER lane 6, issue #813). Quoted, not paraphrased. */
+const ER_BILL_README_PROSE =
+  "`er.bill` is held by `front_office`, `front_office_supervisor`, `cashier`, `billing_manager` and `duty_manager`.";
 
 /** The README prose line authorising ER disposition (ER lane 5, issue #812). Quoted, not paraphrased. */
 const ER_DISPO_README_PROSE = "`er.disposition` is held by `doctor`, `er_nurse`, `front_office`, `duty_manager` and `medical_superintendent`.";
@@ -2631,6 +2637,7 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(readme).toContain(ER_WALL_README_PROSE);
     expect(readme).toContain(ER_MLC_README_PROSE);
     expect(readme).toContain(ER_DISPO_README_PROSE);
+    expect(readme).toContain(ER_BILL_README_PROSE);
     expect(readme).toContain(COPILOT_HALT_README_PROSE);
     expect(readme).toContain(IPD_BEDS_README_PROSE);
     expect(readme).toContain(IPD_ADMIT_README_PROSE);
