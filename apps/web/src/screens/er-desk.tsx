@@ -139,6 +139,8 @@ export function ErDesk(): React.ReactElement {
   const [note, setNote] = useState<string | null>(null);
   const [highlight, setHighlight] = useState<string | null>(null);
   const actKey = useRef(newKey());
+  // The brought-dead examination time is set once per attempt: a retry under the same key sends the same body.
+  const examinedAtRef = useRef<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(() => { fetchErDesk().then(setDesk, () => undefined); }, []);
@@ -155,7 +157,7 @@ export function ErDesk(): React.ReactElement {
   const reset = (): void => {
     setSex(null); setBand(null); setMode("walk_in"); setPreAlert(null); setMore(false); setMarks(""); setComplaint("");
     setBringer(""); setBringerPhone(""); setCameAt(""); setPaper(""); setQ(""); setHits([]); setPicked(null); setNewName("");
-    setRefusal(null); setDone(null); setExaminedBy(""); setEcg(true); actKey.current = newKey();
+    setRefusal(null); setDone(null); setExaminedBy(""); setEcg(true); actKey.current = newKey(); examinedAtRef.current = null;
   };
 
   const optional = (): Record<string, unknown> => {
@@ -195,20 +197,22 @@ export function ErDesk(): React.ReactElement {
   const recordDead = (): Promise<void> => act(async () => {
     const who = deadKnown && picked !== null ? { patientId: picked.patientId } : { unidentified: { sex, ageBand: band, ...(marks.trim() !== "" ? { marks: marks.trim() } : {}) } };
     const o = optional();
-    const out = await broughtDeadApi({ ...who, arrivalMode: mode, examinedBy, examinedAt: new Date().toISOString(), ecgStripRecorded: ecg,
+    examinedAtRef.current ??= new Date().toISOString();
+    const out = await broughtDeadApi({ ...who, arrivalMode: mode, examinedBy, examinedAt: examinedAtRef.current, ecgStripRecorded: ecg,
       ...(o.arrivedAt !== undefined ? { arrivedAt: o.arrivedAt } : {}), ...(o.preAlertId !== undefined ? { preAlertId: o.preAlertId } : {}) }, actKey.current);
     reset(); setNote(t("erDesk.dead.done", { no: out.episodeNo }));
   });
 
   const fromPreAlert = (c: ErExpectedCard): void => {
-    reset(); setPreAlert(c); setMode(c.mode); setTab("unknown");
+    reset(); setPreAlert(c); setMode(c.mode ?? "walk_in"); setTab("unknown");
     if (c.sex !== null) setSex(c.sex);
     if (c.ageBand !== null) setBand(c.ageBand);
   };
 
   const sexWord = (v: ErSexValue): string => t(`er.sex.${v}`);
   const bandWord = (v: ErAgeBandValue): string => t(`er.band.${v}`);
-  const modeWord = (v: string): string => t(`er.mode.${v}`);
+  // A wall-masked card carries no mode (police); the desk reads the full card, so this is only the type's answer.
+  const modeWord = (v: string | null): string => (v === null ? t("erBoard.col.expected") : t(`er.mode.${v}`));
   const canUnknown = sex !== null && band !== null && !busy;
   const canKnown = !busy && (picked !== null || (newName.trim() !== "" && sex !== null && band !== null));
   const canDead = !busy && examinedBy !== "" && (deadKnown ? picked !== null : sex !== null && band !== null);
