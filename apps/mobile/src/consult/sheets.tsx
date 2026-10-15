@@ -123,17 +123,41 @@ function useSearch<R>(q: string, min: number, run: (q: string) => Promise<R[]>):
   return { rows, error, busy };
 }
 
-// ——— 1 · Notes, and the spoken note ———
+// ——— 1 · Complaint (issue #607, owner 2026-10-10: "Rename Notes to Complaint") ———
 
 const COMMON_COMPLAINTS = ["Fever", "Cough", "Cold", "Body ache", "Headache", "Sore throat", "Vomiting", "Loose motion", "Abdominal pain", "Weakness"];
 
-export function NotesDrawer({ api, encounterId, draft, patch, onClose, recorder, deskWords, onAddMedicine, onAddTest }: {
-  api: ConsultApi; encounterId: string; draft: ConsultDraft; patch: Patch; onClose: () => void; recorder: VoiceRecorder; deskWords: string | null;
-  onAddMedicine: (hit: { medicineId: string; name: string }) => void; onAddTest: (t: { serviceId: string; code: string; name: string; pricePaise: number }) => void;
+/** The chief complaint: what the desk heard, the common chips, and a search. Saves to `chiefComplaint`. */
+export function ComplaintDrawer({ api, draft, patch, onClose, deskWords }: {
+  api: ConsultApi; draft: ConsultDraft; patch: Patch; onClose: () => void; deskWords: string | null;
 }) {
   const { t } = useI18n();
   const [q, setQ] = useState("");
   const found = useSearch(q, 2, async (text) => (await api.complaints(text)).map((x) => x.term));
+  const toggle = (c: string): void => patch((d) => ({ ...d, complaints: d.complaints.includes(c) ? d.complaints.filter((x) => x !== c) : [...d.complaints, c].slice(0, 12) }));
+  const offered = useMemo(() => {
+    const base = [...draft.complaints, ...(q.trim().length >= 2 ? found.rows : COMMON_COMPLAINTS)];
+    return [...new Set(base)].slice(0, 14);
+  }, [draft.complaints, found.rows, q]);
+  return (
+    <Drawer testID="complaint-drawer" title={t("mobile.consult.complaint")} onClose={onClose}>
+      {deskWords !== null && <Text style={st.said}>{t("mobile.consult.toldDesk", { words: deskWords })}</Text>}
+      <View style={st.chips}>
+        {offered.map((c) => <Chip key={c} testID={`complaint-${c}`} label={c} on={draft.complaints.includes(c)} onPress={() => toggle(c)} />)}
+      </View>
+      <Box testID="complaint-input" value={q} onChangeText={setQ} placeholder={t("mobile.consult.complaintAdd")} returnKeyType="done" maxLength={80}
+        onSubmitEditing={() => { const c = q.trim(); if (c !== "") { toggle(c); setQ(""); } }} />
+    </Drawer>
+  );
+}
+
+// ——— 6 · Notes — the doctor's own reference (`doctor_note`, never printed), and the spoken note ———
+
+export function NotesDrawer({ api, encounterId, draft, patch, onClose, recorder, onAddMedicine, onAddTest }: {
+  api: ConsultApi; encounterId: string; draft: ConsultDraft; patch: Patch; onClose: () => void; recorder: VoiceRecorder;
+  onAddMedicine: (hit: { medicineId: string; name: string }) => void; onAddTest: (t: { serviceId: string; code: string; name: string; pricePaise: number }) => void;
+}) {
+  const { t } = useI18n();
   const [status, setStatus] = useState<WireVoiceStatus | null>(null);
   const [phase, setPhase] = useState<"idle" | "notice" | "recording" | "sending" | "heard">("idle");
   const [seconds, setSeconds] = useState(0);
@@ -152,11 +176,6 @@ export function NotesDrawer({ api, encounterId, draft, patch, onClose, recorder,
   useEffect(() => () => { if (tick.current !== null) clearInterval(tick.current); void recorder.discard(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const max = status?.maxSeconds ?? 60;
-  const toggle = (c: string): void => patch((d) => ({ ...d, complaints: d.complaints.includes(c) ? d.complaints.filter((x) => x !== c) : [...d.complaints, c].slice(0, 12) }));
-  const offered = useMemo(() => {
-    const base = [...draft.complaints, ...(q.trim().length >= 2 ? found.rows : COMMON_COMPLAINTS)];
-    return [...new Set(base)].slice(0, 14);
-  }, [draft.complaints, found.rows, q]);
 
   const stop = async (): Promise<void> => {
     if (tick.current !== null) { clearInterval(tick.current); tick.current = null; }
@@ -268,14 +287,6 @@ export function NotesDrawer({ api, encounterId, draft, patch, onClose, recorder,
   }
   return (
     <Drawer testID="notes-drawer" title={t("mobile.consult.notes")} onClose={onClose}>
-      <Lab>{t("mobile.consult.complaint")}</Lab>
-      {deskWords !== null && <Text style={st.said}>{t("mobile.consult.toldDesk", { words: deskWords })}</Text>}
-      <View style={st.chips}>
-        {offered.map((c) => <Chip key={c} testID={`complaint-${c}`} label={c} on={draft.complaints.includes(c)} onPress={() => toggle(c)} />)}
-      </View>
-      <Box testID="complaint-input" value={q} onChangeText={setQ} placeholder={t("mobile.consult.complaintAdd")} returnKeyType="done" maxLength={80}
-        onSubmitEditing={() => { const c = q.trim(); if (c !== "") { toggle(c); setQ(""); } }} />
-      <Lab>{t("mobile.consult.examination")}</Lab>
       <Box testID="notes-input" multiline value={draft.notes} maxLength={4000} placeholder={t("mobile.consult.notesHint")}
         onChangeText={(v) => patch((d) => ({ ...d, notes: v }))} />
       {phase === "recording" ? (

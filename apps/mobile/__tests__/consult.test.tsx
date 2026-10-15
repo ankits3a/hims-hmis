@@ -127,7 +127,7 @@ describe("the doctor's consultation on the phone (decision 0048)", () => {
     expect(screen.getByTestId("consult-allergy")).toHaveTextContent("Allergy · Penicillin");
     expect(screen.getByTestId("consult-desk-words")).toHaveTextContent(/bukhar 3 din se/);
     expect(screen.getByTestId("consult-vitals")).toHaveTextContent(/BP 150\/90/);
-    for (const k of ["notes", "dx", "meds", "tests", "advice"]) expect(screen.getByTestId(`open-${k}`)).toBeTruthy();
+    for (const k of ["complaint", "dx", "meds", "tests", "advice", "notes"]) expect(screen.getByTestId(`open-${k}`)).toBeTruthy();
     expect(screen.getByTestId("issue-complete").props.accessibilityState.disabled).toBe(true);
     // No print anywhere on this screen (owner 2026-10-07).
     expect(screen.queryByText(/print/i)).toBeNull();
@@ -255,8 +255,10 @@ describe("the doctor's consultation on the phone (decision 0048)", () => {
     await screen.findByTestId("visit-empty");
     await press("open-notes");
     await type("notes-input", "Throat congested, chest clear.");
-    await press("complaint-Fever");
     await press("notes-drawer-done");
+    await press("open-complaint");
+    await press("complaint-Fever");
+    await press("complaint-drawer-done");
     expect(screen.getByTestId("issue-complete")).toHaveTextContent("Complete");
     await press("issue-complete");
     await waitFor(() => expect(m.onDone).toHaveBeenCalled());
