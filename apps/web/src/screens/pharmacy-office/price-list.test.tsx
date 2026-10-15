@@ -197,4 +197,38 @@ describe("import a vendor's price list (owner 2026-10-04)", () => {
     }));
     expect(await screen.findByTestId("price-rates-saved")).toHaveTextContent("2 rates kept as Aptus Drugs's contract.");
   });
+
+  /*
+    DECIDED (standard Indian trade practice): a distributor's "Rate" / "PTR" is quoted BEFORE GST, which the invoice
+    adds. Only a heading that says the rate includes GST is read as inclusive; a bare "Rate" or "PTR" is kept as typed.
+  */
+  it("a bare Rate or PTR heading is read as before GST: nothing is divided out", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      const path = raw.replace(/^.*\/api/, "").split("?")[0]!;
+      if (init?.body !== undefined) posted.push({ path, body: JSON.parse(String(init.body)) });
+      const json = (b: unknown): Response => new Response(JSON.stringify(b), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path === "/auth/me") return json({ actor: { type: "user", id: "u" }, permissions: { hospital: ["materials.items.manage", "materials.vendors.manage", "materials.po.raise"], scoped: { department: {}, floor: {} } } });
+      if (path === "/materials/purchase-vendors") return json({ vendors: [{ id: "v-aptus", code: "APTUS", name: "Aptus Drugs" }] });
+      if (path.endsWith("/match")) return json({ rows: [
+        { line: 1, brand: "SEYTRI 1GM", manufacturer: "Hauz", composition: "CEFTRIAXONE 1000MG", pack: "1'S", best: null, alternatives: [], existing: { itemId: "i-sey", code: "SEYTRI1G", name: "Seytri 1 g vial" },
+          twin: null, variant: null, outer: 1, packType: "vial", packSize: 1, gstRateBps: 500, hsnCode: "3004", mrpPerPackPaise: 6_700 },
+      ] });
+      return new Response("{}", { status: 404 });
+    }));
+    for (const heading of ["Rate", "PTR"]) {
+      posted.length = 0;
+      const user = userEvent.setup();
+      const view = renderWithProviders(<PriceListImport />);
+      await user.click(screen.getByTestId("price-paste"));
+      await user.paste(`Brand\tComposition\tPacking\tMRP\t${heading}\nSEYTRI 1GM\tCEFTRIAXONE 1000MG\t1'S\t67\t26`);
+      await user.click(screen.getByTestId("price-paste-read"));
+      await user.click(await screen.findByTestId("price-match"));
+      await user.selectOptions(await screen.findByTestId("price-vendor"), "v-aptus");
+      expect(screen.getByTestId("price-incl-gst")).not.toBeChecked();
+      expect(screen.getByTestId("price-rate-1")).toHaveValue("26.00");
+      view.unmount();
+    }
+  });
 });
+
