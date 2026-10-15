@@ -15,20 +15,25 @@ import type { CanActivate, ExecutionContext } from "@nestjs/common";
 export const RATE_LIMIT_KEY = "hmis:rate-limit";
 
 export type RateBucket = "copilot" | "speech" | "auth" | "health";
-export const RATE_BUCKETS: Readonly<Record<RateBucket, { limit: number; windowMs: number; by: "actor" | "ip" }>> = {
+/**
+ * `failuresOnly`: a request that ends below 400 is refunded, so only refused ones spend the budget. The sign-in routes
+ * need it: the whole hospital reaches the site from ONE public address (one ISP line behind NAT), and a budget on every
+ * sign-in would lock every desk out at shift change. Guessing is what fails, so failures are what it counts.
+ */
+export const RATE_BUCKETS: Readonly<Record<RateBucket, { limit: number; windowMs: number; by: "actor" | "ip"; failuresOnly?: true }>> = {
   /** A person asks far fewer than one question every two seconds; a loop asks far more. */
   copilot: { limit: 30, windowMs: 60_000, by: "actor" },
   /** One dictation clip at a time, with retries. */
   speech: { limit: 20, windowMs: 60_000, by: "actor" },
-  /** Every sign-in route from one address: a whole counter of staff signing in at shift change fits. */
-  auth: { limit: 20, windowMs: 60_000, by: "ip" },
+  /** Failed sign-ins from one address (successful ones are refunded — the hospital shares one address). */
+  auth: { limit: 20, windowMs: 60_000, by: "ip", failuresOnly: true },
   /** The monitor polls every few seconds. */
   health: { limit: 120, windowMs: 60_000, by: "ip" },
 };
 
 const LOOPBACK = /^(127\.|::1$|::ffff:127\.)/;
 
-export type Hit = { ok: true } | { ok: false; retryAfterSec: number };
+export type Hit = { ok: true; windowStart: number } | { ok: false; retryAfterSec: number };
 
 /** Fixed windows per key. Expired windows are swept when the table grows, so memory stays bounded by active keys. */
 export class FixedWindowLimiter {
@@ -39,11 +44,17 @@ export class FixedWindowLimiter {
     const w = this.windows.get(key);
     if (w === undefined || now - w.start >= windowMs) {
       this.windows.set(key, { start: now, count: 1 });
-      return { ok: true };
+      return { ok: true, windowStart: now };
     }
     if (w.count >= limit) return { ok: false, retryAfterSec: Math.max(1, Math.ceil((w.start + windowMs - now) / 1000)) };
     w.count += 1;
-    return { ok: true };
+    return { ok: true, windowStart: w.start };
+  }
+
+  /** Gives back one hit, only to the window that took it (a refund never pre-pays the next window). */
+  refund(key: string, windowStart: number): void {
+    const w = this.windows.get(key);
+    if (w !== undefined && w.start === windowStart && w.count > 0) w.count -= 1;
   }
 
   private sweep(now: number, windowMs: number): void {
@@ -73,9 +84,17 @@ export class RateLimitGuard implements CanActivate {
     // proxy, `req.ip` is the real client's address (`trust proxy`), so no outside request arrives as loopback.
     if (req.ip !== undefined && LOOPBACK.test(req.ip)) return true;
     const who = rule.by === "actor" && req.hmisActor !== undefined ? `u:${req.hmisActor.id}` : `ip:${req.ip ?? "unknown"}`;
-    const hit = this.limiter.hit(`${bucket}|${who}`, rule.limit, rule.windowMs);
-    if (hit.ok) return true;
-    http.getResponse<{ setHeader: (k: string, v: string) => void }>().setHeader("Retry-After", String(hit.retryAfterSec));
+    const key = `${bucket}|${who}`;
+    const hit = this.limiter.hit(key, rule.limit, rule.windowMs);
+    const res = http.getResponse<{ setHeader: (k: string, v: string) => void; statusCode?: number; on?: (ev: "finish", fn: () => void) => unknown }>();
+    if (hit.ok) {
+      if (rule.failuresOnly === true) {
+        const windowStart = hit.windowStart;
+        res.on?.("finish", () => { if ((res.statusCode ?? 500) < 400) this.limiter.refund(key, windowStart); });
+      }
+      return true;
+    }
+    res.setHeader("Retry-After", String(hit.retryAfterSec));
     throw new HttpException(
       { statusCode: 429, code: "rate_limited", message: "Too many requests — try again shortly", retryAfterSec: hit.retryAfterSec },
       HttpStatus.TOO_MANY_REQUESTS,

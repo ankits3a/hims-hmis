@@ -49,6 +49,29 @@ describe("request budgets", () => {
     for (let i = 0; i < RATE_BUCKETS.auth.limit + 5; i += 1) expect(guard.canActivate(ctxFor(login, { ip: "::ffff:127.0.0.1" }, {}))).toBe(true);
   });
 
+  /*
+   * The whole hospital signs in from ONE public address (one ISP line, NAT). A budget that counted every sign-in would
+   * lock every desk out at shift change; it counts the FAILED ones — the guessing it exists to slow.
+   */
+  it("a sign-in that succeeds is not charged to the address; a refused one is", () => {
+    const guard = new RateLimitGuard(new Reflector(), new FixedWindowLimiter());
+    const login = (AuthController.prototype as unknown as Record<string, object>).login!;
+    const finished = (status: number): ExecutionContext => {
+      const listeners: (() => void)[] = [];
+      const res = { statusCode: status, setHeader: () => undefined, on: (ev: string, fn: () => void) => { if (ev === "finish") listeners.push(fn); return res; } };
+      const ctx = {
+        getHandler: () => login, getClass: () => Object,
+        switchToHttp: () => ({ getRequest: () => ({ ip: "198.51.100.4" }), getResponse: () => res }),
+      } as unknown as ExecutionContext;
+      expect(guard.canActivate(ctx)).toBe(true);
+      for (const fn of listeners) fn();
+      return ctx;
+    };
+    for (let i = 0; i < RATE_BUCKETS.auth.limit * 5; i += 1) finished(201);
+    for (let i = 0; i < RATE_BUCKETS.auth.limit; i += 1) finished(401);
+    expect(() => finished(201)).toThrow(HttpException);
+  });
+
   it("the costly and the guessable routes carry a budget", () => {
     const bucketOf = (cls: { prototype: object }, method: string): unknown =>
       Reflect.getMetadata(RATE_LIMIT_KEY, (cls.prototype as Record<string, object>)[method]!);
