@@ -261,12 +261,32 @@ describe("the medicine-alias pipeline (decision 0051)", () => {
       expect(controlledBy(PAN40)).toBeNull();
     });
 
-    it("the second-tap flag is for a DIFFERENT medicine with a near name, not the same brand's combination", async () => {
+    it("the second-tap flag is not raised by the same brand's combination", async () => {
       const ALLEGRA = row("m_all", "Allegra (fexofenadine) 120 mg oral tablet", { salts: ["fexofenadine"] });
       const ALLEGRA_M = row("m_allm", "Allegra M (fexofenadine and montelukast) 120 mg + 10 mg oral tablet", { salts: ["fexofenadine", "montelukast"], tier: 1 });
       const ALLERT = row("m_alt", "Allegro (almotriptan) 120 mg oral tablet", { salts: ["almotriptan"], tier: 0, similarity: 0.7 });
       expect(ran(await proposeAlias(fakes([ALLEGRA, ALLEGRA_M]).deps, "allegra 120"))).toMatchObject({ state: "suggestion", medicineId: "m_all", lasaGuard: false });
-      expect(ran(await proposeAlias(fakes([ALLEGRA, ALLEGRA_M, ALLERT]).deps, "allegra 120"))).toMatchObject({ state: "suggestion", medicineId: "m_all", lasaGuard: true });
+      // a near name of another molecule no longer raises it: only the look-alike list does (#613, next test)
+      expect(ran(await proposeAlias(fakes([ALLEGRA, ALLEGRA_M, ALLERT]).deps, "allegra 120"))).toMatchObject({ state: "suggestion", medicineId: "m_all", lasaGuard: false });
+    });
+
+    it("the second-tap flag fires ONLY for a pair on the look-alike list, never for a merely near brand name (#613)", async () => {
+      /* A near name of another molecule is everywhere among 72,000 brands ("dolo"/"dole", "allegra"/"allegro"):
+         a flag that fires on most answers teaches the desk to tap through it. The curated pair list is the signal. */
+      const ALLEGRA = row("m_all", "Allegra (fexofenadine) 120 mg oral tablet", { salts: ["fexofenadine"] });
+      const ALLEGRO = row("m_alt", "Allegro (almotriptan) 120 mg oral tablet", { salts: ["almotriptan"], tier: 0, similarity: 0.7 });
+      const DOLO = row("m_dolo", "Dolo (paracetamol) 650 mg oral tablet", { salts: ["paracetamol"] });
+      const DOLE = row("m_dole", "Dole (domperidone) 650 mg oral tablet", { salts: ["domperidone"], tier: 0, similarity: 0.7 });
+      expect(ran(await proposeAlias(fakes([ALLEGRA, ALLEGRO]).deps, "allegra 120"))).toMatchObject({ state: "suggestion", medicineId: "m_all", lasaGuard: false });
+      expect(ran(await proposeAlias(fakes([DOLO, DOLE], { pick: "c1" }).deps, "dolo 650"))).toMatchObject({ state: "suggestion", medicineId: "m_dolo", lasaGuard: false });
+      // the same near name, once the pair is on the list, does raise it
+      // in either order of the pair: the list stores name_a < name_b, so the target may be either side
+      for (const lasa of [[{ a: "fexofenadine", b: "almotriptan", reviewed: true }], [{ a: "almotriptan", b: "fexofenadine", reviewed: true }]] as LasaPair[][]) {
+        expect(ran(await proposeAlias(fakes([ALLEGRA, ALLEGRO], { lasa }).deps, "allegra 120")).lasaGuard).toBe(true);
+      }
+      // a pair on the list that names neither of the target's names does not raise it
+      const elsewhere: LasaPair[] = [{ a: "cefixime", b: "cefuroxime", reviewed: true }];
+      expect(ran(await proposeAlias(fakes([ALLEGRA, ALLEGRO], { lasa: elsewhere }).deps, "allegra 120")).lasaGuard).toBe(false);
     });
 
     it("a second product holding more than a fifth of the chooser's belief is a second target", async () => {

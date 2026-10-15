@@ -3,7 +3,7 @@ import { newId } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters } from "../../../test/helpers/opd";
 import { loadConfig } from "../../kernel/config";
-import { cdsAliases, cdsRxLines, events, formularyMedicineSalts, formularyMedicines, formularySalts, opdEncounters, opdPrescriptions, opdSuggestionEvents, opdTermMisses } from "../../kernel/db/schema";
+import { cdsAliases, cdsRxLines, events, formularyMedicineSalts, formularyMedicines, formularySalts, opdEncounters, opdLasaPairs, opdPrescriptions, opdSuggestionEvents, opdTermMisses } from "../../kernel/db/schema";
 import { InferenceUnavailable } from "../../kernel/inference/types";
 import type { ChoiceClient, PredicateClient } from "../../kernel/inference/types";
 import { aliasCandidatePool, normalizeDrugName, registerNicknameLookup, searchMedicines, searchMedicinesForPrescribing } from "../formulary";
@@ -156,9 +156,26 @@ describe("medicine nicknames — live", () => {
       if (firstNonPrefix !== -1) expect(digits.findIndex((h) => h.alias !== undefined)).toBeLessThan(firstNonPrefix);
     });
 
+    it("the second tap is asked only when the medicine is on the look-alike list TODAY, whatever was stored at proposal (#613)", async () => {
+      /* Rows proposed under the old near-name rule carry lasa_guard = true. The flag is read from the list now. */
+      const id = await nickname("panforty", "m_pan40", "trusted", { lasaGuard: true });
+      unregister = registerNicknameLookup(nicknameLookupFor(ON));
+      await db.delete(opdLasaPairs);
+      expect((await searchMedicinesForPrescribing(db, "panforty", 10))[0]?.alias).toEqual({ id, state: "trusted", lasaGuard: false });
+      await db.insert(opdLasaPairs).values({ id: "lasa_t1", nameA: "esomeprazole", nameB: "pantoprazole" });
+      expect((await searchMedicinesForPrescribing(db, "panforty", 10))[0]?.alias).toEqual({ id, state: "trusted", lasaGuard: true });
+      // a pair that is switched off does not count
+      await db.update(opdLasaPairs).set({ active: false }).where(eq(opdLasaPairs.id, "lasa_t1"));
+      expect((await guardedMedicineSearch(db, "panforty", 8))[0]).toMatchObject({ id: "m_pan40", alias: { id, state: "trusted", lasaGuard: false } });
+      // the medicine on the OTHER side of a pair (the list stores name_a < name_b) counts the same
+      await db.insert(opdLasaPairs).values({ id: "lasa_t3", nameA: "pantoprazole", nameB: "rabeprazole" });
+      expect((await searchMedicinesForPrescribing(db, "panforty", 10))[0]?.alias).toEqual({ id, state: "trusted", lasaGuard: true });
+    });
+
     it("a TRUSTED nickname is the first row, and the phone's search carries the same mark", async () => {
       await medicine("m_panx", "Panforty (pantoprazole) 80 mg oral tablet", "Oral tablet", ["s_panto"]);
       const id = await nickname("panforty", "m_pan40", "trusted", { lasaGuard: true });
+      await db.insert(opdLasaPairs).values({ id: "lasa_t2", nameA: "esomeprazole", nameB: "pantoprazole" });
       unregister = registerNicknameLookup(nicknameLookupFor(ON));
       const rows = await searchMedicinesForPrescribing(db, "panforty", 10);
       expect(rows.map((h) => h.id)).toEqual(["m_pan40", "m_panx"]);

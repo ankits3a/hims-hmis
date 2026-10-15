@@ -377,18 +377,17 @@ export function ruleCheck(input: RuleInput): { result: "pass" | AliasRuleCode; l
   /* Two models agreeing means two DIFFERENT models (decision 0051: "two independent models"). */
   if (input.chooserModel !== null && input.chooserModel === input.reviewerModel) return { result: "same_model", lasaGuard: false };
 
-  const head = headOf(target.name);
   /*
-    THE SECOND-TAP FLAG, NARROWED (owner's slice 2, 2026-10-08). It fired on 65 of the 103 answers of
-    the first evaluation. Measured: 28 through a curated look-alike pair, 47 through a near NAME — and
-    every one of those names was a different molecule ("dolo" beside "dole", "rantac" beside
-    "rabtac"); the national list holds 72,000 brand names and most short ones have such a neighbour.
-    What is NOT a look-alike risk is the same brand's own combination ("allegra" beside "allegra m"):
-    a near name counts only when it shares NO moiety with the target.
+    THE SECOND-TAP FLAG, NARROWED TWICE. Slice 2 (owner, 2026-10-08) measured it firing on 65 of the
+    103 answers of the first evaluation: 28 through a curated look-alike pair, 47 through a near NAME,
+    and every near name was a different molecule ("dolo" beside "dole", "rantac" beside "rabtac"). The
+    national list holds 72,000 brand names, so most short ones have such a neighbour. Slice 2 kept the
+    near-name branch for different molecules, and it still fired on most answers (#613). A warning that
+    fires everywhere trains the desk to tap through it. So the flag is the curated pair list
+    (`opd_lasa_pairs`) only. A misspelt term near another medicine is still REFUSED above
+    (`lookalike_conflict`); this flag is only for an exact name whose molecule is on the list.
   */
-  const shares = (r: AliasCandidateRow): boolean => r.salts.some((x) => target.salts.includes(x));
-  const lasaGuard = lasaPartner(input.lasa, callNames(target)) !== null
-    || others.some((r) => { const h = headOf(r.name); return !shares(r) && h !== head && editDistance(head, h) <= lookalikeDistance(head); });
+  const lasaGuard = lasaPartner(input.lasa, callNames(target)) !== null;
   return { result: "pass", lasaGuard };
 }
 

@@ -7,9 +7,9 @@ import { chooserFor, openAiDecisionsClient } from "../../kernel/inference/openai
 import { openAiKeyFromFile } from "../../kernel/inference/openai-speech";
 import { aliasCandidatePool, medicinesByIds, ndpsClassOfMoieties, saltsByIds } from "../formulary";
 import type { NicknameLookup } from "../formulary";
-import { isControlled, normaliseTerm, readTerm } from "./alias-pipeline";
+import { headOf, isControlled, normaliseTerm, readTerm } from "./alias-pipeline";
 import type { AliasDeps, AliasProposal } from "./alias-pipeline";
-import { lasaPairs } from "./consult-guards";
+import { lasaPairs, lasaPartner } from "./consult-guards";
 
 /**
  * ═══ THE ALIAS PIPELINE'S EDGES: ITS SETTINGS, ITS CATALOGUE READ, ITS ONE TABLE (decision 0051) ═══
@@ -72,7 +72,7 @@ export async function saveAliasProposal(db: Db, proposal: AliasProposal, now: Da
 }
 
 /** A medicine as the pipeline's "controlled" rule reads it, from the catalogue as it stands NOW. Null when it is gone or switched off. */
-export async function controlledToday(db: Db, medicineId: string): Promise<{ controlled: boolean; moietySet: string } | null> {
+export async function controlledToday(db: Db, medicineId: string): Promise<{ controlled: boolean; moietySet: string; callNames: string[] } | null> {
   const med = (await medicinesByIds(db, [medicineId])).get(medicineId);
   if (med === undefined || !med.active) return null;
   const salts = await saltsByIds(db, med.salts.map((x) => x.saltId));
@@ -81,6 +81,8 @@ export async function controlledToday(db: Db, medicineId: string): Promise<{ con
     // #613 — NDPS as the formulary reads it: a stored class, else the cited list, by moiety.
     controlled: isControlled({ name: med.brandName, scheduleFlag: med.scheduleFlag, salts: rows.map((r) => r.name.toLowerCase()), ndps: ndpsClassOfMoieties(rows.map((r) => ({ name: r.name, ndpsClass: r.ndpsClass }))) !== null }),
     moietySet: [...new Set(med.salts.map((x) => x.saltId))].sort().join("+"),
+    /* what the medicine is CALLED: its brand head and its moieties — what the look-alike list is matched on */
+    callNames: [headOf(med.brandName), ...rows.map((r) => r.name.toLowerCase())],
   };
 }
 
@@ -106,6 +108,12 @@ export function nicknameLookupFor(config: Pick<AppConfig, "aliases">): NicknameL
     if (row === undefined || row.medicineId === null) return null;
     const today = await controlledToday(db, row.medicineId);
     if (today === null || today.controlled) return null;
-    return { medicineId: row.medicineId, mark: { id: row.id, state: row.state === "trusted" ? "trusted" : "suggestion", lasaGuard: row.lasaGuard } };
+    /*
+      The second tap is read from the look-alike list TODAY (#613), not from the flag stored at proposal:
+      rows proposed under the old near-name rule carry a flag that fired on most answers, and a pair the
+      pharmacist adds or switches off later must count without re-proposing every nickname.
+    */
+    const lasaGuard = lasaPartner(await lasaPairs(db), today.callNames) !== null;
+    return { medicineId: row.medicineId, mark: { id: row.id, state: row.state === "trusted" ? "trusted" : "suggestion", lasaGuard } };
   };
 }
