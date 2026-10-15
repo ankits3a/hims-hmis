@@ -6,8 +6,8 @@ import { clearThrottle, recordThrottleFailure, throttleRetryAt } from "../../ker
 import { raiseNoticeIn } from "../../kernel/alerts/notices";
 import { withTx } from "../../kernel/db/client";
 import {
-  ER_OPEN_STATE_VALUES, erConsents, erCriticalAlerts, erDoses, erEpisodes, erMedIssues, erNotes, erProcedures, erSpecialtyCalls,
-  items, orderItems, orders, users,
+  ER_OPEN_STATE_VALUES, erConsents, erCriticalAlerts, erDoses, erEpisodes, erMedIssues, erMedReturns, erNotes, erProcedures,
+  erSpecialtyCalls, items, orderItems, orders, users,
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
@@ -16,13 +16,14 @@ import { duplicateWarnings, openCriticalsForEncounters } from "../lab";
 import { MaterialsError, fefoPick, findStoreByCode, postMovements } from "../materials";
 import { orderTests } from "../ordering";
 import { listAllergies } from "../patients";
-import { calloutList, escalationRecipients, orgDepartmentByCode, unitOnTake } from "../roster";
+import { isConsultant } from "../ipd";
+import { calloutList, escalationRecipients, escalationTarget, orgDepartmentByCode, unitOnTake } from "../roster";
 import { bandPerson } from "./bands";
-import { postErChargeIn } from "./charge-sink";
+import { postErChargeIn, reverseErIssueChargeIn } from "./charge-sink";
 import { lockEpisode, onceEr, provenanceOf, readEpisode, requireErPermission } from "./core";
 import { ErRefusal } from "./errors";
 import {
-  erCallAnswered, erCallRaised, erConsentRecorded, erDoseRecorded, erMedIssued, erNoteCosigned, erNoteRecorded, erOrderPlaced,
+  erCallAnswered, erCallRaised, erConsentRecorded, erDoseRecorded, erMedIssued, erMedReturned, erNoteCosigned, erNoteRecorded, erOrderPlaced,
   erProcedureRecorded, erStabilised, erVerbalSigned,
 } from "./events";
 import { ER_CARE } from "./names";
@@ -83,7 +84,11 @@ export async function recordErNote(db: Db, actor: Actor, raw: unknown, opts: Opt
   return onceEr(db, actor, "record_er_note", input.idempotencyKey, input, () => withTx(db, async (tx) => {
     const e = await openEpisode(tx, input.episodeId);
     // A resident's note is a draft until a senior co-signs it (spec §4.3); everyone else's is signed as written.
-    const draft = actor.type === "user" && await actorHoldsAnyRole(tx, actor.id, RESIDENT_ROLES);
+    // ER review 2 (2026-10-15, DECIDED): "resident" is IPD's consultant rule read the other way — a doctor who is not a
+    // consultant (not on the doctor master, a resident grade on the roster, or a resident role) writes drafts. The seed
+    // gives no `resident` role, so a role check alone never fired.
+    const draft = actor.type === "user" && (await actorHoldsAnyRole(tx, actor.id, RESIDENT_ROLES)
+      || (await isActiveDoctor(tx, actor.id) && !(await isConsultant(tx, actor.id, at))));
     const id = newId();
     await tx.insert(erNotes).values({
       id, episodeId: e.id, kind: input.kind, text: input.text, authorId: actor.id, status: draft ? "draft" : "signed",
@@ -106,7 +111,7 @@ export async function cosignErNote(db: Db, actor: Actor, raw: unknown, opts: Opt
     if (n === undefined) throw new ErRefusal("note_not_found");
     if (n.status === "signed") throw new ErRefusal("note_signed");
     if (n.authorId === actor.id) throw new ErRefusal("cosign_own_note");
-    if (!(await isActiveDoctor(tx, actor.id)) || await actorHoldsAnyRole(tx, actor.id, RESIDENT_ROLES)) {
+    if (!(await isActiveDoctor(tx, actor.id)) || await actorHoldsAnyRole(tx, actor.id, RESIDENT_ROLES) || !(await isConsultant(tx, actor.id, at))) {
       throw new ErRefusal("cosigner_not_senior");
     }
     await tx.update(erNotes).set({ status: "signed", cosignedBy: actor.id, cosignedAt: at, addendum: input.addendum ?? null })
@@ -303,6 +308,8 @@ export async function giveErDose(db: Db, actor: Actor, raw: unknown, opts: Opts 
       const e = await openEpisode(tx, issue.episodeId);
       const done = (await tx.select({ id: erDoses.id }).from(erDoses).where(eq(erDoses.issueId, issue.id)))[0];
       if (done !== undefined) throw new ErRefusal("dose_already_recorded", { doseId: done.id });
+      const back = (await tx.select({ id: erMedReturns.id }).from(erMedReturns).where(eq(erMedReturns.issueId, issue.id)))[0];
+      if (back !== undefined) throw new ErRefusal("issue_returned", { returnId: back.id });
       const id = newId();
       await tx.insert(erDoses).values({
         id, issueId: issue.id, outcome: input.outcome, reason: input.reason ?? null, secondCheckBy: checker, recordedBy: actor.id, recordedAt: at,
@@ -312,6 +319,57 @@ export async function giveErDose(db: Db, actor: Actor, raw: unknown, opts: Opts 
         actor, correlationId: e.id, patientId: e.patientId, occurredAt: at,
       }));
       return { doseId: id, outcome: input.outcome, at: at.toISOString(), secondCheckedBy: checker };
+    });
+  }, at);
+}
+
+/**
+ * ER review 2 (2026-10-15, DECIDED) — `return_er_med`. Money default (MAP §3): an UNOPENED unit goes back to ER-SAT on
+ * the issue's own batches and the issue's charge line is REVERSED; an OPENED unit is WASTAGE — no stock movement (the
+ * issue took it) and the charge STANDS unless the bill desk waives it (lane 6). A high-alert or controlled (narcotic
+ * storage class) drug's wastage names a witness who confirms with username and PIN. Once per issue; never after a dose
+ * was given; the family's own medicine has nothing to return. Locks: the episode, then the issue row.
+ */
+export async function returnErMed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"return_er_med">> {
+  const input: Input<"return_er_med"> = ER_INTENTS.return_er_med.input.parse(raw);
+  await requireErPermission(db, actor, ER_CARE);
+  const at = opts.now ?? new Date();
+  const hashed = input.witness === undefined ? input : { ...input, witness: { username: input.witness.username } };
+  return onceEr(db, actor, "return_er_med", input.idempotencyKey, hashed, async () => {
+    const issue0 = (await db.select().from(erMedIssues).where(eq(erMedIssues.id, input.issueId)))[0];
+    if (issue0 === undefined) throw new ErRefusal("issue_not_found");
+    if (issue0.itemId === null) throw new ErRefusal("nothing_to_return");
+    const item = (await db.select().from(items).where(eq(items.id, issue0.itemId)))[0];
+    const witnessNeeded = input.condition === "opened" && (issue0.highAlert || item?.storageClass === "narcotic");
+    if (witnessNeeded && input.witness === undefined) throw new ErRefusal("wastage_needs_witness");
+    const witness = input.witness === undefined ? null : await verifySecondPerson(db, actor, input.witness.username, input.witness.pin, at);
+    return withTx(db, async (tx) => {
+      const e = await openEpisode(tx, issue0.episodeId);
+      const issue = (await tx.select().from(erMedIssues).where(eq(erMedIssues.id, issue0.id)).for("update"))[0]!;
+      const dose = (await tx.select({ outcome: erDoses.outcome }).from(erDoses).where(eq(erDoses.issueId, issue.id)))[0];
+      if (dose?.outcome === "given") throw new ErRefusal("dose_given");
+      const prior = (await tx.select({ id: erMedReturns.id }).from(erMedReturns).where(eq(erMedReturns.issueId, issue.id)))[0];
+      if (prior !== undefined) throw new ErRefusal("already_returned", { returnId: prior.id });
+      const id = newId();
+      const kind = input.condition === "unopened" ? "returned" as const : "wasted" as const;
+      if (kind === "returned") {
+        const batches = (issue.batches ?? []) as { batchId: string; qty: number }[];
+        if (issue.storeId !== null && batches.length > 0) {
+          await postMovements(tx, actor, batches.map((b) => ({
+            resourceId: issue.storeId!, batchId: b.batchId, qtyDelta: b.qty, reason: "return" as const, refType: "er_issue", refId: issue.id,
+            patientId: e.patientId, encounterId: e.id, occurredAt: at,
+          })));
+        }
+        await reverseErIssueChargeIn(tx, issue.id, at, `returned unopened: ${input.reason}`);
+      }
+      await tx.insert(erMedReturns).values({
+        id, issueId: issue.id, episodeId: e.id, kind, units: issue.units, reason: input.reason, witnessedBy: witness, recordedBy: actor.id, recordedAt: at,
+      });
+      await appendEvent(tx, erMedReturned.make({
+        payload: { episodeId: e.id, issueId: issue.id, returnId: id, kind, units: issue.units, provenance: provenanceOf(actor) },
+        actor, correlationId: e.id, patientId: e.patientId, occurredAt: at,
+      }));
+      return { returnId: id, kind, units: issue.units, witnessedBy: witness };
     });
   }, at);
 }
@@ -372,27 +430,43 @@ export async function recordConsent(db: Db, actor: Actor, raw: unknown, opts: Op
   if ((input.signedBy === "guardian" || input.signedBy === "representative") && (input.signerName === undefined || input.relation === undefined)) {
     throw new ErRefusal("consent_witness_needed", { signer: "name and relation" });
   }
-  if (input.signedBy === "emergency" && input.secondDoctorId === undefined) throw new ErRefusal("emergency_needs_second_doctor");
-  return onceEr(db, actor, "record_consent", input.idempotencyKey, input, () => withTx(db, async (tx) => {
+  if (input.signedBy === "emergency" && input.secondDoctor === undefined) throw new ErRefusal("emergency_needs_second_doctor");
+  // The second doctor's PIN never reaches the idempotency store's request hash.
+  const hashed = input.secondDoctor === undefined ? input : { ...input, secondDoctor: { username: input.secondDoctor.username } };
+  return onceEr(db, actor, "record_consent", input.idempotencyKey, hashed, async () => {
+    // ER review 2 (2026-10-15, DECIDED): the second doctor CONFIRMS — their own username and PIN (the high-alert check).
+    let secondDoctorId: string | null = null;
+    if (input.signedBy === "emergency") {
+      try {
+        secondDoctorId = await verifySecondPerson(db, actor, input.secondDoctor!.username, input.secondDoctor!.pin, at);
+      } catch (err) {
+        if (err instanceof ErRefusal && err.code === "second_checker_same") throw new ErRefusal("emergency_needs_second_doctor", { same: true });
+        if (err instanceof ErRefusal && err.code === "second_check_failed" && (err.detail as { role?: string } | undefined)?.role !== undefined) {
+          throw new ErRefusal("not_a_doctor");
+        }
+        throw err;
+      }
+    }
+    return withTx(db, async (tx) => {
     const e = await openEpisode(tx, input.episodeId);
     if (input.signedBy === "emergency") {
       // The treating doctor's word with a second doctor's concurrence: both must be doctors, and different people.
       await requireDoctor(tx, actor.id);
-      await requireDoctor(tx, input.secondDoctorId!);
-      if (input.secondDoctorId === actor.id) throw new ErRefusal("emergency_needs_second_doctor", { same: true });
+      await requireDoctor(tx, secondDoctorId!);
     }
     const id = newId();
     await tx.insert(erConsents).values({
       id, episodeId: e.id, kind: input.kind, about: input.about, signedBy: input.signedBy, signerName: input.signerName ?? null,
       relation: input.relation ?? null, method: input.method, witnessName: input.witnessName ?? null,
-      secondDoctorId: input.signedBy === "emergency" ? input.secondDoctorId ?? null : null, language: input.language ?? null, recordedBy: actor.id, recordedAt: at,
+      secondDoctorId, language: input.language ?? null, recordedBy: actor.id, recordedAt: at,
     });
     await appendEvent(tx, erConsentRecorded.make({
       payload: { episodeId: e.id, consentId: id, kind: input.kind, signedBy: input.signedBy, provenance: provenanceOf(actor) },
       actor, correlationId: e.id, patientId: e.patientId, occurredAt: at,
     }));
     return { consentId: id, at: at.toISOString() };
-  }), at);
+    });
+  }, at);
 }
 
 // ═══════════════════════════════════════════ specialty calls ═══════════════════════════════════════════
@@ -447,9 +521,11 @@ export async function answerCall(db: Db, actor: Actor, raw: unknown, opts: Opts 
     if (c.seenAt !== null) throw new ErRefusal("call_closed");
     await requireDoctor(tx, actor.id);
     const answeredAt = c.answeredAt ?? at;
+    // ER review 2: the answering doctor's words are kept (the first note stands; a later step keeps it unless it brings one).
+    const note = input.note ?? c.answerNote ?? null;
     const set = input.step === "answered"
-      ? { answeredAt, answeredBy: c.answeredBy ?? actor.id }
-      : { answeredAt, answeredBy: c.answeredBy ?? actor.id, seenAt: at, seenBy: actor.id };
+      ? { answeredAt, answeredBy: c.answeredBy ?? actor.id, answerNote: note }
+      : { answeredAt, answeredBy: c.answeredBy ?? actor.id, seenAt: at, seenBy: actor.id, answerNote: note };
     await tx.update(erSpecialtyCalls).set(set).where(eq(erSpecialtyCalls.id, c.id));
     const e = await readEpisode(tx, c.episodeId);
     await appendEvent(tx, erCallAnswered.make({
@@ -516,8 +592,15 @@ export async function sweepErCareClocks(db: Db, now: Date): Promise<{ criticals:
       const row = (await tx.select().from(erCriticalAlerts).where(eq(erCriticalAlerts.callId, c.callId)).for("update"))[0];
       const body = `${c.analyteCode} ${c.value}${c.unit === null ? "" : ` ${c.unit}`}`;
       if (row === undefined) {
-        const to = e.doctorId !== null ? [e.doctorId]
-          : (await escalationRecipients(tx, "er_critical", { fallbackRoleKey: "duty_manager" }, now)).userIds;
+        // ER review 2 (2026-10-15, DECIDED, spec §4.3): the doctor of record AND the ER charge doctor — the `er_critical`
+        // roster target's people when one is configured — at the FIRST notice; with neither, the ladder's fallback.
+        // Nobody rostered on the target's position: the target row's OWN fallback role (the charge doctor's), not the
+        // climb's duty manager.
+        const targetRow = await escalationTarget(tx, "er_critical");
+        const target = targetRow === undefined ? []
+          : (await escalationRecipients(tx, "er_critical", { fallbackRoleKey: targetRow.fallbackRoleKey }, now)).userIds;
+        const to = e.doctorId !== null ? [...new Set([e.doctorId, ...target])]
+          : target.length > 0 ? target : (await escalationRecipients(tx, "er_critical", { fallbackRoleKey: "duty_manager" }, now)).userIds;
         for (const userId of to) {
           await raiseNoticeIn(tx, {
             userId, kind: "er.critical_result", title: `Critical result · ${e.episodeNo}`, body, refType: "er_episode", refId: e.id,

@@ -153,4 +153,22 @@ CREATE INDEX "er_notes_episode_idx" ON "er_notes" USING btree ("episode_id","rec
 CREATE INDEX "er_procedures_episode_idx" ON "er_procedures" USING btree ("episode_id","performed_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "er_specialty_calls_open_ux" ON "er_specialty_calls" USING btree ("episode_id","department_id") WHERE "er_specialty_calls"."seen_at" is null;--> statement-breakpoint
 CREATE INDEX "er_specialty_calls_unanswered_idx" ON "er_specialty_calls" USING btree ("called_at") WHERE "er_specialty_calls"."answered_at" is null and "er_specialty_calls"."climbed_at" is null;--> statement-breakpoint
-ALTER TABLE "roster_escalation_targets" ADD CONSTRAINT "roster_escalation_targets_kind_ck" CHECK ("roster_escalation_targets"."alert_kind" in ('escalation.triggered', 'notification.failed', 'ops.mode_changed', 'imaging.critical_overdue', 'imaging.report_unread', 'workflow.timer_rung', 'er_retriage', 'er_call', 'er_critical'));
+ALTER TABLE "roster_escalation_targets" ADD CONSTRAINT "roster_escalation_targets_kind_ck" CHECK ("roster_escalation_targets"."alert_kind" in ('escalation.triggered', 'notification.failed', 'ops.mode_changed', 'imaging.critical_overdue', 'imaging.report_unread', 'workflow.timer_rung', 'er_retriage', 'er_call', 'er_critical'));--> statement-breakpoint
+CREATE TABLE "er_med_returns" (
+	"id" text PRIMARY KEY NOT NULL,
+	"issue_id" text NOT NULL,
+	"episode_id" text NOT NULL,
+	"kind" text NOT NULL,
+	"units" integer NOT NULL,
+	"reason" text NOT NULL,
+	"witnessed_by" text,
+	"recorded_by" text NOT NULL,
+	"recorded_at" timestamp with time zone NOT NULL,
+	CONSTRAINT "er_med_returns_kind_ck" CHECK ("er_med_returns"."kind" in ('returned', 'wasted')),
+	CONSTRAINT "er_med_returns_units_ck" CHECK ("er_med_returns"."units" > 0)
+);
+--> statement-breakpoint
+ALTER TABLE "er_specialty_calls" ADD COLUMN "answer_note" text;--> statement-breakpoint
+ALTER TABLE "er_med_returns" ADD CONSTRAINT "er_med_returns_issue_id_er_med_issues_id_fk" FOREIGN KEY ("issue_id") REFERENCES "public"."er_med_issues"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "er_med_returns" ADD CONSTRAINT "er_med_returns_episode_id_er_episodes_id_fk" FOREIGN KEY ("episode_id") REFERENCES "public"."er_episodes"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "er_med_returns_issue_ux" ON "er_med_returns" USING btree ("issue_id");

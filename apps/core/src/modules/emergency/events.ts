@@ -73,6 +73,10 @@ export const erConsentRecorded = defineEvent("er.consent_recorded", MODULE, z.ob
 export const erCallRaised = defineEvent("er.call_raised", MODULE, z.object({
   episodeId: id, callId: id, departmentCode: z.string(), urgency: z.string(), takeTeamId: id.nullable(), provenance: ErProvenanceSchema,
 }));
+/** ER review 2: an issue returned to stock (unopened) or recorded as wastage (opened). Ids and words only. */
+export const erMedReturned = defineEvent("er.med_returned", MODULE, z.object({
+  episodeId: id, issueId: id, returnId: id, kind: z.enum(["returned", "wasted"]), units: z.number().int(), provenance: ErProvenanceSchema,
+}));
 export const erCallAnswered = defineEvent("er.call_answered", MODULE, z.object({ episodeId: id, callId: id, step: z.string(), minutes: z.number().int(), provenance: ErProvenanceSchema }));
 export const erStabilised = defineEvent("er.stabilised", MODULE, z.object({ episodeId: id, stabilisedAt: z.string(), provenance: ErProvenanceSchema }));
 
@@ -99,7 +103,7 @@ export const ER_BOARD_EVENT_NAMES: readonly string[] = [
   erPreAlerted.name, erPreAlertCancelled.name, erArrived.name, erBroughtDead.name, erBandPrinted.name, erBandVoided.name,
   erIdentityLinked.name,
   erTriaged.name, erRetriaged.name, erVitalsRecorded.name, erPlaced.name, erMoved.name, erDoctorAssigned.name,
-  erNoteRecorded.name, erNoteCosigned.name, erOrderPlaced.name, erMedIssued.name, erDoseRecorded.name, erVerbalSigned.name,
+  erNoteRecorded.name, erNoteCosigned.name, erOrderPlaced.name, erMedIssued.name, erDoseRecorded.name, erMedReturned.name, erVerbalSigned.name,
   erProcedureRecorded.name, erConsentRecorded.name, erCallRaised.name, erCallAnswered.name, erStabilised.name,
   // ER review (2026-10-15): NOT `er.mlc_opened` — the gateway forwards the whole payload (MLC number, category) to every
   // board subscriber; the board shows the MLC mark on its next read.

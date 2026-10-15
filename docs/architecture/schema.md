@@ -115,7 +115,7 @@ flowchart LR
 | `desk.ts` | kernel | `user_day_facts` |
 | `diet.ts` | module diet | `diet_consults`, `diet_meal_lines`, `diet_meal_lists`, `diet_meal_rounds`, `diet_npo`, `diet_orders` |
 | `documents.ts` | kernel | `patient_documents` |
-| `emergency.ts` | module emergency | `er_bands`, `er_charge_lines`, `er_consents`, `er_critical_alerts`, `er_doses`, `er_episodes`, `er_med_issues`, `er_mlc_addenda`, `er_mlc_custody`, `er_mlc_intimations`, `er_mlc_obligations`, `er_mlcs`, `er_notes`, `er_pre_alerts`, `er_procedures`, `er_specialty_calls`, `er_triage_entries` |
+| `emergency.ts` | module emergency | `er_bands`, `er_charge_lines`, `er_consents`, `er_critical_alerts`, `er_doses`, `er_episodes`, `er_med_issues`, `er_med_returns`, `er_mlc_addenda`, `er_mlc_custody`, `er_mlc_intimations`, `er_mlc_obligations`, `er_mlcs`, `er_notes`, `er_pre_alerts`, `er_procedures`, `er_specialty_calls`, `er_triage_entries` |
 | `episodes.ts` | kernel | `episode_series` |
 | `eventCursors.ts` | kernel | `event_cursors` |
 | `eventIdempotency.ts` | kernel | `event_idempotency` |

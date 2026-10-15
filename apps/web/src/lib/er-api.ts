@@ -37,6 +37,7 @@ const ER_ROUTES = {
   items: "/er/items",
   issue: "/er/meds/issue",
   dose: "/er/meds/dose",
+  returnMed: "/er/meds/return",
   signVerbal: "/er/meds/sign-verbal",
   procedures: "/er/procedures",
   consents: "/er/consents",
@@ -156,6 +157,8 @@ export type ErOrderOut = { labOrderId: string | null; imagingOrderId: string | n
 export const orderApi = (body: Record<string, unknown>) => post<ErOrderOut>(ER_ROUTES.orders, body);
 export const issueApi = (body: Record<string, unknown>) => post<{ issueId: string; highAlert: boolean; labelLines: string[] }>(ER_ROUTES.issue, body);
 export const doseApi = (body: Record<string, unknown>) => post<{ outcome: string }>(ER_ROUTES.dose, body);
+/** ER review 2 — a medicine not given: back to stock unopened, or wastage (a witness for high-alert / controlled). */
+export const returnMedApi = (body: Record<string, unknown>) => post<{ kind: "returned" | "wasted" }>(ER_ROUTES.returnMed, body);
 export const signVerbalApi = (issueId: string) => post<{ signedAt: string }>(ER_ROUTES.signVerbal, { issueId });
 export const procedureApi = (body: Record<string, unknown>) => post<{ procedureId: string }>(ER_ROUTES.procedures, body);
 export const consentApi = (body: Record<string, unknown>) => post<{ consentId: string }>(ER_ROUTES.consents, body);
