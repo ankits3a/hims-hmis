@@ -24,7 +24,7 @@ import {
   labReportAmended, labReportPrintBlocked, labReportPrinted, labReportPublished,
   labReportReleasedUnpaid,
 } from "./events";
-import type { Actor } from "@hmis/contracts";
+import type { Actor, AstRow } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { DeliveryVerdict } from "./interlock";
 
@@ -79,6 +79,11 @@ export type ReportAnalyteLine = {
   verifiedAt: string | null;
   /** DD11 — a night-mode release the pathologist has not yet reviewed prints as provisional. */
   pathologistReviewPending: boolean;
+  /**
+   * #703 — a culture's antibiotic sensitivity table (MIC_AST line), printed under the line. Optional: a snapshot
+   * published before #703 has no key, and every other line carries null.
+   */
+  ast?: AstRow[] | null;
 };
 
 export type ReportPanel = {
@@ -289,6 +294,7 @@ async function buildSnapshot(
         deltaFlag: value.deltaFlag,
         verifiedAt: value.verifiedAt?.toISOString() ?? null,
         pathologistReviewPending: value.pathologistReviewPending,
+        ast: value.ast ?? null,
       });
     }
     panels.push({

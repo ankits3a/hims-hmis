@@ -1,5 +1,5 @@
 import { and, desc, eq, gte, inArray, isNotNull, lte, ne, sql } from "drizzle-orm";
-import { newId } from "@hmis/contracts";
+import { astProblemText, astSummary, cleanAstRows, isCultureCode, newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import {
   labAnalytes, labCriticalCalls, labItems, labOrderables, labResults, labSpecimenItems,
@@ -17,7 +17,7 @@ import {
   labNotifiableFlagged, labResultChosen, labResultCriticalFlagged, labResultDeltaFlagged,
   labResultEntered, labTubeSwapSuspected,
 } from "./events";
-import type { Actor } from "@hmis/contracts";
+import type { Actor, AstDraftRow, AstRow } from "@hmis/contracts";
 import { withTx } from "../../kernel/db/client";
 import type { Tx } from "../../kernel/db/client";
 import type { Db } from "../../kernel/db/client";
@@ -75,6 +75,9 @@ export const LAB_RESULTS_INTERFACE = "lab.results.interface";
  * "manual_from_printout"])`, so a human keying a number still cannot label it machine-produced.
  * `interface` is reachable only from the ingest route the bridge posts to.
  */
+/** #703 — the culture analyte that carries the antibiotic sensitivity table in Full lab mode. */
+export const AST_ANALYTE_CODE = "MIC_AST";
+
 export type LabEntryMode = "manual" | "manual_from_printout" | "interface";
 
 export type EnterResultInput = {
@@ -103,6 +106,11 @@ export type EnterResultInput = {
   /** DD13 / E40 — a rerun's result supersedes the row it replaces. Set by `requestRerun`'s caller. */
   supersedesResultId?: string | null;
   rerunOf?: string | null;
+  /**
+   * #703 — the antibiotic sensitivity table, on a culture's (`CS_*`) `MIC_AST` line only. Blank rows drop; the stored
+   * text value becomes the table's summary (`astSummary`) whatever `value` says.
+   */
+  ast?: AstDraftRow[];
 };
 
 export type EnteredResult = {
@@ -412,6 +420,18 @@ async function enterResultInTx(
         "(DD3) and keying it by hand would put a typed number where an arithmetic one belongs",
     );
   }
+  /** #703 — the sensitivity table: a culture's MIC_AST line only, at least one filled row, each row valid. */
+  let ast: AstRow[] | null = null;
+  if (input.ast !== undefined) {
+    if (analyte.code !== AST_ANALYTE_CODE || !isCultureCode(ctx.orderable.code)) {
+      throw new LabError("catalogue_invalid", `${ctx.orderable.code} ${analyte.code}: an antibiotic table belongs only on a culture's ${AST_ANALYTE_CODE} line`);
+    }
+    const clean = cleanAstRows(input.ast);
+    if (!clean.ok) throw new LabError("catalogue_invalid", `${ctx.orderable.code}: ${astProblemText(clean.problem)}`, { row: clean.problem.index });
+    if (clean.rows.length === 0) throw new LabError("catalogue_invalid", `${ctx.orderable.code}: the antibiotic table has no filled row`);
+    ast = clean.rows;
+    input = { ...input, value: astSummary(ast) };
+  }
 
   /**
    * ═══ 17d T1 / D2 — IS THIS TEST ABOUT THIS PATIENT AT ALL? ═══
@@ -595,7 +615,7 @@ async function enterResultInTx(
     );
   }
   const primary = await writeResult(tx, actor, ctx, {
-    analyte, value: input.value, numeric, unit: input.unit ?? analyte.unit,
+    analyte, value: input.value, numeric, unit: input.unit ?? analyte.unit, ast,
     entryMode: input.entryMode, analyzerId: input.analyzerId ?? null,
     remarks: input.remarks ?? null, absurdOverriddenBy, impossibleOverriddenBy,
     supersedesResultId: machineProduced
@@ -662,6 +682,8 @@ type WriteResultInput = {
   analyte: typeof labAnalytes.$inferSelect;
   value: string;
   numeric: number | null;
+  /** #703 — the culture's sensitivity table (MIC_AST only); absent or null on every other row. */
+  ast?: AstRow[] | null;
   unit: string | null;
   entryMode: LabEntryMode;
   remarks: string | null;
@@ -745,6 +767,7 @@ async function writeResult(
     valueNumeric: input.numeric === null ? null : input.value.trim(),
     valueText: input.numeric === null && analyte.resultType !== "coded" ? input.value : null,
     valueCoded: input.numeric === null && analyte.resultType === "coded" ? input.value : null,
+    ast: input.ast ?? null,
     unit: input.unit,
     analyzerId: input.analyzerId ?? null,
     flag,
