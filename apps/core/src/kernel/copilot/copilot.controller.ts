@@ -10,6 +10,7 @@ import { openAiCompatibleClient } from "../inference/openai-compatible";
 import { chooserFor } from "../inference/openai-decisions";
 import { collectCopilotTools, helpIntentsFor, permissionCheckFor, runTool } from "./catalog";
 import { COPILOT_EXTRA_TOOLS, MAX_PROPOSALS, confirmProposal, issueProposal, proposalKey, proposalSchema } from "./act";
+import type { CopilotAskOutcome } from "../db/schema";
 import type { ConfirmOutcome, Proposal } from "./act";
 import { kernelCopilotTools } from "./kernel-tools";
 import { IdentifierLeak, rehydrate } from "./mask";
@@ -354,6 +355,7 @@ export class CopilotController {
     const parsed = confirmBody.safeParse(raw);
     if (!parsed.success) throw new BadRequestException("invalid proposal");
     const now = new Date();
+    const started = Date.now();
     const gate = await readCopilotGate(this.db, now);
     const res = await confirmProposal({
       db: this.db, key: this.proposalKey, tools: this.tools, halts: gate.halts, now,
@@ -361,6 +363,17 @@ export class CopilotController {
     }, actor, parsed.data.proposal);
     // The outcome and the tool only: never the args, the subject or the signature.
     if (res.outcome !== "done") this.logger.log(`copilot confirm refused: ${res.outcome} (tool ${parsed.data.proposal.tool.slice(0, 64)})`);
+    /*
+      #686 (2) — the tap is a ledger row too, refusals included, so /copilot/health counts them. The
+      tool name as the intent and the answer key only: never the args, the subject or the signature,
+      and no question text (there is none). Awaited, like an ask's row: an outcome the ledger could not
+      record is not sent.
+    */
+    await recordAsk(this.db, {
+      actor, outcome: `confirm${res.outcome[0]!.toUpperCase()}${res.outcome.slice(1)}` as CopilotAskOutcome,
+      route: "none", intent: parsed.data.proposal.tool.slice(0, 64), answerKey: res.answer.key,
+      ms: Date.now() - started, maskedQuestion: null, screen: null,
+    });
     return { outcome: res.outcome, answer: res.answer };
   }
 
