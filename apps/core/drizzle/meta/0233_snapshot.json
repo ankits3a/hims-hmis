@@ -68892,6 +68892,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "accident_ref": {
+          "name": "accident_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accident_at": {
+          "name": "accident_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "event_account_id": {
           "name": "event_account_id",
           "type": "text",

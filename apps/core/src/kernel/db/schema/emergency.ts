@@ -98,6 +98,10 @@ export const erEpisodes = pgTable(
     payerRef: text("payer_ref"),
     coverCapPaise: integer("cover_cap_paise"),
     coverUntil: timestamp("cover_until", { withTimezone: true }),
+    /** ER review 3 (2026-10-15): the accident this road-accident cover is for — a person's episodes of ONE accident share
+     *  its ₹1.5 lakh / 7-day cap. */
+    accidentRef: text("accident_ref"),
+    accidentAt: timestamp("accident_at", { withTimezone: true }),
     eventAccountId: text("event_account_id"),
     /* ═══ ER lane 5 (#812) — the disposition, the boarding admission, the last-seen time of LWBS / abscond ═══ */
     disposition: text("disposition"),

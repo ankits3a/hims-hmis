@@ -97,6 +97,7 @@ export const ER_REFUSALS = {
   payer_pays_nothing: { rule: "This patient pays nothing under the payer recorded.", fix: "Check payer" },
   lines_unpriced: { rule: "Some ER lines have no price yet.", fix: "Price lines" },
   tender_short: { rule: "The money taken does not cover the patient's share; record the rest as dues.", fix: "Record dues" },
+  undertaking_invalid: { rule: "The undertaking must be one of this patient's own active documents.", fix: "File the undertaking" },
   undertaking_needed: { rule: "Dues are recorded against a signed undertaking.", fix: "Add undertaking" },
   patient_payable_forbidden: { rule: "This patient is treated free by law: nothing is payable.", fix: "Settle as nothing payable" },
   rolled_to_ip: { rule: "The ER lines moved to the inpatient bill at admission; the IP bill settles them.", fix: "Open the IP bill" },

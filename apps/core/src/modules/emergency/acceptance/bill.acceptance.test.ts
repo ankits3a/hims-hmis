@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { ROLE_MODEL } from "../../../../scripts/seed-roles";
 import { istDayString } from "../../../kernel/approvals/cumulative";
-import { erBills, erChargeLines, invoices, ipdChargeLines, orders } from "../../../kernel/db/schema";
+import { erBills, erChargeLines, invoices, ipdChargeLines, orders, patientDocuments } from "../../../kernel/db/schema";
+import { newId } from "@hmis/contracts";
 import { admit, planAdmission, takeDeposit } from "../../ipd";
 import { serviceIdForLabCode } from "../../../../scripts/seed-lab-catalogue";
 import { setupTestDb, truncateAll } from "../../../../test/helpers/db";
@@ -130,9 +131,15 @@ describe("ER lane 6 er-bill — done means", () => {
     await expect(dischargeFromEr(db, w.erDoctor, { idempotencyKey: key(), episodeId: a.episodeId, reason: "Better", summary: SUMMARY })).resolves.toMatchObject({ state: "departed" });
     await expect(settleErBill(db, w.billDesk, { idempotencyKey: key(), episodeId: a.episodeId, settlement: "dues", tenders: [cash(20_000)] }))
       .rejects.toMatchObject({ code: "undertaking_needed" });
+    // ER review 3 (2026-10-15, DECIDED, IPD's rule): the undertaking is one of the patient's own filed documents.
+    const documentId = newId();
+    await db.insert(patientDocuments).values({
+      id: documentId, patientId: a.patientId, kind: "outside_report", mimeType: "image/jpeg", byteSize: 10,
+      storageKey: `2026/10/${documentId}.jpg`, sha256: "0".repeat(64), capturedBy: w.billDesk.id,
+    });
     const s = await settleErBill(db, w.billDesk, {
       idempotencyKey: key(), episodeId: a.episodeId, settlement: "dues", tenders: [cash(20_000)],
-      undertaking: { signerName: "Husband", relation: "husband", documentRef: "UT-ER-0001" },
+      undertaking: { signerName: "Husband", relation: "husband", documentRef: "UT-ER-0001", documentId },
     });
     expect(s).toMatchObject({ patientPaise: 70_000, paidPaise: 20_000, duesPaise: 50_000 });
     const [inv] = await db.select().from(invoices).where(eq(invoices.patientId, a.patientId));

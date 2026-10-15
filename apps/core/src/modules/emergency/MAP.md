@@ -207,6 +207,12 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   taken (materials' `packPriceOf` + `saleAmountPaise`), never MRP × base units. At roll-over every ER advance becomes a
   deposit of the admission (IPD `carryErAdvanceIn`, once per receipt) and an issue still without a price rolls over on
   the `ER-DRUG` carrier (the IP desk's exception); an admitted episode takes no further ER advance (`rolled_to_ip`).
+- ER review 3, part 2 (2026-10-15, DECIDED): an advance beyond the patient's share at settlement (BNSS at ₹0, a scheme
+  that pays all) becomes an `advance_refund` request on the refund desk in the settlement's transaction. Road-accident
+  cover is per ACCIDENT (`er_episodes.accident_ref` / `accident_at`, default the scheme reference): a person's episodes of
+  one accident share the ₹1.5 lakh cap (what settled episodes drew is subtracted) and one 7-day window (the earliest
+  accident time). The window judges each line by the episode time it covers (observation by its 6-hour blocks). A future
+  accident time is refused. A dues undertaking is one of the patient's own active documents (`undertaking_invalid`).
 
 ## 4. Traps
 - `registerPatient` takes a `Tx` and the band reads the new patient in that same `tx` (`bandPerson(tx, …)`); reading it

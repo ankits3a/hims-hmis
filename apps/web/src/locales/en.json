@@ -19473,6 +19473,10 @@
         "rule": "Not enough taken; record dues.",
         "fix": "Record dues"
       },
+      "undertaking_invalid": {
+        "rule": "The undertaking must be this patient's own active document.",
+        "fix": "File the undertaking"
+      },
       "undertaking_needed": {
         "rule": "Dues need a signed undertaking.",
         "fix": "Add undertaking"

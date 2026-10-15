@@ -9,7 +9,7 @@ import type { ErBill, ErBillDesk } from "@hmis/contracts";
 const json = (b: unknown, status = 200): Response => new Response(JSON.stringify(b), { status, headers: { "Content-Type": "application/json" } });
 const EP = "01J00000000000000000000B01";
 const bill = (over: Partial<ErBill> = {}): ErBill => ({
-  episodeId: EP, episodeNo: "ER26-000301", patientLabel: "Asha Devi", uhid: "HMS0000301", state: "departed", outcome: "discharged", stabilised: true,
+  episodeId: EP, episodeNo: "ER26-000301", patientId: "01J0000000000000000000PT01", patientLabel: "Asha Devi", uhid: "HMS0000301", state: "departed", outcome: "discharged", stabilised: true,
   payer: "self", coverCapPaise: null, coverUntil: null,
   lines: [
     { lineId: `er-registration:${EP}`, source: "er.registration", name: "ER registration", qty: 1, amountPaise: 20_000, status: "posted", postedAt: new Date().toISOString() },

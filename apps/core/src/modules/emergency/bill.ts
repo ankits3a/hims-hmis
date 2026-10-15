@@ -5,17 +5,17 @@ import {
 } from "@hmis/contracts";
 import { withTx } from "../../kernel/db/client";
 import {
-  erAdvances, erBills, erChargeLines, erEpisodes, erEventAccounts, erMedIssues, erMlcs, erPayerClaims, receiptTenders, receipts, services,
-  stockBatches,
+  erAdvances, erBills, erChargeLines, erEpisodes, erEventAccounts, erMedIssues, erMlcs, erPayerClaims, patientDocuments, receiptTenders, receipts,
+  services, stockBatches,
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
-import { issueInvoice, recordReceiptInTx } from "../billing";
+import { issueInvoice, recordReceiptInTx, requestRefund } from "../billing";
 import { carryErAdvanceIn, carryErLineIn } from "../ipd";
 import { itemUomRows, packPriceOf, saleAmountPaise } from "../materials";
 import { istDayString } from "../../kernel/approvals/cumulative";
 import { getPatientSummaries } from "../patients";
 import { loadPricingContext, priceInvoiceLines } from "../tariff";
-import { lockEpisode, onceEr, provenanceOf, readEpisode, requireErPermission } from "./core";
+import { lockEpisode, onceEr, personRecords, provenanceOf, readEpisode, requireErPermission } from "./core";
 import { ErRefusal } from "./errors";
 import { erAdvanceTaken, erBillSettled, erEventAccountOpened, erLinesPriced, erPayerSet } from "./events";
 import { ER_BILL } from "./names";
@@ -171,7 +171,7 @@ export async function composeErBill(db: Db | Tx, e: EpisodeRow, now: Date = new 
   const priced = lines.filter((l) => l.status === "posted" && l.amountPaise !== null);
   const unpriced = lines.length - priced.length;
   const payer = e.payer as ErPayerKind;
-  let room = payer === "road_accident" ? (e.coverCapPaise ?? ER_ROAD_ACCIDENT_CAP_PAISE) : Number.POSITIVE_INFINITY;
+  let room = payer === "road_accident" ? (e.coverCapPaise ?? ER_ROAD_ACCIDENT_CAP_PAISE) - await usedOnAccident(db, e) : Number.POSITIVE_INFINITY;
   const patientLines: Composed["patientLines"] = [];
   let payerPaise = 0;
   let totalPaise = 0;
@@ -180,14 +180,43 @@ export async function composeErBill(db: Db | Tx, e: EpisodeRow, now: Date = new 
     totalPaise += amount;
     if (payer === "self") { patientLines.push({ line: l, paise: amount }); continue; }
     if (payer !== "road_accident") { payerPaise += amount; continue; }
-    // Road accident: covered while within 7 days of the accident and under the cap; the rest is the patient's.
-    const inWindow = e.coverUntil === null || l.postedAt.getTime() <= e.coverUntil.getTime();
-    const covered = inWindow ? Math.min(amount, room) : 0;
+    // Road accident: covered while within 7 days of the accident and under the cap; the rest is the patient's. ER review 3
+    // (2026-10-15, DECIDED): a line is judged by the episode time it COVERS — observation by its 6-hour blocks (a block
+    // starting inside the window is covered), every other line by when its service was given.
+    const inWindowPaise = windowPaise(e, l, amount);
+    const covered = Math.max(0, Math.min(inWindowPaise, room));
     room -= covered;
     payerPaise += covered;
     if (amount - covered > 0) patientLines.push({ line: l, paise: amount - covered });
   }
   return { lines, totalPaise, payerPaise, patientPaise: totalPaise - payerPaise, unpriced, patientLines };
+}
+
+/** The part of a line inside the road-accident window (all of it without a window). */
+function windowPaise(e: EpisodeRow, l: BillLine, amount: number): number {
+  if (e.coverUntil === null) return amount;
+  const until = e.coverUntil.getTime();
+  if (l.source !== "er.observation") return l.postedAt.getTime() <= until ? amount : 0;
+  const unit = Math.floor(amount / l.qty);
+  let k = 0;
+  for (let i = 0; i < l.qty; i += 1) {
+    const start = e.arrivedAt.getTime() + (ER_OBSERVATION_FREE_HOURS + i * ER_OBSERVATION_BLOCK_HOURS) * HOUR;
+    if (start <= until) k += 1;
+  }
+  return k === l.qty ? amount : unit * k;
+}
+
+/**
+ * ER review 3 (2026-10-15, DECIDED): the road-accident cap is per ACCIDENT — what this person's OTHER settled episodes of
+ * the same accident already drew on the payer is not available again.
+ */
+async function usedOnAccident(db: Db | Tx, e: EpisodeRow): Promise<number> {
+  if (e.accidentRef === null) return 0;
+  const person = await personRecords(db, e.patientId);
+  const ids = person?.ids ?? [e.patientId];
+  const rows = await (db as Db).select({ paise: erBills.payerPaise }).from(erBills).innerJoin(erEpisodes, eq(erEpisodes.id, erBills.episodeId))
+    .where(and(eq(erEpisodes.accidentRef, e.accidentRef), inArray(erEpisodes.patientId, ids), eq(erBills.payer, "road_accident"), sql`${erEpisodes.id} <> ${e.id}`));
+  return rows.reduce((s, r) => s + Number(r.paise), 0);
 }
 
 // ═══════════════════════════════════════════ set_er_payer ═══════════════════════════════════════════
@@ -200,6 +229,8 @@ export async function setErPayer(db: Db, actor: Actor, raw: unknown, opts: Opts 
   const input: Input<"set_er_payer"> = ER_INTENTS.set_er_payer.input.parse(raw);
   await requireErPermission(db, actor, ER_BILL);
   const at = opts.now ?? new Date();
+  // ER review 3 (2026-10-15): an accident in the future is refused (the skew allowance is the ER's IST-clock rule).
+  if (input.accidentAt !== undefined && erIsInFuture(input.accidentAt, at)) throw new ErRefusal("time_in_future");
   return onceEr(db, actor, "set_er_payer", input.idempotencyKey, input, () => withTx(db, async (tx) => {
     const e = await lockEpisode(tx, input.episodeId);
     if (await billOf(tx, e.id) !== undefined) throw new ErRefusal("bill_settled");
@@ -213,11 +244,18 @@ export async function setErPayer(db: Db, actor: Actor, raw: unknown, opts: Opts 
         : (await tx.select({ id: erEventAccounts.id }).from(erEventAccounts).where(eq(erEventAccounts.id, input.eventAccountId)))[0];
       if (acc === undefined) throw new ErRefusal("event_account_not_found");
     }
-    const accident = input.accidentAt === undefined ? e.arrivedAt : new Date(input.accidentAt);
+    // One accident, one window: a person's earlier episode of the same accident fixes the accident time.
+    const accidentRef = input.payer === "road_accident" ? (input.accidentRef ?? input.schemeRef ?? null) : null;
+    const person = await personRecords(tx, e.patientId);
+    const earlier = accidentRef === null ? undefined : (await tx.select({ at: erEpisodes.accidentAt }).from(erEpisodes).where(and(
+      eq(erEpisodes.accidentRef, accidentRef), inArray(erEpisodes.patientId, person?.ids ?? [e.patientId]), sql`${erEpisodes.id} <> ${e.id}`,
+    )).orderBy(asc(erEpisodes.accidentAt)).limit(1))[0]?.at ?? undefined;
+    const accident = earlier ?? (input.accidentAt === undefined ? e.arrivedAt : new Date(input.accidentAt));
     const coverUntil = input.payer === "road_accident" ? new Date(accident.getTime() + ER_ROAD_ACCIDENT_DAYS * 24 * HOUR) : null;
     const coverCapPaise = input.payer === "road_accident" ? ER_ROAD_ACCIDENT_CAP_PAISE : null;
     await tx.update(erEpisodes).set({
       payer: input.payer, payerRef: input.schemeRef ?? null, coverUntil, coverCapPaise,
+      accidentRef, accidentAt: input.payer === "road_accident" ? accident : null,
       eventAccountId: input.payer === "mci_event" ? input.eventAccountId! : null, updatedAt: at,
     }).where(eq(erEpisodes.id, e.id));
     await appendEvent(tx, erPayerSet.make({
@@ -314,6 +352,15 @@ export async function settleErBill(db: Db, actor: Actor, raw: unknown, opts: Opt
     const owed = c.patientPaise - held;
     if (input.settlement === "paid" && tendered < owed) throw new ErRefusal("tender_short", { owedPaise: owed, tenderedPaise: tendered });
     if (input.settlement === "dues" && input.undertaking === undefined) throw new ErRefusal("undertaking_needed");
+    if (input.settlement === "dues") {
+      // ER review 3 (2026-10-15, DECIDED, IPD's rule): the undertaking is one of THIS patient's own active documents.
+      const doc = (await tx.select({ patientId: patientDocuments.patientId, status: patientDocuments.status }).from(patientDocuments)
+        .where(eq(patientDocuments.id, input.undertaking!.documentId)))[0];
+      const person = await personRecords(tx, e.patientId);
+      if (doc === undefined || doc.status !== "active" || !(person?.ids ?? [e.patientId]).includes(doc.patientId)) {
+        throw new ErRefusal("undertaking_invalid", { documentId: input.undertaking!.documentId });
+      }
+    }
     const duesPaise = input.settlement === "dues" ? Math.max(0, owed - tendered) : 0;
     let invoice: { invoiceId: string; invoiceNo: string } | null = null;
     if (lines.length > 0) {
@@ -340,6 +387,15 @@ export async function settleErBill(db: Db, actor: Actor, raw: unknown, opts: Opt
       await tx.insert(erPayerClaims).values({
         id: claimId, episodeId: e.id, payer: e.payer, payerRef: e.payerRef, eventAccountId: e.eventAccountId, amountPaise: c.payerPaise,
         status: "to_file", createdAt: at,
+      });
+    }
+    // ER review 3 (2026-10-15, DECIDED): an advance beyond the patient's share (BNSS s.397 at ₹0, a scheme that pays all)
+    // is never left silently unallocated — it becomes a refund request on the refund desk, in this transaction.
+    const excess = advancePaise - held;
+    if (excess > 0) {
+      await requestRefund(tx as unknown as Db, actor, {
+        kind: "advance_refund", patientId: e.patientId, amountPaise: excess, reasonClass: "genuine",
+        reason: `ER ${e.episodeNo}: advance not needed — patient's share ${String(c.patientPaise)} paise (${e.payer})`,
       });
     }
     const paidPaise = Math.min(tendered, owed) + held;
@@ -385,7 +441,7 @@ async function billView(db: Db, actor: Actor, e0: EpisodeRow, now: Date): Promis
   const names = new Map((await db.select({ id: services.id, name: services.name }).from(services)
     .where(inArray(services.id, [...new Set(c.lines.flatMap((l) => (l.serviceId === null ? [] : [l.serviceId])))].concat(["-"])))).map((r) => [r.id, r.name] as const));
   return {
-    episodeId: e.id, episodeNo: e.episodeNo, patientLabel: p === undefined ? "" : (p.restricted ? p.alias : p.name) ?? p.uhid, uhid: p?.uhid ?? "",
+    episodeId: e.id, episodeNo: e.episodeNo, patientId: e.patientId, patientLabel: p === undefined ? "" : (p.restricted ? p.alias : p.name) ?? p.uhid, uhid: p?.uhid ?? "",
     state: e.state, outcome: e.outcome, stabilised: e.stabilisedAt !== null, payer: e.payer as ErPayerKind,
     coverCapPaise: e.coverCapPaise, coverUntil: e.coverUntil?.toISOString() ?? null,
     lines: c.lines.map((l) => ({
