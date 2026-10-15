@@ -39,6 +39,7 @@ describe("E0.3 + E0.5 — the copilot halt switch and the daily AI spend cap", (
   let clerk: { id: string; token: string };
   let owner: { id: string; token: string };
   let duty: { id: string; token: string };
+  let ms: { id: string; token: string };
   let modelCalls: number;
 
   const http = () => request(app.getHttpServer());
@@ -93,51 +94,57 @@ describe("E0.3 + E0.5 — the copilot halt switch and the daily AI spend cap", (
     await seedOpdBase(db);
     await createRole(db, "desk", "Desk");
     for (const p of ["patients.read", "opd.visits.read", "opd.queue.read"]) await grantPermissionToRole(db, registry, "desk", p);
-    for (const r of ["owner", "duty_manager"]) await seededRole(r);
+    for (const r of ["owner", "duty_manager", "medical_superintendent"]) await seededRole(r);
     clerk = await mkUser(db, "halt_clerk", ["desk"]);
     owner = await mkUser(db, "halt_owner", ["owner"]);
     duty = await mkUser(db, "halt_duty", ["duty_manager"]);
+    ms = await mkUser(db, "halt_ms", ["medical_superintendent"]);
   });
 
-  it("done-means 2/3/4: the duty manager halts and clears act, cannot clear global; the owner can; every change is an event naming who", async () => {
+  it("done-means 2/3/4: the MS halts and clears act, cannot clear global; the owner can; every change is an event naming who", async () => {
     await halt(clerk.token, "act").expect(403);
-    await halt(duty.token, "act").expect(200);
-    await clear(duty.token, "act").expect(200);
-    await halt(duty.token, "global").expect(200);
-    await clear(duty.token, "global").expect(403);
+    await halt(ms.token, "act").expect(200);
+    await clear(ms.token, "act").expect(200);
+    await halt(ms.token, "global").expect(200);
+    await clear(ms.token, "global").expect(403);
     expect((await health(owner.token)).body.halts.map((h: { scope: string }) => h.scope)).toEqual(["global"]);
     await clear(clerk.token, "global").expect(403);
     await clear(owner.token, "global").expect(200);
-    expect((await health(duty.token)).body.halts).toEqual([]);
+    expect((await health(ms.token)).body.halts).toEqual([]);
 
     const evs = (await db.select().from(events).orderBy(asc(events.seq))).filter((e) => e.name.startsWith("copilot.halt"));
     expect(evs.map((e) => [e.name, (e.payload as { scope: string }).scope, e.actorId])).toEqual([
-      ["copilot.halt_set", "act", duty.id],
-      ["copilot.halt_cleared", "act", duty.id],
-      ["copilot.halt_set", "global", duty.id],
+      ["copilot.halt_set", "act", ms.id],
+      ["copilot.halt_cleared", "act", ms.id],
+      ["copilot.halt_set", "global", ms.id],
       ["copilot.halt_cleared", "global", owner.id],
     ]);
   });
 
   /*
-    #581 — WHO MAY FLIP THE HALT (DECIDED 2026-10-14): the owner, the Medical Superintendent and the
-    copilot steward (`quality_manager`, the spec's steward who runs the drill). Each may halt and clear
-    a read/act/draft halt and reads the health page; a GLOBAL clear stays the owner's alone.
+    #581 — OWNER RULING 2026-10-15: the owner and the Medical Superintendent halt and clear; the copilot
+    steward (`quality_manager`) clears a read/act/draft halt; a GLOBAL clear is the owner's alone. The
+    duty manager and IT (`admin`) no longer touch the switch (the duty manager keeps the health page).
   */
-  it("#581: the MS and the copilot steward halt and clear act, read the health page, and cannot clear global", async () => {
-    for (const r of ["medical_superintendent", "quality_manager"]) await seededRole(r);
-    const ms = await mkUser(db, "halt_ms", ["medical_superintendent"]);
+  it("#581: the steward clears but cannot halt; the duty manager and IT can neither halt nor clear", async () => {
+    for (const r of ["quality_manager", "admin"]) await seededRole(r);
     const steward = await mkUser(db, "halt_steward", ["quality_manager"]);
-    for (const who of [ms, steward]) {
-      await halt(who.token, "act").expect(200);
-      await health(who.token);
-      await clear(who.token, "act").expect(200);
-      await halt(who.token, "global").expect(200);
+    const it_ = await mkUser(db, "halt_it", ["admin"]);
+    await halt(steward.token, "act").expect(403);
+    await halt(owner.token, "act").expect(200);
+    await health(steward.token);
+    await clear(steward.token, "act").expect(200);
+    await halt(owner.token, "global").expect(200);
+    await clear(steward.token, "global").expect(403);
+    for (const who of [duty, it_]) {
+      await halt(who.token, "act").expect(403);
       await clear(who.token, "global").expect(403);
-      await clear(owner.token, "global").expect(200);
+      await clear(who.token, "act").expect(403);
     }
+    await health(duty.token);
+    await clear(owner.token, "global").expect(200);
     const flips = (await db.select().from(events).orderBy(asc(events.seq))).filter((e) => e.name === "copilot.halt_set" || e.name === "copilot.halt_cleared");
-    expect(flips.map((e) => e.actorId)).toEqual([ms.id, ms.id, ms.id, owner.id, steward.id, steward.id, steward.id, owner.id]);
+    expect(flips.map((e) => e.actorId)).toEqual([owner.id, steward.id, owner.id, owner.id]);
   });
 
   it("done-means 5: a halted read path answers 'paused', reaches no model, and is ledgered `halted`; an act halt leaves reads answering", async () => {

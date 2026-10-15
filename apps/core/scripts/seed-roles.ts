@@ -967,7 +967,7 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // Therapeutics Committee practice). The pharmacy holds `formulary.manage` and NOT this: the
       // reviewer is never the department that wrote the text.
       "formulary.monograph.review",
-      // COPILOT HALT #581 (DECIDED 2026-10-14: the owner, the MS and the copilot steward flip the halt) —
+      // COPILOT HALT #581 (OWNER RULING 2026-10-15: the owner and the MS halt and clear, the steward clears) —
       // the superintendent halts the copilot and clears a read/act/draft halt, and reads the health page
       // where those buttons are. Never a global clear: that stays the owner's alone.
       "copilot.health.read", "copilot.halt.set", "copilot.halt.clear",
@@ -1099,12 +1099,12 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // name on duty ("this is wrong"), and the duty manager is the person that flag is for. A READ: the
   // duty manager still drafts, publishes and approves nothing on a roster.
   //
-  // COPILOT HALT E0.3 (plan: "act scope: owner or duty manager clears — a false 2 a.m. halt must not
-  // block till morning") — the duty manager may halt the copilot and clear a read/act/draft halt, and
-  // reads the health page where those buttons are. Never a global clear: that is the owner's alone.
+  // COPILOT LEDGER E0.1 / HALT E0.3 — the duty manager reads the copilot health page. OWNER RULING
+  // 2026-10-15 (#581): the duty manager no longer halts or clears the copilot — the halt belongs to
+  // the owner and the MS, and the steward clears.
   {
     roleKey: "duty_manager",
-    permissions: ["auth.temp_role.grant", "roster.read", "copilot.health.read", "copilot.halt.set", "copilot.halt.clear"],
+    permissions: ["auth.temp_role.grant", "roster.read", "copilot.health.read"],
   },
   /**
    * ═══ PLAN 07c T9 / DD14 — OWNER RULING 2026-08-29: ONE NAMED PERSON MAY OPEN THE ROWS ═══
@@ -1968,19 +1968,18 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * and the halt drill. No quality role existed, so this one is minted holding the health read and
    * nothing else. NOBODY is assigned to it by any seed — the owner names the steward.
    */
-  // COPILOT HALT E0.3 — and throws the halt switch: the steward runs the monthly halt drill (G6d).
-  // #581 (DECIDED 2026-10-14) — the copilot steward flips the halt both ways: halt, and clear a
-  // read/act/draft halt. A global clear stays the owner's alone.
-  { roleKey: "quality_manager", permissions: ["copilot.health.read", "copilot.halt.set", "copilot.halt.clear"] },
+  // OWNER RULING 2026-10-15 (#581) — the copilot steward CLEARS a read/act/draft halt; halting is the
+  // owner's and the MS's. A global clear stays the owner's alone.
+  { roleKey: "quality_manager", permissions: ["copilot.health.read", "copilot.halt.clear"] },
   /**
    * COPILOT LEDGER E0.1 (D2) — IT reads the copilot's health too (latency, failures, the cost meter
    * to come). `admin`'s `auth.*` set is `seed:admin`'s to write (GRANTED_BY_OTHER_SEEDS); this row
    * adds the one non-`auth` string, so `fullAdministrators` (which counts `auth.*` only) is unchanged.
    */
-  // COPILOT HALT E0.3 — IT may halt a misbehaving copilot; clearing is the owner's or the duty manager's.
+  // OWNER RULING 2026-10-15 (#581) — IT no longer halts the copilot; it keeps the health read.
   // LAB NUMBERS (owner 2026-10-13, #768) — admin reads the lab's counts and turnaround times too (owner's request).
   // HOSPITAL NUMBERS (owner 2026-10-13, #777) — and imaging's and the pharmacy's (owner: "not just admin but owner").
-  { roleKey: "admin", permissions: ["copilot.health.read", "copilot.halt.set", "lab.metrics.read", "radiology.metrics.read", "pharmacy.metrics.read"] },
+  { roleKey: "admin", permissions: ["copilot.health.read", "lab.metrics.read", "radiology.metrics.read", "pharmacy.metrics.read"] },
 ];
 
 /**
