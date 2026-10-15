@@ -4,10 +4,11 @@ import { join } from "node:path";
 import { asc, eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { approveRequest } from "../../kernel/approvals/decisions";
-import { ipdPayerClaims, ipdSchemePackages, patientDocuments } from "../../kernel/db/schema";
+import { ipdPayerClaims, ipdSchemePackages, ipdTpaDocuments, patientDocuments } from "../../kernel/db/schema";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { mkDischargeWorld } from "../../../test/helpers/ipd";
 import { mkTpaDesk } from "../../../test/helpers/ipd-payer";
+import { lockAdmission } from "./admission-core";
 import {
   IpdError, IpdRefusal, askBillVoid, attachTpaDocument, confirmCharges, declareFit, importSchemePackages, postNightlyIpdCharges,
   prepareFinalBill, prepareSupplementaryBill, readTpaPanel, recordClaimSettlement, recordPayerAuth, recordTpaQuery, removeSchemePackage, saveSummaryDraft, selectSchemePackage,
@@ -170,12 +171,30 @@ describe("#604 review — TPA claim money guards", () => {
     expect([r.code, r.detail?.missing]).toEqual(["claim_documents_missing", ["final_bill"]]);
   });
 
-  it("two concurrent attaches of one document answer the same attachment", async () => {
+  it("an attach racing another in-flight attach of the same document answers that attachment, not a 500", async () => {
     const { admissionId, patientId } = await w.admitAt("general", ist("2026-03-10T09:00:00"));
     const d = await doc(patientId);
-    const one = () => attachTpaDocument(db, tpa, { idempotencyKey: key(), admissionId, stage: "preauth", kind: "investigations", patientDocumentId: d });
-    const [x, y] = await Promise.all([one(), one()]);
-    expect(x.attachmentId).toBe(y.attachmentId);
+    // Deterministic race: a first attach holds its transaction open (as the intent does: admission lock, then the row)
+    // while the second attach runs; the first then commits.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    let inserted!: () => void;
+    const ready = new Promise<void>((r) => { inserted = r; });
+    const firstId = newId();
+    const first = db.transaction(async (tx) => {
+      await lockAdmission(tx, admissionId);
+      await tx.insert(ipdTpaDocuments).values({
+        id: firstId, admissionId, claimId: null, stage: "preauth", kind: "investigations", patientDocumentId: d, attachedBy: tpa.id, attachedAt: new Date(),
+      });
+      inserted();
+      await gate;
+    });
+    await ready;
+    const second = attachTpaDocument(db, tpa, { idempotencyKey: key(), admissionId, stage: "preauth", kind: "investigations", patientDocumentId: d });
+    await new Promise((r) => setTimeout(r, 300));
+    release();
+    await first;
+    expect((await second).attachmentId).toBe(firstId);
   });
 
   it("a query or a document on a withdrawn claim refuses", async () => {
