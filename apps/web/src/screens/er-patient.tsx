@@ -9,8 +9,8 @@ import { useRealtime } from "../lib/realtime";
 import { searchOrderableTests } from "../lib/ordering-api";
 import type { WireOrderableTest } from "../lib/ordering-api";
 import {
-  ER_BOARD_TOPIC, ER_MED_ROUTES, answerCallApi, callApi, consentApi, cosignApi, doseApi, erRefusalOf, fetchErCare, fetchErEpisode,
-  fetchErItems, fetchTriageDoctors, issueApi, noteApi, orderApi, procedureApi, signVerbalApi, stabilisedApi,
+  ER_BOARD_TOPIC, ER_INJURY_KINDS, ER_MED_ROUTES, ER_MLC_CATEGORIES, answerCallApi, callApi, consentApi, cosignApi, doseApi, erRefusalOf, fetchErCare, fetchErEpisode,
+  fetchErItems, fetchTriageDoctors, issueApi, noteApi, openMlcApi, orderApi, procedureApi, signVerbalApi, stabilisedApi,
 } from "../lib/er-api";
 import { EsiBadge, ageSexWords, aliasFirst } from "./er-board";
 import "../styles/paper-pine.css";
@@ -23,10 +23,12 @@ import "./er.css";
  * the ordering door at STAT, notes (a resident's note shows "Draft" until a senior co-signs), procedures, consent,
  * specialty calls with their clocks, and "Stabilised" — a clinical word only.
  *
+ * Lane 4 (#811): "MLC" opens the medico-legal case (a doctor; the MLC desk carries the rest). It never gates care.
+ *
  * NO MONEY ANYWHERE (decision 0058): no price on a test, no rate on a drug, no paid word. Disposition is lane 5's.
  */
 type T = (k: string, o?: Record<string, unknown>) => string;
-type Panel = null | "order" | "med" | "note" | "procedure" | "consent" | "call";
+type Panel = null | "order" | "med" | "note" | "procedure" | "consent" | "call" | "mlc";
 const DEPTS = ["MED", "SUR", "ORT", "OBG", "PAED", "CARD", "NEURO", "ANAES"] as const;
 
 function Refusal({ r, t }: { r: ErRefusalBody | string; t: T }): React.ReactElement {
@@ -120,6 +122,10 @@ export function ErPatient(): React.ReactElement {
             <button key={p} type="button" className={`erd-opt${panel === p ? " on" : ""}`} aria-pressed={panel === p} onClick={() => setPanel(panel === p ? null : p)}
               data-testid={`er-patient-bar-${p}`}>{t(`erPatient.bar.${p}`)}</button>
           ))}
+          {can("er.mlc") ? (
+            <button type="button" className={`erd-opt${panel === "mlc" ? " on" : ""}`} aria-pressed={panel === "mlc"} onClick={() => setPanel(panel === "mlc" ? null : "mlc")}
+              data-testid="er-patient-bar-mlc">{t("erPatient.bar.mlc")}</button>
+          ) : null}
           {care !== null && care.stabilisedAt === null && can("er.care") ? (
             <button type="button" className="erx-btn pri" disabled={busy} data-testid="er-patient-stabilise"
               onClick={() => void act(async () => { await stabilisedApi(episodeId); return t("erPatient.stabilisedDone"); })}>{t("erPatient.bar.stabilised")}</button>
@@ -151,6 +157,11 @@ export function ErPatient(): React.ReactElement {
         {panel === "call" ? <CallPanel t={t} busy={busy} onCall={(departmentCode, urgency, reason) => act(async () => {
           const r = await callApi({ episodeId, departmentCode, urgency, reason });
           return t("erPatient.call.sent", { who: r.callees.map((c) => c.name).join(", ") || t("erPatient.call.noRoster") });
+        })} /> : null}
+
+        {panel === "mlc" ? <MlcPanel t={t} busy={busy} onOpen={(body) => act(async () => {
+          const r = await openMlcApi({ episodeId, ...body });
+          return t(r.late ? "erPatient.mlc.openedLate" : "erPatient.mlc.opened", { no: r.mlcNo });
         })} /> : null}
 
         {care !== null ? (
@@ -407,6 +418,43 @@ function CallPanel({ t, busy, onCall }: { t: T; busy: boolean; onCall: (dept: st
       ))}</div>
       <label className="erd-field"><span>{t("erPatient.call.reason")}</span><input value={reason} onChange={(e) => setReason(e.target.value)} /></label>
       <button type="button" className="erx-btn pri big" disabled={busy || dept === null || reason.trim() === ""} onClick={() => void onCall(dept!, urgency, reason.trim())}>{t("erPatient.call.send")}</button>
+    </section>
+  );
+}
+
+/** Lane 4 (#811) — open the MLC: the category, the informant in their own words, the injuries seen (one line at a time). */
+function MlcPanel({ t, busy, onOpen }: { t: T; busy: boolean; onOpen: (body: Record<string, unknown>) => Promise<void> }): React.ReactElement {
+  const [category, setCategory] = useState<string | null>(null);
+  const [name, setName] = useState("");
+  const [relation, setRelation] = useState("");
+  const [words, setWords] = useState("");
+  const [site, setSite] = useState("");
+  const [kind, setKind] = useState<string>("contusion");
+  const [injuries, setInjuries] = useState<{ site: string; kind: string }[]>([]);
+  const informant = name.trim() !== "" && relation.trim() !== "" && words.trim() !== ""
+    ? { informant: { name: name.trim(), relation: relation.trim(), words: words.trim() } } : {};
+  const all = site.trim() === "" ? injuries : [...injuries, { site: site.trim(), kind }];
+  return (
+    <section className="erp-panel" data-testid="er-patient-mlcform">
+      <div className="erd-opts">{ER_MLC_CATEGORIES.filter((c) => c !== "brought_dead").map((c) => (
+        <button key={c} type="button" className={`erd-opt sm${category === c ? " on" : ""}`} aria-pressed={category === c} onClick={() => setCategory(c)}>{t(`erMlc.category.${c}`)}</button>
+      ))}</div>
+      <div className="erd-pair">
+        <label className="erd-field"><span>{t("erMlc.informant")}</span><input value={name} onChange={(e) => setName(e.target.value)} /></label>
+        <label className="erd-field"><span>{t("erMlc.relation")}</span><input value={relation} onChange={(e) => setRelation(e.target.value)} /></label>
+      </div>
+      <label className="erd-field"><span>{t("erMlc.words")}</span><textarea rows={2} value={words} onChange={(e) => setWords(e.target.value)} /></label>
+      <div className="erd-pair">
+        <label className="erd-field"><span>{t("erMlc.injurySite")}</span><input value={site} onChange={(e) => setSite(e.target.value)} /></label>
+        <label className="erd-field"><span>{t("erMlc.injuryKind")}</span>
+          <select value={kind} onChange={(e) => setKind(e.target.value)}>{ER_INJURY_KINDS.map((k) => <option key={k} value={k}>{t(`erMlc.injury.${k}`)}</option>)}</select></label>
+      </div>
+      {injuries.length > 0 ? <div className="erb-chips">{injuries.map((i, n) => <span key={n} className="erb-chip">{i.site} · {t(`erMlc.injury.${i.kind}`)}</span>)}</div> : null}
+      <div className="erd-row">
+        <button type="button" className="erx-btn sm" disabled={site.trim() === ""} onClick={() => { setInjuries(all); setSite(""); }}>{t("erMlc.addInjury")}</button>
+        <button type="button" className="erx-btn pri big" disabled={busy || category === null} data-testid="er-patient-mlc-open"
+          onClick={() => void onOpen({ category, ...informant, ...(all.length > 0 ? { injuries: all } : {}) })}>{t("erPatient.mlc.open")}</button>
+      </div>
     </section>
   );
 }

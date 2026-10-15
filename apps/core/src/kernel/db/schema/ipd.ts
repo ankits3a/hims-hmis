@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { bigint, boolean, check, date, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { erEpisodes } from "./emergency";
 import { patients } from "./patients";
 import { resources } from "./resources";
 
@@ -884,7 +885,9 @@ export const ipdMortuaryRegister = pgTable(
   "ipd_mortuary_register",
   {
     id: text("id").primaryKey(),
-    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    /** The holder: an IPD admission, or (ER lane 4, #811) an ER episode — a body brought dead. Exactly one. */
+    admissionId: text("admission_id").references(() => ipdAdmissions.id),
+    erEpisodeId: text("er_episode_id").references(() => erEpisodes.id),
     patientId: text("patient_id").notNull(),
     status: text("status").notNull(),
     diedAt: timestamp("died_at", { withTimezone: true }).notNull(),
@@ -903,6 +906,8 @@ export const ipdMortuaryRegister = pgTable(
   },
   (t) => [
     uniqueIndex("ipd_mortuary_register_admission_ux").on(t.admissionId),
+    uniqueIndex("ipd_mortuary_register_er_episode_ux").on(t.erEpisodeId),
+    check("ipd_mortuary_register_holder_ck", sql`(${t.admissionId} is null) <> (${t.erEpisodeId} is null)`),
     index("ipd_mortuary_register_status_idx").on(t.status),
     check("ipd_mortuary_register_status_ck", sql`${t.status} in ('expected', 'received', 'released')`),
     check("ipd_mortuary_register_received_ck", sql`(${t.status} = 'expected') = (${t.receivedAt} is null)`),

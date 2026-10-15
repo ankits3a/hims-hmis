@@ -76,6 +76,24 @@ export const erCallRaised = defineEvent("er.call_raised", MODULE, z.object({
 export const erCallAnswered = defineEvent("er.call_answered", MODULE, z.object({ episodeId: id, callId: id, step: z.string(), minutes: z.number().int(), provenance: ErProvenanceSchema }));
 export const erStabilised = defineEvent("er.stabilised", MODULE, z.object({ episodeId: id, stabilisedAt: z.string(), provenance: ErProvenanceSchema }));
 
+/* ═══ lane 4 (#811) — the medico-legal case (ids and codes only: no informant words, no injuries, no officer names) ═══ */
+export const erMlcOpened = defineEvent("er.mlc_opened", MODULE, z.object({
+  episodeId: id, mlcId: id, mlcNo: z.string(), category: z.string(), byRule: z.boolean(), late: z.boolean(), provenance: ErProvenanceSchema,
+}));
+export const erMlcAddendum = defineEvent("er.mlc_addendum", MODULE, z.object({ episodeId: id, mlcId: id, addendumId: id, provenance: ErProvenanceSchema }));
+export const erPoliceIntimated = defineEvent("er.police_intimated", MODULE, z.object({
+  episodeId: id, mlcId: id, mode: z.string(), withinTarget: z.boolean(), provenance: ErProvenanceSchema,
+}));
+export const erMlcCountersigned = defineEvent("er.mlc_countersigned", MODULE, z.object({
+  episodeId: id, mlcId: id, withinTarget: z.boolean(), provenance: ErProvenanceSchema,
+}));
+export const erBelongingsRecorded = defineEvent("er.belongings_recorded", MODULE, z.object({
+  episodeId: id, mlcId: id, custodyId: id, items: z.number().int(), provenance: ErProvenanceSchema,
+}));
+export const erEvidenceCustody = defineEvent("er.evidence_custody", MODULE, z.object({
+  episodeId: id, mlcId: id, custodyId: id, link: z.number().int(), action: z.string(), provenance: ErProvenanceSchema,
+}));
+
 /** Every event the tracking board refetches on. */
 export const ER_BOARD_EVENT_NAMES: readonly string[] = [
   erPreAlerted.name, erPreAlertCancelled.name, erArrived.name, erBroughtDead.name, erBandPrinted.name, erBandVoided.name,
@@ -83,4 +101,5 @@ export const ER_BOARD_EVENT_NAMES: readonly string[] = [
   erTriaged.name, erRetriaged.name, erVitalsRecorded.name, erPlaced.name, erMoved.name, erDoctorAssigned.name,
   erNoteRecorded.name, erNoteCosigned.name, erOrderPlaced.name, erMedIssued.name, erDoseRecorded.name, erVerbalSigned.name,
   erProcedureRecorded.name, erConsentRecorded.name, erCallRaised.name, erCallAnswered.name, erStabilised.name,
+  erMlcOpened.name,
 ];

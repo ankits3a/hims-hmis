@@ -67,11 +67,13 @@ export const admissionDeceased = defineEvent("ipd.admission.deceased", MODULE, z
 }));
 
 export const mortuaryReceived = defineEvent("ipd.mortuary.received", MODULE, z.object({
-  admissionId: id, entryId: id, provenance: IpdProvenanceSchema,
+  // ER lane 4 (#811): a body brought dead to the ER has no admission; its entry names the ER episode instead.
+  admissionId: id.nullable(), erEpisodeId: id.nullable().optional(), entryId: id, provenance: IpdProvenanceSchema,
 }));
 
 export const mortuaryReleased = defineEvent("ipd.mortuary.released", MODULE, z.object({
-  admissionId: id, entryId: id, provenance: IpdProvenanceSchema,
+  // ER lane 4 (#811): a body brought dead to the ER has no admission; its entry names the ER episode instead.
+  admissionId: id.nullable(), erEpisodeId: id.nullable().optional(), entryId: id, provenance: IpdProvenanceSchema,
 }));
 
 /** The discharge events that change the Beds board (a bed empties; an expected discharge appears or goes). */

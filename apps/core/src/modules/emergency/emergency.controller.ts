@@ -13,12 +13,17 @@ import {
   recordProcedure, signErVerbalOrder,
 } from "./care";
 import { listErItems, readErCare } from "./care-read";
+import {
+  addMlcAddendum, countersignMlc, handOverEvidence, openMlc, readMlc, readMlcDesk, recordBelongings, recordPoliceIntimation,
+} from "./mlc";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import type { ModuleRegistry } from "../../kernel/modules/loader";
 import { ErError, ErRefusal, erRefusalStatus } from "./errors";
 import { linkIdentity } from "./identity";
-import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_CARE, ER_IDENTITY_LINK, ER_TRIAGE } from "./names";
-import type { Actor, ErBay, ErBoard, ErCareView, ErDeskView, ErDoctorOption, ErEpisodeView, ErItemOption, ErPatientHit, ErRefusalBody } from "@hmis/contracts";
+import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_CARE, ER_IDENTITY_LINK, ER_MLC, ER_TRIAGE } from "./names";
+import type {
+  Actor, ErBay, ErBoard, ErCareView, ErDeskView, ErDoctorOption, ErEpisodeView, ErItemOption, ErMlcDesk, ErMlcDetail, ErPatientHit, ErRefusalBody,
+} from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -271,5 +276,54 @@ export class EmergencyController {
   @RequirePermission(ER_CARE, "hospital")
   async stabilised(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
     try { return await declareStabilised(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  // ═══ lane 4 (#811) — the medico-legal case ═══
+  @Get("mlc")
+  @RequirePermission(ER_MLC, "hospital")
+  async mlcDesk(@CurrentActor() actor: Actor): Promise<ErMlcDesk> {
+    try { return await readMlcDesk(this.db, actor); } catch (e) { toHttp(e); }
+  }
+
+  @Get("mlc/:id")
+  @RequirePermission(ER_MLC, "hospital")
+  async mlc(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<ErMlcDetail> {
+    try { return await readMlc(this.db, actor, id); } catch (e) { toHttp(e); }
+  }
+
+  @Post("mlc/open")
+  @RequirePermission(ER_MLC, "hospital")
+  async mlcOpen(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await openMlc(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("mlc/addendum")
+  @RequirePermission(ER_MLC, "hospital")
+  async mlcAddendum(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await addMlcAddendum(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("mlc/intimation")
+  @RequirePermission(ER_MLC, "hospital")
+  async mlcIntimation(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await recordPoliceIntimation(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("mlc/countersign")
+  @RequirePermission(ER_MLC, "hospital")
+  async mlcCountersign(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await countersignMlc(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("mlc/belongings")
+  @RequirePermission(ER_MLC, "hospital")
+  async mlcBelongings(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await recordBelongings(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("mlc/evidence")
+  @RequirePermission(ER_MLC, "hospital")
+  async mlcEvidence(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await handOverEvidence(this.db, actor, body); } catch (e) { toHttp(e); }
   }
 }

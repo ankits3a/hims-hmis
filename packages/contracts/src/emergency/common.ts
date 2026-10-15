@@ -160,7 +160,7 @@ export const ER_INTENT_CATALOGUE = [
   "call_specialty", "answer_call", "record_er_note", "cosign_er_note", "place_er_order", "issue_er_med", "give_er_dose",
   "sign_er_verbal_order", "record_procedure", "declare_stabilised", "record_consent",
   // law (lane 4)
-  "open_mlc", "record_police_intimation", "countersign_mlc", "record_belongings", "hand_over_evidence",
+  "open_mlc", "add_mlc_addendum", "record_police_intimation", "countersign_mlc", "record_belongings", "hand_over_evidence",
   // disposition (lane 5)
   "decide_disposition", "discharge_from_er", "hand_to_unit", "refer_out", "record_lama", "record_lwbs", "record_abscond",
   "record_er_death",

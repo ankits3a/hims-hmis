@@ -7,7 +7,7 @@
 // Importing this module DEFINES the re-triage task kind and its skill (the API and the worker both need them).
 import "./task-kinds";
 export { emergencyManifest } from "./manifest";
-export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_CARE, ER_IDENTITY_LINK, ER_TRIAGE } from "./names";
+export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_CARE, ER_IDENTITY_LINK, ER_MLC, ER_TRIAGE } from "./names";
 export { EmergencyModule } from "./emergency.module";
 export { ErError, ErRefusal, erRefusalStatus } from "./errors";
 export type { ErErrorCode } from "./errors";
@@ -39,3 +39,9 @@ export {
   ER_EPISODE_NO_RE, ER_EPISODE_PREFIX, erChargeLinesOf, erChargeSink, postErChargeIn, registerErChargeSink, registerErEncounterResolver,
 } from "./charge-sink";
 export { listErItems, readErCare } from "./care-read";
+// Lane 4 (#811) — the medico-legal case: the register, its obligations and clocks, custody, the MLC desk reads.
+export {
+  ER_MLC_ACTOR, ER_MLC_INTIMATION_CLIMB_MIN, addMlcAddendum, countersignMlc, handOverEvidence, mlcOfEpisode, openMlc,
+  readMlc, readMlcDesk, recordBelongings, recordPoliceIntimation, sweepErMlcClocks,
+} from "./mlc";
+export { ER_MLC_INTIMATION_TASK, ER_MLC_SKILL } from "./task-kinds";

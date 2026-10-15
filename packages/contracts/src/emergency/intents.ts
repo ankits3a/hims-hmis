@@ -172,7 +172,9 @@ export const registerUnidentified = erIntent({
 
 /**
  * The brought-dead MARKER (lane 1): a body arrives, a doctor examines it, and the episode is terminal at once — no
- * treatment episode, no band, no charge. The MLC, the mortuary hand-over and the police clearance are lane 4's.
+ * treatment episode, no band, no charge. Lane 4 (#811): the same act opens the MLC (category `brought_dead`), marks the
+ * patient deceased with the `brought_dead` death kind (no MCCD) and opens the body's IPD mortuary register entry (MLC:
+ * released only after the police clearance).
  */
 export const recordBroughtDead = erIntent({
   input: erInput({
@@ -192,6 +194,8 @@ export const recordBroughtDead = erIntent({
   output: z.strictObject({
     episodeId: ErIdSchema, episodeNo: z.string(), patientId: ErIdSchema, uhid: z.string(), alias: z.string().nullable(),
     state: z.literal("brought_dead"),
+    /** Lane 4 (#811): always an MLC (opened by rule), and the body's entry in the IPD mortuary register. */
+    mlcId: ErIdSchema, mlcNo: z.string(), mortuaryEntryId: ErIdSchema,
   }),
   refusals: [
     "patient_not_found", "patient_deceased", "patient_admitted", "episode_already_open", "pre_alert_not_found",
@@ -201,7 +205,7 @@ export const recordBroughtDead = erIntent({
   copilotProposable: false,
   agentTier: "none",
   undo: "entered_in_error",
-  events: ["er.brought_dead"],
+  events: ["er.brought_dead", "er.mlc_opened"],
   idempotent: true,
 });
 

@@ -1,5 +1,5 @@
 import { ipdSchemaKeys } from "../ipd/common";
-import { ER_INTENTS, ER_INTENT_CATALOGUE, ER_INTENT_NAMES, ER_REFUSALS, ER_REFUSAL_CODES, ErBoardSchema, ErDeskViewSchema, ErPatientHitSchema } from "./index";
+import { ER_INTENTS, ER_INTENT_CATALOGUE, ER_INTENT_NAMES, ER_REFUSALS, ER_REFUSAL_CODES, ErBoardSchema, ErDeskViewSchema, ErMlcDeskSchema, ErMlcDetailSchema, ErPatientHitSchema } from "./index";
 
 /** ER lane 1 (#808) — the contract's own properties: the refusal register agrees both ways; no money in any shape. */
 let n = 0;
@@ -23,7 +23,7 @@ describe("emergency intent contracts", () => {
 
   it("no ER answer, board or desk shape names money (decision 0058, spec §3.6)", () => {
     const money = /paise|rupee|amount|fee|charge|dues|payable|price|deposit|bill|paid/i;
-    const shapes = { ...Object.fromEntries(ER_INTENT_NAMES.map((n) => [n, ER_INTENTS[n].output])), board: ErBoardSchema, desk: ErDeskViewSchema, hit: ErPatientHitSchema };
+    const shapes = { ...Object.fromEntries(ER_INTENT_NAMES.map((n) => [n, ER_INTENTS[n].output])), board: ErBoardSchema, desk: ErDeskViewSchema, hit: ErPatientHitSchema, mlcDesk: ErMlcDeskSchema, mlc: ErMlcDetailSchema };
     for (const [name, schema] of Object.entries(shapes)) {
       expect([name, ipdSchemaKeys(schema).filter((k) => money.test(k))]).toEqual([name, []]);
     }
@@ -50,5 +50,18 @@ describe("emergency intent contracts", () => {
   it("inputs are strict: an unknown field is refused, not dropped", () => {
     const r = ER_INTENTS.pre_alert.input.safeParse({ idempotencyKey: randomUUID(), mode: "ambulance_108", etaMinutes: 10, count: 1, deposit: 1 });
     expect(r.success).toBe(false);
+  });
+
+  it("an evidence link names its receiver exactly when it is a hand-over (lane 4)", () => {
+    const base = {
+      idempotencyKey: randomUUID(), mlcId: "01J0000000000000000000000A", kind: "clothes", description: "Shirt", sealNo: "S-1",
+      secondPerson: { username: "er.nurse2", pin: "8642" },
+    };
+    const receiver = { name: "Officer", rank: "SI", station: "Station" };
+    const parse = (x: object) => ER_INTENTS.hand_over_evidence.input.safeParse({ ...base, ...x }).success;
+    expect(parse({ action: "collected" })).toBe(true);
+    expect(parse({ action: "handed_over", receiver })).toBe(true);
+    expect(parse({ action: "handed_over" })).toBe(false);
+    expect(parse({ action: "stored", receiver })).toBe(false);
   });
 });

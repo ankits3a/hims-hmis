@@ -117,6 +117,35 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
 - Care is never gated: acceptance (c) runs every clinical intent on an unidentified patient who has paid nothing; (c-3) reads
   `care.ts` / `triage.ts` source for money words. MLC state joins (c) in lane 4.
 
+### Lane 4 (er-mlc, #811)
+- `mlc.ts` — the medico-legal case. `er_mlcs` is IMMUTABLE (migration trigger `er_mlc_append_only` refuses UPDATE and
+  DELETE; also on `er_mlc_addenda`, `er_mlc_intimations`, `er_mlc_custody`); the only mutable MLC table is
+  `er_mlc_obligations` (clock stamps). One MLC per episode (`er_mlcs_episode_ux`), serial `MLC26-000123` per IST year
+  (advisory lock on the year). `openMlcIn` is the one writer: by a doctor (`openMlc`), or BY RULE in arrival.ts —
+  `register_unidentified` (`unknown_unconscious`), `register_arrival` with mode `police` (`police_brought`), and
+  `record_brought_dead` (`brought_dead`). Police on arrival with a station named = the intimation, recorded at the gate
+  instant (`police_present`). `late` = a doctor opening it > 6 h after the gate or after the patient left.
+- Obligations: `police_intimation` due open + 1 h; `faculty_countersign` due open + 24 h. `sweepErMlcClocks` (minute job):
+  intimation past due → ONE stat task `er_mlc_intimation` (skill `er_mlc` → front_office, er_nurse), 30 min later ONE
+  climb (`mlc_intimation` ladder, fallback duty_manager); countersign past due → `breached_at` + ONE notice
+  (`mlc_countersign`, fallback medical_superintendent). Neither closes on death or departure. `recordPoliceIntimation`
+  meets the obligation and cancels the task; `countersignMlc` = a doctor, not a resident, not the opener.
+- Custody: `recordBelongings` / `handOverEvidence` — a numbered link each, recorder + a second person's PIN
+  (`verifySecondPerson` from care.ts with an `er.mlc` holder test). A seal: collected before stored / handed over;
+  handed over once; seals are upper-cased.
+- Addenda (`addMlcAddendum`, a doctor) carry text, optional injuries, optional new category (the latest wins on read),
+  `examinationRefused`.
+- MLC events correlate on the MLC id (not the episode): lane 1's brought-dead test pins the episode's own events.
+- Brought dead also calls `patients.recordBroughtDeadDeath` (deceased, `death_kind = 'brought_dead'`, no MCCD — the one
+  deceased record without a certificate number) and `ipd.openErMortuaryEntry` (the mortuary register now holds an
+  admission OR an ER episode; `mlc = true`, so `releaseBody` refuses until `recordPoliceClearance`).
+- Reads: `readMlcDesk` (owed, oldest due first; last 7 days), `readMlc` (original + addenda + intimation + countersign +
+  custody + mortuary entry). Screen `apps/web/src/screens/er-mlc.tsx` (`/er/mlc?mlc=<id>`); the ER patient's bar has "MLC".
+- Care is never gated: (c-2) in `acceptance/mlc.acceptance.test.ts` runs lane 3's clinical intents on an MLC patient
+  with the intimation overdue and the countersign breached. No care file reads `er_mlc*`.
+- `scripts/stage-er-setup.ts` (UAT only): drafts `er_episode`, creates an EMPTY `ER-SAT` store, grants `er_nurse` to the
+  all-roles account. Production: the materials head creates and stocks ER-SAT; MS + owner activate the workflow.
+
 ## 4. Traps
 - `registerPatient` takes a `Tx` and the band reads the new patient in that same `tx` (`bandPerson(tx, …)`); reading it
   through `db` (`getPatient`) inside the transaction sees nothing.
@@ -124,6 +153,9 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   been merged — that is how the board knows, without flipping `identity_status` in place.
 - The web dev server (`vite`) runs Chromium out of resources on this app (1,000+ modules); browser walks use
   `vite build` + `vite preview` against a stub API.
+- Lane 4 moved: seed-roles (+1 permission `er.mlc`, 6 grants), caddyfile/nav (one menu entry `/er/mlc`), roster
+  escalation kinds (+2, check constraint retyped by hand in `kernel/db/schema/roster.ts`), patients (`death_kind`), ipd mortuary register
+  (`admission_id` nullable, `er_episode_id`).
 - Census pins moved by lane 1: seed-roles (role, pairs, permissions), seed-staff `KNOWN_ROLE_KEYS`, manifests (35;
   app-only list), caddyfile-parity routes (131), standup-check (`emergency` in NOT_DEPARTMENTS, OPEN).
 
@@ -135,7 +167,11 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   child-without-guardian social-worker task, Code Grey from triage (lane 7), the copilot's ESI proposal (lane 9),
   bay release on departure (lane 5 through `releaseErBayIn`), the ER bay on the IPD Beds board shows no ER name.
 - er-care: the `ER` encounter resolver and episode charge sink (ordering door), orders following the merge.
-- er-mlc: the MLC register, police intimation, the `brought_dead` death kind on patients, mortuary register seam.
+- Lane 4 built the MLC. Still owed after lane 4: injury body diagram and photos (with consent); the MLC copy and wound
+  certificate as designed prints (the desk prints the browser page today); police copies only on a written requisition
+  log; family surfaces and model calls off for MLC patients (lane 9 / IPD); POCSO report detail; sexual-assault
+  examination protocol form; `free_by_law` read by lane 6's bill desk; death in ER (lane 5's `record_er_death`) opening
+  the mortuary entry through the same seam.
 - er-dispo: `hand_to_unit` → IPD `emergencyAdmit`; outcomes on `departed`. er-bill: the ER bill following the merge.
 - Desk: Aadhaar QR and ABHA scans (lane 1 takes the UHID card barcode, UHID, phone and name); a thermal ER band kind on
   the print relay (the browser prints today, decision 0045's fallback); downtime paper-serial reservation.

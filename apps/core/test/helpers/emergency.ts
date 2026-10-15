@@ -61,6 +61,8 @@ export async function mkErWorld(db: Db): Promise<ErWorld> {
   await grantPermissionToRole(db, registry, "doctor", "er.board.view");
   await grantPermissionToRole(db, registry, "doctor", "er.triage");
   await grantPermissionToRole(db, registry, "doctor", "er.care");
+  // Lane 4 (#811) — the MLC: the ER desk, the casualty nurse and doctors (seed-roles grants the same three and more).
+  for (const r of ["front_office", "er_nurse", "doctor"]) await grantPermissionToRole(db, registry, r, "er.mlc");
   const erNurse = (await mkUser(db, "er.nurse", ["er_nurse"])).actor;
   const mrd = (await mkUser(db, "er.mrd", ["mrd_officer"])).actor;
   const erDoctor = (await mkUser(db, "er.doctor", ["doctor"])).actor;
@@ -160,4 +162,31 @@ export async function mkErCareWorld(db: Db): Promise<ErCareWorld> {
       return itemId;
     },
   };
+}
+
+// ═══ ER lane 4 (#811) — the MLC: the mortuary keeper, a second desk clerk with a PIN, the faculty ═══
+
+export type ErMlcWorld = ErCareWorld & {
+  /** The duty manager: the mortuary register (`ipd.mortuary.manage`) and the MLC desk. */
+  mortuary: Actor;
+  /** The mortuary's second person for the two-person identity check. */
+  witness: Actor;
+  /** A second ER desk clerk whose PIN witnesses a belongings list. */
+  desk2: Actor;
+  deskPin: { username: string; pin: string };
+};
+
+export async function mkErMlcWorld(db: Db): Promise<ErMlcWorld> {
+  const w = await mkErCareWorld(db);
+  const registry = new ModuleRegistry();
+  registry.install(ipdManifest);
+  registry.install(emergencyManifest);
+  await syncPermissions(db, registry);
+  await ensureRole(db, "duty_manager");
+  for (const p of ["ipd.mortuary.manage", "er.mlc"]) await grantPermissionToRole(db, registry, "duty_manager", p);
+  const mortuary = (await mkUser(db, "er.dm", ["duty_manager"])).actor;
+  const witness = (await mkUser(db, "er.mortuary2", ["duty_manager"])).actor;
+  const desk2 = (await mkUser(db, "er.desk2", ["front_office"])).actor;
+  await setPin(db, desk2.id, "2468");
+  return { ...w, mortuary, witness, desk2, deskPin: { username: "er.desk2", pin: "2468" } };
 }

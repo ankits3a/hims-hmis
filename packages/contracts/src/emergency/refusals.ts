@@ -60,6 +60,15 @@ export const ER_REFUSALS = {
   call_already_open: { rule: "A call to this department is already waiting for this patient.", fix: "Open the call" },
   already_stabilised: { rule: "The patient is already recorded as stabilised.", fix: "Open episode" },
 
+  /* ═══ The medico-legal case (lane 4) ═══ */
+  mlc_not_found: { rule: "No medico-legal case has this id.", fix: "Open MLC desk" },
+  mlc_already_open: { rule: "This emergency episode already has a medico-legal case; a change is an addendum.", fix: "Add an addendum" },
+  intimation_recorded: { rule: "The police intimation for this case is already recorded.", fix: "Add an addendum" },
+  mlc_countersigned: { rule: "The case is already countersigned.", fix: "Open MLC desk" },
+  countersign_own_mlc: { rule: "A case is countersigned by a doctor other than the one who opened it.", fix: "Ask a senior" },
+  seal_not_collected: { rule: "Evidence is stored or handed over only after it is collected under this seal.", fix: "Record collection" },
+  seal_already_handed_over: { rule: "The evidence under this seal is already handed over.", fix: "Open MLC desk" },
+
   /* ═══ The band ═══ */
   printer_offline: { rule: "The chosen printer is not answering.", fix: "Pick nearest printer" },
   band_already_printed: { rule: "A band is already printed for this episode.", fix: "Reprint band" },

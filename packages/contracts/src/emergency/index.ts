@@ -1,6 +1,7 @@
 import * as arrival from "./intents";
 import * as triageIntents from "./triage";
 import * as care from "./care";
+import * as mlc from "./mlc";
 
 export * from "./common";
 export * from "./refusals";
@@ -11,6 +12,11 @@ export {
 } from "./triage";
 export type { ErEsiDecision, ErEsiLevel, ErEws, ErVitals } from "./triage";
 export { ER_CONSENT_KINDS, ER_MED_ROUTES, ER_NOTE_KINDS } from "./care";
+export {
+  ER_MLC_CATEGORIES, ER_MLC_COUNTERSIGN_MIN, ER_MLC_FREE_BY_LAW, ER_MLC_INTIMATION_MIN, ER_MLC_LATE_MIN, ErMlcClockSchema,
+  ErMlcDeskSchema, ErMlcDetailSchema, ErMlcRowSchema,
+} from "./mlc";
+export type { ErMlcCategory, ErMlcClock, ErMlcDesk, ErMlcDetail, ErMlcRow } from "./mlc";
 export { ErBandPayloadSchema } from "./intents";
 export type { ErBandPayload } from "./intents";
 
@@ -43,6 +49,13 @@ export const ER_INTENTS = {
   call_specialty: care.callSpecialty,
   answer_call: care.answerCall,
   declare_stabilised: care.declareStabilised,
+  // lane 4 (#811)
+  open_mlc: mlc.openMlc,
+  add_mlc_addendum: mlc.addMlcAddendum,
+  record_police_intimation: mlc.recordPoliceIntimation,
+  countersign_mlc: mlc.countersignMlc,
+  record_belongings: mlc.recordBelongings,
+  hand_over_evidence: mlc.handOverEvidence,
 } as const;
 export type ErIntentName = keyof typeof ER_INTENTS;
 export const ER_INTENT_NAMES = Object.keys(ER_INTENTS) as ErIntentName[];
