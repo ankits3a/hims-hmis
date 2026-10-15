@@ -104,12 +104,43 @@ export const giveErDose = erIntent({
     secondCheck: z.strictObject({ username: z.string().trim().min(1).max(64), pin: z.string().regex(/^\d{4,6}$/) }).optional(),
   }).refine((i) => i.outcome === "given" || i.reason !== undefined, { message: "a held or refused dose says why", path: ["reason"] }),
   output: z.strictObject({ doseId: ErIdSchema, outcome: z.enum(["given", "held", "refused"]), at: ErInstantSchema, secondCheckedBy: ErUserRefSchema.nullable() }),
-  refusals: ["issue_not_found", "dose_already_recorded", "second_check_needed", "second_check_failed", "second_checker_same", "episode_wrong_state"],
+  refusals: [
+    "issue_not_found", "dose_already_recorded", "second_check_needed", "second_check_failed", "second_checker_same", "episode_wrong_state",
+    "issue_returned",
+  ],
   actors: ["er_nurse", "doctor"],
   copilotProposable: false,
   agentTier: "none",
   undo: "entered_in_error",
   events: ["er.dose_recorded"],
+  idempotent: true,
+});
+
+/**
+ * ER review 2 (2026-10-15, DECIDED) — a medicine not given goes back. UNOPENED: the units return to ER-SAT (FEFO batches
+ * of the issue) and the issue's charge is reversed. OPENED: wastage — no stock movement (the issue took it), and the
+ * charge STANDS unless the bill desk waives it; a high-alert or controlled drug's wastage names a witness who confirms
+ * with username and PIN. Never after a dose was given; once per issue. A held or refused dose prompts it on the screen.
+ */
+export const returnErMed = erIntent({
+  input: erInput({
+    issueId: ErIdSchema,
+    condition: z.enum(["unopened", "opened"]),
+    reason: ErNoteSchema,
+    witness: z.strictObject({ username: z.string().trim().min(1).max(64), pin: z.string().regex(/^\d{4,6}$/) }).optional(),
+  }),
+  output: z.strictObject({
+    returnId: ErIdSchema, kind: z.enum(["returned", "wasted"]), units: z.number().int().positive(), witnessedBy: ErUserRefSchema.nullable(),
+  }),
+  refusals: [
+    "issue_not_found", "episode_wrong_state", "dose_given", "already_returned", "nothing_to_return", "wastage_needs_witness",
+    "second_check_failed", "second_checker_same",
+  ],
+  actors: ["er_nurse", "doctor"],
+  copilotProposable: false,
+  agentTier: "none",
+  undo: "irreversible",
+  events: ["er.med_returned"],
   idempotent: true,
 });
 
@@ -162,11 +193,17 @@ export const recordConsent = erIntent({
     relation: z.string().trim().min(1).max(40).optional(),
     method: z.enum(["paper", "tablet_signature", "otp"]),
     witnessName: ErWordsSchema.optional(),
-    secondDoctorId: ErUserRefSchema.optional(),
+    /**
+     * ER review 2 (2026-10-15, DECIDED): an emergency consent's second doctor CONFIRMS with their own username and PIN
+     * (the high-alert dose's check), never a name picked by the treating doctor.
+     */
+    secondDoctor: z.strictObject({ username: z.string().trim().min(1).max(64), pin: z.string().regex(/^\d{4,6}$/) }).optional(),
     language: z.enum(["hi", "en"]).optional(),
   }),
   output: z.strictObject({ consentId: ErIdSchema, at: ErInstantSchema }),
-  refusals: ["episode_not_found", "episode_wrong_state", "consent_witness_needed", "emergency_needs_second_doctor", "not_a_doctor"],
+  refusals: [
+    "episode_not_found", "episode_wrong_state", "consent_witness_needed", "emergency_needs_second_doctor", "not_a_doctor", "second_check_failed",
+  ],
   actors: ["er_nurse", "doctor"],
   copilotProposable: false,
   agentTier: "none",

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { alerts, erChargeLines, rosterDutyWindows, rosterTeams, stockLedger } from "../../../kernel/db/schema";
+import { alerts, erChargeLines, rosterDutyWindows, rosterTeams, stockLedger, users } from "../../../kernel/db/schema";
+import { setPin } from "../../../kernel/auth/identity";
 import { withTx } from "../../../kernel/db/client";
 import { newId } from "@hmis/contracts";
 import { addAllergy } from "../../patients";
@@ -111,13 +112,19 @@ describe("ER lane 3 er-care — the care rules", () => {
     await expect(signErVerbalOrder(db, w.erDoctor, { idempotencyKey: key(), issueId: issued.issueId })).rejects.toMatchObject({ code: "verbal_not_pending" });
   });
 
-  it("emergency treatment without consent needs a second, different doctor; a paper consent names its witness", async () => {
+  it("emergency treatment without consent needs a second, different doctor who confirms with their PIN; a paper consent names its witness", async () => {
     const u = await unknown();
     const base = { episodeId: u.episodeId, kind: "procedure" as const, about: "Intubation", method: "paper" as const };
+    // ER review 2 (2026-10-15, DECIDED): the second doctor confirms with their own username and PIN — a picked name is not enough.
+    await setPin(db, w.erDoctor.id, "2580");
+    await setPin(db, w.doctor.id, "1357");
+    const userOf = async (id: string) => (await db.select({ u: users.username }).from(users).where(eq(users.id, id)))[0]!.u;
     await expect(recordConsent(db, w.erDoctor, { idempotencyKey: key(), ...base, signedBy: "emergency" })).rejects.toMatchObject({ code: "emergency_needs_second_doctor" });
-    await expect(recordConsent(db, w.erDoctor, { idempotencyKey: key(), ...base, signedBy: "emergency", secondDoctorId: w.erDoctor.id })).rejects.toMatchObject({ code: "emergency_needs_second_doctor" });
-    await expect(recordConsent(db, w.erDoctor, { idempotencyKey: key(), ...base, signedBy: "emergency", secondDoctorId: w.erNurse.id })).rejects.toMatchObject({ code: "not_a_doctor" });
-    await expect(recordConsent(db, w.erDoctor, { idempotencyKey: key(), ...base, signedBy: "emergency", secondDoctorId: w.doctor.id })).resolves.toHaveProperty("consentId");
+    await expect(recordConsent(db, w.erDoctor, { idempotencyKey: key(), ...base, signedBy: "emergency", secondDoctorId: w.doctor.id } as never)).rejects.toThrow();
+    await expect(recordConsent(db, w.erDoctor, { idempotencyKey: key(), ...base, signedBy: "emergency", secondDoctor: { username: await userOf(w.erDoctor.id), pin: "2580" } })).rejects.toMatchObject({ code: "emergency_needs_second_doctor" });
+    await expect(recordConsent(db, w.erDoctor, { idempotencyKey: key(), ...base, signedBy: "emergency", secondDoctor: w.pins.erNurse })).rejects.toMatchObject({ code: "not_a_doctor" });
+    await expect(recordConsent(db, w.erDoctor, { idempotencyKey: key(), ...base, signedBy: "emergency", secondDoctor: { username: await userOf(w.doctor.id), pin: "0000" } })).rejects.toMatchObject({ code: "second_check_failed" });
+    await expect(recordConsent(db, w.erDoctor, { idempotencyKey: key(), ...base, signedBy: "emergency", secondDoctor: { username: await userOf(w.doctor.id), pin: "1357" } })).resolves.toHaveProperty("consentId");
     await expect(recordConsent(db, w.erNurse, { idempotencyKey: key(), ...base, signedBy: "guardian", signerName: "Ramesh", relation: "husband" }))
       .rejects.toMatchObject({ code: "consent_witness_needed" });
   });
