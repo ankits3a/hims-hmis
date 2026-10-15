@@ -1753,7 +1753,8 @@ draft or global;
 2026-10-15, #581); and
 `copilot.halt.clear_global` is held by `owner` alone. Each halt and clear is an audit event naming who.
 When the day's estimated AI spend reaches ₹5,000 (`COPILOT_DAILY_CAP_INR`), the copilot answers from its
-phrasebook only until midnight IST and the health page says so.
+phrasebook only until midnight IST and the health page says so. At 80 % of the cap every `owner` gets one bell
+notice for that IST day (#583).
 
 **IPD beds (E1.1, decision 0072, built 2026-10-12, awaiting owner review).** The capacity board at
 `/ipd/beds` and the bed acts behind it. `ipd.beds.view` (front_office, front_office_supervisor,
