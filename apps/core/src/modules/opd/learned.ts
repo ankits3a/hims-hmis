@@ -44,7 +44,7 @@ export async function resetAtForDoctor(db: Db | Tx, doctorId: string, surface: L
   return row?.at ?? null;
 }
 
-/** The doctor's complaint counts at the last reset, per lower-cased term ({} when never reset). */
+/** The doctor's complaint counts at the last reset, per term exactly as stored ({} when never reset). */
 export async function complaintBaseline(db: Db | Tx, doctorId: string): Promise<Record<string, number>> {
   const [row] = await db.select({ base: cdsDoctorLearningResets.complaintBaseline }).from(cdsDoctorLearningResets)
     .innerJoin(opdDoctors, eq(opdDoctors.userId, cdsDoctorLearningResets.userId))
