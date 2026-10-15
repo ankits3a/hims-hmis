@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, ne } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lt, ne } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
 import { opdDepartments, opdDoctors, opdEncounters, opdQueueEntries, opdQueueSessions, resources } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
@@ -156,16 +156,8 @@ function finished(e: EncounterRow, ctx: Context): boolean {
 
 const DAY_CAP = 2000;
 
-/**
- * Today's slips, in the board's order: WAITING oldest consultation first, then RETAKE oldest request
- * first, then FILED newest first. One unfiltered list — the board has no filter tabs.
- */
-export async function slipDay(db: Db, actor: Actor, now: Date = new Date()): Promise<SlipDay> {
-  const serviceDate = istDate(now);
-  const encounters = await db.select().from(opdEncounters)
-    // Owner 2026-10-09 — a tele-call leaves no paper to photograph: it is never on the slip desk's day.
-    .where(and(eq(opdEncounters.serviceDate, serviceDate), ne(opdEncounters.status, "abandoned"), ne(opdEncounters.consultMode, "tele")))
-    .orderBy(asc(opdEncounters.openedAt)).limit(DAY_CAP);
+/** The finished consultations among `encounters`, each with its slip state — the day's rows, unsorted. */
+async function slipRows(db: Db, actor: Actor, encounters: readonly EncounterRow[]): Promise<SlipDayRow[]> {
   const ctx = await contextFor(db, encounters);
   const done = encounters.filter((e) => finished(e, ctx));
   const summaries = await getPatientSummaries(db, actor, done.map((e) => e.patientId));
@@ -200,6 +192,21 @@ export async function slipDay(db: Db, actor: Actor, now: Date = new Date()): Pro
     });
   }
 
+  return items;
+}
+
+
+/**
+ * Today's slips, in the board's order: WAITING oldest consultation first, then RETAKE oldest request
+ * first, then FILED newest first. One unfiltered list — the board has no filter tabs.
+ */
+export async function slipDay(db: Db, actor: Actor, now: Date = new Date()): Promise<SlipDay> {
+  const serviceDate = istDate(now);
+  const encounters = await db.select().from(opdEncounters)
+    // Owner 2026-10-09 — a tele-call leaves no paper to photograph: it is never on the slip desk's day.
+    .where(and(eq(opdEncounters.serviceDate, serviceDate), ne(opdEncounters.status, "abandoned"), ne(opdEncounters.consultMode, "tele")))
+    .orderBy(asc(opdEncounters.openedAt)).limit(DAY_CAP);
+  const items = await slipRows(db, actor, encounters);
   const t = (d: Date | null): number => d?.getTime() ?? 0;
   const rank: Record<SlipState, number> = { waiting: 0, retake: 1, filed: 2 };
   items.sort((a, b) => {
@@ -263,4 +270,37 @@ export async function requestSlipRetake(
     }
     return { documentId: result.documentId, encounterId: result.encounterId, alreadyRequested: result.alreadyRequested };
   });
+}
+
+/**
+ * ═══ #659 — THE MRD DAY-END HAND-OFF (owner ruling 28-Sep-2026) ═══
+ *
+ * *"A missing slip shows in the list and clocks and goes to MRD at day end."* Nothing is escalated
+ * while the day runs (`slipDay`). Once a service day is over, each of its finished consultations whose
+ * slip never landed — still WAITING, or a RETAKE nobody answered — is the records office's to chase.
+ *
+ * DERIVED, NEVER STORED: no hand-off row is written, so there is nothing to undo — a page filed later,
+ * by the desk or by MRD, takes the visit off this list by itself. DECIDED: the list looks back
+ * `MRD_WINDOW_DAYS` (a slip missing for longer is a records audit, not a day's hand-off).
+ */
+export const MRD_WINDOW_DAYS = 30;
+
+export type MrdSlipRow = SlipDayRow & { serviceDate: string };
+
+export async function mrdSlips(db: Db, actor: Actor, now: Date = new Date()): Promise<MrdSlipRow[]> {
+  const today = istDate(now);
+  const from = istDate(new Date(now.getTime() - MRD_WINDOW_DAYS * 86_400_000));
+  const encounters = await db.select().from(opdEncounters)
+    .where(and(
+      gte(opdEncounters.serviceDate, from), lt(opdEncounters.serviceDate, today),
+      ne(opdEncounters.status, "abandoned"), ne(opdEncounters.consultMode, "tele"),
+    ))
+    .orderBy(asc(opdEncounters.serviceDate), asc(opdEncounters.openedAt)).limit(DAY_CAP);
+  const dayOf = new Map(encounters.map((e) => [e.id, e.serviceDate] as const));
+  const rows = (await slipRows(db, actor, encounters)).filter((r) => r.state !== "filed");
+  const t = (d: Date | null): number => d?.getTime() ?? 0;
+  return rows
+    .map((r) => ({ ...r, serviceDate: dayOf.get(r.encounterId)! }))
+    .sort((a, b) => a.serviceDate.localeCompare(b.serviceDate) || (a.state === b.state ? 0 : a.state === "waiting" ? -1 : 1)
+      || t(a.consultDoneAt ?? a.retakeRequestedAt) - t(b.consultDoneAt ?? b.retakeRequestedAt));
 }

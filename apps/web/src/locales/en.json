@@ -1265,6 +1265,13 @@
     }
   },
   "opdConsult": {
+    "retake": {
+      "ask": "Ask the desk for a clearer photo",
+      "asked": "Clearer photo asked",
+      "reason": "What is unclear (optional)",
+      "send": "Send",
+      "cancel": "Cancel"
+    },
     "pickFromFormulary": "Pick from formulary",
     "regimenUnmatched": "Not matched — pick from the list so the checks can see it",
     "notInFormulary": "Not in formulary — advanced checks unavailable",
@@ -10267,6 +10274,18 @@
     "fill": "Fill prescription ({{n}} lines)"
   },
   "slipCapture": {
+    "photoRead": {
+      "match": "The photo's QR reads {{visit}} — this visit",
+      "mismatch": "The photo's QR reads {{photo}}, not {{visit}} — retake, or scan this paper again",
+      "none": "No visit number read from the photo — check the paper against the visit"
+    },
+    "mrd": {
+      "title": "With MRD · {{count}}",
+      "waiting": "no slip filed",
+      "retake": "retake not answered: {{reason}}",
+      "noReason": "no reason given",
+      "note": "Slips missing when their day ended go to MRD. Filing the page takes the visit off this list."
+    },
     "miss": {
       "token": "Token {{token}} is not among today's finished consultations — type the visit number on the slip, or find the visit by name",
       "prescription": "That prescription's visit is not among today's finished consultations — type the visit number, or find the visit by name",
