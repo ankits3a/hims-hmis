@@ -10068,6 +10068,7 @@
     "doctorIssued": "The doctor has already issued this visit's prescription on the screen, so no medicines are typed here. You can still type the tests.",
     "tests": "Tests",
     "testsHint": "Type two letters · Enter picks the first match",
+    "sugTests": "Doctor often advises",
     "testsPlaceholder": "CBC, X-ray chest, LFT…",
     "testsUnavailable": "The price list could not be read — tests cannot be typed right now",
     "removeTest": "Remove {{name}}",
