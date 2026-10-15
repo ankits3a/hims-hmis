@@ -7,6 +7,7 @@ import { openCriticalsForEncounters } from "../lab";
 import { getMergeRequest, getPatientSummaries, searchPatients } from "../patients";
 import { aliasHiOf, requireErPermission, yearsOld } from "./core";
 import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_TRIAGE } from "./names";
+import { activationClocksFor } from "./codes";
 import { ErRefusal } from "./errors";
 import type {
   Actor, ErAgeBand, ErArrivalMode, ErBay, ErBoard, ErDeskRow, ErDoctorOption, ErEpisodeView, ErEsiLevel, ErEws, ErDeskView, ErEpisodeState, ErExpectedCard, ErPatientHit, ErSex, ErTile,
@@ -116,6 +117,8 @@ async function tilesFor(db: Db, actor: Actor, eps: readonly EpisodeRow[], at: Da
   const critical = new Set((await openCriticalsForEncounters(db, openEps.map((e) => e.episodeNo))).map((c) => c.encounterNo));
   const waitingCall = new Set(openEps.length === 0 ? [] : (await db.select({ id: erSpecialtyCalls.episodeId }).from(erSpecialtyCalls)
     .where(and(inArray(erSpecialtyCalls.episodeId, openEps.map((e) => e.id)), isNull(erSpecialtyCalls.answeredAt)))).map((r) => r.id));
+  // Lane 7 (#814): the activation clocks of the running codes (STEMI door-to-ECG …), from the door.
+  const activations = await activationClocksFor(db, openEps.map((e) => e.id));
   const out = new Map<string, ErTile>();
   for (const e of eps) {
     const n = names.get(e.id)!;
@@ -143,6 +146,7 @@ async function tilesFor(db: Db, actor: Actor, eps: readonly EpisodeRow[], at: Da
       // a pregnancy); the full board keeps it.
       ews: e.ewsKind === null ? null
         : { kind: wall ? null : e.ewsKind as ErEws["kind"], value: e.ewsValue ?? 0, band: e.ewsBand as ErEws["band"] },
+      ...(activations.has(e.id) ? { activations: activations.get(e.id)! } : {}),
     });
   }
   return out;

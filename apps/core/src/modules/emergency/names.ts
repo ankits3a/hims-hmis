@@ -43,3 +43,9 @@ export const ER_DISPOSITION = "er.disposition";
  * against an undertaking, a mass-casualty event account. Money: billing and desk roles only — never a clinician (0058).
  */
 export const ER_BILL = "er.bill";
+/**
+ * ER lane 7 (#814) — codes: call a code (Code Blue and Code Grey from any staff phone), the resuscitation record, the
+ * end and the debrief. DECIDED: one string held by every clinical and desk role that can face an arrest or violence; the
+ * end of a clinical code also checks the doctor role. No money behind it.
+ */
+export const ER_CODES = "er.codes";

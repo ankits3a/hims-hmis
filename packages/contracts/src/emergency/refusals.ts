@@ -101,6 +101,16 @@ export const ER_REFUSALS = {
   patient_payable_forbidden: { rule: "This patient is treated free by law: nothing is payable.", fix: "Settle as nothing payable" },
   rolled_to_ip: { rule: "The ER lines moved to the inpatient bill at admission; the IP bill settles them.", fix: "Open the IP bill" },
 
+  /* ═══ Codes (lane 7) ═══ */
+  code_needs_patient: { rule: "A clinical activation is called on a patient in the ER; Code Blue and Code Grey may be called anywhere.", fix: "Pick the patient" },
+  code_open: { rule: "This code is already running for this patient.", fix: "Open the code" },
+  code_not_found: { rule: "No code has this id.", fix: "Open codes" },
+  code_ended: { rule: "The code has ended; its record is closed.", fix: "Open the code" },
+  code_not_ended: { rule: "The debrief follows the end of the code.", fix: "End the code" },
+  milestone_unknown: { rule: "This activation has no such milestone.", fix: "Pick a milestone" },
+  debrief_recorded: { rule: "The debrief is already recorded.", fix: "Open the code" },
+  not_code_leader: { rule: "The team leader who ended the code records its debrief.", fix: "Ask the team leader" },
+
   /* ═══ The band ═══ */
   printer_offline: { rule: "The chosen printer is not answering.", fix: "Pick nearest printer" },
   band_already_printed: { rule: "A band is already printed for this episode.", fix: "Reprint band" },

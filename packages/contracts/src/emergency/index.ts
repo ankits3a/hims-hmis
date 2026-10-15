@@ -3,6 +3,7 @@ import * as triageIntents from "./triage";
 import * as care from "./care";
 import * as mlc from "./mlc";
 import * as bill from "./bill";
+import * as codes from "./codes";
 import * as dispo from "./dispo";
 
 export * from "./common";
@@ -25,6 +26,10 @@ export {
   ErBillDeskSchema, ErBillLineSchema, ErBillSchema,
 } from "./bill";
 export type { ErBill, ErBillDesk, ErPayerKind } from "./bill";
+export {
+  ER_CODE_ANYWHERE, ER_CODE_CLOCKS, ER_CODE_EVENT_KINDS, ER_CODE_KINDS, ER_CODE_OUTCOMES, ER_CODE_TEAM, ER_RHYTHMS, ErCodeViewSchema, ErCodesSchema,
+} from "./codes";
+export type { ErCodeClockDef, ErCodeKind, ErCodeView, ErCodes } from "./codes";
 /** ER lane 6 (#813): the intents whose answers name money — the bill desk's, never a clinical screen's (0058). */
 export const ER_MONEY_INTENTS = ["set_er_payer", "take_er_advance", "price_er_lines", "settle_er_bill", "open_er_event_account"] as const;
 export type { ErDisposition, ErReturnIfSign } from "./dispo";
@@ -84,6 +89,11 @@ export const ER_INTENTS = {
   price_er_lines: bill.priceErLines,
   settle_er_bill: bill.settleErBill,
   open_er_event_account: bill.openErEventAccount,
+  // lane 7 (#814) — codes and activations
+  call_code: codes.callCode,
+  record_code_event: codes.recordCodeEvent,
+  end_code: codes.endCode,
+  record_code_debrief: codes.recordCodeDebrief,
 } as const;
 export type ErIntentName = keyof typeof ER_INTENTS;
 export const ER_INTENT_NAMES = Object.keys(ER_INTENTS) as ErIntentName[];

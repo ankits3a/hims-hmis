@@ -57,6 +57,8 @@ export const ErTileSchema = z.object({
    * `kind` is null: the number and the band only (MEOWS would disclose a pregnancy; ER review 2026-10-15).
    */
   ews: ErEwsSchema.extend({ kind: ErEwsSchema.shape.kind.nullable() }).nullable(),
+  /** Lane 7 (#814): the activation clocks running for this patient (from the door), the nearest first. */
+  activations: z.array(z.object({ kind: z.string(), milestone: z.string(), dueAt: ErInstantSchema, metAt: ErInstantSchema.nullable() })).optional(),
 });
 export type ErTile = z.infer<typeof ErTileSchema>;
 

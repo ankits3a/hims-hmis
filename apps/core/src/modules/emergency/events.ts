@@ -119,6 +119,14 @@ export const erLinesPriced = defineEvent("er.lines_priced", MODULE, z.object({ e
 export const erBillSettled = defineEvent("er.bill_settled", MODULE, z.object({ episodeId: id, settlement: z.string(), duesPaise: z.number().int(), provenance: ErProvenanceSchema }));
 export const erEventAccountOpened = defineEvent("er.event_account_opened", MODULE, z.object({ eventAccountId: id, provenance: ErProvenanceSchema }));
 
+/* ═══ lane 7 (#814) — codes (ids and kinds only: no names, no place on the realtime wire) ═══ */
+export const erCodeCalled = defineEvent("er.code_called", MODULE, z.object({
+  codeId: id, kind: z.string(), episodeId: id.nullable(), paged: z.number().int(), provenance: ErProvenanceSchema,
+}));
+export const erCodeEvent = defineEvent("er.code_event", MODULE, z.object({ codeId: id, eventId: id, kind: z.string(), fromPaper: z.boolean(), provenance: ErProvenanceSchema }));
+export const erCodeEnded = defineEvent("er.code_ended", MODULE, z.object({ codeId: id, outcome: z.string(), provenance: ErProvenanceSchema }));
+export const erCodeDebriefed = defineEvent("er.code_debriefed", MODULE, z.object({ codeId: id, provenance: ErProvenanceSchema }));
+
 /** Every event the tracking board refetches on. */
 export const ER_BOARD_EVENT_NAMES: readonly string[] = [
   erPreAlerted.name, erPreAlertCancelled.name, erArrived.name, erBroughtDead.name, erBandPrinted.name, erBandVoided.name,
@@ -129,4 +137,5 @@ export const ER_BOARD_EVENT_NAMES: readonly string[] = [
   // ER review (2026-10-15): NOT `er.mlc_opened` — the gateway forwards the whole payload (MLC number, category) to every
   // board subscriber; the board shows the MLC mark on its next read.
   erDispositionDecided.name, erHandedToUnit.name, erDeparted.name,
+  erCodeCalled.name, erCodeEvent.name, erCodeEnded.name,
 ];
