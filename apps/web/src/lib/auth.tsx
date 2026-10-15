@@ -56,6 +56,24 @@ export function idleSignOutDue(lastInputAt: number, now: number, path: string): 
   return now - lastInputAt > IDLE_SIGN_OUT_MS;
 }
 const INPUT_EVENTS = ["keydown", "pointerdown", "mousemove", "touchstart", "wheel"] as const;
+/**
+ * Every tab of a browser shares one token, so one tab's sign-out signs them all out. The last input is therefore kept
+ * where every tab reads it: a tab nobody looks at must not sign out the person typing in the next one.
+ */
+export const IDLE_INPUT_KEY = "hmis.lastInputAt";
+/** The shared stamp is written at most this often (mousemove fires constantly). */
+const SHARE_INPUT_EVERY_MS = 5_000;
+function sharedLastInput(): number {
+  try {
+    const v = Number(localStorage.getItem(IDLE_INPUT_KEY));
+    return Number.isFinite(v) ? v : 0;
+  } catch {
+    return 0;
+  }
+}
+function shareLastInput(at: number): void {
+  try { localStorage.setItem(IDLE_INPUT_KEY, String(at)); } catch { /* storage unavailable: this tab's own clock still counts */ }
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }): React.ReactElement {
   const queryClient = useQueryClient();
@@ -137,10 +155,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
   useEffect(() => {
     if (actor === null) return;
     lastInput.current = Date.now();
-    const touch = (): void => { lastInput.current = Date.now(); };
+    let sharedAt = lastInput.current;
+    shareLastInput(sharedAt);
+    const touch = (): void => {
+      const now = Date.now();
+      lastInput.current = now;
+      if (now - sharedAt >= SHARE_INPUT_EVERY_MS) { sharedAt = now; shareLastInput(now); }
+    };
     for (const e of INPUT_EVENTS) window.addEventListener(e, touch, { passive: true });
     const timer = setInterval(() => {
-      if (idleSignOutDue(lastInput.current, Date.now(), window.location.pathname)) void logout();
+      const last = Math.max(lastInput.current, sharedLastInput());
+      if (idleSignOutDue(last, Date.now(), window.location.pathname)) void logout();
     }, 15_000);
     return () => {
       clearInterval(timer);

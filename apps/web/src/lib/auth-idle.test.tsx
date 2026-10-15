@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { AuthProvider, IDLE_SIGN_OUT_MS, idleSignOutDue, useAuth } from "./auth";
+import { AuthProvider, IDLE_INPUT_KEY, IDLE_SIGN_OUT_MS, idleSignOutDue, useAuth } from "./auth";
 import { setToken } from "./api";
 
 /**
@@ -42,4 +42,30 @@ it("signs out after the idle window with no input, and input in between keeps it
   await act(async () => { vi.advanceTimersByTime(2 * 60_000); });
   await waitFor(() => expect(screen.getByTestId("who")).toHaveTextContent("nobody"));
   expect(calls).toContain("POST /api/auth/logout");
+});
+
+/*
+ * The token is shared by every tab of the browser (localStorage), and so is the sign-out: a tab nobody is looking at
+ * must not sign out the person working in another tab. Input in any tab is recorded where every tab reads it.
+ */
+it("input in ANOTHER tab of the same browser keeps this tab signed in", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const calls: string[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.pathname : input.url;
+    calls.push(`${init?.method ?? "GET"} ${url}`);
+    if (url.endsWith("/api/auth/me")) return new Response(JSON.stringify({ actor: { type: "user", id: "asha" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } }), { status: 200, headers: { "Content-Type": "application/json" } });
+    return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+  }));
+  setToken("t-asha");
+  render(<QueryClientProvider client={new QueryClient()}><AuthProvider><Who /></AuthProvider></QueryClientProvider>);
+  await waitFor(() => expect(screen.getByTestId("who")).toHaveTextContent("asha"));
+  for (let i = 0; i < 3; i += 1) {
+    await act(async () => { vi.advanceTimersByTime(IDLE_SIGN_OUT_MS - 60_000); });
+    localStorage.setItem(IDLE_INPUT_KEY, String(Date.now())); // the other tab's keystroke
+  }
+  await act(async () => { vi.advanceTimersByTime(60_000); });
+  expect(screen.getByTestId("who")).toHaveTextContent("asha");
+  expect(calls).not.toContain("POST /api/auth/logout");
+  localStorage.removeItem(IDLE_INPUT_KEY);
 });
