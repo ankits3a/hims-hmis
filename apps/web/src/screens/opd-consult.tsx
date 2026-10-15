@@ -3942,7 +3942,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                       {advisedTests.map((a) => (
                         <li key={a.serviceId} className="drow" style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "6px 0" }}>
                           <span>{a.name}</span>
-                          <span className="mo" style={{ color: "var(--dim)" }}>{fmtPaise(a.pricePaise)}</span>
+                          <span className="mo" style={{ color: "var(--dim)" }}>{a.pricePaise === null ? t("rx.rateAtCounter") : fmtPaise(a.pricePaise)}</span>
                           <button
                             type="button"
                             className="sec" style={{ marginLeft: "auto", padding: "1px 8px", fontSize: 11 }}

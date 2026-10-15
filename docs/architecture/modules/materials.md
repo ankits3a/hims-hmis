@@ -334,6 +334,12 @@ Source: `apps/core/src/modules/materials/`
   - `saleAmountPaise(input: { mrpPaise: number; packMultiplier: number; qtyBase: number }): SaleAmount`
   - `toBase(uoms: readonly UomRow[], uom: string, qty: number): number`
   - types: `PackPrice`, `SaleAmount`, `UomRow`
+- `vendor-rates.ts`
+  - `contractRatesFor(db: Db | Tx, itemIds: readonly string[], now: Date = new Date()): Promise<Map<string, ContractRate[]>>`
+  - `endVendorRate(db: Db, actor: Actor, rateId: string, now: Date = new Date()): Promise<void>`
+  - `setVendorRates(db: Db, actor: Actor, vendorId: string, rows: readonly VendorRateInput[], opts: { source?: string | null; validFrom?: string…`
+  - `vendorRates(db: Db, actor: Actor, vendorId: string): Promise<VendorRateView[]>`
+  - types: `ContractRate`, `VendorRateInput`, `VendorRateResult`, `VendorRateView`
 - `vendors.ts`
   - `activateVendor(tx: Tx, actor: Actor, vendorId: string, now: Date): Promise<void>`
   - `addVendorDocument(tx: Tx, actor: Actor, vendorId: string, input: { type: string; number: string; validFrom?: string | null; validTo?: strin…`
@@ -365,13 +371,13 @@ Source: `apps/core/src/modules/materials/`
 
 ## Tables (`kernel/db/schema/materials.ts`)
 
-`consignment_lots`, `controlled_stock_register`, `grn_lines`, `grns`, `item_barcodes`, `item_merges`, `item_price_regulations`, `item_stock_levels`, `item_uoms`, `items`, `materials_settings`, `purchase_order_lines`, `purchase_orders`, `stock_adjustments`, `stock_balances`, `stock_batches`, `stock_count_lines`, `stock_counts`, `stock_ledger`, `stock_recalls`, `stock_reservations`, `stock_write_off_lines`, `stock_write_offs`, `store_indent_lines`, `store_indents`, `supplier_bill_lines`, `supplier_bills`, `supplier_credit_notes`, `supplier_payment_run_lines`, `supplier_payment_runs`, `supplier_payments`, `supplier_return_lines`, `supplier_returns`, `transfer_lines`, `transfers`, `vendor_bank_changes`, `vendor_documents`, `vendors`
+`consignment_lots`, `controlled_stock_register`, `grn_lines`, `grns`, `item_barcodes`, `item_merges`, `item_price_regulations`, `item_stock_levels`, `item_uoms`, `items`, `materials_settings`, `purchase_order_lines`, `purchase_orders`, `stock_adjustments`, `stock_balances`, `stock_batches`, `stock_count_lines`, `stock_counts`, `stock_ledger`, `stock_recalls`, `stock_reservations`, `stock_write_off_lines`, `stock_write_offs`, `store_indent_lines`, `store_indents`, `supplier_bill_lines`, `supplier_bills`, `supplier_credit_notes`, `supplier_payment_run_lines`, `supplier_payment_runs`, `supplier_payments`, `supplier_return_lines`, `supplier_returns`, `transfer_lines`, `transfers`, `vendor_bank_changes`, `vendor_documents`, `vendor_item_rates`, `vendors`
 
 Foreign keys into: `formulary`, `resources`
 
-## HTTP routes (117)
+## HTTP routes (120)
 
 - `materials-indents.controller.ts` — 6: `/materials/indents`
-- `materials.controller.ts` — 111: `/materials/adjustments`, `/materials/bank-changes`, `/materials/barcodes`, `/materials/consumptions`, `/materials/counts`, `/materials/expiring`, `/materials/expiry-report`, `/materials/grns`, `/materials/items`, `/materials/payables`, `/materials/payment-runs`, `/materials/purchase-orders`, `/materials/purchase-vendors`, `/materials/recalls`, `/materials/settings`, `/materials/stock`, `/materials/stock-levels`, `/materials/stores`, `/materials/supplier-bills`, `/materials/supplier-returns`, `/materials/transfers`, `/materials/vendors`, `/materials/write-offs`
+- `materials.controller.ts` — 114: `/materials/adjustments`, `/materials/bank-changes`, `/materials/barcodes`, `/materials/consumptions`, `/materials/counts`, `/materials/expiring`, `/materials/expiry-report`, `/materials/grns`, `/materials/items`, `/materials/payables`, `/materials/payment-runs`, `/materials/purchase-orders`, `/materials/purchase-vendors`, `/materials/recalls`, `/materials/settings`, `/materials/stock`, `/materials/stock-levels`, `/materials/stores`, `/materials/supplier-bills`, `/materials/supplier-returns`, `/materials/transfers`, `/materials/vendor-rates`, `/materials/vendors`, `/materials/write-offs`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/materials`
