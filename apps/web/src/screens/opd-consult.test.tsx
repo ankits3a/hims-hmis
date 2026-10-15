@@ -4697,6 +4697,30 @@ describe("Consult v2", () => {
     }, { timeout: 3000 });
   });
 
+  it("#882: a medicine with a SIGNED CRK formulary entry carries an Info chip that opens it with its label; no money", async () => {
+    mockRoutes(routes({
+      "GET /api/formulary/medicines/search": { status: 200, body: V2_DRUGS },
+      "GET /api/formulary/medicines/crk": {
+        status: 200,
+        body: { items: [{
+          medicineId: "m-amlong", genericSctid: "1", name: "Amlodipine 5 mg oral tablet", highAlert: false, designation: "Professor, Pharmacology", secondSigner: null,
+          label: "CRK Medical College formulary · reviewed by Dr A Sharma, 2026-10-15",
+          crk: { sources: [{ ref: "nhs1", kind: "nhs", title: "NHS Amlodipine", url: null, asOf: null }], fields: { uses: [{ text: "Lowers blood pressure.", source: "nhs1" }] }, combinationNote: null },
+        }] },
+      },
+    }));
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(await screen.findByLabelText("Drug"), "amlo");
+    await user.click(await screen.findByTestId("rx-drug-0-hit-m-amlong"));
+    await user.click(await screen.findByTestId("rx-info-0"));
+    const modal = await screen.findByTestId("rx-info-0-modal");
+    expect(within(modal).getByTestId("rx-info-0-label")).toHaveAccessibleName("CRK Medical College formulary · reviewed by Dr A Sharma, 2026-10-15");
+    expect(within(modal).getByText(/Lowers blood pressure\./)).toBeInTheDocument();
+    expect(modal.textContent ?? "").not.toMatch(/₹|token|cost|price/i);
+  });
+
   it("V10: a finished line folds to its CARD when the doctor adds another — name and sig on the card, the stock tag at its corner, a tap opens it", async () => {
     mockRoutes(routes({
       "GET /api/formulary/medicines/search": { status: 200, body: V2_DRUGS },

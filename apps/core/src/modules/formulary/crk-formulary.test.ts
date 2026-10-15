@@ -7,7 +7,7 @@ import { registerItem } from "../materials";
 import { FormularyError } from "./errors";
 import { addMedicine, addSalt } from "./masters";
 import { getMonograph, reviewMonograph, saveMonograph } from "./monographs";
-import { crkLabel, crkWorklist, draftCrkEntry, saveCrkEntry, signCrkEntry } from "./crk-formulary";
+import { crkLabel, crkWorklist, draftCrkEntry, saveCrkEntry, signCrkEntry, signedCrkForMedicines } from "./crk-formulary";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { CrkEntry } from "../../kernel/db/schema";
@@ -182,6 +182,26 @@ describe("CRK formulary — drafted by a model, signed by Pharmacology", () => {
     w = await crkWorklist(db, "2099-01-01");
     expect(w.counts).toMatchObject({ signed: 1, dueForReview: 1 });
     expect(w.items.map((i) => i.state)).toEqual(["due"]);
+  });
+
+  it("#882: a doctor's medicine reads the SIGNED entry with its label, and nothing while unsigned", async () => {
+    const medicineId = await withTx(db, async (tx) => {
+      const salt = await addSalt(tx, PHARMACIST, { name: "Aciclovir", drugClass: "antiviral" });
+      return (await addMedicine(tx, PHARMACIST, { brandName: "Zovirax 800", form: "tablet", routeClass: "systemic", strengthLabel: "800 mg", scheduleFlag: "H", salts: [{ saltId: salt.saltId, strength: "800 mg" }] })).medicineId;
+    });
+    await db.update(formularyMedicines).set({ genericSctid: SCTID }).where(eq(formularyMedicines.id, medicineId));
+    const { monographId } = await save();
+    expect(await signedCrkForMedicines(db, [medicineId])).toEqual([]);
+    await sign(monographId, PROF_A, { highAlert: true });
+    expect(await signedCrkForMedicines(db, [medicineId])).toEqual([]);
+    await sign(monographId, PROF_B);
+    const [read] = await signedCrkForMedicines(db, [medicineId, medicineId]);
+    expect(read).toMatchObject({ medicineId, genericSctid: SCTID, highAlert: true, designation: "Professor, Pharmacology" });
+    expect(read!.label).toMatch(/^CRK Medical College formulary · reviewed by .+, \d{4}-\d{2}-\d{2}$/);
+    expect(read!.crk.fields.uses?.[0]?.text).toBe("Treats shingles and cold sores.");
+    expect(Object.keys(read!)).not.toContain("draftUsage");
+    await save({ ...ENTRY, fields: { uses: [{ text: "Changed.", source: "fda1" }] } });
+    expect(await signedCrkForMedicines(db, [medicineId])).toEqual([]);
   });
 
   it("only a person signs, and a signature names a designation", async () => {

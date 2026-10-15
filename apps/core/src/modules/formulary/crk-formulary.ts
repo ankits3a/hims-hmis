@@ -18,11 +18,11 @@
  * and that check is what keeps them so. No model configured is a supported way to run: drafting answers
  * `model_not_configured`, and a reviewer writes the entry by hand and signs it the same way.
  */
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { assertNoIdentifiers, maskQuestion } from "../../kernel/copilot/mask";
-import { formularyGenerics, formularyMonographs, formularyMonographSignatures } from "../../kernel/db/schema";
+import { formularyGenerics, formularyMedicines, formularyMonographs, formularyMonographSignatures } from "../../kernel/db/schema";
 import { FormularyError } from "./errors";
 import { monographCrkSaved, monographSigned } from "./events";
 import type { Actor } from "@hmis/contracts";
@@ -338,4 +338,37 @@ export async function crkSigners(db: Db | Tx, ids: readonly string[]): Promise<M
   if (wanted.length === 0) return new Map();
   const rows = (await db.execute(sql`select id, full_name as name from users where id = any(${sql`array[${sql.join(wanted.map((w) => sql`${w}`), sql`, `)}]::text[]`})`)).rows as { id: string; name: string }[];
   return new Map(rows.map((r) => [r.id, r.name]));
+}
+
+/**
+ * #882 — what a DOCTOR's screen reads beside a medicine: the SIGNED CRK entry of its generic, with its label.
+ * Drafts, entries waiting for a second signature and the drafting cost never leave by this door.
+ */
+export type SignedCrk = {
+  medicineId: string; genericSctid: string; name: string; crk: CrkEntry; highAlert: boolean;
+  label: string; designation: string | null; secondSigner: string | null;
+};
+
+export async function signedCrkForMedicines(db: Db | Tx, medicineIds: readonly string[]): Promise<SignedCrk[]> {
+  const ids = [...new Set(medicineIds)];
+  if (ids.length === 0) return [];
+  const rows = await db.select({
+    medicineId: formularyMedicines.id, genericSctid: formularyGenerics.sctid, name: formularyGenerics.name,
+    crk: formularyMonographs.crk, highAlert: formularyMonographs.highAlert, reviewedBy: formularyMonographs.reviewedBy,
+    reviewedAt: formularyMonographs.reviewedAt, designation: formularyMonographs.reviewerDesignation,
+    secondReviewedBy: formularyMonographs.secondReviewedBy,
+  }).from(formularyMedicines)
+    .innerJoin(formularyGenerics, eq(formularyGenerics.sctid, formularyMedicines.genericSctid))
+    .innerJoin(formularyMonographs, eq(formularyMonographs.genericId, formularyGenerics.id))
+    .where(and(inArray(formularyMedicines.id, ids), eq(formularyMonographs.status, "reviewed"), sql`${formularyMonographs.crk} is not null`));
+  const names = await crkSigners(db, rows.flatMap((r) => [r.reviewedBy, r.secondReviewedBy].filter((x): x is string => x !== null)));
+  return rows.flatMap((r) => {
+    if (r.crk === null || r.reviewedBy === null || r.reviewedAt === null) return [];
+    const on = new Date(r.reviewedAt.getTime() + 5.5 * 3600_000).toISOString().slice(0, 10);
+    return [{
+      medicineId: r.medicineId, genericSctid: r.genericSctid, name: r.name, crk: r.crk, highAlert: r.highAlert,
+      label: crkLabel(names.get(r.reviewedBy) ?? r.reviewedBy, on), designation: r.designation,
+      secondSigner: r.secondReviewedBy === null ? null : names.get(r.secondReviewedBy) ?? r.secondReviewedBy,
+    }];
+  });
 }

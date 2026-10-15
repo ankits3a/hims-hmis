@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CrkInfoButton, useSignedCrk } from "../components/crk-entry";
 import { TeleCallPanel, teleLockedOf } from "../components/tele-call-panel";
 import { TeleMark } from "../components/tele-mark";
 import { slotClock } from "../lib/appointment-view";
@@ -949,6 +950,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     return rxOpen !== i && l !== undefined && l.drug.trim() !== "" && String(l.durationDays ?? "").trim() !== "";
   };
   const stockByMedicine = useDoctorStock(watchedLines.map((l) => l.medicineId ?? ""));
+  /* #882 — a medicine's SIGNED CRK formulary entry, behind a small Info chip; absent while unsigned. */
+  const crkByMedicine = useSignedCrk(watchedLines.map((l) => l.medicineId ?? ""));
   const stockAlerts = watchedLines.flatMap((l, index) => {
     const id = l.medicineId ?? "";
     const st = id === "" ? undefined : stockByMedicine.get(id);
@@ -3602,6 +3605,11 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                         <div key={f.id} className={`cx-rxcard${(watchedLines[i]?.drug.trim() ?? "") === "" || String(watchedLines[i]?.durationDays ?? "").trim() === "" ? " writing" : ""}`}
                           data-testid={`rx-card-${String(i)}`} style={{ marginTop: 14 }}>
                         <StockTag stock={stockByMedicine.get(watchedLines[i]?.medicineId ?? "")} testId={`rx-stock-${String(i)}`} />
+                        {crkByMedicine.has(watchedLines[i]?.medicineId ?? "") && (
+                          <span style={{ position: "absolute", top: -10, left: 40 }}>
+                            <CrkInfoButton entry={crkByMedicine.get(watchedLines[i]?.medicineId ?? "")} testId={`rx-info-${String(i)}`} />
+                          </span>
+                        )}
                         {(() => {
                           /*
                             THE LINE AS A CARD (the Consult Engine board): name, strength, the sig in one

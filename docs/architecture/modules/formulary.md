@@ -160,8 +160,8 @@ Source: `apps/core/src/modules/formulary/`
 
 Foreign keys into: —
 
-## HTTP routes (31)
+## HTTP routes (32)
 
-- `formulary.controller.ts` — 31: `/formulary/census`, `/formulary/coverage`, `/formulary/interactions`, `/formulary/medicines`, `/formulary/monographs`, `/formulary/pair-rates`, `/formulary/salts`, `/formulary/staging`, `/formulary/substances`, `/formulary/suggest`
+- `formulary.controller.ts` — 32: `/formulary/census`, `/formulary/coverage`, `/formulary/interactions`, `/formulary/medicines`, `/formulary/monographs`, `/formulary/pair-rates`, `/formulary/salts`, `/formulary/staging`, `/formulary/substances`, `/formulary/suggest`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/formulary`
