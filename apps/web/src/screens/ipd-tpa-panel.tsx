@@ -13,6 +13,7 @@ import type {
 } from "@hmis/contracts";
 import type { WirePatientDocument } from "../lib/patients-api";
 import "./ipd-tpa.css";
+import { dateLocale } from "../lib/date-locale";
 
 /*
  * #604 (decision 0075) — THE PER-ADMISSION TPA PANEL on the bill page (SPEC-tpa-desk-2026-10-15, surfaces). What the TPA
@@ -35,7 +36,7 @@ const DEDUCTION_REASONS: readonly IpdClaimDeductionReason[] = [
 
 /** "10 Mar 14:05" in IST. */
 export const tpaWhen = (iso: string): string =>
-  new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })
+  new Intl.DateTimeFormat(dateLocale(undefined, "en-GB"), { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })
     .format(new Date(iso));
 
 /** "1 h 15 min" / "31 days" — the clock in words. */
