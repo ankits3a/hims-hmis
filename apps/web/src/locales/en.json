@@ -15784,7 +15784,8 @@
       "awaitingSecond": "Need 2nd",
       "signed": "Signed",
       "dueForReview": "Due",
-      "overdue": "Overdue"
+      "overdue": "Overdue",
+      "pending": "New version"
     },
     "cost": "{{n}} drafts · {{inTok}} in · {{outTok}} out tokens",
     "noModel": "No drafting model set",
@@ -15793,7 +15794,8 @@
       "draft": "To sign",
       "awaiting_second": "Needs 2nd signer",
       "due": "Due for review",
-      "overdue": "Review overdue"
+      "overdue": "Review overdue",
+      "pending": "New version pending"
     },
     "byModel": "AI draft",
     "byHand": "By hand",
@@ -15807,7 +15809,8 @@
       "draft": "Draft · not shown",
       "awaiting": "Signed once · needs 2nd",
       "reviewed": "Signed · shown",
-      "due": "Signed · review due"
+      "due": "Signed · review due",
+      "pending": "New version pending · live stays"
     },
     "firstBy": "1st: {{who}}",
     "youSignedFirst": "You signed first. Another reviewer signs.",
@@ -15831,7 +15834,7 @@
     "edit": "Edit",
     "cancel": "Cancel",
     "save": "Save draft",
-    "saveUnsigns": "Saving unsigns it.",
+    "saveUnsigns": "Saving restarts the signatures.",
     "saved": "Saved as draft",
     "addStatement": "+ Line",
     "addSource": "+ Source",
@@ -15856,6 +15859,8 @@
     "renewed": "Renewed · due in 12 months",
     "renewHint": "Re-signs the same text.",
     "overdueTag": "Review overdue",
-    "close": "Close"
+    "close": "Close",
+    "liveStays": "Live v{{n}} stays shown until signed.",
+    "saveNewVersion": "Saves a new version; the live one stays."
   }
 }

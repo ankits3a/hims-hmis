@@ -38,17 +38,18 @@ const ENTRY = {
   combinationNote: null,
 };
 const WORKLIST = {
-  counts: { none: 280, draft: 1, awaitingSecond: 1, signed: 3, dueForReview: 0, overdue: 1 },
+  counts: { none: 280, draft: 1, pending: 1, awaitingSecond: 1, signed: 3, dueForReview: 0, overdue: 1 },
   drafting: { drafted: 4, inputTokens: 48000, outputTokens: 9000 },
   items: [
-    { monographId: "mono-1", genericSctid: SCTID, name: "Acyclovir 800 mg oral tablet", state: "draft", draftedModel: "gpt-x", updatedAt: "2026-10-15T05:00:00.000Z" },
-    { monographId: "mono-2", genericSctid: "999", name: "Insulin regular", state: "awaiting_second", draftedModel: null, updatedAt: "2026-10-15T05:00:00.000Z" },
-    { monographId: "mono-3", genericSctid: "777", name: "Amoxicillin 500 mg oral capsule", state: "overdue", draftedModel: null, updatedAt: "2026-10-15T05:00:00.000Z" },
+    { entryId: "mono-1", genericSctid: SCTID, name: "Acyclovir 800 mg oral tablet", state: "draft", draftedModel: "gpt-x", updatedAt: "2026-10-15T05:00:00.000Z" },
+    { entryId: "mono-2", genericSctid: "999", name: "Insulin regular", state: "awaiting_second", draftedModel: null, updatedAt: "2026-10-15T05:00:00.000Z" },
+    { entryId: "mono-3", genericSctid: "777", name: "Amoxicillin 500 mg oral capsule", state: "overdue", draftedModel: null, updatedAt: "2026-10-15T05:00:00.000Z" },
+    { entryId: "mono-4", genericSctid: "555", name: "Metformin 500 mg oral tablet", state: "pending", draftedModel: "gpt-x", updatedAt: "2026-10-15T05:00:00.000Z" },
   ],
   drafter: { configured: false },
 };
 const ROW: Record<string, unknown> & { id: string } = {
-  id: "mono-1", genericId: "g-1", status: "draft", crk: ENTRY, draftedModel: "gpt-x", highAlert: false,
+  id: "mono-1", genericId: "g-1", signedCrk: null, draftCrk: ENTRY, draftedModel: "gpt-x", highAlert: false,
   firstSignedBy: null, firstSignedAt: null, firstSignerDesignation: null, reviewedBy: null, reviewedAt: null, reviewerDesignation: null,
   secondReviewedBy: null, secondReviewerDesignation: null, reviewDueOn: null, version: 0,
 };
@@ -58,7 +59,7 @@ describe("the CRK formulary reviewer screen (#882)", () => {
   afterEach(() => { vi.unstubAllGlobals(); });
 
   it("the worklist counts by state, lists what waits, and shows the drafting cost to a signer", async () => {
-    mockRoutes({ "GET /api/formulary/monographs/crk-worklist": { status: 200, body: WORKLIST } });
+    mockRoutes({ "GET /api/formulary/crk/worklist": { status: 200, body: WORKLIST } });
     renderWithProviders(<CrkFormularyScreen />);
     expect(await screen.findByTestId("crk-count-draft")).toHaveTextContent("1 To sign");
     expect(screen.getByTestId("crk-count-awaitingSecond")).toHaveTextContent("1 Need 2nd");
@@ -69,12 +70,15 @@ describe("the CRK formulary reviewer screen (#882)", () => {
     expect(within(screen.getByTestId("crk-item-999")).getByText("Needs 2nd signer")).toBeInTheDocument();
     // #884 — past its due date: counted and listed as overdue
     expect(screen.getByTestId("crk-count-overdue")).toHaveTextContent("1 Overdue");
+    // a new version waits while the signed one stays live
+    expect(screen.getByTestId("crk-count-pending")).toHaveTextContent("1 New version");
+    expect(within(screen.getByTestId("crk-item-555")).getByText("New version pending")).toBeInTheDocument();
     expect(within(screen.getByTestId("crk-item-777")).getByText("Review overdue")).toBeInTheDocument();
   });
 
   it("a pharmacist (formulary.manage, no signature) sees the worklist without the cost", async () => {
     grants = ["formulary.read", "formulary.manage"];
-    mockRoutes({ "GET /api/formulary/monographs/crk-worklist": { status: 200, body: WORKLIST } });
+    mockRoutes({ "GET /api/formulary/crk/worklist": { status: 200, body: WORKLIST } });
     renderWithProviders(<CrkFormularyScreen />);
     await screen.findByTestId("crk-count-draft");
     expect(screen.queryByTestId("crk-cost")).toBeNull();
@@ -83,11 +87,11 @@ describe("the CRK formulary reviewer screen (#882)", () => {
   it("signs with a designation and the high-alert flag; a high-alert entry then waits for a second signer", async () => {
     let row: typeof ROW = ROW;
     mockRoutes({
-      "GET /api/formulary/monographs/crk-worklist": { status: 200, body: WORKLIST },
-      [`GET /api/formulary/monographs/${SCTID}/draft`]: () => ({ status: 200, body: row }),
-      "POST /api/formulary/monographs/mono-1/sign": () => {
+      "GET /api/formulary/crk/worklist": { status: 200, body: WORKLIST },
+      [`GET /api/formulary/crk/${SCTID}/review`]: () => ({ status: 200, body: row }),
+      "POST /api/formulary/crk/entries/mono-1/sign": () => {
         row = { ...ROW, highAlert: true, firstSignedBy: "u-me", firstSignedAt: "2026-10-15T06:00:00.000Z", firstSignerDesignation: "Professor, Pharmacology" };
-        return { status: 200, body: { status: "awaiting_second", version: 0 } };
+        return { status: 200, body: { status: "awaiting_second", version: 0, renewal: false } };
       },
     });
     renderWithProviders(<CrkFormularyScreen />);
@@ -100,7 +104,7 @@ describe("the CRK formulary reviewer screen (#882)", () => {
     await userEvent.type(screen.getByTestId("crk-designation"), "Professor, Pharmacology");
     await userEvent.click(screen.getByTestId("crk-high-alert"));
     await userEvent.click(screen.getByTestId("crk-sign-button"));
-    await waitFor(() => { expect(sent("POST", "/formulary/monographs/mono-1/sign")).toEqual([{ designation: "Professor, Pharmacology", highAlert: true }]); });
+    await waitFor(() => { expect(sent("POST", "/formulary/crk/entries/mono-1/sign")).toEqual([{ designation: "Professor, Pharmacology", highAlert: true }]); });
     expect(await screen.findByTestId("crk-said")).toHaveTextContent("Signed · needs a 2nd signer");
     // the same person is told another reviewer signs, and cannot press Sign again
     expect(await screen.findByTestId("crk-second-prompt")).toHaveTextContent("You signed first. Another reviewer signs.");
@@ -113,8 +117,8 @@ describe("the CRK formulary reviewer screen (#882)", () => {
   it("a second reviewer is offered 'Sign as 2nd'", async () => {
     const waiting = { ...ROW, id: "mono-2", highAlert: true, firstSignedBy: "u-other", firstSignerDesignation: "Assoc. Professor" };
     mockRoutes({
-      "GET /api/formulary/monographs/crk-worklist": { status: 200, body: WORKLIST },
-      "GET /api/formulary/monographs/999/draft": { status: 200, body: waiting },
+      "GET /api/formulary/crk/worklist": { status: 200, body: WORKLIST },
+      "GET /api/formulary/crk/999/review": { status: 200, body: waiting },
     });
     localStorage.setItem("hmis.crk.designation", "Professor, Pharmacology");
     renderWithProviders(<CrkFormularyScreen />);
@@ -124,53 +128,58 @@ describe("the CRK formulary reviewer screen (#882)", () => {
     expect(screen.getByTestId("crk-sign-button")).toBeEnabled();
   });
 
-  it("an edit of a signed entry says it unsigns, and saves through PUT as a draft", async () => {
-    const signed = { ...ROW, status: "reviewed", reviewedBy: "u-other", reviewedAt: "2026-10-01T06:00:00.000Z", reviewerDesignation: "Professor", reviewDueOn: "2099-10-01", version: 1 };
+  it("an edit of a signed entry saves a NEW VERSION through PUT; the live one stays shown until it is signed", async () => {
+    const signed = { ...ROW, signedCrk: ENTRY, draftCrk: null, reviewedBy: "u-other", reviewedAt: "2026-10-01T06:00:00.000Z", reviewerDesignation: "Professor", reviewDueOn: "2099-10-01", version: 1 };
     let row: Record<string, unknown> = signed;
     mockRoutes({
-      "GET /api/formulary/monographs/crk-worklist": { status: 200, body: { ...WORKLIST, items: [{ ...WORKLIST.items[0], state: "due" }] } },
-      [`GET /api/formulary/monographs/${SCTID}/draft`]: () => ({ status: 200, body: row }),
-      [`PUT /api/formulary/monographs/${SCTID}/crk`]: () => { row = { ...ROW }; return { status: 200, body: { monographId: "mono-1" } }; },
+      "GET /api/formulary/crk/worklist": { status: 200, body: { ...WORKLIST, items: [{ ...WORKLIST.items[0], state: "due" }] } },
+      [`GET /api/formulary/crk/${SCTID}/review`]: () => ({ status: 200, body: row }),
+      [`PUT /api/formulary/crk/${SCTID}`]: () => { row = { ...signed, draftCrk: { ...ENTRY, fields: { uses: [{ text: "Treats shingles.", source: "fda1" }] } } }; return { status: 200, body: { entryId: "mono-1" } }; },
     });
     renderWithProviders(<CrkFormularyScreen />);
     await userEvent.click(await screen.findByTestId(`crk-item-${SCTID}`));
     expect(await screen.findByTestId("crk-status")).toHaveTextContent("Signed · shown");
     expect(screen.queryByTestId("crk-sign-form")).toBeNull();
     await userEvent.click(screen.getByTestId("crk-edit"));
-    expect(screen.getByTestId("crk-save-unsigns")).toHaveTextContent("Saving unsigns it.");
+    expect(screen.getByTestId("crk-save-new-version")).toHaveTextContent("Saves a new version; the live one stays.");
+    expect(screen.queryByTestId("crk-save-unsigns")).toBeNull();
     const box = screen.getByTestId("crk-edit-uses-0");
     await userEvent.clear(box);
     await userEvent.type(box, "Treats shingles.");
     await userEvent.click(screen.getByTestId("crk-save"));
-    await waitFor(() => { expect(sent("PUT", `/formulary/monographs/${SCTID}/crk`)).toHaveLength(1); });
-    const body = sent("PUT", `/formulary/monographs/${SCTID}/crk`)[0] as { fields: { uses: { text: string; source: string }[] } };
+    await waitFor(() => { expect(sent("PUT", `/formulary/crk/${SCTID}`)).toHaveLength(1); });
+    const body = sent("PUT", `/formulary/crk/${SCTID}`)[0] as { fields: { uses: { text: string; source: string }[] } };
     expect(body.fields.uses).toEqual([{ text: "Treats shingles.", source: "fda1" }]);
-    expect(await screen.findByTestId("crk-status")).toHaveTextContent("Draft · not shown");
+    expect(await screen.findByTestId("crk-status")).toHaveTextContent("New version pending · live stays");
+    expect(screen.getByTestId("crk-live-stays")).toHaveTextContent("Live v1 stays shown until signed.");
+    expect(screen.getByTestId("crk-entry-uses")).toHaveTextContent("Treats shingles.");
     expect(screen.getByTestId("crk-said")).toHaveTextContent("Saved as draft");
+    // the new version is signed like any draft
+    expect(screen.getByTestId("crk-sign-button")).toHaveTextContent("Sign");
   });
 });
 
 describe("#884 — the 12-month renewal on the sign screen", () => {
   beforeEach(() => { setToken("t"); grants = ["formulary.read", "formulary.monograph.review"]; localStorage.setItem("hmis.crk.designation", "Professor, Pharmacology"); });
   afterEach(() => { vi.unstubAllGlobals(); localStorage.clear(); });
-  const SIGNED_ROW = { ...ROW, id: "mono-3", status: "reviewed", reviewedBy: "u-other", reviewedAt: "2025-01-01T06:00:00.000Z", reviewerDesignation: "Professor", reviewDueOn: "2026-01-01", version: 1 };
+  const SIGNED_ROW = { ...ROW, id: "mono-3", signedCrk: ENTRY, draftCrk: null, reviewedBy: "u-other", reviewedAt: "2025-01-01T06:00:00.000Z", reviewerDesignation: "Professor", reviewDueOn: "2026-01-01", version: 1 };
   const open = async (row: Record<string, unknown>, onSign?: () => Reply): Promise<void> => {
     mockRoutes({
-      "GET /api/formulary/monographs/crk-worklist": { status: 200, body: WORKLIST },
-      "GET /api/formulary/monographs/777/draft": { status: 200, body: row },
-      ...(onSign === undefined ? {} : { "POST /api/formulary/monographs/mono-3/sign": onSign }),
+      "GET /api/formulary/crk/worklist": { status: 200, body: WORKLIST },
+      "GET /api/formulary/crk/777/review": { status: 200, body: row },
+      ...(onSign === undefined ? {} : { "POST /api/formulary/crk/entries/mono-3/sign": onSign }),
     });
     renderWithProviders(<CrkFormularyScreen />);
     await userEvent.click(await screen.findByTestId("crk-item-777"));
   };
 
   it("an overdue entry says so, stays signed, and is renewed unchanged with the reviewer's designation", async () => {
-    await open(SIGNED_ROW, () => ({ status: 200, body: { status: "reviewed", version: 2 } }));
+    await open(SIGNED_ROW, () => ({ status: 200, body: { status: "reviewed", version: 2, renewal: true } }));
     expect(await screen.findByTestId("crk-status")).toHaveTextContent("Signed · review overdue");
     const button = screen.getByTestId("crk-sign-button");
     expect(button).toHaveTextContent("Renew unchanged");
     await userEvent.click(button);
-    await waitFor(() => { expect(sent("POST", "/formulary/monographs/mono-3/sign")).toEqual([{ designation: "Professor, Pharmacology" }]); });
+    await waitFor(() => { expect(sent("POST", "/formulary/crk/entries/mono-3/sign")).toEqual([{ designation: "Professor, Pharmacology" }]); });
     expect(await screen.findByTestId("crk-said")).toHaveTextContent("Renewed");
   });
 
@@ -195,9 +204,9 @@ describe("#884 — the 12-month renewal on the sign screen", () => {
 });
 
 const SIGNED: SignedCrk = {
-  medicineId: "m-zov", genericSctid: SCTID, name: "Acyclovir 800 mg oral tablet", crk: ENTRY as SignedCrk["crk"], highAlert: true,
-  label: "CRK Medical College formulary · reviewed by Dr A Sharma, 2026-10-15", designation: "Professor, Pharmacology", secondSigner: "Dr B Rao",
-  overdue: false,
+  medicineId: "m-zov", genericSctid: SCTID, name: "Acyclovir 800 mg oral tablet", crk: ENTRY as SignedCrk["crk"], highAlert: true, version: 1,
+  label: "CRK Medical College formulary · reviewed by Dr A Sharma, 2026-10-15", signedOn: "2026-10-15", designation: "Professor, Pharmacology", secondSigner: "Dr B Rao",
+  reviewDueOn: "2027-10-15", overdue: false,
 };
 
 function DoctorLine({ ids }: { ids: string[] }): React.ReactElement {
