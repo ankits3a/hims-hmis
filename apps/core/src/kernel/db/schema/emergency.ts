@@ -15,6 +15,8 @@ export const ER_ARRIVAL_MODE_VALUES = [
   "walk_in", "private_vehicle", "own_ambulance", "ambulance_108", "police", "referred_in", "inter_facility",
 ] as const;
 export const ER_AGE_BAND_VALUES = ["infant", "child", "teen", "young_adult", "adult", "elderly"] as const;
+/** Lane 8 (#815) — the START / JumpSTART tags (contracts `ER_MCI_TAGS`). */
+export const ER_MCI_TAG_VALUES = ["red", "yellow", "green", "black"] as const;
 const list = (xs: readonly string[]) => sql.raw(xs.map((x) => `'${x}'`).join(", "));
 const STATES = list(ER_EPISODE_STATE_VALUES);
 const OPEN = list(ER_OPEN_STATE_VALUES);
@@ -113,6 +115,10 @@ export const erEpisodes = pgTable(
     boardingClimbedAt: timestamp("boarding_climbed_at", { withTimezone: true }),
     /** Hand-offs cancelled by IPD so far: the next attempt's stable IPD idempotency key (review #4). */
     handOffAttempts: integer("hand_off_attempts").notNull().default(0),
+    /* ═══ ER lane 8 (#815) — a Code Yellow: the event, the last START / JumpSTART tag (mirror of `er_mci_tags`), the pack ═══ */
+    mciId: text("mci_id"),
+    mciTag: text("mci_tag"),
+    mciPackNo: text("mci_pack_no"),
   },
   (t) => [
     uniqueIndex("er_episodes_no_ux").on(t.episodeNo),
@@ -134,6 +140,8 @@ export const erEpisodes = pgTable(
     check("er_episodes_outcome_ck", sql`${t.outcome} is null or ${t.outcome} in ('discharged', 'admitted', 'referred_out', 'lama', 'absconded', 'lwbs', 'died')`),
     index("er_episodes_boarding_idx").on(t.boardingSince).where(sql`${t.boardingSince} is not null and ${t.state} = 'disposition_decided'`),
     check("er_episodes_payer_ck", sql`${t.payer} in ('self', 'pmjay', 'road_accident', 'bnss_free', 'mci_event')`),
+    check("er_episodes_mci_tag_ck", sql`${t.mciTag} is null or ${t.mciTag} in (${list(ER_MCI_TAG_VALUES)})`),
+    index("er_episodes_mci_idx").on(t.mciId).where(sql`${t.mciId} is not null`),
     index("er_episodes_retriage_due_idx").on(t.retriageDueAt).where(sql`${t.state} = 'triaged' and ${t.retriageDueAt} is not null`),
   ],
 );
@@ -755,4 +763,92 @@ export const erCodeEvents = pgTable(
     recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
   },
   (t) => [index("er_code_events_code_idx").on(t.codeId, t.at)],
+);
+
+/* ═══════════════════════════════ ER lane 8 (#815) — mass casualty, Code Yellow ═══════════════════════════════ */
+
+/**
+ * One declared mass-casualty event (Code Yellow): who declared it, the event's account (lane 6, opened in the same act),
+ * the stand-down. ONE running event at a time (the partial unique index over the running rows is the backstop).
+ */
+export const erMciEvents = pgTable(
+  "er_mci_events",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    place: text("place"),
+    note: text("note"),
+    eventAccountId: text("event_account_id").notNull().references(() => erEventAccounts.id),
+    declaredBy: text("declared_by").notNull(),
+    declaredAt: timestamp("declared_at", { withTimezone: true }).notNull(),
+    stoodDownBy: text("stood_down_by"),
+    stoodDownAt: timestamp("stood_down_at", { withTimezone: true }),
+    standDownNote: text("stand_down_note"),
+  },
+  (t) => [
+    uniqueIndex("er_mci_events_running_ux").on(sql`(${t.stoodDownAt} is null)`).where(sql`${t.stoodDownAt} is null`),
+    check("er_mci_events_stood_down_ck", sql`(${t.stoodDownAt} is null) = (${t.stoodDownBy} is null)`),
+  ],
+);
+
+/**
+ * A pre-made unidentified pack: a real UHID (an unidentified patient record minted ahead), the alias and the band printed
+ * with the pack number. Used once: `register_mci_arrival` opens the episode on the pack's patient.
+ */
+export const erMciPacks = pgTable(
+  "er_mci_packs",
+  {
+    id: text("id").primaryKey(),
+    packNo: text("pack_no").notNull(),
+    packYear: integer("pack_year").notNull(),
+    packSerial: integer("pack_serial").notNull(),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    alias: text("alias").notNull(),
+    mintedBy: text("minted_by").notNull(),
+    mintedAt: timestamp("minted_at", { withTimezone: true }).notNull(),
+    usedEpisodeId: text("used_episode_id").references(() => erEpisodes.id),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("er_mci_packs_no_ux").on(t.packNo),
+    uniqueIndex("er_mci_packs_year_serial_ux").on(t.packYear, t.packSerial),
+    uniqueIndex("er_mci_packs_episode_ux").on(t.usedEpisodeId).where(sql`${t.usedEpisodeId} is not null`),
+    check("er_mci_packs_used_ck", sql`(${t.usedEpisodeId} is null) = (${t.usedAt} is null)`),
+  ],
+);
+
+/** Every START / JumpSTART tag, append-only (trigger): a re-tag is a new row; the episode mirrors the last. */
+export const erMciTags = pgTable(
+  "er_mci_tags",
+  {
+    id: text("id").primaryKey(),
+    mciId: text("mci_id").notNull().references(() => erMciEvents.id),
+    episodeId: text("episode_id").notNull().references(() => erEpisodes.id),
+    tag: text("tag").notNull(),
+    previous: text("previous"),
+    method: text("method"),
+    findings: jsonb("findings").$type<Record<string, unknown>>(),
+    proposal: text("proposal"),
+    reason: text("reason"),
+    taggedBy: text("tagged_by").notNull(),
+    taggedAt: timestamp("tagged_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("er_mci_tags_episode_idx").on(t.episodeId, t.taggedAt),
+    check("er_mci_tags_tag_ck", sql`${t.tag} in (${list(ER_MCI_TAG_VALUES)})`),
+    check("er_mci_tags_method_ck", sql`${t.method} is null or ${t.method} in ('start', 'jumpstart')`),
+  ],
+);
+
+/** A surge bay: an overflow-class bed the duty manager or the MS opened to the ER for this event only. */
+export const erMciSurgeBeds = pgTable(
+  "er_mci_surge_beds",
+  {
+    id: text("id").primaryKey(),
+    mciId: text("mci_id").notNull().references(() => erMciEvents.id),
+    bedId: text("bed_id").notNull().references(() => resources.id),
+    approvedBy: text("approved_by").notNull(),
+    approvedAt: timestamp("approved_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [uniqueIndex("er_mci_surge_beds_ux").on(t.mciId, t.bedId)],
 );

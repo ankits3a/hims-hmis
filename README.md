@@ -1797,6 +1797,16 @@ leader ends the code with an outcome and records the debrief. Code Grey pages se
 incident report.
 `er.codes` is held by `doctor`, `er_nurse`, `ward_nurse`, `nursing_supervisor`, `front_office`, `front_office_supervisor`, `duty_manager`, `security_guard` and `medical_superintendent`.
 
+**Emergency mass casualty (ER lane 8, issue #815, decision 0076, built 2026-10-15, awaiting owner review).** The medical
+superintendent or the duty manager declares a Code Yellow, and the event's account opens with it: every patient tagged
+to the event pays nothing at the point of care, and the charges post to the account at full tariff. Pre-made
+unidentified packs (a real UHID each, alias `Unknown-MCI26-007`, the band printed ahead) let the desk register an arrival
+by the pack number alone. Nurses and doctors tag each patient START (adult) or JumpSTART (child) — Red Immediate, Yellow
+Delayed, Green Minor, Black Expectant — and a Black re-tag needs its reason. The duty manager opens overflow beds as
+surge bays. The MCI board shows the counts by tag, packs ready, bays and surge bays left and hospital beds free; the head
+count for the district authority carries counts only, never names. The stand-down returns every patient to the ESI flow.
+`er.mci` is held by `doctor`, `er_nurse`, `front_office`, `front_office_supervisor`, `duty_manager` and `medical_superintendent`.
+
 **Copilot halt switch and spend cap (plan E0.3/E0.5, decision 0064, built 2026-10-11, awaiting owner review).**
 `copilot.halt.set` (owner, admin, duty_manager, quality_manager) pauses the copilot by scope — read, act,
 draft or global; `copilot.halt.clear` (owner, duty_manager) clears read, act and draft; and

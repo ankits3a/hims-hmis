@@ -59,6 +59,8 @@ export const ErTileSchema = z.object({
   ews: ErEwsSchema.extend({ kind: ErEwsSchema.shape.kind.nullable() }).nullable(),
   /** Lane 7 (#814): the activation clocks running for this patient (from the door), the nearest first. */
   activations: z.array(z.object({ kind: z.string(), milestone: z.string(), dueAt: ErInstantSchema, metAt: ErInstantSchema.nullable() })).optional(),
+  /** Lane 8 (#815): the START / JumpSTART tag while the patient belongs to a Code Yellow (red, yellow, green, black). */
+  mciTag: z.enum(["red", "yellow", "green", "black"]).optional(),
 });
 export type ErTile = z.infer<typeof ErTileSchema>;
 

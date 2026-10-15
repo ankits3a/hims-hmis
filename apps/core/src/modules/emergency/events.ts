@@ -127,6 +127,15 @@ export const erCodeEvent = defineEvent("er.code_event", MODULE, z.object({ codeI
 export const erCodeEnded = defineEvent("er.code_ended", MODULE, z.object({ codeId: id, outcome: z.string(), provenance: ErProvenanceSchema }));
 export const erCodeDebriefed = defineEvent("er.code_debriefed", MODULE, z.object({ codeId: id, provenance: ErProvenanceSchema }));
 
+/* ═══ lane 8 (#815) — mass casualty, Code Yellow (ids, tags and counts only: no names on the wire) ═══ */
+export const erMciDeclared = defineEvent("er.mci_declared", MODULE, z.object({ mciId: id, eventAccountId: id, provenance: ErProvenanceSchema }));
+export const erMciStoodDown = defineEvent("er.mci_stood_down", MODULE, z.object({ mciId: id, backToEsi: z.number().int(), provenance: ErProvenanceSchema }));
+export const erMciPacksMinted = defineEvent("er.mci_packs_minted", MODULE, z.object({ first: z.string(), last: z.string(), count: z.number().int(), provenance: ErProvenanceSchema }));
+export const erMciTagged = defineEvent("er.mci_tagged", MODULE, z.object({
+  mciId: id, episodeId: id, tag: z.string(), previous: z.string().nullable(), provenance: ErProvenanceSchema,
+}));
+export const erMciSurgeOpened = defineEvent("er.mci_surge_opened", MODULE, z.object({ mciId: id, bedIds: z.array(id), provenance: ErProvenanceSchema }));
+
 /** Every event the tracking board refetches on. */
 export const ER_BOARD_EVENT_NAMES: readonly string[] = [
   erPreAlerted.name, erPreAlertCancelled.name, erArrived.name, erBroughtDead.name, erBandPrinted.name, erBandVoided.name,
@@ -138,4 +147,5 @@ export const ER_BOARD_EVENT_NAMES: readonly string[] = [
   // board subscriber; the board shows the MLC mark on its next read.
   erDispositionDecided.name, erHandedToUnit.name, erDeparted.name,
   erCodeCalled.name, erCodeEvent.name, erCodeEnded.name,
+  erMciDeclared.name, erMciStoodDown.name, erMciTagged.name, erMciSurgeOpened.name,
 ];
