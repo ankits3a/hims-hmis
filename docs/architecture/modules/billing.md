@@ -97,6 +97,7 @@ Source: `apps/core/src/modules/billing/`
   - `feeSwitchesView(db: Db, now: Date = new Date()): Promise<FeeSwitchesView>`
   - `setFeeSwitch(db: Db, actor: Actor, kind: FeeKind, off: boolean, now: Date = new Date()): Promise<FeeSwitchesView>`
 - `idempotency.ts`
+  - `requestHashOf(body: unknown): string`
   - `withIdempotency(db: Db, scope: { actorId: string; route: string; key: string | undefined }, body: unknown, work: () => Promise<T>, now: Dat…`
 - `invoices.ts`
   - `getInvoice(exec: Db | Tx, invoiceId: string): Promise<{ invoice: InvoiceRow; lines: InvoiceLineRow[] } | null>`
