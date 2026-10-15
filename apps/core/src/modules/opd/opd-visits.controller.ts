@@ -21,6 +21,8 @@ import { listDepartments } from "./masters";
 import type { RxHistoryItem, VitalsHistoryItem } from "./history";
 import type { AppConfig } from "../../kernel/config";
 import { walkIn } from "./walk-in";
+import { listTeleBillFailures, retryTeleBill } from "./tele-bill-failures";
+import type { TeleBillFailureRow, TeleBillRetry } from "./tele-bill-failures";
 import { moveVisitDepartment, previewDepartmentMove } from "./department-move";
 import type { DepartmentMovePreview, DepartmentMoveResult } from "./department-move";
 import { continuityDoctorFor } from "./continuity";
@@ -449,6 +451,31 @@ export class OpdVisitsController {
     const b = parsed(reasonBody, body);
     try {
       return await cancelAppointment(this.db, actor, id, b.reason);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * #647 — the tele-call bills that failed at "Spoke to patient" and still wait, for the billing
+   * office. Guarded on the counter's invoice authority: never a doctor's read.
+   */
+  @RequirePermission("billing.invoice.issue", "hospital")
+  @Get("tele/bill-failures")
+  async teleBillFailures(@CurrentActor() actor: Actor): Promise<{ items: TeleBillFailureRow[] }> {
+    try {
+      return { items: await listTeleBillFailures(this.db, actor) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** #647 — raise the failed bill again, under the retrying person. Refused unless a failure waits on the visit. */
+  @RequirePermission("billing.invoice.issue", "hospital")
+  @Post("tele/bill-failures/:encounterId/retry")
+  async retryTeleBillRoute(@CurrentActor() actor: Actor, @Param("encounterId") encounterId: string): Promise<TeleBillRetry> {
+    try {
+      return await retryTeleBill(this.db, actor, encounterId);
     } catch (e) {
       toHttp(e);
     }

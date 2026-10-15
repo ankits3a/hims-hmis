@@ -73,13 +73,13 @@ describe("staff attendance for those who may see it (board frames 4 and 6)", () 
   it("a department chip and the name search narrow the list — and the counts with it", async () => {
     const s = server(ALL, { "GET /attendance/today": { status: 200, body: TODAY_LIST }, "GET /attendance/sync-state": { status: 200, body: SYNC } });
     await mount(s.fetcher, <AttendanceManage />);
-    fireEvent.press(await screen.findByTestId("att-dept-Medicine"));
+    await fireEvent.press(await screen.findByTestId("att-dept-Medicine"));
     await waitFor(() => expect(order()).toEqual(["101", "105"]));
     expect(screen.getByTestId("att-count-in")).toHaveTextContent(/^1In$/);
     // The search narrows within the chosen department: no Kumari works in Medicine.
-    fireEvent.changeText(screen.getByTestId("att-search"), "kumari");
+    await fireEvent.changeText(screen.getByTestId("att-search"), "kumari");
     await waitFor(() => expect(screen.getByTestId("att-today-list")).toHaveTextContent("Nobody matches"));
-    fireEvent.press(screen.getByTestId("att-dept-all"));
+    await fireEvent.press(screen.getByTestId("att-dept-all"));
     await waitFor(() => expect(order()).toEqual(["102"]));
     expect(s.sent("GET /attendance/today")).toHaveLength(1); // narrowed on the phone, not asked again
   });
@@ -89,7 +89,7 @@ describe("staff attendance for those who may see it (board frames 4 and 6)", () 
     await mount(s.fetcher, <AttendanceManage />);
     expect(await screen.findByTestId("att-not-connected")).toHaveTextContent("Machine not connected");
     expect(screen.queryByTestId("att-as-of")).toBeNull();
-    fireEvent.press(screen.getByTestId("att-person-104"));
+    await fireEvent.press(screen.getByTestId("att-person-104"));
     expect(mockPush).toHaveBeenCalledWith({ pathname: "/attendance-person", params: { pin: "104", name: "R. Mishra" } });
   });
 
@@ -105,21 +105,21 @@ describe("staff attendance for those who may see it (board frames 4 and 6)", () 
     expect(await screen.findByTestId("att-request-r1")).toHaveTextContent(/^Dr A Kumar3 hFri 9 · Only one punch that daySeenClose$/);
     expect(screen.getByTestId("att-request-r2")).toHaveTextContent(/^Sunita Devi2 dTue 6 · Only one punch that dayForgotSeenClose$/);
 
-    fireEvent.press(screen.getByTestId("att-request-seen-r1"));
+    await fireEvent.press(screen.getByTestId("att-request-seen-r1"));
     await waitFor(() => expect(screen.queryByTestId("att-request-r1")).toBeNull());
     expect(s.sent("POST /attendance/requests/r1/seen")).toHaveLength(1);
 
-    fireEvent.press(screen.getByTestId("att-request-close-r2"));
-    fireEvent.changeText(await screen.findByTestId("att-request-note"), "  Met on Monday  ");
+    await fireEvent.press(screen.getByTestId("att-request-close-r2"));
+    await fireEvent.changeText(await screen.findByTestId("att-request-note"), "  Met on Monday  ");
     await waitFor(() => expect(screen.getByTestId("att-request-note").props.value).toBe("  Met on Monday  "));
-    fireEvent.press(screen.getByTestId("att-request-close-confirm"));
+    await fireEvent.press(screen.getByTestId("att-request-close-confirm"));
     expect(await screen.findByTestId("att-req-none")).toHaveTextContent("No requests");
     expect(s.sent("POST /attendance/requests/r2/close").map((c) => c.body)).toEqual([{ note: "Met on Monday" }]);
 
-    fireEvent.press(screen.getByTestId("att-req-seen"));
+    await fireEvent.press(screen.getByTestId("att-req-seen"));
     expect(await screen.findByTestId("att-request-r1")).toHaveTextContent(/Dr A Kumar.*Close$/); // seen: only Close is left
     expect(screen.queryByTestId("att-request-seen-r1")).toBeNull();
-    fireEvent.press(screen.getByTestId("att-req-closed"));
+    await fireEvent.press(screen.getByTestId("att-req-closed"));
     expect(await screen.findByTestId("att-request-close-note-r2")).toHaveTextContent("Met on Monday");
     expect(screen.queryByTestId("att-request-close-r2")).toBeNull(); // closed: nothing left to do
   });
@@ -130,8 +130,8 @@ describe("staff attendance for those who may see it (board frames 4 and 6)", () 
       "POST /attendance/requests/r1/close": { status: 500, body: { message: "boom" } },
     });
     await mount(s.fetcher, <AttendanceManage tab="requests" />);
-    fireEvent.press(await screen.findByTestId("att-request-close-r1"));
-    fireEvent.press(await screen.findByTestId("att-request-close-confirm"));
+    await fireEvent.press(await screen.findByTestId("att-request-close-r1"));
+    await fireEvent.press(await screen.findByTestId("att-request-close-confirm"));
     expect(await screen.findByTestId("att-req-failed")).toHaveTextContent("Not saved — try again");
     expect(s.sent("POST /attendance/requests/r1/close").map((c) => c.body)).toEqual([{}]);
     expect(screen.getByTestId("att-request-r1")).toBeTruthy();
@@ -157,7 +157,7 @@ describe("staff attendance for those who may see it (board frames 4 and 6)", () 
     expect(screen.getByTestId("att-count-in")).toHaveTextContent(/^2 \/ 4In$/);
     expect(screen.getByTestId("att-count-late")).toHaveTextContent(/^1Late$/);
     expect(s.keys().filter((k) => k.startsWith("GET /attendance"))).toEqual(["GET /attendance/team/today"]);
-    fireEvent.press(screen.getByTestId("att-member-u2"));
+    await fireEvent.press(screen.getByTestId("att-member-u2"));
     expect(mockPush).toHaveBeenCalledWith({ pathname: "/attendance-person", params: { pin: "202", name: "Dr. Anand Rao" } });
   });
 
@@ -190,7 +190,7 @@ describe("staff attendance for those who may see it (board frames 4 and 6)", () 
     const s = server(ALL, { "GET /attendance/today": { status: 200, body: TODAY_LIST }, "GET /attendance/sync-state": { status: 200, body: SYNC }, "GET /attendance/team/today": { status: 200, body: { date: "2026-10-14", summary: { total: 0, linked: 0 }, members: [] } } });
     await mount(s.fetcher, <AttendanceManage lead />);
     await screen.findByTestId("att-today-list");
-    fireEvent.press(screen.getByTestId("att-tab-team"));
+    await fireEvent.press(screen.getByTestId("att-tab-team"));
     expect(await screen.findByTestId("att-team-list")).toHaveTextContent("Nobody in your team yet");
     expect(screen.getByTestId("att-tab-requests")).toBeTruthy();
   });
@@ -239,14 +239,14 @@ describe("one person, for a manager (board frame 5)", () => {
   it("WEEK and DAY: times, hours and Late — a manager sees them (the words-only rule is for a person's own screens)", async () => {
     const s = server(ALL, { "GET /attendance/person/102": personRoute() });
     await mount(s.fetcher, <AttendancePerson pin="102" nowMs={nowMs} />);
-    fireEvent.press(await screen.findByTestId("att-view-week"));
+    await fireEvent.press(await screen.findByTestId("att-view-week"));
     expect(await screen.findByTestId("att-day-2026-10-12")).toHaveTextContent(/^Mon 12Present09:20–17:00Late$/);
     expect(screen.getByTestId("att-day-2026-10-13")).toHaveTextContent(/^Tue 13Present08:50–17:05$/);
     expect(screen.getByTestId("att-day-2026-10-14")).toHaveTextContent(/^Wed 14Present08:58$/);
-    fireEvent.press(screen.getByTestId("att-prev"));
+    await fireEvent.press(screen.getByTestId("att-prev"));
     expect(await screen.findByTestId("att-day-2026-10-06")).toHaveTextContent(/^Tue 6Partial08:59One punch$/); // the machine's own word, not "Confirm"
-    fireEvent.press(screen.getByTestId("att-next"));
-    fireEvent.press(await screen.findByTestId("att-day-2026-10-12"));
+    await fireEvent.press(screen.getByTestId("att-next"));
+    await fireEvent.press(await screen.findByTestId("att-day-2026-10-12"));
     expect(await screen.findByTestId("att-day-times")).toHaveTextContent(/^In09:20Out17:00Hours7\.5 h$/);
     expect(screen.getByTestId("att-day")).toHaveTextContent(/PresentLate/);
   });
