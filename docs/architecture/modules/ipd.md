@@ -104,6 +104,7 @@ Source: `apps/core/src/modules/ipd/`
   - `readBedBoard(db: Db, actor: Actor, opts: { wall?: boolean; now?: Date } = {}): Promise<IpdBedBoard>`
 - `beds.ts`
   - `IPD_SYSTEM_ACTOR: Actor`
+  - `OCCUPANT_ER_EPISODE`
   - `assignBed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"assign_bed">>`
   - `assignBedIn(tx: Tx, db: Db, actor: Actor, input: BedPlacementInput, at: Date, ctx: PlacementContext, opts: { viaAdmit?: boolean } = {}): Pr…`
   - `blockBed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"block_bed">>`
@@ -115,10 +116,12 @@ Source: `apps/core/src/modules/ipd/`
   - `markBedCleanIn(tx: Tx, actor: Actor, bedId: string, cleanedAt: Date): Promise<Output<"mark_bed_clean">>`
   - `markIncumbentBeds(db: Db, actor: Actor, lines: readonly IncumbentBedLine[], opts: { apply?: boolean; now?: Date } = {}): Promise<IncumbentB…`
   - `nextRuleValidBeds(db: Db, actor: Actor, args: { bedId: string; patientId: string; need: IpdBedNeed; classChange?: "upgrade" | "downgrade"; …`
+  - `placeErEpisodeIn(tx: Tx, actor: Actor, input: { bedId: string; episodeId: string }, at: Date): Promise<{ bedId: string; bedCode: string }>`
   - `placementContext(db: Db, actor: Actor, patientId: string, at: Date): Promise<PlacementContext>`
   - `proposeBeds(db: Db, actor: Actor, args: { patientId: string; need: IpdBedNeed; at: Date; heldBedId?: string | null; limit?: number }): Prom…`
   - `readBedFacts(db: Db | Tx, bedId: string): Promise<{ id: string; code: string; class: IpdBedClass; icu: boolean }>`
   - `releaseBedOccupant(tx: Tx, actor: Actor, bedId: string, at: Date, opts: { terminal?: boolean } = {}): Promise<{ bedStatus: "cleaning" | "bl…`
+  - `releaseErBayIn(tx: Tx, actor: Actor, input: { bedId: string; episodeId: string }, at: Date): Promise<{ bedStatus: "cleaning" | "blocked" }>`
   - `releaseIncumbentBed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"release_incumbent_bed">>`
   - `releaseReservation(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"release_reservation">>`
   - `reserveBed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"reserve_bed">>`

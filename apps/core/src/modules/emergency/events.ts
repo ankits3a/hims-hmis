@@ -32,8 +32,31 @@ export const erIdentityLinked = defineEvent("er.identity_linked", MODULE, z.obje
   episodeId: id, mergeRequestId: id, provenance: ErProvenanceSchema,
 }));
 
+/* ═══ lane 2 (#809) — triage, vitals, bays and the doctor (seams E6/E7: the Doctor Desk and the copilot read these) ═══ */
+export const erTriaged = defineEvent("er.triaged", MODULE, z.object({
+  episodeId: id, level: z.number().int(), algorithmLevel: z.number().int().nullable(), downTriage: z.boolean(),
+  triagedAt: z.string(), takeTeamId: id.nullable(), provenance: ErProvenanceSchema,
+}));
+export const erRetriaged = defineEvent("er.retriaged", MODULE, z.object({
+  episodeId: id, level: z.number().int(), fromLevel: z.number().int().nullable(), algorithmLevel: z.number().int().nullable(),
+  downTriage: z.boolean(), provenance: ErProvenanceSchema,
+}));
+export const erVitalsRecorded = defineEvent("er.vitals_recorded", MODULE, z.object({
+  episodeId: id, ewsKind: z.string(), ewsValue: z.number().int(), ewsBand: z.string(), worse: z.boolean(), provenance: ErProvenanceSchema,
+}));
+export const erPlaced = defineEvent("er.placed", MODULE, z.object({
+  episodeId: id, bedId: id, bayCode: z.string(), provenance: ErProvenanceSchema,
+}));
+export const erMoved = defineEvent("er.moved", MODULE, z.object({
+  episodeId: id, fromBedId: id, bedId: id, bayCode: z.string(), reason: z.string().nullable(), provenance: ErProvenanceSchema,
+}));
+export const erDoctorAssigned = defineEvent("er.doctor_assigned", MODULE, z.object({
+  episodeId: id, doctorId: id, firstSeen: z.boolean(), seenAt: z.string(), doorToDoctorMin: z.number().int(), provenance: ErProvenanceSchema,
+}));
+
 /** Every event the tracking board refetches on. */
 export const ER_BOARD_EVENT_NAMES: readonly string[] = [
   erPreAlerted.name, erPreAlertCancelled.name, erArrived.name, erBroughtDead.name, erBandPrinted.name, erBandVoided.name,
   erIdentityLinked.name,
+  erTriaged.name, erRetriaged.name, erVitalsRecorded.name, erPlaced.name, erMoved.name, erDoctorAssigned.name,
 ];

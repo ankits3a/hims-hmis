@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ErEwsSchema, ErEsiLevelSchema } from "./triage";
 import {
   ErAgeBandSchema, ErArrivalModeSchema, ErEpisodeStateSchema, ErIdSchema, ErInstantSchema, ErPreAlertModeSchema, ErSexSchema,
 } from "./common";
@@ -34,6 +35,18 @@ export const ErTileSchema = z.object({
   /** The door-to-triage clock (spec §3.2: ≤ 5 min) while the patient waits for triage; null after. */
   triageDueAt: ErInstantSchema.nullable(),
   chips: z.array(z.enum(ER_TILE_CHIPS)),
+  /* ── lane 2 (#809): triage, the bay, the doctor and their clocks ── */
+  esi: ErEsiLevelSchema.nullable(),
+  /** The bay's code (an emergency-class bed of the registry); null until placed. */
+  bayCode: z.string().nullable(),
+  /** The ER doctor of record: the name on the desktop, initials on the wall; null until seen. */
+  doctor: z.string().nullable(),
+  /** Door-to-doctor target by ESI from the GATE (§3.2); null once a doctor has seen the patient or before triage. */
+  doctorDueAt: ErInstantSchema.nullable(),
+  /** The re-triage clock (until a doctor has seen the patient); null for ESI 1 and after the doctor. */
+  retriageDueAt: ErInstantSchema.nullable(),
+  /** The last early-warning score (NEWS2 / MEOWS / PEWS), shown beside the level as a second signal. */
+  ews: ErEwsSchema.nullable(),
 });
 export type ErTile = z.infer<typeof ErTileSchema>;
 
@@ -48,6 +61,9 @@ export const ErExpectedCardSchema = z.object({
   ageBand: ErAgeBandSchema.nullable(),
   /** The call's complaint words; null on the wall display. */
   complaint: z.string().nullable(),
+  /** Lane 2 (E9): an OPD red flag's patient — the name on the desk, initials on the wall; null for a call. */
+  patientId: ErIdSchema.nullable(),
+  patientLabel: z.string().nullable(),
 });
 export type ErExpectedCard = z.infer<typeof ErExpectedCardSchema>;
 
@@ -139,4 +155,44 @@ export const ER_ROUTES = {
   printBand: "/er/bands/print",
   reprintBand: "/er/bands/reprint",
   linkIdentity: "/er/identity/link",
+  // lane 2 (#809)
+  triage: "/er/triage",
+  reTriage: "/er/triage/again",
+  vitals: "/er/vitals",
+  placeInBay: "/er/bays/place",
+  moveBay: "/er/bays/move",
+  assignDoctor: "/er/doctor",
+  bays: "/er/bays",
+  episode: "/er/episodes",
+  triageDoctors: "/er/triage-doctors",
 } as const;
+
+/** Lane 2 (#809) — a bay the triage screen may pick: an emergency-class bed of the registry, with who is in it. */
+export const ErBaySchema = z.object({
+  bedId: ErIdSchema,
+  code: z.string(),
+  /** The room or hall it hangs from ("Bay 1"). */
+  zone: z.string().nullable(),
+  status: z.enum(["free", "occupied", "cleaning", "blocked", "reserved"]),
+  /** The ER episode in it (null when free or held by an inpatient admission). */
+  episodeId: ErIdSchema.nullable(),
+});
+export type ErBay = z.infer<typeof ErBaySchema>;
+
+/** Lane 2 (#809) — one episode as the triage screen opens it: the identity header and the triage so far. */
+export const ErEpisodeViewSchema = z.object({
+  tile: ErTileSchema,
+  ageYears: z.number().int().nonnegative().nullable(),
+  complaint: z.string().nullable(),
+  /** Every triage, re-triage and vital set, newest first. */
+  history: z.array(z.object({
+    kind: z.enum(["triage", "re_triage", "vitals"]),
+    level: ErEsiLevelSchema.nullable(),
+    algorithmLevel: ErEsiLevelSchema.nullable(),
+    reason: z.string().nullable(),
+    ews: ErEwsSchema.nullable(),
+    by: z.string(),
+    at: ErInstantSchema,
+  })),
+});
+export type ErEpisodeView = z.infer<typeof ErEpisodeViewSchema>;

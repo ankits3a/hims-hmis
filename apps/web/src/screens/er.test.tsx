@@ -4,6 +4,7 @@ import { setToken } from "../lib/api";
 import { renderWithRouter } from "../test-utils";
 import { ErBoardScreen } from "./er-board";
 import { ErDesk, istClockToIso } from "./er-desk";
+import { ErTriage } from "./er-triage";
 import type { ErBoard, ErDeskView, ErTile } from "@hmis/contracts";
 
 /**
@@ -16,12 +17,12 @@ const json = (b: unknown, status = 200): Response => new Response(JSON.stringify
 const tile = (over: Partial<ErTile>): ErTile => ({
   episodeId: "e1", episodeNo: "ER26-000101", label: "Unknown-0007", labelHi: "अज्ञात-0007", uhid: "HMS0000101", sex: "male",
   ageBand: "young_adult", ageYears: null, state: "arrived", arrivalMode: "ambulance_108", arrivedAt: iso(-9), triageDueAt: iso(-4),
-  chips: ["unidentified", "ambulance"], ...over,
+  chips: ["unidentified", "ambulance"], esi: null, bayCode: null, doctor: null, doctorDueAt: null, retriageDueAt: null, ews: null, ...over,
 });
 const BOARD: ErBoard = {
   generatedAt: iso(0), wall: false,
   stats: { inDepartment: 2, waitingTriage: 2, longestTriageWaitMinutes: 9, expected: 1, arrivalsToday: 7, broughtDeadToday: 0, bays: { free: 52, total: 60 } },
-  expected: [{ preAlertId: "p1", mode: "ambulance_108", expectedAt: iso(6), expiresAt: iso(126), count: 2, arrivedCount: 0, sex: "male", ageBand: null, complaint: "Road accident" }],
+  expected: [{ preAlertId: "p1", mode: "ambulance_108", expectedAt: iso(6), expiresAt: iso(126), count: 2, arrivedCount: 0, sex: "male", ageBand: null, complaint: "Road accident", patientId: null, patientLabel: null }],
   waiting: [tile({}), tile({ episodeId: "e2", episodeNo: "ER26-000102", label: "Ramesh Kumar", labelHi: null, ageYears: 41, ageBand: null, arrivedAt: iso(-2), triageDueAt: iso(3), chips: ["name_alert"], arrivalMode: "walk_in" })],
   inTreatment: [],
 };
@@ -118,5 +119,62 @@ describe("ER lane 1 (#808) screens", () => {
     expect(istClockToIso("15:10", now)).toBe("2026-06-01T09:40:00.000Z");
     expect(istClockToIso("23:50", now)).toBe("2026-05-31T18:20:00.000Z");
     expect(istClockToIso("abc", now)).toBeNull();
+  });
+});
+
+/** ER lane 2 (#809) — the triage screen: the four questions give a proposal; a down-triage opens the reason box. */
+describe("ER lane 2 (#809) triage screen", () => {
+  const posted: { url: string; body: Record<string, unknown> }[] = [];
+  const view = {
+    tile: tile({ episodeId: "01J00000000000000000000T01", label: "Unknown-0011", labelHi: "अज्ञात-0011" }),
+    ageYears: null, complaint: "Chest pain since morning", history: [],
+  };
+  beforeEach(() => {
+    setToken("t");
+    posted.length = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (init?.method === "POST") {
+        posted.push({ url: raw, body: JSON.parse(String(init.body)) as Record<string, unknown> });
+        return json({ episodeId: view.tile.episodeId, level: 3, algorithmLevel: 2, downTriage: true, retriageDueAt: iso(30), doctorDueAt: iso(20), ews: null, take: null });
+      }
+      if (raw.includes("/er/episodes/")) return json(view);
+      if (raw.includes("/er/board")) return json(BOARD);
+      if (raw.endsWith("/er/bays")) return json([{ bedId: "01J00000000000000000000B01", code: "ER-R1", zone: "Resus", status: "free", episodeId: null }]);
+      if (raw.endsWith("/er/triage-doctors")) return json([{ userId: "d1", name: "Dr Ritu Singh" }]);
+      if (raw.endsWith("/auth/me")) return json({ actor: { type: "user", id: "me" }, permissions: { hospital: ["er.board.view", "er.triage"], scoped: { department: {}, floor: {} } } });
+      return json([]);
+    }));
+  });
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("the four answers show the ESI proposal; picking less urgent asks why, and the reason goes with the triage", async () => {
+    renderWithRouter(<ErTriage />, `/er/triage?episode=${view.tile.episodeId}`);
+    await screen.findByTestId("er-triage-who");
+    const save = screen.getByTestId("er-triage-save");
+    await userEvent.click(within(screen.getByTestId("er-triage-q-a")).getByText("No"));
+    await userEvent.click(within(screen.getByTestId("er-triage-q-b")).getByText("Yes"));
+    await userEvent.click(within(screen.getByTestId("er-triage-q-c")).getByText("Two or more"));
+    await userEvent.click(within(screen.getByTestId("er-triage-q-d")).getByText("No"));
+    expect(screen.getByTestId("er-triage-proposal")).toHaveTextContent("ESI 2 · Emergent");
+    await userEvent.click(within(screen.getByTestId("er-triage-level")).getByText("Urgent"));
+    expect(save).toBeDisabled();
+    await userEvent.type(within(screen.getByTestId("er-triage-reason")).getByRole("textbox"), "Pain settled");
+    await userEvent.click(save);
+    expect(posted[0]!.url).toContain("/er/triage");
+    expect(posted[0]!.body).toMatchObject({ level: 3, reason: "Pain settled", decision: { lifeSaving: false, highRisk: true, resources: "many", dangerVitals: false } });
+    expect(document.body.textContent ?? "").not.toMatch(/₹|paid|deposit|bill/i);
+  });
+
+  it("an up-triage asks no reason", async () => {
+    renderWithRouter(<ErTriage />, `/er/triage?episode=${view.tile.episodeId}`);
+    await screen.findByTestId("er-triage-who");
+    await userEvent.click(within(screen.getByTestId("er-triage-q-a")).getByText("No"));
+    await userEvent.click(within(screen.getByTestId("er-triage-q-b")).getByText("No"));
+    await userEvent.click(within(screen.getByTestId("er-triage-q-c")).getByText("None"));
+    await userEvent.click(within(screen.getByTestId("er-triage-q-d")).getByText("No"));
+    await userEvent.click(within(screen.getByTestId("er-triage-level")).getByText("Emergent"));
+    expect(screen.queryByTestId("er-triage-reason")).toBeNull();
+    expect(screen.getByTestId("er-triage-save")).toBeEnabled();
   });
 });

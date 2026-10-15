@@ -35,7 +35,7 @@ import { sweepOverdueQa } from "../../modules/aerb";
 import { runAliasJob, runFlowLearning } from "../../modules/opd";
 import { syncAttendance } from "../../modules/attendance";
 import { sweepTasks } from "../../modules/tasks";
-import { lapseErPreAlerts } from "../../modules/emergency";
+import { lapseErPreAlerts, sweepErTriageClocks } from "../../modules/emergency";
 import { lapseBedReservations, postNightlyIpdCharges, runIpdBillDeskNightly, sweepIpdEmar, sweepIpdNursing, sweepIpdRoundsClock } from "../../modules/ipd";
 import { buildDueLists } from "../../modules/diet";
 import { sweepBmwStorage } from "../../modules/bmw";
@@ -747,11 +747,13 @@ export function registerAllJobs(
   scheduler.register({
     name: "lapseBedReservations",
     every: 60_000,
-    // ER lane 1 (#808): the ER pre-alert lapse (2 h after the expected time) rides this job — no job, no pool client of
+    // ER lanes 1–2 (#808, #809): the ER pre-alert lapse (2 h after the expected time) and the re-triage clock ride this job — no job, no pool client of
     // its own. Its own try: a failing pre-alert lapse never stops the bed lapse.
     run: async (now) => {
       await lapseBedReservations(db, now);
       try { await lapseErPreAlerts(db, now); } catch (e) { erLog.error(`lapseErPreAlerts failed: ${e instanceof Error ? e.message : String(e)}`); }
+      // ER lane 2 (#809): the re-triage clock — one task per overdue re-triage, one climb 15 min later. Its own try.
+      try { await sweepErTriageClocks(db, now); } catch (e) { erLog.error(`sweepErTriageClocks failed: ${e instanceof Error ? e.message : String(e)}`); }
     },
   });
   /*

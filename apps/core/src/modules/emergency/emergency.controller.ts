@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpException, Inject, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, HttpException, Inject, Param, Post, Query } from "@nestjs/common";
 import { z } from "zod";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
@@ -6,11 +6,12 @@ import { BillingError, billingHttpStatus } from "../billing";
 import { PatientError } from "../patients";
 import { cancelPreAlert, preAlert, recordBroughtDead, registerArrival, registerUnidentified } from "./arrival";
 import { printErBand, reprintErBand } from "./bands";
-import { listErDoctors, readErBoard, readErDesk, searchErPatients } from "./board";
+import { listErBays, listErDoctors, readErBoard, readErDesk, readErEpisode, searchErPatients } from "./board";
+import { assignErDoctor, moveBay, placeInBay, reTriage, recordErVitals, triage } from "./triage";
 import { ErError, ErRefusal, erRefusalStatus } from "./errors";
 import { linkIdentity } from "./identity";
-import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_IDENTITY_LINK } from "./names";
-import type { Actor, ErBoard, ErDeskView, ErDoctorOption, ErPatientHit, ErRefusalBody } from "@hmis/contracts";
+import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_IDENTITY_LINK, ER_TRIAGE } from "./names";
+import type { Actor, ErBay, ErBoard, ErDeskView, ErDoctorOption, ErEpisodeView, ErPatientHit, ErRefusalBody } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -122,5 +123,61 @@ export class EmergencyController {
   @RequirePermission(ER_IDENTITY_LINK, "hospital")
   async linkIdentity(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
     try { return await linkIdentity(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  /* ═══ lane 2 (#809) — triage, vitals, bays, the ER doctor ═══ */
+
+  @Get("episodes/:id")
+  @RequirePermission(ER_TRIAGE, "hospital")
+  async episode(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<ErEpisodeView> {
+    try { return await readErEpisode(this.db, actor, id); } catch (e) { toHttp(e); }
+  }
+
+  @Get("bays")
+  @RequirePermission(ER_TRIAGE, "hospital")
+  async bays(@CurrentActor() actor: Actor): Promise<ErBay[]> {
+    try { return await listErBays(this.db, actor); } catch (e) { toHttp(e); }
+  }
+
+  @Get("triage-doctors")
+  @RequirePermission(ER_TRIAGE, "hospital")
+  async triageDoctors(@CurrentActor() actor: Actor): Promise<ErDoctorOption[]> {
+    try { return await listErDoctors(this.db, actor, ER_TRIAGE); } catch (e) { toHttp(e); }
+  }
+
+  @Post("triage")
+  @RequirePermission(ER_TRIAGE, "hospital")
+  async triage(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await triage(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("triage/again")
+  @RequirePermission(ER_TRIAGE, "hospital")
+  async reTriage(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await reTriage(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("vitals")
+  @RequirePermission(ER_TRIAGE, "hospital")
+  async vitals(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await recordErVitals(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("bays/place")
+  @RequirePermission(ER_TRIAGE, "hospital")
+  async place(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await placeInBay(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("bays/move")
+  @RequirePermission(ER_TRIAGE, "hospital")
+  async move(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await moveBay(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("doctor")
+  @RequirePermission(ER_TRIAGE, "hospital")
+  async doctor(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await assignErDoctor(this.db, actor, body); } catch (e) { toHttp(e); }
   }
 }

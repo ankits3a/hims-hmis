@@ -39,10 +39,11 @@ export async function mkErWorld(db: Db): Promise<ErWorld> {
   await syncPermissions(db, registry);
   for (const p of ["er.board.view", "er.arrival.register"]) await grantPermissionToRole(db, registry, "front_office", p);
   await ensureRole(db, "er_nurse");
-  for (const p of ["er.board.view", "er.arrival.register"]) await grantPermissionToRole(db, registry, "er_nurse", p);
+  for (const p of ["er.board.view", "er.arrival.register", "er.triage"]) await grantPermissionToRole(db, registry, "er_nurse", p);
   await ensureRole(db, "mrd_officer");
   for (const p of ["patients.read", "patients.merge"]) await grantPermissionToRole(db, registry, "mrd_officer", p);
   await grantPermissionToRole(db, registry, "doctor", "er.board.view");
+  await grantPermissionToRole(db, registry, "doctor", "er.triage");
   const erNurse = (await mkUser(db, "er.nurse", ["er_nurse"])).actor;
   const mrd = (await mkUser(db, "er.mrd", ["mrd_officer"])).actor;
   const erDoctor = (await mkUser(db, "er.doctor", ["doctor"])).actor;

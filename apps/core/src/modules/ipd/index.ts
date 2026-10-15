@@ -62,6 +62,8 @@ export {
 export { IPD_APPROVAL_TYPES, IPD_APPROVAL_TYPE_KEYS, ipdApprovalDefinition, registerIpdApprovalTypes } from "./approval-types";
 export { IPD_ADMISSION_BOARD_EVENT_NAMES } from "./admission-events";
 export { assignBedIn, endAdmissionHolds, placementContext, proposeBeds, readBedFacts } from "./beds";
+// ER lane 2 (#809) — ER bays are emergency-class beds placed and emptied under the same bed lock.
+export { OCCUPANT_ER_EPISODE, placeErEpisodeIn, releaseErBayIn } from "./beds";
 export type { BedPlacementInput, PlacementContext } from "./beds";
 // E1.3 (#720) — where an admission is, and the stay-ending and transfer event names, for the companion modules (passes).
 export {

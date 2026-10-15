@@ -1,13 +1,14 @@
 import { and, desc, eq, gt, gte, inArray, ne, or, sql } from "drizzle-orm";
-import { ER_DOOR_TO_TRIAGE_MINUTES } from "@hmis/contracts";
+import { ER_DOOR_TO_TRIAGE_MINUTES, ER_ESI_INFO } from "@hmis/contracts";
 import { istDayWindow } from "../../kernel/approvals/cumulative";
-import { ER_OPEN_STATE_VALUES, erBands, erEpisodes, erPreAlerts, patients, resources, roleAssignments, users } from "../../kernel/db/schema";
+import { ER_OPEN_STATE_VALUES, erBands, erEpisodes, erPreAlerts, erTriageEntries, patients, resources, roleAssignments, users } from "../../kernel/db/schema";
 import { initialsOf } from "../ipd";
 import { getMergeRequest, getPatientSummaries, searchPatients } from "../patients";
 import { aliasHiOf, requireErPermission, yearsOld } from "./core";
-import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW } from "./names";
+import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_TRIAGE } from "./names";
+import { ErRefusal } from "./errors";
 import type {
-  Actor, ErAgeBand, ErArrivalMode, ErBoard, ErDeskRow, ErDoctorOption, ErDeskView, ErEpisodeState, ErExpectedCard, ErPatientHit, ErSex, ErTile,
+  Actor, ErAgeBand, ErArrivalMode, ErBay, ErBoard, ErDeskRow, ErDoctorOption, ErEpisodeView, ErEsiLevel, ErEws, ErDeskView, ErEpisodeState, ErExpectedCard, ErPatientHit, ErSex, ErTile,
   ErTileChip,
 } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -81,18 +82,54 @@ function nameAlerts(eps: readonly EpisodeRow[], names: Map<string, Named>): Set<
   }).map((e) => e.id));
 }
 
-function preAlertCard(p: typeof erPreAlerts.$inferSelect, wall: boolean): ErExpectedCard {
+function preAlertCard(p: typeof erPreAlerts.$inferSelect, wall: boolean, name: string | null): ErExpectedCard {
   return {
     preAlertId: p.id, mode: p.mode as ErExpectedCard["mode"], expectedAt: p.expectedAt.toISOString(), expiresAt: p.expiresAt.toISOString(),
     count: p.count, arrivedCount: p.arrivedCount, sex: (p.sex ?? null) as ErSex | null, ageBand: (p.ageBand ?? null) as ErAgeBand | null,
     complaint: wall ? null : p.complaint,
+    patientId: wall ? null : p.patientId, patientLabel: name === null ? null : wall ? initialsOf(name) : name,
   };
 }
 
-async function liveExpected(db: Db, at: Date, wall: boolean): Promise<ErExpectedCard[]> {
+async function liveExpected(db: Db, actor: Actor, at: Date, wall: boolean): Promise<ErExpectedCard[]> {
   const rows = await db.select().from(erPreAlerts)
     .where(and(eq(erPreAlerts.state, "expected"), gt(erPreAlerts.expiresAt, at))).orderBy(erPreAlerts.expectedAt);
-  return rows.map((p) => preAlertCard(p, wall));
+  const ids = rows.flatMap((r) => (r.patientId === null ? [] : [r.patientId]));
+  const names = new Map((await getPatientSummaries(db, actor, ids)).map((x) => [x.requestedId, x.name ?? x.alias ?? "—"] as const));
+  return rows.map((p) => preAlertCard(p, wall, p.patientId === null ? null : names.get(p.patientId) ?? null));
+}
+
+/** Every tile for these episodes: names through the merge chain, the name alert, the bay, the doctor and the clocks. */
+async function tilesFor(db: Db, actor: Actor, eps: readonly EpisodeRow[], at: Date, wall: boolean): Promise<Map<string, ErTile>> {
+  const names = await namesFor(db, actor, eps, at);
+  const alerted = nameAlerts(eps.filter((e) => (ER_OPEN_STATE_VALUES as readonly string[]).includes(e.state)), names);
+  const bayIds = eps.flatMap((e) => (e.bayId === null ? [] : [e.bayId]));
+  const bays = new Map(bayIds.length === 0 ? [] : (await db.select({ id: resources.id, code: resources.code }).from(resources)
+    .where(inArray(resources.id, bayIds))).map((b) => [b.id, b.code] as const));
+  const docIds = eps.flatMap((e) => (e.doctorId === null ? [] : [e.doctorId]));
+  const docs = new Map(docIds.length === 0 ? [] : (await db.select({ id: users.id, name: users.fullName }).from(users)
+    .where(inArray(users.id, docIds))).map((d) => [d.id, d.name] as const));
+  const out = new Map<string, ErTile>();
+  for (const e of eps) {
+    const n = names.get(e.id)!;
+    const esi = (e.esi ?? null) as ErEsiLevel | null;
+    const doc = e.doctorId === null ? null : docs.get(e.doctorId) ?? null;
+    out.set(e.id, {
+      episodeId: e.id, episodeNo: e.episodeNo,
+      label: wall && n.identified ? initialsOf(n.label) : n.label, labelHi: n.labelHi, uhid: wall ? null : n.uhid,
+      sex: n.sex, ageBand: (e.ageBand ?? null) as ErAgeBand | null, ageYears: n.ageYears,
+      state: e.state as ErEpisodeState, arrivalMode: e.arrivalMode as ErArrivalMode, arrivedAt: e.arrivedAt.toISOString(),
+      triageDueAt: e.state === "arrived" ? new Date(e.arrivedAt.getTime() + ER_DOOR_TO_TRIAGE_MINUTES * MINUTE).toISOString() : null,
+      chips: chipsOf(e, n, alerted),
+      esi, bayCode: e.bayId === null ? null : bays.get(e.bayId) ?? null,
+      doctor: doc === null ? null : wall ? initialsOf(doc) : doc,
+      doctorDueAt: esi === null || e.seenAt !== null ? null
+        : new Date(e.arrivedAt.getTime() + ER_ESI_INFO[esi].doctorWithinMin * MINUTE).toISOString(),
+      retriageDueAt: e.state === "triaged" && e.retriageDueAt !== null ? e.retriageDueAt.toISOString() : null,
+      ews: e.ewsKind === null ? null : { kind: e.ewsKind as ErEws["kind"], value: e.ewsValue ?? 0, band: e.ewsBand as ErEws["band"] },
+    });
+  }
+  return out;
 }
 
 export async function readErBoard(db: Db, actor: Actor, opts: { wall?: boolean; now?: Date } = {}): Promise<ErBoard> {
@@ -101,21 +138,12 @@ export async function readErBoard(db: Db, actor: Actor, opts: { wall?: boolean; 
   const wall = opts.wall === true;
   const open = await db.select().from(erEpisodes)
     .where(inArray(erEpisodes.state, [...ER_OPEN_STATE_VALUES])).orderBy(erEpisodes.arrivedAt);
-  const names = await namesFor(db, actor, open, at);
-  const alerted = nameAlerts(open, names);
-  const tile = (e: EpisodeRow): ErTile => {
-    const n = names.get(e.id)!;
-    return {
-      episodeId: e.id, episodeNo: e.episodeNo,
-      label: wall && n.identified ? initialsOf(n.label) : n.label, labelHi: n.labelHi, uhid: wall ? null : n.uhid,
-      sex: n.sex, ageBand: (e.ageBand ?? null) as ErAgeBand | null, ageYears: n.ageYears,
-      state: e.state as ErEpisodeState, arrivalMode: e.arrivalMode as ErArrivalMode, arrivedAt: e.arrivedAt.toISOString(),
-      triageDueAt: e.state === "arrived" ? new Date(e.arrivedAt.getTime() + ER_DOOR_TO_TRIAGE_MINUTES * MINUTE).toISOString() : null,
-      chips: chipsOf(e, n, alerted),
-    };
-  };
+  const tiles = await tilesFor(db, actor, open, at, wall);
+  const tile = (e: EpisodeRow): ErTile => tiles.get(e.id)!;
   const waiting = open.filter((e) => e.state === "arrived").map(tile);
-  const inTreatment = open.filter((e) => e.state !== "arrived").map(tile);
+  // Lane 2: the department by ESI (most urgent first), then by the gate.
+  const inTreatment = open.filter((e) => e.state !== "arrived")
+    .sort((a, b) => (a.esi ?? 9) - (b.esi ?? 9) || a.arrivedAt.getTime() - b.arrivedAt.getTime()).map(tile);
   const today = istDayWindow(at);
   const counts = (await db.execute(sql`
     select
@@ -130,7 +158,7 @@ export async function readErBoard(db: Db, actor: Actor, opts: { wall?: boolean; 
     from ${resources} where ${resources.kind} = 'bed' and ${resources.attributes}->>'class' = 'emergency'
   `)).rows[0] as { total: string | number; free: string | number };
   const oldest = waiting[0];
-  const expected = await liveExpected(db, at, wall);
+  const expected = await liveExpected(db, actor, at, wall);
   return {
     generatedAt: at.toISOString(), wall,
     stats: {
@@ -180,7 +208,7 @@ export async function readErDesk(db: Db, actor: Actor, opts: { now?: Date } = {}
       identity,
     });
   }
-  return { generatedAt: at.toISOString(), episodes: rows, expected: await liveExpected(db, at, false) };
+  return { generatedAt: at.toISOString(), episodes: rows, expected: await liveExpected(db, actor, at, false) };
 }
 
 /** The desk's patient lookup: a scanned UHID card, a typed UHID, a phone number or a name. */
@@ -199,11 +227,51 @@ export async function searchErPatients(db: Db, actor: Actor, q: string, opts: { 
 }
 
 /** The doctors the desk may name as having examined a body brought dead (active holders of the `doctor` role). */
-export async function listErDoctors(db: Db, actor: Actor): Promise<ErDoctorOption[]> {
-  await requireErPermission(db, actor, ER_ARRIVAL_REGISTER);
+export async function listErDoctors(db: Db, actor: Actor, permission: string = ER_ARRIVAL_REGISTER): Promise<ErDoctorOption[]> {
+  await requireErPermission(db, actor, permission === ER_TRIAGE ? ER_TRIAGE : ER_ARRIVAL_REGISTER);
   const rows = await db.selectDistinct({ userId: users.id, name: users.fullName }).from(users)
     .innerJoin(roleAssignments, eq(roleAssignments.userId, users.id))
     .where(and(eq(roleAssignments.roleKey, "doctor"), eq(users.active, true)))
     .orderBy(users.fullName).limit(500);
   return rows;
+}
+
+/**
+ * Lane 2 (#809) — the ER bays: every emergency-class bed of the registry in service, with its state and the ER episode in
+ * it. "free" is kernel `available` with no live hold, block or repair (the act re-checks under the lock).
+ */
+export async function listErBays(db: Db, actor: Actor): Promise<ErBay[]> {
+  await requireErPermission(db, actor, ER_TRIAGE);
+  const beds = await db.select().from(resources).where(and(
+    eq(resources.kind, "bed"), sql`${resources.attributes}->>'class' = 'emergency'`, ne(resources.status, "retired"),
+  )).orderBy(resources.code);
+  const parentIds = [...new Set(beds.flatMap((b) => (b.parentId === null ? [] : [b.parentId])))];
+  const parents = new Map(parentIds.length === 0 ? [] : (await db.select({ id: resources.id, name: resources.name }).from(resources)
+    .where(inArray(resources.id, parentIds))).map((p) => [p.id, p.name] as const));
+  return beds.map((b) => ({
+    bedId: b.id, code: b.code, zone: b.parentId === null ? null : parents.get(b.parentId) ?? null,
+    status: b.occupantRef !== null ? "occupied" : b.status === "available" ? "free" : b.status === "cleaning" ? "cleaning" : "blocked",
+    episodeId: b.occupantType === "er_episode" ? b.occupantRef : null,
+  }));
+}
+
+/** Lane 2 (#809) — one episode for the triage screen: the tile (identity header and clocks) and its triage history. */
+export async function readErEpisode(db: Db, actor: Actor, episodeId: string, opts: { now?: Date } = {}): Promise<ErEpisodeView> {
+  await requireErPermission(db, actor, ER_TRIAGE);
+  const at = opts.now ?? new Date();
+  const e = (await db.select().from(erEpisodes).where(eq(erEpisodes.id, episodeId)))[0];
+  if (e === undefined) throw new ErRefusal("episode_not_found");
+  const tile = (await tilesFor(db, actor, [e], at, false)).get(e.id)!;
+  const rows = await db.select().from(erTriageEntries).where(eq(erTriageEntries.episodeId, e.id)).orderBy(desc(erTriageEntries.recordedAt));
+  const by = new Map(rows.length === 0 ? [] : (await db.select({ id: users.id, name: users.fullName }).from(users)
+    .where(inArray(users.id, [...new Set(rows.map((r) => r.recordedBy))]))).map((u) => [u.id, u.name] as const));
+  return {
+    tile, ageYears: tile.ageYears, complaint: e.complaint,
+    history: rows.map((r) => ({
+      kind: r.kind as "triage" | "re_triage" | "vitals", level: (r.level ?? null) as ErEsiLevel | null,
+      algorithmLevel: (r.algorithmLevel ?? null) as ErEsiLevel | null, reason: r.reason,
+      ews: r.ewsKind === null ? null : { kind: r.ewsKind as ErEws["kind"], value: r.ewsValue ?? 0, band: r.ewsBand as ErEws["band"] },
+      by: by.get(r.recordedBy) ?? r.recordedBy, at: r.recordedAt.toISOString(),
+    })),
+  };
 }
