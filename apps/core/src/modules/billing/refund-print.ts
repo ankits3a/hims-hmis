@@ -110,7 +110,9 @@ export async function renderRefundVoucher(
   const [v] = await db.select().from(refundVouchers).where(eq(refundVouchers.id, voucherId));
   if (v === undefined || v.status !== "paid" || v.paidAt === null) return null;
 
-  const [who] = await getPatientSummaries(db, requester ?? { type: "system", id: "print-relay" }, [v.patientId]);
+  // FD-25 — no requester on record defaults to the ALIAS for a sealed patient, as the kernel's own papers do:
+  // an actor that holds no grant (never `system`, which sees through the seal).
+  const [who] = await getPatientSummaries(db, requester ?? { type: "agent", id: "print-relay" }, [v.patientId]);
   const patient = who === undefined ? "—" : who.restricted ? who.alias ?? "—" : who.name ?? "—";
   const inv = v.invoiceId === null ? undefined : (await db.select({ no: invoices.invoiceNo }).from(invoices).where(eq(invoices.id, v.invoiceId)))[0];
   const cn = v.creditNoteId === null ? undefined : (await db.select({ no: creditNotes.creditNoteNo }).from(creditNotes).where(eq(creditNotes.id, v.creditNoteId)))[0];

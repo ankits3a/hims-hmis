@@ -10,7 +10,7 @@ import { approveRequest } from "../../kernel/approvals/decisions";
 import { withTx } from "../../kernel/db/client";
 import { DESTINATION_OF } from "../../kernel/printing/enqueue";
 import { renderDocument } from "../../kernel/printing/render";
-import { printJobs, refundVouchers, registrationConfig, receiptTenders } from "../../kernel/db/schema";
+import { patients, printJobs, refundVouchers, registrationConfig, receiptTenders } from "../../kernel/db/schema";
 import { registerPatient } from "../patients";
 import { issueCreditNote } from "./credit-notes";
 import { dayBook } from "./daily-close";
@@ -112,6 +112,22 @@ describe("#655 — billing back office gaps", () => {
       // A second pay call is refused and queues nothing more.
       await expect(payRefundVoucher(db, v.cashier.actor, { voucherId: v.voucherId, payeeName: "x", payeeIdType: "pan" }, NOW)).rejects.toMatchObject({ code: "voucher_state_conflict" });
       expect(await db.select().from(printJobs)).toHaveLength(1);
+    } finally {
+      unregister();
+    }
+  });
+
+  /* FD-25 — a print with no requester on record defaults to the ALIAS for a sealed patient, as the kernel's own papers do. */
+  test("with no requester on record, a sealed patient's voucher prints the alias, never the name", async () => {
+    const unregister = registerBillingPrinting();
+    try {
+      const v = await issuedVoucher(50_000);
+      await payRefundVoucher(db, v.cashier.actor, { voucherId: v.voucherId, payeeName: "Ramesh Verma", payeeIdType: "pan" }, NOW);
+      await db.update(patients).set({ isConfidential: true, alias: "Patient R" }).where(eq(patients.id, v.patientId));
+      const doc = await renderDocument(db, "billing_refund_voucher", { voucherId: v.voucherId }, NOW, null);
+      const text = doc!.html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+      expect(text).toContain("Patient R");
+      expect(text).not.toContain("Sunita Verma");
     } finally {
       unregister();
     }
