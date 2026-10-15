@@ -36,6 +36,14 @@ describe("security-event alerts", () => {
     expect([...new Set(queryNames)].sort()).toEqual([...new Set(ruleNames)].sort());
   });
 
+  it("the window reads recorded_at, the partition key, so a scrape every 15 s prunes to the current month", () => {
+    // `events` is range-partitioned by month on recorded_at (migration 0016). A window on occurred_at prunes nothing:
+    // every scrape would walk every partition's failed sign-ins ever recorded, and occurred_at can be a client's clock.
+    const query = queryBlock.slice(0, queryBlock.indexOf("metrics:"));
+    expect(query).toMatch(/recorded_at > now\(\) - interval '10 minutes'/);
+    expect(query).not.toMatch(/occurred_at/);
+  });
+
   it("prometheus loads the rule file", () => {
     expect(PROM).toMatch(/^\s+- \/etc\/prometheus\/alerts-security\.yml$/m);
   });
