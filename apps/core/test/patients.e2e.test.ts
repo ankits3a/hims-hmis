@@ -370,6 +370,41 @@ describe("patients e2e", () => {
       expect(await allergyStatus(sealed.allergyId)).toBe("active");
       expect(await guardianRow(sealed.guardianId)).toMatchObject({ status: "active", authorityDsr: false });
     });
+
+    /*
+      ADDING an allergy resolves the patient like the other allergy routes: `getPatient` first (the
+      sealed-record gate and the merge chain), then the write on the CANONICAL id.
+    */
+    it("allergy ADD on a sealed record without the confidential grant is a 404 and writes nothing", async () => {
+      const sealed = await aMinor("Sealed Patient H");
+      await db.update(patients).set({ isConfidential: true }).where(eq(patients.id, sealed.id));
+      await createRole(db, "reg_update_only", "Updates, no sealed read");
+      await grantPermissionToRole(db, registry, "reg_update_only", "patients.update");
+      await grantPermissionToRole(db, registry, "reg_update_only", "patients.read");
+      const { id: userId } = await createUser(db, { username: "updater2", fullName: "updater2", password: "p1234567" });
+      const { token } = await createSession(db, cfg, userId);
+      await assignRole(db, { userId, roleKey: "reg_update_only", scopeType: "hospital" });
+
+      const res = await request(app.getHttpServer())
+        .post(`/patients/${sealed.id}/allergies`).set(...auth(token))
+        .send({ substance: "sulfa", severity: "mild", source: "consult" });
+      expect(res.status).toBe(404);
+      const rows = await db.select().from(patientAllergies).where(eq(patientAllergies.patientId, sealed.id));
+      expect(rows.map((r) => r.substance)).toEqual(["penicillin"]);
+    });
+
+    it("allergy ADD under a merged id lands on the canonical patient", async () => {
+      const loser = await aMinor("Merged Loser I");
+      const winner = await aMinor("Canonical Winner J");
+      await db.update(patients).set({ status: "merged", mergedIntoPatientId: winner.id }).where(eq(patients.id, loser.id));
+
+      const res = await request(app.getHttpServer())
+        .post(`/patients/${loser.id}/allergies`).set(...auth(clerkToken))
+        .send({ substance: "sulfa", severity: "moderate", source: "consult" });
+      expect(res.status).toBe(201);
+      const row = (await db.select().from(patientAllergies).where(eq(patientAllergies.id, res.body.allergyId as string)))[0]!;
+      expect(row.patientId).toBe(winner.id);
+    });
   });
 
   it("QR: card payload prints, verify resolves, tampering answers ok:false over HTTP 200 (route order proven)", async () => {
