@@ -559,7 +559,7 @@ export class FormularyController {
   @RequirePermission("formulary.monograph.review", "hospital", { alsoAdmits: ["formulary.manage"] })
   @Get("monographs/crk-worklist")
   async crkWorklist(): Promise<CrkWorklist & { drafter: { configured: boolean } }> {
-    const today = new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10);
+    const today = istDate(new Date());
     return { ...(await crkWorklist(this.db, today)), drafter: { configured: this.drafter().client !== null } };
   }
 
@@ -572,7 +572,7 @@ export class FormularyController {
     /* #618 — a signed CRK entry is read with its label: "CRK Medical College formulary · reviewed by <name>, <date>". */
     if (row.crk !== null && row.reviewedBy !== null && row.reviewedAt !== null) {
       const names = await crkSigners(this.db, [row.reviewedBy, ...(row.secondReviewedBy === null ? [] : [row.secondReviewedBy])]);
-      const on = new Date(row.reviewedAt.getTime() + 5.5 * 3600_000).toISOString().slice(0, 10);
+      const on = istDate(row.reviewedAt);
       const name = names.get(row.reviewedBy) ?? row.reviewedBy;
       return {
         ...row, draftUsage: null,
