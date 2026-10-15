@@ -121,6 +121,9 @@ const SITES: { file: string; expr: string }[] = [
   // and a visit's `serviceDate` is an IST calendar day (`opd/time.ts`, not importable across the
   // §4 seam). Derived from the kernel's export, the mwl shape.
   { file: "src/modules/pharmacy/config.ts", expr: "IST_UTC_OFFSET_MINUTES * 60_000" },
+  // #618 / #884 — the CRK formulary's signing date and its 12-month review due date are IST calendar
+  // days (`crk-formulary.ts` istDate/dueOn; the controller imports istDate). The mwl shape.
+  { file: "src/modules/formulary/crk-formulary.ts", expr: "IST_UTC_OFFSET_MINUTES * 60_000" },
 ];
 
 /** A product of number literals, with `IST_UTC_OFFSET_MINUTES` resolved. No eval, no Function. */

@@ -20,6 +20,7 @@
  */
 import { and, asc, eq, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
+import { IST_UTC_OFFSET_MINUTES } from "../../kernel/approvals/cumulative";
 import { appendEvent } from "../../kernel/events/append";
 import { assertNoIdentifiers, maskQuestion } from "../../kernel/copilot/mask";
 import { formularyGenerics, formularyMonographs, formularyMonographSignatures } from "../../kernel/db/schema";
@@ -210,9 +211,12 @@ async function isHighAlert(tx: Tx, genericId: string, flagged: boolean): Promise
   return rows.length > 0;
 }
 
+/** The hospital's clock (IST, no DST), derived from the kernel's one constant (`test/ist-clock-parity.test.ts`). */
+const IST_OFFSET_MS = IST_UTC_OFFSET_MINUTES * 60_000;
+
 /** The IST calendar date of an instant. */
 export function istDate(at: Date): string {
-  return new Date(at.getTime() + 5.5 * 3600_000).toISOString().slice(0, 10);
+  return new Date(at.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
 }
 
 const addDays = (iso: string, days: number): string => {
@@ -227,7 +231,7 @@ export function isOverdue(reviewDueOn: string | null, today: string): boolean {
 }
 
 function dueOn(from: Date): string {
-  const d = new Date(from.getTime() + 5.5 * 3600_000);
+  const d = new Date(from.getTime() + IST_OFFSET_MS);
   d.setUTCMonth(d.getUTCMonth() + CRK_REREVIEW_MONTHS);
   return d.toISOString().slice(0, 10);
 }
