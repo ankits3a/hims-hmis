@@ -27,6 +27,9 @@ export type OpdErrorCode =
   // 'Spoke' could not be recorded because what must be written beside it could not be (409, listed).
   // The message is the doctor's — neutral, no money word; the cause goes to the log and `tele.bill_failed`.
   | "tele_save_failed"
+  // #647 — the billing office's retry of a failed tele-call bill. The bill still cannot be raised
+  // (409, listed; `detail.code` is billing's own refusal), or the visit has no failed bill waiting (409, suffix rule).
+  | "tele_bill_retry_failed" | "tele_bill_state_conflict"
   | "unknown_encounter" | "encounter_state_conflict" | "edit_lease_state_conflict" | "consult_gate_refused" | "unknown_session" | "session_closed" | "doctor_out"
   // The co-pilot's syndrome key. A key the knowledge file does not hold is a CLIENT error with a
   // domain name, not a 500 — the screen sends what a previous build's suggest route gave it.

@@ -2986,7 +2986,7 @@ describe("OpdConsult — parking a patient and picking them up again", () => {
     const row = await screen.findByTestId("queue-row-qe-park");
     expect(within(row).getByTestId("queue-token-qe-park")).toHaveTextContent("3");
     expect(within(row).getByText("Gita Kumari")).toBeInTheDocument();
-    expect(within(row).getByTestId("queue-parked-qe-park")).toHaveTextContent("Parked 15 min");
+    expect(within(row).getByTestId("queue-parked-qe-park")).toHaveTextContent("On hold 15 min");
     // and the called token and the waiting tokens are still exactly where they were
     expect(screen.getByTestId("queue-row-qe-cur")).toHaveAttribute("aria-current", "true");
     expect(screen.getByTestId("queue-row-qe-a")).toBeInTheDocument();
@@ -3031,7 +3031,7 @@ describe("OpdConsult — parking a patient and picking them up again", () => {
 
     // CONSULT V2 (owner, 2026-09-23): in a consultation the line is minimised by default — one tap opens it.
     { const so = screen.queryByTestId("sidebar-open"); if (so !== null) await user.click(so); }
-    await user.click(screen.getByRole("button", { name: "Park patient" }));
+    await user.click(screen.getByRole("button", { name: "Hold patient" }));
 
     await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-1/consult/park")).toHaveLength(1); });
     // the chair is empty…

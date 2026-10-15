@@ -24,7 +24,7 @@ import {
  * the doctor speaks travels in the audio. It is never written as "no name leaves".
  */
 
-type WireSetLine = { drug: string; dose: string; route: string; frequency: string; durationDays: number | null; instructions: string | null; medicineId?: string | null };
+type WireSetLine = { drug: string; dose: string; route: string; frequency: string; durationDays: number | null; instructions: string | null; medicineId?: string | null; food?: "before" | "after" | null };
 export type WireRxSet = {
   id: string; scope: "doctor" | "department"; name: string; departmentId: string | null; departmentName: string | null;
   body: { lines: WireSetLine[]; tests: { serviceId: string; code: string; name: string }[]; advice: string | null; reviewDays: number | null };
@@ -36,8 +36,10 @@ function Refusal({ message }: { message: string | null }): React.ReactElement | 
   if (message === null) return null;
   return <p role="alert" style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: "var(--red)" }}>{message}</p>;
 }
-const lineText = (l: WireSetLine, days: (n: number) => string): string =>
-  [l.drug, l.dose, l.frequency, l.durationDays === null ? null : days(l.durationDays), l.instructions].filter((x): x is string => x !== null && x.trim() !== "").join(" · ");
+/** A set line's food timing is stored as a code and written out here in the reader's words. */
+const lineText = (l: WireSetLine, days: (n: number) => string, food: { before: string; after: string }): string =>
+  [l.drug, l.dose, l.frequency, l.durationDays === null ? null : days(l.durationDays), l.food === "before" || l.food === "after" ? food[l.food] : null, l.instructions]
+    .filter((x): x is string => x !== null && x !== undefined && x.trim() !== "").join(" · ");
 
 function SetCard({ set, departmentId, onChanged }: { set: WireRxSet; departmentId: string | null; onChanged: () => Promise<void> }): React.ReactElement {
   const { t } = useTranslation();
@@ -48,6 +50,7 @@ function SetCard({ set, departmentId, onChanged }: { set: WireRxSet; departmentI
     try { await run(); await onChanged(); } catch (e) { setError(opdErrorMessage(e)); } finally { setBusy(false); }
   };
   const days = (n: number): string => t("opdSets.days", { count: n });
+  const food = { before: t("sigDrawer.timingOption.beforeFood"), after: t("sigDrawer.timingOption.afterFood") };
   return (
     <article data-testid={`set-${set.id}`} style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 8, background: "var(--paper)" }}>
       <header style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "baseline" }}>
@@ -61,7 +64,7 @@ function SetCard({ set, departmentId, onChanged }: { set: WireRxSet; departmentI
       </header>
       {/* Every line, in full: a signature is on what is read here, not on a name. */}
       <ol style={{ margin: 0, paddingLeft: 18, fontSize: 13, display: "grid", gap: 3 }}>
-        {set.body.lines.map((l, i) => <li key={`${String(i)}-${l.drug}`}>{lineText(l, days)}</li>)}
+        {set.body.lines.map((l, i) => <li key={`${String(i)}-${l.drug}`}>{lineText(l, days, food)}</li>)}
       </ol>
       {set.body.tests.length > 0 && <p style={{ margin: 0, fontSize: 12.5 }}><span className="tag">{t("opdSets.tests")}</span> {set.body.tests.map((x) => x.name).join(", ")}</p>}
       {(set.body.advice ?? "") !== "" && <p style={{ margin: 0, fontSize: 12.5 }}><span className="tag">{t("opdSets.advice")}</span> {set.body.advice}</p>}

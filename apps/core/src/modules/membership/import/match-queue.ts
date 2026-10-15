@@ -211,9 +211,15 @@ export type HolderFacts = { name: string; dob: Date | string | null; sex: string
 export type PatientFacts = { name: string; dob: Date | string | null; sex: string | null; phone: string | null };
 
 /**
- * The comparison and the band. Weak = the name is only loose, or a sex / DOB the card DOES carry
- * differs. Strong = name, DOB and mobile all agree. Everything else is Possible. The band never
- * pre-selects anything; it decides only whether a link needs a stated proof (see `resolveMatch`).
+ * The comparison and the band, by the approved board's own columns (#654): 4 of 4 is Strong, 2 of 4
+ * (name and sex agree, DOB and mobile differ) is Possible, 1 of 4 is Weak.
+ *   Weak     = the name is only loose, or a sex the card DOES carry differs, or a DOB the card carries
+ *              differs with fewer than 2 of 4 agreeing.
+ *   Strong   = name, DOB and mobile all agree (and nothing above made it Weak).
+ *   Possible = everything else.
+ * A differing DOB no longer forces Weak when a second field agrees (the board's "Possible" column has
+ * one); with nothing else beside the name it is 1 of 4 and still Weak, so the proof is still owed.
+ * The band never pre-selects anything; it decides only whether a link needs a stated proof.
  */
 export function compareCandidate(holder: HolderFacts, patient: PatientFacts, score: number): CandidateComparison {
   const name: FieldMark =
@@ -231,7 +237,7 @@ export function compareCandidate(holder: HolderFacts, patient: PatientFacts, sco
   const mobile: FieldMark = hPh === null ? "not_on_card" : pPh === null ? "not_on_record" : hPh === pPh ? "agrees" : "differs";
   const agrees = [name, dob, sex, mobile].filter((m) => m === "agrees").length;
   const strength: MatchStrength =
-    name === "differs" || dob === "differs" || sex === "differs"
+    name === "differs" || sex === "differs" || (dob === "differs" && agrees < 2)
       ? "weak"
       : name === "agrees" && dob === "agrees" && mobile === "agrees" ? "strong" : "possible";
   return { name, dob, sex, mobile, agrees, strength };

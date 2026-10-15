@@ -1,6 +1,6 @@
 {
-  "id": "99470749-acb3-4eb2-abf7-63fc08906e35",
-  "prevId": "0684ebdc-e631-48fc-928c-a7eaf0580318",
+  "id": "ac16a7f5-6d78-41a8-a048-5170d02ae3a1",
+  "prevId": "3996038a-c693-44ce-8fea-89964e818eff",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -25753,6 +25753,188 @@
         "vendor_documents_type_ck": {
           "name": "vendor_documents_type_ck",
           "value": "\"vendor_documents\".\"type\" in ('drug_licence_20b', 'drug_licence_21b', 'gst_certificate', 'pan', 'cancelled_cheque', 'udyam', 'dpdp_processor_agreement', 'consignment_agreement', 'iso', 'aerb_type_approval')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.vendor_item_rates": {
+      "name": "vendor_item_rates",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "vendor_id": {
+          "name": "vendor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "uom": {
+          "name": "uom",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "multiplier": {
+          "name": "multiplier",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rate_paise": {
+          "name": "rate_paise",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "gst_rate_bps": {
+          "name": "gst_rate_bps",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mrp_paise": {
+          "name": "mrp_paise",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "valid_from": {
+          "name": "valid_from",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "valid_to": {
+          "name": "valid_to",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "ended_by": {
+          "name": "ended_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "vendor_item_rates_open_ux": {
+          "name": "vendor_item_rates_open_ux",
+          "columns": [
+            {
+              "expression": "vendor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "item_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"vendor_item_rates\".\"ended_at\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "vendor_item_rates_item_idx": {
+          "name": "vendor_item_rates_item_idx",
+          "columns": [
+            {
+              "expression": "item_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "vendor_item_rates_vendor_id_vendors_id_fk": {
+          "name": "vendor_item_rates_vendor_id_vendors_id_fk",
+          "tableFrom": "vendor_item_rates",
+          "tableTo": "vendors",
+          "columnsFrom": [
+            "vendor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "vendor_item_rates_item_id_items_id_fk": {
+          "name": "vendor_item_rates_item_id_items_id_fk",
+          "tableFrom": "vendor_item_rates",
+          "tableTo": "items",
+          "columnsFrom": [
+            "item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "vendor_item_rates_money_ck": {
+          "name": "vendor_item_rates_money_ck",
+          "value": "\"vendor_item_rates\".\"rate_paise\" >= 0 and \"vendor_item_rates\".\"gst_rate_bps\" >= 0 and \"vendor_item_rates\".\"multiplier\" > 0 and (\"vendor_item_rates\".\"mrp_paise\" is null or \"vendor_item_rates\".\"mrp_paise\" > 0)"
+        },
+        "vendor_item_rates_period_ck": {
+          "name": "vendor_item_rates_period_ck",
+          "value": "\"vendor_item_rates\".\"valid_to\" is null or \"vendor_item_rates\".\"valid_to\" >= \"vendor_item_rates\".\"valid_from\""
+        },
+        "vendor_item_rates_ended_ck": {
+          "name": "vendor_item_rates_ended_ck",
+          "value": "(\"vendor_item_rates\".\"ended_at\" is null) = (\"vendor_item_rates\".\"ended_by\" is null)"
         }
       },
       "isRLSEnabled": false

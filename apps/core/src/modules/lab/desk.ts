@@ -716,7 +716,8 @@ export type DeskAdvisedLine = {
   serviceId: string;
   code: string;
   name: string;
-  pricePaise: number;
+  /** The doctor's quotation snapshot; null when the tariff had no price (#609). The desk reprices regardless. */
+  pricePaise: number | null;
   orderable: { container: string; specimenType: string; consentRequired: boolean; sensitive: boolean; requiresFasting: boolean } | null;
   /** A lab item ALREADY placed for this service on this visit — the seat shows it, never re-orders it. */
   alreadyOrderedItemId: string | null;
