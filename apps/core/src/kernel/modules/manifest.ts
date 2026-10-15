@@ -3,6 +3,7 @@ import type { ResourceKindDecl } from "../resources/kinds";
 import type { SearchProvider } from "../search/types";
 import type { DeskProvider } from "../desk/types";
 import type { CopilotToolDecl } from "../copilot/types";
+import type { CopilotIntentDecl, ModuleCopilotIntent } from "../copilot/intents";
 
 export type ModuleManifest = {
   key: string;
@@ -86,4 +87,14 @@ export type ModuleManifest = {
    * at runtime, which is a way to claim an intent that no boot-time collector would ever see refuse.
    */
   copilotTools?: readonly CopilotToolDecl[];
+  /**
+   * #598 (plan E0.7) — the copilot INTENTS this module owns, keyed by full name (`<key>.<name>`, as
+   * IPD keys `IPD_INTENTS`): each one's phrasebook cues, the chooser's and chat model's menu entry, the
+   * answer keys its tool may return and whether the help sentence offers it. `copilotTools` ships the
+   * tool that answers; this ships the words that route to it, so a new intent is no kernel edit.
+   * `kernel/copilot/catalog.ts`'s `collectCopilotIntents` collects these at boot and refuses a
+   * duplicate intent, a cue another intent owns, an answer key with no sentence, and a name outside
+   * the module's own namespace. OPTIONAL and `readonly`, for the reasons the fields above give.
+   */
+  copilotIntents?: Readonly<Record<ModuleCopilotIntent, CopilotIntentDecl>>;
 };
