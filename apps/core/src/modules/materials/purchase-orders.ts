@@ -20,6 +20,7 @@ import {
 } from "./events";
 import { assertNotMerged, withMergedAliases } from "./items";
 import { assertVendorPurchasable } from "./vendors";
+import { contractRatesFor } from "./vendor-rates";
 import { requireStore } from "./stores";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -108,6 +109,11 @@ export type PoLineView = {
   freeReceivedBase: number;
   /** What is still to come, in base units (never negative). */
   remainingBase: number;
+  /**
+   * Owner 2026-10-04 — this vendor's contracted rate for the item, per THIS line's pack, ex-GST; null when the
+   * vendor has no rate in force for it. A line priced above it is shown so, to the raiser and the approver.
+   */
+  contractRatePaise: number | null;
 };
 
 export type PoSummary = {
@@ -698,6 +704,14 @@ async function readPurchaseOrder(db: Db, poId: string): Promise<PoView | undefin
     .where(eq(purchaseOrderLines.purchaseOrderId, poId)).orderBy(asc(items.name), asc(purchaseOrderLines.id));
   const ap = row.po.approvalId === null ? null : await getApproval(db, row.po.approvalId);
   const names = await namesOf(db, [row.po.createdBy, row.po.submittedBy, row.po.approvedBy, row.po.sentBy, row.po.cancelledBy, ap?.decidedBy ?? null]);
+  const contracts = await contractRatesFor(db, lines.map((x) => x.l.itemId));
+  /** The vendor's own contracted rate, re-expressed per the line's pack (only when it divides to the paisa). */
+  const contractFor = (itemId: string, multiplier: number): number | null => {
+    const c = (contracts.get(itemId) ?? []).find((x) => x.vendorId === row.po.vendorId);
+    if (c === undefined) return null;
+    const scaled = (c.ratePaise * multiplier) / c.multiplier;
+    return Number.isInteger(scaled) ? scaled : Math.round(scaled);
+  };
   return {
     ...summaryOf(row.po, row.vendor, row.storeCode, lines.length),
     terms: row.po.terms, note: row.po.note, storeName: row.storeName, vendorGstin: row.vendor.gstin,
@@ -714,6 +728,7 @@ async function readPurchaseOrder(db: Db, poId: string): Promise<PoView | undefin
         gstPaise: lineGstPaise(l.lineTotalPaise, l.gstRateBps), mrpPaise: l.mrpPaise, lineTotalPaise: l.lineTotalPaise,
         orderedBase, receivedBase: l.receivedBase, freeReceivedBase: l.freeReceivedBase,
         remainingBase: Math.max(0, orderedBase - l.receivedBase),
+        contractRatePaise: contractFor(l.itemId, l.multiplier),
       };
     }),
   };
