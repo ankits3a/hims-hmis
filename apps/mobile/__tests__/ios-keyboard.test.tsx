@@ -53,7 +53,7 @@ describe("Field — the whole bordered row raises the keyboard", () => {
     await render(<Field ref={ref} label="Username" value="" onChangeText={() => undefined} testID="u" />);
     expect(ref.current).not.toBeNull(); // the ref reaches the TextInput itself
     const focus = jest.spyOn(ref.current!, "focus");
-    fireEvent.press(screen.getByTestId("u-row"));
+    await fireEvent.press(screen.getByTestId("u-row"));
     expect(focus).toHaveBeenCalledTimes(1);
   });
 

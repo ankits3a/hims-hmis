@@ -16,6 +16,7 @@ import { PHARMACY_MESSAGES_CONSUMER, PHARMACY_RX_ISSUED_CONSUMER } from "../../m
 import { LAB_INTERFACE_CONSUMER } from "../../modules/lab";
 import { ABDM_CARE_CONTEXT_CONSUMER } from "../../modules/abdm";
 import { ORDERING_FREE_TESTS_CONSUMER } from "../../modules/ordering";
+import { PATIENTS_APPROVAL_REJECTED_CONSUMER } from "../../modules/patients";
 import { seedCursors } from "./seed-cursors";
 
 const mkInput = (name: string) => ({
@@ -101,6 +102,9 @@ describe("seedCursors", () => {
         // 18-S RS10 T3 — seeded at `max(seq)` so the first cycle does not replay every historic grant
         // (each would be a no-op — the gate is terminal — but a no-op is not a reason to walk them).
         RADIOLOGY_APPROVAL_GRANTED_CONSUMER,
+        // #653 — seeded at `max(seq)`: refusals made before the hook existed are closed by the lazy
+        // settle on read, so the first cycle need not walk every historic `approval.rejected`.
+        PATIENTS_APPROVAL_REJECTED_CONSUMER,
         PHARMACY_RX_ISSUED_CONSUMER, // PLAN 16c T3
         /**
          * PHARMACY P6 (patient messages) — and this is the consumer whose unseeded cursor would do the

@@ -50,6 +50,15 @@ describe("the phone consult on the web", () => {
     expect(JSON.parse(calls("POST", "/api/opd/rx-sets")[0]!.body)).toEqual({ scope: "department", departmentId: "dep-1", name: "Viral fever", body: set({}).body });
   });
 
+  it("a line whose food timing is stored as a code is written out in the reader's words", async () => {
+    const coded = set({ body: { lines: [{ ...LINE, instructions: null, food: "before" }, { ...LINE, drug: "Cetirizine 10 mg Tablet", instructions: "at night", food: "after" }], tests: [], advice: null, reviewDays: null } });
+    stubFetch({ "GET /api/auth/me": ME, "GET /api/opd/rx-sets": { items: [coded], headOf: [], departmentId: "dep-1" } });
+    renderWithProviders(<OpdSets />);
+    const card = await screen.findByTestId("set-s1");
+    expect(within(card).getByText("Paracetamol 500 mg Tablet · 1 tab · TDS · 5 days · Before food")).toBeInTheDocument();
+    expect(within(card).getByText("Cetirizine 10 mg Tablet · 1 tab · TDS · 5 days · After food · at night")).toBeInTheDocument();
+  });
+
   it("an unsigned starter says who can see it; only the unit head is offered the signature", async () => {
     const starter = set({ id: "d1", scope: "department", departmentId: "dep-1", departmentName: "General Medicine", mine: true });
     stubFetch({ "GET /api/auth/me": ME, "GET /api/opd/rx-sets": { items: [starter], headOf: [], departmentId: "dep-1" } });

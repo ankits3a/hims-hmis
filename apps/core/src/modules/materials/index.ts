@@ -111,6 +111,9 @@ export {
   stockLevelsAt, submitPurchaseOrder, updatePurchaseOrder,
 } from "./purchase-orders";
 export type { LastPurchase, PoFilter, PoInput, PoLineInput, PoLineView, PoStatus, PoSummary, PoView, StockLevel } from "./purchase-orders";
+/** Owner 2026-10-04 — a vendor's rate contract: quoted rates per item, what orders to that vendor are priced at. */
+export { contractRatesFor, endVendorRate, setVendorRates, vendorRates } from "./vendor-rates";
+export type { ContractRate, VendorRateInput, VendorRateResult, VendorRateView } from "./vendor-rates";
 
 // ── PHARMACY PARITY P3 — supplier bills, payables, payment runs ──
 export { PAYMENT_RUN_APPROVAL_TYPE } from "./approval-types";
