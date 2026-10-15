@@ -156,12 +156,12 @@ Source: `apps/core/src/modules/formulary/`
 
 ## Tables (`kernel/db/schema/formulary.ts`)
 
-`formulary_crk_entries`, `formulary_crk_signatures`, `formulary_drug_disease`, `formulary_generic_substances`, `formulary_generics`, `formulary_interactions`, `formulary_mapping_proposals`, `formulary_medicine_salts`, `formulary_medicines`, `formulary_monographs`, `formulary_renal_doses`, `formulary_salts`, `formulary_staging`, `formulary_substances`
+`formulary_drug_disease`, `formulary_generic_substances`, `formulary_generics`, `formulary_interactions`, `formulary_mapping_proposals`, `formulary_medicine_salts`, `formulary_medicines`, `formulary_monograph_signatures`, `formulary_monographs`, `formulary_renal_doses`, `formulary_salts`, `formulary_staging`, `formulary_substances`
 
 Foreign keys into: —
 
-## HTTP routes (33)
+## HTTP routes (31)
 
-- `formulary.controller.ts` — 33: `/formulary/census`, `/formulary/coverage`, `/formulary/crk`, `/formulary/interactions`, `/formulary/medicines`, `/formulary/monographs`, `/formulary/pair-rates`, `/formulary/salts`, `/formulary/staging`, `/formulary/substances`, `/formulary/suggest`
+- `formulary.controller.ts` — 31: `/formulary/census`, `/formulary/coverage`, `/formulary/interactions`, `/formulary/medicines`, `/formulary/monographs`, `/formulary/pair-rates`, `/formulary/salts`, `/formulary/staging`, `/formulary/substances`, `/formulary/suggest`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/formulary`
