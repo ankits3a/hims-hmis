@@ -109,4 +109,18 @@ BEGIN RAISE EXCEPTION 'er_mlc_append_only: % rows are never edited or deleted (%
 CREATE TRIGGER er_mlcs_append_only BEFORE UPDATE OR DELETE ON er_mlcs FOR EACH ROW EXECUTE FUNCTION er_mlc_forbid_mutation();--> statement-breakpoint
 CREATE TRIGGER er_mlc_addenda_append_only BEFORE UPDATE OR DELETE ON er_mlc_addenda FOR EACH ROW EXECUTE FUNCTION er_mlc_forbid_mutation();--> statement-breakpoint
 CREATE TRIGGER er_mlc_intimations_append_only BEFORE UPDATE OR DELETE ON er_mlc_intimations FOR EACH ROW EXECUTE FUNCTION er_mlc_forbid_mutation();--> statement-breakpoint
-CREATE TRIGGER er_mlc_custody_append_only BEFORE UPDATE OR DELETE ON er_mlc_custody FOR EACH ROW EXECUTE FUNCTION er_mlc_forbid_mutation();
+CREATE TRIGGER er_mlc_custody_append_only BEFORE UPDATE OR DELETE ON er_mlc_custody FOR EACH ROW EXECUTE FUNCTION er_mlc_forbid_mutation();--> statement-breakpoint
+CREATE FUNCTION er_mlc_obligation_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN RAISE EXCEPTION 'er_mlc_append_only: er_mlc_obligations rows are never deleted'; END IF;
+  IF NEW.mlc_id IS DISTINCT FROM OLD.mlc_id OR NEW.kind IS DISTINCT FROM OLD.kind OR NEW.due_at IS DISTINCT FROM OLD.due_at
+     OR (OLD.met_at IS NOT NULL AND NEW.met_at IS DISTINCT FROM OLD.met_at)
+     OR (OLD.met_by IS NOT NULL AND NEW.met_by IS DISTINCT FROM OLD.met_by)
+     OR (OLD.task_id IS NOT NULL AND NEW.task_id IS DISTINCT FROM OLD.task_id)
+     OR (OLD.climbed_at IS NOT NULL AND NEW.climbed_at IS DISTINCT FROM OLD.climbed_at)
+     OR (OLD.breached_at IS NOT NULL AND NEW.breached_at IS DISTINCT FROM OLD.breached_at) THEN
+    RAISE EXCEPTION 'er_mlc_append_only: an obligation''s case, kind, due time and stamps are written once';
+  END IF;
+  RETURN NEW;
+END $$;--> statement-breakpoint
+CREATE TRIGGER er_mlc_obligations_write_once BEFORE UPDATE OR DELETE ON er_mlc_obligations FOR EACH ROW EXECUTE FUNCTION er_mlc_obligation_guard();

@@ -260,7 +260,10 @@ export async function registerArrival(db: Db, actor: Actor, raw: unknown, opts: 
       const e = await arriveIn(tx, actor, { patientId, personIds, unidentified: null, ageBand, marks: null, common: input, gate }, at);
       await arrivedEvent(tx, actor, e, at);
       // Lane 4 (#811): the police brought the patient → an MLC by rule; their arrival is the intimation (spec §4.4).
-      if (e.arrivalMode === "police") await openMlcIn(tx, actor, e, { category: "police_brought", byRule: true }, at);
+      // ER review (2026-10-15): the same predicate as the MLC's own — police bringing the patient by any vehicle.
+      if (e.arrivalMode === "police" || (e.broughtBy as { kind?: string } | null)?.kind === "police") {
+        await openMlcIn(tx, actor, e, { category: "police_brought", byRule: true }, at);
+      }
       const band = await mintBandIn(db, tx, actor, e, { site: input.bandSite ?? "wrist", printerId: input.printerId }, at);
       return {
         episodeId: e.id, episodeNo: e.episodeNo, patientId, uhid: band.band.uhid, state: "arrived" as const,

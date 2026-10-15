@@ -13,6 +13,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
 import { getPatientSummaries } from "../patients";
 import { escalationRecipients } from "../roster";
+import { isConsultant } from "../ipd";
 import { cancelTask, getTask, raiseTask } from "../tasks";
 import { verifySecondPerson } from "./care";
 import { lockEpisode, onceEr, provenanceOf, readEpisode, requireErPermission } from "./core";
@@ -219,6 +220,9 @@ export async function recordPoliceIntimation(db: Db, actor: Actor, raw: unknown,
   const when = input.intimatedAt === undefined ? at : new Date(Math.min(new Date(input.intimatedAt).getTime(), at.getTime()));
   return onceEr(db, actor, "record_police_intimation", input.idempotencyKey, input, () => withTx(db, async (tx) => {
     const m = await lockMlc(tx, input.mlcId);
+    // ER review (2026-10-15): an intimation is never dated before the patient arrived (the target would always be met).
+    const ep = await readEpisode(tx, m.episodeId);
+    if (when.getTime() < ep.arrivedAt.getTime()) throw new ErRefusal("intimation_before_arrival", { arrivedAt: ep.arrivedAt.toISOString() });
     const r = await writeIntimation(tx, actor, m, {
       mode: input.mode, station: input.station, receiverName: input.receiverName, receiverRank: input.receiverRank ?? null,
       gdEntryNo: input.gdEntryNo ?? null, intimatedAt: when,
@@ -238,7 +242,13 @@ export async function countersignMlc(db: Db, actor: Actor, raw: unknown, opts: O
     const ob = await obligationOf(tx, m.id, "faculty_countersign");
     if (ob.metAt !== null) throw new ErRefusal("mlc_countersigned", { countersignedAt: ob.metAt.toISOString() });
     if (m.openedBy === actor.id) throw new ErRefusal("countersign_own_mlc");
-    if (!(await isActiveDoctor(tx, actor.id)) || await actorHoldsAnyRole(tx, actor.id, RESIDENT_ROLES)) {
+    // ER review (2026-10-15): the examiner who wrote the findings (an addendum) does not countersign their own case.
+    const authored = (await tx.select({ id: erMlcAddenda.id }).from(erMlcAddenda)
+      .where(and(eq(erMlcAddenda.mlcId, m.id), eq(erMlcAddenda.authorId, actor.id))).limit(1))[0];
+    if (authored !== undefined) throw new ErRefusal("countersign_own_mlc", { addendum: authored.id });
+    // FACULTY = a consultant by the IPD rule (active doctor master + consultant grade on the roster, else not a resident
+    // role): a doctor off the master (a medical officer, an intern) is not senior enough.
+    if (!(await isActiveDoctor(tx, actor.id)) || await actorHoldsAnyRole(tx, actor.id, RESIDENT_ROLES) || !(await isConsultant(tx, actor.id, at))) {
       throw new ErRefusal("cosigner_not_senior");
     }
     await tx.update(erMlcObligations).set({ metAt: at, metBy: actor.id }).where(eq(erMlcObligations.id, ob.id));
@@ -295,6 +305,7 @@ export async function handOverEvidence(db: Db, actor: Actor, raw: unknown, opts:
       const chain = await tx.select({ action: erMlcCustody.action }).from(erMlcCustody)
         .where(and(eq(erMlcCustody.mlcId, m.id), eq(erMlcCustody.sealNo, seal)));
       if (chain.some((l) => l.action === "handed_over")) throw new ErRefusal("seal_already_handed_over", { sealNo: seal });
+      if (input.action === "collected" && chain.some((l) => l.action === "collected")) throw new ErRefusal("seal_already_collected", { sealNo: seal });
       if (input.action !== "collected" && !chain.some((l) => l.action === "collected")) throw new ErRefusal("seal_not_collected", { sealNo: seal });
       const id = newId();
       const link = await nextLink(tx, m.id);
@@ -324,8 +335,12 @@ export async function handOverEvidence(db: Db, actor: Actor, raw: unknown, opts:
  */
 export async function sweepErMlcClocks(db: Db, now: Date): Promise<{ tasks: number; climbs: number; breaches: number }> {
   const out = { tasks: 0, climbs: 0, breaches: 0 };
+  // ER review (2026-10-15): an obligation with nothing left to raise (the intimation's task and climb done, the
+  // countersign's breach told) is left out — it costs no transaction and no case lock every minute.
   const owed = await db.select({ id: erMlcObligations.id }).from(erMlcObligations)
-    .where(and(isNull(erMlcObligations.metAt), lte(erMlcObligations.dueAt, now)));
+    .where(and(isNull(erMlcObligations.metAt), lte(erMlcObligations.dueAt, now), sql`not (
+      (${erMlcObligations.kind} = 'police_intimation' and ${erMlcObligations.taskId} is not null and ${erMlcObligations.climbedAt} is not null)
+      or (${erMlcObligations.kind} = 'faculty_countersign' and ${erMlcObligations.breachedAt} is not null))`));
   for (const { id } of owed) {
     await withTx(db, async (tx) => {
       const ob0 = (await tx.select().from(erMlcObligations).where(eq(erMlcObligations.id, id)))[0];
