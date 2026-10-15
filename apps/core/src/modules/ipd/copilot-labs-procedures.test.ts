@@ -1,8 +1,9 @@
+import { createHash, randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { authManifest } from "../../kernel/auth/manifest";
 import { grantPermissionToRole, syncPermissions } from "../../kernel/auth/permissions";
-import { daycareEncounters, ipdAdmissions, ipdOrders, otCases, resources } from "../../kernel/db/schema";
+import { daycareEncounters, ipdAdmissions, ipdCopilotDrafts, ipdOrders, otCases, resources } from "../../kernel/db/schema";
 import { ModuleRegistry } from "../../kernel/modules/loader";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { grantLabResultPermissions, runLabOrder, seedLabDeskBase } from "../../../test/helpers/lab";
@@ -12,7 +13,8 @@ import { patientsManifest } from "../patients";
 import { procedureText } from "./copilot";
 import { buildFactSet, labValueFacts, LAB_VALUE_FACTS } from "./copilot-facts";
 import { chooseLines, quantitiesIn, renderLine, verifyReworded } from "./copilot-lines";
-import { buildDischargeDraft, ipdManifest } from "./index";
+import { dischargeRecordsUnchanged } from "./copilot-drafts";
+import { buildDischargeDraft, ipdManifest, saveSummaryDraft } from "./index";
 import type { ResultedValue } from "../lab";
 import type { ProcedureDone } from "../ot";
 import type { Fact } from "./copilot-lines";
@@ -183,5 +185,54 @@ describe("the reads, against rows", () => {
     const converted = await admission({ source: "ot_daycare_conversion", sourceRef: before.encounterId });
     const c = await buildDischargeDraft(db, doctor, converted.id, { now: ist("2026-03-12T10:00:00") });
     expect(c.content.procedures.split("\n")).toEqual(["9 Mar 2026 — GYN-DNC-01 (gynae dnc), spinal anaesthesia", "11 Mar 2026 — GYN-DNC-01 (gynae dnc), spinal anaesthesia"]);
+  });
+
+  // #794 — the fingerprint of the discharge draft counts the theatre's cases, under a versioned stamp.
+  const saveFrom = (admissionId: string, draftId: string) => saveSummaryDraft(db, doctor, {
+    idempotencyKey: randomUUID(), admissionId, expectedVersion: 0, content: { diagnosis: { text: "Synthetic fever" } }, draftId,
+  }, { now: ist("2026-03-12T11:00:00") });
+  const codeOf = async (p: Promise<unknown>): Promise<string> => {
+    try { await p; } catch (e) { return (e as { code?: string }).code ?? String(e); }
+    return "saved";
+  };
+
+  it("#794: a procedure recorded in theatre after the discharge draft makes the draft out of date", async () => {
+    const a = await admission();
+    const d = await buildDischargeDraft(db, doctor, a.id, { now: ist("2026-03-12T10:00:00") });
+    const row = (await db.select().from(ipdAdmissions).where(eq(ipdAdmissions.id, a.id)))[0]!;
+    const stamped = (await db.select().from(ipdCopilotDrafts).where(eq(ipdCopilotDrafts.id, d.draftId)))[0]!.factsHash;
+    expect(stamped).toMatch(/^v2:[0-9a-f]{32}$/);
+    expect(await dischargeRecordsUnchanged(db, row, stamped)).toBe(true);
+    await theatreCase(ist("2026-03-12T10:30:00"));
+    expect(await dischargeRecordsUnchanged(db, row, stamped)).toBe(false);
+    expect(await codeOf(saveFrom(a.id, d.draftId))).toBe("summary_draft_stale");
+  });
+
+  it("#794: a draft stamped under the old fingerprint (v1) stays current while nothing changed, and goes stale on a new order", async () => {
+    const a = await admission();
+    const d = await buildDischargeDraft(db, doctor, a.id, { now: ist("2026-03-12T10:00:00") });
+    // The row as the pre-#794 code stamped it: 32 hex, no version, the orders / rounds / notes / items only.
+    const v1 = createHash("sha256").update(JSON.stringify([[], [], [], []])).digest("hex").slice(0, 32);
+    await db.update(ipdCopilotDrafts).set({ factsHash: v1 }).where(eq(ipdCopilotDrafts.id, d.draftId));
+    const row = (await db.select().from(ipdAdmissions).where(eq(ipdAdmissions.id, a.id)))[0]!;
+    expect(await dischargeRecordsUnchanged(db, row, v1)).toBe(true);
+    expect(await codeOf(saveFrom(a.id, d.draftId))).toBe("saved");
+    // An unknown version is never current.
+    expect(await dischargeRecordsUnchanged(db, row, `v9:${v1}`)).toBe(false);
+    // Under v1 a new order still makes it stale (v1 is compared, not skipped).
+    await labOrderRow(a.id, newId(), "GLUF", ist("2026-03-12T10:10:00"));
+    expect(await dischargeRecordsUnchanged(db, row, v1)).toBe(false);
+  });
+
+  it("#794 review: a v1 stamp cannot vouch for the theatre — a stay with a theatre case never accepts it", async () => {
+    const a = await admission();
+    const d = await buildDischargeDraft(db, doctor, a.id, { now: ist("2026-03-12T10:00:00") });
+    const v1 = createHash("sha256").update(JSON.stringify([[], [], [], []])).digest("hex").slice(0, 32);
+    await db.update(ipdCopilotDrafts).set({ factsHash: v1 }).where(eq(ipdCopilotDrafts.id, d.draftId));
+    const row = (await db.select().from(ipdAdmissions).where(eq(ipdAdmissions.id, a.id)))[0]!;
+    // A procedure recorded after the v1 stamp: v1's parts did not move, but the records did.
+    await theatreCase(ist("2026-03-12T10:30:00"));
+    expect(await dischargeRecordsUnchanged(db, row, v1)).toBe(false);
+    expect(await codeOf(saveFrom(a.id, d.draftId))).toBe("summary_draft_stale");
   });
 });
