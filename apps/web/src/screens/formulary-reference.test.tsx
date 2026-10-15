@@ -43,6 +43,19 @@ describe("FDA label reference panel (#616)", () => {
     expect(screen.getByText("No reference information yet: aceclofenac")).toBeInTheDocument();
   });
 
+  it("two parts that share one label each keep their entry, with no duplicate-key warning", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mockReference({
+      genericSctid: "g-1", status: "components", combination: true, missing: [],
+      entries: [{ ...ENTRY, refKey: "artemether" }, { ...ENTRY, refKey: "lumefantrine" }],
+    });
+    renderWithProviders(<FdaReference sctid="g-1" />);
+    expect(await screen.findByTestId("fda-reference-artemether")).toBeInTheDocument();
+    expect(screen.getByTestId("fda-reference-lumefantrine")).toBeInTheDocument();
+    expect(errors.mock.calls.flat().join(" ")).not.toMatch(/same key/);
+    errors.mockRestore();
+  });
+
   it("nothing on file says so, and nothing else", async () => {
     mockReference({ genericSctid: "g-1", status: "none", combination: false, entries: [], missing: ["ornidazole"] });
     renderWithProviders(<FdaReference sctid="g-1" />);

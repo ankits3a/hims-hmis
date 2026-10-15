@@ -28,7 +28,7 @@ export function FdaReference({ sctid }: { sctid: string }): React.ReactElement |
       {r.status === "components" && <p data-testid="fda-reference-banner" className="text-amber-800">{t("formularyRef.componentsBanner")}</p>}
       {r.status === "components" && r.missing.length > 0 && <p className="text-neutral-700">{t("formularyRef.missing", { names: r.missing.join(", ") })}</p>}
       {r.entries.map((e) => (
-        <article key={e.labelId} data-testid={`fda-reference-${e.refKey}`} className="space-y-1 border-t pt-2">
+        <article key={e.refKey} data-testid={`fda-reference-${e.refKey}`} className="space-y-1 border-t pt-2">
           <p className="font-medium">{t("formularyRef.title", { product: e.product, date: e.effectiveDate ?? t("formularyRef.noDate") })}</p>
           <p className="text-xs text-amber-800">{t("formularyRef.caution")}</p>
           <p className="text-xs text-neutral-600">{t("formularyRef.source", { source: e.source, date: e.retrievedOn })}</p>
