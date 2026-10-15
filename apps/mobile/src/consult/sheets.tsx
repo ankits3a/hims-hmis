@@ -33,7 +33,7 @@ const says = (e: unknown, t: T): string => (e instanceof NetworkError ? t("mobil
  * On Android the drawer is therefore an overlay inside the consult screen, lifted by the keyboard's height,
  * and the focused box is scrolled into view; Back closes it as the Modal did. iPhone keeps the KeyboardModal.
  */
-export function Drawer({ title, onClose, children, testID, foot }: { title: string; onClose: () => void; children: React.ReactNode; testID: string; foot?: React.ReactNode }) {
+export function Drawer({ title, onClose, children, testID, foot, closeLabel }: { title: string; onClose: () => void; children: React.ReactNode; testID: string; foot?: React.ReactNode; closeLabel?: string }) {
   const insets = useSafeAreaInsets();
   const { t } = useI18n();
   const android = Platform.OS === "android";
@@ -58,7 +58,7 @@ export function Drawer({ title, onClose, children, testID, foot }: { title: stri
         <View style={st.head}>
           <Text style={st.title}>{title}</Text>
           <Pressable testID={`${testID}-done`} accessibilityRole="button" hitSlop={10} onPress={onClose} style={st.doneBtn}>
-            <Text style={st.done}>{t("mobile.consult.done")}</Text>
+            <Text style={st.done}>{closeLabel ?? t("mobile.consult.done")}</Text>
           </Pressable>
         </View>
         <ScrollView ref={scroll} {...keyboardScroll()} keyboardShouldPersistTaps="handled" scrollEventThrottle={32}
@@ -664,8 +664,10 @@ export function AdviceDrawer({ api, draft, patch, onClose, followChoices }: {
 
 // ——— My sets ———
 
-export function SetsDrawer({ api, onClose, onUse, canSave, onSave }: {
+export function SetsDrawer({ api, onClose, onUse, canSave, onSave, onEdit }: {
   api: ConsultApi; onClose: () => void; onUse: (set: WireRxSet) => void; canSave: boolean; onSave: (name: string) => Promise<void>;
+  /** #610 — open a set in the editor. Offered only on a set this doctor may change: their own, or a starter set they head. */
+  onEdit?: (set: WireRxSet) => void;
 }) {
   const { t } = useI18n();
   const [sets, setSets] = useState<WireRxSet[] | null>(null);
@@ -686,6 +688,11 @@ export function SetsDrawer({ api, onClose, onUse, canSave, onSave }: {
         <Text style={st.hitSub}>{sub(x)}</Text>
         {!x.mine && x.signedByName !== null && <Text style={st.hitSub}>{t("mobile.consult.sets.signedBy", { name: x.signedByName })}</Text>}
       </View>
+      {onEdit !== undefined && (x.mine || x.maySign) && (
+        <Pressable testID={`set-edit-${x.id}`} accessibilityRole="button" accessibilityLabel={t("mobile.consult.sets.editA11y", { name: x.name })} onPress={() => onEdit(x)} style={[st.small, { borderColor: color.line, backgroundColor: color.card }]}>
+          <Text style={[st.smallText, { color: color.green }]}>{t("mobile.consult.sets.edit")}</Text>
+        </Pressable>
+      )}
       <Pressable testID={`set-use-${x.id}`} accessibilityRole="button" onPress={() => onUse(x)} style={[st.small, st.smallOn]}><Text style={[st.smallText, { color: "#f2faf6" }]}>{t("mobile.consult.sets.use")}</Text></Pressable>
     </View>
   );
