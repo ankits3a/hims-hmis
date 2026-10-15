@@ -1214,6 +1214,13 @@ function RestrictedProfileView({ data, canOpenVisit, onOpenVisit }: {
   const genderWord = useGenderWord();
   const [glassOpen, setGlassOpen] = useState(false);
   const [printing, setPrinting] = useState(false);
+  /* #852 — billing's alias read: date · bill number · status, never an amount; asked only by a seat holding a bill read. */
+  const bills = useQuery({
+    queryKey: ["pf-bills-alias", data.patient.id],
+    queryFn: () => api<{ items: { date: string; invoiceNo: string; status: "unpaid" | "partial" | "settled" }[] }>("GET", `/billing/patients/${data.patient.id}/bills-alias`),
+    enabled: can("billing.invoice.read") || can("billing.dues.patient.read"),
+    retry: false,
+  });
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1285,6 +1292,19 @@ function RestrictedProfileView({ data, canOpenVisit, onOpenVisit }: {
                     <div>
                       <div className="t">{[dmy(h.serviceDate), h.departmentName].filter((x) => x !== null && x !== "").join(" · ")}</div>
                       <div className="s">{t("profile.restricted.doctorOnly")}</div>
+                    </div>
+                  </div>
+                ))}
+              </section>
+            )}
+            {(bills.data?.items ?? []).length > 0 && (
+              <section data-testid="restricted-bills" style={{ marginTop: 10 }}>
+                {(bills.data?.items ?? []).map((b) => (
+                  <div className="ev" key={b.invoiceNo} data-testid="restricted-bill-row">
+                    <span className="src">BILL</span>
+                    <div>
+                      <div className="t">{dmy(b.date)} · <span className="mo">{b.invoiceNo}</span></div>
+                      <div className="s">{t(`profile.restricted.billStatus.${b.status}`)}</div>
                     </div>
                   </div>
                 ))}

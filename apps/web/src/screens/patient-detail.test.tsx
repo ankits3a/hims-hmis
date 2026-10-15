@@ -1415,3 +1415,39 @@ describe("PatientDetail — #849 restricted history and alias card", () => {
     expect(fetchCalls().some((c) => c.url === "/api/patients/p-1/qr")).toBe(false);
   });
 });
+
+/**
+ * #852 — board §4's BILL rows on a sealed record the seat may not open: date · bill number · where
+ * it stands, from billing's alias read, and only for a seat holding a bill read. No amount.
+ */
+describe("PatientDetail — #852 restricted bill rows", () => {
+  beforeEach(() => { setToken(null); localStorage.clear(); });
+  afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
+
+  const SEALED = {
+    view: "restricted", resolvedFrom: null,
+    patient: { id: "p-1", uhid: "HMS0000001234", alias: "Patient R-2291", isConfidential: true, administrativeGender: "female", ageYears: 71, ageMonths: null, sensitiveContext: false, status: "active" },
+    allergies: [], history: [],
+  };
+
+  it("draws each bill as date · number · status, with no amount", async () => {
+    stubSeat({
+      "GET /api/patients/p-1/profile": SEALED,
+      "GET /api/billing/patients/p-1/bills-alias": { items: [{ date: "2026-09-18", invoiceNo: "OP/26/004411", status: "unpaid" }] },
+    }, ["patients.read", "billing.dues.patient.read"]);
+    renderWithProviders(<PatientDetail />);
+    const row = await screen.findByTestId("restricted-bill-row");
+    expect(row).toHaveTextContent("BILL");
+    expect(row).toHaveTextContent("18-Sep-2026 · OP/26/004411");
+    expect(row).toHaveTextContent("Unpaid");
+    expect(row).not.toHaveTextContent("₹");
+  });
+
+  it("a seat with no bill read never asks for them", async () => {
+    stubSeat({ "GET /api/patients/p-1/profile": SEALED }, ["patients.read"]);
+    renderWithProviders(<PatientDetail />);
+    await screen.findByTestId("restricted-profile");
+    expect(fetchCalls().some((c) => c.url.includes("bills-alias"))).toBe(false);
+    expect(screen.queryByTestId("restricted-bill-row")).toBeNull();
+  });
+});
