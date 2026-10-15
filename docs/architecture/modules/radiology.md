@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/radiology/`
 
 - **Depends on modules:** `aerb`, `billing`, `lab`, `opd`, `ot`, `patients`, `pcpndt`, `roster`, `tariff`
-- **Used by modules:** `abdm`, `ordering`
+- **Used by modules:** `abdm`, `doctor-desk`, `ordering`
 - **Kernel used:** `approvals`, `auth`, `config`, `db`, `desk`, `episodes`, `events`, `modules`, `notify`, `orders`, `phi`, `report`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `approvalGranted`, `orderPlaced`
 
@@ -66,6 +66,9 @@ Source: `apps/core/src/modules/radiology/`
   - `criticalTermsIn(text: string): string[]`
   - `runPreSignChecks(ctx: PreSignContext, checks: readonly PreSignCheck[] = PRE_SIGN_CHECKS): PreSignFinding[]`
   - types: `PreSignCheck`, `PreSignContext`, `PreSignFinding`, `PreSignLevel`
+- `clinician-reads.ts`
+  - `unreadReportsForClinician(exec: Db | Tx, userId: string): Promise<ClinicianImagingRow[]>`
+  - types: `ClinicianImagingRow`
 - `closed-loop.ts`
   - `isTreatingDoctor(exec: Db | Tx, actor: Actor, studyId: string): Promise<boolean>`
   - `treatingDoctorsOf(exec: Db | Tx, studyId: string): Promise<TreatingDoctors | null>`

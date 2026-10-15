@@ -21,6 +21,7 @@ flowchart LR
   approvals[approvals] --> workflow[workflow]
   attendance[attendance] --> auth[auth]
   billing[billing] --> patients[patients]
+  doctor_desk[doctor-desk] --> auth[auth]
   documents[documents] --> opd[opd]
   documents[documents] --> patients[patients]
   lab[lab] --> billing[billing]
@@ -86,6 +87,7 @@ flowchart LR
 | `clinical-coding.ts` | kernel | `icd10_codes`, `icd11_map_loads`, `icd11_map_rows` |
 | `copilot.ts` | kernel | `copilot_acts`, `copilot_ask_feedback`, `copilot_asks`, `copilot_halts`, `copilot_notice_acks`, `copilot_user_settings` |
 | `desk.ts` | kernel | `user_day_facts` |
+| `doctor-desk.ts` | module doctor-desk | `doctor_desk_agent_runs`, `doctor_desk_briefs`, `doctor_desk_nudges`, `doctor_desk_reads` |
 | `documents.ts` | kernel | `patient_documents` |
 | `episodes.ts` | kernel | `episode_series` |
 | `eventCursors.ts` | kernel | `event_cursors` |

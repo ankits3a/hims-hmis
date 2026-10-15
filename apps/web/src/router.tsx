@@ -39,6 +39,9 @@ import { MyReach } from "./screens/my-reach";
 import { RosterOnNow } from "./screens/roster-on-now";
 import { RosterMonth } from "./screens/roster-month";
 import { RosterMyDuties } from "./screens/roster-my-duties";
+import { DoctorDeskTower } from "./screens/doctor-desk-tower";
+import { DoctorDeskBriefs } from "./screens/doctor-desk-briefs";
+import { DoctorLanding } from "./screens/doctor-desk-landing";
 import { RosterEvidence } from "./screens/roster-evidence";
 import { RosterAebas } from "./screens/roster-aebas";
 import { OpdAdmin } from "./screens/opd-admin";
@@ -724,7 +727,26 @@ const authedRoute = createRoute({
 const indexRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/",
-  component: Desk,
+  // DD-0 (#626, owner R5 2026-09-18) — a doctor of a unit lands on the Tower once per browser
+  // session; everybody else (and the doctor's next visit to `/`) gets the Desk, unchanged.
+  component: function HomeScreen() { return <DoctorLanding><Desk /></DoctorLanding>; },
+});
+
+/**
+ * DD-0 (#626) — the Doctor Desk: the Tower (`Tower.dc.html`) and AI Briefs (`AiBriefs.dc.html`),
+ * both inside the Doctor Desk frame, which owns the viewport.
+ */
+const doctorDeskRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/doctor-desk",
+  staticData: { fullViewport: true },
+  component: DoctorDeskTower,
+});
+const doctorDeskBriefsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/doctor-desk/briefs",
+  staticData: { fullViewport: true },
+  component: DoctorDeskBriefs,
 });
 
 /**
@@ -1938,6 +1960,9 @@ export const router = createRouter({
       myLeaveRoute,
       rosterEvidenceRoute,
       rosterAebasRoute,
+      // DD-0 (#626) — +2, `/doctor-desk` and `/doctor-desk/briefs`. `caddyfile-parity.test.ts` pins the count.
+      doctorDeskRoute,
+      doctorDeskBriefsRoute,
     ]),
   ]),
 });

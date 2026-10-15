@@ -12,7 +12,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 
 | path | screen |
 |---|---|
-| `/` | `apps/web/src/screens/desk` |
+| `/` | `apps/web/src/screens/doctor-desk-landing` |
 | `/admin/users` | `apps/web/src/screens/admin-users` |
 | `/appointment` | `apps/web/src/screens/desk-one/desk-one` |
 | `/approvals` | `apps/web/src/screens/approvals-inbox` |
@@ -28,6 +28,8 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/counter/reconcile` | `apps/web/src/screens/instrument-reconcile` |
 | `/counter/seat` | `(redirect)` |
 | `/counter/seat/figures` | `(redirect)` |
+| `/doctor-desk` | `apps/web/src/screens/doctor-desk-tower` |
+| `/doctor-desk/briefs` | `apps/web/src/screens/doctor-desk-briefs` |
 | `/formulary/admin` | `(redirect)` |
 | `/lab/bench` | `apps/web/src/screens/lab-bench` |
 | `/lab/collection` | `apps/web/src/screens/lab-collection` |
