@@ -1610,6 +1610,7 @@
     "print": "Print prescription",
     "advisedTests": "Advised investigations",
     "advisedTestsNote": "Prices are as of {{date}} and are confirmed at the lab or imaging counter.",
+    "rateAtCounter": "Rate at counter",
     "outsideTests": "Tests to be done outside"
   },
   "slip": {
