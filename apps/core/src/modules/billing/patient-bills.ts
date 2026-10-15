@@ -89,9 +89,15 @@ async function moneyByInvoice(db: Db, ids: readonly string[]): Promise<{ credite
  * the bills reads stay open to `billing.invoice.read`. A reader WITHOUT the restricted-records grant
  * (`getPatientSummaries` answers `restricted: true` exactly then) leaves one access row per read.
  */
-async function logRestrictedRead(db: Db, actor: Actor, who: { id: string; restricted: boolean }): Promise<void> {
+export async function logRestrictedRead(db: Db, actor: Actor, who: { id: string; restricted: boolean }): Promise<void> {
   if (!who.restricted) return;
   await recordPhiAccess(db, { actor, patientId: who.id, surface: "billing.sealed_bill_read", sealed: true });
+}
+
+/** The same rule for a read that holds only the bill's patient id (`GET /billing/invoices/:id`). */
+export async function logSealedBillRead(db: Db, actor: Actor, patientId: string): Promise<void> {
+  const [who] = await getPatientSummaries(db, actor, [patientId]);
+  if (who !== undefined) await logRestrictedRead(db, actor, who);
 }
 
 export async function patientBills(db: Db, actor: Actor, patientId: string): Promise<{ bills: PatientBillRow[] }> {
