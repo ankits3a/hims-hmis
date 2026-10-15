@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { withTx } from "../../kernel/db/client";
-import { formularyGenerics, formularyMedicines, opdPrescriptions } from "../../kernel/db/schema";
+import { cdsRxLines, formularyGenerics, formularyMedicines, opdPrescriptions } from "../../kernel/db/schema";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import {
   activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters, testCfg,
@@ -9,6 +9,7 @@ import {
 import { signedCreatinine } from "../../../test/helpers/lab-creatinine";
 import { addMedicine, addSalt, reviewMonograph, saveMonograph } from "../formulary";
 import { registerLabKidneyFunctionReader } from "../lab";
+import { backfillCdsRxLines } from "./cds-rx-lines";
 import { startConsultation } from "./consultation";
 import { openVisit } from "./encounters";
 import { issuePrescription, precheckPrescription } from "./prescriptions";
@@ -176,6 +177,20 @@ describe("#621 the renal dose gate, end to end", () => {
     }, now());
     const row = (await db.select().from(opdPrescriptions).where(eq(opdPrescriptions.id, issued.prescriptionId)))[0]!;
     expect(row.renalOverrides).toEqual([{ lineIndex: 0, genericId, reason: REASON }]);
+  });
+
+  it("a renal override counts as an override in the learning copy, at issue and after a backfill re-run alike", async () => {
+    await reviewedBands();
+    const enc = await inConsult();
+    const pre = await precheckPrescription(db, dra.actor, enc.id, rx(glycometId, "Glycomet 500"), now());
+    const issued = await issuePrescription(db, dra.actor, testCfg, enc.id, {
+      lines: rx(glycometId, "Glycomet 500"), renalOverrides: [{ lineIndex: 0, genericId: pre.renal[0]!.genericId, reason: REASON }],
+    }, now());
+    const flags = async () => (await db.select({ hadOverride: cdsRxLines.hadOverride }).from(cdsRxLines)
+      .where(eq(cdsRxLines.prescriptionId, issued.prescriptionId))).map((r) => r.hadOverride);
+    expect(await flags()).toEqual([true]);
+    await backfillCdsRxLines(db);
+    expect(await flags()).toEqual([true]);
   });
 
   it("with no recent eGFR (none, or over 90 days old) the drug says 'no recent kidney function' and asks for a reason", async () => {
