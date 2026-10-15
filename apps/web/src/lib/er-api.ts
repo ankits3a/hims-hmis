@@ -1,6 +1,6 @@
 import { ApiError, api } from "./api";
 import type {
-  ErBay, ErBill, ErBillDesk, ErBoard, ErCareView, ErDeskView, ErDoctorOption, ErEpisodeView, ErItemOption, ErMlcDesk, ErMlcDetail, ErPatientHit, ErRefusalBody,
+  ErBay, ErBill, ErBillDesk, ErBoard, ErCodeView, ErCodes, ErCareView, ErDeskView, ErDoctorOption, ErEpisodeView, ErItemOption, ErMlcDesk, ErMlcDetail, ErPatientHit, ErRefusalBody,
 } from "@hmis/contracts";
 
 /* ═══ ER lane 1 (#808) — `apps/core/src/modules/emergency/emergency.controller.ts`. The paths are the contract's
@@ -67,6 +67,12 @@ const ER_ROUTES = {
   billAdvance: "/er/bill/advance",
   billPrice: "/er/bill/price",
   billSettle: "/er/bill/settle",
+  // lane 7 (#814) — codes
+  codes: "/er/codes",
+  codeCall: "/er/codes/call",
+  codeEvent: "/er/codes/event",
+  codeEnd: "/er/codes/end",
+  codeDebrief: "/er/codes/debrief",
 } as const;
 export const ER_BOARD_TOPIC = "er:board";
 export const ER_WALL_TOPIC = "erwall:board";
@@ -224,3 +230,17 @@ export const setPayerApi = (body: Record<string, unknown>) => post<{ payer: stri
 export const advanceApi = (body: Record<string, unknown>) => post<{ receiptNo: string; amountPaise: number }>(ER_ROUTES.billAdvance, body);
 export const priceLinesApi = (episodeId: string) => post<{ priced: number; stillMissing: number }>(ER_ROUTES.billPrice, { episodeId });
 export const settleApi = (body: Record<string, unknown>, k: string) => postK<{ invoiceNo: string | null; duesPaise: number; paidPaise: number }>(ER_ROUTES.billSettle, body, k);
+
+/* ═══ lane 7 (#814) — codes. Lists are the contract's (`emergency/codes.ts`), copied. ═══ */
+export const ER_CODE_KINDS = ["code_blue", "code_grey", "stemi", "stroke", "trauma", "sepsis", "snakebite", "obstetric"] as const;
+export const ER_CODE_MILESTONES: Record<string, readonly string[]> = {
+  code_blue: [], code_grey: [], stemi: ["ecg", "balloon"], stroke: ["ct", "needle"], trauma: ["primary_survey", "ct"], sepsis: ["antibiotics"],
+  snakebite: ["asv"], obstetric: ["lr_handover"],
+};
+export const ER_RHYTHMS = ["vf", "pulseless_vt", "pea", "asystole", "sinus", "brady", "svt", "af"] as const;
+export const fetchErCodes = () => api<ErCodes>("GET", ER_ROUTES.codes);
+export const fetchErCode = (id: string) => api<ErCodeView>("GET", `${ER_ROUTES.codes}/${encodeURIComponent(id)}`);
+export const callCodeApi = (body: Record<string, unknown>) => post<{ codeId: string; paged: number }>(ER_ROUTES.codeCall, body);
+export const codeEventApi = (body: Record<string, unknown>) => post<{ eventId: string; at: string }>(ER_ROUTES.codeEvent, body);
+export const endCodeApi = (body: Record<string, unknown>) => post<{ durationSec: number }>(ER_ROUTES.codeEnd, body);
+export const debriefApi = (body: Record<string, unknown>) => post<{ at: string }>(ER_ROUTES.codeDebrief, body);

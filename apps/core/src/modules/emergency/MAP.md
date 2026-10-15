@@ -230,6 +230,21 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   accident time). The window judges each line by the episode time it covers (observation by its 6-hour blocks). A future
   accident time is refused. A dues undertaking is one of the patient's own active documents (`undertaking_invalid`).
 
+### Lane 7 (er-codes, #814)
+- `codes.ts` — `callCode` (permission `er.codes`, broad: any staff phone): Code Blue / Code Grey anywhere (a place, no
+  patient), the activations (STEMI, stroke, trauma, sepsis, snakebite, obstetric) on an open ER episode; one running code of
+  a kind per episode (`er_codes_running_ux`), two codes at once are two rows. THE PAGE is in the call's transaction: a bell
+  row per team member (`er.code` / `er.code_grey`), which the platform relays to phones as its content-free "open HMIS"
+  (M6b) — the bell names the code and the bay, never the patient. Team (`ER_CODE_TEAM`): the department on take through
+  `calloutList`, the ER doctor of record; Code Blue its `code_blue` ladder (fallback anaesthetist); Code Grey the `code_grey`
+  ladder only (fallback security guard), with the place, and an incident report drafted on the row.
+- `recordCodeEvent`: append-only `er_code_events` (trigger); the first recorder is the scribe; a paper sheet back-filled
+  with its time and `fromPaper`; a wrong place is a `location` event, never a new code. `endCode`: a doctor (Code Grey: any
+  holder) with an outcome; `recordCodeDebrief`: that leader, once, after the end.
+- Clocks (`ER_CODE_CLOCKS`): from the DOOR (`door_at`, the ER gate) — snakebite ASV and obstetric hand-over from the call;
+  a `milestone` event meets one. The board tile carries `activations` (`activationClocksFor`). Screens: `/er/codes` (the
+  resus scribe), "Code" on the ER patient bar, Code Grey on the triage header.
+
 ## 4. Traps
 - `registerPatient` takes a `Tx` and the band reads the new patient in that same `tx` (`bandPerson(tx, …)`); reading it
   through `db` (`getPatient`) inside the transaction sees nothing.
@@ -262,6 +277,9 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   log; family surfaces and model calls off for MLC patients (lane 9 / IPD); POCSO report detail; sexual-assault
   examination protocol form; `free_by_law` read by lane 6's bill desk; death in ER (lane 5's `record_er_death`) opening
   the mortuary entry through the same seam.
+- Lane 7 built codes. Still owed: a hospital-wide wall "code" button (any staff phone works today); STEMI door-to-balloon
+  read from the cath lab instead of tapped; the code sheet print; Code Grey's incident report filed into the quality
+  module (drafted on the code row today); the scribe tablet's offline queue (paper back-fill is the fallback).
 - Lane 6 built the bill. Still owed: the incumbent's real ER rates (0076 go-live blocker); a claim's status flow at the
   TPA desk (#822 reads `er_payer_claims`); MCI tagging of episodes at scale (lane 8 opens the account); printed ER bill.
 - DECIDED (coordinator 2026-10-15, to match decision 0075): a REJECTED road-accident claim's difference is NEVER billed to

@@ -173,7 +173,8 @@
     "erTriage": "ER ट्राइएज",
     "erPatient": "ER मरीज़",
     "erMlc": "MLC डेस्क",
-    "erBill": "ER बिल डेस्क"
+    "erBill": "ER बिल डेस्क",
+    "erCodes": "ER कोड"
   },
   "palette": {
     "title": "खोज",
@@ -19508,6 +19509,42 @@
       "rolled_to_ip": {
         "rule": "भर्ती बिल में चला गया।",
         "fix": "IP बिल खोलें"
+      },
+      "code_needs_patient": {
+        "rule": "सक्रियण ER मरीज़ पर बुलाया जाता है।",
+        "fix": "मरीज़ चुनें"
+      },
+      "code_open": {
+        "rule": "यह कोड पहले से चालू है।",
+        "fix": "कोड खोलें"
+      },
+      "code_not_found": {
+        "rule": "ऐसा कोड नहीं।",
+        "fix": "कोड खोलें"
+      },
+      "event_before_arrival": {
+        "rule": "रिकॉर्ड में कुछ भी आगमन से पहले का नहीं हो सकता।",
+        "fix": "सही समय दर्ज करें"
+      },
+      "code_ended": {
+        "rule": "कोड समाप्त हो चुका।",
+        "fix": "कोड खोलें"
+      },
+      "code_not_ended": {
+        "rule": "पहले कोड समाप्त करें।",
+        "fix": "कोड समाप्त करें"
+      },
+      "milestone_unknown": {
+        "rule": "ऐसा पड़ाव नहीं।",
+        "fix": "पड़ाव चुनें"
+      },
+      "debrief_recorded": {
+        "rule": "डीब्रीफ़ पहले से दर्ज।",
+        "fix": "कोड खोलें"
+      },
+      "not_code_leader": {
+        "rule": "टीम लीडर डीब्रीफ़ दर्ज करते हैं।",
+        "fix": "टीम लीडर से कहें"
       }
     },
     "esi": {
@@ -19787,7 +19824,8 @@
       "consent": "सहमति",
       "stabilised": "स्थिर",
       "mlc": "MLC",
-      "dispo": "निर्णय"
+      "dispo": "निर्णय",
+      "code": "कोड"
     },
     "meds": "दवाएँ",
     "calls": "विशेषज्ञ कॉल",
@@ -20191,6 +20229,94 @@
       "er.order": "जाँच",
       "er.issue": "दवा / सामग्री",
       "er.procedure": "प्रक्रिया"
+    }
+  },
+  "erCodes": {
+    "title": "कोड — रिससिटेशन लेखक",
+    "running": "चालू",
+    "recent": "पिछले 24 घंटे",
+    "none": "कोई कोड नहीं",
+    "pick": "एक कोड चुनें।",
+    "noPatient": "कोई मरीज़ नहीं",
+    "where": "कहाँ",
+    "whereHint": "OPD 2 प्रतीक्षा, वार्ड 4 गलियारा …",
+    "paged": "{{n}} को सूचना भेजी",
+    "calledFor": "{{what}} बुलाया · {{n}} को सूचना",
+    "openScribe": "लेखक खोलें",
+    "min": "मिनट",
+    "dueAt": "{{time}} तक",
+    "metAt": "हो गया {{time}}",
+    "shock": "शॉक {{j}} J",
+    "drug": "दवा",
+    "dose": "खुराक",
+    "addDrug": "दवा जोड़ें",
+    "end": "समाप्त — {{outcome}}",
+    "ended": "कोड समाप्त",
+    "wentWell": "क्या अच्छा रहा",
+    "improve": "क्या सुधारें",
+    "saveDebrief": "डीब्रीफ़ सहेजें",
+    "debriefed": "डीब्रीफ़ सहेजा",
+    "debriefDone": "डीब्रीफ़ दर्ज",
+    "timeline": "समय-रेखा",
+    "paper": "काग़ज़ से",
+    "boardDue": "{{what}} {{minutes}} मिनट में",
+    "boardLate": "{{what}} {{minutes}} मिनट देर",
+    "triageDesk": "ट्राइएज डेस्क",
+    "sendGrey": "कोड ग्रे भेजें",
+    "cancel": "रद्द",
+    "kind": {
+      "code_blue": "कोड ब्लू",
+      "code_grey": "कोड ग्रे",
+      "stemi": "STEMI",
+      "stroke": "स्ट्रोक",
+      "trauma": "ट्रॉमा",
+      "sepsis": "सेप्सिस",
+      "snakebite": "साँप का काटना",
+      "obstetric": "प्रसूति आपातकाल"
+    },
+    "milestone": {
+      "ecg": "ECG",
+      "balloon": "बैलून",
+      "ct": "CT",
+      "needle": "सुई (थ्रोम्बोलिसिस)",
+      "primary_survey": "प्राथमिक जाँच",
+      "antibiotics": "एंटीबायोटिक",
+      "asv": "ASV",
+      "lr_handover": "लेबर रूम को सौंपना"
+    },
+    "event": {
+      "cpr_start": "CPR शुरू",
+      "cpr_pause": "CPR रुका",
+      "rhythm": "लय",
+      "shock": "शॉक",
+      "drug": "दवा",
+      "airway": "वायुमार्ग",
+      "rosc": "ROSC",
+      "death": "मृत्यु",
+      "milestone": "पड़ाव",
+      "location": "जगह",
+      "note": "नोट"
+    },
+    "rhythm": {
+      "vf": "VF",
+      "pulseless_vt": "नाड़ी रहित VT",
+      "pea": "PEA",
+      "asystole": "एसिस्टोली",
+      "sinus": "साइनस",
+      "brady": "ब्रैडी",
+      "svt": "SVT",
+      "af": "AF"
+    },
+    "outcome": {
+      "rosc": "ROSC",
+      "died": "मृत्यु",
+      "stood_down": "रोका गया",
+      "transferred": "स्थानांतरित",
+      "resolved": "सुलझा"
+    },
+    "from": {
+      "door": "दरवाज़े से",
+      "activation": "बुलावे से"
     }
   }
 }
