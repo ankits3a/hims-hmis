@@ -417,7 +417,8 @@ export function SlipCapture(): React.ReactElement {
 
   const file = async (): Promise<void> => {
     if (resolved === null || shot === null) return;
-    if (photo.status === "mismatch") return; // the photographed sheet is another visit's: retake or scan again
+    // The photographed sheet is another visit's (retake or scan again), or its QR is still being read.
+    if (photo.status === "mismatch" || photo.status === "reading") return;
     setError(null);
     try {
       const done = await api<{ documentId: string; effects?: { "opd.paper"?: WirePaperVerdict | { failed: true } } }>("POST", `/patients/${resolved.patientId}/documents`, {
@@ -931,7 +932,7 @@ export function SlipCapture(): React.ReactElement {
               {t("slipCapture.crop.adjust")}
             </button>
           )}
-          <button type="button" className="pri" data-testid="slip-file-it" disabled={photo.status === "mismatch"} onClick={() => void file()}>
+          <button type="button" className="pri" data-testid="slip-file-it" disabled={photo.status === "mismatch" || photo.status === "reading"} onClick={() => void file()}>
             {t("slipCapture.fileIt")} <span className="kb">⏎</span>
           </button>
         </div>

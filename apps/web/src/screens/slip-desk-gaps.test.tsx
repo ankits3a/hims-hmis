@@ -21,10 +21,13 @@ vi.mock("../lib/doc-crop/browser", () => ({
   detectInImage: vi.fn(() => Promise.resolve({ score: 0.9, quad: FOUND })),
   warpToCanvas: vi.fn(() => { const c = document.createElement("canvas"); c.width = 900; c.height = 1273; return c; }),
 }));
-const photoRead = vi.hoisted(() => ({ result: { visitNo: null as string | null, via: null as "qr" | "ocr" | null } }));
+const photoRead = vi.hoisted(() => ({
+  result: { visitNo: null as string | null, via: null as "qr" | "ocr" | null },
+  pending: null as Promise<{ visitNo: string | null; via: "qr" | "ocr" | null }> | null,
+}));
 vi.mock("../lib/slip-read", async (orig) => {
   const real = await orig<typeof import("../lib/slip-read")>();
-  return { ...real, readPhotoVisitNumber: vi.fn(() => Promise.resolve(photoRead.result)) };
+  return { ...real, readPhotoVisitNumber: vi.fn(() => photoRead.pending ?? Promise.resolve(photoRead.result)) };
 });
 
 const VISIT = {
@@ -101,6 +104,22 @@ describe("#659 — the slip desk checks the photo against the visit", () => {
     expect(screen.getByTestId("slip-file-it")).toBeDisabled();
     await user.keyboard("{Enter}");
     expect(calls("POST", "/api/patients/p-1/documents")).toHaveLength(0);
+  });
+
+  it("while the photo is still being read, the page cannot be filed — a mismatch arriving late still stops it", async () => {
+    let finish: (r: { visitNo: string | null; via: "qr" | "ocr" | null }) => void = () => undefined;
+    photoRead.pending = new Promise((done) => { finish = done; });
+    try {
+      const user = await photographed();
+      expect(screen.getByTestId("slip-file-it")).toBeDisabled();
+      await user.keyboard("{Enter}");
+      finish({ visitNo: "V2609140002", via: "qr" });
+      expect(await screen.findByTestId("slip-photo-read")).toHaveAttribute("role", "alert");
+      expect(screen.getByTestId("slip-file-it")).toBeDisabled();
+      expect(calls("POST", "/api/patients/p-1/documents")).toHaveLength(0);
+    } finally {
+      photoRead.pending = null;
+    }
   });
 
   it("nothing read from the photo: it says so, text reading is owed, and the operator's own check still files", async () => {
