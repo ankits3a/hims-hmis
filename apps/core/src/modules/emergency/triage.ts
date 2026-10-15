@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, lte, or } from "drizzle-orm";
+import { and, eq, isNotNull, lte, or, sql } from "drizzle-orm";
 import {
   ER_DOOR_TO_TRIAGE_MINUTES, ER_ESI_INFO, ER_INTENTS, ER_RETRIAGE_CLIMB_MIN, erIsInFuture, esiAlgorithm, isDownTriage, newId,
 } from "@hmis/contracts";
@@ -336,8 +336,12 @@ export async function assignErDoctor(db: Db, actor: Actor, raw: unknown, opts: O
 export async function sweepErTriageClocks(db: Db, now: Date): Promise<{ tasks: number; climbs: number }> {
   const triageCutoff = new Date(now.getTime() - ER_DOOR_TO_TRIAGE_MINUTES * MIN);
   const due = await db.select({ id: erEpisodes.id }).from(erEpisodes).where(or(
-    and(eq(erEpisodes.state, "triaged"), isNotNull(erEpisodes.retriageDueAt), lte(erEpisodes.retriageDueAt, now)),
-    and(eq(erEpisodes.state, "arrived"), lte(erEpisodes.arrivedAt, triageCutoff)),
+    // ER review (2026-10-15): an episode already climbed for its CURRENT due instant has nothing left to raise — it is
+    // left out here, so a stale episode costs no transaction and no row lock every minute.
+    and(eq(erEpisodes.state, "triaged"), isNotNull(erEpisodes.retriageDueAt), lte(erEpisodes.retriageDueAt, now),
+      sql`${erEpisodes.retriageClimbedDueAt} is distinct from ${erEpisodes.retriageDueAt}`),
+    and(eq(erEpisodes.state, "arrived"), lte(erEpisodes.arrivedAt, triageCutoff),
+      sql`${erEpisodes.retriageClimbedDueAt} is distinct from ${erEpisodes.arrivedAt} + make_interval(mins => ${ER_DOOR_TO_TRIAGE_MINUTES})`),
   ));
   let tasks = 0;
   let climbs = 0;

@@ -46,8 +46,11 @@ export const ErTileSchema = z.object({
   doctorDueAt: ErInstantSchema.nullable(),
   /** The re-triage clock (until a doctor has seen the patient); null for ESI 1 and after the doctor. */
   retriageDueAt: ErInstantSchema.nullable(),
-  /** The last early-warning score (NEWS2 / MEOWS / PEWS), shown beside the level as a second signal. */
-  ews: ErEwsSchema.nullable(),
+  /**
+   * The last early-warning score (NEWS2 / MEOWS / PEWS), shown beside the level as a second signal. On the wall display
+   * `kind` is null: the number and the band only (MEOWS would disclose a pregnancy; ER review 2026-10-15).
+   */
+  ews: ErEwsSchema.extend({ kind: ErEwsSchema.shape.kind.nullable() }).nullable(),
 });
 export type ErTile = z.infer<typeof ErTileSchema>;
 

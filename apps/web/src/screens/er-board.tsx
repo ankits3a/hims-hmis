@@ -103,7 +103,7 @@ function Tile({ tile, now, wall, href }: { tile: ErTile; now: number; wall: bool
         <div className="erb-esi-row">
           <EsiBadge level={tile.esi} t={t} />
           {tile.bayCode !== null ? <span className="erb-bay mono">{tile.bayCode}</span> : null}
-          {tile.ews !== null ? <span className={`er-ews ews-${tile.ews.band}`}>{t(`er.ews.${tile.ews.kind}`)} {tile.ews.value}</span> : null}
+          {tile.ews !== null ? <span className={`er-ews ews-${tile.ews.band}`}>{tile.ews.kind !== null ? `${t(`er.ews.${tile.ews.kind}`)} ` : ""}{tile.ews.value} · {t(`er.ewsBand.${tile.ews.band}`)}</span> : null}
         </div>
       ) : null}
       <div className="erb-meta">

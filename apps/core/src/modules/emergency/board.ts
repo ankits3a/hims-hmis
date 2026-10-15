@@ -127,7 +127,10 @@ async function tilesFor(db: Db, actor: Actor, eps: readonly EpisodeRow[], at: Da
       doctorDueAt: esi === null || e.seenAt !== null ? null
         : new Date(e.arrivedAt.getTime() + ER_ESI_INFO[esi].doctorWithinMin * MINUTE).toISOString(),
       retriageDueAt: e.state === "triaged" && e.retriageDueAt !== null ? e.retriageDueAt.toISOString() : null,
-      ews: e.ewsKind === null ? null : { kind: e.ewsKind as ErEws["kind"], value: e.ewsValue ?? 0, band: e.ewsBand as ErEws["band"] },
+      // ER review (2026-10-15, DECIDED): the wall shows the number and the band, never the score's name (MEOWS discloses
+      // a pregnancy); the full board keeps it.
+      ews: e.ewsKind === null ? null
+        : { kind: wall ? null : e.ewsKind as ErEws["kind"], value: e.ewsValue ?? 0, band: e.ewsBand as ErEws["band"] },
     });
   }
   return out;
