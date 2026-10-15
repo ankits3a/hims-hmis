@@ -131,7 +131,11 @@ export const reTriage = erIntent({
 
 /** A vital-sign set between triages. A WORSE early-warning band than the last re-triages at once (spec §3.2). */
 export const recordErVitals = erIntent({
-  input: erInput({ episodeId: ErIdSchema, vitals: ErVitalsSchema, obstetric: z.boolean().optional(), takenAt: ErInstantSchema.optional() }),
+  input: erInput({
+    episodeId: ErIdSchema,
+    // An empty set has nothing to score: a malformed body, not a 500 inside the intent.
+    vitals: ErVitalsSchema.refine((v) => Object.keys(v).length > 0, { message: "at least one vital sign" }),
+    obstetric: z.boolean().optional(), takenAt: ErInstantSchema.optional() }),
   output: z.strictObject({ episodeId: ErIdSchema, ews: ErEwsSchema, worse: z.boolean(), retriageDueAt: ErInstantSchema.nullable() }),
   refusals: ["episode_not_found", "episode_wrong_state", "time_in_future"],
   actors: ["er_nurse", "doctor", "device"],
