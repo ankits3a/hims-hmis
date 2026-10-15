@@ -15,6 +15,8 @@ import type { Db } from "../db/client";
 /** The surfaces that read a patient's record. Extended by each module that adds one. */
 export type PhiSurface =
   | "patient.detail" | "patient.allergies"
+  /** A bills read (list or one bill in full) of a restricted record by a reader without the restricted-records grant. */
+  | "billing.sealed_bill_read"
   /**
    * #653 — the merge review's "Show": the masked mobiles, and on a merge request the masked phone,
    * DOB, address and ABHA. Its own name: the comparison masks them by default, and revealing them is
