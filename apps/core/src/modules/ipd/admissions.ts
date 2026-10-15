@@ -174,25 +174,34 @@ export async function cancelAdmission(db: Db, actor: Actor, raw: unknown, opts: 
   return onceIpd(db, actor, "cancel_admission", input.idempotencyKey, input, async () => {
     const peek = await readAdmission(db, input.admissionId);
     if (peek.state !== "requested" && peek.state !== "reserved") throw new IpdRefusal("admission_wrong_state", undefined, { state: peek.state });
-    return withTx(db, async (tx) => {
-      // Review #8: the admission (advisory lock, then the row) first, then the beds of its holds.
-      const a = await lockAdmission(tx, peek.id);
-      if (a.state !== "requested" && a.state !== "reserved") throw new IpdRefusal("state_changed");
-      // Review #9: money taken for this admission and still on the patient's account is refunded first (billing's
-      // refund route); the cancel never strands a deposit. DECIDED: what is still owed back = min(Σ deposits, advance).
-      const paid = await depositPaidPaise(tx, a.id);
-      const onAccount = paid > 0 ? Math.min(paid, await advanceOf(tx, a.patientId)) : 0;
-      if (onAccount > 0) throw new IpdRefusal("deposit_not_refunded", undefined, { depositPaise: paid, onAccountPaise: onAccount });
-      const releasedBedId = await endAdmissionHolds(tx, actor, a.id, at);
-      await withdrawBedProposalIn(tx, a.id, "admission_cancelled", at); // E5.2 (#739)
-      await moveAdmission(tx, actor, a, "cancelled", at, { cancelReason: input.reason, endedAt: at, endedBy: actor.id }, input.note);
-      await appendEvent(tx, admissionCancelled.make({
-        payload: { admissionId: a.id, reason: input.reason, releasedBedId, provenance: provenanceOf(actor) },
-        actor, correlationId: a.id, patientId: a.patientId, occurredAt: at,
-      }));
-      return { admissionId: a.id, state: "cancelled" as const, releasedBedId };
-    });
+    return withTx(db, (tx) => cancelAdmissionIn(tx, actor, peek.id, input.reason, input.note, at));
   }, at);
+}
+
+/**
+ * The cancel itself, in the caller's transaction — the intent above and (ER lane 5, #812) the ER's departure: a boarding
+ * patient who leaves the ER any other way (LAMA, abscond, death, discharge) takes their open request with them, so it
+ * never blocks the next admission and no bed is placed for someone who has gone.
+ */
+export async function cancelAdmissionIn(
+  tx: Tx, actor: Actor, admissionId: string, reason: Input<"cancel_admission">["reason"], note: string | undefined, at: Date,
+): Promise<Output<"cancel_admission">> {
+  // Review #8: the admission (advisory lock, then the row) first, then the beds of its holds.
+  const a = await lockAdmission(tx, admissionId);
+  if (a.state !== "requested" && a.state !== "reserved") throw new IpdRefusal("state_changed");
+  // Review #9: money taken for this admission and still on the patient's account is refunded first (billing's
+  // refund route); the cancel never strands a deposit. DECIDED: what is still owed back = min(Σ deposits, advance).
+  const paid = await depositPaidPaise(tx, a.id);
+  const onAccount = paid > 0 ? Math.min(paid, await advanceOf(tx, a.patientId)) : 0;
+  if (onAccount > 0) throw new IpdRefusal("deposit_not_refunded", undefined, { depositPaise: paid, onAccountPaise: onAccount });
+  const releasedBedId = await endAdmissionHolds(tx, actor, a.id, at);
+  await withdrawBedProposalIn(tx, a.id, "admission_cancelled", at); // E5.2 (#739)
+  await moveAdmission(tx, actor, a, "cancelled", at, { cancelReason: reason, endedAt: at, endedBy: actor.id }, note);
+  await appendEvent(tx, admissionCancelled.make({
+    payload: { admissionId: a.id, reason, releasedBedId, provenance: provenanceOf(actor) },
+    actor, correlationId: a.id, patientId: a.patientId, occurredAt: at,
+  }));
+  return { admissionId: a.id, state: "cancelled" as const, releasedBedId };
 }
 
 // ═══════════════════════════════════════════ admit ═══════════════════════════════════════════
@@ -239,7 +248,8 @@ export async function admit(db: Db, actor: Actor, raw: unknown, opts: Opts = {})
   return onceIpd(db, actor, "admit", input.idempotencyKey, input, async () => {
     const a = await readAdmission(db, input.admissionId);
     if (a.state !== "requested" && a.state !== "reserved") throw new IpdRefusal("admission_wrong_state", undefined, { state: a.state });
-    if (a.expiresAt.getTime() < at.getTime()) throw new IpdRefusal("advice_expired");
+    // ER lane 5 (#812): a request from the ER does not lapse while the patient boards in the ER (cancelled when they leave).
+    if (a.source !== "er" && a.expiresAt.getTime() < at.getTime()) throw new IpdRefusal("advice_expired");
     const other = await openAdmissionOf(db, a.patientId, a.id);
     if (other !== undefined) throw alreadyOpen(other);
     if (a.payerKind === null || a.depositRequiredPaise === null) throw new IpdRefusal("plan_missing");

@@ -10,7 +10,7 @@ import { searchOrderableTests } from "../lib/ordering-api";
 import type { WireOrderableTest } from "../lib/ordering-api";
 import {
   ER_BOARD_TOPIC, ER_INJURY_KINDS, ER_MED_ROUTES, ER_MLC_CATEGORIES, ER_REFERRAL_REASONS, ER_RETURN_IF_SIGNS, abscondApi, answerCallApi, deathApi,
-  dischargeApi, handToUnitApi, lamaApi, lwbsApi, referApi, callApi, consentApi, cosignApi, doseApi, erRefusalOf, fetchErCare, fetchErEpisode,
+  dischargeApi, handToUnitApi, lamaApi, lwbsApi, newKey, referApi, callApi, consentApi, cosignApi, doseApi, erRefusalOf, fetchErCare, fetchErEpisode,
   fetchErItems, fetchTriageDoctors, issueApi, noteApi, openMlcApi, orderApi, procedureApi, signVerbalApi, stabilisedApi,
 } from "../lib/er-api";
 import { EsiBadge, ageSexWords, aliasFirst } from "./er-board";
@@ -501,6 +501,20 @@ function DispoPanel({ t, busy, doctors, state, act }: {
   const [diedAt, setDiedAt] = useState("");
   const [mccd, setMccd] = useState("");
   const [lastSeen, setLastSeen] = useState("");
+  const [searched, setSearched] = useState<boolean | null>(null);
+  // Review #4: one key per attempt — a retry after a failed request reuses it; a success starts a new attempt.
+  const [attempt, setAttempt] = useState(() => newKey());
+  const go = (work: (episodeId: string, k: string) => Promise<string | null>) => act(async (episodeId) => {
+    try {
+      const said = await work(episodeId, attempt);
+      setAttempt(newKey());
+      return said;
+    } catch (e) {
+      // The server answered (a refusal): the next try is a new attempt. A lost request keeps its key for the retry.
+      if (erRefusalOf(e) !== null) setAttempt(newKey());
+      throw e;
+    }
+  });
   const decided = state === "disposition_decided";
   const needReason = !decided && reason.trim() === "";
   const why = reason.trim() === "" ? {} : { reason: reason.trim() };
@@ -532,7 +546,7 @@ function DispoPanel({ t, busy, doctors, state, act }: {
           </div>
           <button type="button" className="erx-btn pri big" data-testid="er-patient-discharge"
             disabled={busy || needReason || diagnosis.trim() === "" || treatment.trim() === "" || signs.length === 0}
-            onClick={() => void act(async (episodeId) => {
+            onClick={() => void go(async (episodeId, k) => {
               const medicines = meds.split("\n").map((l) => l.trim()).filter((l) => l !== "").map((l) => {
                 const [name, dose, frequency] = l.split("·").map((x) => x.trim());
                 return { name: name!, dose: dose || "as advised", frequency: frequency || "as advised" };
@@ -542,7 +556,7 @@ function DispoPanel({ t, busy, doctors, state, act }: {
                   diagnosis: diagnosis.trim(), treatmentGiven: treatment.trim(), medicines, returnIf: signs,
                   ...(followDept !== "" && followOn !== "" ? { followUp: { department: followDept, onDate: followOn } } : {}),
                 },
-              });
+              }, k);
               return t("erPatient.dispo.discharged");
             })}>{t("erPatient.dispo.dischargeNow")}</button>
         </>
@@ -556,8 +570,8 @@ function DispoPanel({ t, busy, doctors, state, act }: {
           </div>
           <label className="erd-field"><span>{t("erPatient.dispo.provisional")}</span><input value={dx} onChange={(e) => setDx(e.target.value)} /></label>
           <button type="button" className="erx-btn pri big" data-testid="er-patient-admit" disabled={busy || needReason || consultant === "" || dx.trim() === ""}
-            onClick={() => void act(async (episodeId) => {
-              const r = await handToUnitApi({ episodeId, ...why, consultantId: consultant, requestedClass: cls, provisionalDiagnosis: dx.trim() });
+            onClick={() => void go(async (episodeId, k) => {
+              const r = await handToUnitApi({ episodeId, ...why, consultantId: consultant, requestedClass: cls, provisionalDiagnosis: dx.trim() }, k);
               return r.boarding ? t("erPatient.dispo.boarding") : t("erPatient.dispo.admitted");
             })}>{t("erPatient.dispo.admitNow")}</button>
         </>
@@ -576,8 +590,8 @@ function DispoPanel({ t, busy, doctors, state, act }: {
               <select value={transport} onChange={(e) => setTransport(e.target.value)}>{["own_ambulance", "ambulance_108", "private_vehicle", "other"].map((x) => <option key={x} value={x}>{t(`erPatient.dispo.transportOf.${x}`)}</option>)}</select></label>
           </div>
           <button type="button" className="erx-btn pri big" data-testid="er-patient-refer" disabled={busy || facility.trim() === "" || refNote.trim() === ""}
-            onClick={() => void act(async (episodeId) => {
-              await referApi({ episodeId, reason: refReason, facility: facility.trim(), note: refNote.trim(), escort, transport });
+            onClick={() => void go(async (episodeId, k) => {
+              await referApi({ episodeId, reason: refReason, facility: facility.trim(), note: refNote.trim(), escort, transport }, k);
               return t("erPatient.dispo.referred");
             })}>{t("erPatient.dispo.referNow")}</button>
         </>
@@ -598,10 +612,10 @@ function DispoPanel({ t, busy, doctors, state, act }: {
           )}
           <button type="button" className="erx-btn danger big" data-testid="er-patient-lama"
             disabled={busy || risks.trim() === "" || (signer === "refused_to_sign" ? witness === "" : signerName.trim() === "" || (signer === "representative" && relation.trim() === ""))}
-            onClick={() => void act(async (episodeId) => {
+            onClick={() => void go(async (episodeId, k) => {
               const s = signer === "refused_to_sign" ? { kind: signer, witnessId: witness }
                 : signer === "representative" ? { kind: signer, name: signerName.trim(), relation: relation.trim() } : { kind: signer, name: signerName.trim() };
-              await lamaApi({ episodeId, risksExplained: risks.trim(), signer: s });
+              await lamaApi({ episodeId, risksExplained: risks.trim(), signer: s }, k);
               return t("erPatient.dispo.lamaDone");
             })}>{t("erPatient.dispo.lamaNow")}</button>
         </>
@@ -614,8 +628,8 @@ function DispoPanel({ t, busy, doctors, state, act }: {
           </div>
           <p className="erd-hint">{t("erPatient.dispo.mccdHint")}</p>
           <button type="button" className="erx-btn danger big" data-testid="er-patient-death" disabled={busy || diedAt === ""}
-            onClick={() => void act(async (episodeId) => {
-              await deathApi({ episodeId, diedAt: toIso(diedAt), ...(mccd.trim() !== "" ? { mccdNo: mccd.trim() } : {}) });
+            onClick={() => void go(async (episodeId, k) => {
+              await deathApi({ episodeId, diedAt: toIso(diedAt), ...(mccd.trim() !== "" ? { mccdNo: mccd.trim() } : {}) }, k);
               return t("erPatient.dispo.deathDone");
             })}>{t("erPatient.dispo.deathNow")}</button>
         </>
@@ -623,15 +637,23 @@ function DispoPanel({ t, busy, doctors, state, act }: {
       {shown === "left" ? (
         <>
           <label className="erd-field"><span>{t("erPatient.dispo.lastSeen")}</span><input type="datetime-local" value={lastSeen} onChange={(e) => setLastSeen(e.target.value)} /></label>
+          {state !== "arrived" ? (
+            <fieldset className="erd-choice" data-testid="er-patient-searched"><legend>{t("erPatient.dispo.searched")}</legend>
+              <div className="erd-opts">{([true, false] as const).map((v) => (
+                <button key={String(v)} type="button" className={`erd-opt sm${searched === v ? " on" : ""}`} aria-pressed={searched === v} onClick={() => setSearched(v)}>
+                  {t(v ? "erPatient.dispo.searchedYes" : "erPatient.dispo.searchedNo")}</button>
+              ))}</div>
+            </fieldset>
+          ) : null}
           <div className="erd-row">
             {state === "arrived" || state === "triaged" ? (
               <button type="button" className="erx-btn" data-testid="er-patient-lwbs" disabled={busy || lastSeen === ""}
-                onClick={() => void act(async (episodeId) => { await lwbsApi({ episodeId, lastSeenAt: toIso(lastSeen) }); return t("erPatient.dispo.lwbsDone"); })}>{t("erPatient.dispo.lwbsNow")}</button>
+                onClick={() => void go(async (episodeId, k) => { await lwbsApi({ episodeId, lastSeenAt: toIso(lastSeen) }, k); return t("erPatient.dispo.lwbsDone"); })}>{t("erPatient.dispo.lwbsNow")}</button>
             ) : null}
             {state !== "arrived" ? (
-              <button type="button" className="erx-btn danger" data-testid="er-patient-abscond" disabled={busy || lastSeen === ""}
-                onClick={() => void act(async (episodeId) => {
-                  const r = await abscondApi({ episodeId, lastSeenAt: toIso(lastSeen), searched: true });
+              <button type="button" className="erx-btn danger" data-testid="er-patient-abscond" disabled={busy || lastSeen === "" || searched === null}
+                onClick={() => void go(async (episodeId, k) => {
+                  const r = await abscondApi({ episodeId, lastSeenAt: toIso(lastSeen), searched: searched! }, k);
                   return r.policeToBeInformed ? t("erPatient.dispo.abscondPolice") : t("erPatient.dispo.abscondDone");
                 })}>{t("erPatient.dispo.abscondNow")}</button>
             ) : null}

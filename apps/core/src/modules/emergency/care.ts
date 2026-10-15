@@ -12,6 +12,7 @@ import {
 import { appendEvent } from "../../kernel/events/append";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
 import { resolveMedicines } from "../formulary";
+import { stampErHandOffIn } from "../ipd";
 import { duplicateWarnings, openCriticalsForEncounters } from "../lab";
 import { MaterialsError, fefoPick, findStoreByCode, postMovements } from "../materials";
 import { orderTests } from "../ordering";
@@ -475,6 +476,8 @@ export async function declareStabilised(db: Db, actor: Actor, raw: unknown, opts
       payload: { episodeId: e.id, stabilisedAt: at.toISOString(), provenance: provenanceOf(actor) },
       actor, correlationId: e.id, patientId: e.patientId, occurredAt: at,
     }));
+    // Lane 5 (#812, review #13): stabilised AFTER the hand-off (the patient boarding) reaches the admission too.
+    if (e.admissionId !== null) await stampErHandOffIn(tx, { admissionId: e.admissionId, erArrivedAt: e.arrivedAt, stabilisedAt: at });
     return { episodeId: e.id, stabilisedAt: at.toISOString() };
   }), at);
 }

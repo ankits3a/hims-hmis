@@ -188,6 +188,8 @@ export async function mkErMlcWorld(db: Db): Promise<ErMlcWorld> {
   await syncPermissions(db, registry);
   await ensureRole(db, "duty_manager");
   for (const p of ["ipd.mortuary.manage", "er.mlc", "er.disposition"]) await grantPermissionToRole(db, registry, "duty_manager", p);
+  // Lane 5 follow-up — the MS arbitrates a refused admission.
+  await grantPermissionToRole(db, registry, "medical_superintendent", "er.disposition");
   const mortuary = (await mkUser(db, "er.dm", ["duty_manager"])).actor;
   const witness = (await mkUser(db, "er.mortuary2", ["duty_manager"])).actor;
   const desk2 = (await mkUser(db, "er.desk2", ["front_office"])).actor;

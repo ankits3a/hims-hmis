@@ -1066,6 +1066,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "er.board.view", "er.board.wall",
       // ER lane 4 (#811) — the MLC desk: the countersign breach reaches the MS. README "Emergency MLC" prose.
       "er.mlc",
+      // ER lane 5 (#812) — arbitrates an admission a specialty refused. README "Emergency disposition" prose.
+      "er.disposition",
       // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
       "ipd.beds.view",
       // PASSES E1.3 (#720) — a visitor ban, and the manager's pause and police custody.

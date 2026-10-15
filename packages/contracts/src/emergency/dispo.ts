@@ -41,7 +41,7 @@ const MedicineSchema = z.strictObject({
 export const decideDisposition = erIntent({
   input: erInput({ episodeId: ErIdSchema, disposition: z.enum(ER_DISPOSITIONS), reason: ErNoteSchema }),
   output: z.strictObject({ episodeId: ErIdSchema, state: z.literal("disposition_decided"), disposition: z.enum(ER_DISPOSITIONS) }),
-  refusals: ["episode_not_found", "episode_wrong_state", "not_a_doctor", "disposition_already_decided"],
+  refusals: ["episode_not_found", "episode_wrong_state", "not_a_doctor", "disposition_already_decided", "referral_not_for_money"],
   actors: ["doctor"],
   copilotProposable: true,
   agentTier: "none",
@@ -100,7 +100,7 @@ export const handToUnit = erIntent({
   }),
   refusals: [
     "episode_not_found", "episode_wrong_state", "not_a_doctor", "disposition_mismatch", "disposition_reason_needed",
-    "admission_refused", "already_boarding",
+    "admission_refused", "already_boarding", "bed_needs_admission_desk",
   ],
   actors: ["doctor"],
   copilotProposable: true,
@@ -171,7 +171,8 @@ export const recordAbscond = erIntent({
   input: erInput({ episodeId: ErIdSchema, lastSeenAt: ErInstantSchema, searched: z.boolean(), note: ErNoteSchema.optional() }),
   output: DepartureOut.extend({ securityAlerted: z.number().int().nonnegative(), policeToBeInformed: z.boolean() }),
   refusals: ["episode_not_found", "episode_wrong_state", "time_in_future", "last_seen_before_arrival"],
-  actors: ["er_nurse", "doctor", "duty_manager"],
+  // Review #14 (DECIDED): the ER desk may record that a patient absconded, as it records LWBS.
+  actors: ["er_nurse", "doctor", "duty_manager", "desk"],
   copilotProposable: false,
   agentTier: "none",
   undo: "irreversible",
@@ -193,5 +194,39 @@ export const recordErDeath = erIntent({
   agentTier: "none",
   undo: "irreversible",
   events: ["er.departed"],
+  idempotent: true,
+});
+
+/**
+ * ER lane 5 follow-up — a specialty REFUSES the admission (spec §4.5 edge): the refusal is recorded with its reason and
+ * the medical superintendent is asked to arbitrate (a task). The patient stays in the ER, cared for, meanwhile.
+ */
+export const recordSpecialtyRefusal = erIntent({
+  input: erInput({ episodeId: ErIdSchema, departmentCode: z.string().trim().min(1).max(16), reason: ErNoteSchema }),
+  output: z.strictObject({ disputeId: ErIdSchema, taskId: ErIdSchema }),
+  refusals: ["episode_not_found", "episode_wrong_state", "not_a_doctor", "dispute_open"],
+  actors: ["doctor"],
+  copilotProposable: false,
+  agentTier: "none",
+  undo: "irreversible",
+  events: ["er.admission_disputed"],
+  idempotent: true,
+});
+
+/** The MS's ruling: admit under a named department (the admission is then raised by hand_to_unit), or refer out. */
+export const arbitrateAdmission = erIntent({
+  input: erInput({
+    disputeId: ErIdSchema,
+    ruling: z.enum(["admit_under", "refer_out"]),
+    departmentCode: z.string().trim().min(1).max(16).optional(),
+    note: ErNoteSchema,
+  }).refine((i) => (i.ruling === "admit_under") === (i.departmentCode !== undefined), { message: "admit_under names the department", path: ["departmentCode"] }),
+  output: z.strictObject({ disputeId: ErIdSchema, ruling: z.enum(["admit_under", "refer_out"]), ruledAt: ErInstantSchema }),
+  refusals: ["dispute_not_found", "dispute_ruled", "not_the_ms"],
+  actors: ["supervisor"],
+  copilotProposable: false,
+  agentTier: "none",
+  undo: "irreversible",
+  events: ["er.admission_arbitrated"],
   idempotent: true,
 });

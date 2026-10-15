@@ -17,7 +17,7 @@ import {
   addMlcAddendum, countersignMlc, handOverEvidence, openMlc, readMlc, readMlcDesk, recordBelongings, recordPoliceIntimation,
 } from "./mlc";
 import {
-  decideDisposition, dischargeFromEr, handToUnit, recordAbscond, recordErDeathIntent, recordLama, recordLwbs, referOut,
+  arbitrateAdmission, decideDisposition, dischargeFromEr, recordSpecialtyRefusal, handToUnit, recordAbscond, recordErDeathIntent, recordLama, recordLwbs, referOut,
 } from "./dispo";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import type { ModuleRegistry } from "../../kernel/modules/loader";
@@ -384,5 +384,17 @@ export class EmergencyController {
   @RequirePermission(ER_DISPOSITION, "hospital")
   async dispoDeath(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
     try { return await recordErDeathIntent(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("dispo/refused")
+  @RequirePermission(ER_DISPOSITION, "hospital")
+  async dispoRefused(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await recordSpecialtyRefusal(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("dispo/arbitrate")
+  @RequirePermission(ER_DISPOSITION, "hospital")
+  async dispoArbitrate(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await arbitrateAdmission(this.db, actor, body); } catch (e) { toHttp(e); }
   }
 }

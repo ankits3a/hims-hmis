@@ -171,6 +171,17 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   fallback security_guard; an MLC also to the duty manager for the police). `recordErDeathIntent`: MCCD number, or an
   MLC with the police intimation met → `patients.recordErDeath` (`death_kind = 'medico_legal'`), mortuary entry
   (`mlc` per the case). 
+- Review fixes (#850): the `admission` departure record is written when the patient LEAVES for the bed (one record per
+  episode); `departIn` cancels the open IPD request (`ipd.cancelErAdmissionIn` = the cancel intent's body; a deposit on
+  account leaves it to the desk); after IPD cancels a hand-off the doctor may re-decide (audited `previous`) or hand off
+  again (`hand_off_attempts` → a stable IPD idempotency key; an open request for the episode is adopted, never
+  duplicated); a named bed needs `ipd.admit` (`bed_needs_admission_desk`); a moved order cancelled goes through IPD's
+  `reverseIpdOrderCharge`; MLC abscond → `er_abscond_mlc` ladder; notice times in IST; ER death on a merged unknown marks
+  the canonical record; IPD advice expiry never applies to source `er`; "stabilised" after hand-off re-copies; IPD
+  admission view shows "ER arrival"; refer-out decisions with money words refused; the desk may record an abscond.
+- Decision to bed: `sweepErBoarding` raises `er_boarding` (skill `er_bed` → duty_manager, the bed manager) 2 h after the
+  decision and climbs once at 4 h (`er_boarding` ladder, fallback MS). A specialty refusal (`recordSpecialtyRefusal`) is an
+  `er_admission_disputes` row + `er_arbitration` task for the MS; `arbitrateAdmission` (MS only) rules once and closes it.
 - Clocks: a departed episode leaves the triage and care clocks (the verbal-order bell now reads open episodes only).
   DECIDED: the MLC clocks keep running after departure — spec §4.4 keeps the countersign (and the intimation) owed.
 

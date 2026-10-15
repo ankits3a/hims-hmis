@@ -1,5 +1,5 @@
 {
-  "id": "1241d40a-36ce-462e-b878-2ab69d7e05be",
+  "id": "3afb6666-9272-47c6-8065-418386a3e93e",
   "prevId": "bbd356dc-5253-4984-8540-111f666f9916",
   "version": "7",
   "dialect": "postgresql",
@@ -47116,7 +47116,7 @@
       "checkConstraints": {
         "roster_escalation_targets_kind_ck": {
           "name": "roster_escalation_targets_kind_ck",
-          "value": "\"roster_escalation_targets\".\"alert_kind\" in ('escalation.triggered', 'notification.failed', 'ops.mode_changed', 'imaging.critical_overdue', 'imaging.report_unread', 'workflow.timer_rung', 'er_retriage', 'er_call', 'er_critical', 'mlc_intimation', 'mlc_countersign', 'er_abscond')"
+          "value": "\"roster_escalation_targets\".\"alert_kind\" in ('escalation.triggered', 'notification.failed', 'ops.mode_changed', 'imaging.critical_overdue', 'imaging.report_unread', 'workflow.timer_rung', 'er_retriage', 'er_call', 'er_critical', 'mlc_intimation', 'mlc_countersign', 'er_abscond', 'er_boarding', 'er_abscond_mlc')"
         }
       },
       "isRLSEnabled": false
@@ -67479,6 +67479,131 @@
       },
       "isRLSEnabled": false
     },
+    "public.er_admission_disputes": {
+      "name": "er_admission_disputes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "episode_id": {
+          "name": "episode_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "department_code": {
+          "name": "department_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "refused_by": {
+          "name": "refused_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "refused_at": {
+          "name": "refused_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "task_id": {
+          "name": "task_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ruling": {
+          "name": "ruling",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ruling_department_code": {
+          "name": "ruling_department_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ruling_note": {
+          "name": "ruling_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ruled_by": {
+          "name": "ruled_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ruled_at": {
+          "name": "ruled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "er_admission_disputes_open_ux": {
+          "name": "er_admission_disputes_open_ux",
+          "columns": [
+            {
+              "expression": "episode_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"er_admission_disputes\".\"ruled_at\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "er_admission_disputes_episode_id_er_episodes_id_fk": {
+          "name": "er_admission_disputes_episode_id_er_episodes_id_fk",
+          "tableFrom": "er_admission_disputes",
+          "tableTo": "er_episodes",
+          "columnsFrom": [
+            "episode_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "er_admission_disputes_ruling_ck": {
+          "name": "er_admission_disputes_ruling_ck",
+          "value": "\"er_admission_disputes\".\"ruling\" is null or \"er_admission_disputes\".\"ruling\" in ('admit_under', 'refer_out')"
+        },
+        "er_admission_disputes_ruled_ck": {
+          "name": "er_admission_disputes_ruled_ck",
+          "value": "(\"er_admission_disputes\".\"ruling\" is null) = (\"er_admission_disputes\".\"ruled_at\" is null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.er_bands": {
       "name": "er_bands",
       "schema": "",
@@ -68537,6 +68662,25 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
+        },
+        "boarding_task_id": {
+          "name": "boarding_task_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "boarding_climbed_at": {
+          "name": "boarding_climbed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hand_off_attempts": {
+          "name": "hand_off_attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         }
       },
       "indexes": {

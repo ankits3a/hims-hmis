@@ -1,23 +1,26 @@
-import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { ER_INTENTS, erIsInFuture, newId } from "@hmis/contracts";
 import { istDayString } from "../../kernel/approvals/cumulative";
 import { raiseNoticeIn } from "../../kernel/alerts/notices";
 import { withTx } from "../../kernel/db/client";
-import { erChargeLines, erDepartureRecords, erEpisodes, erMlcObligations, users } from "../../kernel/db/schema";
+import { erAdmissionDisputes, erChargeLines, erDepartureRecords, erEpisodes, erMlcObligations, users } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
+import { createHash } from "node:crypto";
+import { hasPermission } from "../../kernel/auth/permissions";
 import {
-  IpdError, IpdRefusal, carryErOrderLinesIn, emergencyAdmit, erAdmissionState, openErMortuaryEntry, releaseErBayIn, requestAdmission,
-  stampErHandOffIn,
+  IpdError, IpdRefusal, cancelErAdmissionIn, carryErOrderLinesIn, emergencyAdmit, erAdmissionState, erOpenAdmissionFor, openErMortuaryEntry,
+  releaseErBayIn, requestAdmission, stampErHandOffIn,
 } from "../ipd";
 import { recordErDeath as markPatientDeceased } from "../patients";
 import { escalationRecipients } from "../roster";
-import { cancelTask, getTask } from "../tasks";
-import { lockEpisode, moveEpisode, onceEr, provenanceOf, readEpisode, requireErPermission } from "./core";
+import { cancelTask, getTask, raiseTask } from "../tasks";
+import { lockEpisode, moveEpisode, onceEr, personRecords, provenanceOf, readEpisode, requireErPermission } from "./core";
 import { ErRefusal } from "./errors";
-import { erDeparted, erDispositionDecided, erHandedToUnit } from "./events";
+import { erAdmissionArbitrated, erAdmissionDisputed, erDeparted, erDispositionDecided, erHandedToUnit } from "./events";
 import { mlcOfEpisode } from "./mlc";
 import { ER_DISPOSITION } from "./names";
+import { ER_ARBITRATION_TASK, ER_BOARDING_TASK } from "./task-kinds";
 import { isActiveDoctor } from "./triage";
 import type { Actor, ErDisposition, ErIntentName } from "@hmis/contracts";
 import type { z } from "zod";
@@ -50,6 +53,17 @@ type Outcome = "discharged" | "admitted" | "referred_out" | "lama" | "absconded"
 
 export const ER_DISPO_ACTOR: Actor = { type: "system", id: "er-boarding-clock" };
 const OPEN_TASK = ["created", "assigned", "accepted", "in_progress"];
+/** Review #12: notice times in IST words (formatting only — no offset arithmetic). */
+const IST_TIME = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+/** Decision-to-bed (spec §3.2): the bed manager's task at 2 h, the MS at 4 h. */
+export const ER_BOARDING_TASK_MIN = 120;
+export const ER_BOARDING_CLIMB_MIN = 240;
+
+async function closeTask(tx: Tx, taskId: string | null, why: string, at: Date): Promise<void> {
+  if (taskId === null) return;
+  const t = await getTask(tx, taskId);
+  if (t !== null && OPEN_TASK.includes(t.state)) await cancelTask(tx, ER_DISPO_ACTOR, { taskId: t.id, version: t.version, reason: why }, at);
+}
 
 async function requireDoctor(tx: Tx, actor: Actor): Promise<void> {
   if (actor.type === "system") return;
@@ -69,8 +83,16 @@ async function decidedIn(
   tx: Tx, actor: Actor, e: EpisodeRow, disposition: ErDisposition, reason: string | undefined, at: Date,
 ): Promise<EpisodeRow> {
   if (e.state === "disposition_decided") {
-    if (e.disposition !== disposition) throw new ErRefusal("disposition_mismatch", { decided: e.disposition, asked: disposition });
-    return e;
+    if (e.disposition === disposition) return e;
+    // Review #3: the IPD side cancelled the hand-off (the patient no longer boards): the doctor may decide again — audited.
+    if (!handOffCancelled(e)) throw new ErRefusal("disposition_mismatch", { decided: e.disposition, asked: disposition });
+    if (reason === undefined) throw new ErRefusal("disposition_reason_needed");
+    await tx.update(erEpisodes).set({ disposition, dispositionReason: reason, dispositionBy: actor.id, dispositionAt: at, updatedAt: at })
+      .where(eq(erEpisodes.id, e.id));
+    await appendEvent(tx, erDispositionDecided.make({
+      payload: { episodeId: e.id, disposition, previous: e.disposition, provenance: provenanceOf(actor) }, actor, correlationId: e.id, patientId: e.patientId, occurredAt: at,
+    }));
+    return readEpisode(tx, e.id);
   }
   if (e.state !== "in_treatment") throw new ErRefusal("episode_wrong_state", { state: e.state });
   if (reason === undefined) throw new ErRefusal("disposition_reason_needed");
@@ -83,6 +105,14 @@ async function decidedIn(
   return readEpisode(tx, e.id);
 }
 
+/** An `admit` decision whose hand-off IPD cancelled: decided, an admission named, no longer boarding. */
+function handOffCancelled(e: EpisodeRow): boolean {
+  return e.state === "disposition_decided" && e.disposition === "admit" && e.admissionId !== null && e.boardingSince === null;
+}
+
+/** Review #10: a referral decided "because the patient cannot pay" is refused at the decision too, not only at the exit. */
+const MONEY_REASON = /(can(no|')?t|unable to|not able to)\s+(pay|afford)|no money|cannot afford|paise nahi|पैसे? नहीं/i;
+
 async function writeRecord(tx: Tx, actor: Actor, e: EpisodeRow, kind: string, document: Record<string, unknown>, at: Date): Promise<void> {
   await tx.insert(erDepartureRecords).values({ id: newId(), episodeId: e.id, kind, document, signedBy: actor.id, signedAt: at });
 }
@@ -94,11 +124,11 @@ async function writeRecord(tx: Tx, actor: Actor, e: EpisodeRow, kind: string, do
 export async function departIn(
   tx: Tx, actor: Actor, e: EpisodeRow, outcome: Outcome, departedAt: Date, at: Date,
 ): Promise<string | null> {
-  if (e.retriageTaskId !== null) {
-    const t = await getTask(tx, e.retriageTaskId);
-    if (t !== null && OPEN_TASK.includes(t.state)) await cancelTask(tx, ER_DISPO_ACTOR, { taskId: t.id, version: t.version, reason: `departed: ${outcome}` }, at);
-  }
+  await closeTask(tx, e.retriageTaskId, `departed: ${outcome}`, at);
+  await closeTask(tx, e.boardingTaskId, `departed: ${outcome}`, at);
   if (e.bayId !== null) await releaseErBayIn(tx, actor, { bedId: e.bayId, episodeId: e.id }, at);
+  // Review #2: a boarding patient leaving any other way takes the open admission request with them (IPD's own cancel).
+  if (e.admissionId !== null && outcome !== "admitted") await cancelErAdmissionIn(tx, actor, e.admissionId, `ER departure: ${outcome}`, at);
   await moveEpisode(tx, actor, e, "departed", at, { outcome, departedAt, boardingSince: null });
   await appendEvent(tx, erDeparted.make({
     payload: { episodeId: e.id, outcome, bayId: e.bayId, admissionId: e.admissionId, provenance: provenanceOf(actor) },
@@ -119,8 +149,9 @@ export async function decideDisposition(db: Db, actor: Actor, raw: unknown, opts
   const at = opts.now ?? new Date();
   return onceEr(db, actor, "decide_disposition", input.idempotencyKey, input, () => withTx(db, async (tx) => {
     await requireDoctor(tx, actor);
+    if (input.disposition === "refer_out" && MONEY_REASON.test(input.reason)) throw new ErRefusal("referral_not_for_money");
     const e = await lockEpisode(tx, input.episodeId);
-    if (e.state === "disposition_decided") throw new ErRefusal("disposition_already_decided", { disposition: e.disposition });
+    if (e.state === "disposition_decided" && !handOffCancelled(e)) throw new ErRefusal("disposition_already_decided", { disposition: e.disposition });
     await decidedIn(tx, actor, e, input.disposition, input.reason, at);
     return { episodeId: e.id, state: "disposition_decided" as const, disposition: input.disposition };
   }), at);
@@ -164,7 +195,15 @@ async function leaveForBedIn(tx: Tx, actor: Actor, e: EpisodeRow, admissionId: s
     await tx.update(erChargeLines).set({ status: "moved", movedToAdmissionId: admissionId, movedIpdLineId: posted.get(l.orderItemId!) ?? null })
       .where(eq(erChargeLines.id, l.id));
   }
+  // Review #1: the admission paper is written when the patient actually leaves for the bed (one departure record ever).
+  await writeRecord(tx, actor, e, "admission", { admissionId, boardedSince: e.boardingSince?.toISOString() ?? null }, at);
   return departIn(tx, actor, { ...e, admissionId }, "admitted", at, at);
+}
+
+/** Review #4: the IPD idempotency key is stable per episode and hand-off attempt — a retried hand-off finds the same admission. */
+function handOffKey(episodeId: string, attempt: number): string {
+  const h = createHash("sha256").update(`er-hand-off:${episodeId}:${String(attempt)}`).digest("hex");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
 
 export async function handToUnit(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"hand_to_unit">> {
@@ -175,25 +214,38 @@ export async function handToUnit(db: Db, actor: Actor, raw: unknown, opts: Opts 
     // The checks that can refuse BEFORE the admission is raised (re-made under the lock below).
     const pre = await readEpisode(db, input.episodeId);
     await withTx(db, (tx) => requireDoctor(tx, actor));
+    // Review #5: a bed is the admission desk's to allot (`ipd.admit`); a doctor hands over without one and the patient boards.
+    if (input.bedId !== undefined && actor.type === "user" && !(await hasPermission(db, actor.id, "ipd.admit", "hospital"))) {
+      throw new ErRefusal("bed_needs_admission_desk");
+    }
     if (pre.boardingSince !== null) throw new ErRefusal("already_boarding", { admissionId: pre.admissionId });
-    if (pre.state === "disposition_decided" && pre.disposition !== "admit") throw new ErRefusal("disposition_mismatch", { decided: pre.disposition, asked: "admit" });
+    if (pre.state === "disposition_decided" && pre.disposition !== "admit" && !handOffCancelled(pre)) {
+      throw new ErRefusal("disposition_mismatch", { decided: pre.disposition, asked: "admit" });
+    }
     if (pre.state !== "disposition_decided" && pre.state !== "in_treatment") throw new ErRefusal("episode_wrong_state", { state: pre.state });
-    if (pre.state === "in_treatment" && input.reason === undefined) throw new ErRefusal("disposition_reason_needed");
+    if ((pre.state === "in_treatment" || (handOffCancelled(pre) && pre.disposition !== "admit")) && input.reason === undefined) {
+      throw new ErRefusal("disposition_reason_needed");
+    }
     const mlc = (await mlcOfEpisode(db, pre.id)) !== undefined;
-    // The admission, through IPD's own intent (its own transaction and idempotency: a retry finds the same admission).
+    // Review #4: the admission through IPD's own intent under a key STABLE per episode and attempt; a request already open
+    // for this episode (an earlier attempt that committed IPD-side) is adopted, never duplicated.
+    const ipdKey = handOffKey(pre.id, pre.handOffAttempts);
     let admissionId: string;
     let admissionNo: string | null = null;
+    const open = input.bedId === undefined ? await erOpenAdmissionFor(db, pre.id) : undefined;
     try {
-      if (input.bedId !== undefined) {
+      if (open !== undefined) {
+        admissionId = open.id;
+      } else if (input.bedId !== undefined) {
         const r = await emergencyAdmit(db, actor, {
-          idempotencyKey: input.idempotencyKey, patientId: pre.patientId, bedId: input.bedId, consultantId: input.consultantId,
+          idempotencyKey: ipdKey, patientId: pre.patientId, bedId: input.bedId, consultantId: input.consultantId,
           isolation: input.isolation, provisionalDiagnosis: input.provisionalDiagnosis, mlc,
         }, { now: at });
         admissionId = r.admissionId;
         admissionNo = r.admissionNo;
       } else {
         const r = await requestAdmission(db, actor, {
-          idempotencyKey: input.idempotencyKey, patientId: pre.patientId, source: "er", sourceRef: pre.id, consultantId: input.consultantId,
+          idempotencyKey: ipdKey, patientId: pre.patientId, source: "er", sourceRef: pre.id, consultantId: input.consultantId,
           requestedClass: input.requestedClass, isolation: input.isolation, provisionalDiagnosis: input.provisionalDiagnosis, mlc,
           ...(input.department === undefined ? {} : { department: input.department }),
         }, { now: at });
@@ -204,14 +256,10 @@ export async function handToUnit(db: Db, actor: Actor, raw: unknown, opts: Opts 
     }
     return withTx(db, async (tx) => {
       const e = await decidedIn(tx, actor, await lockEpisode(tx, input.episodeId), "admit", input.reason, at);
-      if (e.boardingSince !== null) throw new ErRefusal("already_boarding", { admissionId: e.admissionId });
+      if (e.boardingSince !== null && e.admissionId !== admissionId) throw new ErRefusal("already_boarding", { admissionId: e.admissionId });
       await stampErHandOffIn(tx, { admissionId, erArrivedAt: e.arrivedAt, stabilisedAt: e.stabilisedAt });
       const boarding = input.bedId === undefined;
-      await tx.update(erEpisodes).set({ admissionId, boardingSince: boarding ? at : null, updatedAt: at }).where(eq(erEpisodes.id, e.id));
-      await writeRecord(tx, actor, e, "admission", {
-        admissionId, consultantId: input.consultantId, department: input.department ?? null, requestedClass: input.requestedClass,
-        provisionalDiagnosis: input.provisionalDiagnosis, bedId: input.bedId ?? null,
-      }, at);
+      await tx.update(erEpisodes).set({ admissionId, boardingSince: boarding ? (e.boardingSince ?? at) : null, updatedAt: at }).where(eq(erEpisodes.id, e.id));
       await appendEvent(tx, erHandedToUnit.make({
         payload: { episodeId: e.id, admissionId, boarding, provenance: provenanceOf(actor) }, actor, correlationId: e.id, patientId: e.patientId, occurredAt: at,
       }));
@@ -227,19 +275,25 @@ export async function handToUnit(db: Db, actor: Actor, raw: unknown, opts: Opts 
  * cancelled stops boarding and the ER doctor of record is told (the disposition stands; the doctor hands again or
  * re-decides). Idempotent: each episode is re-read under its lock.
  */
-export async function sweepErBoarding(db: Db, now: Date): Promise<{ departed: number; lapsed: number }> {
-  const res = { departed: 0, lapsed: 0 };
+export async function sweepErBoarding(db: Db, now: Date): Promise<{ departed: number; lapsed: number; tasks: number; climbs: number }> {
+  const res = { departed: 0, lapsed: 0, tasks: 0, climbs: 0 };
   const boarding = await db.select({ id: erEpisodes.id, admissionId: erEpisodes.admissionId }).from(erEpisodes)
     .where(and(eq(erEpisodes.state, "disposition_decided"), isNotNull(erEpisodes.boardingSince)));
   for (const b of boarding) {
     if (b.admissionId === null) continue;
     const state = await erAdmissionState(db, b.admissionId);
-    if (state === "requested" || state === "reserved" || state === null) continue;
+    if (state === "requested" || state === "reserved" || state === null) {
+      await boardingClockIn(db, b.id, now, res);
+      continue;
+    }
     await withTx(db, async (tx) => {
       const e = await lockEpisode(tx, b.id);
       if (e.state !== "disposition_decided" || e.boardingSince === null || e.admissionId !== b.admissionId) return;
       if (state === "cancelled") {
-        await tx.update(erEpisodes).set({ boardingSince: null, updatedAt: now }).where(eq(erEpisodes.id, e.id));
+        await closeTask(tx, e.boardingTaskId, "admission cancelled", now);
+        await tx.update(erEpisodes).set({
+          boardingSince: null, boardingTaskId: null, boardingClimbedAt: null, handOffAttempts: e.handOffAttempts + 1, updatedAt: now,
+        }).where(eq(erEpisodes.id, e.id));
         if (e.doctorId !== null) {
           await raiseNoticeIn(tx, {
             userId: e.doctorId, kind: "er.admission_cancelled", title: `Admission cancelled · ${e.episodeNo}`, body: "Hand to a unit again or re-decide",
@@ -254,6 +308,91 @@ export async function sweepErBoarding(db: Db, now: Date): Promise<{ departed: nu
     });
   }
   return res;
+}
+
+/**
+ * Decision-to-bed (spec §3.2, ≤ 2 h from the decision): 2 h → ONE task for the bed manager (`er_boarding`, the duty
+ * manager's skill); 4 h → ONE notice climb on the `er_boarding` ladder (fallback the MS). Each stamped on the episode.
+ */
+async function boardingClockIn(db: Db, episodeId: string, now: Date, res: { tasks: number; climbs: number }): Promise<void> {
+  await withTx(db, async (tx) => {
+    const e = await lockEpisode(tx, episodeId);
+    if (e.state !== "disposition_decided" || e.boardingSince === null) return;
+    const from = (e.dispositionAt ?? e.boardingSince).getTime();
+    const waited = Math.round((now.getTime() - from) / 60_000);
+    if (e.boardingTaskId === null && waited >= ER_BOARDING_TASK_MIN) {
+      const due = new Date(from + ER_BOARDING_TASK_MIN * 60_000);
+      const raised = await raiseTask(tx, ER_DISPO_ACTOR, {
+        kind: ER_BOARDING_TASK, patientId: e.patientId, placeResourceId: e.bayId, priority: "urgent", dueAt: due.toISOString(),
+        sourceRef: `er_boarding:${e.id}`, note: `Bed for ${e.episodeNo}`, raisedAt: due.toISOString(),
+      }, now);
+      await tx.update(erEpisodes).set({ boardingTaskId: raised.task.id }).where(eq(erEpisodes.id, e.id));
+      res.tasks += 1;
+    }
+    if (e.boardingClimbedAt === null && waited >= ER_BOARDING_CLIMB_MIN) {
+      const to = (await escalationRecipients(tx, "er_boarding", { fallbackRoleKey: "medical_superintendent" }, now)).userIds;
+      for (const userId of to) {
+        await raiseNoticeIn(tx, {
+          userId, kind: "er.boarding_long", title: `Waiting for a bed · ${e.episodeNo}`, body: `${String(Math.floor(waited / 60))} h since the decision`,
+          refType: "er_episode", refId: e.id, sourceKey: `er_boarding:${e.id}:climb`, at: now,
+        });
+      }
+      await tx.update(erEpisodes).set({ boardingClimbedAt: now }).where(eq(erEpisodes.id, e.id));
+      res.climbs += 1;
+    }
+  });
+}
+
+// ═══════════════════════════════════════════ a specialty refuses: MS arbitration ═══════════════════════════════════════════
+
+export async function recordSpecialtyRefusal(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_specialty_refusal">> {
+  const input: Input<"record_specialty_refusal"> = ER_INTENTS.record_specialty_refusal.input.parse(raw);
+  await requireErPermission(db, actor, ER_DISPOSITION);
+  const at = opts.now ?? new Date();
+  return onceEr(db, actor, "record_specialty_refusal", input.idempotencyKey, input, () => withTx(db, async (tx) => {
+    await requireDoctor(tx, actor);
+    const e = await lockEpisode(tx, input.episodeId);
+    if (e.state !== "in_treatment" && e.state !== "disposition_decided") throw new ErRefusal("episode_wrong_state", { state: e.state });
+    const open = (await tx.select({ id: erAdmissionDisputes.id }).from(erAdmissionDisputes)
+      .where(and(eq(erAdmissionDisputes.episodeId, e.id), isNull(erAdmissionDisputes.ruledAt))))[0];
+    if (open !== undefined) throw new ErRefusal("dispute_open", { disputeId: open.id });
+    const id = newId();
+    const raised = await raiseTask(tx, ER_DISPO_ACTOR, {
+      kind: ER_ARBITRATION_TASK, patientId: e.patientId, placeResourceId: e.bayId, priority: "urgent",
+      dueAt: new Date(at.getTime() + 60 * 60_000).toISOString(), sourceRef: `er_arbitration:${id}`,
+      note: `${input.departmentCode} declined ${e.episodeNo}`, raisedAt: at.toISOString(),
+    }, at);
+    await tx.insert(erAdmissionDisputes).values({
+      id, episodeId: e.id, departmentCode: input.departmentCode.toUpperCase(), reason: input.reason, refusedBy: actor.id, refusedAt: at, taskId: raised.task.id,
+    });
+    await appendEvent(tx, erAdmissionDisputed.make({
+      payload: { episodeId: e.id, disputeId: id, departmentCode: input.departmentCode.toUpperCase(), provenance: provenanceOf(actor) },
+      actor, correlationId: e.id, patientId: e.patientId, occurredAt: at,
+    }));
+    return { disputeId: id, taskId: raised.task.id };
+  }), at);
+}
+
+export async function arbitrateAdmission(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"arbitrate_admission">> {
+  const input: Input<"arbitrate_admission"> = ER_INTENTS.arbitrate_admission.input.parse(raw);
+  await requireErPermission(db, actor, ER_DISPOSITION);
+  const at = opts.now ?? new Date();
+  return onceEr(db, actor, "arbitrate_admission", input.idempotencyKey, input, () => withTx(db, async (tx) => {
+    if (actor.type !== "system" && !(await actorHoldsAnyRole(tx, actor.id, ["medical_superintendent"]))) throw new ErRefusal("not_the_ms");
+    const d = (await tx.select().from(erAdmissionDisputes).where(eq(erAdmissionDisputes.id, input.disputeId)).for("update"))[0];
+    if (d === undefined) throw new ErRefusal("dispute_not_found");
+    if (d.ruledAt !== null) throw new ErRefusal("dispute_ruled", { ruling: d.ruling });
+    await tx.update(erAdmissionDisputes).set({
+      ruling: input.ruling, rulingDepartmentCode: input.departmentCode?.toUpperCase() ?? null, rulingNote: input.note, ruledBy: actor.id, ruledAt: at,
+    }).where(eq(erAdmissionDisputes.id, d.id));
+    await closeTask(tx, d.taskId, "arbitrated", at);
+    const e = await readEpisode(tx, d.episodeId);
+    await appendEvent(tx, erAdmissionArbitrated.make({
+      payload: { episodeId: d.episodeId, disputeId: d.id, ruling: input.ruling, provenance: provenanceOf(actor) },
+      actor, correlationId: d.episodeId, patientId: e.patientId, occurredAt: at,
+    }));
+    return { disputeId: d.id, ruling: input.ruling, ruledAt: at.toISOString() };
+  }), at);
 }
 
 // ═══════════════════════════════════════════ refer_out ═══════════════════════════════════════════
@@ -334,12 +473,13 @@ export async function recordAbscond(db: Db, actor: Actor, raw: unknown, opts: Op
     const guards = (await escalationRecipients(tx, "er_abscond", { fallbackRoleKey: "security_guard" }, at)).userIds;
     for (const userId of guards) {
       await raiseNoticeIn(tx, {
-        userId, kind: "er.absconded", title: `Patient absconded · ${e.episodeNo}`, body: `Last seen ${seen.toISOString().slice(11, 16)} UTC`,
+        userId, kind: "er.absconded", title: `Patient absconded · ${e.episodeNo}`, body: `Last seen ${IST_TIME.format(seen)} IST`,
         refType: "er_episode", refId: e.id, sourceKey: `er_abscond:${e.id}`, at,
       });
     }
     if (mlc) {
-      const dms = (await escalationRecipients(tx, "er_abscond", { fallbackRoleKey: "duty_manager" }, at)).userIds;
+      // Review #7: the duty manager (for the police) on the MLC ladder of its own — never the security ladder.
+      const dms = (await escalationRecipients(tx, "er_abscond_mlc", { fallbackRoleKey: "duty_manager" }, at)).userIds;
       for (const userId of dms) {
         await raiseNoticeIn(tx, {
           userId, kind: "er.absconded_mlc", title: `MLC patient absconded · ${e.episodeNo}`, body: "Inform the police",
@@ -370,8 +510,10 @@ export async function recordErDeathIntent(db: Db, actor: Actor, raw: unknown, op
         .where(and(eq(erMlcObligations.mlcId, m.id), eq(erMlcObligations.kind, "police_intimation"))))[0]?.metAt != null;
       if (!intimated) throw new ErRefusal("mccd_required", { mlc: m !== undefined });
     }
-    await markPatientDeceased(tx, actor, e.patientId, diedAt, input.mccdNo === undefined ? { medicoLegal: true } : { mccdNo: input.mccdNo });
-    const { entryId } = await openErMortuaryEntry(tx, actor, { erEpisodeId: e.id, patientId: e.patientId, diedAt, mlc: m !== undefined }, at);
+    // Review #8: an unknown merged into the true record dies as the TRUE record (the merge chain's canonical patient).
+    const patientId = (await personRecords(tx, e.patientId))?.canonicalId ?? e.patientId;
+    await markPatientDeceased(tx, actor, patientId, diedAt, input.mccdNo === undefined ? { medicoLegal: true } : { mccdNo: input.mccdNo });
+    const { entryId } = await openErMortuaryEntry(tx, actor, { erEpisodeId: e.id, patientId, diedAt, mlc: m !== undefined }, at);
     await writeRecord(tx, actor, e, "death", { diedAt: diedAt.toISOString(), mccdNo: input.mccdNo ?? null, note: input.note ?? null, mortuaryEntryId: entryId }, at);
     const bay = await departIn(tx, actor, e, "died", diedAt, at);
     return { ...out(e, "died", diedAt, bay), mortuaryEntryId: entryId, mlc: m !== undefined };

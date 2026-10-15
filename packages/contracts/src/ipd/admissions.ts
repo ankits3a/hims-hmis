@@ -66,6 +66,8 @@ export const IpdAdmissionViewSchema = z.object({
   icuApproval: z.object({ id: IpdIdSchema, status: z.string() }).nullable(),
   admittedAt: IpdInstantSchema.nullable(),
   stabilisedAt: IpdInstantSchema.nullable(),
+  /** ER lane 5 (#812): the ER gate instant of an admission handed over from the ER; null otherwise. */
+  erArrivedAt: IpdInstantSchema.nullable(),
   downtimeSerial: z.string().nullable(),
   incomplete: z.array(z.string()),
 });

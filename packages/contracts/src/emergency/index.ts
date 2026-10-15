@@ -68,6 +68,8 @@ export const ER_INTENTS = {
   record_lwbs: dispo.recordLwbs,
   record_abscond: dispo.recordAbscond,
   record_er_death: dispo.recordErDeath,
+  record_specialty_refusal: dispo.recordSpecialtyRefusal,
+  arbitrate_admission: dispo.arbitrateAdmission,
 } as const;
 export type ErIntentName = keyof typeof ER_INTENTS;
 export const ER_INTENT_NAMES = Object.keys(ER_INTENTS) as ErIntentName[];

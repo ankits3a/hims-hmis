@@ -344,8 +344,10 @@ Source: `apps/core/src/modules/ipd/`
   - `intendedPayerOfAdmission(payerKind: string | null): string`
   - `registerIpdEncounterResolver(): () => void`
 - `er-handoff.ts`
+  - `cancelErAdmissionIn(tx: Tx, actor: Actor, admissionId: string, note: string, at: Date): Promise<"cancelled" | "not_open" | "held_deposit">`
   - `carryErOrderLinesIn(tx: Tx, actor: Actor, admissionId: string, items: readonly { orderId: string; orderItemId: string; serviceId: string; c…`
   - `erAdmissionState(db: Db | Tx, admissionId: string): Promise<string | null>`
+  - `erOpenAdmissionFor(db: Db | Tx, erEpisodeId: string): Promise<{ id: string; state: string } | undefined>`
   - `stampErHandOffIn(tx: Tx, input: { admissionId: string; erArrivedAt: Date; stabilisedAt: Date | null }): Promise<void>`
 - `errors.ts`
   - `class IpdError`

@@ -102,6 +102,11 @@ export const erEpisodes = pgTable(
     admissionId: text("admission_id"),
     boardingSince: timestamp("boarding_since", { withTimezone: true }),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+    /** Decision-to-bed (spec §3.2 ≤ 2 h): the bed manager's task at 2 h, and the climb to the MS at 4 h — each once. */
+    boardingTaskId: text("boarding_task_id"),
+    boardingClimbedAt: timestamp("boarding_climbed_at", { withTimezone: true }),
+    /** Hand-offs cancelled by IPD so far: the next attempt's stable IPD idempotency key (review #4). */
+    handOffAttempts: integer("hand_off_attempts").notNull().default(0),
   },
   (t) => [
     uniqueIndex("er_episodes_no_ux").on(t.episodeNo),
@@ -582,5 +587,32 @@ export const erDepartureRecords = pgTable(
   (t) => [
     uniqueIndex("er_departure_records_episode_ux").on(t.episodeId),
     check("er_departure_records_kind_ck", sql`${t.kind} in ('discharge_summary', 'admission', 'referral', 'lama', 'lwbs', 'abscond', 'death')`),
+  ],
+);
+
+/**
+ * A specialty refused the ER admission (spec §4.5 edge): the refusal, the MS's arbitration task and the ruling. One open
+ * dispute per episode; the ruling is written once.
+ */
+export const erAdmissionDisputes = pgTable(
+  "er_admission_disputes",
+  {
+    id: text("id").primaryKey(),
+    episodeId: text("episode_id").notNull().references(() => erEpisodes.id),
+    departmentCode: text("department_code").notNull(),
+    reason: text("reason").notNull(),
+    refusedBy: text("refused_by").notNull(),
+    refusedAt: timestamp("refused_at", { withTimezone: true }).notNull(),
+    taskId: text("task_id"),
+    ruling: text("ruling"),
+    rulingDepartmentCode: text("ruling_department_code"),
+    rulingNote: text("ruling_note"),
+    ruledBy: text("ruled_by"),
+    ruledAt: timestamp("ruled_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("er_admission_disputes_open_ux").on(t.episodeId).where(sql`${t.ruledAt} is null`),
+    check("er_admission_disputes_ruling_ck", sql`${t.ruling} is null or ${t.ruling} in ('admit_under', 'refer_out')`),
+    check("er_admission_disputes_ruled_ck", sql`(${t.ruling} is null) = (${t.ruledAt} is null)`),
   ],
 );
