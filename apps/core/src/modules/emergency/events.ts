@@ -96,13 +96,20 @@ export const erEvidenceCustody = defineEvent("er.evidence_custody", MODULE, z.ob
 
 /* ═══ lane 5 (#812) — disposition and departure (ids and codes only) ═══ */
 export const erDispositionDecided = defineEvent("er.disposition_decided", MODULE, z.object({
-  episodeId: id, disposition: z.string(), provenance: ErProvenanceSchema,
+  episodeId: id, disposition: z.string(), /** Review #3: a re-decision after IPD cancelled the hand-off names the one it replaces. */
+  previous: z.string().nullable().optional(), provenance: ErProvenanceSchema,
 }));
 export const erHandedToUnit = defineEvent("er.handed_to_unit", MODULE, z.object({
   episodeId: id, admissionId: id, boarding: z.boolean(), provenance: ErProvenanceSchema,
 }));
 export const erDeparted = defineEvent("er.departed", MODULE, z.object({
   episodeId: id, outcome: z.string(), bayId: id.nullable(), admissionId: id.nullable(), provenance: ErProvenanceSchema,
+}));
+export const erAdmissionDisputed = defineEvent("er.admission_disputed", MODULE, z.object({
+  episodeId: id, disputeId: id, departmentCode: z.string(), provenance: ErProvenanceSchema,
+}));
+export const erAdmissionArbitrated = defineEvent("er.admission_arbitrated", MODULE, z.object({
+  episodeId: id, disputeId: id, ruling: z.string(), provenance: ErProvenanceSchema,
 }));
 
 /* ═══ lane 6 (#813) — the ER bill (the bill desk's events; amounts only where the desk needs them) ═══ */

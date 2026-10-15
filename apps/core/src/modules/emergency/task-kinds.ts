@@ -41,3 +41,26 @@ defineTaskKind({
   acceptWithinMin: 5, doneWithinMin: 30, escalateTo: "duty_manager",
   proofNeeded: "none", verifyRequired: false, ladderMin: [0],
 });
+
+/**
+ * ER lane 5 follow-up — DECISION TO BED (spec §3.2: ≤ 2 h). A boarding patient past 2 h is a task for the bed manager
+ * (DECIDED: the duty manager holds the bed-management and overflow strings — the bed manager of this hospital); past 4 h it
+ * climbs once to the MS (`er_boarding` ladder). A specialty refusing the admission is an arbitration task for the MS.
+ */
+export const ER_BOARDING_TASK = "er_boarding";
+export const ER_BED_SKILL = "er_bed";
+export const ER_ARBITRATION_TASK = "er_arbitration";
+export const ER_MS_SKILL = "er_ms";
+
+defineSkill(ER_BED_SKILL, ["duty_manager"]);
+defineSkill(ER_MS_SKILL, ["medical_superintendent"]);
+defineTaskKind({
+  kind: ER_BOARDING_TASK, label: "ER patient waiting for a bed", skill: ER_BED_SKILL,
+  acceptWithinMin: 10, doneWithinMin: 120, escalateTo: "duty_manager",
+  proofNeeded: "none", verifyRequired: false, ladderMin: [0],
+});
+defineTaskKind({
+  kind: ER_ARBITRATION_TASK, label: "Admission refused — arbitrate", skill: ER_MS_SKILL,
+  acceptWithinMin: 15, doneWithinMin: 60, escalateTo: "medical_superintendent",
+  proofNeeded: "none", verifyRequired: false, ladderMin: [0],
+});

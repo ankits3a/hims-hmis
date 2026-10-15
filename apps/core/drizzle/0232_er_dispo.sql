@@ -1,3 +1,20 @@
+CREATE TABLE "er_admission_disputes" (
+	"id" text PRIMARY KEY NOT NULL,
+	"episode_id" text NOT NULL,
+	"department_code" text NOT NULL,
+	"reason" text NOT NULL,
+	"refused_by" text NOT NULL,
+	"refused_at" timestamp with time zone NOT NULL,
+	"task_id" text,
+	"ruling" text,
+	"ruling_department_code" text,
+	"ruling_note" text,
+	"ruled_by" text,
+	"ruled_at" timestamp with time zone,
+	CONSTRAINT "er_admission_disputes_ruling_ck" CHECK ("er_admission_disputes"."ruling" is null or "er_admission_disputes"."ruling" in ('admit_under', 'refer_out')),
+	CONSTRAINT "er_admission_disputes_ruled_ck" CHECK (("er_admission_disputes"."ruling" is null) = ("er_admission_disputes"."ruled_at" is null))
+);
+--> statement-breakpoint
 CREATE TABLE "er_departure_records" (
 	"id" text PRIMARY KEY NOT NULL,
 	"episode_id" text NOT NULL,
@@ -22,11 +39,16 @@ ALTER TABLE "er_episodes" ADD COLUMN "disposition_at" timestamp with time zone;-
 ALTER TABLE "er_episodes" ADD COLUMN "admission_id" text;--> statement-breakpoint
 ALTER TABLE "er_episodes" ADD COLUMN "boarding_since" timestamp with time zone;--> statement-breakpoint
 ALTER TABLE "er_episodes" ADD COLUMN "last_seen_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "er_episodes" ADD COLUMN "boarding_task_id" text;--> statement-breakpoint
+ALTER TABLE "er_episodes" ADD COLUMN "boarding_climbed_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "er_episodes" ADD COLUMN "hand_off_attempts" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "er_admission_disputes" ADD CONSTRAINT "er_admission_disputes_episode_id_er_episodes_id_fk" FOREIGN KEY ("episode_id") REFERENCES "public"."er_episodes"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "er_departure_records" ADD CONSTRAINT "er_departure_records_episode_id_er_episodes_id_fk" FOREIGN KEY ("episode_id") REFERENCES "public"."er_episodes"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "er_admission_disputes_open_ux" ON "er_admission_disputes" USING btree ("episode_id") WHERE "er_admission_disputes"."ruled_at" is null;--> statement-breakpoint
 CREATE UNIQUE INDEX "er_departure_records_episode_ux" ON "er_departure_records" USING btree ("episode_id");--> statement-breakpoint
 CREATE INDEX "er_episodes_boarding_idx" ON "er_episodes" USING btree ("boarding_since") WHERE "er_episodes"."boarding_since" is not null and "er_episodes"."state" = 'disposition_decided';--> statement-breakpoint
 ALTER TABLE "patients" ADD CONSTRAINT "patients_death_kind_ck" CHECK ("patients"."death_kind" is null or ("patients"."death_kind" in ('brought_dead', 'medico_legal') and "patients"."deceased_at" is not null));--> statement-breakpoint
-ALTER TABLE "roster_escalation_targets" ADD CONSTRAINT "roster_escalation_targets_kind_ck" CHECK ("roster_escalation_targets"."alert_kind" in ('escalation.triggered', 'notification.failed', 'ops.mode_changed', 'imaging.critical_overdue', 'imaging.report_unread', 'workflow.timer_rung', 'er_retriage', 'er_call', 'er_critical', 'mlc_intimation', 'mlc_countersign', 'er_abscond'));--> statement-breakpoint
+ALTER TABLE "roster_escalation_targets" ADD CONSTRAINT "roster_escalation_targets_kind_ck" CHECK ("roster_escalation_targets"."alert_kind" in ('escalation.triggered', 'notification.failed', 'ops.mode_changed', 'imaging.critical_overdue', 'imaging.report_unread', 'workflow.timer_rung', 'er_retriage', 'er_call', 'er_critical', 'mlc_intimation', 'mlc_countersign', 'er_abscond', 'er_boarding', 'er_abscond_mlc'));--> statement-breakpoint
 ALTER TABLE "er_charge_lines" ADD CONSTRAINT "er_charge_lines_moved_ck" CHECK (("er_charge_lines"."status" = 'moved') = ("er_charge_lines"."moved_to_admission_id" is not null));--> statement-breakpoint
 ALTER TABLE "er_charge_lines" ADD CONSTRAINT "er_charge_lines_status_ck" CHECK ("er_charge_lines"."status" in ('posted', 'rate_missing', 'rate_pending', 'reversed', 'moved'));--> statement-breakpoint
 ALTER TABLE "er_charge_lines" ADD CONSTRAINT "er_charge_lines_amount_ck" CHECK (("er_charge_lines"."status" = 'posted') = ("er_charge_lines"."amount_paise" is not null) or "er_charge_lines"."status" = 'moved');--> statement-breakpoint

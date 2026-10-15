@@ -1,8 +1,10 @@
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { ipdAdmissions } from "../../kernel/db/schema";
 import { admissionAdvisoryLock, readAdmission } from "./admission-core";
-import { lockedVersion, postOrderLineIn, pricingFor, raiseException, insertLine } from "./charges";
-import { priceInvoiceLines, TariffError } from "../tariff";
+import { cancelAdmissionIn } from "./admissions";
+import { insertLine, lockedVersion, postOrderLineIn, pricingFor, raiseException } from "./charges";
+import { TariffError, priceInvoiceLines } from "../tariff";
+import { IpdRefusal } from "./errors";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -49,6 +51,30 @@ export async function carryErOrderLinesIn(
 /** The state of an admission the ER handed a patient to (the boarding sweep reads it; null when unknown). */
 export async function erAdmissionState(db: Db | Tx, admissionId: string): Promise<string | null> {
   return (await (db as Db).select({ state: ipdAdmissions.state }).from(ipdAdmissions).where(eq(ipdAdmissions.id, admissionId)))[0]?.state ?? null;
+}
+
+/** The ER episode's still-open admission request (source `er`, raised by `hand_to_unit` for this episode), if any. */
+export async function erOpenAdmissionFor(db: Db | Tx, erEpisodeId: string): Promise<{ id: string; state: string } | undefined> {
+  return (await (db as Db).select({ id: ipdAdmissions.id, state: ipdAdmissions.state }).from(ipdAdmissions).where(and(
+    eq(ipdAdmissions.source, "er"), eq(ipdAdmissions.sourceRef, erEpisodeId), inArray(ipdAdmissions.state, ["requested", "reserved"]),
+  )))[0];
+}
+
+/**
+ * The patient left the ER some other way while boarding: the open request is cancelled through IPD's own cancel
+ * (`cancelAdmissionIn`, the `cancel_admission` intent's body). A deposit already taken is never stranded: the request
+ * is then left for the admission desk to refund and cancel (`held_deposit`).
+ */
+export async function cancelErAdmissionIn(tx: Tx, actor: Actor, admissionId: string, note: string, at: Date): Promise<"cancelled" | "not_open" | "held_deposit"> {
+  const a = (await tx.select({ state: ipdAdmissions.state }).from(ipdAdmissions).where(eq(ipdAdmissions.id, admissionId)))[0];
+  if (a === undefined || (a.state !== "requested" && a.state !== "reserved")) return "not_open";
+  try {
+    await tx.transaction(async (sp) => { await cancelAdmissionIn(sp as unknown as Tx, actor, admissionId, "clinical_change", note, at); });
+    return "cancelled";
+  } catch (e) {
+    if (e instanceof IpdRefusal && e.code === "deposit_not_refunded") return "held_deposit";
+    throw e;
+  }
 }
 
 /**

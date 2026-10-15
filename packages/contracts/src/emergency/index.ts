@@ -76,6 +76,8 @@ export const ER_INTENTS = {
   record_lwbs: dispo.recordLwbs,
   record_abscond: dispo.recordAbscond,
   record_er_death: dispo.recordErDeath,
+  record_specialty_refusal: dispo.recordSpecialtyRefusal,
+  arbitrate_admission: dispo.arbitrateAdmission,
   // lane 6 (#813) — money: the ER bill desk only
   set_er_payer: bill.setErPayer,
   take_er_advance: bill.takeErAdvance,

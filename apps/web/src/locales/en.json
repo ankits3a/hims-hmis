@@ -17047,7 +17047,8 @@
       "admittedAt": "Admitted at (paper)",
       "save": "Enter admission"
     },
-    "capWarning": "Room-rent cap"
+    "capWarning": "Room-rent cap",
+    "erArrival": "ER arrival"
   },
   "maintenance": {
     "title": "Maintenance",
@@ -19604,7 +19605,10 @@
     "casualty": {
       "send": "Send to Casualty",
       "sent": "On the ER board as Expected"
-    }
+    },
+    "lwbs": "Left unseen",
+    "lwbsSeen": "Last seen (IST, blank = now)",
+    "lwbsSave": "Record: left without being seen"
   },
   "erTriage": {
     "title": "ER triage",
@@ -19910,7 +19914,10 @@
         "patient": "Patient signs",
         "representative": "Representative signs",
         "refused_to_sign": "Refused to sign"
-      }
+      },
+      "searched": "Searched the premises?",
+      "searchedYes": "Yes, searched",
+      "searchedNo": "Not searched"
     }
   },
   "erMlc": {

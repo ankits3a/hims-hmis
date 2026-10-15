@@ -47,9 +47,10 @@ export {
 export { ER_MLC_INTIMATION_TASK, ER_MLC_SKILL } from "./task-kinds";
 // Lane 5 (#812) — disposition and departure: decide, discharge, hand to a unit (boarding), refer out, LAMA, LWBS, abscond, death.
 export {
-  ER_DISPO_ACTOR, decideDisposition, departIn, dischargeFromEr, handToUnit, recordAbscond, recordErDeathIntent, recordLama, recordLwbs, referOut,
+  ER_BOARDING_CLIMB_MIN, ER_BOARDING_TASK_MIN, ER_DISPO_ACTOR, arbitrateAdmission, decideDisposition, recordSpecialtyRefusal, departIn, dischargeFromEr, handToUnit, recordAbscond, recordErDeathIntent, recordLama, recordLwbs, referOut,
   sweepErBoarding,
 } from "./dispo";
+export { ER_ARBITRATION_TASK, ER_BED_SKILL, ER_BOARDING_TASK, ER_MS_SKILL } from "./task-kinds";
 // Lane 6 (#813) — the ER bill (money; the bill desk only): payer, advance, pricing, settle / dues, event account, roll-over.
 export {
   composeErBill, listErClaims, observationBlocks, openErEventAccount, priceErLines, readErBill, readErBillDesk, rollErLinesIn, setErPayer,

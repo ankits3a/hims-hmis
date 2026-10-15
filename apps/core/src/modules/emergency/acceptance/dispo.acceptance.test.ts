@@ -73,7 +73,7 @@ describe("ER lane 5 er-dispo — done means", () => {
     const board = await readErBoard(db, w.erDesk, { now: t });
     expect(board.stats.boarding).toBe(1);
     expect(board.inTreatment.find((x) => x.episodeId === e.episodeId)?.chips).toContain("boarding");
-    expect(await sweepErBoarding(db, new Date(t.getTime() + MIN))).toEqual({ departed: 0, lapsed: 0 });
+    expect(await sweepErBoarding(db, new Date(t.getTime() + MIN))).toMatchObject({ departed: 0, lapsed: 0 });
 
     // The admission desk finds the bed: IPD admits, and the next tick takes the patient out of the ER.
     const t2 = new Date(t.getTime() + 90 * MIN);
@@ -84,8 +84,8 @@ describe("ER lane 5 er-dispo — done means", () => {
     }, { now: t2 });
     const ward = await w.bed("W-ER-1");
     await admit(db, w.admitDesk, { idempotencyKey: key(), admissionId: h.admissionId, bedId: ward, consent: PAPER, deposit: { receiptId } }, { now: t2 });
-    expect(await sweepErBoarding(db, new Date(t2.getTime() + MIN))).toEqual({ departed: 1, lapsed: 0 });
-    expect(await sweepErBoarding(db, new Date(t2.getTime() + 2 * MIN))).toEqual({ departed: 0, lapsed: 0 });
+    expect(await sweepErBoarding(db, new Date(t2.getTime() + MIN))).toMatchObject({ departed: 1, lapsed: 0 });
+    expect(await sweepErBoarding(db, new Date(t2.getTime() + 2 * MIN))).toMatchObject({ departed: 0, lapsed: 0 });
     const [ep] = await db.select().from(erEpisodes).where(eq(erEpisodes.id, e.episodeId));
     expect(ep).toMatchObject({ state: "departed", outcome: "admitted", admissionId: h.admissionId, boardingSince: null });
     expect((await db.select().from(resources).where(eq(resources.id, e.bay)))[0]!.status).toBe("cleaning");

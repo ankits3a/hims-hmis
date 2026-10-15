@@ -1775,7 +1775,9 @@ time and "stabilised" copied — the patient boards on the ER board until the be
 the IP running bill); refer out with the referral note (never because the patient cannot pay); LAMA with the risks and a
 signature or a witnessed refusal; left without being seen; absconded (security told, the police for an MLC); death with
 the MCCD number, or an MLC already intimated to the police, the body to the mortuary register. Every exit frees the bay.
-`er.disposition` is held by `doctor`, `er_nurse`, `front_office` and `duty_manager`.
+A patient waiting for a bed past 2 hours is a task for the bed manager and reaches the MS at 4 hours; a specialty refusing
+the admission is recorded and the MS arbitrates.
+`er.disposition` is held by `doctor`, `er_nurse`, `front_office`, `duty_manager` and `medical_superintendent`.
 
 **Copilot halt switch and spend cap (plan E0.3/E0.5, decision 0064, built 2026-10-11, awaiting owner review).**
 `copilot.halt.set` (owner, admin, duty_manager, quality_manager) pauses the copilot by scope — read, act,

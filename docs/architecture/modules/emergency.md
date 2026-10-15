@@ -65,7 +65,10 @@ Source: `apps/core/src/modules/emergency/`
   - `registerErChargeSink(): () => void`
   - `registerErEncounterResolver(): () => void`
 - `dispo.ts`
+  - `ER_BOARDING_CLIMB_MIN`
+  - `ER_BOARDING_TASK_MIN`
   - `ER_DISPO_ACTOR: Actor`
+  - `arbitrateAdmission(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"arbitrate_admission">>`
   - `decideDisposition(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"decide_disposition">>`
   - `departIn(tx: Tx, actor: Actor, e: EpisodeRow, outcome: Outcome, departedAt: Date, at: Date): Promise<string | null>`
   - `dischargeFromEr(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"discharge_from_er">>`
@@ -74,8 +77,9 @@ Source: `apps/core/src/modules/emergency/`
   - `recordErDeathIntent(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_er_death">>`
   - `recordLama(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_lama">>`
   - `recordLwbs(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_lwbs">>`
+  - `recordSpecialtyRefusal(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_specialty_refusal">>`
   - `referOut(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"refer_out">>`
-  - `sweepErBoarding(db: Db, now: Date): Promise<{ departed: number; lapsed: number }>`
+  - `sweepErBoarding(db: Db, now: Date): Promise<{ departed: number; lapsed: number; tasks: number; climbs: number }>`
 - `emergency.module.ts`
   - `class EmergencyModule`
 - `errors.ts`
@@ -116,8 +120,12 @@ Source: `apps/core/src/modules/emergency/`
   - `erTopicRouter: TopicRouter`
   - `erTopicsFor(e: Pick<TailedEvent, "name">): string[]`
 - `task-kinds.ts`
+  - `ER_ARBITRATION_TASK`
+  - `ER_BED_SKILL`
+  - `ER_BOARDING_TASK`
   - `ER_MLC_INTIMATION_TASK`
   - `ER_MLC_SKILL`
+  - `ER_MS_SKILL`
   - `ER_RETRIAGE_TASK`
   - `ER_TRIAGE_DUE_TASK`
   - `ER_TRIAGE_SKILL`
@@ -140,12 +148,12 @@ Source: `apps/core/src/modules/emergency/`
 
 ## Tables (`kernel/db/schema/emergency.ts`)
 
-`er_bands`, `er_charge_lines`, `er_consents`, `er_critical_alerts`, `er_departure_records`, `er_doses`, `er_episodes`, `er_med_issues`, `er_mlc_addenda`, `er_mlc_custody`, `er_mlc_intimations`, `er_mlc_obligations`, `er_mlcs`, `er_notes`, `er_pre_alerts`, `er_procedures`, `er_specialty_calls`, `er_triage_entries`
+`er_admission_disputes`, `er_bands`, `er_charge_lines`, `er_consents`, `er_critical_alerts`, `er_departure_records`, `er_doses`, `er_episodes`, `er_med_issues`, `er_mlc_addenda`, `er_mlc_custody`, `er_mlc_intimations`, `er_mlc_obligations`, `er_mlcs`, `er_notes`, `er_pre_alerts`, `er_procedures`, `er_specialty_calls`, `er_triage_entries`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (51)
+## HTTP routes (53)
 
-- `emergency.controller.ts` — 51: `/er/arrivals`, `/er/bands`, `/er/bays`, `/er/board`, `/er/calls`, `/er/care`, `/er/consents`, `/er/desk`, `/er/dispo`, `/er/doctor`, `/er/doctors`, `/er/episodes`, `/er/identity`, `/er/items`, `/er/meds`, `/er/mlc`, `/er/notes`, `/er/orders`, `/er/patients`, `/er/pre-alerts`, `/er/procedures`, `/er/stabilised`, `/er/triage`, `/er/triage-doctors`, `/er/vitals`
+- `emergency.controller.ts` — 53: `/er/arrivals`, `/er/bands`, `/er/bays`, `/er/board`, `/er/calls`, `/er/care`, `/er/consents`, `/er/desk`, `/er/dispo`, `/er/doctor`, `/er/doctors`, `/er/episodes`, `/er/identity`, `/er/items`, `/er/meds`, `/er/mlc`, `/er/notes`, `/er/orders`, `/er/patients`, `/er/pre-alerts`, `/er/procedures`, `/er/stabilised`, `/er/triage`, `/er/triage-doctors`, `/er/vitals`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/emergency`

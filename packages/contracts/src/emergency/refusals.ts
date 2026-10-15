@@ -74,11 +74,16 @@ export const ER_REFUSALS = {
   disposition_mismatch: { rule: "This act does not match the disposition already decided.", fix: "Open episode" },
   disposition_reason_needed: { rule: "A disposition is decided with a reason.", fix: "Add reason" },
   admission_refused: { rule: "The admission could not be raised.", fix: "Call the admission desk" },
+  bed_needs_admission_desk: { rule: "A bed is allotted by the admission desk; the doctor raises the admission and the patient waits here.", fix: "Hand over without a bed" },
   already_boarding: { rule: "The patient is already waiting for an inpatient bed.", fix: "Open episode" },
   referral_not_for_money: { rule: "A patient is never referred out because they cannot pay.", fix: "Pick the clinical reason" },
   lama_witness_needed: { rule: "A refusal to sign is witnessed by a second staff member.", fix: "Name a witness" },
   last_seen_before_arrival: { rule: "The last-seen time cannot be before the arrival.", fix: "Fix the time" },
   died_before_arrival: { rule: "A death after arrival cannot be before the arrival; a body brought dead is recorded at the desk.", fix: "Fix the time" },
+  dispute_open: { rule: "A refusal for this patient is already waiting for the medical superintendent.", fix: "Open episode" },
+  dispute_not_found: { rule: "No admission dispute has this id.", fix: "Open ER board" },
+  dispute_ruled: { rule: "The medical superintendent has already ruled on this dispute.", fix: "Open episode" },
+  not_the_ms: { rule: "Only the medical superintendent arbitrates an admission refusal.", fix: "Ask the MS" },
   mccd_required: { rule: "A death is recorded with its MCCD number, unless it is a medico-legal case already intimated to the police.", fix: "Enter MCCD number" },
 
   /* ═══ The ER bill (lane 6) — the bill desk's words; no clinical screen shows them ═══ */
