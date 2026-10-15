@@ -115,6 +115,13 @@ Source: `apps/core/src/modules/formulary/`
   - `suggestMoieties(db: Db, query: string, limit: number): Promise<MoietySuggestion[]>`
   - `unreviewedSaltIds(db: Db | Tx, ids: readonly string[]): Promise<Set<string>>`
   - types: `CatalogueCensus`, `MoietySuggestion`
+- `reference-labels.ts`
+  - `REFERENCE_SECTIONS`
+  - `importReferenceLabels(db: Db, actor: Actor, raw: unknown, at: Date = new Date()): Promise<ReferenceImportResult>`
+  - `planReferenceImport(choicesJson: string, labelsJsonl: string): ReferencePlan`
+  - `referenceForGeneric(db: Db | Tx, genericSctid: string): Promise<GenericReference | undefined>`
+  - `referenceSectionsOf(label: Record<string, unknown>): ReferenceSections`
+  - types: `GenericReference`, `ReferenceEntry`, `ReferenceImportResult`, `ReferencePlan`, `ReferenceSectionName`
 - `resolve.ts`
   - `listDrugDiseaseFor(db: Db, saltIds: string[], icd10Codes: string[]): Promise<DrugDiseaseRow[]>`
   - `listInteractionsAmong(db: Db, saltIds: string[]): Promise<InteractionPair[]>`
@@ -156,12 +163,12 @@ Source: `apps/core/src/modules/formulary/`
 
 ## Tables (`kernel/db/schema/formulary.ts`)
 
-`formulary_drug_disease`, `formulary_generic_substances`, `formulary_generics`, `formulary_interactions`, `formulary_mapping_proposals`, `formulary_medicine_salts`, `formulary_medicines`, `formulary_monographs`, `formulary_renal_doses`, `formulary_salts`, `formulary_staging`, `formulary_substances`
+`formulary_drug_disease`, `formulary_generic_substances`, `formulary_generics`, `formulary_interactions`, `formulary_mapping_proposals`, `formulary_medicine_salts`, `formulary_medicines`, `formulary_monographs`, `formulary_reference_labels`, `formulary_reference_names`, `formulary_renal_doses`, `formulary_salts`, `formulary_staging`, `formulary_substances`
 
 Foreign keys into: —
 
-## HTTP routes (27)
+## HTTP routes (28)
 
-- `formulary.controller.ts` — 27: `/formulary/census`, `/formulary/coverage`, `/formulary/interactions`, `/formulary/medicines`, `/formulary/monographs`, `/formulary/pair-rates`, `/formulary/salts`, `/formulary/staging`, `/formulary/substances`, `/formulary/suggest`
+- `formulary.controller.ts` — 28: `/formulary/census`, `/formulary/coverage`, `/formulary/interactions`, `/formulary/medicines`, `/formulary/monographs`, `/formulary/pair-rates`, `/formulary/reference`, `/formulary/salts`, `/formulary/staging`, `/formulary/substances`, `/formulary/suggest`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/formulary`

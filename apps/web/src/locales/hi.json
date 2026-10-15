@@ -15751,5 +15751,32 @@
   },
   "agentDock": {
     "title": "डेस्क एजेंट"
+  },
+  "formularyRef": {
+    "heading": "दवा संदर्भ",
+    "none": "अभी कोई संदर्भ जानकारी नहीं",
+    "failed": "संदर्भ लोड नहीं हुआ।",
+    "componentsBanner": "इस संयोजन का कोई संदर्भ नहीं है। इसके घटक अलग दिखाए गए हैं; वे मिली हुई खुराक नहीं बताते।",
+    "missing": "अभी कोई संदर्भ जानकारी नहीं: {{names}}",
+    "title": "US FDA लेबल · {{product}} · {{date}}",
+    "noDate": "तारीख नहीं दी गई",
+    "caution": "केवल संदर्भ — अमेरिकी उत्पाद की ताकत, खुराक और स्वीकृत उपयोग अलग हो सकते हैं।",
+    "source": "स्रोत: {{source}}, प्राप्त {{date}}",
+    "section": {
+      "boxed_warning": "बॉक्स्ड चेतावनी",
+      "uses": "उपयोग",
+      "directions": "लेने का तरीका",
+      "contraindications": "कब न दें",
+      "warnings": "चेतावनियाँ",
+      "side_effects": "दुष्प्रभाव",
+      "interactions": "परस्पर क्रिया",
+      "pregnancy": "गर्भावस्था",
+      "lactation": "स्तनपान",
+      "children": "बच्चे",
+      "elderly": "बुज़ुर्ग",
+      "overdose": "ओवरडोज़",
+      "storage": "भंडारण",
+      "patient_information": "मरीज़ के लिए जानकारी"
+    }
   }
 }
