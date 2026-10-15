@@ -2019,6 +2019,7 @@
         "daybook": "Day book — any date",
         "gstr1": "Summary by GSTIN, SAC and rate",
         "unbilled": "Visits with no bill — any date",
+        "tele": "Tele-call bills that failed",
         "fees": "Fees — switch on or off",
         "prices": "Prices — OPD consultation"
       },
@@ -2034,6 +2035,7 @@
         "daybook": "was: Day book tab",
         "gstr1": "was: GSTR-1 tab",
         "unbilled": "was: Unbilled visits tab",
+        "tele": "new",
         "fees": "new: owner, 1 Oct",
         "prices": "new: owner, 5 Oct"
       },
@@ -15759,5 +15761,16 @@
   },
   "agentDock": {
     "title": "DESK AGENT"
+  },
+  "teleBills": {
+    "lead": "When the doctor said “Spoke to patient” and the consultation bill could not be raised, the visit waits here. Fix the cause, then retry; the doctor's next “Spoke” goes through.",
+    "loading": "Loading…",
+    "none": "No failed tele-call bills.",
+    "slot": "slot",
+    "tries_one": "{{count}} try",
+    "tries_other": "{{count}} tries",
+    "last": "last",
+    "retry": "Retry bill",
+    "billed": "Bill raised — waiting for the doctor"
   }
 }

@@ -90,12 +90,16 @@ export async function startTeleCall(db: Db, actor: Actor, encounterId: string, n
  *               list says now, higher or lower — settled in full from that advance.
  */
 export type TeleBill = "none" | "standing" | "issued";
-async function billSpokenTeleVisit(tx: Tx, enc: EncounterRow, now: Date): Promise<TeleBill> {
+/**
+ * #647 — exported for the billing office's retry (`tele-bill-failures.ts`), which raises the same
+ * invoice under the retrying person's name instead of the system's.
+ */
+export async function billSpokenTeleVisit(tx: Tx, enc: EncounterRow, now: Date, actor: Actor = TELE_BILL_ACTOR): Promise<TeleBill> {
   if (enc.appointmentId === null) return "none";
   const appt = (await tx.select().from(opdAppointments).where(eq(opdAppointments.id, enc.appointmentId)))[0];
   if (!appt || appt.advanceReceiptId === null || (appt.advanceQuotePaise ?? 0) <= 0) return "none";
   if ((await standingInvoiceFor(tx, enc.id)) !== null) return "standing";
-  const issued = await issuePrepaidConsultInvoice(tx, TELE_BILL_ACTOR, {
+  const issued = await issuePrepaidConsultInvoice(tx, actor, {
     draftId: `tele-${enc.id}`, patientId: enc.patientId, encounterId: enc.id, visitType: enc.visitType,
     receiptId: appt.advanceReceiptId, quotePaise: appt.advanceQuotePaise ?? 0,
   }, now);
@@ -129,7 +133,7 @@ async function recordSpoke(db: Db, actor: Actor, encounterId: string, now: Date)
     const enc = await getEncounter(db, encounterId);
     if (enc) {
       await withTx(db, (tx) => appendEvent(tx, teleBillFailed.make({
-        actor: TELE_BILL_ACTOR, patientId: enc.patientId, encounterId, correlationId: enc.workflowInstanceId,
+        actor: TELE_BILL_ACTOR, patientId: enc.patientId, encounterId, correlationId: enc.workflowInstanceId, occurredAt: now,
         payload: { encounterId, appointmentId: enc.appointmentId, code },
       }))).catch(() => undefined);
     }
