@@ -3,6 +3,7 @@ import * as dischargeIntents from "./intents-discharge";
 import * as medIntents from "./intents-meds";
 import * as roundIntents from "./intents-rounds";
 import * as wardIntents from "./intents-ward";
+import * as tpaIntents from "./intents-tpa";
 import { IpdIdempotencyKeySchema } from "./common";
 
 export * from "./common";
@@ -37,6 +38,13 @@ export * from "./copilot";
 export * from "./counter";
 // 2026-10-14 — the ward narcotic register: per-ward running balance, the shift-change count, its exceptions.
 export * from "./narcotic";
+// #604 (decision 0075) — the TPA desk: stages, document kinds, deduction reasons, the board, the panel, the routes.
+export {
+  IPD_CLAIM_DEDUCTION_REASONS, IPD_CLAIM_REQUIRED_DOCUMENTS, IPD_TPA_DOCUMENT_KINDS, IPD_TPA_STAGES, IpdClaimDeductionReasonSchema,
+  IpdClaimDeductionSchema, IpdTpaDocumentKindSchema, IpdTpaStageSchema,
+} from "./intents-tpa";
+export type { IpdClaimDeduction, IpdClaimDeductionReason, IpdTpaDocumentKind, IpdTpaStage } from "./intents-tpa";
+export * from "./tpa";
 export { IPD_ALLERGY_OVERRIDE_REASONS, IPD_COUNTER_MAX_LINES, IPD_DRUG_ROUTES, IPD_REISSUE_REASONS, IPD_VERBAL_EMERGENCIES, IpdDrugOrderSchema } from "./intents-meds";
 export type { IpdDrugOrder } from "./intents-meds";
 export { IPD_ROUND_SOURCES, IpdRoundSoapSchema } from "./intents-ward";
@@ -119,6 +127,15 @@ export const IPD_INTENTS = {
   record_lama: dischargeIntents.recordLama,
   record_abscond: dischargeIntents.recordAbscond,
   record_death: dischargeIntents.recordDeath,
+  // #604 (decision 0075, DECIDED) — the TPA desk: payer queries, documents, scheme packages, the claim after the bill.
+  record_tpa_query: tpaIntents.recordTpaQuery,
+  answer_tpa_query: tpaIntents.answerTpaQuery,
+  attach_tpa_document: tpaIntents.attachTpaDocument,
+  select_scheme_package: tpaIntents.selectSchemePackage,
+  remove_scheme_package: tpaIntents.removeSchemePackage,
+  submit_claim: tpaIntents.submitClaim,
+  record_claim_settlement: tpaIntents.recordClaimSettlement,
+  record_claim_rejection: tpaIntents.recordClaimRejection,
 } as const;
 
 export type IpdIntentName = keyof typeof IPD_INTENTS;

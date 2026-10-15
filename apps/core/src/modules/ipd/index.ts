@@ -246,3 +246,11 @@ export {
   dailyTotalsSendingOf, dailyTotalsWords, ipdAttendantRecipient, ipdTemplateRegistrations, readAttendantMessages, readDailyTotalsStrip,
   recordAttendantConsent, stopAttendantMessages,
 } from "./attendant-messages";
+// #604 (decision 0075) — the TPA desk: payer queries, documents, scheme packages and their importer, the claim after the
+// bill (submit, settle, reject), the board, the per-admission panel and the `ipd.tpa_due` card.
+export {
+  answerTpaQuery, attachTpaDocument, packageAmountOf, recordClaimRejection, recordClaimSettlement, recordTpaQuery, removeSchemePackage,
+  selectSchemePackage, submitClaim,
+} from "./tpa";
+export { importSchemePackages, packageShares, parseSchemePackagesCsv, searchSchemePackages } from "./tpa-packages";
+export { authStateOf, readTpaBoard, readTpaPanel, tpaDueCard } from "./tpa-read";

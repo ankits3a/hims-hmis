@@ -163,6 +163,17 @@ const IPD_SAMPLE_INPUTS: Record<IpdIntentName, Record<string, unknown>> = {
   },
   record_abscond: { idempotencyKey: key(38), admissionId: id(3), lastSeenAt: AT, searchDone: true, policeIntimationRef: "FAKE-PI-1" },
   record_death: { idempotencyKey: key(39), admissionId: id(3), diedAt: AT, certifiedBy: USER },
+  record_tpa_query: { idempotencyKey: key(81), admissionId: id(3), stage: "preauth", raisedAt: AT, queryText: "synthetic query" },
+  answer_tpa_query: { idempotencyKey: key(82), queryId: id(41), responseText: "synthetic answer" },
+  attach_tpa_document: { idempotencyKey: key(83), admissionId: id(3), stage: "claim", kind: "final_bill", patientDocumentId: id(42), claimId: id(43) },
+  select_scheme_package: { idempotencyKey: key(84), admissionId: id(3), packageId: id(44) },
+  remove_scheme_package: { idempotencyKey: key(85), admissionId: id(3), selectionId: id(45), reason: "synthetic wrong package" },
+  submit_claim: { idempotencyKey: key(86), claimId: id(43), submittedAt: AT, claimRef: "FAKE-CL-1", claimedPaise: 1_000_000 },
+  record_claim_settlement: {
+    idempotencyKey: key(87), claimId: id(43), netPaidPaise: 800_000, tdsPaise: 100_000,
+    deductions: [{ reason: "non_payable_items", amountPaise: 100_000 }], utrRef: "FAKE-UTR-1", settledOn: "2030-01-31",
+  },
+  record_claim_rejection: { idempotencyKey: key(88), claimId: id(43), rejectedAt: AT, reason: "synthetic exclusion" },
 };
 
 describe("IPD intents — one contract per §0B intent", () => {
