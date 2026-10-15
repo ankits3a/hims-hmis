@@ -1057,7 +1057,7 @@
     "cancel": "Cancel",
     "barAbandon": "Closing token {{tokenNo}} — say why, then confirm.",
     "barTransfer": "Moving from {{from}} — choose the doctor, tick consent, confirm.",
-    "barPickDoctor": "Choose a doctor on the board — their line opens on the right.",
+    "barPickDoctor": "Choose a doctor on the board — their line opens in the list.",
     "barInHand": "Token {{tokenNo}} in hand — choose what happens to them.",
     "barPickToken": "Pick a token from the list to act on it."
   },

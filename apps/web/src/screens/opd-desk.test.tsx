@@ -180,6 +180,23 @@ describe("OpdDesk", () => {
    * in a bill-first hospital, have already paid. The transfer control that re-seats them — with the
    * consent E2 requires — is on this same screen.
    */
+  /*
+    Browser walk 2026-10-15 (#855): at 390 px the line sits behind the header's List button, not "on the
+    right", so the bar's hint must name the list without a direction that is only true on a wide screen.
+  */
+  it("#855: before a doctor is chosen, the bar's hint names the list and no screen side", async () => {
+    stubFetch({
+      "GET /api/opd/departments": { items: DEPARTMENTS },
+      "GET /api/opd/rooms": { items: ROOMS },
+      [DEPT_Q]: deptQueue(),
+    });
+    renderWithProviders(<OpdDesk />);
+    await pickDepartment(userEvent.setup());
+    const hint = await screen.findByText(/Choose a doctor on the board/);
+    expect(hint.textContent).toBe("Choose a doctor on the board — their line opens in the list.");
+    expect(hint.textContent).not.toMatch(/right|left/i);
+  });
+
   it("FD-7 T8: a doctor on leave says SO, with the number still waiting, and is not merely 'not scheduled'", async () => {
     const onLeaveWithQueue = { ...SUMMARY[0]!, doctor: doctor("doc-9", "Dr Away"), sessionId: "sess-9", waitingCount: 3, scheduledToday: false, onLeaveToday: true };
     const onLeaveEmpty = { ...SUMMARY[3]!, doctor: doctor("doc-8", "Dr Gone"), waitingCount: 0, scheduledToday: false, onLeaveToday: true };
