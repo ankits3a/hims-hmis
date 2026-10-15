@@ -20,6 +20,7 @@ import { ConsultPrices } from "./billing-office/consult-prices";
 import { IpdRateCard } from "./billing-office/ipd-rate-card";
 import { TariffVersionActions } from "./billing-office/tariff-version-actions";
 import { IpdSwitchOn } from "./billing-office/ipd-switch-on";
+import { TeleBills } from "./billing-office/tele-bills";
 import { useAuth } from "../lib/auth";
 import { dayWords, fetchBillingNeeds } from "../lib/billing-office-api";
 import { istClock, istDateLabel } from "./desk-one/model";
@@ -1403,6 +1404,8 @@ export function BillingOffice(): React.ReactElement {
               ? <><FeeSwitches /><UpiPayee /></>
               : page.key === "prices"
               ? <><ConsultPrices /><IpdRateCard /><TariffVersionActions /><IpdSwitchOn /></>
+              : page.key === "tele"
+              ? <TeleBills />
               : <OfficePages key={page.key} page={page.key} onHand={(id) => go("today", undefined, id)} onGo={(v, pg) => go(v, pg)} />)}
           </div>
         </div>
