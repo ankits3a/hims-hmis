@@ -31,6 +31,13 @@ import type { Db, Tx } from "../../kernel/db/client";
  */
 export const DOCUMENT_MAX_BYTES = 1_500_000;
 const ALLOWED_MIME = new Map([["image/jpeg", "jpg"], ["image/png", "png"], ["application/pdf", "pdf"]]);
+/** The leading bytes each allowed type must carry (JPEG SOI, PNG signature, PDF header within the first KB). */
+function startsLike(mimeType: string, bytes: Buffer): boolean {
+  if (mimeType === "image/jpeg") return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  if (mimeType === "image/png") return bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  if (mimeType === "application/pdf") return bytes.subarray(0, 1024).includes(Buffer.from("%PDF-"));
+  return false;
+}
 export const DOCUMENT_KINDS = ["outside_prescription", "consult_prescription", "outside_report"] as const;
 export type DocumentKind = (typeof DOCUMENT_KINDS)[number];
 
@@ -118,6 +125,11 @@ export async function captureDocument(
       "document_too_large",
       `document exceeds ${String(DOCUMENT_MAX_BYTES)} bytes — the client must downscale`,
     );
+  }
+  /* The declared type is a claim; the bytes are the fact. A file whose leading bytes are not its type's signature is
+     refused, so a page served back to a browser is always the image or PDF it says it is. */
+  if (!startsLike(input.mimeType, input.bytes)) {
+    throw new PatientError("unsupported_document_type", `the file's contents are not a ${ext.toUpperCase()} — capture it again`);
   }
   if (!DOCUMENT_KINDS.includes(input.kind)) {
     throw new PatientError("unsupported_document_type", `unknown document kind ${input.kind}`);
