@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { Button } from "@/components/ui/button";
 import { api } from "../../lib/api";
 import { billingErrorMessage, billingPatientLabel } from "../../lib/billing-api";
 import { fmtIst, fmtPaise } from "../../lib/format";
@@ -68,7 +69,7 @@ export function TeleBills(): React.ReactElement {
               {r.state === "billed" ? (
                 <span data-testid={`tele-bill-state-${r.encounterId}`} style={{ fontSize: 12.5, fontWeight: 600, color: "var(--green)" }}>{t("teleBills.billed")}</span>
               ) : (
-                <button type="button" className="pri" disabled={retry.isPending} onClick={() => { retry.mutate(r.encounterId); }}>{t("teleBills.retry")}</button>
+                <Button size="sm" disabled={retry.isPending} onClick={() => { retry.mutate(r.encounterId); }}>{t("teleBills.retry")}</Button>
               )}
               {rowError?.id === r.encounterId && <p role="alert" className="text-sm text-red-600" style={{ flexBasis: "100%", margin: 0 }}>{rowError.message}</p>}
             </li>
