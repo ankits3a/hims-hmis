@@ -7,7 +7,7 @@ export { patientsManifest } from "./manifest";
 export { PatientsModule } from "./patients.module";
 export { getPatient, registerPatient, resolvePatientId, updatePatient } from "./registration";
 /** ER lane 4 (#811) — the one writer of the `brought_dead` death kind (no MCCD); the ER's `record_brought_dead` calls it. */
-export { recordBroughtDeadDeath } from "./brought-dead";
+export { recordBroughtDeadDeath, recordErDeath } from "./brought-dead";
 /**
  * ABDM S0 — the ONE writer of `abha_verification_status = 'verified'`. Reached by no route; the abdm
  * module's S1 handlers call it after ABDM has answered. The counter paths refuse `verified`.

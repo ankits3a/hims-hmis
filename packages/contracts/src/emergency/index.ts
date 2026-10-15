@@ -2,6 +2,7 @@ import * as arrival from "./intents";
 import * as triageIntents from "./triage";
 import * as care from "./care";
 import * as mlc from "./mlc";
+import * as dispo from "./dispo";
 
 export * from "./common";
 export * from "./refusals";
@@ -17,6 +18,8 @@ export {
   ErMlcDeskSchema, ErMlcDetailSchema, ErMlcRowSchema,
 } from "./mlc";
 export type { ErMlcCategory, ErMlcClock, ErMlcDesk, ErMlcDetail, ErMlcRow } from "./mlc";
+export { ER_DISPOSITIONS, ER_REFERRAL_REASONS, ER_RETURN_IF_SIGNS } from "./dispo";
+export type { ErDisposition, ErReturnIfSign } from "./dispo";
 export { ErBandPayloadSchema } from "./intents";
 export type { ErBandPayload } from "./intents";
 
@@ -56,6 +59,15 @@ export const ER_INTENTS = {
   countersign_mlc: mlc.countersignMlc,
   record_belongings: mlc.recordBelongings,
   hand_over_evidence: mlc.handOverEvidence,
+  // lane 5 (#812)
+  decide_disposition: dispo.decideDisposition,
+  discharge_from_er: dispo.dischargeFromEr,
+  hand_to_unit: dispo.handToUnit,
+  refer_out: dispo.referOut,
+  record_lama: dispo.recordLama,
+  record_lwbs: dispo.recordLwbs,
+  record_abscond: dispo.recordAbscond,
+  record_er_death: dispo.recordErDeath,
 } as const;
 export type ErIntentName = keyof typeof ER_INTENTS;
 export const ER_INTENT_NAMES = Object.keys(ER_INTENTS) as ErIntentName[];

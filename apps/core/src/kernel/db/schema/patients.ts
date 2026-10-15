@@ -226,7 +226,8 @@ export const patients = pgTable(
       .on(sql`lower(btrim(${t.abhaAddress}))`)
       .where(sql`${t.abhaAddress} is not null and btrim(${t.abhaAddress}) <> '' and ${t.status} = 'active'`),
     // ER lane 4 (#811): the one death kind, and only on a deceased record.
-    check("patients_death_kind_ck", sql`${t.deathKind} is null or (${t.deathKind} = 'brought_dead' and ${t.deceasedAt} is not null)`),
+    // ER lane 5 (#812): `medico_legal` — a death in the ER under an MLC already intimated to the police, no MCCD yet.
+    check("patients_death_kind_ck", sql`${t.deathKind} is null or (${t.deathKind} in ('brought_dead', 'medico_legal') and ${t.deceasedAt} is not null)`),
   ],
 );
 

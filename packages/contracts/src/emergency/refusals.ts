@@ -69,6 +69,18 @@ export const ER_REFUSALS = {
   seal_not_collected: { rule: "Evidence is stored or handed over only after it is collected under this seal.", fix: "Record collection" },
   seal_already_handed_over: { rule: "The evidence under this seal is already handed over.", fix: "Open MLC desk" },
 
+  /* ═══ Disposition (lane 5) ═══ */
+  disposition_already_decided: { rule: "A disposition is decided once per episode.", fix: "Open episode" },
+  disposition_mismatch: { rule: "This act does not match the disposition already decided.", fix: "Open episode" },
+  disposition_reason_needed: { rule: "A disposition is decided with a reason.", fix: "Add reason" },
+  admission_refused: { rule: "The admission could not be raised.", fix: "Call the admission desk" },
+  already_boarding: { rule: "The patient is already waiting for an inpatient bed.", fix: "Open episode" },
+  referral_not_for_money: { rule: "A patient is never referred out because they cannot pay.", fix: "Pick the clinical reason" },
+  lama_witness_needed: { rule: "A refusal to sign is witnessed by a second staff member.", fix: "Name a witness" },
+  last_seen_before_arrival: { rule: "The last-seen time cannot be before the arrival.", fix: "Fix the time" },
+  died_before_arrival: { rule: "A death after arrival cannot be before the arrival; a body brought dead is recorded at the desk.", fix: "Fix the time" },
+  mccd_required: { rule: "A death is recorded with its MCCD number, unless it is a medico-legal case already intimated to the police.", fix: "Enter MCCD number" },
+
   /* ═══ The band ═══ */
   printer_offline: { rule: "The chosen printer is not answering.", fix: "Pick nearest printer" },
   band_already_printed: { rule: "A band is already printed for this episode.", fix: "Reprint band" },

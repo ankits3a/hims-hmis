@@ -17,6 +17,8 @@ export const ER_TILE_CHIPS = [
   "unidentified", "returned_24h", "name_alert", "police", "ambulance", "paper",
   // lane 3 (#810): an open critical result, a specialty call waiting, stabilised (a clinical word only).
   "critical", "call_waiting", "stabilised",
+  // lane 5 (#812): admitted, waiting on the ER board for the inpatient bed.
+  "boarding",
 ] as const;
 export type ErTileChip = (typeof ER_TILE_CHIPS)[number];
 
@@ -82,6 +84,9 @@ export const ErBoardSchema = z.object({
     expected: z.number().int().nonnegative(),
     arrivalsToday: z.number().int().nonnegative(),
     broughtDeadToday: z.number().int().nonnegative(),
+    /** Lane 5 (#812): admitted patients waiting in the ER for an inpatient bed, and left-without-being-seen today. */
+    boarding: z.number().int().nonnegative(),
+    lwbsToday: z.number().int().nonnegative(),
     /** Emergency-class beds in the bed registry: free (kernel `available`) of the total in service. */
     bays: z.object({ free: z.number().int().nonnegative(), total: z.number().int().nonnegative() }),
   }),
