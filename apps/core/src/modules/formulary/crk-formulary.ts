@@ -42,6 +42,8 @@ export type CrkField = (typeof CRK_FIELDS)[number];
 export const CRK_SOURCE_KINDS = ["openfda", "nhs", "ema", "medsafe", "livertox", "lactmed", "pubchem", "cdsco", "nfi"] as const;
 
 export const CRK_REREVIEW_MONTHS = 12;
+/** #884 — a signed entry may be renewed from this many days before its due date (and any time after it). */
+export const CRK_RENEWAL_WINDOW_DAYS = 30;
 const STATEMENT_MAX = 600;
 const SOURCE_TEXT_MAX = 24_000;
 
@@ -208,6 +210,22 @@ async function isHighAlert(tx: Tx, genericId: string, flagged: boolean): Promise
   return rows.length > 0;
 }
 
+/** The IST calendar date of an instant. */
+export function istDate(at: Date): string {
+  return new Date(at.getTime() + 5.5 * 3600_000).toISOString().slice(0, 10);
+}
+
+const addDays = (iso: string, days: number): string => {
+  const d = new Date(`${iso}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+};
+
+/** #884 — past its due date. Still SHOWN (hiding it would hide safety text); labelled "review overdue". */
+export function isOverdue(reviewDueOn: string | null, today: string): boolean {
+  return reviewDueOn !== null && reviewDueOn < today;
+}
+
 function dueOn(from: Date): string {
   const d = new Date(from.getTime() + 5.5 * 3600_000);
   d.setUTCMonth(d.getUTCMonth() + CRK_REREVIEW_MONTHS);
@@ -235,7 +253,7 @@ export async function signCrkEntry(
   if (designation === "") throw new FormularyError("invalid_crk", "a signature needs the reviewer's designation");
   const row = (await tx.select().from(formularyMonographs).where(eq(formularyMonographs.id, monographId)).for("update"))[0];
   if (row === undefined) throw new FormularyError("unknown_monograph", `no monograph ${monographId}`);
-  if (row.status === "reviewed") throw new FormularyError("monograph_already_reviewed", "this entry is already signed; an edit makes it a draft again");
+  if (row.status === "reviewed") return renewCrkEntry(tx, actor, row, designation, input, now);
   const edited = input.crk === undefined ? null : validateCrkEntry(input.crk);
   const entry = edited ?? row.crk;
   if (entry === null) throw new FormularyError("monograph_needs_signature", "this monograph has no CRK entry to sign");
@@ -276,32 +294,93 @@ export async function signCrkEntry(
     id: newId(), monographId, version, kind, signedBy: actor.id, designation, signedAt: now, crk: entry,
   });
   await appendEvent(tx, monographSigned.make({
-    payload: { monographId, genericId: row.genericId, kind, version, designation, highAlert },
+    payload: { monographId, genericId: row.genericId, kind, version, designation, highAlert, renewal: false },
     actor, correlationId: monographId,
   }));
   return { status: kind === "first" ? "awaiting_second" : "reviewed", version };
 }
 
+/**
+ * ═══ #884 — THE 12-MONTH RENEWAL: A REVIEWER RE-AFFIRMS THE TEXT AS SIGNED ═══
+ *
+ * Open from `CRK_RENEWAL_WINDOW_DAYS` before the due date, and any time after it. The text does not change
+ * (an edit is a draft, saved through `saveCrkEntry`), so the entry STAYS READ throughout: `status` never
+ * leaves `reviewed`. A renewal is a new signature (name, designation, date) kept in
+ * `formulary_monograph_signatures` with the text it re-affirmed, a `monograph.signed` event with
+ * `renewal: true`, and a due date 12 months from the renewal.
+ *
+ * High-alert (the flag, or any stocked item flagged — read again now) takes two different signers again: the
+ * first waits on `first_signed_*` while the entry stays shown; the second completes it.
+ */
+async function renewCrkEntry(
+  tx: Tx, actor: Actor, row: typeof formularyMonographs.$inferSelect, designation: string,
+  input: { crk?: CrkEntry; highAlert?: boolean }, now: Date,
+): Promise<SignResult> {
+  if (input.crk !== undefined) throw new FormularyError("invalid_crk", "a renewal re-affirms the entry as signed; save an edit as a draft and sign it");
+  if (row.crk === null) throw new FormularyError("monograph_needs_signature", "this monograph has no CRK entry to renew");
+  const today = istDate(now);
+  if (row.reviewDueOn !== null && today < addDays(row.reviewDueOn, -CRK_RENEWAL_WINDOW_DAYS)) {
+    throw new FormularyError("monograph_already_reviewed", `this entry is signed until ${row.reviewDueOn}; renewal opens ${String(CRK_RENEWAL_WINDOW_DAYS)} days before`);
+  }
+  const flagged = row.highAlert || input.highAlert === true;
+  const highAlert = await isHighAlert(tx, row.genericId, flagged);
+  let kind: "renewal" | "renewal_first" | "renewal_second";
+  if (!highAlert) kind = "renewal";
+  else if (row.firstSignedBy === null) kind = "renewal_first";
+  else {
+    if (row.firstSignedBy === actor.id) throw new FormularyError("monograph_same_actor", "a high-alert renewal needs a second signature from a different reviewer");
+    kind = "renewal_second";
+  }
+  const version = kind === "renewal_first" ? row.version : row.version + 1;
+  if (kind === "renewal_first") {
+    await tx.update(formularyMonographs).set({
+      highAlert: flagged, firstSignedBy: actor.id, firstSignedAt: now, firstSignerDesignation: designation,
+    }).where(eq(formularyMonographs.id, row.id));
+  } else if (kind === "renewal") {
+    await tx.update(formularyMonographs).set({
+      highAlert: flagged, reviewedBy: actor.id, reviewedAt: now, reviewerDesignation: designation,
+      secondReviewedBy: null, secondReviewedAt: null, secondReviewerDesignation: null, reviewDueOn: dueOn(now), version,
+    }).where(eq(formularyMonographs.id, row.id));
+  } else {
+    await tx.update(formularyMonographs).set({
+      reviewedBy: row.firstSignedBy, reviewedAt: row.firstSignedAt, reviewerDesignation: row.firstSignerDesignation,
+      secondReviewedBy: actor.id, secondReviewedAt: now, secondReviewerDesignation: designation,
+      firstSignedBy: null, firstSignedAt: null, firstSignerDesignation: null, reviewDueOn: dueOn(now), version,
+    }).where(eq(formularyMonographs.id, row.id));
+  }
+  await tx.insert(formularyMonographSignatures).values({
+    id: newId(), monographId: row.id, version, kind, signedBy: actor.id, designation, signedAt: now, crk: row.crk,
+  });
+  await appendEvent(tx, monographSigned.make({
+    payload: { monographId: row.id, genericId: row.genericId, kind, version, designation, highAlert, renewal: true },
+    actor, correlationId: row.id,
+  }));
+  return { status: kind === "renewal_first" ? "awaiting_second" : "reviewed", version };
+}
+
 export type CrkWorklist = {
-  counts: { none: number; draft: number; awaitingSecond: number; signed: number; dueForReview: number };
+  /** `dueForReview`: signed, renewal window open, not yet past due. `overdue`: past its due date (still shown). */
+  counts: { none: number; draft: number; awaitingSecond: number; signed: number; dueForReview: number; overdue: number };
   /** What the model has cost so far (#618: measured on the first 20 drafts), over entries it drafted. */
   drafting: { drafted: number; inputTokens: number; outputTokens: number };
-  items: { monographId: string; genericSctid: string; name: string; state: "draft" | "awaiting_second" | "due"; draftedModel: string | null; updatedAt: Date }[];
+  items: { monographId: string; genericSctid: string; name: string; state: "draft" | "awaiting_second" | "due" | "overdue"; draftedModel: string | null; updatedAt: Date }[];
 };
 
 /** The reviewers' worklist: what waits for a signature, what waits for a second, what is due again. */
 export async function crkWorklist(db: Db, today: string, limit = 50): Promise<CrkWorklist> {
+  const windowEnd = addDays(today, CRK_RENEWAL_WINDOW_DAYS);
   const [c] = (await db.execute(sql`
     select
       count(*) filter (where status = 'draft' and first_signed_by is null)::int as draft,
-      count(*) filter (where status = 'draft' and first_signed_by is not null)::int as "awaitingSecond",
+      count(*) filter (where first_signed_by is not null)::int as "awaitingSecond",
       count(*) filter (where status = 'reviewed')::int as signed,
-      count(*) filter (where status = 'reviewed' and review_due_on <= ${today})::int as "dueForReview",
+      count(*) filter (where status = 'reviewed' and first_signed_by is null and review_due_on >= ${today} and review_due_on <= ${windowEnd})::int as "dueForReview",
+      count(*) filter (where status = 'reviewed' and first_signed_by is null and review_due_on < ${today})::int as overdue,
       count(*) filter (where drafted_model is not null)::int as drafted,
       coalesce(sum((draft_usage->>'inputTokens')::int), 0)::int as "inputTokens",
       coalesce(sum((draft_usage->>'outputTokens')::int), 0)::int as "outputTokens"
     from formulary_monographs where crk is not null
-  `)).rows as { draft: number; awaitingSecond: number; signed: number; dueForReview: number; drafted: number; inputTokens: number; outputTokens: number }[];
+  `)).rows as { draft: number; awaitingSecond: number; signed: number; dueForReview: number; overdue: number; drafted: number; inputTokens: number; outputTokens: number }[];
   const [n] = (await db.execute(sql`
     select count(*)::int as none from formulary_generics g
      where exists (select 1 from formulary_medicines m join items i on i.formulary_medicine_id = m.id where m.generic_sctid = g.sctid)
@@ -313,15 +392,15 @@ export async function crkWorklist(db: Db, today: string, limit = 50): Promise<Cr
     draftedModel: formularyMonographs.draftedModel, updatedAt: formularyMonographs.updatedAt,
   }).from(formularyMonographs)
     .innerJoin(formularyGenerics, eq(formularyGenerics.id, formularyMonographs.genericId))
-    .where(and(sql`${formularyMonographs.crk} is not null`, sql`(${formularyMonographs.status} = 'draft' or ${formularyMonographs.reviewDueOn} <= ${today})`))
+    .where(and(sql`${formularyMonographs.crk} is not null`, sql`(${formularyMonographs.status} = 'draft' or ${formularyMonographs.firstSignedBy} is not null or ${formularyMonographs.reviewDueOn} <= ${windowEnd})`))
     .orderBy(asc(formularyMonographs.updatedAt))
     .limit(Math.min(Math.max(limit, 1), 200));
   return {
-    counts: { none: n?.none ?? 0, draft: c?.draft ?? 0, awaitingSecond: c?.awaitingSecond ?? 0, signed: c?.signed ?? 0, dueForReview: c?.dueForReview ?? 0 },
+    counts: { none: n?.none ?? 0, draft: c?.draft ?? 0, awaitingSecond: c?.awaitingSecond ?? 0, signed: c?.signed ?? 0, dueForReview: c?.dueForReview ?? 0, overdue: c?.overdue ?? 0 },
     drafting: { drafted: c?.drafted ?? 0, inputTokens: c?.inputTokens ?? 0, outputTokens: c?.outputTokens ?? 0 },
     items: rows.map((r) => ({
       monographId: r.monographId, genericSctid: r.genericSctid, name: r.name,
-      state: r.status === "reviewed" ? "due" : r.firstSignedBy !== null ? "awaiting_second" : "draft",
+      state: r.firstSignedBy !== null ? "awaiting_second" : r.status === "draft" ? "draft" : isOverdue(r.reviewDueOn, today) ? "overdue" : "due",
       draftedModel: r.draftedModel, updatedAt: r.updatedAt,
     })),
   };
@@ -347,16 +426,18 @@ export async function crkSigners(db: Db | Tx, ids: readonly string[]): Promise<M
 export type SignedCrk = {
   medicineId: string; genericSctid: string; name: string; crk: CrkEntry; highAlert: boolean;
   label: string; designation: string | null; secondSigner: string | null;
+  /** #884 — past its due date: still shown, labelled "review overdue". */
+  overdue: boolean;
 };
 
-export async function signedCrkForMedicines(db: Db | Tx, medicineIds: readonly string[]): Promise<SignedCrk[]> {
+export async function signedCrkForMedicines(db: Db | Tx, medicineIds: readonly string[], today: string = istDate(new Date())): Promise<SignedCrk[]> {
   const ids = [...new Set(medicineIds)];
   if (ids.length === 0) return [];
   const rows = await db.select({
     medicineId: formularyMedicines.id, genericSctid: formularyGenerics.sctid, name: formularyGenerics.name,
     crk: formularyMonographs.crk, highAlert: formularyMonographs.highAlert, reviewedBy: formularyMonographs.reviewedBy,
     reviewedAt: formularyMonographs.reviewedAt, designation: formularyMonographs.reviewerDesignation,
-    secondReviewedBy: formularyMonographs.secondReviewedBy,
+    secondReviewedBy: formularyMonographs.secondReviewedBy, reviewDueOn: formularyMonographs.reviewDueOn,
   }).from(formularyMedicines)
     .innerJoin(formularyGenerics, eq(formularyGenerics.sctid, formularyMedicines.genericSctid))
     .innerJoin(formularyMonographs, eq(formularyMonographs.genericId, formularyGenerics.id))
@@ -369,6 +450,7 @@ export async function signedCrkForMedicines(db: Db | Tx, medicineIds: readonly s
       medicineId: r.medicineId, genericSctid: r.genericSctid, name: r.name, crk: r.crk, highAlert: r.highAlert,
       label: crkLabel(names.get(r.reviewedBy) ?? r.reviewedBy, on), designation: r.designation,
       secondSigner: r.secondReviewedBy === null ? null : names.get(r.secondReviewedBy) ?? r.secondReviewedBy,
+      overdue: isOverdue(r.reviewDueOn, today),
     }];
   });
 }

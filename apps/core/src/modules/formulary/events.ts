@@ -176,6 +176,8 @@ export const monographCrkSaved = defineEvent("monograph.crk_saved", MODULE, z.ob
 
 /** #618 — a Pharmacology signature. `kind` `first` leaves a high-alert entry waiting for its second. */
 export const monographSigned = defineEvent("monograph.signed", MODULE, z.object({
-  monographId: id, genericId: id, kind: z.enum(["sole", "first", "second"]), version: z.number().int().min(0),
+  monographId: id, genericId: id, kind: z.enum(["sole", "first", "second", "renewal", "renewal_first", "renewal_second"]), version: z.number().int().min(0),
   designation: z.string().min(1), highAlert: z.boolean(),
+  /** #884 — a 12-month renewal of an unchanged signed entry. */
+  renewal: z.boolean(),
 }));

@@ -17133,7 +17133,7 @@
       "checkConstraints": {
         "formulary_monograph_signatures_kind_ck": {
           "name": "formulary_monograph_signatures_kind_ck",
-          "value": "\"formulary_monograph_signatures\".\"kind\" in ('sole', 'first', 'second')"
+          "value": "\"formulary_monograph_signatures\".\"kind\" in ('sole', 'first', 'second', 'renewal', 'renewal_first', 'renewal_second')"
         }
       },
       "isRLSEnabled": false
