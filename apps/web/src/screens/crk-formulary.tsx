@@ -6,7 +6,7 @@ import { CrkEntryView } from "../components/crk-entry";
 import { useAuth } from "../lib/auth";
 import { formularyErrorMessage } from "../lib/formulary-api";
 import {
-  CRK_FIELDS, CRK_SOURCE_KINDS, fetchCrkDraft, fetchCrkWorklist, saveCrkEntry, searchCrkGenerics, signCrkEntry,
+  CRK_FIELDS, CRK_RENEWAL_WINDOW_DAYS, CRK_SOURCE_KINDS, fetchCrkDraft, fetchCrkWorklist, saveCrkEntry, searchCrkGenerics, signCrkEntry,
 } from "../lib/crk-api";
 import type { CrkDraftRow, CrkEntry, CrkField, CrkSourceKind, CrkState } from "../lib/crk-api";
 
@@ -49,6 +49,7 @@ export function CrkFormularyScreen(): React.ReactElement {
 
 const STATE_TONE: Record<CrkState, string> = {
   draft: "bg-amber-100 text-amber-900", awaiting_second: "bg-sky-100 text-sky-900", due: "bg-neutral-200 text-neutral-800",
+  overdue: "bg-red-100 text-red-900",
 };
 
 function Worklist({ onOpen }: { onOpen: (o: Opened) => void }): React.ReactElement {
@@ -66,7 +67,7 @@ function Worklist({ onOpen }: { onOpen: (o: Opened) => void }): React.ReactEleme
   if (list.isError) return <p role="alert" className="text-sm text-red-700">{formularyErrorMessage(list.error)}</p>;
   if (w === undefined) return <p className="text-sm text-neutral-600">…</p>;
   const counts: [keyof typeof w.counts, number][] = [
-    ["draft", w.counts.draft], ["awaitingSecond", w.counts.awaitingSecond], ["dueForReview", w.counts.dueForReview],
+    ["draft", w.counts.draft], ["awaitingSecond", w.counts.awaitingSecond], ["overdue", w.counts.overdue], ["dueForReview", w.counts.dueForReview],
     ["signed", w.counts.signed], ["none", w.counts.none],
   ];
   return (
@@ -123,9 +124,23 @@ function Worklist({ onOpen }: { onOpen: (o: Opened) => void }): React.ReactEleme
 
 const EMPTY_ENTRY: CrkEntry = { sources: [], fields: {}, combinationNote: null };
 
-function statusOf(row: CrkDraftRow | null, today: string): "none" | "draft" | "awaiting" | "reviewed" | "due" {
+type Status = "none" | "draft" | "awaiting" | "reviewed" | "due" | "overdue" | "renewalAwaiting";
+
+const addDays = (iso: string, days: number): string => {
+  const d = new Date(`${iso}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+};
+
+/** #884 — a signed entry is `due` inside its renewal window and `overdue` after its due date; it stays shown in both. */
+function statusOf(row: CrkDraftRow | null, today: string): Status {
   if (row === null || row.crk === null) return "none";
-  if (row.status === "reviewed") return row.reviewDueOn !== null && row.reviewDueOn <= today ? "due" : "reviewed";
+  if (row.status === "reviewed") {
+    if (row.firstSignedBy !== null) return "renewalAwaiting";
+    if (row.reviewDueOn === null) return "reviewed";
+    if (row.reviewDueOn < today) return "overdue";
+    return today >= addDays(row.reviewDueOn, -CRK_RENEWAL_WINDOW_DAYS) ? "due" : "reviewed";
+  }
   return row.firstSignedBy === null ? "draft" : "awaiting";
 }
 
@@ -164,12 +179,13 @@ function SignPanel({ opened, onBack }: { opened: Opened; onBack: () => void }): 
 
   const sign = async (): Promise<void> => {
     if (row == null) return;
+    const renewing = row.status === "reviewed";
     setBusy(true); setError(null); setSaid(null);
     try {
       keepDesignation(designation.trim());
       const res = await signCrkEntry(row.id, { designation: designation.trim(), ...(highAlert ? { highAlert: true } : {}) });
       await refresh();
-      setSaid(res.status === "reviewed" ? t("crk.signed") : t("crk.awaitingSecond"));
+      setSaid(renewing ? (res.status === "reviewed" ? t("crk.renewed") : t("crk.awaitingSecond")) : res.status === "reviewed" ? t("crk.signed") : t("crk.awaitingSecond"));
     } catch (e) { setError(formularyErrorMessage(e)); } finally { setBusy(false); }
   };
 
@@ -177,8 +193,11 @@ function SignPanel({ opened, onBack }: { opened: Opened; onBack: () => void }): 
   if (row === undefined) return <p className="text-sm text-neutral-600">…</p>;
   const status = statusOf(row, istToday());
   const iSignedFirst = row !== null && row.firstSignedBy !== null && actor !== null && row.firstSignedBy === actor.id;
-  const canSign = can("formulary.monograph.review") && row !== null && row.crk !== null && row.status === "draft" && editing === null;
-  const tone = status === "reviewed" ? "text-emerald-800" : status === "none" ? "text-neutral-600" : "text-amber-800";
+  /* #884 — a renewal re-signs the unchanged text; the entry stays shown while it is renewed. */
+  const renewal = status === "due" || status === "overdue" || status === "renewalAwaiting";
+  const canSign = can("formulary.monograph.review") && row !== null && row.crk !== null && (row.status === "draft" || renewal) && editing === null;
+  const waitingSecond = status === "awaiting" || status === "renewalAwaiting";
+  const tone = status === "reviewed" ? "text-emerald-800" : status === "none" ? "text-neutral-600" : status === "overdue" ? "text-red-800" : "text-amber-800";
 
   return (
     <div className="space-y-3" data-testid="crk-sign">
@@ -188,7 +207,7 @@ function SignPanel({ opened, onBack }: { opened: Opened; onBack: () => void }): 
       </div>
       <p data-testid="crk-status" className={`truncate text-sm ${tone}`}>
         {t(`crk.status.${status}`)}
-        {status === "awaiting" && row?.firstSignerDesignation != null && <span className="text-neutral-600"> · {t("crk.firstBy", { who: row.firstSignerDesignation })}</span>}
+        {waitingSecond && row?.firstSignerDesignation != null && <span className="text-neutral-600"> · {t("crk.firstBy", { who: row.firstSignerDesignation })}</span>}
       </p>
 
       {editing !== null
@@ -210,24 +229,25 @@ function SignPanel({ opened, onBack }: { opened: Opened; onBack: () => void }): 
 
       {canSign && (
         <div className="space-y-2 rounded border p-3" data-testid="crk-sign-form">
-          {status === "awaiting" && (
+          {waitingSecond && (
             <p data-testid="crk-second-prompt" className="text-sm text-sky-900">
-              {iSignedFirst ? t("crk.youSignedFirst") : t("crk.status.awaiting")}
+              {iSignedFirst ? t("crk.youSignedFirst") : t(`crk.status.${status}`)}
             </p>
           )}
+          {renewal && !waitingSecond && <p data-testid="crk-renew-hint" className="text-xs text-neutral-600">{t("crk.renewHint")}</p>}
           <label className="flex flex-col gap-1 text-sm">
             {t("crk.designation")}
             <input data-testid="crk-designation" className="rounded border px-2 py-1" placeholder={t("crk.designationPlaceholder")}
               value={designation} onChange={(e) => setDesignation(e.target.value)} />
           </label>
-          {status === "draft" && !row.highAlert && (
+          {(status === "draft" || status === "due" || status === "overdue") && !row.highAlert && (
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" data-testid="crk-high-alert" checked={highAlert} onChange={(e) => setHighAlert(e.target.checked)} />
               {t("crk.highAlert")}
             </label>
           )}
           <Button type="button" size="sm" data-testid="crk-sign-button" disabled={busy || designation.trim() === "" || iSignedFirst} onClick={() => void sign()}>
-            {status === "awaiting" ? t("crk.signSecond") : t("crk.sign")}
+            {status === "awaiting" ? t("crk.signSecond") : status === "renewalAwaiting" ? t("crk.renewSecond") : renewal ? t("crk.renew") : t("crk.sign")}
           </Button>
         </div>
       )}

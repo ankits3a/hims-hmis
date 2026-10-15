@@ -88,6 +88,8 @@ export function CrkInfoButton({ entry, testId }: { entry: SignedCrk | undefined;
           <span style={{ display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {labelParts(entry.label)[0]}
             {entry.highAlert ? <span data-testid={`${testId}-high-alert`} className="pill rd" style={{ marginLeft: 6 }}>{t("crk.highAlertTag")}</span> : null}
+            {/* #884 — past its due date it is still shown: hiding it would hide safety text. */}
+            {entry.overdue ? <span data-testid={`${testId}-overdue`} className="pill" style={{ marginLeft: 6, background: "rgba(221,143,28,.14)", color: "#8a5a10" }}>{t("crk.overdueTag")}</span> : null}
           </span>
           <span style={{ display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {labelParts(entry.label)[1]}{entry.secondSigner === null ? null : <span> · {entry.secondSigner}</span>}

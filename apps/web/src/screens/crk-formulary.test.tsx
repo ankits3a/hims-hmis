@@ -38,11 +38,12 @@ const ENTRY = {
   combinationNote: null,
 };
 const WORKLIST = {
-  counts: { none: 280, draft: 1, awaitingSecond: 1, signed: 3, dueForReview: 0 },
+  counts: { none: 280, draft: 1, awaitingSecond: 1, signed: 3, dueForReview: 0, overdue: 1 },
   drafting: { drafted: 4, inputTokens: 48000, outputTokens: 9000 },
   items: [
     { monographId: "mono-1", genericSctid: SCTID, name: "Acyclovir 800 mg oral tablet", state: "draft", draftedModel: "gpt-x", updatedAt: "2026-10-15T05:00:00.000Z" },
     { monographId: "mono-2", genericSctid: "999", name: "Insulin regular", state: "awaiting_second", draftedModel: null, updatedAt: "2026-10-15T05:00:00.000Z" },
+    { monographId: "mono-3", genericSctid: "777", name: "Amoxicillin 500 mg oral capsule", state: "overdue", draftedModel: null, updatedAt: "2026-10-15T05:00:00.000Z" },
   ],
   drafter: { configured: false },
 };
@@ -66,6 +67,9 @@ describe("the CRK formulary reviewer screen (#882)", () => {
     expect(screen.getByTestId("crk-no-model")).toBeInTheDocument();
     expect(within(screen.getByTestId(`crk-item-${SCTID}`)).getByText("To sign")).toBeInTheDocument();
     expect(within(screen.getByTestId("crk-item-999")).getByText("Needs 2nd signer")).toBeInTheDocument();
+    // #884 — past its due date: counted and listed as overdue
+    expect(screen.getByTestId("crk-count-overdue")).toHaveTextContent("1 Overdue");
+    expect(within(screen.getByTestId("crk-item-777")).getByText("Review overdue")).toBeInTheDocument();
   });
 
   it("a pharmacist (formulary.manage, no signature) sees the worklist without the cost", async () => {
@@ -146,9 +150,54 @@ describe("the CRK formulary reviewer screen (#882)", () => {
   });
 });
 
+describe("#884 — the 12-month renewal on the sign screen", () => {
+  beforeEach(() => { setToken("t"); grants = ["formulary.read", "formulary.monograph.review"]; localStorage.setItem("hmis.crk.designation", "Professor, Pharmacology"); });
+  afterEach(() => { vi.unstubAllGlobals(); localStorage.clear(); });
+  const SIGNED_ROW = { ...ROW, id: "mono-3", status: "reviewed", reviewedBy: "u-other", reviewedAt: "2025-01-01T06:00:00.000Z", reviewerDesignation: "Professor", reviewDueOn: "2026-01-01", version: 1 };
+  const open = async (row: Record<string, unknown>, onSign?: () => Reply): Promise<void> => {
+    mockRoutes({
+      "GET /api/formulary/monographs/crk-worklist": { status: 200, body: WORKLIST },
+      "GET /api/formulary/monographs/777/draft": { status: 200, body: row },
+      ...(onSign === undefined ? {} : { "POST /api/formulary/monographs/mono-3/sign": onSign }),
+    });
+    renderWithProviders(<CrkFormularyScreen />);
+    await userEvent.click(await screen.findByTestId("crk-item-777"));
+  };
+
+  it("an overdue entry says so, stays signed, and is renewed unchanged with the reviewer's designation", async () => {
+    await open(SIGNED_ROW, () => ({ status: 200, body: { status: "reviewed", version: 2 } }));
+    expect(await screen.findByTestId("crk-status")).toHaveTextContent("Signed · review overdue");
+    const button = screen.getByTestId("crk-sign-button");
+    expect(button).toHaveTextContent("Renew unchanged");
+    await userEvent.click(button);
+    await waitFor(() => { expect(sent("POST", "/formulary/monographs/mono-3/sign")).toEqual([{ designation: "Professor, Pharmacology" }]); });
+    expect(await screen.findByTestId("crk-said")).toHaveTextContent("Renewed");
+  });
+
+  it("a signed entry not yet in its renewal window offers no renewal", async () => {
+    await open({ ...SIGNED_ROW, reviewDueOn: "2999-01-01" });
+    expect(await screen.findByTestId("crk-status")).toHaveTextContent("Signed · shown");
+    expect(screen.queryByTestId("crk-sign-form")).toBeNull();
+  });
+
+  it("a high-alert renewal waiting for its second: another reviewer renews as 2nd; the first cannot", async () => {
+    await open({ ...SIGNED_ROW, highAlert: true, firstSignedBy: "u-other", firstSignerDesignation: "Assoc. Professor" });
+    expect(await screen.findByTestId("crk-status")).toHaveTextContent("Renewal · needs 2nd");
+    expect(screen.getByTestId("crk-sign-button")).toHaveTextContent("Renew as 2nd");
+    expect(screen.getByTestId("crk-sign-button")).toBeEnabled();
+  });
+
+  it("the first renewal signer of a high-alert entry cannot renew it again", async () => {
+    await open({ ...SIGNED_ROW, highAlert: true, firstSignedBy: "u-me", firstSignerDesignation: "Professor" });
+    expect(await screen.findByTestId("crk-second-prompt")).toHaveTextContent("You signed first. Another reviewer signs.");
+    expect(screen.getByTestId("crk-sign-button")).toBeDisabled();
+  });
+});
+
 const SIGNED: SignedCrk = {
   medicineId: "m-zov", genericSctid: SCTID, name: "Acyclovir 800 mg oral tablet", crk: ENTRY as SignedCrk["crk"], highAlert: true,
   label: "CRK Medical College formulary · reviewed by Dr A Sharma, 2026-10-15", designation: "Professor, Pharmacology", secondSigner: "Dr B Rao",
+  overdue: false,
 };
 
 function DoctorLine({ ids }: { ids: string[] }): React.ReactElement {
@@ -172,10 +221,20 @@ describe("the doctor's Info chip (#882)", () => {
     expect(label).toHaveTextContent("reviewed by Dr A Sharma, 2026-10-15 · Dr B Rao");
     expect(label).toHaveAttribute("title", "Professor, Pharmacology");
     expect(within(modal).getByTestId("info-m-zov-high-alert")).toBeInTheDocument();
+    expect(within(modal).queryByTestId("info-m-zov-overdue")).toBeNull();
     expect(within(modal).getByTestId("info-m-zov-entry-uses")).toHaveTextContent("Treats shingles and cold sores.");
     expect(modal.textContent ?? "").not.toMatch(/₹|token|cost|price/i);
     const asked = vi.mocked(fetch).mock.calls.map(([input]) => String(input)).filter((u) => u.includes("/formulary/medicines/crk"));
     expect(asked).toEqual(["/api/formulary/medicines/crk?ids=m-none,m-zov"]);
+  });
+
+  it("#884: an overdue entry is still shown to the doctor, labelled 'Review overdue'", async () => {
+    mockRoutes({ "GET /api/formulary/medicines/crk": { status: 200, body: { items: [{ ...SIGNED, overdue: true }] } } });
+    renderWithProviders(<DoctorLine ids={["m-zov"]} />);
+    await userEvent.click(await screen.findByTestId("info-m-zov"));
+    const modal = await screen.findByTestId("info-m-zov-modal");
+    expect(within(modal).getByTestId("info-m-zov-overdue")).toHaveTextContent("Review overdue");
+    expect(within(modal).getByTestId("info-m-zov-entry-uses")).toHaveTextContent("Treats shingles and cold sores.");
   });
 
   it("a model-written statement renders as text, never as markup", async () => {

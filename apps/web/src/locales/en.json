@@ -15783,7 +15783,8 @@
       "draft": "To sign",
       "awaitingSecond": "Need 2nd",
       "signed": "Signed",
-      "dueForReview": "Due"
+      "dueForReview": "Due",
+      "overdue": "Overdue"
     },
     "cost": "{{n}} drafts · {{inTok}} in · {{outTok}} out tokens",
     "noModel": "No drafting model set",
@@ -15791,7 +15792,8 @@
     "state": {
       "draft": "To sign",
       "awaiting_second": "Needs 2nd signer",
-      "due": "Due for review"
+      "due": "Due for review",
+      "overdue": "Review overdue"
     },
     "byModel": "AI draft",
     "byHand": "By hand",
@@ -15799,6 +15801,8 @@
     "searchPlaceholder": "Medicine name — 2 letters",
     "back": "Back",
     "status": {
+      "renewalAwaiting": "Renewal · needs 2nd",
+      "overdue": "Signed · review overdue",
       "none": "No entry yet",
       "draft": "Draft · not shown",
       "awaiting": "Signed once · needs 2nd",
@@ -15847,6 +15851,11 @@
     "info": "Info",
     "infoTitle": "{{name}}",
     "highAlertTag": "High-alert",
+    "renew": "Renew unchanged",
+    "renewSecond": "Renew as 2nd",
+    "renewed": "Renewed · due in 12 months",
+    "renewHint": "Re-signs the same text.",
+    "overdueTag": "Review overdue",
     "close": "Close"
   }
 }

@@ -19,9 +19,9 @@ export type CrkSource = { ref: string; kind: CrkSourceKind; title: string; url: 
 export type CrkStatement = { text: string; source: string };
 export type CrkEntry = { sources: CrkSource[]; fields: Partial<Record<CrkField, CrkStatement[]>>; combinationNote: string | null };
 
-export type CrkState = "draft" | "awaiting_second" | "due";
+export type CrkState = "draft" | "awaiting_second" | "due" | "overdue";
 export type CrkWorklist = {
-  counts: { none: number; draft: number; awaitingSecond: number; signed: number; dueForReview: number };
+  counts: { none: number; draft: number; awaitingSecond: number; signed: number; dueForReview: number; overdue: number };
   drafting: { drafted: number; inputTokens: number; outputTokens: number };
   items: { monographId: string; genericSctid: string; name: string; state: CrkState; draftedModel: string | null; updatedAt: string }[];
   drafter: { configured: boolean };
@@ -41,6 +41,8 @@ export type CrkDraftRow = {
 export type SignedCrk = {
   medicineId: string; genericSctid: string; name: string; crk: CrkEntry; highAlert: boolean;
   label: string; designation: string | null; secondSigner: string | null;
+  /** #884 — past its due date: still shown, labelled "Review overdue". */
+  overdue: boolean;
 };
 
 export type CrkGenericHit = { id: string; sctid: string; name: string; doseForm: string; monographStatus: "none" | "draft" | "reviewed" };
@@ -58,6 +60,9 @@ export async function fetchCrkDraft(sctid: string): Promise<CrkDraftRow | null> 
 
 export const searchCrkGenerics = async (q: string): Promise<CrkGenericHit[]> =>
   (await api<{ items: CrkGenericHit[] }>("GET", `/formulary/monographs/generics?q=${encodeURIComponent(q)}`)).items;
+
+/** #884 — a reviewed entry may be renewed (re-signed unchanged) from this many days before its due date. */
+export const CRK_RENEWAL_WINDOW_DAYS = 30;
 
 /** A person's save of the entry. The server makes it a draft again whatever it was. */
 export const saveCrkEntry = (sctid: string, entry: CrkEntry): Promise<{ monographId: string }> =>
