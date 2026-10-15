@@ -78,11 +78,25 @@ Source: `apps/core/src/modules/emergency/`
   - `linkIdentity(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"link_identity">>`
 - `manifest.ts`
   - `emergencyManifest: ModuleManifest`
+- `mlc.ts`
+  - `ER_MLC_ACTOR: Actor`
+  - `ER_MLC_INTIMATION_CLIMB_MIN`
+  - `addMlcAddendum(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"add_mlc_addendum">>`
+  - `countersignMlc(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"countersign_mlc">>`
+  - `handOverEvidence(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"hand_over_evidence">>`
+  - `mlcOfEpisode(db: Db | Tx, episodeId: string): Promise<MlcRow | undefined>`
+  - `openMlc(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"open_mlc">>`
+  - `readMlc(db: Db, actor: Actor, mlcId: string, opts: Opts = {}): Promise<ErMlcDetail>`
+  - `readMlcDesk(db: Db, actor: Actor, opts: Opts = {}): Promise<ErMlcDesk>`
+  - `recordBelongings(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_belongings">>`
+  - `recordPoliceIntimation(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_police_intimation">>`
+  - `sweepErMlcClocks(db: Db, now: Date): Promise<{ tasks: number; climbs: number; breaches: number }>`
 - `names.ts`
   - `ER_ARRIVAL_REGISTER`
   - `ER_BOARD_VIEW`
   - `ER_CARE`
   - `ER_IDENTITY_LINK`
+  - `ER_MLC`
   - `ER_TRIAGE`
 - `realtime.ts`
   - `ER_REALTIME_NAMES: string[]`
@@ -90,6 +104,8 @@ Source: `apps/core/src/modules/emergency/`
   - `erTopicRouter: TopicRouter`
   - `erTopicsFor(e: Pick<TailedEvent, "name">): string[]`
 - `task-kinds.ts`
+  - `ER_MLC_INTIMATION_TASK`
+  - `ER_MLC_SKILL`
   - `ER_RETRIAGE_TASK`
   - `ER_TRIAGE_DUE_TASK`
   - `ER_TRIAGE_SKILL`
@@ -112,12 +128,12 @@ Source: `apps/core/src/modules/emergency/`
 
 ## Tables (`kernel/db/schema/emergency.ts`)
 
-`er_bands`, `er_charge_lines`, `er_consents`, `er_critical_alerts`, `er_doses`, `er_episodes`, `er_med_issues`, `er_med_returns`, `er_notes`, `er_pre_alerts`, `er_procedures`, `er_specialty_calls`, `er_triage_entries`
+`er_bands`, `er_charge_lines`, `er_consents`, `er_critical_alerts`, `er_doses`, `er_episodes`, `er_med_issues`, `er_med_returns`, `er_mlc_addenda`, `er_mlc_custody`, `er_mlc_intimations`, `er_mlc_obligations`, `er_mlcs`, `er_notes`, `er_pre_alerts`, `er_procedures`, `er_specialty_calls`, `er_triage_entries`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (36)
+## HTTP routes (44)
 
-- `emergency.controller.ts` — 36: `/er/arrivals`, `/er/bands`, `/er/bays`, `/er/board`, `/er/calls`, `/er/care`, `/er/consents`, `/er/desk`, `/er/doctor`, `/er/doctors`, `/er/episodes`, `/er/identity`, `/er/items`, `/er/meds`, `/er/notes`, `/er/orders`, `/er/patients`, `/er/pre-alerts`, `/er/procedures`, `/er/stabilised`, `/er/triage`, `/er/triage-doctors`, `/er/vitals`
+- `emergency.controller.ts` — 44: `/er/arrivals`, `/er/bands`, `/er/bays`, `/er/board`, `/er/calls`, `/er/care`, `/er/consents`, `/er/desk`, `/er/doctor`, `/er/doctors`, `/er/episodes`, `/er/identity`, `/er/items`, `/er/meds`, `/er/mlc`, `/er/notes`, `/er/orders`, `/er/patients`, `/er/pre-alerts`, `/er/procedures`, `/er/stabilised`, `/er/triage`, `/er/triage-doctors`, `/er/vitals`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/emergency`

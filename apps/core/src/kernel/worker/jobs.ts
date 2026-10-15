@@ -35,7 +35,7 @@ import { sweepOverdueQa } from "../../modules/aerb";
 import { runAliasJob, runFlowLearning } from "../../modules/opd";
 import { syncAttendance } from "../../modules/attendance";
 import { sweepTasks } from "../../modules/tasks";
-import { lapseErPreAlerts, sweepErCareClocks, sweepErTriageClocks } from "../../modules/emergency";
+import { lapseErPreAlerts, sweepErCareClocks, sweepErMlcClocks, sweepErTriageClocks } from "../../modules/emergency";
 import { lapseBedReservations, postNightlyIpdCharges, runIpdBillDeskNightly, sweepIpdEmar, sweepIpdNursing, sweepIpdRoundsClock } from "../../modules/ipd";
 import { buildDueLists } from "../../modules/diet";
 import { sweepBmwStorage } from "../../modules/bmw";
@@ -756,6 +756,8 @@ export function registerAllJobs(
       try { await sweepErTriageClocks(db, now); } catch (e) { erLog.error(`sweepErTriageClocks failed: ${e instanceof Error ? e.message : String(e)}`); }
       // ER lane 3 (#810): criticals to the ER doctor of record (and the climb), unanswered specialty calls, unsigned verbal orders.
       try { await sweepErCareClocks(db, now); } catch (e) { erLog.error(`sweepErCareClocks failed: ${e instanceof Error ? e.message : String(e)}`); }
+      // ER lane 4 (#811): the MLC clocks — the police intimation task (1 h) and its climb, the countersign breach (24 h).
+      try { await sweepErMlcClocks(db, now); } catch (e) { erLog.error(`sweepErMlcClocks failed: ${e instanceof Error ? e.message : String(e)}`); }
     },
   });
   /*

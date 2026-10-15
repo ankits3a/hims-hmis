@@ -1759,6 +1759,15 @@ consent (emergency treatment without consent needs a second doctor), specialty c
 results to the ER doctor of record, and "stabilised". No ER clinical screen shows money.
 `er.care` is held by `doctor` and `er_nurse`.
 
+**Emergency MLC (ER lane 4, issue #811, decision 0076, built 2026-10-15, awaiting owner review).** The MLC desk at
+`/er/mlc`: the medico-legal case register (serial `MLC26-000123`), opened by the ER doctor or by rule at arrival (an
+unidentified patient, a body brought dead, a patient the police bring); the police intimation due within 1 hour (a
+task, then a climb) and the faculty countersign due within 24 hours (an obligation, still owed after a death); the
+belongings list and the evidence chain of custody, each signed by two staff; corrections only as addenda (the record is
+never edited or deleted). A body brought dead is marked deceased with the `brought_dead` death kind (no MCCD) and goes to
+the mortuary register, released only on police clearance. The MLC never delays treatment.
+`er.mlc` is held by `doctor`, `er_nurse`, `front_office`, `front_office_supervisor`, `duty_manager` and `medical_superintendent`.
+
 **Copilot halt switch and spend cap (plan E0.3/E0.5, decision 0064, built 2026-10-11, awaiting owner review).**
 `copilot.halt.set` (owner, admin, duty_manager, quality_manager) pauses the copilot by scope — read, act,
 draft or global; `copilot.halt.clear` (owner, duty_manager) clears read, act and draft; and

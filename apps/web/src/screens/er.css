@@ -223,6 +223,15 @@
 .erb-chip.call_waiting { background: var(--gold-soft); border-color: var(--gold-line); color: #7a4e0c; }
 .erb-chip.stabilised { background: var(--green-soft); border-color: var(--green-line); color: var(--green); }
 
+/* ── ER lane 4 (#811): the MLC desk ── */
+.erm-list .erm-row { align-items: flex-start; }
+.erm-row.on { border-color: var(--ink); box-shadow: 0 0 0 2px var(--line); }
+.erm-row .erb-chips { margin-top: 4px; }
+.erm-row .erb-clock { font-size: 13px; }
+.erm-detail { display: flex; flex-direction: column; gap: 10px; }
+.erm-form textarea { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font: inherit; font-size: 15px; color: var(--ink); background: var(--card); width: 100%; resize: vertical; }
+.erm-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
 @media (max-width: 1500px) {
   .erb-stat .val b { font-size: 24px; }
   .erb-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
@@ -256,4 +265,5 @@
   .erd > *:not(.erd-cols), .erd-list, .erd-tabs, .erd-from, .erd-band-wrap .erd-row { display: none !important; }
   .erx { height: auto; overflow: visible; padding: 0; background: #fff; }
   .erd-new { border: 0; padding: 0; }
+  .erm-form, .erm-detail button { display: none !important; }
 }

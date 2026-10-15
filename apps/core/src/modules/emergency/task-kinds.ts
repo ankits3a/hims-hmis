@@ -26,3 +26,20 @@ defineTaskKind({
   acceptWithinMin: 2, doneWithinMin: 5, escalateTo: "er_nurse",
   proofNeeded: "none", verifyRequired: false, ladderMin: [0],
 });
+
+/**
+ * ER lane 4 (#811) — an MLC's police intimation not recorded by its 1-hour target (spec §3.7) becomes a TASK for the
+ * people who write it (the ER desk and the casualty nurse), stat, due at the target; 30 minutes past the target it climbs
+ * once through the roster ladder (`mlc_intimation`, fallback the duty manager). Recording the intimation cancels it.
+ */
+export const ER_MLC_INTIMATION_TASK = "er_mlc_intimation";
+export const ER_MLC_SKILL = "er_mlc";
+
+defineSkill(ER_MLC_SKILL, ["front_office", "er_nurse"]);
+defineTaskKind({
+  kind: ER_MLC_INTIMATION_TASK, label: "MLC police intimation due", skill: ER_MLC_SKILL,
+  // ER review (2026-10-15): the task's own rung is the casualty nurses'; the duty manager hears ONCE, 30 min later,
+  // from the MLC climb (`sweepErMlcClocks`) — never twice, never at +0.
+  acceptWithinMin: 5, doneWithinMin: 30, escalateTo: "er_nurse",
+  proofNeeded: "none", verifyRequired: false, ladderMin: [0],
+});

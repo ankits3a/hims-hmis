@@ -171,7 +171,8 @@
     "erDesk": "ER डेस्क",
     "erBoard": "ER बोर्ड",
     "erTriage": "ER ट्राइएज",
-    "erPatient": "ER मरीज़"
+    "erPatient": "ER मरीज़",
+    "erMlc": "MLC डेस्क"
   },
   "palette": {
     "title": "खोज",
@@ -19379,6 +19380,42 @@
       "already_stabilised": {
         "rule": "पहले से स्थिर दर्ज।",
         "fix": "एपिसोड खोलें"
+      },
+      "mlc_not_found": {
+        "rule": "इस id का कोई MLC नहीं।",
+        "fix": "MLC डेस्क खोलें"
+      },
+      "mlc_already_open": {
+        "rule": "इस एपिसोड का MLC पहले से है।",
+        "fix": "परिशिष्ट जोड़ें"
+      },
+      "intimation_recorded": {
+        "rule": "पुलिस सूचना पहले से दर्ज।",
+        "fix": "परिशिष्ट जोड़ें"
+      },
+      "mlc_countersigned": {
+        "rule": "प्रति-हस्ताक्षर पहले से।",
+        "fix": "MLC डेस्क खोलें"
+      },
+      "countersign_own_mlc": {
+        "rule": "दूसरे डॉक्टर प्रति-हस्ताक्षर करें।",
+        "fix": "वरिष्ठ से कहें"
+      },
+      "intimation_before_arrival": {
+        "rule": "पुलिस सूचना आगमन से पहले की नहीं हो सकती।",
+        "fix": "सही समय दर्ज करें"
+      },
+      "seal_already_collected": {
+        "rule": "यह सील पहले ही एकत्र है।",
+        "fix": "अगला चरण चुनें"
+      },
+      "seal_not_collected": {
+        "rule": "पहले इस सील से एकत्र करें।",
+        "fix": "एकत्र दर्ज करें"
+      },
+      "seal_already_handed_over": {
+        "rule": "यह सील पहले ही सौंपी गई।",
+        "fix": "MLC डेस्क खोलें"
       }
     },
     "esi": {
@@ -19651,7 +19688,8 @@
       "call": "विशेषज्ञ बुलाएँ",
       "procedure": "प्रक्रिया",
       "consent": "सहमति",
-      "stabilised": "स्थिर"
+      "stabilised": "स्थिर",
+      "mlc": "MLC"
     },
     "meds": "दवाएँ",
     "calls": "विशेषज्ञ कॉल",
@@ -19764,6 +19802,133 @@
         "urgent": "जल्दी",
         "routine": "सामान्य"
       }
+    },
+    "mlc": {
+      "open": "MLC खोलें",
+      "opened": "MLC {{no}} खुला",
+      "openedLate": "MLC {{no}} खुला (देर से)"
     }
+  },
+  "erMlc": {
+    "title": "MLC डेस्क",
+    "owed": "बाकी",
+    "recent": "पिछले 7 दिन",
+    "noneOwed": "कुछ बाकी नहीं",
+    "case": "केस",
+    "pick": "एक केस चुनें।",
+    "print": "MLC प्रति छापें",
+    "late": "देर से खुला",
+    "byRule": "नियम से",
+    "openedAs": "{{cat}} के रूप में खुला",
+    "openedBy": "{{name}} ने खोला · {{time}}",
+    "mortuary": "शव मुर्दाघर रजिस्टर में — पुलिस अनुमति पर ही सौंपा जाएगा।",
+    "original": "जैसा खोला",
+    "noInformant": "सूचक दर्ज नहीं",
+    "addenda": "परिशिष्ट",
+    "refusedExam": "जाँच से इनकार",
+    "intimation": "पुलिस सूचना",
+    "countersign": "प्रति-हस्ताक्षर",
+    "recordedBy": "{{name}} ने दर्ज किया",
+    "intimated": "सूचना दर्ज",
+    "intimatedLate": "सूचना दर्ज (देर से)",
+    "countersignedBy": "{{name}} ने प्रति-हस्ताक्षर किए",
+    "countersigned": "प्रति-हस्ताक्षर हो गए",
+    "countersignNow": "प्रति-हस्ताक्षर करें",
+    "custody": "सामान और साक्ष्य",
+    "noCustody": "कुछ दर्ज नहीं",
+    "belongings": "सामान",
+    "signedBy": "{{a}} · गवाह {{b}}",
+    "station": "थाना",
+    "receiver": "अधिकारी",
+    "rank": "पद",
+    "gd": "GD संख्या",
+    "intimate": "सूचना दर्ज करें",
+    "items": "सामान (हर पंक्ति में एक)",
+    "itemsHint": "मोबाइल फ़ोन\nबटुआ",
+    "keptInLabel": "किसके पास",
+    "keptRef": "लॉकर संख्या या नाम",
+    "evidenceKind": "साक्ष्य",
+    "seal": "सील संख्या",
+    "description": "विवरण",
+    "saveBelongings": "सामान सहेजें",
+    "belongingsSaved": "सामान दर्ज",
+    "saveEvidence": "कड़ी सहेजें",
+    "linkSaved": "कड़ी #{{link}} दर्ज",
+    "addAddendum": "परिशिष्ट जोड़ें",
+    "addendumText": "परिशिष्ट",
+    "changeCategory": "श्रेणी",
+    "keepCategory": "श्रेणी वही रखें",
+    "saveAddendum": "परिशिष्ट सहेजें",
+    "addendumSaved": "परिशिष्ट सहेजा",
+    "informant": "सूचक",
+    "relation": "रिश्ता",
+    "words": "क्या हुआ (उनके शब्द)",
+    "injurySite": "चोट का स्थान",
+    "injuryKind": "प्रकार",
+    "addInjury": "चोट जोड़ें",
+    "clock": {
+      "done": "हो गया {{time}}",
+      "doneLate": "देर से हुआ {{time}}",
+      "dueIn": "{{minutes}} मिनट में",
+      "dueHours": "{{hours}} घंटे में",
+      "overdue": "{{minutes}} मिनट देर",
+      "overdueHours": "{{hours}} घंटे देर"
+    },
+    "mode": {
+      "written": "लिखित",
+      "phone_then_written": "फ़ोन, फिर लिखित",
+      "police_present": "पुलिस उपस्थित"
+    },
+    "keptIn": {
+      "locker": "लॉकर",
+      "relative": "परिजन",
+      "police": "पुलिस"
+    },
+    "action": {
+      "listed": "सूचीबद्ध",
+      "collected": "एकत्र",
+      "stored": "रखा गया",
+      "handed_over": "सौंपा गया"
+    },
+    "evidence": {
+      "clothes": "कपड़े",
+      "swab": "स्वाब",
+      "blood_sample": "रक्त नमूना",
+      "projectile": "गोली / छर्रा",
+      "weapon": "हथियार",
+      "viscera": "विसरा",
+      "other": "अन्य"
+    },
+    "injury": {
+      "abrasion": "खरोंच",
+      "laceration": "फटा घाव",
+      "contusion": "नील",
+      "incised": "कटा घाव",
+      "stab": "चाकू का घाव",
+      "burn": "जलन",
+      "fracture": "हड्डी टूटी",
+      "firearm": "गोली का घाव",
+      "bite": "काटने का घाव",
+      "ligature_mark": "फंदे का निशान",
+      "other": "अन्य"
+    },
+    "category": {
+      "assault": "मारपीट",
+      "road_accident": "सड़क दुर्घटना",
+      "burns": "जलना",
+      "acid_attack": "तेज़ाब हमला",
+      "poisoning": "ज़हर",
+      "hanging": "फाँसी",
+      "drowning": "डूबना",
+      "fall_from_height": "ऊँचाई से गिरना",
+      "bite_dispute": "काटना (विवाद)",
+      "unknown_unconscious": "अज्ञात / बेहोश",
+      "sexual_assault": "यौन हमला",
+      "brought_dead": "मृत लाया गया",
+      "death_within_24h_injury": "चोट के 24 घंटे में मृत्यु",
+      "police_brought": "पुलिस लाई",
+      "other": "अन्य"
+    },
+    "evidenceTab": "साक्ष्य"
   }
 }

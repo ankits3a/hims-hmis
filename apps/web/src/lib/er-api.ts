@@ -1,5 +1,7 @@
 import { ApiError, api } from "./api";
-import type { ErBay, ErBoard, ErCareView, ErDeskView, ErDoctorOption, ErEpisodeView, ErItemOption, ErPatientHit, ErRefusalBody } from "@hmis/contracts";
+import type {
+  ErBay, ErBoard, ErCareView, ErDeskView, ErDoctorOption, ErEpisodeView, ErItemOption, ErMlcDesk, ErMlcDetail, ErPatientHit, ErRefusalBody,
+} from "@hmis/contracts";
 
 /* ═══ ER lane 1 (#808) — `apps/core/src/modules/emergency/emergency.controller.ts`. The paths are the contract's
  * `ER_ROUTES` and the topic its `ER_BOARD_TOPIC`, copied: the web bundle imports the contract package for TYPES only. ═══ */
@@ -42,6 +44,14 @@ const ER_ROUTES = {
   calls: "/er/calls",
   answerCall: "/er/calls/answer",
   stabilised: "/er/stabilised",
+  // lane 4 (#811)
+  mlc: "/er/mlc",
+  mlcOpen: "/er/mlc/open",
+  mlcAddendum: "/er/mlc/addendum",
+  mlcIntimation: "/er/mlc/intimation",
+  mlcCountersign: "/er/mlc/countersign",
+  mlcBelongings: "/er/mlc/belongings",
+  mlcEvidence: "/er/mlc/evidence",
 } as const;
 export const ER_BOARD_TOPIC = "er:board";
 export const ER_WALL_TOPIC = "erwall:board";
@@ -155,3 +165,19 @@ export const consentApi = (body: Record<string, unknown>) => post<{ consentId: s
 export const callApi = (body: Record<string, unknown>) => post<{ callId: string; callees: { name: string }[] }>(ER_ROUTES.calls, body);
 export const answerCallApi = (callId: string, step: "answered" | "seen") => post<{ callId: string }>(ER_ROUTES.answerCall, { callId, step });
 export const stabilisedApi = (episodeId: string, note?: string) => post<{ stabilisedAt: string }>(ER_ROUTES.stabilised, { episodeId, ...(note ? { note } : {}) });
+
+/* ═══ lane 4 (#811) — the medico-legal case. The categories are the contract's `ER_MLC_CATEGORIES`, copied. ═══ */
+export const ER_MLC_CATEGORIES = [
+  "assault", "road_accident", "burns", "acid_attack", "poisoning", "hanging", "drowning", "fall_from_height", "bite_dispute",
+  "unknown_unconscious", "sexual_assault", "brought_dead", "death_within_24h_injury", "police_brought", "other",
+] as const;
+export const ER_INJURY_KINDS = ["abrasion", "laceration", "contusion", "incised", "stab", "burn", "fracture", "firearm", "bite", "ligature_mark", "other"] as const;
+export const ER_EVIDENCE_KINDS = ["clothes", "swab", "blood_sample", "projectile", "weapon", "viscera", "other"] as const;
+export const fetchMlcDesk = () => api<ErMlcDesk>("GET", ER_ROUTES.mlc);
+export const fetchMlc = (id: string) => api<ErMlcDetail>("GET", `${ER_ROUTES.mlc}/${encodeURIComponent(id)}`);
+export const openMlcApi = (body: Record<string, unknown>) => post<{ mlcId: string; mlcNo: string; late: boolean }>(ER_ROUTES.mlcOpen, body);
+export const mlcAddendumApi = (body: Record<string, unknown>) => post<{ addendumId: string }>(ER_ROUTES.mlcAddendum, body);
+export const mlcIntimationApi = (body: Record<string, unknown>) => post<{ withinTarget: boolean }>(ER_ROUTES.mlcIntimation, body);
+export const mlcCountersignApi = (mlcId: string) => post<{ withinTarget: boolean }>(ER_ROUTES.mlcCountersign, { mlcId });
+export const mlcBelongingsApi = (body: Record<string, unknown>) => post<{ custodyId: string }>(ER_ROUTES.mlcBelongings, body);
+export const mlcEvidenceApi = (body: Record<string, unknown>) => post<{ custodyId: string; link: number }>(ER_ROUTES.mlcEvidence, body);
