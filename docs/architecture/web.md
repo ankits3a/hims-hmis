@@ -37,6 +37,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/diet/ward` | `apps/web/src/screens/diet-ward` |
 | `/er/board` | `apps/web/src/screens/er-board` |
 | `/er/desk` | `apps/web/src/screens/er-desk` |
+| `/er/patient` | `apps/web/src/screens/er-patient` |
 | `/er/triage` | `apps/web/src/screens/er-triage` |
 | `/family` | `apps/web/src/screens/ipd-family` |
 | `/formulary/admin` | `(redirect)` |

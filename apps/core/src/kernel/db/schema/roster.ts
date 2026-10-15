@@ -823,6 +823,8 @@ export const ROSTER_ESCALATION_KINDS = [
   // ER lane 2 (#809) — an overdue ER re-triage climbs past the triage nurse to whoever is on as this target's position
   // (the ER charge nurse when the roster names one; the nursing supervisor's holders otherwise).
   "er_retriage",
+  // ER lane 3 (#810) — a specialty call unanswered 15 min, and a critical result unacknowledged by the ER doctor of record.
+  "er_call", "er_critical",
 ] as const;
 export type RosterEscalationKind = (typeof ROSTER_ESCALATION_KINDS)[number];
 
@@ -848,7 +850,7 @@ export const rosterEscalationTargets = pgTable(
     /** One answer per (kind, department). Two rows for one question is two answers at 02:14. */
     uniqueIndex("roster_escalation_targets_kind_dept_ux")
       .on(t.siteId, t.alertKind, sql`coalesce(${t.departmentId}, '')`),
-    check("roster_escalation_targets_kind_ck", sql`${t.alertKind} in ('escalation.triggered', 'notification.failed', 'ops.mode_changed', 'imaging.critical_overdue', 'imaging.report_unread', 'workflow.timer_rung', 'er_retriage')`),
+    check("roster_escalation_targets_kind_ck", sql`${t.alertKind} in ('escalation.triggered', 'notification.failed', 'ops.mode_changed', 'imaging.critical_overdue', 'imaging.report_unread', 'workflow.timer_rung', 'er_retriage', 'er_call', 'er_critical')`),
   ],
 );
 

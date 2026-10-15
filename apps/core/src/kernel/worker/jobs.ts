@@ -35,7 +35,7 @@ import { sweepOverdueQa } from "../../modules/aerb";
 import { runAliasJob, runFlowLearning } from "../../modules/opd";
 import { syncAttendance } from "../../modules/attendance";
 import { sweepTasks } from "../../modules/tasks";
-import { lapseErPreAlerts, sweepErTriageClocks } from "../../modules/emergency";
+import { lapseErPreAlerts, sweepErCareClocks, sweepErTriageClocks } from "../../modules/emergency";
 import { lapseBedReservations, postNightlyIpdCharges, runIpdBillDeskNightly, sweepIpdEmar, sweepIpdNursing, sweepIpdRoundsClock } from "../../modules/ipd";
 import { buildDueLists } from "../../modules/diet";
 import { sweepBmwStorage } from "../../modules/bmw";
@@ -754,6 +754,8 @@ export function registerAllJobs(
       try { await lapseErPreAlerts(db, now); } catch (e) { erLog.error(`lapseErPreAlerts failed: ${e instanceof Error ? e.message : String(e)}`); }
       // ER lane 2 (#809): the re-triage clock — one task per overdue re-triage, one climb 15 min later. Its own try.
       try { await sweepErTriageClocks(db, now); } catch (e) { erLog.error(`sweepErTriageClocks failed: ${e instanceof Error ? e.message : String(e)}`); }
+      // ER lane 3 (#810): criticals to the ER doctor of record (and the climb), unanswered specialty calls, unsigned verbal orders.
+      try { await sweepErCareClocks(db, now); } catch (e) { erLog.error(`sweepErCareClocks failed: ${e instanceof Error ? e.message : String(e)}`); }
     },
   });
   /*

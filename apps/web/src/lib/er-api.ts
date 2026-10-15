@@ -1,5 +1,5 @@
 import { ApiError, api } from "./api";
-import type { ErBay, ErBoard, ErDeskView, ErDoctorOption, ErEpisodeView, ErPatientHit, ErRefusalBody } from "@hmis/contracts";
+import type { ErBay, ErBoard, ErCareView, ErDeskView, ErDoctorOption, ErEpisodeView, ErItemOption, ErPatientHit, ErRefusalBody } from "@hmis/contracts";
 
 /* ═══ ER lane 1 (#808) — `apps/core/src/modules/emergency/emergency.controller.ts`. The paths are the contract's
  * `ER_ROUTES` and the topic its `ER_BOARD_TOPIC`, copied: the web bundle imports the contract package for TYPES only. ═══ */
@@ -27,6 +27,21 @@ const ER_ROUTES = {
   bays: "/er/bays",
   episode: "/er/episodes",
   triageDoctors: "/er/triage-doctors",
+  // lane 3 (#810)
+  care: "/er/care",
+  notes: "/er/notes",
+  cosign: "/er/notes/cosign",
+  orders: "/er/orders",
+  items: "/er/items",
+  issue: "/er/meds/issue",
+  dose: "/er/meds/dose",
+  returnMed: "/er/meds/return",
+  signVerbal: "/er/meds/sign-verbal",
+  procedures: "/er/procedures",
+  consents: "/er/consents",
+  calls: "/er/calls",
+  answerCall: "/er/calls/answer",
+  stabilised: "/er/stabilised",
 } as const;
 export const ER_BOARD_TOPIC = "er:board";
 export const ER_WALL_TOPIC = "erwall:board";
@@ -120,3 +135,23 @@ export const vitalsApi = (body: Record<string, unknown>) => api<{ worse: boolean
 export const placeInBayApi = (episodeId: string, bedId: string) => api<{ bayCode: string }>("POST", ER_ROUTES.placeInBay, { idempotencyKey: newKey(), episodeId, bedId });
 export const moveBayApi = (episodeId: string, bedId: string) => api<{ bayCode: string }>("POST", ER_ROUTES.moveBay, { idempotencyKey: newKey(), episodeId, bedId });
 export const assignDoctorApi = (episodeId: string, doctorId: string) => api<{ state: string }>("POST", ER_ROUTES.assignDoctor, { idempotencyKey: newKey(), episodeId, doctorId });
+
+/* ═══ lane 3 (#810) — care ═══ */
+export const ER_MED_ROUTES = ["iv", "im", "sc", "oral", "neb", "sl", "pr", "topical", "inhaled", "other"] as const;
+export const fetchErCare = (episodeId: string) => api<ErCareView>("GET", `${ER_ROUTES.care}/${encodeURIComponent(episodeId)}`);
+export const fetchErItems = (q: string) => api<ErItemOption[]>("GET", `${ER_ROUTES.items}?q=${encodeURIComponent(q)}`);
+const post = <T>(path: string, body: Record<string, unknown>) => api<T>("POST", path, { idempotencyKey: newKey(), ...body });
+export const noteApi = (body: Record<string, unknown>) => post<{ status: string }>(ER_ROUTES.notes, body);
+export const cosignApi = (noteId: string) => post<{ status: string }>(ER_ROUTES.cosign, { noteId });
+export type ErOrderOut = { labOrderId: string | null; imagingOrderId: string | null; skipped: { department: string; code: string; message: string }[]; duplicates: string[] };
+export const orderApi = (body: Record<string, unknown>) => post<ErOrderOut>(ER_ROUTES.orders, body);
+export const issueApi = (body: Record<string, unknown>) => post<{ issueId: string; highAlert: boolean; labelLines: string[] }>(ER_ROUTES.issue, body);
+export const doseApi = (body: Record<string, unknown>) => post<{ outcome: string }>(ER_ROUTES.dose, body);
+/** ER review 2 — a medicine not given: back to stock unopened, or wastage (a witness for high-alert / controlled). */
+export const returnMedApi = (body: Record<string, unknown>) => post<{ kind: "returned" | "wasted" }>(ER_ROUTES.returnMed, body);
+export const signVerbalApi = (issueId: string) => post<{ signedAt: string }>(ER_ROUTES.signVerbal, { issueId });
+export const procedureApi = (body: Record<string, unknown>) => post<{ procedureId: string }>(ER_ROUTES.procedures, body);
+export const consentApi = (body: Record<string, unknown>) => post<{ consentId: string }>(ER_ROUTES.consents, body);
+export const callApi = (body: Record<string, unknown>) => post<{ callId: string; callees: { name: string }[] }>(ER_ROUTES.calls, body);
+export const answerCallApi = (callId: string, step: "answered" | "seen") => post<{ callId: string }>(ER_ROUTES.answerCall, { callId, step });
+export const stabilisedApi = (episodeId: string, note?: string) => post<{ stabilisedAt: string }>(ER_ROUTES.stabilised, { episodeId, ...(note ? { note } : {}) });

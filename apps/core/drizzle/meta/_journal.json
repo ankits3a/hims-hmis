@@ -1611,6 +1611,13 @@
       "when": 1792049803932,
       "tag": "0229_er_triage",
       "breakpoints": true
+    },
+    {
+      "idx": 230,
+      "version": "7",
+      "when": 1792055449912,
+      "tag": "0230_er_care",
+      "breakpoints": true
     }
   ]
 }

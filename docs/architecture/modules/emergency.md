@@ -11,9 +11,9 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/emergency/`
 · Notes: [MAP.md](../../../apps/core/src/modules/emergency/MAP.md)
 
-- **Depends on modules:** `billing`, `ipd`, `patients`, `roster`, `tasks`
+- **Depends on modules:** `billing`, `formulary`, `ipd`, `lab`, `materials`, `ordering`, `patients`, `roster`, `tariff`, `tasks`
 - **Used by modules:** —
-- **Kernel used:** `alerts`, `approvals`, `auth`, `db`, `events`, `modules`, `printing`, `realtime`, `tokens`, `workflow`
+- **Kernel used:** `alerts`, `approvals`, `auth`, `db`, `episodes`, `events`, `modules`, `orders`, `printing`, `realtime`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
 
@@ -35,6 +35,36 @@ Source: `apps/core/src/modules/emergency/`
   - `readErDesk(db: Db, actor: Actor, opts: { now?: Date } = {}): Promise<ErDeskView>`
   - `readErEpisode(db: Db, actor: Actor, episodeId: string, opts: { now?: Date } = {}): Promise<ErEpisodeView>`
   - `searchErPatients(db: Db, actor: Actor, q: string, opts: { now?: Date } = {}): Promise<ErPatientHit[]>`
+- `care-read.ts`
+  - `listErItems(db: Db, actor: Actor, q: string): Promise<ErItemOption[]>`
+  - `readErCare(db: Db, actor: Actor, episodeId: string): Promise<ErCareView>`
+- `care.ts`
+  - `ER_CALL_CLIMB_MIN`
+  - `ER_CARE_ACTOR: Actor`
+  - `ER_CRITICAL_CLIMB_MIN`
+  - `ER_SATELLITE_STORE_CODE`
+  - `ER_VERBAL_SIGN_MIN`
+  - `answerCall(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"answer_call">>`
+  - `callSpecialty(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"call_specialty">>`
+  - `cosignErNote(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"cosign_er_note">>`
+  - `declareStabilised(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"declare_stabilised">>`
+  - `giveErDose(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"give_er_dose">>`
+  - `issueErMed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"issue_er_med">>`
+  - `placeErOrder(db: Db, actor: Actor, raw: unknown, opts: Opts & { orderKinds: readonly OrderKindDecl[] }): Promise<Output<"place_er_order">>`
+  - `recordConsent(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_consent">>`
+  - `recordErNote(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_er_note">>`
+  - `recordProcedure(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_procedure">>`
+  - `returnErMed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"return_er_med">>`
+  - `signErVerbalOrder(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"sign_er_verbal_order">>`
+  - `sweepErCareClocks(db: Db, now: Date): Promise<{ criticals: number; climbs: number; calls: number; verbal: number }>`
+- `charge-sink.ts`
+  - `ER_EPISODE_NO_RE`
+  - `ER_EPISODE_PREFIX`
+  - `erChargeLinesOf(db: Db | Tx, episodeIds: readonly string[])`
+  - `erChargeSink: EpisodeChargeSink`
+  - `postErChargeIn(tx: Tx, actor: Actor, line: { episodeId: string; source: "er.order" | "er.issue" | "er.procedure"; department?: string; orde…`
+  - `registerErChargeSink(): () => void`
+  - `registerErEncounterResolver(): () => void`
 - `emergency.module.ts`
   - `class EmergencyModule`
 - `errors.ts`
@@ -51,6 +81,7 @@ Source: `apps/core/src/modules/emergency/`
 - `names.ts`
   - `ER_ARRIVAL_REGISTER`
   - `ER_BOARD_VIEW`
+  - `ER_CARE`
   - `ER_IDENTITY_LINK`
   - `ER_TRIAGE`
 - `realtime.ts`
@@ -81,12 +112,12 @@ Source: `apps/core/src/modules/emergency/`
 
 ## Tables (`kernel/db/schema/emergency.ts`)
 
-`er_bands`, `er_episodes`, `er_pre_alerts`, `er_triage_entries`
+`er_bands`, `er_charge_lines`, `er_consents`, `er_critical_alerts`, `er_doses`, `er_episodes`, `er_med_issues`, `er_med_returns`, `er_notes`, `er_pre_alerts`, `er_procedures`, `er_specialty_calls`, `er_triage_entries`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (22)
+## HTTP routes (36)
 
-- `emergency.controller.ts` — 22: `/er/arrivals`, `/er/bands`, `/er/bays`, `/er/board`, `/er/desk`, `/er/doctor`, `/er/doctors`, `/er/episodes`, `/er/identity`, `/er/patients`, `/er/pre-alerts`, `/er/triage`, `/er/triage-doctors`, `/er/vitals`
+- `emergency.controller.ts` — 36: `/er/arrivals`, `/er/bands`, `/er/bays`, `/er/board`, `/er/calls`, `/er/care`, `/er/consents`, `/er/desk`, `/er/doctor`, `/er/doctors`, `/er/episodes`, `/er/identity`, `/er/items`, `/er/meds`, `/er/notes`, `/er/orders`, `/er/patients`, `/er/pre-alerts`, `/er/procedures`, `/er/stabilised`, `/er/triage`, `/er/triage-doctors`, `/er/vitals`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/emergency`

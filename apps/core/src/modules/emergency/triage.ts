@@ -287,8 +287,9 @@ export async function moveBay(db: Db, actor: Actor, raw: unknown, opts: Opts = {
 
 // ═══════════════════════════════════════════ the doctor ═══════════════════════════════════════════
 
-async function isActiveDoctor(tx: Tx, userId: string): Promise<boolean> {
-  const rows = await tx.select({ id: users.id }).from(users)
+/** An active holder of the `doctor` role (lane 3 reuses it for orders, consent, stabilised, co-sign). */
+export async function isActiveDoctor(tx: Db | Tx, userId: string): Promise<boolean> {
+  const rows = await (tx as Db).select({ id: users.id }).from(users)
     .innerJoin(roleAssignments, eq(roleAssignments.userId, users.id))
     .where(and(eq(users.id, userId), eq(users.active, true), eq(roleAssignments.roleKey, "doctor"))).limit(1);
   return rows.length > 0;
