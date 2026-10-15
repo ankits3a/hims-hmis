@@ -4,7 +4,7 @@ import { grantLabResultPermissions, runLabOrder, seedLabDeskBase } from "../../.
 import { labAnalytes, labResults } from "../../kernel/db/schema";
 import { LabError } from "./errors";
 import { getReport, publishReport } from "./reports";
-import { enterResult } from "./results";
+import { amendResult, enterResult } from "./results";
 import { verifyResult } from "./verify";
 import { verifyWorklist } from "./worklist";
 import type { LabDeskFixture } from "../../../test/helpers/lab";
@@ -97,4 +97,28 @@ describe("Full lab mode — antibiotic sensitivity table (#703)", () => {
     expect(line.ast).toEqual(CLEAN);
     expect(report.snapshot.panels[0]!.analytes.find((a) => a.analyteCode === "MIC_ORG")!.ast).toBeNull();
   });
+
+  /*
+    An AMENDMENT of a signed MIC_AST line writes a new row: it must not drop the table. Without a new table the
+    signed one is carried; with one, the new table is checked like an entry and its summary becomes the value.
+  */
+  it("amending a signed MIC_AST line keeps the table, or replaces it with a checked new one", async () => {
+    const run = await runLabOrder(db, fx, ["CS_URINE"], { at: AT, verify: false, skip: ["MIC_AST"] });
+    const ast = await enterResult(db, fx.bench.actor, {
+      orderItemId: run.itemIds[0]!, analyteId: await analyteId("MIC_AST"), value: "t", entryMode: "manual", ast: ROWS,
+    }, AT);
+    await verifyResult(db, fx.pathologist.actor, fx.decls, { resultId: ast.resultId }, AT);
+    const later = new Date(AT.getTime() + 60_000);
+    const kept = await amendResult(db, fx.pathologist.actor, { resultId: ast.resultId, value: "Resistant: Ampicillin, Ciprofloxacin · Sensitive: Nitrofurantoin, Meropenem" }, later);
+    const [k] = await db.select().from(labResults).where(eq(labResults.id, kept.resultId));
+    expect(k!.ast).toEqual(CLEAN);
+    const fixed = [{ antibiotic: "AMP", result: "S", mic: null }, { antibiotic: "MEM", result: "S", mic: "0.25" }];
+    const replaced = await amendResult(db, fx.pathologist.actor, { resultId: kept.resultId, value: "t", ast: fixed }, new Date(later.getTime() + 60_000));
+    const [r] = await db.select().from(labResults).where(eq(labResults.id, replaced.resultId));
+    expect(r!.ast).toEqual(fixed);
+    expect(r!.valueText).toBe("Sensitive: Ampicillin, Meropenem");
+    await expect(amendResult(db, fx.pathologist.actor, { resultId: replaced.resultId, value: "t", ast: [{ antibiotic: "AMP", result: "X", mic: null }] }, new Date(later.getTime() + 120_000)))
+      .rejects.toMatchObject({ code: "catalogue_invalid" });
+  });
 });
+

@@ -1450,6 +1450,11 @@ export type AmendResultInput = {
    * one since 17d T1; an amendment that did not would be the same control with a door beside it.
    */
   impossibleOverride?: { by: string };
+  /**
+   * #703 — a corrected antibiotic sensitivity table, on a signed MIC_AST line only. Absent: the signed table is
+   * carried onto the correction unchanged (a correction never drops it).
+   */
+  ast?: AstDraftRow[];
 };
 
 /**
@@ -1685,6 +1690,19 @@ async function amendResultInTx(
     impossibleOverriddenBy = override!.by;
   }
 
+  /** #703 — the sensitivity table survives a correction: carried as signed, or replaced by a checked new one. */
+  let ast: AstRow[] | null = prior.ast ?? null;
+  if (input.ast !== undefined) {
+    if (analyte.code !== AST_ANALYTE_CODE) {
+      throw new LabError("catalogue_invalid", `${analyte.code}: an antibiotic table belongs only on a culture's ${AST_ANALYTE_CODE} line`);
+    }
+    const clean = cleanAstRows(input.ast);
+    if (!clean.ok) throw new LabError("catalogue_invalid", astProblemText(clean.problem), { row: clean.problem.index });
+    if (clean.rows.length === 0) throw new LabError("catalogue_invalid", "the antibiotic table has no filled row");
+    ast = clean.rows;
+    input = { ...input, value: astSummary(ast) };
+  }
+
   const numeric = analyte.resultType === "numeric" ? parseNumeric(input.value, analyte.code) : null;
   if (numeric !== null && outsideAbsurdEnvelope(numeric, analyte)) {
     throw new LabError(
@@ -1715,6 +1733,7 @@ async function amendResultInTx(
     valueNumeric: numeric === null ? null : input.value.trim(),
     valueText: numeric === null && analyte.resultType !== "coded" ? input.value : null,
     valueCoded: numeric === null && analyte.resultType === "coded" ? input.value : null,
+    ast,
     unit: input.unit ?? prior.unit,
     /** The RANGE IS THE ONE IT WAS SIGNED AGAINST — the correction is to the value, not to the book. */
     flag,
