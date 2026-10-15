@@ -93,7 +93,7 @@ export async function readXlsx(bytes: Uint8Array): Promise<Grid> {
 }
 
 /** The fields a price list may carry, and the words a vendor's heading uses for each. */
-export const PRICE_FIELDS = ["brand", "manufacturer", "composition", "pack", "mrp", "gst", "hsn"] as const;
+export const PRICE_FIELDS = ["brand", "manufacturer", "composition", "pack", "mrp", "rate", "gst", "hsn"] as const;
 export type PriceField = (typeof PRICE_FIELDS)[number];
 const HEADING_WORDS: Record<PriceField, RegExp> = {
   brand: /brand|product(?! ?(code|id|no))|item(?! ?(code|id|no))|drug ?name|^name/i,
@@ -101,6 +101,8 @@ const HEADING_WORDS: Record<PriceField, RegExp> = {
   composition: /compos|salt|generic|content|molecule/i,
   pack: /pack/i,
   mrp: /mrp/i,
+  // Owner 2026-10-04 — the vendor's quoted rate (PTR): read before GST so "Rate incl GST" is a rate, not a GST %.
+  rate: /\brate\b|ptr|pts|purchase|cost|price(?! ?list)/i,
   gst: /gst|tax/i,
   hsn: /hsn/i,
 };
@@ -130,10 +132,10 @@ export function findHeaderRow(grid: Grid): number {
 
 /** The sample a vendor (or the store) can fill in: the headings the import reads best, and three example rows. */
 export const SAMPLE_PRICE_LIST = [
-  ["Manufacturer", "Brand Name", "Composition", "Packing", "HSN", "GST %", "MRP"],
-  ["Micro Labs", "Dolo 650", "Paracetamol 650 mg", "15 Tab", "3004", "5", "33.60"],
-  ["Mankind", "Moxikind-CV 625", "Amoxicillin 500 mg + Clavulanic Acid 125 mg", "10x6", "3004", "5", "198.50"],
-  ["Zydus", "Deriphyllin Inj", "Etofylline 169 mg + Theophylline 50.6 mg", "2 ml amp", "3004", "5", "12.40"],
+  ["Manufacturer", "Brand Name", "Composition", "Packing", "HSN", "GST %", "MRP", "Rate"],
+  ["Micro Labs", "Dolo 650", "Paracetamol 650 mg", "15 Tab", "3004", "5", "33.60", "21.50"],
+  ["Mankind", "Moxikind-CV 625", "Amoxicillin 500 mg + Clavulanic Acid 125 mg", "10x6", "3004", "5", "198.50", "120.00"],
+  ["Zydus", "Deriphyllin Inj", "Etofylline 169 mg + Theophylline 50.6 mg", "2 ml amp", "3004", "5", "12.40", "7.80"],
 ];
 
 export function sampleCsv(): string {

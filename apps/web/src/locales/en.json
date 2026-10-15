@@ -1003,7 +1003,12 @@
       "rescheduled": "Rescheduled"
     },
     "askPlaceholder": "ask — \"which doctor am I looking at?\"",
-    "agentIdle": "I read the filters on this screen, the doctor master and the day's bookings — and I say which one an answer came from."
+    "agentIdle": "I read the filters on this screen, the doctor master and the day's bookings — and I say which one an answer came from.",
+    "confirmMoveTitle": "Confirm the move",
+    "confirmMove": "Confirm move",
+    "moveFrom": "From",
+    "moveTo": "To",
+    "back": "Back"
   },
   "opdDesk": {
     "title": "OPD desk",
@@ -11846,7 +11851,8 @@
         "pack": "Packing",
         "mrp": "MRP per pack",
         "gst": "GST %",
-        "hsn": "HSN"
+        "hsn": "HSN",
+        "rate": "Rate (PTR)"
       },
       "match": "Match with the drug catalogue",
       "working": "Working…",
@@ -11858,7 +11864,8 @@
         "pack": "Pack",
         "mrp": "MRP (₹ per pack)",
         "cold": "2–8 °C",
-        "result": "Result"
+        "result": "Result",
+        "rate": "Rate ₹ (ex-GST)"
       },
       "include": "Create {{brand}}",
       "packSize": "Units per pack of {{brand}}",
@@ -11909,7 +11916,8 @@
         "pack": "15 Tab · 10x15 · 100 ml · 2 ml amp",
         "mrp": "33.60 (per pack)",
         "gst": "5",
-        "hsn": "3004"
+        "hsn": "3004",
+        "rate": "21.50"
       },
       "ifMissing": {
         "brand": "Cannot import — every row needs a brand.",
@@ -11918,7 +11926,8 @@
         "pack": "Pack is guessed from the drug's form; check each row.",
         "mrp": "You type the MRP on each row before creating.",
         "gst": "5% is used (medicines); change on the row if needed.",
-        "hsn": "3004 is used (medicines); change on the row if needed."
+        "hsn": "3004 is used (medicines); change on the row if needed.",
+        "rate": "The vendor's rates are not kept; orders are priced by hand."
       },
       "skipped_one": "{{count}} line above the headings was skipped (a title or address).",
       "skipped_other": "{{count}} lines above the headings were skipped (a title or address).",
@@ -11930,7 +11939,18 @@
       "guideMrp_other": "{{count}} rows need their MRP typed (₹ per pack) before they can be created.",
       "guideExisting_one": "{{count}} brand is already in your item master and will not be created again.",
       "guideExisting_other": "{{count}} brands are already in your item master and will not be created again.",
-      "guidePack": "Pack: a strip's size is the tablets in ONE strip (10x15 → 15); a bottle, vial or tube counts as 1."
+      "guidePack": "Pack: a strip's size is the tablets in ONE strip (10x15 → 15); a bottle, vial or tube counts as 1.",
+      "rate": "Rate of {{brand}} (ex-GST, per pack)",
+      "ratesTitle": "The vendor's rates",
+      "ratesNoRight": "This list has a rate column. Keeping it as the vendor's contract needs the vendor right (materials head or owner): ask them to run the import, or record the rates later.",
+      "ratesVendor": "These are the rates of",
+      "ratesNoVendor": "— do not keep the rates —",
+      "ratesInclGst": "The rates in the list include GST (divide it out)",
+      "ratesHow": "Each rate is kept per the pack the counter sells and before GST, like a purchase order line. Orders to this vendor are then priced from it (Buy → Vendor rates).",
+      "ratesSaved_one": "{{count}} rate kept as {{vendor}}'s contract.",
+      "ratesSaved_other": "{{count}} rates kept as {{vendor}}'s contract.",
+      "rateSource": "Price list import",
+      "saveRatesOnly": "Keep the rates"
     },
     "menu": {
       "was": "was {{path}}",
@@ -11964,7 +11984,8 @@
         "adr": "Adverse drug reactions (PvPI)",
         "incidents": "Medication errors & near misses",
         "reports": "Reports",
-        "ledger": "Stock ledger — where it went"
+        "ledger": "Stock ledger — where it went",
+        "rates": "Vendor rates"
       }
     },
     "today": {
@@ -12645,7 +12666,8 @@
       "leaveOut": "Leave out",
       "notStocked": "Not stocked, so not ordered: {{names}}",
       "make": "Make the drafts",
-      "notNow": "Not now"
+      "notNow": "Not now",
+      "contractRate": "contract rate"
     },
     "sheet": {
       "loading": "Loading…",
@@ -12688,7 +12710,9 @@
       "cancel": "Cancel order",
       "cancelled": "Cancelled.",
       "waitingOn_head": "Waiting on the materials head.",
-      "waitingOn_owner": "Waiting on the owner."
+      "waitingOn_owner": "Waiting on the owner.",
+      "contract": "contract {{rate}}",
+      "aboveContract": "above contract {{rate}}"
     },
     "views": "Office views",
     "view": {
@@ -14461,6 +14485,39 @@
         "margin": "Expiry margin (days)",
         "active": "On the list"
       }
+    },
+    "rates": {
+      "title": "Vendor rates",
+      "lead": "A vendor's quoted rates (before GST, per pack). Type the packs you want and make a draft order: every line is priced from the contract, then the order goes for approval as usual.",
+      "vendor": "Vendor",
+      "pickVendor": "— pick a vendor —",
+      "search": "Find an item",
+      "empty": "No rates recorded for this vendor yet. Record them from Items → Import a price list (choose the vendor and the rate column).",
+      "col": {
+        "item": "Item",
+        "pack": "Pack",
+        "rate": "Rate (ex-GST)",
+        "mrp": "MRP",
+        "margin": "Margin",
+        "lastPaid": "Last paid",
+        "valid": "Valid",
+        "packs": "Packs",
+        "free": "Free"
+      },
+      "pack_one": "{{uom}} of {{count}} {{base}}",
+      "pack_other": "{{uom}} of {{count}} {{base}}",
+      "open": "until replaced",
+      "until": "until {{date}}",
+      "dearer": "The contract is dearer than the last purchase",
+      "packsOf": "Packs of {{item}}",
+      "freeOf": "Free packs of {{item}}",
+      "end": "End rate",
+      "total_one": "{{count}} item · {{subtotal}} + GST {{gst}} = {{total}}",
+      "total_other": "{{count}} items · {{subtotal}} + GST {{gst}} = {{total}}",
+      "order": "Make a draft order",
+      "working": "Working…",
+      "orderNote": "Free packs (a scheme, a free first month) are received on the GRN as free goods.",
+      "made": "Draft order {{poNo}} made ({{total}}). Open Orders to check it and submit it for approval."
     }
   },
   "abdm": {

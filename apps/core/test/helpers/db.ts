@@ -28,23 +28,71 @@ async function ensureWorkerDatabaseExists(maintenanceUrl: string, workerDbName: 
   }
 }
 
-export async function setupTestDb(): Promise<{ db: Db; pool: Pool; teardown(): Promise<void> }> {
-  const baseUrl = requireEnv("TEST_DATABASE_URL");
-  const workerId = process.env.JEST_WORKER_ID ?? "1";
+/**
+ * Any constant works: an advisory lock is scoped to the database it is taken in, so every worker DB
+ * has its own. Only `migrateTestDb` takes it.
+ */
+const MIGRATE_LOCK_KEY = 7_402_2026;
 
-  const parsed = new URL(baseUrl);
+/** `TEST_DATABASE_URL`'s database name plus `_<workerId>`, the per-worker DB naming lanes rely on. */
+function workerDbUrls(workerId: string): { maintenanceUrl: string; workerDbName: string; workerUrl: string } {
+  const parsed = new URL(requireEnv("TEST_DATABASE_URL"));
   const baseDbName = parsed.pathname.replace(/^\//, "");
   const workerDbName = `${baseDbName}_${workerId}`;
-
   const maintenanceUrl = new URL(parsed.toString());
   maintenanceUrl.pathname = "/postgres";
-  await ensureWorkerDatabaseExists(maintenanceUrl.toString(), workerDbName);
-
   const workerUrl = new URL(parsed.toString());
   workerUrl.pathname = `/${workerDbName}`;
+  return { maintenanceUrl: maintenanceUrl.toString(), workerDbName, workerUrl: workerUrl.toString() };
+}
 
-  const { db, pool } = createDb(workerUrl.toString());
-  await migrate(db, { migrationsFolder: "./drizzle" });
+/**
+ * Migrates a worker DB, holding a session advisory lock in THAT database for the whole run.
+ *
+ * WHY THE LOCK (CI run 36750365736, main 4b300060, core shard 1): a cold migrate overran the 15 s
+ * `beforeAll` budget. Jest abandons a timed-out hook but cannot stop it, so the orphaned migrate kept
+ * running while the worker's NEXT suite started a second migrate on the same `<db>_<id>`. Both issued
+ * the same CREATE TYPE and one died on `pg_type_typname_nsp_index`, which failed 6 suites and 115 tests
+ * that had nothing wrong with them. With the lock, the second caller waits, and drizzle then skips
+ * every migration the first one applied.
+ */
+async function migrateTestDb(db: Db, pool: Pool): Promise<void> {
+  const lockClient = await pool.connect();
+  try {
+    await lockClient.query("select pg_advisory_lock($1)", [MIGRATE_LOCK_KEY]);
+    try {
+      await migrate(db, { migrationsFolder: "./drizzle" });
+    } finally {
+      await lockClient.query("select pg_advisory_unlock($1)", [MIGRATE_LOCK_KEY]);
+    }
+  } finally {
+    lockClient.release();
+  }
+}
+
+/**
+ * Creates and migrates worker DB `<db>_<workerId>`. `test/helpers/global-setup.ts` calls this for every
+ * worker id before the first suite starts, so the cold migrate (165+ migrations) is paid outside any
+ * hook timeout, and `setupTestDb`'s own migrate is a no-op check.
+ */
+export async function prepareWorkerDb(workerId: string): Promise<void> {
+  const { maintenanceUrl, workerDbName, workerUrl } = workerDbUrls(workerId);
+  await ensureWorkerDatabaseExists(maintenanceUrl, workerDbName);
+  const { db, pool } = createDb(workerUrl);
+  try {
+    await migrateTestDb(db, pool);
+  } finally {
+    await pool.end();
+  }
+}
+
+export async function setupTestDb(): Promise<{ db: Db; pool: Pool; teardown(): Promise<void> }> {
+  const workerId = process.env.JEST_WORKER_ID ?? "1";
+  const { maintenanceUrl, workerDbName, workerUrl } = workerDbUrls(workerId);
+  await ensureWorkerDatabaseExists(maintenanceUrl, workerDbName);
+
+  const { db, pool } = createDb(workerUrl);
+  await migrateTestDb(db, pool);
   return { db, pool, teardown: async () => { await pool.end(); } };
 }
 
