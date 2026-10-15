@@ -2,7 +2,9 @@ import { asc, eq, sql } from "drizzle-orm";
 import { items, pharmacySaleItems } from "../../kernel/db/schema";
 import { getItem, itemsByIds, listItems } from "../materials";
 import { createService, listServices } from "../tariff";
+import { appendEvent } from "../../kernel/events/append";
 import { PharmacyError } from "./errors";
+import { saleItemDiscountSet } from "./events";
 import { gstCategoryFor } from "./price";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -38,6 +40,8 @@ export type SaleItemView = {
   category: string;
   active: boolean;
   itemActive: boolean;
+  /** The standing discount to the patient on this medicine, in basis points (0 = none). */
+  discountBps: number;
 };
 
 /**
@@ -90,6 +94,27 @@ export async function setSaleItemActive(tx: Tx, actor: Actor, itemId: string, ac
   if (rows.length === 0) throw new PharmacyError("unknown_sale_item", `item ${itemId} is not a sale item`);
 }
 
+/** The most a standing discount may be: the pharmacy in-charge's own limit under the 2026-09-30 ruling (25%). */
+export const STANDING_DISCOUNT_MAX_BPS = 2500;
+
+/**
+ * OWNER 2026-10-02 — sets the standing discount to the patient on one sale item (0 removes it). The route
+ * holds the authority (`pharmacy.sale_items.discount`, the in-charge); this holds the limit: a whole number of
+ * basis points from 0 to 25%. Above 25% a discount is the owner's and is asked bill by bill.
+ */
+export async function setSaleItemDiscount(tx: Tx, actor: Actor, itemId: string, discountBps: number): Promise<void> {
+  if (!Number.isSafeInteger(discountBps) || discountBps < 0 || discountBps > STANDING_DISCOUNT_MAX_BPS) {
+    throw new PharmacyError("standing_discount_refused", "a standing discount is between 0% and 25% — above that the owner decides, bill by bill", {
+      discountBps, maxBps: STANDING_DISCOUNT_MAX_BPS,
+    });
+  }
+  const [row] = await tx.select({ discountBps: pharmacySaleItems.discountBps }).from(pharmacySaleItems).where(eq(pharmacySaleItems.itemId, itemId)).for("update");
+  if (row === undefined) throw new PharmacyError("unknown_sale_item", `item ${itemId} is not a sale item`);
+  if (row.discountBps === discountBps) return;
+  await tx.update(pharmacySaleItems).set({ discountBps, updatedBy: actor.id, updatedAt: sql`now()` }).where(eq(pharmacySaleItems.itemId, itemId));
+  await appendEvent(tx, saleItemDiscountSet.make({ payload: { itemId, fromBps: row.discountBps, toBps: discountBps }, actor, correlationId: itemId }));
+}
+
 export async function getSaleItem(db: Db | Tx, itemId: string): Promise<SaleItemRow | undefined> {
   const rows = await db.select().from(pharmacySaleItems).where(eq(pharmacySaleItems.itemId, itemId));
   return rows[0];
@@ -121,7 +146,7 @@ export async function listSaleItems(db: Db | Tx, filter: { search?: string } = {
     views.push({
       itemId: item.id, code: item.code, name: item.name, baseUom: item.baseUom, gstRateBps: item.gstRateBps,
       serviceId: service.id, serviceCode: service.code, category: service.category,
-      active: r.active, itemActive: item.active,
+      active: r.active, itemActive: item.active, discountBps: r.discountBps,
     });
   }
   return views;

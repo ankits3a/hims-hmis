@@ -20,7 +20,8 @@ import type { WireRxLine, WireRxPrint, WireVitals } from "../lib/opd-api";
  * component itself has no opinion on that (the TokenSlip precedent).
  */
 
-/** `BP 120/80 · P 72 · SpO₂ 98% · T 37.0 °C · Wt 60 kg` — present parts only, in that order. */
+/** `BP 120/80 · P 72 · SpO₂ 98% · T 37.0 °C · Wt 60 kg · Glucose 186 mg/dL (random)` — present parts only, in that order. */
+const GLUCOSE_WHEN: Record<string, string> = { fasting: "fasting", random: "random", after_food: "after food" };
 function vitalsLine(v: WireVitals | null): string | null {
   if (v === null) return null;
   const parts: string[] = [];
@@ -29,6 +30,11 @@ function vitalsLine(v: WireVitals | null): string | null {
   if (v.spo2 !== null) parts.push(`SpO₂ ${v.spo2}%`);
   if (v.tempC !== null) parts.push(`T ${v.tempC.toFixed(1)} °C`);
   if (v.weightKg !== null) parts.push(`Wt ${v.weightKg} kg`);
+  // Owner 2026-10-08 — the number and WHEN it was taken, and nothing about what it means.
+  if (v.glucoseMgDl !== null && v.glucoseMgDl !== undefined) {
+    const when = GLUCOSE_WHEN[v.glucoseTiming ?? ""];
+    parts.push(`Glucose ${v.glucoseMgDl} mg/dL${when === undefined ? "" : ` (${when})`}`);
+  }
   return parts.length === 0 ? null : parts.join(" · ");
 }
 
@@ -56,6 +62,10 @@ export function RxPrint({ data }: { data: WireRxPrint }): React.ReactElement {
     a payload from before the rows existed prints the display string as it always did.
   */
   const rows = data.encounter.diagnoses ?? [];
+  /** Decision 0067 — the advised tests split by who does them; `?? []` for a payload from an older server. */
+  const outsideIds = new Set(data.encounter.outsideTestIds ?? []);
+  const inHospitalTests = (data.encounter.advisedTests ?? []).filter((x) => !outsideIds.has(x.serviceId));
+  const outsideTests = (data.encounter.advisedTests ?? []).filter((x) => outsideIds.has(x.serviceId));
   const codedDiagnoses = rows.length > 0 ? rows : null;
   return (
     <div className="space-y-3">
@@ -68,16 +78,49 @@ export function RxPrint({ data }: { data: WireRxPrint }): React.ReactElement {
         </header>
 
         {/*
+          Owner ruling 2026-10-06 — A TRANSCRIPTION SAYS IT IS ONE. When the desk typed this from the
+          doctor's paper, the sheet must not pass for a prescription the doctor keyed and the QR
+          authenticated as theirs: it names the desk that typed it and says the signed paper is the
+          original. Printed, not only shown — the pharmacist reads the paper copy.
+        */}
+        {data.transcribedByName != null && (
+          <p data-testid="rx-transcribed" className="rounded border border-neutral-400 px-2 py-1 text-xs font-semibold">
+            {t("paper.printNote", { name: data.transcribedByName })}
+          </p>
+        )}
+
+        {/*
           THE PRESCRIBER IS THE DOCTOR ID, AND ONLY THAT — owner rulings 2026-09-06 ("As a medical
           Institution with college, there's no need of mentioning Dr. Name and their registration
           number. Only Dr. ID is required.") and 2026-09-28 ("Prescription print: Doctor ID only").
           The name and the council number are not read here even if an old payload carries them.
           No signature line joins it: K50 (owner 2026-08-15) makes the signed QR the authentication.
         */}
+        {/*
+          OWNER 2026-10-04 — SUPERSEDES the above: the department, then **Unit Number** (the unit for a
+          unit doctor; the Doctor ID for Guest Faculty and — DECIDED — anyone in no unit) and **Dept.
+          Regn** (that day's unit head's council number, blank when none). Never a doctor's name, and
+          never the words "Guest Faculty". The server resolves both (`prescriberPrint`).
+        */}
         <section className="space-y-1">
-          <p data-testid="rx-doctor-id" className="text-sm font-medium">{t("rx.doctorId")} <span className="font-mono">{data.doctor.code ?? "—"}</span></p>
           {data.doctor.departmentName !== null && (
-            <p className="text-xs text-neutral-600">{data.doctor.departmentName}</p>
+            <p data-testid="rx-department" className="text-sm font-medium">{data.doctor.departmentName}</p>
+          )}
+          {data.doctor.unitNumber !== undefined ? (
+            <>
+              <p data-testid="rx-unit-number" className="text-sm">{t("rx.unitNumber")}: <span className="font-mono">{data.doctor.unitNumber}</span></p>
+              {/* Blank — no placeholder — when the unit head's number is not on file (owner 2026-10-04). */}
+              <p data-testid="rx-dept-regn" className="text-sm">{t("rx.deptRegn")}: <span className="font-mono">{data.doctor.deptRegn ?? ""}</span></p>
+            </>
+          ) : (
+            <p data-testid="rx-doctor-id" className="text-sm font-medium">{t("rx.doctorId")} <span className="font-mono">{data.doctor.code ?? "—"}</span></p>
+          )}
+          {/*
+            Owner 2026-10-09 — TELE-CALL. One boxed line under the doctor's lines, so whoever is handed
+            this sheet knows the patient was spoken to, not examined. Nothing on an in-person sheet.
+          */}
+          {data.encounter.tele === true && (
+            <p data-testid="rx-tele" className="inline-block rounded border border-neutral-700 px-2 py-1 text-sm font-semibold">{t("rx.tele")}</p>
           )}
         </section>
 
@@ -144,11 +187,11 @@ export function RxPrint({ data }: { data: WireRxPrint }): React.ReactElement {
           than crash the whole printable document. A prescription that will not render is a patient
           who leaves without their slip.
         */}
-        {(data.encounter.advisedTests ?? []).length > 0 && (
+        {inHospitalTests.length > 0 && (
           <div data-testid="rx-advised-tests" className="text-sm">
             <p className="font-medium">{t("rx.advisedTests")}</p>
             <ul className="ml-4 list-disc">
-              {(data.encounter.advisedTests ?? []).map((test) => (
+              {inHospitalTests.map((test) => (
                 <li key={test.serviceId}>
                   {test.name} — {fmtPaise(test.pricePaise)}
                 </li>
@@ -157,6 +200,15 @@ export function RxPrint({ data }: { data: WireRxPrint }): React.ReactElement {
             <p className="text-xs text-neutral-600">
               {t("rx.advisedTestsNote", { date: data.encounter.serviceDate })}
             </p>
+          </div>
+        )}
+        {/* Decision 0067 — tests the hospital does not do yet: no price, the patient has them done outside. */}
+        {outsideTests.length > 0 && (
+          <div data-testid="rx-outside-tests" className="text-sm">
+            <p className="font-medium">{t("rx.outsideTests")}</p>
+            <ul className="ml-4 list-disc">
+              {outsideTests.map((test) => <li key={test.serviceId}>{test.name}</li>)}
+            </ul>
           </div>
         )}
         {data.encounter.followUpDays !== null && (

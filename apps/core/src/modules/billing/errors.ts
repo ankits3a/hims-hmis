@@ -1,5 +1,7 @@
 export type BillingErrorCode =
   | "billing_not_configured" | "invalid_paise" | "unsettled_issue_refused"
+  /** Owner 2026-10-09 — the hospital's UPI id or payee name is malformed (400). */
+  | "invalid_upi_id"
   /** FD-27 — a LIVE invoice already charges one of these services on this visit. */
   | "duplicate_invoice_refused"
   | "credit_permission_required" | "credit_approval_required" | "outstanding_cap_exceeded"
@@ -36,7 +38,20 @@ export type BillingErrorCode =
    * OWNER RULING 2026-09-30 (money) — a rounding rule or a sale discount asked on a bill that is not a
    * pharmacy bill, and a sale discount that cannot be given (no reason, over 100%, over the bill).
    */
-  | "pharmacy_bill_only" | "sale_discount_refused";
+  | "pharmacy_bill_only" | "sale_discount_refused"
+  /**
+   * OWNER 2026-10-05 — the consultation price list (`consult-prices.ts`): a proposal while another
+   * waits, a proposal that changes nothing, a revisit price with no revisit service wired, a
+   * decision on a version that is not waiting.
+   */
+  | "consult_price_pending" | "consult_price_unchanged" | "revisit_fee_unwired" | "consult_price_not_pending"
+  | "consult_price_reason_required"
+  /**
+   * OWNER 2026-10-05 — a visit moved to another department takes its money with it
+   * (`visit-move.ts`): a bill the billing office must handle, a fee difference the desk may not
+   * settle, and a difference the move was not handed (or handed when none was due).
+   */
+  | "move_needs_billing_office" | "move_fee_differs" | "move_difference_unpaid";
 
 export class BillingError extends Error {
   constructor(
@@ -71,9 +86,9 @@ const NOT_FOUND_CODES = new Set<BillingErrorCode>([
   "unknown_invoice", "unknown_receipt", "unknown_line", "unknown_encounter", "unknown_series",
   "unknown_session", "unknown_credit_request", "unknown_tender",
 ]);
-const FORBIDDEN_CODES = new Set<BillingErrorCode>(["credit_permission_required", "not_your_session"]);
+const FORBIDDEN_CODES = new Set<BillingErrorCode>(["credit_permission_required", "not_your_session", "move_fee_differs"]);
 /** Client-input refusals. Everything else is a state/ledger conflict and answers 409. */
-const VALIDATION_CODES = new Set<BillingErrorCode>([
+const VALIDATION_CODES = new Set<BillingErrorCode>(["invalid_upi_id", 
   "invalid_paise", "pan_required", "tender_ref_required", "bank_transfer_required",
   "recon_parse_failed", "duplicate_ref", "recount_reason_required",
   /*
@@ -86,6 +101,8 @@ const VALIDATION_CODES = new Set<BillingErrorCode>([
   "aadhaar_not_stored",
   // OWNER RULING 2026-09-30 — the request itself asks for what cannot be given.
   "pharmacy_bill_only", "sale_discount_refused",
+  // OWNER 2026-10-05 — a price proposal that changes nothing.
+  "consult_price_unchanged", "consult_price_reason_required",
 ]);
 
 export function billingHttpStatus(code: BillingErrorCode): number {

@@ -97,6 +97,53 @@ const configSchema = z.object({
   NOTIFY_PROVIDER: notifyProviderSchema.default("console"),
   NOTIFY_PUSH_PROVIDER: notifyPushProviderSchema.default("console"),
   /**
+   * MOBILE M6b — the path of the Firebase service-account key the staff app's notifications are
+   * sent with. OPTIONAL, like every key added here: absent (or a path with no file behind it) the
+   * sender is off, the worker says so once at boot, and nothing else changes (`push/sender.ts`).
+   */
+  HMIS_FCM_SERVICE_ACCOUNT_FILE: z.string().optional(),
+  /**
+   * PHONE CONSULT (decision 0048) — the file holding the hospital's OpenAI API key, used ONLY to
+   * turn a doctor's spoken note into text (`modules/opd/consult-voice.ts`). OPTIONAL like the key
+   * above: absent, or a path with no readable file behind it, voice is off and the app says
+   * "Voice is not set up". The key is read from the file on use and never from the environment, so
+   * it does not ride in `docker inspect` output.
+   */
+  HMIS_OPENAI_KEY_FILE: z.string().optional(),
+  /**
+   * STAFF ATTENDANCE (owner 2026-10-09) — the hospital's attendance system, "bioattend"
+   * (`modules/attendance`). Three secret FILES on the OpenAI key's terms (read on use, re-read when
+   * they change, never an environment value): the API key, the webhook signing secret and the
+   * Aadhaar linking key. With no readable API key the integration is OFF and says so once at boot.
+   * `ATTENDANCE_SYNC_ENABLED` is the master switch, the `RETENTION_ENABLED` two-string spelling —
+   * BOTH it and the key must be there before anything calls bioattend.
+   */
+  BIOATTEND_BASE_URL: z.string().url().default("https://biotime.crkmch.com/api/hmis/v1"),
+  ATTENDANCE_SYNC_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  /**
+   * Owner 2026-10-09: a person reading their OWN attendance sees one of four words a day and a
+   * "Checked in" — no times "until our software is out of commissioning". "true" here adds the times
+   * and the day's punches to the self routes, with no app build. Managers' routes never depended on it.
+   */
+  ATTENDANCE_SELF_SHOWS_TIMES: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  /**
+   * THE APP'S "MARK ATTENDANCE" (owner 2026-10-10, decision 0061) — the campus centre and the radius a
+   * mark is "inside premises" within. Server settings so they change with no app build. The owner's
+   * centre and 200 m are the defaults.
+   */
+  ATTENDANCE_SITE_LAT: z.coerce.number().min(-90).max(90).default(25.6892879),
+  ATTENDANCE_SITE_LNG: z.coerce.number().min(-180).max(180).default(85.2301486),
+  ATTENDANCE_SITE_RADIUS_M: z.coerce.number().int().min(10).max(5000).default(200),
+  HMIS_BIOATTEND_API_KEY_FILE: z.string().optional(),
+  HMIS_BIOATTEND_WEBHOOK_SECRET_FILE: z.string().optional(),
+  HMIS_BIOATTEND_AADHAAR_KEY_FILE: z.string().optional(),
+  /**
    * PHASE O T4 — the channel ladder's cadence. A minute, not five: the `now` lane's patience is
    * five minutes, and a sweep that ran every five could spend the whole of it before noticing.
    */
@@ -281,6 +328,77 @@ const configSchema = z.object({
   COPILOT_TYPESAFE_MODEL: z.string().min(1).default("jev-1.13.0"),
   COPILOT_TYPESAFE_TIMEOUT_MS: z.coerce.number().int().positive().default(1000),
   COPILOT_TYPESAFE_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.6),
+  /**
+   * ═══ A SECOND CHOOSER: OPENAI'S DECISIONS API (owner, 2026-10-07 — "let's try OpenAI Decision API") ═══
+   *
+   * It answers the same closed-set question Jev does, behind the same `ChoiceClient`. Its key is the
+   * FILE `HMIS_OPENAI_KEY_FILE` already names (the one voice notes use); these three say where and
+   * which model. WHO ANSWERS FIRST is the two `*_CHOOSER_ORDER` lists, one per job. Triage's default
+   * is `typesafe` alone. The copilot's default is `openai,typesafe` (owner 2026-10-11, decision 0066:
+   * "Use OpenAI decision API for this"), the order its eval set (`kernel/copilot/acceptance/`) measures.
+   * `typesafe,openai` asks Jev first and OpenAI when Jev is unsure; `openai,typesafe` the reverse.
+   * A provider with no key is skipped. The chat model stays behind whichever list is chosen.
+   *
+   * TIMEOUT 1.5 s: measured from this box 2026-10-07 over 418 calls — p50 233 ms, p90 384 ms, p99
+   * 1867 ms, max 4138 ms; 6 calls (1.4%) were slower than 1.5 s and would go to the next chooser. See
+   * docs/superpowers/plans/2026-10-07-chooser-evaluation.md for the percentiles behind it.
+   */
+  OPENAI_DECISIONS_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
+  OPENAI_DECISIONS_MODEL: z.string().min(1).default("gpt-6-luna"),
+  OPENAI_DECISIONS_TIMEOUT_MS: z.coerce.number().int().positive().default(1500),
+  TRIAGE_CHOOSER_ORDER: z.string().default("typesafe"),
+  COPILOT_CHOOSER_ORDER: z.string().default("openai,typesafe"),
+  /**
+   * ═══ E0.5 — THE COPILOT'S AI SPEND CAP (decision 0064: ₹5,000 a day, owner 2026-10-10) ═══
+   *
+   * When the copilot's ESTIMATED spend since midnight IST reaches this, every ask routes by the
+   * phrasebook alone until the next midnight IST, and the Copilot health page says so. The estimate
+   * is tokens × the price table in `kernel/copilot/spend.ts`; COPILOT_PRICES_INR overrides any row of
+   * it as JSON `{"provider:model":{"in":<₹ per 1M input tokens>,"out":<₹ per 1M output tokens>}}`
+   * (providers: `chat`, `typesafe`, `openai`; `provider:*` covers a provider's every model). A
+   * malformed table refuses to boot: a typo here would otherwise price every call at the default.
+   */
+  COPILOT_DAILY_CAP_INR: z.coerce.number().nonnegative().default(5000),
+  COPILOT_PRICES_INR: z.string().default("{}"),
+  /**
+   * ═══ THE AUTOMATIC MEDICINE-ALIAS PIPELINE (decision 0051, plan §7a, §14) — SHIPS OFF ═══
+   *
+   * `ALIAS_PIPELINE_ENABLED` is the kill switch, the `RETENTION_ENABLED` two-string spelling for the
+   * same reason ("false" must never read as true). With it "false" — the default — nothing calls a
+   * model for an alias and nothing builds a client to (`modules/opd/alias-store.ts`). Nothing in the
+   * product reads an alias yet whatever this says.
+   *
+   * WHO CHOOSES is `ALIAS_CHOOSER_ORDER`; unset, it is the chain triage uses. The REVIEWER is always
+   * OpenAI's Decisions endpoint (`OPENAI_DECISIONS_*`, the only client with `predicate()`), so an
+   * order of `openai` alone makes chooser and reviewer one model and the pipeline refuses every
+   * term (`same_model`). The two lines are the STRICT ones the owner chose on 2026-10-08 (decision
+   * 0055) after the 296-term evaluation: a suggestion needs the chooser at or above 0.95 AND the
+   * reviewer at or above 0.9 — the lowest pair with no wrong answer in either pass. At the plan's
+   * first default (0.6) one answer in 103 was wrong.
+   */
+  ALIAS_PIPELINE_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  ALIAS_CHOOSER_ORDER: z.string().optional(),
+  ALIAS_CHOOSER_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.95),
+  ALIAS_REVIEWER_MIN_PROBABILITY: z.coerce.number().gt(0.5).max(1).default(0.9),
+  /**
+   * The hourly runner's two caps (`modules/opd/alias-runner.ts`): unmatched terms it sends to the
+   * models in one run, and in one IST day. Each term is at most three provider calls.
+   */
+  ALIAS_RUN_MAX_TERMS: z.coerce.number().int().min(1).max(500).default(40),
+  ALIAS_DAILY_MAX_TERMS: z.coerce.number().int().min(1).max(5000).default(300),
+  /**
+   * HOW LONG PATIENTS WAIT (owner 2026-10-09) — the nightly learning of the desk → vitals → doctor waits
+   * (`modules/opd/flow-learning.ts`): baselines, findings from a closed set, and the owner's × / "Tried it".
+   * ON by default — it is arithmetic over stored timestamps and calls no outside service. "false" stops
+   * the nightly run and empties "To improve"; the wait figures themselves are shown either way.
+   */
+  FLOW_FINDINGS_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
   NOTIFY_STUCK_AFTER_MS: z.coerce.number().int().positive().default(300000),
   // Plan 11a D6/D7 (retention). All three defaulted, same B1 scar as the block above: no .env
   // entry is required anywhere, on the server or in CI.
@@ -483,6 +601,13 @@ export type AppConfig = {
   workerNotifyIntervalMs: number;
   notifyProvider: NotifyProvider;
   notifyPushProvider: NotifyPushProvider;
+  /** MOBILE M6b — where the Firebase service-account key is expected, or null. The file may not exist yet. */
+  fcmServiceAccountFile: string | null;
+  openaiKeyFile: string | null;
+  /** Staff attendance from bioattend — where to call, the master switch, and the three secret files (paths, never contents). */
+  attendance: { baseUrl: string; syncEnabled: boolean; selfShowsTimes: boolean; apiKeyFile: string | null; webhookSecretFile: string | null; aadhaarKeyFile: string | null };
+  /** Where an app mark counts as "inside premises" (`modules/attendance/marks.ts`). */
+  attendanceSite: { lat: number; lng: number; radiusM: number };
   workerReachIntervalMs: number;
   /**
    * The three VAPID keys, or NULL when push is on the console sink. Null-or-complete rather
@@ -511,6 +636,17 @@ export type AppConfig = {
   copilot: { baseUrl: string | null; apiKey: string | null; model: string; timeoutMs: number };
   /** 2026-09-19 — the router's FIRST model, a classifier (TypeSafe). Null key ⇒ skipped, `copilot` above answers. */
   copilotChoice: { baseUrl: string; apiKey: string | null; model: string; timeoutMs: number; minConfidence: number };
+  /** OpenAI's Decisions API as a second chooser; its key is `openaiKeyFile`. */
+  decisions: { baseUrl: string; model: string; timeoutMs: number };
+  /** Who answers first, per job. Default `["typesafe"]` — today's behaviour. */
+  triageChooserOrder: ("typesafe" | "openai")[];
+  copilotChooserOrder: ("typesafe" | "openai")[];
+  /** E0.5 — the daily cap in rupees and the owner's price overrides (₹ per 1M tokens), merged over `spend.ts`'s defaults. */
+  copilotSpend: { dailyCapInr: number; prices: Record<string, { in: number; out: number }> };
+  /** Decision 0051 — the medicine-alias pipeline. `enabled` is FALSE unless an operator says otherwise. */
+  aliases: { enabled: boolean; chooserOrder: ("typesafe" | "openai")[]; chooserLine: number; reviewerLine: number; perRun: number; perDay: number };
+  /** The waits' nightly learning (`FLOW_FINDINGS_ENABLED`, default true). */
+  flowFindings: { enabled: boolean };
   notifyStuckAfterMs: number;
   // Plan 11a D6/D7. `retentionEnabled` is FALSE unless an operator says otherwise, in as many
   // letters; `worker/jobs.ts` threads all three into `retentionSweep` through the registration,
@@ -752,6 +888,34 @@ function abdmFrom(parsed: {
   return abdm;
 }
 
+/**
+ * `typesafe,openai` → the order choosers are asked in. A name that is not a chooser, a repeat, or an
+ * empty list REFUSES to boot: a typo here would otherwise silently run one job without its first
+ * model, which looks exactly like the model being unsure.
+ */
+function chooserOrderFrom(name: string, raw: string): ("typesafe" | "openai")[] {
+  const out = raw.split(",").map((x) => x.trim().toLowerCase()).filter((x) => x !== "");
+  const bad = out.filter((x) => x !== "typesafe" && x !== "openai");
+  if (out.length === 0 || bad.length > 0 || new Set(out).size !== out.length) {
+    throw new Error(`${name} must be a comma-separated list of typesafe and openai, each at most once (got "${raw}")`);
+  }
+  return out as ("typesafe" | "openai")[];
+}
+
+const priceTable = z.record(
+  z.string().regex(/^(chat|typesafe|openai):.+$/),
+  z.object({ in: z.number().nonnegative(), out: z.number().nonnegative() }).strict(),
+);
+
+/** E0.5 — `COPILOT_PRICES_INR`, or a boot refusal naming the variable. */
+function pricesFrom(raw: string): Record<string, { in: number; out: number }> {
+  let json: unknown;
+  try { json = JSON.parse(raw); } catch { throw new Error(`COPILOT_PRICES_INR must be JSON (got "${raw}")`); }
+  const out = priceTable.safeParse(json);
+  if (!out.success) throw new Error(`COPILOT_PRICES_INR: ${out.error.issues[0]?.message ?? "invalid"} — want {"provider:model":{"in":n,"out":n}}`);
+  return out.data;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   if (env === process.env) loadEnv();
   const parsed = configSchema.parse(env);
@@ -777,6 +941,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     workerNotifyIntervalMs: parsed.WORKER_NOTIFY_INTERVAL_MS,
     notifyProvider: parsed.NOTIFY_PROVIDER,
     notifyPushProvider: parsed.NOTIFY_PUSH_PROVIDER,
+    fcmServiceAccountFile: parsed.HMIS_FCM_SERVICE_ACCOUNT_FILE === undefined || parsed.HMIS_FCM_SERVICE_ACCOUNT_FILE.trim() === "" ? null : parsed.HMIS_FCM_SERVICE_ACCOUNT_FILE.trim(),
+    openaiKeyFile: parsed.HMIS_OPENAI_KEY_FILE === undefined || parsed.HMIS_OPENAI_KEY_FILE.trim() === "" ? null : parsed.HMIS_OPENAI_KEY_FILE.trim(),
+    attendance: {
+      baseUrl: parsed.BIOATTEND_BASE_URL.replace(/\/+$/, ""),
+      syncEnabled: parsed.ATTENDANCE_SYNC_ENABLED,
+      selfShowsTimes: parsed.ATTENDANCE_SELF_SHOWS_TIMES,
+      apiKeyFile: pathOrNull(parsed.HMIS_BIOATTEND_API_KEY_FILE),
+      webhookSecretFile: pathOrNull(parsed.HMIS_BIOATTEND_WEBHOOK_SECRET_FILE),
+      aadhaarKeyFile: pathOrNull(parsed.HMIS_BIOATTEND_AADHAAR_KEY_FILE),
+    },
+    attendanceSite: { lat: parsed.ATTENDANCE_SITE_LAT, lng: parsed.ATTENDANCE_SITE_LNG, radiusM: parsed.ATTENDANCE_SITE_RADIUS_M },
     workerReachIntervalMs: parsed.WORKER_REACH_INTERVAL_MS,
     webPushVapid: vapidFrom(parsed),
     notifySms: smsGatewayFrom(parsed),
@@ -807,6 +982,19 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       timeoutMs: parsed.COPILOT_TYPESAFE_TIMEOUT_MS,
       minConfidence: parsed.COPILOT_TYPESAFE_MIN_CONFIDENCE,
     },
+    decisions: { baseUrl: parsed.OPENAI_DECISIONS_BASE_URL, model: parsed.OPENAI_DECISIONS_MODEL, timeoutMs: parsed.OPENAI_DECISIONS_TIMEOUT_MS },
+    triageChooserOrder: chooserOrderFrom("TRIAGE_CHOOSER_ORDER", parsed.TRIAGE_CHOOSER_ORDER),
+    copilotChooserOrder: chooserOrderFrom("COPILOT_CHOOSER_ORDER", parsed.COPILOT_CHOOSER_ORDER),
+    copilotSpend: { dailyCapInr: parsed.COPILOT_DAILY_CAP_INR, prices: pricesFrom(parsed.COPILOT_PRICES_INR) },
+    aliases: {
+      enabled: parsed.ALIAS_PIPELINE_ENABLED,
+      chooserOrder: chooserOrderFrom("ALIAS_CHOOSER_ORDER", parsed.ALIAS_CHOOSER_ORDER ?? parsed.TRIAGE_CHOOSER_ORDER),
+      chooserLine: parsed.ALIAS_CHOOSER_MIN_CONFIDENCE,
+      reviewerLine: parsed.ALIAS_REVIEWER_MIN_PROBABILITY,
+      perRun: parsed.ALIAS_RUN_MAX_TERMS,
+      perDay: parsed.ALIAS_DAILY_MAX_TERMS,
+    },
+    flowFindings: { enabled: parsed.FLOW_FINDINGS_ENABLED },
     notifyStuckAfterMs: parsed.NOTIFY_STUCK_AFTER_MS,
     retentionEnabled: parsed.RETENTION_ENABLED,
     retentionEventsMonths: parsed.RETENTION_EVENTS_MONTHS,
@@ -825,4 +1013,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     receivableCommissionEnabled: parsed.RECEIVABLE_COMMISSION_ENABLED,
     couponIssuanceEnabled: parsed.COUPON_ISSUANCE_ENABLED,
   };
+}
+
+/** An optional path setting: unset or blank is `null`. */
+function pathOrNull(raw: string | undefined): string | null {
+  return raw === undefined || raw.trim() === "" ? null : raw.trim();
 }

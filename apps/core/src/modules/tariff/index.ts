@@ -14,7 +14,7 @@ export {
 /** PLAN 07d T5 — the active version's list price per active service; the cockpit's only price read. */
 export type { PriceListRow } from "./services";
 export {
-  activateVersion, createDraftVersion, getVersion, listVersions, resolveActiveTariffVersion,
+  activateVersion, activateVersionDirectly, activePricePaise, createDraftVersion, getVersion, listVersions, resolveActiveTariffVersion,
   setTariffItem, submitVersion, TARIFF_REVISION_APPROVAL_TYPE,
 } from "./versions";
 export { listAdjustmentRules, loadRuleConfig, upsertAdjustmentRule } from "./rules";

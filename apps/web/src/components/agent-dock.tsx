@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -80,6 +81,7 @@ export function AgentDock(
     autoFocus?: boolean;
   },
 ): React.ReactElement {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState("");
   const [open, setOpen] = useState(false);
   const askRef = useRef<HTMLInputElement>(null);
@@ -225,7 +227,7 @@ export function AgentDock(
 
       <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "9px 18px" }}>
         <span className="mo" style={{ fontSize: 10.5, color: "var(--mint)", letterSpacing: ".1em", flexShrink: 0 }}>
-          DESK AGENT
+          {t("agentDock.title")}
         </span>
         <span
           data-testid="agent-ticker"

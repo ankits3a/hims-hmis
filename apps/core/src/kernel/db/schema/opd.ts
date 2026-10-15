@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   bigserial, boolean, check, date, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, primaryKey,
 } from "drizzle-orm/pg-core";
+import { receipts } from "./billing";
 import { patients } from "./patients";
 import { resources } from "./resources";
 
@@ -97,6 +98,13 @@ export const opdDoctors = pgTable(
     registrationNo: text("registration_no"), // NMC/state council registration — printed on the e-Rx
     departmentId: text("department_id").notNull().references(() => opdDepartments.id),
     specialty: text("specialty"),
+    /**
+     * 2026-10-04 (owner) — the doctor's DESIGNATION in this hospital: "Guest Faculty", "Senior
+     * Resident", "Assistant Professor". Not the specialty (Neurosurgeon stays there). Shown as a quiet
+     * tag on the front desk's doctor rows and the appointment book; NOT printed on hospital paper
+     * (owner 2026-09-06: Doctor ID only). Nullable free text.
+     */
+    designation: text("designation"),
     active: boolean("active").notNull().default(true),
     createdBy: text("created_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -189,6 +197,19 @@ export const opdAppointments = pgTable(
     rescheduledFromId: text("rescheduled_from_id"),
     cancelReason: text("cancel_reason"),
     leaveId: text("leave_id"), // set when needs_rebooking was caused by a leave (cancelling that leave restores 'booked')
+    // Owner 2026-10-09 — HOW the patient is seen, never who booked it (that is `source`): a tele-call
+    // is booked at the counter for a future slot and the doctor rings the number kept beside it.
+    // The number is the one to ring for THIS appointment (10 digits, normalised by the server); the
+    // patient's own record is not rewritten by a booking.
+    mode: text("mode").notNull().default("in_person"), // 'in_person' | 'tele'
+    telePhone: text("tele_phone"),
+    // TELE-CALL, PAID BEFORE THE SLOT (owner 2026-10-09). The desk's quote and the advance receipt
+    // that met it. `advance_quoted_at` set is "covered": a receipt for exactly the quote, or a
+    // ₹0 quote with no receipt at all (a free follow-up). The stamped quote — not today's price
+    // list — is what the slot-time opening honours.
+    advanceReceiptId: text("advance_receipt_id").references(() => receipts.id),
+    advanceQuotePaise: integer("advance_quote_paise"),
+    advanceQuotedAt: timestamp("advance_quoted_at", { withTimezone: true }),
     bookedBy: text("booked_by").notNull(),
     bookedAt: timestamp("booked_at", { withTimezone: true }).notNull().defaultNow(),
     updatedBy: text("updated_by").notNull(),
@@ -213,6 +234,10 @@ export const opdAppointments = pgTable(
     index("opd_appointments_doctor_date_idx").on(t.doctorId, t.serviceDate),
     index("opd_appointments_patient_idx").on(t.patientId),
     index("opd_appointments_status_idx").on(t.status),
+    // E0.6 — the copilot's name mask reads the day's appointments on every ask (kernel/copilot/names.ts).
+    index("opd_appointments_service_date_idx").on(t.serviceDate),
+    check("opd_appointments_mode_ck", sql`${t.mode} in ('in_person', 'tele')`),
+    check("opd_appointments_tele_phone_ck", sql`${t.mode} <> 'tele' or ${t.telePhone} is not null`),
   ],
 );
 
@@ -501,6 +526,63 @@ export const opdEncounters = pgTable(
     dangerFlagged: boolean("danger_flagged").notNull().default(false), // set by vitals; never auto-cleared in Plan 07
     consultStartedAt: timestamp("consult_started_at", { withTimezone: true }),
     consultCompletedAt: timestamp("consult_completed_at", { withTimezone: true }),
+    /**
+     * ═══ CONSULTED ON PAPER (owner ruling 2026-10-06) ═══
+     *
+     * Some doctors write on paper and never open the dashboard, so a patient they have seen would
+     * sit "waiting" all day. The slip desk filing the photographed prescription, or the desk scribe
+     * typing it, closes the visit. `completed_via` is null for a completion the doctor made on the
+     * screen and `'paper'` for this one; the three columns beside it say on whose word, when, and
+     * on what evidence (`'slip_photo'` → a `patient_documents.id`, `'transcription'` → an
+     * `opd_prescriptions.id` or, for tests alone, the encounter's own id).
+     *
+     * The doctor's look is OPTIONAL and never holds the patient: `paper_confirmed_*` records it when
+     * it happens. A supervisor who finds the wrong visit was closed reopens it with a reason
+     * (`paper_reopen*`), which clears `completed_via` and puts the patient back in the line.
+     */
+    completedVia: text("completed_via"),
+    paperCompletedBy: text("paper_completed_by"),
+    paperCompletedAt: timestamp("paper_completed_at", { withTimezone: true }),
+    paperEvidenceKind: text("paper_evidence_kind"),
+    paperEvidenceId: text("paper_evidence_id"),
+    paperConfirmedBy: text("paper_confirmed_by"),
+    paperConfirmedAt: timestamp("paper_confirmed_at", { withTimezone: true }),
+    paperReopenedBy: text("paper_reopened_by"),
+    paperReopenedAt: timestamp("paper_reopened_at", { withTimezone: true }),
+    paperReopenReason: text("paper_reopen_reason"),
+    /**
+     * ═══ THE PATIENT DID NOT COME — A GUARDIAN BROUGHT THE REPORTS (owner 2026-10-07) ═══
+     *
+     * A revisit where a relative or attendant comes alone to show the doctor the reports. There is
+     * nobody to weigh, so the vitals bay or the front desk marks it and the visit goes straight to
+     * the doctor's line (`patient-absent.ts`). Who said so and when (`_by`, `_at`), and who came
+     * (`_relation`, one of a fixed list, and an optional `_name`). All four null on every other visit.
+     */
+    patientAbsentBy: text("patient_absent_by"),
+    patientAbsentAt: timestamp("patient_absent_at", { withTimezone: true }),
+    patientAbsentRelation: text("patient_absent_relation"),
+    patientAbsentName: text("patient_absent_name"),
+    // TELE-CALL (owner 2026-10-09). `consult_mode` says how the doctor sees this patient; a tele
+    // visit is opened by the system at its slot, once the desk has been paid, and is closed only
+    // after the doctor records that they spoke. The outcome columns are the doctor's two answers.
+    consultMode: text("consult_mode").notNull().default("in_person"), // 'in_person' | 'tele'
+    teleCallStartedAt: timestamp("tele_call_started_at", { withTimezone: true }),
+    teleOutcome: text("tele_outcome"), // null | 'spoke' | 'no_answer'
+    teleOutcomeAt: timestamp("tele_outcome_at", { withTimezone: true }),
+    teleOutcomeBy: text("tele_outcome_by"),
+    teleNoAnswerCount: integer("tele_no_answer_count").notNull().default(0),
+    /**
+     * App home round 2 (owner 2026-10-07, decision 0043) — "ASK THE DESK TO RE-CHECK". The doctor
+     * read what the desk typed from their paper and a line is wrong or unclear: they send it back
+     * with a reason instead of retyping it. Open while `asked_at` is set and `done_at` is not; the
+     * desk's next save (or its own "re-checked") closes it. Never holds the patient or the pharmacy.
+     */
+    paperRecheckAskedBy: text("paper_recheck_asked_by"),
+    paperRecheckAskedAt: timestamp("paper_recheck_asked_at", { withTimezone: true }),
+    paperRecheckReason: text("paper_recheck_reason"),
+    paperRecheckDoneBy: text("paper_recheck_done_by"),
+    paperRecheckDoneAt: timestamp("paper_recheck_done_at", { withTimezone: true }),
+    paperRecheckDoneNote: text("paper_recheck_done_note"),
     abandonedAt: timestamp("abandoned_at", { withTimezone: true }),
     abandonReason: text("abandon_reason"),
     openedBy: text("opened_by").notNull(),
@@ -527,6 +609,8 @@ export const opdEncounters = pgTable(
     index("opd_encounters_doctor_date_idx").on(t.doctorId, t.serviceDate),
     index("opd_encounters_patient_opened_idx").on(t.patientId, t.openedAt),
     index("opd_encounters_status_idx").on(t.status),
+    // E0.6 — the copilot's name mask reads the day's patients on every ask (kernel/copilot/names.ts).
+    index("opd_encounters_service_date_idx").on(t.serviceDate),
     check("opd_encounters_diagnosis_kind_ck", sql`${t.diagnosisKind} is null or ${t.diagnosisKind} in ('provisional', 'final')`),
   ],
 );
@@ -782,9 +866,16 @@ export const opdEncounterDiagnoses = pgTable(
      * client sent, and null on an eye code the doctor has not yet placed — not a gate (no ruling).
      */
     laterality: text("laterality"),
+    /**
+     * Where the committed diagnosis came from (decision 0050, P0): typed, picked from search, a
+     * suggestion tapped, a spoken note, or the desk's reading of the paper. Null on every row written
+     * before, and whenever the client did not say — learning then counts it as typed.
+     */
+    source: text("source"),
   },
   (t) => [
     primaryKey({ columns: [t.encounterId, t.seq] }),
+    check("opd_encounter_diagnoses_source_ck", sql`${t.source} is null or ${t.source} in ('typed', 'search', 'suggested', 'voice', 'paper')`),
     check("opd_encounter_diagnoses_laterality_ck", sql`${t.laterality} is null or ${t.laterality} in ('od', 'os', 'ou')`),
     /** MRD and every claim count by code, so the code is the one thing read across encounters. */
     index("opd_encounter_diagnoses_code_idx").on(t.icd10Code),
@@ -933,6 +1024,13 @@ export const opdVitals = pgTable(
     rr: integer("rr"),
     spo2: integer("spo2"),
     tempC: doublePrecision("temp_c"),
+    /**
+     * OWNER 2026-10-08 — finger-prick capillary glucose in mg/dL (a whole number, 20–600) and WHEN it
+     * was taken: 'fasting' | 'random' | 'after_food'. Both null or both set (`checkGlucose`). Not
+     * ranged, not flagged: a clinical threshold is an owner ruling not yet made.
+     */
+    glucoseMgDl: integer("glucose_mg_dl"),
+    glucoseTiming: text("glucose_timing"),
     notes: text("notes"),
     ageYearsAtRecord: integer("age_years_at_record"), // null when DOB unknown (adult band applied)
     band: text("band").notNull(), // 'infant' | 'child_1_5' | 'child_6_12' | 'adult'
@@ -1163,6 +1261,14 @@ export const opdPrescriptionDrafts = pgTable(
      * `issued_by` there is the DOCTOR (it always was), and `drafted_by` here is the scribe.
      */
     issuedPrescriptionId: text("issued_prescription_id"),
+    /**
+     * Owner ruling 2026-10-06 — LINES HELD FOR THE DOCTOR. When the desk scribe types a paper
+     * prescription and a line raises a hard warning (an allergy, a severe interaction, a repeated
+     * salt, a contraindication), the scribe may not clear it: the clean lines are issued and the
+     * rest wait HERE, as the pending draft, with the warnings that held them. Null on an ordinary
+     * FD-30 draft. `HeldAlert[]` (`modules/opd/paper-consult.ts`).
+     */
+    heldAlerts: jsonb("held_alerts"),
   },
   (t) => [
     /**
@@ -1269,5 +1375,437 @@ export const opdConsultLayouts = pgTable(
     /** …and each doctor's overlay in that department. Two racing saves cannot both become version N. */
     uniqueIndex("opd_consult_layouts_overlay_ux").on(t.departmentId, t.doctorId, t.version).where(sql`doctor_id is not null`),
     check("opd_consult_layouts_version_ck", sql`${t.version} > 0`),
+  ],
+);
+
+/**
+ * PHONE CONSULT (decision 0048, owner 2026-10-07) — "My sets" and the hospital's starter sets.
+ *
+ * A set is a bundle a doctor adds in one tap: medicine lines, tests, advice. It holds NO patient
+ * data — it is the doctor's habit about a condition, like an advice template. Applying one only
+ * fills the screen; every line then goes through the visit's own checks for THAT patient.
+ *
+ *   · `scope = 'doctor'`     — one doctor's own (`owner_user_id` set, `department_id` null). Live at once.
+ *   · `scope = 'department'` — the hospital's starter list for one OPD department. It is shown to
+ *     nobody until that department's unit head has SIGNED it (`signed_by`, `signed_at`); an edit
+ *     after signing is a new unsigned row state (the service clears the signature).
+ *
+ * A controlled medicine (Schedule H1, Schedule X, an NDPS moiety) is never stored in a set — the
+ * service refuses it; this table carries no trace of one.
+ */
+export const opdRxSets = pgTable(
+  "opd_rx_sets",
+  {
+    id: text("id").primaryKey(),
+    scope: text("scope").notNull(),
+    ownerUserId: text("owner_user_id"),
+    departmentId: text("department_id").references(() => opdDepartments.id),
+    name: text("name").notNull(),
+    /** `{ lines, tests, advice, reviewDays }` — validated by `modules/opd/rx-sets.ts` on every write. */
+    body: jsonb("body").notNull(),
+    signedBy: text("signed_by"),
+    signedAt: timestamp("signed_at", { withTimezone: true }),
+    active: boolean("active").notNull().default(true),
+    createdBy: text("created_by").notNull(),
+    updatedBy: text("updated_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    check("opd_rx_sets_scope_ck", sql`${t.scope} in ('doctor', 'department')`),
+    check("opd_rx_sets_owner_ck", sql`(${t.scope} = 'doctor' and ${t.ownerUserId} is not null and ${t.departmentId} is null) or (${t.scope} = 'department' and ${t.departmentId} is not null and ${t.ownerUserId} is null)`),
+    check("opd_rx_sets_signed_ck", sql`(${t.signedBy} is null) = (${t.signedAt} is null)`),
+    index("opd_rx_sets_owner_idx").on(t.ownerUserId),
+    index("opd_rx_sets_department_idx").on(t.departmentId),
+  ],
+);
+
+/**
+ * PHONE CONSULT — the voice meter. ONE ROW PER SPOKEN NOTE, AND IT HOLDS NO WORDS.
+ *
+ * The audio is forwarded and dropped; the transcript goes back to the doctor and is stored nowhere
+ * by this table. What is kept is what the owner asked to measure in place of a trial: how long the
+ * clip was, how long the text was, and — once the doctor saved it — how many characters they had to
+ * change. No encounter, no patient: the meter is about the doctor and the model, not about anybody
+ * who was in the room.
+ */
+export const opdVoiceUsage = pgTable(
+  "opd_voice_usage",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    /** IST calendar day, 'YYYY-MM-DD'. */
+    day: date("day", { mode: "string" }).notNull(),
+    model: text("model").notNull(),
+    seconds: integer("seconds").notNull(),
+    transcriptChars: integer("transcript_chars").notNull(),
+    /** Null until the doctor saves (or discards) what was heard. */
+    changedChars: integer("changed_chars"),
+    keptChars: integer("kept_chars"),
+    ok: boolean("ok").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("opd_voice_usage_user_day_idx").on(t.userId, t.day),
+    index("opd_voice_usage_day_idx").on(t.day),
+    check("opd_voice_usage_seconds_ck", sql`${t.seconds} >= 0`),
+  ],
+);
+
+/** PHONE CONSULT — the voice switches, one row (`id = 'main'`). Absent ⇒ the shipped defaults. */
+export const opdVoiceSettings = pgTable(
+  "opd_voice_settings",
+  {
+    id: text("id").primaryKey(),
+    enabled: boolean("enabled").notNull().default(true),
+    /**
+     * The second switch (decision 0049's review): "did you mean", the doctor's most-used diagnoses
+     * and the suggested tests. Off ⇒ the phone offers nothing it worked out; typing and search stay.
+     */
+    suggestionsEnabled: boolean("suggestions_enabled").notNull().default(true),
+    model: text("model").notNull().default("gpt-4o-transcribe"),
+    /** Minutes of audio the whole hospital may send in one IST day. */
+    dailyMinutesCap: integer("daily_minutes_cap").notNull().default(120),
+    updatedBy: text("updated_by").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    check("opd_voice_settings_model_ck", sql`${t.model} in ('gpt-4o-transcribe', 'gpt-4o-mini-transcribe', 'whisper-1')`),
+    check("opd_voice_settings_cap_ck", sql`${t.dailyMinutesCap} >= 0 and ${t.dailyMinutesCap} <= 6000`),
+  ],
+);
+
+/**
+ * PHONE CONSULT — LOOK-ALIKE / SOUND-ALIKE MEDICINE NAMES. A pair of lower-case name stems
+ * ("hydroxyzine", "hydralazine"): when the doctor picks a medicine whose name or moiety starts with
+ * one, the phone asks "X — not Y?" and takes a second tap. `reviewedBy` null ⇒ the pair came from
+ * the shipped standard list and no pharmacist of this hospital has confirmed it; it still asks.
+ */
+export const opdLasaPairs = pgTable(
+  "opd_lasa_pairs",
+  {
+    id: text("id").primaryKey(),
+    nameA: text("name_a").notNull(),
+    nameB: text("name_b").notNull(),
+    active: boolean("active").notNull().default(true),
+    reviewedBy: text("reviewed_by"),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("opd_lasa_pairs_pair_uq").on(t.nameA, t.nameB),
+    check("opd_lasa_pairs_order_ck", sql`${t.nameA} < ${t.nameB} and ${t.nameA} = lower(${t.nameA}) and ${t.nameB} = lower(${t.nameB})`),
+    check("opd_lasa_pairs_reviewed_ck", sql`(${t.reviewedBy} is null) = (${t.reviewedAt} is null)`),
+  ],
+);
+
+/**
+ * PHONE CONSULT — A WORD THAT MATCHED NOTHING. A medicine, test or diagnosis term a doctor typed
+ * or spoke that the catalogue could not answer. The TERM only (≤ 60 characters), never a patient,
+ * a visit or the sentence around it. It feeds a later alias tool; nothing reads it to decide care.
+ */
+export const opdTermMisses = pgTable(
+  "opd_term_misses",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull(),
+    term: text("term").notNull(),
+    /** Where the match was tried: 'search' (typed) or 'voice' (heard). */
+    stage: text("stage").notNull(),
+    userId: text("user_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("opd_term_misses_kind_term_idx").on(t.kind, t.term),
+    check("opd_term_misses_kind_ck", sql`${t.kind} in ('medicine', 'test', 'diagnosis')`),
+    check("opd_term_misses_stage_ck", sql`${t.stage} in ('search', 'voice')`),
+    check("opd_term_misses_term_ck", sql`char_length(${t.term}) between 2 and 60`),
+  ],
+);
+
+/**
+ * PHONE CONSULT — WHAT BECAME OF A SUGGESTION. One row per offered thing the doctor took
+ * ('accepted'), left ('dismissed'), or per thing they wrote with no offer at all ('manual').
+ * Kind, source, outcome, doctor, time — no medicine name, no patient.
+ */
+export const opdSuggestionEvents = pgTable(
+  "opd_suggestion_events",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    kind: text("kind").notNull(),
+    source: text("source").notNull(),
+    outcome: text("outcome").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    /*
+     * Decision 0050, P0 — THE ONE SUGGESTION LOG. The phone consult's three-column counter (0048)
+     * grew into the plan's `cds_suggestion_events` IN PLACE: one table, not two. Every column below
+     * is nullable because the rows written before carry none of them. `encounter_id` is the join to
+     * what the visit finally held and stays; there is NO patient id here and never a patient's name.
+     */
+    /** Which screen's suggestion: `consult_web`, `consult_phone`, `scribe`, `desk`. */
+    surface: text("surface"),
+    doctorId: text("doctor_id"),
+    departmentId: text("department_id"),
+    encounterId: text("encounter_id"),
+    /** `dx:J06`, `tx:viral fever`, `cc:cough+fever` — what the suggestion was FOR. */
+    contextKey: text("context_key"),
+    /** The item itself: a medicine id or normalised name, an ICD code, a test code, a phrase. */
+    itemKey: text("item_key"),
+    /** 0-based position on the screen; null for a row that is not about a position. A `shown` row carries its items here. */
+    rankShown: integer("rank_shown"),
+    items: jsonb("items").$type<string[]>(),
+    /** Whose pattern put it there: personal, dept, hospital, starter, alias — null until P1 ranks. */
+    sourceLevel: text("source_level"),
+    /** One id for the chips drawn together, so a `shown` row and its taps and crosses can be joined. */
+    batchId: text("batch_id"),
+  },
+  (t) => [
+    index("opd_suggestion_events_at_idx").on(t.createdAt),
+    index("opd_suggestion_events_doctor_item_idx").on(t.userId, t.surface, t.contextKey, t.itemKey, t.createdAt),
+    check("opd_suggestion_events_kind_ck", sql`${t.kind} in ('medicine', 'test', 'diagnosis', 'complaint', 'advice', 'dose', 'department', 'alias')`),
+    check("opd_suggestion_events_source_ck", sql`${t.source} in ('typed', 'voice', 'search', 'set', 'repeat', 'suggested', 'paper')`),
+    check("opd_suggestion_events_outcome_ck", sql`${t.outcome} in ('accepted', 'dismissed', 'manual', 'shown', 'edited')`),
+    check("opd_suggestion_events_level_ck", sql`${t.sourceLevel} is null or ${t.sourceLevel} in ('personal', 'dept', 'hospital', 'starter', 'alias')`),
+  ],
+);
+
+/**
+ * Decision 0050, P0 — ONE ROW PER ISSUED PRESCRIPTION LINE, in the shape counting needs. Written
+ * INSIDE the issue transaction (`cds-rx-lines.ts`), and for a scribe's transcription the same way: a
+ * typed-from-paper line is the doctor's. The prescription document is untouched — this is a copy for
+ * arithmetic, not the record. `encounter_id` is here; a patient id is not.
+ *
+ * A line whose prescriber is not one of this hospital's doctors is not written (nothing to learn).
+ */
+export const cdsRxLines = pgTable(
+  "cds_rx_lines",
+  {
+    prescriptionId: text("prescription_id").notNull().references(() => opdPrescriptions.id),
+    lineIndex: integer("line_index").notNull(),
+    encounterId: text("encounter_id").notNull(),
+    doctorId: text("doctor_id").notNull(),
+    departmentId: text("department_id"),
+    serviceDate: date("service_date", { mode: "string" }).notNull(),
+    issuedAt: timestamp("issued_at", { withTimezone: true }).notNull(),
+    /** `dx:J06` when the visit's primary diagnosis is coded, `tx:<words>` when typed, null when none. */
+    dxKey: text("dx_key"),
+    complaintConcepts: jsonb("complaint_concepts").$type<string[]>().notNull().default([]),
+    /** `adult` | `pediatric` — `cds/regimen.ts` `bandFor` on the charted weight, else the age. */
+    band: text("band").notNull(),
+    medicineId: text("medicine_id"),
+    /** The line's drug text, lower-cased and single-spaced: the key when no medicine was picked. */
+    drugKey: text("drug_key").notNull(),
+    /** Sorted formulary salt ids joined by '+', when the medicine resolved; the moiety set. */
+    moietySet: text("moiety_set"),
+    doseRaw: text("dose_raw").notNull(),
+    doseAmount: doublePrecision("dose_amount"),
+    doseUnit: text("dose_unit"),
+    frequencyRaw: text("frequency_raw").notNull(),
+    /** One of the closed set (`@hmis/contracts` RX_FREQUENCIES) or `other`. */
+    frequency: text("frequency").notNull(),
+    durationDays: integer("duration_days"),
+    route: text("route").notNull(),
+    source: text("source"),
+    fromSuggestion: boolean("from_suggestion").notNull().default(false),
+    /** A safety override was recorded against this line — never learned as a default. */
+    hadOverride: boolean("had_override").notNull().default(false),
+    /** Typed by the desk from the doctor's paper. Counts as the doctor's line. */
+    transcribed: boolean("transcribed").notNull().default(false),
+    awareCategory: text("aware_category"),
+    scheduleFlag: text("schedule_flag"),
+    antimicrobialRestricted: boolean("antimicrobial_restricted").notNull().default(false),
+    ndps: boolean("ndps").notNull().default(false),
+  },
+  (t) => [
+    primaryKey({ columns: [t.prescriptionId, t.lineIndex] }),
+    index("cds_rx_lines_doctor_dx_idx").on(t.doctorId, t.dxKey, t.serviceDate),
+    index("cds_rx_lines_dept_dx_idx").on(t.departmentId, t.dxKey, t.serviceDate),
+    check("cds_rx_lines_band_ck", sql`${t.band} in ('adult', 'pediatric')`),
+    check("cds_rx_lines_frequency_ck", sql`${t.frequency} in ('OD', 'BD', 'TDS', 'QID', 'HS', 'SOS', 'STAT', 'other')`),
+  ],
+);
+
+/**
+ * Decision 0050, P0 — each doctor's own switch for the suggestions this system draws from counts.
+ * ON unless the doctor turns it off (DECIDED: these are the doctor's own patterns handed back, not
+ * the copilot's proactive mode of decision 0006, whose two toggles still have no surface to govern).
+ */
+export const cdsDoctorPrefs = pgTable(
+  "cds_doctor_prefs",
+  {
+    userId: text("user_id").primaryKey(),
+    suggestionsOn: boolean("suggestions_on").notNull().default(true),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+);
+
+/**
+ * Decision 0051 / plan §7a, phase P2 — A LEARNED ALIAS: a term a doctor typed or spoke ("pan forty")
+ * and the ONE catalogue medicine an automatic pipeline says it means. No person reviews a row: a
+ * chooser picks from formulary candidates, a second model answers one closed question, rules in
+ * code check the rest (`modules/opd/alias-pipeline.ts`). There is NO patient and NO visit here —
+ * the term, a catalogue id, two models' numbers and closed codes; never free text from a model.
+ *
+ *   proposed   — something refused (`refusal` says what). Never shown, never read by a search.
+ *   suggestion — both models agreed above their lines and every rule passed. Shown as a suggestion only.
+ *   trusted    — earned by use (`trustByUse`); demoted — the monthly re-audit took it back;
+ *   undone     — the owner's one-tap undo (`undone_by`, `undone_at`).
+ *
+ * One row per (kind, term): a second target for the same term is a refusal, never a second row.
+ * `kind` allows 'complaint' and 'test' for the later uses of the same pattern; only 'medicine' is written.
+ */
+export const cdsAliases = pgTable(
+  "cds_aliases",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull(),
+    /** Lower-case, NFC, single-spaced. */
+    term: text("term").notNull(),
+    /**
+     * The term with its spoken numbers written as digits ("pan forty" → "pan 40"; `readTerm(term).digits`).
+     * What a typed search is compared with, so "pan forty" and "pan 40" find the same nickname. Null on a
+     * row written before the search read this table; such a row is simply never found.
+     */
+    termKey: text("term_key"),
+    /** `formulary_medicines.id` — null only on a 'proposed' row whose chooser found no target. */
+    medicineId: text("medicine_id"),
+    state: text("state").notNull(),
+    /** The VERSIONED model id that chose, and how sure it was. */
+    chooserName: text("chooser_name"),
+    chooserConfidence: doublePrecision("chooser_confidence"),
+    reviewerName: text("reviewer_name"),
+    reviewerAnswer: text("reviewer_answer"),
+    reviewerProbability: doublePrecision("reviewer_probability"),
+    reasonCode: text("reason_code"),
+    /** 'pass', the first rule that refused, or 'not_run' when there was no target to check. */
+    ruleResult: text("rule_result").notNull(),
+    /** Why the row is only 'proposed' — the first thing in the pipeline that said no. Null on a live row. */
+    refusal: text("refusal"),
+    /** The target has a look-alike neighbour: a screen must ask for a second tap before using it. */
+    lasaGuard: boolean("lasa_guard").notNull().default(false),
+    distinctDoctors: integer("distinct_doctors").notNull().default(0),
+    taps: integer("taps").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+    /** When the pipeline (or the re-audit) last checked this row. */
+    auditedAt: timestamp("audited_at", { withTimezone: true }),
+    undoneBy: text("undone_by"),
+    undoneAt: timestamp("undone_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("cds_aliases_kind_term_uq").on(t.kind, t.term),
+    index("cds_aliases_state_idx").on(t.state),
+    index("cds_aliases_term_key_idx").on(t.termKey),
+    check("cds_aliases_kind_ck", sql`${t.kind} in ('medicine', 'complaint', 'test')`),
+    check("cds_aliases_term_ck", sql`char_length(${t.term}) between 2 and 60 and ${t.term} = lower(${t.term})`),
+    check("cds_aliases_state_ck", sql`${t.state} in ('proposed', 'suggestion', 'trusted', 'demoted', 'undone')`),
+    check("cds_aliases_reviewer_answer_ck", sql`${t.reviewerAnswer} is null or ${t.reviewerAnswer} in ('yes', 'no', 'unsure')`),
+    check(
+      "cds_aliases_reason_code_ck",
+      sql`${t.reasonCode} is null or ${t.reasonCode} in ('name_match', 'strength_match', 'brand_nickname', 'ambiguous_strength', 'ambiguous_form', 'lookalike_risk', 'not_a_medicine')`,
+    ),
+    check(
+      "cds_aliases_rule_result_ck",
+      sql`${t.ruleResult} in ('pass', 'not_run', 'multiple_targets', 'strength_mismatch', 'strength_unstated', 'form_mismatch', 'controlled_drug', 'lookalike_conflict', 'same_model')`,
+    ),
+    check(
+      "cds_aliases_refusal_ck",
+      sql`${t.refusal} is null or ${t.refusal} in ('identifier_in_term', 'no_candidates', 'chooser_unavailable', 'chooser_none', 'chooser_below_line', 'reviewer_unavailable', 'reviewer_no', 'reviewer_unsure', 'reviewer_below_line', 'multiple_targets', 'strength_mismatch', 'strength_unstated', 'form_mismatch', 'controlled_drug', 'lookalike_conflict', 'same_model')`,
+    ),
+    /* A row anyone can be SHOWN names its medicine, passed every rule and was refused by nothing. */
+    check(
+      "cds_aliases_live_ck",
+      sql`${t.state} not in ('suggestion', 'trusted') or (${t.medicineId} is not null and ${t.ruleResult} = 'pass' and ${t.refusal} is null and ${t.reviewerAnswer} = 'yes')`,
+    ),
+    check("cds_aliases_undone_ck", sql`(${t.undoneBy} is null) = (${t.undoneAt} is null) and ((${t.state} = 'undone') = (${t.undoneAt} is not null))`),
+    check("cds_aliases_probabilities_ck", sql`(${t.chooserConfidence} is null or ${t.chooserConfidence} between 0 and 1) and (${t.reviewerProbability} is null or ${t.reviewerProbability} between 0 and 1)`),
+  ],
+);
+
+/**
+ * ═══ HOW LONG PATIENTS WAIT — THE NIGHTLY LEARNING (owner 2026-10-09) ═══
+ *
+ * "I want a system in place that keeps learning these metrics and show suggestions to improve the
+ * metrics based on analysis." Both tables are written only by `modules/opd/flow-learning.ts`, from
+ * stored timestamps and fixed rules — never by a model (the owner's standing rule: a model never
+ * writes a fact shown as fact). Neither holds a patient or names a member of staff.
+ *
+ * `opd_flow_baselines` — each department's own rolling numbers (and the hospital's), the last 28 days,
+ * per leg, by weekday × hour. `scope` is 'hospital' or an `opd_departments.id` (plain text, house
+ * precedent for a derived table). `weekday` 0 = Monday … 6 = Sunday and `hour` 8..20 IST; −1 in
+ * either means "every". Replaced whole on each run.
+ */
+export const opdFlowBaselines = pgTable(
+  "opd_flow_baselines",
+  {
+    id: text("id").primaryKey(),
+    scope: text("scope").notNull(),
+    leg: text("leg").notNull(),
+    weekday: integer("weekday").notNull(),
+    hour: integer("hour").notNull(),
+    n: integer("n").notNull(),
+    medianMin: doublePrecision("median_min"),
+    p90Min: doublePrecision("p90_min"),
+    windowFrom: date("window_from", { mode: "string" }).notNull(),
+    windowTo: date("window_to", { mode: "string" }).notNull(),
+    computedAt: timestamp("computed_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("opd_flow_baselines_cell_uq").on(t.scope, t.leg, t.weekday, t.hour),
+    check("opd_flow_baselines_leg_ck", sql`${t.leg} in ('desk_vitals', 'vitals_doctor', 'desk_doctor', 'consult')`),
+    check("opd_flow_baselines_weekday_ck", sql`${t.weekday} between -1 and 6`),
+    check("opd_flow_baselines_hour_ck", sql`${t.hour} = -1 or ${t.hour} between 0 and 23`),
+  ],
+);
+
+/**
+ * `opd_flow_findings` — what the rules found, from a CLOSED set of types (`flow-rules.ts`). One OPEN
+ * or DISMISSED row per `finding_key` (type · scope · leg · weekday · window); a RESOLVED row is history,
+ * and the same pattern coming back opens a new row. "×" (dismiss) and "Tried it" are the only two
+ * human acts, by the owner or the Medical Superintendent, each audited as an event.
+ */
+export const opdFlowFindings = pgTable(
+  "opd_flow_findings",
+  {
+    id: text("id").primaryKey(),
+    findingKey: text("finding_key").notNull(),
+    type: text("type").notNull(),
+    scope: text("scope").notNull(),
+    leg: text("leg").notNull(),
+    weekday: integer("weekday"),
+    hourFrom: integer("hour_from"),
+    hourTo: integer("hour_to"),
+    observedMin: doublePrecision("observed_min").notNull(),
+    baselineMin: doublePrecision("baseline_min").notNull(),
+    patients: integer("patients").notNull(),
+    minutesLost: integer("minutes_lost").notNull(),
+    firstSeen: date("first_seen", { mode: "string" }).notNull(),
+    lastSeen: date("last_seen", { mode: "string" }).notNull(),
+    state: text("state").notNull().default("open"),
+    dismissedBy: text("dismissed_by"),
+    dismissedAt: timestamp("dismissed_at", { withTimezone: true }),
+    /** The observed median when × was pressed — it comes back early only at 20 % worse than this. */
+    dismissedObservedMin: doublePrecision("dismissed_observed_min"),
+    triedBy: text("tried_by"),
+    triedAt: timestamp("tried_at", { withTimezone: true }),
+    beforeMedianMin: doublePrecision("before_median_min"),
+    afterMedianMin: doublePrecision("after_median_min"),
+    resolvedOn: date("resolved_on", { mode: "string" }),
+    minutesWon: integer("minutes_won"),
+    /** A fixed code the engine writes ('returned', 'returned_worse'); never free text from a model. */
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("opd_flow_findings_live_uq").on(t.findingKey).where(sql`${t.state} <> 'resolved'`),
+    index("opd_flow_findings_state_idx").on(t.state),
+    check("opd_flow_findings_type_ck", sql`${t.type} in ('bay_peak', 'doctor_start_late', 'dept_outlier', 'week_regression', 'consult_up')`),
+    check("opd_flow_findings_state_ck", sql`${t.state} in ('open', 'dismissed', 'resolved')`),
+    check("opd_flow_findings_leg_ck", sql`${t.leg} in ('desk_vitals', 'vitals_doctor', 'desk_doctor', 'consult')`),
+    check("opd_flow_findings_dismissed_ck", sql`(${t.state} = 'dismissed') = (${t.dismissedAt} is not null) and (${t.dismissedBy} is null) = (${t.dismissedAt} is null)`),
+    check("opd_flow_findings_tried_ck", sql`(${t.triedBy} is null) = (${t.triedAt} is null)`),
+    check("opd_flow_findings_note_ck", sql`${t.note} is null or ${t.note} in ('returned', 'returned_worse')`),
   ],
 );

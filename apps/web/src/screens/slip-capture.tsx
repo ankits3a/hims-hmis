@@ -4,8 +4,20 @@ import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../lib/api";
 import { fmtIst, useDebounced } from "../lib/format";
 import { StationShell } from "../components/station/station-shell";
+import { DocCrop, type CropStatus } from "../components/doc-crop";
+import { frameQuad, isConvex, type Quad } from "../lib/doc-crop/geometry";
+import { detectInImage, loadImage, warpToCanvas } from "../lib/doc-crop/browser";
 import type { StationLink } from "../components/station/station-shell";
+import {
+  MAX_EDGE, QUALITIES, SLIP_KINDS, ageYearsAt, base64Bytes, fitToMaxEdge, fitsBudget, minutesSince, slipDoor, slipOfPatient,
+} from "../../../../packages/contracts/src/slip-desk";
+import type { SlipDay, SlipKind, SlipPatient, SlipReadback } from "../../../../packages/contracts/src/slip-desk";
+import { tokenText } from "../../../../packages/contracts/src/vitals-entry";
+import type { WirePaperOutcome, WirePaperVerdict } from "../lib/opd-api";
 import "./slip-desk.css";
+
+/** The outcomes after which the visit stands consulted — worded in green; the rest say why not, plainly. */
+const PAPER_CONSULTED: ReadonlySet<string> = new Set<WirePaperOutcome>(["marked", "already_marked", "doctor_completed"]);
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -53,34 +65,12 @@ import "./slip-desk.css";
  *     the same read-back the scan gets, so the check is not skipped by the other door;
  *   · the doctor is named by Doctor ID only.
  */
-const MAX_EDGE = 1600;
-const TARGET_BYTES = 1_400_000; // just under the server's 1.5 MB refusal
-const QUALITIES = [0.82, 0.7, 0.6, 0.5, 0.4];
-
-/**
- * The bounded size for a source of this shape. Pulled out so the arithmetic is testable without a
- * rasteriser — jsdom has no canvas, so a screen test cannot prove a single pixel of it.
- *
- * NEVER UPSCALES: a 400 px photograph of a slip is a bad photograph, and stretching it to 1600
- * makes a bigger bad photograph and a bigger file. `Math.min(1, …)` is that rule.
- */
-export function fitToMaxEdge(width: number, height: number): { width: number; height: number } {
-  const longest = Math.max(width, height);
-  const scale = longest === 0 ? 1 : Math.min(1, MAX_EDGE / longest);
-  return { width: Math.round(width * scale), height: Math.round(height * scale) };
-}
-
-/**
- * The byte count of a base64 payload WITHOUT decoding it — 4 characters carry 3 bytes. Decoding a
- * 1.5 MB string on a desk machine to find out whether it is 1.5 MB is work for nothing.
- */
-export function base64Bytes(b64: string): number {
-  return Math.floor((b64.length * 3) / 4);
-}
-
-export function fitsBudget(b64: string): boolean {
-  return base64Bytes(b64) <= TARGET_BYTES;
-}
+/*
+  The size budget, the visit/slip wire shapes and the reader for what the desk types or scans live in
+  packages/contracts/src/slip-desk.ts since 2026-10-06 — the phone's slip desk files by the same
+  rules. Re-exported, so every import from this file keeps working.
+*/
+export { base64Bytes, fitToMaxEdge, fitsBudget } from "../../../../packages/contracts/src/slip-desk";
 
 /**
  * Draw the frame to a canvas at a bounded size and encode it, stepping the quality down until it
@@ -113,35 +103,10 @@ export async function downscaleToJpeg(source: CanvasImageSource, width: number, 
   return null;
 }
 
-type Summary = {
-  uhid: string; name: string | null; alias: string | null;
-  administrativeGender?: string | null; dob?: string | null;
-};
-
-/** `GET /opd/visits/by-number/:visitNo` — and each hit of `GET /opd/slips/find`. */
-type Readback = {
-  encounterId: string;
-  patientId: string;
-  visitNo: string;
-  serviceDate: string;
-  patient: Summary | null;
-  /* UX-AUDIT 2026-09-28 · BOARD — additive server fields; optional so an older API still reads. */
-  doctorCode?: string | null;
-  departmentName?: string | null;
-  roomName?: string | null;
-  filed?: { id: string; kind: string; capturedAt: string; retakeRequestedAt: string | null }[];
-};
-
-type SlipRow = {
-  encounterId: string; patientId: string; visitNo: string; patient: Summary;
-  doctorCode: string | null; roomName: string | null; state: "waiting" | "retake" | "filed";
-  consultDoneAt: string | null; filedAt: string | null; pages: number; kinds: string[];
-  retakeRequestedAt: string | null; retakeReason: string | null;
-};
-type SlipDay = { serviceDate: string; items: SlipRow[]; counts: { waiting: number; retake: number; filed: number } };
-
-const KINDS = ["consult_prescription", "outside_prescription", "outside_report"] as const;
-type Kind = (typeof KINDS)[number];
+type Summary = SlipPatient;
+type Readback = SlipReadback;
+const KINDS = SLIP_KINDS;
+type Kind = SlipKind;
 
 /** OPD's screens, for the header's switch — the board's seven, each shown only to a person who may open it. */
 const OPD_STATIONS: readonly (Omit<StationLink, "label"> & { labelKey: string })[] = [
@@ -160,18 +125,7 @@ function dmy(serviceDate: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(serviceDate);
   return m === null ? serviceDate : `${m[3]}-${MONTHS[Number(m[2]) - 1] ?? ""}-${m[1]}`;
 }
-/** Whole years from an ISO date of birth. */
-function ageYears(dob: string | null | undefined, now: number): number | null {
-  if (dob === null || dob === undefined) return null;
-  const d = new Date(dob);
-  if (Number.isNaN(d.getTime())) return null;
-  const n = new Date(now);
-  let y = n.getUTCFullYear() - d.getUTCFullYear();
-  if (n.getUTCMonth() < d.getUTCMonth() || (n.getUTCMonth() === d.getUTCMonth() && n.getUTCDate() < d.getUTCDate())) y -= 1;
-  return y;
-}
-const minutesSince = (iso: string | null, now: number): number =>
-  iso === null ? 0 : Math.max(0, Math.floor((now - new Date(iso).getTime()) / 60_000));
+const ageYears = ageYearsAt;
 
 /** Keys a desk types into a box must not also fire the dock — except the scan box's own Enter. */
 function typingIn(target: EventTarget | null): boolean {
@@ -200,12 +154,19 @@ export function SlipCapture(): React.ReactElement {
   const [via, setVia] = useState<"qr" | "search">("qr");
   const [shot, setShot] = useState<string | null>(null);
   const [shotSize, setShotSize] = useState<{ width: number; height: number } | null>(null);
+  /*
+    THE PHOTO BEFORE IT IS CROPPED (owner, 2026-10-05). The camera's frame lands here first, the page
+    is found in it, and the desk confirms or drags the corners; "Use this" flattens it into `shot`.
+    It is KEPT after that, so "Adjust the crop" goes back to the same photo instead of a retake.
+  */
+  const [raw, setRaw] = useState<{ b64: string; width: number; height: number; quad: Quad; status: CropStatus } | null>(null);
+  const [cropping, setCropping] = useState(false);
   const [kind, setKind] = useState<Kind>("consult_prescription");
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   /** The number the server did not know — state B's red box and its alert. */
   const [refused, setRefused] = useState<string | null>(null);
-  const [filed, setFiled] = useState<{ back: Readback; kind: Kind; at: string } | null>(null);
+  const [filed, setFiled] = useState<{ back: Readback; kind: Kind; at: string; paper: WirePaperOutcome | "failed" | null } | null>(null);
   const [cameraOn, setCameraOn] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
   const [findQ, setFindQ] = useState("");
@@ -246,31 +207,62 @@ export function SlipCapture(): React.ReactElement {
   }, []);
 
   const take = (back: Readback, how: "qr" | "search"): void => {
-    setResolved(back); setVia(how); setShot(null); setShotSize(null); setKind("consult_prescription"); setNote("");
+    setResolved(back); setVia(how); setShot(null); setRaw(null); setShotSize(null); setKind("consult_prescription"); setNote("");
     setRefused(null); setError(null); setFiled(null); setFindOpen(false); setFindQ("");
   };
 
+  /**
+   * OWNER 2026-10-06 — ONE READER for what the desk types or scans (`slipDoor`, shared with the
+   * phone and, underneath, with the vitals bay): the visit number, the token as the slip prints it
+   * (`ORT-4`), a UHID, a printed e-prescription's code or a patient card. Whatever it is, it ends at
+   * the SERVER's read-back of one visit — the camera never opens on a match made on this screen.
+   */
   const resolveNumber = async (raw: string): Promise<void> => {
     const v = raw.trim();
-    if (v === "") return;
-    setError(null); setRefused(null); setResolved(null); setShot(null); setFiled(null);
+    const door = slipDoor(day.data?.items ?? [], v);
+    if (door.to === "empty") return;
+    setError(null); setRefused(null); setResolved(null); setShot(null); setRaw(null); setFiled(null);
     stopCamera();
-    try {
-      const r = await api<Readback>("GET", `/opd/visits/by-number/${encodeURIComponent(v)}`);
-      take(r, "qr");
-    } catch {
-      /* Named for what the operator can DO about it: check the number, or type it — and the torn-QR
-         door opens beside it (owner ruling 28-Sep-2026). */
-      setRefused(v);
-      setFindOpen(true);
+    const readBack = async (visit: string): Promise<boolean> => {
+      try { take(await api<Readback>("GET", `/opd/visits/by-number/${encodeURIComponent(visit)}`), "qr"); return true; } catch { return false; }
+    };
+    if (door.to === "ambiguous") {
+      const coded = door.rows.find((r) => r.departmentCode !== null && r.departmentCode !== undefined && r.departmentCode !== "");
+      setError(coded === undefined
+        ? t("slipCapture.miss.ambiguousPlain", { token: tokenText(door.door), count: door.rows.length })
+        : t("slipCapture.miss.ambiguous", { token: tokenText(door.door), count: door.rows.length, example: `${coded.departmentCode!}-${String(door.door.tokenNo)}` }));
+      return;
     }
+    if (door.to === "miss") {
+      setError(door.door.kind === "token" ? t("slipCapture.miss.token", { token: tokenText(door.door) }) : t("slipCapture.miss.prescription"));
+      setFindOpen(true);
+      return;
+    }
+    if (door.to === "verify") {
+      try {
+        const verdict = await api<{ ok: true; patient: { id: string; uhid: string } } | { ok: false; reason: string }>("POST", "/patients/qr/verify", { payload: door.payload });
+        const row = verdict.ok ? slipOfPatient(day.data?.items ?? [], verdict.patient.id) : null;
+        if (row !== null && await readBack(row.visitNo)) return;
+        setError(verdict.ok ? t("slipCapture.miss.card", { uhid: verdict.patient.uhid }) : t(`vitalsBay.identify.scanFailed.${verdict.reason}`));
+      } catch {
+        setError(t("vitalsBay.identify.scanUnavailable"));
+      }
+      setFindOpen(true);
+      return;
+    }
+    if (await readBack(door.to === "visit" ? door.visitNo : v)) return;
+    /* Named for what the operator can DO about it: check the number, or type it — and the torn-QR
+       door opens beside it (owner ruling 28-Sep-2026), already holding what was typed when that was words. */
+    setRefused(v);
+    setFindOpen(true);
+    if (door.to === "search") setFindQ(door.q);
   };
   const resolve = (): Promise<void> => resolveNumber(visitNo);
 
   /** Esc — the wrong person, or a slip put down: nothing in hand, the scan box ready. */
   const clearDesk = useCallback((): void => {
     stopCamera();
-    setResolved(null); setShot(null); setShotSize(null); setNote(""); setError(null); setRefused(null);
+    setResolved(null); setShot(null); setRaw(null); setShotSize(null); setNote(""); setError(null); setRefused(null);
     setVisitNo("");
     setTimeout(() => scanRef.current?.focus(), 0);
   }, [stopCamera]);
@@ -316,7 +308,7 @@ export function SlipCapture(): React.ReactElement {
     if (video.videoWidth === 0 || video.videoHeight === 0) { setError(t("slipCapture.notReady")); return; }
     const b64 = await downscaleToJpeg(video, video.videoWidth, video.videoHeight);
     if (b64 === null) { setError(t("slipCapture.tooLarge")); return; }
-    setShot(b64); setShotSize(fitToMaxEdge(video.videoWidth, video.videoHeight));
+    toCrop(b64, fitToMaxEdge(video.videoWidth, video.videoHeight));
     stopCamera();
   };
 
@@ -332,7 +324,7 @@ export function SlipCapture(): React.ReactElement {
       });
       const b64 = await downscaleToJpeg(img, img.naturalWidth, img.naturalHeight);
       if (b64 === null) { setError(t("slipCapture.tooLarge")); return; }
-      setShot(b64); setShotSize(fitToMaxEdge(img.naturalWidth, img.naturalHeight));
+      toCrop(b64, fitToMaxEdge(img.naturalWidth, img.naturalHeight));
       stopCamera();
     } catch {
       setError(t("slipCapture.badImage"));
@@ -342,13 +334,60 @@ export function SlipCapture(): React.ReactElement {
     }
   };
 
-  const retake = (): void => { setShot(null); setShotSize(null); setError(null); };
+  const retake = (): void => { setShot(null); setShotSize(null); setRaw(null); setError(null); };
+
+  /* A new photograph opens the crop step with the corners just inside the frame, then looks for the page. */
+  const toCrop = (b64: string, size: { width: number; height: number }): void => {
+    setRaw({ b64, ...size, quad: frameQuad(size.width, size.height, 0.04), status: "finding" });
+  };
+  const rawKey = raw?.b64;
+  useEffect(() => {
+    if (rawKey === undefined) return;
+    let live = true;
+    void (async () => {
+      let found: Awaited<ReturnType<typeof detectInImage>> = null;
+      try { found = await detectInImage(await loadImage(`data:image/jpeg;base64,${rawKey}`)); } catch { found = null; }
+      if (!live) return;
+      setRaw((r) => r === null || r.b64 !== rawKey || r.status !== "finding" ? r
+        : found === null ? { ...r, status: "none" } : { ...r, quad: found.quad, status: "found" });
+    })();
+    return () => { live = false; };
+  }, [rawKey]);
+
+  const resetCrop = (): void => { setRaw((r) => r === null ? r : { ...r, quad: frameQuad(r.width, r.height) }); };
+
+  /*
+    "Use this": the quad is warped flat and goes through the SAME downscale-and-budget as every shot.
+    Corners left on the photo's own edges mean "no crop" — the photo is used as taken, with no
+    second JPEG pass to soften it.
+  */
+  const applyCrop = async (): Promise<void> => {
+    if (raw === null || cropping || !isConvex(raw.quad)) return;
+    const full = frameQuad(raw.width, raw.height);
+    const untouched = raw.quad.every((p, i) => Math.hypot(p.x - full[i]!.x, p.y - full[i]!.y) <= Math.max(raw.width, raw.height) * 0.005);
+    if (untouched) { setShot(raw.b64); setShotSize({ width: raw.width, height: raw.height }); return; }
+    setCropping(true); setError(null);
+    try {
+      const img = await loadImage(`data:image/jpeg;base64,${raw.b64}`);
+      const sx = img.naturalWidth / raw.width;
+      const sy = img.naturalHeight / raw.height;
+      const quad = raw.quad.map((p) => ({ x: p.x * sx, y: p.y * sy })) as Quad;
+      const flat = warpToCanvas(img, quad, MAX_EDGE);
+      const b64 = await downscaleToJpeg(flat, flat.width, flat.height);
+      if (b64 === null) { setError(t("slipCapture.tooLarge")); return; }
+      setShot(b64); setShotSize(fitToMaxEdge(flat.width, flat.height));
+    } catch {
+      setError(t("slipCapture.crop.failed"));
+    } finally {
+      setCropping(false);
+    }
+  };
 
   const file = async (): Promise<void> => {
     if (resolved === null || shot === null) return;
     setError(null);
     try {
-      await api("POST", `/patients/${resolved.patientId}/documents`, {
+      const done = await api<{ documentId: string; effects?: { "opd.paper"?: WirePaperVerdict | { failed: true } } }>("POST", `/patients/${resolved.patientId}/documents`, {
         imageBase64: shot,
         mimeType: "image/jpeg",
         kind,
@@ -357,8 +396,12 @@ export function SlipCapture(): React.ReactElement {
       });
       /* The confirmation NAMES the patient. A desk that photographs forty slips an hour needs to see
          which one just landed, not a green tick that could belong to any of them. */
-      setFiled({ back: resolved, kind, at: new Date().toISOString() });
-      setVisitNo(""); setResolved(null); setShot(null); setShotSize(null); setNote("");
+      /* Owner ruling 2026-10-06 — and it says what the page did to the visit: closed it, found it
+         closed, or left it alone and why. A slip desk must not have to guess whether the patient
+         is still "waiting" on the doctor's screen. */
+      const paper = done.effects?.["opd.paper"];
+      setFiled({ back: resolved, kind, at: new Date().toISOString(), paper: paper === undefined ? null : "failed" in paper ? "failed" : paper.outcome });
+      setVisitNo(""); setResolved(null); setShot(null); setRaw(null); setShotSize(null); setNote("");
       void queryClient.invalidateQueries({ queryKey: ["opd", "slips", "today"] });
       setTimeout(() => scanRef.current?.focus(), 0);
     } catch (e) {
@@ -381,12 +424,13 @@ export function SlipCapture(): React.ReactElement {
     back.patient?.name ?? back.patient?.alias ?? t("slipCapture.unnamed");
 
   /* The flow's one position: 1 scan · 2 check · 3 photograph · 4 file. */
-  const step = resolved === null ? 1 : shot !== null ? 4 : cameraOn ? 3 : 2;
+  const step = resolved === null ? 1 : shot !== null ? 4 : cameraOn || raw !== null ? 3 : 2;
 
   /* ═══ THE KEYS — Enter the dock's act, R retake, Esc clear, P add a page ═══ */
   const act = useRef<() => void>(() => undefined);
   act.current = () => {
     if (step === 2) void startCamera();
+    else if (step === 3 && raw !== null) void applyCrop();
     else if (step === 3) void takeShot();
     else if (step === 4) void file();
     else scanRef.current?.focus();
@@ -398,7 +442,7 @@ export function SlipCapture(): React.ReactElement {
       if (typingIn(e.target)) return;
       if (e.key === "Enter") { e.preventDefault(); act.current(); return; }
       const k = e.key.toLowerCase();
-      if (k === "r" && shot !== null) { e.preventDefault(); retake(); return; }
+      if (k === "r" && (shot !== null || raw !== null)) { e.preventDefault(); retake(); return; }
       if (k === "p" && resolved === null && filed !== null) { e.preventDefault(); void addPage(); }
     };
     window.addEventListener("keydown", onKey);
@@ -618,6 +662,14 @@ export function SlipCapture(): React.ReactElement {
               <span className="dim">
                 {t("slipCapture.filedLine", { kind: kindLabel(filed.kind), at: fmtIst(filed.at), doctor: filed.back.doctorCode ?? "—" })}
               </span>
+              {filed.paper !== null && (
+                <>
+                  <br />
+                  <span data-testid="slip-paper" data-outcome={filed.paper} className={PAPER_CONSULTED.has(filed.paper) ? "sd-paper ok" : "sd-paper"}>
+                    {t(`paper.outcome.${filed.paper}`)}
+                  </span>
+                </>
+              )}
             </span>
           </div>
         )}
@@ -695,6 +747,31 @@ export function SlipCapture(): React.ReactElement {
         <div className="acts">
           <button type="button" className="pri" data-testid="slip-find" disabled={visitNo.trim() === ""} onClick={() => void resolve()}>
             {refused !== null ? t("slipCapture.findAgain") : t("slipCapture.find")} <span className="kb">⏎</span>
+          </button>
+        </div>
+      </>
+    );
+  } else if (shot === null && raw !== null) {
+    work = (
+      <DocCrop
+        src={`data:image/jpeg;base64,${raw.b64}`} width={raw.width} height={raw.height}
+        quad={raw.quad} status={raw.status} onQuad={(quad) => { setRaw((r) => r === null ? r : { ...r, quad }); }}
+      />
+    );
+    const usable = isConvex(raw.quad);
+    dock = (
+      <>
+        <div className="who">
+          <b>{t("slipCapture.crop.dock")}</b>
+          <small>{usable ? t("slipCapture.crop.dockSub") : t("slipCapture.crop.crossed")}</small>
+        </div>
+        <div className="acts">
+          <button type="button" className="sec" data-testid="slip-retake" onClick={retake}>
+            {t("slipCapture.retake")} <span className="kb">R</span>
+          </button>
+          <button type="button" className="sec" data-testid="slip-crop-reset" onClick={resetCrop}>{t("slipCapture.crop.reset")}</button>
+          <button type="button" className="pri" data-testid="slip-crop-use" disabled={!usable || cropping} onClick={() => void applyCrop()}>
+            {cropping ? t("slipCapture.crop.working") : t("slipCapture.crop.use")} <span className="kb">⏎</span>
           </button>
         </div>
       </>
@@ -783,6 +860,11 @@ export function SlipCapture(): React.ReactElement {
           <button type="button" className="sec" data-testid="slip-retake" onClick={retake}>
             {t("slipCapture.retake")} <span className="kb">R</span>
           </button>
+          {raw !== null && (
+            <button type="button" className="sec" data-testid="slip-crop-adjust" onClick={() => { setShot(null); setShotSize(null); }}>
+              {t("slipCapture.crop.adjust")}
+            </button>
+          )}
           <button type="button" className="pri" data-testid="slip-file-it" onClick={() => void file()}>
             {t("slipCapture.fileIt")} <span className="kb">⏎</span>
           </button>

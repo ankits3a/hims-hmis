@@ -713,7 +713,7 @@ export class PatientsController {
   @Post(":id/documents")
   async postDocument(
     @CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown,
-  ): Promise<{ documentId: string }> {
+  ): Promise<{ documentId: string; effects: Record<string, unknown> }> {
     const b = parsed(documentBody, body);
     const bytes = Buffer.from(b.imageBase64, "base64");
     try {

@@ -1,28 +1,32 @@
 import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Inject, NotFoundException, Param, Post, Query } from "@nestjs/common";
-import { asc, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
+import { APPOINTMENT_MODES, patientAbsentBody } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { CONFIG, DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
-import { opdQueueEntries } from "../../kernel/db/schema";
+import { copilotActs, opdQueueEntries } from "../../kernel/db/schema";
 import { getPatientSummaries, PatientError } from "../patients";
 import { findTodaysVisits, requestSlipRetake, slipDay, slipReadback } from "./slips";
 import type { SlipDay, SlipReadback } from "./slips";
-import { bookAppointment, cancelAppointment, checkInAppointment, listAppointments, rescheduleAppointment } from "./appointments";
+import { appointmentForList, bookAppointment, cancelAppointment, checkInAppointment, listAppointments, rescheduleAppointment } from "./appointments";
 import {
   abandonVisit, counterState, deskComplaintFor, getEncounterByVisitNo, getVisit, grantFeeBypass, joinQueue, listVisits, openVisit,
   patientTimeline, reEnterVisit, reclassifyVisit,
 } from "./encounters";
 import { patientRxHistory, patientVitalsHistory } from "./history";
 import { feeMarksFor } from "./prestage";
+import { encounterWithoutMoney, seesFees } from "./fee-view";
 import { listDepartments } from "./masters";
 import type { RxHistoryItem, VitalsHistoryItem } from "./history";
 import type { AppConfig } from "../../kernel/config";
 import { walkIn } from "./walk-in";
+import { moveVisitDepartment, previewDepartmentMove } from "./department-move";
+import type { DepartmentMovePreview, DepartmentMoveResult } from "./department-move";
 import { continuityDoctorFor } from "./continuity";
 import { suggestDepartments } from "./triage";
 import type { TriageChoice } from "./triage";
-import { typesafeClient } from "../../kernel/inference/typesafe";
+import { chooserFor } from "../../kernel/inference/openai-decisions";
 import type { TriageResult } from "./triage";
 import type { ContinuityAnchor } from "./continuity";
 import type { WalkInDeferredResult, WalkInInput, WalkInResult } from "./walk-in";
@@ -31,15 +35,23 @@ import { parsed, toHttp } from "./opd-masters.controller";
 import { availableSlots } from "./schedules";
 import { istDate } from "./time";
 import { amendVitals, getVitalsForAmend, listVitals, recordVitals } from "./vitals";
-import { BENCH_STATES, listBench, setBenchState } from "./bench";
+import { markPatientAbsent, patientAbsentOf, undoPatientAbsent } from "./patient-absent";
+import type { PatientAbsent } from "./patient-absent";
+import { BENCH_STATES, listBench, locateVisit, setBenchState } from "./bench";
 import { cancelEscalation, demandRecheck, escalate, escalationFor } from "./escalation";
 import { preStage } from "./prestage";
 import { READING_SOURCES, UNLOCK_REASONS } from "./vitals-rules";
-import { VITAL_KEYS } from "./config";
-import type { BenchRow } from "./bench";
+import { GLUCOSE_TIMINGS, VITAL_KEYS } from "./config";
+import type { BenchRow, VisitOnBench } from "./bench";
+import { scanResolve } from "./scan";
+import type { ScanQuery, ScanResult } from "./scan";
 import type { EscalationView } from "./escalation";
 import type { PreStage } from "./prestage";
 import type { AppointmentRow } from "./appointments";
+import { recordTeleAdvance, teleDeskMarks, teleFee } from "./tele";
+import { teleSlotOf } from "./tele-call";
+import type { TeleAdvanceResult, TeleDeskMark, TeleFee } from "./tele";
+import { withIdempotency } from "../billing";
 import type { CounterState, EncounterRow, JoinQueueResult, OpenVisitResult, QueueEntryRow, TimelineItem, VitalsRow } from "./encounters";
 import type { VitalsRowWithRecorder } from "./vitals";
 import type { Slot } from "./slots";
@@ -108,8 +120,18 @@ const appointmentCreateBody = z.object({
   slotStart: z.coerce.date(),
   source: z.enum(["desk", "phone"]).optional(),
   note: z.string().max(1000).optional(),
+  // Owner 2026-10-09 — tele-call. The service judges the number (and names the refusal).
+  mode: z.enum(APPOINTMENT_MODES).optional(),
+  telePhone: z.string().max(40).optional(),
 });
-const rescheduleBody = z.object({ slotStart: z.coerce.date(), doctorId: z.string().min(1).optional() });
+/** Owner 2026-10-09 — the desk collects a tele-call's fee. The service judges the amount, the tenders and the UPI reference. */
+const teleAdvanceBody = z.object({
+  amountPaise: z.number().int().min(0),
+  tenders: z.array(z.object({
+    mode: z.enum(["cash", "upi", "card"]), amountPaise: z.number().int().positive(), refText: z.string().trim().max(80).optional(),
+  })).max(3).optional(),
+});
+const rescheduleBody = z.object({ slotStart: z.coerce.date(), doctorId: z.string().min(1).optional(), reason: z.string().max(400).optional(), telePhone: z.string().max(40).optional() });
 const reasonBody = z.object({ reason: z.string().max(500) }); // blank ⇒ reason_required from the service, with its code
 /* FD-32 — the same shape, and the same choice: a blank reason is refused by the SERVICE so the
    clerk gets `reason_required` with its code rather than a zod shape error they cannot map. */
@@ -158,6 +180,15 @@ const walkInBody = z.object({
   // assignment, the token arrives with POST /opd/visits/:id/join-queue after the money.
   join: z.enum(["queue", "defer"]).optional(),
 });
+/* Owner 2026-10-05 — a blank reason is the SERVICE's `reason_required`, as for abandon. */
+const moveDepartmentBody = z.object({
+  departmentId: z.string().min(1), doctorId: z.string().min(1), reason: z.string().max(400),
+  /** Owner 2026-10-05, rule 3 — the difference a higher fee in the new department costs, taken now. */
+  tenders: z.array(z.object({
+    mode: z.enum(["cash", "upi", "card"]), amountPaise: z.number().int().positive(), refText: z.string().max(80).optional(),
+  })).max(3).optional(),
+});
+const movePreviewQuery = z.object({ departmentId: z.string().min(1) });
 const reclassifyBody = z.object({
   visitType: z.enum(["new", "revisit", "renewal"]),
   reason: z.string().min(1).max(400),
@@ -181,6 +212,9 @@ const vitalsBody = z.object({
   tempC: z.number().nullable().optional(),
   /** VD-1 T1 / D5 — required under six, and the reason the bay carries a ₹160 tape. */
   muacCm: z.number().nullable().optional(),
+  /** Owner 2026-10-08 — finger-prick glucose (mg/dL) and when it was taken; one is refused without the other in `checkGlucose`. */
+  glucoseMgDl: z.number().nullable().optional(),
+  glucoseTiming: z.enum(GLUCOSE_TIMINGS).nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
 });
 
@@ -208,7 +242,7 @@ const vitalsDetailBody = z.object({
   readings: z.object({
     heightCm: readingBlock.optional(), weightKg: readingBlock.optional(), pulse: readingBlock.optional(),
     rr: readingBlock.optional(), spo2: readingBlock.optional(), tempC: readingBlock.optional(),
-    muacCm: readingBlock.optional(),
+    muacCm: readingBlock.optional(), glucoseMgDl: readingBlock.optional(),
     bp: z.object({
       takes: z.array(z.tuple([z.number(), z.number()])).min(1),
       source: z.enum(READING_SOURCES),
@@ -240,6 +274,13 @@ const benchQuery = z.object({
   doctorId: z.string().min(1).optional(),
   serviceDate: z.string().max(10).optional(),
 });
+/** Owner 2026-10-08 — the phone's quick scan: the READING of a code (the phone's `doorsOf`), never the raw text. */
+const scanQuery = z.object({
+  by: z.enum(["visit", "encounter", "token", "uhid", "patient"]),
+  value: z.string().trim().min(1).max(80),
+  departmentCode: z.string().trim().min(1).max(8).optional(),
+});
+const benchLocateQuery = z.object({ visitNo: z.string().trim().min(1).max(40), serviceDate: z.string().max(10).optional() });
 /** T3 — the reading the bay is asking the SERVER to judge. It asks; the band decides. */
 const escalationBody = z.object({
   sbp: z.number().optional(), dbp: z.number().optional(), pulse: z.number().optional(),
@@ -247,21 +288,32 @@ const escalationBody = z.object({
   muacCm: z.number().optional(),
 });
 
-type AppointmentView = AppointmentRow & { patient: PatientSummary | null };
+/** `teleDesk` is the DESK's money mark on a tele-call row (to pay / paid). It exists on this desk route only. */
+/** `viaCopilot` (E2.1): booked or moved from the copilot chat — read from the `copilot_acts` row pointing at it. */
+type AppointmentView = AppointmentRow & { patient: PatientSummary | null; teleDesk?: TeleDeskMark; viaCopilot?: true };
 type VisitListItem = EncounterRow & { patient: PatientSummary | null; queueEntry: QueueEntryRow | null };
 /**
- * FD-32 — the visit read carries the two money marks as well, so the CONSULTATION and the OPD Order
- * Desk wear the owner's warning from the same derivation the vitals bay uses (`feeMarksFor`). On
- * consultation the pair that matters is the BYPASSED one: the fee gate already refuses an unpaid
- * consult, so the patient a doctor actually meets unpaid is the one the front desk waved through —
- * and the doctor should see whose decision that was and why.
+ * FD-32 — the visit read carries the two money marks, from the same derivation the vitals bay uses
+ * (`feeMarksFor`), for the DESKS that read a visit: Desk One's visit card and the paper desks.
+ * Until 2026-10-09 the consultation screen wore them too; the owner ruled that a doctor's screen
+ * shows no money, so they are no longer sent to a caller without a fee-seeing permission.
  */
-type VisitDetail = NonNullable<Awaited<ReturnType<typeof getVisit>>> & {
+type VisitRead = NonNullable<Awaited<ReturnType<typeof getVisit>>>;
+type VisitDetail = (VisitRead | (Omit<VisitRead, "encounter"> & { encounter: ReturnType<typeof encounterWithoutMoney<VisitRead["encounter"]>> })) & {
   patient: PatientSummary | null;
-  feeUnpaid: boolean;
-  feeBypass: { by: string; reason: string; at: Date } | null;
+  /**
+   * OWNER RULING 2026-10-09 — *"Doctor's screens must not show money."* The two marks, and the
+   * bypass / override columns of the visit row, are sent only to a caller whose own work is the fee
+   * (`fee-view.ts`: the front desk, the cashier, the paper desks). For everyone else — the doctor —
+   * the keys are ABSENT. On a tele visit they are absent for every caller.
+   */
+  feeUnpaid?: boolean;
+  feeBypass?: { by: string; reason: string; at: Date } | null;
   /** What the front desk heard, by whom and when — `null` when nothing was typed (D15). */
   deskComplaint: { text: string; by: string; at: Date } | null;
+  /** Owner 2026-10-07 — the guardian came with the reports and the patient did not (`patient-absent.ts`). */
+  patientAbsent: PatientAbsent | null;
+  teleSlotAt: Date | null;
 };
 
 @Controller("opd")
@@ -321,7 +373,10 @@ export class OpdVisitsController {
    * null with no key configured — and then `config.triage` answers alone, exactly as before.
    */
   private triageChoice(): TriageChoice | null {
-    const client = typesafeClient(this.config.triageChoice);
+    const client = chooserFor({
+      order: this.config.triageChooserOrder, typesafe: this.config.triageChoice, decisions: this.config.decisions,
+      openaiKeyFile: this.config.openaiKeyFile, minConfidence: this.config.triageChoice.minConfidence,
+    });
     return client === null ? null : { client, minConfidence: this.config.triageChoice.minConfidence };
   }
 
@@ -394,6 +449,38 @@ export class OpdVisitsController {
     const b = parsed(reasonBody, body);
     try {
       return await cancelAppointment(this.db, actor, id, b.reason);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** Owner 2026-10-09 — what a tele-call costs: the in-person fee for that patient, doctor and slot date. Desk only. */
+  @RequirePermission("opd.appointments.manage", "hospital", { alsoAdmits: ["billing.receipt.record"] })
+  @Get("appointments/:id/tele-fee")
+  async teleFeeRoute(@Param("id") id: string): Promise<TeleFee> {
+    try {
+      return await teleFee(this.db, id);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * The desk takes the fee: one ordinary advance receipt in the acting cashier's open drawer, for
+   * exactly the quote. `Idempotency-Key` is honoured as `POST /billing/receipts` honours it — the
+   * same store, so a retried request is answered, not repeated.
+   */
+  @RequirePermission("billing.receipt.record", "hospital")
+  @Post("appointments/:id/advance")
+  async teleAdvance(
+    @CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown, @Headers("idempotency-key") idemKey?: string,
+  ): Promise<TeleAdvanceResult> {
+    const b = parsed(teleAdvanceBody, body);
+    try {
+      return await withIdempotency(
+        this.db, { actorId: actor.id, route: `POST /opd/appointments/${id}/advance`, key: idemKey }, b,
+        () => recordTeleAdvance(this.db, actor, id, b),
+      );
     } catch (e) {
       toHttp(e);
     }
@@ -587,10 +674,20 @@ export class OpdVisitsController {
     const found = await getVisit(this.db, actor, id);
     if (!found) toHttp(new OpdError("unknown_encounter", `unknown encounter ${id}`));
     const [summary] = await getPatientSummaries(this.db, actor, [found.encounter.patientId]);
-    return {
-      ...found, patient: summary ?? null, ...(await feeMarksFor(this.db, found.encounter)),
+    /*
+      Two rulings meet here (owner 2026-10-09). A doctor's read carries no money key (`fee-view.ts`);
+      a TELE visit's read carries none for ANY caller — the desk reads a tele-call's money off the
+      appointment. One stripping path: `encounterWithoutMoney`.
+    */
+    const rest = {
+      patient: summary ?? null,
       deskComplaint: await deskComplaintFor(this.db, found.encounter),
+      patientAbsent: patientAbsentOf(found.encounter),
+      // Owner 2026-10-09 — a tele-call's own slot, for the doctor's card. Null on every other visit.
+      teleSlotAt: await teleSlotOf(this.db, found.encounter),
     };
+    if (found.encounter.consultMode !== "tele" && await seesFees(this.db, actor)) return { ...found, ...rest, ...(await feeMarksFor(this.db, found.encounter)) };
+    return { ...found, encounter: encounterWithoutMoney(found.encounter), ...rest };
   }
 
   /**
@@ -613,6 +710,32 @@ export class OpdVisitsController {
     const b = parsed(reasonBody, body);
     try {
       return await abandonVisit(this.db, actor, id, b.reason);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * Owner 2026-10-05 — "Wrong department — move patient" (`department-move.ts`). The preview is a
+   * read: what the visit becomes in that department, and the bill that would refuse the move.
+   */
+  @RequirePermission("opd.visits.open", "hospital")
+  @Get("visits/:id/move-preview")
+  async movePreview(@CurrentActor() actor: Actor, @Param("id") id: string, @Query() query: unknown): Promise<DepartmentMovePreview> {
+    const q = parsed(movePreviewQuery, query);
+    try {
+      return await previewDepartmentMove(this.db, id, q.departmentId, new Date(), actor);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("opd.visits.open", "hospital")
+  @Post("visits/:id/move-department")
+  async moveDepartment(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<DepartmentMoveResult> {
+    const b = parsed(moveDepartmentBody, body);
+    try {
+      return await moveVisitDepartment(this.db, actor, id, b);
     } catch (e) {
       toHttp(e);
     }
@@ -667,6 +790,43 @@ export class OpdVisitsController {
   }
 
   /**
+   * ═══ OWNER 2026-10-07 — THE GUARDIAN CAME WITH THE REPORTS ═══
+   *
+   * A revisit still waiting for vitals skips the bay and joins the doctor's line (`patient-absent.ts`).
+   * Either the bay's grant or the front desk's admits — the two seats a guardian walks up to. The
+   * decorator writes ONE metadata key, so the second is `alsoAdmits`; the service asserts the pair
+   * itself as well, and every other rule (revisit only, still registered, the fee door) lives there.
+   */
+  @RequirePermission("opd.vitals.record", "hospital", { alsoAdmits: ["opd.visits.open"] })
+  @Post("visits/:id/patient-absent")
+  async postPatientAbsent(
+    @CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown,
+  ): Promise<{ encounter: EncounterRow; patientAbsent: PatientAbsent; alreadyMarked: boolean }> {
+    const b = parsed(patientAbsentBody, body);
+    try {
+      return await markPatientAbsent(this.db, actor, id, { relation: b.relation, name: b.name ?? null });
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * #771 — undo the guardian mark: the patient is here after all. The same two grants as the mark;
+   * refused once the doctor has the visit (`patient-absent.ts` `undoPatientAbsent`).
+   */
+  @RequirePermission("opd.vitals.record", "hospital", { alsoAdmits: ["opd.visits.open"] })
+  @Post("visits/:id/patient-absent/undo")
+  async postPatientAbsentUndo(
+    @CurrentActor() actor: Actor, @Param("id") id: string,
+  ): Promise<{ encounter: EncounterRow; alreadyCleared: boolean }> {
+    try {
+      return await undoPatientAbsent(this.db, actor, id);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
    * VD-1 T5 / D2 — amend a saved chart. `opd.vitals.record` rather than a new permission: the act
    * is recording a vital, and the owner ruled it a staff RIGHT at this desk rather than a
    * supervisory one. The audit is the superseding row and its event, not a narrower gate.
@@ -705,6 +865,43 @@ export class OpdVisitsController {
     const q = parsed(benchQuery, query);
     try {
       return { items: await listBench(this.db, actor, { ...q, serviceDate: q.serviceDate ?? istDate(new Date()) }) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** Owner 2026-10-06 — why a typed or scanned visit number is not on today's bench. The bench's own door. */
+  @RequirePermission("opd.queue.read", "hospital")
+  @Get("bench/locate")
+  async locateOnBench(@Query() query: unknown): Promise<VisitOnBench> {
+    const q = parsed(benchLocateQuery, query);
+    try {
+      return await locateVisit(this.db, { visitNo: q.visitNo, serviceDate: q.serviceDate ?? istDate(new Date()) });
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * Owner 2026-10-08 — the phone's quick scan (`scan.ts`): where a scanned or typed code's visit
+   * stands today, and which of the phone's actions this caller holds the permission for. READ ONLY.
+   * `opd.visits.read`, the grant `visits/by-number` already asks for — every desk that might hold the
+   * paper. The answer only decides what is OFFERED; each action route keeps its own guard.
+   */
+  @RequirePermission("opd.visits.read", "hospital")
+  @Get("scan")
+  async scan(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<ScanResult> {
+    const q = parsed(scanQuery, query);
+    let by: ScanQuery;
+    if (q.by === "token") {
+      if (!/^\d{1,6}$/.test(q.value)) throw new BadRequestException("a token is a number");
+      by = { by: "token", tokenNo: Number(q.value), ...(q.departmentCode === undefined ? {} : { departmentCode: q.departmentCode }) };
+    } else if (q.by === "visit") by = { by: "visit", visitNo: q.value };
+    else if (q.by === "encounter") by = { by: "encounter", encounterId: q.value };
+    else if (q.by === "uhid") by = { by: "uhid", uhid: q.value };
+    else by = { by: "patient", patientId: q.value };
+    try {
+      return await scanResolve(this.db, actor, by);
     } catch (e) {
       toHttp(e);
     }
@@ -845,6 +1042,16 @@ export class OpdVisitsController {
       withContact === undefined ? {} : { withContact },
     );
     const byPatient = new Map(summaries.map((s) => [s.requestedId, s] as const));
-    return items.map((a) => ({ ...a, patient: byPatient.get(a.patientId) ?? null }));
+    const marks = await teleDeskMarks(this.db, items);
+    const viaCopilot = new Set(items.length === 0 ? [] : (await this.db.select({ id: copilotActs.resultRowId }).from(copilotActs)
+      .where(and(eq(copilotActs.resultModule, "opd"), inArray(copilotActs.resultRowId, items.map((a) => a.id))))).map((r) => r.id));
+    return items.map((a) => {
+      const patient = byPatient.get(a.patientId) ?? null;
+      const teleDesk = marks.get(a.id);
+      return {
+        ...appointmentForList(a, patient, withContact !== undefined), patient, ...(teleDesk === undefined ? {} : { teleDesk }),
+        ...(viaCopilot.has(a.id) ? { viaCopilot: true as const } : {}),
+      };
+    });
   }
 }

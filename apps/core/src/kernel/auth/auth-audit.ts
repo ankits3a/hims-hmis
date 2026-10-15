@@ -7,8 +7,10 @@ import { withTx } from "../db/client";
 import { appendEvent } from "../events/append";
 import {
   authBadgeSwitched, authLoggedOut, authLoginFailed, authLoginSucceeded, authPinSwitched,
-  authSessionRevoked, authTotpConfirmed, authTotpEnrolled, authTotpFailed, authTotpVerified,
+  authPhoneBound, authPhoneLimitRefused, authSessionRevoked, authTotpConfirmed, authTotpEnrolled, authTotpFailed, authTotpVerified,
 } from "./events";
+import { PHONES_PER_USER } from "./devices";
+import type { DeviceClaim } from "./devices";
 import type { Db } from "../db/client";
 
 /**
@@ -115,6 +117,51 @@ export async function auditLoginFailed(
         terminalId: submitted.terminalId === undefined ? null : submitted.terminalId.slice(0, USERNAME_MAX),
         ...client,
       },
+    }));
+  });
+}
+
+/**
+ * MOBILE M6a — what a phone's sign-in did beyond opening a session: a phone seen for the first
+ * time is `auth.phone_bound`; the earlier sessions of the SAME phone it ended are each an
+ * `auth.session_revoked` (`phone_signed_in_again`). Called by the route after `auditSessionOpened`.
+ */
+export async function auditPhoneSignIn(
+  db: Db,
+  token: string,
+  phone: { userId: string; deviceRowId: string; bound: boolean; replacedSessionIds: string[] },
+  claim: DeviceClaim,
+  client: ClientContext,
+): Promise<void> {
+  if (!phone.bound && phone.replacedSessionIds.length === 0) return;
+  await withTx(db, async (tx) => {
+    const actor: Actor = { type: "user", id: phone.userId };
+    if (phone.bound) {
+      const rows = await tx.select({ id: authSessions.id }).from(authSessions).where(eq(authSessions.tokenHash, sha256Hex(token)));
+      await appendEvent(tx, authPhoneBound.make({
+        actor,
+        payload: {
+          userId: phone.userId, deviceRowId: phone.deviceRowId, sessionId: rows[0]?.id ?? "",
+          model: claim.model ?? null, os: claim.os ?? null, appVersion: claim.appVersion ?? null, ...client,
+        },
+      }));
+    }
+    for (const sessionId of phone.replacedSessionIds) {
+      await appendEvent(tx, authSessionRevoked.make({
+        actor, payload: { sessionId, userId: phone.userId, reason: "phone_signed_in_again", terminalId: null },
+      }));
+    }
+  });
+}
+
+/** The third phone: the password was right, so the event names the person; it opened nothing. */
+export async function auditPhoneLimitRefused(
+  db: Db, userId: string, phonesSignedIn: number, claim: DeviceClaim, client: ClientContext,
+): Promise<void> {
+  await withTx(db, async (tx) => {
+    await appendEvent(tx, authPhoneLimitRefused.make({
+      actor: { type: "user", id: userId },
+      payload: { userId, phonesSignedIn, limit: PHONES_PER_USER, model: claim.model ?? null, ...client },
     }));
   });
 }

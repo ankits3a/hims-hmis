@@ -422,6 +422,37 @@ describe("PatientDetail", () => {
    * PLAN 07b T2 — THE DEAD END, ENDED. The action must ALSO take the patient in hand, or the
    * destination is just another empty screen and nothing has been gained.
    */
+  /**
+   * Owner, 2026-10-01 — the shell's "in hand" strip is not drawn over this patient's own profile, so
+   * the lane carries Release, at its foot, and only for the patient who is in hand.
+   */
+  it("the lane's foot offers Release while this patient is in hand, and releasing empties the hand", async () => {
+    sessionStorage.setItem("hmis.inHand", JSON.stringify({ patientId: "p-1", encounterId: null }));
+    stubSeat({
+      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
+      "GET /api/patients/p-1/allergies": { items: [] },
+      "GET /api/patients/p-1/guardians": { items: [] },
+    });
+    renderWithProviders(<PatientDetail />);
+    expect(await screen.findByTestId("lane-in-hand")).toHaveTextContent("This patient is in hand");
+    await userEvent.setup().click(screen.getByTestId("lane-release"));
+    expect(sessionStorage.getItem("hmis.inHand")).toBeNull();
+    expect(screen.queryByTestId("lane-release")).toBeNull();
+  });
+
+  it("no Release in the lane when nobody, or somebody else, is in hand", async () => {
+    sessionStorage.setItem("hmis.inHand", JSON.stringify({ patientId: "p-other", encounterId: null }));
+    stubSeat({
+      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
+      "GET /api/patients/p-1/allergies": { items: [] },
+      "GET /api/patients/p-1/guardians": { items: [] },
+    });
+    renderWithProviders(<PatientDetail />);
+    await screen.findByTestId("onward-actions");
+    expect(screen.queryByTestId("lane-release")).toBeNull();
+    sessionStorage.clear();
+  });
+
   it("an onward action takes the patient in hand and then navigates", async () => {
     sessionStorage.clear();
     stubSeat({
@@ -744,6 +775,12 @@ describe("ABDM S1 — the demographics lock on the record", () => {
  * full, dates were ISO, a sealed record's H1 was the real name, and every act drew for every role.
  */
 describe("UX-AUDIT 2026-09-29 · BOARD — the profile", () => {
+  /**
+   * Owner 2026-10-11 — the middle column has three views and Overview is the default. These cases were
+   * written against the one dated timeline, which is still a view: they choose it, as a person would.
+   */
+  beforeEach(() => { localStorage.setItem("hmis.profile.historyView", "timeline"); });
+  afterEach(() => { localStorage.removeItem("hmis.profile.historyView"); });
   afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
 
   const FRONT_DESK = [
@@ -800,6 +837,164 @@ describe("UX-AUDIT 2026-09-29 · BOARD — the profile", () => {
     expect(text).not.toMatch(/self_declared|id_verified/);
   });
 
+  /** Owner, 2026-10-01 — a booked future appointment was on no part of the profile: it has no visit yet. */
+  it("front desk: an appointment booked ahead shows above the history, with its day, time, doctor and department", async () => {
+    const ahead = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
+    stubSeat({
+      ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE,
+      "GET /api/opd/appointments": { items: [
+        { id: "a-9", patientId: "p-1", doctorId: "doc-7", departmentId: "d-7", serviceDate: ahead, slotStart: `${ahead}T05:00:00.000Z`, slotEnd: `${ahead}T05:15:00.000Z`, status: "booked" },
+        { id: "a-old", patientId: "p-1", doctorId: "doc-7", departmentId: "d-7", serviceDate: "2020-01-01", slotStart: "2020-01-01T05:00:00.000Z", slotEnd: "2020-01-01T05:15:00.000Z", status: "booked" },
+      ] },
+      "GET /api/opd/doctors": { items: [{ id: "doc-7", displayName: "Dr. Meera Nair", departmentId: "d-7" }] },
+      "GET /api/opd/departments": { items: [{ id: "d-7", name: "Ophthalmology" }] },
+    }, FRONT_DESK);
+    renderWithProviders(<PatientDetail />);
+    const rows = await screen.findAllByTestId("upcoming-row");
+    expect(rows).toHaveLength(1); // the 2020 booking is not "upcoming"
+    expect(rows[0]).toHaveTextContent("10:30"); // 05:00Z is 10:30 IST
+    await waitFor(() => expect(rows[0]).toHaveTextContent("Dr. Meera Nair · Ophthalmology"));
+    expect(fetchCalls().some((c) => c.url.includes("/opd/appointments?patientId=p-1"))).toBe(true);
+  });
+
+  /**
+   * Owner, 2026-10-01: an Edit that leads to the appointment book; the appointment history; and a
+   * tap on an appointment showing its bills.
+   */
+  it("an upcoming appointment carries Edit for a seat that may manage the book, and the history opens an appointment's bills", async () => {
+    const ahead = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
+    const row = (id: string, day: string, over: Record<string, unknown>): Record<string, unknown> => ({
+      id, patientId: "p-1", doctorId: "doc-7", departmentId: "d-7", serviceDate: day, slotStart: `${day}T05:00:00.000Z`, slotEnd: `${day}T05:15:00.000Z`, status: "booked", encounterId: null, ...over,
+    });
+    stubSeat({
+      ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE,
+      "GET /api/opd/appointments": { items: [
+        row("a-next", ahead, {}),
+        row("a-kept", "2026-03-10", { status: "checked_in", encounterId: "e-77" }),
+        row("a-missed", "2026-02-02", { status: "no_show" }),
+      ] },
+      "GET /api/opd/doctors": { items: [{ id: "doc-7", displayName: "Dr. Meera Nair", departmentId: "d-7" }] },
+      "GET /api/opd/departments": { items: [{ id: "d-7", name: "Ophthalmology" }] },
+      "GET /api/billing/invoices": (_init?: RequestInit, url?: string) => (String(url ?? "").includes("encounterId=e-77")
+        ? { items: [{ id: "inv-1", invoiceNo: "INV/26/000123", encounterId: "e-77", serviceDay: "2026-03-10", grossPaise: 30000, netPayablePaise: 30000 }] }
+        : { items: [] }),
+    }, [...FRONT_DESK, "billing.invoice.read"]);
+    renderWithProviders(<PatientDetail />);
+    const user = userEvent.setup();
+
+    expect(await screen.findByTestId("upcoming-edit-a-next")).toHaveTextContent("Edit");
+    const history = await screen.findAllByTestId("appt-history-row");
+    expect(history.map((r) => r.textContent)).toEqual([expect.stringContaining("10-Mar-2026"), expect.stringContaining("02-Feb-2026")]); // newest first; the one still ahead is not history
+    expect(history[0]).toHaveTextContent("Checked in");
+    expect(history[1]).toHaveTextContent("No-show");
+
+    await user.click(history[0]!);
+    const bill = await screen.findByTestId("appt-bill");
+    expect(bill).toHaveTextContent("INV/26/000123");
+    expect(bill).toHaveTextContent("₹300");
+
+    // An appointment that never became a visit has no bill, and says why.
+    await user.click(history[1]!);
+    expect(await screen.findByTestId("appt-bills-note")).toHaveTextContent("not checked in");
+  });
+
+  it("a seat without billing.invoice.read is told bills are not shown to it, and asks the bill route nothing", async () => {
+    stubSeat({
+      ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE,
+      "GET /api/opd/appointments": { items: [{ id: "a-kept", patientId: "p-1", doctorId: "doc-7", departmentId: "d-7", serviceDate: "2026-03-10", slotStart: "2026-03-10T05:00:00.000Z", slotEnd: "2026-03-10T05:15:00.000Z", status: "checked_in", encounterId: "e-77" }] },
+      "GET /api/opd/doctors": { items: [] }, "GET /api/opd/departments": { items: [] },
+    }, FRONT_DESK);
+    renderWithProviders(<PatientDetail />);
+    await userEvent.setup().click(await screen.findByTestId("appt-history-row"));
+    expect(await screen.findByTestId("appt-bills-note")).toHaveTextContent("Bills are shown to billing staff");
+    expect(fetchCalls().some((c) => c.url.includes("/billing/invoices"))).toBe(false);
+  });
+
+  /*
+    OWNER 2026-10-05 — "Can't I go to the patient profile and there I can click on the visit and change
+    it?" One visit card, the same as Desk One's: today's visit opens it, and a visit nobody has seen
+    yet can change department from it; a visit the doctor has seen cannot.
+  */
+  const todayIstDay = new Date(Date.now() + 5.5 * 3_600_000).toISOString().slice(0, 10);
+  const CARD_ROUTES = {
+    "GET /api/opd/departments": { items: [{ id: "d-1", name: "Orthopaedics", code: "ORT", active: true }, { id: "d-2", name: "General Medicine", code: "MED", active: true }] },
+    "GET /api/opd/queues/summary": { items: [
+      { doctor: { id: "doc-1", userId: "u-o", displayName: "Dr. Verma", departmentId: "d-1", active: true }, sessionId: "s1", status: "open", waitingCount: 1, waitingVitalsCount: 0, nowServing: null, scheduledToday: true, roomCode: "R1", avgConsultMinutes: 10 },
+      { doctor: { id: "doc-2", userId: "u-m", displayName: "Dr. Sharma", departmentId: "d-2", active: true }, sessionId: "s2", status: "open", waitingCount: 4, waitingVitalsCount: 0, nowServing: null, scheduledToday: true, roomCode: "R4", avgConsultMinutes: 10 },
+    ] },
+    "GET /api/billing/consult-terms": { consultFeeOff: false, paise: { new: 30_000, renewal: 15_000, revisit: null } },
+    "GET /api/print/jobs": { jobs: [] },
+    "GET /api/billing/invoices": { items: [] },
+  };
+  const waitingToday = {
+    encounterId: "e-5", visitNo: "V-26-00005", serviceDate: todayIstDay, openedAt: new Date().toISOString(), status: "waiting",
+    visitType: "new", doctorId: "doc-1", doctorName: "Dr. Verma", departmentId: "d-1", departmentName: "Orthopaedics",
+    diagnosis: null, icd10Code: null, prescriptionLineCount: 0, dangerFlagged: false,
+  };
+
+  it("front desk: today's visit opens the visit card, and a visit nobody has seen yet moves to the right department from it", async () => {
+    const moves: unknown[] = [];
+    stubSeat({
+      ...BASE, ...CARD_ROUTES,
+      "GET /api/opd/patients/p-1/timeline": { items: [waitingToday, ...TIMELINE.items] },
+      "GET /api/opd/visits/e-5/move-preview": {
+        encounterId: "e-5", from: { departmentId: "d-1", doctorId: "doc-1", visitType: "new" }, to: { departmentId: "d-2", visitType: "new" },
+        standingInvoiceNo: "INV/26/000200",
+        money: { kind: "transfer", invoiceId: "inv-2", invoiceNo: "INV/26/000200", paidPaise: 30_000, newFeePaise: 30_000, differencePaise: 0, billingOfficeReason: null },
+        maySettleDifference: false,
+      },
+      "POST /api/opd/visits/e-5/move-department": (init?: RequestInit) => {
+        moves.push(JSON.parse(String(init?.body ?? "{}")));
+        return {
+          from: { encounter: { id: "e-5", status: "abandoned" }, tokenNo: 3 },
+          to: { encounter: { id: "e-6", visitNo: "V-26-00006", serviceDate: todayIstDay, status: "registered", departmentId: "d-2", doctorId: "doc-2" }, tokenNo: 5, sessionId: "s2", roomId: null, visitType: "new" },
+          money: { kind: "transfer", invoiceId: "inv-2", invoiceNo: "INV/26/000200", paidPaise: 30_000, newFeePaise: 30_000, differencePaise: 0, billingOfficeReason: null, creditNoteNo: "CN/1", newInvoiceId: "inv-3", newInvoiceNo: "INV/26/000201", advancePaise: 0, collectedPaise: 0 },
+        };
+      },
+    }, FRONT_DESK);
+    renderWithProviders(<PatientDetail />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByTestId("today-visit"));
+    const dialog = await screen.findByTestId("visit-dialog");
+    expect(within(dialog).getByTestId("visit-card-title")).toHaveTextContent("Visit V-26-00005");
+    expect(within(dialog).getByTestId("visit-card-where")).toHaveTextContent(/Orthopaedics · Dr\. Verma/);
+    expect(within(dialog).getByTestId("visit-card-status")).toHaveTextContent("Waiting");
+    expect(within(dialog).getByTestId("papers-sheet")).toBeInTheDocument(); // the slips and bills, as before
+
+    await user.click(within(dialog).getByTestId("visit-card-move"));
+    await user.click(await within(dialog).findByTestId("move-dept-d-2"));
+    expect(await within(dialog).findByTestId("move-dept-money")).toHaveTextContent("₹300 paid on bill INV/26/000200 moves to the new visit");
+    await user.type(within(dialog).getByTestId("move-dept-reason"), "needs medicine");
+    await user.click(within(dialog).getByTestId("move-dept-submit"));
+    await waitFor(() => expect(moves).toEqual([{ departmentId: "d-2", doctorId: "doc-2", reason: "needs medicine" }]));
+    // the card now shows the visit the patient holds
+    expect(await within(dialog).findByTestId("visit-card-moved")).toHaveTextContent("Moved to General Medicine — new token MED-5.");
+    expect(within(dialog).getByTestId("visit-card-title")).toHaveTextContent("Visit V-26-00006");
+  });
+
+  it("front desk: a visit the doctor has seen opens from the timeline, and says a move is now the doctor's referral", async () => {
+    stubSeat({ ...BASE, ...CARD_ROUTES, "GET /api/opd/patients/p-1/timeline": TIMELINE }, FRONT_DESK);
+    renderWithProviders(<PatientDetail />);
+    await userEvent.setup().click(await screen.findByTestId("timeline-open-visit"));
+    const dialog = await screen.findByTestId("visit-dialog");
+    expect(within(dialog).getByTestId("visit-card-status")).toHaveTextContent("Completed");
+    expect(within(dialog).getByTestId("visit-card-seen")).toHaveTextContent(/internal referral/);
+    expect(within(dialog).queryByTestId("visit-card-move")).toBeNull();
+  });
+
+  it("front desk: with nothing booked ahead the profile says so; a seat without the appointment book is not shown the heading", async () => {
+    stubSeat({ ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE, "GET /api/opd/appointments": { items: [] } }, FRONT_DESK);
+    const first = renderWithProviders(<PatientDetail />);
+    await waitFor(() => expect(screen.getByTestId("upcoming-empty")).toHaveTextContent("No appointment booked ahead"));
+    first.unmount();
+    stubSeat({ ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE }, FRONT_DESK.filter((p) => p !== "opd.appointments.read"));
+    renderWithProviders(<PatientDetail />);
+    await screen.findByTestId("timeline");
+    expect(screen.queryByText("Upcoming appointments")).toBeNull();
+    expect(fetchCalls().some((c) => c.url.includes("/opd/appointments"))).toBe(false);
+  });
+
   it("front desk: one dated timeline with source chips, the diagnosis line only; no money reads; no Record a death", async () => {
     stubSeat({ ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE }, FRONT_DESK);
     renderWithProviders(<PatientDetail />);
@@ -816,6 +1011,73 @@ describe("UX-AUDIT 2026-09-29 · BOARD — the profile", () => {
     expect(screen.queryByRole("button", { name: "Record a death" })).toBeNull();
     // No filter chips or tabs on the timeline (owner rule).
     expect(screen.queryByRole("tab")).toBeNull();
+  });
+
+  /* Owner 2026-10-03 — ONE line in the left lane: the credit available, all departments; a click opens the account. */
+  it("the left lane shows the credit available; a click opens credit notes and refunds in a dialog, none of it in the middle", async () => {
+    const credit = {
+      totalAvailablePaise: 97200, availablePaise: 47200, totalNetPaise: 57200, refundAwaitingApprovalPaise: 55000, refundApprovedUnpaidPaise: 22000,
+      notes: [
+        { id: "cn2", creditNoteNo: "CN-2", date: "2026-10-03", invoiceNo: "INV-10", reason: "pharmacy return: no longer needed", netPaise: 10000, issuedByName: "admin", settlement: "refund_paid", keptPaise: 0, refundPaise: 10000, categories: ["pharmacy"] },
+        { id: "cn1", creditNoteNo: "CN-1", date: "2026-10-02", invoiceNo: "LAB-9", reason: "test cancelled", netPaise: 47200, issuedByName: "abhay.kumar", settlement: "kept_as_credit", keptPaise: 47200, refundPaise: 0, categories: ["investigation"] },
+      ],
+      refunds: [{ id: "v1", voucherNo: "RV-1", kind: "invoice_refund", creditNoteNo: "CN-2", amountPaise: 10000, method: "cash", status: "paid", issuedAt: "2026-10-03T05:00:00.000Z", paidAt: "2026-10-03T06:00:00.000Z", reason: "no longer needed" }],
+    };
+    stubSeat({ ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE, "GET /api/billing/patients/p-1/dues": DUES, "GET /api/pharmacy/patients/p-1/credit": credit }, [...FRONT_DESK, "billing.dues.patient.read"]);
+    renderWithProviders(<PatientDetail />);
+    const tile = await screen.findByTestId("pf-credit-tile");
+    expect(within(screen.getByTestId("profile-lane")).getByTestId("pf-credit-tile")).toHaveTextContent("Credit available₹972.00");
+    expect(screen.queryByTestId("pf-credit-notes")).toBeNull(); // nothing in the middle column
+    await userEvent.click(tile);
+    const dialog = await screen.findByTestId("pf-credit-dialog");
+    expect(within(dialog).getByTestId("pf-credit-summary")).toHaveTextContent("₹472.00");
+    // Staging 2026-10-03 — refunds owed are said apart from the credit, so ₹0 credit beside ₹770 of notes is not a riddle.
+    expect(within(dialog).getByTestId("pf-credit-refund-due")).toHaveTextContent("₹770.00");
+    expect(within(dialog).getByTestId("pf-credit-refund-due")).toHaveTextContent("₹550.00 waiting for approval, ₹220.00 approved");
+    expect(within(dialog).getByTestId("pf-credit-note-cn1")).toHaveTextContent("Lab and diagnostics");
+    expect(within(dialog).getByTestId("pf-credit-note-cn1")).toHaveTextContent("Kept as pharmacy credit");
+    expect(within(dialog).getByTestId("pf-credit-refund-v1")).toHaveTextContent("CN-2");
+    expect(within(dialog).getByTestId("pf-credit-refund-v1")).toHaveTextContent("Paid 03-10-2026");
+  });
+
+  /* Owner 2026-10-03 — All bills in the left lane: every bill, a department filter, and one bill opened in full. */
+  it("All bills: every bill in one dialog, filtered by department, and a bill opened to its whole billing", async () => {
+    const st = { state: "settled", outstandingPaise: 0 };
+    const bills = { bills: [
+      { invoiceId: "i3", invoiceNo: "INV-3", date: "2026-10-03", departments: ["lab"], encounterNo: "V1", lines: 2, summary: "CBC, LFT", netPaise: 90000, gstPaise: 0, creditedPaise: 0, paidPaise: 90000, settlement: st },
+      { invoiceId: "i2", invoiceNo: "INV-2", date: "2026-10-03", departments: ["pharmacy"], encounterNo: null, lines: 1, summary: "Crocin 500", netPaise: 21000, gstPaise: 1000, creditedPaise: 0, paidPaise: 21000, settlement: st },
+      { invoiceId: "i1", invoiceNo: "INV-1", date: "2026-10-02", departments: ["opd"], encounterNo: "V1", lines: 1, summary: "Consultation", netPaise: 50000, gstPaise: 0, creditedPaise: 0, paidPaise: 0, settlement: { state: "unpaid", outstandingPaise: 50000 } },
+    ] };
+    const full = {
+      invoiceId: "i2", invoiceNo: "INV-2", issuedAt: "2026-10-03T05:00:00.000Z", issuedByName: "abhay.kumar", departments: ["pharmacy"], encounterNo: null, intendedPayer: "self", buyerGstin: null,
+      lines: [{ lineNo: 1, serviceName: "Crocin 500", sacCode: "3004", qty: 20, unitPaise: 1000, grossPaise: 21000, discountPaise: 0, taxablePaise: 20000, rateBps: 500, cgstPaise: 500, sgstPaise: 500, netPaise: 21000 }],
+      totals: { grossPaise: 21000, discountPaise: 0, taxablePaise: 20000, cgstPaise: 500, sgstPaise: 500, roundingPaise: 0, netPaise: 21000 },
+      payments: [{ receiptNo: "R-9", at: "2026-10-03T05:00:00.000Z", amountPaise: 21000, kind: "apply", modes: ["cash"] }],
+      creditNotes: [], settlement: st, creditedPaise: 0, paidPaise: 21000,
+    };
+    stubSeat({ ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE, "GET /api/billing/patients/p-1/bills": bills, "GET /api/billing/invoices/i2/full": full }, [...FRONT_DESK, "billing.invoice.read"]);
+    renderWithProviders(<PatientDetail />);
+    const tile = await screen.findByTestId("pf-all-bills-tile");
+    expect(within(screen.getByTestId("profile-lane")).getByTestId("pf-all-bills-tile")).toHaveTextContent("All bills3 bills");
+    await userEvent.click(tile);
+    const dialog = await screen.findByTestId("pf-all-bills-dialog");
+    expect(within(dialog).getByTestId("bills-filter-lab")).toHaveTextContent("Lab · 1");
+    await userEvent.click(within(dialog).getByTestId("bills-filter-pharmacy"));
+    expect(within(dialog).queryByTestId("pf-all-bill-i3")).toBeNull();
+    expect(within(dialog).getByTestId("pf-all-bills-sum")).toHaveTextContent("1 bill · billed ₹210.00 · GST ₹10.00");
+    await userEvent.click(within(dialog).getByTestId("pf-all-bill-i2"));
+    expect(await within(dialog).findByTestId("pf-bill-lines")).toHaveTextContent("Crocin 500");
+    expect(within(dialog).getByTestId("pf-bill-totals")).toHaveTextContent("₹210.00");
+    expect(within(dialog).getByTestId("pf-bill-payments")).toHaveTextContent("Paid against this bill");
+    await userEvent.click(within(dialog).getByTestId("pf-bill-back"));
+    expect(await within(dialog).findByTestId("pf-all-bills-table")).toBeInTheDocument();
+  });
+
+  it("All bills is not offered to the front desk's narrow dues string (owner ruling 2026-09-30)", async () => {
+    stubSeat({ ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE, "GET /api/billing/patients/p-1/dues": DUES }, [...FRONT_DESK, "billing.dues.patient.read"]);
+    renderWithProviders(<PatientDetail />);
+    expect(await screen.findByTestId("today-dues")).toBeInTheDocument();
+    expect(screen.queryByTestId("pf-all-bills-tile")).toBeNull();
   });
 
   it("OWNER RULING 2026-09-30 · front desk with the narrow dues string: the Today band shows what is owed; no invoice history is asked", async () => {
@@ -879,5 +1141,120 @@ describe("UX-AUDIT 2026-09-29 · BOARD — the profile", () => {
     expect(document.getElementById("f-phone")).toBeNull();
     expect(document.getElementById("f-addressLine")).toBeNull();
     expect(text()).not.toContain("Asha Devi");
+  });
+
+  /* ═══ OWNER 2026-10-11 — the middle column three ways; Overview is the default ═══ */
+
+  it("OVERVIEW (default): a tab per category with its count, a card per category; View all opens the full list by month; the choice is remembered", async () => {
+    localStorage.removeItem("hmis.profile.historyView");
+    stubSeat({ ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE, "GET /api/billing/invoices": INVOICES, "GET /api/billing/patients/p-1/dues": DUES },
+      [...FRONT_DESK, ...CASHIER]);
+    renderWithProviders(<PatientDetail />);
+    const visits = await screen.findByTestId("history-card-visits");
+    expect(within(visits).getByText("General Medicine · Dr. S. Rao")).toBeInTheDocument();
+    expect(screen.getByTestId("history-card-bills")).toHaveTextContent("OP/26/004411");
+    expect(screen.getByTestId("history-tab-bills")).toHaveTextContent(/Bills\s*2/);
+    await userEvent.setup().click(within(screen.getByTestId("history-card-bills")).getByRole("button", { name: /View all/ }));
+    const list = screen.getByTestId("history-list-bills");
+    expect(list).toHaveTextContent("OP/26/004411");
+    expect(screen.queryByTestId("history-card-visits")).toBeNull();
+    /** Switching views is the icon group; the choice outlives the screen. */
+    await userEvent.setup().click(screen.getByRole("button", { name: "Cards, one under another" }));
+    expect(screen.getByTestId("history-stack")).toBeInTheDocument();
+    expect(localStorage.getItem("hmis.profile.historyView")).toBe("cards");
+    await userEvent.setup().click(screen.getByRole("button", { name: "One timeline with filters" }));
+    expect(screen.getByTestId("timeline")).toBeInTheDocument();
+  });
+
+  it("OWNER 2026-10-11: a lab visit names its tests (CBC · LFT) and opens its own tests and reports; its report is not a row of its own", async () => {
+    localStorage.removeItem("hmis.profile.historyView");
+    const LAB_VISIT = {
+      encounterId: "e-lab", visitNo: "V2610110002", type: "lab", serviceDate: "2026-10-11", openedAt: "2026-10-11T04:00:00.000Z", status: "registered",
+      visitType: "new", doctorId: "d-p", doctorName: "Dr Pathology", departmentId: "lab", departmentName: "Laboratory",
+      diagnosis: null, icd10Code: null, prescriptionLineCount: 0, dangerFlagged: false,
+    };
+    const QUICK = {
+      id: "q-1", status: "reported", patient: { id: "p-1", uhid: "HMS0000001234", display: "Asha Devi", ageSex: "36 F", restricted: false },
+      encounterNo: "V2610110002", tests: [{ serviceId: "s-cbc", code: "CBC", nameEn: "Complete blood count" }],
+      collectedAt: "2026-10-11T04:10:00.000Z", collectedBy: "u-1", reportedAt: "2026-10-11T05:00:00.000Z", reportedBy: "u-1",
+      orderId: "o-1", orderNo: "L2610110001", sampleNo: "S2610110007", handedOverAt: "2026-10-11T05:30:00.000Z", handedOverBy: "u-1",
+      analyteIds: ["a-hb"], groups: [{ title: "Complete blood count", analyteIds: ["a-hb"] }],
+      lines: [{ analyteId: "a-hb", code: "HB", nameEn: "Haemoglobin", unit: "g/dL", value: "9.2", low: "12.0000", high: "15.0000", refText: null, flag: "L" }],
+      summary: "Hb low", collectedByName: null, reportedByName: null,
+      hospital: { name: "CRK", address: "Hajipur", hotline: "1", emergency: "2", email: "e", website: "w" }, visitQrSvg: null,
+    };
+    stubSeat({
+      ...BASE,
+      "GET /api/opd/patients/p-1/timeline": { items: [LAB_VISIT] },
+      "GET /api/lab/reports/patient/p-1": { patient: { id: "p-1", uhid: "HMS0000001234", display: "Asha Devi", restricted: false }, reports: [], pending: [] },
+      "GET /api/lab/quick/patient/p-1/printable": { items: [QUICK] },
+      "GET /api/lab/quick/patient/p-1/orders/printable": { items: [{
+        orderId: "o-1", orderNo: "L2610110001", encounterNo: "V2610110002", placedAt: "2026-10-11T04:00:00.000Z", stage: "handed_over", quickId: "q-1",
+        tests: [{ code: "CBC", nameEn: "Complete blood count" }, { code: "LFT", nameEn: "Liver function tests" }],
+      }] },
+    }, [...FRONT_DESK, "lab.reports.print"]);
+    renderWithProviders(<PatientDetail />);
+    const card = await screen.findByTestId("history-card-lab");
+    await waitFor(() => expect(within(card).getByTestId("timeline-tags")).toHaveTextContent(/CBC\s*LFT/));
+    expect(within(card).queryByTestId("quick-lab-reports")).toBeNull();
+    const user = userEvent.setup();
+    await user.click(within(card).getByTestId("timeline-open-lab-visit"));
+    const dialog = await screen.findByTestId("lab-visit-dialog");
+    expect(dialog).toHaveTextContent("Lab visit V2610110002");
+    expect(within(dialog).getByTestId("lv-order-L2610110001")).toHaveTextContent("Complete blood count, Liver function tests");
+    await user.click(within(dialog).getByTestId("lv-view-q-1"));
+    expect(within(dialog).getByTestId("report-preview")).toHaveTextContent("Haemoglobin");
+  });
+
+  it("TIMELINE: the filter chips narrow the one timeline to a category", async () => {
+    stubSeat({ ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE, "GET /api/billing/invoices": INVOICES, "GET /api/billing/patients/p-1/dues": DUES },
+      [...FRONT_DESK, ...CASHIER]);
+    renderWithProviders(<PatientDetail />);
+    const tl = await screen.findByTestId("timeline");
+    await waitFor(() => expect(tl).toHaveTextContent("OP/26/004411"));
+    expect(tl).toHaveTextContent("General Medicine");
+    await userEvent.setup().click(within(screen.getByTestId("history-filters")).getByRole("button", { name: "Bills" }));
+    expect(screen.getByTestId("timeline")).not.toHaveTextContent("General Medicine");
+    expect(screen.getByTestId("timeline")).toHaveTextContent("OP/26/004411");
+  });
+});
+
+/*
+  Owner, staging 2026-10-01: "while typing allergy name, I got no suggestion". The profile's dialog
+  was a plain text box — the bay and the doctor had the allergen typeahead and this seat did not.
+*/
+describe("Add allergy on the profile suggests as the clerk types", () => {
+  it("offers coded allergens, a pick saves the class, and unknown free text says so", async () => {
+    const posted: unknown[] = [];
+    stubSeat({
+      ...BASE,
+      "GET /api/opd/cds/complete/allergen": (_init?: RequestInit, url?: string) =>
+        (url ?? "").includes("q=penic")
+          ? { items: [{ term: "Penicillins / Beta-Lactams", kind: "class", allergenClass: "penicillin", saltId: null, blocks: ["Amoxicillin"] }], known: true }
+          : { items: [], known: false },
+      "POST /api/patients/p-1/allergies": (init?: RequestInit) => { posted.push(JSON.parse(String(init?.body))); return { id: "al-9" }; },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<PatientDetail />);
+    await user.click((await screen.findAllByRole("button", { name: "Add allergy" }))[0]!);
+    const box = await screen.findByLabelText("Substance");
+
+    await user.type(box, "xyz");
+    await waitFor(() => expect(screen.getByTestId("profile-allergy-unknown")).toBeInTheDocument());
+
+    await user.clear(box);
+    await user.type(box, "penic");
+    await waitFor(() => expect(screen.getByTestId("profile-allergy-hits")).toBeInTheDocument());
+    expect(screen.queryByTestId("profile-allergy-unknown")).not.toBeInTheDocument();
+    await user.click(screen.getByTestId("profile-allergy-hit-Penicillins / Beta-Lactams"));
+    expect(box).toHaveValue("Penicillins / Beta-Lactams");
+    await waitFor(() => expect(screen.queryByTestId("profile-allergy-hits")).not.toBeInTheDocument());
+
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Add allergy" }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]).toEqual({
+      substance: "Penicillins / Beta-Lactams", severity: "mild", source: "registration",
+      saltId: null, allergenClass: "penicillin",
+    });
   });
 });

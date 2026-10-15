@@ -5,9 +5,11 @@ import {
   vitalsAhead, waitMinutes,
 } from "./model";
 import type { Lane } from "./model";
+import type { WireTimelineItem } from "../../lib/opd-api";
 import { useDesk } from "./session";
 import { PhotoPanel } from "./photo";
-import { PapersSheet } from "./papers";
+import { VisitCard } from "./visit-card";
+import { LabVisitSheet } from "../profile-lab-visit";
 import { HistorySheet } from "./history-sheet";
 import { usePaletteOptional } from "../../components/command-palette";
 
@@ -62,7 +64,8 @@ function HistoryOverlay(): React.ReactElement {
  */
 function PapersOverlay(): React.ReactElement {
   const d = useDesk();
-  const chosen = d.s.papersFor ?? (d.s.visit === null ? null : { encounterId: d.s.visit.encounterId, when: null });
+  const chosen: { encounterId: string; when: string | null; visit?: WireTimelineItem } | null =
+    d.s.papersFor ?? (d.s.visit === null ? null : { encounterId: d.s.visit.encounterId, when: null });
   return (
     <Sheet width={620}>
       {chosen === null ? (
@@ -73,8 +76,11 @@ function PapersOverlay(): React.ReactElement {
             visit carries its own slips and bills, and each one can be handed over again.
           </p>
         </div>
+      ) : chosen.visit?.type === "lab" && d.s.person !== null ? (
+        /* Owner 2026-10-11 — a lab visit is not an OPD visit: its tests, reports and bills, no OPD card. */
+        <LabVisitSheet key={chosen.encounterId} patientId={d.s.person.id} visit={chosen.visit} />
       ) : (
-        <PapersSheet encounterId={chosen.encounterId} when={chosen.when} />
+        <VisitCard key={chosen.encounterId} encounterId={chosen.encounterId} when={chosen.when} visit={chosen.visit ?? null} />
       )}
     </Sheet>
   );
@@ -302,17 +308,17 @@ function QueuesOverlay(): React.ReactElement {
               </span>
             </div>
             {q.doctors.map((doc) => (
-              <div key={doc.doctor.id} style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
-                <span style={{ fontSize: 11.5, width: 145 }}>{doc.doctor.displayName}</span>
+              <div key={doc.doctor.id} className="d1-q-row" style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
+                <span className="d1-q-name" style={{ fontSize: 11.5, width: 145 }}>{doc.doctor.displayName}</span>
                 {bookableToday(doc) ? (
                   <>
-                    <div style={{ flexGrow: 1, height: 13, borderRadius: 3, background: "var(--wash)", overflow: "hidden" }}>
+                    <div className="d1-q-bar" style={{ flexGrow: 1, height: 13, borderRadius: 3, background: "var(--wash)", overflow: "hidden" }}>
                       <div style={{
                         height: "100%", width: `${String(Math.min(100, doc.waitingCount * 10))}%`,
                         background: doc.waitingCount > 6 ? "var(--gold)" : "var(--green)", opacity: .8,
                       }} />
                     </div>
-                    <span className="mo" style={{ fontSize: 11, width: 190, textAlign: "right" }}>
+                    <span className="mo d1-q-num" style={{ fontSize: 11, width: 190, textAlign: "right" }}>
                       {doc.waitingCount} · ~{waitMinutes(doc)} min · {etaClock(waitMinutes(doc))}
                       {vitalsAhead(doc) > 0 ? ` (+${vitalsAhead(doc)} at vitals)` : ""}
                     </span>

@@ -187,8 +187,19 @@ describe("roster-sim — a month replayed, with the sick calls (R9)", () => {
       const statuses = await db.execute(sql`select distinct status from roster_periods`);
       expect((statuses.rows as { status: string }[]).map((r) => r.status)).toEqual(["draft"]);
 
-      // Fairness survives the replay: nobody is carrying the whole month.
-      expect(fairnessSpread(replay.fairness)).toBeLessThanOrEqual(2);
+      // Fairness survives the replay: nobody is carrying the whole month. Judged among the residents
+      // present ALL month — since audit 2026-10-04 #2 a resident sick from the 10th is drafted for
+      // the 1st–9th rather than dropped from the month, and nine days' nights beside thirty is not
+      // unfairness, it is the sick call.
+      const sick = new Set(scenario.sickCalls.map(([, who]) => residentId(who)));
+      expect(fairnessSpread(replay.fairness.filter((f) => !sick.has(f.userId)))).toBeLessThanOrEqual(2);
+
+      // …and nobody is drafted on or after the day they went sick.
+      const { assignments } = await periodWithAssignments(db, replay.periodId);
+      for (const [istDate, who] of scenario.sickCalls) {
+        expect(assignments.filter((a) => a.userId === residentId(who)
+          && a.endsAt > at(`${istDate}T00:00`))).toEqual([]);
+      }
     },
   );
 

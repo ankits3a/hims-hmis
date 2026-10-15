@@ -181,6 +181,41 @@ describe("loadConfig — copilotChoice", () => {
   });
 });
 
+/**
+ * 2026-10-07 — OpenAI's Decisions API as a second chooser. Triage's default is TypeSafe alone.
+ * 2026-10-11 (owner: "Use OpenAI decision API for this", E0.4): the copilot's default is OpenAI
+ * Decisions FIRST, TypeSafe when it is unsure — the order the copilot eval set (acceptance/) measures.
+ */
+describe("loadConfig — the chooser order", () => {
+  it("defaults to typesafe alone for triage and to OpenAI Decisions first, then typesafe, for the copilot", () => {
+    const cfg = loadConfig(base);
+    expect(cfg.triageChooserOrder).toEqual(["typesafe"]);
+    expect(cfg.copilotChooserOrder).toEqual(["openai", "typesafe"]);
+    expect(cfg.decisions).toEqual({ baseUrl: "https://api.openai.com/v1", model: "gpt-6-luna", timeoutMs: 1500 });
+  });
+
+  it("reads an order per job, trimmed and case-blind", () => {
+    const cfg = loadConfig({ ...base, TRIAGE_CHOOSER_ORDER: " OpenAI , typesafe ", COPILOT_CHOOSER_ORDER: "typesafe,openai" });
+    expect(cfg.triageChooserOrder).toEqual(["openai", "typesafe"]);
+    expect(cfg.copilotChooserOrder).toEqual(["typesafe", "openai"]);
+  });
+
+  it("the medicine-alias pipeline ships OFF, on the plan's lines, choosing with triage's chain unless told otherwise", () => {
+    expect(loadConfig(base).aliases).toEqual({ enabled: false, chooserOrder: ["typesafe"], chooserLine: 0.95, reviewerLine: 0.9, perRun: 40, perDay: 300 });
+    expect(loadConfig({ ...base, TRIAGE_CHOOSER_ORDER: "openai,typesafe" }).aliases.chooserOrder).toEqual(["openai", "typesafe"]);
+    const on = loadConfig({ ...base, ALIAS_PIPELINE_ENABLED: "true", ALIAS_CHOOSER_ORDER: "typesafe", TRIAGE_CHOOSER_ORDER: "openai", ALIAS_REVIEWER_MIN_PROBABILITY: "0.95" });
+    expect(on.aliases).toEqual({ enabled: true, chooserOrder: ["typesafe"], chooserLine: 0.95, reviewerLine: 0.95, perRun: 40, perDay: 300 });
+    // "1" is not "true"; a reviewer line at or under a coin toss would call every answer a yes.
+    expect(() => loadConfig({ ...base, ALIAS_PIPELINE_ENABLED: "1" })).toThrow();
+    expect(() => loadConfig({ ...base, ALIAS_REVIEWER_MIN_PROBABILITY: "0.5" })).toThrow();
+    expect(() => loadConfig({ ...base, ALIAS_CHOOSER_ORDER: "jev" })).toThrow(/ALIAS_CHOOSER_ORDER/);
+  });
+
+  it.each(["", "typesafe,grok", "openai,openai", ","])("refuses to boot on the order %p — a typo must not look like an unsure model", (order) => {
+    expect(() => loadConfig({ ...base, TRIAGE_CHOOSER_ORDER: order })).toThrow(/TRIAGE_CHOOSER_ORDER/);
+  });
+});
+
 /** 2026-09-19 — triage's first model (TypeSafe), the same B1 rule: nothing required, off without a key. */
 describe("loadConfig — triageChoice", () => {
   it("resolves from an environment that names none of its keys, with the classifier switched off", () => {

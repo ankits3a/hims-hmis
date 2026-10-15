@@ -4,6 +4,7 @@ import {
 } from "../../../test/helpers/opd";
 import { openVisit } from "../../modules/opd/encounters";
 import { issuePaidInvoice, mkCashier, openSessionFor, seedBillingBase } from "../../../test/helpers/billing";
+import { setFeeSwitch } from "../../modules/billing/fee-switches";
 import { renderDocument, renderPaymentReceipt, renderPrescriptionSheet, renderTokenSlip } from "./render";
 /* FD-29 — the redesigned sheet reads allergies and a carried height, and inlines a crest and a QR.
    The two WRITERS are deep-imported rather than added to the patients barrel: `patients` is
@@ -15,7 +16,9 @@ import { CREST_PNG_DATA_URI } from "./crest";
 import { qrSvg } from "./qr";
 import { eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
-import { agents, breakGlassGrants, opdDepartments, opdEncounters, opdSectionRecords, opdVitals, patientAllergies, patients, phiAccessLog, printJobs, users } from "../db/schema";
+import { agents, breakGlassGrants, opdDepartments, opdDoctors, opdEncounters, opdSectionRecords, opdVitals, patientAllergies, patientGuardians, patients, phiAccessLog, printJobs, rosterDutyWindows, rosterOfficiating, rosterTeamMemberships, users } from "../db/schema";
+import { teamByCode } from "../../modules/roster";
+import { seedConfirmedUnits } from "../../../test/helpers/units";
 /* FD-25 §14 — the fixtures the confidentiality rows need: the grant, the queue row, and the one
    production caller that has to thread the requester through. */
 import { grantPermissionToRole, syncPermissions } from "../auth/permissions";
@@ -124,6 +127,20 @@ describe("FD-24 T3: rendering the counter's documents", () => {
       const doc = await renderTokenSlip(db, { encounterId }, MON);
       expect(doc!.html).toContain("NEW");
       expect(doc!.html).toContain("UNPAID — pay at the billing counter");
+    });
+
+    /**
+     * OWNER, 2026-10-01: *"On the bill and receipt, clearly mention amount ₹0 (Samaj Seva Chhoot) in
+     * Hindi."* With the consultation fee switched off the visit has no bill; the slip carries it.
+     */
+    it("with the consultation fee SWITCHED OFF the slip says ₹0 (समाज सेवा छूट), no UNPAID stamp, no billing counter", async () => {
+      await seedBillingBase(db);
+      await setFeeSwitch(db, clerk.actor, "opdConsult", true, MON);
+      const doc = await renderTokenSlip(db, { encounterId }, MON);
+      expect(doc!.html).toContain(`<span class="k">Fee</span><span class="v">₹0 (समाज सेवा छूट)</span>`);
+      expect(doc!.html).not.toContain("UNPAID");
+      expect(doc!.html).not.toContain("FREE — review visit");
+      expect(doc!.html).not.toContain("Billing counter — ground floor");
     });
 
     /**
@@ -265,6 +282,8 @@ describe("FD-24 T3: rendering the counter's documents", () => {
    * see `renderPrescriptionSheet`'s header for the four deliberate departures from the design.
    */
   describe("the prescription sheet — A4 laser, at the FRONT DESK (R2)", () => {
+    /** Owner 2026-10-04 — the header's order: left column (with Address when there is one), then right. Guardian Name under Name: owner 2026-10-07. */
+    const NEW_ORDER = ["Name:", "Guardian Name:", "UHID:", "Gender:", "Age:", "Address:", "Unit Number:", "Encounter ID:", "Encounter Type:", "Visit Date:", "Dept. Regn:"] as const;
     /** A prior visit with a charted height, on a day deliberately unlike the day it was charted. */
     async function priorChart(
       over: { heightCm?: number | null; weightKg?: number | null; sbp?: number | null; pulse?: number | null } = {},
@@ -346,14 +365,22 @@ describe("FD-24 T3: rendering the counter's documents", () => {
     it("carries the identity band that stops a page being matched to the wrong person", async () => {
       const doc = await renderPrescriptionSheet(db, { encounterId }, MON);
       expect(doc!.html).toContain("Muskan Arora");
-      // Owner 2026-09-28: the blank sheet's signature block asks for the Doctor ID and a signature — no name, no council number.
-      expect(doc!.html).toContain("Doctor ID · signature of the treating physician");
+      // Owner 2026-10-04: the signature block asks for a signature only — the Doctor ID and Regn are in the header.
+      expect(doc!.html).toContain("Signature of the treating physician");
+      expect(doc!.html).not.toContain("Doctor ID · signature");
       expect(doc!.html).not.toContain("registration no.");
       // The five rows the design added, each labelled as the artboard labels it.
-      for (const label of ["Name:", "UHID:", "Gender:", "DOB:", "Doctor ID:", "Encounter ID:", "Encounter Type:", "Visit/Admn Date:", "Department:", "Speciality:"]) {
+      for (const label of ["Name:", "UHID:", "Gender:", "Age:", "Unit Number:", "Encounter ID:", "Encounter Type:", "Visit Date:", "Dept. Regn:"]) {
         expect(doc!.html).toContain(`<span class="lb">${label}</span>`);
       }
-      expect(doc!.html).toContain("Outpatient");
+      // Owner 2026-10-04: the header in HIS order, Encounter Type "OPD", the department under the crest too.
+      // No address on this fixture, so its row is absent and the other nine run in order.
+      const at = NEW_ORDER.filter((l) => l !== "Address:").map((label) => doc!.html.indexOf(`<span class="lb">${label}</span>`));
+      expect(at.every((x, i) => x > 0 && (i === 0 || x > at[i - 1]!))).toBe(true);
+      expect(doc!.html).not.toContain(`<span class="lb">Dept:</span>`);
+      expect(doc!.html).not.toContain(`<span class="lb">Regn:</span>`);
+      expect(doc!.html).toContain(`<span class="lb">Encounter Type:</span><span class="vl">OPD</span>`);
+      expect(doc!.html).toContain(`<div class="dept">General Medicine</div>`);
     });
 
     /**
@@ -373,7 +400,7 @@ describe("FD-24 T3: rendering the counter's documents", () => {
       /* Not merely "Token:" — "MED-1" is the rendered VALUE, and it is what a reader would spot. */
       expect(doc!.html).not.toContain("MED-1");
       // The band is still a band: the five rows that remain on the right, and the left-hand five.
-      for (const label of ["Name:", "UHID:", "Gender:", "DOB:", "Doctor ID:", "Encounter ID:", "Encounter Type:", "Visit/Admn Date:", "Department:", "Speciality:"]) {
+      for (const label of ["Name:", "UHID:", "Gender:", "Age:", "Unit Number:", "Encounter ID:", "Encounter Type:", "Visit Date:", "Dept. Regn:"]) {
         expect(doc!.html).toContain(`<span class="lb">${label}</span>`);
       }
       /* The token did not leave the building — it is on the paper the patient carries to a counter. */
@@ -390,20 +417,195 @@ describe("FD-24 T3: rendering the counter's documents", () => {
      * column arrived with this change. Both halves are asserted: what prints, and what must not.
      * The council number stays in the database and on the e-Rx; it is this letterhead that drops it.
      */
-    it("prints the Doctor ID alone — not the doctor's name, not the council registration", async () => {
+    /** Unit doctor fixture: the encounter's doctor posted as head of General Medicine Unit I. */
+    async function postToUnitOne(role: "head" | "senior_resident" = "head"): Promise<string> {
+      await seedConfirmedUnits(db);
+      const unit = (await teamByCode(db, "MED-U1"))!;
+      const [row] = await db.select({ userId: opdDoctors.userId }).from(opdEncounters)
+        .innerJoin(opdDoctors, eq(opdDoctors.id, opdEncounters.doctorId)).where(eq(opdEncounters.id, encounterId));
+      await db.insert(rosterTeamMemberships).values({
+        id: newId(), teamId: unit.id, userId: row!.userId, positionKey: role === "head" ? "unit_head" : "unit_sr",
+        grade: role === "head" ? "assistant_professor" : "senior_resident", roleInTeam: role,
+        kind: "parent", startsAt: new Date("2026-01-01T00:00:00+05:30"), createdBy: "t", updatedBy: "t",
+      });
+      return unit.id;
+    }
+    const field = (label: string, value: string): string => `<span class="lb">${label}</span><span class="vl">${value}</span>`;
+
+    /** A unit's head on the roster, with a council number on their OPD doctor profile. */
+    async function headOfUnit(teamId: string, regn: string | null): Promise<string> {
+      const head = await mkDoctor(db, { username: `dr-head-${String(Math.floor(Math.random() * 1e9))}`, departmentId: deptId, roomId, displayName: "Dr Head Of Unit", code: "DR-0200" });
+      await db.update(opdDoctors).set({ registrationNo: regn }).where(eq(opdDoctors.id, head.doctorId));
+      await db.insert(rosterTeamMemberships).values({
+        id: newId(), teamId, userId: head.userId, positionKey: "unit_head", grade: "associate_professor", roleInTeam: "head",
+        kind: "parent", startsAt: new Date("2026-01-01T00:00:00+05:30"), createdBy: "t", updatedBy: "t",
+      });
+      return head.userId;
+    }
+
+    /**
+     * OWNER, 2026-10-04 — SUPERSEDES "Doctor ID only" (2026-09-06, 2026-09-28): no doctor's NAME anywhere;
+     * **Unit Number** is the unit for a unit doctor and the Doctor ID for anyone in no unit (Guest Faculty;
+     * DECIDED: Community Medicine too); **Dept. Regn** is that day's UNIT HEAD's council number — never the
+     * prescriber's own — or blank.
+     */
+    it("2026-10-04: a unit head prescribing — Unit Number is the unit, Dept. Regn is the head's (theirs), no name, no Doctor ID", async () => {
+      await postToUnitOne();
       const doc = await renderPrescriptionSheet(db, { encounterId }, MON);
-      expect(doc!.html).toContain(`<span class="lb">Doctor ID:</span><span class="vl"><span class="num">DR-0114</span></span>`);
+      expect(doc!.html).toContain(field("Unit Number:", `<span class="num">Unit I</span>`));
+      expect(doc!.html).toContain(field("Dept. Regn:", `<span class="num">BMC/12345</span>`));
+      expect(doc!.html).not.toContain("DR-0114");
       expect(doc!.html).not.toContain("Dr Anand Rao");
-      expect(doc!.html).not.toContain("BMC/12345");
-      expect(doc!.html).not.toContain("Reg.");
     });
 
-    /** The row is NOT NULL, so the dash is reachable only by an encounter with no doctor at all —
-     *  which `subjectOf` already tolerates (`doctorName` falls back to "the department"). */
+    it("2026-10-04: a unit's SR prescribing prints the HEAD's number, not their own; blank when the head has none; an officiating head counts", async () => {
+      const teamId = await postToUnitOne("senior_resident");
+      const headUser = await headOfUnit(teamId, "BR-HEAD-77");
+      let doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(field("Unit Number:", `<span class="num">Unit I</span>`));
+      expect(doc!.html).toContain(field("Dept. Regn:", `<span class="num">BR-HEAD-77</span>`));
+      expect(doc!.html).not.toContain("BMC/12345"); // the SR's own number is not the department's
+      expect(doc!.html).not.toContain("Dr Head Of Unit");
+      await db.update(opdDoctors).set({ registrationNo: "  " }).where(eq(opdDoctors.userId, headUser));
+      doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(field("Dept. Regn:", ""));
+      // Somebody officiating as head that day is the head.
+      const standIn = await mkDoctor(db, { username: "dr-standin", departmentId: deptId, roomId, displayName: "Dr Stand In", code: "DR-0300" });
+      await db.update(opdDoctors).set({ registrationNo: "BR-OFF-9" }).where(eq(opdDoctors.id, standIn.doctorId));
+      await db.insert(rosterOfficiating).values({
+        id: newId(), teamId, userId: standIn.userId, role: "head", startsAt: new Date("2026-08-01T00:00:00+05:30"),
+        reason: "head on leave", approvedBy: standIn.userId, createdBy: "t", updatedBy: "t",
+      });
+      doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(field("Dept. Regn:", `<span class="num">BR-OFF-9</span>`));
+    });
+
+    it("2026-10-04: Guest Faculty prints the Doctor ID in Unit Number and the head of the unit holding the OPD that day; blank with no such unit; never 'Guest Faculty'", async () => {
+      await seedConfirmedUnits(db);
+      await db.update(opdDoctors).set({ designation: "Guest Faculty" }).where(eq(opdDoctors.code, "DR-0114"));
+      let doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(field("Unit Number:", `<span class="num">DR-0114</span>`));
+      // No unit holds General Medicine's OPD that day: blank, and NOT the guest's own number.
+      expect(doc!.html).toContain(field("Dept. Regn:", ""));
+      expect(doc!.html).not.toContain("BMC/12345");
+      // Unit I holds the OPD on the visit day (17 Aug): its head's number prints.
+      const unit = (await teamByCode(db, "MED-U1"))!;
+      await headOfUnit(unit.id, "BR-HEAD-77");
+      await db.insert(rosterDutyWindows).values({
+        id: newId(), departmentId: unit.departmentId, teamId: unit.id, activity: "opd",
+        startsAt: new Date("2026-08-17T09:00:00+05:30"), endsAt: new Date("2026-08-17T17:00:00+05:30"), source: "cycle", createdBy: "t", updatedBy: "t",
+      });
+      doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(field("Unit Number:", `<span class="num">DR-0114</span>`));
+      expect(doc!.html).toContain(field("Dept. Regn:", `<span class="num">BR-HEAD-77</span>`));
+      expect(doc!.html).not.toContain("Guest Faculty");
+      expect(doc!.html).not.toContain("Dr Anand Rao");
+    });
+
+    it("2026-10-04: the patient's address prints as registered, the row is left out when there is none, and a sealed patient's never prints", async () => {
+      const [row] = await db.select({ patientId: opdEncounters.patientId }).from(opdEncounters).where(eq(opdEncounters.id, encounterId));
+      let doc;
+      await db.update(patients).set({ addressLine: null, district: null, stateName: null, pincode: null }).where(eq(patients.id, row!.patientId));
+      doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      // `<div class="row">` — the footer's hospital address uses the same label span, so the patient's row is matched whole.
+      expect(doc!.html).not.toContain(`<div class="row"><span class="lb">Address:</span>`);
+      await db.update(patients).set({ addressLine: "Ward 4, Laheriasarai", district: "Darbhanga", stateName: "Bihar", pincode: "846001" }).where(eq(patients.id, row!.patientId));
+      doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(field("Address:", "Ward 4, Laheriasarai, Darbhanga, Bihar, 846001"));
+      await db.update(patients).set({ isConfidential: true }).where(eq(patients.id, row!.patientId));
+      doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).not.toContain("Laheriasarai");
+    });
+
+    /**
+     * OWNER, 2026-10-07: *"Add 'Guardian Name' label & field in the prescription slip print along
+     * with name, age and other fields."* The row sits under Name. The value is the ACTIVE guardian
+     * with the relation written the way an Indian record writes it (S/o, D/o, W/o, C/o); with no
+     * guardian linked it falls back to the registered father's / husband's name; with neither the
+     * label still prints and the value is blank — the Dept. Regn rule. A sealed patient's is blank.
+     */
+    it("2026-10-07: Guardian Name prints under Name — relation and name, blank when none, never for a sealed patient", async () => {
+      const [row] = await db.select({ patientId: opdEncounters.patientId }).from(opdEncounters).where(eq(opdEncounters.id, encounterId));
+      const pid = row!.patientId;
+      const guardian = (over: { name: string; relationship: string; status?: string; validTo?: Date | null }): Promise<unknown> =>
+        db.insert(patientGuardians).values({ id: newId(), patientId: pid, name: over.name, relationship: over.relationship, status: over.status ?? "active", validTo: over.validTo ?? null, createdBy: "test-clerk" });
+      const blank = `<div class="c-guard"><div class="row"><span class="lb">Guardian Name:</span><span class="vl"></span></div></div>`;
+
+      // Nothing recorded: the label, and nothing after it.
+      let doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(blank);
+      expect(doc!.html).toMatch(/\.hd \.c-guard \{ grid-area: 2 \/ 1; \}/);
+
+      // The registered father's / husband's name. A woman's may be either, so the sheet does not guess: C/o.
+      await db.update(patients).set({ fatherHusbandName: "Suresh Arora" }).where(eq(patients.id, pid));
+      doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(field("Guardian Name:", "C/o Suresh Arora"));
+
+      // A guardian whose authority has ended is not this visit's guardian.
+      await guardian({ name: "Old Guardian", relationship: "other", status: "ended" });
+      await guardian({ name: "Lapsed Order", relationship: "legal_guardian", validTo: new Date("2026-01-01T00:00:00.000Z") });
+      doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(field("Guardian Name:", "C/o Suresh Arora"));
+
+      // An active guardian outranks the registration field, and the relation is spelled out.
+      await guardian({ name: "Rakesh Arora", relationship: "spouse" });
+      doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(field("Guardian Name:", "W/o Rakesh Arora"));
+      expect(doc!.html).not.toContain("Old Guardian");
+      expect(doc!.html).not.toContain("Lapsed Order");
+      const at = NEW_ORDER.filter((l) => l !== "Address:").map((label) => doc!.html.indexOf(`<span class="lb">${label}</span>`));
+      expect(at.every((x, i) => x > 0 && (i === 0 || x > at[i - 1]!))).toBe(true);
+
+      // §14 — the seal covers who stands beside them as much as where they live.
+      await db.update(patients).set({ isConfidential: true }).where(eq(patients.id, pid));
+      doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(blank);
+      expect(doc!.html).not.toContain("Rakesh Arora");
+    });
+
+    it("2026-10-07: a father is S/o or D/o by the patient's gender, a mother the same, anyone else C/o", async () => {
+      const [row] = await db.select({ patientId: opdEncounters.patientId }).from(opdEncounters).where(eq(opdEncounters.id, encounterId));
+      await db.insert(patientGuardians).values({ id: newId(), patientId: row!.patientId, name: "Mahesh <Arora>", relationship: "father", createdBy: "test-clerk" });
+      let doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(field("Guardian Name:", "D/o Mahesh &lt;Arora&gt;"));
+      await db.update(patients).set({ administrativeGender: "male" }).where(eq(patients.id, row!.patientId));
+      doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(field("Guardian Name:", "S/o Mahesh &lt;Arora&gt;"));
+      await db.update(patientGuardians).set({ relationship: "sibling" }).where(eq(patientGuardians.patientId, row!.patientId));
+      doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(field("Guardian Name:", "C/o Mahesh &lt;Arora&gt;"));
+    });
+
+    /**
+     * OWNER, 2026-10-05: *"the prescription fields could not hold many information in the header …
+     * address field looks awkward as the text isn't fitting up well."* The address takes the whole
+     * width beside the crest (it was a 298px column, so a real address ran to six lines); a very long
+     * one steps down a size; the unit and its head's number sit on one line below it.
+     */
+    it("2026-10-05: the address has the header's full width, a very long one steps down a size, and the fields keep the owner's order", async () => {
+      const [row] = await db.select({ patientId: opdEncounters.patientId }).from(opdEncounters).where(eq(opdEncounters.id, encounterId));
+      await db.update(patients).set({ addressLine: "Ward No. 12, Near Hanuman Mandir, Mohalla Purani Bazar, Post Office Road", district: "Sitamarhi", stateName: "Bihar", pincode: "843302" }).where(eq(patients.id, row!.patientId));
+      let doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(`<div class="c-addr"><div class="row">${field("Address:", "Ward No. 12, Near Hanuman Mandir, Mohalla Purani Bazar, Post Office Road, Sitamarhi, Bihar, 843302")}</div></div>`);
+      expect(doc!.html).toMatch(/\.hd \.c-addr \{ grid-area: 5 \/ 1 \/ 6 \/ 3; \}/);
+      expect(doc!.html).toContain(`<div class="c-unit"><div class="row"><span class="lb">Unit Number:</span>`);
+      expect(doc!.html).toContain(`<div class="c-regn"><div class="row"><span class="lb">Dept. Regn:</span>`);
+      const at = NEW_ORDER.map((label) => doc!.html.indexOf(`<span class="lb">${label}</span>`));
+      expect(at.every((x) => x > 0)).toBe(true);
+      expect([...at].sort((a, b) => a - b)).toEqual(at);
+
+      await db.update(patients).set({ addressLine: "House No. 221/B, Shanti Kunj Apartments, Behind Sri Krishna Memorial Hall, Near Gandhi Maidan Bus Stand, Frazer Road Area, Kankarbagh Colony, Patna City", district: "Patna", stateName: "Bihar", pincode: "800020" }).where(eq(patients.id, row!.patientId));
+      doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(`<div class="c-addr long"><div class="row"><span class="lb">Address:</span>`);
+      expect(doc!.html).toContain("Patna, Bihar, 800020</span>");
+    });
+
+    /** No doctor on the encounter: a dash in Unit Number and a blank Regn, never an invented value. */
     it("prints a dash rather than a blank when the encounter names no doctor", async () => {
       await db.update(opdEncounters).set({ doctorId: null }).where(eq(opdEncounters.id, encounterId));
       const doc = await renderPrescriptionSheet(db, { encounterId }, MON);
-      expect(doc!.html).toContain(`<span class="lb">Doctor ID:</span><span class="vl"><span class="num">—</span></span>`);
+      expect(doc!.html).toContain(field("Unit Number:", `<span class="num">—</span>`));
+      expect(doc!.html).toContain(field("Dept. Regn:", ""));
     });
 
     /** The visit number prints WITH its series letter. Stripping the `V` — which the design does —
@@ -661,7 +863,8 @@ describe("FD-24 T3: rendering the counter's documents", () => {
       expect(doc!.html).not.toContain("Ravi Shankar Menon");
       expect(doc!.html).toContain(`<span class="vl">M</span>`);
       // A REAL date of birth prints the day and the age; an age entered at the counter would not.
-      expect(doc!.html).toContain("12-Mar-1985 (41 years)");
+      // Owner 2026-10-04: the header prints AGE (not the date of birth) — still printed for a sealed patient.
+      expect(doc!.html).toContain(`<span class="lb">Age:</span><span class="vl"><span class="num">41 years</span></span>`);
     });
 
     /** `unknown` is one of the four values `administrative_gender` holds, and it is not `other`.
@@ -685,6 +888,13 @@ describe("FD-24 T3: rendering the counter's documents", () => {
       expect(doc!.html).toContain("₹300.00");
       // consultation is GST-exempt: a document that looks like a tax invoice and is not one is worse than a plain one
       expect(doc!.html).toContain("not a tax invoice");
+    });
+
+    it("a ₹0 receipt says why, in Hindi, and a paid one does not", async () => {
+      const free = await renderPaymentReceipt(db, { encounterId, amountPaise: 0, mode: "cash" }, MON);
+      expect(free!.html).toContain("₹0 (समाज सेवा छूट)");
+      const paid = await renderPaymentReceipt(db, { encounterId, amountPaise: 30_000, mode: "cash" }, MON);
+      expect(paid!.html).not.toContain("समाज सेवा छूट");
     });
   });
   /**

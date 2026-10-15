@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import type React from "react";
 import { fetchImagingDoor } from "../../lib/radiology-api";
 import { ImagingDoorBody, VisitOrders, orderRefusalText } from "./imaging-order-kit";
+import { CreditChip } from "../patient-credit";
 
 /**
  * PLAN 18-S RS2 (18a-iv T2 + T3) — **THE IMAGING DESK'S DOOR: order from a visit, or from a slip.**
@@ -77,7 +78,7 @@ export function ImagingDeskDoor({ onOpen }: {
       {door.data !== undefined && v !== undefined && (
         <div className="space-y-3">
           <div className="text-sm" data-testid="imaging-desk-visit-head">
-            <b>{v.patient.display}</b> <span className="mo text-xs">{v.patient.uhid}</span>
+            <b>{v.patient.display}</b> <span className="mo text-xs">{v.patient.uhid}</span> <CreditChip patientId={v.patient.id} testId="imaging-credit" />
             <div className="text-xs text-muted-foreground">
               {t("imagingOrder.desk.visitLine", { visitNo: v.encounterNo, doctor: v.doctorName ?? "—", department: v.departmentName ?? "—" })}
             </div>

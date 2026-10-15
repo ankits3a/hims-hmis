@@ -52,8 +52,8 @@ SRC_DIR="$REPO_DIR/docker/prod"
 # if it is the same build, brought up the same way. A second script would be a second thing to
 # keep in step, and the first divergence would be invisible until the rehearsal proved something
 # about a stack nobody runs. So the target parameterises PROJECT, the image namespace, the deploy
-# directory, the cron file and the compose overlay, and NOTHING ELSE branches except the three
-# steps that are production-only by nature.
+# directory, the cron file and the compose overlay, and NOTHING ELSE branches except the two
+# steps that are production-only by nature and the address the edge gate walks.
 #
 # ═══ WHAT UAT DOES NOT DO, AND WHY EACH IS SKIPPED RATHER THAN FAKED ═══
 #
@@ -63,8 +63,9 @@ SRC_DIR="$REPO_DIR/docker/prod"
 #           incident wearing a training label.
 #   step 7  the backup and drill cron. Same reason, plus: two crons writing one log file is how a
 #           drill's verdict gets attributed to the wrong cluster.
-#   step 8  the real-hostname half of the edge gate. UAT has no public hostname and no ACME
-#           certificate; it answers on this box's IP over `tls internal`, behind basic auth.
+#   step 8  NOT skipped since 2026-09-30. UAT is the staging site: production's caddy terminates
+#           TLS for `$HMIS_UAT_SITE` and proxies it to UAT's caddy, so the gate walks the same
+#           https path a browser does (see the branch at step 8).
 #
 # Everything else — the build, the config copy, the migrate, the seeds, the gate, the census, the
 # service census, the restarts — is the same code on both targets, which is the only way the
@@ -85,6 +86,16 @@ case "$TARGET" in
   *)
     echo "deploy.sh: HMIS_TARGET must be 'prod' or 'uat' (got '$TARGET')" >&2; exit 1 ;;
 esac
+
+# OWNER 2026-10-07 — PRODUCTION MOVED TO ITS OWN SERVER. The host it left keeps the old stack, stopped,
+# as a rollback, and a marker file beside it. Starting that stack again would put a second writer on
+# the same pgBackRest stanza and split the hospital's data between two databases. So a production
+# deploy refuses on any host whose deploy directory carries a MOVED-TO-* marker. A deliberate rollback,
+# agreed with the owner, sets HMIS_DEPLOY_HERE_ANYWAY=1.
+if [ "$TARGET" = "prod" ] && compgen -G "$DEPLOY_DIR/MOVED-TO-*" >/dev/null && [ "${HMIS_DEPLOY_HERE_ANYWAY:-0}" != "1" ]; then
+  echo "deploy.sh: production no longer runs on this host ($(basename "$(compgen -G "$DEPLOY_DIR/MOVED-TO-*" | head -1)")) — deploy it there; tools/auto-deploy.sh does, via /etc/hmis/auto-deploy.env" >&2
+  exit 1
+fi
 
 # ════════════════════════════════════════════════════════════════════════════════════════════════
 # PHASE 11i T3 — `HMIS_DEPLOY_ALLOW_DIRTY=1` IS FOR A REHEARSAL, AND A REHEARSAL IS NOT PRODUCTION.
@@ -215,6 +226,22 @@ SERVICES_UP_TIMEOUT="${HMIS_SERVICES_UP_TIMEOUT:-120}"
 die() { printf 'deploy.sh: FATAL: %s\n' "$*" >&2; exit 1; }
 step() { printf '\n==> %s\n' "$*"; }
 note() { printf '    %s\n' "$*"; }
+# NUMERIC OWNERSHIP THAT NEEDS NO ACCOUNT ON THE HOST (2026-10-07). The containers run as uids and
+# gids (node 1000, alertmanager 65534) that need not exist in the HOST's /etc/passwd or /etc/group —
+# and on the host production moved to they do not. `install -g 1000` then died with "invalid group:
+# '1000'": Ubuntu 26.04's coreutils are uutils, and its install (0.8.0) looks the number up by name.
+# So ownership is never an `install -g`/`-o` flag here: the file is made, then handed over by number
+# — `chown`, and python3's os.chown if that chown also wants a name.
+numeric_own() {
+  local owner="$1"; shift
+  chown "$owner" "$@" 2>/dev/null && return 0
+  python3 - "$owner" "$@" <<'PY'
+import os, sys
+uid, _, gid = sys.argv[1].partition(":")
+for path in sys.argv[2:]:
+    os.chown(path, int(uid), int(gid) if gid else -1)
+PY
+}
 
 # 11i T3: on UAT the base file is overlaid with `docker-compose.uat.yml`, which resizes the four
 # services UAT runs and puts the five monitoring services behind a profile nothing here enables —
@@ -317,12 +344,13 @@ if [ "$TARGET" = "uat" ]; then
   grep -q '^HMIS_UAT_BASIC_AUTH_HASH=' "$ENV_FILE" \
     || die "$ENV_FILE carries no HMIS_UAT_BASIC_AUTH_HASH. Mint one and keep the password out of
     git:  docker run --rm caddy:2-alpine caddy hash-password --plaintext '<password>'"
-  if port_in_use 8443; then
-    our_caddy_running || die "port 8443 is in use and it is not this project's caddy.
-    The retired preview stack used it: docker stop hmis-preview-caddy"
-    note "port 8443 is held by this project's own caddy — re-deploy, continuing"
+  # The port docker-compose.uat.yml publishes on docker0 and production's staging block proxies to.
+  if port_in_use 8444; then
+    our_caddy_running || die "port 8444 is in use and it is not this project's caddy.
+    UAT's caddy publishes 172.17.0.1:8444 for the staging site; find the holder with: ss -lntp"
+    note "port 8444 is held by this project's own caddy — re-deploy, continuing"
   else
-    note "port 8443 free"
+    note "port 8444 free"
   fi
 else
 # D8/GC2. The object-store credentials are a SEPARATE root-only file: merging them into .env would
@@ -469,6 +497,78 @@ fi
 install -D -m 0644 "$SRC_DIR/pgbackrest/pgbackrest.conf" "$DEPLOY_DIR/pgbackrest/pgbackrest.conf"
 install -D -m 0750 "$SRC_DIR/drill/restore-drill.sh" "$DEPLOY_DIR/drill/restore-drill.sh"
 install -d -m 0750 "$DEPLOY_DIR/log"
+# MOBILE M6b — THE FIREBASE KEY THE STAFF APP'S NOTIFICATIONS ARE SENT WITH (apps/mobile/BUILDING.md,
+# "Notifications"). The owner supplies it on THIS HOST at $HMIS_FIREBASE_KEY; it is never in the
+# repository and never in an image. It is copied here, group-readable by the containers' user (node,
+# gid 1000), because a root-only 0600 file is unreadable through a bind mount by a non-root process.
+# The api and worker mount the DIRECTORY (the caddy/ inode lesson above) and re-read the file by
+# themselves, so a key that arrives or changes needs no restart.
+#
+# ABSENT IS NORMAL, and it must never fail a deploy: the directory is still made (the mount needs
+# it), the api and worker boot with notifications OFF and say so once, and nothing else changes.
+FIREBASE_KEY="${HMIS_FIREBASE_KEY:-/root/.config/hmis/firebase/service-account.json}"
+install -d -m 0750 "$DEPLOY_DIR/firebase"
+numeric_own 0:1000 "$DEPLOY_DIR/firebase"
+if [ -r "$FIREBASE_KEY" ]; then
+  install -m 0440 "$FIREBASE_KEY" "$DEPLOY_DIR/firebase/service-account.json"
+  numeric_own 0:1000 "$DEPLOY_DIR/firebase/service-account.json"
+  echo "    firebase key installed for the api and the worker (phone notifications)"
+else
+  if [ -r "$DEPLOY_DIR/firebase/service-account.json" ]; then
+    echo "    no firebase key at $FIREBASE_KEY — the copy already in $DEPLOY_DIR/firebase stays in use"
+  else
+    echo "    no firebase key at $FIREBASE_KEY — phone notifications stay off; nothing else is affected"
+  fi
+fi
+# PHONE CONSULT (decision 0048) — THE OPENAI KEY THE DOCTOR'S SPOKEN NOTE IS TYPED WITH. Same shape
+# and the same rules as the Firebase key above: the owner supplies it on THIS HOST at
+# $HMIS_OPENAI_KEY, it is in no commit and no image, it is copied here group-readable by the
+# containers' user, and the api mounts the DIRECTORY and re-reads the file by itself.
+#
+# ABSENT IS NORMAL, and it must never fail a deploy: the directory is still made (the mount needs
+# it), voice is OFF and the app says "Voice is not set up", and nothing else changes.
+OPENAI_KEY="${HMIS_OPENAI_KEY:-/root/.config/hmis/openai/key.txt}"
+install -d -m 0750 "$DEPLOY_DIR/openai"
+numeric_own 0:1000 "$DEPLOY_DIR/openai"
+if [ -r "$OPENAI_KEY" ]; then
+  install -m 0440 "$OPENAI_KEY" "$DEPLOY_DIR/openai/key.txt"
+  numeric_own 0:1000 "$DEPLOY_DIR/openai/key.txt"
+  echo "    openai key installed for the api (the doctor's spoken note)"
+else
+  if [ -r "$DEPLOY_DIR/openai/key.txt" ]; then
+    echo "    no openai key at $OPENAI_KEY — the copy already in $DEPLOY_DIR/openai stays in use"
+  else
+    echo "    no openai key at $OPENAI_KEY — voice notes stay off; nothing else is affected"
+  fi
+fi
+# STAFF ATTENDANCE (owner 2026-10-09) — THE THREE BIOATTEND SECRETS: the API key, the webhook signing
+# secret and the Aadhaar linking key. The OpenAI key's shape and rules, three files instead of one:
+# the owner supplies them on THIS HOST under $HMIS_BIOATTEND_DIR, they are in no commit and no image,
+# each is copied here group-readable by the containers' user, and the api AND the worker mount the
+# DIRECTORY and re-read the files by themselves.
+#
+# ABSENT IS NORMAL, and it must never fail a deploy: the directory is still made (the mount needs
+# it), attendance says "not configured", and nothing else changes. A file missing from the owner's
+# folder leaves the copy already deployed in use.
+BIOATTEND_DIR="${HMIS_BIOATTEND_DIR:-/root/.config/hmis/bioattend}"
+install -d -m 0750 "$DEPLOY_DIR/bioattend"
+numeric_own 0:1000 "$DEPLOY_DIR/bioattend"
+install_bioattend_secret() {
+  # $1 = the owner's file on this host, $2 = where the api and the worker look for it.
+  if [ -r "$1" ]; then
+    install -m 0440 "$1" "$2"
+    numeric_own 0:1000 "$2"
+    echo "    bioattend $(basename "$2") installed for the api and the worker (staff attendance)"
+  elif [ -r "$2" ]; then
+    echo "    no $(basename "$1") in $BIOATTEND_DIR — the copy already deployed stays in use"
+  else
+    echo "    no $(basename "$1") in $BIOATTEND_DIR — that part of staff attendance stays off; nothing else is affected"
+  fi
+}
+install_bioattend_secret "$BIOATTEND_DIR/api-key.txt" "$DEPLOY_DIR/bioattend/api-key.txt"
+install_bioattend_secret "$BIOATTEND_DIR/webhook-secret.txt" "$DEPLOY_DIR/bioattend/webhook-secret.txt"
+install_bioattend_secret "$BIOATTEND_DIR/aadhaar-key.txt" "$DEPLOY_DIR/bioattend/aadhaar-key.txt"
+# (end of the bioattend secrets)
 # The monitoring trees, same directory-mount shape as caddy/ and pgbackrest/ above.
 #
 # THESE SIX LINES WERE MISSING AND THE WHOLE MONITORING STACK WAS INERT IN PRODUCTION (ledger
@@ -679,7 +779,7 @@ chmod 600 "$AM_YML" "$AM_PASS"
 # 600 AND ROOT-OWNED WOULD BE 600 AND UNREADABLE: the container runs as uid 65534 and reads both
 # files itself. Ownership is what keeps them off every other account on the box while still being
 # readable by the one process that needs them.
-chown "$ALERTMANAGER_UID:$ALERTMANAGER_UID" "$AM_YML" "$AM_PASS"
+numeric_own "$ALERTMANAGER_UID:$ALERTMANAGER_UID" "$AM_YML" "$AM_PASS"
 unset SMTP_PASSWORD_V AM_TPL
 note "alert routing derived into alertmanager/alertmanager.yml + smtp_password (600, uid $ALERTMANAGER_UID)"
 fi
@@ -842,6 +942,9 @@ compose run --rm api node dist/scripts/seed-pharmacy.js
 # step" predates Plan 11g / DD2 reaching the lab and is superseded by it. Idempotent; it establishes
 # no catalogue, no user and no CA-signed row.
 compose run --rm api node dist/scripts/seed-lab.js
+# Decision 0067 (owner 2026-10-10) — the outside-test list (ECG, echo …) the doctor advises and the slip
+# prints under "Tests to be done outside". Adds missing codes only; never touches an edited row.
+compose run --rm api node dist/scripts/seed-outside-tests.js
 
 # `seed-roles` IS RUN, AND ITS EXIT STATUS IS DELIBERATELY NOT THIS DEPLOY'S.
 #
@@ -1096,14 +1199,14 @@ step "8/8 the edge gate: /api/health as JSON, and a screen path as HTML"
 # The hostname is read out of the Caddyfile rather than configured twice — one source of truth,
 # and re-pointing the stack at another name stays a one-file change (GC1).
 if [ "$TARGET" = "uat" ]; then
-  # UAT's site address is `https://{$HMIS_UAT_SITE}:8443` — an env placeholder Caddy expands at
-  # load time, so there is no hostname in the file to read. It comes from the same .env the
-  # pre-flight already validated, which keeps ONE source of truth exactly as the awk below does
-  # for production.
-  SITE_BASE="https://$UAT_SITE:8443"
-  # `tls internal` means a certificate this box signed for itself, so curl is told to accept it —
-  # for UAT only, named here rather than hidden in a variable.
-  CURL_TLS="--insecure"
+  # UAT's site address is `{$HMIS_UAT_SITE}` — an env placeholder Caddy expands at load time, so
+  # there is no hostname in the file to read. It comes from the same .env the pre-flight already
+  # validated, which keeps ONE source of truth exactly as the awk below does for production.
+  # 2026-09-30: UAT is the staging site. PRODUCTION'S caddy terminates TLS for this hostname over
+  # ACME and proxies it to UAT's caddy (the staging block in docker/prod/Caddyfile), so this gate
+  # walks the whole path a browser takes — and production must carry that block before UAT deploys.
+  SITE_BASE="https://$UAT_SITE"
+  CURL_TLS=""
 else
 SITE_HOST="$(awk 'NF == 2 && $2 == "{" && $1 ~ /^[A-Za-z0-9][A-Za-z0-9.-]*$/ && $1 ~ /\./ { print $1; exit }' \
   "$DEPLOY_DIR/caddy/Caddyfile")"

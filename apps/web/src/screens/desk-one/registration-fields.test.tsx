@@ -216,7 +216,7 @@ describe("FD-12: the registration counter's full record", () => {
     The server refuses `dob` AND `ageYears` together outright. The toggle is what decides, so that
     a stale value in the box the clerk switched away from cannot travel beside the one they meant.
   */
-  it("age or date of birth — never both, whichever the toggle says", async () => {
+  it("age or date of birth — never both, whichever the one box reads", async () => {
     const posted: { body: unknown }[] = [];
     mountDesk(posted);
     await openEnrolment();
@@ -225,9 +225,12 @@ describe("FD-12: the registration counter's full record", () => {
     await user.type(screen.getByTestId("reg-name"), "Sita Devi");
     await user.click(screen.getByTestId("reg-sex-female"));
     await user.type(screen.getByTestId("reg-age"), "40");
-    // switch to the date box and give it a date; the age typed a moment ago must NOT travel too
-    await user.click(screen.getByTestId("reg-agemode-dob"));
-    await user.type(screen.getByTestId("reg-dob"), "1986-03-14");
+    // Owner, 2026-10-01 — ONE box. A date typed over the age is read as a date of birth, and the
+    // age typed a moment ago must NOT travel too.
+    expect(screen.queryByTestId("reg-agemode-dob")).not.toBeInTheDocument();
+    await user.clear(screen.getByTestId("reg-age"));
+    await user.type(screen.getByTestId("reg-age"), "14/03/1986");
+    expect(screen.getByTestId("reg-age-read")).toHaveTextContent("born 14 Mar 1986");
     await user.click(screen.getByTestId("reg-submit"));
 
     await waitFor(() => expect(posted).toHaveLength(1));
@@ -252,7 +255,11 @@ describe("FD-12: the registration counter's full record", () => {
     await user.selectOptions(screen.getByTestId("reg-blood"), "B+");
     await user.type(screen.getByTestId("reg-occupation"), "Anganwadi worker");
 
-    await user.click(screen.getByTestId("fold-where"));
+    // Owner, 2026-10-01 — "Where they live" is open in the address box's place: no fold to click.
+    expect(screen.queryByTestId("fold-where")).not.toBeInTheDocument();
+    expect(screen.getByTestId("reg-where")).toHaveTextContent("Where they live");
+    expect(screen.getByText("gender")).toBeInTheDocument();
+    await user.type(screen.getByTestId("reg-address"), "12 Gandhi Nagar");
     await user.type(screen.getByTestId("reg-district"), "Kanpur Nagar");
     await user.type(screen.getByTestId("reg-pincode"), "208001");
 
@@ -270,6 +277,7 @@ describe("FD-12: the registration counter's full record", () => {
     await waitFor(() => expect(posted).toHaveLength(1));
     const body = posted[0]!.body as Record<string, unknown>;
 
+    expect(body["addressLine"]).toBe("12 Gandhi Nagar");
     expect(body["fatherHusbandName"]).toBe("Ram Prasad");
     expect(body["bloodGroup"]).toBe("B+");
     expect(body["occupation"]).toBe("Anganwadi worker");
@@ -449,7 +457,7 @@ describe("FD-12: the registration counter's full record", () => {
     expect(screen.getByTestId("abha-number")).toHaveValue("91-2345-6789-0123");
     expect(screen.getByTestId("abdm-pending-link")).toBeInTheDocument();
     // the age box was blank, so ABDM's date of birth filled it; the typed name and mobile were kept
-    expect(screen.getByTestId("reg-dob")).toHaveValue("1986-03-14");
+    expect(screen.getByTestId("reg-age")).toHaveValue("14/03/1986");
     await user.click(screen.getByTestId("reg-submit"));
 
     await waitFor(() => expect(posted).toHaveLength(1));
@@ -629,5 +637,65 @@ describe("FD-12: the registration counter's full record", () => {
     const body = posted[0]!.body as { isConfidential?: boolean; alias?: string };
     expect(body.isConfidential).toBeUndefined();
     expect(body.alias).toBeUndefined();
+  });
+});
+
+/*
+  Owner, staging 2026-10-01: "add allergy input and selection in registration screen as well."
+  A patient does not exist until the UHID does, so the allergies ride on the form and are posted to
+  the new patient once the registration answers — a pick coded, free text as written.
+*/
+describe("allergies at registration", () => {
+  const ME = (perms: string[]): unknown => ({
+    actor: { type: "user", id: "u1" },
+    permissions: { hospital: perms, scoped: { department: {}, floor: {} } },
+  });
+  const DESK = ["opd.visits.open", "patients.register", "billing.invoice.issue"];
+
+  it("suggests as the clerk types; picked, added and still-in-the-box allergies all reach the new patient", async () => {
+    const posted: { body: unknown }[] = [];
+    const allergies: unknown[] = [];
+    mountDesk(posted, {
+      routes: {
+        "GET /api/auth/me": ME([...DESK, "patients.update"]),
+        "GET /api/opd/cds/complete/allergen": (_init?: RequestInit, url?: string) =>
+          (url ?? "").includes("q=penic")
+            ? { items: [{ term: "Penicillins / Beta-Lactams", kind: "class", allergenClass: "penicillin", saltId: null, blocks: ["Amoxicillin"] }], known: true }
+            : { items: [], known: false },
+        "POST /api/patients/p-new/allergies": (init?: RequestInit) => { allergies.push(JSON.parse(String(init?.body))); return { id: "al-1" }; },
+      },
+    });
+    await openEnrolment();
+    const user = userEvent.setup({ delay: null });
+    await user.type(screen.getByTestId("reg-name"), "Walk In");
+    await user.type(screen.getByTestId("reg-age"), "44");
+    await user.click(screen.getByTestId("reg-sex-male"));
+
+    await user.type(screen.getByTestId("reg-allergy-substance"), "penic");
+    await user.click(await screen.findByTestId("reg-allergy-hit-Penicillins / Beta-Lactams"));
+    expect(screen.getByTestId("reg-allergy-substance")).toHaveValue("Penicillins / Beta-Lactams");
+    await user.selectOptions(screen.getByTestId("reg-allergy-severity"), "severe");
+    await user.click(screen.getByTestId("reg-allergy-add"));
+    expect(screen.getByTestId("reg-allergy-list")).toHaveTextContent("Penicillins / Beta-Lactams");
+    expect(screen.getByTestId("reg-allergy-substance")).toHaveValue("");
+
+    /* Typed, never added: free text, and the line under the box says the guard knows no rule. */
+    await user.type(screen.getByTestId("reg-allergy-substance"), "red syrup");
+    await waitFor(() => expect(screen.getByTestId("reg-allergy-unknown")).toBeInTheDocument());
+
+    await user.click(screen.getByTestId("reg-submit"));
+    await waitFor(() => expect(allergies).toHaveLength(2));
+    /* The registration body itself is unchanged — allergies are not part of `POST /patients`. */
+    expect(posted[0]!.body).toEqual({ name: "Walk In", sex: "male", ageYears: 44 });
+    expect(allergies).toEqual([
+      { substance: "Penicillins / Beta-Lactams", severity: "severe", source: "registration", saltId: null, allergenClass: "penicillin" },
+      { substance: "red syrup", severity: "mild", source: "registration" },
+    ]);
+  });
+
+  it("a seat that cannot record an allergy is not shown the box", async () => {
+    mountDesk([], { routes: { "GET /api/auth/me": ME(DESK) } });
+    await openEnrolment();
+    expect(screen.queryByTestId("reg-allergies")).not.toBeInTheDocument();
   });
 });

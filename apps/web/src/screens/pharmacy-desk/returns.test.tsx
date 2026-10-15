@@ -118,6 +118,29 @@ describe("take medicine back from a handed-over ticket", () => {
     expect(within(done).getByTestId("desk-return-approval")).toHaveTextContent("A billing manager must approve this refund");
   });
 
+  /* Owner ruling 2026-10-02 — the return's money kept as pharmacy credit: no refund request, and the sheet says so. */
+  it("keep as credit: the sheet sends settle=credit and says the amount is kept, with no approval notice", async () => {
+    mock(PERMS, handedOver, {
+      "POST /api/pharmacy/dispenses/d1/returns": { status: 200, body: { dispense: handedOver, creditNoteId: "cn9", creditNoteNo: "CN-2609-0009", refundApprovalId: null, creditNotePaise: 47_200, creditKeptPaise: 47_200 } },
+      "GET /api/billing/invoices/inv1/credit-notes": creditNotes,
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    await user.click(await screen.findByTestId("desk-ticket-menu"));
+    await user.click(screen.getByTestId("desk-act-return"));
+    const sheet = await screen.findByTestId("desk-return-sheet");
+    expect(within(sheet).getByTestId("return-settle-refund")).toBeChecked(); // the default is the refund
+    await user.type(within(sheet).getByTestId("return-qty-0"), "10");
+    await user.click(within(sheet).getByTestId("return-class-genuine"));
+    await user.type(within(sheet).getByTestId("return-reason"), "doctor changed it");
+    await user.click(within(sheet).getByTestId("return-sealed"));
+    await user.click(within(sheet).getByTestId("return-settle-credit"));
+    await user.click(within(sheet).getByTestId("return-submit"));
+    expect(await screen.findByTestId("desk-return-credit")).toHaveTextContent("₹472.00 kept as pharmacy credit");
+    expect(screen.queryByTestId("desk-return-approval")).toBeNull();
+    expect(posted("/d1/returns").map((c) => c.body)).toEqual([expect.objectContaining({ settle: "credit", lines: [{ lineIdx: 0, qtyBase: 10 }] })]);
+  });
+
   it("says the server's refusal in its own sentence, and how many can still come back", async () => {
     mock(PERMS, handedOver, {
       "POST /api/pharmacy/dispenses/d1/returns": { status: 409, body: { statusCode: 409, code: "return_exceeds_dispensed", message: "line 1: 5 can still come back, not 10", detail: { lineIdx: 0, left: 5 } } },
@@ -204,5 +227,101 @@ describe("cancel a ticket before the bill", () => {
     await user.click(within(sheet).getByTestId("return-submit"));
     await waitFor(() => expect(screen.queryByTestId("desk-return-sheet")).toBeNull());
     expect(posted("/pharmacy/dispenses/d1/cancel").map((p) => p.body)).toEqual([{ reason: "doctor revised the prescription" }]);
+  });
+});
+
+/* Owner 2026-10-03 — common reasons as one-tap chips, so the desk does not type the usual cases. */
+describe("reason chips", () => {
+  it("a return chip fills the reason, picks whose reason it is, and is what the approver receives", async () => {
+    mock(PERMS, handedOver, {
+      "POST /api/pharmacy/dispenses/d1/returns": { status: 200, body: { dispense: handedOver, creditNoteId: "cn9", creditNoteNo: "CN-2609-0009", refundApprovalId: "ap1" } },
+      "GET /api/billing/invoices/inv1/credit-notes": creditNotes,
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    await user.click(await screen.findByTestId("desk-ticket-menu"));
+    await user.click(screen.getByTestId("desk-act-return"));
+    const sheet = await screen.findByTestId("desk-return-sheet");
+    await user.type(within(sheet).getByTestId("return-qty-0"), "10");
+    await user.click(within(sheet).getByTestId("return-sealed"));
+    expect(within(sheet).getByTestId("return-submit")).toBeDisabled();
+
+    await user.click(within(sheet).getByTestId("return-chip-wrongMedicine"));
+    expect(within(sheet).getByTestId("return-reason")).toHaveValue("Wrong medicine given");
+    expect(within(sheet).getByTestId("return-class-mistake")).toBeChecked();
+    expect(within(sheet).getByTestId("return-chip-wrongMedicine")).toHaveAttribute("aria-pressed", "true");
+    /* Once whose is known, only that side's chips are offered. */
+    expect(within(sheet).queryByTestId("return-chip-doctorChanged")).toBeNull();
+
+    await user.click(within(sheet).getByTestId("return-submit"));
+    await screen.findByTestId("desk-return-done");
+    expect(posted("/pharmacy/dispenses/d1/returns").map((p) => p.body)).toEqual([
+      { lines: [{ lineIdx: 0, qtyBase: 10 }], sealedIntact: true, reason: "Wrong medicine given", reasonClass: "mistake" },
+    ]);
+  });
+
+  it("choosing the patient's reason first offers only the patient's chips, and a chip's text can still be edited", async () => {
+    mock(PERMS, billed, {});
+    const user = userEvent.setup();
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    await user.click(await screen.findByTestId("desk-ticket-menu"));
+    await user.click(screen.getByTestId("desk-act-refund"));
+    const sheet = await screen.findByTestId("desk-return-sheet");
+    expect(within(sheet).getByTestId("return-chip-billedTwice")).toBeInTheDocument();
+    await user.click(within(sheet).getByTestId("return-class-genuine"));
+    expect(within(sheet).queryByTestId("return-chip-billedTwice")).toBeNull();
+    await user.click(within(sheet).getByTestId("return-chip-patientLeft"));
+    await user.type(within(sheet).getByTestId("return-reason"), " at 4 pm");
+    expect(within(sheet).getByTestId("return-reason")).toHaveValue("Patient left without the medicine at 4 pm");
+    expect(within(sheet).getByTestId("return-chip-patientLeft")).toHaveAttribute("aria-pressed", "false");
+    expect(within(sheet).getByTestId("return-submit")).toBeEnabled();
+  });
+
+  it("a cancel chip fills the reason and posts it", async () => {
+    const cancelled: WireDispense = { ...picked, status: "cancelled", cancelReason: "Duplicate ticket" };
+    mock(PERMS, picked, { "POST /api/pharmacy/dispenses/d1/cancel": { status: 200, body: cancelled } });
+    const user = userEvent.setup();
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    await user.click(await screen.findByTestId("desk-ticket-menu"));
+    await user.click(screen.getByTestId("desk-act-cancel"));
+    const sheet = await screen.findByTestId("desk-return-sheet");
+    await user.click(within(sheet).getByTestId("return-chip-duplicate"));
+    await user.click(within(sheet).getByTestId("return-submit"));
+    await waitFor(() => expect(screen.queryByTestId("desk-return-sheet")).toBeNull());
+    expect(posted("/pharmacy/dispenses/d1/cancel").map((p) => p.body)).toEqual([{ reason: "Duplicate ticket" }]);
+  });
+});
+
+/* Owner ruling 2026-10-03 — loose tablets go to the loose tray (sealed in the pocket) or the damage tray (our mistake only). */
+describe("loose tablets", () => {
+  const stripped: WireDispense = { ...handedOver, lines: handedOver.lines.map((l) => ({ ...l, item: l.item === null ? null : { ...l.item, uoms: [{ uom: "strip", toBaseMultiplier: 10 }] } })) };
+
+  it("asks where loose tablets go, allows the damage tray only for our mistake, and sends the choice", async () => {
+    mock(PERMS, stripped, {
+      "POST /api/pharmacy/dispenses/d1/returns": { status: 200, body: { dispense: stripped, creditNoteId: "cn9", creditNoteNo: "CN-2609-0009", refundApprovalId: "ap1" } },
+      "GET /api/billing/invoices/inv1/credit-notes": creditNotes,
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    await user.click(await screen.findByTestId("desk-ticket-menu"));
+    await user.click(screen.getByTestId("desk-act-return"));
+    const sheet = await screen.findByTestId("desk-return-sheet");
+    await user.type(within(sheet).getByTestId("return-qty-0"), "10");
+    expect(within(sheet).queryByTestId("return-loose")).toBeNull(); // a whole strip: nothing to ask
+    await user.clear(within(sheet).getByTestId("return-qty-0"));
+    await user.type(within(sheet).getByTestId("return-qty-0"), "15");
+    await user.click(within(sheet).getByTestId("return-class-genuine"));
+    await user.type(within(sheet).getByTestId("return-reason"), "no longer needed");
+    await user.click(within(sheet).getByTestId("return-sealed"));
+    expect(within(sheet).getByTestId("return-loose-damage")).toBeDisabled();
+    expect(within(sheet).getByTestId("return-submit")).toBeDisabled(); // loose, and no tray chosen
+    await user.click(within(sheet).getByTestId("return-class-mistake"));
+    expect(within(sheet).getByTestId("return-loose-damage")).toBeEnabled();
+    await user.click(within(sheet).getByTestId("return-loose-damage"));
+    await user.click(within(sheet).getByTestId("return-submit"));
+    await screen.findByTestId("desk-return-done");
+    expect(posted("/pharmacy/dispenses/d1/returns").map((p) => p.body)).toEqual([
+      { lines: [{ lineIdx: 0, qtyBase: 15 }], sealedIntact: true, reason: "no longer needed", reasonClass: "mistake", looseTo: "damage" },
+    ]);
   });
 });

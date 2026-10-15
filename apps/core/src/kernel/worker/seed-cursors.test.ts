@@ -7,6 +7,7 @@ import { withTx, Db } from "../db/client";
 import { ALERTS_CONSUMER } from "../alerts/consumer";
 import { NOTIFY_CONSUMER } from "../notify/consumer";
 import { OBLIGATIONS_CONSUMER } from "../obligations/consumer";
+import { PHONE_PUSH_CONSUMER } from "../push/consumer";
 import { PARTNERS_ACCRUAL_CONSUMER } from "../../modules/partners";
 import { MATERIALS_CONSUMPTION_CONSUMER } from "../../modules/materials";
 import { OT_IMPLANT_CONFIRMED_CONSUMER, OT_PATIENT_MERGED_CONSUMER } from "../../modules/ot";
@@ -14,6 +15,7 @@ import { RADIOLOGY_APPROVAL_GRANTED_CONSUMER, RADIOLOGY_ORDER_PLACED_CONSUMER, R
 import { PHARMACY_MESSAGES_CONSUMER, PHARMACY_RX_ISSUED_CONSUMER } from "../../modules/pharmacy";
 import { LAB_INTERFACE_CONSUMER } from "../../modules/lab";
 import { ABDM_CARE_CONTEXT_CONSUMER } from "../../modules/abdm";
+import { ORDERING_FREE_TESTS_CONSUMER } from "../../modules/ordering";
 import { seedCursors } from "./seed-cursors";
 
 const mkInput = (name: string) => ({
@@ -136,6 +138,14 @@ describe("seedCursors", () => {
          */
         OBLIGATIONS_CONSUMER,
         /**
+         * MOBILE M6b — the phone's bell. THIS ONE MUST BE SEEDED, and not by luck: an unseeded cursor
+         * would re-read every `alert.raised` the hospital has ever emitted and, on the day the
+         * Firebase key is present, put every one of them on somebody's lock screen. The consumer
+         * also refuses an alert older than half an hour (`push/consumer.ts`) — the seed is the
+         * rule, that is the belt.
+         */
+        PHONE_PUSH_CONSUMER,
+        /**
          * ABDM S2 — the tenth. Its unseeded cursor would re-read every `consultation.completed`,
          * `lab.report_published` and `imaging.report_published` the hospital has ever emitted the
          * first time the worker boots with ABDM on — and every one names a visit that could then
@@ -151,6 +161,13 @@ describe("seedCursors", () => {
          * unsent 72 h after a payment long past. Seeded at `max(seq)`, it begins with the next bill.
          */
         RADIOLOGY_READY_ON_PAYMENT_CONSUMER,
+        /**
+         * DECISION 0067 — the free-test order, and the one whose unseeded cursor would do REAL harm:
+         * from zero it would walk every `consultation.completed` since the OPD opened and, while the
+         * lab fee is Free, place a lab order for every past visit's advised tests. Seeded at
+         * `max(seq)`, it orders only for consults completed after it ships.
+         */
+        ORDERING_FREE_TESTS_CONSUMER,
       ].sort());
   });
 
@@ -215,6 +232,29 @@ describe("seedCursors", () => {
     expect(alertsSeed).toBeDefined();
     expect(alertsSeed!.lastSeq).toBe(aheadOfHistory); // untouched
     expect(await cursorOf(db, ALERTS_CONSUMER)).toBe(aheadOfHistory);
+  });
+
+  /**
+   * V12 — SEEDING NEVER RAISES AN EXISTING CURSOR. deploy.sh seeds on every deploy; a consumer
+   * that is behind at that moment (the worker was restarting while the api kept appending) must
+   * keep its backlog, or those events are never delivered.
+   */
+  it("V12 — never raises an existing cursor that sits behind max(seq); the backlog is still delivered", async () => {
+    const e1 = await withTx(db, (tx) => appendEvent(tx, mkInput("alert.raised")));
+    await db.execute(sql`
+      insert into event_cursors (consumer, last_seq) values (${ALERTS_CONSUMER}, ${e1.seq})
+    `);
+    const e2 = await withTx(db, (tx) => appendEvent(tx, mkInput("alert.raised")));
+
+    const seeded = await seedCursors(db);
+    expect(seeded.find((s) => s.consumer === ALERTS_CONSUMER)!.lastSeq).toBe(e1.seq); // untouched
+    expect(await cursorOf(db, ALERTS_CONSUMER)).toBe(e1.seq);
+
+    const delivered: number[] = [];
+    const bus = new SubscriptionBus();
+    bus.on(ALERTS_CONSUMER, "alert.raised", async (e) => { delivered.push(e.seq); });
+    await runDispatchCycle(db, bus, { lookback: 0 });
+    expect(delivered).toEqual([e2.seq]);
   });
 
   it("is idempotent: seeding twice with no new history leaves the cursor exactly where it was", async () => {

@@ -9,6 +9,8 @@ import { listGstCategories, serviceCategoriesByIds } from "../tariff";
 import { effectiveRegulation, getBatch, itemUomRows } from "../materials";
 import { getEncounter } from "../opd";
 import { dispenseBilled } from "./events";
+import { quickDeskOn } from "./settings";
+import { pharmacyCreditOf, planCreditUse, recordCreditUse } from "./store-credit";
 import { PharmacyError } from "./errors";
 import type { DispenseRow } from "./queue";
 import { counterPacks, mergeBillRows } from "./bill-rows";
@@ -41,6 +43,11 @@ export type BillInput = {
    * dispense and THIS discount (`discount.ts`).
    */
   discount?: DiscountAsk & { approvalId?: string };
+  /**
+   * OWNER RULING 2026-10-02 — pharmacy credit the patient kept from a return, spent on this bill FIRST;
+   * the tenders pay only the difference (`store-credit.ts`). Refused when the book holds less.
+   */
+  useCreditPaise?: number;
 };
 
 type PricedLinePlan = { lineId: string; lineIdx: number; itemId: string } & PricedBatchLine;
@@ -112,17 +119,20 @@ export async function priceBatchLine(
     regulation: regulation === undefined ? null : { ceilingPaise: regulation.ceilingPaise, mrpUom: regulation.mrpUom },
     taxRateBps: gst.exempt ? 0 : gst.rateBps,
   }, line.qtyBase);
+  // OWNER 2026-10-02 — the sale item's standing discount rides on both invoice lines of the pick (the whole
+  // packs and the loose-tablet residue), so the preview, the judged discount and the issued bill all see it.
+  const standing = sale.discountBps > 0 ? { standingDiscountBps: sale.discountBps } : {};
   return {
     winner: price.saleWinner,
     amountPaise: price.amountPaise,
     // P1: an MRP includes its GST (L1), so the bill carves the tax out of the price, never adds it.
     input: {
       lineId: newId(), serviceId: sale.serviceId, qty: line.qtyBase,
-      batchUnitPaise: price.batchUnitPaise, capUnitPaise: price.capUnitPaise, taxInclusive: true,
+      batchUnitPaise: price.batchUnitPaise, capUnitPaise: price.capUnitPaise, taxInclusive: true, ...standing,
     },
     residual: price.residue === null ? null : {
       lineId: newId(), serviceId: sale.serviceId, qty: price.residue.qty,
-      batchUnitPaise: price.residue.unitPaise, capUnitPaise: price.residue.unitPaise, taxInclusive: true,
+      batchUnitPaise: price.residue.unitPaise, capUnitPaise: price.residue.unitPaise, taxInclusive: true, ...standing,
     },
   };
 }
@@ -221,7 +231,11 @@ export function tenderPayables(rawTotalPaise: number): TenderPayables {
   };
 }
 
-export type BillPreview = DisplayDraft & { byTender: TenderPayables; discount: DiscountQuote | null };
+export type BillPreview = DisplayDraft & {
+  byTender: TenderPayables; discount: DiscountQuote | null;
+  /** Owner ruling 2026-10-02 — the pharmacy credit this patient holds, to spend on this bill first. */
+  creditAvailablePaise: number;
+};
 
 /** A discount priced in a preview: the sheet has not always got its reason yet, and a preview writes nothing. */
 function previewAsk(ask: DiscountAsk): DiscountAsk {
@@ -251,6 +265,7 @@ export async function previewDispenseBill(
     ...displayDraft(draft, plan, await counterPacks(db, plan.map((p) => p.itemId))),
     byTender: tenderPayables(draft.totals.rawTotalPaise),
     discount: opts.discount === undefined ? null : quoteDiscount(opts.discount, draft.totals.grossPaise, saleDiscountPaise(draft.lines)),
+    creditAvailablePaise: (await pharmacyCreditOf(db, d.patientId)).availablePaise,
   };
 }
 
@@ -312,6 +327,7 @@ async function requireSlipConfirmed(db: Db, d: DispenseRow): Promise<void> {
     .where(eq(opdPrescriptions.id, d.prescriptionId));
   const transcribedBy = rows[0]?.transcribedBy ?? null;
   if (transcribedBy === null) return; // the doctor keyed it; there is no slip to cross-confirm
+  if (await quickDeskOn(db)) return; // owner ruling 2026-10-02 — quick desk mode (`settings.ts`)
   if (d.slipConfirmedBy === null) {
     throw new PharmacyError(
       "slip_not_confirmed",
@@ -331,13 +347,17 @@ export async function billDispense(db: Db, actor: Actor, dispenseId: string, inp
   const lines = plan.flatMap(invoiceInputsOf);
   const judged = input.discount === undefined ? null : await judgeDispenseDiscount(db, d, encounter.id, lines, input.discount, now);
 
+  const creditPlan = await planCreditUse(db, d.patientId, input.useCreditPaise ?? 0);
+
   const invoiceInput: IssueInvoiceInput = {
+    ...(creditPlan.length === 0 ? {} : { settleFromReceipts: creditPlan }),
     draftId: d.id,
     patientId: d.patientId,
     encounterId: encounter.id,
     lines,
     // OWNER RULING 2026-09-30 (as amended) — any cash (or no tender: the owner's credit) rounds to the nearest rupee; UPI/card alone to the paisa.
-    roundingRule: pharmacyRoundingRule(input.tenders),
+    // Owner ruling 2026-10-02 — a bill settled WHOLLY from pharmacy credit hands no coin across: to the paisa.
+    roundingRule: creditPlan.length > 0 && input.tenders.length === 0 ? "exact" : pharmacyRoundingRule(input.tenders),
     ...(judged === null ? {} : { saleDiscount: judged.ask }),
     ...(input.tags === undefined ? {} : { tags: input.tags }),
     ...(input.tenders.length === 0 ? {} : {
@@ -355,6 +375,7 @@ export async function billDispense(db: Db, actor: Actor, dispenseId: string, inp
     const result = await issueInvoice(tx as unknown as Db, actor, invoiceInput, now);
     const stored = await getInvoice(tx, result.invoiceId);
     if (stored === null) throw new PharmacyError("not_found", `invoice ${result.invoiceId} vanished inside its own transaction`);
+    if (creditPlan.length > 0) await recordCreditUse(tx, actor, { patientId: d.patientId, invoiceId: result.invoiceId, dispenseId: d.id, plan: creditPlan, now });
     // The bill must carry exactly the discount that was judged (and approved): anything else rolls it all back.
     if (judged !== null) assertIssuedDiscount(stored.lines, judged.quote);
     const rows = mainRowsOf([...stored.lines].sort((a, b) => a.lineNo - b.lineNo), plan);

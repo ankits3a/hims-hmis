@@ -57,11 +57,12 @@
  */
 
 import { spawn } from "node:child_process";
-import { realpathSync, rmSync } from "node:fs";
+import { existsSync, realpathSync, rmSync } from "node:fs";
 import { mkdir, open, readFile, readdir, rm, writeFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { adapter } from "./platform.mjs";
 
 /**
  * Where the spool keeps its three kinds of state. A directory each, so `ls` is the whole status UI.
@@ -279,10 +280,11 @@ const PX_PER_IN = 96;
  */
 export function htmlToPdf(config, htmlPath, pdfPath, page) {
   return new Promise((resolve, reject) => {
-    const bin = config.chromium ?? "chromium";
-    const chrome = spawn(bin, [
-      "--headless=new", "--disable-gpu", "--no-sandbox", "--remote-debugging-port=0", "about:blank",
-    ], { stdio: ["ignore", "pipe", "pipe"] });
+    // The browser and its arguments are the operating system's (`platform.mjs`): chromium on a Pi,
+    // Edge with a private profile on a counter's Windows PC. Linux is byte-for-byte what it was.
+    const os = adapter(config.platform);
+    const bin = config.chromium ?? os.findBrowser(existsSync) ?? "chromium";
+    const chrome = spawn(bin, os.browserArgs(join(htmlPath, "..", "browser-profile")), { stdio: ["ignore", "pipe", "pipe"] });
 
     let stderr = "";
     let settled = false;
@@ -337,7 +339,7 @@ export function htmlToPdf(config, htmlPath, pdfPath, page) {
         const attached = await send("Target.attachToTarget", { targetId: target.result.targetId, flatten: true });
         const sid = attached.result.sessionId;
         await send("Page.enable", {}, sid);
-        await send("Page.navigate", { url: `file://${htmlPath}` }, sid);
+        await send("Page.navigate", { url: pathToFileURL(htmlPath).href }, sid);
         // Layout and webfont settling. A slip is a handful of elements; this is generous.
         await new Promise((r) => setTimeout(r, 900));
 
@@ -381,15 +383,17 @@ export function htmlToPdf(config, htmlPath, pdfPath, page) {
  * `-o fit-to-page` is deliberately NOT passed: the geometry is already exact, and fitting would
  * rescale a slip that is correct.
  */
-function lpPrint(queue, pdfPath, mediaMm) {
+function lpPrint(config, queue, pdfPath, widthMm, heightMm) {
   return new Promise((resolve, reject) => {
-    const child = spawn("lp", ["-d", queue, "-o", `media=Custom.${mediaMm}mm`, pdfPath], { stdio: ["ignore", "pipe", "pipe"] });
+    // `lp` on CUPS, the bundled SumatraPDF on Windows — the command is `platform.mjs`'s to build.
+    const { cmd, args } = adapter(config.platform).printCommand({ printer: queue, pdfPath, widthMm, heightMm, sumatra: config.sumatra });
+    const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     let err = "";
     child.stderr.on("data", (d) => { err += String(d); });
     child.on("error", reject);
     child.on("close", (code) => {
       if (code === 0) resolve();
-      else reject(new Error(`lp exited ${String(code)}: ${err.slice(0, 400)}`));
+      else reject(new Error(`${cmd} exited ${String(code)}: ${err.slice(0, 400)}`));
     });
   });
 }
@@ -529,7 +533,7 @@ export async function printOne(config, spool, job, log) {
     const page = job.page ?? { widthMm: 72, heightMm: null };
     await htmlToPdf(config, htmlPath, pdfPath, page);
     const pdfHeight = await pdfHeightMm(pdfPath);
-    await lpPrint(queue, pdfPath, `${String(Math.round(page.widthMm))}x${String(pdfHeight)}`);
+    await lpPrint(config, queue, pdfPath, page.widthMm, pdfHeight);
     // THE MARKER GOES DOWN THE MOMENT `lp` ACCEPTS, before any attempt to tell the server. If the
     // uplink dies now, the next claim finds the marker and re-reports instead of reprinting. And if
     // the DISK refuses it, `markSpool` keeps it in memory and says so — see its header.

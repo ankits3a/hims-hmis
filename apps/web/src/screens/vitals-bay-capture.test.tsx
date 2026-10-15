@@ -2,7 +2,7 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { VitalsBay } from "./vitals-bay";
 import {
-  buildBody, emptyTiles, flagOf, humanDate, leadTileFor, mirrorFor, missingFor, parseTake, readLane, tileOrder, tileSetFor,
+  buildBody, emptyTiles, takeError, tempNote, flagOf, humanDate, mirrorFor, missingFor, parseTake, readLane, tileSetFor, vitalsLayout,
 } from "./vitals-bay-capture";
 import { renderWithProviders } from "../test-utils";
 import { setToken } from "../lib/api";
@@ -57,6 +57,10 @@ const PRE_B: WirePreStage = { patientId: "P-B", ageYears: 61, band: "adult", ran
 const PRE_K: WirePreStage = { patientId: "P-K", ageYears: 4, band: "child_1_5", ranges: { sbp: { min: 75, max: 130 }, dbp: { min: 45, max: 85 }, pulse: { min: 70, max: 150 }, rr: { min: 20, max: 40 }, spo2: { min: 90 }, tempC: { min: 35, max: 39.5 } }, noticeRanges: { tempC: { max: 37.9 } }, gates: { adultWeightFloorKg: 25, heightDeltaCm: 3, spo2ProbeFloorPct: 75 }, muacBands: { samUnderCm: 11.5, mamUnderCm: 12.5 }, sealed: false,required: ["heightCm", "weightKg", "tempC", "spo2", "pulse", "muacCm"], notRoutine: ["sbp", "dbp"], last: null, carryCandidates: [], expectedFlags: [], feeUnpaid: false, feeBypass: null };
 
 type Posted = { path: string; body: unknown };
+/** What E-B's pre-stage returns; a test that needs a band requiring RR swaps it (reset after each test). */
+let preBServed: WirePreStage = PRE_B;
+afterEach(() => { preBServed = PRE_B; });
+
 function stubBay(rows: WireBenchRow[], onVitals: (body: unknown, path: string) => Response, posted: Posted[] = []): void {
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = typeof input === "string" ? input : input instanceof URL ? input.pathname : input.url;
@@ -69,7 +73,7 @@ function stubBay(rows: WireBenchRow[], onVitals: (body: unknown, path: string) =
     if (key === "GET /api/opd/departments") return new Response(JSON.stringify({ code: "forbidden" }), { status: 403 });
     if (key === "GET /api/opd/config") return new Response(JSON.stringify({ code: "forbidden" }), { status: 403 });
     if (key === "GET /api/opd/visits/E-A/prestage") return json(PRE_A);
-    if (key === "GET /api/opd/visits/E-B/prestage") return json(PRE_B);
+    if (key === "GET /api/opd/visits/E-B/prestage") return json(preBServed);
     if (key === "GET /api/opd/visits/E-K/prestage") return json(PRE_K);
     if (init?.method === "POST" && path.endsWith("/vitals")) {
       const body = JSON.parse(String(init.body)) as unknown;
@@ -88,19 +92,41 @@ beforeEach(() => { vi.stubGlobal("WebSocket", FakeWebSocket); resetRealtimeClien
 afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
 
 describe("the pure rules mirror the server's", () => {
+  it("owner 2026-10-05 — BP takes any separator a phone keypad has", () => {
+    for (const raw of ["150/90", "150-90", "150,90", "150.90", "150 90", " 150 - 90 "]) expect(parseTake("bp", raw)).toEqual([150, 90]);
+    expect(parseTake("bp", "80-120")).toBeNull();          // the bigger number is the top one
+    expect(takeError("bp", "80-120")).toBe("bpOrder");
+    expect(takeError("bp", "150")).toBe("bpBoth");
+    expect(parseTake("bp", "150--90")).toBeNull();
+  });
+  it("owner 2026-10-05 — temperature in °F or °C, sensed from the number, charted in °C", () => {
+    expect(parseTake("tempC", "37")).toBe(37);
+    expect(parseTake("tempC", "37.2")).toBe(37.2);
+    expect(parseTake("tempC", "98.6")).toBe(37);
+    expect(parseTake("tempC", "101")).toBe(38.3);
+    expect(parseTake("tempC", "50")).toBeNull();
+    expect(takeError("tempC", "50")).toBe("tempUnit");
+    expect(tempNote("101")).toEqual({ unit: "F", f: 101, c: 38.3 });
+    expect(tempNote("37.2")).toEqual({ unit: "C", f: 99, c: 37.2 });
+    expect(tempNote("50")).toBeNull();
+  });
   it("parseTake: BP needs both numbers; a scalar is a number", () => {
     expect(parseTake("bp", "158/96")).toEqual([158, 96]);
     expect(parseTake("bp", "158")).toBeNull();
     expect(parseTake("weightKg", "4.8")).toBe(4.8);
     expect(parseTake("pulse", "7x")).toBeNull();
   });
-  it("tileSetFor folds sbp/dbp to one tile; a 4-year-old requires MUAC and has BP not routine; the lead vital comes from history", () => {
+  it("tileSetFor folds sbp/dbp to one tile; a 4-year-old requires MUAC and has BP not routine; the boxes follow the patient", () => {
     expect(tileSetFor(PRE_K)).toEqual({ required: ["heightCm", "weightKg", "tempC", "spo2", "pulse", "muacCm"], notRoutine: ["bp"] });
     expect(tileSetFor(PRE_A).required).toContain("bp");
-    expect(leadTileFor(PRE_B)).toBe("bp");     // expected flag on sbp → cuff first
-    expect(leadTileFor(PRE_K)).toBe("tempC");  // a child: temperature first
-    expect(tileOrder("bp", tileSetFor(PRE_A))).toEqual(["bp", "pulse", "spo2", "tempC", "rr", "weightKg", "heightCm"]); // no MUAC tile for an adult
-    expect(tileOrder("tempC", tileSetFor(PRE_K))).toEqual(["tempC", "bp", "pulse", "spo2", "rr", "weightKg", "heightCm", "muacCm"]);
+    // OWNER 2026-10-08 — four boxes and a "+": the order and the set are `vitalsLayout`'s (its own book is
+    // apps/mobile/__tests__/vitals-plus-rules.test.ts). These fixtures are bands that still DEMAND SpO₂ and
+    // temperature, so both come up by themselves; RR and MUAC stay boxes only where a band requires them.
+    expect(vitalsLayout(PRE_A).boxes).toEqual(["bp", "pulse", "weightKg", "heightCm", "spo2", "tempC"]); // no MUAC, no RR for an adult
+    expect(vitalsLayout(PRE_K).boxes).toEqual(["weightKg", "heightCm", "pulse", "tempC", "muacCm", "spo2"]); // the scale first for a child; BP behind "+"
+    expect(vitalsLayout(PRE_K).behindPlus).toEqual(["glucoseMgDl", "rr", "bp"]);
+    expect(vitalsLayout({ ...PRE_A, required: [...PRE_A.required, "rr"] }).boxes).toContain("rr"); // a band that asks for RR still gets it
+    expect(vitalsLayout(PRE_B).why.bp).toBe("required");
   });
   it("mirrorFor: the slipped digit, the shrinking adult and the probe error — and the child is above the weight gate", () => {
     const tile = emptyTiles().weightKg;
@@ -199,7 +225,7 @@ describe("CLOSE pass 1 — the hypoxic patient, and a chip that was never asked"
     await waitFor(() => expect(screen.getByTestId("bench-row-121")).toBeInTheDocument());
     fireEvent.click(screen.getByTestId("bench-row-121"));
     await waitFor(() => expect(screen.getByTestId("capture")).toBeInTheDocument());
-    await user.keyboard("120/80{Enter}70{Enter}98{Enter}36.6{Enter}16{Enter}70{Enter}168{Enter}");
+    await user.keyboard("120/80{Enter}70{Enter}70{Enter}168{Enter}98{Enter}36.6{Enter}");   // bp, pulse, weight, height — then this band's SpO₂ and temperature
 
     fireEvent.click(screen.getByTestId("save"));
     await waitFor(() => expect(posted).toHaveLength(1));
@@ -231,7 +257,7 @@ describe("CLOSE pass 1 — the hypoxic patient, and a chip that was never asked"
     fireEvent.click(chip); expect(chip.getAttribute("data-answer")).toBe("no");
     fireEvent.click(chip); expect(chip.getAttribute("data-answer")).toBe("");
     fireEvent.click(screen.getByTestId("chip-fasting")); fireEvent.click(screen.getByTestId("chip-fasting"));   // asked: no
-    await user.keyboard("120/80{Enter}70{Enter}98{Enter}36.6{Enter}16{Enter}70{Enter}168{Enter}");
+    await user.keyboard("120/80{Enter}70{Enter}70{Enter}168{Enter}98{Enter}36.6{Enter}");   // bp, pulse, weight, height — then this band's SpO₂ and temperature
     fireEvent.click(screen.getByTestId("save"));
     await waitFor(() => expect(posted).toHaveLength(1));
     expect((posted[0]!.body as { contextChips: unknown }).contextChips).toEqual([{ key: "fasting", question: "khali pet?", answer: "not fasting" }]);
@@ -247,7 +273,7 @@ describe("VD-2 T5 — the contract pass closed three clauses: 1–8 address a ti
     fireEvent.click(screen.getByTestId("bench-row-118"));
     await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId("input-bp")));
     (document.activeElement as HTMLElement).blur();
-    fireEvent.keyDown(window, { key: "4" });                      // tile 4 of [bp, pulse, spo2, tempC, rr, weightKg]
+    fireEvent.keyDown(window, { key: "6" });                      // box 6 of [bp, pulse, weightKg, heightCm (carried), spo2, tempC]
     expect(document.activeElement).toBe(screen.getByTestId("input-tempC"));
     await user.keyboard("37.1");                                   // digits inside the tile are the value
     expect((screen.getByTestId("input-tempC") as HTMLInputElement).value).toBe("37.1");
@@ -259,6 +285,8 @@ describe("VD-2 T5 — the contract pass closed three clauses: 1–8 address a ti
   });
 
   it("an RR committed within fifteen seconds of reaching the tile is charted AND nudged; the counter runs fifteen seconds and the re-take goes as `counted`", async () => {
+    // RR is a tile only for a band that requires it (owner 2026-10-07); this band does.
+    preBServed = { ...PRE_B, required: [...PRE_B.required, "rr"] };
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       const posted: Posted[] = [];
@@ -314,10 +342,9 @@ describe("VD-2 T2 — the ASSEMBLED bay: the typing lane at speed, the carried l
     expect(screen.getByTestId("value-bp").textContent).toBe("128/84");
     expect(document.activeElement).toBe(screen.getByTestId("input-pulse"));   // jumped to the next EMPTY tile
     await user.keyboard("78{Enter}");
-    await user.keyboard("97{Enter}");     // spo2
+    await user.keyboard("62{Enter}");     // weightKg — height is carried, so the lane skips it
+    await user.keyboard("97{Enter}");     // spo2 — this fixture's band still demands it
     await user.keyboard("36.8{Enter}");   // tempC
-    await user.keyboard("16{Enter}");     // rr
-    await user.keyboard("62{Enter}");     // weightKg — height is carried, so the lane is done
     expect(screen.getByTestId("keys").textContent).toMatch(/^\d+ keys · 0 device reads/);
     fireEvent.click(screen.getByTestId("chip-fasting"));
     fireEvent.click(screen.getByTestId("save"));
@@ -401,7 +428,7 @@ describe("VD-2 T2 — the ASSEMBLED bay: the typing lane at speed, the carried l
     await waitFor(() => expect(screen.getByTestId("bench-row-118")).toBeInTheDocument());
     fireEvent.click(screen.getByTestId("bench-row-118"));
     await waitFor(() => expect(screen.getByTestId("capture")).toBeInTheDocument());
-    await user.keyboard("190/100{Enter}78{Enter}97{Enter}36.8{Enter}16{Enter}62{Enter}");
+    await user.keyboard("190/100{Enter}78{Enter}62{Enter}97{Enter}36.8{Enter}");
     fireEvent.click(screen.getByTestId("save"));
     await waitFor(() => expect(screen.getByTestId("server-gate-heightCm")).toBeInTheDocument());
     expect(screen.queryByTestId("capture-error")).not.toBeInTheDocument();
@@ -432,9 +459,10 @@ describe("VD-2 T2 — the ASSEMBLED bay: the typing lane at speed, the carried l
     fireEvent.click(screen.getByTestId("bench-row-130"));
     await waitFor(() => expect(screen.getByTestId("capture")).toBeInTheDocument());
     expect(screen.getByTestId("tile-muacCm").getAttribute("data-required")).toBe("true");
-    expect(screen.getByTestId("not-routine-bp")).toBeInTheDocument();
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId("input-tempC")));
-    await user.keyboard("38.4{Enter}");
+    // OWNER 2026-10-08 — a not-routine BP is behind "+" now, and a child's lane starts on the scale
+    expect(screen.queryByTestId("tile-bp")).not.toBeInTheDocument();
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId("input-weightKg")));
+    await user.click(screen.getByTestId("input-tempC")); await user.keyboard("38.4{Enter}");
     expect(screen.getByTestId("tile-tempC").getAttribute("data-tint")).toBe("notice");
     await user.click(screen.getByTestId("input-muacCm")); await user.keyboard("11.0{Enter}");
     expect(screen.getByTestId("tile-muacCm").getAttribute("data-tint")).toBe("sam");
@@ -443,8 +471,9 @@ describe("VD-2 T2 — the ASSEMBLED bay: the typing lane at speed, the carried l
     // Save & send NOW on a trimmed set: only BP + pulse + SpO₂ are demanded
     fireEvent.click(screen.getByTestId("save-emergency"));
     await waitFor(() => expect(screen.getByTestId("missing")).toBeInTheDocument());
-    expect(screen.getByTestId("missing").textContent).toContain("BP");
+    expect(screen.getByTestId("missing").textContent).toContain("Blood pressure");
     expect(screen.getByTestId("missing").textContent).not.toContain("Height");
+    expect(screen.getByTestId("not-routine-bp")).toBeInTheDocument();   // the cuff the emergency set asked for came up by itself
     await user.click(screen.getByTestId("input-bp")); await user.keyboard("100/60{Enter}");
     await user.click(screen.getByTestId("input-pulse")); await user.keyboard("110{Enter}");
     await user.click(screen.getByTestId("input-spo2")); await user.keyboard("97{Enter}");
@@ -490,9 +519,19 @@ describe("VD-2 T2 — the ASSEMBLED bay: the typing lane at speed, the carried l
  * These two do not type a single ⏎.
  */
 describe("a typed number is a reading whether or not ⏎ was pressed", () => {
-  const TYPED = [["bp", "128/84"], ["pulse", "78"], ["spo2", "97"], ["tempC", "36.8"], ["rr", "16"], ["weightKg", "62"], ["heightCm", "168"]] as const;
+  const TYPED = [["bp", "128/84"], ["pulse", "78"], ["spo2", "97"], ["tempC", "36.8"], ["weightKg", "62"], ["heightCm", "168"]] as const;
 
-  it("the nurse who TABS: seven tiles filled, no ⏎, one click on Save & send — the save carries all seven and never says 'Still needed'", async () => {
+  it("an adult in OPD is given no RR tile (owner 2026-10-07)", async () => {
+    stubBay([ROW_B], () => saved());
+    renderWithProviders(<VitalsBay />);
+    await waitFor(() => expect(screen.getByTestId("bench-row-121")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("bench-row-121"));
+    await waitFor(() => expect(screen.getByTestId("capture")).toBeInTheDocument());
+    expect(screen.getByTestId("input-pulse")).toBeInTheDocument();
+    expect(screen.queryByTestId("input-rr")).not.toBeInTheDocument();
+  });
+
+  it("the nurse who TABS: six tiles filled, no ⏎, one click on Save & send — the save carries all six and never says 'Still needed'", async () => {
     const posted: Posted[] = [];
     stubBay([ROW_B], () => saved(), posted);
     renderWithProviders(<VitalsBay />);
@@ -508,7 +547,6 @@ describe("a typed number is a reading whether or not ⏎ was pressed", () => {
     expect(body.readings.pulse!.takes).toEqual([78]);
     expect(body.readings.spo2!.takes).toEqual([97]);
     expect(body.readings.tempC!.takes).toEqual([36.8]);
-    expect(body.readings.rr!.takes).toEqual([16]);
     expect(body.readings.weightKg!.takes).toEqual([62]);
     expect(body.readings.heightCm!.takes).toEqual([168]);
   });
@@ -547,5 +585,36 @@ describe("a typed number is a reading whether or not ⏎ was pressed", () => {
     const body = posted[0]!.body as { readings: Record<string, { takes: unknown[] }> };
     expect(body.readings.bp!.takes).toEqual([[128, 84]]);
     expect(body.readings.pulse!.takes).toEqual([78]);
+  });
+});
+
+describe("owner 2026-10-05 — a phone's number pad, and a thermometer in °F", () => {
+  it("150-90 says what it will chart while typing, and charts 150/90", async () => {
+    stubBay([ROW_B], () => saved([]));
+    const user = userEvent.setup();
+    renderWithProviders(<VitalsBay />);
+    await waitFor(() => expect(screen.getByTestId("bench-row-121")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("bench-row-121"));
+    await waitFor(() => expect(screen.getByTestId("capture")).toBeInTheDocument());
+    await user.click(screen.getByTestId("input-bp")); await user.keyboard("150-90");
+    expect(screen.getByTestId("reads-bp").textContent).toBe("reads 150/90 mmHg");
+    await user.keyboard("{Enter}");
+    expect(screen.getByTestId("value-bp").textContent).toBe("150/90");
+    await user.click(screen.getByTestId("input-bp")); await user.keyboard("80,120{Enter}");
+    expect(screen.getByRole("alert").textContent ?? screen.getByTestId("capture").textContent).toContain("The top number is the bigger one");
+  });
+  it("101 on a four-year-old reads as °F, charts 38.3 °C, keeps the 101 °F beside it, and wears the fever notice", async () => {
+    stubBay([ROW_K], () => saved([]));
+    const user = userEvent.setup();
+    renderWithProviders(<VitalsBay />);
+    await waitFor(() => expect(screen.getByTestId("bench-row-130")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("bench-row-130"));
+    await waitFor(() => expect(screen.getByTestId("capture")).toBeInTheDocument());
+    await user.click(screen.getByTestId("input-tempC")); await user.keyboard("101");
+    expect(screen.getByTestId("reads-tempC").textContent).toBe("101 °F = 38.3 °C");
+    await user.keyboard("{Enter}");
+    expect(screen.getByTestId("value-tempC").textContent).toBe("38.3");
+    expect(screen.getByTestId("temp-typed-f").textContent).toBe("typed 101 °F");
+    expect(screen.getByTestId("tile-tempC").getAttribute("data-tint")).toBe("notice");
   });
 });

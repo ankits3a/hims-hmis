@@ -3,7 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../lib/api";
 import { UNLOCK_REASONS, amendVitals, fetchVitalsRow, opdErrorMessage } from "../lib/opd-api";
-import type { WireBenchRow, WireReadings, WireUnlockReason, WireVitalKey, WireVitals, WireVitalsAmendBody, WireVitalsAmendResult, WireVitalsGate } from "../lib/opd-api";
+import { AMEND_KEYS, AMEND_REASONS, GLUCOSE_TIMINGS, amendedReadings, diffOf, parseTake } from "../../../../packages/contracts/src/vitals-entry";
+import type { Change, GlucoseTiming } from "../../../../packages/contracts/src/vitals-entry";
+import type { WireBenchRow, WireUnlockReason, WireVitalKey, WireVitals, WireVitalsAmendBody, WireVitalsAmendResult, WireVitalsGate } from "../lib/opd-api";
 import { istClock } from "./vitals-bay-capture";
 
 /**
@@ -28,71 +30,21 @@ import { istClock } from "./vitals-bay-capture";
  * changes needs a preset reason (D7 holds on amend, T0/F1), and a gate the server raises again is
  * answered with the same confirm the first save had.
  */
-export const AMEND_KEYS: readonly WireVitalKey[] = ["heightCm", "weightKg", "sbp", "dbp", "pulse", "rr", "spo2", "tempC", "muacCm"];
+// The rules of a correction — which scalars, the six preset reasons, the diff and the readings that
+// travel with it — live in the ONE file the phone's bay also imports (mobile §3i, 2026-10-07), so the
+// two bays cannot build a different amendment from the same chart. Re-exported so nothing that
+// imported them from here changes.
+export { AMEND_KEYS, AMEND_REASONS, amendedReadings, diffOf } from "../../../../packages/contracts/src/vitals-entry";
+export type { Change } from "../../../../packages/contracts/src/vitals-entry";
 
-/**
- * ═══ THE REASONS A VITAL IS ACTUALLY CORRECTED, AS ONE TAP ═══
- *
- * DECIDED (standard Indian corporate-hospital practice; not a money, procurement or law question,
- * so not an owner ruling). A nurse at the bay corrects a chart for a small, closed set of reasons,
- * and making her type one of them every time is the kind of friction that ends in "correction" and
- * "x" being the two most common entries in an audit column. The presets fill the box; anything
- * genuinely different is still typed, and the box stays the source of truth.
- *
- * `text` is stored, and it is ENGLISH ON PURPOSE. The label a nurse reads is translated; the
- * sentence the audit keeps must mean the same thing to whoever opens it later, which a string that
- * silently changes language with the browser does not.
- */
-export const AMEND_REASONS: readonly { key: string; text: string }[] = [
-  { key: "otherArm", text: "Rechecked on the other arm" },
-  { key: "remeasured", text: "Re-measured at the bay" },
-  { key: "keyed", text: "Typing error — wrong number keyed" },
-  { key: "device", text: "Device misread — taken again" },
-  { key: "wrongVital", text: "Entered against the wrong vital" },
-  { key: "wrongChart", text: "Entered on the wrong patient's chart" },
-];
-
-export type Change = { key: WireVitalKey; from: number | null; to: number | null };
-export function diffOf(prior: Pick<WireVitals, WireVitalKey>, next: Pick<WireVitals, WireVitalKey>): Change[] {
-  const out: Change[] = [];
-  for (const k of AMEND_KEYS) {
-    if (prior[k] !== next[k]) out.push({ key: k, from: prior[k], to: next[k] });
-  }
-  return out;
-}
+/** A saved number as the copy's text; a chart from before glucose existed has none (`undefined`). */
+const was = (n: number | null | undefined): string => (n === null || n === undefined ? "" : String(n));
 
 export function activeChart(items: WireVitals[], vitalsId: string | null): WireVitals | null {
   const active = items.filter((v) => v.status === "active");
   return (vitalsId === null ? null : active.find((v) => v.id === vitalsId) ?? null) ?? active[active.length - 1] ?? null;
 }
 
-function isReadings(x: unknown): x is WireReadings {
-  return typeof x === "object" && x !== null;
-}
-
-/** The prior readings with each changed key's OPERATIVE take replaced — the pair, the held values and the source stay. */
-export function amendedReadings(prior: WireVitals, next: Partial<Record<WireVitalKey, number | null>>): WireReadings {
-  const base: WireReadings = isReadings(prior.readings) ? { ...prior.readings } : {};
-  const replace = (takes: number[], value: number): number[] => (takes.length === 0 ? [value] : [...takes.slice(0, -1), value]);
-  for (const k of AMEND_KEYS) {
-    if (k === "sbp" || k === "dbp") continue;
-    const v = next[k];
-    if (v === undefined || v === prior[k]) continue;
-    if (v === null) { delete base[k]; continue; }
-    const r = base[k];
-    base[k] = r === undefined ? { takes: [v], source: "typed" } : { ...r, takes: replace(r.takes, v) };
-  }
-  const s = next.sbp; const d = next.dbp;
-  if ((s !== undefined && s !== prior.sbp) || (d !== undefined && d !== prior.dbp)) {
-    const sbp = s === undefined ? prior.sbp : s; const dbp = d === undefined ? prior.dbp : d;
-    if (sbp === null || dbp === null) delete base.bp;
-    else {
-      const r = base.bp;
-      base.bp = r === undefined ? { takes: [[sbp, dbp]], source: "typed" } : { ...r, takes: r.takes.length === 0 ? [[sbp, dbp]] : [...r.takes.slice(0, -1), [sbp, dbp]] };
-    }
-  }
-  return base;
-}
 
 export type Amended = { result: WireVitalsAmendResult; changes: Change[]; prior: WireVitals };
 
@@ -112,11 +64,13 @@ export function AmendPanel({ row, onAmended }: { row: WireBenchRow; onAmended: (
   const [unlocks, setUnlocks] = useState<Partial<Record<WireVitalKey, WireUnlockReason>>>({});
   const [gates, setGates] = useState<WireVitalsGate[]>([]);
   const [overrides, setOverrides] = useState<Partial<Record<WireVitalKey, string>>>({});
+  /** Owner 2026-10-08 — when the glucose was taken; corrected like a number, and never sent away from a value. `undefined` = untouched. */
+  const [timingEdit, setTimingEdit] = useState<GlucoseTiming | null | undefined>(undefined);
 
   // The copy is taken ONCE per chart; a re-read of the same chart does not overwrite the nurse's typing.
   useEffect(() => {
     if (chart === null) return;
-    setCopy((prev) => prev ?? { ofId: chart.id, values: Object.fromEntries(AMEND_KEYS.map((k) => [k, chart[k] === null ? "" : String(chart[k])])) as Record<WireVitalKey, string> });
+    setCopy((prev) => prev ?? { ofId: chart.id, values: Object.fromEntries(AMEND_KEYS.map((k) => [k, was(chart[k])])) as Record<WireVitalKey, string> });
   }, [chart]);
 
   if (q.isError || (row.vitalsId !== null && q.data !== undefined && chart === null)) return <p role="alert" data-testid="amend-failed">{t("vitalsBay.amend.readFailed")}</p>;
@@ -125,7 +79,10 @@ export function AmendPanel({ row, onAmended }: { row: WireBenchRow; onAmended: (
   if (copy.ofId !== chart.id) return <p role="alert" data-testid="amend-stale">{t("vitalsBay.amend.stale")}</p>;
 
   const carried = (chart.carriedForward as WireVitalKey[] | undefined) ?? [];
-  const changed = AMEND_KEYS.filter((k) => copy.values[k] !== (chart[k] === null ? "" : String(chart[k])));
+  const changed = AMEND_KEYS.filter((k) => copy.values[k] !== was(chart[k]));
+  const timing: GlucoseTiming | null = timingEdit === undefined ? (chart.glucoseTiming ?? null) : timingEdit;
+  const timingMoved = copy.values.glucoseMgDl.trim() !== "" && timing !== (chart.glucoseTiming ?? null) && !changed.includes("glucoseMgDl");
+  const changeCount = changed.length + (timingMoved ? 1 : 0);
   const needsReason = changed.filter((k) => carried.includes(k) && unlocks[k] === undefined);
 
   const submit = async (): Promise<void> => {
@@ -135,11 +92,18 @@ export function AmendPanel({ row, onAmended }: { row: WireBenchRow; onAmended: (
     for (const k of AMEND_KEYS) {
       const raw = copy.values[k].trim();
       if (raw === "") { next[k] = null; continue; }
+      if (k === "glucoseMgDl") {
+        const g = parseTake("glucoseMgDl", raw);
+        if (typeof g !== "number") { setError(t("vitalsBay.capture.glucoseRange")); return; }
+        next[k] = g; continue;
+      }
       if (!/^\d+(\.\d+)?$/.test(raw)) { setError(t("vitalsBay.capture.notANumber")); return; }
       next[k] = Number(raw);
     }
+    const glucose = next.glucoseMgDl ?? null;
+    if (glucose !== null && timing === null) { setError(t("vitalsBay.glucose.timingNeeded")); return; }
     const body: WireVitalsAmendBody = {
-      ...next, reason: reason.trim(), emergency: chart.emergency, notes: chart.notes,
+      ...next, glucoseTiming: glucose === null ? null : timing, reason: reason.trim(), emergency: chart.emergency, notes: chart.notes,
       readings: amendedReadings(chart, next),
       contextChips: Array.isArray(chart.contextChips) ? (chart.contextChips as { key: string; question: string; answer: string }[]) : [],
       carriedForward: carried.filter((k) => !changed.includes(k)),
@@ -176,12 +140,23 @@ export function AmendPanel({ row, onAmended }: { row: WireBenchRow; onAmended: (
         {AMEND_KEYS.map((k) => (
           <label key={k} className="flex flex-col gap-0.5 text-xs">
             <span className="text-muted-foreground">
-              {t(`vitalsBay.vital.${k}`)}{carried.includes(k) ? ` · ${t("vitalsBay.amend.carried")}` : ""}{chart[k] !== null && copy.values[k] !== String(chart[k]) ? ` · ${t("vitalsBay.amend.was", { value: chart[k] })}` : ""}
+              {t(`vitalsBay.vital.${k}`)}{carried.includes(k) ? ` · ${t("vitalsBay.amend.carried")}` : ""}{was(chart[k]) !== "" && copy.values[k] !== was(chart[k]) ? ` · ${t("vitalsBay.amend.was", { value: was(chart[k]) })}` : ""}
             </span>
             <input
               data-testid={`amend-${k}`} inputMode="decimal" className="rounded border border-input bg-card px-2 py-1 font-mono text-sm"
               value={copy.values[k]} onChange={(e) => setCopy((c) => (c === null ? c : { ...c, values: { ...c.values, [k]: e.target.value } }))}
             />
+            {k === "glucoseMgDl" && (
+              <span data-testid="amend-glucose-timing" role="group" aria-label={t("vitalsBay.glucose.timingLabel")} style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {GLUCOSE_TIMINGS.map((g) => (
+                  <button
+                    key={g} type="button" data-testid={`amend-glucose-timing-${g}`} aria-pressed={timing === g}
+                    className={`pill${timing === g ? " on" : ""}`} style={{ fontSize: 11, padding: "1px 8px" }}
+                    onClick={() => { setTimingEdit(timing === g ? null : g); setError(null); }}
+                  >{t(`vitalsBay.glucose.timing.${g}`)}</button>
+                ))}
+              </span>
+            )}
             {locked.includes(k) && (
               <select
                 aria-label={t("vitalsBay.unlock.label")} data-testid={`amend-unlock-${k}`} className="rounded border border-input bg-card px-1 py-0.5 text-xs"
@@ -236,7 +211,7 @@ export function AmendPanel({ row, onAmended }: { row: WireBenchRow; onAmended: (
         bay's own "Save & send" wears, and the panel stops speaking a second dialect of CSS.
       */}
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-        <button type="button" data-testid="amend-save" disabled={busy || changed.length === 0} className="pri" onClick={() => { void submit(); }}>
+        <button type="button" data-testid="amend-save" disabled={busy || changeCount === 0} className="pri" onClick={() => { void submit(); }}>
           {t("vitalsBay.amend.save", { count: changed.length })}
         </button>
         <span style={{ fontSize: 11, color: "var(--dim)" }}>{t("vitalsBay.amend.escHint")}</span>

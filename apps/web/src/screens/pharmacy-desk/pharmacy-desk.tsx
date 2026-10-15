@@ -8,11 +8,11 @@ import { fetchCurrentSession } from "../../lib/billing-api";
 import { usePaletteOptional } from "../../components/command-palette";
 import { useCopilot } from "../../lib/use-copilot";
 import {
-  billDispense, claimDispense, fetchClosing, confirmDispenseSlip, declineLine, fetchCounterSummary, fetchDispense, fetchMyRegistration, fetchMyShift, fetchQueue, findAtCounter, handOverDispense,
+  billDispense, claimDispense, fetchClosing, confirmDispenseSlip, declineLine, fetchCounterSummary, fetchDispense, fetchMyRegistration, fetchMyShift, fetchPharmacySettings, fetchQueue, findAtCounter, handOverDispense,
   pharmacyErrorCode, pharmacyErrorText, pickDispense, previewBill, verifyDispense,
 } from "../../lib/pharmacy-api";
 import { istClock, istDateLabel } from "../desk-one/model";
-import { heldByAnother, holdOf, stageOf, ticketLabel, whoLabel } from "./model";
+import { heldByAnother, holdOf, initialsOf, stageOf, ticketLabel, whoLabel } from "./model";
 import { BillRail, heldUntil, holdEnded, rupees } from "./bill";
 import type { AppliedDiscount as SheetDiscount } from "./discount";
 import { noteDraftSaved, say, useDeskLog, useDraftNotice } from "./log";
@@ -90,7 +90,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
   /* 2026-09-30 (owner) — nobody found for a typed name or number: register them here, then the paper sheet. */
   const [registerFrom, setRegisterFrom] = useState<string | null>(null);
   /* 2026-09-30 — the patient found with no e-prescription today: the desk offers the paper-prescription door. */
-  const [paperFor, setPaperFor] = useState<{ id: string; uhid: string; label: string } | null>(null);
+  const [paperFor, setPaperFor] = useState<{ id: string; uhid: string; label: string; lastDispenseId?: string } | null>(null);
   /* PARITY P1 — the hand-over that just happened HERE prints by itself; reopening an old ticket does not. */
   const [justHandedOver, setJustHandedOver] = useState<string | null>(null);
   /* PARITY P1 — the line the pharmacist is on, so `N` opens the short book prefilled with its drug. */
@@ -182,6 +182,9 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
   const drawer = useQuery({ queryKey: ["billing", "session", "current"], queryFn: fetchCurrentSession, refetchInterval: 60_000, retry: false });
   /* The header's other precondition: may this login verify (Pharmacy Act 1948 §42)? A 404 (older server) says nothing. */
   const registration = useQuery({ queryKey: ["pharmacy", "pharmacists", "me"], queryFn: fetchMyRegistration, staleTime: 5 * 60_000, retry: false });
+  /* Owner ruling 2026-10-02 — quick desk mode. Unread or failed reads as OFF: the desk as it was. */
+  const settings = useQuery({ queryKey: ["pharmacy", "settings"], queryFn: fetchPharmacySettings, staleTime: 60_000, retry: false });
+  const quick = settings.data?.quickDesk === true;
   /*
     OWNER RULING 2026-09-30 — the sale discount on the ticket in hand, from the bill's ⋯ sheet. It belongs to ONE
     dispense (a different ticket starts with none), prices the preview, and rides on the bill with its approval.
@@ -254,8 +257,16 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
     if (r.kind === "none") {
       if (r.reason === "restricted") { setError(t("pharmacyDesk.sealedRefused")); return; }
       const key = r.reason === "qr_invalid" ? "qrInvalid" : r.reason === "no_prescription_today" ? "noRx" : "notFound";
-      setNote(t(`pharmacyDesk.find.${key}`));
-      if (r.reason === "no_prescription_today" && r.patient !== undefined) setPaperFor({ id: r.patient.id, uhid: r.patient.uhid, label: whoLabel({ ...r.patient, restricted: false }) });
+      /* 2026-10-02 — today's ticket already handed over: say THAT, and offer a fresh paper prescription. */
+      setNote(t(`pharmacyDesk.find.${key === "noRx" && r.lastDispenseId !== undefined ? "doneToday" : key}`));
+      if (r.reason === "no_prescription_today" && r.patient !== undefined) {
+        setPaperFor({
+          id: r.patient.id, uhid: r.patient.uhid, label: whoLabel({ ...r.patient, restricted: false }),
+          ...(r.lastDispenseId === undefined ? {} : { lastDispenseId: r.lastDispenseId }),
+        });
+        /* Quick desk mode: found with nothing in the system → straight to the medicines, no door to press. */
+        if (quick) { setNote(null); setOverlay("paper"); }
+      }
       if (r.reason === "not_found" && r.door === "uhid") setRegisterFrom(q.trim());
       return;
     }
@@ -264,7 +275,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
       if (!(await take(d.id, r.door, d.patient.alias ?? d.patient.name ?? d.patient.uhid))) return;
     }
     hold(d.id);
-  }, [hold, t, take]);
+  }, [hold, quick, t, take]);
 
   /* A ticket already yours opens without a second claim — the server would refuse it, naming you. */
   const openInTab = useCallback(async (dispenseId: string, who: string, mine: boolean): Promise<void> => {
@@ -332,16 +343,18 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
     }
   }, [discount, inHandId, qc, settle, t]);
 
-  const takeMoney = useCallback(async (tenders: Tender[], changePaise: number): Promise<void> => {
+  const takeMoney = useCallback(async (tenders: Tender[], changePaise: number, creditPaise = 0): Promise<void> => {
     if (inHandId === null) return;
     setBusy(true); setBillError(null);
     try {
-      const d = await billDispense(inHandId, { tenders, ...(changePaise > 0 ? { changeGivenPaise: changePaise } : {}), ...discountBody(discount) }, keyFor("bill", inHandId));
+      const d = await billDispense(inHandId, { tenders, ...(changePaise > 0 ? { changeGivenPaise: changePaise } : {}), ...(creditPaise > 0 ? { useCreditPaise: creditPaise } : {}), ...discountBody(discount) }, keyFor("bill", inHandId));
       moneyKeys.current.delete(`bill:${inHandId}`);
       settle(d);
       /* what was BILLED: a cash tender is the note handed over, so the change comes off it */
       const total = tenders.reduce((n, x) => n + x.amountPaise, 0) - changePaise;
-      say(t("pharmacyDesk.log.billed", { amount: rupees(total), modes: tenders.map((x) => x.mode).join(" + ") }));
+      say(creditPaise > 0
+        ? t("pharmacyDesk.log.billedWithCredit", { credit: rupees(creditPaise), amount: rupees(total), modes: tenders.length === 0 ? "—" : tenders.map((x) => x.mode).join(" + ") })
+        : t("pharmacyDesk.log.billed", { amount: rupees(total), modes: tenders.map((x) => x.mode).join(" + ") }));
     } catch (e) {
       answered("bill", inHandId, e);
       const text = e instanceof ApiError ? pharmacyErrorText(e, t) : t("pharmacyDesk.bill.networkRetry");
@@ -442,67 +455,202 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
       /* PARITY P1 — `N`: note a shortage. One field, prefilled with the drug of the line in hand. */
       if ((e.key === "n" || e.key === "N") && document.querySelector("[role=dialog]") === null) { e.preventDefault(); setOverlay("short"); return; }
       /* `S` exists only where there is paper to see: a ticket typed from the doctor's slip. */
-      if ((e.key === "s" || e.key === "S") && ticket.data?.transcribedBy != null) { e.preventDefault(); setOverlay("slip"); }
+      if ((e.key === "s" || e.key === "S") && ticket.data?.transcribedBy != null && !quick) { e.preventDefault(); setOverlay("slip"); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [candidates, clearDesk, inHandId, overlay, palette, ticket.data?.transcribedBy]);
+  }, [candidates, clearDesk, inHandId, overlay, palette, quick, ticket.data?.transcribedBy]);
 
   const rows = queue.data ?? [];
   const waiting = rows.filter((r) => r.status === "queued" && holdOf(r, me).kind === "free").length;
   const inHand = ticket.data ?? null;
+  /* PD-D5 — the bill takes the line's place once a ticket of MINE is past "found". */
+  const billing = inHand !== null && !heldByAnother(inHand, me) && stageOf(inHand, me) !== "found";
+  const inHandLabel = inHand === null ? null : ticketLabel(inHand.dispenseNo);
+
+  /*
+    ═══ WALK 2026-10-14 — THE DESK ON A PHONE (≤900 px) ═══
+
+    At 390 px the three desktop columns stayed side by side: the work column wrapped one word per
+    line and the line was cut off at the edge. Layout only, after Desk One's phone desk: the header
+    keeps the wordmark and the waiting count and moves the rest into a Menu; the patient in hand is
+    a strip on top that opens the full record; the ticket, the line (or the bill) and, with nobody
+    in hand, the day sit behind tabs. Every pane stays mounted, so nothing typed is lost on a switch.
+    jsdom has no `matchMedia`, so every suite renders the wide desk and its DOM is unchanged.
+  */
+  const phone = useMedia("(max-width: 900px)");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [stripOpen, setStripOpen] = useState(false);
+  const [phoneTab, setPhoneTab] = useState<"work" | "side" | "day">("work");
+  /* A new ticket in hand starts folded, on its work. */
+  useEffect(() => { setStripOpen(false); setPhoneTab("work"); }, [inHandId]);
+
+  const brandEl = (
+    <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+      <div style={{ width: 10, height: 10, borderRadius: 2, background: "var(--green)", transform: "rotate(45deg)" }} />
+      <span className="mo" style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: ".08em" }}>{t("pharmacyDesk.wordmark")}</span>
+    </div>
+  );
+  const crumbEl = (
+    <span style={{ fontSize: 12.5, color: "var(--dim)" }}>
+      {t("pharmacyDesk.where")} · <strong style={{ color: "var(--ink)", fontWeight: 600 }}>{username ?? t("pharmacyDesk.thisDesk")}</strong>
+    </span>
+  );
+  const quickEl = quick ? <span className="pill gd" style={{ height: 22 }} data-testid="desk-quick-mode">{t("pharmacyDesk.header.quickMode")}</span> : null;
+  const registeredEl = registration.data === undefined || (quick && registration.data.registration === null) ? null : registration.data.registration === null ? (
+    <span className="pill rd" style={{ height: 22 }} data-testid="desk-registered">{t("pharmacyDesk.header.notRegistered")}</span>
+  ) : (
+    <span className="pill on" style={{ height: 22 }} data-testid="desk-registered" title={registration.data.registration.council}>
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M7 11V8a5 5 0 0110 0v3M5 11h14v10H5z" /></svg>
+      {t("pharmacyDesk.header.registered", { no: registration.data.registration.registrationNo })}
+    </span>
+  );
+  const drawerEl = drawer.isPending ? null : drawer.data?.session?.status === "open" ? (
+    <span className="pill" style={{ height: 22 }} data-testid="desk-drawer">
+      {t("pharmacyDesk.header.drawerOpen", { float: `₹${(drawer.data.session.openingFloatPaise / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 })}` })}
+    </span>
+  ) : (
+    <span data-testid="desk-drawer" style={{ display: "inline-flex" }}>
+      <button type="button" className="pill gd" style={{ height: 22 }} onClick={() => void navigate({ to: "/billing/session" })}>{t("pharmacyDesk.header.noDrawer")}</button>
+    </span>
+  );
+  const laneEl = <span className="pill">PHARM-OPD</span>;
+  const clockEl = <span className="mo" style={{ fontSize: 11.5, color: "var(--faint)", letterSpacing: ".04em" }}>{istDateLabel(new Date(), i18n.language.startsWith("hi") ? "hi-IN" : "en-IN")} · {clock}</span>;
+  const waitingEl = (
+    <button
+      className={waiting > 0 ? "pill gd" : "pill"}
+      style={{ height: 24 }}
+      data-testid="desk-waiting"
+      onClick={() => setOverlay("queue")}
+    >
+      {t("pharmacyDesk.waiting", { count: waiting })} <span className="kb">Q</span>
+    </button>
+  );
+  const commandEl = palette === null ? null : (
+    <button className="pill" style={{ height: 24, borderColor: "var(--ink)" }} onClick={() => palette.open()}>
+      {t("pharmacyDesk.command")} <span className="kb">F8</span>
+    </button>
+  );
+  const dossierEl = <Dossier inHand={inHand} me={me} summary={summary.data ?? null} shift={shift.data ?? null} queued={rows.length} onClear={clearDesk} paletteBound={palette !== null} />;
+  const sideEl = billing && inHand !== null ? (
+      <BillRail
+        dispense={inHand}
+        preview={preview.data ?? null}
+        liveQty={liveQty !== null && liveQty.dispenseId === inHand.id ? liveQty.qty : null}
+        previewError={preview.error === null ? null : pharmacyErrorText(preview.error, t)}
+        drawerOpen={drawer.isPending ? null : drawer.data?.session?.status === "open"}
+        busy={busy}
+        error={billError}
+        now={now}
+        onTake={(tenders, change, credit) => void takeMoney(tenders, change, credit)}
+        onCredit={(credit) => void billOnCredit(credit)}
+        onDraft={draft}
+        onOpenDrawer={() => void navigate({ to: "/billing/session" })}
+        discount={discount}
+        onDiscount={(d) => setDiscount(d === null ? null : { ...d, dispenseId: inHand.id })}
+      />
+    ) : (
+      <QueueRail
+        rows={rows} me={me} now={now} inHandId={inHandId}
+        onTake={(id, who, mine) => void takeHere(id, who, mine)}
+        onOpenTab={(id, who, mine) => void openInTab(id, who, mine)}
+      />
+    );
 
   return (
     <div className="d1" data-lang={i18n.language.startsWith("hi") ? "hi" : "en"} data-seat="pharmacy-desk">
       <div className="frame">
-        <div className="top">
-          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-            <div style={{ width: 10, height: 10, borderRadius: 2, background: "var(--green)", transform: "rotate(45deg)" }} />
-            <span className="mo" style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: ".08em" }}>{t("pharmacyDesk.wordmark")}</span>
+        {phone ? (
+          <div className="top top-compact" data-testid="desk-top">
+            {brandEl}
+            <div style={{ flexGrow: 1 }} />
+            {waitingEl}
+            <div className="d1-menu-wrap">
+              <button
+                className="pill d1-menu-btn"
+                data-testid="desk-menu-toggle"
+                aria-haspopup="true"
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen((v) => !v)}
+              >
+                <span aria-hidden="true">☰</span> {t("pharmacyDesk.phone.menu")}
+              </button>
+              {menuOpen ? (
+                <>
+                  <div className="d1-menu-scrim" onClick={() => setMenuOpen(false)} />
+                  <div className="d1-menu box" data-testid="desk-menu" onClick={() => setMenuOpen(false)}>
+                    {crumbEl}
+                    {quickEl}
+                    {registeredEl}
+                    {drawerEl}
+                    {laneEl}
+                    {commandEl}
+                    {clockEl}
+                  </div>
+                </>
+              ) : null}
+            </div>
           </div>
-          <span style={{ color: "var(--line)" }}>/</span>
-          <span style={{ fontSize: 12.5, color: "var(--dim)" }}>
-            {t("pharmacyDesk.where")} · <strong style={{ color: "var(--ink)", fontWeight: 600 }}>{username ?? t("pharmacyDesk.thisDesk")}</strong>
-          </span>
-          {registration.data === undefined ? null : registration.data.registration === null ? (
-            <span className="pill rd" style={{ height: 22 }} data-testid="desk-registered">{t("pharmacyDesk.header.notRegistered")}</span>
-          ) : (
-            <span className="pill on" style={{ height: 22 }} data-testid="desk-registered" title={registration.data.registration.council}>
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M7 11V8a5 5 0 0110 0v3M5 11h14v10H5z" /></svg>
-              {t("pharmacyDesk.header.registered", { no: registration.data.registration.registrationNo })}
-            </span>
-          )}
-          {drawer.isPending ? null : drawer.data?.session?.status === "open" ? (
-            <span className="pill" style={{ height: 22 }} data-testid="desk-drawer">
-              {t("pharmacyDesk.header.drawerOpen", { float: `₹${(drawer.data.session.openingFloatPaise / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 })}` })}
-            </span>
-          ) : (
-            <span data-testid="desk-drawer" style={{ display: "inline-flex" }}>
-              <button type="button" className="pill gd" style={{ height: 22 }} onClick={() => void navigate({ to: "/billing/session" })}>{t("pharmacyDesk.header.noDrawer")}</button>
-            </span>
-          )}
-          <span className="pill">PHARM-OPD</span>
-          <div style={{ flexGrow: 1 }} />
-          <span className="mo" style={{ fontSize: 11.5, color: "var(--faint)", letterSpacing: ".04em" }}>{istDateLabel()} · {clock}</span>
-          <button
-            className={waiting > 0 ? "pill gd" : "pill"}
-            style={{ height: 24 }}
-            data-testid="desk-waiting"
-            onClick={() => setOverlay("queue")}
-          >
-            {t("pharmacyDesk.waiting", { count: waiting })} <span className="kb">Q</span>
-          </button>
-          {palette === null ? null : (
-            <button className="pill" style={{ height: 24, borderColor: "var(--ink)" }} onClick={() => palette.open()}>
-              {t("pharmacyDesk.command")} <span className="kb">F8</span>
-            </button>
-          )}
-        </div>
+        ) : (
+          <div className="top" data-testid="desk-top">
+            {brandEl}
+            <span style={{ color: "var(--line)" }}>/</span>
+            {crumbEl}
+            {quickEl}
+            {registeredEl}
+            {drawerEl}
+            {laneEl}
+            <div style={{ flexGrow: 1 }} />
+            {clockEl}
+            {waitingEl}
+            {commandEl}
+          </div>
+        )}
 
-        <div style={{ display: "flex", flexGrow: 1, minHeight: 0 }}>
-          <Dossier inHand={inHand} me={me} summary={summary.data ?? null} shift={shift.data ?? null} queued={rows.length} onClear={clearDesk} paletteBound={palette !== null} />
+        <div className={phone ? "pd-body phone" : undefined} style={{ display: "flex", flexGrow: 1, minHeight: 0 }}>
+          {phone && inHand !== null ? (
+            <div className="pd-strip-wrap">
+              <button
+                type="button"
+                className="pd-strip"
+                data-testid="desk-strip"
+                aria-expanded={stripOpen}
+                title={stripOpen ? t("pharmacyDesk.phone.hidePatient") : t("pharmacyDesk.phone.showPatient")}
+                onClick={() => setStripOpen((v) => !v)}
+              >
+                <span className="pd-strip-av" aria-hidden="true">{initialsOf(inHand.patient)}</span>
+                <span className="pd-strip-id">
+                  <strong>{whoLabel(inHand.patient)}</strong>
+                  <span className="mo">{inHand.patient.uhid}</span>
+                  {/* An allergy is never folded away: it rides on the strip. */}
+                  {inHand.allergies.length === 0 ? null : (
+                    <span className="pill rd pd-strip-allergy" data-testid="desk-strip-allergy">
+                      {t("pharmacyDesk.allergy", { substance: inHand.allergies.map((x) => x.substance).join(", ") })}
+                    </span>
+                  )}
+                </span>
+                {inHandLabel === null ? null : <span className="mo pd-strip-no">{inHandLabel}</span>}
+                <span className="pd-strip-chev" aria-hidden="true">{stripOpen ? "▴" : "▾"}</span>
+              </button>
+              <div className="pd-strip-body" hidden={!stripOpen}>{dossierEl}</div>
+            </div>
+          ) : null}
+          {phone ? (
+            <div className="pd-tabs" role="tablist" aria-label={t("pharmacyDesk.wordmark")}>
+              <button type="button" role="tab" aria-selected={phoneTab === "work"} onClick={() => setPhoneTab("work")}>{t("pharmacyDesk.phone.tabTicket")}</button>
+              <button type="button" role="tab" aria-selected={phoneTab === "side"} onClick={() => setPhoneTab("side")}>
+                {billing ? t("pharmacyDesk.phone.tabBill") : t("pharmacyDesk.phone.tabLine")}
+                {billing || rows.length === 0 ? null : <span className="mo pd-tab-n">{rows.length}</span>}
+              </button>
+              {inHand === null ? (
+                <button type="button" role="tab" aria-selected={phoneTab === "day"} onClick={() => setPhoneTab("day")}>{t("pharmacyDesk.phone.tabDay")}</button>
+              ) : null}
+            </div>
+          ) : null}
 
-          <main style={{ flexGrow: 1, minWidth: 0, overflowY: "auto", padding: "24px 30px 30px 30px" }}>
+          {!phone ? dossierEl : inHand === null ? <div className="pd-pane" hidden={phoneTab !== "day"}>{dossierEl}</div> : null}
+
+          <main data-testid="desk-ticket-panel" hidden={phone && phoneTab !== "work"} style={{ flexGrow: 1, minWidth: 0, overflowY: "auto", padding: "24px 30px 30px 30px" }}>
             {savedDraft === null || inHandId !== null ? null : (
               <div role="status" data-testid="desk-draft-saved" className="draft-saved">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0, marginTop: 1 }}><path d="M5 12l5 5L19 7" /></svg>
@@ -524,12 +672,16 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
               handOverError={handOverError}
               takenLabel={takenPaise === null ? null : rupees(takenPaise)}
               onHandOver={(identity, controlled) => void handOver(identity, controlled)}
+              quick={quick}
               onOpenSlip={() => setOverlay("slip")}
               queue={rows}
               onShowLine={() => setOverlay("queue")}
               onConfirmSlip={() => void confirmSlip()}
               onFind={(q) => void find(q)}
-              paperDoor={paperFor === null ? null : { who: paperFor.label, onOpen: () => setOverlay("paper") }}
+              paperDoor={paperFor === null ? null : {
+                who: paperFor.label, onOpen: () => setOverlay("paper"),
+                ...(paperFor.lastDispenseId === undefined ? {} : { onSeeLast: () => hold(paperFor.lastDispenseId as string) }),
+              }}
               registerDoor={registerFrom === null ? null : { onOpen: () => setOverlay("register") }}
               onTake={(id, who) => void takeHere(id, who, false)}
               onClear={clearDesk}
@@ -538,32 +690,8 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
               onLiveQty={onLiveQty}
             />
           </main>
-
           {/* PD-D5 — the bill takes the line's place once a ticket of MINE is past "found". */}
-          {inHand !== null && !heldByAnother(inHand, me) && stageOf(inHand, me) !== "found" ? (
-            <BillRail
-              dispense={inHand}
-              preview={preview.data ?? null}
-              liveQty={liveQty !== null && liveQty.dispenseId === inHand.id ? liveQty.qty : null}
-              previewError={preview.error === null ? null : pharmacyErrorText(preview.error, t)}
-              drawerOpen={drawer.isPending ? null : drawer.data?.session?.status === "open"}
-              busy={busy}
-              error={billError}
-              now={now}
-              onTake={(tenders, change) => void takeMoney(tenders, change)}
-              onCredit={(credit) => void billOnCredit(credit)}
-              onDraft={draft}
-              onOpenDrawer={() => void navigate({ to: "/billing/session" })}
-              discount={discount}
-              onDiscount={(d) => setDiscount(d === null ? null : { ...d, dispenseId: inHand.id })}
-            />
-          ) : (
-            <QueueRail
-              rows={rows} me={me} now={now} inHandId={inHandId}
-              onTake={(id, who, mine) => void takeHere(id, who, mine)}
-              onOpenTab={(id, who, mine) => void openInTab(id, who, mine)}
-            />
-          )}
+          {phone ? <div className="pd-pane pd-side" hidden={phoneTab !== "side"}>{sideEl}</div> : sideEl}
         </div>
 
         <DeskDock log={log} said={said} busy={copilot.busy} onAsk={ask} onDismiss={() => setSaid(null)} draft={shortBookDraftOf(copilot.payload)} plan={purchasePlanOf(copilot.payload)} payPlan={paymentRunPlanOf(copilot.payload)} returnPlan={returnPlanOf(copilot.payload)} duplicates={duplicateItemsOf(copilot.payload)} onDraftDone={copilot.clearPayload} />
@@ -585,6 +713,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
       {overlay === "paper" && paperFor !== null ? (
         <PaperRxSheet
           patient={paperFor}
+          quick={quick}
           onClose={() => setOverlay(null)}
           onDone={(d) => {
             setOverlay(null);
@@ -711,4 +840,18 @@ function DeskDock({ log, said, busy, onAsk, onDismiss, draft: agentDraft, plan, 
       </div>
     </div>
   );
+}
+
+/** True while the viewport matches `query`. jsdom has no `matchMedia`, so a suite renders the wide desk. */
+function useMedia(query: string): boolean {
+  const [hit, setHit] = useState(() => typeof window.matchMedia === "function" && window.matchMedia(query).matches);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const mq = window.matchMedia(query);
+    const on = (): void => setHit(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, [query]);
+  return hit;
 }

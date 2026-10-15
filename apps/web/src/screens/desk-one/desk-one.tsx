@@ -9,18 +9,20 @@ import {
   getOpdConfig, putCounterFlow, listDepartments, listQueueSummary, opdErrorMessage,
   triage, walkIn, joinQueue, bookAppointment, todayIst, patientTimeline,
 } from "../../lib/opd-api";
-import type { WireSlot } from "../../lib/opd-api";
+import type { WireMoveTender, WireSlot } from "../../lib/opd-api";
 import { fetchFeeQuote, issueInvoice, billingErrorMessage, fetchCurrentSession, listDues } from "../../lib/billing-api";
 import type { TenderMode } from "../../lib/billing-api";
 import { fetchRecognition } from "../../lib/membership-api";
 import { fetchDesk } from "../../lib/desk-api";
+import { fetchOpdUnits } from "../../lib/roster-api";
+import { useDoctorLabel } from "../../lib/use-doctor-label";
 import {
-  ageYearsOf, billOf, deptQueues, firstFreeDoctor, inHall, invoiceLinesOf, istClock, istDateLabel,
+  ageOf, ageYearsOf, billOf, deptQueues, firstFreeDoctor, inHall, initialsOf, invoiceLinesOf, istClock, istDateLabel,
   laneOf, flowOf, LANE_TEXT, logged, openVisitsToday, rs, SEAT_LABEL, SEAT_ROUTE, SEATS, shortestLine, shouldJoinNow,
-  seatHasStage, stageForSeat, waitMinutes,
+  seatHasStage, sexLetter, stageForSeat, tokenLabel, waitMinutes,
 } from "./model";
 import type { Lane, LogLine, Seat } from "./model";
-import { DeskProvider, emptySession, EMPTY_FORM, formAgeYears, registerBodyOf } from "./session";
+import { DeskProvider, emptySession, EMPTY_FORM, formAgeYears, allergiesOf, registerBodyOf } from "./session";
 import type { DeskApi, Person, Session } from "./session";
 import { Dossier } from "./dossier";
 import { Dock } from "./dock";
@@ -104,7 +106,7 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
     level; the desk's `t()` calls all live in child components, so the root re-rendered for every
     reason EXCEPT the one this attribute exists for. Caught by the test, not by reasoning.
   */
-  const { i18n } = useTranslation();
+  const { i18n, t } = useTranslation();
   const { username, can, logout } = useAuth();
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -154,6 +156,18 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
     queryKey: ["d1", "summary", serviceDate],
     queryFn: () => listQueueSummary(serviceDate),
     refetchInterval: 20_000,
+  });
+  /*
+   * 20-U U7 — WHICH UNIT HOLDS TODAY'S OPD, from the roster's published calendar. Read-only: the
+   * queue is still doctor-days and nothing here seats anybody. A seat without `roster.read` does not
+   * ask; a failed read or a department that runs no units draws nothing on its card.
+   */
+  const doctorLabel = useDoctorLabel(serviceDate);
+  const opdUnits = useQuery({
+    queryKey: ["d1", "opd-units", serviceDate],
+    queryFn: () => fetchOpdUnits(serviceDate),
+    enabled: can("roster.read"),
+    staleTime: 5 * 60_000,
   });
   /*
     ═══ FD-26 — THE MONEY READS BELONG TO THE SEATS THAT TAKE MONEY ═══
@@ -597,6 +611,31 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
         registration for the photo's reason: a link that fails must not make a successful
         registration look failed — the patient is registered either way, and the log says which.
       */
+      /*
+        ═══ THE ALLERGIES TOLD AT THE COUNTER FOLLOW THE UHID (owner, 2026-10-01) ═══
+
+        Not awaited into the registration for the photo's reason, and STATED when one fails: a clerk
+        who typed an allergen must not believe it is on the record when it is not.
+      */
+      const told = allergiesOf(f);
+      if (told.length > 0) {
+        void (async () => {
+          const { addAllergy } = await import("../../lib/patients-api");
+          for (const a of told) {
+            try {
+              await addAllergy(res.patient.id, {
+                substance: a.substance, severity: a.severity, source: "registration",
+                ...(a.saltId !== null || a.allergenClass !== null ? { saltId: a.saltId, allergenClass: a.allergenClass } : {}),
+              });
+              setS((prev) => ({ ...prev, log: logged(prev.log, `allergy recorded — ${a.substance}`, "ok") }));
+            } catch {
+              setS((prev) => ({ ...prev, log: logged(prev.log, `the allergy "${a.substance}" could not be saved — add it from the patient's profile`, "warn") }));
+            }
+          }
+          void qc.invalidateQueries({ queryKey: ["patient-allergies", res.patient.id] });
+        })();
+      }
+
       const pendingLink = f.abdmLink;
       if (pendingLink !== null) {
         void (async () => {
@@ -865,6 +904,73 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
   }, [s.visit, s.issued, patch, qc, seat]);
 
   /**
+   * Owner 2026-10-05 — "WRONG DEPARTMENT — MOVE PATIENT". One server act (`POST
+   * /opd/visits/:id/move-department`) abandons the wrong visit and opens the right one; the desk then
+   * holds the NEW visit exactly as `assign` would have, so the bill re-quotes in the new department
+   * and the clerk never re-types the patient. Since the owner's four money rules (2026-10-05) a bill
+   * no longer refuses it here: the money moves with the visit, and the server refuses only what the
+   * Billing office must handle. `tenders` is the difference a higher fee costs, taken in the same act.
+   */
+  const moveDepartment = useCallback(async (departmentId: string, doctorId: string, reason: string, tenders?: WireMoveTender[]): Promise<string | null> => {
+    const visit = s.visit;
+    if (visit === null) return t("registrationCounter.move.refused");
+    const dq = queues.find((q) => q.departmentId === departmentId);
+    const chosen = (summaries.data?.items ?? []).find((x) => x.doctor.id === doctorId) ?? null;
+    patch({ busy: "assign", error: null });
+    try {
+      const { moveVisitDepartment } = await import("../../lib/opd-api");
+      const res = await moveVisitDepartment(visit.encounterId, { departmentId, doctorId, reason, ...(tenders === undefined ? {} : { tenders }) });
+      const money = res.money;
+      const moneyNote = money === undefined ? "" : [
+        money.kind === "transfer" && money.newInvoiceNo !== null ? t("registrationCounter.move.money.doneTransfer", { bill: money.newInvoiceNo }) : null,
+        money.collectedPaise > 0 ? t("registrationCounter.move.money.doneCollected", { amount: rs(money.collectedPaise) }) : null,
+        money.advancePaise > 0 ? t("registrationCounter.move.money.doneCredit", { amount: rs(money.advancePaise) }) : null,
+      ].filter((x): x is string => x !== null).map((x) => ` · ${x}`).join("");
+      const deptName = dq?.departmentName ?? departments.data?.items.find((x) => x.id === departmentId)?.name ?? departmentId;
+      const deptCode = departments.data?.items.find((x) => x.id === departmentId)?.code ?? null;
+      setS((prev) => ({
+        ...prev,
+        busy: null,
+        issued: null,
+        tender: null,
+        armedTender: null,
+        tenderRef: "",
+        visit: {
+          ...(prev.visit ?? visit),
+          encounterId: res.to.encounter.id,
+          visitNo: res.to.encounter.visitNo,
+          departmentId,
+          departmentName: deptName,
+          doctorId,
+          doctorName: chosen?.doctor.displayName ?? doctorId,
+          roomCode: chosen?.roomCode ?? null,
+          ahead: chosen?.waitingCount ?? 0,
+          waitMinutes: chosen === null ? 0 : waitMinutes(chosen),
+          tokenNo: res.to.tokenNo,
+          joining: false,
+          joinError: null,
+        },
+        log: logged(prev.log, t("registrationCounter.move.done", {
+          from: visit.departmentName, to: deptName,
+          token: res.to.tokenNo === null ? "—" : tokenLabel(deptCode, res.to.tokenNo),
+        }) + moneyNote, "ok"),
+      }));
+      await qc.invalidateQueries({ queryKey: ["d1", "quote"] });
+      void qc.invalidateQueries({ queryKey: ["d1", "papers"] });
+      void qc.invalidateQueries({ queryKey: ["d1", "summary"] });
+      void qc.invalidateQueries({ queryKey: ["d1", "timeline"] });
+      return null;
+    } catch (e) {
+      // The refusal is the PANEL's to show, beside the button the clerk pressed — not the page banner.
+      setS((prev) => ({
+        ...prev, busy: null,
+        log: logged(prev.log, `${t("registrationCounter.move.refused")} — ${opdErrorMessage(e)}`, "err"),
+      }));
+      return opdErrorMessage(e);
+    }
+  }, [s.visit, patch, qc, queues, summaries.data, departments.data, t]);
+
+  /**
    * FD-18 — THE BILLING OVERRIDE, AS A CORRECTION. Owner ruling 2026-09-04, choosing between three
    * designs: *"re-classify the visit, not the price"* and *"cashier alone, fully audited"*.
    *
@@ -945,13 +1051,16 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
 
   /** A slot on a later day. It is held BESIDE today's session and never replaces it. */
   const holdFutureSlot = useCallback(async (
-    doctorId: string, slot: WireSlot, departmentName: string, doctorName: string,
+    doctorId: string, slot: WireSlot, departmentName: string, doctorName: string, tele: { mode?: "tele"; telePhone?: string } = {},
   ) => {
     const person = s.person;
     if (person === null) return;
     patch({ busy: "future", error: null });
     try {
-      const { appointment } = await bookAppointment({ patientId: person.id, doctorId, slotStart: slot.start });
+      const { appointment } = await bookAppointment({ patientId: person.id, doctorId, slotStart: slot.start, ...tele });
+      // The left lane's "upcoming" and the stage's "their bookings" share this key; without the
+      // invalidate both answer from a 30 s cache and contradict the booking made a second ago.
+      void qc.invalidateQueries({ queryKey: ["d1", "their-appointments", person.id] });
       setS((prev) => ({
         ...prev,
         busy: null,
@@ -965,7 +1074,7 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
         log: logged(prev.log, `slot REFUSED — ${opdErrorMessage(e)}`, "err"),
       }));
     }
-  }, [s.person, patch]);
+  }, [s.person, patch, qc]);
 
   const presentCoupon = useCallback((code: string) => {
     const clean = code.trim().toUpperCase();
@@ -1342,6 +1451,8 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
     departments: departments.data?.items ?? [],
     summaries: summaries.data?.items ?? [],
     queues,
+    opdUnits: new Map((opdUnits.data ?? []).map((x) => [x.opdDepartmentId, x.units])),
+    doctorLabel,
     quote: quote.data ?? null,
     bill,
     serviceDate,
@@ -1359,11 +1470,158 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
     duesCount: (dues.data?.items ?? []).filter((row) => row.outstandingPaise > 0).length,
     moneyTaken,
     openVisits, adoptVisit,
-    note, hold, startEnrolment, enrol, runTriage, assign, unassign, holdFutureSlot, setPhoto, changeDoctor, reclassify,
+    note, hold, startEnrolment, enrol, runTriage, assign, unassign, holdFutureSlot, setPhoto, changeDoctor, moveDepartment, reclassify,
     presentCoupon, presentSlip, settle, amend, setLane, openDrawer, clearDesk, ask, goto,
   };
 
   const cashPill = desk.cashSession;
+  /*
+    ═══ OWNER 2026-10-04 — "Fix the Desk One issue on phone." ═══
+
+    At 390px the desk kept the dossier rail beside the stage and both became unreadable. The house
+    counter-screen rule (lab-screens-layout-rule) gives the wide breakpoints and the board drew no
+    phone, so the narrow desk is DECIDED here, layout only — no act, read or refusal changes:
+
+      · below 1100px the header's secondary items (the seats, the lane, the clock, ⌘ command) move
+        into a Menu; the waiting count stays in the row because it is the way to every line;
+      · at 900px and below the desk is one column. A counter is worked one patient at a time, so
+        the patient in hand becomes a strip — name, age/sex, UHID, ₹ to collect — that opens the
+        full record on a tap. The record stays mounted while folded, so nothing it holds is lost;
+      · at 560px and below the drawer pill moves into the Menu too, and a dot on the Menu button
+        still says open (green) or closed (gold) without opening it.
+
+    jsdom has no `matchMedia`, so every suite renders the wide desk and its DOM is unchanged.
+  */
+  const compactHeader = useMedia("(max-width: 1099px)");
+  const phone = useMedia("(max-width: 900px)");
+  const narrowPhone = useMedia("(max-width: 560px)");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [railOpen, setRailOpen] = useState(false);
+  const inHandId = s.person?.id ?? null;
+  /* A new patient in hand starts folded: the strip is what a phone shows first. */
+  useEffect(() => { setRailOpen(false); }, [inHandId]);
+  const showRail = s.person !== null || s.enrolling;
+
+  const brandEl = (
+    <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+      <div style={{ width: 10, height: 10, borderRadius: 2, background: "var(--green)", transform: "rotate(45deg)" }} />
+      <span className="mo" style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: ".08em" }}>DESK ONE</span>
+    </div>
+  );
+
+  /*
+    ═══ FD-26 — THE BREADCRUMB BECOMES THE SEATS' NAVIGATION, IN THE SAME 12.5px ROW ═══
+
+    `/counter` keeps the sentence it has always had: one person does all three, so naming
+    them is a description, not a menu. On a seat the same three words become the doors —
+    same row, same position, same type scale — because a full-viewport screen has to say
+    how you leave it, and the app nav is deliberately not rendered above a `.d1` mount.
+
+    The patient in hand travels with the clerk (see `PatientInHand` below), so moving from
+    the registration chair to the booking chair is a click and not a re-search.
+  */
+  const crumbEl = (
+    seat === "counter" ? (
+      <span style={{ fontSize: 12.5, color: "var(--dim)" }}>
+        Registration · Appointment · Billing ·{" "}
+        <strong style={{ color: "var(--ink)", fontWeight: 600 }}>{desk.clerkName}</strong>
+      </span>
+    ) : (
+      <span style={{ fontSize: 12.5, color: "var(--dim)", display: "flex", alignItems: "center", gap: 6 }}>
+        {SEATS.map((other, i) => (
+          <Fragment key={other}>
+            {i > 0 ? <span style={{ color: "var(--line)" }}>·</span> : null}
+            <button
+              data-testid={`seat-to-${other}`}
+              className={other === seat ? "pill on" : "pill"}
+              style={{ height: 21 }}
+              aria-current={other === seat ? "page" : undefined}
+              onClick={() => {
+                if (other !== seat) void navigate({ to: SEAT_ROUTE[other] as "/counter" });
+              }}
+            >
+              {SEAT_LABEL[other]}
+            </button>
+          </Fragment>
+        ))}
+        <span style={{ color: "var(--line)" }}>·</span>
+        <strong style={{ color: "var(--ink)", fontWeight: 600 }}>{desk.clerkName}</strong>
+      </span>
+    )
+  );
+
+  /*
+    THE DRAWER IS A LIVE PRECONDITION, WORN IN THE HEADER. `POST /receipts` refuses cash
+    with no open session, so the pill is the reason the CASH key is dark at the bill stage.
+  */
+  const cashEl = (
+    cashPill === null ? null : cashPill.open ? (
+      <span className="pill on" style={{ height: 22 }} title="Cash may be taken">
+        <span style={{ width: 5, height: 5, borderRadius: 99, background: "var(--green)" }} />
+        cash session open · float <span className="mo">{rs(cashPill.floatPaise)}</span>
+        {/* OWNER RULING 2026-09-28 — BLIND COUNT: no "+cash taken" beside the float — the two add up to the expected cash. */}
+      </span>
+    ) : (
+      <span
+        className="pill gd"
+        style={{ height: 22 }}
+        title="Every collection is recorded against a drawer — cash, UPI and card alike. Open one before billing."
+      >
+        no drawer open · nothing can be collected
+      </span>
+    )
+  );
+
+  const laneEl = (
+    <button
+      className="pill"
+      style={{ height: 22 }}
+      onClick={() => patch({ overlay: "flow" })}
+      title={desk.canSetFlow ? "Counter lane — the supervisor's switch" : "Counter lane — set by the supervisor"}
+    >
+      <svg className="lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
+        <rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" />
+      </svg>
+      <span>{LANE_TEXT[lane].short}</span>
+    </button>
+  );
+
+  const clockEl = (
+    <span className="mo" style={{ fontSize: 11.5, color: "var(--faint)" }}>
+      {istDateLabel()} · {clock}
+    </span>
+  );
+
+  const waitingEl = (
+    <button
+      className="pill gd"
+      style={{ height: 24 }}
+      data-testid="d1-list-toggle"
+      aria-expanded={s.overlay === "queues"}
+      onClick={() => patch({ overlay: s.overlay === "queues" ? null : "queues" })}
+    >
+      <span className="mo">{waiting}</span> waiting <span className="kb">Q</span>
+    </button>
+  );
+
+  /*
+    FD-11 — THE `design schema` BUTTON IS GONE FROM HERE, AND THE OVERLAY IS NOT.
+
+    It sat in the clerk's top bar, permanently, beside the cash float, and opened a
+    design-system reference sheet: hex codes, font names and the `F1 queue_first +
+    token_first` pseudo-code. That is a document for whoever is BUILDING this screen, and
+    a counter's chrome is the most expensive real estate in the application — everything
+    in it is read a hundred times a day by somebody who did not choose to read it.
+
+    `overlays.tsx` already registers it in the command palette (F8), which is exactly
+    where a tool for the person building the screen belongs: reachable by anybody who
+    knows to ask for it, invisible to everybody who does not. Nothing is deleted.
+  */
+  const commandEl = (
+    <button className="pill" style={{ height: 24, borderColor: "var(--ink)" }} onClick={() => patch({ overlay: "palette" })}>
+      <strong>⌘</strong> command <span className="kb">F8</span>
+    </button>
+  );
 
   return (
     <DeskProvider value={desk}>
@@ -1401,110 +1659,101 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
             desk offered no way back except a horizontal scroll nobody at a counter performs. It is
             a class now so `desk-one.css` can let it wrap.
           */}
-          <div className="top">
-            <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-              <div style={{ width: 10, height: 10, borderRadius: 2, background: "var(--green)", transform: "rotate(45deg)" }} />
-              <span className="mo" style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: ".08em" }}>DESK ONE</span>
+          {compactHeader ? (
+            <div className="top top-compact">
+              {brandEl}
+              {narrowPhone ? null : cashEl}
+              <div style={{ flexGrow: 1 }} />
+              {waitingEl}
+              <div className="d1-menu-wrap">
+                <button
+                  className="pill d1-menu-btn"
+                  data-testid="d1-menu-toggle"
+                  aria-haspopup="true"
+                  aria-expanded={menuOpen}
+                  onClick={() => setMenuOpen((v) => !v)}
+                >
+                  {narrowPhone && cashPill !== null ? (
+                    <span
+                      aria-hidden="true"
+                      className="d1-dot"
+                      style={{ background: cashPill.open ? "var(--green)" : "var(--gold)" }}
+                    />
+                  ) : null}
+                  <span aria-hidden="true">☰</span> {t("registrationCounter.phone.menu")}
+                </button>
+                {menuOpen ? (
+                  <>
+                    <div className="d1-menu-scrim" onClick={() => setMenuOpen(false)} />
+                    {/* Any act inside closes it: each item either navigates or opens its own sheet. */}
+                    <div className="d1-menu box" data-testid="d1-menu" onClick={() => setMenuOpen(false)}>
+                      {crumbEl}
+                      {narrowPhone ? cashEl : null}
+                      {laneEl}
+                      {commandEl}
+                      {clockEl}
+                    </div>
+                  </>
+                ) : null}
+              </div>
             </div>
-            <span style={{ color: "var(--line)" }}>/</span>
-            {/*
-              ═══ FD-26 — THE BREADCRUMB BECOMES THE SEATS' NAVIGATION, IN THE SAME 12.5px ROW ═══
-
-              `/counter` keeps the sentence it has always had: one person does all three, so naming
-              them is a description, not a menu. On a seat the same three words become the doors —
-              same row, same position, same type scale — because a full-viewport screen has to say
-              how you leave it, and the app nav is deliberately not rendered above a `.d1` mount.
-
-              The patient in hand travels with the clerk (see `PatientInHand` below), so moving from
-              the registration chair to the booking chair is a click and not a re-search.
-            */}
-            {seat === "counter" ? (
-              <span style={{ fontSize: 12.5, color: "var(--dim)" }}>
-                Registration · Appointment · Billing ·{" "}
-                <strong style={{ color: "var(--ink)", fontWeight: 600 }}>{desk.clerkName}</strong>
-              </span>
-            ) : (
-              <span style={{ fontSize: 12.5, color: "var(--dim)", display: "flex", alignItems: "center", gap: 6 }}>
-                {SEATS.map((other, i) => (
-                  <Fragment key={other}>
-                    {i > 0 ? <span style={{ color: "var(--line)" }}>·</span> : null}
-                    <button
-                      data-testid={`seat-to-${other}`}
-                      className={other === seat ? "pill on" : "pill"}
-                      style={{ height: 21 }}
-                      aria-current={other === seat ? "page" : undefined}
-                      onClick={() => {
-                        if (other !== seat) void navigate({ to: SEAT_ROUTE[other] as "/counter" });
-                      }}
-                    >
-                      {SEAT_LABEL[other]}
-                    </button>
-                  </Fragment>
-                ))}
-                <span style={{ color: "var(--line)" }}>·</span>
-                <strong style={{ color: "var(--ink)", fontWeight: 600 }}>{desk.clerkName}</strong>
-              </span>
-            )}
-            {/*
-              THE DRAWER IS A LIVE PRECONDITION, WORN IN THE HEADER. `POST /receipts` refuses cash
-              with no open session, so the pill is the reason the CASH key is dark at the bill stage.
-            */}
-            {cashPill === null ? null : cashPill.open ? (
-              <span className="pill on" style={{ height: 22 }} title="Cash may be taken">
-                <span style={{ width: 5, height: 5, borderRadius: 99, background: "var(--green)" }} />
-                cash session open · float <span className="mo">{rs(cashPill.floatPaise)}</span>
-                {/* OWNER RULING 2026-09-28 — BLIND COUNT: no "+cash taken" beside the float — the two add up to the expected cash. */}
-              </span>
-            ) : (
-              <span
-                className="pill gd"
-                style={{ height: 22 }}
-                title="Every collection is recorded against a drawer — cash, UPI and card alike. Open one before billing."
-              >
-                no drawer open · nothing can be collected
-              </span>
-            )}
-            <button
-              className="pill"
-              style={{ height: 22 }}
-              onClick={() => patch({ overlay: "flow" })}
-              title={desk.canSetFlow ? "Counter lane — the supervisor's switch" : "Counter lane — set by the supervisor"}
-            >
-              <svg className="lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
-                <rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" />
-              </svg>
-              <span>{LANE_TEXT[lane].short}</span>
-            </button>
-            <div style={{ flexGrow: 1 }} />
-            <span className="mo" style={{ fontSize: 11.5, color: "var(--faint)" }}>
-              {istDateLabel()} · {clock}
-            </span>
-            <button className="pill gd" style={{ height: 24 }} onClick={() => patch({ overlay: s.overlay === "queues" ? null : "queues" })}>
-              <span className="mo">{waiting}</span> waiting <span className="kb">Q</span>
-            </button>
-            {/*
-              FD-11 — THE `design schema` BUTTON IS GONE FROM HERE, AND THE OVERLAY IS NOT.
-
-              It sat in the clerk's top bar, permanently, beside the cash float, and opened a
-              design-system reference sheet: hex codes, font names and the `F1 queue_first +
-              token_first` pseudo-code. That is a document for whoever is BUILDING this screen, and
-              a counter's chrome is the most expensive real estate in the application — everything
-              in it is read a hundred times a day by somebody who did not choose to read it.
-
-              `overlays.tsx` already registers it in the command palette (F8), which is exactly
-              where a tool for the person building the screen belongs: reachable by anybody who
-              knows to ask for it, invisible to everybody who does not. Nothing is deleted.
-            */}
-            <button className="pill" style={{ height: 24, borderColor: "var(--ink)" }} onClick={() => patch({ overlay: "palette" })}>
-              <strong>⌘</strong> command <span className="kb">F8</span>
-            </button>
-          </div>
+          ) : (
+            <div className="top">
+              {brandEl}
+              <span style={{ color: "var(--line)" }}>/</span>
+              {crumbEl}
+              {cashEl}
+              {laneEl}
+              <div style={{ flexGrow: 1 }} />
+              {clockEl}
+              {waitingEl}
+              {commandEl}
+            </div>
+          )}
 
           {/* ══════════ body: dossier + stage ══════════ */}
-          <div style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>
-            <aside className="rail">
-              <Dossier />
-            </aside>
+          <div className={phone ? "d1-body phone" : undefined} style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>
+            {!phone ? (
+              <aside className="rail">
+                <Dossier />
+              </aside>
+            ) : showRail ? (
+              <aside className="rail rail-phone">
+                <button
+                  className="d1-strip"
+                  data-testid="d1-strip"
+                  aria-expanded={railOpen}
+                  title={railOpen ? t("registrationCounter.phone.hidePatient") : t("registrationCounter.phone.showPatient")}
+                  onClick={() => setRailOpen((v) => !v)}
+                >
+                  <span className="d1-strip-av" aria-hidden="true">
+                    {s.person === null
+                      ? (s.form.name.trim() === "" ? "—" : initialsOf(s.form.name))
+                      : initialsOf(s.person.name)}
+                  </span>
+                  <span className="d1-strip-id">
+                    <strong>
+                      {s.person === null
+                        ? (s.form.name === "" ? t("registrationCounter.phone.newWalkIn") : s.form.name)
+                        : s.person.name}
+                    </strong>
+                    <span className="mo">
+                      {s.person === null
+                        ? t("registrationCounter.phone.noUhid")
+                        : `${ageOf(s.person.dob) === "" ? "" : `${ageOf(s.person.dob)} `}${sexLetter(s.person.gender)} · ${s.person.uhid}`}
+                    </span>
+                  </span>
+                  <span className="d1-strip-money" data-testid="d1-strip-collect">
+                    <span>{desk.moneyTaken ? t("registrationCounter.phone.collected") : t("registrationCounter.phone.toCollect")}</span>
+                    <strong className="mo" style={{ color: desk.moneyTaken ? "var(--green)" : undefined }}>{rs(bill.totalPaise)}</strong>
+                  </span>
+                  <span className="d1-strip-chev" aria-hidden="true">{railOpen ? "▴" : "▾"}</span>
+                </button>
+                <div className="rail-body" data-testid="d1-rail-body" hidden={!railOpen}>
+                  <Dossier />
+                </div>
+              </aside>
+            ) : null}
             <main style={{ flexGrow: 1, minWidth: 0, overflowY: "auto", padding: "24px 30px 30px" }}>
               {s.error === null ? null : (
                 <div className="box" style={{
@@ -1528,4 +1777,18 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
       </div>
     </DeskProvider>
   );
+}
+
+/** True while the viewport matches `query`. jsdom has no `matchMedia`, so a suite renders the wide desk. */
+function useMedia(query: string): boolean {
+  const [hit, setHit] = useState(() => typeof window.matchMedia === "function" && window.matchMedia(query).matches);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const mq = window.matchMedia(query);
+    const on = (): void => setHit(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, [query]);
+  return hit;
 }

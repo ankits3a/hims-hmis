@@ -203,6 +203,13 @@ export const formularyMedicines = pgTable(
      * a human entered through the masters screen, which is the honest answer for those.
      */
     sourceRef: text("source_ref"),
+    /**
+     * OWNER 2026-10-02 — WHICH GENERIC THIS PRODUCT IS: the generic's SNOMED CT id. A generic's own row names
+     * itself; a brand names the generic the bundle gave it. Null when nobody has said (a hand-entered product,
+     * a brand whose generic the formulary does not hold). It is how a stocked brand reaches its generic's
+     * monograph — see `modules/formulary/generic-link.ts` for why it is the release id and not a foreign key.
+     */
+    genericSctid: text("generic_sctid"),
     /** Provenance back-link, not a foreign key — see the header. */
     stagingId: text("staging_id"),
     /**
@@ -237,6 +244,7 @@ export const formularyMedicines = pgTable(
     */
     index("formulary_medicines_brand_trgm_idx").using("gin", sql`lower(${t.brandName}) gin_trgm_ops`),
     index("formulary_medicines_code_idx").using("btree", sql`lower(${t.code})`),
+    index("formulary_medicines_generic_sctid_idx").on(t.genericSctid),
     /* The free-text resolver's lane: `resolveDrugTexts` asks for a SET of normalized names. */
     index("formulary_medicines_name_norm_idx").using("btree", t.nameNormalized),
     check("formulary_medicines_route_class_ck", sql`${t.routeClass} in ('systemic', 'topical')`),
@@ -761,6 +769,75 @@ export const formularyDrugDisease = pgTable(
     check(
       "formulary_drug_disease_route_scope_ck",
       sql`${t.routeScope} is null or ${t.routeScope} = 'systemic_only'`,
+    ),
+  ],
+);
+
+/**
+ * ═══ THE DRUG MONOGRAPH (owner 2026-10-02) — one row per generic, read only once a second person reviewed it ═══
+ *
+ * The owner's Drug Information Service specification tells one generic to four readers. Each telling is a
+ * JSON section here, kept as the specification wrote it; `modules/formulary/monographs.ts` explains what is
+ * deliberately NOT here (stock and prices are rows elsewhere; interactions and drug–disease already have tables).
+ *
+ * `status` is `draft | reviewed`, and the CHECK makes "reviewed" mean exactly "a reviewer and an instant are
+ * recorded". Every save writes a draft; no reader sees a draft. `source_version` is the document version the
+ * text came from, so a later revision of the specification can find what it supersedes.
+ */
+export type MonographSection = Record<string, unknown>;
+
+export const formularyMonographs = pgTable(
+  "formulary_monographs",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    genericId: text("generic_id").notNull().references(() => formularyGenerics.id),
+    sourceVersion: text("source_version").notNull(),
+    /** Plain-language summary, bilingual FAQs, patient warnings, side-effect triage. */
+    patient: jsonb("patient").$type<MonographSection>(),
+    /** Indications with ICD-10, hepatic adjustment, Beers, monitoring, pearls. Renal bands are rows below. */
+    prescriber: jsonb("prescriber").$type<MonographSection>(),
+    /** Enteral tube, contrast and perioperative holds, dialysis, overdose. */
+    nursing: jsonb("nursing").$type<MonographSection>(),
+    /** The Jan Aushadhi (PMBJP) benchmark. */
+    affordability: jsonb("affordability").$type<MonographSection>(),
+    status: text("status").notNull().default("draft"),
+    reviewedBy: text("reviewed_by"),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    ...auditColumns,
+  },
+  (t) => [
+    uniqueIndex("formulary_monographs_generic_ux").on(t.genericId),
+    check("formulary_monographs_status_ck", sql`${t.status} in ('draft', 'reviewed')`),
+    check(
+      "formulary_monographs_review_ck",
+      sql`(${t.status} = 'reviewed') = (${t.reviewedBy} is not null) and (${t.status} = 'reviewed') = (${t.reviewedAt} is not null)`,
+    ),
+  ],
+);
+
+/**
+ * A RENAL DOSE BAND of a monograph: clearance `[crcl_min, crcl_max)` in mL/min reads this dose. Rows and not
+ * JSON because a check computes on them. Replaced as a set with every save of the monograph; `position`
+ * orders them from the lowest clearance up. The service refuses overlap; the database refuses a band with no
+ * bound and an inverted one.
+ */
+export const formularyRenalDoses = pgTable(
+  "formulary_renal_doses",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    monographId: text("monograph_id").notNull().references(() => formularyMonographs.id),
+    position: integer("position").notNull(),
+    crclMin: integer("crcl_min"),
+    crclMax: integer("crcl_max"),
+    dose: text("dose").notNull(),
+    severity: text("severity").notNull(),
+  },
+  (t) => [
+    uniqueIndex("formulary_renal_doses_monograph_position_ux").on(t.monographId, t.position),
+    check("formulary_renal_doses_severity_ck", sql`${t.severity} in ('normal', 'reduce', 'avoid')`),
+    check(
+      "formulary_renal_doses_bounds_ck",
+      sql`(${t.crclMin} is not null or ${t.crclMax} is not null) and (${t.crclMin} is null or ${t.crclMin} >= 0) and (${t.crclMin} is null or ${t.crclMax} is null or ${t.crclMin} < ${t.crclMax})`,
     ),
   ],
 );

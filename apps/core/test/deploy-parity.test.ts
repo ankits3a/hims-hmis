@@ -253,8 +253,19 @@ describe("deploy.sh / compose / prometheus.yml parity (Plan 11d D8)", () => {
       expect(services).toContain("caddy");
     });
 
-    it("reads seven populated config directories out of deploy.sh step 2", () => {
-      expect(populatedDirs).toHaveLength(7);
+    it("reads ten populated config directories out of deploy.sh step 2", () => {
+      // MOBILE M6b: seven -> EIGHT. `firebase/` is where step 2 copies the owner's Firebase key for
+      // the api and the worker. Like `pgbackrest/` and `drill/` it is not a compose SERVICE, so it
+      // adds nothing to the restart loop — and needs none: both processes re-read the file by
+      // themselves (`kernel/push/sender.ts`). Its own rules are pinned in the M6b block below.
+      // PHONE CONSULT: eight -> NINE. `openai/` holds the owner's OpenAI key for the api, on the
+      // Firebase key's exact terms (not a service, re-read by the process, pinned in its own block).
+      // STAFF ATTENDANCE: nine -> TEN. `bioattend/` holds the three bioattend secrets for the api and
+      // the worker, on the same terms (not a service, re-read by the process, pinned in its own block).
+      expect(populatedDirs).toHaveLength(10);
+      expect(populatedDirs).toContain("firebase");
+      expect(populatedDirs).toContain("openai");
+      expect(populatedDirs).toContain("bioattend");
       // The two that are populated and are NOT services — the reason this leg says "populates"
       // rather than "installs", and the reason it intersects with the compose file at all.
       expect(populatedDirs).toContain("pgbackrest");
@@ -399,6 +410,8 @@ const SEED_STEP_SCRIPTS = [
   // was `test/helpers/lab.ts`. A module that ships, migrates, serves routes and throws
   // `no_active_definition` on first use is what this census exists to make impossible.
   "seed-lab.js",
+  // Decision 0067 (2026-10-10) — the owner's outside-test list (ECG, echo …); adds missing codes only.
+  "seed-outside-tests.js",
   "seed-roles.js",
 ] as const;
 
@@ -456,6 +469,324 @@ describe("the document store is mounted and writable (2026-09-15)", () => {
   });
 });
 
+/**
+ * MOBILE M6b (owner 2026-10-06) — THE FIREBASE KEY REACHES THE API AND THE WORKER, AND ITS ABSENCE
+ * NEVER FAILS A DEPLOY.
+ *
+ * The key is the owner's file on the host. It is in no commit and no image: step 2 copies it into
+ * `$DEPLOY_DIR/firebase/` when it exists, and both services mount that DIRECTORY read-only (a
+ * single-file mount pins an inode — the caddy lesson) and are told the path by env. A hospital with
+ * no Firebase project is every hospital until its owner makes one, so the absent case is exercised
+ * for real below rather than read off the script.
+ */
+describe("the Firebase key for phone notifications (mobile M6b)", () => {
+  const deploySource = readFileSync(DEPLOY_SH, "utf8");
+  const compose = readFileSync(COMPOSE_YML, "utf8");
+  const ENV_LINE = "HMIS_FCM_SERVICE_ACCOUNT_FILE: /run/hmis/firebase/service-account.json";
+  const MOUNT = "- ./firebase:/run/hmis/firebase:ro";
+
+  /** Step 2's firebase lines, verbatim: from the `FIREBASE_KEY=` assignment to the closing `fi`. */
+  function firebaseBlock(): string {
+    const start = deploySource.indexOf('FIREBASE_KEY="${HMIS_FIREBASE_KEY:-');
+    const end = deploySource.indexOf("\nfi\n", start);
+    if (start < 0 || end < 0) throw new Error("deploy.sh: the firebase block has moved — this parser is stale");
+    const block = deploySource.slice(start, end + 4);
+    expect(stepTwoBlock(deploySource)).toContain(block);
+    return block;
+  }
+
+  it("the api AND the worker are told the path and mount the directory read-only — never the file", () => {
+    const api = compose.slice(compose.indexOf("\n  api:"), compose.indexOf("\n  worker:"));
+    const worker = compose.slice(compose.indexOf("\n  worker:"), compose.indexOf("\n  caddy:"));
+    for (const service of [api, worker]) {
+      expect(service).toContain(ENV_LINE);
+      expect(service).toContain(MOUNT);
+    }
+    expect(compose).not.toMatch(/service-account\.json:\/run/); // a single-file bind mount
+    // No other service is handed the key.
+    expect(compose.split(MOUNT)).toHaveLength(3);
+    expect(compose.split(ENV_LINE)).toHaveLength(3);
+  });
+
+  it("the key's default home is the owner's folder, and no key is named in the repository's env template", () => {
+    expect(firebaseBlock()).toContain('FIREBASE_KEY="${HMIS_FIREBASE_KEY:-/root/.config/hmis/firebase/service-account.json}"');
+    expect(readFileSync(ENV_EXAMPLE, "utf8")).not.toMatch(/private_key|service_account/);
+  });
+
+  /** Runs the block in a scratch directory. Handing a file to gid 1000 needs root, so `numeric_own` is a recorder — the control flow is what is on trial. */
+  function runBlock(keyThere: boolean, alreadyDeployed = false): { status: number | null; out: string; dir: string } {
+    const dir = mkdtempSync(join(tmpdir(), "hmis-deploy-firebase-"));
+    if (alreadyDeployed) {
+      spawnSync("mkdir", ["-p", join(dir, "deploy", "firebase")]);
+      writeFileSync(join(dir, "deploy", "firebase", "service-account.json"), "{}");
+    }
+    const key = join(dir, "owner", "service-account.json");
+    if (keyThere) {
+      spawnSync("mkdir", ["-p", join(dir, "owner")]);
+      writeFileSync(key, '{"type":"service_account"}');
+    }
+    const script = [
+      "set -euo pipefail",
+      'numeric_own() { printf "OWN %s\\n" "$*"; }',
+      firebaseBlock(),
+    ].join("\n");
+    const r = spawnSync("bash", ["-c", script], { env: { PATH: process.env.PATH ?? "", DEPLOY_DIR: join(dir, "deploy"), HMIS_FIREBASE_KEY: key }, encoding: "utf8" });
+    return { status: r.status, out: `${r.stdout}${r.stderr}`, dir };
+  }
+
+  it("with NO key on the host the step succeeds, makes the directory the mount needs, copies nothing and says so", () => {
+    const r = runBlock(false);
+    try {
+      expect(r.out).toContain("phone notifications stay off");
+      expect(r.status).toBe(0);
+      expect(existsSync(join(r.dir, "deploy", "firebase"))).toBe(true);
+      expect(readdirSync(join(r.dir, "deploy", "firebase"))).toEqual([]);
+    } finally { rmSync(r.dir, { recursive: true, force: true }); }
+  });
+
+  it("with the key on the host it is copied where the two services look, and nothing of it is printed", () => {
+    const r = runBlock(true);
+    try {
+      expect(r.status).toBe(0);
+      expect(readFileSync(join(r.dir, "deploy", "firebase", "service-account.json"), "utf8")).toBe('{"type":"service_account"}');
+      expect(r.out).toContain("firebase key installed");
+      expect(r.out).not.toContain("service_account");
+      // The directory and the key are both handed to the containers' group by NUMBER.
+      expect(r.out).toContain(`OWN 0:1000 ${join(r.dir, "deploy", "firebase")}\n`);
+      expect(r.out).toContain(`OWN 0:1000 ${join(r.dir, "deploy", "firebase", "service-account.json")}`);
+    } finally { rmSync(r.dir, { recursive: true, force: true }); }
+  });
+
+  /**
+   * 2026-10-07 — production's new host (Ubuntu 26.04, uutils coreutils 0.8.0) has no group 1000 and
+   * its `install -g 1000` died with "invalid group: '1000'", failing the first deploy there. No deploy
+   * script may pass a numeric owner or group to `install`, or `chown` to a number without the helper.
+   */
+  it("no deploy script hands ownership to a NUMBER through install -g/-o or a bare chown", () => {
+    const scripts = [DEPLOY_SH, resolve(REPO_ROOT, "docker", "prod", "uat-reset.sh"), resolve(REPO_ROOT, "tools", "auto-deploy.sh"), resolve(REPO_ROOT, "tools", "stage.sh")];
+    for (const file of scripts) {
+      const code = readFileSync(file, "utf8").split("\n").filter((l) => !/^\s*#/.test(l));
+      expect(code.filter((l) => /\binstall\b.*\s-[og]\s+["']?[$0-9]/.test(l))).toEqual([]);
+      // The one chown allowed is the helper's own first try.
+      expect(code.filter((l) => /^\s*chown\s+["']?[$0-9]/.test(l) && l.trim() !== 'chown "$owner" "$@" 2>/dev/null && return 0')).toEqual([]);
+    }
+    expect(deploySource).toMatch(/numeric_own\(\) \{[\s\S]*?chown "\$owner" "\$@"[\s\S]*?os\.chown/);
+  });
+
+  it("a host that never held the key keeps the copy the move brought, and says so", () => {
+    const r = runBlock(false, true);
+    try {
+      expect(r.status).toBe(0);
+      expect(r.out).toContain("stays in use");
+      expect(readFileSync(join(r.dir, "deploy", "firebase", "service-account.json"), "utf8")).toBe("{}");
+    } finally { rmSync(r.dir, { recursive: true, force: true }); }
+  });
+
+  it("auto-deploy carries the key to production's host root-only and never prints it", () => {
+    const auto = readFileSync(resolve(REPO_ROOT, "tools", "auto-deploy.sh"), "utf8");
+    const start = auto.indexOf('FIREBASE_KEY="${HMIS_FIREBASE_KEY:-/root/.config/hmis/firebase/service-account.json}"');
+    const block = auto.slice(start, auto.indexOf("\nfi\n", start));
+    expect(start).toBeGreaterThan(0);
+    expect(block).toContain("--chmod=F600");
+    expect(block).toContain("install -d -m 0700");
+    expect(block).not.toMatch(/\bcat\b|rsync[^\n]*\s-[a-z]*v|--itemize|set -x/);
+    expect(block).toContain('[ -r "$FIREBASE_KEY" ]'); // absent here sends nothing and removes nothing
+  });
+});
+
+/**
+ * PHONE CONSULT (decision 0048) — THE OPENAI KEY FOR THE DOCTOR'S SPOKEN NOTE. The Firebase key's
+ * rules, for the same reasons: the owner's file on the host, in no commit and no image, copied into
+ * `$DEPLOY_DIR/openai/` when it exists, mounted as a DIRECTORY read-only into the api ONLY (the
+ * worker types nothing), and an absent key never fails a deploy.
+ */
+describe("the OpenAI key for the doctor's spoken note (phone consult)", () => {
+  const deploySource = readFileSync(DEPLOY_SH, "utf8");
+  const compose = readFileSync(COMPOSE_YML, "utf8");
+  const ENV_LINE = "HMIS_OPENAI_KEY_FILE: /run/hmis/openai/key.txt";
+  const MOUNT = "- ./openai:/run/hmis/openai:ro";
+
+  function openaiBlock(): string {
+    const start = deploySource.indexOf('OPENAI_KEY="${HMIS_OPENAI_KEY:-');
+    const end = deploySource.indexOf("\nfi\n", start);
+    if (start < 0 || end < 0) throw new Error("deploy.sh: the openai block has moved — this parser is stale");
+    const block = deploySource.slice(start, end + 4);
+    expect(stepTwoBlock(deploySource)).toContain(block);
+    return block;
+  }
+
+  it("the api alone is told the path and mounts the directory read-only — never the file, never the worker", () => {
+    const api = compose.slice(compose.indexOf("\n  api:"), compose.indexOf("\n  worker:"));
+    expect(api).toContain(ENV_LINE);
+    expect(api).toContain(MOUNT);
+    expect(compose).not.toMatch(/key\.txt:\/run/); // a single-file bind mount
+    expect(compose.split(MOUNT)).toHaveLength(2);
+    expect(compose.split(ENV_LINE)).toHaveLength(2);
+    // The key is never an environment VALUE: `docker inspect` must not be able to print it.
+    expect(compose).not.toMatch(/OPENAI_API_KEY/);
+    expect(readFileSync(ENV_EXAMPLE, "utf8")).not.toMatch(/OPENAI_API_KEY|sk-[A-Za-z0-9]/);
+  });
+
+  function runBlock(keyThere: boolean, alreadyDeployed = false): { status: number | null; out: string; dir: string } {
+    const dir = mkdtempSync(join(tmpdir(), "hmis-deploy-openai-"));
+    if (alreadyDeployed) {
+      spawnSync("mkdir", ["-p", join(dir, "deploy", "openai")]);
+      writeFileSync(join(dir, "deploy", "openai", "key.txt"), "sk-old");
+    }
+    const key = join(dir, "owner", "key.txt");
+    if (keyThere) {
+      spawnSync("mkdir", ["-p", join(dir, "owner")]);
+      writeFileSync(key, "sk-secret-value-123");
+    }
+    const script = ["set -euo pipefail", 'numeric_own() { printf "OWN %s\\n" "$*"; }', openaiBlock()].join("\n");
+    const r = spawnSync("bash", ["-c", script], { env: { PATH: process.env.PATH ?? "", DEPLOY_DIR: join(dir, "deploy"), HMIS_OPENAI_KEY: key }, encoding: "utf8" });
+    return { status: r.status, out: `${r.stdout}${r.stderr}`, dir };
+  }
+
+  it("with NO key on the host the step succeeds, makes the directory the mount needs, and says voice stays off", () => {
+    const r = runBlock(false);
+    try {
+      expect(r.status).toBe(0);
+      expect(r.out).toContain("voice notes stay off");
+      expect(readdirSync(join(r.dir, "deploy", "openai"))).toEqual([]);
+    } finally { rmSync(r.dir, { recursive: true, force: true }); }
+  });
+
+  it("with the key on the host it is copied where the api looks, handed over by number, and never printed", () => {
+    const r = runBlock(true);
+    try {
+      expect(r.status).toBe(0);
+      expect(readFileSync(join(r.dir, "deploy", "openai", "key.txt"), "utf8")).toBe("sk-secret-value-123");
+      expect(r.out).toContain("openai key installed");
+      expect(r.out).not.toContain("sk-secret");
+      expect(r.out).toContain(`OWN 0:1000 ${join(r.dir, "deploy", "openai", "key.txt")}`);
+    } finally { rmSync(r.dir, { recursive: true, force: true }); }
+  });
+
+  it("a host whose owner folder has no key keeps the copy already deployed", () => {
+    const r = runBlock(false, true);
+    try {
+      expect(r.status).toBe(0);
+      expect(r.out).toContain("stays in use");
+      expect(readFileSync(join(r.dir, "deploy", "openai", "key.txt"), "utf8")).toBe("sk-old");
+    } finally { rmSync(r.dir, { recursive: true, force: true }); }
+  });
+
+  it("auto-deploy carries the key to production's host root-only, never prints it, and sends nothing when it is absent here", () => {
+    const auto = readFileSync(resolve(REPO_ROOT, "tools", "auto-deploy.sh"), "utf8");
+    const start = auto.indexOf('OPENAI_KEY="${HMIS_OPENAI_KEY:-/root/.config/hmis/openai/key.txt}"');
+    const block = auto.slice(start, auto.indexOf("\nfi\n", start));
+    expect(start).toBeGreaterThan(0);
+    expect(block).toContain("--chmod=F600");
+    expect(block).not.toMatch(/\bcat\b|rsync[^\n]*\s-[a-z]*v|--itemize|set -x/);
+    expect(block).toContain('[ -r "$OPENAI_KEY" ]');
+  });
+});
+
+/**
+ * STAFF ATTENDANCE (owner 2026-10-09) — THE THREE BIOATTEND SECRETS. The OpenAI key's rules, three
+ * files and TWO services: the owner's files on the host, in no commit and no image, copied into
+ * `$DEPLOY_DIR/bioattend/` when they exist, mounted as a DIRECTORY read-only into the api (the read
+ * routes, the webhook, the Aadhaar field) AND the worker (the job that pulls), and an absent file
+ * never fails a deploy.
+ */
+describe("the three bioattend secrets (staff attendance)", () => {
+  const deploySource = readFileSync(DEPLOY_SH, "utf8");
+  const compose = readFileSync(COMPOSE_YML, "utf8");
+  const FILES = ["api-key.txt", "webhook-secret.txt", "aadhaar-key.txt"] as const;
+  const ENV_LINES = [
+    "HMIS_BIOATTEND_API_KEY_FILE: /run/hmis/bioattend/api-key.txt",
+    "HMIS_BIOATTEND_WEBHOOK_SECRET_FILE: /run/hmis/bioattend/webhook-secret.txt",
+    "HMIS_BIOATTEND_AADHAAR_KEY_FILE: /run/hmis/bioattend/aadhaar-key.txt",
+  ];
+  const MOUNT = "- ./bioattend:/run/hmis/bioattend:ro";
+
+  function bioattendBlock(): string {
+    const start = deploySource.indexOf('BIOATTEND_DIR="${HMIS_BIOATTEND_DIR:-');
+    const end = deploySource.indexOf("# (end of the bioattend secrets)", start);
+    if (start < 0 || end < 0) throw new Error("deploy.sh: the bioattend block has moved — this parser is stale");
+    const block = deploySource.slice(start, end);
+    expect(stepTwoBlock(deploySource)).toContain(block);
+    return block;
+  }
+
+  it("the api AND the worker are told the three paths and mount the directory read-only — never a file, never a value", () => {
+    const api = compose.slice(compose.indexOf("\n  api:"), compose.indexOf("\n  worker:"));
+    const worker = compose.slice(compose.indexOf("\n  worker:"), compose.indexOf("\n  caddy:"));
+    for (const service of [api, worker]) {
+      for (const line of ENV_LINES) expect(service).toContain(line);
+      expect(service).toContain(MOUNT);
+    }
+    expect(compose.split(MOUNT)).toHaveLength(3); // those two services and nobody else
+    for (const line of ENV_LINES) expect(compose.split(line)).toHaveLength(3);
+    expect(compose).not.toMatch(/(api-key|webhook-secret|aadhaar-key)\.txt:\/run/); // a single-file bind mount
+    // A secret is never an environment VALUE: `docker inspect` must not be able to print one.
+    expect(compose).not.toMatch(/BIOATTEND_(API_KEY|WEBHOOK_SECRET|AADHAAR_KEY):/);
+    expect(compose).not.toMatch(/bio_[0-9a-f]{16}/);
+    expect(readFileSync(ENV_EXAMPLE, "utf8")).not.toMatch(/bio_[0-9a-f]{16}|BIOATTEND_(API_KEY|WEBHOOK_SECRET|AADHAAR_KEY)=/);
+  });
+
+  function runBlock(there: readonly string[], alreadyDeployed: readonly string[] = []): { status: number | null; out: string; dir: string } {
+    const dir = mkdtempSync(join(tmpdir(), "hmis-deploy-bioattend-"));
+    spawnSync("mkdir", ["-p", join(dir, "owner"), join(dir, "deploy")]);
+    if (alreadyDeployed.length > 0) spawnSync("mkdir", ["-p", join(dir, "deploy", "bioattend")]);
+    for (const f of alreadyDeployed) writeFileSync(join(dir, "deploy", "bioattend", f), `old-${f}`);
+    for (const f of there) writeFileSync(join(dir, "owner", f), `secret-value-of-${f}`);
+    const script = ["set -euo pipefail", 'numeric_own() { printf "OWN %s\\n" "$*"; }', bioattendBlock()].join("\n");
+    const r = spawnSync("bash", ["-c", script], { env: { PATH: process.env.PATH ?? "", DEPLOY_DIR: join(dir, "deploy"), HMIS_BIOATTEND_DIR: join(dir, "owner") }, encoding: "utf8" });
+    return { status: r.status, out: `${r.stdout}${r.stderr}`, dir };
+  }
+
+  it("with NO files on the host the step succeeds, makes the directory the mount needs, copies nothing and says attendance stays off", () => {
+    const r = runBlock([]);
+    try {
+      expect(r.status).toBe(0);
+      expect(readdirSync(join(r.dir, "deploy", "bioattend"))).toEqual([]);
+      expect(r.out.match(/stays off; nothing else is affected/g)).toHaveLength(3);
+      expect(r.out).toContain(`OWN 0:1000 ${join(r.dir, "deploy", "bioattend")}\n`);
+    } finally { rmSync(r.dir, { recursive: true, force: true }); }
+  });
+
+  it("with the three files on the host each is copied where both services look, handed over by number, and never printed", () => {
+    const r = runBlock(FILES);
+    try {
+      expect(r.status).toBe(0);
+      for (const f of FILES) {
+        expect(readFileSync(join(r.dir, "deploy", "bioattend", f), "utf8")).toBe(`secret-value-of-${f}`);
+        expect(r.out).toContain(`bioattend ${f} installed`);
+        expect(r.out).toContain(`OWN 0:1000 ${join(r.dir, "deploy", "bioattend", f)}`);
+      }
+      expect(r.out).not.toContain("secret-value-of");
+    } finally { rmSync(r.dir, { recursive: true, force: true }); }
+  });
+
+  it("each file stands alone: one present is installed, one already deployed is kept, one absent is said to be off", () => {
+    const r = runBlock(["api-key.txt"], ["webhook-secret.txt"]);
+    try {
+      expect(r.status).toBe(0);
+      expect(readdirSync(join(r.dir, "deploy", "bioattend")).sort()).toEqual(["api-key.txt", "webhook-secret.txt"]);
+      expect(readFileSync(join(r.dir, "deploy", "bioattend", "webhook-secret.txt"), "utf8")).toBe("old-webhook-secret.txt");
+      expect(r.out).toContain("bioattend api-key.txt installed");
+      expect(r.out).toContain("no webhook-secret.txt in");
+      expect(r.out).toContain("stays in use");
+      expect(r.out).toMatch(/no aadhaar-key\.txt in .* stays off/);
+    } finally { rmSync(r.dir, { recursive: true, force: true }); }
+  });
+
+  it("auto-deploy carries exactly the three files to production's host root-only, never prints them, and sends nothing when the folder is absent here", () => {
+    const auto = readFileSync(resolve(REPO_ROOT, "tools", "auto-deploy.sh"), "utf8");
+    const start = auto.indexOf('BIOATTEND_DIR="${HMIS_BIOATTEND_DIR:-/root/.config/hmis/bioattend}"');
+    const block = auto.slice(start, auto.indexOf("\nfi\n", start));
+    expect(start).toBeGreaterThan(0);
+    expect(block).toContain("--chmod=D700,F600");
+    expect(block).toContain("install -d -m 0700");
+    for (const f of FILES) expect(block).toContain(`--include='${f}'`);
+    expect(block).toContain("--exclude='*'");
+    expect(block).not.toMatch(/\bcat\b|rsync[^\n]*\s-[a-z]*v|--itemize|set -x|--delete/);
+    expect(block).toContain('[ -d "$BIOATTEND_DIR" ]');
+  });
+});
+
 describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)", () => {
   const deploySource = readFileSync(DEPLOY_SH, "utf8");
   const scriptsDir = resolve(REPO_ROOT, "apps", "core", "scripts");
@@ -503,7 +834,8 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
     // 16 since Phase 11i T2 added `standup-check.js` — which is NOT a seed and is deliberately not
     // in SEED_STEP_SCRIPTS: it runs AFTER the gate and writes nothing. It appears here only because
     // this parser counts every `compose run --rm api node dist/scripts/*.js` line.
-    expect(order).toHaveLength(16);
+    // 17 since decision 0067 added `seed-outside-tests.js` after `seed-lab.js` (the outside-test list).
+    expect(order).toHaveLength(17);
     expect(order[0]).toBe("migrate.js");
     expect(order[1]).toBe("seed-cursors.js");
   });
@@ -827,13 +1159,15 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
       expect(uat.stderr).toMatch(/deploy directory .* does not exist/);
     });
 
-    it("skips the stanza, the cron and the real-hostname edge check on uat, and nothing else", () => {
-      // Each of the three is production-only BY NATURE (no repository, no backup to schedule, no
-      // public hostname). Everything else — build, config, migrate, seeds, gate, census, service
+    it("skips the stanza and the cron on uat, walks the edge gate on the staging hostname, and nothing else", () => {
+      // The two skips are production-only BY NATURE (no repository, no backup to schedule); the
+      // edge gate only changes address, to the staging site production's caddy fronts. Everything else — build, config, migrate, seeds, gate, census, service
       // census, restarts — must be the same code, or the rehearsal proves nothing about the deploy.
       expect(deploySource).toMatch(/if \[ "\$TARGET" = "uat" \]; then\n {2}# 11i T3 \/ D1 — UAT has no backup repository/);
       expect(deploySource).toMatch(/note "target uat — no backup or restore-drill cron installed"/);
-      expect(deploySource).toMatch(/SITE_BASE="https:\/\/\$UAT_SITE:8443"/);
+      expect(deploySource).toMatch(/SITE_BASE="https:\/\/\$UAT_SITE"$/m);
+      // Production's caddy terminates TLS for the staging hostname over ACME, so no --insecure.
+      expect(deploySource).not.toMatch(/--insecure/);
       // and the migrate/seed/gate block is NOT behind a target branch
       expect(deploySource).not.toMatch(/if \[ "\$TARGET" = "uat" \]; then[\s\S]{0,200}migrate\.js/);
     });
@@ -854,11 +1188,15 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
       expect(uatCompose).not.toMatch(/external:\s*true/);
       expect(uatCompose).not.toMatch(/^\s+name:\s/m);
       // The two ports production holds, replaced rather than merged — compose APPENDS port lists.
-      // 8443 ON BOTH SIDES: this assertion used to pin `8443:443`, which is the inverted map that
-      // kept UAT from ever answering — `Caddyfile.uat`'s site address is `:8443`, so caddy binds
-      // 8443 INSIDE the container and publishing host 8443 to container 443 pointed at nothing.
-      // The test agreed with the bug, which is why nothing was red.
-      expect(uatCompose).toMatch(/ports: !override \["8443:8443"\]/);
+      // Container side 8080 matches `Caddyfile.uat`'s site address: this assertion once pinned
+      // `8443:443`, the inverted map that kept UAT from ever answering while the test agreed.
+      // Host side is docker0's address ONLY: docker's published ports bypass ufw, so a bare
+      // "8444:8080" would put an unauthenticated-TLS UAT on the public IP. Production's caddy
+      // reaches it through host-gateway for https://stagehmis.crkmch.com.
+      expect(uatCompose).toMatch(/ports: !override \["172\.17\.0\.1:8444:8080"\]/);
+      // ...and the UAT pre-flight checks THAT port, not the retired 8443.
+      expect(deploySource).toMatch(/if port_in_use 8444; then/);
+      expect(deploySource).not.toMatch(/port_in_use 8443/);
       expect(uatCompose).toMatch(/ports: !override \["127\.0\.0\.1:5435:5432"\]/);
       expect(uatCompose).not.toMatch(/"80:80"|"443:443"|5434/);
     });
@@ -942,6 +1280,11 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
       });
       expect(byDir.status).not.toBe(0);
       expect(byDir.stderr).toMatch(/that is production's/);
+    });
+
+    it("uat-reset.sh seeds the STANDARD lab catalogue, which ships in the image (#643)", () => {
+      const sh = readFileSync(UAT_RESET_SH, "utf8");
+      expect(sh).toMatch(/-e LAB_CATALOGUE=standard api node dist\/scripts\/seed-lab-catalogue\.js/);
     });
 
     it("uat-reset.sh runs the DEPLOY'S seed list, in the deploy's order", () => {

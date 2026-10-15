@@ -258,7 +258,7 @@ export function LineList({
           {scanNote === null ? null : <span role="status" style={{ fontSize: 12, color: "var(--gold-ink, #9a6208)" }}>{scanNote}</span>}
         </div>
       ) : null}
-      <div style={{
+      <div className="pd-lhead" style={{
         display: "flex", alignItems: "center", gap: 11, padding: "9px 15px", marginTop: 13, background: "var(--wash)",
         border: "1px solid var(--line)", borderRadius: "7px 7px 0 0",
       }}>
@@ -499,6 +499,7 @@ function LineRow({
 
   /* The line's own money at today's shelf price: quantity × the SERVER's quote, and the rate beside it. */
   /* A split line is given as ONE prescription line: its batches' quantities together. */
+  const trayQty = [line, ...parts].filter((p) => p.fromLooseTray === true).reduce((n, p) => n + (p.qtyBase ?? 0), 0);
   const qtyNow = parts.length > 0 && line.qtyBase !== null ? parts.reduce((n, p) => n + (p.qtyBase ?? 0), line.qtyBase) : (qty ?? line.qtyBase);
   const money = line.quote == null || qtyNow === null || declined
     ? null
@@ -604,7 +605,7 @@ function LineRow({
 
   return (
     <section data-testid={id} onFocusCapture={onFocusLine} onMouseDown={onFocusLine} style={{ borderTop: line.lineIdx === 0 ? "none" : "1px solid var(--line2)", boxShadow: `inset 3px 0 0 ${bar}` }}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "12px 15px" }}>
+      <div className="pd-lrow" style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "12px 15px" }}>
         <span style={{ width: 21, flexShrink: 0, paddingTop: 1 }}>
           {editable ? (
             <input
@@ -675,10 +676,22 @@ function LineRow({
 
           {/* The board's FEFO batch & shelf chip: the batch that goes out, and where it sits. */}
           {chipShown ? (
-            <span style={{ display: "block" }}><BatchChip line={line} parts={parts} tick={tick} onOpen={onOpenBatch} /></span>
+            <span style={{ display: "block" }}>
+              <BatchChip line={line} parts={parts} tick={tick} onOpen={onOpenBatch} />
+              {/* Owner ruling 2026-10-03 — loose tablets from the loose tray, not a fresh strip. */}
+              {trayQty > 0 ? <span className="pill gd" data-testid={`${id}-loose-tray`} style={{ marginLeft: 6 }}>{t("pharmacyDesk.looseTray")} × {trayQty}</span> : null}
+            </span>
           ) : line.location != null && given !== null ? (
             <span className="pill" data-testid={`${id}-where`} style={{ marginTop: 5 }}>{line.location}</span>
           ) : null}
+
+          {/* OWNER 2026-10-02 — what to tell the patient, from the generic's REVIEWED monograph. Absent when there is none. */}
+          {line.counselling == null ? null : (
+            <span data-testid={`${id}-counselling`} style={{ display: "block", marginTop: 5, fontSize: 12, color: "var(--dim)" }}>
+              <b>{t("pharmacyDesk.counselling.label")}</b> {line.counselling.en}
+              {line.counselling.hi == null ? null : <span lang="hi" style={{ display: "block" }}>{line.counselling.hi}</span>}
+            </span>
+          )}
 
           {note === null ? null : (
             <span role={note.alert === true ? "alert" : undefined} data-testid={note.testId === undefined ? undefined : `${id}-${note.testId}`} style={tone(note)}>{note.text}</span>
@@ -935,7 +948,7 @@ function safetyPills(line: WireDispenseLine, id: string, t: (key: string) => str
   return (
     <>
       {high ? <span className="pill rd" data-testid={`${id}-high-alert`} title={t("pharmacyDesk.safety.highAlertTitle")}>{t("pharmacyDesk.safety.highAlert")}</span> : null}
-      {lasa ? <span className="pill gd" data-testid={`${id}-lasa`} title={t("pharmacyDesk.safety.lasaTitle")}>{t("pharmacyDesk.safety.lasa")}</span> : null}
+      {lasa ? <span className="pill gd" data-testid={`${id}-lasa`} title={line.item?.lasaNote == null ? t("pharmacyDesk.safety.lasaTitle") : `${t("pharmacyDesk.safety.lasaTitle")} ${line.item.lasaNote}`}>{t("pharmacyDesk.safety.lasa")}</span> : null}
     </>
   );
 }

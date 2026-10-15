@@ -42,10 +42,17 @@ import type { ModuleManifest } from "../modules/manifest";
 export const deskManifest: ModuleManifest = {
   key: "desk",
   title: "Desk — the home screen, the daily report and the staff view",
-  menu: [{ label: "Staff reports", path: "/staff", permission: "staff.reports.read" }],
+  menu: [
+    { label: "Staff reports", path: "/staff", permission: "staff.reports.read" },
+    // E0.1 (decision 0064) — the copilot is the desk's agent, so its health read is declared here.
+    { label: "Copilot health", path: "/copilot-health", permission: "copilot.health.read" },
+  ],
   permissions: [
     "staff.reports.read", "staff.reports.drill",
     "staff.reports.history.year", "staff.reports.history.full",
+    "copilot.health.read",
+    // E0.3 (plan, decision 0064) — the copilot's halt switch: throw it; clear read/act/draft; clear global (owner only).
+    "copilot.halt.set", "copilot.halt.clear", "copilot.halt.clear_global",
   ],
   subscriptions: [],
 };

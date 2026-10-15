@@ -26,3 +26,6 @@ packages/*/test/**/*.js
 packages/*/test/**/*.d.ts
 packages/*/test/**/*.js.map
 *.tsbuildinfo
+
+# Serena language-server cache (per lane, ~200 MB)
+.serena/

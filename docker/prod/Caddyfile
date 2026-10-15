@@ -121,6 +121,8 @@
 				request>headers>X-Agent-Key replace REDACTED
 				request>headers>X-Totp-Code replace REDACTED
 				request>headers>Idempotency-Key replace REDACTED
+				request>headers>X-Bioattend-Signature replace REDACTED
+				request>headers>X-Bioattend-Timestamp replace REDACTED
 				request>uri query {
 					replace q REDACTED
 					replace text REDACTED
@@ -209,6 +211,86 @@ hmis.crkmch.com {
 		reverse_proxy api:3000
 	}
 
+	# The staff Android app (owner 2026-10-05: no Play Store, ever; 2026-10-06: every staff phone at
+	# once, the owner shares the link himself). apps/mobile/scripts/build-apk.sh writes the
+	# PRODUCTION build to /opt/hmis-context/mobile-apk-prod on the host; docker-compose.prod.yml
+	# mounts that folder read-only at /downloads.
+	#
+	# NO PASSWORD, DELIBERATELY (DECIDED 2026-10-06, plan 2026-10-05-mobile-staff-app §7): an APK
+	# holds no secret — only this site's address — and nothing in it works without a staff login.
+	# A phone's installer and the app's own update check cannot answer a password prompt either.
+	# What it costs: anybody who learns the link can download the app and read its code. So the
+	# link is UNLISTED — no screen links to it — and NOTHING is browsable: only a file named
+	# `hmis-staff-…` ending .apk, .json or .png is served, every other /app/ path is a 404, and
+	# there is no directory listing.
+	#
+	# `/app/*`, never `/app*`: /appointment and /approvals are SCREENS (caddyfile-parity.test.ts).
+	@app_file path_regexp ^/app/hmis-staff-[A-Za-z0-9._-]+\.(apk|json|png)$
+	handle @app_file {
+		uri strip_prefix /app
+		@apk path *.apk
+		header @apk Content-Type application/vnd.android.package-archive
+		header @apk Content-Disposition attachment
+		# The update feed is read on every app start; a cached one hides a new build.
+		@feed path *.json
+		header @feed Cache-Control "no-store"
+		root * /downloads
+		file_server
+	}
+	# HMIS PRINT FOR WINDOWS — the counter's own print program (decision 0047, owner 2026-10-07).
+	# The installer zip, the app bundle an installed program updates from, and the feed that names
+	# both (tools/print-relay/build-windows.sh), from the same read-only folder as the APKs.
+	# Unlisted and with no password, for the APK's reason: a program cannot answer a prompt, and
+	# the zip holds no secret — a computer prints nothing until an administrator's one-time code
+	# enrols it. Only `hmis-print-…` ending .zip or .json; nothing else matches.
+	@print_file path_regexp ^/app/hmis-print-[A-Za-z0-9._-]+\.(zip|json)$
+	handle @print_file {
+		uri strip_prefix /app
+		@print_zip path *.zip
+		header @print_zip Content-Type application/zip
+		header @print_zip Content-Disposition attachment
+		# The feed is read by every installed program; a cached one hides a new version.
+		@print_feed path *.json
+		header @print_feed Cache-Control "no-store"
+		root * /downloads
+		file_server
+	}
+	# OVER-THE-AIR UPDATES for the staff app (owner 2026-10-06: an update "should happen
+	# automatically" — apps/mobile/src/ota.ts, apps/mobile/scripts/publish-ota.sh). A JavaScript
+	# change reaches the phones as a signed bundle in the same folder as the APKs; no expo.dev cloud.
+	#
+	# The app asks ONE address and names its native fingerprint in a header; the folder for that
+	# fingerprint is chosen here, so a bundle never reaches an APK it was not built against. The
+	# header is matched as exactly 40 hex digits before it is ever part of a path. The manifest is a
+	# file the publish script wrote whole — one multipart body carrying the manifest and its
+	# signature — and this boundary is the one it was written with (scripts/ota-manifest.js).
+	# No password, for the reason above: nothing here works without the signature the APK checks.
+	@ota_manifest {
+		path /app/ota/production/manifest
+		header_regexp ota_runtime Expo-Runtime-Version ^[a-f0-9]{40}$
+	}
+	handle @ota_manifest {
+		rewrite * /ota/production/{re.ota_runtime.0}/manifest
+		header Content-Type "multipart/mixed; boundary=hmis-ota"
+		header expo-protocol-version 1
+		header expo-sfv-version 0
+		# Asked on every app start; a cached answer hides a new bundle.
+		header Cache-Control "private, max-age=0"
+		root * /downloads
+		file_server
+	}
+	# Every file is named by its own SHA-256, so a name never changes meaning.
+	@ota_file path_regexp ^/app/ota/production/[a-f0-9]{40}/files/[a-f0-9]{64}\.[A-Za-z0-9]+$
+	handle @ota_file {
+		uri strip_prefix /app
+		header Cache-Control "public, max-age=31536000, immutable"
+		root * /downloads
+		file_server
+	}
+	handle /app/* {
+		respond 404
+	}
+
 	# The SPA. /srv is where the Dockerfile's `web` target puts the vite build (T1-1); the
 	# index.html fallback is what makes client-side routing survive a hard refresh.
 	handle {
@@ -225,6 +307,34 @@ hmis.crkmch.com {
 # catch-all and the banner stayed on exactly the request that matters. `http://` with no host
 # answers every Host, as the automatic catch-all did, and `{host}{uri}` is the same Location.
 # ACME HTTP-01 challenges are still answered by Caddy itself before this route runs.
+# ═══ STAGING — https://stagehmis.crkmch.com (owner 2026-09-30) ═══
+#
+# The UAT stack (`HMIS_TARGET=uat deploy.sh`) cannot take 80 or 443, so THIS caddy terminates TLS
+# for the staging hostname and hands every request to UAT's own caddy, which applies basic auth,
+# the security headers and the /api split exactly as it would stand alone. The upstream is UAT's
+# port on docker0 (172.17.0.1:8444, see docker-compose.uat.yml), reached through the
+# `host.docker.internal:host-gateway` entry in docker-compose.prod.yml. Production and UAT share no
+# network: this is a host port, not a shared bridge.
+#
+# If UAT is down this site answers 502 and production's own site is untouched.
+#
+# This block comes AFTER `hmis.crkmch.com` on purpose: deploy.sh reads the FIRST hostname site as
+# production's own for its edge gate.
+stagehmis.crkmch.com {
+	encode zstd gzip
+	import access_log
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+		-Via
+	}
+	handle_errors {
+		header -Server
+		respond "" {err.status_code}
+	}
+	reverse_proxy host.docker.internal:8444
+}
+
 http:// {
 	import access_log
 	header -Server

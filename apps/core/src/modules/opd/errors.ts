@@ -12,6 +12,21 @@ export type OpdErrorCode =
   | "patient_not_found" | "duplicate_suspected" | "registration_not_permitted"
   | "invalid_slot" | "slot_taken" | "slot_in_past" | "doctor_on_leave" | "unknown_appointment"
   | "appointment_state_conflict" | "appointment_not_today"
+  // Owner 2026-10-09 — tele-call. A tele booking with no usable mobile number is a malformed
+  // request (400); the desk's check-in of a tele-call is well formed and the wrong door (409).
+  | "tele_phone_required" | "tele_call_opens_at_slot"
+  // Paying for a tele-call at the desk. Not a tele appointment, or a tender that names no UPI
+  // reference, is a malformed request (400); an amount that is not the quote carries the quote in
+  // `detail.expectedPaise` (409, listed); already paid, or no longer payable, is a state (409 by rule).
+  | "not_a_tele_appointment" | "tele_upi_reference_required" | "tele_amount_mismatch" | "tele_advance_state_conflict"
+  // The doctor's half. A tele visit is completed, and its prescription issued, only after the
+  // doctor records that they SPOKE to the patient (409, listed — the request is well formed and
+  // the call has not happened). Calling or recording an outcome on a visit that is not a tele
+  // visit is a malformed request (400).
+  | "tele_outcome_required" | "not_a_tele_visit"
+  // 'Spoke' could not be recorded because what must be written beside it could not be (409, listed).
+  // The message is the doctor's — neutral, no money word; the cause goes to the log and `tele.bill_failed`.
+  | "tele_save_failed"
   | "unknown_encounter" | "encounter_state_conflict" | "edit_lease_state_conflict" | "consult_gate_refused" | "unknown_session" | "session_closed" | "doctor_out"
   // The co-pilot's syndrome key. A key the knowledge file does not hold is a CLIENT error with a
   // domain name, not a 500 — the screen sends what a previous build's suggest route gave it.
@@ -20,6 +35,8 @@ export type OpdErrorCode =
   // deliberately also what a doctor gets for another doctor's row: not-found and not-yours must
   // answer identically, or the code becomes a way to probe whose template an id belongs to.
   | "unknown_advice_template" | "advice_template_incomplete" | "advice_keyword_invalid"
+  // Decision 0051 — the owner's list of learned medicine nicknames; 404 by the `unknown_` rule.
+  | "unknown_nickname"
   | "unknown_complaint_concept" | "complaint_term_invalid" | "complaint_term_already_mapped"
   | "call_conflict" | "unknown_queue_entry" | "queue_entry_state_conflict" | "invalid_transfer"
   | "invalid_vitals" | "vitals_incomplete"
@@ -66,7 +83,35 @@ export type OpdErrorCode =
   | "glasses_rx_empty"
   // The consult layout (layout.ts): a body the one validator refuses, and a save that lost a race
   // for its version number (409 by the `_state_conflict` rule — re-read, then save again).
-  | "invalid_layout" | "layout_state_conflict";
+  | "invalid_layout" | "layout_state_conflict"
+  // Owner 2026-10-05 — "Wrong department — move patient". A move to the department the visit is
+  // already in is the same-department "change the doctor" (400); a visit with a bill that still
+  // stands is a credit note first (409 by the `_state_conflict` rule).
+  | "move_same_department" | "visit_billed_state_conflict"
+  // 2026-10-06 — a completion that would drop prescription lines written and never issued
+  // (production 2026-09-23). 409 by the `_state_conflict` rule: issue or clear them, then complete.
+  | "rx_unissued_state_conflict"
+  // Owner ruling 2026-10-06 — consulted on paper. `paper_consult_not_permitted` is an authorisation
+  // answer (403, beside `transcription_not_permitted`); the `_state_conflict` pair is 409 by rule:
+  // a visit the paper road cannot close or reopen as it stands, and a visit whose prescription the
+  // doctor has already issued on the screen (the desk must not type over it).
+  | "paper_consult_not_permitted" | "paper_consult_state_conflict" | "doctor_rx_exists_state_conflict"
+  // The doctor's own screen acting on a visit a desk has since closed from paper (409): a sentence, not a fault.
+  | "closed_on_paper_state_conflict"
+  // Owner 2026-10-07 — the guardian came with the reports and the patient did not. Only a RETURNING
+  // patient (revisit or renewal) may skip the bay this way (409, listed in `OPD_CONFLICT_CODES`: the request is well formed, the visit
+  // is the wrong kind); an account holding neither the bay's nor the desk's grant is refused 403; a
+  // relation outside the fixed list or an over-long name is a malformed request (400).
+  | "patient_absent_returning_only" | "patient_absent_not_permitted" | "invalid_patient_absent"
+  // #771 — undoing the mark once the doctor has the visit (called, in consult, closed) is a state (409 by suffix).
+  | "patient_absent_undo_state_conflict"
+  // PHONE CONSULT (decision 0048) — a doctor's sets and the hospital's starter sets (`rx-sets.ts`).
+  // Not-found and not-yours answer identically (404). A controlled medicine in a set is a malformed
+  // request (400); signing or editing a department's starter set without being its unit head is 403.
+  | "unknown_rx_set" | "invalid_rx_set" | "rx_set_controlled" | "rx_set_not_permitted"
+  // The spoken note (`consult-voice.ts`). Voice being off, unconfigured or over the day's cap is a
+  // STATE (409, `detail.why`), a clip too long or empty is a malformed request (400).
+  | "voice_unavailable_state_conflict" | "invalid_voice_clip" | "unknown_voice_note" | "voice_provider_failed";
 
 export class OpdError extends Error {
   constructor(

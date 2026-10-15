@@ -49,7 +49,7 @@ export type WireReturnPlanGroup = { vendorId: string; vendorCode: string; vendor
 export type WireDestroyCandidate = {
   itemId: string; itemCode: string; itemName: string; batchId: string; batchNo: string; expiryDate: string | null;
   storeResourceId: string; storeCode: string; storeName: string; qtyBase: number; baseUom: string; valuePaise: number;
-  supplierName: string; why: "past_window" | "no_supplier";
+  supplierName: string; why: "past_window" | "no_supplier" | "damage_tray";
 };
 export type WireReturnPlan = { asOf: string; groups: WireReturnPlanGroup[]; toDestroy: WireDestroyCandidate[]; alreadyHeld: number; taxablePaise: number };
 

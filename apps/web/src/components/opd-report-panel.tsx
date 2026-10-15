@@ -4,8 +4,9 @@ import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { todayIst } from "../lib/desk-api";
 import { downloadReportCsv, fetchReport, openReportPdf } from "../lib/opd-reports-api";
-import type { DayCounts, OpdReport, ReportRange, Selection } from "../lib/opd-reports-api";
+import type { DayCounts, OpdReport, OpenedBy, ReportRange, Selection } from "../lib/opd-reports-api";
 import "../screens/opd-report.css";
+import { dateLocale } from "../lib/date-locale";
 
 /**
  * ═══ THE OPD REPORT, WHERE THE DAY IS ALREADY OPEN ═══
@@ -28,12 +29,12 @@ export function yesterdayOf(date: string): string {
 
 /** `Sunday, 20 Sept 2026` — the day in words, so a picked date is never read wrong. */
 export function longDay(date: string): string {
-  return new Intl.DateTimeFormat("en-IN", {
+  return new Intl.DateTimeFormat(dateLocale(), {
     timeZone: "UTC", weekday: "long", day: "numeric", month: "short", year: "numeric",
   }).format(new Date(`${date}T00:00:00Z`));
 }
 
-const SHORT = new Intl.DateTimeFormat("en-IN", { timeZone: "UTC", day: "numeric", month: "short" });
+const SHORT = { format: (d: Date | number): string => new Intl.DateTimeFormat(dateLocale(), { timeZone: "UTC", day: "numeric", month: "short" }).format(d) };
 
 /** `Mon 14 Sep – Sat 19 Sep 2026 · 6 days`, or the single day in words. */
 export function rangeText(range: { from: string; to: string }): string {
@@ -86,8 +87,26 @@ export function DayFigures({ counts, testId }: { counts: DayCounts; testId?: str
       {fig(counts.new, t("dayReport.new"), t("dayReport.newHint"), "new")}
       {fig(counts.revisit, t("dayReport.revisit"), t("dayReport.revisitHint"), "revisit")}
       {fig(counts.renewal, t("dayReport.renewal"), t("dayReport.renewalHint"), "renewal")}
+      {fig(counts.opened, t("dayReport.opened"), t("dayReport.openedHint"), "opened")}
       {fig(counts.booked, t("dayReport.booked"), t("dayReport.bookedHint"), "booked")}
     </div>
+  );
+}
+
+/**
+ * "Opened by: Asha Devi 12 · Suresh Pillai 9" (owner, 2026-10-07). The server sends the list only to a
+ * reader who holds the staff figures, so there is nothing to hide here — null draws nothing.
+ */
+export function OpenedByLine({ openedBy, testId }: { openedBy: OpenedBy[] | null; testId: string }): React.ReactElement | null {
+  const { t } = useTranslation();
+  if (openedBy === null || openedBy.length === 0) return null;
+  return (
+    <p className="odr-openedby" data-testid={testId}>
+      <b>{t("dayReport.openedBy")}</b>{" "}
+      {openedBy.map((o, i) => (
+        <span key={`${o.name}-${String(i)}`} className="odr-who">{o.name} <span className="mo">{o.count}</span></span>
+      ))}
+    </p>
   );
 }
 

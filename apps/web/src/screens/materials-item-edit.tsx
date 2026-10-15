@@ -46,6 +46,11 @@ export function ItemEditPanel({ itemId, onClose }: { itemId: string; onClose: ()
   const [storage, setStorage] = useState("ambient");
   const [shelfLife, setShelfLife] = useState("");
   const [manufacturer, setManufacturer] = useState("");
+  const [marketedBy, setMarketedBy] = useState("");
+  const [mfgLicenceNo, setMfgLicenceNo] = useState("");
+  const [pharmacopoeia, setPharmacopoeia] = useState("");
+  const [storageMaxC, setStorageMaxC] = useState("");
+  const [lasaNote, setLasaNote] = useState("");
   const [leadTime, setLeadTime] = useState("");
   const [lasa, setLasa] = useState(false);
   const [highAlert, setHighAlert] = useState(false);
@@ -60,7 +65,10 @@ export function ItemEditPanel({ itemId, onClose }: { itemId: string; onClose: ()
     const d = item.data;
     if (d === undefined) return;
     setHsn(d.hsnCode ?? ""); setStorage(d.storageClass); setShelfLife(d.shelfLifeDays === null ? "" : String(d.shelfLifeDays));
-    setManufacturer(d.manufacturer ?? ""); setLeadTime(d.leadTimeDays == null ? "" : String(d.leadTimeDays));
+    setManufacturer(d.manufacturer ?? ""); setMarketedBy(d.marketedBy ?? "");
+    setMfgLicenceNo(d.mfgLicenceNo ?? ""); setPharmacopoeia(d.pharmacopoeia ?? ""); setLasaNote(d.lasaNote ?? "");
+    setStorageMaxC(d.storageMaxC == null ? "" : String(d.storageMaxC));
+    setLeadTime(d.leadTimeDays == null ? "" : String(d.leadTimeDays));
     setLasa(d.lasa === true); setHighAlert(d.highAlert === true); setSchedule(d.scheduleFlag ?? "");
     setGst(d.gstRateBps === null ? "" : String(d.gstRateBps));
   }, [item.data]);
@@ -91,7 +99,10 @@ export function ItemEditPanel({ itemId, onClose }: { itemId: string; onClose: ()
     try {
       await patchItem(d.id, {
         hsnCode: hsn.trim() === "" ? null : hsn.trim(), storageClass: storage, shelfLifeDays: whole(shelfLife),
-        manufacturer: manufacturer.trim() === "" ? null : manufacturer.trim(), leadTimeDays: whole(leadTime), lasa, highAlert,
+        manufacturer: manufacturer.trim() === "" ? null : manufacturer.trim(), marketedBy: marketedBy.trim() === "" ? null : marketedBy.trim(),
+        mfgLicenceNo: mfgLicenceNo.trim() === "" ? null : mfgLicenceNo.trim(), pharmacopoeia: pharmacopoeia.trim() === "" ? null : pharmacopoeia.trim(),
+        storageMaxC: whole(storageMaxC), lasaNote: lasaNote.trim() === "" ? null : lasaNote.trim(),
+        leadTimeDays: whole(leadTime), lasa, highAlert,
       });
       if (canGst && gst !== "" && Number(gst) !== d.gstRateBps) await setGstSlab(d.id, Number(gst));
       if (canSchedule && schedule !== (d.scheduleFlag ?? "")) {
@@ -134,6 +145,26 @@ export function ItemEditPanel({ itemId, onClose }: { itemId: string; onClose: ()
             <label className="flex flex-col gap-1 text-sm">
               {t("materialsItems.edit.manufacturer")}
               <input className="rounded border px-2 py-1" value={manufacturer} onChange={(e) => setManufacturer(e.target.value)} />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              {t("materialsItems.edit.marketedBy")}
+              <input className="rounded border px-2 py-1" value={marketedBy} onChange={(e) => setMarketedBy(e.target.value)} />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              {t("materialsItems.edit.mfgLicenceNo")}
+              <input className="rounded border px-2 py-1" value={mfgLicenceNo} onChange={(e) => setMfgLicenceNo(e.target.value)} />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              {t("materialsItems.edit.pharmacopoeia")}
+              <input className="rounded border px-2 py-1" value={pharmacopoeia} onChange={(e) => setPharmacopoeia(e.target.value)} />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              {t("materialsItems.edit.storageMaxC")}
+              <input className="rounded border px-2 py-1" inputMode="numeric" value={storageMaxC} onChange={(e) => setStorageMaxC(e.target.value)} />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              {t("materialsItems.edit.lasaNote")}
+              <input className="rounded border px-2 py-1" value={lasaNote} onChange={(e) => setLasaNote(e.target.value)} />
             </label>
             <label className="flex flex-col gap-1 text-sm">
               {t("materialsItems.edit.leadTime")}

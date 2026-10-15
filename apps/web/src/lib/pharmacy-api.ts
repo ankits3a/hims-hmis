@@ -11,6 +11,8 @@ import type { Eye, TaperStep } from "./eye-line";
 export type WireSaleItem = {
   itemId: string; code: string; name: string; baseUom: string; gstRateBps: number | null;
   serviceId: string; serviceCode: string; category: string; active: boolean; itemActive: boolean;
+  /** The standing discount to the patient on this medicine, in basis points (0 = none). Absent from an older server. */
+  discountBps?: number;
 };
 
 export type WireSaleCandidate = { id: string; code: string; name: string; baseUom: string; gstRateBps: number | null };
@@ -34,6 +36,11 @@ export async function fetchSaleCandidates(q: { search?: string } = {}): Promise<
 
 export async function registerSaleItem(itemId: string): Promise<{ itemId: string; serviceId: string; serviceCode: string; category: string }> {
   return api("POST", "/pharmacy/sale-items", { itemId });
+}
+
+/** OWNER 2026-10-02 — the in-charge's act: the standing discount to the patient on one medicine, 0 to 25%. */
+export async function setSaleItemDiscount(itemId: string, discountBps: number): Promise<void> {
+  await api<{ ok: true }>("PUT", `/pharmacy/sale-items/${itemId}/discount`, { discountBps });
 }
 
 export async function patchSaleItem(itemId: string, patch: { active: boolean }): Promise<void> {
@@ -75,7 +82,9 @@ export type WireDispenseLine = {
   qtyBase: number | null; scheduleFlag: string | null;
   orderedMedicine: WireMedicine | null; dispensedMedicine: WireMedicine | null;
   /** GAP CLOSURE A2 — `lasa` / `highAlert`: the item master's NABH safety flags. Absent from an older server. */
-  item: { id: string; code: string; name: string; baseUom: string; uoms: { uom: string; toBaseMultiplier: number }[]; lasa?: boolean; highAlert?: boolean } | null;
+  item: { id: string; code: string; name: string; baseUom: string; uoms: { uom: string; toBaseMultiplier: number }[]; lasa?: boolean; highAlert?: boolean; lasaNote?: string | null } | null;
+  /** What to tell the patient about the medicine being given: from its generic's reviewed monograph. Absent from an older server. */
+  counselling?: { en: string; hi: string | null } | null;
   saleable: boolean; available: number | null; batchId: string | null; reservationId: string | null; ledgerEntryId: string | null;
   /** PD-D18 — where the item sits in the counter's store ("R-12"). Absent from an older server. */
   location?: string | null;
@@ -91,6 +100,8 @@ export type WireDispenseLine = {
   batches?: WireBatch[];
   /** PD-4 — once picked, the batch it was given from. Absent from an older server. */
   pickedBatch?: { batchNo: string; expiryDate: string | null } | null;
+  /** Owner ruling 2026-10-03 — this line is taken from the loose tray, not a fresh strip. */
+  fromLooseTray?: boolean;
   /** The salt(s) of the medicine the doctor wrote ("Amoxicillin + Clavulanic acid"). Absent from an older server. */
   salt?: string | null;
   /**
@@ -163,6 +174,8 @@ export type WireFindResult =
     kind: "none"; door: string; reason: "not_found" | "qr_invalid" | "no_prescription_today" | "restricted";
     /** 2026-09-30 — on `no_prescription_today`, who was found: the desk offers the paper-prescription door. */
     patient?: { id: string; uhid: string; name: string | null; alias: string | null };
+    /** 2026-10-02 — today's ticket for this patient was already handed over: that finished ticket. */
+    lastDispenseId?: string;
   };
 /** `about` is what the line says; `key` is the hit's identity, which a PD-9 authorisation names. */
 export type WireAlternativeBlock = { book: "allergy" | "interaction" | "duplicate" | "drug_disease"; about: string; key: string };
@@ -192,6 +205,12 @@ export async function fetchQueue(): Promise<WireQueueRow[]> {
 }
 export async function findAtCounter(q: string): Promise<WireFindResult> {
   return api<WireFindResult>("GET", `/pharmacy/find${qs({ q })}`);
+}
+/** `GET /pharmacy/find/suggest` — who the typed words could be; a tap runs `findAtCounter` on the UHID. */
+export type WireCounterSuggestion = WirePatientSummary & { hint: string | null };
+export async function suggestAtCounter(q: string): Promise<WireCounterSuggestion[]> {
+  const { items } = await api<{ items: WireCounterSuggestion[] }>("GET", `/pharmacy/find/suggest${qs({ q })}`);
+  return items;
 }
 export async function fetchDispense(id: string): Promise<WireDispense> {
   return api<WireDispense>("GET", `/pharmacy/dispenses/${id}`);
@@ -288,6 +307,10 @@ export async function setShelfLocation(itemId: string, storeResourceId: string, 
 export async function claimDispense(dispenseId: string, door: string, idempotencyKey: string): Promise<WireDispense> {
   return api<WireDispense>("POST", "/pharmacy/dispenses", { dispenseId, door }, idempotencyKey);
 }
+/** Owner 2026-10-03 — take over a colleague's held ticket, with a reason. */
+export async function takeOverDispense(dispenseId: string, reason: string): Promise<WireDispense> {
+  return api<WireDispense>("POST", `/pharmacy/dispenses/${encodeURIComponent(dispenseId)}/take-over`, { reason });
+}
 export type VerifyLine = { lineIdx: number; qtyBase: number; dispensedMedicineId?: string; patientConsent?: boolean };
 export async function verifyDispense(id: string, lines: VerifyLine[], idempotencyKey: string): Promise<WireDispense> {
   return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/verify`, { lines }, idempotencyKey);
@@ -304,9 +327,9 @@ export async function cancelBilledDispense(
 /** P6 — a sealed pack comes back after the hand-over. */
 export async function acceptReturn(
   id: string,
-  body: { lines: { lineIdx: number; qtyBase: number }[]; sealedIntact: true; reason: string; reasonClass: "mistake" | "genuine" },
+  body: { lines: { lineIdx: number; qtyBase: number }[]; sealedIntact: true; reason: string; reasonClass: "mistake" | "genuine"; /** Owner ruling 2026-10-02 — keep the amount as pharmacy credit instead of a refund request. */ settle?: "refund" | "credit"; /** Owner ruling 2026-10-03 — where loose tablets go. */ looseTo?: "loose" | "damage" },
   idempotencyKey: string,
-): Promise<{ dispense: WireDispense; creditNoteId: string; creditNoteNo: string; refundApprovalId: string }> {
+): Promise<{ dispense: WireDispense; creditNoteId: string; creditNoteNo: string; refundApprovalId: string | null; creditNotePaise?: number; creditKeptPaise?: number }> {
   return api("POST", `/pharmacy/dispenses/${id}/returns`, body, idempotencyKey);
 }
 export async function cancelDispense(id: string, reason: string): Promise<WireDispense> {
@@ -338,6 +361,8 @@ export type WirePricedDraft = {
   lines: WirePricedLine[];
   totals: { grossPaise: number; discountPaise: number; cgstPaise: number; sgstPaise: number; rawTotalPaise: number; netPayablePaise: number; roundingPaise: number };
   byTender?: { cash: TenderPayable; digital: TenderPayable };
+  /** Owner ruling 2026-10-02 — pharmacy credit this patient holds (absent from an older server). */
+  creditAvailablePaise?: number;
   discount?: WireDiscountQuote | null;
 };
 export async function previewBill(id: string, discount?: DiscountAsk | null): Promise<WirePricedDraft> {
@@ -348,7 +373,7 @@ export type Tender = { mode: "cash" | "upi" | "card"; amountPaise: number; refTe
 /** A sale discount on the bill; above 10% with the granted approval for THIS bill and discount. */
 export type BillDiscount = DiscountAsk & { approvalId?: string };
 /** GAP A3b — `credit`: the whole bill on the OWNER's granted `billing_credit_owner` approval (tenders empty). */
-export async function billDispense(id: string, input: { tenders: Tender[]; changeGivenPaise?: number; credit?: { reason: string; approvalId: string }; discount?: BillDiscount }, idempotencyKey: string): Promise<WireDispense> {
+export async function billDispense(id: string, input: { tenders: Tender[]; changeGivenPaise?: number; credit?: { reason: string; approvalId: string }; discount?: BillDiscount; /** Owner ruling 2026-10-02 — pharmacy credit kept at a return, spent first. */ useCreditPaise?: number }, idempotencyKey: string): Promise<WireDispense> {
   return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/bill`, input, idempotencyKey);
 }
 export type DiscountAskResult = { approvalId: string; tier: DiscountTier; amountPaise: number };
@@ -532,6 +557,8 @@ export type WireRetailPreview = {
   totals: { grossPaise: number; discountPaise: number; taxPaise: number; roundingPaise?: number; netPayablePaise: number };
   /** OWNER RULINGS 2026-09-30 — as on the desk's preview. Absent from an older server. */
   byTender?: { cash: TenderPayable; digital: TenderPayable };
+  /** Owner ruling 2026-10-02 — pharmacy credit this patient holds (absent from an older server). */
+  creditAvailablePaise?: number;
   discount?: WireDiscountQuote | null;
   checks: {
     allergies: { lineIdx: number; substance: string }[];
@@ -724,8 +751,19 @@ export type WirePaperRxContext = {
   rxDate: string;
   /** `pharmacy`: the desk's own no-fee visit (2026-09-30), not a consultation. */
   visits: { encounterId: string; visitNo: string; doctorId: string | null; doctorName: string | null; hasPrescription: boolean; pharmacy?: boolean }[];
-  doctors: { id: string; displayName: string; registrationNo: string | null }[];
+  doctors: { id: string; displayName: string; registrationNo: string | null; departmentId?: string | null; departmentName?: string | null }[];
 };
+
+/** Owner ruling 2026-10-02 — the desk's settings (`GET/PUT /pharmacy/settings`): quick desk mode. */
+export type WirePharmacySettings = { quickDesk: boolean; updatedBy: string | null; updatedAt: string | null };
+export async function fetchPharmacySettings(): Promise<WirePharmacySettings> {
+  const { settings } = await api<{ settings: WirePharmacySettings }>("GET", "/pharmacy/settings");
+  return settings;
+}
+export async function savePharmacySettings(patch: { quickDesk: boolean }): Promise<WirePharmacySettings> {
+  const { settings } = await api<{ settings: WirePharmacySettings }>("PUT", "/pharmacy/settings", patch);
+  return settings;
+}
 export type PaperRxLine = { itemId: string; qtyBase: number; dose?: string; frequency?: string; durationDays?: number | null };
 export type PaperRxBody = {
   patientId: string; doctorId?: string; rxDate: string;

@@ -219,7 +219,8 @@ describe("WASA L-09 — the edge does not name its software", () => {
   it("the site header block deletes Server and Via, on production and UAT alike", () => {
     for (const [name, tree, site] of [
       ["prod", prod, /^hmis\.crkmch\.com$/],
-      ["uat", uat, /^https:\/\/\{\$HMIS_UAT_SITE\}:8443$/],
+      ["staging", prod, /^stagehmis\.crkmch\.com$/],
+      ["uat", uat, /^http:\/\/\{\$HMIS_UAT_SITE\}:8080$/],
     ] as const) {
       const header = only(only(tree, site, `${name} site`), /^header$/, `${name} header block`);
       expect([name, header.lines]).toEqual([name, expect.arrayContaining(["-Server", "-Via"])]);
@@ -265,7 +266,7 @@ describe("WASA M-01 — the site sends a Content-Security-Policy", () => {
 
   for (const [name, tree, site] of [
     ["prod", prod, /^hmis\.crkmch\.com$/],
-    ["uat", uat, /^https:\/\/\{\$HMIS_UAT_SITE\}:8443$/],
+    ["uat", uat, /^http:\/\/\{\$HMIS_UAT_SITE\}:8080$/],
   ] as const) {
     it(`${name}: no framing, no plugins, and scripts only from this origin`, () => {
       const p = policyOf(tree, site, name);
@@ -284,7 +285,7 @@ describe("WASA M-01 — the site sends a Content-Security-Policy", () => {
       only(only(tree, site, "site"), /^header$/, "header block").lines.find((l) => l.startsWith("Content-Security-Policy"));
     const prodPolicy = text(prod, /^hmis\.crkmch\.com$/);
     expect(prodPolicy).toMatch(/^Content-Security-Policy/); // not two absences agreeing
-    expect(text(uat, /^https:\/\/\{\$HMIS_UAT_SITE\}:8443$/)).toBe(prodPolicy);
+    expect(text(uat, /^http:\/\/\{\$HMIS_UAT_SITE\}:8080$/)).toBe(prodPolicy);
   });
 });
 
@@ -301,5 +302,192 @@ describe("Owner 2026-09-27 — the site's own pages may use the camera", () => {
     const header = only(only(prod, /^hmis\.crkmch\.com$/, "prod site"), /^header$/, "prod header block");
     const policy = header.lines.filter((l) => l.startsWith("Permissions-Policy "));
     expect(policy).toEqual(['Permissions-Policy "geolocation=(), microphone=(), camera=(self)"']);
+  });
+});
+
+/**
+ * OWNER 2026-09-30 — THE STAGING SITE. https://stagehmis.crkmch.com is served by PRODUCTION'S caddy
+ * (80 and 443 are production's) and proxied to UAT's caddy on docker0, where basic auth, the
+ * headers and the /api split are applied. Each assertion below is a way the hop breaks quietly:
+ * the block moved ahead of production's (deploy.sh's edge gate reads the FIRST hostname site as
+ * production's), the upstream re-pointed at a port UAT does not publish, or the hosts entry that
+ * makes `host.docker.internal` resolve inside production's container dropped.
+ */
+describe("Owner 2026-09-30 — production's caddy fronts the staging site", () => {
+  const source = readFileSync(CADDYFILE, "utf8");
+  const prod = parseCaddyfile(source);
+  const prodCompose = readFileSync(resolve(REPO_ROOT, "docker", "prod", "docker-compose.prod.yml"), "utf8");
+  const uatCompose = readFileSync(resolve(REPO_ROOT, "docker", "prod", "docker-compose.uat.yml"), "utf8");
+
+  it("proxies to UAT's docker0 port, which is the port UAT publishes", () => {
+    const site = only(prod, /^stagehmis\.crkmch\.com$/, "staging site");
+    expect(site.lines).toContain("reverse_proxy host.docker.internal:8444");
+    expect(uatCompose).toMatch(/ports: !override \["172\.17\.0\.1:8444:8080"\]/);
+  });
+
+  it("comes AFTER production's own site, which deploy.sh reads as the first hostname block", () => {
+    const prodAt = source.search(/^hmis\.crkmch\.com \{$/m);
+    const stagingAt = source.search(/^stagehmis\.crkmch\.com \{$/m);
+    expect(prodAt).toBeGreaterThanOrEqual(0);
+    expect(stagingAt).toBeGreaterThan(prodAt);
+  });
+
+  it("production's caddy container can resolve host.docker.internal", () => {
+    expect(prodCompose).toMatch(/extra_hosts:\n\s+- "host\.docker\.internal:host-gateway"/);
+  });
+});
+
+/**
+ * Owner 2026-10-05 / 2026-10-06 — THE STAFF ANDROID APP IS DOWNLOADED FROM PRODUCTION, WITH NO STORE
+ * AND NO PASSWORD. An APK holds no secret and nothing in it works without a staff login; a phone's
+ * installer and the app's update check cannot answer a password prompt. What stands between that
+ * decision and an open file share is the SHAPE of the route, so the shape is pinned on shipped bytes:
+ * one folder, three kinds of file, one name prefix, nothing browsable, and a 404 — not the SPA's
+ * index.html — for everything else under /app/.
+ *
+ * The mount is the half a reload cannot give: a Caddyfile that names /downloads over a container that
+ * does not mount it serves 404 for the app while deploy.sh exits 0.
+ */
+describe("Owner 2026-10-06 — production serves the staff app's files, and only those", () => {
+  const source = readFileSync(CADDYFILE, "utf8");
+  const prodCompose = readFileSync(resolve(REPO_ROOT, "docker", "prod", "docker-compose.prod.yml"), "utf8");
+  const uatCompose = readFileSync(resolve(REPO_ROOT, "docker", "prod", "docker-compose.uat.yml"), "utf8");
+  const live = source.split("\n").filter((line) => !/^\s*#/.test(line)).join("\n");
+
+  function appFileMatcher(): RegExp {
+    const found = /^\t@app_file path_regexp (\S+)$/m.exec(live);
+    if (found === null) throw new Error("no `@app_file path_regexp` line in docker/prod/Caddyfile");
+    return new RegExp(found[1]!);
+  }
+
+  it("admits the build, the short link, the update feed and the poster's QR", () => {
+    const re = appFileMatcher();
+    for (const path of [
+      "/app/hmis-staff-latest.apk",
+      "/app/hmis-staff-production-0.4.0-vc1-ce5d7ae0.apk",
+      "/app/hmis-staff-production-latest.json",
+      "/app/hmis-staff-install-qr.png",
+    ]) expect([path, re.test(path)]).toEqual([path, true]);
+  });
+
+  it("admits nothing else — no listing, no checksum file, no other name, no folder below, no screen", () => {
+    const re = appFileMatcher();
+    for (const path of [
+      "/app/",
+      "/app",
+      "/app/other.apk",
+      "/app/hmis-staff-x.apk.sha256",
+      "/app/hmis-staff-a/b.apk",
+      "/app/hmis-staff-x.txt",
+      "/app/../etc/caddy/Caddyfile",
+      "/appointment",
+      "/approvals",
+      "/api/app/hmis-staff-latest.apk",
+    ]) expect([path, re.test(path)]).toEqual([path, false]);
+  });
+
+  it("answers every other /app/ path with a 404 before the SPA's index.html can", () => {
+    const refuse = live.search(/^\thandle \/app\/\* \{\n\t\trespond 404\n\t\}$/m);
+    const spa = live.search(/^\thandle \{\n\t\troot \* \/srv$/m);
+    expect(refuse).toBeGreaterThanOrEqual(0);
+    expect(spa).toBeGreaterThan(refuse);
+    expect(live.search(/^\thandle @app_file \{$/m)).toBeLessThan(refuse);
+  });
+
+  /**
+   * Decision 0047 — the counter's Windows print program is downloaded and updated from the same
+   * folder. Same shape, pinned the same way: one prefix, two kinds of file, before the 404.
+   */
+  it("admits the print program's zip, app bundle and feed — and nothing else under that prefix", () => {
+    const found = /^\t@print_file path_regexp (\S+)$/m.exec(live);
+    if (found === null) throw new Error("no `@print_file path_regexp` line in docker/prod/Caddyfile");
+    const re = new RegExp(found[1]!);
+    for (const path of [
+      "/app/hmis-print-1.0.0-win-x64.zip",
+      "/app/hmis-print-latest-win-x64.zip",
+      "/app/hmis-print-app-1.0.0.json",
+      "/app/hmis-print-windows-latest.json",
+    ]) expect([path, re.test(path)]).toEqual([path, true]);
+    for (const path of [
+      "/app/hmis-print-1.0.0-win-x64.exe",
+      "/app/hmis-print-a/b.zip",
+      "/app/hmis-print-x.zip.sha256",
+      "/app/other.zip",
+      "/app/hmis-staff-latest.zip",
+      "/app/",
+      "/api/app/hmis-print-windows-latest.json",
+    ]) expect([path, re.test(path)]).toEqual([path, false]);
+    const refuse = live.search(/^\thandle \/app\/\* \{\n\t\trespond 404\n\t\}$/m);
+    expect(live.search(/^\thandle @print_file \{$/m)).toBeGreaterThanOrEqual(0);
+    expect(live.search(/^\thandle @print_file \{$/m)).toBeLessThan(refuse);
+  });
+
+  it("staging serves the print program's feed and app bundle without the password, and only those", () => {
+    const uat = readFileSync(resolve(REPO_ROOT, "docker", "prod", "Caddyfile.uat"), "utf8").split("\n").filter((line) => !/^\s*#/.test(line)).join("\n");
+    const found = /^\t@print_feed path_regexp (\S+)$/m.exec(uat);
+    if (found === null) throw new Error("no `@print_feed path_regexp` line in docker/prod/Caddyfile.uat");
+    const re = new RegExp(found[1]!);
+    expect(re.test("/app/hmis-print-windows-latest.json")).toBe(true);
+    expect(re.test("/app/hmis-print-app-1.0.12.json")).toBe(true);
+    for (const path of ["/app/hmis-print-1.0.0-win-x64.zip", "/app/hmis-print-app-../x.json", "/app/hmis-staff-staging-latest.json", "/app/hmis-print-app-x.json"]) {
+      expect([path, re.test(path)]).toEqual([path, false]);
+    }
+  });
+
+  it("never lists a directory on the production site", () => {
+    expect(live).not.toMatch(/file_server\s+browse/);
+  });
+
+  it("sends an APK as a download of the APK type, and never lets the update feed be cached", () => {
+    expect(live).toMatch(/header @apk Content-Type application\/vnd\.android\.package-archive/);
+    expect(live).toMatch(/header @apk Content-Disposition attachment/);
+    expect(live).toMatch(/header @feed Cache-Control "no-store"/);
+  });
+
+  /*
+    Owner 2026-10-06 — an update "should happen automatically": a JavaScript change reaches the phones
+    as a signed bundle from this same folder (apps/mobile/scripts/publish-ota.sh). Two more shapes are
+    admitted, and each is pinned as tightly as the APK's: the runtime header becomes part of a PATH, so
+    it is matched as forty hex digits first; a file is fetched only by its own SHA-256.
+  */
+  for (const [file, env] of [["Caddyfile", "production"], ["Caddyfile.uat", "staging"]] as const) {
+    const text = readFileSync(resolve(REPO_ROOT, "docker", "prod", file), "utf8").split("\n").filter((line) => !/^\s*#/.test(line)).join("\n");
+
+    it(`${file}: the over-the-air manifest is one address, and the folder is chosen by a header that is forty hex digits and nothing else`, () => {
+      const block = new RegExp(`^\\t@ota_manifest \\{\\n\\t\\tpath /app/ota/${env}/manifest\\n\\t\\theader_regexp ota_runtime Expo-Runtime-Version (\\S+)\\n\\t\\}$`, "m").exec(text);
+      expect(block).not.toBeNull();
+      const header = new RegExp(block![1]!);
+      expect(header.test("88fefc9077e465c4a376b794a3f9b14b5fcfee9d")).toBe(true);
+      for (const bad of ["", "../../etc/caddy", "88fefc9077e465c4a376b794a3f9b14b5fcfee9d/..", "88FEFC9077E465C4A376B794A3F9B14B5FCFEE9D", "88fefc90", "88fefc9077e465c4a376b794a3f9b14b5fcfee9d0"]) {
+        expect([bad, header.test(bad)]).toEqual([bad, false]);
+      }
+      expect(text).toContain(`\t\trewrite * /ota/${env}/{re.ota_runtime.0}/manifest\n`);
+      // The boundary the publish script wrote the body with (apps/mobile/scripts/ota-manifest.js), and protocol v1.
+      const written = /const BOUNDARY = "([^"]+)";/.exec(readFileSync(resolve(REPO_ROOT, "apps", "mobile", "scripts", "ota-manifest.js"), "utf8"));
+      expect(text).toContain(`\t\theader Content-Type "multipart/mixed; boundary=${written![1]}"\n\t\theader expo-protocol-version 1\n`);
+    });
+
+    it(`${file}: an over-the-air file is fetched by its own checksum, under its runtime, and by no other name`, () => {
+      const found = /^\t@ota_file path_regexp (\S+)$/m.exec(text);
+      expect(found).not.toBeNull();
+      const re = new RegExp(found![1]!);
+      const rt = "8".repeat(40), sum = "a".repeat(64);
+      expect(re.test(`/app/ota/${env}/${rt}/files/${sum}.bundle`)).toBe(true);
+      expect(re.test(`/app/ota/${env}/${rt}/files/${sum}.png`)).toBe(true);
+      for (const path of [
+        `/app/ota/${env}/${rt}/manifest`,
+        `/app/ota/${env}/${rt}/files/`,
+        `/app/ota/${env}/${rt}/files/../manifest`,
+        `/app/ota/${env}/${rt}/files/${sum}`,
+        `/app/ota/${env}/${rt}/files/x/${sum}.png`,
+        `/app/ota/${env === "production" ? "staging" : "production"}/${rt}/files/${sum}.png`,
+        `/app/ota/`,
+      ]) expect([path, re.test(path)]).toEqual([path, false]);
+    });
+  }
+
+  it("the caddy container mounts the production builds read-only, and staging mounts its own folder", () => {
+    expect(prodCompose).toMatch(/^\s+- \/opt\/hmis-context\/mobile-apk-prod:\/downloads:ro$/m);
+    expect(uatCompose).toMatch(/^\s+- \/opt\/hmis-context\/mobile-apk:\/downloads:ro$/m);
   });
 });

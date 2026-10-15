@@ -45,6 +45,8 @@ describe("the lab manifest (Plan 17 T2)", () => {
       "lab.criticals.close", "lab.desk.operate", "lab.instruments.manage",
       /** 17-E T6 — the interface inbox: naming a parked result's tube, or discarding it with a reason. */
       "lab.instruments.operate", "lab.instruments.read",
+      /** Owner 2026-10-13 (#768) — the lab numbers screen: counts and turnaround times, read-only. */
+      "lab.metrics.read",
       "lab.orders.place",
       "lab.reports.amend",
       "lab.reports.print", "lab.reports.publish", "lab.reports.release_unpaid", "lab.results.enter", "lab.results.interface",
@@ -77,6 +79,8 @@ describe("the lab manifest (Plan 17 T2)", () => {
     expect(labManifest.menu.map((m) => m.path)).toEqual([
       "/lab/desk", "/lab/collection", "/lab/bench", "/lab/verify",
       "/lab/reports", // PLAN 17c T5 — the report centre, on the counter's `lab.reports.print`
+      "/lab/quick", // decision 0061 — quick entry, on `lab.results.enter`
+      "/reports/numbers", // owner 2026-10-13 (#768) — lab numbers, on `lab.metrics.read`; #777 — Hospital numbers, its Lab tab
     ]);
     for (const entry of labManifest.menu) {
       expect([entry.path, labManifest.permissions.includes(entry.permission)]).toEqual([entry.path, true]);

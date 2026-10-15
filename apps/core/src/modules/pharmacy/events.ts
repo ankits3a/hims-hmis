@@ -177,9 +177,11 @@ export const pharmacistRegistrationEnded = defineEvent("pharmacist.registration_
  */
 export const dispenseLineReturned = defineEvent("dispense.line_returned", MODULE, z.object({
   dispenseId: id, patientId: id,
-  lines: z.array(z.object({ lineIdx: z.number().int().nonnegative(), qtyBase: z.number().int().positive(), batchId: id, ledgerEntryId: id })).min(1),
+  lines: z.array(z.object({ lineIdx: z.number().int().nonnegative(), qtyBase: z.number().int().positive(), batchId: id, ledgerEntryId: id, looseQty: z.number().int().positive().optional(), looseTo: z.enum(["loose", "damage"]).optional() })).min(1),
   sealedIntact: z.literal(true), reason: z.string().min(1), reasonClass: z.enum(["mistake", "genuine"]),
-  creditNoteId: id, refundApprovalId: id,
+  /** Null when the patient KEPT the amount as pharmacy credit (owner ruling 2026-10-02): nothing to approve. */
+  creditNoteId: id, refundApprovalId: id.nullable(),
+  creditKeptPaise: z.number().int().nonnegative().optional(),
 }));
 
 /**
@@ -215,7 +217,7 @@ export const retailSold = defineEvent("retail.sold", MODULE, z.object({
  */
 export const retailLineReturned = defineEvent("retail.line_returned", MODULE, z.object({
   saleId: id, patientId: id, storeResourceId: id, channel: z.enum(["walk_in", "downtime"]),
-  lines: z.array(z.object({ lineIdx: z.number().int().nonnegative(), qtyBase: z.number().int().positive(), batchId: id, ledgerEntryId: id })).min(1),
+  lines: z.array(z.object({ lineIdx: z.number().int().nonnegative(), qtyBase: z.number().int().positive(), batchId: id, ledgerEntryId: id, looseQty: z.number().int().positive().optional(), looseTo: z.enum(["loose", "damage"]).optional() })).min(1),
   sealedIntact: z.literal(true), reason: z.string().min(1), reasonClass: z.enum(["mistake", "genuine"]),
   creditNoteId: id, refundApprovalId: id,
 }));
@@ -337,6 +339,25 @@ export const trayRestocked = defineEvent("trays.restocked", MODULE, z.object({
   checkId: id, trayId: id, transferId: id, units: z.number().int().positive(),
 }));
 
+/**
+ * OWNER RULING 2026-10-02 — a pharmacy desk setting changed: which one, what it was, what it is now,
+ * and (on the envelope) who changed it. "Who switched quick desk mode on, and when" is the question.
+ */
+export const pharmacySettingsChanged = defineEvent("pharmacy_settings.changed", MODULE, z.object({
+  setting: z.enum(["quick_desk"]), from: z.boolean(), to: z.boolean(),
+}));
+
+/** OWNER 2026-10-02 — an item's standing discount to the patient was set, changed or removed (`toBps` 0). */
+export const saleItemDiscountSet = defineEvent("sale_item.discount_set", MODULE, z.object({
+  itemId: id, fromBps: z.number().int().min(0).max(2500), toBps: z.number().int().min(0).max(2500),
+}));
+
+/** Owner 2026-10-03 — a colleague's held ticket was taken over before hand-over (`takeover.ts`). */
+export const dispenseTakenOver = defineEvent("dispense.taken_over", MODULE, z.object({
+  dispenseId: id, patientId: id, fromUserId: id, toUserId: id,
+  status: z.enum(["claimed", "verified", "picked", "billed"]), reason: z.string().min(3).max(200),
+}));
+
 /** The catalog, in source order (`LAB_EVENTS`' discipline). A later task that adds a `defineEvent` above adds it here. */
 export const PHARMACY_EVENTS = [
   dispenseQueued, paperRxEntered, paperRxVisitOpened, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded, lineResolved, lineMatched, shelfLocationSet,
@@ -349,4 +370,7 @@ export const PHARMACY_EVENTS = [
   adrReported, adrEventRecorded, incidentRecorded, incidentEventRecorded,
   coldUnitSaved, coldReadingRecorded, coldExcursionClosed,
   traySaved, trayTemplateSaved, trayChecked, trayRestocked,
+  pharmacySettingsChanged,
+  saleItemDiscountSet,
+  dispenseTakenOver,
 ] as const;

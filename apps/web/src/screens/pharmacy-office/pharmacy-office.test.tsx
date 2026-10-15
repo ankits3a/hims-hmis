@@ -132,6 +132,28 @@ describe("PharmacyOffice (parity P2)", () => {
     await waitFor(() => expect(calls.find((c) => c.path.endsWith("/decision"))?.body).toEqual({ verdict: "reject", note: "rate above contract" }));
   });
 
+  it("the vendor's discount is typed beside the rate: the amount shows the net, and the list rate and the discount are what is sent (owner 2026-10-02)", async () => {
+    const draft = po({ id: "po-2", poNo: "MPO2609240002", status: "draft", approvalId: null, approvalTier: null, approval: null });
+    const calls = mock({
+      "GET /pharmacy/office/today": today({ awaitingYou: [] }),
+      "GET /materials/purchase-orders/po-2": { purchaseOrder: draft },
+      "PATCH /materials/purchase-orders/po-2": { purchaseOrder: draft },
+      "POST /materials/purchase-orders/po-2/submit": { purchaseOrder: { ...draft, status: "pending_approval" } },
+    }, RAISE);
+    renderWithRouter(<PharmacyOffice />, "/pharmacy/office");
+    await openBuy();
+    await userEvent.click(within(await screen.findByTestId("section-drafts")).getByTestId("po-row-MPO2609240002"));
+    const sheet = await screen.findByTestId("po-sheet");
+    const disc = await within(sheet).findByLabelText("Disc % CROC500");
+    expect(disc).toHaveValue("");
+    await userEvent.type(disc, "12.5");
+    // 17 strips at ₹26.00 less 12.5% is ₹22.75 a strip: ₹386.75
+    expect(within(sheet).getByTestId("po-line-CROC500")).toHaveTextContent("386.75");
+    await userEvent.click(within(sheet).getByRole("button", { name: "Submit for approval" }));
+    await waitFor(() => expect(calls.some((c) => c.path === "/materials/purchase-orders/po-2/submit")).toBe(true));
+    expect(calls.find((c) => c.method === "PATCH")!.body).toMatchObject({ lines: [{ itemId: "i-croc", qtyPacks: 17, ratePaise: 2_600, discountBps: 1_250 }] });
+  });
+
   it("a draft's lines are typed in place and Submit saves them first", async () => {
     const draft = po({ id: "po-2", poNo: "MPO2609240002", status: "draft", approvalId: null, approvalTier: null, approval: null });
     const calls = mock({

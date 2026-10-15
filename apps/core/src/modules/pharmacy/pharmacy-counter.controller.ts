@@ -1,10 +1,17 @@
-import { Body, Controller, Get, Headers, Inject, Param, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Inject, Param, Post, Put, Query } from "@nestjs/common";
 import { z } from "zod";
 import { CONFIG, DB, DOCUMENT_STORE, MODULE_REGISTRY } from "../../kernel/tokens";
+import { withTx } from "../../kernel/db/client";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { withIdempotency } from "../billing";
-import { claimDispense, findAtCounter } from "./claim";
+import { claimDispense, findAtCounter, suggestAtCounter } from "./claim";
+import { takeOverDispense } from "./takeover";
+import { patientCredit } from "./credit-notes";
+import { patientPharmacyBills } from "./ticket-books";
+import type { PatientPharmacyBill } from "./ticket-books";
+import type { PatientCredit } from "./credit-notes";
+import type { CounterSuggestion } from "./claim";
 import { enterPaperPrescription, paperRxContext } from "./paper-rx";
 import type { PaperRxContext } from "./paper-rx";
 import { searchShelfAt } from "./retail";
@@ -13,6 +20,8 @@ import { cachedShelfIndex, matchOpenLines } from "./auto-match";
 import { OPD_PHARMACY_STORE_CODE, istDateOf } from "./config";
 import { PHARMACY_IDEMPOTENT_ROUTES, billPreviewQuery, discountAskSchema, discountFromQuery, discountOnBillSchema, idSchema, parsed, toHttp } from "./pharmacy-http";
 import { closingFor } from "./closing";
+import { loadPharmacySettings, updatePharmacySettings } from "./settings";
+import type { PharmacySettings } from "./settings";
 import type { Closing } from "./closing";
 import { patientRail } from "./patient-rail";
 import type { PatientRail } from "./patient-rail";
@@ -98,6 +107,10 @@ const returnBody = z.object({
   sealedIntact: z.literal(true),
   reason: z.string().min(3).max(500),
   reasonClass: z.enum(["mistake", "genuine"]),
+  /** Owner ruling 2026-10-03 — where loose units go: the loose tray (sealed in the pocket) or the damage tray (our mistake). */
+  looseTo: z.enum(["loose", "damage"]).optional(),
+  /** Owner ruling 2026-10-02 — `credit` keeps the amount as pharmacy credit instead of asking for a refund. */
+  settle: z.enum(["refund", "credit"]).optional(),
 });
 const pickBody = z.object({
   lines: z.array(z.object({
@@ -119,7 +132,9 @@ const billBody = z.object({
   credit: z.object({ reason: z.string().trim().min(1).max(500), approvalId: z.string().min(1).max(64) }).optional(),
   /** OWNER RULING 2026-09-30 — the sale discount, and above 10% its granted approval (`discount.ts`). */
   discount: discountOnBillSchema.optional(),
-}).refine((b) => b.tenders.length > 0 || b.credit !== undefined, { message: "a bill is paid by a tender, or on the owner's credit", path: ["tenders"] });
+  /** Owner ruling 2026-10-02 — pharmacy credit kept at a return, spent on this bill first. */
+  useCreditPaise: z.number().int().positive().optional(),
+}).refine((b) => b.tenders.length > 0 || b.credit !== undefined || b.useCreditPaise !== undefined, { message: "a bill is paid by a tender, by pharmacy credit, or on the owner's credit", path: ["tenders"] });
 /** P1 — the short book. `itemId` when the counter knows the drug; the name as said otherwise. */
 const shortBookBody = z.object({
   itemId: idSchema.optional(),
@@ -167,11 +182,43 @@ export class PharmacyCounterController {
     return { items: await listQueue(this.db, actor, { serviceDate: serviceDate ?? istDateOf(new Date()) }) };
   }
 
+  /**
+   * OWNER RULING 2026-10-02 — the desk's settings (quick desk mode). Read by anyone at the desk, because
+   * the desk draws itself by it; changed under `pharmacy.licences.manage`, audited in `settings.ts`.
+   */
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("settings")
+  async settings(): Promise<{ settings: PharmacySettings }> {
+    return { settings: await loadPharmacySettings(this.db) };
+  }
+
+  @RequirePermission("pharmacy.licences.manage", "hospital")
+  @Put("settings")
+  async changeSettings(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ settings: PharmacySettings }> {
+    const b = parsed(z.object({ quickDesk: z.boolean() }).strict(), body);
+    try {
+      return { settings: await withTx(this.db, (tx) => updatePharmacySettings(tx, actor, b, new Date())) };
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
   @RequirePermission("pharmacy.dispense.read", "hospital")
   @Get("find")
   async find(@CurrentActor() actor: Actor, @Query("q") q?: string): Promise<FindResult> {
     try {
       return await findAtCounter(this.db, this.cfg, actor, q ?? "", new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** As the pharmacist types: who the words could be. Same gate as `find`, which the tap then runs. */
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("find/suggest")
+  async suggest(@CurrentActor() actor: Actor, @Query("q") q?: string): Promise<{ items: CounterSuggestion[] }> {
+    try {
+      return { items: await suggestAtCounter(this.db, actor, (q ?? "").slice(0, 100), new Date()) };
     } catch (e) {
       return toHttp(e);
     }
@@ -350,6 +397,30 @@ export class PharmacyCounterController {
     }
   }
 
+  /** Owner 2026-10-03 — on the patient's profile: their pharmacy bills, each with its ticket and credit notes. */
+  @RequirePermission("billing.invoice.read", "hospital", { alsoAdmits: ["pharmacy.dispense.read", "pharmacy.reports.read", "billing.dues.patient.read"] })
+  @Get("patients/:patientId/pharmacy-bills")
+  async pharmacyBills(@CurrentActor() actor: Actor, @Param("patientId") patientId: string): Promise<{ bills: PatientPharmacyBill[] }> {
+    const id = parsed(z.string().min(1).max(64), patientId);
+    try {
+      return await patientPharmacyBills(this.db, actor, id);
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** Owner 2026-10-03 — on the patient's profile: their credit notes and the pharmacy credit available now. */
+  @RequirePermission("billing.invoice.read", "hospital", { alsoAdmits: ["pharmacy.dispense.read", "pharmacy.reports.read", "billing.dues.patient.read"] })
+  @Get("patients/:patientId/credit")
+  async credit(@CurrentActor() actor: Actor, @Param("patientId") patientId: string): Promise<PatientCredit> {
+    const id = parsed(z.string().min(1).max(64), patientId);
+    try {
+      return await patientCredit(this.db, actor, id);
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
   @RequirePermission("pharmacy.dispense.place", "hospital")
   @Post("dispenses")
   async claim(@CurrentActor() actor: Actor, @Body() body: unknown, @Headers("idempotency-key") key?: string): Promise<DispenseView> {
@@ -357,6 +428,18 @@ export class PharmacyCounterController {
     try {
       return await withIdempotency(this.db, { actorId: actor.id, route: PHARMACY_IDEMPOTENT_ROUTES.claim, key }, input,
         () => claimDispense(this.db, actor, input, new Date()));
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** Owner 2026-10-03 — take over a colleague's held ticket, with a reason (`takeover.ts`). */
+  @RequirePermission("pharmacy.dispense.place", "hospital")
+  @Post("dispenses/:id/take-over")
+  async takeOver(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<DispenseView> {
+    const input = parsed(z.object({ reason: z.string().trim().min(3).max(200) }), body);
+    try {
+      return await takeOverDispense(this.db, actor, id, input.reason, new Date());
     } catch (e) {
       return toHttp(e);
     }

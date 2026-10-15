@@ -94,6 +94,8 @@ describe("roster — 0108 structure", () => {
       "updated_at", "updated_by",
     ],
     roster_holidays: [
+      // 20-U U8b — the AEBAS mark, the absences' pair.
+      "aebas_entered_at", "aebas_entered_by",
       "applies_to", "confirmation_due_at", "created_at", "created_by", "declared_at",
       "declared_by", "ist_date", "kind", "pattern", "site_id", "updated_at", "updated_by",
     ],
@@ -139,13 +141,31 @@ describe("roster — 0108 structure", () => {
       "mode", "reason", "site_id", "updated_at", "updated_by", "withdraw_reason", "withdrawn_at",
       "withdrawn_by",
     ],
+    // 20-U U6 — a cover or a swap, asked and answered BEFORE the amendment that applies it.
+    roster_cover_requests: [
+      "amendment_ids", "answer_note", "answered_at", "assignment_id", "counterpart_assignment_id", "counterpart_id",
+      "counterpart_team_id", "created_at", "created_by", "cross_unit", "decided_at", "decided_by",
+      "decision_note", "department_id", "id", "kind", "note", "owner_id", "period_id", "refused_rule",
+      "requested_at", "requested_by", "site_id", "status", "team_id", "updated_at", "updated_by",
+    ],
+    // 20-U U6 (I22) — "this is wrong", flagged from the who-is-on board.
+    roster_flags: [
+      "at", "created_at", "created_by", "department_id", "id", "note", "raised_at", "raised_by",
+      "resolved_at", "resolved_by", "site_id", "updated_at", "updated_by", "user_id",
+    ],
+    // 20-U infra (owner 2026-10-04) — the board's 20:00/08:00 print, one row per instant.
+    roster_board_prints: [
+      "created_at", "created_by", "destinations", "html", "id", "outcome", "print_job_ids",
+      "rendered_at", "site_id", "slot_at", "title", "updated_at", "updated_by",
+    ],
   };
   // PHASE R (R4) — `staff_*`, not `roster_*`: these are facts about a MEMBER OF STAFF, true whether
   // or not anybody ever rosters them, and the prefix is what says so.
   const STAFF_CENSUS: Record<string, string[]> = {
     staff_absences: [
       "aebas_entered_at", "aebas_entered_by", "approved_by", "created_at", "created_by",
-      "decided_at", "ends_at", "id", "kind", "reason", "requested_by", "source", "starts_at",
+      // E2.2 (decision 0069): whose list a leave waits in, and why it was refused.
+      "decided_at", "decision_note", "department_id", "ends_at", "id", "kind", "reason", "requested_by", "source", "starts_at",
       "status", "updated_at", "updated_by", "user_id",
     ],
     staff_credentials: [
@@ -422,7 +442,7 @@ describe("roster — 0109 structure", () => {
     expect(await constraintOf(slot("A5", "2026-10-12T20:00", "2026-10-13T08:00", { effective: true, userId: U2 }))).toBe("(accepted)");
     // a SUPERSEDED row that was live for the same window — the knowledge axis, not the duty axis
     expect(await constraintOf(slot("A6", "2026-10-12T20:00", "2026-10-13T08:00", {
-      effective: false, liveTo: at("2026-10-12T21:00"),
+      effective: false, liveFrom: at("2026-10-12T19:00"), liveTo: at("2026-10-12T21:00"),
     }))).toBe("(accepted)");
   });
 
@@ -509,7 +529,7 @@ describe("roster — 0109 structure", () => {
     ["a cover scope outside the vocabulary", { coverScope: "floor" }, "roster_assignments_cover_scope_ck"],
     ["an off-kind outside the vocabulary", { kind: "off", mode: null, offKind: "XX" }, "roster_assignments_off_kind_ck"],
     ["a call tier below the first rung", { callTier: 0 }, "roster_assignments_call_tier_ck"],
-    ["a row that is effective and already superseded", { effective: true, liveTo: at("2026-10-13T00:00") }, "roster_assignments_effective_ck"],
+    ["a row that is effective and already superseded", { effective: true, liveFrom: at("2026-10-12T00:00"), liveTo: at("2026-10-13T00:00") }, "roster_assignments_effective_ck"],
     ["a knowledge window that closes before it opens", { liveFrom: at("2026-10-13T00:00"), liveTo: at("2026-10-12T00:00") }, "roster_assignments_live_ck"],
     ["a confirmation with no time on it", { confirmedByUserId: U2 }, "roster_assignments_confirmed_ck"],
   ] as const)("refuses %s", async (_what, over, constraint) => {

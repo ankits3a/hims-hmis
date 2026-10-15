@@ -9,6 +9,7 @@ import { SodViolationError } from "../../kernel/auth/sod";
 import { WorkflowError } from "../../kernel/workflow/instances";
 import { withTx } from "../../kernel/db/client";
 import { PatientError } from "../patients";
+import { BillingError, billingHttpStatus } from "../billing";
 import { ResourceError, resourceHttpStatus } from "../../kernel/resources";
 import { COUNTER_SEQUENCES, TOKEN_LANES, loadOpdConfig, updateOpdConfig } from "./config";
 import { OpdError } from "./errors";
@@ -36,7 +37,7 @@ import type { Db } from "../../kernel/db/client";
  * cannot do that. The older modules are NOT realigned (gate reports 01–06.2 §4/§5).
  */
 const OPD_CONFLICT_CODES = new Set<OpdErrorCode>([
-  "slot_taken", "call_conflict", "doctor_out", "session_closed", "doctor_on_leave", "appointment_not_today",
+  "slot_taken", "call_conflict", "doctor_out", "session_closed", "doctor_on_leave", "appointment_not_today", "tele_call_opens_at_slot", "tele_amount_mismatch", "tele_outcome_required", "tele_save_failed",
   "extension_cap_reached", "allergy_conflict", "user_already_doctor", "opd_not_configured", "opd_config_invalid",
   "not_your_patient", "consult_gate_refused",
   // PLAN 16a T5 — the two new hard warnings answer 409 exactly as `allergy_conflict` does, and this
@@ -65,6 +66,9 @@ const OPD_CONFLICT_CODES = new Set<OpdErrorCode>([
    * 409's meaning, and it is what lets the reception seat offer "add to the visit already open".
    */
   "lab_walkin_already_open",
+  // Owner 2026-10-07 — a guardian-with-reports mark on a NEW visit was refused. Owner 2026-10-09: every
+  // visit type is admitted, so this is no longer raised; it stays mapped for the day the rule narrows again.
+  "patient_absent_returning_only",
 ]);
 
 function opdStatus(code: OpdErrorCode): number {
@@ -73,7 +77,9 @@ function opdStatus(code: OpdErrorCode): number {
   // `opd.visits.open`; `patients.register` is asserted in the service (the decorator writes one
   // metadata key, so a second `@RequirePermission` would silently replace the first), and its
   // refusal must read as 403 rather than falling through to the 400 default.
-  if (code === "registration_not_permitted" || code === "transcription_not_permitted") return 403;
+  if (code === "registration_not_permitted" || code === "transcription_not_permitted" || code === "paper_consult_not_permitted"
+    || code === "patient_absent_not_permitted" || code === "rx_set_not_permitted") return 403;
+  if (code === "voice_provider_failed") return 503;
   if (code.endsWith("_state_conflict") || code.startsWith("duplicate_") || OPD_CONFLICT_CODES.has(code)) return 409;
   return 400; // invalid_*, vitals_incomplete, reason_required, empty_prescription, … — a client mistake
 }
@@ -107,6 +113,9 @@ export function toHttp(e: unknown): never {
   if (e instanceof WorkflowError) throw httpError(e.code === "role_denied" ? 403 : 409, e.message, e.code);
   if (e instanceof SodViolationError) throw httpError(403, e.message, "sod_violation");
   if (e instanceof PatientError) throw httpError(e.code === "patient_not_found" ? 404 : 400, e.message, e.code);
+  // Owner 2026-10-05 — a department move carries the visit's money (billing's `visit-move.ts`), so
+  // its refusals reach this controller and are mapped from billing's own table, never as a 500.
+  if (e instanceof BillingError) throw httpError(billingHttpStatus(e.code), e.message, e.code, e.detail);
   throw e;
 }
 
@@ -142,6 +151,8 @@ const doctorCreateBody = z.object({
   registrationNo: z.string().max(100).optional(),
   departmentId: z.string().min(1),
   specialty: z.string().max(200).optional(),
+  /* 2026-10-04 (owner) — "Guest Faculty", "Senior Resident": shown at the desk, never printed. */
+  designation: z.string().max(100).optional(),
 });
 const doctorPatchBody = z.object({
   displayName: z.string().min(1).max(200).optional(),
@@ -151,6 +162,7 @@ const doctorPatchBody = z.object({
   registrationNo: z.string().max(100).nullable().optional(),
   departmentId: z.string().min(1).optional(),
   specialty: z.string().max(200).nullable().optional(),
+  designation: z.string().max(100).nullable().optional(),
   active: z.boolean().optional(),
 });
 // Numbers coerced: an <input type="number"> posts strings (§3.19 class). The HH:MM strings and the

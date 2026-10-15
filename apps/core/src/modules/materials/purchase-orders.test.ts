@@ -5,7 +5,7 @@ import { approveRequest } from "../../kernel/approvals/decisions";
 import { grantPermissionToRole, syncPermissions } from "../../kernel/auth/permissions";
 import { SodViolationError, seedSodPairs } from "../../kernel/auth/sod";
 import { withTx } from "../../kernel/db/client";
-import { approvals, events } from "../../kernel/db/schema";
+import { approvals, events, purchaseOrderLines } from "../../kernel/db/schema";
 import { ModuleRegistry } from "../../kernel/modules/loader";
 import { ALL_MANIFESTS } from "../../kernel/modules/manifests";
 import { PO_APPROVAL_TYPE, PO_OWNER_APPROVAL_TYPE, registerMaterialsApprovalTypes } from "./approval-types";
@@ -139,6 +139,38 @@ describe("purchase orders (parity P2)", () => {
       ["CROC", "strip", 10, 3, 30, 75_000, 1200], ["GAUZE", "strip", 10, 2, 20, 2_468, 500],
     ]);
     expect([po.subtotalPaise, po.gstPaise, po.totalPaise]).toEqual([77_468, 9_000 + 123, 77_468 + 9_123]);
+  });
+
+  it("the vendor's trade discount is its own figure: the list rate and the discount are kept, and the NET rate is what the line, the order and the receipt are priced at (owner 2026-10-02)", async () => {
+    const po = await createPurchaseOrder(db, pharmacist.actor, {
+      vendorId: vendor, storeResourceId: store,
+      lines: [line(crocin, { qtyPacks: 3, ratePaise: 10_000, discountBps: 1_250 }), line(gauze, { qtyPacks: 2, ratePaise: 3_333, discountBps: 333 })],
+    }, { now: T0 });
+    // 10,000 less 12.5% is 8,750; 3,333 less 3.33% is 3,222.01 → 3,222 a pack, half-up.
+    expect(po.lines.map((l) => [l.itemCode, l.listRatePaise, l.discountBps, l.ratePaise, l.lineTotalPaise])).toEqual([
+      ["CROC", 10_000, 1_250, 8_750, 26_250], ["GAUZE", 3_333, 333, 3_222, 6_444],
+    ]);
+    expect(po.subtotalPaise).toBe(26_250 + 6_444);
+    expect(po.gstPaise).toBe(lineGstPaise(26_250, 1200) + lineGstPaise(6_444, 500));
+
+    // No discount named: the list rate IS the rate, and the discount reads zero.
+    const plain = await createPurchaseOrder(db, pharmacist.actor, { vendorId: vendor, storeResourceId: store, lines: [line(crocin, { qtyPacks: 3 })] }, { now: T0 });
+    expect(plain.lines[0]).toMatchObject({ listRatePaise: 25_000, discountBps: 0, ratePaise: 25_000, lineTotalPaise: 75_000 });
+
+    // An edit re-prices from the list rate; dropping the discount restores it.
+    const edited = await updatePurchaseOrder(db, pharmacist.actor, po.id, { lines: [line(crocin, { qtyPacks: 3, ratePaise: 10_000, discountBps: 5_000 })] }, T0);
+    expect(edited.lines[0]).toMatchObject({ listRatePaise: 10_000, discountBps: 5_000, ratePaise: 5_000, lineTotalPaise: 15_000 });
+    const dropped = await updatePurchaseOrder(db, pharmacist.actor, po.id, { lines: [line(crocin, { qtyPacks: 3, ratePaise: 10_000 })] }, T0);
+    expect(dropped.lines[0]).toMatchObject({ listRatePaise: 10_000, discountBps: 0, ratePaise: 10_000 });
+
+    for (const discountBps of [-1, 10_001, 12.5]) {
+      await expect(createPurchaseOrder(db, pharmacist.actor, { vendorId: vendor, storeResourceId: store, lines: [line(crocin, { discountBps })] }))
+        .rejects.toMatchObject({ code: "po_invalid" });
+    }
+    // The database holds the same two rules: a discount needs its list rate, and it is a share of it.
+    const [row] = await db.select().from(purchaseOrderLines).where(eq(purchaseOrderLines.purchaseOrderId, plain.id));
+    await expect(db.update(purchaseOrderLines).set({ discountBps: 500, listRatePaise: null }).where(eq(purchaseOrderLines.id, row!.id))).rejects.toThrow();
+    await expect(db.update(purchaseOrderLines).set({ discountBps: 10_001 }).where(eq(purchaseOrderLines.id, row!.id))).rejects.toThrow();
   });
 
   it("routes a total AT the limit to the head and one paisa over to the owner", async () => {

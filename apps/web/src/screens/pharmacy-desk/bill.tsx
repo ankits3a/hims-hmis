@@ -129,7 +129,8 @@ export function BillRail({
   error: string | null;
   /** The desk's clock (it ticks every 15 s) — E13 asks it whether the hold has ended. */
   now: Date;
-  onTake: (tenders: Tender[], changePaise: number) => void;
+  /** `creditPaise` — pharmacy credit spent on this bill first (owner ruling 2026-10-02); the tenders pay only the rest. */
+  onTake: (tenders: Tender[], changePaise: number, creditPaise: number) => void;
   /** GAP A3b — bill the whole amount on the owner's granted credit approval. */
   onCredit: (credit: { reason: string; approvalId: string }) => void;
   onDraft: () => void;
@@ -150,7 +151,18 @@ export function BillRail({
   const payable = due?.netPayablePaise ?? null;
   /* The owner's credit carries no tender: it is billed on the cash rule (the nearest rupee). */
   const creditPayable = preview === null ? null : payableFor("cash", preview).netPayablePaise;
-  const plan = payable === null ? null : tendersFor(mode, payable, cash, upi, ref);
+  /*
+    OWNER RULING 2026-10-02 — PHARMACY CREDIT, SPENT FIRST. Credit the patient kept from a return covers
+    the bill before any tender; the patient pays only the difference. A bill it covers WHOLLY hands no
+    coin across, so it is collected to the paisa (the digital figure) and takes no tender at all.
+  */
+  const creditHeld = preview?.creditAvailablePaise ?? 0;
+  const [useCredit, setUseCredit] = useState(true);
+  const exactPayable = preview === null ? null : payableFor("upi", preview).netPayablePaise;
+  const coveredByCredit = useCredit && exactPayable !== null && creditHeld >= exactPayable && exactPayable > 0;
+  const creditUse = !useCredit || payable === null ? 0 : coveredByCredit ? exactPayable : Math.min(creditHeld, payable);
+  const rest = payable === null ? null : coveredByCredit ? 0 : payable - creditUse;
+  const plan = rest === null ? null : coveredByCredit ? { tenders: [] as Tender[], changePaise: 0 } : rest <= 0 ? null : tendersFor(mode, rest, cash, upi, ref);
   /* A discount above the pharmacist's 10% waits for its approval; the money keys wait with it. */
   const approval = useDiscountApproval(discount);
   const discountReady = discount === null || approval.status === "none" || approval.status === "granted";
@@ -166,7 +178,7 @@ export function BillRail({
 
   /* A different ticket starts with an empty tender — the last patient's cash is not this one's. */
   useEffect(() => {
-    setCash(""); setUpi(""); setRef(""); setMode("upi");
+    setCash(""); setUpi(""); setRef(""); setMode("upi"); setUseCredit(true);
     setCreditOpen(false); setCreditReason(""); setCreditApproval(null);
     setMenuOpen(false); setSheetOpen(false);
   }, [dispense.id]);
@@ -177,7 +189,7 @@ export function BillRail({
       if (!collected || drawerOpen !== true) return;
       if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        if (canTake) onTake(plan.tenders, plan.changePaise);
+        if (canTake) onTake(plan.tenders, plan.changePaise, creditUse);
         return;
       }
       if (typingIn(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -186,7 +198,7 @@ export function BillRail({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [canTake, collected, drawerOpen, onTake, plan]);
+  }, [canTake, collected, creditUse, drawerOpen, onTake, plan]);
 
   /* The same read the left rail made — one query key, so this costs no second request. */
   const rail = useQuery({
@@ -310,6 +322,21 @@ export function BillRail({
               <span className="mo" data-testid="desk-payable" style={{ fontSize: 21, fontWeight: 600, letterSpacing: "-.02em" }}>{rupees(taken?.netPayablePaise ?? payable ?? preview.totals.netPayablePaise)}</span>
             </div>
             <p style={{ margin: "7px 0 0 0", fontSize: 10.5, color: "var(--dim)", lineHeight: "15px" }}>{t("pharmacyDesk.bill.inside")}</p>
+            {paid || !collected || creditHeld <= 0 ? null : (
+              <div data-testid="desk-store-credit" style={{ marginTop: 9, padding: "8px 10px", borderRadius: 6, border: "1px solid var(--green-line)", background: "var(--green-soft)" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
+                  <input type="checkbox" data-testid="desk-store-credit-use" checked={useCredit} onChange={(e) => setUseCredit(e.target.checked)} style={{ accentColor: "#0e6b4e" }} />
+                  <span style={{ flexGrow: 1 }}>{t("pharmacyDesk.bill.storeCredit", { amount: rupees(creditHeld) })}</span>
+                </label>
+                {creditUse <= 0 ? null : (
+                  <>
+                    <Row what={t("pharmacyDesk.bill.storeCreditUsed")} amt={`−${rupees(creditUse)}`} tone="var(--green)" testId="desk-store-credit-used" />
+                    <Row what={t("pharmacyDesk.bill.storeCreditRest")} amt={rupees(rest ?? 0)} tone="var(--ink)" testId="desk-store-credit-rest" />
+                    {creditHeld - creditUse <= 0 ? null : <p style={{ margin: "4px 0 0 0", fontSize: 11, color: "var(--dim)" }}>{t("pharmacyDesk.bill.storeCreditLeft", { amount: rupees(creditHeld - creditUse) })}</p>}
+                  </>
+                )}
+              </div>
+            )}
             {paid ? null : <DiscountWait discount={discount} />}
             {/* C7 — a card the patient holds that is NOT on this bill is said, never applied here (money is billing's). */}
             {preview.totals.discountPaise > 0 || heldCard === null ? null : (
@@ -378,8 +405,8 @@ export function BillRail({
                   <input className="in mo" value={ref} onChange={(e) => setRef(e.target.value)} placeholder={mode === "card" ? t("pharmacyDesk.bill.cardRefHint") : t("pharmacyDesk.bill.upiRefHint")} style={{ height: 36, marginTop: 4 }} />
                 </label>
               )}
-              <button className="pri" style={{ width: "100%", marginTop: 10, height: 46 }} disabled={!canTake} onClick={() => { if (plan !== null) onTake(plan.tenders, plan.changePaise); }}>
-                {payable === null ? t("pharmacyDesk.bill.received") : t("pharmacyDesk.bill.receivedAmount", { amount: rupees(payable) })}{" "}
+              <button className="pri" data-testid="desk-take" style={{ width: "100%", marginTop: 10, height: 46 }} disabled={!canTake} onClick={() => { if (plan !== null) onTake(plan.tenders, plan.changePaise, creditUse); }}>
+                {coveredByCredit ? t("pharmacyDesk.bill.settleFromCredit") : rest === null ? t("pharmacyDesk.bill.received") : t("pharmacyDesk.bill.receivedAmount", { amount: rupees(rest) })}{" "}
                 <span className="kb" style={{ borderColor: "rgba(255,255,255,.35)", background: "rgba(255,255,255,.12)", color: "#d6ece1" }}>Ctrl ⏎</span>
               </button>
             </>

@@ -4,7 +4,7 @@ import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import { idSchema, parsed, toHttp } from "./pharmacy-http";
-import { listSaleItems, registerSaleItem, saleItemCandidates, setSaleItemActive } from "./sale-items";
+import { listSaleItems, registerSaleItem, saleItemCandidates, setSaleItemActive, setSaleItemDiscount } from "./sale-items";
 import { setShelfLocation } from "./shelf-locations";
 import { applyGstSlabPlan, gstSlabPlan, setItemGstSlab } from "./gst-slab";
 import type { GstSlabPlanRow } from "./gst-slab";
@@ -108,6 +108,19 @@ export class PharmacyItemsController {
     const { active } = parsed(activeBody, body);
     try {
       await withTx(this.db, (tx) => setSaleItemActive(tx, actor, itemId, active));
+      return { ok: true };
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** OWNER 2026-10-02 — the standing discount to the patient on this medicine: the in-charge's act, 0 to 25%. */
+  @RequirePermission("pharmacy.sale_items.discount", "hospital")
+  @Put(":itemId/discount")
+  async setDiscount(@CurrentActor() actor: Actor, @Param("itemId") itemId: string, @Body() body: unknown): Promise<{ ok: true }> {
+    const { discountBps } = parsed(z.object({ discountBps: z.number().int().min(0).max(10_000) }), body);
+    try {
+      await withTx(this.db, (tx) => setSaleItemDiscount(tx, actor, itemId, discountBps));
       return { ok: true };
     } catch (e) {
       return toHttp(e);

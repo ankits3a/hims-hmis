@@ -9,8 +9,8 @@ import { RosterError } from "./errors";
 import { ROSTER_MANAGE, ROSTER_PUBLISH, ROSTER_READ } from "./policy";
 import { seedOrgDepartments, seedRosterPositions } from "./masters";
 import {
-  UNIT_COUNT, UNIT_ESTABLISHMENT, closeTeam, confirmTeam, createTeam, listTeams, nightPoolFor,
-  seedUnits, teamByCode, teamMembers, unconfirmedTeams,
+  COMBINED_ICU_BEDS, UNIT_COUNT, UNIT_ESTABLISHMENT, closeTeam, confirmTeam, createTeam, listTeams, nightPoolFor,
+  retireSurplusUnits, seedUnits, teamByCode, teamMembers, unconfirmedTeams, unitCountsAt,
 } from "./teams";
 import { addMembership, importMemberships, membershipsOf, parentTeamOf } from "./memberships";
 import { officiatingAt, recordOfficiating } from "./officiating";
@@ -81,12 +81,39 @@ describe("roster — teams, memberships and officiating (R3)", () => {
 
   /* ═══════════════════ the establishment, seeded as a DRAFT ═══════════════════ */
 
-  it("seeds the 27 units plus one night pool per unit-bearing department, all INACTIVE", async () => {
+  it("2026-10-04 — an install seeded with the old 27 has its never-confirmed surplus CLOSED (not deleted); a confirmed one is left for a human", async () => {
+    await seedUnits(db);
+    const dept = async (code: string): Promise<string> => (await db.select().from(orgDepartments).where(eq(orgDepartments.code, code)))[0]!.id;
+    const old = [["OBG-U4", "OBG", false], ["ORT-U3", "ORT", false], ["ENT-U2", "ENT", true], ["OPH-U2", "OPH", false], ["RESP-U1", "RESP", false]] as const;
+    for (const [code, d, active] of old) {
+      await db.insert(rosterTeams).values({ id: `T-${code}`, kind: "clinical_unit", departmentId: await dept(d), code, name: code, unitNumber: Number(code.slice(-1)), active, createdBy: "old-seed", updatedBy: "old-seed" });
+    }
+    await db.insert(rosterTeams).values({ id: "T-RESP-NIGHT", kind: "pool", departmentId: await dept("RESP"), code: "RESP-NIGHT", name: "RESP pool", active: false, createdBy: "old-seed", updatedBy: "old-seed" });
+    // A team a head made by hand is not seed-shaped and is never judged.
+    await db.insert(rosterTeams).values({ id: "T-HAND", kind: "clinical_unit", departmentId: await dept("MED"), code: "MED-GERIATRIC", name: "Geriatric unit", active: false, createdBy: "hod", updatedBy: "hod" });
+
+    const r = await retireSurplusUnits(db, "test");
+    expect(r).toEqual({ retired: ["OBG-U4", "OPH-U2", "ORT-U3", "RESP-NIGHT", "RESP-U1"], keptConfirmed: ["ENT-U2"] });
+    const all = await db.select().from(rosterTeams);
+    expect(all.filter((t) => t.code.startsWith("RESP-") || t.code === "OBG-U4")).toHaveLength(3); // closed, never deleted
+    const closed = all.find((t) => t.code === "RESP-U1")!;
+    expect(closed.validTo!.getTime() - closed.validFrom.getTime()).toBe(1);
+    // A closed surplus unit never counted, at any instant after it was written.
+    expect(unitCountsAt(closed, new Date(closed.validFrom.getTime() + 1))).toBe(false);
+    expect(all.find((t) => t.code === "ENT-U2")!.validTo).toBeNull();
+    expect(all.find((t) => t.code === "MED-GERIATRIC")!.validTo).toBeNull();
+    expect(await retireSurplusUnits(db, "test")).toEqual({ retired: [], keptConfirmed: ["ENT-U2"] });
+  });
+
+  it("seeds the owner's 22 units (2026-10-04) plus one night pool per unit-bearing department, all INACTIVE", async () => {
     const result = await seedUnits(db);
-    expect(UNIT_COUNT).toBe(27);
+    expect(UNIT_COUNT).toBe(22);
+    expect(UNIT_ESTABLISHMENT.map((r) => `${r.departmentCode}${r.units}`)).toEqual(["MED5", "SUR5", "OBG3", "PED3", "ORT2", "OPH1", "ENT1", "PSY1", "DER1"]);
+    expect(UNIT_ESTABLISHMENT.reduce((n, r) => n + r.sanctionedBeds, 0) + COMBINED_ICU_BEDS).toBe(605);
     expect(result.added).toBe(UNIT_COUNT + UNIT_ESTABLISHMENT.length);
     const teams = await listTeams(db);
-    expect(teams.filter((t) => t.kind === "clinical_unit")).toHaveLength(27);
+    expect(teams.filter((t) => t.kind === "clinical_unit")).toHaveLength(22);
+    expect(teams.some((t) => t.code.startsWith("RESP-"))).toBe(false);
     expect(teams.filter((t) => t.kind === "pool")).toHaveLength(UNIT_ESTABLISHMENT.length);
     // Every one of them is unconfirmed: the establishment is OURS, and a human ratifies it.
     expect(teams.every((t) => !t.active)).toBe(true);

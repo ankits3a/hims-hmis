@@ -104,3 +104,24 @@ describe("the folded stores screens forward into the office (gap-closure B3)", (
     expect(router.state.location.pathname).toBe("/pharmacy/retail");
   });
 });
+
+/**
+ * HOSPITAL NUMBERS (owner 2026-10-13, #777) — Lab numbers became the Lab tab of `/reports/numbers`.
+ * `/lab/metrics` is on the owner's and the pathologist's bookmark bars from #768; it forwards there
+ * with the Lab tab chosen rather than landing on a blank page.
+ */
+describe("the Lab numbers address forwards into Hospital numbers (#777)", () => {
+  afterAll(() => { setToken(null); });
+
+  it("forwards /lab/metrics to /reports/numbers with the Lab tab", async () => {
+    await loadAt("/lab/metrics");
+    expect(router.state.location.pathname).toBe("/reports/numbers");
+    expect(router.state.location.search).toEqual({ tab: "lab" });
+  });
+
+  it("leaves /reports/numbers itself alone", async () => {
+    await loadAt("/reports/numbers?tab=pharmacy");
+    expect(router.state.location.pathname).toBe("/reports/numbers");
+    expect(router.state.location.search).toEqual({ tab: "pharmacy" });
+  });
+});

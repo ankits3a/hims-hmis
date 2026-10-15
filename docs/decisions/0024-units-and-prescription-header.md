@@ -1,0 +1,107 @@
+---
+type: decision
+id: "0024"
+title: "The 22-unit establishment; OPD screens show the unit; the e-prescription prints the unit, not the doctor; one room per doctor"
+description: "The establishment has 22 units, and a unit doctor's e-prescription prints the unit, not the doctor; a guest doctor prints the Doctor ID only."
+generated: { by: agent:claude, at: 2026-10-04 }
+verified: []
+status: draft
+ruling: partly-open
+tags: [roster, opd, printing, legal]
+supersedes: ["0033"]
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
+# 0024 — The 22-unit establishment; OPD screens show the unit; the e-prescription prints the unit, not the doctor; one room per doctor
+
+- **Date:** 2026-10-04   **Status:** Partly open
+- **Area:** roster, opd, printing, legal
+
+## Decision
+
+**1. Unit establishment.** Source table: `/opt/hmis-context/roster-ux-tools/crkmch-min-units-per-dept.png`. This
+supersedes the 2026-09-20 split (5/5/3/3/4/2/2/1/1 + RESP).
+
+| Department | Units | Beds |
+|---|---|---|
+| General Medicine | 5 | 150 |
+| General Surgery | 5 | 150 |
+| Obs & Gynae | 3 | 75 |
+| Paediatrics | 3 | 75 |
+| Orthopaedics | 2 | 60 |
+| Ophthalmology | 1 | 20 |
+| ENT | 1 | 20 |
+| Psychiatry | 1 | 15 |
+| Dermatology | 1 | 10 |
+| Combined ICUs | — | 30 |
+| **Total** | **22** | **605** |
+
+Respiratory Medicine has no unit. Only Unit I is active today, in MED, SUR, ENT, OBG and ORT.
+
+**2. OPD screens** show the unit beside the doctor's name, e.g. "Dr. Chandan · Unit I". Guest faculty show as
+"Dr. S.I Raza · Guest Faculty".
+
+**3. OPD e-prescription header** (final, after the owner's same-day refinement, which replaced the first version of
+this item):
+- Fields in this order: Name · UHID · Gender · Age · Address · Unit Number · Encounter ID · Encounter Type · Visit
+  Date/Admn Date · Dept. Regn.
+- No separate "Dept" field: the department NAME prints just below the logo.
+- The doctor's name is never printed anywhere. The words "Guest Faculty" are never printed.
+- **Unit Number:** a unit doctor gets the unit ("Unit I"). Guest faculty, and (DECIDED) anyone in no unit, e.g.
+  Community Medicine, get their Doctor ID in this field.
+- **Dept. Regn** (one field) = the council registration number of THAT DAY's head of the unit concerned (Professor,
+  Associate or Assistant Professor heading it; an officiating head counts), NOT the prescribing doctor's own:
+  - unit doctor → their unit's head;
+  - doctor in no unit (guest faculty) → head of the unit holding the visit department's OPD that day (e.g. Raza on
+    Monday in MED → MED Unit I's head);
+  - department with no unit (Paediatrics, Community Medicine) → blank;
+  - head's number not entered → blank (no placeholder).
+- **Encounter ID:** `visit_no`. **Encounter Type:** OPD. **Visit Date:** the OPD visit day.
+- **Address:** as registered; the row is omitted when empty, and for a sealed (§14) patient.
+- For unit doctors this supersedes the 2026-09-06 "print the Doctor ID only" ruling (now recorded as 0033).
+
+**4. Rooms.** One room per doctor, at most 4 rooms per department:
+
+| Room | Doctor |
+|---|---|
+| R1 | Raza |
+| R2 | Chandan |
+| R3 | Yash Vardhan |
+| R4 | Saurabh Ranjan |
+| R5 | Shishir Jha |
+| R6 | Sonam Kumari |
+| R7 | Ritu Kumari |
+| R8 | Kishore Kunal |
+| R9 | Suryendru Kumar |
+| R10 | Nitish Kumar Jha |
+
+## Consequences / how to apply
+
+- Code: `roster/doctor-units.ts` (`prescriberPrint`), `kernel/printing/render.ts` (A4 sheet),
+  `opd/prescriptions.ts` (e-Rx payload), `components/rx-print.tsx`.
+- The OPD admin doctors tab names every unit head with no registration number
+  (`GET /roster/unit-heads-without-regn`).
+
+## Guardian Name (2026-10-07)
+
+Owner, 2026-10-07: *"Add 'Guardian Name' label & field in the prescription slip print along with name, age and
+other fields"*
+
+- The A4 prescription sheet prints **Guardian Name:** directly under **Name:** (left column: Name · Guardian Name ·
+  UHID · Gender + Age; the right column is unchanged; Address and Unit Number / Dept. Regn each move down one row).
+- **DECIDED — the value:** the guardian whose authority stands on the visit day (`patient_guardians`, active, not
+  past `valid_to`, the oldest link first), with the relation written the Indian way: father or mother → `S/o` / `D/o`
+  by the patient's gender, spouse of a woman → `W/o`, anyone else → `C/o`. With no guardian linked it falls back to
+  the registered father's / husband's name (`patients.father_husband_name`): `S/o` for a man, `C/o` for a woman
+  (the field does not say which of the two it holds, so the sheet does not guess).
+- Nothing recorded → the label prints with a blank value (the Dept. Regn rule). A sealed patient's is blank.
+- One line only; a long name is clipped with an ellipsis. Font sizes are unchanged.
+- Code: `kernel/printing/render.ts` (`renderPrescriptionSheet`, `.c-guard`). No other document carries this header.
+
+## Open
+
+- **Flagged to the owner (law):** the Indian Medical Council Regulations 2002 (1.4.2) and the telemedicine guidelines
+  expect a prescription to identify the RMP by name, qualification and registration number. Hiding the name is the
+  owner's legal call; it was implemented as the owner ruled.
+- The owner must enter the unit heads' council registration numbers (all were empty on staging on 2026-10-04).

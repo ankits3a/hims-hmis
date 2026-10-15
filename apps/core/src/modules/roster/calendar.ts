@@ -8,6 +8,9 @@ import {
 import { orgDepartments } from "../../kernel/db/schema/org";
 import { RosterError } from "./errors";
 import { requireRosterAct } from "./access";
+import { unitCountsAt } from "./teams";
+import { appendEvent } from "../../kernel/events/append";
+import { rosterHolidayDeclared } from "./events";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 import type {
@@ -214,7 +217,7 @@ export function expandCycle(
 /** The rolling horizon: ninety days is a quarter, which is how far a department plans theatre. */
 export const HORIZON_DAYS = 90;
 
-async function loadSpec(exec: Db | Tx, cycleId: string): Promise<CycleSpec & { departmentId: string }> {
+async function loadSpec(exec: Db | Tx, cycleId: string): Promise<CycleSpec & { departmentId: string; status: string }> {
   const cycle = (await (exec as Db).select().from(rosterCycles).where(eq(rosterCycles.id, cycleId)))[0];
   if (cycle === undefined) throw new RosterError("unknown_cycle", undefined, { cycleId });
   const entries = await (exec as Db).select().from(rosterCycleEntries)
@@ -224,6 +227,7 @@ async function loadSpec(exec: Db | Tx, cycleId: string): Promise<CycleSpec & { d
     .orderBy(asc(rosterCycleOverlays.sequencePosition));
   return {
     departmentId: cycle.departmentId,
+    status: cycle.status,
     cycleDays: cycle.cycleDays,
     anchorIstDate: cycle.anchorIstDate,
     entries: entries.map((e) => ({
@@ -238,7 +242,12 @@ async function loadSpec(exec: Db | Tx, cycleId: string): Promise<CycleSpec & { d
   };
 }
 
-async function holidaysBetween(exec: Db | Tx, from: string, to: string): Promise<HolidaySpec[]> {
+/**
+ * The holidays declared for IST dates `[from, to)`. Exported for the proposer (audit 2026-10-04 #8):
+ * a declared holiday withdraws OPD and the elective list while the take and the nights run as usual,
+ * and a proposer that never read this table drafted a full routine day on Gandhi Jayanti.
+ */
+export async function holidaysBetween(exec: Db | Tx, from: string, to: string): Promise<HolidaySpec[]> {
   const rows = await (exec as Db).select().from(rosterHolidays)
     .where(and(gte(rosterHolidays.istDate, from), lt(rosterHolidays.istDate, to)));
   return rows.map((h) => ({
@@ -253,9 +262,17 @@ async function holidaysBetween(exec: Db | Tx, from: string, to: string): Promise
  */
 export async function materialiseWindows(
   tx: Tx, actor: Actor, cycleId: string, fromIstDate: string, toIstDate: string,
+  /**
+   * `extend_published_windows` is the nightly job's act (see `policy.ts`). It is honoured only when
+   * the cycle is ALREADY `published`; asked of a draft or a superseded cycle it is judged as
+   * `publish`, which a machine is never allowed — so the allowance cannot be turned into a way to
+   * put an unpublished cycle on the calendar.
+   */
+  requested: "publish" | "extend_published_windows" = "publish",
 ): Promise<{ written: number; superseded: number }> {
   const spec = await loadSpec(tx, cycleId);
-  await requireRosterAct(tx, actor, "publish", { departmentId: spec.departmentId });
+  const act = requested === "extend_published_windows" && spec.status === "published" ? requested : "publish";
+  await requireRosterAct(tx, actor, act, { departmentId: spec.departmentId });
 
   const holidays = await holidaysBetween(tx, fromIstDate, toIstDate);
   const planned = expandCycle(spec, fromIstDate, toIstDate, holidays);
@@ -347,7 +364,7 @@ export async function extendWindows(
       : addIstDays(new Date(last.startsAt.getTime() + IST_OFFSET_MINUTES * MINUTE_MS).toISOString().slice(0, 10), 1);
     const to = addIstDays(todayIstDate, HORIZON_DAYS);
     if (daysBetween(from, to) <= 0) continue;
-    written += (await materialiseWindows(tx, actor, cycle.id, from, to)).written;
+    written += (await materialiseWindows(tx, actor, cycle.id, from, to, "extend_published_windows")).written;
   }
   return { departments: live.length, written };
 }
@@ -400,6 +417,16 @@ export async function declareHoliday(
   for (const cycle of live) {
     await materialiseWindows(tx, actor, cycle.id, input.istDate, addIstDays(input.istDate, 1));
   }
+  // 20-U I1/I2 — the declaration is heard outside the roster (V9: the day as an instant, no prose).
+  const stamped = (await (tx as Db).select({ at: rosterHolidays.declaredAt }).from(rosterHolidays)
+    .where(eq(rosterHolidays.istDate, input.istDate)))[0];
+  await appendEvent(tx, rosterHolidayDeclared.make({
+    payload: {
+      dayStartsAt: istMidnightUtc(input.istDate).toISOString(), kind, pattern,
+      departmentsRematerialised: live.length, declaredAt: (stamped?.at ?? new Date()).toISOString(),
+    },
+    actor, correlationId: input.istDate,
+  }));
   return { istDate: input.istDate, departmentsRematerialised: live.length };
 }
 
@@ -434,6 +461,29 @@ export async function unitOnTake(exec: Db | Tx, departmentId: string, at: Date):
 
 export async function backupUnit(exec: Db | Tx, departmentId: string, at: Date): Promise<OnTakeAnswer> {
   const [row] = await (exec as Db).select().from(rosterDutyWindows).where(liveWindowAt(departmentId, "backup", at)).limit(1);
+  return row === undefined
+    ? { teamId: null, source: "none", startsAt: null, endsAt: null }
+    : { teamId: row.teamId, source: "published", startsAt: row.startsAt, endsAt: row.endsAt };
+}
+
+/**
+ * 20-U I23 — the unit on take (or the backup) at `at`, **as the calendar stood at `knownAt`**: a
+ * window written by then (`created_at ≤ knownAt`) and not yet superseded then. A holiday declared
+ * later, or a corrected cycle, re-materialises a day's windows — supersedes the old rows and writes
+ * new ones — and an inspection of last Tuesday must not be answered from today's re-write. The same
+ * two-axis rule as `asKnownAt` for slots; `unitOnTake` is this with `knownAt` = now's live rows.
+ */
+export async function windowAsKnownAt(
+  exec: Db | Tx, departmentId: string, activity: "take" | "backup", at: Date, knownAt: Date,
+): Promise<OnTakeAnswer> {
+  const [row] = await (exec as Db).select().from(rosterDutyWindows).where(and(
+    eq(rosterDutyWindows.departmentId, departmentId),
+    eq(rosterDutyWindows.activity, activity),
+    lte(rosterDutyWindows.startsAt, at),
+    gt(rosterDutyWindows.endsAt, at),
+    lte(rosterDutyWindows.createdAt, knownAt),
+    sql`(${rosterDutyWindows.supersededAt} is null or ${rosterDutyWindows.supersededAt} > ${knownAt})`,
+  )).orderBy(sql`${rosterDutyWindows.createdAt} desc`).limit(1);
   return row === undefined
     ? { teamId: null, source: "none", startsAt: null, endsAt: null }
     : { teamId: row.teamId, source: "published", startsAt: row.startsAt, endsAt: row.endsAt };
@@ -498,9 +548,12 @@ export async function departmentsWithTakeGaps(
  * department with no cycle at all is the hole — which is exactly what the row's own comment has
  * said since R7 and what neither earlier version actually checked.
  */
-export async function departmentsWithoutPublishedCycle(exec: Db | Tx): Promise<string[]> {
-  const units = await (exec as Db).select({ departmentId: rosterTeams.departmentId })
-    .from(rosterTeams).where(eq(rosterTeams.kind, "clinical_unit"));
+export async function departmentsWithoutPublishedCycle(exec: Db | Tx, at: Date = new Date()): Promise<string[]> {
+  // 2026-10-04 (owner) — only a CONFIRMED unit makes a department unit-bearing (`unitCountsAt`):
+  // a seeded-but-unconfirmed Paediatrics has no unit to put on take, so its missing cycle is not a hole.
+  const units = (await (exec as Db).select({ departmentId: rosterTeams.departmentId, active: rosterTeams.active, validTo: rosterTeams.validTo })
+    .from(rosterTeams).where(eq(rosterTeams.kind, "clinical_unit")))
+    .filter((t) => unitCountsAt(t, at));
   const unitBearing = [...new Set(units.map((u) => u.departmentId))].sort();
   if (unitBearing.length === 0) return [];
   const published = await (exec as Db).select({ departmentId: rosterCycles.departmentId })
@@ -526,20 +579,24 @@ export const ROSTER_CALENDAR_ACTIVITIES = ROSTER_ACTIVITIES;
  * The horizon is rolling, so something must roll it. Registered `dailyIst("01:30")`: after IST
  * midnight, so "today" is the day it is extending from, and long before any clinic opens.
  *
- * ═══ WHAT ACTOR A SCHEDULED JOB ACTS AS, AND WHY IT IS NOT `system` ═══
+ * ═══ WHAT ACTOR A SCHEDULED JOB ACTS AS ═══
  *
- * The matrix says `publish` is **`never`** for a `system` actor, and that is right: no scheduled job
- * decides who is on. But this job is not deciding anything — it is **writing down more of what a
- * human already decided**, by re-expanding a cycle that is already `published`. `extendWindows`
- * cannot publish a cycle and cannot reach a draft.
+ * A named `system` actor, as the proposer is (`PROPOSER_ACTOR`). The matrix says `publish` is
+ * **`never`** for a `system` actor, and that stays right: no scheduled job decides who is on. This
+ * job decides nothing — it **writes down more days of what a human already decided**, by
+ * re-expanding a cycle that is already `published` — so it has an act of its own,
+ * `extend_published_windows`, which `materialiseWindows` honours for a published cycle only.
  *
- * So `MATERIALISER_ACTOR` is a `user`-typed actor with a reserved id, exactly as `TIMER_ACTOR` is in
- * `kernel/workflow/timers.ts` — this codebase's established shape for a scheduled act that continues
- * a person's decision rather than making one. It holds no grant of its own, which is why the
- * hospital-scope check in `materialiseWindows` is satisfied by the department's cycle already being
- * published and not by anything this actor carries.
+ * **2026-10-07 — WHAT THIS REPLACED, AND WHAT IT COST.** Until then this was a `user`-typed actor
+ * with a reserved id and no grant, on the written belief that the publish check was "satisfied by
+ * the department's cycle already being published". It never was: `requireRosterAct` asks what the
+ * ACTOR holds. No test ran the job with a published cycle in the database — with none, the loop body
+ * is never entered — so it was green until the first night the hospital had real units, and then
+ * failed nightly on production and staging (6 Oct 2026, 20:00 UTC onward). Nothing was lost: the
+ * horizon is ninety days and `extendWindows` resumes from the last window written, so the next good
+ * run writes every missed day. `window-sweep.test.ts` now runs it through the worker's registration.
  */
-export const MATERIALISER_ACTOR: Actor = { type: "user", id: "roster-materialiser" };
+export const MATERIALISER_ACTOR: Actor = { type: "system", id: "roster-materialiser" };
 
 export async function sweepRosterWindows(db: Db, now: Date): Promise<{ departments: number; written: number }> {
   const todayIst = new Date(now.getTime() + IST_OFFSET_MINUTES * MINUTE_MS).toISOString().slice(0, 10);

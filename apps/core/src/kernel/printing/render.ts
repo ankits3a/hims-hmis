@@ -1,6 +1,6 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import {
-  opdDepartments, opdDoctors, opdEncounters, opdQueueEntries, opdVitals, patients, users,
+  opdDepartments, opdDoctors, opdEncounters, opdQueueEntries, opdVitals, patientGuardians, patients, users,
 } from "../db/schema";
 import { encounterFeeStatuses } from "../../modules/billing/fee-status";
 /* The FREE branch only — it returns before `previewInvoice`, so a revisit is cheap and a paying
@@ -14,10 +14,16 @@ import { displayName, displayNameForRelease, listAllergies, resolvePatientId } f
 /* FD-29 — the crest as a data URI and a real QR encoder, both self-contained: `RenderedDocument`
    promises HTML with no external fetch, and the relay may be printing with the uplink down. */
 import { CREST_PNG_DATA_URI } from "./crest";
+// 2026-10-04 (owner) — the prescriber line. Imported from the file, not the roster index: the index
+// reaches the board printer, which reaches this renderer, and a load cycle resolves to `undefined`.
+import { prescriberPrint } from "../../modules/roster/doctor-units";
 import { qrSvg } from "./qr";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../db/client";
-import type { PrintDocument } from "./enqueue";
+import { HOSPITAL, esc, registerDocumentRenderer, registeredRenderer } from "./document-kit";
+import type { DocumentRenderer, RenderedDocument } from "./document-kit";
+export { HOSPITAL, esc, registerDocumentRenderer };
+export type { DocumentRenderer, RenderedDocument };
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -55,37 +61,7 @@ import type { PrintDocument } from "./enqueue";
  * where that was ruled, and the reason "Next Steps" fits here and would not fit on a 4×6 label.
  */
 
-/** A rendered document, ready for the relay to convert and print. */
-export type RenderedDocument = {
-  /** Self-contained HTML: inline CSS, no external fetch, no font CDN. The relay may be offline. */
-  html: string;
-  /** For the operator's log and the relay's own sanity check. */
-  title: string;
-  /**
-   * ═══ THE PAGE GEOMETRY, AND WHY IT TRAVELS AS DATA RATHER THAN LIVING ONLY IN THE CSS ═══
-   *
-   * **MEASURED, NOT ASSUMED: Chromium SILENTLY IGNORES `@page { size: 72mm auto }`.** A first cut of
-   * this phase relied on the CSS alone and produced a US-Letter PDF — 215.9 × 279.4 mm — with the
-   * slip stranded in the corner of a sheet. `preferCSSPageSize: true` does not rescue it either;
-   * only an EXPLICIT height is honoured (`size: 72mm 200mm` renders exactly 72.0 × 200.1 mm).
-   *
-   * A thermal roll is continuous, so there is no explicit height to write: the slip is as long as
-   * the job needs. So the geometry travels to the relay, which has the browser, and the relay
-   * MEASURES the laid-out document before printing when `heightMm` is null.
-   *
-   * The `@page` rules in the CSS below STAY. They are the correct declaration of intent for any
-   * renderer that honours them, and they keep the template readable — but they are not what makes
-   * the paper the right size, and a future reader should not believe they are.
-   */
-  page: { widthMm: number; heightMm: number | null };
-};
 
-/** Escapes text for HTML. Everything interpolated below goes through it — patient names included. */
-export function esc(value: unknown): string {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-}
 
 /**
  * THE THERMAL PAGE. 72 mm printable, continuous length, no margin of its own — a roll has no
@@ -157,32 +133,6 @@ function barField(payload: string): string {
   return `<div class="code"><div>${bars.join("")}</div><div class="digits mo">${esc(payload)}</div></div>`;
 }
 
-/**
- * ═══ EVERY FIELD HERE IS PRE-ESCAPED AND INTERPOLATED RAW ═══
- *
- * `name` and `nameTitleCase` carry `&amp;` as an ENTITY, so putting them through `esc()` prints the
- * literal `&amp;` on the paper. That is a trap the next reader will step in exactly once; it is
- * written down here rather than discovered on a printed sheet.
- */
-export const HOSPITAL = {
-  name: "CRK MEDICAL COLLEGE &amp; HOSPITAL",
-  /**
-   * The SAME establishment, title-cased, for the prescription letterhead's footer.
-   *
-   * NOT a unification of the line above, and deliberately so: the thermal slips print the name in
-   * caps, and a SECOND, unescaped copy of the same string lives at `modules/opd/config.ts` behind
-   * seven tests across four modules. Folding three spellings into one is a cross-module change with
-   * its own review — it is not something a layout change may quietly do on the way past.
-   */
-  nameTitleCase: "CRK Medical College &amp; Hospital",
-  address: "Chaurasia Chowk, Hajipur — 844101, Bihar",
-  contact: "Hotline +91 77648 88189 · Emergency 1068",
-  /* FD-29 — split out of `contact` for the prescription footer, which labels them separately. */
-  hotline: "+91 77648 88189",
-  emergency: "1068",
-  email: "info@crkmch.com",
-  website: "www.crkmch.com",
-};
 
 /**
  * ═══ THE HOSPITAL'S CLOCK, ONE MECHANISM, IN THE ONE SPELLING THIS FILE ALREADY USED ═══
@@ -261,6 +211,37 @@ export function thermalPage(title: string, body: string, extraCss = ""): Rendere
   };
 }
 
+/**
+ * ═══ THE 4 × 6 INCH BILL PAGE (owner, 2026-10-02) ═══
+ *
+ * *"The invoice bill should be in 4 x 6 inch print page. I will be using dot matrix printer."* A cut
+ * sheet, not a roll: 101.6 × 152.4 mm, and BOTH dimensions are explicit, so Chromium honours the
+ * `@page` rule and paginates a long bill onto further 4 × 6 pages by itself — the relay has nothing
+ * to measure.
+ *
+ * It keeps the roll's classes (`.hd`, `.row`, `.sec`, `.ft`) so a module's body prints on either
+ * stock, and overrides what a dot-matrix head needs: pure black, no hairline thinner than 1px, a
+ * larger body size than the roll's, and no row split across a page.
+ */
+export const BILL_PAGE_MM = { widthMm: 101.6, heightMm: 152.4 } as const;
+const BILL_4X6_CSS = `
+  @page { size: 4in 6in; margin: 0; }
+  body { width: 4in; padding: 4mm 4.5mm 5mm; font-size: 10pt; line-height: 1.3; }
+  .hd .nm { font-size: 12pt; }
+  .hd .ad { font-size: 8.5pt; }
+  .row { font-size: 9.5pt; }
+  .ft { font-size: 8pt; }
+  tr, .row, .lab { break-inside: avoid; page-break-inside: avoid; }
+  .newpage { break-before: page; page-break-before: always; }
+`;
+export function billPage(title: string, body: string, extraCss = ""): RenderedDocument {
+  return {
+    title,
+    page: { ...BILL_PAGE_MM },
+    html: `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${THERMAL_CSS}${extraCss}${BILL_4X6_CSS}</style></head><body>${body}</body></html>`,
+  };
+}
+
 /** The identity every document repeats, because a slip that cannot be matched to a person is litter. */
 export type SlipSubject = {
   /**
@@ -299,6 +280,8 @@ export type SlipSubject = {
    * the `—` fallback below can only be reached by an encounter with no doctor at all.
    */
   doctorCode: string | null;
+  /** 2026-10-04 — the prescriber's user, so the prescription can print their UNIT instead of any id. */
+  doctorUserId: string | null;
 };
 
 /** `MED-4`. The same grammar the screen uses — a token printed one way and said another sends a patient to the wrong door. */
@@ -451,7 +434,7 @@ export async function subjectOf(
   */
   const doctor = await db
     .select({
-      name: opdDoctors.displayName, registrationNo: opdDoctors.registrationNo, code: opdDoctors.code,
+      name: opdDoctors.displayName, registrationNo: opdDoctors.registrationNo, code: opdDoctors.code, userId: opdDoctors.userId,
       /* FD-29 — the A4 letterhead prints a Speciality row. Nullable free text with no master
          behind it, so the sheet falls back to the department rather than printing a dash. */
       specialty: opdDoctors.specialty,
@@ -541,6 +524,7 @@ export async function subjectOf(
     doctorRegistrationNo: doctor[0]?.registrationNo ?? null,
     doctorSpecialty: doctor[0]?.specialty ?? null,
     doctorCode: doctor[0]?.code ?? null,
+    doctorUserId: doctor[0]?.userId ?? null,
     tokenNo: entry[0]?.tokenNo ?? null,
     roomCode: null,
     /* FD-29 — the canonical id, NOT `opd_encounters.patient_id`: see the field's own comment. */
@@ -551,6 +535,9 @@ export async function subjectOf(
     ageYears: ageYearsIST(person.dob, now),
   };
 }
+
+/** Owner, 2026-10-01 — how a fee waived as the hospital's social service prints, on every paper. */
+export const SAMAJ_SEVA_AMOUNT = "₹0 (समाज सेवा छूट)";
 
 /**
  * ═══ THE OPD TOKEN SLIP — `TokenSlip72.dc.html` ═══
@@ -647,15 +634,24 @@ export async function renderTokenSlip(
   let moneyLine: string;
   if (status === "free") {
     let until: string | null = null;
+    let feesOff = false;
     try {
       const quote = await feeQuote(db, encounterId, now);
       until = quote.freeReason === null ? null : formatCalendarDay(quote.freeReason.windowEndsOn);
+      feesOff = quote.feesOff;
     } catch {
       /* An unconfigured or unpriceable visit still prints the TYPE; it simply cannot name a window.
          A slip that failed to render because the fee policy moved would be far worse than one
          missing a date. */
     }
-    moneyLine = until === null
+    /*
+      OWNER, 2026-10-01: *"On the bill and receipt, clearly mention amount ₹0 (Samaj Seva Chhoot) in
+      Hindi."* A visit that is free because the consultation fee is switched off has no bill and no
+      receipt — this slip is the only paper it prints — so the amount and its reason are said here.
+    */
+    moneyLine = feesOff
+      ? SAMAJ_SEVA_AMOUNT
+      : until === null
       ? "FREE — review visit, no consultation fee"
       : `FREE — review visit, no fee until ${until}`;
   } else if (status === "settled") moneyLine = "PAID";
@@ -748,12 +744,14 @@ export async function renderPaymentReceipt(
   const paise = typeof params.amountPaise === "number" ? params.amountPaise : 0;
   const rupees = `₹${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+  // Owner, 2026-10-01 — a ₹0 receipt says why it is ₹0, in Hindi, under the amount.
+  const sevaHtml = paise === 0 ? `<div class="hi" style="font-size:11pt;font-weight:700">${SAMAJ_SEVA_AMOUNT}</div>` : "";
   const body = `
     <div class="hd">
       <div class="nm">${HOSPITAL.name}</div>
       <div class="ad">${HOSPITAL.address}<br>${HOSPITAL.contact}</div>
     </div>
-    <div class="tok"><div class="lbl">Payment received</div><div class="no mo" style="font-size:20pt">${esc(rupees)}</div></div>
+    <div class="tok"><div class="lbl">Payment received</div><div class="no mo" style="font-size:20pt">${esc(rupees)}</div>${sevaHtml}</div>
     <div class="sec">
       <div class="row"><span class="k">Patient</span><span class="v">${esc(s.patientName)}</span></div>
       <div class="row"><span class="k">UHID</span><span class="v mo">${esc(s.uhid)}</span></div>
@@ -900,28 +898,71 @@ export async function renderPrescriptionSheet(
     ? (await db.select({ username: users.username }).from(users).where(eq(users.id, requester.id)))[0]?.username ?? null
     : null;
 
-  const dobDay = formatCalendarDay(s.dob);
-  const ageSuffix = s.ageYears === null ? "" : ` (${s.dobEstimated ? "≈" : ""}${String(s.ageYears)} years)`;
-  /* An ESTIMATED date of birth is an entered age wearing a date's clothes — print the age alone. */
-  const dobCell = s.dobEstimated || dobDay === null
-    ? (s.ageYears === null ? "—" : `${s.dobEstimated ? "≈" : ""}${String(s.ageYears)} years`)
-    : `${dobDay}${ageSuffix}`;
   /*
-    OWNER, 2026-09-06: *"As a medical Institution with college, there's no need of mentioning Dr.
-    Name and their registration number. Only Dr. ID is required."*
-
-    An earlier cut of this sheet printed `Doctor: <name> · Reg. <no>` BECAUSE THE ID DID NOT EXIST —
-    `DR-0114` was in five design canvases and in no column — and dropping the name without putting
-    something in its place would have left the row empty. `opd_doctors.code` is that column now, so
-    the design's own row is what prints.
-
-    OWNER, 2026-09-28: *"Prescription print: Doctor ID only."* The signature block used to ask the
-    treating physician for their name and registration number in their own hand (the NMC Code of
-    Ethics reg. 1.4.2 reading); the owner has ruled the hospital's paper carries the Doctor ID and a
-    signature, so the block now asks for exactly that. The lab report's signing pathologist (full
-    name and council number) is the one exception, and it is not this sheet.
+    HISTORY. The header printed DOB (an estimated date as the age alone) and a "Doctor ID" row: owner
+    2026-09-06 *"Only Dr. ID is required"*, 2026-09-28 *"Prescription print: Doctor ID only"*. Both are
+    superseded for this sheet by the owner's header of 2026-10-04 below (Age; Unit Number; Dept. Regn).
   */
-  const doctorCell = esc(s.doctorCode ?? "—");
+  /*
+    ═══ OWNER, 2026-10-04 — THE HEADER, FIELD BY FIELD (supersedes the "Doctor ID only" rulings above) ═══
+
+    In this order: Name · Guardian Name (2026-10-07) · UHID · Gender · Age · Address · Unit Number | Encounter ID · Encounter Type ·
+    Visit Date · Dept. Regn. The department NAME prints under the crest. NO doctor's name anywhere:
+      · Unit Number — the prescriber's unit that day ("Unit I"); a doctor in no unit (Guest Faculty,
+        and DECIDED: anyone else in none, e.g. Community Medicine) prints the Doctor ID here instead.
+        The words "Guest Faculty" never print.
+      · Dept. Regn — ONE field (owner correction, same day): the DEPARTMENT registration number, i.e.
+        the council number of that day's head of the unit concerned (officiating head counts) — the
+        prescriber's own unit, or for a doctor in no unit the unit holding the department's OPD that
+        day; blank when the department has no unit or the head has no number on file. The OPD admin
+        screen lists unit heads with none, so the gap is seen.
+      · Encounter ID — `visit_no`, the spelling the house prints and a clerk types back.
+      · Encounter Type — OPD (the same field will carry IPD / Emergency).
+      · Visit Date — the OPD visit day (the admission date, once IPD exists).
+      · Address — as registered; the row is left out when there is none, and for a sealed patient
+        (§14: the seal covers where they live as much as who they are).
+  */
+  const visitDay = String(s.serviceDate).slice(0, 10);
+  const clinic = (await db.select({ d: opdEncounters.departmentId }).from(opdEncounters).where(eq(opdEncounters.id, encounterId)))[0]?.d ?? null;
+  const prescriber = s.doctorUserId === null
+    ? { unitNumber: "—", deptRegn: null as string | null }
+    : await prescriberPrint(db, { userId: s.doctorUserId, code: s.doctorCode }, { istDate: visitDay, opdDepartmentId: clinic });
+  const home = (await db.select({ addressLine: patients.addressLine, district: patients.district, stateName: patients.stateName, pincode: patients.pincode, sealed: patients.isConfidential, fatherHusbandName: patients.fatherHusbandName })
+    .from(patients).where(eq(patients.id, s.patientId)))[0];
+  const addressText = home === undefined || home.sealed ? "" : [home.addressLine, home.district, home.stateName, home.pincode]
+    .map((x) => x?.trim() ?? "").filter((x) => x !== "").join(", ");
+  /*
+    ═══ GUARDIAN NAME — owner, 2026-10-07 ═══
+    *"Add 'Guardian Name' label & field in the prescription slip print along with name, age and other
+    fields."* It sits under Name. The value is the guardian whose authority stands on the visit day
+    (the oldest link first — the one registration made), with the relation written the way an Indian
+    record writes it: a father or mother is S/o or D/o by the patient's gender, a husband W/o, anyone
+    else C/o. With no guardian linked it falls back to the registered father's / husband's name —
+    S/o for a man; a woman's may be either, so the sheet does not guess and prints C/o.
+    Nothing recorded prints the label and a blank value (the Dept. Regn rule), and a sealed patient's
+    is blank too: §14 covers who stands beside them as much as where they live.
+  */
+  const guardianText = home === undefined || home.sealed ? "" : await (async (): Promise<string> => {
+    const male = s.gender.toLowerCase().startsWith("m");
+    const female = s.gender.toLowerCase().startsWith("f");
+    const links = await db.select({ name: patientGuardians.name, relationship: patientGuardians.relationship, validTo: patientGuardians.validTo })
+      .from(patientGuardians)
+      .where(and(eq(patientGuardians.patientId, s.patientId), eq(patientGuardians.status, "active")))
+      .orderBy(asc(patientGuardians.createdAt));
+    const standing = links.find((g) => g.name.trim() !== "" && (g.validTo === null || g.validTo.getTime() > now.getTime()));
+    if (standing !== undefined) {
+      const parent = standing.relationship === "father" || standing.relationship === "mother";
+      const prefix = parent && male ? "S/o" : parent && female ? "D/o"
+        : standing.relationship === "spouse" && female ? "W/o" : "C/o";
+      return `${prefix} ${standing.name.trim()}`;
+    }
+    const registered = home.fatherHusbandName?.trim() ?? "";
+    return registered === "" ? "" : `${male ? "S/o" : "C/o"} ${registered}`;
+  })();
+  const ageCell = s.ageYears === null ? "—" : `${s.dobEstimated ? "≈" : ""}${String(s.ageYears)} years`;
+  const signatureCaption = "Signature of the treating physician";
+  /** Past this many characters the header's address steps down to 10px (two lines at 10.5px hold about 190). */
+  const ADDRESS_LONG_CHARS = 170;
 
   const css = `
     /* The geometry is the artboard's: a 794 x 1123 px page at 96 dpi is exactly A4, so the layout
@@ -944,14 +985,37 @@ export async function renderPrescriptionSheet(
     .lb { color: #333; font-weight: 400; }
     .vl { color: #000; font-weight: 700; }
     .sheet { width: 210mm; height: 296.8mm; padding: 26px 30px 20px; display: flex; flex-direction: column; overflow: hidden; }
-    .hd { display: flex; gap: 20px; flex-shrink: 0; }
-    .hd .crest { width: 150px; flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-start; }
+    .hd { display: flex; gap: 18px; flex-shrink: 0; }
+    .hd .crest { width: 132px; flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-start; }
     .hd .crest img { width: 78px; height: auto; display: block; }
-    .hd .dept { font-size: 12px; font-weight: 700; color: #55064f; margin-top: 5px; line-height: 14px; }
-    .hd .l { width: 298px; display: flex; flex-direction: column; gap: 1px; }
-    .hd .r { flex-grow: 1; display: flex; flex-direction: column; gap: 1px; }
-    .hd .row { display: flex; align-items: baseline; gap: 5px; min-height: 19px; }
-    .hd .r .row { justify-content: flex-end; }
+    .hd .dept { font-size: 10.5px; font-weight: 700; color: #55064f; margin-top: 4px; line-height: 12px; }
+    /* Owner 2026-10-05: "the fields could not hold many information … the address field looks
+       awkward". The fields were two flex columns, the left one 298px wide, so a real address wrapped
+       into six lines while the right column stood half empty. They are now ONE grid over the full
+       width beside the crest, placed by the c-* classes (the DOM keeps the owner's order):
+         Name          | Encounter ID
+         Guardian Name | Encounter Type    (owner 2026-10-07 — one line, clipped with an ellipsis)
+         UHID          | Visit Date
+         Gender  Age   |
+         Address — the whole width, at most two lines
+         Unit Number   | Dept. Regn        (the unit and its head's number, side by side)
+       Owner, same day, on staging: "every text in the header should be small so that more
+       information can fit in". Values 10.5px semibold (600 stays crisp at that size where 700
+       fills in on a laser), labels 10px, the long address 10px. */
+    .hd .f { flex-grow: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+      column-gap: 18px; row-gap: 1px; align-content: start; font-size: 10.5px; line-height: 13px; }
+    .hd .f > div { min-width: 0; }
+    .hd .row { display: flex; align-items: baseline; gap: 4px; min-height: 14px; }
+    .hd .row .lb { font-size: 10px; flex-shrink: 0; }
+    .hd .row .vl { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+    .hd .c-name { grid-area: 1 / 1; } .hd .c-guard { grid-area: 2 / 1; } .hd .c-uhid { grid-area: 3 / 1; } .hd .c-ga { grid-area: 4 / 1; display: flex; gap: 22px; }
+    .hd .c-addr { grid-area: 5 / 1 / 6 / 3; } .hd .c-unit { grid-area: 6 / 1; }
+    .hd .c-enc { grid-area: 1 / 2; } .hd .c-type { grid-area: 2 / 2; } .hd .c-date { grid-area: 3 / 2; } .hd .c-regn { grid-area: 6 / 2; }
+    .hd .c-guard .vl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
+    /* A name wraps to a second line at most; an address too, and a very long one steps down to 10px
+       before it is clipped — the pincode is at its END and is the part a clerk needs. */
+    .hd .c-name .vl, .hd .c-addr .vl { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+    .hd .c-addr.long .vl { font-size: 10px; }
     .rule { height: 1px; background: #000; }
     .thin { height: 1px; background: #9a9a9a; }
     .body { flex-grow: 1; padding-top: 12px; display: flex; flex-direction: column; min-height: 0; }
@@ -1043,19 +1107,17 @@ export async function renderPrescriptionSheet(
           <img src="${CREST_PNG_DATA_URI}" alt="${HOSPITAL.nameTitleCase}">
           <div class="dept">${esc(s.departmentName)}</div>
         </div>
-        <div class="l">
-          ${idRow("Name:", esc(s.patientName))}
-          ${idRow("UHID:", `<span class="num">${esc(s.uhid)}</span>`)}
-          ${idRow("Gender:", esc(genderLetter(s.gender)))}
-          ${idRow("DOB:", `<span class="num">${esc(dobCell)}</span>`)}
-          ${idRow("Doctor ID:", `<span class="num">${doctorCell}</span>`)}
-        </div>
-        <div class="r">
-          ${idRow("Encounter ID:", `<span class="num">${esc(s.visitNo)}</span>`)}
-          ${idRow("Encounter Type:", "Outpatient")}
-          ${idRow("Visit/Admn Date:", `<span class="num">${esc(formatCalendarDay(s.serviceDate) ?? s.serviceDate)}</span>`)}
-          ${idRow("Department:", esc(s.departmentName))}
-          ${idRow("Speciality:", esc(s.doctorSpecialty ?? s.departmentName))}
+        <div class="f">
+          <div class="c-name">${idRow("Name:", esc(s.patientName))}</div>
+          <div class="c-guard">${idRow("Guardian Name:", esc(guardianText))}</div>
+          <div class="c-uhid">${idRow("UHID:", `<span class="num">${esc(s.uhid)}</span>`)}</div>
+          <div class="c-ga">${idRow("Gender:", esc(genderLetter(s.gender)))}${idRow("Age:", `<span class="num">${esc(ageCell)}</span>`)}</div>
+          ${addressText === "" ? "" : `<div class="c-addr${addressText.length > ADDRESS_LONG_CHARS ? " long" : ""}">${idRow("Address:", esc(addressText))}</div>`}
+          <div class="c-unit">${idRow("Unit Number:", `<span class="num">${esc(prescriber.unitNumber)}</span>`)}</div>
+          <div class="c-enc">${idRow("Encounter ID:", `<span class="num">${esc(s.visitNo)}</span>`)}</div>
+          <div class="c-type">${idRow("Encounter Type:", "OPD")}</div>
+          <div class="c-date">${idRow("Visit Date:", `<span class="num">${esc(formatCalendarDay(s.serviceDate) ?? s.serviceDate)}</span>`)}</div>
+          <div class="c-regn">${idRow("Dept. Regn:", prescriber.deptRegn === null ? "" : `<span class="num">${esc(prescriber.deptRegn)}</span>`)}</div>
         </div>
       </div>
       <div class="rule" style="margin-top:10px;flex-shrink:0"></div>
@@ -1080,7 +1142,7 @@ export async function renderPrescriptionSheet(
         <div class="sig">
           <div class="b">
             <div class="thin"></div>
-            <div class="c">Doctor ID · signature of the treating physician</div>
+            <div class="c">${signatureCaption}</div>
           </div>
         </div>
       </div>
@@ -1126,28 +1188,6 @@ export async function renderPrescriptionSheet(
   };
 }
 
-/**
- * ═══ PHARMACY P1 — A MODULE DRAWS ITS OWN PAPER ═══
- *
- * The OPD documents are drawn in this file because the kernel already reads the encounter. A
- * pharmacy bill is the pharmacy's rows (the dispense, its merged bill rows, its labels), and this
- * file importing the pharmacy module would make the kernel depend on a leaf. So a module registers a
- * renderer for a document it declared in `PrintDocument`, from its Nest module's `onModuleInit` —
- * the `registerFeeStatusHook` shape. Keyed, so a second init replaces rather than doubles.
- *
- * A document with neither a case below nor a registration renders null, which the relay reports
- * failed: advisory, per R7, exactly as before.
- */
-export type DocumentRenderer = (
-  db: Db, params: Record<string, unknown>, now: Date, requester: Actor | null,
-) => Promise<RenderedDocument | null>;
-
-const MODULE_RENDERERS = new Map<string, DocumentRenderer>();
-
-export function registerDocumentRenderer(document: PrintDocument, renderer: DocumentRenderer): () => void {
-  MODULE_RENDERERS.set(document, renderer);
-  return () => { if (MODULE_RENDERERS.get(document) === renderer) MODULE_RENDERERS.delete(document); };
-}
 
 /**
  * The one dispatcher the relay's claim goes through.
@@ -1174,7 +1214,7 @@ export async function renderDocument(
     case "opd_payment_receipt": return await renderPaymentReceipt(db, params, now, requester);
     case "opd_prescription": return await renderPrescriptionSheet(db, params, now, requester);
     default: {
-      const registered = MODULE_RENDERERS.get(document);
+      const registered = registeredRenderer(document);
       return registered === undefined ? null : await registered(db, params, now, requester);
     }
   }

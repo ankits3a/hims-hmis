@@ -4,7 +4,9 @@ import { withTx } from "../../kernel/db/client";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters, testCfg } from "../../../test/helpers/opd";
 import { hmacSign } from "../../kernel/crypto";
-import { events, opdDoctors, patientAllergies, phiAccessLog } from "../../kernel/db/schema";
+import { events, opdDoctors, patientAllergies, phiAccessLog, rosterTeamMemberships } from "../../kernel/db/schema";
+import { teamByCode } from "../roster";
+import { seedConfirmedUnits } from "../../../test/helpers/units";
 import { completeConsultation, saveConsultNote, startConsultation } from "./consultation";
 import { openVisit } from "./encounters";
 import { toFhirBundle } from "./fhir";
@@ -285,6 +287,22 @@ describe("opd prescriptions (allergy hard-warning, versions, the signed e-Rx QR 
       .rejects.toMatchObject({ code: "user_actor_required" });
   });
 
+  it("2026-10-04 (owner): a unit head prescribing — Unit Number is the unit, Dept. Regn the head's; neither the name nor the Doctor ID", async () => {
+    await seedConfirmedUnits(db);
+    const unit = (await teamByCode(db, "MED-U1"))!;
+    await db.insert(rosterTeamMemberships).values({
+      id: newId(), teamId: unit.id, userId: dra.userId, positionKey: "unit_head", grade: "assistant_professor", roleInTeam: "head",
+      kind: "parent", startsAt: new Date("2026-01-01T00:00:00+05:30"), createdBy: "t", updatedBy: "t",
+    });
+    const enc = await inConsult();
+    const issued = await issuePrescription(db, dra.actor, testCfg, enc.id, { lines: TWO_LINES }, MON2);
+    const print = await getPrescriptionPrint(db, testCfg, dra.actor, issued.prescriptionId);
+    expect(print.doctor).toEqual({ unitNumber: "Unit I", deptRegn: "BMC/12345", departmentName: "General Medicine" });
+    const [{ code }] = await db.select({ code: opdDoctors.code }).from(opdDoctors).where(eq(opdDoctors.id, dra.doctorId)) as [{ code: string }];
+    expect(JSON.stringify(print)).not.toContain(code);
+    expect(JSON.stringify(print)).not.toContain("Dr dra");
+  });
+
   it("the print payload carries the letterhead, the patient, the doctor, the encounter, the latest vitals and the QR", async () => {
     const enc = await inConsult();
     await saveConsultNote(db, dra.actor, enc.id, {
@@ -302,7 +320,9 @@ describe("opd prescriptions (allergy hard-warning, versions, the signed e-Rx QR 
     */
     const [{ code }] = await db.select({ code: opdDoctors.code }).from(opdDoctors).where(eq(opdDoctors.id, dra.doctorId)) as [{ code: string }];
     expect(code).toMatch(/^DR-/);
-    expect(print.doctor).toEqual({ code, departmentName: "General Medicine" });
+    // Owner 2026-10-04: a prescriber in NO unit prints the Doctor ID as the Unit Number; with no unit holding
+    // the department's OPD that day, the Dept. Regn is blank — and never the prescriber's own number.
+    expect(print.doctor).toEqual({ unitNumber: code, deptRegn: null, departmentName: "General Medicine" });
     expect(JSON.stringify(print)).not.toContain("BMC/12345");
     expect(JSON.stringify(print)).not.toContain("Dr dra");
     // The visit number reaches the printed e-Rx: it is the cross-reference a lab requisition or a
@@ -310,12 +330,15 @@ describe("opd prescriptions (allergy hard-warning, versions, the signed e-Rx QR 
     expect(enc.visitNo).toMatch(/^V260817\d{4}$/);
     expect(print.encounter).toEqual({
       id: enc.id, visitNo: enc.visitNo, serviceDate: "2026-08-17", diagnosis: "Acute pharyngitis", icd10Code: "J02.9",
+      tele: false, // owner 2026-10-09 — an in-person sheet prints no tele line
       advice: "fluids", followUpDays: null, chiefComplaint: "fever 3d",
       // PLAN 07d T5 — `[]` when the doctor advised none, so the renderer needs no null branch. This
       // assertion is `toEqual` and not `toMatchObject` on purpose (see the two-numerator note in
       // the issue test above), and it CAUGHT this field arriving: a payload that grew something
       // nobody decided to add should fail here, which is exactly what it did.
       advisedTests: [],
+      // Decision 0067 — which advised tests are done outside; `[]` when none are.
+      outsideTestIds: [],
       // Decided 2026-09-25 (board "Ophthal"): the coded rows ride the print so it can name each
       // tag's eye. This note was saved in the older prose shape, so the row is uncoded.
       diagnoses: [{ text: "Acute pharyngitis", icd10Code: null, laterality: null }],

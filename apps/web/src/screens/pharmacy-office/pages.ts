@@ -37,14 +37,20 @@ export const OFFICE_PAGES: readonly OfficePage[] = [
   // Owner ruling 2026-09-30 — the stores' settings (the two-person GRN rule), for whoever may change them.
   { side: "stock", key: "settings", perms: ["materials.stores.manage"], was: null },
   { side: "items", key: "master", perms: ["materials.items.manage"], was: "/materials/items" },
+  // Owner 2026-10-04 — a vendor's price list into the item master, matched to the catalogue and reviewed first.
+  { side: "items", key: "import", perms: ["materials.items.manage"], was: null },
   { side: "items", key: "sells", perms: ["pharmacy.sale_items.manage"], was: "/pharmacy/items" },
   { side: "items", key: "formulary", perms: ["formulary.manage"], was: "/formulary/admin" },
+  // OWNER 2026-10-02 — the pharmacy writes a drug monograph and a physician reviews it: both reach this page.
+  { side: "items", key: "monographs", perms: ["formulary.manage", "formulary.monograph.review"], was: null },
   { side: "items", key: "duplicates", perms: ["materials.items.merge"], was: null },
   { side: "items", key: "labels", perms: ["pharmacy.sale_items.manage"], was: null },
   { side: "law", key: "h1", perms: ["pharmacy.register.read"], was: "/pharmacy/registers/h1" },
   { side: "law", key: "controlled", perms: ["pharmacy.ndps.custody", "pharmacy.licences.manage", "pharmacy.register.read"], was: null },
   { side: "law", key: "retail", perms: ["pharmacy.retail.manage"], was: "/pharmacy/retail-licence" },
   { side: "law", key: "pharmacists", perms: ["pharmacy.pharmacists.manage"], was: "/pharmacy/pharmacists" },
+  // Owner ruling 2026-10-02 — the desk's settings (quick desk mode), for whoever may change them.
+  { side: "law", key: "desk", perms: ["pharmacy.licences.manage"], was: null },
   { side: "law", key: "messages", perms: ["pharmacy.messages.manage"], was: null },
   // Stage D1 / D2 — the ADR register (PvPI) and the medication error and near-miss log.
   { side: "law", key: "adr", perms: ["pharmacy.adr.record", "pharmacy.adr.manage"], was: null },

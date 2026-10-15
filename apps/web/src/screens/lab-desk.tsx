@@ -4,15 +4,19 @@ import { useTranslation } from "react-i18next";
 import { api, newIdempotencyKey } from "../lib/api";
 import { fmtPaise } from "../lib/format";
 import {
-  collectionQueue, deskFind, duplicateWarnings, istToday, labErrorText, placeLabOrder, previewLabOrder,
-  searchOrderables,
+  collectionQueue, deskFind, duplicateWarnings, istToday, labErrorText, labFeeState, orderableDetail, placeLabOrder,
+  previewLabOrder,
 } from "../lib/lab-api";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "../lib/auth";
-import { LabStation, sexAge } from "./lab-seat";
+import { LabStation, sexAge, LabModeSwitch } from "./lab-seat";
 import type {
   DeskOrderRequest, WireDeskFindHit, WireDeskOrder, WireDuplicateWarning, WireLabDoctor, WireOrderable, WirePricedDraft,
 } from "../lib/lab-api";
+import { CreditChip } from "../components/patient-credit";
+import { BookingPanel, ParametersOf, PatientLane, PatientSummary, TestChooser, TodaysBookings, TubeDot, WalkInBlocked } from "./lab-desk-flow";
+import type { WireLabBooking } from "../lib/lab-api";
+import { PaperSlipSheet } from "../components/paper-slip";
 
 /**
  * PLAN 17c T1 — **LAB RECEPTION**: Sanjay's seat (design board 1).
@@ -45,7 +49,11 @@ import type {
  */
 
 type LineSource = "advised" | "added";
-type Line = { orderable: WireOrderable; source: LineSource; onCredit: boolean; alreadyOrderedItemId: string | null };
+type Line = {
+  orderable: WireOrderable; source: LineSource; onCredit: boolean; alreadyOrderedItemId: string | null;
+  /** Owner ruling 2026-10-06 — the desk scribe who typed this test from the doctor's paper, when one did. */
+  typedFromPaperBy?: string | null;
+};
 
 const sexOptions = ["male", "female", "other", "unknown"] as const;
 type RegisterFields = { name: string; phone: string; ageYears: string; sex: (typeof sexOptions)[number] };
@@ -80,7 +88,19 @@ export function moneyBlockFor(
   return { receipt: { tenders: [{ mode: tender, amountPaise: paidPaise }] }, credit: { reason: creditReason } };
 }
 
-export function LabDesk(): React.ReactElement {
+function initialsOf(name: string): string {
+  return name.split(/\s+/).filter((w) => w !== "").slice(0, 2).map((w) => w[0]!.toUpperCase()).join("");
+}
+
+/**
+ * `mode="counter"` is /lab/counter (owner 2026-10-11, spec `SPEC-lab-quick-chain-2026-10-11.md`): the
+ * quick chain's front. After the pick it is two columns at once — the patient on the left (credit,
+ * memberships, the last three tests), the requests or New walk-in · Future appointment on the right —
+ * a walk-in chooses its tests and presses **Next** before the billing step, and a placed order is sent
+ * to /lab/qcollect. `"desk"` (/lab/desk) keeps the full lab's desk as it was.
+ */
+export function LabDesk({ mode = "desk" }: { mode?: "desk" | "counter" } = {}): React.ReactElement {
+  const counter = mode === "counter";
   const { t } = useTranslation();
   const { can } = useAuth();
   const qc = useQueryClient();
@@ -96,10 +116,31 @@ export function LabDesk(): React.ReactElement {
   const [labDoctors, setLabDoctors] = useState<WireLabDoctor[]>([]);
   const [walkInDoctorId, setWalkInDoctorId] = useState("");
   const fieldRef = useRef<HTMLInputElement>(null);
+  /**
+   * OWNER 2026-10-11 — SUGGESTIONS WHILE TYPING, the way `/counter` does it: 180 ms after the last
+   * key and from two characters, the same `GET /lab/desk/find` answers into the list below the field.
+   * A suggestion is only ever a candidate the clerk taps (D4: names confirm, they never select); the
+   * exact-door auto-pick stays on Enter, which is what a scanner sends, so a half-typed `T-1` can never
+   * land on token 1's patient.
+   */
+  const [suggesting, setSuggesting] = useState(false);
+  const [debounced, setDebounced] = useState("");
 
   /* ── the order ── */
   const [lines, setLines] = useState<Line[]>([]);
-  const [query, setQuery] = useState("");
+  const [slipOpen, setSlipOpen] = useState(false);
+  /**
+   * OWNER 2026-10-11 — which next step is open under the patient summary: none yet (the summary
+   * offers New walk-in · Future appointment), the order, a booking, or the order just placed.
+   */
+  const [step, setStep] = useState<"none" | "order" | "book" | "done">("none");
+  /** /lab/counter only: a walk-in first chooses its tests (`tests`), then **Next** opens the bill (`bill`). */
+  const [phase, setPhase] = useState<"tests" | "bill">("bill");
+  /** The booking this order fulfils, when the patient arrived for one. */
+  const [bookingId, setBookingId] = useState<string | null>(null);
+  const [bookedNote, setBookedNote] = useState<string | null>(null);
+  /** Per test in the basket, whether its parameters are shown. */
+  const [openParams, setOpenParams] = useState<string[]>([]);
   const [consents, setConsents] = useState<Record<string, string>>({});
   const [reflexConsent, setReflexConsent] = useState(false);
   const [priority, setPriority] = useState<"routine" | "urgent" | "stat">("routine");
@@ -144,15 +185,31 @@ export function LabDesk(): React.ReactElement {
     enabled: maySeePortal,
     refetchInterval: 30_000,
   });
-  const catalogue = useQuery({
-    queryKey: ["lab", "catalogue", query],
-    queryFn: () => searchOrderables(query),
-    enabled: query.trim().length >= 2,
+  /** Lab fee switched off in Billing office → Fees: the desk skips its money step (spec 2026-10-11). */
+  const feeState = useQuery({ queryKey: ["lab", "desk", "fee-state"], queryFn: labFeeState, staleTime: 60_000, retry: false });
+  const labFree = feeState.data?.labFree === true;
+  const walkIn = feeState.data?.walkIn;
+
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(q.trim()), 180);
+    return () => clearTimeout(id);
+  }, [q]);
+  const live = useQuery({
+    queryKey: ["lab", "desk-find", debounced, serviceDate],
+    queryFn: () => deskFind(debounced, serviceDate, true),
+    enabled: suggesting && debounced.length >= 2,
+    retry: false,
   });
+  useEffect(() => {
+    if (!suggesting || live.data === undefined) return;
+    setHits(live.data.hits);
+    setLabDoctors(live.data.labDoctors);
+  }, [live.data, suggesting]);
 
   const find = useMutation({
     mutationFn: () => deskFind(q, serviceDate),
     onSuccess: (r) => {
+      setSuggesting(false);
       setHits(r.hits);
       setLabDoctors(r.labDoctors);
       setError(null);
@@ -172,7 +229,22 @@ export function LabDesk(): React.ReactElement {
     setAcknowledged([]); setWarnings(null); setPriced(null); setPlaced(null); setError(null);
   }
 
+  /**
+   * A SUGGESTION carries no Rx lines (they are a logged read of the visit, never a keystroke's), so
+   * picking one re-asks by the visit number and fills the basket from that answer.
+   */
+  const pick = useMutation({
+    mutationFn: async (hit: WireDeskFindHit): Promise<WireDeskFindHit> => {
+      if (hit.visit === null || hit.visit.advisedLoaded !== false) return hit;
+      const full = await deskFind(hit.visit.encounterNo, serviceDate);
+      return full.hits.find((h) => h.visit?.encounterId === hit.visit!.encounterId) ?? hit;
+    },
+    onSuccess: (hit) => choose(hit),
+    onError: (e: unknown) => setError(labErrorText(e)),
+  });
+
   function choose(hit: WireDeskFindHit): void {
+    setSuggesting(false);
     setSelected(hit);
     setRegistering(false);
     setWalkInDoctorId(""); // pass 2 NEW-4 — a decision the server refuses to make is not carried to the next patient
@@ -181,11 +253,55 @@ export function LabDesk(): React.ReactElement {
     for (const a of hit.visit?.advised ?? []) {
       const orderable = advisedToOrderable(a);
       if (orderable === null) continue;
-      advised.push({ orderable, source: "advised", onCredit: false, alreadyOrderedItemId: a.alreadyOrderedItemId });
+      advised.push({ orderable, source: "advised", onCredit: false, alreadyOrderedItemId: a.alreadyOrderedItemId, typedFromPaperBy: a.typedFromPaperBy ?? null });
     }
     setLines(advised);
     setReferrerName(hit.visit?.referrerName ?? "");
+    setBookingId(null); setBookedNote(null); setOpenParams([]);
+    /** Tests already advised today open the order at once; otherwise the summary offers the two steps. */
+    setPhase("bill");
+    setStep(!counter && advised.some((l) => l.alreadyOrderedItemId === null) ? "order" : "none");
   }
+
+  /** Back to an empty desk for the next person. */
+  function nextPatient(): void {
+    setSelected(null); setHits(null); setQ(""); setDebounced(""); setSuggesting(false);
+    resetOrder(); setStep("none"); setBookingId(null); setBookedNote(null);
+    fieldRef.current?.focus();
+  }
+
+  /**
+   * ARRIVED for a booking: take the person (asked by UHID, the full read), then open the order with
+   * the booked tests in it and the booking riding along so it closes with the order.
+   */
+  const arrive = useMutation({
+    mutationFn: async (b: WireLabBooking) => {
+      let hit = selected !== null && selected.patient.id === b.patient.id ? selected : null;
+      if (hit === null) {
+        const r = await deskFind(b.patient.uhid, serviceDate);
+        hit = r.hits.find((h) => h.patient.id === b.patient.id) ?? null;
+        setLabDoctors(r.labDoctors);
+      }
+      if (hit === null) throw new Error(t("lab.desk.flow.arrivedNotFound"));
+      const details = await Promise.all(b.tests.map((x) => orderableDetail(x.serviceId)));
+      return { hit, orderables: details.map((d) => d.orderable) };
+    },
+    onSuccess: ({ hit, orderables }, b) => {
+      choose(hit);
+      setHits(null);
+      touchLines((prev) => {
+        const next = [...prev];
+        for (const o of orderables) {
+          if (!next.some((l) => l.orderable.serviceId === o.serviceId)) next.push({ orderable: o, source: "added", onCredit: false, alreadyOrderedItemId: null });
+        }
+        return next;
+      });
+      setBookingId(b.id);
+      setPhase("bill");
+      setStep("order");
+    },
+    onError: (e: unknown) => setError(labErrorText(e)),
+  });
 
   /** THE PRICE DIES WITH THE BASKET (17b pass 2, F14): any change to the lines voids the quote. */
   function touchLines(next: (prev: Line[]) => Line[]): void {
@@ -228,6 +344,9 @@ export function LabDesk(): React.ReactElement {
       });
       setHits(null);
       setFields(EMPTY_REGISTER);
+      /** A person just registered at the lab is a walk-in: the test picker opens at once. */
+      setPhase("tests");
+      setStep("order");
     },
     onError: (e: unknown) => setError(labErrorText(e)),
   });
@@ -252,6 +371,7 @@ export function LabDesk(): React.ReactElement {
               ...(walkInDoctorId === "" ? {} : { doctorId: walkInDoctorId }),
             } }),
         ...money,
+        ...(bookingId === null ? {} : { bookingId }),
       };
       return placeLabOrder(body, idempotencyKey);
     },
@@ -272,6 +392,25 @@ export function LabDesk(): React.ReactElement {
         } catch { /* the order stands; the next find will show the visit */ }
       }
       setPlaced(order);
+      setBookingId(null);
+      setStep("done");
+    },
+    onError: (e: unknown) => setError(labErrorText(e)),
+  });
+
+  /**
+   * THE FREE ROAD (owner 2026-10-11): no price, no tender. The duplicate check still runs — a test
+   * already drawn this week is still a question for the clerk — and with nothing to acknowledge the
+   * order goes straight through; the server still records its ₹0 bill.
+   */
+  const sendFree = useMutation({
+    mutationFn: async () => {
+      if (selected === null) throw new Error("no patient");
+      return duplicateWarnings(selected.patient.id, serviceIds);
+    },
+    onSuccess: (found) => {
+      setWarnings(found);
+      if (found.every((w) => acknowledged.includes(w.duplicateOfItemId))) place.mutate();
     },
     onError: (e: unknown) => setError(labErrorText(e)),
   });
@@ -290,6 +429,8 @@ export function LabDesk(): React.ReactElement {
 
   /* ── arrived on the portal · no typing needed ── */
   const listPane = (
+    <div className="space-y-4">
+    <TodaysBookings serviceDate={serviceDate} onArrived={(b) => arrive.mutate(b)} />
     <section className="space-y-2" aria-label={t("lab.desk.portal")}>
       <h2 className="text-sm font-semibold">{t("lab.desk.portal")}</h2>
       <p className="text-xs text-muted-foreground">{t("lab.desk.portalHint")}</p>
@@ -316,70 +457,146 @@ export function LabDesk(): React.ReactElement {
         )}
       </ul>
     </section>
+    </div>
   );
+
+  /**
+   * OWNER 2026-10-11 — New walk-in and Future appointment are a SCREEN of their own: the patient in
+   * hand moves to the left lane (who they are, credit, memberships, lab history) and the centre is
+   * the one task, the way Desk One's dossier sits beside its stages.
+   */
+  const focus = selected !== null && (counter || step === "order" || step === "book");
+  /** On the counter the walk-in's test choice and its bill are two steps; on the desk they are one screen. */
+  const showChooser = !counter || phase === "tests";
+  const showBilling = !counter || phase === "bill";
 
   return (
     <LabStation
-      station="desk"
-      title={t("lab.desk.title")}
+      station={counter ? "counter" : "desk"}
+      laneHead={!focus}
+      lane={focus && selected !== null
+        ? <PatientLane hit={selected} serviceDate={serviceDate} variant={mode}
+            onBack={() => (counter && step === "none" ? nextPatient() : setStep("none"))} onArrived={(b) => arrive.mutate(b)} />
+        : undefined}
+      title={counter ? t("lab.counter.title") : t("lab.desk.title")}
       place={t("lab.desk.place")}
       stats={[
         { label: t("lab.desk.arrivedToday"), value: waiting, tone: "live" },
       ]}
       list={listPane}
     >
-      {/* ── walk-in with a slip · one field, three doors ── */}
+      {/* Owner 2026-10-12 — the lab's administrator switches quick ↔ full from the lab's first seat. */}
+      <div className="pp" style={{ marginBottom: 10 }}><LabModeSwitch /></div>
+      {/* ── walk-in with a slip · one field, three doors — owner 2026-10-11: drawn in /counter's paper-and-pine (`.pp`) ── */}
       <section className="space-y-3">
-        <form
-          className="flex gap-2"
-          onSubmit={(e) => { e.preventDefault(); if (q.trim() !== "") find.mutate(); }}
-        >
-          <label className="flex-1 text-sm">
-            <span className="sr-only">{t("lab.desk.find")}</span>
-            <input
-              ref={fieldRef}
-              className="w-full rounded border border-input bg-card px-3 py-2 text-base"
-              placeholder={t("lab.desk.findPlaceholder")}
-              aria-label={t("lab.desk.find")}
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-          </label>
-          <Button type="submit" disabled={find.isPending || q.trim() === ""}>{t("lab.desk.findGo")}</Button>
+      {!focus && (
+      <div className="pp space-y-3" style={{ fontFamily: '"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif', color: "var(--ink)" }}>
+        <div>
+          <div style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-.01em" }}>{t("lab.desk.whoTitle")}</div>
+          <div style={{ fontSize: 12.5, color: "var(--dim)", marginTop: 4 }}>{t("lab.desk.whoNote")}</div>
+        </div>
+        <form onSubmit={(e) => { e.preventDefault(); if (q.trim() !== "") find.mutate(); }}>
+          <input
+            ref={fieldRef}
+            className="in"
+            style={{ height: 52, fontSize: 16 }}
+            placeholder={t("lab.desk.findPlaceholder")}
+            aria-label={t("lab.desk.find")}
+            value={q}
+            onChange={(e) => { setQ(e.target.value); setSuggesting(true); }}
+          />
         </form>
 
-        {hits !== null && selected === null && (
-          <div className="space-y-1">
+        <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
+          <span className="tag">
+            {hits === null || (suggesting && debounced.length < 2) ? t("lab.desk.notOnFile")
+              : hits.length === 0 ? t("lab.desk.noMatch") : t("lab.desk.notOneOfThese")}
+          </span>
+          <button type="button" className="pill" style={{ borderColor: "var(--green)", color: "var(--green)", fontWeight: 700 }}
+            onClick={() => setRegistering(true)}>
+            {t("lab.desk.registerNew")}
+          </button>
+          <span style={{ fontSize: 11, color: "var(--faint)" }}>
+            {hits !== null && debounced.length >= 2
+              ? t("lab.desk.onFileFor", { count: hits.length, q: debounced })
+              : t("lab.desk.lanesHint")}
+          </span>
+        </div>
+
+        {suggesting && debounced.length >= 2 && live.isFetching && (
+          <div className="box" style={{ padding: 20, textAlign: "center", color: "var(--faint)", borderStyle: "dashed" }}>
+            {t("lab.desk.searching")}
+          </div>
+        )}
+
+        {hits !== null && (selected === null || suggesting) && !(suggesting && (debounced.length < 2 || live.isFetching)) && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {hits.length === 0 && (
-              <p className="text-sm">
-                {t("lab.desk.noHit")}{" "}
-                <button type="button" className="underline" onClick={() => setRegistering(true)}>
+              <div className="box" style={{ padding: 22, textAlign: "center", color: "var(--dim)", borderStyle: "dashed" }}>
+                {t("lab.desk.noOneMatches", { q: q.trim() })}{" "}
+                <button type="button" style={{ color: "var(--green)", fontWeight: 700, textDecoration: "underline" }}
+                  onClick={() => setRegistering(true)}>
                   {t("lab.desk.registerNew")}
                 </button>
-              </p>
+              </div>
             )}
-            {hits.length > 1 && <p className="text-xs text-muted-foreground">{t("lab.desk.confirmByName")}</p>}
-            <ul className="divide-y divide-border rounded border border-border text-sm">
-              {hits.map((h) => (
-                <li key={`${h.patient.id}-${h.visit?.encounterId ?? "none"}`}>
-                  <button type="button" className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left hover:bg-muted"
-                    onClick={() => choose(h)}>
-                    <span>
-                      <span className="font-medium">{h.patient.display}</span>
-                      <span className="text-muted-foreground"> · {sexAge(h.patient.administrativeGender, h.patient.dob)} · {h.patient.uhid}</span>
-                    </span>
-                    <span className="text-xs text-muted-foreground">
+            {hits.length > 1 && <div style={{ fontSize: 11, color: "var(--faint)" }}>{t("lab.desk.confirmByName")}</div>}
+            <ul style={{ display: "flex", flexDirection: "column", gap: 8 }} data-testid="find-hits">
+              {hits.map((h, i) => (
+                <li key={`${h.patient.id}-${h.visit?.encounterId ?? "none"}`} className="box"
+                  style={{
+                    display: "flex", alignItems: "center", gap: 13, padding: "12px 15px", flexWrap: "wrap",
+                    ...(i === 0 ? { borderColor: "var(--green)", boxShadow: "0 0 0 3px var(--green-soft)" } : {}),
+                  }}>
+                  <div aria-hidden style={{
+                    width: 38, height: 38, borderRadius: 6, background: "var(--wash)", display: "flex",
+                    alignItems: "center", justifyContent: "center", fontWeight: 600, color: "var(--dim)", flexShrink: 0,
+                  }}>
+                    {initialsOf(h.patient.display)}
+                  </div>
+                  <div style={{ width: 210, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>
+                      {h.patient.display}
+                      {h.patient.restricted && <span className="pill rd" style={{ height: 19, marginLeft: 6 }}>restricted</span>}
+                    </div>
+                    <div className="mo" style={{ fontSize: 11, color: "var(--dim)" }}>
+                      {sexAge(h.patient.administrativeGender, h.patient.dob)}
+                      {" · "}
+                      {h.patient.phoneLast4 == null ? t("lab.desk.noMobile")
+                        : `••••${h.patient.phoneLast4}${h.patient.phoneOf === "guardian" ? ` (${t("lab.desk.guardianMobile")})` : ""}`}
+                    </div>
+                    {h.patient.guardian != null && (
+                      <div style={{ fontSize: 11.5, color: "var(--ink)", marginTop: 1 }} data-testid="hit-guardian">
+                        {h.patient.guardian.relation === null
+                          ? t("lab.desk.fatherHusband", { name: h.patient.guardian.name })
+                          : t("lab.desk.guardianOf", { name: h.patient.guardian.name, relation: t(`lab.desk.relation.${h.patient.guardian.relation}`, { defaultValue: h.patient.guardian.relation }) })}
+                      </div>
+                    )}
+                    <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 1 }}>
                       {h.visit === null ? t("lab.desk.noVisitToday")
-                        : `${h.visit.encounterNo}${h.visit.tokenNo === null ? "" : ` · T-${String(h.visit.tokenNo)}`}`}
-                    </span>
+                        : `${h.visit.encounterNo}${h.visit.tokenNo === null ? "" : ` · T-${String(h.visit.tokenNo)}`}${
+                          h.visit.departmentName === null ? "" : ` · ${h.visit.departmentName}`}`}
+                    </div>
+                  </div>
+                  <span className="mo" style={{ fontSize: 12, fontWeight: 600, width: 120 }}>{h.patient.uhid}</span>
+                  <div style={{ display: "flex", gap: 5, flexGrow: 1, flexWrap: "wrap" }}>
+                    <span className="pill on" style={{ height: 20 }}>{t(`lab.desk.matchedOn.${h.matchedOn}`)}</span>
+                  </div>
+                  <button type="button" className={i === 0 ? "sec grn" : "sec"}
+                    aria-label={`${h.patient.display} · ${h.patient.uhid}`}
+                    disabled={pick.isPending}
+                    onClick={() => pick.mutate(h)}>
+                    {t("lab.desk.pick")}
                   </button>
                 </li>
               ))}
             </ul>
           </div>
         )}
+      </div>
+      )}
 
-        {registering && (
+        {registering && !focus && (
           <form
             className="grid grid-cols-2 gap-2 rounded border border-border p-3 text-sm md:grid-cols-4"
             aria-label={t("lab.desk.registerNew")}
@@ -413,129 +630,217 @@ export function LabDesk(): React.ReactElement {
 
         {selected !== null && (
           <div className="space-y-3">
-            {/* ── the patient, confirmed ── */}
-            <div className="rounded border border-border bg-card p-3 text-sm" data-testid="patient-card">
-              <div className="flex flex-wrap items-baseline gap-x-3">
-                <span className="text-lg font-semibold">{selected.patient.display}</span>
-                <span>{sexAge(selected.patient.administrativeGender, selected.patient.dob)}</span>
-                <span className="text-muted-foreground">{selected.patient.uhid}</span>
-                {selected.patient.restricted && <span className="font-semibold">{t("lab.desk.restricted")}</span>}
+            {focus && step !== "done" && (
+              <div className="pp" style={{ fontFamily: '"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif', color: "var(--ink)" }}>
+                <div style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-.01em" }} data-testid="focus-title">
+                  {step === "none" ? t("lab.counter.requestsTitle")
+                    : step === "book" ? t("lab.desk.flow.bookTitle")
+                    : counter && phase === "bill" ? (labFree ? t("lab.counter.sendTitle") : t("lab.counter.billTitle"))
+                    : selected.visit !== null && lines.some((l) => l.source === "advised") ? t("lab.desk.flow.orderTitle") : t("lab.desk.flow.walkInTitle")}
+                </div>
+                <div style={{ fontSize: 12.5, color: "var(--dim)", marginTop: 4 }}>
+                  {t("lab.desk.flow.forPatient", { name: selected.patient.display, uhid: selected.patient.uhid })}
+                </div>
               </div>
-              {selected.visit !== null ? (
-                <p className="text-muted-foreground">
-                  {t("lab.desk.visit")} {selected.visit.encounterNo}
-                  {selected.visit.doctorName !== null && <> · {selected.visit.doctorName}</>}
-                  {selected.visit.departmentName !== null && <>, {selected.visit.departmentName}</>}
-                  {selected.visit.tokenNo !== null && <> · {t("lab.desk.token")} <span className="font-semibold text-foreground">T-{selected.visit.tokenNo}</span></>}
-                </p>
-              ) : (
-                <p className="text-muted-foreground">{t("lab.desk.walkInNote")}</p>
-              )}
-              {selected.orders.length > 0 && (
-                <p className="text-muted-foreground">
-                  {t("lab.desk.alreadyOnVisit")}: {selected.orders.map((o) => `${o.orderNo} (${String(o.itemCount)})`).join(", ")}
-                </p>
-              )}
+            )}
+            {!focus && (<>
+            {/* ── the patient, confirmed ── */}
+            <div className="pp box" data-testid="patient-card"
+              style={{ fontFamily: '"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif', color: "var(--ink)", padding: "12px 15px", display: "flex", gap: 13, alignItems: "flex-start", borderColor: "var(--green)" }}>
+              <div aria-hidden style={{
+                width: 44, height: 44, borderRadius: 8, background: "var(--green-soft)", color: "var(--green)", display: "flex",
+                alignItems: "center", justifyContent: "center", fontWeight: 700, flexShrink: 0,
+              }}>{initialsOf(selected.patient.display)}</div>
+              <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "2px 10px" }}>
+                  <span style={{ fontSize: 17, fontWeight: 700 }}>{selected.patient.display}</span>
+                  <span className="mo" style={{ fontSize: 12, color: "var(--dim)" }}>{sexAge(selected.patient.administrativeGender, selected.patient.dob)}</span>
+                  <span className="mo" style={{ fontSize: 12.5, fontWeight: 600 }}>{selected.patient.uhid}</span>
+                  {!selected.patient.restricted && <CreditChip patientId={selected.patient.id} testId="lab-credit" />}
+                  {selected.patient.restricted && <span className="pill rd" style={{ height: 20 }}>{t("lab.desk.restricted")}</span>}
+                </div>
+                {(selected.patient.guardian != null || selected.patient.phoneLast4 != null) && (
+                  <div style={{ fontSize: 12, color: "var(--dim)" }}>
+                    {selected.patient.guardian != null && (selected.patient.guardian.relation === null
+                      ? t("lab.desk.fatherHusband", { name: selected.patient.guardian.name })
+                      : t("lab.desk.guardianOf", { name: selected.patient.guardian.name, relation: t(`lab.desk.relation.${selected.patient.guardian.relation}`, { defaultValue: selected.patient.guardian.relation }) }))}
+                    {selected.patient.guardian != null && selected.patient.phoneLast4 != null && " · "}
+                    {selected.patient.phoneLast4 != null && <span className="mo">••••{selected.patient.phoneLast4}</span>}
+                  </div>
+                )}
+                {selected.visit !== null ? (
+                  <div style={{ fontSize: 12.5, color: "var(--dim)" }}>
+                    {t("lab.desk.visit")} <span className="mo" style={{ color: "var(--ink)", fontWeight: 600 }}>{selected.visit.encounterNo}</span>
+                    {selected.visit.doctorName !== null && <> · {selected.visit.doctorName}</>}
+                    {selected.visit.departmentName !== null && <>, {selected.visit.departmentName}</>}
+                    {selected.visit.tokenNo !== null && <> · {t("lab.desk.token")} <span style={{ fontWeight: 700, color: "var(--ink)" }}>T-{selected.visit.tokenNo}</span></>}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: "var(--faint)" }}>{t("lab.desk.walkInNote")}</div>
+                )}
+                {selected.orders.length > 0 && (
+                  <div style={{ fontSize: 12, color: "var(--dim)" }}>
+                    {t("lab.desk.alreadyOnVisit")}: {selected.orders.map((o) => `${o.orderNo} (${String(o.itemCount)})`).join(", ")}
+                  </div>
+                )}
+              </div>
+              <button type="button" className="sec" style={{ height: 30, flexShrink: 0 }} onClick={nextPatient}>{t("lab.desk.flow.change")}</button>
             </div>
 
-            {/* ── tests on the prescription ── */}
-            <div className="space-y-1">
-              <h2 className="text-sm font-semibold">{t("lab.desk.rxLines")}</h2>
+            <PatientSummary
+              hit={selected}
+              serviceDate={serviceDate}
+              labFree={labFree}
+              walkIn={walkIn}
+              canOpenReports={can("lab.reports.print")}
+              stepOpen={step}
+              onWalkIn={() => { setPlaced(null); setPhase("tests"); setStep("order"); }}
+              onBook={() => { setPlaced(null); setBookedNote(null); setStep("book"); }}
+              onOrderAdvised={() => { setPlaced(null); setPhase("bill"); setStep("order"); }}
+              onArrived={(b) => arrive.mutate(b)}
+            />
+            </>)}
+            {counter && step === "none" && (
+              <PatientSummary
+                hit={selected}
+                serviceDate={serviceDate}
+                labFree={labFree}
+                walkIn={walkIn}
+                canOpenReports={can("lab.reports.print")}
+                stepOpen={step}
+                showHistory={false}
+                onWalkIn={() => { setPlaced(null); setPhase("tests"); setStep("order"); }}
+                onBook={() => { setPlaced(null); setBookedNote(null); setStep("book"); }}
+                onOrderAdvised={() => { setPlaced(null); setPhase("bill"); setStep("order"); check.mutate(); }}
+                onArrived={(b) => arrive.mutate(b)}
+              />
+            )}
+            {bookedNote !== null && (
+              <div className="pp box" role="status" style={{ padding: "12px 14px", borderColor: "var(--green)", color: "var(--green)", fontWeight: 600 }} data-testid="booked-note">
+                ✓ {bookedNote}
+              </div>
+            )}
+            {step === "book" && (
+              <BookingPanel hit={selected} serviceDate={serviceDate}
+                onClose={() => setStep("none")}
+                onBooked={(message) => { setBookedNote(message); setStep("none"); }} />
+            )}
+
+            {step === "order" && (<>
+            {counter && phase === "bill" && (
+              <div className="pp"><button type="button" className="sec" style={{ height: 30 }} onClick={() => setPhase("tests")}>
+                ← {t("lab.counter.changeTests")}
+              </button></div>
+            )}
+            {showChooser && !lines.some((l) => l.source === "advised") && (
+            <>
+            {/* ── which tests? — owner 2026-10-11: common tests as chips, then one search ── */}
+            <TestChooser
+              chosen={lines.map((l) => l.orderable.serviceId)}
+              autoFocus={selected.visit === null || lines.length === 0}
+              onAdd={(o) => touchLines((prev) => (prev.some((x) => x.orderable.serviceId === o.serviceId)
+                ? prev
+                : [...prev, { orderable: o, source: "added", onCredit: false, alreadyOrderedItemId: null }]))}
+              onRemove={(id) => touchLines((prev) => prev.filter((x) => x.orderable.serviceId !== id || x.alreadyOrderedItemId !== null))}
+            />
+            </>
+            )}
+            {/* ── the basket — owner 2026-10-11: one card per test, in /counter's paper-and-pine ── */}
+            <div className="pp" style={{ fontFamily: '"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif', color: "var(--ink)", display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <h2 style={{ fontSize: 14, fontWeight: 700 }}>
+                  {lines.some((l) => l.source === "advised") ? t("lab.desk.rxLines") : t("lab.desk.flow.chosenTests", { count: lines.length })}
+                </h2>
+                {/* The photographed slip, to check a typed test against the doctor's own hand. */}
+                {selected.visit !== null && lines.some((l) => l.typedFromPaperBy != null) && (
+                  <button type="button" className="sec" style={{ height: 26 }} data-testid="lab-see-slip" onClick={() => { setSlipOpen(true); }}>
+                    {t("paper.slip.see")}
+                  </button>
+                )}
+              </div>
               {selected.visit !== null && selected.visit.advised.some((a) => a.orderable === null) && (
-                <p className="text-xs">{t("lab.desk.notInCatalogue")}: {selected.visit.advised.filter((a) => a.orderable === null).map((a) => a.code).join(", ")}</p>
+                <p style={{ fontSize: 12 }}>{t("lab.desk.notInCatalogue")}: {selected.visit.advised.filter((a) => a.orderable === null).map((a) => a.code).join(", ")}</p>
               )}
-              <table className="w-full text-sm">
-                <thead className="text-left text-xs text-muted-foreground">
-                  <tr>
-                    <th className="py-1">{t("lab.desk.test")}</th>
-                    <th>{t("lab.desk.tube")}</th>
-                    <th>{t("lab.desk.onSlip")}</th>
-                    <th className="text-right">{t("lab.desk.price")}</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {lines.map((l) => {
-                    const line = priced?.lines.find((p) => p.serviceId === l.orderable.serviceId) ?? null;
-                    return (
-                      <tr key={l.orderable.serviceId} className="border-t border-border">
-                        <td className="py-1">
-                          <span className="font-medium">{l.orderable.code}</span> · {l.orderable.nameEn}
-                          {l.orderable.consentRequired && <span className="ml-1 font-semibold">{t("lab.desk.consentTag")}</span>}
-                          {l.orderable.sensitive && <span className="ml-1 font-semibold">{t("lab.desk.sensitiveTag")}</span>}
-                          {l.source === "advised" && <span className="ml-1 text-xs text-muted-foreground">{t("lab.desk.fromRx")}</span>}
-                          {l.orderable.consentRequired && l.alreadyOrderedItemId === null && (
-                            <input
-                              className="ml-2 rounded border border-input px-2 py-0.5"
-                              placeholder={t("lab.desk.consentRecordedBy")}
-                              aria-label={`${t("lab.desk.consentRecordedBy")} ${l.orderable.code}`}
-                              value={consents[l.orderable.serviceId] ?? ""}
-                              onChange={(e) => setConsents((c) => ({ ...c, [l.orderable.serviceId]: e.target.value }))}
-                            />
+              <ul style={{ display: "flex", flexDirection: "column", gap: 6 }} data-testid="basket">
+                {lines.map((l) => {
+                  const line = priced?.lines.find((p) => p.serviceId === l.orderable.serviceId) ?? null;
+                  const paramsOpen = openParams.includes(l.orderable.serviceId);
+                  return (
+                    <li key={l.orderable.serviceId} className="box" style={{ padding: "9px 12px", display: "flex", flexDirection: "column", gap: 4 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                        <TubeDot container={l.orderable.container} />
+                        <span style={{ flex: "1 1 180px", minWidth: 0 }}>
+                          <span style={{ fontWeight: 600 }}>{l.orderable.code}</span>
+                          <span style={{ color: "var(--dim)" }}> · {l.orderable.nameEn}</span>
+                          {l.orderable.consentRequired && <span className="pill gd" style={{ height: 18, marginLeft: 6 }}>{t("lab.desk.consentTag")}</span>}
+                          {l.orderable.sensitive && <span className="pill rd" style={{ height: 18, marginLeft: 6 }}>{t("lab.desk.sensitiveTag")}</span>}
+                          {l.source === "advised" && l.typedFromPaperBy == null && <span style={{ marginLeft: 6, fontSize: 11, color: "var(--faint)" }}>{t("lab.desk.fromRx")}</span>}
+                          {/* Owner ruling 2026-10-06 (A) — typed from the doctor's paper: billable as it stands, and it says whose typing it is. */}
+                          {l.source === "advised" && l.typedFromPaperBy != null && (
+                            <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 600, color: "#9a6208" }} data-testid={`lab-typed-${l.orderable.code}`}>
+                              {t("paper.typedBy", { name: l.typedFromPaperBy })}
+                            </span>
                           )}
-                        </td>
-                        <td className="text-muted-foreground">{l.orderable.container}</td>
-                        <td>
-                          {l.alreadyOrderedItemId !== null ? (
-                            <span className="text-xs">{t("lab.desk.alreadyOrdered")}</span>
-                          ) : (
-                            <label className="flex items-center gap-1">
-                              <input type="checkbox" checked={!l.onCredit}
-                                aria-label={`${t("lab.desk.billedHere")} ${l.orderable.code}`}
-                                onChange={(e) => setLines((prev) => prev.map((x) => (
-                                  x.orderable.serviceId === l.orderable.serviceId ? { ...x, onCredit: !e.target.checked } : x
-                                )))} />
-                              <span>{l.onCredit ? t("lab.desk.onCredit") : t("lab.desk.billedHere")}</span>
-                            </label>
-                          )}
-                        </td>
-                        <td className="text-right tabular-nums">{line === null ? "—" : fmtPaise(line.netPaise)}</td>
-                        <td className="text-right">
-                          {l.alreadyOrderedItemId === null && (
-                            <button type="button" className="text-xs underline"
-                              aria-label={`${t("lab.desk.remove")} ${l.orderable.code}`}
-                              onClick={() => touchLines((prev) => prev.filter((x) => x.orderable.serviceId !== l.orderable.serviceId))}>
-                              {t("lab.desk.remove")}
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {lines.length === 0 && (
-                    <tr><td colSpan={5} className="py-2 text-muted-foreground">{t("lab.desk.noLines")}</td></tr>
-                  )}
-                </tbody>
-              </table>
+                        </span>
+                        <button type="button" style={{ fontSize: 11.5, color: "var(--green)", textDecoration: "underline" }}
+                          aria-expanded={paramsOpen}
+                          aria-label={`${t("lab.desk.flow.parameters")} ${l.orderable.code}`}
+                          onClick={() => setOpenParams((p) => (paramsOpen ? p.filter((x) => x !== l.orderable.serviceId) : [...p, l.orderable.serviceId]))}>
+                          {t("lab.desk.flow.parameters")}
+                        </button>
+                        {l.alreadyOrderedItemId !== null ? (
+                          <span style={{ fontSize: 11.5, color: "var(--dim)" }}>{t("lab.desk.alreadyOrdered")}</span>
+                        ) : !labFree && (
+                          <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12 }}>
+                            <input type="checkbox" checked={!l.onCredit}
+                              aria-label={`${t("lab.desk.billedHere")} ${l.orderable.code}`}
+                              onChange={(e) => setLines((prev) => prev.map((x) => (
+                                x.orderable.serviceId === l.orderable.serviceId ? { ...x, onCredit: !e.target.checked } : x
+                              )))} />
+                            <span>{l.onCredit ? t("lab.desk.onCredit") : t("lab.desk.billedHere")}</span>
+                          </label>
+                        )}
+                        {!labFree && <span className="mo" style={{ fontSize: 12.5, minWidth: 64, textAlign: "right" }}>{line === null ? "—" : fmtPaise(line.netPaise)}</span>}
+                        {l.alreadyOrderedItemId === null && (
+                          <button type="button" className="sec" style={{ height: 28, padding: "0 10px" }}
+                            aria-label={`${t("lab.desk.remove")} ${l.orderable.code}`}
+                            onClick={() => touchLines((prev) => prev.filter((x) => x.orderable.serviceId !== l.orderable.serviceId))}>
+                            ×
+                          </button>
+                        )}
+                      </div>
+                      {paramsOpen && <div style={{ paddingLeft: 20 }}><ParametersOf serviceId={l.orderable.serviceId} /></div>}
+                      {l.orderable.consentRequired && l.alreadyOrderedItemId === null && (
+                        <input
+                          style={{ height: 34, maxWidth: 320 }}
+                          placeholder={t("lab.desk.consentRecordedBy")}
+                          aria-label={`${t("lab.desk.consentRecordedBy")} ${l.orderable.code}`}
+                          value={consents[l.orderable.serviceId] ?? ""}
+                          onChange={(e) => setConsents((c) => ({ ...c, [l.orderable.serviceId]: e.target.value }))}
+                        />
+                      )}
+                    </li>
+                  );
+                })}
+                {lines.length === 0 && (
+                  <li className="box" style={{ padding: 14, textAlign: "center", color: "var(--faint)", borderStyle: "dashed" }}>{t("lab.desk.noLines")}</li>
+                )}
+              </ul>
             </div>
 
-            {/* ── add from the catalogue ── */}
-            <div className="space-y-1">
-              <label className="text-sm">
-                {t("lab.desk.search")}
-                <input className="mt-1 w-full rounded border border-input px-2 py-1" value={query}
-                  onChange={(e) => setQuery(e.target.value)} />
-              </label>
-              {catalogue.data !== undefined && catalogue.data.length > 0 && (
-                <ul className="max-h-40 space-y-1 overflow-auto text-sm">
-                  {catalogue.data.slice(0, 12).map((o) => (
-                    <li key={o.serviceId} className="flex items-center justify-between gap-2">
-                      <span>
-                        {o.code} · {o.nameEn}
-                        {o.consentRequired && <span className="ml-1 font-semibold">{t("lab.desk.consentTag")}</span>}
-                        {o.sensitive && <span className="ml-1 font-semibold">{t("lab.desk.sensitiveTag")}</span>}
-                      </span>
-                      <Button type="button" size="sm" variant="outline" onClick={() => {
-                        touchLines((prev) => (prev.some((x) => x.orderable.serviceId === o.serviceId)
-                          ? prev
-                          : [...prev, { orderable: o, source: "added", onCredit: false, alreadyOrderedItemId: null }]));
-                        setQuery("");
-                      }}>{t("lab.desk.add")}</Button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            {showChooser && lines.some((l) => l.source === "advised") && (
+            <>
+            {/* ── which tests? — owner 2026-10-11: common tests as chips, then one search ── */}
+            <TestChooser
+              chosen={lines.map((l) => l.orderable.serviceId)}
+              autoFocus={selected.visit === null || lines.length === 0}
+              onAdd={(o) => touchLines((prev) => (prev.some((x) => x.orderable.serviceId === o.serviceId)
+                ? prev
+                : [...prev, { orderable: o, source: "added", onCredit: false, alreadyOrderedItemId: null }]))}
+              onRemove={(id) => touchLines((prev) => prev.filter((x) => x.orderable.serviceId !== id || x.alreadyOrderedItemId !== null))}
+            />
+            </>
+            )}
 
             {/* ── what Vikas will draw · decided from the tests ── */}
             {priced !== null && (
@@ -572,6 +877,7 @@ export function LabDesk(): React.ReactElement {
             )}
 
             {/* ── priority · referred by · money ── */}
+            {(showBilling || labFree) && (<>
             <div className="grid gap-2 md:grid-cols-3">
               <label className="text-sm">
                 {t("lab.desk.priority")}
@@ -600,7 +906,7 @@ export function LabDesk(): React.ReactElement {
                   </select>
                 </label>
               )}
-              <label className="text-sm">
+              {!labFree && <label className="text-sm">
                 {t("lab.desk.tender")}
                 <select className="mt-1 w-full rounded border border-input px-2 py-1" value={tender}
                   onChange={(e) => setTender(e.target.value as typeof tender)}>
@@ -608,12 +914,13 @@ export function LabDesk(): React.ReactElement {
                   <option value="card">{t("lab.desk.card")}</option>
                   <option value="upi">{t("lab.desk.upi")}</option>
                 </select>
-              </label>
+              </label>}
             </div>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={reflexConsent} onChange={(e) => setReflexConsent(e.target.checked)} />
               {t("lab.desk.reflexConsent")}
             </label>
+            </>)}
 
             {priced !== null && (
               <div className="rounded border border-border bg-card p-2 text-sm" data-testid="money">
@@ -627,6 +934,30 @@ export function LabDesk(): React.ReactElement {
               </div>
             )}
 
+            {selected.visit === null && walkIn !== undefined && <WalkInBlocked readiness={walkIn} />}
+            {counter && phase === "tests" && !labFree ? (
+              <div className="pp" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <button type="button" className="pri" style={{ height: 50, fontSize: 15, minWidth: 220 }} data-testid="counter-next"
+                  disabled={orderableLines.length === 0 || missingConsent.length > 0 || (selected.visit === null && walkIn !== undefined && !walkIn.ready)}
+                  onClick={() => { setPhase("bill"); check.mutate(); }}>
+                  {t("lab.counter.next", { count: orderableLines.length })} →
+                </button>
+                <span style={{ fontSize: 11.5, color: "var(--dim)" }}>{t("lab.counter.nextNote")}</span>
+              </div>
+            ) : labFree ? (
+              <div className="pp" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <button type="button" className="pri" style={{ height: 50, fontSize: 15 }} data-testid="send-free"
+                  disabled={
+                    orderableLines.length === 0 || missingConsent.length > 0 || sendFree.isPending || place.isPending
+                    || (selected.visit === null && labDoctors.length > 1 && walkInDoctorId === "")
+                    || (selected.visit === null && walkIn !== undefined && !walkIn.ready)
+                  }
+                  onClick={() => sendFree.mutate()}>
+                  {t("lab.desk.flow.sendToCollection", { count: orderableLines.length })}
+                </button>
+                <span style={{ fontSize: 11.5, color: "var(--dim)" }}>{t("lab.desk.flow.freeNote")}</span>
+              </div>
+            ) : (
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" disabled={orderableLines.length === 0 || check.isPending} onClick={() => check.mutate()}>
                 {t("lab.desk.checkDuplicates")}
@@ -639,30 +970,45 @@ export function LabDesk(): React.ReactElement {
                   || priced === null || place.isPending || check.isPending
                   /** Two pathologists: the walk-in names one (F6). */
                   || (selected.visit === null && labDoctors.length > 1 && walkInDoctorId === "")
+                  /** No laboratory department or pathologist: a walk-in cannot open (owner 2026-10-11). */
+                  || (selected.visit === null && walkIn !== undefined && !walkIn.ready)
                 }
                 onClick={() => place.mutate()}
               >
                 {t("lab.desk.save")}
               </Button>
             </div>
+            )}
             {missingConsent.length > 0 && (
               <p className="text-sm font-semibold">
                 {t("lab.desk.consentNeeded")}: {missingConsent.map((l) => l.orderable.code).join(", ")}
               </p>
             )}
+            </>)}
           </div>
         )}
 
         {error !== null && <p role="alert" className="text-sm font-semibold">{error}</p>}
         {placed !== null && (
-          <section className="space-y-1 rounded border border-border bg-card p-3 text-sm" data-testid="placed">
-            <p className="font-semibold">{t("lab.desk.placed")}: {placed.orderNo}</p>
-            <p>{t("lab.desk.visit")}: {placed.encounterNo} · {t("lab.desk.invoice")}: {placed.invoice.invoiceNo}
-              {(placed.invoice.creditExtended || placedWithBalance.current) && <> · {t("lab.desk.creditExtended")}</>}</p>
-            <p className="text-muted-foreground">{t("lab.desk.sentToCollection")}</p>
+          <section className="pp box" data-testid="placed"
+            style={{ fontFamily: '"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif', color: "var(--ink)", padding: "16px 18px", borderColor: "var(--green)", boxShadow: "0 0 0 3px var(--green-soft)", display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ fontSize: 17, fontWeight: 700, color: "var(--green)" }}>✓ {t("lab.desk.placed")}: <span className="mo">{placed.orderNo}</span></div>
+            <div style={{ fontSize: 13 }}>{t("lab.desk.visit")}: <span className="mo" style={{ fontWeight: 600 }}>{placed.encounterNo}</span>
+              {placed.invoice.netPayablePaise > 0 && <> · {t("lab.desk.invoice")}: {placed.invoice.invoiceNo}</>}
+              {placed.invoice.netPayablePaise === 0 && <> · {t("lab.desk.flow.noCharge")}</>}
+              {(placed.invoice.creditExtended || placedWithBalance.current) && <> · {t("lab.desk.creditExtended")}</>}</div>
+            <div style={{ fontSize: 13, color: "var(--dim)" }}>{t("lab.desk.sentToCollection")}</div>
+            <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+              {counter && <a className="sec" href="/lab/qcollect" data-testid="go-qcollect">{t("lab.counter.openQCollect")} →</a>}
+              <button type="button" className="pri" onClick={nextPatient}>{t("lab.desk.flow.nextPatient")}</button>
+              {selected !== null && <button type="button" className="sec" onClick={() => { setPlaced(null); setStep("none"); }}>{t("lab.desk.flow.backToPatient")}</button>}
+            </div>
           </section>
         )}
       </section>
+      {slipOpen && selected !== null && selected.visit !== null && (
+        <PaperSlipSheet patientId={selected.patient.id} encounterId={selected.visit.encounterId} onClose={() => { setSlipOpen(false); }} />
+      )}
     </LabStation>
   );
 }

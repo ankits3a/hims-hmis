@@ -112,6 +112,44 @@ describe("the bill rail and the hand-over (PD-6)", () => {
     expect(screen.getByTestId("desk-ticker")).not.toHaveTextContent("₹50.00");
   });
 
+  /* Owner ruling 2026-10-02 — pharmacy credit kept from a return is spent first; the patient pays only the difference. */
+  it("pharmacy credit: the rail spends it first and the tender is only the balance; unticked, the bill is paid in full", async () => {
+    let current = dispense("d1", "picked");
+    mockRoutes(base(() => current, "open", {
+      "GET /api/pharmacy/dispenses/d1/bill/preview": { status: 200, body: { ...PREVIEW, creditAvailablePaise: 1100 } },
+      "POST /api/pharmacy/dispenses/d1/bill": () => { current = dispense("d1", "billed"); return { status: 201, body: current }; },
+    }));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const rail = await screen.findByTestId("desk-bill");
+    const box = await within(rail).findByTestId("desk-store-credit");
+    expect(box).toHaveTextContent("Pharmacy credit ₹11.00");
+    expect(within(box).getByTestId("desk-store-credit-used")).toHaveTextContent("₹11.00");
+    expect(within(box).getByTestId("desk-store-credit-rest")).toHaveTextContent("₹34.00");
+    // unticked: the whole bill again
+    await userEvent.click(within(box).getByTestId("desk-store-credit-use"));
+    expect(within(rail).getByTestId("desk-take")).toHaveTextContent("₹45.00");
+    await userEvent.click(within(box).getByTestId("desk-store-credit-use"));
+    await userEvent.click(within(rail).getByRole("radio", { name: /Cash/ }));
+    await userEvent.type(within(rail).getByRole("textbox", { name: /tendered/ }), "34");
+    await userEvent.click(within(rail).getByRole("button", { name: /Received ₹34.00/ }));
+    await waitFor(() => expect(calls("POST", "/d1/bill").map((c) => c.body)).toEqual([{ tenders: [{ mode: "cash", amountPaise: 3400 }], useCreditPaise: 1100 }]));
+  });
+
+  it("pharmacy credit that covers the whole bill takes no tender at all", async () => {
+    let current = dispense("d1", "picked");
+    mockRoutes(base(() => current, "open", {
+      "GET /api/pharmacy/dispenses/d1/bill/preview": { status: 200, body: { ...PREVIEW, creditAvailablePaise: 6000 } },
+      "POST /api/pharmacy/dispenses/d1/bill": () => { current = dispense("d1", "billed"); return { status: 201, body: current }; },
+    }));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const rail = await screen.findByTestId("desk-bill");
+    const box = await within(rail).findByTestId("desk-store-credit");
+    expect(within(box).getByTestId("desk-store-credit-rest")).toHaveTextContent("₹0.00");
+    expect(box).toHaveTextContent("₹15.00 stays as credit");
+    await userEvent.click(within(rail).getByRole("button", { name: /Settle from credit/ }));
+    await waitFor(() => expect(calls("POST", "/d1/bill").map((c) => c.body)).toEqual([{ tenders: [], useCreditPaise: 4500 }]));
+  });
+
   /**
    * GAP A3b — owner ruling 2026-09-28: nobody but the owner gives credit. The desk asks for the exact bill on
    * this dispense, waits for the owner, and bills with no tender and no drawer once the grant is in.

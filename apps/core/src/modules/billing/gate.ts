@@ -1,7 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { enteredInErrorMarks, invoiceLines, invoices } from "../../kernel/db/schema";
 import { feeServiceFor } from "./charge-rules";
-import { loadBillingConfig } from "./config";
+import { chargeRulesAt, loadBillingConfig } from "./config";
 import { BillingError } from "./errors";
 import { invoiceSettlement } from "./invoices";
 import type { ConsultStartGuard } from "../opd";
@@ -68,7 +68,7 @@ async function feeCovered(exec: Db | Tx, encounterId: string, feeServiceId: stri
 export const feeGate: ConsultStartGuard = async (db, encounter) => {
   try {
     const cfg = await loadBillingConfig(db);
-    const feeServiceId = feeServiceFor(encounter, cfg.chargeRules);
+    const feeServiceId = feeServiceFor(encounter, await chargeRulesAt(db, cfg.chargeRules, new Date()));
     if (feeServiceId === null) return { ok: true }; // the free branch
     if (await feeCovered(db, encounter.id, feeServiceId)) return { ok: true };
     return {

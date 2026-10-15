@@ -101,7 +101,10 @@ describe("the desk's paper (pharmacy P1)", () => {
     expect(claimed).toHaveLength(2);
     const bill = await renderDocument(db, "pharmacy_bill", { dispenseId: id }, MON3, fx.pharmacist.actor);
     const labels = await renderDocument(db, "pharmacy_labels", { dispenseId: id }, MON3, fx.pharmacist.actor);
-    expect(bill?.page).toEqual({ widthMm: 72, heightMm: null });
+    // Owner 2026-10-02 — the bill is a 4 × 6 inch sheet for the dot-matrix printer; the labels stay on the 72 mm roll.
+    expect(bill?.page).toEqual({ widthMm: 101.6, heightMm: 152.4 });
+    expect(bill?.html).toContain("@page { size: 4in 6in; margin: 0; }");
+    expect(labels?.page).toEqual({ widthMm: 72, heightMm: null });
     expect(bill?.html).toMatch(/TAX INVOICE|BILL OF SUPPLY/);
     expect(bill?.html).toContain("Net payable");
     expect(bill?.html).toContain("Taxable");
@@ -109,6 +112,8 @@ describe("the desk's paper (pharmacy P1)", () => {
     expect(labels?.html).toContain("2027-12-31");
     // The browser's copy is the same two renderings on one roll.
     const paper = await dispensePaper(db, fx.pharmacist.actor, id, MON3);
+    expect(paper.page).toEqual({ widthMm: 101.6, heightMm: 152.4 });
+    expect(paper.html).toContain('<div class="newpage"></div>');
     expect(paper.html).toContain("Net payable");
     expect(paper.html).toContain("CR-1");
   });

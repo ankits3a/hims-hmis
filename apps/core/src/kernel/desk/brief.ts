@@ -30,6 +30,8 @@ import type { DayFacts } from "./rollup";
  * and re-stating "vs the previous six months" would need a year of history nobody has yet.
  */
 export const MIN_BASELINE_DAYS = 14;
+/** A month is the longest window a day-by-day line is sent for. */
+export const SERIES_MAX_DAYS = 31;
 
 /**
  * THE PERIODS, AS A TUPLE, because two controllers build a `z.enum` from it. They each carried their
@@ -119,6 +121,12 @@ export type Brief = {
   totals: Record<string, number>;
   /** How many days of the window carried any fact at all — the brief's own evidence count. */
   daysWithActivity: number;
+  /**
+   * APP HOME (owner 2026-10-07, "last 30 days") — the window day by day, for a line. Carried for the
+   * windows a line is drawn for (a month or shorter); the long periods carry none. A day with no
+   * rollup row is ABSENT, not zero — the rule `factsForWindow` states.
+   */
+  series?: { day: string; facts: Record<string, number> }[];
 };
 
 /** The median of a list, or null when there is not enough of it to be honest about (DD8). */
@@ -234,6 +242,7 @@ export function buildBrief(
 
   return {
     period, from, to, clauses, totals,
+    ...(SPAN[period] <= SERIES_MAX_DAYS ? { series: days.map((d) => ({ day: d.day, facts: d.facts })) } : {}),
     daysWithActivity: days.filter((d) => Object.values(d.facts).some((v) => v > 0)).length,
   };
 }

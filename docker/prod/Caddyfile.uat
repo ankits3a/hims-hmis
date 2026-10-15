@@ -1,9 +1,15 @@
 # PHASE 11i T3 — THE UAT EDGE.
 #
-# Production's Caddyfile terminates TLS on the real hostname over ACME and serves the site to
-# anybody. This one answers on THIS BOX'S IP over a certificate the box signed for itself, on
-# 8443, behind basic auth — because UAT is the owner's bench and a trainee's, not a public site,
-# and because 80 and 443 belong to production.
+# 2026-09-30 — UAT IS THE STAGING SITE, https://stagehmis.crkmch.com (owner: "create a staging
+# environment"). 80 and 443 belong to production, so PRODUCTION'S Caddy terminates TLS for the
+# staging hostname over ACME and proxies it here as plain HTTP. This caddy listens on 8080 inside
+# the container; `docker-compose.uat.yml` publishes it on 172.17.0.1:8444 only — docker0's
+# address, reachable from production's caddy through `host-gateway` and from nothing on the
+# internet (measured: the public IP refuses the port). UAT still shares no network, volume or port
+# with production. It was `https://{$HMIS_UAT_SITE}:8443` over `tls internal`; the owner closed
+# 8443 on 2026-09-27, so that address could not be reached anyway.
+#
+# The site stays behind basic auth — UAT is the owner's bench and a trainee's, not a public site.
 #
 # `{$HMIS_UAT_SITE}` and `{$HMIS_UAT_BASIC_AUTH_HASH}` are expanded by Caddy from the container's
 # environment at load time, so **no credential and no address is committed to git**. Both come out
@@ -20,7 +26,7 @@
 	# after building, after migrating, after the seeds had already run.
 	#
 	# Leaving it on is not an exposure. Caddy's admin endpoint defaults to `localhost:2019`
-	# INSIDE the container, and `docker-compose.uat.yml` publishes only 8443 — nothing maps 2019,
+	# INSIDE the container, and `docker-compose.uat.yml` publishes only 8080 — nothing maps 2019,
 	# so it is reachable from that container and nowhere else. Production's own `Caddyfile` does
 	# not disable it either (checked, not assumed), and that one answers on a public hostname.
 	auto_https disable_redirects
@@ -31,16 +37,14 @@
 	}
 }
 
-https://{$HMIS_UAT_SITE}:8443 {
-	tls internal
+http://{$HMIS_UAT_SITE}:8080 {
 	encode zstd gzip
 	header {
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
-		# NO Strict-Transport-Security. UAT answers on an IP with a self-signed certificate; an
-		# HSTS header from here would pin a browser to HTTPS for this host for a year, which is a
-		# durable inconvenience bought for a training box.
+		# NO Strict-Transport-Security. Production's site block for the staging hostname owns TLS,
+		# so HSTS is its call, not this hop's.
 		# WASA M-01, as production and byte-identical to it (see docker/prod/Caddyfile for each source):
 		# UAT is where a violation should surface first.
 		Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' wss://{hostport}; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
@@ -69,6 +73,75 @@ https://{$HMIS_UAT_SITE}:8443 {
 		reverse_proxy api:3000
 	}
 
+	# The staff Android app (owner 2026-10-05: no Play Store, ever). APKs that
+	# apps/mobile/scripts/build-apk.sh writes to /opt/hmis-context/mobile-apk on the host are
+	# mounted read-only at /downloads (docker-compose.uat.yml) and listed here, behind the same
+	# basic auth as the screens: https://stagehmis.crkmch.com/app/
+	#
+	# `*-latest.json` is served WITHOUT basic auth, and only that: the installed app reads it on
+	# start-up to learn whether a newer build exists (apps/mobile/src/update.ts), and an app cannot
+	# answer a browser's password prompt. It carries a version number, a file name and a checksum —
+	# nothing about a patient, nothing that installs. The APK itself stays behind the prompt.
+	@app_latest path_regexp ^/app/hmis-staff-[a-z]+-latest\.json$
+	handle @app_latest {
+		uri strip_prefix /app
+		header Cache-Control "no-store"
+		root * /downloads
+		file_server
+	}
+	# HMIS PRINT FOR WINDOWS (decision 0047). The feed and the app bundle an installed program
+	# updates from are served WITHOUT basic auth — a program cannot answer a prompt, and they carry
+	# a version, a checksum and the program's own source. The installer zip stays behind the prompt
+	# with everything else under /app/ (it is downloaded by a person in a browser).
+	@print_feed path_regexp ^/app/hmis-print-(windows-latest|app-[0-9.]+)\.json$
+	handle @print_feed {
+		uri strip_prefix /app
+		header Cache-Control "no-store"
+		root * /downloads
+		file_server
+	}
+	# OVER-THE-AIR UPDATES for the staff app (owner 2026-10-06: an update "should happen
+	# automatically" — apps/mobile/src/ota.ts, apps/mobile/scripts/publish-ota.sh). A JavaScript
+	# change reaches the phones as a signed bundle in the same folder as the APKs; no expo.dev cloud.
+	#
+	# The app asks ONE address and names its native fingerprint in a header; the folder for that
+	# fingerprint is chosen here, so a bundle never reaches an APK it was not built against. The
+	# header is matched as exactly 40 hex digits before it is ever part of a path. The manifest is a
+	# file the publish script wrote whole — one multipart body carrying the manifest and its
+	# signature — and this boundary is the one it was written with (scripts/ota-manifest.js).
+	# WITHOUT basic auth, like the feed above: an app cannot answer a password prompt, and the
+	# phone runs nothing the certificate in its APK did not sign.
+	@ota_manifest {
+		path /app/ota/staging/manifest
+		header_regexp ota_runtime Expo-Runtime-Version ^[a-f0-9]{40}$
+	}
+	handle @ota_manifest {
+		rewrite * /ota/staging/{re.ota_runtime.0}/manifest
+		header Content-Type "multipart/mixed; boundary=hmis-ota"
+		header expo-protocol-version 1
+		header expo-sfv-version 0
+		# Asked on every app start; a cached answer hides a new bundle.
+		header Cache-Control "private, max-age=0"
+		root * /downloads
+		file_server
+	}
+	# Every file is named by its own SHA-256, so a name never changes meaning.
+	@ota_file path_regexp ^/app/ota/staging/[a-f0-9]{40}/files/[a-f0-9]{64}\.[A-Za-z0-9]+$
+	handle @ota_file {
+		uri strip_prefix /app
+		header Cache-Control "public, max-age=31536000, immutable"
+		root * /downloads
+		file_server
+	}
+	handle_path /app/* {
+		basic_auth {
+			uat {$HMIS_UAT_BASIC_AUTH_HASH}
+		}
+		@apk path *.apk
+		header @apk Content-Type application/vnd.android.package-archive
+		root * /downloads
+		file_server browse
+	}
 	handle {
 		basic_auth {
 			uat {$HMIS_UAT_BASIC_AUTH_HASH}

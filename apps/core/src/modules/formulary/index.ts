@@ -45,7 +45,18 @@ export type { DrugSuggestion } from "./suggest";
 export { admitStaging, getStagingRow, rejectStaging, searchStaging } from "./staging";
 export type { StagingRow } from "./staging";
 
-export { searchMedicines } from "./search";
+export { medicinesByBrandPrefix, searchMedicines } from "./search";
+/** Decision 0051 — the catalogue rows an unmatched term could mean, for the alias pipeline (`opd/alias-pipeline.ts`). Offline, never a typeahead. */
+export { ALIAS_POOL_SIZE, ALIAS_WORD_SIMILARITY, aliasCandidatePool } from "./alias-candidates";
+export type { AliasCandidateRow } from "./alias-candidates";
+/** Decisions 0051/0055 — the prescriber's medicine search: the catalogue's answer plus a learned nickname OPD registers. */
+export { medicineHitById, registerNicknameLookup, searchMedicinesForPrescribing } from "./prescribing-search";
+export type { NicknameLookup, NicknameMark, PrescribingHit } from "./prescribing-search";
+/** Owner 2026-10-04 — a vendor brand the catalogue lacks → the catalogue drug of the same composition (bounded: one spec at a time). */
+export {
+  brandTitle, catalogueTwinForm, compositionAgrees, compositionTwins, parseComposition, tidyCatalogueName, twinFormAgrees, twinFormOf, twinName, twinStrengthAgrees,
+} from "./twins";
+export type { CompositionTwin, SaltFamilyCache, TwinComponent, TwinForm, TwinSpec } from "./twins";
 /** STAGE D5 — the WHO AWaRe 2023 list and the seed's fill-the-nulls classification (`seed:pharmacy`). */
 export { AWARE_LIST, classifyAwareMedicines, restrictedAntimicrobialExists } from "./aware";
 export type { AwareCategory, AwareClassificationReport } from "./aware";
@@ -103,3 +114,9 @@ export type { DrugDiseaseAlternative } from "../../kernel/db/schema";
  */
 export { NDPS_CLASSES, NDPS_LIST, classifyNdpsSalts, ndpsClassByMedicine } from "./ndps";
 export type { NdpsClass, NdpsClassificationReport, NdpsEntry } from "./ndps";
+
+export { getMonograph, renalDoseFor, reviewMonograph, saveMonograph, searchGenerics } from "./monographs";
+export type { GenericHit, Monograph, MonographInput, RenalDose, RenalDoseInput, RenalSeverity } from "./monographs";
+
+export { counsellingByMedicine, counsellingOf, linkMedicinesToGenerics, monographForMedicine } from "./generic-link";
+export type { Counselling, GenericLinkReport } from "./generic-link";

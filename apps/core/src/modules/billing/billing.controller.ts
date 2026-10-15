@@ -1,4 +1,11 @@
-import { Body, Controller, Get, HttpException, Inject, Param, Post, Put, Query, Headers } from "@nestjs/common";
+import { feeSwitchesView, setFeeSwitch } from "./fee-switches";
+import { loadUpiPayee, setUpiPayee, UPI_PAYEE_NAME_MAX } from "./upi";
+import type { UpiPayee } from "./upi";
+import type { FeeSwitchesView } from "./fee-switches";
+import { changeConsultPricesNow, consultPricesView, consultTerms, decideConsultPrices, proposeConsultPrices } from "./consult-prices";
+import type { ConsultPricesView, ConsultTerms } from "./consult-prices";
+import { FEE_KINDS } from "./config";
+import { Body, Controller, Get, HttpCode, HttpException, Inject, Param, Post, Put, Query, Headers } from "@nestjs/common";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { gstinState } from "@hmis/contracts";
@@ -82,6 +89,9 @@ const feeQuoteReferralQuery = z
 
 import { loadBillingConfig, updateBillingConfig } from "./config";
 import { dayBook, gstr1Summary } from "./daily-close";
+import { ownerMoney } from "./owner-money";
+import { rangeProblem } from "@hmis/contracts";
+import type { OwnerMoney } from "@hmis/contracts";
 import { issueCreditNote, listCreditNotes } from "./credit-notes";
 import { creditRequestStatus, requestCredit } from "./credit-requests";
 import { MembershipError, membershipHttpStatus } from "../membership";
@@ -91,12 +101,14 @@ import { encounterRefSpellings, getInvoice, invoiceSettlement, issueInvoice, lis
 import { chargeOrphans } from "./daily-close";
 import type { ChargeOrphanRow } from "./daily-close";
 import { collectionWorklist } from "./worklist";
+import { toCollectList } from "./to-collect";
+import type { ToCollectRow } from "./to-collect";
 import type { CollectionRow } from "./worklist";
 import type { BenefitBalance } from "./invoices";
 import {
   allocateReceipt, listDues, markEnteredInError, patientBalance, recordReceipt, reverseAllocation,
 } from "./receipts";
-import { issueRefundVoucher, payRefundVoucher, requestRefund } from "./refunds";
+import { issueRefundVoucher, issueVoucherForApproval, payRefundVoucher, requestRefund } from "./refunds";
 import { listMismatches, setDegraded, uploadSettlement } from "./recon";
 import { resolveMismatch } from "./recon-resolve";
 import type { ResolveMismatchResult } from "./recon-resolve";
@@ -153,6 +165,8 @@ type VisitFacts = {
 import type { OpdConfig } from "../opd";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
+import { patientBillDetail, patientBills } from "./patient-bills";
+import type { PatientBillDetail, PatientBillRow } from "./patient-bills";
 
 /**
  * THE wire contract of the billing module — the 31 routes of Plan 08 Task 11, one controller for
@@ -452,6 +466,10 @@ const recountBody = z.object({
 const reconUploadBody = z.object({ csv: z.string(), source: z.enum(["upi", "card"]) });
 const dayQuery = z.object({ day: z.string().max(10).optional() });
 const gstr1Query = z.object({ from: z.string().max(10), to: z.string().max(10) });
+const ownerMoneyQuery = z.object({
+  from: z.string().max(10).optional(), to: z.string().max(10).optional(),
+  cfrom: z.string().max(10).optional(), cto: z.string().max(10).optional(),
+});
 
 // The admin patch. Mirrors config.ts's own `configPatchSchema` at the wire so a bad body is
 // refused HERE, in the ratified shape, before `updateBillingConfig` re-parses it (carried item 1).
@@ -467,11 +485,25 @@ const configPatchBody = z
     feeBps: z.object({ upi: z.number().int().nonnegative(), card: z.number().int().nonnegative() }),
     reconTolerancePaise: z.number().int().nonnegative(),
     seriesPrefixes: z.record(z.string(), z.string().min(1)),
-    chargeRules: z.object({ opdConsult: z.object({ new: z.string().min(1), renewal: z.string().min(1) }) }),
+    chargeRules: z.object({ opdConsult: z.object({ new: z.string().min(1), renewal: z.string().min(1), revisit: z.string().min(1).optional() }) }),
     degradedTender: z.boolean(),
     caSigned: z.boolean(),
+    // Owner 2026-10-09 — the hospital's UPI id and the name a payer's app shows. Null or blank clears it.
+    upiVpa: z.string().trim().max(110).nullable(),
+    upiPayeeName: z.string().trim().max(UPI_PAYEE_NAME_MAX).nullable(),
   })
   .partial();
+const feeSwitchBody = z.object({ kind: z.enum(FEE_KINDS), off: z.boolean() }).strict();
+const paiseField = z.number().int().nonnegative();
+const consultProposalBody = z.object({
+  prices: z.object({ new: paiseField, renewal: paiseField, revisit: paiseField }).partial(),
+  note: z.string().max(500).optional(),
+}).strict();
+const consultNowBody = z.object({
+  prices: z.object({ new: paiseField, renewal: paiseField, revisit: paiseField }).partial(),
+  note: z.string().trim().min(1).max(500),
+}).strict();
+const consultDecisionBody = z.object({ approve: z.boolean(), note: z.string().trim().min(1).max(500) }).strict();
 const degradedBody = z.object({ on: z.boolean(), reason: z.string().min(1) });
 
 type ReceiptRowSelect = typeof receipts.$inferSelect;
@@ -523,6 +555,11 @@ type InvoicePrint = {
   settlement: Settlement;
   qrPayload: string;
 };
+
+/** `GET`/`PUT /billing/config` — the config as it always was, plus the hospital's UPI id (owner 2026-10-09). */
+type BillingConfigView = BillingConfig & { upiVpa: string | null; upiPayeeName: string | null };
+const upiView = (p: UpiPayee | null): { upiVpa: string | null; upiPayeeName: string | null } =>
+  ({ upiVpa: p?.vpa ?? null, upiPayeeName: p === null || p.payeeName === "" ? null : p.payeeName });
 
 @Controller("billing")
 export class BillingController {
@@ -614,6 +651,18 @@ export class BillingController {
     } catch (e) {
       toHttp(e);
     }
+  }
+
+  /**
+   * OWNER 2026-10-09 — "To collect": the visits the desk let through unpaid, today and seven days
+   * back, until the fee is settled (`to-collect.ts`). The cashier's key, and ALSO the front desk's
+   * two (`alsoAdmits`): the seat that grants the bypass is the seat that must not lose sight of it.
+   * No doctor's key admits it. No parameter: the window is the rule, not the caller's choice.
+   */
+  @RequirePermission("billing.invoice.read", "hospital", { alsoAdmits: ["opd.visits.open", "billing.dues.patient.read"] })
+  @Get("to-collect")
+  async toCollect(@CurrentActor() actor: Actor): Promise<{ items: ToCollectRow[] }> {
+    return { items: await toCollectList(this.db, actor) };
   }
 
   @RequirePermission("billing.invoice.read", "hospital")
@@ -976,6 +1025,26 @@ export class BillingController {
    * in its path and answers only the unsettled bills — number, service day, what is still owed —
    * so the narrow string admits exactly this response and nothing else in the module.
    */
+  /** Owner 2026-10-03 — the profile's All bills: every bill in the patient's name, with its departments and where it stands. */
+  @RequirePermission("billing.invoice.read", "hospital")
+  @Get("patients/:patientId/bills")
+  async patientBills(@CurrentActor() actor: Actor, @Param("patientId") patientId: string): Promise<{ bills: PatientBillRow[] }> {
+    try {
+      return await patientBills(this.db, actor, patientId);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** Owner 2026-10-03 — one bill in full: lines with tax, totals, payments, credit notes, where it stands. */
+  @RequirePermission("billing.invoice.read", "hospital")
+  @Get("invoices/:id/full")
+  async invoiceFull(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<PatientBillDetail> {
+    const found = await patientBillDetail(this.db, actor, id);
+    if (found === null) toHttp(new BillingError("unknown_invoice", `unknown invoice ${id}`));
+    return found!;
+  }
+
   @RequirePermission("billing.invoice.read", "hospital", { alsoAdmits: ["billing.dues.patient.read"] })
   @Get("patients/:patientId/dues")
   async dues(@CurrentActor() actor: Actor, @Param("patientId") patientId: string): Promise<{ items: DueRow[] }> {
@@ -1014,6 +1083,25 @@ export class BillingController {
         { actorId: actor.id, route: "POST /billing/refunds", key: idemKey },
         b,
         () => issueRefundVoucher(this.db, actor, b),
+      );
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** Owner 2026-10-03 — the voucher for a refund already approved, from the office's worklist (`issueVoucherForApproval`). */
+  @RequirePermission("billing.refund.request", "hospital")
+  @Post("refunds/approved/:approvalId/voucher")
+  async refundIssueApproved(
+    @CurrentActor() actor: Actor, @Param("approvalId") approvalId: string, @Body() body: unknown, @Headers("idempotency-key") idemKey?: string,
+  ): Promise<IssueRefundVoucherResult> {
+    const b = parsed(z.object({ method: z.enum(["cash", "bank_transfer"]) }), body);
+    try {
+      return await withIdempotency(
+        this.db,
+        { actorId: actor.id, route: `POST /billing/refunds/approved/${approvalId}/voucher`, key: idemKey },
+        b,
+        () => issueVoucherForApproval(this.db, actor, approvalId, b.method),
       );
     } catch (e) {
       toHttp(e);
@@ -1283,13 +1371,36 @@ export class BillingController {
     }
   }
 
+  /**
+   * THE OWNER'S MONEY PAGE IN THE STAFF APP (owner 2026-10-09) — `owner-money.ts`. Sums and counts for
+   * IST days `from`..`to` (today when absent; at most 92 days, never the future), with the collected
+   * total of a comparison range `cfrom`..`cto` when one is sent. No patient, no document number. The
+   * day book's own gate: the owner and the billing manager hold it, the Medical Superintendent does not.
+   */
+  @RequirePermission("billing.reports.read", "hospital")
+  @Get("reports/owner-money")
+  async ownerMoneyRoute(@Query() query: unknown): Promise<OwnerMoney> {
+    const q = parsed(ownerMoneyQuery, query);
+    const now = new Date();
+    const today = istDay(now);
+    const from = q.from ?? today, to = q.to ?? today;
+    const bad = rangeProblem(from, to, today)
+      ?? (q.cfrom === undefined && q.cto === undefined ? null : rangeProblem(q.cfrom, q.cto, today));
+    if (bad !== null) throw httpError(400, `the range cannot be read: ${bad}`, "invalid_range");
+    try {
+      return await ownerMoney(this.db, { from, to }, q.cfrom === undefined ? null : { from: q.cfrom, to: q.cto! }, now);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
   // ——— configuration (D-17) ———————————————————————————————————————————————————————————————————
 
   @RequirePermission("billing.reports.read", "hospital")
   @Get("config")
-  async config(): Promise<BillingConfig> {
+  async config(): Promise<BillingConfigView> {
     try {
-      return await loadBillingConfig(this.db);
+      return { ...(await loadBillingConfig(this.db)), ...upiView(await loadUpiPayee(this.db)) };
     } catch (e) {
       toHttp(e);
     }
@@ -1297,10 +1408,107 @@ export class BillingController {
 
   @RequirePermission("billing.config.write", "hospital")
   @Put("config")
-  async configPut(@Body() body: unknown): Promise<BillingConfig> {
-    const b = parsed(configPatchBody, body, "invalid_config");
+  async configPut(@Body() body: unknown): Promise<BillingConfigView> {
+    const { upiVpa, upiPayeeName, ...b } = parsed(configPatchBody, body, "invalid_config");
     try {
-      return await withTx(this.db, (tx) => updateBillingConfig(tx, b));
+      return await withTx(this.db, async (tx) => {
+        // The UPI id has its own writer (`upi.ts`); the config patch keeps the shape it always had.
+        if (upiVpa !== undefined || upiPayeeName !== undefined) {
+          const stored = await loadUpiPayee(tx);
+          await setUpiPayee(tx, {
+            vpa: upiVpa === undefined ? stored?.vpa ?? null : upiVpa,
+            payeeName: upiPayeeName === undefined ? stored?.payeeName ?? null : upiPayeeName,
+          });
+        }
+        return { ...(await updateBillingConfig(tx, b)), ...upiView(await loadUpiPayee(tx)) };
+      });
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  // ——— the fee switches (owner, 2026-10-01) ————————————————————————————————————————————————————
+
+  @RequirePermission("billing.reports.read", "hospital")
+  @Get("fee-switches")
+  async feeSwitches(): Promise<FeeSwitchesView> {
+    try {
+      return await feeSwitchesView(this.db);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("billing.config.write", "hospital")
+  @Put("fee-switches")
+  async feeSwitchPut(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<FeeSwitchesView> {
+    const b = parsed(feeSwitchBody, body);
+    try {
+      return await setFeeSwitch(this.db, actor, b.kind, b.off);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  // ——— the consultation price list (owner, 2026-10-05) ——————————————————————————————————————————————
+  // OWNER RULING 2026-10-05: the billing manager proposes (`billing.config.write`, the role's own
+  // door over fee configuration); the owner-role holder approves or changes directly
+  // (`tariff.versions.activate`). The approval's role and requester ≠ approver checks run inside.
+
+  @RequirePermission("billing.reports.read", "hospital")
+  @Get("consult-prices")
+  async consultPrices(): Promise<ConsultPricesView> {
+    try {
+      return await consultPricesView(this.db);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("billing.config.write", "hospital")
+  @Post("consult-prices")
+  @HttpCode(200)
+  async consultPricesPropose(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<ConsultPricesView> {
+    const b = parsed(consultProposalBody, body);
+    try {
+      return await proposeConsultPrices(this.db, actor, b);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("tariff.versions.activate", "hospital")
+  @Post("consult-prices/now")
+  @HttpCode(200)
+  async consultPricesNow(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<ConsultPricesView> {
+    const b = parsed(consultNowBody, body);
+    try {
+      return await changeConsultPricesNow(this.db, actor, b);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** The desk that opens a visit may know what a visit costs before it is seated (Desk One). */
+  @RequirePermission("opd.visits.open", "hospital")
+  @Get("consult-terms")
+  async consultTermsRoute(): Promise<ConsultTerms> {
+    try {
+      return await consultTerms(this.db);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("tariff.versions.activate", "hospital")
+  @Post("consult-prices/:versionId/decision")
+  @HttpCode(200)
+  async consultPricesDecide(
+    @CurrentActor() actor: Actor, @Param("versionId") versionId: string, @Body() body: unknown,
+  ): Promise<ConsultPricesView> {
+    const b = parsed(consultDecisionBody, body);
+    try {
+      return await decideConsultPrices(this.db, actor, versionId, b);
     } catch (e) {
       toHttp(e);
     }

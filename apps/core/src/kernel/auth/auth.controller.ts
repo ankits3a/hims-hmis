@@ -1,6 +1,6 @@
 import {
-  BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, HttpCode,
-  Inject, NotFoundException, Param, Post, Req, Res, UnauthorizedException,
+  BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, HttpCode,
+  Inject, NotFoundException, Param, Post, Put, Query, Req, Res, UnauthorizedException,
 } from "@nestjs/common";
 import type { Request, Response } from "express";
 import { eq } from "drizzle-orm";
@@ -10,7 +10,7 @@ import { CONFIG, DB } from "../tokens";
 import {
   loginWithPassword, revokeOtherUserSessions, revokeSession, switchWithBadge, switchWithPin,
 } from "./sessions";
-import { setPassword, verifyPassword } from "./identity";
+import { setPassword, verifyPassword, verifyPin } from "./identity";
 import { effectivePermissions } from "./permissions";
 import type { EffectivePermissions } from "./permissions";
 import { checkPassword } from "./password-policy";
@@ -28,10 +28,22 @@ import {
 } from "./temp-roles";
 import { CurrentActor, Public, RequirePermission, AuthedRequest } from "./decorators";
 import { users } from "../db/schema";
+import { meProfile } from "./profile";
+import type { MeProfile } from "./profile";
 import { withTx } from "../db/client";
 import { appendEvent } from "../events/append";
-import { userPasswordChanged } from "./events";
-import { auditLoggedOut, auditLoginFailed, auditSessionOpened, auditTotp, clientContext } from "./auth-audit";
+import { authPhoneLinked, authSessionRevoked, authStepUp, userPasswordChanged } from "./events";
+import { authSessions } from "../db/schema";
+import { STEP_UP_WINDOW_MS } from "@hmis/contracts";
+import {
+  auditLoggedOut, auditLoginFailed, auditPhoneLimitRefused, auditPhoneSignIn, auditSessionOpened, auditTotp, clientContext,
+} from "./auth-audit";
+import { PHONES_PER_USER, PhoneLimitError, deviceClaimSchema, linkSessionToPhone, touchPhone } from "./devices";
+import {
+  clearPushToken, pushLanguageSchema, pushMutedSchema, pushStateOf, pushTokenSchema, registerPushToken, setPushPreferences,
+} from "../push/phone-push";
+import type { PushState } from "../push/phone-push";
+import { sharedPhonePushSource } from "../push/sender";
 import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
 
@@ -45,6 +57,8 @@ const loginSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
   terminalId: z.string().min(1).optional(),
+  /** Mobile M6a — the staff app names its phone (`devices.ts`). A browser sends none. */
+  device: deviceClaimSchema.optional(),
 });
 
 /**
@@ -159,7 +173,29 @@ export class AuthController {
     const parsed = loginSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues);
     await this.refuseIfThrottled(res, "login", parsed.data.username);
-    const result = await loginWithPassword(this.db, this.cfg, parsed.data);
+    const client = clientContext(req);
+    let result: Awaited<ReturnType<typeof loginWithPassword>>;
+    try {
+      result = await loginWithPassword(this.db, this.cfg, { ...parsed.data, clientIp: client.ip });
+    } catch (e) {
+      /*
+        MOBILE M6a — THE THIRD PHONE. The password was RIGHT (the limit is only ever read after it
+        verifies), so this is not a failed attempt: nothing is counted against the throttle, the
+        refusal is evented with the person's id, and the answer says which phones hold the places —
+        to the person who just proved who they are, and to nobody else.
+      */
+      if (e instanceof PhoneLimitError && parsed.data.device !== undefined) {
+        await clearThrottle(this.db, "login", parsed.data.username);
+        await auditPhoneLimitRefused(this.db, e.userId, e.phones.length, parsed.data.device, client);
+        throw new ConflictException({
+          code: "phone_limit_reached",
+          message: `already signed in on ${e.phones.length} phones — an administrator can sign one out`,
+          limit: PHONES_PER_USER,
+          phones: e.phones.map((p) => ({ model: p.model, lastSeenAt: p.lastSeenAt.toISOString() })),
+        });
+      }
+      throw e;
+    }
     if (!result) {
       // The failure is counted AFTER the shipped verification has said no, and the 401 it produces
       // is byte-identical to the one it always produced: the throttle changes what happens on the
@@ -169,12 +205,15 @@ export class AuthController {
       // that username exists. A THROTTLED refusal (above) writes no event on purpose: it runs no
       // verification, and evented it would let one client write unbounded rows into a 120-month
       // table; the edge log carries those 429s with their address.
-      await auditLoginFailed(this.db, "password", parsed.data, clientContext(req));
+      await auditLoginFailed(this.db, "password", parsed.data, client);
       throw new UnauthorizedException();
     }
     await clearThrottle(this.db, "login", parsed.data.username);
-    await auditSessionOpened(this.db, result.token, "password", clientContext(req));
-    return result;
+    await auditSessionOpened(this.db, result.token, "password", client);
+    if (result.phone !== undefined && parsed.data.device !== undefined) {
+      await auditPhoneSignIn(this.db, result.token, result.phone, parsed.data.device, client);
+    }
+    return { token: result.token };
   }
 
   @Public()
@@ -234,6 +273,150 @@ export class AuthController {
     const session = req.hmisSession;
     if (!session) return;
     await auditLoggedOut(this.db, session, clientContext(req), (tx) => revokeSession(tx, session.sessionId));
+    // Mobile M6b — the person signed out of this phone: it stops being told things. (The sender asks
+    // no phone without a live session anyway; the address simply does not outlive the session.)
+    if (session.deviceRowId !== null) await clearPushToken(this.db, session.deviceRowId);
+  }
+
+  /**
+   * ═══ MOBILE M6b — THIS PHONE'S NOTIFICATIONS (owner 2026-10-06) ═══
+   *
+   * Three routes, all about the phone the CALLING SESSION was opened on and no other — there is no
+   * id in the path to get wrong, and a browser session (no phone) is refused `not_a_phone`. No
+   * permission: like the bell (`alerts`), a person's own phone is theirs by identity.
+   *
+   *   GET     what the app shows: is the server able to send at all, has this phone given an
+   *           address, which categories exist and which are switched off here;
+   *   PUT     the phone hands over or refreshes its address (`token`), says which language its app
+   *           is in, and/or which categories are off;
+   *   DELETE  the person switched notifications off on this phone.
+   *
+   * The address is write-only: nothing here, or anywhere, returns it.
+   */
+  private phoneOf(req: AuthedRequest): string {
+    const deviceRowId = req.hmisSession?.deviceRowId ?? null;
+    if (deviceRowId === null) throw new ConflictException({ code: "not_a_phone" });
+    return deviceRowId;
+  }
+
+  private pushConfigured(): boolean {
+    return sharedPhonePushSource(this.cfg.fcmServiceAccountFile).current() !== null;
+  }
+
+  /**
+   * LINK THIS SESSION TO THE PHONE IT IS ON (`linkSessionToPhone` has the reasoning). The app calls
+   * it when one of the routes below answers `not_a_phone`: a session opened by a build that did not
+   * yet name its phone. Idempotent — a session that already names a phone answers `linked: false`
+   * and nothing changes. The third phone is refused exactly as at sign-in.
+   */
+  @Post("phone/link")
+  @HttpCode(200)
+  async linkPhone(@Req() req: AuthedRequest, @Body() body: unknown): Promise<{ linked: boolean }> {
+    const session = req.hmisSession;
+    if (!session) throw new UnauthorizedException();
+    const parsed = z.object({ device: deviceClaimSchema }).safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues);
+    const client = clientContext(req);
+    const claim = parsed.data.device;
+    try {
+      return await withTx(this.db, async (tx) => {
+        const r = await linkSessionToPhone(tx, session, claim, client.ip);
+        if (!r.linked) return { linked: false };
+        const actor: Actor = { type: "user", id: session.userId };
+        await appendEvent(tx, authPhoneLinked.make({
+          actor,
+          payload: { userId: session.userId, deviceRowId: r.deviceRowId, sessionId: session.sessionId, bound: r.bound, model: claim.model ?? null, appVersion: claim.appVersion ?? null, ...client },
+        }));
+        for (const sessionId of r.replacedSessionIds) {
+          await appendEvent(tx, authSessionRevoked.make({ actor, payload: { sessionId, userId: session.userId, reason: "phone_signed_in_again", terminalId: null } }));
+        }
+        return { linked: true };
+      });
+    } catch (e) {
+      if (e instanceof PhoneLimitError) {
+        await auditPhoneLimitRefused(this.db, e.userId, e.phones.length, claim, client);
+        throw new ConflictException({
+          code: "phone_limit_reached",
+          message: `already signed in on ${e.phones.length} phones — an administrator can sign one out`,
+          limit: PHONES_PER_USER,
+          phones: e.phones.map((p) => ({ model: p.model, lastSeenAt: p.lastSeenAt.toISOString() })),
+        });
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * APP HOME (owner 2026-10-07, decision 0042) — PROVE THE PERSON IS AT THE PHONE, before a money
+   * approval is decided from it.
+   *
+   * The server cannot check a fingerprint. What it can do is refuse a money decision from a phone
+   * session that has not stepped up in the last two minutes, and record every step-up: `biometric`
+   * says THIS signed-in, linked phone reported its own fingerprint check passed; `password` and
+   * `pin` are checked here (a phone with no fingerprint enrolled). A browser session has no phone
+   * and is refused — the web inbox is not gated by this and never calls it.
+   *
+   * Wrong passwords count against the same throttle as sign-in, so this is not a guessing oracle.
+   */
+  @Post("step-up")
+  @HttpCode(200)
+  async stepUp(@Req() req: AuthedRequest, @Body() body: unknown, @Res({ passthrough: true }) res: Response): Promise<{ ok: true; goodUntil: string }> {
+    const session = req.hmisSession;
+    if (!session) throw new UnauthorizedException();
+    const deviceRowId = this.phoneOf(req);
+    const parsed = z.discriminatedUnion("method", [
+      z.object({ method: z.literal("biometric") }),
+      z.object({ method: z.literal("password"), password: z.string().min(1) }),
+      z.object({ method: z.literal("pin"), pin: z.string().min(1) }),
+    ]).safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues);
+    const client = clientContext(req);
+    const actor: Actor = { type: "user", id: session.userId };
+    const d = parsed.data;
+    let ok = true;
+    if (d.method !== "biometric") {
+      const me = (await this.db.select({ username: users.username }).from(users).where(eq(users.id, session.userId)))[0];
+      if (!me) throw new UnauthorizedException();
+      const kind: ThrottleKind = d.method === "password" ? "login" : "pin";
+      const retryAt = await throttleRetryAt(this.db, kind, me.username, new Date());
+      if (retryAt !== null) throw tooManyAttempts(res, retryAt);
+      ok = d.method === "password"
+        ? (await verifyPassword(this.db, me.username, d.password)) !== null
+        : await verifyPin(this.db, session.userId, d.pin);
+      if (ok) await clearThrottle(this.db, kind, me.username); else await recordThrottleFailure(this.db, kind, me.username, new Date());
+    }
+    const now = new Date();
+    await withTx(this.db, async (tx) => {
+      if (ok) await tx.update(authSessions).set({ stepUpAt: now }).where(eq(authSessions.id, session.sessionId));
+      await appendEvent(tx, authStepUp.make({ actor, payload: { userId: session.userId, sessionId: session.sessionId, deviceRowId, method: d.method, ok, ...client } }));
+    });
+    if (!ok) throw new ForbiddenException({ code: "step_up_refused" });
+    return { ok: true, goodUntil: new Date(now.getTime() + STEP_UP_WINDOW_MS).toISOString() };
+  }
+
+  @Get("phone/notifications")
+  async phoneNotifications(@Req() req: AuthedRequest, @Query("knows") knows?: string): Promise<PushState> {
+    return pushStateOf(this.db, this.phoneOf(req), this.pushConfigured(), knows);
+  }
+
+  @Put("phone/notifications")
+  async setPhoneNotifications(@Req() req: AuthedRequest, @Body() body: unknown, @Query("knows") knows?: string): Promise<PushState> {
+    const deviceRowId = this.phoneOf(req);
+    const parsed = z.object({
+      token: pushTokenSchema.optional(), language: pushLanguageSchema.optional(), muted: pushMutedSchema.optional(),
+    }).safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues);
+    const { token, language, muted } = parsed.data;
+    if (token !== undefined) await registerPushToken(this.db, deviceRowId, token);
+    await setPushPreferences(this.db, deviceRowId, { muted, language });
+    return pushStateOf(this.db, deviceRowId, this.pushConfigured(), knows);
+  }
+
+  @Delete("phone/notifications")
+  async clearPhoneNotifications(@Req() req: AuthedRequest): Promise<PushState> {
+    const deviceRowId = this.phoneOf(req);
+    await clearPushToken(this.db, deviceRowId);
+    return pushStateOf(this.db, deviceRowId, this.pushConfigured());
   }
 
   /**
@@ -308,11 +491,15 @@ export class AuthController {
    * describe the caller.
    */
   @Get("me")
-  async me(@CurrentActor() actor: Actor): Promise<{ actor: Actor; permissions: EffectivePermissions }> {
+  async me(@CurrentActor() actor: Actor, @Req() req: AuthedRequest): Promise<{ actor: Actor; permissions: EffectivePermissions; profile: MeProfile | null }> {
+    // Mobile M6a — the staff app asks this each time it is opened or unlocked: that IS "last seen"
+    // for its phone. A browser session has no phone and stamps nothing.
+    const deviceRowId = req.hmisSession?.deviceRowId ?? null;
+    if (deviceRowId !== null) await touchPhone(this.db, deviceRowId, clientContext(req).ip);
     const permissions = actor.type === "user"
       ? await effectivePermissions(this.db, actor.id)
       : { hospital: [], scoped: { department: {}, floor: {} } };
-    return { actor, permissions };
+    return { actor, permissions, profile: actor.type === "user" ? await meProfile(this.db, actor.id) : null };
   }
 
   /**

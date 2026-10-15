@@ -7,6 +7,9 @@ import { DB, DB_POOL, CONFIG, MODULE_REGISTRY } from "../tokens";
 import { ModuleRegistry } from "../modules/loader";
 import { ALERTS_CONSUMER, alertsConsumer } from "../alerts/consumer";
 import { alertsManifest } from "../alerts/manifest";
+import { PHONE_PUSH_CONSUMER, phonePushConsumer } from "../push/consumer";
+import { phonePushSource } from "../push/sender";
+import { phonePushManifest } from "../push/manifest";
 import { NOTIFY_CONSUMER, notifyConsumer } from "../notify/consumer";
 import { notifyManifest } from "../notify/manifest";
 import { OBLIGATIONS_CONSUMER, obligationsConsumer } from "../obligations/consumer";
@@ -35,6 +38,7 @@ import {
 } from "../../modules/radiology";
 import { PHARMACY_MESSAGES_CONSUMER, PHARMACY_RX_ISSUED_CONSUMER, pharmacyManifest, pharmacyMessagesConsumer, rxIssuedConsumer } from "../../modules/pharmacy";
 import { ABDM_CARE_CONTEXT_CONSUMER, abdmManifest, careContextConsumer } from "../../modules/abdm";
+import { ORDERING_FREE_TESTS_CONSUMER, freeTestsConsumer, orderingManifest } from "../../modules/ordering";
 import { collectResourceKinds } from "../resources/kinds";
 import { collectOrderKinds } from "../orders/kinds";
 import type { Handler } from "../events/subscriptions";
@@ -106,6 +110,11 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
         // worker throws at boot, pass the handler without installing and every ack leaves the
         // clock running while the suite stays green.
         registry.install(obligationsManifest);
+        // MOBILE M6b (owner 2026-10-06) — THE ONE-EDIT RULE AGAIN, the `notify` shape: worker-only,
+        // one subscription (`alert.raised -> kernel.phone_push`), its handler solely in
+        // `workerConsumers` below. It relays a bell row to the person's signed-in phones; with no
+        // Firebase key the handler returns at once and the cursor still advances.
+        registry.install(phonePushManifest);
         // PLAN 09 T6 / DD7, AND IT IS THE SAME ONE EDIT A THIRD TIME. `partnersManifest` declares
         // FOUR billing subscriptions to `partners.accrual`, and `workerConsumers` below is the only
         // place that key's handler is produced. T1 shipped this manifest APP-SIDE ONLY, with
@@ -190,6 +199,7 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
         // handler exists solely in `workerConsumers` below, so the api must not install it. The
         // install and the `workerConsumers` entry are ONE edit (`buildSubscriptionBus`).
         registry.install(abdmManifest);
+        registry.install(orderingManifest);
         // ══ PLAN 13 CLOSE / M2's CARRY-FORWARD, CLOSED HERE (Plan 14 DD2, Spike Q6) ══
         //
         // This is `app.module.ts:73`'s line, in the process that did not have it. Plan 13's close
@@ -261,6 +271,9 @@ export class WorkerModule implements OnModuleDestroy {
 export function workerConsumers(db: Db, cfg: AppConfig | null = null): Record<string, Handler> {
   return {
     [ALERTS_CONSUMER]: alertsConsumer(db),
+    // MOBILE M6b — the other half of `phonePushManifest`'s `alert.raised -> kernel.phone_push`. With
+    // no Firebase key (every hospital until the owner makes one) the handler returns at once.
+    [PHONE_PUSH_CONSUMER]: phonePushConsumer(db, phonePushSource(cfg?.fcmServiceAccountFile ?? null)),
     [NOTIFY_CONSUMER]: notifyConsumer(db),
     [OBLIGATIONS_CONSUMER]: obligationsConsumer(db),
     // PLAN 09 T6 — the other half of the install above. Deleting either fails
@@ -297,6 +310,9 @@ export function workerConsumers(db: Db, cfg: AppConfig | null = null): Record<st
     // `credit_note.issued` -> `radiology.report_ready_on_payment`: the "report ready" message for a
     // bill paid after release, once per report version. One without the other is a boot error.
     [RADIOLOGY_READY_ON_PAYMENT_CONSUMER]: readyOnPaymentConsumer(db),
+    // Decision 0067 — the other half of `orderingManifest`'s `consultation.completed` /
+    // `prescription.paper_transcribed` declaration: free tests order themselves. One without the other is a boot error.
+    [ORDERING_FREE_TESTS_CONSUMER]: freeTestsConsumer(db),
     [PHARMACY_RX_ISSUED_CONSUMER]: rxIssuedConsumer(db),
     // PHARMACY P6 (patient messages) — the bill's message, once per invoice. `pharmacyManifest` declares
     // `dispense.handed_over` and `retail.sold` -> `pharmacy.patient_messages` in the commit that adds this

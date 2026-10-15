@@ -47,7 +47,43 @@ async function fetchCreditNotes(invoiceId: string): Promise<CreditNoteRow[]> {
 
 const rupees = (paise: number): string => `₹${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const drugOf = (l: WireDispenseLine): string => l.dispensedMedicine?.brandName ?? l.item?.name ?? l.rxLine.drug;
+/** The strip size (smallest pack above one tablet), or null when the item has no pack. */
+export const stripOf = (l: WireDispenseLine): number | null => {
+  const packs = (l.item?.uoms ?? []).map((u) => u.toBaseMultiplier).filter((m) => m > 1);
+  return packs.length === 0 ? null : Math.min(...packs);
+};
 const expiryOf = (iso: string | null | undefined): string => (iso == null ? "—" : `${iso.slice(5, 7)}/${iso.slice(0, 4)}`);
+
+/*
+ * Common reasons as one-tap chips (owner 2026-10-03): typing the reason was the slowest step of a return.
+ * A chip fills the reason box with its sentence in the desk's language, and on a return or refund it
+ * also picks whose reason it is. The box stays editable; the approver reads whatever is sent.
+ */
+type ReasonChip = { key: string; whose: "mistake" | "genuine" | null };
+export const REASON_CHIPS: Record<TicketAct, ReasonChip[]> = {
+  return: [
+    { key: "wrongMedicine", whose: "mistake" },
+    { key: "wrongQty", whose: "mistake" },
+    { key: "wrongBill", whose: "mistake" },
+    { key: "doctorChanged", whose: "genuine" },
+    { key: "notNeeded", whose: "genuine" },
+    { key: "reaction", whose: "genuine" },
+  ],
+  refund: [
+    { key: "wrongBill", whose: "mistake" },
+    { key: "billedTwice", whose: "mistake" },
+    { key: "outOfStock", whose: "mistake" },
+    { key: "doctorChanged", whose: "genuine" },
+    { key: "patientLeft", whose: "genuine" },
+    { key: "notNeeded", whose: "genuine" },
+  ],
+  cancel: [
+    { key: "patientLeft", whose: null },
+    { key: "doctorChanged", whose: null },
+    { key: "duplicate", whose: null },
+    { key: "outOfStock", whose: null },
+  ],
+};
 
 export function TicketMenu({ dispense }: { dispense: WireDispense }): React.ReactElement | null {
   const { t } = useTranslation();
@@ -93,15 +129,19 @@ export function TicketMenu({ dispense }: { dispense: WireDispense }): React.Reac
   );
 }
 
-type Done = { creditNoteId: string; creditNoteNo: string; invoiceId: string | null };
+type Done = { creditNoteId: string; creditNoteNo: string; invoiceId: string | null; /** Kept as pharmacy credit instead of refunded (owner ruling 2026-10-02). */ keptPaise: number };
 
 export function ReturnSheet({ dispense, act, onClose }: { dispense: WireDispense; act: TicketAct; onClose: () => void }): React.ReactElement {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const [key, setKey] = useState(newIdempotencyKey);
   const [qty, setQty] = useState<Record<number, string>>({});
+  /* Owner ruling 2026-10-02 — the money of a return: asked back (approval), or kept as credit for the next bill. */
+  const [settleAs, setSettleAs] = useState<"refund" | "credit">("refund");
   const [reasonClass, setReasonClass] = useState<"genuine" | "mistake" | "">("");
   const [reason, setReason] = useState("");
+  /* Owner ruling 2026-10-03 — loose tablets go to the loose tray (sealed in the pocket) or the damage tray (our mistake). */
+  const [looseTo, setLooseTo] = useState<"loose" | "damage" | "">("");
   const [sealed, setSealed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -136,8 +176,10 @@ export function ReturnSheet({ dispense, act, onClose }: { dispense: WireDispense
     const raw = qty[l.lineIdx] ?? "";
     return /^\d+$/.test(raw) && Number(raw) > 0 && Number(raw) <= (l.qtyBase ?? 0);
   };
+  const hasLoose = act === "return" && wanted.some((l) => { const s = stripOf(l); return s !== null && qtyOk(l) && Number(qty[l.lineIdx]) % s !== 0; });
+  const looseOk = !hasLoose || looseTo === "loose" || (looseTo === "damage" && reasonClass === "mistake");
   const reasonOk = act === "cancel" ? reason.trim() !== "" : reason.trim().length >= 3 && reasonClass !== "";
-  const ready = !busy && done === null && reasonOk && (act !== "return" || (wanted.length > 0 && wanted.every(qtyOk) && sealed));
+  const ready = !busy && done === null && reasonOk && (act !== "return" || (wanted.length > 0 && wanted.every(qtyOk) && sealed && looseOk));
 
   const refreshCounts = async (): Promise<void> => {
     await Promise.all([
@@ -161,9 +203,10 @@ export function ReturnSheet({ dispense, act, onClose }: { dispense: WireDispense
       }
       const why = { reason: reason.trim(), reasonClass: reasonClass as "genuine" | "mistake" };
       const r = act === "return"
-        ? await acceptReturn(dispense.id, { lines: wanted.map((l) => ({ lineIdx: l.lineIdx, qtyBase: Number(qty[l.lineIdx]) })), sealedIntact: true, ...why }, key)
+        ? await acceptReturn(dispense.id, { lines: wanted.map((l) => ({ lineIdx: l.lineIdx, qtyBase: Number(qty[l.lineIdx]) })), sealedIntact: true, ...why, ...(settleAs === "credit" ? { settle: "credit" as const } : {}), ...(hasLoose && looseTo !== "" ? { looseTo } : {}) }, key)
         : await cancelBilledDispense(dispense.id, why, key);
-      setDone({ creditNoteId: r.creditNoteId, creditNoteNo: r.creditNoteNo, invoiceId: dispense.invoiceId });
+      setDone({ creditNoteId: r.creditNoteId, creditNoteNo: r.creditNoteNo, invoiceId: dispense.invoiceId, keptPaise: "creditKeptPaise" in r ? r.creditKeptPaise ?? 0 : 0 });
+      void qc.invalidateQueries({ queryKey: ["pharmacy", "patient-rail"] });
       setKey(newIdempotencyKey());
       say(t(act === "return" ? "pharmacyDesk.returns.logReturned" : "pharmacyDesk.returns.logRefunded", { no: r.creditNoteNo }));
       setNext(r.dispense);
@@ -241,14 +284,62 @@ export function ReturnSheet({ dispense, act, onClose }: { dispense: WireDispense
                 <div>
                   <label className="tag" htmlFor="return-reason" style={{ display: "block" }}>{t(act === "cancel" ? "pharmacyDesk.returns.whyCancel" : "pharmacyDesk.returns.why")}</label>
                   <input id="return-reason" className="in" data-testid="return-reason" value={reason} onChange={(e) => setReason(e.target.value)} style={{ width: "100%", marginTop: 4, height: 34, fontSize: 13 }} />
+                  <div role="group" aria-label={t("pharmacyDesk.returns.chipsLabel")} data-testid="return-reason-chips" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 7 }}>
+                    {REASON_CHIPS[act].filter((c) => reasonClass === "" || c.whose === null || c.whose === reasonClass).map((c) => {
+                      const text = t(`pharmacyDesk.returns.chip.${c.key}`);
+                      const on = reason.trim() === text;
+                      return (
+                        <button
+                          key={c.key}
+                          type="button"
+                          aria-pressed={on}
+                          data-testid={`return-chip-${c.key}`}
+                          onClick={() => { setReason(text); if (c.whose !== null) setReasonClass(c.whose); }}
+                          style={{ height: 26, padding: "0 10px", borderRadius: 13, fontSize: 11.5, border: `1px solid ${on ? "var(--green-line)" : "var(--line)"}`, background: on ? "var(--green-soft)" : "var(--card)", color: on ? "var(--green)" : "var(--dim)", fontWeight: on ? 600 : 400 }}
+                        >
+                          {text}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
+                {hasLoose ? (
+                  <fieldset data-testid="return-loose" style={{ border: 0, padding: 0, margin: 0 }}>
+                    <legend className="tag">{t("pharmacyDesk.returns.loose.title")}</legend>
+                    <div style={{ display: "grid", gap: 4, marginTop: 5, fontSize: 12.5 }}>
+                      {(["loose", "damage"] as const).map((c) => {
+                        const off = c === "damage" && reasonClass !== "mistake";
+                        return (
+                          <label key={c} style={{ display: "flex", alignItems: "center", gap: 6, color: off ? "var(--faint)" : undefined }}>
+                            <input type="radio" name="return-loose" data-testid={`return-loose-${c}`} disabled={off} checked={looseTo === c} onChange={() => setLooseTo(c)} style={{ accentColor: "#0e6b4e" }} />
+                            {t(`pharmacyDesk.returns.loose.${c}`)}
+                          </label>
+                        );
+                      })}
+                    </div>
+                    {reasonClass !== "mistake" ? <p style={{ margin: "4px 0 0 0", fontSize: 11.5, color: "var(--dim)" }}>{t("pharmacyDesk.returns.loose.patientNote")}</p> : null}
+                  </fieldset>
+                ) : null}
                 {act === "return" ? (
                   <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
                     <input type="checkbox" data-testid="return-sealed" checked={sealed} onChange={(e) => setSealed(e.target.checked)} />
                     {t("pharmacyDesk.returns.sealed")}
                   </label>
                 ) : null}
-                <p style={{ margin: 0, fontSize: 11.5, color: "var(--dim)", lineHeight: "16px" }}>{t(`pharmacyDesk.returns.money.${act}`)}</p>
+                {act !== "return" ? null : (
+                  <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
+                    <legend className="tag">{t("pharmacyDesk.returns.settle.title")}</legend>
+                    <div style={{ display: "grid", gap: 4, marginTop: 5, fontSize: 12.5 }}>
+                      {(["refund", "credit"] as const).map((c) => (
+                        <label key={c} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <input type="radio" name="return-settle" data-testid={`return-settle-${c}`} checked={settleAs === c} onChange={() => setSettleAs(c)} style={{ accentColor: "#0e6b4e" }} />
+                          {t(`pharmacyDesk.returns.settle.${c}`)}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                )}
+                <p style={{ margin: 0, fontSize: 11.5, color: "var(--dim)", lineHeight: "16px" }}>{t(act === "return" && settleAs === "credit" ? "pharmacyDesk.returns.money.credit" : `pharmacyDesk.returns.money.${act}`)}</p>
                 {error !== null ? <p role="alert" data-testid="return-error" style={{ margin: 0, fontSize: 12.5, color: "var(--red)" }}>{error}</p> : null}
               </div>
             </>
@@ -288,9 +379,15 @@ function RefundDone({ done, act }: { done: Done; act: TicketAct }): React.ReactE
           ? t("pharmacyDesk.returns.refundOf", { amount: rupees(note.netPaise), no: done.creditNoteNo })
           : t("pharmacyDesk.returns.refundNoAmount", { no: done.creditNoteNo })}
       </p>
-      <div style={{ padding: "10px 12px", borderRadius: 7, background: "var(--gold-soft)", border: "1px solid var(--gold-line)", fontSize: 12.5, lineHeight: "18px" }} data-testid="desk-return-approval">
-        {t("pharmacyDesk.returns.approval")}
-      </div>
+      {done.keptPaise > 0 ? (
+        <div style={{ padding: "10px 12px", borderRadius: 7, background: "var(--green-soft)", border: "1px solid var(--green-line)", fontSize: 12.5, lineHeight: "18px" }} data-testid="desk-return-credit">
+          {t("pharmacyDesk.returns.creditKept", { amount: rupees(done.keptPaise) })}
+        </div>
+      ) : (
+        <div style={{ padding: "10px 12px", borderRadius: 7, background: "var(--gold-soft)", border: "1px solid var(--gold-line)", fontSize: 12.5, lineHeight: "18px" }} data-testid="desk-return-approval">
+          {t("pharmacyDesk.returns.approval")}
+        </div>
+      )}
     </div>
   );
 }

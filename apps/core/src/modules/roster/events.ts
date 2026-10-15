@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { defineEvent } from "@hmis/contracts";
 import {
-  ROSTER_AMENDMENT_KINDS, ROSTER_ORIGINS, ROSTER_RULE_SEVERITIES, ROSTER_SCOPE_TYPES,
-  STAFF_ABSENCE_KINDS,
+  ROSTER_AMENDMENT_KINDS, ROSTER_HOLIDAY_KINDS, ROSTER_HOLIDAY_PATTERNS, ROSTER_MODES, ROSTER_ORIGINS, ROSTER_RULE_SEVERITIES, ROSTER_SCOPE_TYPES,
+  ROSTER_COVER_KINDS, STAFF_ABSENCE_KINDS,
 } from "../../kernel/db/schema/roster";
 
 const MODULE = "roster";
@@ -138,6 +138,17 @@ export const rosterAbsenceApproved = defineEvent("roster.absence_approved", MODU
 }));
 
 /**
+ * E2.2 (owner 2026-10-11) — A LEAVE WAS REFUSED. It says THAT, and to whom: the decider's reason is
+ * on the row only (V9), so the person's bell and phone say "not approved" and the reason is read on
+ * their own leave screen, in Waiting for me, or by asking the copilot.
+ */
+export const rosterAbsenceRefused = defineEvent("roster.absence_refused", MODULE, z.object({
+  absenceId: id(),
+  userId: id(),
+  decidedAt: instant(),
+}));
+
+/**
  * PHASE R (R8) — **THE OVERRIDE, EVENTED.**
  *
  * Doc 10 §3.9 rules post-night rest a hard block with an *evented* HOD override, and R-067 makes a
@@ -158,8 +169,83 @@ export const rosterFindingAccepted = defineEvent("roster.finding_accepted", MODU
   acceptedAt: instant(),
 }));
 
+/**
+ * 20-U U6 — a cover or a swap, through its three steps. **The note is not here** (V9): it is the
+ * free text a colleague writes ("my father is in ICU"), and whoever needs it reads the row.
+ * `crossUnit` is what tells a consumer the HOD is the approver.
+ */
+export const rosterCoverRequested = defineEvent("roster.cover_requested", MODULE, z.object({
+  requestId: id(),
+  kind: code(ROSTER_COVER_KINDS),
+  assignmentId: id(),
+  ownerId: id(),
+  counterpartId: id(),
+  counterpartAssignmentId: id().nullable(),
+  crossUnit: z.boolean(),
+  requestedAt: instant(),
+}));
+
+export const rosterCoverAnswered = defineEvent("roster.cover_answered", MODULE, z.object({
+  requestId: id(),
+  counterpartId: id(),
+  answer: code(["accepted", "declined"]),
+  answeredAt: instant(),
+}));
+
+/** Approved (with the amendments it applied), refused by a person, or refused by a rule (`ruleKey`). */
+export const rosterCoverDecided = defineEvent("roster.cover_decided", MODULE, z.object({
+  requestId: id(),
+  status: code(["approved", "refused", "withdrawn"]),
+  ruleKey: id().nullable(),
+  amendmentIds: z.array(id()),
+  decidedAt: instant(),
+}));
+
+/** Register I22 — a reader said a name on duty is wrong. The note stays on the row (V9). */
+export const rosterFlagRaised = defineEvent("roster.flag_raised", MODULE, z.object({
+  flagId: id(),
+  departmentId: id().nullable(),
+  userId: id().nullable(),
+  at: instant(),
+  raisedAt: instant(),
+}));
+
+/**
+ * 20-U I1/I2/I5 — **THE TWO DECLARATIONS, EVENTED.** A holiday declared at 19:30 for tomorrow and a
+ * strike day are the two acts that change what a whole department does without touching one slot,
+ * so they are the two a consumer outside the roster (the OPD's re-book list, a notifier) most needs
+ * to hear about. The day travels as the INSTANT of its IST midnight (V9: instants, never a formatted
+ * day); the declaration's REASON does not travel at all — it is prose ("residents' strike over a
+ * stipend dispute") and is read from the row by whoever is entitled to it.
+ */
+export const rosterHolidayDeclared = defineEvent("roster.holiday_declared", MODULE, z.object({
+  dayStartsAt: instant(),
+  kind: code(ROSTER_HOLIDAY_KINDS),
+  pattern: code(ROSTER_HOLIDAY_PATTERNS),
+  departmentsRematerialised: z.number().int().nonnegative(),
+  declaredAt: instant(),
+}));
+
+export const rosterModeDeclared = defineEvent("roster.mode_declared", MODULE, z.object({
+  declarationId: id(),
+  departmentId: id().nullable(),
+  mode: code(ROSTER_MODES),
+  dayStartsAt: instant(),
+  declaredAt: instant(),
+}));
+
+export const rosterModeWithdrawn = defineEvent("roster.mode_withdrawn", MODULE, z.object({
+  declarationId: id(),
+  departmentId: id().nullable(),
+  mode: code(ROSTER_MODES),
+  dayStartsAt: instant(),
+  withdrawnAt: instant(),
+}));
+
 export const ROSTER_EVENTS = [
   rosterPeriodDrafted, rosterPeriodPublished, rosterPeriodSuperseded,
-  rosterDutyChanged, rosterAmendmentApplied, rosterAbsenceRequested, rosterAbsenceApproved,
+  rosterDutyChanged, rosterAmendmentApplied, rosterAbsenceRequested, rosterAbsenceApproved, rosterAbsenceRefused,
   rosterFindingAccepted,
+  rosterCoverRequested, rosterCoverAnswered, rosterCoverDecided, rosterFlagRaised,
+  rosterHolidayDeclared, rosterModeDeclared, rosterModeWithdrawn,
 ] as const;

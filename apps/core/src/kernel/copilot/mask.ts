@@ -76,6 +76,27 @@ const IDENTIFIER_DETECTORS: RegExp[] = IDENTIFIER_PATTERNS.map((r) => new RegExp
 
 const PLACEHOLDER_RE = /^<<P\d+>>$/;
 
+/**
+ * DIGITS ARE DIGITS IN EVERY SCRIPT. A UHID or a mobile typed in Devanagari ("९८७६५४३२१०"), Bengali, Tamil or any other
+ * Indic numerals — or Arabic-Indic, or fullwidth — is the same identifier, and `\d` and `\b` in the shapes above see
+ * none of it. So the shapes are matched on a copy with every such digit turned into its ASCII digit. The copy has the
+ * same length and the same positions (each of these is one UTF-16 unit), which is what lets `maskQuestion` cut the
+ * ORIGINAL text at the copy's matches and keep the clerk's own characters in the slot.
+ */
+const DIGIT_ZEROS: readonly number[] = [
+  0x0660, 0x06f0, 0x07c0, 0x0966, 0x09e6, 0x0a66, 0x0ae6, 0x0b66, 0x0be6, 0x0c66, 0x0ce6, 0x0d66, 0x0de6, 0x0e50, 0x0ed0, 0x0f20, 0x1040, 0xff10,
+];
+const OTHER_DIGIT_RE = new RegExp(`[${DIGIT_ZEROS.map((z) => `\\u${z.toString(16).padStart(4, "0")}-\\u${(z + 9).toString(16).padStart(4, "0")}`).join("")}]`, "g");
+
+/** The text with every non-ASCII decimal digit of the scripts above as its ASCII digit. Same length, same positions. */
+export function asciiDigits(text: string): string {
+  return text.replace(OTHER_DIGIT_RE, (d) => {
+    const code = d.charCodeAt(0);
+    const zero = DIGIT_ZEROS.find((z) => code >= z && code <= z + 9)!;
+    return String(code - zero);
+  });
+}
+
 /** Escape a caller-supplied term so a name containing `.` or `(` cannot act as a pattern. */
 function escapeLiteral(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -100,7 +121,16 @@ function escapeLiteral(s: string): string {
 export function maskQuestion(
   question: string,
   terms: readonly string[] = [],
-  opts: { wholeWords?: boolean } = {},
+  opts: {
+    wholeWords?: boolean;
+    /**
+     * E0.6 — names the SERVER found in the question (`names.ts`: patients in the hospital today),
+     * passed as the exact text typed. They run AFTER `terms`, so a screen's terms mask exactly as
+     * they always did, and always whole-word, because they are spans the finder already cut on
+     * word boundaries. Empty by default: every existing caller is unchanged.
+     */
+    nameTerms?: readonly string[];
+  } = {},
 ): MaskedQuestion {
   const slots: Record<string, string> = {};
   const issued = new Map<string, string>();
@@ -132,8 +162,21 @@ export function maskQuestion(
     masked = masked.replace(re, (found) => placeholderFor(found));
   }
 
+  for (const term of [...(opts.nameTerms ?? [])].filter((t) => t.trim() !== "").sort((a, b) => b.length - a.length)) {
+    const re = new RegExp(`(?<![\\p{L}\\p{M}\\p{N}])${escapeLiteral(term.trim())}(?![\\p{L}\\p{M}\\p{N}])`, "giu");
+    masked = masked.replace(re, (found) => placeholderFor(found));
+  }
+
   for (const pattern of IDENTIFIER_PATTERNS) {
-    masked = masked.replace(new RegExp(pattern.source, "g"), (found) => placeholderFor(found));
+    // Matched on the ASCII-digit copy, cut out of the text as typed (`asciiDigits`: same positions).
+    const seen = asciiDigits(masked);
+    let out = "";
+    let from = 0;
+    for (const hit of seen.matchAll(new RegExp(pattern.source, "g"))) {
+      out += masked.slice(from, hit.index) + placeholderFor(masked.slice(hit.index, hit.index + hit[0].length));
+      from = hit.index + hit[0].length;
+    }
+    masked = out + masked.slice(from);
   }
 
   return { masked, slots };
@@ -168,8 +211,9 @@ export class IdentifierLeak extends Error {
  * log, and a scrubber that printed the identifier it caught would be the leak it exists to prevent.
  */
 export function assertNoIdentifiers(text: string): void {
+  const seen = asciiDigits(text);
   for (const detector of IDENTIFIER_DETECTORS) {
-    const hit = detector.exec(text);
+    const hit = detector.exec(seen);
     if (hit !== null) throw new IdentifierLeak(hit[0]);
   }
 }

@@ -3,9 +3,22 @@ import { useTranslation } from "react-i18next";
 import { ApiError } from "../lib/api";
 import { UNLOCK_REASONS, opdErrorMessage, postVitals } from "../lib/opd-api";
 import type {
-  WireBandConfig, WireBenchRow, WireDangerFlag, WireDangerRanges, WirePreStage, WireReadings, WireUnlockReason,
-  WireVitalKey, WireVitalsGate, WireVitalsPostBody, WireVitalsSaveResult,
+  WireBenchRow, WireDangerFlag, WireDangerRanges, WirePreStage, WireUnlockReason,
+  WireVitalKey, WireVitalsGate, WireVitalsSaveResult,
 } from "../lib/opd-api";
+import {
+  CONTEXT_CHIPS, GLUCOSE_TIMINGS, TILE_KEYS, applyTake, bandFor, buildBody, emptyTiles, flagOf, fullRowBoxes, glucoseNeedsTiming, holdingOf, missingFor, monthLabel,
+  operative, parseTake, rangeLabelOf, sourcePillOf, takeError, tempNote, tileDeltaOf, tileSetFor, vitalsLayout,
+} from "../../../../packages/contracts/src/vitals-entry";
+import type { GlucoseTiming, Mirror, Take, TakeSource, TileKey, Tiles } from "../../../../packages/contracts/src/vitals-entry";
+
+/*
+  THE PURE HALF OF THIS FILE — the tiles' reading model, the BP and temperature parsers, the gate
+  mirrors, the wire body — lives in packages/contracts/src/vitals-entry.ts since 2026-10-06, so the
+  phone app charts by the same rules (owner: "build the next mobile app screen, vitals bay").
+  Re-exported here: every import from "./vitals-bay-capture" keeps working.
+*/
+export * from "../../../../packages/contracts/src/vitals-entry";
 
 /**
  * VD-2 T2 — THE CAPTURE CORE: tiles, not a form (stories 2, 5, 6).
@@ -24,225 +37,12 @@ import type {
  * one `held`; a BP is `[systolic, diastolic]`. The scalars the server derives are its business.
  * `source` is `typed` or `device`, which is also the keys-vs-device score (D4): the telemetry is a
  * count of what was saved, not a second store.
+ *
+ * ═══ FOUR BOXES AND A "+" (OWNER 2026-10-08) ═══
+ *
+ * WHICH boxes are on screen, in what order, and what the "+" row offers is the shared
+ * `vitalsLayout` — the phone calls the same function. This file keeps only what the nurse added.
  */
-export type TileKey = "bp" | "pulse" | "spo2" | "tempC" | "rr" | "weightKg" | "heightCm" | "muacCm";
-export const TILE_KEYS: readonly TileKey[] = ["bp", "pulse", "spo2", "tempC", "rr", "weightKg", "heightCm", "muacCm"];
-const SCALAR_TILES: readonly Exclude<TileKey, "bp">[] = ["pulse", "spo2", "tempC", "rr", "weightKg", "heightCm", "muacCm"];
-
-export type Take = number | [number, number];
-export type Tile = {
-  takes: Take[];
-  held: number[];
-  source: "typed" | "device" | "counted";
-  /** D7 — a carried value: shown from the last chart, sent as `carriedForward` unless unlocked. */
-  carried: number | null;
-  unlockReason: WireUnlockReason | null;
-  override: string | null;
-};
-export type Tiles = Record<TileKey, Tile>;
-
-export function emptyTiles(): Tiles {
-  const t = {} as Tiles;
-  for (const k of TILE_KEYS) t[k] = { takes: [], held: [], source: "typed", carried: null, unlockReason: null, override: null };
-  return t;
-}
-
-/** The tiles a band asks for, in the wire's vocabulary folded to the screen's (sbp+dbp → bp). */
-export function tileSetFor(pre: WirePreStage | null): { required: TileKey[]; notRoutine: TileKey[] } {
-  const fold = (keys: readonly WireVitalKey[]): TileKey[] => {
-    const out: TileKey[] = [];
-    for (const k of keys) {
-      const tk: TileKey = k === "sbp" || k === "dbp" ? "bp" : k;
-      if (!out.includes(tk)) out.push(tk);
-    }
-    return out;
-  };
-  if (pre === null) return { required: ["bp", "pulse", "spo2", "tempC", "weightKg", "heightCm"], notRoutine: [] };
-  return { required: fold(pre.required), notRoutine: fold(pre.notRoutine) };
-}
-
-export const EMERGENCY_TILES: readonly TileKey[] = ["bp", "pulse", "spo2"];
-
-/**
- * The order the typing lane walks: the clinical order the tray is laid in (cuff, probe, thermometer,
- * then the scale and the tape), the lead vital pulled to the front (per-patient autofocus). MUAC is
- * a tile only where the band asks for it — "required under six, meaningless over it" (VD-1 D5).
- * A not-routine BP stays on the tray, collapsed: recorded when the doctor asks, never demanded.
- */
-export function tileOrder(lead: TileKey | null, set: { required: TileKey[]; notRoutine: TileKey[] }): TileKey[] {
-  const base = TILE_KEYS.filter((k) => k !== "muacCm" || set.required.includes(k));
-  if (lead === null || !base.includes(lead)) return base;
-  return [lead, ...base.filter((k) => k !== lead)];
-}
-
-export function leadTileFor(pre: WirePreStage | null): TileKey {
-  const first = pre?.expectedFlags[0]?.vital;
-  if (first !== undefined) return first === "sbp" || first === "dbp" ? "bp" : first;
-  return pre !== null && pre.band !== "adult" ? "tempC" : "bp";
-}
-
-export function parseTake(key: TileKey, raw: string): Take | null {
-  const s = raw.trim();
-  if (s === "") return null;
-  if (key === "bp") {
-    const m = /^(\d{2,3})\s*\/\s*(\d{2,3})$/.exec(s);
-    return m === null ? null : [Number(m[1]), Number(m[2])];
-  }
-  return /^\d+(\.\d+)?$/.test(s) ? Number(s) : null;
-}
-
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-/** `31-Aug-2026` — the seat-pass ruling for dates on staff screens (EXECUTE prompt, ruling 9). */
-export function humanDate(serviceDate: string): string {
-  const [y, m, d] = serviceDate.split("-");
-  const month = MONTHS[Number(m) - 1];
-  return month === undefined ? serviceDate : `${d}-${month}-${y}`;
-}
-
-/**
- * Just the month, for the tile's delta line. The seat-pass ruling ("31-Aug-2026") governs dates a
- * clerk reads as dates; a delta is read as a comparison — "Jun 132/84 → +26/+12" — and a full date
- * inside it crowds out the numbers that are the point of the line.
- */
-export function monthLabel(serviceDate: string): string {
-  return MONTHS[Number(serviceDate.split("-")[1]) - 1] ?? serviceDate;
-}
-
-/** HH:MM on the hospital's clock (IST, fixed +05:30), from an ISO instant. */
-export function istClock(iso: string): string {
-  const d = new Date(new Date(iso).getTime() + 330 * 60_000);
-  return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
-}
-
-export function operative(tile: Tile): Take | null {
-  return tile.takes.length === 0 ? null : tile.takes[tile.takes.length - 1]!;
-}
-
-export function bandFor(ranges: WireDangerRanges | null, bandKey: WirePreStage["band"] | null): WireBandConfig | null {
-  if (ranges === null || bandKey === null) return null;
-  return ranges.bands.find((b) => b.key === bandKey) ?? null;
-}
-
-/**
- * CLOSE pass 1 CRITICAL — the mirrors' limits come from the PRE-STAGE, which carries this
- * patient's band with its ranges, the gate numbers and the MUAC zones (`opd.vitals.history.read`,
- * a permission the desk holds). `GET /opd/config` is `opd.masters.read`, which it does not.
- */
-export function rangesFrom(pre: WirePreStage | null): WireDangerRanges | null {
-  if (pre === null || pre.gates === undefined) return null;
-  return {
-    weightRequiredUnderYears: 18,
-    bands: [{ key: pre.band, upToAgeYears: null, required: pre.required, notRoutine: pre.notRoutine, ranges: pre.ranges, noticeRanges: pre.noticeRanges }],
-    gates: pre.gates, muacBands: pre.muacBands,
-  };
-}
-
-/** The tile's tint: the server's `evaluateVitals`, mirrored, for a single value. */
-export function flagOf(key: TileKey, take: Take, band: WireBandConfig | null, ranges: WireDangerRanges | null): "danger" | "notice" | "sam" | "mam" | null {
-  if (band === null) return null;
-  if (key === "muacCm" && ranges !== null && typeof take === "number") {
-    if (take < ranges.muacBands.samUnderCm) return "sam";
-    if (take < ranges.muacBands.mamUnderCm) return "mam";
-    return null;
-  }
-  const checks: [WireVitalKey, number][] = key === "bp" && Array.isArray(take)
-    ? [["sbp", take[0]], ["dbp", take[1]]]
-    : typeof take === "number" ? [[key as WireVitalKey, take]] : [];
-  for (const [k, v] of checks) {
-    if (band.notRoutine.includes(k)) continue;
-    const r = band.ranges[k];
-    if (r !== undefined && ((r.min !== undefined && v < r.min) || (r.max !== undefined && v > r.max))) return "danger";
-  }
-  for (const [k, v] of checks) {
-    if (band.notRoutine.includes(k)) continue;
-    const n = band.noticeRanges[k];
-    if (n !== undefined && ((n.min !== undefined && v < n.min) || (n.max !== undefined && v > n.max))) return "notice";
-  }
-  return null;
-}
-
-export type Mirror =
-  | { kind: "slipped_digit"; key: "weightKg"; value: number; suggestion: number | null }
-  | { kind: "shrinking_adult"; key: "heightCm"; value: number; last: number }
-  | { kind: "probe_error"; key: "spo2"; value: number };
-
-/** `sanityGates` + `holdProbeErrors`, mirrored for ONE take as it is committed. */
-export function mirrorFor(key: TileKey, take: Take, ageYears: number | null, ranges: WireDangerRanges | null, last: WirePreStage["last"], tile: Tile): Mirror | null {
-  if (ranges === null || typeof take !== "number") return null;
-  const g = ranges.gates;
-  const isChild = ageYears !== null && ageYears < 13;
-  if (key === "weightKg" && tile.override === null && !isChild && take < g.adultWeightFloorKg) {
-    const shifted = Math.round(take * 100) / 10;
-    return { kind: "slipped_digit", key, value: take, suggestion: shifted >= 30 && shifted <= 150 ? shifted : null };
-  }
-  if (key === "heightCm" && tile.override === null && last !== null && last.heightCm !== null && Math.abs(take - last.heightCm) >= g.heightDeltaCm) {
-    return { kind: "shrinking_adult", key, value: take, last: last.heightCm };
-  }
-  // pass 2 / F4 — a confirmed 68 does not switch the hold OFF: a later slip to 40 is held again
-  if (key === "spo2" && take < g.spo2ProbeFloorPct && !tile.takes.includes(take)) return { kind: "probe_error", key, value: take };
-  return null;
-}
-
-export type TakeSource = "typed" | "device" | "counted";
-export type GateContext = { ageYears: number | null; ranges: WireDangerRanges | null; last: WirePreStage["last"] };
-
-/**
- * ONE take against the tiles as they stand, plus the gate it trips — the pure half of the bay's
- * `commit`. It is pure because the save commits every still-typed tile in one pass, and each of
- * those must see the tiles the one before it produced: `tiles` in a callback's closure is a render
- * old by the second key, and a loop over the setter would chart the last number only.
- */
-export function applyTake(tiles: Tiles, key: TileKey, source: TakeSource, take: Take, ctx: GateContext): { tiles: Tiles; mirror: Mirror | null } {
-  const tile = tiles[key];
-  const m = mirrorFor(key, take, ctx.ageYears, ctx.ranges, ctx.last, tile);
-  if (m !== null && m.kind === "probe_error") {
-    // held OUT of the chart until it survives a re-clip: the number is kept, not charted
-    return { tiles: { ...tiles, [key]: { ...tile, held: [...tile.held, m.value], source } }, mirror: m };
-  }
-  if (m !== null) return { tiles, mirror: m };
-  return { tiles: { ...tiles, [key]: { ...tile, takes: [...tile.takes, take], source, carried: null } }, mirror: null };
-}
-
-export function missingFor(tiles: Tiles, required: TileKey[], emergency: boolean): TileKey[] {
-  const need = emergency ? EMERGENCY_TILES : required;
-  return need.filter((k) => operative(tiles[k]) === null && tiles[k].carried === null);
-}
-
-export function buildBody(tiles: Tiles, opts: { emergency: boolean; chips: { key: string; question: string; answer: string }[] }): WireVitalsPostBody {
-  const readings: WireReadings = {};
-  const body: WireVitalsPostBody = { emergency: opts.emergency, contextChips: opts.chips };
-  const carriedForward: WireVitalKey[] = [];
-  const unlockReasons: NonNullable<WireVitalsPostBody["unlockReasons"]> = {};
-  const overrides: NonNullable<WireVitalsPostBody["overrides"]> = {};
-  const bp = tiles.bp;
-  if (bp.takes.length > 0) {
-    readings.bp = { takes: bp.takes.filter((t): t is [number, number] => Array.isArray(t)), source: bp.source };
-    if (bp.held.length > 0) readings.bp.held = bp.held;
-  }
-  for (const k of SCALAR_TILES) {
-    const t = tiles[k];
-    const takes = t.takes.filter((x): x is number => typeof x === "number");
-    if (takes.length > 0) {
-      readings[k] = { takes, source: t.source };
-      if (t.held.length > 0) readings[k]!.held = t.held;
-    }
-    // a held value with no surviving take is NOT sent: the wire needs one take, and the save is
-    // refused as incomplete before it is built (a held-only SpO₂ stays in the tile, not the log)
-    if (t.carried !== null && takes.length === 0) {
-      carriedForward.push(k);
-      body[k] = t.carried;
-    }
-    if (t.unlockReason !== null) unlockReasons[k] = t.unlockReason;
-    if (t.override !== null) overrides[k] = t.override;
-  }
-  if (bp.override !== null) { overrides.sbp = bp.override; overrides.dbp = bp.override; }
-  body.readings = readings;
-  if (carriedForward.length > 0) body.carriedForward = carriedForward;
-  if (Object.keys(unlockReasons).length > 0) body.unlockReasons = unlockReasons;
-  if (Object.keys(overrides).length > 0) body.overrides = overrides;
-  return body;
-}
-
 /** VD-2 D4 — the serial seam. A driver answers a tile with a take, or null. The real drivers land with the hardware. */
 export type DeviceDriver = { name: string; read(key: TileKey): Promise<Take | null> };
 export const nullDriver: DeviceDriver = { name: "none", read: async () => null };
@@ -255,115 +55,7 @@ export function writeLane(lane: Lane): void {
   try { localStorage.setItem(LANE_KEY, lane); } catch { /* per-bay convenience; the typing lane is always there */ }
 }
 
-const CHIPS = [
-  { key: "fasting", question: "khali pet?", yes: "fasting", no: "not fasting" },
-  { key: "bp_med_taken", question: "BP ki dawa li?", yes: "BP medicine taken today", no: "BP medicine not taken today" },
-  { key: "just_climbed_stairs", question: "abhi seedhi chadh kar aaye?", yes: "just climbed stairs", no: "rested" },
-] as const;
-
-/**
- * ═══════════════════════════════════════════════════════════════════════════════════════════════
- * FD-25 — THE THREE THINGS AN ARTBOARD TILE SAYS THAT THE SHIPPED TILE DID NOT
- * ═══════════════════════════════════════════════════════════════════════════════════════════════
- *
- * The build spec's charge against `vitals-bay-capture.tsx:474-539` was precise: "a generic bordered
- * grid with no big value, no source pill, no delta, no ✎ and no range label". Three of those five
- * are DERIVATIONS, not styling, and a wrong derivation looks exactly like a right one on a monitor
- * across a bay — which is why they are pure functions with tests rather than JSX.
- *
- * None of them changes a single byte that reaches the server. `buildBody` is untouched.
- */
-
-/**
- * WHERE THE NUMBER CAME FROM. A nurse reading a chart later cannot tell a typed 68 from a monitor's
- * 68, and the two are not equally trustworthy: a cuff that has slipped reports confidently.
- *
- * `RODE THE CUFF` is not decoration. An oscillometric cuff returns a pulse with the pressure — one
- * capture, two vitals (the build spec's own words for the PULSE tile) — so a device-sourced pulse
- * was never independently counted, and that is worth saying on the tile where somebody might
- * otherwise read agreement between two instruments as corroboration.
- */
-export type SourcePill = "auto" | "typed" | "counted" | "rodeCuff";
-export function sourcePillOf(k: TileKey, source: Tile["source"]): SourcePill {
-  if (source === "device") return k === "pulse" ? "rodeCuff" : "auto";
-  return source === "counted" ? "counted" : "typed";
-}
-
-/**
- * THE BAND'S OWN LIMITS, top-right in mono. `preStage.ranges` is per-band and server-sent (the bay
- * holds no `GET /opd/config` permission), so an infant tile shows an infant's range and the nurse
- * never has to remember which band the patient is in — the tile says it.
- *
- * BP folds two wire keys into one tile, so it prints two ranges. A range with one bound prints the
- * bound it has: `≥ 90` is the whole truth about SpO₂ and inventing an upper limit would be a lie.
- */
-export function rangeLabelOf(k: TileKey, pre: WirePreStage | null): string | null {
-  if (pre === null) return null;
-  const one = (key: WireVitalKey): string | null => {
-    const r = pre.ranges[key];
-    if (r === undefined) return null;
-    if (r.min !== undefined && r.max !== undefined) return `${String(r.min)}–${String(r.max)}`;
-    if (r.min !== undefined) return `≥ ${String(r.min)}`;
-    if (r.max !== undefined) return `≤ ${String(r.max)}`;
-    return null;
-  };
-  if (k === "bp") {
-    const sys = one("sbp");
-    const dia = one("dbp");
-    if (sys === null && dia === null) return null;
-    return `${sys ?? "—"} / ${dia ?? "—"}`;
-  }
-  return one(k);
-}
-
-/**
- * THE DELTA — "Jun 132/84 → +26/+12", gold when |Δsys| > 15 or |Δdia| > 10.
- *
- * ═══ WHY THIS IS THE MOST CLINICALLY LOAD-BEARING LINE ON THE TILE ═══
- *
- * A single 158/96 is a number. A 158/96 that was 132/84 in June is a TREND, and the difference
- * between those two readings is the difference between "slightly high, common, recheck sometime"
- * and "this person's pressure has moved 26 points since we last saw them". The bay already fetches
- * `preStage.last` — the previous chart, in full — and the shipped tile showed none of it.
- *
- * The thresholds are the build spec's and they are asymmetric on purpose: systolic wanders more
- * than diastolic across a day, a cuff and a season, so 15/10 marks the point where the movement is
- * more likely the patient than the measurement.
- *
- * ═══ WHY IT RETURNS PARTS AND NOT A SENTENCE ═══
- *
- * The month is the only localisable fragment, and a pure function that formats it would either pin
- * English into a Hindi desk or take `t` as an argument and stop being testable. So the caller
- * formats the date and this returns everything else assembled.
- */
-export type TileDelta = { serviceDate: string; from: string; delta: string; hot: boolean };
-
-const signed = (n: number): string => (n > 0 ? `+${String(n)}` : String(n));
-/* One decimal only where the vital actually has one — a temperature moves by 0.4, a weight by 1.5. */
-const round1 = (n: number): number => Math.round(n * 10) / 10;
-
-export function tileDeltaOf(k: TileKey, tile: Tile, pre: WirePreStage | null): TileDelta | null {
-  const last = pre?.last;
-  if (last === null || last === undefined) return null;
-  const op = operative(tile);
-  if (op === null) return null;
-
-  if (k === "bp") {
-    if (!Array.isArray(op) || last.sbp === null || last.dbp === null) return null;
-    const dSys = round1(op[0] - last.sbp);
-    const dDia = round1(op[1] - last.dbp);
-    return {
-      serviceDate: last.serviceDate,
-      from: `${String(last.sbp)}/${String(last.dbp)}`,
-      delta: `${signed(dSys)}/${signed(dDia)}`,
-      hot: Math.abs(dSys) > 15 || Math.abs(dDia) > 10,
-    };
-  }
-  if (Array.isArray(op)) return null;
-  const was = last[k];
-  if (was === null || was === undefined) return null;
-  return { serviceDate: last.serviceDate, from: String(was), delta: signed(round1(op - was)), hot: false };
-}
+const CHIPS = CONTEXT_CHIPS;
 
 export type SavedBanner = { who: string; doctorName: string; flags: WireDangerFlag[]; amended: boolean; rest?: string; feeWaived?: boolean };
 
@@ -381,9 +73,13 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
 }): React.ReactElement {
   const { t } = useTranslation();
   const set = useMemo(() => tileSetFor(preStage), [preStage]);
-  const lead = useMemo(() => leadTileFor(preStage), [preStage]);
-  const order = useMemo(() => tileOrder(lead, set), [lead, set]);
   const band = bandFor(ranges, preStage?.band ?? null);
+  /** The readings the nurse brought out from behind "+", and the list that offers them. */
+  const [added, setAdded] = useState<TileKey[]>([]);
+  const [plusOpen, setPlusOpen] = useState(false);
+  /** WHEN the glucose was taken — none pre-selected; a value is not saved without one. */
+  const [glucoseTiming, setGlucoseTiming] = useState<GlucoseTiming | null>(null);
+  const [glucoseError, setGlucoseError] = useState<string | null>(null);
   const [tiles, setTiles] = useState<Tiles>(emptyTiles);
   const [raw, setRaw] = useState<Record<TileKey, string>>(() => Object.fromEntries(TILE_KEYS.map((k) => [k, ""])) as Record<TileKey, string>);
   /**
@@ -404,7 +100,18 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
   const [serverGates, setServerGates] = useState<WireVitalsGate[]>([]);
   const [lockedByServer, setLockedByServer] = useState<WireVitalKey[]>([]);
   const [missing, setMissing] = useState<TileKey[]>([]);
+  const layout = useMemo(() => vitalsLayout(preStage, { added, holding: holdingOf(tiles, raw), missing }), [preStage, added, tiles, raw, missing]);
+  // The same boxes are the same array: the `1`–`8` listener and the typing lane must not re-arm on every keystroke.
+  const orderKey = layout.boxes.join(",");
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the boxes themselves
+  const order = useMemo(() => layout.boxes, [orderKey]);
   const [error, setError] = useState<string | null>(null);
+  /** A box's own complaint goes on the box (glucose); every other tile speaks from the line above Save, as before. */
+  const complain = useCallback((key: TileKey, message: string): void => {
+    if (key === "glucoseMgDl") setGlucoseError(message); else setError(message);
+  }, []);
+  /* The temperature as it was TYPED, when that was °F — the tile shows the charted °C beside it. */
+  const [tempTyped, setTempTyped] = useState<number | null>(null);
   /** Ruling: a chip is ASKED (yes / no) or not asked. Cycle null → yes → no → null; a mis-click never fabricates an answer. */
   const [chips, setChips] = useState<Record<string, "yes" | "no" | undefined>>({});
   const [busy, setBusy] = useState(false);
@@ -467,7 +174,7 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
     const next = emptyTiles();
     if (preStage?.last !== null && preStage !== null) {
       for (const k of preStage.carryCandidates) {
-        if (k === "sbp" || k === "dbp") continue;
+        if (k === "sbp" || k === "dbp" || k === "glucoseMgDl") continue;   // only a height is ever carried
         const v = preStage.last[k];
         if (v !== null) next[k].carried = v;
       }
@@ -477,19 +184,21 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
     }
     setTiles(next);
     putRaw(() => Object.fromEntries(TILE_KEYS.map((k) => [k, ""])) as Record<TileKey, string>);
-    setMirror(null); setServerGates([]); setLockedByServer([]); setMissing([]); setError(null); setChips({});
+    setMirror(null); setServerGates([]); setLockedByServer([]); setMissing([]); setError(null); setChips({}); setTempTyped(null);
     setKeys({ typed: 0, device: 0 });
+    setAdded([]); setPlusOpen(false); setGlucoseTiming(null); setGlucoseError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `initialTakes` is read once per patient, with the reset
   }, [resetKey, preStage]);
 
   useEffect(() => { onKeys?.(keys.typed, keys.device); }, [keys, onKeys]);
 
   useEffect(() => {
-    // per-patient lead-vital autofocus, on the first EMPTY tile of the order
-    const first = order.find((k) => operative(tiles[k]) === null && tiles[k].carried === null) ?? order[0];
+    // per-patient autofocus, on the first EMPTY box this patient OPENS with (not on every box added later)
+    const opens = vitalsLayout(preStage).boxes;
+    const first = opens.find((k) => operative(tiles[k]) === null && tiles[k].carried === null) ?? opens[0];
     if (first !== undefined) refs.current[first]?.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- focus once per patient, not per keystroke
-  }, [resetKey, order]);
+  }, [resetKey, preStage]);
 
   const focusNextEmpty = useCallback((after: TileKey, current: Tiles) => {
     const i = order.indexOf(after);
@@ -534,8 +243,11 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
     const text = rawRef.current[key];
     if (!opts.demandANumber && text.trim() === "") return true;
     const take = parseTake(key, text);
-    if (take === null) { setError(key === "bp" ? t("vitalsBay.capture.bpBoth") : t("vitalsBay.capture.notANumber")); return false; }
+    if (take === null) { complain(key, t(`vitalsBay.capture.${takeError(key, text)}`)); return false; }
     setError(null);
+    if (key === "glucoseMgDl") setGlucoseError(null);
+    setMissing((m) => m.filter((k) => k !== key));
+    if (key === "tempC") { const n = tempNote(text); setTempTyped(n !== null && n.unit === "F" ? n.f : null); }
     putRaw((r) => ({ ...r, [key]: "" }));       // emptied BEFORE the focus moves — see `rawRef`
     if (key === "rr" && typeof take === "number") {
       const instant = rrFocusedAt.current !== null && Date.now() - rrFocusedAt.current < 15_000 && (rrNudge === null || rrNudge.secondsLeft !== 0);
@@ -544,7 +256,28 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
     const next = commit(key, rrNudge !== null && rrNudge.secondsLeft === 0 && key === "rr" ? "counted" : "typed", take);
     if (next !== null && opts.advance) focusNextEmpty(key, next);
     return next !== null;
-  }, [putRaw, commit, focusNextEmpty, t, rrNudge]);
+  }, [putRaw, commit, focusNextEmpty, t, rrNudge, complain]);
+
+  /** One click in the "+" list: the reading becomes a box and the cursor goes to it. */
+  const addBox = useCallback((key: TileKey) => {
+    setAdded((a) => (a.includes(key) ? a : [...a, key]));
+    setPlusOpen(false);
+    setFocusReq(key);
+  }, []);
+  /** An added box left empty goes back behind "+". */
+  const removeBox = useCallback((key: TileKey) => {
+    setAdded((a) => a.filter((k) => k !== key));
+    if (key === "glucoseMgDl") { setGlucoseTiming(null); setGlucoseError(null); }
+  }, []);
+  /** The value of a reading nobody is required to take, emptied — the only way such a box can then be removed. */
+  const clearBox = useCallback((key: TileKey) => {
+    setTiles((prev) => ({ ...prev, [key]: emptyTiles()[key] }));
+    putRaw((r) => ({ ...r, [key]: "" }));
+    if (key === "glucoseMgDl") { setGlucoseTiming(null); setGlucoseError(null); }
+    if (key === "tempC") setTempTyped(null);
+    setMirror((m) => (m !== null && m.key === key ? null : m));
+    setMissing((m) => m.filter((k) => k !== key));
+  }, [putRaw]);
 
   const onEnter = useCallback((key: TileKey) => { commitTyped(key, { advance: true, demandANumber: true }); }, [commitTyped]);
 
@@ -603,12 +336,13 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
       A half-typed BP must not cost her the six numbers below it — they are charted, the cursor
       goes to the one tile that needs her, and the bad text stays in its box for her to finish.
     */
-    let stop: { key: TileKey; mirror: Mirror | null } | null = null;
+    let stop: { key: TileKey; mirror: Mirror | null; text?: string } | null = null;
     for (const k of order) {
       const text = rawRef.current[k];
       if (text.trim() === "") continue;
       const take = parseTake(k, text);
-      if (take === null) { stop ??= { key: k, mirror: null }; continue; }   // her text stays in the box
+      if (take === null) { stop ??= { key: k, mirror: null, text }; continue; }   // her text stays in the box
+      if (k === "tempC") { const n = tempNote(text); setTempTyped(n !== null && n.unit === "F" ? n.f : null); }
       const r = applyTake(current, k, "typed", take, gateCtx);
       current = r.tiles;
       flushed.push(k);
@@ -619,18 +353,21 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
     if (current !== tiles) setTiles(current);
     if (stop !== null) {
       if (stop.mirror !== null) setMirror({ key: stop.key, m: stop.mirror });
-      else setError(stop.key === "bp" ? t("vitalsBay.capture.bpBoth") : t("vitalsBay.capture.notANumber"));
+      else complain(stop.key, t(`vitalsBay.capture.${takeError(stop.key, stop.text ?? "")}`));
       refs.current[stop.key]?.focus();
       return;
     }
     if (flushed.length > 0) setMirror(null);
+    // A glucose with no timing is not a reading a doctor can use: nothing is sent, and the box says so.
+    if (glucoseNeedsTiming(current, glucoseTiming)) { setGlucoseError(t("vitalsBay.glucose.timingNeeded")); return; }
+    setGlucoseError(null);
     const miss = missingFor(current, set.required, emergency);
     if (miss.length > 0) { setMissing(miss); refs.current[miss[0]!]?.focus(); return; }
     setMissing([]); setError(null); setBusy(true); onBusy?.(true);
     const chipList = CHIPS.filter((c) => chips[c.key] !== undefined)
       .map((c) => ({ key: c.key, question: c.question, answer: chips[c.key] === "yes" ? c.yes : c.no }));
     try {
-      const result = await postVitals(row.encounterId, buildBody(current, { emergency, chips: chipList }));
+      const result = await postVitals(row.encounterId, buildBody(current, { emergency, chips: chipList, glucoseTiming }));
       onSaved(result);
     } catch (e) {
       if (e instanceof ApiError) {
@@ -654,7 +391,7 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
     } finally {
       setBusy(false); onBusy?.(false);
     }
-  }, [tiles, putRaw, order, gateCtx, onCommitted, t, set.required, chips, row.encounterId, onSaved, onBusy]);
+  }, [tiles, putRaw, order, gateCtx, onCommitted, t, set.required, chips, row.encounterId, onSaved, onBusy, complain, glucoseTiming]);
 
   const acceptServerGate = useCallback((g: WireVitalsGate, action: "confirm" | "fix") => {
     const key: TileKey = g.key === "sbp" || g.key === "dbp" ? "bp" : g.key;
@@ -672,10 +409,22 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
   const unit = (k: TileKey): string => t(`vitalsBay.unit.${k}`);
   const label = (k: TileKey): string => t(`vitalsBay.tile.${k}`);
   const showTake = (x: Take): string => (Array.isArray(x) ? `${x[0]}/${x[1]}` : String(x));
+  /** "A, B and C" — the amber line's list. */
+  // The narrow bay (vitals-bay.css, `.vb-phone`) is two columns: these boxes take a whole row there, as on the phone app.
+  const fullRow = new Set(fullRowBoxes(order, (k) => tiles[k].carried !== null && tiles[k].unlockReason === null));
+  const listed = (keys: TileKey[]): string => {
+    const names = keys.map(label);
+    return names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")}${t("vitalsBay.plus.and")}${names[names.length - 1]!}`;
+  };
 
   return (
     <div data-testid="capture" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {protocol}
+      {layout.autoWhy !== null && (
+        <p data-testid="auto-note" style={{ margin: 0, padding: "7px 10px", fontSize: 12.5, fontWeight: 600, color: "var(--gold)", background: "var(--gold-soft)", border: "1px solid var(--gold-line)", borderRadius: 8 }}>
+          {t(`vitalsBay.plus.auto.${layout.autoWhy}`, { tiles: listed(layout.auto) })}
+        </p>
+      )}
       <div data-testid="tiles" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(168px, 1fr))", gap: 8 }}>
         {order.map((k, idx) => {
           const tile = tiles[k];
@@ -692,22 +441,36 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
           const hot = tint === "danger" || tint === "sam";
           /* The label wears the level: dim when nothing is wrong, gold for a notice, red for a danger. */
           const labelColour = hot ? "var(--red)" : tint !== null ? "var(--gold)" : "var(--dim)";
+          const why = layout.why[k];
+          const optional = why === "added" || why === "value";
+          // Anything the protocol does not DEMAND can be emptied again — a held probe error included (the nurse decides: no SpO₂ today).
+          const clearable = why !== undefined && why !== "required";
+          const holds = op !== null || tile.held.length > 0 || raw[k].trim() !== "";
           return (
             <div
-              key={k} data-testid={`tile-${k}`} data-tint={tint ?? ""} data-locked={locked ? "true" : "false"} data-required={required ? "true" : "false"}
+              key={k} data-testid={`tile-${k}`} data-tint={tint ?? ""} data-locked={locked ? "true" : "false"} data-required={required ? "true" : "false"} data-why={why ?? ""} data-row={fullRow.has(k) ? "full" : ""}
               className="box"
               style={{
-                display: "flex", flexDirection: "column", gap: 5, padding: "9px 10px 10px",
-                borderColor: hot || isMissing ? "var(--red-line)" : tint !== null ? "var(--gold-line)" : undefined,
-                background: hot ? "var(--red-soft)" : tint !== null ? "var(--gold-soft)" : undefined,
+                display: "flex", flexDirection: "column", gap: 5, padding: "9px 10px 10px", minWidth: 0,
+                gridColumn: k === "glucoseMgDl" ? "1 / -1" : undefined,   // its three chips need the row; `1 / -1` cannot overflow a one-column grid
+                borderColor: hot || isMissing ? "var(--red-line)" : tint !== null || layout.auto.includes(k) ? "var(--gold-line)" : optional ? "var(--green-line)" : undefined,
+                background: hot ? "var(--red-soft)" : tint !== null ? "var(--gold-soft)" : optional ? "var(--green-soft)" : undefined,
               }}
             >
               {/* ROW 1 — what this is, and what the BAND says it should be. Mono, right, faint: it is a reference, not a reading. */}
-              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 6 }}>
-                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: labelColour }}>
+              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", justifyContent: "space-between", gap: "2px 6px" }}>
+                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", whiteSpace: "nowrap", color: labelColour }}>
                   <span className="kb" style={{ marginRight: 4 }}>{idx + 1}</span>{label(k)}{required ? " *" : ""}
                 </span>
                 {range !== null && <span className="mo" data-testid={`range-${k}`} style={{ fontSize: 10, color: "var(--faint)", whiteSpace: "nowrap" }}>{range}</span>}
+                {why === "added" && !holds && (
+                  <button type="button" data-testid={`remove-${k}`} aria-label={t("vitalsBay.plus.remove", { tile: label(k) })} onClick={() => removeBox(k)}
+                    style={{ marginLeft: "auto", border: "none", background: "none", color: "var(--dim)", fontSize: 16, lineHeight: 1, padding: "0 2px", cursor: "pointer" }}>×</button>
+                )}
+                {clearable && holds && !locked && (
+                  <button type="button" data-testid={`clear-${k}`} onClick={() => clearBox(k)}
+                    style={{ marginLeft: "auto", border: "none", background: "none", color: "var(--green)", fontSize: 10.5, fontWeight: 700, padding: "0 2px", cursor: "pointer" }}>{t("vitalsBay.plus.clear")}</button>
+                )}
               </div>
               {notRoutine && <span data-testid={`not-routine-${k}`} style={{ fontSize: 10, color: "var(--faint)" }}>{t("vitalsBay.capture.notRoutine")}</span>}
 
@@ -746,6 +509,10 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
                     )}
                   </div>
 
+                  {/* OWNER 2026-10-05 — a °F thermometer: the chart is °C, and what she typed stays in sight. */}
+                  {k === "tempC" && op !== null && tempTyped !== null && (
+                    <span data-testid="temp-typed-f" className="mo" style={{ fontSize: 10.5, color: "var(--dim)" }}>{t("vitalsBay.capture.tempTypedF", { f: tempTyped })}</span>
+                  )}
                   {/* WHERE IT CAME FROM, and — for a pulse — the fact that it was never counted separately. */}
                   {op !== null && (
                     <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4 }}>
@@ -769,7 +536,7 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
 
                   {tint !== null && <span data-testid={`tint-${k}`} style={{ fontSize: 10.5, fontWeight: 600, color: hot ? "var(--red)" : "var(--gold)" }}>{t(`vitalsBay.capture.tint.${tint}`)}</span>}
                   {tile.held.length > 0 && <span data-testid={`held-${k}`} style={{ fontSize: 10, color: "var(--dim)" }}>{t("vitalsBay.capture.held", { values: tile.held.join(", ") })}</span>}
-                  {tile.unlockReason !== null && <span data-testid={`unlocked-${k}`} style={{ fontSize: 10, color: "var(--dim)" }}>{t("vitalsBay.unlock.was", { value: preStage?.last?.[k === "bp" ? "sbp" : k] ?? "" })}</span>}
+                  {tile.unlockReason !== null && k !== "glucoseMgDl" && <span data-testid={`unlocked-${k}`} style={{ fontSize: 10, color: "var(--dim)" }}>{t("vitalsBay.unlock.was", { value: preStage?.last?.[k === "bp" ? "sbp" : k] ?? "" })}</span>}
                   <input
                     ref={(el) => { refs.current[k] = el; }}
                     /*
@@ -782,7 +549,7 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
                     aria-label={`${label(k)} ${unit(k)}`.trim()}
                     data-testid={`input-${k}`} inputMode="decimal" autoComplete="off"
                     className="in mo" style={{ padding: "4px 7px", fontSize: 13 }}
-                    placeholder={k === "bp" ? "158/96" : ""}
+                    placeholder={k === "bp" ? "158-96" : k === "tempC" ? "98.6 / 37.0" : k === "glucoseMgDl" ? "mg/dL" : ""}
                     value={raw[k]}
                     onChange={(e) => putRaw((r) => ({ ...r, [k]: e.target.value }))}
                     onFocus={() => { if (k === "rr" && rrFocusedAt.current === null) rrFocusedAt.current = Date.now(); }}
@@ -798,11 +565,37 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
                       if (e.key.length === 1 || e.key === "Backspace") setKeys((c) => ({ ...c, typed: c.typed + 1 }));
                     }}
                   />
+                  {(k === "bp" || k === "tempC") && raw[k].trim() !== "" && (() => {
+                    /* OWNER 2026-10-05 — say what the typed text WILL chart as, before she leaves the box. */
+                    const take = parseTake(k, raw[k]);
+                    if (take === null) return null;
+                    const n = k === "tempC" ? tempNote(raw[k]) : null;
+                    const text = Array.isArray(take)
+                      ? t("vitalsBay.capture.readsBp", { sys: take[0], dia: take[1] })
+                      : n !== null && n.unit === "F"
+                        ? t("vitalsBay.capture.readsTempF", { f: n.f, c: n.c })
+                        : t("vitalsBay.capture.readsTempC", { c: take });
+                    return <span data-testid={`reads-${k}`} className="mo" style={{ fontSize: 10.5, color: "var(--green, var(--dim))" }}>{text}</span>;
+                  })()}
                   {/*
                     THE OWNER'S DIGNITY RULING, ON THE TILE THAT NEEDS IT. A weight is the one
                     number at this desk that a patient can be humiliated by, and the bay is a
                     curtained bay in a corridor, not a room.
                   */}
+                  {k === "glucoseMgDl" && (
+                    <>
+                      <div data-testid="glucose-timing" role="group" aria-label={t("vitalsBay.glucose.timingLabel")} style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                        {GLUCOSE_TIMINGS.map((g) => (
+                          <button
+                            key={g} type="button" data-testid={`glucose-timing-${g}`} aria-pressed={glucoseTiming === g}
+                            className={`pill${glucoseTiming === g ? " on" : ""}`} style={{ fontSize: 11.5, padding: "2px 9px" }}
+                            onClick={() => { setGlucoseTiming(glucoseTiming === g ? null : g); setGlucoseError(null); }}
+                          >{t(`vitalsBay.glucose.timing.${g}`)}</button>
+                        ))}
+                      </div>
+                      {glucoseError !== null && <span role="alert" data-testid="glucose-error" style={{ fontSize: 10.5, fontWeight: 600, color: "var(--red)" }}>{glucoseError}</span>}
+                    </>
+                  )}
                   {k === "weightKg" && <span data-testid="weight-quiet" style={{ fontSize: 10, color: "var(--faint)" }}>{t("vitalsBay.capture.weightQuiet")}</span>}
                   {k === "rr" && rrNudge !== null && (
                     <span data-testid="rr-nudge" style={{ fontSize: 10.5, color: "var(--gold)" }}>
@@ -823,6 +616,37 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
           );
         })}
       </div>
+
+      {layout.behindPlus.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <button
+            type="button" data-testid="plus-row" aria-expanded={plusOpen} onClick={() => setPlusOpen((o) => !o)}
+            style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", textAlign: "left", background: "transparent", border: "1.5px dashed var(--green-line)", borderRadius: 10, color: "var(--green)", cursor: "pointer" }}
+          >
+            <span aria-hidden="true" className="mo" style={{ display: "grid", placeItems: "center", width: 24, height: 24, flex: "none", borderRadius: "50%", background: "var(--green)", color: "var(--on-green, #fff)", fontSize: 17, fontWeight: 600, lineHeight: 1 }}>+</span>
+            <span style={{ minWidth: 0 }}>
+              <span style={{ display: "block", fontSize: 13, fontWeight: 600 }}>{t("vitalsBay.plus.add")}</span>
+              <span data-testid="plus-names" style={{ display: "block", fontSize: 11.5, color: "var(--dim)" }}>{layout.behindPlus.map(label).join(" · ")}</span>
+            </span>
+          </button>
+          {plusOpen && (
+            <div data-testid="plus-list" role="menu" className="box" style={{ display: "flex", flexDirection: "column", padding: "2px 12px", maxWidth: 420 }}>
+              {layout.behindPlus.map((k, i) => (
+                <button
+                  key={k} type="button" role="menuitem" data-testid={`plus-add-${k}`} onClick={() => addBox(k)}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "9px 0", textAlign: "left", background: "none", border: "none", borderTop: i === 0 ? "none" : "1px solid var(--line2, var(--line))", cursor: "pointer", color: "var(--ink)" }}
+                >
+                  <span style={{ minWidth: 0 }}>
+                    <span style={{ display: "block", fontSize: 13.5, fontWeight: 500 }}>{label(k)}</span>
+                    <span style={{ display: "block", fontSize: 11.5, color: "var(--dim)" }}>{t(`vitalsBay.plus.hint.${k}`)}</span>
+                  </span>
+                  <span aria-hidden="true" className="mo" style={{ display: "grid", placeItems: "center", width: 24, height: 24, flex: "none", borderRadius: "50%", border: "1.5px solid var(--green)", color: "var(--green)", fontSize: 16, fontWeight: 600, lineHeight: 1 }}>+</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {mirror !== null && (
         <div role="alertdialog" data-testid="mirror" data-kind={mirror.m.kind} className="box" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, padding: "9px 11px", fontSize: 12.5, borderColor: "var(--red-line)", background: "var(--red-soft)" }}>

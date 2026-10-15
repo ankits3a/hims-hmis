@@ -1,5 +1,5 @@
 import { getEncounter, reviewAnchorFor } from "../opd";
-import { loadBillingConfig } from "./config";
+import { chargeRulesAt, feeOffAt, feeOffNow, loadBillingConfig } from "./config";
 import { BillingError } from "./errors";
 import { previewInvoice } from "./invoices";
 import type { ChargeRules } from "./config";
@@ -22,14 +22,33 @@ export const FEE_LINE_ID = "fee";
 /**
  * The service a visit's consultation fee is charged against, or `null` when the visit is FREE.
  *
- * `revisit` is free (spec:224, Plan 07's owner decision): the null is the free branch, not a
+ * `revisit` is free (spec:224, Plan 07's owner decision) unless the owner prices a revisit fee
+ * (2026-10-05; pass the rules through `chargeRulesAt` first): the null is the free branch, not a
  * missing mapping, which is why the gate treats it as "nothing to collect" rather than as an
  * error. A visit type outside the three OPD ships has no rule to apply at all.
  */
 export function feeServiceFor(encounter: EncounterRow, rules: ChargeRules): string | null {
+  const service = chargedServiceFor(encounter, rules);
+  return service !== null && consultFeeSwitchedOff(encounter, rules) ? null : service;
+}
+
+/**
+ * THE FEE SWITCH (owner, 2026-10-01). Consultation is free for a visit when the switch is off NOW,
+ * or was off WHEN THE VISIT WAS OPENED. The second half is what keeps a patient who walked in on a
+ * free day from being held at the door after charging is switched on; the first is what stops the
+ * desk chasing an unpaid fee the owner has just stopped charging. A caller that passes no
+ * `openedAt` (a hand-shaped row) is judged on the present alone.
+ */
+export function consultFeeSwitchedOff(encounter: Pick<EncounterRow, "openedAt">, rules: ChargeRules): boolean {
+  if (feeOffNow(rules, "opdConsult")) return true;
+  return encounter.openedAt instanceof Date && feeOffAt(rules, "opdConsult", encounter.openedAt);
+}
+
+function chargedServiceFor(encounter: EncounterRow, rules: ChargeRules): string | null {
   switch (encounter.visitType) {
     case "revisit":
-      return null;
+      // Free unless a revisit fee is wired AND priced above ₹0 — `chargeRulesAt` drops it otherwise.
+      return rules.opdConsult.revisit ?? null;
     case "new":
       return rules.opdConsult.new;
     case "renewal":
@@ -47,6 +66,8 @@ export type FeeQuote = {
   encounterId: string;
   visitType: string;
   free: boolean; // the revisit branch — no fee service, no draft
+  /** The owner's fee switch is why this visit is free — the seat says so instead of "review visit". */
+  feesOff: boolean;
   feeServiceId: string | null;
   draft: PricedDraft | null;
   /**
@@ -110,11 +131,13 @@ export async function feeQuote(
   const encounter = await getEncounter(db, encounterId);
   if (!encounter) throw new BillingError("unknown_encounter", `unknown encounter ${encounterId}`);
   const cfg = await loadBillingConfig(db);
-  const feeServiceId = feeServiceFor(encounter, cfg.chargeRules);
+  const rules = await chargeRulesAt(db, cfg.chargeRules, now);
+  const feeServiceId = feeServiceFor(encounter, rules);
   if (feeServiceId === null) {
     const anchor = await reviewAnchorFor(db, encounter);
     return {
       encounterId, visitType: encounter.visitType, free: true, feeServiceId: null, draft: null,
+      feesOff: (encounter.visitType !== "revisit" || rules.opdConsult.revisit !== undefined) && consultFeeSwitchedOff(encounter, rules),
       freeReason: anchor === null ? null : {
         kind: anchor.via === "referral" ? "referral_window" : "review_window",
         doctorName: anchor.doctorName, seenOn: anchor.seenOn, windowEndsOn: anchor.windowEndsOn,
@@ -159,7 +182,7 @@ export async function feeQuote(
     now,
   );
   return {
-    encounterId, visitType: encounter.visitType, free: false, feeServiceId, draft, freeReason: null,
+    encounterId, visitType: encounter.visitType, free: false, feesOff: false, feeServiceId, draft, freeReason: null,
     // Read from the ENCOUNTER, not from `draft.intendedPayer`, so both branches answer identically
     // and the free branch is not a special case the seat has to remember.
     intendedPayer: encounter.intendedPayer,

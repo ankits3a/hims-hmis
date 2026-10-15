@@ -76,7 +76,7 @@ async function pickDeptAndDoctor(user: ReturnType<typeof userEvent.setup>): Prom
   await waitFor(() => expect(within(departmentSelect).getByText(/General medicine/)).toBeInTheDocument());
   await user.selectOptions(departmentSelect, "dep-1");
   const doctorSelect = await screen.findByLabelText("Doctor");
-  await waitFor(() => expect(within(doctorSelect).getByText("Dr Meera Rao")).toBeInTheDocument());
+  await waitFor(() => expect(within(doctorSelect).getByText(/^Dr Meera Rao/)).toBeInTheDocument());
   await user.selectOptions(doctorSelect, "doc-1");
 }
 
@@ -104,6 +104,39 @@ describe("OpdAppointments", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
+  });
+
+  it("2026-10-04 — names the unit that holds the picked department's OPD on the booked day, and nothing for a department without one", async () => {
+    const asked: string[] = [];
+    stubFetch({
+      ...DAY_STUBS,
+      "GET /api/opd/appointments": { items: [] },
+      "GET /api/auth/me": { actor: { type: "user", id: "u1" }, permissions: { hospital: ["roster.read"], scoped: { department: {}, floor: {} } } },
+      "GET /api/roster/doctor-units": [{ userId: "u-9", teamId: "t-1", code: "MED-U1", unitName: "General Medicine Unit I", short: "Unit I", departmentId: "org-med", departmentName: "General Medicine", roleInTeam: "head" }],
+      "GET /api/roster/opd-units": (_init?: RequestInit, url?: string) => {
+        asked.push(url ?? "");
+        return [{
+          opdDepartmentId: "dep-1", departmentId: "org-med",
+          units: [{
+            teamId: "t-1", code: "MED-U1", name: "General Medicine Unit I", short: "Unit I",
+            startsAt: "2026-08-18T03:30:00.000Z", endsAt: "2026-08-18T11:30:00.000Z",
+            doctors: [{ userId: "u-9", name: "Dr Meera Rao", role: "head" }],
+          }],
+        }];
+      },
+    });
+    setToken("t-1");
+    renderWithProviders(<OpdAppointments />);
+    const user = userEvent.setup();
+    // No department picked: the roster is not asked.
+    await screen.findByLabelText("Department");
+    expect(asked).toEqual([]);
+    await pickDeptAndDoctor(user);
+    const line = await screen.findByTestId("appt-opd-unit-dep-1");
+    // 2026-10-04 (owner) — the doctor list says each doctor's unit beside the name.
+    expect(within(screen.getByLabelText("Doctor")).getByText("Dr Meera Rao · Unit I")).toBeInTheDocument();
+    expect(line).toHaveTextContent("Unit I holds the OPD on Tue 18 Aug · Dr Meera Rao");
+    expect(asked.some((u) => u.endsWith("/roster/opd-units?date=2026-08-18"))).toBe(true);
   });
 
   it("loads GET /opd/slots for the picked department+doctor+date and renders IST-labelled buttons, booked disabled, past dimmed", async () => {
@@ -433,5 +466,138 @@ describe("OpdAppointments", () => {
       expect(cells).toHaveLength(headers.length);
       expect(cells[timeCol]).toHaveTextContent(/^\d\d:\d\d$/);
     }
+  });
+
+  /**
+   * OWNER, 2026-10-01: *"I can see a future appointment for U00110020 in the profile screen but I
+   * can't see any appointments for the same patient at /opd/appointments. Why so?"* The screen listed
+   * one doctor's book for one day; with nothing chosen it listed nothing.
+   */
+  it("picking a patient shows the slots they still hold — with no department, doctor or date chosen", async () => {
+    stubFetch({
+      ...DAY_STUBS,
+      "GET /api/opd/appointments": (_init?: RequestInit, url?: string) => (String(url ?? "").includes("patientId=p-1")
+        ? { items: [apt({ id: "ap-7", doctorId: "doc-1", serviceDate: "2026-08-21", slotStart: "2026-08-21T06:30:00.000Z" })] }
+        : { items: [] }),
+    });
+    renderWithProviders(<OpdAppointments />);
+    const user = userEvent.setup();
+    await pickPatient(user);
+
+    const row = await screen.findByTestId("patient-booking-row");
+    expect(row).toHaveTextContent("2026-08-21");
+    expect(row).toHaveTextContent("12:00"); // 06:30Z is 12:00 IST
+    expect(within(row).getByRole("button", { name: /Reschedule/ })).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: /Cancel/ })).toBeInTheDocument();
+    expect(callsTo("GET", "/api/opd/slots")).toHaveLength(0); // no doctor was ever chosen
+  });
+
+  it("a patient with nothing booked ahead is told so", async () => {
+    stubFetch({ ...DAY_STUBS, "GET /api/opd/appointments": { items: [] } });
+    renderWithProviders(<OpdAppointments />);
+    await pickPatient(userEvent.setup());
+    expect(await screen.findByTestId("patient-bookings-none")).toBeInTheDocument();
+  });
+
+  it("a link from the profile opens that doctor's day with the patient already in the card", async () => {
+    window.history.pushState({}, "", "/opd/appointments?patientId=p-1&departmentId=dep-1&doctorId=doc-1&date=2026-08-21");
+    try {
+      stubFetch({
+        ...DAY_STUBS,
+        "GET /api/patients/p-1": { patient: { id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", administrativeGender: "female", dob: null } },
+        "GET /api/opd/appointments": { items: [apt({ id: "ap-7", serviceDate: "2026-08-21", slotStart: "2026-08-21T06:30:00.000Z" })] },
+      });
+      renderWithProviders(<OpdAppointments />);
+      await waitFor(() => expect(screen.getByTestId("booking-for")).toHaveTextContent("HMS0000001234"));
+      expect(await screen.findByTestId("patient-booking-row")).toHaveTextContent("2026-08-21");
+      expect(screen.getByTestId("filter-date")).toHaveValue("2026-08-21");
+      // The linked doctor survives the department arriving with it, and that doctor's day is read.
+      await waitFor(() => expect(callsTo("GET", "/api/opd/slots")[0]?.url).toBe("/api/opd/slots?doctorId=doc-1&date=2026-08-21"));
+    } finally {
+      window.history.pushState({}, "", "/");
+    }
+  });
+
+  // ——— tele-call, slice 1 (owner 2026-10-09) ———
+
+  it("TELE-CALL: the switch opens on In person; Tele-call asks for the patient's phone (pre-filled when known) and Confirm waits for a real number", async () => {
+    stubFetch({ ...DAY_STUBS, "GET /api/opd/appointments": { items: [] }, "POST /api/opd/appointments": { appointment: apt({ id: "ap-9", mode: "tele", telePhone: "9876543021" }) } });
+    renderWithProviders(<OpdAppointments />);
+    const user = userEvent.setup();
+    await pickDeptAndDoctor(user);
+    await screen.findByTestId("slot-2026-08-18T03:30:00.000Z");
+    await pickPatient(user);
+    await user.click(screen.getByTestId("slot-2026-08-18T03:30:00.000Z"));
+    const dialog = within(await screen.findByRole("dialog"));
+
+    expect(dialog.getByRole("radio", { name: "In person" })).toBeChecked();
+    expect(dialog.getByRole("radio", { name: "Tele-call" })).not.toBeChecked();
+    expect(dialog.queryByLabelText("Patient's phone")).toBeNull();
+
+    await user.click(dialog.getByRole("radio", { name: "Tele-call" }));
+    const phone = dialog.getByLabelText("Patient's phone");
+    expect(phone).toHaveValue("9876500000"); // the search row's own mobile
+    expect(phone).toHaveAttribute("inputmode", "numeric");
+
+    await user.clear(phone);
+    expect(dialog.getByRole("button", { name: "Confirm booking" })).toBeDisabled();
+    await user.type(phone, "98765 4302");
+    expect(dialog.getByRole("button", { name: "Confirm booking" })).toBeDisabled();
+    await user.clear(phone);
+    await user.type(phone, "+91 98765 43021");
+    expect(dialog.getByRole("button", { name: "Confirm booking" })).toBeEnabled();
+    expect(callsTo("POST", "/api/opd/appointments")).toHaveLength(0);
+
+    await user.click(dialog.getByRole("button", { name: "Confirm booking" }));
+    await waitFor(() => expect(callsTo("POST", "/api/opd/appointments")).toHaveLength(1));
+    expect(bodyOf("POST", "/api/opd/appointments")).toEqual({
+      patientId: "p-1", doctorId: "doc-1", slotStart: "2026-08-18T03:30:00.000Z", mode: "tele", telePhone: "9876543021",
+    });
+  });
+
+  it("TELE-CALL: going back to In person lets Confirm through and sends the booking it always sent", async () => {
+    stubFetch({ ...DAY_STUBS, "GET /api/opd/appointments": { items: [] }, "POST /api/opd/appointments": { appointment: apt({ id: "ap-9" }) } });
+    renderWithProviders(<OpdAppointments />);
+    const user = userEvent.setup();
+    await pickDeptAndDoctor(user);
+    await screen.findByTestId("slot-2026-08-18T03:30:00.000Z");
+    await pickPatient(user);
+    await user.click(screen.getByTestId("slot-2026-08-18T03:30:00.000Z"));
+    const dialog = within(await screen.findByRole("dialog"));
+    await user.click(dialog.getByRole("radio", { name: "Tele-call" }));
+    await user.clear(dialog.getByLabelText("Patient's phone"));
+    expect(dialog.getByRole("button", { name: "Confirm booking" })).toBeDisabled();
+    await user.click(dialog.getByRole("radio", { name: "In person" }));
+    await user.click(dialog.getByRole("button", { name: "Confirm booking" }));
+    await waitFor(() => expect(callsTo("POST", "/api/opd/appointments")).toHaveLength(1));
+    expect(bodyOf("POST", "/api/opd/appointments")).toEqual({ patientId: "p-1", doctorId: "doc-1", slotStart: "2026-08-18T03:30:00.000Z" });
+  });
+
+  it("TELE-CALL: the day list and the patient's own bookings mark a tele-call with an ICON named Tele-call — no word, and nothing on an in-person row", async () => {
+    stubFetch({
+      ...DAY_STUBS,
+      "GET /api/opd/appointments": { items: [
+        apt({ id: "ap-1", mode: "in_person", telePhone: null }),
+        apt({ id: "ap-2", mode: "tele", telePhone: null, slotStart: "2026-08-18T04:10:00.000Z", slotEnd: "2026-08-18T04:20:00.000Z",
+          patient: { requestedId: "p-2", id: "p-2", uhid: "HMS0000005678", name: "Meena Kumari", alias: null, restricted: false, sex: "female", dob: null } }),
+      ] },
+    });
+    renderWithProviders(<OpdAppointments />);
+    const user = userEvent.setup();
+    await pickDeptAndDoctor(user);
+    const tele = (await screen.findByText("Meena Kumari")).closest("tr")!;
+    const inPerson = (await screen.findAllByText("Asha Devi")).map((n) => n.closest("tr")).find((r) => r !== null)!;
+    expect(within(tele).getByRole("img", { name: "Tele-call" })).toBeInTheDocument();
+    expect(tele).not.toHaveTextContent(/tele/i);
+    expect(within(inPerson).queryByRole("img", { name: "Tele-call" })).toBeNull();
+    // fix round — a tele-call is not checked in at a desk: no Check-in button on its row; the in-person row keeps its own
+    expect(within(tele).queryByTestId("checkin-ap-2")).toBeNull();
+    expect(within(tele).queryByRole("button", { name: "Check in" })).toBeNull();
+    expect(within(inPerson).getByTestId("checkin-ap-1")).toBeInTheDocument();
+
+    await pickPatient(user);
+    const theirs = await screen.findAllByTestId("patient-booking-row");
+    expect(theirs).toHaveLength(2);
+    expect(theirs.filter((r) => within(r).queryByRole("img", { name: "Tele-call" }) !== null)).toHaveLength(1);
   });
 });

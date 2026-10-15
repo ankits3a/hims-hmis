@@ -24,6 +24,9 @@ docs
 LICENSE
 README.md
 
+# The staff Android app (Expo) is built by EAS, never into a server image; no stage reads it.
+apps/mobile
+
 **/*.log
 **/.DS_Store
 

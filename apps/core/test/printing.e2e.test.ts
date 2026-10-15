@@ -449,6 +449,58 @@ describe("FD-24 T2: the print relay's routes", () => {
   });
 
   /**
+   * ═══ BROWSER PRINTING (owner, 2026-10-07) ═══
+   *
+   * *"Right now I have printer attached with each computer at front desk."* No relay is installed, so
+   * the counter prints the server's own document on its own printer and says so. Three properties:
+   * the list says nobody is serving the printer; a job printed here stops waiting for a relay and
+   * says who printed it; and a job a relay holds is the relay's.
+   */
+  it("with no relay the desk is told so, marks a job printed on its own printer, and cannot take a relay's job", async () => {
+    const { encounterId } = await realVisit();
+    const registry = new ModuleRegistry();
+    for (const m of ALL_MANIFESTS) registry.install(m);
+    await syncPermissions(db, registry);
+    await createRole(db, "front_desk_browser_print", "Front desk (browser print)");
+    await grantPermissionToRole(db, registry, "front_desk_browser_print", "opd.visits.open");
+    await grantPermissionToRole(db, registry, "front_desk_browser_print", "opd.paper.reprint");
+    const clerk = await mkUser(db, `deskb-${String(Date.now())}`, ["front_desk_browser_print"]);
+    const auth = { authorization: `Bearer ${clerk.token}` };
+
+    // Nothing has ever been claimed in this database: nobody is serving any printer.
+    await db.update(printJobs).set({ claimedAt: null, claimedBy: null });
+    const listed = await request(app.getHttpServer()).get(`/print/jobs?encounterId=${encounterId}`).set(auth).expect(200);
+    const rx = listed.body.jobs.find((j: { document: string }) => j.document === "opd_prescription");
+    const slip = listed.body.jobs.find((j: { document: string }) => j.document === "opd_token_slip");
+    expect(rx).toMatchObject({ status: "queued", served: false, printedVia: null });
+
+    const here = await request(app.getHttpServer()).post(`/print/jobs/${rx.id}/printed-here`).set(auth).expect(201);
+    expect(here.body).toEqual({ accepted: true });
+    const [row] = await db.select().from(printJobs).where(eq(printJobs.id, rx.id));
+    expect(row).toMatchObject({ status: "printed", claimedBy: `browser:${clerk.id}`, claimedAt: null });
+    expect(row!.printedAt).not.toBeNull();
+
+    // Said twice, it is not printed twice.
+    const twice = await request(app.getHttpServer()).post(`/print/jobs/${rx.id}/printed-here`).set(auth).expect(201);
+    expect(twice.body).toEqual({ accepted: false });
+
+    // A job a relay is holding is the relay's.
+    await db.update(printJobs).set({ status: "claimed", claimedAt: new Date(), claimedBy: "relay-1" }).where(eq(printJobs.id, slip.id));
+    const taken = await request(app.getHttpServer()).post(`/print/jobs/${slip.id}/printed-here`).set(auth).expect(201);
+    expect(taken.body).toEqual({ accepted: false });
+
+    // And the read now says both things: a relay is alive (it claimed), and who printed the sheet.
+    const after = await request(app.getHttpServer()).get(`/print/jobs?encounterId=${encounterId}`).set(auth).expect(200);
+    const rxAfter = after.body.jobs.find((j: { id: string }) => j.id === rx.id);
+    expect(rxAfter).toMatchObject({ status: "printed", printedVia: "browser", served: true });
+
+    // A browser printing never forges the evidence that a relay is alive.
+    await db.update(printJobs).set({ status: "queued", claimedAt: null, claimedBy: null }).where(eq(printJobs.id, slip.id));
+    const quiet = await request(app.getHttpServer()).get(`/print/jobs?encounterId=${encounterId}`).set(auth).expect(200);
+    expect(quiet.body.jobs.find((j: { id: string }) => j.id === slip.id)).toMatchObject({ served: false });
+  });
+
+  /**
    * ═══ THE ONLY SPELLING OF A VISIT A CASHIER IS EVER SHOWN ═══
    *
    * Owner, 2026-09-15, on a paid visit reached at `/billing` by typing `V2609150001`: *"when I

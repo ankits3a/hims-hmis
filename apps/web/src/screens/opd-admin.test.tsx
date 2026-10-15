@@ -246,6 +246,39 @@ describe("OpdAdmin", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent('no user named "dr.ramesh"');
   });
 
+  it("2026-10-04 — the doctors tab sends a Designation with a new doctor, and edits one in the list (blank clears it)", async () => {
+    stubFetch({ ...MASTERS, "POST /api/opd/doctors": { doctorId: "doc-9", userId: "u-9" }, "PATCH /api/opd/doctors/doc-1": { ok: true } });
+    renderWithProviders(<OpdAdmin />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Doctors" }));
+    await user.type(await screen.findByLabelText("Username"), "raza");
+    await user.type(screen.getByLabelText("Display name"), "Dr. S.I Raza");
+    await user.selectOptions(screen.getByLabelText("Department"), "dep-2");
+    await user.type(screen.getByLabelText("Designation"), "Guest Faculty");
+    await user.click(screen.getByRole("button", { name: "Add doctor" }));
+    await waitFor(() => expect(callsTo("POST", "/api/opd/doctors")).toHaveLength(1));
+    expect(bodyOf("POST", "/api/opd/doctors")).toMatchObject({ displayName: "Dr. S.I Raza", designation: "Guest Faculty" });
+
+    const box = screen.getByTestId("designation-doc-1");
+    await user.type(box, "Senior Resident");
+    await user.tab();
+    await waitFor(() => expect(callsTo("PATCH", "/api/opd/doctors/doc-1")).toHaveLength(1));
+    expect(bodyOf("PATCH", "/api/opd/doctors/doc-1")).toEqual({ designation: "Senior Resident" });
+  });
+
+  it("2026-10-04 — the doctors tab names every unit head with no registration number (the prescription's Dept. Regn prints blank for them)", async () => {
+    setToken("t-1");
+    stubFetch({
+      ...MASTERS,
+      "GET /api/auth/me": { actor: { type: "user", id: "u1" }, permissions: { hospital: ["roster.read", "opd.masters.manage"], scoped: { department: {}, floor: {} } } },
+      "GET /api/roster/unit-heads-without-regn": [{ teamId: "t1", unitName: "General Medicine Unit I", userId: "u-ch", name: "Dr. Chandan" }],
+    });
+    renderWithProviders(<OpdAdmin />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Doctors" }));
+    expect(await screen.findByTestId("heads-without-regn")).toHaveTextContent("Dr. Chandan (General Medicine Unit I)");
+  });
+
   it("the schedules editor PUTs weekday as a NUMBER and slotMinutes as null when the field is blank", async () => {
     stubFetch({
       ...MASTERS,

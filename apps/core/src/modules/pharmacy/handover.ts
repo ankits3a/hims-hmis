@@ -21,6 +21,7 @@ import { dispenseHandedOver } from "./events";
 import { ownerCreditCovers } from "./credit";
 import { PharmacyError } from "./errors";
 import { registrationNoOf, requireRegisteredPharmacist } from "./pharmacists";
+import { quickDeskOn } from "./settings";
 import { batchTermsPerBase } from "./price";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
 import type { Actor } from "@hmis/contracts";
@@ -111,7 +112,8 @@ export async function handOverDispense(
       throw new PharmacyError("scheduled_needs_pharmacist", "a Schedule H/H1 dispense is completed by a registered pharmacist (Pharmacy Act 1948 §42) — call one to the window");
     }
     // P2 — the permission says the login may; the register says the person is a registered pharmacist today.
-    await requireRegisteredPharmacist(db, actor, now);
+    // Owner ruling 2026-10-02 — quick desk mode (`settings.ts`) does not ask for it; the permission above stays.
+    if (!(await quickDeskOn(db))) await requireRegisteredPharmacist(db, actor, now);
     if (input.identity === undefined || input.identity.value.trim() === "") {
       throw new PharmacyError("identity_confirmation_required", "confirm the person at the window: today's token, or the last four digits of the phone on the record");
     }

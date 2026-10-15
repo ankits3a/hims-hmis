@@ -23,7 +23,7 @@ export type { EncounterRow, QueueEntryRow, TimelineItem } from "./encounters";
 // ── PLAN 17a T4 / DD15 — the lab walk-in, opened by the module that owns visits (spec §4) ──
 export { PHARMACY_VISIT_TYPE, openPharmacyVisitInTx } from "./encounters";
 export type { OutsidePrescriber } from "./prescriptions";
-export { LAB_DEPARTMENT_CODE, joinQueue, openLabWalkin, openLabWalkinInTx, reviewAnchorFor } from "./encounters";
+export { LAB_DEPARTMENT_CODE, LAB_VISIT_TYPE, joinQueue, openLabWalkin, openLabWalkinInTx, reviewAnchorFor } from "./encounters";
 export type { JoinQueueResult, OpenLabWalkinInput, OpenVisitResult, ReviewAnchor } from "./encounters";
 export type { AdvisedTest } from "./consultation";
 // ── PLAN 16c T0a — the prescription read surface the dispensing counter consumes (spec §4) ──
@@ -50,7 +50,7 @@ export { findVisitByToken } from "./encounters";
 // PLAN 16c T4 — the prescriber on the Schedule H1 register (Rule 65(3): name and registration number).
 export { getDoctor } from "./masters";
 // PHARMACY P6 — the controlled-drug licence sheet names which doctors are trained under NDPS Rules r.2(ib).
-export { listDoctors } from "./masters";
+export { listDepartments, listDoctors } from "./masters";
 export type { DoctorRow } from "./masters";
 export type { PrescriptionRow } from "./encounters";
 export type { Eye, RxLine, TaperStep } from "./fhir";
@@ -84,3 +84,22 @@ export type { OpdReleaseDiagnosis, OpdReleaseVisit } from "./abdm-release";
 // ── ABDM S3 — a request for a patient's records from OTHER facilities rides the consult's own guard:
 //    the encounter's treating doctor, resolved from opd_doctors.user_id (D5), never from a role ──
 export { requireTreatingDoctor } from "./consultation";
+
+// MOBILE §3i (owner 2026-10-07) — "patients are waiting and you are not in", and the 40-minute crossing.
+export {
+  LONG_WAIT_MIN, NOT_IN_AFTER_MIN, NOT_IN_MAX_PER_DAY, NOT_IN_REPEAT_MIN, OPD_LONG_WAIT_KIND, OPD_NOT_IN_KIND,
+  OPD_QUEUE_REF_TYPE, queueNudgesAt, sweepQueueNudges,
+} from "./queue-nudges";
+export type { QueueNudge } from "./queue-nudges";
+
+/**
+ * MEDICINE NICKNAMES (decisions 0051, 0055) — the worker's door: the pipeline's dependencies from
+ * the server's settings (no model client while the switch is off) and the hourly runner.
+ */
+export { aliasDepsFrom } from "./alias-store";
+export { runAliasJob, runAliasProposals } from "./alias-runner";
+export type { AliasRunCaps, AliasRunReport } from "./alias-runner";
+
+// The owner's Appointments and Learning pages in the staff app (owner 2026-10-09): counts, read-only.
+export { ownerAppointments, ownerLearning } from "./owner-reads";
+export { runFlowLearning } from "./flow-learning";

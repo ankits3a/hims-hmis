@@ -5,7 +5,7 @@ import { pharmacyDispenseLines } from "../../kernel/db/schema";
 import { medicinesByIds, ndpsClassByMedicine } from "../formulary";
 import { itemsByIds } from "../materials";
 import {
-  PHARMACY_VISIT_TYPE, getDoctor, getVisit, issuePharmacyPaperPrescription, listDoctors, listVisits, openPharmacyVisitInTx, runRxChecks,
+  PHARMACY_VISIT_TYPE, getDoctor, getVisit, issuePharmacyPaperPrescription, listDepartments, listDoctors, listVisits, openPharmacyVisitInTx, runRxChecks,
 } from "../opd";
 import { captureDocument, getPatientSummaries, resolvePatientId } from "../patients";
 import { claimDispense } from "./claim";
@@ -15,6 +15,7 @@ import { PharmacyError } from "./errors";
 import { paperRxEntered, paperRxVisitOpened } from "./events";
 import { enqueueDispense, getDispense } from "./queue";
 import { requirePermission } from "./retail";
+import { quickDeskOn } from "./settings";
 import type { Actor } from "@hmis/contracts";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
@@ -88,7 +89,8 @@ export type PaperRxContext = {
   /** The patient's visits on `rxDate`; a paper attaches to one with no e-prescription. */
   /** `pharmacy`: the desk's own no-fee visit (2026-09-30), not a consultation. */
   visits: { encounterId: string; visitNo: string; doctorId: string | null; doctorName: string | null; hasPrescription: boolean; pharmacy: boolean }[];
-  doctors: { id: string; displayName: string; registrationNo: string | null }[];
+  /** `departmentName`: the unit the doctor sits in — the sheet filters its doctor list by it (owner 2026-10-02). */
+  doctors: { id: string; displayName: string; registrationNo: string | null; departmentId: string | null; departmentName: string | null }[];
 };
 
 type Visit = PaperRxContext["visits"][number];
@@ -127,7 +129,11 @@ export async function paperRxContext(db: Db, actor: Actor, patientId: string, rx
   await requirePermission(db, actor, PLACE, "entering a paper prescription");
   checkDate(rxDate, now);
   const patient = await canonicalPatient(db, actor, patientId);
-  const doctors = (await listDoctors(db, { activeOnly: true })).map((d) => ({ id: d.id, displayName: d.displayName, registrationNo: d.registrationNo }));
+  const unit = new Map((await listDepartments(db)).map((d) => [d.id, d.name] as const));
+  const doctors = (await listDoctors(db, { activeOnly: true })).map((d) => ({
+    id: d.id, displayName: d.displayName, registrationNo: d.registrationNo,
+    departmentId: d.departmentId ?? null, departmentName: d.departmentId == null ? null : unit.get(d.departmentId) ?? null,
+  }));
   return { patient, rxDate, visits: await visitsOn(db, actor, patient.id, rxDate), doctors };
 }
 
@@ -188,7 +194,8 @@ export async function enterPaperPrescription(
       { lineIdxs: controlled.map((x) => x.i) });
   }
   const scheduled = flags.some((f) => f !== null && (SCHEDULED_FLAGS as readonly string[]).includes(f));
-  if (scheduled && input.photo === undefined) {
+  // Owner ruling 2026-10-02 — quick desk mode (`settings.ts`): the photo is not asked for.
+  if (scheduled && input.photo === undefined && !(await quickDeskOn(db))) {
     throw new PharmacyError("prescription_required", "a Schedule H or H1 medicine needs the photo of the paper prescription");
   }
 

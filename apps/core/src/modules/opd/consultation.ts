@@ -1,6 +1,6 @@
 import { and, count, desc, eq, gte, lt } from "drizzle-orm";
 import { isEyeCode } from "@hmis/contracts";
-import type { Actor, Eye } from "@hmis/contracts";
+import type { Actor, DxSource, Eye, RxLineSource } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
 import { isNull } from "drizzle-orm";
@@ -40,7 +40,7 @@ export type AdvisedTest = {
  * One diagnosis as the doctor committed it: their words, the catalogue code if they picked one, and
  * — for an eye code only — which eye (board "Ophthal": ICD-10 has no laterality, so it rides beside).
  */
-export type NoteDiagnosis = { text: string; icd10Code: string | null; laterality?: Eye | null };
+export type NoteDiagnosis = { text: string; icd10Code: string | null; laterality?: Eye | null; source?: DxSource | null };
 
 /**
  * THE TAG SEPARATOR, AND IT IS NOT A COMMA. `tag-field.tsx` learned this on the first realistic
@@ -105,6 +105,7 @@ export type RxDraftLine = {
   drug: string; dose: string; route: string; frequency: string; durationDays: string | number | null;
   instructions: string; noSubstitution: boolean; medicineId?: string | null;
   eye?: "od" | "os" | "ou" | null; taper?: { timesPerDay: number; days: number }[] | null;
+  source?: RxLineSource;
 };
 
 /**
@@ -182,10 +183,21 @@ async function writeDiagnosisRows(
   */
   const rows = diagnosesOf(note);
   if (rows === null) return; // the note said nothing about diagnoses; leave what is there
+  /*
+    Decision 0050, P0 — where each diagnosis came from. The list is replaced whole, and not every
+    screen that saves it says where a row came from (the computer re-saving what the phone picked
+    must not erase "suggested"), and a screen reopened after a reload no longer knows. So the FIRST
+    source a diagnosis was committed with on this visit stands; a later save of the same diagnosis
+    cannot change it.
+  */
+  const had = await tx.select({ text: opdEncounterDiagnoses.text, icd10Code: opdEncounterDiagnoses.icd10Code, source: opdEncounterDiagnoses.source })
+    .from(opdEncounterDiagnoses).where(eq(opdEncounterDiagnoses.encounterId, encounterId));
+  const sourceOf = (d: NoteDiagnosis): string | null =>
+    had.find((h) => h.text === d.text && h.icd10Code === d.icd10Code)?.source ?? d.source ?? null;
   await tx.delete(opdEncounterDiagnoses).where(eq(opdEncounterDiagnoses.encounterId, encounterId));
   if (rows.length === 0) return;
   await tx.insert(opdEncounterDiagnoses).values(rows.map((d, seq) => ({
-    encounterId, seq, text: d.text, icd10Code: d.icd10Code,
+    encounterId, seq, text: d.text, icd10Code: d.icd10Code, source: sourceOf(d),
     /* An eye beside an ear or a chest code means nothing, so it is dropped here, not trusted from the client. */
     laterality: isEyeCode(d.icd10Code) ? d.laterality ?? null : null,
   })));
@@ -261,6 +273,53 @@ export function registerConsultStartGuard(key: string, guard: ConsultStartGuard)
 }
 
 /**
+ * ═══ THE VISIT WAS CLOSED UNDERNEATH THE DOCTOR'S SCREEN (owner ruling 2026-10-06) ═══
+ *
+ * A visit the doctor started and left open can now be closed from their own paper by the slip desk
+ * or the desk scribe. The doctor's screen may still be showing it. Its next save or completion must
+ * not answer "needs in_consultation, not completed" — that reads as a fault. It says what happened
+ * and where what they typed has gone (nowhere: the note and any unissued lines are kept).
+ */
+export function refuseIfClosedOnPaper(encounter: EncounterRow): void {
+  if (encounter.status === "completed" && encounter.completedVia === "paper") {
+    throw new OpdError(
+      "closed_on_paper_state_conflict",
+      "This visit has already been marked consulted from your paper prescription by the desk, so there is nothing left to complete here. What you typed is kept — open “My paper consultations” to check it or issue anything you had not issued.",
+      { encounterId: encounter.id, at: encounter.paperCompletedAt },
+    );
+  }
+}
+
+/**
+ * ═══ A TELE-CALL IS NOT A CONSULTATION UNTIL THE DOCTOR HAS SPOKEN TO THE PATIENT (owner 2026-10-09) ═══
+ *
+ * The server's guard, not the screen's: completing the visit and issuing its prescription are both
+ * refused until `tele_outcome` is 'spoke' (`tele.ts` records it). A screen that greys a button is a
+ * courtesy; this is the rule. An in-person visit never reaches the throw.
+ */
+export function refuseTeleBeforeSpoke(encounter: EncounterRow): void {
+  if (encounter.consultMode === "tele" && encounter.teleOutcome !== "spoke") {
+    throw new OpdError("tele_outcome_required", "Call the patient first, then record that you spoke to them", { encounterId: encounter.id });
+  }
+}
+
+/**
+ * Every consult-door verdict for a visit, first refusal first — WITHOUT the doctor's waiver applied.
+ * `startConsultation` reads the registry itself; this is the same question for the one other caller
+ * that closes a visit, the paper road (`paper-consult.ts`), which must not grow a second copy of
+ * "which guards exist".
+ */
+export async function consultDoorRefusal(
+  db: Db | Tx, encounter: EncounterRow,
+): Promise<{ guard: string; code: string; detail?: unknown } | null> {
+  for (const [key, guard] of consultStartGuards) {
+    const verdict = await guard(db, encounter);
+    if (!verdict.ok) return { guard: key, code: verdict.code, detail: verdict.detail };
+  }
+  return null;
+}
+
+/**
  * ═══ FD-32 — THE SAME SHAPE, ONE DESK EARLIER (OWNER RULING 2026-09-13) ═══
  *
  * Owner: *"I can see a patient who got the token but has not been billed yet is visible in vitals
@@ -273,6 +332,10 @@ export function registerConsultStartGuard(key: string, guard: ConsultStartGuard)
  * travels with them to every desk after it. One registry shared between the doors would make
  * "bypassed at vitals" silently mean "bypassed at consultation", which is a clinical decision
  * nobody made. Two registries, two verdicts, one bypass column that each reads for itself.
+ *
+ * OWNER RULING 2026-10-09: the decision has now been MADE — a visit the desk let through is seen
+ * by the doctor like any other (`startConsultation`). The registries stay two, and the consult door
+ * reads the bypass for itself, for ONE verdict code (`fee_unsettled`) and no other.
  *
  * Dependency-inverted exactly as the consult registry is: OPD owns the registry and the thrown
  * refusal, billing hands in a verdict function and imports no OPD internals. Keyed, so a second
@@ -290,6 +353,11 @@ export function registerVitalsStartGuard(key: string, guard: VitalsStartGuard): 
   };
 }
 
+/** The desk (FD-32) or the bay's emergency save let this visit past the counter: who, and their sentence, are on the row. */
+export function deskLetThrough(encounter: Pick<EncounterRow, "feeBypassBy" | "feeBypassReason">): boolean {
+  return encounter.feeBypassBy !== null && encounter.feeBypassReason !== null;
+}
+
 /**
  * Every registered verdict, first refusal wins — or `{ok:true}` when the door has already been
  * opened for this visit: by the front desk at the counter, or (owner ruling 2026-09-20) by the bay
@@ -303,7 +371,7 @@ export function registerVitalsStartGuard(key: string, guard: VitalsStartGuard): 
 export async function vitalsGateVerdict(
   db: Db | Tx, encounter: EncounterRow,
 ): Promise<{ ok: true } | { ok: false; code: string; detail?: unknown }> {
-  if (encounter.feeBypassBy !== null && encounter.feeBypassReason !== null) return { ok: true };
+  if (deskLetThrough(encounter)) return { ok: true };
   for (const guard of vitalsStartGuards.values()) {
     const verdict = await guard(db, encounter);
     if (!verdict.ok) return verdict;
@@ -312,7 +380,13 @@ export async function vitalsGateVerdict(
 }
 
 /**
- * ══════════ THE DOCTOR OPENS THE TOKEN (OWNER RULING 2026-09-20) ══════════
+ * ══════════ THE DOCTOR OPENS THE TOKEN (OWNER RULING 2026-09-20) — RETIRED 2026-10-09 ══════════
+ *
+ * RETIRED by the owner's ruling of 2026-10-09 (*"Doctor's screens must not show money"*; a visit
+ * the desk let through is an ordinary patient — see `startConsultation`). Nothing holds a token
+ * any more, no screen calls this, and no guard requires it. It is KEPT, unchanged, because an app
+ * build installed before the ruling may still call it and must get the answer it expects, and
+ * because what it wrote before the ruling is still honoured. What follows is the 2026-09-20 text.
  *
  * Owner: *"the emergency at the bay doesn't open the doctor's door. It waits for bill to be paid
  * until doctor opens the token from his dashboard manually. Currently the doctor have no screen to
@@ -379,7 +453,7 @@ export async function openUnpaidToken(
 }
 
 /** The encounter's newest queue entry (seq, never id — ledger §3.26) and its session's room: the doctor-day event fields. */
-async function entryWhere(tx: Tx, encounterId: string): Promise<{ sessionId: string; roomId: string | null; tokenNo: number }> {
+export async function entryWhere(tx: Tx, encounterId: string): Promise<{ sessionId: string; roomId: string | null; tokenNo: number }> {
   const entries = await tx
     .select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, encounterId))
     .orderBy(desc(opdQueueEntries.seq)).limit(1);
@@ -399,26 +473,48 @@ export async function startConsultation(
     throw new OpdError("encounter_state_conflict", `a consultation starts from waiting, not ${current.status}`);
   }
   // D8: every registered guard is consulted BEFORE any write. No guard registered ⇒ shipped behaviour.
-  for (const [key, guard] of consultStartGuards) {
+  /*
+    TELE-CALL (owner 2026-10-09). A tele visit EXISTS only because its appointment was covered at
+    the desk — an uncovered one opens no visit, so there is nothing here to hold and nothing to
+    waive. Its bill is raised when the doctor has spoken to the patient (`tele.ts`), so the
+    pay-before-consult guards, which ask for a settled invoice, are not asked of it.
+  */
+  for (const [key, guard] of current.consultMode === "tele" ? [] : consultStartGuards) {
     const verdict = await guard(db, current);
     if (!verdict.ok) {
       /*
-        ═══ THE DOCTOR HAS ALREADY DECIDED (OWNER RULING 2026-09-20) ═══
+        ═══ THE DESK LET THEM THROUGH, SO THE DOCTOR SEES THEM (OWNER RULING 2026-10-09) ═══
 
-        Owner: *"It waits for bill to be paid until doctor opens the token from his dashboard
-        manually."* `openUnpaidToken` is that decision, written down with a name and a sentence on
-        it, and this is where it is spent.
+        THE GUARD CHANGED HERE IS THE CONSULT-START FEE EXEMPTION. Owner, 2026-10-09: *"walk-in
+        rule, a (desk let through → patient shows in doctor's line, no mark)"* · *"make sure that
+        Doctor will not see 'paid' written or marked against any patient name or id. This is a
+        hospital not a clinic."* · *"Doctor's screens must not show money."*
 
-        IT EXCUSES ONE CODE AND NOT ONE GUARD. `fee_unsettled` is the money, and the money is the
-        only thing a doctor may decide to proceed without; a guard that starts refusing for a
-        clinical reason — a sealed patient, a closed session, a statute — must go on refusing a
-        doctor who has waived a BILL. Keying on the verdict rather than on the registry key is what
-        makes that true for guards this file has never heard of.
+        BEFORE (ruling 2026-09-20, decision 0037 §2): `fee_unsettled` was excused only when the
+        TREATING DOCTOR had opened the token with a typed reason (`consult_fee_override_by`); the
+        desk's bypass opened the bay and not this door.
+        NOW: `fee_unsettled` is also excused when the visit carries the desk's (or the bay's
+        emergency) recorded bypass — `deskLetThrough`, the same two columns, the same reason and
+        audit event `grantFeeBypass` has always written. The doctor is asked nothing. A visit
+        that is neither paid nor let through is refused exactly as before.
+
+        The doctor's own override is RETIRED, not removed: no screen calls `openUnpaidToken`,
+        nothing requires it, and it is still honoured so that a token a doctor opened before this
+        ruling — or an app build that has not updated — goes on working.
+
+        IT STILL EXCUSES ONE CODE AND NOT ONE GUARD. `fee_unsettled` is the money; a guard that
+        refuses for a clinical reason — a sealed patient, a closed session, a statute — goes on
+        refusing a visit the desk waved past a BILL. Keying on the verdict rather than on the
+        registry key is what makes that true for guards this file has never heard of.
       */
-      if (verdict.code === "fee_unsettled" && current.consultFeeOverrideBy !== null) continue;
+      if (verdict.code === "fee_unsettled" && (deskLetThrough(current) || current.consultFeeOverrideBy !== null)) continue;
       throw new OpdError(
         "consult_gate_refused",
-        `consult start refused by ${key}: ${verdict.code}`,
+        // The doctor's phone prints this sentence as it stands, and a doctor's screen says nothing
+        // about money (owner 2026-10-09). The code and the guard's name stay in `detail` for the desks.
+        verdict.code === "fee_unsettled"
+          ? "This patient is not ready for you yet — the front desk has to finish with them first."
+          : `consult start refused by ${key}: ${verdict.code}`,
         { guard: key, code: verdict.code, detail: verdict.detail },
       );
     }
@@ -472,6 +568,7 @@ export async function parkConsultation(
   const current = await getEncounter(db, encounterId);
   if (!current) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
   const doctor = await requireTreatingDoctor(db, actor, current);
+  refuseIfClosedOnPaper(current);
   if (current.status !== "in_consultation") {
     throw new OpdError("encounter_state_conflict", `a park needs in_consultation, not ${current.status}`);
   }
@@ -559,6 +656,7 @@ export async function saveConsultNote(
   const current = await getEncounter(db, encounterId);
   if (!current) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
   await requireTreatingDoctor(db, actor, current);
+  refuseIfClosedOnPaper(current);
   if (current.status !== "in_consultation") {
     throw new OpdError("encounter_state_conflict", `the consult note needs in_consultation, not ${current.status}`);
   }
@@ -593,6 +691,29 @@ export type CompleteConsultationInput = {
 };
 
 /**
+ * How many of the visit's drafted lines name a drug and are on NO issued prescription. A blank
+ * editor row is not a prescription. A draft whose every drug is already on the visit's current
+ * prescription is a clear that was lost (the tab closed between the issue and the clear) — the web
+ * treats it as stale for the same reason — and blocks nothing.
+ */
+async function unissuedDraftRows(db: Db, encounter: EncounterRow): Promise<number> {
+  const draft = Array.isArray(encounter.rxDraft) ? (encounter.rxDraft as { drug?: unknown }[]) : [];
+  const drugs = draft.map((r) => (typeof r?.drug === "string" ? r.drug.trim().toLowerCase() : "")).filter((d) => d !== "");
+  if (drugs.length === 0) return 0;
+  const issued = await db
+    .select({ lines: opdPrescriptions.lines })
+    .from(opdPrescriptions)
+    .where(and(eq(opdPrescriptions.encounterId, encounter.id), eq(opdPrescriptions.status, "active")))
+    .orderBy(desc(opdPrescriptions.version))
+    .limit(1);
+  const onPaper = new Set(
+    (Array.isArray(issued[0]?.lines) ? (issued[0]!.lines as { drug?: unknown }[]) : [])
+      .map((l) => (typeof l?.drug === "string" ? l.drug.trim().toLowerCase() : "")),
+  );
+  return drugs.filter((d) => !onPaper.has(d)).length;
+}
+
+/**
  * §11.1 completion. Either the visit ends (completed, the follow-up window stamped and evented) or it parks
  * in awaiting_results for the same-day return with results — which mints NO completion event, because the
  * consultation has not ended.
@@ -607,10 +728,33 @@ export async function completeConsultation(
   const current = await getEncounter(db, encounterId);
   if (!current) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
   const doctor = await requireTreatingDoctor(db, actor, current);
+  refuseIfClosedOnPaper(current);
   if (current.status !== "in_consultation") {
     throw new OpdError("encounter_state_conflict", `a completion needs in_consultation, not ${current.status}`);
   }
+  refuseTeleBeforeSpoke(current);
   assertLeaseFor(current, input.note?.leaseToken, now);
+  /*
+    ═══ PRODUCTION 2026-09-23 — COMPLETE MUST NOT DROP A PRESCRIPTION NOBODY ISSUED (the server's half, 2026-10-06) ═══
+
+    Encounter 01M36K6NZ7676HA11278QK9225 was completed 46 seconds after it started with medicines
+    typed and none issued; the pharmacy never got a ticket. The web closed that on the SCREEN (it
+    issues first, then completes and clears the draft in the same request) and the phone refused on
+    the PHONE. Neither is a guard: a client that completes without a word about the draft could
+    still lose one. So a completion that does NOT say what becomes of the draft is refused while the
+    visit holds written, unissued lines. A completion that DOES carry `note.rxDraft` — the web's
+    road, after issuing — is taken at its word, which is why its issue-then-complete still passes.
+  */
+  if (input.note?.rxDraft === undefined) {
+    const rows = await unissuedDraftRows(db, current);
+    if (rows > 0) {
+      throw new OpdError(
+        "rx_unissued_state_conflict",
+        `${rows} prescription line${rows === 1 ? " was" : "s were"} written and never issued — issue the prescription (or clear the lines) on the consultation screen, then complete`,
+        { rows },
+      );
+    }
+  }
   const cfg = await loadOpdConfig(db);
   const patch = noteColumns(input.note);
 

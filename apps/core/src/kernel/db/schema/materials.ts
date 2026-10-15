@@ -201,6 +201,27 @@ export const items = pgTable(
      * flag is "nobody has said so", never "safe".
      */
     manufacturer: text("manufacturer"),
+    /**
+     * OWNER 2026-10-02 — the maker and the marketer are two companies on a pack ("Mfd. by Cipla Ltd",
+     * "Mktd. by Cipla Health Ltd"), so they are two fields. `manufacturer` is the maker; this is the marketer.
+     * Free text, null when nobody has entered it. Rows written before this column hold whatever one name
+     * was on file in `manufacturer`, and nothing moves them.
+     */
+    marketedBy: text("marketed_by"),
+    /**
+     * OWNER 2026-10-02 — what the pack itself prints, kept on the item so a recall notice, an inspector and the
+     * counter read it without the strip in hand. All four are null until somebody enters them: an unset value
+     * is "nobody has said so".
+     *   - `mfg_licence_no`: the maker's manufacturing licence ("Mfg. Lic. No. M/563/2010").
+     *   - `pharmacopoeia`: the standard the label claims — IP, BP, USP … Free text: the set is the label's, not ours.
+     *   - `lasa_note`: WHICH names this one is confused with, in tall-man letters ("aciCLOVIR vs ganCICLOVIR").
+     *     `lasa` stays the flag; this is the sentence a pharmacist reads beside it.
+     *   - `storage_max_c`: "store below 25 °C" as a number. `storage_class` stays the category the cold chain keys on.
+     */
+    mfgLicenceNo: text("mfg_licence_no"),
+    pharmacopoeia: text("pharmacopoeia"),
+    lasaNote: text("lasa_note"),
+    storageMaxC: integer("storage_max_c"),
     leadTimeDays: integer("lead_time_days"),
     lasa: boolean("lasa").notNull().default(false),
     highAlert: boolean("high_alert").notNull().default(false),
@@ -229,6 +250,7 @@ export const items = pgTable(
      */
     check("items_merged_ck", sql`(${t.mergedIntoItemId} is null) = (${t.mergedAt} is null) and (${t.mergedIntoItemId} is null or (${t.mergedIntoItemId} <> ${t.id} and not ${t.active}))`),
     check("items_class_ck", sql`${t.class} in ('drug', 'consumable', 'consumable_dated', 'reagent', 'implant', 'stationery', 'linen', 'gas', 'asset', 'service')`),
+    check("items_storage_max_c_ck", sql`${t.storageMaxC} is null or ${t.storageMaxC} between -80 and 60`),
     check("items_lead_time_ck", sql`${t.leadTimeDays} is null or ${t.leadTimeDays} between 1 and 365`),
     check("items_storage_class_ck", sql`${t.storageClass} in ('ambient', 'cold_2_8', 'frozen', 'narcotic', 'flammable')`),
     /**
@@ -880,6 +902,16 @@ export const purchaseOrderLines = pgTable(
     qtyPacks: integer("qty_packs").notNull(),
     freePacks: integer("free_packs").notNull().default(0),
     ratePaise: bigint("rate_paise", { mode: "number" }).notNull(),
+    /**
+     * OWNER 2026-10-02 — THE VENDOR'S TRADE DISCOUNT AS ITS OWN FIGURE. `list_rate_paise` is the rate per pack
+     * before the discount and `discount_bps` the discount (1250 = 12.5%). `rate_paise` STAYS the NET rate per
+     * pack — `round(list × (10000 − bps) / 10000)` — and it is the only rate anything downstream reads: the
+     * line total, the order's approval tier, the GRN's unit cost, the three-way match, Tally. So recording a
+     * discount changes no money path; it only keeps what the net rate was made of. A row written before this
+     * column, or with no discount named, has a null list rate and a zero discount: its list rate is its rate.
+     */
+    listRatePaise: bigint("list_rate_paise", { mode: "number" }),
+    discountBps: integer("discount_bps").notNull().default(0),
     gstRateBps: integer("gst_rate_bps").notNull(),
     mrpPaise: bigint("mrp_paise", { mode: "number" }),
     lineTotalPaise: bigint("line_total_paise", { mode: "number" }).notNull(),
@@ -890,6 +922,7 @@ export const purchaseOrderLines = pgTable(
     uniqueIndex("purchase_order_lines_item_ux").on(t.purchaseOrderId, t.itemId),
     check("purchase_order_lines_qty_ck", sql`${t.qtyPacks} > 0 and ${t.freePacks} >= 0 and ${t.multiplier} > 0`),
     check("purchase_order_lines_money_ck", sql`${t.ratePaise} >= 0 and ${t.gstRateBps} >= 0 and ${t.lineTotalPaise} = ${t.qtyPacks} * ${t.ratePaise}`),
+    check("purchase_order_lines_discount_ck", sql`${t.discountBps} between 0 and 10000 and (${t.discountBps} = 0 or ${t.listRatePaise} is not null) and (${t.listRatePaise} is null or ${t.listRatePaise} >= ${t.ratePaise})`),
     check("purchase_order_lines_received_ck", sql`${t.receivedBase} >= 0 and ${t.freeReceivedBase} >= 0`),
   ],
 );

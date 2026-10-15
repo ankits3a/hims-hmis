@@ -1,0 +1,1 @@
+ALTER TABLE "opd_doctors" ADD COLUMN "designation" text;

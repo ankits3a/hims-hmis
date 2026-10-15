@@ -1,8 +1,9 @@
 import { createContext, useContext } from "react";
 import type { WirePatientHit, WireRegisterBody } from "../../lib/patients-api";
-import type { WireDepartment, WireDoctorSummary, WireSlot } from "../../lib/opd-api";
+import type { WireDepartment, WireDoctorSummary, WireMoveTender, WireSlot, WireTimelineItem } from "../../lib/opd-api";
 import type { WireFeeQuote, WireIssueInvoiceResult, TenderMode } from "../../lib/billing-api";
 import type { WireRecognition } from "../../lib/membership-api";
+import type { WireOpdUnit } from "../../lib/roster-api";
 import type { BillLine, DeptQueue, Lane, LogLine, OpenVisit, Seat, Stage } from "./model";
 
 /**
@@ -164,7 +165,28 @@ export type Form = {
   guardianAuthorityRecords: boolean;
   // how it gets paid for
   coverages: CoverageDraft[];
+  /*
+    Allergies told at the counter (owner, 2026-10-01). NOT part of `POST /patients`: `enrol` posts
+    each to `/patients/:id/allergies` once the UHID exists. `allergyPending` is the row still in the
+    box — typed, not yet added — and it is saved too, so Register never drops an allergen.
+  */
+  allergies: AllergyDraft[];
+  allergyPending: AllergyDraft;
 };
+
+/** `saltId` / `allergenClass` are set only when the clerk PICKED a suggestion; free text carries neither. */
+export type AllergyDraft = {
+  substance: string; severity: "mild" | "moderate" | "severe";
+  saltId: string | null; allergenClass: string | null;
+};
+export const EMPTY_ALLERGY: AllergyDraft = { substance: "", severity: "mild", saltId: null, allergenClass: null };
+
+/** Every allergy the form holds, the one still in the box included. */
+export function allergiesOf(f: Pick<Form, "allergies" | "allergyPending">): AllergyDraft[] {
+  const p = f.allergyPending.substance.trim();
+  if (p === "") return f.allergies;
+  return [...f.allergies.filter((a) => a.substance.toLowerCase() !== p.toLowerCase()), { ...f.allergyPending, substance: p }];
+}
 
 export const EMPTY_FORM: Form = {
   name: "", phone: "", age: "", sex: "", address: "",
@@ -181,6 +203,7 @@ export const EMPTY_FORM: Form = {
   guardianAuthorityMessages: true, guardianAuthorityBills: true,
   guardianAuthorityConsents: false, guardianAuthorityRecords: false,
   coverages: [],
+  allergies: [], allergyPending: { substance: "", severity: "mild", saltId: null, allergenClass: null },
 };
 
 export type Session = {
@@ -244,7 +267,8 @@ export type Session = {
    * opened from a HISTORY row — a visit that is not the one in hand, and therefore not derivable
    * from `s.visit`. Null means "the visit in hand", which is what the dock's own entry opens.
    */
-  papersFor: { encounterId: string; when: string | null } | null;
+  /** Owner 2026-10-05 — `visit` is the history row the card was opened from (its header and whether it may move). */
+  papersFor: { encounterId: string; when: string | null; visit?: WireTimelineItem } | null;
   drawer: boolean;
   answer: string | null;
   /** Wall-clock ms the person arrived at the desk — the "2 min at desk" figure on the done stage. */
@@ -284,6 +308,10 @@ export type DeskApi = {
   summaries: WireDoctorSummary[];
   /** The board, grouped by department and ordered by the shortest open line. */
   queues: DeptQueue[];
+  /** 20-U U7 — the roster unit(s) holding each OPD department's clinic today, by OPD department id. */
+  opdUnits: ReadonlyMap<string, readonly WireOpdUnit[]>;
+  /** 2026-10-04 (owner) — "Unit I", "Guest Faculty": what the desk writes beside a doctor's name (`useDoctorLabel`). */
+  doctorLabel: (doctor: { userId: string; designation?: string | null }) => string | null;
   quote: WireFeeQuote | null;
   /** The live bill, folded off the server's own priced draft — never re-added on the client. */
   bill: { lines: BillLine[]; totalPaise: number; free: boolean };
@@ -318,7 +346,8 @@ export type DeskApi = {
   runTriage: (text: string) => void;
   assign: (departmentId: string, doctorId: string | null) => Promise<void>;
   unassign: () => void;
-  holdFutureSlot: (doctorId: string, slot: WireSlot, departmentName: string, doctorName: string) => Promise<void>;
+  /** `tele` is the booking's "how" (owner 2026-10-09): absent for an in-person booking, the number for a tele-call. */
+  holdFutureSlot: (doctorId: string, slot: WireSlot, departmentName: string, doctorName: string, tele?: { mode?: "tele"; telePhone?: string }) => Promise<void>;
   presentCoupon: (code: string) => void;
   presentSlip: (code: string) => void;
   /** `ref` is REQUIRED by the server for anything but cash; the bill stage arms and then calls. */
@@ -337,6 +366,12 @@ export type DeskApi = {
    * the server. Refused once money has been taken: that is a credit note, not a desk correction.
    */
   changeDoctor: (reason: string) => Promise<void>;
+  /**
+   * Owner 2026-10-05 — "Wrong department — move patient": the server abandons this visit and opens
+   * one in `departmentId` with `doctorId`, in one act. `null` when it moved; otherwise the refusal,
+   * for the panel to show beside its own button.
+   */
+  moveDepartment: (departmentId: string, doctorId: string, reason: string, tenders?: WireMoveTender[]) => Promise<string | null>;
   /**
    * FD-18 — correct a misread visit type (the owner's billing override). Not a discount: the fee
    * quote re-derives from the corrected type, so a revisit is free because it IS a revisit.
@@ -395,6 +430,19 @@ export function formAgeYears(f: Pick<Form, "age" | "dob" | "ageMode">): number |
   const monthDiff = now.getUTCMonth() - d.getUTCMonth();
   if (monthDiff < 0 || (monthDiff === 0 && now.getUTCDate() < d.getUTCDate())) years -= 1;
   return years >= 0 && years <= 130 ? years : null;
+}
+
+/*
+  ONE BOX, AGE OR DATE OF BIRTH (owner 2026-10-01) — `parseAgeOrDob` lives in
+  packages/contracts/src/desk-counter.ts since 2026-10-06; the phone's registration reads the same box.
+*/
+export { parseAgeOrDob } from "../../../../../packages/contracts/src/desk-counter";
+export type { AgeOrDob } from "../../../../../packages/contracts/src/desk-counter";
+/** The box's text for a form that already holds an age or a date of birth (a prefill, an ABHA). */
+export function ageOrDobText(f: Pick<Form, "age" | "dob" | "ageMode">): string {
+  if (f.ageMode !== "dob") return f.age;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(f.dob);
+  return m === null ? "" : `${m[3]!}/${m[2]!}/${m[1]!}`;
 }
 
 /** MAJORITY_AGE_YEARS on the server. A known minor needs a guardian; an unknown age does not. */

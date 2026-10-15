@@ -102,6 +102,68 @@ describe("the desk's paper-prescription door (2026-09-30)", () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
+  /* Owner ruling 2026-10-02 — quick desk mode: found → medicines → bill, with no photo asked for. */
+  it("quick desk mode: a found patient opens the sheet at once, the unit filter narrows the doctors, and an H1 line saves with no photo", async () => {
+    mockRoutes(base({
+      "GET /api/pharmacy/settings": { status: 200, body: { settings: { quickDesk: true, updatedBy: "u-admin", updatedAt: "2026-10-02T05:00:00.000Z" } } },
+      "GET /api/pharmacy/paper-rx/context": { status: 200, body: { ...CONTEXT, visits: [], doctors: [
+        { id: "doc1", displayName: "Dr Sen", registrationNo: "BMC/12345", departmentId: "dep-med", departmentName: "Medicine" },
+        { id: "doc2", displayName: "Dr Rao", registrationNo: "BMC/777", departmentId: "dep-ent", departmentName: "ENT" },
+      ] } },
+      "POST /api/pharmacy/paper-rx": { status: 201, body: TICKET },
+      "GET /api/pharmacy/dispenses/d9": { status: 200, body: TICKET },
+    }));
+    renderWithProviders(<PharmacyDesk ticketId={null} />);
+    expect(await screen.findByTestId("desk-quick-mode")).toHaveTextContent("Quick desk mode");
+    await userEvent.type(screen.getByRole("textbox", { name: /slip QR/ }), "U0011{enter}");
+    const sheet = await screen.findByTestId("paper-rx-sheet"); // no door to press
+    await userEvent.selectOptions(await within(sheet).findByTestId("paper-rx-unit"), "dep-ent");
+    const doctor = within(sheet).getByTestId("paper-rx-doctor");
+    expect(within(doctor).queryByRole("option", { name: /Dr Sen/ })).toBeNull();
+    await userEvent.selectOptions(doctor, "doc2");
+    await userEvent.type(within(sheet).getByPlaceholderText(/Search the shelf/), "aze");
+    await userEvent.click(await within(sheet).findByRole("button", { name: /Azee/ }));
+    await userEvent.type(within(sheet).getByRole("textbox", { name: "Qty Azee" }), "3");
+    expect(within(sheet).queryByText("required — a Schedule H or H1 medicine")).toBeNull();
+    await userEvent.click(within(sheet).getByTestId("paper-rx-save"));
+    await waitFor(() => expect(posted("/pharmacy/paper-rx")).toEqual([{
+      patientId: "p1", doctorId: "doc2", rxDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) as unknown,
+      lines: [{ itemId: "i-azee", qtyBase: 3 }],
+    }]));
+  });
+
+  /* Owner, staging 2026-10-01: "I am not seeing any suggested patient name as I type." */
+  it("suggests registered patients as the name is typed; a tap finds that patient and offers the paper door", async () => {
+    mockRoutes(base({
+      "GET /api/pharmacy/find/suggest": { status: 200, body: { items: [{ ...PATIENT, restricted: false, hint: "female · 40y · ••3344" }] } },
+    }));
+    renderWithProviders(<PharmacyDesk ticketId={null} />);
+    await userEvent.type(screen.getByRole("textbox", { name: /slip QR/ }), "sun");
+    const row = await screen.findByTestId("desk-suggest-U0011");
+    expect(row).toHaveTextContent("Sunita Devi");
+    expect(row).toHaveTextContent("••3344");
+    await userEvent.click(row);
+    const asked = vi.mocked(fetch).mock.calls.map(([input]) => String(input)).filter((u) => u.includes("/pharmacy/find?"));
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toContain("q=U0011");
+    expect(await screen.findByTestId("desk-paper-door")).toHaveTextContent("Sunita Devi");
+  });
+
+  /* Owner, staging 2026-10-02: a billed patient kept opening the finished ticket — "no way to restart a fresh billing cycle". */
+  it("a patient already handed over today: the desk says so, offers a new paper bill, and can still open the last ticket", async () => {
+    mockRoutes(base({
+      "GET /api/pharmacy/find": { status: 200, body: { kind: "none", door: "uhid", reason: "no_prescription_today", patient: PATIENT, lastDispenseId: "d-old" } },
+    }));
+    renderWithProviders(<PharmacyDesk ticketId={null} />);
+    await userEvent.type(screen.getByRole("textbox", { name: /slip QR/ }), "U0011{enter}");
+    expect(await screen.findByText("Today's medicines for that patient are already handed over.")).toBeInTheDocument();
+    const door = await screen.findByTestId("desk-paper-door");
+    expect(door).toHaveTextContent("Sunita Devi already collected today's medicines");
+    expect(within(door).getByRole("button", { name: "Dispense from a paper prescription" })).toBeEnabled();
+    await userEvent.click(within(door).getByTestId("desk-see-last"));
+    expect(navigate).toHaveBeenCalledWith({ to: "/pharmacy/desk/$ticketId", params: { ticketId: "d-old" } });
+  });
+
   it("nobody found → Register (prefilled with the typed name) → the paper sheet opens on the new patient, with a no-fee visit", async () => {
     mockRoutes(base({
       "GET /api/pharmacy/find": { status: 200, body: { kind: "none", door: "uhid", reason: "not_found" } },

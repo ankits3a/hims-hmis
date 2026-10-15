@@ -69,6 +69,8 @@ describe("FD-24 T1: the print outbox", () => {
     // Gap A6 — the stickers go to the label printer, never the 72 mm bill roll.
     expect(DESTINATION_OF.pharmacy_rack_label).toBe("pharmacy_label");
     expect(DESTINATION_OF.pharmacy_strip_label).toBe("pharmacy_label");
+    // 20-U U8 — a staff document a head signs: the office's A4, never the patients' front desk.
+    expect(DESTINATION_OF.roster_duty_evidence).toBe("office_a4");
   });
 
   /**

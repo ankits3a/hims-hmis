@@ -5,8 +5,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { EPISODE_SERIAL_DIGITS, EPISODE_SERIES, nextEpisodeNo } from "../../kernel/episodes/series";
 import { withTx } from "../../kernel/db/client";
 import {
-  opdDepartments, opdDoctors, opdEncounterDiagnoses, opdEncounters, opdPrescriptions, opdQueueEntries, opdQueueSessions, opdVitals, users,
-} from "../../kernel/db/schema";
+  opdDepartments, opdDoctors, opdEncounterDiagnoses, opdEncounters, opdPrescriptions, opdQueueEntries, opdQueueSessions, opdVitals, users, opdAppointments } from "../../kernel/db/schema";
 import { startInstance, transition, WorkflowError } from "../../kernel/workflow/instances";
 import { getPatient, listMergedLoserIds, resolvePatientId } from "../patients";
 import { encounterFeeStatuses } from "../billing";
@@ -16,6 +15,7 @@ import type { Icd11Ref } from "../cds";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { loadOpdConfig } from "./config";
 import { OpdError } from "./errors";
+import { carryCorrectedVitals } from "./vitals-carry";
 import { patientCheckedIn, visitAbandoned, visitOpened, visitTransferred, visitReclassified,
 } from "./events";
 import { allocateToken, getOrCreateSession, roomForDoctorDay } from "./sessions";
@@ -71,6 +71,12 @@ export type OpenVisitInput = {
    * behaviour, and the appointment check-in path never defers.
    */
   join?: "queue" | "defer";
+  /**
+   * OWNER 2026-10-11 — `"lab"` is the lab counter's walk-in: a visit to the LABORATORY that is not an
+   * OPD consultation. Every OPD reader (doctor lists, OPD reports, fee hooks, the front desk) reads
+   * `type = 'opd'`, the way the pharmacy's own visit (`type = 'pharmacy'`) is kept out of them.
+   */
+  encounterType?: "opd" | "lab";
 };
 export type OpenVisitResult = {
   encounter: EncounterRow; queueEntry: QueueEntryRow; tokenNo: number; sessionId: string; roomId: string | null;
@@ -121,6 +127,27 @@ export async function openVisit(db: Db, actor: Actor, input: OpenVisitInput, now
 }
 
 /**
+ * What kind of visit a NEW visit in `departmentId` would be for this patient chain, now — the
+ * department's own follow-up window and referral anchor. `openVisitInTx` classifies with it, and the
+ * department move (owner 2026-10-05) previews and re-classifies with the SAME function, so the fee a
+ * clerk is shown before moving is the fee the new visit opens with.
+ */
+export async function visitTypeIn(
+  tx: Db | Tx, chainIds: string[], departmentId: string, now: Date, referredNow = false,
+): Promise<VisitType> {
+  const anchorRows = await tx
+    .select({ consultCompletedAt: opdEncounters.consultCompletedAt, followUpDays: opdEncounters.followUpDays })
+    .from(opdEncounters)
+    .where(and(inArray(opdEncounters.patientId, chainIds), eq(opdEncounters.departmentId, departmentId), eq(opdEncounters.status, "completed")))
+    .orderBy(desc(opdEncounters.consultCompletedAt))
+    .limit(1);
+  const a = anchorRows[0];
+  // The referral opening THIS visit is its own anchor, at this moment; otherwise the latest earlier one.
+  const referredAt = referredNow ? now : (await referralAnchorFor(tx, chainIds, departmentId))?.referredAt ?? null;
+  return classifyVisit(a && a.consultCompletedAt ? { consultCompletedAt: a.consultCompletedAt, followUpDays: a.followUpDays ?? 7 } : null, now, referredAt);
+}
+
+/**
  * Tx-first core (also called by appointments.checkIn inside ITS transaction). patientId MUST already be canonical.
  *
  * OVERLOADED on `join` so the DEFERRED branch cannot leak nulls into the shipped callers: the
@@ -131,6 +158,38 @@ export async function openVisitInTx(tx: Tx, actor: Actor, input: Omit<OpenVisitI
 export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput & { chainIds: string[] }, now: Date): Promise<OpenVisitResult | OpenVisitDeferredResult>;
 export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput & { chainIds: string[] }, now: Date): Promise<OpenVisitResult | OpenVisitDeferredResult> {
   if (actor.type !== "user") throw new OpdError("user_actor_required");
+  return openVisitCore(tx, actor, input, now, false);
+}
+
+/**
+ * ═══ A TELE-CALL'S VISIT IS OPENED BY THE SYSTEM, AT ITS SLOT (owner 2026-10-09) ═══
+ *
+ * *"Doctor will see the patient name in his queue only when the patient have paid."* Nobody walks up
+ * to a counter for a tele-call, so no user opens its visit: `tele.ts` calls this for an appointment
+ * whose slot has come and whose fee the desk has taken. It is the SAME opening as any other — the
+ * same classifier, so the free follow-up window starts exactly as an in-person visit's does; the
+ * same visit number; a token in the department's own series — with three differences, all of them
+ * about there being no patient in the building:
+ *   · no token slip and no A4 sheet are queued (there is nobody to hand them to);
+ *   · the queue entry is born `waiting`, not `waiting_vitals` — there is nobody to weigh, so the
+ *     bay never holds it — and the visit is moved `registered → waiting` here, by the named system
+ *     actor, the arrangement `patient-absent.ts` uses for the guardian's visit;
+ *   · `consult_mode` is 'tele', which is what every later read keys on.
+ */
+export const TELE_OPEN_ACTOR: Actor = { type: "system", id: "opd-tele-open" };
+export async function openTeleVisitInTx(
+  tx: Tx,
+  input: { patientId: string; departmentId: string; doctorId: string; appointment: { id: string; slotStart: Date }; chainIds: string[] },
+  now: Date,
+): Promise<OpenVisitResult> {
+  const opened = await openVisitCore(tx, TELE_OPEN_ACTOR, input, now, true) as OpenVisitResult;
+  const encounter = await moveEncounter(tx, TELE_OPEN_ACTOR, opened.encounter, "waiting", {}, now);
+  return { ...opened, encounter };
+}
+
+async function openVisitCore(
+  tx: Tx, actor: Actor, input: OpenVisitInput & { chainIds: string[] }, now: Date, tele: boolean,
+): Promise<OpenVisitResult | OpenVisitDeferredResult> {
   await loadOpdConfig(tx); // opd_not_configured before any write
   const doctor = (await tx.select().from(opdDoctors).where(eq(opdDoctors.id, input.doctorId)))[0];
   if (!doctor) throw new OpdError("unknown_doctor");
@@ -141,16 +200,7 @@ export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput 
   if (doctor.departmentId !== dept.id) throw new OpdError("doctor_department_mismatch");
 
   const serviceDate = istDate(now);
-  const anchorRows = await tx
-    .select({ consultCompletedAt: opdEncounters.consultCompletedAt, followUpDays: opdEncounters.followUpDays })
-    .from(opdEncounters)
-    .where(and(inArray(opdEncounters.patientId, input.chainIds), eq(opdEncounters.departmentId, dept.id), eq(opdEncounters.status, "completed")))
-    .orderBy(desc(opdEncounters.consultCompletedAt))
-    .limit(1);
-  const a = anchorRows[0];
-  // The referral opening THIS visit is its own anchor, at this moment; otherwise the latest earlier one.
-  const referredAt = input.referredFromEncounterId !== undefined ? now : (await referralAnchorFor(tx, input.chainIds, dept.id))?.referredAt ?? null;
-  const visitType = classifyVisit(a && a.consultCompletedAt ? { consultCompletedAt: a.consultCompletedAt, followUpDays: a.followUpDays ?? 7 } : null, now, referredAt);
+  const visitType = await visitTypeIn(tx, input.chainIds, dept.id, now, input.referredFromEncounterId !== undefined);
 
   const deskWords = normaliseDeskComplaint(input.deskComplaint);
   const encounterId = newId();
@@ -164,6 +214,8 @@ export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput 
   const [encounter] = await tx.insert(opdEncounters).values({
     id: encounterId, visitNo, patientId: input.patientId, workflowInstanceId: instanceId, departmentId: dept.id, doctorId: doctor.id,
     appointmentId: input.appointment?.id ?? null, serviceDate, visitType,
+    ...(input.encounterType === "lab" ? { type: LAB_VISIT_TYPE } : {}),
+    ...(tele ? { consultMode: "tele" } : {}),
     intendedPayer: input.intendedPayer ?? "self", referralSource: input.referralSource ?? null, referrerName: input.referrerName ?? null,
     referredFromEncounterId: input.referredFromEncounterId ?? null,
     // Trimmed, and an empty string is stored as NULL: "" is not a slip, and a blank code reaching
@@ -190,7 +242,7 @@ export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput 
     return { encounter: encounter!, queueEntry: null, tokenNo: null, sessionId: null, roomId, visitType, doctorScheduledToday: roomId !== null };
   }
 
-  const joined = await joinSessionInTx(tx, { id: encounterId, doctorId: doctor.id, serviceDate, departmentId: doctor.departmentId, patientId: input.patientId, visitType }, input.appointment ?? null, actor);
+  const joined = await joinSessionInTx(tx, { id: encounterId, doctorId: doctor.id, serviceDate, departmentId: doctor.departmentId, patientId: input.patientId, visitType }, input.appointment ?? null, actor, tele ? { tele: true, now } : undefined);
   await appendEvent(tx, visitOpened.make({ ...env, payload: {
     ...openedPayload, sessionId: joined.sessionId, roomId: joined.roomId, tokenNo: joined.tokenNo,
   } }));
@@ -198,6 +250,15 @@ export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput 
     encounterId, patientId: input.patientId, doctorId: doctor.id, serviceDate,
     sessionId: joined.sessionId, roomId: joined.roomId, tokenNo: joined.tokenNo, kind: "arrival",
   } }));
+  // #773 — a replacement for a desk-corrected visit whose vitals were taken carries them (`vitals-carry.ts`).
+  const carried = tele ? null : await carryCorrectedVitals(tx, actor, encounterId, now);
+  if (carried !== null) {
+    const queueEntry = (await tx.select().from(opdQueueEntries).where(eq(opdQueueEntries.id, joined.queueEntry.id)))[0]!;
+    return {
+      encounter: carried, queueEntry, tokenNo: joined.tokenNo, sessionId: joined.sessionId,
+      roomId: joined.roomId, visitType, doctorScheduledToday: roomId !== null,
+    };
+  }
   return {
     encounter: encounter!, queueEntry: joined.queueEntry, tokenNo: joined.tokenNo, sessionId: joined.sessionId,
     roomId: joined.roomId, visitType, doctorScheduledToday: roomId !== null,
@@ -225,6 +286,8 @@ async function joinSessionInTx(
   encounter: { id: string; doctorId: string; serviceDate: string; departmentId: string | null; patientId: string; visitType: VisitType },
   appointment: { id: string; slotStart: Date } | null,
   actor: Actor,
+  /** A tele-call: born `waiting` (no bay), and no paper is queued. See `openTeleVisitInTx`. */
+  tele?: { tele: true; now: Date },
 ): Promise<{ queueEntry: QueueEntryRow; tokenNo: number; sessionId: string; roomId: string | null }> {
   const roomId = await roomForDoctorDay(tx, encounter.doctorId, encounter.serviceDate);
   const session = await getOrCreateSession(tx, encounter.doctorId, encounter.serviceDate, roomId);
@@ -235,8 +298,11 @@ async function joinSessionInTx(
   const tokenNo = await allocateToken(tx, encounter.departmentId, encounter.serviceDate);
   const [queueEntry] = await tx.insert(opdQueueEntries).values({
     id: newId(), sessionId: session.id, encounterId: encounter.id, tokenNo,
-    kind: appointment ? "appointment" : "walk_in", appointmentAt: appointment?.slotStart ?? null, status: "waiting_vitals",
+    kind: appointment ? "appointment" : "walk_in", appointmentAt: appointment?.slotStart ?? null,
+    ...(tele === undefined ? { status: "waiting_vitals" } : { status: "waiting", eligibleAt: tele.now }),
   }).returning();
+  // Nobody is at the counter to be handed a slip or a sheet.
+  if (tele !== undefined) return { queueEntry: queueEntry!, tokenNo, sessionId: session.id, roomId: session.roomId };
 
   /*
     ═══ FD-24 T5 — THE PAPER IS QUEUED HERE, AND HERE IS THE ONLY HONEST PLACE FOR IT ═══
@@ -269,6 +335,16 @@ async function joinSessionInTx(
     moment the stamp has to be true is the moment paper comes out. The queue row keeps identifiers
     and nothing else, which is what it was for.
   */
+  /**
+   * OWNER 2026-10-11 — a LABORATORY visit (the lab desk's walk-in, `openLabWalkinInTx`) is not an OPD
+   * consultation and gets no OPD paper: no token slip, no A4 prescription sheet. The lab prints its own
+   * report. ("the visit created in lab counter is seen as OPD as I can see an OPD slip generated.")
+   */
+  const [deptRow] = encounter.departmentId === null ? [undefined]
+    : await tx.select({ code: opdDepartments.code }).from(opdDepartments).where(eq(opdDepartments.id, encounter.departmentId));
+  if (deptRow?.code === LAB_DEPARTMENT_CODE) {
+    return { queueEntry: queueEntry!, tokenNo, sessionId: session.id, roomId: session.roomId };
+  }
   await enqueuePrintJob(tx, {
     document: "opd_token_slip",
     params: { encounterId: encounter.id },
@@ -351,6 +427,12 @@ export async function joinQueueInTx(tx: Tx, actor: Actor, encounterId: string, n
       sessionId: joined.sessionId, roomId: joined.roomId, tokenNo: joined.tokenNo, kind: "arrival",
     },
   }));
+  // #773 — a bill-first replacement for a desk-corrected visit gets its carried vitals when its token is born.
+  const carried = await carryCorrectedVitals(tx, actor, encounter.id, now);
+  if (carried !== null) {
+    const queueEntry = (await tx.select().from(opdQueueEntries).where(eq(opdQueueEntries.id, joined.queueEntry.id)))[0]!;
+    return { encounter: carried, ...joined, queueEntry, alreadyJoined: false };
+  }
   return { encounter, ...joined, alreadyJoined: false };
 }
 
@@ -461,6 +543,8 @@ export async function reviewAnchorFor(
  * §9.9's runbook act.**
  */
 export const LAB_DEPARTMENT_CODE = "LAB";
+/** OWNER 2026-10-11 — the lab counter's walk-in visit type (see `openLabWalkinInTx`). */
+export const LAB_VISIT_TYPE = "lab";
 
 export type OpenLabWalkinInput = {
   patientId: string;
@@ -482,7 +566,7 @@ const LAB_WALKIN_CLOSED_STATES = ["completed", "abandoned"] as const;
 
 export async function openLabWalkinInTx(
   tx: Tx, actor: Actor, input: OpenLabWalkinInput & { chainIds: string[] }, now: Date,
-): Promise<OpenVisitResult> {
+): Promise<OpenVisitDeferredResult> {
   if (actor.type !== "user") throw new OpdError("user_actor_required");
 
   const dept = (await tx.select().from(opdDepartments).where(eq(opdDepartments.code, LAB_DEPARTMENT_CODE)))[0];
@@ -598,7 +682,16 @@ export async function openLabWalkinInTx(
     doctorId = labDoctors[0]!.id;
   }
 
+  /**
+   * OWNER 2026-10-11 — "if the visit in lab was walkin then how came an OPD slip is created? … if the
+   * report is handed to the patient then why is this visit still open?" The walk-in is a `lab` visit
+   * that joins NO OPD queue: no token, no OPD paper, no place on the pathologist's OPD list, and so
+   * nothing that stays "in the queue" after the report has gone home. The `V` number stays: the order,
+   * the bill and the report all hang off it.
+   */
   return await openVisitInTx(tx, actor, {
+    join: "defer",
+    encounterType: "lab",
     patientId: input.patientId,
     chainIds: input.chainIds,
     departmentId: dept.id,
@@ -652,7 +745,7 @@ export async function openPharmacyVisitInTx(
 /** Db-first: resolves the merge chain, then runs the walk-in on its own transaction. */
 export async function openLabWalkin(
   db: Db, actor: Actor, input: OpenLabWalkinInput, now: Date = new Date(),
-): Promise<OpenVisitResult> {
+): Promise<OpenVisitDeferredResult> {
   if (actor.type !== "user") throw new OpdError("user_actor_required");
   const canonical = await resolvePatientId(db, input.patientId);
   if (!canonical) throw new OpdError("patient_not_found", `unknown patient ${input.patientId}`);
@@ -847,6 +940,17 @@ export async function abandonVisit(db: Db, actor: Actor, encounterId: string, re
       .set({ status: "cancelled" })
       .where(and(eq(opdQueueEntries.encounterId, encounterId), inArray(opdQueueEntries.status, [...LIVE_ENTRY_STATUSES])))
       .returning({ id: opdQueueEntries.id });
+    /*
+      TELE-CALL (fix round 2026-10-09) — a tele visit left before the doctor spoke to the patient has
+      consumed nothing: no bill was raised. Its appointment goes back to the desk's re-booking list
+      with the payment still stamped on it, so the money is never stranded on a `checked_in` row
+      nobody can move or cancel.
+    */
+    if (encounter.consultMode === "tele" && encounter.teleOutcome !== "spoke" && encounter.appointmentId !== null) {
+      await tx.update(opdAppointments)
+        .set({ status: "needs_rebooking", updatedBy: actor.id, updatedAt: now })
+        .where(and(eq(opdAppointments.id, encounter.appointmentId), eq(opdAppointments.status, "checked_in")));
+    }
     // C1: a deferred visit has no entry — the abandon still happens; the event carries nulls,
     // exactly as visit.opened does for the same state.
     const located = await newestEntryWhere(tx, encounterId);
@@ -1214,7 +1318,7 @@ export async function patientTimeline(db: Db, actor: Actor, patientId: string, l
   });
   const chainIds = [canonical, ...(await listMergedLoserIds(db, canonical))];
   const rows = await db
-    .select({ encounter: opdEncounters, doctorName: opdDoctors.displayName, departmentName: opdDepartments.name })
+    .select({ encounter: opdEncounters, doctorName: opdDoctors.displayName, departmentName: opdDepartments.name, departmentCode: opdDepartments.code })
     .from(opdEncounters)
     .leftJoin(opdDoctors, eq(opdEncounters.doctorId, opdDoctors.id))
     .leftJoin(opdDepartments, eq(opdEncounters.departmentId, opdDepartments.id))
@@ -1234,6 +1338,10 @@ export async function patientTimeline(db: Db, actor: Actor, patientId: string, l
     status: r.encounter.status, visitType: r.encounter.visitType,
     doctorId: r.encounter.doctorId, doctorName: r.doctorName,
     departmentId: r.encounter.departmentId, departmentName: r.departmentName,
+    /** Owner 2026-10-11 — `LAB` marks the lab desk's walk-in visit, which the front desk must not treat as OPD. */
+    departmentCode: r.departmentCode,
+    /** `opd`, `lab` (the lab counter's walk-in) or `pharmacy` — what kind of visit this row is. */
+    type: r.encounter.type,
     diagnosis: r.encounter.diagnosis, icd10Code: r.encounter.icd10Code,
     prescriptionLineCount: lineCounts.get(r.encounter.id) ?? 0, dangerFlagged: r.encounter.dangerFlagged,
     referredFromEncounterId: r.encounter.referredFromEncounterId,

@@ -1,11 +1,18 @@
+import { useNavigate } from "@tanstack/react-router";
+import { ToCollect } from "../../components/to-collect";
 import { useTranslation } from "react-i18next";
+import { TeleDeskPay } from "../../components/tele-desk-pay";
+import { TeleMark } from "../../components/tele-mark";
 import { useAuth } from "../../lib/auth";
 import { useQuery } from "@tanstack/react-query";
-import { patientTimeline } from "../../lib/opd-api";
+import { listPatientAppointments, patientTimeline, todayIst } from "../../lib/opd-api";
+import { slotClock, upcomingOf } from "../../lib/appointment-view";
 import { dayMonthIst } from "../../lib/format";
 import { ageOf, initialsOf, rs, SEAT_STEPS, seatStepIndex, sexLetter, tokenLabel, tokenStateOf } from "./model";
 import { useDesk } from "./session";
 import { PhotoPanel } from "./photo";
+import { CreditChip } from "../../components/patient-credit";
+import { dateLocale } from "../../lib/date-locale";
 
 /**
  * ═══ THE DOSSIER — §3: "the left column IS the patient session" ═══
@@ -33,6 +40,56 @@ import { PhotoPanel } from "./photo";
  */
 /** The rail shows three. The owner's number, and the rest is behind `See more`. */
 const HISTORY_ROWS = 3;
+
+/**
+ * The slots this patient still holds, above their history. The SAME query key as the appointment
+ * stage's "their bookings" list, so the two are one cached read and cannot disagree; booking a slot
+ * invalidates it (`holdFutureSlot`). The section is drawn even when empty — a heading that vanishes
+ * is indistinguishable from one that is broken, which is how this was reported twice.
+ */
+function Upcoming({ patientId }: { patientId: string }): React.ReactElement | null {
+  const { t } = useTranslation();
+  const d = useDesk();
+  const { can } = useAuth();
+  const mayRead = can("opd.appointments.read");
+  const theirs = useQuery({
+    queryKey: ["d1", "their-appointments", patientId],
+    queryFn: () => listPatientAppointments(patientId),
+    enabled: mayRead,
+    staleTime: 30_000,
+    retry: false,
+  });
+  if (!mayRead) return null;
+  const items = upcomingOf(theirs.data?.items, todayIst());
+  return (
+    <>
+      <div className="tag" style={{ marginTop: 20 }}>{t("registrationCounter.upcoming.title")}</div>
+      {theirs.isPending ? (
+        <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 7 }}>{t("registrationCounter.history.reading")}</div>
+      ) : items.length === 0 ? (
+        <div data-testid="upcoming-none" style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 7 }}>{t("registrationCounter.upcoming.none")}</div>
+      ) : (
+        <div data-testid="upcoming-list" style={{ marginTop: 7 }}>
+          {items.map((a) => {
+            const doc = d.summaries.find((x) => x.doctor.id === a.doctorId)?.doctor;
+            const dept = d.departments.find((x) => x.id === a.departmentId)?.name ?? "";
+            return (
+              <div key={a.id} data-testid="upcoming-row" style={{ padding: "7px 0", borderBottom: "1px solid var(--line2)" }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                  <span className="mo" style={{ fontSize: 12, fontWeight: 700, color: "var(--green)" }}>{dayMonthIst(a.serviceDate)} · {slotClock(a.slotStart)}</span>
+                  <TeleMark mode={a.mode} size={13} />
+                  <TeleDeskPay appointment={a} compact />
+                  {a.status === "needs_rebooking" ? <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--gold)" }}>{t("registrationCounter.upcoming.rebook")}</span> : null}
+                </div>
+                <div style={{ fontSize: 11.5, color: "var(--dim)" }}>{[doc?.displayName, dept].filter((x) => x !== undefined && x !== "").join(" · ")}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+}
 
 function History({ patientId }: { patientId: string }): React.ReactElement | null {
   const { t } = useTranslation();
@@ -88,7 +145,7 @@ function History({ patientId }: { patientId: string }): React.ReactElement | nul
               type="button"
               data-testid="history-row"
               title="open this visit's papers — slips and bills, and a way to print them again"
-              onClick={() => d.patch({ overlay: "papers", papersFor: { encounterId: h.encounterId, when: h.serviceDate } })}
+              onClick={() => d.patch({ overlay: "papers", papersFor: { encounterId: h.encounterId, when: h.serviceDate, visit: h } })}
               style={{
                 display: "flex", gap: 8, alignItems: "baseline", padding: "6px 0", width: "100%",
                 borderBottom: "1px solid var(--line2)", background: "none", border: 0,
@@ -106,7 +163,7 @@ function History({ patientId }: { patientId: string }): React.ReactElement | nul
                 className="tag"
                 style={{ flexShrink: 0, color: h.status === "completed" ? "var(--green)" : h.status === "abandoned" ? "var(--gold)" : "var(--faint)" }}
               >
-                {t(`registrationCounter.history.state.${h.status}`, { defaultValue: h.status })}
+                {h.type === "lab" ? t("profile.lv.kind") : t(`registrationCounter.history.state.${h.status}`, { defaultValue: h.status })}
               </span>
             </button>
           ))}
@@ -142,6 +199,7 @@ export function Dossier(): React.ReactElement {
   const d = useDesk();
   const { s } = d;
   const { t } = useTranslation();
+  const navigate = useNavigate();
 
   /* ── nobody in hand: the day's figures and the keys ── */
   if (s.person === null && !s.enrolling) {
@@ -165,6 +223,16 @@ export function Dossier(): React.ReactElement {
             <span className="mo" style={{ fontSize: 15, fontWeight: 600 }}>{stat.value}</span>
           </div>
         ))}
+
+        {/*
+          OWNER 2026-10-09 — "To collect": the patients this desk let through unpaid, under the day's
+          own figures, where the eye already goes between two patients. Collect opens the billing
+          chair on that visit (`/billing?encounterId=`), the road the OPD desk has always used.
+        */}
+        <ToCollect
+          style={{ marginTop: 22, padding: "10px 0 0", border: 0, borderTop: "1px solid var(--line)", borderRadius: 0, background: "transparent" }}
+          onCollect={(row) => { void navigate({ to: "/billing", search: { encounterId: row.encounterId } }); }}
+        />
 
         <div className="tag" style={{ marginTop: 26 }}>keys</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 9, fontSize: 11.5, color: "var(--dim)" }}>
@@ -263,6 +331,7 @@ export function Dossier(): React.ReactElement {
               <div className="mo" style={{ fontSize: 11, color: "var(--dim)" }}>
                 {ageOf(p.dob) === "" ? "" : `${ageOf(p.dob)} `}{sexLetter(p.gender)} · {p.uhid}
               </div>
+              <div style={{ marginTop: 4 }}><CreditChip patientId={p.id} testId="desk-one-credit" /></div>
             </div>
           </div>
           <div className="mo" style={{ fontSize: 11, color: "var(--dim)", marginTop: 9 }}>
@@ -380,6 +449,7 @@ export function Dossier(): React.ReactElement {
         of `opd.visits.read`. So the rail says WHEN, WHERE and HOW IT ENDED, which is what a booking
         decision actually needs, and the clinical detail stays on the clinical screens.
       */}
+      {p === null ? null : <Upcoming patientId={p.id} />}
       {p === null ? null : <History patientId={p.id} />}
 
       {/* ── benefits & links, as the SERVER recognises them ── */}
@@ -405,7 +475,7 @@ export function Dossier(): React.ReactElement {
         {s.attributionCode === "" ? null : <span className="pill on">✓ slip {s.attributionCode}</span>}
         {s.future === null ? null : (
           <span className="pill on">
-            ✓ future {new Date(s.future.slotStart).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+            ✓ future {new Date(s.future.slotStart).toLocaleString(dateLocale(), { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
           </span>
         )}
         {freeReason === null && memberships.length === 0 && s.coupons.length === 0 && s.attributionCode === "" && s.future === null ? (

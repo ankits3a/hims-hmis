@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { fetchClosing } from "../../lib/pharmacy-api";
 import { BillMessageLine } from "./messages";
-import { ticketLabel } from "./model";
+import { deskDateLocale, ticketLabel } from "./model";
 import { istToday } from "./work";
 
 const rupees = (paise: number): string => `₹${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -17,10 +17,10 @@ const istDay = (iso: string): string => new Intl.DateTimeFormat("en-CA", { ...IS
  * today read as "closed 03:16, claimed 03:31" — backwards (walked on the demo, 2026-09-20). When the
  * two fall on different IST days, the earlier one says its day.
  */
-const clockOn = (iso: string | null, sameDayAs: string | null): string => {
+const clockOn = (iso: string | null, sameDayAs: string | null, lang?: string): string => {
   if (iso === null) return "—";
   const day = sameDayAs !== null && istDay(iso) !== istDay(sameDayAs)
-    ? `${new Intl.DateTimeFormat("en-GB", { ...IST, day: "numeric", month: "short" }).format(new Date(iso))} `
+    ? `${new Intl.DateTimeFormat(deskDateLocale(lang), { ...IST, day: "numeric", month: "short" }).format(new Date(iso))} `
     : "";
   return `${day}${clock(iso)}`;
 };
@@ -34,7 +34,7 @@ const clockOn = (iso: string | null, sameDayAs: string | null): string => {
  * from the screen's own state.
  */
 export function Closed({ dispenseId }: { dispenseId: string }): React.ReactElement | null {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const closing = useQuery({
     queryKey: ["pharmacy", "closing", dispenseId],
     queryFn: () => fetchClosing(dispenseId),
@@ -50,8 +50,8 @@ export function Closed({ dispenseId }: { dispenseId: string }): React.ReactEleme
       body: [
         t("pharmacyDesk.closed.ticketBody", {
           count: ticket.lines,
-          label: ticketLabel(ticket.dispenseNo, istToday()) ?? "—",
-          at: clock(ticket.handedOverAt), who: ticket.claimedByName ?? "—", claimed: clockOn(ticket.claimedAt, ticket.handedOverAt),
+          label: ticketLabel(ticket.dispenseNo, istToday(), i18n.language) ?? "—",
+          at: clock(ticket.handedOverAt), who: ticket.claimedByName ?? "—", claimed: clockOn(ticket.claimedAt, ticket.handedOverAt, i18n.language),
         }),
         ticket.substituted === 0 ? "" : t("pharmacyDesk.closed.substituted", { count: ticket.substituted }),
         ticket.declined === 0 ? "" : t("pharmacyDesk.closed.declined", { count: ticket.declined }),

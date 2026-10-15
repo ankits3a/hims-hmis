@@ -1,10 +1,11 @@
-import { and, asc, eq, max } from "drizzle-orm";
+import { and, asc, eq, inArray, max } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
+import { prescriberPrint } from "../roster";
 import type { Actor } from "@hmis/contracts";
 import { hmacSign, hmacVerify } from "../../kernel/crypto";
 import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
-import { opdDepartments, opdEncounters, opdPrescriptions, opdVitals } from "../../kernel/db/schema";
+import { opdDepartments, opdEncounters, opdPrescriptions, opdVitals, outsideTests, users } from "../../kernel/db/schema";
 import { getPatientSummaries, listAllergies } from "../patients";
 import {
   listDrugDiseaseFor, listInteractionsAmong, normalizeDrugName, resolveDrugTexts, resolveMedicines,
@@ -15,7 +16,7 @@ import {
 } from "./rx-checks";
 import { listCodedDiagnoses } from "./diagnosis-history";
 import { loadOpdConfig } from "./config";
-import { requireTreatingDoctor } from "./consultation";
+import { refuseIfClosedOnPaper, refuseTeleBeforeSpoke, requireTreatingDoctor } from "./consultation";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { getEncounter, visitDiagnoses } from "./encounters";
 import { OpdError } from "./errors";
@@ -25,6 +26,7 @@ import { recordPhiAccess } from "../../kernel/phi/audit";
 import { prescriptionIssued, rxQrSignatureFailed } from "./events";
 import { getDoctor } from "./masters";
 import { normaliseRxLine, toFhirBundle } from "./fhir";
+import { writeCdsRxLines } from "./cds-rx-lines";
 import { ageYearsAt } from "./time";
 import type { Letterhead } from "./config";
 import type { PrescriptionRow, VisitDiagnosis, VitalsRow } from "./encounters";
@@ -508,7 +510,21 @@ export type PrescriptionAuthority = "doctor" | "paper_slip" | "pharmacy_paper";
 export async function issuePrescription(
   db: Db, actor: Actor, cfg: AppConfig, encounterId: string, input: IssuePrescriptionInput, now: Date = new Date(),
   authority: PrescriptionAuthority = "doctor",
-  opts: { doctorId?: string; outsidePrescriber?: OutsidePrescriber } = {},
+  opts: {
+    doctorId?: string; outsidePrescriber?: OutsidePrescriber;
+    /**
+     * Owner ruling 2026-10-06 — set ONLY by `transcribePaper` (`paper-consult.ts`), which has already
+     * checked the day, the doctor and the seat's grants. It lets the paper road issue for a visit the
+     * doctor saw on paper and never opened on a screen, in whatever state that left it. The older
+     * `…/prescription-draft/transcribe` route does not pass it and keeps its in-consultation rule.
+     */
+    paperStates?: boolean;
+    /**
+     * Set ONLY by `correctPaperPrescription`: the treating doctor correcting (or clearing a held line
+     * on) a visit that carries paper work and is already closed. `requireTreatingDoctor` still runs.
+     */
+    paperCorrection?: boolean;
+  } = {},
 ): Promise<IssuedPrescription> {
   const encounter = await getEncounter(db, encounterId);
   if (!encounter) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
@@ -548,12 +564,34 @@ export async function issuePrescription(
     if (!signing) throw new OpdError("unknown_doctor", `unknown doctor ${encounter.doctorId}`);
     doctor = signing;
     transcribedBy = actor.id;
+    /*
+      Owner ruling 2026-10-06 — A SCRIBE CLEARS NO WARNING. Clearing an allergy conflict, a severe
+      interaction, a repeated salt or a contraindication is a clinical judgement with a reason
+      recorded against the prescriber. The desk typed the paper; it did not make that judgement, so
+      an override arriving on this road is refused and the line waits for the doctor.
+    */
+    if (input.overrides?.length || input.interactionOverrides?.length || input.duplicateOverrides?.length || input.drugDiseaseOverrides?.length) {
+      throw new OpdError("override_reason_required", "a prescription typed from paper carries no override — the line is held for the doctor");
+    }
   } else {
     doctor = await requireTreatingDoctor(db, actor, encounter);
   }
-  if (authority !== "pharmacy_paper" && encounter.status !== "in_consultation") {
+  /*
+    WHEN A PRESCRIPTION MAY BE ISSUED. In consultation, as always. And (owner ruling 2026-10-06) on a
+    visit the doctor saw ON PAPER: the treating doctor may correct what the desk typed after the
+    visit was closed (`paperCorrection`), and the paper road itself (`paperStates`) may issue in any
+    state but abandoned.
+  */
+  if (authority === "doctor" && opts.paperCorrection !== true) refuseIfClosedOnPaper(encounter);
+  const stateOk = authority === "pharmacy_paper"
+    || encounter.status === "in_consultation"
+    || (authority === "doctor" && opts.paperCorrection === true && encounter.status === "completed")
+    || (authority === "paper_slip" && opts.paperStates === true && encounter.status !== "abandoned");
+  if (!stateOk) {
     throw new OpdError("encounter_state_conflict", `a prescription is issued in consultation, not ${encounter.status}`);
   }
+  // Owner 2026-10-09 — a tele-call's prescription is the doctor's only after they have spoken to the patient.
+  if (authority === "doctor") refuseTeleBeforeSpoke(encounter);
 
   // A tapered line's frequency and duration are the SERVER's, written from its steps before the
   // "every line needs a frequency" check below — so the checks, the stored row and the FHIR
@@ -689,6 +727,12 @@ export async function issuePrescription(
       drugDiseaseOverrides: matchedDrugDiseaseOverrides,
       status: "active", issuedBy: actor.id, transcribedBy, issuedAt: now,
     });
+    /* Decision 0050, P0 — the countable copy, in this transaction: what was issued is what is learned from. */
+    await writeCdsRxLines(tx, {
+      prescriptionId, encounterId, doctorId: doctor?.id ?? null, lines,
+      overrides: [...matchedOverrides, ...matchedInteractionOverrides, ...matchedDuplicateOverrides, ...matchedDrugDiseaseOverrides],
+      transcribed: transcribedBy !== null, issuedAt: now,
+    });
     await appendEvent(tx, prescriptionIssued.make({
       actor, patientId: encounter.patientId, encounterId, correlationId: encounter.workflowInstanceId,
       payload: {
@@ -817,11 +861,23 @@ export async function verifyPrescriptionQr(db: Db, cfg: AppConfig, actor: Actor,
 export type RxPrintData = {
   letterhead: Letterhead;
   patient: { uhid: string; name: string | null; alias: string | null; restricted: boolean; ageYears: number | null; administrativeGender: string };
-  /** The Doctor ID (`opd_doctors.code`) only — never the name or the council number (owner 2026-09-06, 2026-09-28). */
-  doctor: { code: string; departmentName: string | null };
+  /**
+   * Never the name (owner 2026-09-06, 2026-09-28, 2026-10-04). Owner 2026-10-04: `unitNumber` is the
+   * prescriber's unit that day ("Unit I") or — Guest Faculty and (DECIDED) anyone in no unit — their
+   * Doctor ID; `deptRegn` is the DEPARTMENT registration number: that day's unit head's council number
+   * (`prescriberPrint`), null (prints blank) when there is no unit or no number on file.
+   */
+  doctor: { unitNumber: string; deptRegn: string | null; departmentName: string | null };
   encounter: {
     id: string; visitNo: string; serviceDate: string; diagnosis: string | null; icd10Code: string | null;
     advice: string | null; followUpDays: number | null; chiefComplaint: string | null;
+    /**
+     * Owner 2026-10-09 — this prescription came out of a TELE-CALL. The sheet prints one boxed line
+     * under the doctor's lines — "Tele-consultation · patient not examined" — because whoever reads
+     * it (a pharmacist, another doctor, a relative) must know nobody examined the patient. False on
+     * every in-person visit, where nothing extra is printed.
+     */
+    tele: boolean;
     /**
      * PLAN 07d T5 / DD4 — the advised tests, printed as ADVICE. They ride the print payload because
      * the printed slip is where a patient reads them and where they take them to the counter — and
@@ -829,6 +885,11 @@ export type RxPrintData = {
      * prices it is quoting (E-9: the slip carries the as-of date, the counter reprices).
      */
     advisedTests: AdvisedTest[];
+    /**
+     * Decision 0067 (owner 2026-10-10) — which of `advisedTests` the hospital does NOT do: the outside
+     * catalogue's `outside` rows. The sheet prints them under "Tests to be done outside", with no price.
+     */
+    outsideTestIds: string[];
     /**
      * The coded rows, each with its eye (board "Ophthal"). `diagnosis`/`icd10Code` above are the
      * display string and the PRIMARY code, and neither can say which eye each tag is — so a print
@@ -841,6 +902,14 @@ export type RxPrintData = {
   qrPayload: string;
   version: number;
   issuedAt: Date;
+  /**
+   * Owner ruling 2026-10-06 — who TYPED this prescription from the doctor's paper, or null when the
+   * doctor keyed it. A print of a transcription must not pass for a doctor-signed e-prescription:
+   * the renderer says "typed from the doctor's paper prescription by <name>" and that the signed
+   * paper is the original. A staff NAME, never the doctor's (the 2026-09-06 ruling is about the
+   * prescriber; this is the desk that held the keyboard).
+   */
+  transcribedByName: string | null;
 };
 
 /**
@@ -891,12 +960,17 @@ export async function getPrescriptionPrint(db: Db, cfg: AppConfig, actor: Actor,
       number are not on this payload at all, so no renderer can print them by accident. (The QR
       VERIFY answer still names the doctor: it is the pharmacist's check, not the patient's paper.)
     */
-    doctor: { code: doctor!.code, departmentName: department?.name ?? null },
+    doctor: await (async () => {
+      const p = await prescriberPrint(db, { userId: doctor!.userId, code: doctor!.code }, { istDate: encounter.serviceDate, opdDepartmentId: encounter.departmentId });
+      return { unitNumber: p.unitNumber, deptRegn: p.deptRegn, departmentName: department?.name ?? null };
+    })(),
     encounter: {
       id: encounter.id, visitNo: encounter.visitNo, serviceDate: encounter.serviceDate, diagnosis: encounter.diagnosis, icd10Code: encounter.icd10Code,
       advice: encounter.advice, followUpDays: encounter.followUpDays, chiefComplaint: encounter.chiefComplaint,
+      tele: encounter.consultMode === "tele",
       // Read back verbatim; `[]` when the doctor advised none, so the renderer needs no null branch.
       advisedTests: Array.isArray(encounter.advisedTests) ? (encounter.advisedTests as AdvisedTest[]) : [],
+      outsideTestIds: await outsideAmong(db, Array.isArray(encounter.advisedTests) ? (encounter.advisedTests as AdvisedTest[]) : []),
       diagnoses: await visitDiagnoses(db, encounter.id),
     },
     vitals: vitals[vitals.length - 1] ?? null, // the LATEST reading — a danger flag never auto-clears (D4)
@@ -904,5 +978,15 @@ export async function getPrescriptionPrint(db: Db, cfg: AppConfig, actor: Actor,
     qrPayload: buildRxQrPayload(cfg, { id: row.id, encounterId: row.encounterId, version: row.version }),
     version: row.version,
     issuedAt: row.issuedAt,
+    transcribedByName: row.transcribedBy === null ? null
+      : (await db.select({ fullName: users.fullName }).from(users).where(eq(users.id, row.transcribedBy)))[0]?.fullName ?? "the desk",
   };
+}
+
+/** Decision 0067 — the advised tests the outside catalogue says are done outside the hospital. */
+async function outsideAmong(db: Db, advised: readonly AdvisedTest[]): Promise<string[]> {
+  if (advised.length === 0) return [];
+  const rows = await db.select({ serviceId: outsideTests.serviceId }).from(outsideTests)
+    .where(and(inArray(outsideTests.serviceId, advised.map((a) => a.serviceId)), eq(outsideTests.site, "outside"), eq(outsideTests.active, true)));
+  return rows.map((r) => r.serviceId);
 }

@@ -1,3 +1,4 @@
+import { ToCollect } from "../components/to-collect";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearch } from "@tanstack/react-router";
@@ -34,6 +35,7 @@ import { fetchCurrentSession, fetchPatientBalance } from "../lib/billing-api";
 import type { WireDueRow } from "../lib/billing-api";
 import type { TenderMode } from "../lib/billing-api";
 import { OwnerCreditAsk } from "./owner-credit-ask";
+import { CreditChip } from "../components/patient-credit";
 
 /**
  * THE BILLING COUNTER (Plan 08 §11 / D2 / D3 / D7 / D8) — the cashier's one screen: pick the
@@ -1100,6 +1102,7 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
                       {shown.administrativeGender == null ? "" : sexLetter(shown.administrativeGender)}
                       {" · "}{shown.uhid}
                     </span>
+                    <span><CreditChip patientId={resolvedPatientId} testId="billing-credit" /></span>
                     <span className="mo" style={{ fontSize: 11.5, color: shown.phone == null ? "var(--faint)" : "var(--dim)" }} data-testid="paying-phone">
                       {shown.phone ?? t("billingSeat.rail.noPhone")}
                     </span>
@@ -1335,6 +1338,9 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
               </div>
             </div>
             )}
+
+            {/* OWNER 2026-10-09 — "To collect": the same block Desk One draws; Collect puts the visit on this counter. */}
+            <ToCollect onCollect={(row) => { setEncounterId(row.encounterId); }} />
 
             <div className="box" style={{ padding: 14 }}>
               <label className="tag" htmlFor="counter-encounter" style={{ display: "block", marginBottom: 5 }}>

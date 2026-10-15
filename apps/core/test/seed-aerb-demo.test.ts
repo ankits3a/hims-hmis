@@ -16,7 +16,12 @@ import type { Db } from "../src/kernel/db/client";
  * DEMO** — because an AERB register is a statutory document an inspector reads, and a synthetic row
  * in it without that mark is a false statement to a regulator.
  */
-const SERVICE_DATE = "2026-09-06";
+/**
+ * TODAY, on the seed's own clock. `seedAerbDemo` dates every certificate from the real clock
+ * (valid from one month ago, by its UTC calendar date), so a pinned date here aged out: from
+ * 2026-10-07 the certificates began after "2026-09-06" and the gaps list never emptied.
+ */
+const SERVICE_DATE = new Date().toISOString().slice(0, 10);
 
 describe("seed:aerb-demo (11i T5)", () => {
   let db: Db;

@@ -1,14 +1,15 @@
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { Db, Tx } from "../../kernel/db/client";
 import {
-  rosterAssignments, rosterHolidays, rosterPeriods, rosterPositions, rosterRequirements,
-  staffCredentials,
+  rosterAssignments, rosterHolidays, rosterModeDeclarations, rosterOfficiating, rosterPeriods, rosterPositions,
+  rosterRequirements, rosterTeamMemberships, staffCredentials,
 } from "../../kernel/db/schema/roster";
+import { users } from "../../kernel/db/schema";
 import type {
   RosterCadre, RosterRuleAuthority, RosterRuleSeverity,
 } from "../../kernel/db/schema/roster";
 import { addIstDays, istDateOfInstant, istMinutesOfInstant, istWeekday } from "./calendar";
-import { absentUserIds } from "./absences";
+import { approvedAbsenceWindows, awayDuring } from "./absences";
 import { RosterError } from "./errors";
 /**
  * TYPE-ONLY, AND LOAD-BEARING. `periods.ts` calls this module from its publish gate, so a runtime
@@ -119,7 +120,7 @@ const num = (rule: EffectiveRule, key: string, fallback: number): number => {
  * sweep rather than an arithmetic trick because a 26-hour duty crosses the band twice and a
  * cleverer expression would quietly answer only about the first.
  */
-function touchesNight(from: Date, to: Date): boolean {
+export function touchesNight(from: Date, to: Date): boolean {
   for (let t = from.getTime(); t < to.getTime(); t += 15 * 60_000) {
     const m = istMinutesOfInstant(new Date(t));
     if (m >= NIGHT_FROM_MINUTE && m < NIGHT_TO_MINUTE) return true;
@@ -149,24 +150,79 @@ function slotOver24h(slots: readonly Slot[], rule: EffectiveRule): RosterFinding
     }));
 }
 
-/** `rest_after_duty` — the gap between one duty ending and the next beginning, per person. */
+/**
+ * `rest_after_duty` — the gap between one duty ending and the next beginning, per person.
+ *
+ * ═══ A NIGHT IS ALWAYS FOLLOWED BY TWELVE HOURS' REST — CONTIGUOUS OR NOT (20-U audit) ═══
+ *
+ * The rule as approved: *"nights of 12 hours, **12 hours' rest after**"* (20-U §9 item 3, the default
+ * built here), *"post-night rest ≥ 12 h before next assignment (no morning OPD/OT after a night,
+ * hard block; override = HOD + evented)"* (doc 10 §3.9), and E9 *"JR night 20:00–08:00, then 09:00
+ * OPD — blocked"* (brainstorm 00 §9). The first version treated contiguous duties as one stretch and
+ * only measured POSITIVE gaps, so a night 20:00–08:00 followed by a day at 08:00 — the worst case —
+ * had a gap of zero and was flagged by nothing; the 24-hour stretch cap does not fire at exactly 24.
+ *
+ * So, after anything touching the night (01:00–05:00 IST), any duty that runs on past the night's
+ * end and begins less than `minHours` after it is a finding, gap zero included. "The night's end" is
+ * the end of a run of contiguous night-touching slots (a night split at a 02:00 handover is one
+ * night). DECIDED for the 24-hour TAKE (08:00 → 08:00): it is ONE slot, it touches the night, and
+ * the twelve hours' rest runs from its end — the take itself is legal (its length is
+ * `slot_over_24h`'s and the hours rules' business). A day followed by the night (08:00–20:00 then
+ * 20:00–08:00) is the take day written as two slots and is judged the same way: no break between
+ * them, rest after the night. Between two duties neither of which touches the night the old rule
+ * stands: a positive gap shorter than `minHours`. Severity is the book's (block); the override is
+ * `acceptFinding`, named and evented.
+ */
 function restAfterDuty(slots: readonly Slot[], rule: EffectiveRule): RosterFinding[] {
   const min = num(rule, "minHours", 12);
   const out: RosterFinding[] = [];
+  const say = (userId: string, prev: Slot, next: Slot, endMs: number): RosterFinding => finding(rule, {
+    userId, assignmentId: next.id,
+    params: {
+      restHours: Math.max(0, Math.round(((next.startsAt.getTime() - endMs) / HOUR_MS) * 100) / 100),
+      minHours: min, afterAssignmentId: prev.id,
+    },
+  });
   for (const [userId, mine] of byUser(slots)) {
     const duties = mine.filter((s) => s.kind === "duty" && s.mode === "presence")
-      .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+      .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime() || a.endsAt.getTime() - b.endsAt.getTime());
+    const flagged = new Set<string>();
+
+    // (1) After a night: everything that runs past its end and starts inside the rest window.
+    for (let i = 0; i < duties.length; i += 1) {
+      const first = duties[i]!;
+      if (!first.isNight) continue;
+      if (i > 0 && duties[i - 1]!.isNight && duties[i - 1]!.endsAt.getTime() >= first.startsAt.getTime()) continue;
+      let last = first;
+      let end = first.endsAt.getTime();
+      const chain = new Set([first.id]);
+      for (let j = i + 1; j < duties.length; j += 1) {
+        const d = duties[j]!;
+        if (!d.isNight || d.startsAt.getTime() > end) break;
+        chain.add(d.id);
+        if (d.endsAt.getTime() > end) { end = d.endsAt.getTime(); last = d; }
+      }
+      for (const next of duties) {
+        if (chain.has(next.id) || flagged.has(next.id)) continue;
+        if (next.startsAt.getTime() < first.startsAt.getTime()) continue; // before the night: not "after"
+        if (next.endsAt.getTime() <= end) continue; // inside the night: a clash, not a rest break
+        if (next.startsAt.getTime() < end + min * HOUR_MS) {
+          out.push(say(userId, last, next, end));
+          flagged.add(next.id);
+        }
+      }
+    }
+
+    // (2) Between ordinary duties: a positive gap shorter than the rule. Contiguous ordinary duties
+    // are one stretch, which the hours rules speak about.
     for (let i = 1; i < duties.length; i += 1) {
       const prev = duties[i - 1]!;
       const next = duties[i]!;
+      if (prev.isNight || flagged.has(next.id)) continue;
       const gap = (next.startsAt.getTime() - prev.endsAt.getTime()) / HOUR_MS;
-      // Overlapping or contiguous duties are one stretch, not a rest failure: the hours rules
-      // below are what speak about those, and saying it twice would double-count one fact.
       if (gap > 0 && gap < min) {
-        out.push(finding(rule, {
-          userId, assignmentId: next.id,
-          params: { restHours: Math.round(gap * 100) / 100, minHours: min, afterAssignmentId: prev.id },
-        }));
+        out.push(say(userId, prev, next, prev.endsAt.getTime()));
+        flagged.add(next.id);
       }
     }
   }
@@ -394,6 +450,70 @@ const byUser = (slots: readonly Slot[]): Map<string, Slot[]> => {
   return new Map([...m].sort(([a], [b]) => a.localeCompare(b)));
 };
 
+/** `"2026-10-12 10:00"` — an instant as a person in the building reads it, never as UTC. */
+const istStamp = (at: Date): string => {
+  const m = istMinutesOfInstant(at);
+  return `${istDateOfInstant(at)} ${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+};
+
+/**
+ * `lone_worker` — a location left to one person alone (audit 2026-10-04 #6).
+ *
+ * Seeded in R8 and never evaluated: the book claimed a rule the system did not keep. Evaluated as
+ * its seeded definition reads — at a LOCATION (`location_resource_id`), at any instant somebody is
+ * rostered there in person, fewer than `minPresent` people are. A filled presence duty counts, a
+ * supernumerary one included: a trainee is a second pair of hands for the safety question this asks,
+ * even where they are not cover for a staffing requirement (V16). A vacant slot is nobody. The
+ * population must exist: a location with nobody rostered is not a location with one person.
+ *
+ * One finding per maximal stretch per location, naming the person when it is one person.
+ */
+function loneWorker(slots: readonly Slot[], rule: EffectiveRule): RosterFinding[] {
+  const min = num(rule, "minPresent", 2);
+  const out: RosterFinding[] = [];
+  const byLoc = new Map<string, Slot[]>();
+  for (const s of slots) {
+    if (s.locationResourceId === null || s.userId === null || s.kind !== "duty" || s.mode !== "presence") continue;
+    byLoc.set(s.locationResourceId, [...(byLoc.get(s.locationResourceId) ?? []), s]);
+  }
+  for (const [loc, here] of [...byLoc].sort(([a], [b]) => a.localeCompare(b))) {
+    const cuts = [...new Set(here.flatMap((s) => [s.startsAt.getTime(), s.endsAt.getTime()]))].sort((a, b) => a - b);
+    let open: { from: number; to: number; who: Set<string>; present: number; first: Slot } | null = null;
+    const flush = (): void => {
+      if (open === null) return;
+      out.push(finding(rule, {
+        userId: open.who.size === 1 ? [...open.who][0]! : null,
+        assignmentId: open.first.id,
+        params: {
+          locationResourceId: loc, istDate: istDateOfInstant(new Date(open.from)),
+          istFrom: istStamp(new Date(open.from)), istTo: istStamp(new Date(open.to)),
+          present: open.present, minPresent: min,
+        },
+      }));
+      open = null;
+    };
+    for (let i = 0; i + 1 < cuts.length; i += 1) {
+      const [from, to] = [cuts[i]!, cuts[i + 1]!];
+      const on = here.filter((s) => s.startsAt.getTime() <= from && s.endsAt.getTime() >= to);
+      const people = new Set(on.map((s) => s.userId!));
+      if (people.size > 0 && people.size < min) {
+        if (open !== null && open.to === from) {
+          open.to = to;
+          open.present = Math.max(open.present, people.size);
+          for (const p of people) open.who.add(p);
+        } else {
+          flush();
+          open = { from, to, who: people, present: people.size, first: on[0]! };
+        }
+      } else {
+        flush();
+      }
+    }
+    flush();
+  }
+  return out;
+}
+
 /* ═══════════════════════════════════ feasibility (S4) ═══════════════════════════════════ */
 
 export type FeasibilityInput = {
@@ -581,18 +701,135 @@ export async function validate(
     return res;
   });
 
-  // `rostered_while_absent` — approved leave against the duties actually planned. Read once for
-  // the whole period rather than per slot; `absentUserIds` is the same reader V13 uses, so the
-  // validator and the resolver cannot disagree about who is away.
-  const absentIds = new Set(await absentUserIds(exec, period.startsAt, period.endsAt));
+  // `rostered_while_absent` — approved leave against the duties actually planned, judged PER SLOT
+  // (audit 2026-10-04 #2): one day of leave on the 10th is a clash with the duty on the 10th, not
+  // with every duty of the month. Read once for the whole period, matched against each slot.
+  const lastEnd = Math.max(period.endsAt.getTime(), ...slots.map((s) => s.endsAt.getTime()));
+  const leave = await approvedAbsenceWindows(exec, period.startsAt, new Date(lastEnd));
   run("rostered_while_absent", (r) => slots
-    .filter((s) => s.userId !== null && s.kind === "duty" && absentIds.has(s.userId))
+    .filter((s) => s.userId !== null && s.kind === "duty" && awayDuring(leave, s.userId, s.startsAt, s.endsAt))
     .map((s) => finding(r, {
       userId: s.userId, assignmentId: s.id,
       // The KIND of leave is deliberately not here (D6): that a person is away is the roster's
       // business, why they are away is not. `absences.ts` redacts it for the same reason.
       params: { istDate: s.istDate, positionKey: s.positionKey },
     })));
+
+  run("lone_worker", (r) => loneWorker(slots, r));
+
+  /**
+   * `presence_clash` — ONE BODY, TWO ROOMS, said before publish (audit 2026-10-04 #4).
+   *
+   * The publish gate refuses this (`presence_overlap`, periods.ts step 4) and still does; what was
+   * missing is a finding a screen can show while the roster is a draft, naming the person and the
+   * IST day and time. Two sources, the same two the gate checks: this roster's own presence slots
+   * against each other, and against every LIVE (effective) presence slot in any other roster —
+   * except this roster's own series, whose live version a publish of this one supersedes first.
+   * Presence only, as the gate: on-call may overlap a duty.
+   */
+  {
+    const own = slots.filter((s) => s.userId !== null && s.mode === "presence");
+    const rowsFrom = own.length === 0 ? [] : await (exec as Db).execute(sql`
+      select a.id as "id", a.user_id as "userId", a.period_id as "periodId",
+             a.starts_at as "startsAt", a.ends_at as "endsAt"
+        from roster_assignments a join roster_periods p on p.id = a.period_id
+       where a.effective and a.mode = 'presence' and a.live_to is null
+         and a.user_id in (${sql.join([...new Set(own.map((s) => s.userId!))].map((u) => sql`${u}`), sql`, `)})
+         and a.period_id <> ${period.id}
+         and not (p.scope_type = ${period.scopeType}
+                  and coalesce(p.scope_id, '') = ${period.scopeId ?? ""}
+                  and p.starts_at = ${period.startsAt})
+         and a.starts_at < ${new Date(lastEnd)} and a.ends_at > ${period.startsAt}`);
+    const toDate = (v: unknown): Date => (v instanceof Date ? v : new Date(String(v)));
+    const others = (Array.isArray(rowsFrom) ? [] : rowsFrom.rows as Record<string, unknown>[]).map((x) => ({
+      id: String(x.id), userId: String(x.userId), periodId: String(x.periodId),
+      startsAt: toDate(x.startsAt), endsAt: toDate(x.endsAt),
+    }));
+    run("presence_clash", (r) => {
+      const res: RosterFinding[] = [];
+      const say = (
+        s: Slot, o: { id: string; periodId: string; startsAt: Date; endsAt: Date },
+      ): RosterFinding => finding(r, {
+        userId: s.userId, assignmentId: s.id,
+        params: {
+          istDate: s.istDate, istFrom: istStamp(s.startsAt), istTo: istStamp(s.endsAt),
+          otherAssignmentId: o.id, otherPeriodId: o.periodId,
+          otherIstFrom: istStamp(o.startsAt), otherIstTo: istStamp(o.endsAt),
+        },
+      });
+      for (let i = 0; i < own.length; i += 1) {
+        const s = own[i]!;
+        for (let j = i + 1; j < own.length; j += 1) {
+          const o = own[j]!;
+          if (o.userId === s.userId && o.startsAt < s.endsAt && o.endsAt > s.startsAt) {
+            res.push(say(o, { id: s.id, periodId: period.id, startsAt: s.startsAt, endsAt: s.endsAt }));
+          }
+        }
+        for (const o of others) {
+          if (o.userId === s.userId && o.startsAt < s.endsAt && o.endsAt > s.startsAt) res.push(say(s, o));
+        }
+      }
+      return res;
+    });
+  }
+
+  /**
+   * `user_inactive` and `member_not_in_unit` — THE SILENT HOLE, MADE A FINDING (audit 2026-10-04 #5).
+   *
+   * At 03:10 the resolver (resolve.ts `subtract`, V13) drops a named person who has been
+   * deactivated, and — on a slot that names a TEAM — one who is not that team's member at that
+   * instant. It is right to; but nothing told the head before then, so a published roster could
+   * carry a hole that looked filled. These two rules ask exactly the resolver's questions, at each
+   * slot's START, so the validator and the resolver cannot disagree about who will answer:
+   *
+   *   · `user_inactive` (block) — the account is deactivated. Nobody of that name will be paged.
+   *   · `member_not_in_unit` (warn) — the slot names a team the person does not belong to at its
+   *     start (a posting closed, a rotation ended, or a cross-unit cover never given a membership).
+   *     A warn, because a cross-unit cover is sometimes intended; the head is told that, as written,
+   *     the resolver will not count it. `params.everMember` says which of the two it looks like.
+   *
+   * A department-scope slot (no `team_id`) is not judged by unit membership, as the resolver does not.
+   */
+  if (userIds.length > 0) {
+    const inactive = new Set((await (exec as Db).select({ id: users.id }).from(users)
+      .where(and(inArray(users.id, userIds), eq(users.active, false)))).map((u) => u.id));
+    run("user_inactive", (r) => slots
+      .filter((s) => s.userId !== null && s.kind !== "off" && inactive.has(s.userId))
+      .map((s) => finding(r, {
+        userId: s.userId, assignmentId: s.id,
+        params: { istDate: s.istDate, istFrom: istStamp(s.startsAt), positionKey: s.positionKey },
+      })));
+
+    const teamIds = [...new Set(slots.map((s) => s.teamId).filter((t): t is string => t !== null))];
+    if (teamIds.length > 0) {
+      const memberships = await (exec as Db).select({
+        teamId: rosterTeamMemberships.teamId, userId: rosterTeamMemberships.userId,
+        startsAt: rosterTeamMemberships.startsAt, endsAt: rosterTeamMemberships.endsAt,
+      }).from(rosterTeamMemberships).where(and(
+        inArray(rosterTeamMemberships.teamId, teamIds), inArray(rosterTeamMemberships.userId, userIds),
+      ));
+      // `teamMembers` returns an officiating person AS a member; so must this.
+      const acting = await (exec as Db).select({
+        teamId: rosterOfficiating.teamId, userId: rosterOfficiating.userId,
+        startsAt: rosterOfficiating.startsAt, endsAt: rosterOfficiating.endsAt,
+      }).from(rosterOfficiating).where(and(
+        inArray(rosterOfficiating.teamId, teamIds), inArray(rosterOfficiating.userId, userIds),
+      ));
+      const live = (w: { startsAt: Date; endsAt: Date | null }, t: Date): boolean =>
+        w.startsAt.getTime() <= t.getTime() && (w.endsAt === null || w.endsAt.getTime() > t.getTime());
+      run("member_not_in_unit", (r) => slots
+        .filter((s) => s.userId !== null && s.teamId !== null && s.kind !== "off")
+        .filter((s) => ![...memberships, ...acting]
+          .some((m) => m.teamId === s.teamId && m.userId === s.userId && live(m, s.startsAt)))
+        .map((s) => finding(r, {
+          userId: s.userId, assignmentId: s.id,
+          params: {
+            teamId: s.teamId, istDate: s.istDate, istFrom: istStamp(s.startsAt), positionKey: s.positionKey,
+            everMember: memberships.some((m) => m.teamId === s.teamId && m.userId === s.userId),
+          },
+        })));
+    }
+  }
 
   run("credential_expiring", (r) => {
     const within = num(r, "withinDays", 30);
@@ -609,11 +846,73 @@ export async function validate(
       }));
   });
 
+  // 20-U I5 / D4 — a declared skeleton day relaxes exactly the rules the plan names, for exactly
+  // the people it names. See `relaxForSkeletonDays`.
+  const skeletonDays = dates.length === 0 ? new Set<string>() : new Set((await (exec as Db)
+    .select({ istDate: rosterModeDeclarations.istDate, departmentId: rosterModeDeclarations.departmentId })
+    .from(rosterModeDeclarations)
+    .where(and(inArray(rosterModeDeclarations.istDate, dates), sql`${rosterModeDeclarations.withdrawnAt} is null`)))
+    .filter((d) => d.departmentId === null || d.departmentId === period.departmentId
+      || slots.some((s) => s.departmentId === d.departmentId))
+    .map((d) => `${d.departmentId ?? "*"}\u0000${String(d.istDate)}`));
+  const relaxed = relaxForSkeletonDays(out, skeletonDays, slots, posByKey);
+
   const rank: Record<RosterRuleSeverity, number> = { block: 0, warn: 1, info: 2 };
-  return out.sort((a, b) =>
+  return relaxed.sort((a, b) =>
     rank[a.severity] - rank[b.severity]
     || a.ruleKey.localeCompare(b.ruleKey)
     || (a.userId ?? "").localeCompare(b.userId ?? ""));
+}
+
+/**
+ * ═══ 20-U I5 — SKELETON COVER RELAXES TWO RULES, FOR FACULTY, AND NOTHING ELSE (plan D4) ═══
+ *
+ * Plan `2026-09-20-phase1-20u-roster-unit-system.md` D4 (lines 149–154): *"The validator's ratio and
+ * rest rules drop from `block` to `warn` **for faculty and consenting staff only** (the 12-hour rest
+ * rule for a resident who is actually working a night is never relaxed silently — the override is
+ * per person, named, evented)"*. Read literally, and nothing wider:
+ *
+ *   · **the ratio rule** is `requirement_shortfall` (R-067's staffing gate) — relaxed when the
+ *     requirement's POSITION is a faculty post, on a day the department (or the hospital) is on
+ *     skeleton cover;
+ *   · **the rest rule** is `rest_after_duty` — relaxed when the PERSON is rostered as faculty on the
+ *     slot the finding is about, on a skeleton day;
+ *   · **a resident's rest and a resident post's ratio stay `block`.** Their override is the existing
+ *     per-person `acceptFinding` — named, with a reason, evented (`roster.finding_accepted`).
+ *   · **DECIDED — "consenting staff" relaxes nobody today.** The roster records no consent, and a
+ *     relaxation keyed on a consent that is not recorded would be a relaxation for everyone. When a
+ *     consent record exists it joins the faculty test here; until then the plan's safe half stands.
+ *
+ * Every other rule (hours, nights, weekly off, credentials, presence) is untouched. A relaxed
+ * finding is not removed — it is the same finding at `warn`, stamped `skeleton: true` and
+ * `relaxedFrom: "block"`, so the month still shows it and the head still reads it.
+ */
+function relaxForSkeletonDays(
+  findings: RosterFinding[],
+  skeletonDays: ReadonlySet<string>,
+  slots: readonly Slot[],
+  posByKey: ReadonlyMap<string, { cadre: string }>,
+): RosterFinding[] {
+  if (skeletonDays.size === 0) return findings;
+  const onSkeleton = (departmentId: string | null, istDate: string): boolean =>
+    skeletonDays.has(`*\u0000${istDate}`) || (departmentId !== null && skeletonDays.has(`${departmentId}\u0000${istDate}`));
+  const slotById = new Map(slots.map((s) => [s.id, s]));
+  return findings.map((f) => {
+    if (f.severity !== "block") return f;
+    let relax = false;
+    if (f.ruleKey === "rest_after_duty" && f.assignmentId !== null) {
+      const s = slotById.get(f.assignmentId);
+      relax = s !== undefined && s.cadre === "faculty" && onSkeleton(s.departmentId, s.istDate);
+    } else if (f.ruleKey === "requirement_shortfall") {
+      const positionKey = typeof f.params.positionKey === "string" ? f.params.positionKey : "";
+      const istDate = typeof f.params.istDate === "string" ? f.params.istDate : "";
+      const dept = f.params.scopeType === "department" && typeof f.params.scopeId === "string"
+        ? f.params.scopeId
+        : (slots.find((s) => s.positionKey === positionKey && s.istDate === istDate)?.departmentId ?? null);
+      relax = posByKey.get(positionKey)?.cadre === "faculty" && onSkeleton(dept, istDate);
+    }
+    return relax ? { ...f, severity: "warn", params: { ...f.params, skeleton: true, relaxedFrom: "block" } } : f;
+  });
 }
 
 /**

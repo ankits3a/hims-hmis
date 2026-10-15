@@ -36,6 +36,7 @@ describe("the pharmacy manifest claims the medication order kind (16c T1)", () =
     expect(pharmacyManifest.key).toBe("pharmacy");
     expect(pharmacyManifest.permissions).toEqual([
       "pharmacy.dispense.place", "pharmacy.dispense.read", "pharmacy.dispense.scheduled", "pharmacy.sale_items.manage",
+      "pharmacy.sale_items.discount", // owner 2026-10-02: the in-charge sets an item's standing discount to the patient
       "pharmacy.pharmacists.manage", "pharmacy.register.read", "pharmacy.register.read_sealed",
       "pharmacy.retail.sell", "pharmacy.retail.manage", "pharmacy.downtime.enter",
       // Parity P5 — the office's reports, and the margin behind its own grant.
@@ -54,6 +55,8 @@ describe("the pharmacy manifest claims the medication order kind (16c T1)", () =
       "pharmacy.antimicrobial.approve",
       // Stage D4 — the emergency trays: check, restock and receive; set up a tray and keep its list.
       "pharmacy.trays.check", "pharmacy.trays.manage",
+      // #777 (owner 2026-10-13) — the pharmacy tab of Hospital numbers, read-only.
+      "pharmacy.metrics.read",
     ]);
     expect(pharmacyManifest.menu.map((e) => e.path)).toEqual(["/pharmacy/desk", "/pharmacy/items", "/pharmacy/pharmacists", "/pharmacy/reorder", "/pharmacy/office", "/pharmacy/office/reports", "/pharmacy/registers/h1", "/pharmacy/leakage", "/pharmacy/retail", "/pharmacy/retail-licence", "/pharmacy/downtime"]);
     expect(pharmacyManifest.subscriptions).toEqual([

@@ -15,6 +15,8 @@ import { ALERTS_CONSUMER, alertsConsumer } from "../src/kernel/alerts/consumer";
 import { alertsManifest } from "../src/kernel/alerts/manifest";
 import { NOTIFY_CONSUMER, notifyConsumer } from "../src/kernel/notify/consumer";
 import { OBLIGATIONS_CONSUMER, obligationsConsumer } from "../src/kernel/obligations/consumer";
+import { PHONE_PUSH_CONSUMER, phonePushConsumer } from "../src/kernel/push/consumer";
+import { fixedPhonePushSource } from "../src/kernel/push/sender";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { runDueTimers } from "../src/kernel/workflow/timers";
 import { runDispatchCycle } from "../src/kernel/events/dispatcher";
@@ -129,6 +131,8 @@ const THE_EIGHTEEN = [
   // first pass of this task and both were caught by the verify run.
   "rollupUserDayFacts",
   "retentionSweep",
+  // E0.1 (decision 0064) — the copilot ask prune, daily 01:20 IST, always on.
+  "pruneCopilotAsks",
   // Plan 11c D6 — THE TENTH. Unlike the eighth and ninth it is an `every` job whose cadence is a
   // real operator key, so the widened `Pick` DID announce it to the three `JobIntervals` object
   // literals — but not to THIS file, which passes the whole `AppConfig` and satisfies any Pick
@@ -193,6 +197,15 @@ const THE_EIGHTEEN = [
   "sweepOverdueQa",
   /** 18-S RS10 T2 — `every(60_000)`: the HOD's escalations raised on, and resolved off, the obligation spine. */
   "sweepImagingEscalations",
+  /** 20-U infra (owner 2026-10-04) — `every(60_000)`: the duty board prints itself at 20:00 and 08:00 IST. */
+  "printRosterBoard",
+  /** MOBILE §3i (owner 2026-10-07) — `every(60_000)`: duty reminders, and "patients are waiting and you are not in". */
+  "sweepStaffNotices",
+  "proposeMedicineNicknames",
+  /** TELE-CALL (owner 2026-10-09) — `every(60_000)`: a covered tele appointment becomes a visit at its slot. */
+  "openDueTeleVisits",
+  /** STAFF ATTENDANCE (owner 2026-10-09) — `every(120_000)`: the copy of the attendance machine's records. Makes no call until configured and switched on. */
+  "syncAttendance",
 ];
 
 type Frame = { type: string } & Record<string, unknown>;
@@ -413,10 +426,17 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
         // filing tells every holder of the approver role. Sorted, it lands first.
         // PHASE O T1: `respond.overdue` is the alerts consumer's SEVENTH subscription — the
         // silence beside the lateness. Sorted, it lands last.
+        // 20-U infra (owner 2026-10-04): `roster.flag_raised` is the EIGHTH — a "this is wrong"
+        // flag pages the duty manager on duty. Read off the red run; sorted, it lands last.
         ["kernel.alerts", [
           "approval.requested",
           "escalation.triggered", "imaging.critical_overdue", "imaging.report_unread",
-          "notification.failed", "ops.mode_changed", "respond.overdue",
+          "notification.failed", "ops.mode_changed", "respond.overdue", "roster.flag_raised",
+          // MOBILE §3i (owner 2026-10-07): NINTH to TWELFTH — a person's own duties reach their own
+          // bell (a cover asked / answered / decided, a duty published or moved). Read off the red run.
+          "roster.cover_requested", "roster.cover_answered", "roster.cover_decided", "roster.duty_changed",
+          // E2.2 (decision 0069): a leave waiting reaches its deciders; the answer reaches the person.
+          "roster.absence_requested", "roster.absence_approved", "roster.absence_refused",
         ].sort()],
         [
           "kernel.notify",
@@ -453,6 +473,10 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
          * deliberately stops nothing (G6).
          */
         ["kernel.obligations", ["alert.acknowledged"]],
+        // MOBILE M6b (owner 2026-10-06) — the bell on a phone: `alert.raised` is relayed to the
+        // person's signed-in phones by a consumer of its OWN, declared by its own worker-only
+        // manifest (`phonePushManifest`; its cursor and dead letters are not the bell's). With no Firebase key the handler returns at once. Sorted, it lands here.
+        ["kernel.phone_push", ["alert.raised"]],
         ["lab.interface_status", ["interface.down", "interface.restored"]],
         // PLAN 14 T7 / DD13 — THE FOURTH WIRE, and the first one that subscribes to an event NOTHING
         // IN THIS BUILD PUBLISHES YET. `consignment.deployed` is DEFINED by `modules/materials`
@@ -484,6 +508,8 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
         // `materials.consumption` subscribes to an event PLAN 15 emits; this one subscribes to the
         // event materials emits BACK, and stamps the OT implant row `confirmed`. Between the two,
         // `signOut` is refused (A18). `ot.implant_confirmed` sorts before `ot.patient_merged`.
+        // DECISION 0067 — free tests order themselves at Complete consult. `ordering.` < `ot.`.
+        ["ordering.free_tests", ["consultation.completed", "prescription.paper_transcribed"]],
         ["ot.implant_confirmed", ["material.consumed"]],
         ["ot.patient_merged", ["patient.merged"]],
         // PLAN 09 T6 / DD7 — THE THIRD WIRE, and the one whose absence would be invisible for the
@@ -546,6 +572,15 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
           [NOTIFY_CONSUMER]: notifyConsumer(workerDb),
         }),
       ).toThrow(/kernel\.obligations/);
+      // MOBILE M6b: the same proof for the phone's wire. Pass the three kernel handlers above, omit
+      // `kernel.phone_push`, and the worker refuses to boot.
+      expect(() =>
+        buildSubscriptionBus(registry, {
+          [ALERTS_CONSUMER]: alertsConsumer(workerDb),
+          [NOTIFY_CONSUMER]: notifyConsumer(workerDb),
+          [OBLIGATIONS_CONSUMER]: obligationsConsumer(workerDb),
+        }),
+      ).toThrow(/kernel\.phone_push/);
       // PLAN 09 T6: the same both-directions proof for the third wire. Pass the KERNEL handlers
       // and omit `partners.accrual` and the worker refuses to boot — which is what makes
       // "declare the subscriptions and the handler in ONE commit" a mechanism rather than a habit.
@@ -554,6 +589,7 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
           [ALERTS_CONSUMER]: alertsConsumer(workerDb),
           [NOTIFY_CONSUMER]: notifyConsumer(workerDb),
           [OBLIGATIONS_CONSUMER]: obligationsConsumer(workerDb),
+          [PHONE_PUSH_CONSUMER]: phonePushConsumer(workerDb, fixedPhonePushSource(null)),
         }),
       ).toThrow(/partners\.accrual/);
     } finally {

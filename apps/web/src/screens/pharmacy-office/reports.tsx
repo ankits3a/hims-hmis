@@ -7,14 +7,15 @@ import { pharmacyErrorText } from "../../lib/pharmacy-api";
 import {
   MARGIN_GROUPS, NON_MOVING_DAYS, RECON_BUCKETS, REPORT_PRESETS, SALES_GROUPS, STOCK_IN_KINDS, STOCK_OUT_KINDS, fetchActivity, fetchActivityFeed,
   fetchCatalogue, fetchDailyStock, fetchGstr3b, fetchHsn, fetchLossRegister, fetchMargin, fetchNonMoving, fetchPurchaseRegister, fetchReportStores,
-  fetchSalesRegister, fetchTopSelling, fetchValuation, money, pct, printReport, reconcileGstr2b, todayIst, trimGstr2bJson,
+  fetchCreditNoteRegister, fetchPharmacyAccounts, fetchGstBook, fetchTicketInvoices, fetchSalesRegister, fetchTopSelling, fetchValuation, money, pct, printReport, reconcileGstr2b, todayIst, trimGstr2bJson,
 } from "../../lib/reports-api";
-import { downloadXlsx, toXlsx } from "../../lib/xlsx";
+import { downloadXlsx, toXlsx, toXlsxBook } from "../../lib/xlsx";
+import type { XlsxSheet } from "../../lib/xlsx";
 import { Button } from "@/components/ui/button";
 import { TallyReport } from "./tally";
 import type {
   AbcClass, MarginGroupBy, RangeInput, ReconBucket, ReportPreset, SalesGroupBy, WireActivity, WireActivityEntry, WireCatalogueRow, WireDailyStockRow,
-  WireGstr2b, WireLossRow, WireSalesRow, WireTopSellingRow,
+  WireGstr2b, WireLossRow, WireAccountsDocument, WireCreditNoteRow, WireTicketInvoiceRow, WireSalesRow, WireTopSellingRow,
 } from "../../lib/reports-api";
 
 /**
@@ -32,10 +33,10 @@ import type {
  */
 export type ReportKey =
   | "sales" | "purchases" | "margin" | "valuation" | "nonMoving" | "hsn" | "gstr2b" | "gstr3b" | "activity" | "tally"
-  | "topSelling" | "losses" | "dailyStock" | "catalogue";
+  | "topSelling" | "losses" | "dailyStock" | "catalogue" | "creditNotes" | "ticketInvoices" | "gstBook" | "accounts";
 const ALL_REPORTS: readonly ReportKey[] = [
   "sales", "purchases", "margin", "valuation", "nonMoving", "hsn", "gstr2b", "gstr3b", "activity", "tally",
-  "topSelling", "losses", "dailyStock", "catalogue",
+  "topSelling", "losses", "dailyStock", "catalogue", "creditNotes", "ticketInvoices", "gstBook", "accounts",
 ];
 /**
  * The list's keys: 1–9, then 0 for the tenth (GAP A4 made it ten), then letters (stage C made it
@@ -173,6 +174,10 @@ function ReportScreen({ report, onBack }: { report: ReportKey; onBack: () => voi
       {report === "losses" && <LossReport {...bind} />}
       {report === "dailyStock" && <DailyStockReport {...bind} />}
       {report === "catalogue" && <CatalogueReport {...bind} />}
+      {report === "creditNotes" && <CreditNotesReport {...bind} />}
+      {report === "ticketInvoices" && <TicketInvoicesReport {...bind} />}
+      {report === "gstBook" && <GstBookReport {...bind} />}
+      {report === "accounts" && <AccountsReport {...bind} />}
     </div>
   );
 }
@@ -407,6 +412,321 @@ function SalesReport({ sheet, presetRef }: Bind): React.ReactElement {
                   </table>
                 )} />
             : <Table testId="sales-groups" cols={groupCols} rows={d.groups} rowKey={(g) => g.key || "—"} totals={totals} />}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════ the credit notes to patients (owner 2026-10-03) ═══════════════════════════════════
+
+const CREDIT_VIEWS = ["document", "patient"] as const;
+type CreditView = (typeof CREDIT_VIEWS)[number];
+
+function CreditNotesReport({ sheet, presetRef }: Bind): React.ReactElement {
+  const { t } = useTranslation();
+  const [range, setRange] = useRange(presetRef);
+  const [view, setView] = useState<CreditView>("document");
+  const q = useQuery({ queryKey: ["pharmacy", "reports", "credit-notes", range], queryFn: () => fetchCreditNoteRegister(range) });
+  const d = q.data;
+  const L = (k: string): string => t(`pharmacyOffice.reports.col.${k}`);
+  const C = (k: string, o?: Record<string, unknown>): string => t(`pharmacyOffice.reports.credit.${k}`, o);
+  type Row = WireCreditNoteRow;
+  type Group = NonNullable<typeof d>["byPatient"][number];
+  const docCols: Col<Row>[] = [
+    { key: "date", label: L("date"), value: (r) => r.date },
+    { key: "no", label: C("no"), value: (r) => r.creditNoteNo },
+    { key: "patient", label: L("patient"), value: (r) => r.patientName },
+    { key: "uhid", label: L("uhid"), value: (r) => r.uhid },
+    { key: "bill", label: C("bill"), value: (r) => r.invoiceNo },
+    { key: "reason", label: C("reason"), value: (r) => r.reason.replace(/^pharmacy return: /, "") },
+    { key: "net", label: C("value"), money: true, value: (r) => r.netPaise },
+    { key: "settled", label: C("settled"), value: (r) => C(`settlement.${r.settlement}`) },
+    { key: "kept", label: C("kept"), money: true, value: (r) => r.keptPaise },
+    { key: "refund", label: C("refund"), money: true, value: (r) => r.refundPaise },
+    { key: "by", label: L("operator"), value: (r) => r.issuedByName },
+  ];
+  const groupCols: Col<Group>[] = [
+    { key: "patient", label: L("patient"), value: (g) => g.patientName },
+    { key: "uhid", label: L("uhid"), value: (g) => g.uhid },
+    { key: "count", label: C("count"), num: true, value: (g) => g.count },
+    { key: "net", label: C("value"), money: true, value: (g) => g.netPaise },
+    { key: "kept", label: C("kept"), money: true, value: (g) => g.keptPaise },
+    { key: "refund", label: C("refund"), money: true, value: (g) => g.refundPaise },
+  ];
+  const totals: Totals | null = d === undefined ? null : view === "document"
+    ? { date: C("total"), net: d.totals.netPaise, kept: d.totals.keptPaise, refund: d.totals.refundRequestedPaise }
+    : { patient: C("total"), count: d.totals.count, net: d.totals.netPaise, kept: d.totals.keptPaise, refund: d.totals.refundRequestedPaise };
+  if (d !== undefined) {
+    sheet.current = {
+      title: `${t("pharmacyOffice.reports.name.creditNotes")}${view === "patient" ? ` · ${C("byPatient")}` : ""}`, subtitle: rangeText(d.from, d.to),
+      file: `credit-notes-${d.from}-${d.to}`, cols: (view === "document" ? docCols : groupCols) as Col<never>[], rows: view === "document" ? d.rows : d.byPatient, totals,
+    };
+  }
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-end gap-3">
+        <RangeBar range={range} onChange={setRange} />
+        <Choice label={C("view")} testId="credit-view" value={view} options={CREDIT_VIEWS} onChange={setView} text={(v) => C(`views.${v}`)} />
+      </div>
+      <Status loading={q.isLoading} error={q.error} />
+      {d !== undefined && (
+        <>
+          <div className="flex flex-wrap gap-4 text-sm" data-testid="credit-summary">
+            <span>{C("summary", { count: d.totals.count })} <b className="tabular-nums">{money(d.totals.netPaise)}</b></span>
+            <span>{C("keptTotal")} <b className="tabular-nums">{money(d.totals.keptPaise)}</b></span>
+            <span>{C("refundTotal")} <b className="tabular-nums">{money(d.totals.refundRequestedPaise)}</b></span>
+            <span>{C("paidTotal")} <b className="tabular-nums">{money(d.totals.refundPaidPaise)}</b></span>
+          </div>
+          {view === "document"
+            ? <Table testId="credit-table" cols={docCols} rows={d.rows} rowKey={(r) => r.id} totals={totals} />
+            : <Table testId="credit-groups" cols={groupCols} rows={d.byPatient} rowKey={(g) => g.patientId} totals={totals} />}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════ tickets & invoices (owner 2026-10-03) ═══════════════════════════════════
+
+function TicketInvoicesReport({ sheet, presetRef }: Bind): React.ReactElement {
+  const { t } = useTranslation();
+  const [range, setRange] = useRange(presetRef);
+  const q = useQuery({ queryKey: ["pharmacy", "reports", "ticket-invoices", range], queryFn: () => fetchTicketInvoices(range) });
+  const d = q.data;
+  const L = (k: string): string => t(`pharmacyOffice.reports.col.${k}`);
+  const B = (k: string, o?: Record<string, unknown>): string => t(`pharmacyOffice.reports.books.${k}`, o);
+  const cols: Col<WireTicketInvoiceRow>[] = [
+    { key: "date", label: L("date"), value: (r) => r.date },
+    { key: "ticket", label: B("ticket"), value: (r) => r.ticket ?? B(`source.${r.source}`) },
+    { key: "invoice", label: B("invoice"), value: (r) => r.invoiceNo },
+    { key: "patient", label: L("patient"), value: (r) => r.patientName },
+    { key: "uhid", label: L("uhid"), value: (r) => r.uhid },
+    { key: "taxable", label: L("taxable"), money: true, value: (r) => r.taxablePaise },
+    { key: "gst", label: B("gst"), money: true, value: (r) => r.cgstPaise + r.sgstPaise },
+    { key: "net", label: B("bill"), money: true, value: (r) => r.netPaise },
+    { key: "notes", label: B("creditNotes"), value: (r) => (r.creditNotes.length === 0 ? "—" : r.creditNotes.map((n) => n.creditNoteNo).join(", ")) },
+    { key: "returned", label: B("returned"), money: true, value: (r) => r.returnedPaise },
+    { key: "final", label: B("final"), money: true, value: (r) => r.finalPaise },
+    { key: "credit", label: B("creditUsed"), money: true, value: (r) => r.creditUsedPaise },
+    { key: "tender", label: L("method"), value: (r) => (r.tender === null ? "—" : t(`pharmacyOffice.reports.tender.${r.tender}`)) },
+    { key: "due", label: L("remaining"), money: true, value: (r) => r.outstandingPaise },
+  ];
+  const totals: Totals | null = d === undefined ? null : {
+    date: B("total"), gst: d.totals.gstPaise, net: d.totals.netPaise, returned: d.totals.returnedPaise, final: d.totals.finalPaise,
+    credit: d.totals.creditUsedPaise, due: d.totals.outstandingPaise,
+  };
+  if (d !== undefined) sheet.current = { title: t("pharmacyOffice.reports.name.ticketInvoices"), subtitle: rangeText(d.from, d.to), file: `tickets-invoices-${d.from}-${d.to}`, cols: cols as Col<never>[], rows: d.rows, totals };
+  return (
+    <div className="space-y-3">
+      <RangeBar range={range} onChange={setRange} />
+      <Status loading={q.isLoading} error={q.error} />
+      {d !== undefined && (
+        <>
+          <div className="flex flex-wrap gap-4 text-sm" data-testid="tickets-summary">
+            <span>{B("bills", { count: d.totals.bills })} <b className="tabular-nums">{money(d.totals.netPaise)}</b></span>
+            <span>{B("gst")} <b className="tabular-nums">{money(d.totals.gstPaise)}</b></span>
+            <span>{B("returned")} <b className="tabular-nums">{money(d.totals.returnedPaise)}</b></span>
+            <span>{B("creditUsed")} <b className="tabular-nums">{money(d.totals.creditUsedPaise)}</b></span>
+          </div>
+          <Table testId="tickets-table" cols={cols} rows={d.rows} rowKey={(r) => r.invoiceId} totals={totals}
+            expand={(r) => r.creditNotes.length === 0 ? <span className="text-xs text-muted-foreground">{B("noNotes")}</span> : (
+              <table className="w-full text-xs [&_td]:px-1.5 [&_th]:px-1.5">
+                <thead><tr className="text-left text-muted-foreground"><th>{B("creditNote")}</th><th>{L("date")}</th><th className="text-right">{L("taxable")}</th><th className="text-right">{B("gst")}</th><th className="text-right">{B("value")}</th></tr></thead>
+                <tbody>{r.creditNotes.map((n) => (
+                  <tr key={n.id}><td>{n.creditNoteNo}</td><td>{n.date}</td><td className="text-right">{money(n.taxablePaise)}</td><td className="text-right">{money(n.gstPaise)}</td><td className="text-right">{money(n.netPaise)}</td></tr>
+                ))}</tbody>
+              </table>
+            )} />
+        </>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════ the GST book, for the CA (owner 2026-10-03) ═══════════════════════════════════
+
+function GstBookReport({ sheet, presetRef }: Bind): React.ReactElement {
+  const { t } = useTranslation();
+  const [range, setRange] = useRange(presetRef, "month");
+  const q = useQuery({ queryKey: ["pharmacy", "reports", "gst-book", range], queryFn: () => fetchGstBook(range) });
+  const d = q.data;
+  const L = (k: string): string => t(`pharmacyOffice.reports.col.${k}`);
+  const B = (k: string, o?: Record<string, unknown>): string => t(`pharmacyOffice.reports.books.${k}`, o);
+  type Rate = NonNullable<typeof d>["rates"][number];
+  type Note = NonNullable<typeof d>["creditNotes"][number];
+  const cols: Col<Rate>[] = [
+    { key: "rate", label: B("rate"), value: (r) => `${String(r.rateBps / 100)}%` },
+    { key: "sTax", label: B("salesTaxable"), money: true, value: (r) => r.sales.taxablePaise },
+    { key: "sGst", label: B("salesGst"), money: true, value: (r) => r.sales.cgstPaise + r.sales.sgstPaise },
+    { key: "rTax", label: B("returnsTaxable"), money: true, value: (r) => r.returns.taxablePaise },
+    { key: "rGst", label: B("returnsGst"), money: true, value: (r) => r.returns.cgstPaise + r.returns.sgstPaise },
+    { key: "nTax", label: B("netTaxable"), money: true, value: (r) => r.net.taxablePaise },
+    { key: "cgst", label: L("cgst"), money: true, value: (r) => r.net.cgstPaise },
+    { key: "sgst", label: L("sgst"), money: true, value: (r) => r.net.sgstPaise },
+    { key: "nGst", label: B("netGst"), money: true, value: (r) => r.net.cgstPaise + r.net.sgstPaise },
+  ];
+  const noteCols: Col<Note>[] = [
+    { key: "no", label: B("creditNote"), value: (n) => n.creditNoteNo },
+    { key: "date", label: L("date"), value: (n) => n.date },
+    { key: "inv", label: B("againstInvoice"), value: (n) => n.invoiceNo },
+    { key: "invDate", label: B("invoiceDate"), value: (n) => n.invoiceDate },
+    { key: "patient", label: L("patient"), value: (n) => n.patientName },
+    { key: "taxable", label: L("taxable"), money: true, value: (n) => n.taxablePaise },
+    { key: "cgst", label: L("cgst"), money: true, value: (n) => n.cgstPaise },
+    { key: "sgst", label: L("sgst"), money: true, value: (n) => n.sgstPaise },
+    { key: "net", label: B("value"), money: true, value: (n) => n.netPaise },
+  ];
+  const tot = d?.totals;
+  const totals: Totals | null = tot === undefined ? null : {
+    rate: B("total"), sTax: tot.sales.taxablePaise, sGst: tot.sales.cgstPaise + tot.sales.sgstPaise, rTax: tot.returns.taxablePaise,
+    rGst: tot.returns.cgstPaise + tot.returns.sgstPaise, nTax: tot.net.taxablePaise, cgst: tot.net.cgstPaise, sgst: tot.net.sgstPaise, nGst: tot.net.cgstPaise + tot.net.sgstPaise,
+  };
+  if (d !== undefined) sheet.current = { title: t("pharmacyOffice.reports.name.gstBook"), subtitle: rangeText(d.from, d.to), file: `gst-book-${d.from}-${d.to}`, cols: cols as Col<never>[], rows: d.rates, totals };
+  return (
+    <div className="space-y-3">
+      <RangeBar range={range} onChange={setRange} />
+      <Status loading={q.isLoading} error={q.error} />
+      {d !== undefined && tot !== undefined && (
+        <>
+          <div className="grid gap-2 text-sm sm:grid-cols-3" data-testid="gst-book-headline">
+            <div className="rounded border p-3"><div className="text-muted-foreground">{B("gstOnSales")}</div><b className="text-lg tabular-nums">{money(tot.sales.cgstPaise + tot.sales.sgstPaise)}</b></div>
+            <div className="rounded border p-3"><div className="text-muted-foreground">{B("lessGstOnReturns")}</div><b className="text-lg tabular-nums">− {money(tot.returns.cgstPaise + tot.returns.sgstPaise)}</b></div>
+            <div className="rounded border p-3 bg-muted/40"><div className="text-muted-foreground">{B("gstPayable")}</div><b className="text-lg tabular-nums" data-testid="gst-payable">{money(tot.net.cgstPaise + tot.net.sgstPaise)}</b></div>
+          </div>
+          <h3 className="text-sm font-semibold">{B("byRate")}</h3>
+          <Table testId="gst-book-rates" cols={cols} rows={d.rates} rowKey={(r) => String(r.rateBps)} totals={totals} />
+          <h3 className="text-sm font-semibold">{B("notesTitle", { count: d.creditNotes.length })}</h3>
+          <Table testId="gst-book-notes" cols={noteCols} rows={d.creditNotes} rowKey={(n) => n.id} totals={null} />
+          <h3 className="text-sm font-semibold">{B("moneyTitle")}</h3>
+          <div className="rounded border p-3 text-sm space-y-1" data-testid="gst-book-money">
+            <div className="flex justify-between"><span>{B("billed")}</span><b className="tabular-nums">{money(d.money.billedPaise)}</b></div>
+            <div className="flex justify-between"><span>{B("paidFromCredit")}</span><b className="tabular-nums">− {money(d.money.paidFromCreditPaise)}</b></div>
+            <div className="flex justify-between"><span>{B("stillOwed")}</span><b className="tabular-nums">− {money(d.money.outstandingPaise)}</b></div>
+            <div className="flex justify-between border-t pt-1"><span>{B("collected")}</span><b className="tabular-nums">{money(d.money.collectedPaise)}</b></div>
+            <p className="m-0 pt-1 text-xs text-muted-foreground">{B("moneyNote")}</p>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════ the accounts, for the CA (owner 2026-10-03) ═══════════════════════════════════
+
+const DOC_TYPES = ["bill", "credit_note", "refund_paid", "credit_kept", "credit_used", "purchase_bill", "debit_note"] as const;
+
+function AccountsReport({ sheet, presetRef }: Bind): React.ReactElement {
+  const { t } = useTranslation();
+  const [range, setRange] = useRange(presetRef, "month");
+  const [docType, setDocType] = useState<(typeof DOC_TYPES)[number] | "all">("all");
+  const [exporting, setExporting] = useState(false);
+  const q = useQuery({ queryKey: ["pharmacy", "reports", "accounts", range], queryFn: () => fetchPharmacyAccounts(range) });
+  const d = q.data;
+  const L = (k: string): string => t(`pharmacyOffice.reports.col.${k}`);
+  const A = (k: string, o?: Record<string, unknown>): string => t(`pharmacyOffice.reports.accounts.${k}`, o);
+  const docs = d === undefined ? [] : docType === "all" ? d.documents : d.documents.filter((x) => x.type === docType);
+  const docCols: Col<WireAccountsDocument>[] = [
+    { key: "at", label: A("when"), value: (x) => new Date(x.at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) },
+    { key: "type", label: A("type"), value: (x) => A(`doc.${x.type}`) },
+    { key: "no", label: A("no"), value: (x) => x.no },
+    { key: "party", label: A("party"), value: (x) => x.party },
+    { key: "amount", label: A("amount"), money: true, value: (x) => x.amountPaise },
+    { key: "gst", label: A("gst"), money: true, value: (x) => x.gstPaise },
+    { key: "mode", label: L("method"), value: (x) => (x.mode === null ? "—" : t(`pharmacyOffice.reports.tender.${x.mode}`, x.mode)) },
+    { key: "by", label: A("by"), value: (x) => x.by },
+  ];
+  type Line = { label: string; paise: number; strong?: boolean };
+  const summary: { title: string; lines: Line[] }[] = d === undefined ? [] : [
+    { title: A("salesTitle"), lines: [
+      { label: A("bills", { count: d.sales.count }), paise: d.sales.netPaise },
+      { label: A("creditNotes", { count: d.returns.count }), paise: -d.returns.netPaise },
+      { label: A("netSales"), paise: d.netSalesPaise, strong: true },
+    ] },
+    { title: A("gstTitle"), lines: [
+      { label: A("gstOutput"), paise: d.gst.outputPaise },
+      { label: A("gstInput"), paise: -d.gst.inputPaise },
+      { label: A("gstNet"), paise: d.gst.netPayablePaise, strong: true },
+    ] },
+    { title: A("inTitle"), lines: [
+      { label: A("cash"), paise: d.moneyIn.cashPaise }, { label: A("upi"), paise: d.moneyIn.upiPaise }, { label: A("card"), paise: d.moneyIn.cardPaise },
+      { label: A("inTotal"), paise: d.moneyIn.totalPaise, strong: true },
+      { label: A("fromCredit"), paise: d.moneyIn.fromCreditPaise }, { label: A("owed"), paise: d.moneyIn.outstandingPaise },
+    ] },
+    { title: A("outTitle"), lines: [
+      { label: A("refundCash"), paise: -d.moneyOut.cashPaise }, { label: A("refundBank"), paise: -d.moneyOut.bankPaise },
+      { label: A("outTotal", { count: d.moneyOut.count }), paise: -d.moneyOut.totalPaise, strong: true },
+    ] },
+    { title: A("creditTitle"), lines: [
+      { label: A("kept"), paise: d.credit.keptPaise }, { label: A("used"), paise: -d.credit.usedPaise },
+      { label: A("heldNow"), paise: d.credit.heldNowPaise, strong: true },
+    ] },
+    { title: A("buyTitle"), lines: [
+      { label: A("buyBills", { count: d.purchases.bills }), paise: d.purchases.totalPaise }, { label: A("buyGst"), paise: d.purchases.gstPaise },
+      { label: A("buyReturns"), paise: -d.purchases.returnsPaise }, { label: A("buyPaid"), paise: d.purchases.paidPaise },
+      { label: A("buyDue"), paise: d.purchases.duePaise, strong: true },
+    ] },
+  ];
+  if (d !== undefined) sheet.current = { title: `${t("pharmacyOffice.reports.name.accounts")} · ${A("docsTitle")}`, subtitle: rangeText(d.from, d.to), file: `pharmacy-accounts-${d.from}-${d.to}`, cols: docCols as Col<never>[], rows: docs, totals: null };
+
+  /** Every section as a sheet of one workbook: the summary, the documents, the GST by rate, the registers. */
+  const exportAll = async (): Promise<void> => {
+    if (d === undefined) return;
+    setExporting(true);
+    try {
+      const [sales, gst, purchases, notes] = await Promise.all([fetchSalesRegister(range, "document"), fetchGstBook(range), fetchPurchaseRegister(range), fetchCreditNoteRegister(range)]);
+      const rs = (p: number): number => p / 100;
+      const sheets: XlsxSheet[] = [
+        { name: A("sheet.summary"), header: [A("section"), A("item"), A("amount")], money: [false, false, true],
+          rows: [[A("period"), rangeText(d.from, d.to), null], ...summary.flatMap((sec) => sec.lines.map((l): (string | number | null)[] => [sec.title, l.label, rs(l.paise)]))] },
+        { name: A("sheet.documents"), header: docCols.map((c) => c.label), money: docCols.map((c) => c.money === true),
+          rows: d.documents.map((x) => docCols.map((c) => { const v = c.value(x); return c.money === true && typeof v === "number" ? rs(v) : v; })) },
+        { name: A("sheet.gst"), header: [A("rate"), A("salesTaxable"), A("salesGst"), A("returnsTaxable"), A("returnsGst"), "CGST", "SGST", A("netGstCol")], money: [false, true, true, true, true, true, true, true],
+          rows: gst.rates.map((r) => [`${String(r.rateBps / 100)}%`, rs(r.sales.taxablePaise), rs(r.sales.cgstPaise + r.sales.sgstPaise), rs(r.returns.taxablePaise), rs(r.returns.cgstPaise + r.returns.sgstPaise), rs(r.net.cgstPaise), rs(r.net.sgstPaise), rs(r.net.cgstPaise + r.net.sgstPaise)]) },
+        { name: A("sheet.notes"), header: [L("date"), A("no"), A("againstInvoice"), A("party"), A("amount"), A("money")], money: [false, false, false, false, true, false],
+          rows: notes.rows.map((n) => [n.date, n.creditNoteNo, n.invoiceNo, `${n.patientName} (${n.uhid})`, rs(n.netPaise), t(`pharmacyOffice.reports.credit.settlement.${n.settlement}`)]) },
+        { name: A("sheet.sales"), header: [L("date"), A("no"), A("type"), A("party"), L("taxable"), "CGST", "SGST", L("rounding"), A("amount"), L("method"), A("by")], money: [false, false, false, false, true, true, true, true, true, false, false],
+          rows: sales.rows.map((r) => [r.date, r.docNo, A(`doc.${r.kind === "sale" ? "bill" : "credit_note"}`), `${r.patientName} (${r.uhid})`, rs(r.taxablePaise), rs(r.cgstPaise), rs(r.sgstPaise), rs(r.roundingPaise), rs(r.netPaise), r.tender === null ? "—" : t(`pharmacyOffice.reports.tender.${r.tender}`), r.operatorName]) },
+        { name: A("sheet.purchases"), header: [L("date"), A("no"), A("vendorNo"), A("party"), L("taxable"), "CGST", "SGST", "IGST", A("amount"), L("paid"), L("due")], money: [false, false, false, false, true, true, true, true, true, true, true],
+          rows: purchases.rows.map((r) => [r.date, r.docNo, r.vendorDocNo ?? "—", r.vendorName, rs(r.taxablePaise), rs(r.cgstPaise), rs(r.sgstPaise), rs(r.igstPaise), rs(r.totalPaise), r.paidPaise === null ? null : rs(r.paidPaise), r.duePaise === null ? null : rs(r.duePaise)]) },
+      ];
+      downloadXlsx(`pharmacy-accounts-${d.from}-${d.to}.xlsx`, toXlsxBook(sheets));
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-end gap-3">
+        <RangeBar range={range} onChange={setRange} store={false} />
+        <Button type="button" data-testid="accounts-export-all" disabled={d === undefined || exporting} onClick={() => void exportAll()}>{exporting ? A("exporting") : A("exportAll")}</Button>
+      </div>
+      <Status loading={q.isLoading} error={q.error} />
+      {d !== undefined && (
+        <>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="accounts-summary">
+            {summary.map((sec) => (
+              <div key={sec.title} className="rounded border p-3 text-sm" data-testid={`accounts-${sec.title}`}>
+                <div className="mb-1 font-semibold">{sec.title}</div>
+                {sec.lines.map((l) => (
+                  <div key={l.label} className={`flex justify-between ${l.strong === true ? "border-t pt-1 font-semibold" : ""}`}>
+                    <span className="text-muted-foreground">{l.label}</span><span className="tabular-nums">{money(l.paise)}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+          <p className="m-0 text-xs text-muted-foreground">{A("note")}</p>
+          <h3 className="text-sm font-semibold">{A("docsTitle")} · {d.documents.length}</h3>
+          <div className="flex flex-wrap gap-2" data-testid="accounts-doc-filter">
+            {(["all", ...DOC_TYPES] as const).filter((k) => k === "all" || d.documents.some((x) => x.type === k)).map((k) => (
+              <Button key={k} type="button" size="sm" variant={docType === k ? "default" : "outline"} data-testid={`accounts-doc-${k}`} onClick={() => setDocType(k)}>
+                {k === "all" ? A("all") : A(`doc.${k}`)} · {k === "all" ? d.documents.length : d.documents.filter((x) => x.type === k).length}
+              </Button>
+            ))}
+          </div>
+          <Table testId="accounts-docs" cols={docCols} rows={docs} rowKey={(x) => `${x.type}-${x.no}-${x.at}-${String(x.amountPaise)}`} totals={null} />
         </>
       )}
     </div>
@@ -1065,6 +1385,11 @@ function CatalogueReport({ sheet }: Bind): React.ReactElement {
     { key: "schedule", label: L("schedule"), value: (r) => r.schedule ?? "—" },
     { key: "storage", label: L("storage"), cell: "whitespace-nowrap", value: (r) => t(`pharmacyOffice.reports.storage.${r.storageClass}`, { defaultValue: r.storageClass }) },
     { key: "manufacturer", label: L("manufacturer"), value: (r) => r.manufacturer ?? "—" },
+    { key: "marketedBy", label: L("marketedBy"), value: (r) => r.marketedBy ?? "—" },
+    { key: "mfgLicenceNo", label: L("mfgLicenceNo"), cell: "whitespace-nowrap", value: (r) => r.mfgLicenceNo ?? "—" },
+    { key: "pharmacopoeia", label: L("pharmacopoeia"), value: (r) => r.pharmacopoeia ?? "—" },
+    { key: "storageMaxC", label: L("storageMaxC"), cell: "whitespace-nowrap", value: (r) => (r.storageMaxC == null ? "—" : `${String(r.storageMaxC)} °C`) },
+    { key: "lasaNote", label: L("lasaNote"), value: (r) => r.lasaNote ?? "—" },
     { key: "lead", label: L("leadDays"), num: true, value: (r) => r.leadTimeDays },
     { key: "lasa", label: L("lasa"), value: (r) => yes(r.lasa) },
     { key: "highAlert", label: L("highAlert"), value: (r) => yes(r.highAlert) },

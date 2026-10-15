@@ -61,12 +61,23 @@ export const pharmacySaleItems = pgTable(
     itemId: text("item_id").primaryKey().references(() => items.id),
     serviceId: text("service_id").notNull().references(() => services.id),
     active: boolean("active").notNull().default(true),
+    /**
+     * OWNER 2026-10-02 — THE STANDING DISCOUNT TO THE PATIENT on this medicine, in basis points off the price
+     * the counter charges (1500 = 15%). Zero is "none". It is set by the pharmacy in-charge
+     * (`pharmacy.sale_items.discount`) and capped at 25% — the in-charge's own limit under the 2026-09-30
+     * ruling; above that a discount is the owner's and is asked bill by bill. Every bill line of this item
+     * carries it as its own discount; a larger discount on the same line (the counter's, a member's) wins instead.
+     */
+    discountBps: integer("discount_bps").notNull().default(0),
     createdBy: text("created_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedBy: text("updated_by").notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("pharmacy_sale_items_service_ux").on(t.serviceId)],
+  (t) => [
+    uniqueIndex("pharmacy_sale_items_service_ux").on(t.serviceId),
+    check("pharmacy_sale_items_discount_ck", sql`${t.discountBps} between 0 and 2500`),
+  ],
 );
 
 export const pharmacyDispenses = pgTable(
@@ -1175,5 +1186,62 @@ export const pharmacyTrayCheckLines = pgTable(
     primaryKey({ columns: [t.checkId, t.itemId], name: "pharmacy_tray_check_lines_pk" }),
     check("pharmacy_tray_check_lines_qty_ck",
       sql.raw(`par_qty > 0 and qty_present >= 0 and qty_expiring >= 0 and qty_expiring <= qty_present and qty_used >= 0 and qty_restock >= 0`)),
+  ],
+);
+
+/**
+ * OWNER RULING 2026-10-02 (quick desk mode) — the pharmacy desk's own settings. ONE ROW (`id = 'main'`,
+ * the `materials_settings` shape), and its ABSENCE is the default: no row means every setting is off.
+ *
+ * `quick_desk` — when true, the desk bills a paper prescription without three of its checks: the photo
+ * of a Schedule H/H1 paper, the state-council registration of the person at the counter (verify and a
+ * scheduled hand-over), and the slip cross-confirm before the bill (`settings.ts`). OFF until the owner
+ * turns it on. Changed only by a holder of `pharmacy.licences.manage`; every change is the
+ * `pharmacy_settings.changed` event.
+ */
+export const pharmacySettings = pgTable(
+  "pharmacy_settings",
+  {
+    id: text("id").primaryKey(),
+    quickDesk: boolean("quick_desk").notNull().default(false),
+    updatedBy: text("updated_by").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [check("pharmacy_settings_one_row_ck", sql`${t.id} = 'main'`)],
+);
+
+/**
+ * OWNER RULING 2026-10-02 (pharmacy credit) — the pharmacy's own book of the credit a patient KEPT from
+ * a return instead of taking a refund, and of where it was USED. Billing's ledger holds the money (the
+ * surplus goes back onto the receipt it came from, where it is the patient's advance); this table is
+ * what says WHICH unallocated money is pharmacy credit, so a deposit held for something else — or the
+ * change-due remainder of a cash receipt — is never spent at this counter.
+ *
+ *   `kept` — a return's credit note freed `amount_paise` on `receipt_id`; `invoice_id` is the bill
+ *            returned against, `credit_note_id` its credit note.
+ *   `used` — `amount_paise` of `receipt_id` settled `invoice_id`, the NEW bill.
+ *
+ * Append-only: a balance is Σ kept − Σ used per receipt, never a column anybody updates.
+ */
+export const pharmacyCreditMoves = pgTable(
+  "pharmacy_credit_moves",
+  {
+    id: text("id").primaryKey(),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    kind: text("kind").notNull(),
+    amountPaise: bigint("amount_paise", { mode: "number" }).notNull(),
+    receiptId: text("receipt_id").notNull(),
+    invoiceId: text("invoice_id").notNull().references(() => invoices.id),
+    creditNoteId: text("credit_note_id"),
+    dispenseId: text("dispense_id").references(() => pharmacyDispenses.id),
+    actorId: text("actor_id").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    check("pharmacy_credit_moves_kind_ck", sql`${t.kind} in ('kept', 'used')`),
+    check("pharmacy_credit_moves_amount_ck", sql`${t.amountPaise} > 0`),
+    check("pharmacy_credit_moves_kept_ck", sql`${t.kind} <> 'kept' or ${t.creditNoteId} is not null`),
+    index("pharmacy_credit_moves_patient_idx").on(t.patientId),
+    index("pharmacy_credit_moves_invoice_idx").on(t.invoiceId),
   ],
 );

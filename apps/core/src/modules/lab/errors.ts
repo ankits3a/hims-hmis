@@ -130,6 +130,11 @@ export const LAB_ERROR_CODES = [
   "unknown_interface",
   /** ── DD11's morning review of a night release ── */
   "review_not_pending",
+  /** ── owner 2026-10-11 — future lab bookings (date + time slot) ── */
+  "booking_slot_unavailable",
+  "lab_mode_off",
+  "unknown_booking",
+  "booking_not_open",
 ] as const;
 
 export type LabErrorCode = (typeof LAB_ERROR_CODES)[number];
@@ -247,6 +252,16 @@ const STATUS: Record<LabErrorCode, number> = {
    * correct response is to re-read the queue, which is what 409 means.
    */
   review_not_pending: 409,
+
+  /**
+   * Owner 2026-10-11 — bookings. A slot that is full, past, closed or out of the booking window is a
+   * 409: the request is well formed and the answer is "pick another slot", which the screen offers.
+   * A booking that is not `booked` any more (cancelled, no-show, already arrived) is the same family.
+   */
+  booking_slot_unavailable: 409,
+  lab_mode_off: 409,
+  unknown_booking: 404,
+  booking_not_open: 409,
 };
 
 export function labHttpStatus(code: LabErrorCode): number {

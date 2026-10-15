@@ -74,6 +74,23 @@ describe("MaterialsVendors", () => {
    * locale string is present and **the server's sentence is ABSENT**. The Hindi leg below is the
    * one that could not have passed before, in either direction.
    */
+  /* Owner 2026-10-03 — "statutory documents are incomplete" did not say which, nor where to add them. */
+  it("an activation refused for documents names each missing one and says where to add it", async () => {
+    mockRoutes({
+      "GET /api/materials/vendors": { status: 200, body: { vendors: [{ ...BLACKLISTED, status: "draft", blacklistUntil: null, blacklistReason: null }] } },
+      "POST /api/materials/vendors/v-1/activate": {
+        status: 409,
+        body: { statusCode: 409, code: "documents_incomplete", message: "vendor ACME cannot be activated", detail: { missing: ["gst_certificate", "drug_licence_21b"], onDate: "2026-10-03" } },
+      },
+    });
+    renderWithProviders(<MaterialsVendors />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Activate" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("add these documents below under Documents first: GST certificate, Drug licence 21B (restricted schedule)");
+    expect(alert).not.toHaveTextContent("gst_certificate");
+  });
+
   it("renders the LOCALE string for a refusal — not the server's English sentence, and not the code", async () => {
     mockRoutes({
       "GET /api/materials/vendors": { status: 200, body: { vendors: [BLACKLISTED] } },
@@ -170,6 +187,46 @@ describe("MaterialsVendors", () => {
     ]);
     // …and the action says what it commits the hospital to.
     expect(screen.getByRole("button", { name: "Blacklist for three years" })).toBeInTheDocument();
+  });
+
+  /* Owner 2026-10-03 — uploading a document crashed the sheet (React #31) and its Save button vanished. */
+  it("a document: the date in DD-MM-YYYY goes out as YYYY-MM-DD; a refused field shows as a sentence, the sheet stays", async () => {
+    const posted: unknown[] = [];
+    let refuse = true;
+    const draft = { ...BLACKLISTED, status: "draft", blacklistUntil: null, blacklistReason: null };
+    mockRoutes({
+      "GET /api/materials/vendors": { status: 200, body: { vendors: [draft] } },
+      "GET /api/materials/vendors/v-1": { status: 200, body: { vendor: draft, documents: [] } },
+    });
+    const real = vi.mocked(fetch);
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if ((init?.method ?? "GET") === "POST" && raw.endsWith("/materials/vendors/v-1/documents")) {
+        posted.push(JSON.parse(String(init?.body)));
+        if (refuse) {
+          refuse = false;
+          return new Response(JSON.stringify({ statusCode: 400, message: [{ origin: "string", code: "invalid_format", format: "regex", pattern: "/^\\d{4}-\\d{2}-\\d{2}$/", path: ["validTo"], message: "Invalid string: must match pattern" }], error: "Bad Request" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+        return new Response(JSON.stringify({ documentId: "d-1" }), { status: 201, headers: { "Content-Type": "application/json" } });
+      }
+      return real(input, init);
+    }));
+    renderWithProviders(<MaterialsVendors />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Open" }));
+    const save = await screen.findByTestId("doc-save");
+    expect(save).toBeDisabled(); // no number yet
+    await user.type(screen.getByPlaceholderText("Number"), "DL-20B-123");
+    await user.type(screen.getByTestId("doc-valid-to"), "31-3-202");
+    expect(screen.getByTestId("doc-date-bad")).toBeInTheDocument();
+    expect(save).toBeDisabled();
+    await user.type(screen.getByTestId("doc-valid-to"), "7");
+    expect(save).toBeEnabled();
+    await user.click(save);
+    // the server's list of issues reads as a sentence — and the sheet, with its Save button, is still there
+    expect(await screen.findByText(/validTo: Invalid string: must match pattern/)).toBeInTheDocument();
+    expect(screen.getByTestId("doc-save")).toBeInTheDocument();
+    expect(posted[0]).toMatchObject({ number: "DL-20B-123", validTo: "2027-03-31" });
   });
 
   it("a new vendor is created as a draft, and the screen says so before it is used", async () => {

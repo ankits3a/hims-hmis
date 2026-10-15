@@ -1,4 +1,8 @@
-import { Injectable, Module, OnModuleInit } from "@nestjs/common";
+import { Inject, Injectable, Module, OnModuleInit } from "@nestjs/common";
+import { CONFIG } from "../../kernel/tokens";
+import type { AppConfig } from "../../kernel/config";
+import { registerNicknameLookup } from "../formulary";
+import { nicknameLookupFor } from "./alias-store";
 // PLAN 17 PHASE 0 T3 — the registry moved to the kernel; billing re-exports the same names.
 import { registerEncounterResolver } from "../../kernel/episodes/encounter-resolvers";
 import { registerFeeStatusHook } from "../billing";
@@ -13,9 +17,14 @@ import { OpdMastersController } from "./opd-masters.controller";
 import { OpdVocabularyController } from "./opd-vocabulary.controller";
 import { OpdReportsController } from "./opd-reports.controller";
 import { OpdAdviceController } from "./opd-advice.controller";
+import { OpdPhoneConsultController } from "./opd-phone-consult.controller";
 import { OpdCdsController } from "./opd-cds.controller";
 import { OpdQueueController } from "./opd-queue.controller";
 import { OpdVisitsController } from "./opd-visits.controller";
+import { OpdPaperController } from "./opd-paper.controller";
+import { OpdPaceController } from "./opd-pace.controller";
+import { paperHookForDocument } from "./paper-consult";
+import { registerDocumentCapturedHook } from "../patients";
 import { OPD_TOPIC_SPACES, opdTopicRouter } from "./realtime";
 import { registerOpdGlassesPrinting } from "./glasses-print";
 
@@ -47,11 +56,16 @@ class OpdRealtimeRegistrar implements OnModuleInit {
  */
 @Module({
   imports: [RealtimeModule],
-  controllers: [OpdMastersController, OpdVisitsController, OpdQueueController, OpdCdsController, OpdAdviceController, OpdVocabularyController, OpdReportsController],
+  controllers: [OpdMastersController, OpdVisitsController, OpdQueueController, OpdCdsController, OpdAdviceController, OpdVocabularyController, OpdReportsController, OpdPaperController, OpdPhoneConsultController, OpdPaceController],
   providers: [OpdRealtimeRegistrar],
 })
 export class OpdModule implements OnModuleInit {
+  constructor(@Inject(CONFIG) private readonly config: AppConfig) {}
+
   onModuleInit(): void {
+    // Decisions 0051/0055 — the prescriber's medicine search asks OPD for a learned nickname. The
+    // lookup answers null, and reads nothing, while ALIAS_PIPELINE_ENABLED is off.
+    registerNicknameLookup(nicknameLookupFor(this.config));
     registerOpdEncounterResolver();
     registerOpdCareContextProvider();
     // RC-1 T3 / D2 — the board flip: billing settles, OPD narrates. The registry is keyed, so a
@@ -61,7 +75,19 @@ export class OpdModule implements OnModuleInit {
     // Board "Ophthal" — the glasses prescription is OPD's paper, drawn here and printed by the
     // kernel's relay (the pharmacy module's shape), so the kernel never reads a section record.
     registerOpdGlassesPrinting();
+    // Owner ruling 2026-10-06 — a photographed prescription slip closes the visit it is filed on.
+    registerPaperConsultHook();
   }
+}
+
+/**
+ * The slip desk files through the patients module (`POST /patients/:id/documents`), which knows
+ * nothing of visits; this hands it the OPD's answer to "and what does that page mean". Exported so
+ * a suite can register it without booting Nest, like the resolver below.
+ */
+export const PAPER_CONSULT_HOOK = "opd.paper";
+export function registerPaperConsultHook(): () => void {
+  return registerDocumentCapturedHook(PAPER_CONSULT_HOOK, (tx, actor, doc, now) => paperHookForDocument(tx, actor, doc, now));
 }
 
 /**

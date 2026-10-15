@@ -116,3 +116,56 @@ export const printJobs = pgTable(
     index("print_jobs_patient_idx").on(t.patientId),
   ],
 );
+
+/**
+ * ═══ THE COUNTER'S OWN PRINT PROGRAM (owner, 2026-10-07 — decision 0047) ═══
+ *
+ * Each front-desk counter is a Windows PC with its own USB printer, so one site relay cannot reach
+ * them. A counter PC runs the relay itself (`tools/print-relay`, Windows build) and enrols with a
+ * one-time code an administrator reads out. Each computer is its own agent (its own key, its own
+ * kill switch) granted exactly one destination, `counter:<id>:a4`, which nobody else may claim.
+ *
+ * The row is what the administrator sees: which computer, which printer it reported, when it last
+ * asked for work. `last_seen_at` is the liveness the desk's "Decide for me" reads — a computer that
+ * has not asked for work for `PRINT_COMPUTER_ALIVE_SECONDS` is offline and the browser prints.
+ */
+export const printComputers = pgTable(
+  "print_computers",
+  {
+    id: text("id").primaryKey(),
+    /** The agent this computer authenticates as. Plain text: `agents` lives in the auth schema file. */
+    agentId: text("agent_id").notNull(),
+    name: text("name").notNull(),
+    /** The Windows printer (or CUPS queue) the program prints A4 on — reported by the program, never set here. */
+    printer: text("printer"),
+    printers: jsonb("printers").$type<string[]>().notNull().default([]),
+    platform: text("platform"),
+    appVersion: text("app_version"),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    revokedBy: text("revoked_by"),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("print_computers_agent_ux").on(t.agentId)],
+);
+
+/**
+ * A one-time enrolment code. Only its SHA-256 is kept; it is good for fifteen minutes and for one
+ * computer. `used_at` is set in the same statement that proves it unused, so two installers racing
+ * one code enrol one computer.
+ */
+export const printEnrolmentCodes = pgTable(
+  "print_enrolment_codes",
+  {
+    id: text("id").primaryKey(),
+    codeHash: text("code_hash").notNull(),
+    name: text("name").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    computerId: text("computer_id"),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("print_enrolment_codes_hash_ux").on(t.codeHash), index("print_enrolment_codes_expiry_idx").on(t.expiresAt)],
+);

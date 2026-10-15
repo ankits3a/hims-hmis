@@ -26,31 +26,13 @@ export type RxDraftLine = {
   noSubstitution: boolean;
 };
 
-/** The form's own vocabulary (`opd-consult.tsx`'s FREQUENCY_OPTIONS) — a value outside it cannot be selected. */
-export type RxFrequency = "OD" | "BD" | "TDS" | "QID" | "HS" | "SOS" | "STAT" | "other";
-
-export function frequencyOf(sig: string): RxFrequency {
-  const s = sig.toLowerCase();
-  /* The Indian slip's own notation first — "1-0-1" is read aloud as morning-noon-night and is what
-     the bundle writes. Count the non-zero slots; that is the frequency, whatever words follow. */
-  const slots = /(\d)\s*-\s*(\d)\s*-\s*(\d)(?:\s*-\s*(\d))?/.exec(s);
-  if (slots !== null) {
-    const taken = slots.slice(1).filter((x) => x !== undefined && x !== "0").length;
-    if (taken === 1) return /0\s*-\s*0\s*-\s*[1-9]/.test(s) && /bed|night|hs/.test(s) ? "HS" : "OD";
-    if (taken === 2) return "BD";
-    if (taken === 3) return "TDS";
-    if (taken === 4) return "QID";
-  }
-  if (/\bstat\b/.test(s)) return "STAT";
-  if (/\bsos\b|as needed|when required/.test(s)) return "SOS";
-  if (/every\s*4\s*-?\s*6\s*h|q4h/.test(s)) return "QID";
-  if (/every\s*6\s*h|q6h|\bqid\b/.test(s)) return "QID";
-  if (/every\s*8\s*h|q8h|\btds\b|\btid\b/.test(s)) return "TDS";
-  if (/every\s*12\s*h|q12h|\bbd\b|\bbid\b|twice/.test(s)) return "BD";
-  if (/bedtime|at night|\bhs\b/.test(s)) return "HS";
-  if (/once daily|\bod\b|\bdaily\b/.test(s)) return "OD";
-  return "other";
-}
+/**
+ * The closed frequency set and its reader live in `@hmis/contracts` (`rx-line.ts`) since decision
+ * 0050's phase P0: the web, the scribe desk, the phone and this module all read the one definition.
+ */
+export { frequencyOf } from "@hmis/contracts";
+export type { RxFrequency } from "@hmis/contracts";
+import { frequencyOf } from "@hmis/contracts";
 
 export function durationDaysOf(duration: string | null, sig: string): number | null {
   for (const text of [duration ?? "", sig]) {

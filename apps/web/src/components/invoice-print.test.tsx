@@ -1,7 +1,7 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "../test-utils";
-import { InvoicePrint } from "./invoice-print";
+import { INVOICE_4X6_PRINT_CSS, InvoicePrint } from "./invoice-print";
 import type { WireInvoice, WireInvoiceLine, WireInvoicePrint } from "../lib/billing-api";
 
 const ISSUED = "2026-08-20T05:12:00.000Z";
@@ -52,6 +52,17 @@ const DATA: WireInvoicePrint = {
 describe("InvoicePrint", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  /** Owner, 2026-10-01 — a service whose price is zero prints "₹0 (समाज सेवा छूट)", in Hindi, on the bill. */
+  it("a zero-priced line and a wholly free bill print ₹0 (समाज सेवा छूट); a priced one prints its amount", () => {
+    const freeLine = { ...LINES[0]!, id: "l-free", grossPaise: 0, discountPaise: 0, cgstPaise: 0, sgstPaise: 0, netPaise: 0 };
+    const mixed = renderWithProviders(<InvoicePrint data={{ ...DATA, lines: [freeLine, LINES[1]!] }} />);
+    expect(screen.getAllByText("₹0 (समाज सेवा छूट)")).toHaveLength(1);
+    expect(screen.getByTestId("invoice-net")).not.toHaveTextContent("समाज सेवा छूट");
+    mixed.unmount();
+    renderWithProviders(<InvoicePrint data={{ ...DATA, lines: [freeLine], invoice: { ...INVOICE, grossPaise: 0, discountPaise: 0, taxableBasePaise: 0, rawTotalPaise: 0, roundingPaise: 0, netPayablePaise: 0 }, settlement: { state: "settled", outstandingPaise: 0 } }} />);
+    expect(screen.getByTestId("invoice-net")).toHaveTextContent("₹0 (समाज सेवा छूट)");
   });
 
   it("names the document by its lines, and the supplier by its legal name, GSTIN and state once the letterhead carries them (r.46)", () => {
@@ -144,6 +155,17 @@ describe("InvoicePrint", () => {
       />,
     );
     expect(screen.getByTestId("invoice-patient")).toHaveTextContent("Asha Devi");
+  });
+
+  /* Owner, 2026-10-02: "the invoice bill should be in 4 x 6 inch print page. I will be using dot matrix printer." */
+  it("prints on a 4 × 6 inch page: its own @page rule, in flow so a long bill reaches a second page, pure black", () => {
+    expect(INVOICE_4X6_PRINT_CSS).toContain("@page { size: 4in 6in; margin: 4mm; }");
+    expect(INVOICE_4X6_PRINT_CSS).toContain("position: absolute");
+    expect(INVOICE_4X6_PRINT_CSS).toContain("color: #000 !important");
+    expect(INVOICE_4X6_PRINT_CSS).not.toMatch(/A5|148mm/);
+    const { container } = renderWithProviders(<InvoicePrint data={DATA} />);
+    expect(container.querySelector(".print-doc.invoice-4x6")).not.toBeNull();
+    expect(container.querySelector("style")?.textContent).toBe(INVOICE_4X6_PRINT_CSS);
   });
 
   it("print isolation: the root carries .print-doc, exactly one document is mounted, and the print button is chrome", async () => {

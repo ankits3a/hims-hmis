@@ -89,6 +89,10 @@ function mount(opts: {
   cancels?: { reason: string }[];
   checkInRefuses?: boolean;
   emptyBoard?: boolean;
+  /** Owner 2026-10-05 — the consultation terms the desk reads: the revisit price and the Fees switch. */
+  revisitPaise?: number;
+  feeOff?: boolean;
+  termsRefused?: boolean;
 } = {}): void {
   stubFetch({
     "GET /api/auth/me": {
@@ -134,6 +138,9 @@ function mount(opts: {
       }],
     },
     "GET /api/opd/continuity": { anchor: opts.anchor ?? null },
+    "GET /api/billing/consult-terms": opts.termsRefused === true
+      ? (): unknown => { throw new Error("refused"); }
+      : { consultFeeOff: opts.feeOff ?? false, paise: { new: 30000, renewal: 15000, revisit: opts.revisitPaise ?? null } },
     "GET /api/opd/slots": { slots: opts.slots ?? [] },
     /*
       Two different reads land on this path — the DAY's book (doctorId + serviceDate) and THIS
@@ -224,12 +231,26 @@ async function holdPatient(): Promise<void> {
  * granularity — a fix aimed at the one assertion that happened to lose would leave the other nine.
  * No assertion is weakened: they assert exactly what they asserted before, on a settled grid.
  */
-async function openFutureTab(): Promise<void> {
+async function openFutureTab(pick = true): Promise<void> {
   await holdPatient();
   const user = userEvent.setup({ delay: null });
   await user.click(screen.getByRole("button", { name: /future appointment/i }));
   await waitFor(() => expect(screen.getByText("The day's book")).toBeInTheDocument());
   await waitFor(() => { expect(screen.queryByText("reading the diary…")).not.toBeInTheDocument(); });
+  if (pick) await pickDayPart();
+}
+
+/**
+ * Owner, 2026-10-01 — the board asks morning, noon or evening before it draws a time. Every test
+ * below is about the slots, so it taps the first part that has a session; a day with none has
+ * nothing to tap and the helper returns.
+ */
+async function pickDayPart(): Promise<void> {
+  const open = (): HTMLElement | undefined => screen.queryAllByTestId(/^daypart-(morning|noon|evening)$/).find((b) => !(b as HTMLButtonElement).disabled);
+  try {
+    await waitFor(() => { expect(open()).toBeDefined(); }, { timeout: 400 });
+  } catch { return; }
+  await userEvent.setup({ delay: null }).click(open()!);
 }
 
 afterEach(() => { setToken(null); });
@@ -279,6 +300,50 @@ describe("FD-16: Their history, in the left rail", () => {
   });
 });
 
+describe("morning, noon or evening is asked before any slot is drawn (owner, 2026-10-01)", () => {
+  // The fixture's clock strings are UTC: 03:00Z is 08:30 IST, 09:00Z is 14:30 IST, 13:00Z is 18:30 IST.
+  const DAY = [slot("03:00"), slot("03:15", { booked: true }), slot("09:00"), slot("13:00", { booked: true })];
+
+  it("shows three parts with what is free in each, and no time until one is tapped", async () => {
+    mount({ slots: DAY });
+    await openFutureTab(false);
+    expect(screen.getByTestId("daypart-ask")).toBeInTheDocument();
+    expect(screen.queryByTestId("slot-free")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("slot-taken")).not.toBeInTheDocument();
+    expect(screen.getByTestId("daypart-morning")).toHaveTextContent("Morning");
+    expect(screen.getByTestId("daypart-morning-count")).toHaveTextContent("1 free");
+    expect(screen.getByTestId("daypart-noon-count")).toHaveTextContent("1 free");
+    expect(screen.getByTestId("daypart-evening-count")).toHaveTextContent("full");
+    expect(screen.getByTestId("daypart-morning").querySelector("svg")).not.toBeNull();
+  });
+
+  it("a tap shows that part's slots only, and moving to another part drops the slot picked in the first", async () => {
+    mount({ slots: DAY });
+    await openFutureTab(false);
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByTestId("daypart-morning"));
+    expect(screen.getByTestId("daypart-morning")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByTestId("daypart-ask")).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("slot-free").map((b) => b.textContent)).toEqual(["08:30"]);
+    expect(screen.getAllByTestId("slot-taken").map((b) => b.textContent)).toEqual(["08:45"]);
+    await user.click(screen.getByTestId("slot-free"));
+    expect(screen.getByTestId("slot-picked")).toHaveTextContent("08:30");
+
+    await user.click(screen.getByTestId("daypart-noon"));
+    expect(screen.queryByTestId("slot-picked")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("confirm-slot")).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("slot-free").map((b) => b.textContent)).toEqual(["14:30"]);
+  });
+
+  it("a part with no session cannot be tapped", async () => {
+    mount({ slots: [slot("09:00")] });
+    await openFutureTab(false);
+    expect(screen.getByTestId("daypart-morning")).toBeDisabled();
+    expect(screen.getByTestId("daypart-morning-count")).toHaveTextContent("no session");
+    expect(screen.getByTestId("daypart-noon")).toBeEnabled();
+  });
+});
+
 describe("FD-16: the slot grid says what is free, what is taken, and what you picked", () => {
   it("draws taken slots too — an empty box cannot distinguish a full day from no session", async () => {
     mount({ slots: [slot("09:00"), slot("09:15", { booked: true }), slot("09:30")] });
@@ -322,6 +387,26 @@ describe("FD-16: the slot grid says what is free, what is taken, and what you pi
     const body = booked[0]!.body as { patientId: string; doctorId: string; slotStart: string };
     expect(body.patientId).toBe("p-1");
     expect(body.doctorId).toBe("doc-1");
+    expect(Object.keys(body).sort()).toEqual(["doctorId", "patientId", "slotStart"]); // an in-person booking sends nothing new
+  });
+
+  it("TELE-CALL (fix round): the booking stage draws the appointments screen's own In person | Tele-call switch — tele waits for a real number and books with mode and the ten digits; in person books what it always did", async () => {
+    const booked: { body: unknown }[] = [];
+    mount({ slots: [slot("10:30"), slot("10:45")], booked });
+    await openFutureTab();
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getAllByTestId("slot-free")[0]!);
+    expect(screen.getByRole("radio", { name: "In person" })).toBeChecked();
+    expect(screen.queryByLabelText("Patient's phone")).toBeNull();
+    await user.click(screen.getByRole("radio", { name: "Tele-call" }));
+    const phone = screen.getByLabelText("Patient's phone");
+    await user.clear(phone);
+    expect(screen.getByTestId("confirm-slot")).toBeDisabled();
+    await user.type(phone, "+91 98765 43021");
+    expect(screen.getByTestId("confirm-slot")).toBeEnabled();
+    await user.click(screen.getByTestId("confirm-slot"));
+    await waitFor(() => expect(booked).toHaveLength(1));
+    expect(booked[0]!.body).toMatchObject({ patientId: "p-1", doctorId: "doc-1", mode: "tele", telePhone: "9876543021" });
   });
 
   it("a taken slot cannot be picked at all", async () => {
@@ -425,9 +510,49 @@ describe("FD-17: the appointment's type, and the bookings the desk did not warn 
     await holdPatient();
 
     const badge = await screen.findByTestId("visit-type");
-    expect(badge).toHaveTextContent("Revisit — no consultation fee");
+    await waitFor(() => expect(badge).toHaveTextContent("Revisit — no consultation fee"));
     expect(badge).toHaveTextContent("30-day");
     expect(badge).toHaveTextContent("2026-09-29");
+  });
+
+  it("owner 2026-10-05: when the price list charges a revisit, the box says the price, not 'no fee'", async () => {
+    mount({ anchor: ANCHOR("revisit", 30, "2026-09-29"), revisitPaise: 5000 });
+    await holdPatient();
+
+    const badge = await screen.findByTestId("visit-type");
+    await waitFor(() => expect(badge).toHaveTextContent("Revisit — consultation ₹50.00"));
+    expect(badge).not.toHaveTextContent("no consultation fee");
+  });
+
+  it("owner 2026-10-05: with the Fees switch off, a priced revisit is still free and a renewal says it is free", async () => {
+    mount({ anchor: ANCHOR("revisit", 30, "2026-09-29"), revisitPaise: 5000, feeOff: true });
+    await holdPatient();
+    const badge = await screen.findByTestId("visit-type");
+    await waitFor(() => expect(badge).toHaveTextContent("Revisit — no consultation fee"));
+  });
+
+  it("owner 2026-10-05: a renewal while the Fees switch is off is free, not chargeable", async () => {
+    mount({ anchor: ANCHOR("renewal", 7, "2026-09-06"), feeOff: true });
+    await holdPatient();
+    const badge = await screen.findByTestId("visit-type");
+    await waitFor(() => expect(badge).toHaveTextContent("Renewal — free while the consultation fee is switched off"));
+    expect(badge).not.toHaveTextContent("chargeable");
+  });
+
+  it("owner 2026-10-05: when the desk cannot read the terms it names the visit type and claims no fee either way", async () => {
+    mount({ anchor: ANCHOR("revisit", 30, "2026-09-29"), termsRefused: true });
+    await holdPatient();
+    const badge = await screen.findByTestId("visit-type");
+    expect(badge).toHaveTextContent("Revisit");
+    expect(badge).not.toHaveTextContent("no consultation fee");
+    expect(badge).toHaveTextContent("30-day");
+  });
+
+  it("a revisit priced at ₹0 is still called free", async () => {
+    mount({ anchor: ANCHOR("revisit", 30, "2026-09-29"), revisitPaise: 0 });
+    await holdPatient();
+    const badge = await screen.findByTestId("visit-type");
+    await waitFor(() => expect(badge).toHaveTextContent("Revisit — no consultation fee"));
   });
 
   it("says a renewal is chargeable, and why the window no longer covers it", async () => {
@@ -435,7 +560,7 @@ describe("FD-17: the appointment's type, and the bookings the desk did not warn 
     await holdPatient();
 
     const badge = await screen.findByTestId("visit-type");
-    expect(badge).toHaveTextContent("chargeable");
+    await waitFor(() => expect(badge).toHaveTextContent("chargeable"));
     expect(badge).toHaveTextContent("2026-09-06");
   });
 
@@ -695,5 +820,47 @@ describe("FD-22: refusals land inline, cancelling confirms, and every doctor is 
     // the doctor comes from the MASTER, so an empty board does not empty the picker
     expect(screen.getByTestId("book-doctor")).toHaveTextContent("Dr. Verma");
     expect(screen.getAllByTestId("slot-free").length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * OWNER, 2026-10-01 (and 2026-09-14 before it): *"I just booked a future appointment. But I can't see
+ * the booked future appointment in the patient profile."* The left lane read visits, and a booking has
+ * no visit until check-in.
+ */
+describe("the left lane shows the appointments the patient still holds", () => {
+  const held = (id: string, time: string): Record<string, unknown> => ({
+    id, patientId: "p-1", doctorId: "doc-1", departmentId: "d-1", serviceDate: tomorrowIst(),
+    slotStart: `${tomorrowIst()}T${time}:00.000Z`, slotEnd: `${tomorrowIst()}T${time}:00.000Z`,
+    status: "booked", source: "desk", note: null, encounterId: null, rescheduledToId: null,
+    rescheduledFromId: null, cancelReason: null, leaveId: null, bookedBy: "u1",
+    bookedAt: "2026-09-04T00:00:00.000Z", updatedBy: "u1", updatedAt: "2026-09-04T00:00:00.000Z",
+  });
+
+  it("says so in words when nothing is booked ahead — the heading does not vanish", async () => {
+    mount({ slots: [] });
+    await holdPatient();
+    expect(await screen.findByTestId("upcoming-none")).toHaveTextContent("none booked ahead");
+  });
+
+  it("lists a held slot with its day and its clock", async () => {
+    mount({ slots: [], theirs: [held("11", "09:15")] });
+    await holdPatient();
+    const row = await screen.findByTestId("upcoming-row");
+    expect(row).toHaveTextContent("14:45"); // 09:15Z is 14:45 IST
+  });
+
+  it("a slot booked a moment ago appears in the lane without waiting out the cache", async () => {
+    const theirs: unknown[] = [];
+    const booked: { body: unknown }[] = [];
+    mount({ slots: [slot("10:30")], theirs, booked });
+    await openFutureTab();
+    expect(await screen.findByTestId("upcoming-none")).toBeInTheDocument();
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getAllByTestId("slot-free")[0]!);
+    theirs.push(held("12", "10:30")); // what the server will answer once the booking lands
+    await user.click(screen.getByTestId("confirm-slot"));
+    await waitFor(() => expect(booked).toHaveLength(1));
+    expect(await screen.findByTestId("upcoming-row")).toHaveTextContent("16:00");
   });
 });

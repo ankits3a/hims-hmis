@@ -33,7 +33,7 @@ export type NeedSource = "PAY" | "APPROVE" | "RECON" | "UNBILLED" | "DAY BOOK" |
 export type NeedTone = "rd" | "gd" | "no";
 export type NeedKind =
   | "recon_mismatch" | "recon_disputed" | "recon_missing"
-  | "pay_voucher" | "approve_refund" | "refund_owner"
+  | "pay_voucher" | "issue_voucher" | "approve_refund" | "refund_owner"
   | "unbilled_visit" | "daybook_paper" | "gstr1_due";
 
 export type NeedPatient = { patientId: string; uhid: string; name: string | null; alias: string | null; restricted: boolean };
@@ -168,6 +168,32 @@ export async function billingOfficeNeeds(db: Db, actor: Actor, now: Date = new D
       },
     });
     patientIds.push(v.patientId); patientOf.set(id, v.patientId);
+  }
+
+  // ── PAY, step before (owner 2026-10-03): a refund APPROVED with no voucher yet — issue it here. ──
+  const granted = await db.select().from(approvals).where(and(
+    eq(approvals.status, "granted"),
+    inArray(approvals.typeKey, [REFUND_APPROVAL_TYPE, REFUND_OWNER_APPROVAL_TYPE]),
+  )).orderBy(asc(approvals.decidedAt));
+  const vouchered = granted.length === 0 ? new Set<string>() : new Set(
+    (await db.select({ id: refundVouchers.approvalId }).from(refundVouchers).where(inArray(refundVouchers.approvalId, granted.map((g) => g.id)))).map((r) => r.id),
+  );
+  const toIssue = granted.filter((g) => !vouchered.has(g.id));
+  const issueNames = await namesOf(db, toIssue.flatMap((g) => [g.decidedBy ?? "", g.requesterId]));
+  for (const g of toIssue) {
+    const age = minutesSince(g.decidedAt ?? g.requestedAt, now);
+    const id = `issue:${g.id}`;
+    rows.push({
+      id, kind: "issue_voucher", source: "PAY", state: "open", tier: 1,
+      since: (g.decidedAt ?? g.requestedAt).toISOString(), ageMinutes: age, daysLeft: null, tone: ageTone(age, DAY_MS / MINUTE, 3 * DAY_MS / MINUTE),
+      patient: null,
+      params: {
+        approvalId: g.id, amountPaise: g.amountPaise ?? 0, note: g.requestNote ?? "",
+        requestedBy: issueNames.get(g.requesterId) ?? null, approvedBy: issueNames.get(g.decidedBy ?? "") ?? null,
+        approvedAt: g.decidedAt?.toISOString() ?? null, bankAbovePaise: cfg.refundBankAbovePaise,
+      },
+    });
+    if (g.patientId !== null) { patientIds.push(g.patientId); patientOf.set(id, g.patientId); }
   }
 
   for (const p of pending) {

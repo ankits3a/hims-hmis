@@ -35,6 +35,8 @@ export type FindResult =
      * prescription" for this person (`paper-rx.ts`) instead of a dead end.
      */
     patient?: FoundPatient | undefined;
+    /** 2026-10-02 — today's prescription was already handed over: that finished ticket, for "see it again". */
+    lastDispenseId?: string | undefined;
   };
 
 export type FoundPatient = { id: string; uhid: string; name: string | null; alias: string | null };
@@ -97,15 +99,61 @@ export async function findAtCounter(db: Db, cfg: AppConfig, actor: Actor, q: str
   return todaysDispense(db, actor, hits[0]!.id, "uhid", now);
 }
 
+export type CounterSuggestion = {
+  id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean;
+  /** Sex, age and the phone's last four — what tells two people of one name apart. Null on a sealed record. */
+  hint: string | null;
+};
+
+/**
+ * 2026-10-01 (owner, staging) — AS THE PHARMACIST TYPES. *"I am not seeing any suggested patient
+ * name as I type."* The find field answered only on Enter, so a registered patient looked absent.
+ *
+ * A NAME STILL NEVER SELECTS (D4): this only LISTS who the typed words could be. The pharmacist
+ * taps one and the ordinary `findAtCounter` runs on that UHID — the e-prescription if there is one
+ * today, the paper-prescription door if there is not. A QR payload or a token is not a name and is
+ * never suggested on; two characters is the floor.
+ */
+export async function suggestAtCounter(db: Db, actor: Actor, q: string, now: Date, limit = 8): Promise<CounterSuggestion[]> {
+  const text = q.trim();
+  if (text.length < 2 || text.startsWith("rx1.") || text.startsWith("q1.") || /^t-?\s*\d{1,5}$/i.test(text)) return [];
+  const hits = await searchPatients(db, actor, text, limit);
+  if (hits.length === 0) return [];
+  const byId = new Map(hits.map((h) => [h.id, h] as const));
+  const summaries = await getPatientSummaries(db, actor, hits.map((h) => h.id));
+  return summaries.map((s) => {
+    const h = byId.get(s.id);
+    const age = h?.dob == null ? null : Math.floor((now.getTime() - h.dob.getTime()) / (365.25 * 86_400_000));
+    const hint = s.restricted || h === undefined ? null : [
+      h.administrativeGender, age === null ? null : `${age}y`, h.phone === null ? null : `••${h.phone.slice(-4)}`,
+    ].filter((x) => x !== null && x !== "").join(" · ");
+    return { id: s.id, uhid: s.uhid, name: s.name, alias: s.alias, restricted: s.restricted, hint: hint === "" ? null : hint };
+  });
+}
+
 /** The patient's prescription of today, through the visit read (which logs the PHI access). */
 async function todaysDispense(db: Db, actor: Actor, patientId: string, door: CounterDoor, now: Date): Promise<FindResult> {
   // `type: "any"` — a paper prescription on the desk's own no-fee pharmacy visit (2026-09-30) is found again by name.
   const visits = await listVisits(db, { serviceDate: istDateOf(now), patientId, type: "any" });
+  /*
+    2026-10-02 (owner, staging) — A HANDED-OVER TICKET IS FINISHED, NOT "TODAY'S PRESCRIPTION". The
+    patient billed in the morning came back with another paper, and the name kept opening the morning's
+    done ticket: "no way to restart a fresh billing cycle". So a prescription whose dispense is already
+    handed over is passed by; the answer is the newest one still to be given, and when there is none the
+    desk gets the paper-prescription door, with the finished ticket named so it can still be opened.
+  */
+  let lastDone: string | undefined;
   for (const visit of visits.reverse()) {
     const rx = await activePrescriptionOf(db, actor, visit.id);
-    if (rx !== null) return { kind: "dispense", door, dispense: await ensureQueued(db, actor, rx, now) };
+    if (rx === null) continue;
+    const live = await liveDispenseFor(db, rx.id, rx.version);
+    if (live?.status === "handed_over") { lastDone ??= live.id; continue; }
+    return { kind: "dispense", door, dispense: await ensureQueued(db, actor, rx, now) };
   }
-  return { kind: "none", door, reason: "no_prescription_today", patient: await foundPatient(db, actor, patientId) };
+  return {
+    kind: "none", door, reason: "no_prescription_today", patient: await foundPatient(db, actor, patientId),
+    ...(lastDone === undefined ? {} : { lastDispenseId: lastDone }),
+  };
 }
 
 async function activePrescriptionOf(db: Db, actor: Actor, encounterId: string): Promise<PrescriptionRow | null> {

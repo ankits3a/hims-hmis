@@ -3,9 +3,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
   activateVendor, addVendorDocument, blacklistVendor, createVendor, fetchVendor, fetchVendors,
-  materialsErrorText, reinstateVendor, suspendVendor,
+  materialsErrorCode, materialsErrorText, reinstateVendor, suspendVendor,
 } from "../lib/materials-api";
+import { ApiError } from "../lib/api";
 import { Button } from "@/components/ui/button";
+import { DmyDateInput } from "../components/dmy-date-input";
 import { NewButton, OfficeHead, fieldCls, useNewKey } from "./pharmacy-office/office-page";
 import { Sheet } from "./pharmacy-office/sheet";
 import type { WireVendor } from "../lib/materials-api";
@@ -75,7 +77,12 @@ export function MaterialsVendors(): React.ReactElement {
       setDone(message);
       await qc.invalidateQueries({ queryKey: ["materials"] });
     } catch (e) {
-      setError(materialsErrorText(e, t));
+      // 2026-10-03 — the refusal names WHICH documents are missing (`detail.missing`), and where to add them.
+      const missing = materialsErrorCode(e) === "documents_incomplete" && e instanceof ApiError
+        ? (e.body as { detail?: { missing?: unknown } } | undefined)?.detail?.missing : undefined;
+      setError(Array.isArray(missing) && missing.length > 0
+        ? t("materialsVendors.missingDocs", { docs: missing.map((m) => t(`materialsVendors.docType.${String(m)}`, String(m))).join(", ") })
+        : materialsErrorText(e, t));
     }
   };
 
@@ -222,7 +229,7 @@ export function MaterialsVendors(): React.ReactElement {
                 <ul className="text-sm">
                   {detail.data.documents.map((d) => (
                     <li key={d.id}>
-                      {d.type} · {d.number}
+                      {t(`materialsVendors.docType.${d.type}`, d.type)} · {d.number}
                       {d.validTo !== null && ` · ${t("materialsVendors.validTo", { date: d.validTo })}`}
                     </li>
                   ))}
@@ -231,23 +238,28 @@ export function MaterialsVendors(): React.ReactElement {
             <div className="mt-2 grid gap-2 sm:grid-cols-3">
               <select className={fieldCls} value={docType} onChange={(e) => setDocType(e.target.value)}>
                 {["gst_certificate", "pan", "drug_licence_20b", "drug_licence_21b", "consignment_agreement", "udyam", "cancelled_cheque"]
-                  .map((d) => <option key={d} value={d}>{d}</option>)}
+                  .map((d) => <option key={d} value={d}>{t(`materialsVendors.docType.${d}`, d)}</option>)}
               </select>
               <input
                 className={fieldCls} placeholder={t("materialsVendors.documentNumber")}
                 value={docNumber} onChange={(e) => setDocNumber(e.target.value)}
               />
-              <input
-                className={fieldCls} placeholder={t("materialsVendors.validToPlaceholder")}
-                value={docValidTo} onChange={(e) => setDocValidTo(e.target.value)}
+              {/* 2026-10-03 — the date in Indian order (DD-MM-YYYY); the API receives YYYY-MM-DD. */}
+              <DmyDateInput
+                className={fieldCls} aria-label={t("materialsVendors.validToLabel")} data-testid="doc-valid-to"
+                value={docValidTo} onChange={setDocValidTo}
               />
             </div>
+            {docValidTo !== "" && !/^\d{4}-\d{2}-\d{2}$/.test(docValidTo)
+              ? <p className="m-0 mt-1 text-xs text-red-600" data-testid="doc-date-bad">{t("materialsVendors.dateBad")}</p>
+              : <p className="m-0 mt-1 text-xs text-slate-500">{t("materialsVendors.dateHint")}</p>}
             <Button
-              className="mt-2" variant="outline"
+              className="mt-2" data-testid="doc-save"
+              disabled={docNumber.trim() === "" || (docValidTo !== "" && !/^\d{4}-\d{2}-\d{2}$/.test(docValidTo))}
               onClick={() => void run(async () => {
                 await addVendorDocument(selected, {
                   type: docType, number: docNumber.trim(),
-                  ...(docValidTo.trim() === "" ? {} : { validTo: docValidTo.trim() }),
+                  ...(docValidTo === "" ? {} : { validTo: docValidTo }),
                 });
                 setDocNumber(""); setDocValidTo("");
               }, t("materialsVendors.documentAdded"))}

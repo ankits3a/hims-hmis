@@ -357,12 +357,19 @@ export function ImagingDoorBody(p: ImagingDoorBodyProps): React.ReactElement {
                   );
                 }
                 return (
+                  <div key={l.serviceId}>
+                  {l.typedFromPaperBy != null && (
+                    <p className="text-xs font-semibold" style={{ color: "#9a6208", margin: "0 0 2px" }} data-testid={`imaging-typed-${l.serviceId}`}>
+                      {t("paper.typedBy", { name: l.typedFromPaperBy })}
+                    </p>
+                  )}
                   <StudyCard
-                    key={l.serviceId} view={p.view} serviceId={l.serviceId} name={l.name}
+                    view={p.view} serviceId={l.serviceId} name={l.name}
                     pricePaise={bookBy.get(l.serviceId)?.pricePaise ?? l.pricePaise}
                     orderable={l.orderable} clinicianUserId={p.clinicianUserId}
                     sendLabel={p.sendLabel} onPlaced={p.onPlaced}
                   />
+                  </div>
                 );
               })}
             </div>

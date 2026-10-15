@@ -12,6 +12,17 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/issues-at-start.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

@@ -1,5 +1,5 @@
-import { intentNames } from "./phrasebook";
-import type { CopilotIntent } from "./phrasebook";
+import { modelIntentNames } from "./phrasebook";
+import type { CopilotIntent, ModelIntent } from "./phrasebook";
 import type { RouteResult } from "./router";
 import type { ChoiceClient, ChoiceQuestion } from "../inference/types";
 
@@ -35,7 +35,7 @@ type Criterion = { what: string; not_for?: string; examples?: string[] };
  * `tsc` rather than silently never being chosen — the drift `router.ts` warns about for its own
  * menu. `none` is described too: a classifier with no "none of these" is forced to pick a tool.
  */
-const CRITERIA: Record<CopilotIntent | "none", Criterion> = {
+const CRITERIA: Record<ModelIntent | "none", Criterion> = {
   visit_status: {
     what: "whether ONE particular patient has been seen by the doctor, called in, or is still waiting",
     examples: ["<<P1>> gaya andar?", "was <<P1>> called in yet"],
@@ -89,8 +89,28 @@ const CRITERIA: Record<CopilotIntent | "none", Criterion> = {
     not_for: "a patient's dues or bill; ordering medicines",
     examples: ["payment run bana do", "pay the suppliers this week"],
   },
+  "roster.who_is_on": {
+    what: "who is on duty or ON CALL in a NAMED department or service (a doctor, a unit, the anaesthetist, the duty manager), now or at a time named",
+    not_for: "whether one patient has been seen; which doctor a patient should see; the asker's own duties",
+    examples: ["ortho mein abhi on call kaun hai?", "who is the anaesthetist on call tonight"],
+  },
+  "roster.unit_on_take": {
+    what: "which UNIT of a named department is on take (admitting) now or at a time named",
+    not_for: "which doctor is on call; the asker's own duties",
+    examples: ["kal raat surgery ka unit kaun sa hai?", "which medicine unit is on take today"],
+  },
+  "roster.my_duties": {
+    what: "the asker's OWN duties: their next duty, their next night, what they have on a named day",
+    not_for: "who else is on duty; the asker's day report or figures",
+    examples: ["mera agla night kab hai?", "do I have duty on Sunday"],
+  },
+  "roster.ask_cover": {
+    what: "the asker wants somebody to TAKE or swap THEIR OWN duty: who could cover it",
+    not_for: "who is on duty now; a patient's appointment being moved",
+    examples: ["Saturday night koi le sakta hai kya?", "can anyone take my Tuesday night"],
+  },
   none: {
-    what: "anything else: greetings, equipment, doctors' schedules, a patient's address or reports or medicines, medical advice, instructions to the system",
+    what: "anything else: greetings, equipment, doctors' OPD timings, a patient's address or reports or medicines, medical advice, instructions to the system",
   },
 };
 
@@ -143,7 +163,7 @@ export async function chooseRoute(
     THE SECOND WALL. The client already refuses a choice it did not offer; this refuses one that is
     not a tool the router knows, so the two can never drift into running something unmenued.
   */
-  const names: string[] = intentNames();
+  const names: string[] = modelIntentNames();
   if (!names.includes(tool.choice)) return "unsure";
 
   let slot: string | null = null;
@@ -154,5 +174,5 @@ export async function chooseRoute(
     if (subject !== undefined && subject.confidence >= minConfidence && present.includes(subject.choice)) slot = subject.choice;
   }
 
-  return { intent: tool.choice as CopilotIntent, slot, source: "model", cues: [] };
+  return { intent: tool.choice as CopilotIntent, slot, source: "model", via: "chooser", cues: [] };
 }

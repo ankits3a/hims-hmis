@@ -8,7 +8,8 @@ import { ROSTER_MANAGE, ROSTER_PUBLISH, ROSTER_READ } from "./policy";
 import { seedOrgDepartments, seedRosterPositions } from "./masters";
 import { seedUnits } from "./teams";
 import { CYCLE_TEMPLATES, cycleTemplate, draftCycleFromTemplate } from "./templates";
-import { expandCycle } from "./calendar";
+import { backupUnit, expandCycle, publishCycle, unitOnTake } from "./calendar";
+import { rosterTeams } from "../../kernel/db/schema";
 import type { Db } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 
@@ -92,13 +93,42 @@ describe("roster — the duty-pattern gallery (R7)", () => {
     }
   });
 
+  it("DECIDED — every multi-unit template names a backup unit every day, and it is YESTERDAY'S take unit (the post-take unit)", () => {
+    for (const t of CYCLE_TEMPLATES.filter((x) => x.units > 1)) {
+      for (let d = 0; d < t.cycleDays; d += 1) {
+        const takeToday = t.entries.find((e) => e.activity === "take" && e.dayIndex === d)!.unitOffset;
+        const prev = (d + t.cycleDays - 1) % t.cycleDays;
+        const takeYesterday = t.entries.find((e) => e.activity === "take" && e.dayIndex === prev)!.unitOffset;
+        const backup = t.entries.filter((e) => e.activity === "backup" && e.dayIndex === d);
+        expect(`${t.key} day ${String(d)} backup ${JSON.stringify(backup.map((b) => b.unitOffset))}`)
+          .toBe(`${t.key} day ${String(d)} backup ${JSON.stringify(takeYesterday === takeToday ? [] : [takeYesterday])}`);
+        for (const b of backup) expect([b.startMinute, b.durationMinutes]).toEqual([480, 1440]);
+      }
+    }
+    // One unit has nobody to back it up — the board says who covers instead.
+    expect(cycleTemplate("single_unit_call").entries.some((e) => e.activity === "backup")).toBe(false);
+  });
+
+  it("a published template materialises the backup: at 10:00 on day 1, unit 2 is on take and unit 1 backs it up", async () => {
+    const { cycleId } = await withTx(db, (tx) => draftCycleFromTemplate(tx, ms, {
+      departmentId: MED, templateKey: "five_unit_rolling", anchorIstDate: ANCHOR,
+    }));
+    await withTx(db, (tx) => publishCycle(tx, ms, cycleId, ANCHOR));
+    const units = (await db.select().from(rosterTeams)).filter((t) => t.departmentId === MED && t.kind === "clinical_unit")
+      .sort((a, b) => (a.unitNumber ?? 0) - (b.unitNumber ?? 0));
+    const at = new Date("2026-10-06T10:00:00+05:30");
+    expect((await unitOnTake(db, MED, at)).teamId).toBe(units[1]!.id);
+    expect((await backupUnit(db, MED, at)).teamId).toBe(units[0]!.id);
+  });
+
   it("applies a pattern as a DRAFT on the department's own units, in unit order", async () => {
     const { cycleId, version } = await withTx(db, (tx) => draftCycleFromTemplate(tx, ms, {
       departmentId: MED, templateKey: "five_unit_rolling", anchorIstDate: ANCHOR,
     }));
     expect(version).toBe(1);
     const entries = await db.select().from(rosterCycleEntries);
-    expect(entries.filter((e) => e.cycleId === cycleId)).toHaveLength(9);
+    // 9 activities and, since 20-U U5, a backup on each of the five days.
+    expect(entries.filter((e) => e.cycleId === cycleId)).toHaveLength(14);
     // Day 0's take is MED-U1, because `unitOffset: 0` means the department's first unit.
     const day0 = entries.find((e) => e.cycleId === cycleId && e.dayIndex === 0 && e.activity === "take")!;
     const unit1 = (await db.select().from(orgDepartments)).length; // touch, to keep the read honest

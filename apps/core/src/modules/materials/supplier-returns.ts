@@ -456,7 +456,8 @@ export type ReturnPlanGroup = {
 export type DestroyCandidate = {
   itemId: string; itemCode: string; itemName: string; batchId: string; batchNo: string; expiryDate: string | null;
   storeResourceId: string; storeCode: string; storeName: string; qtyBase: number; baseUom: string; valuePaise: number;
-  supplierName: string; why: "past_window" | "no_supplier";
+  /** `damage_tray` — loose tablets a pharmacy return put in the damage tray (owner ruling 2026-10-03): never sold, destroyed. */
+  supplierName: string; why: "past_window" | "no_supplier" | "damage_tray";
 };
 export type ReturnPlan = {
   asOf: string;
@@ -477,8 +478,23 @@ export type ReturnPlan = {
  */
 export async function planSupplierReturns(db: Db | Tx, now: Date = new Date(), opts: { storeResourceId?: string | null } = {}): Promise<ReturnPlan> {
   const today = istDay(now);
-  const rows = (await stockRows(db, { expiryTo: addDays(today, NEAR_EXPIRY_RETURN_DAYS), orRecalled: true, storeResourceId: opts.storeResourceId ?? null }))
-    .filter((r) => r.ownership === "owned" || r.ownership === "donated");
+  /*
+   * OWNER RULING 2026-10-03 — a pharmacy counter's DAMAGE TRAY (`attributes.looseTray = 'damage'`, made by the
+   * pharmacy's loose return) holds tablets that are never sold: all of it is listed to destroy, whatever its
+   * expiry, and none of it goes back to a supplier.
+   */
+  const scope = opts.storeResourceId ?? null;
+  const damageTrays = (await db.select({ id: resources.id }).from(resources).where(and(
+    eq(resources.kind, "store"), sql`${resources.attributes}->>'looseTray' = 'damage'`,
+    ...(scope === null ? [] : [or(eq(resources.id, scope), eq(resources.parentId, scope))]),
+  ))).map((r) => r.id);
+  const damageRows = (await Promise.all(damageTrays.map((id) => stockRows(db, { anyExpiry: true, storeResourceId: id })))).flat();
+  const rows = [
+    ...(await stockRows(db, { expiryTo: addDays(today, NEAR_EXPIRY_RETURN_DAYS), orRecalled: true, storeResourceId: scope }))
+      .filter((r) => r.ownership === "owned" || r.ownership === "donated")
+      .filter((r) => !damageTrays.includes(r.storeResourceId)),
+    ...damageRows,
+  ];
   const committed = await committedByPair(db, rows.map((r) => r.batchId));
   const gst = await purchaseGstRates(db, rows);
   const packs = await packsOf(db, rows.map((r) => r.itemId));
@@ -499,6 +515,7 @@ export async function planSupplierReturns(db: Db | Tx, now: Date = new Date(), o
         valuePaise: free * r.landedCostPaise, supplierName: r.vendorName ?? "—", why,
       });
     };
+    if (damageTrays.includes(r.storeResourceId)) { destroy("damage_tray"); continue; }
     if (kind !== "supplier" || r.ownership !== "owned" || r.vendorId === null) {
       // Nobody to send it back to: expired or recalled, it is destroyed. Near expiry, it is sold.
       if (v.reason === "expired" || v.reason === "recalled") destroy("no_supplier");

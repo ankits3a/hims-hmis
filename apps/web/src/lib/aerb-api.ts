@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { messageText } from "./materials-api";
 
 /**
  * PLAN 18c T1 — the AERB registers' wire contract, transcribed from `aerb.controller.ts` exactly as
@@ -392,8 +393,9 @@ export function setInvestigationLevel(perMonthMsv: number): Promise<{ ok: true }
  * and "cannot proceed" is not. `radiology-api.ts`'s shape, unchanged.
  */
 export function aerbErrorText(e: unknown): string {
-  const body = (e as { body?: { message?: string; code?: string } } | undefined)?.body;
-  if (body?.message !== undefined) return body.code === undefined ? body.message : `${body.message} (${body.code})`;
+  const body = (e as { body?: { message?: unknown; code?: string } } | undefined)?.body;
+  const text = messageText(body?.message);
+  if (text !== null) return body?.code === undefined ? text : `${text} (${body.code})`;
   return e instanceof Error ? e.message : String(e);
 }
 

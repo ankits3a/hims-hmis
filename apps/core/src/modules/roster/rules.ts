@@ -233,6 +233,11 @@ export const ROSTER_RULES: readonly RosterRuleSeed[] = [
     params: {},
   },
   {
+    /**
+     * EVALUATED since audit 2026-10-04 #6 — seeded in R8 and never read by the validator, which is
+     * a rule the book claimed and the system did not keep. `validator.ts` `loneWorker`: at a
+     * location, at any instant somebody is rostered there in person, fewer than `minPresent` are.
+     */
     key: "lone_worker",
     label: "a location left to one person alone",
     severity: "warn",
@@ -240,6 +245,48 @@ export const ROSTER_RULES: readonly RosterRuleSeed[] = [
     citation: null,
     appliesTo: [],
     params: { minPresent: 2 },
+  },
+  {
+    /**
+     * AUDIT 2026-10-04 #4. The publish gate refuses one person in two places (`presence_overlap`)
+     * and still does, with its own sentence; this is the same fact as a FINDING, so a screen can
+     * name the person and the IST time while the roster is still a draft. A block, because it can
+     * never be right — and the gate does not double-refuse it: periods.ts leaves it to step (4).
+     */
+    key: "presence_clash",
+    label: "one person rostered in two places at once",
+    severity: "block",
+    authority: "institution",
+    citation: null,
+    appliesTo: [],
+    params: {},
+  },
+  {
+    /**
+     * AUDIT 2026-10-04 #5. The resolver drops a deactivated person at 03:10 (V13); a roster naming
+     * one is a hole that looks filled. A block: an account that cannot log in cannot be on duty.
+     */
+    key: "user_inactive",
+    label: "rostered, but the person's account is deactivated",
+    severity: "block",
+    authority: "institution",
+    citation: null,
+    appliesTo: [],
+    params: {},
+  },
+  {
+    /**
+     * AUDIT 2026-10-04 #5. A team slot naming somebody not that team's member at its start — the
+     * resolver will not count them (V13). A warn: a cross-unit cover may be meant; the head is told
+     * that, as written, it will not answer.
+     */
+    key: "member_not_in_unit",
+    label: "rostered for a unit the person does not belong to at that time",
+    severity: "warn",
+    authority: "institution",
+    citation: null,
+    appliesTo: [],
+    params: {},
   },
   {
     /**

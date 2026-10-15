@@ -5,6 +5,7 @@ import { MessagesChip } from "./messages";
 import { FLOW_STEPS, draftsFirst, flowIndex, holdOf, isMyDraft, initialsOf, queuedDay, shelfFlag, stageOf, ticketLabel, waitLabel, waitTone, whoLabel } from "./model";
 import type { WaitTone } from "./model";
 import type { WireCounterSummary, WireDispense, WireMyShift, WireQueueRow } from "../../lib/pharmacy-api";
+import { CreditChip } from "../../components/patient-credit";
 
 const TONE: Record<WaitTone, string> = { calm: "var(--dim)", warm: "var(--gold)", late: "var(--red)" };
 const rupees = (paise: number): string => `₹${(paise / 100).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
@@ -118,7 +119,7 @@ export function Dossier({
               rail.data?.sex == null ? null : t(`pharmacyDesk.sex.${rail.data.sex}`, { defaultValue: rail.data.sex }),
               p.uhid].filter((x) => x !== null).join(" · ")}
           </div>
-          {p.restricted ? <span className="pill gd" style={{ marginTop: 5 }}>{t("pharmacyDesk.sealedRecord")}</span> : null}
+          {p.restricted ? <span className="pill gd" style={{ marginTop: 5 }}>{t("pharmacyDesk.sealedRecord")}</span> : <div style={{ marginTop: 5 }}><CreditChip patientId={p.id} testId="desk-credit" /></div>}
         </div>
       </div>
       <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }} data-testid="desk-allergies">
@@ -194,10 +195,10 @@ export function Dossier({
   );
 }
 
-type RowProps = { row: WireQueueRow; me: string | null; now: Date; yesterday: string };
+type RowProps = { row: WireQueueRow; me: string | null; now: Date; yesterday: string; lang: string };
 
-function rowMeta({ row, me, now, yesterday }: RowProps): { who: string; label: string | null; hold: ReturnType<typeof holdOf>; wait: string; tone: string } {
-  const day = queuedDay(row.queuedOn, now);
+function rowMeta({ row, me, now, yesterday, lang }: RowProps): { who: string; label: string | null; hold: ReturnType<typeof holdOf>; wait: string; tone: string } {
+  const day = queuedDay(row.queuedOn, now, lang);
   return {
     who: whoLabel(row.patient),
     label: ticketLabel(row.dispenseNo),
@@ -224,7 +225,7 @@ export function QueueRail({
   /** The board's per-row second act: the ticket in its own tab, the queue left where it is. */
   onOpenTab: (dispenseId: string, who: string, mine: boolean) => void;
 }): React.ReactElement {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   return (
     <aside
       data-testid="desk-queue"
@@ -238,7 +239,7 @@ export function QueueRail({
           <p style={{ margin: 0, padding: "9px 15px", fontSize: 12, color: "var(--dim)" }}>{t("pharmacyDesk.lineEmpty")}</p>
         ) : null}
         {draftsFirst(rows, me).map((row) => {
-          const m = rowMeta({ row, me, now, yesterday: t("pharmacyDesk.queuedYesterday") });
+          const m = rowMeta({ row, me, now, yesterday: t("pharmacyDesk.queuedYesterday"), lang: i18n.language });
           const theirs = m.hold.kind === "theirs";
           const draft = isMyDraft(row, me);
           const here = row.dispenseId === inHandId;
@@ -325,7 +326,7 @@ export function QueueOverlay({
   onResume: (dispenseId: string) => void;
   onClose: () => void;
 }): React.ReactElement {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   /* PD-2: tickets are numbered when queued. Only a line made wholly of pre-PD-2 tickets has no numbers — then no column of dashes. */
   const numbered = rows.some((r) => r.dispenseNo !== null);
   return (
@@ -337,7 +338,7 @@ export function QueueOverlay({
         </div>
         <div style={{ overflowY: "auto" }}>
           {draftsFirst(rows, me).map((row) => {
-            const m = rowMeta({ row, me, now, yesterday: t("pharmacyDesk.queuedYesterday") });
+            const m = rowMeta({ row, me, now, yesterday: t("pharmacyDesk.queuedYesterday"), lang: i18n.language });
             return (
               <div key={row.dispenseId} className="drow" style={{ alignItems: "flex-start" }} data-testid={`overlay-row-${row.dispenseId}`}>
                 {numbered ? <span className="mo" style={{ width: 58, flexShrink: 0, fontSize: 12, fontWeight: 600, paddingTop: 2 }}>{m.label ?? ""}</span> : null}

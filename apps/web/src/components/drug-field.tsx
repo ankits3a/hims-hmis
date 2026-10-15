@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { searchMedicines } from "../lib/formulary-api";
 import type { WireMedicineHit } from "../lib/formulary-api";
+import { nicknameCrossed, tellMedicineMiss, tellNickname, useCrossedVersion } from "../lib/suggest-signals";
+import type { NicknameContext } from "../lib/suggest-signals";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -79,9 +81,35 @@ export function detailOf(h: { name: string; salts: string[]; strength: string | 
   return [moieties || null, strength, h.code].filter((x) => x !== null && x !== "").join(" · ");
 }
 
+/**
+ * ═══ A LEARNED NICKNAME IN THE LIST (decisions 0051, 0055 — owner 2026-10-08) ═══
+ *
+ * Only a PRESCRIBING field passes `nicknames` (the consult, the desk scribe). The search may then
+ * answer with one extra row: the medicine the hospital has learned a typed nickname means —
+ *
+ *     Pan (pantoprazole sodium) 40 mg gastro-resistant oral tablet          [nickname] [×]
+ *     40 mg · Gastro-resistant oral tablet
+ *
+ * — the product's FULL name with its strength and form spelt out underneath (never deduplicated
+ * away: this row is here on a model's say-so and the doctor reads what it is), a small tag saying
+ * why it is in the list, and a cross to say "not this". NOTHING IS PICKED FOR THE DOCTOR: the row
+ * is taken by a click or by ↓ + Enter like any other, and when the nickname carries a look-alike
+ * flag the first tap only asks and the second picks. What the doctor did with it — took it,
+ * crossed it, picked another row instead — is told to the server against the nickname's id.
+ * A word nothing matched at all is told too, once, when the doctor leaves the field with it.
+ */
 export function DrugField({
-  value, onPick, onText, placeholder, inputId,
+  value, onPick, onText, placeholder, inputId, onEnter, nicknames,
 }: {
+  /** Present on a prescribing field: which screen and which visit a nickname's tap or cross belongs to. */
+  nicknames?: NicknameContext;
+  /**
+   * Owner ruling 2026-10-06 — the desk scribe types all day and never reaches for a mouse. Enter with
+   * NO suggestion highlighted is the caller's (the scribe's table adds a line); with one highlighted
+   * (↓ / ↑) it picks that suggestion, here. Absent, Enter does nothing new and the doctor's screen
+   * behaves as it always has.
+   */
+  onEnter?: () => void;
   value: string;
   /** A row was chosen: the caller sets both the name and the medicine id. */
   onPick: (hit: WireMedicineHit) => void;
@@ -106,6 +134,23 @@ export function DrugField({
    */
   const picked = useRef<string | null>(null);
   const box = useRef<HTMLDivElement | null>(null);
+  /** The suggestion the arrow keys are on; -1 is "none", which is every list as it opens. */
+  const [at, setAt] = useState(-1);
+  /** The nickname row waiting for its second tap (a look-alike name exists), by medicine id. */
+  const [ask, setAsk] = useState<string | null>(null);
+  /** The last word the catalogue answered with nothing — told as a miss if the doctor leaves it standing. */
+  const empty = useRef<string | null>(null);
+  useCrossedVersion();
+  const shown = nicknames === undefined ? hits : hits.filter((h) => h.alias === undefined || !nicknameCrossed(nicknames, h.alias.id));
+  const take = (hit: WireMedicineHit): void => {
+    if (hit.alias?.lasaGuard === true && ask !== hit.id) { setAsk(hit.id); return; }
+    if (nicknames !== undefined) {
+      const offered = shown.find((h) => h.alias !== undefined);
+      if (hit.alias !== undefined) tellNickname(nicknames, hit.alias.id, "accepted");
+      else if (offered?.alias !== undefined) tellNickname(nicknames, offered.alias.id, "manual", hit.id);
+    }
+    picked.current = hit.name; onPick(hit); setOpen(false); setAt(-1); setAsk(null);
+  };
 
   useEffect(() => {
     const q = value.trim();
@@ -118,17 +163,28 @@ export function DrugField({
     /* 180 ms: the search answers in about 220, so a faster cadence would queue requests behind a
        doctor who types at speed and show them answers to prefixes they have already left. */
     const timer = setTimeout(() => {
-      void searchMedicines(q)
+      void searchMedicines(q, 10, nicknames !== undefined)
         .then((items) => {
           if (!live || asked.current !== q) return;
           setHits(items);
-          setOpen(items.length > 0);
+          setAt(-1);
+          setAsk(null);
+          empty.current = items.length === 0 ? q : null;
+          /*
+            ONLY UNDER THE CURSOR (browser walk, 2026-10-06). A table that arrives PRE-FILLED — the
+            doctor correcting what the desk typed — mounts three fields with three names, and each
+            one searched and dropped its list open over the rows beneath it, with nobody typing in
+            any of them. The answers are kept; the list opens when the field is the one in hand.
+          */
+          setOpen(items.length > 0 && box.current !== null && box.current.contains(document.activeElement));
         })
         .catch(() => { if (live) setHits([]); })
         .finally(() => { if (live) setBusy(false); });
     }, 180);
     return () => { live = false; clearTimeout(timer); };
-  }, [value]);
+    // `nicknames` is an object literal at every call site; whether it is THERE is what the search reads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, nicknames !== undefined]);
 
   /* A click outside closes the list; the value stays whatever the doctor typed. */
   useEffect(() => {
@@ -146,14 +202,34 @@ export function DrugField({
         style={{ width: "100%", height: 34, fontSize: 13 }}
         placeholder={placeholder}
         onChange={(e) => { onText(e.target.value); }}
-        onFocus={() => { if (hits.length > 0) setOpen(true); }}
-        onKeyDown={(e) => { if (e.key === "Escape" && open) { e.stopPropagation(); setOpen(false); } }}
+        onFocus={() => { if (shown.length > 0) setOpen(true); }}
+        onBlur={() => { if (nicknames !== undefined && empty.current !== null && empty.current === value.trim()) tellMedicineMiss(empty.current); }}
+        /* The input keeps its plain `textbox` role — every consult suite finds it by that — and names the
+           highlighted suggestion for a screen reader without changing what the field is. */
+        aria-activedescendant={open && at >= 0 && shown[at] !== undefined ? `${inputId}-opt-${shown[at].id}` : undefined}
+        onKeyDown={(e) => {
+          const listed = open && shown.length > 0;
+          if (e.key === "Escape" && open) { e.stopPropagation(); setOpen(false); return; }
+          if (e.key === "ArrowDown" && listed) { e.preventDefault(); setAt((i) => Math.min(shown.length - 1, i + 1)); return; }
+          if (e.key === "ArrowUp" && listed) { e.preventDefault(); setAt((i) => Math.max(-1, i - 1)); return; }
+          if (e.key !== "Enter") return;
+          const hit = listed && at >= 0 ? shown[at] : undefined;
+          if (hit !== undefined) {
+            e.preventDefault();
+            take(hit);
+          } else if (onEnter !== undefined) {
+            e.preventDefault();
+            setOpen(false);
+            onEnter();
+          }
+        }}
       />
       {busy && (
         <span className="mo" data-testid={`${inputId}-busy`} style={{ position: "absolute", right: 9, top: 10, fontSize: 10, color: "var(--faint)" }}>…</span>
       )}
-      {open && hits.length > 0 && (
+      {open && shown.length > 0 && (
         <ul
+          id={`${inputId}-list`}
           data-testid={`${inputId}-hits`}
           style={{
             position: "absolute", zIndex: 20, top: 37, left: 0, right: 0, margin: 0, padding: 0,
@@ -170,14 +246,14 @@ export function DrugField({
             borderRadius: 7, boxShadow: "0 6px 18px rgba(19,36,32,.10)", maxHeight: 292, overflowY: "auto",
           }}
         >
-          {hits.map((h) => (
-            <li key={h.id}>
+          {shown.map((h, i) => (
+            <li key={h.id} id={`${inputId}-opt-${h.id}`} data-on={i === at ? "true" : undefined} style={{ display: "flex", alignItems: "stretch", borderTop: "1px solid var(--line2)" }}>
               <button
-                type="button" data-testid={`${inputId}-hit-${h.id}`}
-                onClick={() => { picked.current = h.name; onPick(h); setOpen(false); }}
+                type="button" data-testid={`${inputId}-hit-${h.id}`} tabIndex={-1}
+                onClick={() => { take(h); }}
                 style={{
-                  display: "flex", width: "100%", gap: 10, alignItems: "baseline", padding: "7px 10px",
-                  border: 0, borderTop: "1px solid var(--line2)", background: "none", cursor: "pointer",
+                  display: "flex", flexGrow: 1, minWidth: 0, gap: 10, alignItems: "baseline", padding: "7px 10px",
+                  border: 0, background: i === at ? "var(--green-soft)" : "none", cursor: "pointer",
                   textAlign: "left", font: "inherit", color: "inherit",
                 }}
               >
@@ -188,9 +264,16 @@ export function DrugField({
                       ? (<><strong>{h.name.slice(0, value.trim().length)}</strong>{h.name.slice(value.trim().length)}</>)
                       : h.name}
                   </span>
-                  <span className="mo" style={{ fontSize: 10.5, color: "var(--faint)" }}>
-                    {detailOf(h)}
+                  <span className="mo" data-testid={`${inputId}-detail-${h.id}`} style={{ fontSize: 10.5, color: "var(--faint)", display: "block" }}>
+                    {/* A nickname's row spells the strength and the form out, whatever the name already says. A combination's
+                        stored strength is its first component's alone, and its name carries them all: there, the form only. */}
+                    {h.alias !== undefined ? [h.name.includes(" + ") ? null : h.strength, h.form, h.code].filter((x) => x !== null && x !== "").join(" · ") : detailOf(h)}
                   </span>
+                  {h.alias !== undefined && ask === h.id && (
+                    <span role="status" data-testid={`${inputId}-nickname-ask-${h.id}`} style={{ display: "block", fontSize: 11, fontWeight: 600, color: "#92400e", marginTop: 2 }}>
+                      {t("drugField.nicknameAsk")}
+                    </span>
+                  )}
                   {/* `=== false`, not `!`: an absent field is an older server saying nothing, not a warning. */}
                   {h.reviewed === false && (
                     <span
@@ -203,10 +286,18 @@ export function DrugField({
                   )}
                 </span>
                 {/* The pill is dropped when the NAME already says the form — see `detailOf`. */}
-                {!saysAlready(h.name, h.form) && (
-                  <span className="pill" style={{ flexShrink: 0 }}>{h.form}</span>
-                )}
+                {h.alias !== undefined
+                  ? (<span className="pill" data-testid={`${inputId}-nickname-${h.id}`} title={t("drugField.nicknameTitle")} style={{ flexShrink: 0 }}>{t("drugField.nickname")}</span>)
+                  : !saysAlready(h.name, h.form) && (<span className="pill" style={{ flexShrink: 0 }}>{h.form}</span>)}
               </button>
+              {h.alias !== undefined && nicknames !== undefined && (
+                <button
+                  type="button" tabIndex={-1} data-testid={`${inputId}-nickname-x-${h.id}`} aria-label={t("drugField.nicknameCross")} title={t("drugField.nicknameCross")}
+                  onMouseDown={(e) => { e.preventDefault(); }}
+                  onClick={() => { tellNickname(nicknames, h.alias!.id, "dismissed"); setAsk(null); }}
+                  style={{ flexShrink: 0, width: 34, border: 0, borderLeft: "1px solid var(--line2)", background: "none", cursor: "pointer", color: "var(--faint)", fontSize: 15, lineHeight: 1 }}
+                >×</button>
+              )}
             </li>
           ))}
         </ul>

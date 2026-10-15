@@ -1,6 +1,7 @@
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { onTestFinished } from "vitest";
 import userEvent from "@testing-library/user-event";
+import i18next from "../lib/i18n";
 import { setToken } from "../lib/api";
 import { todayIst } from "../lib/opd-api";
 import { resetRealtimeClientForTests } from "../lib/realtime";
@@ -291,7 +292,7 @@ describe("OpdConsult — the diagnosis tags and their ICD-10 codes", () => {
     await waitFor(() => {
       const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { diagnoses: unknown };
       expect(body.diagnoses).toEqual([
-        { text: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9" },
+        { text: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9", source: "search" },
       ]);
     });
   });
@@ -317,8 +318,8 @@ describe("OpdConsult — the diagnosis tags and their ICD-10 codes", () => {
     await waitFor(() => {
       const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { diagnoses: unknown };
       expect(body.diagnoses).toEqual([
-        { text: "?dengue, review in 48h", icd10Code: null },
-        { text: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9" },
+        { text: "?dengue, review in 48h", icd10Code: null, source: "typed" },
+        { text: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9", source: "search" },
       ]);
     });
   });
@@ -356,7 +357,7 @@ describe("OpdConsult — the diagnosis tags and their ICD-10 codes", () => {
     await waitFor(() => {
       const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { diagnoses: unknown };
       expect(body.diagnoses).toEqual([
-        { text: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9" },
+        { text: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9", source: "search" },
       ]);
     });
   });
@@ -389,7 +390,7 @@ describe("OpdConsult — the diagnosis tags and their ICD-10 codes", () => {
     await waitFor(() => {
       const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { diagnoses: unknown };
       expect(body.diagnoses).toEqual([
-        { text: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9" },
+        { text: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9", source: "search" },
       ]);
     });
   });
@@ -477,8 +478,8 @@ describe("OpdConsult — the diagnosis tags and their ICD-10 codes", () => {
     await waitFor(() => {
       const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { diagnoses: unknown } | undefined;
       expect(body?.diagnoses).toEqual([
-        { text: "Senile nuclear cataract", icd10Code: "H25.1", laterality: "od" },
-        { text: "Essential (primary) hypertension", icd10Code: "I10" },
+        { text: "Senile nuclear cataract", icd10Code: "H25.1", laterality: "od", source: "search" },
+        { text: "Essential (primary) hypertension", icd10Code: "I10", source: "search" },
       ]);
     });
     expect(screen.getByTestId("note-diagnosis-tag-0")).toHaveTextContent("Senile nuclear cataract · OD");
@@ -505,8 +506,8 @@ describe("OpdConsult — the diagnosis tags and their ICD-10 codes", () => {
     await waitFor(() => {
       const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { diagnoses: unknown } | undefined;
       expect(body?.diagnoses).toEqual([
-        { text: "Senile nuclear cataract", icd10Code: "H25.1", laterality: "os" },
-        { text: "Essential (primary) hypertension", icd10Code: "I10" },
+        { text: "Senile nuclear cataract", icd10Code: "H25.1", laterality: "os", source: "search" },
+        { text: "Essential (primary) hypertension", icd10Code: "I10", source: "search" },
       ]);
     });
   });
@@ -576,7 +577,7 @@ describe("OpdConsult — the ICD-11 code beside the ICD-10 one", () => {
     await user.click(screen.getByRole("heading", { name: "Consultation" }));
     await waitFor(() => {
       const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { diagnoses: unknown };
-      expect(body.diagnoses).toEqual([{ text: "Synthetic diagnosis", icd10Code: "X00.1" }]);
+      expect(body.diagnoses).toEqual([{ text: "Synthetic diagnosis", icd10Code: "X00.1", source: "search" }]);
     });
     expect(JSON.stringify(bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note"))).not.toMatch(/icd11|ZZ00/i);
   });
@@ -1293,6 +1294,33 @@ describe("OpdConsult", () => {
     localStorage.clear();
   });
 
+  it("TELE-CALL (owner 2026-10-09): a tele row shows its slot time where the token sits, a phone icon named Tele-call and a blue outline — no word and no money mark", async () => {
+    setToken("tok-1");
+    const TELE = entry({
+      id: "qe-tele", seq: 4, encounterId: "enc-9", tokenNo: 9, position: 1, queueClass: 2, tele: true, kind: "appointment",
+      appointmentAt: "2026-08-18T05:50:00.000Z", feeStatus: null,
+      encounter: { id: "enc-9", patientId: "p-9", visitType: "new", dangerFlagged: false, status: "waiting" },
+      patient: summary("p-9", "HMS0000000090", "Meena Kumari"),
+    });
+    stubFetch({
+      "GET /api/auth/me": { actor: { type: "user", id: "u-1" } },
+      "GET /api/opd/me/doctor": DOCTOR,
+      "GET /api/opd/config": CONFIG,
+      "GET /api/opd/queues": { ...QUEUE_VIEW, ordered: [TELE, WAIT_A], current: null, counts: { waiting: 2, called: 0, inConsult: 0, done: 0, left: 0 } },
+    });
+    renderWithProviders(<OpdConsult />);
+    const row = await screen.findByTestId("queue-row-qe-tele");
+    expect(within(row).getByTestId("queue-slot-qe-tele")).toHaveTextContent("11:20");
+    expect(within(row).getByRole("img", { name: "Tele-call" })).toBeInTheDocument();
+    expect(within(row).queryByTestId("queue-token-qe-tele")).toBeNull();
+    expect(row.style.boxShadow).toContain("var(--blue)");
+    expect(row).not.toHaveTextContent(/tele|paid|unpaid|fee|₹/i);
+    const plain = screen.getByTestId("queue-row-qe-a");
+    expect(within(plain).getByTestId("queue-token-qe-a")).toHaveTextContent("6");
+    expect(within(plain).queryByRole("img", { name: "Tele-call" })).toBeNull();
+    expect(plain.style.boxShadow).not.toContain("var(--blue)");
+  });
+
   it("boots on GET /opd/me/doctor — a 404 is the domain answer 'not a doctor' and NO queue read follows; with a profile it renders the queue (position, token, class, danger, re-entry) with the called token highlighted plus the session control, and a queue.called frame refetches", async () => {
     // The clock is pinned so `todayIst()` — which both the screen and this test call — is TODAY.
     expect(todayIst()).toBe(TODAY);
@@ -1519,7 +1547,7 @@ describe("OpdConsult", () => {
     */
     await waitFor(() => expect(bodiesOf("PUT", path).at(-1)).toEqual({
       chiefComplaint: "fever 3d",
-      diagnoses: [{ text: "Acute pharyngitis", icd10Code: null }],
+      diagnoses: [{ text: "Acute pharyngitis", icd10Code: null, source: "typed" }],
       advice: "warm fluids",
     }));
     expect(await screen.findByTestId("note-saved")).toBeInTheDocument();
@@ -1571,6 +1599,8 @@ describe("OpdConsult", () => {
         // PLAN 16a T6 / DD9 — a typed line carries `medicineId: null`, and the assertion is
         // `toEqual` so a field appearing in the body without a decision fails here. It did.
         medicineId: null,
+        // Decision 0050 P0 (0054) — every issued line says where it came from; this one was typed.
+        source: "typed",
       }],
     });
     // §3.19: the form hands back "5"; the BODY must carry the number
@@ -1647,7 +1677,7 @@ describe("OpdConsult", () => {
     const taper = [6, 4, 3, 2, 1].map((n) => ({ timesPerDay: n, days: 7 }));
     const line = {
       drug: "Prednisolone acetate 1% eye drops", dose: "1 drop", route: "eye", frequency: taperText,
-      durationDays: 35, instructions: null, noSubstitution: false, medicineId: null, eye: "od", taper,
+      durationDays: 35, instructions: null, noSubstitution: false, medicineId: null, source: "typed", eye: "od", taper,
     };
     expect(bodiesOf("POST", path)[0]).toEqual({ lines: [line] });
     expect(bodiesOf("POST", "/api/opd/visits/enc-1/rx-precheck")[0]).toEqual({ lines: [line] });
@@ -1686,7 +1716,7 @@ describe("OpdConsult", () => {
     await waitFor(() => expect(callsTo("POST", path)).toHaveLength(1));
     expect(bodiesOf("POST", path)[0]).toEqual({ lines: [{
       drug: "Prednisolone 5 mg tablet", dose: "1 tab", route: "oral", frequency: "OD",
-      durationDays: 5, instructions: null, noSubstitution: false, medicineId: null,
+      durationDays: 5, instructions: null, noSubstitution: false, medicineId: null, source: "typed",
     }] });
   });
 
@@ -2225,6 +2255,25 @@ describe("OpdConsult", () => {
     expect(callsTo("POST", "/api/opd/visits/enc-1/consult/start")[0]!.body).toBe("");
     expect(await screen.findByTestId("patient-panel")).toBeInTheDocument();
     expect(callsTo("POST", "/api/opd/queues/sess-1/call-next")).toHaveLength(0);
+  });
+
+  /**
+   * Owner 2026-10-06 — the visit was closed from the doctor's paper WHILE this screen had it open.
+   * The completion is refused by the server with a sentence; the screen shows that sentence beside
+   * the button and stays exactly as it was — the patient panel, and everything typed in it.
+   */
+  it("a visit a desk closed from paper underneath this screen answers with a plain sentence, and the panel stays", async () => {
+    const SAID = "This visit has already been marked consulted from your paper prescription by the desk, so there is nothing left to complete here. What you typed is kept — open “My paper consultations” to check it or issue anything you had not issued.";
+    mockRoutes({
+      ...baseRoutes(),
+      "POST /api/opd/visits/enc-1/consult/complete": { status: 409, body: { statusCode: 409, code: "closed_on_paper_state_conflict", message: SAID } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    expect(await screen.findByText(SAID)).toBeInTheDocument();
+    expect(screen.getByTestId("patient-panel")).toBeInTheDocument();
+    expect(screen.queryByText(/encounter_state_conflict|needs in_consultation/)).toBeNull();
   });
 
   it("the keymap: Ctrl+Enter completes the open consultation — the same body the button posts, with the default follow-up window OMITTED", async () => {
@@ -2788,14 +2837,14 @@ describe("07d T5 — advised investigations", () => {
     };
   }
 
-  it("says on the SCREEN that this creates no order — before a doctor assumes one exists", async () => {
+  it("says on the SCREEN when a test becomes an order (only while its fee is Free, decision 0067) — before a doctor assumes one exists", async () => {
     mockRoutes(routes());
     const user = userEvent.setup();
     await openPanel(user);
     await user.click(screen.getByRole("tab", { name: "Lab & radiology" }));
 
     const panel = await screen.findByTestId("advised-tests");
-    expect(within(panel).getByText(/create no order and book no sample/i)).toBeInTheDocument();
+    expect(within(panel).getByText(/switched to Free, completing the consult orders those tests/i)).toBeInTheDocument();
     expect(within(panel).getByText("No investigation advised.")).toBeInTheDocument();
   });
 
@@ -3895,9 +3944,10 @@ describe("OpdConsult — the drug typeahead", () => {
     await pickDrug(user);
     const panel = await screen.findByTestId("sig-0-panel");
 
-    // THE MANUAL PATH — the phase doc's own example, `1-0-0 for 4 days`, with no preset involved.
+    // THE MANUAL PATH — a frequency the taps do not offer, for 4 days, with no preset involved. (The phase
+    // doc's own example was `1-0-0`; since decision 0054 that IS a tap — OD — and P26c2 below pins it.)
     await user.click(within(panel).getByTestId("sig-0-freq-other"));
-    await user.keyboard("1-0-0");
+    await user.keyboard("every third day");
     await user.click(within(panel).getByTestId("sig-0-days-other"));
     await user.keyboard("4");
     await user.type(screen.getByLabelText("Instructions"), "alternate days, with milk");
@@ -3908,7 +3958,22 @@ describe("OpdConsult — the drug typeahead", () => {
     const body = bodiesOf("POST", "/api/opd/visits/enc-1/prescriptions")[0] as {
       lines: { frequency: string; durationDays: number | null; instructions: string | null }[];
     };
-    expect(body.lines[0]).toMatchObject({ frequency: "1-0-0", durationDays: 4, instructions: "alternate days, with milk" });
+    expect(body.lines[0]).toMatchObject({ frequency: "every third day", durationDays: 4, instructions: "alternate days, with milk", source: "search" });
+  });
+
+  it("P26c2 (decision 0054): what is typed into Other but IS one of the closed set — 1-0-0 — is kept as that tap, OD, when the box is left", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await pickDrug(user);
+    const panel = await screen.findByTestId("sig-0-panel");
+    await user.click(within(panel).getByTestId("sig-0-freq-other"));
+    await user.keyboard("1-0-0");
+    await user.click(within(panel).getByTestId("sig-0-days-5"));
+    await waitFor(() => { expect(within(panel).getByTestId("sig-0-freq-OD")).toHaveAttribute("aria-checked", "true"); });
+    await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions").length).toBeGreaterThan(0); });
+    expect((bodiesOf("POST", "/api/opd/visits/enc-1/prescriptions")[0] as { lines: { frequency: string }[] }).lines[0]!.frequency).toBe("OD");
   });
 
   it("P26d: what the taps wrote is what the prescription POSTs — the timing and the note as one column", async () => {
@@ -4073,109 +4138,104 @@ describe("FD-30 — the transcription draft on the doctor's screen", () => {
 });
 
 /**
- * ═══ THE TOKEN WAITING FOR ITS BILL, AND THE DOCTOR'S OWN DOOR (OWNER RULING 2026-09-20) ═══
+ * ═══ THE DOCTOR'S SCREEN SHOWS NO MONEY (OWNER RULING 2026-10-09) ═══
  *
- * Owner: *"the emergency at the bay doesn't open the doctor's door. It waits for bill to be paid
- * until doctor opens the token from his dashboard manually. Currently the doctor have no screen to
- * do it. But we need it to be built."*
+ * Owner: *"make sure that Doctor will not see 'paid' written or marked against any patient name or
+ * id. This is a hospital not a clinic."* · *"Doctor's screens must not show money."* · *"walk-in
+ * rule, a (desk let through → patient shows in doctor's line, no mark)"*.
  *
- * The server holds an unsettled token out of `ordered` — so before this group existed, a patient
- * charted by the bay and stopped by the counter was on NO screen a doctor looks at, which is the
- * same disappearance the `left` group was built for one ruling ago. These three run against that
- * screen and fail on it.
+ * This block used to pin the opposite — the "waiting for the bill" rail, its UNPAID pill and the
+ * "see without payment" dialog (ruling 2026-09-20). They are gone. What is pinned now is a guard
+ * for the future: the line, the brief and the consultation are rendered for a visit the desk let
+ * through unpaid and for one that is plainly unpaid, WITH every money field the server ever sent
+ * still in the payload (the desk's copy of the routes carries them), and the words on the screen
+ * are searched. English and Hindi.
  */
-describe("OpdConsult — the token waiting for its bill", () => {
-  const HELD = entry({
-    id: "qe-held", seq: 4, encounterId: "enc-5", tokenNo: 9, status: "waiting", position: null, queueClass: null,
-    encounter: {
-      id: "enc-5", patientId: "p-5", visitType: "new", dangerFlagged: true, status: "waiting",
-      feeBypassReason: "emergency — vitals taken at the bay before billing; the fee is still due",
-      consultFeeOverrideReason: null,
-    },
-    patient: summary("p-5", "HMS0000000050", "Ramesh Yadav"),
-    feeStatus: "unsettled",
+describe("OpdConsult — nothing about money on the doctor's screen", () => {
+  const BYPASS = "VIP — sent through by the desk without paying";
+  /** Any of these on the screen is a failure. `\b` so that "withheld" or "feet" are not money. */
+  const MONEY_EN = /₹|\b(paid|unpaid|not paid|paying|payment|fees?|held|dues?|bill(s|ed|ing)?)\b/i;
+  const MONEY_HI = /भुगतान|फ़ीस|फीस|शुल्क|बिल|बकाया/;
+  const money = (e: ReturnType<typeof entry>, bypass: string | null): ReturnType<typeof entry> => ({
+    ...e, feeStatus: "unsettled",
+    encounter: { ...(e.encounter as Record<string, unknown>), feeBypassReason: bypass, consultFeeOverrideReason: bypass === null ? null : "old build: seen before the bill" },
+  } as ReturnType<typeof entry>);
+  /** `current` is the visit under test; one more of the same kind waits in the line behind it. */
+  const world = (bypass: string | null): Record<string, Handler> => ({
+    ...baseRoutes(),
+    "GET /api/tariff/price-list": { status: 200, body: { items: [{ serviceId: "svc-usg", code: "USG-ABD", name: "Ultrasound abdomen", category: "procedure", pricePaise: 120000 }] } },
+    "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+    "GET /api/opd/queues": { status: 200, body: {
+      ...QUEUE_VIEW, current: money(CURRENT, bypass), ordered: [money(WAIT_A, bypass), WAIT_B],
+      // What a server from before the ruling would still send: the doctor's screen draws none of it.
+      heldForPayment: [money(entry({ id: "qe-old", seq: 9, encounterId: "enc-9", tokenNo: 9 }), bypass)],
+      counts: { ...QUEUE_VIEW.counts, heldForPayment: 1 },
+    } },
+    "GET /api/opd/visits/enc-1": { status: 200, body: {
+      ...VISIT, feeUnpaid: true, feeBypass: bypass === null ? null : { by: "u-desk", reason: bypass, at: NOW_ISO },
+      encounter: { ...ENCOUNTER, feeBypassReason: bypass, consultFeeOverrideReason: null },
+    } },
   });
-  const HELD_VIEW = { ...QUEUE_VIEW, heldForPayment: [HELD], counts: { ...QUEUE_VIEW.counts, heldForPayment: 1 } };
-  /** What the server answers AFTER the doctor opens it: held no longer, ordered now, still unpaid. */
-  const RELEASED_VIEW = {
-    ...QUEUE_VIEW,
-    ordered: [...QUEUE_VIEW.ordered, { ...HELD, position: 3, queueClass: 3 }],
-    heldForPayment: [], counts: { ...QUEUE_VIEW.counts, waiting: 3, heldForPayment: 0 },
+  /** Every word on the screen — optionally with ONE element, named by its test id, left out. */
+  const said = (exceptTestId?: string): string => {
+    const body = document.body.cloneNode(true) as HTMLElement;
+    if (exceptTestId !== undefined) body.querySelectorAll(`[data-testid="${exceptTestId}"]`).forEach((el) => { el.remove(); });
+    return [
+      body.textContent ?? "",
+      ...[...body.querySelectorAll("[title],[aria-label],[placeholder]")].flatMap((el) =>
+        ["title", "aria-label", "placeholder"].map((a) => el.getAttribute(a) ?? "")),
+    ].join(" \n ");
   };
 
-  /** The queue read answers HELD until the open lands, then RELEASED — the screen re-reads, never patches. */
-  function withHeld(over: Record<string, Handler> = {}): Record<string, Handler> {
-    let opened = false;
-    return {
-      ...baseRoutes(),
-      "GET /api/opd/queues": () => ({ status: 200, body: opened ? RELEASED_VIEW : HELD_VIEW }),
-      "POST /api/opd/visits/enc-5/consult/open-unpaid": () => {
-        opened = true;
-        return { status: 201, body: { encounter: ENCOUNTER } };
-      },
-      ...over,
-    };
+  for (const [name, bypass] of [["a visit the desk let through unpaid", BYPASS], ["a plainly unpaid visit", null]] as const) {
+    for (const lang of ["en", "hi"] as const) {
+      it(`${name} (${lang}): the line, the brief and the consultation say nothing about money`, async () => {
+        mockRoutes(world(bypass));
+        await act(async () => { await i18next.changeLanguage(lang); });
+        onTestFinished(async () => { await act(async () => { await i18next.changeLanguage("en"); }); });
+        const user = userEvent.setup();
+        renderWithProviders(<OpdConsult />);
+
+        // The line: a let-through patient is an ordinary row, and nothing is listed apart.
+        expect(await screen.findByTestId("queue-row-qe-a")).toBeInTheDocument();
+        await screen.findByTestId("patient-brief");
+        for (const id of ["held-queue", "held-queue-title", "held-row-qe-old", "open-unpaid-qe-old", "open-unpaid-dialog", "unpaid-mark", "unpaid-bypassed"]) {
+          expect(screen.queryByTestId(id)).toBeNull();
+        }
+        expect(said()).not.toMatch(MONEY_EN);
+        expect(said()).not.toMatch(MONEY_HI);
+        expect(said()).not.toContain("sent through by the desk");
+
+        // The consultation: header, allergies, note.
+        await user.click(screen.getByRole("button", { name: i18next.t("opdConsult.start") }));
+        await screen.findByTestId("patient-panel");
+        expect(screen.queryByTestId("unpaid-mark")).toBeNull();
+        expect(screen.queryByTestId("unpaid-bypassed")).toBeNull();
+        expect(said()).not.toMatch(MONEY_EN);
+        expect(said()).not.toMatch(MONEY_HI);
+        expect(said()).not.toContain("sent through by the desk");
+        expect(callsTo("POST", "/api/opd/visits/enc-1/consult/open-unpaid")).toHaveLength(0);
+
+        /*
+          THE ONE EXEMPTION, BY ITS TEST ID. Owner, 2026-10-09, asked whether the advised-tests
+          picker's prices should go too: *"Hide test prices from doctor on website: No."* A test's
+          price is the catalogue's, not a statement about this patient's payment, and the doctor
+          advises with it in view. So `advised-tests` — that element and nothing else — is left out
+          of the search, and it is asserted to still carry its price.
+        */
+        await user.click(screen.getByRole("tab", { name: i18next.t("opdConsultV2.tabs.inv") }));
+        const picker = await screen.findByTestId("advised-tests");
+        await user.type(picker.querySelector("input")!, "ultra");
+        await waitFor(() => { expect(picker.textContent).toMatch(/₹1,200/); });
+        expect(said("advised-tests")).not.toMatch(MONEY_EN);
+        expect(said("advised-tests")).not.toMatch(MONEY_HI);
+
+        // "To collect" is the desk's: the doctor's screen neither draws it nor asks for it.
+        expect(screen.queryByTestId("to-collect")).toBeNull();
+        expect(callsTo("GET", "/api/billing/to-collect")).toHaveLength(0);
+      });
+    }
   }
-
-  it("U1: it is on the rail and NOT in the queue, and it says why it has no bill", async () => {
-    mockRoutes(withHeld());
-    renderWithProviders(<OpdConsult />);
-
-    const row = await screen.findByTestId("held-row-qe-held");
-    expect(within(row).getByText("9")).toBeInTheDocument();
-    expect(within(row).getByText("Ramesh Yadav")).toBeInTheDocument();
-    /* The bay's own sentence, carried two desks: it is what tells the doctor this was an emergency. */
-    expect(screen.getByTestId("held-why-qe-held").textContent).toContain("emergency");
-    expect(screen.getByTestId("held-danger-qe-held")).toBeInTheDocument();
-    expect(screen.getByTestId("held-queue-title").textContent).toContain("1");
-
-    /* NOT in the callable queue — the row the doctor can call is a row the server let them call. */
-    expect(within(screen.getByTestId("consult-queue")).queryByText("Ramesh Yadav")).toBeNull();
-    expect(screen.queryByTestId("queue-row-qe-held")).toBeNull();
-  });
-
-  it("U2: opening it asks for a sentence first, and posts nothing until there is one", async () => {
-    mockRoutes(withHeld());
-    const user = userEvent.setup();
-    renderWithProviders(<OpdConsult />);
-
-    await user.click(await screen.findByTestId("open-unpaid-qe-held"));
-    const dialog = await screen.findByTestId("open-unpaid-dialog");
-    /* Opening the dialog has decided nothing — the same rule the skip dialog carries beside it. */
-    expect(callsTo("POST", "/api/opd/visits/enc-5/consult/open-unpaid")).toHaveLength(0);
-    expect(within(dialog).getByTestId("open-unpaid-confirm")).toBeDisabled();
-
-    await user.type(within(dialog).getByTestId("open-unpaid-reason"), "emergency — chest pain, seeing him now");
-    expect(within(dialog).getByTestId("open-unpaid-confirm")).toBeEnabled();
-    await user.click(within(dialog).getByTestId("open-unpaid-confirm"));
-
-    await waitFor(() => expect(callsTo("POST", "/api/opd/visits/enc-5/consult/open-unpaid")).toHaveLength(1));
-    expect(bodiesOf("POST", "/api/opd/visits/enc-5/consult/open-unpaid")[0]).toEqual({
-      reason: "emergency — chest pain, seeing him now",
-    });
-
-    /* And the rail is REREAD: the group empties and the token is in the queue, still stamped unpaid. */
-    await waitFor(() => expect(screen.queryByTestId("held-row-qe-held")).toBeNull());
-    expect(await screen.findByTestId("queue-row-qe-held")).toBeInTheDocument();
-  });
-
-  it("U3: a refusal lands on the rail, and the token stays where it was", async () => {
-    mockRoutes(withHeld({
-      "POST /api/opd/visits/enc-5/consult/open-unpaid": {
-        status: 409,
-        body: { statusCode: 409, message: "encounter enc-5 is not this doctor's", code: "not_your_patient" },
-      },
-    }));
-    const user = userEvent.setup();
-    renderWithProviders(<OpdConsult />);
-
-    await user.click(await screen.findByTestId("open-unpaid-qe-held"));
-    await user.type(await screen.findByTestId("open-unpaid-reason"), "seeing him now");
-    await user.click(screen.getByTestId("open-unpaid-confirm"));
-
-    expect(await screen.findByRole("alert")).toBeInTheDocument();
-    expect(screen.getByTestId("held-row-qe-held")).toBeInTheDocument();
-  });
 });
 
 /**
@@ -4189,6 +4249,78 @@ describe("OpdConsult — the desk complaint and the visit type", () => {
   beforeEach(() => { vi.restoreAllMocks(); });
 
   const DESK = { text: "pair mein jhunjhuni, raat ko zyada", by: "Anita Sharma", at: "2026-08-18T04:32:00.000Z" };
+
+  it("TELE-CALL (owner 2026-10-09): the panel says Tele-call and the slot; Call patient shows the number to dial; Complete is locked until Spoke to patient — and nothing speaks of money", async () => {
+    let spoke = false;
+    const teleVisit = () => ({
+      ...VISIT, vitals: [], teleSlotAt: "2026-08-18T05:50:00.000Z",
+      encounter: { ...ENCOUNTER, status: "in_consultation", consultMode: "tele", teleOutcome: spoke ? "spoke" : null, teleOutcomeAt: spoke ? "2026-08-18T06:12:00.000Z" : null, teleNoAnswerCount: 0 },
+    });
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/visits/enc-1": () => ({ status: 200, body: teleVisit() }),
+      "POST /api/opd/visits/enc-1/tele/call": { status: 200, body: { encounterId: "enc-1", telePhone: "9876543021", callStartedAt: NOW_ISO } },
+      "POST /api/opd/visits/enc-1/tele/outcome": () => { spoke = true; return { status: 200, body: { outcome: "spoke", final: true, encounter: teleVisit().encounter } }; },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const panel = await screen.findByTestId("tele-panel");
+    expect(within(panel).getByTestId("tele-card")).toHaveTextContent("Tele-call");
+    expect(within(panel).getByTestId("tele-slot")).toHaveTextContent("11:20");
+    expect(panel).not.toHaveTextContent(/paid|unpaid|fee|₹|receipt|advance/i);
+    expect(screen.getByTestId("complete-consult")).toBeDisabled();
+    expect(within(panel).queryByTestId("tele-number")).toBeNull(); // the number is not on the screen until it is asked for
+
+    await user.click(within(panel).getByRole("button", { name: "Call patient" }));
+    expect(await within(panel).findByTestId("tele-number")).toHaveTextContent("Dial 9876543021");
+    expect(within(panel).getByRole("button", { name: "No answer" })).toBeEnabled();
+    await user.click(within(panel).getByRole("button", { name: "Spoke to patient" }));
+    expect(await screen.findByTestId("tele-spoke")).toHaveTextContent("Spoke · 11:42");
+    expect(callsTo("POST", "/api/opd/visits/enc-1/tele/outcome")[0]!.body).toBe(JSON.stringify({ outcome: "spoke" }));
+    await waitFor(() => expect(screen.getByTestId("complete-consult")).toBeEnabled());
+    expect(screen.queryByTestId("tele-call")).toBeNull();
+  });
+
+  it("TELE-CALL: 'No answer' takes the visit off the doctor's hands; a visit already tried once says so", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/visits/enc-1": { status: 200, body: { ...VISIT, teleSlotAt: "2026-08-18T05:50:00.000Z", encounter: { ...ENCOUNTER, status: "in_consultation", consultMode: "tele", teleOutcome: "no_answer", teleNoAnswerCount: 1 } } },
+      "POST /api/opd/visits/enc-1/tele/outcome": { status: 200, body: { outcome: "no_answer", final: true, encounter: {} } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+    const panel = await screen.findByTestId("tele-panel");
+    expect(within(panel).getByTestId("tele-tried")).toHaveTextContent("Tried once — no answer");
+    await user.click(within(panel).getByRole("button", { name: "No answer" }));
+    await waitFor(() => expect(screen.queryByTestId("tele-panel")).toBeNull());
+    expect(callsTo("POST", "/api/opd/visits/enc-1/tele/outcome")[0]!.body).toBe(JSON.stringify({ outcome: "no_answer" }));
+  });
+
+  it("TELE-CALL, the save fails (fix round): the doctor reads the server's neutral sentence — no money word — and Complete stays locked", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/visits/enc-1": { status: 200, body: { ...VISIT, vitals: [], teleSlotAt: "2026-08-18T05:50:00.000Z", encounter: { ...ENCOUNTER, status: "in_consultation", consultMode: "tele", teleOutcome: null, teleNoAnswerCount: 0 } } },
+      "POST /api/opd/visits/enc-1/tele/outcome": { status: 409, body: { statusCode: 409, code: "tele_save_failed", message: "Could not save — try again", detail: { encounterId: "enc-1" } } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+    const panel = await screen.findByTestId("tele-panel");
+    await user.click(within(panel).getByRole("button", { name: "Spoke to patient" }));
+    expect(await within(panel).findByRole("alert")).toHaveTextContent(/^Could not save — try again$/);
+    expect(panel).not.toHaveTextContent(/paid|unpaid|fee|₹|receipt|advance|invoice|bill/i);
+    expect(screen.queryByTestId("tele-spoke")).toBeNull();
+    expect(screen.getByTestId("complete-consult")).toBeDisabled();
+  });
+
+  it("an in-person consultation has no tele panel, and Complete is not locked by one", async () => {
+    mockRoutes({ ...baseRoutes(), "GET /api/opd/visits/enc-1": { status: 200, body: { ...VISIT, encounter: { ...ENCOUNTER, status: "in_consultation" } } } });
+    const user = userEvent.setup();
+    await openPanel(user);
+    await screen.findByTestId("complete-consult");
+    expect(screen.queryByTestId("tele-panel")).toBeNull();
+    expect(screen.getByTestId("complete-consult")).toBeEnabled();
+  });
 
   it("D1: the desk's words are shown verbatim with who and when — and only the complaints the vocabulary RECOGNISES are offered, as taps", async () => {
     mockRoutes({
@@ -4394,7 +4526,7 @@ describe("Consult v2", () => {
     const brief = await screen.findByTestId("patient-brief");
     await waitFor(() => { expect(within(brief).getByTestId("brief-visit-type")).toHaveAttribute("data-visit-type", "referral"); });
     expect(within(brief).getByTestId("brief-visit-type")).toHaveTextContent("Referral");
-    expect(within(brief).getByTestId("brief-visit-meaning")).toHaveTextContent(/first visit to this department · free within 7 days/);
+    expect(within(brief).getByTestId("brief-visit-meaning")).toHaveTextContent(/Referral · first visit to this department$/);
   });
   it("V2: three columns — the line is OPEN on the brief and FOLDED in the consultation; the copilot is open on both", async () => {
     mockRoutes(routes());
@@ -4935,5 +5067,46 @@ describe("Consult v2 — patient history both ways", () => {
     expect(newest).toHaveAttribute("open");
     await waitFor(() => { expect(newest).toHaveTextContent("general: No pedal oedema"); });
     expect(screen.getByTestId("section-history-enc-0")).not.toHaveAttribute("open");
+  });
+});
+
+/**
+ * ═══ OWNER 2026-10-07 — THE GUARDIAN CAME WITH THE REPORTS ═══
+ *
+ * A revisit marked at the bay or the desk reaches the doctor with no vitals. The doctor must read
+ * WHY before calling a patient who is not in the building: a tag on the queue row, and the sentence
+ * on the consultation screen.
+ */
+describe("OpdConsult — a guardian's visit, patient absent", () => {
+  beforeEach(() => { vi.restoreAllMocks(); });
+  const ABSENT = { relation: "father", name: "Ramesh", by: "u-bay", at: "2026-08-18T04:32:00.000Z" };
+
+  // Owner 2026-10-09 — "avoid too much text": the row is a filled chip without the name, the consultation one short line.
+  it("the queue row wears the guardian chip, and a patient who came wears none", async () => {
+    const guardian = { ...WAIT_B, encounter: { ...(WAIT_B.encounter as Record<string, unknown>), patientAbsent: ABSENT } };
+    mockRoutes({ ...baseRoutes(), "GET /api/opd/queues": { status: 200, body: { ...QUEUE_VIEW, ordered: [WAIT_A, guardian] } } });
+    renderWithProviders(<OpdConsult />);
+    const tag = await screen.findByTestId(`queue-absent-${String(WAIT_B.id)}`);
+    expect(tag).toHaveTextContent("Guardian · Father");
+    expect(tag).not.toHaveTextContent(/Ramesh/);
+    expect(tag).toHaveAttribute("title", "Father: Ramesh · reports · no vitals");
+    expect(screen.queryByTestId(`queue-absent-${String(WAIT_A.id)}`)).not.toBeInTheDocument();
+  });
+
+  it("the consultation screen says, in one line above every tab, that only a guardian came", async () => {
+    mockRoutes({ ...baseRoutes(), "GET /api/opd/visits/enc-1": { status: 200, body: { ...VISIT, vitals: [], patientAbsent: ABSENT } } });
+    const user = userEvent.setup();
+    await openPanel(user);
+    const line = await screen.findByTestId("panel-patient-absent");
+    expect(line.textContent).toBe("Guardian only · Father: Ramesh");
+    expect(line.style.whiteSpace).toBe("nowrap");
+  });
+
+  it("a visit the patient came to carries no such notice", async () => {
+    mockRoutes({ ...baseRoutes(), "GET /api/opd/visits/enc-1": { status: 200, body: { ...VISIT, patientAbsent: null } } });
+    const user = userEvent.setup();
+    await openPanel(user);
+    await screen.findByTestId("panel-visit-type");
+    expect(screen.queryByTestId("panel-patient-absent")).not.toBeInTheDocument();
   });
 });

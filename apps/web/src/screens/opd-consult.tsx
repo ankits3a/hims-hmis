@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { TeleCallPanel, teleLockedOf } from "../components/tele-call-panel";
+import { TeleMark } from "../components/tele-mark";
+import { slotClock } from "../lib/appointment-view";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FormProvider, useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { LINE_SOURCES, type DxSource } from "../../../../packages/contracts/src/rx-line";
 import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../lib/api";
 import { discardRxDraft, fetchRxDraft, issueRxDraft } from "../lib/opd-api";
-import { UnpaidMark } from "../components/unpaid-mark";
 import { ImagingOrderPanel } from "../components/radiology/imaging-order-panel";
 // 18-S RS9 T3 — the doctor's imaging results, between patients (own component; one line below).
 import { ImagingResultsInbox } from "../components/radiology/imaging-results-inbox";
@@ -14,13 +17,16 @@ import { EyeSections, eyeSummary, fetchVisitSections } from "./opd-eye-sections"
 import { PaedsSections, childAgeText } from "./opd-paeds-sections";
 import { MyLayoutDialog, applyLayout, fetchVisitLayout, orderRows } from "./opd-layout";
 import { VisitTypeBadge, shownVisitType } from "../components/visit-type-badge";
+import { GuardianReports } from "../components/guardian-reports";
+import { GuardianLine, PatientAbsentTag } from "../components/patient-absent";
 import { SKIP_REASONS, isInteractionHit, opdErrorMessage, todayIst } from "../lib/opd-api";
+import { useDoctorLabel } from "../lib/use-doctor-label";
 import type {
   WireDoctor, WireEncounter, WireOpdConfig, WirePatientSummary, WirePrescription, WireQueueEntry,
   WireQueueEntryView, WireQueueView, WireRxPrint, WireTimelineItem, WireVitals,
   WireDrugDiseaseHit, WireDuplicateHit, WireInteractionHit, WireRxNotice, WireSkipReason,
   WireRxHistoryItem, WireVitalsHistoryItem,
-  WireAdvisedTest, WirePriceListRow, WireRxDraftLine, WireRxLine,
+  WireAdvisedTest, WireRxDraftLine, WireRxLine,
 } from "../lib/opd-api";
 import { Link } from "@tanstack/react-router";
 import { fmtIst, fmtPaise } from "../lib/format";
@@ -41,8 +47,8 @@ import {
 import "./opd-consult.css";
 import { recallToken, releaseLease, takeLease } from "../lib/opd-api";
 import type { WorkRow } from "./opd-consult-v2";
-import { CopilotSuggestions, TermInput } from "./opd-consult-suggest";
-import type { WireExamFinding } from "../lib/opd-api";
+import { CopilotSuggestions, SyndromeHitChips, TermInput } from "./opd-consult-suggest";
+import type { WireExamFinding, WirePatientAbsent } from "../lib/opd-api";
 import type { AgentLine } from "../components/agent-dock";
 import { DeskModal } from "../components/desk-modal";
 import { ExternalRecordsPanel } from "../components/abdm-external-records";
@@ -61,6 +67,8 @@ import { ConsultScribe } from "../components/consult-scribe";
 import { completeComplaint, fetchRegimen, recogniseComplaint, suggestSyndromes } from "../lib/cds-api";
 import type { WireCard, WireIcd11, WireRegimen, WireSyndromeHit } from "../lib/cds-api";
 import { TabStrip } from "../components/desk-fields";
+import { CreditChip } from "../components/patient-credit";
+import { advisableTests } from "../lib/ordering-api";
 
 /**
  * The consultation screen (D5 / Task 15) — the doctor's flagship: the live queue with call / skip /
@@ -92,11 +100,12 @@ const ROUTE_OPTIONS = ["oral", "iv", "im", "sc", "topical", "inhaled", "eye", "o
 
 type VisitDetail = {
   encounter: WireEncounter;
-  /* FD-32 — the owner's warning, from the same derivation the vitals bay uses. */
-  feeUnpaid?: boolean;
-  feeBypass?: { by: string; reason: string; at: string } | null;
   /** The patient's own words from the front desk, who typed them and when (2026-09-23, D15). */
   deskComplaint?: { text: string; by: string; at: string } | null;
+  /** Owner 2026-10-07 — the guardian came with the reports; no vitals were taken. */
+  patientAbsent?: WirePatientAbsent | null;
+  /** Owner 2026-10-09 — the slot a tele-call was booked for; null or absent on every other visit. */
+  teleSlotAt?: string | null;
   queueEntries: WireQueueEntry[];
   vitals: WireVitals[];
   prescriptions: WirePrescription[];
@@ -165,6 +174,9 @@ function wireRxLine(l: RxLineValues): Record<string, unknown> {
     drug: l.drug.trim(), dose: l.dose.trim(), route: l.route, frequency: l.frequency,
     durationDays: l.durationDays, instructions: orNull(l.instructions),
     noSubstitution: l.noSubstitution, medicineId: l.medicineId,
+    /* Decision 0050 P0 — where the line came from. A fill, a set or a repeat says so itself; otherwise a
+       line that still carries its pick was SEARCHED and one that does not was TYPED. */
+    source: l.source ?? (l.medicineId !== null ? "search" : "typed"),
   };
   if (l.route === "eye") {
     if (l.eye !== undefined && l.eye !== null) wire.eye = l.eye;
@@ -222,6 +234,8 @@ const rxSchemaWith = (m?: RxMessages) => z.object({
          */
         eye: z.enum(["od", "os", "ou"]).nullable().optional(),
         taper: z.array(z.object({ timesPerDay: z.number().int(), days: z.number().int() })).nullable().optional(),
+        /** Decision 0050 P0 — set by a fill (`suggested`) and dropped with the pick when the doctor retypes the drug. */
+        source: z.enum(LINE_SOURCES).nullable().optional(),
       }),
     )
     .min(1),
@@ -266,6 +280,7 @@ function draftRowsOf(lines: RxFormInput["lines"]): WireRxDraftLine[] {
     };
     if (l.eye != null) row.eye = l.eye;
     if (l.taper != null && l.taper.length > 0) row.taper = l.taper;
+    if (l.source != null) row.source = l.source;
     return row;
   });
 }
@@ -279,6 +294,7 @@ function formRowOf(d: WireRxDraftLine | WireRxLine): RxFormInput["lines"][number
     instructions: d.instructions ?? "", noSubstitution: d.noSubstitution === true,
     medicineId: "medicineId" in d ? (d.medicineId ?? null) : null,
     eye: d.eye ?? null, taper: d.taper ?? null,
+    ...(d.source != null ? { source: d.source } : {}),
   };
 }
 
@@ -355,14 +371,17 @@ type TabId = "summary" | "vitals" | "eye" | "paeds" | "complaints" | "exam" | "d
  * code, so every other visit sends exactly the body it always sent. The server drops an eye on a
  * non-eye code anyway; not sending one keeps the two sides saying the same thing.
  */
-function noteBodyOf(n: NoteState, icdByTerm: Map<string, string>, eyeByTerm: Map<string, Eye>): Record<string, unknown> {
+function noteBodyOf(n: NoteState, icdByTerm: Map<string, string>, eyeByTerm: Map<string, Eye>, suggestedDx?: ReadonlySet<string>): Record<string, unknown> {
   return {
     chiefComplaint: orNull(n.chiefComplaint),
     diagnoses: splitTags(n.diagnosis).map((text) => {
       const icd10Code = icdByTerm.get(text.toLowerCase()) ?? null;
+      /* Decision 0050 P0 — where the diagnosis came from: a chip the system offered, the coded search, or
+         the doctor's own words. The server keeps the FIRST source a diagnosis was saved with. */
+      const source: DxSource = suggestedDx?.has(text.toLowerCase()) === true ? "suggested" : icd10Code !== null ? "search" : "typed";
       return isEyeCode(icd10Code)
-        ? { text, icd10Code, laterality: eyeByTerm.get(text.toLowerCase()) ?? null }
-        : { text, icd10Code };
+        ? { text, icd10Code, laterality: eyeByTerm.get(text.toLowerCase()) ?? null, source }
+        : { text, icd10Code, source };
     }),
     advice: orNull(n.advice),
   };
@@ -432,9 +451,6 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
   const [skipping, setSkipping] = useState<WireQueueEntryView | null>(null);
   const [skipReason, setSkipReason] = useState<WireSkipReason>("absent");
   const [skipNote, setSkipNote] = useState("");
-  /* OWNER RULING 2026-09-20 — the held token this doctor is deciding about, and the sentence for it. */
-  const [openingUnpaid, setOpeningUnpaid] = useState<WireQueueEntryView | null>(null);
-  const [unpaidReason, setUnpaidReason] = useState("");
   const [note, setNote] = useState<NoteState>(EMPTY_NOTE);
   /*
     Every ICD-10 row the diagnosis field has offered, by its description. A ref rather than state:
@@ -443,6 +459,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     cleared with it — a few hundred short strings at the very most.
   */
   const icdByTerm = useRef(new Map<string, string>());
+  /** Decision 0050 P0 — the diagnoses added by tapping a suggestion chip in this sitting (lower-cased). */
+  const suggestedDx = useRef(new Set<string>());
   /*
     Which eye each eye-coded tag names, by term, exactly as `icdByTerm` pairs codes — and cleared
     with it in `resetPanel`, for the same reason. A ref for the body; `eyeTick` re-draws the pills.
@@ -599,6 +617,9 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
   // erratum E3: 404 here is the ANSWER "this user has no doctor profile", not a transport error.
   const notADoctor = me.isError && me.error instanceof ApiError && me.error.status === 404;
   const doctorId = me.data?.id ?? "";
+  // 2026-10-04 (owner) — "Dr. Chandan · Unit I" in the doctor's own header too.
+  const doctorLabel = useDoctorLabel(todayIst());
+  const myTag = me.data === undefined ? null : doctorLabel(me.data);
 
   const config = useQuery({ queryKey: ["opd", "config"], queryFn: () => api<WireOpdConfig>("GET", "/opd/config") });
   /*
@@ -658,19 +679,6 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     rail carries them now, because the doctor who lost her is the one standing next to her.
   */
   const leftQueue = view?.left ?? [];
-  /*
-    ═══ THE TOKENS WITH THE CASHIER (OWNER RULING 2026-09-20) ═══
-
-    *"It waits for bill to be paid until doctor opens the token from his dashboard manually.
-    Currently the doctor have no screen to do it."* This is that screen. They are waiting, their
-    vitals are charted, and their fee is unsettled — so the server keeps them out of `ordered`,
-    `callNext` cannot reach them and the hall's board never announces them. The doctor sees them
-    anyway, because the whole ruling is that THIS person decides, patient by patient.
-
-    `?? []` is not defensive habit: a tab left open across the deploy that adds the field talks to a
-    server that does not send it, and the right answer there is no group rather than a crash.
-  */
-  const heldForPayment = view?.heldForPayment ?? [];
   /*
     A ROW IS HELD ONLY IF THE SERVER SAID SO, IN WORDS. The field is typed `string | null`, and the
     one moment it is neither is the deploy window: a tab talking to the previous build gets a queue
@@ -783,8 +791,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
    * `tariff.read` is the grant DD6 makes for exactly this (README, Plan 07d T5).
    */
   const services = useQuery({
-    queryKey: ["tariff", "price-list"],
-    queryFn: () => api<{ items: WirePriceListRow[] }>("GET", "/tariff/price-list"),
+    queryKey: ["ordering", "advisable-tests"],
+    queryFn: advisableTests,
     enabled: active !== null,
   });
   const serviceMatches = (services.data?.items ?? [])
@@ -872,7 +880,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     rxSavedKey.current = stale ? "stale" : draftKey(restoredRows);
     setRxHydrated((n) => n + 1);
     lastSavedNote.current = JSON.stringify({
-      ...noteBodyOf(next, icdByTerm.current, eyeByTerm.current), ...v2BodyOf(loadedV2, v2On.current),
+      ...noteBodyOf(next, icdByTerm.current, eyeByTerm.current, suggestedDx.current), ...v2BodyOf(loadedV2, v2On.current),
       ...(restoredRows.length > 0 ? { rxDraft: restoredRows } : {}),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- rxForm is stable; readOnly re-runs it for the follow/takeover cases
@@ -1135,6 +1143,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
       drug: l.rx.drug, dose: l.rx.dose, route: l.rx.route, frequency: l.rx.frequency,
       durationDays: l.rx.durationDays === null ? "" : String(l.rx.durationDays),
       instructions: l.rx.instructions, noSubstitution: l.rx.noSubstitution, medicineId: l.rx.medicineId ?? null,
+      source: "suggested" as const,
     }));
     pendingFillMarks.current = regimen.regimen.lines.map((l) => ({
       shorthand: l.product == null || l.rx.medicineId == null ? null : { strength: l.product.strength, form: l.product.form, code: l.product.code },
@@ -1152,10 +1161,11 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     if (active === null) return null;
     return (
       <CopilotSuggestions
-        variant={variant} hits={hits}
+        variant={variant} encounterId={active.encounterId} hits={hits}
         diagnoses={splitTags(note.diagnosis).map((text) => ({ text, icd10: icdByTerm.current.get(text.toLowerCase()) ?? null }))}
         onAddDx={(name, icd10) => {
           if (icd10 !== null) icdByTerm.current.set(name.toLowerCase(), icd10);
+          suggestedDx.current.add(name.toLowerCase());
           setNote((n) => (splitTags(n.diagnosis).some((x) => x.toLowerCase() === name.toLowerCase()) ? n : { ...n, diagnosis: joinTags([...splitTags(n.diagnosis), name]) }));
         }}
         advised={advisedTests}
@@ -1212,6 +1222,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
        patient's ICD-10 code to another's identically-worded diagnosis. `resetPanel` has forgotten
        newly-added state before (the T6 allergy fields); this is the line that stops it happening. */
     icdByTerm.current = new Map();
+    suggestedDx.current = new Set();
     eyeByTerm.current = new Map();
     icd11ByCode.current = new Map();
     lastSavedNote.current = JSON.stringify(noteBodyOf(EMPTY_NOTE, new Map(), new Map()));
@@ -1546,27 +1557,6 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     }
   };
 
-  /**
-   * THE DOCTOR OPENS AN UNPAID TOKEN. One POST, and then the queue is re-read rather than patched
-   * locally: the server decides what is held, and a rail that moved the row itself would be a
-   * second opinion about the ledger. A refusal (`reason_required`, `not_your_patient`) lands on the
-   * rail's own error line, where the token is.
-   */
-  const confirmOpenUnpaid = async (): Promise<void> => {
-    const entry = openingUnpaid;
-    if (entry === null) return;
-    setQueueError(null);
-    try {
-      await api("POST", `/opd/visits/${entry.encounter.id}/consult/open-unpaid`, { reason: unpaidReason.trim() });
-      setOpeningUnpaid(null);
-      setUnpaidReason("");
-      await invalidateQueue();
-    } catch (e) {
-      setOpeningUnpaid(null);
-      setQueueError(opdErrorMessage(e));
-    }
-  };
-
   const startConsult = async (): Promise<void> => {
     if (current === null) return;
     setQueueError(null);
@@ -1714,7 +1704,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     if (active === null) return;
     setNoteError(null);
     try {
-      await api("PUT", `/opd/visits/${active.encounterId}/consult/note`, { ...noteBodyOf(note, icdByTerm.current, eyeByTerm.current), ...v2BodyOf(v2, v2On.current), advisedTests: next, ...leaseBody() });
+      await api("PUT", `/opd/visits/${active.encounterId}/consult/note`, { ...noteBodyOf(note, icdByTerm.current, eyeByTerm.current, suggestedDx.current), ...v2BodyOf(v2, v2On.current), advisedTests: next, ...leaseBody() });
       setSavedAt(new Date());
     } catch (e) {
       setNoteError(opdErrorMessage(e));
@@ -1724,7 +1714,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
   const saveNote = async (opts?: { force?: boolean; v2?: V2State }): Promise<void> => {
     if (active === null) return;
     if (readOnly) return; // D17: a read-only tab writes nothing
-    const body = { ...noteBodyOf(note, icdByTerm.current, eyeByTerm.current), ...v2BodyOf(opts?.v2 ?? v2, v2On.current), ...rxDraftPart() };
+    const body = { ...noteBodyOf(note, icdByTerm.current, eyeByTerm.current, suggestedDx.current), ...v2BodyOf(opts?.v2 ?? v2, v2On.current), ...rxDraftPart() };
     const key = JSON.stringify(body);
     if (key === lastSavedNote.current && opts?.force !== true) return;
     setNoteError(null);
@@ -2056,8 +2046,10 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     return key !== "" && key !== issuedRowsKey;
   };
 
+  // Owner 2026-10-09 — a tele-call is completed, and its prescription issued, only after "Spoke to patient" (the server's rule).
+  const teleLocked = teleLockedOf(visit.data?.encounter);
   const complete = async (): Promise<void> => {
-    if (active === null) return;
+    if (active === null || teleLocked) return;
     setCompleteError(null);
     if (rxUnissued()) {
       let issued = false;
@@ -2066,7 +2058,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     }
     const body: Record<string, unknown> = {
       note: {
-        ...noteBodyOf(note, icdByTerm.current, eyeByTerm.current),
+        ...noteBodyOf(note, icdByTerm.current, eyeByTerm.current, suggestedDx.current),
         ...v2BodyOf(v2, v2On.current),
         ...leaseBody(),
         /* Everything written is issued by now (above), so a draft the server still holds is cleared with the visit. */
@@ -2345,12 +2337,17 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
             : mode === "left"
               ? { opacity: 0.72 }
               : {}),
+        // Owner 2026-10-09 — a tele-call wears a blue outline (the approved board's frame 3); a shape, not only a colour.
+        ...(e.tele === true ? { boxShadow: "inset 0 0 0 2px var(--blue)", borderRadius: 6 } : {}),
       }}
     >
       <span data-testid={`queue-position-${e.id}`} className="mo" style={{ fontSize: 10, color: "var(--faint)" }}>
         {e.position === null ? "—" : t("opdConsult.position", { n: e.position })}
       </span>
-      <span data-testid={`queue-token-${e.id}`} className="mo" style={{ fontSize: 16, fontWeight: 700 }}>{e.tokenNo}</span>
+      {e.tele === true
+        // The slot time where the token sits, and a phone ICON named "Tele-call" — no word.
+        ? <><span data-testid={`queue-slot-${e.id}`} className="mo" style={{ fontSize: 14, fontWeight: 700, color: "var(--blue)" }}>{slotClock(e.appointmentAt ?? "")}</span><TeleMark mode="tele" size={15} /></>
+        : <span data-testid={`queue-token-${e.id}`} className="mo" style={{ fontSize: 16, fontWeight: 700 }}>{e.tokenNo}</span>}
       <span style={{ flexGrow: 1, minWidth: 0 }}>{patientLabel(e.patient)}</span>
       {/* the danger mark sits WITH the badges and says what it is (owner's walk: a lone ⚠ read as nothing) */}
       {(e.danger || e.encounter.dangerFlagged) && (
@@ -2360,6 +2357,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
         </span>
       )}
       <VisitTypeBadge visitType={shownVisitType(e.encounter)} size="sm" testId={`queue-visit-type-${e.id}`} />
+      {/* Owner 2026-10-07 — nobody to call into the room: the guardian came with the reports. */}
+      {e.encounter.patientAbsent != null && <PatientAbsentTag absent={e.encounter.patientAbsent} visitType={e.encounter.visitType} testId={`queue-absent-${e.id}`} />}
       {/*
         CONSULT V2 (owner, 2026-09-23) — the alarm says a called token again on the corridor board; the
         box-and-arrow opens this patient in a new browser tab (D17: only one tab edits at a time).
@@ -2447,7 +2446,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
         onToggle={active === null ? setLeftOnBrief : setLeftOnConsult}
         waiting={ordered.length}
         sessionStatus={view?.session.status ?? null}
-        subtitle={view === null ? undefined : [view.doctor.displayName, view.doctor.specialty].filter((x) => x !== null && x !== "").join(" · ")}
+        subtitle={view === null ? undefined : [view.doctor.displayName, myTag, view.doctor.specialty].filter((x) => x !== null && x !== "").join(" · ")}
       >
           <div>
             <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor="session-status">{t("opdConsult.sessionStatus")}</label>
@@ -2516,52 +2515,6 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
             {ordered.map((e) => queueRow(e, "waiting"))}
           </ul>
           {/*
-            ═══ WAITING FOR THE BILL — THE GROUP THE OWNER ASKED FOR (2026-09-20) ═══
-
-            Below the live queue and above the ones who left, because that is where they are in the
-            day: ready, charted, and stopped by money. Each row carries the sentence that explains
-            why it has no bill — the bay's or the front desk's own words — and one button, which is
-            this doctor deciding to see them anyway.
-          */}
-          {heldForPayment.length > 0 && (
-            <>
-              <h2 className="tag" data-testid="held-queue-title" style={{ margin: "8px 0 0" }}>
-                {t("opdConsult.heldQueue", { n: heldForPayment.length })}
-              </h2>
-              <p style={{ margin: 0, fontSize: 11, color: "var(--faint)" }}>{t("opdConsult.heldQueueHint")}</p>
-              <ul data-testid="held-queue" style={{ listStyle: "none", margin: 0, padding: 0 }}>
-                {heldForPayment.map((e) => (
-                  <li
-                    key={e.id} data-testid={`held-row-${e.id}`} className="drow"
-                    style={{
-                      display: "flex", flexWrap: "wrap", alignItems: "center", gap: 7, padding: "8px 10px", fontSize: 12.5,
-                      background: "var(--gold-soft)", boxShadow: "inset 3px 0 0 var(--gold)",
-                    }}
-                  >
-                    <span className="mo" style={{ fontSize: 16, fontWeight: 700 }}>{e.tokenNo}</span>
-                    <span style={{ flexGrow: 1, minWidth: 0 }}>{patientLabel(e.patient)}</span>
-                    {(e.danger || e.encounter.dangerFlagged) && (
-                      <span data-testid={`held-danger-${e.id}`} aria-label={t("opdConsult.danger")} style={{ color: "var(--red)", fontWeight: 700 }}>⚠</span>
-                    )}
-                    <span className="pill rd" style={{ fontWeight: 700 }}>{t("opd.feeStatus.unsettled")}</span>
-                    <button
-                      type="button" data-testid={`open-unpaid-${e.id}`} className="sec"
-                      style={{ padding: "3px 10px", fontSize: 12 }}
-                      onClick={() => { setOpeningUnpaid(e); setUnpaidReason(""); }}
-                    >
-                      {t("opdConsult.openUnpaid")}
-                    </button>
-                    {typeof e.encounter.feeBypassReason === "string" && e.encounter.feeBypassReason !== "" && (
-                      <span data-testid={`held-why-${e.id}`} style={{ flexBasis: "100%", fontSize: 11, color: "var(--dim)" }}>
-                        {t("opdConsult.heldWhy", { reason: e.encounter.feeBypassReason })}
-                      </span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-          {/*
             ═══ LEFT THE QUEUE — THE GROUP THAT DID NOT EXIST ═══
 
             Three skips and the token is `left`, which until now meant gone from every screen in the
@@ -2593,7 +2546,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
           )}
           <h1 className="cx-title" style={{ margin: 0 }}>{t("opdConsult.title")}</h1>
           <span className="cx-who" data-testid="consult-who">
-            {[me.data?.displayName ?? view?.doctor.displayName ?? null, view?.doctor.specialty ?? null].filter((x) => x !== null && x !== "").join(" · ")}
+            {[me.data?.displayName ?? view?.doctor.displayName ?? null, myTag, view?.doctor.specialty ?? null].filter((x) => x !== null && x !== "").join(" · ")}
           </span>
           <span className="cx-grow" />
           {active !== null && (
@@ -2613,7 +2566,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                 {t("opdConsultV2.saveDraft")}
               </button>
               {/* Ctrl+Enter does this too — the Keymap's "commit, a chord because it is the irreversible one". */}
-              <button type="button" className="cx-hbtn pri" data-testid="complete-consult" onClick={() => void complete()}>
+              <button type="button" className="cx-hbtn pri" data-testid="complete-consult" disabled={teleLocked} onClick={() => void complete()}>
                 <span className="cx-full">{rxWaiting ? t("opdConsult.issueAndComplete") : t("opdConsult.complete")}</span>
                 <span className="cx-short" aria-hidden="true">{t("opdConsultV2.completeShort")}</span>
               </button>
@@ -2701,6 +2654,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                           {activeToken !== null && <> · {t("opdConsultV2.token", { n: activeToken })}</>}
                           {" · "}<span data-testid="panel-uhid" className="mo" style={{ fontSize: 12 }}>{patient.data?.patient.uhid ?? active.summary?.uhid ?? "—"}</span>
                         </small>
+                        {" "}<CreditChip patientId={patientId} testId="consult-credit" />
                       </div>
                       {encounter !== null && (
                         <div className="cx-meaning" data-testid="panel-visit-meaning" style={{ color: encounter.visitType === "renewal" ? "#8a5a10" : encounter.visitType === "new" ? "var(--green)" : "var(--dim)", fontWeight: 600 }}>
@@ -2716,14 +2670,6 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
 
                 {!restricted && (
                   <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, flex: "1 1 240px", minWidth: 0 }}>
-                    {/*
-                    FD-32 / owner 2026-09-13 — beside the allergies, because both are things the
-                    doctor must see BEFORE prescribing. The fee gate already refuses an unpaid
-                    consult, so a patient who reaches this chair unpaid was waved through by the
-                    front desk on purpose: the mark names the clerk's reason rather than accusing
-                    the patient.
-                  */}
-                  <UnpaidMark unpaid={visit.data?.feeUnpaid ?? false} bypass={visit.data?.feeBypass ?? null} />
                     <h3 className="tag" style={{ margin: 0, color: "var(--red)" }}>{t("opdConsult.allergies")}</h3>
                     <div data-testid="allergy-chips" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 5 }}>
                       {activeAllergies.length === 0 && (
@@ -2947,7 +2893,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                 )}
 
                 <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
-                  {latestVitals === null && <p style={{ margin: 0, fontSize: 12, color: "var(--dim)" }}>{t("opdConsult.noVitals")}</p>}
+                  {/* A tele-call has no vitals block at all — nobody was at the bay (owner 2026-10-09). */}
+                  {latestVitals === null && visit.data?.encounter.consultMode !== "tele" && <p style={{ margin: 0, fontSize: 12, color: "var(--dim)" }}>{t("opdConsult.noVitals")}</p>}
                   {latestVitals !== null && (() => {
                     const lv = latestVitals;
                     const cls = (warn: boolean, danger: boolean): string => (danger ? "danger" : warn ? "warn" : "");
@@ -2961,6 +2908,9 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                           <span className={cls((lv.pulse ?? 80) > 100 || (lv.pulse ?? 80) < 50, flagged("pulse"))}>P {lv.pulse ?? "—"}</span>
                           <span className={cls((lv.spo2 ?? 99) < 95, flagged("spo2") || (lv.spo2 ?? 99) < 90)}>SpO₂ {lv.spo2 ?? "—"}%</span>
                           {lv.weightKg != null && <span>{lv.weightKg} kg</span>}
+                          {lv.glucoseMgDl != null && (
+                            <span data-testid="panel-glucose">{t("vitalsBay.tile.glucoseMgDl")} {lv.glucoseMgDl} mg/dL{lv.glucoseTiming == null ? "" : ` · ${t(`vitalsBay.glucose.timing.${lv.glucoseTiming}`)}`}</span>
+                          )}
                           {bmi !== null && <span>BMI {bmi.toFixed(1)}</span>}
                           <span className="more">{t("opdConsultV2.vitals.more")}</span>
                         </button>
@@ -2980,6 +2930,25 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                   })()}
                 </div>
               </header>
+              {/* Owner 2026-10-07 / 2026-10-09 — only a guardian came: one line, above every tab. */}
+              {visit.data?.patientAbsent != null && (
+                <GuardianLine absent={visit.data.patientAbsent} testId="panel-patient-absent" />
+              )}
+              {/* …and what the guardian came to show: the in-house results since the last visit (the brief's own rule and reads). */}
+              {visit.data?.patientAbsent != null && active !== null && (
+                <GuardianReports
+                  patientId={active.patientId}
+                  lastVisitDay={timelineItems.find((i) => i.encounterId !== active.encounterId && i.status === "completed")?.serviceDate ?? null}
+                />
+              )}
+              {/* Owner 2026-10-09 — a tele-call: the call, then one of two answers. */}
+              {visit.data !== undefined && active !== null && visit.data.encounter.consultMode === "tele" && (
+                <TeleCallPanel
+                  encounterId={active.encounterId} encounter={visit.data.encounter} slotAt={visit.data.teleSlotAt}
+                  onSpoke={() => { void visit.refetch(); }}
+                  onLeft={(line) => { setAgentLog((l) => logged(l, line, "warn")); setActive(null); resetPanel(); void invalidateQueue(); }}
+                />
+              )}
               </fieldset>
 
               <div className="cx-work"><WorkStrip rows={workRows} onGo={goToSection} /></div>
@@ -3150,22 +3119,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                         rather than a dropdown: a dropdown steals the caret and a doctor mid-sentence
                         loses their place. Tapping decides nothing — it opens a card to be read.
                       */}
-                      {hits.length > 0 && (
-                        <div data-testid="cds-hits" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
-                          <span className="tag" style={{ alignSelf: "center" }}>{t("cds.suggests")}</span>
-                          {hits.map((h) => (
-                            <button
-                              key={h.key} type="button" className="sec" data-testid={`cds-hit-${h.key}`}
-                              style={{ padding: "3px 10px", fontSize: 12 }}
-                              onClick={() => void openRegimen(h.key)}
-                            >
-                              {h.name}
-                              <span className="mo" style={{ marginLeft: 6, fontSize: 10, color: "var(--faint)" }}>{h.icd10 ?? ""}</span>
-                              <Icd11Pill icd11={h.icd11} />
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                      {active !== null && <SyndromeHitChips encounterId={active.encounterId} hits={hits} onOpen={(key) => { void openRegimen(key); }} />}
                       <ErrorLine message={cdsError} />
                       {regimen !== null && (
                         <div data-testid="cds-regimen" className="box" style={{ marginTop: 8, padding: "11px 13px", display: "flex", flexDirection: "column", gap: 9 }}>
@@ -3614,7 +3568,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                       )}
                       <ErrorLine message={draftError} />
                       <div style={{ marginTop: 9, display: "flex", gap: 7, flexWrap: "wrap" }}>
-                        <button type="button" className="pri" data-testid="rx-draft-issue" disabled={draftBusy} onClick={() => { void issueTheDraft(); }}>
+                        <button type="button" className="pri" data-testid="rx-draft-issue" disabled={draftBusy || teleLocked} onClick={() => { void issueTheDraft(); }}>
                           {t("opdConsult.draft.issue")}
                         </button>
                         <button
@@ -3722,11 +3676,14 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                               {t("opdConsult.drug")}
                             </label>
                             <DrugField
+                              nicknames={{ surface: "consult_web", encounterId: active?.encounterId ?? null }}
                               inputId={`rx-drug-${String(i)}`}
                               value={rxForm.watch(`lines.${i}.drug`)}
                               placeholder={t("opdConsult.drugPlaceholder")}
                               onText={(text) => {
                                 rxForm.setValue(`lines.${i}.drug`, text, { shouldDirty: true });
+                                /* Retyping the drug makes the line the doctor's own words: the pick and the source go together. */
+                                rxForm.setValue(`lines.${i}.source`, null);
                                 if (rxForm.getValues(`lines.${i}.medicineId`) !== null) {
                                   rxForm.setValue(`lines.${i}.medicineId`, null);
                                   /* The id and the shorthand go together: what is shown must not
@@ -3740,6 +3697,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                               onPick={(hit) => {
                                 rxForm.setValue(`lines.${i}.drug`, hit.name, { shouldDirty: true });
                                 rxForm.setValue(`lines.${i}.medicineId`, hit.id);
+                                rxForm.setValue(`lines.${i}.source`, "search");
                                 setShorthand((m) => ({ ...m, [f.id]: { strength: hit.strength, form: hit.form, code: hit.code } }));
                                 setNeedsPick((m) => {
                                   const { [f.id]: dropped, ...rest } = m;
@@ -3833,7 +3791,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                         <button type="button" className="cx-rxadd" data-testid="rx-add" onClick={() => { setRxOpen(lines.fields.length); lines.append(EMPTY_LINE); }}>
                           <span aria-hidden="true">+ </span>{t("opdConsult.addLine")}
                         </button>
-                        <button type="submit" className="pri">{t("opdConsult.issue")}</button>
+                        <button type="submit" className="pri" disabled={teleLocked}>{t("opdConsult.issue")}</button>
                       </div>
                     </FormKit>
                   </FormProvider>
@@ -3965,7 +3923,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                               setTestQuery("");
                             }}
                           >
-                            {sv.name} — {fmtPaise(sv.pricePaise)}
+                            {sv.name} — {"outside" in sv && sv.outside === true ? t("opdConsult.outsideTest") : fmtPaise(sv.pricePaise)}
                           </button>
                         </li>
                       ))}
@@ -4216,51 +4174,6 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
 
       {/* THE ONLY `.print-doc` RENDER SITE ON THIS SCREEN — one nullable state, one mount. */}
       {/*
-        ═══ SEEING A PATIENT BEFORE THE BILL — THE DOCTOR'S OWN SENTENCE (OWNER RULING 2026-09-20) ═══
-
-        A reason, typed, mandatory — the same rule the front desk's waiver carries (FD-32) and for
-        the same argument: "emergency" and "the chairman's guest" are different facts with different
-        consequences, and only a sentence tells them apart. The button is disabled until there is
-        one, and the server refuses an empty one too (`reason_required`), so the doctor learns it
-        from the screen rather than from an error. The line about the bill is there because this
-        dialog is the last moment anybody can believe the fee has been waived: it has not been.
-      */}
-      <DeskModal
-        open={openingUnpaid !== null}
-        title={t("opdConsult.openUnpaidTitle", { token: openingUnpaid?.tokenNo ?? "" })}
-        titleId="open-unpaid-title" testId="open-unpaid-dialog" width={460}
-        onClose={() => { setOpeningUnpaid(null); }}
-      >
-        <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
-          <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>{t("opdConsult.openUnpaidHint")}</p>
-          <div>
-            <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor="open-unpaid-reason">
-              {t("opdConsult.openUnpaidReason")}
-            </label>
-            <input
-              id="open-unpaid-reason" data-testid="open-unpaid-reason" value={unpaidReason}
-              onChange={(ev) => { setUnpaidReason(ev.target.value); }}
-              className="in" style={{ width: "100%", height: 34, fontSize: 13 }}
-            />
-          </div>
-          <p style={{ margin: 0, fontSize: 11.5, color: "var(--faint)" }}>{t("opdConsult.openUnpaidStillOwed")}</p>
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 7 }}>
-            <button type="button" className="sec" style={{ padding: "4px 13px", fontSize: 12.5 }} onClick={() => { setOpeningUnpaid(null); }}>
-              {t("opdConsult.cancel")}
-            </button>
-            <button
-              type="button" className="pri" data-testid="open-unpaid-confirm"
-              style={{ padding: "4px 13px", fontSize: 12.5 }}
-              disabled={unpaidReason.trim().length < 3}
-              onClick={() => void confirmOpenUnpaid()}
-            >
-              {t("opdConsult.openUnpaidConfirm")}
-            </button>
-          </div>
-        </div>
-      </DeskModal>
-
-      {/*
         ═══ THE SKIP DIALOG — SIX BUTTONS AND A BOX, AND IT IS NOT OPTIONAL ═══
 
         A reason field a doctor can leave empty is a reason field that is always empty, so there is
@@ -4483,6 +4396,9 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                           <span>{t("opdConsult.vitalsBp")} {v.sbp ?? "—"}/{v.dbp ?? "—"}</span>
                           <span>{t("opdConsult.vitalsPulse")} {v.pulse ?? "—"}</span>
                           <span>{t("opdConsult.vitalsSpo2")} {v.spo2 ?? "—"}</span>
+                          {v.glucoseMgDl != null && (
+                            <span>{t("vitalsBay.tile.glucoseMgDl")} {v.glucoseMgDl} mg/dL{v.glucoseTiming == null ? "" : ` · ${t(`vitalsBay.glucose.timing.${v.glucoseTiming}`)}`}</span>
+                          )}
                           {Array.isArray(v.dangerFlags) && v.dangerFlags.length > 0 && (
                             <span style={{ color: "var(--red)", fontWeight: 700 }}>{t("opdConsult.flagged")}</span>
                           )}

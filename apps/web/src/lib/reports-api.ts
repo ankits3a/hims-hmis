@@ -155,7 +155,8 @@ export type WireDailyStock = {
 };
 export type WireCatalogueRow = {
   id: string; code: string; name: string; class: string; hsnCode: string | null; gstRateBps: number | null; baseUom: string; storageClass: string;
-  manufacturer: string | null; leadTimeDays: number | null; lasa: boolean; highAlert: boolean; schedule: string | null;
+  manufacturer: string | null; marketedBy?: string | null;
+  mfgLicenceNo?: string | null; pharmacopoeia?: string | null; lasaNote?: string | null; storageMaxC?: number | null; leadTimeDays: number | null; lasa: boolean; highAlert: boolean; schedule: string | null;
   packs: { uom: string; toBase: number }[];
   levels: { storeResourceId: string; storeCode: string; minBase: number; reorderBase: number; maxBase: number }[];
   racks: { storeCode: string; location: string }[];
@@ -176,6 +177,57 @@ function query(r: Partial<RangeInput> & Record<string, string | number | undefin
 const BASE = "/pharmacy/office/reports";
 export const fetchReportStores = async (): Promise<{ code: string; name: string }[]> => (await api<{ stores: { code: string; name: string }[] }>("GET", `${BASE}/stores`)).stores;
 export const fetchSalesRegister = (r: RangeInput, groupBy: SalesGroupBy): Promise<WireSalesRegister> => api("GET", `${BASE}/sales${query({ ...r, groupBy })}`);
+/** Owner 2026-10-03 — the pharmacy's credit notes in a range: to whom, how much, what became of the money. */
+export type CreditSettlement = "kept_as_credit" | "refund_paid" | "refund_approved" | "refund_requested" | "refund_refused" | "none";
+export type WireCreditNoteRow = {
+  id: string; creditNoteNo: string; date: string; at: string; invoiceNo: string; patientId: string; patientName: string; uhid: string;
+  kind: string; reason: string; netPaise: number; issuedByName: string; settlement: CreditSettlement; keptPaise: number; refundPaise: number;
+};
+export type WireCreditNoteRegister = {
+  from: string; to: string; preset: string; rows: WireCreditNoteRow[];
+  byPatient: { patientId: string; patientName: string; uhid: string; count: number; netPaise: number; keptPaise: number; refundPaise: number }[];
+  totals: { count: number; netPaise: number; keptPaise: number; refundRequestedPaise: number; refundPaidPaise: number };
+};
+/** Owner 2026-10-03 — every bill with its ticket, GST, credit notes against it and credit spent. */
+export type WireTicketCreditNote = { id: string; creditNoteNo: string; date: string; taxablePaise: number; gstPaise: number; netPaise: number };
+export type WireTicketInvoiceRow = {
+  invoiceId: string; invoiceNo: string; date: string; ticket: string | null; source: "dispense" | "walk_in" | "downtime";
+  patientId: string; patientName: string; uhid: string; taxablePaise: number; cgstPaise: number; sgstPaise: number; netPaise: number;
+  tender: "cash" | "upi" | "card" | "split" | "unpaid" | null; creditUsedPaise: number; outstandingPaise: number | null;
+  creditNotes: WireTicketCreditNote[]; returnedPaise: number; finalPaise: number;
+};
+export type WireTicketInvoices = {
+  from: string; to: string; preset: string; rows: WireTicketInvoiceRow[];
+  totals: { bills: number; netPaise: number; gstPaise: number; returnedPaise: number; finalPaise: number; creditUsedPaise: number; outstandingPaise: number };
+};
+export const fetchTicketInvoices = (r: RangeInput): Promise<WireTicketInvoices> => api("GET", `${BASE}/ticket-invoices${query(r)}`);
+/** Owner 2026-10-03 — the GST book for the CA. */
+type GMoney = { taxablePaise: number; cgstPaise: number; sgstPaise: number; netPaise: number };
+export type WireGstBook = {
+  from: string; to: string; preset: string;
+  rates: { rateBps: number; sales: GMoney; returns: GMoney; net: GMoney }[];
+  totals: { sales: GMoney; returns: GMoney; net: GMoney };
+  creditNotes: { id: string; creditNoteNo: string; date: string; invoiceNo: string; invoiceDate: string; patientName: string; uhid: string; taxablePaise: number; cgstPaise: number; sgstPaise: number; netPaise: number }[];
+  money: { billedPaise: number; paidFromCreditPaise: number; outstandingPaise: number; collectedPaise: number };
+};
+export const fetchGstBook = (r: RangeInput): Promise<WireGstBook> => api("GET", `${BASE}/gst-book${query(r)}`);
+/** Owner 2026-10-03 — the pharmacy's accounts for the CA, one period on one screen. */
+type ASide = { count: number; grossPaise: number; discountPaise: number; taxablePaise: number; cgstPaise: number; sgstPaise: number; roundingPaise: number; netPaise: number };
+export type WireAccountsDocument = {
+  at: string; type: "bill" | "credit_note" | "refund_paid" | "credit_kept" | "credit_used" | "purchase_bill" | "debit_note";
+  no: string; party: string; amountPaise: number; gstPaise: number | null; mode: string | null; by: string;
+};
+export type WirePharmacyAccounts = {
+  from: string; to: string; preset: string; sales: ASide; returns: ASide; netSalesPaise: number;
+  gst: { outputPaise: number; inputPaise: number; netPayablePaise: number };
+  moneyIn: { cashPaise: number; upiPaise: number; cardPaise: number; totalPaise: number; fromCreditPaise: number; outstandingPaise: number };
+  moneyOut: { count: number; cashPaise: number; bankPaise: number; totalPaise: number };
+  credit: { keptPaise: number; usedPaise: number; heldNowPaise: number };
+  purchases: { bills: number; taxablePaise: number; gstPaise: number; totalPaise: number; paidPaise: number; duePaise: number; returnsPaise: number };
+  documents: WireAccountsDocument[];
+};
+export const fetchPharmacyAccounts = (r: RangeInput): Promise<WirePharmacyAccounts> => api("GET", `${BASE}/accounts${query(r)}`);
+export const fetchCreditNoteRegister = (r: RangeInput): Promise<WireCreditNoteRegister> => api("GET", `${BASE}/credit-notes${query(r)}`);
 export const fetchMargin = (r: RangeInput, groupBy: MarginGroupBy): Promise<WireMarginReport> => api("GET", `${BASE}/margin${query({ ...r, groupBy })}`);
 export const fetchHsn = (r: RangeInput): Promise<WireHsnReport> => api("GET", `${BASE}/hsn${query(r)}`);
 /** GAP A4 — the period's GSTR-3B figures from the books (`pharmacy/gstr3b.ts`). */

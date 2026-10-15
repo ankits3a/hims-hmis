@@ -69,8 +69,14 @@ export type CompleteInput = {
 };
 
 export type CompleteResult = {
-  /** The reply, and nothing else. No usage block, no logprobs, no echo of what was sent. */
+  /** The reply. No logprobs, no echo of what was sent. */
   text: string;
+  /**
+   * E0.5 (decision 0064, the ₹5,000/day cap) — the provider's own token counts, when it sent them, so
+   * the copilot's cost meter prices what was actually billed (a reasoning model's thinking included).
+   * Two integers and nothing else: no text, so nothing a caller could mistake for an answer.
+   */
+  usage?: { inputTokens: number; outputTokens: number };
 };
 
 export class InferenceUnavailable extends Error {
@@ -133,4 +139,25 @@ export type ChooseResult = {
 
 export type ChoiceClient = {
   choose(input: ChooseInput): Promise<ChooseResult>;
+};
+
+/**
+ * `predicate()` — THE NARROWEST QUESTION OF ALL: HOW LIKELY IS THIS ONE CONDITION TRUE?
+ *
+ * Owner, 2026-10-07: *"let's try OpenAI Decision API"*. A chooser picks among several; a predicate
+ * is asked one closed yes/no ("does `term` mean Pantoprazole 40 mg tablet?") and returns a
+ * probability and nothing else — the shape the medicine-alias REVIEWER step needs (decision 0051).
+ * Same law as `choose()`: `state` is de-identified by the caller. A provider that has no such
+ * question type does not implement this; TypeSafe's client does not.
+ */
+export type PredicateInput = {
+  state: Record<string, string>;
+  /** The condition, written by the caller, never by the operator. */
+  instructions: string;
+};
+
+export type PredicateResult = { probability: number; model: string };
+
+export type PredicateClient = {
+  predicate(input: PredicateInput): Promise<PredicateResult>;
 };

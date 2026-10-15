@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { messageText } from "./materials-api";
 
 /**
  * PLAN 18a T9 — the imaging department's wire contract, transcribed from the five
@@ -85,6 +86,8 @@ export type WireAdvisedImagingLine = {
   /** Null when the active book does not name the service (D6) — shown greyed with `reason`. */
   orderable: WireImagingOrderable | null; reason: string | null;
   alreadyOrderedItemId: string | null; alreadyOrderedOrderNo: string | null;
+  /** Owner ruling 2026-10-06 — who typed this study from the doctor's paper; null/absent when the doctor advised it on screen. */
+  typedFromPaperBy?: string | null;
 };
 export type WireImagingBookEntry = WireImagingOrderable & { serviceId: string; pricePaise: number | null };
 export type WireImagingRecentItem = { itemId: string; orderNo: string; encounterNo: string; placedAt: string };
@@ -334,8 +337,9 @@ export function radiologyErrorDetail(e: unknown): Record<string, unknown> | null
 }
 
 export function radiologyErrorText(e: unknown): string {
-  const body = (e as { body?: { message?: string; code?: string } } | undefined)?.body;
-  if (body?.message !== undefined) return body.code === undefined ? body.message : `${body.message} (${body.code})`;
+  const body = (e as { body?: { message?: unknown; code?: string } } | undefined)?.body;
+  const text = messageText(body?.message);
+  if (text !== null) return body?.code === undefined ? text : `${text} (${body.code})`;
   return e instanceof Error ? e.message : String(e);
 }
 

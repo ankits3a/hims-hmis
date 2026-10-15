@@ -1,4 +1,4 @@
-import { colName, crc32, toXlsx, zipStored } from "./xlsx";
+import { colName, crc32, toXlsx, toXlsxBook, zipStored } from "./xlsx";
 
 /** STAGE C — the minimal .xlsx writer: the ZIP's checksum and layout, the column letters, the cells. */
 describe("the .xlsx writer", () => {
@@ -34,5 +34,18 @@ describe("the .xlsx writer", () => {
     expect(text).toContain("1E5 &lt;&amp;&gt;");
     expect(text).not.toContain('r="B3"');
     expect(text).toContain('<sheet name="GST  a b  test" sheetId="1"');
+  });
+
+  /* Owner 2026-10-03 — the accounts' Export all: one workbook, one sheet per section, names unique. */
+  it("a workbook of several sheets: one part and one workbook entry per sheet, a repeated name made unique", () => {
+    const text = new TextDecoder().decode(toXlsxBook([
+      { name: "Summary", header: ["Item", "Amount"], rows: [["Sales", 100]], money: [false, true] },
+      { name: "Documents", header: ["No"], rows: [["INV-1"]] },
+      { name: "Summary", header: ["X"], rows: [] },
+    ]));
+    expect(text).toContain('<sheet name="Summary" sheetId="1" r:id="rId1"/><sheet name="Documents" sheetId="2" r:id="rId2"/><sheet name="Summary 2" sheetId="3" r:id="rId3"/>');
+    for (const n of [1, 2, 3]) expect(text).toContain(`xl/worksheets/sheet${String(n)}.xml`);
+    expect(text).toContain('Target="styles.xml"');
+    expect(text).toContain("INV-1");
   });
 });

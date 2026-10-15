@@ -157,3 +157,13 @@ export const FORMULARY_EVENTS = [
   stagingApproved, stagingRejected,
   substanceMapped, substanceRuledUnmappable,
 ] as const;
+
+/** The drug monograph (owner 2026-10-02). Neither event carries the text: the row holds it, the event says who and what. */
+export const monographSaved = defineEvent("monograph.saved", MODULE, z.object({
+  monographId: id, genericId: id, sourceVersion: z.string().min(1),
+  sections: z.array(z.enum(["patient", "prescriber", "nursing", "affordability"])), renalBands: z.number().int().min(0),
+}));
+
+export const monographReviewed = defineEvent("monograph.reviewed", MODULE, z.object({
+  monographId: id, genericId: id, writtenBy: id,
+}));

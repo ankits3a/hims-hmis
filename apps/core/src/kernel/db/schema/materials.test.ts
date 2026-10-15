@@ -47,9 +47,9 @@ const AUDIT = { createdBy: "t", updatedBy: "t" };
 const CENSUS: Record<string, string[]> = {
   items: [
     "abc_class", "active", "base_uom", "batch_tracked", "class", "code", "created_at", "created_by",
-    "formulary_medicine_id", "gst_rate_bps", "high_alert", "hsn_code", "id", "lasa", "lead_time_days", "manufacturer",
-    "merged_at", "merged_into_item_id", "name", "serial_tracked",
-    "shelf_life_days", "storage_class", "updated_at", "updated_by", "ved_class",
+    "formulary_medicine_id", "gst_rate_bps", "high_alert", "hsn_code", "id", "lasa", "lasa_note", "lead_time_days", "manufacturer",
+    "marketed_by", "merged_at", "merged_into_item_id", "mfg_licence_no", "name", "pharmacopoeia", "serial_tracked",
+    "shelf_life_days", "storage_class", "storage_max_c", "updated_at", "updated_by", "ved_class",
   ],
   /** PHARMACY P6 (hygiene) — one row per governed "merge item B into item A" (`modules/materials/item-merge.ts`). */
   item_merges: [
@@ -135,7 +135,7 @@ const CENSUS: Record<string, string[]> = {
     "total_paise", "updated_at", "updated_by", "vendor_id",
   ],
   purchase_order_lines: [
-    "free_packs", "free_received_base", "gst_rate_bps", "id", "item_id", "line_total_paise", "mrp_paise", "multiplier",
+    "discount_bps", "free_packs", "free_received_base", "gst_rate_bps", "id", "item_id", "line_total_paise", "list_rate_paise", "mrp_paise", "multiplier",
     "purchase_order_id", "qty_packs", "rate_paise", "received_base", "uom",
   ],
   // PHARMACY PARITY P3 — the supplier's bill and its lines, the payment run, its lines and the payment.

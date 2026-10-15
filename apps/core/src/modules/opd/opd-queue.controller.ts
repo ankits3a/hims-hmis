@@ -1,5 +1,8 @@
 import { Body, Controller, Get, HttpCode, Inject, Param, Post, Put, Query } from "@nestjs/common";
+import { recordTeleOutcome, startTeleCall } from "./tele-call";
+import type { TeleCall, TeleOutcomeResult } from "./tele-call";
 import { z } from "zod";
+import { DX_SOURCES, LINE_SOURCES } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { CONFIG, DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
@@ -22,13 +25,14 @@ import {
 } from "./prescriptions";
 import { discardDraft, getPendingDraft, issueDraft, saveDraft } from "./prescription-drafts";
 import { SKIP_REASONS } from "./skip-reasons";
-import { boardSnapshot, callNext, listQueue, recallCalled, skipCalled, summaryByDoctor, undoSkip } from "./queue";
+import { boardSnapshot, callNext, listQueue, queueWithoutMoney, recallCalled, skipCalled, summaryByDoctor, undoSkip } from "./queue";
+import { encounterWithoutMoney, seesFees } from "./fee-view";
 import { setSessionStatus } from "./sessions";
 import { istDate } from "./time";
 import type { EncounterRow, PrescriptionRow, QueueEntryRow } from "./encounters";
 import type { IssuedPrescription, RxPrecheckResult, RxPrintData, RxVerifyResult } from "./prescriptions";
 import type { DraftRow } from "./prescription-drafts";
-import type { BoardItem, DoctorSummary, QueueView } from "./queue";
+import type { BoardItem, DoctorSummary, QueueView, QueueViewNoMoney } from "./queue";
 import type { SessionRow } from "./sessions";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
@@ -72,6 +76,8 @@ const consultNoteBody = z.object({
     icd10Code: z.string().max(20).nullable(),
     /** Which eye, for an eye code (board "Ophthal"). The server drops it on any other code. */
     laterality: z.enum(["od", "os", "ou"]).nullable().optional(),
+    /** Where the diagnosis came from (decision 0050, P0). Undeclared keys are stripped by zod, so it is named here. */
+    source: z.enum(DX_SOURCES).nullable().optional(),
   })).max(12).nullable().optional(),
   diagnosis: z.string().max(2000).nullable().optional(),
   icd10Code: z.string().max(20).nullable().optional(),
@@ -126,6 +132,8 @@ const consultNoteBody = z.object({
       timesPerDay: z.number().int().min(1).max(12),
       days: z.number().int().min(1).max(60),
     })).max(8).nullish(),
+    /** Decision 0050 P0 — where the row came from rides the draft, so a reload does not turn a suggested line into a searched one. */
+    source: z.enum(LINE_SOURCES).optional(),
   })).max(30).nullable().optional(),
   leaseToken: z.string().min(8).max(64).optional(),
 });
@@ -140,7 +148,7 @@ const consultCompleteBody = z.object({
   testsOrderedReturnToday: z.boolean(),
   followUpDays: z.number().int().positive().optional(), // anything but the default must be a configured extension
 });
-const rxLineBody = z.object({
+export const rxLineBody = z.object({
   drug: z.string().max(300),
   dose: z.string().max(100),
   route: z.string().max(100),
@@ -161,11 +169,14 @@ const rxLineBody = z.object({
     timesPerDay: z.number().int().min(1).max(12),
     days: z.number().int().min(1).max(60),
   })).min(2).max(8).nullish(),
+  // Where the line came from (phone consult, decision 0049's review). Stored on the line for audit;
+  // it changes no check and prints nowhere. Absent on every line written before, and on the web's.
+  source: z.enum(LINE_SOURCES).nullish(),
 }).refine((l) => (l.taper ?? null) !== null || l.frequency.length <= 100, {
   path: ["frequency"], message: "String must contain at most 100 character(s)",
 });
 // No .min(1) on lines: an empty prescription answers empty_prescription with its OPD code, not a zod 400.
-const prescriptionBody = z.object({
+export const prescriptionBody = z.object({
   lines: z.array(rxLineBody),
   overrides: z.array(z.object({
     lineIndex: z.number().int().nonnegative(), substance: z.string().max(200), reason: z.string().max(500),
@@ -182,6 +193,16 @@ const prescriptionBody = z.object({
   duplicateOverrides: z.array(z.object({
     lineIndex: z.number().int().nonnegative(), reason: z.string().max(500),
     moiety: z.string().min(1).max(200).optional(),
+  })).optional(),
+  /**
+   * P24 — the reason for prescribing against a SEVERE drug–disease rule. `issuePrescription` has
+   * read this since P24 and the web consult screen has sent it, but it was never NAMED here, and
+   * zod strips an undeclared key — so the override never arrived and a severe hit could not be
+   * cleared by anyone (found building the phone consult, 2026-10-07).
+   */
+  drugDiseaseOverrides: z.array(z.object({
+    lineIndex: z.number().int().nonnegative(), reason: z.string().max(500),
+    moiety: z.string().min(1).max(200), icd10Prefix: z.string().min(1).max(20),
   })).optional(),
 });
 /** The pre-check takes the lines alone: nothing is written, so nothing else is needed. */
@@ -217,6 +238,10 @@ const verifyBody = z.object({ payload: z.string().min(1).max(500) });
 
 /** The section's own schema validates the body (sections.ts); the route bounds only the envelope. */
 const sectionBody = z.object({ body: z.record(z.string(), z.unknown()), leaseToken: z.string().min(1).max(64).nullable().optional() });
+
+/** A visit row as the doctor's own routes answer it: no bypass, no override (owner 2026-10-09, `fee-view.ts`). */
+type DoctorEncounter = ReturnType<typeof encounterWithoutMoney<EncounterRow>>;
+const teleOutcomeBody = z.object({ outcome: z.enum(["spoke", "no_answer"]) });
 
 @Controller("opd")
 export class OpdQueueController {
@@ -265,10 +290,14 @@ export class OpdQueueController {
 
   @RequirePermission("opd.queue.read", "hospital")
   @Get("queues")
-  async queue(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<QueueView | { session: null }> {
+  async queue(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<QueueView | QueueViewNoMoney | { session: null }> {
     const q = parsed(queueQuery, query);
     try {
-      return (await listQueue(this.db, actor, q.doctorId, q.serviceDate ?? istDate(new Date()))) ?? { session: null };
+      const view = await listQueue(this.db, actor, q.doctorId, q.serviceDate ?? istDate(new Date()));
+      if (view === null) return { session: null };
+      // Owner 2026-10-09 — "Doctor's screens must not show money": the fee status and the bypass /
+      // override sentences go only to a caller whose own work is the fee (`fee-view.ts`).
+      return (await seesFees(this.db, actor)) ? view : queueWithoutMoney(view);
     } catch (e) {
       toHttp(e);
     }
@@ -278,9 +307,10 @@ export class OpdQueueController {
   @Post("queues/:sessionId/call-next")
   async callNext(
     @CurrentActor() actor: Actor, @Param("sessionId") sessionId: string,
-  ): Promise<{ entry: QueueEntryRow | null; encounter: EncounterRow | null }> {
+  ): Promise<{ entry: QueueEntryRow | null; encounter: DoctorEncounter | null }> {
     try {
-      return await callNext(this.db, actor, sessionId);
+      const r = await callNext(this.db, actor, sessionId);
+      return { entry: r.entry, encounter: r.encounter === null ? null : encounterWithoutMoney(r.encounter) };
     } catch (e) {
       toHttp(e);
     }
@@ -339,7 +369,12 @@ export class OpdQueueController {
   // ——— the consultation ———
 
   /**
-   * ═══ THE DOCTOR OPENS AN UNSETTLED TOKEN (OWNER RULING 2026-09-20) ═══
+   * ═══ THE DOCTOR OPENS AN UNSETTLED TOKEN (OWNER RULING 2026-09-20) — RETIRED 2026-10-09 ═══
+   *
+   * RETIRED: no screen calls this and no guard needs it (owner 2026-10-09 — a visit the desk let
+   * through is an ordinary patient). The route still answers, unchanged, for app builds installed
+   * before the ruling. The 2026-09-20 text follows.
+   *
    *
    * *"It waits for bill to be paid until doctor opens the token from his dashboard manually.
    * Currently the doctor have no screen to do it. But we need it to be built."*
@@ -353,10 +388,10 @@ export class OpdQueueController {
    */
   @RequirePermission("opd.consult", "hospital")
   @Post("visits/:id/consult/open-unpaid")
-  async openUnpaid(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<{ encounter: EncounterRow }> {
+  async openUnpaid(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<{ encounter: DoctorEncounter }> {
     const b = parsed(openUnpaidBody, body);
     try {
-      return { encounter: (await openUnpaidToken(this.db, actor, id, b.reason)).encounter };
+      return { encounter: encounterWithoutMoney((await openUnpaidToken(this.db, actor, id, b.reason)).encounter) };
     } catch (e) {
       toHttp(e);
     }
@@ -364,9 +399,10 @@ export class OpdQueueController {
 
   @RequirePermission("opd.consult", "hospital")
   @Post("visits/:id/consult/start")
-  async start(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ encounter: EncounterRow; queueEntry: QueueEntryRow }> {
+  async start(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ encounter: DoctorEncounter; queueEntry: QueueEntryRow }> {
     try {
-      return await startConsultation(this.db, actor, id);
+      const r = await startConsultation(this.db, actor, id);
+      return { encounter: encounterWithoutMoney(r.encounter), queueEntry: r.queueEntry };
     } catch (e) {
       toHttp(e);
     }
@@ -382,9 +418,10 @@ export class OpdQueueController {
    */
   @RequirePermission("opd.consult", "hospital")
   @Post("visits/:id/consult/park")
-  async park(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ encounter: EncounterRow; queueEntry: QueueEntryRow }> {
+  async park(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ encounter: DoctorEncounter; queueEntry: QueueEntryRow }> {
     try {
-      return await parkConsultation(this.db, actor, id);
+      const r = await parkConsultation(this.db, actor, id);
+      return { encounter: encounterWithoutMoney(r.encounter), queueEntry: r.queueEntry };
     } catch (e) {
       toHttp(e);
     }
@@ -392,9 +429,10 @@ export class OpdQueueController {
 
   @RequirePermission("opd.consult", "hospital")
   @Post("visits/:id/consult/resume")
-  async resume(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ encounter: EncounterRow; queueEntry: QueueEntryRow }> {
+  async resume(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ encounter: DoctorEncounter; queueEntry: QueueEntryRow }> {
     try {
-      return await resumeConsultation(this.db, actor, id);
+      const r = await resumeConsultation(this.db, actor, id);
+      return { encounter: encounterWithoutMoney(r.encounter), queueEntry: r.queueEntry };
     } catch (e) {
       toHttp(e);
     }
@@ -402,10 +440,10 @@ export class OpdQueueController {
 
   @RequirePermission("opd.consult", "hospital")
   @Put("visits/:id/consult/note")
-  async note(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<{ encounter: EncounterRow }> {
+  async note(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<{ encounter: DoctorEncounter }> {
     const b = parsed(consultNoteBody, body);
     try {
-      return await saveConsultNote(this.db, actor, id, b);
+      return { encounter: encounterWithoutMoney((await saveConsultNote(this.db, actor, id, b)).encounter) };
     } catch (e) {
       toHttp(e);
     }
@@ -534,12 +572,40 @@ export class OpdQueueController {
     }
   }
 
+  /**
+   * TELE-CALL (owner 2026-10-09). `tele/call` hands the treating doctor the number to dial — the one
+   * place it is handed over, recorded as a contact disclosure — and `tele/outcome` records what came
+   * of the call. Neither answer carries anything about money.
+   */
+  @RequirePermission("opd.consult", "hospital")
+  @Post("visits/:id/tele/call")
+  @HttpCode(200)
+  async teleCall(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<TeleCall> {
+    try {
+      return await startTeleCall(this.db, actor, id);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("opd.consult", "hospital")
+  @Post("visits/:id/tele/outcome")
+  @HttpCode(200)
+  async teleOutcome(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<TeleOutcomeResult> {
+    const b = parsed(teleOutcomeBody, body);
+    try {
+      return await recordTeleOutcome(this.db, actor, id, b.outcome);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
   @RequirePermission("opd.consult", "hospital")
   @Post("visits/:id/consult/complete")
-  async complete(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<{ encounter: EncounterRow }> {
+  async complete(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<{ encounter: DoctorEncounter }> {
     const b = parsed(consultCompleteBody, body);
     try {
-      return await completeConsultation(this.db, actor, id, b);
+      return { encounter: encounterWithoutMoney((await completeConsultation(this.db, actor, id, b)).encounter) };
     } catch (e) {
       toHttp(e);
     }

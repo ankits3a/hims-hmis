@@ -1,12 +1,13 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../../kernel/db/client";
 import {
   orgDepartments, permissions, roleAssignments, rolePermissions, roles, rosterPositions,
-  rosterRequirements, rosterTeams, staffAbsences, staffCredentials, users,
+  resources, rosterRequirements, rosterTeams, staffAbsences, staffCredentials, users,
 } from "../../kernel/db/schema";
+import { addMembership } from "./memberships";
 import { RosterError } from "./errors";
 import { ROSTER_MANAGE, ROSTER_PUBLISH, ROSTER_READ } from "./policy";
 import { assign, draftPeriod, publishPeriod, unassign } from "./periods";
@@ -14,6 +15,7 @@ import { seedRosterRules } from "./rules";
 import { templateFeasibility, validate } from "./validator";
 import { simulate } from "./simulate";
 import { acceptFinding, listFindings, recordFindings } from "./findings";
+import { declareSkeletonMode, withdrawSkeletonMode } from "./modes";
 import type { Db } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 
@@ -93,7 +95,7 @@ describe("roster — requirements, rules, the validator and simulate (R8)", () =
 
   /* ═══════════════════════════════ helpers ═══════════════════════════════ */
 
-  const draft = (over: { coversPositions?: string[] } = {}) => withTx(db, (tx) => draftPeriod(tx, ms, {
+  const draft = (over: Partial<Parameters<typeof draftPeriod>[2]> = {}) => withTx(db, (tx) => draftPeriod(tx, ms, {
     scopeType: "team", scopeId: "MED-U2", departmentId: MED, title: "October — Medicine Unit II",
     coversPositions: ["unit_sr", "ward_jr"], ...OCT, ...over,
   }));
@@ -526,6 +528,12 @@ describe("roster — requirements, rules, the validator and simulate (R8)", () =
   });
 
   it("simulate names the person who CAN take the slot", async () => {
+    // A member of the unit: a non-member would be `member_not_in_unit` (audit 2026-10-04 #5),
+    // because the resolver would not count them on a team slot.
+    await withTx(db, (tx) => addMembership(tx, ms, {
+      teamId: TEAM, userId: JR, positionKey: "ward_jr", grade: "jr2",
+      roleInTeam: "junior_resident", kind: "parent", startsAt: at("2026-01-01T00:00"),
+    }));
     const period = await draft();
     const vacancy = await slot(period.periodId, {
       userId: null, positionKey: "ward_jr",
@@ -614,5 +622,185 @@ describe("roster — requirements, rules, the validator and simulate (R8)", () =
               'four residents at the national conference', '2026-10-01', '2026-10-31', ${MS}, 't', 't')
     `);
     expect(codes(await validate(db, period.periodId))).not.toContain("night_one_in_three");
+  });
+
+  /* ═══════════════════ audit 2026-10-04 — correctness defects ═══════════════════ */
+
+  it("#2 rostered_while_absent speaks about the slots INSIDE the leave, not every slot of the month", async () => {
+    await db.insert(staffAbsences).values({
+      id: "01ABS000000000000000002", userId: SR, kind: "CL",
+      startsAt: at("2026-10-10T00:00"), endsAt: at("2026-10-15T00:00"),
+      status: "approved", reason: "x", requestedBy: SR, approvedBy: MS, decidedAt: at("2026-09-20T10:00"),
+      source: "manual", createdBy: "t", updatedBy: "t",
+    });
+    const p = await draft();
+    await slot(p.periodId); // the 12th — inside the leave
+    await slot(p.periodId, { startsAt: at("2026-10-20T08:00"), endsAt: at("2026-10-20T16:00") }); // after it
+    const f = (await validate(db, p.periodId)).filter((x) => x.ruleKey === "rostered_while_absent");
+    expect(f.map((x) => x.params.istDate)).toEqual(["2026-10-12"]);
+  });
+
+  it("#4 a presence clash with another live roster is a FINDING naming the person and the time, before publish", async () => {
+    const med = await draft();
+    await slot(med.periodId);
+    await withTx(db, (tx) => publishPeriod(tx, ms, med.periodId));
+
+    const other = await draft({ scopeId: "MED-U3", title: "October — Medicine Unit III" });
+    const b = await slot(other.periodId, { startsAt: at("2026-10-12T10:00"), endsAt: at("2026-10-12T14:00") });
+    const f = (await validate(db, other.periodId)).filter((x) => x.ruleKey === "presence_clash");
+    expect(f).toHaveLength(1);
+    expect(f[0]).toMatchObject({
+      userId: SR, assignmentId: b.assignmentId, severity: "block",
+      params: { istDate: "2026-10-12", istFrom: "2026-10-12 10:00", istTo: "2026-10-12 14:00", otherPeriodId: med.periodId },
+    });
+    // The publish refusal is kept, and still says it in its own words.
+    expect((await refusal(withTx(db, (tx) => publishPeriod(tx, ms, other.periodId)))).code).toBe("presence_overlap");
+  });
+
+  it("#5 a slot naming somebody who has left the unit, or been deactivated, is a finding — not a silent hole", async () => {
+    await withTx(db, (tx) => addMembership(tx, ms, {
+      teamId: TEAM, userId: SR, positionKey: "unit_sr", grade: "senior_resident",
+      roleInTeam: "senior_resident", kind: "parent", startsAt: at("2026-01-01T00:00"), endsAt: at("2026-10-10T00:00"),
+    }));
+    await withTx(db, (tx) => addMembership(tx, ms, {
+      teamId: TEAM, userId: JR, positionKey: "ward_jr", grade: "jr2",
+      roleInTeam: "junior_resident", kind: "parent", startsAt: at("2026-01-01T00:00"),
+    }));
+    const p = await draft();
+    const left = await slot(p.periodId); // SR on the 12th — after the 10th
+    await slot(p.periodId, { startsAt: at("2026-10-05T08:00"), endsAt: at("2026-10-05T16:00") }); // still hers
+    const jr = await slot(p.periodId, { userId: JR, positionKey: "ward_jr" });
+    await db.update(users).set({ active: false }).where(eq(users.id, JR));
+
+    const f = await validate(db, p.periodId);
+    expect(f.filter((x) => x.ruleKey === "member_not_in_unit").map((x) => [x.assignmentId, x.userId]))
+      .toEqual([[left.assignmentId, SR]]);
+    expect(f.filter((x) => x.ruleKey === "user_inactive").map((x) => [x.assignmentId, x.userId]))
+      .toEqual([[jr.assignmentId, JR]]);
+  });
+
+  it("#6 lone_worker: a location left to one person alone is a finding; two together are not", async () => {
+    const LOC = "01RESWARD000000000000000A";
+    await db.insert(resources).values({
+      id: LOC, kind: "bed", code: "W-1", name: "Ward 1", status: "available", attributes: {},
+      createdBy: "t", updatedBy: "t",
+    });
+    const alone = await draft();
+    await slot(alone.periodId, { locationResourceId: LOC });
+    const f = (await validate(db, alone.periodId)).filter((x) => x.ruleKey === "lone_worker");
+    expect(f).toHaveLength(1);
+    expect(f[0]!.params).toMatchObject({ locationResourceId: LOC, present: 1, minPresent: 2, istDate: "2026-10-12" });
+
+    const pair = await draft();
+    await slot(pair.periodId, { locationResourceId: LOC });
+    await slot(pair.periodId, { userId: JR, positionKey: "ward_jr", locationResourceId: LOC });
+    expect(codes(await validate(db, pair.periodId))).not.toContain("lone_worker");
+  });
+
+  /* ═══════════ 20-U: "a night is 20:00 to 08:00 and is always followed by 12 hours' rest" ═══════════ */
+
+  const restOf = async (periodId: string) =>
+    (await validate(db, periodId)).filter((x) => x.ruleKey === "rest_after_duty");
+
+  it("a night followed DIRECTLY by a day (08:00, contiguous) is a rest_after_duty BLOCK", async () => {
+    const p = await draft();
+    const night = await slot(p.periodId, { startsAt: at("2026-10-12T20:00"), endsAt: at("2026-10-13T08:00") });
+    const day = await slot(p.periodId, { startsAt: at("2026-10-13T08:00"), endsAt: at("2026-10-13T20:00") });
+    const f = await restOf(p.periodId);
+    expect(f.map((x) => [x.assignmentId, x.severity, x.params.afterAssignmentId, x.params.restHours]))
+      .toEqual([[day.assignmentId, "block", night.assignmentId, 0]]);
+  });
+
+  it("…and a night followed by a 09:00 OPD is one too (E9), said once", async () => {
+    const p = await draft();
+    await slot(p.periodId, { startsAt: at("2026-10-12T20:00"), endsAt: at("2026-10-13T08:00") });
+    const opd = await slot(p.periodId, { startsAt: at("2026-10-13T09:00"), endsAt: at("2026-10-13T14:00") });
+    expect((await restOf(p.periodId)).map((x) => x.assignmentId)).toEqual([opd.assignmentId]);
+  });
+
+  it("a 24-hour TAKE is ONE slot: legal by itself, and the 12 hours' rest runs from its end", async () => {
+    const alone = await draft();
+    await slot(alone.periodId, { startsAt: at("2026-10-12T08:00"), endsAt: at("2026-10-13T08:00") });
+    expect(await restOf(alone.periodId)).toEqual([]);
+
+    const after = await draft();
+    await slot(after.periodId, { startsAt: at("2026-10-12T08:00"), endsAt: at("2026-10-13T08:00") });
+    const next = await slot(after.periodId, { startsAt: at("2026-10-13T08:00"), endsAt: at("2026-10-13T16:00") });
+    expect((await restOf(after.periodId)).map((x) => x.assignmentId)).toEqual([next.assignmentId]);
+  });
+
+  it("a day then the night (the take day as two slots) is not a rest break, and twelve hours after the night is legal", async () => {
+    const p = await draft();
+    await slot(p.periodId, { startsAt: at("2026-10-12T08:00"), endsAt: at("2026-10-12T20:00") });
+    await slot(p.periodId, { startsAt: at("2026-10-12T20:00"), endsAt: at("2026-10-13T08:00") });
+    await slot(p.periodId, { startsAt: at("2026-10-13T20:00"), endsAt: at("2026-10-14T06:00") });
+    expect(await restOf(p.periodId)).toEqual([]);
+  });
+  /* ═══════════ 20-U I5 / plan D4: skeleton cover relaxes the ratio and rest rules — for faculty only ═══════════ */
+
+  describe("skeleton cover (D4)", () => {
+    const FAC = "01USER0000000000000000FAC";
+    beforeEach(async () => {
+      await db.insert(rosterPositions).values({
+        key: "faculty_on_call", label: "Faculty on call", cadre: "faculty", ladderRank: 5, eligibleRoleKey: "doctor",
+        maxPresenceHours: 24, createdBy: "t", updatedBy: "t",
+      });
+      await db.insert(users).values({ id: FAC, username: "anand.rao", fullName: "anand.rao", staffCode: "EMP-0FAC", passwordHash: "x" });
+      await db.insert(roleAssignments).values({ id: "RA-FAC", userId: FAC, roleKey: "doctor", scopeType: "hospital", scopeId: null });
+      for (const [i, positionKey] of (["faculty_on_call", "ward_jr"] as const).entries()) {
+        await db.insert(rosterRequirements).values({
+          id: `01REQSKEL00000000000000${String(i)}`, scopeType: "department", scopeId: MED, positionKey,
+          dayClass: "any", minCount: 2, basis: "fixed", authority: "nmc", validFrom: "2026-01-01", createdBy: "t", updatedBy: "t",
+        });
+      }
+    });
+
+    /** A faculty night then a 10:00 list, a JR night then a 10:00 list, on 12–13 Oct: two rest blocks, two ratio blocks a day. */
+    const strikeDraft = async () => {
+      const p = await draft({ coversPositions: ["unit_sr", "ward_jr", "faculty_on_call"] });
+      await slot(p.periodId, { userId: FAC, positionKey: "faculty_on_call", startsAt: at("2026-10-12T20:00"), endsAt: at("2026-10-13T08:00") });
+      const facNext = await slot(p.periodId, { userId: FAC, positionKey: "faculty_on_call", startsAt: at("2026-10-13T10:00"), endsAt: at("2026-10-13T14:00") });
+      await slot(p.periodId, { userId: JR, positionKey: "ward_jr", startsAt: at("2026-10-12T20:00"), endsAt: at("2026-10-13T08:00") });
+      const jrNext = await slot(p.periodId, { userId: JR, positionKey: "ward_jr", startsAt: at("2026-10-13T10:00"), endsAt: at("2026-10-13T14:00") });
+      return { periodId: p.periodId, facNext: facNext.assignmentId, jrNext: jrNext.assignmentId };
+    };
+    const judged = async (periodId: string) => (await validate(db, periodId))
+      .filter((f) => f.ruleKey === "rest_after_duty" || (f.ruleKey === "requirement_shortfall" && f.params.istDate === "2026-10-13"))
+      .map((f) => [f.ruleKey, f.ruleKey === "rest_after_duty" ? f.assignmentId : f.params.positionKey, f.severity, f.params.skeleton ?? false])
+      .sort((a, b) => `${String(a[0])}${String(a[1])}`.localeCompare(`${String(b[0])}${String(b[1])}`));
+
+    it("on a declared skeleton day a FACULTY rest and a FACULTY-post ratio drop to warn; a resident's stay block", async () => {
+      const r = await strikeDraft();
+      // Not declared: all four are the book's blocks.
+      expect(await judged(r.periodId)).toEqual([
+        ["requirement_shortfall", "faculty_on_call", "block", false],
+        ["requirement_shortfall", "ward_jr", "block", false],
+        ["rest_after_duty", r.facNext, "block", false],
+        ["rest_after_duty", r.jrNext, "block", false],
+      ].sort((a, b) => `${String(a[0])}${String(a[1])}`.localeCompare(`${String(b[0])}${String(b[1])}`)));
+
+      await withTx(db, (tx) => declareSkeletonMode(tx, ms, { departmentId: MED, istDate: "2026-10-13", reason: "residents' strike" }));
+      expect(await judged(r.periodId)).toEqual([
+        ["requirement_shortfall", "faculty_on_call", "warn", true],
+        ["requirement_shortfall", "ward_jr", "block", false],
+        ["rest_after_duty", r.facNext, "warn", true],
+        ["rest_after_duty", r.jrNext, "block", false],
+      ].sort((a, b) => `${String(a[0])}${String(a[1])}`.localeCompare(`${String(b[0])}${String(b[1])}`)));
+      // Only the declared DAY: the faculty-post ratio on the 12th is still a block.
+      const twelfth = (await validate(db, r.periodId)).find((f) => f.ruleKey === "requirement_shortfall"
+        && f.params.positionKey === "faculty_on_call" && f.params.istDate === "2026-10-12");
+      expect(twelfth?.severity).toBe("block");
+      // No other rule moved: every non-relaxed finding is identical with and without the mode.
+      const others = (await validate(db, r.periodId)).filter((f) => f.params.skeleton !== true);
+      expect(others.every((f) => !("relaxedFrom" in f.params))).toBe(true);
+    });
+
+    it("a withdrawn declaration relaxes nothing", async () => {
+      const r = await strikeDraft();
+      const d = await withTx(db, (tx) => declareSkeletonMode(tx, ms, { departmentId: null, istDate: "2026-10-13", reason: "bandh" }));
+      expect((await judged(r.periodId)).filter((x) => x[2] === "warn")).toHaveLength(2);
+      await withTx(db, (tx) => withdrawSkeletonMode(tx, ms, d.id, "called off"));
+      expect((await judged(r.periodId)).filter((x) => x[2] === "warn")).toHaveLength(0);
+    });
   });
 });

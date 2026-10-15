@@ -1,3 +1,5 @@
+import { onTestFinished } from "vitest";
+import { setToken } from "../lib/api";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "../test-utils";
@@ -233,6 +235,33 @@ describe("BillingCounter", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
+  });
+
+  /**
+   * OWNER 2026-10-09 — "'To collect' list for desk": the cashier's screen draws the same block as
+   * Desk One, and Collect puts that visit on this counter — the fee-quote road, nothing new.
+   */
+  it("To collect: the cashier sees the let-through visit, and Collect opens it on this counter", async () => {
+    mockRoutes({
+      ...BASE_ROUTES,
+      "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" }, permissions: { hospital: ["billing.invoice.read", "billing.invoice.issue"], scoped: { department: {}, floor: {} } } } },
+      "GET /api/billing/to-collect": { status: 200, body: { items: [{
+        encounterId: "enc-1", visitNo: "V2610090005", serviceDate: "2026-10-09", patientId: "p-1", patientName: "Asha Devi", uhid: "U001", isConfidential: false,
+        tokenNo: 5, doctorName: "Dr. Chandan Kumar", state: "done", amountDuePaise: 56_000,
+        letThroughBy: "Ramesh", letThroughAt: "2026-10-09T05:00:00.000Z", reason: "came by ambulance", minutesSince: 50,
+      }] } },
+    });
+    setToken("t-1");
+    onTestFinished(() => { setToken(null); });
+    renderWithProviders(<BillingCounter />);
+    const row = await screen.findByTestId("to-collect-row-enc-1");
+    expect(row).toHaveTextContent(/5.*Asha Devi.*seen by the doctor.*₹560/);
+    expect(callsTo("GET", "/api/billing/visits/enc-1/fee-quote")).toHaveLength(0);
+
+    fireEvent.click(screen.getByTestId("to-collect-go-enc-1"));
+    await waitFor(() => expect(callsTo("GET", "/api/billing/visits/enc-1/fee-quote")).toHaveLength(1));
+    expect(await screen.findByTestId("fee-amount")).toHaveTextContent("₹560.00");
+    expect(screen.getByLabelText("Encounter")).toHaveValue("enc-1");
   });
 
   it("the visit context comes from GET /billing/visits/:encounterId/fee-quote — typed at the counter or deep-linked — and the branch badge shows the fee or FREE", async () => {

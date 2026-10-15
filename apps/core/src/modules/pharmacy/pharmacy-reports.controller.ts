@@ -1,9 +1,19 @@
-import { Body, Controller, Get, Inject, Post, Query } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Inject, Post, Query } from "@nestjs/common";
+import { rangeProblem } from "@hmis/contracts";
+import type { OwnerPharmacy } from "@hmis/contracts";
+import { istDateOf } from "./config";
+import { ownerPharmacy } from "./owner-summary";
 import { z } from "zod";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { listStores } from "../materials";
 import { documentActivity, recentActivity } from "./activity";
+import { creditNoteRegister } from "./credit-notes";
+import { gstBook, ticketInvoices } from "./ticket-books";
+import { pharmacyAccounts } from "./accounts";
+import type { PharmacyAccounts } from "./accounts";
+import type { GstBook, TicketInvoices } from "./ticket-books";
+import type { CreditNoteRegister } from "./credit-notes";
 import { gstr2bReconcile } from "./gstr2b";
 import { gstr3bReport } from "./gstr3b";
 import { officeNonMoving, officePurchaseRegister, officeStockValuation } from "./office-reports";
@@ -52,6 +62,54 @@ export class PharmacyReportsController {
     try {
       await requireReportPermission(this.db, actor, REPORTS_READ, "the report filters");
       return { stores: (await listStores(this.db)).map((s) => ({ code: s.code, name: s.name })) };
+    } catch (e) { toHttp(e); }
+  }
+
+  /** Owner 2026-10-03 — the pharmacy's accounts for the CA: sales, GST, money in and out, credit, purchases, every document. */
+  @RequirePermission(REPORTS_READ, "hospital")
+  @Get("accounts")
+  async accounts(@CurrentActor() actor: Actor, @Query() q: RangeQuery): Promise<PharmacyAccounts> {
+    try { return await pharmacyAccounts(this.db, actor, rangeOf(q), new Date()); } catch (e) { toHttp(e); }
+  }
+
+  /** Owner 2026-10-03 — every bill in the range with its ticket, GST, credit notes against it and credit spent. */
+  @RequirePermission(REPORTS_READ, "hospital")
+  @Get("ticket-invoices")
+  async ticketInvoices(@CurrentActor() actor: Actor, @Query() q: RangeQuery): Promise<TicketInvoices> {
+    try { return await ticketInvoices(this.db, actor, rangeOf(q), new Date()); } catch (e) { toHttp(e); }
+  }
+
+  /** Owner 2026-10-03 — the GST book for the CA: rate-wise sales, returns and net; credit notes with their bills; the money check. */
+  @RequirePermission(REPORTS_READ, "hospital")
+  @Get("gst-book")
+  async gstBook(@CurrentActor() actor: Actor, @Query() q: RangeQuery): Promise<GstBook> {
+    try { return await gstBook(this.db, actor, rangeOf(q), new Date()); } catch (e) { toHttp(e); }
+  }
+
+  /** Owner 2026-10-03 — the pharmacy's credit notes in the range: to whom, how much, and what became of the money. */
+  @RequirePermission(REPORTS_READ, "hospital")
+  @Get("credit-notes")
+  async creditNotes(@CurrentActor() actor: Actor, @Query() q: RangeQuery): Promise<CreditNoteRegister> {
+    try { return await creditNoteRegister(this.db, actor, rangeOf(q), new Date()); } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * THE OWNER'S PHARMACY PAGE IN THE STAFF APP (owner 2026-10-09) — `owner-summary.ts`: totals for the
+   * IST days `from`..`to` (today when absent; at most 92, never the future) and a comparison range
+   * `cfrom`..`cto`. THE ONE ROUTE HERE NOT ON `pharmacy.reports.read`: it is the hospital's figures
+   * (`staff.reports.read` — the owner and the Medical Superintendent), counts for whoever holds that,
+   * and RUPEES only for a reader who also holds the pharmacy's reports. No patient, no bill number.
+   */
+  @RequirePermission("staff.reports.read", "hospital")
+  @Get("owner-summary")
+  async ownerSummary(@CurrentActor() actor: Actor, @Query() q: { from?: string; to?: string; cfrom?: string; cto?: string }): Promise<OwnerPharmacy> {
+    const now = new Date();
+    const today = istDateOf(now);
+    const from = q.from ?? q.to ?? today, to = q.to ?? q.from ?? today;
+    const bad = rangeProblem(from, to, today) ?? (q.cfrom === undefined && q.cto === undefined ? null : rangeProblem(q.cfrom, q.cto, today));
+    if (bad !== null) throw new BadRequestException({ message: `the range cannot be read: ${bad}`, code: "invalid_range" });
+    try {
+      return await ownerPharmacy(this.db, actor, { from, to }, q.cfrom === undefined ? null : { from: q.cfrom, to: q.cto! }, now);
     } catch (e) { toHttp(e); }
   }
 

@@ -73,7 +73,7 @@ export function HistorySheet({ patientId, name }: { patientId: string; name: str
               data-testid="history-full-row"
               className="drow"
               style={{ alignItems: "baseline", gap: 10, textAlign: "left", padding: "9px 0", borderBottom: "1px solid var(--line2)" }}
-              onClick={() => d?.patch({ overlay: "papers", papersFor: { encounterId: h.encounterId, when: h.serviceDate } })}
+              onClick={() => d?.patch({ overlay: "papers", papersFor: { encounterId: h.encounterId, when: h.serviceDate, visit: h } })}
             >
               <span className="mo" style={{ fontSize: 11, color: "var(--dim)", width: 66, flexShrink: 0 }}>
                 {dayMonthIst(h.serviceDate)}
@@ -99,7 +99,7 @@ export function HistorySheet({ patientId, name }: { patientId: string; name: str
                 className="tag"
                 style={{ flexShrink: 0, color: h.status === "completed" ? "var(--green)" : h.status === "abandoned" ? "var(--gold)" : "var(--faint)" }}
               >
-                {t(`registrationCounter.history.state.${h.status}`, { defaultValue: h.status })}
+                {h.type === "lab" ? t("profile.lv.kind") : t(`registrationCounter.history.state.${h.status}`, { defaultValue: h.status })}
               </span>
             </button>
           ))}

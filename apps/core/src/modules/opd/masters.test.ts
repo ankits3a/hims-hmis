@@ -43,6 +43,23 @@ describe("opd masters", () => {
     expect(rows).toHaveLength(1);
   });
 
+  it("2026-10-04 — a doctor's DESIGNATION is set at creation, changed and cleared by the update, trimmed, and separate from the specialty", async () => {
+    const admin = await mkUser(db, "admin-des", ["opd_admin"]);
+    const { deptId } = await seedOpdMasters(db);
+    await mkUser(db, "guest1", ["doctor"]);
+    const { doctorId } = await withTx(db, (tx) =>
+      createDoctor(tx, admin.actor, { username: "guest1", displayName: "Dr. S.I Raza", departmentId: deptId, specialty: "General Medicine", designation: " Guest Faculty " }));
+    expect(await getDoctor(db, doctorId)).toMatchObject({ designation: "Guest Faculty", specialty: "General Medicine" });
+    await withTx(db, (tx) => updateDoctor(tx, admin.actor, doctorId, { designation: "Assistant Professor" }));
+    expect((await getDoctor(db, doctorId))!.designation).toBe("Assistant Professor");
+    await withTx(db, (tx) => updateDoctor(tx, admin.actor, doctorId, { designation: "   " }));
+    expect((await getDoctor(db, doctorId))!.designation).toBeNull();
+    // A patch that does not name it leaves it alone.
+    await withTx(db, (tx) => updateDoctor(tx, admin.actor, doctorId, { designation: "Senior Resident" }));
+    await withTx(db, (tx) => updateDoctor(tx, admin.actor, doctorId, { displayName: "Dr. S. I. Raza" }));
+    expect((await getDoctor(db, doctorId))!.designation).toBe("Senior Resident");
+  });
+
   it("createDoctor resolves the username; refuses unknown_user, user_already_doctor, department_inactive", async () => {
     const admin = await mkUser(db, "admin3", ["opd_admin"]);
     const { deptId } = await seedOpdMasters(db);

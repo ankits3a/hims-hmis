@@ -6,6 +6,8 @@ import { rosterModeDeclarations } from "../../kernel/db/schema/roster";
 import type { RosterMode } from "../../kernel/db/schema/roster";
 import { RosterError } from "./errors";
 import { requireRosterAct } from "./access";
+import { appendEvent } from "../../kernel/events/append";
+import { rosterModeDeclared, rosterModeWithdrawn } from "./events";
 
 /**
  * PHASE R (R8) — **SKELETON MODE (D4): SAYING OUT LOUD THAT THE ROTA NO LONGER DESCRIBES THE
@@ -96,6 +98,13 @@ export async function declareSkeletonMode(
     createdBy: actor.id,
     updatedBy: actor.id,
   }).returning();
+  await appendEvent(tx, rosterModeDeclared.make({
+    payload: {
+      declarationId: row!.id, departmentId, mode: row!.mode,
+      dayStartsAt: new Date(`${input.istDate}T00:00:00+05:30`).toISOString(), declaredAt: row!.declaredAt.toISOString(),
+    },
+    actor, correlationId: row!.id,
+  }));
   return row!;
 }
 
@@ -121,6 +130,13 @@ export async function withdrawSkeletonMode(
     withdrawnAt: now, withdrawnBy: actor.id, withdrawReason: reason.trim() || null,
     updatedBy: actor.id, updatedAt: now,
   }).where(eq(rosterModeDeclarations.id, declarationId)).returning();
+  await appendEvent(tx, rosterModeWithdrawn.make({
+    payload: {
+      declarationId, departmentId: row.departmentId, mode: row.mode,
+      dayStartsAt: new Date(`${row.istDate}T00:00:00+05:30`).toISOString(), withdrawnAt: now.toISOString(),
+    },
+    actor, correlationId: declarationId,
+  }));
   return updated!;
 }
 

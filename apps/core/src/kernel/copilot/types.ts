@@ -1,6 +1,7 @@
 import type { CopilotIntent } from "./phrasebook";
 import type { Actor, CopilotAnswerKey } from "@hmis/contracts";
-import type { Db } from "../db/client";
+import type { Db, Tx } from "../db/client";
+import type { z } from "zod";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -49,6 +50,18 @@ export type CopilotAnswer = {
    * sections, a worklist, a call sheet. The web decides how to present it; the shape is the tool's.
    */
   payload?: unknown;
+  /**
+   * E0.2 — what an ACT tool would do, for a human to confirm. Read only from a tool declared
+   * `kind: "act"`: the ask path validates `args` against the tool's `act.args`, signs a proposal
+   * (`act.ts`) and sends THAT, never this field. Nothing is written until `POST /copilot/confirm`.
+   */
+  propose?: { args: unknown };
+  /**
+   * E2.1 — SEVERAL proposals for ONE human to pick from (an appointment's patient and time). Each is
+   * signed separately with its own subject; the clerk taps one and confirms it, so each still needs
+   * its own tap. `payload` says which option is which. Capped at `MAX_PROPOSALS` (`act.ts`).
+   */
+  proposeMany?: { args: unknown; subject: string | null }[];
 };
 
 /** Everything a tool is given, and deliberately nothing more. */
@@ -79,6 +92,12 @@ export type CopilotToolCtx = {
    * from here (the model's copy went out, and came back as a tool name, before any tool ran).
    */
   question: string;
+  /**
+   * E2.1 — the question AS TYPED, for a tool that must read words a placeholder hid (a doctor, a day,
+   * a patient's name — owner 2026-10-11: an appointment may be booked by name). Read on the server
+   * only, after routing: it never reaches a model, a log or the ledger. Absent in older test contexts.
+   */
+  typed?: string;
 };
 
 /**
@@ -108,13 +127,86 @@ export type CopilotToolDecl = {
    * ANOTHER person names a permission, without exception.
    */
   permission: string | null;
+  /**
+   * E1.6 — further permissions that ALSO admit the asker, exactly as `@RequirePermission`'s
+   * `alsoAdmits` does on the screen's route: the copilot is then reachable by the same seats as that
+   * route and no others. Each string is boot-checked like `permission`. Ignored when `permission`
+   * is null.
+   */
+  alsoAdmits?: readonly string[];
   /** Whether the question must name somebody. See the type header. */
   needsSubject: boolean;
+  /**
+   * E0.3 — what the tool does, for the halt switch: `read` (the default) answers; `draft` prepares
+   * something a human then reviews; `act` writes (behind E0.2's confirm). Halting "act" stops every
+   * `act` tool while reads still answer; halting "draft" stops every `draft` tool. A write tool that
+   * forgot to say `act` would slip a halt, so E0.2's confirm path must refuse a tool without it.
+   */
+  kind?: "read" | "draft" | "act";
+  /**
+   * E2.2 (decision 0069) — the ledger keeps NO question text for this tool. For a question whose words
+   * beside the routed ones may be private — "kal CL chahiye, papa ICU mein hain" — the intent and the
+   * answer's key are kept and the masked question is dropped.
+   */
+  privateQuestion?: true;
   run(ctx: CopilotToolCtx): Promise<CopilotAnswer>;
+  /**
+   * E0.2 — the WRITE, run only by `POST /copilot/confirm` after one human tap. Present exactly when
+   * `kind` is `"act"`; the collector refuses either without the other at boot.
+   */
+  act?: CopilotActSpec;
 };
 
+/** What an act's steps are handed at confirm: the confirming human and the signed subject. */
+export type CopilotActCtx = { actor: Actor; subject: string | null };
+
+/** What `apply` hands back: the answer for the clerk and where the write landed, for `copilot_acts`. */
+export type CopilotActResult = {
+  answer: CopilotAnswer;
+  /** The module that owns the row written (`opd`, `roster`, ...). */
+  module: string;
+  /** The row the write created or changed. */
+  rowId: string;
+  /** The patient the act was about, when it was about one (G7: no act on the wrong patient). */
+  subjectPatientId: string | null;
+};
+
+/**
+ * ═══ E0.2 — AN ACT TOOL'S WRITE, DECLARED (spec /opt/hmis-context/SPEC-copilot-confirm-2026-10-11.md) ═══
+ *
+ * Brainstorm 12 §3: propose → confirm → act → verify. `recheck`, `apply` and a `readBack` verify
+ * all run inside ONE transaction with the `copilot_acts` row, so a refusal, a throw or a failed
+ * read-back leaves neither the module's row nor the act row.
+ *
+ * Methods, not function-typed properties, on purpose: method parameters are bivariant, so a tool
+ * typed on its own args (`defineAct<{ slot: string }>`) sits in the catalog's `CopilotActSpec`.
+ * The confirm path parses `args` with the tool's own schema before any method sees them.
+ */
+export type CopilotActSpec<A = unknown> = {
+  /** The exact args, validated at propose AND again at confirm. */
+  args: z.ZodType<A>;
+  /** How long a proposal lives, ms. Capped at 5 minutes (plan E0.2) whatever is asked. */
+  ttlMs?: number;
+  /**
+   * Re-read the state the proposal assumed (the slot still free, the leave not already filed).
+   * Null = still possible; a key = refuse with it and write nothing. The module's own constraint
+   * remains the hard guarantee against a race; this is the sentence the clerk reads.
+   */
+  recheck(tx: Tx, args: A, ctx: CopilotActCtx): Promise<CopilotAnswerKey | null>;
+  /** The module write. Throws to refuse; the transaction then holds nothing. */
+  apply(tx: Tx, args: A, ctx: CopilotActCtx): Promise<CopilotActResult>;
+  /**
+   * Brainstorm §3's "verify", stated by every act tool: a read-back of the write inside the same
+   * transaction (false ⇒ roll everything back), or a sentence saying why there is none.
+   */
+  verify: { readBack(tx: Tx, args: A, result: CopilotActResult, ctx: CopilotActCtx): Promise<boolean> } | { none: string };
+};
+
+/** Types an act on its own args and hands it to the catalog. */
+export const defineAct = <A>(spec: CopilotActSpec<A>): CopilotActSpec => spec as CopilotActSpec;
+
 export class CopilotError extends Error {
-  constructor(readonly code: "duplicate_tool" | "undeclared_permission", message: string) {
+  constructor(readonly code: "duplicate_tool" | "undeclared_permission" | "act_undeclared" | "draft_undeclared", message: string) {
     super(message);
     this.name = "CopilotError";
   }

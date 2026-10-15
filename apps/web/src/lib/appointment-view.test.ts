@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bookCounts, bookOrder, rebookingToday, rowStateOf } from "./appointment-view";
+import { bookCounts, bookOrder, rebookingToday, rowStateOf, upcomingOf } from "./appointment-view";
 import type { WireAppointment } from "./opd-api";
 
 /**
@@ -119,5 +119,23 @@ describe("rebookingToday — the rail is today forward, not every row ever", () 
       apt({ id: "needs", status: "needs_rebooking", serviceDate: "2026-09-06" }),
     ];
     expect(rebookingToday(rows, "2026-09-05").map((a) => a.id)).toEqual(["needs"]);
+  });
+});
+
+describe("upcomingOf — the slots a patient still holds (owner, 2026-10-01)", () => {
+  it("keeps booked and needs-rebooking rows from today onward, soonest first, and drops the rest", () => {
+    const rows = [
+      apt({ id: "next-week", serviceDate: "2026-09-12", slotStart: "2026-09-12T04:00:00.000Z" }),
+      apt({ id: "today-passed", serviceDate: "2026-09-05", slotStart: "2026-09-05T03:00:00.000Z" }), // 08:30 IST, already gone at NOW
+      apt({ id: "yesterday", serviceDate: "2026-09-04", slotStart: "2026-09-04T04:00:00.000Z" }),
+      apt({ id: "cancelled", serviceDate: "2026-09-08", status: "cancelled" }),
+      apt({ id: "checked-in", serviceDate: "2026-09-05", status: "checked_in" }),
+      apt({ id: "on-leave", serviceDate: "2026-09-07", slotStart: "2026-09-07T04:00:00.000Z", status: "needs_rebooking" }),
+    ];
+    expect(upcomingOf(rows, "2026-09-05").map((a) => a.id)).toEqual(["today-passed", "on-leave", "next-week"]);
+  });
+
+  it("answers nothing for a read that has not arrived", () => {
+    expect(upcomingOf(undefined, "2026-09-05")).toEqual([]);
   });
 });

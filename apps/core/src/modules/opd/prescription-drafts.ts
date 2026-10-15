@@ -30,6 +30,15 @@ import type { IssuePrescriptionInput, IssuedPrescription, PrescriptionAuthority 
  * Every check runs, unchanged, at issue time. There is no second issue path and no flag that skips
  * one — the function this file calls is the same function the consultation screen calls.
  *
+ * ═══ 2026-10-06 — THE SAME TABLE NOW ALSO HOLDS "HELD FOR THE DOCTOR" ═══
+ *
+ * Owner ruling 2026-10-06 let the desk scribe SEND what the doctor wrote on paper (`paper-consult.ts`,
+ * `transcribePaper`): the clean lines are issued at once and nobody waits for a tap. The lines that
+ * raise a hard warning are not issued — the scribe may clear none — and they wait here, as the
+ * visit's pending draft, with `held_alerts` saying why. A row with `held_alerts` null is the
+ * FD-30 draft this header describes; a row with it set is a held line. Both are inert in exactly
+ * the way described below, and both become a prescription only in a doctor's name.
+ *
  * ═══ WHAT A DRAFT IS NOT ═══
  *
  * It is not a prescription in any state. Nothing downstream reads this table: the pharmacy queue

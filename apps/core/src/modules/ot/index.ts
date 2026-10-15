@@ -101,3 +101,7 @@ export {
 // and the discharge tender — and `bill.ts` already imports `deposit.ts` (PASS-2 MAJOR-5).
 export { CASH_LIMIT_PAISE, assertCashWithinEncounterLimit, encounterCashPaise } from "./cash-limit";
 export type { ComposedBill, ImplantLine, SettleResult } from "./bill";
+
+// ── 20-U U8 — the roster's duty-evidence report reads theatre times through here, and nothing clinical ──
+export { registerOtDutyEvidence, theatreTimesOf } from "./duty-evidence";
+export type { TheatreTime } from "./duty-evidence";

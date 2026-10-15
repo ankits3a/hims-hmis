@@ -116,6 +116,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
         invoice list. This string admits `GET /billing/patients/:patientId/dues` and nothing else.
       */
       "billing.dues.patient.read",
+      // 20-U U5a — the "who is on now" board: whoever has to reach a doctor reads who is on. DECIDED
+      // (the policy matrix: a roster READ costs nothing). Read only — drafting and publishing stay the MS's.
+      "roster.read",
     ],
   },
   {
@@ -180,6 +183,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * closes the day with it. Every department read is logged (`day_report.patients_listed`).
        */
       "opd.reports.read",
+      // 20-U U5a — the "who is on now" board: whoever has to reach a doctor reads who is on. DECIDED
+      // (the policy matrix: a roster READ costs nothing). Read only — drafting and publishing stay the MS's.
+      "roster.read",
     ],
   },
   {
@@ -201,6 +207,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // narrow grant can be widened later without anybody being locked out in the meantime.
       "patients.read",
       "patients.update",
+      // 20-U U5a — the "who is on now" board: whoever has to reach a doctor reads who is on. DECIDED
+      // (the policy matrix: a roster READ costs nothing). Read only — drafting and publishing stay the MS's.
+      "roster.read",
     ],
   },
   {
@@ -317,6 +326,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY STAGE D2 — a doctor who catches a medication error or near miss logs it (blame-free: the
       // log shows the role, the name only to the reviewer). DEFAULT — owner may change.
       "pharmacy.incidents.record",
+      // 20-U U5a — the "who is on now" board: whoever has to reach a doctor reads who is on. DECIDED
+      // (the policy matrix: a roster READ costs nothing). Read only — drafting and publishing stay the MS's.
+      "roster.read",
     ],
   },
   /**
@@ -345,6 +357,17 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    *
    * `patients.update` is granted for one reason the owner named on the same day: an allergy written
    * on the slip in pen must be recordable by the person reading that slip.
+   *
+   * ═══ 2026-10-06 — WHAT CHANGED, AND WHAT DID NOT ═══
+   *
+   * The owner's later ruling (see `opd.consult.paper` below) makes this seat the one that types the
+   * doctor's medicines AND tests and, by doing so, marks the visit consulted — no tap from the
+   * doctor stands between the paper and the pharmacy any more (ruling A). The first bullet above
+   * is therefore read as it was written and no wider: this seat still holds no `opd.consult`, still
+   * cannot start, note or complete a consultation as a doctor, and still names no prescriber (the
+   * visit's own doctor is read from the visit). What it CANNOT do, now stated in code rather than
+   * by absence: clear a safety warning. A typed line that raises one is held for the doctor
+   * (`modules/opd/paper-consult.ts`), and `issuePrescription` refuses any override on this road.
    */
   {
     roleKey: "opd_scribe",
@@ -380,6 +403,46 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "radiology.definitions.read",
       "orders.place",
       "orders.read",
+      /**
+       * ═══ OWNER RULING 2026-10-06 — THE SCRIBE TYPES THE DRUGS AND THE TESTS, AND THAT CLOSES THE VISIT ═══
+       *
+       * *"We already have 'Desk Scribe' module. Let's enable it to type the drugs as well as lab
+       * tests … will mark the patient as Consulted even if the doctor hasn't … operated dashboard."*
+       *
+       * `opd.consult.paper` is the closing grant (ruling B: the slip desk and the desk scribe).
+       * The two reads beside it are what typing needs and nothing more: `formulary.read` is the
+       * medicine typeahead the doctor's own screen uses, so the scribe picks a catalogue medicine
+       * and the safety checks can see its salts; `tariff.read` is the price list the doctor's
+       * screen snapshots an advised test from. Neither writes anything.
+       */
+      "opd.consult.paper",
+      "formulary.read",
+      "tariff.read",
+    ],
+  },
+  /**
+   * ═══ THE SLIP DESK — OWNER RULING 2026-10-06 (B) ═══
+   *
+   * *"B) Yes, the slip desk and Desk scribe."* — the two seats that may mark a visit consulted from
+   * the doctor's paper. The slip desk had no role of its own: `/opd/slips` opens on
+   * `patients.update`, which the front office, the vitals bay, the lab counter and MRD all hold,
+   * and the owner's ruling is narrower than that. So the seat gets a role, and the role is the
+   * smallest thing that works the desk: find today's visit, read the person back, photograph the
+   * page, re-print a slip — and `opd.consult.paper`, which is the point of it.
+   *
+   * It cannot type a prescription (`opd.prescription.transcribe` is the scribe's), open or abandon a
+   * visit, take money or read a result. A person who does both jobs holds both roles.
+   */
+  {
+    roleKey: "opd_slip_desk",
+    permissions: [
+      "opd.consult.paper",
+      "opd.visits.read",
+      "opd.queue.read",
+      "opd.masters.read",
+      "opd.paper.reprint",
+      "patients.read",
+      "patients.update",
     ],
   },
   {
@@ -410,6 +473,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // with it. A `manage` string declared here would be held by somebody and reach nothing, which
       // is the trap on line 160 seen from the other side.
       "resources.read",
+      // 20-U U5a — the "who is on now" board: whoever has to reach a doctor reads who is on. DECIDED
+      // (the policy matrix: a roster READ costs nothing). Read only — drafting and publishing stay the MS's.
+      "roster.read",
     ],
   },
   /**
@@ -838,6 +904,23 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * not make the rota (the MS does), for the reason the owner does not write prescriptions.
        */
       "roster.read",
+      /**
+       * OWNER, 2026-10-09 — "nickname-Undo permission for owner role: yes".
+       *
+       * The Learning page in the staff app lists the medicine nicknames the suggestion system learned
+       * this week; taking one back (and putting it back) rides `opd.masters.manage`, the gate the two
+       * routes have carried since they shipped (decisions 0051, 0055). This role did not hold it, so
+       * the owner's own list had no Undo. No existing owner grant means "decide what the suggestion
+       * system has learned", so the routes' gate is NOT widened; the string is granted instead.
+       *
+       * IT OPENS MORE THAN THE UNDO, and that is said here rather than discovered: the same string
+       * guards the rest of OPD masters — departments, rooms, doctors and their schedules and leaves,
+       * the look-alike pairs, the voice settings, the vocabulary map. Acceptable: he is the owner.
+       * `opd.masters.read` is NOT added (nothing on the phone needs it), nor `opd.config.manage`.
+       * The grant is a capability only: seeding it writes one `role_permissions` row, flips no
+       * clinical gate and switches nothing on — nickname learning stays off until its own switch.
+       */
+      "opd.masters.manage",
       // PHARMACY P17 — the Schedule H1 register, and its unredacted copy for an inspector: the
       // licensee answers for the register.
       "pharmacy.register.read",
@@ -858,11 +941,32 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY P6 (patient messages) — the owner contracts the SMS / WhatsApp provider, so the owner may
       // record the ids its portals issue and read what was sent. DEFAULT — owner may change.
       "pharmacy.messages.manage",
+      // STAFF ATTENDANCE (owner 2026-10-09: "The owner and College+hospital attandance committe can
+      // access it inside their app") — everyone's attendance from the attendance machine, including
+      // the machine-listed people who have no login here.
+      "attendance.all.read",
+      // COPILOT LEDGER E0.1 (decision 0064, owner-approved spec 2026-10-10) — the copilot's health
+      // page: counts, routes and timings for a day. Aggregate only; it names nobody.
+      "copilot.health.read",
+      // COPILOT HALT E0.3 (plan, decision 0064; built overnight 2026-10-11, awaiting owner review) —
+      // the owner throws and clears every halt, and is the ONLY one who may clear a global halt.
+      "copilot.halt.set", "copilot.halt.clear", "copilot.halt.clear_global",
+      // LAB NUMBERS (owner 2026-10-13, #768) — the lab's counts and turnaround times. Aggregate only; names nobody.
+      "lab.metrics.read",
+      // HOSPITAL NUMBERS (owner 2026-10-13, #777) — imaging's and the pharmacy's counts, amounts and times. Aggregate only.
+      "radiology.metrics.read", "pharmacy.metrics.read",
     ],
   },
   {
     roleKey: "medical_superintendent",
     permissions: [
+      // STAFF ATTENDANCE (owner 2026-10-09: "the rules doesn't apply to owner/admin/superitendent/
+      // Unit head/committee") — the superintendent is among those who see everyone's attendance in full.
+      "attendance.all.read",
+      // OWNER 2026-10-02 — the physician's review of a drug monograph the pharmacy wrote (Drugs and
+      // Therapeutics Committee practice). The pharmacy holds `formulary.manage` and NOT this: the
+      // reviewer is never the department that wrote the text.
+      "formulary.monograph.review",
       // The clinical half of Class A. CHANGE_CLASS_POLICY.A requires an approval from THIS role
       // as well as from `owner`, so a patient-journey flow cannot be activated on the strength of
       // administrative sign-off alone. No `.activate`: approving and activating stay separate.
@@ -987,7 +1091,17 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // night shift needs to lend authority for an hour, never to create an account or change what a
   // role means.
   // ------------------------------------------------------------------------------------------
-  { roleKey: "duty_manager", permissions: ["auth.temp_role.grant"] },
+  // 20-U U6 (register I22) — and `roster.read`: the who-is-on board is where a ward flags a wrong
+  // name on duty ("this is wrong"), and the duty manager is the person that flag is for. A READ: the
+  // duty manager still drafts, publishes and approves nothing on a roster.
+  //
+  // COPILOT HALT E0.3 (plan: "act scope: owner or duty manager clears — a false 2 a.m. halt must not
+  // block till morning") — the duty manager may halt the copilot and clear a read/act/draft halt, and
+  // reads the health page where those buttons are. Never a global clear: that is the owner's alone.
+  {
+    roleKey: "duty_manager",
+    permissions: ["auth.temp_role.grant", "roster.read", "copilot.health.read", "copilot.halt.set", "copilot.halt.clear"],
+  },
   /**
    * ═══ PLAN 07c T9 / DD14 — OWNER RULING 2026-08-29: ONE NAMED PERSON MAY OPEN THE ROWS ═══
    *
@@ -1369,6 +1483,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "orders.read",
       "orders.cancel",
       "billing.credit.extend",
+      // LAB NUMBERS (owner 2026-10-13, #768) — the lab head reads the lab's counts and turnaround times.
+      "lab.metrics.read",
     ],
   },
   {
@@ -1481,6 +1597,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "radiology.definitions.read",
       /** 18-S RS5 — the contrast injection and reaction (split off `radiology.acquire`). */
       "radiology.contrast.record",
+      /** HOSPITAL NUMBERS (owner 2026-10-13, #777) — the department head reads imaging's counts and turnaround times. */
+      "radiology.metrics.read",
       /**
        * 18-S RS5 T2 — the radiologist is the approver of `imaging_gate_override`, the prep bay's
        * "please override". The approvals spine's reachability invariant (every approver role holds
@@ -1735,6 +1853,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "pharmacy_incharge",
     permissions: [
+      // OWNER 2026-10-02 — an item's standing discount to the patient (0 to 25%) is set by the in-charge,
+      // whose own discount limit under the 2026-09-30 ruling is 25%. The counter does not hold it.
+      "pharmacy.sale_items.discount",
       "pharmacy.register.read",
       "pharmacy.register.read_sealed",
       // P19 — the pharmacist named on the Form 20/21 licence records it.
@@ -1753,6 +1874,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // copied). DEFAULT — owner may change.
       "pharmacy.reports.read",
       "pharmacy.reports.margin",
+      // HOSPITAL NUMBERS (owner 2026-10-13, #777) — the in-charge reads the pharmacy's numbers tab. DEFAULT — owner may change.
+      "pharmacy.metrics.read",
       // PHARMACY P6 — the pharmacist in charge holds the controlled-drug cabinet's key, witnesses, and records
       // its licences and the doctors trained to prescribe a narcotic drug. DEFAULT — owner may change.
       "pharmacy.ndps.custody",
@@ -1828,6 +1951,30 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "radiology.definitions.read",
     ],
   },
+  /**
+   * STAFF ATTENDANCE (owner 2026-10-09) — THE ATTENDANCE COMMITTEE. It holds `attendance.all.read`
+   * and NOTHING else: opening the app, one's own attendance and one's own notices need no
+   * permission at all. A meeting request about a "Confirm" day is sent to this role's holders.
+   * NOBODY is assigned to it here or in any seed — the owner assigns its members himself.
+   */
+  { roleKey: "attendance_committee", permissions: ["attendance.all.read"] },
+  /**
+   * COPILOT LEDGER E0.1 (decision 0064, owner-approved spec 2026-10-10, D2) — THE COPILOT STEWARD.
+   * Plan §5 names the quality manager as steward: the monthly name sample (G6c), the eval refresh
+   * and the halt drill. No quality role existed, so this one is minted holding the health read and
+   * nothing else. NOBODY is assigned to it by any seed — the owner names the steward.
+   */
+  // COPILOT HALT E0.3 — and throws the halt switch: the steward runs the monthly halt drill (G6d).
+  { roleKey: "quality_manager", permissions: ["copilot.health.read", "copilot.halt.set"] },
+  /**
+   * COPILOT LEDGER E0.1 (D2) — IT reads the copilot's health too (latency, failures, the cost meter
+   * to come). `admin`'s `auth.*` set is `seed:admin`'s to write (GRANTED_BY_OTHER_SEEDS); this row
+   * adds the one non-`auth` string, so `fullAdministrators` (which counts `auth.*` only) is unchanged.
+   */
+  // COPILOT HALT E0.3 — IT may halt a misbehaving copilot; clearing is the owner's or the duty manager's.
+  // LAB NUMBERS (owner 2026-10-13, #768) — admin reads the lab's counts and turnaround times too (owner's request).
+  // HOSPITAL NUMBERS (owner 2026-10-13, #777) — and imaging's and the pharmacy's (owner: "not just admin but owner").
+  { roleKey: "admin", permissions: ["copilot.health.read", "copilot.halt.set", "lab.metrics.read", "radiology.metrics.read", "pharmacy.metrics.read"] },
 ];
 
 /**
@@ -2017,6 +2164,8 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
    * the scribe is not a party to that policy. It is a station on the OPD road, not a signatory.
    */
   opd_scribe: "OPD Door Scribe (paper-slip transcription)",
+  // Owner ruling 2026-10-06 (B) — the seat that photographs the doctor's paper and, by doing so, marks the visit consulted.
+  opd_slip_desk: "OPD Slip Desk (photographs the prescription slip)",
   pharmacy: "Pharmacy (prescription verification)",
   cashier: "Cashier",
   billing_manager: "Billing Manager",
@@ -2082,6 +2231,10 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   // PHARMACY STAGE D5 — held IN ADDITION to a clinical role (DECIDED 2026-09-28, stage D doc; ICMR AMSP 2018).
   antimicrobial_steward: "Antimicrobial Steward (held with a clinical role; approves Reserve and restricted antimicrobials, never their own prescription)",
   // 18-S RS8b — the title names the separation: the resident's signature is not a final report.
+  // COPILOT LEDGER E0.1 — the steward (plan §5) and the IT administrator `seed:admin` creates.
+  quality_manager: "Quality Manager (copilot steward; reads the copilot's health page)",
+  admin: "Administrator",
+  attendance_committee: "Attendance Committee (reads everyone's attendance from the attendance machine; handles meeting requests)",
   radiology_resident: "Radiology Resident (drafts, issues prelims, calls criticals; signs for a consultant's co-sign — publishes nothing alone)",
 };
 

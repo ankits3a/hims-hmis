@@ -13,13 +13,16 @@ import { catalogueCensus, medicinesByIds, pageInteractions, pageMedicines, pageS
 import type { CatalogueCensus } from "./reads";
 import { CursorError } from "../../kernel/db/page";
 import { searchMedicines } from "./search";
-import type { MedicineHit } from "./search";
+import { searchMedicinesForPrescribing } from "./prescribing-search";
+import type { PrescribingHit } from "./prescribing-search";
 import { admitStaging, getStagingRow, rejectStaging, searchStaging } from "./staging";
 import { MAX_SUGGESTIONS, suggestDrugs } from "./suggest";
 import type { DrugSuggestion } from "./suggest";
 import { getCoverage, getPairOverrideRates } from "./curation";
 import { attestSubstance, pageMappingWorklist, ruleSubstanceUnmappable } from "./mapping";
 import type { MappingDecision, WorklistItem } from "./mapping";
+import { getMonograph, RENAL_SEVERITIES, reviewMonograph, saveMonograph, searchGenerics } from "./monographs";
+import type { GenericHit, Monograph } from "./monographs";
 import type { InteractionRow, MedicineWithSalts, SaltRow } from "./masters";
 import type { StagingRow } from "./staging";
 import type { Coverage, PairUsage } from "./curation";
@@ -65,9 +68,24 @@ function parsed<T>(schema: z.ZodType<T>, body: unknown): T {
   return r.data;
 }
 
+/** One section of a monograph: an object, kept as written, at most 64 KB as JSON. */
+const monographSection = z.record(z.string(), z.unknown())
+  .refine((v) => JSON.stringify(v).length <= 64_000, "a monograph section is at most 64 KB")
+  .nullish();
+const monographBody = z.object({
+  genericSctid: z.string().regex(/^\d{6,18}$/), sourceVersion: z.string().trim().min(1).max(32),
+  patient: monographSection, prescriber: monographSection, nursing: monographSection, affordability: monographSection,
+  renalDoses: z.array(z.object({
+    crclMin: z.number().int().min(0).max(300).nullable(), crclMax: z.number().int().min(1).max(300).nullable(),
+    dose: z.string().trim().min(1).max(300), severity: z.enum(RENAL_SEVERITIES),
+  })).max(12).optional(),
+});
+
 /** Query flags arrive as strings; never z.coerce.boolean() — it reads "false" as true (§3.19). */
 const flagQuery = z.enum(["true", "false"]).optional();
 const medicineSearchQuery = z.object({ q: z.string().max(120), limit: z.string().max(3).optional() });
+/** `for=rx` — a PRESCRIBING screen is asking (the consult, the desk scribe): a learned nickname may add one row. */
+const prescribingSearchQuery = medicineSearchQuery.extend({ for: z.enum(["rx"]).optional() });
 const activeQuery = z.object({ active: flagQuery });
 /**
  * The three list routes are PAGED — they used to answer with the whole table, and `medicines` did
@@ -250,9 +268,11 @@ export class FormularyController {
    */
   @RequirePermission("formulary.read", "hospital")
   @Get("medicines/search")
-  async searchMedicinesRoute(@Query() query: unknown): Promise<{ items: MedicineHit[] }> {
-    const q = parsed(medicineSearchQuery, query);
-    return { items: await searchMedicines(this.db, q.q, q.limit === undefined ? 10 : Number(q.limit)) };
+  async searchMedicinesRoute(@Query() query: unknown): Promise<{ items: PrescribingHit[] }> {
+    const q = parsed(prescribingSearchQuery, query);
+    const limit = q.limit === undefined ? 10 : Number(q.limit);
+    /* Without `for=rx` this is the catalogue's answer and nothing else — the pharmacy's and the formulary office's searches. */
+    return { items: q.for === "rx" ? await searchMedicinesForPrescribing(this.db, q.q, limit) : await searchMedicines(this.db, q.q, limit) };
   }
 
   @RequirePermission("formulary.read", "hospital")
@@ -482,5 +502,52 @@ export class FormularyController {
     } catch (e) {
       toHttp(e);
     }
+  }
+
+  // ─────────────────── the drug monograph (owner 2026-10-02) ───────────────────
+
+  /** The curation door's typeahead. ABOVE `monographs/:sctid`, or "generics" would be read as an id. */
+  @RequirePermission("formulary.manage", "hospital", { alsoAdmits: ["formulary.monograph.review"] })
+  @Get("monographs/generics")
+  async monographGenerics(@Query() query: unknown): Promise<{ items: GenericHit[] }> {
+    const q = parsed(medicineSearchQuery, query);
+    return { items: await searchGenerics(this.db, q.q, q.limit === undefined ? 10 : Number(q.limit)) };
+  }
+
+  /** What every reader gets: the REVIEWED monograph of a generic, or 404 while there is none. */
+  @RequirePermission("formulary.read", "hospital", { alsoAdmits: ["formulary.monograph.review"] })
+  @Get("monographs/:sctid")
+  async monograph(@Param("sctid") sctid: string): Promise<Monograph> {
+    const row = await getMonograph(this.db, sctid);
+    if (row === undefined) throw httpError(404, `no reviewed monograph for ${sctid}`, "unknown_monograph");
+    return row;
+  }
+
+  /** The curation door: the monograph as it stands, draft or reviewed. The reviewer reads the draft too. */
+  @RequirePermission("formulary.manage", "hospital", { alsoAdmits: ["formulary.monograph.review"] })
+  @Get("monographs/:sctid/draft")
+  async monographDraft(@Param("sctid") sctid: string): Promise<Monograph> {
+    const row = await getMonograph(this.db, sctid, { includeDraft: true });
+    if (row === undefined) throw httpError(404, `no monograph for ${sctid}`, "unknown_monograph");
+    return row;
+  }
+
+  @RequirePermission("formulary.manage", "hospital")
+  @Post("monographs")
+  async saveMonograph(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ monographId: string }> {
+    const b = parsed(monographBody, body);
+    try {
+      return await withTx(this.db, (tx) => saveMonograph(tx, actor, b));
+    } catch (e) { toHttp(e); }
+  }
+
+  /** The physician's act (owner 2026-10-02): the pharmacy writes, `formulary.monograph.review` reviews. */
+  @RequirePermission("formulary.monograph.review", "hospital")
+  @Post("monographs/:id/review")
+  async reviewMonograph(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ ok: true }> {
+    try {
+      await withTx(this.db, (tx) => reviewMonograph(tx, actor, id));
+      return { ok: true };
+    } catch (e) { toHttp(e); }
   }
 }

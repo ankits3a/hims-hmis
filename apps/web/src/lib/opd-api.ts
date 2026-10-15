@@ -2,6 +2,10 @@ import { api, ApiError } from "./api";
 import type { WireMatchLane } from "./patients-api";
 import type { WireContinuityAnchor } from "./walk-in-routing";
 import type { Eye, TaperStep } from "./eye-line";
+import type { RxLineSource } from "../../../../packages/contracts/src/rx-line";
+import type { GuardianRelation, WirePatientAbsent } from "../../../../packages/contracts/src/patient-absent";
+export { GUARDIAN_NAME_MAX, GUARDIAN_RELATIONS, guardianMayStandIn } from "../../../../packages/contracts/src/patient-absent";
+export type { GuardianRelation, WirePatientAbsent } from "../../../../packages/contracts/src/patient-absent";
 
 /**
  * The OPD wire contract, shared by all six Plan 07 screens (the plan's File Structure names this file
@@ -11,6 +15,22 @@ import type { Eye, TaperStep } from "./eye-line";
  */
 
 // ——— small closed vocabularies the screens branch and label on (D1 / D2 / D7) ———
+
+/*
+  The vitals desk's wire shapes live in packages/contracts/src/vitals-entry.ts, the ONE source the
+  web bay and the phone app (apps/mobile) both read. They are re-exported so every import of them
+  from this file keeps working.
+*/
+import type {
+  WirePatientSummary, WireDangerFlag, WireBenchState, WireEscalationState, WireBenchRow, WireVitalKey, WirePreStage, WireVitalsPostBody, WireEscalationReading,
+  WireVisitOnBench,
+} from "../../../../packages/contracts/src/vitals-entry";
+export type {
+  WirePatientSummary, WireDangerFlag, WireBenchState, WireEscalationState, WireBenchRow, WireRange, WireVitalKey, WireBandKey, WirePreStage,
+  WireBandConfig, WireDangerRanges, WireReadingSource, WireReading, WireBpReading, WireReadings, WireUnlockReason, WireVitalsPostBody, WireEscalationReading,
+  WireVisitOnBench,
+} from "../../../../packages/contracts/src/vitals-entry";
+export { UNLOCK_REASONS } from "../../../../packages/contracts/src/vitals-entry";
 
 export type OpdVisitStatus = "registered" | "waiting" | "in_consultation" | "awaiting_results" | "completed" | "abandoned";
 export type OpdQueueStatus = "waiting_vitals" | "waiting" | "called" | "in_consult" | "done" | "left" | "transferred" | "cancelled";
@@ -36,6 +56,8 @@ export type WireDoctor = {
      minted at creation, so the screen never has to handle a doctor without one. */
   id: string; userId: string; displayName: string; code: string; registrationNo: string | null; departmentId: string;
   specialty: string | null; active: boolean;
+  /** 2026-10-04 — "Guest Faculty", "Senior Resident" (migration 0177). Optional: older servers send none. */
+  designation?: string | null;
   createdBy: string; createdAt: string; updatedBy: string; updatedAt: string;
 };
 
@@ -90,17 +112,6 @@ export function putCounterFlow(body: Partial<WireCounterFlow>): Promise<WireOpdC
 
 // ——— patients, as the OPD module is allowed to see them (§14 / D-37) ———
 
-export type WirePatientSummary = {
-  requestedId: string; id: string; uhid: string; name: string | null; alias: string | null;
-  restricted: boolean; administrativeGender: string; dob: string | null;
-  /**
-   * FD-25 — present ONLY on `GET /opd/appointments?needsRebooking=true&contact=true`, and null on a
-   * restricted row. Optional because it is absent from every other read of this shape: a display
-   * surface has never needed a contact number and still does not. See the server type for why this
-   * is a second narrow surface rather than a widening of `PatientSummary`.
-   */
-  phone?: string | null;
-};
 
 // ——— appointments and slots ———
 
@@ -113,6 +124,13 @@ export type WireAppointment = {
   source: "desk" | "phone"; note: string | null; encounterId: string | null;
   rescheduledToId: string | null; rescheduledFromId: string | null; cancelReason: string | null; leaveId: string | null;
   bookedBy: string; bookedAt: string; updatedBy: string; updatedAt: string;
+  /** Owner 2026-10-09 — how the patient is seen. The number travels only on the contact read. */
+  mode?: "in_person" | "tele"; telePhone?: string | null;
+  /** The desk's money mark on a tele-call (list route only): what it costs, and whether that is met. */
+  teleDesk?: { amountPaise: number | null; covered: boolean };
+  /** E2.1 — booked or moved from the copilot chat (the server reads it from the copilot's act record). */
+  viaCopilot?: true;
+  advanceReceiptId?: string | null; advanceQuotePaise?: number | null; advanceQuotedAt?: string | null;
   /** present on the list route, absent on the write routes' bare row */
   patient?: WirePatientSummary | null;
 };
@@ -120,6 +138,8 @@ export type WireAppointment = {
 // ——— the encounter spine, the queue, vitals and the e-Rx ———
 
 export type WireEncounter = {
+  /** Owner 2026-10-09 — a tele-call, and the doctor's two answers. Optional: an older server sends none. */
+  consultMode?: string | null; teleOutcome?: string | null; teleOutcomeAt?: string | null; teleNoAnswerCount?: number | null;
   id: string; visitNo: string; patientId: string; type: string; status: OpdVisitStatus; workflowInstanceId: string;
   departmentId: string | null; doctorId: string | null; appointmentId: string | null; serviceDate: string;
   visitType: OpdVisitType; intendedPayer: string; referralSource: string | null; referrerName: string | null;
@@ -182,6 +202,8 @@ export type WireSkipReason = (typeof SKIP_REASONS)[number];
 export type WireQueueEntryView = WireQueueEntry & {
   position: number | null;
   queueClass: OpdQueueClass | null;
+  /** Owner 2026-10-09 — a tele-call: its slot time sits where a token does, with a phone icon. No money mark ever. */
+  tele?: boolean;
   encounter: {
     id: string; patientId: string; visitType: string; dangerFlagged: boolean; status: string;
     /** Owner ruling 2026-09-24 — an internal referral opened this visit. Optional: an older server sends none. */
@@ -193,6 +215,8 @@ export type WireQueueEntryView = WireQueueEntry & {
      * token back in the callable order. Optional on the wire: an older server sends neither.
      */
     feeBypassReason?: string | null; consultFeeOverrideReason?: string | null;
+    /** Owner 2026-10-07 — the guardian came with the reports; no vitals. Optional: an older server sends none. */
+    patientAbsent?: WirePatientAbsent | null;
   };
   patient: WirePatientSummary | null;
   /**
@@ -213,7 +237,8 @@ export type WireQueueEntryView = WireQueueEntry & {
    * client must never recompute paid-ness from an invoice. `encounterFeeStatuses` is the one
    * projection; a second truth function is a board that can disagree with the gate.
    */
-  feeStatus: "free" | "settled" | "credit" | "unsettled" | null;
+  /** ABSENT on a tele-call's row (fix round 2026-10-09): such a row carries no money key at all. */
+  feeStatus?: "free" | "settled" | "credit" | "unsettled" | null;
 };
 
 /**
@@ -339,22 +364,15 @@ export type WireOpenVisitResult = {
   roomId: string | null; visitType: OpdVisitType; doctorScheduledToday: boolean;
 };
 
-// VD-1 T1 — `muacCm` appended, because the SERVER can now emit it: a supplied MUAC under six is
-// flagged at the zone it breached (11.5 SAM, 12.5 MAM). Widened here in the same task that made
-// the server able to send it — a wire union narrower than its producer is a type that lies, and it
-// lies silently until the first child is measured.
-// VD-1 CLOSE / F1 — `severity` appended for the same reason `muacCm` was in T1: the SERVER can now
-// emit it, and a wire union narrower than its producer is a type that lies until the first case
-// arrives. `danger` moves the queue; `notice` reaches the doctor and does not — a paediatric fever
-// is flagged ahead of the call without seating a toddler ahead of a stroke. Optional so every flag
-// already persisted reads back unchanged; absent means `danger`, which is the shipped meaning.
-export type WireDangerFlag = { vital: "sbp" | "dbp" | "pulse" | "rr" | "spo2" | "tempC" | "muacCm"; value: number; bound: "min" | "max"; limit: number; severity?: "danger" | "notice" };
+
 
 export type WireVitals = {
   id: string; encounterId: string; patientId: string;
   heightCm: number | null; weightKg: number | null; sbp: number | null; dbp: number | null;
   pulse: number | null; rr: number | null; spo2: number | null; tempC: number | null;
   muacCm: number | null; notes: string | null;
+  /** Owner 2026-10-08 — finger-prick glucose (mg/dL) and when it was taken. Optional: an older server, or an older chart's fixture, sends neither. */
+  glucoseMgDl?: number | null; glucoseTiming?: "fasting" | "random" | "after_food" | null;
   ageYearsAtRecord: number | null; band: "infant" | "child_1_5" | "child_6_12" | "adult";
   dangerFlags: WireDangerFlag[]; recordedBy: string; recordedAt: string;
   /**
@@ -379,12 +397,18 @@ export type WireRxLine = {
   durationDays: number | null; instructions: string | null; noSubstitution: boolean;
   /** The ophthal line. Absent on every line written before it and on every non-eye line. */
   eye?: Eye | null; taper?: TaperStep[] | null;
+  /** The catalogue medicine the line was picked as — what the safety checks resolve salts from. Free typing has none. */
+  medicineId?: string | null;
+  /** Decision 0050 P0 — typed, searched, suggested, from a set, a repeat, a voice note or the desk's paper. Audit and learning only. */
+  source?: RxLineSource | null;
 };
 
 /** An editor row as typed — blanks allowed; `durationDays` is the box's text. Not a prescription line. */
 export type WireRxDraftLine = {
   drug: string; dose: string; route: string; frequency: string; durationDays: string | number | null;
   instructions: string; noSubstitution: boolean; medicineId?: string | null; eye?: Eye | null; taper?: TaperStep[] | null;
+  /** Decision 0050 P0 — where the row came from; absent on a row typed by hand and on every older draft. */
+  source?: RxLineSource;
 };
 
 export type WirePrescription = {
@@ -397,21 +421,38 @@ export type WireRxPrint = {
   letterhead: { name: string; addressLines: string[] };
   patient: { uhid: string; name: string | null; alias: string | null; restricted: boolean; ageYears: number | null; administrativeGender: string };
   /** The Doctor ID only — the print names no doctor and no council number (owner 2026-09-06, 2026-09-28). */
-  doctor: { code: string | null; departmentName: string | null };
+  /**
+   * Owner 2026-10-04: no name. `unitNumber` is the unit ("Unit I") or, for a doctor in no unit, the Doctor
+   * ID; `deptRegn` is that day's unit head's council number, null (blank) when none. `code` / `unit`
+   * are the older payload's fields, read only when `unitNumber` is absent.
+   */
+  doctor: { unitNumber?: string; deptRegn?: string | null; code?: string | null; departmentName: string | null; unit?: string | null };
   encounter: {
+    /** Owner 2026-10-09 — a tele-call's prescription prints one boxed line saying nobody examined the patient. Optional: an older server sends none. */
+    tele?: boolean;
     id: string; visitNo: string; serviceDate: string; diagnosis: string | null; icd10Code: string | null;
     advice: string | null; followUpDays: number | null; chiefComplaint: string | null;
     /** PLAN 07d T5 — advised tests with the price AS OF the service date (DD4, E-9). */
     advisedTests: WireAdvisedTest[];
+    /** Decision 0067 — which advised tests are done OUTSIDE the hospital. Absent on an older server. */
+    outsideTestIds?: string[];
     /** The coded rows with each one's eye (board "Ophthal"). Absent on a payload from before it. */
     diagnoses?: { text: string; icd10Code: string | null; laterality: Eye | null }[];
   };
   vitals: WireVitals | null; lines: WireRxLine[]; qrPayload: string; version: number; issuedAt: string;
+  /**
+   * Owner ruling 2026-10-06 — who typed this prescription from the doctor's paper, or null/absent
+   * when the doctor keyed it. The print says so, so a transcription never passes for a
+   * doctor-signed e-prescription.
+   */
+  transcribedByName?: string | null;
 };
 
 export type WireTimelineItem = {
   /** Consult v2 — the visit's number, for the History browser. Optional: an older server sends none. */
   visitNo?: string;
+  /** Owner 2026-10-11 — `opd`, `lab` (the lab counter's walk-in) or `pharmacy`. Optional: an older server sends none (= opd). */
+  type?: string;
   encounterId: string; serviceDate: string; openedAt: string; status: string; visitType: string;
   doctorId: string | null; doctorName: string | null; departmentId: string | null; departmentName: string | null;
   diagnosis: string | null; icd10Code: string | null; prescriptionLineCount: number; dangerFlagged: boolean;
@@ -654,12 +695,16 @@ export function getSlots(doctorId: string, date: string): Promise<{ slots: WireS
 }
 
 export function bookAppointment(
-  body: { patientId: string; doctorId: string; slotStart: string; note?: string },
+  body: { patientId: string; doctorId: string; slotStart: string; note?: string; mode?: "tele"; telePhone?: string },
 ): Promise<{ appointment: WireAppointment }> {
   return api("POST", "/opd/appointments", body);
 }
 
 /** What this patient already has booked — the seat's third door, and its duplicate-booking guard. */
+/** Every appointment this patient has ever held, whatever became of it — the profile's appointment history. */
+export function listPatientAppointmentsAll(patientId: string): Promise<{ items: WireAppointment[] }> {
+  return api("GET", `/opd/appointments?patientId=${encodeURIComponent(patientId)}`);
+}
 export function listPatientAppointments(patientId: string): Promise<{ items: WireAppointment[] }> {
   return api("GET", `/opd/appointments?patientId=${encodeURIComponent(patientId)}&status=booked`);
 }
@@ -713,6 +758,7 @@ export type WireVitalsHistoryItem = {
   rr: number | null;
   spo2: number | null;
   tempC: number | null;
+  glucoseMgDl?: number | null; glucoseTiming?: string | null;
   band: string;
   dangerFlags: unknown[];
   /** Consult v2 — who took it, and whether it was later corrected. Optional: an older server sends none. */
@@ -729,20 +775,6 @@ export type WireVitalsHistoryItem = {
  * `matchedOn` finding for the fourth time. Declared here in the PR of the screen that reads them,
  * so a rail and its consumer cannot drift apart again. Dates arrive as ISO strings.
  */
-export type WireBenchState = "resting" | "away";
-export type WireEscalationState = "none" | "recheck_demanded" | "escalated" | "cancelled";
-export type WireBenchRow = {
-  encounterId: string; entryId: string; tokenNo: number; seq: number;
-  doctorId: string; doctorName: string; serviceDate: string;
-  patient: WirePatientSummary | null;
-  benchState: WireBenchState | null;
-  recallAt: string | null;
-  vitalsDone: boolean;
-  vitalsId: string | null;
-  escalation: WireEscalationState;
-  cancelMsRemaining: number;
-  recallDue: boolean;
-};
 export function fetchBench(filter: { departmentId?: string; doctorId?: string; serviceDate: string }): Promise<{ items: WireBenchRow[] }> {
   const qs = new URLSearchParams({ serviceDate: filter.serviceDate });
   if (filter.departmentId !== undefined) qs.set("departmentId", filter.departmentId);
@@ -750,39 +782,11 @@ export function fetchBench(filter: { departmentId?: string; doctorId?: string; s
   return api("GET", `/opd/bench?${qs.toString()}`);
 }
 
-export type WireRange = { min?: number; max?: number };
-export type WireVitalKey = "heightCm" | "weightKg" | "sbp" | "dbp" | "pulse" | "rr" | "spo2" | "tempC" | "muacCm";
-export type WireBandKey = "infant" | "child_1_5" | "child_6_12" | "adult";
-export type WirePreStage = {
-  patientId: string;
-  ageYears: number | null;
-  band: WireBandKey;
-  /** CLOSE pass 1 — the band's limits travel with the pre-stage; the bay mirrors nothing from `GET /opd/config` (a permission `vitals_desk` does not hold). */
-  ranges: Partial<Record<WireVitalKey, WireRange>>;
-  noticeRanges: Partial<Record<WireVitalKey, WireRange>>;
-  gates: { adultWeightFloorKg: number; heightDeltaCm: number; spo2ProbeFloorPct: number };
-  muacBands: { samUnderCm: number; mamUnderCm: number };
-  /** The patient is confidential to this actor: the band is answered, the history is not. */
-  sealed: boolean;
-  required: WireVitalKey[];
-  notRoutine: WireVitalKey[];
-  /**
-   * FD-32 / owner ruling 2026-09-13 — *"A symbol to symbolize in the vital dashboard that the user
-   * has not yet paid."* The LEDGER's answer, not the draft's: false on an unconfigured hospital,
-   * which has no fee policy to warn about. `feeBypass` is the front desk's waiver carried as the
-   * clerk's own sentence, so each desk shows WHY rather than a bare icon — and it never clears
-   * `feeUnpaid`, because a bypass waives the ORDER of payment and not the fee.
-   */
-  feeUnpaid: boolean;
-  feeBypass: { by: string; reason: string; at: string } | null;
-  last: {
-    vitalsId: string; recordedAt: string; serviceDate: string;
-    heightCm: number | null; weightKg: number | null; sbp: number | null; dbp: number | null;
-    pulse: number | null; rr: number | null; spo2: number | null; tempC: number | null; muacCm: number | null;
-  } | null;
-  carryCandidates: WireVitalKey[];
-  expectedFlags: WireDangerFlag[];
-};
+/** Owner 2026-10-06 — why a typed or scanned visit number is not on today's bench (`opd.queue.read`, the bench's own door). */
+export function locateVisitOnBench(visitNo: string, serviceDate: string): Promise<WireVisitOnBench> {
+  return api("GET", `/opd/bench/locate?visitNo=${encodeURIComponent(visitNo)}&serviceDate=${serviceDate}`);
+}
+
 /** `opd.vitals.history.read` — the last chart, the band and the carry candidates, nothing else (VD-1 D6). */
 export function fetchPreStage(encounterId: string): Promise<WirePreStage> {
   return api("GET", `/opd/visits/${encodeURIComponent(encounterId)}/prestage`);
@@ -799,34 +803,6 @@ export function completeAllergen(q: string): Promise<{ items: WireAllergenHit[];
 }
 
 // ——— VD-2 T2 — the capture body, the save result, and the danger-range config the tiles mirror ———
-export type WireBandConfig = {
-  key: WireBandKey; upToAgeYears: number | null;
-  required: WireVitalKey[]; notRoutine: WireVitalKey[];
-  ranges: Partial<Record<WireVitalKey, WireRange>>;
-  noticeRanges: Partial<Record<WireVitalKey, WireRange>>;
-};
-/** `GET /opd/config`'s `dangerRanges`, typed at last — the bay's client-side mirrors read it; the server stays the authority. */
-export type WireDangerRanges = {
-  weightRequiredUnderYears: number;
-  bands: WireBandConfig[];
-  gates: { adultWeightFloorKg: number; heightDeltaCm: number; spo2ProbeFloorPct: number };
-  muacBands: { samUnderCm: number; mamUnderCm: number };
-};
-export type WireReadingSource = "typed" | "device" | "counted";
-export type WireReading = { takes: number[]; source: WireReadingSource; held?: number[]; note?: string };
-export type WireBpReading = { takes: [number, number][]; source: WireReadingSource; held?: number[]; note?: string };
-export type WireReadings = Partial<Record<Exclude<WireVitalKey, "sbp" | "dbp">, WireReading>> & { bp?: WireBpReading };
-export const UNLOCK_REASONS = ["yearly_remeasure_due", "patient_disputes_old_value", "posture_or_device_changed", "surgical_or_limb_change"] as const;
-export type WireUnlockReason = (typeof UNLOCK_REASONS)[number];
-export type WireVitalsPostBody = Partial<Record<WireVitalKey, number | null>> & {
-  notes?: string | null;
-  readings?: WireReadings;
-  contextChips?: { key: string; question: string; answer: string }[];
-  carriedForward?: WireVitalKey[];
-  emergency?: boolean;
-  overrides?: Partial<Record<WireVitalKey, string>>;
-  unlockReasons?: Partial<Record<WireVitalKey, WireUnlockReason>>;
-};
 export type WireVitalsGate = { key: WireVitalKey; kind: "slipped_digit" | "shrinking_adult" | "probe_error"; value: number; suggestion?: number; message: string };
 /**
  * `feeWaived` — FD-32 + the 20-Sep ruling: TRUE when this save was the emergency one AND it is what
@@ -839,12 +815,26 @@ export function postVitals(encounterId: string, body: WireVitalsPostBody): Promi
   return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/vitals`, body);
 }
 
+/**
+ * Owner 2026-10-07 — a REVISIT where the guardian came with the reports: vitals are skipped and the
+ * visit joins the doctor's line (`opd/patient-absent.ts`). The bay's grant or the front desk's.
+ */
+export function markPatientAbsent(
+  encounterId: string, body: { relation: GuardianRelation; name?: string | null },
+): Promise<{ patientAbsent: WirePatientAbsent; alreadyMarked: boolean }> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/patient-absent`, body);
+}
+
+/** #771 — undo the guardian mark: the patient is here after all; the token goes back to the bay. Same grants as the mark. */
+export function undoPatientAbsent(encounterId: string): Promise<{ alreadyCleared: boolean }> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/patient-absent/undo`);
+}
+
 // ——— VD-2 T3 — the danger protocol and the bench state, on the wire ———
 export type WireEscalationView = {
   entryId: string; state: WireEscalationState; escalatedAt: string | null;
   escalatedFromClass: number | null; escalationBy: string | null; cancelMsRemaining: number;
 };
-export type WireEscalationReading = Partial<Record<Exclude<WireVitalKey, "heightCm" | "weightKg">, number>>;
 export function demandRecheck(encounterId: string, reading: WireEscalationReading): Promise<WireEscalationView> {
   return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/escalation/recheck`, reading);
 }
@@ -906,6 +896,49 @@ export function abandonVisit(encounterId: string, reason: string): Promise<{ enc
   return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/abandon`, { reason });
 }
 
+/* ══ Owner 2026-10-05 — "Wrong department — move patient" ══════════════════════════════════════ */
+
+export type WireVisitType = "new" | "revisit" | "renewal";
+export type WireMovePreview = {
+  encounterId: string;
+  /** `feePaise` — the server's one pricer for both sides (the fee line and the money line agree). Optional: an older server sends none. */
+  from: { departmentId: string | null; doctorId: string | null; visitType: WireVisitType; feePaise?: number };
+  to: { departmentId: string; visitType: WireVisitType; feePaise?: number };
+  /** The bill on the visit, when there is one; `money` says what the move does with it. */
+  standingInvoiceNo: string | null;
+  /** Owner 2026-10-05 — what the move does with the visit's money (billing's four rules). Optional: an older server sends none. */
+  money?: WireMoveMoney;
+  /** May THIS person settle a fee difference as part of the move? */
+  maySettleDifference?: boolean;
+};
+export type WireMoveMoneyKind = "none" | "zero_bill" | "transfer" | "difference" | "billing_office";
+export type WireMoveMoney = {
+  kind: WireMoveMoneyKind;
+  invoiceId: string | null; invoiceNo: string | null;
+  paidPaise: number; newFeePaise: number;
+  /** newFee − paid: positive is collected now, negative stays as the patient's credit. */
+  differencePaise: number;
+  billingOfficeReason: "other_services" | "on_credit" | "part_paid" | "several_bills" | null;
+};
+export type WireMoveMoneyResult = WireMoveMoney & {
+  creditNoteNo: string | null; newInvoiceId: string | null; newInvoiceNo: string | null;
+  advancePaise: number; collectedPaise: number;
+};
+export type WireMoveTender = { mode: "cash" | "upi" | "card"; amountPaise: number; refText?: string };
+export type WireDepartmentMove = {
+  from: { encounter: WireEncounter; tokenNo: number | null };
+  to: { encounter: WireEncounter; tokenNo: number | null; sessionId: string | null; roomId: string | null; visitType: WireVisitType };
+  money?: WireMoveMoneyResult;
+};
+export function previewDepartmentMove(encounterId: string, departmentId: string): Promise<WireMovePreview> {
+  return api("GET", `/opd/visits/${encodeURIComponent(encounterId)}/move-preview?departmentId=${encodeURIComponent(departmentId)}`);
+}
+export function moveVisitDepartment(
+  encounterId: string, input: { departmentId: string; doctorId: string; reason: string; tenders?: WireMoveTender[] },
+): Promise<WireDepartmentMove> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/move-department`, input);
+}
+
 /* ══ FD-16 — the appointment screen's two reads, both already on the server ═════════════════════ */
 
 /**
@@ -957,10 +990,10 @@ export function reclassifyVisit(
  * the owner's second route — find the doctor, move the patient off them — the same call as the first.
  */
 export function rescheduleAppointment(
-  appointmentId: string, slotStart: string, doctorId?: string,
+  appointmentId: string, slotStart: string, doctorId?: string, reason?: string,
 ): Promise<{ from: WireAppointment; to: WireAppointment }> {
   return api("POST", `/opd/appointments/${encodeURIComponent(appointmentId)}/reschedule`, {
-    slotStart, ...(doctorId === undefined ? {} : { doctorId }),
+    slotStart, ...(doctorId === undefined ? {} : { doctorId }), ...(reason === undefined || reason.trim() === "" ? {} : { reason: reason.trim() }),
   });
 }
 
@@ -1023,6 +1056,79 @@ export function issueRxDraft(
 ): Promise<{ prescriptionId: string; version: number; draftId: string }> {
   return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/prescription-draft/issue`, overrides);
 }
+
+// ——— Consulted on paper (owner ruling 2026-10-06) ———
+
+/**
+ * What a filed slip or a typed prescription did to the visit. `consulted` is true when the visit
+ * stands consulted afterwards, whoever made it so; `outcome` says which case this was, and the
+ * screens word each one (`paper.outcome.*`) rather than showing a tick that could mean any of them.
+ */
+export type WirePaperOutcome =
+  | "marked" | "already_marked" | "doctor_completed" | "doctor_consulting"
+  | "not_permitted" | "not_today" | "no_doctor" | "not_in_queue" | "abandoned" | "not_a_consultation" | "gate_refused";
+export type WirePaperVerdict = {
+  outcome: WirePaperOutcome; consulted: boolean; encounterId: string; visitNo: string;
+  gate?: { guard: string; code: string };
+};
+
+export type WireHeldAlert = {
+  kind: "allergy" | "interaction" | "duplicate" | "drug_disease";
+  hard: boolean; text: string;
+  substance?: string; saltPair?: [string, string]; moiety?: string; icd10Prefix?: string;
+};
+export type WireLineAlerts = { lineIndex: number; alerts: WireHeldAlert[] };
+export type WirePaperTest = WireAdvisedTest & { transcribedBy?: string; transcribedByName?: string | null };
+
+export type WirePaperConsult = {
+  encounterId: string; visitNo: string; serviceDate: string; status: string;
+  patient: { id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean; administrativeGender?: string; dob?: string | null };
+  doctorId: string | null; doctorCode: string | null; doctorName: string | null;
+  tokenNo: number | null;
+  completedVia: string | null; paperCompletedAt: string | null; paperCompletedByName: string | null; evidenceKind: string | null;
+  documents: { id: string; encounterId: string; kind: string; capturedAt: string; capturedBy: string; retakeRequestedAt?: string | null }[];
+  prescription: { id: string; version: number; lines: WireRxLine[]; issuedAt: string; transcribedByName: string | null } | null;
+  held: { lines: WireRxLine[]; alerts: WireHeldAlert[][]; note: string | null; draftedByName: string | null; draftedAt: string } | null;
+  advisedTests: WirePaperTest[];
+  /** Medicines the doctor typed on the consultation screen and never issued, on a visit then closed from paper. */
+  doctorDraft?: WireRxLine[];
+  confirmedAt: string | null; confirmedByName: string | null;
+  /** "Ask the desk to re-check" (decision 0043): open while `doneAt` is null. Absent or null when never asked. */
+  recheck?: { reason: string; askedAt: string; askedByName: string | null; doneAt: string | null; doneByName: string | null; doneNote: string | null } | null;
+};
+
+export type WireTranscription = {
+  encounterId: string; visitNo: string; paper: WirePaperVerdict;
+  prescription: { prescriptionId: string; version: number; lineCount: number } | null;
+  held: { line: WireRxLine; alerts: WireHeldAlert[] }[];
+  advisedTests: WirePaperTest[];
+};
+
+const paperVisit = (encounterId: string): string => `/opd/paper/visits/${encodeURIComponent(encounterId)}`;
+
+export const fetchPaperVisit = (encounterId: string): Promise<WirePaperConsult> => api("GET", paperVisit(encounterId));
+export const checkPaperLines = (encounterId: string, lines: WireRxLine[]): Promise<{ lines: WireLineAlerts[] }> =>
+  api("POST", `${paperVisit(encounterId)}/check`, { lines });
+export const transcribePaper = (
+  encounterId: string, body: { lines: WireRxLine[]; advisedTests?: WireAdvisedTest[]; note?: string | null },
+): Promise<WireTranscription> => api("POST", `${paperVisit(encounterId)}/transcription`, body);
+export const fetchPaperConsults = (scope: "mine" | "all"): Promise<{ date: string; scope: "mine" | "all"; items: WirePaperConsult[] }> =>
+  api("GET", `/opd/paper/consults?scope=${scope}`);
+export const confirmPaperConsult = (encounterId: string): Promise<WirePaperConsult> =>
+  api("POST", `${paperVisit(encounterId)}/confirm`, {});
+export const checkPaperCorrection = (encounterId: string, lines: WireRxLine[]): Promise<{ lines: WireLineAlerts[] }> =>
+  api("POST", `${paperVisit(encounterId)}/correction-check`, { lines });
+export const correctPaperConsult = (
+  encounterId: string, body: { lines: WireRxLine[]; reasons?: { lineIndex: number; reason: string }[] },
+): Promise<WirePaperConsult> => api("POST", `${paperVisit(encounterId)}/correct`, body);
+export const askPaperRecheck = (encounterId: string, reason: string): Promise<WirePaperConsult> =>
+  api("POST", `${paperVisit(encounterId)}/recheck`, { reason });
+export const resolvePaperRecheck = (encounterId: string, note: string | null): Promise<WirePaperConsult> =>
+  api("POST", `${paperVisit(encounterId)}/recheck-done`, { note });
+export const fetchPaperSentBack = (): Promise<{ items: WirePaperConsult[] }> => api("GET", "/opd/paper/sent-back");
+export const reopenPaperConsult = (
+  encounterId: string, body: { reason: string; voidTranscription?: boolean },
+): Promise<unknown> => api("POST", `${paperVisit(encounterId)}/reopen`, body);
 
 // ——— Consult v2 (owner, 2026-09-23) ———
 

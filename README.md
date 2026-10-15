@@ -962,6 +962,11 @@ consumes the master that dispensing curates. Note that `pharmacy` is one of the 
 creates with grants and no holders, so this mints live authority to nobody until a pharmacist
 account exists.
 
+**Permissions (owner ruling, 2026-10-02): a drug monograph is written at the pharmacy and reviewed by a physician.**
+`formulary.monograph.review` goes to `medical_superintendent` and not to `pharmacy`: the Drugs and
+Therapeutics Committee's rule is that the reviewer is not the department that wrote the text. Saving a
+monograph stays under `formulary.manage`; nothing reads a monograph until it is reviewed.
+
 **Mined data is never authority.** `formulary_staging` is a lookup dictionary, not a review queue:
 the pharmacist types a name, gets the mined record pre-filling composition and schedule, verifies,
 and admits. Nothing is bulk-approved, staging rows are invisible to every resolution path, and the
@@ -1213,6 +1218,21 @@ held report could be released by nobody.
 | `lab.reports.amend` | ✓ | | | | |
 | `lab.reports.release_unpaid` | | | | ✓ | |
 | `lab.orders.place` | ✓ | | | ✓ | |
+| `lab.metrics.read` | ✓ | | | | |
+
+**Lab numbers (owner request 2026-10-13, #768).** `/lab/metrics` shows the lab's counts (orders,
+tests, reports published and delivered, by source and by test) and its turnaround times (median and
+90th percentile per report, per test step and per parameter), aggregate only and naming nobody.
+`lab.metrics.read` is held by `owner`, `admin` and `pathologist`, and any other role may be granted it.
+
+**Hospital numbers (owner request 2026-10-13, #777).** `/reports/numbers` gathers the lab's numbers
+with imaging's and the pharmacy's, one tab each, a tab shown only to a holder of its permission
+(`/lab/metrics` now opens its Lab tab). Imaging: orders, studies done, reports signed and handed over,
+by source and by modality, with median and 90th-percentile times. Pharmacy: bills, sales, returns and
+net (the sales register's own figures), prescriptions dispensed in full, in part or not at all, the
+top ten items and the goods received; margin only for a holder of `pharmacy.reports.margin`.
+`radiology.metrics.read` is held by `owner`, `admin` and `radiologist`, and any other role may be granted it.
+`pharmacy.metrics.read` is held by `owner`, `admin` and `pharmacy_incharge`, and any other role may be granted it.
 
 Thirty-four grants are held outside that table. **`doctor` gains `lab.orders.place`,
 `lab.results.read` and `lab.catalogue.read`** — the doctor orders the test and reads the result, and
@@ -1278,6 +1298,7 @@ floor raised, and the override demands a reason and is evented.
 | `radiology.pacs.interface` | | | | | ✓ | | | |
 | `radiology.pacs.reconcile` | ✓ | ✓ | | | | | | |
 | `radiology.contrast.record` | ✓ | ✓ | | | | | ✓ | |
+| `radiology.metrics.read` | ✓ | | | | | | | |
 | `pcpndt.registrations.manage` | | | | ✓ | | | | |
 | `pcpndt.registrations.read` | ✓ | | | ✓ | | | | |
 | `pcpndt.form_f.write` | ✓ | | | | | | | |
@@ -1458,6 +1479,7 @@ owner. Nobody approves a discount they asked for.
 | `pharmacy.dispense.read` | ✓ | ✓ | |
 | `pharmacy.dispense.scheduled` | ✓ | | |
 | `pharmacy.sale_items.manage` | ✓ | | |
+| `pharmacy.sale_items.discount` | | | ✓ |
 | `pharmacy.pharmacists.manage` | ✓ | | |
 | `pharmacy.register.read` | ✓ | | ✓ |
 | `pharmacy.register.read_sealed` | | | ✓ |
@@ -1466,6 +1488,7 @@ owner. Nobody approves a discount they asked for.
 | `pharmacy.downtime.enter` | ✓ | | |
 | `pharmacy.reports.read` | | | ✓ |
 | `pharmacy.reports.margin` | | | ✓ |
+| `pharmacy.metrics.read` | | | ✓ |
 | `pharmacy.ndps.custody` | ✓ | | ✓ |
 | `pharmacy.ndps.witness` | ✓ | | ✓ |
 | `pharmacy.licences.manage` | | | ✓ |
@@ -1587,6 +1610,17 @@ widens how far back the owner may look, never what they may look at, and the pat
 both is harmless: they are a lattice, not a switch, because roles combine and a role-to-horizon
 table would need a `max()` across a person's holdings that nobody writes the first time.
 
+**Nickname undo for the owner (owner ruling,
+2026-10-09).** `owner` gains `opd.masters.manage` — the owner's words: *"nickname-Undo permission for
+owner role: yes"*. The staff app's Learning page lists the medicine nicknames the suggestion system
+learned this week, and taking one back or putting it back (`POST /opd/consult/nicknames/:id/undo`,
+`…/restore`) has been guarded by this string since those routes shipped; the owner's role did not
+hold it, so the owner's own list carried no Undo. The gate on the routes is unchanged. The string
+also opens the rest of OPD masters to the owner (departments, rooms, doctors, schedules and leaves,
+look-alike pairs, voice settings, the vocabulary map) — accepted, because he is the owner. The
+Medical Superintendent's role does not gain it and reads the same list without the button. Seeding
+the grant switches nothing on: nickname learning stays behind its own switch.
+
 **The OPD day report (owner request and ruling,
 2026-09-19).** `front_office_supervisor`, `medical_superintendent` and `owner` gain
 `opd.reports.read`: the hospital's day department by department — appointments booked,
@@ -1599,6 +1633,20 @@ colleague's shift. Confidential patients are aliased against the reader's own cl
 department read writes `day_report.patients_listed` naming the reader, the day, the department, the
 format and the row count before the rows leave.
 
+**Consulted on paper (owner ruling,
+2026-10-06).** Some doctors write on paper and never open the dashboard, so a patient they have seen
+would sit "waiting" all day. `opd.consult.paper` closes a visit from the doctor's paper — a
+photographed prescription slip filed against it, or the prescription typed from it — and goes to
+exactly two seats, `opd_slip_desk` and `opd_scribe` (the owner's ruling B: "the slip desk and Desk
+scribe"). `opd_slip_desk` is new and is the smallest role that works the slip desk: it reads
+today's visits and the queue, photographs the page (`patients.update`), re-prints a slip, and holds
+no typing, money or result string. `opd_scribe` additionally gains `formulary.read` and
+`tariff.read`, the two reads the doctor's own screen uses to pick a catalogue medicine and to quote
+an advised test, because the scribe now types both. Filing a slip without `opd.consult.paper` still
+files it and closes nothing. A scribe clears no safety warning: a line that raises one is held for
+the treating doctor. A visit closed this way is reopened by the supervisor's existing
+`opd.queue.transfer`.
+
 **The roster (phase R, the owner's "top-class backbone" of
 2026-09-20).** `medical_superintendent` gains `roster.periods.manage`, `roster.periods.publish` and
 `roster.read`; `owner` gains `roster.read`. A roster is a DRAFT until somebody publishes it, and
@@ -1610,6 +1658,64 @@ holding satisfies any department, which is how the medical superintendent covers
 Until the unit system gives a unit's own people their strings, a roster exists only because the
 medical superintendent made it. The owner reads; the owner does not make the rota. **No agent, no
 copilot and no scheduled job may ever publish, amend, approve or override one**, whatever it holds.
+
+**Who is on now (20-U U5a, the roster's first screen).** `doctor`, `front_office`,
+`front_office_supervisor`, `vitals_desk` and `opd_admin` gain `roster.read`, so the people who have
+to reach a doctor can open `/roster/on-now`: per department, the unit on take and till when, who is
+in the building, the faculty on call and the backup unit; the hospital-wide services; and the holes
+in the next 24 hours. It is a READ — drafting and publishing stay with the medical superintendent —
+and the board carries no phone numbers yet. A department whose units have no published roster says
+so; it never lists the holders of a role as though they were on.
+
+**Roster — the unit's month (20-U U5b).** `/roster/month` opens one clinical unit's month: the
+proposer's draft (asked for on demand — the same draft the monthly job cuts on the 20th), one row per
+person and one column per day, and a *Before you publish* list in which every validator finding is a
+sentence naming the person and the day. A duty can be given to somebody else or left vacant; a
+warning can be accepted, with a reason, by a holder of `roster.periods.publish`; **Publish stays
+disabled, and says why, while a blocking finding stands** — the server's publish gate decides, and
+the screen shows its count. No grant changes: anybody with `roster.read` can open the month, and
+drafting and publishing remain the medical superintendent's until a head-of-department role exists.
+
+**Staff attendance (owner ruling, 2026-10-09).** HMIS keeps a copy of the attendance machine's
+records ("bioattend") and one permission guards the whole of it: `attendance.all.read` is everyone's
+attendance, including people on the machine's list who have no login here. `owner`,
+`medical_superintendent` and the new role `attendance_committee` hold it, and the committee role
+holds nothing else. There is deliberately no team permission and none for oneself: a unit head or an
+in-charge sees their own team because the team is computed from who they are, and every signed-in
+person sees their own days — as one word a day (Present, Absent, Leave, Off, Partial, or Confirm for
+a day with a single punch), without times. A request to meet about a Confirm day goes to whoever
+holds `attendance_committee`; nobody is assigned to that role by any seed.
+
+**Copilot health (decision 0064, E0.1, 2026-10-10).** Every question put to the copilot leaves one
+row in its ledger for 180 days — the masked question only, never a name or number typed into it —
+and staff see a one-line notice saying so before their first question. One permission reads the
+totals: `copilot.health.read` is held by `owner`, `admin`, `duty_manager` and the new role `quality_manager`
+(the copilot steward), and the steward role holds nothing else but the halt switch. The page shows counts, routes,
+timings, model calls and estimated AI spend for a day and never a per-person list; nobody is assigned to
+`quality_manager` by any seed.
+
+**Copilot halt switch and spend cap (plan E0.3/E0.5, decision 0064, built 2026-10-11, awaiting owner review).**
+`copilot.halt.set` (owner, admin, duty_manager, quality_manager) pauses the copilot by scope — read, act,
+draft or global; `copilot.halt.clear` (owner, duty_manager) clears read, act and draft; and
+`copilot.halt.clear_global` is held by `owner` alone. Each halt and clear is an audit event naming who.
+When the day's estimated AI spend reaches ₹5,000 (`COPILOT_DAILY_CAP_INR`), the copilot answers from its
+phrasebook only until midnight IST and the health page says so.
+
+**My duties, covers and swaps (20-U U5c/U6).** `/roster/my-duties` is a resident's phone: today, the
+rest of the week, and on every duty still ahead *"I can't do this"* — which lists who could take it
+without breaking a rule and, for everybody else, why not (*unavailable*, never the kind of leave). A
+reader may ask for cover of THEIR OWN duty and answer when they are the one asked (the act
+`request_cover`, carried by `roster.read`, which every doctor already holds); asking about somebody
+else's duty stays `roster.periods.manage`. **The duty stays theirs until it is approved**: approval
+is the act `approve_swap` — `roster.periods.publish` at the department, or a delegation of
+`approve_swap`; a delegation scoped to ONE unit lets its head approve that unit's swaps, and a
+change across two units needs the department (the HOD). The people in a request never approve it,
+the validator re-runs over both people at approval and refuses a must-fix rule by name, and an
+approved change is an amendment of the published month. `duty_manager` gains `roster.read`: any
+reader of the who-is-on board may flag a wrong name on duty in one line (*"this is wrong"*), and the
+flag stays on the board's holes card — the duty manager's to read — until somebody who can fix the
+roster marks it dealt with. Paging the duty manager is not wired yet (it needs a kernel notify
+template).
 
 **The approvals spine (owner ruling R1,
 2026-09-20).** `owner` gains `approvals.requests.read` and `approvals.requests.decide`. The role

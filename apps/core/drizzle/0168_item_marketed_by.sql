@@ -1,0 +1,1 @@
+ALTER TABLE "items" ADD COLUMN "marketed_by" text;

@@ -232,7 +232,9 @@ export const authSessionRevoked = defineEvent(
   z.object({
     sessionId: z.string(),
     userId: z.string(),
-    reason: z.enum(["terminal_switch"]),
+    // `phone_signed_in_again` — the same phone opened a new session (mobile M6a: one per phone);
+    // `phone_signed_out` — an administrator ended a phone's session (`auth.phone_signed_out` names the phone).
+    reason: z.enum(["terminal_switch", "phone_signed_in_again", "phone_signed_out"]),
     terminalId: z.string().nullable(),
   }),
 );
@@ -279,8 +281,78 @@ export const authTotpFailed = defineEvent(
   }),
 );
 
+// ——— MOBILE M6a — the phones a person is signed in on (`devices.ts`) ———
+//
+// Staff use PERSONAL phones (owner 2026-10-06). What a phone says about itself (`model`, `os`,
+// `appVersion`) is recorded as said — bounded text, never trusted. Never the app's device id
+// itself: the row id is the reference, and the id stays between the phone and `auth_devices`.
+
+/** A phone signed in for this person for the FIRST time. */
+export const authPhoneBound = defineEvent(
+  "auth.phone_bound",
+  "auth",
+  z.object({
+    userId: z.string(),
+    deviceRowId: z.string(),
+    sessionId: z.string(),
+    model: z.string().nullable(),
+    os: z.string().nullable(),
+    appVersion: z.string().nullable(),
+    ...client,
+  }),
+);
+
+/** The password was right and the sign-in was REFUSED: other phones hold every place (`PHONES_PER_USER`). */
+export const authPhoneLimitRefused = defineEvent(
+  "auth.phone_limit_refused",
+  "auth",
+  z.object({ userId: z.string(), phonesSignedIn: z.number().int(), limit: z.number().int(), model: z.string().nullable(), ...client }),
+);
+
+/** An ADMINISTRATOR ended one phone's sessions. `userId` is the phone's holder; the actor is the administrator. */
+export const authPhoneSignedOut = defineEvent(
+  "auth.phone_signed_out",
+  "auth",
+  z.object({ userId: z.string(), username: z.string(), deviceRowId: z.string(), model: z.string().nullable(), sessionsRevoked: z.number().int() }),
+);
+
+export const AUTH_PHONE_EVENTS = [authPhoneBound, authPhoneLimitRefused, authPhoneSignedOut] as const;
+
+/**
+ * M6b fix — a session opened before the app named its phone was LINKED to that phone afterwards
+ * (`devices.ts` `linkSessionToPhone`). `bound` says whether the phone is new to this person.
+ */
+export const authPhoneLinked = defineEvent(
+  "auth.phone_linked",
+  "auth",
+  z.object({ userId: z.string(), deviceRowId: z.string(), sessionId: z.string(), bound: z.boolean(), model: z.string().nullable(), appVersion: z.string().nullable(), ...client }),
+);
+
+/**
+ * MOBILE M6b — an ADMINISTRATOR sent the fixed test notification to one phone. `outcome` is what
+ * happened (`sent`, `gone`, `no_address`, `not_signed_in`, `not_configured`, `failed`). No text is
+ * carried because there is none to carry: the test sentence is a constant. Never the phone's address.
+ */
+export const authPhonePushTested = defineEvent(
+  "auth.phone_push_tested",
+  "auth",
+  z.object({ userId: z.string(), username: z.string(), deviceRowId: z.string(), outcome: z.string() }),
+);
+
 /** The M-05 catalogue, for the census in `test/auth-audit.e2e.test.ts`. */
 export const AUTH_AUDIT_EVENTS = [
   authLoginSucceeded, authLoginFailed, authPinSwitched, authBadgeSwitched, authSessionRevoked,
   authLoggedOut, authTotpEnrolled, authTotpConfirmed, authTotpVerified, authTotpFailed,
 ] as const;
+
+/**
+ * APP HOME (owner 2026-10-07, decision 0042) — a phone session proved the person is there before a
+ * money approval: `biometric` is the phone's own fingerprint check (the server cannot verify a
+ * fingerprint; it records that this signed-in phone said so), `password` and `pin` were checked here.
+ * `ok: false` is a wrong password or PIN. Never the secret.
+ */
+export const authStepUp = defineEvent(
+  "auth.step_up",
+  "auth",
+  z.object({ userId: z.string(), sessionId: z.string(), deviceRowId: z.string(), method: z.enum(["biometric", "password", "pin"]), ok: z.boolean(), ...client }),
+);

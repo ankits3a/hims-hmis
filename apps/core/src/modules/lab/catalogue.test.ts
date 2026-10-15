@@ -4,7 +4,8 @@ import { ensureRole, mkUser } from "../../../test/helpers/opd";
 import { grantPermissionToRole, syncPermissions } from "../../kernel/auth/permissions";
 import { ModuleRegistry } from "../../kernel/modules/loader";
 import { labAnalytes, labOrderables, labReflexRules, registrationConfig } from "../../kernel/db/schema";
-import { seedLabCatalogue, serviceIdForLabCode } from "../../../scripts/seed-lab-catalogue";
+import { LAB_CATALOGUE_STANDARD_DATA, seedLabCatalogue, serviceIdForLabCode } from "../../../scripts/seed-lab-catalogue";
+import { evaluateFormula } from "./formula";
 import { analytesFor, getOrderable, upsertAnalyte, upsertOrderable } from "./catalogue";
 import { labManifest } from "./manifest";
 import type { Actor } from "@hmis/contracts";
@@ -80,6 +81,35 @@ describe("the lab catalogue (17a T3)", () => {
       serviceId: "svc-x", code: "X", nameEn: "X", discipline: "biochemistry",
       specimenType: "serum", container: "sst", tatMinutesRoutine: 60, analyteCodes: [],
     })).rejects.toThrow(/measures nothing/);
+  });
+
+  /**
+   * OWNER 2026-10-11 — "enough parameters in our catalog as we have in Lal PathLabs, Pathkind, Apollo".
+   * The standard catalogue goes through the SAME upserts a curator's screen uses, so every formula is
+   * parsed, every range band checked for overlap and every foetal-sex refusal applied — a row any of
+   * them refuses fails this test, not a seed on staging.
+   */
+  describe("the standard catalogue, seeded", () => {
+    it("lands whole through every catalogue guard, keeps the golden codes and their confidentiality, and its calculations are right", async () => {
+      const report = await seedLabCatalogue(db, curator, LAB_CATALOGUE_STANDARD_DATA);
+      expect([report.orderables, report.analytes, report.activeReflexRules]).toEqual([340, 585, 0]);
+      const cbc = await analytesFor(db, serviceIdForLabCode("CBC"));
+      expect(cbc.map((a) => a.code)).toEqual(expect.arrayContaining(["RDW_SD", "LYMPH_ABS", "NLR", "PDW", "PLTCRIT"]));
+      for (const code of ["HIV", "HIV_VL", "HBV_DNA", "HCV_RNA", "TPHA"]) {
+        expect((await getOrderable(db, serviceIdForLabCode(code))).sensitive).toBe(true);
+      }
+      expect((await getOrderable(db, serviceIdForLabCode("CBNAAT"))).notifiable).toBe(true);
+
+      const all = await db.select().from(labAnalytes);
+      const f = (code: string) => all.find((a) => a.code === code)!;
+      const calc = (code: string, s: Record<string, number>) => evaluateFormula(f(code), s);
+      // 30 mg/L albumin over 100 mg/dL creatinine is 30 mg/g (the golden formula read 0.3 until 2026-10-11)
+      expect(calc("ACR", { ALB_UR: 30, UCREA: 100 })).toEqual({ computed: true, value: 30 });
+      expect(calc("LDL", { TC: 200, HDL: 50, TG: 150 })).toEqual({ computed: true, value: 120 });
+      expect(calc("LDL", { TC: 200, HDL: 50, TG: 450 })).toEqual({ computed: false, reason: "not calculable (TG < 400)" });
+      expect(calc("GLOB", { TPROT: 7, ALB: 4.2 }).computed).toBe(true);
+      expect(calc("BUN", { UREA: 30 })).toEqual({ computed: true, value: expect.closeTo(14.01, 2) as unknown as number });
+    });
   });
 
   describe("the golden fixture, seeded", () => {

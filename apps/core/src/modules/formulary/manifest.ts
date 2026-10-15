@@ -40,7 +40,12 @@ export const formularyManifest: ModuleManifest = {
     // convention), so the permission-gated link and the screen it opens cannot drift apart.
     { label: "Formulary", path: "/formulary/admin", permission: "formulary.manage" },
   ],
-  permissions: ["formulary.read", "formulary.manage", "formulary.staging.review"],
+  /*
+    `formulary.monograph.review` (owner 2026-10-02, "whatever is practised in top hospitals"): the pharmacy
+    WRITES a drug monograph and a PHYSICIAN reviews it — the Drugs and Therapeutics Committee's rule (NABH MOM).
+    Held by `medical_superintendent`, not by `pharmacy`: the reviewer is not the department that wrote it.
+  */
+  permissions: ["formulary.read", "formulary.manage", "formulary.staging.review", "formulary.monograph.review"],
   /**
    * EMPTY AND STAYING EMPTY THIS PHASE. The formulary is check-on-execute: `resolveDrugTexts` is
    * called by the prescription pipeline at issue time (T5), not driven by the event stream. A

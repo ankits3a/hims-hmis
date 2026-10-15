@@ -71,6 +71,19 @@ describe("the slip (PD-8)", () => {
     expect(screen.getByRole("checkbox", { name: /Cetzine 10/ })).toBeEnabled();
   });
 
+  /* Owner ruling 2026-10-02 — quick desk mode: no slip to see, none to confirm; the lines are worked at once. */
+  it("quick desk mode: a ticket typed from paper shows no slip banner and no slip button, and its lines are workable", async () => {
+    mockRoutes(base(() => dispense(), {
+      "GET /api/pharmacy/settings": { status: 200, body: { settings: { quickDesk: true, updatedBy: "u-admin", updatedAt: "2026-10-02T05:00:00.000Z" } } },
+    }));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    expect(await screen.findByRole("checkbox", { name: /Cetzine 10/ })).toBeEnabled();
+    await screen.findByTestId("desk-quick-mode");
+    expect(screen.queryByTestId("desk-slip-owed")).toBeNull();
+    expect(screen.queryByRole("button", { name: /See the slip/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Confirmed against the slip" })).toBeNull();
+  });
+
   it("S shows the photograph filed against THIS visit; Esc closes only the sheet", async () => {
     mockRoutes(base(() => dispense(), {
       "GET /api/patients/p1/documents": { status: 200, body: { items: [{ ...SLIP, id: "other", encounterId: "e0" }, SLIP] } },

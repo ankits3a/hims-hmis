@@ -101,6 +101,26 @@ describe("RxPrint", () => {
     expect(container.textContent ?? "").not.toMatch(/sign/i);
   });
 
+  it("TELE-CALL (owner 2026-10-09): a tele prescription prints ONE boxed line under the doctor's lines; an in-person sheet prints nothing of the kind", () => {
+    const tele = renderWithProviders(<RxPrint data={{ ...DATA, encounter: { ...DATA.encounter, tele: true } }} />);
+    const line = screen.getByTestId("rx-tele");
+    expect(line).toHaveTextContent("Tele-consultation · patient not examined");
+    expect(line.className).toContain("border");
+    // under the doctor's lines, above the patient block
+    const doctor = screen.getByTestId("rx-doctor-id");
+    expect(doctor.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(line.compareDocumentPosition(screen.getByTestId("rx-patient-name")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getAllByTestId("rx-tele")).toHaveLength(1);
+    tele.unmount();
+
+    for (const encounter of [DATA.encounter, { ...DATA.encounter, tele: false }]) {
+      const plain = renderWithProviders(<RxPrint data={{ ...DATA, encounter }} />);
+      expect(screen.queryByTestId("rx-tele")).toBeNull();
+      expect(plain.container).not.toHaveTextContent(/tele/i);
+      plain.unmount();
+    }
+  });
+
   it("print isolation: the root carries .print-doc, the print button carries .no-print and calls window.print()", async () => {
     const printSpy = vi.fn();
     vi.stubGlobal("print", printSpy);
@@ -130,7 +150,7 @@ describe("RxPrint", () => {
  * of whom saw the screen. A printed list of test names that looked like an order would send
  * somebody to a sample-collection desk that does not exist in this hospital's software.
  */
-it("07d T5: advised tests print with their price, the as-of date, and the words 'no test has been ordered'", () => {
+it("07d T5: advised tests print with their price and the as-of date (decision 0067: a free test may be ordered, so the slip no longer says none was)", () => {
   renderWithProviders(<RxPrint data={{
     ...DATA,
     encounter: {
@@ -144,9 +164,28 @@ it("07d T5: advised tests print with their price, the as-of date, and the words 
   const block = screen.getByTestId("rx-advised-tests");
   expect(block).toHaveTextContent("Ultrasound abdomen");
   expect(block).toHaveTextContent("₹1,200.00");
-  expect(block).toHaveTextContent(/no test has been ordered or booked/i);
+  expect(block).not.toHaveTextContent(/no test has been ordered/i);
   // E-9 — the slip names the day it is quoting, because the counter reprices.
   expect(block).toHaveTextContent(DATA.encounter.serviceDate);
+});
+
+it("decision 0067: an outside test prints under 'Tests to be done outside', without a price, and not in the hospital list", () => {
+  renderWithProviders(<RxPrint data={{
+    ...DATA,
+    encounter: {
+      ...DATA.encounter,
+      advisedTests: [
+        { serviceId: "svc-usg", code: "USG-ABD", name: "Ultrasound abdomen", pricePaise: 120000 },
+        { serviceId: "OUTSVC-ECG", code: "OUT-ECG", name: "ECG (12-lead)", pricePaise: 0 },
+      ],
+      outsideTestIds: ["OUTSVC-ECG"],
+    },
+  }} />);
+  const outside = screen.getByTestId("rx-outside-tests");
+  expect(outside).toHaveTextContent("Tests to be done outside");
+  expect(outside).toHaveTextContent("ECG (12-lead)");
+  expect(outside).not.toHaveTextContent("₹");
+  expect(screen.getByTestId("rx-advised-tests")).not.toHaveTextContent("ECG");
 });
 
 it("07d T5: a prescription with no advised tests prints no such block at all", () => {
@@ -264,3 +303,49 @@ describe("RxPrint — the prescriber is the Doctor ID only (H)", () => {
   });
 });
 
+
+/* ═══ OWNER 2026-10-04 — Unit Number and Dept. Regn; never a doctor's name, never "Guest Faculty" ═══ */
+it("2026-10-04: a unit doctor's e-Rx prints the department, Unit Number = the unit and the head's Dept. Regn — no name, no Doctor ID", () => {
+  renderWithProviders(<RxPrint data={{ ...DATA, doctor: { unitNumber: "Unit I", deptRegn: "BR-HEAD-77", departmentName: "General Medicine" } }} />);
+  expect(screen.getByTestId("rx-department")).toHaveTextContent("General Medicine");
+  expect(screen.getByTestId("rx-unit-number")).toHaveTextContent("Unit Number: Unit I");
+  expect(screen.getByTestId("rx-dept-regn")).toHaveTextContent("Dept. Regn: BR-HEAD-77");
+  expect(screen.queryByTestId("rx-doctor-id")).toBeNull();
+  expect(document.body).not.toHaveTextContent("DR-0114");
+});
+
+it("2026-10-04: Guest Faculty prints the Doctor ID as the Unit Number and a blank Dept. Regn when none — never 'Guest Faculty'", () => {
+  renderWithProviders(<RxPrint data={{ ...DATA, doctor: { unitNumber: "DR-0001", deptRegn: null, departmentName: "Paediatrics" } }} />);
+  expect(screen.getByTestId("rx-unit-number")).toHaveTextContent("Unit Number: DR-0001");
+  expect(screen.getByTestId("rx-dept-regn").textContent).toBe("Dept. Regn: ");
+  expect(document.body).not.toHaveTextContent("Guest Faculty");
+});
+
+/**
+ * Owner ruling 2026-10-06 — a prescription the desk TYPED from the doctor's paper must not pass for
+ * one the doctor keyed. The print names the desk that typed it and says the signed paper is the
+ * original; a prescription the doctor issued on the screen carries no such line.
+ */
+describe("RxPrint — a transcription says it is one", () => {
+  it("typed from paper: the sheet says who typed it and that the signed paper is the original", () => {
+    renderWithProviders(<RxPrint data={{ ...DATA, transcribedByName: "Priya Kumari" }} />);
+    const note = screen.getByTestId("rx-transcribed");
+    expect(note).toHaveTextContent("Typed from the doctor's paper prescription by Priya Kumari.");
+    expect(note).toHaveTextContent("The paper the doctor signed is the original");
+    /* It is INSIDE the printed document, not a screen-only hint. */
+    expect(note.closest(".print-doc")).not.toBeNull();
+  });
+  it("keyed by the doctor (or an older server that says nothing): no such line", () => {
+    renderWithProviders(<RxPrint data={DATA} />);
+    expect(screen.queryByTestId("rx-transcribed")).not.toBeInTheDocument();
+    renderWithProviders(<RxPrint data={{ ...DATA, transcribedByName: null }} />);
+    expect(screen.queryByTestId("rx-transcribed")).not.toBeInTheDocument();
+  });
+});
+
+/* Owner 2026-10-08 — a finger-prick glucose taken at the bay prints with WHEN it was taken, and never with a verdict. */
+it("prints the glucose and its timing at the end of the vitals line, and nothing when none was taken", () => {
+  renderWithProviders(<RxPrint data={{ ...DATA, vitals: { ...DATA.vitals!, glucoseMgDl: 186, glucoseTiming: "after_food" } }} />);
+  expect(screen.getByTestId("rx-vitals")).toHaveTextContent("BP 120/80 · P 72 · SpO₂ 98% · T 37.0 °C · Wt 60 kg · Glucose 186 mg/dL (after food)");
+  expect(screen.getByTestId("rx-vitals")).not.toHaveTextContent(/high|low|normal/i);
+});

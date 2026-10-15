@@ -4,7 +4,7 @@ import {
 } from "@nestjs/common";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { z } from "zod";
-import { DB } from "../tokens";
+import { CONFIG, DB } from "../tokens";
 import { CurrentActor, RequirePermission } from "../auth/decorators";
 import { withTx } from "../db/client";
 import { appendEvent } from "../events/append";
@@ -12,8 +12,13 @@ import { roleAssignments, rolePermissions, users } from "../db/schema";
 import { createUser, deactivateUser, reactivateUser, setPassword, setPin } from "./identity";
 import { revokeUserSessions } from "./sessions";
 import { checkPassword, checkPin } from "./password-policy";
-import { userCreated, userCredentialReset, userDeactivated, userReactivated } from "./events";
+import { authPhonePushTested, authPhoneSignedOut, authSessionRevoked, userCreated, userCredentialReset, userDeactivated, userReactivated } from "./events";
+import { PHONES_PER_USER, listPhones, signOutPhone } from "./devices";
 import { authManifest } from "./manifest";
+import { sendTestPush } from "../push/phone-push";
+import type { TestPushOutcome } from "../push/phone-push";
+import { sharedPhonePushSource } from "../push/sender";
+import type { AppConfig } from "../config";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../db/client";
 
@@ -292,7 +297,10 @@ export async function assertNoAdminLockout(
 
 @Controller("admin/users")
 export class UsersAdminController {
-  constructor(@Inject(DB) private readonly db: Db) {}
+  constructor(
+    @Inject(DB) private readonly db: Db,
+    @Inject(CONFIG) private readonly cfg: AppConfig,
+  ) {}
 
   private async requireUser(tx: Tx, id: string): Promise<{ id: string; username: string }> {
     const rows = await tx
@@ -528,5 +536,97 @@ export class UsersAdminController {
         }),
       );
     });
+  }
+
+  /**
+   * ═══ MOBILE M6a — THE PHONES A PERSON IS SIGNED IN ON (owner 2026-10-06: personal phones) ═══
+   *
+   * What the administrator reads before deciding: each phone the staff app has signed in on for
+   * this person — what it says it is, when it was first and last seen, and whether it holds a
+   * session NOW. Deactivating the person or resetting their password already ends every session,
+   * phones included (above); this list is for the narrower case, one lost phone.
+   */
+  @RequirePermission(USERS_MANAGE, "hospital")
+  @Get(":id/phones")
+  async phones(@Param("id") id: string): Promise<{
+    limit: number;
+    /** Mobile M6b — the server holds a Firebase key and can send a notification at all. */
+    notificationsConfigured: boolean;
+    phones: {
+      id: string; model: string | null; osVersion: string | null; appVersion: string | null;
+      firstSeenAt: string; lastSeenAt: string; lastIp: string | null; signedIn: boolean; signedInSince: string | null;
+      notifications: boolean;
+    }[];
+  }> {
+    return withTx(this.db, async (tx) => {
+      await this.requireUser(tx, id);
+      const phones = await listPhones(tx, id);
+      return {
+        limit: PHONES_PER_USER,
+        notificationsConfigured: sharedPhonePushSource(this.cfg.fcmServiceAccountFile).current() !== null,
+        phones: phones.map((p) => ({
+          id: p.id, model: p.model, osVersion: p.osVersion, appVersion: p.appVersion,
+          firstSeenAt: p.firstSeenAt.toISOString(), lastSeenAt: p.lastSeenAt.toISOString(), lastIp: p.lastIp,
+          signedIn: p.signedIn, signedInSince: p.signedInSince === null ? null : p.signedInSince.toISOString(),
+          notifications: p.notifications,
+        })),
+      };
+    });
+  }
+
+  /**
+   * SIGN ONE PHONE OUT. Every live session opened on that phone ends in this transaction, so the
+   * app's very next call is a 401 and it returns to sign-in. It confers nothing — no credential is
+   * set, so the takeover rule (`assertMayTakeOver`) does not apply, exactly as for deactivate — and
+   * it takes nothing but that phone's session: the person's password, PIN and other sessions stand.
+   * A phone that holds no session answers `sessionsRevoked: 0` and is still evented: the
+   * administrator's act is the record, whatever it found.
+   */
+  @RequirePermission(USERS_MANAGE, "hospital")
+  @Post(":id/phones/:phoneId/sign-out")
+  @HttpCode(200)
+  async signOutPhone(
+    @CurrentActor() actor: Actor,
+    @Param("id") id: string,
+    @Param("phoneId") phoneId: string,
+  ): Promise<{ sessionsRevoked: number }> {
+    return withTx(this.db, async (tx) => {
+      const user = await this.requireUser(tx, id);
+      const ended = await signOutPhone(tx, id, phoneId);
+      if (ended === null) throw new NotFoundException({ code: "phone_not_found" });
+      for (const sessionId of ended.sessionIds) {
+        await appendEvent(tx, authSessionRevoked.make({ actor, payload: { sessionId, userId: id, reason: "phone_signed_out", terminalId: null } }));
+      }
+      await appendEvent(tx, authPhoneSignedOut.make({
+        actor,
+        payload: { userId: id, username: user.username, deviceRowId: phoneId, model: ended.model, sessionsRevoked: ended.sessionIds.length },
+      }));
+      return { sessionsRevoked: ended.sessionIds.length };
+    });
+  }
+
+  /**
+   * MOBILE M6b — SEND THE TEST NOTIFICATION TO ONE PHONE. The sentence is a constant ("Test — this
+   * phone can receive HMIS notifications"), so there is nothing an administrator can type into a
+   * colleague's lock screen. It answers what happened rather than failing: `sent`, `gone` (Firebase
+   * says that address is dead — it was forgotten), `no_address` (the phone never switched
+   * notifications on), `not_signed_in`, `not_configured` (no Firebase key on this server) or
+   * `failed` (Firebase refused; try again). The act is evented whatever it found.
+   */
+  @RequirePermission(USERS_MANAGE, "hospital")
+  @Post(":id/phones/:phoneId/test-notification")
+  @HttpCode(200)
+  async testNotification(
+    @CurrentActor() actor: Actor,
+    @Param("id") id: string,
+    @Param("phoneId") phoneId: string,
+  ): Promise<{ outcome: TestPushOutcome }> {
+    const user = await withTx(this.db, (tx) => this.requireUser(tx, id));
+    const outcome = await sendTestPush(this.db, sharedPhonePushSource(this.cfg.fcmServiceAccountFile).current(), id, phoneId);
+    if (outcome === null) throw new NotFoundException({ code: "phone_not_found" });
+    await withTx(this.db, (tx) => appendEvent(tx, authPhonePushTested.make({
+      actor, payload: { userId: id, username: user.username, deviceRowId: phoneId, outcome },
+    })));
+    return { outcome };
   }
 }

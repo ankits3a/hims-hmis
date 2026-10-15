@@ -1,6 +1,6 @@
 import { DEFAULT_DANGER_RANGES } from "./config";
 import {
-  bandFor, evaluateVitals, inputToReadings, missingRequired, muacZone, readingsToInput, validateVitalsRanges,
+  bandFor, CHILD_UNDER_YEARS, evaluateVitals, inputToReadings, missingRequired, requiredFor, muacZone, readingsToInput, sanityGates, validateVitalsRanges,
 } from "./vitals-rules";
 import { VITAL_KEYS } from "./config";
 import type { Readings } from "./vitals-rules";
@@ -15,7 +15,9 @@ describe("vitals rules (pure)", () => {
     ]);
   });
   it("missingRequired: the band's list, plus weight under 18", () => {
-    expect(missingRequired({}, 40, cfg)).toEqual(["heightCm", "weightKg", "sbp", "dbp", "tempC", "spo2", "pulse"]);
+    // Owner 2026-10-05: temperature is never demanded — the adult list no longer carries it.
+    // Owner 2026-10-08: nor is SpO₂ — it is behind "+" (vitals-plus.test.ts holds the ruling's own suite).
+    expect(missingRequired({}, 40, cfg)).toEqual(["heightCm", "weightKg", "sbp", "dbp", "pulse"]);
     expect(missingRequired(adultOk, 40, cfg)).toEqual([]);
     // VD-1 T1 / D5 — MUAC joined both under-six bands' required lists, so these two rows moved.
     // The change is the point of the task and is asserted directly below; they are updated here
@@ -151,5 +153,35 @@ describe("VD-1 T1 — the reading model", () => {
     expect(evaluateVitals({ tempC: 38.2 }, bandFor(40, cfg), cfg)).toEqual([]);
     expect(evaluateVitals({ tempC: 38.2 }, bandFor(11, cfg), cfg))
       .toEqual([{ vital: "tempC", value: 38.2, bound: "max", limit: 37.9, severity: "notice" }]);
+  });
+});
+
+describe("owner 2026-10-05 — temperature optional, a child's BP optional", () => {
+  it("never requires temperature, at any age, while still range-checking it when typed", () => {
+    for (const age of [0, 3, 8, 12, 13, 40, null]) expect(requiredFor(bandFor(age, cfg), age)).not.toContain("tempC");
+    expect(missingRequired({ ...adultOk, tempC: undefined }, 40, cfg)).toEqual([]);
+    expect(evaluateVitals({ ...adultOk, tempC: 39.9 }, bandFor(40, cfg)).map((f) => f.vital)).toEqual(["tempC"]);
+  });
+  // Owner 2026-10-08 moved the BP line for REQUIREDNESS from 13 to 18 (vitals-must-fill-by-age.test.ts is its book); the band line stays 13.
+  it("does not require BP of a minor (under 18), and still does from 18", () => {
+    expect(CHILD_UNDER_YEARS).toBe(13);
+    const child = { heightCm: 130, weightKg: 28, pulse: 90, spo2: 98 };
+    expect(missingRequired(child, 8, cfg)).toEqual([]);
+    expect(missingRequired(child, 12, cfg)).toEqual([]);
+    expect(missingRequired({ ...child, weightKg: 45 }, 13, cfg)).toEqual([]);
+    expect(missingRequired({ ...child, weightKg: 45 }, 18, cfg)).toEqual(["sbp", "dbp"]);
+    expect(missingRequired({ ...adultOk, sbp: undefined, dbp: undefined }, null, cfg)).toEqual(["sbp", "dbp"]); // unknown age → adult
+  });
+  it("leaves the emergency set alone — an emergency still demands the cuff", () => {
+    expect(missingRequired({ pulse: 100, spo2: 97 }, 8, cfg, { emergency: true })).toEqual(["sbp", "dbp"]);
+  });
+});
+
+describe("2026-10-13 — a child's height is expected to change", () => {
+  it("does not gate a child who grew 6 cm since the last visit", () => {
+    expect(sanityGates({ heightCm: 98 }, 4, cfg, { heightCm: 92 })).toEqual([]);
+  });
+  it("still gates an adult whose height moved 3 cm", () => {
+    expect(sanityGates({ heightCm: 148 }, 40, cfg, { heightCm: 151 })).toMatchObject([{ key: "heightCm", kind: "shrinking_adult", value: 148, suggestion: 151 }]);
   });
 });

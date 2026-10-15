@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { paperState } from "../../../../packages/contracts/src/desk-counter";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -28,6 +29,10 @@ export type WirePrintJob = {
   printedAt: string | null;
   /** FD-25 — so a reprint can be told from the row it replaces without trusting the route's order. */
   createdAt: string;
+  /** BROWSER PRINTING (owner 2026-10-07) — a relay inside the hospital is serving this paper's printer. Absent from an older server. */
+  served?: boolean;
+  /** Who put it on paper: a relay, or a counter's own browser. `null` until printed. */
+  printedVia?: "relay" | "browser" | null;
 };
 
 /** Every job queued for one visit, newest first. Scoped to the patient in hand, never a queue browser. */
@@ -171,24 +176,50 @@ export function printSummary(jobs: WirePrintJob[]): {
 
     A DOCUMENT HAS ONE CURRENT STATE and it is the newest row's. Grouping by document and taking the
     latest `createdAt` is the whole fix: two rows for one slip are two ATTEMPTS at one thing, not
-    two things.
+    two things. (The grouping is `paperState` in packages/contracts/src/desk-counter.ts since
+    2026-10-06 — the phone's Desk One reads the same rule.)
   */
-  const latestPerDocument = new Map<string, WirePrintJob>();
-  for (const job of jobs) {
-    const held = latestPerDocument.get(job.document);
-    if (held === undefined || job.createdAt > held.createdAt) latestPerDocument.set(job.document, job);
-  }
-  const current = [...latestPerDocument.values()];
+  const { current, failed, pending } = paperState(jobs);
 
-  const failed = current.filter((j) => j.status === "failed");
   if (failed.length > 0) {
     /* De-duplicated by construction now: one entry per document, so one name per document. */
     const names = failed.map((j) => PRINT_DOCUMENT_LABEL[j.document] ?? j.document).join(" and ");
     return { state: "failed", text: `The ${names} did not print.`, failed };
   }
-  const pending = current.filter((j) => j.status === "queued" || j.status === "claimed");
   if (pending.length > 0) {
     return { state: "waiting", text: `Printing ${String(pending.length)} of ${String(current.length)}…`, failed: [] };
   }
   return { state: "printed", text: "Slip and sheet printed.", failed: [] };
 }
+
+/* ── THE COUNTER'S OWN PRINT PROGRAM (decision 0047) ─────────────────────────────────────────── */
+
+/** What a desk's browser may link itself to: a name, the printer it reported, and whether it is asking for work. */
+export type WireHereComputer = { id: string; name: string; printer: string | null; alive: boolean };
+export function listComputersHere(): Promise<{ computers: WireHereComputer[] }> {
+  return api("GET", "/print/computers/here");
+}
+
+/** "Print this on the computer I am sitting at." `sent: false` carries why, and the browser prints instead. */
+export function sendJobToComputer(jobId: string, computerId: string): Promise<{ sent: boolean; reason: string | null }> {
+  return api("POST", `/print/jobs/${encodeURIComponent(jobId)}/send-to-computer`, { computerId });
+}
+
+export type WirePrintComputer = {
+  id: string; name: string; printer: string | null; printers: string[]; platform: string | null; appVersion: string | null;
+  lastSeenAt: string | null; alive: boolean; revoked: boolean; createdAt: string;
+};
+export function listPrintComputers(): Promise<{ aliveSeconds: number; computers: WirePrintComputer[] }> {
+  return api("GET", "/print/computers");
+}
+export function issuePrintComputerCode(name: string): Promise<{ code: string; expiresAt: string }> {
+  return api("POST", "/print/computers/codes", { name });
+}
+export function revokePrintComputer(id: string): Promise<{ revoked: boolean }> {
+  return api("POST", `/print/computers/${encodeURIComponent(id)}/revoke`);
+}
+export function testPrintComputer(id: string): Promise<{ jobId: string | null }> {
+  return api("POST", `/print/computers/${encodeURIComponent(id)}/test`);
+}
+/** The installer. Same folder as the staff app's files; on staging it sits behind the staging password. */
+export const PRINT_PROGRAM_DOWNLOAD = "/app/hmis-print-latest-win-x64.zip";

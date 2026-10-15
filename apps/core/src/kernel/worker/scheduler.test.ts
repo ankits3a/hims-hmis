@@ -21,8 +21,14 @@ import * as radiologyChasersMod from "../../modules/radiology/chasers";
 import * as radiologyEscalationsMod from "../../modules/radiology/escalations";
 import * as rosterCalendarMod from "../../modules/roster/calendar";
 import * as rosterProposerMod from "../../modules/roster/proposer";
+import * as rosterBoardPrintMod from "../../modules/roster/board-print";
+import * as rosterStaffNoticesMod from "../../modules/roster/staff-notices";
+import * as opdQueueNudgesMod from "../../modules/opd/queue-nudges";
 import * as pharmacyMessagesMod from "../../modules/pharmacy/messages";
 import * as aerbQaMod from "../../modules/aerb/qa";
+import * as opdAliasRunnerMod from "../../modules/opd/alias-runner";
+import * as attendanceSyncMod from "../../modules/attendance/sync";
+import * as opdTeleMod from "../../modules/opd/tele";
 import * as dispatcherMod from "../events/dispatcher";
 import * as timersMod from "../workflow/timers";
 import * as tempRolesMod from "../auth/temp-roles";
@@ -33,6 +39,7 @@ import * as notifyPumpMod from "../notify/pump";
 import * as reachMod from "../notify/reach";
 import * as partitionsMod from "./partitions";
 import * as retentionMod from "../retention/sweep";
+import * as copilotLedgerMod from "../copilot/ledger";
 import * as interfacesMod from "../ops/interfaces";
 import * as materialsExpiryMod from "../../modules/materials/expiry";
 import * as otListsMod from "../../modules/ot/lists";
@@ -258,6 +265,11 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
       invoked.push("createEventPartitions");
       return [];
     }),
+    // E0.1 (decision 0064) — the copilot ask prune, always on; its behaviour is `copilot/ledger.test.ts`'s.
+    jest.spyOn(copilotLedgerMod, "runCopilotAskPrune").mockImplementation(async () => {
+      invoked.push("pruneCopilotAsks");
+      return 0;
+    }),
     jest.spyOn(retentionMod, "retentionSweep").mockImplementation(async () => {
       invoked.push("retentionSweep");
       return {
@@ -362,6 +374,27 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
       return { skipped: true, drafted: 0, units: 0 };
     }),
     /**
+     * 20-U infra (owner 2026-10-04) — the duty board's print, stubbed on `modules/roster/board-print`
+     * (the module the index re-exports FROM, the eleventh's rule). Un-stubbed it would draw the board
+     * and write a print record inside a fake-clock test that is about the CLOCK; its behaviour is
+     * asserted in `test/roster-board-print.e2e.test.ts`.
+     */
+    jest.spyOn(rosterBoardPrintMod, "printBoardIfDue").mockImplementation(async () => {
+      invoked.push("printRosterBoard");
+      return null;
+    }),
+    /**
+     * MOBILE §3i (owner 2026-10-07) — the staff notices: ONE job, two sweeps, each stubbed on the
+     * module it lives in. Un-stubbed they would read the published roster and today's doctor-days
+     * of a database this CLOCK test must not touch; their behaviour is asserted in
+     * `modules/roster/swaps.test.ts` and `modules/opd/queue-nudges.test.ts`.
+     */
+    jest.spyOn(rosterStaffNoticesMod, "sweepDutyReminders").mockImplementation(async () => {
+      invoked.push("sweepStaffNotices");
+      return 0;
+    }),
+    jest.spyOn(opdQueueNudgesMod, "sweepQueueNudges").mockImplementation(async () => 0),
+    /**
      * PHARMACY P6 (patient messages) — the refill reminders, stubbed on `modules/pharmacy/messages` (the
      * module the index re-exports FROM, the eleventh's rule). Un-stubbed it would read the preferences
      * and dispenses of a database this CLOCK test has no business touching; its behaviour is asserted
@@ -375,6 +408,28 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
      * 18-S RS11 T3 — stubbed on `modules/aerb/qa`, the module the index re-exports FROM (the
      * eleventh's rule). Its behaviour is asserted in `modules/aerb/qa-overdue.test.ts`.
      */
+    /**
+     * NICKNAMES (decision 0051) — stubbed on `modules/opd/alias-runner`, the module the index re-exports
+     * FROM. Its behaviour (the switch, the caps, the 30-day retry) is asserted in `modules/opd/alias-live.test.ts`.
+     */
+    jest.spyOn(opdAliasRunnerMod, "runAliasJob").mockImplementation(async () => {
+      invoked.push("proposeMedicineNicknames");
+      return { ran: false };
+    }),
+    /**
+     * STAFF ATTENDANCE (owner 2026-10-09) — the twenty-ninth, stubbed on `modules/attendance/sync`, the module the index
+     * re-exports FROM. Its behaviour (off = zero calls, the stages, the cursor) is asserted in
+     * `modules/attendance/sync.test.ts`.
+     */
+    jest.spyOn(attendanceSyncMod, "syncAttendance").mockImplementation(async () => {
+      invoked.push("syncAttendance");
+      return { ran: false, why: "not_configured" };
+    }),
+    // TELE-CALL (owner 2026-10-09) — the twenty-eighth, stubbed on `modules/opd/tele` (the file jobs.ts imports FROM).
+    jest.spyOn(opdTeleMod, "openDueTeleVisits").mockImplementation(async () => {
+      invoked.push("openDueTeleVisits");
+      return { due: 0, opened: 0, failed: 0 };
+    }),
     jest.spyOn(aerbQaMod, "sweepOverdueQa").mockImplementation(async () => {
       invoked.push("sweepOverdueQa");
       return { blocked: [], skipped: [] };
@@ -418,6 +473,8 @@ const THE_EIGHTEEN = [
   // and this array stays the REGISTRATION order rather than an alphabetical one.
   "rollupUserDayFacts",
   "retentionSweep",
+  // E0.1 (decision 0064) — the copilot ask prune, daily 01:20 IST, registered right after the sweep.
+  "pruneCopilotAsks",
   "sweepInterfaceHeartbeats",
   /**
    * PLAN 17a T5 / DD20 — the FOURTEENTH and FIFTEENTH, registered together after the interface
@@ -467,6 +524,16 @@ const THE_EIGHTEEN = [
   "sweepOverdueQa",
   // 18-S RS10 T2 — the TWENTY-FOURTH, `every(60_000)`: the HOD's escalations on the obligation spine.
   "sweepImagingEscalations",
+  // 20-U infra (owner 2026-10-04) — the TWENTY-FIFTH, `every(60_000)`: the duty board's 20:00/08:00 print.
+  "printRosterBoard",
+  // MOBILE §3i (owner 2026-10-07) — the TWENTY-SIXTH, `every(60_000)`: duty reminders and the doctor's "you are not in".
+  "sweepStaffNotices",
+  // NICKNAMES (decision 0051, owner 2026-10-08) — the TWENTY-SEVENTH, `every(3_600_000)`: unmatched medicine words → proposals. Off by default.
+  "proposeMedicineNicknames",
+  // TELE-CALL (owner 2026-10-09) — the TWENTY-EIGHTH, `every(60_000)`: a covered tele appointment becomes a visit at its slot.
+  "openDueTeleVisits",
+  // STAFF ATTENDANCE (owner 2026-10-09) — the TWENTY-NINTH, `every(120_000)`: HMIS's copy of the attendance machine. Off until configured.
+  "syncAttendance",
 ];
 
 /**
@@ -663,6 +730,7 @@ describe("Scheduler", () => {
       6 * HOUR_MS + 35 * MINUTE_MS, // 18:35Z = 00:05 IST 08-22 · sweepGuardianMajority
       6 * HOUR_MS + 45 * MINUTE_MS, // 18:45Z = 00:15 IST 08-22 · createEventPartitions
       7 * HOUR_MS + 45 * MINUTE_MS, // 19:45Z = 01:15 IST 08-22 · retentionSweep
+      7 * HOUR_MS + 50 * MINUTE_MS, // 19:50Z = 01:20 IST 08-22 · pruneCopilotAsks (E0.1)
       // PLAN 07c T8 — 20:30Z 08-21 = 02:00 IST 08-22 · rollupUserDayFacts. An hour after the
       // retention sweep, which is where `jobs.ts` puts it and why: a partition DROP takes ACCESS
       // EXCLUSIVE on `events` and there is nothing to gain by queueing the roll behind it.

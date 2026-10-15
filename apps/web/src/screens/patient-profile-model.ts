@@ -10,7 +10,7 @@
 import type { WireTimelineItem } from "../lib/opd-api";
 import type { WireDueRow, WireInvoice } from "../lib/billing-api";
 import type { WirePatientDispense, WirePatientImaging, WirePatientResult } from "../lib/brief-history";
-import type { WirePatientReports } from "../lib/lab-api";
+import type { WirePatientReports, WireRecentLabOrder } from "../lib/lab-api";
 import type { WirePatientDocument } from "../lib/patients-api";
 import { fmtPaise } from "../lib/format";
 
@@ -54,6 +54,8 @@ export type TimelineRow = {
   /** Sort key within the day, newest first (ISO instant or the day itself). */
   at: string;
   title: string;
+  /** Owner 2026-10-05 — an OPD row's visit, so the row opens the visit card. */
+  encounterId?: string;
   /** The part of the title drawn in brick red (an abnormal value, a critical impression). */
   alert?: string;
   sub: string | null;
@@ -65,6 +67,10 @@ export type TimelineRow = {
   owing?: boolean;
   /** A document the row can open. */
   documentId?: string;
+  /** Owner 2026-10-11 — a lab visit's number: the row opens that visit's tests and reports. */
+  labVisitNo?: string;
+  /** Short tags drawn under the title (a lab visit's test codes: CBC · LFT · KFT). */
+  tags?: string[];
 };
 
 export type TimelineSources = {
@@ -73,6 +79,8 @@ export type TimelineSources = {
   labResults?: WirePatientResult[];
   /** `lab.reports.print` — report rows WITHOUT values, for a counter seat. */
   labReports?: WirePatientReports;
+  /** The person's lab orders (either lab grant) — names a lab visit's tests and folds its reports into it. */
+  labOrders?: WireRecentLabOrder[];
   imaging?: WirePatientImaging[];
   invoices?: WireInvoice[];
   dues?: WireDueRow[];
@@ -83,6 +91,8 @@ export type TimelineSources = {
 export type Labels = {
   /** `opd.consult` holder: the diagnosis code and the medicine count are drawn. */
   clinical: boolean;
+  /** Owner 2026-10-11 — the title of a lab counter walk-in visit row. */
+  labVisit: string;
   visit: (visitNo: string) => string;
   medicines: (n: number) => string;
   labSigned: string;
@@ -118,9 +128,15 @@ export function buildTimeline(src: TimelineSources, l: Labels): TimelineRow[] {
     const parts: string[] = [];
     if (v.diagnosis !== null && v.diagnosis !== "") parts.push(l.clinical && v.icd10Code !== null ? `${v.diagnosis} (${v.icd10Code})` : v.diagnosis);
     if (l.clinical && v.prescriptionLineCount > 0) parts.push(l.medicines(v.prescriptionLineCount));
+    /** Owner 2026-10-11 — a lab walk-in is a LAB row with no OPD visit card (no token, no OPD papers). */
+    const lab = v.type === "lab";
+    const codes = lab ? testCodesOf(src.labOrders, v.visitNo) : [];
     rows.push({
-      key: `opd-${v.encounterId}`, source: "OPD", day: v.serviceDate, at: v.openedAt,
-      title: who === "" ? "OPD" : who, sub: parts.length === 0 ? null : parts.join(" · "),
+      key: `opd-${v.encounterId}`, source: lab ? "LAB" : "OPD", day: v.serviceDate, at: v.openedAt,
+      ...(lab ? {} : { encounterId: v.encounterId }),
+      ...(lab && v.visitNo !== undefined && v.visitNo !== "" ? { labVisitNo: v.visitNo } : {}),
+      ...(codes.length > 0 ? { tags: codes } : {}),
+      title: lab ? l.labVisit : who === "" ? "OPD" : who, sub: lab ? (who === "" ? null : who) : parts.length === 0 ? null : parts.join(" · "),
       ...(v.visitNo !== undefined && v.visitNo !== "" ? { note: l.visit(v.visitNo) } : {}),
     });
   }
@@ -143,7 +159,10 @@ export function buildTimeline(src: TimelineSources, l: Labels): TimelineRow[] {
       });
     }
   } else if (src.labReports !== undefined) {
+    /** A lab visit's reports open from the visit itself (owner 2026-10-11), not as rows of their own. */
+    const folded = labVisitNos(src.visits);
     for (const r of src.labReports.reports) {
+      if (folded.has(r.encounterNo)) continue;
       const at = r.publishedAt ?? `${r.serviceDate}T00:00:00.000Z`;
       rows.push({
         key: `labr-${r.reportId}`, source: "LAB", day: r.publishedAt !== null ? istDay(r.publishedAt) : r.serviceDate, at,
@@ -185,6 +204,21 @@ export function buildTimeline(src: TimelineSources, l: Labels): TimelineRow[] {
   return rows.sort((a, b) => (a.day !== b.day ? (a.day < b.day ? 1 : -1) : a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
 }
 
+/** The visit numbers of the person's lab visits (`type = 'lab'`). */
+export function labVisitNos(visits: WireTimelineItem[] | undefined): Set<string> {
+  return new Set((visits ?? []).filter((v) => v.type === "lab" && v.visitNo !== undefined && v.visitNo !== "").map((v) => v.visitNo!));
+}
+
+/** The test codes ordered on one visit, first-ordered first, once each; cancelled orders and restricted tests left out. */
+export function testCodesOf(orders: WireRecentLabOrder[] | undefined, visitNo: string | undefined): string[] {
+  if (orders === undefined || visitNo === undefined || visitNo === "") return [];
+  const out: string[] = [];
+  for (const o of [...orders].filter((x) => x.encounterNo === visitNo && x.stage !== "cancelled").sort((a, b) => (a.placedAt < b.placedAt ? -1 : 1))) {
+    for (const t of o.tests) if (t.code !== "—" && !out.includes(t.code)) out.push(t.code);
+  }
+  return out;
+}
+
 /** Rows grouped under their day, newest day first (the input is already sorted). */
 export function groupByDay(rows: TimelineRow[]): { day: string; rows: TimelineRow[] }[] {
   const out: { day: string; rows: TimelineRow[] }[] = [];
@@ -206,5 +240,9 @@ export function duesSummary(dues: WireDueRow[] | undefined): { totalPaise: numbe
 /** Today's visits that are still open — "where are they now". */
 export function openVisitsToday(visits: WireTimelineItem[] | undefined, today: string): WireTimelineItem[] {
   const ended = new Set(["completed", "closed", "cancelled", "abandoned", "ended", "no_show"]);
-  return (visits ?? []).filter((v) => v.serviceDate === today && !ended.has(v.status));
+  /**
+   * Owner 2026-10-11 — only an OPD visit is "where they are now": a lab walk-in or a pharmacy visit is
+   * never in an OPD queue (the lab's own work shows in the Today band as tests in progress).
+   */
+  return (visits ?? []).filter((v) => v.serviceDate === today && !ended.has(v.status) && (v.type ?? "opd") === "opd");
 }

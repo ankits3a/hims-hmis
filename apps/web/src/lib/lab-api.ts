@@ -144,24 +144,34 @@ export type WireAdvisedLine = {
   serviceId: string; code: string; name: string; pricePaise: number;
   orderable: { container: string; specimenType: string; consentRequired: boolean; sensitive: boolean; requiresFasting: boolean } | null;
   alreadyOrderedItemId: string | null;
+  /** Owner ruling 2026-10-06 — the desk scribe who typed this test from the doctor's paper; null/absent when the doctor advised it on the screen. */
+  typedFromPaperBy?: string | null;
 };
 
 export type WireDeskFindHit = {
   matchedOn: "token" | "visit" | "order" | "uhid" | "mobile" | "name";
-  patient: { id: string; uhid: string; display: string; administrativeGender: string; dob: string | null; restricted: boolean };
+  patient: {
+    id: string; uhid: string; display: string; administrativeGender: string; dob: string | null; restricted: boolean;
+    /** Owner 2026-10-11 — the card's tell-apart line: guardian and the last four of a mobile. */
+    guardian?: { name: string; relation: string | null } | null;
+    phoneLast4?: string | null;
+    phoneOf?: "patient" | "guardian" | null;
+  };
   visit: {
     encounterId: string; encounterNo: string; serviceDate: string; status: string;
     tokenNo: number | null; doctorName: string | null; doctorUserId: string | null; departmentName: string | null;
     referrerName: string | null;
     advised: WireAdvisedLine[];
+    /** False on a suggestion (`?suggest=1`): the seat re-asks by the visit number before filling the basket. */
+    advisedLoaded?: boolean;
   } | null;
   orders: { orderId: string; orderNo: string; status: string; itemCount: number }[];
 };
 
 export type WireLabDoctor = { id: string; displayName: string };
 
-export const deskFind = (q: string, serviceDate: string): Promise<{ hits: WireDeskFindHit[]; labDoctors: WireLabDoctor[] }> =>
-  api("GET", `/lab/desk/find?q=${encodeURIComponent(q)}&serviceDate=${serviceDate}`);
+export const deskFind = (q: string, serviceDate: string, suggest = false): Promise<{ hits: WireDeskFindHit[]; labDoctors: WireLabDoctor[] }> =>
+  api("GET", `/lab/desk/find?q=${encodeURIComponent(q)}&serviceDate=${serviceDate}${suggest ? "&suggest=1" : ""}`);
 
 export type WireDeliveryVerdict = {
   allowed: boolean;
@@ -253,6 +263,8 @@ export type DeskOrderRequest = {
   acknowledgedDuplicates?: string[];
   credit?: { reason: string };
   receipt?: { tenders: { mode: string; amountPaise: number }[] };
+  /** Owner 2026-10-11 — the patient arrived for this booking; it closes with the order. */
+  bookingId?: string;
 };
 
 export const placeLabOrder = (body: DeskOrderRequest, key: string): Promise<WireDeskOrder> =>
@@ -566,3 +578,56 @@ export function labErrorText(e: unknown): string {
   }
   return e instanceof Error ? e.message : String(e);
 }
+
+/* ─────────────── owner 2026-10-11 — the desk's new flow: fee state, common tests, bookings ─────────────── */
+
+/** True while Billing office → Fees has the lab fee switched off: the desk skips its money step. */
+export type WireWalkInReadiness = { ready: boolean; problem: "no_lab_department" | "lab_department_inactive" | "no_pathologist" | null };
+export const labFeeState = (): Promise<{ labFree: boolean; walkIn?: WireWalkInReadiness }> => api("GET", "/lab/desk/fee-state");
+
+export type WireCommonOrderable = { serviceId: string; code: string; nameEn: string; container: string; specimenType: string };
+export const commonOrderables = (): Promise<WireCommonOrderable[]> => api("GET", "/lab/desk/common");
+
+export type WireOrderableDetail = {
+  orderable: WireOrderable & { requiresFasting?: boolean };
+  analytes: { id: string; code: string; nameEn: string; unit?: string | null }[];
+};
+/** One test's parameters, in report order — what a panel will report (Hb, WBC, platelets…). */
+export const orderableDetail = (serviceId: string): Promise<WireOrderableDetail> =>
+  api("GET", `/lab/catalogue/orderables/${encodeURIComponent(serviceId)}`);
+
+export type WireLabSlot = { start: string; booked: number; free: number; past: boolean };
+export type WireBookingHours = { open: string; close: string; slotMinutes: number; perSlot: number; daysAhead: number; closedWeekdays: number[] };
+export type WireLabDaySlots = { serviceDate: string; closed: "past" | "too_far" | "closed_day" | null; perSlot: number; slots: WireLabSlot[]; rules?: WireBookingHours };
+export const getBookingHours = (): Promise<WireBookingHours & { saved: { by: string; at: string } | null }> => api("GET", "/lab/desk/booking-hours");
+export const saveBookingHours = (body: WireBookingHours): Promise<WireBookingHours & { saved: { by: string; at: string } | null }> =>
+  api("PUT", "/lab/desk/booking-hours", body);
+export const labSlots = (serviceDate: string): Promise<WireLabDaySlots> =>
+  api("GET", `/lab/desk/bookings/slots?serviceDate=${serviceDate}`);
+
+export type WireLabBooking = {
+  id: string; serviceDate: string; slotStart: string; status: "booked" | "fulfilled" | "cancelled" | "no_show";
+  note: string | null; orderId: string | null; createdAt: string;
+  patient: { id: string; uhid: string; display: string; restricted: boolean };
+  tests: { serviceId: string; code: string; nameEn: string }[];
+};
+export const bookingsForDay = (serviceDate: string): Promise<WireLabBooking[]> =>
+  api("GET", `/lab/desk/bookings?serviceDate=${serviceDate}`);
+export const bookingsForPatient = (patientId: string): Promise<WireLabBooking[]> =>
+  api("GET", `/lab/desk/bookings?patientId=${encodeURIComponent(patientId)}`);
+export const bookLab = (body: { patientId: string; serviceDate: string; slotStart: string; serviceIds: string[]; note?: string }): Promise<{ bookingId: string }> =>
+  api("POST", "/lab/desk/bookings", body);
+export const cancelLabBooking = (id: string, reason?: string): Promise<{ ok: true }> =>
+  api("POST", `/lab/desk/bookings/${id}/cancel`, { reason: reason ?? null });
+export const noShowLabBooking = (id: string): Promise<{ ok: true }> =>
+  api("POST", `/lab/desk/bookings/${id}/no-show`, { reason: null });
+
+/** Owner 2026-10-11 — the counter's last tests: a person's lab orders with test names and stage. */
+export type WireRecentLabOrder = {
+  orderId: string; orderNo: string; encounterNo: string; placedAt: string;
+  tests: { code: string; nameEn: string }[];
+  stage: "awaiting_blood" | "sample_taken" | "draft" | "report_ready" | "handed_over" | "cancelled" | "in_lab";
+  quickId?: string | null;
+};
+export const recentLabOrders = (patientId: string): Promise<WireRecentLabOrder[]> =>
+  api("GET", `/lab/desk/patient/${encodeURIComponent(patientId)}/recent`);

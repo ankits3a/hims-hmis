@@ -7,7 +7,7 @@ import { configureApp } from "../src/app.bootstrap";
 import { setupTestDb, truncateAll } from "./helpers/db";
 import { mkDoctor, mkUser, seedOpdBase, seedOpdMasters, activateOpdVisitDefinition } from "./helpers/opd";
 import { mkBillingManager, seedBillingBase } from "./helpers/billing";
-import { events } from "../src/kernel/db/schema";
+import { events, opdEncounters } from "../src/kernel/db/schema";
 import { assignRole, createRole, grantPermissionToRole, syncPermissions } from "../src/kernel/auth/permissions";
 import { authManifest } from "../src/kernel/auth/manifest";
 import { workflowManifest } from "../src/kernel/workflow/manifest";
@@ -174,9 +174,8 @@ describe("billing lifecycle e2e", () => {
    * the counter settles it, the doctor starts". Billing inside this helper would delete the state
    * every one of those steps is about.
    *
-   * The consult gate is untouched by the bypass — it opens the VITALS door only — which is why
-   * story (1)'s 409 at `consult/start` still fires. That row is now also the canary: if a later
-   * task widens the bypass to the doctor's door, it goes red and says so.
+   * Owner 2026-10-09: the bypass opens the doctor's door too ("desk let through → patient shows
+   * in doctor's line, no mark"), so story (1) clears it before asking for its 409 at `consult/start`.
    */
   const openVisit = async (patientId: string): Promise<string> => {
     const open = await http().post("/opd/visits").set(...auth(cashierA.token))
@@ -234,6 +233,9 @@ describe("billing lifecycle e2e", () => {
     // consultNew is EXEMPT-category and priced 50000 with no discount: no heads, no rounding.
     expect(quote.body.draft.totals.netPayablePaise).toBe(50_000);
 
+    // Owner 2026-10-09: a visit the desk let through is no longer refused at the doctor's door, so
+    // the fixture's bypass is cleared — unpaid with no desk decision is what the gate still stops.
+    await db.update(opdEncounters).set({ feeBypassBy: null, feeBypassReason: null, feeBypassAt: null }).where(eq(opdEncounters.id, encounterId));
     // D8, 409 per plan line 93 (d3074fa put `consult_gate_refused` into OPD_CONFLICT_CODES): an
     // unsettled fee is a STATE conflict, not a malformed request.
     const refused = await http().post(`/opd/visits/${encounterId}/consult/start`).set(...auth(dra.token)).expect(409);

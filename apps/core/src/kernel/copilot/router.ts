@@ -1,6 +1,8 @@
 import { chooseRoute } from "./choice-route";
 import { assertNoIdentifiers } from "./mask";
-import { intentNames, matchIntent } from "./phrasebook";
+import { assertNoNames } from "./names";
+import type { NameIndex } from "./names";
+import { matchIntent, modelIntentNames } from "./phrasebook";
 import type { CopilotIntent } from "./phrasebook";
 import type { ChoiceClient, InferenceClient } from "../inference/types";
 
@@ -52,6 +54,11 @@ export type RouteResult = {
   slot: string | null;
   /** `triage.ts`'s rule: the seat SAYS where the routing came from, because a hidden origin is trusted too much. */
   source: "phrasebook" | "model";
+  /**
+   * E0.1 — WHICH route answered, finer than `source`: the ledger times the classifier and the chat
+   * model separately (goal G4 is read per route). `source` stays two-valued because it is the web's.
+   */
+  via: "phrasebook" | "chooser" | "model";
   cues: string[];
 };
 
@@ -65,7 +72,7 @@ const PLACEHOLDER_RE = /^<<P\d+>>$/;
  * simply never route to the new tool.
  */
 function buildSystemPrompt(): string {
-  const menu = intentNames().join(" | ");
+  const menu = modelIntentNames().join(" | ");
   return [
     "You route ONE question from hospital counter staff (front desk, billing or pharmacy) to ONE tool.",
     `Reply with ONLY this JSON and nothing else: {"tool":"<${menu} | none>","slot":"<placeholder or empty>"}`,
@@ -82,6 +89,10 @@ function buildSystemPrompt(): string {
     "draft_payment_run — the hospital should pay its suppliers: draft a payment run of the bills falling due",
     "draft_supplier_returns — expired, near-expiry or recalled medicines should go back to the suppliers: draft the returns",
     "find_duplicate_items — the same medicine or item is registered twice in the item master: list the possible duplicates",
+    "roster.who_is_on — who is on duty or on call in a NAMED department or service, now or at a time named",
+    "roster.unit_on_take — which unit of a named department is on take (admitting), now or at a time named",
+    "roster.my_duties — the asker's OWN duties: their next duty or night, or what they have on a named day",
+    "roster.ask_cover — the asker wants somebody to take or swap THEIR OWN duty: who could cover it",
     "none           — anything else at all, including anything you are unsure about",
     "",
     "The question may be English, Hindi, or romanised Hinglish.",
@@ -91,6 +102,16 @@ function buildSystemPrompt(): string {
     "Prefer \"none\" over a guess: a wrong tool runs against a real patient.",
   ].join("\n");
 }
+
+/**
+ * E0.6 — what the name mask knows that the router must honour.
+ *
+ * `names` is today's name index; when present it is a second witness beside `assertNoIdentifiers`,
+ * run on the exact string about to go on the wire. `phrasebookOnly` is set when the name list could
+ * not be read or a word in the question was a near-spelling of a patient's name: the floor may still
+ * answer, and nothing is sent anywhere.
+ */
+export type RouteGuard = { names?: NameIndex | null; phrasebookOnly?: boolean };
 
 /**
  * Route a MASKED question. Returns null for "I did not understand", which is an answer the desk can
@@ -108,6 +129,7 @@ export async function routeQuestion(
   model: InferenceClient | null,
   chooser: ChoiceClient | null = null,
   minConfidence: number = DEFAULT_MIN_CONFIDENCE,
+  guard: RouteGuard = {},
 ): Promise<RouteResult | null> {
   /*
     THE FLOOR RUNS FIRST, AND THAT ORDERING IS THE COST MODEL.
@@ -117,16 +139,19 @@ export async function routeQuestion(
   */
   const floor = matchIntent(masked);
   if (floor !== null) {
-    return { intent: floor.intent, slot: floor.slot, source: "phrasebook", cues: floor.cues };
+    return { intent: floor.intent, slot: floor.slot, source: "phrasebook", via: "phrasebook", cues: floor.cues };
   }
 
+  if (guard.phrasebookOnly === true) return null;
   if (model === null && chooser === null) return null;
 
   /*
     THE LAST GATE BEFORE THE WIRE — either wire. `mask.ts` explains why this is a separate function
-    from the masker rather than part of it: a masker cannot be its own witness.
+    from the masker rather than part of it: a masker cannot be its own witness. E0.6 adds the names
+    of today's patients to what it refuses.
   */
   assertNoIdentifiers(masked);
+  if (guard.names != null) assertNoNames(masked, guard.names);
 
   if (chooser !== null) {
     const picked = await chooseRoute(masked, slots, chooser, minConfidence);
@@ -171,17 +196,18 @@ function parseReply(reply: string, masked: string, slots: Record<string, string>
   if (typeof tool !== "string") return null;
 
   /*
-    THE CLOSED MENU. `intentNames()` is the phrasebook's own key set, so a tool that is not a real
-    tool — invented, renamed, or the model's `none` — cannot pass. This is the single check that
-    makes a hallucination harmless rather than dangerous.
+    THE CLOSED MENU. `modelIntentNames()` is the phrasebook's own key set, less the floor-only acts
+    (E2.1), so a tool that is not a real tool — invented, renamed, or the model's `none` — cannot
+    pass. This is the single check that makes a hallucination harmless rather than dangerous.
   */
-  const names: string[] = intentNames();
+  const names: string[] = modelIntentNames();
   if (!names.includes(tool)) return null;
 
   return {
     intent: tool as CopilotIntent,
     slot: resolveSlot(slot, masked, slots),
     source: "model",
+    via: "model",
     cues: [],
   };
 }

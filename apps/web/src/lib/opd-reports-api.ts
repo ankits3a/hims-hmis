@@ -1,4 +1,5 @@
 import { api, apiDownload } from "./api";
+import type { RecordingReport } from "../../../../packages/contracts/src/recording";
 import type { WireRenderedDocument } from "./print-api";
 
 /**
@@ -14,15 +15,26 @@ export type PatientType = "new" | "revisit" | "renewal";
 export type ReportPeriod = "day" | "week" | "month";
 
 export type DayCounts = {
+  /** Appointments that stood for these days — the column reads "Appointments" (it read "Booked" until 2026-10-07). */
   booked: number;
+  /** Visits the desk opened: the server's own `consulted + stillOpen + leftUnseen`. */
+  opened: number;
   consulted: number;
   new: number;
   revisit: number;
   renewal: number;
   stillOpen: number;
+  leftUnseen: number;
 };
 
-export type DayDepartment = DayCounts & { departmentId: string; code: string; name: string };
+/** Who opened the visits — sent only to a reader who holds the staff figures; null to everyone else. */
+export type OpenedBy = { name: string; count: number };
+
+export type DayDepartment = DayCounts & {
+  departmentId: string; code: string; name: string;
+  /** 20-U U7 — the roster unit(s) that held this clinic's OPD; a single day only, empty otherwise. */
+  units: string[];
+};
 
 export type ExcludedSunday = { date: string; consulted: number };
 
@@ -37,6 +49,7 @@ export type OpdReport = ReportRange & {
   patientsConsulted: number;
   newPatients: number;
   excludedSunday: ExcludedSunday | null;
+  openedBy: OpenedBy[] | null;
 };
 
 export type DayPatientRow = {
@@ -60,6 +73,7 @@ export type OpdDepartmentReport = ReportRange & {
   department: DayDepartment;
   rows: DayPatientRow[];
   excludedSunday: ExcludedSunday | null;
+  openedBy: OpenedBy[] | null;
 };
 
 /** What the screen holds while the reader chooses: a named period on a day. */
@@ -68,6 +82,11 @@ export type Selection = { period: ReportPeriod; date: string };
 const q = (sel: Selection): string => `?period=${sel.period}&date=${encodeURIComponent(sel.date)}`;
 const base = "/opd/reports/consultations";
 const dept = (id: string): string => `${base}/departments/${encodeURIComponent(id)}`;
+
+/** "Is today being recorded?" — integers only; what a login sees is decided by the server. */
+export function fetchRecording(sel: Selection): Promise<RecordingReport> {
+  return api("GET", `/opd/reports/recording${q(sel)}`);
+}
 
 export function fetchReport(sel: Selection): Promise<OpdReport> {
   return api("GET", `${base}${q(sel)}`);

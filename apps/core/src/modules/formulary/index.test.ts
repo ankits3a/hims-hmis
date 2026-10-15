@@ -44,6 +44,8 @@ import * as formulary from "./index";
 
 /** Sorted by `Array.prototype.sort`'s default UTF-16 order, so SCREAMING and Pascal names lead. */
 const SURFACE = [
+  "ALIAS_POOL_SIZE", // decision 0051 — how many catalogue rows the alias pipeline is shown for one term
+  "ALIAS_WORD_SIMILARITY", // decision 0051 — the trigram line a candidate must reach
   "ALLERGY_CLASSES", // P22 — the allergy class vocabulary the prescribing check reads
   "AWARE_LIST", // PHARMACY STAGE D5 — the cited WHO AWaRe 2023 list, by moiety set and route
   "FORMULARY_EVENTS",
@@ -64,42 +66,66 @@ const SURFACE = [
   "adoptDrugDisease", // P24 — what a diagnosis forbids, adopted under a named resolution
   "adoptInteractions", // P21 — interaction pairs adopted under a named resolution
   "adoptTherapeuticClasses", // P23 — therapeutic classes adopted under a named resolution
+  "aliasCandidatePool", // decision 0051 — the rows an unmatched term could mean; offline, never a typeahead
   "allergyClassKeys", // P22 — pure: the classes an allergy record names
   "attestSubstance",
+  "brandTitle", // owner 2026-10-04 — pure: a vendor brand in the catalogue's case
   "catalogueCensus",
+  "catalogueTwinForm", // pure: a catalogue form on the twin scale
   "classifyAwareMedicines", // PHARMACY STAGE D5 — the list written onto products whose class is null (aware:classify, the go-live act; never seed:pharmacy)
   "classifyNdpsSalts", // PHARMACY P6 — the cited list written onto the catalogue (a script's door)
+  "compositionAgrees", // owner 2026-10-04 — does a brand-name match say what the vendor's composition says
+  "compositionTwins", // owner 2026-10-04 — a vendor brand the catalogue lacks → the medicine of its composition, one spec at a time
+  "counsellingByMedicine", // the counter's reader: what to tell the patient, from reviewed monographs only
+  "counsellingOf",
   "countSalts",
   "equivalentMedicines",
   "formularyHttpStatus",
   "formularyManifest",
+  "getMonograph", // the drug monograph (owner 2026-10-02): reviewed text only, unless the curation door asks
   "getStagingRow",
   "isEquivalentMedicine",
+  "linkMedicinesToGenerics", // owner 2026-10-02: fills a product's empty generic link from the bundle's pairs
   "listDrugDiseaseFor", // P24 — the rules that reach these moieties and these diagnosis codes
   "listInteractionsAmong",
   "matchProducts", // the CDS regimen fill: a composition to one stocked-or-generic product, exact
   "medicineExists",
+  "medicineHitById", // decisions 0051/0055 — one catalogue row in the search's own shape, for a learned nickname's medicine
   "medicineIdsByBrandNames",
+  "medicinesByBrandPrefix", // owner 2026-10-04 — a vendor price list's brand stem, read for the pharmacy's import
   "medicinesByIds",
+  "monographForMedicine", // the reviewed monograph a stocked product reaches through its generic link
   "ndpsClassByMedicine", // PHARMACY P6 — bounded by MAX_IDS, the strictest class of each medicine's moieties
   "normalizeDrugName",
   "pageInteractions",
   "pageMappingWorklist",
   "pageMedicines",
   "pageSalts",
+  "parseComposition", // pure: a vendor's composition column into moieties and strengths
   "projectSubstances",
   "refreshRankSignals",
+  "registerNicknameLookup", // decisions 0051/0055 — OPD registers its nickname reader with the prescriber's search
   "rejectStaging",
+  "renalDoseFor",
   "resolveDrugTexts",
   "resolveMedicines",
   "restrictedAntimicrobialExists", // PHARMACY STAGE D5 — the office's "no steward appointed" row asks it
+  "reviewMonograph",
   "ruleSubstanceUnmappable",
   "saltIdsByNames",
   "saltsByIds",
+  "saveMonograph",
+  "searchGenerics", // the monograph curation door's typeahead
   "searchMedicines",
+  "searchMedicinesForPrescribing", // decisions 0051/0055 — the catalogue's answer plus a learned nickname's row
   "searchStaging",
   "suggestDrugs",
   "suggestMoieties",
+  "tidyCatalogueName", // pure: the SNOMED sentence in a label's words
+  "twinFormAgrees", // pure
+  "twinFormOf", // pure: the form a vendor's row names
+  "twinName", // pure: the catalogue name a vendor brand gets
+  "twinStrengthAgrees", // pure: each component its own strength
   "unreviewedSaltIds",
   "updateInteraction",
   "updateMedicine",

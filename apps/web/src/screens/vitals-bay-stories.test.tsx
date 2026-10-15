@@ -183,15 +183,17 @@ it("the seven stories run in order on one bay, three patients, without narration
   await waitFor(() => expect(screen.getByTestId("capture")).toBeInTheDocument());
   expect(screen.getByTestId("carried-heightCm").textContent).toContain("151");
   await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId("input-bp")));
-  await user.keyboard("128/84{Enter}78{Enter}97{Enter}36.8{Enter}16{Enter}");
+  // OWNER 2026-10-08 — the lane is cuff, pulse, scale, tape; this band's SpO₂ and temperature follow
+  await user.keyboard("128/84{Enter}78{Enter}");
   expect(document.activeElement).toBe(screen.getByTestId("input-weightKg"));
   await user.keyboard("4.8{Enter}");
   expect(screen.getByTestId("mirror").getAttribute("data-kind")).toBe("slipped_digit");
   expect(screen.getByTestId("value-weightKg").textContent).toBe("—");
   fireEvent.click(screen.getByTestId("mirror-fix"));
   expect(screen.getByTestId("value-weightKg").textContent).toBe("48");
+  await user.click(screen.getByTestId("input-spo2")); await user.keyboard("97{Enter}36.8{Enter}");
   const keysBefore = Number(/^(\d+) keys/.exec(screen.getByTestId("keys").textContent!)![1]);
-  expect(keysBefore).toBe(19);   // 128/84 · 78 · 97 · 36.8 · 16 · 4.8 — nineteen characters, ⏎ is not a key the score counts
+  expect(keysBefore).toBe(17);   // 128/84 · 78 · 4.8 · 97 · 36.8 — seventeen characters, ⏎ is not a key the score counts
   fireEvent.click(screen.getByTestId("save"));
   await waitFor(() => expect(screen.getByTestId("saved-banner")).toBeInTheDocument());
   expect(screen.getByTestId("saved-banner").textContent).toContain("Sunita Devi");
@@ -221,10 +223,10 @@ it("the seven stories run in order on one bay, three patients, without narration
 
   // ── 6 · Munna, 4: the band flips — MUAC required (SAM zone), BP not routine, 38.4 a NOTICE to the doctor ahead of the call.
   fireEvent.click(screen.getByTestId("bench-row-130"));
-  await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId("input-tempC")));
-  expect(screen.getByTestId("not-routine-bp")).toBeInTheDocument();
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId("input-weightKg")));   // a child's lane starts on the scale
+  expect(screen.queryByTestId("tile-bp")).not.toBeInTheDocument();                                    // a not-routine BP is behind "+"
   expect(screen.getByTestId("tile-muacCm").getAttribute("data-required")).toBe("true");
-  await user.keyboard("38.4{Enter}");
+  await user.click(screen.getByTestId("input-tempC")); await user.keyboard("38.4{Enter}");
   expect(screen.getByTestId("tile-tempC").getAttribute("data-tint")).toBe("notice");
   await user.click(screen.getByTestId("input-pulse")); await user.keyboard("110{Enter}");
   await user.click(screen.getByTestId("input-spo2")); await user.keyboard("97{Enter}");
@@ -253,7 +255,7 @@ it("the seven stories run in order on one bay, three patients, without narration
   await waitFor(() => expect(screen.getByTestId("held-first-take")).toBeInTheDocument());
   await user.click(screen.getByTestId("input-bp")); await user.keyboard("128/82{Enter}");
   expect(screen.getByTestId("pair-bp").textContent).toBe("172/104 · 128/82");
-  await user.keyboard("80{Enter}98{Enter}36.7{Enter}16{Enter}62{Enter}151{Enter}");   // 151 against June's 151: no shrinking-adult gate
+  await user.keyboard("80{Enter}62{Enter}151{Enter}98{Enter}36.7{Enter}");   // 151 against June's 151: no shrinking-adult gate
   fireEvent.click(screen.getByTestId("save"));
   await waitFor(() => expect(screen.getByTestId("saved-banner").textContent).toContain("Kamla"));
   expect((posted("/vitals")[3]!.body as { readings: { bp: { takes: unknown } } }).readings.bp.takes).toEqual([[172, 104], [128, 82]]);

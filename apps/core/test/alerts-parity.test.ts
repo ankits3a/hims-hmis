@@ -105,6 +105,8 @@ describe("alerts.yml mirrors the scheduler's job registry (Plan 11a residual 4)"
         // `job=~` alternation and leg 2's `absent()` chain and leaves the daily leg alone. This
         // array is SORTED (a rename is a readable diff), so it lands second rather than last.
         "flagLateSurgeons",
+        // E0.1 (decision 0064) — the copilot ask prune, DAILY (01:20 IST), always on; joins leg 1b and leg 2.
+        "pruneCopilotAsks",
         "retentionSweep",
         // PLAN 07c T8 — the THIRTEENTH job, a DAILY one (`dailyIst("02:00")`): the per-user daily
         // rollup the six-period briefs read. Like the eleventh it joins leg 1b's `job=~`
@@ -178,10 +180,28 @@ describe("alerts.yml mirrors the scheduler's job registry (Plan 11a residual 4)"
         // placed in leg 1b (the 26-hour daily leg) on purpose: leg 1a pages at 300 s, which an
         // hourly job exceeds every hour by design. A dead worker still shows here within a day.
         "sweepOverdueQa",
+        // 20-U infra (owner 2026-10-04) — the twenty-fifth: the duty board's own 20:00/08:00 print.
+        // `every(60_000)`, so leg 1a, and an `absent()` term: a print that never ran is a wall
+        // carrying a sheet older than the board promises.
+        "printRosterBoard",
+        // Mobile §3i (owner 2026-10-07) — the twenty-sixth: duty reminders and the doctor's "you are
+        // not in" nudge. `every(60_000)`, so leg 1a, and an `absent()` term.
+        "sweepStaffNotices",
+        // Nicknames (decision 0051, owner 2026-10-08) — the twenty-seventh: unmatched medicine words
+        // through the alias pipeline. HOURLY, so leg 1b beside `sweepOverdueQa` for the same reason
+        // (leg 1a pages at 300 s), and an `absent()` term.
+        "proposeMedicineNicknames",
+        // Tele-call (owner 2026-10-09) — the twenty-eighth: covered tele appointments open at their
+        // slot. `every(60_000)`, so leg 1a, and an `absent()` term: a job that never ran is a paid
+        // patient the doctor's line never shows.
+        "openDueTeleVisits",
+        // Staff attendance (owner 2026-10-09) — the twenty-ninth: HMIS's copy of the attendance
+        // machine. `every(120_000)`, inside leg 1a's 300 s, and an `absent()` term.
+        "syncAttendance",
       ].sort(),
     );
-    expect(registered).toHaveLength(24); // 18-S RS10: +1, sweepImagingEscalations // 18-S RS11: +1, sweepOverdueQa // PHARMACY P6: +1, runRefillReminders // PHASE O T4: +1, runReachLadder // PHASE R (R7): +1, sweepRosterWindows // PHASE R (R9): +1, runMonthlyProposals
-    expect(new Set(registered).size).toBe(24); // no job registered twice
+    expect(registered).toHaveLength(30); // COPILOT LEDGER E0.1: +1, pruneCopilotAsks; ATTENDANCE: +1, syncAttendance (every 120 000), read off the red run // TELE-CALL: +1, openDueTeleVisits (every 60 000) // NICKNAMES: +1, proposeMedicineNicknames (every 3 600 000) // MOBILE §3i: +1, sweepStaffNotices (every 60 000), read off the red run // 20-U infra: +1, printRosterBoard (every 60 000), read off the red run // 18-S RS10: +1, sweepImagingEscalations // 18-S RS11: +1, sweepOverdueQa // PHARMACY P6: +1, runRefillReminders // PHASE O T4: +1, runReachLadder // PHASE R (R7): +1, sweepRosterWindows // PHASE R (R9): +1, runMonthlyProposals
+    expect(new Set(registered).size).toBe(30); // no job registered twice (COPILOT LEDGER E0.1: 29 -> 30)
   });
 
   it("the two staleness legs together cover every registered job, exactly once each", () => {

@@ -20,6 +20,8 @@ export type WirePoSummary = {
 export type WirePoLine = {
   id: string; itemId: string; itemCode: string; itemName: string; baseUom: string; uom: string; multiplier: number;
   qtyPacks: number; freePacks: number; ratePaise: number; gstRateBps: number; gstPaise: number; mrpPaise: number | null;
+  /** The rate before the vendor's trade discount, and the discount in basis points; `ratePaise` is the net rate. Absent from an older server. */
+  listRatePaise?: number; discountBps?: number;
   lineTotalPaise: number; orderedBase: number; receivedBase: number; freeReceivedBase: number; remainingBase: number;
 };
 
@@ -32,6 +34,8 @@ export type WirePo = WirePoSummary & {
 
 export type WirePoLineInput = {
   itemId: string; uom?: string | null; qtyPacks: number; freePacks?: number; ratePaise: number; gstRateBps?: number | null; mrpPaise?: number | null;
+  /** The vendor's trade discount off `ratePaise` (then the LIST rate), in basis points. */
+  discountBps?: number;
 };
 
 export type WireOfficeToday = {

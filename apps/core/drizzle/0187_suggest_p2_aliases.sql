@@ -1,0 +1,36 @@
+CREATE TABLE "cds_aliases" (
+	"id" text PRIMARY KEY NOT NULL,
+	"kind" text NOT NULL,
+	"term" text NOT NULL,
+	"medicine_id" text,
+	"state" text NOT NULL,
+	"chooser_name" text,
+	"chooser_confidence" double precision,
+	"reviewer_name" text,
+	"reviewer_answer" text,
+	"reviewer_probability" double precision,
+	"reason_code" text,
+	"rule_result" text NOT NULL,
+	"refusal" text,
+	"lasa_guard" boolean DEFAULT false NOT NULL,
+	"distinct_doctors" integer DEFAULT 0 NOT NULL,
+	"taps" integer DEFAULT 0 NOT NULL,
+	"created_at" timestamp with time zone NOT NULL,
+	"updated_at" timestamp with time zone NOT NULL,
+	"audited_at" timestamp with time zone,
+	"undone_by" text,
+	"undone_at" timestamp with time zone,
+	CONSTRAINT "cds_aliases_kind_ck" CHECK ("cds_aliases"."kind" in ('medicine', 'complaint', 'test')),
+	CONSTRAINT "cds_aliases_term_ck" CHECK (char_length("cds_aliases"."term") between 2 and 60 and "cds_aliases"."term" = lower("cds_aliases"."term")),
+	CONSTRAINT "cds_aliases_state_ck" CHECK ("cds_aliases"."state" in ('proposed', 'suggestion', 'trusted', 'demoted', 'undone')),
+	CONSTRAINT "cds_aliases_reviewer_answer_ck" CHECK ("cds_aliases"."reviewer_answer" is null or "cds_aliases"."reviewer_answer" in ('yes', 'no', 'unsure')),
+	CONSTRAINT "cds_aliases_reason_code_ck" CHECK ("cds_aliases"."reason_code" is null or "cds_aliases"."reason_code" in ('name_match', 'strength_match', 'brand_nickname', 'ambiguous_strength', 'ambiguous_form', 'lookalike_risk', 'not_a_medicine')),
+	CONSTRAINT "cds_aliases_rule_result_ck" CHECK ("cds_aliases"."rule_result" in ('pass', 'not_run', 'multiple_targets', 'strength_mismatch', 'strength_unstated', 'form_mismatch', 'controlled_drug', 'lookalike_conflict', 'same_model')),
+	CONSTRAINT "cds_aliases_refusal_ck" CHECK ("cds_aliases"."refusal" is null or "cds_aliases"."refusal" in ('identifier_in_term', 'no_candidates', 'chooser_unavailable', 'chooser_none', 'chooser_below_line', 'reviewer_unavailable', 'reviewer_no', 'reviewer_unsure', 'reviewer_below_line', 'multiple_targets', 'strength_mismatch', 'strength_unstated', 'form_mismatch', 'controlled_drug', 'lookalike_conflict', 'same_model')),
+	CONSTRAINT "cds_aliases_live_ck" CHECK ("cds_aliases"."state" not in ('suggestion', 'trusted') or ("cds_aliases"."medicine_id" is not null and "cds_aliases"."rule_result" = 'pass' and "cds_aliases"."refusal" is null and "cds_aliases"."reviewer_answer" = 'yes')),
+	CONSTRAINT "cds_aliases_undone_ck" CHECK (("cds_aliases"."undone_by" is null) = ("cds_aliases"."undone_at" is null) and (("cds_aliases"."state" = 'undone') = ("cds_aliases"."undone_at" is not null))),
+	CONSTRAINT "cds_aliases_probabilities_ck" CHECK (("cds_aliases"."chooser_confidence" is null or "cds_aliases"."chooser_confidence" between 0 and 1) and ("cds_aliases"."reviewer_probability" is null or "cds_aliases"."reviewer_probability" between 0 and 1))
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX "cds_aliases_kind_term_uq" ON "cds_aliases" USING btree ("kind","term");--> statement-breakpoint
+CREATE INDEX "cds_aliases_state_idx" ON "cds_aliases" USING btree ("state");

@@ -11,7 +11,11 @@ import { escalationTriggered, respondOverdue } from "../workflow/events";
 import { approvalRequested } from "../approvals/events";
 import { imagingCriticalOverdue, imagingReportUnread } from "../../modules/radiology/events";
 import { usersHoldingRole } from "../workflow/roles";
-import { escalationRecipients } from "../../modules/roster";
+import {
+  ROSTER_DUTY_REF_TYPE, amendmentIsOfCover, coverForAlert, dutyManagersAt, dutyWindowsForAlert, escalationRecipients, flagForAlert,
+  leaveDeciders, leaveForAlert, rosterAbsenceApproved, rosterAbsenceRefused, rosterAbsenceRequested,
+  rosterCoverAnswered, rosterCoverDecided, rosterCoverRequested, rosterDutyChanged, rosterFlagRaised,
+} from "../../modules/roster";
 import { alertRaised } from "./events";
 import type { Db } from "../db/client";
 import type { DispatchedEvent, Handler } from "../events/subscriptions";
@@ -86,6 +90,13 @@ const IMAGING_CHASE_REF_TYPE = "imaging_study";
 const OPERATING_MODE_REF_TYPE = "operating_mode";
 /** The two modes whose entry or exit is worth waking somebody for (D4). */
 const ALERTING_MODES: ReadonlySet<string> = new Set(["downtime", "degraded"]);
+/**
+ * 20-U infra (owner 2026-10-04) — a reader said a name on the who-is-on board is wrong. `refId` is
+ * the `roster_flags` row; the bell links to the board, where the flag is shown and resolved.
+ */
+const ALERT_KIND_ROSTER_FLAG = "roster_flag";
+const ROSTER_FLAG_REF_TYPE = "roster_flag";
+const IST_HHMM = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 const ALERTS_ACTOR: Actor = { type: "system", id: "kernel-alerts" };
 
 /**
@@ -136,6 +147,34 @@ export function alertsConsumer(db: Db): Handler {
     }
     if (e.name === respondOverdue.name) {
       await handleRespondOverdue(db, e);
+      return;
+    }
+    if (e.name === rosterFlagRaised.name) {
+      await handleRosterFlagRaised(db, e);
+      return;
+    }
+    if (e.name === rosterCoverRequested.name) {
+      await handleRosterCoverRequested(db, e);
+      return;
+    }
+    if (e.name === rosterCoverAnswered.name) {
+      await handleRosterCoverAnswered(db, e);
+      return;
+    }
+    if (e.name === rosterCoverDecided.name) {
+      await handleRosterCoverDecided(db, e);
+      return;
+    }
+    if (e.name === rosterDutyChanged.name) {
+      await handleRosterDutyChanged(db, e);
+      return;
+    }
+    if (e.name === rosterAbsenceRequested.name) {
+      await handleLeaveRequested(db, e);
+      return;
+    }
+    if (e.name === rosterAbsenceApproved.name || e.name === rosterAbsenceRefused.name) {
+      await handleLeaveDecided(db, e);
       return;
     }
     await handleEscalationTriggered(db, e);
@@ -491,5 +530,183 @@ async function handleRespondOverdue(db: Db, e: DispatchedEvent): Promise<void> {
     body: `Nobody has said they have this. Open it and mark it seen, or take it on, before it climbs.`,
     refType: ALERT_REF_TYPE,
     refId: payload.instanceId,
+  });
+}
+
+/**
+ * ═══ 20-U INFRA (owner 2026-10-04) — "THIS IS WRONG" PAGES THE DUTY MANAGER ON DUTY ═══
+ *
+ * A reader of the who-is-on board flagged a name on duty as wrong (register I22). The flag was
+ * stored and shown on the board only; a duty manager who was not looking at the board did not know.
+ * Now it is one bell row for whoever is duty manager at the instant it was raised — the roster's
+ * answer (`dutyManagersAt`), falling back to every `duty_manager` role holder exactly as R6 does —
+ * MINUS the reader who raised it: nobody is told about their own act (11c D4's rule).
+ *
+ * The text is the reader's one line, the department, and staff names. A flag is about a DUTY; no
+ * patient is on the event or the row, so GC6 has nothing to strip here, and the line is shown as
+ * written because "Dr Rao is on leave, Dr Sen is covering" is the whole of what the manager needs.
+ *
+ * Resolving the flag does NOT acknowledge the alert. An ack (`seen`/`owned`/`handed_over`) is a
+ * human's statement about the bell row (phase O T3) and the house alert has no system "closed"
+ * state; writing one on the manager's behalf would be the machine answering for a person.
+ */
+async function handleRosterFlagRaised(db: Db, e: DispatchedEvent): Promise<void> {
+  const payload = rosterFlagRaised.payloadSchema.parse(e.payload);
+  const { recipients, flag } = await withTx(db, async (tx) => ({
+    recipients: (await dutyManagersAt(tx, e.occurredAt)).userIds,
+    flag: await flagForAlert(tx, payload.flagId),
+  }));
+  if (flag === null) {
+    throw new Error(`alerts consumer: roster.flag_raised names flag ${payload.flagId}, which does not exist`);
+  }
+  const where = flag.departmentName ?? "Hospital-wide";
+  await raiseAlerts(db, e, recipients.filter((id) => id !== flag.raisedBy), {
+    kind: ALERT_KIND_ROSTER_FLAG,
+    title: `Roster flagged wrong: ${where}${flag.userName === null ? "" : ` · ${flag.userName}`}`,
+    body: `"${flag.note}" — ${flag.raisedByName}, ${IST_HHMM.format(flag.raisedAt)} IST. Open Who is on now, `
+      + "fix the roster by an amendment, then mark the flag dealt with.",
+    refType: ROSTER_FLAG_REF_TYPE,
+    refId: payload.flagId,
+  });
+}
+
+/**
+ * ═══ MOBILE §3i (owner 2026-10-07) — A PERSON'S OWN DUTIES, ON THEIR OWN BELL ═══
+ *
+ * Four roster facts, each told to the people it is ABOUT and never to whoever did it:
+ *
+ *  · asked     → the colleague asked (`roster_cover_asked`);
+ *  · answered  → the owner of the duty, and whoever asked on their behalf (`roster_cover_answered`);
+ *  · decided   → both parties and the asker — approved, refused, or withdrawn (minus whoever
+ *                withdrew it) (`roster_cover_decided`);
+ *  · changed   → the person whose published duties moved (`roster_duty_changed`), or — on a
+ *                publish — the person who now has a month to read (`roster_month_published`). An
+ *                amendment an approved cover applied is NOT announced again: `decided` said it.
+ *
+ * STAFF NAMES AND DUTY WINDOWS ONLY — a duty concerns no patient, so GC6 has nothing to strip, and
+ * the requester's NOTE is deliberately not read (V9: it is the row's, not a surface's). The phone
+ * is told none of this text: `phone-push.ts` picks a fixed sentence by category.
+ *
+ * NONE OF THESE CLIMBS THE REACH LADDER (`notify/reach.ts` `NOTICE_KINDS`): they are notices, and
+ * the act that answers one happens on My duties, not by acknowledging a bell row.
+ */
+export const ALERT_KIND_ROSTER_COVER_ASKED = "roster_cover_asked";
+export const ALERT_KIND_ROSTER_COVER_ANSWERED = "roster_cover_answered";
+export const ALERT_KIND_ROSTER_COVER_DECIDED = "roster_cover_decided";
+export const ALERT_KIND_ROSTER_DUTY_CHANGED = "roster_duty_changed";
+export const ALERT_KIND_ROSTER_MONTH_PUBLISHED = "roster_month_published";
+const ROSTER_COVER_REF_TYPE = "roster_cover";
+
+async function coverOrThrow(db: Db, requestId: string, eventName: string) {
+  const c = await coverForAlert(db, requestId);
+  if (c === null) throw new Error(`alerts consumer: ${eventName} names cover request ${requestId}, which does not exist`);
+  return c;
+}
+const uniq = (ids: readonly (string | null)[], not: readonly (string | null)[] = []): string[] =>
+  [...new Set(ids.filter((i): i is string => i !== null))].filter((i) => !not.includes(i));
+const wordOf = (kind: string): string => (kind === "swap" ? "swap" : "cover");
+
+async function handleRosterCoverRequested(db: Db, e: DispatchedEvent): Promise<void> {
+  const p = rosterCoverRequested.payloadSchema.parse(e.payload);
+  const c = await coverOrThrow(db, p.requestId, e.name);
+  await raiseAlerts(db, e, uniq([c.counterpartId], [c.requestedBy]), {
+    kind: ALERT_KIND_ROSTER_COVER_ASKED,
+    title: c.kind === "swap" ? `${c.ownerName} asks to swap a duty with you` : `${c.ownerName} asks you to cover a duty`,
+    body: `${c.duty}${c.give === null ? "" : ` — for yours on ${c.give}`}${c.departmentName === null ? "" : ` · ${c.departmentName}`}. Open My duties to say yes or no.`,
+    refType: ROSTER_COVER_REF_TYPE, refId: c.requestId,
+  });
+}
+
+async function handleRosterCoverAnswered(db: Db, e: DispatchedEvent): Promise<void> {
+  const p = rosterCoverAnswered.payloadSchema.parse(e.payload);
+  const c = await coverOrThrow(db, p.requestId, e.name);
+  const yes = p.answer === "accepted";
+  await raiseAlerts(db, e, uniq([c.ownerId, c.requestedBy], [c.counterpartId]), {
+    kind: ALERT_KIND_ROSTER_COVER_ANSWERED,
+    title: `${c.counterpartName} said ${yes ? "yes" : "no"} to the ${wordOf(c.kind)}`,
+    body: yes
+      ? `${c.duty}. It now waits for approval; your duty is still yours until it is approved.`
+      : `${c.duty}. The duty is still yours — open My duties to ask somebody else.`,
+    refType: ROSTER_COVER_REF_TYPE, refId: c.requestId,
+  });
+}
+
+async function handleRosterCoverDecided(db: Db, e: DispatchedEvent): Promise<void> {
+  const p = rosterCoverDecided.payloadSchema.parse(e.payload);
+  const c = await coverOrThrow(db, p.requestId, e.name);
+  const word = wordOf(c.kind);
+  // A withdrawal is the one decision a PARTY makes, so the one who made it is not told about it.
+  const recipients = uniq([c.ownerId, c.counterpartId, c.requestedBy], p.status === "withdrawn" ? [c.lastActorId] : []);
+  const text = p.status === "approved"
+    ? { title: `The ${word} is approved`, body: `${c.duty}: ${c.counterpartName} now does it${c.give === null ? "" : `, and ${c.ownerName} does ${c.give}`}. My duties shows the roster as it now stands.` }
+    : p.status === "refused"
+      ? { title: `The ${word} was not approved`, body: `${c.duty} stays with ${c.ownerName}.${p.ruleKey === null ? "" : " A roster rule would have been broken."} Open My duties for the reason.` }
+      : { title: `The ${word} request was withdrawn`, body: `${c.duty} stays with ${c.ownerName}. Nothing changes for you.` };
+  await raiseAlerts(db, e, recipients, { kind: ALERT_KIND_ROSTER_COVER_DECIDED, ...text, refType: ROSTER_COVER_REF_TYPE, refId: c.requestId });
+}
+
+async function handleRosterDutyChanged(db: Db, e: DispatchedEvent): Promise<void> {
+  const p = rosterDutyChanged.payloadSchema.parse(e.payload);
+  if (p.amendmentId === null) {
+    // A PUBLISH: the month (or its new version) is now the roster. One row per person who is on it.
+    const windows = await dutyWindowsForAlert(db, p.added);
+    if (windows.length === 0) return; // days off only — nothing to turn up for
+    await raiseAlerts(db, e, [p.userId], {
+      kind: ALERT_KIND_ROSTER_MONTH_PUBLISHED,
+      title: "Your duty roster is published",
+      body: `${windows.length} ${windows.length === 1 ? "duty" : "duties"}; the first is ${windows[0]}. Open My duties to see them all.`,
+      refType: ROSTER_DUTY_REF_TYPE, refId: p.periodId,
+    });
+    return;
+  }
+  if (await amendmentIsOfCover(db, p.amendmentId)) return;
+  const [added, removed] = [await dutyWindowsForAlert(db, p.added), await dutyWindowsForAlert(db, p.removed)];
+  if (added.length === 0 && removed.length === 0) return;
+  const parts = [
+    ...(added.length === 0 ? [] : [`Now yours: ${added.slice(0, 3).join("; ")}${added.length > 3 ? ` and ${added.length - 3} more` : ""}.`]),
+    ...(removed.length === 0 ? [] : [`No longer yours: ${removed.slice(0, 3).join("; ")}${removed.length > 3 ? ` and ${removed.length - 3} more` : ""}.`]),
+  ];
+  await raiseAlerts(db, e, [p.userId], {
+    kind: ALERT_KIND_ROSTER_DUTY_CHANGED,
+    title: "Your duties changed",
+    body: `${parts.join(" ")} Open My duties.`,
+    refType: ROSTER_DUTY_REF_TYPE, refId: p.amendmentId,
+  });
+}
+
+/* ═══ E2.2 (owner 2026-10-11) — A LEAVE WAITING, AND THE ANSWER TO IT ═══
+ *
+ * The deciders hear that a leave is waiting (a name and a number of days — never the reason); the
+ * person hears approved or NOT approved, and nothing more: the decider's reason is read on My leave,
+ * in Waiting for me, or from the copilot (owner: never in a notice, which is also a lock screen). A
+ * leave filed by somebody else on the person's behalf (a manager's entry) tells nobody it is waiting
+ * — its filer holds the book. Manager-entered and OPD rows have no department and are not `manual`.
+ */
+export const ALERT_KIND_LEAVE_REQUESTED = "roster_leave_requested";
+export const ALERT_KIND_LEAVE_DECIDED = "roster_leave_decided";
+const LEAVE_REF_TYPE = "staff_absence";
+
+async function handleLeaveRequested(db: Db, e: DispatchedEvent): Promise<void> {
+  const p = rosterAbsenceRequested.payloadSchema.parse(e.payload);
+  const l = await leaveForAlert(db, p.absenceId);
+  if (l === null || !l.ownFiling) return;
+  const recipients = await leaveDeciders(db, l.departmentId, l.userId);
+  await raiseAlerts(db, e, recipients, {
+    kind: ALERT_KIND_LEAVE_REQUESTED, title: `Leave request · ${l.name}`,
+    body: `${l.kindLabel}, ${l.days} ${l.days === 1 ? "day" : "days"} from ${l.fromLabel}. Open Leave to approve or refuse.`,
+    refType: LEAVE_REF_TYPE, refId: p.absenceId,
+  });
+}
+
+async function handleLeaveDecided(db: Db, e: DispatchedEvent): Promise<void> {
+  const approved = e.name === rosterAbsenceApproved.name;
+  const p = (approved ? rosterAbsenceApproved : rosterAbsenceRefused).payloadSchema.parse(e.payload);
+  const l = await leaveForAlert(db, p.absenceId);
+  if (l === null || !l.ownFiling) return;
+  await raiseAlerts(db, e, [l.userId], {
+    kind: ALERT_KIND_LEAVE_DECIDED,
+    title: approved ? "Your leave is approved" : "Your leave was not approved",
+    body: approved ? `${l.kindLabel} from ${l.fromLabel}. My leave shows it.` : "Open My leave to see why.",
+    refType: LEAVE_REF_TYPE, refId: p.absenceId,
   });
 }

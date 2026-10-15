@@ -301,7 +301,7 @@ const catalogue = (store: string): WireCatalogue => ({
   storeCode: store === "" ? null : store, truncated: false,
   rows: [{
     id: "i-cr", code: "CROC", name: "Crocin 500", class: "consumable", hsnCode: "30049099", gstRateBps: 1200, baseUom: "tablet", storageClass: "cold_2_8",
-    manufacturer: "GSK", leadTimeDays: 3, lasa: true, highAlert: false, schedule: "OTC", packs: [{ uom: "strip", toBase: 10 }],
+    manufacturer: "GSK", marketedBy: "Haleon", mfgLicenceNo: "KTK/25/123", pharmacopoeia: "IP", storageMaxC: 8, lasaNote: "CROCIN vs CREON", leadTimeDays: 3, lasa: true, highAlert: false, schedule: "OTC", packs: [{ uom: "strip", toBase: 10 }],
     levels: store === "" ? [{ storeResourceId: "s-1", storeCode: "PHARM-OPD", minBase: 20, reorderBase: 50, maxBase: 200 }, { storeResourceId: "s-2", storeCode: "WARD-3", minBase: 5, reorderBase: 10, maxBase: 40 }]
       : [{ storeResourceId: "s-1", storeCode: "PHARM-OPD", minBase: 20, reorderBase: 50, maxBase: 200 }],
     racks: [{ storeCode: "PHARM-OPD", location: "R-12" }],
@@ -313,11 +313,11 @@ describe("the office's reports — stage C", () => {
   afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
   const ALL = [...OWNER, "pharmacy.tally.export"];
 
-  it("fourteen reports: after 0 the list goes on in letters, and A opens top-selling — by value with its ABC classes, then by units", async () => {
+  it("eighteen reports: after 0 the list goes on in letters, and A opens top-selling — by value with its ABC classes, then by units", async () => {
     const calls = mock({ "GET /pharmacy/office/reports/stores": STORES, "GET /pharmacy/office/reports/top-selling": topSelling }, ALL);
     renderWithRouter(<PharmacyOfficeReports />, "/pharmacy/office/reports");
     const list = await screen.findByTestId("reports-view");
-    expect(within(list).getAllByRole("button").map((b) => b.querySelector("kbd")?.textContent)).toEqual(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "A", "D", "F", "G"]);
+    expect(within(list).getAllByRole("button").map((b) => b.querySelector("kbd")?.textContent)).toEqual(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "A", "D", "F", "G", "H", "J", "K", "N"]);
     expect(within(within(list).getByTestId("report-catalogue")).getByText("G")).toBeTruthy();
     list.focus();
     await userEvent.keyboard("a");
@@ -332,6 +332,122 @@ describe("the office's reports — stage C", () => {
     expect(screen.getByTestId("abc-C")).toHaveTextContent("300.00");
     await userEvent.selectOptions(screen.getByTestId("top-by"), "units");
     expect(within(screen.getByTestId("top-table")).getAllByRole("row")[1]).toHaveTextContent("250");
+  });
+
+  /* Owner 2026-10-03 — which patient got a credit note in a range, the total, and what became of the money. */
+  it("credit notes to patients: each note with its patient, value and money, totals, and the by-patient view", async () => {
+    const reg = {
+      from: "2026-10-01", to: "2026-10-03", preset: "week",
+      rows: [
+        { id: "cn1", creditNoteNo: "CN-1", date: "2026-10-02", at: "2026-10-02T05:00:00.000Z", invoiceNo: "INV-9", patientId: "p1", patientName: "Abhishek Kumar", uhid: "U00110020",
+          kind: "refund", reason: "pharmacy return: wrong medicine given", netPaise: 47200, issuedByName: "abhay.kumar", settlement: "kept_as_credit", keptPaise: 47200, refundPaise: 0 },
+        { id: "cn2", creditNoteNo: "CN-2", date: "2026-10-03", at: "2026-10-03T05:00:00.000Z", invoiceNo: "INV-10", patientId: "p1", patientName: "Abhishek Kumar", uhid: "U00110020",
+          kind: "refund", reason: "pharmacy return: no longer needed", netPaise: 10000, issuedByName: "admin", settlement: "refund_requested", keptPaise: 0, refundPaise: 10000 },
+      ],
+      byPatient: [{ patientId: "p1", patientName: "Abhishek Kumar", uhid: "U00110020", count: 2, netPaise: 57200, keptPaise: 47200, refundPaise: 10000 }],
+      totals: { count: 2, netPaise: 57200, keptPaise: 47200, refundRequestedPaise: 10000, refundPaidPaise: 0 },
+    };
+    const calls = mock({ "GET /pharmacy/office/reports/stores": STORES, "GET /pharmacy/office/reports/credit-notes": reg }, ALL);
+    renderWithRouter(<PharmacyOfficeReports />, "/pharmacy/office/reports");
+    await userEvent.click(within(await screen.findByTestId("reports-view")).getByTestId("report-creditNotes"));
+    const table = await screen.findByTestId("credit-table");
+    await waitFor(() => expect(calls.some((c) => c.path.startsWith("/pharmacy/office/reports/credit-notes?preset=today"))).toBe(true));
+    const one = within(table).getByTestId("credit-table-row-cn1");
+    expect(one).toHaveTextContent("Abhishek Kumar");
+    expect(one).toHaveTextContent("wrong medicine given");
+    expect(one).toHaveTextContent("472.00");
+    expect(one).toHaveTextContent("Kept as pharmacy credit");
+    expect(within(table).getByTestId("credit-table-row-cn2")).toHaveTextContent("Refund waiting for approval");
+    expect(within(table).getByTestId("credit-table-totals")).toHaveTextContent("572.00");
+    expect(screen.getByTestId("credit-summary")).toHaveTextContent("2 credit notes");
+    await userEvent.selectOptions(screen.getByTestId("credit-view"), "patient");
+    expect(within(await screen.findByTestId("credit-groups")).getByTestId("credit-groups-row-p1")).toHaveTextContent("572.00");
+  });
+
+  /* Owner 2026-10-03 — the GST book for the CA: payable = GST on sales less GST reversed by credit notes; credit spent is money. */
+  it("GST book: the payable headline, rate by rate, each credit note with its invoice, and the money check", async () => {
+    const m = (taxable: number, gst: number) => ({ taxablePaise: taxable, cgstPaise: gst / 2, sgstPaise: gst / 2, netPaise: taxable + gst });
+    const book = {
+      from: "2026-10-01", to: "2026-10-03", preset: "month",
+      rates: [{ rateBps: 500, sales: m(30000, 1500), returns: m(10000, 500), net: m(20000, 1000) }],
+      totals: { sales: m(30000, 1500), returns: m(10000, 500), net: m(20000, 1000) },
+      creditNotes: [{ id: "cn1", creditNoteNo: "CN-1", date: "2026-10-02", invoiceNo: "INV-1", invoiceDate: "2026-10-01", patientName: "Abhishek Kumar", uhid: "U1", taxablePaise: 10000, cgstPaise: 250, sgstPaise: 250, netPaise: 10500 }],
+      money: { billedPaise: 31500, paidFromCreditPaise: 10500, outstandingPaise: 0, collectedPaise: 21000 },
+    };
+    mock({ "GET /pharmacy/office/reports/stores": STORES, "GET /pharmacy/office/reports/gst-book": book }, ALL);
+    renderWithRouter(<PharmacyOfficeReports />, "/pharmacy/office/reports");
+    await userEvent.click(within(await screen.findByTestId("reports-view")).getByTestId("report-gstBook"));
+    expect(await screen.findByTestId("gst-payable")).toHaveTextContent("10.00");
+    expect(within(screen.getByTestId("gst-book-rates")).getByTestId("gst-book-rates-row-500")).toHaveTextContent("5%");
+    expect(within(screen.getByTestId("gst-book-notes")).getByTestId("gst-book-notes-row-cn1")).toHaveTextContent("INV-1");
+    expect(screen.getByTestId("gst-book-money")).toHaveTextContent("Paid from earlier credit notes");
+    expect(screen.getByTestId("gst-book-money")).toHaveTextContent("210.00");
+  });
+
+  it("tickets & invoices: each bill with its ticket, GST, credit notes against it and the credit spent on it", async () => {
+    const t1 = {
+      from: "2026-10-01", to: "2026-10-03", preset: "today",
+      rows: [{ invoiceId: "i1", invoiceNo: "INV-1", date: "2026-10-01", ticket: "P2610010001", source: "dispense", patientId: "p1", patientName: "Abhishek Kumar", uhid: "U1",
+        taxablePaise: 10000, cgstPaise: 250, sgstPaise: 250, netPaise: 10500, tender: "cash", creditUsedPaise: 0, outstandingPaise: 0,
+        creditNotes: [{ id: "cn1", creditNoteNo: "CN-1", date: "2026-10-02", taxablePaise: 10000, gstPaise: 500, netPaise: 10500 }], returnedPaise: 10500, finalPaise: 0 }],
+      totals: { bills: 1, netPaise: 10500, gstPaise: 500, returnedPaise: 10500, finalPaise: 0, creditUsedPaise: 0, outstandingPaise: 0 },
+    };
+    mock({ "GET /pharmacy/office/reports/stores": STORES, "GET /pharmacy/office/reports/ticket-invoices": t1 }, ALL);
+    renderWithRouter(<PharmacyOfficeReports />, "/pharmacy/office/reports");
+    await userEvent.click(within(await screen.findByTestId("reports-view")).getByTestId("report-ticketInvoices"));
+    const row = within(await screen.findByTestId("tickets-table")).getByTestId("tickets-table-row-i1");
+    expect(row).toHaveTextContent("P2610010001");
+    expect(row).toHaveTextContent("INV-1");
+    expect(row).toHaveTextContent("CN-1");
+  });
+
+  /* Owner 2026-10-03 — the accounts for the CA: one period, every money figure, every document, one Export all. */
+  it("accounts: the six sections, every document filterable by kind, and Export all writes one workbook of six sheets", async () => {
+    const side = (count: number, net: number, gst: number) => ({ count, grossPaise: net, discountPaise: 0, taxablePaise: net - gst, cgstPaise: gst / 2, sgstPaise: gst / 2, roundingPaise: 0, netPaise: net });
+    const acc = {
+      from: "2026-10-01", to: "2026-10-03", preset: "month",
+      sales: side(2, 31500, 1500), returns: side(1, 10500, 500), netSalesPaise: 21000,
+      gst: { outputPaise: 1000, inputPaise: 600, netPayablePaise: 400 },
+      moneyIn: { cashPaise: 21000, upiPaise: 0, cardPaise: 0, totalPaise: 21000, fromCreditPaise: 10500, outstandingPaise: 0 },
+      moneyOut: { count: 0, cashPaise: 0, bankPaise: 0, totalPaise: 0 },
+      credit: { keptPaise: 10500, usedPaise: 10500, heldNowPaise: 0 },
+      purchases: { bills: 1, taxablePaise: 12000, gstPaise: 600, totalPaise: 12600, paidPaise: 0, duePaise: 12600, returnsPaise: 0 },
+      documents: [
+        { at: "2026-10-01T05:00:00.000Z", type: "bill", no: "INV-1", party: "Abhishek Kumar (U1)", amountPaise: 10500, gstPaise: 500, mode: "cash", by: "abhay.kumar" },
+        { at: "2026-10-02T05:00:00.000Z", type: "credit_note", no: "CN-1", party: "Abhishek Kumar (U1)", amountPaise: -10500, gstPaise: -500, mode: null, by: "abhay.kumar" },
+        { at: "2026-10-03T05:00:00.000Z", type: "bill", no: "INV-2", party: "Abhishek Kumar (U1)", amountPaise: 21000, gstPaise: 1000, mode: "cash", by: "admin" },
+      ],
+    };
+    const empty = { from: "2026-10-01", to: "2026-10-03", preset: "month" };
+    mock({
+      "GET /pharmacy/office/reports/stores": STORES, "GET /pharmacy/office/reports/accounts": acc,
+      "GET /pharmacy/office/reports/sales": { ...register(true), rows: [] },
+      "GET /pharmacy/office/reports/gst-book": { ...empty, rates: [], totals: {}, creditNotes: [], money: { billedPaise: 0, paidFromCreditPaise: 0, outstandingPaise: 0, collectedPaise: 0 } },
+      "GET /pharmacy/office/reports/purchases": { ...empty, rows: [], totals: {} },
+      "GET /pharmacy/office/reports/credit-notes": { ...empty, rows: [], byPatient: [], totals: {} },
+    }, ALL);
+    renderWithRouter(<PharmacyOfficeReports />, "/pharmacy/office/reports");
+    await userEvent.click(within(await screen.findByTestId("reports-view")).getByTestId("report-accounts"));
+    const summary = await screen.findByTestId("accounts-summary");
+    expect(summary).toHaveTextContent("Net sales");
+    expect(summary).toHaveTextContent("210.00");
+    expect(summary).toHaveTextContent("Of the bills, paid from earlier credit");
+    expect(within(screen.getByTestId("accounts-docs")).getAllByRole("row").length).toBeGreaterThan(3);
+    await userEvent.click(screen.getByTestId("accounts-doc-credit_note"));
+    expect(within(screen.getByTestId("accounts-docs")).getByText("CN-1")).toBeInTheDocument();
+    expect(within(screen.getByTestId("accounts-docs")).queryByText("INV-2")).toBeNull();
+
+    const made: Blob[] = [];
+    const real = { create: URL.createObjectURL, revoke: URL.revokeObjectURL };
+    URL.createObjectURL = vi.fn((b: Blob) => { made.push(b); return "blob:x"; });
+    URL.revokeObjectURL = vi.fn();
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    await userEvent.click(screen.getByTestId("accounts-export-all"));
+    await waitFor(() => expect(made).toHaveLength(1));
+    URL.createObjectURL = real.create; URL.revokeObjectURL = real.revoke; click.mockRestore();
+    const bytes = new Uint8Array(await new Promise<ArrayBuffer>((resolve) => { const r = new FileReader(); r.onload = () => resolve(r.result as ArrayBuffer); r.readAsArrayBuffer(made[0]!); }));
+    const names = [...unzipStored(bytes).keys()].filter((n) => n.startsWith("xl/worksheets/"));
+    expect(names).toHaveLength(6);
   });
 
   it("the loss register: each loss with its reason and approver, a count variance named as one, totals by reason", async () => {
@@ -370,7 +486,7 @@ describe("the office's reports — stage C", () => {
     renderWithRouter(<PharmacyOfficeReports />, "/pharmacy/office/reports");
     await userEvent.click(within(await screen.findByTestId("reports-view")).getByTestId("report-catalogue"));
     const row = await screen.findByTestId("catalogue-table-row-i-cr");
-    for (const text of ["CROC", "30049099", "12%", "OTC", "Cold 2–8 °C", "GSK", "Yes"]) expect(row).toHaveTextContent(text);
+    for (const text of ["CROC", "30049099", "12%", "OTC", "Cold 2–8 °C", "GSK", "Haleon", "KTK/25/123", "IP", "8 °C", "CROCIN vs CREON", "Yes"]) expect(row).toHaveTextContent(text);
     // Packs, levels and racks are one entry to a line, each unbroken — joined with " · " they wrapped
     // mid-entry at 1440 ("PHARM-OPD R-" / "12-B"). The export still carries the joined text.
     expect(Array.from(row.querySelectorAll("td > div.whitespace-nowrap"), (d) => d.textContent))

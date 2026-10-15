@@ -105,7 +105,8 @@ export class GovernanceError extends Error {
       | "role_not_in_policy"
       | "approver_lacks_role"
       | "duplicate_approval"
-      | "approvals_missing",
+      | "approvals_missing"
+      | "drafter_cannot_approve",
     message?: string,
   ) {
     super(message ?? `workflow governance refused: ${code}`);
@@ -133,6 +134,12 @@ export async function approveDefinition(
 ): Promise<void> {
   if (actor.type !== "user") throw new GovernanceError("actor_not_user");
   const row = await loadDraft(db, input.definitionId);
+  // The person who drafted a definition never supplies one of its own approval keys: two-person control
+  // means two people OTHER than the author. The E-5 emergency road keeps its declared precedence (the
+  // drafter-activator pair is superseded there too), so this binds the normal road only.
+  if (input.emergency !== true && row.draftedBy === actor.id) {
+    throw new GovernanceError("drafter_cannot_approve", "drafter_cannot_approve: the drafter of a workflow definition cannot approve it");
+  }
   const policy = CHANGE_CLASS_POLICY[row.changeClass as ChangeClass];
   const allowedRoles = input.emergency === true ? policy.emergencyRoles : policy.requiredRoles;
   if (allowedRoles === null || !allowedRoles.includes(input.roleKey)) {

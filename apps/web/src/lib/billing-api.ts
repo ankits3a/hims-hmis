@@ -129,6 +129,8 @@ export type WireQuoteVisit = {
 
 export type WireFeeQuote = {
   encounterId: string; visitType: string; free: boolean;
+  /** Owner, 2026-10-01 — free because the consultation fee is switched off, not because of a review window. */
+  feesOff?: boolean;
   feeServiceId: string | null; draft: WirePricedDraft | null;
   patient?: WireQuotePatient | null;
   visit?: WireQuoteVisit | null;
@@ -263,6 +265,12 @@ export type WireDueRow = {
   netPayablePaise: number; outstandingPaise: number;
   creditExtended: boolean; seq: number;
 };
+
+/** Owner 2026-10-09 — "To collect": the visits the desk let through unpaid, until the fee is settled. */
+export type { WireToCollectRow } from "../../../../packages/contracts/src/to-collect";
+export function fetchToCollect(): Promise<{ items: import("../../../../packages/contracts/src/to-collect").WireToCollectRow[] }> {
+  return api("GET", "/billing/to-collect");
+}
 
 /** The tariff catalogue row the counter's line editor searches (`GET /tariff/services`). */
 export type WireService = {
@@ -469,3 +477,51 @@ export const requestOwnerCredit = (body: { draftId: string; patientId: string; a
 /** Where the owner's decision stands: `pending`, `granted` or `rejected`. */
 export const fetchCreditRequest = (approvalId: string): Promise<WireCreditRequest> =>
   api<WireCreditRequest>("GET", `/billing/credit-requests/${encodeURIComponent(approvalId)}`);
+
+/** Owner, 2026-10-01 — the fee switches (`GET`/`PUT /billing/fee-switches`). Off means free. */
+export type FeeKind = "opdConsult" | "lab" | "imaging";
+export type WireFeeSwitches = {
+  switches: { kind: FeeKind; off: boolean; changedAt: string | null; changedBy: string | null }[];
+  consultPaise: { new: number | null; renewal: number | null };
+};
+export function fetchFeeSwitches(): Promise<WireFeeSwitches> {
+  return api<WireFeeSwitches>("GET", "/billing/fee-switches");
+}
+export function saveFeeSwitch(body: { kind: FeeKind; off: boolean }): Promise<WireFeeSwitches> {
+  return api<WireFeeSwitches>("PUT", "/billing/fee-switches", body);
+}
+
+/** Owner, 2026-10-05 — the OPD consultation price list (`/billing/consult-prices`). Paise throughout. */
+export type ConsultBranch = "new" | "renewal" | "revisit";
+export const CONSULT_BRANCHES: readonly ConsultBranch[] = ["new", "renewal", "revisit"];
+export type WireConsultPrices = {
+  rows: { branch: ConsultBranch; serviceId: string | null; code: string | null; activePaise: number | null }[];
+  activeVersionNo: number | null;
+  pending: null | {
+    versionId: string;
+    versionNo: number;
+    approvalId: string | null;
+    approvalStatus: "pending" | "granted";
+    proposedBy: { id: string; name: string | null };
+    proposedAt: string | null;
+    note: string | null;
+    prices: Record<ConsultBranch, number | null>;
+  };
+};
+export function fetchConsultPrices(): Promise<WireConsultPrices> {
+  return api<WireConsultPrices>("GET", "/billing/consult-prices");
+}
+export function proposeConsultPrices(body: { prices: Partial<Record<ConsultBranch, number>>; note?: string }): Promise<WireConsultPrices> {
+  return api<WireConsultPrices>("POST", "/billing/consult-prices", body);
+}
+export function changeConsultPricesNow(body: { prices: Partial<Record<ConsultBranch, number>>; note: string }): Promise<WireConsultPrices> {
+  return api<WireConsultPrices>("POST", "/billing/consult-prices/now", body);
+}
+/** What the desk may say about a visit's fee before it is seated: the switch and the prices in force. */
+export type WireConsultTerms = { consultFeeOff: boolean; paise: Record<ConsultBranch, number | null> };
+export function fetchConsultTerms(): Promise<WireConsultTerms> {
+  return api<WireConsultTerms>("GET", "/billing/consult-terms");
+}
+export function decideConsultPrices(versionId: string, body: { approve: boolean; note: string }): Promise<WireConsultPrices> {
+  return api<WireConsultPrices>("POST", `/billing/consult-prices/${encodeURIComponent(versionId)}/decision`, body);
+}

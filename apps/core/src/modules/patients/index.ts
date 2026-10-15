@@ -43,7 +43,8 @@ export { searchPatients, visiblePatientIds } from "./search";
  * customer's record, in the sale's own transaction. One writer of `patient_documents`, reached
  * through this seam, rather than a second INSERT in the pharmacy.
  */
-export { captureDocument } from "./documents";
+export { captureDocument, registerDocumentCapturedHook } from "./documents";
+export type { DocumentCapturedHook } from "./documents";
 // PHARMACY P6 — the controlled hand-over checks the retained prescription is this patient's document.
 export { listDocuments } from "./documents";
 /* UX-AUDIT 2026-09-28 · BOARD — the OPD slip desk's day reads what is filed per visit; the doctor asks for a retake. */

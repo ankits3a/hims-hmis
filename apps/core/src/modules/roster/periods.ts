@@ -436,7 +436,25 @@ export async function unassign(tx: Tx, actor: Actor, assignmentId: string): Prom
   const period = await lockPeriod(tx, row.periodId);
   assertDraft(period);
   await requireRosterAct(tx, actor, editAct(period), { departmentId: row.departmentId });
-  await tx.delete(rosterAssignments).where(eq(rosterAssignments.id, assignmentId));
+  /**
+   * AUDIT 2026-10-04 #7 — THE RACE. The read above is taken BEFORE the period lock, so two people
+   * removing the same slot both read it, queue on the lock, and the second deleted zero rows and
+   * returned as if it had succeeded — after which both put a replacement in and the draft carried
+   * a duplicate. Under the lock the row is re-read `for update` and the delete must remove exactly
+   * one row; anything else is the slot having gone from under the caller, and is refused.
+   */
+  const still = await (tx as Db).select({ id: rosterAssignments.id }).from(rosterAssignments)
+    .where(and(eq(rosterAssignments.id, assignmentId), eq(rosterAssignments.periodId, row.periodId)))
+    .for("update");
+  if (still.length !== 1) {
+    throw new RosterError("unknown_assignment", undefined, { assignmentId, periodId: row.periodId, removedConcurrently: true });
+  }
+  const gone = await tx.delete(rosterAssignments)
+    .where(and(eq(rosterAssignments.id, assignmentId), eq(rosterAssignments.periodId, row.periodId)))
+    .returning({ id: rosterAssignments.id });
+  if (gone.length !== 1) {
+    throw new RosterError("unknown_assignment", undefined, { assignmentId, periodId: row.periodId, removedConcurrently: true });
+  }
 }
 
 /* ═══════════════════════════════ one body, two rooms ═══════════════════════════════ */
@@ -582,7 +600,11 @@ export async function publishPeriods(
     const findings = await validate(tx, period.id);
     // One definition of "accepted", shared with the findings reader, so that a later change to
     // what an acceptance means cannot leave the gate honouring a different rule from the screen.
-    const blocking = blockingFindings(findings, await acceptedFindingKeys(tx, period.id));
+    const blocking = blockingFindings(findings, await acceptedFindingKeys(tx, period.id))
+      // `presence_clash` is refused at step (4) across the WHOLE set being published, in its own
+      // words (`presence_overlap`, naming the person). Judged here, one period at a time, it would
+      // wrongly refuse the S2(b) cross-unit swap that only a set publish can make legal.
+      .filter((f) => f.ruleKey !== "presence_clash");
     if (blocking.length > 0) {
       throw new RosterError("blocked_by_findings", undefined, {
         periodId: period.id,
@@ -725,8 +747,15 @@ export interface AmendInput {
   /** Assignment ids to take out of effect. They must belong to this period and be live. */
   close?: readonly string[];
   /** New slots. `replacesAssignmentId` carries the lineage of the slot this one takes over. */
-  open?: readonly (AssignInput & { replacesAssignmentId?: string })[];
+  open?: readonly (AssignInput & { replacesAssignmentId?: string; swapOfId?: string })[];
   afterTheFact?: boolean;
+  /**
+   * 20-U U6 — an APPROVED cover or swap is applied under `approve_swap` rather than `publish`, so a
+   * unit head holding a team-scoped delegation of that one authority can apply their own unit's
+   * swap (and nothing else). Honoured only for `kind` `cover`/`swap`; `teamId` is the unit, absent
+   * across units — which only a department-level holder then satisfies.
+   */
+  approvedAs?: { act: "approve_swap"; teamId?: string };
 }
 
 /**
@@ -746,7 +775,12 @@ export async function amend(
   if (period.status !== "published") {
     throw new RosterError("period_not_published", undefined, { periodId, status: period.status });
   }
-  await requireRosterAct(tx, actor, "publish", period.departmentId === null ? {} : { departmentId: period.departmentId });
+  const dept = period.departmentId === null ? {} : { departmentId: period.departmentId };
+  if (input.approvedAs !== undefined && (input.kind === "cover" || input.kind === "swap")) {
+    await requireRosterAct(tx, actor, "approve_swap", input.approvedAs.teamId === undefined ? dept : { ...dept, teamId: input.approvedAs.teamId });
+  } else {
+    await requireRosterAct(tx, actor, "publish", dept);
+  }
 
   const reason = input.reason.trim();
   if (reason === "" || reason.length > 500) {
@@ -807,6 +841,8 @@ export async function amend(
       locationResourceId: slot.locationResourceId ?? null,
       batchRef: slot.batchRef ?? null, topic: slot.topic ?? null, note: slot.note ?? null,
       source: slot.source ?? "manual",
+      // 20-U U6 — a swap's two new slots name the slot each was exchanged for (T1's `swap_of_id`).
+      swapOfId: slot.swapOfId ?? null,
       // Inserted NOT YET EFFECTIVE, and flipped below once the invariant has been checked in
       // application code. Inserting them live would let the exclusion constraint fire first, and a
       // ward sister covering a night at 02:00 would be shown a constraint name instead of the
@@ -889,6 +925,29 @@ export async function asKnownAt(
     ))
     .orderBy(asc(rosterAssignments.startsAt), asc(rosterAssignments.id))
     .then((rows) => rows.map((r) => r.a));
+}
+
+/**
+ * 20-U I23 — `asKnownAt`'s two filters, across EVERY roster rather than one scope, for the slots that
+ * overlap `[from, to)`. The inspector's question is "who was on in Surgery last Tuesday" and does
+ * not know which scope (a unit's month, the department's, the hospital's) answered it; the knowledge
+ * axis is the same two predicates as above, so the two can never disagree about what was known.
+ */
+export async function publishedAsKnownAt(
+  exec: Db | Tx, knownAt: Date, from: Date, to: Date,
+): Promise<{ assignment: RosterAssignmentRow; period: RosterPeriodRow }[]> {
+  return (exec as Db).select({ a: rosterAssignments, p: rosterPeriods }).from(rosterAssignments)
+    .innerJoin(rosterPeriods, eq(rosterPeriods.id, rosterAssignments.periodId))
+    .where(and(
+      sql`${rosterPeriods.publishedAt} is not null and ${rosterPeriods.publishedAt} <= ${knownAt}`,
+      sql`(${rosterPeriods.supersededAt} is null or ${rosterPeriods.supersededAt} > ${knownAt})`,
+      sql`${rosterAssignments.liveFrom} <= ${knownAt}`,
+      sql`(${rosterAssignments.liveTo} is null or ${rosterAssignments.liveTo} > ${knownAt})`,
+      lt(rosterAssignments.startsAt, to),
+      gt(rosterAssignments.endsAt, from),
+    ))
+    .orderBy(asc(rosterAssignments.startsAt), asc(rosterAssignments.id))
+    .then((rows) => rows.map((r) => ({ assignment: r.a, period: r.p })));
 }
 
 export async function periodWithAssignments(

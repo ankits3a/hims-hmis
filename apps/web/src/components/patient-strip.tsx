@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../lib/api";
 import { usePatientInHand } from "../lib/patient-in-hand";
 import { Button } from "@/components/ui/button";
+import { CreditChip } from "./patient-credit";
 
 /**
  * PLAN 07b T1 — THE PATIENT IN HAND, ON EVERY SCREEN.
@@ -29,7 +30,13 @@ type StripPatient = {
   isConfidential: boolean; alias: string | null;
 };
 
-export function PatientStrip(): React.ReactElement | null {
+/**
+ * `path` — WHERE THE SHELL IS (owner, 2026-10-01). On that patient's own profile the strip repeats
+ * the lane beside it: *"Why have the horizontal bar showing patient in hand when we already have
+ * patient details showing in left panel?"* So it is not drawn there, and the profile's lane carries
+ * Release instead. On every other screen — and on a DIFFERENT patient's profile — it still shows.
+ */
+export function PatientStrip({ path }: { path?: string } = {}): React.ReactElement | null {
   const { t } = useTranslation();
   const { inHand, release } = usePatientInHand();
   const patientId = inHand?.patientId ?? "";
@@ -42,6 +49,7 @@ export function PatientStrip(): React.ReactElement | null {
   });
 
   if (inHand === null) return null;
+  if (path !== undefined && path === `/patients/${inHand.patientId}`) return null;
 
   const restricted = patient.isError && patient.error instanceof ApiError && patient.error.status === 404;
   const row = patient.data?.patient;
@@ -62,13 +70,14 @@ export function PatientStrip(): React.ReactElement | null {
   return (
     <div
       data-testid="patient-strip"
-      className="no-print flex flex-wrap items-center gap-x-3 gap-y-1 border-b bg-blue-50 px-4 py-1.5 text-sm"
+      className="shell-strip no-print flex flex-wrap items-center gap-x-3 gap-y-1 border-b bg-blue-50 px-4 py-1.5 text-sm"
     >
       <span className="font-semibold" data-testid="strip-label">{label}</span>
       {row !== undefined && !restricted && (
         <>
           <span className="text-neutral-600" data-testid="strip-uhid">{row.uhid}</span>
           <span className="text-neutral-600">{t(`sex.${row.administrativeGender}`, row.administrativeGender)}</span>
+          <CreditChip patientId={inHand.patientId} testId="strip-credit" />
         </>
       )}
       {inHand.encounterId !== null && (

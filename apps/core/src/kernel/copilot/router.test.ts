@@ -1,5 +1,5 @@
 import { IdentifierLeak } from "./mask";
-import { intentNames } from "./phrasebook";
+import { modelIntentNames } from "./phrasebook";
 import { routeQuestion } from "./router";
 import type { ChoiceAnswer, ChoiceClient, ChooseInput, CompleteInput, InferenceClient } from "../inference/types";
 
@@ -57,6 +57,7 @@ describe("routeQuestion — the floor answers first and for free", () => {
     const out = await routeQuestion("kitna wait hai", {}, model.client);
     expect(out?.intent).toBe("queue_depth");
     expect(out?.source).toBe("phrasebook");
+    expect(out?.via).toBe("phrasebook");
     expect(model.calls).toHaveLength(0);
   });
 
@@ -71,7 +72,7 @@ describe("routeQuestion — the model covers the tail", () => {
     const model = say('{"tool":"visit_status","slot":"<<P1>>"}');
     // No cue in the table fires on this sentence; it is exactly what the model is for.
     const out = await routeQuestion("<<P1>> — any news from upstairs yet?", ISSUED, model.client);
-    expect(out).toEqual({ intent: "visit_status", slot: "<<P1>>", source: "model", cues: [] });
+    expect(out).toEqual({ intent: "visit_status", slot: "<<P1>>", source: "model", via: "model", cues: [] });
     expect(model.calls).toHaveLength(1);
   });
 
@@ -226,7 +227,7 @@ describe("routeQuestion — TypeSafe first", () => {
     const chooser = picks({ tool: { choice: "visit_status", confidence: 0.99 } });
     const model = say('{"tool":"queue_depth","slot":""}');
     const out = await routeQuestion(TAIL, ISSUED, model.client, chooser.client);
-    expect(out).toEqual({ intent: "visit_status", slot: "<<P1>>", source: "model", cues: [] });
+    expect(out).toEqual({ intent: "visit_status", slot: "<<P1>>", source: "model", via: "chooser", cues: [] });
     expect(model.calls).toHaveLength(0);
   });
 
@@ -284,7 +285,7 @@ describe("routeQuestion — TypeSafe first", () => {
     const sent = chooser.calls[0];
     expect(sent?.state).toEqual({ question: TAIL });
     expect(Object.keys(sent?.questions ?? {})).toEqual(["tool"]);
-    expect(Object.keys(sent?.questions.tool?.options ?? {}).sort()).toEqual([...intentNames(), "none"].sort());
+    expect(Object.keys(sent?.questions.tool?.options ?? {}).sort()).toEqual([...modelIntentNames(), "none"].sort());
     expect(JSON.stringify(sent)).not.toContain("U00110012");
   });
 });

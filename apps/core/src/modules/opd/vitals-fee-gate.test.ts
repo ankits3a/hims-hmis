@@ -230,21 +230,25 @@ describe("FD-32 — the vitals desk is gated on payment, and the front desk can 
     });
 
     /**
-     * THE ADJACENT PROPERTY, and the one this ruling must NOT change. `vitalsStartGuards` and
-     * `consultStartGuards` are two registries precisely so that "waved past for vitals" cannot
-     * quietly become "waved past for the consultation": the patient is charted, then billed, then
-     * seen. If a later task widens the bypass to the doctor's door, this row goes red and says so.
+     * ═══ THE ADJACENT PROPERTY — CHANGED BY THE OWNER, 2026-10-09 ═══
+     *
+     * This row used to say the opposite ("the doctor's door is still shut") and promised to go red
+     * the day the bypass reached the consulting room. It did, on purpose: owner 2026-10-09 —
+     * *"walk-in rule, a (desk let through → patient shows in doctor's line, no mark)"*. The bay's
+     * emergency save writes the same bypass the front desk does, so the patient it charts is an
+     * ordinary patient for the doctor. The two registries stay two: a visit with NO bypass is still
+     * refused at this door (`unpaid-token.test.ts`).
      */
-    it("the doctor's door is still shut: an emergency chart does not start a consultation", async () => {
+    it("the doctor's door opens for a visit the bay let through: an emergency chart can be seen with no reason asked", async () => {
       gateRefusing();
       const unregisterConsult = registerConsultStartGuard("test_consult_fee_gate", () =>
         Promise.resolve({ ok: false as const, code: "fee_unsettled", detail: { visitType: "new" } }));
       try {
         const encId = await opened();
         await recordVitals(db, vd.actor, encId, adultOk, MON, urgent);
-        await expect(startConsultation(db, dra.actor, encId, MON)).rejects.toMatchObject({
-          code: "consult_gate_refused", detail: { guard: "test_consult_fee_gate", code: "fee_unsettled" },
-        });
+        const started = await startConsultation(db, dra.actor, encId, MON);
+        expect(started.encounter.status).toBe("in_consultation");
+        expect(started.encounter.consultFeeOverrideBy).toBeNull();
       } finally {
         unregisterConsult();
       }

@@ -3,14 +3,14 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { openSessionFor } from "../../../test/helpers/billing";
 import { MON2, MON3, addAllergy, openVisitWithoutRx, seedPharmacyBase, stockIn } from "../../../test/helpers/pharmacy";
 import { testCfg } from "../../../test/helpers/opd";
-import { events, opdDoctors, opdEncounters, opdPrescriptions, opdQueueEntries, orders, patientDocuments, pharmacyRegH1, stockBalances } from "../../kernel/db/schema";
+import { events, opdDoctors, opdEncounters, opdPrescriptions, opdQueueEntries, orders, patientAllergies, patientDocuments, pharmacyRegH1, stockBalances } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { registerItem } from "../materials";
 import { chargeOrphans } from "../billing";
 import { listVisits } from "../opd";
 import { registerPatient } from "../patients";
 import { billDispense, previewDispenseBill } from "./bill";
-import { findAtCounter } from "./claim";
+import { findAtCounter, suggestAtCounter } from "./claim";
 import { handOverDispense } from "./handover";
 import { enterPaperPrescription } from "./paper-rx";
 import { pickDispense } from "./pick";
@@ -60,6 +60,58 @@ describe("dispense from a paper prescription at the desk (2026-09-30)", () => {
   async function visitWithoutRx(): Promise<string> {
     return (await openVisitWithoutRx(db, fx)).id;
   }
+
+  /* Owner, staging 2026-10-02: "why am I seeing even the crossed (deleted) allergies … in pharmacy desk screen?" */
+  it("the ticket's allergy pills are the ACTIVE allergies — one marked entered in error is not shown", async () => {
+    await visitWithoutRx();
+    await addAllergy(db, fx.patient.id, "Peanuts");
+    await addAllergy(db, fx.patient.id, "Dust");
+    await db.update(patientAllergies).set({ status: "entered_in_error" }).where(eq(patientAllergies.substance, "Dust"));
+    const d = await enterPaperPrescription(db, testCfg, store, fx.pharmacist.actor, {
+      patientId: fx.patient.id, rxDate: RX_DATE, lines: [{ itemId: fx.item.crocin, qtyBase: 5 }],
+    }, MON2);
+    expect(d.allergies.map((a) => a.substance)).toEqual(["Peanuts"]);
+  });
+
+  /* Owner, staging 2026-10-02: "If a patient has been billed in Pharmacy desk, the staff is unable to dispense medicine to him again." */
+  it("a patient whose ticket was handed over is not stuck on it: the name gives the paper door again, and a second paper is a fresh ticket", async () => {
+    await visitWithoutRx();
+    const sell = async (qty: number): Promise<string> => {
+      const d = await enterPaperPrescription(db, testCfg, store, fx.pharmacist.actor, {
+        patientId: fx.patient.id, rxDate: RX_DATE, doctorId: fx.doctor.doctorId, lines: [{ itemId: fx.item.crocin, qtyBase: qty }],
+      }, MON2);
+      return d.id;
+    };
+    const first = await sell(5);
+    // still being worked: the name opens it
+    expect(await findAtCounter(db, testCfg, fx.pharmacist.actor, fx.patient.uhid, MON2)).toMatchObject({ kind: "dispense", dispense: { id: first } });
+    await verifyDispense(db, fx.pharmacist.actor, fx.decls, first, { lines: [{ lineIdx: 0, qtyBase: 5 }] }, MON2);
+    await pickDispense(db, fx.pharmacist.actor, fx.decls, first, {}, MON2);
+    await confirmSlip(db, fx.pharmacist.actor, first, MON2);
+    const preview = await previewDispenseBill(db, fx.pharmacist.actor, first, MON2);
+    await billDispense(db, fx.pharmacist.actor, first, { tenders: [{ mode: "cash", amountPaise: preview.totals.netPayablePaise }] }, MON2);
+    await handOverDispense(db, fx.pharmacist.actor, fx.decls, first, {}, MON2);
+
+    // handed over: the name no longer opens it — the paper door, naming the finished ticket
+    expect(await findAtCounter(db, testCfg, fx.pharmacist.actor, fx.patient.uhid, MON2)).toMatchObject({
+      kind: "none", reason: "no_prescription_today", patient: { id: fx.patient.id }, lastDispenseId: first,
+    });
+    const second = await sell(10);
+    expect(second).not.toBe(first);
+    // and the fresh ticket is what the name opens now
+    expect(await findAtCounter(db, testCfg, fx.pharmacist.actor, fx.patient.uhid, MON2)).toMatchObject({ kind: "dispense", dispense: { id: second, status: "claimed" } });
+  });
+
+  /* Owner, staging 2026-10-01: a registered patient must show as the pharmacist types the name. */
+  it("as the pharmacist types: a registered patient is suggested by part of the name; a token or a QR is never a name", async () => {
+    const { patient } = await withTx(db, (tx) => registerPatient(tx, fx.pharmacist.actor, { name: "Abhishek Kumar", phone: "9811122233", ageYears: 54, sex: "male" }));
+    const typed = "abhi";
+    const hits = await suggestAtCounter(db, fx.pharmacist.actor, typed, MON2);
+    expect(hits.find((h) => h.uhid === patient.uhid)).toMatchObject({ id: patient.id, name: "Abhishek Kumar", restricted: false, hint: expect.stringContaining("••2233") });
+    expect(await suggestAtCounter(db, fx.pharmacist.actor, typed.slice(0, 1), MON2)).toEqual([]);
+    expect(await suggestAtCounter(db, fx.pharmacist.actor, "T-14", MON2)).toEqual([]);
+    expect(await suggestAtCounter(db, fx.pharmacist.actor, "rx1.abc", MON2)).toEqual([]);
+  });
 
   it("found patient with no e-Rx → the paper door → an ordinary ticket → verify → pick → bill → hand over → stock falls", async () => {
     const encounterId = await visitWithoutRx();
@@ -192,8 +244,8 @@ describe("dispense from a paper prescription at the desk (2026-09-30)", () => {
       await throughTheCounter(d.id, 10);
       const bal = await db.select().from(stockBalances).where(eq(stockBalances.itemId, fx.item.crocin));
       expect(bal.reduce((s, b) => s + b.qtyOnHand, 0)).toBe(90);
-      // the desk finds the paper ticket again by name
-      expect(await findAtCounter(db, testCfg, fx.pharmacist.actor, "Ramesh Kulkarni", MON3)).toMatchObject({ kind: "dispense", dispense: { id: d.id } });
+      // Owner 2026-10-02 — handed over is finished: the name offers the paper door again and NAMES the finished ticket.
+      expect(await findAtCounter(db, testCfg, fx.pharmacist.actor, "Ramesh Kulkarni", MON3)).toMatchObject({ kind: "none", reason: "no_prescription_today", lastDispenseId: d.id });
     });
 
     it("a visit that already carries a prescription is left alone: the next paper gets its own pharmacy visit", async () => {

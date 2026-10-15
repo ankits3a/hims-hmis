@@ -7,7 +7,7 @@ import {
 } from "../../kernel/db/schema";
 import { listVisits } from "../opd";
 import { feeServiceFor } from "./charge-rules";
-import { loadBillingConfig } from "./config";
+import { chargeRulesAt, loadBillingConfig } from "./config";
 import { chargeOrphanFlagged, dayClosed } from "./events";
 import { IST_OFFSET_MS, istDay } from "./time";
 import type { BillingConfig } from "./config";
@@ -295,8 +295,9 @@ async function feeCharged(exec: Db | Tx, encounterId: string, feeServiceId: stri
 async function orphanScan(db: Db, day: string, cfg: BillingConfig): Promise<ChargeOrphan[]> {
   const visits = await listVisits(db, { serviceDate: day }, ORPHAN_SCAN_LIMIT);
   const orphans: ChargeOrphan[] = [];
+  const rules = await chargeRulesAt(db, cfg.chargeRules, new Date());
   for (const encounter of visits) {
-    const feeServiceId = feeServiceFor(encounter, cfg.chargeRules);
+    const feeServiceId = feeServiceFor(encounter, rules);
     if (feeServiceId === null) continue; // revisit is FREE — there is no charge to be missing
     if (await feeCharged(db, encounter.id, feeServiceId)) continue;
     orphans.push({ encounterId: encounter.id, patientId: encounter.patientId, feeServiceId });

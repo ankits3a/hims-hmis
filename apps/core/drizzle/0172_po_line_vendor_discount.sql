@@ -1,0 +1,3 @@
+ALTER TABLE "purchase_order_lines" ADD COLUMN "list_rate_paise" bigint;--> statement-breakpoint
+ALTER TABLE "purchase_order_lines" ADD COLUMN "discount_bps" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "purchase_order_lines" ADD CONSTRAINT "purchase_order_lines_discount_ck" CHECK ("purchase_order_lines"."discount_bps" between 0 and 10000 and ("purchase_order_lines"."discount_bps" = 0 or "purchase_order_lines"."list_rate_paise" is not null) and ("purchase_order_lines"."list_rate_paise" is null or "purchase_order_lines"."list_rate_paise" >= "purchase_order_lines"."rate_paise"));

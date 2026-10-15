@@ -210,6 +210,21 @@ describe("kernel alerts consumer", () => {
       // other half of the pair — `escalation.triggered` says the work is late, this says nobody
       // has said anything — and its branch lands in `consumer.ts` in the same commit.
       { event: "respond.overdue", consumer: ALERTS_CONSUMER },
+      // 20-U infra (owner 2026-10-04): seven -> EIGHT, read off the red run. A "this is wrong" flag
+      // on the who-is-on board pages the duty manager on duty; its branch and its own suite
+      // (`test/roster-flag-alert.e2e.test.ts`) land in the same commit.
+      { event: "roster.flag_raised", consumer: ALERTS_CONSUMER },
+      // MOBILE §3i (owner 2026-10-07): eight -> TWELVE, read off the red run. A cover asked of me, the
+      // answer to mine, the decision, and a duty published or moved — each to the people it is about.
+      // Branches in `consumer.ts`, suite in `modules/roster/swaps.test.ts`, same commit.
+      { event: "roster.cover_requested", consumer: ALERTS_CONSUMER },
+      { event: "roster.cover_answered", consumer: ALERTS_CONSUMER },
+      { event: "roster.cover_decided", consumer: ALERTS_CONSUMER },
+      { event: "roster.duty_changed", consumer: ALERTS_CONSUMER },
+      // E2.2 (decision 0069) — a leave waiting reaches its deciders; the answer reaches the person.
+      { event: "roster.absence_requested", consumer: ALERTS_CONSUMER },
+      { event: "roster.absence_approved", consumer: ALERTS_CONSUMER },
+      { event: "roster.absence_refused", consumer: ALERTS_CONSUMER },
     ]);
 
     const registry = new ModuleRegistry();
@@ -242,6 +257,12 @@ describe("kernel alerts consumer", () => {
           "approval.requested",
           // Obligation spine T1 — and this one says nobody has answered yet.
           "respond.overdue",
+          // 20-U infra (owner 2026-10-04) — a "this is wrong" flag pages the duty manager on duty.
+          "roster.flag_raised",
+          // Mobile §3i — a person's own duties.
+          "roster.cover_requested", "roster.cover_answered", "roster.cover_decided", "roster.duty_changed",
+          // E2.2 — leave waiting, and its answer.
+          "roster.absence_requested", "roster.absence_approved", "roster.absence_refused",
         ],
       },
     ]);

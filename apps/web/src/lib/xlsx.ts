@@ -149,6 +149,34 @@ export function toXlsx(sheet: XlsxSheet): Uint8Array {
   return zipStored(files.map((f) => ({ name: f.name, data: enc.encode(f.xml) })));
 }
 
+/**
+ * Owner 2026-10-03 — several sheets in one workbook (the accounts' "Export all"): the same parts as
+ * `toXlsx`, one worksheet part per sheet, names kept unique (Excel refuses a repeated sheet name).
+ */
+export function toXlsxBook(sheets: readonly XlsxSheet[]): Uint8Array {
+  const used = new Set<string>();
+  const names = sheets.map((sh) => {
+    let n = sheetName(sh.name);
+    for (let i = 2; used.has(n.toLowerCase()); i++) n = sheetName(`${sh.name.slice(0, 27)} ${String(i)}`);
+    used.add(n.toLowerCase());
+    return n;
+  });
+  const overrides = sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${String(i + 1)}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("");
+  const files: { name: string; xml: string }[] = [
+    { name: "[Content_Types].xml", xml: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${overrides}<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>` },
+    { name: "_rels/.rels", xml: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>` },
+    { name: "xl/workbook.xml", xml: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${names.map((n, i) => `<sheet name="${xml(n)}" sheetId="${String(i + 1)}" r:id="rId${String(i + 1)}"/>`).join("")}</sheets></workbook>` },
+    { name: "xl/_rels/workbook.xml.rels", xml: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_, i) => `<Relationship Id="rId${String(i + 1)}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${String(i + 1)}.xml"/>`).join("")}<Relationship Id="rId${String(sheets.length + 1)}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>` },
+    { name: "xl/styles.xml", xml: STYLES },
+    ...sheets.map((sh, i) => ({ name: `xl/worksheets/sheet${String(i + 1)}.xml`, xml: sheetXml(sh) })),
+  ];
+  return zipStored(files.map((f) => ({ name: f.name, data: enc.encode(f.xml) })));
+}
+
 export const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 /** Hands an .xlsx to the browser as a download. */

@@ -133,6 +133,31 @@ export async function reportPrinted(db: Db, id: string, relayId: string, now = n
 }
 
 /**
+ * ═══ BROWSER PRINTING (owner, 2026-10-07) — the counter's own browser put the paper out ═══
+ *
+ * Only a job nobody holds: `queued` (no relay came) or `failed` (a relay gave up). A `claimed` job is
+ * a relay's, mid-print, and a `printed` one is done. `claimed_by` carries `browser:<user id>` so the
+ * row says who printed it and where; `claimed_at` stays NULL on purpose — `relayServes` reads a
+ * claim time as evidence that a RELAY is alive, and a browser printing must never forge that.
+ */
+export const BROWSER_PRINTER_PREFIX = "browser:";
+
+export async function reportPrintedHere(db: Db, id: string, userId: string, now = new Date()): Promise<boolean> {
+  const done = await db
+    .update(printJobs)
+    .set({ status: "printed", printedAt: now, updatedAt: now, claimedBy: `${BROWSER_PRINTER_PREFIX}${userId}`, claimedAt: null, leaseExpiresAt: null, nextAttemptAt: null })
+    .where(and(eq(printJobs.id, id), inArray(printJobs.status, ["queued", "failed"])))
+    .returning({ id: printJobs.id });
+  return done.length > 0;
+}
+
+/** Who put a job on paper. `null` until it is printed. */
+export function printedVia(job: { status: string; claimedBy: string | null }): "relay" | "browser" | null {
+  if (job.status !== "printed") return null;
+  return job.claimedBy !== null && job.claimedBy.startsWith(BROWSER_PRINTER_PREFIX) ? "browser" : "relay";
+}
+
+/**
  * The relay reports a failure — a jam, an offline queue, a rejected document.
  *
  * Under `MAX_ATTEMPTS` the row goes back to `queued` with a backoff; at the cap it becomes

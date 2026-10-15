@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
-  pgTable, text, integer, boolean, timestamp, primaryKey, index, uniqueIndex,
+  pgTable, text, integer, boolean, timestamp, primaryKey, index, uniqueIndex, check,
 } from "drizzle-orm/pg-core";
 
 export const users = pgTable(
@@ -35,6 +35,13 @@ export const users = pgTable(
     // degrades to the in-app alert that already ships. No collection flow exists in this phase;
     // numbers are deployment data, seeded per hospital.
     phone: text("phone"),
+    /**
+     * STAFF ATTENDANCE (owner 2026-10-09: "Match by mobile or Aadhaar only") — the person's Aadhaar
+     * as the attendance system's KEYED HASH (`modules/attendance/aadhaar.ts`) and its last four
+     * digits for the masked display. The number itself is never stored, here or anywhere.
+     */
+    aadhaarHash: text("aadhaar_hash"),
+    aadhaarLast4: text("aadhaar_last4"),
     passwordHash: text("password_hash").notNull(),
     pinHash: text("pin_hash"),
     badgeVersion: integer("badge_version").notNull().default(0),
@@ -96,6 +103,76 @@ export const roleAssignments = pgTable(
   (t) => [index("role_assignments_user_idx").on(t.userId)],
 );
 
+/**
+ * ═══ MOBILE M6a — THE PHONES A PERSON IS SIGNED IN ON (owner 2026-10-06: staff use PERSONAL phones) ═══
+ *
+ * One row per (person, app install). `device_id` is an identifier the staff app makes up when it is
+ * installed and sends with its sign-in; it is a LABEL, not a credential — nothing is granted for
+ * presenting one, and a session is still a password. What the row buys is the list an administrator
+ * reads in `/admin/users`: which phones hold a session for this person, what they are, when they
+ * were last opened — and one button to end a lost phone's session without resetting the password.
+ *
+ * `model`, `os_version` and `app_version` are what the phone SAYS it is (bounded text, never
+ * trusted). `last_ip` is the client address at the last sign-in or app open (WASA M-05's column,
+ * per phone). The browser's sessions have no row here: `auth_sessions.device_row_id` stays NULL.
+ */
+export const authDevices = pgTable(
+  "auth_devices",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    deviceId: text("device_id").notNull(),
+    model: text("model"),
+    osVersion: text("os_version"),
+    appVersion: text("app_version"),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    lastIp: text("last_ip"),
+    /**
+     * MOBILE M6b — where a notification for this phone is sent (the FCM registration token the app
+     * was given). NULL = this phone takes none: never asked, declined, or signed out. It is an
+     * ADDRESS and a capability — never logged, never returned by any route, never put in an event.
+     */
+    pushToken: text("push_token"),
+    pushTokenAt: timestamp("push_token_at", { withTimezone: true }),
+    /** The language the phone's app is in; the generic sentence a notification carries is said in it. */
+    pushLanguage: text("push_language").notNull().default("en"),
+    /** The categories this phone's owner switched off on it (`PUSH_CATEGORIES`). Empty = all on. */
+    pushMuted: text("push_muted").array().notNull().default(sql`'{}'`),
+  },
+  (t) => [
+    uniqueIndex("auth_devices_user_device_ux").on(t.userId, t.deviceId),
+  ],
+);
+
+/**
+ * ═══ MOBILE M6b — WHAT WAS SENT TO A PHONE, WITHOUT WHAT IT SAID ═══
+ *
+ * One row per (alert, phone) the sender finished with: `sent` (FCM accepted it) or `gone` (FCM said
+ * the address is dead, and the token was cleared). It is the dedupe unit — a redelivered
+ * `alert.raised` finds the row and sends nothing — the per-person rate limit's count, and the
+ * record an administrator's "send a test" leaves (`alert_id` NULL). It holds a category and a
+ * phone; it holds no title, no body and no token.
+ */
+export const phonePushSends = pgTable(
+  "phone_push_sends",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    deviceRowId: text("device_row_id").notNull().references(() => authDevices.id),
+    /** `alerts.id`, or NULL for an administrator's test. No FK: an alert's retention is its own. */
+    alertId: text("alert_id"),
+    category: text("category").notNull(),
+    outcome: text("outcome").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("phone_push_sends_alert_device_ux").on(t.alertId, t.deviceRowId),
+    index("phone_push_sends_user_at_idx").on(t.userId, t.createdAt),
+    check("phone_push_sends_outcome_ck", sql`${t.outcome} in ('sent', 'gone')`),
+  ],
+);
+
 export const authSessions = pgTable(
   "auth_sessions",
   {
@@ -115,6 +192,14 @@ export const authSessions = pgTable(
      */
     clientIp: text("client_ip"),
     userAgent: text("user_agent"),
+    /** Mobile M6a — the phone this session was opened on (`auth_devices`). NULL for a browser session. */
+    deviceRowId: text("device_row_id").references(() => authDevices.id),
+    /**
+     * App home (owner 2026-10-07, decision 0042) — when this session last proved the person is at the
+     * phone (fingerprint on the phone, or the password checked here). A money approval decided from a
+     * phone needs one inside `STEP_UP_WINDOW_MS`. NULL until the first step-up; unused by a browser.
+     */
+    stepUpAt: timestamp("step_up_at", { withTimezone: true }),
   },
   (t) => [
     uniqueIndex("auth_sessions_token_ux").on(t.tokenHash),

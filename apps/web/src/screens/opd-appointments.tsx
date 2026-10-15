@@ -1,13 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/react-query";
 import { FormProvider, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
-import { listDepartments, listDoctors, listRooms, opdErrorMessage, todayIst } from "../lib/opd-api";
+import { fetchOpdUnits } from "../lib/roster-api";
+import { useDoctorLabel } from "../lib/use-doctor-label";
+import { listDepartments, listDoctors, listPatientAppointments, listRooms, opdErrorMessage, todayIst } from "../lib/opd-api";
+import { upcomingOf } from "../lib/appointment-view";
 import type { WireAppointment, WireDepartment, WireDoctor, WireOpenVisitResult, WireRoom, WireSlot } from "../lib/opd-api";
 import { useRealtime } from "../lib/realtime";
-import { useCopilot } from "../lib/use-copilot";
+import { isApptPick, useCopilot } from "../lib/use-copilot";
+import { CopilotApptPicker } from "../components/copilot-appt-pick";
 import { CopilotReport } from "../components/copilot-report";
 import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
@@ -16,9 +20,14 @@ import type { PatientPickerHit } from "../components/patient-picker";
 import { TokenSlip } from "../components/token-slip";
 import type { TokenSlipProps } from "../components/token-slip";
 import { PaperScreen } from "../components/paper-screen";
+import { TeleMark } from "../components/tele-mark";
+import { TeleHow, teleHowBody, teleHowFor, teleHowReady } from "../components/tele-how";
+import type { TeleHowValue } from "../components/tele-how";
+import { TeleDeskPay } from "../components/tele-desk-pay";
 import type { QrCardData } from "../components/qr-card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { dateLocale } from "../lib/date-locale";
 
 /**
  * Appointments (D7): slot picker → book, the day list with reschedule/cancel, the needs-rebooking
@@ -252,11 +261,61 @@ function CheckInCell({
 
 // ——— the Day tab: slot grid + patient picker (left), this day's bookings (right) ———
 
+/**
+ * ═══ THIS PATIENT'S OWN BOOKINGS, WHATEVER THE FILTERS SAY (owner, 2026-10-01) ═══
+ *
+ * *"I can see a future appointment for U00110020 in the profile screen but I can't see any
+ * appointments for the same patient at /opd/appointments. Why so?"* Because this screen listed ONE
+ * doctor's book for ONE day, and with no doctor chosen it listed nothing: a booking for tomorrow with
+ * another doctor could not be reached without already knowing whose book and which day it was in.
+ *
+ * So the patient in the "Booking for" card brings their own bookings with them — every slot they
+ * still hold, any doctor, any day — each with the same Reschedule and Cancel the day list offers.
+ * The query key starts `["opd", "appointments"]`, which both dialogs already invalidate.
+ */
+function PatientBookings({
+  patient, doctors, queryClient, onNote,
+}: {
+  patient: PatientPickerHit; doctors: WireDoctor[]; queryClient: QueryClient;
+  onNote: (text: string, kind?: AgentLine["kind"]) => void;
+}): React.ReactElement {
+  const { t } = useTranslation();
+  const theirs = useQuery({
+    queryKey: ["opd", "appointments", "patient", patient.id],
+    queryFn: () => listPatientAppointments(patient.id),
+    refetchInterval: POLL_MS,
+  });
+  const items = upcomingOf(theirs.data?.items, todayIst());
+  return (
+    <div data-testid="patient-bookings" style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--line2)" }}>
+      <span className="tag">{t("opdAppt.theirBookings")}</span>
+      {theirs.data !== undefined && items.length === 0 && (
+        <p data-testid="patient-bookings-none" style={{ fontSize: 12, color: "var(--dim)", margin: "6px 0 0" }}>{t("opdAppt.theirBookingsNone")}</p>
+      )}
+      {items.map((apt) => (
+        <div key={apt.id} data-testid="patient-booking-row" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginTop: 8 }}>
+          <span className="mo" style={{ fontSize: 13, fontWeight: 700 }}>{apt.serviceDate.slice(0, 10)} · {fmtIst(apt.slotStart)}</span>
+          <TeleMark mode={apt.mode} />
+          <TeleDeskPay appointment={apt} compact />
+          <span style={{ fontSize: 12.5, color: "var(--dim)", flexGrow: 1, minWidth: 0 }}>{doctors.find((d) => d.id === apt.doctorId)?.displayName ?? ""}</span>
+          <StatusBadge status={apt.status} />
+          <RescheduleDialog appointment={apt} queryClient={queryClient} onNote={onNote} />
+          {apt.status === "booked" && <CancelDialog appointment={apt} queryClient={queryClient} onNote={onNote} />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function DayTab({
-  departmentId, doctorId, date, departments, doctors, rooms, queryClient, onNote,
+  departmentId, doctorId, date, departments, doctors, allDoctors, initialPatientId, rooms, queryClient, onNote,
 }: {
   departmentId: string; doctorId: string; date: string;
   departments: WireDepartment[]; doctors: WireDoctor[]; rooms: WireRoom[]; queryClient: QueryClient;
+  /** Every doctor, for naming a booking held with one outside the chosen department. */
+  allDoctors: WireDoctor[];
+  /** The patient a link from their profile arrived for (`?patientId=`); null on an ordinary visit. */
+  initialPatientId: string | null;
   /** Every SERVER ANSWER this tab gets lands in the agent's log — never an intention, only a result. */
   onNote: (text: string, kind?: AgentLine["kind"]) => void;
 }): React.ReactElement {
@@ -264,6 +323,19 @@ function DayTab({
   const [patient, setPatient] = useState<PatientPickerHit | null>(null);
   const [bookError, setBookError] = useState<string | null>(null);
   const [slip, setSlip] = useState<TokenSlipProps | null>(null);
+
+  // A link from the profile names the patient; put them in the card so their bookings show at once.
+  useEffect(() => {
+    if (initialPatientId === null) return;
+    let live = true;
+    void api<{ patient: { id: string; uhid: string; name: string | null; administrativeGender: string; dob: string | null } }>(
+      "GET", `/patients/${encodeURIComponent(initialPatientId)}`,
+    ).then(
+      ({ patient: p }) => { if (live) setPatient((cur) => cur ?? { id: p.id, uhid: p.uhid, name: p.name, administrativeGender: p.administrativeGender, dob: p.dob }); },
+      () => { /* an unreadable patient leaves the picker empty; the clerk searches as usual */ },
+    );
+    return () => { live = false; };
+  }, [initialPatientId]);
 
   const slots = useQuery({
     queryKey: ["opd", "slots", doctorId, date],
@@ -295,13 +367,23 @@ function DayTab({
   */
   const [pending, setPending] = useState<WireSlot | null>(null);
   const [busy, setBusy] = useState(false);
+  /*
+    TELE-CALL (owner 2026-10-09). The confirmation asks HOW: in person, as every booking was, or a
+    tele-call, which needs the number the doctor will ring. Each confirmation opens on In person
+    with the patient's recorded mobile waiting in the field; the server judges the number again.
+  */
+  const [how, setHow] = useState<TeleHowValue>(teleHowFor(null));
+  const teleReady = teleHowReady(how);
 
   const book = async (slot: WireSlot): Promise<void> => {
     if (patient === null || doctorId === "") return;
     setBookError(null);
     setBusy(true);
     try {
-      await api("POST", "/opd/appointments", { patientId: patient.id, doctorId, slotStart: slot.start });
+      await api("POST", "/opd/appointments", {
+        patientId: patient.id, doctorId, slotStart: slot.start,
+        ...teleHowBody(how),
+      });
       /*
         LOGGED AFTER THE SERVER ANSWERED, never before: a log that narrates intentions lies the
         moment one is refused. The refusal below is logged for the same reason — it is a fact.
@@ -356,6 +438,7 @@ function DayTab({
               <button type="button" className="sec" onClick={() => { setPatient(null); }}>{t("opdAppt.changePatient")}</button>
             </div>
           )}
+          {patient !== null && <PatientBookings patient={patient} doctors={allDoctors} queryClient={queryClient} onNote={onNote} />}
         </div>
         <h2 style={{ fontSize: 13, fontWeight: 700 }}>{t("opdAppt.slots")}</h2>
         {doctorId === "" && <p style={{ fontSize: 12, color: "var(--dim)" }}>{t("opdAppt.pickDoctorHint")}</p>}
@@ -367,7 +450,7 @@ function DayTab({
           <SlotGrid
             slots={slots.data.slots}
             locked={patient === null}
-            onPick={(slot) => { setBookError(null); setPending(slot); }}
+            onPick={(slot) => { setBookError(null); setHow(teleHowFor(patient?.phone)); setPending(slot); }}
           />
         )}
       </div>
@@ -394,15 +477,22 @@ function DayTab({
                       <span className="block">{patientLabel(apt.patient)}</span>
                       <span className="block mo" style={{ fontSize: 11, color: "var(--dim)" }}>{apt.patient?.uhid ?? "—"}</span>
                     </td>
-                    <td className="mo">{fmtIst(apt.slotStart)}</td>
+                    <td className="mo" style={{ whiteSpace: "nowrap" }}>
+                      {fmtIst(apt.slotStart)} <TeleMark mode={apt.mode} />
+                      {apt.viaCopilot === true ? (
+                        <span data-testid={`appt-via-copilot-${apt.id}`} className="tag" style={{ marginLeft: 6, color: "var(--dim)" }}>{t("copilot.act.viaCopilot")}</span>
+                      ) : null}
+                    </td>
                     <td><StatusBadge status={apt.status} /></td>
                     <td>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-2" style={{ alignItems: "center" }}>
+                        <TeleDeskPay appointment={apt} />
                         {(apt.status === "booked" || apt.status === "needs_rebooking") && (
                           <RescheduleDialog appointment={apt} queryClient={queryClient} onNote={onNote} />
                         )}
                         {apt.status === "booked" && <CancelDialog appointment={apt} queryClient={queryClient} onNote={onNote} />}
-                        {apt.status === "booked" && (
+                        {/* A tele-call is not checked in at a desk: the row says its slot and its pay state, and the visit opens itself. */}
+                        {apt.status === "booked" && apt.mode !== "tele" && (
                           <CheckInCell
                             appointment={apt}
                             doctorName={doctor?.displayName ?? ""}
@@ -438,10 +528,11 @@ function DayTab({
               <dd className="mo">{fmtIst(pending.start)}</dd>
             </dl>
           )}
+          <TeleHow value={how} onChange={setHow} disabled={busy} />
           <ErrorLine message={bookError} />
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
             <button type="button" className="sec" disabled={busy} onClick={() => { setPending(null); }}>{t("opdAppt.cancel")}</button>
-            <button type="button" className="pri" disabled={busy} onClick={() => { if (pending !== null) void book(pending); }}>
+            <button type="button" className="pri" disabled={busy || !teleReady} onClick={() => { if (pending !== null) void book(pending); }}>
               {t("opdAppt.confirmBooking")}
             </button>
           </div>
@@ -493,8 +584,8 @@ function NeedsRebookingTab(
                     <span className="block mo" style={{ fontSize: 11, color: "var(--dim)" }}>{apt.patient?.uhid ?? "—"}</span>
                   </td>
                   <td>{doctorName(apt.doctorId)}</td>
-                  <td className="mo">{fmtIst(apt.slotStart)}</td>
-                  <td><RescheduleDialog appointment={apt} queryClient={queryClient} onNote={onNote} /></td>
+                  <td className="mo" style={{ whiteSpace: "nowrap" }}>{fmtIst(apt.slotStart)} <TeleMark mode={apt.mode} /></td>
+                  <td><div className="flex flex-wrap gap-2" style={{ alignItems: "center" }}><TeleDeskPay appointment={apt} /><RescheduleDialog appointment={apt} queryClient={queryClient} onNote={onNote} /></div></td>
                 </tr>
               ))}
             </tbody>
@@ -507,11 +598,31 @@ function NeedsRebookingTab(
 
 // ——— screen ———
 
+/** "Mon 5 Oct" — the booked day as the unit line says it. */
+function dayLabel(iso: string): string {
+  return new Intl.DateTimeFormat(dateLocale(undefined, "en-GB"), { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" })
+    .format(new Date(`${iso}T00:00:00Z`)).replace(",", "");
+}
+
 export function OpdAppointments(): React.ReactElement {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  /*
+    A LINK MAY NAME THE BOOK TO OPEN (owner, 2026-10-01): the profile's Edit sends
+    `?patientId=&departmentId=&doctorId=&date=`, so the screen opens on that doctor's day with the
+    patient already in the card. Read once from the address, not through the router: the address is
+    the whole of the state, and this screen is mounted in tests with no router at all.
+  */
+  const linked = useMemo(() => {
+    const q = new URLSearchParams(window.location.search);
+    const day = q.get("date") ?? "";
+    return {
+      patientId: q.get("patientId"), departmentId: q.get("departmentId") ?? "", doctorId: q.get("doctorId") ?? "",
+      date: /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : todayIst(),
+    };
+  }, []);
   const filters = useForm<{ departmentId: string; doctorId: string; date: string }>({
-    defaultValues: { departmentId: "", doctorId: "", date: todayIst() },
+    defaultValues: { departmentId: linked.departmentId, doctorId: linked.doctorId, date: linked.date },
   });
   const departmentId = filters.watch("departmentId");
   const doctorId = filters.watch("doctorId");
@@ -520,7 +631,13 @@ export function OpdAppointments(): React.ReactElement {
 
   // Switching department invalidates the previously selected doctor — a stale id from the OLD
   // department's list must not silently keep driving the slot/day-list queries below.
+  // …and only when the department has actually CHANGED: a linked doctor arrives WITH their
+  // department and must survive the first render. Compared by value rather than by a "first run"
+  // flag, which a development double-mount flips before the screen has drawn — found in the browser.
+  const departmentWas = useRef(departmentId);
   useEffect(() => {
+    if (departmentWas.current === departmentId) return;
+    departmentWas.current = departmentId;
     setValue("doctorId", "");
   }, [departmentId, setValue]);
 
@@ -533,6 +650,20 @@ export function OpdAppointments(): React.ReactElement {
   });
   const allDoctors = useQuery({ queryKey: ["opd", "doctors", "all"], queryFn: listDoctors, refetchInterval: POLL_MS });
   const rooms = useQuery({ queryKey: ["opd", "rooms"], queryFn: listRooms, refetchInterval: POLL_MS });
+  /*
+    2026-10-04 (owner) — WHICH UNIT HOLDS THIS DEPARTMENT'S OPD ON THE BOOKED DAY, from the roster's
+    published calendar (the same read Desk One's department cards use). Read-only and quiet: a
+    department with no confirmed unit, a day its unit holds no OPD, or a reader without `roster.read`
+    draws nothing — the doctor list below is still the book.
+  */
+  const doctorLabel = useDoctorLabel(date);
+  const opdUnits = useQuery({
+    queryKey: ["opd", "opd-units", date],
+    queryFn: () => fetchOpdUnits(date),
+    enabled: departmentId !== "" && /^\d{4}-\d{2}-\d{2}$/.test(date),
+    retry: false,
+  });
+  const unitsHere = (opdUnits.data ?? []).find((x) => x.opdDepartmentId === departmentId)?.units ?? [];
 
   const [tab, setTab] = useState<"day" | "needsRebooking">("day");
   const [log, setLog] = useState<AgentLine[]>([]);
@@ -593,7 +724,12 @@ export function OpdAppointments(): React.ReactElement {
     a line to sneak in here. `patient-detail.tsx` and Desk One both hold the name already and pass
     it when they are wired.
   */
-  const copilot = useCopilot({ fallback: localAnswer, onNote: note, date });
+  /* E2.1 — a booking or move confirmed from the chat refreshes the book and the free times, as the screen's own dialogs do. */
+  const onActed = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ["opd", "appointments"] });
+    void queryClient.invalidateQueries({ queryKey: ["opd", "slots"] });
+  }, [queryClient]);
+  const copilot = useCopilot({ fallback: localAnswer, onNote: note, date, onActed });
 
   /**
    * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -659,7 +795,11 @@ export function OpdAppointments(): React.ReactElement {
                 onChange={(e) => { setValue("doctorId", e.target.value); }}
               >
                 <option value="">{t("opdAppt.pickDoctor")}</option>
-                {doctorItems.map((doc) => <option key={doc.id} value={doc.id}>{doc.displayName}</option>)}
+                {/* 2026-10-04 (owner) — "Dr. Chandan · Unit I", "Dr. S.I Raza · Guest Faculty". */}
+                {doctorItems.map((doc) => {
+                  const tag = doctorLabel(doc);
+                  return <option key={doc.id} value={doc.id}>{tag === null ? doc.displayName : `${doc.displayName} · ${tag}`}</option>;
+                })}
               </select>
             </div>
             <div style={{ width: 170 }}>
@@ -677,6 +817,16 @@ export function OpdAppointments(): React.ReactElement {
             </div>
           </div>
         </FormProvider>
+
+        {unitsHere.map((u) => (
+          <div
+            key={u.teamId} data-testid={`appt-opd-unit-${departmentId}`}
+            style={{ fontSize: 12, color: "var(--dim)", lineHeight: "17px", marginTop: 10 }}
+          >
+            <b style={{ color: "var(--ink)", fontWeight: 600 }}>{u.short}</b> {t("opdAppt.unitHolds", { date: dayLabel(date) })}
+            {u.doctors.length === 0 ? null : <> · <span>{u.doctors.map((x) => x.name).join(", ")}</span></>}
+          </div>
+        ))}
 
         {/* Pill tabs, the counter's own idiom — not a shadcn TabsList with a grey underline. */}
         {/*
@@ -705,6 +855,7 @@ export function OpdAppointments(): React.ReactElement {
             <DayTab
               departmentId={departmentId} doctorId={doctorId} date={date}
               departments={departmentItems} doctors={doctorItems} rooms={roomItems} queryClient={queryClient}
+              allDoctors={allDoctorItems} initialPatientId={linked.patientId}
               onNote={note}
             />
           ) : (
@@ -729,9 +880,14 @@ export function OpdAppointments(): React.ReactElement {
         onAsk={copilot.ask}
         placeholder={t("opdAppt.askPlaceholder")}
         idle={t("opdAppt.agentIdle")}
-        panel={copilot.report === null ? undefined : (
+        panel={copilot.report !== null ? (
           <CopilotReport report={copilot.report} onDismiss={copilot.dismissReport} />
-        )}
+        ) : copilot.pick !== null && isApptPick(copilot.pick.pick) ? (
+          <CopilotApptPicker
+            pick={copilot.pick.pick} proposals={copilot.pick.proposals} busy={copilot.busy}
+            onConfirm={(p) => { void copilot.confirm(p); }} onDismiss={copilot.clearPick}
+          />
+        ) : undefined}
       />
     </PaperScreen>
   );

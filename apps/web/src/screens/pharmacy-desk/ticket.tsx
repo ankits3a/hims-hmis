@@ -1,8 +1,12 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { useDebounced } from "../../lib/format";
+import { suggestAtCounter } from "../../lib/pharmacy-api";
 import { Closed } from "./closed";
 import { ControlledStep } from "./controlled";
 import { heldByAnother, lineVerdict, stageOf, ticketLabel, whoLabel } from "./model";
+import { TakeOver } from "./takeover";
 import { LineList } from "./lines";
 import { DonePaper } from "./paper";
 import { TicketMenu } from "./returns";
@@ -27,8 +31,10 @@ function rxLinesOf(d: WireDispense): WireDispense["lines"] {
 
 export function TicketPanel({
   inHand, loading, loadError, me, candidates, error, note, busy, handOverError, takenLabel, onFind, onTake, onClear, onCollect, onDecline, onHandOver,
-  onOpenSlip, onConfirmSlip, queue, onShowLine, autoPrint = false, onFocusDrug, onLiveQty, paperDoor = null, registerDoor = null,
+  onOpenSlip, onConfirmSlip, queue, onShowLine, autoPrint = false, onFocusDrug, onLiveQty, paperDoor = null, registerDoor = null, quick = false,
 }: {
+  /** Owner ruling 2026-10-02 — quick desk mode: no slip to see, none to confirm (`settings.ts` on the server). */
+  quick?: boolean;
   inHand: WireDispense | null;
   loading: boolean;
   loadError: string | null;
@@ -58,11 +64,11 @@ export function TicketPanel({
   /** The quantities being given as typed, for the bill rail (`LineList`). */
   onLiveQty?: (dispenseId: string, qty: Readonly<Record<number, number | null>>) => void;
   /** 2026-09-30 — a patient found with no e-prescription today: dispense from their paper prescription. */
-  paperDoor?: { who: string; onOpen: () => void } | null;
+  paperDoor?: { who: string; onOpen: () => void; /** 2026-10-02 — today's finished ticket, when there is one. */ onSeeLast?: () => void } | null;
   /** 2026-09-30 (owner) — nobody found: register the person here and dispense from their paper prescription. */
   registerDoor?: { onOpen: () => void } | null;
 }): React.ReactElement {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const alerts = (
     <>
       {error !== null ? <p role="alert" style={{ margin: "14px 0 0 0", fontSize: 12.5, color: "var(--red)" }}>{error}</p> : null}
@@ -87,7 +93,8 @@ export function TicketPanel({
         {alerts}
         {paperDoor === null ? null : (
           <div className="box paper-rx-door" data-testid="desk-paper-door">
-            <span style={{ flexGrow: 1, minWidth: 200, fontSize: 12.5 }}>{t("pharmacyDesk.paperRx.doorHint", { who: paperDoor.who })}</span>
+            <span style={{ flexGrow: 1, minWidth: 200, fontSize: 12.5 }}>{t(paperDoor.onSeeLast === undefined ? "pharmacyDesk.paperRx.doorHint" : "pharmacyDesk.paperRx.doorHintAgain", { who: paperDoor.who })}</span>
+            {paperDoor.onSeeLast === undefined ? null : <button type="button" className="sec" data-testid="desk-see-last" onClick={paperDoor.onSeeLast}>{t("pharmacyDesk.paperRx.seeLast")}</button>}
             <button type="button" className="pri" onClick={paperDoor.onOpen}>{t("pharmacyDesk.paperRx.door")}</button>
           </div>
         )}
@@ -115,11 +122,11 @@ export function TicketPanel({
 
   const stage = stageOf(inHand, me);
   const who = whoLabel(inHand.patient);
-  const label = ticketLabel(inHand.dispenseNo, istToday());
+  const label = ticketLabel(inHand.dispenseNo, istToday(), i18n.language);
 
   if (stage === "found") {
     const cancelled = inHand.status === "cancelled";
-    /* PD-1 — somebody else's ticket says whose it is and offers nothing to press. */
+    /* PD-1 — somebody else's ticket says whose it is; owner 2026-10-03 — and offers to take it over, with a reason. */
     const theirs = heldByAnother(inHand, me) ? (inHand.claimedByName ?? t("pharmacyDesk.anotherPharmacist")) : null;
     return (
       <div style={{ maxWidth: 660 }} data-testid="desk-found">
@@ -131,6 +138,7 @@ export function TicketPanel({
           {theirs !== null ? t("pharmacyDesk.theirsHint", { name: theirs })
             : cancelled ? inHand.cancelReason ?? "" : t("pharmacyDesk.notYoursHint", { count: rxLinesOf(inHand).length })}
         </p>
+        {theirs !== null && !cancelled ? <TakeOver dispenseId={inHand.id} holder={theirs} /> : null}
         {cancelled || theirs !== null ? null : (
           <button className="pri" style={{ marginTop: 16 }} onClick={() => onTake(inHand.id, who)}>{t("pharmacyDesk.takeIt")}</button>
         )}
@@ -163,7 +171,7 @@ export function TicketPanel({
   const partlyRead = inHand.lines.filter((l) => l.status === "open" && l.partlyChecked === true).length;
   /* E28 — typed from paper and not yet confirmed: the attestation is asked for FIRST, not at the till. */
   const typed = inHand.transcribedBy != null;
-  const slipOwed = typed && inHand.slipConfirmedBy == null;
+  const slipOwed = !quick && typed && inHand.slipConfirmedBy == null;
   return (
     <div data-testid="desk-ticket">
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
@@ -174,7 +182,7 @@ export function TicketPanel({
         {h1Lines.length > 0 ? <span className="pill rd">{t("pharmacyDesk.h1On", { lines: h1Lines.join(", ") })}</span> : null}
         <span style={{ flexGrow: 1 }} />
         {/* While the cross-check is owed the banner carries this control; one control, not two. */}
-        {typed && !slipOwed ? <button className="sec" onClick={onOpenSlip}>{t("pharmacyDesk.slip.see")} <span className="kb">S</span></button> : null}
+        {typed && !slipOwed && !quick ? <button className="sec" onClick={onOpenSlip}>{t("pharmacyDesk.slip.see")} <span className="kb">S</span></button> : null}
         {/* Return / cancel — the ticket's exceptions behind ⋯ (`returns.tsx`). */}
         <TicketMenu dispense={inHand} />
       </div>
@@ -212,8 +220,21 @@ export function TicketPanel({
 function FindField({ onFind }: { onFind: (q: string) => void }): React.ReactElement {
   const { t } = useTranslation();
   const [q, setQ] = useState("");
+  /*
+    2026-10-01 (owner) — WHO THE WORDS COULD BE, AS THEY ARE TYPED. The field answered only on Enter,
+    so a registered patient looked absent. A tap runs the ordinary find on that UHID; a QR or a token
+    is not a name and the server suggests nothing for it. Enter still finds what was typed.
+  */
+  const typed = useDebounced(q.trim(), 200);
+  const suggest = useQuery({
+    queryKey: ["pharmacy", "find-suggest", typed],
+    queryFn: () => suggestAtCounter(typed),
+    enabled: typed.length >= 2,
+    retry: false,
+  });
+  const hits = q.trim().length >= 2 && typed === q.trim() ? suggest.data ?? null : null;
   return (
-    <form onSubmit={(e) => { e.preventDefault(); if (q.trim() !== "") { onFind(q.trim()); setQ(""); } }}>
+    <form style={{ position: "relative" }} onSubmit={(e) => { e.preventDefault(); if (q.trim() !== "") { onFind(q.trim()); setQ(""); } }}>
       <h1 style={{ margin: 0, fontSize: 19, fontWeight: 700, letterSpacing: "-.01em" }}>{t("pharmacyDesk.idleTitle")}</h1>
       <p style={{ margin: "6px 0 16px 0", fontSize: 12.5, color: "var(--dim)" }}>{t("pharmacyDesk.idleHint")}</p>
       <label htmlFor="desk-find" className="tag">{t("pharmacyDesk.findLabel")}</label>
@@ -232,6 +253,24 @@ function FindField({ onFind }: { onFind: (q: string) => void }): React.ReactElem
           {t("pharmacyDesk.find.button")} <span className="kb" style={{ borderColor: "rgba(255,255,255,.35)", background: "rgba(255,255,255,.12)", color: "#d6ece1" }}>⏎</span>
         </button>
       </div>
+      {hits === null ? null : hits.length === 0 ? (
+        <p role="status" data-testid="desk-suggest-none" style={{ margin: "8px 0 0 0", fontSize: 12, color: "var(--dim)" }}>
+          {t("pharmacyDesk.find.suggestNone")}
+        </p>
+      ) : (
+        <div className="box" data-testid="desk-suggest" style={{ marginTop: 6 }}>
+          {hits.map((p) => (
+            <button
+              key={p.id} type="button" className="drow" style={{ width: "100%" }} data-testid={`desk-suggest-${p.uhid}`}
+              onClick={() => { onFind(p.uhid); setQ(""); }}
+            >
+              <span style={{ flexGrow: 1, textAlign: "left", fontSize: 13, fontWeight: 500 }}>{whoLabel(p)}</span>
+              {p.hint === null ? null : <span style={{ fontSize: 11.5, color: "var(--dim)" }}>{p.hint}</span>}
+              <span className="mo" style={{ fontSize: 11.5, color: "var(--dim)" }}>{p.uhid}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </form>
   );
 }

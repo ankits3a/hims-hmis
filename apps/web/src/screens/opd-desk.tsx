@@ -1,15 +1,18 @@
+import { useToCollect } from "../components/to-collect";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { listDepartments, opdErrorMessage, todayIst } from "../lib/opd-api";
+import { useDoctorLabel } from "../lib/use-doctor-label";
 import type { WireDepartment, WireDoctorSummary, WireQueueEntryView, WireQueueView } from "../lib/opd-api";
 import { useRealtime } from "../lib/realtime";
 import { PatientPhoto } from "../components/patient-photo";
 import { StationShell } from "../components/station/station-shell";
 import type { StationLink } from "../components/station/station-shell";
 import "./opd-desk.css";
+import { CreditChip } from "../components/patient-credit";
 
 /**
  * The OPD desk (§11.1 / D2 / D3) — THE QUEUE DESK of the OPD floor: the live doctor board, the picked
@@ -94,6 +97,8 @@ export function OpdDesk(): React.ReactElement {
   const queryClient = useQueryClient();
   const router = useRouter({ warn: false });
   const today = todayIst();
+  // 2026-10-04 (owner) — the unit (or "Guest Faculty") beside each doctor's name.
+  const doctorLabel = useDoctorLabel(today);
   const now = Date.now();
 
   const [departmentId, setDepartmentId] = useState("");
@@ -261,7 +266,13 @@ export function OpdDesk(): React.ReactElement {
   /* ══════════ the clocks: what is running out in the chosen doctor's line ══════════ */
   const longest = orderedEntries.reduce((m, e) => Math.max(m, minutesSince(e.createdAt, now)), 0);
   const over = longest > WAIT_TARGET_MIN;
-  const held = queueView?.heldForPayment?.length ?? queueView?.counts.heldForPayment ?? 0;
+  /*
+    OWNER 2026-10-09 — nothing is held for payment any more (a visit the desk let through is in the
+    doctor's line like anyone else), so the clock that counted the held tokens would read 0 for
+    ever. It now counts the hospital's "To collect" list, from the same read Desk One and the
+    billing counter draw; a seat that may not read it shows no such clock.
+  */
+  const toCollect = useToCollect();
 
   const lane = inHand !== null ? (
     <section className="od-hand" data-testid="in-hand" aria-label={t("opdDesk.inHand")}>
@@ -276,13 +287,14 @@ export function OpdDesk(): React.ReactElement {
           <div className="od-hand-u">
             {inHand.patient?.uhid ?? "—"} · {sexAge(inHand.patient?.administrativeGender, inHand.patient?.dob, now)}
           </div>
+          <CreditChip patientId={inHand.patient?.id ?? null} testId="opd-credit" />
         </div>
       </div>
       <div className="od-hand-chips">
         {inHand.queueClass !== null && (
           <span className="od-chip" data-class={inHand.queueClass}>{t(`opd.queueClass.${inHand.queueClass}`)}</span>
         )}
-        {inHand.feeStatus !== null && (
+        {inHand.feeStatus != null && (
           <span className="od-stamp" data-fee={inHand.feeStatus}>{t(`opd.feeStatus.${inHand.feeStatus}`)}</span>
         )}
       </div>
@@ -316,7 +328,10 @@ export function OpdDesk(): React.ReactElement {
       )}
       <section className="od-lh" data-testid="queue-head">
         <div className="od-lh-top">
-          <span className="od-lh-t">{doctorRow === null ? t("opdDesk.queue") : doctorRow.doctor.displayName}</span>
+          <span className="od-lh-t">
+            {doctorRow === null ? t("opdDesk.queue") : doctorRow.doctor.displayName}
+            {doctorRow !== null && (() => { const tag = doctorLabel(doctorRow.doctor); return tag === null ? null : <span className="od-dtag"> · {tag}</span>; })()}
+          </span>
           <span className="od-live"><i />{t("opdDesk.live")}</span>
         </div>
         {doctorRow !== null && (
@@ -366,7 +381,7 @@ export function OpdDesk(): React.ReactElement {
                   the server declined to characterise this encounter's fee, which is NOT "unpaid".
                   `free` keeps its own stamp so a ₹0 review visit is not read as a paid one.
                 */}
-                {e.feeStatus !== null && (
+                {e.feeStatus != null && (
                   <span className="od-stamp" data-fee={e.feeStatus} data-testid={`fee-status-${e.id}`}>
                     {t(`opd.feeStatus.${e.feeStatus}`)}
                   </span>
@@ -384,7 +399,9 @@ export function OpdDesk(): React.ReactElement {
     <div data-testid="clocks">
       <div className="od-clk"><span>{t("opdDesk.clockLongest")}</span><b data-over={over ? "true" : "false"}>{t("opdDesk.minutes", { n: longest })}</b></div>
       <div className="od-clk"><span>{t("opdDesk.clockVitals")}</span><b>{queueView?.waitingVitals ?? 0}</b></div>
-      <div className="od-clk"><span>{t("opdDesk.clockHeld")}</span><b>{held}</b></div>
+      {toCollect.permitted && (
+        <div className="od-clk" data-testid="clock-to-collect"><span>{t("toCollect.title")}</span><b>{toCollect.rows.length}</b></div>
+      )}
       <div className="od-clk"><span>{t("opdDesk.clockLeft")}</span><b>{queueView?.counts.left ?? 0}</b></div>
     </div>
   );
@@ -490,7 +507,10 @@ export function OpdDesk(): React.ReactElement {
                     onClick={() => pickDoctor(s.doctor.id)}
                   >
                     <span className="od-dot" style={{ background: dotOf(s) }} />
-                    <span className="od-dname">{s.doctor.displayName}</span>
+                    <span className="od-dname">
+                      {s.doctor.displayName}
+                      {(() => { const tag = doctorLabel(s.doctor); return tag === null ? null : <span className="od-dtag" data-testid={`doctor-tag-${s.doctor.id}`}> · {tag}</span>; })()}
+                    </span>
                     <span className="od-room">{t("opd.labels.room")}: {s.roomCode ?? "—"}</span>
                     <span className="od-bar"><i style={{ width: bar.pct, background: bar.ink }} /></span>
                     <span className="od-wait">
