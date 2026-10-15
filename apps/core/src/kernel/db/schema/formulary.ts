@@ -855,7 +855,8 @@ export const formularyMonographs = pgTable(
 /**
  * #618 — EVERY SIGNATURE, KEPT. One row per signature with the text exactly as signed, so a signed version
  * can be read back after a later edit replaced it. `kind`: `sole` (one signature made it reviewed), `first`
- * (a high-alert entry's first), `second` (the one that made a high-alert entry reviewed).
+ * (a high-alert entry's first), `second` (the one that made a high-alert entry reviewed); #884's 12-month
+ * renewal of unchanged text: `renewal`, or `renewal_first` / `renewal_second` for a high-alert entry.
  */
 export const formularyMonographSignatures = pgTable(
   "formulary_monograph_signatures",
@@ -871,7 +872,7 @@ export const formularyMonographSignatures = pgTable(
   },
   (t) => [
     index("formulary_monograph_signatures_monograph_idx").on(t.monographId, t.signedAt),
-    check("formulary_monograph_signatures_kind_ck", sql`${t.kind} in ('sole', 'first', 'second')`),
+    check("formulary_monograph_signatures_kind_ck", sql`${t.kind} in ('sole', 'first', 'second', 'renewal', 'renewal_first', 'renewal_second')`),
   ],
 );
 

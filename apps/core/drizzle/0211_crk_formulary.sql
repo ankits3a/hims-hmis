@@ -7,7 +7,7 @@ CREATE TABLE "formulary_monograph_signatures" (
 	"designation" text NOT NULL,
 	"signed_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"crk" jsonb NOT NULL,
-	CONSTRAINT "formulary_monograph_signatures_kind_ck" CHECK ("formulary_monograph_signatures"."kind" in ('sole', 'first', 'second'))
+	CONSTRAINT "formulary_monograph_signatures_kind_ck" CHECK ("formulary_monograph_signatures"."kind" in ('sole', 'first', 'second', 'renewal', 'renewal_first', 'renewal_second'))
 );
 --> statement-breakpoint
 ALTER TABLE "formulary_monographs" ADD COLUMN "crk" jsonb;--> statement-breakpoint

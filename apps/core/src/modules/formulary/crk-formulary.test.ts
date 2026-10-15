@@ -7,7 +7,7 @@ import { registerItem } from "../materials";
 import { FormularyError } from "./errors";
 import { addMedicine, addSalt } from "./masters";
 import { getMonograph, reviewMonograph, saveMonograph } from "./monographs";
-import { crkLabel, crkWorklist, draftCrkEntry, saveCrkEntry, signCrkEntry } from "./crk-formulary";
+import { crkLabel, crkWorklist, isOverdue, draftCrkEntry, saveCrkEntry, signCrkEntry } from "./crk-formulary";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { CrkEntry } from "../../kernel/db/schema";
@@ -180,8 +180,68 @@ describe("CRK formulary — drafted by a model, signed by Pharmacology", () => {
     expect(w.counts).toMatchObject({ draft: 0, awaitingSecond: 1 });
     await sign(monographId, PROF_B);
     w = await crkWorklist(db, "2099-01-01");
-    expect(w.counts).toMatchObject({ signed: 1, dueForReview: 1 });
+    expect(w.counts).toMatchObject({ signed: 1, overdue: 1, dueForReview: 0 });
+    expect(w.items.map((i) => i.state)).toEqual(["overdue"]);
+  });
+
+  /* #884 — the 12-month renewal. Every date below is passed in; nothing reads the real clock. */
+  const at = (iso: string): Date => new Date(`${iso}T06:00:00.000Z`);
+  const signAt = (id: string, actor: Actor, iso: string, extra: { crk?: CrkEntry; highAlert?: boolean } = {}) =>
+    withTx(db, (tx) => signCrkEntry(tx, actor, id, { designation: "Professor, Pharmacology", ...extra }, at(iso)));
+  const kinds = async (): Promise<string[]> => (await db.select().from(formularyMonographSignatures).orderBy(formularyMonographSignatures.signedAt)).map((r) => r.kind);
+
+  it("#884: an unchanged entry is re-affirmed in its window; it stays read throughout; due moves 12 months; audited", async () => {
+    const { monographId } = await save();
+    await signAt(monographId, PROF_A, "2026-01-10");
+    expect((await db.select().from(formularyMonographs))[0]).toMatchObject({ reviewDueOn: "2027-01-10", version: 1 });
+    // not yet: the window opens 30 days before the due date
+    expect(await code(signAt(monographId, PROF_B, "2026-11-01"))).toBe("monograph_already_reviewed");
+    // a renewal re-affirms the text as signed; an edit is a draft, not a renewal
+    expect(await code(signAt(monographId, PROF_B, "2027-01-20", { crk: { ...ENTRY, fields: { uses: [{ text: "Other.", source: "fda1" }] } } }))).toBe("invalid_crk");
+    // overdue: still read, by every reader
+    expect(await getMonograph(db, SCTID)).toBeDefined();
+    expect(await signAt(monographId, PROF_B, "2027-01-20")).toEqual({ status: "reviewed", version: 2 });
+    const row = (await db.select().from(formularyMonographs))[0]!;
+    expect(row).toMatchObject({ status: "reviewed", reviewedBy: PROF_B.id, reviewDueOn: "2028-01-20", version: 2, firstSignedBy: null });
+    expect(row.crk).toEqual(ENTRY);
+    expect(await kinds()).toEqual(["sole", "renewal"]);
+    const signedEvents = await db.select().from(events).where(eq(events.name, "monograph.signed"));
+    expect(signedEvents.map((e) => (e.payload as { renewal: boolean }).renewal)).toEqual([false, true]);
+  });
+
+  it("#884: a high-alert renewal takes two different signers, and the entry stays read while the first waits", async () => {
+    const { monographId } = await save();
+    await signAt(monographId, PROF_A, "2026-01-10", { highAlert: true });
+    await signAt(monographId, PROF_B, "2026-01-11");
+    expect(await signAt(monographId, PROF_A, "2027-01-05")).toEqual({ status: "awaiting_second", version: 1 });
+    expect(await getMonograph(db, SCTID)).toMatchObject({ status: "reviewed", reviewDueOn: "2027-01-11" });
+    expect(await code(signAt(monographId, PROF_A, "2027-01-06"))).toBe("monograph_same_actor");
+    expect(await signAt(monographId, PROF_B, "2027-01-06")).toEqual({ status: "reviewed", version: 2 });
+    expect(await getMonograph(db, SCTID)).toMatchObject({ reviewedBy: PROF_A.id, secondReviewedBy: PROF_B.id, reviewDueOn: "2028-01-06", firstSignedBy: null });
+    expect(await kinds()).toEqual(["first", "second", "renewal_first", "renewal_second"]);
+  });
+
+  it("#884: the worklist names an entry due soon, overdue, or waiting for its second renewal signer", async () => {
+    const { monographId } = await save();
+    await signAt(monographId, PROF_A, "2026-01-10", { highAlert: true });
+    await signAt(monographId, PROF_B, "2026-01-10");
+    expect((await crkWorklist(db, "2026-06-01")).items).toEqual([]);
+    let w = await crkWorklist(db, "2026-12-20");
+    expect(w.counts).toMatchObject({ dueForReview: 1, overdue: 0 });
     expect(w.items.map((i) => i.state)).toEqual(["due"]);
+    w = await crkWorklist(db, "2027-02-01");
+    expect(w.counts).toMatchObject({ dueForReview: 0, overdue: 1 });
+    expect(w.items.map((i) => i.state)).toEqual(["overdue"]);
+    await signAt(monographId, PROF_A, "2027-02-01");
+    w = await crkWorklist(db, "2027-02-01");
+    expect(w.counts).toMatchObject({ awaitingSecond: 1, signed: 1 });
+    expect(w.items.map((i) => i.state)).toEqual(["awaiting_second"]);
+  });
+
+  it("#884: overdue is the day after the due date, never the due date itself", () => {
+    expect(isOverdue("2027-01-10", "2027-01-10")).toBe(false);
+    expect(isOverdue("2027-01-10", "2027-01-11")).toBe(true);
+    expect(isOverdue(null, "2099-01-01")).toBe(false);
   });
 
   it("only a person signs, and a signature names a designation", async () => {

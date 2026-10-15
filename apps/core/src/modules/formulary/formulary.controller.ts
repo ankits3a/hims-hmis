@@ -5,7 +5,7 @@ import { z } from "zod";
 import { CONFIG, DB } from "../../kernel/tokens";
 import { openAiCompatibleClient } from "../../kernel/inference/openai-compatible";
 import { openAiKeyFromFile } from "../../kernel/inference/openai-speech";
-import { CRK_FIELDS, CRK_SOURCE_KINDS, crkLabel, crkSigners, crkWorklist, draftCrkEntry, saveCrkEntry, signCrkEntry } from "./crk-formulary";
+import { CRK_FIELDS, CRK_SOURCE_KINDS, crkLabel, isOverdue, istDate, crkSigners, crkWorklist, draftCrkEntry, saveCrkEntry, signCrkEntry } from "./crk-formulary";
 import type { CrkWorklist, DraftResult, SignResult } from "./crk-formulary";
 import type { AppConfig } from "../../kernel/config";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
@@ -553,7 +553,7 @@ export class FormularyController {
   /** What every reader gets: the REVIEWED monograph of a generic, or 404 while there is none. */
   @RequirePermission("formulary.read", "hospital", { alsoAdmits: ["formulary.monograph.review"] })
   @Get("monographs/:sctid")
-  async monograph(@Param("sctid") sctid: string): Promise<Monograph & { signedBy: { label: string; name: string; designation: string | null; on: string; second: { name: string; designation: string | null } | null } | null }> {
+  async monograph(@Param("sctid") sctid: string): Promise<Monograph & { signedBy: { label: string; overdue: boolean; name: string; designation: string | null; on: string; second: { name: string; designation: string | null } | null } | null }> {
     const row = await getMonograph(this.db, sctid);
     if (row === undefined) throw httpError(404, `no reviewed monograph for ${sctid}`, "unknown_monograph");
     /* #618 — a signed CRK entry is read with its label: "CRK Medical College formulary · reviewed by <name>, <date>". */
@@ -564,7 +564,8 @@ export class FormularyController {
       return {
         ...row, draftUsage: null,
         signedBy: {
-          label: crkLabel(name, on), name, designation: row.reviewerDesignation, on,
+          /* #884 — past its due date it is still shown, and says "review overdue". */
+          label: crkLabel(name, on), overdue: isOverdue(row.reviewDueOn, istDate(new Date())), name, designation: row.reviewerDesignation, on,
           second: row.secondReviewedBy === null ? null : { name: names.get(row.secondReviewedBy) ?? row.secondReviewedBy, designation: row.secondReviewerDesignation },
         },
       };
