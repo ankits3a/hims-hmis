@@ -7,6 +7,7 @@ import type {
  * `ER_ROUTES` and the topic its `ER_BOARD_TOPIC`, copied: the web bundle imports the contract package for TYPES only. ═══ */
 const ER_ROUTES = {
   board: "/er/board",
+  boardWall: "/er/board/wall",
   desk: "/er/desk",
   patients: "/er/patients",
   doctors: "/er/doctors",
@@ -52,6 +53,7 @@ const ER_ROUTES = {
   mlcEvidence: "/er/mlc/evidence",
 } as const;
 export const ER_BOARD_TOPIC = "er:board";
+export const ER_WALL_TOPIC = "erwall:board";
 
 /** The contract's value lists, copied for the same reason (`packages/contracts/src/emergency/common.ts`). */
 export const ER_SEXES = ["male", "female", "other", "unknown"] as const;
@@ -96,7 +98,8 @@ export type ArrivalOut = {
 /** A uuid per act: a retried request on a bad network records once (spec §6 edge 8). */
 export const newKey = (): string => crypto.randomUUID();
 
-export const fetchErBoard = (wall: boolean) => api<ErBoard>("GET", `${ER_ROUTES.board}${wall ? "?wall=1" : ""}`);
+// ER review (2026-10-15) — the wall display reads its own route (`er.board.wall`; a kiosk holds only that).
+export const fetchErBoard = (wall: boolean) => api<ErBoard>("GET", wall ? ER_ROUTES.boardWall : ER_ROUTES.board);
 export const fetchErDesk = () => api<ErDeskView>("GET", ER_ROUTES.desk);
 export const searchErPatients = (q: string) => api<ErPatientHit[]>("GET", `${ER_ROUTES.patients}?q=${encodeURIComponent(q)}`);
 export const fetchErDoctors = () => api<ErDoctorOption[]>("GET", ER_ROUTES.doctors);

@@ -6,7 +6,7 @@ import type { ErBoard, ErExpectedCard, ErTile } from "@hmis/contracts";
 import { useAuth } from "../lib/auth";
 import { fmtIst } from "../lib/format";
 import { realtimeClient, useRealtime } from "../lib/realtime";
-import { ER_BOARD_TOPIC, fetchErBoard, minutesSince } from "../lib/er-api";
+import { ER_BOARD_TOPIC, ER_WALL_TOPIC, fetchErBoard, minutesSince } from "../lib/er-api";
 import "../styles/paper-pine.css";
 import "./er.css";
 
@@ -103,13 +103,13 @@ function Tile({ tile, now, wall, href }: { tile: ErTile; now: number; wall: bool
         <div className="erb-esi-row">
           <EsiBadge level={tile.esi} t={t} />
           {tile.bayCode !== null ? <span className="erb-bay mono">{tile.bayCode}</span> : null}
-          {tile.ews !== null ? <span className={`er-ews ews-${tile.ews.band}`}>{t(`er.ews.${tile.ews.kind}`)} {tile.ews.value}</span> : null}
+          {tile.ews !== null ? <span className={`er-ews ews-${tile.ews.band}`}>{tile.ews.kind !== null ? `${t(`er.ews.${tile.ews.kind}`)} ` : ""}{tile.ews.value} · {t(`er.ewsBand.${tile.ews.band}`)}</span> : null}
         </div>
       ) : null}
       <div className="erb-meta">
         <span>{ageSexWords(t, tile.ageYears, tile.ageBand, tile.sex)}</span>
         <span className="mono">{tile.episodeNo}</span>
-        <span>{t(`er.mode.${tile.arrivalMode}`)}</span>
+        {tile.arrivalMode !== null ? <span>{t(`er.mode.${tile.arrivalMode}`)}</span> : null}
         {tile.doctor !== null ? <span>{t("erBoard.doctor", { name: tile.doctor })}</span> : null}
       </div>
       {clocks.length > 0 ? clocks.slice(0, 2).map((c) => (
@@ -162,7 +162,7 @@ export function ErBoardScreen(): React.ReactElement {
   useEffect(() => { const id = setInterval(load, 60_000); return () => clearInterval(id); }, [load]);
 
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { connected } = useRealtime([ER_BOARD_TOPIC], () => {
+  const { connected } = useRealtime([wall ? ER_WALL_TOPIC : ER_BOARD_TOPIC], () => {
     if (debounce.current !== null) clearTimeout(debounce.current);
     debounce.current = setTimeout(() => { debounce.current = null; load(); }, 300);
   });
@@ -218,7 +218,7 @@ export function ErBoardScreen(): React.ReactElement {
             const eta = etaWords(t, c, now);
             return (
               <article key={c.preAlertId} className={`erb-exp${eta.late ? " late" : ""}`} data-testid="er-board-expected">
-                <div className="erb-tile-top"><b>{t(`er.mode.${c.mode}`)}</b><span className={`erb-eta${eta.late ? " late" : ""}`}>{eta.text}</span></div>
+                <div className="erb-tile-top"><b>{c.mode !== null ? t(`er.mode.${c.mode}`) : t("erBoard.col.expected")}</b><span className={`erb-eta${eta.late ? " late" : ""}`}>{eta.text}</span></div>
                 <div className="erb-meta">
                   {c.count > 1 ? <span>{t("erBoard.count", { arrived: c.arrivedCount, total: c.count })}</span> : null}
                   {c.sex !== null || c.ageBand !== null ? <span>{[c.ageBand !== null ? t(`er.bandShort.${c.ageBand}`) : null, c.sex !== null ? t(`er.sex.${c.sex}`) : null].filter(Boolean).join(" ")}</span> : null}

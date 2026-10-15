@@ -225,6 +225,8 @@ export const patients = pgTable(
     uniqueIndex("patients_abha_address_ux")
       .on(sql`lower(btrim(${t.abhaAddress}))`)
       .where(sql`${t.abhaAddress} is not null and btrim(${t.abhaAddress}) <> '' and ${t.status} = 'active'`),
+    // ER lane 1 (#808; ER review 2026-10-15) — one of two words, checked by the database.
+    check("patients_identity_status_ck", sql`${t.identityStatus} in ('identified', 'unidentified')`),
     // ER lane 4 (#811): the one death kind, and only on a deceased record.
     check("patients_death_kind_ck", sql`${t.deathKind} is null or (${t.deathKind} = 'brought_dead' and ${t.deceasedAt} is not null)`),
   ],

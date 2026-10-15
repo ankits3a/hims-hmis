@@ -65,7 +65,15 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
 - `link_identity` FILES `patient_merge` (unknown → true) and asks `patients.merge`; it never merges. After the MS grants
   and MRD executes, readers resolve the unknown to the true record: the tile and desk show the true name, the desk marks
   the band stale, the reprint prints the true name, UHID and allergies.
-- Wall board: no names (alias or initials), no UHID, no complaint words. No money anywhere (0058).
+- Wall board: no names (alias or initials), no UHID, no complaint words. No money anywhere (0058). ER review
+  (2026-10-15, DECIDED): the wall has its own permission `er.board.wall` (route `/er/board/wall`, topic `erwall:board`;
+  the kiosk `display` role holds only that); police involvement (the chip, a police arrival mode, a police pre-alert's
+  mode) never reaches the wall.
+- Band and sealed records: the band's name is `patients.displayNameFor` — a sealed record prints its alias unless the
+  printing user holds `patients.confidential.read`.
+- `link_identity` refuses a deceased true record (`patient_deceased`) and a true record with its own open ER episode
+  (`episode_already_open`). `patients.identity_status` is CHECKed (`patients_identity_status_ck`, migration er_arrival);
+  `patient_merge` refuses to keep an unidentified record over an identified one (`merge_into_unidentified`).
 
 ### Lane 2 (er-triage, #809)
 - ESI v4 (`packages/contracts/src/emergency/triage.ts`: `ER_ESI_INFO`, `esiAlgorithm`). The level is the person's; the

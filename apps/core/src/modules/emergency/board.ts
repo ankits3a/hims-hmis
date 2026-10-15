@@ -6,7 +6,7 @@ import { initialsOf } from "../ipd";
 import { openCriticalsForEncounters } from "../lab";
 import { getMergeRequest, getPatientSummaries, searchPatients } from "../patients";
 import { aliasHiOf, requireErPermission, yearsOld } from "./core";
-import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_TRIAGE } from "./names";
+import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_TRIAGE } from "./names";
 import { ErRefusal } from "./errors";
 import type {
   Actor, ErAgeBand, ErArrivalMode, ErBay, ErBoard, ErDeskRow, ErDoctorOption, ErEpisodeView, ErEsiLevel, ErEws, ErDeskView, ErEpisodeState, ErExpectedCard, ErPatientHit, ErSex, ErTile,
@@ -53,13 +53,14 @@ function firstName(label: string): string {
   return (label.trim().split(/\s+/)[0] ?? "").toLowerCase();
 }
 
-function chipsOf(e: EpisodeRow, n: Named, alerted: ReadonlySet<string>): ErTileChip[] {
+function chipsOf(e: EpisodeRow, n: Named, alerted: ReadonlySet<string>, wall: boolean): ErTileChip[] {
   const chips: ErTileChip[] = [];
   if (!n.identified) chips.push("unidentified");
   if (alerted.has(e.id)) chips.push("name_alert");
   if (e.returnedWithin24h) chips.push("returned_24h");
   const bringer = (e.broughtBy as { kind?: string } | null)?.kind;
-  if (e.arrivalMode === "police" || bringer === "police") chips.push("police");
+  // ER review (2026-10-15): police involvement is MLC-sensitive — never on the wall display.
+  if (!wall && (e.arrivalMode === "police" || bringer === "police")) chips.push("police");
   if (AMBULANCE.has(e.arrivalMode)) chips.push("ambulance");
   if (e.paperSerial !== null) chips.push("paper");
   return chips;
@@ -85,7 +86,7 @@ function nameAlerts(eps: readonly EpisodeRow[], names: Map<string, Named>): Set<
 
 function preAlertCard(p: typeof erPreAlerts.$inferSelect, wall: boolean, name: string | null): ErExpectedCard {
   return {
-    preAlertId: p.id, mode: p.mode as ErExpectedCard["mode"], expectedAt: p.expectedAt.toISOString(), expiresAt: p.expiresAt.toISOString(),
+    preAlertId: p.id, mode: wall && p.mode === "police" ? null : p.mode as ErExpectedCard["mode"], expectedAt: p.expectedAt.toISOString(), expiresAt: p.expiresAt.toISOString(),
     count: p.count, arrivedCount: p.arrivedCount, sex: (p.sex ?? null) as ErSex | null, ageBand: (p.ageBand ?? null) as ErAgeBand | null,
     complaint: wall ? null : p.complaint,
     patientId: wall ? null : p.patientId, patientLabel: name === null ? null : wall ? initialsOf(name) : name,
@@ -128,22 +129,26 @@ async function tilesFor(db: Db, actor: Actor, eps: readonly EpisodeRow[], at: Da
       episodeId: e.id, episodeNo: e.episodeNo,
       label: wall && n.identified ? initialsOf(n.label) : n.label, labelHi: n.labelHi, uhid: wall ? null : n.uhid,
       sex: n.sex, ageBand: (e.ageBand ?? null) as ErAgeBand | null, ageYears: n.ageYears,
-      state: e.state as ErEpisodeState, arrivalMode: e.arrivalMode as ErArrivalMode, arrivedAt: e.arrivedAt.toISOString(),
+      state: e.state as ErEpisodeState, arrivalMode: wall && e.arrivalMode === "police" ? null : e.arrivalMode as ErArrivalMode, arrivedAt: e.arrivedAt.toISOString(),
       triageDueAt: e.state === "arrived" ? new Date(e.arrivedAt.getTime() + ER_DOOR_TO_TRIAGE_MINUTES * MINUTE).toISOString() : null,
-      chips: [...extra, ...chipsOf(e, n, alerted)],
+      chips: [...extra, ...chipsOf(e, n, alerted, wall)],
       esi, bayCode: e.bayId === null ? null : bays.get(e.bayId) ?? null,
       doctor: doc === null ? null : wall ? initialsOf(doc) : doc,
       doctorDueAt: esi === null || e.seenAt !== null ? null
         : new Date(e.arrivedAt.getTime() + ER_ESI_INFO[esi].doctorWithinMin * MINUTE).toISOString(),
       retriageDueAt: e.state === "triaged" && e.retriageDueAt !== null ? e.retriageDueAt.toISOString() : null,
-      ews: e.ewsKind === null ? null : { kind: e.ewsKind as ErEws["kind"], value: e.ewsValue ?? 0, band: e.ewsBand as ErEws["band"] },
+      // ER review (2026-10-15, DECIDED): the wall shows the number and the band, never the score's name (MEOWS discloses
+      // a pregnancy); the full board keeps it.
+      ews: e.ewsKind === null ? null
+        : { kind: wall ? null : e.ewsKind as ErEws["kind"], value: e.ewsValue ?? 0, band: e.ewsBand as ErEws["band"] },
     });
   }
   return out;
 }
 
 export async function readErBoard(db: Db, actor: Actor, opts: { wall?: boolean; now?: Date } = {}): Promise<ErBoard> {
-  await requireErPermission(db, actor, ER_BOARD_VIEW);
+  // The wall display asks its own string (a kiosk holds only that); the full board asks `er.board.view`.
+  await requireErPermission(db, actor, opts.wall === true ? ER_BOARD_WALL : ER_BOARD_VIEW);
   const at = opts.now ?? new Date();
   const wall = opts.wall === true;
   const open = await db.select().from(erEpisodes)
