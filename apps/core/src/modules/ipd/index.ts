@@ -66,6 +66,8 @@ export type { BedPlacementInput, PlacementContext } from "./beds";
 // E1.3 (#720) — where an admission is, and the stay-ending and transfer event names, for the companion modules (passes).
 export {
   IPD_ADMISSION_ENDED_EVENT_NAMES, IPD_ENDED_STATES, IPD_PLACED_STATES, IPD_TRANSFER_ACCEPTED_EVENT_NAME, admissionPlace,
+  // ER lane 1 (#808) — an admitted patient arriving at the emergency department is refused with their ward and bed.
+  placedAdmissionOf,
 } from "./admission-place";
 export type { AdmissionPlace } from "./admission-place";
 export { ageInYears } from "./bed-rules";

@@ -1735,6 +1735,17 @@ kitchen_staff) reads the sheet and the board; `diet.serve` (support_staff, dieti
 sets the meal rounds' cut-offs and works the consult queue. `diet.clinical.view` (doctor, dietician) shows the order
 note, the NPO reason and who set them; without it (the kitchen) a reader sees the tray only. No diet screen shows money.
 
+**Emergency arrival (ER lane 1, issue #808, decision 0076, built 2026-10-15, awaiting owner review).** The ER desk at
+`/er/desk` and the tracking board at `/er/board` (`?wall=1` for the wall screen). One new role: `er_nurse`, the
+casualty nurse.
+`er.arrival.register` is held by `front_office`, `front_office_supervisor`, `duty_manager` and `er_nurse`;
+`er.board.view` by the same four and `doctor` and `medical_superintendent`.
+`er.board.wall` (the wall screen only: initials or the alias, no UHID, no complaint, no police mark) is held by the same six and the kiosk `display` role.
+The first records an arrival (a known patient, a new named patient, or an unidentified patient with a real UHID and an
+alias), a pre-alert, a brought-dead marker, and prints or reprints the ER band; the second reads the board. Linking an
+unidentified patient to the true record files a `patient_merge` request and asks `patients.merge`, as the merge screen
+does. No ER screen shows money.
+
 **Copilot halt switch and spend cap (plan E0.3/E0.5, decision 0064, built 2026-10-11, awaiting owner review).**
 `copilot.halt.set` (owner, admin, duty_manager, quality_manager) pauses the copilot by scope — read, act,
 draft or global; `copilot.halt.clear` (owner, duty_manager) clears read, act and draft; and

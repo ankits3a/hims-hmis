@@ -59,6 +59,10 @@
  * UX-AUDIT 2026-09-28 — `.cs`, the cashier-session screen, joins for the palette only, for `.st`'s
  * reason: `.pp`'s button reset would strip the latch button (`SubmitButton`) and `MoneyInput`.
  */
+/*
+ * ER lane 1 (#808) — `.erx`, the ER desk and the tracking board (`screens/er-*.tsx`), joins for the palette only; they
+ * own the viewport and style their own controls in `screens/er.css`.
+ */
 .d1,
 .lg,
 .dash,
@@ -66,7 +70,8 @@
 .shell,
 .st,
 .cs,
-.ipdb {
+.ipdb,
+.erx {
   --paper: #f4f7f4;
   --card: #ffffff;
   --ink: #132420;
