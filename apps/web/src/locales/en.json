@@ -1892,6 +1892,10 @@
       "kindAdvance": "From a patient advance",
       "patient": "Patient",
       "creditNote": "Credit note",
+      "pickCreditNote": "Credit note to refund against",
+      "noCreditNotes": "No credit note on this patient's bills.",
+      "creditNoteLine": "{{creditNote}} · bill {{invoice}} · {{left}} refundable",
+      "creditNoteDone": "{{creditNote}} · bill {{invoice}} · fully refunded",
       "amount": "Refund amount",
       "reasonClass": "Reason class",
       "mistake": "Mistake",
@@ -1960,6 +1964,7 @@
       "invoices": "Invoices",
       "creditNotes": "Credit notes",
       "vouchersPaid": "Refunds paid",
+      "bankCharges": "Bank charges accepted",
       "degraded": "Degraded receipts"
     },
     "gstr1": {
@@ -2123,7 +2128,9 @@
         },
         "gstr1_due": {
           "title": "{{month}} GSTR-1 due {{due}}",
-          "sub": "Summary by GSTIN, SAC and rate"
+          "sub": "Summary by GSTIN, SAC and rate",
+          "subCount_one": "{{count}} hospital GSTIN billed · B2C in one line",
+          "subCount_other": "{{count}} hospital GSTINs billed · B2C in one line"
         }
       },
       "pay": {
@@ -2170,7 +2177,11 @@
         "drawerBank": "No drawer: this refund leaves by bank transfer.",
         "drawerPill": "drawer open",
         "sign": "Take the payee’s signature",
-        "signM": "The payee signs for the money in the refund register. A printed voucher is not available on this screen yet.",
+        "signM": "The voucher prints when you pay; the payee signs it for the money.",
+        "someoneElse": "Someone else collects for the patient",
+        "relation": "Relation to the patient",
+        "relationHint": "son, husband…",
+        "relationRequired": "Name the relation of whoever collects for the patient.",
         "whyCash": "The drawer shortens by {{amount}} the moment you pay.",
         "whyBank": "Record it only after the transfer has left the bank.",
         "act": "Pay {{amount}} in cash",
