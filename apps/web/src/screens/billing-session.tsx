@@ -6,7 +6,6 @@ import { SubmitButton } from "../components/submit-button";
 import { fmtIst, fmtPaise } from "../lib/format";
 import { api } from "../lib/api";
 import { billingErrorCode, billingErrorMessage } from "../lib/billing-api";
-import { useAuth } from "../lib/auth";
 import "../styles/paper-pine.css";
 import "./billing-session.css";
 
@@ -31,8 +30,8 @@ import "./billing-session.css";
  *  · THE VARIANCE IS RENDERED SIGNED. `fmtPaise(-172000)` is `-₹1,720.00`; a magnitude would tell
  *    her the drawer is wrong without telling her which way.
  *  · A CLOSED DRAWER IS NOT A CURRENT ONE. `GET /billing/sessions/current` serves only `open` and
- *    `closing` rows, so the day summary is held from the close RESPONSE — refetching would answer
- *    `null` and the figures would vanish the moment they mattered.
+ *    `closing` rows, so the day summary is held from the close RESPONSE — and, with no live drawer,
+ *    read back from `GET /billing/sessions/last-closed` (#656) so a reload does not lose it.
  *
  * `refetchInterval` follows the 15 s convention; T13's counter owns that convention's teeth
  * (K39/W-3) and this screen's assertion is presence only, stated as such in the suite.
@@ -94,12 +93,15 @@ type WireCashierSession = {
 };
 
 /**
- * The slice of the kernel's `approvals` row this screen reads (`GET /approvals/:id`), and only for a
- * reader who holds `approvals.requests.read` — which the seeded `cashier` role does NOT.
+ * #656 — `GET /billing/sessions/:id/variance-approval`: the state of the approval on the caller's OWN
+ * drawer, on `billing.session.own`. Not the kernel's approval row (`approvals.requests.read`, which
+ * the seeded `cashier` role does NOT hold) — only these fields of it.
  */
 type WireVarianceApproval = {
   status: "pending" | "granted" | "rejected";
   requestedAt: string;
+  decidedAt: string | null;
+  decisionNote: string | null;
 };
 
 /**
@@ -123,7 +125,6 @@ type WireOpenItems = {
 export function BillingSession(): React.ReactElement {
   const { t } = useTranslation();
   const qc = useQueryClient();
-  const { can } = useAuth();
 
   const [floatPaise, setFloatPaise] = useState<number | undefined>(undefined);
   const [openError, setOpenError] = useState<string | null>(null);
@@ -151,26 +152,34 @@ export function BillingSession(): React.ReactElement {
     no way to open the next drawer. It is routed to the day summary, which has both.
   */
   const live = served !== null && served.status !== "closed" ? served : null;
-  const finished = closed ?? (served !== null && served.status === "closed" ? served : null);
+  /* #656 — with no live drawer, the cashier's own last closed drawer: the summary survives a reload. */
+  const lastClosed = useQuery({
+    queryKey: ["billing-session", "last-closed"],
+    queryFn: () => api<{ session: WireCashierSession | null }>("GET", "/billing/sessions/last-closed"),
+    enabled: current.isSuccess && live === null && closed === null,
+  });
+  const finished = closed
+    ?? (served !== null && served.status === "closed" ? served : null)
+    ?? (live === null ? (lastClosed.data?.session ?? null) : null);
   const counted = countedCashPaise(counts);
 
   /*
     UX-AUDIT 2026-09-28 — WHETHER "FINISH CLOSING" IS A REAL STEP YET. `confirmClose` refuses
     `approval_not_granted` until the `billing_variance` approval is GRANTED, and the drawer row
-    carries only the approval's id. The approval itself is readable only with
-    `approvals.requests.read`, which the seeded cashier does not hold — so the status is fetched
-    for a reader who may read it (a billing manager counting a drawer herself) and, for everyone
-    else, the step is offered as what it is: the move to make AFTER the approval, refused by the
-    server before it, and the refusal rendered in words.
+    carries only the approval's id. #656: the status comes from the narrow own-drawer read on
+    `billing.session.own`, so the cashier herself sees it (she holds no `approvals.requests.read`).
+    Until it answers, the step is offered as what it is: the move to make AFTER the approval,
+    refused by the server before it, and the refusal rendered in words.
   */
   const approvalId = live?.status === "closing" ? live.varianceApprovalId : null;
+  const approvalSessionId = approvalId !== null ? live?.id ?? null : null;
   const approval = useQuery({
-    queryKey: ["billing-session", "approval", approvalId],
-    queryFn: () => api<{ approval: WireVarianceApproval }>("GET", `/approvals/${encodeURIComponent(approvalId ?? "")}`),
-    enabled: approvalId !== null && can("approvals.requests.read"),
+    queryKey: ["billing-session", "approval", approvalSessionId, approvalId],
+    queryFn: () => api<WireVarianceApproval>("GET", `/billing/sessions/${encodeURIComponent(approvalSessionId ?? "")}/variance-approval`),
+    enabled: approvalSessionId !== null,
     refetchInterval: POLL_MS,
   });
-  const approvalStatus = approval.data?.approval.status ?? null;
+  const approvalStatus = approval.data?.status ?? null;
 
   const openItems = useQuery({
     queryKey: ["billing-session", "open-items"],
@@ -603,11 +612,19 @@ export function BillingSession(): React.ReactElement {
           ) : live.varianceApprovalId !== null && (
             <p role="status" data-testid="approval-pending" className="b" style={{ margin: 0 }}>
               {approval.data !== undefined
-                ? t("billingSession.approvalPendingSince", { time: fmtIst(approval.data.approval.requestedAt) })
+                ? t("billingSession.approvalPendingSince", { time: fmtIst(approval.data.requestedAt) })
                 : t("billingSession.approvalPending")}
             </p>
           )}
         </div>
+      )}
+
+      {approval.data !== undefined && approval.data.decidedAt !== null && (
+        <p data-testid="approval-decision" className="cs-meta">
+          {t("billingSession.approvalDecidedAt", { time: fmtIst(approval.data.decidedAt) })}
+          {approval.data.decisionNote !== null && approval.data.decisionNote !== ""
+            && <> · {t("billingSession.approvalNote", { note: approval.data.decisionNote })}</>}
+        </p>
       )}
 
       {closeError !== null && (

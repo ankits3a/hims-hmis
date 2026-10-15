@@ -114,7 +114,9 @@ import { resolveMismatch } from "./recon-resolve";
 import type { ResolveMismatchResult } from "./recon-resolve";
 import { billingOfficeNeeds } from "./office-needs";
 import type { BillingOfficeNeeds } from "./office-needs";
-import { beginClose, confirmClose, isDrawerSupervisor, listSessions, openSession, recountSession } from "./sessions";
+import {
+  beginClose, confirmClose, isDrawerSupervisor, lastClosedSession, listSessions, openSession, ownVarianceApprovalStatus, recountSession,
+} from "./sessions";
 import { drawerOpenItems } from "./drawer-open-items";
 import type { DrawerOpenItems, PartPaidItem } from "./drawer-open-items";
 import { istDay } from "./time";
@@ -127,7 +129,7 @@ import type { EncounterFeeStatus } from "./fee-status";
 import type { AllocateReceiptResult, DueRow, MarkEnteredInErrorResult, PatientBalance, RecordReceiptResult, ReverseAllocationResult } from "./receipts";
 import type { IssueRefundVoucherResult, PayRefundVoucherResult, RequestRefundResult, RefundVoucherRow } from "./refunds";
 import type { MismatchRow, UploadSettlementResult } from "./recon";
-import type { CashierSessionRow } from "./sessions";
+import type { CashierSessionRow, VarianceApprovalStatus } from "./sessions";
 import type { Settlement } from "./settlement";
 import type { PatientSummary } from "../patients";
 
@@ -1196,6 +1198,29 @@ export class BillingController {
   async sessionCurrent(@CurrentActor() actor: Actor): Promise<{ session: CashierSessionRow | null }> {
     const own = await listSessions(this.db, { cashierUserId: actor.id });
     return { session: own.find((s) => s.status === "open" || s.status === "closing") ?? null };
+  }
+
+  /**
+   * #656 — the acting cashier's own most recently CLOSED drawer, or null: the day summary the close
+   * response showed, read back after a reload. Only `closed` rows, so nothing here precedes the count.
+   */
+  @RequirePermission("billing.session.own", "hospital")
+  @Get("sessions/last-closed")
+  async sessionLastClosed(@CurrentActor() actor: Actor): Promise<{ session: CashierSessionRow | null }> {
+    return { session: await lastClosedSession(this.db, actor.id) };
+  }
+
+  /**
+   * #656 — whether the variance approval on the caller's OWN drawer is pending, granted or rejected
+   * (with when, and the approver's note). Not `approvals.requests.read`: three fields of one
+   * approval, for its requester's own drawer. 404 for another cashier's drawer or no approval.
+   */
+  @RequirePermission("billing.session.own", "hospital")
+  @Get("sessions/:id/variance-approval")
+  async sessionVarianceApproval(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<VarianceApprovalStatus> {
+    const found = await ownVarianceApprovalStatus(this.db, actor, id);
+    if (found === null) throw httpError(404, `no variance approval on a drawer of yours with id ${id}`, "no_variance_approval", { sessionId: id });
+    return found;
   }
 
   /**
