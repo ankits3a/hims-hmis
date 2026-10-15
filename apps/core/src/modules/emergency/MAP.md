@@ -203,6 +203,10 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   issue/procedure lines through IPD's `carryErLineIn` (`ipd.er` lines, component `er`, one per ER line via
   `ipd_charge_lines_er_line_ux`; a missing rate is the IP bill desk's exception); order lines go through lane 5's order seam.
 - `stage-er-setup` step d drafts the sample ER tariff (services inactive, a draft version).
+- ER review 3 (2026-10-15): a drug is priced at its batch MRP for the PACK the MRP names, spread over the base units
+  taken (materials' `packPriceOf` + `saleAmountPaise`), never MRP × base units. At roll-over every ER advance becomes a
+  deposit of the admission (IPD `carryErAdvanceIn`, once per receipt) and an issue still without a price rolls over on
+  the `ER-DRUG` carrier (the IP desk's exception); an admitted episode takes no further ER advance (`rolled_to_ip`).
 
 ## 4. Traps
 - `registerPatient` takes a `Tx` and the band reads the new patient in that same `tx` (`bandPerson(tx, …)`); reading it

@@ -1,5 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { ipdAdmissions } from "../../kernel/db/schema";
+import { ipdAdmissionDeposits, ipdAdmissions } from "../../kernel/db/schema";
 import { admissionAdvisoryLock, readAdmission } from "./admission-core";
 import { cancelAdmissionIn } from "./admissions";
 import { insertLine, lockedVersion, postOrderLineIn, pricingFor, raiseException } from "./charges";
@@ -119,4 +119,21 @@ export async function carryErLineIn(
     admission: fresh, serviceDate: line.serviceDate, component: "er", billedClass: null, priced: priced!, code: svc.code, versionId,
     source: "ipd.er", erChargeLineId: line.erChargeLineId, actor, at,
   });
+}
+
+/**
+ * ER review 3 (2026-10-15) — AN ER ADVANCE FOLLOWS THE PATIENT ONTO THE IP BILL. At roll-over every ER advance receipt
+ * becomes a deposit of the admission (the discharge bill applies deposits — `depositReceipts`), once: the receipt is
+ * unique among deposits. Without it, an advance taken in the ER of a patient later admitted was applied nowhere (the ER
+ * bill refuses `rolled_to_ip`). In the caller's transaction.
+ */
+export async function carryErAdvanceIn(tx: Tx, admissionId: string, adv: {
+  advanceId: string; receiptId: string; receiptNo: string; amountPaise: number; tender: string; payerName: string; takenBy: string; takenAt: Date;
+}): Promise<void> {
+  await admissionAdvisoryLock(tx, admissionId);
+  await tx.insert(ipdAdmissionDeposits).values({
+    id: `er-adv-${adv.advanceId}`, admissionId, receiptId: adv.receiptId, receiptNo: adv.receiptNo, amountPaise: adv.amountPaise,
+    tender: adv.tender, payerName: adv.payerName, payerRelation: "as recorded at the ER desk", idempotencyKey: `er-advance:${adv.advanceId}`,
+    takenBy: adv.takenBy, takenAt: adv.takenAt,
+  }).onConflictDoNothing();
 }

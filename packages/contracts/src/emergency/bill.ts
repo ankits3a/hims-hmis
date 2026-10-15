@@ -56,7 +56,7 @@ export const setErPayer = erIntent({
 export const takeErAdvance = erIntent({
   input: erInput({ episodeId: ErIdSchema, tender: TenderSchema, payerName: ErWordsSchema }),
   output: z.strictObject({ receiptId: ErIdSchema, receiptNo: z.string(), amountPaise: z.number().int() }),
-  refusals: ["episode_not_found", "not_stabilised", "payer_pays_nothing", "bill_settled"],
+  refusals: ["episode_not_found", "not_stabilised", "payer_pays_nothing", "bill_settled", "rolled_to_ip"],
   actors: ["desk"],
   copilotProposable: false,
   agentTier: "none",

@@ -5,11 +5,13 @@ import {
 } from "@hmis/contracts";
 import { withTx } from "../../kernel/db/client";
 import {
-  erAdvances, erBills, erChargeLines, erEpisodes, erEventAccounts, erMedIssues, erMlcs, erPayerClaims, services, stockBatches,
+  erAdvances, erBills, erChargeLines, erEpisodes, erEventAccounts, erMedIssues, erMlcs, erPayerClaims, receiptTenders, receipts, services,
+  stockBatches,
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { issueInvoice, recordReceiptInTx } from "../billing";
-import { carryErLineIn } from "../ipd";
+import { carryErAdvanceIn, carryErLineIn } from "../ipd";
+import { itemUomRows, packPriceOf, saleAmountPaise } from "../materials";
 import { istDayString } from "../../kernel/approvals/cumulative";
 import { getPatientSummaries } from "../patients";
 import { loadPricingContext, priceInvoiceLines } from "../tariff";
@@ -90,18 +92,28 @@ export async function visitFeeLines(db: Db | Tx, e: EpisodeRow, now: Date): Prom
 
 // ═══════════════════════════════════════════ pricing ═══════════════════════════════════════════
 
-/** A drug issue's price: Σ batch MRP × the units taken from it (the MRP is per base unit; an MRP-less batch → null). */
+/**
+ * A drug issue's price: for each batch taken from, its MRP for the PACK the MRP names (`mrp_uom`) spread over the base
+ * units taken — whole packs at the MRP, loose units at the pack price per base unit floored (the materials loose-MRP
+ * rule, `saleAmountPaise`). ER review 3 (2026-10-15): the MRP is NOT per base unit — ₹500 a box of 10 is ₹50 a vial.
+ * An MRP-less batch, or an MRP in a unit the item does not have → null (the bill desk's rate-missing line).
+ */
 async function issueMrpPaise(tx: Db | Tx, issueId: string): Promise<number | null> {
-  const issue = (await (tx as Db).select({ batches: erMedIssues.batches }).from(erMedIssues).where(eq(erMedIssues.id, issueId)))[0];
-  if (issue === undefined) return null;
+  const issue = (await (tx as Db).select({ batches: erMedIssues.batches, itemId: erMedIssues.itemId }).from(erMedIssues).where(eq(erMedIssues.id, issueId)))[0];
+  if (issue === undefined || issue.itemId === null) return null;
   const picks = issue.batches as { batchId: string; qty: number }[];
   if (picks.length === 0) return null;
-  const rows = await (tx as Db).select({ id: stockBatches.id, mrp: stockBatches.mrpPaise }).from(stockBatches).where(inArray(stockBatches.id, picks.map((p) => p.batchId)));
+  const rows = await (tx as Db).select({ id: stockBatches.id, mrp: stockBatches.mrpPaise, mrpUom: stockBatches.mrpUom }).from(stockBatches)
+    .where(inArray(stockBatches.id, picks.map((p) => p.batchId)));
+  const uoms = await itemUomRows(tx as Db, issue.itemId);
   let total = 0;
   for (const p of picks) {
-    const mrp = rows.find((r) => r.id === p.batchId)?.mrp ?? null;
-    if (mrp === null) return null;
-    total += mrp * p.qty;
+    const b = rows.find((r) => r.id === p.batchId);
+    if (b === undefined) return null;
+    let pack;
+    try { pack = packPriceOf(uoms, b.mrp, b.mrpUom); } catch { return null; }
+    if (pack === null) return null;
+    total += saleAmountPaise({ mrpPaise: pack.paise, packMultiplier: pack.baseUnits, qtyBase: p.qty }).amountPaise;
   }
   return total;
 }
@@ -240,6 +252,8 @@ export async function takeErAdvance(db: Db, actor: Actor, raw: unknown, opts: Op
   return onceEr(db, actor, "take_er_advance", input.idempotencyKey, input, () => withTx(db, async (tx) => {
     const e = await effective(tx, await lockEpisode(tx, input.episodeId));
     gate(e);
+    // ER review 3: an episode already rolled to the IP bill takes its money there (its ER advances became deposits).
+    if (e.outcome === "admitted") throw new ErRefusal("rolled_to_ip", { admissionId: e.admissionId });
     if (await billOf(tx, e.id) !== undefined) throw new ErRefusal("bill_settled");
     if (e.payer === "pmjay" || e.payer === "bnss_free" || e.payer === "mci_event") throw new ErRefusal("payer_pays_nothing", { payer: e.payer });
     const receipt = await recordReceiptInTx(tx, actor, {
@@ -428,18 +442,31 @@ export async function rollErLinesIn(tx: Tx, actor: Actor, e: EpisodeRow, admissi
     await carryErLineIn(tx, actor, admissionId, { erChargeLineId: v.id, serviceId: v.serviceId, qty: v.qty, serviceDate: istDayString(v.postedAt) }, at);
     carried += 1;
   }
+  // ER review 3: an issue still `rate_pending` (no MRP on its batch) rolls over too, on the drug carrier service — the IP
+  // desk's rate-missing exception — never left behind on an episode that can no longer be settled in the ER.
+  const drugCarrier = await erServiceId(tx, ER_SERVICE_CODES.drug);
   const stored = await tx.select().from(erChargeLines).where(and(
-    eq(erChargeLines.episodeId, e.id), inArray(erChargeLines.source, ["er.issue", "er.procedure"]), inArray(erChargeLines.status, ["posted", "rate_missing"]),
+    eq(erChargeLines.episodeId, e.id), inArray(erChargeLines.source, ["er.issue", "er.procedure"]), inArray(erChargeLines.status, ["posted", "rate_missing", "rate_pending"]),
   )).for("update");
   for (const l of stored) {
-    if (l.serviceId === null) continue;
+    const serviceId = l.serviceId ?? (l.source === "er.issue" ? drugCarrier : null);
+    if (serviceId === null) continue;
     const drug = l.source === "er.issue" && l.amountPaise !== null;
     const ipLine = await carryErLineIn(tx, actor, admissionId, {
-      erChargeLineId: l.id, serviceId: l.serviceId, qty: drug ? 1 : l.qty, serviceDate: istDayString(l.postedAt),
+      erChargeLineId: l.id, serviceId, qty: drug ? 1 : l.qty, serviceDate: istDayString(l.postedAt),
       ...(drug ? { prepaidUnitPaise: l.amountPaise! } : {}),
     }, at);
     await tx.update(erChargeLines).set({ status: "moved", movedToAdmissionId: admissionId, movedIpdLineId: ipLine }).where(eq(erChargeLines.id, l.id));
     carried += 1;
+  }
+  // ER review 3: every ER advance becomes a deposit of the admission (applied by the discharge bill), once.
+  for (const a of await tx.select().from(erAdvances).where(eq(erAdvances.episodeId, e.id))) {
+    const r = (await tx.select({ no: receipts.receiptNo }).from(receipts).where(eq(receipts.id, a.receiptId)))[0];
+    const t = (await tx.select({ mode: receiptTenders.mode }).from(receiptTenders).where(eq(receiptTenders.receiptId, a.receiptId)))[0];
+    await carryErAdvanceIn(tx, admissionId, {
+      advanceId: a.id, receiptId: a.receiptId, receiptNo: r?.no ?? a.receiptId, amountPaise: a.amountPaise, tender: t?.mode ?? "cash",
+      payerName: "ER advance", takenBy: a.takenBy, takenAt: a.takenAt,
+    });
   }
   return carried;
 }
