@@ -1,6 +1,6 @@
-import { and, eq, isNotNull, lte } from "drizzle-orm";
+import { and, eq, isNotNull, lte, or } from "drizzle-orm";
 import {
-  ER_ESI_INFO, ER_INTENTS, ER_RETRIAGE_CLIMB_MIN, erIsInFuture, esiAlgorithm, isDownTriage, newId,
+  ER_DOOR_TO_TRIAGE_MINUTES, ER_ESI_INFO, ER_INTENTS, ER_RETRIAGE_CLIMB_MIN, erIsInFuture, esiAlgorithm, isDownTriage, newId,
 } from "@hmis/contracts";
 import { ewsBandRank, scoreEws } from "@hmis/contracts";
 import { withTx } from "../../kernel/db/client";
@@ -15,7 +15,7 @@ import { lockEpisode, moveEpisode, onceEr, provenanceOf, requireErPermission, ye
 import { ErRefusal } from "./errors";
 import { erDoctorAssigned, erMoved, erPlaced, erRetriaged, erTriaged, erVitalsRecorded } from "./events";
 import { ER_TRIAGE } from "./names";
-import { ER_RETRIAGE_TASK } from "./task-kinds";
+import { ER_RETRIAGE_TASK, ER_TRIAGE_DUE_TASK } from "./task-kinds";
 import type { Actor, ErEsiDecision, ErEsiLevel, ErEws, ErIntentName, ErVitals } from "@hmis/contracts";
 import type { z } from "zod";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -321,29 +321,36 @@ export async function assignErDoctor(db: Db, actor: Actor, raw: unknown, opts: O
 // ═══════════════════════════════════════════ the re-triage clock ═══════════════════════════════════════════
 
 /**
- * Every minute (inside the bed-reservation lapse job, beside the pre-alert lapse). For each triaged episode whose
- * re-triage is overdue: ONE task per due instant (`sourceRef` makes a second raise a no-op), and 15 minutes later ONE
- * climb through the roster ladder (`er_retriage`; the nursing supervisor's holders when no roster row names a
- * position), stamped so it never climbs twice for the same due instant. Notices carry the ER number, never a name.
+ * Every minute (inside the bed-reservation lapse job, beside the pre-alert lapse). Two clocks, ONE ladder (spec §0: a
+ * breached clock is a task with an owner):
+ * - door-to-triage: an `arrived` patient not triaged 5 minutes after the GATE → task `er_triage_due` (stat);
+ * - re-triage: a `triaged` patient past the re-triage instant → task `er_retriage` (urgent).
+ * Each raises ONE task per due instant (`sourceRef`; stamped on the episode) and, 15 minutes after the due instant, ONE
+ * climb through the roster ladder (`er_retriage`; the nursing supervisor's holders when no roster row names a position).
+ * The act the task asks for (triage, re-triage, the doctor) cancels it. Notices carry the ER number, never a name.
+ * The two clocks share the episode's stamps: an episode is in one state, so only one of them can be running.
  */
 export async function sweepErTriageClocks(db: Db, now: Date): Promise<{ tasks: number; climbs: number }> {
-  const due = await db.select({ id: erEpisodes.id }).from(erEpisodes).where(and(
-    eq(erEpisodes.state, "triaged"), isNotNull(erEpisodes.retriageDueAt), lte(erEpisodes.retriageDueAt, now),
+  const triageCutoff = new Date(now.getTime() - ER_DOOR_TO_TRIAGE_MINUTES * MIN);
+  const due = await db.select({ id: erEpisodes.id }).from(erEpisodes).where(or(
+    and(eq(erEpisodes.state, "triaged"), isNotNull(erEpisodes.retriageDueAt), lte(erEpisodes.retriageDueAt, now)),
+    and(eq(erEpisodes.state, "arrived"), lte(erEpisodes.arrivedAt, triageCutoff)),
   ));
   let tasks = 0;
   let climbs = 0;
   for (const { id } of due) {
     const r = await withTx(db, async (tx) => {
       const e = await lockEpisode(tx, id);
-      if (e.state !== "triaged" || e.retriageDueAt === null || e.retriageDueAt.getTime() > now.getTime()) return { t: 0, c: 0 };
-      const dueAt = e.retriageDueAt;
+      const clock = clockOf(e);
+      if (clock === null || clock.dueAt.getTime() > now.getTime()) return { t: 0, c: 0 };
+      const { dueAt } = clock;
       let t = 0;
       let c = 0;
       if (e.retriageTaskDueAt?.getTime() !== dueAt.getTime()) {
         const raised = await raiseTask(tx, ER_CLOCK_ACTOR, {
-          kind: ER_RETRIAGE_TASK, patientId: e.patientId, placeResourceId: e.bayId, priority: "urgent",
-          dueAt: dueAt.toISOString(), sourceRef: `er_retriage:${e.id}:${dueAt.toISOString()}`,
-          note: `Re-triage ${e.episodeNo} (ESI ${String(e.esi)})`, raisedAt: dueAt.toISOString(),
+          kind: clock.kind, patientId: e.patientId, placeResourceId: e.bayId, priority: clock.priority,
+          dueAt: dueAt.toISOString(), sourceRef: `${clock.ref}:${e.id}:${dueAt.toISOString()}`,
+          note: clock.note, raisedAt: dueAt.toISOString(),
         }, now);
         await tx.update(erEpisodes).set({ retriageTaskId: raised.task.id, retriageTaskDueAt: dueAt }).where(eq(erEpisodes.id, e.id));
         t = 1;
@@ -351,11 +358,11 @@ export async function sweepErTriageClocks(db: Db, now: Date): Promise<{ tasks: n
       const climbAt = dueAt.getTime() + ER_RETRIAGE_CLIMB_MIN * MIN;
       if (now.getTime() >= climbAt && e.retriageClimbedDueAt?.getTime() !== dueAt.getTime()) {
         const to = await escalationRecipients(tx, "er_retriage", { fallbackRoleKey: ER_RETRIAGE_FALLBACK_ROLE }, now);
+        const late = String(Math.round((now.getTime() - dueAt.getTime()) / MIN));
         for (const userId of to.userIds) {
           await raiseNoticeIn(tx, {
-            userId, kind: "er.retriage_overdue", title: `Re-triage overdue · ${e.episodeNo}`,
-            body: `ESI ${String(e.esi)} · due ${String(Math.round((now.getTime() - dueAt.getTime()) / MIN))} min ago`,
-            refType: "er_episode", refId: e.id, sourceKey: `er_retriage:${e.id}:${dueAt.toISOString()}:climb`, at: now,
+            userId, kind: clock.noticeKind, title: `${clock.title} · ${e.episodeNo}`, body: `${clock.body} · due ${late} min ago`,
+            refType: "er_episode", refId: e.id, sourceKey: `${clock.ref}:${e.id}:${dueAt.toISOString()}:climb`, at: now,
           });
         }
         await tx.update(erEpisodes).set({ retriageClimbedDueAt: dueAt }).where(eq(erEpisodes.id, e.id));
@@ -367,4 +374,26 @@ export async function sweepErTriageClocks(db: Db, now: Date): Promise<{ tasks: n
     climbs += r.c;
   }
   return { tasks, climbs };
+}
+
+type Clock = {
+  kind: string; ref: string; dueAt: Date; priority: "stat" | "urgent"; note: string;
+  noticeKind: string; title: string; body: string;
+};
+
+/** The clock an episode runs now: door-to-triage while `arrived`, re-triage while `triaged`; none otherwise. */
+function clockOf(e: EpisodeRow): Clock | null {
+  if (e.state === "arrived") {
+    return {
+      kind: ER_TRIAGE_DUE_TASK, ref: "er_triage", dueAt: new Date(e.arrivedAt.getTime() + ER_DOOR_TO_TRIAGE_MINUTES * MIN),
+      priority: "stat", note: `Triage ${e.episodeNo}`, noticeKind: "er.triage_overdue", title: "Triage overdue", body: "Not triaged",
+    };
+  }
+  if (e.state === "triaged" && e.retriageDueAt !== null) {
+    return {
+      kind: ER_RETRIAGE_TASK, ref: "er_retriage", dueAt: e.retriageDueAt, priority: "urgent",
+      note: `Re-triage ${e.episodeNo} (ESI ${String(e.esi)})`, noticeKind: "er.retriage_overdue", title: "Re-triage overdue", body: `ESI ${String(e.esi)}`,
+    };
+  }
+  return null;
 }

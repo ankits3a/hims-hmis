@@ -74,7 +74,8 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   `er_triage_entries` (the intents only insert); `er_episodes` mirrors the last level, score and clocks.
 - The re-triage clock: from each triage, ESI 2/3/4/5 → 15/30/60/120 min (ESI 1 none), only while `triaged` (a doctor
   seeing the patient stops it). A vital set with a WORSE early-warning band pulls the due instant to now.
-- `sweepErTriageClocks` (rides `lapseBedReservations`): overdue → ONE task (`er_retriage`, `sourceRef`
+- `sweepErTriageClocks` (rides `lapseBedReservations`) runs TWO clocks on ONE ladder: door-to-triage (an `arrived`
+  patient 5 min past the gate → task `er_triage_due`, stat; climb notice `er.triage_overdue`) and re-triage. Re-triage overdue → ONE task (`er_retriage`, `sourceRef`
   `er_retriage:<episode>:<due>`, skill `er_triage` → `er_nurse`, its one rung bells the casualty nurses); 15 min past due →
   ONE climb (`escalationRecipients("er_retriage")`, fallback `nursing_supervisor`; notice kind `er.retriage_overdue`),
   stamped per due instant. A re-triage, the doctor or (lane 5) departure cancels the task.
@@ -100,8 +101,7 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   app-only list), caddyfile-parity routes (131), standup-check (`emergency` in NOT_DEPARTMENTS, OPEN).
 
 ## 5. Seams owed to later lanes
-- Lane 2 built ESI, bays, the re-triage task and climb, and the OPD card. Still owed after lane 2: door-to-TRIAGE
-  breach as a task (only re-triage raises one; the board shows the triage clock), LWBS (lane 5's `record_lwbs`),
+- Lane 2 built ESI, bays, the door-to-triage and re-triage tasks and climbs, and the OPD card. Still owed after lane 2: LWBS (lane 5's `record_lwbs`),
   child-without-guardian social-worker task, Code Grey from triage (lane 7), the copilot's ESI proposal (lane 9),
   bay release on departure (lane 5 through `releaseErBayIn`), the ER bay on the IPD Beds board shows no ER name.
 - er-care: the `ER` encounter resolver and episode charge sink (ordering door), orders following the merge.

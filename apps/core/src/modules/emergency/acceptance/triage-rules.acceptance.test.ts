@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { eq, like } from "drizzle-orm";
-import { erEpisodes, resources, tasks } from "../../../kernel/db/schema";
+import { and, eq, like } from "drizzle-orm";
+import { alerts, erEpisodes, resources, tasks } from "../../../kernel/db/schema";
+import { ensureRole, mkUser } from "../../../../test/helpers/opd";
 import { setupTestDb, truncateAll } from "../../../../test/helpers/db";
 import { mkErWorld } from "../../../../test/helpers/emergency";
 import {
@@ -107,5 +108,30 @@ describe("ER lane 2 er-triage — the triage rules", () => {
     await expect(triage(db, w.erDoctor, { idempotencyKey: key(), episodeId: u.episodeId, decision: URGENT, level: 3 })).resolves.toMatchObject({ level: 3 });
     await expect(triage(db, w.erDoctor, { idempotencyKey: key(), episodeId: u.episodeId, decision: URGENT, level: 3 })).rejects.toMatchObject({ code: "episode_wrong_state" });
     expect((await db.select().from(erEpisodes).where(eq(erEpisodes.id, u.episodeId)))[0]!.state).toBe("triaged");
+  });
+  it("door-to-triage (5 min from the gate) breached becomes a task once, then climbs on the re-triage ladder; triage closes it", async () => {
+    const t0 = new Date();
+    await ensureRole(db, "nursing_supervisor");
+    const supervisor = (await mkUser(db, "er.ns2", ["nursing_supervisor"])).actor;
+    const u = await unknown(t0);
+    const triageTasks = () => db.select().from(tasks).where(like(tasks.sourceRef, `er_triage:${u.episodeId}:%`));
+    await sweepErTriageClocks(db, new Date(t0.getTime() + 4 * MIN));
+    expect(await triageTasks()).toHaveLength(0);
+    await sweepErTriageClocks(db, new Date(t0.getTime() + 5 * MIN));
+    await sweepErTriageClocks(db, new Date(t0.getTime() + 6 * MIN));
+    const raised = await triageTasks();
+    expect(raised).toHaveLength(1);
+    expect(raised[0]).toMatchObject({ kind: "er_triage_due", priority: "stat", dueAt: new Date(t0.getTime() + 5 * MIN) });
+    const climbs = () => db.select().from(alerts).where(and(eq(alerts.userId, supervisor.id), eq(alerts.kind, "er.triage_overdue"), eq(alerts.refId, u.episodeId)));
+    await sweepErTriageClocks(db, new Date(t0.getTime() + 19 * MIN));
+    expect(await climbs()).toHaveLength(0);
+    await sweepErTriageClocks(db, new Date(t0.getTime() + 20 * MIN));
+    await sweepErTriageClocks(db, new Date(t0.getTime() + 21 * MIN));
+    expect(await climbs()).toHaveLength(1);
+    // Triage — the act the task asked for — closes it; nothing more is raised for the door-to-triage clock.
+    await triage(db, w.erNurse, { idempotencyKey: key(), episodeId: u.episodeId, decision: URGENT, level: 3 }, { now: new Date(t0.getTime() + 22 * MIN) });
+    expect((await triageTasks())[0]!.state).toBe("cancelled");
+    await sweepErTriageClocks(db, new Date(t0.getTime() + 23 * MIN));
+    expect(await triageTasks()).toHaveLength(1);
   });
 });

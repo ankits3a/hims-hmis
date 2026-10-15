@@ -27,5 +27,5 @@ export { ER_REALTIME_NAMES, ER_TOPIC_SPACES, erTopicRouter, erTopicsFor } from "
 export {
   ER_CLOCK_ACTOR, ER_RETRIAGE_FALLBACK_ROLE, assignErDoctor, moveBay, placeInBay, reTriage, recordErVitals, sweepErTriageClocks, triage,
 } from "./triage";
-export { ER_RETRIAGE_TASK, ER_TRIAGE_SKILL } from "./task-kinds";
+export { ER_RETRIAGE_TASK, ER_TRIAGE_DUE_TASK, ER_TRIAGE_SKILL } from "./task-kinds";
 export { listErBays, readErEpisode } from "./board";

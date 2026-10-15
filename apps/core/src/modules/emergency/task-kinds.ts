@@ -11,11 +11,18 @@ import { defineSkill, defineTaskKind } from "../tasks";
  * - closed by the act it asks for: a re-triage, the doctor seeing the patient, or the patient leaving cancel it.
  */
 export const ER_RETRIAGE_TASK = "er_retriage";
+/** #832 review — door-to-triage (≤ 5 min from the gate, spec §3.2) breached: the same skill, the same ladder. */
+export const ER_TRIAGE_DUE_TASK = "er_triage_due";
 export const ER_TRIAGE_SKILL = "er_triage";
 
 defineSkill(ER_TRIAGE_SKILL, ["er_nurse"]);
 defineTaskKind({
   kind: ER_RETRIAGE_TASK, label: "ER re-triage due", skill: ER_TRIAGE_SKILL,
   acceptWithinMin: 5, doneWithinMin: 15, escalateTo: "er_nurse",
+  proofNeeded: "none", verifyRequired: false, ladderMin: [0],
+});
+defineTaskKind({
+  kind: ER_TRIAGE_DUE_TASK, label: "ER triage overdue", skill: ER_TRIAGE_SKILL,
+  acceptWithinMin: 2, doneWithinMin: 5, escalateTo: "er_nurse",
   proofNeeded: "none", verifyRequired: false, ladderMin: [0],
 });

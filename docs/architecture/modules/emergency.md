@@ -60,6 +60,7 @@ Source: `apps/core/src/modules/emergency/`
   - `erTopicsFor(e: Pick<TailedEvent, "name">): string[]`
 - `task-kinds.ts`
   - `ER_RETRIAGE_TASK`
+  - `ER_TRIAGE_DUE_TASK`
   - `ER_TRIAGE_SKILL`
 - `triage.ts`
   - `ER_CLOCK_ACTOR: Actor`
