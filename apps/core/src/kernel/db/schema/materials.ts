@@ -1125,7 +1125,7 @@ export const supplierBillLines = pgTable(
      * #637 — the vendor's trade discount, as billed. `list_rate_paise` is the rate per pack before it (null = no discount
      * named); `discount_paise` is the amount off per pack actually applied, so `rate_paise = list − discount` and the
      * taxable value and GST stay on the discounted rate; `discount_bps` is the percent when the bill stated one (the
-     * amount is then list less the half-up net rate, as on the PO line, #450), else 0.
+     * amount is then list less the half-up net rate, as on the PO line, #450, and the check holds the two to that), else 0.
      */
     listRatePaise: bigint("list_rate_paise", { mode: "number" }),
     discountBps: integer("discount_bps").notNull().default(0),
@@ -1134,7 +1134,7 @@ export const supplierBillLines = pgTable(
   (t) => [
     check(
       "supplier_bill_lines_discount_ck",
-      sql`(${t.listRatePaise} is null and ${t.discountBps} = 0 and ${t.discountPaise} = 0) or (${t.listRatePaise} >= 0 and ${t.discountBps} between 0 and 10000 and ${t.discountPaise} between 0 and ${t.listRatePaise} and ${t.ratePaise} = ${t.listRatePaise} - ${t.discountPaise})`,
+      sql`(${t.listRatePaise} is null and ${t.discountBps} = 0 and ${t.discountPaise} = 0) or (${t.listRatePaise} >= 0 and ${t.discountBps} between 0 and 10000 and ${t.discountPaise} between 0 and ${t.listRatePaise} and ${t.ratePaise} = ${t.listRatePaise} - ${t.discountPaise} and (${t.discountBps} = 0 or ${t.discountPaise} = ${t.listRatePaise} - (${t.listRatePaise} * (10000 - ${t.discountBps}) + 5000) / 10000))`,
     ),
     uniqueIndex("supplier_bill_lines_grn_item_ux").on(t.billId, t.grnId, t.itemId),
     index("supplier_bill_lines_grn_idx").on(t.grnId),

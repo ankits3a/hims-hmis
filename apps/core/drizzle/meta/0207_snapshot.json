@@ -23417,7 +23417,7 @@
       "checkConstraints": {
         "supplier_bill_lines_discount_ck": {
           "name": "supplier_bill_lines_discount_ck",
-          "value": "(\"supplier_bill_lines\".\"list_rate_paise\" is null and \"supplier_bill_lines\".\"discount_bps\" = 0 and \"supplier_bill_lines\".\"discount_paise\" = 0) or (\"supplier_bill_lines\".\"list_rate_paise\" >= 0 and \"supplier_bill_lines\".\"discount_bps\" between 0 and 10000 and \"supplier_bill_lines\".\"discount_paise\" between 0 and \"supplier_bill_lines\".\"list_rate_paise\" and \"supplier_bill_lines\".\"rate_paise\" = \"supplier_bill_lines\".\"list_rate_paise\" - \"supplier_bill_lines\".\"discount_paise\")"
+          "value": "(\"supplier_bill_lines\".\"list_rate_paise\" is null and \"supplier_bill_lines\".\"discount_bps\" = 0 and \"supplier_bill_lines\".\"discount_paise\" = 0) or (\"supplier_bill_lines\".\"list_rate_paise\" >= 0 and \"supplier_bill_lines\".\"discount_bps\" between 0 and 10000 and \"supplier_bill_lines\".\"discount_paise\" between 0 and \"supplier_bill_lines\".\"list_rate_paise\" and \"supplier_bill_lines\".\"rate_paise\" = \"supplier_bill_lines\".\"list_rate_paise\" - \"supplier_bill_lines\".\"discount_paise\" and (\"supplier_bill_lines\".\"discount_bps\" = 0 or \"supplier_bill_lines\".\"discount_paise\" = \"supplier_bill_lines\".\"list_rate_paise\" - (\"supplier_bill_lines\".\"list_rate_paise\" * (10000 - \"supplier_bill_lines\".\"discount_bps\") + 5000) / 10000))"
         },
         "supplier_bill_lines_qty_ck": {
           "name": "supplier_bill_lines_qty_ck",

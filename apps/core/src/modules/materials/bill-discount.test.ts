@@ -1,4 +1,6 @@
+import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
+import { supplierBillLines } from "../../kernel/db/schema";
 import { ensureRole, mkUser } from "../../../test/helpers/opd";
 import { grantPermissionToRole, syncPermissions } from "../../kernel/auth/permissions";
 import { seedSodPairs } from "../../kernel/auth/sod";
@@ -142,6 +144,21 @@ describe("#637 the vendor discount on supplier bill lines, the PO paper and the 
     expect(await code(bill(d, "X-4", { discountBps: 1_000, ratePaise: 23_000 }))).toBe("bill_invalid");
   });
 
+  /*
+    The table holds the percent and the amount it gives together, so the DB check ties them: a stored percent must
+    give exactly the stored amount (net rate half up to the paisa), and the net rate is list less that amount.
+  */
+  it("the DB refuses a stored percent that does not give the stored amount", async () => {
+    const d = await billDraftFromGrn(db, pharmacist.actor, await received(vendor, zero, 10, 25_000));
+    const amt = await bill(d, "C-1", { listRatePaise: 25_000, discountPaise: 1_234 });
+    const lineId = amt.lines[0]!.id;
+    await expect(db.update(supplierBillLines).set({ discountBps: 1_000 }).where(eq(supplierBillLines.id, lineId))).rejects.toThrow(/supplier_bill_lines_discount_ck/);
+    const pct = await bill(await billDraftFromGrn(db, pharmacist.actor, await received(vendor, zero, 10, 9_999)), "C-2", { listRatePaise: 9_999, discountBps: 1_250 });
+    // 12.5% of ₹99.99 is ₹12.50 off (net ₹87.49); ₹12.49 off with the same percent is refused.
+    await expect(db.update(supplierBillLines).set({ discountPaise: 1_249, ratePaise: 8_750 }).where(eq(supplierBillLines.id, pct.lines[0]!.id)))
+      .rejects.toThrow(/supplier_bill_lines_discount_ck/);
+  });
+
   it("the wire carries the list rate and a percent or an amount; the server sets the net rate", async () => {
     const d = await billDraftFromGrn(db, pharmacist.actor, await received(vendor, zero, 10, 25_000));
     const ctl = new MaterialsController(db);
@@ -167,5 +184,16 @@ describe("#637 the vendor discount on supplier bill lines, the PO paper and the 
     ]);
     expect(r.totals).toMatchObject({ bills: 2, grossPaise: 290_000, discountPaise: 25_000, taxablePaise: 265_000, gstPaise: 27_000, totalPaise: 292_000 });
     expect((await vendorDiscountReport(db, "2026-10-01", "2026-10-31")).rows).toEqual([]);
+  });
+
+  it("the by-vendor report counts booked bills only: a draft or a matched bill in the period is not a purchase yet", async () => {
+    const booked = await bill(await billDraftFromGrn(db, pharmacist.actor, await received(vendor, zero, 10, 25_000, 1_000)), "B-1", { listRatePaise: 25_000, discountBps: 1_000 });
+    await matchSupplierBill(db, pharmacist.actor, booked.id, at(61));
+    await acceptSupplierBill(db, pharmacist.actor, booked.id, at(62));
+    await bill(await billDraftFromGrn(db, pharmacist.actor, await received(vendor, zero, 4, 10_000)), "B-2", { listRatePaise: 10_000, discountPaise: 500 });
+    const matched = await bill(await billDraftFromGrn(db, pharmacist.actor, await received(vendor, zero, 2, 10_000)), "B-3", { ratePaise: 10_000 });
+    expect((await matchSupplierBill(db, pharmacist.actor, matched.id, at(61))).status).toBe("matched");
+    const r = await vendorDiscountReport(db, "2026-09-01", "2026-09-30");
+    expect(r.rows.map((x) => [x.vendorCode, x.bills, x.grossPaise, x.discountPaise])).toEqual([["ACME", 1, 250_000, 25_000]]);
   });
 });
