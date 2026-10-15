@@ -75,6 +75,9 @@ export function consultApi(call: Call) {
     sets: () => call<{ items: WireRxSet[]; headOf: string[]; departmentId: string | null }>("GET", "/opd/rx-sets"),
     saveSet: (name: string, body: WireSetBody) => call<{ setId: string }>("POST", "/opd/rx-sets", { scope: "doctor", name, body }),
     retireSet: (id: string) => call<unknown>("DELETE", `/opd/rx-sets/${enc(id)}`),
+    /** #610 — write over a saved set (own, or a starter set this doctor heads); a starter set then needs signing again. */
+    updateSet: (id: string, name: string, body: WireSetBody) => call<{ setId: string }>("PUT", `/opd/rx-sets/${enc(id)}`, { name, body }),
+    signSet: (id: string) => call<{ ok: true }>("POST", `/opd/rx-sets/${enc(id)}/sign`),
 
     /** Terms that matched nothing and what became of each suggestion. Never awaited by a screen: a lost one is a lost count. */
     signals: (body: { misses?: { kind: "medicine" | "test" | "diagnosis"; term: string; stage: "search" | "voice" }[]; suggestions?: WireSignal[] }) =>

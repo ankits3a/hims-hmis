@@ -202,7 +202,12 @@ export function overridesOf(warnings: readonly LineWarning[], reasons: Readonly<
 
 // ——— repeat last, and sets ———
 
-export type WireLastLine = { drug: string; dose: string; route: string; frequency: string; durationDays: number | null; instructions: string | null; medicineId?: string | null };
+/**
+ * `food` — a SET line's food timing as a language-neutral code (put into words only when shown). Absent on
+ * a prescription line and on a set saved before the code existed; those carry it as words in
+ * `instructions`, which `foodOf` maps back.
+ */
+export type WireLastLine = { drug: string; dose: string; route: string; frequency: string; durationDays: number | null; instructions: string | null; medicineId?: string | null; food?: "before" | "after" | null };
 
 function foodOf(instructions: string | null): { food: "before" | "after" | null; rest: string } {
   const s = (instructions ?? "").trim();
@@ -213,7 +218,7 @@ function foodOf(instructions: string | null): { food: "before" | "after" | null;
 
 export function linesFrom(lines: readonly WireLastLine[], source: LineSource | null = null): ConsultLine[] {
   return lines.slice(0, MAX_LINES).map((l) => {
-    const f = foodOf(l.instructions);
+    const f = l.food === "before" || l.food === "after" ? { food: l.food, rest: (l.instructions ?? "").trim() } : foodOf(l.instructions);
     return { drug: l.drug, dose: l.dose, frequency: l.frequency, durationDays: l.durationDays, food: f.food, instructions: f.rest, route: l.route, medicineId: l.medicineId ?? null, mark: null, was: null, source };
   });
 }
@@ -235,7 +240,7 @@ export function childDoseMissing(d: ConsultDraft, band: Band): boolean {
 }
 
 export type WireSetBody = {
-  lines: { drug: string; dose: string; route: string; frequency: string; durationDays: number | null; instructions: string | null; medicineId?: string | null }[];
+  lines: { drug: string; dose: string; route: string; frequency: string; durationDays: number | null; instructions: string | null; medicineId?: string | null; food?: "before" | "after" | null }[];
   tests: { serviceId: string; code: string; name: string }[]; advice: string | null; reviewDays: number | null;
 };
 
@@ -253,12 +258,16 @@ export function applySet(d: ConsultDraft, name: string, body: WireSetBody, price
   };
 }
 
-/** The draft as a set body — what "Save as a set" stores. No patient is in it: lines, tests, advice, review. */
-export function setBodyOf(d: ConsultDraft, food: { before: string; after: string }): WireSetBody {
+/**
+ * The draft as a set body — what "Save as a set" and "Edit set" store. No patient is in it: lines, tests,
+ * advice, review. The food timing is stored as its CODE and the instructions without it, so a set saved
+ * on a phone in Hindi reads in English on the next one (and the reverse).
+ */
+export function setBodyOf(d: ConsultDraft): WireSetBody {
   return {
     lines: d.lines.filter(lineComplete).slice(0, 12).map((l) => {
-      const w = wireLine(l, food);
-      return { drug: w.drug, dose: w.dose, route: w.route, frequency: w.frequency, durationDays: w.durationDays, instructions: w.instructions, ...(l.medicineId === null ? {} : { medicineId: l.medicineId }) };
+      const w = wireLine({ ...l, food: null }, { before: "", after: "" });
+      return { drug: w.drug, dose: w.dose, route: w.route, frequency: w.frequency, durationDays: w.durationDays, instructions: w.instructions, food: l.food, ...(l.medicineId === null ? {} : { medicineId: l.medicineId }) };
     }),
     tests: d.tests.slice(0, 12).map((t) => ({ serviceId: t.serviceId, code: t.code, name: t.name })),
     advice: [...d.adviceChips, d.adviceText.trim()].filter((x) => x !== "").join(". ") || null,

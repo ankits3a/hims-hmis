@@ -28,6 +28,7 @@ import type { DoctorApi, WireAllergyRow, WireVisitDetail, WireVisitVitals } from
 import type { WireFollowUpConfig, WireQueueEntryView, WireQueuePatient } from "../doctor/rules";
 import { TestsDrawer } from "../consult/sheets";
 import { AllergySheet } from "../consult/allergy-sheet";
+import { SetEditor } from "../consult/set-editor";
 
 /**
  * THE DOCTOR'S CONSULTATION, ON A PHONE (decision 0048; board "Phone consult", owner 2026-10-07:
@@ -102,6 +103,8 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
   const [last, setLast] = useState<{ serviceDate: string; lines: WireLastLine[] } | null>(null);
   const [setsCount, setSetsCount] = useState<{ mine: number; hospital: number } | null>(null);
   const [drawer, setDrawer] = useState<Drawer>(null);
+  /** #610 — a saved set open in its own editor; the visit's draft is never the editor's. */
+  const [editingSet, setEditingSet] = useState<WireRxSet | null>(null);
   const [medStart, setMedStart] = useState<{ medicineId: string | null; name: string } | "new" | null>(null);
   const [precheck, setPrecheck] = useState<WirePrecheck | null>(null);
   /**
@@ -507,8 +510,9 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
       {drawer === "meds" && <MedicinesDrawer api={api} draft={draft} patch={patch} warnings={warnings} checking={checking} onClose={closeDrawer} startWith={medStart} childNoDose={childDoseMissing(draft, bandNow())} />}
       {drawer === "tests" && <TestsDrawer api={api} draft={draft} patch={patch} onClose={closeDrawer} suggest={suggest} />}
       {drawer === "advice" && <AdviceDrawer api={api} draft={draft} patch={patch} onClose={closeDrawer} followChoices={followUpChoices(cfg)} />}
-      {drawer === "sets" && <SetsDrawer api={api} onClose={() => setDrawer(null)} onUse={useSet} canSave={draft.lines.some(lineComplete) || draft.tests.length > 0}
-        onSave={async (setName) => { await api.saveSet(setName, setBodyOf(draft, food)); setSetsCount((c) => (c === null ? c : { ...c, mine: c.mine + 1 })); }} />}
+      {editingSet !== null && <SetEditor api={api} set={editingSet} encounterId={encounterId} onDone={() => { setEditingSet(null); setDrawer("sets"); }} />}
+      {drawer === "sets" && <SetsDrawer api={api} onClose={() => setDrawer(null)} onUse={useSet} onEdit={(x) => { setDrawer(null); setEditingSet(x); }} canSave={draft.lines.some(lineComplete) || draft.tests.length > 0}
+        onSave={async (setName) => { await api.saveSet(setName, setBodyOf(draft)); setSetsCount((c) => (c === null ? c : { ...c, mine: c.mine + 1 })); }} />}
     </View>
   );
 }
