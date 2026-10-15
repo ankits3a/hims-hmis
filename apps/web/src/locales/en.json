@@ -10621,6 +10621,7 @@
     "batchAuto": "Earliest expiry (automatic)",
     "batchOption": "{{no}} · exp {{expiry}} · {{count}} left",
     "allergiesTag": "Allergies",
+    "allergiesWithheld": "Allergies withheld — restricted record",
     "noAllergies": "No allergies recorded.",
     "allergicTo": "Allergic to {{substance}}",
     "currentMedsTag": "Current medicines",

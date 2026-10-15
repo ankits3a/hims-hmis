@@ -105,6 +105,20 @@ describe("the walk-in desk's gaps (#638)", () => {
     expect(screen.getByTestId("retail-current-meds")).toHaveTextContent("Azee 500 tablet · 1 tab · OD");
   });
 
+  it("a restricted customer's allergies are not shown, and the lane says they are withheld", async () => {
+    mockRoutes({
+      ...BASE, "GET /api/pharmacy/retail/sales": { status: 200, body: { items: [] } },
+      "GET /api/patients/search": { status: 200, body: { items: [{ id: "p-9", uhid: "U0000009", name: "Patient R", phone: null, sex: "female", dob: null, isConfidential: true, hasPhoto: false }] } },
+      // The patient gate answers 404 for a restricted record this seat may not open.
+      "GET /api/pharmacy/retail/patients/p-9/context": { status: 404, body: { message: "unknown patient p-9" } },
+    });
+    renderWithProviders(<PharmacyRetail />);
+    await userEvent.type(await screen.findByRole("textbox", { name: "Search" }), "Patient");
+    await userEvent.click(await screen.findByRole("button", { name: /Patient R/ }));
+    expect(await screen.findByTestId("retail-allergies-withheld")).toHaveTextContent("Allergies withheld — restricted record");
+    expect(screen.queryByTestId("retail-current-meds")).toBeNull();
+  });
+
   it("your day counts your own sales and lines, never the money; the copilot answers it from the screen", async () => {
     mockRoutes({
       ...BASE,

@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../lib/auth";
-import { newIdempotencyKey } from "../lib/api";
+import { ApiError, newIdempotencyKey } from "../lib/api";
 import { fmtIst, useDebounced } from "../lib/format";
 import { fetchCurrentSession, fetchInvoicePrint } from "../lib/billing-api";
 import { duplicateCandidates } from "../lib/patients-api";
@@ -346,6 +346,16 @@ function BatchPick({ itemId, name, value, priced, onChange }: {
 function CustomerContext({ patientId }: { patientId: string }): React.ReactElement | null {
   const { t } = useTranslation();
   const q = useQuery({ queryKey: ["pharmacy", "retail", "patient-context", patientId], queryFn: () => fetchRetailPatientContext(patientId) });
+  // A restricted record this seat may not open answers 404 through the patient gate: say the allergies are withheld,
+  // never leave the lane silent (silence reads as "no allergies").
+  if (q.error instanceof ApiError && q.error.status === 404) {
+    return (
+      <div className="rt-stack" data-testid="retail-context">
+        <p className="tag">{t("pharmacyRetail.allergiesTag")}</p>
+        <p role="status" className="rt-bad" data-testid="retail-allergies-withheld">{t("pharmacyRetail.allergiesWithheld")}</p>
+      </div>
+    );
+  }
   if (q.data === undefined) return null;
   const { allergies, currentMedicines } = q.data;
   return (

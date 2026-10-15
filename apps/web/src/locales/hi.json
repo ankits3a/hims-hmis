@@ -10621,6 +10621,7 @@
     "batchAuto": "सबसे पहले एक्सपायरी (अपने आप)",
     "batchOption": "{{no}} · एक्स. {{expiry}} · {{count}} बचे",
     "allergiesTag": "एलर्जी",
+    "allergiesWithheld": "एलर्जी छिपाई गई — प्रतिबंधित रिकॉर्ड",
     "noAllergies": "कोई एलर्जी दर्ज नहीं।",
     "allergicTo": "{{substance}} से एलर्जी",
     "currentMedsTag": "चल रही दवाएँ",
