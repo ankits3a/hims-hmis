@@ -39,6 +39,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/er/board` | `apps/web/src/screens/er-board` |
 | `/er/codes` | `apps/web/src/screens/er-codes` |
 | `/er/desk` | `apps/web/src/screens/er-desk` |
+| `/er/mci` | `apps/web/src/screens/er-mci` |
 | `/er/mlc` | `apps/web/src/screens/er-mlc` |
 | `/er/patient` | `apps/web/src/screens/er-patient` |
 | `/er/triage` | `apps/web/src/screens/er-triage` |

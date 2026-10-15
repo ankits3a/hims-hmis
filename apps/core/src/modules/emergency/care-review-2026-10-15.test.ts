@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { alerts, erConsents, idempotencyKeys } from "../../kernel/db/schema";
-import { requestHashOf } from "../billing/idempotency";
+import { requestHashOf } from "../billing";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { mkErCareWorld } from "../../../test/helpers/emergency";
 import { giveErDose, issueErMed, recordConsent, registerUnidentified, sweepErCareClocks } from "./index";

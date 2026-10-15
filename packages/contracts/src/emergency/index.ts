@@ -4,6 +4,7 @@ import * as care from "./care";
 import * as mlc from "./mlc";
 import * as bill from "./bill";
 import * as codes from "./codes";
+import * as mci from "./mci";
 import * as dispo from "./dispo";
 
 export * from "./common";
@@ -30,6 +31,11 @@ export {
   ER_CODE_ANYWHERE, ER_CODE_CLOCKS, ER_CODE_EVENT_KINDS, ER_CODE_KINDS, ER_CODE_OUTCOMES, ER_CODE_TEAM, ER_RHYTHMS, ErCodeViewSchema, ErCodesSchema,
 } from "./codes";
 export type { ErCodeClockDef, ErCodeKind, ErCodeView, ErCodes } from "./codes";
+export {
+  ER_MCI_COMMAND_ROLES, ER_MCI_METHODS, ER_MCI_PACKS_MAX, ER_MCI_TAGS, ER_MCI_TAG_WORDS, ErMciBoardSchema, ErMciCountSchema, ErMciFindingsSchema,
+  ErMciPackSchema, ErMciSurgeBedSchema, ErMciTagSchema, mciTagProposal,
+} from "./mci";
+export type { ErMciBoard, ErMciCount, ErMciFindings, ErMciMethod, ErMciPack, ErMciSurgeBed, ErMciTag } from "./mci";
 /** ER lane 6 (#813): the intents whose answers name money — the bill desk's, never a clinical screen's (0058). */
 export const ER_MONEY_INTENTS = ["set_er_payer", "take_er_advance", "price_er_lines", "settle_er_bill", "open_er_event_account"] as const;
 export type { ErDisposition, ErReturnIfSign } from "./dispo";
@@ -95,6 +101,13 @@ export const ER_INTENTS = {
   record_code_event: codes.recordCodeEvent,
   end_code: codes.endCode,
   record_code_debrief: codes.recordCodeDebrief,
+  // lane 8 (#815) — mass casualty, Code Yellow
+  declare_mci: mci.declareMci,
+  stand_down_mci: mci.standDownMci,
+  mint_mci_packs: mci.mintMciPacks,
+  register_mci_arrival: mci.registerMciArrival,
+  mci_tag: mci.mciTag,
+  open_surge_bays: mci.openSurgeBays,
 } as const;
 export type ErIntentName = keyof typeof ER_INTENTS;
 export const ER_INTENT_NAMES = Object.keys(ER_INTENTS) as ErIntentName[];

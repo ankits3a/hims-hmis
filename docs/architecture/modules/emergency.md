@@ -116,6 +116,18 @@ Source: `apps/core/src/modules/emergency/`
   - `linkIdentity(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"link_identity">>`
 - `manifest.ts`
   - `emergencyManifest: ModuleManifest`
+- `mci.ts`
+  - `declareMci(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"declare_mci">>`
+  - `listMciOverflowBeds(db: Db, actor: Actor): Promise<ErMciSurgeBed[]>`
+  - `listMciPacks(db: Db, actor: Actor): Promise<{ ready: { packNo: string; uhid: string; alias: string; band: ErBandPayload }[] }>`
+  - `mciTag(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"mci_tag">>`
+  - `mintMciPacks(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"mint_mci_packs">>`
+  - `openSurgeBays(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"open_surge_bays">>`
+  - `packNoOf(year: number, serial: number): string`
+  - `readMciBoard(db: Db, actor: Actor, opts: Opts = {}): Promise<ErMciBoard>`
+  - `readMciCount(db: Db, actor: Actor, mciId: string, opts: Opts = {}): Promise<ErMciCount>`
+  - `registerMciArrival(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"register_mci_arrival">>`
+  - `standDownMci(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"stand_down_mci">>`
 - `mlc.ts`
   - `ER_MLC_ACTOR: Actor`
   - `ER_MLC_INTIMATION_CLIMB_MIN`
@@ -137,6 +149,7 @@ Source: `apps/core/src/modules/emergency/`
   - `ER_CODES`
   - `ER_DISPOSITION`
   - `ER_IDENTITY_LINK`
+  - `ER_MCI`
   - `ER_MLC`
   - `ER_TRIAGE`
 - `realtime.ts`
@@ -173,12 +186,12 @@ Source: `apps/core/src/modules/emergency/`
 
 ## Tables (`kernel/db/schema/emergency.ts`)
 
-`er_admission_disputes`, `er_advances`, `er_bands`, `er_bills`, `er_charge_lines`, `er_code_events`, `er_codes`, `er_consents`, `er_critical_alerts`, `er_departure_records`, `er_doses`, `er_episodes`, `er_event_accounts`, `er_med_issues`, `er_med_returns`, `er_mlc_addenda`, `er_mlc_custody`, `er_mlc_intimations`, `er_mlc_obligations`, `er_mlcs`, `er_notes`, `er_payer_claims`, `er_pre_alerts`, `er_procedures`, `er_specialty_calls`, `er_triage_entries`
+`er_admission_disputes`, `er_advances`, `er_bands`, `er_bills`, `er_charge_lines`, `er_code_events`, `er_codes`, `er_consents`, `er_critical_alerts`, `er_departure_records`, `er_doses`, `er_episodes`, `er_event_accounts`, `er_mci_events`, `er_mci_packs`, `er_mci_surge_beds`, `er_mci_tags`, `er_med_issues`, `er_med_returns`, `er_mlc_addenda`, `er_mlc_custody`, `er_mlc_intimations`, `er_mlc_obligations`, `er_mlcs`, `er_notes`, `er_payer_claims`, `er_pre_alerts`, `er_procedures`, `er_specialty_calls`, `er_triage_entries`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (67)
+## HTTP routes (77)
 
-- `emergency.controller.ts` — 67: `/er/arrivals`, `/er/bands`, `/er/bays`, `/er/bill`, `/er/board`, `/er/calls`, `/er/care`, `/er/codes`, `/er/consents`, `/er/desk`, `/er/dispo`, `/er/doctor`, `/er/doctors`, `/er/episodes`, `/er/identity`, `/er/items`, `/er/meds`, `/er/mlc`, `/er/notes`, `/er/orders`, `/er/patients`, `/er/pre-alerts`, `/er/procedures`, `/er/stabilised`, `/er/triage`, `/er/triage-doctors`, `/er/vitals`
+- `emergency.controller.ts` — 77: `/er/arrivals`, `/er/bands`, `/er/bays`, `/er/bill`, `/er/board`, `/er/calls`, `/er/care`, `/er/codes`, `/er/consents`, `/er/desk`, `/er/dispo`, `/er/doctor`, `/er/doctors`, `/er/episodes`, `/er/identity`, `/er/items`, `/er/mci`, `/er/meds`, `/er/mlc`, `/er/notes`, `/er/orders`, `/er/patients`, `/er/pre-alerts`, `/er/procedures`, `/er/stabilised`, `/er/triage`, `/er/triage-doctors`, `/er/vitals`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/emergency`

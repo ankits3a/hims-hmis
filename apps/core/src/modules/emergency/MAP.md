@@ -245,6 +245,30 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   a `milestone` event meets one. The board tile carries `activations` (`activationClocksFor`). Screens: `/er/codes` (the
   resus scribe), "Code" on the ER patient bar, Code Grey on the triage header.
 
+### Lane 8 (er-mci, #815)
+- `mci.ts` — Code Yellow. `declareMci` / `standDownMci` / `mintMciPacks` / `openSurgeBays` need `er.mci` AND the role
+  (`ER_MCI_COMMAND_ROLES`: medical_superintendent, duty_manager; refusal `mci_role_needed`). DECIDED (coordinator
+  2026-10-15): the MS or the duty manager declares, not the ER consultant of the spec. One running event
+  (`er_mci_events_running_ux` + advisory lock `er_mci`); the declaration opens lane 6's event account in the same transaction.
+- Packs (`er_mci_packs`): a real UHID per pack (unidentified record, sex unknown), alias `Unknown-MCI26-007` (Hindi
+  `अज्ञात-MCI26-007` via `aliasHiOf`), serial per IST year (lock `er_mci_pack:<year>`). The pack's band is printed ahead:
+  barcode = the pack number, QR `ERBAND1|<pack no>|<UHID>` — `register_mci_arrival` records it as the episode's live
+  `er_bands` row (serial = pack number), so a scan resolves it like any ER band. The arrival asks nothing (default mode
+  `ambulance_108`), opens the MLC by rule (`unknown_unconscious`, as lane 1's unknowns), and needs a RUNNING event.
+  The episode keeps `alias` with null `alias_year`/`alias_serial` (`ArriveArgs.unidentified` year/serial nullable).
+- Tags: `mciTag` (er.mci) — every tag an `er_mci_tags` row (append-only trigger), the episode mirrors `mci_tag`; START
+  for adults, JumpSTART for `infant`/`child` age bands (`mciTagProposal` in contracts: the proposal beside the person's
+  pick). A Black re-tag needs a reason. The FIRST link to the event sets payer `mci_event` + the event account (lane 6
+  then bills nothing patient-payable), unless an `er_bills` row exists.
+- Clocks: while the event runs its `arrived` patients are off the door-to-triage sweep (`notInRunningMci` in
+  triage.ts); the stand-down puts them back — the sweep raises their `er_triage_due` at once (they are past 5 min).
+- Surge bays: `er_mci_surge_beds` (overflow-class beds, the running event). `placeInBay` / `moveBay` pass
+  `{ surge: isSurgeBay }` to IPD `placeErEpisodeIn`, which then accepts class `overflow`; `listErBays` lists them while the
+  event runs. After the stand-down no one new goes in.
+- Reads: `readMciBoard` (counts by tag, packs ready, ER bays, surge bays, ward beds free, patients by alias or initials),
+  `readMciCount` (`/er/mci/:id/count`, the district head count — counts only). Screen `apps/web/src/screens/er-mci.tsx`
+  (`/er/mci`); the board tile carries `mciTag` (colour and word).
+
 ## 4. Traps
 - `registerPatient` takes a `Tx` and the band reads the new patient in that same `tx` (`bandPerson(tx, …)`); reading it
   through `db` (`getPatient`) inside the transaction sees nothing.
@@ -280,6 +304,10 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
 - Lane 7 built codes. Still owed: a hospital-wide wall "code" button (any staff phone works today); STEMI door-to-balloon
   read from the cath lab instead of tapped; the code sheet print; Code Grey's incident report filed into the quality
   module (drafted on the code row today); the scribe tablet's offline queue (paper back-fill is the fallback).
+- Lane 8 built Code Yellow. Still owed: the Code Yellow page to every ER and on-call phone (today the board and the desk
+  see it); OPD and elective OT stops proposed to the MS; the family information desk list and press script; teams on
+  the MCI board; designed print of the pack sheet and the head count (the browser prints the page); merge of a person
+  registered twice in the rush (after the event, through `link_identity`).
 - Lane 6 built the bill. Still owed: the incumbent's real ER rates (0076 go-live blocker); a claim's status flow at the
   TPA desk (#822 reads `er_payer_claims`); MCI tagging of episodes at scale (lane 8 opens the account); printed ER bill.
 - DECIDED (coordinator 2026-10-15, to match decision 0075): a REJECTED road-accident claim's difference is NEVER billed to

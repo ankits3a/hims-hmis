@@ -167,6 +167,6 @@ export const ER_INTENT_CATALOGUE = [
   // money (lane 6)
   "settle_er_bill", "record_er_dues", "set_er_payer", "take_er_advance", "price_er_lines", "open_er_event_account",
   // codes and MCI (lanes 7, 8)
-  "call_code", "record_code_event", "end_code", "record_code_debrief", "declare_mci", "mci_tag", "stand_down_mci",
+  "call_code", "record_code_event", "end_code", "record_code_debrief", "declare_mci", "mci_tag", "stand_down_mci", "mint_mci_packs", "register_mci_arrival", "open_surge_bays",
 ] as const;
 export type ErCatalogueIntent = (typeof ER_INTENT_CATALOGUE)[number];

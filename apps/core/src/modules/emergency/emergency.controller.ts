@@ -17,6 +17,9 @@ import {
   addMlcAddendum, countersignMlc, handOverEvidence, openMlc, readMlc, readMlcDesk, recordBelongings, recordPoliceIntimation,
 } from "./mlc";
 import { callCode, endCode, readErCode, readErCodes, recordCodeDebrief, recordCodeEvent } from "./codes";
+import {
+  declareMci, listMciOverflowBeds, listMciPacks, mciTag, mintMciPacks, openSurgeBays, readMciBoard, readMciCount, registerMciArrival, standDownMci,
+} from "./mci";
 import { openErEventAccount, priceErLines, readErBill, readErBillDesk, setErPayer, settleErBill, takeErAdvance } from "./bill";
 import {
   arbitrateAdmission, decideDisposition, dischargeFromEr, recordSpecialtyRefusal, handToUnit, recordAbscond, recordErDeathIntent, recordLama, recordLwbs, referOut,
@@ -25,9 +28,9 @@ import { collectOrderKinds } from "../../kernel/orders/kinds";
 import type { ModuleRegistry } from "../../kernel/modules/loader";
 import { ErError, ErRefusal, erRefusalStatus } from "./errors";
 import { linkIdentity } from "./identity";
-import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_CARE, ER_BILL, ER_CODES, ER_DISPOSITION, ER_IDENTITY_LINK, ER_MLC, ER_TRIAGE } from "./names";
+import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_CARE, ER_BILL, ER_CODES, ER_DISPOSITION, ER_IDENTITY_LINK, ER_MCI, ER_MLC, ER_TRIAGE } from "./names";
 import type {
-  Actor, ErBay, ErBoard, ErCareView, ErDeskView, ErDoctorOption, ErEpisodeView, ErBill, ErBillDesk, ErCodeView, ErCodes, ErItemOption, ErMlcDesk, ErMlcDetail, ErPatientHit, ErRefusalBody,
+  Actor, ErBay, ErBoard, ErCareView, ErDeskView, ErDoctorOption, ErEpisodeView, ErBill, ErBillDesk, ErCodeView, ErCodes, ErItemOption, ErMciBoard, ErMciCount, ErMciSurgeBed, ErMlcDesk, ErMlcDetail, ErPatientHit, ErRefusalBody,
 } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -485,5 +488,66 @@ export class EmergencyController {
   @RequirePermission(ER_CODES, "hospital")
   async codeDebrief(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
     try { return await recordCodeDebrief(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  // ═══ lane 8 (#815) — mass casualty, Code Yellow ═══
+  @Get("mci")
+  @RequirePermission(ER_MCI, "hospital")
+  async mciBoard(@CurrentActor() actor: Actor): Promise<ErMciBoard> {
+    try { return await readMciBoard(this.db, actor); } catch (e) { toHttp(e); }
+  }
+
+  @Get("mci/packs")
+  @RequirePermission(ER_MCI, "hospital")
+  async mciPacks(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return await listMciPacks(this.db, actor); } catch (e) { toHttp(e); }
+  }
+
+  @Get("mci/overflow-beds")
+  @RequirePermission(ER_MCI, "hospital")
+  async mciOverflowBeds(@CurrentActor() actor: Actor): Promise<ErMciSurgeBed[]> {
+    try { return await listMciOverflowBeds(this.db, actor); } catch (e) { toHttp(e); }
+  }
+
+  @Get("mci/:id/count")
+  @RequirePermission(ER_MCI, "hospital")
+  async mciCount(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<ErMciCount> {
+    try { return await readMciCount(this.db, actor, id); } catch (e) { toHttp(e); }
+  }
+
+  @Post("mci/declare")
+  @RequirePermission(ER_MCI, "hospital")
+  async mciDeclare(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await declareMci(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("mci/stand-down")
+  @RequirePermission(ER_MCI, "hospital")
+  async mciStandDown(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await standDownMci(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("mci/packs")
+  @RequirePermission(ER_MCI, "hospital")
+  async mciMintPacks(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await mintMciPacks(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("mci/arrivals")
+  @RequirePermission(ER_ARRIVAL_REGISTER, "hospital")
+  async mciArrival(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await registerMciArrival(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("mci/tag")
+  @RequirePermission(ER_MCI, "hospital")
+  async mciTagPatient(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await mciTag(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("mci/surge")
+  @RequirePermission(ER_MCI, "hospital")
+  async mciSurge(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await openSurgeBays(this.db, actor, body); } catch (e) { toHttp(e); }
   }
 }

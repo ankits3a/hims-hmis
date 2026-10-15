@@ -118,6 +118,17 @@ export const ER_REFUSALS = {
   debrief_recorded: { rule: "The debrief is already recorded.", fix: "Open the code" },
   not_code_leader: { rule: "The team leader who ended the code records its debrief.", fix: "Ask the team leader" },
 
+  /* ═══ Mass casualty, Code Yellow (lane 8) ═══ */
+  mci_role_needed: { rule: "Only the medical superintendent or the duty manager commands a Code Yellow.", fix: "Call the duty manager" },
+  mci_active: { rule: "A Code Yellow is already running; one event at a time.", fix: "Open the MCI board" },
+  mci_not_found: { rule: "No mass-casualty event has this id.", fix: "Open the MCI board" },
+  mci_stood_down: { rule: "This Code Yellow has been stood down.", fix: "Open the MCI board" },
+  mci_not_active: { rule: "No Code Yellow is running; tags and packs belong to a declared event.", fix: "Register the usual way" },
+  pack_not_found: { rule: "No pre-made pack has this number.", fix: "Check the pack number" },
+  pack_used: { rule: "This pack is already on a patient.", fix: "Open that patient" },
+  retag_needs_reason: { rule: "A patient tagged Black is re-tagged only with the reason written down.", fix: "Add reason" },
+  surge_bed_not_overflow: { rule: "Surge bays come from the overflow beds of the bed registry.", fix: "Pick an overflow bed" },
+
   /* ═══ The band ═══ */
   printer_offline: { rule: "The chosen printer is not answering.", fix: "Pick nearest printer" },
   band_already_printed: { rule: "A band is already printed for this episode.", fix: "Reprint band" },

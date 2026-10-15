@@ -11,7 +11,7 @@ import { activationClocksFor } from "./codes";
 import { ErRefusal } from "./errors";
 import type {
   Actor, ErAgeBand, ErArrivalMode, ErBay, ErBoard, ErDeskRow, ErDoctorOption, ErEpisodeView, ErEsiLevel, ErEws, ErDeskView, ErEpisodeState, ErExpectedCard, ErPatientHit, ErSex, ErTile,
-  ErTileChip,
+  ErMciTag, ErTileChip,
 } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { EpisodeRow } from "./core";
@@ -149,6 +149,8 @@ async function tilesFor(db: Db, actor: Actor, eps: readonly EpisodeRow[], at: Da
         : { kind: wall ? null : e.ewsKind as ErEws["kind"], value: e.ewsValue ?? 0, band: e.ewsBand as ErEws["band"] },
       // ER review 4 (2026-10-15): the activation clocks name clinical detail (STEMI, stroke, snakebite) — never on the wall.
       ...(!wall && activations.has(e.id) ? { activations: activations.get(e.id)! } : {}),
+      // Lane 8 (#815): the START / JumpSTART tag of a Code Yellow patient (colour and word on the tile).
+      ...(e.mciTag === null ? {} : { mciTag: e.mciTag as ErMciTag }),
     });
   }
   return out;
@@ -267,8 +269,11 @@ export async function listErDoctors(db: Db, actor: Actor, permission: string = E
  */
 export async function listErBays(db: Db, actor: Actor): Promise<ErBay[]> {
   await requireErPermission(db, actor, ER_TRIAGE);
+  // Lane 8 (#815): during a Code Yellow, the overflow beds the duty manager opened as surge bays are bays too.
   const beds = await db.select().from(resources).where(and(
-    eq(resources.kind, "bed"), sql`${resources.attributes}->>'class' = 'emergency'`, ne(resources.status, "retired"),
+    eq(resources.kind, "bed"), ne(resources.status, "retired"),
+    sql`(${resources.attributes}->>'class' = 'emergency' or exists (select 1 from er_mci_surge_beds s join er_mci_events m on m.id = s.mci_id
+      where s.bed_id = ${resources.id} and m.stood_down_at is null))`,
   )).orderBy(resources.code);
   const parentIds = [...new Set(beds.flatMap((b) => (b.parentId === null ? [] : [b.parentId])))];
   const parents = new Map(parentIds.length === 0 ? [] : (await db.select({ id: resources.id, name: resources.name }).from(resources)

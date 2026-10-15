@@ -49,3 +49,8 @@ export const ER_BILL = "er.bill";
  * end of a clinical code also checks the doctor role. No money behind it.
  */
 export const ER_CODES = "er.codes";
+/**
+ * ER lane 8 (#815) — mass casualty (Code Yellow): the MCI board, START / JumpSTART tags, the head count. Declaring and
+ * standing down, the packs and the surge bays also check the role (the MS or the duty manager). No money behind it.
+ */
+export const ER_MCI = "er.mci";
