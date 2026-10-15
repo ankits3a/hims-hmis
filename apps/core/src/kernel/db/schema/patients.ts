@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
-  boolean, customType, date, index, integer, jsonb, pgSequence, pgTable,
+  boolean, check, customType, date, index, integer, jsonb, pgSequence, pgTable,
   text, timestamp, uniqueIndex,
 } from "drizzle-orm/pg-core";
 
@@ -220,6 +220,8 @@ export const patients = pgTable(
     uniqueIndex("patients_abha_address_ux")
       .on(sql`lower(btrim(${t.abhaAddress}))`)
       .where(sql`${t.abhaAddress} is not null and btrim(${t.abhaAddress}) <> '' and ${t.status} = 'active'`),
+    // ER lane 1 (#808; ER review 2026-10-15) — one of two words, checked by the database.
+    check("patients_identity_status_ck", sql`${t.identityStatus} in ('identified', 'unidentified')`),
   ],
 );
 

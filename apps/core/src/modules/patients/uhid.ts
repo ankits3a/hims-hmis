@@ -26,6 +26,8 @@ export type PatientErrorCode =
   | "guardian_not_found"
   | "guardian_not_active"
   | "merge_same_patient"
+  /* ER lane 1 (#808) — the survivor of a merge is never an unidentified record when the other is identified. */
+  | "merge_into_unidentified"
   | "merge_already_requested"
   | "unknown_merge_request"
   | "merge_not_requested"

@@ -112,6 +112,7 @@ Source: `apps/core/src/modules/ipd/`
   - `endAdmissionHolds(tx: Tx, actor: Actor, admissionId: string, at: Date): Promise<string | null>`
   - `lapseBedReservations(db: Db, now: Date): Promise<{ lapsed: number }>`
   - `lockBedIn(tx: Tx, bedId: string): Promise<void>`
+  - `lockBedsInOrder(tx: Tx, bedIds: readonly string[]): Promise<void>`
   - `markBedClean(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"mark_bed_clean">>`
   - `markBedCleanIn(tx: Tx, actor: Actor, bedId: string, cleanedAt: Date): Promise<Output<"mark_bed_clean">>`
   - `markIncumbentBeds(db: Db, actor: Actor, lines: readonly IncumbentBedLine[], opts: { apply?: boolean; now?: Date } = {}): Promise<IncumbentB…`

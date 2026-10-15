@@ -1740,6 +1740,7 @@ note, the NPO reason and who set them; without it (the kitchen) a reader sees th
 casualty nurse.
 `er.arrival.register` is held by `front_office`, `front_office_supervisor`, `duty_manager` and `er_nurse`;
 `er.board.view` by the same four and `doctor` and `medical_superintendent`.
+`er.board.wall` (the wall screen only: initials or the alias, no UHID, no complaint, no police mark) is held by the same six and the kiosk `display` role.
 The first records an arrival (a known patient, a new named patient, or an unidentified patient with a real UHID and an
 alias), a pre-alert, a brought-dead marker, and prints or reprints the ER band; the second reads the board. Linking an
 unidentified patient to the true record files a `patient_merge` request and asks `patients.merge`, as the merge screen

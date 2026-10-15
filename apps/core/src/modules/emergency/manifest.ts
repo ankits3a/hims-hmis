@@ -1,7 +1,7 @@
-import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_CARE, ER_TRIAGE } from "./names";
+import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_CARE, ER_TRIAGE } from "./names";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
-export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_CARE, ER_TRIAGE };
+export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_CARE, ER_TRIAGE };
 
 /**
  * ER lane 1 (#808, decision 0076) — the emergency department's declared surface: four permissions, four menu entries,
@@ -9,6 +9,8 @@ export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_CARE, ER_TRIAGE };
  *
  *   er.board.view        read the tracking board (wall and desktop) and the ER desk's lists, and subscribe to `er:board`
  *                        — front office, its supervisor, the casualty nurse, doctors, the duty manager, the MS
+ *   er.board.wall        the wall display only (initials or the alias, no UHID, no complaint, no police chip) — the
+ *                        ER roles above and the kiosk `display` role (ER review 2026-10-15)
  *   er.arrival.register  record an arrival (a known patient, a new named patient, an unidentified patient), a pre-alert,
  *                        a brought-dead marker, and print or reprint the ER band — front office, its supervisor, the
  *                        casualty nurse, the duty manager
@@ -36,6 +38,6 @@ export const emergencyManifest: ModuleManifest = {
     // Lane 3 (#810) — the ER patient: care in one place (phone or tablet).
     { label: "ER patient", path: "/er/patient", permission: ER_CARE },
   ],
-  permissions: [ER_BOARD_VIEW, ER_ARRIVAL_REGISTER, ER_TRIAGE, ER_CARE],
+  permissions: [ER_BOARD_VIEW, ER_ARRIVAL_REGISTER, ER_TRIAGE, ER_BOARD_WALL, ER_CARE],
   subscriptions: [],
 };
