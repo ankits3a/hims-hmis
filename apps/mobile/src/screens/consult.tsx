@@ -27,6 +27,7 @@ import { SUGGEST_DEFAULT, type SuggestState } from "../consult/signals";
 import type { DoctorApi, WireAllergyRow, WireVisitDetail, WireVisitVitals } from "../doctor/api";
 import type { WireFollowUpConfig, WireQueueEntryView, WireQueuePatient } from "../doctor/rules";
 import { TestsDrawer } from "../consult/sheets";
+import { AllergySheet } from "../consult/allergy-sheet";
 
 /**
  * THE DOCTOR'S CONSULTATION, ON A PHONE (decision 0048; board "Phone consult", owner 2026-10-07:
@@ -94,6 +95,8 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
   const [visit, setVisit] = useState<WireVisitDetail | null>(null);
   const [reports, setReports] = useState<ReportsCard | null>(null);
   const [allergies, setAllergies] = useState<WireAllergyRow[]>([]);
+  /** #608 — "+ Allergy" opens its own sheet, apart from the five drawers. */
+  const [allergyOpen, setAllergyOpen] = useState(false);
   const [last, setLast] = useState<{ serviceDate: string; lines: WireLastLine[] } | null>(null);
   const [setsCount, setSetsCount] = useState<{ mine: number; hospital: number } | null>(null);
   const [drawer, setDrawer] = useState<Drawer>(null);
@@ -224,6 +227,17 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
   useEffect(() => { if (draft !== null) void runPrecheck(draft); }, [linesKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const warnings = useMemo(() => warningsOf(precheck, draft?.lines ?? []), [precheck, draft]);
+
+  /**
+   * #608 — the new allergy is on the strip at once, the record is read again, and the server's check runs
+   * again over the lines already written: the check reads the allergy from the record, not from the phone.
+   */
+  const allergySaved = (row: WireAllergyRow): void => {
+    setAllergyOpen(false);
+    setAllergies((prev) => (prev.some((a) => a.id === row.id) ? prev : [...prev, row]));
+    doctorApi.allergies(patientId).then((a) => setAllergies(a.items.filter((x) => x.status === "active"))).catch(() => undefined);
+    if (draft !== null) void runPrecheck(draft);
+  };
   const open = unanswered(warnings, draft?.reasons ?? {});
 
   /** Closing a drawer saves the note on the server too when there is a network — the computer then shows the same visit. */
@@ -353,6 +367,9 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
           <View style={s.pills}>
             {kind !== null && <Text style={s.pill}>{t(`opdConsultV2.vtShort.${kind}`)}</Text>}
             {allergies.map((a) => <Text key={a.id} testID="consult-allergy" style={[s.pill, s.pillRed]}>{t("mobile.consult.allergy", { substance: a.substance })}</Text>)}
+            <Pressable testID="consult-allergy-add" accessibilityRole="button" hitSlop={8} onPress={() => setAllergyOpen(true)} style={s.pillAdd}>
+              <Text style={s.pillAddText}>{t("mobile.consult.allergyAdd.open")}</Text>
+            </Pressable>
           </View>
           {guardianNow !== null && (
             // Owner 2026-10-09 — only a guardian came with the reports: one line under the chips, where the eye starts.
@@ -479,6 +496,7 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
         // doctor finishes it, and what was heard stays on the screen meanwhile.
         onAddMedicine={(h) => patch((d) => (d.lines.some((l) => l.medicineId === h.medicineId) ? d : addLine(d, { drug: h.name, dose: "", frequency: "", durationDays: null, food: null, instructions: "", route: "oral", medicineId: h.medicineId, source: "voice" }, Date.now())))}
         onAddTest={(x) => patch((d) => (d.tests.some((y) => y.serviceId === x.serviceId) ? d : { ...d, tests: [...d.tests, x] }))} />}
+      {allergyOpen && <AllergySheet call={call} patientId={patientId} onClose={() => setAllergyOpen(false)} onSaved={allergySaved} />}
       {drawer === "dx" && <DiagnosisDrawer api={api} draft={draft} patch={patch} onClose={closeDrawer} suggest={suggest} />}
       {drawer === "meds" && <MedicinesDrawer api={api} draft={draft} patch={patch} warnings={warnings} checking={checking} onClose={closeDrawer} startWith={medStart} childNoDose={childDoseMissing(draft, bandNow())} />}
       {drawer === "tests" && <TestsDrawer api={api} draft={draft} patch={patch} onClose={closeDrawer} suggest={suggest} />}
@@ -496,6 +514,8 @@ const s = StyleSheet.create({
   demo: { fontSize: 14, color: color.dim },
   pills: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   pill: { fontSize: 12.5, fontWeight: "700", color: color.dim, backgroundColor: color.wash, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3, overflow: "hidden" },
+  pillAdd: { minHeight: 26, justifyContent: "center", borderRadius: 999, borderWidth: 1, borderStyle: "dashed", borderColor: color.redLine, paddingHorizontal: 9 },
+  pillAddText: { fontSize: 12.5, fontWeight: "700", color: color.red },
   pillRed: { color: color.red, backgroundColor: color.redSoft, borderWidth: 1, borderColor: color.redLine },
   vitals: { flexDirection: "row", flexWrap: "wrap", columnGap: 12, rowGap: 2 },
   vit: { fontFamily: MONO, fontSize: 13, color: color.ink },
