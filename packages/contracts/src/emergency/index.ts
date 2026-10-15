@@ -65,6 +65,7 @@ export const ER_INTENTS = {
   place_er_order: care.placeErOrder,
   issue_er_med: care.issueErMed,
   give_er_dose: care.giveErDose,
+  return_er_med: care.returnErMed,
   sign_er_verbal_order: care.signErVerbalOrder,
   record_procedure: care.recordProcedure,
   record_consent: care.recordConsent,

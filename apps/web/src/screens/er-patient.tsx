@@ -10,7 +10,7 @@ import { searchOrderableTests } from "../lib/ordering-api";
 import type { WireOrderableTest } from "../lib/ordering-api";
 import {
   ER_BOARD_TOPIC, ER_CODE_KINDS, ER_INJURY_KINDS, ER_MED_ROUTES, ER_MLC_CATEGORIES, ER_REFERRAL_REASONS, ER_RETURN_IF_SIGNS, abscondApi, answerCallApi, callCodeApi, deathApi,
-  dischargeApi, handToUnitApi, lamaApi, lwbsApi, newKey, referApi, callApi, consentApi, cosignApi, doseApi, erRefusalOf, fetchErCare, fetchErEpisode,
+  dischargeApi, handToUnitApi, lamaApi, lwbsApi, newKey, referApi, callApi, consentApi, cosignApi, doseApi, returnMedApi, erRefusalOf, fetchErCare, fetchErEpisode,
   fetchErItems, fetchTriageDoctors, issueApi, noteApi, openMlcApi, orderApi, procedureApi, signVerbalApi, stabilisedApi,
 } from "../lib/er-api";
 import { EsiBadge, ageSexWords, aliasFirst } from "./er-board";
@@ -160,7 +160,7 @@ export function ErPatient(): React.ReactElement {
         {panel === "procedure" ? <ProcedurePanel t={t} busy={busy} doctors={doctors} onSave={(nm, by) => act(async () => {
           await procedureApi({ episodeId, name: nm, performedBy: by }); return t("erPatient.procedure.saved");
         })} /> : null}
-        {panel === "consent" ? <ConsentPanel t={t} busy={busy} doctors={doctors} onSave={(body) => act(async () => {
+        {panel === "consent" ? <ConsentPanel t={t} busy={busy} onSave={(body) => act(async () => {
           await consentApi({ episodeId, ...body }); return t("erPatient.consent.saved");
         })} /> : null}
         {panel === "call" ? <CallPanel t={t} busy={busy} onCall={(departmentCode, urgency, reason) => act(async () => {
@@ -268,8 +268,30 @@ function MedRow({ m, t, me, busy, act }: { m: ErCareView["meds"][number]; t: T; 
         {m.verbalPending ? <span className="erb-chip name_alert">{t("erPatient.med.verbalPending")}</span> : null}
         <span className="dim">{t("erPatient.med.orderedBy", { name: m.orderedBy })}</span>
       </div>
+      {m.returned !== null ? <span className="erb-chip">{t(`erPatient.med.${m.returned}`)}</span> : null}
       {m.dose !== null ? (
-        <p className="erp-text"><b>{t(`erPatient.med.outcome.${m.dose.outcome}`)}</b> · {m.dose.by} · {fmtIst(m.dose.at)}{m.dose.reason !== null ? ` · ${m.dose.reason}` : ""}</p>
+        <>
+          <p className="erp-text"><b>{t(`erPatient.med.outcome.${m.dose.outcome}`)}</b> · {m.dose.by} · {fmtIst(m.dose.at)}{m.dose.reason !== null ? ` · ${m.dose.reason}` : ""}</p>
+          {m.dose.outcome !== "given" && !m.own && m.returned === null ? (
+            // ER review 2: a held or refused dose prompts the return (unopened → stock; opened → wastage).
+            <div className="erp-give" data-testid="er-patient-return">
+              <b>{t("erPatient.med.returnPrompt")}</b>
+              {m.highAlert ? (
+                <div className="erd-pair">
+                  <label className="erd-field"><span>{t("erPatient.med.secondUser")}</span><input value={user} onChange={(e) => setUser(e.target.value)} autoComplete="off" /></label>
+                  <label className="erd-field"><span>{t("erPatient.med.secondPin")}</span><input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))} type="password" inputMode="numeric" autoComplete="off" /></label>
+                </div>
+              ) : null}
+              {m.highAlert ? <p className="erd-hint">{t("erPatient.med.witnessHint")}</p> : null}
+              <div className="erd-row">
+                <button type="button" className="erx-btn sm" disabled={busy}
+                  onClick={() => void act(async () => { await returnMedApi({ issueId: m.issueId, condition: "unopened", reason: m.dose!.reason ?? t(`erPatient.med.outcome.${m.dose!.outcome}`) }); return t("erPatient.med.returned"); })}>{t("erPatient.med.returnUnopened")}</button>
+                <button type="button" className="erx-btn sm" disabled={busy || (m.highAlert && (user.trim() === "" || pin.length < 4))}
+                  onClick={() => void act(async () => { await returnMedApi({ issueId: m.issueId, condition: "opened", reason: m.dose!.reason ?? t(`erPatient.med.outcome.${m.dose!.outcome}`), ...(m.highAlert ? { witness: { username: user.trim(), pin } } : {}) }); return t("erPatient.med.wasted"); })}>{t("erPatient.med.returnOpened")}</button>
+              </div>
+            </div>
+          ) : null}
+        </>
       ) : (
         <div className="erp-give">
           {m.highAlert ? (
@@ -387,14 +409,15 @@ function ProcedurePanel({ t, busy, doctors, onSave }: { t: T; busy: boolean; doc
   );
 }
 
-function ConsentPanel({ t, busy, doctors, onSave }: { t: T; busy: boolean; doctors: ErDoctorOption[]; onSave: (body: Record<string, unknown>) => Promise<void> }): React.ReactElement {
+function ConsentPanel({ t, busy, onSave }: { t: T; busy: boolean; onSave: (body: Record<string, unknown>) => Promise<void> }): React.ReactElement {
   const [kind, setKind] = useState("procedure");
   const [about, setAbout] = useState("");
   const [signedBy, setSignedBy] = useState<"patient" | "guardian" | "representative" | "emergency">("patient");
   const [signer, setSigner] = useState("");
   const [relation, setRelation] = useState("");
   const [witness, setWitness] = useState("");
-  const [second, setSecond] = useState("");
+  const [secondUser, setSecondUser] = useState("");
+  const [secondPin, setSecondPin] = useState("");
   return (
     <section className="erp-panel">
       <div className="erd-opts">{["general", "procedure", "blood", "high_risk", "refusal_of_treatment"].map((k) => (
@@ -411,8 +434,11 @@ function ConsentPanel({ t, busy, doctors, onSave }: { t: T; busy: boolean; docto
         </div>
       ) : null}
       {signedBy === "emergency" ? (
-        <label className="erd-field"><span>{t("erPatient.consent.secondDoctor")}</span>
-          <select value={second} onChange={(e) => setSecond(e.target.value)}><option value="">{t("erDesk.dead.pickDoctor")}</option>{doctors.map((d) => <option key={d.userId} value={d.userId}>{d.name}</option>)}</select></label>
+        // ER review 2: the second doctor confirms with their own username and PIN.
+        <div className="erd-pair">
+          <label className="erd-field"><span>{t("erPatient.consent.secondDoctor")}</span><input value={secondUser} onChange={(e) => setSecondUser(e.target.value)} autoComplete="off" placeholder={t("erPatient.med.secondUser")} /></label>
+          <label className="erd-field"><span>{t("erPatient.med.secondPin")}</span><input value={secondPin} onChange={(e) => setSecondPin(e.target.value.replace(/\D/g, "").slice(0, 6))} type="password" inputMode="numeric" autoComplete="off" /></label>
+        </div>
       ) : (
         <label className="erd-field"><span>{t("erPatient.consent.witness")}</span><input value={witness} onChange={(e) => setWitness(e.target.value)} /></label>
       )}
@@ -420,7 +446,8 @@ function ConsentPanel({ t, busy, doctors, onSave }: { t: T; busy: boolean; docto
         onClick={() => void onSave({
           kind, about: about.trim(), signedBy, method: "paper",
           ...(signer.trim() !== "" ? { signerName: signer.trim() } : {}), ...(relation.trim() !== "" ? { relation: relation.trim() } : {}),
-          ...(witness.trim() !== "" ? { witnessName: witness.trim() } : {}), ...(second !== "" ? { secondDoctorId: second } : {}),
+          ...(witness.trim() !== "" && signedBy !== "emergency" ? { witnessName: witness.trim() } : {}),
+          ...(signedBy === "emergency" ? { secondDoctor: { username: secondUser.trim(), pin: secondPin } } : {}),
         })}>{t("erPatient.consent.save")}</button>
       <p className="erd-hint">{t("erPatient.consent.hint")}</p>
     </section>

@@ -119,6 +119,15 @@ export const erChargeSink: EpisodeChargeSink = {
   },
 };
 
+/**
+ * ER review 2 (2026-10-15) — `return_er_med`'s money half, kept here so no clinical file reads a charge line: an issue
+ * returned UNOPENED reverses its line (once). Wastage never comes here — its charge stands for the bill desk (lane 6).
+ */
+export async function reverseErIssueChargeIn(tx: Tx, issueId: string, at: Date, reason: string): Promise<void> {
+  await tx.update(erChargeLines).set({ status: "reversed", amountPaise: null, reversedAt: at, reverseReason: reason })
+    .where(and(eq(erChargeLines.issueId, issueId), ne(erChargeLines.status, "reversed")));
+}
+
 /** Registered by `EmergencyModule` (API) beside the resolver. */
 export function registerErChargeSink(): () => void {
   return registerEpisodeChargeSink(ER_EPISODE_PREFIX, erChargeSink);

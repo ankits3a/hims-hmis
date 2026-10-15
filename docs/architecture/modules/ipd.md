@@ -345,6 +345,7 @@ Source: `apps/core/src/modules/ipd/`
   - `registerIpdEncounterResolver(): () => void`
 - `er-handoff.ts`
   - `cancelErAdmissionIn(tx: Tx, actor: Actor, admissionId: string, note: string, at: Date): Promise<"cancelled" | "not_open" | "held_deposit">`
+  - `carryErAdvanceIn(tx: Tx, admissionId: string, adv: { advanceId: string; receiptId: string; receiptNo: string; amountPaise: number; tender: …`
   - `carryErLineIn(tx: Tx, actor: Actor, admissionId: string, line: { erChargeLineId: string; serviceId: string; qty: number; prepaidUnitPaise?:…`
   - `carryErOrderLinesIn(tx: Tx, actor: Actor, admissionId: string, items: readonly { orderId: string; orderItemId: string; serviceId: string; c…`
   - `erAdmissionState(db: Db | Tx, admissionId: string): Promise<string | null>`
