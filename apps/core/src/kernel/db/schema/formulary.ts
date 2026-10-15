@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
-  boolean, check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex,
+  boolean, check, date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -786,6 +786,21 @@ export const formularyDrugDisease = pgTable(
  */
 export type MonographSection = Record<string, unknown>;
 
+/**
+ * #618 / decision 0053 — THE CRK FORMULARY ENTRY. A model DRAFTS it from public sources; a named
+ * Pharmacology reviewer edits and SIGNS it; a high-alert medicine takes a second signature. Every
+ * statement names one of the entry's own sources by `ref`. A field with no sourced statement is absent,
+ * never filled. `modules/formulary/crk-formulary.ts` owns the shape and the rules.
+ */
+export type CrkSource = { ref: string; kind: string; title: string; url: string | null; asOf: string | null };
+export type CrkStatement = { text: string; source: string };
+export type CrkEntry = {
+  sources: CrkSource[];
+  fields: Record<string, CrkStatement[]>;
+  /** A combination with no reference of its own says so, in these words, beside its CDSCO status. */
+  combinationNote: string | null;
+};
+
 export const formularyMonographs = pgTable(
   "formulary_monographs",
   {
@@ -803,6 +818,28 @@ export const formularyMonographs = pgTable(
     status: text("status").notNull().default("draft"),
     reviewedBy: text("reviewed_by"),
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    /* ── #618 / decision 0053 — the CRK formulary entry and its signatures ── */
+    crk: jsonb("crk").$type<CrkEntry>(),
+    /** The model id that drafted `crk`, when a model did; null for a hand-written entry. */
+    draftedModel: text("drafted_model"),
+    draftedAt: timestamp("drafted_at", { withTimezone: true }),
+    /** Tokens the draft cost, so the first drafts can be priced. */
+    draftUsage: jsonb("draft_usage").$type<{ inputTokens: number; outputTokens: number }>(),
+    /** Set by a reviewer; a stocked item flagged high-alert makes the generic high-alert whatever this says. */
+    highAlert: boolean("high_alert").notNull().default(false),
+    /** A high-alert entry's FIRST signature, while it waits for the second. Cleared when the second lands or the text changes. */
+    firstSignedBy: text("first_signed_by"),
+    firstSignedAt: timestamp("first_signed_at", { withTimezone: true }),
+    firstSignerDesignation: text("first_signer_designation"),
+    /** The designation of `reviewed_by`, as signed ("Professor, Pharmacology"). */
+    reviewerDesignation: text("reviewer_designation"),
+    secondReviewedBy: text("second_reviewed_by"),
+    secondReviewedAt: timestamp("second_reviewed_at", { withTimezone: true }),
+    secondReviewerDesignation: text("second_reviewer_designation"),
+    /** Twelve months after signing. Past it the entry still shows and stands on the re-review worklist. */
+    reviewDueOn: date("review_due_on", { mode: "string" }),
+    /** Bumped on every signature that makes the entry reviewed; `formulary_monograph_signatures` keeps each version. */
+    version: integer("version").notNull().default(0),
     ...auditColumns,
   },
   (t) => [
@@ -812,6 +849,29 @@ export const formularyMonographs = pgTable(
       "formulary_monographs_review_ck",
       sql`(${t.status} = 'reviewed') = (${t.reviewedBy} is not null) and (${t.status} = 'reviewed') = (${t.reviewedAt} is not null)`,
     ),
+  ],
+);
+
+/**
+ * #618 — EVERY SIGNATURE, KEPT. One row per signature with the text exactly as signed, so a signed version
+ * can be read back after a later edit replaced it. `kind`: `sole` (one signature made it reviewed), `first`
+ * (a high-alert entry's first), `second` (the one that made a high-alert entry reviewed).
+ */
+export const formularyMonographSignatures = pgTable(
+  "formulary_monograph_signatures",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    monographId: text("monograph_id").notNull().references(() => formularyMonographs.id),
+    version: integer("version").notNull(),
+    kind: text("kind").notNull(),
+    signedBy: text("signed_by").notNull(),
+    designation: text("designation").notNull(),
+    signedAt: timestamp("signed_at", { withTimezone: true }).notNull().defaultNow(),
+    crk: jsonb("crk").$type<CrkEntry>().notNull(),
+  },
+  (t) => [
+    index("formulary_monograph_signatures_monograph_idx").on(t.monographId, t.signedAt),
+    check("formulary_monograph_signatures_kind_ck", sql`${t.kind} in ('sole', 'first', 'second')`),
   ],
 );
 

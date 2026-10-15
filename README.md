@@ -967,6 +967,13 @@ account exists.
 Therapeutics Committee's rule is that the reviewer is not the department that wrote the text. Saving a
 monograph stays under `formulary.manage`; nothing reads a monograph until it is reviewed.
 
+**Permissions (decision 0053, #618): the CRK formulary is drafted by a model and signed by Pharmacology.**
+A new role, `pharmacology_reviewer`, holds exactly two strings: `formulary.read` and
+`formulary.monograph.review`. It is the Pharmacology department's reviewer-only seat: it opens a drafted
+entry beside its sources, edits it and signs it (name, designation, date), and holds no stock, sale or
+patient string. A high-alert medicine needs a second signature from a different reviewer. The owner names
+the faculty and residents who hold the role; it is created with grants and no holders.
+
 **Mined data is never authority.** `formulary_staging` is a lookup dictionary, not a review queue:
 the pharmacist types a name, gets the mined record pre-filling composition and schedule, verifies,
 and admits. Nothing is bulk-approved, staging rows are invisible to every resolution path, and the

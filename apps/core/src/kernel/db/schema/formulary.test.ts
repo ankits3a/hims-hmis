@@ -50,7 +50,10 @@ const CENSUS: Record<string, string[]> = {
   // Formulary P24 (0105): what the patient's DIAGNOSIS forbids, keyed on an ICD-10 code PREFIX.
   formulary_drug_disease: ["active", "alternatives", "created_at", "created_by", "icd10_prefix", "icd10_title", "id", "note", "route_scope", "salt_id", "severity", "source", "updated_at", "updated_by"],
   // The drug monograph (owner 2026-10-02): four JSON sections per generic, read only once reviewed; renal bands as rows.
-  formulary_monographs: ["affordability", "created_at", "created_by", "generic_id", "id", "nursing", "patient", "prescriber", "reviewed_at", "reviewed_by", "source_version", "status", "updated_at", "updated_by"],
+  // #618 / decision 0053 — the CRK formulary entry, its signatures and the drafting cost.
+  formulary_monographs: ["affordability", "created_at", "created_by", "crk", "draft_usage", "drafted_at", "drafted_model", "first_signed_at", "first_signed_by", "first_signer_designation", "generic_id", "high_alert", "id", "nursing", "patient", "prescriber", "review_due_on", "reviewed_at", "reviewed_by", "reviewer_designation", "second_reviewed_at", "second_reviewed_by", "second_reviewer_designation", "source_version", "status", "updated_at", "updated_by", "version"],
+  // #618 — every signature, kept with the text as signed.
+  formulary_monograph_signatures: ["crk", "designation", "id", "kind", "monograph_id", "signed_at", "signed_by", "version"],
   formulary_renal_doses: ["crcl_max", "crcl_min", "dose", "id", "monograph_id", "position", "severity"],
 };
 

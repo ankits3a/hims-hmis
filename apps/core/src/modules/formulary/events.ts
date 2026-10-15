@@ -167,3 +167,15 @@ export const monographSaved = defineEvent("monograph.saved", MODULE, z.object({
 export const monographReviewed = defineEvent("monograph.reviewed", MODULE, z.object({
   monographId: id, genericId: id, writtenBy: id,
 }));
+
+/** #618 — a model drafted (or a person saved) a CRK entry. The text is on the row, not here. */
+export const monographCrkSaved = defineEvent("monograph.crk_saved", MODULE, z.object({
+  monographId: id, genericId: id, draftedModel: z.string().nullable(), statements: z.number().int().min(0),
+  inputTokens: z.number().int().min(0).nullable(), outputTokens: z.number().int().min(0).nullable(),
+}));
+
+/** #618 — a Pharmacology signature. `kind` `first` leaves a high-alert entry waiting for its second. */
+export const monographSigned = defineEvent("monograph.signed", MODULE, z.object({
+  monographId: id, genericId: id, kind: z.enum(["sole", "first", "second"]), version: z.number().int().min(0),
+  designation: z.string().min(1), highAlert: z.boolean(),
+}));
