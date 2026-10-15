@@ -13,8 +13,9 @@ brief-subagent, serena, token-audit.
   before you stop. `tools/lane.sh drop <name>` when the lane closes. → skill `lane-workflow`
 - **GitHub Issues is the tracker** (owner 2026-10-10). Read your milestone's issues at start (the session-start hook
   prints counts). Every PR body says `Closes #N` or `Refs #N`; owed work becomes an issue, and handoffs and memory point
-  to issues instead of keeping their own OPEN lists. The repo is public: no security findings, IPs, credentials, staff
-  names or patient data in issues.
+  to issues instead of keeping their own OPEN lists. **GitHub milestones are the only roadmap** (owner 2026-10-16, #697):
+  the `docs/*ROADMAP*` files are superseded history; never plan from them or add new ones. The repo is public: no
+  security findings, IPs, credentials, staff names or patient data in issues.
 - **One task per session**: start a new task with `/clear` or a fresh session, naming the module.
 - **A red `main` freezes merges.** Whoever pushed the red fixes it first, before anything else.
 - **Spec before build** (owner 2026-10-07): for a feature or behaviour change, ask at most five questions the rulings and

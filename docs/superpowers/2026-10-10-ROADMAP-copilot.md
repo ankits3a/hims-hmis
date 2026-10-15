@@ -1,3 +1,7 @@
+> **SUPERSEDED (2026-10-15, #697): GitHub milestones are the only roadmap.**
+> Read the milestones at https://github.com/ankits3a/hims-hmis/milestones and the issues under them.
+> This file is kept unchanged below as history; do not plan from it.
+
 # ROADMAP — the staff copilot track (C-series)
 
 **Date:** 2026-10-10 · **Measured at:** `main` 21467fd7 (#571) · **Status:** PROPOSAL until the owner says yes.
