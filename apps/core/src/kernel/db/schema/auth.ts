@@ -200,6 +200,11 @@ export const authSessions = pgTable(
      * phone needs one inside `STEP_UP_WINDOW_MS`. NULL until the first step-up; unused by a browser.
      */
     stepUpAt: timestamp("step_up_at", { withTimezone: true }),
+    /**
+     * When a browser session was last used (slid at most once a minute by `findLiveSession`). A browser session idle
+     * longer than `SESSION_IDLE_MS` is no longer live. NULL = never slid (read as `created_at`). Unused for a phone session.
+     */
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
   },
   (t) => [
     uniqueIndex("auth_sessions_token_ux").on(t.tokenHash),

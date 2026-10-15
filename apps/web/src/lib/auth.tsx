@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, getToken, setToken } from "./api";
 import { isPasswordChangeRequired } from "./admin-api";
@@ -43,6 +43,19 @@ type AuthState = {
 };
 
 const AuthContext = createContext<AuthState | null>(null);
+
+/**
+ * A browser left untouched on a shared terminal signs itself out after this long (the server also refuses a browser
+ * session idle this long, `SESSION_IDLE_MS`). Screens that poll keep the server session warm, so the browser counts the
+ * person's own input. The wall displays — queue boards nobody types at — stay signed in.
+ */
+export const IDLE_SIGN_OUT_MS = 30 * 60_000;
+const DISPLAY_PATHS = ["/opd/display", "/radiology/display"];
+export function idleSignOutDue(lastInputAt: number, now: number, path: string): boolean {
+  if (DISPLAY_PATHS.some((p) => path === p || path.startsWith(`${p}/`))) return false;
+  return now - lastInputAt > IDLE_SIGN_OUT_MS;
+}
+const INPUT_EVENTS = ["keydown", "pointerdown", "mousemove", "touchstart", "wheel"] as const;
 
 export function AuthProvider({ children }: { children: React.ReactNode }): React.ReactElement {
   const queryClient = useQueryClient();
@@ -118,6 +131,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
       queryClient.clear();
     }
   }, [queryClient]);
+
+  /* The idle sign-out: only while someone is signed in; any input resets the clock; checked every 15 s. */
+  const lastInput = useRef(Date.now());
+  useEffect(() => {
+    if (actor === null) return;
+    lastInput.current = Date.now();
+    const touch = (): void => { lastInput.current = Date.now(); };
+    for (const e of INPUT_EVENTS) window.addEventListener(e, touch, { passive: true });
+    const timer = setInterval(() => {
+      if (idleSignOutDue(lastInput.current, Date.now(), window.location.pathname)) void logout();
+    }, 15_000);
+    return () => {
+      clearInterval(timer);
+      for (const e of INPUT_EVENTS) window.removeEventListener(e, touch);
+    };
+  }, [actor, logout]);
 
   const can = useCallback((permission: string) => permissions.hospital.includes(permission), [permissions]);
 
