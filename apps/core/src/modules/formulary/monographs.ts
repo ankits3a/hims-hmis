@@ -100,9 +100,6 @@ export async function saveMonograph(tx: Tx, actor: Actor, input: MonographInput)
   } else {
     await tx.update(formularyMonographs).set({
       sourceVersion: input.sourceVersion, ...sections, status: "draft", reviewedBy: null, reviewedAt: null,
-      // #618 — changed text is unsigned text: every CRK signature on the row goes with it.
-      reviewerDesignation: null, firstSignedBy: null, firstSignedAt: null, firstSignerDesignation: null,
-      secondReviewedBy: null, secondReviewedAt: null, secondReviewerDesignation: null, reviewDueOn: null,
       updatedBy: actor.id, updatedAt: new Date(),
     }).where(eq(formularyMonographs.id, monographId));
     await tx.delete(formularyRenalDoses).where(eq(formularyRenalDoses.monographId, monographId));
@@ -127,8 +124,6 @@ export async function reviewMonograph(tx: Tx, actor: Actor, monographId: string)
   const row = (await tx.select().from(formularyMonographs).where(eq(formularyMonographs.id, monographId)).for("update"))[0];
   if (row === undefined) throw new FormularyError("unknown_monograph", `no monograph ${monographId}`);
   if (row.status === "reviewed") throw new FormularyError("monograph_already_reviewed", "this monograph is already reviewed; an edit makes it a draft again");
-  /* #618 — a CRK formulary entry is SIGNED (designation, high-alert second signature), never plainly reviewed. */
-  if (row.crk !== null) throw new FormularyError("monograph_needs_signature", "this monograph carries a CRK formulary entry; a Pharmacology reviewer signs it");
   if (row.updatedBy === actor.id) throw new FormularyError("monograph_same_actor", "the person who wrote a monograph cannot review it");
   await tx.update(formularyMonographs)
     .set({ status: "reviewed", reviewedBy: actor.id, reviewedAt: new Date() })

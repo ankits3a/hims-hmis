@@ -3,9 +3,10 @@
  *
  * The hospital buys no drug database. A model drafts a short entry per generic from public sources the
  * hospital may legally use; a named Pharmacology reviewer edits and SIGNS it; a high-alert medicine takes a
- * SECOND signature from a different reviewer. The entry lives on the existing `formulary_monographs` row
- * (`crk`), so the store's gate holds unchanged: no reader sees anything that is not `reviewed`
- * (`getMonograph`, `renalDoseFor`), and nothing reaches a prescribing or safety check before a signature.
+ * SECOND signature from a different reviewer. The entry is its own row (`formulary_crk_entries`) with its
+ * own state, apart from the pharmacy's monograph: a CRK act never publishes or withdraws the pharmacy's
+ * sections or renal bands, and a pharmacy act never touches the CRK entry. The LIVE (signed) text and a
+ * PENDING draft are separate columns, so the last signed version stays read until the next is signed.
  *
  * THE MODEL ONLY DRAFTS, and its draft is held to three rules before it is stored:
  *   1. every statement names one of the sources it was given — a statement citing anything else is dropped;
@@ -18,14 +19,14 @@
  * and that check is what keeps them so. No model configured is a supported way to run: drafting answers
  * `model_not_configured`, and a reviewer writes the entry by hand and signs it the same way.
  */
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { IST_UTC_OFFSET_MINUTES } from "../../kernel/approvals/cumulative";
 import { appendEvent } from "../../kernel/events/append";
 import { assertNoIdentifiers, maskQuestion } from "../../kernel/copilot/mask";
-import { formularyGenerics, formularyMedicines, formularyMonographs, formularyMonographSignatures } from "../../kernel/db/schema";
+import { formularyCrkEntries, formularyCrkSignatures, formularyGenerics, formularyMedicines } from "../../kernel/db/schema";
 import { FormularyError } from "./errors";
-import { monographCrkSaved, monographSigned } from "./events";
+import { crkDraftSaved, crkSigned } from "./events";
 import type { Actor } from "@hmis/contracts";
 import { withTx } from "../../kernel/db/client";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -48,8 +49,22 @@ export const CRK_RENEWAL_WINDOW_DAYS = 30;
 const STATEMENT_MAX = 600;
 const SOURCE_TEXT_MAX = 24_000;
 
-/* A strength or a per-weight figure: "500 mg", "10 mg/kg", "0.5 ml", "2 g", "5 mcg", "100 units". */
-const DOSE_SHAPE = /\d\s*(?:mg|mcg|µg|g|gm|ml|mL|iu|IU|units?)\b|mg\s*\/\s*kg|\/\s*kg\b/i;
+/*
+ * A dose, in any of its shapes: a strength or per-weight figure ("500 mg", "10 mg/kg", "0.5 ml", "100 units"),
+ * a COUNT without a unit ("2 tablets", "1 tab twice", "two capsules", "1 puff"), a sig ("1-0-1"), or a
+ * schedule ("every 8 hours", "3 times a day", "twice daily").
+ */
+const NUMBER = String.raw`(?:\d+(?:\.\d+)?|½|half|one|two|three|four|five|six)`;
+const DOSE_SHAPE = new RegExp([
+  String.raw`\d\s*(?:mg|mcg|µg|g|gm|ml|mL|iu|IU|units?)\b`, String.raw`mg\s*\/\s*kg`, String.raw`\/\s*kg\b`,
+  String.raw`\b${NUMBER}\s*(?:tablets?|tabs?|capsules?|caps?|pills?|drops?|puffs?|sprays?|sachets?|teaspoons?|tsp|tablespoons?|spoons?|spoonfuls?|ampoules?|vials?|doses?|injections?|patch(?:es)?|suppositor(?:y|ies))\b`,
+  String.raw`\b\d\s*-\s*\d\s*-\s*\d\b`,
+  String.raw`\bevery\s+${NUMBER}\s*(?:to\s+${NUMBER}\s*)?(?:hours?|hrs?|h)\b`,
+  String.raw`\b${NUMBER}\s*times?\s+(?:a|per|each|every)\s+(?:day|week)\b`,
+  String.raw`\b(?:once|twice|thrice)\s+(?:a\s+|per\s+)?(?:day|daily|weekly)\b`,
+].join("|"), "i");
+/** A masking placeholder (`<<P1>>`) echoed back: the masked text, never a fact about the medicine. */
+const PLACEHOLDER_ECHO = /<<\s*P\d+\s*>>/i;
 
 export type DraftSourceInput = CrkSource & { text: string };
 
@@ -76,7 +91,8 @@ export function validateCrkEntry(entry: CrkEntry): CrkEntry {
 
 /**
  * What the model returned, held to the three rules. Unknown fields and statements citing unknown sources
- * are DROPPED (the model is not a person who can fix them); a dose-shaped statement is dropped.
+ * are DROPPED (the model is not a person who can fix them); so is a dose-shaped statement, and one that
+ * echoes a masking placeholder (`<<P1>>`).
  */
 export function sanitiseModelDraft(raw: unknown, sources: readonly CrkSource[]): { fields: Record<string, CrkStatement[]>; dropped: number } {
   const refs = new Set(sources.map((s) => s.ref));
@@ -92,7 +108,7 @@ export function sanitiseModelDraft(raw: unknown, sources: readonly CrkSource[]):
       const st = item as { text?: unknown; source?: unknown };
       const text = typeof st.text === "string" ? st.text.trim() : "";
       const source = typeof st.source === "string" ? st.source : "";
-      if (text === "" || !refs.has(source) || DOSE_SHAPE.test(text) || text.length > STATEMENT_MAX) { dropped += 1; continue; }
+      if (text === "" || !refs.has(source) || DOSE_SHAPE.test(text) || PLACEHOLDER_ECHO.test(text) || text.length > STATEMENT_MAX) { dropped += 1; continue; }
       kept.push({ text, source });
     }
     if (kept.length > 0) fields[field] = kept;
@@ -109,11 +125,11 @@ const SYSTEM_PROMPT = [
   `Answer with JSON only: {"fields": {"<field>": [{"text": "...", "source": "<ref>"}]}}. Fields: ${CRK_FIELDS.join(", ")}.`,
 ].join("\n");
 
-export type DraftResult = { monographId: string; statements: number; dropped: number; usage: { inputTokens: number; outputTokens: number } | null };
+export type DraftResult = { entryId: string; statements: number; dropped: number; usage: { inputTokens: number; outputTokens: number } | null };
 
 /**
- * Ask the model for a draft and store it as the entry's DRAFT (any signature is cleared: changed text is
- * unsigned text). `client` null ⇒ `model_not_configured`, before anything is read or written.
+ * Ask the model for a draft and store it as the entry's PENDING version; the live signed version, if any,
+ * stays live. `client` null ⇒ `model_not_configured`, before anything is read or written.
  */
 export async function draftCrkEntry(
   db: Db,
@@ -152,50 +168,56 @@ export async function draftCrkEntry(
   const { fields, dropped } = sanitiseModelDraft(raw, sources);
   const entry: CrkEntry = { sources, fields, combinationNote: input.combinationNote ?? null };
   const statements = Object.values(fields).reduce((n, l) => n + l.length, 0);
-  const monographId = await withTx(db, (tx) => writeCrk(tx, actor, generic.id, entry, { model: model.id, usage }));
-  return { monographId, statements, dropped, usage };
+  const entryId = await withTx(db, (tx) => writeDraft(tx, actor, generic.id, entry, { model: model.id, usage }));
+  return { entryId, statements, dropped, usage };
 }
 
-/** A person's save of the entry (no model). Same rules for the shape; the draft is unsigned again. */
-export async function saveCrkEntry(tx: Tx, actor: Actor, genericSctid: string, entry: CrkEntry): Promise<{ monographId: string }> {
+/** A person's save of the entry (no model): the PENDING version. The live signed version stays live. */
+export async function saveCrkEntry(tx: Tx, actor: Actor, genericSctid: string, entry: CrkEntry): Promise<{ entryId: string }> {
   const generic = (await tx.select({ id: formularyGenerics.id }).from(formularyGenerics).where(eq(formularyGenerics.sctid, genericSctid)))[0];
   if (generic === undefined) throw new FormularyError("unknown_generic", `no generic with SNOMED CT id ${genericSctid}`);
-  return { monographId: await writeCrk(tx, actor, generic.id, validateCrkEntry(entry), { model: null, usage: null }) };
+  return { entryId: await writeDraft(tx, actor, generic.id, validateCrkEntry(entry), { model: null, usage: null }) };
 }
 
-const UNSIGNED = {
-  status: "draft", reviewedBy: null, reviewedAt: null, reviewerDesignation: null,
-  firstSignedBy: null, firstSignedAt: null, firstSignerDesignation: null,
-  secondReviewedBy: null, secondReviewedAt: null, secondReviewerDesignation: null, reviewDueOn: null,
-} as const;
+/** A pending first signature belongs to the text it signed: a new draft clears it. */
+const NO_FIRST = { firstSignedBy: null, firstSignedAt: null, firstSignerDesignation: null } as const;
 
-async function writeCrk(
+async function writeDraft(
   tx: Tx, actor: Actor, genericId: string, entry: CrkEntry,
   drafted: { model: string | null; usage: { inputTokens: number; outputTokens: number } | null },
 ): Promise<string> {
-  const held = (await tx.select({ id: formularyMonographs.id }).from(formularyMonographs)
-    .where(eq(formularyMonographs.genericId, genericId)).for("update"))[0];
-  const monographId = held?.id ?? newId();
-  const draftCols = drafted.model === null
-    ? {}
-    : { draftedModel: drafted.model, draftedAt: new Date(), draftUsage: drafted.usage };
+  const held = (await tx.select({ id: formularyCrkEntries.id }).from(formularyCrkEntries)
+    .where(eq(formularyCrkEntries.genericId, genericId)).for("update"))[0];
+  const entryId = held?.id ?? newId();
+  const now = new Date();
+  const draftCols = {
+    draftCrk: entry, draftedModel: drafted.model, draftedAt: drafted.model === null ? null : now, draftUsage: drafted.usage,
+  };
+  const spend = drafted.model === null ? {} : {
+    modelDrafts: sql`${formularyCrkEntries.modelDrafts} + 1`,
+    modelInputTokens: sql`${formularyCrkEntries.modelInputTokens} + ${drafted.usage?.inputTokens ?? 0}`,
+    modelOutputTokens: sql`${formularyCrkEntries.modelOutputTokens} + ${drafted.usage?.outputTokens ?? 0}`,
+  };
   if (held === undefined) {
-    await tx.insert(formularyMonographs).values({
-      id: monographId, genericId, sourceVersion: "crk", crk: entry, ...draftCols, createdBy: actor.id, updatedBy: actor.id,
+    await tx.insert(formularyCrkEntries).values({
+      id: entryId, genericId, ...draftCols,
+      modelDrafts: drafted.model === null ? 0 : 1,
+      modelInputTokens: drafted.usage?.inputTokens ?? 0, modelOutputTokens: drafted.usage?.outputTokens ?? 0,
+      createdBy: actor.id, updatedBy: actor.id,
     });
   } else {
-    await tx.update(formularyMonographs).set({ crk: entry, ...draftCols, ...UNSIGNED, updatedBy: actor.id, updatedAt: new Date() })
-      .where(eq(formularyMonographs.id, monographId));
+    await tx.update(formularyCrkEntries).set({ ...draftCols, ...spend, ...NO_FIRST, updatedBy: actor.id, updatedAt: now })
+      .where(eq(formularyCrkEntries.id, entryId));
   }
-  await appendEvent(tx, monographCrkSaved.make({
+  await appendEvent(tx, crkDraftSaved.make({
     payload: {
-      monographId, genericId, draftedModel: drafted.model,
+      entryId, genericId, draftedModel: drafted.model,
       statements: Object.values(entry.fields).reduce((n, l) => n + l.length, 0),
       inputTokens: drafted.usage?.inputTokens ?? null, outputTokens: drafted.usage?.outputTokens ?? null,
     },
-    actor, correlationId: monographId,
+    actor, correlationId: entryId,
   }));
-  return monographId;
+  return entryId;
 }
 
 /** High-alert: the reviewer's flag on the entry, or any stocked item of this generic flagged high-alert. */
@@ -236,138 +258,113 @@ function dueOn(from: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-export type SignResult = { status: "reviewed" | "awaiting_second"; version: number };
+export type SignResult = { status: "reviewed" | "awaiting_second"; version: number; renewal: boolean };
+type SignKind = "sole" | "first" | "second" | "renewal" | "renewal_first" | "renewal_second";
 
 /**
- * A Pharmacology reviewer's SIGNATURE. Edits may come with it (the plan: the reviewer "edits and signs"),
- * and an edit is always a FIRST signature: changed text restarts a high-alert entry's pair.
+ * A Pharmacology reviewer's SIGNATURE on a CRK entry.
  *
- *   - not high-alert: one signature makes it reviewed;
- *   - high-alert: the first signature waits; the SECOND must be another person and carries no edit.
+ * WITH A PENDING VERSION (a draft, or edits sent with this signature, which become the draft): signing it
+ * makes it live — one signature, or for a high-alert medicine two from different people. Edits always
+ * restart a pair. Until then the last signed version stays live.
  *
- * Every signature is kept with the text as signed (`formulary_monograph_signatures`).
+ * WITHOUT ONE (#884): the 12-month RENEWAL of the unchanged live text, open from
+ * `CRK_RENEWAL_WINDOW_DAYS` before its due date and any time after. The live text stays read throughout;
+ * the due date moves 12 months from the renewal. High-alert takes two different signers again.
+ *
+ * The high-alert flag is the reviewer's (`highAlert` sent here sets or clears it) or any stocked item's.
+ * When the entry is no longer high-alert, a waiting first signature is stale and is cleared: this
+ * signature alone decides. Every signature is kept with the text it signed and is an audited event.
  */
 export async function signCrkEntry(
-  tx: Tx, actor: Actor, monographId: string,
+  tx: Tx, actor: Actor, entryId: string,
   input: { designation: string; crk?: CrkEntry; highAlert?: boolean },
   now: Date = new Date(),
 ): Promise<SignResult> {
   if (actor.type !== "user") throw new FormularyError("attester_not_user", "only a person signs a formulary entry");
   const designation = input.designation.trim();
   if (designation === "") throw new FormularyError("invalid_crk", "a signature needs the reviewer's designation");
-  const row = (await tx.select().from(formularyMonographs).where(eq(formularyMonographs.id, monographId)).for("update"))[0];
-  if (row === undefined) throw new FormularyError("unknown_monograph", `no monograph ${monographId}`);
-  if (row.status === "reviewed") return renewCrkEntry(tx, actor, row, designation, input, now);
-  const edited = input.crk === undefined ? null : validateCrkEntry(input.crk);
-  const entry = edited ?? row.crk;
-  if (entry === null) throw new FormularyError("monograph_needs_signature", "this monograph has no CRK entry to sign");
-  const flagged = row.highAlert || input.highAlert === true;
+  let row = (await tx.select().from(formularyCrkEntries).where(eq(formularyCrkEntries.id, entryId)).for("update"))[0];
+  if (row === undefined) throw new FormularyError("unknown_crk_entry", `no CRK entry ${entryId}`);
+  if (input.crk !== undefined) {
+    /* Edits sent with a signature are a new pending version: written first, so the pair restarts on them. */
+    const edited = validateCrkEntry(input.crk);
+    await tx.update(formularyCrkEntries).set({ draftCrk: edited, draftedModel: null, draftedAt: null, draftUsage: null, ...NO_FIRST, updatedBy: actor.id, updatedAt: now })
+      .where(eq(formularyCrkEntries.id, entryId));
+    row = { ...row, draftCrk: edited, draftedModel: null, draftedAt: null, draftUsage: null, ...NO_FIRST };
+  }
+  const renewal = row.draftCrk === null;
+  const text = row.draftCrk ?? row.signedCrk;
+  if (text === null) throw new FormularyError("crk_nothing_to_sign", "this entry has no text to sign");
+  if (renewal && row.reviewDueOn !== null && istDate(now) < addDays(row.reviewDueOn, -CRK_RENEWAL_WINDOW_DAYS)) {
+    throw new FormularyError("monograph_already_reviewed", `this entry is signed until ${row.reviewDueOn}; renewal opens ${String(CRK_RENEWAL_WINDOW_DAYS)} days before, and an edit is saved as a new version`);
+  }
+  const flagged = input.highAlert ?? row.highAlert;
   const highAlert = await isHighAlert(tx, row.genericId, flagged);
-  const pendingFirst = edited === null ? row.firstSignedBy : null;
+  const pendingFirst = row.firstSignedBy;
 
-  let kind: "sole" | "first" | "second";
-  if (!highAlert) kind = "sole";
-  else if (pendingFirst === null) kind = "first";
+  let kind: SignKind;
+  /* Not (or no longer) high-alert: this signature alone decides, and the publish below clears a stale first. */
+  if (!highAlert) kind = renewal ? "renewal" : "sole";
+  else if (pendingFirst === null) kind = renewal ? "renewal_first" : "first";
   else {
     if (pendingFirst === actor.id) throw new FormularyError("monograph_same_actor", "a high-alert entry needs a second signature from a different reviewer");
-    kind = "second";
+    kind = renewal ? "renewal_second" : "second";
   }
+  const waits = kind === "first" || kind === "renewal_first";
+  const version = waits ? row.version : row.version + 1;
 
-  const version = kind === "first" ? row.version : row.version + 1;
-  if (kind === "first") {
-    await tx.update(formularyMonographs).set({
-      crk: entry, highAlert: flagged,
-      firstSignedBy: actor.id, firstSignedAt: now, firstSignerDesignation: designation,
-      ...(edited === null ? {} : { updatedBy: actor.id, updatedAt: now }),
-    }).where(eq(formularyMonographs.id, monographId));
-  } else if (kind === "sole") {
-    await tx.update(formularyMonographs).set({
-      crk: entry, highAlert: flagged, status: "reviewed", reviewedBy: actor.id, reviewedAt: now, reviewerDesignation: designation,
-      reviewDueOn: dueOn(now), version,
-      ...(edited === null ? {} : { updatedBy: actor.id, updatedAt: now }),
-    }).where(eq(formularyMonographs.id, monographId));
-  } else {
-    await tx.update(formularyMonographs).set({
-      status: "reviewed", reviewedBy: row.firstSignedBy, reviewedAt: row.firstSignedAt, reviewerDesignation: row.firstSignerDesignation,
-      secondReviewedBy: actor.id, secondReviewedAt: now, secondReviewerDesignation: designation,
-      firstSignedBy: null, firstSignedAt: null, firstSignerDesignation: null,
-      reviewDueOn: dueOn(now), version,
-    }).where(eq(formularyMonographs.id, monographId));
-  }
-  await tx.insert(formularyMonographSignatures).values({
-    id: newId(), monographId, version, kind, signedBy: actor.id, designation, signedAt: now, crk: entry,
-  });
-  await appendEvent(tx, monographSigned.make({
-    payload: { monographId, genericId: row.genericId, kind, version, designation, highAlert, renewal: false },
-    actor, correlationId: monographId,
-  }));
-  return { status: kind === "first" ? "awaiting_second" : "reviewed", version };
-}
-
-/**
- * ═══ #884 — THE 12-MONTH RENEWAL: A REVIEWER RE-AFFIRMS THE TEXT AS SIGNED ═══
- *
- * Open from `CRK_RENEWAL_WINDOW_DAYS` before the due date, and any time after it. The text does not change
- * (an edit is a draft, saved through `saveCrkEntry`), so the entry STAYS READ throughout: `status` never
- * leaves `reviewed`. A renewal is a new signature (name, designation, date) kept in
- * `formulary_monograph_signatures` with the text it re-affirmed, a `monograph.signed` event with
- * `renewal: true`, and a due date 12 months from the renewal.
- *
- * High-alert (the flag, or any stocked item flagged — read again now) takes two different signers again: the
- * first waits on `first_signed_*` while the entry stays shown; the second completes it.
- */
-async function renewCrkEntry(
-  tx: Tx, actor: Actor, row: typeof formularyMonographs.$inferSelect, designation: string,
-  input: { crk?: CrkEntry; highAlert?: boolean }, now: Date,
-): Promise<SignResult> {
-  if (input.crk !== undefined) throw new FormularyError("invalid_crk", "a renewal re-affirms the entry as signed; save an edit as a draft and sign it");
-  if (row.crk === null) throw new FormularyError("monograph_needs_signature", "this monograph has no CRK entry to renew");
-  const today = istDate(now);
-  if (row.reviewDueOn !== null && today < addDays(row.reviewDueOn, -CRK_RENEWAL_WINDOW_DAYS)) {
-    throw new FormularyError("monograph_already_reviewed", `this entry is signed until ${row.reviewDueOn}; renewal opens ${String(CRK_RENEWAL_WINDOW_DAYS)} days before`);
-  }
-  const flagged = row.highAlert || input.highAlert === true;
-  const highAlert = await isHighAlert(tx, row.genericId, flagged);
-  let kind: "renewal" | "renewal_first" | "renewal_second";
-  if (!highAlert) kind = "renewal";
-  else if (row.firstSignedBy === null) kind = "renewal_first";
-  else {
-    if (row.firstSignedBy === actor.id) throw new FormularyError("monograph_same_actor", "a high-alert renewal needs a second signature from a different reviewer");
-    kind = "renewal_second";
-  }
-  const version = kind === "renewal_first" ? row.version : row.version + 1;
-  if (kind === "renewal_first") {
-    await tx.update(formularyMonographs).set({
+  if (waits) {
+    await tx.update(formularyCrkEntries).set({
       highAlert: flagged, firstSignedBy: actor.id, firstSignedAt: now, firstSignerDesignation: designation,
-    }).where(eq(formularyMonographs.id, row.id));
-  } else if (kind === "renewal") {
-    await tx.update(formularyMonographs).set({
-      highAlert: flagged, reviewedBy: actor.id, reviewedAt: now, reviewerDesignation: designation,
-      secondReviewedBy: null, secondReviewedAt: null, secondReviewerDesignation: null, reviewDueOn: dueOn(now), version,
-    }).where(eq(formularyMonographs.id, row.id));
+    }).where(eq(formularyCrkEntries.id, entryId));
   } else {
-    await tx.update(formularyMonographs).set({
-      reviewedBy: row.firstSignedBy, reviewedAt: row.firstSignedAt, reviewerDesignation: row.firstSignerDesignation,
-      secondReviewedBy: actor.id, secondReviewedAt: now, secondReviewerDesignation: designation,
-      firstSignedBy: null, firstSignedAt: null, firstSignerDesignation: null, reviewDueOn: dueOn(now), version,
-    }).where(eq(formularyMonographs.id, row.id));
+    const pair = kind === "second" || kind === "renewal_second";
+    await tx.update(formularyCrkEntries).set({
+      highAlert: flagged, signedCrk: text, version, reviewDueOn: dueOn(now),
+      ...(pair
+        ? {
+          reviewedBy: row.firstSignedBy, reviewedAt: row.firstSignedAt, reviewerDesignation: row.firstSignerDesignation,
+          secondReviewedBy: actor.id, secondReviewedAt: now, secondReviewerDesignation: designation,
+        }
+        : {
+          reviewedBy: actor.id, reviewedAt: now, reviewerDesignation: designation,
+          secondReviewedBy: null, secondReviewedAt: null, secondReviewerDesignation: null,
+        }),
+      /* The pending version is now live; the waiting first signature is spent (or stale). */
+      draftCrk: null, draftedModel: null, draftedAt: null, draftUsage: null, ...NO_FIRST,
+    }).where(eq(formularyCrkEntries.id, entryId));
   }
-  await tx.insert(formularyMonographSignatures).values({
-    id: newId(), monographId: row.id, version, kind, signedBy: actor.id, designation, signedAt: now, crk: row.crk,
+  await tx.insert(formularyCrkSignatures).values({
+    id: newId(), entryId, version, kind, signedBy: actor.id, designation, signedAt: now, crk: text,
   });
-  await appendEvent(tx, monographSigned.make({
-    payload: { monographId: row.id, genericId: row.genericId, kind, version, designation, highAlert, renewal: true },
-    actor, correlationId: row.id,
+  await appendEvent(tx, crkSigned.make({
+    payload: { entryId, genericId: row.genericId, kind, version, designation, highAlert, renewal },
+    actor, correlationId: entryId,
   }));
-  return { status: kind === "renewal_first" ? "awaiting_second" : "reviewed", version };
+  return { status: waits ? "awaiting_second" : "reviewed", version, renewal };
 }
 
+/** The reviewer's view of one entry: the live version, the pending one, and who signed what. */
+export type CrkReviewRow = typeof formularyCrkEntries.$inferSelect;
+
+export async function crkEntryForReview(db: Db | Tx, genericSctid: string): Promise<CrkReviewRow | undefined> {
+  return (await db.select({ e: formularyCrkEntries }).from(formularyCrkEntries)
+    .innerJoin(formularyGenerics, eq(formularyGenerics.id, formularyCrkEntries.genericId))
+    .where(eq(formularyGenerics.sctid, genericSctid)))[0]?.e;
+}
+
+export type CrkState = "draft" | "pending" | "awaiting_second" | "due" | "overdue";
 export type CrkWorklist = {
-  /** `dueForReview`: signed, renewal window open, not yet past due. `overdue`: past its due date (still shown). */
-  counts: { none: number; draft: number; awaitingSecond: number; signed: number; dueForReview: number; overdue: number };
-  /** What the model has cost so far (#618: measured on the first 20 drafts), over entries it drafted. */
+  /**
+   * `draft`: never signed, waiting. `pending`: a new version waits while the last signed one stays live.
+   * `awaitingSecond`: a high-alert first signature (a version or a renewal) waits for its second.
+   * `dueForReview`: live, renewal window open, not yet past due. `overdue`: past its due date (still shown).
+   */
+  counts: { none: number; draft: number; pending: number; awaitingSecond: number; signed: number; dueForReview: number; overdue: number };
+  /** What the model has cost so far (#618: measured on the first 20 drafts), over every model draft. */
   drafting: { drafted: number; inputTokens: number; outputTokens: number };
-  items: { monographId: string; genericSctid: string; name: string; state: "draft" | "awaiting_second" | "due" | "overdue"; draftedModel: string | null; updatedAt: Date }[];
+  items: { entryId: string; genericSctid: string; name: string; state: CrkState; draftedModel: string | null; updatedAt: Date }[];
 };
 
 /** The reviewers' worklist: what waits for a signature, what waits for a second, what is due again. */
@@ -375,36 +372,43 @@ export async function crkWorklist(db: Db, today: string, limit = 50): Promise<Cr
   const windowEnd = addDays(today, CRK_RENEWAL_WINDOW_DAYS);
   const [c] = (await db.execute(sql`
     select
-      count(*) filter (where status = 'draft' and first_signed_by is null)::int as draft,
+      count(*) filter (where draft_crk is not null and signed_crk is null and first_signed_by is null)::int as draft,
+      count(*) filter (where draft_crk is not null and signed_crk is not null and first_signed_by is null)::int as pending,
       count(*) filter (where first_signed_by is not null)::int as "awaitingSecond",
-      count(*) filter (where status = 'reviewed')::int as signed,
-      count(*) filter (where status = 'reviewed' and first_signed_by is null and review_due_on >= ${today} and review_due_on <= ${windowEnd})::int as "dueForReview",
-      count(*) filter (where status = 'reviewed' and first_signed_by is null and review_due_on < ${today})::int as overdue,
-      count(*) filter (where drafted_model is not null)::int as drafted,
-      coalesce(sum((draft_usage->>'inputTokens')::int), 0)::int as "inputTokens",
-      coalesce(sum((draft_usage->>'outputTokens')::int), 0)::int as "outputTokens"
-    from formulary_monographs where crk is not null
-  `)).rows as { draft: number; awaitingSecond: number; signed: number; dueForReview: number; overdue: number; drafted: number; inputTokens: number; outputTokens: number }[];
+      count(*) filter (where signed_crk is not null)::int as signed,
+      count(*) filter (where signed_crk is not null and draft_crk is null and first_signed_by is null and review_due_on >= ${today} and review_due_on <= ${windowEnd})::int as "dueForReview",
+      count(*) filter (where signed_crk is not null and draft_crk is null and first_signed_by is null and review_due_on < ${today})::int as overdue,
+      coalesce(sum(model_drafts), 0)::int as drafted,
+      coalesce(sum(model_input_tokens), 0)::int as "inputTokens",
+      coalesce(sum(model_output_tokens), 0)::int as "outputTokens"
+    from formulary_crk_entries
+  `)).rows as { draft: number; pending: number; awaitingSecond: number; signed: number; dueForReview: number; overdue: number; drafted: number; inputTokens: number; outputTokens: number }[];
   const [n] = (await db.execute(sql`
     select count(*)::int as none from formulary_generics g
      where exists (select 1 from formulary_medicines m join items i on i.formulary_medicine_id = m.id where m.generic_sctid = g.sctid)
-       and not exists (select 1 from formulary_monographs fm where fm.generic_id = g.id and fm.crk is not null)
+       and not exists (select 1 from formulary_crk_entries e where e.generic_id = g.id)
   `)).rows as { none: number }[];
   const rows = await db.select({
-    monographId: formularyMonographs.id, genericSctid: formularyGenerics.sctid, name: formularyGenerics.name,
-    status: formularyMonographs.status, firstSignedBy: formularyMonographs.firstSignedBy, reviewDueOn: formularyMonographs.reviewDueOn,
-    draftedModel: formularyMonographs.draftedModel, updatedAt: formularyMonographs.updatedAt,
-  }).from(formularyMonographs)
-    .innerJoin(formularyGenerics, eq(formularyGenerics.id, formularyMonographs.genericId))
-    .where(and(sql`${formularyMonographs.crk} is not null`, sql`(${formularyMonographs.status} = 'draft' or ${formularyMonographs.firstSignedBy} is not null or ${formularyMonographs.reviewDueOn} <= ${windowEnd})`))
-    .orderBy(asc(formularyMonographs.updatedAt))
+    entryId: formularyCrkEntries.id, genericSctid: formularyGenerics.sctid, name: formularyGenerics.name,
+    draftCrk: formularyCrkEntries.draftCrk, signedCrk: formularyCrkEntries.signedCrk,
+    firstSignedBy: formularyCrkEntries.firstSignedBy, reviewDueOn: formularyCrkEntries.reviewDueOn,
+    draftedModel: formularyCrkEntries.draftedModel, updatedAt: formularyCrkEntries.updatedAt,
+  }).from(formularyCrkEntries)
+    .innerJoin(formularyGenerics, eq(formularyGenerics.id, formularyCrkEntries.genericId))
+    .where(sql`(${formularyCrkEntries.draftCrk} is not null or ${formularyCrkEntries.firstSignedBy} is not null or ${formularyCrkEntries.reviewDueOn} <= ${windowEnd})`)
+    .orderBy(asc(formularyCrkEntries.updatedAt))
     .limit(Math.min(Math.max(limit, 1), 200));
   return {
-    counts: { none: n?.none ?? 0, draft: c?.draft ?? 0, awaitingSecond: c?.awaitingSecond ?? 0, signed: c?.signed ?? 0, dueForReview: c?.dueForReview ?? 0, overdue: c?.overdue ?? 0 },
+    counts: {
+      none: n?.none ?? 0, draft: c?.draft ?? 0, pending: c?.pending ?? 0, awaitingSecond: c?.awaitingSecond ?? 0,
+      signed: c?.signed ?? 0, dueForReview: c?.dueForReview ?? 0, overdue: c?.overdue ?? 0,
+    },
     drafting: { drafted: c?.drafted ?? 0, inputTokens: c?.inputTokens ?? 0, outputTokens: c?.outputTokens ?? 0 },
     items: rows.map((r) => ({
-      monographId: r.monographId, genericSctid: r.genericSctid, name: r.name,
-      state: r.firstSignedBy !== null ? "awaiting_second" : r.status === "draft" ? "draft" : isOverdue(r.reviewDueOn, today) ? "overdue" : "due",
+      entryId: r.entryId, genericSctid: r.genericSctid, name: r.name,
+      state: r.firstSignedBy !== null ? "awaiting_second"
+        : r.draftCrk !== null ? (r.signedCrk === null ? "draft" : "pending")
+          : isOverdue(r.reviewDueOn, today) ? "overdue" : "due",
       draftedModel: r.draftedModel, updatedAt: r.updatedAt,
     })),
   };
@@ -424,37 +428,53 @@ export async function crkSigners(db: Db | Tx, ids: readonly string[]): Promise<M
 }
 
 /**
- * #882 — what a DOCTOR's screen reads beside a medicine: the SIGNED CRK entry of its generic, with its label.
- * Drafts, entries waiting for a second signature and the drafting cost never leave by this door.
+ * What every READER gets: the LIVE (signed) version of a generic's entry with its label, or nothing. A pending
+ * draft, a waiting first signature and the drafting cost never leave by this door. Past its due date the
+ * entry is still returned, `overdue` (#884): hiding it would hide safety text.
  */
 export type SignedCrk = {
-  medicineId: string; genericSctid: string; name: string; crk: CrkEntry; highAlert: boolean;
-  label: string; designation: string | null; secondSigner: string | null;
-  /** #884 — past its due date: still shown, labelled "review overdue". */
-  overdue: boolean;
+  genericSctid: string; name: string; crk: CrkEntry; highAlert: boolean; version: number;
+  label: string; signedOn: string; designation: string | null; secondSigner: string | null;
+  reviewDueOn: string | null; overdue: boolean;
 };
 
-export async function signedCrkForMedicines(db: Db | Tx, medicineIds: readonly string[], today: string = istDate(new Date())): Promise<SignedCrk[]> {
-  const ids = [...new Set(medicineIds)];
-  if (ids.length === 0) return [];
+async function signedRows(db: Db | Tx, where: ReturnType<typeof and>, today: string): Promise<(SignedCrk & { medicineId: string | null })[]> {
   const rows = await db.select({
     medicineId: formularyMedicines.id, genericSctid: formularyGenerics.sctid, name: formularyGenerics.name,
-    crk: formularyMonographs.crk, highAlert: formularyMonographs.highAlert, reviewedBy: formularyMonographs.reviewedBy,
-    reviewedAt: formularyMonographs.reviewedAt, designation: formularyMonographs.reviewerDesignation,
-    secondReviewedBy: formularyMonographs.secondReviewedBy, reviewDueOn: formularyMonographs.reviewDueOn,
-  }).from(formularyMedicines)
-    .innerJoin(formularyGenerics, eq(formularyGenerics.sctid, formularyMedicines.genericSctid))
-    .innerJoin(formularyMonographs, eq(formularyMonographs.genericId, formularyGenerics.id))
-    .where(and(inArray(formularyMedicines.id, ids), eq(formularyMonographs.status, "reviewed"), sql`${formularyMonographs.crk} is not null`));
+    crk: formularyCrkEntries.signedCrk, highAlert: formularyCrkEntries.highAlert, version: formularyCrkEntries.version,
+    reviewedBy: formularyCrkEntries.reviewedBy, reviewedAt: formularyCrkEntries.reviewedAt,
+    designation: formularyCrkEntries.reviewerDesignation, secondReviewedBy: formularyCrkEntries.secondReviewedBy,
+    reviewDueOn: formularyCrkEntries.reviewDueOn,
+  }).from(formularyCrkEntries)
+    .innerJoin(formularyGenerics, eq(formularyGenerics.id, formularyCrkEntries.genericId))
+    .leftJoin(formularyMedicines, eq(formularyMedicines.genericSctid, formularyGenerics.sctid))
+    .where(and(isNotNull(formularyCrkEntries.signedCrk), where));
   const names = await crkSigners(db, rows.flatMap((r) => [r.reviewedBy, r.secondReviewedBy].filter((x): x is string => x !== null)));
   return rows.flatMap((r) => {
     if (r.crk === null || r.reviewedBy === null || r.reviewedAt === null) return [];
     const on = istDate(r.reviewedAt);
     return [{
-      medicineId: r.medicineId, genericSctid: r.genericSctid, name: r.name, crk: r.crk, highAlert: r.highAlert,
-      label: crkLabel(names.get(r.reviewedBy) ?? r.reviewedBy, on), designation: r.designation,
+      medicineId: r.medicineId, genericSctid: r.genericSctid, name: r.name, crk: r.crk, highAlert: r.highAlert, version: r.version,
+      label: crkLabel(names.get(r.reviewedBy) ?? r.reviewedBy, on), signedOn: on, designation: r.designation,
       secondSigner: r.secondReviewedBy === null ? null : names.get(r.secondReviewedBy) ?? r.secondReviewedBy,
-      overdue: isOverdue(r.reviewDueOn, today),
+      reviewDueOn: r.reviewDueOn, overdue: isOverdue(r.reviewDueOn, today),
     }];
   });
+}
+
+/** The live entry of one generic, for any reader. */
+export async function signedCrkForGeneric(db: Db | Tx, genericSctid: string, today: string = istDate(new Date())): Promise<SignedCrk | undefined> {
+  const [row] = await signedRows(db, eq(formularyGenerics.sctid, genericSctid), today);
+  if (row === undefined) return undefined;
+  const { medicineId, ...entry } = row;
+  void medicineId;
+  return entry;
+}
+
+/** The live entries of the medicines on a doctor's screen, by medicine id. Unsigned ones are simply absent. */
+export async function signedCrkForMedicines(db: Db | Tx, medicineIds: readonly string[], today: string = istDate(new Date())): Promise<(SignedCrk & { medicineId: string })[]> {
+  const ids = [...new Set(medicineIds)];
+  if (ids.length === 0) return [];
+  return (await signedRows(db, inArray(formularyMedicines.id, ids), today))
+    .flatMap((r) => (r.medicineId === null ? [] : [{ ...r, medicineId: r.medicineId }]));
 }

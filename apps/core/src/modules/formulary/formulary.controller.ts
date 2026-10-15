@@ -5,8 +5,8 @@ import { z } from "zod";
 import { CONFIG, DB } from "../../kernel/tokens";
 import { openAiCompatibleClient } from "../../kernel/inference/openai-compatible";
 import { openAiKeyFromFile } from "../../kernel/inference/openai-speech";
-import { CRK_FIELDS, CRK_SOURCE_KINDS, crkLabel, isOverdue, istDate, crkSigners, crkWorklist, draftCrkEntry, saveCrkEntry, signCrkEntry, signedCrkForMedicines } from "./crk-formulary";
-import type { CrkWorklist, DraftResult, SignedCrk, SignResult } from "./crk-formulary";
+import { CRK_FIELDS, CRK_SOURCE_KINDS, crkEntryForReview, crkWorklist, draftCrkEntry, istDate, saveCrkEntry, signCrkEntry, signedCrkForGeneric, signedCrkForMedicines } from "./crk-formulary";
+import type { CrkReviewRow, CrkWorklist, DraftResult, SignedCrk, SignResult } from "./crk-formulary";
 import type { AppConfig } from "../../kernel/config";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
@@ -304,12 +304,13 @@ export class FormularyController {
   }
 
   /**
-   * #882 — the SIGNED CRK entries of the medicines on a doctor's screen (`?ids=a,b`, at most 50). Unsigned
-   * entries are absent, never flagged. ABOVE `@Get("medicines")`'s siblings with a parameter.
+   * #882 — the LIVE signed CRK entries of the medicines on a doctor's screen (`?ids=a,b`, at most 50). Unsigned
+   * entries are absent, never flagged; a pending draft never leaves by this door. ABOVE `@Get("medicines")`'s
+   * siblings with a parameter.
    */
   @RequirePermission("formulary.read", "hospital")
   @Get("medicines/crk")
-  async medicinesCrk(@Query() query: unknown): Promise<{ items: SignedCrk[] }> {
+  async medicinesCrk(@Query() query: unknown): Promise<{ items: (SignedCrk & { medicineId: string })[] }> {
     const q = parsed(z.object({ ids: z.string().max(2000) }), query);
     const ids = q.ids.split(",").map((x) => x.trim()).filter((x) => x !== "");
     if (ids.length > 50) throw httpError(400, "at most 50 medicines", "too_many_ids");
@@ -555,35 +556,13 @@ export class FormularyController {
     return { items: await searchGenerics(this.db, q.q, q.limit === undefined ? 10 : Number(q.limit)) };
   }
 
-  /** #618 — the reviewers' worklist and whether a drafting model is set. ABOVE `monographs/:sctid`. */
-  @RequirePermission("formulary.monograph.review", "hospital", { alsoAdmits: ["formulary.manage"] })
-  @Get("monographs/crk-worklist")
-  async crkWorklist(): Promise<CrkWorklist & { drafter: { configured: boolean } }> {
-    const today = istDate(new Date());
-    return { ...(await crkWorklist(this.db, today)), drafter: { configured: this.drafter().client !== null } };
-  }
-
   /** What every reader gets: the REVIEWED monograph of a generic, or 404 while there is none. */
   @RequirePermission("formulary.read", "hospital", { alsoAdmits: ["formulary.monograph.review"] })
   @Get("monographs/:sctid")
-  async monograph(@Param("sctid") sctid: string): Promise<Monograph & { signedBy: { label: string; overdue: boolean; name: string; designation: string | null; on: string; second: { name: string; designation: string | null } | null } | null }> {
+  async monograph(@Param("sctid") sctid: string): Promise<Monograph> {
     const row = await getMonograph(this.db, sctid);
     if (row === undefined) throw httpError(404, `no reviewed monograph for ${sctid}`, "unknown_monograph");
-    /* #618 — a signed CRK entry is read with its label: "CRK Medical College formulary · reviewed by <name>, <date>". */
-    if (row.crk !== null && row.reviewedBy !== null && row.reviewedAt !== null) {
-      const names = await crkSigners(this.db, [row.reviewedBy, ...(row.secondReviewedBy === null ? [] : [row.secondReviewedBy])]);
-      const on = istDate(row.reviewedAt);
-      const name = names.get(row.reviewedBy) ?? row.reviewedBy;
-      return {
-        ...row, draftUsage: null,
-        signedBy: {
-          /* #884 — past its due date it is still shown, and says "review overdue". */
-          label: crkLabel(name, on), overdue: isOverdue(row.reviewDueOn, istDate(new Date())), name, designation: row.reviewerDesignation, on,
-          second: row.secondReviewedBy === null ? null : { name: names.get(row.secondReviewedBy) ?? row.secondReviewedBy, designation: row.secondReviewerDesignation },
-        },
-      };
-    }
-    return { ...row, signedBy: null };
+    return row;
   }
 
   /** The curation door: the monograph as it stands, draft or reviewed. The reviewer reads the draft too. */
@@ -604,12 +583,44 @@ export class FormularyController {
     } catch (e) { toHttp(e); }
   }
 
+  /*
+   * ═══ #618 / #884 / DECISION 0053 — THE CRK FORMULARY, ITS OWN DOOR ═══
+   *
+   * The CRK entry has its own row and state (`formulary_crk_entries`): nothing here touches the pharmacy's
+   * monograph above, and nothing there touches this. Readers get the LIVE signed version only.
+   */
+
+  /** The reviewers' worklist and whether a drafting model is set. ABOVE `crk/:sctid`. */
+  @RequirePermission("formulary.monograph.review", "hospital", { alsoAdmits: ["formulary.manage"] })
+  @Get("crk/worklist")
+  async crkWorklist(): Promise<CrkWorklist & { drafter: { configured: boolean } }> {
+    return { ...(await crkWorklist(this.db, istDate(new Date()))), drafter: { configured: this.drafter().client !== null } };
+  }
+
+  /** What every reader gets: the LIVE signed entry with its label (and `overdue`), or 404 while none is signed. */
+  @RequirePermission("formulary.read", "hospital", { alsoAdmits: ["formulary.monograph.review"] })
+  @Get("crk/:sctid")
+  async signedCrk(@Param("sctid") sctid: string): Promise<SignedCrk> {
+    const row = await signedCrkForGeneric(this.db, sctid);
+    if (row === undefined) throw httpError(404, `no signed CRK entry for ${sctid}`, "unknown_crk_entry");
+    return row;
+  }
+
+  /** The reviewer's door: the live version, the pending one, and the waiting signature. */
+  @RequirePermission("formulary.monograph.review", "hospital", { alsoAdmits: ["formulary.manage"] })
+  @Get("crk/:sctid/review")
+  async crkForReview(@Param("sctid") sctid: string): Promise<CrkReviewRow> {
+    const row = await crkEntryForReview(this.db, sctid);
+    if (row === undefined) throw httpError(404, `no CRK entry for ${sctid}`, "unknown_crk_entry");
+    return row;
+  }
+
   /**
-   * #618 / decision 0053 — a model DRAFTS the CRK entry from the sources given. Public texts only; masked and
-   * checked before they leave. No model set ⇒ 409 `model_not_configured`, and the hand path below still works.
+   * A model DRAFTS a pending version from the sources given. Public texts only; masked and checked before
+   * they leave. No model set ⇒ 409 `model_not_configured`, and the hand path below still works.
    */
   @RequirePermission("formulary.manage", "hospital", { alsoAdmits: ["formulary.monograph.review"] })
-  @Post("monographs/:sctid/crk/draft")
+  @Post("crk/:sctid/draft")
   async draftCrk(@CurrentActor() actor: Actor, @Param("sctid") sctid: string, @Body() body: unknown): Promise<DraftResult> {
     const b = parsed(crkDraftBody, body);
     try {
@@ -617,19 +628,19 @@ export class FormularyController {
     } catch (e) { toHttp(e); }
   }
 
-  /** #618 — the entry written or corrected by hand. Unsigned again whatever it was. */
+  /** A pending version written or corrected by hand. The live signed version stays live until this is signed. */
   @RequirePermission("formulary.manage", "hospital", { alsoAdmits: ["formulary.monograph.review"] })
-  @Put("monographs/:sctid/crk")
-  async saveCrk(@CurrentActor() actor: Actor, @Param("sctid") sctid: string, @Body() body: unknown): Promise<{ monographId: string }> {
+  @Put("crk/:sctid")
+  async saveCrk(@CurrentActor() actor: Actor, @Param("sctid") sctid: string, @Body() body: unknown): Promise<{ entryId: string }> {
     const b = parsed(crkEntryBody, body);
     try {
       return await withTx(this.db, (tx) => saveCrkEntry(tx, actor, sctid, b));
     } catch (e) { toHttp(e); }
   }
 
-  /** #618 — the Pharmacology signature (designation, optional last edits); a high-alert entry needs a second. */
+  /** The Pharmacology signature: makes the pending version live, or (#884) renews the live one. */
   @RequirePermission("formulary.monograph.review", "hospital")
-  @Post("monographs/:id/sign")
+  @Post("crk/entries/:id/sign")
   async signCrk(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<SignResult> {
     const b = parsed(crkSignBody, body);
     try {
