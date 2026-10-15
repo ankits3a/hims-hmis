@@ -15777,7 +15777,11 @@
     }
   },
   "agentDock": {
-    "title": "DESK AGENT"
+    "title": "DESK AGENT",
+    "log": "what happened on this screen",
+    "nothingYet": "Nothing yet.",
+    "nothingYetLong": "Nothing yet. Every server answer this screen gets lands here with the time it landed.",
+    "ask": "ASK THE COPILOT · F2"
   },
   "teleBills": {
     "lead": "When the doctor said “Spoke to patient” and the consultation bill could not be raised, the visit waits here. Fix the cause, then retry; the doctor's next “Spoke” goes through.",
