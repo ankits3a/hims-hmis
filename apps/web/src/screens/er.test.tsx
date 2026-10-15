@@ -56,7 +56,7 @@ describe("ER lane 1 (#808) screens", () => {
           } },
         });
       }
-      if (raw.includes("/er/board")) return json(raw.includes("wall=1") ? { ...BOARD, wall: true } : BOARD);
+      if (raw.includes("/er/board")) return json(raw.includes("/er/board/wall") ? { ...BOARD, wall: true } : BOARD);
       if (raw.endsWith("/er/desk")) return json(DESK);
       if (raw.endsWith("/auth/me")) {
         return json({ actor: { type: "user", id: "me" }, permissions: { hospital: ["er.board.view", "er.arrival.register"], scoped: { department: {}, floor: {} } } });
@@ -112,6 +112,36 @@ describe("ER lane 1 (#808) screens", () => {
     expect(exp).toHaveTextContent(/In \d+ min/);
     expect(exp).toHaveTextContent("0 of 2 came");
     expect(document.body.textContent ?? "").not.toMatch(/₹|paid|deposit|bill/i);
+  });
+
+  it("a brought-dead retry after a failed send carries the same examination time and the same key", async () => {
+    let fail = true;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (init?.method === "POST") {
+        posted.push({ url: raw, body: JSON.parse(String(init.body)) as Record<string, unknown> });
+        if (fail) { fail = false; return json({ statusCode: 500, message: "upstream" }, 500); }
+        return json({ episodeId: "e4", episodeNo: "ER26-000104", patientId: "01J00000000000000000000004", uhid: "HMS0000104", alias: "Unknown-0009" });
+      }
+      if (raw.endsWith("/er/doctors")) return json([{ userId: "01J0000000000000000000000D", name: "Dr Anil" }]);
+      if (raw.endsWith("/er/desk")) return json(DESK);
+      if (raw.endsWith("/auth/me")) {
+        return json({ actor: { type: "user", id: "me" }, permissions: { hospital: ["er.board.view", "er.arrival.register"], scoped: { department: {}, floor: {} } } });
+      }
+      return json([]);
+    }));
+    renderWithRouter(<ErDesk />, "/er/desk");
+    await userEvent.click(await screen.findByTestId("er-desk-tab-dead"));
+    await userEvent.click(within(screen.getByTestId("er-desk-dead-sex")).getByText("Male"));
+    await userEvent.click(within(screen.getByTestId("er-desk-dead-age")).getByText("Adult ~50"));
+    await userEvent.selectOptions(await screen.findByTestId("er-desk-dead-doctor"), "01J0000000000000000000000D");
+    await userEvent.click(screen.getByTestId("er-desk-dead-record"));
+    await screen.findByRole("alert");
+    await new Promise((r) => setTimeout(r, 5));
+    await userEvent.click(screen.getByTestId("er-desk-dead-record"));
+    expect(posted).toHaveLength(2);
+    expect(posted[1]!.body.idempotencyKey).toBe(posted[0]!.body.idempotencyKey);
+    expect(posted[1]!.body.examinedAt).toBe(posted[0]!.body.examinedAt);
   });
 
   it("a time typed at the desk is today's IST time, or yesterday's when it is later than now", () => {

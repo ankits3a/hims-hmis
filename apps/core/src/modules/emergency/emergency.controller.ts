@@ -10,7 +10,7 @@ import { listErBays, listErDoctors, readErBoard, readErDesk, readErEpisode, sear
 import { assignErDoctor, moveBay, placeInBay, reTriage, recordErVitals, triage } from "./triage";
 import { ErError, ErRefusal, erRefusalStatus } from "./errors";
 import { linkIdentity } from "./identity";
-import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_IDENTITY_LINK, ER_TRIAGE } from "./names";
+import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_IDENTITY_LINK, ER_TRIAGE } from "./names";
 import type { Actor, ErBay, ErBoard, ErDeskView, ErDoctorOption, ErEpisodeView, ErPatientHit, ErRefusalBody } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -57,6 +57,13 @@ export class EmergencyController {
       const q = boardQuery.parse(query);
       return await readErBoard(this.db, actor, { wall: q.wall === "1" || q.wall === "true" });
     } catch (e) { toHttp(e); }
+  }
+
+  /** ER review (2026-10-15) — the wall display on its own permission (a kiosk holds only `er.board.wall`). */
+  @Get("board/wall")
+  @RequirePermission(ER_BOARD_WALL, "hospital")
+  async boardWall(@CurrentActor() actor: Actor): Promise<ErBoard> {
+    try { return await readErBoard(this.db, actor, { wall: true }); } catch (e) { toHttp(e); }
   }
 
   @Get("desk")
