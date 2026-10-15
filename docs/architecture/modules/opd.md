@@ -86,6 +86,7 @@ Source: `apps/core/src/modules/opd/`
   - `consultationParked`
   - `consultationResumed`
   - `consultationStarted`
+  - `copilotDraftProseSet`
   - `dangerFlagSchema`
   - `dayReportPatientsListed`
   - `doctorLeaveScheduled`
@@ -196,14 +197,14 @@ Source: `apps/core/src/modules/opd/`
 
 Foreign keys into: `billing`, `patients`, `resources`
 
-## HTTP routes (168)
+## HTTP routes (170)
 
 - `opd-advice.controller.ts` — 3: `/opd/advice-templates`
 - `opd-cds.controller.ts` — 8: `/opd/cds`
 - `opd-masters.controller.ts` — 24: `/opd/config`, `/opd/definition`, `/opd/departments`, `/opd/doctors`, `/opd/layouts`, `/opd/leaves`, `/opd/me`, `/opd/rooms`
 - `opd-pace.controller.ts` — 1: `/me/performance`
 - `opd-paper.controller.ts` — 11: `/opd/paper`
-- `opd-phone-consult.controller.ts` — 21: `/opd/consult`, `/opd/rx-sets`, `/opd/visits`
+- `opd-phone-consult.controller.ts` — 23: `/opd/consult`, `/opd/rx-sets`, `/opd/visits`
 - `opd-queue.controller.ts` — 37: `/opd/patients`, `/opd/prescriptions`, `/opd/queues`, `/opd/visits`
 - `opd-reports.controller.ts` — 12: `/opd/reports`
 - `opd-visits.controller.ts` — 46: `/opd/appointments`, `/opd/bench`, `/opd/continuity`, `/opd/patients`, `/opd/scan`, `/opd/slips`, `/opd/slots`, `/opd/tele`, `/opd/triage`, `/opd/visits`, `/opd/vitals`, `/opd/walk-in`
