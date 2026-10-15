@@ -19522,6 +19522,10 @@
         "rule": "No such code.",
         "fix": "Open codes"
       },
+      "event_before_arrival": {
+        "rule": "Nothing on the record happened before arrival.",
+        "fix": "Enter the real time"
+      },
       "code_ended": {
         "rule": "The code has ended.",
         "fix": "Open the code"

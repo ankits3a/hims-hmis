@@ -111,6 +111,7 @@ export const ER_REFUSALS = {
   code_needs_patient: { rule: "A clinical activation is called on a patient in the ER; Code Blue and Code Grey may be called anywhere.", fix: "Pick the patient" },
   code_open: { rule: "This code is already running for this patient.", fix: "Open the code" },
   code_not_found: { rule: "No code has this id.", fix: "Open codes" },
+  event_before_arrival: { rule: "Nothing on the record happened before the patient arrived.", fix: "Enter the real time" },
   code_ended: { rule: "The code has ended; its record is closed.", fix: "Open the code" },
   code_not_ended: { rule: "The debrief follows the end of the code.", fix: "End the code" },
   milestone_unknown: { rule: "This activation has no such milestone.", fix: "Pick a milestone" },

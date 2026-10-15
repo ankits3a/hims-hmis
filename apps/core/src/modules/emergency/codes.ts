@@ -4,11 +4,11 @@ import { raiseNoticeIn } from "../../kernel/alerts/notices";
 import { withTx } from "../../kernel/db/client";
 import { erCodeEvents, erCodes, erEpisodes, resources, users } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
-import { usersHoldingRole } from "../../kernel/workflow/roles";
+import { actorHoldsAnyRole, usersHoldingRole } from "../../kernel/workflow/roles";
 import { getPatientSummaries } from "../patients";
 import { calloutList, escalationRecipients, orgDepartmentByCode } from "../roster";
 import { lockEpisode, onceEr, provenanceOf, requireErPermission } from "./core";
-import { ErRefusal } from "./errors";
+import { ErError, ErRefusal } from "./errors";
 import { erCodeCalled, erCodeDebriefed, erCodeEnded, erCodeEvent } from "./events";
 import { ER_CODES } from "./names";
 import { isActiveDoctor } from "./triage";
@@ -43,6 +43,18 @@ const CODE_WORDS: Record<ErCodeKind, string> = {
   snakebite: "Snakebite", obstetric: "Obstetric emergency",
 };
 
+/**
+ * ER review 4 (2026-10-15): `er.codes` lets security, the front office and the duty manager CALL a code; a clinical code's
+ * record (patient, drugs, rhythms) is the clinicians'. These roles read and write it; the rest see Code Grey only.
+ */
+const CLINICAL_ROLES = ["doctor", "er_nurse", "ward_nurse", "nursing_supervisor", "medical_superintendent"];
+/** Code Grey ends on a doctor's, the MS's or the duty manager's word. */
+const GREY_ENDERS = ["doctor", "medical_superintendent", "duty_manager"];
+
+async function isClinical(db: Db | Tx, actor: Actor): Promise<boolean> {
+  return actor.type !== "user" || await actorHoldsAnyRole(db as Tx, actor.id, CLINICAL_ROLES);
+}
+
 async function nameOf(db: Db | Tx, userId: string): Promise<string> {
   return (await (db as Db).select({ n: users.fullName }).from(users).where(eq(users.id, userId)))[0]?.n ?? userId;
 }
@@ -64,6 +76,7 @@ export function codeClocks(c: Pick<CodeRow, "kind" | "doorAt" | "calledAt">, eve
 async function teamFor(tx: Tx, kind: ErCodeKind, doctorId: string | null, at: Date): Promise<string[]> {
   const ids = new Set<string>();
   const t = ER_CODE_TEAM[kind];
+  if (kind !== "code_grey" && doctorId !== null) ids.add(doctorId);
   if (kind === "code_grey") {
     for (const u of (await escalationRecipients(tx, "code_grey", { fallbackRoleKey: t.fallbackRole }, at)).userIds) ids.add(u);
     return [...ids];
@@ -72,8 +85,9 @@ async function teamFor(tx: Tx, kind: ErCodeKind, doctorId: string | null, at: Da
     const dept = await orgDepartmentByCode(tx, t.departmentCode);
     if (dept !== undefined) for (const r of await calloutList(tx, dept.id, at)) if (r.userId !== null) ids.add(r.userId);
   }
-  if (kind === "code_blue") for (const u of (await escalationRecipients(tx, "code_blue", { fallbackRoleKey: t.fallbackRole }, at)).userIds) ids.add(u);
+  // ER review 4: the ER doctor of record first — the page is capped at 12 and must never drop them.
   if (doctorId !== null) ids.add(doctorId);
+  if (kind === "code_blue") for (const u of (await escalationRecipients(tx, "code_blue", { fallbackRoleKey: t.fallbackRole }, at)).userIds) ids.add(u);
   if (ids.size === 0) for (const u of await usersHoldingRole(tx, t.fallbackRole)) ids.add(u);
   return [...ids].slice(0, 12);
 }
@@ -146,7 +160,12 @@ export async function recordCodeEvent(db: Db, actor: Actor, raw: unknown, opts: 
   const at = input.at === undefined ? now : new Date(Math.min(new Date(input.at).getTime(), now.getTime()));
   return onceEr(db, actor, "record_code_event", input.idempotencyKey, input, () => withTx(db, async (tx) => {
     const c = await lockCode(tx, input.codeId);
+    if (c.kind !== "code_grey" && !(await isClinical(tx, actor))) {
+      throw new ErError("er_forbidden", "a clinical code's record is the clinicians'", { role: "clinical" });
+    }
     if (c.endedAt !== null && input.fromPaper !== true) throw new ErRefusal("code_ended");
+    // ER review 4: nothing on the record happened before the patient arrived (or, with no patient, before the call).
+    if (at.getTime() < (c.doorAt ?? c.calledAt).getTime()) throw new ErRefusal("event_before_arrival", { doorAt: (c.doorAt ?? c.calledAt).toISOString() });
     if (input.kind === "milestone" && !ER_CODE_CLOCKS[c.kind as ErCodeKind].some((d) => d.milestone === input.milestone)) {
       throw new ErRefusal("milestone_unknown", { milestones: ER_CODE_CLOCKS[c.kind as ErCodeKind].map((d) => d.milestone) });
     }
@@ -176,6 +195,9 @@ export async function endCode(db: Db, actor: Actor, raw: unknown, opts: Opts = {
     if (c.endedAt !== null) throw new ErRefusal("code_ended");
     // Code Grey ends on the duty manager's or a doctor's word; every clinical code needs its team leader, a doctor.
     if (c.kind !== "code_grey" && actor.type === "user" && !(await isActiveDoctor(tx, actor.id))) throw new ErRefusal("not_a_doctor");
+    if (c.kind === "code_grey" && actor.type === "user" && !(await actorHoldsAnyRole(tx, actor.id, GREY_ENDERS))) {
+      throw new ErError("er_forbidden", "Code Grey ends on a doctor's or the duty manager's word", { role: "code_grey_end" });
+    }
     await tx.update(erCodes).set({ endedAt: at, outcome: input.outcome, leaderId: actor.id, ...(input.note === undefined ? {} : { note: input.note }) })
       .where(eq(erCodes.id, c.id));
     await appendEvent(tx, erCodeEnded.make({
@@ -254,8 +276,10 @@ async function views(db: Db, actor: Actor, rows: CodeRow[]): Promise<ErCodeView[
 export async function readErCodes(db: Db, actor: Actor, opts: Opts = {}): Promise<ErCodes> {
   await requireErPermission(db, actor, ER_CODES);
   const now = opts.now ?? new Date();
-  const active = await db.select().from(erCodes).where(isNull(erCodes.endedAt)).orderBy(asc(erCodes.calledAt)).limit(50);
-  const recent = await db.select().from(erCodes).where(gte(erCodes.calledAt, new Date(now.getTime() - 24 * 60 * MIN))).orderBy(desc(erCodes.calledAt)).limit(50);
+  const clinical = await isClinical(db, actor);
+  const mine = (rows: CodeRow[]) => (clinical ? rows : rows.filter((r) => r.kind === "code_grey"));
+  const active = mine(await db.select().from(erCodes).where(isNull(erCodes.endedAt)).orderBy(asc(erCodes.calledAt)).limit(50));
+  const recent = mine(await db.select().from(erCodes).where(gte(erCodes.calledAt, new Date(now.getTime() - 24 * 60 * MIN))).orderBy(desc(erCodes.calledAt)).limit(50));
   return { active: await views(db, actor, active), recent: await views(db, actor, recent.filter((r) => r.endedAt !== null)), serverNow: now.toISOString() };
 }
 
@@ -263,6 +287,7 @@ export async function readErCode(db: Db, actor: Actor, codeId: string): Promise<
   await requireErPermission(db, actor, ER_CODES);
   const c = (await db.select().from(erCodes).where(eq(erCodes.id, codeId)))[0];
   if (c === undefined) throw new ErRefusal("code_not_found");
+  if (c.kind !== "code_grey" && !(await isClinical(db, actor))) throw new ErError("er_forbidden", "a clinical code's record is the clinicians'", { role: "clinical" });
   return (await views(db, actor, [c]))[0]!;
 }
 
