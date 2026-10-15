@@ -146,6 +146,10 @@ hmis.crkmch.com {
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Cross-Origin-Opener-Policy "same-origin"
+		# The other two directions of isolation: this site embeds only its own origin, and no other origin may embed its
+		# responses. A browser walk of every route under these headers loaded everything (2026-10-15).
+		Cross-Origin-Embedder-Policy "require-corp"
+		Cross-Origin-Resource-Policy "same-origin"
 		Permissions-Policy "geolocation=(), microphone=(), camera=(self)"
 		# WASA M-01 — A CONTENT-SECURITY-POLICY, REPORT-ONLY UNTIL THE NEXT CHANGE ENFORCES IT.
 		# The SPA holds its bearer token in localStorage, so an injected script owns the session;
