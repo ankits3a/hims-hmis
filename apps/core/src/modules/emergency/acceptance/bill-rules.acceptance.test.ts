@@ -57,7 +57,7 @@ describe("ER lane 6 er-bill — the rules", () => {
     const gate = new Date(Date.now() - 13 * HOUR);
     const a = await seen(gate);
     const drug = await w.stocked("Diclofenac 75 mg");
-    await issueErMed(db, w.erNurse, { idempotencyKey: key(), episodeId: a.episodeId, itemId: drug, doseWords: "75 mg", route: "im", units: 1, orderedBy: w.erDoctor.id }, { now: gate });
+    await issueErMed(db, w.erNurse, { idempotencyKey: key(), episodeId: a.episodeId, itemId: drug, doseWords: "75 mg", route: "im", units: 2, orderedBy: w.erDoctor.id }, { now: gate });
     await dischargeFromEr(db, w.erDoctor, { idempotencyKey: key(), episodeId: a.episodeId, reason: "Pain settled", summary: SUMMARY });
     const before = await readErBill(db, w.billDesk, a.episodeId);
     expect(before.unpriced).toBe(1);
@@ -65,9 +65,10 @@ describe("ER lane 6 er-bill — the rules", () => {
       .rejects.toMatchObject({ code: "lines_unpriced" });
     await priceErLines(db, w.billDesk, { idempotencyKey: key(), episodeId: a.episodeId });
     const bill = await readErBill(db, w.billDesk, a.episodeId);
-    // Registration ₹200 + physician ₹500 + 2 × observation ₹1,000 + the drug at MRP ₹50.
+    // Registration ₹200 + physician ₹500 + 2 × observation ₹1,000 + the drug at MRP: 2 vials × ₹50.
     expect(bill.lines.find((l) => l.source === "er.observation")).toMatchObject({ qty: 2, amountPaise: 200_000 });
-    expect(bill.totalPaise).toBe(20_000 + 50_000 + 200_000 + 5_000);
+    expect(bill.lines.find((l) => l.source === "er.issue")).toMatchObject({ amountPaise: 10_000 });
+    expect(bill.totalPaise).toBe(20_000 + 50_000 + 200_000 + 10_000);
   });
 
   it("PM-JAY at ₹0 with a claim for the TPA desk; road-accident cashless to its cap; a mass-casualty event account", async () => {

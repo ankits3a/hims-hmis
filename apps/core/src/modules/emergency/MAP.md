@@ -185,6 +185,25 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
 - Clocks: a departed episode leaves the triage and care clocks (the verbal-order bell now reads open episodes only).
   DECIDED: the MLC clocks keep running after departure — spec §4.4 keeps the countersign (and the intimation) owed.
 
+### Lane 6 (er-bill, #813)
+- `bill.ts` — THE ONLY ER FILE THAT HANDLES MONEY (permission `er.bill`: front office, its supervisor, cashier, billing
+  manager, duty manager; never a clinician). The ER tariff's own lines are DERIVED, never stored (`visitFeeLines`):
+  registration (every visit but brought dead), physician fee (once the ER doctor is named), observation (qty = 6 h blocks
+  started after the first 6, until departure). Codes `ER-REG`, `ER-PHYS`, `ER-OBS`, `ER-DRUG` (contracts
+  `ER_SERVICE_CODES`); the rates are the UAT SAMPLE fixture (`scripts/fixtures/er-uat-sample-tariff.ts`) until the
+  incumbent's arrive (0076: go-live blocked till then). `priceLinesIn`: drugs at Σ batch MRP × units (carrier `ER-DRUG`),
+  rate-missing lines re-priced. All pricing as composite healthcare supply.
+- Gate: in the department and not stabilised → `not_stabilised` for an advance or a settlement. After departure a bill
+  always settles. `composeErBill` splits by payer: self all patient; PM-JAY / BNSS s.397 / MCI event all payer; road
+  accident payer up to `cover_cap_paise` for lines within `cover_until` (7 days). An MLC of sexual assault / acid attack is
+  BNSS whatever the desk set (`effective`). `settleErBill`: one billing invoice for the patient's share (advances via
+  `settleFromReceipts`, tenders as a receipt); dues need the undertaking → `holdUntilPaid` (never credit, 0013); payer share →
+  `er_payer_claims` (`to_file`: the TPA desk's seam, `listErClaims`). Admitted episodes: `rolled_to_ip`.
+- Roll-over at admission: `rollErLinesIn` (called first in lane 5's `leaveForBedIn`) carries the visit lines and the stored
+  issue/procedure lines through IPD's `carryErLineIn` (`ipd.er` lines, component `er`, one per ER line via
+  `ipd_charge_lines_er_line_ux`; a missing rate is the IP bill desk's exception); order lines go through lane 5's order seam.
+- `stage-er-setup` step d drafts the sample ER tariff (services inactive, a draft version).
+
 ## 4. Traps
 - `registerPatient` takes a `Tx` and the band reads the new patient in that same `tx` (`bandPerson(tx, …)`); reading it
   through `db` (`getPatient`) inside the transaction sees nothing.
@@ -213,6 +232,9 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   log; family surfaces and model calls off for MLC patients (lane 9 / IPD); POCSO report detail; sexual-assault
   examination protocol form; `free_by_law` read by lane 6's bill desk; death in ER (lane 5's `record_er_death`) opening
   the mortuary entry through the same seam.
+- Lane 6 built the bill. Still owed: the incumbent's real ER rates (0076 go-live blocker); a claim's status flow at the
+  TPA desk (#822 reads `er_payer_claims`); MCI tagging of episodes at scale (lane 8 opens the account); road-accident
+  claim rejection → difference to patient-payable with a reason line (spec §4.6 edge); printed ER bill.
 - Lane 5 built disposition. Still owed after lane 5: decision-to-bed climb (`er_boarding` ladder) and the MS arbitration task
   when a specialty refuses; ICU waitlist hand-off; the follow-up OPD visit BOOKED (the summary records department + date);
   designed prints of the summary / referral / LAMA form; an LWBS button on the ER desk (the desk holds the permission; the
