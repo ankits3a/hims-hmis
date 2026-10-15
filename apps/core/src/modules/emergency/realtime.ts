@@ -18,7 +18,9 @@ export const ER_TOPIC_SPACES: TopicSpace[] = [
 export const ER_REALTIME_NAMES: string[] = [...ER_BOARD_EVENT_NAMES, "patient.merged"];
 
 export function erTopicsFor(e: Pick<TailedEvent, "name">): string[] {
-  return ER_REALTIME_NAMES.includes(e.name) ? [ER_BOARD_TOPIC, ER_WALL_TOPIC] : [];
+  // ER review (2026-10-15): never the wall topic. The gateway sends each event's whole payload, and the wall (a kiosk)
+  // may see only the sanitised board read; its topic carries nothing and the wall refetches on a short timer.
+  return ER_REALTIME_NAMES.includes(e.name) ? [ER_BOARD_TOPIC] : [];
 }
 
 export const erTopicRouter: TopicRouter = { names: ER_REALTIME_NAMES, topicsFor: erTopicsFor };
