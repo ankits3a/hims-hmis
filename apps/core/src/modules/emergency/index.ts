@@ -32,7 +32,7 @@ export { listErBays, readErEpisode } from "./board";
 // Lane 3 (#810) — care, the `ER` encounter resolver and charge sink, the care clocks, the care reads.
 export {
   ER_CALL_CLIMB_MIN, ER_CARE_ACTOR, ER_CRITICAL_CLIMB_MIN, ER_SATELLITE_STORE_CODE, ER_VERBAL_SIGN_MIN, answerCall, callSpecialty,
-  cosignErNote, declareStabilised, giveErDose, issueErMed, placeErOrder, recordConsent, recordErNote, recordProcedure,
+  cosignErNote, declareStabilised, giveErDose, issueErMed, returnErMed, placeErOrder, recordConsent, recordErNote, recordProcedure,
   signErVerbalOrder, sweepErCareClocks,
 } from "./care";
 export {

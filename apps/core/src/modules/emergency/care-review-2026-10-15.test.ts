@@ -61,7 +61,7 @@ describe("ER lane 3 — review follow-ups", () => {
     const u = await unknown();
     const out = await recordConsent(db, w.erDoctor, {
       idempotencyKey: key(), episodeId: u.episodeId, kind: "procedure", about: "Suturing", method: "paper",
-      signedBy: "patient", witnessName: "Staff nurse Rekha", secondDoctorId: w.doctor.id,
+      signedBy: "patient", witnessName: "Staff nurse Rekha", secondDoctor: w.pins.doctor,
     });
     const row = (await db.select().from(erConsents).where(eq(erConsents.id, out.consentId)))[0]!;
     expect(row.secondDoctorId).toBeNull();

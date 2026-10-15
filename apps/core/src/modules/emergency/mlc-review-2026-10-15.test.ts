@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
-import { erMlcObligations, opdDepartments, opdDoctors } from "../../kernel/db/schema";
+import { erMlcObligations, idempotencyKeys, opdDepartments, opdDoctors } from "../../kernel/db/schema";
+import { requestHashOf } from "../billing/idempotency";
 import { taskKind } from "../tasks";
 import { mkUser } from "../../../test/helpers/opd";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
@@ -123,6 +124,19 @@ describe("ER lane 4 — review follow-ups", () => {
       broughtBy: { kind: "police", name: "ASI Mehta", policeStation: "PS Patliputra" },
     });
     expect(await mlcOfEpisode(db, a.episodeId)).toMatchObject({ category: "police_brought", openedByRule: true });
+  });
+
+  it("the custody witness's PIN is not part of the stored request hash", async () => {
+    const now = new Date();
+    const a = await walkIn(now);
+    const m = await openMlc(db, w.erDoctor, { idempotencyKey: key(), episodeId: a.episodeId, category: "assault" }, { now });
+    const body = {
+      idempotencyKey: key(), mlcId: m.mlcId, kind: "clothes" as const, description: "Shirt", sealNo: "S-9", action: "collected" as const,
+      secondPerson: w.pins.nurse2,
+    };
+    await handOverEvidence(db, w.erDoctor, body, { now });
+    const row = (await db.select().from(idempotencyKeys).where(eq(idempotencyKeys.key, body.idempotencyKey.toLowerCase())))[0]!;
+    expect(row.requestHash).not.toBe(requestHashOf(body));
   });
 
   it("a seal is collected once", async () => {
