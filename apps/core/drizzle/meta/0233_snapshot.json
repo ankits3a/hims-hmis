@@ -68892,6 +68892,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "accident_ref": {
+          "name": "accident_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accident_at": {
+          "name": "accident_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "event_account_id": {
           "name": "event_account_id",
           "type": "text",
@@ -69449,6 +69461,125 @@
         "er_med_issues_source_ck": {
           "name": "er_med_issues_source_ck",
           "value": "(\"er_med_issues\".\"item_id\" is null) <> (\"er_med_issues\".\"own_medicine\" is null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.er_med_returns": {
+      "name": "er_med_returns",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "issue_id": {
+          "name": "issue_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "episode_id": {
+          "name": "episode_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "units": {
+          "name": "units",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "witnessed_by": {
+          "name": "witnessed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recorded_by": {
+          "name": "recorded_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "er_med_returns_issue_ux": {
+          "name": "er_med_returns_issue_ux",
+          "columns": [
+            {
+              "expression": "issue_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "er_med_returns_issue_id_er_med_issues_id_fk": {
+          "name": "er_med_returns_issue_id_er_med_issues_id_fk",
+          "tableFrom": "er_med_returns",
+          "tableTo": "er_med_issues",
+          "columnsFrom": [
+            "issue_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "er_med_returns_episode_id_er_episodes_id_fk": {
+          "name": "er_med_returns_episode_id_er_episodes_id_fk",
+          "tableFrom": "er_med_returns",
+          "tableTo": "er_episodes",
+          "columnsFrom": [
+            "episode_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "er_med_returns_kind_ck": {
+          "name": "er_med_returns_kind_ck",
+          "value": "\"er_med_returns\".\"kind\" in ('returned', 'wasted')"
+        },
+        "er_med_returns_units_ck": {
+          "name": "er_med_returns_units_ck",
+          "value": "\"er_med_returns\".\"units\" > 0"
         }
       },
       "isRLSEnabled": false
@@ -70750,6 +70881,12 @@
         "answered_at": {
           "name": "answered_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "answer_note": {
+          "name": "answer_note",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },

@@ -193,6 +193,7 @@ export const ER_ROUTES = {
   items: "/er/items",
   issue: "/er/meds/issue",
   dose: "/er/meds/dose",
+  returnMed: "/er/meds/return",
   signVerbal: "/er/meds/sign-verbal",
   procedures: "/er/procedures",
   consents: "/er/consents",
@@ -246,6 +247,8 @@ export const ErCareViewSchema = z.object({
     issueId: ErIdSchema, name: z.string(), doseWords: z.string(), route: z.string(), units: z.number().int(), highAlert: z.boolean(),
     own: z.boolean(), orderedBy: z.string(), verbalPending: z.boolean(), at: ErInstantSchema,
     dose: z.object({ outcome: z.enum(["given", "held", "refused"]), at: ErInstantSchema, by: z.string(), reason: z.string().nullable() }).nullable(),
+    /** ER review 2: returned to stock or recorded as wastage (`return_er_med`); null while neither. */
+    returned: z.enum(["returned", "wasted"]).nullable(),
   })),
   procedures: z.array(z.object({ procedureId: ErIdSchema, name: z.string(), by: z.string(), at: ErInstantSchema })),
   consents: z.array(z.object({ consentId: ErIdSchema, kind: z.string(), about: z.string(), signedBy: z.string(), at: ErInstantSchema })),

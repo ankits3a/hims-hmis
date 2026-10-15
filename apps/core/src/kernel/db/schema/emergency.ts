@@ -98,6 +98,10 @@ export const erEpisodes = pgTable(
     payerRef: text("payer_ref"),
     coverCapPaise: integer("cover_cap_paise"),
     coverUntil: timestamp("cover_until", { withTimezone: true }),
+    /** ER review 3 (2026-10-15): the accident this road-accident cover is for — a person's episodes of ONE accident share
+     *  its ₹1.5 lakh / 7-day cap. */
+    accidentRef: text("accident_ref"),
+    accidentAt: timestamp("accident_at", { withTimezone: true }),
     eventAccountId: text("event_account_id"),
     /* ═══ ER lane 5 (#812) — the disposition, the boarding admission, the last-seen time of LWBS / abscond ═══ */
     disposition: text("disposition"),
@@ -310,6 +314,31 @@ export const erDoses = pgTable(
   ],
 );
 
+/**
+ * ER review 2 (2026-10-15, DECIDED) — `return_er_med`: one per issue. `returned` = an UNOPENED unit back to ER-SAT and
+ * its charge reversed; `wasted` = an OPENED unit, no stock movement (the issue took it), the charge stands unless the
+ * bill desk waives it; a high-alert or controlled drug's wastage names a PIN-confirmed witness.
+ */
+export const erMedReturns = pgTable(
+  "er_med_returns",
+  {
+    id: text("id").primaryKey(),
+    issueId: text("issue_id").notNull().references(() => erMedIssues.id),
+    episodeId: text("episode_id").notNull().references(() => erEpisodes.id),
+    kind: text("kind").notNull(),
+    units: integer("units").notNull(),
+    reason: text("reason").notNull(),
+    witnessedBy: text("witnessed_by"),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("er_med_returns_issue_ux").on(t.issueId),
+    check("er_med_returns_kind_ck", sql`${t.kind} in ('returned', 'wasted')`),
+    check("er_med_returns_units_ck", sql`${t.units} > 0`),
+  ],
+);
+
 export const erProcedures = pgTable(
   "er_procedures",
   {
@@ -367,6 +396,8 @@ export const erSpecialtyCalls = pgTable(
     calledAt: timestamp("called_at", { withTimezone: true }).notNull(),
     answeredBy: text("answered_by"),
     answeredAt: timestamp("answered_at", { withTimezone: true }),
+    /** ER review 2 (2026-10-15): what the called doctor said when answering ("coming in 10 min"). */
+    answerNote: text("answer_note"),
     seenBy: text("seen_by"),
     seenAt: timestamp("seen_at", { withTimezone: true }),
     climbedAt: timestamp("climbed_at", { withTimezone: true }),

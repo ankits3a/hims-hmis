@@ -154,6 +154,22 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
 - `scripts/stage-er-setup.ts` (UAT only): drafts `er_episode`, creates an EMPTY `ER-SAT` store, grants `er_nurse` to the
   all-roles account. Production: the materials head creates and stocks ER-SAT; MS + owner activate the workflow.
 
+- ER review 2 (2026-10-15, DECIDED as standard practice):
+  - `return_er_med` (`er_med_returns`, one per issue; never after a given dose; a returned issue takes no dose). MONEY
+    DEFAULT: an UNOPENED unit goes back to ER-SAT on the issue's own batches and its charge line is REVERSED; an OPENED
+    unit is WASTAGE — no stock movement (the issue already took it) and the charge STANDS unless the bill desk waives it
+    (lane 6). Wasting a high-alert or controlled (`storage_class = narcotic`) drug names a PIN-confirmed witness. A held
+    or refused dose prompts the return on the patient screen.
+  - Emergency consent: the second doctor confirms with their own username and PIN (`secondDoctor`), never a picked id.
+    Every PIN (`secondCheck`, `secondDoctor`, `witness`) is left out of the idempotency request hash.
+  - "Resident" = IPD's consultant rule read the other way (`ipd` `isConsultant`: the doctor master plus the roster grade,
+    else not a resident role): a doctor who is not a consultant writes drafts; only a consultant co-signs. The seed has
+    no `resident` role, so the role check alone never fired.
+  - A critical result rings the doctor of record AND the `er_critical` roster target's people at the first notice; the
+    climb 15 min later is unchanged. The wall board carries no per-patient critical chip.
+  - An answered call keeps the answering doctor's note (`er_specialty_calls.answer_note`).
+  - Naming another doctor as the orderer records a verbal order (signature owed, 2-hour bell).
+
 ### Lane 5 (er-dispo, #812)
 - `dispo.ts` — one disposition per episode (`discharge` | `admit` | `refer_out`) by a doctor with a reason
   (`decideDisposition`, or the exit act itself while `in_treatment` — `decidedIn`); a mismatching act is refused.
@@ -203,6 +219,16 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   issue/procedure lines through IPD's `carryErLineIn` (`ipd.er` lines, component `er`, one per ER line via
   `ipd_charge_lines_er_line_ux`; a missing rate is the IP bill desk's exception); order lines go through lane 5's order seam.
 - `stage-er-setup` step d drafts the sample ER tariff (services inactive, a draft version).
+- ER review 3 (2026-10-15): a drug is priced at its batch MRP for the PACK the MRP names, spread over the base units
+  taken (materials' `packPriceOf` + `saleAmountPaise`), never MRP × base units. At roll-over every ER advance becomes a
+  deposit of the admission (IPD `carryErAdvanceIn`, once per receipt) and an issue still without a price rolls over on
+  the `ER-DRUG` carrier (the IP desk's exception); an admitted episode takes no further ER advance (`rolled_to_ip`).
+- ER review 3, part 2 (2026-10-15, DECIDED): an advance beyond the patient's share at settlement (BNSS at ₹0, a scheme
+  that pays all) becomes an `advance_refund` request on the refund desk in the settlement's transaction. Road-accident
+  cover is per ACCIDENT (`er_episodes.accident_ref` / `accident_at`, default the scheme reference): a person's episodes of
+  one accident share the ₹1.5 lakh cap (what settled episodes drew is subtracted) and one 7-day window (the earliest
+  accident time). The window judges each line by the episode time it covers (observation by its 6-hour blocks). A future
+  accident time is refused. A dues undertaking is one of the patient's own active documents (`undertaking_invalid`).
 
 ### Lane 7 (er-codes, #814)
 - `codes.ts` — `callCode` (permission `er.codes`, broad: any staff phone): Code Blue / Code Grey anywhere (a place, no
@@ -233,6 +259,10 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   (`admission_id` nullable, `er_episode_id`).
 - Census pins moved by lane 1: seed-roles (role, pairs, permissions), seed-staff `KNOWN_ROLE_KEYS`, manifests (35;
   app-only list), caddyfile-parity routes (131), standup-check (`emergency` in NOT_DEPARTMENTS, OPEN).
+
+- TRUNCATE is not guarded: the MLC tables' append-only triggers (lane 4) are row-level BEFORE UPDATE OR DELETE only. A
+  statement-level TRUNCATE trigger would also stop the test suites' `truncateAll`; DECIDED to leave it (TRUNCATE needs the
+  table owner, which only migrations and the test reset hold).
 
 ## 5. Seams owed to later lanes
 - Lane 3 built care. Still owed after lane 3: the ER bill desk prices `rate_pending` issue lines and settles (lane 6);

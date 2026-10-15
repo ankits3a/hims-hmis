@@ -5,6 +5,8 @@ import type React from "react";
 import type { ErBill, ErBillDesk, ErRefusalBody } from "@hmis/contracts";
 import { fmtIst, fmtPaise } from "../lib/format";
 import { useRealtime } from "../lib/realtime";
+import { listPatientDocuments } from "../lib/patients-api";
+import type { WirePatientDocument } from "../lib/patients-api";
 import {
   ER_BOARD_TOPIC, ER_PAYER_KINDS, advanceApi, erRefusalOf, fetchErBill, fetchErBillDesk, newKey, priceLinesApi, setPayerApi, settleApi,
 } from "../lib/er-api";
@@ -101,6 +103,10 @@ function Bill({ b, t, busy, act }: { b: ErBill; t: T; busy: boolean; act: (w: ()
   const [signer, setSigner] = useState("");
   const [relation, setRelation] = useState("");
   const [doc, setDoc] = useState("");
+  // ER review 3: the undertaking is one of the patient's own filed documents (IPD's rule), picked here.
+  const [docs, setDocs] = useState<WirePatientDocument[]>([]);
+  const [docId, setDocId] = useState("");
+  useEffect(() => { listPatientDocuments(b.patientId).then((d) => setDocs(Array.isArray(d) ? d : []), () => setDocs([])); }, [b.patientId]);
   const [attempt, setAttempt] = useState(() => newKey());
   const rupees = Math.round(Number(cash || "0") * 100);
   const departed = b.state === "departed" || b.state === "brought_dead";
@@ -110,7 +116,7 @@ function Bill({ b, t, busy, act }: { b: ErBill; t: T; busy: boolean; act: (w: ()
       const r = await settleApi({
         episodeId: b.episodeId, settlement,
         ...(rupees > 0 ? { tenders: [{ tender, amountPaise: rupees }] } : {}),
-        ...(settlement === "dues" ? { undertaking: { signerName: signer.trim(), relation: relation.trim(), documentRef: doc.trim() } } : {}),
+        ...(settlement === "dues" ? { undertaking: { signerName: signer.trim(), relation: relation.trim(), documentRef: doc.trim(), documentId: docId } } : {}),
       }, attempt);
       setAttempt(newKey());
       return r.duesPaise > 0 ? t("erBill.settledDues", { dues: fmtPaise(r.duesPaise) }) : t("erBill.settled", { no: r.invoiceNo ?? "—" });
@@ -183,7 +189,12 @@ function Bill({ b, t, busy, act }: { b: ErBill; t: T; busy: boolean; act: (w: ()
                     <label className="erd-field"><span>{t("erBill.relation")}</span><input value={relation} onChange={(e) => setRelation(e.target.value)} /></label>
                   </div>
                   <label className="erd-field"><span>{t("erBill.undertakingRef")}</span><input value={doc} onChange={(e) => setDoc(e.target.value)} /></label>
-                  <button type="button" className="erx-btn" disabled={busy || signer.trim() === "" || relation.trim() === "" || doc.trim() === ""} data-testid="er-bill-dues-save"
+                  <label className="erd-field"><span>{t("ipdDischarge.bill.undertaking")}</span>
+                    <select value={docId} onChange={(e) => setDocId(e.target.value)} data-testid="er-bill-undertaking-doc">
+                      <option value="">{t("ipdDischarge.bill.pickUndertaking")}</option>
+                      {docs.map((d) => <option key={d.id} value={d.id}>{d.kind} · {fmtIst(d.capturedAt)}</option>)}
+                    </select></label>
+                  <button type="button" className="erx-btn" disabled={busy || signer.trim() === "" || relation.trim() === "" || doc.trim() === "" || docId === ""} data-testid="er-bill-dues-save"
                     onClick={() => void settle("dues")}>{t("erBill.recordDues")}</button>
                 </details>
               ) : null}

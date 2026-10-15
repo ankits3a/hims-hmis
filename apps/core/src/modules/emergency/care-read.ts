@@ -1,6 +1,6 @@
 import { desc, eq, inArray } from "drizzle-orm";
 import {
-  erConsents, erDoses, erEpisodes, erMedIssues, erNotes, erProcedures, erSpecialtyCalls, items, orderItems, orders, services, users,
+  erConsents, erDoses, erMedReturns, erEpisodes, erMedIssues, erNotes, erProcedures, erSpecialtyCalls, items, orderItems, orders, services, users,
 } from "../../kernel/db/schema";
 import { openCriticalsForEncounters } from "../lab";
 import { availableQtyByItem, findStoreByCode } from "../materials";
@@ -33,6 +33,8 @@ export async function readErCare(db: Db, actor: Actor, episodeId: string): Promi
     db.select().from(erSpecialtyCalls).where(eq(erSpecialtyCalls.episodeId, e.id)).orderBy(desc(erSpecialtyCalls.calledAt)),
   ]);
   const doses = meds.length === 0 ? [] : await db.select().from(erDoses).where(inArray(erDoses.issueId, meds.map((m) => m.id)));
+  const returns = new Map((meds.length === 0 ? [] : await db.select({ issueId: erMedReturns.issueId, kind: erMedReturns.kind }).from(erMedReturns)
+    .where(inArray(erMedReturns.issueId, meds.map((m) => m.id)))).map((r) => [r.issueId, r.kind as "returned" | "wasted"] as const));
   const doseOf = new Map(doses.map((d) => [d.issueId, d] as const));
   const people = [...new Set([
     ...notes.flatMap((n) => [n.authorId, ...(n.cosignedBy === null ? [] : [n.cosignedBy])]),
@@ -65,6 +67,7 @@ export async function readErCare(db: Db, actor: Actor, episodeId: string): Promi
         issueId: m.id, name: m.name, doseWords: m.doseWords, route: m.route, units: m.units, highAlert: m.highAlert, own: m.itemId === null,
         orderedBy: who(m.orderedBy), verbalPending: m.verbal && m.verbalSignedAt === null, at: m.issuedAt.toISOString(),
         dose: d === undefined ? null : { outcome: d.outcome as "given" | "held" | "refused", at: d.recordedAt.toISOString(), by: who(d.recordedBy), reason: d.reason },
+        returned: returns.get(m.id) ?? null,
       };
     }),
     procedures: procs.map((x) => ({ procedureId: x.id, name: x.name, by: who(x.performedBy), at: x.performedAt.toISOString() })),

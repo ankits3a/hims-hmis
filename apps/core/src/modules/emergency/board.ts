@@ -123,7 +123,8 @@ async function tilesFor(db: Db, actor: Actor, eps: readonly EpisodeRow[], at: Da
   for (const e of eps) {
     const n = names.get(e.id)!;
     const extra: ErTileChip[] = [];
-    if (critical.has(e.episodeNo)) extra.push("critical");
+    // ER review 2 (2026-10-15, DECIDED): a critical result is a clinical flag — never on the wall (counts only there).
+    if (!wall && critical.has(e.episodeNo)) extra.push("critical");
     if (waitingCall.has(e.id)) extra.push("call_waiting");
     if (e.stabilisedAt !== null) extra.push("stabilised");
     // Lane 5 (#812): admitted, waiting here for the inpatient bed.

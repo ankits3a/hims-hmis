@@ -67,6 +67,7 @@ Source: `apps/core/src/modules/emergency/`
   - `recordConsent(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_consent">>`
   - `recordErNote(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_er_note">>`
   - `recordProcedure(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_procedure">>`
+  - `returnErMed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"return_er_med">>`
   - `signErVerbalOrder(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"sign_er_verbal_order">>`
   - `sweepErCareClocks(db: Db, now: Date): Promise<{ criticals: number; climbs: number; calls: number; verbal: number }>`
 - `charge-sink.ts`
@@ -172,12 +173,12 @@ Source: `apps/core/src/modules/emergency/`
 
 ## Tables (`kernel/db/schema/emergency.ts`)
 
-`er_admission_disputes`, `er_advances`, `er_bands`, `er_bills`, `er_charge_lines`, `er_code_events`, `er_codes`, `er_consents`, `er_critical_alerts`, `er_departure_records`, `er_doses`, `er_episodes`, `er_event_accounts`, `er_med_issues`, `er_mlc_addenda`, `er_mlc_custody`, `er_mlc_intimations`, `er_mlc_obligations`, `er_mlcs`, `er_notes`, `er_payer_claims`, `er_pre_alerts`, `er_procedures`, `er_specialty_calls`, `er_triage_entries`
+`er_admission_disputes`, `er_advances`, `er_bands`, `er_bills`, `er_charge_lines`, `er_code_events`, `er_codes`, `er_consents`, `er_critical_alerts`, `er_departure_records`, `er_doses`, `er_episodes`, `er_event_accounts`, `er_med_issues`, `er_med_returns`, `er_mlc_addenda`, `er_mlc_custody`, `er_mlc_intimations`, `er_mlc_obligations`, `er_mlcs`, `er_notes`, `er_payer_claims`, `er_pre_alerts`, `er_procedures`, `er_specialty_calls`, `er_triage_entries`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (66)
+## HTTP routes (67)
 
-- `emergency.controller.ts` — 66: `/er/arrivals`, `/er/bands`, `/er/bays`, `/er/bill`, `/er/board`, `/er/calls`, `/er/care`, `/er/codes`, `/er/consents`, `/er/desk`, `/er/dispo`, `/er/doctor`, `/er/doctors`, `/er/episodes`, `/er/identity`, `/er/items`, `/er/meds`, `/er/mlc`, `/er/notes`, `/er/orders`, `/er/patients`, `/er/pre-alerts`, `/er/procedures`, `/er/stabilised`, `/er/triage`, `/er/triage-doctors`, `/er/vitals`
+- `emergency.controller.ts` — 67: `/er/arrivals`, `/er/bands`, `/er/bays`, `/er/bill`, `/er/board`, `/er/calls`, `/er/care`, `/er/codes`, `/er/consents`, `/er/desk`, `/er/dispo`, `/er/doctor`, `/er/doctors`, `/er/episodes`, `/er/identity`, `/er/items`, `/er/meds`, `/er/mlc`, `/er/notes`, `/er/orders`, `/er/patients`, `/er/pre-alerts`, `/er/procedures`, `/er/stabilised`, `/er/triage`, `/er/triage-doctors`, `/er/vitals`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/emergency`

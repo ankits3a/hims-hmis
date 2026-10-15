@@ -275,7 +275,9 @@ export async function recordBelongings(db: Db, actor: Actor, raw: unknown, opts:
   const input: Input<"record_belongings"> = ER_INTENTS.record_belongings.input.parse(raw);
   await requireErPermission(db, actor, ER_MLC);
   const at = opts.now ?? new Date();
-  return onceEr(db, actor, "record_belongings", input.idempotencyKey, input, async () => {
+  // ER review 2 (2026-10-15): the witness's PIN never reaches the idempotency store's request hash.
+  const hashed = { ...input, secondPerson: { username: input.secondPerson.username } };
+  return onceEr(db, actor, "record_belongings", input.idempotencyKey, hashed, async () => {
     const witness = await verifySecondPerson(db, actor, input.secondPerson.username, input.secondPerson.pin, at, holdsMlc);
     return withTx(db, async (tx) => {
       const m = await lockMlc(tx, input.mlcId);
@@ -297,7 +299,8 @@ export async function handOverEvidence(db: Db, actor: Actor, raw: unknown, opts:
   const input: Input<"hand_over_evidence"> = ER_INTENTS.hand_over_evidence.input.parse(raw);
   await requireErPermission(db, actor, ER_MLC);
   const at = opts.now ?? new Date();
-  return onceEr(db, actor, "hand_over_evidence", input.idempotencyKey, input, async () => {
+  const hashed = { ...input, secondPerson: { username: input.secondPerson.username } };
+  return onceEr(db, actor, "hand_over_evidence", input.idempotencyKey, hashed, async () => {
     const witness = await verifySecondPerson(db, actor, input.secondPerson.username, input.secondPerson.pin, at, holdsMlc);
     return withTx(db, async (tx) => {
       const m = await lockMlc(tx, input.mlcId);

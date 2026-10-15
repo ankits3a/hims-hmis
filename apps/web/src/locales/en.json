@@ -19314,6 +19314,26 @@
         "rule": "No such ER medicine issue.",
         "fix": "Open episode"
       },
+      "dose_given": {
+        "rule": "A dose was given from this issue.",
+        "fix": "Open medication record"
+      },
+      "already_returned": {
+        "rule": "Already returned or wasted.",
+        "fix": "Open medication record"
+      },
+      "nothing_to_return": {
+        "rule": "Own medicine was never from stock.",
+        "fix": "Open medication record"
+      },
+      "wastage_needs_witness": {
+        "rule": "Wastage of this drug needs a witness.",
+        "fix": "Ask a colleague"
+      },
+      "issue_returned": {
+        "rule": "This issue was returned or wasted.",
+        "fix": "Issue again"
+      },
       "dose_already_recorded": {
         "rule": "This dose is already recorded.",
         "fix": "Open the medication record"
@@ -19473,6 +19493,10 @@
       "tender_short": {
         "rule": "Not enough taken; record dues.",
         "fix": "Record dues"
+      },
+      "undertaking_invalid": {
+        "rule": "The undertaking must be this patient's own active document.",
+        "fix": "File the undertaking"
       },
       "undertaking_needed": {
         "rule": "Dues need a signed undertaking.",
@@ -19829,6 +19853,12 @@
       "verbalPending": "Verbal — to sign",
       "secondUser": "Second person (username)",
       "secondPin": "Their PIN",
+      "returnPrompt": "Not given — return it",
+      "returnUnopened": "Return unopened",
+      "returnOpened": "Opened — wastage",
+      "witnessHint": "High-alert or controlled: a witness's username and PIN",
+      "returned": "Returned to stock",
+      "wasted": "Recorded as wastage",
       "whyNot": "Why held or refused",
       "give": "Given",
       "given": "Dose recorded",
