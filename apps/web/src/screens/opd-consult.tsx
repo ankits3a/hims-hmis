@@ -1832,8 +1832,6 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
       setDiseaseReasons([]);
       setRenalHits([]);
       setRenalReasons([]);
-    setRenalHits([]);
-    setRenalReasons([]);
       setOverrideError(null);
       // Soft hits survive a successful issue: they are what the doctor should still know about.
       setNotices(issued.notices ?? []);
