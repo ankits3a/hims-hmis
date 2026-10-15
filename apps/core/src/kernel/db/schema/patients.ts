@@ -88,6 +88,14 @@ export const patients = pgTable(
      * the backfill deliberately differ, and 0043 spells that out.
      */
     identityAssurance: text("identity_assurance").notNull().default("self_declared"),
+    /**
+     * ER lane 1 (#808, spec SPEC-emergency §3.4) — 'identified' | 'unidentified'. An unconscious or unknown patient in the
+     * emergency department gets a REAL UHID at once, flagged 'unidentified', named by the ER's sequence alias
+     * ("Unknown-0412"); never a temporary or fake UHID. When the person is identified, the ER files a `patient_merge`
+     * request (unknown → true record) and the existing merge carries everything; the flag is never flipped in place.
+     * The default is 'identified': every row before this column was registered by name.
+     */
+    identityStatus: text("identity_status").notNull().default("identified"),
     addressLine: text("address_line"),
     district: text("district"),
     stateName: text("state_name"),

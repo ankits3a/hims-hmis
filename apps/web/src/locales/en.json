@@ -169,7 +169,9 @@
     "ipdNarcotics": "Narcotics",
     "ipdPharmacy": "IP pharmacy",
     "hospitalNumbers": "Hospital numbers",
-    "ipdTpa": "TPA desk"
+    "ipdTpa": "TPA desk",
+    "erDesk": "ER desk",
+    "erBoard": "ER board"
   },
   "palette": {
     "title": "Search",
@@ -19552,6 +19554,287 @@
       "package_claim_filed": "A claim is filed — packages are fixed.",
       "time_in_future": "A time cannot be later than now.",
       "invalid_request": "Check the fields and try again."
+    }
+  },
+  "er": {
+    "mode": {
+      "walk_in": "Walk-in",
+      "private_vehicle": "Private vehicle",
+      "ambulance_108": "108 / 102 ambulance",
+      "own_ambulance": "Our ambulance",
+      "police": "Police",
+      "referred_in": "Referred in",
+      "inter_facility": "From another hospital"
+    },
+    "sex": {
+      "male": "Male",
+      "female": "Female",
+      "other": "Other",
+      "unknown": "Not known"
+    },
+    "sexShort": {
+      "male": "M",
+      "female": "F",
+      "other": "O",
+      "unknown": "U"
+    },
+    "band": {
+      "infant": "Infant <1",
+      "child": "Child ~6",
+      "teen": "Teen ~15",
+      "young_adult": "Adult ~30",
+      "adult": "Adult ~50",
+      "elderly": "Elderly ~70"
+    },
+    "bandShort": {
+      "infant": "<1 y",
+      "child": "~6 y",
+      "teen": "~15 y",
+      "young_adult": "~30 y",
+      "adult": "~50 y",
+      "elderly": "~70 y"
+    },
+    "ageYears": "{{n}} y",
+    "chip": {
+      "unidentified": "Unidentified",
+      "returned_24h": "Back within 24 h",
+      "name_alert": "Name alert",
+      "police": "Police",
+      "ambulance": "Ambulance",
+      "paper": "Paper sheet"
+    },
+    "state": {
+      "arrived": "Waiting for triage",
+      "triaged": "Triaged",
+      "in_treatment": "In treatment",
+      "disposition_decided": "Decision made",
+      "departed": "Left",
+      "brought_dead": "Brought dead"
+    },
+    "refusal": {
+      "patient_not_found": {
+        "rule": "No patient has this id.",
+        "fix": "Search patient"
+      },
+      "patient_deceased": {
+        "rule": "The patient is recorded as deceased.",
+        "fix": "Open patient record"
+      },
+      "patient_admitted": {
+        "rule": "Admitted on a ward — the ward team's patient.",
+        "fix": "Call the ward team"
+      },
+      "episode_not_found": {
+        "rule": "No emergency episode has this id.",
+        "fix": "Open ER desk"
+      },
+      "episode_wrong_state": {
+        "rule": "This episode does not allow that now.",
+        "fix": "Open episode"
+      },
+      "episode_already_open": {
+        "rule": "Already in the ER — one open episode per patient.",
+        "fix": "Open current episode"
+      },
+      "state_changed": {
+        "rule": "Someone changed this just now; nothing was saved.",
+        "fix": "Reload"
+      },
+      "registration_not_ready": {
+        "rule": "Registration is not set up, so no UHID can be issued.",
+        "fix": "Ask the administrator"
+      },
+      "time_in_future": {
+        "rule": "A time cannot be later than now.",
+        "fix": "Fix the time"
+      },
+      "arrival_too_old": {
+        "rule": "Over a day ago — enter it from the paper ER sheet.",
+        "fix": "Enter the paper serial"
+      },
+      "paper_serial_used": {
+        "rule": "This paper sheet is already entered.",
+        "fix": "Open that episode"
+      },
+      "pre_alert_not_found": {
+        "rule": "No such expected arrival.",
+        "fix": "Open ER desk"
+      },
+      "pre_alert_closed": {
+        "rule": "That expected arrival has closed.",
+        "fix": "Register without it"
+      },
+      "examined_before_arrival": {
+        "rule": "The examination cannot be before the arrival.",
+        "fix": "Fix the time"
+      },
+      "printer_offline": {
+        "rule": "The band printer is not answering.",
+        "fix": "Pick nearest printer"
+      },
+      "band_already_printed": {
+        "rule": "A band is already printed.",
+        "fix": "Reprint band"
+      },
+      "no_band_to_reprint": {
+        "rule": "No band to reprint yet.",
+        "fix": "Print band"
+      },
+      "not_unidentified": {
+        "rule": "Only an unidentified record is linked.",
+        "fix": "Open patient record"
+      },
+      "same_patient": {
+        "rule": "Pick a different, true record.",
+        "fix": "Pick the true record"
+      },
+      "true_record_unidentified": {
+        "rule": "That record is itself unidentified.",
+        "fix": "Pick the true record"
+      },
+      "merge_already_requested": {
+        "rule": "A merge is already waiting for approval.",
+        "fix": "Open merge requests"
+      }
+    }
+  },
+  "erBoard": {
+    "title": "ER board",
+    "showNames": "Show names",
+    "wallMode": "Wall screen",
+    "desk": "ER desk",
+    "home": "Home",
+    "totals": "ER totals",
+    "stat": {
+      "inDept": "In department",
+      "waiting": "Waiting for triage",
+      "noneWaiting": "Nobody waiting",
+      "longest": "Longest {{minutes}} min",
+      "expected": "Expected",
+      "bays": "Bays free",
+      "baysOf": "of {{total}}",
+      "arrivals": "Arrivals today",
+      "broughtDead": "Brought dead today"
+    },
+    "col": {
+      "expected": "Expected",
+      "waiting": "Waiting for triage",
+      "inTreatment": "In treatment"
+    },
+    "empty": {
+      "expected": "No ambulance on the way",
+      "waiting": "Nobody waiting for triage",
+      "inTreatment": "Triaged patients show here"
+    },
+    "eta": {
+      "in": "In {{minutes}} min",
+      "now": "Due now",
+      "late": "{{minutes}} min late"
+    },
+    "count": "{{arrived}} of {{total}} came",
+    "since": "{{minutes}} min",
+    "triageDue": "Triage in {{minutes}} min",
+    "triageLate": "Triage overdue {{minutes}} min",
+    "live": "Live · {{time}}",
+    "offline": "Offline · last update {{time}}",
+    "offlineNever": "Offline",
+    "legend": "Time since arrival · triage due 5 min after the gate",
+    "triageNow": "Triage due now"
+  },
+  "erDesk": {
+    "title": "ER desk",
+    "board": "ER board",
+    "newArrival": "New arrival",
+    "list": "In the ER",
+    "tab": {
+      "unknown": "Unknown",
+      "known": "Known",
+      "expected": "Expected",
+      "dead": "Brought dead"
+    },
+    "fromPreAlert": "For: {{mode}}, expected {{time}}",
+    "clear": "Clear",
+    "sex": "Sex",
+    "age": "Age (about)",
+    "mode": "Came by",
+    "sexOptional": "Sex (if told)",
+    "ageOptional": "Age (if told)",
+    "more": "More details (optional)",
+    "less": "Fewer details",
+    "marks": "Marks that tell them apart",
+    "marksHint": "Tattoo, scar, clothes",
+    "complaint": "Complaint, as heard",
+    "bringer": "Brought by (name)",
+    "bringerPhone": "Their mobile",
+    "samaritan": "A Good Samaritan is never asked for name, money or to stay.",
+    "cameAt": "Came in at (if entered late)",
+    "paper": "Paper sheet serial (downtime)",
+    "registerUnknown": "Register · print band",
+    "registerKnown": "Register · print band",
+    "known": {
+      "find": "Find patient",
+      "findHint": "Scan the card, or type UHID, mobile or name",
+      "none": "No match — add as new below",
+      "newPatient": "New patient (name known)",
+      "name": "Name"
+    },
+    "change": "Change",
+    "expected": {
+      "title": "Expected",
+      "mode": "Coming by",
+      "eta": "Arriving in",
+      "minutes": "{{n}} min",
+      "count": "Patients",
+      "fewer": "One fewer",
+      "more": "One more",
+      "complaintHint": "What the caller said",
+      "send": "Put on the board",
+      "sent": "On the board as Expected",
+      "arrived": "Arrived",
+      "notComing": "Not coming"
+    },
+    "dead": {
+      "unknown": "Unknown body",
+      "known": "Known patient",
+      "examinedBy": "Examined by",
+      "pickDoctor": "Pick the doctor",
+      "ecg": "ECG strip recorded",
+      "hint": "No band, no charge. The MLC and mortuary steps follow.",
+      "record": "Record brought dead",
+      "done": "Recorded: {{no}}"
+    },
+    "failed": "Not saved — try again",
+    "today": "Since yesterday",
+    "noneToday": "No arrivals in the last 24 h",
+    "came": "Came {{time}}",
+    "entered": "entered {{time}}",
+    "identity": {
+      "waiting": "Merge waiting for MS → {{uhid}}",
+      "granted": "Merge approved → {{uhid}}",
+      "merged": "Identified → {{uhid}}",
+      "refused": "Merge refused"
+    },
+    "bandStale": "Band shows the old name",
+    "printBand": "Print band",
+    "reprintBand": "Reprint band",
+    "bandPrinted": "Band {{serial}} printed",
+    "identify": "Identify",
+    "identifyFind": "True record (UHID, mobile or name)",
+    "how": {
+      "family": "Family",
+      "id_document": "ID card",
+      "police": "Police",
+      "abha": "ABHA",
+      "other": "Other"
+    },
+    "identifyNote": "Who identified, and how",
+    "identifySend": "Ask MS to merge",
+    "identifyHint": "The MS approves; MRD merges. Everything follows the true record.",
+    "band": {
+      "title": "Band",
+      "barcode": "Band serial",
+      "print": "Print band",
+      "next": "Next arrival"
     }
   }
 }

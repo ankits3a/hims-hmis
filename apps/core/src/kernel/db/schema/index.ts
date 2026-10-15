@@ -150,3 +150,6 @@ export * from "./transport";
 // E4.4 DIET (#736, decision 0072) — meal rounds, diet orders, NPO, the meal lists and their trays, dietician consults.
 // References `ipd_admissions` and `resources` (the ward); nothing reads it but `modules/diet`.
 export * from "./diet";
+// ER lane 1 (#808, decision 0076) — the emergency department: the ER episode, the pre-alert and the ER band register.
+// References `patients`; nothing reads it but `modules/emergency`.
+export * from "./emergency";

@@ -35,6 +35,7 @@ import { sweepOverdueQa } from "../../modules/aerb";
 import { runAliasJob, runFlowLearning } from "../../modules/opd";
 import { syncAttendance } from "../../modules/attendance";
 import { sweepTasks } from "../../modules/tasks";
+import { lapseErPreAlerts } from "../../modules/emergency";
 import { ipdAttendantRecipient, ipdTemplateRegistrations, lapseBedReservations, postNightlyIpdCharges, runIpdBillDeskNightly, sweepIpdEmar, sweepIpdNursing, sweepIpdRoundsClock } from "../../modules/ipd";
 import { buildDueLists } from "../../modules/diet";
 import { sweepBmwStorage } from "../../modules/bmw";
@@ -752,7 +753,12 @@ export function registerAllJobs(
   scheduler.register({
     name: "lapseBedReservations",
     every: 60_000,
-    run: async (now) => { await lapseBedReservations(db, now); },
+    // ER lane 1 (#808): the ER pre-alert lapse (2 h after the expected time) rides this job — no job, no pool client of
+    // its own. Its own try: a failing pre-alert lapse never stops the bed lapse.
+    run: async (now) => {
+      await lapseBedReservations(db, now);
+      try { await lapseErPreAlerts(db, now); } catch (e) { erLog.error(`lapseErPreAlerts failed: ${e instanceof Error ? e.message : String(e)}`); }
+    },
   });
   /*
    * IPD NURSING E4.1 (#733) — the nursing clock, every minute: an admission with no nursing assessment one hour after
@@ -786,6 +792,7 @@ export function registerAllJobs(
 
 const clockLog = new Logger("worker.sweepTasks");
 const emarLog = new Logger("worker.ipdEmar");
+const erLog = new Logger("worker.erPreAlerts");
 const roundsClockLog = new Logger("worker.ipdRoundsClock");
 
 /**

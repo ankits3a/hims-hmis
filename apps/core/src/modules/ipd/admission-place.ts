@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { IPD_PLACED_STATES } from "@hmis/contracts";
 import { ipdAdmissions, ipdBedStays, resources } from "../../kernel/db/schema";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -66,4 +66,18 @@ export async function admissionPlace(db: Db | Tx, admissionId: string): Promise<
     bedId: stay?.bedId ?? null, bedCode, bedClass: stay?.bedClass ?? null,
     wardId: ward?.id ?? null, wardCode: ward?.code ?? null, wardName: ward?.name ?? null,
   };
+}
+
+/**
+ * ER lane 1 (#808) — the patient's admission in which they lie on a bed (admitted, transferring, fit declared,
+ * discharging), or null. The ER desk asks it before an arrival: an admitted patient who wanders to the emergency
+ * department is the ward team's (spec SPEC-emergency §4.1) — refused with the ward and bed in its detail. `patientIds`
+ * is the patient and every record merged into them (the caller resolves the merge chain).
+ */
+export async function placedAdmissionOf(db: Db | Tx, patientIds: readonly string[]): Promise<AdmissionPlace | null> {
+  if (patientIds.length === 0) return null;
+  const a = (await db.select({ id: ipdAdmissions.id }).from(ipdAdmissions).where(and(
+    inArray(ipdAdmissions.patientId, [...patientIds]), inArray(ipdAdmissions.state, [...IPD_PLACED_STATES]),
+  )))[0];
+  return a === undefined ? null : admissionPlace(db, a.id);
 }

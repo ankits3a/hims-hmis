@@ -85,6 +85,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "front_office",
     permissions: [
+      // ER lane 1 (#808, decision 0076) — the ER desk registers arrivals and prints the band; the tracking board.
+      // README "Emergency arrival" prose.
+      "er.board.view", "er.arrival.register",
       // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
       "ipd.beds.view",
       "ipd.beds.manage",
@@ -141,6 +144,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "front_office_supervisor",
     permissions: [
+      // ER lane 1 (#808) — as the front office: the ER desk and the tracking board. README "Emergency arrival" prose.
+      "er.board.view", "er.arrival.register",
       // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
       "ipd.beds.view",
       "ipd.beds.manage",
@@ -250,6 +255,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "doctor",
     permissions: [
+      // ER lane 1 (#808) — the tracking board (no money on it, decision 0058). README "Emergency arrival" prose.
+      "er.board.view",
       // DIET E4.4 (#736) — the doctor orders the diet, sets or lifts NPO, and reads the ward diet sheet and kitchen board.
       "diet.view", "diet.order", "diet.npo", "diet.clinical.view",
       // IPD ADMISSION E1.2 (#719) — a doctor advises admission (raises the request); answers carry no money (0058).
@@ -1041,6 +1048,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "medical_superintendent",
     permissions: [
+      // ER lane 1 (#808) — the tracking board. README "Emergency arrival" prose.
+      "er.board.view",
       // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
       "ipd.beds.view",
       // PASSES E1.3 (#720) — a visitor ban, and the manager's pause and police custody.
@@ -1195,6 +1204,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     // task out of hours, when no services supervisor is on.
     permissions: [
       "auth.temp_role.grant", "roster.read", "copilot.health.read",
+      // ER lane 1 (#808) — runs the ER desk at night and reads the board. README "Emergency arrival" prose.
+      "er.board.view", "er.arrival.register",
       "tasks.view", "tasks.supervise",
       // IPD BEDS E1.1 (#718) — the duty manager approves overflow beds (spec §4.1) and runs the board at night.
       "ipd.beds.view", "ipd.beds.manage", "ipd.beds.clean", "ipd.beds.overflow",
@@ -2233,6 +2244,13 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    */
   { roleKey: "dietician", permissions: ["diet.view", "diet.order", "diet.npo", "diet.serve", "diet.kitchen", "diet.manage", "diet.clinical.view", "tasks.view"] },
   { roleKey: "kitchen_staff", permissions: ["diet.view", "diet.kitchen"] },
+  /**
+   * ER lane 1 (#808, decision 0076) — the CASUALTY NURSE. No role existed for the emergency department's nurses; the
+   * standard Indian corporate-hospital split keeps them apart from the ward nurse (different clocks, different acts).
+   * Lane 1 grants the arrival and the board: at night the casualty nurse registers the arrival and prints the band
+   * when no clerk is at the ER desk. Triage (`er.triage`) arrives with lane 2. NOBODY is assigned by any seed.
+   */
+  { roleKey: "er_nurse", permissions: ["er.board.view", "er.arrival.register"] },
 ];
 
 /**
@@ -2499,6 +2517,7 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   // E4.4 DIET (#736).
   dietician: "Dietician (diet orders, NPO, consults, meal rounds and the kitchen lists)",
   kitchen_staff: "Kitchen Staff (builds, prints and dispatches the meal lists)",
+  er_nurse: "Casualty Nurse (registers ER arrivals and prints the ER band; the tracking board)",
   maintenance_staff: "Maintenance Staff (engineering technicians: electrical, plumbing, AC, carpentry repairs)",
   // IPD NURSING E4.1 (#733) — the ward nursing ladder.
   ward_nurse: "Ward Nurse (staff nurse: vitals, assessment, intake/output, notes, shift handover, transfers)",

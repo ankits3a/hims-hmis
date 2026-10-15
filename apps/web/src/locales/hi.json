@@ -169,7 +169,9 @@
     "ipdNarcotics": "नारकोटिक्स",
     "ipdPharmacy": "IP फ़ार्मेसी",
     "hospitalNumbers": "अस्पताल आंकड़े",
-    "ipdTpa": "टीपीए डेस्क"
+    "ipdTpa": "टीपीए डेस्क",
+    "erDesk": "ER डेस्क",
+    "erBoard": "ER बोर्ड"
   },
   "palette": {
     "title": "खोज",
@@ -19552,6 +19554,287 @@
       "package_claim_filed": "क्लेम दाखिल है — पैकेज तय हैं।",
       "time_in_future": "समय अभी से बाद का नहीं हो सकता।",
       "invalid_request": "फ़ील्ड जाँचें और फिर कोशिश करें।"
+    }
+  },
+  "er": {
+    "mode": {
+      "walk_in": "पैदल",
+      "private_vehicle": "निजी वाहन",
+      "ambulance_108": "108 / 102 एम्बुलेंस",
+      "own_ambulance": "अस्पताल की एम्बुलेंस",
+      "police": "पुलिस",
+      "referred_in": "रेफ़र होकर",
+      "inter_facility": "दूसरे अस्पताल से"
+    },
+    "sex": {
+      "male": "पुरुष",
+      "female": "महिला",
+      "other": "अन्य",
+      "unknown": "पता नहीं"
+    },
+    "sexShort": {
+      "male": "पु",
+      "female": "म",
+      "other": "अ",
+      "unknown": "?"
+    },
+    "band": {
+      "infant": "शिशु <1",
+      "child": "बच्चा ~6",
+      "teen": "किशोर ~15",
+      "young_adult": "वयस्क ~30",
+      "adult": "वयस्क ~50",
+      "elderly": "बुज़ुर्ग ~70"
+    },
+    "bandShort": {
+      "infant": "<1 वर्ष",
+      "child": "~6 वर्ष",
+      "teen": "~15 वर्ष",
+      "young_adult": "~30 वर्ष",
+      "adult": "~50 वर्ष",
+      "elderly": "~70 वर्ष"
+    },
+    "ageYears": "{{n}} वर्ष",
+    "chip": {
+      "unidentified": "अज्ञात",
+      "returned_24h": "24 घंटे में दोबारा",
+      "name_alert": "नाम सावधानी",
+      "police": "पुलिस",
+      "ambulance": "एम्बुलेंस",
+      "paper": "कागज़ी शीट"
+    },
+    "state": {
+      "arrived": "ट्राइएज की प्रतीक्षा",
+      "triaged": "ट्राइएज हुआ",
+      "in_treatment": "इलाज जारी",
+      "disposition_decided": "निर्णय हुआ",
+      "departed": "चले गए",
+      "brought_dead": "मृत लाए गए"
+    },
+    "refusal": {
+      "patient_not_found": {
+        "rule": "इस आईडी का कोई मरीज़ नहीं।",
+        "fix": "मरीज़ खोजें"
+      },
+      "patient_deceased": {
+        "rule": "मरीज़ मृत दर्ज है।",
+        "fix": "मरीज़ रिकॉर्ड खोलें"
+      },
+      "patient_admitted": {
+        "rule": "वार्ड में भर्ती — वार्ड टीम का मरीज़।",
+        "fix": "वार्ड टीम को बुलाएँ"
+      },
+      "episode_not_found": {
+        "rule": "इस आईडी का कोई आपातकालीन एपिसोड नहीं।",
+        "fix": "ER डेस्क खोलें"
+      },
+      "episode_wrong_state": {
+        "rule": "यह एपिसोड अभी यह काम नहीं होने देता।",
+        "fix": "एपिसोड खोलें"
+      },
+      "episode_already_open": {
+        "rule": "पहले से ER में — एक मरीज़ का एक ही खुला एपिसोड।",
+        "fix": "चालू एपिसोड खोलें"
+      },
+      "state_changed": {
+        "rule": "किसी ने अभी बदलाव किया; कुछ सेव नहीं हुआ।",
+        "fix": "फिर से लोड करें"
+      },
+      "registration_not_ready": {
+        "rule": "पंजीकरण सेट नहीं है, UHID नहीं बन सकता।",
+        "fix": "एडमिन से पूछें"
+      },
+      "time_in_future": {
+        "rule": "समय अभी से आगे नहीं हो सकता।",
+        "fix": "समय ठीक करें"
+      },
+      "arrival_too_old": {
+        "rule": "एक दिन से पुराना — कागज़ी ER शीट से दर्ज करें।",
+        "fix": "शीट का सीरियल डालें"
+      },
+      "paper_serial_used": {
+        "rule": "यह कागज़ी शीट पहले ही दर्ज है।",
+        "fix": "वह एपिसोड खोलें"
+      },
+      "pre_alert_not_found": {
+        "rule": "ऐसा कोई आने वाला मरीज़ नहीं।",
+        "fix": "ER डेस्क खोलें"
+      },
+      "pre_alert_closed": {
+        "rule": "वह आने वाला कार्ड बंद हो चुका है।",
+        "fix": "उसके बिना दर्ज करें"
+      },
+      "examined_before_arrival": {
+        "rule": "जाँच आने से पहले नहीं हो सकती।",
+        "fix": "समय ठीक करें"
+      },
+      "printer_offline": {
+        "rule": "बैंड प्रिंटर जवाब नहीं दे रहा।",
+        "fix": "पास का प्रिंटर चुनें"
+      },
+      "band_already_printed": {
+        "rule": "बैंड पहले से छपा है।",
+        "fix": "बैंड दोबारा छापें"
+      },
+      "no_band_to_reprint": {
+        "rule": "दोबारा छापने को कोई बैंड नहीं।",
+        "fix": "बैंड छापें"
+      },
+      "not_unidentified": {
+        "rule": "सिर्फ़ अज्ञात रिकॉर्ड जोड़ा जाता है।",
+        "fix": "मरीज़ रिकॉर्ड खोलें"
+      },
+      "same_patient": {
+        "rule": "दूसरा, असली रिकॉर्ड चुनें।",
+        "fix": "असली रिकॉर्ड चुनें"
+      },
+      "true_record_unidentified": {
+        "rule": "वह रिकॉर्ड ख़ुद अज्ञात है।",
+        "fix": "असली रिकॉर्ड चुनें"
+      },
+      "merge_already_requested": {
+        "rule": "एक मर्ज पहले से मंज़ूरी की प्रतीक्षा में है।",
+        "fix": "मर्ज अनुरोध खोलें"
+      }
+    }
+  },
+  "erBoard": {
+    "title": "ER बोर्ड",
+    "showNames": "नाम दिखाएँ",
+    "wallMode": "दीवार स्क्रीन",
+    "desk": "ER डेस्क",
+    "home": "होम",
+    "totals": "ER कुल",
+    "stat": {
+      "inDept": "विभाग में",
+      "waiting": "ट्राइएज की प्रतीक्षा",
+      "noneWaiting": "कोई प्रतीक्षा में नहीं",
+      "longest": "सबसे लंबी {{minutes}} मिनट",
+      "expected": "आने वाले",
+      "bays": "खाली बेड",
+      "baysOf": "{{total}} में से",
+      "arrivals": "आज आए",
+      "broughtDead": "आज मृत लाए गए"
+    },
+    "col": {
+      "expected": "आने वाले",
+      "waiting": "ट्राइएज की प्रतीक्षा",
+      "inTreatment": "इलाज में"
+    },
+    "empty": {
+      "expected": "कोई एम्बुलेंस रास्ते में नहीं",
+      "waiting": "ट्राइएज के लिए कोई नहीं",
+      "inTreatment": "ट्राइएज के बाद मरीज़ यहाँ दिखेंगे"
+    },
+    "eta": {
+      "in": "{{minutes}} मिनट में",
+      "now": "अभी आने वाले",
+      "late": "{{minutes}} मिनट देर"
+    },
+    "count": "{{total}} में से {{arrived}} आए",
+    "since": "{{minutes}} मिनट",
+    "triageDue": "ट्राइएज {{minutes}} मिनट में",
+    "triageLate": "ट्राइएज {{minutes}} मिनट देर",
+    "live": "लाइव · {{time}}",
+    "offline": "ऑफ़लाइन · पिछला अपडेट {{time}}",
+    "offlineNever": "ऑफ़लाइन",
+    "legend": "आने से अब तक का समय · ट्राइएज गेट से 5 मिनट में",
+    "triageNow": "ट्राइएज अभी"
+  },
+  "erDesk": {
+    "title": "ER डेस्क",
+    "board": "ER बोर्ड",
+    "newArrival": "नया मरीज़",
+    "list": "ER में",
+    "tab": {
+      "unknown": "अज्ञात",
+      "known": "जाना-पहचाना",
+      "expected": "आने वाले",
+      "dead": "मृत लाए गए"
+    },
+    "fromPreAlert": "किसके लिए: {{mode}}, {{time}} पर अपेक्षित",
+    "clear": "हटाएँ",
+    "sex": "लिंग",
+    "age": "उम्र (लगभग)",
+    "mode": "कैसे आए",
+    "sexOptional": "लिंग (अगर बताया)",
+    "ageOptional": "उम्र (अगर बताई)",
+    "more": "और जानकारी (वैकल्पिक)",
+    "less": "कम जानकारी",
+    "marks": "पहचान के निशान",
+    "marksHint": "टैटू, निशान, कपड़े",
+    "complaint": "तकलीफ़, जैसी सुनी",
+    "bringer": "कौन लाया (नाम)",
+    "bringerPhone": "उनका मोबाइल",
+    "samaritan": "मदद करने वाले से नाम, पैसा या रुकने को कभी नहीं कहा जाता।",
+    "cameAt": "आने का समय (देर से दर्ज हो तो)",
+    "paper": "कागज़ी शीट सीरियल (डाउनटाइम)",
+    "registerUnknown": "दर्ज करें · बैंड छापें",
+    "registerKnown": "दर्ज करें · बैंड छापें",
+    "known": {
+      "find": "मरीज़ खोजें",
+      "findHint": "कार्ड स्कैन करें, या UHID, मोबाइल या नाम लिखें",
+      "none": "कोई मेल नहीं — नीचे नया जोड़ें",
+      "newPatient": "नया मरीज़ (नाम पता है)",
+      "name": "नाम"
+    },
+    "change": "बदलें",
+    "expected": {
+      "title": "आने वाले",
+      "mode": "कैसे आ रहे",
+      "eta": "कितनी देर में",
+      "minutes": "{{n}} मिनट",
+      "count": "मरीज़",
+      "fewer": "एक कम",
+      "more": "एक और",
+      "complaintHint": "कॉल करने वाले ने क्या कहा",
+      "send": "बोर्ड पर लगाएँ",
+      "sent": "बोर्ड पर आने वाले में",
+      "arrived": "आ गए",
+      "notComing": "नहीं आ रहे"
+    },
+    "dead": {
+      "unknown": "अज्ञात शव",
+      "known": "जाना-पहचाना मरीज़",
+      "examinedBy": "जाँच करने वाले",
+      "pickDoctor": "डॉक्टर चुनें",
+      "ecg": "ECG स्ट्रिप दर्ज",
+      "hint": "कोई बैंड नहीं, कोई शुल्क नहीं। MLC और शवगृह के क़दम आगे।",
+      "record": "मृत लाए गए दर्ज करें",
+      "done": "दर्ज: {{no}}"
+    },
+    "failed": "सेव नहीं हुआ — फिर कोशिश करें",
+    "today": "कल से अब तक",
+    "noneToday": "पिछले 24 घंटे में कोई नहीं आया",
+    "came": "आए {{time}}",
+    "entered": "दर्ज {{time}}",
+    "identity": {
+      "waiting": "मर्ज MS की प्रतीक्षा में → {{uhid}}",
+      "granted": "मर्ज मंज़ूर → {{uhid}}",
+      "merged": "पहचान हुई → {{uhid}}",
+      "refused": "मर्ज अस्वीकार"
+    },
+    "bandStale": "बैंड पर पुराना नाम",
+    "printBand": "बैंड छापें",
+    "reprintBand": "बैंड दोबारा छापें",
+    "bandPrinted": "बैंड {{serial}} छपा",
+    "identify": "पहचान करें",
+    "identifyFind": "असली रिकॉर्ड (UHID, मोबाइल या नाम)",
+    "how": {
+      "family": "परिवार",
+      "id_document": "पहचान पत्र",
+      "police": "पुलिस",
+      "abha": "ABHA",
+      "other": "अन्य"
+    },
+    "identifyNote": "किसने पहचाना, और कैसे",
+    "identifySend": "MS से मर्ज मंज़ूरी माँगें",
+    "identifyHint": "MS मंज़ूरी देते हैं; MRD मर्ज करता है। सब कुछ असली रिकॉर्ड के साथ जाता है।",
+    "band": {
+      "title": "बैंड",
+      "barcode": "बैंड सीरियल",
+      "print": "बैंड छापें",
+      "next": "अगला मरीज़"
     }
   }
 }
