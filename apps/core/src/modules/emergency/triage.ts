@@ -7,7 +7,7 @@ import { withTx } from "../../kernel/db/client";
 import { erEpisodes, erTriageEntries, resources, roleAssignments, users } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { raiseNoticeIn } from "../../kernel/alerts/notices";
-import { IpdRefusal, placeErEpisodeIn, releaseErBayIn } from "../ipd";
+import { IpdRefusal, lockBedsInOrder, placeErEpisodeIn, releaseErBayIn } from "../ipd";
 import { escalationRecipients, orgDepartmentByCode, unitOnTake } from "../roster";
 import { cancelTask, getTask, raiseTask } from "../tasks";
 import { getPatientSummaries } from "../patients";
@@ -270,6 +270,9 @@ export async function moveBay(db: Db, actor: Actor, raw: unknown, opts: Opts = {
     const from = e.bayId;
     let placed: { bedId: string; bedCode: string };
     try {
+      // Both beds (and their zones) in one global order first, as the IPD transfer does: two opposite moves between
+      // two zones would otherwise each hold one zone and wait for the other (a deadlock).
+      await lockBedsInOrder(tx, [from, input.bedId]);
       placed = await placeErEpisodeIn(tx, actor, { bedId: input.bedId, episodeId: e.id }, at);
       await releaseErBayIn(tx, actor, { bedId: from, episodeId: e.id }, at);
     } catch (err) { throw bayRefusal(err); }
