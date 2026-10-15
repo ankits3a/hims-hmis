@@ -8,7 +8,7 @@ import { renderWithProviders } from "../test-utils";
  * Decision 0050 P4 (#615): the doctor sees what the suggestions learned from them and can reset it.
  * A reset never fires without a confirm, names only the surface asked for, and the panel shows no money.
  */
-vi.mock("../lib/api", () => ({ api: vi.fn() }));
+vi.mock("../lib/api", async (importOriginal) => ({ ...(await importOriginal<typeof import("../lib/api")>()), api: vi.fn() }));
 const apiMock = vi.mocked(api);
 
 const learned = (over: Partial<WireLearned> = {}): WireLearned => ({
