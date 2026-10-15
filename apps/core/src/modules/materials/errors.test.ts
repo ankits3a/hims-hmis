@@ -230,7 +230,8 @@ describe("the materials error union (Plan 14 CLOSE, M8)", () => {
       // PHARMACY P6: either item of a merge not found — the same "no such item".
       // PHARMACY GAP A6b: an item on an indent that is not there — the same "no such item".
       // A5: the item the stock ledger statement is asked for — the same "no such item".
-      unknown_item: ["grn.ts", "indents.ts", "item-merge.ts", "items.ts", "materials.controller.ts", "purchase-orders.ts", "stock-ledger-view.ts", "supplier-bills.ts"],
+      // #635: a rate quoted for an item that is not there — the same "no such item".
+      unknown_item: ["grn.ts", "indents.ts", "item-merge.ts", "items.ts", "materials.controller.ts", "purchase-orders.ts", "stock-ledger-view.ts", "supplier-bills.ts", "vendor-rates.ts"],
       // Parity P2 — the act's own grant check, answered as the route guard would (403): counts,
       // adjustments, and the purchase order's raise/read. One meaning: you do not hold the grant.
       // Parity P3: the supplier bill's and the payment run's own grant checks — the same meaning.
@@ -239,7 +240,8 @@ describe("the materials error union (Plan 14 CLOSE, M8)", () => {
       // PHARMACY GAP A6b: the indent's own grant checks (raise, issue, reject, cancel) — the same meaning.
       // A5: the stock ledger statement's own `materials.stock.read` check — the same meaning.
       // OWNER RULING 2026-09-30: only a person changes a stores setting (`settings.ts`) — the same meaning.
-      permission_denied: ["adjustments.ts", "counts.ts", "indents.ts", "item-merge.ts", "payments.ts", "purchase-orders.ts", "recalls.ts", "settings.ts", "stock-ledger-view.ts", "supplier-bills.ts", "supplier-returns.ts", "write-offs.ts"],
+      // #635: a vendor's rate contract set or ended without `materials.vendors.manage` — the same meaning.
+      permission_denied: ["adjustments.ts", "counts.ts", "indents.ts", "item-merge.ts", "payments.ts", "purchase-orders.ts", "recalls.ts", "settings.ts", "stock-ledger-view.ts", "supplier-bills.ts", "supplier-returns.ts", "vendor-rates.ts", "write-offs.ts"],
       // "say why": a count closed, an order, a bill or a run cancelled, a bill's difference accepted —
       // every one is a free-text reason the act refuses to take empty. One meaning, one remedy.
       // Parity P4: a return cancelled or closed, a credit note cancelled, a recall raised — the same.
@@ -247,7 +249,8 @@ describe("the materials error union (Plan 14 CLOSE, M8)", () => {
       reason_required: ["counts.ts", "indents.ts", "payments.ts", "purchase-orders.ts", "recalls.ts", "supplier-bills.ts", "supplier-returns.ts"],
       // "no such vendor": the master's own 404, reached from a bill, a payment and a ledger.
       // Parity P4: the vendor a return is drafted to — the same master's 404.
-      unknown_vendor: ["materials.controller.ts", "payments.ts", "supplier-bills.ts", "supplier-returns.ts", "vendors.ts"],
+      // #635: the vendor a rate contract is quoted by — the same master's 404.
+      unknown_vendor: ["materials.controller.ts", "payments.ts", "supplier-bills.ts", "supplier-returns.ts", "vendor-rates.ts", "vendors.ts"],
     });
   });
 

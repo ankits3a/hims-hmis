@@ -33,7 +33,7 @@ const says = (e: unknown, t: T): string => (e instanceof NetworkError ? t("mobil
  * On Android the drawer is therefore an overlay inside the consult screen, lifted by the keyboard's height,
  * and the focused box is scrolled into view; Back closes it as the Modal did. iPhone keeps the KeyboardModal.
  */
-export function Drawer({ title, onClose, children, testID, foot }: { title: string; onClose: () => void; children: React.ReactNode; testID: string; foot?: React.ReactNode }) {
+export function Drawer({ title, onClose, children, testID, foot, closeLabel }: { title: string; onClose: () => void; children: React.ReactNode; testID: string; foot?: React.ReactNode; closeLabel?: string }) {
   const insets = useSafeAreaInsets();
   const { t } = useI18n();
   const android = Platform.OS === "android";
@@ -58,7 +58,7 @@ export function Drawer({ title, onClose, children, testID, foot }: { title: stri
         <View style={st.head}>
           <Text style={st.title}>{title}</Text>
           <Pressable testID={`${testID}-done`} accessibilityRole="button" hitSlop={10} onPress={onClose} style={st.doneBtn}>
-            <Text style={st.done}>{t("mobile.consult.done")}</Text>
+            <Text style={st.done}>{closeLabel ?? t("mobile.consult.done")}</Text>
           </Pressable>
         </View>
         <ScrollView ref={scroll} {...keyboardScroll()} keyboardShouldPersistTaps="handled" scrollEventThrottle={32}
@@ -123,17 +123,41 @@ function useSearch<R>(q: string, min: number, run: (q: string) => Promise<R[]>):
   return { rows, error, busy };
 }
 
-// ——— 1 · Notes, and the spoken note ———
+// ——— 1 · Complaint (issue #607, owner 2026-10-10: "Rename Notes to Complaint") ———
 
 const COMMON_COMPLAINTS = ["Fever", "Cough", "Cold", "Body ache", "Headache", "Sore throat", "Vomiting", "Loose motion", "Abdominal pain", "Weakness"];
 
-export function NotesDrawer({ api, encounterId, draft, patch, onClose, recorder, deskWords, onAddMedicine, onAddTest }: {
-  api: ConsultApi; encounterId: string; draft: ConsultDraft; patch: Patch; onClose: () => void; recorder: VoiceRecorder; deskWords: string | null;
-  onAddMedicine: (hit: { medicineId: string; name: string }) => void; onAddTest: (t: { serviceId: string; code: string; name: string; pricePaise: number }) => void;
+/** The chief complaint: what the desk heard, the common chips, and a search. Saves to `chiefComplaint`. */
+export function ComplaintDrawer({ api, draft, patch, onClose, deskWords }: {
+  api: ConsultApi; draft: ConsultDraft; patch: Patch; onClose: () => void; deskWords: string | null;
 }) {
   const { t } = useI18n();
   const [q, setQ] = useState("");
   const found = useSearch(q, 2, async (text) => (await api.complaints(text)).map((x) => x.term));
+  const toggle = (c: string): void => patch((d) => ({ ...d, complaints: d.complaints.includes(c) ? d.complaints.filter((x) => x !== c) : [...d.complaints, c].slice(0, 12) }));
+  const offered = useMemo(() => {
+    const base = [...draft.complaints, ...(q.trim().length >= 2 ? found.rows : COMMON_COMPLAINTS)];
+    return [...new Set(base)].slice(0, 14);
+  }, [draft.complaints, found.rows, q]);
+  return (
+    <Drawer testID="complaint-drawer" title={t("mobile.consult.complaint")} onClose={onClose}>
+      {deskWords !== null && <Text style={st.said}>{t("mobile.consult.toldDesk", { words: deskWords })}</Text>}
+      <View style={st.chips}>
+        {offered.map((c) => <Chip key={c} testID={`complaint-${c}`} label={c} on={draft.complaints.includes(c)} onPress={() => toggle(c)} />)}
+      </View>
+      <Box testID="complaint-input" value={q} onChangeText={setQ} placeholder={t("mobile.consult.complaintAdd")} returnKeyType="done" maxLength={80}
+        onSubmitEditing={() => { const c = q.trim(); if (c !== "") { toggle(c); setQ(""); } }} />
+    </Drawer>
+  );
+}
+
+// ——— 6 · Notes — the doctor's own reference (`doctor_note`, never printed), and the spoken note ———
+
+export function NotesDrawer({ api, encounterId, draft, patch, onClose, recorder, onAddMedicine, onAddTest }: {
+  api: ConsultApi; encounterId: string; draft: ConsultDraft; patch: Patch; onClose: () => void; recorder: VoiceRecorder;
+  onAddMedicine: (hit: { medicineId: string; name: string }) => void; onAddTest: (t: { serviceId: string; code: string; name: string; pricePaise: number }) => void;
+}) {
+  const { t } = useI18n();
   const [status, setStatus] = useState<WireVoiceStatus | null>(null);
   const [phase, setPhase] = useState<"idle" | "notice" | "recording" | "sending" | "heard">("idle");
   const [seconds, setSeconds] = useState(0);
@@ -152,11 +176,6 @@ export function NotesDrawer({ api, encounterId, draft, patch, onClose, recorder,
   useEffect(() => () => { if (tick.current !== null) clearInterval(tick.current); void recorder.discard(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const max = status?.maxSeconds ?? 60;
-  const toggle = (c: string): void => patch((d) => ({ ...d, complaints: d.complaints.includes(c) ? d.complaints.filter((x) => x !== c) : [...d.complaints, c].slice(0, 12) }));
-  const offered = useMemo(() => {
-    const base = [...draft.complaints, ...(q.trim().length >= 2 ? found.rows : COMMON_COMPLAINTS)];
-    return [...new Set(base)].slice(0, 14);
-  }, [draft.complaints, found.rows, q]);
 
   const stop = async (): Promise<void> => {
     if (tick.current !== null) { clearInterval(tick.current); tick.current = null; }
@@ -268,14 +287,6 @@ export function NotesDrawer({ api, encounterId, draft, patch, onClose, recorder,
   }
   return (
     <Drawer testID="notes-drawer" title={t("mobile.consult.notes")} onClose={onClose}>
-      <Lab>{t("mobile.consult.complaint")}</Lab>
-      {deskWords !== null && <Text style={st.said}>{t("mobile.consult.toldDesk", { words: deskWords })}</Text>}
-      <View style={st.chips}>
-        {offered.map((c) => <Chip key={c} testID={`complaint-${c}`} label={c} on={draft.complaints.includes(c)} onPress={() => toggle(c)} />)}
-      </View>
-      <Box testID="complaint-input" value={q} onChangeText={setQ} placeholder={t("mobile.consult.complaintAdd")} returnKeyType="done" maxLength={80}
-        onSubmitEditing={() => { const c = q.trim(); if (c !== "") { toggle(c); setQ(""); } }} />
-      <Lab>{t("mobile.consult.examination")}</Lab>
       <Box testID="notes-input" multiline value={draft.notes} maxLength={4000} placeholder={t("mobile.consult.notesHint")}
         onChangeText={(v) => patch((d) => ({ ...d, notes: v }))} />
       {phase === "recording" ? (
@@ -653,8 +664,10 @@ export function AdviceDrawer({ api, draft, patch, onClose, followChoices }: {
 
 // ——— My sets ———
 
-export function SetsDrawer({ api, onClose, onUse, canSave, onSave }: {
+export function SetsDrawer({ api, onClose, onUse, canSave, onSave, onEdit }: {
   api: ConsultApi; onClose: () => void; onUse: (set: WireRxSet) => void; canSave: boolean; onSave: (name: string) => Promise<void>;
+  /** #610 — open a set in the editor. Offered only on a set this doctor may change: their own, or a starter set they head. */
+  onEdit?: (set: WireRxSet) => void;
 }) {
   const { t } = useI18n();
   const [sets, setSets] = useState<WireRxSet[] | null>(null);
@@ -675,6 +688,11 @@ export function SetsDrawer({ api, onClose, onUse, canSave, onSave }: {
         <Text style={st.hitSub}>{sub(x)}</Text>
         {!x.mine && x.signedByName !== null && <Text style={st.hitSub}>{t("mobile.consult.sets.signedBy", { name: x.signedByName })}</Text>}
       </View>
+      {onEdit !== undefined && (x.mine || x.maySign) && (
+        <Pressable testID={`set-edit-${x.id}`} accessibilityRole="button" accessibilityLabel={t("mobile.consult.sets.editA11y", { name: x.name })} onPress={() => onEdit(x)} style={[st.small, { borderColor: color.line, backgroundColor: color.card }]}>
+          <Text style={[st.smallText, { color: color.green }]}>{t("mobile.consult.sets.edit")}</Text>
+        </Pressable>
+      )}
       <Pressable testID={`set-use-${x.id}`} accessibilityRole="button" onPress={() => onUse(x)} style={[st.small, st.smallOn]}><Text style={[st.smallText, { color: "#f2faf6" }]}>{t("mobile.consult.sets.use")}</Text></Pressable>
     </View>
   );

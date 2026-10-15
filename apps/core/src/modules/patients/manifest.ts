@@ -1,6 +1,8 @@
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 import { patientSearchProvider } from "./search-provider";
 import { patientsDeskProvider } from "./desk-provider";
+import { approvalRejected } from "../../kernel/approvals/events";
+import { PATIENTS_APPROVAL_REJECTED_CONSUMER } from "./approval-consumer";
 
 export const patientsManifest: ModuleManifest = {
   key: "patients",
@@ -53,5 +55,7 @@ export const patientsManifest: ModuleManifest = {
   // FD-1 T1 — the registration tile and "what came back" on the clerk's home. The kernel already
   // declares `desk` optional; no index export changes.
   desk: [patientsDeskProvider],
-  subscriptions: [],
+  // #653 — a refused merge closes its request at refusal time (`approval-consumer.ts`). Declared with
+  // its handler in `workerConsumers` in ONE commit; one without the other is a boot error.
+  subscriptions: [{ event: approvalRejected.name, consumer: PATIENTS_APPROVAL_REJECTED_CONSUMER }],
 };
