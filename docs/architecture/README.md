@@ -74,9 +74,14 @@ flowchart LR
   diet --> ot
   diet --> tasks
   emergency --> billing
+  emergency --> formulary
   emergency --> ipd
+  emergency --> lab
+  emergency --> materials
+  emergency --> ordering
   emergency --> patients
   emergency --> roster
+  emergency --> tariff
   emergency --> tasks
   housekeeping --> ipd
   housekeeping --> tasks
@@ -156,17 +161,17 @@ flowchart LR
 | [bmw](modules/bmw.md) | tasks | — | 14 | 4 |
 | [cds](modules/cds.md) | formulary | opd | 0 | 0 |
 | [diet](modules/diet.md) | ipd, ot, tasks | — | 17 | 6 |
-| [emergency](modules/emergency.md) | billing, ipd, patients, roster, tasks | — | 21 | 4 |
-| [formulary](modules/formulary.md) | — | cds, ipd, materials, opd, pharmacy | 27 | 12 |
+| [emergency](modules/emergency.md) | billing, formulary, ipd, lab, materials, ordering, patients, roster, tariff, tasks | — | 34 | 12 |
+| [formulary](modules/formulary.md) | — | cds, emergency, ipd, materials, opd, pharmacy | 27 | 12 |
 | [housekeeping](modules/housekeeping.md) | ipd, tasks | — | 4 | 0 |
 | [ipd](modules/ipd.md) | billing, formulary, lab, materials, opd, ordering, ot, patients, pharmacy, roster, tariff | diet, emergency, housekeeping, maintenance, passes, transport | 136 | 35 |
-| [lab](modules/lab.md) | billing, opd, patients, tariff | abdm, ipd, ordering, radiology | 78 | 25 |
+| [lab](modules/lab.md) | billing, opd, patients, tariff | abdm, emergency, ipd, ordering, radiology | 78 | 25 |
 | [linen](modules/linen.md) | tasks | — | 14 | 7 |
 | [maintenance](modules/maintenance.md) | ipd, tasks | — | 7 | 2 |
-| [materials](modules/materials.md) | formulary | ipd, opd, ot, pharmacy | 117 | 38 |
+| [materials](modules/materials.md) | formulary | emergency, ipd, opd, ot, pharmacy | 117 | 38 |
 | [membership](modules/membership.md) | patients, tariff | billing, partners, pharmacy | 11 | 11 |
 | [opd](modules/opd.md) | billing, cds, formulary, materials, patients, roster | abdm, billing, ipd, lab, ordering, pharmacy, radiology | 165 | 32 |
-| [ordering](modules/ordering.md) | billing, lab, opd, radiology | ipd | 4 | 1 |
+| [ordering](modules/ordering.md) | billing, lab, opd, radiology | emergency, ipd | 4 | 1 |
 | [ot](modules/ot.md) | billing, materials, patients, roster, tariff | diet, ipd, radiology | 53 | 12 |
 | [partners](modules/partners.md) | billing, membership, patients, tariff | — | 10 | 7 |
 | [passes](modules/passes.md) | billing, ipd, patients | — | 9 | 4 |
@@ -175,7 +180,7 @@ flowchart LR
 | [pharmacy](modules/pharmacy.md) | billing, formulary, materials, membership, opd, patients, tariff | ipd | 183 | 32 |
 | [radiology](modules/radiology.md) | aerb, billing, lab, opd, ot, patients, pcpndt, roster, tariff | abdm, ordering | 113 | 22 |
 | [roster](modules/roster.md) | — | emergency, ipd, opd, ot, radiology, tasks | 37 | 26 |
-| [tariff](modules/tariff.md) | — | billing, ipd, lab, membership, ot, partners, pharmacy, radiology | 20 | 7 |
+| [tariff](modules/tariff.md) | — | billing, emergency, ipd, lab, membership, ot, partners, pharmacy, radiology | 20 | 7 |
 | [tasks](modules/tasks.md) | roster | bmw, diet, emergency, housekeeping, linen, maintenance, transport | 11 | 2 |
 | [transport](modules/transport.md) | ipd, patients, tasks | — | 8 | 1 |
 
@@ -194,14 +199,14 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 | `db` | abdm, aerb, attendance, billing, bmw, cds, diet, emergency, formulary, housekeeping, ipd, lab, linen, maintenance, materials, membership, opd, ordering, ot, partners, passes, patients, pcpndt, pharmacy, radiology, roster, tariff, tasks, transport | — | — |
 | `desk` | attendance, billing, diet, ipd, lab, membership, opd, partners, patients, pharmacy, radiology, roster | approvals, auth, db, events, modules, reminders, report, tokens, workflow | 10 |
 | `documents` | patients, pharmacy | — | — |
-| `episodes` | billing, ipd, lab, materials, opd, ot, pharmacy, radiology | db | — |
+| `episodes` | billing, emergency, ipd, lab, materials, opd, ot, pharmacy, radiology | db | — |
 | `events` | abdm, aerb, attendance, billing, diet, emergency, formulary, housekeeping, ipd, lab, materials, membership, opd, ordering, ot, partners, passes, patients, pcpndt, pharmacy, radiology, roster, tariff | db, worker | — |
 | `inference` | ipd, opd | auth, config, db, search, tokens | 1 |
 | `modules` | abdm, aerb, attendance, billing, bmw, diet, emergency, formulary, housekeeping, ipd, lab, linen, maintenance, materials, membership, opd, ordering, ot, partners, passes, patients, pcpndt, pharmacy, radiology, roster, tariff, tasks, transport | alerts, approvals, auth, copilot, desk, ops, orders, resources, search, workflow | — |
 | `notify` | abdm, ipd, lab, pharmacy, radiology | auth, config, db, events, modules, tokens, workflow | 4 |
 | `obligations` | — | alerts, db, events, modules, workflow | — |
 | `ops` | lab, pharmacy | auth, config, crypto, db, events, modules, tokens | 11 |
-| `orders` | ipd, lab, ordering, pharmacy, radiology | auth, db, episodes, events, modules, phi | — |
+| `orders` | emergency, ipd, lab, ordering, pharmacy, radiology | auth, db, episodes, events, modules, phi | — |
 | `phi` | abdm, aerb, billing, lab, opd, patients, pcpndt, pharmacy, radiology | db | — |
 | `printing` | billing, bmw, emergency, ipd, lab, opd, pharmacy, roster | auth, crypto, db, events, phi, tokens | 15 |
 | `push` | — | alerts, db, events, modules | — |

@@ -5,6 +5,7 @@ import { renderWithRouter } from "../test-utils";
 import { ErBoardScreen } from "./er-board";
 import { ErDesk, istClockToIso } from "./er-desk";
 import { ErTriage } from "./er-triage";
+import { ErPatient } from "./er-patient";
 import type { ErBoard, ErDeskView, ErTile } from "@hmis/contracts";
 
 /**
@@ -176,5 +177,58 @@ describe("ER lane 2 (#809) triage screen", () => {
     await userEvent.click(within(screen.getByTestId("er-triage-level")).getByText("Emergent"));
     expect(screen.queryByTestId("er-triage-reason")).toBeNull();
     expect(screen.getByTestId("er-triage-save")).toBeEnabled();
+  });
+});
+
+/** ER lane 3 (#810) — the ER patient: the critical in words, the high-alert dose's second person, the draft note, no money. */
+describe("ER lane 3 (#810) patient screen", () => {
+  const posted: { url: string; body: Record<string, unknown> }[] = [];
+  const EP = "01J00000000000000000000P01";
+  const care = {
+    episodeId: EP, stabilisedAt: null, allergyWords: ["Allergy: unknown"],
+    notes: [{ noteId: "01J00000000000000000000N01", kind: "assessment", text: "Guarding RIF", author: "Dr Resident", at: iso(-5), status: "draft", cosignedBy: null }],
+    orders: [{ orderId: "01J00000000000000000000O01", kind: "lab", priority: "stat", tests: ["CBC"], at: iso(-10) }],
+    meds: [{ issueId: "01J00000000000000000000I01", name: "Potassium chloride 15%", doseWords: "20 mmol", route: "iv", units: 1, highAlert: true, own: false, orderedBy: "Dr Ritu", verbalPending: false, at: iso(-2), dose: null }],
+    procedures: [], consents: [],
+    calls: [{ callId: "01J00000000000000000000C01", departmentCode: "SUR", urgency: "urgent", reason: "Acute abdomen", calledAt: iso(-20), answeredAt: null, seenAt: null, callees: ["Dr Sharma"] }],
+    criticals: [{ callId: "c1", analyte: "K", value: "6.8", unit: "mmol/L", openedAt: iso(-1) }],
+  };
+  beforeEach(() => {
+    setToken("t");
+    posted.length = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (init?.method === "POST") { posted.push({ url: raw, body: JSON.parse(String(init.body)) as Record<string, unknown> }); return json({ outcome: "given" }); }
+      if (raw.includes("/er/care/")) return json(care);
+      if (raw.includes("/er/episodes/")) return json({ tile: tile({ episodeId: EP, state: "in_treatment", esi: 2, bayCode: "ER-R1", doctor: "Dr Ritu" }), ageYears: null, complaint: null, history: [] });
+      if (raw.endsWith("/er/triage-doctors")) return json([{ userId: "d1", name: "Dr Ritu" }]);
+      if (raw.endsWith("/auth/me")) return json({ actor: { type: "user", id: "me" }, permissions: { hospital: ["er.board.view", "er.triage", "er.care"], scoped: { department: {}, floor: {} } } });
+      return json([]);
+    }));
+  });
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("shows the critical in words, asks a second person for a high-alert dose, marks the resident's draft — and no money", async () => {
+    renderWithRouter(<ErPatient />, `/er/patient?episode=${EP}`);
+    expect(await screen.findByTestId("er-patient-critical")).toHaveTextContent("K 6.8 mmol/L");
+    expect(screen.getByTestId("er-patient-allergy")).toHaveTextContent("Allergy: unknown");
+    const med = await screen.findByTestId("er-patient-med");
+    const give = within(med).getByTestId("er-patient-give");
+    expect(give).toBeDisabled();
+    await userEvent.type(within(med).getByLabelText("Second person (username)"), "er.nurse2");
+    await userEvent.type(within(med).getByLabelText("Their PIN"), "8642");
+    expect(give).toBeEnabled();
+    await userEvent.click(give);
+    expect(posted[0]!.url).toContain("/er/meds/dose");
+    expect(posted[0]!.body).toMatchObject({ issueId: care.meds[0]!.issueId, outcome: "given", secondCheck: { username: "er.nurse2", pin: "8642" } });
+    expect(screen.getByTestId("er-patient-notes")).toHaveTextContent("Draft");
+    expect(document.body.textContent ?? "").not.toMatch(/₹|paid|deposit|bill|price/i);
+  });
+
+  it("'Stabilised' is one tap and posts the clinical word only", async () => {
+    renderWithRouter(<ErPatient />, `/er/patient?episode=${EP}`);
+    await userEvent.click(await screen.findByTestId("er-patient-stabilise"));
+    expect(posted[0]!.url).toContain("/er/stabilised");
+    expect(Object.keys(posted[0]!.body).sort()).toEqual(["episodeId", "idempotencyKey"]);
   });
 });

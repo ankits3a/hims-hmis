@@ -54,9 +54,33 @@ export const erDoctorAssigned = defineEvent("er.doctor_assigned", MODULE, z.obje
   episodeId: id, doctorId: id, firstSeen: z.boolean(), seenAt: z.string(), doorToDoctorMin: z.number().int(), provenance: ErProvenanceSchema,
 }));
 
+/* ═══ lane 3 (#810) — care ═══ */
+export const erNoteRecorded = defineEvent("er.note_recorded", MODULE, z.object({ episodeId: id, noteId: id, kind: z.string(), draft: z.boolean(), provenance: ErProvenanceSchema }));
+export const erNoteCosigned = defineEvent("er.note_cosigned", MODULE, z.object({ episodeId: id, noteId: id, provenance: ErProvenanceSchema }));
+export const erOrderPlaced = defineEvent("er.order_placed", MODULE, z.object({
+  episodeId: id, labOrderId: id.nullable(), imagingOrderId: id.nullable(), priority: z.string(), items: z.number().int(), skipped: z.number().int(),
+  provenance: ErProvenanceSchema,
+}));
+export const erMedIssued = defineEvent("er.med_issued", MODULE, z.object({
+  episodeId: id, issueId: id, units: z.number().int(), highAlert: z.boolean(), own: z.boolean(), verbal: z.boolean(), provenance: ErProvenanceSchema,
+}));
+export const erDoseRecorded = defineEvent("er.dose_recorded", MODULE, z.object({
+  episodeId: id, issueId: id, doseId: id, outcome: z.string(), highAlert: z.boolean(), provenance: ErProvenanceSchema,
+}));
+export const erVerbalSigned = defineEvent("er.verbal_signed", MODULE, z.object({ episodeId: id, issueId: id, lateMin: z.number().int(), provenance: ErProvenanceSchema }));
+export const erProcedureRecorded = defineEvent("er.procedure_recorded", MODULE, z.object({ episodeId: id, procedureId: id, performedBy: id, provenance: ErProvenanceSchema }));
+export const erConsentRecorded = defineEvent("er.consent_recorded", MODULE, z.object({ episodeId: id, consentId: id, kind: z.string(), signedBy: z.string(), provenance: ErProvenanceSchema }));
+export const erCallRaised = defineEvent("er.call_raised", MODULE, z.object({
+  episodeId: id, callId: id, departmentCode: z.string(), urgency: z.string(), takeTeamId: id.nullable(), provenance: ErProvenanceSchema,
+}));
+export const erCallAnswered = defineEvent("er.call_answered", MODULE, z.object({ episodeId: id, callId: id, step: z.string(), minutes: z.number().int(), provenance: ErProvenanceSchema }));
+export const erStabilised = defineEvent("er.stabilised", MODULE, z.object({ episodeId: id, stabilisedAt: z.string(), provenance: ErProvenanceSchema }));
+
 /** Every event the tracking board refetches on. */
 export const ER_BOARD_EVENT_NAMES: readonly string[] = [
   erPreAlerted.name, erPreAlertCancelled.name, erArrived.name, erBroughtDead.name, erBandPrinted.name, erBandVoided.name,
   erIdentityLinked.name,
   erTriaged.name, erRetriaged.name, erVitalsRecorded.name, erPlaced.name, erMoved.name, erDoctorAssigned.name,
+  erNoteRecorded.name, erNoteCosigned.name, erOrderPlaced.name, erMedIssued.name, erDoseRecorded.name, erVerbalSigned.name,
+  erProcedureRecorded.name, erConsentRecorded.name, erCallRaised.name, erCallAnswered.name, erStabilised.name,
 ];

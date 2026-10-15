@@ -170,7 +170,8 @@
     "ipdPharmacy": "IP pharmacy",
     "erDesk": "ER desk",
     "erBoard": "ER board",
-    "erTriage": "ER triage"
+    "erTriage": "ER triage",
+    "erPatient": "ER patient"
   },
   "palette": {
     "title": "Search",
@@ -19141,7 +19142,10 @@
       "name_alert": "Name alert",
       "police": "Police",
       "ambulance": "Ambulance",
-      "paper": "Paper sheet"
+      "paper": "Paper sheet",
+      "critical": "Critical result",
+      "call_waiting": "Call waiting",
+      "stabilised": "Stabilised"
     },
     "state": {
       "arrived": "Waiting for triage",
@@ -19271,6 +19275,90 @@
       "not_a_doctor": {
         "rule": "Only a doctor can be the ER doctor.",
         "fix": "Pick a doctor"
+      },
+      "note_not_found": {
+        "rule": "No such ER note.",
+        "fix": "Open episode"
+      },
+      "note_signed": {
+        "rule": "The note is already signed.",
+        "fix": "Add an addendum"
+      },
+      "cosign_own_note": {
+        "rule": "Someone else co-signs a note.",
+        "fix": "Ask a senior"
+      },
+      "cosigner_not_senior": {
+        "rule": "A senior doctor co-signs a resident's note.",
+        "fix": "Ask a senior"
+      },
+      "item_not_stocked": {
+        "rule": "Not stocked in the ER store.",
+        "fix": "Pick another item"
+      },
+      "stock_short": {
+        "rule": "Not enough of this in the ER store.",
+        "fix": "Ask pharmacy"
+      },
+      "allergy_override_needed": {
+        "rule": "A recorded allergy matches — say why it goes ahead.",
+        "fix": "Give override reason"
+      },
+      "issue_not_found": {
+        "rule": "No such ER medicine issue.",
+        "fix": "Open episode"
+      },
+      "dose_already_recorded": {
+        "rule": "This dose is already recorded.",
+        "fix": "Open the medication record"
+      },
+      "second_check_needed": {
+        "rule": "High-alert drug: a second person checks it first.",
+        "fix": "Second check"
+      },
+      "second_check_failed": {
+        "rule": "Second person's username or PIN did not match.",
+        "fix": "Try again"
+      },
+      "second_checker_same": {
+        "rule": "The second check is by a different person.",
+        "fix": "Ask a colleague"
+      },
+      "verbal_not_pending": {
+        "rule": "No unsigned verbal order here.",
+        "fix": "Open the medication record"
+      },
+      "not_ordering_doctor": {
+        "rule": "Only the ordering doctor signs it.",
+        "fix": "Ask that doctor"
+      },
+      "consent_not_found": {
+        "rule": "No such consent for this patient.",
+        "fix": "Record consent"
+      },
+      "consent_witness_needed": {
+        "rule": "Name the witness, and the guardian with relation.",
+        "fix": "Add witness"
+      },
+      "emergency_needs_second_doctor": {
+        "rule": "Emergency without consent needs a second doctor.",
+        "fix": "Name second doctor"
+      },
+      "call_not_found": {
+        "rule": "No such specialty call.",
+        "fix": "Open episode"
+      },
+      "call_closed": {
+        "rule": "The call is already answered and seen.",
+        "fix": "Open episode"
+      },
+      "call_already_open": {
+        "rule": "A call to this department is already waiting.",
+        "fix": "Open the call"
+      },
+      "already_stabilised": {
+        "rule": "Already recorded as stabilised.",
+        "fix": "Open episode"
       }
     },
     "esi": {
@@ -19504,7 +19592,10 @@
       "OBG": "Obs & Gynae",
       "PAED": "Paediatrics",
       "ENT": "ENT",
-      "OPH": "Eye"
+      "OPH": "Eye",
+      "CARD": "Cardiology",
+      "NEURO": "Neurology",
+      "ANAES": "Anaesthesia"
     },
     "save": "Save triage",
     "saveAgain": "Save re-triage",
@@ -19523,5 +19614,130 @@
     "doctorSet": "Doctor set — clocks stopped",
     "history": "Triage so far",
     "vitalsOnly": "Vitals"
+  },
+  "erPatient": {
+    "title": "ER patient",
+    "pick": "Open a patient from the ER board.",
+    "actions": "Actions",
+    "none": "Nothing yet",
+    "stabilisedAt": "Stabilised {{time}}",
+    "stabilisedDone": "Recorded: stabilised",
+    "critical": "Critical result —",
+    "criticalHint": "The lab is calling; read the value back to close it.",
+    "bar": {
+      "order": "Order tests",
+      "med": "Medicine",
+      "note": "Note",
+      "call": "Call specialty",
+      "procedure": "Procedure",
+      "consent": "Consent",
+      "stabilised": "Stabilised"
+    },
+    "meds": "Medicines",
+    "calls": "Specialty calls",
+    "orders": "Tests",
+    "notes": "Notes",
+    "procedures": "Procedures and consent",
+    "order": {
+      "find": "Test",
+      "findHint": "CBC, troponin, CT head…",
+      "why": "Why (indication)",
+      "send": "Order — STAT",
+      "sent": "Ordered STAT",
+      "duplicates": "{{n}} already ordered (warning)"
+    },
+    "med": {
+      "find": "ER store",
+      "findHint": "Name of the drug",
+      "ownLabel": "Or the patient's own medicine",
+      "dose": "Dose",
+      "units": "Units",
+      "orderedBy": "Ordered by {{name}}",
+      "verbal": "Verbal order (read back)",
+      "override": "Allergy override reason",
+      "overrideHint": "Only if an allergy matches",
+      "issue": "Issue · print label",
+      "issued": "Issued",
+      "highAlert": "High alert",
+      "own": "Own medicine",
+      "verbalPending": "Verbal — to sign",
+      "secondUser": "Second person (username)",
+      "secondPin": "Their PIN",
+      "whyNot": "Why held or refused",
+      "give": "Given",
+      "given": "Dose recorded",
+      "hold": "Held",
+      "refused": "Refused",
+      "signVerbal": "Sign verbal order",
+      "signed": "Verbal order signed",
+      "outcome": {
+        "given": "Given",
+        "held": "Held",
+        "refused": "Refused"
+      }
+    },
+    "note": {
+      "text": "Note",
+      "save": "Save note",
+      "saved": "Note saved",
+      "draftSaved": "Saved as draft — a senior co-signs",
+      "draft": "Draft",
+      "cosign": "Co-sign",
+      "cosigned": "Co-signed",
+      "kind": {
+        "assessment": "Assessment",
+        "progress": "Progress",
+        "nursing": "Nursing",
+        "procedure": "Procedure note",
+        "handover": "Handover"
+      }
+    },
+    "procedure": {
+      "name": "Procedure",
+      "hint": "Chest drain, suturing, CPR…",
+      "by": "Done by",
+      "save": "Record procedure",
+      "saved": "Procedure recorded"
+    },
+    "consent": {
+      "about": "Consent for",
+      "signerName": "Name",
+      "relation": "Relation",
+      "witness": "Witness",
+      "secondDoctor": "Second doctor (concurs)",
+      "save": "Record consent",
+      "saved": "Consent recorded",
+      "word": "Consent",
+      "hint": "Emergency without consent: no capacity, no relative, life at risk — two doctors.",
+      "kind": {
+        "general": "General",
+        "procedure": "Procedure",
+        "blood": "Blood",
+        "high_risk": "High risk",
+        "refusal_of_treatment": "Refusal"
+      },
+      "signer": {
+        "patient": "Patient",
+        "guardian": "Guardian",
+        "representative": "Representative",
+        "emergency": "Emergency (2 doctors)"
+      }
+    },
+    "call": {
+      "reason": "Why",
+      "send": "Call",
+      "sent": "Called: {{who}}",
+      "noRoster": "no roster names — phone the unit",
+      "waiting": "Waiting {{minutes}} min",
+      "answeredAt": "Answered {{time}}",
+      "seenAt": "Seen {{time}}",
+      "answered": "Answered",
+      "seen": "Seen",
+      "urgency": {
+        "immediate": "Immediate",
+        "urgent": "Urgent",
+        "routine": "Routine"
+      }
+    }
   }
 }

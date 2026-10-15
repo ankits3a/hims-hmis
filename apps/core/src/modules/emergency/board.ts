@@ -1,8 +1,9 @@
-import { and, desc, eq, gt, gte, inArray, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { ER_DOOR_TO_TRIAGE_MINUTES, ER_ESI_INFO } from "@hmis/contracts";
 import { istDayWindow } from "../../kernel/approvals/cumulative";
-import { ER_OPEN_STATE_VALUES, erBands, erEpisodes, erPreAlerts, erTriageEntries, patients, resources, roleAssignments, users } from "../../kernel/db/schema";
+import { ER_OPEN_STATE_VALUES, erBands, erEpisodes, erPreAlerts, erSpecialtyCalls, erTriageEntries, patients, resources, roleAssignments, users } from "../../kernel/db/schema";
 import { initialsOf } from "../ipd";
+import { openCriticalsForEncounters } from "../lab";
 import { getMergeRequest, getPatientSummaries, searchPatients } from "../patients";
 import { aliasHiOf, requireErPermission, yearsOld } from "./core";
 import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_TRIAGE } from "./names";
@@ -109,9 +110,18 @@ async function tilesFor(db: Db, actor: Actor, eps: readonly EpisodeRow[], at: Da
   const docIds = eps.flatMap((e) => (e.doctorId === null ? [] : [e.doctorId]));
   const docs = new Map(docIds.length === 0 ? [] : (await db.select({ id: users.id, name: users.fullName }).from(users)
     .where(inArray(users.id, docIds))).map((d) => [d.id, d.name] as const));
+  // Lane 3 (#810): an open critical (the lab's ladder), a specialty call not yet answered, stabilised.
+  const openEps = eps.filter((e) => (ER_OPEN_STATE_VALUES as readonly string[]).includes(e.state));
+  const critical = new Set((await openCriticalsForEncounters(db, openEps.map((e) => e.episodeNo))).map((c) => c.encounterNo));
+  const waitingCall = new Set(openEps.length === 0 ? [] : (await db.select({ id: erSpecialtyCalls.episodeId }).from(erSpecialtyCalls)
+    .where(and(inArray(erSpecialtyCalls.episodeId, openEps.map((e) => e.id)), isNull(erSpecialtyCalls.answeredAt)))).map((r) => r.id));
   const out = new Map<string, ErTile>();
   for (const e of eps) {
     const n = names.get(e.id)!;
+    const extra: ErTileChip[] = [];
+    if (critical.has(e.episodeNo)) extra.push("critical");
+    if (waitingCall.has(e.id)) extra.push("call_waiting");
+    if (e.stabilisedAt !== null) extra.push("stabilised");
     const esi = (e.esi ?? null) as ErEsiLevel | null;
     const doc = e.doctorId === null ? null : docs.get(e.doctorId) ?? null;
     out.set(e.id, {
@@ -120,7 +130,7 @@ async function tilesFor(db: Db, actor: Actor, eps: readonly EpisodeRow[], at: Da
       sex: n.sex, ageBand: (e.ageBand ?? null) as ErAgeBand | null, ageYears: n.ageYears,
       state: e.state as ErEpisodeState, arrivalMode: e.arrivalMode as ErArrivalMode, arrivedAt: e.arrivedAt.toISOString(),
       triageDueAt: e.state === "arrived" ? new Date(e.arrivedAt.getTime() + ER_DOOR_TO_TRIAGE_MINUTES * MINUTE).toISOString() : null,
-      chips: chipsOf(e, n, alerted),
+      chips: [...extra, ...chipsOf(e, n, alerted)],
       esi, bayCode: e.bayId === null ? null : bays.get(e.bayId) ?? null,
       doctor: doc === null ? null : wall ? initialsOf(doc) : doc,
       doctorDueAt: esi === null || e.seenAt !== null ? null

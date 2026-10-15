@@ -123,8 +123,10 @@ function Tile({ tile, now, wall, href }: { tile: ErTile; now: number; wall: bool
     </>
   );
   const cls = `erb-tile${late ? " late" : ""}${tile.esi !== null ? ` esi-edge-${String(tile.esi)}` : ""}`;
+  // Lane 3: a patient a doctor has seen opens on their care; before that, on triage.
+  const to = tile.state === "arrived" || tile.state === "triaged" ? "/er/triage" : "/er/patient";
   return href ? (
-    <Link to="/er/triage" search={{ episode: tile.episodeId } as never} className={`${cls} erb-link`} data-testid="er-board-tile">{body}</Link>
+    <Link to={to} search={{ episode: tile.episodeId } as never} className={`${cls} erb-link`} data-testid="er-board-tile">{body}</Link>
   ) : <article className={cls} data-testid="er-board-tile">{body}</article>;
 }
 

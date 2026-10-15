@@ -90,6 +90,33 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   carries the patient label (initials on the wall); "Arrived" on the ER desk opens Known with the patient picked.
 - Permission `er.triage` (er_nurse, doctor). Screen `apps/web/src/screens/er-triage.tsx` (`/er/triage`).
 
+### Lane 3 (er-care, #810)
+- `care.ts` — the intents: `recordErNote` / `cosignErNote` (a `resident` role holder's note is a draft until a doctor who is
+  not a resident co-signs; never the author), `placeErOrder` (THE ordering door `orderTests`, STAT by default, naming the ER
+  number; the lab's duplicate findings are acknowledged and returned as a WARNING — spec §4.3), `issueErMed` (FEFO from the
+  `ER-SAT` materials store, patient label lines, an `er.issue` charge line `rate_pending` for lane 6; own medicine takes no
+  stock and no line; a recorded allergy matching the item name or its formulary salts needs `allergyOverride`, never a hard
+  block; the ordering doctor must be a doctor; `verbal` = read back now, signed by that doctor within 2 h), `giveErDose`
+  (one record per issue; a HIGH-ALERT item given needs a second clinical person's username + PIN on its own connection,
+  throttled like IPD), `signErVerbalOrder`, `recordProcedure` (a `serviceId` posts an `er.procedure` line), `recordConsent`
+  (paper names its witness; guardian/representative named with relation; `emergency` = no capacity, no relative, life at
+  risk: the treating doctor plus a SECOND, different doctor), `callSpecialty` (the unit on take at the GATE; callees from the
+  roster's `calloutList`; one open call per department), `answerCall`, `declareStabilised` (a doctor, once; a clinical word).
+- `sweepErCareClocks` (rides the minute job): a lab critical on an open ER episode (lab `openCriticalsForEncounters`) →
+  ONE notice to the ER doctor of record (none yet: the `er_critical` ladder); still open 15 min → ONE climb on `er_critical`
+  (fallback `duty_manager`); the call closes only by the lab's read-back. A call unanswered 15 min → ONE climb on `er_call`.
+  A verbal order unsigned 2 h → the ordering doctor's bell, once. Stamps: `er_critical_alerts`, `er_specialty_calls.climbed_at`,
+  `er_med_issues.verbal_notice_at`.
+- `charge-sink.ts` — the `ER` encounter resolver (only `^ER\d{2}-\d{6}$`, the patient through the merge chain, payer `self`)
+  and the episode charge sink (billing `registerEpisodeChargeSink("ER")`): open episode = `live` (no invoice at a counter, no
+  report held for money), departed = `ended`; one line per order item priced from the active tariff, `rate_missing` when no
+  rate; a cancel before the work reverses. Billing's `RUNNING_BILL_EPISODE_RES` now names the ER grammar too (fail closed).
+  Registered by `EmergencyModule` (API only, as IPD).
+- Reads: `care-read.ts` `readErCare` (no money key — the acceptance suite stringifies it), `listErItems` (ER-SAT stock, no price).
+- Board chips: `critical`, `call_waiting`, `stabilised`. Screen `apps/web/src/screens/er-patient.tsx` (`/er/patient`).
+- Care is never gated: acceptance (c) runs every clinical intent on an unidentified patient who has paid nothing; (c-3) reads
+  `care.ts` / `triage.ts` source for money words. MLC state joins (c) in lane 4.
+
 ## 4. Traps
 - `registerPatient` takes a `Tx` and the band reads the new patient in that same `tx` (`bandPerson(tx, …)`); reading it
   through `db` (`getPatient`) inside the transaction sees nothing.
@@ -101,6 +128,9 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   app-only list), caddyfile-parity routes (131), standup-check (`emergency` in NOT_DEPARTMENTS, OPEN).
 
 ## 5. Seams owed to later lanes
+- Lane 3 built care. Still owed after lane 3: the ER bill desk prices `rate_pending` issue lines and settles (lane 6);
+  radiology's own `INPATIENT_ADMISSION_NO_RE` does not know the ER number (a STAT scan is authorised by `stat` anyway);
+  results "ready" chip and copilot "since arrival" (lane 9); the drug-order list is the issue itself (no separate ER drug order).
 - Lane 2 built ESI, bays, the door-to-triage and re-triage tasks and climbs, and the OPD card. Still owed after lane 2: LWBS (lane 5's `record_lwbs`),
   child-without-guardian social-worker task, Code Grey from triage (lane 7), the copilot's ESI proposal (lane 9),
   bay release on departure (lane 5 through `releaseErBayIn`), the ER bay on the IPD Beds board shows no ER name.

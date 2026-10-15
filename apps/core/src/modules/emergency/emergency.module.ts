@@ -3,6 +3,7 @@ import { RealtimeGateway } from "../../kernel/realtime/gateway";
 import { RealtimeModule } from "../../kernel/realtime/realtime.module";
 import { EmergencyController } from "./emergency.controller";
 import { ER_TOPIC_SPACES, erTopicRouter } from "./realtime";
+import { registerErChargeSink, registerErEncounterResolver } from "./charge-sink";
 
 /**
  * ER lane 1 (#808) — the emergency module. Mounts the ER routes and registers the board's live topic. Guards are the
@@ -16,6 +17,9 @@ class EmergencyRealtimeRegistrar implements OnModuleInit {
   onModuleInit(): void {
     for (const space of ER_TOPIC_SPACES) this.gateway.registerTopicSpace(space);
     this.gateway.registerRouter(erTopicRouter);
+    // Lane 3 (#810) — the `ER` episode prefix for the ordering door, and the ER charge sink (no invoice, no held report).
+    registerErEncounterResolver();
+    registerErChargeSink();
   }
 }
 

@@ -13,7 +13,11 @@ import {
  */
 
 /** Chips on a tile, each shown as a word (never colour alone). */
-export const ER_TILE_CHIPS = ["unidentified", "returned_24h", "name_alert", "police", "ambulance", "paper"] as const;
+export const ER_TILE_CHIPS = [
+  "unidentified", "returned_24h", "name_alert", "police", "ambulance", "paper",
+  // lane 3 (#810): an open critical result, a specialty call waiting, stabilised (a clinical word only).
+  "critical", "call_waiting", "stabilised",
+] as const;
 export type ErTileChip = (typeof ER_TILE_CHIPS)[number];
 
 export const ErTileSchema = z.object({
@@ -165,6 +169,20 @@ export const ER_ROUTES = {
   bays: "/er/bays",
   episode: "/er/episodes",
   triageDoctors: "/er/triage-doctors",
+  // lane 3 (#810)
+  care: "/er/care",
+  notes: "/er/notes",
+  cosign: "/er/notes/cosign",
+  orders: "/er/orders",
+  items: "/er/items",
+  issue: "/er/meds/issue",
+  dose: "/er/meds/dose",
+  signVerbal: "/er/meds/sign-verbal",
+  procedures: "/er/procedures",
+  consents: "/er/consents",
+  calls: "/er/calls",
+  answerCall: "/er/calls/answer",
+  stabilised: "/er/stabilised",
 } as const;
 
 /** Lane 2 (#809) — a bay the triage screen may pick: an emergency-class bed of the registry, with who is in it. */
@@ -196,3 +214,34 @@ export const ErEpisodeViewSchema = z.object({
   })),
 });
 export type ErEpisodeView = z.infer<typeof ErEpisodeViewSchema>;
+
+/** Lane 3 (#810) — the ER doctor's and nurse's view of one episode's care. No money anywhere (0058). */
+export const ErCareViewSchema = z.object({
+  episodeId: ErIdSchema,
+  stabilisedAt: ErInstantSchema.nullable(),
+  /** "Allergy: Penicillin (severe)", "Allergy: unknown" (unidentified), "Allergy: none recorded". */
+  allergyWords: z.array(z.string()),
+  notes: z.array(z.object({
+    noteId: ErIdSchema, kind: z.string(), text: z.string(), author: z.string(), at: ErInstantSchema,
+    status: z.enum(["signed", "draft"]), cosignedBy: z.string().nullable(),
+  })),
+  orders: z.array(z.object({ orderId: ErIdSchema, kind: z.string(), priority: z.string().nullable(), tests: z.array(z.string()), at: ErInstantSchema })),
+  meds: z.array(z.object({
+    issueId: ErIdSchema, name: z.string(), doseWords: z.string(), route: z.string(), units: z.number().int(), highAlert: z.boolean(),
+    own: z.boolean(), orderedBy: z.string(), verbalPending: z.boolean(), at: ErInstantSchema,
+    dose: z.object({ outcome: z.enum(["given", "held", "refused"]), at: ErInstantSchema, by: z.string(), reason: z.string().nullable() }).nullable(),
+  })),
+  procedures: z.array(z.object({ procedureId: ErIdSchema, name: z.string(), by: z.string(), at: ErInstantSchema })),
+  consents: z.array(z.object({ consentId: ErIdSchema, kind: z.string(), about: z.string(), signedBy: z.string(), at: ErInstantSchema })),
+  calls: z.array(z.object({
+    callId: ErIdSchema, departmentCode: z.string(), urgency: z.string(), reason: z.string(), calledAt: ErInstantSchema,
+    answeredAt: ErInstantSchema.nullable(), seenAt: ErInstantSchema.nullable(), callees: z.array(z.string()),
+  })),
+  /** Open critical results for this episode (from the lab's call ladder), and whether the read-back closed them. */
+  criticals: z.array(z.object({ callId: z.string(), analyte: z.string(), value: z.string(), unit: z.string().nullable(), openedAt: ErInstantSchema })),
+});
+export type ErCareView = z.infer<typeof ErCareViewSchema>;
+
+/** Lane 3 — an ER store item the nurse may issue (no price: the issue screen is clinical). */
+export const ErItemOptionSchema = z.object({ itemId: ErIdSchema, name: z.string(), highAlert: z.boolean(), lasa: z.boolean(), onHand: z.number() });
+export type ErItemOption = z.infer<typeof ErItemOptionSchema>;

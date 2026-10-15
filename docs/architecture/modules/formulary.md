@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/formulary/`
 
 - **Depends on modules:** —
-- **Used by modules:** `cds`, `ipd`, `materials`, `opd`, `pharmacy`
+- **Used by modules:** `cds`, `emergency`, `ipd`, `materials`, `opd`, `pharmacy`
 - **Kernel used:** `auth`, `db`, `events`, `modules`, `search`, `tokens`
 
 ## Public API (`index.ts`), by declaring file

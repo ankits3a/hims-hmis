@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/lab/`
 
 - **Depends on modules:** `billing`, `opd`, `patients`, `tariff`
-- **Used by modules:** `abdm`, `ipd`, `ordering`, `radiology`
+- **Used by modules:** `abdm`, `emergency`, `ipd`, `ordering`, `radiology`
 - **Kernel used:** `approvals`, `auth`, `db`, `desk`, `episodes`, `events`, `modules`, `notify`, `ops`, `orders`, `phi`, `printing`, `realtime`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `interfaceDown`, `interfaceRestored`
 
@@ -66,6 +66,7 @@ Source: `apps/core/src/modules/lab/`
   - `acknowledgeCritical(tx: Tx, actor: Actor, input: AcknowledgeCriticalInput, now: Date = new Date()): Promise<AcknowledgeCriticalOutcome>`
   - `nextRung(attempts: readonly CriticalAttempt[]): CriticalRung | null`
   - `openCriticalCalls(db: Db, actor: Actor, now: Date = new Date()): Promise<OpenCriticalCall[]>`
+  - `openCriticalsForEncounters(db: Db | Tx, encounterNos: readonly string[]): Promise<{ callId: string; encounterNo: string; openedAt: Date; an…`
   - types: `AcknowledgeCriticalInput`, `AcknowledgeCriticalOutcome`, `CriticalAttempt`, `OpenCriticalCall`
 - `definitions.ts`
   - `LAB_DEFINITIONS`

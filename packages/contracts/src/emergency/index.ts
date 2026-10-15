@@ -1,5 +1,6 @@
 import * as arrival from "./intents";
 import * as triageIntents from "./triage";
+import * as care from "./care";
 
 export * from "./common";
 export * from "./refusals";
@@ -9,6 +10,7 @@ export {
   esiAlgorithm, isDownTriage,
 } from "./triage";
 export type { ErEsiDecision, ErEsiLevel, ErEws, ErVitals } from "./triage";
+export { ER_CONSENT_KINDS, ER_MED_ROUTES, ER_NOTE_KINDS } from "./care";
 export { ErBandPayloadSchema } from "./intents";
 export type { ErBandPayload } from "./intents";
 
@@ -29,6 +31,18 @@ export const ER_INTENTS = {
   place_in_bay: triageIntents.placeInBay,
   move_bay: triageIntents.moveBay,
   assign_er_doctor: triageIntents.assignErDoctor,
+  // lane 3 (#810)
+  record_er_note: care.recordErNote,
+  cosign_er_note: care.cosignErNote,
+  place_er_order: care.placeErOrder,
+  issue_er_med: care.issueErMed,
+  give_er_dose: care.giveErDose,
+  sign_er_verbal_order: care.signErVerbalOrder,
+  record_procedure: care.recordProcedure,
+  record_consent: care.recordConsent,
+  call_specialty: care.callSpecialty,
+  answer_call: care.answerCall,
+  declare_stabilised: care.declareStabilised,
 } as const;
 export type ErIntentName = keyof typeof ER_INTENTS;
 export const ER_INTENT_NAMES = Object.keys(ER_INTENTS) as ErIntentName[];

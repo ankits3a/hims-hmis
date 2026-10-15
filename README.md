@@ -1751,6 +1751,13 @@ vitals scored by NEWS2 / MEOWS / PEWS beside the level, the re-triage clock (a t
 minutes), ER bays from the bed registry and the ER doctor of record.
 `er.triage` is held by `er_nurse` and `doctor`.
 
+**Emergency care (ER lane 3, issue #810, decision 0076, built 2026-10-15, awaiting owner review).** The ER patient screen
+at `/er/patient`: notes (a resident's note is a draft until a senior co-signs), STAT tests through the ordering door,
+the ER store issue with patient labels and the dose record (a high-alert dose with a second person's PIN), procedures,
+consent (emergency treatment without consent needs a second doctor), specialty calls to the unit on take, critical
+results to the ER doctor of record, and "stabilised". No ER clinical screen shows money.
+`er.care` is held by `doctor` and `er_nurse`.
+
 **Copilot halt switch and spend cap (plan E0.3/E0.5, decision 0064, built 2026-10-11, awaiting owner review).**
 `copilot.halt.set` (owner, admin, duty_manager, quality_manager) pauses the copilot by scope — read, act,
 draft or global; `copilot.halt.clear` (owner, duty_manager) clears read, act and draft; and
