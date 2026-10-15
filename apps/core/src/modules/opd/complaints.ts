@@ -84,10 +84,19 @@ export async function suggestComplaints(
       select term, concept_key from mapped
       union
       select term, concept_key from used
+    ),
+    -- the doctor's own "complaints" reset (decision 0050, #615): "mine" counts only uses above the snapshot
+    baseline as (
+      select r.complaint_baseline as base
+        from cds_doctor_learning_resets r
+        join opd_doctors od on od.user_id = r.user_id
+       where od.id = ${who} and r.surface = 'complaints'
     )
     select c.term,
            max(c.concept_key) as concept_key,
-           coalesce((select sum(u.uses) from opd_complaint_term_usage u
+           coalesce((select sum(greatest(u.uses - coalesce((b.base->>u.term)::int, 0), 0))
+                       from opd_complaint_term_usage u
+                       left join baseline b on true
                       where lower(u.term) = lower(c.term) and u.doctor_id = ${who}), 0) as mine,
            coalesce((select sum(u.uses) from opd_complaint_term_usage u
                       where lower(u.term) = lower(c.term)), 0) as hospital

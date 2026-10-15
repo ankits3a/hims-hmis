@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { LINE_SOURCES, newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
-import { cdsDoctorPrefs, opdEncounters, opdLasaPairs, opdSuggestionEvents, opdTermMisses } from "../../kernel/db/schema";
+import { cdsDoctorLearningResets, cdsDoctorPrefs, opdEncounters, opdLasaPairs, opdSuggestionEvents, opdTermMisses } from "../../kernel/db/schema";
 import { medicinesByIds, saltsByIds, searchMedicinesForPrescribing } from "../formulary";
 import type { PrescribingHit } from "../formulary";
 import { OpdError } from "./errors";
@@ -260,7 +260,11 @@ export type HiddenItem = { kind: string; contextKey: string | null; itemKey: str
  * deleted — a hidden item returns by itself when a cross ages out, and at once when the doctor types it.
  */
 export async function hiddenSuggestions(db: Db, userId: string, now: Date = new Date()): Promise<HiddenItem[]> {
-  const since = new Date(now.getTime() - DISMISS_COUNTS_FOR_DAYS * 24 * 3600 * 1000);
+  const windowStart = new Date(now.getTime() - DISMISS_COUNTS_FOR_DAYS * 24 * 3600 * 1000);
+  // the doctor's own "hidden" reset (decision 0050, #615): crosses before it no longer hide anything
+  const [reset] = await db.select({ at: cdsDoctorLearningResets.resetAt }).from(cdsDoctorLearningResets)
+    .where(and(eq(cdsDoctorLearningResets.userId, userId), eq(cdsDoctorLearningResets.surface, "hidden")));
+  const since = reset !== undefined && reset.at > windowStart ? reset.at : windowStart;
   const rows = await db.select({
     kind: opdSuggestionEvents.kind, contextKey: opdSuggestionEvents.contextKey, itemKey: opdSuggestionEvents.itemKey,
     outcome: opdSuggestionEvents.outcome,

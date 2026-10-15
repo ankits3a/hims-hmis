@@ -32,13 +32,15 @@ export async function myTerms(db: Db, doctorId: string, field: TermField, query:
   const capped = Math.min(Math.max(limit, 1), 20);
   const like = `%${q}%`;
   const starts = `${q}%`;
+  const since = sql`coalesce((select r.reset_at from cds_doctor_learning_resets r join opd_doctors od on od.user_id = r.user_id
+                              where od.id = ${doctorId} and r.surface = 'findings'), '-infinity'::timestamptz)`;
   const res = field === "treatment"
     ? await db.execute(sql`
         select x.term, count(*)::int as uses
           from opd_encounters e
           cross join lateral jsonb_array_elements_text(
             case when jsonb_typeof(e.treatment) = 'array' then e.treatment else '[]'::jsonb end) as x(term)
-         where e.doctor_id = ${doctorId} and e.consult_completed_at is not null
+         where e.doctor_id = ${doctorId} and e.consult_completed_at is not null and e.consult_completed_at >= ${since}
            and lower(x.term) like ${like}
          group by x.term
          order by (lower(x.term) like ${starts}) desc, uses desc, length(x.term) asc, x.term asc
@@ -48,7 +50,7 @@ export async function myTerms(db: Db, doctorId: string, field: TermField, query:
           from opd_encounters e
           cross join lateral jsonb_array_elements(
             case when jsonb_typeof(e.examination) = 'array' then e.examination else '[]'::jsonb end) as f
-         where e.doctor_id = ${doctorId} and e.consult_completed_at is not null
+         where e.doctor_id = ${doctorId} and e.consult_completed_at is not null and e.consult_completed_at >= ${since}
            and f->>'group' = ${field.slice("exam_".length)}
            and lower(f->>'text') like ${like}
          group by f->>'text'
@@ -80,9 +82,12 @@ export async function testsForDiagnosis(
   const who = doctorId ?? "";
   const codeArr = codes.length === 0 ? sql`array[]::text[]` : sql`array[${sql.join(codes.map((c) => sql`${c}`), sql`, `)}]::text[]`;
   const wordArr = words.length === 0 ? sql`array[]::text[]` : sql`array[${sql.join(words.map((w) => sql`${w}`), sql`, `)}]::text[]`;
+  // the doctor's own "tests" reset (decision 0050, #615) narrows "mine"; "hospital" keeps every visit
+  const mineSince = sql`coalesce((select r.reset_at from cds_doctor_learning_resets r join opd_doctors od on od.user_id = r.user_id
+                                  where od.id = ${who} and r.surface = 'tests'), '-infinity'::timestamptz)`;
   const res = await db.execute(sql`
     with visits as (
-      select distinct e.id, e.doctor_id, e.advised_tests
+      select distinct e.id, e.doctor_id, e.consult_completed_at, e.advised_tests
         from opd_encounters e
         join opd_encounter_diagnoses d on d.encounter_id = e.id
        where e.consult_completed_at is not null
@@ -92,7 +97,7 @@ export async function testsForDiagnosis(
     select t->>'serviceId' as service_id,
            max(t->>'code') as code, max(t->>'name') as name,
            max((t->>'pricePaise')::int) as price_paise,
-           count(*) filter (where v.doctor_id = ${who})::int as mine,
+           count(*) filter (where v.doctor_id = ${who} and v.consult_completed_at >= ${mineSince})::int as mine,
            count(*)::int as hospital
       from visits v
       cross join lateral jsonb_array_elements(v.advised_tests) as t

@@ -638,3 +638,13 @@ const flowFindingAct = z.object({
 });
 export const flowFindingDismissed = defineEvent("flow.finding_dismissed", MODULE, flowFindingAct);
 export const flowFindingTried = defineEvent("flow.finding_tried", MODULE, flowFindingAct);
+
+/**
+ * Decision 0050 / plan P4 (#615) — a doctor reset what the system learned from them. The actor IS the
+ * doctor (nobody resets another's); the payload names the OPD doctor and the surfaces. No patient.
+ */
+export const learningReset = defineEvent("suggestions.learning_reset", MODULE, z.object({
+  doctorId: id,
+  surfaces: z.array(z.enum(["complaints", "diagnoses", "tests", "findings", "hidden"])).min(1),
+  resetAt: iso,
+}));

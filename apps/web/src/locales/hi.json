@@ -11337,6 +11337,41 @@
     "vitalsAt": "{{at}} पर दर्ज",
     "dangerShort": "ख़तरा"
   },
+  "learnedAboutMe": {
+    "title": "सुझावों ने आपसे क्या सीखा",
+    "intro": "सिर्फ़ आपके अपने पैटर्न। रीसेट से आपका स्तर आज से फिर शुरू होता है। कुछ भी मिटाया नहीं जाता।",
+    "close": "बंद करें",
+    "loading": "लोड हो रहा है…",
+    "error": "लोड नहीं हो सका। फिर कोशिश करें।",
+    "nothing": "अभी कुछ नहीं।",
+    "sinceStart": "शुरुआत से",
+    "sinceReset": "{{date}} के रीसेट से",
+    "reset": "रीसेट",
+    "resetAll": "सब रीसेट करें",
+    "confirmOne": "आपके {{surface}} रीसेट करें? सुझाव आज से फिर सीखेंगे।",
+    "confirmAll": "आपसे सीखा सब कुछ रीसेट करें? सुझाव आज से फिर सीखेंगे।",
+    "confirmReset": "हाँ, रीसेट करें",
+    "keep": "रहने दें",
+    "resetFailed": "रीसेट नहीं हुआ। फिर कोशिश करें।",
+    "uses_one": "{{count}} बार",
+    "uses_other": "{{count}} बार",
+    "testFor": "{{diagnosis}} के लिए {{name}}",
+    "hiddenKind_one": "{{count}} {{kind}} छिपा",
+    "hiddenKind_other": "{{count}} {{kind}} छिपे",
+    "open": "क्या सीखा",
+    "surface": {
+      "complaints": "शिकायतें",
+      "diagnoses": "निदान",
+      "tests": "जाँचें",
+      "findings": "जाँच-निष्कर्ष और इलाज के शब्द",
+      "hidden": "काटे गए सुझाव"
+    },
+    "kind": {
+      "diagnosis": "निदान",
+      "test": "जाँच",
+      "medicine": "दवा"
+    }
+  },
   "opdConsultV3": {
     "suggestions": "कोपायलट सुझाव",
     "folded": "कोपायलट छोटा है — सुझाव यहाँ दिखते हैं",
