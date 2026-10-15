@@ -12,6 +12,7 @@ import {
 import { appendEvent } from "../../kernel/events/append";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
 import { resolveMedicines } from "../formulary";
+import { stampErHandOffIn } from "../ipd";
 import { duplicateWarnings, openCriticalsForEncounters } from "../lab";
 import { MaterialsError, fefoPick, findStoreByCode, postMovements } from "../materials";
 import { orderTests } from "../ordering";
@@ -557,6 +558,8 @@ export async function declareStabilised(db: Db, actor: Actor, raw: unknown, opts
       payload: { episodeId: e.id, stabilisedAt: at.toISOString(), provenance: provenanceOf(actor) },
       actor, correlationId: e.id, patientId: e.patientId, occurredAt: at,
     }));
+    // Lane 5 (#812, review #13): stabilised AFTER the hand-off (the patient boarding) reaches the admission too.
+    if (e.admissionId !== null) await stampErHandOffIn(tx, { admissionId: e.admissionId, erArrivedAt: e.arrivedAt, stabilisedAt: at });
     return { episodeId: e.id, stabilisedAt: at.toISOString() };
   }), at);
 }
@@ -643,9 +646,11 @@ export async function sweepErCareClocks(db: Db, now: Date): Promise<{ criticals:
       out.calls += 1;
     });
   }
+  // Lane 5 (#812): a departed episode leaves every care clock — the verbal-order bell too (only open episodes are read).
   const verbal = await db.select().from(erMedIssues).where(and(
     eq(erMedIssues.verbal, true), isNull(erMedIssues.verbalSignedAt), isNull(erMedIssues.verbalNoticeAt),
     lte(erMedIssues.issuedAt, new Date(now.getTime() - ER_VERBAL_SIGN_MIN * MIN)),
+    inArray(erMedIssues.episodeId, db.select({ id: erEpisodes.id }).from(erEpisodes).where(inArray(erEpisodes.state, [...ER_OPEN_STATE_VALUES]))),
   ));
   for (const v of verbal) {
     await withTx(db, async (tx) => {

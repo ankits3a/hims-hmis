@@ -35,7 +35,7 @@ import { sweepOverdueQa } from "../../modules/aerb";
 import { runAliasJob, runFlowLearning } from "../../modules/opd";
 import { syncAttendance } from "../../modules/attendance";
 import { sweepTasks } from "../../modules/tasks";
-import { lapseErPreAlerts, sweepErCareClocks, sweepErMlcClocks, sweepErTriageClocks } from "../../modules/emergency";
+import { lapseErPreAlerts, sweepErBoarding, sweepErCareClocks, sweepErMlcClocks, sweepErTriageClocks } from "../../modules/emergency";
 import { lapseBedReservations, postNightlyIpdCharges, runIpdBillDeskNightly, sweepIpdEmar, sweepIpdNursing, sweepIpdRoundsClock } from "../../modules/ipd";
 import { buildDueLists } from "../../modules/diet";
 import { sweepBmwStorage } from "../../modules/bmw";
@@ -758,6 +758,8 @@ export function registerAllJobs(
       try { await sweepErCareClocks(db, now); } catch (e) { erLog.error(`sweepErCareClocks failed: ${e instanceof Error ? e.message : String(e)}`); }
       // ER lane 4 (#811): the MLC clocks — the police intimation task (1 h) and its climb, the countersign breach (24 h).
       try { await sweepErMlcClocks(db, now); } catch (e) { erLog.error(`sweepErMlcClocks failed: ${e instanceof Error ? e.message : String(e)}`); }
+      // ER lane 5 (#812): a boarding patient leaves the ER when IPD places the bed (or stops boarding if the admission is cancelled).
+      try { await sweepErBoarding(db, now); } catch (e) { erLog.error(`sweepErBoarding failed: ${e instanceof Error ? e.message : String(e)}`); }
     },
   });
   /*

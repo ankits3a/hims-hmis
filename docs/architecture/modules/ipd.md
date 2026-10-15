@@ -260,7 +260,7 @@ Source: `apps/core/src/modules/ipd/`
 - `discharge-exit.ts`
   - `issueGatePass(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"issue_gate_pass">>`
   - `listMortuary(db: Db, actor: Actor): Promise<IpdMortuaryEntry[]>`
-  - `openErMortuaryEntry(tx: Tx, actor: Actor, args: { erEpisodeId: string; patientId: string; diedAt: Date }, at: Date): Promise<{ entryId: str…`
+  - `openErMortuaryEntry(tx: Tx, actor: Actor, args: { erEpisodeId: string; patientId: string; diedAt: Date; mlc?: boolean }, at: Date): Promise…`
   - `receiveBody(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<IpdMortuaryEntry>`
   - `recordAbscond(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_abscond">>`
   - `recordDeath(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_death">>`
@@ -343,6 +343,12 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_ADMISSION_PREFIX`
   - `intendedPayerOfAdmission(payerKind: string | null): string`
   - `registerIpdEncounterResolver(): () => void`
+- `er-handoff.ts`
+  - `cancelErAdmissionIn(tx: Tx, actor: Actor, admissionId: string, note: string, at: Date): Promise<"cancelled" | "not_open" | "held_deposit">`
+  - `carryErOrderLinesIn(tx: Tx, actor: Actor, admissionId: string, items: readonly { orderId: string; orderItemId: string; serviceId: string; c…`
+  - `erAdmissionState(db: Db | Tx, admissionId: string): Promise<string | null>`
+  - `erOpenAdmissionFor(db: Db | Tx, erEpisodeId: string): Promise<{ id: string; state: string } | undefined>`
+  - `stampErHandOffIn(tx: Tx, input: { admissionId: string; erArrivedAt: Date; stabilisedAt: Date | null }): Promise<void>`
 - `errors.ts`
   - `class IpdError`
   - `class IpdRefusal`

@@ -93,6 +93,20 @@ export const erEpisodes = pgTable(
     /* ═══ ER lane 3 (#810) — "stabilised", a clinical word only (lane 6 reads it; lane 5 copies it to the admission) ═══ */
     stabilisedAt: timestamp("stabilised_at", { withTimezone: true }),
     stabilisedBy: text("stabilised_by"),
+    /* ═══ ER lane 5 (#812) — the disposition, the boarding admission, the last-seen time of LWBS / abscond ═══ */
+    disposition: text("disposition"),
+    dispositionReason: text("disposition_reason"),
+    dispositionBy: text("disposition_by"),
+    dispositionAt: timestamp("disposition_at", { withTimezone: true }),
+    /** The IPD admission raised by `hand_to_unit` (requested while boarding; admitted once the bed is placed). */
+    admissionId: text("admission_id"),
+    boardingSince: timestamp("boarding_since", { withTimezone: true }),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+    /** Decision-to-bed (spec §3.2 ≤ 2 h): the bed manager's task at 2 h, and the climb to the MS at 4 h — each once. */
+    boardingTaskId: text("boarding_task_id"),
+    boardingClimbedAt: timestamp("boarding_climbed_at", { withTimezone: true }),
+    /** Hand-offs cancelled by IPD so far: the next attempt's stable IPD idempotency key (review #4). */
+    handOffAttempts: integer("hand_off_attempts").notNull().default(0),
   },
   (t) => [
     uniqueIndex("er_episodes_no_ux").on(t.episodeNo),
@@ -110,6 +124,9 @@ export const erEpisodes = pgTable(
     check("er_episodes_esi_ck", sql`${t.esi} is null or ${t.esi} between 1 and 5`),
     // One ER patient per bay (the kernel's occupant triad is the arbiter; this is the backstop on the ER side).
     uniqueIndex("er_episodes_open_bay_ux").on(t.bayId).where(sql`${t.bayId} is not null and ${t.state} in (${OPEN})`),
+    check("er_episodes_disposition_ck", sql`${t.disposition} is null or ${t.disposition} in ('discharge', 'admit', 'refer_out')`),
+    check("er_episodes_outcome_ck", sql`${t.outcome} is null or ${t.outcome} in ('discharged', 'admitted', 'referred_out', 'lama', 'absconded', 'lwbs', 'died')`),
+    index("er_episodes_boarding_idx").on(t.boardingSince).where(sql`${t.boardingSince} is not null and ${t.state} = 'disposition_decided'`),
     index("er_episodes_retriage_due_idx").on(t.retriageDueAt).where(sql`${t.state} = 'triaged' and ${t.retriageDueAt} is not null`),
   ],
 );
@@ -407,13 +424,18 @@ export const erChargeLines = pgTable(
     postedAt: timestamp("posted_at", { withTimezone: true }).notNull(),
     reversedAt: timestamp("reversed_at", { withTimezone: true }),
     reverseReason: text("reverse_reason"),
+    /** Lane 5 (#812): the admission this line moved to at hand-off, and its IP running-bill line (null: the bill desk's exception). */
+    movedToAdmissionId: text("moved_to_admission_id"),
+    movedIpdLineId: text("moved_ipd_line_id"),
   },
   (t) => [
     uniqueIndex("er_charge_lines_order_item_ux").on(t.orderItemId).where(sql`${t.orderItemId} is not null`),
     index("er_charge_lines_episode_idx").on(t.episodeId),
     check("er_charge_lines_source_ck", sql`${t.source} in ('er.order', 'er.issue', 'er.procedure')`),
-    check("er_charge_lines_status_ck", sql`${t.status} in ('posted', 'rate_missing', 'rate_pending', 'reversed')`),
-    check("er_charge_lines_amount_ck", sql`(${t.status} = 'posted') = (${t.amountPaise} is not null)`),
+    // Lane 5 (#812): `moved` — carried onto the IP running bill at hand-off (the IPD line id kept; never twice).
+    check("er_charge_lines_status_ck", sql`${t.status} in ('posted', 'rate_missing', 'rate_pending', 'reversed', 'moved')`),
+    check("er_charge_lines_amount_ck", sql`(${t.status} = 'posted') = (${t.amountPaise} is not null) or ${t.status} = 'moved'`),
+    check("er_charge_lines_moved_ck", sql`(${t.status} = 'moved') = (${t.movedToAdmissionId} is not null)`),
   ],
 );
 
@@ -569,5 +591,55 @@ export const erMlcCustody = pgTable(
     check("er_mlc_custody_action_ck", sql`(${t.kind} = 'belongings' and ${t.action} = 'listed') or (${t.kind} = 'evidence' and ${t.action} in ('collected', 'stored', 'handed_over') and ${t.sealNo} is not null)`),
     check("er_mlc_custody_receiver_ck", sql`(${t.action} = 'handed_over') = (${t.receiver} is not null)`),
     check("er_mlc_custody_witness_ck", sql`${t.witnessedBy} <> ${t.recordedBy}`),
+  ],
+);
+
+/* ═══════════════════════════════ ER lane 5 (#812) — the departure record ═══════════════════════════════ */
+
+/**
+ * The signed paper of a departure, one per episode: the discharge summary, the referral note, the LAMA form, the LWBS /
+ * abscond note, the death note. The document is the contract-validated input (`kind` names its shape). Append-only
+ * (trigger): a departure is not edited.
+ */
+export const erDepartureRecords = pgTable(
+  "er_departure_records",
+  {
+    id: text("id").primaryKey(),
+    episodeId: text("episode_id").notNull().references(() => erEpisodes.id),
+    kind: text("kind").notNull(),
+    document: jsonb("document").$type<Record<string, unknown>>().notNull(),
+    signedBy: text("signed_by").notNull(),
+    signedAt: timestamp("signed_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("er_departure_records_episode_ux").on(t.episodeId),
+    check("er_departure_records_kind_ck", sql`${t.kind} in ('discharge_summary', 'admission', 'referral', 'lama', 'lwbs', 'abscond', 'death')`),
+  ],
+);
+
+/**
+ * A specialty refused the ER admission (spec §4.5 edge): the refusal, the MS's arbitration task and the ruling. One open
+ * dispute per episode; the ruling is written once.
+ */
+export const erAdmissionDisputes = pgTable(
+  "er_admission_disputes",
+  {
+    id: text("id").primaryKey(),
+    episodeId: text("episode_id").notNull().references(() => erEpisodes.id),
+    departmentCode: text("department_code").notNull(),
+    reason: text("reason").notNull(),
+    refusedBy: text("refused_by").notNull(),
+    refusedAt: timestamp("refused_at", { withTimezone: true }).notNull(),
+    taskId: text("task_id"),
+    ruling: text("ruling"),
+    rulingDepartmentCode: text("ruling_department_code"),
+    rulingNote: text("ruling_note"),
+    ruledBy: text("ruled_by"),
+    ruledAt: timestamp("ruled_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("er_admission_disputes_open_ux").on(t.episodeId).where(sql`${t.ruledAt} is null`),
+    check("er_admission_disputes_ruling_ck", sql`${t.ruling} is null or ${t.ruling} in ('admit_under', 'refer_out')`),
+    check("er_admission_disputes_ruled_ck", sql`(${t.ruling} is null) = (${t.ruledAt} is null)`),
   ],
 );

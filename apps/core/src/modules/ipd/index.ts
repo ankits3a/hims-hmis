@@ -137,6 +137,8 @@ export {
 } from "./discharge-exit";
 /** ER lane 4 (#811) — a body brought dead to the ER opens its mortuary entry (an MLC: released only on police clearance). */
 export { openErMortuaryEntry } from "./discharge-exit";
+/** ER lane 5 (#812) — the hand-off: the ER gate time and "stabilised" onto the admission; the ER order lines onto the IP bill. */
+export { cancelErAdmissionIn, carryErOrderLinesIn, erAdmissionState, erOpenAdmissionFor, stampErHandOffIn } from "./er-handoff";
 export { readDischargeBoard, readDischargeTracker } from "./discharge-read";
 export { IPD_DISCHARGE_EVENT_NAMES } from "./discharge-events";
 // E3.3 (#731) — the family link: issue / revoke, the condition word, callbacks, the public OTP page, the stop consumer.

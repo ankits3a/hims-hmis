@@ -167,6 +167,8 @@ export const ipdAdmissions = pgTable(
     admittedAt: timestamp("admitted_at", { withTimezone: true }),
     admittedBy: text("admitted_by"),
     stabilisedAt: timestamp("stabilised_at", { withTimezone: true }),
+    /** ER lane 5 (#812): an admission from the ER keeps the ER gate instant (spec §3.10: IPD copies `arrived_at`). */
+    erArrivedAt: timestamp("er_arrived_at", { withTimezone: true }),
     downtimeSerial: text("downtime_serial"),
     /** Downtime: the paper deposit receipt's number, when the paper form carried one. */
     paperReceiptNo: text("paper_receipt_no"),

@@ -35,3 +35,30 @@ export async function recordBroughtDeadDeath(tx: Tx, actor: Actor, patientId: st
     },
   }));
 }
+
+/**
+ * ER lane 5 (#812) — A DEATH IN THE ER (after arrival). 0018's rule holds: the death is recorded WITH its MCCD number
+ * (`death_certificate_no`). The one exception the ER is allowed: a medico-legal case already intimated to the police,
+ * whose cause the post-mortem decides — recorded with the `medico_legal` death kind and no number; the number is added
+ * later through the ordinary amendment. The emergency module decides which applies; this seam writes it.
+ */
+export async function recordErDeath(
+  tx: Tx, actor: Actor, patientId: string, diedAt: Date, cert: { mccdNo: string } | { medicoLegal: true },
+): Promise<void> {
+  const current = (await tx.select().from(patients).where(eq(patients.id, patientId)).for("update"))[0];
+  if (current === undefined) throw new PatientError("patient_not_found", "no patient with that id");
+  if (current.status !== "active") throw new PatientError("patient_not_active", "a merged record is frozen");
+  if (current.deceasedAt !== null) return;
+  const set = "mccdNo" in cert ? { deathCertificateNo: cert.mccdNo, deathKind: null } : { deathCertificateNo: null, deathKind: "medico_legal" };
+  await tx.update(patients)
+    .set({ deceasedAt: diedAt, ...set, updatedBy: actor.id, updatedAt: sql`clock_timestamp()` })
+    .where(and(eq(patients.id, patientId), eq(patients.status, "active")));
+  await appendEvent(tx, patientUpdated.make({
+    actor, patientId, payload: {
+      patientId, changes: [
+        { field: "deceasedAt", from: null, to: diedAt.toISOString() },
+        "mccdNo" in cert ? { field: "deathCertificateNo", from: null, to: cert.mccdNo } : { field: "deathKind", from: null, to: "medico_legal" },
+      ],
+    },
+  }));
+}

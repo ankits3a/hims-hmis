@@ -90,6 +90,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "er.board.view", "er.board.wall", "er.arrival.register",
       // ER lane 4 (#811) — the MLC desk: writes the police intimation, lists belongings. README "Emergency MLC" prose.
       "er.mlc",
+      // ER lane 5 (#812) — records "left without being seen" at the desk. README "Emergency disposition" prose.
+      "er.disposition",
       // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
       "ipd.beds.view",
       "ipd.beds.manage",
@@ -268,6 +270,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "er.care",
       // ER lane 4 (#811) — the MLC: open, addendum, countersign (a senior), intimation, custody. README "Emergency MLC" prose.
       "er.mlc",
+      // ER lane 5 (#812) — decide, discharge with the summary, hand to a unit, refer out, LAMA, death. README "Emergency disposition" prose.
+      "er.disposition",
       // DIET E4.4 (#736) — the doctor orders the diet, sets or lifts NPO, and reads the ward diet sheet and kitchen board.
       "diet.view", "diet.order", "diet.npo", "diet.clinical.view",
       // IPD ADMISSION E1.2 (#719) — a doctor advises admission (raises the request); answers carry no money (0058).
@@ -1062,6 +1066,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "er.board.view", "er.board.wall",
       // ER lane 4 (#811) — the MLC desk: the countersign breach reaches the MS. README "Emergency MLC" prose.
       "er.mlc",
+      // ER lane 5 (#812) — arbitrates an admission a specialty refused. README "Emergency disposition" prose.
+      "er.disposition",
       // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
       "ipd.beds.view",
       // PASSES E1.3 (#720) — a visitor ban, and the manager's pause and police custody.
@@ -1216,6 +1222,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "er.board.view", "er.board.wall", "er.arrival.register",
       // ER lane 4 (#811) — the MLC desk at night; the intimation climb reaches the duty manager. README "Emergency MLC" prose.
       "er.mlc",
+      // ER lane 5 (#812) — LAMA and abscond at night. README "Emergency disposition" prose.
+      "er.disposition",
       "tasks.view", "tasks.supervise",
       // IPD BEDS E1.1 (#718) — the duty manager approves overflow beds (spec §4.1) and runs the board at night.
       "ipd.beds.view", "ipd.beds.manage", "ipd.beds.clean", "ipd.beds.overflow",
@@ -2257,7 +2265,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // ER lane 2 (#809) — `er.triage`: the casualty nurse triages by ESI, re-triages, records vitals, places in bays.
   // ER lane 3 (#810) — `er.care`: notes, the ER issue and the doses (a high-alert dose with a second person), consent.
   // ER lane 4 (#811) — `er.mlc`: the intimation, belongings and the evidence chain (a second person's PIN).
-  { roleKey: "er_nurse", permissions: ["er.board.view", "er.board.wall", "er.arrival.register", "er.triage", "er.care", "er.mlc"] },
+  // ER lane 5 (#812) — `er.disposition`: LWBS and abscond (the doctor's acts check the doctor role).
+  { roleKey: "er_nurse", permissions: ["er.board.view", "er.board.wall", "er.arrival.register", "er.triage", "er.care", "er.mlc", "er.disposition"] },
 ];
 
 /**

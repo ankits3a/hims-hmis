@@ -170,6 +170,37 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   - An answered call keeps the answering doctor's note (`er_specialty_calls.answer_note`).
   - Naming another doctor as the orderer records a verbal order (signature owed, 2-hour bell).
 
+### Lane 5 (er-dispo, #812)
+- `dispo.ts` — one disposition per episode (`discharge` | `admit` | `refer_out`) by a doctor with a reason
+  (`decideDisposition`, or the exit act itself while `in_treatment` — `decidedIn`); a mismatching act is refused.
+  `departIn` is THE way out: re-triage task cancelled, bay released (`ipd.releaseErBayIn`, to cleaning), `departed` +
+  outcome, `er.departed`. The departure's paper is one append-only `er_departure_records` row (trigger).
+- `handToUnit`: IPD's own intents (`emergencyAdmit` with a bed — needs `ipd.admit`; else `requestAdmission` source `er`,
+  `sourceRef` = episode id) with the ER idempotency key, then the ER transaction: `ipd.stampErHandOffIn` (er_arrived_at,
+  stabilisedAt), `admission_id`, `boarding_since`. Boarding = `disposition_decided` + `boarding_since`: board chip
+  `boarding`, stat. `sweepErBoarding` (minute job) departs the patient once IPD's admission is placed (`leaveForBedIn`:
+  ER `er.order` lines carried by `ipd.carryErOrderLinesIn` → `postOrderLineIn`, ER line `moved`), or stops boarding if the
+  admission was cancelled (doctor told). ER issue/procedure lines stay on the ER episode (lane 6). A `moved` line's
+  later order cancel answers `work_done` (billing reverses on the IP bill).
+- `referOut` refuses `cannot_pay` before anything. `recordLama` (doctor or duty manager; a refusal to sign needs a
+  different active staff witness). `recordLwbs` (arrived/triaged), `recordAbscond` (security via `er_abscond` ladder,
+  fallback security_guard; an MLC also to the duty manager for the police). `recordErDeathIntent`: MCCD number, or an
+  MLC with the police intimation met → `patients.recordErDeath` (`death_kind = 'medico_legal'`), mortuary entry
+  (`mlc` per the case). 
+- Review fixes (#850): the `admission` departure record is written when the patient LEAVES for the bed (one record per
+  episode); `departIn` cancels the open IPD request (`ipd.cancelErAdmissionIn` = the cancel intent's body; a deposit on
+  account leaves it to the desk); after IPD cancels a hand-off the doctor may re-decide (audited `previous`) or hand off
+  again (`hand_off_attempts` → a stable IPD idempotency key; an open request for the episode is adopted, never
+  duplicated); a named bed needs `ipd.admit` (`bed_needs_admission_desk`); a moved order cancelled goes through IPD's
+  `reverseIpdOrderCharge`; MLC abscond → `er_abscond_mlc` ladder; notice times in IST; ER death on a merged unknown marks
+  the canonical record; IPD advice expiry never applies to source `er`; "stabilised" after hand-off re-copies; IPD
+  admission view shows "ER arrival"; refer-out decisions with money words refused; the desk may record an abscond.
+- Decision to bed: `sweepErBoarding` raises `er_boarding` (skill `er_bed` → duty_manager, the bed manager) 2 h after the
+  decision and climbs once at 4 h (`er_boarding` ladder, fallback MS). A specialty refusal (`recordSpecialtyRefusal`) is an
+  `er_admission_disputes` row + `er_arbitration` task for the MS; `arbitrateAdmission` (MS only) rules once and closes it.
+- Clocks: a departed episode leaves the triage and care clocks (the verbal-order bell now reads open episodes only).
+  DECIDED: the MLC clocks keep running after departure — spec §4.4 keeps the countersign (and the intimation) owed.
+
 ## 4. Traps
 - `registerPatient` takes a `Tx` and the band reads the new patient in that same `tx` (`bandPerson(tx, …)`); reading it
   through `db` (`getPatient`) inside the transaction sees nothing.
@@ -177,6 +208,8 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   been merged — that is how the board knows, without flipping `identity_status` in place.
 - The web dev server (`vite`) runs Chromium out of resources on this app (1,000+ modules); browser walks use
   `vite build` + `vite preview` against a stub API.
+- Lane 5 moved: seed-roles (+1 `er.disposition`, 4 grants), roster kinds (+`er_abscond`), patients death kinds
+  (+`medico_legal`), IPD `request_admission` source `er`, `ipd_admissions.er_arrived_at`, board stats (+boarding, lwbsToday).
 - Lane 4 moved: seed-roles (+1 permission `er.mlc`, 6 grants), caddyfile/nav (one menu entry `/er/mlc`), roster
   escalation kinds (+2, check constraint retyped by hand in `kernel/db/schema/roster.ts`), patients (`death_kind`), ipd mortuary register
   (`admission_id` nullable, `er_episode_id`).
@@ -200,7 +233,10 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   log; family surfaces and model calls off for MLC patients (lane 9 / IPD); POCSO report detail; sexual-assault
   examination protocol form; `free_by_law` read by lane 6's bill desk; death in ER (lane 5's `record_er_death`) opening
   the mortuary entry through the same seam.
-- er-dispo: `hand_to_unit` → IPD `emergencyAdmit`; outcomes on `departed`. er-bill: the ER bill following the merge.
+- Lane 5 built disposition. Still owed after lane 5: decision-to-bed climb (`er_boarding` ladder) and the MS arbitration task
+  when a specialty refuses; ICU waitlist hand-off; the follow-up OPD visit BOOKED (the summary records department + date);
+  designed prints of the summary / referral / LAMA form; an LWBS button on the ER desk (the desk holds the permission; the
+  screen is the ER patient's); ER issue and procedure lines carried to the IP bill (lane 6). er-bill: the ER bill following the merge.
 - Desk: Aadhaar QR and ABHA scans (lane 1 takes the UHID card barcode, UHID, phone and name); a thermal ER band kind on
   the print relay (the browser prints today, decision 0045's fallback); downtime paper-serial reservation.
 - er-copilot: the `pre_alert` Now card; intents declared as copilot tools on the manifest.
