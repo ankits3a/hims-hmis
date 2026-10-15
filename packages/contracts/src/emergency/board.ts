@@ -36,7 +36,8 @@ export const ErTileSchema = z.object({
   /** Whole years from a recorded date of birth; null when only the band is known. */
   ageYears: z.number().int().nonnegative().nullable(),
   state: ErEpisodeStateSchema,
-  arrivalMode: ErArrivalModeSchema,
+  /** Null on the wall display when the police brought the patient (MLC-sensitive; ER review 2026-10-15). */
+  arrivalMode: ErArrivalModeSchema.nullable(),
   arrivedAt: ErInstantSchema,
   /** The door-to-triage clock (spec §3.2: ≤ 5 min) while the patient waits for triage; null after. */
   triageDueAt: ErInstantSchema.nullable(),
@@ -51,14 +52,18 @@ export const ErTileSchema = z.object({
   doctorDueAt: ErInstantSchema.nullable(),
   /** The re-triage clock (until a doctor has seen the patient); null for ESI 1 and after the doctor. */
   retriageDueAt: ErInstantSchema.nullable(),
-  /** The last early-warning score (NEWS2 / MEOWS / PEWS), shown beside the level as a second signal. */
-  ews: ErEwsSchema.nullable(),
+  /**
+   * The last early-warning score (NEWS2 / MEOWS / PEWS), shown beside the level as a second signal. On the wall display
+   * `kind` is null: the number and the band only (MEOWS would disclose a pregnancy; ER review 2026-10-15).
+   */
+  ews: ErEwsSchema.extend({ kind: ErEwsSchema.shape.kind.nullable() }).nullable(),
 });
 export type ErTile = z.infer<typeof ErTileSchema>;
 
 export const ErExpectedCardSchema = z.object({
   preAlertId: ErIdSchema,
-  mode: ErPreAlertModeSchema,
+  /** Null on the wall display for a police call (MLC-sensitive; ER review 2026-10-15). */
+  mode: ErPreAlertModeSchema.nullable(),
   expectedAt: ErInstantSchema,
   expiresAt: ErInstantSchema,
   count: z.number().int().positive(),
@@ -149,10 +154,14 @@ export const ErDoctorOptionSchema = z.object({ userId: z.string(), name: z.strin
 export type ErDoctorOption = z.infer<typeof ErDoctorOptionSchema>;
 
 export const ER_BOARD_TOPIC = "er:board";
+/** ER review (2026-10-15) — the wall display's own channel, readable with `er.board.wall` (ids only, as the board's). */
+export const ER_WALL_TOPIC = "erwall:board";
 
 /** HTTP routes (under the api prefix). The body of each POST is the intent's own input contract. */
 export const ER_ROUTES = {
   board: "/er/board",
+  /** The wall display (`er.board.wall`): always wall mode. */
+  boardWall: "/er/board/wall",
   desk: "/er/desk",
   patients: "/er/patients",
   doctors: "/er/doctors",

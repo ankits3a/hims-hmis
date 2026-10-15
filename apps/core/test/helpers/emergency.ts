@@ -53,14 +53,16 @@ export async function mkErWorld(db: Db): Promise<ErWorld> {
   registry.install(ipdManifest);
   registry.install(emergencyManifest);
   await syncPermissions(db, registry);
-  for (const p of ["er.board.view", "er.arrival.register"]) await grantPermissionToRole(db, registry, "front_office", p);
+  // ER review (2026-10-15): the board readers also hold the wall screen's own string, as seed:roles grants it.
+  for (const p of ["er.board.view", "er.board.wall", "er.arrival.register"]) await grantPermissionToRole(db, registry, "front_office", p);
   await ensureRole(db, "er_nurse");
-  for (const p of ["er.board.view", "er.arrival.register", "er.triage", "er.care"]) await grantPermissionToRole(db, registry, "er_nurse", p);
+  for (const p of ["er.board.view", "er.board.wall", "er.arrival.register", "er.triage", "er.care"]) await grantPermissionToRole(db, registry, "er_nurse", p);
   await ensureRole(db, "mrd_officer");
   for (const p of ["patients.read", "patients.merge"]) await grantPermissionToRole(db, registry, "mrd_officer", p);
   await grantPermissionToRole(db, registry, "doctor", "er.board.view");
   await grantPermissionToRole(db, registry, "doctor", "er.triage");
   await grantPermissionToRole(db, registry, "doctor", "er.care");
+  await grantPermissionToRole(db, registry, "doctor", "er.board.wall");
   // Lane 4 (#811) — the MLC: the ER desk, the casualty nurse and doctors (seed-roles grants the same three and more).
   for (const r of ["front_office", "er_nurse", "doctor"]) await grantPermissionToRole(db, registry, r, "er.mlc");
   const erNurse = (await mkUser(db, "er.nurse", ["er_nurse"])).actor;

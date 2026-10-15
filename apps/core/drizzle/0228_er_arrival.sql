@@ -78,6 +78,7 @@ CREATE TABLE "er_pre_alerts" (
 );
 --> statement-breakpoint
 ALTER TABLE "patients" ADD COLUMN "identity_status" text DEFAULT 'identified' NOT NULL;--> statement-breakpoint
+ALTER TABLE "patients" ADD CONSTRAINT "patients_identity_status_ck" CHECK ("patients"."identity_status" in ('identified', 'unidentified'));--> statement-breakpoint
 ALTER TABLE "er_bands" ADD CONSTRAINT "er_bands_episode_id_er_episodes_id_fk" FOREIGN KEY ("episode_id") REFERENCES "public"."er_episodes"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "er_episodes" ADD CONSTRAINT "er_episodes_patient_id_patients_id_fk" FOREIGN KEY ("patient_id") REFERENCES "public"."patients"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "er_bands_serial_ux" ON "er_bands" USING btree ("serial");--> statement-breakpoint

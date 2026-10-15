@@ -3833,6 +3833,10 @@
         "patients_death_kind_ck": {
           "name": "patients_death_kind_ck",
           "value": "\"patients\".\"death_kind\" is null or (\"patients\".\"death_kind\" = 'brought_dead' and \"patients\".\"deceased_at\" is not null)"
+        },
+        "patients_identity_status_ck": {
+          "name": "patients_identity_status_ck",
+          "value": "\"patients\".\"identity_status\" in ('identified', 'unidentified')"
         }
       },
       "isRLSEnabled": false

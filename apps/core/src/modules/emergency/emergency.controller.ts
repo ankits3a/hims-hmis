@@ -20,7 +20,7 @@ import { collectOrderKinds } from "../../kernel/orders/kinds";
 import type { ModuleRegistry } from "../../kernel/modules/loader";
 import { ErError, ErRefusal, erRefusalStatus } from "./errors";
 import { linkIdentity } from "./identity";
-import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_CARE, ER_IDENTITY_LINK, ER_MLC, ER_TRIAGE } from "./names";
+import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_CARE, ER_IDENTITY_LINK, ER_MLC, ER_TRIAGE } from "./names";
 import type {
   Actor, ErBay, ErBoard, ErCareView, ErDeskView, ErDoctorOption, ErEpisodeView, ErItemOption, ErMlcDesk, ErMlcDetail, ErPatientHit, ErRefusalBody,
 } from "@hmis/contracts";
@@ -74,6 +74,13 @@ export class EmergencyController {
       const q = boardQuery.parse(query);
       return await readErBoard(this.db, actor, { wall: q.wall === "1" || q.wall === "true" });
     } catch (e) { toHttp(e); }
+  }
+
+  /** ER review (2026-10-15) — the wall display on its own permission (a kiosk holds only `er.board.wall`). */
+  @Get("board/wall")
+  @RequirePermission(ER_BOARD_WALL, "hospital")
+  async boardWall(@CurrentActor() actor: Actor): Promise<ErBoard> {
+    try { return await readErBoard(this.db, actor, { wall: true }); } catch (e) { toHttp(e); }
   }
 
   @Get("desk")

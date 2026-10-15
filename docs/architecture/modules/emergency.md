@@ -131,8 +131,8 @@ Source: `apps/core/src/modules/emergency/`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (42)
+## HTTP routes (43)
 
-- `emergency.controller.ts` — 42: `/er/arrivals`, `/er/bands`, `/er/bays`, `/er/board`, `/er/calls`, `/er/care`, `/er/consents`, `/er/desk`, `/er/doctor`, `/er/doctors`, `/er/episodes`, `/er/identity`, `/er/items`, `/er/meds`, `/er/mlc`, `/er/notes`, `/er/orders`, `/er/patients`, `/er/pre-alerts`, `/er/procedures`, `/er/stabilised`, `/er/triage`, `/er/triage-doctors`, `/er/vitals`
+- `emergency.controller.ts` — 43: `/er/arrivals`, `/er/bands`, `/er/bays`, `/er/board`, `/er/calls`, `/er/care`, `/er/consents`, `/er/desk`, `/er/doctor`, `/er/doctors`, `/er/episodes`, `/er/identity`, `/er/items`, `/er/meds`, `/er/mlc`, `/er/notes`, `/er/orders`, `/er/patients`, `/er/pre-alerts`, `/er/procedures`, `/er/stabilised`, `/er/triage`, `/er/triage-doctors`, `/er/vitals`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/emergency`

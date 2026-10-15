@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, lte, or } from "drizzle-orm";
+import { and, eq, isNotNull, lte, or, sql } from "drizzle-orm";
 import {
   ER_DOOR_TO_TRIAGE_MINUTES, ER_ESI_INFO, ER_INTENTS, ER_RETRIAGE_CLIMB_MIN, erIsInFuture, esiAlgorithm, isDownTriage, newId,
 } from "@hmis/contracts";
@@ -7,7 +7,7 @@ import { withTx } from "../../kernel/db/client";
 import { erEpisodes, erTriageEntries, resources, roleAssignments, users } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { raiseNoticeIn } from "../../kernel/alerts/notices";
-import { IpdRefusal, placeErEpisodeIn, releaseErBayIn } from "../ipd";
+import { IpdRefusal, lockBedsInOrder, placeErEpisodeIn, releaseErBayIn } from "../ipd";
 import { escalationRecipients, orgDepartmentByCode, unitOnTake } from "../roster";
 import { cancelTask, getTask, raiseTask } from "../tasks";
 import { getPatientSummaries } from "../patients";
@@ -270,6 +270,9 @@ export async function moveBay(db: Db, actor: Actor, raw: unknown, opts: Opts = {
     const from = e.bayId;
     let placed: { bedId: string; bedCode: string };
     try {
+      // Both beds (and their zones) in one global order first, as the IPD transfer does: two opposite moves between
+      // two zones would otherwise each hold one zone and wait for the other (a deadlock).
+      await lockBedsInOrder(tx, [from, input.bedId]);
       placed = await placeErEpisodeIn(tx, actor, { bedId: input.bedId, episodeId: e.id }, at);
       await releaseErBayIn(tx, actor, { bedId: from, episodeId: e.id }, at);
     } catch (err) { throw bayRefusal(err); }
@@ -334,8 +337,12 @@ export async function assignErDoctor(db: Db, actor: Actor, raw: unknown, opts: O
 export async function sweepErTriageClocks(db: Db, now: Date): Promise<{ tasks: number; climbs: number }> {
   const triageCutoff = new Date(now.getTime() - ER_DOOR_TO_TRIAGE_MINUTES * MIN);
   const due = await db.select({ id: erEpisodes.id }).from(erEpisodes).where(or(
-    and(eq(erEpisodes.state, "triaged"), isNotNull(erEpisodes.retriageDueAt), lte(erEpisodes.retriageDueAt, now)),
-    and(eq(erEpisodes.state, "arrived"), lte(erEpisodes.arrivedAt, triageCutoff)),
+    // ER review (2026-10-15): an episode already climbed for its CURRENT due instant has nothing left to raise — it is
+    // left out here, so a stale episode costs no transaction and no row lock every minute.
+    and(eq(erEpisodes.state, "triaged"), isNotNull(erEpisodes.retriageDueAt), lte(erEpisodes.retriageDueAt, now),
+      sql`${erEpisodes.retriageClimbedDueAt} is distinct from ${erEpisodes.retriageDueAt}`),
+    and(eq(erEpisodes.state, "arrived"), lte(erEpisodes.arrivedAt, triageCutoff),
+      sql`${erEpisodes.retriageClimbedDueAt} is distinct from ${erEpisodes.arrivedAt} + make_interval(mins => ${ER_DOOR_TO_TRIAGE_MINUTES})`),
   ));
   let tasks = 0;
   let climbs = 0;

@@ -5,7 +5,7 @@ import { erEpisodes } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { PatientError, createMergeRequest, getPatient } from "../patients";
 import { bandPerson } from "./bands";
-import { lockEpisode, onceEr, provenanceOf, readEpisode, requireErPermission } from "./core";
+import { alreadyOpen, lockEpisode, onceEr, openEpisodeOf, personRecords, provenanceOf, readEpisode, requireErPermission } from "./core";
 import { ErRefusal } from "./errors";
 import { erIdentityLinked } from "./events";
 import { ER_IDENTITY_LINK } from "./names";
@@ -46,7 +46,13 @@ export async function linkIdentity(db: Db, actor: Actor, raw: unknown, opts: Opt
     if (found === null) throw new ErRefusal("patient_not_found");
     if (found.patient.id === e.patientId) throw new ErRefusal("same_patient");
     if (found.patient.identityStatus === "unidentified") throw new ErRefusal("true_record_unidentified");
+    // ER review (2026-10-15, DECIDED): a living unknown is not a deceased record, and a person already in the ER under
+    // their own record is not this unknown — both point at the wrong record; the desk picks again.
+    if (found.patient.deceasedAt !== null) throw new ErRefusal("patient_deceased");
     const winnerId = found.patient.id;
+    const winnerIds = (await personRecords(db, winnerId))?.ids ?? [winnerId];
+    const theirs = await openEpisodeOf(db, winnerIds);
+    if (theirs !== undefined && theirs.id !== e.id) throw alreadyOpen(theirs);
     return withTx(db, async (tx) => {
       // A live request for this unknown is refused by the patients module (one live request per record); a REFUSED
       // earlier request is settled first there, so the desk can file again with the right record.
