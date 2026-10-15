@@ -535,6 +535,26 @@ Source: `apps/core/src/modules/ipd/`
   - `cosignRound(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"cosign_round">>`
   - `requestConsult(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"request_consult">>`
   - `signRound(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"sign_round">>`
+- `tpa-packages.ts`
+  - `importSchemePackages(db: Db, actor: Actor, raw: unknown, at: Date = new Date()): Promise<IpdPackageImportResult>`
+  - `packageShares(list: readonly T[]): (T & { shareBp: number; amountPaise: number })[]`
+  - `parseSchemePackagesCsv(csv: string): { rows: PackageCsvRow[]; problems: string[] }`
+  - `searchSchemePackages(db: Db, actor: Actor, args: { scheme: "pmjay" | "state_scheme"; q?: string; limit?: number }): Promise<IpdSchemePackag…`
+- `tpa-read.ts`
+  - `authStateOf(rowsNewestFirst: readonly AuthRow[])`
+  - `readTpaBoard(db: Db, actor: Actor, now: Date = new Date()): Promise<IpdTpaBoard>`
+  - `readTpaPanel(db: Db, actor: Actor, admissionId: string, now: Date = new Date()): Promise<IpdTpaPanel>`
+  - `tpaDueCard(ctx: Pick<DeskProviderCtx, "db" | "now">): Promise<DeskCard[]>`
+- `tpa.ts`
+  - `answerTpaQuery(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"answer_tpa_query">>`
+  - `attachTpaDocument(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"attach_tpa_document">>`
+  - `packageAmountOf(db: Db | Tx, admissionId: string): Promise<{ amountPaise: number; count: number }>`
+  - `recordClaimRejection(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_claim_rejection">>`
+  - `recordClaimSettlement(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_claim_settlement">>`
+  - `recordTpaQuery(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_tpa_query">>`
+  - `removeSchemePackage(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"remove_scheme_package">>`
+  - `selectSchemePackage(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"select_scheme_package">>`
+  - `submitClaim(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"submit_claim">>`
 - `transfer-events.ts`
   - `IPD_TRANSFER_EVENT_NAMES`
 - `transfers.ts`
@@ -558,7 +578,7 @@ Source: `apps/core/src/modules/ipd/`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (136)
+## HTTP routes (148)
 
 - `admissions.controller.ts` — 22: `/ipd/admissions`
 - `beds.controller.ts` — 8: `/ipd/beds`
@@ -571,6 +591,7 @@ Foreign keys into: `patients`, `resources`
 - `nursing.controller.ts` — 12: `/ipd/nursing`
 - `payer.controller.ts` — 5: `/ipd/admissions`, `/ipd/payer`
 - `rounds.controller.ts` — 11: `/ipd/charge-exceptions`, `/ipd/consults`, `/ipd/orders`, `/ipd/rounds`
+- `tpa.controller.ts` — 12: `/ipd/admissions`, `/ipd/tpa`
 - `transfers.controller.ts` — 7: `/ipd/transfers`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/ipd`

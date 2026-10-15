@@ -68,6 +68,8 @@ export type IpdErrorCode =
   /** #763 review — a void while an issued gate pass is not yet scanned (⚖); the payer has settled the bill's claim. */
   | "gate_pass_live"
   | "payer_claim_settled"
+  /** #604 review — a void while the bill's claim is filed with the payer: its settlement could never be recorded. */
+  | "payer_claim_filed"
   /** E3.2 — ⚖ an MLC body is released only after the police clearance is recorded. */
   | "police_clearance_required"
   /** E3.3 (#731) — the family link: refused for this admission (`detail.reason`: sealed, mlc, family_off, no_attendant_phone,
@@ -89,7 +91,9 @@ export type IpdErrorCode =
   | "shift_handover_not_open"
   | "shift_handover_own"
   | "ews_alert_not_found"
-  | "ews_alert_closed";
+  | "ews_alert_closed"
+  /** #604 (decision 0075) — the scheme package file failed validation (`detail.problems`, line by line); nothing was written. */
+  | "package_import_invalid";
 
 export class IpdError extends Error {
   constructor(

@@ -183,6 +183,21 @@ export const IPD_REFUSALS = {
   gate_pass_void: { rule: "The gate pass was voided.", fix: "Call the desk" },
   gate_pass_used: { rule: "The gate pass was already scanned.", fix: "Call the desk" },
   police_intimation_required: { rule: "A medico-legal case needs a police intimation record.", fix: "Record intimation" },
+
+  /* ═══ TPA desk (#604, decision 0075) ═══ */
+  claim_not_found: { rule: "No payer claim has this id on this admission.", fix: "Open TPA desk" },
+  claim_wrong_state: { rule: "The claim is not in a state that allows this act.", fix: "Open claim" },
+  claim_documents_missing: { rule: "A claim is filed with the discharge summary and the final bill attached.", fix: "Attach documents" },
+  settlement_does_not_add_up: { rule: "Net paid, TDS and deductions must add up to the amount claimed.", fix: "Check the advice" },
+  query_not_found: { rule: "No payer query has this id.", fix: "Open TPA desk" },
+  query_already_answered: { rule: "The payer query is already answered.", fix: "Open TPA desk" },
+  tpa_document_invalid: { rule: "The document must be an active one filed for this patient.", fix: "File the document" },
+  package_needs_scheme: { rule: "A scheme package is chosen only for a PM-JAY or state-scheme admission.", fix: "Record the payer" },
+  package_not_found: { rule: "No live package of the admission's scheme has this id.", fix: "Search packages" },
+  package_already_selected: { rule: "This package is already chosen for the stay.", fix: "Open TPA panel" },
+  package_selection_not_found: { rule: "No chosen package has this id on this admission.", fix: "Open TPA panel" },
+  claim_exceeds_claimable: { rule: "A claim is at most the bill's payer portion, or what the scheme packages leave unclaimed.", fix: "Check the amount" },
+  package_claim_filed: { rule: "Packages are fixed once a claim of the stay is filed with the payer.", fix: "Open TPA panel" },
 } as const satisfies Record<string, { rule: string; fix: string }>;
 
 export type IpdRefusalCode = keyof typeof IPD_REFUSALS;

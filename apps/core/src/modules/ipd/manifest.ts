@@ -3,6 +3,7 @@ import { familyCallbacksCard } from "./family";
 import { bedProposalCard, cleaningOverdueCard, dischargeBlockedCard } from "./now-cards";
 import { assessmentDueCard, ewsRisingCard, handoverPendingCard, overdueVitalsCard } from "./nursing-cards";
 import { dueDoseCard, newOrderCard } from "./emar-cards";
+import { tpaDueCard } from "./tpa-read";
 import { IPD_EMAR_ALLERGY_CONSUMER } from "./emar-events";
 import {
   IPD_BEDS_VIEW, IPD_BEDS_MANAGE, IPD_BEDS_CLEAN, IPD_BEDS_OVERFLOW, IPD_ADMIT_REQUEST, IPD_ADMIT, IPD_PAYER_MANAGE, IPD_BAND_PRINT, IPD_BILL_VIEW, IPD_CHARGES_REVERSE, IPD_PAYER_TERMS, IPD_TRANSFER_START, IPD_TRANSFER_ACCEPT, IPD_DISCHARGE_VIEW, IPD_DISCHARGE_DECLARE, IPD_DISCHARGE_CONFIRM, IPD_DISCHARGE_BILL, IPD_GATE_PASS, IPD_GATE_SCAN, IPD_DISCHARGE_EXIT, IPD_MORTUARY_MANAGE, IPD_BILLDESK_VIEW, IPD_FAMILY_ISSUE, IPD_CONDITION_SET, IPD_ROUND_SIGN, IPD_ORDER_PLACE,
@@ -34,7 +35,9 @@ export {
  *                      mark an emergency patient stabilised. Answers carry no money (decision 0058).
  *   ipd.admit          plan (payer, class, deposit), take the deposit, admit, cancel, the emergency lane, the
  *                      downtime back-fill, record consent, ask for an approval
- *   ipd.payer.manage   the manual authorisation record (pre-auth, enhancements, final approval, payer change)
+ *   ipd.payer.manage   the manual authorisation record (pre-auth, enhancements, final approval, payer change); since
+ *                      #604 (decision 0075) also the TPA desk: payer queries, documents, scheme packages, claim filing
+ *                      and rejection, the board `/ipd/tpa` and the `ipd.tpa_due` card
  *   ipd.band.print     print and reprint the wristband
  *
  * E2.1 (#725) adds the running bill's two (spec §4.3, §4.9 H). NO DOCTOR ROLE HOLDS EITHER (decision 0058):
@@ -46,7 +49,8 @@ export {
  *
  *   ipd.payer.terms     type the letter's money terms (room-rent cap, co-pay) on the authorisation record and keep
  *                       the non-payables list — the billing manager (the TPA desk sits in billing). Status and
- *                       pre-auth number stay with `ipd.payer.manage` (front office).
+ *                       pre-auth number stay with `ipd.payer.manage` (front office). #604: also a claim's settlement
+ *                       (net paid, TDS, deductions) and the scheme package master import.
  *
  * E3.1 (#729) adds the transfer's two (spec §4.4). A class change in place rides `ipd.admit` (the desk's consented
  * act with money consequences; never a doctor's):
@@ -131,6 +135,8 @@ export const ipdManifest: ModuleManifest = {
     // E4.3 (#735) — the ward MAR chart (16:9) and the pharmacist's verify queue (desktop).
     { label: "MAR", path: "/ipd/mar", permission: IPD_EMAR_VIEW },
     { label: "IP pharmacy", path: "/ipd/pharmacy", permission: IPD_EMAR_VERIFY },
+    // #604 (decision 0075) — the TPA desk board: pre-auths, payer queries, enhancements due, claims (money: no doctor role).
+    { label: "TPA desk", path: "/ipd/tpa", permission: IPD_PAYER_MANAGE },
   ],
   permissions: [
     IPD_BEDS_VIEW, IPD_BEDS_MANAGE, IPD_BEDS_CLEAN, IPD_BEDS_OVERFLOW, IPD_ADMIT_REQUEST, IPD_ADMIT, IPD_PAYER_MANAGE, IPD_BAND_PRINT,
@@ -181,5 +187,8 @@ export const ipdManifest: ModuleManifest = {
     // E4.3 (#735) — the eMAR's two nurse cards, each with its own permission.
     { key: "ipd.due_dose", permission: IPD_EMAR_GIVE, load: async (ctx) => dueDoseCard(ctx) },
     { key: "ipd.new_order", permission: IPD_EMAR_VIEW, load: async (ctx) => newOrderCard(ctx) },
+    // #604 (decision 0075) — MONEY: the TPA desk's pre-auths ageing, enhancements due and claims over 30 days
+    // (`ipd.payer.manage`, which no doctor or nurse role holds — decision 0058). Admission number, never a name.
+    { key: "ipd.tpa_due", permission: IPD_PAYER_MANAGE, load: async (ctx) => tpaDueCard(ctx) },
   ],
 };

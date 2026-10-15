@@ -228,3 +228,11 @@ export type { Fact, FactRecord, Line, Quantities, Verdict } from "./copilot-line
 export { askIpdModel, ipdModelFrom, maskForModel, modelBarred } from "./copilot-model";
 export type { FallbackReason, IpdModel } from "./copilot-model";
 export { medicineFlagsOf, medicineRowReason, sameMedicineName } from "./discharge-medicines";
+// #604 (decision 0075) — the TPA desk: payer queries, documents, scheme packages and their importer, the claim after the
+// bill (submit, settle, reject), the board, the per-admission panel and the `ipd.tpa_due` card.
+export {
+  answerTpaQuery, attachTpaDocument, packageAmountOf, recordClaimRejection, recordClaimSettlement, recordTpaQuery, removeSchemePackage,
+  selectSchemePackage, submitClaim,
+} from "./tpa";
+export { importSchemePackages, packageShares, parseSchemePackagesCsv, searchSchemePackages } from "./tpa-packages";
+export { authStateOf, readTpaBoard, readTpaPanel, tpaDueCard } from "./tpa-read";
