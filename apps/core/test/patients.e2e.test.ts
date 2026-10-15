@@ -534,21 +534,24 @@ describe("patients e2e", () => {
 
   it("#653 S1: Show on a merge request with a sealed record needs the confidential grant: 404 and nothing logged without it", async () => {
     const { loserId, requestId } = await twoForMerge();
-    await db.update(patients).set({ isConfidential: true, alias: "Patient S" }).where(eq(patients.id, loserId));
     await createRole(db, "merge_reader", "Reads merges, no sealed read");
     await grantPermissionToRole(db, registry, "merge_reader", "patients.read");
     const { id: userId } = await createUser(db, { username: "mergereader", fullName: "mergereader", password: "p1234567" });
     const { token } = await createSession(db, cfg, userId);
     await assignRole(db, { userId, roleKey: "merge_reader", scopeType: "hospital" });
+    // Control: with nothing sealed this same reader may Show, and two rows are logged.
+    await request(app.getHttpServer()).post(`/patients/merge-requests/${requestId}/show`).set(...auth(token)).expect(201);
+    expect(await db.select().from(phiAccessLog).where(eq(phiAccessLog.surface, "patient.merge_reveal"))).toHaveLength(2);
+    await db.update(patients).set({ isConfidential: true, alias: "Patient S" }).where(eq(patients.id, loserId));
     await request(app.getHttpServer()).post(`/patients/merge-requests/${requestId}/show`).set(...auth(token)).expect(404);
-    expect(await db.select().from(phiAccessLog).where(eq(phiAccessLog.surface, "patient.merge_reveal"))).toHaveLength(0);
+    expect(await db.select().from(phiAccessLog).where(eq(phiAccessLog.surface, "patient.merge_reveal"))).toHaveLength(2);
     // The sealed-at-request snapshot still governs after the seal is lifted on the live record.
     await db.update(patients).set({ isConfidential: false }).where(eq(patients.id, loserId));
     const snap = (await db.select().from(patientMergeRequests).where(eq(patientMergeRequests.id, requestId)))[0]!.snapshot as Record<string, Record<string, unknown>>;
     await db.update(patientMergeRequests).set({ snapshot: { ...snap, loserBefore: { ...snap.loserBefore!, isConfidential: true } } })
       .where(eq(patientMergeRequests.id, requestId));
     await request(app.getHttpServer()).post(`/patients/merge-requests/${requestId}/show`).set(...auth(token)).expect(404);
-    expect(await db.select().from(phiAccessLog).where(eq(phiAccessLog.surface, "patient.merge_reveal"))).toHaveLength(0);
+    expect(await db.select().from(phiAccessLog).where(eq(phiAccessLog.surface, "patient.merge_reveal"))).toHaveLength(2);
   });
 
   /**
