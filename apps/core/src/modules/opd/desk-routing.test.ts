@@ -58,13 +58,13 @@ describe("desk routing — link, child rule, prior", () => {
     ctl.walkInRoute(clerk.actor, { patient: { existingId: patientId }, departmentId: medId, doctorId: dra.doctorId, ...extra });
 
   /** `count` earlier adult routings of `conceptKey` whose visit completed in `deptId`. */
-  async function history(conceptKey: string, count: number, opts: { holdout?: boolean } = {}) {
+  async function history(conceptKey: string, count: number, opts: { holdout?: boolean; source?: "keywords" | "model" | "prior" } = {}) {
     const res = await walkIn({});
     await db.update(opdEncounters).set({ status: "completed" }).where(eq(opdEncounters.id, res.encounter.id));
     await db.insert(cdsDeskRoutingOutcomes).values(Array.from({ length: count }, (_, i) => ({
       id: `h-${res.encounter.id}-${String(i)}`, triageId: `ht-${res.encounter.id}-${String(i)}`,
       encounterId: res.encounter.id, conceptKey, band: "adult", holdout: opts.holdout ?? false,
-      suggested: [], source: "keywords", pickedDepartmentId: medId,
+      suggested: [], source: opts.source ?? "keywords", pickedDepartmentId: medId,
     })));
   }
 
@@ -135,6 +135,15 @@ describe("desk routing — link, child rule, prior", () => {
     expect((await triage("khujli", 35)).source).toBe("prior");
     expect((await triage("khujli nahi", 35)).source).not.toBe("prior");
     expect((await triage("khujli")).source).not.toBe("prior");
+  });
+
+  /* The prior learns from the desk's own choices: a routing the prior itself led would feed it back to itself. */
+  it("a routing the prior led is not evidence for the prior", async () => {
+    await history("itch", PRIOR_LEAD_N - 1);
+    await history("itch", 30, { source: "prior" });
+    expect((await triage("khujli", 35)).source).not.toBe("prior");
+    await history("itch", 1, { source: "model" });
+    expect((await triage("khujli", 35)).source).toBe("prior");
   });
 
   it("a visit that did not complete is not evidence", async () => {

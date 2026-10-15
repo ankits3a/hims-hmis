@@ -19,7 +19,7 @@ import type { TriageDepartment, TriageResult, TriageSuggestion } from "./triage"
  *      hospital runs it; the ranked specialty keeps slot two. The prior is not consulted for a child
  *      at all, so it can never send one to adult medicine.
  *   2. THE HOSPITAL PRIOR. P(final department | concept set), counted from earlier routings whose
- *      visit COMPLETED, holdout excluded, adults only. It answers first at n ≥ 20 and p ≥ 0.8; at
+ *      visit COMPLETED, holdout excluded, adults only, never a routing the prior itself led. It answers first at n ≥ 20 and p ≥ 0.8; at
  *      n 10–19 with p ≥ 0.8 it may only swap the top two. Only when the words reduce cleanly to
  *      known concepts (≥ 80 % of the words) and carry no negation — "no fever" is not "fever".
  *   3. THE LINK. Each answer carries a `triageId`; the walk-in or booking that follows sends it back
@@ -96,7 +96,7 @@ export async function routingConcepts(db: Db, text: string, names: readonly stri
 
 export type RoutingPrior = { departmentId: string; n: number; share: number };
 
-/** The prior for one concept set: completed adult visits, holdout excluded, final department. */
+/** The prior for one concept set: completed adult visits, holdout and prior-led routings excluded, final department. */
 export async function priorFor(db: Db, conceptKey: string): Promise<RoutingPrior | null> {
   const rows = (await db.execute(sql`
     select e.department_id as "departmentId", count(*)::int as n
@@ -106,6 +106,8 @@ export async function priorFor(db: Db, conceptKey: string): Promise<RoutingPrior
      where o.concept_key = ${conceptKey}
        and o.holdout = false
        and o.band = 'adult'
+       -- only routings the desk chose from keywords or the model: one the prior led would feed it back to itself
+       and o.source <> 'prior'
        and e.status = 'completed'
        and e.department_id is not null
      group by e.department_id
