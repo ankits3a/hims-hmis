@@ -76,7 +76,7 @@ describe("Mark attendance (decision 0061) — the staff app's backup to the mach
     const button = await screen.findByTestId("att-mark-button");
     expect(button).toHaveTextContent("Mark attendance · In");
     expect(screen.queryByTestId("att-mark-last")).toBeNull();
-    fireEvent.press(button);
+    await fireEvent.press(button);
     expect(await screen.findByTestId("att-mark-last")).toHaveTextContent("Marked in · inside premises");
     await waitFor(() => expect(screen.getByTestId("att-mark-button")).toHaveTextContent("Mark attendance · Out"));
     expect(w.sent("POST /attendance/me/marks").map((c) => c.body)).toEqual([{ location: { latitude: 25.69, longitude: 85.23, mocked: false } }]);
@@ -101,7 +101,7 @@ describe("Mark attendance (decision 0061) — the staff app's backup to the mach
     mockLoc.requestForegroundPermissionsAsync.mockImplementation(async () => ({ status: "denied" }));
     const w = world();
     await mount(w.fetcher, <MyAttendance nowMs={nowMs} />);
-    fireEvent.press(await screen.findByTestId("att-mark-button"));
+    await fireEvent.press(await screen.findByTestId("att-mark-button"));
     expect(await screen.findByTestId("att-mark-last")).toHaveTextContent("Marked in · location not shared");
     expect(w.sent("POST /attendance/me/marks").map((c) => c.body)).toEqual([{ location: null }]);
     expect(mockLoc.getCurrentPositionAsync).not.toHaveBeenCalled();
@@ -111,7 +111,7 @@ describe("Mark attendance (decision 0061) — the staff app's backup to the mach
     const w = world();
     await mount(w.fetcher, <MyAttendance nowMs={nowMs} />);
     await screen.findByTestId("att-mark-button");
-    fireEvent.press(screen.getByTestId("att-prev"));
+    await fireEvent.press(screen.getByTestId("att-prev"));
     await screen.findByTestId("att-word-2026-10-08");
     expect(screen.queryByTestId("att-mark")).toBeNull();
   });
@@ -119,7 +119,7 @@ describe("Mark attendance (decision 0061) — the staff app's backup to the mach
   it("the day view lists that day's own marks as words", async () => {
     const w = world([{ date: "2026-10-13", kind: "in", place: "inside" }, { date: "2026-10-13", kind: "out", place: "doubtful" }]);
     await mount(w.fetcher, <MyAttendance nowMs={nowMs} />);
-    fireEvent.press(await screen.findByTestId("att-day-2026-10-13"));
+    await fireEvent.press(await screen.findByTestId("att-day-2026-10-13"));
     expect(await screen.findByTestId("att-day-mark-0")).toHaveTextContent("Marked in · inside premises");
     expect(screen.getByTestId("att-day-mark-1")).toHaveTextContent("Marked out · location doubtful");
     expect(screen.getByTestId("my-attendance")).not.toHaveTextContent(TIME);
@@ -128,7 +128,7 @@ describe("Mark attendance (decision 0061) — the staff app's backup to the mach
   it("the server's refusals are said in fixed words", async () => {
     const w = world([], { status: 429, body: { code: "too_many_marks" } });
     await mount(w.fetcher, <MyAttendance nowMs={nowMs} />);
-    fireEvent.press(await screen.findByTestId("att-mark-button"));
+    await fireEvent.press(await screen.findByTestId("att-mark-button"));
     expect(await screen.findByTestId("att-mark-error")).toHaveTextContent("Too many marks today");
   });
 
@@ -151,13 +151,13 @@ describe("the permission sentence", () => {
   it("Android, never asked: our sentence first; Cancel sends nothing; Continue asks and marks", async () => {
     const w = world();
     await mount(w.fetcher, <Harness os="android" />);
-    fireEvent.press(await screen.findByTestId("att-mark-button"));
+    await fireEvent.press(await screen.findByTestId("att-mark-button"));
     expect(await screen.findByTestId("att-mark-why-text")).toHaveTextContent("HMIS checks your location once when you mark attendance, to confirm you are on hospital premises.");
-    fireEvent.press(screen.getByTestId("att-mark-cancel"));
+    await fireEvent.press(screen.getByTestId("att-mark-cancel"));
     await waitFor(() => expect(screen.queryByTestId("att-mark-why")).toBeNull());
     expect(mockLoc.requestForegroundPermissionsAsync).not.toHaveBeenCalled();
-    fireEvent.press(await screen.findByTestId("att-mark-button"));
-    fireEvent.press(await screen.findByTestId("att-mark-continue"));
+    await fireEvent.press(await screen.findByTestId("att-mark-button"));
+    await fireEvent.press(await screen.findByTestId("att-mark-continue"));
     expect(await screen.findByTestId("att-mark-last")).toHaveTextContent("Marked in · inside premises");
     expect(w.sent("POST /attendance/me/marks")).toHaveLength(1);
   });
@@ -166,7 +166,7 @@ describe("the permission sentence", () => {
     mockLoc.getForegroundPermissionsAsync.mockImplementation(async () => ({ status: "granted" }));
     const w = world();
     await mount(w.fetcher, <Harness os="android" />);
-    fireEvent.press(await screen.findByTestId("att-mark-button"));
+    await fireEvent.press(await screen.findByTestId("att-mark-button"));
     expect(await screen.findByTestId("att-mark-last")).toBeTruthy();
     expect(screen.queryByTestId("att-mark-why")).toBeNull();
   });
@@ -174,7 +174,7 @@ describe("the permission sentence", () => {
   it("iPhone: the system prompt carries the sentence, so the app shows none of its own", async () => {
     const w = world();
     await mount(w.fetcher, <Harness os="ios" />);
-    fireEvent.press(await screen.findByTestId("att-mark-button"));
+    await fireEvent.press(await screen.findByTestId("att-mark-button"));
     expect(await screen.findByTestId("att-mark-last")).toBeTruthy();
     expect(screen.queryByTestId("att-mark-why")).toBeNull();
     expect(w.sent("POST /attendance/me/marks")).toHaveLength(1);
@@ -215,7 +215,7 @@ describe("managers see the marks beside the machine", () => {
         marks: [{ date: TODAY, time: "09:02", kind: "in", place: "outside", distanceM: 412 }, { date: "2026-10-13", time: "17:00", kind: "out", place: "inside", distanceM: 20 }] } },
     });
     await mount(s.fetcher, <AttendancePerson pin="304" nowMs={nowMs} />);
-    fireEvent.press(await screen.findByTestId("att-view-day"));
+    await fireEvent.press(await screen.findByTestId("att-view-day"));
     expect(await screen.findByTestId("att-day-marks")).toHaveTextContent(/^App marks09:02 Inoutside premises412 m$/);
     expect(screen.getByTestId("att-day-word")).toHaveTextContent("Absent");
   });

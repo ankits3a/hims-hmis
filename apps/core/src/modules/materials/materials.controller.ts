@@ -21,6 +21,8 @@ import {
   requestBankChange, suspendVendor, updateVendor,
 } from "./vendors";
 import { createStore, listStores } from "./stores";
+import { endVendorRate, setVendorRates, vendorRates } from "./vendor-rates";
+import type { VendorRateResult, VendorRateView } from "./vendor-rates";
 import { loadMaterialsSettings, updateMaterialsSettings } from "./settings";
 import type { MaterialsSettings } from "./settings";
 import { balances, movementsFor } from "./ledger";
@@ -467,6 +469,41 @@ export class MaterialsController {
     const vendor = await getVendor(this.db, vendorId);
     if (vendor === undefined) toHttp(new MaterialsError("unknown_vendor", `vendor ${vendorId} not found`));
     return { vendor, documents: await listVendorDocuments(this.db, vendorId) };
+  }
+
+  /** Owner 2026-10-04 — a vendor's rate contract: its open rates, recording a quote, ending one rate. */
+  @RequirePermission("materials.vendors.read", "hospital")
+  @Get("vendors/:id/rates")
+  async rates(@CurrentActor() actor: Actor, @Param("id") vendorId: string): Promise<{ rates: VendorRateView[] }> {
+    try {
+      return { rates: await vendorRates(this.db, actor, vendorId) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.vendors.manage", "hospital")
+  @Post("vendors/:id/rates")
+  async setRates(@CurrentActor() actor: Actor, @Param("id") vendorId: string, @Body() body: unknown): Promise<{ results: VendorRateResult[] }> {
+    const b = parsed(z.object({
+      source: z.string().trim().max(200).nullable().optional(),
+      validFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      rates: z.array(z.object({
+        itemId: z.string().min(1).max(64), uom: z.string().trim().min(1).max(40).optional(), packSize: z.number().int().min(1).max(100_000).optional(),
+        ratePaise: z.number().int().min(0).max(100_000_000), gstRateBps: z.number().int().min(0).max(2800).optional(),
+        mrpPaise: z.number().int().min(1).max(100_000_000).nullable().optional(), validTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+      })).min(1).max(1000),
+    }), body);
+    try {
+      return { results: await setVendorRates(this.db, actor, vendorId, b.rates, { source: b.source ?? null, ...(b.validFrom === undefined ? {} : { validFrom: b.validFrom }) }) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.vendors.manage", "hospital")
+  @Post("vendor-rates/:id/end")
+  async endRate(@CurrentActor() actor: Actor, @Param("id") rateId: string): Promise<{ ok: true }> {
+    try {
+      await endVendorRate(this.db, actor, rateId);
+      return { ok: true };
+    } catch (e) { toHttp(e); }
   }
 
   @RequirePermission("materials.vendors.manage", "hospital")

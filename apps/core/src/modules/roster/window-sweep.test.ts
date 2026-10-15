@@ -1,11 +1,11 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { confirmSeededUnits } from "../../../test/helpers/units";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../../kernel/db/client";
 import {
   orgDepartments, permissions, roleAssignments, rolePermissions, roles, rosterCycleEntries, rosterCycles,
-  rosterDutyWindows, users,
+  rosterDutyWindows, rosterPeriods, rosterTeams, users,
 } from "../../kernel/db/schema";
 import { registerAllJobs, type JobIntervals } from "../../kernel/worker/jobs";
 import { ModuleRegistry } from "../../kernel/modules/loader";
@@ -47,6 +47,7 @@ describe("roster — the scheduled jobs run as the worker runs them", () => {
   let teardown: () => Promise<void>;
   let MED: string;
   let cycleId: string;
+  let unitId: string;
 
   beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
   afterAll(async () => teardown());
@@ -90,6 +91,15 @@ describe("roster — the scheduled jobs run as the worker runs them", () => {
     MED = (await db.select().from(orgDepartments)).find((d) => d.code === "MED")!.id;
     // The hospital as it is: ONE unit, on take every day (CRKMCH, October 2026).
     const unit = (await teamByCode(db, "MED-U1"))!.id;
+    unitId = unit;
+    /*
+      #836 — AND ONLY THAT UNIT IS ACTIVE. `seedUnits` writes the whole sanctioned establishment
+      (22 clinical units), and on the 20th `runMonthlyProposals` drafts a month for every active one:
+      ~0.5–1.2 s each, 30 days of night, cover and routine rows apiece — 15 s, the whole test budget,
+      spent proving one permission 22 times. The census asks whether the job is REFUSED, which one
+      unit answers exactly as well as twenty-two; the proposer's own volume is `proposer.test.ts`'s.
+    */
+    await db.update(rosterTeams).set({ active: false }).where(and(eq(rosterTeams.kind, "clinical_unit"), ne(rosterTeams.id, unit)));
     cycleId = newId();
     await db.insert(rosterCycles).values({
       id: cycleId, departmentId: MED, cycleDays: 1, anchorIstDate: ANCHOR, version: 1, createdBy: "t", updatedBy: "t",
@@ -145,6 +155,13 @@ describe("roster — the scheduled jobs run as the worker runs them", () => {
         });
       }
     }
+    /*
+      #836 — the 20th's proposal really ran, as the system actor, for the ONE unit this hospital has
+      (the CRKMCH fixture above). Without this the census proved only that nothing threw.
+    */
+    const drafts = await db.select({ scopeId: rosterPeriods.scopeId, by: rosterPeriods.draftedByActorType, origin: rosterPeriods.origin })
+      .from(rosterPeriods).where(eq(rosterPeriods.origin, "machine"));
+    expect(drafts).toEqual([{ scopeId: unitId, by: "system", origin: "machine" }]);
   });
 
   describe("the allowance is narrow", () => {

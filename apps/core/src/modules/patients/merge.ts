@@ -40,17 +40,23 @@ type MovedRows = { allergyIds: string[]; guardianIds: string[] };
  * waiting at the screen must not depend on a polled dispatcher. Idempotent; a request already
  * settled is not touched again.
  *
+ * #653 — AND NOW ALSO AT REFUSAL TIME. `approval-consumer.ts` runs this same settle, scoped to the
+ * refused approval, when the worker delivers `approval.rejected` for a `patient_merge`. The reads
+ * above keep settling too: they are the backstop for the seconds before the worker delivers, and for
+ * every refusal made before the hook existed (its cursor is seeded at deploy, not replayed).
+ *
  * ADDITIVE: `status` is a plain text column with no CHECK, so `refused` needs no migration. The
  * approval keeps its own audit — `approval.rejected`, with the MS's note, written by the kernel in
  * the decision's transaction — and this row points at it through `approval_id`.
  */
 export async function settleRefusedMerges(
   exec: Db | Tx,
-  scope: { loserId?: string; ids?: readonly string[] } = {},
+  scope: { loserId?: string; ids?: readonly string[]; approvalId?: string } = {},
 ): Promise<number> {
   const rejected = exec.select({ id: approvals.id }).from(approvals).where(eq(approvals.status, "rejected"));
   const conditions = [eq(patientMergeRequests.status, "requested"), inArray(patientMergeRequests.approvalId, rejected)];
   if (scope.loserId !== undefined) conditions.push(eq(patientMergeRequests.loserId, scope.loserId));
+  if (scope.approvalId !== undefined) conditions.push(eq(patientMergeRequests.approvalId, scope.approvalId));
   if (scope.ids !== undefined) {
     if (scope.ids.length === 0) return 0;
     conditions.push(inArray(patientMergeRequests.id, [...scope.ids]));
