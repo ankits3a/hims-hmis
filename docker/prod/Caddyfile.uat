@@ -43,6 +43,10 @@ http://{$HMIS_UAT_SITE}:8080 {
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
+		# Origin isolation, as production: a resource these refuse shows here before it reaches production.
+		Cross-Origin-Opener-Policy "same-origin"
+		Cross-Origin-Embedder-Policy "require-corp"
+		Cross-Origin-Resource-Policy "same-origin"
 		# NO Strict-Transport-Security. Production's site block for the staging hostname owns TLS,
 		# so HSTS is its call, not this hop's.
 		# WASA M-01, as production and byte-identical to it (see docker/prod/Caddyfile for each source):

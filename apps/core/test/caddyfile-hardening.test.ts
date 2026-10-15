@@ -312,14 +312,21 @@ describe("Owner 2026-09-27 — the site's own pages may use the camera", () => {
  */
 describe("the site isolates its origin", () => {
   const prod = parseCaddyfile(readFileSync(CADDYFILE, "utf8"));
-  it("sends opener, embedder and resource policies", () => {
-    const lines = only(only(prod, /^hmis\.crkmch\.com$/, "prod site"), /^header$/, "prod header block").lines;
-    expect(lines).toEqual(expect.arrayContaining([
-      'Cross-Origin-Opener-Policy "same-origin"',
-      'Cross-Origin-Embedder-Policy "require-corp"',
-      'Cross-Origin-Resource-Policy "same-origin"',
-    ]));
-  });
+  const uat = parseCaddyfile(readFileSync(UAT_CADDYFILE, "utf8"));
+  // UAT too: staging is where a resource these headers refuse must show first, before production.
+  for (const [name, tree, site] of [
+    ["production", prod, /^hmis\.crkmch\.com$/],
+    ["uat", uat, /^http:\/\/\{\$HMIS_UAT_SITE\}:8080$/],
+  ] as const) {
+    it(`${name} sends opener, embedder and resource policies`, () => {
+      const lines = only(only(tree, site, `${name} site`), /^header$/, `${name} header block`).lines;
+      expect(lines).toEqual(expect.arrayContaining([
+        'Cross-Origin-Opener-Policy "same-origin"',
+        'Cross-Origin-Embedder-Policy "require-corp"',
+        'Cross-Origin-Resource-Policy "same-origin"',
+      ]));
+    });
+  }
 });
 
 /**
