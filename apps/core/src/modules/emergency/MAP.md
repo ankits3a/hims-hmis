@@ -233,8 +233,9 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   examination protocol form; `free_by_law` read by lane 6's bill desk; death in ER (lane 5's `record_er_death`) opening
   the mortuary entry through the same seam.
 - Lane 6 built the bill. Still owed: the incumbent's real ER rates (0076 go-live blocker); a claim's status flow at the
-  TPA desk (#822 reads `er_payer_claims`); MCI tagging of episodes at scale (lane 8 opens the account); road-accident
-  claim rejection → difference to patient-payable with a reason line (spec §4.6 edge); printed ER bill.
+  TPA desk (#822 reads `er_payer_claims`); MCI tagging of episodes at scale (lane 8 opens the account); printed ER bill.
+- DECIDED (coordinator 2026-10-15, to match decision 0075): a REJECTED road-accident claim's difference is NEVER billed to
+  the patient automatically — the billing manager decides on recovery. Nothing in the ER bill re-splits a settled bill.
 - Lane 5 built disposition. Still owed after lane 5: decision-to-bed climb (`er_boarding` ladder) and the MS arbitration task
   when a specialty refuses; ICU waitlist hand-off; the follow-up OPD visit BOOKED (the summary records department + date);
   designed prints of the summary / referral / LAMA form; an LWBS button on the ER desk (the desk holds the permission; the
