@@ -8,12 +8,16 @@ import { fetchCurrentSession, fetchInvoicePrint } from "../lib/billing-api";
 import { duplicateCandidates } from "../lib/patients-api";
 import { todayIst } from "../lib/opd-api";
 import {
-  acceptRetailReturn, fetchMyRegistration, fetchRetailSale, fetchRetailSaleByBill, fetchRetailSales, fetchRetailState, pharmacyErrorText,
+  acceptRetailReturn, fetchMyRegistration, fetchRetailBatches, fetchRetailPatientContext, fetchRetailSale, fetchRetailSaleByBill, fetchRetailSales,
+  fetchRetailState, pharmacyErrorText,
   askRetailDiscount, previewRetailSale, searchRetailShelf, sellRetail,
 } from "../lib/pharmacy-api";
 import { InvoicePrint } from "../components/invoice-print";
 import { parseRupees } from "../components/money-input";
 import { PatientPicker } from "../components/patient-picker";
+import { AgentDock } from "../components/agent-dock";
+import { useCopilot } from "../lib/use-copilot";
+import type { AgentLine } from "../components/agent-dock";
 import { PharmacyBillAnnex } from "../components/pharmacy-bill-annex";
 import { istClock, istDateLabel } from "./desk-one/model";
 import { rupees, signedRupees } from "./pharmacy-desk/bill";
@@ -48,7 +52,8 @@ import "./pharmacy-retail.css";
  * Layout classes are `rt-*` under `.d1` (`pharmacy-retail.css`): the unlayered `.d1 button` reset
  * would strip Tailwind utilities, so nothing here leans on them.
  */
-type CartLine = { entry: WireRetailShelfEntry; qty: string };
+/** #638 — `batchId`: the batch the pharmacist chose by hand; absent = the server's earliest expiry (or the scanned pack). */
+type CartLine = { entry: WireRetailShelfEntry; qty: string; batchId?: string };
 type NewCustomer = { name: string; sex: "male" | "female" | "other"; age: string; phone: string; address: string };
 type Customer = { kind: "existing"; id: string; name: string; uhid: string } | { kind: "new"; draft: NewCustomer };
 type RxDraft = { prescriberName: string; prescriberRegNo: string; prescriberAddress: string; rxDate: string; photo: string | null };
@@ -297,9 +302,77 @@ function ShelfSearch({ onAdd }: { onAdd: (entry: WireRetailShelfEntry) => void }
   );
 }
 
+/** #638 — one item's saleable batches and shelf, shared by the line's drug cell and its batch cell (one request). */
+function useRetailBatches(itemId: string) {
+  return useQuery({ queryKey: ["pharmacy", "retail", "batches", itemId], queryFn: () => fetchRetailBatches(itemId), staleTime: 30_000 });
+}
+
+/** #638 — the item's shelf at the retail store, under its name on the cart line. */
+function CartShelf({ itemId, idx }: { itemId: string; idx: number }): React.ReactElement | null {
+  const { t } = useTranslation();
+  const q = useRetailBatches(itemId);
+  if (q.data?.location == null) return null;
+  return <div className="rt-muted" data-testid={`cart-shelf-${String(idx)}`}>{t("pharmacyRetail.shelfAt", { location: q.data.location })}</div>;
+}
+
+/**
+ * #638 (UX audit §5.9) — a manual batch: the default is the server's earliest expiry; a pick names one of the batches
+ * the store can sell now (the server re-judges it at preview and sale). After pricing, the priced batch is shown below.
+ */
+function BatchPick({ itemId, name, value, priced, onChange }: {
+  itemId: string; name: string; value: string | undefined; priced: string | null; onChange: (batchId: string | undefined) => void;
+}): React.ReactElement {
+  const { t } = useTranslation();
+  const q = useRetailBatches(itemId);
+  return (
+    <>
+      <select className="in mo" aria-label={t("pharmacyRetail.batchFor", { name })} value={value ?? ""} onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value)}>
+        <option value="">{t("pharmacyRetail.batchAuto")}</option>
+        {(q.data?.batches ?? []).map((b) => (
+          <option key={b.batchId} value={b.batchId}>
+            {t("pharmacyRetail.batchOption", { no: b.batchNo, expiry: b.expiryDate === null ? "—" : expiryLabel(b.expiryDate), count: b.available })}
+          </option>
+        ))}
+      </select>
+      {priced !== null && <div className="mo rt-muted">{priced}</div>}
+    </>
+  );
+}
+
+/**
+ * #638 — the customer in hand, in the lane: ACTIVE allergies first (red), then what an issued prescription still has
+ * them taking. Read for an existing customer only: a new one has no record yet, which the lane already says.
+ */
+function CustomerContext({ patientId }: { patientId: string }): React.ReactElement | null {
+  const { t } = useTranslation();
+  const q = useQuery({ queryKey: ["pharmacy", "retail", "patient-context", patientId], queryFn: () => fetchRetailPatientContext(patientId) });
+  if (q.data === undefined) return null;
+  const { allergies, currentMedicines } = q.data;
+  return (
+    <div className="rt-stack" data-testid="retail-context">
+      <div data-testid="retail-allergies">
+        <p className="tag">{t("pharmacyRetail.allergiesTag")}</p>
+        {allergies.length === 0 ? <p className="rt-note">{t("pharmacyRetail.noAllergies")}</p> : allergies.map((a) => (
+          <p key={a.substance} role="alert" className="rt-bad">{t("pharmacyRetail.allergicTo", { substance: a.substance })}{a.reaction === null ? "" : ` · ${a.reaction}`}</p>
+        ))}
+      </div>
+      <div data-testid="retail-current-meds">
+        <p className="tag">{t("pharmacyRetail.currentMedsTag")}</p>
+        {currentMedicines.length === 0 ? <p className="rt-note">{t("pharmacyRetail.noCurrentMeds")}</p> : (
+          <ul className="rt-stack-tight">
+            {currentMedicines.map((m, i) => (
+              <li key={`${m.drug}-${String(i)}`}>{[m.drug, m.dose, m.frequency].filter((x) => x !== "").join(" · ")}{m.assumedCurrent ? <span className="rt-muted"> · {t("pharmacyRetail.mayHaveEnded")}</span> : null}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function PharmacyRetail(): React.ReactElement {
   const { t, i18n } = useTranslation();
-  const { username } = useAuth();
+  const { username, actor } = useAuth();
   const qc = useQueryClient();
   const state = useQuery({ queryKey: ["pharmacy", "retail", "state"], queryFn: fetchRetailState });
   const today = useQuery({ queryKey: ["pharmacy", "retail", "sales"], queryFn: () => fetchRetailSales() });
@@ -354,10 +427,10 @@ export function PharmacyRetail(): React.ReactElement {
     enabled: printSale.data !== undefined,
   });
 
-  const cartLines = (): { medicineId: string; qtyBase: number; batchId?: string }[] => cart.map((c) => ({
-    medicineId: c.entry.medicineId, qtyBase: Number(c.qty),
-    ...(c.entry.scannedBatchId === null ? {} : { batchId: c.entry.scannedBatchId }),
-  }));
+  const cartLines = (): { medicineId: string; qtyBase: number; batchId?: string }[] => cart.map((c) => {
+    const batchId = c.batchId ?? c.entry.scannedBatchId ?? undefined;
+    return { medicineId: c.entry.medicineId, qtyBase: Number(c.qty), ...(batchId === undefined ? {} : { batchId }) };
+  });
   const cartValid = cart.length > 0 && cart.every((c) => /^\d+$/.test(c.qty) && Number(c.qty) > 0);
   /* A changed cart is a different bill: its preview, and any discount priced on the old one, go. */
   const invalidate = (): void => { setPreview(null); setDiscount(null); setCartId(newIdempotencyKey()); };
@@ -462,6 +535,30 @@ export function PharmacyRetail(): React.ReactElement {
     setRx(EMPTY_RX); setMode("cash"); setTendered(""); setRef(""); setError(null); setSold(null); setSaleKey(newIdempotencyKey());
     setDiscount(null); setCartId(newIdempotencyKey()); setBillMenu(false); setDiscountSheet(false);
   };
+
+  /*
+    #638 — "your day": this pharmacist's own walk-in sales as COUNTS. The blind count (owner ruling 2026-09-28) keeps
+    the money: no total, no "collected today" here or in the copilot's answer — the rows keep their amounts.
+  */
+  const mine = (today.data ?? []).filter((r) => actor !== null && r.soldBy === actor.id);
+  const yourDay = t("pharmacyRetail.yourDay", {
+    sales: t("pharmacyRetail.daySales", { count: mine.length }),
+    lines: t("pharmacyRetail.dayLines", { count: mine.reduce((n, r) => n + r.lineCount, 0) }),
+    rx: t("pharmacyRetail.dayRx", { count: mine.filter((r) => r.scheduled).length }),
+  });
+  const yourDayRef = useRef(yourDay);
+  yourDayRef.current = yourDay;
+  const [agentLog, setAgentLog] = useState<AgentLine[]>([]);
+  const copilot = useCopilot({
+    terms: () => (customer?.kind === "existing" ? [customer.name, customer.uhid] : customer?.kind === "new" ? [customer.draft.name, customer.draft.phone] : [])
+      .filter((x) => x !== ""),
+    fallback: (question: string): string | null => {
+      const q = question.trim().toLowerCase();
+      if (/\b(day|today|sales?|sold|aaj)\b/.test(q)) return yourDayRef.current;
+      return null;
+    },
+    onNote: (text) => setAgentLog((l) => [{ at: istClock(), text, kind: "ok" as const }, ...l].slice(0, 20)),
+  });
 
   if (printing !== null) {
     const failed = printSale.error ?? printInvoice.error;
@@ -601,6 +698,7 @@ export function PharmacyRetail(): React.ReactElement {
                 <button type="button" className="rt-link" onClick={() => { setCustomer(null); setMatches(null); invalidate(); }}>{t("pharmacyRetail.change")}</button>
               </div>
             )}
+            {customer?.kind === "existing" && <CustomerContext patientId={customer.id} />}
             {matches !== null && (
               <div className="rt-warn" data-testid="retail-matches">
                 <p>{t("pharmacyRetail.matches")}</p>
@@ -684,13 +782,19 @@ export function PharmacyRetail(): React.ReactElement {
                                   <td>
                                     <span className="rt-strong">{c.entry.brandName}</span> <span className="rt-muted">{c.entry.strengthLabel ?? ""} {c.entry.form}</span>
                                     {scheduled(c.entry.scheduleFlag) ? <> <span className="pill rd">{t("pharmacyRetail.schedule", { flag: c.entry.scheduleFlag })}</span></> : null}
+                                    <CartShelf itemId={c.entry.itemId} idx={i} />
                                   </td>
                                   <td className="rt-nowrap" data-label={t("pharmacyBill.qty")}>
                                     <input className="in rt-qty mo" aria-label={t("pharmacyRetail.qtyOf", { name: c.entry.brandName })} inputMode="numeric" value={c.qty}
                                       onChange={(e) => { const v = e.target.value.replace(/\D/g, ""); setCart((all) => all.map((x, j) => (j === i ? { ...x, qty: v } : x))); invalidate(); }} />
                                     <span className="rt-muted"> {c.entry.baseUom}</span>
                                   </td>
-                                  <td className="mo rt-nowrap" data-label={t("pharmacyBill.batch")}>{p?.batchNo ?? "—"}</td>
+                                  <td className="rt-nowrap" data-label={t("pharmacyBill.batch")}>
+                                    {c.entry.scannedBatchId !== null ? <span className="mo">{p?.batchNo ?? "—"}</span> : (
+                                      <BatchPick itemId={c.entry.itemId} name={c.entry.brandName} value={c.batchId} priced={p?.batchNo ?? null}
+                                        onChange={(batchId) => { setCart((all) => all.map((x, j) => (j === i ? { ...x, batchId } : x))); invalidate(); }} />
+                                    )}
+                                  </td>
                                   <td className="mo rt-nowrap" data-label={t("pharmacyBill.expiry")}>{p === undefined ? "—" : expiryLabel(p.expiryDate)}</td>
                                   <td className="mo rt-num" data-label={t("pharmacyRetail.rate")}>{p?.price === undefined ? "—" : rupees(p.price.unitPaise)}</td>
                                   <td className="mo rt-num" data-label={t("pharmacyRetail.gst")}>{p?.price === undefined ? "—" : `${String(p.price.gstRateBps / 100)}% · ${rupees(p.price.taxPaise)}`}</td>
@@ -847,6 +951,7 @@ export function PharmacyRetail(): React.ReactElement {
               <p className="tag">{t("pharmacyRetail.todayTag", { count: rows.length })}</p>
               <button type="button" className="rt-link rt-closelist" onClick={() => setListOpen(false)}>{t("pharmacyRetail.close")}</button>
             </div>
+            <p className="rt-note rt-pad" data-testid="retail-your-day">{yourDay}</p>
             <div className="rt-listact">
               <button type="button" className="sec" onClick={() => setReturning(true)}>{t("pharmacyRetail.returnTitle")}</button>
             </div>
@@ -873,6 +978,8 @@ export function PharmacyRetail(): React.ReactElement {
         </div>
       </div>
       {returning && <RetailReturn onClose={() => setReturning(false)} />}
+      {/* #638 — the copilot dock, as on the billing counter: the server's tools first, then what this screen knows. */}
+      <AgentDock answer={copilot.answer} log={agentLog} onAsk={copilot.ask} placeholder={t("pharmacyRetail.agent.placeholder")} idle={t("pharmacyRetail.agent.idle")} />
     </div>
   );
 }

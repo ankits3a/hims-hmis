@@ -10616,6 +10616,27 @@
     "source_downtime": "कागज़ी डिस्पेंस"
   },
   "pharmacyRetail": {
+    "shelfAt": "रैक: {{location}}",
+    "batchFor": "{{name}} का बैच",
+    "batchAuto": "सबसे पहले एक्सपायरी (अपने आप)",
+    "batchOption": "{{no}} · एक्स. {{expiry}} · {{count}} बचे",
+    "allergiesTag": "एलर्जी",
+    "noAllergies": "कोई एलर्जी दर्ज नहीं।",
+    "allergicTo": "{{substance}} से एलर्जी",
+    "currentMedsTag": "चल रही दवाएँ",
+    "noCurrentMeds": "यहाँ कोई चालू पर्चा नहीं।",
+    "mayHaveEnded": "शायद ख़त्म",
+    "yourDay": "आपका दिन: {{sales}} · {{lines}} · {{rx}}",
+    "daySales_one": "{{count}} बिक्री",
+    "daySales_other": "{{count}} बिक्री",
+    "dayLines_one": "{{count}} लाइन",
+    "dayLines_other": "{{count}} लाइन",
+    "dayRx_one": "{{count}} पर्चे पर",
+    "dayRx_other": "{{count}} पर्चे पर",
+    "agent": {
+      "placeholder": "अपने दिन, किसी दवा या बिक्री के बारे में पूछें…",
+      "idle": "मैं आज की बिक्री और कार्ट देख सकता हूँ। रकम गिनती बंद होने पर दिखती है।"
+    },
     "title": "वॉक-इन बिक्री",
     "intro": "उस ग्राहक को दवा बेचें जो इस अस्पताल के OPD पर्चे के बिना आया है। हर बिल पर पंजीकृत व्यक्ति का नाम होता है। शेड्यूल H और H1 दवाओं के लिए ग्राहक का लाया पर्चा चाहिए; शेड्यूल X यहाँ नहीं बिकती।",
     "shut_no_store": "वॉक-इन फ़ार्मेसी स्टोर अभी बना नहीं है, इसलिए यहाँ कुछ नहीं बिक सकता।",
