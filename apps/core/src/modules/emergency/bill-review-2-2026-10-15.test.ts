@@ -73,9 +73,12 @@ describe("ER lane 6 — review follow-ups, part 2", () => {
     const first = await seen(gate);
     await setErPayer(db, w.billDesk, { idempotencyKey: key(), episodeId: first.episodeId, payer: "road_accident", schemeRef: "FIR 77/26", accidentRef: "ACC-NH30-0915" });
     await dischargeFromEr(db, w.erDoctor, { idempotencyKey: key(), episodeId: first.episodeId, reason: "Better", summary: SUMMARY });
-    await settleErBill(db, w.billDesk, { idempotencyKey: key(), episodeId: first.episodeId, settlement: "nothing_payable" });
-    // The first episode used all but ₹500 of the cap (written directly: a ₹1.5 lakh bill needs a 150-block stay).
-    await db.update(erBills).set({ payerPaise: 14_950_000, totalPaise: 14_950_000, patientPaise: 0 }).where(eq(erBills.episodeId, first.episodeId));
+    // The first episode used all but ₹500 of the cap (its settled bill written directly: a ₹1.5 lakh bill needs a
+    // 150-block stay; er_bills is append-only, #881, so the row is inserted as settled rather than edited after).
+    await db.insert(erBills).values({
+      id: newId(), episodeId: first.episodeId, settlement: "nothing_payable", payer: "road_accident", totalPaise: 14_950_000,
+      payerPaise: 14_950_000, patientPaise: 0, paidPaise: 0, duesPaise: 0, settledBy: w.billDesk.id, settledAt: new Date(),
+    });
     const again = await seen(new Date(Date.now() - HOUR), first.patientId);
     await setErPayer(db, w.billDesk, { idempotencyKey: key(), episodeId: again.episodeId, payer: "road_accident", schemeRef: "FIR 77/26", accidentRef: "ACC-NH30-0915" });
     await dischargeFromEr(db, w.erDoctor, { idempotencyKey: key(), episodeId: again.episodeId, reason: "Better", summary: SUMMARY });
