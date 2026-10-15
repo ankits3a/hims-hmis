@@ -111,7 +111,8 @@ export function ErBoardScreen(): React.ReactElement {
   }, [wall]);
   useEffect(() => { load(); }, [load]);
   // A minute's refetch keeps the expected list honest (a lapsed pre-alert leaves); the clocks tick every heartbeat.
-  useEffect(() => { const id = setInterval(load, 60_000); return () => clearInterval(id); }, [load]);
+  // The wall receives no realtime events (their payloads are not for a kiosk): it refetches every 15 s instead.
+  useEffect(() => { const id = setInterval(load, wall ? 15_000 : 60_000); return () => clearInterval(id); }, [load, wall]);
 
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { connected } = useRealtime([wall ? ER_WALL_TOPIC : ER_BOARD_TOPIC], () => {
