@@ -28,6 +28,19 @@ Source: `apps/core/src/modules/emergency/`
 - `bands.ts`
   - `printErBand(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"print_er_band">>`
   - `reprintErBand(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"reprint_er_band">>`
+- `bill.ts`
+  - `composeErBill(db: Db | Tx, e: EpisodeRow, now: Date = new Date()): Promise<Composed>`
+  - `listErClaims(db: Db | Tx): Promise<(typeof erPayerClaims.$inferSelect)[]>`
+  - `observationBlocks(arrivedAt: Date, until: Date): number`
+  - `openErEventAccount(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"open_er_event_account">>`
+  - `priceErLines(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"price_er_lines">>`
+  - `readErBill(db: Db, actor: Actor, episodeId: string, opts: Opts = {}): Promise<ErBill>`
+  - `readErBillDesk(db: Db, actor: Actor, opts: Opts = {}): Promise<ErBillDesk>`
+  - `rollErLinesIn(tx: Tx, actor: Actor, e: EpisodeRow, admissionId: string, at: Date): Promise<number>`
+  - `setErPayer(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"set_er_payer">>`
+  - `settleErBill(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"settle_er_bill">>`
+  - `takeErAdvance(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"take_er_advance">>`
+  - `visitFeeLines(db: Db | Tx, e: EpisodeRow, now: Date): Promise<BillLine[]>`
 - `board.ts`
   - `listErBays(db: Db, actor: Actor): Promise<ErBay[]>`
   - `listErDoctors(db: Db, actor: Actor, permission: string = ER_ARRIVAL_REGISTER): Promise<ErDoctorOption[]>`
@@ -109,6 +122,7 @@ Source: `apps/core/src/modules/emergency/`
   - `sweepErMlcClocks(db: Db, now: Date): Promise<{ tasks: number; climbs: number; breaches: number }>`
 - `names.ts`
   - `ER_ARRIVAL_REGISTER`
+  - `ER_BILL`
   - `ER_BOARD_VIEW`
   - `ER_CARE`
   - `ER_DISPOSITION`
@@ -149,12 +163,12 @@ Source: `apps/core/src/modules/emergency/`
 
 ## Tables (`kernel/db/schema/emergency.ts`)
 
-`er_admission_disputes`, `er_bands`, `er_charge_lines`, `er_consents`, `er_critical_alerts`, `er_departure_records`, `er_doses`, `er_episodes`, `er_med_issues`, `er_med_returns`, `er_mlc_addenda`, `er_mlc_custody`, `er_mlc_intimations`, `er_mlc_obligations`, `er_mlcs`, `er_notes`, `er_pre_alerts`, `er_procedures`, `er_specialty_calls`, `er_triage_entries`
+`er_admission_disputes`, `er_advances`, `er_bands`, `er_bills`, `er_charge_lines`, `er_consents`, `er_critical_alerts`, `er_departure_records`, `er_doses`, `er_episodes`, `er_event_accounts`, `er_med_issues`, `er_med_returns`, `er_mlc_addenda`, `er_mlc_custody`, `er_mlc_intimations`, `er_mlc_obligations`, `er_mlcs`, `er_notes`, `er_payer_claims`, `er_pre_alerts`, `er_procedures`, `er_specialty_calls`, `er_triage_entries`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (54)
+## HTTP routes (61)
 
-- `emergency.controller.ts` — 54: `/er/arrivals`, `/er/bands`, `/er/bays`, `/er/board`, `/er/calls`, `/er/care`, `/er/consents`, `/er/desk`, `/er/dispo`, `/er/doctor`, `/er/doctors`, `/er/episodes`, `/er/identity`, `/er/items`, `/er/meds`, `/er/mlc`, `/er/notes`, `/er/orders`, `/er/patients`, `/er/pre-alerts`, `/er/procedures`, `/er/stabilised`, `/er/triage`, `/er/triage-doctors`, `/er/vitals`
+- `emergency.controller.ts` — 61: `/er/arrivals`, `/er/bands`, `/er/bays`, `/er/bill`, `/er/board`, `/er/calls`, `/er/care`, `/er/consents`, `/er/desk`, `/er/dispo`, `/er/doctor`, `/er/doctors`, `/er/episodes`, `/er/identity`, `/er/items`, `/er/meds`, `/er/mlc`, `/er/notes`, `/er/orders`, `/er/patients`, `/er/pre-alerts`, `/er/procedures`, `/er/stabilised`, `/er/triage`, `/er/triage-doctors`, `/er/vitals`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/emergency`

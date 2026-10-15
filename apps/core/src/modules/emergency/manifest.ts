@@ -1,7 +1,7 @@
-import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_CARE, ER_DISPOSITION, ER_MLC, ER_TRIAGE } from "./names";
+import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_BILL, ER_CARE, ER_DISPOSITION, ER_MLC, ER_TRIAGE } from "./names";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
-export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_CARE, ER_DISPOSITION, ER_MLC, ER_TRIAGE };
+export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_BILL, ER_CARE, ER_DISPOSITION, ER_MLC, ER_TRIAGE };
 
 /**
  * ER lane 1 (#808, decision 0076) — the emergency department's declared surface: five permissions, five menu entries,
@@ -26,6 +26,9 @@ export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_CARE, ER_DISPOSIT
  *                        LAMA, LWBS, abscond, death — doctors, the casualty nurse, the duty manager, the front office
  *                        (the doctor's acts also check the doctor role; LAMA a doctor or the duty manager)
  *
+ *   er.bill              (lane 6, #813) the ER bill desk: payer, advance (after "stabilised"), pricing, settle or dues,
+ *                        a mass-casualty event account — front office, its supervisor, cashier, billing manager, duty manager
+ *
  *   er.mlc               (lane 4, #811) the medico-legal case: open, addendum, police intimation, countersign,
  *                        belongings, evidence chain of custody, and the MLC desk — doctors, the casualty nurse, the
  *                        front office and its supervisor, the duty manager, the MS (opening, addenda and countersign
@@ -48,7 +51,9 @@ export const emergencyManifest: ModuleManifest = {
     { label: "ER patient", path: "/er/patient", permission: ER_CARE },
     // Lane 4 (#811) — the MLC desk: owed intimations and countersigns with their clocks.
     { label: "MLC desk", path: "/er/mlc", permission: ER_MLC },
+    // Lane 6 (#813) — the ER bill desk (money: desk and billing roles only).
+    { label: "ER bill desk", path: "/er/bill", permission: ER_BILL },
   ],
-  permissions: [ER_BOARD_VIEW, ER_ARRIVAL_REGISTER, ER_TRIAGE, ER_BOARD_WALL, ER_CARE, ER_MLC, ER_DISPOSITION],
+  permissions: [ER_BOARD_VIEW, ER_ARRIVAL_REGISTER, ER_TRIAGE, ER_BOARD_WALL, ER_CARE, ER_MLC, ER_DISPOSITION, ER_BILL],
   subscriptions: [],
 };

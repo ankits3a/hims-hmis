@@ -1,5 +1,5 @@
 import { ipdSchemaKeys } from "../ipd/common";
-import { ER_INTENTS, ER_INTENT_CATALOGUE, ER_INTENT_NAMES, ER_REFUSALS, ER_REFUSAL_CODES, ErBoardSchema, ErDeskViewSchema, ErMlcDeskSchema, ErMlcDetailSchema, ErPatientHitSchema } from "./index";
+import { ER_INTENTS, ER_INTENT_CATALOGUE, ER_MONEY_INTENTS, ER_INTENT_NAMES, ER_REFUSALS, ER_REFUSAL_CODES, ErBoardSchema, ErDeskViewSchema, ErMlcDeskSchema, ErMlcDetailSchema, ErPatientHitSchema } from "./index";
 
 /** ER lane 1 (#808) — the contract's own properties: the refusal register agrees both ways; no money in any shape. */
 let n = 0;
@@ -23,7 +23,9 @@ describe("emergency intent contracts", () => {
 
   it("no ER answer, board or desk shape names money (decision 0058, spec §3.6)", () => {
     const money = /paise|rupee|amount|fee|charge|dues|payable|price|deposit|bill|paid/i;
-    const shapes = { ...Object.fromEntries(ER_INTENT_NAMES.map((n) => [n, ER_INTENTS[n].output])), board: ErBoardSchema, desk: ErDeskViewSchema, hit: ErPatientHitSchema, mlcDesk: ErMlcDeskSchema, mlc: ErMlcDetailSchema };
+    // Lane 6 (#813): the bill desk's own intents name money by design; every OTHER answer stays money-free.
+    const money_: readonly string[] = ER_MONEY_INTENTS;
+    const shapes = { ...Object.fromEntries(ER_INTENT_NAMES.filter((n) => !money_.includes(n)).map((n) => [n, ER_INTENTS[n].output])), board: ErBoardSchema, desk: ErDeskViewSchema, hit: ErPatientHitSchema, mlcDesk: ErMlcDeskSchema, mlc: ErMlcDetailSchema };
     for (const [name, schema] of Object.entries(shapes)) {
       expect([name, ipdSchemaKeys(schema).filter((k) => money.test(k))]).toEqual([name, []]);
     }
@@ -63,5 +65,12 @@ describe("emergency intent contracts", () => {
     expect(parse({ action: "handed_over", receiver })).toBe(true);
     expect(parse({ action: "handed_over" })).toBe(false);
     expect(parse({ action: "stored", receiver })).toBe(false);
+  });
+
+  it("the money intents are exactly the bill desk's, and only desk roles may act them (lane 6)", () => {
+    for (const n of ER_MONEY_INTENTS) {
+      expect(ER_INTENT_NAMES).toContain(n);
+      expect([n, ER_INTENTS[n].actors.filter((a) => a === "doctor" || a === "er_nurse")]).toEqual([n, []]);
+    }
   });
 });

@@ -35,6 +35,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/diet/consults` | `apps/web/src/screens/diet-consults` |
 | `/diet/kitchen` | `apps/web/src/screens/diet-kitchen` |
 | `/diet/ward` | `apps/web/src/screens/diet-ward` |
+| `/er/bill` | `apps/web/src/screens/er-bill` |
 | `/er/board` | `apps/web/src/screens/er-board` |
 | `/er/desk` | `apps/web/src/screens/er-desk` |
 | `/er/mlc` | `apps/web/src/screens/er-mlc` |

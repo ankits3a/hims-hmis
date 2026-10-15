@@ -302,7 +302,7 @@ export const ipdBands = pgTable(
 
 /** The daily and per-visit components the running bill posts (`IPD_RATE_COMPONENTS`, retyped for drizzle-kit). */
 /** The rate card's five components plus #785's two order departments (contracts `IPD_CHARGE_COMPONENTS`). */
-const CHARGE_COMPONENTS_SQL = sql.raw(["room", "nursing", "rmo", "visit", "cross_visit", "lab", "imaging"].map((c) => `'${c}'`).join(", "));
+const CHARGE_COMPONENTS_SQL = sql.raw(["room", "nursing", "rmo", "visit", "cross_visit", "lab", "imaging", "er"].map((c) => `'${c}'`).join(", "));
 
 /**
  * One posted line of an admission's running bill (spec SPEC-ipd-core §4.3). APPEND-ONLY: a wrong line is answered by
@@ -352,6 +352,8 @@ export const ipdChargeLines = pgTable(
      */
     visitSeq: integer("visit_seq"),
     reversalOf: text("reversal_of"),
+    /** ER lane 6 (#813): the ER charge line an `ipd.er` line carries (and its reversal copies). */
+    erChargeLineId: text("er_charge_line_id"),
     reason: text("reason"),
     postedBy: text("posted_by").notNull(),
     postedAt: timestamp("posted_at", { withTimezone: true }).notNull(),
@@ -364,7 +366,9 @@ export const ipdChargeLines = pgTable(
     uniqueIndex("ipd_charge_lines_order_ux").on(t.orderItemId).where(sql`${t.source} = 'ipd.order'`),
     index("ipd_charge_lines_admission_idx").on(t.admissionId, t.serviceDate),
     check("ipd_charge_lines_component_ck", sql`${t.component} in (${CHARGE_COMPONENTS_SQL})`),
-    check("ipd_charge_lines_source_ck", sql`${t.source} in ('ipd.nightly', 'ipd.visit', 'ipd.reversal', 'ipd.order')`),
+    check("ipd_charge_lines_source_ck", sql`${t.source} in ('ipd.nightly', 'ipd.visit', 'ipd.reversal', 'ipd.order', 'ipd.er')`),
+    // ER lane 6 (#813): one IP line per ER line, ever.
+    uniqueIndex("ipd_charge_lines_er_line_ux").on(t.erChargeLineId).where(sql`${t.source} = 'ipd.er'`),
     check("ipd_charge_lines_order_ck", sql`${t.source} = 'ipd.reversal' or (${t.source} = 'ipd.order') = (${t.orderItemId} is not null and ${t.orderId} is not null)`),
     check("ipd_charge_lines_qty_ck", sql`${t.qty} > 0`),
     check("ipd_charge_lines_reversal_ck", sql`(${t.source} = 'ipd.reversal') = (${t.reversalOf} is not null)`),
