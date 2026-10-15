@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TeleCallPanel, hasSpoken, isTele } from "../consult/tele-call";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError, NetworkError } from "../api";
@@ -11,7 +11,7 @@ import {
   addLine, adviceOf, applySet, emptyDraft, isEmptyDraft, issuedCounts, lineComplete, lineSignals, lineSub, lineText, linesFrom, noteBody, overridesOf, repeatLast, setBodyOf,
   unanswered, warningsOf, wireLine,
 } from "../consult/rules";
-import { AdviceDrawer, DiagnosisDrawer, MedicinesDrawer, NotesDrawer, SetsDrawer, type Patch } from "../consult/sheets";
+import { AdviceDrawer, ComplaintDrawer, DiagnosisDrawer, MedicinesDrawer, NotesDrawer, SetsDrawer, type Patch } from "../consult/sheets";
 import { ageSexOf, ageYearsOn, followUpChoices, guardianBrief, reportsCard, rowName, visitKind } from "../doctor/rules";
 import type { ReportsCard } from "../doctor/rules";
 import { useI18n } from "../i18n";
@@ -33,9 +33,11 @@ import { AllergySheet } from "../consult/allergy-sheet";
  * THE DOCTOR'S CONSULTATION, ON A PHONE (decision 0048; board "Phone consult", owner 2026-10-07:
  * "keep the screen clean and minimal and yet give full control to the doctor").
  *
- * ONE SCREEN, FIVE DRAWERS. The patient, what the desks recorded, and one card — "This visit" —
- * that fills up as the doctor works. Notes, Diagnosis, Medicines, Tests and Advice each open a
- * sheet and close back to this screen. Nothing here decides anything clinical:
+ * ONE SCREEN, SIX DRAWERS. The patient, what the desks recorded, and one card — "This visit" —
+ * that fills up as the doctor works. Complaint, Diagnosis, Medicines, Tests, Advice and Notes each
+ * open a sheet and close back to this screen (issue #607, owner 2026-10-10: the chief complaint has
+ * its own button; Notes — the doctor's own reference, never printed — comes last; the row scrolls so
+ * more can join). Nothing here decides anything clinical:
  *
  *   the note        `PUT consult/note` — the web consultation's own autosave route
  *   the checks      `POST rx-precheck` while writing, and the issue route runs every one again
@@ -49,7 +51,7 @@ import { AllergySheet } from "../consult/allergy-sheet";
  * NO PRINTING AND NO "AFTER" SCREEN (owner, 2026-10-07): issuing returns to the line, which says
  * what was sent for a few seconds.
  */
-type Drawer = null | "notes" | "dx" | "meds" | "tests" | "advice" | "sets";
+type Drawer = null | "complaint" | "dx" | "meds" | "tests" | "advice" | "notes" | "sets";
 type T = ReturnType<typeof useI18n>["t"];
 
 const says = (e: unknown, t: T): string => (e instanceof NetworkError ? t("mobile.network") : e instanceof ApiError ? refusalText(e.body, e.code) : String(e));
@@ -338,14 +340,14 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
   const tele = isTele(visit?.encounter);
   const teleLocked = tele && !hasSpoken(visit?.encounter);
   const advice = adviceOf(draft, review);
-  const counts = [
-    draft.complaints.length > 0 || draft.notes.trim() !== "" ? "✓" : null, draft.diagnoses.length > 0 ? String(draft.diagnoses.length) : null,
-    draft.lines.length > 0 ? String(draft.lines.length) : null, draft.tests.length > 0 ? String(draft.tests.length) : null, advice !== null ? "✓" : null,
-  ];
-  const five: { key: Exclude<Drawer, null | "sets">; glyph: string; label: string }[] = [
-    { key: "notes", glyph: "✎", label: t("mobile.consult.five.notes") }, { key: "dx", glyph: "◎", label: t("mobile.consult.five.dx") },
-    { key: "meds", glyph: "℞", label: t("mobile.consult.five.meds") }, { key: "tests", glyph: "⚗", label: t("mobile.consult.five.tests") },
-    { key: "advice", glyph: "☰", label: t("mobile.consult.five.advice") },
+  const hasNotes = draft.notes.trim() !== "";
+  const six: { key: Exclude<Drawer, null | "sets">; glyph: string; label: string; count: string | null }[] = [
+    { key: "complaint", glyph: "❝", label: t("mobile.consult.five.complaint"), count: draft.complaints.length > 0 ? "✓" : null },
+    { key: "dx", glyph: "◎", label: t("mobile.consult.five.dx"), count: draft.diagnoses.length > 0 ? String(draft.diagnoses.length) : null },
+    { key: "meds", glyph: "℞", label: t("mobile.consult.five.meds"), count: draft.lines.length > 0 ? String(draft.lines.length) : null },
+    { key: "tests", glyph: "⚗", label: t("mobile.consult.five.tests"), count: draft.tests.length > 0 ? String(draft.tests.length) : null },
+    { key: "advice", glyph: "☰", label: t("mobile.consult.five.advice"), count: advice !== null ? "✓" : null },
+    { key: "notes", glyph: "✎", label: t("mobile.consult.five.notes"), count: hasNotes ? "✓" : null },
   ];
   const row = (label: string, body: React.ReactNode, to: Exclude<Drawer, null>, testID: string) => (
     <Pressable testID={testID} accessibilityRole="button" onPress={() => setDrawer(to)} style={s.ln}>
@@ -435,8 +437,7 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
           </View>
           {empty && <Text testID="visit-empty" style={s.emptyText}>{t("mobile.consult.emptyHint")}</Text>}
           {childDoseMissing(draft, bandNow()) && <Note tone="warn" testID="visit-child-no-dose">{t("mobile.consult.childNoDose")}</Note>}
-          {(draft.complaints.length > 0 || draft.notes.trim() !== "") && row(t("mobile.consult.five.notes"),
-            <Text style={s.lnText}>{[draft.complaints.join(", "), draft.notes.trim()].filter((x) => x !== "").join(". ")}</Text>, "notes", "visit-notes")}
+          {draft.complaints.length > 0 && row(t("mobile.consult.five.complaint"), <Text style={s.lnText}>{draft.complaints.join(", ")}</Text>, "complaint", "visit-complaint")}
           {draft.diagnoses.length > 0 && row(t("mobile.consult.five.dx"), <>{draft.diagnoses.map((d) => (
             <Text key={d.text} style={s.lnText}><Text style={{ fontWeight: "700" }}>{d.text}</Text>{d.icd10Code === null ? "" : `  ${d.icd10Code}`}</Text>))}</>, "dx", "visit-dx")}
           {draft.lines.map((l, i) => {
@@ -460,6 +461,7 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
           {draft.tests.length > 0 && row(t("mobile.consult.five.tests"), <Text style={s.lnText}>{draft.tests.map((x) => x.name).join(" · ")}</Text>, "tests", "visit-tests")}
           {advice !== null && row(t("mobile.consult.five.advice"), <Text style={s.lnText}>{advice}</Text>, "advice", "visit-advice")}
           {draft.returnToday === true && row("", <Text style={[s.lnText, { color: "#8a5a10", fontWeight: "700" }]}>{t("mobile.consult.returnTodayShort")}</Text>, "advice", "visit-return")}
+          {hasNotes && row(t("mobile.consult.five.notes"), <Text style={s.lnText}>{draft.notes.trim()}</Text>, "notes", "visit-notes")}
         </View>
 
         <Pressable testID="consult-park" accessibilityRole="button" disabled={parkBusy} hitSlop={6} onPress={onPark} style={{ alignSelf: "flex-start", minHeight: 36, justifyContent: "center" }}>
@@ -470,15 +472,18 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
       <View style={[s.foot, { paddingBottom: insets.bottom + space.sm }]} testID="consult-foot">
         {error !== null && <Note tone="bad" testID="consult-error">{error}</Note>}
         {paperAsk && <Note tone="warn" testID="paper-ask">{t("mobile.consult.paperAsk", { count: draft.lines.length })}</Note>}
-        <View style={s.five}>
-          {five.map((f, i) => (
-            <Pressable key={f.key} testID={`open-${f.key}`} accessibilityRole="button" accessibilityLabel={f.label} onPress={() => { setMedStart(null); setDrawer(f.key); }} style={[s.fiveBtn, counts[i] !== null && s.fiveOn]}>
+        {/* Six buttons in one horizontal scroller that runs to the screen's edges: at 360 px the last one is
+            cut off at the edge, which is what says "swipe for more" (issue #607). */}
+        <ScrollView testID="consult-six" horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled"
+          style={s.sixRow} contentContainerStyle={s.six}>
+          {six.map((f) => (
+            <Pressable key={f.key} testID={`open-${f.key}`} accessibilityRole="button" accessibilityLabel={f.label} onPress={() => { setMedStart(null); setDrawer(f.key); }} style={[s.fiveBtn, f.count !== null && s.fiveOn]}>
               <Text style={s.fiveGlyph}>{f.glyph}</Text>
               <Text style={s.fiveLabel} numberOfLines={1}>{f.label}</Text>
-              {counts[i] !== null && <Text testID={`count-${f.key}`} style={s.fiveCount}>{counts[i]}</Text>}
+              {f.count !== null && <Text testID={`count-${f.key}`} style={s.fiveCount}>{f.count}</Text>}
             </Pressable>
           ))}
-        </View>
+        </ScrollView>
         <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
           <Pressable testID="wrote-on-paper" accessibilityRole="button" accessibilityState={{ disabled: busy !== null || teleLocked }} disabled={busy !== null || teleLocked} hitSlop={6} onPress={() => { void paper(); }} style={{ minHeight: TOUCH, justifyContent: "center", paddingRight: 4, opacity: teleLocked ? 0.4 : 1 }}>
             <Text style={[s.link, { color: paperAsk ? color.red : color.dim, textDecorationLine: "underline" }]}>{t(paperAsk ? "mobile.consult.paperConfirm" : "mobile.consult.paper")}</Text>
@@ -491,7 +496,8 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
         </View>
       </View>
 
-      {drawer === "notes" && <NotesDrawer api={api} encounterId={encounterId} draft={draft} patch={patch} onClose={closeDrawer} recorder={recorder} deskWords={visit?.deskComplaint?.text ?? null}
+      {drawer === "complaint" && <ComplaintDrawer api={api} draft={draft} patch={patch} onClose={closeDrawer} deskWords={visit?.deskComplaint?.text ?? null} />}
+      {drawer === "notes" && <NotesDrawer api={api} encounterId={encounterId} draft={draft} patch={patch} onClose={closeDrawer} recorder={recorder}
         // A heard medicine becomes a line with no dose yet: it is flagged, it cannot be issued until the
         // doctor finishes it, and what was heard stays on the screen meanwhile.
         onAddMedicine={(h) => patch((d) => (d.lines.some((l) => l.medicineId === h.medicineId) ? d : addLine(d, { drug: h.name, dose: "", frequency: "", durationDays: null, food: null, instructions: "", route: "oral", medicineId: h.medicineId, source: "voice" }, Date.now())))}
@@ -539,8 +545,10 @@ const s = StyleSheet.create({
   lnSub: { fontSize: 12.5, lineHeight: 17, color: color.dim },
   mark: { fontSize: 11.5, fontWeight: "700", color: "#8a5a10" },
   foot: { position: "absolute", left: 0, right: 0, bottom: 0, backgroundColor: color.card, borderTopWidth: 1, borderTopColor: color.line, paddingHorizontal: space.md, paddingTop: space.sm, gap: space.sm },
-  five: { flexDirection: "row", gap: 6 },
-  fiveBtn: { flex: 1, minHeight: 56, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: color.line, borderRadius: radius.md, backgroundColor: color.paper, paddingVertical: 4 },
+  // The row bleeds through the foot's side padding to the screen's edges; the padding moves inside.
+  sixRow: { marginHorizontal: -space.md, flexGrow: 0 },
+  six: { flexGrow: 1, gap: 6, paddingHorizontal: space.md },
+  fiveBtn: { flexGrow: 1, minWidth: 58, minHeight: 56, paddingHorizontal: 4, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: color.line, borderRadius: radius.md, backgroundColor: color.paper, paddingVertical: 4 },
   fiveOn: { borderColor: color.greenLine, backgroundColor: color.greenSoft },
   fiveGlyph: { fontSize: 16, color: color.green, lineHeight: 20 },
   fiveLabel: { fontSize: 11, fontWeight: "700", color: color.ink },
