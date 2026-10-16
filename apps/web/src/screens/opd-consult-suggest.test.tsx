@@ -32,6 +32,7 @@ function mount(opts: { prefs?: unknown; diagnoses?: { text: string; icd10: strin
     "PUT /api/opd/consult/suggestions": (init?: RequestInit) => { puts.push(JSON.parse(String(init?.body))); return { on: true }; },
     "POST /api/opd/consult/signals": (init?: RequestInit) => { sent.push(...(JSON.parse(String(init?.body)) as { suggestions: Sent[] }).suggestions); return { misses: 0, suggestions: 1 }; },
     "GET /api/opd/cds/suggest/tests": TESTS,
+    "GET /api/opd/consult/learned": { since: { complaints: null, diagnoses: null, tests: null, findings: null, hidden: null }, complaints: [{ term: "fever", uses: 2 }], diagnoses: [], tests: [], findings: [], hidden: [] },
   });
   renderWithProviders(
     <CopilotSuggestions
@@ -97,6 +98,18 @@ describe("suggestion chips — the cross (decision 0050 P0)", () => {
     expect(await screen.findByTestId("sug-off")).toBeInTheDocument();
     expect(puts).toEqual([{ suggestionsOn: true }, { suggestionsOn: false }]);
     expect(sent.filter((s) => s.outcome === "dismissed")).toEqual([]);
+  });
+});
+
+describe("what the suggestions learned from me (decision 0050 P4, #615)", () => {
+  beforeEach(() => { resetSuggestSignals(); });
+
+  it("the chips' header opens the doctor's own learned panel", async () => {
+    const user = userEvent.setup();
+    mount();
+    await user.click(await screen.findByTestId("sug-learned"));
+    expect(await screen.findByRole("dialog", { name: "What suggestions learned from you" })).toBeInTheDocument();
+    expect(await screen.findByText(/fever · 2 times/)).toBeInTheDocument();
   });
 });
 

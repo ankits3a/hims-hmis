@@ -4,7 +4,7 @@ import { openSessionFor } from "../../../test/helpers/billing";
 import { MON, MON2, MON3, issueRx, line, seedPharmacyBase, stockIn } from "../../../test/helpers/pharmacy";
 import { ensureRole, mkUser, testCfg } from "../../../test/helpers/opd";
 import { grantPermissionToRole } from "../../kernel/auth/permissions";
-import { approvals, events, pharmacyCreditMoves } from "../../kernel/db/schema";
+import { approvals, events, patients, pharmacyCreditMoves, phiAccessLog } from "../../kernel/db/schema";
 import { advanceOf, invoiceSettlement, listCreditNotes } from "../billing";
 import { billDispense, previewDispenseBill } from "./bill";
 import { claimDispense, findAtCounter } from "./claim";
@@ -92,5 +92,32 @@ describe("the profile's All bills, and one bill in full (owner 2026-10-03)", () 
     expect(full.payments.map((p) => [p.kind, p.amountPaise, p.modes])).toEqual([["apply", a.net, ["cash"]], ["reverse", -a.net, ["cash"]]]);
     expect(full.creditNotes).toHaveLength(1);
     expect(full.issuedByName).not.toBe("");
+  });
+
+  /*
+    DECIDED 2026-10-15 (standard practice): the counter must be able to bill a restricted record, so a
+    holder of the bills read keeps reading its bills — and every such read by a reader without the
+    restricted-records grant is logged, one access row per read (`billing.sealed_bill_read`).
+  */
+  it("a restricted record's bills and one bill in full are still readable, and each read writes an access row", async () => {
+    await sold();
+    const rows = () => db.select().from(phiAccessLog).where(eq(phiAccessLog.surface, "billing.sealed_bill_read"));
+    // An ordinary record: nothing extra is logged.
+    const { bills } = await patientBills(db, reader.actor, fx.patient.id);
+    await patientBillDetail(db, reader.actor, bills[0]!.invoiceId);
+    expect(await rows()).toHaveLength(0);
+
+    await db.update(patients).set({ isConfidential: true, alias: "Patient 9" }).where(eq(patients.id, fx.patient.id));
+    const sealed = await patientBills(db, reader.actor, fx.patient.id);
+    expect(sealed.bills).toHaveLength(1);
+    expect(await patientBillDetail(db, reader.actor, sealed.bills[0]!.invoiceId)).not.toBeNull();
+    const logged = await rows();
+    expect(logged).toHaveLength(2);
+    expect(logged.every((r) => r.patientId === fx.patient.id && r.actorId === reader.actor.id && r.sealed)).toBe(true);
+
+    // A reader who holds the restricted-records grant reads it as any record: no extra row.
+    await grantPermissionToRole(db, fx.registry, "pharmacy_incharge", "patients.confidential.read");
+    await patientBills(db, reader.actor, fx.patient.id);
+    expect(await rows()).toHaveLength(2);
   });
 });

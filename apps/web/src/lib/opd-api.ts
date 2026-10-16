@@ -302,6 +302,22 @@ export type WireDuplicateHit = {
  */
 export type WireDrugDiseaseAlternative = { moiety: string; label: string };
 
+/**
+ * #621 — a renal dose warning: a REVIEWED monograph's band the patient's latest eGFR reaches (with its
+ * age in days), or no eGFR within 90 days for a drug that has a rule. Always hard: a reason clears it.
+ */
+export type WireRenalHit = {
+  lineIndex: number;
+  genericId: string;
+  genericName: string;
+  kind: "band" | "no_recent_kidney_function";
+  severity: "reduce" | "avoid" | null;
+  dose: string | null;
+  egfr: number | null;
+  sampledAt: string | null;
+  ageDays: number | null;
+  reason: "no_result" | "stale" | "no_dob" | "sex_not_binary" | "under_18" | null;
+};
 export type WireDrugDiseaseHit = {
   severity: "severe" | "moderate";
   lineIndex: number;
@@ -402,6 +418,8 @@ export type WireRxLine = {
   medicineId?: string | null;
   /** Decision 0050 P0 — typed, searched, suggested, from a set, a repeat, a voice note or the desk's paper. Audit and learning only. */
   source?: RxLineSource | null;
+  /** #620 — the suggestion event a filled line was taken from. Audit and learning only. */
+  suggestionEventId?: string | null;
 };
 
 /** An editor row as typed — blanks allowed; `durationDays` is the box's text. Not a prescription line. */
@@ -410,6 +428,8 @@ export type WireRxDraftLine = {
   instructions: string; noSubstitution: boolean; medicineId?: string | null; eye?: Eye | null; taper?: TaperStep[] | null;
   /** Decision 0050 P0 — where the row came from; absent on a row typed by hand and on every older draft. */
   source?: RxLineSource;
+  /** #620 — a filled row's suggestion event, and the row as it was offered (`lib/suggest-signals.ts`). */
+  suggestionEventId?: string; suggestedAs?: string;
 };
 
 export type WirePrescription = {
@@ -589,6 +609,8 @@ export type WireWalkInBody = {
   acknowledgedDuplicates?: boolean;
   /** RC-1 CLOSE M2 — bill-first defers the queue join; a caller that sends "defer" reads WireWalkInDeferredResult. */
   join?: "queue" | "defer";
+  /** #614 — the id `triage()` answered with; the server links its own copy of the suggestion to this visit. */
+  triageId?: string;
 };
 
 export type WireWalkInResult = WireOpenVisitResult & { patientId: string; registered: boolean };
@@ -673,8 +695,10 @@ export type WireTriageSuggestion = { departmentId: string; reason: string };
 export type WireRedFlag = { reasonKey: string; matched: string };
 export type WireTriage = {
   suggestions: WireTriageSuggestion[];
-  source: "model" | "keywords";
+  source: "model" | "keywords" | "prior";
   redFlag?: WireRedFlag;
+  /** #614 — absent on a red flag. Sent back on the walk-in or booking that follows. */
+  triageId?: string;
 };
 
 /**
@@ -696,7 +720,7 @@ export function getSlots(doctorId: string, date: string): Promise<{ slots: WireS
 }
 
 export function bookAppointment(
-  body: { patientId: string; doctorId: string; slotStart: string; note?: string; mode?: "tele"; telePhone?: string },
+  body: { patientId: string; doctorId: string; slotStart: string; note?: string; mode?: "tele"; telePhone?: string; triageId?: string },
 ): Promise<{ appointment: WireAppointment }> {
   return api("POST", "/opd/appointments", body);
 }
@@ -882,6 +906,18 @@ export function listQueueSummary(serviceDate: string, departmentId?: string): Pr
   const params = new URLSearchParams({ serviceDate });
   if (departmentId !== undefined && departmentId !== "") params.set("departmentId", departmentId);
   return api("GET", `/opd/queues/summary?${params.toString()}`);
+}
+
+/**
+ * #660 — THE OPD DESK'S DEPARTMENT LINE, IN ONE READ. Every doctor of the department as the board's
+ * summary row, each carrying the very view `GET /opd/queues` gives for that doctor (null with no
+ * session today). One read per poll for the whole department — never one per doctor (the 2026-09-28
+ * desk decision's load rule). `serviceDate` is the caller's, as for `listQueueSummary`.
+ */
+export type WireDepartmentQueueDoctor = WireDoctorSummary & { queue: WireQueueView | null };
+export type WireDepartmentQueue = { departmentId: string; serviceDate: string; doctors: WireDepartmentQueueDoctor[] };
+export function getDepartmentQueue(departmentId: string, serviceDate: string): Promise<WireDepartmentQueue> {
+  return api("GET", `/opd/departments/${encodeURIComponent(departmentId)}/queue?${new URLSearchParams({ serviceDate }).toString()}`);
 }
 
 /**
@@ -1074,7 +1110,7 @@ export type WirePaperVerdict = {
 };
 
 export type WireHeldAlert = {
-  kind: "allergy" | "interaction" | "duplicate" | "drug_disease";
+  kind: "allergy" | "interaction" | "duplicate" | "drug_disease" | "renal";
   hard: boolean; text: string;
   substance?: string; saltPair?: [string, string]; moiety?: string; icd10Prefix?: string;
 };

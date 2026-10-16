@@ -106,3 +106,8 @@ export { runFlowLearning } from "./flow-learning";
 // DOCTOR DESK DD-0 (#626) — the Tower's OPD reads: a doctor's day line (counts, no money), open visits, closed visits.
 export { closedVisitNos, completedVisitById, completedVisitsOf, doctorDayLines, doctorPaceToday, earlierVisits, lastPrescriptionBy, openVisitsForDoctor, visitOfDoctor } from "./doctor-day";
 export type { CompletedVisitRow, DoctorDayLine, DoctorPaceToday, OpenVisitRow } from "./doctor-day";
+
+// #621 — the lab registers the renal dose check's eGFR reader here (lab depends on opd, not the reverse).
+export { registerKidneyFunctionReader } from "./kidney-function";
+export type { KidneyFunctionReader } from "./kidney-function";
+export type { KidneyReading, RenalHit } from "./rx-checks";

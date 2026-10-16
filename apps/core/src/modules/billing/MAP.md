@@ -80,6 +80,12 @@ Every rupee is an integer paise; documents are append-only and corrected by new 
 3. Append `chargeOrphanFlagged` per orphan, then `dayClosed` (system actor `DAILY_CLOSE_ACTOR`).
 - Read-only preview of orphans: `chargeOrphans`, used by controller (comment in billing.controller.ts); do not call `runDailyClose` for that.
 
+### 3.5 Refund voucher paper and the office's reads (#655)
+- `payRefundVoucher` refunds.ts queues `billing_refund_voucher` (`enqueuePrintJob`, dedupe `refund-voucher:<id>`) in the payment's tx; rendered by `renderRefundVoucher` refund-print.ts (registered in `BillingModule.onModuleInit`); destination `front_desk_a4`. Unpaid voucher renders null. No ID number on the paper.
+- `payeeRelation` (migration `billing_payee_relation`): "someone else collects", a word; digits refused `payee_relation_invalid`.
+- `dayBook` carries `bankCharges` (recon_resolutions `bank_charge` by decision day). `gstinsBilledIn` office-needs.ts feeds the GSTR-1 row's `gstinCount`.
+- `patientCreditNotes` refunds.ts (`GET /billing/patients/:id/credit-notes`, `billing.refund.request`): the refund form's picker; refundable = min(note − vouchers on it, the bill's issue-time cap).
+
 ## 4. Invariants and traps
 - Paise: all amounts are safe integers. `assertPaise` (from tariff) at every boundary: receipts.ts; credit-notes.ts; refunds.ts; sessions.ts; invoices.ts (`assertBoundaryPaise`). Add it to any new money input.
 - Rounding (§170) is applied ONCE per document total, never per line share: credit-notes.ts. Credit note uses the invoice's own `roundingRule`.

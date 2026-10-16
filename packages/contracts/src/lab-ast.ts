@@ -186,3 +186,16 @@ export function astProblemText(p: AstRowProblem): string {
     case "too_many": return `At most ${String(AST_MAX_ROWS)} antibiotics per culture`;
   }
 }
+
+/**
+ * #703 — a table as one line of text, Resistant first: "Resistant: Ampicillin, Ciprofloxacin · Sensitive: Meropenem".
+ * Full lab mode stores it as the `MIC_AST` result's text value, so a reader that knows only text still reads the gist.
+ */
+export function astSummary(rows: readonly AstRow[]): string {
+  const order: readonly AstResult[] = ["R", "I", "S"];
+  return order
+    .map((r) => [r, rows.filter((x) => x.result === r).map((x) => astName(x.antibiotic))] as const)
+    .filter(([, names]) => names.length > 0)
+    .map(([r, names]) => `${AST_RESULT_WORD[r]}: ${names.join(", ")}`)
+    .join(" · ");
+}

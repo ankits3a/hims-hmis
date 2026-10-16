@@ -27,6 +27,7 @@ import { MyDay } from "./screens/my-day";
 import { MyLeave } from "./screens/my-leave";
 import { StaffReports } from "./screens/staff-reports";
 import { CopilotHealthScreen } from "./screens/copilot-health";
+import { CrkFormularyScreen } from "./screens/crk-formulary";
 import { CopilotNoticeHost } from "./components/copilot-notice";
 import { OpdReportScreen } from "./screens/opd-report";
 import { DeskOne } from "./screens/desk-one/desk-one";
@@ -301,6 +302,8 @@ const NAV: readonly NavEntry[] = [
   { to: "/staff", label: "nav.staffReports", permission: "staff.reports.read", group: "admin" },
   // E0.1 (decision 0064) — the copilot's health; path and permission match `deskManifest.menu`.
   { to: "/copilot-health", label: "nav.copilotHealth", permission: "copilot.health.read", group: "admin" },
+  // #882 / decision 0053 — the CRK formulary: Pharmacology signs; the pharmacy may correct a draft.
+  { to: "/crk-formulary", label: "nav.crkFormulary", permission: "formulary.crk.sign", group: "pharmacy", anyOf: ["formulary.manage"] },
   // The OPD day report (owner, 2026-09-19): the hospital's day by department, PDF and CSV.
   { to: "/reports/opd-day", label: "nav.opdDayReport", permission: "opd.reports.read", group: "opd" },
   // 20-U U5a — who is on now, the hospital's unit board. `roster.read` matches `rosterManifest.menu`.
@@ -810,6 +813,13 @@ const copilotHealthRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/copilot-health",
   component: CopilotHealthScreen,
+});
+
+/** #882 / decision 0053 — the CRK formulary worklist and sign screen. */
+const crkFormularyRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/crk-formulary",
+  component: CrkFormularyScreen,
 });
 
 /**
@@ -1762,9 +1772,11 @@ const billingRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/billing",
   // The OPD desk hands a walk-in straight to the counter as `/billing?encounterId=…` (flag ⑧);
-  // without one the cashier types or scans the encounter id at the counter.
-  validateSearch: (search: Record<string, unknown>): { encounterId?: string } => ({
+  // without one the cashier types or scans the encounter id at the counter. #658 — the card
+  // recognition counter also hands over `?coupon=` (comma-separated codes) to fill the coupon field.
+  validateSearch: (search: Record<string, unknown>): { encounterId?: string; coupon?: string } => ({
     encounterId: typeof search.encounterId === "string" ? search.encounterId : undefined,
+    coupon: typeof search.coupon === "string" ? search.coupon : undefined,
   }),
   staticData: { fullViewport: true },
   component: function BillingSeat() {
@@ -1926,7 +1938,7 @@ export const router = createRouter({
     loginRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,

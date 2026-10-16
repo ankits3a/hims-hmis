@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { bandOf, frequencyOf, newId, parseDose, snapFrequency, withoutDoseForChild, dxKeyOf, doseKey, RX_FREQUENCIES } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters, testCfg } from "../../../test/helpers/opd";
-import { cdsRxLines, formularyMedicineSalts, formularyMedicines, formularySalts, opdEncounterDiagnoses, opdSuggestionEvents } from "../../kernel/db/schema";
+import { cdsRxLines, formularyMedicineSalts, formularyMedicines, formularySalts, opdEncounterDiagnoses, opdEncounters, opdPrescriptions, opdSuggestionEvents } from "../../kernel/db/schema";
 import { normalizeDrugName } from "../formulary";
 import { bandFor } from "../cds";
 import { saveConsultNote, startConsultation } from "./consultation";
@@ -11,8 +11,10 @@ import { issuePrescription } from "./prescriptions";
 import { callNext } from "./queue";
 import { recordVitals } from "./vitals";
 import { backfillCdsRxLines } from "./cds-rx-lines";
+import { scribeTestChips } from "./term-suggest";
 import { HIDE_AFTER, doctorSuggestionsOn, hiddenSuggestions, recordSignals, setDoctorSuggestions } from "./consult-guards";
 import { rxLineBody } from "./opd-queue.controller";
+import { signalsBody } from "./opd-phone-consult.controller";
 import { FREQUENCIES } from "../../../../../packages/contracts/src/phone-consult";
 import type { Db } from "../../kernel/db/client";
 import type { EncounterRow } from "./encounters";
@@ -85,6 +87,13 @@ describe("self-improving suggestions — P0", () => {
         expect(rxLineBody.parse(line({ source })).source).toBe(source);
       }
       expect(() => rxLineBody.parse(line({ source: "guessed" }))).toThrow();
+    });
+
+    it("#620 — a line keeps the id of the suggestion it was taken from, and the signals route takes that id as the event's own", () => {
+      expect(rxLineBody.parse(line({ source: "suggested", suggestionEventId: "sg_abc12345" })).suggestionEventId).toBe("sg_abc12345");
+      expect(() => rxLineBody.parse(line({ suggestionEventId: "not an id!" }))).toThrow();
+      const sent = signalsBody.parse({ suggestions: [{ id: "sg_abc12345", kind: "medicine", source: "suggested", outcome: "edited" }] });
+      expect(sent.suggestions[0]).toMatchObject({ id: "sg_abc12345", outcome: "edited" });
     });
   });
 
@@ -199,6 +208,53 @@ describe("self-improving suggestions — P0", () => {
       expect(cross).toMatchObject({ userId: dra.actor.id, doctorId: dra.doctorId, departmentId: deptId, encounterId: enc.id, contextKey: "cc:fever", itemKey: "b34", rankShown: 1, batchId: "b1", surface: "consult_web" });
       expect(rows.find((r) => r.outcome === "shown")!.items).toEqual(["j06", "b34"]);
       expect(Object.keys(cross)).not.toContain("patientId");
+    });
+
+    it("#620 — EDITED: a filled line carries its event id onto the issued prescription, and the first outcome told for that id stands", async () => {
+      const enc = await inConsult();
+      const issued = await issuePrescription(db, dra.actor, testCfg, enc.id, { lines: [
+        line({ source: "suggested", suggestionEventId: "sg_line0000a" }),
+        line({ drug: "Cetirizine 10 mg Tablet", source: "suggested", suggestionEventId: "sg_line0000b" }),
+      ] }, MON);
+      const [rx] = await db.select({ lines: opdPrescriptions.lines }).from(opdPrescriptions).where(eq(opdPrescriptions.id, issued.prescriptionId));
+      expect((rx!.lines as { suggestionEventId?: string }[]).map((l) => l.suggestionEventId)).toEqual(["sg_line0000a", "sg_line0000b"]);
+
+      const told = (id: string, outcome: "accepted" | "edited") => ({
+        id, kind: "medicine" as const, source: "suggested" as const, outcome, surface: "consult_web" as const, encounterId: enc.id, contextKey: "dx:J06", itemKey: "paracetamol",
+      });
+      expect(await recordSignals(db, dra.actor, { misses: [], suggestions: [told("sg_line0000a", "edited"), told("sg_line0000b", "accepted")] }, MON)).toEqual({ misses: 0, suggestions: 2 });
+      // A re-issue tells the same lines again: nothing is counted twice, and `edited` is not turned back into `accepted`.
+      expect(await recordSignals(db, dra.actor, { misses: [], suggestions: [told("sg_line0000a", "accepted")] }, MON)).toEqual({ misses: 0, suggestions: 0 });
+      const rows = await db.select({ id: opdSuggestionEvents.id, outcome: opdSuggestionEvents.outcome, doctorId: opdSuggestionEvents.doctorId }).from(opdSuggestionEvents).orderBy(opdSuggestionEvents.id);
+      expect(rows).toEqual([
+        { id: "sg_line0000a", outcome: "edited", doctorId: dra.doctorId },
+        { id: "sg_line0000b", outcome: "accepted", doctorId: dra.doctorId },
+      ]);
+    });
+
+    it("#620 — the scribe's test chips are the TREATING doctor's: this visit's diagnosis when one is committed, else the doctor's usual tests of the last ninety days", async () => {
+      let n = 0;
+      const t = (serviceId: string) => ({ serviceId, code: serviceId.toUpperCase(), name: `Test ${serviceId}`, pricePaise: 10000 });
+      const done = async (doctor: typeof dra, tests: string[], daysAgo: number, dx?: string): Promise<void> => {
+        const opened = await openVisit(db, clerk.actor, { patientId: (await mkPatient(db, clerk.actor, { ageYears: 40, phone: `98765${String(20000 + (n += 1))}` })).id, departmentId: deptId, doctorId: doctor.doctorId }, MON);
+        if (dx !== undefined) await db.insert(opdEncounterDiagnoses).values({ encounterId: opened.encounter.id, seq: 0, text: dx, icd10Code: null });
+        await db.update(opdEncounters).set({ advisedTests: tests.map(t), consultCompletedAt: new Date(MON.getTime() - daysAgo * 24 * 3600 * 1000) }).where(eq(opdEncounters.id, opened.encounter.id));
+      };
+      await done(dra, ["cbc", "lft"], 2);
+      await done(dra, ["cbc"], 3);
+      await done(dra, ["xray"], 120); // older than ninety days: not this doctor's usual any more
+      await done(drb, ["tsh", "tsh2"], 1); // another doctor's habit is never the scribe's chip for dra's visit
+      await done(dra, ["widal"], 4, "Enteric fever");
+
+      const enc = await inConsult();
+      const usual = await scribeTestChips(db, enc.id, MON);
+      expect(usual.contextKey).toBeNull();
+      expect(usual.items.map((i) => [i.serviceId, i.mine])).toEqual([["cbc", 2], ["lft", 1], ["widal", 1]]);
+
+      await db.insert(opdEncounterDiagnoses).values({ encounterId: enc.id, seq: 0, text: "Enteric fever", icd10Code: null });
+      const forDx = await scribeTestChips(db, enc.id, MON);
+      expect(forDx.contextKey).toBe("tx:enteric fever");
+      expect(forDx.items.map((i) => i.serviceId)).toEqual(["widal"]);
     });
 
     it("HIDE AFTER THREE CROSSES: two do not hide, the third does, a tap or typing it brings it back, age lets it return, and it is this doctor's alone", async () => {
