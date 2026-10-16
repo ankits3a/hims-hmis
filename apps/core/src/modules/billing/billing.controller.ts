@@ -169,7 +169,7 @@ type VisitFacts = {
 import type { OpdConfig } from "../opd";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
-import { patientBillDetail, patientBills } from "./patient-bills";
+import { logRestrictedRead, logSealedBillRead, patientBillDetail, patientBills } from "./patient-bills";
 import type { PatientBillDetail, PatientBillRow } from "./patient-bills";
 
 /**
@@ -712,9 +712,11 @@ export class BillingController {
 
   @RequirePermission("billing.invoice.read", "hospital")
   @Get("invoices/:id")
-  async invoice(@Param("id") id: string): Promise<InvoiceDetail> {
+  async invoice(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<InvoiceDetail> {
     const found = await getInvoice(this.db, id);
     if (!found) toHttp(new BillingError("unknown_invoice", `unknown invoice ${id}`));
+    // A restricted record's bill stays readable at the counter; a reader without the grant leaves an access row.
+    await logSealedBillRead(this.db, actor, found.invoice.patientId);
     return { ...found, settlement: await invoiceSettlement(this.db, id) };
   }
 
@@ -732,6 +734,7 @@ export class BillingController {
     try {
       const opd = await loadOpdConfig(this.db);
       const [patient] = await getPatientSummaries(this.db, actor, [found.invoice.patientId]);
+      if (patient !== undefined) await logRestrictedRead(this.db, actor, patient);
       const qrBody = `bil1.invoice.${id}`;
       return {
         letterhead: opd.letterhead,
