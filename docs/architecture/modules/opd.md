@@ -201,17 +201,17 @@ Source: `apps/core/src/modules/opd/`
 
 Foreign keys into: `billing`, `patients`, `resources`
 
-## HTTP routes (174)
+## HTTP routes
 
-- `opd-advice.controller.ts` — 3: `/opd/advice-templates`
-- `opd-cds.controller.ts` — 8: `/opd/cds`
-- `opd-masters.controller.ts` — 24: `/opd/config`, `/opd/definition`, `/opd/departments`, `/opd/doctors`, `/opd/layouts`, `/opd/leaves`, `/opd/me`, `/opd/rooms`
-- `opd-pace.controller.ts` — 1: `/me/performance`
-- `opd-paper.controller.ts` — 12: `/opd/paper`
-- `opd-phone-consult.controller.ts` — 23: `/opd/consult`, `/opd/rx-sets`, `/opd/visits`
-- `opd-queue.controller.ts` — 39: `/opd/departments`, `/opd/patients`, `/opd/prescriptions`, `/opd/queues`, `/opd/visits`
-- `opd-reports.controller.ts` — 12: `/opd/reports`
-- `opd-visits.controller.ts` — 47: `/opd/appointments`, `/opd/bench`, `/opd/continuity`, `/opd/patients`, `/opd/scan`, `/opd/slips`, `/opd/slots`, `/opd/tele`, `/opd/triage`, `/opd/visits`, `/opd/vitals`, `/opd/walk-in`
-- `opd-vocabulary.controller.ts` — 5: `/opd/vocabulary`
+- `opd-advice.controller.ts` — `/opd/advice-templates`
+- `opd-cds.controller.ts` — `/opd/cds`
+- `opd-masters.controller.ts` — `/opd/config`, `/opd/definition`, `/opd/departments`, `/opd/doctors`, `/opd/layouts`, `/opd/leaves`, `/opd/me`, `/opd/rooms`
+- `opd-pace.controller.ts` — `/me/performance`
+- `opd-paper.controller.ts` — `/opd/paper`
+- `opd-phone-consult.controller.ts` — `/opd/consult`, `/opd/rx-sets`, `/opd/visits`
+- `opd-queue.controller.ts` — `/opd/departments`, `/opd/patients`, `/opd/prescriptions`, `/opd/queues`, `/opd/visits`
+- `opd-reports.controller.ts` — `/opd/reports`
+- `opd-visits.controller.ts` — `/opd/appointments`, `/opd/bench`, `/opd/continuity`, `/opd/patients`, `/opd/scan`, `/opd/slips`, `/opd/slots`, `/opd/tele`, `/opd/triage`, `/opd/visits`, `/opd/vitals`, `/opd/walk-in`
+- `opd-vocabulary.controller.ts` — `/opd/vocabulary`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/opd`

@@ -263,15 +263,15 @@ Source: `apps/core/src/modules/lab/`
 
 Foreign keys into: `billing`, `ops`, `orders`, `patients`, `resources`, `tariff`
 
-## HTTP routes (78)
+## HTTP routes
 
-- `lab-bench.controller.ts` — 8: `/lab/bench`
-- `lab-catalogue.controller.ts` — 7: `/lab/catalogue`
-- `lab-collection.controller.ts` — 5: `/lab/collection`
-- `lab-desk.controller.ts` — 18: `/lab/desk`
-- `lab-instruments.controller.ts` — 4: `/lab/instruments`
-- `lab-metrics.controller.ts` — 1: `/lab/metrics`
-- `lab-quick.controller.ts` — 17: `/lab/quick`
-- `lab-verify.controller.ts` — 18: `/lab/reports`, `/lab/results`, `/lab/verify`
+- `lab-bench.controller.ts` — `/lab/bench`
+- `lab-catalogue.controller.ts` — `/lab/catalogue`
+- `lab-collection.controller.ts` — `/lab/collection`
+- `lab-desk.controller.ts` — `/lab/desk`
+- `lab-instruments.controller.ts` — `/lab/instruments`
+- `lab-metrics.controller.ts` — `/lab/metrics`
+- `lab-quick.controller.ts` — `/lab/quick`
+- `lab-verify.controller.ts` — `/lab/reports`, `/lab/results`, `/lab/verify`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/lab`
