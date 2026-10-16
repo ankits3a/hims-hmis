@@ -204,7 +204,7 @@ Foreign keys into: `billing`, `patients`, `resources`
 - `opd-pace.controller.ts` — 1: `/me/performance`
 - `opd-paper.controller.ts` — 12: `/opd/paper`
 - `opd-phone-consult.controller.ts` — 21: `/opd/consult`, `/opd/rx-sets`, `/opd/visits`
-- `opd-queue.controller.ts` — 38: `/opd/patients`, `/opd/prescriptions`, `/opd/queues`, `/opd/visits`
+- `opd-queue.controller.ts` — 39: `/opd/departments`, `/opd/patients`, `/opd/prescriptions`, `/opd/queues`, `/opd/visits`
 - `opd-reports.controller.ts` — 12: `/opd/reports`
 - `opd-visits.controller.ts` — 47: `/opd/appointments`, `/opd/bench`, `/opd/continuity`, `/opd/patients`, `/opd/scan`, `/opd/slips`, `/opd/slots`, `/opd/tele`, `/opd/triage`, `/opd/visits`, `/opd/vitals`, `/opd/walk-in`
 - `opd-vocabulary.controller.ts` — 5: `/opd/vocabulary`

@@ -889,6 +889,18 @@ export function listQueueSummary(serviceDate: string, departmentId?: string): Pr
 }
 
 /**
+ * #660 — THE OPD DESK'S DEPARTMENT LINE, IN ONE READ. Every doctor of the department as the board's
+ * summary row, each carrying the very view `GET /opd/queues` gives for that doctor (null with no
+ * session today). One read per poll for the whole department — never one per doctor (the 2026-09-28
+ * desk decision's load rule). `serviceDate` is the caller's, as for `listQueueSummary`.
+ */
+export type WireDepartmentQueueDoctor = WireDoctorSummary & { queue: WireQueueView | null };
+export type WireDepartmentQueue = { departmentId: string; serviceDate: string; doctors: WireDepartmentQueueDoctor[] };
+export function getDepartmentQueue(departmentId: string, serviceDate: string): Promise<WireDepartmentQueue> {
+  return api("GET", `/opd/departments/${encodeURIComponent(departmentId)}/queue?${new URLSearchParams({ serviceDate }).toString()}`);
+}
+
+/**
  * FD-15 — UNDO A SEATING, SERVER-SIDE.
  *
  * `unassign` in the desk cleared the CLIENT's idea of the visit and nothing else, so the encounter
