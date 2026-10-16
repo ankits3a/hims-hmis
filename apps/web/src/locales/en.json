@@ -10617,6 +10617,28 @@
     "source_downtime": "Paper dispense"
   },
   "pharmacyRetail": {
+    "shelfAt": "Shelf: {{location}}",
+    "batchFor": "Batch for {{name}}",
+    "batchAuto": "Earliest expiry (automatic)",
+    "batchOption": "{{no}} · exp {{expiry}} · {{count}} left",
+    "allergiesTag": "Allergies",
+    "allergiesWithheld": "Allergies withheld — restricted record",
+    "noAllergies": "No allergies recorded.",
+    "allergicTo": "Allergic to {{substance}}",
+    "currentMedsTag": "Current medicines",
+    "noCurrentMeds": "No current prescription here.",
+    "mayHaveEnded": "may have ended",
+    "yourDay": "Your day: {{sales}} · {{lines}} · {{rx}}",
+    "daySales_one": "{{count}} sale",
+    "daySales_other": "{{count}} sales",
+    "dayLines_one": "{{count}} line",
+    "dayLines_other": "{{count}} lines",
+    "dayRx_one": "{{count}} on prescription",
+    "dayRx_other": "{{count}} on prescription",
+    "agent": {
+      "placeholder": "Ask about your day, a medicine or a sale…",
+      "idle": "I can see your sales today and the cart. Amounts stay with the count at closing."
+    },
     "title": "Walk-in sales",
     "intro": "Sell to a customer who walks in without an OPD prescription from this hospital. Every bill names a registered person. Schedule H and H1 medicines need the prescription they bring; Schedule X is not sold here.",
     "shut_no_store": "The walk-in pharmacy store has not been set up yet, so nothing can be sold here.",
