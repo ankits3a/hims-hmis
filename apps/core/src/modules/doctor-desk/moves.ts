@@ -6,7 +6,7 @@ import { raiseNotice } from "../../kernel/alerts/notices";
 import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
 import { DoctorDeskError } from "./errors";
-import { deskScope } from "./scope";
+import { approvedStandIn, deskScope } from "./scope";
 import { mayHoldCritical, owedByUnit, restrictedReaders } from "./owed";
 import { criticalCallsByIds } from "../lab";
 import { doctorDeskRowMoved } from "./events";
@@ -35,9 +35,11 @@ const BODY: Record<OwedKind, string> = {
 };
 
 /** Whether this member may move rows: the head (officiating included) or a senior resident. */
-export function mayMove(scope: DeskScope, userId: string): boolean {
+/** The unit's head or a senior resident; an officiating one only on a row somebody else approved. */
+export async function mayMove(db: Db, scope: DeskScope, userId: string, at: Date): Promise<boolean> {
   const me = scope.members.find((m) => m.userId === userId);
-  return me !== undefined && (me.roleInTeam === "head" || me.roleInTeam === "senior_resident");
+  if (me === undefined || scope.unit === null || (me.roleInTeam !== "head" && me.roleInTeam !== "senior_resident")) return false;
+  return !me.officiating || approvedStandIn(db, userId, scope.unit.teamId, at);
 }
 
 export type MoveDeps = { raise: typeof raiseNotice };
@@ -49,7 +51,7 @@ export async function moveRow(
   if (scope.unit === null || !scope.members.some((m) => m.userId === actor.id)) {
     throw new DoctorDeskError("not_unit_member", "Only a member of the unit can move its rows.");
   }
-  if (!mayMove(scope, actor.id)) throw new DoctorDeskError("not_allowed_to_move", "Only the unit's head or a senior resident moves an item.");
+  if (!(await mayMove(db, scope, actor.id, at))) throw new DoctorDeskError("not_allowed_to_move", "Only the unit's head or a senior resident moves an item.");
   const target = scope.members.find((m) => m.userId === toUserId);
   if (target === undefined) throw new DoctorDeskError("not_unit_member", "The person you chose is not in your unit today.");
   const row = (await owedByUnit(db, scope.members, at)).find((r) => r.key === rowKey);

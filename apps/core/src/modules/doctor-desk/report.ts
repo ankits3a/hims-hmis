@@ -7,7 +7,7 @@ import { withTx } from "../../kernel/db/client";
 import { doctorDayLines } from "../opd";
 import { addIstDays, countingUnits, istDateOfInstant, istMidnightUtc, istMinutesOfInstant, istWeekday, shortUnitName, teamMembers } from "../roster";
 import type { RosterTeamRow } from "../roster";
-import { departmentHeads, deskLevel, deskScope, superintendents } from "./scope";
+import { departmentHeads, deskLevel, deskScope, headsInForce, superintendents } from "./scope";
 import { LAB_CRITICAL_DUE_MINUTES, owedByUnit } from "./owed";
 import { medianMinutes, minutesBetween } from "./acts";
 import type { ActRow } from "./acts";
@@ -140,7 +140,7 @@ export async function sendUnitReports(db: Db, now: Date, deps: ReportDeps = { ra
         department: inDept(all, unit.departmentId), hospital: all,
       });
       built.push(b);
-      const heads = (await teamMembers(db, unit.id, now)).filter((m) => m.roleInTeam === "head").map((m) => m.userId);
+      const heads = await headsInForce(db, await teamMembers(db, unit.id, now), unit.id, now);
       if (await deliverOnce(db, {
         agent: REPORT_AGENT, teamId: unit.id, key: `doctor-desk-report:${unit.id}:${reportDate}`, reportDate,
         params: { reportDate, heads: heads.length, report: b }, to: [...new Set(heads)], bell: reportBell(b), refType: "doctor_desk_unit_report",
