@@ -289,9 +289,9 @@ describe("deploy.sh / compose / prometheus.yml parity (Plan 11d D8)", () => {
     });
 
     it("reads three rule files from rule_files, from disk, and from deploy.sh's installs", () => {
-      expect(declaredRules).toHaveLength(3);
-      expect(diskRules).toHaveLength(3);
-      expect(installedRules).toHaveLength(3);
+      expect(declaredRules).toHaveLength(4);
+      expect(diskRules).toHaveLength(4);
+      expect(installedRules).toHaveLength(4);
       expect(declaredRules).toContain("alerts-meta.yml");
     });
   });

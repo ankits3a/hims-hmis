@@ -128,6 +128,9 @@ export { encounterNoOfLabOrder, verifiedLabTestsForRelease } from "./abdm-releas
 // ── PLAN 18-S RS5 — the imaging kidney gate reads the latest signed serum creatinine from here ──
 export { CREATININE_ANALYTE_CODES, latestVerifiedCreatinine } from "./creatinine";
 export type { LatestCreatinine } from "./creatinine";
+// ── #621 — the renal dose check (opd) and the contrast gate (radiology) read the eGFR equation from here ──
+export { ckdEpi2021, latestEgfr, registerLabKidneyFunctionReader } from "./egfr";
+export type { EgfrSex, LatestEgfr } from "./egfr";
 // ── PLAN 18-S RS12b — the IR sign-in reads the latest signed INR and platelet count from here ──
 export {
   INR_ANALYTE_CODES, PLATELET_ANALYTE_CODES, inrFromReported, latestVerifiedInr, latestVerifiedPlatelets,

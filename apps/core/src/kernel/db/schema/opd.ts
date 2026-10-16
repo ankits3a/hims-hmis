@@ -1172,6 +1172,12 @@ export const opdPrescriptions = pgTable(
      * the diagnosis, weighed it, and decided anyway. Defaults to `[]` like its two neighbours.
      */
     drugDiseaseOverrides: jsonb("drug_disease_overrides").notNull().default(sql`'[]'::jsonb`),
+    /**
+     * #621 — the fifth axis, the same law: a doctor who prescribes through a renal dose warning (a
+     * reviewed band the patient's eGFR reaches, or no eGFR within 90 days) types why, naming the
+     * generic. `{ lineIndex, genericId, reason }[]`; `[]` when none.
+     */
+    renalOverrides: jsonb("renal_overrides").notNull().default(sql`'[]'::jsonb`),
     status: text("status").notNull().default("active"), // 'active' | 'superseded'
     /**
      * ═══ FD-31 — TYPED FROM A PAPER SLIP, AND BY WHOM (OWNER RULING 2026-09-12) ═══
@@ -1629,13 +1635,20 @@ export const cdsRxLines = pgTable(
 /**
  * Decision 0050, P0 — each doctor's own switch for the suggestions this system draws from counts.
  * ON unless the doctor turns it off (DECIDED: these are the doctor's own patterns handed back, not
- * the copilot's proactive mode of decision 0006, whose two toggles still have no surface to govern).
+ * the copilot's proactive mode of decision 0006).
+ *
+ * #619 — decision 0006's two toggles live in the same per-doctor row, both OFF by default:
+ * `copilot_proactive` (off = the copilot speaks only when asked) and `copilot_draft_prose` (off =
+ * retrieve, check and structure only). A flip of `copilot_draft_prose` appends
+ * `opd.copilot_draft_prose_set` (`modules/opd/copilot-settings.ts`).
  */
 export const cdsDoctorPrefs = pgTable(
   "cds_doctor_prefs",
   {
     userId: text("user_id").primaryKey(),
     suggestionsOn: boolean("suggestions_on").notNull().default(true),
+    copilotProactive: boolean("copilot_proactive").notNull().default(false),
+    copilotDraftProse: boolean("copilot_draft_prose").notNull().default(false),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
   },
 );

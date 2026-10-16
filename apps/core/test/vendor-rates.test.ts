@@ -96,6 +96,17 @@ describe("a vendor's rate contract", () => {
     expect((await contractRatesFor(db, [fx.item.crocin], now)).get(fx.item.crocin)).toBeUndefined(); // MON is 17 Aug: expired
   });
 
+  /*
+    A quote that starts LATER must not end the rate in force today: one open row per vendor and item means recording
+    it now would leave the item with no contract until it starts. DECIDED: a quote is recorded on or after its start.
+  */
+  it("a quote dated to start later is refused, and the rate in force today stays in force", async () => {
+    await setVendorRates(db, fx.pharmacist.actor, acme, [{ itemId: fx.item.crocin, ratePaise: 2_600 }], { now });
+    await expect(setVendorRates(db, fx.pharmacist.actor, acme, [{ itemId: fx.item.crocin, ratePaise: 2_400 }], { validFrom: "2026-09-01", now }))
+      .rejects.toMatchObject({ code: "po_invalid" });
+    expect((await contractRatesFor(db, [fx.item.crocin], now)).get(fx.item.crocin)!.map((c) => [c.vendorId, c.ratePaise])).toEqual([[acme, 2_600]]);
+  });
+
   it("the agent's drafts go to the cheapest contracted vendor at its rate — even for an item never bought", async () => {
     await stockIn(db, fx, { itemId: fx.item.crocin, batchNo: "CR-1", qtyBase: 30 });
     await setStockLevel(db, fx.pharmacist.actor, { itemId: fx.item.crocin, storeResourceId: fx.storeId, minBase: 20, reorderBase: 40, maxBase: 200 });

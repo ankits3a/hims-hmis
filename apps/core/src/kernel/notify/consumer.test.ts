@@ -39,6 +39,8 @@ const OCCURRED_AT = new Date("2026-08-21T06:00:00.000Z");
 
 const iso = (d: Date): string => d.toISOString();
 const plus = (base: Date, ms: number): Date => new Date(base.getTime() + ms);
+/** A ULID is 26 random Crockford letters and can spell ASHA or DEVI; mask ids before a name check (patientId is checked on its own). */
+const withoutIds = (s: string): string => s.replace(/\b[0-9A-HJKMNP-TV-Z]{26}\b/g, "<id>");
 
 describe("kernel notify consumer — five subscriptions, and nothing but enqueues (Plan 10 T5, D13)", () => {
   let db: Db;
@@ -440,7 +442,7 @@ describe("kernel notify consumer — five subscriptions, and nothing but enqueue
       .flatMap((r) => Object.values(r))
       .map((v) => (v instanceof Date ? v.toISOString() : JSON.stringify(v)))
       .join(" | ");
-    expect(everyColumn).not.toMatch(/Asha|Devi/i);
+    expect(withoutIds(everyColumn)).not.toMatch(/Asha|Devi/i);
     expect(everyColumn).not.toContain(ASHA_UHID);
     expect(everyColumn).not.toContain(ASHA_PHONE);
     expect(everyColumn).not.toContain(patientId);

@@ -77,6 +77,9 @@ export async function setVendorRates(
   const today = IST_DAY.format(now);
   const validFrom = opts.validFrom ?? today;
   if (!isIsoDate(validFrom)) throw new MaterialsError("po_invalid", `valid from "${validFrom}" is not a date`);
+  // DECIDED: a quote is recorded on or after the day it starts. One open rate per vendor and item, so a quote dated
+  // later would end today's rate now and leave the item with no contract until then.
+  if (validFrom > today) throw new MaterialsError("po_invalid", `a quote starting ${validFrom} is recorded on that day, not before (today is ${today})`);
   const source = opts.source?.trim().slice(0, 200) || null;
 
   const [vendor] = await db.select({ id: vendors.id, status: vendors.status }).from(vendors).where(eq(vendors.id, vendorId));

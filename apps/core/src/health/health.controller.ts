@@ -1,4 +1,5 @@
 import { Controller, Get, Inject } from "@nestjs/common";
+import { RateLimited } from "../kernel/ratelimit/rate-limit";
 import { desc, sql } from "drizzle-orm";
 import { CONFIG, DB } from "../kernel/tokens";
 import { Public } from "../kernel/auth/decorators";
@@ -45,6 +46,7 @@ export class HealthController {
    * `null` on production, always: the key is unset there and `deploy-parity` pins that the
    * production environment template does not carry it.
    */
+  @RateLimited("health")
   @Public()
   @Get()
   async health(): Promise<{

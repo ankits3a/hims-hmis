@@ -16,7 +16,9 @@ export type HiddenItem = { kind: string; contextKey: string | null; itemKey: str
 export type SuggestionPrefs = { on: boolean; hospitalOn: boolean; hidden: HiddenItem[] };
 
 type Signal = {
-  kind: SuggestKind; source: "suggested"; outcome: "shown" | "accepted" | "dismissed"; surface: SuggestSurface;
+  /** #620 — a filled line's own event id (`newSuggestionId`); otherwise the server mints one. */
+  id?: string;
+  kind: SuggestKind; source: "suggested"; outcome: "shown" | "accepted" | "dismissed" | "edited"; surface: SuggestSurface;
   encounterId?: string; contextKey?: string; itemKey?: string; rankShown?: number; items?: string[]; batchId?: string;
 };
 
@@ -87,6 +89,45 @@ export function tellOutcome(surface: SuggestSurface, encounterId: string, kind: 
     for (const f of listeners) f();
   }
   sendSignals([{ kind, source: "suggested", outcome, surface, encounterId, ...(contextKey === null ? {} : { contextKey }), itemKey, rankShown, batchId: batchOf(encounterId, kind, contextKey) }]);
+}
+
+/*
+ * ═══ A FILLED LINE, KEPT OR CHANGED (#620, decision 0050 P0) ═══
+ *
+ * A line the regimen fill put on the prescription carries, from that moment, the id of the event
+ * that will say what became of it (`suggestionEventId`) and the line as it was offered
+ * (`suggestedAs`). Both ride the visit's draft, so a reload loses neither. Nothing is sent at the
+ * fill: when the prescription is ISSUED, each such line is told once — `accepted` when it went out
+ * as offered, `edited` when the doctor changed anything first (the dose, the days, the drug itself).
+ * A filled line deleted before the issue is told nothing: it was not prescribed, and not a cross.
+ * The server keeps the first outcome for an id, so a re-issue counts nothing twice.
+ */
+export function newSuggestionId(): string {
+  const c = globalThis.crypto as Crypto | undefined;
+  const tail = c?.randomUUID !== undefined ? c.randomUUID().replace(/-/g, "") : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
+  return `sg_${tail}`;
+}
+
+type LineShape = { drug: string; dose: string; route: string; frequency: string; durationDays: string | number | null | undefined; instructions: string | null | undefined; medicineId?: string | null | undefined };
+/** The line as one comparable string — spacing and letter case are not an edit. */
+export function suggestedLineKey(l: LineShape): string {
+  const n = (x: string | null | undefined): string => (x ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+  return [l.medicineId ?? "", n(l.drug), n(l.dose), n(l.route), n(l.frequency), String(l.durationDays ?? "").trim(), n(l.instructions)].join("|");
+}
+
+export function tellIssuedLines(
+  surface: SuggestSurface, encounterId: string, contextKey: string | null,
+  lines: readonly (LineShape & { suggestionEventId?: string | null | undefined; suggestedAs?: string | null | undefined })[],
+): void {
+  const told: Signal[] = [];
+  lines.forEach((l, rankShown) => {
+    if (l.suggestionEventId == null || l.suggestedAs == null) return;
+    told.push({
+      id: l.suggestionEventId, kind: "medicine", source: "suggested", outcome: suggestedLineKey(l) === l.suggestedAs ? "accepted" : "edited",
+      surface, encounterId, ...(contextKey === null ? {} : { contextKey }), itemKey: l.medicineId ?? norm(l.drug).slice(0, 160), rankShown,
+    });
+  });
+  sendSignals(told);
 }
 
 /*
