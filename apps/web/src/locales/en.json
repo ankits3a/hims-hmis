@@ -11450,6 +11450,41 @@
     "vitalsAt": "Recorded at {{at}}",
     "dangerShort": "Danger"
   },
+  "learnedAboutMe": {
+    "title": "What suggestions learned from you",
+    "intro": "Your own patterns only. A reset starts your own level again from today. Nothing is deleted.",
+    "close": "Close",
+    "loading": "Loading…",
+    "error": "Could not load. Try again.",
+    "nothing": "Nothing yet.",
+    "sinceStart": "Since you started",
+    "sinceReset": "Since your reset on {{date}}",
+    "reset": "Reset",
+    "resetAll": "Reset all",
+    "confirmOne": "Reset your {{surface}}? Suggestions start learning again from today.",
+    "confirmAll": "Reset everything learned from you? Suggestions start learning again from today.",
+    "confirmReset": "Yes, reset",
+    "keep": "Keep",
+    "resetFailed": "Reset failed. Try again.",
+    "uses_one": "{{count}} time",
+    "uses_other": "{{count}} times",
+    "testFor": "{{name}} for {{diagnosis}}",
+    "hiddenKind_one": "{{count}} {{kind}} hidden",
+    "hiddenKind_other": "{{count}} {{kind}} hidden",
+    "open": "What it learned",
+    "surface": {
+      "complaints": "Complaints",
+      "diagnoses": "Diagnoses",
+      "tests": "Tests",
+      "findings": "Findings and treatment words",
+      "hidden": "Crossed-off chips"
+    },
+    "kind": {
+      "diagnosis": "diagnosis",
+      "test": "test",
+      "medicine": "medicine"
+    }
+  },
   "opdConsultV3": {
     "suggestions": "Copilot suggestions",
     "folded": "COPILOT IS FOLDED — SUGGESTIONS SHOW HERE",

@@ -1654,6 +1654,28 @@ export const cdsDoctorPrefs = pgTable(
 );
 
 /**
+ * Decision 0050, plan §6 / P4 (#615) — A DOCTOR'S RESET WATERMARK, one row per (doctor's user,
+ * surface). The doctor's OWN ranking on that surface ignores evidence from before `reset_at`;
+ * nothing is deleted — the department's and hospital's counts keep every row, without a name.
+ * `complaint_baseline` is for the one surface whose evidence is a running counter
+ * (`opd_complaint_term_usage`): the doctor's uses per term at the moment of the reset, subtracted
+ * from their own count afterwards. Every other surface reads the timestamp.
+ */
+export const cdsDoctorLearningResets = pgTable(
+  "cds_doctor_learning_resets",
+  {
+    userId: text("user_id").notNull(),
+    surface: text("surface").notNull(),
+    resetAt: timestamp("reset_at", { withTimezone: true }).notNull(),
+    complaintBaseline: jsonb("complaint_baseline").$type<Record<string, number>>().notNull().default({}),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.surface] }),
+    check("cds_doctor_learning_resets_surface_ck", sql`${t.surface} in ('complaints', 'diagnoses', 'tests', 'findings', 'hidden')`),
+  ],
+);
+
+/**
  * Decision 0051 / plan §7a, phase P2 — A LEARNED ALIAS: a term a doctor typed or spoke ("pan forty")
  * and the ONE catalogue medicine an automatic pipeline says it means. No person reviews a row: a
  * chooser picks from formulary candidates, a second model answers one closed question, rules in
