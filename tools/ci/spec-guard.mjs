@@ -37,6 +37,38 @@ export function violations({ body, changed, specFiles }) {
   return out;
 }
 
+/**
+ * #696 — A SPEC'S "DONE MEANS" ARE LOCKED ACCEPTANCE TESTS. Each done-means line carries an id `D1..Dn`;
+ * the build lane's first commit adds one test under an `acceptance/` folder whose name contains
+ * `spec #N Dk` (red against main), and a PR that sets the spec to `status: built` fails here while any
+ * `Dk` has no such test. Ids are read from the `## Done means` section only. `acceptance-guard` keeps
+ * those tests from being edited afterwards; this only asks that they exist.
+ */
+export function doneMeansIds(specText) {
+  const lines = String(specText ?? "").split("\n");
+  const start = lines.findIndex((l) => /^#{1,6}\s*done means\b/i.test(l.trim()));
+  if (start < 0) return [];
+  const ids = [];
+  for (const line of lines.slice(start + 1)) {
+    if (/^#{1,6}\s/.test(line.trim())) break;
+    const m = /^\s*(?:[-*]\s*)?(?:\*\*)?(D\d+)\b/.exec(line);
+    if (m && !ids.includes(m[1])) ids.push(m[1]);
+  }
+  return ids;
+}
+
+const isBuilt = (specText) => /^status:\s*built\s*$/m.test(String(specText ?? "").split(/^---\s*$/m)[1] ?? "");
+const ACCEPTANCE = /(^|\/)acceptance\//;
+
+/** → the `spec #N Dk` names a built spec still lacks among the acceptance tests (`[{ path, text }]`). */
+export function missingAcceptance({ issue, specText, tests }) {
+  if (!isBuilt(specText)) return [];
+  const texts = tests.filter((t) => ACCEPTANCE.test(t.path)).map((t) => t.text);
+  return doneMeansIds(specText)
+    .map((id) => `spec #${issue} ${id}`)
+    .filter((name) => !texts.some((t) => new RegExp(`${name.replace(/[#]/g, "\\#")}(?!\\d)`).test(t)));
+}
+
 function main() {
   if (process.env.GITHUB_EVENT_NAME !== "pull_request") {
     console.log("spec-guard: not a pull request; nothing to check.");
@@ -53,15 +85,36 @@ function main() {
   const changed = lines(execFileSync("git", ["diff", "--name-only", `${pr.base.sha}...${pr.head.sha}`], { encoding: "utf8" }));
   const specFiles = lines(execFileSync("git", ["ls-tree", "-r", "--name-only", pr.head.sha, "docs/specs/"], { encoding: "utf8" }));
   const found = violations({ body: pr.body, changed, specFiles });
-  if (found.length === 0) {
-    console.log("spec-guard: every closed issue's spec moved with the code (or has no spec).");
-    return;
+  if (found.length > 0) {
+    console.error(
+      `spec-guard: this PR changes code and closes issue(s) whose spec it does not touch:\n  ${found.join("\n  ")}\n` +
+        `Update the spec in this PR: what changed against it, and \`status: built\` when the build is done.`,
+    );
+    process.exit(1);
   }
-  console.error(
-    `spec-guard: this PR changes code and closes issue(s) whose spec it does not touch:\n  ${found.join("\n  ")}\n` +
-      `Update the spec in this PR: what changed against it, and \`status: built\` when the build is done.`,
-  );
-  process.exit(1);
+  // #696 — a spec this PR touches and leaves at `status: built` needs a locked acceptance test per done-means id.
+  const touched = new Set(changed);
+  const show = (path) => execFileSync("git", ["show", `${pr.head.sha}:${path}`], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  let tests = null;
+  const missing = [];
+  for (const n of closedIssues(pr.body)) {
+    for (const spec of specsOf(n, specFiles).filter((p) => touched.has(p))) {
+      const specText = show(spec);
+      if (doneMeansIds(specText).length === 0) continue;
+      tests ??= lines(execFileSync("git", ["ls-tree", "-r", "--name-only", pr.head.sha], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }))
+        .filter((p) => ACCEPTANCE.test(p) && /\.(test|spec)\.[cm]?[jt]sx?$/.test(p))
+        .map((path) => ({ path, text: show(path) }));
+      for (const name of missingAcceptance({ issue: n, specText, tests })) missing.push(`${spec}: no acceptance test named "${name}"`);
+    }
+  }
+  if (missing.length > 0) {
+    console.error(
+      `spec-guard: a spec set to \`status: built\` lacks locked acceptance tests for its done-means ids:\n  ${missing.join("\n  ")}\n` +
+        "Add one test per id under an acceptance/ folder, named `spec #N Dk`, red against main before the build.",
+    );
+    process.exit(1);
+  }
+  console.log("spec-guard: every closed issue's spec moved with the code (or has no spec), and built specs have their acceptance tests.");
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main();
