@@ -8,7 +8,8 @@ import { istDayString as istDay } from "../approvals/cumulative";
 import { collectDeskProviders } from "../desk/registry";
 import { openAiCompatibleClient } from "../inference/openai-compatible";
 import { chooserFor } from "../inference/openai-decisions";
-import { collectCopilotTools, helpIntentsFor, permissionCheckFor, runTool } from "./catalog";
+import { collectCopilotIntents, collectCopilotTools, helpIntentsFor, permissionCheckFor, runTool } from "./catalog";
+import { installCopilotIntents } from "./intents";
 import { COPILOT_EXTRA_TOOLS, MAX_PROPOSALS, confirmProposal, issueProposal, proposalKey, proposalSchema } from "./act";
 import type { ConfirmOutcome, Proposal } from "./act";
 import { kernelCopilotTools } from "./kernel-tools";
@@ -138,6 +139,12 @@ export class CopilotController {
       BOOT rather than on the first question somebody asks. `collectDeskProviders` refuses on the
       same schedule and for the same reason.
     */
+    /*
+      #598 — and the modules' own INTENTS first, refused at boot on the same schedule (a duplicate, a
+      shared cue, an untranslated answer key), then installed so the phrasebook, the menus and the help
+      sentence read what THIS registry declares.
+    */
+    installCopilotIntents(collectCopilotIntents(registry));
     this.tools = collectCopilotTools(registry, [...kernelCopilotTools(collectDeskProviders(registry)), ...extraTools]);
     this.proposalKey = proposalKey(cfg.secretKey);
   }
