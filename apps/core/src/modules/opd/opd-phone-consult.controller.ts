@@ -1,3 +1,5 @@
+import { COPILOT_DEFAULTS, doctorCopilotSettings, setDoctorCopilotSettings } from "./copilot-settings";
+import type { CopilotSettings } from "./copilot-settings";
 import { Body, Controller, Delete, Get, HttpException, Inject, Param, Post, Put, Query } from "@nestjs/common";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -12,7 +14,7 @@ import {
   loadVoiceSettings, recordVoiceKept, saveVoiceSettings, transcribeConsultNote, voiceMeter, voiceStatus,
 } from "./consult-voice";
 import {
-  MISS_KINDS, SIGNAL_KINDS, SIGNAL_OUTCOMES, SIGNAL_SOURCES, SIGNAL_SURFACES, doctorSuggestionsOn, guardedMedicineSearch, hiddenSuggestions, recordSignals,
+  MISS_KINDS, SIGNAL_ID, SIGNAL_KINDS, SIGNAL_OUTCOMES, SIGNAL_SOURCES, SIGNAL_SURFACES, doctorSuggestionsOn, guardedMedicineSearch, hiddenSuggestions, recordSignals,
   setDoctorSuggestions,
 } from "./consult-guards";
 import { OpdError } from "./errors";
@@ -55,9 +57,11 @@ const voiceBody = z.object({
 });
 const keptBody = z.object({ changedChars: z.number().int().nonnegative().max(100_000), keptChars: z.number().int().nonnegative().max(100_000) });
 const searchQuery = z.object({ q: z.string().max(80), limit: z.coerce.number().int().min(1).max(12).optional() });
-const signalsBody = z.object({
+export const signalsBody = z.object({
   misses: z.array(z.object({ kind: z.enum(MISS_KINDS), term: z.string().min(1).max(200), stage: z.enum(["search", "voice"]) })).max(20).default([]),
   suggestions: z.array(z.object({
+    /* #620 — a line's own event id, minted by the screen at the fill (`SIGNAL_ID`). */
+    id: z.string().regex(SIGNAL_ID).optional(),
     kind: z.enum(SIGNAL_KINDS), source: z.enum(SIGNAL_SOURCES), outcome: z.enum(SIGNAL_OUTCOMES),
     /* Decision 0050, P0 — which suggestion, for what, on which visit. All optional: the 0.12.0 phone sends none. */
     surface: z.enum(SIGNAL_SURFACES).optional(),
@@ -71,6 +75,8 @@ const signalsBody = z.object({
 });
 const prefsBody = z.object({ suggestionsOn: z.boolean() });
 const resetBody = z.object({ surfaces: z.union([z.literal("all"), z.array(z.enum(LEARNED_SURFACES)).min(1).max(LEARNED_SURFACES.length)]) });
+/** #619 — either toggle, or both; an empty body changes nothing. */
+const copilotSettingsBody = z.object({ proactive: z.boolean().optional(), draftProse: z.boolean().optional() }).strict();
 const nicknamesQuery = z.object({ all: z.enum(["0", "1"]).optional() });
 const lasaBody = z.object({ nameA: z.string().min(3).max(60), nameB: z.string().min(3).max(60) });
 const settingsBody = z.object({
@@ -179,7 +185,8 @@ export class OpdPhoneConsultController {
    * What this doctor's screens need to know before drawing a suggestion: the doctor's own switch,
    * the hospital's switch, and the items this doctor has crossed off three times (decision 0050, P0).
    */
-  @RequirePermission("opd.consult", "hospital")
+  /* #620 — ALSO THE DESK SCRIBE, who now has chips too: its own switch (on unless set) and its own crosses. Reads nothing about a patient. */
+  @RequirePermission("opd.consult", "hospital", { alsoAdmits: ["opd.prescription.transcribe"] })
   @Get("consult/suggestions")
   async suggestionState(@CurrentActor() actor: Actor): Promise<{ on: boolean; hospitalOn: boolean; hidden: HiddenItem[] }> {
     if (actor.type !== "user") return { on: false, hospitalOn: false, hidden: [] };
@@ -227,6 +234,28 @@ export class OpdPhoneConsultController {
     try {
       await setDoctorSuggestions(this.db, actor, b.suggestionsOn);
       return { on: b.suggestionsOn };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * #619 — decision 0006's two toggles, the doctor's own: proactive and drafting clinical prose. Both
+   * OFF until the doctor turns one on; a flip of drafting is recorded (`copilot-settings.ts`).
+   */
+  @RequirePermission("opd.consult", "hospital")
+  @Get("consult/copilot-settings")
+  async copilotSettings(@CurrentActor() actor: Actor): Promise<CopilotSettings> {
+    if (actor.type !== "user") return { ...COPILOT_DEFAULTS };
+    return doctorCopilotSettings(this.db, actor.id);
+  }
+
+  @RequirePermission("opd.consult", "hospital")
+  @Put("consult/copilot-settings")
+  async setCopilotSettings(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<CopilotSettings> {
+    const b = parsed(copilotSettingsBody, body);
+    try {
+      return await setDoctorCopilotSettings(this.db, actor, b);
     } catch (e) {
       toHttp(e);
     }

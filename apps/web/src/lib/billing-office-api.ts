@@ -56,10 +56,16 @@ export function resolveMismatch(tenderId: string, body: { outcome: ReconOutcome;
  * OWNER RULING 2026-09-28 — Aadhaar is never stored. The payee is recorded by NAME and the TYPE of
  * document shown; this body has no place for a document number, so none can leave the browser.
  */
-export type PayVoucherBody = { payeeName: string; payeeIdType: string };
+export type PayVoucherBody = {
+  payeeName: string; payeeIdType: string;
+  /** #655 — someone else collects for the patient: the relation (son, husband…). A word, never a number. */
+  payeeRelation?: string;
+};
 export type WirePayResult = {
   voucherId: string; voucherNo: string; patientId: string; amountPaise: number;
   method: "cash" | "bank_transfer"; cashierSessionId: string | null; paidAt: string; status: "paid";
+  /** #655 — the printed voucher the server queued (absent from an older server, null if already queued). */
+  printJobId?: string | null;
 };
 
 /** Owner 2026-10-03 — issue the voucher for a refund already approved (the worklist's "issue_voucher"). */

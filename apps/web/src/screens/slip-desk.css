@@ -256,3 +256,7 @@
 /* Owner ruling 2026-10-06 — what the filed page did to the visit (consulted, or why not). */
 .sd-paper { display: inline-block; margin-top: 4px; font-weight: 600; color: #9a6208; }
 .sd-paper.ok { color: var(--green); }
+
+/* #659 — the MRD hand-off under today's list: the same rows, set apart by a rule. */
+.sd-mrd { border-top: 1px solid var(--line); }
+.sd-mrd .sd-clocks-note { padding: 0 14px 10px; }

@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { Actor } from "@hmis/contracts";
 import { CONFIG, DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
+import { scribeTestChips } from "./term-suggest";
+import type { ScribeTestChips } from "./term-suggest";
 import { parsed, toHttp } from "./opd-masters.controller";
 import { rxLineBody } from "./opd-queue.controller";
 import {
@@ -75,6 +77,17 @@ export class OpdPaperController {
   async visit(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<PaperConsultRow> {
     try {
       return await paperVisitState(this.db, actor, id);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** #620 — the scribe's test chips: the treating doctor's pattern for this visit (`term-suggest.ts` `scribeTestChips`). */
+  @RequirePermission("opd.prescription.transcribe", "hospital")
+  @Get("visits/:id/suggest-tests")
+  async suggestTests(@Param("id") id: string): Promise<ScribeTestChips> {
+    try {
+      return await scribeTestChips(this.db, id);
     } catch (e) {
       toHttp(e);
     }

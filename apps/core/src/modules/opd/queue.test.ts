@@ -6,7 +6,7 @@ import { events, opdConfig, opdQueueEntries, opdQueueSessions } from "../../kern
 import { openVisit } from "./encounters";
 import { cancelDoctorLeave, scheduleDoctorLeave } from "./leaves";
 import { setSessionStatus } from "./sessions";
-import { boardSnapshot, callNext, listQueue, markDone, markInConsult, skipCalled, summaryByDoctor } from "./queue";
+import { boardSnapshot, callNext, departmentQueue, listQueue, markDone, markInConsult, skipCalled, summaryByDoctor } from "./queue";
 import type { OpenVisitResult } from "./encounters";
 import type { Db } from "../../kernel/db/client";
 
@@ -395,5 +395,44 @@ describe("opd queue (list / call / skip / in-consult / board / desk summary)", (
     expect(summary[1]).toMatchObject({ sessionId: z.sessionId, status: "not_started", waitingCount: 0, nowServing: null, scheduledToday: true, roomCode: "14" });
     expect((await summaryByDoctor(db, undefined, MON, NOW)).map((s) => s.doctor.id).sort()).toEqual([dra.doctorId, drb.doctorId, drp.doctorId].sort());
     expect((await summaryByDoctor(db, dept2Id, MON, NOW))[0]).toMatchObject({ sessionId: null, status: "none", waitingCount: 0, scheduledToday: true });
+  });
+  /**
+   * #660 — THE DEPARTMENT'S LINE IN ONE READ. The OPD desk now draws every doctor's line at once; the
+   * 2026-09-28 decision refused that as one read per doctor per 15 s, so it is ONE server read. The
+   * pin is parity: each doctor's `queue` is exactly what `listQueue` answers for that doctor (same
+   * order, positions, classes, tokens, fee stamp), and the summary half is exactly `summaryByDoctor`.
+   */
+  it("#660 departmentQueue: one read — every doctor's summary with the SAME view listQueue gives, other departments absent", async () => {
+    const d = await open(dra); await shape(d.queueEntry.id, { eligibleAt: T("09:10"), danger: true });
+    const a = await open(dra); await shape(a.queueEntry.id, { eligibleAt: T("09:00") });
+    const w = await open(dra); // waiting_vitals — counted, not ordered
+    const b = await open(drb); await shape(b.queueEntry.id, { eligibleAt: T("09:20") });
+    await open(drp); // another department: never in this answer
+
+    const dq = await departmentQueue(db, clerk.actor, deptId, MON, NOW);
+    expect(dq.departmentId).toBe(deptId);
+    expect(dq.serviceDate).toBe(MON);
+    const summary = await summaryByDoctor(db, deptId, MON, NOW);
+    expect(dq.doctors.map((x) => x.doctor.id)).toEqual(summary.map((s) => s.doctor.id));
+    expect(dq.doctors.map((x) => x.doctor.id)).not.toContain(drp.doctorId);
+    for (const row of dq.doctors) {
+      const { queue, ...rest } = row;
+      expect(rest).toEqual(summary.find((s) => s.doctor.id === row.doctor.id));
+      expect(queue).toEqual(await listQueue(db, clerk.actor, row.doctor.id, MON, NOW));
+    }
+    const qa = dq.doctors.find((x) => x.doctor.id === dra.doctorId)!.queue!;
+    expect(qa.ordered.map((r) => r.id)).toEqual([d.queueEntry.id, a.queueEntry.id]);
+    expect(qa.ordered.map((r) => r.queueClass)).toEqual([0, 3]);
+    expect(qa.waitingVitals).toBe(1);
+    expect(w.queueEntry.status).toBe("waiting_vitals");
+    expect(dq.doctors.find((x) => x.doctor.id === drb.doctorId)!.queue!.ordered.map((r) => r.id)).toEqual([b.queueEntry.id]);
+  });
+
+  it("#660 departmentQueue: a doctor with no session today has queue null; an unknown department is refused", async () => {
+    await open(dra);
+    const dq = await departmentQueue(db, clerk.actor, deptId, MON, NOW);
+    expect(dq.doctors.find((x) => x.doctor.id === drb.doctorId)).toMatchObject({ sessionId: null, status: "none", queue: null });
+    expect(dq.doctors.find((x) => x.doctor.id === dra.doctorId)!.queue).not.toBeNull();
+    await expect(departmentQueue(db, clerk.actor, "no-such-department", MON, NOW)).rejects.toMatchObject({ code: "unknown_department" });
   });
 });

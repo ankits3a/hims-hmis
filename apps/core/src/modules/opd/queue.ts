@@ -178,9 +178,22 @@ export async function listQueue(db: Db, actor: Actor, doctorId: string, serviceD
     .select().from(opdQueueSessions)
     .where(and(eq(opdQueueSessions.doctorId, doctorId), eq(opdQueueSessions.serviceDate, serviceDate))))[0];
   if (!session) return null;
+  return (await queueViews(db, actor, cfg, [{ session, doctor }], now))[0]!;
+}
 
-  const rows = await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.sessionId, session.id)).orderBy(asc(opdQueueEntries.seq));
-  const encounterIds = rows.map((r) => r.encounterId);
+/**
+ * The views of MANY doctor-days, in one batch of reads: entries, encounters, patient summaries and
+ * fee stamps are each ONE query however many sessions are asked for (the CI perf budget, and #660's
+ * department read). Every rule — the engine's order, the classes, what a row carries — lives here
+ * once; `listQueue` is this with one session, so the department read cannot drift from it.
+ */
+async function queueViews(
+  db: Db, actor: Actor, cfg: OpdConfig, days: { session: SessionRow; doctor: DoctorRow }[], now: Date,
+): Promise<QueueView[]> {
+  if (days.length === 0) return [];
+  const allRows = await db.select().from(opdQueueEntries)
+    .where(inArray(opdQueueEntries.sessionId, days.map((d) => d.session.id))).orderBy(asc(opdQueueEntries.seq));
+  const encounterIds = allRows.map((r) => r.encounterId);
   const encounters = encounterIds.length === 0 ? [] : await db.select().from(opdEncounters).where(inArray(opdEncounters.id, encounterIds));
   const encounterById = new Map(encounters.map((e) => [e.id, e] as const));
   // Demographics come from the patients module — the OPD module reads no patient table (spec §4).
@@ -207,26 +220,60 @@ export async function listQueue(db: Db, actor: Actor, doctorId: string, serviceD
     };
   };
 
-  const byId = new Map(rows.map((r) => [r.id, r] as const));
-  // Owner 2026-10-09 — every waiting token is in the order, a desk-let-through unpaid one included.
-  const ordered = orderQueue(rows.filter((r) => r.status === "waiting").map(toState), now, { perkEveryNth: cfg.perkEveryNth }, session.callsMade)
-    .map((state, i) => toView(byId.get(state.id)!, i + 1, classOf(state, now)));
-  const called = rows.find((r) => r.status === "called");
-  const count = (status: string): number => rows.filter((r) => r.status === status).length;
+  return days.map(({ session, doctor }): QueueView => {
+    const rows = allRows.filter((r) => r.sessionId === session.id);
+    const byId = new Map(rows.map((r) => [r.id, r] as const));
+    // Owner 2026-10-09 — every waiting token is in the order, a desk-let-through unpaid one included.
+    const ordered = orderQueue(rows.filter((r) => r.status === "waiting").map(toState), now, { perkEveryNth: cfg.perkEveryNth }, session.callsMade)
+      .map((state, i) => toView(byId.get(state.id)!, i + 1, classOf(state, now)));
+    const called = rows.find((r) => r.status === "called");
+    const count = (status: string): number => rows.filter((r) => r.status === status).length;
+    return {
+      session, doctor, ordered,
+      current: called === undefined ? null : toView(called, null, null),
+      inConsult: rows.filter((r) => r.status === "in_consult").map((r) => toView(r, null, null)),
+      // Newest first: the row a doctor is hunting for is the one that just fell out. No position and
+      // no class — a left row is not in the ordering, and giving it one would say it was.
+      left: rows.filter((r) => r.status === "left").sort((a, b) => b.seq - a.seq).map((r) => toView(r, null, null)),
+      heldForPayment: [],
+      waitingVitals: count("waiting_vitals"),
+      counts: {
+        waiting: count("waiting"),
+        called: count("called"), inConsult: count("in_consult"), done: count("done"), left: count("left"),
+        heldForPayment: 0,
+      },
+    };
+  });
+}
+
+/** #660 — one doctor of the department, as the OPD desk draws them: the board's summary row and their line. */
+export type DepartmentQueueDoctor = DoctorSummary & { queue: QueueView | null };
+export type DepartmentQueue = { departmentId: string; serviceDate: string; doctors: DepartmentQueueDoctor[] };
+
+/**
+ * ═══ #660 — THE DEPARTMENT'S LINE, IN ONE READ ═══
+ *
+ * The OPD desk draws every doctor's line at once. The 2026-09-28 desk decision refused that as one
+ * read per doctor per 15 s; this is the same picture as ONE read: `summaryByDoctor`'s rows for the
+ * department, each carrying exactly the view `listQueue` would answer for that doctor (null with no
+ * session today). No rule is forked — the views come from `queueViews`, which `listQueue` also uses.
+ * The money rule is the route's, per caller, as on `GET /opd/queues`.
+ */
+export async function departmentQueue(
+  db: Db, actor: Actor, departmentId: string, serviceDate: string, now: Date = new Date(),
+): Promise<DepartmentQueue> {
+  const dept = (await db.select({ id: opdDepartments.id }).from(opdDepartments).where(eq(opdDepartments.id, departmentId)))[0];
+  if (!dept) throw new OpdError("unknown_department", `unknown department ${departmentId}`);
+  const cfg = await loadOpdConfig(db);
+  const doctors = await summaryByDoctor(db, departmentId, serviceDate, now);
+  const sessionIds = doctors.map((d) => d.sessionId).filter((id): id is string => id !== null);
+  const sessions = sessionIds.length === 0 ? [] : await db.select().from(opdQueueSessions).where(inArray(opdQueueSessions.id, sessionIds));
+  const doctorById = new Map(doctors.map((d) => [d.doctor.id, d.doctor] as const));
+  const views = await queueViews(db, actor, cfg, sessions.map((session) => ({ session, doctor: doctorById.get(session.doctorId)! })), now);
+  const viewBySession = new Map(views.map((v) => [v.session.id, v] as const));
   return {
-    session, doctor, ordered,
-    current: called === undefined ? null : toView(called, null, null),
-    inConsult: rows.filter((r) => r.status === "in_consult").map((r) => toView(r, null, null)),
-    // Newest first: the row a doctor is hunting for is the one that just fell out. No position and
-    // no class — a left row is not in the ordering, and giving it one would say it was.
-    left: rows.filter((r) => r.status === "left").sort((a, b) => b.seq - a.seq).map((r) => toView(r, null, null)),
-    heldForPayment: [],
-    waitingVitals: count("waiting_vitals"),
-    counts: {
-      waiting: count("waiting"),
-      called: count("called"), inConsult: count("in_consult"), done: count("done"), left: count("left"),
-      heldForPayment: 0,
-    },
+    departmentId, serviceDate,
+    doctors: doctors.map((d) => ({ ...d, queue: d.sessionId === null ? null : viewBySession.get(d.sessionId) ?? null })),
   };
 }
 

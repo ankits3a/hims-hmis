@@ -1,5 +1,5 @@
 {
-  "id": "9321ca60-f9ae-4a73-b715-ecdb0ba6aac7",
+  "id": "96b24427-3aed-4c93-8dd7-ee83a8b6952f",
   "prevId": "3996038a-c693-44ce-8fea-89964e818eff",
   "version": "7",
   "dialect": "postgresql",
@@ -4788,57 +4788,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.cds_doctor_learning_resets": {
-      "name": "cds_doctor_learning_resets",
-      "schema": "",
-      "columns": {
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "surface": {
-          "name": "surface",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reset_at": {
-          "name": "reset_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "complaint_baseline": {
-          "name": "complaint_baseline",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::jsonb"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "cds_doctor_learning_resets_user_id_surface_pk": {
-          "name": "cds_doctor_learning_resets_user_id_surface_pk",
-          "columns": [
-            "user_id",
-            "surface"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "cds_doctor_learning_resets_surface_ck": {
-          "name": "cds_doctor_learning_resets_surface_ck",
-          "value": "\"cds_doctor_learning_resets\".\"surface\" in ('complaints', 'diagnoses', 'tests', 'findings', 'hidden')"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.cds_doctor_prefs": {
       "name": "cds_doctor_prefs",
       "schema": "",
@@ -8324,6 +8273,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "renal_overrides": {
+          "name": "renal_overrides",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
         }
       },
       "indexes": {

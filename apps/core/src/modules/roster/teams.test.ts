@@ -279,6 +279,20 @@ describe("roster — teams, memberships and officiating (R3)", () => {
     })))).code).toBe("officiating_overlap");
   });
 
+  it("nobody appoints themselves to stand in, whatever grant they hold — somebody else records it", async () => {
+    const teamId = await unit();
+    // The superintendent holds the publish grant at hospital scope, so only the self-appointment can refuse.
+    expect((await refusal(withTx(db, (tx) => recordOfficiating(tx, ms, {
+      teamId, userId: MS, role: "hod", reason: "covering myself", startsAt: at("2026-10-01T00:00"),
+    })))).code).toBe("officiating_self_appointment");
+    expect(await officiatingAt(db, teamId, at("2026-10-02T00:00"))).toEqual([]);
+    // Appointing somebody else is unchanged.
+    await withTx(db, (tx) => recordOfficiating(tx, ms, {
+      teamId, userId: ACTING, role: "head", reason: "the head is on leave", startsAt: at("2026-10-01T00:00"),
+    }));
+    expect(await officiatingAt(db, teamId, at("2026-10-02T00:00"))).toHaveLength(1);
+  });
+
   it("an officiating row needs a reason — a stand-in nobody explained is one nobody can question", async () => {
     const teamId = await unit();
     expect((await refusal(withTx(db, (tx) => recordOfficiating(tx, ms, {
