@@ -103,7 +103,7 @@ Source: `apps/core/src/modules/emergency/`
 - `copilot-since.ts`
   - `istHm(d: Date): string`
   - `readSinceArrival(db: Db, actor: Actor, episodeId: string, opts: { now?: Date } = {}): Promise<ErSinceArrival>`
-  - `sinceCandidates(db: Db, episodeId: string, now: Date, viewer?: Actor): Promise<{ arrivedAt: Date; episodeNo: string; lines: Candidate[] }>`
+  - `sinceCandidates(db: Db, episodeId: string, now: Date, viewer: Actor): Promise<{ arrivedAt: Date; episodeNo: string; lines: Candidate[] }>`
   - `verifyErSinceLine(db: Db, line: Pick<ErSinceLine, "text" | "template" | "facts" | "records">, ctx: SinceCtx): Promise<{ ok: true } | { ok: …`
 - `copilot-tools.ts`
   - `emergencyCopilotIntents: Readonly<Record<ModuleCopilotIntent, CopilotIntentDecl>>`
