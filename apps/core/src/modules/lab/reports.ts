@@ -933,6 +933,31 @@ export type ReportView = {
  * `kernel/orders/read.ts` follows and for the same reason: "who looked at this report" is the only
  * question the log exists to answer.
  */
+/**
+ * DD11 ON THE SINGLE REPORT (`GET /lab/reports/:reportId`) — the lab's restricted-test rule, as
+ * `patient-results.ts` applies it: a restricted test is shown to its ordering clinician and to a holder
+ * of `orders.read.restricted`. The lab itself is the third reader — its own worklists read its own
+ * tables (F45's precedent): whoever keys, signs or hands over a result (`lab.results.enter`,
+ * `lab.results.verify`, `lab.reports.print`). For anyone else the panel is OMITTED, never badged, and a
+ * report with nothing left is `null`, which the caller refuses exactly as an unknown id.
+ */
+const LAB_DEPARTMENT_GRANTS = ["lab.results.enter", "lab.results.verify", "lab.reports.print"] as const;
+async function restrictedPanelsFor(db: Db, actor: Actor, orderId: string, snapshot: ReportSnapshot): Promise<ReportSnapshot | null> {
+  const hidden = await db.select({ id: orderItems.id }).from(orderItems)
+    .where(and(eq(orderItems.orderId, orderId), eq(orderItems.restricted, true)));
+  if (hidden.length === 0) return snapshot;
+  const [order] = await db.select({ orderingClinicianId: orders.orderingClinicianId }).from(orders).where(eq(orders.id, orderId));
+  if (actor.type === "user" && order?.orderingClinicianId === actor.id) return snapshot;
+  if (actor.type === "user") {
+    for (const p of ["orders.read.restricted", ...LAB_DEPARTMENT_GRANTS]) {
+      if (await hasPermission(db, actor.id, p, "hospital")) return snapshot;
+    }
+  }
+  const out = new Set(hidden.map((h) => h.id));
+  const panels = snapshot.panels.filter((p) => !out.has(p.orderItemId));
+  return panels.length === 0 ? null : { ...snapshot, panels };
+}
+
 export async function getReport(
   db: Db,
   actor: Actor,
@@ -944,7 +969,9 @@ export async function getReport(
   const [report] = await db.select().from(labReports).where(eq(labReports.id, reportId));
   if (!report) throw new LabError("unknown_report", `no lab report ${reportId}`);
 
-  const snapshot = report.snapshot as ReportSnapshot;
+  const shown = await restrictedPanelsFor(db, actor, report.orderId, report.snapshot as ReportSnapshot);
+  if (shown === null) throw new LabError("unknown_report", `no lab report ${reportId}`);
+  const snapshot = shown;
   /**
    * THE CANONICAL PATIENT, not the snapshotted id (close review m3). The snapshot freezes the
    * identity as it was at signature (E4) and a merge afterwards does not rewrite it — but the
