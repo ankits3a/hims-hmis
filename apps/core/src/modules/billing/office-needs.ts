@@ -1,11 +1,11 @@
-import { and, asc, eq, gte, inArray, lt } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNotNull, lt } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
 import {
   approvals, creditNotes, invoices, receipts, receiptTenders, refundVouchers, users,
 } from "../../kernel/db/schema";
 import { getPatientSummaries } from "../patients";
 import { loadBillingConfig } from "./config";
-import { chargeOrphans, dayBook } from "./daily-close";
+import { chargeOrphans, dayBook, enteredInErrorDocIds } from "./daily-close";
 import { listMismatches } from "./recon";
 import { latestResolution, ownerQuestionFor, RECON_CHARGE_MANAGER_MAX_PAISE } from "./recon-resolve";
 import { REFUND_APPROVAL_TYPE, REFUND_OWNER_ABOVE_PAISE, REFUND_OWNER_APPROVAL_TYPE } from "./refunds";
@@ -107,6 +107,20 @@ async function namesOf(db: Db, ids: string[]): Promise<Map<string, string>> {
   if (unique.length === 0) return new Map();
   const rows = await db.select({ id: users.id, fullName: users.fullName }).from(users).where(inArray(users.id, unique));
   return new Map(rows.map((r) => [r.id, r.fullName]));
+}
+
+/**
+ * #655 (board: "4 hospital GSTINs billed · B2C in one line") — how many distinct buyer GSTINs the
+ * month's live invoices name: the B2B lines GSTR-1 will carry one by one. B2C is one line whatever it holds.
+ */
+export async function gstinsBilledIn(db: Db, month: string): Promise<number> {
+  const [y, m] = month.split("-").map(Number) as [number, number];
+  const next = m === 12 ? `${String(y + 1)}-01-01` : `${String(y)}-${String(m + 1).padStart(2, "0")}-01`;
+  const rows = await db.select({ id: invoices.id, gstin: invoices.buyerGstin }).from(invoices)
+    .where(and(gte(invoices.serviceDay, `${month}-01`), lt(invoices.serviceDay, next), isNotNull(invoices.buyerGstin)));
+  if (rows.length === 0) return 0;
+  const dead = await enteredInErrorDocIds(db, "invoice", rows.map((r) => r.id));
+  return new Set(rows.filter((r) => !dead.has(r.id)).map((r) => r.gstin)).size;
 }
 
 export async function billingOfficeNeeds(db: Db, actor: Actor, now: Date = new Date()): Promise<BillingOfficeNeeds> {
@@ -306,11 +320,12 @@ export async function billingOfficeNeeds(db: Db, actor: Actor, now: Date = new D
 
   // ── GSTR-1: the next due date ──
   const due = gstr1Due(day);
+  const gstinCount = await gstinsBilledIn(db, due.month);
   rows.push({
     id: `gstr1:${due.month}`, kind: "gstr1_due", source: "GSTR-1", state: "open", tier: due.daysLeft <= 3 ? 1 : 6,
     since: null, ageMinutes: null, daysLeft: due.daysLeft, tone: due.daysLeft <= 3 ? "rd" : due.daysLeft <= 7 ? "gd" : "no",
     patient: null,
-    params: { month: due.month, due: due.due },
+    params: { month: due.month, due: due.due, gstinCount },
   });
 
   // Patients, through the confidential gate, in ONE batch.

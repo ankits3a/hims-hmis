@@ -33,6 +33,15 @@ describe("Copilot health", () => {
     expect(url).toMatch(/\/api\/copilot\/health\?date=\d{4}-\d{2}-\d{2}$/);
   });
 
+  it("#686: confirm taps are listed by outcome in words, beside the asks", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      ...HEALTH, confirms: 3, byOutcome: { ...HEALTH.byOutcome, confirmDone: 1, confirmExpired: 2 },
+    }), { status: 200 })));
+    renderWithProviders(<CopilotHealthScreen />);
+    expect((await screen.findByText("Confirm: done", { selector: "td" })).closest("tr")).toHaveTextContent("1");
+    expect(screen.getByText("Confirm refused: expired", { selector: "td" }).closest("tr")).toHaveTextContent("2");
+  });
+
   it("E0.5/E0.3: shows AI calls and ₹, says when the cap is reached, and offers only the switches this person may throw", async () => {
     const posts: { url: string; body: unknown }[] = [];
     stubFetch({

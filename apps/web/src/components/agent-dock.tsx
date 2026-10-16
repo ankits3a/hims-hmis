@@ -130,10 +130,10 @@ export function AgentDock(
             </div>
             {panel === undefined ? null : <div>{panel}</div>}
             <div>
-              <div className="tag" style={{ color: "var(--agent-dim)" }}>what happened on this screen</div>
+              <div className="tag" style={{ color: "var(--agent-dim)" }}>{t("agentDock.log")}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
                 {log.length === 0 ? (
-                  <span style={{ fontSize: 11, color: "var(--agent-dim)" }}>Nothing yet.</span>
+                  <span style={{ fontSize: 11, color: "var(--agent-dim)" }}>{t("agentDock.nothingYet")}</span>
                 ) : log.map((line, i) => (
                   <div key={`${line.at}-${String(i)}`} style={{ display: "flex", gap: 8, fontSize: 11.5 }}>
                     <span className="mo" style={{ color: "var(--agent-dim)", flexShrink: 0 }}>{line.at}</span>
@@ -154,7 +154,7 @@ export function AgentDock(
           style={{ flex: "none", display: "flex", flexDirection: "column", gap: 6, padding: "12px 14px", borderTop: "1px solid var(--line2)" }}
           onSubmit={(e) => { e.preventDefault(); onAsk(draft); setDraft(""); }}
         >
-          <label htmlFor="agent-ask-input" className="tag" style={{ color: "var(--faint)" }}>ASK THE COPILOT · F2</label>
+          <label htmlFor="agent-ask-input" className="tag" style={{ color: "var(--faint)" }}>{t("agentDock.ask")}</label>
           <div style={{ display: "flex", gap: 6 }}>
             <input
               id="agent-ask-input" ref={askRef} data-testid="agent-ask" value={draft}
@@ -199,11 +199,11 @@ export function AgentDock(
               </div>
             </div>
             <div style={{ flexGrow: 1, minWidth: 0, overflowY: "auto", maxHeight: 216 }}>
-              <div className="tag" style={{ color: "var(--agent-dim)" }}>what happened on this screen</div>
+              <div className="tag" style={{ color: "var(--agent-dim)" }}>{t("agentDock.log")}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
                 {log.length === 0 ? (
                   <span style={{ fontSize: 11, color: "var(--agent-dim)" }}>
-                    Nothing yet. Every server answer this screen gets lands here with the time it landed.
+                    {t("agentDock.nothingYetLong")}
                   </span>
                 ) : log.map((line, i) => (
                   <div key={`${line.at}-${String(i)}`} style={{ display: "flex", gap: 9, fontSize: 11.5 }}>

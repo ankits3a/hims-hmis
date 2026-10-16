@@ -89,3 +89,34 @@ hmis_backup_last_drill:
     - failed_after_pass:
         usage: "GAUGE"
         description: "1 if the newest backup.drill_failed event is newer than the newest backup.drill_passed, else 0"
+
+# ------------------------------------------------------------------------------------------------
+# Security-relevant events in the last ten minutes, one series per watched name (0 when none), read
+# from the append-only `events` table; the window is on `recorded_at`, the partition key, so each
+# scrape reads only the current month. `prometheus/alerts-security.yml`
+# pages on them; `apps/core/test/security-alerts.test.ts` keeps this list and the rules' names equal
+# and every name one the kernel really appends (kernel/auth/events.ts).
+hmis_security_events:
+  query: |
+    select w.name, coalesce(c.recent, 0)::float8 as recent
+    from (values
+      ('emergency_elevation.used'),
+      ('break_glass.used'),
+      ('sod.violation_blocked'),
+      ('auth.login_failed'),
+      ('auth.totp_failed')
+    ) as w(name)
+    left join (
+      select name, count(*) as recent
+      from events
+      where recorded_at > now() - interval '10 minutes'
+        and name in ('emergency_elevation.used', 'break_glass.used', 'sod.violation_blocked', 'auth.login_failed', 'auth.totp_failed')
+      group by name
+    ) c using (name)
+  metrics:
+    - name:
+        usage: "LABEL"
+        description: "Event name (kernel/auth/events.ts)"
+    - recent:
+        usage: "GAUGE"
+        description: "Events of this name appended in the last 10 minutes"

@@ -301,4 +301,32 @@ describe("the office pays (parity P3)", () => {
     expect(within(l).getByTestId("ledger-MCN2708030001")).toHaveTextContent("Credit note");
     expect(within(l).getByTestId("ledger-closing")).toHaveTextContent("₹388.00");
   });
+
+  it("#637 a discounted line: the PO's list rate and discount are prefilled, the net rate and taxable follow, an amount per pack can replace the percent", async () => {
+    const discounted: WireBillDraft = { ...draft, lines: [{ ...draft.lines[0]!, ratePaise: 22_500, listRatePaise: 25_000, discountBps: 1_000 }], expectedTotalPaise: 252_000 };
+    const calls = mock({
+      "GET /pharmacy/office/pay": officePay(),
+      "GET /pharmacy/office/bill-draft/g-1": discounted,
+      "POST /materials/supplier-bills": { bill: bill({ status: "draft", heldReason: null }) },
+      "POST /materials/supplier-bills/b-1/match": { bill: bill({ lines: [{ ...bill().lines[0]!, listRatePaise: 25_000, discountBps: 1_000, discountPaise: 2_500, ratePaise: 22_500, taxablePaise: 225_000 }] }) },
+      "GET /materials/supplier-bills/b-1": { bill: bill({ lines: [{ ...bill().lines[0]!, listRatePaise: 25_000, discountBps: 1_000, discountPaise: 2_500, ratePaise: 22_500, taxablePaise: 225_000 }] }) },
+    }, HEAD);
+    renderWithRouter(<PayView />);
+    within(await screen.findByTestId("pay-section-toMatch")).getByTestId("grn-row-GRN2609250001").focus();
+    await userEvent.keyboard("{Enter}");
+    const sheet = await screen.findByTestId("bill-new-sheet");
+    expect(await within(sheet).findByLabelText("List ₹ CROC500")).toHaveValue("250.00");
+    expect(within(sheet).getByLabelText("Disc CROC500")).toHaveValue("10%");
+    expect(within(sheet).getByTestId("bill-new-line-CROC500")).toHaveTextContent("₹225.00");
+    expect(within(sheet).getByTestId("bill-new-line-CROC500")).toHaveTextContent("₹2,250.00");
+    await userEvent.clear(within(sheet).getByLabelText("Disc CROC500"));
+    await userEvent.type(within(sheet).getByLabelText("Disc CROC500"), "12.34");
+    expect(within(sheet).getByTestId("bill-new-line-CROC500")).toHaveTextContent("₹237.66");
+    await userEvent.type(within(sheet).getByLabelText("Vendor's bill no."), "INV-9{Enter}");
+    await waitFor(() => expect(calls.some((c) => c.path === "/materials/supplier-bills/b-1/match")).toBe(true));
+    expect((calls.find((c) => c.method === "POST" && c.path === "/materials/supplier-bills")!.body as { lines: unknown[] }).lines).toEqual([
+      { grnId: "g-1", itemId: "i-croc", uom: "strip", qtyPacks: 10, listRatePaise: 25_000, discountPaise: 1_234, gstRateBps: 1200 },
+    ]);
+    expect(within(await screen.findByTestId("bill-sheet")).getByTestId("bill-line-CROC500")).toHaveTextContent("list ₹250.00 − 10%");
+  });
 });

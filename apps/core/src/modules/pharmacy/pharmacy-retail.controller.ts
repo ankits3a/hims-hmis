@@ -8,7 +8,7 @@ import { acceptRetailReturn, findRetailSaleByInvoiceNo } from "./retail-returns"
 import {
   counterBatches, enterPaperDispense, getRetailSale, inspectSheet, listPaperDispenses, listRetailLicences, listRetailSales,
   askRetailDiscount, pharmacyStaff, previewPaperDispense, previewRetailSale, recordRetailLicence, retailLicenceState, searchCounterShelf,
-  searchRetailShelf, sellRetail,
+  retailBatches, retailPatientContext, searchRetailShelf, sellRetail,
 } from "./retail";
 import type { RetailReturnResult } from "./retail-returns";
 import type { Actor } from "@hmis/contracts";
@@ -118,6 +118,28 @@ export class PharmacyRetailController {
   @Get("state")
   async state(): Promise<RetailLicenceState> {
     return retailLicenceState(this.db, new Date());
+  }
+
+  /** #638 — an item's saleable batches at the retail store, earliest expiry first, and its shelf: the desk's manual choice. */
+  @RequirePermission("pharmacy.retail.sell", "hospital")
+  @Get("batches")
+  async batches(@CurrentActor() actor: Actor, @Query("itemId") itemId?: string): Promise<Awaited<ReturnType<typeof retailBatches>>> {
+    try {
+      return await retailBatches(this.db, actor, (itemId ?? "").slice(0, 64), new Date());
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** #638 — the customer in hand: active allergies and the medicines an issued prescription still has them taking. */
+  @RequirePermission("pharmacy.retail.sell", "hospital")
+  @Get("patients/:id/context")
+  async patientContext(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<Awaited<ReturnType<typeof retailPatientContext>>> {
+    try {
+      return await retailPatientContext(this.db, actor, id, new Date());
+    } catch (e) {
+      toHttp(e);
+    }
   }
 
   @RequirePermission("pharmacy.retail.sell", "hospital")

@@ -28,6 +28,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/counter/reconcile` | `apps/web/src/screens/instrument-reconcile` |
 | `/counter/seat` | `(redirect)` |
 | `/counter/seat/figures` | `(redirect)` |
+| `/crk-formulary` | `apps/web/src/screens/crk-formulary` |
 | `/doctor-desk` | `apps/web/src/screens/doctor-desk-tower` |
 | `/doctor-desk/briefs` | `apps/web/src/screens/doctor-desk-briefs` |
 | `/doctor-desk/now` | `apps/web/src/screens/doctor-desk-now` |
