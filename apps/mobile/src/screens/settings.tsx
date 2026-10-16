@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, Switch, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useI18n } from "../i18n";
@@ -18,9 +18,19 @@ import { attendanceCache } from "../attendance/home-card";
 export function SettingsScreen() {
   const { t, lang, toggle } = useI18n();
   const router = useRouter();
-  const { logout } = useSession();
+  const { logout, call, state } = useSession();
   const copilot = useCopilotOn();
   const [problem, setProblem] = useState<string | null>(null);
+  /* #620 item 4 — the doctor's own suggestions switch: the server's (`/opd/consult/suggestions`), the one the web consult flips. */
+  const doctor = state.status === "signedIn" && state.me.permissions.hospital.includes("opd.consult");
+  const [suggest, setSuggest] = useState<{ on: boolean; hospitalOn: boolean } | null>(null);
+  useEffect(() => {
+    if (!doctor) return;
+    let live = true;
+    call<{ on: boolean; hospitalOn: boolean }>("GET", "/opd/consult/suggestions")
+      .then((r) => { if (live) setSuggest({ on: r.on === true, hospitalOn: r.hospitalOn === true }); }, () => undefined);
+    return () => { live = false; };
+  }, [doctor, call]);
 
   const row = (testID: string, label: string, onPress: () => void, right?: React.ReactNode) => (
     <Pressable testID={testID} accessibilityRole="button" onPress={onPress}
@@ -55,6 +65,16 @@ export function SettingsScreen() {
           <Switch testID="settings-copilot-switch" value={copilot.on} onValueChange={(v) => { void flip(v); }} />)}
         <Text style={[type.small, { color: color.faint }]} numberOfLines={1}>{t(copilot.on ? "settings.copilotOn" : "settings.copilotOff")}</Text>
 
+        {doctor && suggest !== null && (
+          <>
+            {row("settings-suggestions", t("settings.suggestions"), () => { if (suggest.hospitalOn) void flipSuggest(!suggest.on); },
+              <Switch testID="settings-suggestions-switch" value={suggest.hospitalOn && suggest.on} disabled={!suggest.hospitalOn} onValueChange={(v) => { void flipSuggest(v); }} />)}
+            <Text testID="settings-suggestions-note" style={[type.small, { color: color.faint }]} numberOfLines={1}>
+              {t(!suggest.hospitalOn ? "settings.suggestionsHospitalOff" : suggest.on ? "settings.suggestionsOn" : "settings.suggestionsOff")}
+            </Text>
+          </>
+        )}
+
         {head("settings.account")}
         {row("settings-account", t("mobile.account.open"), () => router.push("/account"))}
 
@@ -65,6 +85,17 @@ export function SettingsScreen() {
       </KeyboardScrollView>
     </View>
   );
+
+  async function flipSuggest(on: boolean): Promise<void> {
+    if (suggest === null || !suggest.hospitalOn) return;
+    const before = suggest;
+    setProblem(null);
+    setSuggest({ ...before, on });
+    try {
+      const r = await call<{ on: boolean }>("PUT", "/opd/consult/suggestions", { suggestionsOn: on });
+      setSuggest({ ...before, on: r.on === true });
+    } catch { setSuggest(before); setProblem(t("settings.offline")); }
+  }
 
   async function flip(on: boolean): Promise<void> {
     setProblem(null);
