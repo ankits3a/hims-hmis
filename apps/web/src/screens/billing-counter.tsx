@@ -138,7 +138,7 @@ function ErrorLine({ message, testId }: { message: string | null; testId: string
 
 export function BillingCounter({ seated = false }: { seated?: boolean } = {}): React.ReactElement {
   const { t } = useTranslation();
-  const search = useSearch({ strict: false }) as { encounterId?: string };
+  const search = useSearch({ strict: false }) as { encounterId?: string; coupon?: string };
   /*
     ═══ FD-26 — THE PATIENT WALKS HERE FROM THE BOOKING DESK ═══
 
@@ -199,7 +199,13 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
    * what is printed on the paper, and a coupon that fails its rule must fail visibly (the server
    * names the rule) rather than be silently dropped by a parser on this side.
    */
-  const [couponText, setCouponText] = useState("");
+  /*
+    #658 — `/billing?coupon=A,B` is the card-recognition counter's hand-over: the codes it recognised
+    arrive TYPED, never applied. They are only the field's starting text — the preview and the issue
+    send them to the server, which checks every one exactly as it checks a typed code.
+  */
+  const [couponText, setCouponText] = useState(() =>
+    (search.coupon ?? "").split(",").map((c) => c.trim()).filter((c) => c !== "").join(", "));
   const [attributionCode, setAttributionCode] = useState("");
   /**
    * FD-7 T9 — THE SLIP IS PRE-FILLED FROM WHAT THE DESK CAPTURED, and it has to be.

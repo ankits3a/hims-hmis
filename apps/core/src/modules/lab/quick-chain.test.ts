@@ -59,11 +59,11 @@ describe("the quick lab chain (owner 2026-10-11)", () => {
   });
 
   /**
-   * #889 — an order's tests come back in ONE fixed order (by test name, as the catalogue picker lists
+   * #889 — an order's tests come back in ONE fixed order (by test code, as every lab screen shows
    * them), whatever order they were ordered or stored in. The order is placed LFT first so the heap
-   * order is the reverse of the name order; without the reader's ORDER BY this saw [LFT, CBC].
+   * order is the reverse of the code order; without the reader's ORDER BY this saw [LFT, CBC].
    */
-  it("an order's tests are listed by test name, not by the order they were placed in (#889)", async () => {
+  it("an order's tests are listed by test code, not by the order they were placed in (#889)", async () => {
     const placed = await order(["LFT", "CBC"]);
     for (let i = 0; i < 3; i++) {
       const waiting = await quickCollectQueue(db, fx.desk.actor);

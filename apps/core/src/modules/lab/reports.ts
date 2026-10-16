@@ -24,7 +24,7 @@ import {
   labReportAmended, labReportPrintBlocked, labReportPrinted, labReportPublished,
   labReportReleasedUnpaid,
 } from "./events";
-import type { Actor } from "@hmis/contracts";
+import type { Actor, AstRow } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { DeliveryVerdict } from "./interlock";
 
@@ -79,6 +79,11 @@ export type ReportAnalyteLine = {
   verifiedAt: string | null;
   /** DD11 — a night-mode release the pathologist has not yet reviewed prints as provisional. */
   pathologistReviewPending: boolean;
+  /**
+   * #703 — a culture's antibiotic sensitivity table (MIC_AST line), printed under the line. Optional: a snapshot
+   * published before #703 has no key, and every other line carries null.
+   */
+  ast?: AstRow[] | null;
 };
 
 export type ReportPanel = {
@@ -181,10 +186,10 @@ async function buildSnapshot(
     .innerJoin(labOrderables, eq(labOrderables.serviceId, orderItems.serviceId))
     .where(eq(orderItems.orderId, order.id))
     /**
-     * #889 — the panels print in this order, so it must be fixed: by test name, then service, then
-     * item. `created_at` alone tied for every item placed in one statement (the heap decided).
+     * #889 — the panels print in this order, so it must be fixed: by test code (the lab's one rule),
+     * then item for a repeated test. `created_at` alone tied for every item placed in one statement.
      */
-    .orderBy(asc(labOrderables.nameEn), asc(orderItems.serviceId), asc(orderItems.id));
+    .orderBy(asc(labOrderables.code), asc(orderItems.id));
 
   /**
    * A CANCELLED ITEM IS NOT ON THE REPORT. It was withdrawn, DD7 decided what it cost, and printing
@@ -294,6 +299,7 @@ async function buildSnapshot(
         deltaFlag: value.deltaFlag,
         verifiedAt: value.verifiedAt?.toISOString() ?? null,
         pathologistReviewPending: value.pathologistReviewPending,
+        ast: value.ast ?? null,
       });
     }
     panels.push({
@@ -1457,8 +1463,8 @@ export async function deliveryRegister(db: Db, actor: Actor, serviceDate: string
     db.select({ orderId: orderItems.orderId, code: labOrderables.code, sensitive: labOrderables.sensitive, status: orderItems.status })
       .from(orderItems).innerJoin(labOrderables, eq(labOrderables.serviceId, orderItems.serviceId))
       .where(inArray(orderItems.orderId, orderIds))
-      /** #889 — a row's tests in one fixed order (by test name), not the heap's. */
-      .orderBy(asc(labOrderables.nameEn), asc(orderItems.serviceId)),
+      /** #889 — a row's tests in one fixed order (by test code), not the heap's. */
+      .orderBy(asc(labOrderables.code)),
     db.select().from(labReportDeliveries).where(inArray(labReportDeliveries.reportId, reportIds)).orderBy(asc(labReportDeliveries.at)),
     db.select({ refId: notifications.refId, status: notifications.status, sentChannel: notifications.sentChannel, sentAt: notifications.sentAt })
       .from(notifications).where(and(eq(notifications.refType, "lab_report"), inArray(notifications.refId, reportIds))),

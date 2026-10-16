@@ -117,3 +117,27 @@ export async function classifyNdpsSalts(tx: Tx, actor: Actor, opts: { apply: boo
     .sort((a, b) => a.name.localeCompare(b.name));
   return report;
 }
+
+/**
+ * #613 — THE FORMULARY'S ANSWER TO "IS THIS MOIETY ON THE CITED LIST?", for readers that hold a moiety's
+ * NAME (the learned nicknames, decision 0051: never a controlled medicine). A moiety is the cited entry
+ * when its first word is that entry — "Morphine Sulfate" is morphine, "codeine phosphate" is codeine — and
+ * never by a prefix ("morphinan" is not morphine). `null` means the LIST does not name it, which is not the
+ * same as "not controlled": a stored class (`ndpsClassOfMoieties`) and the schedule flags still apply.
+ */
+export function ndpsListEntryOf(moiety: string): NdpsEntry | null {
+  const first = moiety.trim().toLowerCase().split(/\s+/)[0] ?? "";
+  if (first === "") return null;
+  return NDPS_LIST.find((e) => e.moiety === first) ?? null;
+}
+
+/** #613 — a medicine's strictest NDPS class from its moieties: each moiety's STORED class first, else the cited list's. */
+export function ndpsClassOfMoieties(moieties: readonly { name: string; ndpsClass: string | null }[]): NdpsClass | null {
+  let out: NdpsClass | null = null;
+  for (const m of moieties) {
+    const stored = m.ndpsClass !== null && (NDPS_CLASSES as readonly string[]).includes(m.ndpsClass) ? (m.ndpsClass as NdpsClass) : null;
+    const c = stored ?? ndpsListEntryOf(m.name)?.ndpsClass ?? null;
+    if (c !== null && (out === null || RANK[c] > RANK[out])) out = c;
+  }
+  return out;
+}

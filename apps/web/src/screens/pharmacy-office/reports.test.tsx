@@ -313,11 +313,11 @@ describe("the office's reports — stage C", () => {
   afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
   const ALL = [...OWNER, "pharmacy.tally.export"];
 
-  it("eighteen reports: after 0 the list goes on in letters, and A opens top-selling — by value with its ABC classes, then by units", async () => {
+  it("nineteen reports (#637 adds vendor discounts, on O): after 0 the list goes on in letters, and A opens top-selling — by value with its ABC classes, then by units", async () => {
     const calls = mock({ "GET /pharmacy/office/reports/stores": STORES, "GET /pharmacy/office/reports/top-selling": topSelling }, ALL);
     renderWithRouter(<PharmacyOfficeReports />, "/pharmacy/office/reports");
     const list = await screen.findByTestId("reports-view");
-    expect(within(list).getAllByRole("button").map((b) => b.querySelector("kbd")?.textContent)).toEqual(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "A", "D", "F", "G", "H", "J", "K", "N"]);
+    expect(within(list).getAllByRole("button").map((b) => b.querySelector("kbd")?.textContent)).toEqual(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "A", "D", "F", "G", "H", "J", "K", "N", "O"]);
     expect(within(within(list).getByTestId("report-catalogue")).getByText("G")).toBeTruthy();
     list.focus();
     await userEvent.keyboard("a");
@@ -598,5 +598,28 @@ describe("the sales register adds up (owner rulings 2026-09-30)", () => {
     expect(cells.join("|")).toContain("33.60|2.69|27.60|1.66|1.65|0.09|31.00");
     const totals = [...within(table).getByTestId("sales-table-totals").querySelectorAll("td")].map((td) => td.textContent ?? "").join("|");
     expect(totals).toContain("33.60|2.69|27.60|1.66|1.65|0.09|31.00");
+  });
+
+  it("#637 the vendor discount report: by vendor, gross less discount is taxable, GST on it, a totals row", async () => {
+    const calls = mock({
+      "GET /pharmacy/office/reports/stores": STORES,
+      "GET /pharmacy/office/reports/vendor-discounts": {
+        from: "2026-09-01", to: "2026-09-30", preset: "month",
+        rows: [
+          { vendorId: "v-1", vendorCode: "ACME", vendorName: "Acme Distributors", gstin: null, bills: 1, grossPaise: 250_000, discountPaise: 25_000, taxablePaise: 225_000, gstPaise: 27_000, totalPaise: 252_000, discountBps: 1_000 },
+          { vendorId: "v-2", vendorCode: "BETA", vendorName: "Beta Pharma", gstin: null, bills: 1, grossPaise: 40_000, discountPaise: 0, taxablePaise: 40_000, gstPaise: 0, totalPaise: 40_000, discountBps: 0 },
+        ],
+        totals: { bills: 2, grossPaise: 290_000, discountPaise: 25_000, taxablePaise: 265_000, gstPaise: 27_000, totalPaise: 292_000, discountBps: 862 },
+      },
+    }, ACCOUNTS);
+    renderWithRouter(<PharmacyOfficeReports />, "/pharmacy/office/reports");
+    await userEvent.click(await screen.findByTestId("report-vendorDiscounts"));
+    const table = await screen.findByTestId("vendor-discount-table");
+    expect(within(table).getByTestId("vendor-discount-table-row-v-1")).toHaveTextContent("Acme Distributors");
+    expect(within(table).getByTestId("vendor-discount-table-row-v-1")).toHaveTextContent("250.00");
+    expect(within(table).getByTestId("vendor-discount-table-row-v-1")).toHaveTextContent("10.0%");
+    expect(within(table).getByTestId("vendor-discount-table-totals")).toHaveTextContent("2,920.00");
+    expect(within(table).getByTestId("vendor-discount-table-totals")).toHaveTextContent("8.6%");
+    expect(calls.some((c) => c.path.startsWith("/pharmacy/office/reports/vendor-discounts?preset=month"))).toBe(true);
   });
 });

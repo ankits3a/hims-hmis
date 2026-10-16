@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { OpdScribe } from "./opd-scribe";
 import { renderWithProviders, stubFetch } from "../test-utils";
 import { setToken } from "../lib/api";
+import { resetSuggestSignals } from "../lib/suggest-signals";
 
 /**
  * ═══ THE DESK SCRIBE — OWNER RULINGS 2026-09-12 AND 2026-10-06 ═══
@@ -118,6 +119,40 @@ describe("the desk scribe — the doctor's paper, typed", () => {
     /* Enter starts the next slip — the box is empty and focused again. */
     await user.keyboard("{Enter}");
     expect(await screen.findByTestId("scribe-visit")).toHaveValue("");
+  });
+
+  it("#620 — THE SCRIBE HAS CHIPS: the doctor's usual tests, a tap adds one, the × crosses one off — both counted on the scribe's surface", async () => {
+    resetSuggestSignals();
+    stub({
+      "GET /api/opd/consult/suggestions": { on: true, hospitalOn: true, hidden: [{ kind: "test", contextKey: null, itemKey: "s-esr" }] },
+      "GET /api/opd/paper/visits/E-1/suggest-tests": { contextKey: null, items: [
+        { serviceId: "S-CBC", code: "LAB-CBC", name: "Complete blood count", pricePaise: 25000, mine: 5, hospital: 5 },
+        { serviceId: "S-LFT", code: "LAB-LFT", name: "Liver function test", pricePaise: 60000, mine: 2, hospital: 2 },
+        { serviceId: "S-ESR", code: "LAB-ESR", name: "ESR", pricePaise: 9000, mine: 1, hospital: 1 },
+      ] },
+      "POST /api/opd/consult/signals": { misses: 0, suggestions: 1 },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<OpdScribe />);
+    await user.type(screen.getByTestId("scribe-visit"), "V2610060004{Enter}");
+    const row = await screen.findByTestId("scribe-sug-tests");
+    // Crossed three times by this desk: not offered.
+    expect(within(row).queryByTestId("scribe-sug-test-LAB-ESR")).toBeNull();
+    // No money on a chip.
+    expect(row).not.toHaveTextContent(/₹|250|600/);
+
+    await user.click(within(row).getByTestId("scribe-sug-test-LAB-CBC"));
+    expect(screen.getByTestId("scribe-test-LAB-CBC")).toBeInTheDocument();
+    expect(screen.queryByTestId("scribe-sug-test-LAB-CBC")).toBeNull();
+    await user.click(screen.getByTestId("scribe-sug-test-x-LAB-LFT"));
+    expect(screen.queryByTestId("scribe-sug-tests")).toBeNull();
+    expect(screen.queryByTestId("scribe-test-LAB-LFT")).toBeNull();
+
+    const told = posted("/api/opd/consult/signals").flatMap((b) => b.suggestions as { kind: string; outcome: string; surface: string; itemKey?: string; items?: string[]; encounterId?: string }[]);
+    expect(told.map((x) => [x.outcome, x.surface, x.itemKey ?? x.items?.join(",")])).toEqual([
+      ["shown", "scribe", "S-CBC,S-LFT"], ["accepted", "scribe", "S-CBC"], ["dismissed", "scribe", "S-LFT"],
+    ]);
+    expect(told.every((x) => x.kind === "test" && x.encounterId === "E-1")).toBe(true);
   });
 
   it("THE SCRIBE CLEARS NO WARNING: a warned line says it is held for the doctor, offers no reason box, and the result lists it as not sent", async () => {

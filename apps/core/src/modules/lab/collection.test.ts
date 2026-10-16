@@ -98,10 +98,10 @@ describe("the collection seat's queue (17c T2)", () => {
   });
 
   /**
-   * #889 — a row's codes come in ONE fixed order (by test name), not in the order the rows came off
+   * #889 — a row's codes come in ONE fixed order (by test code), not in the order the rows came off
    * the heap. Ordered LFT first, so without the reader's ORDER BY this saw [LFT, CBC].
    */
-  it("an awaiting row lists its tests by test name, not by the order they were placed in (#889)", async () => {
+  it("an awaiting row lists its tests by test code, not by the order they were placed in (#889)", async () => {
     await withTx(db, (tx) => deskOrder(tx, fx.desk.actor, fx.decls, {
       patientId: fx.patientId, encounterNo: fx.encounterNo, serviceDate: fx.serviceDate,
       orderingClinicianId: fx.pathologist.id,

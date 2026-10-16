@@ -118,7 +118,6 @@ Source: `apps/core/src/modules/radiology/`
   - `IV_HYDRATION_INSTRUCTION`
   - `METFORMIN_NOTE`
   - `assessEgfr(creatinineUmolL: number, patient: { sex: string; ageYears: number | null }): EgfrAssessment`
-  - `ckdEpi2021(creatinineMgDl: number, ageYears: number, sex: EgfrSex): number`
   - `renalBand(egfr: number): RenalBand`
   - types: `EgfrAssessment`, `RenalBand`
 - `errors.ts`
@@ -238,6 +237,8 @@ Source: `apps/core/src/modules/radiology/`
   - types: `BookedStudyRow`, `CreateImagingDeviceInput`, `EditImagingDevicePatch`, `SettableDeviceStatus`
 - `manifest.ts`
   - `radiologyManifest: ModuleManifest`
+- `modules/lab/egfr.ts`
+  - `ckdEpi2021(creatinineMgDl: number, ageYears: number, sex: EgfrSex): number`
 - `money.ts`
   - `authorisationOf(study: AuthorisationStudyFacts, encounter: AuthorisationEncounterFacts, imagingFree = false): ImagingAuthorisation | null`
   - `encounterPayer(exec: Db | Tx, encounterNo: string): Promise<{ intendedPayer: string }>`

@@ -7,6 +7,7 @@ import {
 } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { appendEvent } from "../../kernel/events/append";
+import { enqueuePrintJob } from "../../kernel/printing/enqueue";
 import { requestApproval } from "../../kernel/approvals/requests";
 import { getApproval } from "../../kernel/approvals/worklist";
 import { getEncounter } from "../opd";
@@ -15,7 +16,7 @@ import { loadBillingConfig } from "./config";
 import { refundableSurplusOf } from "./credit-notes";
 import { BillingError } from "./errors";
 import { paymentRefunded, refundVoucherIssued } from "./events";
-import { advanceOf } from "./receipts";
+import { advanceOf, enteredInErrorDocIds } from "./receipts";
 import { nextDocNo } from "./series";
 import { requireOpenSession } from "./sessions";
 import type { ChargeRules } from "./config";
@@ -143,7 +144,23 @@ const payRefundVoucherSchema = z.object({
    * non-Aadhaar reference keeps working; `assertNoAadhaar` below refuses the ones the hospital may not keep.
    */
   payeeIdRef: z.string().min(1).optional(),
+  /**
+   * #655 (board: "Someone else collects for the patient — name the relation (son, husband…)").
+   * Absent or blank when the patient collects. A word, never a number — see `cleanRelation`.
+   */
+  payeeRelation: z.string().max(40).optional(),
 });
+
+/**
+ * #655 — the relation of whoever collects for the patient, trimmed; null when none. A digit in it is
+ * refused: the field asks "son", "husband", and a number there could only be an ID by another door.
+ */
+function cleanRelation(raw: string | undefined): string | null {
+  const v = raw?.trim() ?? "";
+  if (v === "") return null;
+  if (/\d/.test(v)) throw new BillingError("payee_relation_invalid", "the relation is a word (son, husband…), never a number");
+  return v;
+}
 
 /** Twelve digits, with or without the usual spaces/hyphens — the shape of an Aadhaar number. */
 const AADHAAR_SHAPE = /^\d{4}[\s-]?\d{4}[\s-]?\d{4}$/;
@@ -199,6 +216,8 @@ export type PayRefundVoucherResult = {
   cashierSessionId: string | null;
   paidAt: Date;
   status: "paid";
+  /** #655 — the printed voucher queued for the front desk's A4 (null: already queued). The office prints it here when no relay serves. */
+  printJobId: string | null;
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -648,6 +667,7 @@ export async function payRefundVoucher(
 ): Promise<PayRefundVoucherResult> {
   const input = payRefundVoucherSchema.parse(rawInput);
   assertNoAadhaar(input); // OWNER RULING 2026-09-28 — before any read or write
+  const payeeRelation = cleanRelation(input.payeeRelation);
   const cfg = await loadBillingConfig(db);
 
   return withTx(db, async (tx) => {
@@ -684,6 +704,7 @@ export async function payRefundVoucher(
         payeeName: input.payeeName,
         payeeIdType: input.payeeIdType,
         payeeIdRef: input.payeeIdRef === undefined || input.payeeIdRef.trim() === "" ? null : input.payeeIdRef.trim(),
+        payeeRelation,
       })
       .where(and(eq(refundVouchers.id, voucher.id), eq(refundVouchers.status, "issued")))
       .returning();
@@ -707,6 +728,19 @@ export async function payRefundVoucher(
       }),
     );
 
+    /*
+      #655 — THE PRINTED VOUCHER (owner ruling 2026-09-04: printing is server-side). Queued in the
+      payment's own transaction, so a paid voucher always has its paper and a refused payment has
+      none; the payee signs it at the counter. Rendered by `refund-print.ts`.
+    */
+    const printJobId = await enqueuePrintJob(tx, {
+      document: "billing_refund_voucher",
+      params: { voucherId: paid.id },
+      dedupeKey: `refund-voucher:${paid.id}`,
+      patientId: paid.patientId,
+      requestedBy: actor.id,
+    });
+
     return {
       voucherId: paid.id,
       voucherNo: paid.voucherNo,
@@ -716,6 +750,60 @@ export async function payRefundVoucher(
       cashierSessionId: paid.cashierSessionId,
       paidAt: now,
       status: "paid",
+      printJobId,
     };
   });
+}
+
+// ---------------------------------------------------------------------------------------------
+// #655 — the refund form's credit-note picker
+// ---------------------------------------------------------------------------------------------
+
+export type PatientCreditNoteRow = {
+  creditNoteId: string; creditNoteNo: string; invoiceId: string; invoiceNo: string; issuedAt: string;
+  netPaise: number;
+  /** Vouchers already drawn on this credit note (issued or paid). */
+  refundedPaise: number;
+  /**
+   * What a new request could still draw: the note's own remainder, and never more than the bill can
+   * still refund — the same cap `issueRefundVoucher` applies (received, surplus, vouchers drawn).
+   */
+  refundablePaise: number;
+};
+
+/** A patient's live credit notes, newest first, each with what is still refundable on it. */
+export async function patientCreditNotes(db: Db, patientId: string): Promise<PatientCreditNoteRow[]> {
+  const rows = await db
+    .select({
+      id: creditNotes.id, creditNoteNo: creditNotes.creditNoteNo, invoiceId: creditNotes.invoiceId,
+      issuedAt: creditNotes.issuedAt, netPaise: creditNotes.netPaise, invoiceNo: invoices.invoiceNo,
+    })
+    .from(creditNotes)
+    .innerJoin(invoices, eq(invoices.id, creditNotes.invoiceId))
+    .where(eq(invoices.patientId, patientId));
+  if (rows.length === 0) return [];
+  const dead = await enteredInErrorDocIds(db, "credit_note", rows.map((r) => r.id));
+  const live = rows.filter((r) => !dead.has(r.id));
+  if (live.length === 0) return [];
+  const drawn = await db
+    .select({ creditNoteId: refundVouchers.creditNoteId, amountPaise: refundVouchers.amountPaise })
+    .from(refundVouchers)
+    .where(and(inArray(refundVouchers.creditNoteId, live.map((r) => r.id)), inArray(refundVouchers.status, ["issued", "paid"])));
+  const onNote = new Map<string, number>();
+  for (const d of drawn) if (d.creditNoteId !== null) onNote.set(d.creditNoteId, (onNote.get(d.creditNoteId) ?? 0) + d.amountPaise);
+  const billLeft = new Map<string, number>();
+  for (const invoiceId of new Set(live.map((r) => r.invoiceId))) {
+    const cap = Math.min(await receivedPaiseOf(db, invoiceId), await refundableSurplusOf(db, invoiceId));
+    billLeft.set(invoiceId, Math.max(0, cap - (await vouchersAgainstInvoice(db, invoiceId))));
+  }
+  return live
+    .map((r) => {
+      const refundedPaise = onNote.get(r.id) ?? 0;
+      return {
+        creditNoteId: r.id, creditNoteNo: r.creditNoteNo, invoiceId: r.invoiceId, invoiceNo: r.invoiceNo,
+        issuedAt: r.issuedAt.toISOString(), netPaise: r.netPaise, refundedPaise,
+        refundablePaise: Math.max(0, Math.min(r.netPaise - refundedPaise, billLeft.get(r.invoiceId) ?? 0)),
+      };
+    })
+    .sort((a, b) => (a.issuedAt < b.issuedAt ? 1 : -1));
 }

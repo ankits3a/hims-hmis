@@ -12,6 +12,9 @@ import { Button } from "@/components/ui/button";
 import { RerunChoicePair } from "../components/lab-rerun-choice";
 import { capFor } from "../components/specimen-label";
 import { DowntimeNotice, LabStation, useDowntime } from "./lab-seat";
+import { AstEditor, AstPreview } from "./lab-ast";
+import { astProblemText, astSummary, cleanAstRows } from "../../../../packages/contracts/src/lab-ast";
+import type { AstDraftRow } from "../../../../packages/contracts/src/lab-ast";
 import type { CriticalRung, WireBenchArrival, WireWorklistRow } from "../lib/lab-api";
 
 /**
@@ -82,6 +85,8 @@ export function LabBench(): React.ReactElement {
   const [rejectReason, setRejectReason] = useState<(typeof REJECT_REASONS)[number]>("haemolysed");
   const [attributableTo, setAttributableTo] = useState("collection");
   const [values, setValues] = useState<Record<string, string>>({});
+  /** #703 — a culture's MIC_AST line takes the antibiotic table (the quick chain's editor), not a text box. */
+  const [astDrafts, setAstDrafts] = useState<Record<string, AstDraftRow[]>>({});
   const [overrideFor, setOverrideFor] = useState<string | null>(null);
   const [overrideBy, setOverrideBy] = useState("");
   const [contacts, setContacts] = useState<Record<string, string>>({});
@@ -141,9 +146,10 @@ export function LabBench(): React.ReactElement {
 
   const key = (itemId: string, analyteId: string): string => `${itemId}:${analyteId}`;
   const post = useMutation({
-    mutationFn: (v: { orderItemId: string; analyteId: string; value: string; by?: string; vouch?: string }) =>
+    mutationFn: (v: { orderItemId: string; analyteId: string; value: string; by?: string; vouch?: string; ast?: AstDraftRow[] }) =>
       enterResult({
         orderItemId: v.orderItemId, analyteId: v.analyteId, value: v.value, entryMode: "manual",
+        ...(v.ast === undefined ? {} : { ast: v.ast }),
         ...(v.by === undefined ? {} : { absurdOverride: { by: v.by } }),
         ...(v.vouch === undefined ? {} : { impossibleOverride: { by: v.vouch } }),
       }, newIdempotencyKey()),
@@ -154,6 +160,7 @@ export function LabBench(): React.ReactElement {
       setSwap(null);
       setVouchBy("");
       setValues((prev) => { const next = { ...prev }; delete next[key(v.orderItemId, v.analyteId)]; return next; });
+      setAstDrafts((prev) => { const next = { ...prev }; delete next[key(v.orderItemId, v.analyteId)]; return next; });
       setNotice(r.criticalCallId !== null ? t("lab.bench.criticalOpened") : null);
       refresh();
     },
@@ -193,6 +200,14 @@ export function LabBench(): React.ReactElement {
     mutationFn: async (row: WireWorklistRow) => {
       let opened = false;
       for (const a of row.analytes) {
+        if (a.value === null && isTable(row, a)) {
+          const table = tableOf(key(row.orderItemId, a.analyteId));
+          if (table === null) continue;
+          const r = await enterResult({ orderItemId: row.orderItemId, analyteId: a.analyteId, value: table.value, entryMode: "manual", ast: table.ast }, newIdempotencyKey());
+          setAstDrafts((prev) => { const next = { ...prev }; delete next[key(row.orderItemId, a.analyteId)]; return next; });
+          if (r.criticalCallId !== null) opened = true;
+          continue;
+        }
         const v = values[key(row.orderItemId, a.analyteId)];
         if (a.value !== null || v === undefined || v.trim() === "") continue;
         const r = await enterResult({ orderItemId: row.orderItemId, analyteId: a.analyteId, value: v, entryMode: "manual" }, newIdempotencyKey());
@@ -239,12 +254,23 @@ export function LabBench(): React.ReactElement {
    * it as pending would hold "save & complete" shut over the OTHER analytes with nothing on the
    * screen saying why.
    */
+  /** #703 — a culture (CS_*) carries its antibiotic table on the MIC_AST line. */
+  const isTable = (row: WireWorklistRow, a: WireWorklistRow["analytes"][number]): boolean => a.code === "MIC_AST" && row.orderableCode.startsWith("CS_");
+  /** The draft table as the wire sends it: rows cleaned (blank rows drop) and a summary value; null when nothing is filled. */
+  const tableOf = (cell: string): { value: string; ast: AstDraftRow[] } | null => {
+    const draft = astDrafts[cell] ?? [];
+    const clean = cleanAstRows(draft);
+    if (!clean.ok || clean.rows.length === 0) return null;
+    return { value: astSummary(clean.rows), ast: draft.filter((r) => (r.result ?? "") !== "" || (r.mic ?? "") !== "") };
+  };
   function filledOf(row: WireWorklistRow): { done: number; total: number; ready: boolean; owed: number } {
     const total = row.analytes.length;
     const done = row.analytes.filter((a) => a.value !== null).length;
     const owed = row.analytes.filter((a) => a.rerunChoice.length > 0).length;
     const pending = row.analytes.filter((a) => a.value === null && a.rerunChoice.length === 0);
-    const ready = pending.length > 0 && pending.every((a) => (values[key(row.orderItemId, a.analyteId)] ?? "").trim() !== "");
+    const ready = pending.length > 0 && pending.every((a) => (isTable(row, a)
+      ? tableOf(key(row.orderItemId, a.analyteId)) !== null
+      : (values[key(row.orderItemId, a.analyteId)] ?? "").trim() !== ""));
     return { done, total, ready, owed };
   }
 
@@ -578,6 +604,25 @@ export function LabBench(): React.ReactElement {
                         </tr>
                       );
                     }
+                    if (isTable(row, a) && a.value === null) {
+                      const draft = astDrafts[cell] ?? [];
+                      const save = (): void => {
+                        const clean = cleanAstRows(draft);
+                        if (!clean.ok) { setError(astProblemText(clean.problem)); return; }
+                        if (clean.rows.length === 0) { setError(t("lab.ast.empty")); return; }
+                        post.mutate({ orderItemId: row.orderItemId, analyteId: a.analyteId, value: astSummary(clean.rows), ast: draft.filter((r) => (r.result ?? "") !== "" || (r.mic ?? "") !== "") });
+                      };
+                      return (
+                        <tr key={a.analyteId} className="border-t border-border">
+                          <td className="py-1 pr-2 align-top">{a.nameEn} <span className="text-xs text-muted-foreground">{a.code}</span></td>
+                          <td colSpan={5} className="py-1">
+                            <AstEditor testCode={row.orderableCode} testName={row.orderableName} rows={draft}
+                              onChange={(rows) => setAstDrafts((d) => ({ ...d, [cell]: rows }))} />
+                            <Button type="button" size="sm" variant="outline" className="mt-2" onClick={save}>{t("lab.ast.saveTable")}</Button>
+                          </td>
+                        </tr>
+                      );
+                    }
                     return (
                       <tr key={a.analyteId} className="border-t border-border">
                         <td className="py-1 pr-2">{a.nameEn} <span className="text-xs text-muted-foreground">{a.code}</span></td>
@@ -594,6 +639,9 @@ export function LabBench(): React.ReactElement {
                               style={tone === "critical" ? { color: "var(--state-danger)" } : undefined}>
                               {a.value}
                             </span>
+                          )}
+                          {(a.ast ?? []).length > 0 && (
+                            <div className="mt-2"><AstPreview block={{ serviceId: row.serviceId, rows: a.ast ?? [] }} title={row.orderableName} /></div>
                           )}
                         </td>
                         <td className="pr-2 text-xs text-muted-foreground">{a.unit ?? ""}</td>

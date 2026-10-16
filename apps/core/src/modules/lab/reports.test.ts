@@ -642,11 +642,11 @@ describe("the report centre (17c T5)", () => {
   });
 
   /**
-   * #889 — an order's tests come in ONE fixed order (by test name, then service id) on the publish
+   * #889 — an order's tests come in ONE fixed order (by test code) on the publish
    * queue, on the printed report's panels and on the delivery register. Ordered LFT first, so the
-   * heap order is the reverse of the name order; without each reader's ORDER BY these saw [LFT, CBC].
+   * heap order is the reverse of the code order; without each reader's ORDER BY these saw [LFT, CBC].
    */
-  it("the publish queue, the report's panels and the register list an order's tests by test name (#889)", async () => {
+  it("the publish queue, the report's panels and the register list an order's tests by test code (#889)", async () => {
     const run = await runLabOrder(db, fx, ["LFT", "CBC"], { at: AT });
     const queued = (await publishableOrders(db, fx.pathologist.actor, AT)).filter((o) => o.orderId === run.orderId);
     expect(queued.map((o) => o.orderables)).toEqual([["CBC", "LFT"]]);
