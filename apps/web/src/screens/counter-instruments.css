@@ -43,6 +43,7 @@
 .pp .ci-right { width: 352px; flex-shrink: 0; border-left: 1px solid var(--line); padding: 18px 16px; display: flex; flex-direction: column; gap: 14px; background: var(--paper); min-height: 0; }
 .pp .ci-today { flex-grow: 1; overflow: auto; display: flex; flex-direction: column; min-height: 0; }
 .pp .ci-phone-today { display: none; }
+.pp .ci-phone-today > section + section { margin-top: 12px; }
 
 /* ── the numbered flow ── */
 .pp .ci .step { display: flex; gap: 14px; padding: 16px 18px; border-top: 1px solid var(--line2); }

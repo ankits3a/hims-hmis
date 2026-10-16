@@ -25,14 +25,16 @@ import {
 } from "./prescriptions";
 import { discardDraft, getPendingDraft, issueDraft, saveDraft } from "./prescription-drafts";
 import { SKIP_REASONS } from "./skip-reasons";
-import { boardSnapshot, callNext, listQueue, queueWithoutMoney, recallCalled, skipCalled, summaryByDoctor, undoSkip } from "./queue";
+import { boardSnapshot, callNext, departmentQueue, listQueue, queueWithoutMoney, recallCalled, skipCalled, summaryByDoctor, undoSkip } from "./queue";
 import { encounterWithoutMoney, seesFees } from "./fee-view";
 import { setSessionStatus } from "./sessions";
 import { istDate } from "./time";
+import { patientQueueToday } from "./queue-place";
+import type { QueuePlace } from "./queue-place";
 import type { EncounterRow, PrescriptionRow, QueueEntryRow } from "./encounters";
 import type { IssuedPrescription, RxPrecheckResult, RxPrintData, RxVerifyResult } from "./prescriptions";
 import type { DraftRow } from "./prescription-drafts";
-import type { BoardItem, DoctorSummary, QueueView, QueueViewNoMoney } from "./queue";
+import type { BoardItem, DepartmentQueueDoctor, DoctorSummary, QueueView, QueueViewNoMoney } from "./queue";
 import type { SessionRow } from "./sessions";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
@@ -47,6 +49,7 @@ const transferBody = z.object({
   consented: z.boolean(),
   reason: z.string().max(500),
 });
+const departmentQueueQuery = z.object({ serviceDate: z.string().max(10).optional() });
 const queueQuery = z.object({ doctorId: z.string().min(1), serviceDate: z.string().max(10).optional() });
 const sessionStatusBody = z.object({ status: z.enum(["in", "out", "closed"]) });
 /** The doctor's sentence for seeing a patient before the bill — shown at every desk after this one. */
@@ -263,6 +266,26 @@ export class OpdQueueController {
     const q = parsed(summaryQuery, query);
     try {
       return { items: await summaryByDoctor(this.db, q.departmentId, q.serviceDate ?? istDate(new Date())) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * #660 — the OPD desk's department-wide line in ONE read: every doctor of the department with the
+   * exact view `GET /opd/queues` gives that doctor, behind the same grant and the same money rule
+   * (`fee-view.ts`, per caller), so it shows nobody anything the per-doctor read would not.
+   */
+  @RequirePermission("opd.queue.read", "hospital")
+  @Get("departments/:id/queue")
+  async departmentQueue(
+    @CurrentActor() actor: Actor, @Param("id") id: string, @Query() query: unknown,
+  ): Promise<{ departmentId: string; serviceDate: string; doctors: (Omit<DepartmentQueueDoctor, "queue"> & { queue: QueueView | QueueViewNoMoney | null })[] }> {
+    const q = parsed(departmentQueueQuery, query);
+    try {
+      const dq = await departmentQueue(this.db, actor, id, q.serviceDate ?? istDate(new Date()));
+      if (await seesFees(this.db, actor)) return dq;
+      return { ...dq, doctors: dq.doctors.map((d) => ({ ...d, queue: d.queue === null ? null : queueWithoutMoney(d.queue) })) };
     } catch (e) {
       toHttp(e);
     }
@@ -499,6 +522,21 @@ export class OpdQueueController {
   async printGlassesRx(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ queued: boolean }> {
     try {
       return await printGlassesRx(this.db, actor, id);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * #657 — THE PROFILE'S TODAY BAND: this patient's live tokens today and, for a waiting one, the
+   * place in that doctor's line (`queue-place.ts`). `opd.queue.read`, the string the queue itself
+   * needs. Counts only: no other patient's identity crosses it.
+   */
+  @RequirePermission("opd.queue.read", "hospital")
+  @Get("patients/:patientId/queue-today")
+  async queueToday(@CurrentActor() actor: Actor, @Param("patientId") patientId: string): Promise<{ items: QueuePlace[] }> {
+    try {
+      return { items: await patientQueueToday(this.db, actor, patientId) };
     } catch (e) {
       toHttp(e);
     }

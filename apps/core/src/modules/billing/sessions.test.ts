@@ -5,7 +5,7 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { mkCashier, seedBillingBase } from "../../../test/helpers/billing";
 import { createUser } from "../../kernel/auth/identity";
 import { assignRole } from "../../kernel/auth/permissions";
-import { approveRequest } from "../../kernel/approvals/decisions";
+import { approveRequest, rejectRequest } from "../../kernel/approvals/decisions";
 import { SodViolationError } from "../../kernel/auth/sod";
 import { withTx } from "../../kernel/db/client";
 import { approvals, events, receipts, receiptTenders, registrationConfig } from "../../kernel/db/schema";
@@ -13,7 +13,9 @@ import { registerPatient } from "../patients";
 import { dayBook } from "./daily-close";
 import { markEnteredInError, recordReceipt } from "./receipts";
 import { istDay } from "./time";
-import { beginClose, confirmClose, openSession, recountSession, requireOpenSession, wasRecounted } from "./sessions";
+import {
+  beginClose, confirmClose, lastClosedSession, openSession, ownVarianceApprovalStatus, recountSession, requireOpenSession, wasRecounted,
+} from "./sessions";
 import type { CashierSessionRow } from "./sessions";
 import type { Db } from "../../kernel/db/client";
 
@@ -381,6 +383,70 @@ describe("sessions: openSession / requireOpenSession / beginClose / confirmClose
         .rejects.toMatchObject({ code: "recount_reason_required" });
       // and the drawer is untouched by the refusal
       expect(await wasRecounted(db, session.id)).toBe(false);
+    });
+  });
+  /**
+   * #656 — TWO NARROW READS FOR THE CASHIER'S OWN DRAWER. The close summary used to live only in the
+   * close RESPONSE (a reload lost it), and the variance approval's status was readable only with
+   * `approvals.requests.read`, which the cashier does not hold.
+   */
+  describe("#656: the cashier's own closed drawer and her own variance approval's status", () => {
+    test("lastClosedSession: never an open or closing drawer, only the caller's own, newest close first", async () => {
+      const { cashier, session } = await openWithShapedReceipt("cashier-last-1");
+      // An OPEN drawer is before the count: nothing comes back (blind count, decision 0014).
+      expect(await lastClosedSession(db, cashier.id)).toBeNull();
+
+      const closing = await beginClose(db, cashier.actor, { denominations: { "50000": 5, "10000": 2, "1000": 1 } });
+      expect(closing.status).toBe("closing");
+      expect(await lastClosedSession(db, cashier.id)).toBeNull();
+
+      const manager = await mkManager("manager-last-1");
+      await approveRequest(db, manager.actor, { approvalId: closing.varianceApprovalId!, note: "counted together" });
+      await confirmClose(db, cashier.actor, session.id, NOW);
+
+      const last = await lastClosedSession(db, cashier.id);
+      expect(last).toMatchObject({
+        id: session.id, status: "closed", countedCashPaise: 271_000, expectedCashPaise: 272_000, variancePaise: -1000,
+      });
+      expect(last!.closedAt).toEqual(NOW);
+
+      // A second drawer, closed later and clean, is the one served.
+      const second = await openSession(db, cashier.actor, 50_000);
+      const later = new Date(NOW.getTime() + 60_000);
+      await beginClose(db, cashier.actor, { denominations: { "50000": 1 } }, later);
+      expect((await lastClosedSession(db, cashier.id))!.id).toBe(second.id);
+
+      // Another cashier never receives it.
+      const other = await mkCashier(db, "cashier-last-2");
+      expect(await lastClosedSession(db, other.id)).toBeNull();
+    });
+
+    test("ownVarianceApprovalStatus: pending, then granted with the decision; refused for another cashier's drawer", async () => {
+      const { cashier, session, result } = await driveToClosingVariance("cashier-status-1");
+      expect(await ownVarianceApprovalStatus(db, cashier.actor, session.id)).toEqual({
+        status: "pending", requestedAt: expect.any(Date), decidedAt: null, decisionNote: null,
+      });
+
+      const other = await mkCashier(db, "cashier-status-2");
+      expect(await ownVarianceApprovalStatus(db, other.actor, session.id)).toBeNull();
+
+      const manager = await mkManager("manager-status-1");
+      await approveRequest(db, manager.actor, { approvalId: result.varianceApprovalId!, note: "verified" });
+      const granted = await ownVarianceApprovalStatus(db, cashier.actor, session.id);
+      expect(granted).toEqual({ status: "granted", requestedAt: expect.any(Date), decidedAt: expect.any(Date), decisionNote: "verified" });
+    });
+
+    test("ownVarianceApprovalStatus: rejected reads as rejected; an open drawer has no approval to read", async () => {
+      const { cashier, session, result } = await driveToClosingVariance("cashier-status-3");
+      const manager = await mkManager("manager-status-3");
+      await rejectRequest(db, manager.actor, { approvalId: result.varianceApprovalId!, note: "recount with me" });
+      expect(await ownVarianceApprovalStatus(db, cashier.actor, session.id)).toEqual({
+        status: "rejected", requestedAt: expect.any(Date), decidedAt: expect.any(Date), decisionNote: "recount with me",
+      });
+
+      const fresh = await mkCashier(db, "cashier-status-4");
+      const open = await openSession(db, fresh.actor, 10_000);
+      expect(await ownVarianceApprovalStatus(db, fresh.actor, open.id)).toBeNull();
     });
   });
 });
