@@ -346,6 +346,10 @@ const configSchema = z.object({
   OPENAI_DECISIONS_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
   OPENAI_DECISIONS_MODEL: z.string().min(1).default("gpt-6-luna"),
   OPENAI_DECISIONS_TIMEOUT_MS: z.coerce.number().int().positive().default(1500),
+  /* #618 / decision 0053 — the CRK formulary drafter. No model id ⇒ drafting answers "model not configured". */
+  FORMULARY_DRAFT_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
+  FORMULARY_DRAFT_MODEL: z.string().default(""),
+  FORMULARY_DRAFT_TIMEOUT_MS: z.coerce.number().int().positive().default(120000),
   TRIAGE_CHOOSER_ORDER: z.string().default("typesafe"),
   COPILOT_CHOOSER_ORDER: z.string().default("openai,typesafe"),
   /**
@@ -638,6 +642,8 @@ export type AppConfig = {
   copilotChoice: { baseUrl: string; apiKey: string | null; model: string; timeoutMs: number; minConfidence: number };
   /** OpenAI's Decisions API as a second chooser; its key is `openaiKeyFile`. */
   decisions: { baseUrl: string; model: string; timeoutMs: number };
+  /** #618 — the CRK formulary drafter; its key is `openaiKeyFile`. `model` null ⇒ not configured. */
+  formularyDraft: { baseUrl: string; model: string | null; timeoutMs: number };
   /** Who answers first, per job. Default `["typesafe"]` — today's behaviour. */
   triageChooserOrder: ("typesafe" | "openai")[];
   copilotChooserOrder: ("typesafe" | "openai")[];
@@ -983,6 +989,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       minConfidence: parsed.COPILOT_TYPESAFE_MIN_CONFIDENCE,
     },
     decisions: { baseUrl: parsed.OPENAI_DECISIONS_BASE_URL, model: parsed.OPENAI_DECISIONS_MODEL, timeoutMs: parsed.OPENAI_DECISIONS_TIMEOUT_MS },
+    formularyDraft: {
+      baseUrl: parsed.FORMULARY_DRAFT_BASE_URL,
+      model: parsed.FORMULARY_DRAFT_MODEL.trim() === "" ? null : parsed.FORMULARY_DRAFT_MODEL.trim(),
+      timeoutMs: parsed.FORMULARY_DRAFT_TIMEOUT_MS,
+    },
     triageChooserOrder: chooserOrderFrom("TRIAGE_CHOOSER_ORDER", parsed.TRIAGE_CHOOSER_ORDER),
     copilotChooserOrder: chooserOrderFrom("COPILOT_CHOOSER_ORDER", parsed.COPILOT_CHOOSER_ORDER),
     copilotSpend: { dailyCapInr: parsed.COPILOT_DAILY_CAP_INR, prices: pricesFrom(parsed.COPILOT_PRICES_INR) },

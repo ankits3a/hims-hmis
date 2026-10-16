@@ -51,6 +51,10 @@ const CENSUS: Record<string, string[]> = {
   formulary_drug_disease: ["active", "alternatives", "created_at", "created_by", "icd10_prefix", "icd10_title", "id", "note", "route_scope", "salt_id", "severity", "source", "updated_at", "updated_by"],
   // The drug monograph (owner 2026-10-02): four JSON sections per generic, read only once reviewed; renal bands as rows.
   formulary_monographs: ["affordability", "created_at", "created_by", "generic_id", "id", "nursing", "patient", "prescriber", "reviewed_at", "reviewed_by", "source_version", "status", "updated_at", "updated_by"],
+  // #618 / #884 / decision 0053 — the CRK entry, its own row and state: the live version, a pending one, the drafting cost.
+  formulary_crk_entries: ["created_at", "created_by", "draft_crk", "draft_usage", "drafted_at", "drafted_model", "first_signed_at", "first_signed_by", "first_signer_designation", "generic_id", "high_alert", "id", "model_drafts", "model_input_tokens", "model_output_tokens", "review_due_on", "reviewed_at", "reviewed_by", "reviewer_designation", "second_reviewed_at", "second_reviewed_by", "second_reviewer_designation", "signed_crk", "updated_at", "updated_by", "version"],
+  // #618 — every CRK signature, kept with the text as signed.
+  formulary_crk_signatures: ["crk", "designation", "entry_id", "id", "kind", "signed_at", "signed_by", "version"],
   formulary_renal_doses: ["crcl_max", "crcl_min", "dose", "id", "monograph_id", "position", "severity"],
   // #616 (decision 0051): US FDA label text as a versioned reference layer, and the substance-name → US key map.
   formulary_reference_labels: [

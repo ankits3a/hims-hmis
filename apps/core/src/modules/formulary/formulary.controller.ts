@@ -1,8 +1,13 @@
 import {
-  BadRequestException, Body, Controller, Get, HttpException, Inject, Param, Patch, Post, Query,
+  BadRequestException, Body, Controller, Get, HttpException, Inject, Param, Patch, Post, Put, Query,
 } from "@nestjs/common";
 import { z } from "zod";
-import { DB } from "../../kernel/tokens";
+import { CONFIG, DB } from "../../kernel/tokens";
+import { openAiCompatibleClient } from "../../kernel/inference/openai-compatible";
+import { openAiKeyFromFile } from "../../kernel/inference/openai-speech";
+import { CRK_FIELDS, CRK_SOURCE_KINDS, crkEntryForReview, crkWorklist, draftCrkEntry, istDate, saveCrkEntry, signCrkEntry, signedCrkForGeneric } from "./crk-formulary";
+import type { CrkReviewRow, CrkWorklist, DraftResult, SignedCrk, SignResult } from "./crk-formulary";
+import type { AppConfig } from "../../kernel/config";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import { FormularyError, formularyHttpStatus } from "./errors";
@@ -81,6 +86,26 @@ const monographBody = z.object({
     crclMin: z.number().int().min(0).max(300).nullable(), crclMax: z.number().int().min(1).max(300).nullable(),
     dose: z.string().trim().min(1).max(300), severity: z.enum(RENAL_SEVERITIES),
   })).max(12).optional(),
+});
+
+/* #618 — the CRK formulary entry on the wire. */
+const crkSource = z.object({
+  ref: z.string().trim().min(1).max(40), kind: z.enum(CRK_SOURCE_KINDS), title: z.string().trim().min(1).max(200),
+  url: z.string().url().max(500).nullable(), asOf: z.string().max(32).nullable(),
+});
+const crkEntryBody = z.object({
+  sources: z.array(crkSource).max(12),
+  fields: z.record(z.enum(CRK_FIELDS), z.array(z.object({ text: z.string().max(600), source: z.string().min(1).max(40) })).max(20)),
+  combinationNote: z.string().max(400).nullable(),
+});
+const crkDraftBody = z.object({
+  sources: z.array(crkSource.extend({ text: z.string().min(1).max(24_000) })).min(1).max(8),
+  combinationNote: z.string().max(400).nullable().optional(),
+});
+const crkSignBody = z.object({
+  designation: z.string().trim().min(1).max(120),
+  crk: crkEntryBody.optional(),
+  highAlert: z.boolean().optional(),
 });
 
 /** Query flags arrive as strings; never z.coerce.boolean() — it reads "false" as true (§3.19). */
@@ -188,7 +213,10 @@ const interactionPatchBody = z.object({
 
 @Controller("formulary")
 export class FormularyController {
-  constructor(@Inject(DB) private readonly db: Db) {}
+  constructor(
+    @Inject(DB) private readonly db: Db,
+    @Inject(CONFIG) private readonly config: AppConfig,
+  ) {}
 
   @RequirePermission("formulary.read", "hospital")
   @Get("salts")
@@ -509,7 +537,7 @@ export class FormularyController {
   // ─────────────────── the drug monograph (owner 2026-10-02) ───────────────────
 
   /** The curation door's typeahead. ABOVE `monographs/:sctid`, or "generics" would be read as an id. */
-  @RequirePermission("formulary.manage", "hospital", { alsoAdmits: ["formulary.monograph.review"] })
+  @RequirePermission("formulary.manage", "hospital", { alsoAdmits: ["formulary.monograph.review", "formulary.crk.sign"] })
   @Get("monographs/generics")
   async monographGenerics(@Query() query: unknown): Promise<{ items: GenericHit[] }> {
     const q = parsed(medicineSearchQuery, query);
@@ -553,6 +581,80 @@ export class FormularyController {
     try {
       return await withTx(this.db, (tx) => saveMonograph(tx, actor, b));
     } catch (e) { toHttp(e); }
+  }
+
+  /*
+   * ═══ #618 / #884 / DECISION 0053 — THE CRK FORMULARY, ITS OWN DOOR ═══
+   *
+   * The CRK entry has its own row and state (`formulary_crk_entries`): nothing here touches the pharmacy's
+   * monograph above, and nothing there touches this. Readers get the LIVE signed version only.
+   */
+
+  /** The reviewers' worklist and whether a drafting model is set. ABOVE `crk/:sctid`. */
+  @RequirePermission("formulary.crk.sign", "hospital", { alsoAdmits: ["formulary.manage"] })
+  @Get("crk/worklist")
+  async crkWorklist(): Promise<CrkWorklist & { drafter: { configured: boolean } }> {
+    return { ...(await crkWorklist(this.db, istDate(new Date()))), drafter: { configured: this.drafter().client !== null } };
+  }
+
+  /** What every reader gets: the LIVE signed entry with its label (and `overdue`), or 404 while none is signed. */
+  @RequirePermission("formulary.read", "hospital", { alsoAdmits: ["formulary.crk.sign"] })
+  @Get("crk/:sctid")
+  async signedCrk(@Param("sctid") sctid: string): Promise<SignedCrk> {
+    const row = await signedCrkForGeneric(this.db, sctid);
+    if (row === undefined) throw httpError(404, `no signed CRK entry for ${sctid}`, "unknown_crk_entry");
+    return row;
+  }
+
+  /** The reviewer's door: the live version, the pending one, and the waiting signature. */
+  @RequirePermission("formulary.crk.sign", "hospital", { alsoAdmits: ["formulary.manage"] })
+  @Get("crk/:sctid/review")
+  async crkForReview(@Param("sctid") sctid: string): Promise<CrkReviewRow> {
+    const row = await crkEntryForReview(this.db, sctid);
+    if (row === undefined) throw httpError(404, `no CRK entry for ${sctid}`, "unknown_crk_entry");
+    return row;
+  }
+
+  /**
+   * A model DRAFTS a pending version from the sources given. Public texts only; masked and checked before
+   * they leave. No model set ⇒ 409 `model_not_configured`, and the hand path below still works.
+   */
+  @RequirePermission("formulary.manage", "hospital", { alsoAdmits: ["formulary.crk.sign"] })
+  @Post("crk/:sctid/draft")
+  async draftCrk(@CurrentActor() actor: Actor, @Param("sctid") sctid: string, @Body() body: unknown): Promise<DraftResult> {
+    const b = parsed(crkDraftBody, body);
+    try {
+      return await draftCrkEntry(this.db, actor, { genericSctid: sctid, sources: b.sources, combinationNote: b.combinationNote ?? null }, this.drafter());
+    } catch (e) { toHttp(e); }
+  }
+
+  /** A pending version written or corrected by hand. The live signed version stays live until this is signed. */
+  @RequirePermission("formulary.manage", "hospital", { alsoAdmits: ["formulary.crk.sign"] })
+  @Put("crk/:sctid")
+  async saveCrk(@CurrentActor() actor: Actor, @Param("sctid") sctid: string, @Body() body: unknown): Promise<{ entryId: string }> {
+    const b = parsed(crkEntryBody, body);
+    try {
+      return await withTx(this.db, (tx) => saveCrkEntry(tx, actor, sctid, b));
+    } catch (e) { toHttp(e); }
+  }
+
+  /** The Pharmacology signature: makes the pending version live, or (#884) renews the live one. */
+  @RequirePermission("formulary.crk.sign", "hospital")
+  @Post("crk/entries/:id/sign")
+  async signCrk(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<SignResult> {
+    const b = parsed(crkSignBody, body);
+    try {
+      return await withTx(this.db, (tx) => signCrkEntry(tx, actor, id, b));
+    } catch (e) { toHttp(e); }
+  }
+
+  private drafter(): { client: ReturnType<typeof openAiCompatibleClient>; id: string | null } {
+    const cfg = this.config.formularyDraft;
+    if (cfg.model === null) return { client: null, id: null };
+    const client = openAiCompatibleClient({
+      baseUrl: cfg.baseUrl, apiKey: openAiKeyFromFile(this.config.openaiKeyFile), model: cfg.model, timeoutMs: cfg.timeoutMs,
+    });
+    return { client, id: cfg.model };
   }
 
   /** The physician's act (owner 2026-10-02): the pharmacy writes, `formulary.monograph.review` reviews. */

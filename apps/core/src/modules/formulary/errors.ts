@@ -87,14 +87,27 @@ export type FormularyErrorCode =
   | "unknown_monograph"
   | "invalid_monograph"
   | "monograph_same_actor"
-  | "monograph_already_reviewed";
+  | "monograph_already_reviewed"
+  // #618 / decision 0053 — the CRK formulary: drafted by a model, signed by Pharmacology.
+  /** No drafting model is set (`FORMULARY_DRAFT_MODEL`) or its key is missing. Writing and signing by hand still work. */
+  | "model_not_configured"
+  /** The model was asked and gave nothing usable (timeout, refusal, unparseable). Nothing was written. */
+  | "draft_failed"
+  /** A CRK entry that breaks the shape: an unknown field, a statement without one of the entry's own sources. */
+  | "invalid_crk"
+  /** No CRK entry with that id. */
+  | "unknown_crk_entry"
+  /** A renewal was asked before the entry's renewal window opens (30 days before its due date). */
+  | "crk_not_due"
+  /** Sign was asked of an entry with nothing to sign: no pending draft, and a live version not yet due for renewal. */
+  | "crk_nothing_to_sign";
 
 const NOT_FOUND_CODES = new Set<FormularyErrorCode>([
   "unknown_salt", "unknown_medicine", "unknown_interaction", "unknown_substance", "unknown_proposal",
-  "unknown_generic", "unknown_monograph",
+  "unknown_generic", "unknown_monograph", "unknown_crk_entry",
 ]);
 /** A request this module could not have served whatever the database held. */
-const BAD_REQUEST_CODES = new Set<FormularyErrorCode>(["too_many_ids", "invalid_adoption", "invalid_allergy_class", "invalid_monograph"]);
+const BAD_REQUEST_CODES = new Set<FormularyErrorCode>(["too_many_ids", "invalid_adoption", "invalid_allergy_class", "invalid_monograph", "invalid_crk"]);
 /** The caller is the wrong KIND of actor for the act, whatever it holds. */
 const FORBIDDEN_CODES = new Set<FormularyErrorCode>(["attester_not_user", "monograph_same_actor"]);
 
