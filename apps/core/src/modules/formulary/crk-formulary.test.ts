@@ -7,7 +7,7 @@ import { registerItem } from "../materials";
 import { FormularyError } from "./errors";
 import { addMedicine, addSalt } from "./masters";
 import { getMonograph, renalDoseFor, reviewMonograph, saveMonograph } from "./monographs";
-import { crkEntryForReview, crkLabel, crkWorklist, draftCrkEntry, isOverdue, sanitiseModelDraft, saveCrkEntry, signCrkEntry, signedCrkForGeneric } from "./crk-formulary";
+import { crkEntryForReview, crkLabel, crkWorklist, draftCrkEntry, isOverdue, sanitiseModelDraft, saveCrkEntry, signCrkEntry, signedCrkForGeneric, signedCrkForMedicines } from "./crk-formulary";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { CrkEntry } from "../../kernel/db/schema";
@@ -351,6 +351,27 @@ describe("CRK formulary — drafted by a model, signed by Pharmacology", () => {
     await withTx(db, (tx) => saveMonograph(tx, PHARMACIST, { genericSctid: SCTID, sourceVersion: "1.26" }));
     expect(await live()).toEqual(ENTRY);
     expect(await entryRow()).toMatchObject({ version: 1, draftCrk: null });
+  });
+
+  it("#882: a doctor's medicine reads the LIVE entry with its label; nothing while unsigned; the live one while a draft waits", async () => {
+    const medicineId = await stockedHighAlert();
+    const { entryId } = await save();
+    expect(await signedCrkForMedicines(db, [medicineId])).toEqual([]);
+    await sign(entryId, PROF_A);
+    expect(await signedCrkForMedicines(db, [medicineId])).toEqual([]);
+    await sign(entryId, PROF_B);
+    const [read] = await signedCrkForMedicines(db, [medicineId, medicineId]);
+    expect(read).toMatchObject({ medicineId, genericSctid: SCTID, highAlert: true, designation: "Professor, Pharmacology", version: 1 });
+    expect(read!.label).toMatch(/^CRK Medical College formulary · reviewed by .+, \d{4}-\d{2}-\d{2}$/);
+    expect(read!.crk).toEqual(ENTRY);
+    expect(Object.keys(read!)).not.toContain("draftUsage");
+    expect(Object.keys(read!)).not.toContain("draftCrk");
+    await save(CHANGED);
+    expect((await signedCrkForMedicines(db, [medicineId]))[0]?.crk).toEqual(ENTRY);
+    // #884 — past its due date the doctor still reads it, flagged overdue
+    const due = (await entryRow()).reviewDueOn!;
+    expect((await signedCrkForMedicines(db, [medicineId], due))[0]?.overdue).toBe(false);
+    expect((await signedCrkForMedicines(db, [medicineId], "2999-01-01"))[0]?.overdue).toBe(true);
   });
 
   it("two first drafts of one generic at the same time make one entry, and neither fails", async () => {
