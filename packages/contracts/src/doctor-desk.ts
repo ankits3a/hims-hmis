@@ -155,3 +155,42 @@ export type WireTower = {
 };
 
 export type WireBriefs = { briefs: WireBrief[] };
+
+/* ═══ DD-0.8 — the OPD desk (OpdDesk.dc.html) ═══ */
+
+/** "12 seen in 92 min · 7.7 min each · at this pace the line ends 13:25": the queue's facts, divided. */
+export type WireOpdPace = { seen: number; sinceMinutes: number | null; eachMinutes: number | null; endsAt: string | null };
+
+export type WireOpdDesk = {
+  at: string;
+  istDate: string;
+  you: WireTower["you"];
+  unit: WireTower["unit"];
+  /** My OPD line today; null when I have no session (the screen then says so). */
+  line: WireDayLine | null;
+  pace: WireOpdPace;
+  /** The unit's other doctors in OPD today, with their waiting. */
+  colleagues: WireDayLine[];
+  /** OPD-only "Waiting on you": unfinished visits, reports to open, criticals (gone home flagged). */
+  waitingOn: WireAttentionRow[];
+};
+
+/** The NEXT token card: what four desks already entered, in the order the doctor asks for it. No suggestion, no money. */
+export type WireNextCard = {
+  encounterId: string;
+  visitNo: string;
+  visitType: string;
+  patient: { id: string; uhid: string | null; name: string | null; restricted: boolean; ageYears: number | null; sex: string | null };
+  /** 1 = first visit; 3 = third visit. */
+  ordinal: number;
+  complaint: null | { text: string; byName: string | null; at: string | null };
+  vitals: null | {
+    recordedAt: string; byName: string | null; today: boolean;
+    sbp: number | null; dbp: number | null; pulse: number | null; weightKg: number | null; glucoseMgDl: number | null; spo2: number | null;
+  };
+  allergies: string[];
+  /** The IST date of the patient's previous visit (with this doctor if any, else anyone), or null on a first visit. */
+  lastSeen: string | null;
+  since: { analyte: string; value: string | null; unit: string | null; flag: string | null; previous: string | null; at: string }[];
+  lastRx: null | { issuedAt: string; lines: { drug: string; dose: string; frequency: string }[] };
+};

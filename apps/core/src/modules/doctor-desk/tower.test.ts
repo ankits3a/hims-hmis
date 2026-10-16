@@ -4,7 +4,7 @@ import type { Actor } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { seedConfirmedUnits } from "../../../test/helpers/units";
 import {
-  alerts, doctorDeskBriefs, labAnalytes, labCriticalCalls, labResults, opdDepartments, opdDoctors,
+  alerts, doctorDeskBriefs, labAnalytes, opdPrescriptions, opdVitals, patientAllergies, phiAccessLog, labCriticalCalls, labResults, opdDepartments, opdDoctors,
   opdEncounters, opdQueueEntries, opdQueueSessions, orderItems, orders, patients, registrationConfig,
   rosterTeamMemberships, services, users,
 } from "../../kernel/db/schema";
@@ -13,6 +13,7 @@ import { towerView } from "./tower";
 import { nudge } from "./nudge";
 import { listBriefs, markBriefSeen } from "./briefs";
 import { DoctorDeskError } from "./errors";
+import { nextCard, opdDeskView, paceOf } from "./opd-desk";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -272,5 +273,67 @@ describe("doctor-desk — the Tower (DD-0)", () => {
     const t = await towerView(db, actor(P.SR), AT);
     expect(t.brief).not.toBeNull();
     expect(JSON.stringify(t)).not.toMatch(/fee|paid|paise|price|bypass|payer|pmjay|₹|rupee|invoice|bill/i);
+  });
+
+  /* ═══ DD-0.8 — the OPD desk ═══ */
+
+  it("the OPD desk's pace is the queue's facts divided; colleagues are the unit's other doctors in OPD; Waiting on you is OPD-only", async () => {
+    const sessionId = newId();
+    await db.insert(opdQueueSessions).values({ id: sessionId, doctorId: doctorOf[P.SR]!, serviceDate: TODAY, status: "in" });
+    const rows: [string, Date | null, Date | null][] = [["done", null, min(-60)], ["done", null, min(-30)], ["waiting", min(-20), null], ["waiting", min(-5), null]];
+    for (const [i, [status, eligibleAt, startedAt]] of rows.entries()) {
+      const e = await encounter(P.SR, patientA, TODAY, status === "done" ? "completed" : "waiting");
+      if (startedAt !== null) await db.update(opdEncounters).set({ consultStartedAt: startedAt }).where(eq(opdEncounters.id, e.id));
+      await db.insert(opdQueueEntries).values({ id: newId(), seq: i + 1, sessionId, encounterId: e.id, tokenNo: i + 1, kind: "walk_in", status, eligibleAt });
+    }
+    const jrSession = newId();
+    await db.insert(opdQueueSessions).values({ id: jrSession, doctorId: doctorOf[P.JR]!, serviceDate: TODAY, status: "in" });
+    const old = await encounter(P.SR, patientB, "2026-10-05", "in_consultation");
+    await labResult(P.SR, patientB, old.visitNo, { delta: true });
+
+    const d = await opdDeskView(db, actor(P.SR), AT);
+    expect(d.line).toMatchObject({ booked: 4, seen: 2, waiting: 2 });
+    expect(d.pace).toEqual({ seen: 2, sinceMinutes: 60, eachMinutes: 30, endsAt: min(60).toISOString() });
+    expect(d.colleagues.map((c) => c.userId)).toEqual([P.JR]);
+    expect(d.waitingOn.map((r) => r.kind)).toEqual(["visit_open"]); // the delta is the NEXT card's, not this list's
+    expect(JSON.stringify(d)).not.toMatch(/\bfees?\b|\bpaid\b|paise|price|bypass|payer|₹|invoice|\bbill/i);
+  });
+
+  it("pace says nothing it cannot know: no start, no 'each'; nobody waiting, no end", () => {
+    expect(paceOf(0, null, 3, AT)).toEqual({ seen: 0, sinceMinutes: null, eachMinutes: null, endsAt: null });
+    expect(paceOf(0, min(-10), 3, AT)).toEqual({ seen: 0, sinceMinutes: 10, eachMinutes: null, endsAt: null });
+    expect(paceOf(4, min(-40), 0, AT)).toEqual({ seen: 4, sinceMinutes: 40, eachMinutes: 10, endsAt: null });
+  });
+
+  it("the NEXT card: the desk's words, today's vitals, allergies, results since I last saw them and my last prescription — and a PHI row", async () => {
+    const before = await encounter(P.SR, patientA, "2026-09-20", "completed");
+    await db.insert(opdPrescriptions).values({
+      id: newId(), encounterId: before.id, patientId: patientA, doctorId: doctorOf[P.SR]!, version: 1,
+      lines: [{ drug: "Metformin 1 g", dose: "1 tab", route: "oral", frequency: "twice a day", durationDays: 30, instructions: null, noSubstitution: false }],
+      document: {}, allergyOverrides: [], issuedBy: P.SR, issuedAt: new Date("2026-09-20T11:00:00+05:30"),
+    });
+    const v = await encounter(P.SR, patientA, TODAY, "waiting");
+    await db.update(opdEncounters).set({ deskComplaint: "Tingling in the feet, two weeks", deskComplaintBy: P.HEAD, deskComplaintAt: min(-40) }).where(eq(opdEncounters.id, v.id));
+    await db.insert(opdVitals).values({ id: newId(), encounterId: v.id, patientId: patientA, sbp: 148, dbp: 92, pulse: 84, band: "adult", dangerFlags: [], recordedBy: P.JR, recordedAt: min(-20) });
+    await db.insert(patientAllergies).values({ id: newId(), patientId: patientA, substance: "Sulfa", source: "consult", recordedBy: "t" });
+    await labResult(P.OUT, patientA, before.visitNo, { at: new Date("2026-10-01T10:00:00+05:30"), value: "8.9" });
+
+    const c = await nextCard(db, actor(P.SR), v.id, AT);
+    expect(c).toMatchObject({
+      encounterId: v.id, ordinal: 2, lastSeen: "2026-09-20", allergies: ["Sulfa"],
+      patient: { id: patientA, name: "Patient Alpha" },
+      complaint: { text: "Tingling in the feet, two weeks", byName: "Dr. Head Two" },
+      vitals: { sbp: 148, dbp: 92, pulse: 84, today: true, byName: "Dr. Junior Two" },
+      lastRx: { lines: [{ drug: "Metformin 1 g", dose: "1 tab", frequency: "twice a day" }] },
+    });
+    expect(c.since.map((s) => [s.analyte, s.value])).toEqual([["Potassium", "8.9000"]]);
+    expect(await db.select().from(phiAccessLog).where(and(eq(phiAccessLog.patientId, patientA), eq(phiAccessLog.surface, "doctor_desk.next")))).toHaveLength(1);
+    expect(JSON.stringify(c)).not.toMatch(/\bfees?\b|\bpaid\b|paise|price|bypass|payer|₹|invoice|\bbill/i);
+  });
+
+  it("another doctor's visit is not on my OPD desk", async () => {
+    const v = await encounter(P.JR, patientA, TODAY, "waiting");
+    const got = await nextCard(db, actor(P.SR), v.id, AT).then(() => "ok", (e: unknown) => (e instanceof DoctorDeskError ? e.code : String(e)));
+    expect(got).toBe("unknown_visit");
   });
 });

@@ -41,6 +41,7 @@ import { RosterMonth } from "./screens/roster-month";
 import { RosterMyDuties } from "./screens/roster-my-duties";
 import { DoctorDeskTower } from "./screens/doctor-desk-tower";
 import { DoctorDeskBriefs } from "./screens/doctor-desk-briefs";
+import { DoctorDeskOpd } from "./screens/doctor-desk-opd";
 import { DoctorLanding } from "./screens/doctor-desk-landing";
 import { RosterEvidence } from "./screens/roster-evidence";
 import { RosterAebas } from "./screens/roster-aebas";
@@ -741,6 +742,13 @@ const doctorDeskRoute = createRoute({
   path: "/doctor-desk",
   staticData: { fullViewport: true },
   component: DoctorDeskTower,
+});
+/** DD-0.8 (#890) — the OPD desk (`OpdDesk.dc.html`): my line, the NEXT card, pace, waiting on me. */
+const doctorDeskOpdRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/doctor-desk/opd",
+  staticData: { fullViewport: true },
+  component: DoctorDeskOpd,
 });
 const doctorDeskBriefsRoute = createRoute({
   getParentRoute: () => authedRoute,
@@ -1963,6 +1971,8 @@ export const router = createRouter({
       // DD-0 (#626) — +2, `/doctor-desk` and `/doctor-desk/briefs`. `caddyfile-parity.test.ts` pins the count.
       doctorDeskRoute,
       doctorDeskBriefsRoute,
+      // DD-0.8 (#890) — +1, `/doctor-desk/opd`.
+      doctorDeskOpdRoute,
     ]),
   ]),
 });

@@ -152,11 +152,11 @@ describe("Doctor Desk Tower (DD-0)", () => {
     const menu = await screen.findByTestId("desk-menu");
     await waitFor(() => expect(within(menu).getByTestId("desk-menu-dashboard")).toHaveAttribute("aria-current", "page"));
     const hrefs = within(menu).getAllByRole("link").map((a) => a.getAttribute("href"));
-    expect(hrefs).toEqual(["/doctor-desk", "/opd/consult", "/roster/my-duties", "/roster/month", "/roster/on-now", "/doctor-desk/briefs"]);
+    expect(hrefs).toEqual(["/doctor-desk", "/doctor-desk/opd", "/roster/my-duties", "/roster/month", "/roster/on-now", "/doctor-desk/briefs"]);
     expect(within(menu).getByTestId("desk-menu-aiBriefs-n")).toHaveTextContent("2");
     expect(menu).toHaveTextContent("CRKMEDICAL COLLEGE & HOSPITAL");
     const quick = screen.getByTestId("dd-quick").querySelectorAll("a");
-    expect([...quick].map((a) => a.getAttribute("href"))).toEqual(["/opd/consult", "/roster/my-duties", "/roster/on-now", "/doctor-desk/briefs"]);
+    expect([...quick].map((a) => a.getAttribute("href"))).toEqual(["/doctor-desk/opd", "/roster/my-duties", "/roster/on-now", "/doctor-desk/briefs"]);
   });
 
   it("shows no money: no paid, unpaid, fee or rupee word anywhere on the Tower (decision 0058)", async () => {

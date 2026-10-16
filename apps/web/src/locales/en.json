@@ -14981,6 +14981,78 @@
     }
   },
   "doctorDesk": {
+    "opd": {
+      "visitType": {
+        "new": "New",
+        "revisit": "Revisit",
+        "renewal": "Renewal"
+      },
+      "state": {
+        "waiting_vitals": "vitals pending",
+        "waiting": "vitals done",
+        "called": "called",
+        "in_consult": "with you"
+      },
+      "reEntry": "back with reports",
+      "noSession": "no session today",
+      "noSessionLong": "You have no OPD session today. Your line appears here when the desk opens one.",
+      "session": {
+        "not_started": "not started",
+        "in": "In",
+        "out": "Out",
+        "closed": "Closed"
+      },
+      "sessionLabel": "Your OPD session",
+      "askPlaceholder": "\"show his last HbA1c and kidney function\"",
+      "notDoctor": "You are not set up as an OPD doctor, so there is no line to show.",
+      "nobody": "Nobody waiting",
+      "call": "Call token {{token}} ⏎",
+      "lineEmpty": "Nobody is in your line right now.",
+      "line": "Your line",
+      "lineSum": "{{seen}} seen · {{waiting}} waiting",
+      "longest": "longest wait {{span}}",
+      "withYou": "with you",
+      "withYouTag": "WITH YOU · TOKEN {{token}}",
+      "nextTag": "NEXT · TOKEN {{token}}",
+      "sex": {
+        "female": "F",
+        "male": "M",
+        "other": "O",
+        "unknown": ""
+      },
+      "firstVisitShort": "first visit",
+      "visitN": "visit {{n}}",
+      "allergy": "Allergy: {{list}}",
+      "why": "Why they came · as told at the desk",
+      "whyNone": "The desk wrote no complaint.",
+      "whyBy": "Typed by {{by}} at {{at}} · their words, not a summary",
+      "theDesk": "the desk",
+      "v": {
+        "pulse": "Pulse",
+        "weight": "Weight",
+        "sugar": "Sugar"
+      },
+      "vitalsBy": "Bay One, {{at}}, {{by}}",
+      "vitalsOld": "Last vitals on file: {{at}}, {{by}} — none taken today",
+      "noVitals": "No vitals on file.",
+      "firstVisit": "First visit — nothing to compare",
+      "since": "Since you saw them · {{date}}",
+      "sinceNone": "No new result since then.",
+      "labOn": "lab {{at}}",
+      "heIsOn": "On · your last prescription",
+      "noRx": "No prescription of yours on file.",
+      "notSuggestion": "Nothing on this card is a suggestion. It is what the desks already entered, in order.",
+      "open": "Open consultation →",
+      "pace": "YOUR PACE",
+      "paceSeen": "{{seen}} seen in {{span}}",
+      "paceEach": "{{n}} min each",
+      "paceEnds": "at this pace the line ends {{at}}",
+      "paceNone": "No consultation started yet today.",
+      "colleague": "{{name}} has {{n}} waiting",
+      "waiting": "Waiting on you",
+      "waitingSub": "OPD only",
+      "waitingNone": "Nothing from the OPD is waiting on you."
+    },
     "contextOwn": "Doctor Desk · your own items",
     "loading": "Loading…",
     "show": "Show",
@@ -15156,6 +15228,7 @@
       }
     },
     "refusal": {
+      "unknown_visit": "That visit is not in your OPD.",
       "not_unit_member": "Only a member of the unit can nudge.",
       "already_nudged": "You have already nudged this.",
       "own_row": "This one is yours.",

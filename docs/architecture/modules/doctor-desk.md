@@ -13,7 +13,7 @@ Source: `apps/core/src/modules/doctor-desk/`
 
 - **Depends on modules:** `lab`, `opd`, `patients`, `radiology`, `roster`
 - **Used by modules:** —
-- **Kernel used:** `alerts`, `auth`, `db`, `desk`, `modules`, `tokens`
+- **Kernel used:** `alerts`, `auth`, `db`, `desk`, `modules`, `phi`, `tokens`
 
 ## Public API (`index.ts`), by declaring file
 
@@ -37,8 +37,8 @@ Source: `apps/core/src/modules/doctor-desk/`
 
 Foreign keys into: `auth`
 
-## HTTP routes (5)
+## HTTP routes (7)
 
-- `doctor-desk.controller.ts` — 5: `/doctor-desk/briefs`, `/doctor-desk/clocks`, `/doctor-desk/landing`, `/doctor-desk/tower`
+- `doctor-desk.controller.ts` — 7: `/doctor-desk/briefs`, `/doctor-desk/clocks`, `/doctor-desk/landing`, `/doctor-desk/opd`, `/doctor-desk/tower`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/doctor-desk`

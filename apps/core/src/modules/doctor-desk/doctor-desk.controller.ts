@@ -1,11 +1,12 @@
 import { Body, Controller, Get, HttpCode, Inject, Param, Post } from "@nestjs/common";
 import { z } from "zod";
-import type { Actor, WireBriefs, WireTower } from "@hmis/contracts";
+import type { Actor, WireBriefs, WireNextCard, WireOpdDesk, WireTower } from "@hmis/contracts";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { parsed } from "../../kernel/desk/http";
 import { toHttp } from "./errors";
 import { towerView } from "./tower";
+import { nextCard, opdDeskView } from "./opd-desk";
 import { nudge } from "./nudge";
 import { listBriefs, markBriefSeen } from "./briefs";
 import { unitOfOn } from "./scope";
@@ -44,6 +45,21 @@ export class DoctorDeskController {
   async nudge(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ nudgeId: string }> {
     const { rowKey } = parsed(nudgeBody, body);
     try { return { nudgeId: (await nudge(this.db, actor, rowKey, new Date())).nudgeId }; } catch (e) { toHttp(e); }
+  }
+
+  /** DD-0.8 — the OPD desk page: my line, pace, the unit's colleagues in OPD, OPD-only "Waiting on you". */
+  @Get("opd")
+  @RequirePermission("opd.consult", "hospital")
+  async opd(@CurrentActor() actor: Actor): Promise<WireOpdDesk> {
+    try { return await opdDeskView(this.db, actor, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  /** DD-0.8 — the NEXT token card for one of MY visits (another doctor's visit is `unknown_visit`). */
+  @Get("opd/next/:encounterId")
+  @RequirePermission("opd.consult", "hospital")
+  async next(@CurrentActor() actor: Actor, @Param("encounterId") encounterId: string): Promise<WireNextCard> {
+    const id = parsed(briefId, encounterId);
+    try { return await nextCard(this.db, actor, id, new Date()); } catch (e) { toHttp(e); }
   }
 
   @Get("briefs")

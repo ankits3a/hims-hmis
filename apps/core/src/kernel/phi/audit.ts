@@ -30,6 +30,8 @@ export type PhiSurface =
    */
   | "patient.documents" | "patient.document.image"
   | "opd.timeline" | "opd.vitals" | "opd.prescriptions" | "opd.visit"
+  /** DD-0.8 (#626) — the Doctor Desk OPD desk's NEXT card: complaint, vitals, allergies, last prescription, labs since. */
+  | "doctor_desk.next"
   /** PLAN 16c T3 — the dispensing counter's read of a dispense (its Rx lines): its own name, so the pharmacy's reads count apart from the consult's. */
   | "pharmacy.dispense"
   /**

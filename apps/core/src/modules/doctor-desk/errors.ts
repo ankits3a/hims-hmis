@@ -11,10 +11,12 @@ export type DoctorDeskErrorCode =
   /** No owed row by that key in the asker's unit now — it was done, or never theirs to see. */
   | "unknown_row"
   /** No brief by that id for this person. */
-  | "unknown_brief";
+  | "unknown_brief"
+  /** No such visit in the asker's OPD (another doctor's visit is not theirs to open here). */
+  | "unknown_visit";
 
 const STATUS: Record<DoctorDeskErrorCode, number> = {
-  not_unit_member: 403, already_nudged: 409, own_row: 400, unknown_row: 404, unknown_brief: 404,
+  not_unit_member: 403, already_nudged: 409, own_row: 400, unknown_row: 404, unknown_brief: 404, unknown_visit: 404,
 };
 
 export class DoctorDeskError extends Error {

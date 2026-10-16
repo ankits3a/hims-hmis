@@ -127,7 +127,7 @@ function Centre({ tower, lang }: { tower: WireTower; lang: string }): React.Reac
 
 /** Quick Actions = only actions whose screen exists (plan DD-0.1, D-B). */
 const QUICK = [
-  { key: "opd", to: "/opd/consult", label: "doctorDesk.item.myOpd", permission: "opd.consult", icon: "M4 1.5h5.5l3 3v10H4zM9.5 1.5v3h3M6 8h4.5M6 10.5h4.5" },
+  { key: "opd", to: "/doctor-desk/opd", label: "doctorDesk.item.myOpd", permission: "opd.consult", icon: "M4 1.5h5.5l3 3v10H4zM9.5 1.5v3h3M6 8h4.5M6 10.5h4.5" },
   { key: "duties", to: "/roster/my-duties", label: "doctorDesk.item.myDuties", permission: "roster.read", icon: "M2.5 3.5h11v10h-11zM2.5 6.5h11M5.5 2v3M10.5 2v3" },
   { key: "onNow", to: "/roster/on-now", label: "doctorDesk.item.onNow", permission: "roster.read", icon: "M6 7.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM1.5 13.5c.4-2.4 2.2-3.5 4.5-3.5s4.1 1.1 4.5 3.5M11 7.3a2.2 2.2 0 000-4.4M12 10.2c1.4.4 2.3 1.5 2.5 3.3" },
   { key: "briefs", to: "/doctor-desk/briefs", label: "doctorDesk.item.aiBriefs", permission: "opd.consult", icon: "M8 1.5l1.6 4.9 4.9 1.6-4.9 1.6L8 14.5 6.4 9.6 1.5 8l4.9-1.6z" },

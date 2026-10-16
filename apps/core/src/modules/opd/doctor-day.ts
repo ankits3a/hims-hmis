@@ -1,5 +1,5 @@
-import { and, asc, eq, inArray, lt } from "drizzle-orm";
-import { opdDoctors, opdEncounters, opdQueueEntries, opdQueueSessions } from "../../kernel/db/schema";
+import { and, asc, desc, eq, inArray, lt } from "drizzle-orm";
+import { opdDoctors, opdEncounters, opdPrescriptions, opdQueueEntries, opdQueueSessions } from "../../kernel/db/schema";
 import type { Db, Tx } from "../../kernel/db/client";
 
 /**
@@ -88,4 +88,53 @@ export async function closedVisitNos(exec: Db | Tx, visitNos: readonly string[])
   const rows = await (exec as Db).select({ visitNo: opdEncounters.visitNo }).from(opdEncounters)
     .where(and(inArray(opdEncounters.visitNo, [...new Set(visitNos)]), inArray(opdEncounters.status, ["completed", "abandoned"])));
   return new Set(rows.map((r) => r.visitNo));
+}
+
+/**
+ * DD-0.8 — THE DOCTOR'S PACE TODAY, from the queue's own facts: how many were seen (`done` tokens of
+ * the day) and when the first consultation of the day started. The Desk divides; nothing is guessed.
+ */
+export type DoctorPaceToday = { seen: number; firstStartedAt: Date | null };
+
+export async function doctorPaceToday(exec: Db | Tx, userId: string, serviceDate: string): Promise<DoctorPaceToday> {
+  const rows = await (exec as Db).select({ status: opdQueueEntries.status, startedAt: opdEncounters.consultStartedAt })
+    .from(opdQueueEntries)
+    .innerJoin(opdQueueSessions, eq(opdQueueSessions.id, opdQueueEntries.sessionId))
+    .innerJoin(opdDoctors, eq(opdDoctors.id, opdQueueSessions.doctorId))
+    .innerJoin(opdEncounters, eq(opdEncounters.id, opdQueueEntries.encounterId))
+    .where(and(eq(opdDoctors.userId, userId), eq(opdQueueSessions.serviceDate, serviceDate)));
+  const starts = rows.map((r) => r.startedAt).filter((d): d is Date => d !== null).map((d) => d.getTime());
+  return { seen: rows.filter((r) => r.status === "done").length, firstStartedAt: starts.length === 0 ? null : new Date(Math.min(...starts)) };
+}
+
+/** The visit, if it is this doctor's (`opd_encounters.doctor_id` → `opd_doctors.user_id`), else null. */
+export async function visitOfDoctor(exec: Db | Tx, userId: string, encounterId: string): Promise<null | {
+  id: string; patientId: string; visitNo: string; serviceDate: string; visitType: string;
+  deskComplaint: string | null; deskComplaintBy: string | null; deskComplaintAt: Date | null;
+}> {
+  const row = (await (exec as Db).select({
+    id: opdEncounters.id, patientId: opdEncounters.patientId, visitNo: opdEncounters.visitNo, serviceDate: opdEncounters.serviceDate,
+    visitType: opdEncounters.visitType, deskComplaint: opdEncounters.deskComplaint, deskComplaintBy: opdEncounters.deskComplaintBy,
+    deskComplaintAt: opdEncounters.deskComplaintAt,
+  }).from(opdEncounters).innerJoin(opdDoctors, eq(opdDoctors.id, opdEncounters.doctorId))
+    .where(and(eq(opdEncounters.id, encounterId), eq(opdDoctors.userId, userId))))[0];
+  return row ?? null;
+}
+
+/** The patient's earlier OPD visits (before `serviceDate`), newest first: the ordinal and "since you saw him". */
+export async function earlierVisits(exec: Db | Tx, patientId: string, serviceDate: string): Promise<{ serviceDate: string; doctorUserId: string | null }[]> {
+  return (exec as Db).select({ serviceDate: opdEncounters.serviceDate, doctorUserId: opdDoctors.userId })
+    .from(opdEncounters).leftJoin(opdDoctors, eq(opdDoctors.id, opdEncounters.doctorId))
+    .where(and(eq(opdEncounters.patientId, patientId), eq(opdEncounters.type, "opd"), lt(opdEncounters.serviceDate, serviceDate),
+      inArray(opdEncounters.status, ["completed", "awaiting_results", "in_consultation"])))
+    .orderBy(desc(opdEncounters.serviceDate));
+}
+
+/** "He is on": the last prescription this doctor issued for this patient before `serviceDate`. */
+export async function lastPrescriptionBy(exec: Db | Tx, userId: string, patientId: string, serviceDate: string): Promise<null | { issuedAt: Date; lines: unknown }> {
+  const row = (await (exec as Db).select({ issuedAt: opdPrescriptions.issuedAt, lines: opdPrescriptions.lines })
+    .from(opdPrescriptions).innerJoin(opdEncounters, eq(opdEncounters.id, opdPrescriptions.encounterId))
+    .where(and(eq(opdPrescriptions.patientId, patientId), eq(opdPrescriptions.issuedBy, userId), eq(opdPrescriptions.status, "active"), lt(opdEncounters.serviceDate, serviceDate)))
+    .orderBy(desc(opdPrescriptions.issuedAt)).limit(1))[0];
+  return row ?? null;
 }

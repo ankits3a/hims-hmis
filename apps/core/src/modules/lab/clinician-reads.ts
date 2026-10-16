@@ -79,3 +79,38 @@ export async function deltaResultsForClinician(exec: Db | Tx, userIds: readonly 
   return rows.filter((r) => r.at !== null)
     .map((r) => ({ ...r, at: r.at!, orderingClinicianId: r.orderingClinicianId!, value: valueOf(r) }));
 }
+
+/**
+ * DD-0.8 — "SINCE YOU SAW HIM": the patient's verified results since `since`, the newest per analyte,
+ * with the value it was compared against when the lab's delta check had one. Superseded rows are left
+ * out. Bounded: an OPD card shows a handful.
+ */
+export type PatientResultSince = { analyte: string; value: string | null; unit: string | null; flag: string | null; previous: string | null; verifiedAt: Date };
+export const SINCE_RESULTS_LIMIT = 8;
+
+export async function resultsForPatientSince(exec: Db | Tx, patientId: string, since: Date): Promise<PatientResultSince[]> {
+  const rows = await (exec as Db)
+    .select({
+      analyteId: labResults.analyteId, analyte: labAnalytes.nameEn, valueNumeric: labResults.valueNumeric, valueText: labResults.valueText,
+      valueCoded: labResults.valueCoded, unit: labResults.unit, flag: labResults.flag, prevId: labResults.deltaPrevResultId, verifiedAt: labResults.verifiedAt,
+    })
+    .from(labResults)
+    .innerJoin(labAnalytes, eq(labAnalytes.id, labResults.analyteId))
+    .innerJoin(orderItems, eq(orderItems.id, labResults.orderItemId))
+    .innerJoin(orders, eq(orders.id, orderItems.orderId))
+    .where(and(
+      eq(orders.patientId, patientId), inArray(labResults.verificationStatus, ["verified", "autoverified"]), gte(labResults.verifiedAt, since),
+      sql`not exists (select 1 from lab_results s where s.supersedes_result_id = ${labResults.id})`,
+    ))
+    .orderBy(desc(labResults.verifiedAt));
+  const seen = new Set<string>();
+  const latest = rows.filter((r) => r.verifiedAt !== null && !seen.has(r.analyteId) && (seen.add(r.analyteId), true)).slice(0, SINCE_RESULTS_LIMIT);
+  const prevIds = latest.map((r) => r.prevId).filter((x): x is string => x !== null);
+  const prev = prevIds.length === 0 ? [] : await (exec as Db).select({ id: labResults.id, valueNumeric: labResults.valueNumeric, valueText: labResults.valueText, valueCoded: labResults.valueCoded })
+    .from(labResults).where(inArray(labResults.id, prevIds));
+  const prevById = new Map(prev.map((p) => [p.id, valueOf(p)] as const));
+  return latest.map((r) => ({
+    analyte: r.analyte, value: valueOf(r), unit: r.unit, flag: r.flag,
+    previous: r.prevId === null ? null : prevById.get(r.prevId) ?? null, verifiedAt: r.verifiedAt!,
+  }));
+}

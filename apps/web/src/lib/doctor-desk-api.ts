@@ -1,5 +1,5 @@
 import { api, ApiError } from "./api";
-import type { WireBriefs, WireTower } from "../../../../packages/contracts/src/doctor-desk";
+import type { WireBriefs, WireNextCard, WireOpdDesk, WireTower } from "../../../../packages/contracts/src/doctor-desk";
 
 /**
  * DD-0 (#626) — the wire of `doctor-desk.controller.ts`. The shapes live in
@@ -7,11 +7,13 @@ import type { WireBriefs, WireTower } from "../../../../packages/contracts/src/d
  */
 export type {
   AttentionTab, BriefStage, WireAgentRun, WireAttentionRow, WireBrief, WireBriefFact, WireBriefs, WireDayLine,
-  WireOwedRow, WireScheduleRow, WireTeamMember, WireTower,
+  WireNextCard, WireOpdDesk, WireOwedRow, WireScheduleRow, WireTeamMember, WireTower,
 } from "../../../../packages/contracts/src/doctor-desk";
 
 export const fetchTower = () => api<WireTower>("GET", "/doctor-desk/tower");
 export const fetchLanding = () => api<{ tower: boolean }>("GET", "/doctor-desk/landing");
+export const fetchOpdDesk = () => api<WireOpdDesk>("GET", "/doctor-desk/opd");
+export const fetchNextCard = (encounterId: string) => api<WireNextCard>("GET", `/doctor-desk/opd/next/${encodeURIComponent(encounterId)}`);
 export const fetchBriefs = () => api<WireBriefs>("GET", "/doctor-desk/briefs");
 export const nudgeRow = (rowKey: string) => api<{ nudgeId: string }>("POST", "/doctor-desk/clocks/nudge", { rowKey });
 export const markBriefSeen = (briefId: string) => api<void>("POST", `/doctor-desk/briefs/${encodeURIComponent(briefId)}/seen`);

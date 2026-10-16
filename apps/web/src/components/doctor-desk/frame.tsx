@@ -53,7 +53,8 @@ export const MENU: readonly MenuGroup[] = [
   { key: "desk", label: "doctorDesk.group.desk", items: [
     // DD-0 (#626) — the board's first entry: the Tower.
     { key: "dashboard", to: "/doctor-desk", label: "doctorDesk.item.dashboard", permission: "opd.consult", icon: "grid" },
-    { key: "myOpd", to: "/opd/consult", label: "doctorDesk.item.myOpd", permission: "opd.consult", icon: "doc" },
+    // DD-0.8 (#890) — the board's "My OPD" is the OPD desk (OpdDesk.dc.html); it opens the consult screen.
+    { key: "myOpd", to: "/doctor-desk/opd", label: "doctorDesk.item.myOpd", permission: "opd.consult", icon: "doc" },
     // 20-U U5c — the board's "My Duties", under DOCTOR DESK after My OPD (Main.dc.html's menu).
     { key: "myDuties", to: "/roster/my-duties", label: "doctorDesk.item.myDuties", permission: "roster.read", icon: "cal" },
   ] },
