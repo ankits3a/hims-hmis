@@ -237,9 +237,13 @@ export const erTriageEntries = pgTable(
     recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
     takenAt: timestamp("taken_at", { withTimezone: true }).notNull(),
     provenance: text("provenance").notNull(),
+    /** ER lane 9 (#816): the copilot's proposed ESI level shown on the screen (null when none was shown); a different
+     *  `level` is an override, logged, never questioned for an up-triage. */
+    copilotLevel: integer("copilot_level"),
   },
   (t) => [
     index("er_triage_entries_episode_idx").on(t.episodeId, t.recordedAt),
+    check("er_triage_entries_copilot_level_ck", sql`${t.copilotLevel} is null or ${t.copilotLevel} between 1 and 5`),
     check("er_triage_entries_kind_ck", sql`${t.kind} in ('triage', 're_triage', 'vitals')`),
     check("er_triage_entries_level_ck", sql`(${t.kind} = 'vitals') = (${t.level} is null)`),
   ],

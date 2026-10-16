@@ -3860,6 +3860,43 @@
     },
     "ipdNewOrder": {
       "title": "नए आदेश"
+    },
+    "erCasualtyNow": {
+      "title": "कैजुअल्टी अभी",
+      "inDepartment": "विभाग में",
+      "waitingTriage": "ट्राइएज की प्रतीक्षा",
+      "boarding": "भर्ती की प्रतीक्षा",
+      "expected": "आने वाले"
+    },
+    "erRetriageDue": {
+      "title": "दोबारा ट्राइएज बाकी"
+    },
+    "erDoctorOverdue": {
+      "title": "ईआर डॉक्टर की प्रतीक्षा"
+    },
+    "erCallUnanswered": {
+      "title": "विशेषज्ञ कॉल का जवाब नहीं"
+    },
+    "erResultReady": {
+      "title": "रिपोर्ट तैयार"
+    },
+    "erCriticalResult": {
+      "title": "क्रिटिकल रिपोर्ट"
+    },
+    "erBoardingLong": {
+      "title": "ईआर में भर्ती की प्रतीक्षा"
+    },
+    "erMlcIntimationDue": {
+      "title": "एमएलसी: पुलिस सूचना बाकी"
+    },
+    "erMlcCountersignDue": {
+      "title": "एमएलसी: काउंटरसाइन बाकी"
+    },
+    "erPreAlert": {
+      "title": "ईआर में आने वाले"
+    },
+    "erLwbsRisk": {
+      "title": "लंबी प्रतीक्षा: बिना दिखाए जा सकते हैं"
     }
   },
   "report": {
@@ -11151,6 +11188,10 @@
       "reminderTooLong": "80 अक्षरों से कम रखें।",
       "reminderLimit": "आपके 20 रिमाइंडर हैं। पहले एक हटाएँ।",
       "reminderSet": "रिमाइंडर लग गया, {{when}}।",
+      "erCasualtyNow": "कैजुअल्टी अभी: विभाग में {{inDepartment}}, ट्राइएज की प्रतीक्षा में {{waitingTriage}} (सबसे लंबी {{longestWait}} मिनट), भर्ती की प्रतीक्षा में {{boarding}}, आने वाले {{expected}}।",
+      "erCasualtyQuiet": "कैजुअल्टी अभी खाली है, और कोई एम्बुलेंस आने वाली नहीं है।",
+      "erMlcDue": "एमएलसी बाकी: {{intimations}} पुलिस सूचना और {{countersigns}} काउंटरसाइन — {{overdue}} समय से बाहर। एमएलसी डेस्क खोलें।",
+      "erMlcNoneDue": "कोई एमएलसी सूचना या काउंटरसाइन बाकी नहीं है।",
       "notPermitted": "आपके पास इसकी अनुमति नहीं है। ज़रूरत हो तो रोल देखने वाले से कहें।",
       "needSubject": "किस मरीज़ का? UHID या पर्ची पर लिखा विज़िट नंबर बताइए।",
       "failed": "अभी जवाब नहीं मिल पाया। इसके लिए स्क्रीन देख लीजिए।",

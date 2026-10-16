@@ -87,6 +87,11 @@ const triageShape = {
   vitals: ErVitalsSchema.optional(),
   /** Pregnant or up to 42 days after delivery: MEOWS instead of NEWS2. */
   obstetric: z.boolean().optional(),
+  /**
+   * Lane 9 (#816): the level the copilot's ESI proposal showed on the screen, when one was shown. Kept on the entry so a
+   * pick other than the proposal is logged as an override (spec §6 edge 2); it never asks for a reason by itself.
+   */
+  copilotLevel: ErEsiLevelSchema.optional(),
 };
 
 const TriageOutput = z.strictObject({

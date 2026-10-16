@@ -90,7 +90,7 @@ async function takeFor(tx: Tx, departmentCode: string | undefined, gate: Date): 
   return { departmentCode: dept.code, departmentId: dept.id, teamId: take.teamId, source: take.source };
 }
 
-type Common = { level: ErEsiLevel; decision?: ErEsiDecision; reason?: string; vitals?: ErVitals; obstetric?: boolean };
+type Common = { level: ErEsiLevel; decision?: ErEsiDecision; reason?: string; vitals?: ErVitals; obstetric?: boolean; copilotLevel?: ErEsiLevel };
 
 /** The shared triage / re-triage write: the entry row, the episode mirror, the clock and the task. */
 async function writeTriage(
@@ -105,6 +105,8 @@ async function writeTriage(
     decision: input.decision ?? null, reason: input.reason ?? null, vitals: input.vitals ?? null,
     ewsKind: ews?.kind ?? null, ewsValue: ews?.value ?? null, ewsBand: ews?.band ?? null,
     recordedBy: actor.id, recordedAt: at, takenAt: at, provenance: provenanceOf(actor),
+    // Lane 9 (#816): the copilot's proposal as shown; a different level is the override the entry logs (spec §6 edge 2).
+    copilotLevel: input.copilotLevel ?? null,
   });
   await closeRetriageTask(tx, e, kind === "triage" ? "triaged" : "re-triaged", at);
   return { algorithm, down, retriageAt };
