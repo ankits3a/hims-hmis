@@ -312,3 +312,29 @@ export type WireMyRatings = {
 export function goodShare(good: number, total: number, min: number): number | null {
   return total < min || total === 0 ? null : Math.round((good * 100) / total);
 }
+
+/* ═══ DD-report v0 — the unit report at 08:00 IST (plan DD-R.1/R.2, D8, D-G) ═══ */
+
+/** The report's instant: 08:00 IST, the take boundary. It covers the 24 h that ended then. */
+export const UNIT_REPORT_IST = "08:00";
+
+/**
+ * One unit's report for one take day. COUNTS ONLY: no patient, no UHID, no person's name (D8). A median
+ * is null below its floor — the unit's own needs `RATING_MIN_OWN` acts; the department's and the
+ * hospital's need `RATING_MIN_POOL_PEOPLE` units contributing and `RATING_MIN_POOL_RATINGS` acts.
+ */
+export type WireUnitReport = {
+  id: string;
+  teamId: string; unitName: string; short: string; departmentName: string;
+  /** The IST date of the 08:00 the report was made at. */
+  reportDate: string;
+  windowFrom: string; windowTo: string; sentAt: string;
+  critical: { acts: number; median: number | null; over: number; longest: number | null; overMinutes: number };
+  compare: { department: number | null; hospital: number | null };
+  /** OPD on the IST day before the report date. */
+  opd: { date: string; seen: number; doctors: number };
+  /** What the unit owed at 08:00, and how much of it was past its time; criticals still without an act. */
+  owed: { open: number; past: number; criticalsWithoutAct: number };
+};
+
+export type WireUnitReports = { scope: WireDeskScope; reports: WireUnitReport[] };

@@ -29,6 +29,10 @@ Source: `apps/core/src/modules/doctor-desk/`
   - `doctorDeskManifest: ModuleManifest`
 - `owed.ts`
   - `owedByUnit(exec: Db | Tx, members: readonly { userId: string; name: string }[], at: Date): Promise<OwedRowInternal[]>`
+- `report.ts`
+  - `REPORT_AGENT`
+  - `reportDateAt(now: Date): string`
+  - `sendUnitReports(db: Db, now: Date, deps: ReportDeps = { raise: raiseNotice }): Promise<{ sent: number; failed: number }>`
 - `tower.ts`
   - `towerView(db: Db, actor: Actor, at: Date): Promise<WireTower>`
 - `unit-board.ts`
@@ -42,8 +46,8 @@ Source: `apps/core/src/modules/doctor-desk/`
 
 Foreign keys into: `auth`
 
-## HTTP routes (15)
+## HTTP routes (16)
 
-- `doctor-desk.controller.ts` — 15: `/doctor-desk/acts`, `/doctor-desk/briefs`, `/doctor-desk/clocks`, `/doctor-desk/landing`, `/doctor-desk/now`, `/doctor-desk/opd`, `/doctor-desk/professor`, `/doctor-desk/ratings`, `/doctor-desk/tower`, `/doctor-desk/unit`
+- `doctor-desk.controller.ts` — 16: `/doctor-desk/acts`, `/doctor-desk/briefs`, `/doctor-desk/clocks`, `/doctor-desk/landing`, `/doctor-desk/now`, `/doctor-desk/opd`, `/doctor-desk/professor`, `/doctor-desk/ratings`, `/doctor-desk/reports`, `/doctor-desk/tower`, `/doctor-desk/unit`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/doctor-desk`

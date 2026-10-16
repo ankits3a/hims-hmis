@@ -47,7 +47,9 @@ const ICON: Record<IconKey, string> = {
 export type DeskMenuKey =
   | "dashboard" | "myOpd" | "myDuties" | "roster" | "onNow" | "evidence" | "aebas" | "aiBriefs"
   // DD-1 — the Unit board, the two phone boards, my work ratings.
-  | "unitBoard" | "now" | "professor" | "myRatings";
+  | "unitBoard" | "now" | "professor" | "myRatings"
+  // DD-report v0 — the unit report.
+  | "unitReport";
 type MenuItem = { key: DeskMenuKey; to: string; label: string; permission: string; icon: IconKey };
 type MenuGroup = { key: string; label: string; items: MenuItem[] };
 
@@ -69,6 +71,8 @@ export const MENU: readonly MenuGroup[] = [
   { key: "unit", label: "doctorDesk.group.unit", items: [
     // DD-1.2 — the Unit board (UnitBoard.dc.html): what the unit owes, and your people this week.
     { key: "unitBoard", to: "/doctor-desk/unit", label: "doctorDesk.item.unitBoard", permission: "opd.consult", icon: "grid" },
+    // DD-report v0 — the 08:00 unit report (UnitBoard.dc.html's right column).
+    { key: "unitReport", to: "/doctor-desk/report", label: "doctorDesk.item.unitReport", permission: "opd.consult", icon: "doc" },
     { key: "roster", to: "/roster/month", label: "doctorDesk.item.roster", permission: "roster.read", icon: "cal" },
     { key: "onNow", to: "/roster/on-now", label: "doctorDesk.item.onNow", permission: "roster.read", icon: "phone" },
   ] },

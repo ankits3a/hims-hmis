@@ -15221,10 +15221,13 @@
       "failed_one": "{{count}} failed",
       "failed_other": "{{count}} failed",
       "agent": {
-        "login_brief": "Login brief"
+        "login_brief": "Login brief",
+        "unit_report": "Unit report"
       },
       "did": {
-        "briefBuilt": "Prepared your login brief · {{lines}} patient lines"
+        "briefBuilt": "Prepared your login brief · {{lines}} patient lines",
+        "reportSent": "the {{reportDate}} report was sent",
+        "reportFailed": "the {{reportDate}} report could not be made"
       }
     },
     "refusal": {
@@ -15292,7 +15295,8 @@
       "now": "Now (phone)",
       "professor": "Sign & Rate (phone)",
       "myRatings": "My Ratings",
-      "unitBoard": "Unit Board"
+      "unitBoard": "Unit Board",
+      "unitReport": "Unit Report"
     },
     "menu": "Menu",
     "showMenu": "Show the menu",
@@ -15478,6 +15482,34 @@
       "neutral": "Averages are anonymous and appear once enough work is rated; yours appears after {{n}} ratings. Ratings are a senior's word for your logbook, not a rank.",
       "recent": "Recent words",
       "none": "No work of yours has been rated this month."
+    },
+    "report": {
+      "context": "Doctor Desk · Unit report",
+      "none": "No unit report for you yet. It is sent at 08:00 to the unit head; the HOD and the Medical Superintendent read their units'.",
+      "title": "Unit report · {{unit}} · {{date}}",
+      "sent": "sent {{at}} · nobody typed it",
+      "window": "The 24 hours from {{from}} to {{to}} IST.",
+      "critical": "Critical values, time from the result to a doctor acting",
+      "noActs": "none",
+      "acts_one": "{{count}} act",
+      "acts_other": "{{count}} acts",
+      "median": "{{span}} median",
+      "tooFew": "too few to average",
+      "over_one": "{{count}} over {{n}} min",
+      "over_other": "{{count}} over {{n}} min",
+      "longest": "The longest from result to act",
+      "compare": "Department and hospital median",
+      "compareNote": "an average shows once enough units and acts count",
+      "noAct": "Critical results still waiting for an act at 08:00",
+      "owed": "Items the unit owed at 08:00",
+      "past_one": "{{count}} past its time",
+      "past_other": "{{count}} past their time",
+      "opd": "OPD on {{date}}",
+      "seen": "{{n}} seen",
+      "doctors_one": "{{count}} doctor with a session",
+      "doctors_other": "{{count}} doctors with a session",
+      "foot": "Daily to the unit head · counts only, no patient or person named",
+      "print": "Print"
     }
   },
   "roster": {

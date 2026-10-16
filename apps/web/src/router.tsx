@@ -47,6 +47,7 @@ import { DoctorDeskUnit } from "./screens/doctor-desk-unit";
 import { DoctorDeskNow } from "./screens/doctor-desk-now";
 import { DoctorDeskProfessor } from "./screens/doctor-desk-professor";
 import { DoctorDeskRatings } from "./screens/doctor-desk-ratings";
+import { DoctorDeskReport } from "./screens/doctor-desk-report";
 import { RosterEvidence } from "./screens/roster-evidence";
 import { RosterAebas } from "./screens/roster-aebas";
 import { OpdAdmin } from "./screens/opd-admin";
@@ -769,6 +770,10 @@ const doctorDeskProfessorRoute = createRoute({
 /** DD-1.7 — my work ratings and my PG logbook. */
 const doctorDeskRatingsRoute = createRoute({
   getParentRoute: () => authedRoute, path: "/doctor-desk/ratings", staticData: { fullViewport: true }, component: DoctorDeskRatings,
+});
+/** DD-report v0 — the 08:00 unit report. */
+const doctorDeskReportRoute = createRoute({
+  getParentRoute: () => authedRoute, path: "/doctor-desk/report", staticData: { fullViewport: true }, component: DoctorDeskReport,
 });
 const doctorDeskBriefsRoute = createRoute({
   getParentRoute: () => authedRoute,
@@ -1998,6 +2003,8 @@ export const router = createRouter({
       doctorDeskNowRoute,
       doctorDeskProfessorRoute,
       doctorDeskRatingsRoute,
+      // DD-report v0 — +1, `/doctor-desk/report`.
+      doctorDeskReportRoute,
     ]),
   ]),
 });

@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, Inject, Param, Post, Res } from "@nest
 import type { Response } from "express";
 import { z } from "zod";
 import { ACT_CHOICES, ACT_NOTE_MAX, RATING_REASON_MAX, WORK_RATINGS } from "@hmis/contracts";
-import type { Actor, WireBriefs, WireMyRatings, WireNextCard, WireNow, WireOpdDesk, WireProfessor, WireTower, WireUnitBoard } from "@hmis/contracts";
+import type { Actor, WireBriefs, WireMyRatings, WireUnitReports, WireNextCard, WireNow, WireOpdDesk, WireProfessor, WireTower, WireUnitBoard } from "@hmis/contracts";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { parsed } from "../../kernel/desk/http";
@@ -17,6 +17,7 @@ import { moveRow } from "./moves";
 import { recordAct } from "./acts";
 import { nowView, professorView } from "./phone";
 import { logbookCsv, myRatings, rateWork } from "./ratings";
+import { reportsFor } from "./report";
 import { istDateOfInstant } from "../roster";
 import type { Db } from "../../kernel/db/client";
 
@@ -153,5 +154,12 @@ export class DoctorDeskController {
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", 'attachment; filename="pg-logbook.csv"');
     return logbookCsv(this.db, actor);
+  }
+
+  /** DD-report v0 — the 08:00 unit reports the asker may read (head: unit; HOD: department; MS: all), last 14 days. */
+  @Get("reports")
+  @RequirePermission("opd.consult", "hospital")
+  async reports(@CurrentActor() actor: Actor): Promise<WireUnitReports> {
+    try { return await reportsFor(this.db, actor, new Date()); } catch (e) { toHttp(e); }
   }
 }

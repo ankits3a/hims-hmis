@@ -1,6 +1,6 @@
 import { api, ApiError } from "./api";
 import type {
-  ActChoice, WireBriefs, WireMyRatings, WireNextCard, WireNow, WireOpdDesk, WireProfessor, WireTower, WireUnitBoard, WorkRating,
+  ActChoice, WireBriefs, WireMyRatings, WireNextCard, WireNow, WireOpdDesk, WireProfessor, WireTower, WireUnitBoard, WireUnitReports, WorkRating,
 } from "../../../../packages/contracts/src/doctor-desk";
 
 /**
@@ -11,7 +11,7 @@ export type {
   AttentionTab, BriefStage, WireAgentRun, WireAttentionRow, WireBrief, WireBriefFact, WireBriefs, WireDayLine,
   WireNextCard, WireOpdDesk, WireOwedRow, WireScheduleRow, WireTeamMember, WireTower,
   ActChoice, DeskLevel, WireDeskScope, WireHandledRow, WireMyRatings, WireNow, WirePersonWeek, WireProfessor, WireRateItem,
-  WireUnitBoard, WireUnitOwedRow, WireUnitSummary, WorkRating,
+  WireUnitBoard, WireUnitOwedRow, WireUnitSummary, WorkRating, WireUnitReport, WireUnitReports,
 } from "../../../../packages/contracts/src/doctor-desk";
 
 export const fetchTower = () => api<WireTower>("GET", "/doctor-desk/tower");
@@ -29,6 +29,8 @@ export const fetchNow = () => api<WireNow>("GET", "/doctor-desk/now");
 export const fetchProfessor = () => api<WireProfessor>("GET", "/doctor-desk/professor");
 export const rateWork = (workId: string, rating: WorkRating, reason: string | null) =>
   api<{ ratingId: string }>("POST", "/doctor-desk/ratings", { workKind: "opd_visit", workId, rating, reason });
+/** DD-report v0 — the 08:00 unit reports the asker may read. */
+export const fetchUnitReports = () => api<WireUnitReports>("GET", "/doctor-desk/reports");
 export const fetchMyRatings = () => api<WireMyRatings>("GET", "/doctor-desk/ratings/mine");
 /**
  * DD-1.6 — decision 0006's two toggles are #861's, stored by opd (`GET /opd/consult/copilot-settings`).

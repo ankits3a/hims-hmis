@@ -27,6 +27,8 @@ Plan: `docs/superpowers/plans/2026-10-04-doctor-desk-PLAN.md` §3.1 (DD-0), §3.
   people, units side by side); `moves.ts` (Move: head or SR; event `doctor_desk.row_moved` in `events.ts`); `acts.ts`
   ("What did you do?", critical→act); `phone.ts` (SR Now, Professor, Handled without you); `ratings.ts` (rate, my
   ratings vs anonymous averages, logbook CSV).
+- DD-report v0: `report.ts` — `sendUnitReports` (worker job `sendUnitReports`, `dailyIst("08:00")` in `kernel/worker/jobs.ts`),
+  `reportsFor` (GET `/doctor-desk/reports`, web `/doctor-desk/report`).
 - Wire + lifecycle rules: `packages/contracts/src/doctor-desk.ts`. Web: `apps/web/src/screens/doctor-desk-*.tsx`.
 
 ## 2. Invariants and traps
@@ -57,4 +59,10 @@ Plan: `docs/superpowers/plans/2026-10-04-doctor-desk-PLAN.md` §3.1 (DD-0), §3.
   defuses a leading `= + - @`.
 - **Copilot toggles are #861's** (`/opd/consult/copilot-settings`, opd's `cds_doctor_prefs`); the Desk only reads them on
   the web for the status line. Owed, nudge, move and act never read them (D1; `dd1.test.ts` DM7).
+- **The unit report is an agent-run row** (`agent = unit_report`, report in `params.report`), not a table of its own: one
+  per unit per report date, written under `pg_advisory_xact_lock` and only if none exists; the bell's source key is the
+  same unit+date. `runsFor` hands the Tower only the flat params. Counts only — no patient, no person, no names in the
+  bell. Medians use the ratings' floors (`RATING_MIN_OWN` for the unit; 3 units + 10 acts for department/hospital).
+- **A new job is a seven-site census** (jobs.ts, jobs.test.ts, scheduler.test.ts ×2, alerts-parity ×2, alerts.yml ×2,
+  worker-runtime.e2e). A `dailyIst` job leaves the interval pool sum (`client.test.ts`) unchanged.
 
