@@ -5,7 +5,7 @@ import { z } from "zod";
 import { CONFIG, DB } from "../../kernel/tokens";
 import { openAiCompatibleClient } from "../../kernel/inference/openai-compatible";
 import { openAiKeyFromFile } from "../../kernel/inference/openai-speech";
-import { CRK_FIELDS, CRK_SOURCE_KINDS, crkEntryForReview, crkWorklist, draftCrkEntry, istDate, saveCrkEntry, signCrkEntry, signedCrkForGeneric } from "./crk-formulary";
+import { CRK_FIELDS, CRK_SOURCE_KINDS, crkEntryForReview, crkWorklist, draftCrkEntry, istDate, saveCrkEntry, signCrkEntry, signedCrkForGeneric, signedCrkForMedicines } from "./crk-formulary";
 import type { CrkReviewRow, CrkWorklist, DraftResult, SignedCrk, SignResult } from "./crk-formulary";
 import type { AppConfig } from "../../kernel/config";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
@@ -303,6 +303,20 @@ export class FormularyController {
     const limit = q.limit === undefined ? 10 : Number(q.limit);
     /* Without `for=rx` this is the catalogue's answer and nothing else — the pharmacy's and the formulary office's searches. */
     return { items: q.for === "rx" ? await searchMedicinesForPrescribing(this.db, q.q, limit) : await searchMedicines(this.db, q.q, limit) };
+  }
+
+  /**
+   * #882 — the LIVE signed CRK entries of the medicines on a doctor's screen (`?ids=a,b`, at most 50). Unsigned
+   * entries are absent, never flagged; a pending draft never leaves by this door. ABOVE `@Get("medicines")`'s
+   * siblings with a parameter.
+   */
+  @RequirePermission("formulary.read", "hospital")
+  @Get("medicines/crk")
+  async medicinesCrk(@Query() query: unknown): Promise<{ items: (SignedCrk & { medicineId: string })[] }> {
+    const q = parsed(z.object({ ids: z.string().max(2000) }), query);
+    const ids = q.ids.split(",").map((x) => x.trim()).filter((x) => x !== "");
+    if (ids.length > 50) throw httpError(400, "at most 50 medicines", "too_many_ids");
+    return { items: await signedCrkForMedicines(this.db, ids) };
   }
 
   @RequirePermission("formulary.read", "hospital")
