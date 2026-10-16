@@ -44,7 +44,7 @@ const RANK: Record<AttentionKind, number> = { lab_critical: 0, imaging_critical:
  * member's. Clocks Running keeps the row for the unit either way.
  */
 export async function waitingOn(
-  db: Db, actor: Actor, at: Date, istDate: string, members: readonly { userId: string }[] = [],
+  db: Db, actor: Actor, at: Date, istDate: string, members: readonly { userId: string }[],
 ): Promise<WireAttentionRow[]> {
   const me = actor.id;
   const since = new Date(at.getTime() - OWED_ALERT_DAYS * 86_400_000);
