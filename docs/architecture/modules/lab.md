@@ -257,7 +257,7 @@ Source: `apps/core/src/modules/lab/`
 
 Foreign keys into: `billing`, `ops`, `orders`, `patients`, `resources`, `tariff`
 
-## HTTP routes (78)
+## HTTP routes (80)
 
 - `lab-bench.controller.ts` — 8: `/lab/bench`
 - `lab-catalogue.controller.ts` — 7: `/lab/catalogue`
@@ -266,6 +266,6 @@ Foreign keys into: `billing`, `ops`, `orders`, `patients`, `resources`, `tariff`
 - `lab-instruments.controller.ts` — 4: `/lab/instruments`
 - `lab-metrics.controller.ts` — 1: `/lab/metrics`
 - `lab-quick.controller.ts` — 17: `/lab/quick`
-- `lab-verify.controller.ts` — 18: `/lab/reports`, `/lab/results`, `/lab/verify`
+- `lab-verify.controller.ts` — 20: `/lab/reports`, `/lab/results`, `/lab/verify`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/lab`

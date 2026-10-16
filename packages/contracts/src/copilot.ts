@@ -268,6 +268,82 @@ export const COPILOT_ANSWER_KEYS = [
 export type CopilotAnswerKey = (typeof COPILOT_ANSWER_KEYS)[number];
 
 /**
+ * #866 — HOW EACH ANSWER'S PARAMS ARE SAID, declared beside the keys rather than guessed from their names.
+ *
+ * `board`: a day sent as its IST date (`2026-10-17`) is said as the boards say it ("Saturday 17 Oct"), an
+ * ISO instant as "on Saturday 17 Oct at 22:00", `when: "now"` as "right now" and an empty name list as
+ * "nobody". `leave`: the same, and a leave's `kind` code is said as My leave says it. A key that is not
+ * here passes its params through untouched — another tool's `2028-01-31` (a batch's expiry) is a date
+ * with a year and stays one.
+ *
+ * The phone reads this map (`apps/mobile/src/copilot/model.ts`), so a module that adds answer keys with
+ * days in them names their voice here, in the same file as the keys, and both apps say them alike.
+ */
+export type CopilotAnswerVoice = "board" | "leave";
+export const COPILOT_ANSWER_VOICE: Readonly<Partial<Record<CopilotAnswerKey, CopilotAnswerVoice>>> = {
+  "copilot.answer.rosterNeedDept": "board",
+  "copilot.answer.rosterWhoIsOn": "board",
+  "copilot.answer.rosterWhoNoTake": "board",
+  "copilot.answer.rosterWhoUnpublished": "board",
+  "copilot.answer.rosterWhoService": "board",
+  "copilot.answer.rosterWhoServiceNobody": "board",
+  "copilot.answer.rosterWhoServiceUnpublished": "board",
+  "copilot.answer.rosterUnitOnTake": "board",
+  "copilot.answer.rosterUnitOnTakeNoBackup": "board",
+  "copilot.answer.rosterNoTake": "board",
+  "copilot.answer.rosterMyNext": "board",
+  "copilot.answer.rosterMyNextNight": "board",
+  "copilot.answer.rosterMyOnDay": "board",
+  "copilot.answer.rosterMyNone": "board",
+  "copilot.answer.rosterMyNoNight": "board",
+  "copilot.answer.rosterMyNoneOnDay": "board",
+  "copilot.answer.rosterCoverDraft": "board",
+  "copilot.answer.rosterCoverDraftDuty": "board",
+  "copilot.answer.rosterCoverAlready": "board",
+  "copilot.answer.rosterCoverNobody": "board",
+  "copilot.answer.rosterCoverNoDuty": "board",
+  "copilot.answer.rosterCoverNoDutyOn": "board",
+  "copilot.answer.apptPick": "board",
+  "copilot.answer.apptPickTime": "board",
+  "copilot.answer.apptWhichPatient": "board",
+  "copilot.answer.apptNoPatient": "board",
+  "copilot.answer.apptWhichDoctor": "board",
+  "copilot.answer.apptDoctorUnclear": "board",
+  "copilot.answer.apptNoSlots": "board",
+  "copilot.answer.apptNoSlotsOn": "board",
+  "copilot.answer.apptNoneToMove": "board",
+  "copilot.answer.apptNoMobile": "board",
+  "copilot.answer.apptBooked": "board",
+  "copilot.answer.apptMoved": "board",
+  "copilot.answer.apptSlotTaken": "board",
+  "copilot.answer.apptDoctorOnLeave": "board",
+  "copilot.answer.apptPast": "board",
+  "copilot.answer.apptChanged": "board",
+  "copilot.answer.leavePick": "leave",
+  "copilot.answer.leavePickDay": "leave",
+  "copilot.answer.leavePickKind": "leave",
+  "copilot.answer.leavePickKindDay": "leave",
+  "copilot.answer.leaveWhichDays": "leave",
+  "copilot.answer.leaveInPast": "leave",
+  "copilot.answer.leaveOverlaps": "leave",
+  "copilot.answer.leaveTooLong": "leave",
+  "copilot.answer.leaveKindNotHere": "leave",
+  "copilot.answer.leaveFiled": "leave",
+  "copilot.answer.leaveNone": "leave",
+  "copilot.answer.leaveStatusRequested": "leave",
+  "copilot.answer.leaveStatusApproved": "leave",
+  "copilot.answer.leaveStatusRefused": "leave",
+  "copilot.answer.leaveStatusCancelled": "leave",
+  "copilot.answer.reminderPick": "board",
+  "copilot.answer.reminderWhatTime": "board",
+  "copilot.answer.reminderPast": "board",
+  "copilot.answer.reminderWhat": "board",
+  "copilot.answer.reminderTooLong": "board",
+  "copilot.answer.reminderLimit": "board",
+  "copilot.answer.reminderSet": "board",
+};
+
+/**
  * E2.1 — the pick an appointment ask hands back in `answer.payload`: one row per patient (book) or per
  * live appointment (move), each with up to three free times. `proposal` indexes the ask response's
  * `proposals` — the signed proposal that time confirms. `when`/`at`/`from` are ISO instants.
