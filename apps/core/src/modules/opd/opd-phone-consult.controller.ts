@@ -14,7 +14,7 @@ import {
   loadVoiceSettings, recordVoiceKept, saveVoiceSettings, transcribeConsultNote, voiceMeter, voiceStatus,
 } from "./consult-voice";
 import {
-  MISS_KINDS, SIGNAL_KINDS, SIGNAL_OUTCOMES, SIGNAL_SOURCES, SIGNAL_SURFACES, doctorSuggestionsOn, guardedMedicineSearch, hiddenSuggestions, recordSignals,
+  MISS_KINDS, SIGNAL_ID, SIGNAL_KINDS, SIGNAL_OUTCOMES, SIGNAL_SOURCES, SIGNAL_SURFACES, doctorSuggestionsOn, guardedMedicineSearch, hiddenSuggestions, recordSignals,
   setDoctorSuggestions,
 } from "./consult-guards";
 import { OpdError } from "./errors";
@@ -55,9 +55,11 @@ const voiceBody = z.object({
 });
 const keptBody = z.object({ changedChars: z.number().int().nonnegative().max(100_000), keptChars: z.number().int().nonnegative().max(100_000) });
 const searchQuery = z.object({ q: z.string().max(80), limit: z.coerce.number().int().min(1).max(12).optional() });
-const signalsBody = z.object({
+export const signalsBody = z.object({
   misses: z.array(z.object({ kind: z.enum(MISS_KINDS), term: z.string().min(1).max(200), stage: z.enum(["search", "voice"]) })).max(20).default([]),
   suggestions: z.array(z.object({
+    /* #620 — a line's own event id, minted by the screen at the fill (`SIGNAL_ID`). */
+    id: z.string().regex(SIGNAL_ID).optional(),
     kind: z.enum(SIGNAL_KINDS), source: z.enum(SIGNAL_SOURCES), outcome: z.enum(SIGNAL_OUTCOMES),
     /* Decision 0050, P0 — which suggestion, for what, on which visit. All optional: the 0.12.0 phone sends none. */
     surface: z.enum(SIGNAL_SURFACES).optional(),
@@ -189,7 +191,8 @@ export class OpdPhoneConsultController {
    * What this doctor's screens need to know before drawing a suggestion: the doctor's own switch,
    * the hospital's switch, and the items this doctor has crossed off three times (decision 0050, P0).
    */
-  @RequirePermission("opd.consult", "hospital")
+  /* #620 — ALSO THE DESK SCRIBE, who now has chips too: its own switch (on unless set) and its own crosses. Reads nothing about a patient. */
+  @RequirePermission("opd.consult", "hospital", { alsoAdmits: ["opd.prescription.transcribe"] })
   @Get("consult/suggestions")
   async suggestionState(@CurrentActor() actor: Actor): Promise<{ on: boolean; hospitalOn: boolean; hidden: HiddenItem[] }> {
     if (actor.type !== "user") return { on: false, hospitalOn: false, hidden: [] };

@@ -8,6 +8,7 @@ import { LabDeskController } from "./lab-desk.controller";
 import { LabInstrumentsController } from "./lab-instruments.controller";
 import { LabMetricsController } from "./lab-metrics.controller";
 import { LabQuickController } from "./lab-quick.controller";
+import { registerLabKidneyFunctionReader } from "./egfr";
 import { LabVerifyController } from "./lab-verify.controller";
 import { LAB_TOPIC_SPACES, labTopicRouter } from "./realtime";
 
@@ -35,6 +36,8 @@ class LabRealtimeRegistrar implements OnModuleInit {
   onModuleInit(): void {
     for (const space of LAB_TOPIC_SPACES) this.gateway.registerTopicSpace(space);
     this.gateway.registerRouter(labTopicRouter);
+    // #621 — opd's renal dose check reads the latest eGFR through this.
+    registerLabKidneyFunctionReader();
   }
 }
 

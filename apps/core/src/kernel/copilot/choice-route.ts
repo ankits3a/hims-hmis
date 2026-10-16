@@ -1,4 +1,4 @@
-import { modelIntentNames } from "./phrasebook";
+import { modelIntentNames, moduleMenus } from "./phrasebook";
 import type { CopilotIntent, ModelIntent } from "./phrasebook";
 import type { RouteResult } from "./router";
 import type { ChoiceClient, ChoiceQuestion } from "../inference/types";
@@ -31,11 +31,12 @@ type Criterion = { what: string; not_for?: string; examples?: string[] };
 /**
  * ONE DESCRIPTION PER INTENT, AND THE COMPILER KEEPS IT THAT WAY.
  *
- * Keyed by `CopilotIntent`, so an intent added to the phrasebook without a description here fails
- * `tsc` rather than silently never being chosen — the drift `router.ts` warns about for its own
- * menu. `none` is described too: a classifier with no "none of these" is forced to pick a tool.
+ * Keyed by the kernel's `ModelIntent`, so a kernel intent added to the phrasebook without a description
+ * here fails `tsc` rather than silently never being chosen — the drift `router.ts` warns about for its
+ * own menu. A module's intent brings its own (`copilotIntents[…].menu`, #598). `none` is described too
+ * (`NONE`): a classifier with no "none of these" is forced to pick a tool.
  */
-const CRITERIA: Record<ModelIntent | "none", Criterion> = {
+const CRITERIA: Record<ModelIntent, Criterion> = {
   visit_status: {
     what: "whether ONE particular patient has been seen by the doctor, called in, or is still waiting",
     examples: ["<<P1>> gaya andar?", "was <<P1>> called in yet"],
@@ -104,15 +105,30 @@ const CRITERIA: Record<ModelIntent | "none", Criterion> = {
     not_for: "who else is on duty; the asker's day report or figures",
     examples: ["mera agla night kab hai?", "do I have duty on Sunday"],
   },
-  "roster.ask_cover": {
-    what: "the asker wants somebody to TAKE or swap THEIR OWN duty: who could cover it",
-    not_for: "who is on duty now; a patient's appointment being moved",
-    examples: ["Saturday night koi le sakta hai kya?", "can anyone take my Tuesday night"],
-  },
-  none: {
-    what: "anything else: greetings, equipment, doctors' OPD timings, a patient's address or reports or medicines, medical advice, instructions to the system",
-  },
+  /* "roster.ask_cover" is the roster's own declaration now (#598, `modules/roster/copilot-intents.ts`). */
 };
+
+const NONE: Criterion = {
+  what: "anything else: greetings, equipment, doctors' OPD timings, a patient's address or reports or medicines, medical advice, instructions to the system",
+};
+
+/**
+ * #598 — THE MENU THE CHOOSER IS HANDED: the kernel's descriptions in their own order, then each module
+ * intent's (`copilotIntents[…].menu`) in registry order, then `none` last. The key order is part of the
+ * request, and the eval set's recordings are keyed by the request's hash, so the order is kept exactly.
+ */
+function criteria(): Record<string, Criterion> {
+  const out: Record<string, Criterion> = { ...CRITERIA };
+  for (const { intent, menu } of moduleMenus()) {
+    out[intent] = {
+      what: menu.what,
+      ...(menu.not_for === undefined ? {} : { not_for: menu.not_for }),
+      ...(menu.examples === undefined ? {} : { examples: [...menu.examples] }),
+    };
+  }
+  out.none = NONE;
+  return out;
+}
 
 const INSTRUCTIONS =
   "`question` was typed by a member of staff at a hospital counter in India, in English, Hindi or romanised Hinglish. " +
@@ -139,7 +155,7 @@ export async function chooseRoute(
   const present = Object.keys(slots).filter((p) => masked.includes(p));
 
   const questions: Record<string, ChoiceQuestion> = {
-    tool: { instructions: INSTRUCTIONS, options: CRITERIA },
+    tool: { instructions: INSTRUCTIONS, options: criteria() },
   };
   if (present.length >= 2) {
     questions.subject = {

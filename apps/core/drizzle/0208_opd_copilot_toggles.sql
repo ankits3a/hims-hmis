@@ -1,2 +1,0 @@
-ALTER TABLE "cds_doctor_prefs" ADD COLUMN "copilot_proactive" boolean DEFAULT false NOT NULL;--> statement-breakpoint
-ALTER TABLE "cds_doctor_prefs" ADD COLUMN "copilot_draft_prose" boolean DEFAULT false NOT NULL;

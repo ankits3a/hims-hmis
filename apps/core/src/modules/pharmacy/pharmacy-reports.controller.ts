@@ -16,7 +16,7 @@ import type { GstBook, TicketInvoices } from "./ticket-books";
 import type { CreditNoteRegister } from "./credit-notes";
 import { gstr2bReconcile } from "./gstr2b";
 import { gstr3bReport } from "./gstr3b";
-import { officeNonMoving, officePurchaseRegister, officeStockValuation } from "./office-reports";
+import { officeNonMoving, officePurchaseRegister, officeStockValuation, officeVendorDiscounts } from "./office-reports";
 import { dailyStock, itemCatalogueReport, lossRegister, topSellingItems } from "./office-stock-reports";
 import { parsed, toHttp } from "./pharmacy-http";
 import { REPORTS_MARGIN, REPORTS_READ, requireReportPermission } from "./report-range";
@@ -26,7 +26,7 @@ import type { Gstr2bRecon } from "./gstr2b";
 import type { Gstr3b } from "./gstr3b";
 import type { ItemCatalogueReport, LossRegister, TopSelling } from "./office-stock-reports";
 import type { HsnReport, MarginReport, ReportInput, SalesRegister } from "./sales-register";
-import type { NonMovingReport, PurchaseRegister, StockMovementSummary, StockValuation } from "../materials";
+import type { NonMovingReport, PurchaseRegister, StockMovementSummary, StockValuation, VendorDiscountReport } from "../materials";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -135,6 +135,13 @@ export class PharmacyReportsController {
   @Get("purchases")
   async purchases(@CurrentActor() actor: Actor, @Query() q: RangeQuery): Promise<PurchaseRegister & { preset: string }> {
     try { return await officePurchaseRegister(this.db, actor, rangeOf(q), new Date()); } catch (e) { toHttp(e); }
+  }
+
+  /** #637 — the vendors' trade discount by vendor over the period's booked supplier bills. */
+  @RequirePermission(REPORTS_READ, "hospital")
+  @Get("vendor-discounts")
+  async vendorDiscounts(@CurrentActor() actor: Actor, @Query() q: RangeQuery): Promise<VendorDiscountReport & { preset: string }> {
+    try { return await officeVendorDiscounts(this.db, actor, rangeOf(q), new Date()); } catch (e) { toHttp(e); }
   }
 
   @RequirePermission(REPORTS_READ, "hospital")

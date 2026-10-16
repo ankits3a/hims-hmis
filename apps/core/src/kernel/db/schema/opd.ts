@@ -1172,6 +1172,12 @@ export const opdPrescriptions = pgTable(
      * the diagnosis, weighed it, and decided anyway. Defaults to `[]` like its two neighbours.
      */
     drugDiseaseOverrides: jsonb("drug_disease_overrides").notNull().default(sql`'[]'::jsonb`),
+    /**
+     * #621 — the fifth axis, the same law: a doctor who prescribes through a renal dose warning (a
+     * reviewed band the patient's eGFR reaches, or no eGFR within 90 days) types why, naming the
+     * generic. `{ lineIndex, genericId, reason }[]`; `[]` when none.
+     */
+    renalOverrides: jsonb("renal_overrides").notNull().default(sql`'[]'::jsonb`),
     status: text("status").notNull().default("active"), // 'active' | 'superseded'
     /**
      * ═══ FD-31 — TYPED FROM A PAPER SLIP, AND BY WHOM (OWNER RULING 2026-09-12) ═══
