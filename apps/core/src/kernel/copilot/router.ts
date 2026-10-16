@@ -2,7 +2,7 @@ import { chooseRoute } from "./choice-route";
 import { assertNoIdentifiers } from "./mask";
 import { assertNoNames } from "./names";
 import type { NameIndex } from "./names";
-import { matchIntent, modelIntentNames } from "./phrasebook";
+import { matchIntent, modelIntentNames, moduleMenus } from "./phrasebook";
 import type { CopilotIntent } from "./phrasebook";
 import type { ChoiceClient, InferenceClient } from "../inference/types";
 
@@ -92,7 +92,8 @@ function buildSystemPrompt(): string {
     "roster.who_is_on — who is on duty or on call in a NAMED department or service, now or at a time named",
     "roster.unit_on_take — which unit of a named department is on take (admitting), now or at a time named",
     "roster.my_duties — the asker's OWN duties: their next duty or night, or what they have on a named day",
-    "roster.ask_cover — the asker wants somebody to take or swap THEIR OWN duty: who could cover it",
+    /* #598 — each module intent's own line (`copilotIntents[…].menu.line`), in registry order. */
+    ...moduleMenus().map(({ intent, menu: m }) => `${intent} — ${m.line}`),
     "none           — anything else at all, including anything you are unsure about",
     "",
     "The question may be English, Hindi, or romanised Hinglish.",

@@ -149,6 +149,14 @@ export function fetchGraceRequests(): Promise<{ items: WireGraceRequest[] }> {
   return api("GET", "/membership/grace-honor/requests");
 }
 
+/**
+ * #657 — the cards linked to one patient, for the profile's "Card" line: the same recognition route
+ * asked by patient id alone (no code is presented, so the server records no recognition event).
+ */
+export function fetchPatientCards(patientId: string): Promise<WireCounterRecognition> {
+  return api("GET", `/membership/recognition?${new URLSearchParams({ patientId }).toString()}`);
+}
+
 export type WireGraceHonorBody = {
   cardCode: string;
   patientId: string;
