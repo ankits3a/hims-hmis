@@ -51,7 +51,7 @@ http://{$HMIS_UAT_SITE}:8080 {
 		# so HSTS is its call, not this hop's.
 		# WASA M-01, as production and byte-identical to it (see docker/prod/Caddyfile for each source):
 		# UAT is where a violation should surface first.
-		Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' wss://{hostport}; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' wss://{hostport}; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 		# WASA L-09, as production: no software banner from the edge or the proxy hop.
 		-Server
 		-Via
