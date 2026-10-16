@@ -15880,6 +15880,33 @@
     "nothingYetLong": "Nothing yet. Every server answer this screen gets lands here with the time it landed.",
     "ask": "ASK THE COPILOT · F2"
   },
+  "formularyRef": {
+    "heading": "Drug reference",
+    "none": "No reference information yet",
+    "failed": "Could not load the reference.",
+    "componentsBanner": "No reference exists for this combination. Its parts are shown separately; they do not describe the combined dose.",
+    "missing": "No reference information yet: {{names}}",
+    "title": "US FDA label · {{product}} · {{date}}",
+    "noDate": "date not stated",
+    "caution": "Reference only — the US product may differ in strength, dose and approved use.",
+    "source": "Source: {{source}}, retrieved {{date}}",
+    "section": {
+      "boxed_warning": "Boxed warning",
+      "uses": "Uses",
+      "directions": "Directions",
+      "contraindications": "Contraindications",
+      "warnings": "Warnings",
+      "side_effects": "Side effects",
+      "interactions": "Interactions",
+      "pregnancy": "Pregnancy",
+      "lactation": "Breastfeeding",
+      "children": "Children",
+      "elderly": "Elderly",
+      "overdose": "Overdose",
+      "storage": "Storage",
+      "patient_information": "Patient information"
+    }
+  },
   "teleBills": {
     "lead": "When the doctor said “Spoke to patient” and the consultation bill could not be raised, the visit waits here. Fix the cause, then retry; the doctor's next “Spoke” goes through.",
     "loading": "Loading…",
