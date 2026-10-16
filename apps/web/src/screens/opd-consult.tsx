@@ -69,6 +69,7 @@ import type { WireCard, WireIcd11, WireRegimen, WireSyndromeHit } from "../lib/c
 import { TabStrip } from "../components/desk-fields";
 import { CreditChip } from "../components/patient-credit";
 import { advisableTests } from "../lib/ordering-api";
+import { DocumentRetake } from "../components/document-retake";
 
 /**
  * The consultation screen (D5 / Task 15) — the doctor's flagship: the live queue with call / skip /
@@ -142,6 +143,8 @@ type AllergyRow = {
 type WireDocument = {
   id: string; encounterId: string | null; kind: string; mimeType: string;
   byteSize: number; note: string | null; capturedBy: string; capturedAt: string;
+  /** #659 — the doctor's "clearer photo" ask, if any (the list route carries it). */
+  retakeRequestedAt?: string | null;
 };
 type AllergyMatch = { lineIndex: number; substance: string };
 type AllergyOverride = AllergyMatch & { reason: string };
@@ -4332,9 +4335,15 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                               {new Date(d.capturedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
                             </span>
                             {d.note !== null && <span style={{ color: "var(--dim)" }}>{d.note}</span>}
+                            {/* #659 — the page is unreadable: ask the slip desk for a clearer photo (opened pages only — read it first). */}
+                            {openDocumentId === d.id && (
+                              <span style={{ marginLeft: "auto" }}>
+                                <DocumentRetake documentId={d.id} encounterId={d.encounterId} retakeRequestedAt={d.retakeRequestedAt ?? null} />
+                              </span>
+                            )}
                             <button
                               type="button" className="sec" data-testid={`document-open-${d.id}`}
-                              style={{ marginLeft: "auto", height: 24, fontSize: 11 }}
+                              style={{ marginLeft: openDocumentId === d.id ? 0 : "auto", height: 24, fontSize: 11 }}
                               onClick={() => { setOpenDocumentId(openDocumentId === d.id ? null : d.id); }}
                             >
                               {openDocumentId === d.id ? t("opdConsult.documentHide") : t("opdConsult.documentOpen")}
