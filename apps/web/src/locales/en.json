@@ -1795,6 +1795,8 @@
     "approvalPendingSince": "Waiting since {{time}}. Someone other than you has to decide it.",
     "approvalGranted": "A billing manager approved this variance. Finish closing to close the drawer.",
     "approvalRejected": "A billing manager did not approve this variance. Withdraw the count and count the drawer again.",
+    "approvalDecidedAt": "Decided at {{time}}",
+    "approvalNote": "Note: {{note}}",
     "lockout": "You cannot take money at the counter until a billing manager approves this variance.",
     "status": {
       "open": "OPEN",
