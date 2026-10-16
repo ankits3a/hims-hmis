@@ -3,12 +3,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useRouter } from "@tanstack/react-router";
 import { PhoneDock, PhoneShell, useCopilotToggles } from "../components/doctor-desk/phone";
-import { api } from "../lib/api";
 import { fmtIst } from "../lib/format";
 import { deskErrorText, fetchProfessor, nudgeRow, rateWork } from "../lib/doctor-desk-api";
 import type { WireProfessor, WireRateItem, WorkRating } from "../lib/doctor-desk-api";
 import { decideCover, fetchCoverRequests } from "../lib/roster-api";
-import { APPROVAL_KINDS, isKnownKind } from "./approval-kinds";
+import { isKnownKind } from "./approval-kinds";
 import { RATING_REASON_MAX, WORK_RATINGS } from "../../../../packages/contracts/src/doctor-desk";
 import { clockText, patientName } from "./doctor-desk-tower";
 import { clockLine, subLine } from "./doctor-desk-now";
@@ -19,16 +18,14 @@ import { clockLine, subLine } from "./doctor-desk-now";
  * Owner R2: the Professor glances and countersigns, and must be able to ACT from it.
  *   · Needs your signature — duty swaps and covers he may decide (the roster's own `decideCover`
  *     route, the same as the desktop's), and approvals waiting for him (the approvals worklist; the
- *     verdict needs its note, so the row opens the inbox card). An approval that carries an amount is
- *     NOT listed: no money on a doctor's screen (decision 0058).
+ *     verdict needs its note, so the row opens the inbox card). The server sends only an ALLOWLIST of
+ *     non-money kinds, as id + kind + time (decision 0058; review F1).
  *   · Owed by your unit + Nudge, oldest first; the rest on the Unit board.
  *   · Handled without you — criticals in the unit somebody else acted on.
  *   · Rate work — "Goes to her PG logbook, not to a league table" (D5).
  *   · The copilot's status line; its proactive line ONLY when the doctor turned proactive on (R11).
  * ABSENT until DD-IPD: the pulse of beds, the discharge summary countersign. No money anywhere.
  */
-type ApprovalRow = { id: string; typeKey: string; requesterName?: string | null; amountPaise: number | null; requestedAt: string; status: string };
-
 export function DoctorDeskProfessor(): React.ReactElement {
   const { t, i18n } = useTranslation();
   const q = useQuery({ queryKey: ["doctor-desk", "professor"], queryFn: fetchProfessor, refetchInterval: 60_000 });
@@ -44,7 +41,7 @@ export function DoctorDeskProfessor(): React.ReactElement {
     >
       {q.isPending && <p className="ddp-dim">{t("doctorDesk.loading")}</p>}
       {q.isError && <p role="alert" className="dd-alert">{deskErrorText(q.error, t)}</p>}
-      <Signatures />
+      <Signatures asks={p?.asks ?? []} />
       {p !== undefined && <Owed p={p} />}
       {p !== undefined && <Handled p={p} />}
       {p !== undefined && <RateWork items={p.toRate} />}
@@ -52,12 +49,11 @@ export function DoctorDeskProfessor(): React.ReactElement {
   );
 }
 
-function Signatures(): React.ReactElement {
+function Signatures({ asks }: { asks: WireProfessor["asks"] }): React.ReactElement {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const router = useRouter({ warn: false });
   const covers = useQuery({ queryKey: ["roster", "covers"], queryFn: () => fetchCoverRequests(), retry: false });
-  const approvals = useQuery({ queryKey: ["approvals", "pending", "desk"], queryFn: () => api<{ items: ApprovalRow[]; total: number }>("GET", "/approvals"), retry: false });
   const [refusal, setRefusal] = useState<string | null>(null);
   const decide = useMutation({
     mutationFn: (v: { id: string; approve: boolean }) => decideCover(v.id, v.approve),
@@ -65,9 +61,8 @@ function Signatures(): React.ReactElement {
     onError: (e) => setRefusal(deskErrorText(e, t)),
   });
   const swaps = (covers.data ?? []).filter((c) => c.youMay.approve && c.status === "accepted");
-  // No money on a doctor's screen: an approval whose kind carries an amount is not listed here.
-  const asks = (approvals.data?.items ?? []).filter((a) => a.status === "pending" && a.amountPaise === null
-    && !(isKnownKind(a.typeKey) && (APPROVAL_KINDS[a.typeKey] as readonly string[]).includes("amount")));
+  // The asks are the SERVER's (`GET /doctor-desk/professor`): an allowlist of non-money kinds, id + kind +
+  // time only (review F1). The phone never reads the approvals worklist itself.
   const n = swaps.length + asks.length;
   return (
     <>
@@ -91,7 +86,7 @@ function Signatures(): React.ReactElement {
           <div key={a.id} className="ddp-li" data-testid={`ddp-ask-${a.id}`}>
             <div className="ddp-li-main">
               <span className="ddp-li-t">{isKnownKind(a.typeKey) ? t(`inbox.kinds.${a.typeKey}.label`) : t("inbox.unknownKind.label")}</span>
-              <span className="ddp-li-s">{t("doctorDesk.prof.askedBy", { name: a.requesterName ?? "", at: fmtIst(a.requestedAt) })}</span>
+              <span className="ddp-li-s">{t("doctorDesk.prof.askedAt", { at: fmtIst(a.requestedAt) })}</span>
             </div>
             <a
               href={`/approvals?focus=${encodeURIComponent(a.id)}`} className="ddp-btn ddp-btn-acc" style={{ display: "inline-flex", alignItems: "center" }}

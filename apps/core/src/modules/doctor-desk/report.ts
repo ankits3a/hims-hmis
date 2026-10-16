@@ -72,8 +72,9 @@ export async function buildUnitReport(
   // The pools are the window's acts already (`sendUnitReports` reads exactly [08:00 − 24 h, 08:00)).
   const acts = pools.hospital.filter((a) => a.teamId === unit.id);
   const minutes = acts.map((a) => minutesBetween(a.openedAt, a.actedAt));
-  const members = (await teamMembers(db, unit.id, now)).map((m) => ({ userId: m.userId, name: "" }));
-  const owed = await owedByUnit(db, members, now).catch(() => []);
+  // "Owed at 08:00" is as of 08:00 IST, whenever the run happens (review F6): members, rows and acts then.
+  const members = (await teamMembers(db, unit.id, to)).map((m) => ({ userId: m.userId, name: "" }));
+  const owed = await owedByUnit(db, members, to).catch(() => []);
   const opdDate = addIstDays(reportDate, -1);
   const lines = (await doctorDayLines(db, members.map((m) => m.userId), opdDate, now).catch(() => [])).filter((l) => l.session !== "none");
   return {
@@ -87,7 +88,7 @@ export async function buildUnitReport(
     compare: { department: poolMedian(pools.department), hospital: poolMedian(pools.hospital) },
     opd: { date: opdDate, seen: lines.reduce((n, l) => n + l.seen, 0), doctors: lines.length },
     owed: {
-      open: owed.length, past: owed.filter((r) => Date.parse(r.dueAt) < now.getTime()).length,
+      open: owed.length, past: owed.filter((r) => Date.parse(r.dueAt) < to.getTime()).length,
       criticalsWithoutAct: owed.filter((r) => r.kind === "lab_critical").length,
     },
   };
@@ -222,9 +223,9 @@ export async function hospitalReport(
     for (const u of mine) {
       const members = (await teamMembers(db, u.id, now)).map((m) => ({ userId: m.userId, name: "" }));
       for (const d of days) opdSeen += sum((await doctorDayLines(db, members.map((m) => m.userId), d, now).catch(() => [])).map((l) => l.seen));
-      const owed = await owedByUnit(db, members, now).catch(() => []);
+      const owed = await owedByUnit(db, members, to).catch(() => []);
       owedOpen += owed.length;
-      owedPast += owed.filter((r) => Date.parse(r.dueAt) < now.getTime()).length;
+      owedPast += owed.filter((r) => Date.parse(r.dueAt) < to.getTime()).length;
     }
     rows.push({
       departmentId, departmentName, units: mine.length, acts: deptActs.length, median: poolMedian(deptActs),

@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, lte, ne, or } from "drizzle-orm";
 import { orgDepartments, roleAssignments, rolePermissions, rosterOfficiating, rosterTeams, users } from "../../kernel/db/schema";
 import { ROSTER_PUBLISH, doctorUnitsOn, istDateOfInstant, membershipsOf, teamMembers } from "../roster";
 import type { DoctorUnit, TeamMember } from "../roster";
@@ -85,6 +85,8 @@ export async function deskLevel(exec: Db | Tx, actor: Actor, scope: DeskScope, a
     .innerJoin(rosterTeams, eq(rosterTeams.id, rosterOfficiating.teamId))
     .where(and(
       eq(rosterOfficiating.userId, actor.id), eq(rosterOfficiating.role, "hod"),
+      // Nobody appoints themselves: a row its own holder approved gives no scope.
+      ne(rosterOfficiating.approvedBy, rosterOfficiating.userId),
       lte(rosterOfficiating.startsAt, at), or(isNull(rosterOfficiating.endsAt), gt(rosterOfficiating.endsAt, at)),
     )).limit(1);
   const publish = hodStandIn.length > 0 ? [] : await db.select({ departmentId: roleAssignments.scopeId }).from(roleAssignments)
@@ -99,8 +101,20 @@ export async function deskLevel(exec: Db | Tx, actor: Actor, scope: DeskScope, a
   if (scope.unit === null) return none;
   const me = scope.members.find((m) => m.userId === actor.id);
   const base = { departmentId: scope.unit.departmentId, departmentName: scope.unit.departmentName };
-  if (me?.roleInTeam === "head") return { level: "unit", officiating: me.officiating, ...base };
+  if (me?.roleInTeam === "head") {
+    // An officiating head counts only on a row somebody else approved: nobody appoints themselves.
+    if (!me.officiating || await approvedStandIn(db, actor.id, scope.unit.teamId, at)) return { level: "unit", officiating: me.officiating, ...base };
+  }
   return { level: "member", officiating: false, ...base };
+}
+
+/** Is there an officiating row in force for this person on this team that somebody ELSE approved? */
+async function approvedStandIn(db: Db, userId: string, teamId: string, at: Date): Promise<boolean> {
+  const rows = await db.select({ id: rosterOfficiating.id }).from(rosterOfficiating).where(and(
+    eq(rosterOfficiating.userId, userId), eq(rosterOfficiating.teamId, teamId), ne(rosterOfficiating.approvedBy, rosterOfficiating.userId),
+    lte(rosterOfficiating.startsAt, at), or(isNull(rosterOfficiating.endsAt), gt(rosterOfficiating.endsAt, at)),
+  )).limit(1);
+  return rows.length > 0;
 }
 
 /** At least `level` (`own` < `member` < `unit` < `department` < `hospital`). */
@@ -119,6 +133,7 @@ export async function departmentHeads(exec: Db | Tx, departmentId: string, at: D
     .innerJoin(rosterTeams, eq(rosterTeams.id, rosterOfficiating.teamId))
     .where(and(
       eq(rosterTeams.departmentId, departmentId), eq(rosterOfficiating.role, "hod"),
+      ne(rosterOfficiating.approvedBy, rosterOfficiating.userId),
       lte(rosterOfficiating.startsAt, at), or(isNull(rosterOfficiating.endsAt), gt(rosterOfficiating.endsAt, at)),
     ));
   const grants = await db.selectDistinct({ userId: roleAssignments.userId }).from(roleAssignments)

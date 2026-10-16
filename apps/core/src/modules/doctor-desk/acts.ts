@@ -3,6 +3,9 @@ import { ACT_CHOICES, ACT_NOTE_MAX, newId } from "@hmis/contracts";
 import type { ActChoice, Actor } from "@hmis/contracts";
 import { doctorDeskActs } from "../../kernel/db/schema";
 import { DoctorDeskError } from "./errors";
+import { doctorDeskCriticalActed } from "./events";
+import { appendEvent } from "../../kernel/events/append";
+import { withTx } from "../../kernel/db/client";
 import { deskScope } from "./scope";
 import { owedByUnit } from "./owed";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -39,12 +42,21 @@ export async function recordAct(
     throw new DoctorDeskError(inUnit ? "unknown_row" : "not_unit_member", "That critical is not one your unit holds now.");
   }
   const actId = newId();
-  const won = await db.insert(doctorDeskActs).values({
-    id: actId, rowKey, teamId: inUnit ? scope.unit!.teamId : null, holderId: row.holder.userId, actorId: actor.id,
-    choice, note: text === "" ? null : text, openedAt: new Date(row.since), actedAt: at,
-  }).onConflictDoNothing().returning({ id: doctorDeskActs.id });
-  if (won.length === 0) throw new DoctorDeskError("already_acted", "An act is already recorded on this item.");
-  return { actId, minutes: minutesBetween(new Date(row.since), at) };
+  const teamId = inUnit ? scope.unit!.teamId : null;
+  const minutes = minutesBetween(new Date(row.since), at);
+  // The act and its event land together (audit): no act without its event, no event without its act.
+  await withTx(db, async (tx) => {
+    const won = await tx.insert(doctorDeskActs).values({
+      id: actId, rowKey, teamId, holderId: row.holder.userId, actorId: actor.id,
+      choice, note: text === "" ? null : text, openedAt: new Date(row.since), actedAt: at,
+    }).onConflictDoNothing().returning({ id: doctorDeskActs.id });
+    if (won.length === 0) throw new DoctorDeskError("already_acted", "An act is already recorded on this item.");
+    await appendEvent(tx, doctorDeskCriticalActed.make({
+      actor, occurredAt: at, correlationId: actId,
+      payload: { actId, rowKey, teamId, holderId: row.holder.userId, choice, minutes },
+    }));
+  });
+  return { actId, minutes };
 }
 
 export const minutesBetween = (from: Date, to: Date): number => Math.max(0, Math.round((to.getTime() - from.getTime()) / 60_000));

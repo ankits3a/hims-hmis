@@ -15396,7 +15396,6 @@
       "warn": "the roster rules warn",
       "approve": "Approve",
       "refuse": "Refuse",
-      "askedBy": "Asked by {{name}} · {{at}}",
       "open": "Open",
       "owed": "Owed by your unit",
       "with": "With {{name}}",
@@ -15404,7 +15403,8 @@
       "openBoard_other": "Open the unit board · {{count}} items",
       "handled": "HANDLED WITHOUT YOU",
       "handledNone": "Nothing in the last day.",
-      "handledLine": "{{what}} · {{who}} · {{by}} took it in {{n}} min · {{act}} {{at}}"
+      "handledLine": "{{what}} · {{who}} · {{by}} took it in {{n}} min · {{act}} {{at}}",
+      "askedAt": "Asked {{at}}"
     },
     "unit": {
       "oldestFirst": "oldest first",

@@ -292,10 +292,25 @@ export type WireProfessor = {
   past: number;
   handled: WireHandledRow[];
   toRate: WireRateItem[];
+  /**
+   * Approvals waiting for this approver, of a NON-MONEY kind only (`PROFESSOR_ASK_KINDS`): the id, the
+   * kind and when it was asked — no amount, no note, no patient. The phone opens the inbox card to decide.
+   */
+  asks: { id: string; typeKey: string; requestedAt: string }[];
 };
+
+/**
+ * The approval kinds the Professor's phone lists — an ALLOWLIST, so a kind added later is absent until
+ * someone decides it carries no money (decision 0058). Merge/unmerge, the restricted antimicrobial, and
+ * the two definition publishes.
+ */
+export const PROFESSOR_ASK_KINDS = [
+  "patient_merge", "patient_unmerge", "pharmacy_restricted_antimicrobial", "imaging_definition_publish", "ot_definition_publish",
+] as const;
 
 /** "My performance vs averages" (owner 2026-10-09): an average shows only above these floors. */
 export const RATING_MIN_OWN = 5;
+/** For ratings: three residents OTHER than the asker (the asker is left out of the pool); for the report: three units. */
 export const RATING_MIN_POOL_PEOPLE = 3;
 export const RATING_MIN_POOL_RATINGS = 10;
 

@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lte } from "drizzle-orm";
 import type { WireOwedRow } from "@hmis/contracts";
 import { alerts, doctorDeskActs, doctorDeskMoves, doctorDeskNudges } from "../../kernel/db/schema";
 import { closedCriticalsForClinician, openCriticalsForClinician } from "../lab";
@@ -51,7 +51,8 @@ export async function owedByUnit(
   // DD-1.3 (D3) — a call the lab closed (read back) is acknowledged, not done: it stays, amber, until
   // somebody records what was done. An act removes either kind.
   const closed = await closedCriticalsForClinician(exec, ids, new Date(at.getTime() - OWED_ALERT_DAYS * 86_400_000));
-  const acted = await actedKeys(exec, [...open, ...closed].map((c) => `lab_critical:${c.id}`));
+  // As of `at`: an act recorded after it did not exist yet (the 08:00 report run late — review F6).
+  const acted = await actedKeys(exec, [...open, ...closed].map((c) => `lab_critical:${c.id}`), at);
   const crit = [
     ...open.map((c) => ({ ...c, acked: false })),
     ...closed.map((c) => ({ ...c, acked: true })),
@@ -74,13 +75,16 @@ export async function owedByUnit(
       dueAt: new Date(istMidnightUtc(addIstDays(v.serviceDate, 1)).getTime() + VISIT_DUE_HOURS_AFTER_DAY * 3_600_000).toISOString(),
     })),
   ];
-  return (await withMoves(exec, rows, members)).sort((a, b) => a.dueAt.localeCompare(b.dueAt));
+  // Nothing that started after `at` was owed at `at` (a past `at` is the 08:00 report's).
+  const asOf = rows.filter((r) => Date.parse(r.since) <= at.getTime());
+  return (await withMoves(exec, asOf, members)).sort((a, b) => a.dueAt.localeCompare(b.dueAt));
 }
 
 /** Of these owed-row keys, the ones somebody has recorded an act on (DD-1.3). */
-export async function actedKeys(exec: Db | Tx, keys: readonly string[]): Promise<Set<string>> {
+export async function actedKeys(exec: Db | Tx, keys: readonly string[], asOf?: Date): Promise<Set<string>> {
   if (keys.length === 0) return new Set();
-  const rows = await (exec as Db).select({ rowKey: doctorDeskActs.rowKey }).from(doctorDeskActs).where(inArray(doctorDeskActs.rowKey, [...new Set(keys)]));
+  const rows = await (exec as Db).select({ rowKey: doctorDeskActs.rowKey }).from(doctorDeskActs)
+    .where(and(inArray(doctorDeskActs.rowKey, [...new Set(keys)]), asOf === undefined ? undefined : lte(doctorDeskActs.actedAt, asOf)));
   return new Set(rows.map((r) => r.rowKey));
 }
 

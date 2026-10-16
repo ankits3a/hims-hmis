@@ -1,4 +1,4 @@
-import { and, count, countDistinct, desc, eq, gte, lte } from "drizzle-orm";
+import { and, count, countDistinct, desc, eq, gte, lte, ne } from "drizzle-orm";
 import {
   RATING_MIN_OWN, RATING_MIN_POOL_PEOPLE, RATING_MIN_POOL_RATINGS, RATING_REASON_MAX, WORK_RATINGS, goodShare, newId,
 } from "@hmis/contracts";
@@ -100,21 +100,29 @@ const monthBounds = (istDate: string): { from: string; to: string; month: string
   return { month, from: `${month}-01`, to: `${month}-${String(last).padStart(2, "0")}` };
 };
 
-async function pool(db: Db, from: string, to: string, departmentId: string | null): Promise<{ good: number; total: number; people: number }> {
-  const where = and(gte(doctorDeskRatings.workDate, from), lte(doctorDeskRatings.workDate, to),
+/**
+ * An anonymous pool: everybody's ratings in the window EXCEPT the asker's own, so the average cannot be
+ * worked back to one colleague by subtracting oneself (review F2). Settled days only — up to yesterday —
+ * so the figure does not move under a rating given this morning.
+ */
+async function pool(db: Db, from: string, to: string, departmentId: string | null, exceptUserId: string): Promise<{ good: number; total: number; people: number }> {
+  const where = and(gte(doctorDeskRatings.workDate, from), lte(doctorDeskRatings.workDate, to), ne(doctorDeskRatings.ratedUserId, exceptUserId),
     departmentId === null ? undefined : eq(doctorDeskRatings.departmentId, departmentId));
   const all = (await db.select({ total: count(), people: countDistinct(doctorDeskRatings.ratedUserId) }).from(doctorDeskRatings).where(where))[0];
   const good = (await db.select({ n: count() }).from(doctorDeskRatings).where(and(where, eq(doctorDeskRatings.rating, "good"))))[0];
   return { good: good?.n ?? 0, total: all?.total ?? 0, people: all?.people ?? 0 };
 }
 
+/** An average share, rounded to the nearest 5 % so one rating more or less cannot be read off it. */
+export const roundToFive = (n: number): number => Math.round(n / 5) * 5;
 const poolShare = (p: { good: number; total: number; people: number }): number | null =>
-  p.people < RATING_MIN_POOL_PEOPLE ? null : goodShare(p.good, p.total, RATING_MIN_POOL_RATINGS);
+  p.people < RATING_MIN_POOL_PEOPLE ? null : (() => { const s = goodShare(p.good, p.total, RATING_MIN_POOL_RATINGS); return s === null ? null : roundToFive(s); })();
 
 /** The resident's own month, beside the department's and the hospital's share rated Good. No names. */
 export async function myRatings(db: Db, actor: Actor, at: Date): Promise<WireMyRatings> {
   const scope = await deskScope(db, actor, at);
   const { month, from, to } = monthBounds(scope.istDate);
+  const settled = addIstDays(scope.istDate, -1); // the pools read settled days only
   const own = await db.select().from(doctorDeskRatings)
     .where(and(eq(doctorDeskRatings.ratedUserId, actor.id), gte(doctorDeskRatings.workDate, from), lte(doctorDeskRatings.workDate, to)))
     .orderBy(desc(doctorDeskRatings.workDate), desc(doctorDeskRatings.createdAt));
@@ -125,8 +133,8 @@ export async function myRatings(db: Db, actor: Actor, at: Date): Promise<WireMyR
     month, counts,
     share: {
       you: goodShare(counts.good, counts.total, RATING_MIN_OWN),
-      department: department === null ? null : poolShare(await pool(db, from, to, department)),
-      hospital: poolShare(await pool(db, from, to, null)),
+      department: department === null ? null : poolShare(await pool(db, from, settled, department, actor.id)),
+      hospital: poolShare(await pool(db, from, settled, null, actor.id)),
     },
     recent: own.slice(0, 20).map((r) => ({ workDate: r.workDate, workKind: "opd_visit" as const, rating: r.rating as WorkRating, reason: r.reason })),
   };

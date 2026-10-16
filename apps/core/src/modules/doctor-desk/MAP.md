@@ -55,7 +55,8 @@ Plan: `docs/superpowers/plans/2026-10-04-doctor-desk-PLAN.md` §3.1 (DD-0), §3.
   rule leave uses); MS = the `medical_superintendent` role. An officiating head is `unit` only inside the window
   (`teamMembers` already returns them as head only then).
 - **Ratings are never a league table.** Only the rated resident (own figures, own CSV) and the rater see a rating; the
-  averages are anonymous shares with floors (`RATING_MIN_*` in contracts). The CSV names no rater and no patient, and
+  averages are anonymous shares with floors (`RATING_MIN_*` in contracts): the asker is LEFT OUT of the pool, which needs
+  3 other residents and 10 ratings, settled days only (up to yesterday), rounded to the nearest 5 %. The CSV names no rater and no patient, and
   defuses a leading `= + - @`.
 - **Copilot toggles are #861's** (`/opd/consult/copilot-settings`, opd's `cds_doctor_prefs`); the Desk only reads them on
   the web for the status line. Owed, nudge, move and act never read them (D1; `dd1.test.ts` DM7).
@@ -68,4 +69,10 @@ Plan: `docs/superpowers/plans/2026-10-04-doctor-desk-PLAN.md` §3.1 (DD-0), §3.
   `superintendents`). Same `deliverOnce` (lock + row + bell key per scope per period); no new job name, so no new alert rule.
 - **A new job is a seven-site census** (`kernel/worker/jobs.ts`, `kernel/worker/jobs.test.ts`, `kernel/worker/scheduler.test.ts` ×2,
   alerts-parity ×2, alerts.yml ×2, worker-runtime e2e). A `dailyIst` job leaves the interval pool sum (`kernel/db/client.test.ts`) unchanged.
+- **Nobody appoints themselves.** `deskLevel` (unit and department) and `departmentHeads` ignore an officiating row whose
+  `approved_by` is its own holder. The roster's `recordOfficiating` refuses self-appointment too (separate PR).
+- **The Professor's asks are the server's**: `asksFor` reads the approver's worklist and keeps an ALLOWLIST of non-money
+  kinds (`PROFESSOR_ASK_KINDS`), id + kind + time only. The phone never reads `/approvals` itself.
+- **An act appends `doctor_desk.critical_acted`** in the act's transaction. **"Owed at 08:00"** is `owedByUnit(…, 08:00)`:
+  rows that started later are left out and acts are counted as of that instant (`actedKeys(…, asOf)`).
 

@@ -14,4 +14,13 @@ export const doctorDeskRowMoved = defineEvent("doctor_desk.row_moved", MODULE, z
   moveId: id, rowKey: z.string().min(3).max(120), teamId: id, fromUserId: id, toUserId: id,
 }));
 
-export const DOCTOR_DESK_EVENTS = [doctorDeskRowMoved] as const;
+/**
+ * DD-1.3 — somebody recorded what was done on a critical (D3). In the act's own transaction. The
+ * payload names the row, the people by id, the choice and the minutes — no patient, no test, no value.
+ */
+export const doctorDeskCriticalActed = defineEvent("doctor_desk.critical_acted", MODULE, z.object({
+  actId: id, rowKey: z.string().min(3).max(120), teamId: id.nullable(), holderId: id,
+  choice: z.enum(["seen_at_bedside", "ecg_ordered", "repeat_sample_sent", "treatment_started", "other"]), minutes: z.number().int().nonnegative(),
+}));
+
+export const DOCTOR_DESK_EVENTS = [doctorDeskRowMoved, doctorDeskCriticalActed] as const;

@@ -4,7 +4,8 @@ import type { Actor } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { seedConfirmedUnits } from "../../../test/helpers/units";
 import {
-  alerts, doctorDeskActs, doctorDeskAgentRuns, opdDepartments, patients, registrationConfig, roleAssignments, roles, rosterOfficiating,
+  alerts, doctorDeskActs, doctorDeskAgentRuns, labAnalytes, labCriticalCalls, labResults, opdDepartments, orderItems, orders, patients,
+  registrationConfig, roleAssignments, roles, rosterOfficiating, services,
   rosterTeamMemberships, users,
 } from "../../kernel/db/schema";
 import { orgDepartmentByCode, teamByCode } from "../roster";
@@ -215,5 +216,39 @@ describe("doctor-desk — DD-report v0, the unit report", () => {
     // a HOD reads no weekly
     await makeHod(P.U3HEAD);
     expect((await reportsFor(db, actor(P.U3HEAD), AT)).hospital).toEqual([]);
+  });
+
+  it("F6 'owed at 08:00' is as of 08:00 even when the run is late: an item acted on at 09:00 still counts, one opened at 08:30 does not", async () => {
+    const patientId = newId(); const serviceId = newId(); const analyteId = newId();
+    await db.insert(patients).values({ id: patientId, uhid: "HMS-00000001-5", name: "Patient Alpha", sex: "female", administrativeGender: "female", createdBy: "t", updatedBy: "t" });
+    await db.insert(services).values({ id: serviceId, code: "ELEC", name: "Electrolytes", category: "investigation", createdBy: "t", updatedBy: "t" });
+    await db.insert(labAnalytes).values({ id: analyteId, code: "K", nameEn: "Potassium", resultType: "numeric", unit: "mmol/L", createdBy: "t", updatedBy: "t" });
+    let n = 0;
+    const critical = async (openedAt: Date): Promise<string> => {
+      n += 1;
+      const orderId = newId(); const itemId = newId(); const resultId = newId(); const callId = newId();
+      await db.insert(orders).values({
+        id: orderId, orderNo: `L${String(n).padStart(8, "0")}`, orderGroupId: orderId, kind: "lab", patientId, encounterNo: `V${String(n)}`,
+        serviceDate: "2026-10-06", priority: "routine", authority: "clinician", orderedByType: "user", orderedById: P.SR, orderingClinicianId: P.SR, placedAt: openedAt,
+      });
+      await db.insert(orderItems).values({ id: itemId, orderId, serviceId });
+      await db.insert(labResults).values({
+        id: resultId, orderItemId: itemId, analyteId, valueNumeric: "6.4", unit: "mmol/L", flag: "HH",
+        enteredByType: "user", enteredById: "t", entryMode: "manual", verificationStatus: "verified", verifiedBy: "t", verifiedAt: openedAt,
+      });
+      await db.insert(labCriticalCalls).values({ id: callId, resultId, openedBy: "t", openedAt });
+      return callId;
+    };
+    const early = await critical(min(-30)); // 07:30, due 07:45
+    await critical(min(30));                // 08:30 — not owed at 08:00
+    await critical(min(45));                // 08:45 — nor this
+    await db.insert(doctorDeskActs).values({
+      id: newId(), rowKey: `lab_critical:${early}`, teamId: U2, holderId: P.SR, actorId: P.SR, choice: "treatment_started",
+      openedAt: min(-30), actedAt: min(60), // acted at 09:00
+    });
+    await sendUnitReports(db, min(120)); // the run is two hours late
+    const r = (await reportsFor(db, actor(P.HEAD), min(121))).reports.find((x) => x.teamId === U2)!;
+    expect(r.reportDate).toBe("2026-10-06");
+    expect(r.owed).toEqual({ open: 1, past: 1, criticalsWithoutAct: 1 });
   });
 });

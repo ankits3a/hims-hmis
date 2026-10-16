@@ -6,12 +6,12 @@ import type { Actor } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { seedConfirmedUnits } from "../../../test/helpers/units";
 import {
-  alerts, doctorDeskActs, doctorDeskMoves, doctorDeskRatings, events, labAnalytes, labCriticalCalls, labResults, opdDepartments,
+  alerts, approvalTypes, approvals, doctorDeskActs, doctorDeskMoves, doctorDeskRatings, events, labAnalytes, workflowDefinitions, workflowInstances, labCriticalCalls, labResults, opdDepartments,
   opdDoctors, opdEncounters, orderItems, orders, patients, registrationConfig, roleAssignments, roles, rosterOfficiating,
   rosterTeamMemberships, services, users,
 } from "../../kernel/db/schema";
 import { countingUnits, orgDepartmentByCode, teamByCode } from "../roster";
-import { deskLevel, deskScope } from "./scope";
+import { departmentHeads, deskLevel, deskScope } from "./scope";
 import { unitBoard } from "./unit-board";
 import { moveRow } from "./moves";
 import { recordAct } from "./acts";
@@ -280,19 +280,27 @@ describe("doctor-desk — DD-1 the unit and the ladder", () => {
     expect(first).toMatchObject({ month: "2026-10", counts: { good: 0, fine: 0, needs_rework: 1, total: 1 }, share: { you: null, department: null, hospital: null } });
 
     const med = (await orgDepartmentByCode(db, "MED"))!;
-    const row = (rated: string, rating: string, i: number) => ({
-      id: newId(), workKind: "opd_visit", workId: `w-${rated}-${String(i)}`, workDate: TODAY, ratedUserId: rated, raterId: P.HEAD,
+    const YESTERDAY = "2026-10-05";
+    const row = (rated: string, rating: string, i: number, day = YESTERDAY) => ({
+      id: newId(), workKind: "opd_visit", workId: `w-${rated}-${day}-${String(i)}`, workDate: day, ratedUserId: rated, raterId: P.HEAD,
       teamId: U2, departmentId: med.id, rating, reason: rating === "needs_rework" ? "redo" : null,
     });
-    // JR: 5 more Good (6 in all, 5 Good → 83%); SR and INT: 3 Fine and 1 Good each → the department pool: 3 people, 14 ratings
+    // Two OTHER residents (SR, INT) with 8 settled ratings: below the floor of three others — still no average.
     await db.insert(doctorDeskRatings).values([
       ...[0, 1, 2, 3, 4].map((i) => row(P.JR, "good", i)),
       ...[0, 1, 2, 3].map((i) => row(P.SR, i === 0 ? "good" : "fine", i)),
       ...[0, 1, 2, 3].map((i) => row(P.INT, i === 0 ? "good" : "fine", i)),
     ]);
+    expect((await myRatings(db, actor(P.JR), AT)).share.department).toBeNull();
+    // A third other (FAC: 3 Good of 4) and three Good given TODAY to SR (not settled, left out):
+    // others' pool = 12 ratings, 5 Good = 41.7 % → 40 %. With the asker's own 5 Good it would be 60 %; with today's, 55 %.
+    await db.insert(doctorDeskRatings).values([
+      ...[0, 1, 2, 3].map((i) => row(P.FAC, i < 3 ? "good" : "fine", i)),
+      ...[5, 6, 7].map((i) => row(P.SR, "good", i, TODAY)),
+    ]);
     const mine = await myRatings(db, actor(P.JR), AT);
     expect(mine.counts).toEqual({ good: 5, fine: 0, needs_rework: 1, total: 6 });
-    expect(mine.share).toEqual({ you: 83, department: 50, hospital: 50 });
+    expect(mine.share).toEqual({ you: 83, department: 40, hospital: 40 });
     const text = JSON.stringify(mine);
     expect(text).not.toMatch(/Dr\.|Senior|Intern|Head/);
     expect(text).not.toContain(P.SR);
@@ -326,5 +334,61 @@ describe("doctor-desk — DD-1 the unit and the ladder", () => {
       await professorView(db, actor(P.HEAD), AT), await myRatings(db, actor(P.JR), AT),
     ];
     for (const p of payloads) expect(JSON.stringify(p)).not.toMatch(/fee|paid|paise|price|bypass|payer|pmjay|₹|rupee|invoice|bill/i);
+  });
+
+  /* ═══ review fixes ═══ */
+
+  it("F1 the Professor's asks come from the server: allowlisted non-money kinds only, id + kind + time; a discount never shows", async () => {
+    const DEF = {
+      key: "approval_x", title: "X", changeClass: "C", initialState: "pending",
+      states: [{ name: "pending", sla: { minutes: 45, alerting: "active" } }, { name: "granted", terminal: true }, { name: "rejected", terminal: true }],
+      transitions: [{ from: "pending", to: "granted", roles: ["unit_approver"] }, { from: "pending", to: "rejected", roles: ["unit_approver"] }],
+    };
+    await db.insert(roles).values({ key: "unit_approver", title: "Approver" }).onConflictDoNothing();
+    await db.insert(roleAssignments).values({ id: newId(), userId: P.HEAD, roleKey: "unit_approver", scopeType: "hospital" });
+    const ask = async (typeKey: string, note: string): Promise<string> => {
+      const id = newId(); const instanceId = newId(); const defId = newId(); const defKey = `approval_${typeKey}`;
+      await db.insert(workflowDefinitions).values({ id: defId, defKey, version: 1, title: typeKey, changeClass: "C", definition: { ...DEF, key: defKey }, draftedBy: P.SR });
+      await db.insert(approvalTypes).values({ typeKey, title: typeKey, defKey, approverRole: "unit_approver", createdBy: P.SR });
+      await db.insert(workflowInstances).values({ id: instanceId, definitionId: defId, defKey, currentState: "pending", subjectType: "s", subjectId: id, stateEnteredAt: AT });
+      await db.insert(approvals).values({
+        id, typeKey, instanceId, requesterId: P.SR, approverRole: "unit_approver", urgencyClass: "routine", subjectType: "s", subjectId: id,
+        amountPaise: null, requestNote: note, status: "pending", requestedAt: min(-20),
+      });
+      return id;
+    };
+    const merge = await ask("patient_merge", "two records, one person");
+    await ask("pharmacy_discount_incharge", "12% discount on the bill, fee waived");
+    await ask("some_future_kind", "anything");
+    const prof = await professorView(db, actor(P.HEAD), AT);
+    expect(prof.asks).toEqual([{ id: merge, typeKey: "patient_merge", requestedAt: min(-20).toISOString() }]);
+    expect(JSON.stringify(prof)).not.toMatch(/fee|paid|paise|price|discount|%|₹|rupee|bill|amount/i);
+    expect((await professorView(db, actor(P.SR), AT)).asks).toEqual([]);
+  });
+
+  it("F3 a self-approved officiating row gives no department scope and no HOD bell", async () => {
+    const med = (await orgDepartmentByCode(db, "MED"))!;
+    await db.insert(rosterOfficiating).values({
+      id: newId(), teamId: U1, userId: P.OUT, role: "hod", startsAt: min(-60), endsAt: min(60), reason: "self",
+      approvedBy: P.OUT, createdBy: "t", updatedBy: "t",
+    });
+    const lv = await deskLevel(db, actor(P.OUT), await deskScope(db, actor(P.OUT), AT), AT);
+    expect(lv.level).toBe("member");
+    expect(await departmentHeads(db, med.id, AT)).not.toContain(P.OUT);
+    await db.insert(rosterOfficiating).values({
+      id: newId(), teamId: (await teamByCode(db, "MED-U3"))!.id, userId: P.HOD, role: "hod", startsAt: min(-60), endsAt: min(60), reason: "HOD on leave",
+      approvedBy: P.HEAD, createdBy: "t", updatedBy: "t",
+    });
+    expect(await departmentHeads(db, med.id, AT)).toEqual([P.HOD]);
+  });
+
+  it("F4 an act appends doctor_desk.critical_acted in its own transaction, naming no patient", async () => {
+    const { key } = await critical(P.JR, { at: min(-12) });
+    const r = await recordAct(db, actor(P.SR), key, "ecg_ordered", null, AT);
+    const ev = await db.select().from(events).where(eq(events.name, "doctor_desk.critical_acted"));
+    expect(ev).toHaveLength(1);
+    expect(ev[0]!.payload).toEqual({ actId: r.actId, rowKey: key, teamId: U2, holderId: P.JR, choice: "ecg_ordered", minutes: 12 });
+    expect(await code(recordAct(db, actor(P.JR), key, "ecg_ordered", null, min(1)))).toBe("already_acted");
+    expect(await db.select().from(events).where(eq(events.name, "doctor_desk.critical_acted"))).toHaveLength(1);
   });
 });

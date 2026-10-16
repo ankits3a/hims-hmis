@@ -1,4 +1,6 @@
+import { PROFESSOR_ASK_KINDS } from "@hmis/contracts";
 import type { Actor, ActChoice, WireHandledRow, WireNow, WireProfessor } from "@hmis/contracts";
+import { listApprovals } from "../../kernel/approvals/worklist";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { criticalCallsByIds } from "../lab";
 import { getPatientSummaries } from "../patients";
@@ -83,5 +85,17 @@ export async function professorView(db: Db, actor: Actor, at: Date): Promise<Wir
     past: owed.filter((r) => Date.parse(r.dueAt) < at.getTime()).length,
     handled: await handledWithoutYou(db, actor, scope, at).catch(() => []),
     toRate: await rateItems(db, actor, scope).catch(() => []),
+    asks: await asksFor(db, actor).catch(() => []),
   };
+}
+
+/**
+ * The approvals worklist for this approver (their held roles, the kernel's own scoping), narrowed to
+ * the allowlisted non-money kinds and reduced to id, kind and time. Nothing else of the row leaves.
+ */
+export async function asksFor(db: Db, actor: Actor): Promise<WireProfessor["asks"]> {
+  if (actor.type !== "user") return [];
+  const allowed = new Set<string>(PROFESSOR_ASK_KINDS);
+  const { items } = await listApprovals(db, actor, { status: "pending", limit: 200 });
+  return items.filter((a) => allowed.has(a.typeKey)).map((a) => ({ id: a.id, typeKey: a.typeKey, requestedAt: a.requestedAt.toISOString() }));
 }

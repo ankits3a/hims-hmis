@@ -48,6 +48,7 @@ const PROF: WireProfessor = {
   at: AT, istDate: "2026-10-06", you: YOU, unit: UNIT, scope: SCOPE_UNIT,
   owed: BOARD.owed.map((o) => { const { mayMove, ...rest } = o; void mayMove; return rest; }), owedTotal: 8, past: 2,
   handled: [{ key: "lab_critical:c5", analyte: "Potassium", value: "6.4", unit: "mmol/L", patient: { id: "pa", uhid: "HMS-1", name: "Patient Alpha", restricted: false }, by: { userId: "sr", name: "Dr. Test Senior" }, choice: "treatment_started", minutes: 7, actedAt: "2026-10-06T02:54:00.000Z" }],
+  asks: [{ id: "ap1", typeKey: "patient_merge", requestedAt: AT }],
   toRate: [{ workKind: "opd_visit", workId: "e11", visitNo: "V2610060011", workDate: "2026-10-06", patient: { id: "pa", uhid: "HMS-1", name: "Patient Alpha", restricted: false }, resident: { userId: "jr", name: "Dr. Test Junior", role: "junior_resident" }, completedAt: "2026-10-06T04:00:00.000Z", mine: null }],
 };
 const COVER = {
@@ -61,17 +62,20 @@ const MONEY = /fee|paid|paise|price|bypass|payer|pmjay|₹|rupee|invoice|bill/i;
 
 describe("Doctor Desk DD-1", () => {
   const posted: { url: string; body: unknown }[] = [];
+  const asked: string[] = [];
   let toggles: { status: number; body: unknown } = { status: 200, body: { proactive: false, draftProse: false } };
   let ratings: WireMyRatings;
   let board: WireUnitBoard = BOARD;
   beforeEach(() => {
     setToken("t");
     posted.length = 0;
+    asked.length = 0;
     board = BOARD;
     toggles = { status: 200, body: { proactive: false, draftProse: false } };
     ratings = { month: "2026-10", counts: { good: 2, fine: 1, needs_rework: 0, total: 3 }, share: { you: null, department: null, hospital: null }, recent: [{ workDate: "2026-10-05", workKind: "opd_visit", rating: "fine", reason: null }] };
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      asked.push(raw);
       if (init?.method === "POST") posted.push({ url: raw, body: init.body === undefined ? undefined : JSON.parse(String(init.body)) });
       if (raw.endsWith("/opd/consult/copilot-settings")) return new Response(JSON.stringify(toggles.body), { status: toggles.status, headers: { "Content-Type": "application/json" } });
       const body = raw.endsWith("/auth/me") ? { actor: { type: "user", id: "hd" }, permissions: { hospital: ["opd.consult", "roster.read"], scoped: { department: {}, floor: {} } } }
@@ -155,11 +159,11 @@ describe("Doctor Desk DD-1", () => {
     await waitFor(() => expect(screen.queryByTestId("ddp-copilot")).toBeNull());
   });
 
-  it("the Professor phone: Approve a swap through the roster's own route; no approval with money; no proactive line while proactive is off", async () => {
+  it("the Professor phone: Approve a swap through the roster's own route; asks come from the server only; no proactive line while proactive is off", async () => {
     renderWithProviders(<DoctorDeskProfessor />);
     expect(await screen.findByTestId("ddp-swap-cv1")).toHaveTextContent("Duty swap · 2026-10-10");
-    expect(await screen.findByTestId("ddp-ask-ap1")).toBeInTheDocument();
-    expect(screen.queryByTestId("ddp-ask-ap2")).toBeNull();
+    expect(await screen.findByTestId("ddp-ask-ap1")).toHaveTextContent("Merge");
+    expect(asked.some((u) => u.endsWith("/approvals"))).toBe(false); // the phone never reads the worklist itself
     expect(screen.getByTestId("ddp-sign-n")).toHaveTextContent("2");
     await userEvent.click(screen.getByTestId("ddp-swap-cv1-yes"));
     await waitFor(() => expect(posted).toContainEqual({ url: "/api/roster/covers/cv1/decide", body: { approve: true } }));
