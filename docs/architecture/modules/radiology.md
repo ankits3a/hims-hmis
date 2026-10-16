@@ -52,10 +52,11 @@ Source: `apps/core/src/modules/radiology/`
   - types: `BedsideStudyRow`
 - `chasers.ts`
   - `CHASER_ACTOR: Actor`
+  - `UNREAD_ESCALATE_HOURS`
   - `UNREAD_REPORT_HOURS`
   - `sweepCriticalChaser(db: Db, now: Date = new Date()): Promise<CriticalChaseResult>`
   - `sweepUnreadWatchman(db: Db, now: Date = new Date()): Promise<UnreadChaseResult>`
-  - types: `CriticalChaseResult`, `UnreadChaseResult`
+  - types: `CriticalChaseResult`, `UnreadChaseResult`, `UnreadRung`
 - `checkin.ts`
   - `checkIn(tx: Tx, actor: Actor, input: { studyId: string; now?: Date }): Promise<CheckInResult>`
   - `deriveGateSet(studyType: StudyType, patient: { sex: string; dob: Date | null }, study: { formFRequired: boolean }, policy: PregnancyPolicyB…`

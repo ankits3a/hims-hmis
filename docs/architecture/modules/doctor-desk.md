@@ -13,7 +13,7 @@ Source: `apps/core/src/modules/doctor-desk/`
 
 - **Depends on modules:** `lab`, `opd`, `patients`, `radiology`, `roster`
 - **Used by modules:** —
-- **Kernel used:** `alerts`, `auth`, `db`, `desk`, `modules`, `phi`, `tokens`
+- **Kernel used:** `alerts`, `auth`, `copilot`, `db`, `desk`, `modules`, `phi`, `tokens`
 
 ## Public API (`index.ts`), by declaring file
 

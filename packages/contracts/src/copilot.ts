@@ -263,6 +263,16 @@ export const COPILOT_ANSWER_KEYS = [
   "copilot.answer.reminderTooLong",
   "copilot.answer.reminderLimit",
   "copilot.answer.reminderSet",
+  /*
+    ═══ DOCTOR DESK DD-0.10 (#890) — the doctor's three floor-only questions. Counts only; `unit` is a unit name. ═══
+  */
+  "copilot.answer.ddWaitingOnMe",
+  "copilot.answer.ddWaitingOnMeNone",
+  "copilot.answer.ddUnitOwes",
+  "copilot.answer.ddUnitOwesNone",
+  "copilot.answer.ddNoUnit",
+  "copilot.answer.ddMyDay",
+  "copilot.answer.ddMyDayNoOpd",
 ] as const;
 
 export type CopilotAnswerKey = (typeof COPILOT_ANSWER_KEYS)[number];

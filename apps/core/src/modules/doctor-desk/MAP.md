@@ -22,6 +22,9 @@ clinical row. It reads lab, radiology, opd, patients and roster through their `i
 - `nudge.ts` — once per row per sender; bell text names the sender and the kind, never a patient (GC6).
 - `briefs.ts` — the login brief: built on a return after `BRIEF_GAP_MINUTES` (3 h); lifecycle `briefStage` (contracts).
 - `agent-runs.ts` — append-only log; "nothing failed" is read from rows.
+- `copilot-tools.ts` — DD-0.10: three floor-only Ask-bar intents (`doctor-desk.waiting_on_me`, `.unit_owes`, `.my_day`)
+  through the module intent seam (#865). Named `doctor-desk.*`, not the plan's `doctor_desk.*`: the seam requires
+  `<module key>.`. No menu, no help line, so the pinned chat system-prompt hash and the eval set are unchanged.
 - Wire + lifecycle rules: `packages/contracts/src/doctor-desk.ts`. Web: `apps/web/src/screens/doctor-desk-*.tsx`.
 
 ## 2. Invariants and traps
@@ -33,6 +36,10 @@ clinical row. It reads lab, radiology, opd, patients and roster through their `i
 - A stored brief keeps patient IDs only; names are resolved when read, so a later seal hides them.
 - One source failing drops its own rows, never the Tower.
 - Door is `opd.consult`; there is no doctor-desk permission (seed-roles untouched).
+- Copilot answers are counts only (and a unit NAME); the cues stay two points clear of `patient_dues`'s bare `baaki`
+  (MIN_MARGIN 2) — a new cue near "baaki" needs a routing row in `copilot.test.ts`.
+- DD-0.11 lives in radiology (`modules/radiology/chasers.ts`): the unread-report chaser alerts the ordering doctor at 24 h, the
+  duty-manager route 12 h later; those `imaging_chase` bells show in Clocks Running like any other.
 - **Restricted tests** follow the kernel's rule (DD11, as `lab/patient-results.ts`): the NEXT card's results drop a
   restricted test unless the asker ordered it or holds `orders.read.restricted`, BEFORE the per-analyte pick. The
   Tower's lab readers are keyed on the asker's own orders; imaging uses radiology's `treatedBy` rule. Clocks Running
