@@ -274,7 +274,7 @@ export async function paperHookForDocument(
 // ——— the desk scribe: medicines and tests, typed from the paper ———
 
 export type HeldAlert = {
-  kind: "allergy" | "interaction" | "duplicate" | "drug_disease";
+  kind: "allergy" | "interaction" | "duplicate" | "drug_disease" | "renal";
   /** Hard = the line cannot be issued without a prescriber's reason. Soft ones are shown, never held. */
   hard: boolean;
   /** One plain sentence. The screens word their own from the fields below where they can. */
@@ -283,6 +283,8 @@ export type HeldAlert = {
   saltPair?: [string, string];
   moiety?: string;
   icd10Prefix?: string;
+  /** #621 — `renal`: the reviewed monograph's generic the kidney warning is about. */
+  genericId?: string;
 };
 export type LineAlerts = { lineIndex: number; alerts: HeldAlert[] };
 export type HeldLine = { line: RxLine; alerts: HeldAlert[] };
@@ -314,6 +316,15 @@ async function alertsByLine(
     push(h.lineIndex, {
       kind: "drug_disease", hard: h.severity === "severe", moiety: h.moiety, icd10Prefix: h.icd10Prefix,
       text: `${h.moiety} with ${h.icd10Title}${h.note.trim() === "" ? "" : ` — ${h.note}`}`,
+    });
+  }
+  /* #621 — a renal dose warning holds a slip line for the doctor exactly like the others (always hard). */
+  for (const h of checks.renal) {
+    push(h.lineIndex, {
+      kind: "renal", hard: true, genericId: h.genericId,
+      text: h.kind === "band"
+        ? `${h.genericName}: eGFR ${String(h.egfr)} (${String(h.ageDays)} d old) — ${h.dose ?? ""}`
+        : `${h.genericName}: no recent kidney function${h.ageDays === null ? "" : ` (last eGFR ${String(h.ageDays)} d old)`}`,
     });
   }
   return out;
@@ -825,6 +836,7 @@ export async function correctPaperPrescription(
     const interactionOverrides: RxOverride[] = [];
     const duplicateOverrides: RxOverride[] = [];
     const drugDiseaseOverrides: RxOverride[] = [];
+    const renalOverrides: RxOverride[] = [];
     for (const [lineIndex, list] of alerts) {
       const reason = reasonAt.get(lineIndex);
       if (reason === undefined) continue;
@@ -832,11 +844,12 @@ export async function correctPaperPrescription(
         if (a.kind === "allergy") overrides.push({ lineIndex, substance: a.substance!, reason });
         else if (a.kind === "interaction") interactionOverrides.push({ lineIndex, reason, saltPair: a.saltPair! });
         else if (a.kind === "duplicate") duplicateOverrides.push({ lineIndex, reason, moiety: a.moiety! });
+        else if (a.kind === "renal") renalOverrides.push({ lineIndex, reason, genericId: a.genericId! });
         else drugDiseaseOverrides.push({ lineIndex, reason, moiety: a.moiety!, icd10Prefix: a.icd10Prefix! });
       }
     }
     const issued = await issuePrescription(
-      db, actor, cfg, e.id, { lines, overrides, interactionOverrides, duplicateOverrides, drugDiseaseOverrides },
+      db, actor, cfg, e.id, { lines, overrides, interactionOverrides, duplicateOverrides, drugDiseaseOverrides, renalOverrides },
       now, "doctor", { paperCorrection: true },
     );
     issuedId = issued.prescriptionId;

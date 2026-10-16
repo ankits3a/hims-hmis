@@ -59,7 +59,7 @@ export function PriceListImport(): React.ReactElement {
   const { can } = useAuth();
   const keepsRates = can("materials.vendors.manage");
   const [vendorId, setVendorId] = useState("");
-  const [inclGst, setInclGst] = useState(true);
+  const [inclGst, setInclGst] = useState(false);
   const [rateNote, setRateNote] = useState<string | null>(null);
   const [rateFailures, setRateFailures] = useState<{ brand: string; message: string }[]>([]);
   const vendors = useQuery({
@@ -75,9 +75,10 @@ export function PriceListImport(): React.ReactElement {
     if (g.length < 2) { setError(P("tooShort")); return; }
     const guessed = guessColumns(g[0]!);
     setSkipped(h); setGrid(g); setCols(guessed); setRows(null); setResults(null); setError(null); setRateNote(null); setRateFailures([]);
-    // A heading that says "incl GST" says how to read the rate; "ex"/"excl"/"without" says the other.
+    // DECIDED (standard Indian trade practice): a distributor's rate / PTR is quoted before GST, which the invoice adds.
+    // Only a heading that says the rate includes GST ("incl GST", "inclusive", "with GST") is read as inclusive.
     const rateHead = guessed.rate === undefined ? "" : (g[0]![guessed.rate] ?? "").toLowerCase();
-    setInclGst(!/\b(ex|excl|excluding|without|w\/o)\b/.test(rateHead));
+    setInclGst(/\b(incl|inclusive|including|with)\b/.test(rateHead) && !/\b(ex|excl|excluding|without|w\/o)\b/.test(rateHead));
   };
   const downloadSample = (): void => {
     const url = URL.createObjectURL(new Blob(["\uFEFF" + sampleCsv()], { type: "text/csv;charset=utf-8" }));

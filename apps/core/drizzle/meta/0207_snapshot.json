@@ -1,5 +1,5 @@
 {
-  "id": "97de389e-7526-4330-abc8-4682556bd3b9",
+  "id": "96b24427-3aed-4c93-8dd7-ee83a8b6952f",
   "prevId": "3996038a-c693-44ce-8fea-89964e818eff",
   "version": "7",
   "dialect": "postgresql",
@@ -8273,6 +8273,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "renal_overrides": {
+          "name": "renal_overrides",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
         }
       },
       "indexes": {
@@ -11505,12 +11512,6 @@
         },
         "payee_id_ref": {
           "name": "payee_id_ref",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "payee_relation": {
-          "name": "payee_relation",
           "type": "text",
           "primaryKey": false,
           "notNull": false

@@ -1,6 +1,7 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "../test-utils";
+import i18next from "../lib/i18n";
 import { RxPrint } from "./rx-print";
 import type { WireRxPrint } from "../lib/opd-api";
 
@@ -186,6 +187,32 @@ it("decision 0067: an outside test prints under 'Tests to be done outside', with
   expect(outside).toHaveTextContent("ECG (12-lead)");
   expect(outside).not.toHaveTextContent("₹");
   expect(screen.getByTestId("rx-advised-tests")).not.toHaveTextContent("ECG");
+});
+
+it("#609: a test the tariff has not priced prints \"Rate at counter\", never ₹0 — in English and in Hindi", async () => {
+  const data = {
+    ...DATA,
+    encounter: {
+      ...DATA.encounter,
+      advisedTests: [
+        { serviceId: "svc-usg", code: "USG-ABD", name: "Ultrasound abdomen", pricePaise: 120000 },
+        { serviceId: "LABSVC-NEW", code: "NEWT", name: "Vitamin D3", pricePaise: null },
+      ],
+    },
+  };
+  const { unmount } = renderWithProviders(<RxPrint data={data} />);
+  const block = screen.getByTestId("rx-advised-tests");
+  expect(block).toHaveTextContent("Vitamin D3 — Rate at counter");
+  expect(block).toHaveTextContent("₹1,200.00");
+  expect(block).not.toHaveTextContent("₹0");
+  unmount();
+  await i18next.changeLanguage("hi");
+  try {
+    renderWithProviders(<RxPrint data={data} />);
+    expect(screen.getByTestId("rx-advised-tests")).toHaveTextContent("Vitamin D3 — काउंटर पर दर");
+  } finally {
+    await i18next.changeLanguage("en");
+  }
 });
 
 it("07d T5: a prescription with no advised tests prints no such block at all", () => {

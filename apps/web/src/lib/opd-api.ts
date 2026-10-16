@@ -245,7 +245,8 @@ export type WireQueueEntryView = WireQueueEntry & {
  * PLAN 07d T5 / DD4 — one advised test. The price is a SNAPSHOT taken when the doctor advised it,
  * never a live lookup: the slip is a quotation from a particular afternoon and the counter reprices.
  */
-export type WireAdvisedTest = { serviceId: string; code: string; name: string; pricePaise: number };
+/** `pricePaise` null: the tariff had no price when it was advised (#609) — printed as "Rate at counter". */
+export type WireAdvisedTest = { serviceId: string; code: string; name: string; pricePaise: number | null };
 
 /** PLAN 07d T5 — `GET /tariff/price-list`: the active version's list price per active service. */
 export type WirePriceListRow = {
@@ -301,6 +302,22 @@ export type WireDuplicateHit = {
  */
 export type WireDrugDiseaseAlternative = { moiety: string; label: string };
 
+/**
+ * #621 — a renal dose warning: a REVIEWED monograph's band the patient's latest eGFR reaches (with its
+ * age in days), or no eGFR within 90 days for a drug that has a rule. Always hard: a reason clears it.
+ */
+export type WireRenalHit = {
+  lineIndex: number;
+  genericId: string;
+  genericName: string;
+  kind: "band" | "no_recent_kidney_function";
+  severity: "reduce" | "avoid" | null;
+  dose: string | null;
+  egfr: number | null;
+  sampledAt: string | null;
+  ageDays: number | null;
+  reason: "no_result" | "stale" | "no_dob" | "sex_not_binary" | "under_18" | null;
+};
 export type WireDrugDiseaseHit = {
   severity: "severe" | "moderate";
   lineIndex: number;
@@ -401,6 +418,8 @@ export type WireRxLine = {
   medicineId?: string | null;
   /** Decision 0050 P0 — typed, searched, suggested, from a set, a repeat, a voice note or the desk's paper. Audit and learning only. */
   source?: RxLineSource | null;
+  /** #620 — the suggestion event a filled line was taken from. Audit and learning only. */
+  suggestionEventId?: string | null;
 };
 
 /** An editor row as typed — blanks allowed; `durationDays` is the box's text. Not a prescription line. */
@@ -409,6 +428,8 @@ export type WireRxDraftLine = {
   instructions: string; noSubstitution: boolean; medicineId?: string | null; eye?: Eye | null; taper?: TaperStep[] | null;
   /** Decision 0050 P0 — where the row came from; absent on a row typed by hand and on every older draft. */
   source?: RxLineSource;
+  /** #620 — a filled row's suggestion event, and the row as it was offered (`lib/suggest-signals.ts`). */
+  suggestionEventId?: string; suggestedAs?: string;
 };
 
 export type WirePrescription = {
@@ -884,6 +905,18 @@ export function listQueueSummary(serviceDate: string, departmentId?: string): Pr
 }
 
 /**
+ * #660 — THE OPD DESK'S DEPARTMENT LINE, IN ONE READ. Every doctor of the department as the board's
+ * summary row, each carrying the very view `GET /opd/queues` gives for that doctor (null with no
+ * session today). One read per poll for the whole department — never one per doctor (the 2026-09-28
+ * desk decision's load rule). `serviceDate` is the caller's, as for `listQueueSummary`.
+ */
+export type WireDepartmentQueueDoctor = WireDoctorSummary & { queue: WireQueueView | null };
+export type WireDepartmentQueue = { departmentId: string; serviceDate: string; doctors: WireDepartmentQueueDoctor[] };
+export function getDepartmentQueue(departmentId: string, serviceDate: string): Promise<WireDepartmentQueue> {
+  return api("GET", `/opd/departments/${encodeURIComponent(departmentId)}/queue?${new URLSearchParams({ serviceDate }).toString()}`);
+}
+
+/**
  * FD-15 — UNDO A SEATING, SERVER-SIDE.
  *
  * `unassign` in the desk cleared the CLIENT's idea of the visit and nothing else, so the encounter
@@ -1073,7 +1106,7 @@ export type WirePaperVerdict = {
 };
 
 export type WireHeldAlert = {
-  kind: "allergy" | "interaction" | "duplicate" | "drug_disease";
+  kind: "allergy" | "interaction" | "duplicate" | "drug_disease" | "renal";
   hard: boolean; text: string;
   substance?: string; saltPair?: [string, string]; moiety?: string; icd10Prefix?: string;
 };

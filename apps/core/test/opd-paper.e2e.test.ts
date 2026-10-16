@@ -127,6 +127,21 @@ describe("consulted on paper — e2e", () => {
     expect((queue.body.ordered as { encounterId: string }[]).map((q) => q.encounterId)).not.toContain(a.encounterId);
   });
 
+  it("#620 — THE SCRIBE HAS CHIPS: its own switch and crosses, and the treating doctor's tests for the visit; the slip desk has neither", async () => {
+    const v = await waitingVisit("Sunil Yadav", "9000000009");
+    const state = await http().get("/opd/consult/suggestions").set(...auth(scribe.token)).expect(200);
+    expect(state.body).toEqual({ on: true, hospitalOn: true, hidden: [] });
+    const chips = await http().get(`/opd/paper/visits/${v.encounterId}/suggest-tests`).set(...auth(scribe.token)).expect(200);
+    expect(chips.body).toEqual({ contextKey: null, items: [] });
+    await http().get("/opd/consult/suggestions").set(...auth(slipDesk.token)).expect(403);
+    await http().get(`/opd/paper/visits/${v.encounterId}/suggest-tests`).set(...auth(slipDesk.token)).expect(403);
+    // Three crosses on the scribe's chip hide it from the scribe — counted on the scribe's own surface.
+    const cross = { kind: "test", source: "suggested", outcome: "dismissed", surface: "scribe", encounterId: v.encounterId, itemKey: "svc_cbc" };
+    await http().post("/opd/consult/signals").set(...auth(scribe.token)).send({ suggestions: [cross, cross, cross] }).expect(201);
+    const after = await http().get("/opd/consult/suggestions").set(...auth(scribe.token)).expect(200);
+    expect(after.body.hidden).toEqual([{ kind: "test", contextKey: null, itemKey: "svc_cbc" }]);
+  });
+
   it("the three seats: the scribe types, the doctor looks, the supervisor reopens — each behind its own grant", async () => {
     const b = await waitingVisit("Vikash Kumar", "9000000002");
 
