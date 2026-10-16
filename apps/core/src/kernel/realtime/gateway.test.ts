@@ -5,8 +5,10 @@ import { AppModule } from "../../app.module";
 import { configureApp } from "../../app.bootstrap";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { createUser, deactivateUser, setPassword } from "../auth/identity";
-import { createSession, findLiveSession } from "../auth/sessions";
+import { createSession, findLiveSession, revokeUserSessions } from "../auth/sessions";
 import { assignRole, createRole, grantPermissionToRole, syncPermissions } from "../auth/permissions";
+import { eq } from "drizzle-orm";
+import { roleAssignments } from "../db/schema";
 import { authManifest } from "../auth/manifest";
 import { workflowManifest } from "../workflow/manifest";
 import { approvalsManifest } from "../approvals/manifest";
@@ -216,6 +218,33 @@ describe("RealtimeGateway", () => {
 
     send(c.ws, { type: "subscribe", topics: ["zzz:1"] });
     expect(await waitFor(c.frames, (f) => f.type === "error")).toEqual({ type: "error", code: "forbidden_topic", topics: ["zzz:1"] });
+  });
+
+  /*
+   * The socket is authenticated once, at its first frame; a session revoked or a grant removed afterwards must stop
+   * the stream too. `revalidate` is what the gateway runs on its own interval; the test calls it directly.
+   */
+  it("closes an authenticated socket whose session has since been revoked", async () => {
+    const c = await authed(readerToken);
+    send(c.ws, { type: "subscribe", topics: ["t:p1"] });
+    await waitFor(c.frames, (f) => f.type === "subscribed");
+    await revokeUserSessions(db, readerId);
+    await gateway.revalidate();
+    await waitClosed(c.ws);
+    expect(c.frames.some((f) => f.type === "error" && f.code === "unauthorized")).toBe(true);
+  });
+
+  it("drops a subscribed topic whose permission the user no longer holds, and delivers nothing on it", async () => {
+    const c = await authed(readerToken);
+    send(c.ws, { type: "subscribe", topics: ["t:p1"] });
+    await waitFor(c.frames, (f) => f.type === "subscribed");
+    await db.delete(roleAssignments).where(eq(roleAssignments.userId, readerId));
+    await gateway.revalidate();
+    expect(await waitFor(c.frames, (f) => f.type === "error" && f.code === "forbidden_topic")).toEqual({ type: "error", code: "forbidden_topic", topics: ["t:p1"] });
+    await withTx(db, (tx) => appendEvent(tx, mkInput("patient.registered", "p1")));
+    await sleep(900);
+    expect(c.frames.some((f) => f.type === "event")).toBe(false);
+    expect(c.ws.readyState).toBe(WebSocket.OPEN);
   });
 
   it("refuses a topic whose space permission the subscriber does not hold", async () => {

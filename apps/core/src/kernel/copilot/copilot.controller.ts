@@ -1,4 +1,5 @@
 import { BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, Inject, Logger, NotFoundException, Optional, Post, Put, Query } from "@nestjs/common";
+import { RateLimited } from "../ratelimit/rate-limit";
 import { z } from "zod";
 import { newId } from "@hmis/contracts";
 import { CONFIG, DB, MODULE_REGISTRY } from "../tokens";
@@ -156,6 +157,7 @@ export class CopilotController {
     key — a clerk who gets an HTTP error learns the box is broken, and a clerk who is told "which
     patient?" learns something they can act on.
   */
+  @RateLimited("copilot")
   @HttpCode(200)
   async ask(@CurrentActor() actor: Actor, @Body() raw: unknown): Promise<AskResponse> {
     /*
