@@ -13,7 +13,7 @@ Source: `apps/core/src/modules/doctor-desk/`
 
 - **Depends on modules:** `lab`, `opd`, `patients`, `radiology`, `roster`
 - **Used by modules:** —
-- **Kernel used:** `alerts`, `auth`, `db`, `desk`, `modules`, `phi`, `tokens`
+- **Kernel used:** `alerts`, `auth`, `db`, `desk`, `events`, `modules`, `phi`, `tokens`
 
 ## Public API (`index.ts`), by declaring file
 
@@ -22,23 +22,28 @@ Source: `apps/core/src/modules/doctor-desk/`
 - `errors.ts`
   - `class DoctorDeskError`
   - types: `DoctorDeskErrorCode`
+- `events.ts`
+  - `DOCTOR_DESK_EVENTS`
+  - `doctorDeskRowMoved`
 - `manifest.ts`
   - `doctorDeskManifest: ModuleManifest`
 - `owed.ts`
   - `owedByUnit(exec: Db | Tx, members: readonly { userId: string; name: string }[], at: Date): Promise<OwedRowInternal[]>`
 - `tower.ts`
   - `towerView(db: Db, actor: Actor, at: Date): Promise<WireTower>`
+- `unit-board.ts`
+  - `unitBoard(db: Db, actor: Actor, at: Date): Promise<WireUnitBoard>`
 - `waiting-on.ts`
   - `waitingOn(db: Db, actor: Actor, at: Date, istDate: string): Promise<WireAttentionRow[]>`
 
 ## Tables (`kernel/db/schema/doctor-desk.ts`)
 
-`doctor_desk_agent_runs`, `doctor_desk_briefs`, `doctor_desk_nudges`, `doctor_desk_reads`
+`doctor_desk_acts`, `doctor_desk_agent_runs`, `doctor_desk_briefs`, `doctor_desk_moves`, `doctor_desk_nudges`, `doctor_desk_ratings`, `doctor_desk_reads`
 
 Foreign keys into: `auth`
 
-## HTTP routes (7)
+## HTTP routes (15)
 
-- `doctor-desk.controller.ts` — 7: `/doctor-desk/briefs`, `/doctor-desk/clocks`, `/doctor-desk/landing`, `/doctor-desk/opd`, `/doctor-desk/tower`
+- `doctor-desk.controller.ts` — 15: `/doctor-desk/acts`, `/doctor-desk/briefs`, `/doctor-desk/clocks`, `/doctor-desk/landing`, `/doctor-desk/now`, `/doctor-desk/opd`, `/doctor-desk/professor`, `/doctor-desk/ratings`, `/doctor-desk/tower`, `/doctor-desk/unit`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/doctor-desk`

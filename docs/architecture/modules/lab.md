@@ -41,6 +41,8 @@ Source: `apps/core/src/modules/lab/`
   - `upsertOrderable(exec: Db | Tx, actor: Actor, input: OrderableInput): Promise<void>`
   - types: `AnalyteInput`, `OrderableInput`, `ReferenceRangeInput`
 - `clinician-reads.ts`
+  - `closedCriticalsForClinician(exec: Db | Tx, userIds: readonly string[], since: Date): Promise<(ClinicianLabRow & { closedAt: Date })[]>`
+  - `criticalCallsByIds(exec: Db | Tx, ids: readonly string[]): Promise<(ClinicianLabRow & { closedAt: Date | null })[]>`
   - `deltaResultsForClinician(exec: Db | Tx, userIds: readonly string[], since: Date): Promise<ClinicianLabRow[]>`
   - `openCriticalsForClinician(exec: Db | Tx, userIds: readonly string[]): Promise<ClinicianLabRow[]>`
   - `resultsForPatientSince(exec: Db | Tx, actor: Actor, patientIds: readonly string[], since: Date): Promise<PatientResultSince[]>`

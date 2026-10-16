@@ -44,7 +44,10 @@ const ICON: Record<IconKey, string> = {
   phone: "M3 2.5h3l1 3-1.7 1.2a8 8 0 004 4L10.5 9l3 1v3a1 1 0 01-1 1A10.5 10.5 0 012 3.5a1 1 0 011-1z",
 };
 
-export type DeskMenuKey = "dashboard" | "myOpd" | "myDuties" | "roster" | "onNow" | "evidence" | "aebas" | "aiBriefs";
+export type DeskMenuKey =
+  | "dashboard" | "myOpd" | "myDuties" | "roster" | "onNow" | "evidence" | "aebas" | "aiBriefs"
+  // DD-1 — the Unit board, the two phone boards, my work ratings.
+  | "unitBoard" | "now" | "professor" | "myRatings";
 type MenuItem = { key: DeskMenuKey; to: string; label: string; permission: string; icon: IconKey };
 type MenuGroup = { key: string; label: string; items: MenuItem[] };
 
@@ -57,8 +60,15 @@ export const MENU: readonly MenuGroup[] = [
     { key: "myOpd", to: "/doctor-desk/opd", label: "doctorDesk.item.myOpd", permission: "opd.consult", icon: "doc" },
     // 20-U U5c — the board's "My Duties", under DOCTOR DESK after My OPD (Main.dc.html's menu).
     { key: "myDuties", to: "/roster/my-duties", label: "doctorDesk.item.myDuties", permission: "roster.read", icon: "cal" },
+    // DD-1.5 / 1.4 — the phone boards (Main.dc.html, Professor.dc.html), as web views.
+    { key: "now", to: "/doctor-desk/now", label: "doctorDesk.item.now", permission: "opd.consult", icon: "phone" },
+    { key: "professor", to: "/doctor-desk/professor", label: "doctorDesk.item.professor", permission: "opd.consult", icon: "phone" },
+    // DD-1.7 — my work ratings and my PG logbook.
+    { key: "myRatings", to: "/doctor-desk/ratings", label: "doctorDesk.item.myRatings", permission: "opd.consult", icon: "doc" },
   ] },
   { key: "unit", label: "doctorDesk.group.unit", items: [
+    // DD-1.2 — the Unit board (UnitBoard.dc.html): what the unit owes, and your people this week.
+    { key: "unitBoard", to: "/doctor-desk/unit", label: "doctorDesk.item.unitBoard", permission: "opd.consult", icon: "grid" },
     { key: "roster", to: "/roster/month", label: "doctorDesk.item.roster", permission: "roster.read", icon: "cal" },
     { key: "onNow", to: "/roster/on-now", label: "doctorDesk.item.onNow", permission: "roster.read", icon: "phone" },
   ] },

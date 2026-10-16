@@ -1,7 +1,7 @@
 ---
 type: module-notes
 title: "doctor-desk — module notes"
-description: "Why and traps of the Doctor Desk (DD-0): the Tower read, waiting-on rows, Clocks Running and the nudge, the login brief lifecycle and the agent-run log."
+description: "Why and traps of the Doctor Desk (DD-0, DD-1): the Tower read, waiting-on rows, Clocks Running, nudge and move, the act after an acknowledgement, the scope ladder, the phone boards, work ratings, the login brief and the agent-run log."
 resource: apps/core/src/modules/doctor-desk
 tags: [doctor-desk, opd, roster]
 generated: { by: agent:claude, at: 2026-10-16 }
@@ -10,9 +10,10 @@ stale_after: 2027-01-16
 ---
 # doctor-desk — module notes
 
-Plan: `docs/superpowers/plans/2026-10-04-doctor-desk-PLAN.md` §3.1 (DD-0). Spec: issue #626. A LEAF (plan D-A):
-it owns `doctor_desk_briefs`, `doctor_desk_nudges`, `doctor_desk_agent_runs`, `doctor_desk_reads` and writes no
-clinical row. It reads lab, radiology, opd, patients and roster through their `index.ts`.
+Plan: `docs/superpowers/plans/2026-10-04-doctor-desk-PLAN.md` §3.1 (DD-0), §3.2 (DD-1). Specs: issue #626;
+`/opt/hmis-context/SPEC-doctor-desk-dd1-2026-10-16.md`. A LEAF (plan D-A): it owns `doctor_desk_briefs`,
+`doctor_desk_nudges`, `doctor_desk_agent_runs`, `doctor_desk_reads`, and (DD-1) `doctor_desk_moves`,
+`doctor_desk_acts`, `doctor_desk_ratings`, and writes no clinical row. It reads lab, radiology, opd, patients and roster through their `index.ts`.
 
 ## 1. Key files
 - `tower.ts` — `towerView`: the one aggregated read behind `GET /doctor-desk/tower`.
@@ -22,6 +23,10 @@ clinical row. It reads lab, radiology, opd, patients and roster through their `i
 - `nudge.ts` — once per row per sender; bell text names the sender and the kind, never a patient (GC6).
 - `briefs.ts` — the login brief: built on a return after `BRIEF_GAP_MINUTES` (3 h); lifecycle `briefStage` (contracts).
 - `agent-runs.ts` — append-only log; "nothing failed" is read from rows.
+- DD-1: `scope.ts deskLevel` (own/member/unit/department/hospital, derived); `unit-board.ts` (owed oldest first, your
+  people, units side by side); `moves.ts` (Move: head or SR; event `doctor_desk.row_moved` in `events.ts`); `acts.ts`
+  ("What did you do?", critical→act); `phone.ts` (SR Now, Professor, Handled without you); `ratings.ts` (rate, my
+  ratings vs anonymous averages, logbook CSV).
 - Wire + lifecycle rules: `packages/contracts/src/doctor-desk.ts`. Web: `apps/web/src/screens/doctor-desk-*.tsx`.
 
 ## 2. Invariants and traps
@@ -39,3 +44,17 @@ clinical row. It reads lab, radiology, opd, patients and roster through their `i
   rows name no patient and no test.
 - Results are `verified` only (not `autoverified`), as the doctor's results reader. Merged patients: the NEXT card
   reads the whole merge chain (`listMergedLoserIds`).
+- **D3 — a read-back is not the act.** A lab critical call the lab CLOSED stays on the Tower and in Clocks (`acked`,
+  amber) for 7 days until a `doctor_desk_acts` row exists; an act removes open and closed alike. DD-0's "closing drops
+  it" became this in DD-1.
+- **Move never edits the source row.** The newest `doctor_desk_moves` row of a key decides the holder in `owedByUnit`
+  (`withMoves`); a move to someone who left the unit is ignored. Audit = the event, in the same transaction.
+- **Scope is derived.** HOD = officiating `hod` row in force, or a department-scoped `roster.periods.publish` grant (the
+  rule leave uses); MS = the `medical_superintendent` role. An officiating head is `unit` only inside the window
+  (`teamMembers` already returns them as head only then).
+- **Ratings are never a league table.** Only the rated resident (own figures, own CSV) and the rater see a rating; the
+  averages are anonymous shares with floors (`RATING_MIN_*` in contracts). The CSV names no rater and no patient, and
+  defuses a leading `= + - @`.
+- **Copilot toggles are #861's** (`/opd/consult/copilot-settings`, opd's `cds_doctor_prefs`); the Desk only reads them on
+  the web for the status line. Owed, nudge, move and act never read them (D1; `dd1.test.ts` DM7).
+
