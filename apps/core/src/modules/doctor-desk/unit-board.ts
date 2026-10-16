@@ -90,7 +90,7 @@ export async function unitBoard(db: Db, actor: Actor, at: Date): Promise<WireUni
   const level = await deskLevel(db, actor, scope, at);
   const owedRaw = scope.unit === null ? [] : await owedByUnit(db, scope.members, at).catch(() => []);
   const owed = (await withNudgedBy(db, owedRaw, actor.id)).sort((a, b) => a.since.localeCompare(b.since));
-  const mover = scope.unit !== null && mayMove(scope, actor.id);
+  const mover = scope.unit !== null && await mayMove(db, scope, actor.id, at);
 
   const horizon = horizonOf(scope, level, actor.id);
   const names = await namesOf(db, horizon);

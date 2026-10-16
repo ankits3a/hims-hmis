@@ -137,6 +137,17 @@ describe("doctor-desk — DD-report v0, the unit report", () => {
     expect((await reportsFor(db, actor(P.U3HEAD), min(1))).reports.map((r) => r.teamId)).toEqual(expect.arrayContaining([U1, U2, U3]));
   });
 
+  it("a self-approved officiating head gets no 08:00 report (old rows can predate #904)", async () => {
+    await db.insert(rosterOfficiating).values({
+      id: newId(), teamId: U2, userId: P.STAND, role: "head", startsAt: min(-60 * 24), endsAt: min(60 * 24), reason: "self",
+      approvedBy: P.STAND, createdBy: "t", updatedBy: "t",
+    });
+    await sendUnitReports(db, AT);
+    const to = (await db.select().from(alerts).where(eq(alerts.kind, "doctor_desk_unit_report"))).map((b) => b.userId);
+    expect(to).toContain(P.HEAD);
+    expect(to).not.toContain(P.STAND);
+  });
+
   it("the Tower's agent card shows the run as a line with flat params only", async () => {
     await sendUnitReports(db, AT);
     const t = await towerView(db, actor(P.HEAD), min(2));

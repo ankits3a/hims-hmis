@@ -382,6 +382,17 @@ describe("doctor-desk — DD-1 the unit and the ladder", () => {
     expect(await departmentHeads(db, med.id, AT)).toEqual([P.HOD]);
   });
 
+  it("F7 a self-approved officiating head may not move a row (old rows can predate #904)", async () => {
+    await db.insert(rosterOfficiating).values({
+      id: newId(), teamId: U2, userId: P.FAC, role: "head", startsAt: min(-60 * 24), endsAt: min(60 * 24), reason: "self",
+      approvedBy: P.FAC, createdBy: "t", updatedBy: "t",
+    });
+    const { key } = await critical(P.JR);
+    expect(await code(moveRow(db, actor(P.FAC), key, P.SR, AT))).toBe("not_allowed_to_move");
+    expect((await unitBoard(db, actor(P.FAC), AT)).owed.every((r) => !r.mayMove)).toBe(true);
+    expect((await moveRow(db, actor(P.HEAD), key, P.SR, AT)).moveId).toBeTruthy();
+  });
+
   it("F4 an act appends doctor_desk.critical_acted in its own transaction, naming no patient", async () => {
     const { key } = await critical(P.JR, { at: min(-12) });
     const r = await recordAct(db, actor(P.SR), key, "ecg_ordered", null, AT);

@@ -109,12 +109,28 @@ export async function deskLevel(exec: Db | Tx, actor: Actor, scope: DeskScope, a
 }
 
 /** Is there an officiating row in force for this person on this team that somebody ELSE approved? */
-async function approvedStandIn(db: Db, userId: string, teamId: string, at: Date): Promise<boolean> {
+export async function approvedStandIn(exec: Db | Tx, userId: string, teamId: string, at: Date): Promise<boolean> {
+  const db = exec as Db;
   const rows = await db.select({ id: rosterOfficiating.id }).from(rosterOfficiating).where(and(
     eq(rosterOfficiating.userId, userId), eq(rosterOfficiating.teamId, teamId), ne(rosterOfficiating.approvedBy, rosterOfficiating.userId),
     lte(rosterOfficiating.startsAt, at), or(isNull(rosterOfficiating.endsAt), gt(rosterOfficiating.endsAt, at)),
   )).limit(1);
   return rows.length > 0;
+}
+
+/**
+ * The unit's heads at `at` who may ACT as head: a substantive head, or an officiating head on a row somebody
+ * else approved. Nobody appoints themselves (#904 refuses new self-approved rows; older ones may still exist).
+ */
+export async function headsInForce(
+  exec: Db | Tx, members: readonly Pick<TeamMember, "userId" | "roleInTeam" | "officiating">[], teamId: string, at: Date,
+): Promise<string[]> {
+  const out: string[] = [];
+  for (const m of members) {
+    if (m.roleInTeam !== "head") continue;
+    if (!m.officiating || await approvedStandIn(exec, m.userId, teamId, at)) out.push(m.userId);
+  }
+  return [...new Set(out)];
 }
 
 /** At least `level` (`own` < `member` < `unit` < `department` < `hospital`). */
