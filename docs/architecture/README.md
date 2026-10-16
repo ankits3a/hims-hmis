@@ -110,12 +110,12 @@ flowchart LR
 | [abdm](modules/abdm.md) | lab, opd, patients, radiology | — | 24 | 11 |
 | [aerb](modules/aerb.md) | patients | radiology | 30 | 9 |
 | [attendance](modules/attendance.md) | — | — | 19 | 11 |
-| [billing](modules/billing.md) | membership, opd, patients, tariff | lab, opd, ordering, ot, partners, pharmacy, radiology | 52 | 16 |
+| [billing](modules/billing.md) | membership, opd, patients, tariff | lab, opd, ordering, ot, partners, pharmacy, radiology | 54 | 16 |
 | [cds](modules/cds.md) | formulary | opd | 0 | 0 |
 | [formulary](modules/formulary.md) | — | cds, materials, opd, pharmacy | 27 | 12 |
 | [lab](modules/lab.md) | billing, opd, patients, tariff | abdm, ordering, radiology | 78 | 25 |
 | [materials](modules/materials.md) | formulary | opd, ot, pharmacy | 120 | 39 |
-| [membership](modules/membership.md) | patients, tariff | billing, partners, pharmacy | 11 | 11 |
+| [membership](modules/membership.md) | patients, tariff | billing, partners, pharmacy | 15 | 11 |
 | [opd](modules/opd.md) | billing, cds, formulary, materials, patients, roster | abdm, billing, lab, ordering, pharmacy, radiology | 171 | 32 |
 | [ordering](modules/ordering.md) | billing, lab, opd, radiology | — | 4 | 1 |
 | [ot](modules/ot.md) | billing, materials, patients, roster, tariff | radiology | 53 | 12 |
