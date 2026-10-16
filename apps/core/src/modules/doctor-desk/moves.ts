@@ -7,7 +7,8 @@ import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
 import { DoctorDeskError } from "./errors";
 import { deskScope } from "./scope";
-import { owedByUnit } from "./owed";
+import { mayHoldCritical, owedByUnit, restrictedReaders } from "./owed";
+import { criticalCallsByIds } from "../lab";
 import { doctorDeskRowMoved } from "./events";
 import type { DeskScope } from "./scope";
 import type { Db } from "../../kernel/db/client";
@@ -54,6 +55,13 @@ export async function moveRow(
   const row = (await owedByUnit(db, scope.members, at)).find((r) => r.key === rowKey);
   if (row === undefined) throw new DoctorDeskError("unknown_row", "That item is no longer owed by your unit.");
   if (row.holder.userId === toUserId) throw new DoctorDeskError("same_holder", "That person holds it already.");
+  if (row.kind === "lab_critical") {
+    const call = (await criticalCallsByIds(db, [rowKey.slice("lab_critical:".length)]))[0];
+    const rule = call === undefined ? undefined : { restricted: call.restricted, orderer: call.orderingClinicianId };
+    if (!mayHoldCritical(rule, toUserId, await restrictedReaders(db, rule?.restricted === true ? [toUserId] : []))) {
+      throw new DoctorDeskError("move_target_cannot_view", "That doctor may not see this restricted test. It stays where it is.");
+    }
+  }
 
   const moveId = newId();
   const sourceKey = `doctor-desk-move:${moveId}`;

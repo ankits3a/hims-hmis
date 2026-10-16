@@ -8,7 +8,7 @@ import { seedConfirmedUnits } from "../../../test/helpers/units";
 import {
   alerts, approvalTypes, approvals, doctorDeskActs, doctorDeskMoves, doctorDeskRatings, events, labAnalytes, workflowDefinitions, workflowInstances, labCriticalCalls, labResults, opdDepartments,
   opdDoctors, opdEncounters, orderItems, orders, patients, registrationConfig, roleAssignments, roles, rosterOfficiating,
-  rosterTeamMemberships, services, users,
+  rosterTeamMemberships, services, users, permissions, rolePermissions,
 } from "../../kernel/db/schema";
 import { countingUnits, orgDepartmentByCode, teamByCode } from "../roster";
 import { departmentHeads, deskLevel, deskScope } from "./scope";
@@ -265,12 +265,46 @@ describe("doctor-desk — DD-1 the unit and the ladder", () => {
     const hidden = await critical(P.JR, { restricted: true });
     await db.update(patients).set({ isConfidential: true, alias: "Patient X-7" }).where(eq(patients.id, patientA));
     await moveRow(db, actor(P.HEAD), plain.key, P.SR, AT);
-    await moveRow(db, actor(P.HEAD), hidden.key, P.SR, AT);
+    // the reader's own rule, should a move row exist that the move guard would now refuse (written before it)
+    await db.insert(doctorDeskMoves).values({ id: newId(), rowKey: hidden.key, teamId: U2, fromUserId: P.JR, toUserId: P.SR, movedBy: P.HEAD, createdAt: AT });
     const now = await nowView(db, actor(P.SR), min(1));
     expect(now.now.map((r) => r.key)).toEqual([plain.key]);
     expect(now.now[0]!.patient).toMatchObject({ name: "Patient X-7", restricted: true });
     expect(JSON.stringify(now)).not.toContain("Patient Alpha");
     expect((await towerView(db, actor(P.SR), min(1))).attention.map((r) => r.key)).toEqual([plain.key]);
+  });
+
+  const grantRestricted = async (userId: string): Promise<void> => {
+    await db.insert(permissions).values({ permission: "orders.read.restricted", module: "orders" }).onConflictDoNothing();
+    await db.insert(roles).values({ key: "restricted_reader", title: "Restricted reader" }).onConflictDoNothing();
+    await db.insert(rolePermissions).values({ roleKey: "restricted_reader", permission: "orders.read.restricted" }).onConflictDoNothing();
+    await db.insert(roleAssignments).values({ id: newId(), userId, roleKey: "restricted_reader", scopeType: "hospital" });
+  };
+
+  it("DD-1b a restricted critical is not moved to a member who cannot view it: refused, greyed on the picker, still the orderer's", async () => {
+    const hidden = await critical(P.JR, { restricted: true });
+    const plain = await critical(P.JR);
+    expect(await code(moveRow(db, actor(P.HEAD), hidden.key, P.SR, AT))).toBe("move_target_cannot_view");
+    expect(await db.select().from(doctorDeskMoves)).toHaveLength(0);
+    expect((await nowView(db, actor(P.JR), min(1))).now.map((r) => r.key)).toContain(hidden.key);
+    const board = await unitBoard(db, actor(P.HEAD), min(1));
+    expect(board.owed.find((r) => r.key === hidden.key)).toMatchObject({ holder: { userId: P.JR }, cannotTake: [P.HEAD, P.FAC, P.SR, P.INT].sort() });
+    expect(board.owed.find((r) => r.key === plain.key)!.cannotTake).toBeUndefined();
+    await grantRestricted(P.SR);
+    expect((await unitBoard(db, actor(P.HEAD), min(1))).owed.find((r) => r.key === hidden.key)!.cannotTake).not.toContain(P.SR);
+    await moveRow(db, actor(P.HEAD), hidden.key, P.SR, min(2));
+    expect((await nowView(db, actor(P.SR), min(3))).now.map((r) => r.key)).toContain(hidden.key);
+    expect((await nowView(db, actor(P.JR), min(3))).now.map((r) => r.key)).not.toContain(hidden.key);
+  });
+
+  it("DD-1b an old move to a member who cannot view a restricted critical is ignored: the row falls back to the orderer", async () => {
+    const hidden = await critical(P.JR, { restricted: true });
+    await db.insert(doctorDeskMoves).values({ id: newId(), rowKey: hidden.key, teamId: U2, fromUserId: P.JR, toUserId: P.SR, movedBy: P.HEAD, createdAt: AT });
+    expect((await nowView(db, actor(P.JR), min(1))).now.map((r) => r.key)).toEqual([hidden.key]);
+    expect((await towerView(db, actor(P.JR), min(1))).attention.map((r) => r.key)).toEqual([hidden.key]);
+    expect((await nowView(db, actor(P.SR), min(1))).now).toEqual([]);
+    expect((await owedByUnit(db, [{ userId: P.JR, name: "" }, { userId: P.SR, name: "" }], min(1)))[0]).toMatchObject({ key: hidden.key, holder: { userId: P.JR } });
+    expect((await owedByUnit(db, [{ userId: P.JR, name: "" }, { userId: P.SR, name: "" }], min(1)))[0]!.movedBy).toBeUndefined();
   });
 
   /* ═══ DM5 — restricted tests and confidential patients on "Handled without you" ═══ */

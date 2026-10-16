@@ -4,6 +4,7 @@ import { alerts, doctorDeskActs, doctorDeskMoves, doctorDeskNudges } from "../..
 import { closedCriticalsForClinician, criticalCallsByIds, openCriticalsForClinician } from "../lab";
 import { openVisitsForDoctor } from "../opd";
 import { addIstDays, istDateOfInstant, istMidnightUtc } from "../roster";
+import { hasPermission } from "../../kernel/auth/permissions";
 import type { Db, Tx } from "../../kernel/db/client";
 
 /**
@@ -77,7 +78,8 @@ export async function owedByUnit(
   ];
   // Nothing that started after `at` was owed at `at` (a past `at` is the 08:00 report's).
   const asOf = rows.filter((r) => Date.parse(r.since) <= at.getTime());
-  return (await withMoves(exec, asOf, members)).sort((a, b) => a.dueAt.localeCompare(b.dueAt));
+  const rules = new Map<string, CriticalViewRule>(crit.map((c) => [`lab_critical:${c.id}`, { restricted: c.restricted, orderer: c.orderingClinicianId }]));
+  return (await withMoves(exec, asOf, members, rules)).sort((a, b) => a.dueAt.localeCompare(b.dueAt));
 }
 
 /** Of these owed-row keys, the ones somebody has recorded an act on (DD-1.3). */
@@ -92,16 +94,21 @@ export async function actedKeys(exec: Db | Tx, keys: readonly string[], asOf?: D
  * DD-1.2 — the newest MOVE of a row decides who the unit expects to act; the source row is untouched.
  * A move to somebody who has since left the unit is ignored (the row goes back to its source holder).
  */
-async function withMoves(exec: Db | Tx, rows: OwedRowInternal[], members: readonly { userId: string; name: string }[]): Promise<OwedRowInternal[]> {
+async function withMoves(
+  exec: Db | Tx, rows: OwedRowInternal[], members: readonly { userId: string; name: string }[], rules: ReadonlyMap<string, CriticalViewRule>,
+): Promise<OwedRowInternal[]> {
   if (rows.length === 0) return rows;
   const moves = await (exec as Db).select().from(doctorDeskMoves)
     .where(inArray(doctorDeskMoves.rowKey, rows.map((r) => r.key))).orderBy(desc(doctorDeskMoves.createdAt));
   const newest = new Map<string, (typeof moves)[number]>();
   for (const m of moves) if (!newest.has(m.rowKey)) newest.set(m.rowKey, m);
   const nameOf = new Map(members.map((m) => [m.userId, m.name] as const));
+  const readers = await restrictedReaders(exec, [...newest.values()].filter((m) => rules.get(m.rowKey)?.restricted === true).map((m) => m.toUserId));
   return rows.map((r) => {
     const m = newest.get(r.key);
     if (m === undefined || !nameOf.has(m.toUserId)) return r;
+    // A move to somebody who may not see the critical (an old row, before `move_target_cannot_view`) is ignored.
+    if (!mayHoldCritical(rules.get(r.key), m.toUserId, readers)) return r;
     return { ...r, holder: { userId: m.toUserId, name: nameOf.get(m.toUserId) ?? "" }, movedBy: { userId: m.movedBy, name: nameOf.get(m.movedBy) ?? "" } };
   });
 }
@@ -127,15 +134,38 @@ export async function criticalMoves(
   const newest = new Map<string, (typeof moves)[number]>();
   for (const m of moves) if (!newest.has(m.rowKey)) newest.set(m.rowKey, m);
   const own = new Set(ownKeys);
+  const calls = await criticalCallsByIds(exec, [...newest.keys()].map((k) => k.slice("lab_critical:".length)));
+  const rules = new Map<string, CriticalViewRule>(calls.map((c) => [`lab_critical:${c.id}`, { restricted: c.restricted, orderer: c.orderingClinicianId }]));
+  const readers = await restrictedReaders(exec, [...newest.values()].filter((m) => rules.get(m.rowKey)?.restricted === true).map((m) => m.toUserId));
+  // The same holder rule as `withMoves`: a move to someone outside the unit, or who may not see the test, is ignored.
+  const holds = (m: (typeof moves)[number]): boolean => inUnit.has(m.toUserId) && mayHoldCritical(rules.get(m.rowKey), m.toUserId, readers);
   const movedOut = new Set([...own].filter((k) => {
     const m = newest.get(k);
-    return m !== undefined && m.toUserId !== me && inUnit.has(m.toUserId);
+    return m !== undefined && m.toUserId !== me && holds(m);
   }));
-  const candidates = [...newest.values()].filter((m) => m.toUserId === me && !own.has(m.rowKey)).map((m) => m.rowKey.slice("lab_critical:".length));
-  const calls = await criticalCallsByIds(exec, candidates);
   // The orderer must still be in the unit (the row is otherwise not the unit's, as `owedByUnit`).
-  const movedIn = calls.filter((c) => c.orderingClinicianId !== me && inUnit.has(c.orderingClinicianId));
+  const movedIn = calls.filter((c) => {
+    const m = newest.get(`lab_critical:${c.id}`);
+    return m !== undefined && m.toUserId === me && !own.has(m.rowKey) && holds(m) && c.orderingClinicianId !== me && inUnit.has(c.orderingClinicianId);
+  });
   return { movedIn, movedOut };
+}
+
+/**
+ * The lab's restricted-test rule (DD11) for WHO MAY HOLD a lab critical: a restricted test only its
+ * orderer or a holder of `orders.read.restricted`. A critical must never leave every doctor's list, so a
+ * move to anyone else is refused (`move_target_cannot_view`) and an old one is ignored by the readers.
+ */
+export type CriticalViewRule = { restricted: boolean; orderer: string };
+
+export async function restrictedReaders(exec: Db | Tx, userIds: readonly string[]): Promise<Set<string>> {
+  const ids = [...new Set(userIds)];
+  const ok = await Promise.all(ids.map((id) => hasPermission(exec as Db, id, "orders.read.restricted", "hospital").catch(() => false)));
+  return new Set(ids.filter((_, i) => ok[i]));
+}
+
+export function mayHoldCritical(rule: CriticalViewRule | undefined, userId: string, readers: ReadonlySet<string>): boolean {
+  return rule === undefined || !rule.restricted || rule.orderer === userId || readers.has(userId);
 }
 
 /** Marks the rows this sender has already nudged. */

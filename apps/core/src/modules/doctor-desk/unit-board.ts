@@ -5,7 +5,8 @@ import { doctorDayLines } from "../opd";
 import { addIstDays, countingUnits, shortUnitName, teamMembers } from "../roster";
 import { deskLevel, deskScope, namesOf } from "./scope";
 import type { DeskScope } from "./scope";
-import { owedByUnit, withNudgedBy } from "./owed";
+import { mayHoldCritical, owedByUnit, restrictedReaders, withNudgedBy } from "./owed";
+import { criticalCallsByIds } from "../lab";
 import { mayMove } from "./moves";
 import { actsBy, actsInTeam, medianMinutes } from "./acts";
 import { onDutyUntil } from "./tower";
@@ -91,6 +92,17 @@ export async function unitBoard(db: Db, actor: Actor, at: Date): Promise<WireUni
   const owedRaw = scope.unit === null ? [] : await owedByUnit(db, scope.members, at).catch(() => []);
   const owed = (await withNudgedBy(db, owedRaw, actor.id)).sort((a, b) => a.since.localeCompare(b.since));
   const mover = scope.unit !== null && mayMove(scope, actor.id);
+  // DD-1b — for a restricted critical, the members who may not take it (greyed on the Move picker).
+  const cannotTake = new Map<string, string[]>();
+  if (mover) {
+    const calls = await criticalCallsByIds(db, owed.filter((r) => r.kind === "lab_critical").map((r) => r.key.slice("lab_critical:".length))).catch(() => []);
+    const restricted = calls.filter((c) => c.restricted);
+    const readers = restricted.length === 0 ? new Set<string>() : await restrictedReaders(db, scope.members.map((m) => m.userId));
+    for (const c of restricted) {
+      const rule = { restricted: true, orderer: c.orderingClinicianId };
+      cannotTake.set(`lab_critical:${c.id}`, scope.members.map((m) => m.userId).filter((id) => !mayHoldCritical(rule, id, readers)).sort());
+    }
+  }
 
   const horizon = horizonOf(scope, level, actor.id);
   const names = await namesOf(db, horizon);
@@ -116,7 +128,7 @@ export async function unitBoard(db: Db, actor: Actor, at: Date): Promise<WireUni
       teamId: scope.unit.teamId, name: scope.unit.unitName, short: scope.unit.short, departmentName: scope.unit.departmentName,
     },
     scope: level,
-    owed: owed.map((r) => ({ ...r, mayMove: mover })),
+    owed: owed.map((r) => { const no = cannotTake.get(r.key); return { ...r, mayMove: mover, ...(no !== undefined ? { cannotTake: no } : {}) }; }),
     moveTo: mover ? scope.members.map((m) => ({ userId: m.userId, name: m.name, role: m.roleInTeam })) : [],
     people,
     units: await unitSummaries(db, level, scope.istDate, at),
