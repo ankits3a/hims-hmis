@@ -939,6 +939,36 @@ export type ReportView = {
  * `kernel/orders/read.ts` follows and for the same reason: "who looked at this report" is the only
  * question the log exists to answer.
  */
+/**
+ * DD11 ON THE SINGLE REPORT (`GET /lab/reports/:reportId`) — the lab's restricted-test rule, as
+ * `patient-results.ts` applies it: a restricted test is shown to its ordering clinician and to a holder
+ * of `orders.read.restricted`. The lab itself is the third reader — its own worklists read its own
+ * tables (F45's precedent): whoever keys, signs or hands over a result (`lab.results.enter`,
+ * `lab.results.verify`, `lab.reports.print`). For anyone else the panel is OMITTED, never badged, and a
+ * report with nothing left is `null`, which the caller refuses exactly as an unknown id.
+ */
+const LAB_DEPARTMENT_GRANTS = ["lab.results.enter", "lab.results.verify", "lab.reports.print"] as const;
+
+/** Whether this reader sees restricted tests, given the order's responsible clinician. Asked once per read. */
+async function restrictedClearance(db: Db, actor: Actor): Promise<(orderingClinicianId: string | null) => boolean> {
+  if (actor.type !== "user") return () => false;
+  for (const p of ["orders.read.restricted", ...LAB_DEPARTMENT_GRANTS]) {
+    if (await hasPermission(db, actor.id, p, "hospital")) return () => true;
+  }
+  return (orderingClinicianId) => orderingClinicianId === actor.id;
+}
+
+async function restrictedPanelsFor(db: Db, actor: Actor, orderId: string, snapshot: ReportSnapshot): Promise<ReportSnapshot | null> {
+  const hidden = await db.select({ id: orderItems.id }).from(orderItems)
+    .where(and(eq(orderItems.orderId, orderId), eq(orderItems.restricted, true)));
+  if (hidden.length === 0) return snapshot;
+  const [order] = await db.select({ orderingClinicianId: orders.orderingClinicianId }).from(orders).where(eq(orders.id, orderId));
+  if ((await restrictedClearance(db, actor))(order?.orderingClinicianId ?? null)) return snapshot;
+  const out = new Set(hidden.map((h) => h.id));
+  const panels = snapshot.panels.filter((p) => !out.has(p.orderItemId));
+  return panels.length === 0 ? null : { ...snapshot, panels };
+}
+
 export async function getReport(
   db: Db,
   actor: Actor,
@@ -950,7 +980,9 @@ export async function getReport(
   const [report] = await db.select().from(labReports).where(eq(labReports.id, reportId));
   if (!report) throw new LabError("unknown_report", `no lab report ${reportId}`);
 
-  const snapshot = report.snapshot as ReportSnapshot;
+  const shown = await restrictedPanelsFor(db, actor, report.orderId, report.snapshot as ReportSnapshot);
+  if (shown === null) throw new LabError("unknown_report", `no lab report ${reportId}`);
+  const snapshot = shown;
   /**
    * THE CANONICAL PATIENT, not the snapshotted id (close review m3). The snapshot freezes the
    * identity as it was at signature (E4) and a merge afterwards does not rewrite it — but the
@@ -1047,6 +1079,8 @@ export async function listResultsForEncounter(
       analyteCode: labAnalytes.code,
       analyteName: labAnalytes.nameEn,
       result: labResults,
+      restricted: orderItems.restricted,
+      orderingClinicianId: orders.orderingClinicianId,
     })
     .from(labResults)
     .innerJoin(orderItems, eq(orderItems.id, labResults.orderItemId))
@@ -1057,7 +1091,12 @@ export async function listResultsForEncounter(
       eq(orders.encounterNo, encounterNo),
       eq(labResults.verificationStatus, "verified"),
     ))
-    .orderBy(labResults.verifiedAt);
+    .orderBy(labResults.verifiedAt)
+    .then(async (all) => {
+      /* DD11 — a restricted test is omitted (never badged) for a reader who is not cleared for it. */
+      const cleared = await restrictedClearance(db, actor);
+      return all.filter((r) => !r.restricted || cleared(r.orderingClinicianId));
+    });
 
   /**
    * THE LOG IS WRITTEN WHEN THERE IS A PATIENT TO NAME. An encounter with no lab results discloses
@@ -1161,6 +1200,8 @@ export async function listProvisionalResultsForEncounter(
       analyteCode: labAnalytes.code,
       analyteName: labAnalytes.nameEn,
       result: labResults,
+      restricted: orderItems.restricted,
+      orderingClinicianId: orders.orderingClinicianId,
     })
     .from(labResults)
     .innerJoin(orderItems, eq(orderItems.id, labResults.orderItemId))
@@ -1171,7 +1212,12 @@ export async function listProvisionalResultsForEncounter(
       eq(orders.encounterNo, encounterNo),
       eq(labResults.verificationStatus, "unverified"),
     ))
-    .orderBy(labResults.enteredAt);
+    .orderBy(labResults.enteredAt)
+    .then(async (all) => {
+      /* DD11 — a restricted test is omitted (never badged) for a reader who is not cleared for it. */
+      const cleared = await restrictedClearance(db, actor);
+      return all.filter((r) => !r.restricted || cleared(r.orderingClinicianId));
+    });
 
   /**
    * The rows this encounter's own values have replaced — the laboratory's working-out, not a result.
@@ -1273,6 +1319,20 @@ export async function reportVersions(
     .from(labReports)
     .where(eq(labReports.orderId, orderId)).orderBy(desc(labReports.version));
   return rows.map((r) => ({ ...r, publishedAt: r.publishedAt?.toISOString() ?? null }));
+}
+
+/**
+ * `GET /lab/reports/order/:orderId` — the version history, behind DD11: an order holding a restricted
+ * test is refused as unknown to a reader not cleared for it (the order's existence is the fact).
+ */
+export async function reportVersionsFor(db: Db, actor: Actor, orderId: string): Promise<ReportVersionRow[]> {
+  const [order] = await db.select({ orderingClinicianId: orders.orderingClinicianId }).from(orders).where(eq(orders.id, orderId));
+  const [restricted] = await db.select({ id: orderItems.id }).from(orderItems)
+    .where(and(eq(orderItems.orderId, orderId), eq(orderItems.restricted, true))).limit(1);
+  if (restricted !== undefined && !(await restrictedClearance(db, actor))(order?.orderingClinicianId ?? null)) {
+    throw new LabError("unknown_report", `no lab report for order ${orderId}`);
+  }
+  return reportVersions(db, orderId);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════════════════ */
