@@ -122,7 +122,7 @@ function fetchCalls(): { url: string; method: string; body: string }[] {
 }
 
 const BASE = {
-  "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
+  "GET /api/patients/p-1/profile": { patient: PATIENT, resolvedFrom: null },
   "GET /api/patients/p-1/allergies": { items: [] },
   "GET /api/patients/p-1/guardians": { items: [] },
   "GET /api/patients/p-1/qr": QR,
@@ -170,7 +170,7 @@ describe("PatientDetail", () => {
   });
 
   it("D-31: shows the sealed-guardian-messages banner when the patient has sensitiveContext", async () => {
-    stubSeat({ ...BASE, "GET /api/patients/p-1": { patient: { ...PATIENT, sensitiveContext: true }, resolvedFrom: null } });
+    stubSeat({ ...BASE, "GET /api/patients/p-1/profile": { patient: { ...PATIENT, sensitiveContext: true }, resolvedFrom: null } });
     renderWithProviders(<PatientDetail />);
 
     // Beside the messages consent on the page, and again under Representative in the drawer.
@@ -208,7 +208,7 @@ describe("PatientDetail", () => {
     const confidential = { ...PATIENT, isConfidential: true, alias: "VIP-1" };
     stubSeat({
       ...BASE,
-      "GET /api/patients/p-1": { patient: confidential, resolvedFrom: null },
+      "GET /api/patients/p-1/profile": { patient: confidential, resolvedFrom: null },
       "PATCH /api/patients/p-1": { patient: { ...confidential, legacyUhid: "OLD-9" }, changed: ["legacyUhid"] },
     });
     renderWithProviders(<PatientDetail />);
@@ -335,7 +335,7 @@ describe("PatientDetail", () => {
     const deceasedPatient = { ...PATIENT, deceasedAt: "2026-08-15T00:00:00.000Z", deathCertificateNo: "MCCD/2026/0400" };
     stubSeat({
       ...BASE,
-      "GET /api/patients/p-1": { patient: deceasedPatient, resolvedFrom: null },
+      "GET /api/patients/p-1/profile": { patient: deceasedPatient, resolvedFrom: null },
       "PATCH /api/patients/p-1": { patient: PATIENT, changed: ["deceasedAt"] },
     });
     renderWithProviders(<PatientDetail />);
@@ -383,7 +383,7 @@ describe("PatientDetail", () => {
 
   it("shows the merged-record banner when the server resolved the URL id to a different canonical patient", async () => {
     stubSeat({
-      "GET /api/patients/p-1": { patient: { ...PATIENT, id: "p-2" }, resolvedFrom: "p-1" },
+      "GET /api/patients/p-1/profile": { patient: { ...PATIENT, id: "p-2" }, resolvedFrom: "p-1" },
       "GET /api/patients/p-2/allergies": { items: [] },
       "GET /api/patients/p-2/guardians": { items: [] },
       "GET /api/patients/p-2/qr": QR,
@@ -429,7 +429,7 @@ describe("PatientDetail", () => {
   it("the lane's foot offers Release while this patient is in hand, and releasing empties the hand", async () => {
     sessionStorage.setItem("hmis.inHand", JSON.stringify({ patientId: "p-1", encounterId: null }));
     stubSeat({
-      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
+      "GET /api/patients/p-1/profile": { patient: PATIENT, resolvedFrom: null },
       "GET /api/patients/p-1/allergies": { items: [] },
       "GET /api/patients/p-1/guardians": { items: [] },
     });
@@ -443,7 +443,7 @@ describe("PatientDetail", () => {
   it("no Release in the lane when nobody, or somebody else, is in hand", async () => {
     sessionStorage.setItem("hmis.inHand", JSON.stringify({ patientId: "p-other", encounterId: null }));
     stubSeat({
-      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
+      "GET /api/patients/p-1/profile": { patient: PATIENT, resolvedFrom: null },
       "GET /api/patients/p-1/allergies": { items: [] },
       "GET /api/patients/p-1/guardians": { items: [] },
     });
@@ -456,7 +456,7 @@ describe("PatientDetail", () => {
   it("an onward action takes the patient in hand and then navigates", async () => {
     sessionStorage.clear();
     stubSeat({
-      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
+      "GET /api/patients/p-1/profile": { patient: PATIENT, resolvedFrom: null },
       "GET /api/patients/p-1/allergies": { items: [] },
       "GET /api/patients/p-1/guardians": { items: [] },
     });
@@ -482,7 +482,7 @@ describe("22c-A T7 — the amendment surface", () => {
       /* ABDM S1 — the shared fixture's ABHA is `verified`, and a verified record LOCKS name, birth and
          gender. These tests are about the Class I reason gate, so they amend a record whose ABHA is
          the patient's own statement. */
-      "GET /api/patients/p-1": { patient: { ...PATIENT, abhaVerificationStatus: "self_declared" }, resolvedFrom: null },
+      "GET /api/patients/p-1/profile": { patient: { ...PATIENT, abhaVerificationStatus: "self_declared" }, resolvedFrom: null },
     });
     renderWithProviders(<PatientDetail />);
     await openEdit();
@@ -656,7 +656,7 @@ describe("22c-A T7 — the amendment surface", () => {
   it("draws no family section at all for a patient with no number", async () => {
     stubSeat({
       ...BASE,
-      "GET /api/patients/p-1": { patient: { ...PATIENT, phone: null, altPhone: null }, resolvedFrom: null },
+      "GET /api/patients/p-1/profile": { patient: { ...PATIENT, phone: null, altPhone: null }, resolvedFrom: null },
       "GET /api/patients/p-1/linked": { numbers: [], items: [], total: 0 },
     });
     renderWithProviders(<PatientDetail />);
@@ -673,7 +673,7 @@ describe("22c-A T7 — the amendment surface", () => {
  */
 describe("ABDM S0 — the counter cannot offer 'verified'", () => {
   async function openWith(status: string): Promise<void> {
-    stubSeat({ ...BASE, "GET /api/patients/p-1": { patient: { ...PATIENT, abhaVerificationStatus: status }, resolvedFrom: null } });
+    stubSeat({ ...BASE, "GET /api/patients/p-1/profile": { patient: { ...PATIENT, abhaVerificationStatus: status }, resolvedFrom: null } });
     renderWithProviders(<PatientDetail />);
     await openEdit();
   }
@@ -711,7 +711,7 @@ describe("ABDM S1 — Verify with ABDM on the record", () => {
   function openWith(canVerify: boolean): void {
     stubSeat({
       ...BASE,
-      "GET /api/patients/p-1": { patient: { ...PATIENT, abhaNumber: "91-2345-6789-0123", abhaVerificationStatus: "self_declared" }, resolvedFrom: null },
+      "GET /api/patients/p-1/profile": { patient: { ...PATIENT, abhaNumber: "91-2345-6789-0123", abhaVerificationStatus: "self_declared" }, resolvedFrom: null },
       "GET /api/patients/abha/capability": { configured: canVerify, canRecord: true, canCreate: false, canVerify, canScanShare: canVerify, reason: "test" },
     });
     renderWithProviders(<PatientDetail />);
@@ -741,7 +741,7 @@ describe("ABDM S1 — the demographics lock on the record", () => {
   async function openWith(status: string): Promise<void> {
     stubSeat({
       ...BASE,
-      "GET /api/patients/p-1": { patient: { ...PATIENT, abhaNumber: "91-2345-6789-0123", abhaVerificationStatus: status }, resolvedFrom: null },
+      "GET /api/patients/p-1/profile": { patient: { ...PATIENT, abhaNumber: "91-2345-6789-0123", abhaVerificationStatus: status }, resolvedFrom: null },
       "GET /api/patients/abha/capability": { configured: false, canRecord: true, canCreate: false, canVerify: false, canScanShare: false, reason: "test" },
     });
     renderWithProviders(<PatientDetail />);
@@ -823,7 +823,7 @@ describe("UX-AUDIT 2026-09-29 · BOARD — the profile", () => {
   });
 
   it("prints dates as 02-Apr-1990 and masks mobiles to their last four digits — no ISO, no full number", async () => {
-    stubSeat({ ...BASE, "GET /api/patients/p-1": { patient: { ...PATIENT, altPhone: "9414022871" }, resolvedFrom: null }, "GET /api/patients/p-1/guardians": GUARDIANS }, FRONT_DESK);
+    stubSeat({ ...BASE, "GET /api/patients/p-1/profile": { patient: { ...PATIENT, altPhone: "9414022871" }, resolvedFrom: null }, "GET /api/patients/p-1/guardians": GUARDIANS }, FRONT_DESK);
     renderWithProviders(<PatientDetail />);
     const lane = within(await screen.findByTestId("profile-lane"));
     expect(await lane.findByText("02-Apr-1990")).toBeInTheDocument();
@@ -1123,7 +1123,7 @@ describe("UX-AUDIT 2026-09-29 · BOARD — the profile", () => {
 
   it("restricted record: the alias is the name; the real name, contact, address and family links are not drawn", async () => {
     const sealed = { ...PATIENT, isConfidential: true, alias: "Patient R-2291", sensitiveContext: true };
-    stubSeat({ ...BASE, "GET /api/patients/p-1": { patient: sealed, resolvedFrom: null } }, [...FRONT_DESK, "patients.deceased.write"]);
+    stubSeat({ ...BASE, "GET /api/patients/p-1/profile": { patient: sealed, resolvedFrom: null } }, [...FRONT_DESK, "patients.deceased.write"]);
     renderWithProviders(<PatientDetail />);
     expect(await screen.findByRole("heading", { name: "Patient R-2291" })).toBeInTheDocument();
     expect(screen.getByTestId("restricted-pill")).toHaveTextContent("Restricted record");
@@ -1256,5 +1256,162 @@ describe("Add allergy on the profile suggests as the clerk types", () => {
       substance: "Penicillins / Beta-Lactams", severity: "mild", source: "registration",
       saltId: null, allergenClass: "penicillin",
     });
+  });
+});
+
+/**
+ * #657 — the reads the board marked "needs server": the logged Show of the full mobile, "patient since
+ * · N visits" from the server, the alias-only view of a restricted record with the MS's break-glass,
+ * the queue token and place in line in the Today band, and the membership card. Each stub also
+ * answers the plain `GET /patients/:id`, so a screen that never asked the new reads fails on the
+ * behaviour, not on a missing route.
+ */
+describe("PatientDetail — #657 profile reads", () => {
+  beforeEach(() => { setToken(null); localStorage.clear(); });
+  afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
+
+  const OLD = { "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null } };
+  const DESK = ["patients.read", "patients.register", "patients.update", "opd.visits.open"];
+
+  it("Show: the mobile stays masked until the logged POST answers, then the returned number is drawn", async () => {
+    stubSeat({ ...OLD, ...BASE, "POST /api/patients/p-1/mobile-shown": { phone: "9876543210", altPhone: null } }, DESK);
+    renderWithProviders(<PatientDetail />);
+    const fact = await screen.findByTestId("mobile-fact");
+    expect(fact).toHaveTextContent("•••••• 3210");
+    expect(screen.queryByText(/9876543210/)).toBeNull();
+    fireEvent.click(within(fact).getByRole("button", { name: "Show" }));
+    await waitFor(() => expect(screen.getByTestId("mobile-fact")).toHaveTextContent("9876543210"));
+    expect(fetchCalls().filter((c) => c.method === "POST" && c.url === "/api/patients/p-1/mobile-shown")).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Show" })).toBeNull();
+  });
+
+  it("Show: a refused POST reveals nothing; a doctor's seat is drawn no Show at all", async () => {
+    stubSeat({ ...OLD, ...BASE }, DESK); // no mobile-shown route: the stub answers 404
+    const first = renderWithProviders(<PatientDetail />);
+    fireEvent.click(within(await screen.findByTestId("mobile-fact")).getByRole("button", { name: "Show" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.getByTestId("mobile-fact")).toHaveTextContent("•••••• 3210");
+    expect(screen.queryByText(/9876543210/)).toBeNull();
+    first.unmount();
+    vi.unstubAllGlobals();
+
+    stubSeat({ ...OLD, ...BASE }, ["patients.read", "patients.update", "opd.visits.read", "opd.consult"]);
+    renderWithProviders(<PatientDetail />);
+    expect(await screen.findByTestId("mobile-fact")).toHaveTextContent("•••••• 3210");
+    expect(screen.queryByRole("button", { name: "Show" })).toBeNull();
+  });
+
+  it("patient since · N visits counts from the server, not from the first page of the timeline", async () => {
+    stubSeat({ ...OLD, ...BASE, "GET /api/patients/p-1/profile": { view: "full", patient: PATIENT, resolvedFrom: null, breakGlass: null, visits: { count: 17, lastVisitOn: "2026-09-18" } } }, DESK);
+    renderWithProviders(<PatientDetail />);
+    expect(await screen.findByText(/12-Jan-2011 · 17 visits/)).toBeInTheDocument();
+  });
+
+  const RESTRICTED = {
+    view: "restricted", resolvedFrom: null,
+    patient: { id: "p-1", uhid: "HMS0000001234", alias: "Patient R-2291", isConfidential: true, administrativeGender: "female", ageYears: 71, ageMonths: null, sensitiveContext: true, status: "active" },
+    allergies: [{ id: "al-1", substance: "Penicillin", reaction: "anaphylaxis", severity: "severe" }, { id: "al-2", substance: "Sulfa", reaction: null, severity: null }],
+  };
+
+  it("a restricted record the seat may not open: the alias, UHID, age and allergies — and no break-glass act for the desk", async () => {
+    stubSeat({ "GET /api/patients/p-1/profile": RESTRICTED }, DESK);
+    renderWithProviders(<PatientDetail />);
+    expect(await screen.findByRole("heading", { name: "Patient R-2291" })).toBeInTheDocument();
+    expect(screen.getByText("HMS0000001234")).toBeInTheDocument();
+    expect(screen.getByText("71 y · Female")).toBeInTheDocument();
+    expect(screen.getByText("Penicillin")).toBeInTheDocument();
+    expect(screen.getByTestId("restricted-banner")).toBeInTheDocument();
+    expect(screen.getAllByText("hidden").length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByTestId("break-glass")).toBeNull();
+    expect(screen.getByTestId("onward-open-visit")).toBeInTheDocument();
+  });
+
+  it("the MS breaks the glass with a reason through the existing route; the record then opens with the reason on a banner", async () => {
+    let opened = false;
+    const posted: unknown[] = [];
+    stubSeat({
+      "GET /api/patients/p-1/profile": () => opened
+        ? { view: "full", patient: { ...PATIENT, isConfidential: true, alias: "Patient R-2291" }, resolvedFrom: null, breakGlass: { id: "bg-1", reason: "night emergency" }, visits: { count: 1, lastVisitOn: null } }
+        : RESTRICTED,
+      "POST /api/auth/break-glass": (init?: RequestInit) => { posted.push(JSON.parse(String(init?.body))); opened = true; return { grantId: "bg-1", expiresAt: "2026-10-15T10:00:00.000Z" }; },
+      "GET /api/patients/p-1/allergies": { items: [] },
+      "GET /api/patients/p-1/guardians": { items: [] },
+    }, ["patients.read", "auth.break_glass.use"]);
+    const user = userEvent.setup();
+    renderWithProviders(<PatientDetail />);
+    await user.click(await screen.findByTestId("break-glass"));
+    const confirm = screen.getByTestId("break-glass-confirm");
+    expect(confirm).toBeDisabled();
+    await user.type(screen.getByLabelText("Reason for opening this record"), "night emergency");
+    await user.click(confirm);
+    await waitFor(() => expect(posted).toEqual([{ patientId: "p-1", reason: "night emergency" }]));
+    expect(await screen.findByRole("heading", { name: "Asha Devi" })).toBeInTheDocument();
+    expect(screen.getByTestId("break-glass-banner")).toHaveTextContent("night emergency");
+    expect(screen.queryByTestId("restricted-banner")).toBeNull();
+  });
+
+  it("the Today band carries the token and how many are ahead — a count, never another patient", async () => {
+    stubSeat({
+      ...OLD, ...BASE,
+      "GET /api/opd/patients/p-1/queue-today": { items: [{ encounterId: "e-1", token: "MED-2", tokenNo: 2, doctorName: "Dr Mathur", departmentName: "General Medicine", state: "waiting", position: 2, ahead: 1 }] },
+    }, [...DESK, "opd.queue.read"]);
+    renderWithProviders(<PatientDetail />);
+    const band = await screen.findByTestId("today-band");
+    expect(band).toHaveTextContent("In the General Medicine queue · token MED-2");
+    expect(within(band).getByTestId("queue-place")).toHaveTextContent("1 ahead in line for Dr Mathur");
+  });
+
+  it("the membership card linked to this patient: plan and standing, on the recognition grant only", async () => {
+    stubSeat({
+      ...OLD, ...BASE,
+      "GET /api/membership/recognition": (_i?: RequestInit, url?: string) => (url ?? "").includes("patientId=p-1")
+        ? { patientId: "p-1", coupons: [], disclosure: "", memberships: [{ instanceId: "mi-1", planId: "pl-1", planTitle: "Arogya Gold", cardCode: "AG-0001", status: "active", origin: "import", verified: true, usable: true, validFrom: "2026-01-01T00:00:00.000Z", validTo: "2027-03-31T00:00:00.000Z", queuePerk: false, benefits: [], standing: "usable", linked: true, holder: null, allowances: [], nextAct: "take_to_bill" }] }
+        : { patientId: null, coupons: [], disclosure: "", memberships: [] },
+    }, [...DESK, "membership.instrument.recognise"]);
+    renderWithProviders(<PatientDetail />);
+    const card = await screen.findByTestId("membership-card");
+    expect(card).toHaveTextContent("Arogya Gold");
+    expect(card).toHaveTextContent("Active · valid to 31-Mar-2027");
+    expect(card).not.toHaveTextContent("AG-0001");
+  });
+});
+
+/**
+ * #849 — board §4 on a sealed record the seat may not open: the history rows say only date and
+ * department ("details for the treating doctor only"), and "Print card (alias)" prints the same card
+ * the profile prints, from the alias variant of its read — never the legal name.
+ */
+describe("PatientDetail — #849 restricted history and alias card", () => {
+  beforeEach(() => { setToken(null); localStorage.clear(); });
+  afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
+
+  const SEALED = {
+    view: "restricted", resolvedFrom: null,
+    patient: { id: "p-1", uhid: "HMS0000001234", alias: "Patient R-2291", isConfidential: true, administrativeGender: "female", ageYears: 71, ageMonths: null, sensitiveContext: false, status: "active" },
+    allergies: [],
+    history: [{ serviceDate: "2026-09-18", departmentName: "General Medicine" }],
+  };
+
+  it("draws each visit as date and department, with the treating-doctor line and nothing more", async () => {
+    stubSeat({ "GET /api/patients/p-1/profile": SEALED }, ["patients.read"]);
+    renderWithProviders(<PatientDetail />);
+    const row = await screen.findByTestId("restricted-history-row");
+    expect(row).toHaveTextContent("OPD");
+    expect(row).toHaveTextContent("18-Sep-2026 · General Medicine");
+    expect(row).toHaveTextContent("details for the treating doctor only");
+  });
+
+  it("Print card (alias) opens the patient card from the alias read: the alias, never the legal name", async () => {
+    stubSeat({
+      "GET /api/patients/p-1/profile": SEALED,
+      "GET /api/patients/p-1/qr/alias": { payload: "1.p-1.HMS0000001234.1.sig", uhid: "HMS0000001234", name: "Patient R-2291", administrativeGender: "female", dob: null },
+    }, ["patients.read"]);
+    renderWithProviders(<PatientDetail />);
+    fireEvent.click(await screen.findByRole("button", { name: "Print card (alias)" }));
+    const card = await screen.findByTestId("qr-card-print");
+    expect(card).toHaveTextContent("Patient R-2291");
+    expect(card).toHaveTextContent("HMS0000001234");
+    expect(card).not.toHaveTextContent("Asha Devi");
+    expect(fetchCalls().some((c) => c.url === "/api/patients/p-1/qr")).toBe(false);
   });
 });

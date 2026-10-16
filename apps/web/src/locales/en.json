@@ -14219,6 +14219,23 @@
     }
   },
   "profile": {
+    "showMobile": "Show",
+    "card": {"label": "Card", "until": "valid to {{date}}"},
+    "queue": {
+      "token": "token {{token}}",
+      "next": "Next in line for {{doctor}}",
+      "ahead_one": "1 ahead in line for {{doctor}}",
+      "ahead_other": "{{count}} ahead in line for {{doctor}}",
+      "state": {"waiting_vitals": "Waiting for vitals · {{doctor}}", "waiting": "Waiting for {{doctor}}", "called": "Called now by {{doctor}}", "in_consult": "With {{doctor}} now"}
+    },
+    "breakGlass": {
+      "act": "Break glass",
+      "reason": "Reason for opening this record",
+      "note": "Opens the name, contact and address for a short time. Logged, and reviewed by someone else.",
+      "confirm": "Break glass and open",
+      "open": "Opened by break-glass.",
+      "openBody": "Reason: {{reason}}. Logged and reviewed later."
+    },
     "hv": {
       "choose": "How to show the history",
       "categories": "History categories",
@@ -14309,7 +14326,10 @@
       "title": "This record is restricted.",
       "body": "Staff see the alias, the UHID, age and allergies. The name, contact and address open only through break-glass by the Medical Superintendent (owner ruling 28-Sep-2026), with a reason, logged.",
       "editHidden": "Contact and address are not shown or edited on a restricted record.",
-      "noFamily": "not shown on a restricted record"
+      "noFamily": "not shown on a restricted record",
+      "history": "History",
+      "doctorOnly": "details for the treating doctor only",
+      "printAlias": "Print card (alias)"
     },
     "hidden": "hidden",
     "hiddenWord": "hidden",
