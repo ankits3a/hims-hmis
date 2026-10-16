@@ -102,7 +102,7 @@ export function WaitingDisplay({ t }: { t: T }): React.ReactElement {
       <header className="erb-head">
         <div className="erb-title"><h1>{t("erCopilot.waiting.title")}</h1><span>{t("erCopilot.waiting.titleHi")}</span></div>
         <div className={`erb-live${failed ? " off" : ""}`} role="status">
-          {failed ? t("erCopilot.waiting.offline", { time: last === null ? "—" : fmtIst(last.toISOString()) }) : t("erBoard.live")}
+          {failed ? t("erCopilot.waiting.offline", { time: last === null ? "—" : fmtIst(last.toISOString()) }) : t("erBoard.live", { time: last === null ? "—" : fmtIst(last.toISOString()) })}
         </div>
       </header>
       {d !== null && d.rows.length === 0 ? <div className="erb-empty">{t("erCopilot.waiting.empty")}</div> : null}

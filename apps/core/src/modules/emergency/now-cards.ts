@@ -62,15 +62,18 @@ async function whoOf(db: Db, reader: Actor, eps: readonly EpisodeRow[]): Promise
   for (const e of eps) {
     const p = people.get(e.patientId);
     const merged = p !== undefined && p.id !== e.patientId;
-    if (sealed.has(e.patientId)) { out.set(e.id, { name: p?.alias?.trim() || SEALED_LABEL, place: e.episodeNo }); continue; }
+    if (sealed.has(e.patientId)) { out.set(e.id, { name: p?.alias?.trim() || SEALED_LABEL, place: "" }); continue; }
     const name = e.unidentified && !merged ? (e.alias ?? "—") : p?.restricted === true ? (p.alias ?? "—") : (p?.name ?? p?.alias ?? "—");
-    out.set(e.id, { name, place: [e.episodeNo, e.bayId === null ? "" : bays.get(e.bayId) ?? ""].filter((x) => x !== "").join(" · ") });
+    // Walk 2026-10-16: the desk row is one short line at 390 px — the bay only (the ER number is on the patient's page).
+    out.set(e.id, { name, place: e.bayId === null ? "" : bays.get(e.bayId) ?? "" });
   }
   return out;
 }
 
 const openEpisodes = (db: Db): Promise<EpisodeRow[]> => db.select().from(erEpisodes).where(inArray(erEpisodes.state, [...ER_OPEN_STATE_VALUES]));
-const esiOf = (e: EpisodeRow): string => (e.esi === null ? "" : `ESI ${String(e.esi)} ${ER_ESI_INFO[e.esi as ErEsiLevel].word} · `);
+const esiOf = (e: EpisodeRow): string => (e.esi === null ? "" : `ESI ${String(e.esi)}`);
+/** One short line: the non-empty parts joined. */
+const line = (...parts: string[]): string => parts.filter((x) => x !== "").join(" · ");
 const triageHref = (id: string): string => `/er/triage?episode=${id}`;
 const patientHref = (id: string): string => `/er/patient?episode=${id}`;
 
@@ -99,7 +102,7 @@ export async function retriageDueCard(ctx: DeskProviderCtx): Promise<DeskCard[]>
     const over = since(e.retriageDueAt!, ctx.now);
     return {
       id: e.id, badge: e.esi === null ? "!" : String(e.esi), title: who.get(e.id)!.name,
-      subtitle: `${who.get(e.id)!.place} · ${esiOf(e)}due ${istHm(e.retriageDueAt!)} (${String(over)} min over)`,
+      subtitle: line(who.get(e.id)!.place, esiOf(e), `${String(over)} min over`),
       action: "Re-triage", href: triageHref(e.id), severity: over >= 15 ? "hot" : "warn", wait: over,
     };
   }));
@@ -116,7 +119,7 @@ export async function doctorOverdueCard(ctx: DeskProviderCtx): Promise<DeskCard[
     const waited = since(e.arrivedAt, ctx.now);
     return {
       id: e.id, badge: String(e.esi), title: who.get(e.id)!.name,
-      subtitle: `${who.get(e.id)!.place} · ${esiOf(e)}waiting ${String(waited)} min (target ${String(target)})`,
+      subtitle: line(who.get(e.id)!.place, esiOf(e), `${String(waited)} min (target ${String(target)})`),
       action: "See patient", href: patientHref(e.id), severity: (e.esi ?? 9) <= 2 || waited >= target * 2 ? "hot" : "warn", wait: waited - target,
     };
   }));
@@ -134,7 +137,7 @@ export async function callUnansweredCard(ctx: DeskProviderCtx): Promise<DeskCard
     const waited = since(c.calledAt, ctx.now);
     return {
       id: c.id, badge: c.departmentCode, title: who.get(c.episodeId)!.name,
-      subtitle: `${who.get(c.episodeId)!.place} · ${c.departmentCode} called ${istHm(c.calledAt)}, ${String(waited)} min unanswered`,
+      subtitle: line(who.get(c.episodeId)!.place, c.departmentCode, `${String(waited)} min`),
       action: "Open", href: patientHref(c.episodeId), severity: waited >= 15 ? "hot" : "warn", wait: waited,
     };
   }));
@@ -160,7 +163,7 @@ export async function resultReadyCard(ctx: DeskProviderCtx): Promise<DeskCard[]>
   });
   const who = await whoOf(ctx.db, ctx.reader, ready.map((r) => r.e));
   return card("emergency.result_ready", "desk.erResultReady.title", ready.map(({ e, first, n }) => ({
-    id: e.id, badge: String(n), title: who.get(e.id)!.name, subtitle: `${who.get(e.id)!.place} · ready since ${istHm(first)}`,
+    id: e.id, badge: String(n), title: who.get(e.id)!.name, subtitle: line(who.get(e.id)!.place, `ready ${istHm(first)}`),
     action: "Review", href: patientHref(e.id), severity: null, wait: since(first, ctx.now),
   })));
 }
@@ -175,7 +178,7 @@ export async function criticalResultCard(ctx: DeskProviderCtx): Promise<DeskCard
     const e = byNo.get(c.encounterNo)!;
     return {
       id: c.callId, badge: "!", title: who.get(e.id)!.name,
-      subtitle: `${who.get(e.id)!.place} · ${c.analyteCode} ${c.value}${c.unit === null ? "" : ` ${c.unit}`} at ${istHm(c.openedAt)}`,
+      subtitle: line(who.get(e.id)!.place, `${c.analyteCode} ${c.value}${c.unit === null ? "" : ` ${c.unit}`}`),
       action: "Open", href: patientHref(e.id), severity: "hot", wait: since(c.openedAt, ctx.now),
     };
   }));
@@ -191,7 +194,7 @@ export async function boardingLongCard(ctx: DeskProviderCtx): Promise<DeskCard[]
     const waited = since(e.boardingSince!, ctx.now);
     return {
       id: e.id, badge: `${String(Math.floor(waited / 60))}h`, title: who.get(e.id)!.name,
-      subtitle: `${who.get(e.id)!.place} · boarding since ${istHm(e.boardingSince!)} (${String(waited)} min)`,
+      subtitle: line(who.get(e.id)!.place, `${String(waited)} min`),
       action: "Find a bed", href: "/ipd/beds", severity: waited >= ER_BOARDING_HOT_MIN ? "hot" : "warn", wait: waited,
     };
   }));
@@ -209,7 +212,7 @@ async function mlcOwed(ctx: DeskProviderCtx, kind: "police_intimation" | "facult
     const over = Math.floor((ctx.now.getTime() - o.dueAt.getTime()) / MIN);
     return {
       id: o.id, badge: "MLC", title: who.get(m.episodeId)?.name ?? m.mlcNo,
-      subtitle: `${m.mlcNo} · due ${istHm(o.dueAt)}${over > 0 ? ` (${String(over)} min over)` : ` (in ${String(-over)} min)`}`,
+      subtitle: line(m.mlcNo, over > 0 ? `${String(over)} min over` : `due in ${String(-over)} min`),
       action, href: `/er/mlc?mlc=${m.id}`, severity: over > 0 ? "hot" : "warn", wait: over,
     };
   }));
@@ -233,7 +236,7 @@ export async function preAlertCard(ctx: DeskProviderCtx): Promise<DeskCard[]> {
     const late = Math.floor((ctx.now.getTime() - p.expectedAt.getTime()) / MIN);
     return {
       id: p.id, badge: String(p.count - p.arrivedCount), title: `${PRE_ALERT_MODE[p.mode] ?? p.mode}${p.complaint === null ? "" : ` · ${p.complaint.slice(0, 60)}`}`,
-      subtitle: `expected ${istHm(p.expectedAt)}${late > 0 ? ` (${String(late)} min late)` : ""}`,
+      subtitle: late > 0 ? `${String(late)} min late` : `at ${istHm(p.expectedAt)}`,
       action: "ER desk", href: "/er/desk", severity: late > 0 ? "warn" : null, wait: late,
     };
   }));
@@ -248,7 +251,7 @@ export async function lwbsRiskCard(ctx: DeskProviderCtx): Promise<DeskCard[]> {
   return card("emergency.lwbs_risk", "desk.erLwbsRisk.title", eps.map((e) => {
     const waited = since(e.arrivedAt, ctx.now);
     return {
-      id: e.id, badge: String(e.esi), title: who.get(e.id)!.name, subtitle: `${who.get(e.id)!.place} · ${esiOf(e)}waiting ${String(waited)} min`,
+      id: e.id, badge: String(e.esi), title: who.get(e.id)!.name, subtitle: line(who.get(e.id)!.place, esiOf(e), `${String(waited)} min`),
       action: "Check on patient", href: triageHref(e.id), severity: waited >= 120 ? "hot" : "warn", wait: waited,
     };
   }));

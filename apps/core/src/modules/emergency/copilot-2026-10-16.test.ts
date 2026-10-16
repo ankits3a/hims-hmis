@@ -83,9 +83,9 @@ describe("ER copilot — Now cards, waiting display, copilot questions", () => {
     const late = new Date(t0.getTime() + 90 * MIN);
     const [re] = await retriageDueCard(ctx(w.erNurse, late));
     expect(re!.rows!.map((r) => [r.title, r.href])).toEqual([["Sunita Devi", `/er/triage?episode=${a.episodeId}`]]);
-    expect(re!.rows![0]!.subtitle).toContain("ESI 4 Less urgent");
+    expect(re!.rows![0]!.subtitle).toBe("ESI 4 · 27 min over");
     const [doc] = await doctorOverdueCard(ctx(w.erDoctor, late));
-    expect(doc!.rows![0]!.subtitle).toContain("waiting 90 min (target 60)");
+    expect(doc!.rows![0]!.subtitle).toBe("ESI 4 · 90 min (target 60)");
     const [lwbs] = await lwbsRiskCard(ctx(w.erNurse, late));
     expect(lwbs!.rows!.map((r) => r.id)).toEqual([a.episodeId]);
     expect(JSON.stringify([re, doc, lwbs])).not.toMatch(MONEY);
