@@ -55,7 +55,7 @@ const ROW: Record<string, unknown> & { id: string } = {
 };
 
 describe("the CRK formulary reviewer screen (#882)", () => {
-  beforeEach(() => { setToken("t"); grants = ["formulary.read", "formulary.monograph.review"]; localStorage.clear(); });
+  beforeEach(() => { setToken("t"); grants = ["formulary.read", "formulary.crk.sign"]; localStorage.clear(); });
   afterEach(() => { vi.unstubAllGlobals(); });
 
   it("the worklist counts by state, lists what waits, and shows the drafting cost to a signer", async () => {
@@ -74,6 +74,20 @@ describe("the CRK formulary reviewer screen (#882)", () => {
     expect(screen.getByTestId("crk-count-pending")).toHaveTextContent("1 New version");
     expect(within(screen.getByTestId("crk-item-555")).getByText("New version pending")).toBeInTheDocument();
     expect(within(screen.getByTestId("crk-item-777")).getByText("Review overdue")).toBeInTheDocument();
+  });
+
+  it("the pharmacy-monograph reviewer's permission is not a CRK signature: no cost line, no Sign", async () => {
+    grants = ["formulary.read", "formulary.manage", "formulary.monograph.review"];
+    mockRoutes({
+      "GET /api/formulary/crk/worklist": { status: 200, body: WORKLIST },
+      [`GET /api/formulary/crk/${SCTID}/review`]: { status: 200, body: ROW },
+    });
+    renderWithProviders(<CrkFormularyScreen />);
+    await screen.findByTestId("crk-count-draft");
+    expect(screen.queryByTestId("crk-cost")).toBeNull();
+    await userEvent.click(screen.getByTestId(`crk-item-${SCTID}`));
+    await screen.findByTestId("crk-status");
+    expect(screen.queryByTestId("crk-sign-form")).toBeNull();
   });
 
   it("a pharmacist (formulary.manage, no signature) sees the worklist without the cost", async () => {
@@ -160,7 +174,7 @@ describe("the CRK formulary reviewer screen (#882)", () => {
 });
 
 describe("#884 — the 12-month renewal on the sign screen", () => {
-  beforeEach(() => { setToken("t"); grants = ["formulary.read", "formulary.monograph.review"]; localStorage.setItem("hmis.crk.designation", "Professor, Pharmacology"); });
+  beforeEach(() => { setToken("t"); grants = ["formulary.read", "formulary.crk.sign"]; localStorage.setItem("hmis.crk.designation", "Professor, Pharmacology"); });
   afterEach(() => { vi.unstubAllGlobals(); localStorage.clear(); });
   const SIGNED_ROW = { ...ROW, id: "mono-3", signedCrk: ENTRY, draftCrk: null, reviewedBy: "u-other", reviewedAt: "2025-01-01T06:00:00.000Z", reviewerDesignation: "Professor", reviewDueOn: "2026-01-01", version: 1 };
   const open = async (row: Record<string, unknown>, onSign?: () => Reply): Promise<void> => {

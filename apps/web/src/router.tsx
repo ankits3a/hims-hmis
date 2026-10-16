@@ -294,7 +294,7 @@ const NAV: readonly NavEntry[] = [
   // E0.1 (decision 0064) — the copilot's health; path and permission match `deskManifest.menu`.
   { to: "/copilot-health", label: "nav.copilotHealth", permission: "copilot.health.read", group: "admin" },
   // #882 / decision 0053 — the CRK formulary: Pharmacology signs; the pharmacy may correct a draft.
-  { to: "/crk-formulary", label: "nav.crkFormulary", permission: "formulary.monograph.review", group: "pharmacy", anyOf: ["formulary.manage"] },
+  { to: "/crk-formulary", label: "nav.crkFormulary", permission: "formulary.crk.sign", group: "pharmacy", anyOf: ["formulary.manage"] },
   // The OPD day report (owner, 2026-09-19): the hospital's day by department, PDF and CSV.
   { to: "/reports/opd-day", label: "nav.opdDayReport", permission: "opd.reports.read", group: "opd" },
   // 20-U U5a — who is on now, the hospital's unit board. `roster.read` matches `rosterManifest.menu`.

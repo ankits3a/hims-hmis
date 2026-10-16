@@ -18,7 +18,7 @@ import type { CrkDraftRow, CrkEntry, CrkField, CrkSourceKind, CrkState } from ".
  * a different reviewer; the screen says so and the server refuses the first signer twice. Editing saves a
  * DRAFT: changed text is unsigned text, and the screen says that before the save.
  *
- * The cost line is shown to `formulary.monograph.review` holders only. It never reaches a doctor's screen
+ * The cost line is shown to `formulary.crk.sign` holders (the signers) only. It never reaches a doctor's screen
  * (decision 0058); the doctor's door (`components/crk-entry.tsx`) reads signed entries and nothing else.
  */
 type Opened = { sctid: string; name: string };
@@ -80,7 +80,7 @@ function Worklist({ onOpen }: { onOpen: (o: Opened) => void }): React.ReactEleme
         ))}
       </div>
       {/* Decision 0058 keeps money off doctor screens; the drafting cost is the signers' number. */}
-      {can("formulary.monograph.review") && (
+      {can("formulary.crk.sign") && (
         <p data-testid="crk-cost" className="text-xs text-neutral-600">
           {t("crk.cost", { n: w.drafting.drafted, inTok: w.drafting.inputTokens.toLocaleString("en-IN"), outTok: w.drafting.outputTokens.toLocaleString("en-IN") })}
         </p>
@@ -197,7 +197,7 @@ function SignPanel({ opened, onBack }: { opened: Opened; onBack: () => void }): 
   /* #884 — a renewal re-signs the unchanged text; the entry stays shown while it is renewed. */
   const renewal = status === "due" || status === "overdue" || status === "renewalAwaiting";
   const versionToSign = status === "draft" || status === "pending" || status === "awaiting";
-  const canSign = can("formulary.monograph.review") && row !== null && (versionToSign || renewal) && editing === null;
+  const canSign = can("formulary.crk.sign") && row !== null && (versionToSign || renewal) && editing === null;
   /* The text on screen is the one a signature would sign: the pending version if any, else the live one. */
   const shown = row === null ? null : row.draftCrk ?? row.signedCrk;
   const waitingSecond = status === "awaiting" || status === "renewalAwaiting";
