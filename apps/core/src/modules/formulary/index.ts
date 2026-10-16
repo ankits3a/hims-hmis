@@ -126,5 +126,5 @@ export {
 } from "./reference-labels";
 export type { GenericReference, ReferenceEntry, ReferenceImportResult, ReferencePlan, ReferenceSectionName } from "./reference-labels";
 
-export { counsellingByMedicine, counsellingOf, linkMedicinesToGenerics, monographForMedicine } from "./generic-link";
-export type { Counselling, GenericLinkReport } from "./generic-link";
+export { counsellingByMedicine, counsellingOf, linkMedicinesToGenerics, monographForMedicine, renalRulesByMedicine } from "./generic-link";
+export type { Counselling, GenericLinkReport, RenalRuleOfMedicine } from "./generic-link";

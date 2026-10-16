@@ -4,15 +4,19 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
-import { listDepartments, opdErrorMessage, todayIst } from "../lib/opd-api";
+import { getDepartmentQueue, listDepartments, opdErrorMessage, todayIst } from "../lib/opd-api";
 import { useDoctorLabel } from "../lib/use-doctor-label";
-import type { WireDepartment, WireDoctorSummary, WireQueueEntryView, WireQueueView } from "../lib/opd-api";
+import type { WireDepartment, WireDepartmentQueueDoctor, WireDoctorSummary, WireQueueEntryView, WireQueueView } from "../lib/opd-api";
 import { useRealtime } from "../lib/realtime";
 import { PatientPhoto } from "../components/patient-photo";
 import { StationShell } from "../components/station/station-shell";
 import type { StationLink } from "../components/station/station-shell";
 import "./opd-desk.css";
 import { CreditChip } from "../components/patient-credit";
+import { AgentDock, logged } from "../components/agent-dock";
+import type { AgentLine } from "../components/agent-dock";
+import { CopilotReport } from "../components/copilot-report";
+import { useCopilot } from "../lib/use-copilot";
 
 /**
  * The OPD desk (§11.1 / D2 / D3) — THE QUEUE DESK of the OPD floor: the live doctor board, the picked
@@ -34,6 +38,16 @@ import { CreditChip } from "../components/patient-credit";
  * doctor, act — over a pinned bar offering the single next act; RIGHT the chosen doctor's line in the
  * server's priority order with a source chip on each row, then "Clocks running", folded. Opening a
  * visit is one header link away, at Desk One.
+ *
+ * ═══ #660 — THE DEPARTMENT'S LINE AND THE COPILOT PANEL ═══
+ *
+ * The right column is now every doctor's line in the department, grouped under a head naming the
+ * doctor, the room, who is being served and how many wait; the chosen doctor's group leads, and a
+ * token taken from any group makes its doctor the chosen one, so abandon (K45) and transfer (K44)
+ * act exactly as before. The 2026-09-28 decision refused this as one read per doctor per 15 s, so it
+ * is ONE read — `GET /opd/departments/:id/queue`, the board's summary and every doctor's line
+ * together — on the same 15 s + realtime pair. With a token in hand the copilot panel takes the
+ * column and the list folds to one line (the station shell's rule, the owner's 2026-09-25 layout).
  *
  * Three standing rules shape this file, unchanged by the rebuild:
  *  · THE SERVER IS AUTHORITATIVE. No response status is branched on beyond `api()`'s 2xx/non-2xx
@@ -124,41 +138,45 @@ export function OpdDesk(): React.ReactElement {
   useEffect(() => { setFlash(null); }, [selectedDoctorId]); // Dr Rao's flash does not follow the picker to Dr Toppo's board
 
   const departments = useQuery({ queryKey: ["opd", "departments"], queryFn: listDepartments, refetchInterval: POLL_MS });
-  const summary = useQuery({
-    queryKey: ["opd", "queues", "summary", departmentId, today],
-    queryFn: () => api<{ items: WireDoctorSummary[] }>(
-      "GET", `/opd/queues/summary?departmentId=${departmentId}&serviceDate=${today}`,
-    ),
+  /*
+    #660 — ONE read for the whole department: the board's rows and every doctor's line together.
+    Choosing a doctor reads nothing new; the poll is one request per 15 s whatever the doctor count.
+  */
+  const deptQueue = useQuery({
+    queryKey: ["opd", "department-queue", departmentId, today],
+    queryFn: () => getDepartmentQueue(departmentId, today),
     enabled: departmentId !== "",
     refetchInterval: POLL_MS,
   });
-  const queue = useQuery({
-    queryKey: ["opd", "queue", selectedDoctorId, today],
-    queryFn: () => api<WireQueueView | { session: null }>(
-      "GET", `/opd/queues?doctorId=${selectedDoctorId}&serviceDate=${today}`,
-    ),
-    enabled: selectedDoctorId !== "",
-    refetchInterval: POLL_MS,
-  });
 
-  // D6: a frame on the picked doctor's topic is a HINT to re-read. Correctness rides the poll above.
-  useRealtime(selectedDoctorId === "" ? [] : [`queue:${selectedDoctorId}:${today}`], (f) => {
-    if (f.name === "queue.escalated" || f.name === "queue.escalation_cancelled") {
+  const departmentItems: WireDepartment[] = departments.data?.items ?? [];
+  const summaryItems: WireDepartmentQueueDoctor[] = deptQueue.data?.doctors ?? [];
+
+  // D6: a frame on any of the department's queue topics is a HINT to re-read. Correctness rides the
+  // poll above. The flash stays the chosen doctor's, as it always was.
+  useRealtime(summaryItems.map((s) => `queue:${s.doctor.id}:${today}`), (f) => {
+    if (
+      f.topic === `queue:${selectedDoctorId}:${today}`
+      && (f.name === "queue.escalated" || f.name === "queue.escalation_cancelled")
+    ) {
       const tokenNo = (f.payload as { tokenNo?: unknown } | null)?.tokenNo;
       if (typeof tokenNo === "number") setFlash({ tokenNo, cancelled: f.name === "queue.escalation_cancelled" });
     }
-    void queryClient.invalidateQueries({ queryKey: ["opd", "queue", selectedDoctorId, today] });
-    void queryClient.invalidateQueries({ queryKey: ["opd", "queues", "summary"] });
+    void queryClient.invalidateQueries({ queryKey: ["opd", "department-queue", departmentId, today] });
   });
 
-  const departmentItems: WireDepartment[] = departments.data?.items ?? [];
-  const summaryItems: WireDoctorSummary[] = summary.data?.items ?? [];
   const department = departmentItems.find((d) => d.id === departmentId) ?? null;
   const doctorRow = summaryItems.find((s) => s.doctor.id === selectedDoctorId) ?? null;
   const doctorNameOf = (id: string): string => summaryItems.find((s) => s.doctor.id === id)?.doctor.displayName ?? "";
-  const queueView: WireQueueView | null =
-    queue.data !== undefined && queue.data.session !== null ? queue.data : null;
+  const queueView: WireQueueView | null = doctorRow?.queue ?? null;
   const orderedEntries = queueView?.ordered ?? [];
+  /** The department's lines: every doctor with a session today, the chosen one first. */
+  const groups = summaryItems.filter((s) => s.queue !== null);
+  const orderedGroups = selectedDoctorId === ""
+    ? groups
+    : [...groups.filter((g) => g.doctor.id === selectedDoctorId), ...groups.filter((g) => g.doctor.id !== selectedDoctorId)];
+  const [agentLog, setAgentLog] = useState<AgentLine[]>([]);
+  const note = (text: string, kind: AgentLine["kind"] = "did"): void => { setAgentLog((l) => logged(l, text, kind)); };
   const inHand = orderedEntries.find((e) => e.id === inHandId) ?? null;
 
   const clearAct = (): void => {
@@ -189,7 +207,9 @@ export function OpdDesk(): React.ReactElement {
     clearAct();
     if (id !== "") setListRequest((r) => ({ open: true, seq: r.seq + 1 }));
   };
-  const take = (e: WireQueueEntryView): void => {
+  /** A token from ANY doctor's group: that doctor becomes the chosen one, so every act is theirs. */
+  const take = (e: WireQueueEntryView, doctorId: string): void => {
+    setSelectedDoctorId(doctorId);
     setInHandId(e.id);
     clearAct();
     setListRequest((r) => ({ open: false, seq: r.seq + 1 }));
@@ -212,11 +232,13 @@ export function OpdDesk(): React.ReactElement {
     setError(null);
     try {
       await api("POST", `/opd/visits/${inHand.encounter.id}/abandon`, { reason: reason.trim() });
+      note(t("opdDesk.agent.abandoned", { tokenNo: inHand.tokenNo, reason: reason.trim() }), "ok");
       putDown();
-      await queryClient.invalidateQueries({ queryKey: ["opd", "queue"] });
-      await queryClient.invalidateQueries({ queryKey: ["opd", "queues", "summary"] });
+      await queryClient.invalidateQueries({ queryKey: ["opd", "department-queue"] });
     } catch (e) {
-      setError(opdErrorMessage(e));
+      const msg = opdErrorMessage(e);
+      note(t("opdDesk.agent.refused", { message: msg }), "err");
+      setError(msg);
     }
   };
 
@@ -244,12 +266,14 @@ export function OpdDesk(): React.ReactElement {
         reason,
       });
       setMoved(res.transferred);
+      note(t("opdDesk.agent.moved", { n: res.transferred, from: doctorNameOf(selectedDoctorId), to: doctorNameOf(toDoctorId) }), "ok");
       setInHandId(null);
-      await queryClient.invalidateQueries({ queryKey: ["opd", "queue"] });
-      await queryClient.invalidateQueries({ queryKey: ["opd", "queues", "summary"] });
+      await queryClient.invalidateQueries({ queryKey: ["opd", "department-queue"] });
     } catch (e) {
       // A 403 from `opd.queue.transfer` lands here like any other refusal and is READ BY THE CLERK.
-      setError(opdErrorMessage(e));
+      const msg = opdErrorMessage(e);
+      note(t("opdDesk.agent.refused", { message: msg }), "err");
+      setError(msg);
     }
   };
 
@@ -263,9 +287,42 @@ export function OpdDesk(): React.ReactElement {
     { label: t("opdDesk.statOnLeave"), value: onLeave, tone: onLeave > 0 ? "danger" as const : "plain" as const },
   ];
 
-  /* ══════════ the clocks: what is running out in the chosen doctor's line ══════════ */
-  const longest = orderedEntries.reduce((m, e) => Math.max(m, minutesSince(e.createdAt, now)), 0);
+  /* ══════════ the clocks: what is running out across the department's lines (#660) ══════════ */
+  let longestRow: { e: WireQueueEntryView; doctor: WireDepartmentQueueDoctor } | null = null;
+  for (const g of groups) {
+    for (const e of g.queue?.ordered ?? []) {
+      if (longestRow === null || minutesSince(e.createdAt, now) > minutesSince(longestRow.e.createdAt, now)) longestRow = { e, doctor: g };
+    }
+  }
+  const longest = longestRow === null ? 0 : minutesSince(longestRow.e.createdAt, now);
   const over = longest > WAIT_TARGET_MIN;
+  const vitalsWaiting = groups.reduce((n, g) => n + (g.queue?.waitingVitals ?? 0), 0);
+  const leftCount = groups.reduce((n, g) => n + (g.queue?.counts.left ?? 0), 0);
+  const listedWaiting = groups.reduce((n, g) => n + (g.queue?.ordered.length ?? 0), 0);
+
+  /*
+    ══════════ #660 — THE COPILOT PANEL ══════════
+    The hospital's copilot (`useCopilot`, the same brain every desk asks), with this desk's own
+    answers as the fallback for questions about the department's lines on screen. The names on
+    screen are handed over so the server masks them by value. The log records only what the server
+    already answered — an abandon done, a transfer made, a refusal and its reason.
+  */
+  const namesOnScreen = (): string[] =>
+    groups.flatMap((g) => (g.queue?.ordered ?? []).map((e) => patientLabel(e.patient))).filter((n) => n !== "—");
+  const localAnswer = (question: string): string | null => {
+    const q = question.trim().toLowerCase();
+    if (departmentId === "") return null;
+    if (q.includes("longest") || q.includes("oldest") || q.includes("sabse")) {
+      return longestRow === null
+        ? t("opdDesk.agent.nobody")
+        : t("opdDesk.agent.longest", { tokenNo: longestRow.e.tokenNo, doctor: longestRow.doctor.doctor.displayName, n: longest });
+    }
+    if (q.includes("wait") || q.includes("how many") || q.includes("kitne")) {
+      return t("opdDesk.agent.waiting", { n: listedWaiting, doctors: groups.length });
+    }
+    return null;
+  };
+  const copilot = useCopilot({ terms: namesOnScreen, fallback: localAnswer, onNote: (text) => { note(text); } });
   /*
     OWNER 2026-10-09 — nothing is held for payment any more (a visit the desk let through is in the
     doctor's line like anyone else), so the clock that counted the held tokens would read 0 for
@@ -317,92 +374,108 @@ export function OpdDesk(): React.ReactElement {
     </section>
   );
 
-  /* ══════════ the right column: the chosen doctor's line, in the server's order ══════════ */
+  /* ══════════ the right column: the department's lines, each in the server's order (#660) ══════════ */
   const list = (
     <>
-      {flash !== null && (
-        <p role="status" className="od-flash" data-testid="escalation-flash" data-cancelled={flash.cancelled ? "true" : "false"}>
-          {t(flash.cancelled ? "opdDesk.escalationCancelled" : "opdDesk.escalationFlash", { tokenNo: flash.tokenNo })}
-          <button type="button" onClick={() => setFlash(null)}>{t("opdDesk.flashDismiss")}</button>
-        </p>
-      )}
       <section className="od-lh" data-testid="queue-head">
         <div className="od-lh-top">
-          <span className="od-lh-t">
-            {doctorRow === null ? t("opdDesk.queue") : doctorRow.doctor.displayName}
-            {doctorRow !== null && (() => { const tag = doctorLabel(doctorRow.doctor); return tag === null ? null : <span className="od-dtag"> · {tag}</span>; })()}
-          </span>
+          <span className="od-lh-t">{department === null ? t("opdDesk.queue") : t("opdDesk.deptQueue")}</span>
           <span className="od-live"><i />{t("opdDesk.live")}</span>
         </div>
-        {doctorRow !== null && (
-          <div className="od-lh-s">
-            {t("opd.labels.room")} {doctorRow.roomCode ?? "—"} · {t(`opd.sessionStatus.${doctorRow.status}`)}
-            {doctorRow.nowServing !== null && <> · {t("opdDesk.nowServing")} #{doctorRow.nowServing}</>}
-          </div>
-        )}
-        {queueView !== null && (
+        {department !== null && <div className="od-lh-s">{department.name}</div>}
+        {deptQueue.data !== undefined && (
           <div className="od-big">
-            <b>{orderedEntries.length}</b>
+            <b>{listedWaiting}</b>
             <span>{t("opdDesk.inLineNow")}</span>
           </div>
         )}
       </section>
-      {selectedDoctorId === "" && <p className="od-empty">{t("opdDesk.pickDoctorHint")}</p>}
-      {selectedDoctorId !== "" && queue.data !== undefined && queueView === null && (
-        <p className="od-empty">{t("opdDesk.noSession")}</p>
-      )}
-      {queueView !== null && orderedEntries.length === 0 && <p className="od-empty">{t("opdDesk.emptyQueue")}</p>}
-      {orderedEntries.length > 0 && (
-        <div className="od-list" data-testid="queue-list">
-          {orderedEntries.map((e) => (
+      {departmentId === "" && <p className="od-empty">{t("opdDesk.pickDepartmentList")}</p>}
+      {doctorRow !== null && doctorRow.queue === null && <p className="od-empty">{t("opdDesk.noSession")}</p>}
+      {deptQueue.data !== undefined && groups.length === 0 && <p className="od-empty">{t("opdDesk.noLines")}</p>}
+      {orderedGroups.map((g) => {
+        const chosen = g.doctor.id === selectedDoctorId;
+        const rows = g.queue?.ordered ?? [];
+        const tag = doctorLabel(g.doctor);
+        return (
+          <section
+            key={g.doctor.id}
+            className="od-group"
+            data-testid={`dept-group-${g.doctor.id}`}
+            data-chosen={chosen ? "true" : "false"}
+            aria-label={g.doctor.displayName}
+          >
             <button
-              key={e.id}
               type="button"
-              className="od-qrow"
-              data-testid={`queue-row-${e.id}`}
-              data-class={e.queueClass ?? undefined}
-              aria-pressed={e.id === inHandId}
-              onClick={() => take(e)}
+              className="od-gh"
+              data-testid={`dept-group-head-${g.doctor.id}`}
+              aria-pressed={chosen}
+              onClick={() => pickDoctor(g.doctor.id)}
             >
-              <span className="od-tok">{e.tokenNo}</span>
-              <span className="od-qb">
-                <span className="od-qn">{patientLabel(e.patient)}</span>
-                <span className="od-qm">
-                  <span>{sexAge(e.patient?.administrativeGender, e.patient?.dob, now)}</span>
-                  {e.queueClass !== null && (
-                    <span className="od-chip" data-class={e.queueClass}>{t(`opd.queueClass.${e.queueClass}`)}</span>
-                  )}
-                  {e.status !== "waiting" && <span>· {t(`opd.queueStatus.${e.status}`)}</span>}
-                </span>
+              <span className="od-gh-n">
+                {g.doctor.displayName}
+                {tag === null ? null : <span className="od-dtag"> · {tag}</span>}
               </span>
-              <span className="od-qr">
-                {/*
-                  RC-4 T3 / D7 — THE PAID STAMP. `null` IS RENDERED AS NOTHING, deliberately: it means
-                  the server declined to characterise this encounter's fee, which is NOT "unpaid".
-                  `free` keeps its own stamp so a ₹0 review visit is not read as a paid one.
-                */}
-                {e.feeStatus != null && (
-                  <span className="od-stamp" data-fee={e.feeStatus} data-testid={`fee-status-${e.id}`}>
-                    {t(`opd.feeStatus.${e.feeStatus}`)}
-                  </span>
-                )}
-                <span className="od-qw">{t("opdDesk.minutes", { n: minutesSince(e.createdAt, now) })}</span>
+              <span className="od-gh-s">
+                {t("opd.labels.room")} {g.roomCode ?? "—"}
+                {g.nowServing !== null && <> · {t("opdDesk.nowServing")} #{g.nowServing}</>}
+                {" · "}{t("opdDesk.groupWaiting", { n: rows.length })}
               </span>
             </button>
-          ))}
-        </div>
-      )}
+            {rows.length === 0 ? <p className="od-empty">{t("opdDesk.emptyQueue")}</p> : (
+              <div className="od-list" data-testid={chosen ? "queue-list" : undefined}>
+                {rows.map((e) => (
+                  <button
+                    key={e.id}
+                    type="button"
+                    className="od-qrow"
+                    data-testid={`queue-row-${e.id}`}
+                    data-class={e.queueClass ?? undefined}
+                    aria-pressed={e.id === inHandId}
+                    onClick={() => take(e, g.doctor.id)}
+                  >
+                    <span className="od-tok">{e.tokenNo}</span>
+                    <span className="od-qb">
+                      <span className="od-qn">{patientLabel(e.patient)}</span>
+                      <span className="od-qm">
+                        <span>{sexAge(e.patient?.administrativeGender, e.patient?.dob, now)}</span>
+                        {e.queueClass !== null && (
+                          <span className="od-chip" data-class={e.queueClass}>{t(`opd.queueClass.${e.queueClass}`)}</span>
+                        )}
+                        {e.status !== "waiting" && <span>· {t(`opd.queueStatus.${e.status}`)}</span>}
+                      </span>
+                    </span>
+                    <span className="od-qr">
+                      {/*
+                        RC-4 T3 / D7 — THE PAID STAMP. `null` IS RENDERED AS NOTHING, deliberately: it means
+                        the server declined to characterise this encounter's fee, which is NOT "unpaid".
+                        `free` keeps its own stamp so a ₹0 review visit is not read as a paid one.
+                      */}
+                      {e.feeStatus != null && (
+                        <span className="od-stamp" data-fee={e.feeStatus} data-testid={`fee-status-${e.id}`}>
+                          {t(`opd.feeStatus.${e.feeStatus}`)}
+                        </span>
+                      )}
+                      <span className="od-qw">{t("opdDesk.minutes", { n: minutesSince(e.createdAt, now) })}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+        );
+      })}
     </>
   );
 
   const clocks = (
     <div data-testid="clocks">
       <div className="od-clk"><span>{t("opdDesk.clockLongest")}</span><b data-over={over ? "true" : "false"}>{t("opdDesk.minutes", { n: longest })}</b></div>
-      <div className="od-clk"><span>{t("opdDesk.clockVitals")}</span><b>{queueView?.waitingVitals ?? 0}</b></div>
+      <div className="od-clk"><span>{t("opdDesk.clockVitals")}</span><b>{vitalsWaiting}</b></div>
       {toCollect.permitted && (
         <div className="od-clk" data-testid="clock-to-collect"><span>{t("toCollect.title")}</span><b>{toCollect.rows.length}</b></div>
       )}
-      <div className="od-clk"><span>{t("opdDesk.clockLeft")}</span><b>{queueView?.counts.left ?? 0}</b></div>
+      <div className="od-clk"><span>{t("opdDesk.clockLeft")}</span><b>{leftCount}</b></div>
     </div>
   );
 
@@ -457,11 +530,33 @@ export function OpdDesk(): React.ReactElement {
       statsLabel={t("opdDesk.statsLabel")}
       lane={lane}
       list={list}
+      listSummary={t("opdDesk.listSummary", { n: listedWaiting })}
       clocks={clocks}
-      clocksSummary={selectedDoctorId === "" ? t("opdDesk.clocksIdle") : t("opdDesk.clocksSummary", { n: longest, vitals: queueView?.waitingVitals ?? 0 })}
+      clocksSummary={departmentId === "" ? t("opdDesk.clocksIdleDept") : t("opdDesk.clocksSummary", { n: longest, vitals: vitalsWaiting })}
       clocksAlert={over}
+      inHand={inHand !== null}
+      copilot={(
+        <AgentDock
+          variant="panel"
+          answer={copilot.answer}
+          log={agentLog}
+          onAsk={copilot.ask}
+          placeholder={t("opdDesk.agent.placeholder")}
+          idle={t("opdDesk.agent.idle")}
+          panel={copilot.report === null ? undefined : (
+            <CopilotReport report={copilot.report} onDismiss={copilot.dismissReport} />
+          )}
+        />
+      )}
     >
       <div className="od-flow">
+        {/* VD-2 T3 — the flash heads the work, so a token in hand (the list folded) cannot hide it. */}
+        {flash !== null && (
+          <p role="status" className="od-flash" data-testid="escalation-flash" data-cancelled={flash.cancelled ? "true" : "false"}>
+            {t(flash.cancelled ? "opdDesk.escalationCancelled" : "opdDesk.escalationFlash", { tokenNo: flash.tokenNo })}
+            <button type="button" onClick={() => setFlash(null)}>{t("opdDesk.flashDismiss")}</button>
+          </p>
+        )}
         {/* ① department */}
         <section className="od-step" data-state={departmentId === "" ? "now" : "done"}>
           <div className="od-step-h">

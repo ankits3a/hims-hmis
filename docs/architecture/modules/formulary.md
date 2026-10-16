@@ -54,7 +54,8 @@ Source: `apps/core/src/modules/formulary/`
   - `counsellingOf(patient: MonographSection | null): Counselling | null`
   - `linkMedicinesToGenerics(tx: Tx, pairs: readonly { medicineSctid: string; genericSctid: string }[]): Promise<GenericLinkReport>`
   - `monographForMedicine(db: Db | Tx, medicineId: string): Promise<Monograph | undefined>`
-  - types: `Counselling`, `GenericLinkReport`
+  - `renalRulesByMedicine(db: Db | Tx, medicineIds: readonly string[]): Promise<Map<string, RenalRuleOfMedicine>>`
+  - types: `Counselling`, `GenericLinkReport`, `RenalRuleOfMedicine`
 - `interaction-adoption.ts`
   - `adoptInteractions(tx: Tx, actor: Actor, resolution: string, rules: readonly InteractionRule[]): Promise<InteractionAdoptionReport>`
   - types: `InteractionAdoptionReport`, `InteractionRule`

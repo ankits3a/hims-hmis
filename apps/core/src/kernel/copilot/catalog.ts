@@ -1,6 +1,10 @@
+import { COPILOT_ANSWER_KEYS } from "@hmis/contracts";
 import { hasPermission } from "../auth/permissions";
 import { toolHalted } from "./halt";
+import { CopilotIntentError } from "./intents";
+import { kernelCueTokens, moduleHelpIntents, normaliseCue } from "./phrasebook";
 import { CopilotError } from "./types";
+import type { CollectedCopilotIntent, ModuleCopilotIntent } from "./intents";
 import type { CopilotHaltScope } from "../db/schema";
 import type { CopilotAnswer, CopilotToolCtx, CopilotToolDecl } from "./types";
 import type { CopilotIntent } from "./phrasebook";
@@ -90,6 +94,76 @@ export function collectCopilotTools(
   return tools;
 }
 
+/**
+ * #598 (plan E0.7) — THE MODULES' OWN INTENTS, COLLECTED AT BOOT.
+ *
+ * The sixth use of the manifest seam, beside `collectCopilotTools`: every `copilotIntents` entry from
+ * `registry.all()`, in registry order, refused at BOOT (never on the first question) when it is:
+ *
+ *   · outside its module's namespace — `<key>.<name>` keeps a module from shadowing the kernel or a sibling;
+ *   · a duplicate — an intent the kernel's tables still hold, or that another module declared;
+ *   · routed by a cue another intent already owns — the floor would score the two alike, and the margin
+ *     rule would quietly stop answering one of them;
+ *   · answered with a key that has no sentence — `translated` defaults to the contract's closed set,
+ *     which the web's `copilot-keys.test.ts` holds to en.json AND hi.json; the core image carries no
+ *     locale files, so that set is the boot-time witness of a translation.
+ *
+ * Install the result (`installCopilotIntents`) and the phrasebook, the router, the chooser and the help
+ * sentence read it.
+ */
+export function collectCopilotIntents(
+  registry: ModuleRegistry,
+  translated: ReadonlySet<string> = new Set(COPILOT_ANSWER_KEYS),
+): CollectedCopilotIntent[] {
+  const owner = new Map<string, string>();
+  for (const [intent, tokens] of kernelCueTokens()) for (const t of tokens) if (!owner.has(t)) owner.set(t, intent);
+  const claimed = new Set<string>(kernelCueTokens().keys());
+  const out: CollectedCopilotIntent[] = [];
+
+  for (const m of registry.all()) {
+    for (const [intent, decl] of Object.entries(m.copilotIntents ?? {})) {
+      if (!intent.startsWith(`${m.key}.`) || intent.length === m.key.length + 1) {
+        throw new CopilotIntentError(
+          "intent_namespace",
+          `module "${m.key}" declares the copilot intent "${intent}" — a module's intents are named "${m.key}.<name>"`,
+        );
+      }
+      if (claimed.has(intent)) {
+        throw new CopilotIntentError(
+          "duplicate_intent",
+          `the copilot intent "${intent}" is declared twice (module "${m.key}" and the kernel or another module) — the router names one intent`,
+        );
+      }
+      claimed.add(intent);
+
+      const mine = new Set<string>();
+      for (const cue of decl.cues) {
+        if (cue.weight <= 0) continue;
+        const token = normaliseCue(cue.token);
+        const other = owner.get(token);
+        if (other !== undefined && other !== intent) {
+          throw new CopilotIntentError(
+            "cue_collision",
+            `the copilot intent "${intent}" uses the cue "${token}", which "${other}" already owns — two intents scored alike stop answering`,
+          );
+        }
+        mine.add(token);
+      }
+      for (const t of mine) owner.set(t, intent);
+
+      for (const key of decl.answerKeys) {
+        if (translated.has(key)) continue;
+        throw new CopilotIntentError(
+          "untranslated_answer_key",
+          `the copilot intent "${intent}" may answer "${key}", which has no sentence — add it to COPILOT_ANSWER_KEYS and both locale files`,
+        );
+      }
+      out.push({ intent: intent as ModuleCopilotIntent, module: m.key, decl });
+    }
+  }
+  return out;
+}
+
 /** Injected so the tests drive the permission branches without a database. */
 export type PermissionCheck = (permission: string) => Promise<boolean>;
 
@@ -170,7 +244,8 @@ export const HELP_INTENTS: readonly CopilotIntent[] = ["visit_status", "queue_de
 
 export async function helpIntentsFor(tools: readonly CopilotToolDecl[], can: PermissionCheck): Promise<CopilotIntent[]> {
   const out: CopilotIntent[] = [];
-  for (const intent of HELP_INTENTS) {
+  /* #598 — then each module intent that asks to be offered (`copilotIntents[…].help`), in registry order. */
+  for (const intent of [...HELP_INTENTS, ...moduleHelpIntents()]) {
     const tool = tools.find((t) => t.intent === intent);
     if (tool !== undefined && await toolPermitted(tool, can)) out.push(intent);
   }

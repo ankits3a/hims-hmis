@@ -112,6 +112,7 @@ const SURFACE = [
   "registerNicknameLookup", // decisions 0051/0055 — OPD registers its nickname reader with the prescriber's search
   "rejectStaging",
   "renalDoseFor",
+  "renalRulesByMedicine", // #621 — each product's REVIEWED renal bands, for the opd renal dose check
   "resolveDrugTexts",
   "resolveMedicines",
   "restrictedAntimicrobialExists", // PHARMACY STAGE D5 — the office's "no steward appointed" row asks it
