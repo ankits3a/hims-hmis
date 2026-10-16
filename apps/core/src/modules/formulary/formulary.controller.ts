@@ -535,7 +535,7 @@ export class FormularyController {
   // ─────────────────── the drug monograph (owner 2026-10-02) ───────────────────
 
   /** The curation door's typeahead. ABOVE `monographs/:sctid`, or "generics" would be read as an id. */
-  @RequirePermission("formulary.manage", "hospital", { alsoAdmits: ["formulary.monograph.review"] })
+  @RequirePermission("formulary.manage", "hospital", { alsoAdmits: ["formulary.monograph.review", "formulary.crk.sign"] })
   @Get("monographs/generics")
   async monographGenerics(@Query() query: unknown): Promise<{ items: GenericHit[] }> {
     const q = parsed(medicineSearchQuery, query);
@@ -577,14 +577,14 @@ export class FormularyController {
    */
 
   /** The reviewers' worklist and whether a drafting model is set. ABOVE `crk/:sctid`. */
-  @RequirePermission("formulary.monograph.review", "hospital", { alsoAdmits: ["formulary.manage"] })
+  @RequirePermission("formulary.crk.sign", "hospital", { alsoAdmits: ["formulary.manage"] })
   @Get("crk/worklist")
   async crkWorklist(): Promise<CrkWorklist & { drafter: { configured: boolean } }> {
     return { ...(await crkWorklist(this.db, istDate(new Date()))), drafter: { configured: this.drafter().client !== null } };
   }
 
   /** What every reader gets: the LIVE signed entry with its label (and `overdue`), or 404 while none is signed. */
-  @RequirePermission("formulary.read", "hospital", { alsoAdmits: ["formulary.monograph.review"] })
+  @RequirePermission("formulary.read", "hospital", { alsoAdmits: ["formulary.crk.sign"] })
   @Get("crk/:sctid")
   async signedCrk(@Param("sctid") sctid: string): Promise<SignedCrk> {
     const row = await signedCrkForGeneric(this.db, sctid);
@@ -593,7 +593,7 @@ export class FormularyController {
   }
 
   /** The reviewer's door: the live version, the pending one, and the waiting signature. */
-  @RequirePermission("formulary.monograph.review", "hospital", { alsoAdmits: ["formulary.manage"] })
+  @RequirePermission("formulary.crk.sign", "hospital", { alsoAdmits: ["formulary.manage"] })
   @Get("crk/:sctid/review")
   async crkForReview(@Param("sctid") sctid: string): Promise<CrkReviewRow> {
     const row = await crkEntryForReview(this.db, sctid);
@@ -605,7 +605,7 @@ export class FormularyController {
    * A model DRAFTS a pending version from the sources given. Public texts only; masked and checked before
    * they leave. No model set ⇒ 409 `model_not_configured`, and the hand path below still works.
    */
-  @RequirePermission("formulary.manage", "hospital", { alsoAdmits: ["formulary.monograph.review"] })
+  @RequirePermission("formulary.manage", "hospital", { alsoAdmits: ["formulary.crk.sign"] })
   @Post("crk/:sctid/draft")
   async draftCrk(@CurrentActor() actor: Actor, @Param("sctid") sctid: string, @Body() body: unknown): Promise<DraftResult> {
     const b = parsed(crkDraftBody, body);
@@ -615,7 +615,7 @@ export class FormularyController {
   }
 
   /** A pending version written or corrected by hand. The live signed version stays live until this is signed. */
-  @RequirePermission("formulary.manage", "hospital", { alsoAdmits: ["formulary.monograph.review"] })
+  @RequirePermission("formulary.manage", "hospital", { alsoAdmits: ["formulary.crk.sign"] })
   @Put("crk/:sctid")
   async saveCrk(@CurrentActor() actor: Actor, @Param("sctid") sctid: string, @Body() body: unknown): Promise<{ entryId: string }> {
     const b = parsed(crkEntryBody, body);
@@ -625,7 +625,7 @@ export class FormularyController {
   }
 
   /** The Pharmacology signature: makes the pending version live, or (#884) renews the live one. */
-  @RequirePermission("formulary.monograph.review", "hospital")
+  @RequirePermission("formulary.crk.sign", "hospital")
   @Post("crk/entries/:id/sign")
   async signCrk(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<SignResult> {
     const b = parsed(crkSignBody, body);
