@@ -50,6 +50,8 @@ export type CapturedDocument = {
   note: string | null;
   capturedBy: string;
   capturedAt: Date;
+  /** #659 — the doctor's "clearer photo" ask on this page, if any (the list read carries it; absent elsewhere). */
+  retakeRequestedAt?: Date | null;
 };
 
 /**
@@ -201,6 +203,7 @@ export async function listDocuments(db: Db, actor: Actor, patientId: string): Pr
   return rows.map((r) => ({
     id: r.id, encounterId: r.encounterId, kind: r.kind, mimeType: r.mimeType,
     byteSize: r.byteSize, note: r.note, capturedBy: r.capturedBy, capturedAt: r.capturedAt,
+    retakeRequestedAt: r.retakeRequestedAt,
   }));
 }
 
