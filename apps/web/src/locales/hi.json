@@ -11045,7 +11045,16 @@
         "refusedActor": "मना (व्यक्ति नहीं)",
         "badRequest": "गलत अनुरोध",
         "error": "त्रुटि",
-        "halted": "रोका गया"
+        "halted": "रोका गया",
+        "confirmDone": "पुष्टि: हो गया",
+        "confirmInvalid": "पुष्टि अस्वीकृत: मान्य नहीं",
+        "confirmExpired": "पुष्टि अस्वीकृत: समय समाप्त",
+        "confirmNotAct": "पुष्टि अस्वीकृत: कार्य नहीं",
+        "confirmHalted": "पुष्टि अस्वीकृत: रोका गया",
+        "confirmNotPermitted": "पुष्टि अस्वीकृत: अनुमति नहीं",
+        "confirmAlreadyDone": "पुष्टि: पहले ही हो चुका",
+        "confirmStateChanged": "पुष्टि अस्वीकृत: स्थिति बदल गई",
+        "confirmFailed": "पुष्टि विफल"
       },
       "routeName": {
         "phrasebook": "फ़्रेज़बुक",

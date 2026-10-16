@@ -11045,7 +11045,16 @@
         "refusedActor": "Refused (not a person)",
         "badRequest": "Malformed",
         "error": "Error",
-        "halted": "Halted"
+        "halted": "Halted",
+        "confirmDone": "Confirm: done",
+        "confirmInvalid": "Confirm refused: not valid",
+        "confirmExpired": "Confirm refused: expired",
+        "confirmNotAct": "Confirm refused: not an act",
+        "confirmHalted": "Confirm refused: paused",
+        "confirmNotPermitted": "Confirm refused: not permitted",
+        "confirmAlreadyDone": "Confirm: already done",
+        "confirmStateChanged": "Confirm refused: things changed",
+        "confirmFailed": "Confirm failed"
       },
       "routeName": {
         "phrasebook": "Phrasebook",
