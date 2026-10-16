@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FormProvider, useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { LINE_SOURCES, type DxSource } from "../../../../packages/contracts/src/rx-line";
+import { LINE_SOURCES, dxKeyOf, type DxSource } from "../../../../packages/contracts/src/rx-line";
 import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../lib/api";
 import { discardRxDraft, fetchRxDraft, issueRxDraft } from "../lib/opd-api";
@@ -69,6 +69,7 @@ import type { WireCard, WireIcd11, WireRegimen, WireSyndromeHit } from "../lib/c
 import { TabStrip } from "../components/desk-fields";
 import { CreditChip } from "../components/patient-credit";
 import { advisableTests } from "../lib/ordering-api";
+import { newSuggestionId, suggestedLineKey, tellIssuedLines } from "../lib/suggest-signals";
 import { DocumentRetake } from "../components/document-retake";
 
 /**
@@ -181,6 +182,8 @@ function wireRxLine(l: RxLineValues): Record<string, unknown> {
        line that still carries its pick was SEARCHED and one that does not was TYPED. */
     source: l.source ?? (l.medicineId !== null ? "search" : "typed"),
   };
+  /* #620 — the suggestion a filled line was taken from; what became of it is told once the issue stands. */
+  if (l.suggestionEventId != null) wire.suggestionEventId = l.suggestionEventId;
   if (l.route === "eye") {
     if (l.eye !== undefined && l.eye !== null) wire.eye = l.eye;
     if (l.taper !== undefined && l.taper !== null && l.taper.length > 0) wire.taper = l.taper;
@@ -239,6 +242,9 @@ const rxSchemaWith = (m?: RxMessages) => z.object({
         taper: z.array(z.object({ timesPerDay: z.number().int(), days: z.number().int() })).nullable().optional(),
         /** Decision 0050 P0 — set by a fill (`suggested`) and dropped with the pick when the doctor retypes the drug. */
         source: z.enum(LINE_SOURCES).nullable().optional(),
+        /** #620 — set by a fill: the event that will say whether the line went out as offered, and the line as offered. */
+        suggestionEventId: z.string().nullable().optional(),
+        suggestedAs: z.string().nullable().optional(),
       }),
     )
     .min(1),
@@ -284,6 +290,7 @@ function draftRowsOf(lines: RxFormInput["lines"]): WireRxDraftLine[] {
     if (l.eye != null) row.eye = l.eye;
     if (l.taper != null && l.taper.length > 0) row.taper = l.taper;
     if (l.source != null) row.source = l.source;
+    if (l.suggestionEventId != null && l.suggestedAs != null) { row.suggestionEventId = l.suggestionEventId; row.suggestedAs = l.suggestedAs; }
     return row;
   });
 }
@@ -298,6 +305,8 @@ function formRowOf(d: WireRxDraftLine | WireRxLine): RxFormInput["lines"][number
     medicineId: "medicineId" in d ? (d.medicineId ?? null) : null,
     eye: d.eye ?? null, taper: d.taper ?? null,
     ...(d.source != null ? { source: d.source } : {}),
+    ...(d.suggestionEventId != null ? { suggestionEventId: d.suggestionEventId } : {}),
+    ...("suggestedAs" in d && d.suggestedAs != null ? { suggestedAs: d.suggestedAs } : {}),
   };
 }
 
@@ -1142,12 +1151,16 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
   */
   const fillFromRegimen = (): void => {
     if (regimen === null) return;
-    const lines = regimen.regimen.lines.map((l) => ({
-      drug: l.rx.drug, dose: l.rx.dose, route: l.rx.route, frequency: l.rx.frequency,
-      durationDays: l.rx.durationDays === null ? "" : String(l.rx.durationDays),
-      instructions: l.rx.instructions, noSubstitution: l.rx.noSubstitution, medicineId: l.rx.medicineId ?? null,
-      source: "suggested" as const,
-    }));
+    const lines = regimen.regimen.lines.map((l) => {
+      const row = {
+        drug: l.rx.drug, dose: l.rx.dose, route: l.rx.route, frequency: l.rx.frequency,
+        durationDays: l.rx.durationDays === null ? "" : String(l.rx.durationDays),
+        instructions: l.rx.instructions, noSubstitution: l.rx.noSubstitution, medicineId: l.rx.medicineId ?? null,
+        source: "suggested" as const,
+      };
+      /* #620 — each filled line carries its own event and the line as offered (`lib/suggest-signals.ts`). */
+      return { ...row, suggestionEventId: newSuggestionId(), suggestedAs: suggestedLineKey(row) };
+    });
     pendingFillMarks.current = regimen.regimen.lines.map((l) => ({
       shorthand: l.product == null || l.rx.medicineId == null ? null : { strength: l.product.strength, form: l.product.form, code: l.product.code },
       needsPick: l.needsPick === true,
@@ -1817,6 +1830,9 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
       }>("POST", `/opd/visits/${active.encounterId}/prescriptions`, body);
       // The prescription EXISTS from here on; the print below is a courtesy that must not un-issue it.
       exists = true;
+      /* #620 — each filled line: kept as offered, or changed first. Told once the prescription stands, never before. */
+      const firstDx = splitTags(note.diagnosis)[0];
+      tellIssuedLines("consult_web", active.encounterId, firstDx === undefined ? null : dxKeyOf(icdByTerm.current.get(firstDx.toLowerCase()) ?? null, firstDx), rxLines);
       setIssuedRowsKey(rowsKey(rxForm.getValues("lines")));
       setMatches(null);
       setReasons([]);
@@ -3578,7 +3594,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                           type="button" className="sec" data-testid="rx-draft-load"
                           onClick={() => {
                             /* Into the editor exactly as typed, so the doctor edits and issues by the
-                               ordinary road — every check and every override dialog unchanged. */
+                               ordinary road — every check and every override dialog unchanged. Each
+                               line says it came off the paper slip (#620), not that the doctor typed it. */
                             const d = draft.data?.draft;
                             if (d == null) return;
                             rxForm.reset({
@@ -3586,6 +3603,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                                 drug: l.drug, dose: l.dose, route: l.route, frequency: l.frequency,
                                 durationDays: l.durationDays === null ? "" : String(l.durationDays),
                                 instructions: l.instructions ?? "", noSubstitution: l.noSubstitution, medicineId: null,
+                                source: "paper" as const,
                               })),
                             });
                           }}
