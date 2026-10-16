@@ -593,7 +593,9 @@ export async function sweepErCareClocks(db: Db, now: Date): Promise<{ criticals:
     await withTx(db, async (tx) => {
       const e = await lockEpisode(tx, episodeId);
       const row = (await tx.select().from(erCriticalAlerts).where(eq(erCriticalAlerts.callId, c.callId)).for("update"))[0];
-      const body = `${c.analyteCode} ${c.value}${c.unit === null ? "" : ` ${c.unit}`}`;
+      // Review #894: a system sweep has no reader to judge, so a RESTRICTED test's bell never names its analyte or value —
+      // the urgency rings the same; the content is for its orderer to open (the lab's restricted-test rule).
+      const body = c.restricted ? "Critical result (restricted test)" : `${c.analyteCode} ${c.value}${c.unit === null ? "" : ` ${c.unit}`}`;
       if (row === undefined) {
         // ER review 2 (2026-10-15, DECIDED, spec §4.3): the doctor of record AND the ER charge doctor — the `er_critical`
         // roster target's people when one is configured — at the FIRST notice; with neither, the ladder's fallback.

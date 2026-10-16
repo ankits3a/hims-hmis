@@ -297,7 +297,8 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   + stage word. MLC, sealed and confidential patients are absent. Web: `/er/board?waiting=1` (no new route).
 - Criticals on ER screens (Now card, since-arrival, `readErCare`) pass the reader to lab `openCriticalsForEncounters`: a
   critical on a RESTRICTED test shows "Critical result (restricted test)" unless the reader ordered it or holds
-  `orders.read.restricted`. The care sweep (system, no reader) is unmasked: its notice body still names the analyte.
+  `orders.read.restricted`. The care sweep (system, no reader) rings the same bell for a restricted test with the body
+  "Critical result (restricted test)" — never its analyte or value.
 - `copilot-tools.ts` — `emergency.casualty_now` and `emergency.mlc_due` through the #865 intent seam, FLOOR-ONLY (no menu,
   no help) so the chooser request and the chat system prompt stay byte-identical. Cues are substrings: no "er mein".
 - Web: `apps/web/src/screens/er-copilot.tsx` (card, since arrival, draft button, waiting display).

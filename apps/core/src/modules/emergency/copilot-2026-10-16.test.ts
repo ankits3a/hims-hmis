@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { ER_NOW_CARD_KEYS, ER_STAGE_WORDS, proposeEsi } from "@hmis/contracts";
-import { erTriageEntries, events, labAnalytes, orderItems, orders, patients } from "../../kernel/db/schema";
+import { alerts, erTriageEntries, events, labAnalytes, orderItems, orders, patients } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { collect, enterResult, printLabels, receive } from "../lab";
 import { serviceIdForLabCode } from "../../../scripts/seed-lab-catalogue";
@@ -15,7 +15,7 @@ import { mkUser } from "../../../test/helpers/opd";
 import {
   casualtyNowCard, doctorOverdueCard, emergencyCopilotTools, emergencyManifest, lwbsRiskCard, mlcCountersignDueCard, mlcIntimationDueCard,
   assignErDoctor, criticalResultCard, openMlc, placeErOrder, preAlert, preAlertCard, readErBoard, readErCare, readErWaitingDisplay, readSinceArrival,
-  reTriage, registerErChargeSink, registerErEncounterResolver, registerArrival, registerUnidentified, retriageDueCard, triage,
+  reTriage, registerErChargeSink, registerErEncounterResolver, sweepErCareClocks, registerArrival, registerUnidentified, retriageDueCard, triage,
 } from "./index";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -185,6 +185,14 @@ describe("ER copilot — Now cards, waiting display, copilot questions", () => {
       const care = await readErCare(db, w.erNurse, a.episodeId);
       expect(JSON.stringify([theirs, line, care.criticals])).not.toMatch(/6\.8|"K"/);
       expect(care.criticals).toHaveLength(1);
+      // The system sweep's bell (no reader) still rings at once and climbs on time, in the restricted wording only.
+      const t1 = new Date(t0.getTime() + MIN);
+      expect(await sweepErCareClocks(db, t1)).toMatchObject({ criticals: 1 });
+      expect(await sweepErCareClocks(db, new Date(t1.getTime() + 15 * MIN))).toMatchObject({ climbs: 1 });
+      const bells = await db.select().from(alerts).where(eq(alerts.refId, a.episodeId));
+      const crit = bells.filter((b) => b.kind === "er.critical_result" || b.kind === "er.critical_unacknowledged");
+      expect(crit.map((b) => b.kind)).toEqual(expect.arrayContaining(["er.critical_result", "er.critical_unacknowledged"]));
+      for (const b of crit) expect(b.body).toBe("Critical result (restricted test)");
     } finally { off.forEach((f) => f()); }
   });
 
