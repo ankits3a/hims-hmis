@@ -4152,6 +4152,7 @@
       "openQCollect": "Open Quick Collect"
     },
     "ast": {
+      "saveTable": "Save table",
       "title": "Antibiotic sensitivity",
       "panel": "Panel",
       "pickPanel": "Pick a panel…",
