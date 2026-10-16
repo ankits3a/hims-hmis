@@ -196,7 +196,7 @@ Source: `apps/core/src/modules/opd/`
 
 Foreign keys into: `billing`, `patients`, `resources`
 
-## HTTP routes (169)
+## HTTP routes (170)
 
 - `opd-advice.controller.ts` — 3: `/opd/advice-templates`
 - `opd-cds.controller.ts` — 8: `/opd/cds`
