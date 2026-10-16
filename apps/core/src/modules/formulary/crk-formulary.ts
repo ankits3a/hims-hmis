@@ -51,16 +51,20 @@ const SOURCE_TEXT_MAX = 24_000;
 
 /*
  * A dose, in any of its shapes: a strength or per-weight figure ("500 mg", "10 mg/kg", "0.5 ml", "100 units"),
- * a COUNT without a unit ("2 tablets", "1 tab twice", "two capsules", "1 puff"), a sig ("1-0-1"), or a
- * schedule ("every 8 hours", "3 times a day", "twice daily").
+ * a unit written out ("500 micrograms", "5 millilitres", "20 mEq", "1%"), a COUNT without a unit ("2 tablets",
+ * "1 tab twice", "two capsules", "1 puff"), a sig ("1-0-1", "BD"), or a schedule ("every 8 hours", "3 times daily",
+ * "8-hourly", "twice daily"). Ordinary numbers stay ("1 in 10 patients", "after 2 weeks", "below 25 °C").
  */
 const NUMBER = String.raw`(?:\d+(?:\.\d+)?|½|half|one|two|three|four|five|six)`;
 const DOSE_SHAPE = new RegExp([
-  String.raw`\d\s*(?:mg|mcg|µg|g|gm|ml|mL|iu|IU|units?)\b`, String.raw`mg\s*\/\s*kg`, String.raw`\/\s*kg\b`,
+  String.raw`\d\s*(?:mg|mcg|µg|g|gm|grams?|milligrams?|micrograms?|nanograms?|ml|millilit(?:er|re)s?|lit(?:er|re)s?|iu|units?|mmol|meq)\b`,
+  String.raw`\d\s*%`, String.raw`mg\s*\/\s*kg`, String.raw`\/\s*kg\b`,
   String.raw`\b${NUMBER}\s*(?:tablets?|tabs?|capsules?|caps?|pills?|drops?|puffs?|sprays?|sachets?|teaspoons?|tsp|tablespoons?|spoons?|spoonfuls?|ampoules?|vials?|doses?|injections?|patch(?:es)?|suppositor(?:y|ies))\b`,
   String.raw`\b\d\s*-\s*\d\s*-\s*\d\b`,
   String.raw`\bevery\s+${NUMBER}\s*(?:to\s+${NUMBER}\s*)?(?:hours?|hrs?|h)\b`,
-  String.raw`\b${NUMBER}\s*times?\s+(?:a|per|each|every)\s+(?:day|week)\b`,
+  String.raw`\b${NUMBER}\s*times?\s+(?:(?:a|per|each|every)\s+)?(?:day|daily|week|weekly)\b`,
+  String.raw`\b\d+\s*-?\s*hourly\b`,
+  String.raw`\b(?:bd|bid|tds|tid|qds|qid|q\d+h)\b`,
   String.raw`\b(?:once|twice|thrice)\s+(?:a\s+|per\s+)?(?:day|daily|weekly)\b`,
 ].join("|"), "i");
 /** A masking placeholder (`<<P1>>`) echoed back: the masked text, never a fact about the medicine. */
@@ -186,9 +190,6 @@ async function writeDraft(
   tx: Tx, actor: Actor, genericId: string, entry: CrkEntry,
   drafted: { model: string | null; usage: { inputTokens: number; outputTokens: number } | null },
 ): Promise<string> {
-  const held = (await tx.select({ id: formularyCrkEntries.id }).from(formularyCrkEntries)
-    .where(eq(formularyCrkEntries.genericId, genericId)).for("update"))[0];
-  const entryId = held?.id ?? newId();
   const now = new Date();
   const draftCols = {
     draftCrk: entry, draftedModel: drafted.model, draftedAt: drafted.model === null ? null : now, draftUsage: drafted.usage,
@@ -198,14 +199,21 @@ async function writeDraft(
     modelInputTokens: sql`${formularyCrkEntries.modelInputTokens} + ${drafted.usage?.inputTokens ?? 0}`,
     modelOutputTokens: sql`${formularyCrkEntries.modelOutputTokens} + ${drafted.usage?.outputTokens ?? 0}`,
   };
-  if (held === undefined) {
-    await tx.insert(formularyCrkEntries).values({
-      id: entryId, genericId, ...draftCols,
-      modelDrafts: drafted.model === null ? 0 : 1,
-      modelInputTokens: drafted.usage?.inputTokens ?? 0, modelOutputTokens: drafted.usage?.outputTokens ?? 0,
-      createdBy: actor.id, updatedBy: actor.id,
-    });
+  /* The first draft of a generic inserts; a concurrent first draft finds the row and updates it instead. */
+  const inserted = await tx.insert(formularyCrkEntries).values({
+    id: newId(), genericId, ...draftCols,
+    modelDrafts: drafted.model === null ? 0 : 1,
+    modelInputTokens: drafted.usage?.inputTokens ?? 0, modelOutputTokens: drafted.usage?.outputTokens ?? 0,
+    createdBy: actor.id, updatedBy: actor.id,
+  }).onConflictDoNothing({ target: formularyCrkEntries.genericId }).returning({ id: formularyCrkEntries.id });
+  let entryId: string;
+  if (inserted[0] !== undefined) {
+    entryId = inserted[0].id;
   } else {
+    const held = (await tx.select({ id: formularyCrkEntries.id }).from(formularyCrkEntries)
+      .where(eq(formularyCrkEntries.genericId, genericId)).for("update"))[0];
+    if (held === undefined) throw new FormularyError("unknown_crk_entry", "the entry for this generic could not be read back");
+    entryId = held.id;
     await tx.update(formularyCrkEntries).set({ ...draftCols, ...spend, ...NO_FIRST, updatedBy: actor.id, updatedAt: now })
       .where(eq(formularyCrkEntries.id, entryId));
   }
@@ -272,9 +280,10 @@ type SignKind = "sole" | "first" | "second" | "renewal" | "renewal_first" | "ren
  * `CRK_RENEWAL_WINDOW_DAYS` before its due date and any time after. The live text stays read throughout;
  * the due date moves 12 months from the renewal. High-alert takes two different signers again.
  *
- * The high-alert flag is the reviewer's (`highAlert` sent here sets or clears it) or any stocked item's.
- * When the entry is no longer high-alert, a waiting first signature is stale and is cleared: this
- * signature alone decides. Every signature is kept with the text it signed and is an audited event.
+ * The high-alert flag is the reviewer's (`highAlert` sent here proposes a value) or any stocked item's. An
+ * act on a high-alert entry, or one proposing high-alert, takes two different signers, including the act
+ * that clears the flag; the proposed flag is stored when the act publishes. Every signature is kept with
+ * the text it signed and is an audited event.
  */
 export async function signCrkEntry(
   tx: Tx, actor: Actor, entryId: string,
@@ -297,15 +306,21 @@ export async function signCrkEntry(
   const text = row.draftCrk ?? row.signedCrk;
   if (text === null) throw new FormularyError("crk_nothing_to_sign", "this entry has no text to sign");
   if (renewal && row.reviewDueOn !== null && istDate(now) < addDays(row.reviewDueOn, -CRK_RENEWAL_WINDOW_DAYS)) {
-    throw new FormularyError("monograph_already_reviewed", `this entry is signed until ${row.reviewDueOn}; renewal opens ${String(CRK_RENEWAL_WINDOW_DAYS)} days before, and an edit is saved as a new version`);
+    throw new FormularyError("crk_not_due", `this entry is signed until ${row.reviewDueOn}; renewal opens ${String(CRK_RENEWAL_WINDOW_DAYS)} days before, and an edit is saved as a new version`);
   }
+  /*
+   * The flag this act PROPOSES (the reviewer's, or a stocked item's) is what the published entry will carry.
+   * Whether the act needs a PAIR is decided on the strictest reading: the entry as it stands is high-alert,
+   * or a high-alert first signature already waits, or the proposal is high-alert. So clearing a flag takes
+   * two different signers like any high-alert act, and the new flag is stored only when the act publishes.
+   */
   const flagged = input.highAlert ?? row.highAlert;
   const highAlert = await isHighAlert(tx, row.genericId, flagged);
   const pendingFirst = row.firstSignedBy;
+  const requiresPair = row.highAlert || pendingFirst !== null || highAlert;
 
   let kind: SignKind;
-  /* Not (or no longer) high-alert: this signature alone decides, and the publish below clears a stale first. */
-  if (!highAlert) kind = renewal ? "renewal" : "sole";
+  if (!requiresPair) kind = renewal ? "renewal" : "sole";
   else if (pendingFirst === null) kind = renewal ? "renewal_first" : "first";
   else {
     if (pendingFirst === actor.id) throw new FormularyError("monograph_same_actor", "a high-alert entry needs a second signature from a different reviewer");
@@ -315,8 +330,9 @@ export async function signCrkEntry(
   const version = waits ? row.version : row.version + 1;
 
   if (waits) {
+    /* Waiting, the flag may only be RAISED (a stricter proposal is kept for the second signer); a clearing waits for the publish. */
     await tx.update(formularyCrkEntries).set({
-      highAlert, firstSignedBy: actor.id, firstSignedAt: now, firstSignerDesignation: designation,
+      highAlert: row.highAlert || highAlert, firstSignedBy: actor.id, firstSignedAt: now, firstSignerDesignation: designation,
     }).where(eq(formularyCrkEntries.id, entryId));
   } else {
     const pair = kind === "second" || kind === "renewal_second";
@@ -331,7 +347,7 @@ export async function signCrkEntry(
           reviewedBy: actor.id, reviewedAt: now, reviewerDesignation: designation,
           secondReviewedBy: null, secondReviewedAt: null, secondReviewerDesignation: null,
         }),
-      /* The pending version is now live; the waiting first signature is spent (or stale). */
+      /* The pending version is now live, under the flag this act proposed; the waiting first signature is spent. */
       draftCrk: null, draftedModel: null, draftedAt: null, draftUsage: null, ...NO_FIRST,
     }).where(eq(formularyCrkEntries.id, entryId));
   }
@@ -339,7 +355,7 @@ export async function signCrkEntry(
     id: newId(), entryId, version, kind, signedBy: actor.id, designation, signedAt: now, crk: text,
   });
   await appendEvent(tx, crkSigned.make({
-    payload: { entryId, genericId: row.genericId, kind, version, designation, highAlert, renewal },
+    payload: { entryId, genericId: row.genericId, kind, version, designation, highAlert: requiresPair, renewal },
     actor, correlationId: entryId,
   }));
   return { status: waits ? "awaiting_second" : "reviewed", version, renewal };

@@ -97,6 +97,8 @@ export type FormularyErrorCode =
   | "invalid_crk"
   /** No CRK entry with that id. */
   | "unknown_crk_entry"
+  /** A renewal was asked before the entry's renewal window opens (30 days before its due date). */
+  | "crk_not_due"
   /** Sign was asked of an entry with nothing to sign: no pending draft, and a live version not yet due for renewal. */
   | "crk_nothing_to_sign";
 

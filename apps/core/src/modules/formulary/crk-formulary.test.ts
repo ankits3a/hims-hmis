@@ -109,9 +109,23 @@ describe("CRK formulary — drafted by a model, signed by Pharmacology", () => {
       st("Take 2 tablets at night."), st("1 tab twice a day."), st("Two capsules with food."), st("Use 1 puff when needed."),
       st("Take 1-0-1 after meals."), st("Take every 8 hours."), st("Take 3 times a day."), st("Take twice daily."),
       st("Call <<P1>> for advice."), st("Swallow whole with water."),
+      st("Take 500 micrograms daily."), st("Up to 10 milligrams."), st("No more than 4 grams in 24 hours."), st("Give 5 millilitres."),
+      st("Take 3 times daily."), st("Take three times daily."), st("Take 8-hourly."), st("Take 6 hourly."), st("Take BD after food."),
+      st("Add 20 mEq to the drip."), st("Apply 1% cream."),
     ] } }, sources);
     expect(fields).toEqual({ howToTake: [st("Swallow whole with water.")] });
-    expect(dropped).toBe(9);
+    expect(dropped).toBe(20);
+  });
+
+  it("the dose filter keeps ordinary text that only looks numeric", () => {
+    const sources = [{ ref: "fda1", kind: "openfda", title: "t", url: null, asOf: null }];
+    const st = (text: string) => ({ text, source: "fda1" });
+    const keep = [
+      st("Headache affects about 1 in 10 patients."), st("Eat foods with grams of protein and fibre."),
+      st("Stop after 2 weeks if there is no change."), st("Store below 25 °C."), st("Children under 12 years should not take it."),
+      st("Seek help if you vomit more than once."),
+    ];
+    expect(sanitiseModelDraft({ fields: { warnings: keep } }, sources)).toEqual({ fields: { warnings: keep }, dropped: 0 });
   });
 
   it("the label every reader shows names the signer and the date", () => {
@@ -139,7 +153,7 @@ describe("CRK formulary — drafted by a model, signed by Pharmacology", () => {
     const sigs = await db.select().from(formularyCrkSignatures);
     expect(sigs).toHaveLength(1);
     expect(sigs[0]).toMatchObject({ kind: "sole", version: 1, signedBy: PROF_A.id, crk: edited });
-    expect(await code(sign(entryId, PROF_B))).toBe("monograph_already_reviewed");
+    expect(await code(sign(entryId, PROF_B))).toBe("crk_not_due");
   });
 
   it("high-alert: the first signature waits, the same person cannot sign twice, a second reviewer makes it read", async () => {
@@ -160,11 +174,24 @@ describe("CRK formulary — drafted by a model, signed by Pharmacology", () => {
     expect(await sign(entryId, PROF_A)).toEqual({ status: "reviewed", version: 1, renewal: false });
   });
 
-  it("review Low: removing the high-alert flag clears a stale first signature; this signature alone decides", async () => {
+  it("removing the high-alert flag takes two different signers like any high-alert act; the flag goes when it publishes", async () => {
     const { entryId } = await save();
     await sign(entryId, PROF_A, { highAlert: true });
+    // the first signer cannot finish alone by dropping the flag
+    expect(await code(sign(entryId, PROF_A, { highAlert: false }))).toBe("monograph_same_actor");
+    expect(await live()).toBeUndefined();
     expect(await sign(entryId, PROF_B, { highAlert: false })).toEqual({ status: "reviewed", version: 1, renewal: false });
-    expect(await entryRow()).toMatchObject({ highAlert: false, reviewedBy: PROF_B.id, secondReviewedBy: null, firstSignedBy: null, firstSignedAt: null, firstSignerDesignation: null });
+    expect(await entryRow()).toMatchObject({ highAlert: false, reviewedBy: PROF_A.id, secondReviewedBy: PROF_B.id, firstSignedBy: null });
+  });
+
+  it("a single signer cannot drop the flag of a live high-alert entry and publish a new version alone", async () => {
+    const { entryId } = await save();
+    await sign(entryId, PROF_A, { highAlert: true });
+    await sign(entryId, PROF_B);
+    await save(CHANGED);
+    expect(await sign(entryId, PROF_A, { highAlert: false })).toEqual({ status: "awaiting_second", version: 1, renewal: false });
+    expect(await live()).toEqual(ENTRY);
+    expect(await entryRow()).toMatchObject({ highAlert: true });
   });
 
   const stockedHighAlert = async (): Promise<string> => {
@@ -229,7 +256,7 @@ describe("CRK formulary — drafted by a model, signed by Pharmacology", () => {
     await signAt(entryId, PROF_A, "2026-01-10");
     expect(await entryRow()).toMatchObject({ reviewDueOn: "2027-01-10", version: 1 });
     // not yet: the window opens 30 days before the due date
-    expect(await code(signAt(entryId, PROF_B, "2026-11-01"))).toBe("monograph_already_reviewed");
+    expect(await code(signAt(entryId, PROF_B, "2026-11-01"))).toBe("crk_not_due");
     // overdue: still read, by every reader, and flagged
     expect(await signedCrkForGeneric(db, SCTID, "2027-01-20")).toMatchObject({ overdue: true, crk: ENTRY });
     expect(await signAt(entryId, PROF_B, "2027-01-20")).toEqual({ status: "reviewed", version: 2, renewal: true });
@@ -345,6 +372,12 @@ describe("CRK formulary — drafted by a model, signed by Pharmacology", () => {
     const due = (await entryRow()).reviewDueOn!;
     expect((await signedCrkForMedicines(db, [medicineId], due))[0]?.overdue).toBe(false);
     expect((await signedCrkForMedicines(db, [medicineId], "2999-01-01"))[0]?.overdue).toBe(true);
+  });
+
+  it("two first drafts of one generic at the same time make one entry, and neither fails", async () => {
+    const results = await Promise.allSettled([save(), save(CHANGED)]);
+    expect(results.map((r) => r.status)).toEqual(["fulfilled", "fulfilled"]);
+    expect(await db.select().from(formularyCrkEntries)).toHaveLength(1);
   });
 
   it("only a person signs, and a signature names a designation", async () => {

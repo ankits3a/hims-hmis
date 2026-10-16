@@ -1981,13 +1981,14 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // HOSPITAL NUMBERS (owner 2026-10-13, #777) — and imaging's and the pharmacy's (owner: "not just admin but owner").
   { roleKey: "admin", permissions: ["copilot.health.read", "lab.metrics.read", "radiology.metrics.read", "pharmacy.metrics.read"] },
   /**
-   * #618 / DECISION 0053 — the Pharmacology department's REVIEWER-ONLY seat. It reads the formulary and
-   * signs CRK formulary entries (`formulary.monograph.review`) and nothing else: no stock, no sale, no
-   * patient. The owner names the faculty and residents who hold it.
+   * #618 / DECISION 0053 — the Pharmacology department's REVIEWER-ONLY seat. It signs CRK formulary entries
+   * (`formulary.crk.sign`) and reads the formulary it signs for (`formulary.read`, the catalogue doctors read).
+   * It does NOT hold `formulary.monograph.review`, the physician's review of the pharmacy monograph (owner
+   * 2026-10-02), and no stock, sale or patient string. The owner names the faculty and residents who hold it.
    */
   {
     roleKey: "pharmacology_reviewer",
-    permissions: ["formulary.read", "formulary.monograph.review"],
+    permissions: ["formulary.read", "formulary.crk.sign"],
   },
 ];
 
