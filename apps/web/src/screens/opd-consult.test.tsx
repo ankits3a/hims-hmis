@@ -1939,6 +1939,59 @@ describe("OpdConsult", () => {
     }]);
   });
 
+  /*
+    #621 — THE RENAL DOSE WARNING. The reviewed band, the eGFR it was read against and HOW OLD that
+    eGFR is; or "no recent kidney function". Every renal hit asks for a reason, and the override names
+    the reviewed monograph's generic. Never a silent block, never money.
+  */
+  const RENAL_HIT = {
+    lineIndex: 0, genericId: "gen-metformin", genericName: "Metformin 500 mg oral tablet",
+    kind: "band", severity: "reduce", dose: "Max 1 g a day; do not start", egfr: 38,
+    sampledAt: "2026-10-03T04:00:00.000Z", ageDays: 12, reason: null,
+  };
+  const renalRoutes = (hit: unknown) => ({
+    ...baseRoutes(),
+    "GET /api/formulary/medicines/search": { status: 200, body: DRUG_HITS },
+    "GET /api/formulary/coverage": { status: 200, body: { coverage: 0.92, noticeEnabled: true } },
+    "POST /api/opd/visits/enc-1/rx-precheck": {
+      status: 201,
+      body: { allergyMatches: [], interactions: [], duplicates: [], notices: [], drugDisease: [], renal: [hit], unresolvedLineIndexes: [] },
+    },
+    "POST /api/opd/visits/enc-1/prescriptions": { status: 201, body: { prescriptionId: "rx-1", version: 1, notices: [] } },
+    "GET /api/opd/prescriptions/rx-1/print": { status: 200, body: PRINT_DATA },
+  });
+
+  it("#621: a renal band names the eGFR and how old it is, issues nothing, and the override carries the generic", async () => {
+    mockRoutes(renalRoutes(RENAL_HIT));
+    const user = userEvent.setup();
+    const path = "/api/opd/visits/enc-1/prescriptions";
+
+    const dialog = await toTheDialog(user);
+    expect(within(dialog).getByTestId("renal-hit-0")).toHaveTextContent(
+      "Line 1: Metformin 500 mg oral tablet — reduce the dose for eGFR 38 (measured 12 d ago): Max 1 g a day; do not start",
+    );
+    expect(callsTo("POST", path)).toHaveLength(0);
+    // No reason, no issue.
+    await user.click(within(dialog).getByRole("button", { name: "Override and issue" }));
+    expect(callsTo("POST", path)).toHaveLength(0);
+
+    await user.type(within(dialog).getByTestId("renal-reason-0"), "nephrology advised 500 mg BD, creatinine monthly");
+    await user.click(within(dialog).getByRole("button", { name: "Override and issue" }));
+    await waitFor(() => expect(callsTo("POST", path)).toHaveLength(1));
+    const body = bodiesOf("POST", path)[0]! as { renalOverrides: { lineIndex: number; reason: string; genericId: string }[] };
+    expect(body.renalOverrides).toEqual([{ lineIndex: 0, reason: "nephrology advised 500 mg BD, creatinine monthly", genericId: "gen-metformin" }]);
+  });
+
+  it("#621: with no recent eGFR the warning says so, with the last one's age", async () => {
+    mockRoutes(renalRoutes({ ...RENAL_HIT, kind: "no_recent_kidney_function", severity: null, dose: null, egfr: null, ageDays: 120, reason: "stale" }));
+    const user = userEvent.setup();
+    const dialog = await toTheDialog(user);
+    expect(within(dialog).getByTestId("renal-hit-0")).toHaveTextContent(
+      "Line 1: Metformin 500 mg oral tablet — no recent kidney function (last eGFR 120 d ago); its dose depends on it",
+    );
+    expect(within(dialog).queryByText(/₹/)).not.toBeInTheDocument();
+  });
+
   /**
    * C7 (independent review) — 16a's STATE MUST NOT OUTLIVE THE PATIENT IT BELONGS TO.
    *

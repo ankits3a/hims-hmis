@@ -60,6 +60,10 @@ const amendReportBody = z.object({
 export const amendResultBody = z.object({
   resultId: idSchema,
   value: z.string().min(1).max(500),
+  /** #703 — a corrected sensitivity table (MIC_AST only); the row rules live in `cleanAstRows`. */
+  ast: z.array(z.object({
+    antibiotic: z.string().max(60), result: z.string().max(4).nullable(), mic: z.string().max(16).nullable(),
+  })).max(40).optional(),
   unit: z.string().max(32).nullish(),
   remarks: z.string().max(500).nullish(),
   /**

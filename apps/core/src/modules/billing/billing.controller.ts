@@ -112,7 +112,7 @@ import type { BenefitBalance } from "./invoices";
 import {
   allocateReceipt, listDues, markEnteredInError, patientBalance, recordReceipt, reverseAllocation,
 } from "./receipts";
-import { issueRefundVoucher, issueVoucherForApproval, payRefundVoucher, requestRefund } from "./refunds";
+import { issueRefundVoucher, issueVoucherForApproval, patientCreditNotes, payRefundVoucher, requestRefund } from "./refunds";
 import { listMismatches, setDegraded, uploadSettlement } from "./recon";
 import { resolveMismatch } from "./recon-resolve";
 import type { ResolveMismatchResult } from "./recon-resolve";
@@ -131,7 +131,7 @@ import type { CreditNoteRow, IssueCreditNoteInput, IssueCreditNoteResult } from 
 import type { InvoiceLineRow, InvoiceRow, IssueInvoiceResult, PricedDraft } from "./invoices";
 import type { EncounterFeeStatus } from "./fee-status";
 import type { AllocateReceiptResult, DueRow, MarkEnteredInErrorResult, PatientBalance, RecordReceiptResult, ReverseAllocationResult } from "./receipts";
-import type { IssueRefundVoucherResult, PayRefundVoucherResult, RequestRefundResult, RefundVoucherRow } from "./refunds";
+import type { IssueRefundVoucherResult, PatientCreditNoteRow, PayRefundVoucherResult, RequestRefundResult, RefundVoucherRow } from "./refunds";
 import type { MismatchRow, UploadSettlementResult } from "./recon";
 import type { CashierSessionRow, VarianceApprovalStatus } from "./sessions";
 import type { Settlement } from "./settlement";
@@ -442,6 +442,7 @@ const issueRefundBody = z.discriminatedUnion("kind", [
 // and `payRefundVoucher` refuses an Aadhaar number in it.
 const payRefundBody = z.object({
   payeeName: z.string().min(1), payeeIdType: z.string().min(1), payeeIdRef: z.string().min(1).optional(),
+  payeeRelation: z.string().max(40).optional(),
 });
 // UX-AUDIT 2026-09-28 · BOARD — what the office decided about a settlement mismatch (`recon-resolve.ts`).
 const resolveMismatchBody = z.object({
@@ -1085,6 +1086,21 @@ export class BillingController {
 
   // ——— refunds ————————————————————————————————————————————————————————————————————————————————
 
+  /**
+   * #655 — the refund form's credit-note picker: the patient's credit notes, each with what is still
+   * refundable on it. On the request's own permission — whoever may ask for a refund may see what it
+   * can be asked against.
+   */
+  @RequirePermission("billing.refund.request", "hospital")
+  @Get("patients/:patientId/credit-notes")
+  async patientCreditNotesRoute(@Param("patientId") patientId: string): Promise<{ items: PatientCreditNoteRow[] }> {
+    try {
+      return { items: await patientCreditNotes(this.db, patientId) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
   @RequirePermission("billing.refund.request", "hospital")
   @Post("refunds/request")
   async refundRequest(@CurrentActor() actor: Actor, @Body() body: unknown, @Headers("idempotency-key") idemKey?: string): Promise<RequestRefundResult> {
@@ -1178,6 +1194,7 @@ export class BillingController {
         method: refundVouchers.method,
         payeeName: refundVouchers.payeeName,
         payeeIdType: refundVouchers.payeeIdType,
+        payeeRelation: refundVouchers.payeeRelation,
         reasonClass: refundVouchers.reasonClass,
         reason: refundVouchers.reason,
         guardFlags: refundVouchers.guardFlags,

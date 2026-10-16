@@ -3,7 +3,7 @@ import { withTx } from "../../kernel/db/client";
 import { appendEvent } from "../../kernel/events/append";
 import {
   creditNoteLines, creditNotes, dailyCloses, enteredInErrorMarks, invoiceLines, invoices,
-  receipts, receiptTenders, refundVouchers,
+  receipts, receiptTenders, reconResolutions, refundVouchers,
 } from "../../kernel/db/schema";
 import { listVisits } from "../opd";
 import { feeServiceFor } from "./charge-rules";
@@ -81,6 +81,8 @@ export type DayBook = {
   invoices: { count: number; netPayablePaise: number };
   creditNotes: { count: number; netPaise: number };
   vouchersPaid: { count: number; amountPaise: number };
+  /** #655 — short-settlements accepted as the bank's charge that day (`recon_resolutions`). */
+  bankCharges: { count: number; amountPaise: number };
 };
 
 /**
@@ -127,6 +129,15 @@ export async function dayBook(exec: Db | Tx, day: string): Promise<DayBook> {
   const deadCreditNotes = await enteredInErrorDocIds(exec, "credit_note", creditNoteRows.map((r) => r.id));
   const liveCreditNotes = creditNoteRows.filter((r) => !deadCreditNotes.has(r.id));
 
+  /*
+    #655 (board: "the day book shows it as a charge, not as missing money") — the short-settlements the
+    office accepted as the bank's charge, by the day the decision was taken. A dispute is not a charge.
+  */
+  const chargeRows = await exec
+    .select({ shortPaise: reconResolutions.shortPaise })
+    .from(reconResolutions)
+    .where(and(eq(reconResolutions.outcome, "bank_charge"), gte(reconResolutions.at, from), lt(reconResolutions.at, to)));
+
   const voucherRows = await exec
     .select({ amountPaise: refundVouchers.amountPaise })
     .from(refundVouchers)
@@ -141,6 +152,7 @@ export async function dayBook(exec: Db | Tx, day: string): Promise<DayBook> {
     invoices: { count: liveInvoices.length, netPayablePaise: sum(liveInvoices, (r) => r.netPayablePaise) },
     creditNotes: { count: liveCreditNotes.length, netPaise: sum(liveCreditNotes, (r) => r.netPaise) },
     vouchersPaid: { count: voucherRows.length, amountPaise: sum(voucherRows, (r) => r.amountPaise) },
+    bankCharges: { count: chargeRows.length, amountPaise: sum(chargeRows, (r) => r.shortPaise) },
   };
 }
 

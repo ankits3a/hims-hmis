@@ -302,6 +302,22 @@ export type WireDuplicateHit = {
  */
 export type WireDrugDiseaseAlternative = { moiety: string; label: string };
 
+/**
+ * #621 — a renal dose warning: a REVIEWED monograph's band the patient's latest eGFR reaches (with its
+ * age in days), or no eGFR within 90 days for a drug that has a rule. Always hard: a reason clears it.
+ */
+export type WireRenalHit = {
+  lineIndex: number;
+  genericId: string;
+  genericName: string;
+  kind: "band" | "no_recent_kidney_function";
+  severity: "reduce" | "avoid" | null;
+  dose: string | null;
+  egfr: number | null;
+  sampledAt: string | null;
+  ageDays: number | null;
+  reason: "no_result" | "stale" | "no_dob" | "sex_not_binary" | "under_18" | null;
+};
 export type WireDrugDiseaseHit = {
   severity: "severe" | "moderate";
   lineIndex: number;
@@ -1090,7 +1106,7 @@ export type WirePaperVerdict = {
 };
 
 export type WireHeldAlert = {
-  kind: "allergy" | "interaction" | "duplicate" | "drug_disease";
+  kind: "allergy" | "interaction" | "duplicate" | "drug_disease" | "renal";
   hard: boolean; text: string;
   substance?: string; saltPair?: [string, string]; moiety?: string; icd10Prefix?: string;
 };

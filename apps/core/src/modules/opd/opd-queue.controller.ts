@@ -215,6 +215,10 @@ export const prescriptionBody = z.object({
     lineIndex: z.number().int().nonnegative(), reason: z.string().max(500),
     moiety: z.string().min(1).max(200), icd10Prefix: z.string().min(1).max(20),
   })).optional(),
+  /** #621 — the reason for prescribing through a renal dose warning, naming the reviewed monograph's generic. */
+  renalOverrides: z.array(z.object({
+    lineIndex: z.number().int().nonnegative(), reason: z.string().max(500), genericId: z.string().min(1).max(64),
+  })).optional(),
 });
 /** The pre-check takes the lines alone: nothing is written, so nothing else is needed. */
 const precheckBody = z.object({ lines: z.array(rxLineBody) });
