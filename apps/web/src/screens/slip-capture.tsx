@@ -469,19 +469,24 @@ export function SlipCapture(): React.ReactElement {
     else if (step === 4) void file();
     else scanRef.current?.focus();
   };
+  /* The handler is re-pointed on every RENDER, not in an effect: an effect runs after the commit, so a
+   * key pressed between a state change and that effect read the previous render's shot and did nothing
+   * (R after a fresh photo kept the photo). The window listener is registered once and reads the ref. */
+  const onKeyRef = useRef<(e: KeyboardEvent) => void>(() => undefined);
+  onKeyRef.current = (e: KeyboardEvent): void => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === "Escape" && resolved !== null) { e.preventDefault(); clearDesk(); return; }
+    if (typingIn(e.target)) return;
+    if (e.key === "Enter") { e.preventDefault(); act.current(); return; }
+    const k = e.key.toLowerCase();
+    if (k === "r" && (shot !== null || raw !== null)) { e.preventDefault(); retake(); return; }
+    if (k === "p" && resolved === null && filed !== null) { e.preventDefault(); void addPage(); }
+  };
   useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.key === "Escape" && resolved !== null) { e.preventDefault(); clearDesk(); return; }
-      if (typingIn(e.target)) return;
-      if (e.key === "Enter") { e.preventDefault(); act.current(); return; }
-      const k = e.key.toLowerCase();
-      if (k === "r" && (shot !== null || raw !== null)) { e.preventDefault(); retake(); return; }
-      if (k === "p" && resolved === null && filed !== null) { e.preventDefault(); void addPage(); }
-    };
+    const onKey = (e: KeyboardEvent): void => { onKeyRef.current(e); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  });
+  }, []);
 
   const items = day.data?.items ?? [];
   const counts = day.data?.counts ?? null;
