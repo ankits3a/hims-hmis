@@ -90,7 +90,13 @@ export type PrintDocument =
    */
   | "roster_board"
   /** Decision 0047 — the test page an administrator sends to one counter's print program. Renderer in `computers.controller.ts`. */
-  | "print_test_page";
+  | "print_test_page"
+  /**
+   * #655 (board "Billing back office": "Print the voucher and take a signature") — the refund voucher
+   * the payee signs when the money leaves. Producer `payRefundVoucher` and renderer both in
+   * `modules/billing` (`refund-print.ts`, registered by the billing module). Params: the voucher id.
+   */
+  | "billing_refund_voucher";
 
 /**
  * LOGICAL destinations, never CUPS queue names.
@@ -145,6 +151,9 @@ export const DESTINATION_OF: Record<PrintDocument, PrintDestination> = {
   roster_board: "duty_board_a4",
   // Born A4 like the prescription sheet, then sent to the one computer it tests (`sendJobToComputer`).
   print_test_page: "front_desk_a4",
+  // #655 — the cash counter's A4 laser, where the payee stands and signs. DECIDED: not `office_a4`, the
+  // superintendent's printer — a patient's paper does not come off a staff office's printer.
+  billing_refund_voucher: "front_desk_a4",
 };
 
 /**

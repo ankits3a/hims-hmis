@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/formulary/`
 
 - **Depends on modules:** —
 - **Used by modules:** `cds`, `materials`, `opd`, `pharmacy`
-- **Kernel used:** `auth`, `db`, `events`, `modules`, `search`, `tokens`
+- **Kernel used:** `approvals`, `auth`, `config`, `copilot`, `db`, `events`, `inference`, `modules`, `search`, `tokens`
 
 ## Public API (`index.ts`), by declaring file
 
@@ -54,7 +54,8 @@ Source: `apps/core/src/modules/formulary/`
   - `counsellingOf(patient: MonographSection | null): Counselling | null`
   - `linkMedicinesToGenerics(tx: Tx, pairs: readonly { medicineSctid: string; genericSctid: string }[]): Promise<GenericLinkReport>`
   - `monographForMedicine(db: Db | Tx, medicineId: string): Promise<Monograph | undefined>`
-  - types: `Counselling`, `GenericLinkReport`
+  - `renalRulesByMedicine(db: Db | Tx, medicineIds: readonly string[]): Promise<Map<string, RenalRuleOfMedicine>>`
+  - types: `Counselling`, `GenericLinkReport`, `RenalRuleOfMedicine`
 - `interaction-adoption.ts`
   - `adoptInteractions(tx: Tx, actor: Actor, resolution: string, rules: readonly InteractionRule[]): Promise<InteractionAdoptionReport>`
   - types: `InteractionAdoptionReport`, `InteractionRule`
@@ -90,6 +91,8 @@ Source: `apps/core/src/modules/formulary/`
   - `NDPS_LIST: readonly NdpsEntry[]`
   - `classifyNdpsSalts(tx: Tx, actor: Actor, opts: { apply: boolean }): Promise<NdpsClassificationReport>`
   - `ndpsClassByMedicine(db: Db | Tx, ids: readonly string[]): Promise<Map<string, NdpsClass>>`
+  - `ndpsClassOfMoieties(moieties: readonly { name: string; ndpsClass: string | null }[]): NdpsClass | null`
+  - `ndpsListEntryOf(moiety: string): NdpsEntry | null`
   - types: `NdpsClass`, `NdpsClassificationReport`, `NdpsEntry`
 - `prescribing-search.ts`
   - `medicineHitById(db: Db, id: string): Promise<MedicineHit | null>`
@@ -115,6 +118,13 @@ Source: `apps/core/src/modules/formulary/`
   - `suggestMoieties(db: Db, query: string, limit: number): Promise<MoietySuggestion[]>`
   - `unreviewedSaltIds(db: Db | Tx, ids: readonly string[]): Promise<Set<string>>`
   - types: `CatalogueCensus`, `MoietySuggestion`
+- `reference-labels.ts`
+  - `REFERENCE_SECTIONS`
+  - `importReferenceLabels(db: Db, actor: Actor, raw: unknown, at: Date = new Date()): Promise<ReferenceImportResult>`
+  - `planReferenceImport(choicesJson: string, labelsJsonl: string): ReferencePlan`
+  - `referenceForGeneric(db: Db | Tx, genericSctid: string): Promise<GenericReference | undefined>`
+  - `referenceSectionsOf(label: Record<string, unknown>): ReferenceSections`
+  - types: `GenericReference`, `ReferenceEntry`, `ReferenceImportResult`, `ReferencePlan`, `ReferenceSectionName`
 - `resolve.ts`
   - `listDrugDiseaseFor(db: Db, saltIds: string[], icd10Codes: string[]): Promise<DrugDiseaseRow[]>`
   - `listInteractionsAmong(db: Db, saltIds: string[]): Promise<InteractionPair[]>`
@@ -156,12 +166,12 @@ Source: `apps/core/src/modules/formulary/`
 
 ## Tables (`kernel/db/schema/formulary.ts`)
 
-`formulary_drug_disease`, `formulary_generic_substances`, `formulary_generics`, `formulary_interactions`, `formulary_mapping_proposals`, `formulary_medicine_salts`, `formulary_medicines`, `formulary_monographs`, `formulary_renal_doses`, `formulary_salts`, `formulary_staging`, `formulary_substances`
+`formulary_crk_entries`, `formulary_crk_signatures`, `formulary_drug_disease`, `formulary_generic_substances`, `formulary_generics`, `formulary_interactions`, `formulary_mapping_proposals`, `formulary_medicine_salts`, `formulary_medicines`, `formulary_monographs`, `formulary_reference_labels`, `formulary_reference_names`, `formulary_renal_doses`, `formulary_salts`, `formulary_staging`, `formulary_substances`
 
 Foreign keys into: —
 
-## HTTP routes (27)
+## HTTP routes (34)
 
-- `formulary.controller.ts` — 27: `/formulary/census`, `/formulary/coverage`, `/formulary/interactions`, `/formulary/medicines`, `/formulary/monographs`, `/formulary/pair-rates`, `/formulary/salts`, `/formulary/staging`, `/formulary/substances`, `/formulary/suggest`
+- `formulary.controller.ts` — 34: `/formulary/census`, `/formulary/coverage`, `/formulary/crk`, `/formulary/interactions`, `/formulary/medicines`, `/formulary/monographs`, `/formulary/pair-rates`, `/formulary/reference`, `/formulary/salts`, `/formulary/staging`, `/formulary/substances`, `/formulary/suggest`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/formulary`

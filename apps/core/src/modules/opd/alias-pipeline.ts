@@ -1,6 +1,6 @@
 import { IdentifierLeak, assertNoIdentifiers, maskQuestion } from "../../kernel/copilot/mask";
 import type { ChoiceAnswer, ChoiceClient, PredicateClient } from "../../kernel/inference/types";
-import { NDPS_LIST } from "../formulary";
+import { NDPS_LIST, ndpsListEntryOf } from "../formulary";
 import type { AliasCandidateRow } from "../formulary";
 import { lasaPartner } from "./consult-guards";
 import type { LasaPair } from "./consult-guards";
@@ -259,7 +259,8 @@ export function strengthAgrees(said: readonly Strength[], targetName: string): b
  *
  *   schedule   — the product's own flag: Schedule H1 or X (`formulary_medicines.schedule_flag`).
  *   ndps_class — a moiety the pharmacy has CLASSIFIED (`formulary_salts.ndps_class`).
- *   ndps_list  — a moiety, or a word of the product's name, on the formulary's cited NDPS list
+ *   ndps_list  — a moiety on the formulary's cited NDPS list, asked of the FORMULARY by moiety
+ *                (`ndpsListEntryOf`: "codeine phosphate" is codeine, #613) — not a word of the name
  *                (`NDPS_LIST`: morphine, fentanyl, methadone, oxycodone, hydrocodone, codeine,
  *                ethylmorphine, pethidine, tramadol). This is the net that holds when the flags are
  *                missing: measured on the staging catalogue 2026-10-08, no moiety carries an NDPS
@@ -278,10 +279,18 @@ export type ControlledBy = "schedule" | "ndps_class" | "ndps_list" | "name";
 export function controlledBy(row: Pick<AliasCandidateRow, "name" | "scheduleFlag" | "salts" | "ndps">): ControlledBy | null {
   if (row.scheduleFlag === "H1" || row.scheduleFlag === "X") return "schedule";
   if (row.ndps) return "ndps_class";
+  // #613 — the formulary answers by moiety; a product with no recorded moiety falls to the name net below.
+  if (row.salts.some((s) => ndpsListEntryOf(s) !== null)) return "ndps_list";
+  // The last net, never looser: a listed moiety written in the NAME, or a name that looks controlled.
   const words = new Set(row.name.toLowerCase().split(/[^a-z]+/));
-  if (NDPS_MOIETIES.some((m) => words.has(m) || row.salts.some((s) => s === m || s.startsWith(`${m} `)))) return "ndps_list";
+  if (NDPS_MOIETIES.some((m) => words.has(m))) return "name";
   if (LOOKS_CONTROLLED.test(row.name) || row.salts.some((s) => LOOKS_CONTROLLED.test(s))) return "name";
   return null;
+}
+
+/** #613 — the term NAMES this product outright: its whole name part is the product's called name, or the first word of one. */
+function namesOutright(words: string, row: Pick<AliasCandidateRow, "name" | "salts">): boolean {
+  return callNames(row).some((n) => n === words || n.split(" ")[0] === words);
 }
 
 export const isControlled = (row: Pick<AliasCandidateRow, "name" | "scheduleFlag" | "salts" | "ndps">): boolean => controlledBy(row) !== null;
@@ -368,18 +377,17 @@ export function ruleCheck(input: RuleInput): { result: "pass" | AliasRuleCode; l
   /* Two models agreeing means two DIFFERENT models (decision 0051: "two independent models"). */
   if (input.chooserModel !== null && input.chooserModel === input.reviewerModel) return { result: "same_model", lasaGuard: false };
 
-  const head = headOf(target.name);
   /*
-    THE SECOND-TAP FLAG, NARROWED (owner's slice 2, 2026-10-08). It fired on 65 of the 103 answers of
-    the first evaluation. Measured: 28 through a curated look-alike pair, 47 through a near NAME — and
-    every one of those names was a different molecule ("dolo" beside "dole", "rantac" beside
-    "rabtac"); the national list holds 72,000 brand names and most short ones have such a neighbour.
-    What is NOT a look-alike risk is the same brand's own combination ("allegra" beside "allegra m"):
-    a near name counts only when it shares NO moiety with the target.
+    THE SECOND-TAP FLAG, NARROWED TWICE. Slice 2 (owner, 2026-10-08) measured it firing on 65 of the
+    103 answers of the first evaluation: 28 through a curated look-alike pair, 47 through a near NAME,
+    and every near name was a different molecule ("dolo" beside "dole", "rantac" beside "rabtac"). The
+    national list holds 72,000 brand names, so most short ones have such a neighbour. Slice 2 kept the
+    near-name branch for different molecules, and it still fired on most answers (#613). A warning that
+    fires everywhere trains the desk to tap through it. So the flag is the curated pair list
+    (`opd_lasa_pairs`) only. A misspelt term near another medicine is still REFUSED above
+    (`lookalike_conflict`); this flag is only for an exact name whose molecule is on the list.
   */
-  const shares = (r: AliasCandidateRow): boolean => r.salts.some((x) => target.salts.includes(x));
-  const lasaGuard = lasaPartner(input.lasa, callNames(target)) !== null
-    || others.some((r) => { const h = headOf(r.name); return !shares(r) && h !== head && editDistance(head, h) <= lookalikeDistance(head); });
+  const lasaGuard = lasaPartner(input.lasa, callNames(target)) !== null;
   return { result: "pass", lasaGuard };
 }
 
@@ -512,7 +520,18 @@ export async function proposeAlias(deps: AliasDeps, rawTerm: string): Promise<Al
 
   const reading = readTerm(term);
   const pool = reading.words.length < 2 ? [] : await deps.candidates(reading.words, reading.numbers.map((n) => trimNumber(n.value)));
-  const shown = shownCandidates(reading, pool);
+  /*
+    #613 — NEVER A CONTROLLED MEDICINE, DECIDED BEFORE EITHER MODEL IS ASKED. A controlled row is never
+    offered to the chooser. A term that names a controlled product outright, or whose only candidates are
+    controlled, is refused here with no model call and no medicine kept on the row. A controlled row near
+    the term is named to the reviewer only as what the term must NOT mean.
+  */
+  const controlled = pool.filter(isControlled);
+  const plain = pool.filter((r) => !isControlled(r));
+  if (controlled.some((r) => namesOutright(reading.words, r)) || (plain.length === 0 && controlled.length > 0)) {
+    return refused("controlled_drug", { ruleResult: "controlled_drug" });
+  }
+  const shown = shownCandidates(reading, plain);
   if (shown.length === 0) return refused("no_candidates");
   if (deps.chooser === null) return refused("chooser_unavailable", { shown });
 
@@ -543,7 +562,8 @@ export async function proposeAlias(deps: AliasDeps, rawTerm: string): Promise<Al
   if (deps.reviewer === null) return refused("reviewer_unavailable", base);
   let reviewer: { model: string; answer: ReviewerAnswer; probability: number; reasonCode: AliasReasonCode };
   try {
-    const reviewState = { ...state, product: `${target.name} (${describe(target)})`, other_candidates: rivals.length === 0 ? "none" : rivals.map((r) => r.name).join("; ") };
+    const mustNotMean = [...rivals.map((r) => r.name), ...controlled.map((r) => r.name)];
+    const reviewState = { ...state, product: `${target.name} (${describe(target)})`, other_candidates: mustNotMean.length === 0 ? "none" : mustNotMean.join("; ") };
     const verdict = await deps.reviewer.predicate({ state: reviewState, instructions: REVIEWER_INSTRUCTIONS });
     const why = await deps.reviewer.choose({ state: reviewState, questions: { reason: { instructions: REASON_INSTRUCTIONS, options: REASONS } } });
     const code = why.answers.reason?.choice as AliasReasonCode | undefined;

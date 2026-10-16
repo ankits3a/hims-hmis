@@ -167,3 +167,18 @@ export const monographSaved = defineEvent("monograph.saved", MODULE, z.object({
 export const monographReviewed = defineEvent("monograph.reviewed", MODULE, z.object({
   monographId: id, genericId: id, writtenBy: id,
 }));
+
+/** #618 — a model drafted (or a person saved) a CRK entry's PENDING version. The text is on the row, not here. */
+export const crkDraftSaved = defineEvent("crk.draft_saved", MODULE, z.object({
+  entryId: id, genericId: id, draftedModel: z.string().nullable(), statements: z.number().int().min(0),
+  inputTokens: z.number().int().min(0).nullable(), outputTokens: z.number().int().min(0).nullable(),
+}));
+
+/**
+ * #618 / #884 — a Pharmacology signature. `first` / `renewal_first` leave a high-alert entry waiting for its
+ * second; `renewal*` re-affirm the unchanged live text for another 12 months.
+ */
+export const crkSigned = defineEvent("crk.signed", MODULE, z.object({
+  entryId: id, genericId: id, kind: z.enum(["sole", "first", "second", "renewal", "renewal_first", "renewal_second"]),
+  version: z.number().int().min(0), designation: z.string().min(1), highAlert: z.boolean(), renewal: z.boolean(),
+}));

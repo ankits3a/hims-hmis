@@ -612,6 +612,20 @@ export type WireRetailSaleRow = {
 /** The near-match refusal carries who matched (`duplicate_suspected`). */
 export type WireDuplicateCandidate = { id: string; uhid: string; name: string | null; phone: string | null };
 
+/** #638 — an item's saleable batches at the retail store (earliest expiry first) and its shelf, for a manual choice. */
+export type WireRetailBatches = { location: string | null; batches: { batchId: string; batchNo: string; expiryDate: string | null; available: number }[] };
+export async function fetchRetailBatches(itemId: string): Promise<WireRetailBatches> {
+  return api<WireRetailBatches>("GET", `/pharmacy/retail/batches${qs({ itemId })}`);
+}
+/** #638 — the customer in hand: ACTIVE allergies and the medicines an issued prescription still has them taking. */
+export type WireRetailPatientContext = {
+  allergies: { substance: string; reaction: string | null; severity: string | null }[];
+  currentMedicines: { drug: string; dose: string; frequency: string; durationDays: number | null; issuedAt: string; assumedCurrent: boolean }[];
+};
+export async function fetchRetailPatientContext(patientId: string): Promise<WireRetailPatientContext> {
+  return api<WireRetailPatientContext>("GET", `/pharmacy/retail/patients/${encodeURIComponent(patientId)}/context`);
+}
+
 export async function fetchRetailState(): Promise<WireRetailState> {
   return api<WireRetailState>("GET", "/pharmacy/retail/state");
 }

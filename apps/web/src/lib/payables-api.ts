@@ -9,12 +9,19 @@ import { api } from "./api";
 export type BillStatus = "draft" | "matched" | "held_for_match" | "accepted" | "part_paid" | "paid" | "cancelled";
 export type BillMismatch = "not_received" | "qty_over" | "qty_under" | "rate" | "gst_rate" | "value";
 
-export type WireBillLineInput = { grnId: string; itemId: string; uom?: string | null; qtyPacks: number; ratePaise: number; gstRateBps: number };
+/**
+ * #637 — a line may name the vendor's list rate with a discount as a percent (`discountBps`) OR an amount off per pack
+ * (`discountPaise`); the server then sets the net `ratePaise` (a percent half up to the paisa).
+ */
+export type WireBillLineInput = {
+  grnId: string; itemId: string; uom?: string | null; qtyPacks: number; ratePaise?: number; gstRateBps: number;
+  listRatePaise?: number | null; discountBps?: number; discountPaise?: number;
+};
 
 export type WireBillDraft = {
   vendorId: string; vendorName: string; vendorGstin: string | null; msme: boolean; grnId: string; grnNo: string;
   purchaseOrderId: string | null; poNo: string | null; vendorBillNo: string; billDate: string; interState: boolean;
-  lines: (WireBillLineInput & { itemCode: string; itemName: string; uom: string; multiplier: number; expectedBase: number })[];
+  lines: (WireBillLineInput & { ratePaise: number; itemCode: string; itemName: string; uom: string; multiplier: number; expectedBase: number })[];
   expectedTotalPaise: number;
 };
 
@@ -30,6 +37,8 @@ export type WireBillSummary = {
 export type WireBillLine = {
   id: string; grnId: string; grnNo: string; itemId: string; itemCode: string; itemName: string; uom: string; multiplier: number;
   qtyPacks: number; ratePaise: number; taxablePaise: number; gstRateBps: number; cgstPaise: number; sgstPaise: number; igstPaise: number;
+  /** #637 — absent from an older server. */
+  listRatePaise?: number | null; discountBps?: number; discountPaise?: number;
   totalPaise: number; expectedBase: number; expectedPacks: number; expectedRatePaise: number; expectedTaxablePaise: number;
   expectedGstRateBps: number; differencePaise: number; mismatch: BillMismatch[]; out: boolean;
 };

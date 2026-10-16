@@ -1,5 +1,6 @@
 import { Module, OnModuleInit } from "@nestjs/common";
 import { registerConsultStartGuard, registerVitalsStartGuard } from "../opd";
+import { registerBillingPrinting } from "./refund-print";
 import { BillingController } from "./billing.controller";
 import { BILLING_FEE_GATE_KEY, feeGate } from "./gate";
 import type { ConsultStartGuard } from "../opd";
@@ -51,5 +52,7 @@ export class BillingModule implements OnModuleInit {
       policy, and gating its vitals desk would stop the whole OPD on day one of commissioning.
     */
     registerVitalsStartGuard(BILLING_FEE_GATE_KEY, registeredFeeGate);
+    // #655 — the printed refund voucher: billing draws its own paper; the kernel's relay prints it.
+    registerBillingPrinting();
   }
 }

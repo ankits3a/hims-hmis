@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FormProvider, useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { LINE_SOURCES, type DxSource } from "../../../../packages/contracts/src/rx-line";
+import { LINE_SOURCES, dxKeyOf, type DxSource } from "../../../../packages/contracts/src/rx-line";
 import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../lib/api";
 import { discardRxDraft, fetchRxDraft, issueRxDraft } from "../lib/opd-api";
@@ -24,7 +24,7 @@ import { useDoctorLabel } from "../lib/use-doctor-label";
 import type {
   WireDoctor, WireEncounter, WireOpdConfig, WirePatientSummary, WirePrescription, WireQueueEntry,
   WireQueueEntryView, WireQueueView, WireRxPrint, WireTimelineItem, WireVitals,
-  WireDrugDiseaseHit, WireDuplicateHit, WireInteractionHit, WireRxNotice, WireSkipReason,
+  WireDrugDiseaseHit, WireDuplicateHit, WireInteractionHit, WireRenalHit, WireRxNotice, WireSkipReason,
   WireRxHistoryItem, WireVitalsHistoryItem,
   WireAdvisedTest, WireRxDraftLine, WireRxLine,
 } from "../lib/opd-api";
@@ -69,6 +69,8 @@ import type { WireCard, WireIcd11, WireRegimen, WireSyndromeHit } from "../lib/c
 import { TabStrip } from "../components/desk-fields";
 import { CreditChip } from "../components/patient-credit";
 import { advisableTests } from "../lib/ordering-api";
+import { newSuggestionId, suggestedLineKey, tellIssuedLines } from "../lib/suggest-signals";
+import { DocumentRetake } from "../components/document-retake";
 
 /**
  * The consultation screen (D5 / Task 15) — the doctor's flagship: the live queue with call / skip /
@@ -142,6 +144,8 @@ type AllergyRow = {
 type WireDocument = {
   id: string; encounterId: string | null; kind: string; mimeType: string;
   byteSize: number; note: string | null; capturedBy: string; capturedAt: string;
+  /** #659 — the doctor's "clearer photo" ask, if any (the list route carries it). */
+  retakeRequestedAt?: string | null;
 };
 type AllergyMatch = { lineIndex: number; substance: string };
 type AllergyOverride = AllergyMatch & { reason: string };
@@ -178,6 +182,8 @@ function wireRxLine(l: RxLineValues): Record<string, unknown> {
        line that still carries its pick was SEARCHED and one that does not was TYPED. */
     source: l.source ?? (l.medicineId !== null ? "search" : "typed"),
   };
+  /* #620 — the suggestion a filled line was taken from; what became of it is told once the issue stands. */
+  if (l.suggestionEventId != null) wire.suggestionEventId = l.suggestionEventId;
   if (l.route === "eye") {
     if (l.eye !== undefined && l.eye !== null) wire.eye = l.eye;
     if (l.taper !== undefined && l.taper !== null && l.taper.length > 0) wire.taper = l.taper;
@@ -236,6 +242,9 @@ const rxSchemaWith = (m?: RxMessages) => z.object({
         taper: z.array(z.object({ timesPerDay: z.number().int(), days: z.number().int() })).nullable().optional(),
         /** Decision 0050 P0 — set by a fill (`suggested`) and dropped with the pick when the doctor retypes the drug. */
         source: z.enum(LINE_SOURCES).nullable().optional(),
+        /** #620 — set by a fill: the event that will say whether the line went out as offered, and the line as offered. */
+        suggestionEventId: z.string().nullable().optional(),
+        suggestedAs: z.string().nullable().optional(),
       }),
     )
     .min(1),
@@ -281,6 +290,7 @@ function draftRowsOf(lines: RxFormInput["lines"]): WireRxDraftLine[] {
     if (l.eye != null) row.eye = l.eye;
     if (l.taper != null && l.taper.length > 0) row.taper = l.taper;
     if (l.source != null) row.source = l.source;
+    if (l.suggestionEventId != null && l.suggestedAs != null) { row.suggestionEventId = l.suggestionEventId; row.suggestedAs = l.suggestedAs; }
     return row;
   });
 }
@@ -295,6 +305,8 @@ function formRowOf(d: WireRxDraftLine | WireRxLine): RxFormInput["lines"][number
     medicineId: "medicineId" in d ? (d.medicineId ?? null) : null,
     eye: d.eye ?? null, taper: d.taper ?? null,
     ...(d.source != null ? { source: d.source } : {}),
+    ...(d.suggestionEventId != null ? { suggestionEventId: d.suggestionEventId } : {}),
+    ...("suggestedAs" in d && d.suggestedAs != null ? { suggestedAs: d.suggestedAs } : {}),
   };
 }
 
@@ -319,6 +331,8 @@ type WirePrecheck = {
   notices: WireRxNotice[];
   /** P24. Optional: an older server sends nothing, and the screen then says nothing. */
   drugDisease?: WireDrugDiseaseHit[];
+  /** #621. Optional for an older server. Every renal hit is hard. */
+  renal?: WireRenalHit[];
   unresolvedLineIndexes: number[];
   /** Formulary phase 3. Optional: an older server sends nothing, and the screen then says nothing. */
   unreviewedLineIndexes?: number[];
@@ -567,6 +581,9 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
   const [diseaseNotices, setDiseaseNotices] = useState<WireDrugDiseaseHit[]>([]);
   const [diseaseHits, setDiseaseHits] = useState<WireDrugDiseaseHit[]>([]);
   const [diseaseReasons, setDiseaseReasons] = useState<string[]>([]);
+  // #621 — the renal dose warnings: every one is hard and asks for a reason; none is ever silent.
+  const [renalHits, setRenalHits] = useState<WireRenalHit[]>([]);
+  const [renalReasons, setRenalReasons] = useState<string[]>([]);
   /** Line indexes the formulary could not resolve — the coverage-gated hint reads this (DD5). */
   const [unresolvedLines, setUnresolvedLines] = useState<number[]>([]);
   /**
@@ -1139,12 +1156,16 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
   */
   const fillFromRegimen = (): void => {
     if (regimen === null) return;
-    const lines = regimen.regimen.lines.map((l) => ({
-      drug: l.rx.drug, dose: l.rx.dose, route: l.rx.route, frequency: l.rx.frequency,
-      durationDays: l.rx.durationDays === null ? "" : String(l.rx.durationDays),
-      instructions: l.rx.instructions, noSubstitution: l.rx.noSubstitution, medicineId: l.rx.medicineId ?? null,
-      source: "suggested" as const,
-    }));
+    const lines = regimen.regimen.lines.map((l) => {
+      const row = {
+        drug: l.rx.drug, dose: l.rx.dose, route: l.rx.route, frequency: l.rx.frequency,
+        durationDays: l.rx.durationDays === null ? "" : String(l.rx.durationDays),
+        instructions: l.rx.instructions, noSubstitution: l.rx.noSubstitution, medicineId: l.rx.medicineId ?? null,
+        source: "suggested" as const,
+      };
+      /* #620 — each filled line carries its own event and the line as offered (`lib/suggest-signals.ts`). */
+      return { ...row, suggestionEventId: newSuggestionId(), suggestedAs: suggestedLineKey(row) };
+    });
     pendingFillMarks.current = regimen.regimen.lines.map((l) => ({
       shorthand: l.product == null || l.rx.medicineId == null ? null : { strength: l.product.strength, form: l.product.form, code: l.product.code },
       needsPick: l.needsPick === true,
@@ -1261,6 +1282,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     setDiseaseNotices([]);
     setDiseaseHits([]);
     setDiseaseReasons([]);
+    setRenalHits([]);
+    setRenalReasons([]);
     setUnresolvedLines([]);
     setUnreviewedLines([]);
     setFollowUp("");
@@ -1795,6 +1818,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     interactionOverrides?: { lineIndex: number; reason: string; saltPair: [string, string] }[],
     duplicateOverrides?: { lineIndex: number; reason: string; moiety: string }[],
     drugDiseaseOverrides?: { lineIndex: number; reason: string; moiety: string; icd10Prefix: string }[],
+    renalOverrides?: { lineIndex: number; reason: string; genericId: string }[],
   ): Promise<boolean> => {
     if (active === null) return false;
     setRxError(null);
@@ -1805,6 +1829,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     if (interactionOverrides !== undefined) body.interactionOverrides = interactionOverrides;
     if (duplicateOverrides !== undefined) body.duplicateOverrides = duplicateOverrides;
     if (drugDiseaseOverrides !== undefined) body.drugDiseaseOverrides = drugDiseaseOverrides;
+    if (renalOverrides !== undefined) body.renalOverrides = renalOverrides;
     let exists = false;
     try {
       const issued = await api<{
@@ -1814,6 +1839,9 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
       }>("POST", `/opd/visits/${active.encounterId}/prescriptions`, body);
       // The prescription EXISTS from here on; the print below is a courtesy that must not un-issue it.
       exists = true;
+      /* #620 — each filled line: kept as offered, or changed first. Told once the prescription stands, never before. */
+      const firstDx = splitTags(note.diagnosis)[0];
+      tellIssuedLines("consult_web", active.encounterId, firstDx === undefined ? null : dxKeyOf(icdByTerm.current.get(firstDx.toLowerCase()) ?? null, firstDx), rxLines);
       setIssuedRowsKey(rowsKey(rxForm.getValues("lines")));
       setMatches(null);
       setReasons([]);
@@ -1821,6 +1849,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
       setDuplicateHits([]);
       setDiseaseHits([]);
       setDiseaseReasons([]);
+      setRenalHits([]);
+      setRenalReasons([]);
       setOverrideError(null);
       // Soft hits survive a successful issue: they are what the doctor should still know about.
       setNotices(issued.notices ?? []);
@@ -1838,7 +1868,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
       if (e instanceof ApiError) {
         const errBody = e.body as {
           code?: string;
-          detail?: { matches?: AllergyMatch[]; hits?: WireRxNotice[]; diseaseHits?: WireDrugDiseaseHit[] };
+          detail?: { matches?: AllergyMatch[]; hits?: WireRxNotice[]; diseaseHits?: WireDrugDiseaseHit[]; renalHits?: WireRenalHit[] };
         } | null;
         // The allergy hard-warning is a DOMAIN answer carrying the matched lines, not a failure.
         if (errBody?.code === "allergy_conflict" && Array.isArray(errBody.detail?.matches)) {
@@ -1871,6 +1901,14 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
           const hits = errBody.detail.diseaseHits;
           setDiseaseHits(hits);
           setDiseaseReasons(hits.map(() => ""));
+          setOverrideError(null);
+          return false;
+        }
+        // #621 — the renal dose warning, in the same grammar under its own key.
+        if (errBody?.code === "renal_conflict" && Array.isArray(errBody.detail?.renalHits)) {
+          const hits = errBody.detail.renalHits;
+          setRenalHits(hits);
+          setRenalReasons(hits.map(() => ""));
           setOverrideError(null);
           return false;
         }
@@ -1910,7 +1948,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
       const disease = pre.drugDisease ?? [];
       const severeDisease = disease.filter((h) => h.severity === "severe");
       setDiseaseNotices(disease.filter((h) => h.severity !== "severe"));
-      if (pre.allergyMatches.length > 0 || severe.length > 0 || hardDuplicates.length > 0 || severeDisease.length > 0) {
+      const renal = pre.renal ?? [];
+      if (pre.allergyMatches.length > 0 || severe.length > 0 || hardDuplicates.length > 0 || severeDisease.length > 0 || renal.length > 0) {
         setMatches(pre.allergyMatches.length > 0 ? pre.allergyMatches : null);
         setReasons(pre.allergyMatches.map(() => ""));
         setInteractionHits(severe);
@@ -1919,6 +1958,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
         setDuplicateReasons(hardDuplicates.map(() => ""));
         setDiseaseHits(severeDisease);
         setDiseaseReasons(severeDisease.map(() => ""));
+        setRenalHits(renal);
+        setRenalReasons(renal.map(() => ""));
         setOverrideError(null);
         return false;
       }
@@ -1958,6 +1999,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     rxForm.setValue(`lines.${String(lineIndex)}.medicineId` as `lines.${number}.medicineId`, null);
     setDiseaseHits([]);
     setDiseaseReasons([]);
+    setRenalHits([]);
+    setRenalReasons([]);
     setDiseaseNotices([]);
     setOverrideError(null);
   };
@@ -1972,12 +2015,14 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     setDuplicateReasons([]);
     setDiseaseHits([]);
     setDiseaseReasons([]);
+    setRenalHits([]);
+    setRenalReasons([]);
     setOverrideError(null);
   };
 
   /** The dialog carries four kinds now; only the allergy-only case may call itself an allergy. */
   const allergyOnly = matches !== null
-    && interactionHits.length === 0 && duplicateHits.length === 0 && diseaseHits.length === 0;
+    && interactionHits.length === 0 && duplicateHits.length === 0 && diseaseHits.length === 0 && renalHits.length === 0;
 
   const confirmOverride = async (): Promise<void> => {
     const allReasons = [
@@ -1985,6 +2030,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
       ...interactionReasons.slice(0, interactionHits.length),
       ...duplicateReasons.slice(0, duplicateHits.length),
       ...diseaseReasons.slice(0, diseaseHits.length),
+      ...renalReasons.slice(0, renalHits.length),
     ];
     if (allReasons.length === 0) return;
     if (allReasons.some((r) => r.trim().length < 3)) {
@@ -2007,12 +2053,17 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
       lineIndex: h.lineIndex, reason: (diseaseReasons[i] ?? "").trim(),
       moiety: h.moiety, icd10Prefix: h.icd10Prefix,
     }));
+    // #621 — the override names the reviewed monograph's GENERIC the kidney warning is about.
+    const renalOverrides = renalHits.map((h, i) => ({
+      lineIndex: h.lineIndex, reason: (renalReasons[i] ?? "").trim(), genericId: h.genericId,
+    }));
     await postRx(
       pendingLines.current,
       overrides.length > 0 ? overrides : undefined,
       interactionOverrides.length > 0 ? interactionOverrides : undefined,
       duplicateOverrides.length > 0 ? duplicateOverrides : undefined,
       drugDiseaseOverrides.length > 0 ? drugDiseaseOverrides : undefined,
+      renalOverrides.length > 0 ? renalOverrides : undefined,
     );
   };
 
@@ -3575,7 +3626,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                           type="button" className="sec" data-testid="rx-draft-load"
                           onClick={() => {
                             /* Into the editor exactly as typed, so the doctor edits and issues by the
-                               ordinary road — every check and every override dialog unchanged. */
+                               ordinary road — every check and every override dialog unchanged. Each
+                               line says it came off the paper slip (#620), not that the doctor typed it. */
                             const d = draft.data?.draft;
                             if (d == null) return;
                             rxForm.reset({
@@ -3583,6 +3635,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                                 drug: l.drug, dose: l.dose, route: l.route, frequency: l.frequency,
                                 durationDays: l.durationDays === null ? "" : String(l.durationDays),
                                 instructions: l.instructions ?? "", noSubstitution: l.noSubstitution, medicineId: null,
+                                source: "paper" as const,
                               })),
                             });
                           }}
@@ -4039,7 +4092,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
 
       {/* the allergy hard-warning: a reason per matched line, then the re-post carries them (K48) */}
       <DeskModal
-        open={matches !== null || interactionHits.length > 0 || duplicateHits.length > 0 || diseaseHits.length > 0}
+        open={matches !== null || interactionHits.length > 0 || duplicateHits.length > 0 || diseaseHits.length > 0 || renalHits.length > 0}
         /*
           THE TITLE MUST NAME WHAT IS ACTUALLY IN THE DIALOG. A browser walk at 400 px found this
           reading "Allergy conflict" over a drug-disease warning, above a hint that told the doctor
@@ -4161,7 +4214,31 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
               )}
             </div>
           ))}
-          {(interactionHits.length > 0 || duplicateHits.length > 0 || diseaseHits.length > 0) && (
+          {/*
+            #621 — the renal dose warning: the reviewed band and the eGFR it was read against, WITH ITS
+            AGE, or "no recent kidney function". The doctor prescribes through it with a reason.
+          */}
+          {renalHits.map((h, i) => (
+            <div key={`renal-${String(h.lineIndex)}-${h.genericId}`}>
+              <label style={{ display: "block", marginBottom: 5, fontSize: 12.5, fontWeight: 600 }} htmlFor={`renal-reason-${String(i)}`} data-testid={`renal-hit-${String(i)}`}>
+                {h.kind === "band"
+                  ? t(h.severity === "avoid" ? "opdConsult.renalHitAvoid" : "opdConsult.renalHitReduce", {
+                    n: h.lineIndex + 1, drug: h.genericName, egfr: h.egfr ?? "", days: h.ageDays ?? 0, dose: h.dose ?? "",
+                  })
+                  : h.ageDays === null
+                    ? t("opdConsult.renalHitNone", { n: h.lineIndex + 1, drug: h.genericName })
+                    : t("opdConsult.renalHitStale", { n: h.lineIndex + 1, drug: h.genericName, days: h.ageDays })}
+              </label>
+              <input
+                id={`renal-reason-${String(i)}`}
+                data-testid={`renal-reason-${String(i)}`}
+                value={renalReasons[i] ?? ""}
+                onChange={(e) => setRenalReasons((rs) => rs.map((r, j) => (j === i ? e.target.value : r)))}
+                className="in" style={{ width: "100%", height: 34, fontSize: 13 }}
+              />
+            </div>
+          ))}
+          {(interactionHits.length > 0 || duplicateHits.length > 0 || diseaseHits.length > 0 || renalHits.length > 0) && (
             <p style={{ margin: 0, fontSize: 11, color: "var(--dim)" }}>{t("opdConsult.inSystemOnly")}</p>
           )}
           <ErrorLine message={overrideError} />
@@ -4332,9 +4409,15 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                               {new Date(d.capturedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
                             </span>
                             {d.note !== null && <span style={{ color: "var(--dim)" }}>{d.note}</span>}
+                            {/* #659 — the page is unreadable: ask the slip desk for a clearer photo (opened pages only — read it first). */}
+                            {openDocumentId === d.id && (
+                              <span style={{ marginLeft: "auto" }}>
+                                <DocumentRetake documentId={d.id} encounterId={d.encounterId} retakeRequestedAt={d.retakeRequestedAt ?? null} />
+                              </span>
+                            )}
                             <button
                               type="button" className="sec" data-testid={`document-open-${d.id}`}
-                              style={{ marginLeft: "auto", height: 24, fontSize: 11 }}
+                              style={{ marginLeft: openDocumentId === d.id ? 0 : "auto", height: 24, fontSize: 11 }}
                               onClick={() => { setOpenDocumentId(openDocumentId === d.id ? null : d.id); }}
                             >
                               {openDocumentId === d.id ? t("opdConsult.documentHide") : t("opdConsult.documentOpen")}
