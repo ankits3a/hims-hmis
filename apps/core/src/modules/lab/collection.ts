@@ -473,7 +473,8 @@ export async function awaitingLabels(
       /** Owner 2026-10-11 — blood the quick chain already confirmed is not waiting for a label here. */
       sql`not exists (select 1 from lab_quick_reports q where q.order_id = ${orders.id})`,
     ))
-    .orderBy(asc(orders.placedAt));
+    /** #889 — a row's codes in one fixed order (by test name), not the heap's. */
+    .orderBy(asc(orders.placedAt), asc(orders.id), asc(labOrderables.nameEn), asc(orderItems.serviceId));
   if (items.length === 0) return [];
   const groups = new Map<string, typeof items>();
   for (const it of items) {
