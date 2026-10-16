@@ -1385,6 +1385,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       roster: 3, // PHASE R (R1) — manage, publish, read; the seam ships inert (no menu, no route)
       attendance: 1, // STAFF ATTENDANCE (owner 2026-10-09) — attendance.all.read; a team and oneself are computed, not granted
       ordering: 0, // DECISION 0067 — no permission of its own: rides tariff.read, tariff.services.manage and orders.place
+      "doctor-desk": 0, // DD-0 #626 — no permission of its own; rides opd.consult
       radiology: 22, // HOSPITAL NUMBERS (#777, 2026-10-13), read off the failing run: +1, radiology.metrics.read; 18-S RS12 — `radiology.pacs.interface`, `radiology.pacs.reconcile`; 18-S RS5 — `radiology.contrast.record`; 18-S RS4 — `radiology.devices.manage`; 18-S RS3 — `radiology.display.read`; PLAN 18b T1 — `radiology.mwl.read`
     });
     // VD-1 T4 — +1 with `opd.vitals.history.read` (vitals_desk + doctor).

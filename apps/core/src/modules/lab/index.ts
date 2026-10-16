@@ -138,3 +138,6 @@ export {
 } from "./coagulation";
 export type { LatestLabNumber } from "./coagulation";
 export type { LabReleaseTest, LabReleaseValue } from "./abdm-release";
+// DOCTOR DESK DD-0.2 (#626) — the clinician's own lab rows: open criticals and delta-flagged results.
+export { deltaResultsForClinician, openCriticalsForClinician, resultsForPatientSince } from "./clinician-reads";
+export type { ClinicianLabRow, PatientResultSince } from "./clinician-reads";

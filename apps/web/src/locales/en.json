@@ -15159,12 +15159,299 @@
     }
   },
   "doctorDesk": {
+    "opd": {
+      "visitType": {
+        "new": "New",
+        "revisit": "Revisit",
+        "renewal": "Renewal"
+      },
+      "state": {
+        "waiting_vitals": "vitals pending",
+        "waiting": "vitals done",
+        "called": "called",
+        "in_consult": "with you"
+      },
+      "reEntry": "back with reports",
+      "noSession": "no session today",
+      "noSessionLong": "You have no OPD session today. Your line appears here when the desk opens one.",
+      "session": {
+        "not_started": "not started",
+        "in": "In",
+        "out": "Out",
+        "closed": "Closed"
+      },
+      "sessionLabel": "Your OPD session",
+      "askPlaceholder": "\"show his last HbA1c and kidney function\"",
+      "notDoctor": "You are not set up as an OPD doctor, so there is no line to show.",
+      "nobody": "Nobody waiting",
+      "call": "Call token {{token}} ⏎",
+      "lineEmpty": "Nobody is in your line right now.",
+      "line": "Your line",
+      "lineSum": "{{seen}} seen · {{waiting}} waiting",
+      "longest": "longest wait {{span}}",
+      "withYou": "with you",
+      "withYouTag": "WITH YOU · TOKEN {{token}}",
+      "nextTag": "NEXT · TOKEN {{token}}",
+      "sex": {
+        "female": "F",
+        "male": "M",
+        "other": "O",
+        "unknown": ""
+      },
+      "firstVisitShort": "first visit",
+      "visitN": "visit {{n}}",
+      "allergy": "Allergy: {{list}}",
+      "why": "Why they came · as told at the desk",
+      "whyNone": "The desk wrote no complaint.",
+      "whyBy": "Typed by {{by}} at {{at}} · their words, not a summary",
+      "theDesk": "the desk",
+      "v": {
+        "pulse": "Pulse",
+        "weight": "Weight",
+        "sugar": "Sugar"
+      },
+      "vitalsBy": "Bay One, {{at}}, {{by}}",
+      "vitalsOld": "Last vitals on file: {{at}}, {{by}} — none taken today",
+      "noVitals": "No vitals on file.",
+      "firstVisit": "First visit — nothing to compare",
+      "since": "Since you saw them · {{date}}",
+      "sinceNone": "No new result since then.",
+      "labOn": "lab {{at}}",
+      "heIsOn": "On · your last prescription",
+      "noRx": "No prescription of yours on file.",
+      "notSuggestion": "Nothing on this card is a suggestion. It is what the desks already entered, in order.",
+      "open": "Open consultation →",
+      "pace": "YOUR PACE",
+      "paceSeen": "{{seen}} seen in {{span}}",
+      "paceEach": "{{n}} min each",
+      "paceEnds": "at this pace the line ends {{at}}",
+      "paceNone": "No consultation started yet today.",
+      "colleague": "{{name}} has {{n}} waiting",
+      "waiting": "Waiting on you",
+      "waitingSub": "OPD only",
+      "waitingNone": "Nothing from the OPD is waiting on you."
+    },
+    "contextOwn": "Doctor Desk · your own items",
+    "loading": "Loading…",
+    "show": "Show",
+    "hide": "Hide",
+    "patientSealed": "Confidential patient",
+    "tower": {
+      "pillOpd": "OPD DAY",
+      "pillNoUnit": "no unit today",
+      "askPlaceholder": "\"what is waiting on me\"",
+      "noUnitLine": "Not in a unit today — your own items only",
+      "band": "Teaching · Care · Research",
+      "bandSub": "For a healthier tomorrow",
+      "quick": "Quick Actions",
+      "summary": "Today's Clinical Summary",
+      "noOpdToday": "No OPD session for you today, so the OPD figures are not shown.",
+      "attention": "Needs Your Attention",
+      "fewer": "Show fewer",
+      "allRows": "Show all {{n}} →",
+      "overview": "Unit Overview",
+      "overviewSub": "OPD today",
+      "overviewNone": "No doctor of {{unit}} has an OPD session today.",
+      "overviewDoctors": "Doctors in OPD",
+      "overviewLine": "{{booked}} booked · {{seen}} seen · {{waiting}} waiting"
+    },
+    "span": {
+      "min": "{{n}} min",
+      "h": "{{n}} h",
+      "hm": "{{h}} h {{m}}"
+    },
+    "signal": {
+      "lab_critical": "{{analyte}} {{value}} {{unit}}",
+      "imaging_critical": "{{study}} — critical finding",
+      "lab_delta": "{{analyte}} {{value}} {{unit}}",
+      "imaging_unread": "{{study}} reported",
+      "visit_open": "Visit not finished"
+    },
+    "sub": {
+      "lab_critical": "Lab {{at}} · critical call still open",
+      "imaging_critical": "Radiology {{at}} · not acknowledged",
+      "lab_delta": "Lab {{at}} · changed from the last result",
+      "imaging_unread": "Radiology {{at}} · nobody has opened it",
+      "visit_open": "OPD · {{date}} · visit {{visitNo}}",
+      "goneHome": "{{at}} · the patient has gone home — the desk can call"
+    },
+    "brief": {
+      "tag": "NEW SINCE YOU LEFT",
+      "since": "Since you left at {{at}}",
+      "quiet": "A quiet spell — nothing new came for you.",
+      "lifecycle": "Highlighted for 5 minutes · stays here for 1 hour · then kept in AI Briefs",
+      "gotIt": "Got it",
+      "moves": "seen · moves to AI Briefs at {{at}}",
+      "open": "Open in AI Briefs →",
+      "lab_critical": "{{who}}: critical {{analyte}} {{value}} {{unit}}",
+      "imaging_critical": "{{who}}: critical finding on {{study}}",
+      "lab_delta": "{{who}}: {{analyte}} changed to {{value}} {{unit}}",
+      "imaging_unread": "{{who}}: {{study}} reported",
+      "papersToSign_one": "{{n}} visit waits for you to finish",
+      "papersToSign_other": "{{n}} visits wait for you to finish",
+      "papersToSign": "{{n}} visits wait for you to finish",
+      "opdToday": "OPD today: {{booked}} booked, {{waiting}} waiting"
+    },
+    "tile": {
+      "booked": "Booked today",
+      "seen": "Seen",
+      "waiting": "Waiting",
+      "longest": "longest {{span}}",
+      "results": "New results to review",
+      "papers": "Visits to finish"
+    },
+    "tab": {
+      "all": "All",
+      "critical": "Critical",
+      "change": "Clinical Change",
+      "new": "New",
+      "pending": "Pending"
+    },
+    "empty": {
+      "all": "Nothing is waiting on you.",
+      "critical": "No critical result is open on your orders.",
+      "change": "No result of yours changed sharply in the last 24 hours.",
+      "new": "New admissions to your unit will show here once the wards are on HMIS.",
+      "pending": "No report waits to be opened and no visit waits to be finished."
+    },
+    "kind": {
+      "lab_critical": "Critical",
+      "imaging_critical": "Critical finding",
+      "lab_delta": "Clinical change",
+      "imaging_unread": "Result pending",
+      "visit_open": "Your signature"
+    },
+    "verb": {
+      "lab_critical": "Review",
+      "imaging_critical": "Review",
+      "lab_delta": "Review",
+      "imaging_unread": "Open",
+      "visit_open": "Finish"
+    },
+    "source": {
+      "lab": "Lab",
+      "radiology": "Radiology",
+      "opd": "OPD"
+    },
+    "session": {
+      "none": "—",
+      "not_started": "not started",
+      "in": "in",
+      "out": "out",
+      "closed": "closed"
+    },
+    "clock": {
+      "over": "{{span}} over",
+      "in": "in {{span}}"
+    },
+    "clocks": {
+      "title": "Clocks Running",
+      "sub": "what {{unit}} owes, to whom, by when",
+      "late_one": "{{count}} past its time",
+      "late_other": "{{count}} past their time",
+      "none": "Nothing is owed by {{unit}} right now.",
+      "you": "You",
+      "nudge": "Nudge",
+      "nudged": "Nudged"
+    },
+    "owed": {
+      "respond_overdue": "An answer is overdue",
+      "escalation": "An escalation is open",
+      "imaging_chase": "A report is unread",
+      "approval_requested": "An approval waits",
+      "lab_critical": "A critical lab result is open",
+      "visit_open": "A visit is not finished",
+      "other": "An item is open"
+    },
+    "schedule": {
+      "title": "Today's Schedule",
+      "none": "No duty on the roster for you today.",
+      "opd": "OPD",
+      "opdNote": "{{booked}} booked · {{waiting}} waiting",
+      "till": "till {{at}}"
+    },
+    "role": {
+      "head": "Unit Head",
+      "faculty": "Faculty",
+      "senior_resident": "Senior Resident",
+      "junior_resident": "Junior Resident",
+      "intern": "Intern",
+      "member": "Member",
+      "lead": "Lead",
+      "officiating": "{{role}} (officiating)"
+    },
+    "team": {
+      "title": "{{unit}} Team (Today)",
+      "summary_one": "{{count}} doctor · {{onDuty}} on duty now",
+      "summary_other": "{{count}} doctors · {{onDuty}} on duty now",
+      "holds": "{{name}} holds {{n}}",
+      "off": "Off duty",
+      "on": "On duty till {{at}}",
+      "legend": "last column · items each doctor holds right now"
+    },
+    "agents": {
+      "title": "AI Agent Activity",
+      "none": "No agent has worked for you in the last 24 hours.",
+      "count_one": "{{count}} run since {{since}}",
+      "count_other": "{{count}} runs since {{since}}",
+      "last": "last at {{at}}",
+      "noneFailed": "nothing failed",
+      "failed_one": "{{count}} failed",
+      "failed_other": "{{count}} failed",
+      "agent": {
+        "login_brief": "Login brief"
+      },
+      "did": {
+        "briefBuilt": "Prepared your login brief · {{lines}} patient lines"
+      }
+    },
+    "refusal": {
+      "unknown_visit": "That visit is not in your OPD.",
+      "not_unit_member": "Only a member of the unit can nudge.",
+      "already_nudged": "You have already nudged this.",
+      "own_row": "This one is yours.",
+      "unknown_row": "This is no longer owed — it may just have been done.",
+      "unknown_brief": "That brief is not yours.",
+      "closed": "This screen is not open to you.",
+      "network": "Could not reach the server. Try again.",
+      "other": "Refused ({{code}})."
+    },
+    "briefs": {
+      "context": "Doctor Desk · AI Briefs",
+      "askPlaceholder": "\"show last week's login briefs\"",
+      "h1": "AI Briefs",
+      "lede": "Every brief the desk prepared for you. Nothing is deleted; login briefs come here an hour after they were shown.",
+      "filter": {
+        "all": "All",
+        "login": "Login briefs"
+      },
+      "none": "No brief yet. One is prepared when you come back after three hours or more.",
+      "kind": {
+        "login": "LOGIN BRIEF",
+        "morning": "MORNING BRIEF",
+        "round": "ROUND BRIEF"
+      },
+      "title": {
+        "login": "Since you left at {{at}}",
+        "morning": "Morning brief",
+        "round": "Round brief"
+      },
+      "window": "{{from}} → {{to}}",
+      "moved": "Shown on your dashboard at {{at}} · stayed till {{till}} · then moved here",
+      "countLine": "OPD",
+      "sources": "Prepared from: Lab · Radiology · OPD. Every line opens the record it came from.",
+      "back": "← Dashboard",
+      "print": "Print"
+    },
     "group": {
+      "ai": "AI",
       "desk": "DOCTOR DESK",
       "unit": "UNIT",
       "office": "OFFICE"
     },
     "item": {
+      "dashboard": "Dashboard",
+      "aiBriefs": "AI Briefs",
       "myOpd": "My OPD",
       "roster": "Roster",
       "onNow": "Who Is On Now",

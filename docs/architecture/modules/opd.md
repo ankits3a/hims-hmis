@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/opd/`
 
 - **Depends on modules:** `billing`, `cds`, `formulary`, `materials`, `patients`, `roster`
-- **Used by modules:** `abdm`, `billing`, `lab`, `ordering`, `pharmacy`, `radiology`
+- **Used by modules:** `abdm`, `billing`, `doctor-desk`, `lab`, `ordering`, `pharmacy`, `radiology`
 - **Kernel used:** `alerts`, `auth`, `config`, `copilot`, `crypto`, `db`, `desk`, `episodes`, `events`, `inference`, `modules`, `phi`, `printing`, `realtime`, `report`, `resources`, `search`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
@@ -38,6 +38,15 @@ Source: `apps/core/src/modules/opd/`
   - `resumeConsultation(db: Db, actor: Actor, encounterId: string, now: Date = new Date()): Promise<{ encounter: EncounterRow; queueEntry: Queue…`
   - `vitalsGateVerdict(db: Db | Tx, encounter: EncounterRow): Promise<{ ok: true } | { ok: false; code: string; detail?: unknown }>`
   - types: `AdvisedTest`, `ConsultStartGuard`, `VitalsStartGuard`
+- `doctor-day.ts`
+  - `closedVisitNos(exec: Db | Tx, visitNos: readonly string[]): Promise<Set<string>>`
+  - `doctorDayLines(exec: Db | Tx, userIds: readonly string[], serviceDate: string, now: Date): Promise<DoctorDayLine[]>`
+  - `doctorPaceToday(exec: Db | Tx, userId: string, serviceDate: string): Promise<DoctorPaceToday>`
+  - `earlierVisits(exec: Db | Tx, patientIds: readonly string[], serviceDate: string): Promise<{ serviceDate: string; doctorUserId: string | nul…`
+  - `lastPrescriptionBy(exec: Db | Tx, userId: string, patientIds: readonly string[], serviceDate: string): Promise<null | { issuedAt: Date; lin…`
+  - `openVisitsForDoctor(exec: Db | Tx, userId: string, beforeDate: string): Promise<OpenVisitRow[]>`
+  - `visitOfDoctor(exec: Db | Tx, userId: string, encounterId: string): Promise<null | { id: string; patientId: string; visitNo: string; service…`
+  - types: `DoctorDayLine`, `DoctorPaceToday`, `OpenVisitRow`
 - `encounters.ts`
   - `LAB_DEPARTMENT_CODE`
   - `LAB_VISIT_TYPE`
