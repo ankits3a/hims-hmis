@@ -28,6 +28,8 @@ import { attestSubstance, pageMappingWorklist, ruleSubstanceUnmappable } from ".
 import type { MappingDecision, WorklistItem } from "./mapping";
 import { getMonograph, RENAL_SEVERITIES, reviewMonograph, saveMonograph, searchGenerics } from "./monographs";
 import type { GenericHit, Monograph } from "./monographs";
+import { referenceForGeneric } from "./reference-labels";
+import type { GenericReference } from "./reference-labels";
 import type { InteractionRow, MedicineWithSalts, SaltRow } from "./masters";
 import type { StagingRow } from "./staging";
 import type { Coverage, PairUsage } from "./curation";
@@ -563,6 +565,18 @@ export class FormularyController {
     const row = await getMonograph(this.db, sctid);
     if (row === undefined) throw httpError(404, `no reviewed monograph for ${sctid}`, "unknown_monograph");
     return row;
+  }
+
+  /**
+   * #616 (decision 0051) — the US FDA label REFERENCE for a generic: its own label, its components', or `none`. Reference
+   * text only (never a dose or a check); every entry carries its source, product, effective date and retrieval date.
+   */
+  @RequirePermission("formulary.read", "hospital", { alsoAdmits: ["formulary.manage", "formulary.monograph.review"] })
+  @Get("reference/:sctid")
+  async fdaReference(@Param("sctid") sctid: string): Promise<GenericReference> {
+    const ref = await referenceForGeneric(this.db, sctid);
+    if (ref === undefined) throw httpError(404, `no generic ${sctid}`, "unknown_generic");
+    return ref;
   }
 
   /** The curation door: the monograph as it stands, draft or reviewed. The reviewer reads the draft too. */

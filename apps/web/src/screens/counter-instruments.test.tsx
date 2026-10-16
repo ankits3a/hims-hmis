@@ -108,7 +108,7 @@ describe("CounterInstruments", () => {
     mockRoutes({
       ...ROUTES_TODAY,
       "GET /api/membership/instruments/lookup": { status: 200, body: { hits: [HIT], total: 1, auditId: "a1" } },
-      "GET /api/membership/recognition": { status: 200, body: RECOGNITION },
+      "POST /api/membership/recognition": { status: 200, body: RECOGNITION },
     });
     await type("AZ-44");
     await userEvent.click(await screen.findByRole("button", { name: /recognise/i }));
@@ -122,7 +122,7 @@ describe("CounterInstruments", () => {
     mockRoutes({
       ...ROUTES_TODAY,
       "GET /api/membership/instruments/lookup": { status: 200, body: { hits: [HIT], total: 1, auditId: "a1" } },
-      "GET /api/membership/recognition": { status: 200, body: RECOGNITION },
+      "POST /api/membership/recognition": { status: 200, body: RECOGNITION },
     });
     await type("AZ-44");
     await userEvent.click(await screen.findByRole("button", { name: /recognise/i }));
@@ -139,7 +139,7 @@ describe("CounterInstruments", () => {
     mockRoutes({
       ...ROUTES_TODAY,
       "GET /api/membership/instruments/lookup": { status: 200, body: { hits: [HIT], total: 1, auditId: "a1" } },
-      "GET /api/membership/recognition": { status: 200, body: RECOGNITION },
+      "POST /api/membership/recognition": { status: 200, body: RECOGNITION },
     });
     await type("AZ-44");
     await userEvent.click(await screen.findByRole("button", { name: /recognise/i }));
@@ -158,7 +158,7 @@ describe("CounterInstruments", () => {
     mockRoutes({
       ...ROUTES_TODAY,
       "GET /api/membership/instruments/lookup": { status: 200, body: { hits: [{ ...HIT, title: "ZZ-0009", meta: { ...HIT.meta, origin: "grace" } }], total: 1, auditId: "a1" } },
-      "GET /api/membership/recognition": { status: 200, body: grace },
+      "POST /api/membership/recognition": { status: 200, body: grace },
     });
     await type("ZZ-00");
     await userEvent.click(await screen.findByRole("button", { name: /recognise/i }));
@@ -208,7 +208,7 @@ describe("CounterInstruments", () => {
   async function recognise(body: unknown, code = "AZ-4471"): Promise<void> {
     mockRoutes({
       ...ROUTES_TODAY,
-      "GET /api/membership/recognition": { status: 200, body },
+      "POST /api/membership/recognition": { status: 200, body },
       "GET /api/opd/patients/01HPAT0000000000000000001/timeline": { status: 200, body: { items: [TODAY_VISIT] } },
     });
     renderWithRouter(<CounterInstruments />, "/counter/instruments");
@@ -273,5 +273,128 @@ describe("CounterInstruments", () => {
     await recognise({ patientId: null, memberships: [], coupons: [], disclosure: DISCLOSURE }, "MV-2210-7781");
     expect(screen.getByTestId("no-match")).toHaveTextContent("No card in the holder book matches MV-2210-7781.");
     expect(screen.getByTestId("next-act")).toHaveAttribute("data-act", "bill_full_rate");
+  });
+
+  // ── #658 — present is a POST; ?coupon= to the bill; grace honour asked here; clocks running ──
+
+  it("#658 — presenting a card is ONE POST with the code in the body, and never the GET", async () => {
+    await recognise({ ...RECOGNITION, coupons: [] });
+    const calls = vi.mocked(fetch).mock.calls.filter(([input]) => /\/membership\/recognition(\?|$)/.test(String(input)));
+    expect(calls).toHaveLength(1);
+    expect(calls[0]![1]?.method).toBe("POST");
+    expect(JSON.parse(String(calls[0]![1]?.body))).toEqual({ codes: ["AZ-4471"] });
+  });
+
+  it("#658 — Take to the bill carries the coupons the server says apply as ?coupon=", async () => {
+    await recognise({
+      ...RECOGNITION,
+      coupons: [
+        { ...RECOGNITION.coupons[0]!, unusableReason: null },
+        { couponId: "01HCOUPON00000000000002", code: "INV-CPN-8", title: "Invented", instanceId: null, unusableReason: "expired" },
+      ],
+    });
+    const act = await screen.findByRole("link", { name: /take to the bill/i });
+    expect(act.getAttribute("href")).toBe("/billing?encounterId=01HENC0000000000000000014&coupon=INV-CPN-7");
+  });
+
+  it("#658 — a coupon alone opens the bill with its code filled in", async () => {
+    await recognise({ patientId: null, memberships: [], coupons: [{ ...RECOGNITION.coupons[0]!, unusableReason: null }], disclosure: DISCLOSURE }, "INV-CPN-7");
+    const act = await screen.findByRole("link", { name: /open the bill/i });
+    expect(act.getAttribute("href")).toBe("/billing?coupon=INV-CPN-7");
+  });
+
+  const PLANS = { "GET /api/membership/plans": { status: 200, body: { items: [{ id: "01HTESTPLAN00000000000001", code: "INV-PLAN-A", title: "Invented Card" }] } } };
+  const NO_MATCH = { patientId: null, memberships: [], coupons: [], disclosure: DISCLOSURE };
+  const PATIENT_HIT = {
+    id: "01HPAT0000000000000000009", uhid: "HMS00020455", name: "Invented Member", phone: null,
+    administrativeGender: "male", dob: null, isConfidential: false, hasPhoto: false,
+  };
+
+  async function noMatch(extra: Record<string, Handler>): Promise<void> {
+    mockRoutes({ ...ROUTES_TODAY, ...PLANS, "POST /api/membership/recognition": { status: 200, body: NO_MATCH }, ...extra });
+    renderWithRouter(<CounterInstruments />, "/counter/instruments");
+    await userEvent.type(await screen.findByLabelText(/card number/i), "MV-2210-7781{Enter}");
+    await screen.findByTestId("no-match");
+  }
+
+  it("#658 — no match: the counter asks for grace honour with patient, plan and reason, and it then awaits approval", async () => {
+    let asked: unknown = null;
+    let requests: unknown[] = [];
+    await noMatch({
+      "GET /api/patients/search": { status: 200, body: { items: [PATIENT_HIT] } },
+      "GET /api/membership/grace-honor/requests": () => ({ status: 200, body: { items: requests } }),
+      "POST /api/membership/grace-honor/request": () => {
+        requests = [{
+          approvalId: "01HAPPROVAL0000000000001", cardCode: "MV-2210-7781", patientId: PATIENT_HIT.id, status: "pending",
+          requestedAt: new Date(Date.now() - 14 * 60_000).toISOString(), decidedAt: null, note: "Invented Card: issued last week",
+          honoured: false, holder: { name: "Invented Member", alias: null, restricted: false, uhid: "HMS00020455" },
+        }];
+        return { status: 201, body: { approvalId: "01HAPPROVAL0000000000001", status: "pending", alreadyAsked: false } };
+      },
+    });
+    const send = await screen.findByTestId("grace-send");
+    expect(send).toBeDisabled();
+    await userEvent.type(screen.getByRole("textbox", { name: "Search" }), "Invented");
+    await userEvent.click(await screen.findByText("Invented Member"));
+    expect(await screen.findByTestId("grace-patient")).toHaveTextContent("HMS00020455");
+    await userEvent.type(screen.getByTestId("grace-reason"), "issued last week");
+    await waitFor(() => expect(screen.getByTestId("grace-send")).toBeEnabled());
+    // The patient and the plan are chosen on the form; the plan defaults when there is only one.
+    expect(screen.getByTestId("grace-plan")).toHaveValue("01HTESTPLAN00000000000001");
+    vi.mocked(fetch).mockClear();
+    await userEvent.click(screen.getByTestId("grace-send"));
+
+    const pending = await screen.findByTestId("grace-pending");
+    expect(pending).toHaveTextContent("Sent for approval · 14 m");
+    const post = vi.mocked(fetch).mock.calls.find(([input, init]) => String(input).endsWith("/membership/grace-honor/request") && init?.method === "POST");
+    asked = JSON.parse(String(post![1]?.body));
+    expect(asked).toEqual({ cardCode: "MV-2210-7781", patientId: PATIENT_HIT.id, planId: "01HTESTPLAN00000000000001", reason: "issued last week" });
+    // Asking honours nothing: no call to the execute route.
+    expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).endsWith("/membership/grace-honor"))).toBe(false);
+  });
+
+  it("#658 — a GRANTED request for this card is honoured from the counter, with the approval's id", async () => {
+    const granted = {
+      approvalId: "01HAPPROVAL0000000000002", cardCode: "MV-2210-7781", patientId: PATIENT_HIT.id, status: "granted",
+      requestedAt: new Date(Date.now() - 30 * 60_000).toISOString(), decidedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+      note: "Invented Card: issued last week", honoured: false,
+      holder: { name: "Invented Member", alias: null, restricted: false, uhid: "HMS00020455" },
+    };
+    await noMatch({
+      "GET /api/membership/grace-honor/requests": { status: 200, body: { items: [granted] } },
+      "POST /api/membership/grace-honor": { status: 201, body: { instanceId: "01HINST", cardCode: "MV-2210-7781", origin: "grace" } },
+    });
+    const honour = await screen.findByTestId("grace-honour");
+    await waitFor(() => expect(honour).toBeEnabled());
+    await userEvent.click(honour);
+    await waitFor(() => {
+      const post = vi.mocked(fetch).mock.calls.find(([input, init]) => String(input).endsWith("/membership/grace-honor") && init?.method === "POST");
+      expect(JSON.parse(String(post![1]?.body))).toEqual({
+        cardCode: "MV-2210-7781", patientId: PATIENT_HIT.id, planId: "01HTESTPLAN00000000000001",
+        approvalId: "01HAPPROVAL0000000000002", reason: "Invented Card: issued last week",
+      });
+    });
+  });
+
+  it("#658 — Clocks running: collapsed with the count and the oldest wait; opened, it lists each with its age", async () => {
+    mockRoutes({
+      "GET /api/membership/recognition/today": { status: 200, body: { items: [{
+        code: "AZ-9001", source: "card", origin: "import", standing: "usable", linked: false,
+        at: new Date(Date.now() - 32 * 60_000).toISOString(), holder: null, needsYou: true,
+      }] } },
+      "GET /api/membership/grace-honor/requests": { status: 200, body: { items: [{
+        approvalId: "01HAPPROVAL0000000000003", cardCode: "MV-2210-7781", patientId: "p1", status: "pending",
+        requestedAt: new Date(Date.now() - 14 * 60_000).toISOString(), decidedAt: null, note: null, honoured: false, holder: null,
+      }] } },
+    });
+    renderWithRouter(<CounterInstruments />, "/counter/instruments");
+    const [toggle] = await screen.findAllByTestId("clocks-toggle");
+    await waitFor(() => expect(toggle).toHaveTextContent("Clocks running · 2"));
+    expect(toggle).toHaveTextContent("to link 32 m");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryAllByTestId("clock-MV-2210-7781")).toHaveLength(0);
+    await userEvent.click(toggle!);
+    expect(screen.getAllByTestId("clock-MV-2210-7781")[0]).toHaveTextContent("grace approval");
+    expect(screen.getAllByTestId("clock-MV-2210-7781")[0]).toHaveTextContent("14 m");
   });
 });

@@ -391,3 +391,17 @@ export const saveMonograph = (input: MonographSave): Promise<{ monographId: stri
 export async function reviewMonograph(monographId: string): Promise<void> {
   await api<{ ok: true }>("POST", `/formulary/monographs/${monographId}/review`);
 }
+
+/** #616 (decision 0051) — the US FDA label reference for a generic. Reference text only; never a dose or a check. */
+export type WireReferenceSection =
+  | "uses" | "directions" | "boxed_warning" | "warnings" | "contraindications" | "side_effects" | "interactions" | "pregnancy"
+  | "lactation" | "children" | "elderly" | "overdose" | "storage" | "patient_information";
+export type WireReferenceEntry = {
+  refKey: string; source: string; retrievedOn: string; product: string; productType: string | null; effectiveDate: string | null;
+  setId: string; labelId: string; version: string; sections: Partial<Record<WireReferenceSection, string>>;
+};
+export type WireGenericReference = {
+  genericSctid: string; status: "label" | "components" | "none"; combination: boolean; entries: WireReferenceEntry[]; missing: string[];
+};
+export const fetchFdaReference = (sctid: string): Promise<WireGenericReference> =>
+  api<WireGenericReference>("GET", `/formulary/reference/${encodeURIComponent(sctid)}`);

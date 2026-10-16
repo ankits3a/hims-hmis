@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { LINE_SOURCES, newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
-import { cdsDoctorPrefs, opdEncounters, opdLasaPairs, opdSuggestionEvents, opdTermMisses } from "../../kernel/db/schema";
+import { cdsDoctorLearningResets, cdsDoctorPrefs, opdEncounters, opdLasaPairs, opdSuggestionEvents, opdTermMisses } from "../../kernel/db/schema";
 import { medicinesByIds, saltsByIds, searchMedicinesForPrescribing } from "../formulary";
 import type { PrescribingHit } from "../formulary";
 import { OpdError } from "./errors";
@@ -148,7 +148,16 @@ export type Miss = { kind: typeof MISS_KINDS[number]; term: string; stage: "sear
  * visit — an encounter id, never a patient. `itemKey` and `contextKey` are keys (a medicine id, an
  * ICD code, a test code, `dx:J06`), kept short; they are not free text about a person.
  */
+/**
+ * #620 — a suggestion event's id may be the SCREEN's: a filled prescription line carries it from the
+ * moment of the fill (`suggestionEventId`), before anything is sent. Letters, digits, `_` and `-`, at
+ * most 64. A second event with the same id is ignored — the first outcome told stands, as the first
+ * source of a diagnosis does — so a re-issue cannot count a line twice or turn `edited` into `accepted`.
+ */
+export const SIGNAL_ID = /^[A-Za-z0-9_-]{8,64}$/;
 export type SuggestionSignal = {
+  /** The event's own id, when the screen minted it for a line (see `SIGNAL_ID`). Otherwise the server's. */
+  id?: string | undefined;
   kind: SignalKind; source: typeof SIGNAL_SOURCES[number]; outcome: typeof SIGNAL_OUTCOMES[number];
   surface?: typeof SIGNAL_SURFACES[number] | undefined; encounterId?: string | undefined; contextKey?: string | undefined; itemKey?: string | undefined;
   rankShown?: number | undefined; items?: string[] | undefined; batchId?: string | undefined;
@@ -182,7 +191,7 @@ export async function recordSignals(
   const rows = list.map((s) => {
     const enc = s.encounterId === undefined ? undefined : encById.get(s.encounterId);
     return {
-      id: newId(), userId: actor.id, kind: s.kind, source: s.source, outcome: s.outcome, createdAt: now,
+      id: s.id !== undefined && SIGNAL_ID.test(s.id) ? s.id : newId(), userId: actor.id, kind: s.kind, source: s.source, outcome: s.outcome, createdAt: now,
       surface: s.surface ?? null, encounterId: enc?.id ?? null, doctorId: enc?.doctorId ?? null, departmentId: enc?.departmentId ?? null,
       contextKey: key(s.contextKey), itemKey: key(s.itemKey), rankShown: s.rankShown ?? null,
       items: s.items === undefined ? null : s.items.slice(0, 20).map((i) => key(i)).filter((i): i is string => i !== null),
@@ -210,8 +219,9 @@ export async function recordSignals(
       return true;
     });
   }
-  if (keep.length > 0) await db.insert(opdSuggestionEvents).values(keep);
-  return { misses, suggestions: keep.length };
+  if (keep.length === 0) return { misses, suggestions: 0 };
+  const written = await db.insert(opdSuggestionEvents).values(keep).onConflictDoNothing({ target: opdSuggestionEvents.id }).returning({ id: opdSuggestionEvents.id });
+  return { misses, suggestions: written.length };
 }
 
 export type SignalsMeter = {
@@ -260,7 +270,11 @@ export type HiddenItem = { kind: string; contextKey: string | null; itemKey: str
  * deleted — a hidden item returns by itself when a cross ages out, and at once when the doctor types it.
  */
 export async function hiddenSuggestions(db: Db, userId: string, now: Date = new Date()): Promise<HiddenItem[]> {
-  const since = new Date(now.getTime() - DISMISS_COUNTS_FOR_DAYS * 24 * 3600 * 1000);
+  const windowStart = new Date(now.getTime() - DISMISS_COUNTS_FOR_DAYS * 24 * 3600 * 1000);
+  // the doctor's own "hidden" reset (decision 0050, #615): crosses before it no longer hide anything
+  const [reset] = await db.select({ at: cdsDoctorLearningResets.resetAt }).from(cdsDoctorLearningResets)
+    .where(and(eq(cdsDoctorLearningResets.userId, userId), eq(cdsDoctorLearningResets.surface, "hidden")));
+  const since = reset !== undefined && reset.at > windowStart ? reset.at : windowStart;
   const rows = await db.select({
     kind: opdSuggestionEvents.kind, contextKey: opdSuggestionEvents.contextKey, itemKey: opdSuggestionEvents.itemKey,
     outcome: opdSuggestionEvents.outcome,

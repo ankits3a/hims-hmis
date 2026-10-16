@@ -72,11 +72,13 @@ export function foldName(s: string): string {
   return normalizeForSearch(s.normalize("NFC")).replace(/a{2,}/g, "a").replace(/e{2,}|i{2,}/g, "i").replace(/o{2,}|u{2,}/g, "u");
 }
 
-let stopCache: { words: Set<string>; prefixes: string[] } | null = null;
+/* Rebuilt when the cue words change — #598: a module's intents, installed at boot, bring cues of their own. */
+let stopCache: { from: readonly string[]; words: Set<string>; prefixes: string[] } | null = null;
 function stopWords(): { words: Set<string>; prefixes: string[] } {
-  if (stopCache === null) {
-    const words = new Set([...cueWords(), ...FUNCTION_WORDS].map(foldName).filter((w) => w !== ""));
-    stopCache = { words, prefixes: [...words].filter((w) => w.length >= 4) };
+  const cues = cueWords();
+  if (stopCache?.from !== cues) {
+    const words = new Set([...cues, ...FUNCTION_WORDS].map(foldName).filter((w) => w !== ""));
+    stopCache = { from: cues, words, prefixes: [...words].filter((w) => w.length >= 4) };
   }
   return stopCache;
 }

@@ -58,6 +58,8 @@ export const ROSTER_ERROR_CODES = [
   "parent_membership_overlap",
   "head_already_held",
   "officiating_overlap",
+  /** The person recording a stand-in is the person standing in. */
+  "officiating_self_appointment",
   "delegation_not_held",
   "intern_plan_invalid",
 
@@ -150,6 +152,7 @@ export const ROSTER_ERROR_SENTENCES: Record<RosterErrorCode, string> = {
   parent_membership_overlap: "a person belongs to ONE unit at a time — close the place they hold now before giving them another, or post them on rotation instead",
   head_already_held: "this team already has a head over that stretch; record an officiating head instead of a second substantive one",
   officiating_overlap: "somebody is already standing in for that role over part of the same stretch",
+  officiating_self_appointment: "nobody appoints themselves to stand in — ask whoever answers for the department to record it",
   delegation_not_held: "nobody may hand on an authority they do not hold themselves",
   intern_plan_invalid: "that internship plan does not add up to the year the regulator requires",
 
@@ -232,6 +235,7 @@ const STATUS: Record<RosterErrorCode, number> = {
   parent_membership_overlap: 409,
   head_already_held: 409,
   officiating_overlap: 409,
+  officiating_self_appointment: 403,
   delegation_not_held: 409,
 
   unknown_absence: 404,

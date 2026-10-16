@@ -9,7 +9,7 @@ import { listMergedLoserIds } from "../patients";
 import { canonicalNames } from "./criticals";
 import { currentValue, liveRowsFor } from "./results";
 import { LabError } from "./errors";
-import type { Actor } from "@hmis/contracts";
+import type { Actor, AstRow } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -59,6 +59,8 @@ export type WorklistRow = {
     refLow: string | null; refHigh: string | null; refText: string | null;
     verificationStatus: string | null; enteredById: string | null;
     pathologistReviewPending: boolean;
+    /** #703 — the antibiotic sensitivity table on a culture's MIC_AST line; null on every other analyte. */
+    ast: AstRow[] | null;
     /**
      * 17c T4 / D11 — the last VERIFIED value of this analyte on the canonical patient (the merge
      * chain, edge case 5), from any earlier item. Never an unverified or superseded row: a number
@@ -220,6 +222,8 @@ export async function labWorklist(
           verificationStatus: value?.verificationStatus ?? null,
           enteredById: value?.enteredById ?? null,
           pathologistReviewPending: value?.pathologistReviewPending ?? false,
+          /** #703 — a culture's sensitivity table on its MIC_AST line; null everywhere else. */
+          ast: value?.ast ?? null,
           /**
            * The row's OWN item is excluded here, per row — not the whole worklist's items up in the
            * query. The first cut excluded every listed item, and the assertion book's mutant

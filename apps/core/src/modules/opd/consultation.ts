@@ -107,6 +107,8 @@ export type RxDraftLine = {
   instructions: string; noSubstitution: boolean; medicineId?: string | null;
   eye?: "od" | "os" | "ou" | null; taper?: { timesPerDay: number; days: number }[] | null;
   source?: RxLineSource;
+  /** #620 — the suggestion event a filled row came from, and the row as it was offered. */
+  suggestionEventId?: string; suggestedAs?: string;
 };
 
 /**

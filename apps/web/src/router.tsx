@@ -1717,9 +1717,11 @@ const billingRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/billing",
   // The OPD desk hands a walk-in straight to the counter as `/billing?encounterId=…` (flag ⑧);
-  // without one the cashier types or scans the encounter id at the counter.
-  validateSearch: (search: Record<string, unknown>): { encounterId?: string } => ({
+  // without one the cashier types or scans the encounter id at the counter. #658 — the card
+  // recognition counter also hands over `?coupon=` (comma-separated codes) to fill the coupon field.
+  validateSearch: (search: Record<string, unknown>): { encounterId?: string; coupon?: string } => ({
     encounterId: typeof search.encounterId === "string" ? search.encounterId : undefined,
+    coupon: typeof search.coupon === "string" ? search.coupon : undefined,
   }),
   staticData: { fullViewport: true },
   component: function BillingSeat() {

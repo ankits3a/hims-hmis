@@ -622,3 +622,62 @@ export async function grnReceivedTotals(db: Db | Tx, start: Date, end: Date): Pr
   const r = rows.rows[0] as { n?: unknown; paise?: unknown } | undefined;
   return { grns: Number(r?.n ?? 0), valuePaise: Number(r?.paise ?? 0) };
 }
+
+/** #637 — one vendor's purchases of a period, before and after its trade discount. */
+export type VendorDiscountRow = {
+  vendorId: string; vendorCode: string; vendorName: string; gstin: string | null; bills: number;
+  /** Σ packs × list rate (the billed rate where no list rate was named). */
+  grossPaise: number;
+  /** Σ packs × discount per pack. `grossPaise − discountPaise = taxablePaise`. */
+  discountPaise: number;
+  taxablePaise: number; gstPaise: number; totalPaise: number;
+  /** The discount as a share of gross, in basis points, half up; 0 when gross is 0. */
+  discountBps: number;
+};
+export type VendorDiscountReport = {
+  from: string; to: string; rows: VendorDiscountRow[];
+  totals: Omit<VendorDiscountRow, "vendorId" | "vendorCode" | "vendorName" | "gstin">;
+};
+
+/**
+ * #637 — THE VENDOR DISCOUNT REPORT, by vendor: the supplier bills booked as payable (`BOOKED_BILL_STATUSES`) dated in
+ * [from, to], each line's gross at its list rate, the discount taken off it, the taxable value and GST on the discounted
+ * value, and the bill total (round-off included). Largest gross first.
+ */
+export async function vendorDiscountReport(db: Db | Tx, from: string, to: string): Promise<VendorDiscountReport> {
+  const bills = await db.select({
+    id: supplierBills.id, vendorId: supplierBills.vendorId, vendorCode: vendors.code, vendorName, gstin: vendors.gstin,
+    taxablePaise: supplierBills.taxablePaise, gst: sql<number>`(${supplierBills.cgstPaise} + ${supplierBills.sgstPaise} + ${supplierBills.igstPaise})::bigint`,
+    totalPaise: supplierBills.totalPaise,
+  }).from(supplierBills).innerJoin(vendors, eq(vendors.id, supplierBills.vendorId))
+    .where(and(gte(supplierBills.billDate, from), lte(supplierBills.billDate, to), inArray(supplierBills.status, [...BOOKED_BILL_STATUSES])));
+  const discounts = await inChunks(bills.map((b) => b.id), (chunk) => db.select({
+    billId: supplierBillLines.billId,
+    discount: sql<number>`sum(${supplierBillLines.qtyPacks}::bigint * ${supplierBillLines.discountPaise})::bigint`,
+  }).from(supplierBillLines).where(inArray(supplierBillLines.billId, chunk)).groupBy(supplierBillLines.billId));
+  const discountOf = new Map(discounts.map((d) => [d.billId, Number(d.discount)] as const));
+  const byVendor = new Map<string, VendorDiscountRow>();
+  for (const b of bills) {
+    const r = byVendor.get(b.vendorId) ?? {
+      vendorId: b.vendorId, vendorCode: b.vendorCode, vendorName: b.vendorName, gstin: b.gstin, bills: 0,
+      grossPaise: 0, discountPaise: 0, taxablePaise: 0, gstPaise: 0, totalPaise: 0, discountBps: 0,
+    };
+    const discount = discountOf.get(b.id) ?? 0;
+    r.bills += 1;
+    r.discountPaise += discount;
+    r.taxablePaise += b.taxablePaise;
+    r.grossPaise += b.taxablePaise + discount;
+    r.gstPaise += Number(b.gst);
+    r.totalPaise += b.totalPaise;
+    byVendor.set(b.vendorId, r);
+  }
+  const share = (discount: number, gross: number): number => (gross === 0 ? 0 : Math.floor((discount * 10_000 * 2 + gross) / (gross * 2)));
+  const rows = [...byVendor.values()].map((r) => ({ ...r, discountBps: share(r.discountPaise, r.grossPaise) }))
+    .sort((a, b) => b.grossPaise - a.grossPaise || a.vendorCode.localeCompare(b.vendorCode));
+  const sum = (k: "bills" | "grossPaise" | "discountPaise" | "taxablePaise" | "gstPaise" | "totalPaise"): number => rows.reduce((s, r) => s + r[k], 0);
+  const totals = {
+    bills: sum("bills"), grossPaise: sum("grossPaise"), discountPaise: sum("discountPaise"), taxablePaise: sum("taxablePaise"),
+    gstPaise: sum("gstPaise"), totalPaise: sum("totalPaise"), discountBps: share(sum("discountPaise"), sum("grossPaise")),
+  };
+  return { from, to, rows, totals };
+}

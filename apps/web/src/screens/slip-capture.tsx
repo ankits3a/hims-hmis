@@ -14,7 +14,12 @@ import {
 import type { SlipDay, SlipKind, SlipPatient, SlipReadback } from "../../../../packages/contracts/src/slip-desk";
 import { tokenText } from "../../../../packages/contracts/src/vitals-entry";
 import type { WirePaperOutcome, WirePaperVerdict } from "../lib/opd-api";
+import { readPhotoVisitNumber } from "../lib/slip-read";
 import "./slip-desk.css";
+
+/** #659 — one row of the MRD hand-off (`GET /opd/slips/mrd`): a slip-day row and the day it belongs to. */
+type MrdRow = SlipDay["items"][number] & { serviceDate: string };
+
 
 /** The outcomes after which the visit stands consulted — worded in green; the rest say why not, plainly. */
 const PAPER_CONSULTED: ReadonlySet<string> = new Set<WirePaperOutcome>(["marked", "already_marked", "doctor_completed"]);
@@ -132,6 +137,14 @@ function typingIn(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(target.tagName);
 }
+/**
+ * A letter key is only "typed" into a box that takes text. A focused BUTTON takes Enter (it clicks),
+ * not R or P: after "Use this" the dock's File button sits in the same place and keeps the focus, so
+ * counting a button here made R do nothing right after a photo.
+ */
+function typingText(target: EventTarget | null): boolean {
+  return typingIn(target) && !(target instanceof HTMLButtonElement);
+}
 
 const ScanIcon = (): React.ReactElement => (
   <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
@@ -192,6 +205,13 @@ export function SlipCapture(): React.ReactElement {
     queryKey: ["opd", "slips", "today"],
     queryFn: () => api<SlipDay>("GET", "/opd/slips/today"),
     refetchInterval: 30_000,
+  });
+  /* #659 — the earlier days' slips that never landed: the records office's list (owner ruling 28-Sep-2026). */
+  const mrd = useQuery({
+    queryKey: ["opd", "slips", "mrd"],
+    queryFn: () => api<{ items: MrdRow[] }>("GET", "/opd/slips/mrd"),
+    refetchInterval: 300_000,
+    retry: false,
   });
   const q = useDebounced(findQ.trim(), 250);
   const hits = useQuery({
@@ -383,8 +403,30 @@ export function SlipCapture(): React.ReactElement {
     }
   };
 
+  /*
+    #659 — THE PHOTO CHECKED AGAINST THE VISIT. The sheet's QR is read from the photograph itself
+    (`lib/slip-read.ts`; text reading is owed behind the same seam). SUGGEST-ONLY: a read that names
+    ANOTHER visit stops the filing — the right patient was scanned and a different sheet photographed;
+    a matching read, or none, files nothing by itself.
+  */
+  const [photo, setPhoto] = useState<{ status: "reading" | "match" | "mismatch" | "none"; visitNo: string | null }>({ status: "none", visitNo: null });
+  const expectedVisit = resolved?.visitNo ?? null;
+  useEffect(() => {
+    if (shot === null || expectedVisit === null) { setPhoto({ status: "none", visitNo: null }); return; }
+    let live = true;
+    setPhoto({ status: "reading", visitNo: null });
+    void readPhotoVisitNumber(shot).then((r) => {
+      if (!live) return;
+      setPhoto(r.visitNo === null ? { status: "none", visitNo: null }
+        : { status: r.visitNo === expectedVisit.toUpperCase() ? "match" : "mismatch", visitNo: r.visitNo });
+    }, () => { if (live) setPhoto({ status: "none", visitNo: null }); });
+    return () => { live = false; };
+  }, [shot, expectedVisit]);
+
   const file = async (): Promise<void> => {
     if (resolved === null || shot === null) return;
+    // The photographed sheet is another visit's (retake or scan again), or its QR is still being read.
+    if (photo.status === "mismatch" || photo.status === "reading") return;
     setError(null);
     try {
       const done = await api<{ documentId: string; effects?: { "opd.paper"?: WirePaperVerdict | { failed: true } } }>("POST", `/patients/${resolved.patientId}/documents`, {
@@ -435,19 +477,24 @@ export function SlipCapture(): React.ReactElement {
     else if (step === 4) void file();
     else scanRef.current?.focus();
   };
+  /* The handler is re-pointed on every RENDER, not in an effect: an effect runs after the commit, so a
+   * key pressed between a state change and that effect read the previous render's shot and did nothing
+   * (R after a fresh photo kept the photo). The window listener is registered once and reads the ref. */
+  const onKeyRef = useRef<(e: KeyboardEvent) => void>(() => undefined);
+  onKeyRef.current = (e: KeyboardEvent): void => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === "Escape" && resolved !== null) { e.preventDefault(); clearDesk(); return; }
+    if (e.key === "Enter") { if (typingIn(e.target)) return; e.preventDefault(); act.current(); return; }
+    if (typingText(e.target)) return;
+    const k = e.key.toLowerCase();
+    if (k === "r" && (shot !== null || raw !== null)) { e.preventDefault(); retake(); return; }
+    if (k === "p" && resolved === null && filed !== null) { e.preventDefault(); void addPage(); }
+  };
   useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.key === "Escape" && resolved !== null) { e.preventDefault(); clearDesk(); return; }
-      if (typingIn(e.target)) return;
-      if (e.key === "Enter") { e.preventDefault(); act.current(); return; }
-      const k = e.key.toLowerCase();
-      if (k === "r" && (shot !== null || raw !== null)) { e.preventDefault(); retake(); return; }
-      if (k === "p" && resolved === null && filed !== null) { e.preventDefault(); void addPage(); }
-    };
+    const onKey = (e: KeyboardEvent): void => { onKeyRef.current(e); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  });
+  }, []);
 
   const items = day.data?.items ?? [];
   const counts = day.data?.counts ?? null;
@@ -547,6 +594,7 @@ export function SlipCapture(): React.ReactElement {
     );
   }
 
+  const mrdItems = mrd.data?.items ?? [];
   /* ── RIGHT: today's slips, one list ── */
   const FILED_SHOWN = 30;
   const shown = [...items.filter((i) => i.state !== "filed"), ...items.filter((i) => i.state === "filed").slice(0, FILED_SHOWN)];
@@ -596,6 +644,28 @@ export function SlipCapture(): React.ReactElement {
         </ol>
       )}
       {counts !== null && <div className="sd-list-f">{t("slipCapture.listFoot", { count: counts.filed })}</div>}
+      {mrdItems.length > 0 && (
+        /* #659 — owner ruling 28-Sep-2026: a missing slip goes to MRD at day end. Shown, never escalated. */
+        <div className="sd-mrd" data-testid="slip-mrd">
+          <div className="sd-list-h"><span className="tag">{t("slipCapture.mrd.title", { count: mrdItems.length })}</span></div>
+          <ol>
+            {mrdItems.map((row) => (
+              <li key={row.encounterId}>
+                <div className="row" data-testid={`slip-mrd-${row.encounterId}`}>
+                  <span className="sd-src">MRD</span>
+                  <span className="t">
+                    <b>{nameOf(row)}</b>
+                    <small>{dmy(row.serviceDate)} · <span className="mo">{row.visitNo}</span> · {row.state === "retake"
+                      ? t("slipCapture.mrd.retake", { reason: row.retakeReason ?? t("slipCapture.mrd.noReason") })
+                      : t("slipCapture.mrd.waiting")}</small>
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ol>
+          <p className="sd-clocks-note">{t("slipCapture.mrd.note")}</p>
+        </div>
+      )}
     </section>
   );
   const clocks = (
@@ -823,6 +893,16 @@ export function SlipCapture(): React.ReactElement {
           <Corners />
         </div>
         <div className="sd-choices">
+          {photo.status !== "reading" && (
+            <p
+              data-testid="slip-photo-read" role={photo.status === "mismatch" ? "alert" : undefined}
+              className={`sd-note${photo.status === "mismatch" ? " rd" : photo.status === "match" ? " ok" : " gd"}`} style={{ margin: 0 }}
+            >
+              {photo.status === "match" ? t("slipCapture.photoRead.match", { visit: photo.visitNo })
+                : photo.status === "mismatch" ? t("slipCapture.photoRead.mismatch", { photo: photo.visitNo, visit: resolved.visitNo })
+                  : t("slipCapture.photoRead.none")}
+            </p>
+          )}
           <div>
             <span className="tag" style={{ display: "block", marginBottom: 4 }}>{t("slipCapture.readableQ")}</span>
             <p className="lead">{t("slipCapture.readableBody")}</p>
@@ -865,7 +945,7 @@ export function SlipCapture(): React.ReactElement {
               {t("slipCapture.crop.adjust")}
             </button>
           )}
-          <button type="button" className="pri" data-testid="slip-file-it" onClick={() => void file()}>
+          <button type="button" className="pri" data-testid="slip-file-it" disabled={photo.status === "mismatch" || photo.status === "reading"} onClick={() => void file()}>
             {t("slipCapture.fileIt")} <span className="kb">⏎</span>
           </button>
         </div>

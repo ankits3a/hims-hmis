@@ -1939,6 +1939,59 @@ describe("OpdConsult", () => {
     }]);
   });
 
+  /*
+    #621 — THE RENAL DOSE WARNING. The reviewed band, the eGFR it was read against and HOW OLD that
+    eGFR is; or "no recent kidney function". Every renal hit asks for a reason, and the override names
+    the reviewed monograph's generic. Never a silent block, never money.
+  */
+  const RENAL_HIT = {
+    lineIndex: 0, genericId: "gen-metformin", genericName: "Metformin 500 mg oral tablet",
+    kind: "band", severity: "reduce", dose: "Max 1 g a day; do not start", egfr: 38,
+    sampledAt: "2026-10-03T04:00:00.000Z", ageDays: 12, reason: null,
+  };
+  const renalRoutes = (hit: unknown) => ({
+    ...baseRoutes(),
+    "GET /api/formulary/medicines/search": { status: 200, body: DRUG_HITS },
+    "GET /api/formulary/coverage": { status: 200, body: { coverage: 0.92, noticeEnabled: true } },
+    "POST /api/opd/visits/enc-1/rx-precheck": {
+      status: 201,
+      body: { allergyMatches: [], interactions: [], duplicates: [], notices: [], drugDisease: [], renal: [hit], unresolvedLineIndexes: [] },
+    },
+    "POST /api/opd/visits/enc-1/prescriptions": { status: 201, body: { prescriptionId: "rx-1", version: 1, notices: [] } },
+    "GET /api/opd/prescriptions/rx-1/print": { status: 200, body: PRINT_DATA },
+  });
+
+  it("#621: a renal band names the eGFR and how old it is, issues nothing, and the override carries the generic", async () => {
+    mockRoutes(renalRoutes(RENAL_HIT));
+    const user = userEvent.setup();
+    const path = "/api/opd/visits/enc-1/prescriptions";
+
+    const dialog = await toTheDialog(user);
+    expect(within(dialog).getByTestId("renal-hit-0")).toHaveTextContent(
+      "Line 1: Metformin 500 mg oral tablet — reduce the dose for eGFR 38 (measured 12 d ago): Max 1 g a day; do not start",
+    );
+    expect(callsTo("POST", path)).toHaveLength(0);
+    // No reason, no issue.
+    await user.click(within(dialog).getByRole("button", { name: "Override and issue" }));
+    expect(callsTo("POST", path)).toHaveLength(0);
+
+    await user.type(within(dialog).getByTestId("renal-reason-0"), "nephrology advised 500 mg BD, creatinine monthly");
+    await user.click(within(dialog).getByRole("button", { name: "Override and issue" }));
+    await waitFor(() => expect(callsTo("POST", path)).toHaveLength(1));
+    const body = bodiesOf("POST", path)[0]! as { renalOverrides: { lineIndex: number; reason: string; genericId: string }[] };
+    expect(body.renalOverrides).toEqual([{ lineIndex: 0, reason: "nephrology advised 500 mg BD, creatinine monthly", genericId: "gen-metformin" }]);
+  });
+
+  it("#621: with no recent eGFR the warning says so, with the last one's age", async () => {
+    mockRoutes(renalRoutes({ ...RENAL_HIT, kind: "no_recent_kidney_function", severity: null, dose: null, egfr: null, ageDays: 120, reason: "stale" }));
+    const user = userEvent.setup();
+    const dialog = await toTheDialog(user);
+    expect(within(dialog).getByTestId("renal-hit-0")).toHaveTextContent(
+      "Line 1: Metformin 500 mg oral tablet — no recent kidney function (last eGFR 120 d ago); its dose depends on it",
+    );
+    expect(within(dialog).queryByText(/₹/)).not.toBeInTheDocument();
+  });
+
   /**
    * C7 (independent review) — 16a's STATE MUST NOT OUTLIVE THE PATIENT IT BELONGS TO.
    *
@@ -3492,6 +3545,44 @@ describe("OpdConsult — the clinical co-pilot", () => {
     ]);
   });
 
+  /**
+   * #620 (decision 0050 P0) — A FILLED LINE SAYS WHAT BECAME OF IT. Each line the fill put on the
+   * prescription carries its own suggestion event id onto the issue, and once the issue stands each
+   * is told: `accepted` when it went out as offered, `edited` when the doctor changed it first.
+   */
+  it("P7: a filled line carries its suggestion id onto the issue — a changed dose is told `edited`, an untouched line `accepted`", async () => {
+    mockRoutes(cdsRoutes({
+      "POST /api/opd/visits/enc-1/prescriptions": { status: 201, body: { prescriptionId: "rx-1", version: 1, qrPayload: "rx1.x", allergyOverrideCount: 0 } },
+      "POST /api/opd/consult/signals": { status: 201, body: { misses: 0, suggestions: 2 } },
+    }));
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.type(screen.getByLabelText("Chief complaint"), "fever and sore throat{Enter}");
+    await user.click(await screen.findByTestId("cds-hit-SYN_URI_01"));
+    await user.click(await screen.findByTestId("cds-fill"));
+    const doses = await screen.findAllByLabelText("Dose");
+    await user.clear(doses[0]!);
+    await user.type(doses[0]!, "3 mL");
+    // Nothing is told at the fill: an unissued line is not an outcome.
+    const medicineSignals = () => bodiesOf("POST", "/api/opd/consult/signals")
+      .flatMap((b) => (b.suggestions as { kind: string; id?: string; outcome: string; itemKey?: string; rankShown?: number }[]))
+      .filter((x) => x.kind === "medicine" && x.id !== undefined);
+    expect(medicineSignals()).toEqual([]);
+
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+    await waitFor(() => expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions")).toHaveLength(1));
+    const posted = bodiesOf("POST", "/api/opd/visits/enc-1/prescriptions")[0]! as { lines: { source?: string; suggestionEventId?: string; suggestedAs?: string }[] };
+    const ids = posted.lines.map((l) => l.suggestionEventId);
+    expect(ids.every((id) => typeof id === "string" && /^sg_[A-Za-z0-9]{8,60}$/.test(id))).toBe(true);
+    expect(new Set(ids).size).toBe(2);
+    expect(posted.lines.map((l) => l.source)).toEqual(["suggested", "suggested"]);
+    // The line as offered is the screen's own bookkeeping; it is not part of the prescription.
+    expect(posted.lines.some((l) => "suggestedAs" in l)).toBe(false);
+
+    await waitFor(() => expect(medicineSignals()).toHaveLength(2));
+    expect(medicineSignals().map((x) => [x.id, x.outcome, x.rankShown])).toEqual([[ids[0], "edited", 0], [ids[1], "accepted", 1]]);
+  });
+
   /*
    * ═══ CONSULT V2 PR 3 — the suggestions follow the copilot (owner, 2026-09-23, round 4) ═══
    * Open copilot → they sit in its column. Folded → at the head of the tab, labelled so. Never both.
@@ -4125,6 +4216,23 @@ describe("FD-30 — the transcription draft on the doctor's screen", () => {
     expect(panel.getByRole("alert")).toHaveTextContent("load it into the editor");
     /* STILL THERE. */
     expect(screen.getByTestId("rx-draft-line-0")).toBeInTheDocument();
+  });
+
+  it("#620: a slip loaded into the editor and issued from there says it came off the paper — not that the doctor typed it", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/visits/enc-1/prescription-draft": { status: 200, body: { draft: DRAFT } },
+      "POST /api/opd/visits/enc-1/prescriptions": { status: 201, body: { prescriptionId: "rx-1", version: 1, qrPayload: "rx1.x", allergyOverrideCount: 0 } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.click(await screen.findByTestId("rx-draft-load"));
+    expect(await screen.findByDisplayValue("Tab Amoxicillin 500 mg")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+    await waitFor(() => expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions")).toHaveLength(1));
+    const posted = bodiesOf("POST", "/api/opd/visits/enc-1/prescriptions")[0]! as { lines: { drug: string; source?: string }[] };
+    expect(posted.lines.map((l) => [l.drug, l.source])).toEqual([["Tab Amoxicillin 500 mg", "paper"]]);
   });
 
   it("a visit with no slip shows no panel at all", async () => {
