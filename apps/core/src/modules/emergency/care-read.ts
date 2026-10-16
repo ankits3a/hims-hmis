@@ -53,7 +53,9 @@ export async function readErCare(db: Db, actor: Actor, episodeId: string): Promi
   const live = p.unidentified ? [] : (await listAllergies(db, p.id)).filter((a) => a.status === "active");
   const allergyWords = p.unidentified ? ["Allergy: unknown"] : live.length === 0 ? ["Allergy: none recorded"]
     : live.map((a) => `Allergy: ${a.substance}${a.severity === null ? "" : ` (${a.severity})`}`);
-  const criticals = await openCriticalsForEncounters(db, [e.episodeNo]);
+  // Review #894: the lab's restricted-test rule for the reader — the urgency always, the content only to the orderer or
+  // a holder of `orders.read.restricted`.
+  const criticals = await openCriticalsForEncounters(db, [e.episodeNo], actor);
   return {
     episodeId: e.id, stabilisedAt: e.stabilisedAt?.toISOString() ?? null, allergyWords,
     notes: notes.map((n) => ({
@@ -76,7 +78,7 @@ export async function readErCare(db: Db, actor: Actor, episodeId: string): Promi
       callId: c.id, departmentCode: c.departmentCode, urgency: c.urgency, reason: c.reason, calledAt: c.calledAt.toISOString(),
       answeredAt: c.answeredAt?.toISOString() ?? null, seenAt: c.seenAt?.toISOString() ?? null, callees: c.callees.map((x) => x.name),
     })),
-    criticals: criticals.map((c) => ({ callId: c.callId, analyte: c.analyteCode, value: c.value, unit: c.unit, openedAt: c.openedAt.toISOString() })),
+    criticals: criticals.map((c) => ({ callId: c.callId, analyte: c.masked ? "Critical result (restricted test)" : c.analyteCode, value: c.value, unit: c.unit, openedAt: c.openedAt.toISOString() })),
   };
 }
 

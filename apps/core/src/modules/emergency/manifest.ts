@@ -1,7 +1,12 @@
-import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_BILL, ER_CARE, ER_CODES, ER_DISPOSITION, ER_MCI, ER_MLC, ER_TRIAGE } from "./names";
+import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WAITING, ER_BOARD_WALL, ER_BILL, ER_CARE, ER_CODES, ER_DISPOSITION, ER_MCI, ER_MLC, ER_TRIAGE } from "./names";
+import { emergencyCopilotIntents, emergencyCopilotTools } from "./copilot-tools";
+import {
+  boardingLongCard, callUnansweredCard, casualtyNowCard, criticalResultCard, doctorOverdueCard, lwbsRiskCard, mlcCountersignDueCard,
+  mlcIntimationDueCard, preAlertCard, resultReadyCard, retriageDueCard,
+} from "./now-cards";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
-export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_BILL, ER_CARE, ER_CODES, ER_DISPOSITION, ER_MCI, ER_MLC, ER_TRIAGE };
+export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WAITING, ER_BOARD_WALL, ER_BILL, ER_CARE, ER_CODES, ER_DISPOSITION, ER_MCI, ER_MLC, ER_TRIAGE };
 
 /**
  * ER lane 1 (#808, decision 0076) — the emergency department's declared surface: five permissions, five menu entries,
@@ -14,6 +19,9 @@ export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_BILL, ER_CARE, ER
  *   er.arrival.register  record an arrival (a known patient, a new named patient, an unidentified patient), a pre-alert,
  *                        a brought-dead marker, and print or reprint the ER band — front office, its supervisor, the
  *                        casualty nurse, the duty manager
+ *
+ *   er.board.waiting     (lane 9, #816) the waiting-area TV only: tokens and stage words, no name, no clinical text —
+ *                        the `waiting_display` seat alone
  *
  *   er.triage            (lane 2, #809) triage and re-triage by ESI, vital sets, place and move in a bay, name the ER
  *                        doctor of record — the casualty nurse and doctors
@@ -65,6 +73,26 @@ export const emergencyManifest: ModuleManifest = {
     // Lane 8 (#815) — Code Yellow: the MCI board (counts, tags, packs, surge bays, the head count).
     { label: "MCI board", path: "/er/mci", permission: ER_MCI },
   ],
-  permissions: [ER_BOARD_VIEW, ER_ARRIVAL_REGISTER, ER_TRIAGE, ER_BOARD_WALL, ER_CARE, ER_MLC, ER_DISPOSITION, ER_BILL, ER_CODES, ER_MCI],
+  permissions: [ER_BOARD_VIEW, ER_ARRIVAL_REGISTER, ER_TRIAGE, ER_BOARD_WALL, ER_CARE, ER_MLC, ER_DISPOSITION, ER_BILL, ER_CODES, ER_MCI, ER_BOARD_WAITING],
   subscriptions: [],
+  /*
+   * Lane 9 (#816) — the Now cards (spec §4.9; Doctor Desk seam E10 `er.casualty_now`): one provider per card type, each
+   * gated by the permission of the act that answers it. No money on any (decision 0058; no card reads `er.bill` data).
+   */
+  desk: [
+    { key: "emergency.casualty_now", permission: ER_BOARD_VIEW, load: async (ctx) => casualtyNowCard(ctx) },
+    { key: "emergency.retriage_due", permission: ER_TRIAGE, load: async (ctx) => retriageDueCard(ctx) },
+    { key: "emergency.doctor_overdue", permission: ER_CARE, load: async (ctx) => doctorOverdueCard(ctx) },
+    { key: "emergency.call_unanswered", permission: ER_CARE, load: async (ctx) => callUnansweredCard(ctx) },
+    { key: "emergency.result_ready", permission: ER_CARE, load: async (ctx) => resultReadyCard(ctx) },
+    { key: "emergency.critical_result", permission: ER_CARE, load: async (ctx) => criticalResultCard(ctx) },
+    { key: "emergency.boarding_long", permission: ER_DISPOSITION, load: async (ctx) => boardingLongCard(ctx) },
+    { key: "emergency.mlc_intimation_due", permission: ER_MLC, load: async (ctx) => mlcIntimationDueCard(ctx) },
+    { key: "emergency.mlc_countersign_due", permission: ER_MLC, load: async (ctx) => mlcCountersignDueCard(ctx) },
+    { key: "emergency.pre_alert", permission: ER_ARRIVAL_REGISTER, load: async (ctx) => preAlertCard(ctx) },
+    { key: "emergency.lwbs_risk", permission: ER_TRIAGE, load: async (ctx) => lwbsRiskCard(ctx) },
+  ],
+  // Lane 9 (#816) — the ER's copilot questions through the open intent seam (#865): the tools and the words that route to them.
+  copilotTools: emergencyCopilotTools,
+  copilotIntents: emergencyCopilotIntents,
 };

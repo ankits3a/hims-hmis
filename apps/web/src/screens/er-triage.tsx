@@ -12,6 +12,7 @@ import {
 } from "../lib/er-api";
 import type { EsiDecision, EsiLevel } from "../lib/er-api";
 import { EsiBadge, ageSexWords, aliasFirst, doctorClock } from "./er-board";
+import { EsiCopilotCard } from "./er-copilot";
 import "../styles/paper-pine.css";
 import "./er.css";
 
@@ -178,6 +179,7 @@ export function ErTriage(): React.ReactElement {
             </header>
           )}
 
+          {tile !== null && first ? <EsiCopilotCard episodeId={tile.episodeId} onUse={(x) => setD(x)} /> : null}
           {tile !== null && first ? (
             <div className="ert-qs">
               <YesNo t={t} testid="er-triage-q-a" label={t("erTriage.q.lifeSaving")} hint={t("erTriage.q.lifeSavingHint")} value={d.lifeSaving} onPick={yes("lifeSaving")} />

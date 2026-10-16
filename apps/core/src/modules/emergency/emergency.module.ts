@@ -2,6 +2,7 @@ import { Injectable, Module, OnModuleInit } from "@nestjs/common";
 import { RealtimeGateway } from "../../kernel/realtime/gateway";
 import { RealtimeModule } from "../../kernel/realtime/realtime.module";
 import { EmergencyController } from "./emergency.controller";
+import { EmergencyCopilotController } from "./copilot.controller";
 import { ER_TOPIC_SPACES, erTopicRouter } from "./realtime";
 import { registerErChargeSink, registerErEncounterResolver } from "./charge-sink";
 
@@ -25,7 +26,8 @@ class EmergencyRealtimeRegistrar implements OnModuleInit {
 
 @Module({
   imports: [RealtimeModule],
-  controllers: [EmergencyController],
+  // Lane 9 (#816): the copilot routes (`/er/copilot/*`) — the staff copilot's model config, reads and drafts only.
+  controllers: [EmergencyController, EmergencyCopilotController],
   providers: [EmergencyRealtimeRegistrar],
 })
 export class EmergencyModule {}

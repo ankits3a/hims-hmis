@@ -66,8 +66,8 @@ Source: `apps/core/src/modules/lab/`
   - `acknowledgeCritical(tx: Tx, actor: Actor, input: AcknowledgeCriticalInput, now: Date = new Date()): Promise<AcknowledgeCriticalOutcome>`
   - `nextRung(attempts: readonly CriticalAttempt[]): CriticalRung | null`
   - `openCriticalCalls(db: Db, actor: Actor, now: Date = new Date()): Promise<OpenCriticalCall[]>`
-  - `openCriticalsForEncounters(db: Db | Tx, encounterNos: readonly string[]): Promise<{ callId: string; encounterNo: string; openedAt: Date; an…`
-  - types: `AcknowledgeCriticalInput`, `AcknowledgeCriticalOutcome`, `CriticalAttempt`, `OpenCriticalCall`
+  - `openCriticalsForEncounters(db: Db | Tx, encounterNos: readonly string[], viewer: Actor | { system: true }): Promise<OpenCritical[]>`
+  - types: `AcknowledgeCriticalInput`, `AcknowledgeCriticalOutcome`, `CriticalAttempt`, `OpenCritical`, `OpenCriticalCall`
 - `definitions.ts`
   - `LAB_DEFINITIONS`
   - `LAB_DEF_KEYS`

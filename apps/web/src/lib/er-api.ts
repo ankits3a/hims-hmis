@@ -1,5 +1,6 @@
 import { ApiError, api } from "./api";
 import type {
+  ErDraft, ErDraftKind, ErEsiProposal, ErSinceArrival, ErWaitingDisplay,
   ErBay, ErBill, ErBillDesk, ErBoard, ErCodeView, ErCodes, ErMciBoard, ErMciCount, ErMciPack, ErMciSurgeBed, ErCareView, ErDeskView, ErDoctorOption, ErEpisodeView, ErItemOption, ErMlcDesk, ErMlcDetail, ErPatientHit, ErRefusalBody,
 } from "@hmis/contracts";
 
@@ -267,3 +268,11 @@ export const mintPacksApi = (body: Record<string, unknown>) => post<{ packs: ErM
 export const mciArrivalApi = (body: Record<string, unknown>) => post<{ episodeNo: string; alias: string }>(ER_ROUTES.mciArrival, body);
 export const mciTagApi = (body: Record<string, unknown>) => post<{ tag: ErMciTagName }>(ER_ROUTES.mciTag, body);
 export const surgeApi = (body: Record<string, unknown>) => post<{ opened: { bedId: string; code: string }[] }>(ER_ROUTES.mciSurge, body);
+
+/* ═══ lane 9 (#816) — the ER copilot (`copilot.controller.ts`, the contract's `ER_COPILOT_ROUTES`, copied). Reads and drafts
+ * only: nothing here records anything — a draft fills a form; the doctor signs through the act that owns it. ═══ */
+const ER_COPILOT_ROUTES = { esi: "/er/copilot/esi", since: "/er/copilot/since", drafts: "/er/copilot/drafts", waiting: "/er/copilot/waiting" } as const;
+export const fetchEsiProposal = (episodeId: string) => api<ErEsiProposal>("GET", `${ER_COPILOT_ROUTES.esi}/${encodeURIComponent(episodeId)}`);
+export const fetchSinceArrival = (episodeId: string) => api<ErSinceArrival>("GET", `${ER_COPILOT_ROUTES.since}/${encodeURIComponent(episodeId)}`);
+export const draftApi = (episodeId: string, kind: ErDraftKind) => api<ErDraft>("POST", `${ER_COPILOT_ROUTES.drafts}/${encodeURIComponent(episodeId)}/${kind}`, {});
+export const fetchWaitingDisplay = () => api<ErWaitingDisplay>("GET", ER_COPILOT_ROUTES.waiting);

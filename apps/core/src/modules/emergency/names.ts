@@ -10,6 +10,12 @@ export const ER_ARRIVAL_REGISTER = "er.arrival.register";
  */
 export const ER_BOARD_WALL = "er.board.wall";
 /**
+ * ER lane 9 review (#894, DECIDED) — the WAITING-AREA display's own string: a public TV shows tokens and stage words
+ * (`GET /er/copilot/waiting`) and nothing else. Kept apart from `er.board.wall` so the TV's sign-in cannot open the wall
+ * board; held only by the `waiting_display` seat.
+ */
+export const ER_BOARD_WAITING = "er.board.waiting";
+/**
  * `link_identity` files a `patient_merge` request — the same act as the merge screen's "Request merge" — so it asks the
  * same permission the patients module's route asks. DECIDED (lane 1): no new ER string for it.
  */

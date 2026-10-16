@@ -263,6 +263,15 @@ export const COPILOT_ANSWER_KEYS = [
   "copilot.answer.reminderTooLong",
   "copilot.answer.reminderLimit",
   "copilot.answer.reminderSet",
+
+  /*
+    ═══ ER lane 9 (#816) — the emergency department's two questions (declared by the emergency manifest) ═══
+    Counts only: no patient, no name, no money (decision 0058).
+  */
+  "copilot.answer.erCasualtyNow",
+  "copilot.answer.erCasualtyQuiet",
+  "copilot.answer.erMlcDue",
+  "copilot.answer.erMlcNoneDue",
 ] as const;
 
 export type CopilotAnswerKey = (typeof COPILOT_ANSWER_KEYS)[number];
