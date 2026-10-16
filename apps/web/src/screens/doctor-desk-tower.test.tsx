@@ -5,7 +5,7 @@ import { setToken } from "../lib/api";
 import { renderWithProviders, renderWithRouter } from "../test-utils";
 import { DoctorDeskTower } from "./doctor-desk-tower";
 import { DoctorDeskBriefs } from "./doctor-desk-briefs";
-import { DoctorLanding, LANDED_KEY } from "./doctor-desk-landing";
+import { DoctorLanding, landedKeyFor } from "./doctor-desk-landing";
 import type { WireBrief, WireTower } from "../lib/doctor-desk-api";
 
 /**
@@ -177,6 +177,8 @@ describe("Doctor Desk Tower (DD-0)", () => {
     vi.stubGlobal("print", print);
     await userEvent.click(screen.getByTestId("dd-brief-print"));
     expect(print).toHaveBeenCalled();
+    // No money on AI Briefs either (decision 0058).
+    expect(document.body.textContent ?? "").not.toMatch(/\bpaid\b|unpaid|\bfees?\b|₹|rupee|\bbill/i);
   });
 });
 
@@ -207,7 +209,7 @@ describe("Doctor Desk landing (DD-0.1, owner R5)", () => {
     landing = { tower: true };
     renderWithRouter(<DoctorLanding><Where /></DoctorLanding>, "/");
     await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent("/doctor-desk"));
-    expect(sessionStorage.getItem(LANDED_KEY)).toBe("1");
+    expect(sessionStorage.getItem(landedKeyFor("sr"))).toBe("1");
   });
 
   it("a doctor in no unit stays on the Desk", async () => {
@@ -226,8 +228,16 @@ describe("Doctor Desk landing (DD-0.1, owner R5)", () => {
     expect(screen.getByTestId("where")).toHaveTextContent(/^\/$/);
   });
 
+  it("a different user signing in on the same tab still lands on their Tower", async () => {
+    sessionStorage.setItem(landedKeyFor("someone-else"), "1");
+    hospital = ["opd.consult"];
+    landing = { tower: true };
+    renderWithRouter(<DoctorLanding><Where /></DoctorLanding>, "/");
+    await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent("/doctor-desk"));
+  });
+
   it("a second visit to / in the same session stays on the Desk", async () => {
-    sessionStorage.setItem(LANDED_KEY, "1");
+    sessionStorage.setItem(landedKeyFor("sr"), "1");
     hospital = ["opd.consult"];
     renderWithRouter(<DoctorLanding><Where /></DoctorLanding>, "/");
     await waitFor(() => expect(asked.some((u) => u.endsWith("/auth/me"))).toBe(true));

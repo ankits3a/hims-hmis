@@ -6,6 +6,7 @@ import { raiseNotice } from "../../kernel/alerts/notices";
 import { DoctorDeskError } from "./errors";
 import { deskScope } from "./scope";
 import { owedByUnit } from "./owed";
+import { withTx } from "../../kernel/db/client";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -28,7 +29,12 @@ const BODY: Record<OwedKind, string> = {
   visit_open: "A visit of yours from an earlier day is not finished. Open the Doctor Desk to see it.",
 };
 
-export async function nudge(db: Db, actor: Actor, rowKey: string, at: Date): Promise<{ nudgeId: string; holderId: string }> {
+/** The bell writer, injectable so a test can make it fail; production always uses `raiseNotice`. */
+export type NudgeDeps = { raise: typeof raiseNotice };
+
+export async function nudge(
+  db: Db, actor: Actor, rowKey: string, at: Date, deps: NudgeDeps = { raise: raiseNotice },
+): Promise<{ nudgeId: string; holderId: string }> {
   const scope = await deskScope(db, actor, at);
   if (scope.unit === null || !scope.members.some((m) => m.userId === actor.id)) {
     throw new DoctorDeskError("not_unit_member", "Only a member of the unit can nudge its rows.");
@@ -38,18 +44,23 @@ export async function nudge(db: Db, actor: Actor, rowKey: string, at: Date): Pro
   if (row.holder.userId === actor.id) throw new DoctorDeskError("own_row", "You hold this item yourself.");
 
   const nudgeId = newId();
-  const won = await db.insert(doctorDeskNudges).values({
-    id: nudgeId, rowKey, teamId: scope.unit.teamId, senderId: actor.id, holderId: row.holder.userId, createdAt: at,
-  }).onConflictDoNothing().returning({ id: doctorDeskNudges.id });
-  if (won.length === 0) throw new DoctorDeskError("already_nudged", "You have already nudged this item.");
-
   const sourceKey = `doctor-desk-nudge:${nudgeId}`;
-  await raiseNotice(db, {
-    userId: row.holder.userId, kind: NUDGE_ALERT_KIND, title: `Nudge from ${scope.name}`, body: BODY[row.kind],
-    refType: "doctor_desk_nudge", refId: nudgeId, sourceKey, at,
+  const unitTeamId = scope.unit.teamId;
+  // ONE transaction (#891 review): the nudge, its bell row and the link between them land together or
+  // not at all — a bell that fails must not leave a nudge that answers `already_nudged` to the retry.
+  await withTx(db, async (tx) => {
+    const won = await tx.insert(doctorDeskNudges).values({
+      id: nudgeId, rowKey, teamId: unitTeamId, senderId: actor.id, holderId: row.holder.userId, createdAt: at,
+    }).onConflictDoNothing().returning({ id: doctorDeskNudges.id });
+    if (won.length === 0) throw new DoctorDeskError("already_nudged", "You have already nudged this item.");
+    // `raiseNotice` opens its own transaction; on a Tx that is a savepoint inside this one.
+    await deps.raise(tx as unknown as Db, {
+      userId: row.holder.userId, kind: NUDGE_ALERT_KIND, title: `Nudge from ${scope.name}`, body: BODY[row.kind],
+      refType: "doctor_desk_nudge", refId: nudgeId, sourceKey, at,
+    });
+    const bell = (await tx.select({ id: alerts.id }).from(alerts)
+      .where(and(eq(alerts.sourceEventId, sourceKey), eq(alerts.userId, row.holder.userId))))[0];
+    if (bell !== undefined) await tx.update(doctorDeskNudges).set({ alertId: bell.id }).where(eq(doctorDeskNudges.id, nudgeId));
   });
-  const bell = (await db.select({ id: alerts.id }).from(alerts)
-    .where(and(eq(alerts.sourceEventId, sourceKey), eq(alerts.userId, row.holder.userId))))[0];
-  if (bell !== undefined) await db.update(doctorDeskNudges).set({ alertId: bell.id }).where(eq(doctorDeskNudges.id, nudgeId));
   return { nudgeId, holderId: row.holder.userId };
 }
