@@ -98,7 +98,8 @@ const consultNoteBody = z.object({
     serviceId: z.string().min(1).max(64),
     code: z.string().min(1).max(64),
     name: z.string().min(1).max(300),
-    pricePaise: z.number().int().nonnegative(),
+    /** #609 — null: the tariff has no price for this test yet; the counter prices it. */
+    pricePaise: z.number().int().nonnegative().nullable(),
   })).max(20).nullable().optional(),
   /**
    * CONSULT V2 — bounded like everything else on this body. Sixty findings is a thorough examination;
