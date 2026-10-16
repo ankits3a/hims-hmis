@@ -67,7 +67,7 @@ describe("doctor-desk — the Tower (DD-0)", () => {
   }
 
   /** A verified result on an order whose responsible clinician is `clinicianId`, optionally delta-flagged and with an open critical call. */
-  async function labResult(clinicianId: string, patientId: string, encounterNo: string, o: { critical?: boolean; delta?: boolean; at?: Date; value?: string; restricted?: boolean; analyteId?: string; status?: "verified" | "autoverified" } = {}): Promise<{ resultId: string; callId: string | null }> {
+  async function labResult(clinicianId: string, patientId: string, encounterNo: string, o: { critical?: boolean; delta?: boolean; at?: Date; value?: string; restricted?: boolean; analyteId?: string; status?: "verified" | "autoverified"; prevId?: string } = {}): Promise<{ resultId: string; callId: string | null }> {
     const orderId = newId();
     const itemId = newId();
     const resultId = newId();
@@ -80,7 +80,7 @@ describe("doctor-desk — the Tower (DD-0)", () => {
     await db.insert(orderItems).values({ id: itemId, orderId, serviceId, restricted: o.restricted === true });
     await db.insert(labResults).values({
       id: resultId, orderItemId: itemId, analyteId: o.analyteId ?? analyteK, valueNumeric: o.value ?? "6.4", unit: "mmol/L", flag: o.critical === true ? "HH" : "H",
-      enteredByType: "user", enteredById: "t", entryMode: "manual", deltaFlag: o.delta === true,
+      enteredByType: "user", enteredById: "t", entryMode: "manual", deltaFlag: o.delta === true, deltaPrevResultId: o.prevId ?? null,
       verificationStatus: o.status ?? "verified", verifiedBy: "t", verifiedAt: o.at ?? min(-30),
     });
     let callId: string | null = null;
@@ -377,5 +377,20 @@ describe("doctor-desk — the Tower (DD-0)", () => {
     const v = await encounter(P.SR, patientB, TODAY, "in_consultation");
     await labResult(P.SR, patientB, v.visitNo, { delta: true, status: "autoverified" });
     expect((await towerView(db, actor(P.SR), AT)).attention.filter((r) => r.kind === "lab_delta")).toEqual([]);
+  });
+
+  it("the NEXT card's earlier value follows the restricted-test rule too", async () => {
+    const before = await encounter(P.SR, patientA, "2026-09-20", "completed");
+    const v = await encounter(P.SR, patientA, TODAY, "waiting");
+    const hiv = newId();
+    await db.insert(labAnalytes).values({ id: hiv, code: "HIVL", nameEn: "HIV viral load", resultType: "numeric", createdBy: "t", updatedBy: "t" });
+    const old = await labResult(P.OUT, patientA, before.visitNo, { at: new Date("2026-09-01T10:00:00+05:30"), restricted: true, analyteId: hiv, value: "900" });
+    await labResult(P.SR, patientA, before.visitNo, { at: new Date("2026-10-01T10:00:00+05:30"), analyteId: hiv, value: "40", prevId: old.resultId });
+    const row = (await nextCard(db, actor(P.SR), v.id, AT)).since.find((s) => s.analyte === "HIV viral load");
+    expect(row).toMatchObject({ value: "40.0000", previous: null });
+    // My own earlier value is mine to see.
+    const own = await labResult(P.SR, patientA, before.visitNo, { at: new Date("2026-09-25T10:00:00+05:30"), restricted: true, analyteId: hiv, value: "300" });
+    await labResult(P.SR, patientA, before.visitNo, { at: new Date("2026-10-03T10:00:00+05:30"), analyteId: hiv, value: "20", prevId: own.resultId });
+    expect((await nextCard(db, actor(P.SR), v.id, AT)).since.find((s) => s.analyte === "HIV viral load")).toMatchObject({ value: "20.0000", previous: "300.0000" });
   });
 });

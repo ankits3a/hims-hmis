@@ -118,9 +118,19 @@ export async function resultsForPatientSince(exec: Db | Tx, actor: Actor, patien
   const seen = new Set<string>();
   const latest = rows.filter((r) => !r.restricted || canSeeRestricted || r.orderingClinicianId === actor.id).filter((r) => r.verifiedAt !== null && !seen.has(r.analyteId) && (seen.add(r.analyteId), true)).slice(0, SINCE_RESULTS_LIMIT);
   const prevIds = latest.map((r) => r.prevId).filter((x): x is string => x !== null);
-  const prev = prevIds.length === 0 ? [] : await (exec as Db).select({ id: labResults.id, valueNumeric: labResults.valueNumeric, valueText: labResults.valueText, valueCoded: labResults.valueCoded })
-    .from(labResults).where(inArray(labResults.id, prevIds));
-  const prevById = new Map(prev.map((p) => [p.id, valueOf(p)] as const));
+  // The earlier value is a result too, so the same restricted-test rule applies: one the asker may not
+  // see is dropped, and the line shows no "previous".
+  const prev = prevIds.length === 0 ? [] : await (exec as Db).select({
+    id: labResults.id, valueNumeric: labResults.valueNumeric, valueText: labResults.valueText, valueCoded: labResults.valueCoded,
+    restricted: orderItems.restricted, orderingClinicianId: orders.orderingClinicianId,
+  })
+    .from(labResults)
+    .innerJoin(orderItems, eq(orderItems.id, labResults.orderItemId))
+    .innerJoin(orders, eq(orders.id, orderItems.orderId))
+    .where(inArray(labResults.id, prevIds));
+  const prevById = new Map(prev
+    .filter((p) => !p.restricted || canSeeRestricted || p.orderingClinicianId === actor.id)
+    .map((p) => [p.id, valueOf(p)] as const));
   return latest.map((r) => ({
     analyte: r.analyte, value: valueOf(r), unit: r.unit, flag: r.flag,
     previous: r.prevId === null ? null : prevById.get(r.prevId) ?? null, verifiedAt: r.verifiedAt!,
