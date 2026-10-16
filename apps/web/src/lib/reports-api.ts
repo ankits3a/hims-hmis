@@ -246,6 +246,16 @@ export type WireGstr3b = {
 };
 export const fetchGstr3b = (r: RangeInput): Promise<WireGstr3b> => api("GET", `${BASE}/gstr3b${query(r)}`);
 export const fetchPurchaseRegister = (r: RangeInput): Promise<WirePurchaseRegister> => api("GET", `${BASE}/purchases${query(r)}`);
+/** #637 — the vendors' trade discount over the period's booked supplier bills, by vendor (`materials/reports.ts`). */
+export type WireVendorDiscountRow = {
+  vendorId: string; vendorCode: string; vendorName: string; gstin: string | null; bills: number;
+  grossPaise: number; discountPaise: number; taxablePaise: number; gstPaise: number; totalPaise: number; discountBps: number;
+};
+export type WireVendorDiscounts = {
+  from: string; to: string; preset: string; rows: WireVendorDiscountRow[];
+  totals: Omit<WireVendorDiscountRow, "vendorId" | "vendorCode" | "vendorName" | "gstin">;
+};
+export const fetchVendorDiscounts = (r: RangeInput): Promise<WireVendorDiscounts> => api("GET", `${BASE}/vendor-discounts${query(r)}`);
 export const fetchValuation = (asOf: string, store: string): Promise<WireValuation> => api("GET", `${BASE}/valuation${query({ asOf, store })}`);
 export const fetchNonMoving = (days: number, store: string): Promise<WireNonMoving> => api("GET", `${BASE}/non-moving${query({ days, store })}`);
 export const reconcileGstr2b = (input: { format: "json" | "csv"; content: string; preset: ReportPreset; from: string; to: string }): Promise<WireGstr2b> =>

@@ -102,6 +102,32 @@ const QUEUE_VIEW = {
   counts: { waiting: 2, called: 0, inConsult: 0, done: 3, left: 0 },
 };
 
+/**
+ * #660 — the desk's ONE read: every doctor of the department with their line (`GET
+ * /opd/departments/:id/queue`). Each doctor's `queue` is the per-doctor read's own shape; a doctor
+ * with a session but no fixture line gets an empty one, a doctor with no session gets null.
+ */
+const DEPT_Q = "GET /api/opd/departments/dep-1/queue";
+function emptyViewOf(s: { doctor: Record<string, unknown>; sessionId: string | null }): Record<string, unknown> {
+  return {
+    ...QUEUE_VIEW,
+    session: { ...QUEUE_VIEW.session, id: s.sessionId, doctorId: s.doctor.id },
+    doctor: s.doctor, ordered: [], waitingVitals: 0,
+    counts: { waiting: 0, called: 0, inConsult: 0, done: 0, left: 0 },
+  };
+}
+function deptQueue(
+  summary: { doctor: Record<string, unknown>; sessionId: string | null }[] = SUMMARY,
+  views: Record<string, unknown> = { "doc-1": QUEUE_VIEW },
+): Record<string, unknown> {
+  return {
+    departmentId: "dep-1", serviceDate: TODAY,
+    doctors: summary.map((s) => ({
+      ...s, queue: views[String(s.doctor.id)] ?? (s.sessionId === null ? null : emptyViewOf(s)),
+    })),
+  };
+}
+
 function fetchCalls(): { url: string; path: string; method: string; body: string }[] {
   return vi.mocked(fetch).mock.calls.map(([input, init]) => {
     const url = String(input);
@@ -154,13 +180,30 @@ describe("OpdDesk", () => {
    * in a bill-first hospital, have already paid. The transfer control that re-seats them — with the
    * consent E2 requires — is on this same screen.
    */
+  /*
+    Browser walk 2026-10-15 (#855): at 390 px the line sits behind the header's List button, not "on the
+    right", so the bar's hint must name the list without a direction that is only true on a wide screen.
+  */
+  it("#855: before a doctor is chosen, the bar's hint names the list and no screen side", async () => {
+    stubFetch({
+      "GET /api/opd/departments": { items: DEPARTMENTS },
+      "GET /api/opd/rooms": { items: ROOMS },
+      [DEPT_Q]: deptQueue(),
+    });
+    renderWithProviders(<OpdDesk />);
+    await pickDepartment(userEvent.setup());
+    const hint = await screen.findByText(/Choose a doctor on the board/);
+    expect(hint.textContent).toBe("Choose a doctor on the board — their line opens in the list.");
+    expect(hint.textContent).not.toMatch(/right|left/i);
+  });
+
   it("FD-7 T8: a doctor on leave says SO, with the number still waiting, and is not merely 'not scheduled'", async () => {
     const onLeaveWithQueue = { ...SUMMARY[0]!, doctor: doctor("doc-9", "Dr Away"), sessionId: "sess-9", waitingCount: 3, scheduledToday: false, onLeaveToday: true };
     const onLeaveEmpty = { ...SUMMARY[3]!, doctor: doctor("doc-8", "Dr Gone"), waitingCount: 0, scheduledToday: false, onLeaveToday: true };
     stubFetch({
       "GET /api/opd/departments": { items: DEPARTMENTS },
       "GET /api/opd/rooms": { items: ROOMS },
-      "GET /api/opd/queues/summary": { items: [...SUMMARY, onLeaveWithQueue, onLeaveEmpty] },
+      [DEPT_Q]: deptQueue([...SUMMARY, onLeaveWithQueue, onLeaveEmpty], {}),
     });
     renderWithProviders(<OpdDesk />);
     await pickDepartment(userEvent.setup());
@@ -173,19 +216,19 @@ describe("OpdDesk", () => {
     expect(screen.queryByTestId("on-leave-doc-4")).toBeNull();
   });
 
-  it("the doctor board renders GET /opd/queues/summary rows with room, status badge, waiting count, and the not-scheduled warning only where scheduledToday is false", async () => {
+  it("the doctor board renders the department read's doctor rows with room, status badge, waiting count, and the not-scheduled warning only where scheduledToday is false", async () => {
     stubFetch({
       "GET /api/opd/departments": { items: DEPARTMENTS },
       "GET /api/opd/rooms": { items: ROOMS },
-      "GET /api/opd/queues/summary": { items: SUMMARY },
+      [DEPT_Q]: deptQueue(SUMMARY, {}),
     });
     renderWithProviders(<OpdDesk />);
     const user = userEvent.setup();
 
     await pickDepartment(user);
 
-    await waitFor(() => expect(callsTo("GET", "/api/opd/queues/summary").length).toBeGreaterThanOrEqual(1));
-    expect(callsTo("GET", "/api/opd/queues/summary")[0]!.url).toBe(`/api/opd/queues/summary?departmentId=dep-1&serviceDate=${TODAY}`);
+    await waitFor(() => expect(callsTo("GET", "/api/opd/departments/dep-1/queue").length).toBeGreaterThanOrEqual(1));
+    expect(callsTo("GET", "/api/opd/departments/dep-1/queue")[0]!.url).toBe(`/api/opd/departments/dep-1/queue?serviceDate=${TODAY}`);
 
     const rowIn = await screen.findByTestId("board-row-doc-1");
     expect(within(rowIn).getByText("Dr Meera Rao")).toBeInTheDocument();
@@ -226,7 +269,7 @@ describe("OpdDesk", () => {
     stubFetch({
       "GET /api/opd/departments": { items: DEPARTMENTS },
       "GET /api/opd/rooms": { items: ROOMS },
-      "GET /api/opd/queues/summary": { items: SUMMARY },
+      [DEPT_Q]: deptQueue(SUMMARY, {}),
     });
     renderWithProviders(<OpdDesk />);
     await pickDepartment(userEvent.setup());
@@ -245,8 +288,7 @@ describe("OpdDesk", () => {
     stubFetch({
       "GET /api/opd/departments": { items: DEPARTMENTS },
       "GET /api/opd/rooms": { items: ROOMS },
-      "GET /api/opd/queues/summary": { items: SUMMARY },
-      "GET /api/opd/queues": QUEUE_VIEW,
+      [DEPT_Q]: deptQueue(SUMMARY),
     });
     renderWithProviders(<OpdDesk />);
     const user = userEvent.setup();
@@ -259,13 +301,18 @@ describe("OpdDesk", () => {
     const lane = screen.getByTestId("in-hand");
     expect(within(lane).getByText("Asha Devi")).toBeInTheDocument();
     expect(within(lane).getByText(/HMS0000001234/)).toBeInTheDocument();
-    expect(row).toHaveAttribute("aria-pressed", "true");
+    // #660 — with a token in hand the copilot panel takes the right column and the list folds to
+    // one line (the station shell's rule); the lane is then the ONLY place the patient is drawn.
+    expect(within(screen.getByTestId("station-right")).getByTestId("agent-dock")).toBeInTheDocument();
+    expect(screen.getAllByText("Asha Devi")).toHaveLength(1);
+    await user.click(screen.getByTestId("station-list-folded"));
+    expect(screen.getByTestId("queue-row-qe-1")).toHaveAttribute("aria-pressed", "true");
     // The list row and the lane — and nowhere else: no "Selected patient" card, no strip.
     expect(screen.getAllByText("Asha Devi")).toHaveLength(2);
 
     await user.keyboard("{Escape}");
     expect(screen.queryByTestId("in-hand")).toBeNull();
-    expect(row).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByTestId("queue-row-qe-1")).toHaveAttribute("aria-pressed", "false");
   });
 
   it("UX-AUDIT 2026-09-28: the line is one list with a source chip on every row and no filter tabs; Transfer is the pinned next act for a doctor on leave with people waiting", async () => {
@@ -273,8 +320,7 @@ describe("OpdDesk", () => {
     stubFetch({
       "GET /api/opd/departments": { items: DEPARTMENTS },
       "GET /api/opd/rooms": { items: ROOMS },
-      "GET /api/opd/queues/summary": { items: [away, ...SUMMARY.slice(1)] },
-      "GET /api/opd/queues": QUEUE_VIEW,
+      [DEPT_Q]: deptQueue([away, ...SUMMARY.slice(1)]),
     });
     renderWithProviders(<OpdDesk />);
     const user = userEvent.setup();
@@ -296,8 +342,7 @@ describe("OpdDesk", () => {
     stubFetch({
       "GET /api/opd/departments": { items: DEPARTMENTS },
       "GET /api/opd/rooms": { items: ROOMS },
-      "GET /api/opd/queues/summary": { items: SUMMARY },
-      "GET /api/opd/queues": QUEUE_VIEW,
+      [DEPT_Q]: deptQueue(SUMMARY),
       "POST /api/opd/queues/transfer": { transferred: 1, toSessionId: "sess-2" },
     });
     renderWithProviders(<OpdDesk />);
@@ -323,7 +368,7 @@ describe("OpdDesk", () => {
   });
 
   it("the queue overview refetches on a queue.called frame — timers frozen so the 15 s poll provably cannot be the cause", async () => {
-    // MECHANISM (§3.14c): the ONLY thing that can produce a second GET /opd/queues here is the
+    // MECHANISM (§3.14c): the ONLY thing that can produce a second department read here is the
     // realtime handler's invalidateQueries. The alternatives are each shut off by construction:
     //  · the 15 s poll  — fake timers are frozen and this test advances < 1 s of them, asserted below;
     //  · a remount      — nothing unmounts the query's component between the two counts;
@@ -338,8 +383,7 @@ describe("OpdDesk", () => {
       "GET /api/auth/me": { actor: { type: "user", id: "u-1" } },
       "GET /api/opd/departments": { items: DEPARTMENTS },
       "GET /api/opd/rooms": { items: ROOMS },
-      "GET /api/opd/queues/summary": { items: SUMMARY },
-      "GET /api/opd/queues": QUEUE_VIEW,
+      [DEPT_Q]: deptQueue(SUMMARY),
     });
 
     // @testing-library's waitFor cannot drive vitest's fake timers (it gates its clock-advance on a
@@ -363,8 +407,9 @@ describe("OpdDesk", () => {
     await flush();
     await flush();
 
-    expect(callsTo("GET", "/api/opd/queues")).toHaveLength(1);
-    expect(callsTo("GET", "/api/opd/queues")[0]!.url).toBe(`/api/opd/queues?doctorId=doc-1&serviceDate=${TODAY}`);
+    // #660 — choosing a doctor reads nothing new: their line came with the department's one read.
+    expect(callsTo("GET", "/api/opd/departments/dep-1/queue")).toHaveLength(1);
+    expect(callsTo("GET", "/api/opd/queues")).toHaveLength(0);
     expect(screen.getByTestId("queue-row-qe-1")).toHaveTextContent("4");
     expect(within(screen.getByTestId("queue-row-qe-2")).getByText("Returned with results")).toBeInTheDocument();
 
@@ -378,7 +423,7 @@ describe("OpdDesk", () => {
     });
     await flush();
     // Negative control: auth + the connected re-render on their own refetch NOTHING.
-    expect(callsTo("GET", "/api/opd/queues")).toHaveLength(1);
+    expect(callsTo("GET", "/api/opd/departments/dep-1/queue")).toHaveLength(1);
 
     await act(async () => {
       ws.simulateMessage({
@@ -388,7 +433,7 @@ describe("OpdDesk", () => {
     });
     await flush();
 
-    expect(callsTo("GET", "/api/opd/queues")).toHaveLength(2);
+    expect(callsTo("GET", "/api/opd/departments/dep-1/queue")).toHaveLength(2);
     // The poll is 15 000 ms; this whole test advanced the (frozen) clock by well under a second.
     expect(Date.now() - startedAt).toBeLessThan(1_000);
   });
@@ -397,8 +442,7 @@ describe("OpdDesk", () => {
     stubFetch({
       "GET /api/opd/departments": { items: DEPARTMENTS },
       "GET /api/opd/rooms": { items: ROOMS },
-      "GET /api/opd/queues/summary": { items: SUMMARY },
-      "GET /api/opd/queues": QUEUE_VIEW,
+      [DEPT_Q]: deptQueue(SUMMARY),
       "POST /api/opd/visits/enc-1/abandon": { encounter: { id: "enc-1", status: "abandoned" } },
     });
     renderWithProviders(<OpdDesk />);
@@ -446,8 +490,7 @@ describe("OpdDesk", () => {
         }
         if (path === "/api/opd/departments") return json({ items: DEPARTMENTS }, 200);
         if (path === "/api/opd/rooms") return json({ items: ROOMS }, 200);
-        if (path === "/api/opd/queues/summary") return json({ items: SUMMARY }, 200);
-        if (path === "/api/opd/queues") return json(QUEUE_VIEW, 200);
+        if (path === "/api/opd/departments/dep-1/queue") return json(deptQueue(SUMMARY), 200);
         return new Response("{}", { status: 404 });
       }),
     );
@@ -508,15 +551,16 @@ describe("OpdDesk — the fee stamp (RC-4 T3)", () => {
       "GET /api/auth/me": { actor: { type: "user", id: "u-1" } },
       "GET /api/opd/departments": { items: DEPARTMENTS },
       "GET /api/opd/rooms": { items: ROOMS },
-      "GET /api/opd/queues/summary": { items: SUMMARY },
-      "GET /api/opd/queues": {
-        ...QUEUE_VIEW,
-        ordered: feeStatuses.map((feeStatus, i) => entry({
-          id: `qe-fs-${i}`, seq: i + 1, tokenNo: 100 + i, position: i + 1, feeStatus,
-          encounterId: `enc-fs-${i}`,
-          encounter: { id: `enc-fs-${i}`, patientId: "p-1", visitType: "new", dangerFlagged: false, status: "waiting" },
-        })),
-      },
+      [DEPT_Q]: deptQueue(SUMMARY, {
+        "doc-1": {
+          ...QUEUE_VIEW,
+          ordered: feeStatuses.map((feeStatus, i) => entry({
+            id: `qe-fs-${i}`, seq: i + 1, tokenNo: 100 + i, position: i + 1, feeStatus,
+            encounterId: `enc-fs-${i}`,
+            encounter: { id: `enc-fs-${i}`, patientId: "p-1", visitType: "new", dangerFlagged: false, status: "waiting" },
+          })),
+        },
+      }),
     });
     renderWithProviders(<OpdDesk />);
     const user = userEvent.setup();
@@ -573,8 +617,7 @@ describe("VD-2 T3 — the doctor-board flash rides the queue topic", () => {
       "GET /api/auth/me": { actor: { type: "user", id: "u-1" }, permissions: { hospital: ["opd.visits.open", "opd.queue.read"], scoped: { department: {}, floor: {} } } },
       "GET /api/opd/departments": { items: DEPARTMENTS },
       "GET /api/opd/rooms": { items: ROOMS },
-      "GET /api/opd/queues/summary": { items: SUMMARY },
-      "GET /api/opd/queues": QUEUE_VIEW,
+      [DEPT_Q]: deptQueue(SUMMARY),
     });
     const flush = async (ms = 5): Promise<void> => { await act(async () => { await vi.advanceTimersByTimeAsync(ms); }); };
     renderWithProviders(<OpdDesk />);
@@ -613,5 +656,151 @@ describe("VD-2 T3 — the doctor-board flash rides the queue topic", () => {
     fireEvent.click(screen.getByTestId("board-pick-doc-2"));
     await flush(); await flush();
     expect(screen.queryByTestId("escalation-flash")).toBeNull();
+  });
+});
+
+/* ════════════════════════════════════════════════════════════════════════════════════════════
+   #660 — THE DEPARTMENT'S LINE AND THE COPILOT PANEL
+   ════════════════════════════════════════════════════════════════════════════════════════════ */
+
+describe("#660 — the department-wide list, in ONE read, and the copilot panel", () => {
+  beforeEach(() => {
+    setToken(null);
+    localStorage.clear();
+    FakeWebSocket.reset();
+    resetRealtimeClientForTests();
+    vi.setSystemTime(new Date(NOW_ISO));
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+    setToken(null);
+    localStorage.clear();
+    window.history.pushState({}, "", "/");
+  });
+
+  const DOC2_VIEW = {
+    ...QUEUE_VIEW,
+    session: { ...QUEUE_VIEW.session, id: "sess-2", doctorId: "doc-2", roomId: "room-2" },
+    doctor: doctor("doc-2", "Dr Anil Verma"),
+    ordered: [entry({
+      id: "qe-9", seq: 1, sessionId: "sess-2", encounterId: "enc-9", tokenNo: 21, position: 1, queueClass: 2,
+      encounter: { id: "enc-9", patientId: "p-9", visitType: "new", dangerFlagged: false, status: "waiting" },
+      patient: { requestedId: "p-9", id: "p-9", uhid: "HMS0000009999", name: "Mohan Lal", alias: null, restricted: false, sex: "male", dob: null },
+    })],
+    waitingVitals: 0,
+    counts: { waiting: 1, called: 0, inConsult: 0, done: 0, left: 0 },
+  };
+
+  it("makes ONE department read per 15 s poll — never one per doctor — and choosing a doctor reads nothing new", async () => {
+    vi.useRealTimers();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(NOW_ISO));
+    stubFetch({
+      "GET /api/opd/departments": { items: DEPARTMENTS },
+      "GET /api/opd/rooms": { items: ROOMS },
+      [DEPT_Q]: deptQueue(SUMMARY, { "doc-1": QUEUE_VIEW, "doc-2": DOC2_VIEW }),
+    });
+    const flush = async (ms = 5): Promise<void> => { await act(async () => { await vi.advanceTimersByTimeAsync(ms); }); };
+    renderWithProviders(<OpdDesk />);
+    await flush(); await flush();
+    fireEvent.change(screen.getByLabelText("Department"), { target: { value: "dep-1" } });
+    await flush(); await flush();
+
+    const deptReads = (): number => callsTo("GET", "/api/opd/departments/dep-1/queue").length;
+    const perDoctorReads = (): number => callsTo("GET", "/api/opd/queues").length + callsTo("GET", "/api/opd/queues/summary").length;
+    expect(deptReads()).toBe(1);
+    expect(perDoctorReads()).toBe(0);
+    // Both doctors' lines are on screen from that one read, before any doctor is chosen.
+    expect(screen.getByTestId("queue-row-qe-1")).toBeInTheDocument();
+    expect(screen.getByTestId("queue-row-qe-9")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("board-pick-doc-2"));
+    await flush(); await flush();
+    expect(deptReads()).toBe(1);
+
+    await flush(15_000); await flush();
+    expect(deptReads()).toBe(2);
+    await flush(15_000); await flush();
+    expect(deptReads()).toBe(3);
+    expect(perDoctorReads()).toBe(0);
+  });
+
+  it("groups the list by doctor — each group headed by doctor, room, now serving and waiting — and the chosen doctor's group leads", async () => {
+    stubFetch({
+      "GET /api/opd/departments": { items: DEPARTMENTS },
+      "GET /api/opd/rooms": { items: ROOMS },
+      [DEPT_Q]: deptQueue(SUMMARY, { "doc-1": QUEUE_VIEW, "doc-2": DOC2_VIEW }),
+    });
+    renderWithProviders(<OpdDesk />);
+    const user = userEvent.setup();
+    await pickDepartment(user);
+
+    const g1 = await screen.findByTestId("dept-group-doc-1");
+    const h1 = within(g1).getByTestId("dept-group-head-doc-1");
+    expect(h1).toHaveTextContent("Dr Meera Rao");
+    expect(h1).toHaveTextContent("12");
+    expect(h1).toHaveTextContent("Now serving #3");
+    expect(h1).toHaveTextContent("2 waiting");
+    expect(within(g1).getByTestId("queue-row-qe-1")).toBeInTheDocument();
+    const g2 = screen.getByTestId("dept-group-doc-2");
+    expect(within(g2).getByTestId("dept-group-head-doc-2")).toHaveTextContent("Dr Anil Verma");
+    expect(within(g2).getByTestId("queue-row-qe-9")).toBeInTheDocument();
+    // A doctor with no session today has no line to show.
+    expect(screen.queryByTestId("dept-group-doc-4")).toBeNull();
+
+    await user.click(screen.getByTestId("board-pick-doc-2"));
+    const groups = screen.getAllByTestId(/^dept-group-doc-/);
+    expect(groups[0]).toHaveAttribute("data-testid", "dept-group-doc-2");
+    expect(groups[0]).toHaveAttribute("data-chosen", "true");
+  });
+
+  it("a token taken from ANOTHER doctor's group makes that doctor the chosen one, and K45 abandon still posts for it", async () => {
+    stubFetch({
+      "GET /api/opd/departments": { items: DEPARTMENTS },
+      "GET /api/opd/rooms": { items: ROOMS },
+      [DEPT_Q]: deptQueue(SUMMARY, { "doc-1": QUEUE_VIEW, "doc-2": DOC2_VIEW }),
+      "POST /api/opd/visits/enc-9/abandon": { encounter: { id: "enc-9", status: "abandoned" } },
+    });
+    renderWithProviders(<OpdDesk />);
+    const user = userEvent.setup();
+    await pickDepartment(user);
+    await user.click(await screen.findByTestId("board-pick-doc-1"));
+    await user.click(await screen.findByTestId("queue-row-qe-9"));
+
+    expect(within(screen.getByTestId("in-hand")).getByText("Mohan Lal")).toBeInTheDocument();
+    expect(screen.getByTestId("board-pick-doc-2")).toHaveAttribute("aria-pressed", "true");
+    await user.click(screen.getByTestId("abandon-qe-9"));
+    await user.click(screen.getByRole("button", { name: "Confirm abandon" }));
+    await act(async () => { await Promise.resolve(); });
+    expect(callsTo("POST", "/api/opd/visits/enc-9/abandon")).toHaveLength(0);
+    await user.type(within(screen.getByTestId("od-act")).getByLabelText("Reason"), "Went home");
+    await user.click(screen.getByRole("button", { name: "Confirm abandon" }));
+    await waitFor(() => expect(callsTo("POST", "/api/opd/visits/enc-9/abandon")).toHaveLength(1));
+    expect(bodiesOf("POST", "/api/opd/visits/enc-9/abandon")[0]).toEqual({ reason: "Went home" });
+  });
+
+  it("the copilot panel takes the right column with a token in hand, and asks the hospital's copilot as this screen", async () => {
+    window.history.pushState({}, "", "/opd/desk");
+    stubFetch({
+      "GET /api/opd/departments": { items: DEPARTMENTS },
+      "GET /api/opd/rooms": { items: ROOMS },
+      [DEPT_Q]: deptQueue(SUMMARY, { "doc-1": QUEUE_VIEW, "doc-2": DOC2_VIEW }),
+      "POST /api/copilot/ask": { answer: { key: "copilot.answer.notUnderstood", params: {} }, source: "none", intent: null },
+    });
+    renderWithProviders(<OpdDesk />);
+    const user = userEvent.setup();
+    await pickDepartment(user);
+    // Nothing in hand: the right column is the department's list.
+    expect(await screen.findByTestId("dept-group-doc-1")).toBeInTheDocument();
+    expect(screen.queryByTestId("agent-dock")).toBeNull();
+
+    await user.click(screen.getByTestId("queue-row-qe-1"));
+    const dock = within(screen.getByTestId("station-right")).getByTestId("agent-dock");
+    await user.type(within(dock).getByTestId("agent-ask"), "who has waited longest{Enter}");
+    await waitFor(() => expect(callsTo("POST", "/api/copilot/ask")).toHaveLength(1));
+    expect(bodiesOf("POST", "/api/copilot/ask")[0]).toMatchObject({ question: "who has waited longest", screen: "opd" });
+    // The server did not understand, so the desk answers from its own department list.
+    expect(await within(dock).findByTestId("agent-ticker")).toHaveTextContent(/Token 4.*Dr Meera Rao/);
   });
 });

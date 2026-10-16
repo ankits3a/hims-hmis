@@ -3,7 +3,7 @@ import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { imagingReportDelivery, imagingReports, imagingStudies } from "../../kernel/db/schema/radiology";
-import { orderItems } from "../../kernel/db/schema/orders";
+import { orderItems, orders } from "../../kernel/db/schema/orders";
 import { patients } from "../../kernel/db/schema/patients";
 import { displayName } from "../patients";
 import { RadiologyError } from "./errors";
@@ -356,15 +356,29 @@ export async function reportView(db: Db, actor: Actor, reportId: string): Promis
   const rows = await db
     .select({
       report: imagingReports, study: imagingStudies, restricted: orderItems.restricted,
+      orderingClinicianId: orders.orderingClinicianId,
       name: patients.name, alias: patients.alias, isConfidential: patients.isConfidential,
     })
     .from(imagingReports)
     .innerJoin(imagingStudies, eq(imagingStudies.id, imagingReports.studyId))
     .innerJoin(orderItems, eq(orderItems.id, imagingStudies.orderItemId))
+    .innerJoin(orders, eq(orders.id, orderItems.orderId))
     .innerJoin(patients, eq(patients.id, imagingStudies.patientId))
     .where(eq(imagingReports.id, reportId));
   const row = rows[0];
   if (!row) return null;
+  /**
+   * DD11 on the single report, as the doctor's results inbox applies it (`closed-loop.ts`, `waiting.ts`
+   * `treatedBy`): outside the performing department — F45's clearance, `radiology.worklist.read` — a
+   * restricted study's report is read only by its ordering clinician or a holder of
+   * `orders.read.restricted`. Anyone else gets the same `null` an unknown id gets, so the study's
+   * existence is not disclosed either.
+   */
+  if (row.restricted && row.orderingClinicianId !== actor.id
+    && !(await hasPermission(db, actor.id, WORKLIST_READ, "hospital"))
+    && !(await hasPermission(db, actor.id, "orders.read.restricted", "hospital"))) {
+    return null;
+  }
   /**
    * ═══ F45, SECOND PASS — THIS READER IS NOT THE DEPARTMENT, AND IT WAS SERVING DRAFTS ═══
    *

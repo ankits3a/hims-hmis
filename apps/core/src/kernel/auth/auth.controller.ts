@@ -2,6 +2,7 @@ import {
   BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, HttpCode,
   Inject, NotFoundException, Param, Post, Put, Query, Req, Res, UnauthorizedException,
 } from "@nestjs/common";
+import { RateLimited } from "../ratelimit/rate-limit";
 import type { Request, Response } from "express";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -163,6 +164,7 @@ export class AuthController {
     throw new ForbiddenException("invalid code");
   }
 
+  @RateLimited("auth")
   @Public()
   @Post("login")
   async login(
@@ -216,6 +218,7 @@ export class AuthController {
     return { token: result.token };
   }
 
+  @RateLimited("auth")
   @Public()
   @Post("switch/pin")
   async switchPin(
@@ -241,6 +244,7 @@ export class AuthController {
     return result;
   }
 
+  @RateLimited("auth")
   @Public()
   @Post("switch/badge")
   async switchBadge(

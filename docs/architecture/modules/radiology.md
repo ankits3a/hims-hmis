@@ -52,10 +52,11 @@ Source: `apps/core/src/modules/radiology/`
   - types: `BedsideStudyRow`
 - `chasers.ts`
   - `CHASER_ACTOR: Actor`
+  - `UNREAD_ESCALATE_HOURS`
   - `UNREAD_REPORT_HOURS`
   - `sweepCriticalChaser(db: Db, now: Date = new Date()): Promise<CriticalChaseResult>`
   - `sweepUnreadWatchman(db: Db, now: Date = new Date()): Promise<UnreadChaseResult>`
-  - types: `CriticalChaseResult`, `UnreadChaseResult`
+  - types: `CriticalChaseResult`, `UnreadChaseResult`, `UnreadRung`
 - `checkin.ts`
   - `checkIn(tx: Tx, actor: Actor, input: { studyId: string; now?: Date }): Promise<CheckInResult>`
   - `deriveGateSet(studyType: StudyType, patient: { sex: string; dob: Date | null }, study: { formFRequired: boolean }, policy: PregnancyPolicyB…`
@@ -121,7 +122,6 @@ Source: `apps/core/src/modules/radiology/`
   - `IV_HYDRATION_INSTRUCTION`
   - `METFORMIN_NOTE`
   - `assessEgfr(creatinineUmolL: number, patient: { sex: string; ageYears: number | null }): EgfrAssessment`
-  - `ckdEpi2021(creatinineMgDl: number, ageYears: number, sex: EgfrSex): number`
   - `renalBand(egfr: number): RenalBand`
   - types: `EgfrAssessment`, `RenalBand`
 - `errors.ts`
@@ -241,6 +241,8 @@ Source: `apps/core/src/modules/radiology/`
   - types: `BookedStudyRow`, `CreateImagingDeviceInput`, `EditImagingDevicePatch`, `SettableDeviceStatus`
 - `manifest.ts`
   - `radiologyManifest: ModuleManifest`
+- `modules/lab/egfr.ts`
+  - `ckdEpi2021(creatinineMgDl: number, ageYears: number, sex: EgfrSex): number`
 - `money.ts`
   - `authorisationOf(study: AuthorisationStudyFacts, encounter: AuthorisationEncounterFacts, imagingFree = false): ImagingAuthorisation | null`
   - `encounterPayer(exec: Db | Tx, encounterNo: string): Promise<{ intendedPayer: string }>`

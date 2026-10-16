@@ -4,14 +4,17 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useDebounced } from "../lib/format";
 import {
-  fetchCardsToday, fetchCounterRecognition, lookupInstruments, membershipErrorCode, membershipErrorMessage,
-  retryAfterSec,
+  fetchCardsToday, fetchGracePlans, fetchGraceRequests, graceHonor, lookupInstruments, membershipErrorCode,
+  membershipErrorMessage, presentCard, requestGraceHonor, retryAfterSec,
 } from "../lib/membership-api";
 import { patientTimeline, todayIst } from "../lib/opd-api";
 import { PaperScreen } from "../components/paper-screen";
+import { PatientPicker } from "../components/patient-picker";
+import type { PatientPickerHit } from "../components/patient-picker";
 import { istClock } from "./desk-one/model";
 import type {
   WireCardToday, WireCounterAllowance, WireCounterMembership, WireCounterRecognition, WireCounterStanding,
+  WireGraceRequest,
 } from "../lib/membership-api";
 import type { WireTimelineItem } from "../lib/opd-api";
 import "./counter-instruments.css";
@@ -101,12 +104,13 @@ export function CounterInstruments(): React.ReactElement {
   });
 
   /*
-    ONE recognition per card presented: the route records it as `instrument.recognised`, so a refetch
-    on window focus would write the same card into "cards today" again for nothing.
+    ONE recognition per card presented: `POST /membership/recognition` records it as
+    `instrument.recognised` (#658 — the GET is a pure read now), so a refetch on window focus would
+    write the same card into "cards today" again for nothing.
   */
   const recognition = useQuery({
     queryKey: ["membership", "recognition", presented],
-    queryFn: () => fetchCounterRecognition(presented!),
+    queryFn: () => presentCard(presented!),
     enabled: presented !== null,
     staleTime: Infinity,
     refetchOnWindowFocus: false,
@@ -118,6 +122,15 @@ export function CounterInstruments(): React.ReactElement {
     queryFn: fetchCardsToday,
     refetchInterval: 60_000,
   });
+
+  /* #658 — this counter's own grace requests: the no-match form's state and half of "Clocks running". */
+  const graceRequests = useQuery({
+    queryKey: ["membership", "grace-requests"],
+    queryFn: fetchGraceRequests,
+    refetchInterval: 30_000,
+    retry: false,
+  });
+  const graceItems = graceRequests.data?.items ?? [];
 
   const data = recognition.data;
   useEffect(() => {
@@ -276,6 +289,11 @@ export function CounterInstruments(): React.ReactElement {
                       <div style={{ color: "var(--dim)", marginTop: 4 }}>{t("counterInstruments.noMatch.body")}</div>
                     </div>
                     <p className="hint">{t("counterInstruments.noMatch.grace")}</p>
+                    <GraceAsk
+                      code={presented ?? ""}
+                      requests={graceItems}
+                      onHonoured={() => { void queryClient.invalidateQueries({ queryKey: ["membership", "recognition", presented] }); }}
+                    />
                   </div>
                 </div>
               )}
@@ -294,6 +312,7 @@ export function CounterInstruments(): React.ReactElement {
           </div>
           <div className="ci-phone-today">
             <TodayList items={today.data?.items ?? []} current={presented} onOpen={present} />
+            <ClocksRunning requests={graceItems} today={today.data?.items ?? []} onOpen={present} />
           </div>
 
           {/* ── the pinned act ── */}
@@ -322,6 +341,7 @@ export function CounterInstruments(): React.ReactElement {
         {/* ── RIGHT: the counter's cards today ── */}
         <aside className="ci-right">
           <TodayList items={today.data?.items ?? []} current={presented} onOpen={present} />
+          <ClocksRunning requests={graceItems} today={today.data?.items ?? []} onOpen={present} />
         </aside>
       </div>
     </PaperScreen>
@@ -343,16 +363,24 @@ type Act = {
 function nextActOf(data: WireCounterRecognition | undefined, card: WireCounterMembership | null, visitId: string | null): Act | null {
   if (data === undefined) return null;
   const visit = visitId === null ? undefined : { encounterId: visitId };
+  /*
+    #658 — the coupons the server says apply ride to the bill as `?coupon=`, so the cashier does not
+    type them again. The bill re-checks every one of them; this only fills the field.
+  */
+  const applying = data.coupons.filter((c) => c.unusableReason === null).map((c) => c.code);
+  const coupon = applying.length === 0 ? undefined : { coupon: applying.join(",") };
   if (card === null) {
     // A coupon alone, or nothing at all: the bill is where a coupon is typed and checked.
-    return { kind: data.coupons.length > 0 ? "open_billing" : "bill_full_rate", to: "/billing" };
+    return data.coupons.length > 0
+      ? { kind: "open_billing", to: "/billing", search: coupon }
+      : { kind: "bill_full_rate", to: "/billing" };
   }
   switch (card.nextAct) {
     case "reconcile":
       return { kind: "reconcile", to: "/counter/reconcile" };
     case "take_to_bill":
       // No visit picked, nothing to carry: the act waits rather than opening an empty bill.
-      return { kind: "take_to_bill", to: visit === undefined ? null : "/billing", search: visit };
+      return { kind: "take_to_bill", to: visit === undefined ? null : "/billing", search: visit === undefined ? undefined : { ...visit, ...coupon } };
     case "bill_full_rate":
     default:
       return { kind: "bill_full_rate", to: "/billing", search: visit };
@@ -651,6 +679,218 @@ function TodayList({ items, current, onOpen }: { items: WireCardToday[]; current
             );
           })}
         </div>
+      )}
+    </section>
+  );
+}
+
+/** `14 m`, `2 h 5 m` — how long a clock has been running. */
+function ageOf(t: (k: string, o?: Record<string, unknown>) => string, sinceIso: string, now: number): string {
+  const minutes = Math.max(0, Math.floor((now - new Date(sinceIso).getTime()) / 60_000));
+  if (minutes < 60) return t("counterInstruments.clocks.minutes", { m: minutes });
+  return t("counterInstruments.clocks.hours", { h: Math.floor(minutes / 60), m: minutes % 60 });
+}
+
+/** The latest request this counter made for this card, unless it has already been used. */
+function openRequestFor(requests: WireGraceRequest[], code: string): WireGraceRequest | null {
+  const folded = code.trim().toLowerCase();
+  return requests.find((r) => r.cardCode.toLowerCase() === folded && !r.honoured) ?? null;
+}
+
+/**
+ * #658 — GRACE HONOUR, ASKED FROM THE COUNTER (O-1). The board's "Ask for grace honour": who is
+ * standing here, the plan printed on the card, and why. Sending files ONE `membership_grace_honor`
+ * approval; nothing applies until a supervisor grants it. Once granted, the counter honours it here
+ * through `POST /membership/grace-honor`, which checks the grant again on execute.
+ */
+function GraceAsk({ code, requests, onHonoured }: {
+  code: string;
+  requests: WireGraceRequest[];
+  onHonoured: () => void;
+}): React.ReactElement {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const [patient, setPatient] = useState<PatientPickerHit | null>(null);
+  const [planId, setPlanId] = useState("");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const plans = useQuery({ queryKey: ["membership", "plans"], queryFn: fetchGracePlans, retry: false });
+  const options = plans.data?.items ?? [];
+  const plan = planId !== "" ? planId : options.length === 1 ? options[0]!.id : "";
+  const open = openRequestFor(requests, code);
+  const now = Date.now();
+
+  async function send(): Promise<void> {
+    if (patient === null || plan === "" || reason.trim() === "") return;
+    setBusy(true);
+    setError(null);
+    try {
+      await requestGraceHonor({ cardCode: code, patientId: patient.id, planId: plan, reason: reason.trim() });
+      await queryClient.invalidateQueries({ queryKey: ["membership", "grace-requests"] });
+    } catch (e) {
+      setError(membershipErrorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function honour(r: WireGraceRequest): Promise<void> {
+    if (r.patientId === null || plan === "") return;
+    setBusy(true);
+    setError(null);
+    try {
+      await graceHonor({
+        cardCode: r.cardCode, patientId: r.patientId, planId: plan, approvalId: r.approvalId,
+        reason: (r.note ?? "").trim() === "" ? reason.trim() || code : r.note!,
+      });
+      await queryClient.invalidateQueries({ queryKey: ["membership", "grace-requests"] });
+      onHonoured();
+    } catch (e) {
+      setError(membershipErrorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const who = (r: WireGraceRequest): string => r.holder?.name ?? r.holder?.alias ?? r.holder?.uhid ?? "";
+  const planPicker = (
+    <div className="fact">
+      <label htmlFor="grace-plan">{t("counterInstruments.graceAsk.plan")}</label>
+      <select id="grace-plan" className="in" data-testid="grace-plan" value={plan} onChange={(e) => setPlanId(e.target.value)}>
+        <option value="">{t("counterInstruments.graceAsk.pickPlan")}</option>
+        {options.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+      </select>
+    </div>
+  );
+
+  if (open !== null && open.status === "pending") {
+    return (
+      <div className="warn" data-testid="grace-pending" style={{ marginTop: 12 }}>
+        <b>{t("counterInstruments.graceAsk.pending", { age: ageOf(t, open.requestedAt, now) })}</b>
+        <div style={{ color: "var(--dim)", marginTop: 4 }}>
+          {who(open) !== "" && <>{who(open)} · </>}{t("counterInstruments.graceAsk.pendingBody")}
+        </div>
+      </div>
+    );
+  }
+
+  if (open !== null && open.status === "granted") {
+    return (
+      <div data-testid="grace-granted" style={{ marginTop: 12 }}>
+        <div className="tag" style={{ margin: "4px 0 6px" }}>{t("counterInstruments.graceAsk.granted")}</div>
+        {who(open) !== "" && <div className="fact"><span>{t("counterInstruments.graceAsk.patient")}</span><span style={{ fontWeight: 600 }}>{who(open)}</span></div>}
+        {planPicker}
+        {error !== null && <p role="alert" className="refuse" data-testid="grace-error">{error}</p>}
+        <button className="pri" type="button" data-testid="grace-honour" disabled={busy || plan === "" || open.patientId === null} onClick={() => { void honour(open); }} style={{ marginTop: 10 }}>
+          {t("counterInstruments.graceAsk.honour")}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div data-testid="grace-ask" style={{ marginTop: 12 }}>
+      <div className="tag" style={{ margin: "4px 0 6px" }}>{t("counterInstruments.graceAsk.title")}</div>
+      {open !== null && open.status === "rejected" && (
+        <p className="refuse" data-testid="grace-rejected" style={{ marginTop: 0 }}>{t("counterInstruments.graceAsk.rejected")}</p>
+      )}
+      <div className="fact">
+        <span>{t("counterInstruments.graceAsk.patient")}</span>
+        {patient !== null ? (
+          <span style={{ fontWeight: 600 }} data-testid="grace-patient">
+            {patient.name ?? patient.uhid} · <span className="mo">{patient.uhid}</span>{" "}
+            <button className="sec" type="button" onClick={() => setPatient(null)}>{t("counterInstruments.graceAsk.change")}</button>
+          </span>
+        ) : null}
+      </div>
+      {patient === null && <PatientPicker onPick={setPatient} />}
+      {planPicker}
+      <div className="fact">
+        <label htmlFor="grace-reason">{t("counterInstruments.graceAsk.reason")}</label>
+        <input
+          id="grace-reason" className="in" data-testid="grace-reason" value={reason} maxLength={500}
+          placeholder={t("counterInstruments.graceAsk.reasonHint")} onChange={(e) => setReason(e.target.value)}
+        />
+      </div>
+      <div className="fact"><span>{t("counterInstruments.graceAsk.approver")}</span><span>{t("counterInstruments.graceAsk.approverWho")}</span></div>
+      <p className="hint" style={{ fontSize: 11.5 }}>{t("counterInstruments.graceAsk.note")}</p>
+      {error !== null && <p role="alert" className="refuse" data-testid="grace-error">{error}</p>}
+      <button
+        className="pri" type="button" data-testid="grace-send"
+        disabled={busy || patient === null || plan === "" || reason.trim() === ""}
+        onClick={() => { void send(); }}
+      >
+        {t("counterInstruments.graceAsk.send")}
+      </button>
+    </div>
+  );
+}
+
+type Clock = { key: string; code: string; label: string; since: string };
+
+/**
+ * #658 — "CLOCKS RUNNING", collapsed under the day's cards (the board's right column): the open items
+ * at this counter and how long each has waited, oldest first — a grace request waiting for its
+ * approver, a granted one not yet honoured, and a card from today that still needs this counter.
+ * Read from the two lists the screen already has; nothing here is a figure.
+ */
+function ClocksRunning({ requests, today, onOpen }: {
+  requests: WireGraceRequest[];
+  today: WireCardToday[];
+  onOpen: (code: string) => void;
+}): React.ReactElement {
+  const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+  const now = Date.now();
+  const asked = new Set(requests.map((r) => r.cardCode.toLowerCase()));
+  const clocks: Clock[] = [
+    ...requests.filter((r) => r.status === "pending").map((r): Clock => ({
+      key: `p-${r.approvalId}`, code: r.cardCode, label: t("counterInstruments.clocks.gracePending"), since: r.requestedAt,
+    })),
+    ...requests.filter((r) => r.status === "granted" && !r.honoured).map((r): Clock => ({
+      key: `g-${r.approvalId}`, code: r.cardCode, label: t("counterInstruments.clocks.graceGranted"), since: r.decidedAt ?? r.requestedAt,
+    })),
+    ...today.filter((r) => r.needsYou && !asked.has(r.code.toLowerCase())).map((r): Clock => ({
+      key: `t-${r.code}`, code: r.code,
+      label: r.source === "none" ? t("counterInstruments.clocks.noMatch") : t("counterInstruments.clocks.toLink"),
+      since: r.at,
+    })),
+  ].sort((a, b) => new Date(a.since).getTime() - new Date(b.since).getTime());
+  const oldest = clocks[0];
+  return (
+    <section className="box" data-testid="clocks-running">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        data-testid="clocks-toggle"
+        onClick={() => setExpanded((v) => !v)}
+        style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 14px", width: "100%", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}
+      >
+        <span className="tag" style={{ flexGrow: 1 }}>{t("counterInstruments.clocks.title", { count: clocks.length })}</span>
+        {oldest !== undefined && (
+          <span style={{ fontSize: 11.5, color: "#9a6208", fontWeight: 600 }} data-testid="clocks-oldest">
+            {oldest.label} {ageOf(t, oldest.since, now)}
+          </span>
+        )}
+        <span style={{ color: "var(--dim)" }} aria-hidden="true">{expanded ? "▾" : "▸"}</span>
+      </button>
+      {expanded && (
+        clocks.length === 0 ? (
+          <p style={{ padding: "0 14px 14px", margin: 0, fontSize: 12, color: "var(--dim)" }}>{t("counterInstruments.clocks.none")}</p>
+        ) : (
+          <div>
+            {clocks.map((c) => (
+              <button key={c.key} type="button" className="row" data-testid={`clock-${c.code}`} onClick={() => onOpen(c.code)}>
+                <span style={{ flexGrow: 1, minWidth: 0 }}>
+                  <b>{c.label}</b>
+                  <small><span className="cardno">{c.code}</span></small>
+                </span>
+                <span className="pill gd">{ageOf(t, c.since, now)}</span>
+              </button>
+            ))}
+          </div>
+        )
       )}
     </section>
   );

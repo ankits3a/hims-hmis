@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { SubmitButton } from "../../components/submit-button";
 import { billingErrorMessage } from "../../lib/billing-api";
+import { printJobsOnThisComputer, readPrintSetting } from "../../lib/browser-print";
 import { dayWords, fetchOwnDrawer, instantWords, issueApprovedVoucher, payVoucher, resolveMismatch } from "../../lib/billing-office-api";
 import { fmtIst, fmtPaise } from "../../lib/format";
 import { SRC_KEY, docOf, methodWord, needTitle, patientOf } from "./needs-text";
@@ -169,8 +170,12 @@ function usePayShape(p: HandProps): Shape {
   const pr = row.params;
   const cash = str(pr.method) === "cash";
   const drawer = useQuery({ queryKey: ["billing-office", "own-drawer"], queryFn: fetchOwnDrawer, enabled: on && cash, retry: false });
-  const [payee, setPayee] = useState(() => (row.patient !== null && !row.patient.restricted ? row.patient.name ?? "" : ""));
+  const patientName = row.patient !== null && !row.patient.restricted ? row.patient.name ?? "" : "";
+  const [payee, setPayee] = useState(patientName);
   const [idType, setIdType] = useState("");
+  /** #655 (board: "Someone else collects for the patient — name the relation (son, husband…)"). */
+  const [someoneElse, setSomeoneElse] = useState(false);
+  const [relation, setRelation] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const amount = fmtPaise(num(pr.amountPaise));
@@ -181,9 +186,20 @@ function usePayShape(p: HandProps): Shape {
 
   const pay = async (idemKey: string): Promise<void> => {
     if (payee.trim() === "" || idType === "") { setError(t("billingOffice.board.pay.required")); return; }
+    if (someoneElse && relation.trim() === "") { setError(t("billingOffice.board.pay.relationRequired")); return; }
     setError(null);
     try {
-      const done = await payVoucher(str(pr.voucherId), { payeeName: payee.trim(), payeeIdType: idType }, idemKey);
+      const done = await payVoucher(str(pr.voucherId), {
+        payeeName: payee.trim(), payeeIdType: idType, ...(someoneElse ? { payeeRelation: relation.trim() } : {}),
+      }, idemKey);
+      /*
+        #655 — the voucher the server queued for the payee's signature. A counter that a relay serves
+        leaves it to the relay; otherwise it prints here, the hand-over's road (decision 0045).
+      */
+      const setting = readPrintSetting();
+      if (typeof done.printJobId === "string" && setting.mode !== "relay") {
+        void printJobsOnThisComputer([{ id: done.printJobId, document: "billing_refund_voucher" }], setting);
+      }
       await qc.invalidateQueries({ queryKey: ["billing-office"] });
       p.onDone(t("billingOffice.board.pay.done", { voucherNo: done.voucherNo }));
     } catch (e) {
@@ -236,11 +252,28 @@ function usePayShape(p: HandProps): Shape {
         body: (
           <>
             <div className="m">{t("billingOffice.board.pay.whoM")}</div>
+            <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, fontSize: 13 }}>
+              <input type="checkbox" checked={someoneElse} data-testid="payee-someone-else" onChange={(e) => {
+                const on = e.target.checked;
+                setSomeoneElse(on);
+                // The patient's own name is the default payee; someone else is named afresh.
+                setPayee(on ? "" : patientName);
+                if (!on) setRelation("");
+              }} />
+              {t("billingOffice.board.pay.someoneElse")}
+            </label>
             <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
               <label className="bof-fld">
                 <span>{t("billingOffice.board.pay.payeeName")}</span>
                 <input className="in" value={payee} onChange={(e) => setPayee(e.target.value)} autoComplete="off" data-testid="payee-name" />
               </label>
+              {someoneElse && (
+                <label className="bof-fld" style={{ maxWidth: 200 }}>
+                  <span>{t("billingOffice.board.pay.relation")}</span>
+                  <input className="in" value={relation} maxLength={40} placeholder={t("billingOffice.board.pay.relationHint")}
+                    onChange={(e) => setRelation(e.target.value)} autoComplete="off" data-testid="payee-relation" />
+                </label>
+              )}
               <label className="bof-fld" style={{ maxWidth: 220 }}>
                 <span>{t("billingOffice.board.pay.idShown")}</span>
                 <select className="in" value={idType} onChange={(e) => setIdType(e.target.value)} data-testid="payee-id-type">

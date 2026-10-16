@@ -458,6 +458,7 @@ export async function reportPrintView(db: Db, actor: Actor, reportId: string, no
   const [row] = await db
     .select({
       report: imagingReports, study: imagingStudies, orderingClinicianId: orders.orderingClinicianId,
+      restricted: orderItems.restricted,
       serviceName: services.name,
       name: patients.name, alias: patients.alias, isConfidential: patients.isConfidential,
       sex: patients.sex, dob: patients.dob, uhid: patients.uhid,
@@ -465,11 +466,19 @@ export async function reportPrintView(db: Db, actor: Actor, reportId: string, no
     .from(imagingReports)
     .innerJoin(imagingStudies, eq(imagingStudies.id, imagingReports.studyId))
     .innerJoin(orders, eq(orders.id, imagingStudies.orderId))
+    .innerJoin(orderItems, eq(orderItems.id, imagingStudies.orderItemId))
     .innerJoin(services, eq(services.id, imagingStudies.serviceId))
     .innerJoin(patients, eq(patients.id, imagingStudies.patientId))
     .where(eq(imagingReports.id, reportId));
   if (!row || row.report.signedAt === null || row.report.signerId === null
     || !["signed", "superseded", "amended"].includes(row.report.status)) return null;
+  /* DD11 — the same rule as `reportView` (read.ts): a restricted study prints only for its ordering
+     clinician, a holder of `orders.read.restricted`, or the performing department; anyone else, null. */
+  if (row.restricted && row.orderingClinicianId !== actor.id
+    && !(await hasPermission(db, actor.id, "radiology.worklist.read", "hospital"))
+    && !(await hasPermission(db, actor.id, "orders.read.restricted", "hospital"))) {
+    return null;
+  }
 
   await recordPhiAccess(db, {
     actor, patientId: row.study.patientId, surface: "imaging.report",
