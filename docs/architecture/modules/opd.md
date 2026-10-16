@@ -40,13 +40,15 @@ Source: `apps/core/src/modules/opd/`
   - types: `AdvisedTest`, `ConsultStartGuard`, `VitalsStartGuard`
 - `doctor-day.ts`
   - `closedVisitNos(exec: Db | Tx, visitNos: readonly string[]): Promise<Set<string>>`
+  - `completedVisitById(exec: Db | Tx, encounterId: string): Promise<CompletedVisitRow | null>`
+  - `completedVisitsOf(exec: Db | Tx, userIds: readonly string[], serviceDates: readonly string[]): Promise<CompletedVisitRow[]>`
   - `doctorDayLines(exec: Db | Tx, userIds: readonly string[], serviceDate: string, now: Date): Promise<DoctorDayLine[]>`
   - `doctorPaceToday(exec: Db | Tx, userId: string, serviceDate: string): Promise<DoctorPaceToday>`
   - `earlierVisits(exec: Db | Tx, patientIds: readonly string[], serviceDate: string): Promise<{ serviceDate: string; doctorUserId: string | nul…`
   - `lastPrescriptionBy(exec: Db | Tx, userId: string, patientIds: readonly string[], serviceDate: string): Promise<null | { issuedAt: Date; lin…`
   - `openVisitsForDoctor(exec: Db | Tx, userId: string, beforeDate: string): Promise<OpenVisitRow[]>`
   - `visitOfDoctor(exec: Db | Tx, userId: string, encounterId: string): Promise<null | { id: string; patientId: string; visitNo: string; service…`
-  - types: `DoctorDayLine`, `DoctorPaceToday`, `OpenVisitRow`
+  - types: `CompletedVisitRow`, `DoctorDayLine`, `DoctorPaceToday`, `OpenVisitRow`
 - `encounters.ts`
   - `LAB_DEPARTMENT_CODE`
   - `LAB_VISIT_TYPE`

@@ -118,7 +118,7 @@ flowchart LR
 | [attendance](modules/attendance.md) | — | — | 19 | 11 |
 | [billing](modules/billing.md) | membership, opd, patients, tariff | lab, opd, ordering, ot, partners, pharmacy, radiology | 55 | 16 |
 | [cds](modules/cds.md) | formulary | opd | 0 | 0 |
-| [doctor-desk](modules/doctor-desk.md) | lab, opd, patients, radiology, roster | — | 7 | 4 |
+| [doctor-desk](modules/doctor-desk.md) | lab, opd, patients, radiology, roster | — | 16 | 7 |
 | [formulary](modules/formulary.md) | — | cds, materials, opd, pharmacy | 35 | 16 |
 | [lab](modules/lab.md) | billing, opd, patients, tariff | abdm, doctor-desk, ordering, radiology | 78 | 25 |
 | [materials](modules/materials.md) | formulary | opd, ot, pharmacy | 120 | 39 |
@@ -141,7 +141,7 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 | subsystem | used by modules | depends on kernel | routes |
 |---|---|---|---|
 | `alerts` | attendance, doctor-desk, opd, roster | approvals, auth, db, events, modules, notify, ops, realtime, reminders, tokens, workflow | 3 |
-| `approvals` | abdm, aerb, attendance, billing, formulary, lab, materials, membership, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | alerts, auth, db, events, modules, phi, tokens, workflow | 7 |
+| `approvals` | abdm, aerb, attendance, billing, doctor-desk, formulary, lab, materials, membership, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | alerts, auth, db, events, modules, phi, tokens, workflow | 7 |
 | `auth` | abdm, aerb, attendance, billing, doctor-desk, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | config, crypto, db, events, modules, printing, push, ratelimit, tokens | 33 |
 | `config` | abdm, attendance, billing, formulary, membership, opd, ot, partners, patients, pharmacy, radiology | — | — |
 | `copilot` | billing, formulary, opd, pharmacy, roster | alerts, approvals, auth, config, db, desk, events, inference, modules, ratelimit, reminders, search, tokens, workflow | 10 |
@@ -150,7 +150,7 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 | `desk` | attendance, billing, doctor-desk, lab, membership, opd, partners, patients, pharmacy, radiology, roster | approvals, auth, db, events, modules, reminders, report, tokens, workflow | 10 |
 | `documents` | patients, pharmacy | — | — |
 | `episodes` | billing, lab, materials, opd, ot, pharmacy, radiology | db | — |
-| `events` | abdm, aerb, attendance, billing, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | db, worker | — |
+| `events` | abdm, aerb, attendance, billing, doctor-desk, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | db, worker | — |
 | `inference` | formulary, opd | auth, config, db, ratelimit, search, tokens | 1 |
 | `modules` | abdm, aerb, attendance, billing, doctor-desk, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | alerts, approvals, auth, copilot, desk, ops, orders, resources, search, workflow | — |
 | `notify` | abdm, lab, pharmacy, radiology | auth, config, db, events, modules, tokens, workflow | 4 |

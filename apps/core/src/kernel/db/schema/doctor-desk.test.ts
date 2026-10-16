@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../../test/helpers/db";
 import { mkUser } from "../../../../test/helpers/opd";
-import { doctorDeskNudges } from "./index";
+import { doctorDeskActs, doctorDeskNudges, doctorDeskRatings } from "./index";
 import type { Db } from "../client";
 
 /**
@@ -12,6 +12,10 @@ import type { Db } from "../client";
  */
 describe("doctor-desk — schema", () => {
   const CENSUS: Record<string, string[]> = {
+    // DD-1 (spec SPEC-doctor-desk-dd1-2026-10-16) — moves, acts, ratings.
+    doctor_desk_acts: ["acted_at", "actor_id", "choice", "holder_id", "id", "note", "opened_at", "row_key", "team_id"],
+    doctor_desk_moves: ["alert_id", "created_at", "from_user_id", "id", "moved_by", "row_key", "team_id", "to_user_id"],
+    doctor_desk_ratings: ["created_at", "department_id", "id", "rated_user_id", "rater_id", "rating", "reason", "team_id", "work_date", "work_id", "work_kind"],
     doctor_desk_agent_runs: ["agent", "id", "outcome", "params", "ran_at", "summary_key", "team_id", "user_id"],
     doctor_desk_briefs: ["created_at", "facts", "id", "kind", "seen_at", "shown_at", "user_id", "window_from", "window_to"],
     doctor_desk_nudges: ["alert_id", "created_at", "holder_id", "id", "row_key", "sender_id", "team_id"],
@@ -52,5 +56,21 @@ describe("doctor-desk — schema", () => {
     await db.insert(doctorDeskNudges).values({ id: newId(), ...row });
     await expect(db.insert(doctorDeskNudges).values({ id: newId(), ...row })).rejects.toThrow();
     await expect(db.insert(doctorDeskNudges).values({ id: newId(), ...row, rowKey: "alert:2", holderId: a })).rejects.toThrow();
+  });
+
+  it("DD-1: an act is once per row and Other needs words; a rating is once per rater, never oneself, and Needs rework says why", async () => {
+    const a = (await mkUser(db, "dd1_a", [])).id;
+    const b = (await mkUser(db, "dd1_b", [])).id;
+    const opened = new Date("2026-10-06T04:00:00Z");
+    const act = { rowKey: "lab_critical:c1", holderId: a, actorId: b, openedAt: opened, actedAt: new Date("2026-10-06T04:10:00Z") };
+    await expect(db.insert(doctorDeskActs).values({ id: newId(), ...act, choice: "other", note: " " })).rejects.toThrow();
+    await expect(db.insert(doctorDeskActs).values({ id: newId(), ...act, choice: "ecg_ordered", actedAt: new Date("2026-10-06T03:00:00Z") })).rejects.toThrow();
+    await db.insert(doctorDeskActs).values({ id: newId(), ...act, choice: "ecg_ordered" });
+    await expect(db.insert(doctorDeskActs).values({ id: newId(), ...act, choice: "treatment_started" })).rejects.toThrow();
+    const rating = { workKind: "opd_visit", workId: "e1", workDate: "2026-10-06", ratedUserId: a, raterId: b, teamId: "t", departmentId: "d" };
+    await expect(db.insert(doctorDeskRatings).values({ id: newId(), ...rating, rating: "needs_rework", reason: null })).rejects.toThrow();
+    await expect(db.insert(doctorDeskRatings).values({ id: newId(), ...rating, raterId: a, rating: "good" })).rejects.toThrow();
+    await db.insert(doctorDeskRatings).values({ id: newId(), ...rating, rating: "good" });
+    await expect(db.insert(doctorDeskRatings).values({ id: newId(), ...rating, rating: "fine" })).rejects.toThrow();
   });
 });
