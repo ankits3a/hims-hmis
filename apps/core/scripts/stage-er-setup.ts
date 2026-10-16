@@ -2,9 +2,10 @@ import { createDb, withTx } from "../src/kernel/db/client";
 import { createDraft, listDefinitions } from "../src/kernel/workflow/definitions";
 import { ER_EPISODE_WORKFLOW_DEF_KEY, ER_SATELLITE_STORE_CODE, erEpisodeWorkflowDefinition } from "../src/modules/emergency";
 import { createStore, findStoreByCode } from "../src/modules/materials";
-import { createDraftVersion, createService, resolveActiveTariffVersion, setTariffItem, updateService } from "../src/modules/tariff";
-import { services, tariffVersions } from "../src/kernel/db/schema";
-import { inArray } from "drizzle-orm";
+import { createDraftVersion, createService, resolveActiveTariffVersion, setDraftVersionNotes, setTariffItem, updateService } from "../src/modules/tariff";
+import { services, tariffItems, tariffVersions } from "../src/kernel/db/schema";
+import { eq, inArray } from "drizzle-orm";
+import { LEGACY_SAMPLE_MARKERS, UAT_SAMPLE_MARKER as IPD_SAMPLE_MARKER } from "./fixtures/ipd-uat-sample-tariff";
 import { ER_UAT_SAMPLE_MARKER, ER_UAT_SAMPLE_RATES, ER_UAT_SAMPLE_TARIFF_NOTE } from "./fixtures/er-uat-sample-tariff";
 import { assertStagingOnly, grantTestingRoles } from "./stage-ipd-setup";
 import type { Actor } from "@hmis/contracts";
@@ -25,9 +26,14 @@ import type { StageIpdReport } from "./stage-ipd-setup";
  *     has that code — an EMPTY store. Its stock arrives by a person's transfer from the main store (materials), never by
  *     this script.
  *  c. Grants the casualty nurse role (`er_nurse`) to the one all-roles test account (the IPD script's rule, reused).
- *  d. (ER lane 6, #813) Drafts the UAT SAMPLE ER tariff (`fixtures/er-uat-sample-tariff.ts`): its four services created
- *     INACTIVE and a DRAFT tariff version copied from the one in force with their rates. Submit → the owner's approval →
- *     activation → switching the services on stay people's acts (0076: go-live waits for the incumbent's real rates).
+ *  d. (ER lane 6, #813) The UAT SAMPLE ER tariff (`fixtures/er-uat-sample-tariff.ts`): its four services created
+ *     INACTIVE, their rates written into ONE draft. The tariff keeps one pending version at a time (the IPD importer refuses
+ *     a second), so when the IPD sample draft (`stage-ipd-setup` step c) is still a DRAFT the rates go INTO it, and the
+ *     owner activates IPD and ER with one approval. An ER-only draft left beside it by the first version of this step is
+ *     retired by its note (the tariff module has no cancel or delete for a draft; a retired draft is never submitted).
+ *     With no draft pending at all, it drafts its own copy of the version in force; with some other version pending it
+ *     refuses rather than open a second. Submit → the owner's approval → activation → switching the services on stay
+ *     people's acts (0076: go-live waits for the incumbent's real rates).
  *
  * PRODUCTION GO-LIVE IS NOT THIS SCRIPT: there the ER-SAT store is created by the materials head (`POST
  * /materials/stores`), stocked by transfer, and the workflow approved and activated by the MS and the owner.
@@ -45,7 +51,9 @@ export type StageErReport = {
   workflow: { action: "drafted" | "already"; definitionId: string; version: number; status: string };
   store: { action: "created" | "already"; storeId: string };
   testingRoles: StageIpdReport["testingRoles"];
-  sampleTariff: { action: "drafted" | "already"; versionNo: number | null; servicesCreated: string[] };
+  sampleTariff: {
+    action: "drafted" | "merged" | "already" | "refused"; versionNo: number | null; servicesCreated: string[]; retired: number[]; why?: string;
+  };
 };
 
 export { assertStagingOnly };
@@ -72,31 +80,65 @@ export async function stageErSetup(db: Db): Promise<StageErReport> {
   }
   // c. the casualty nurse role for the one all-roles account
   const testingRoles = await grantTestingRoles(db, ER_TESTING_ROLES);
-  // d. the UAT SAMPLE ER tariff — services inactive, a draft version
-  const drafted = (await db.select({ versionNo: tariffVersions.versionNo, notes: tariffVersions.notes }).from(tariffVersions))
-    .find((v) => (v.notes ?? "").includes(ER_UAT_SAMPLE_MARKER) && (v.notes ?? "").includes("ER tariff"));
-  let sampleTariff: StageErReport["sampleTariff"];
-  if (drafted !== undefined) {
-    sampleTariff = { action: "already", versionNo: drafted.versionNo, servicesCreated: [] };
-  } else {
-    sampleTariff = await withTx(db, async (tx) => {
-      const have = new Map((await tx.select({ id: services.id, code: services.code }).from(services)
-        .where(inArray(services.code, ER_UAT_SAMPLE_RATES.map((r) => r.code)))).map((r) => [r.code, r.id] as const));
-      const created: string[] = [];
-      for (const r of ER_UAT_SAMPLE_RATES) {
-        if (have.has(r.code)) continue;
-        const { serviceId } = await createService(tx, ER_SETUP_ACTOR, { code: r.code, name: r.name, category: r.category });
-        await updateService(tx, ER_SETUP_ACTOR, serviceId, { active: false });
-        have.set(r.code, serviceId);
-        created.push(r.code);
-      }
+  // d. the UAT SAMPLE ER tariff — services inactive, the rates in ONE draft (the IPD sample draft when there is one)
+  const sampleTariff = await ensureErRatesDraft(db);
+  return { workflow, store, testingRoles, sampleTariff };
+}
+
+/** The note an ER-only draft is retired with: no sample marker, so neither setup script ever picks it again. */
+export const ER_RETIRED_NOTE_PREFIX = "RETIRED (stage-er-setup)";
+const isErSampleNote = (notes: string | null): boolean => (notes ?? "").includes(ER_UAT_SAMPLE_MARKER) && (notes ?? "").includes("ER tariff");
+const isIpdSampleNote = (notes: string | null): boolean => [IPD_SAMPLE_MARKER, ...LEGACY_SAMPLE_MARKERS].some((m) => (notes ?? "").includes(m));
+
+/** Step d. Idempotent: a rerun that finds every ER rate already in the target draft and no ER-only draft left writes nothing. */
+export async function ensureErRatesDraft(db: Db): Promise<StageErReport["sampleTariff"]> {
+  return withTx(db, async (tx) => {
+    const have = new Map((await tx.select({ id: services.id, code: services.code }).from(services)
+      .where(inArray(services.code, ER_UAT_SAMPLE_RATES.map((r) => r.code)))).map((r) => [r.code, r.id] as const));
+    const pending = (await tx.select({ id: tariffVersions.id, versionNo: tariffVersions.versionNo, status: tariffVersions.status, notes: tariffVersions.notes })
+      .from(tariffVersions).where(inArray(tariffVersions.status, ["draft", "submitted"]))).sort((a, b) => b.versionNo - a.versionNo);
+    const ipdDraft = pending.find((v) => v.status === "draft" && isIpdSampleNote(v.notes));
+    const erDrafts = pending.filter((v) => v.status === "draft" && isErSampleNote(v.notes));
+    const others = pending.filter((v) => v !== ipdDraft && !erDrafts.includes(v));
+    let target = ipdDraft ?? erDrafts[0];
+    if (target === undefined && others.length > 0) {
+      return { action: "refused" as const, versionNo: null, servicesCreated: [], retired: [],
+        why: `tariff version ${others.map((o) => `${o.versionNo} (${o.status})`).join(", ")} is pending; finish or reject it first` };
+    }
+    const created: string[] = [];
+    for (const r of ER_UAT_SAMPLE_RATES) {
+      if (have.has(r.code)) continue;
+      const { serviceId } = await createService(tx, ER_SETUP_ACTOR, { code: r.code, name: r.name, category: r.category });
+      await updateService(tx, ER_SETUP_ACTOR, serviceId, { active: false });
+      have.set(r.code, serviceId);
+      created.push(r.code);
+    }
+    let drafted = false;
+    if (target === undefined) {
       const current = await resolveActiveTariffVersion(tx as unknown as Db, new Date());
       const d = await createDraftVersion(tx, ER_SETUP_ACTOR, { notes: ER_UAT_SAMPLE_TARIFF_NOTE, ...(current === null ? {} : { copyFromVersionId: current.versionId }) });
-      for (const r of ER_UAT_SAMPLE_RATES) await setTariffItem(tx, ER_SETUP_ACTOR, d.versionId, have.get(r.code)!, r.pricePaise);
-      return { action: "drafted" as const, versionNo: d.versionNo, servicesCreated: created };
-    });
-  }
-  return { workflow, store, testingRoles, sampleTariff };
+      target = { id: d.versionId, versionNo: d.versionNo, status: "draft", notes: ER_UAT_SAMPLE_TARIFF_NOTE };
+      drafted = true;
+    }
+    const inTarget = new Map((await tx.select({ serviceId: tariffItems.serviceId, pricePaise: tariffItems.pricePaise }).from(tariffItems)
+      .where(eq(tariffItems.versionId, target.id))).map((i) => [i.serviceId, i.pricePaise] as const));
+    let written = 0;
+    for (const r of ER_UAT_SAMPLE_RATES) {
+      const id = have.get(r.code) as string;
+      if (inTarget.get(id) === r.pricePaise) continue;
+      await setTariffItem(tx, ER_SETUP_ACTOR, target.id, id, r.pricePaise);
+      written += 1;
+    }
+    const retired: number[] = [];
+    for (const v of erDrafts) {
+      if (v.id === target.id) continue;
+      await setDraftVersionNotes(tx, ER_SETUP_ACTOR, v.id,
+        `${ER_RETIRED_NOTE_PREFIX}: its ER sample rates are in draft version ${target.versionNo}, with the IPD rate card — never submit this version`);
+      retired.push(v.versionNo);
+    }
+    const action = drafted ? "drafted" as const : written > 0 || retired.length > 0 || created.length > 0 ? "merged" as const : "already" as const;
+    return { action, versionNo: target.versionNo, servicesCreated: created, retired };
+  });
 }
 
 async function main(): Promise<void> {
@@ -109,8 +151,9 @@ async function main(): Promise<void> {
     console.log(`b. store ${ER_SATELLITE_STORE_CODE}: ${r.store.action} (${r.store.storeId}) — EMPTY: stock it by a transfer from the main store`);
     const tr = r.testingRoles;
     console.log(`c. er_nurse for the all-roles account: ${tr.action}${tr.why === undefined ? "" : ` — ${tr.why}`}; granted: [${tr.granted.join(", ") || "none"}]; already: [${tr.already.join(", ") || "none"}]; roles not seeded: [${tr.missingRoles.join(", ") || "none"}]`);
-    console.log(`d. UAT SAMPLE ER tariff: ${r.sampleTariff.action} — draft version ${String(r.sampleTariff.versionNo ?? "—")}; services created INACTIVE: [${r.sampleTariff.servicesCreated.join(", ") || "none"}]`);
-    if (tr.action === "refused") process.exitCode = 1;
+    const t = r.sampleTariff;
+    console.log(`d. UAT SAMPLE ER tariff: ${t.action}${t.why === undefined ? "" : ` — ${t.why}`} — draft version ${String(t.versionNo ?? "—")}; services created INACTIVE: [${t.servicesCreated.join(", ") || "none"}]; ER-only drafts retired: [${t.retired.join(", ") || "none"}]`);
+    if (tr.action === "refused" || t.action === "refused") process.exitCode = 1;
   } finally {
     await pool.end();
   }
