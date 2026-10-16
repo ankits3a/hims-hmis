@@ -1683,6 +1683,11 @@ export const cdsAliases = pgTable(
     termKey: text("term_key"),
     /** `formulary_medicines.id` — null only on a 'proposed' row whose chooser found no target. */
     medicineId: text("medicine_id"),
+    /**
+     * #613 — a COMPLAINT alias's target: an existing `opd_complaint_concepts.key` (plain text, as the
+     * complaint tables keep it). Null on a medicine alias and on a 'proposed' complaint row with no concept.
+     */
+    conceptKey: text("concept_key"),
     state: text("state").notNull(),
     /** The VERSIONED model id that chose, and how sure it was. */
     chooserName: text("chooser_name"),
@@ -1729,8 +1734,14 @@ export const cdsAliases = pgTable(
     /* A row anyone can be SHOWN names its medicine, passed every rule and was refused by nothing. */
     check(
       "cds_aliases_live_ck",
-      sql`${t.state} not in ('suggestion', 'trusted') or (${t.medicineId} is not null and ${t.ruleResult} = 'pass' and ${t.refusal} is null and ${t.reviewerAnswer} = 'yes')`,
+      /*
+        #613 — a live COMPLAINT alias names an existing concept and passed its rule; it has no reviewer
+        (the closed concept set is the check). A live medicine alias is exactly what it was.
+      */
+      sql`${t.state} not in ('suggestion', 'trusted') or (${t.ruleResult} = 'pass' and ${t.refusal} is null and ((${t.kind} = 'medicine' and ${t.medicineId} is not null and ${t.reviewerAnswer} = 'yes') or (${t.kind} = 'complaint' and ${t.conceptKey} is not null)))`,
     ),
+    /* #613 — a complaint alias never names a medicine, and a medicine alias never names a concept. */
+    check("cds_aliases_target_ck", sql`(${t.kind} = 'complaint' and ${t.medicineId} is null) or (${t.kind} <> 'complaint' and ${t.conceptKey} is null)`),
     check("cds_aliases_undone_ck", sql`(${t.undoneBy} is null) = (${t.undoneAt} is null) and ((${t.state} = 'undone') = (${t.undoneAt} is not null))`),
     check("cds_aliases_probabilities_ck", sql`(${t.chooserConfidence} is null or ${t.chooserConfidence} between 0 and 1) and (${t.reviewerProbability} is null or ${t.reviewerProbability} between 0 and 1)`),
   ],

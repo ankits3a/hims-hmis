@@ -627,6 +627,8 @@ export const consultVoiceTranscribed = defineEvent("consultation.voice_transcrib
 export const aliasRunCompleted = defineEvent("alias.run_completed", MODULE, z.object({
   proposed: z.number().int().nonnegative(), suggestion: z.number().int().nonnegative(),
   refused: z.number().int().nonnegative(), failed: z.number().int().nonnegative(),
+  /** #613 — which runner: absent on the medicine runner's events (as before), "complaint" on complaint normalisation's. */
+  kind: z.enum(["medicine", "complaint"]).optional(),
 }));
 
 /**

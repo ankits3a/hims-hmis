@@ -91,6 +91,8 @@ Source: `apps/core/src/modules/formulary/`
   - `NDPS_LIST: readonly NdpsEntry[]`
   - `classifyNdpsSalts(tx: Tx, actor: Actor, opts: { apply: boolean }): Promise<NdpsClassificationReport>`
   - `ndpsClassByMedicine(db: Db | Tx, ids: readonly string[]): Promise<Map<string, NdpsClass>>`
+  - `ndpsClassOfMoieties(moieties: readonly { name: string; ndpsClass: string | null }[]): NdpsClass | null`
+  - `ndpsListEntryOf(moiety: string): NdpsEntry | null`
   - types: `NdpsClass`, `NdpsClassificationReport`, `NdpsEntry`
 - `prescribing-search.ts`
   - `medicineHitById(db: Db, id: string): Promise<MedicineHit | null>`
