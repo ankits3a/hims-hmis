@@ -14,7 +14,9 @@ import { h1Register } from "./registers";
 import {
   getRetailSale, listRetailSales, previewRetailSale, recordRetailLicence, retailLicenceState, searchRetailShelf, sellRetail,
 } from "./retail";
-import { registerSaleItem } from "./sale-items";
+import { registerSaleItem, setSaleItemDiscount } from "./sale-items";
+import { ITEM_DISCOUNT_SOURCE_KEY } from "../billing";
+import { invoiceLines } from "../../kernel/db/schema";
 import { DocumentStoreError } from "../../kernel/documents/store";
 import { toHttp } from "./pharmacy-http";
 import type { Actor } from "@hmis/contracts";
@@ -158,6 +160,22 @@ describe("walk-in retail sales (P19)", () => {
       [existing.id, 12000], [sale.id, 12000],
     ].sort((a, b) => (a[0]! < b[0]! ? 1 : -1)));
     expect((await getRetailSale(db, fx.pharmacist.actor, sale.id)).invoiceNo).not.toBe("");
+  });
+
+  // #637 — the in-charge's standing discount on a sale item (owner 2026-10-02) reaches the walk-in sale: the preview,
+  // the amount taken and the issued invoice line, as the item's own discount, with no counter ask and no approval.
+  it("a walk-in sale takes the item's standing discount end to end", async () => {
+    await open();
+    await stockIn(db, fx, { itemId: fx.item.crocin, batchNo: "R-1", qtyBase: 50, expiryDate: "2027-06-30", resourceId: retailId });
+    await withTx(db, (tx) => setSaleItemDiscount(tx, fx.incharge.actor, fx.item.crocin, 1000));
+    const lines = [{ medicineId: fx.med.crocin, qtyBase: 10 }];
+    const preview = await previewRetailSale(db, fx.pharmacist.actor, { lines }, MON);
+    expect(preview.totals).toMatchObject({ grossPaise: 12000, discountPaise: 1200, netPayablePaise: 10800 });
+    const sale = await sellRetail(db, docs, fx.pharmacist.actor, { customer: newCustomer(), lines, tenders: [{ mode: "cash", amountPaise: 10800 }] }, "k-sd", MON);
+    expect(sale.netPaise).toBe(10800);
+    const rows = await db.select().from(invoiceLines).where(eq(invoiceLines.invoiceId, sale.invoiceId));
+    expect(rows.reduce((t, l) => t + l.discountPaise, 0)).toBe(1200);
+    expect(rows.filter((l) => l.discountPaise > 0).map((l) => (l.winner as { sourceKey: string } | null)?.sourceKey)).toEqual([ITEM_DISCOUNT_SOURCE_KEY]);
   });
 
   /*

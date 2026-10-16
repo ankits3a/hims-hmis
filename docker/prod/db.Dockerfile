@@ -18,7 +18,9 @@
 # service — the six values are RE-POINTED.
 #
 # Built by deploy.sh as `hmis-prod/db:latest`; the compose `db` service runs it by tag.
-FROM postgres:16
+# Pinned by digest (resolved 2026-10-15): a rebuild cannot pull a different image under the same tag. To refresh,
+# `docker buildx imagetools inspect <tag>` and replace the digest in the same change as a rebuild on staging.
+FROM postgres:16@sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d
 
 # pgbackrest comes from the PGDG repository the stock image already configures, so the version
 # tracks the one the spike measured (2.59.1) rather than the distribution's older package.

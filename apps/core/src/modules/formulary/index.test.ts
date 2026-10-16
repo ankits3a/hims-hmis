@@ -56,6 +56,7 @@ const SURFACE = [
   "MIN_QUERY_CHARS",
   "NDPS_CLASSES", // PHARMACY P6 — the NDPS Act's two classes
   "NDPS_LIST", // PHARMACY P6 — the cited list of controlled moieties
+  "REFERENCE_SECTIONS", // #616 (decision 0051) — the FDA label reference sections, in reading order
   "THERAPEUTIC_DUPLICATE_CLASSES", // P23 — the classes the duplicate-therapy notice knows
   "addInteraction",
   "addMedicine",
@@ -84,6 +85,7 @@ const SURFACE = [
   "formularyManifest",
   "getMonograph", // the drug monograph (owner 2026-10-02): reviewed text only, unless the curation door asks
   "getStagingRow",
+  "importReferenceLabels", // #616 — the FDA label importer (a script's door); dry run unless applied
   "isEquivalentMedicine",
   "linkMedicinesToGenerics", // owner 2026-10-02: fills a product's empty generic link from the bundle's pairs
   "listDrugDiseaseFor", // P24 — the rules that reach these moieties and these diagnosis codes
@@ -104,11 +106,15 @@ const SURFACE = [
   "pageMedicines",
   "pageSalts",
   "parseComposition", // pure: a vendor's composition column into moieties and strengths
+  "planReferenceImport", // #616 — pure: the coverage choices + label lines → rows, names, missing
   "projectSubstances",
+  "referenceForGeneric", // #616 — the US FDA label reference for a generic; reference only, never a dose or a check
+  "referenceSectionsOf", // #616 — pure: one openFDA label → its reference sections
   "refreshRankSignals",
   "registerNicknameLookup", // decisions 0051/0055 — OPD registers its nickname reader with the prescriber's search
   "rejectStaging",
   "renalDoseFor",
+  "renalRulesByMedicine", // #621 — each product's REVIEWED renal bands, for the opd renal dose check
   "resolveDrugTexts",
   "resolveMedicines",
   "restrictedAntimicrobialExists", // PHARMACY STAGE D5 — the office's "no steward appointed" row asks it

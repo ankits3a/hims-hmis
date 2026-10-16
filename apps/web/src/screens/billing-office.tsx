@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { FeeSwitches } from "./billing-office/fee-switches";
 import { ConsultPrices } from "./billing-office/consult-prices";
+import { CreditNotePicker } from "./billing-office/credit-note-picker";
 import { TeleBills } from "./billing-office/tele-bills";
 import { useAuth } from "../lib/auth";
 import { dayWords, fetchBillingNeeds } from "../lib/billing-office-api";
@@ -217,6 +218,8 @@ type WireDayBook = {
   invoices: { count: number; netPayablePaise: number };
   creditNotes: { count: number; netPaise: number };
   vouchersPaid: { count: number; amountPaise: number };
+  /** #655 — short-settlements accepted as the bank's charge; absent from an older server. */
+  bankCharges?: { count: number; amountPaise: number };
 };
 
 /** `GET /billing/gstr1?from=&to=` — one row per (buyer GSTIN, SAC, rate, exempt) group. */
@@ -559,50 +562,38 @@ function OfficePages({ page, onHand, onGo }: {
               <option value="invoice_refund">{t("billingOffice.request.kindInvoice")}</option>
             </select>
           </div>
-          {kind === "advance_refund" ? (
-            /* UX-AUDIT 2026-09-28 — this was a text box that took the raw internal patient id. It is
-               the app's shared picker now (name / UHID / phone, or a card scan); the id it yields is
-               what the request body carries, exactly as before. */
-            <div className="space-y-1" data-testid="refund-patient">
-              <p className="block text-sm font-medium">{t("billingOffice.request.patient")}</p>
-              {refundPatient === null ? (
-                <PatientPicker
-                  onPick={(hit) => {
-                    setRefundPatient(hit);
-                    setSubject(hit.id);
-                  }}
-                />
-              ) : (
-                <div className="flex flex-wrap items-center gap-2 rounded border p-2 text-sm">
-                  <span data-testid="refund-patient-picked" className="font-medium">{hit2label(refundPatient)}</span>
-                  <span className="font-mono text-xs text-neutral-600">{refundPatient.uhid}</span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    data-testid="refund-patient-change"
-                    onClick={() => {
-                      setRefundPatient(null);
-                      setSubject("");
-                    }}
-                  >
-                    {t("billingOffice.change")}
-                  </Button>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-1">
-              <label className="block text-sm font-medium" htmlFor="refund-subject">
-                {t("billingOffice.request.creditNote")}
-              </label>
-              <input
-                id="refund-subject"
-                value={subject}
-                autoComplete="off"
-                onChange={(e) => setSubject(e.target.value)}
-                className="w-full rounded border px-2 py-1"
+          {/* UX-AUDIT 2026-09-28 — the patient is PICKED (name / UHID / phone, or a card scan), never typed as
+              an id. #655 — for a refund against a bill too: the credit note is then chosen from that
+              patient's own list, never typed as a raw id. */}
+          <div className="space-y-1" data-testid="refund-patient">
+            <p className="block text-sm font-medium">{t("billingOffice.request.patient")}</p>
+            {refundPatient === null ? (
+              <PatientPicker
+                onPick={(hit) => {
+                  setRefundPatient(hit);
+                  setSubject(kind === "advance_refund" ? hit.id : "");
+                }}
               />
-            </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2 rounded border p-2 text-sm">
+                <span data-testid="refund-patient-picked" className="font-medium">{hit2label(refundPatient)}</span>
+                <span className="font-mono text-xs text-neutral-600">{refundPatient.uhid}</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  data-testid="refund-patient-change"
+                  onClick={() => {
+                    setRefundPatient(null);
+                    setSubject("");
+                  }}
+                >
+                  {t("billingOffice.change")}
+                </Button>
+              </div>
+            )}
+          </div>
+          {kind === "invoice_refund" && refundPatient !== null && (
+            <CreditNotePicker patientId={refundPatient.id} value={subject} onChange={setSubject} />
           )}
           <MoneyInput id="refund-amount" label={t("billingOffice.request.amount")} onChange={setAmountPaise} />
           <div className="space-y-1">
@@ -945,12 +936,13 @@ function OfficePages({ page, onHand, onGo }: {
       <p className="text-xs text-neutral-600">{t("billingOffice.dayBook.liveNote")}</p>
       {book !== null && (
         <>
-          <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
             {figure("receipts", t("billingOffice.dayBook.receipts"), book.receipts.count, book.receipts.totalPaise)}
             {figure("invoices", t("billingOffice.dayBook.invoices"), book.invoices.count, book.invoices.netPayablePaise)}
             {figure("credit-notes", t("billingOffice.dayBook.creditNotes"), book.creditNotes.count, book.creditNotes.netPaise)}
             {figure("vouchers", t("billingOffice.dayBook.vouchersPaid"), book.vouchersPaid.count, book.vouchersPaid.amountPaise)}
             {figure("degraded", t("billingOffice.dayBook.degraded"), book.degraded.count, book.degraded.totalPaise)}
+            {book.bankCharges !== undefined && figure("bank-charges", t("billingOffice.dayBook.bankCharges"), book.bankCharges.count, book.bankCharges.amountPaise)}
           </div>
           <div className="flex flex-wrap gap-4 rounded border p-2 text-sm">
             <span>

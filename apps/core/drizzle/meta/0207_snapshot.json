@@ -1,5 +1,5 @@
 {
-  "id": "1eaf013c-02e0-42eb-891d-0e8677ec8cca",
+  "id": "96b24427-3aed-4c93-8dd7-ee83a8b6952f",
   "prevId": "3996038a-c693-44ce-8fea-89964e818eff",
   "version": "7",
   "dialect": "postgresql",
@@ -4581,12 +4581,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "concept_key": {
-          "name": "concept_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "state": {
           "name": "state",
           "type": "text",
@@ -4781,11 +4775,7 @@
         },
         "cds_aliases_live_ck": {
           "name": "cds_aliases_live_ck",
-          "value": "\"cds_aliases\".\"state\" not in ('suggestion', 'trusted') or (\"cds_aliases\".\"rule_result\" = 'pass' and \"cds_aliases\".\"refusal\" is null and ((\"cds_aliases\".\"kind\" = 'medicine' and \"cds_aliases\".\"medicine_id\" is not null and \"cds_aliases\".\"reviewer_answer\" = 'yes') or (\"cds_aliases\".\"kind\" = 'complaint' and \"cds_aliases\".\"concept_key\" is not null)))"
-        },
-        "cds_aliases_target_ck": {
-          "name": "cds_aliases_target_ck",
-          "value": "(\"cds_aliases\".\"kind\" = 'complaint' and \"cds_aliases\".\"medicine_id\" is null) or (\"cds_aliases\".\"kind\" <> 'complaint' and \"cds_aliases\".\"concept_key\" is null)"
+          "value": "\"cds_aliases\".\"state\" not in ('suggestion', 'trusted') or (\"cds_aliases\".\"medicine_id\" is not null and \"cds_aliases\".\"rule_result\" = 'pass' and \"cds_aliases\".\"refusal\" is null and \"cds_aliases\".\"reviewer_answer\" = 'yes')"
         },
         "cds_aliases_undone_ck": {
           "name": "cds_aliases_undone_ck",
@@ -8283,6 +8273,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "renal_overrides": {
+          "name": "renal_overrides",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
         }
       },
       "indexes": {

@@ -1,4 +1,0 @@
-ALTER TABLE "cds_aliases" DROP CONSTRAINT "cds_aliases_live_ck";--> statement-breakpoint
-ALTER TABLE "cds_aliases" ADD COLUMN "concept_key" text;--> statement-breakpoint
-ALTER TABLE "cds_aliases" ADD CONSTRAINT "cds_aliases_target_ck" CHECK (("cds_aliases"."kind" = 'complaint' and "cds_aliases"."medicine_id" is null) or ("cds_aliases"."kind" <> 'complaint' and "cds_aliases"."concept_key" is null));--> statement-breakpoint
-ALTER TABLE "cds_aliases" ADD CONSTRAINT "cds_aliases_live_ck" CHECK ("cds_aliases"."state" not in ('suggestion', 'trusted') or ("cds_aliases"."rule_result" = 'pass' and "cds_aliases"."refusal" is null and (("cds_aliases"."kind" = 'medicine' and "cds_aliases"."medicine_id" is not null and "cds_aliases"."reviewer_answer" = 'yes') or ("cds_aliases"."kind" = 'complaint' and "cds_aliases"."concept_key" is not null))));

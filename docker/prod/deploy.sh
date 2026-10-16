@@ -594,6 +594,8 @@ install -D -m 0644 "$SRC_DIR/prometheus/alerts-backup.yml" "$DEPLOY_DIR/promethe
 # written down: apps/core/test/deploy-parity.test.ts fails the build if prometheus.yml loads a
 # rule file this block does not install, or if this block installs one nothing loads.
 install -D -m 0644 "$SRC_DIR/prometheus/alerts-meta.yml" "$DEPLOY_DIR/prometheus/alerts-meta.yml"
+# The FOURTH rule file: security-relevant events (see alerts-security.yml). deploy-parity.test.ts pins it.
+install -D -m 0644 "$SRC_DIR/prometheus/alerts-security.yml" "$DEPLOY_DIR/prometheus/alerts-security.yml"
 install -D -m 0644 "$SRC_DIR/postgres-exporter/queries.yml" "$DEPLOY_DIR/postgres-exporter/queries.yml"
 install -D -m 0644 "$SRC_DIR/grafana/provisioning/datasources/prometheus.yml" \
   "$DEPLOY_DIR/grafana/provisioning/datasources/prometheus.yml"

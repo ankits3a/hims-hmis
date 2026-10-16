@@ -144,6 +144,15 @@ export const teleVisitsOpened = defineEvent("tele.visits_opened", MODULE, z.obje
 }));
 
 /**
+ * #619 — decision 0006: a doctor turned the copilot's drafting of clinical prose on or off. Written so
+ * an audit can answer "was the copilot permitted to draft on the day this note was signed?"
+ * (`copilotDraftProseAt`). The proactive toggle is UX and writes no event (brainstorm §4.2).
+ */
+export const copilotDraftProseSet = defineEvent("opd.copilot_draft_prose_set", MODULE, z.object({
+  userId: z.string().min(1), draftProse: z.boolean(), previous: z.boolean(),
+}));
+
+/**
  * Fix round 2026-10-09 — a tele-call's bill could not be raised, so the doctor's 'spoke' was NOT
  * recorded. For the desk and billing side (the doctor is told only "Could not save — try again").
  * `code` is the refusing error's own code; no amount and no number is carried.

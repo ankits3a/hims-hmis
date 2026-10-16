@@ -28,7 +28,9 @@
 # native addon that ships glibc prebuilds, and musl would force a source build plus a whole
 # toolchain into the image.
 # ------------------------------------------------------------------------------------------
-FROM node:22-bookworm-slim AS base
+# Pinned by digest (resolved 2026-10-15): a rebuild cannot pull a different image under the same tag. To refresh,
+# `docker buildx imagetools inspect <tag>` and replace the digest in the same change as a rebuild on staging.
+FROM node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS base
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
@@ -69,7 +71,9 @@ RUN pnpm --filter @hmis/web build
 # `root * /srv`. The Caddyfile itself is deploy-directory config (D13), not baked in here, so it
 # can be corrected without a rebuild.
 # ------------------------------------------------------------------------------------------
-FROM caddy:2-alpine AS web
+# Pinned by digest (resolved 2026-10-15): a rebuild cannot pull a different image under the same tag. To refresh,
+# `docker buildx imagetools inspect <tag>` and replace the digest in the same change as a rebuild on staging.
+FROM caddy:2-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f AS web
 COPY --from=build /app/apps/web/dist /srv
 
 # ------------------------------------------------------------------------------------------
