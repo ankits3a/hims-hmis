@@ -65,6 +65,8 @@ export type { SaleDiscountInput } from "./sale-discount";
 export { creditShare } from "./credit-share";
 /** Owner 2026-10-03 — the profile's All bills and one bill in full. */
 export { BILL_DEPARTMENTS, patientBillDetail, patientBills } from "./patient-bills";
+export { billsAliasRows } from "./bills-alias"; // #852
+export type { BillAliasRow } from "./bills-alias";
 export type { BillDepartment, PatientBillDetail, PatientBillRow } from "./patient-bills";
 export { settlementState } from "./settlement";
 export type { Settlement, SettlementState } from "./settlement";

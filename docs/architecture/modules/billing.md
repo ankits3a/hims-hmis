@@ -28,6 +28,9 @@ Source: `apps/core/src/modules/billing/`
   - types: `BenefitSourceArgs`, `BenefitSourceProvider`
 - `billing.module.ts`
   - `class BillingModule`
+- `bills-alias.ts`
+  - `billsAliasRows(db: Db, actor: Actor, patientId: string, opts: { unsettledOnly: boolean }): Promise<BillAliasRow[] | null>`
+  - types: `BillAliasRow`
 - `cash-law.ts`
   - types: `CashThresholdDetail`, `TenderInput`
 - `config.ts`
@@ -193,8 +196,8 @@ Source: `apps/core/src/modules/billing/`
 
 Foreign keys into: `patients`
 
-## HTTP routes (51)
+## HTTP routes (52)
 
-- `billing.controller.ts` — 51: `/billing/allocations`, `/billing/charge-orphans`, `/billing/config`, `/billing/consult-prices`, `/billing/consult-terms`, `/billing/credit-requests`, `/billing/day-book`, `/billing/degraded`, `/billing/eie`, `/billing/fee-switches`, `/billing/gstr1`, `/billing/invoices`, `/billing/office`, `/billing/patients`, `/billing/receipts`, `/billing/recon`, `/billing/refunds`, `/billing/reports`, `/billing/sessions`, `/billing/to-collect`, `/billing/visits`, `/billing/worklist`
+- `billing.controller.ts` — 52: `/billing/allocations`, `/billing/charge-orphans`, `/billing/config`, `/billing/consult-prices`, `/billing/consult-terms`, `/billing/credit-requests`, `/billing/day-book`, `/billing/degraded`, `/billing/eie`, `/billing/fee-switches`, `/billing/gstr1`, `/billing/invoices`, `/billing/office`, `/billing/patients`, `/billing/receipts`, `/billing/recon`, `/billing/refunds`, `/billing/reports`, `/billing/sessions`, `/billing/to-collect`, `/billing/visits`, `/billing/worklist`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/billing`
