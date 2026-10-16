@@ -609,6 +609,8 @@ export type WireWalkInBody = {
   acknowledgedDuplicates?: boolean;
   /** RC-1 CLOSE M2 — bill-first defers the queue join; a caller that sends "defer" reads WireWalkInDeferredResult. */
   join?: "queue" | "defer";
+  /** #614 — the id `triage()` answered with; the server links its own copy of the suggestion to this visit. */
+  triageId?: string;
 };
 
 export type WireWalkInResult = WireOpenVisitResult & { patientId: string; registered: boolean };
@@ -693,8 +695,10 @@ export type WireTriageSuggestion = { departmentId: string; reason: string };
 export type WireRedFlag = { reasonKey: string; matched: string };
 export type WireTriage = {
   suggestions: WireTriageSuggestion[];
-  source: "model" | "keywords";
+  source: "model" | "keywords" | "prior";
   redFlag?: WireRedFlag;
+  /** #614 — absent on a red flag. Sent back on the walk-in or booking that follows. */
+  triageId?: string;
 };
 
 /**
@@ -716,7 +720,7 @@ export function getSlots(doctorId: string, date: string): Promise<{ slots: WireS
 }
 
 export function bookAppointment(
-  body: { patientId: string; doctorId: string; slotStart: string; note?: string; mode?: "tele"; telePhone?: string },
+  body: { patientId: string; doctorId: string; slotStart: string; note?: string; mode?: "tele"; telePhone?: string; triageId?: string },
 ): Promise<{ appointment: WireAppointment }> {
   return api("POST", "/opd/appointments", body);
 }

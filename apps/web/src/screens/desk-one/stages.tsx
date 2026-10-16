@@ -1167,7 +1167,7 @@ function StageAppointment(): React.ReactElement {
           {s.triageBusy ? <span className="tag">ranking…</span> : null}
           {s.triage === null ? null : (
             <span className="pill" title="Where the ranking came from">
-              ranked by {s.triage.source === "model" ? "the triage model" : "the keyword table"}
+              ranked by {s.triage.source === "model" ? "the triage model" : s.triage.source === "prior" ? "this hospital's past visits" : "the keyword table"}
             </span>
           )}
         </div>

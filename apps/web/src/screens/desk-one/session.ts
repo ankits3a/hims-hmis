@@ -230,8 +230,10 @@ export type Session = {
    */
   triage: {
     departmentIds: string[];
-    source: "model" | "keywords";
+    source: "model" | "keywords" | "prior";
     redFlag: { reasonKey: string; matched: string } | null;
+    /** #614 — handed back on the walk-in or booking, so the server can learn where the visit ended. */
+    triageId?: string;
   } | null;
   triageBusy: boolean;
   tab: "now" | "future";
