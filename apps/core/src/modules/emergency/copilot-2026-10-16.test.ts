@@ -1,16 +1,21 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { ER_NOW_CARD_KEYS, ER_STAGE_WORDS, proposeEsi } from "@hmis/contracts";
-import { patients } from "../../kernel/db/schema";
+import { erTriageEntries, events, labAnalytes, orderItems, orders, patients } from "../../kernel/db/schema";
+import { withTx } from "../../kernel/db/client";
+import { collect, enterResult, printLabels, receive } from "../lab";
+import { serviceIdForLabCode } from "../../../scripts/seed-lab-catalogue";
 import { collectCopilotIntents } from "../../kernel/copilot/catalog";
 import { ALL_MANIFESTS } from "../../kernel/modules/manifests";
 import { ModuleRegistry } from "../../kernel/modules/loader";
 import { matchIntent } from "../../kernel/copilot/phrasebook";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { mkErMlcWorld } from "../../../test/helpers/emergency";
+import { mkUser } from "../../../test/helpers/opd";
 import {
   casualtyNowCard, doctorOverdueCard, emergencyCopilotTools, emergencyManifest, lwbsRiskCard, mlcCountersignDueCard, mlcIntimationDueCard,
-  openMlc, preAlert, preAlertCard, readErWaitingDisplay, registerArrival, registerUnidentified, retriageDueCard, triage,
+  assignErDoctor, criticalResultCard, openMlc, placeErOrder, preAlert, preAlertCard, readErBoard, readErCare, readErWaitingDisplay, readSinceArrival,
+  reTriage, registerErChargeSink, registerErEncounterResolver, registerArrival, registerUnidentified, retriageDueCard, triage,
 } from "./index";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -130,11 +135,75 @@ describe("ER copilot — Now cards, waiting display, copilot questions", () => {
     await openMlc(db, w.erDoctor, { idempotencyKey: key(), episodeId: mlcCase.episodeId, category: "assault" }, { now });
     const sealed = await arrive("Meena Kumari", now);
     await db.update(patients).set({ sensitiveContext: true }).where(eq(patients.id, sealed.patientId));
-    const d = await readErWaitingDisplay(db, w.erDesk, { now });
+    const tv = (await mkUser(db, "er.waiting.tv", ["waiting_display"])).actor;
+    const d = await readErWaitingDisplay(db, tv, { now });
     expect(d.rows).toEqual([{ token: plain.episodeNo.slice(-4), stage: "Waiting", stageHi: "प्रतीक्षा में" }]);
     const text = JSON.stringify(d);
     for (const n of ["Asha", "Geeta", "Meena", "abdominal", plain.uhid]) expect(text).not.toContain(n);
     for (const r of d.rows) expect(ER_STAGE_WORDS).toContain(r.stage);
+  });
+
+  it("the waiting-area TV's seat opens the waiting display and nothing else: not the wall board, not the staff board", async () => {
+    const tv = (await mkUser(db, "er.waiting.tv", ["waiting_display"])).actor;
+    await expect(readErWaitingDisplay(db, tv)).resolves.toMatchObject({ rows: [] });
+    await expect(readErBoard(db, tv, { wall: true })).rejects.toMatchObject({ code: "er_forbidden" });
+    await expect(readErBoard(db, tv)).rejects.toMatchObject({ code: "er_forbidden" });
+    // ...and the wall board's seat does not open the waiting display (each screen its own string).
+    const wall = (await mkUser(db, "er.wall.tv", ["display"])).actor;
+    await expect(readErWaitingDisplay(db, wall)).rejects.toMatchObject({ code: "er_forbidden" });
+  });
+
+  it("a critical on a RESTRICTED test keeps its urgency but shows its analyte and value only to the doctor who ordered it", async () => {
+    const off = [registerErEncounterResolver(), registerErChargeSink()];
+    try {
+      const t0 = new Date(Date.now() - 30 * MIN);
+      const a = await arrive("Pooja Kumari", t0);
+      await assignErDoctor(db, w.erNurse, { idempotencyKey: key(), episodeId: a.episodeId, doctorId: w.erDoctor.id }, { now: t0 });
+      await placeErOrder(db, w.erDoctor, { idempotencyKey: key(), episodeId: a.episodeId, serviceIds: [serviceIdForLabCode("RFT")], indication: "Weakness" }, { now: t0, orderKinds: w.decls });
+      const [o] = await db.select().from(orders).where(eq(orders.encounterNo, a.episodeNo));
+      const [item] = await db.select().from(orderItems).where(eq(orderItems.orderId, o!.id));
+      // The lab's sensitive class (consent-required): the restricted flag the lab itself keys DD11 on.
+      await db.update(orderItems).set({ restricted: true }).where(eq(orderItems.id, item!.id));
+      const uhid = (await db.select({ uhid: patients.uhid }).from(patients).where(eq(patients.id, a.patientId)))[0]!.uhid;
+      const { specimens } = await printLabels(db, w.bench, { orderGroupId: o!.orderGroupId, scannedUhid: uhid }, t0);
+      for (const sp of specimens) {
+        await withTx(db, (tx) => collect(tx, w.bench, { specimenId: sp.specimenId, wristbandScanned: true }, t0));
+        await withTx(db, (tx) => receive(tx, w.bench, w.decls, { specimenNo: sp.specimenNo }, t0));
+      }
+      const k = (await db.select({ id: labAnalytes.id }).from(labAnalytes).where(eq(labAnalytes.code, "K")))[0]!;
+      expect((await enterResult(db, w.bench, { orderItemId: item!.id, analyteId: k.id, value: "6.8", entryMode: "manual" }, t0)).criticalCallId).toBeTruthy();
+      const now = new Date();
+      // The doctor who ordered it reads the value everywhere.
+      const [mine] = await criticalResultCard(ctx(w.erDoctor, now));
+      expect(mine!.rows![0]!.subtitle).toContain("K 6.8");
+      expect((await readSinceArrival(db, w.erDoctor, a.episodeId, { now })).lines.find((l) => l.source === "critical")!.text).toContain("K 6.8");
+      // The casualty nurse (er.care, not the orderer, no `orders.read.restricted`) sees the urgency, never the content.
+      const [theirs] = await criticalResultCard(ctx(w.erNurse, now));
+      expect(theirs!.rows![0]).toMatchObject({ severity: "hot", subtitle: "Critical result (restricted test)" });
+      const line = (await readSinceArrival(db, w.erNurse, a.episodeId, { now })).lines.find((l) => l.source === "critical")!;
+      expect(line.text).toMatch(/^Critical result \(restricted test\) at \d\d:\d\d · not yet read back$/);
+      const care = await readErCare(db, w.erNurse, a.episodeId);
+      expect(JSON.stringify([theirs, line, care.criticals])).not.toMatch(/6\.8|"K"/);
+      expect(care.criticals).toHaveLength(1);
+    } finally { off.forEach((f) => f()); }
+  });
+
+  it("triage recomputes the copilot's proposal itself: a client cannot send one, and the event says when the pick differs", async () => {
+    const t0 = new Date(Date.now() - 20 * MIN);
+    const p = await w.patient("male", 52, "Ramesh Prasad");
+    const a = await registerArrival(db, w.erDesk, { idempotencyKey: key(), patientId: p, arrivalMode: "walk_in", complaint: "chest pain since 1 hour" }, { now: t0 });
+    const decision = { lifeSaving: false, highRisk: true, resources: "many" as const, dangerVitals: false };
+    // A level smuggled in by a client is not part of the contract: refused before anything is written.
+    await expect(triage(db, w.erNurse, { idempotencyKey: key(), episodeId: a.episodeId, level: 2, decision, copilotLevel: 5 })).rejects.toThrow();
+    await triage(db, w.erNurse, { idempotencyKey: key(), episodeId: a.episodeId, level: 2, decision }, { now: new Date(t0.getTime() + 2 * MIN) });
+    // A re-triage to ESI 4 (with its reason): the server's proposal is still 2 — an override.
+    await reTriage(db, w.erNurse, { idempotencyKey: key(), episodeId: a.episodeId, level: 4, reason: "pain settled" }, { now: new Date(t0.getTime() + 9 * MIN) });
+    const entries = await db.select().from(erTriageEntries).where(eq(erTriageEntries.episodeId, a.episodeId));
+    expect(entries.map((x) => [x.kind, x.level, x.copilotLevel]).sort()).toEqual([["re_triage", 4, 2], ["triage", 2, 2]]);
+    const evs = await db.select().from(events).where(eq(events.correlationId, a.episodeId));
+    const payload = (name: string) => evs.find((x) => x.name === name)!.payload as Record<string, unknown>;
+    expect(payload("er.triaged")).toMatchObject({ copilotLevel: 2, override: false });
+    expect(payload("er.retriaged")).toMatchObject({ copilotLevel: 2, override: true });
   });
 
   it("the two copilot questions route by the floor and answer counts only", async () => {

@@ -279,17 +279,25 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   thresholds are the file's constants (call 10 min, boarding 2 h / hot 4 h, MLC leads 15 min / 2 h, LWBS ESI 4–5 ≥ 60 min).
   Rows alias unidentified / restricted patients; a sealed one is "Sealed patient" with no bay.
 - `copilot-esi.ts` + contracts `proposeEsi` — the ESI proposal: RULES ONLY, never a model; a read. The web card ticks the
-  four questions ("Use these answers"), never the level; the triage body carries `copilotLevel`.
-- `copilot-since.ts` — "since arrival": candidate lines with records whose LABELS are built from the row; `verifyErSinceLine`
-  (every number and time in the text is in the labels) drops a failing line. No model (DECIDED: the trolley cannot wait).
-  Lines state values and times, never a count the records do not state.
+  four questions ("Use these answers"), never the level. `triage` / `re_triage` RECOMPUTE the proposal server-side
+  (`esiProposalOf`, before the locks) and keep it as `copilot_level`; the events carry `copilotLevel` + `override`. A
+  client cannot send one (strict input).
+- `copilot-since.ts` — "since arrival": each line is a template + TYPED FACTS (`{kind, field, value, ref}`, `ref` = the
+  stored table/id/column); text = `renderSinceLine(template, facts)` only. `verifyErSinceLine(db, line, ctx)` re-reads every
+  fact from its column, recomputes derived minutes from the stored instants (to `asOf` for "now"), checks an excerpt is a
+  word-boundary prefix of the stored text, and re-renders; a failing line is dropped. No constant number in a template
+  (a constant is not a fact). No model (DECIDED: the trolley cannot wait).
 - `copilot-drafts.ts` — summary (template + one verified model sentence over the masked notes), referral (template only),
   MLC narrative (template only, ALWAYS). Reads stamped "Draft"; the doctor signs through `discharge_from_er`, `refer_out`,
   `add_mlc_addendum`. Medicines are never drafted.
 - `copilot-model.ts` — the one door to a model (IPD's door, ER's bar): `erModelBarred` reads the record on every ask — an MLC
   episode, a sealed or confidential patient = no call; then model off, halt / cap, identifier scrub, budget. Never throws.
-- `copilot-waiting.ts` — `/er/copilot/waiting` (`er.board.wall`): token (last four of the ER number) + stage word. MLC,
-  sealed and confidential patients are absent. Web: `/er/board?waiting=1` (no new route).
+- `copilot-waiting.ts` — `/er/copilot/waiting` (`er.board.waiting`, its own string, held only by the `waiting_display`
+  seat — the TV's sign-in must not open the wall board; `display` keeps `er.board.wall`): token (last four of the ER number)
+  + stage word. MLC, sealed and confidential patients are absent. Web: `/er/board?waiting=1` (no new route).
+- Criticals on ER screens (Now card, since-arrival, `readErCare`) pass the reader to lab `openCriticalsForEncounters`: a
+  critical on a RESTRICTED test shows "Critical result (restricted test)" unless the reader ordered it or holds
+  `orders.read.restricted`. The care sweep (system, no reader) is unmasked: its notice body still names the analyte.
 - `copilot-tools.ts` — `emergency.casualty_now` and `emergency.mlc_due` through the #865 intent seam, FLOOR-ONLY (no menu,
   no help) so the chooser request and the chat system prompt stay byte-identical. Cues are substrings: no "er mein".
 - Web: `apps/web/src/screens/er-copilot.tsx` (card, since arrival, draft button, waiting display).

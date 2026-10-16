@@ -73,6 +73,12 @@ export async function mkErWorld(db: Db): Promise<ErWorld> {
   // Lane 8 (#815) — mass casualty: the same three and the two who command a Code Yellow (seed-roles grants the same).
   await ensureRole(db, "duty_manager");
   for (const r of ["front_office", "er_nurse", "doctor", "medical_superintendent", "duty_manager"]) await grantPermissionToRole(db, registry, r, "er.mci");
+  // ER lane 9 review (#894) — the waiting-area TV's own seat: `er.board.waiting` and nothing else (as seed-roles grants it).
+  await ensureRole(db, "waiting_display");
+  await grantPermissionToRole(db, registry, "waiting_display", "er.board.waiting");
+  // ...and the kiosk `display` seat keeps the wall board's string (seed-roles), never the waiting display's.
+  await ensureRole(db, "display");
+  await grantPermissionToRole(db, registry, "display", "er.board.wall");
   const erNurse = (await mkUser(db, "er.nurse", ["er_nurse"])).actor;
   const mrd = (await mkUser(db, "er.mrd", ["mrd_officer"])).actor;
   const erDoctor = (await mkUser(db, "er.doctor", ["doctor"])).actor;

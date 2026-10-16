@@ -2,7 +2,7 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import { ER_STAGE_WORDS_HI } from "@hmis/contracts";
 import { ER_OPEN_STATE_VALUES, erEpisodes, erMlcs, orderItems, orders, patients } from "../../kernel/db/schema";
 import { requireErPermission } from "./core";
-import { ER_BOARD_WALL } from "./names";
+import { ER_BOARD_WAITING } from "./names";
 import type { Actor, ErStageWord, ErWaitingDisplay } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { EpisodeRow } from "./core";
@@ -29,7 +29,7 @@ export function stageOf(e: Pick<EpisodeRow, "state" | "disposition">, testPendin
 }
 
 export async function readErWaitingDisplay(db: Db, actor: Actor, opts: { now?: Date } = {}): Promise<ErWaitingDisplay> {
-  await requireErPermission(db, actor, ER_BOARD_WALL);
+  await requireErPermission(db, actor, ER_BOARD_WAITING);
   const now = opts.now ?? new Date();
   const open = await db.select({ e: erEpisodes, sealed: patients.sensitiveContext, confidential: patients.isConfidential })
     .from(erEpisodes).innerJoin(patients, eq(patients.id, erEpisodes.patientId))

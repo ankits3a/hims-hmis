@@ -36,10 +36,13 @@ export const erIdentityLinked = defineEvent("er.identity_linked", MODULE, z.obje
 export const erTriaged = defineEvent("er.triaged", MODULE, z.object({
   episodeId: id, level: z.number().int(), algorithmLevel: z.number().int().nullable(), downTriage: z.boolean(),
   triagedAt: z.string(), takeTeamId: id.nullable(), provenance: ErProvenanceSchema,
+  /** Lane 9 review (#894): the copilot's ESI proposal, recomputed by the server at the tap, and whether the pick differs. */
+  copilotLevel: z.number().int().nullable().optional(), override: z.boolean().optional(),
 }));
 export const erRetriaged = defineEvent("er.retriaged", MODULE, z.object({
   episodeId: id, level: z.number().int(), fromLevel: z.number().int().nullable(), algorithmLevel: z.number().int().nullable(),
   downTriage: z.boolean(), provenance: ErProvenanceSchema,
+  copilotLevel: z.number().int().nullable().optional(), override: z.boolean().optional(),
 }));
 export const erVitalsRecorded = defineEvent("er.vitals_recorded", MODULE, z.object({
   episodeId: id, ewsKind: z.string(), ewsValue: z.number().int(), ewsBand: z.string(), worse: z.boolean(), provenance: ErProvenanceSchema,

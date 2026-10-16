@@ -95,9 +95,6 @@ export function ErTriage(): React.ReactElement {
   const [refusal, setRefusal] = useState<ErRefusalBody | string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const actKey = useRef(newKey());
-  // Lane 9 (#816): the level the copilot card showed, sent with the triage so a different pick is logged as an override.
-  const [copilotLevel, setCopilotLevel] = useState<EsiLevel | null>(null);
-  const onCopilotShown = useCallback((lv: EsiLevel | null) => setCopilotLevel(lv), []);
 
   const load = useCallback(() => {
     fetchErBoard(false).then(setBoard, () => undefined);
@@ -144,7 +141,7 @@ export function ErTriage(): React.ReactElement {
   };
   const save = (): Promise<void> => act(async () => {
     const v = vitalsBody();
-    const body: Record<string, unknown> = { episodeId, level, ...(copilotLevel !== null ? { copilotLevel } : {}), ...(complete ? { decision: d } : {}), ...(reason.trim() !== "" ? { reason: reason.trim() } : {}), ...(v === undefined ? {} : { vitals: v }) };
+    const body: Record<string, unknown> = { episodeId, level, ...(complete ? { decision: d } : {}), ...(reason.trim() !== "" ? { reason: reason.trim() } : {}), ...(v === undefined ? {} : { vitals: v }) };
     const out = first ? await triageApi({ ...body, ...(dept !== null ? { departmentCode: dept } : {}) }, actKey.current) : await reTriageApi(body, actKey.current);
     actKey.current = newKey();
     setNote(out.retriageDueAt === null ? t("erTriage.savedNoClock", { n: out.level }) : t("erTriage.saved", { n: out.level, time: fmtIst(out.retriageDueAt) }));
@@ -182,7 +179,7 @@ export function ErTriage(): React.ReactElement {
             </header>
           )}
 
-          {tile !== null && first ? <EsiCopilotCard episodeId={tile.episodeId} onShown={onCopilotShown} onUse={(x) => setD(x)} /> : null}
+          {tile !== null && first ? <EsiCopilotCard episodeId={tile.episodeId} onUse={(x) => setD(x)} /> : null}
           {tile !== null && first ? (
             <div className="ert-qs">
               <YesNo t={t} testid="er-triage-q-a" label={t("erTriage.q.lifeSaving")} hint={t("erTriage.q.lifeSavingHint")} value={d.lifeSaving} onPick={yes("lifeSaving")} />

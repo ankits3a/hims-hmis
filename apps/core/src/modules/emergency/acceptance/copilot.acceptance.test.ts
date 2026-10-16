@@ -7,6 +7,7 @@ import {
   assignErDoctor, buildErSummaryDraft, buildMlcNarrativeDraft, giveErDose, issueErMed, openMlc, readEsiProposal, readSinceArrival,
   recordErNote, recordErVitals, registerArrival, triage, verifyErSinceLine,
 } from "../index";
+import { renderSinceLine } from "@hmis/contracts";
 import type { Db } from "../../../kernel/db/client";
 import type { ErMlcWorld } from "../../../../test/helpers/emergency";
 import type { ErModel } from "../index";
@@ -63,9 +64,10 @@ describe("ER lane 9 er-copilot — done means", () => {
     const before = (await db.select().from(erEpisodes).where(eq(erEpisodes.id, a.episodeId)))[0]!;
     expect([before.state, before.esi, before.triagedAt]).toEqual(["arrived", null, null]);
 
-    // The nurse picks ESI 1 (more urgent than the proposal's 2): no reason asked, the override kept on the entry.
+    // The nurse picks ESI 1 (more urgent than the proposal's 2): no reason asked; the SERVER recomputes the proposal at the
+    // tap and keeps it on the entry and the event as an override.
     const r = await triage(db, w.erNurse, {
-      idempotencyKey: key(), episodeId: a.episodeId, level: 1, copilotLevel: proposal.level,
+      idempotencyKey: key(), episodeId: a.episodeId, level: 1,
       decision: { lifeSaving: true, highRisk: true, resources: "many", dangerVitals: true },
     }, { now: new Date() });
     expect(r.level).toBe(1);
@@ -122,7 +124,9 @@ describe("ER lane 9 er-copilot — done means", () => {
       idempotencyKey: key(), episodeId: a.episodeId, kind: "progress", text: "Wheeze better after 2 nebs, SpO2 94% on 4 L oxygen.",
     }, { now: new Date(t0.getTime() + 60 * MIN) });
 
-    const since = await readSinceArrival(db, w.erDoctor, a.episodeId);
+    const now = new Date();
+    const since = await readSinceArrival(db, w.erDoctor, a.episodeId, { now });
+    const ctx = { now, episodeNo: a.episodeNo, viewer: w.erDoctor };
     expect(since.lines.length).toBeGreaterThanOrEqual(4);
     expect(since.lines.length).toBeLessThanOrEqual(6);
     const sources = since.lines.map((l) => l.source);
@@ -132,12 +136,38 @@ describe("ER lane 9 er-copilot — done means", () => {
     expect(since.lines[0]!.text).toContain("P 128 · BP 96/58 · RR 30 · SpO2 88% on O2");
     for (const line of since.lines) {
       expect(line.records.length).toBeGreaterThan(0);
-      expect({ key: line.key, verdict: verifyErSinceLine(line) }).toEqual({ key: line.key, verdict: { ok: true } });
+      expect({ key: line.key, verdict: await verifyErSinceLine(db, line, ctx) }).toEqual({ key: line.key, verdict: { ok: true } });
+      expect(line.text).toBe(renderSinceLine(line.template, line.facts));
       // Change ONE number in the line's text: the check refuses it.
       const changed = line.text.replace(/\d+/, (n) => String(Number(n) + 7));
-      if (changed !== line.text) expect(verifyErSinceLine({ ...line, text: changed }).ok).toBe(false);
+      if (changed !== line.text) expect((await verifyErSinceLine(db, { ...line, text: changed }, ctx)).ok).toBe(false);
     }
-    // A line claiming a time no record holds fails too.
-    expect(verifyErSinceLine({ text: "Seen at 03:17", records: since.lines[0]!.records })).toEqual({ ok: false, reason: "time_not_in_source:03:17" });
+
+    // Pulse and systolic swapped — in the facts (and so the text), or in the text alone: both refused.
+    const vit = since.lines.find((l) => l.source === "vitals")!;
+    const swapped = vit.facts.map((f) => (f.field === "pulse" ? { ...f, value: 96 } : f.field === "systolic" ? { ...f, value: 128 } : f));
+    const swappedLine = { ...vit, facts: swapped, text: renderSinceLine(vit.template, swapped) };
+    expect(swappedLine.text).toContain("P 96 · BP 128/58");
+    expect(await verifyErSinceLine(db, swappedLine, ctx)).toEqual({ ok: false, reason: "value_differs:pulse" });
+    expect(await verifyErSinceLine(db, { ...vit, text: vit.text.replace("P 128 · BP 96/", "P 96 · BP 128/") }, ctx))
+      .toEqual({ ok: false, reason: "text_not_from_facts" });
+
+    // A wrong subtraction: "26 min after arrival" stated as 27 is recomputed from the stored instants and refused.
+    const doc = since.lines.find((l) => l.source === "doctor")!;
+    expect(doc.text).toContain("26 min after arrival");
+    const off = doc.facts.map((f) => (f.kind === "minutes" ? { ...f, value: Number(f.value) + 1 } : f));
+    expect(await verifyErSinceLine(db, { ...doc, facts: off, text: renderSinceLine(doc.template, off) }, ctx)).toEqual({ ok: false, reason: "minutes_differ:doorToDoctor" });
+  });
+
+  it("(b-2) a long complaint is cut at a word boundary and the arrival line still stands", async () => {
+    const now = new Date();
+    // The 80-character cut falls inside "180/110": a character cut would leave "18", a number the record does not hold.
+    const complaint = "Severe headache since morning with vomiting twice and neck pain, BP at home 180/110 with blurred vision";
+    const a = await arrive("Kamla Devi", complaint, new Date(now.getTime() - 10 * MIN));
+    const since = await readSinceArrival(db, w.erDoctor, a.episodeId, { now });
+    const arrival = since.lines.find((l) => l.source === "arrival")!;
+    expect(arrival).toBeDefined();
+    expect(arrival.text).toMatch(/neck pain, BP at home…$/);
+    expect(await verifyErSinceLine(db, arrival, { now, episodeNo: a.episodeNo, viewer: w.erDoctor })).toEqual({ ok: true });
   });
 });

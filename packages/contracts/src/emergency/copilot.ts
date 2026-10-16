@@ -155,16 +155,72 @@ export const ER_SINCE_MIN_LINES = 4;
 export const ER_SINCE_MAX_LINES = 6;
 
 export const ErSinceRecordSchema = z.strictObject({ id: z.string(), at: ErInstantSchema.nullable(), label: z.string() });
+
+/**
+ * Review #894 — a line is built from TYPED FACTS, each pointing at the stored column it was read from (`ref`). The text is
+ * `template` with `{0}`, `{1}`… replaced by the facts as formatted for their kind, and nothing else, so the verifier can
+ * re-read every fact from its column and re-render the text: a number that differs from its source cannot stand.
+ *
+ *  - `time` an instant (shown as IST hh:mm) · `number` · `text` · `mode` (an arrival mode, shown in words) · `esi_word`
+ *    (an ESI level, shown as its word) · `excerpt` (the start of a stored text, cut at a word boundary) ·
+ *    `minutes` (DERIVED: whole minutes from `ref` to `to`, or to the read's `asOf` — recomputed by the verifier).
+ */
+export const ER_SINCE_FACT_KINDS = ["time", "number", "text", "mode", "esi_word", "excerpt", "minutes"] as const;
+export const ErSinceRefSchema = z.strictObject({ table: z.string(), id: z.string(), column: z.string() });
+export type ErSinceRef = z.infer<typeof ErSinceRefSchema>;
+export const ErSinceFactSchema = z.strictObject({
+  kind: z.enum(ER_SINCE_FACT_KINDS),
+  field: z.string(),
+  value: z.union([z.string(), z.number()]),
+  ref: ErSinceRefSchema,
+  /** `minutes` only: the later instant's column, or "now" (the read's `asOf`). */
+  to: z.union([ErSinceRefSchema, z.literal("now")]).optional(),
+});
+export type ErSinceFact = z.infer<typeof ErSinceFactSchema>;
+
 export const ErSinceLineSchema = z.strictObject({
   key: z.string(),
   text: z.string(),
+  /** The text's shape: constant words and `{i}` slots, one per fact. */
+  template: z.string(),
+  facts: z.array(ErSinceFactSchema),
   source: z.enum(ER_SINCE_SOURCES),
   at: ErInstantSchema.nullable(),
   abnormal: z.boolean(),
-  /** The rows the line was read from, each labelled with its own values: every number in `text` is in these labels. */
+  /** The rows the line was read from (the source chip's detail). */
   records: z.array(ErSinceRecordSchema).min(1),
 });
 export type ErSinceLine = z.infer<typeof ErSinceLineSchema>;
+
+/** IST hh:mm of an instant (the one way a since-line shows a time). */
+export function erIstHm(iso: string | Date): string {
+  const d = typeof iso === "string" ? new Date(iso) : iso;
+  const ist = new Date(d.getTime() + 330 * 60_000);
+  return `${String(ist.getUTCHours()).padStart(2, "0")}:${String(ist.getUTCMinutes()).padStart(2, "0")}`;
+}
+
+export const ER_MODE_WORDS: Record<string, string> = {
+  walk_in: "walked in", private_vehicle: "private vehicle", own_ambulance: "hospital ambulance", ambulance_108: "108 ambulance",
+  police: "brought by police", referred_in: "referred in", inter_facility: "inter-facility transfer",
+};
+
+/** One fact as the line shows it. */
+export function formatSinceFact(f: Pick<ErSinceFact, "kind" | "value">): string {
+  switch (f.kind) {
+    case "time": return erIstHm(String(f.value));
+    case "mode": return ER_MODE_WORDS[String(f.value)] ?? String(f.value);
+    case "esi_word": return ER_ESI_INFO[Number(f.value) as ErEsiLevel]?.word ?? String(f.value);
+    default: return String(f.value);
+  }
+}
+
+/** The text a template and its facts make — the ONLY way a since-line's text is produced. */
+export function renderSinceLine(template: string, facts: readonly Pick<ErSinceFact, "kind" | "value">[]): string {
+  return template.replace(/\{(\d+)\}/g, (_m, i: string) => {
+    const f = facts[Number(i)];
+    return f === undefined ? "" : formatSinceFact(f);
+  });
+}
 export const ErSinceArrivalSchema = z.strictObject({
   episodeId: ErIdSchema,
   asOf: ErInstantSchema,

@@ -9,7 +9,7 @@ import { erModelFrom } from "./copilot-model";
 import { readSinceArrival } from "./copilot-since";
 import { readErWaitingDisplay } from "./copilot-waiting";
 import { ErError, ErRefusal, erRefusalStatus } from "./errors";
-import { ER_BOARD_WALL, ER_CARE, ER_DISPOSITION, ER_MLC, ER_TRIAGE } from "./names";
+import { ER_BOARD_WAITING, ER_CARE, ER_DISPOSITION, ER_MLC, ER_TRIAGE } from "./names";
 import type { Actor, ErDraft, ErEsiProposal, ErRefusalBody, ErSinceArrival, ErWaitingDisplay } from "@hmis/contracts";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
@@ -70,7 +70,7 @@ export class EmergencyCopilotController {
   }
 
   @Get("waiting")
-  @RequirePermission(ER_BOARD_WALL, "hospital")
+  @RequirePermission(ER_BOARD_WAITING, "hospital")
   async waiting(@CurrentActor() actor: Actor): Promise<ErWaitingDisplay> {
     try { return await readErWaitingDisplay(this.db, actor); } catch (e) { toHttp(e); }
   }

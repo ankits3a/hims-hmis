@@ -5,7 +5,7 @@ import type { ErDraft, ErDraftKind, ErEsiProposal, ErSinceArrival, ErWaitingDisp
 import { fmtIst } from "../lib/format";
 import { useRealtime } from "../lib/realtime";
 import { ER_BOARD_TOPIC, draftApi, fetchEsiProposal, fetchSinceArrival, fetchWaitingDisplay } from "../lib/er-api";
-import type { EsiDecision, EsiLevel } from "../lib/er-api";
+import type { EsiDecision } from "../lib/er-api";
 
 /**
  * ER lane 9 (#816) — THE ER COPILOT's SURFACES (spec §4.9, T2: it proposes, a person confirms). Each piece is a read:
@@ -18,16 +18,15 @@ import type { EsiDecision, EsiLevel } from "../lib/er-api";
  */
 type T = (k: string, o?: Record<string, unknown>) => string;
 
-export function EsiCopilotCard({ episodeId, onUse, onShown }: {
-  episodeId: string; onUse: (d: EsiDecision) => void; onShown: (level: EsiLevel | null) => void;
-}): React.ReactElement | null {
+/** The server recomputes the proposal at the tap and logs an override itself (review #894): the card sends nothing. */
+export function EsiCopilotCard({ episodeId, onUse }: { episodeId: string; onUse: (d: EsiDecision) => void }): React.ReactElement | null {
   const { t } = useTranslation();
   const [p, setP] = useState<ErEsiProposal | null>(null);
   useEffect(() => {
     let live = true;
-    fetchEsiProposal(episodeId).then((x) => { if (live) { setP(x); onShown(Array.isArray(x.reasons) ? x.level as EsiLevel : null); } }, () => { if (live) { setP(null); onShown(null); } });
+    fetchEsiProposal(episodeId).then((x) => { if (live) setP(x); }, () => { if (live) setP(null); });
     return () => { live = false; };
-  }, [episodeId, onShown]);
+  }, [episodeId]);
   // A reply without reasons (an older server) shows nothing rather than a broken card.
   if (p === null || !Array.isArray(p.reasons)) return null;
   return (

@@ -29,9 +29,9 @@ const PROPOSAL: ErEsiProposal = {
 const SINCE: ErSinceArrival = {
   episodeId: EP, asOf: new Date().toISOString(), arrivedAt: new Date().toISOString(),
   lines: [
-    { key: "vitals", text: "Vitals 14:30: P 128 · BP 96/58 · SpO2 88% on O2", source: "vitals", at: null, abnormal: true, records: [{ id: "v1", at: null, label: "vitals" }] },
-    { key: "triage", text: "ESI 2 Emergent at 14:06", source: "triage", at: null, abnormal: true, records: [{ id: "t1", at: null, label: "triage" }] },
-    { key: "arrival", text: "Arrived 14:02 · walked in", source: "arrival", at: null, abnormal: false, records: [{ id: "e1", at: null, label: "arrived" }] },
+    { key: "vitals", text: "Vitals 14:30: P 128 · BP 96/58 · SpO2 88% on O2", template: "Vitals 14:30: P 128 · BP 96/58 · SpO2 88% on O2", facts: [], source: "vitals", at: null, abnormal: true, records: [{ id: "v1", at: null, label: "vitals" }] },
+    { key: "triage", text: "ESI 2 Emergent at 14:06", template: "ESI 2 Emergent at 14:06", facts: [], source: "triage", at: null, abnormal: true, records: [{ id: "t1", at: null, label: "triage" }] },
+    { key: "arrival", text: "Arrived 14:02 · walked in", template: "Arrived 14:02 · walked in", facts: [], source: "arrival", at: null, abnormal: false, records: [{ id: "e1", at: null, label: "arrived" }] },
   ],
 };
 const DRAFT: ErDraft = {
@@ -66,7 +66,7 @@ describe("ER lane 9 (#816) copilot screens", () => {
   });
   afterEach(() => { vi.unstubAllGlobals(); });
 
-  it("the triage suggestion ticks the answers but saves nothing; the nurse's level goes with copilotLevel", async () => {
+  it("the triage suggestion ticks the answers but saves nothing; the nurse's level is the only level sent", async () => {
     renderWithRouter(<ErTriage />, `/er/triage?episode=${EP}`);
     const card = await screen.findByTestId("er-triage-copilot");
     expect(card).toHaveTextContent("Suggests ESI 2 Emergent");
@@ -80,7 +80,9 @@ describe("ER lane 9 (#816) copilot screens", () => {
     await userEvent.click(within(screen.getByTestId("er-triage-level")).getByRole("button", { name: /^1/ }));
     await userEvent.click(screen.getByTestId("er-triage-save"));
     expect(posted).toHaveLength(1);
-    expect(posted[0]!.body).toMatchObject({ episodeId: EP, level: 1, copilotLevel: 2, decision: PROPOSAL.decision });
+    expect(posted[0]!.body).toMatchObject({ episodeId: EP, level: 1, decision: PROPOSAL.decision });
+    // The server recomputes the proposal at the tap (review #894): the screen never sends a level of its own.
+    expect(posted[0]!.body).not.toHaveProperty("copilotLevel");
   });
 
   it("the ER patient opens on 'since arrival' with source chips, and a summary Draft fills the discharge form", async () => {

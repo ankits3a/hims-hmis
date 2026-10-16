@@ -8,6 +8,7 @@ import { getPatientSummaries } from "../patients";
 import { readErBoard } from "./board";
 import { istHm } from "./copilot-since";
 import type { Actor, ErEsiLevel, ErNowCardKey } from "@hmis/contracts";
+import type { OpenCritical } from "../lab";
 import type { Db } from "../../kernel/db/client";
 import type { DeskCard, DeskProviderCtx, DeskRow } from "../../kernel/desk/types";
 import type { EpisodeRow } from "./core";
@@ -34,6 +35,9 @@ export const ER_MLC_INTIMATION_LEAD_MIN = 15;
 export const ER_MLC_COUNTERSIGN_LEAD_MIN = 120;
 export const ER_LWBS_RISK_MIN = 60;
 const SEALED_LABEL = "Sealed patient";
+/** Review #894: what a critical on a restricted test says to someone who may not read it — the urgency, no content. */
+export const RESTRICTED_CRITICAL = "Critical result (restricted test)";
+const criticalWords = (c: OpenCritical): string => (c.masked ? RESTRICTED_CRITICAL : `${c.analyteCode} ${c.value}${c.unit === null ? "" : ` ${c.unit}`}`);
 const ROWS = 5;
 
 type NowRow = DeskRow & { wait: number };
@@ -170,7 +174,9 @@ export async function resultReadyCard(ctx: DeskProviderCtx): Promise<DeskCard[]>
 
 export async function criticalResultCard(ctx: DeskProviderCtx): Promise<DeskCard[]> {
   const eps = await openEpisodes(ctx.db);
-  const crit = await openCriticalsForEncounters(ctx.db, eps.map((e) => e.episodeNo));
+  // Review #894: the lab's restricted-test rule — the urgency shows, a restricted test's analyte and value only to its orderer
+  // or a holder of `orders.read.restricted`.
+  const crit = await openCriticalsForEncounters(ctx.db, eps.map((e) => e.episodeNo), ctx.reader);
   if (crit.length === 0) return [];
   const byNo = new Map(eps.map((e) => [e.episodeNo, e] as const));
   const who = await whoOf(ctx.db, ctx.reader, eps.filter((e) => crit.some((c) => c.encounterNo === e.episodeNo)));
@@ -178,7 +184,7 @@ export async function criticalResultCard(ctx: DeskProviderCtx): Promise<DeskCard
     const e = byNo.get(c.encounterNo)!;
     return {
       id: c.callId, badge: "!", title: who.get(e.id)!.name,
-      subtitle: line(who.get(e.id)!.place, `${c.analyteCode} ${c.value}${c.unit === null ? "" : ` ${c.unit}`}`),
+      subtitle: line(who.get(e.id)!.place, criticalWords(c)),
       action: "Open", href: patientHref(e.id), severity: "hot", wait: since(c.openedAt, ctx.now),
     };
   }));
