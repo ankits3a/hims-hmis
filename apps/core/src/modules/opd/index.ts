@@ -103,3 +103,8 @@ export type { AliasRunCaps, AliasRunReport } from "./alias-runner";
 // The owner's Appointments and Learning pages in the staff app (owner 2026-10-09): counts, read-only.
 export { ownerAppointments, ownerLearning } from "./owner-reads";
 export { runFlowLearning } from "./flow-learning";
+
+// #621 — the lab registers the renal dose check's eGFR reader here (lab depends on opd, not the reverse).
+export { registerKidneyFunctionReader } from "./kidney-function";
+export type { KidneyFunctionReader } from "./kidney-function";
+export type { KidneyReading, RenalHit } from "./rx-checks";

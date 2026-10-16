@@ -104,13 +104,14 @@ export async function backfillCdsRxLines(db: Db): Promise<BackfillReport> {
     id: opdPrescriptions.id, encounterId: opdPrescriptions.encounterId, doctorId: opdPrescriptions.doctorId, lines: opdPrescriptions.lines,
     issuedAt: opdPrescriptions.issuedAt, transcribedBy: opdPrescriptions.transcribedBy,
     a: opdPrescriptions.allergyOverrides, i: opdPrescriptions.interactionOverrides, d: opdPrescriptions.duplicateOverrides, dd: opdPrescriptions.drugDiseaseOverrides,
+    rn: opdPrescriptions.renalOverrides, // #621 — the fifth kind counts as an override, as it does at issue
   }).from(opdPrescriptions).where(and(eq(opdPrescriptions.status, "active"), isNotNull(opdPrescriptions.doctorId))).orderBy(asc(opdPrescriptions.issuedAt));
 
   const report: BackfillReport = { prescriptions: 0, lines: 0, doseParsed: 0, doseUnparsed: 0, frequencyOther: 0, unparsedDoses: [] };
   const unparsed = new Map<string, number>();
   for (const rx of rxs) {
     const lines = (rx.lines ?? []) as RxLine[];
-    const overrides = [rx.a, rx.i, rx.d, rx.dd].flatMap((x) => (Array.isArray(x) ? (x as Override[]) : []));
+    const overrides = [rx.a, rx.i, rx.d, rx.dd, rx.rn].flatMap((x) => (Array.isArray(x) ? (x as Override[]) : []));
     const n = await writeCdsRxLines(db, {
       prescriptionId: rx.id, encounterId: rx.encounterId, doctorId: rx.doctorId, lines, overrides,
       transcribed: rx.transcribedBy !== null, issuedAt: rx.issuedAt,

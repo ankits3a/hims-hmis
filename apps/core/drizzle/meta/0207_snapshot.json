@@ -1,5 +1,5 @@
 {
-  "id": "4ebd870e-9067-405c-897c-5a2fad0dafa2",
+  "id": "96b24427-3aed-4c93-8dd7-ee83a8b6952f",
   "prevId": "3996038a-c693-44ce-8fea-89964e818eff",
   "version": "7",
   "dialect": "postgresql",
@@ -8273,6 +8273,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "renal_overrides": {
+          "name": "renal_overrides",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
         }
       },
       "indexes": {
@@ -23304,26 +23311,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
-        },
-        "list_rate_paise": {
-          "name": "list_rate_paise",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "discount_bps": {
-          "name": "discount_bps",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "discount_paise": {
-          "name": "discount_paise",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
         }
       },
       "indexes": {
@@ -23422,10 +23409,6 @@
         "supplier_bill_lines_money_ck": {
           "name": "supplier_bill_lines_money_ck",
           "value": "\"supplier_bill_lines\".\"rate_paise\" >= 0 and \"supplier_bill_lines\".\"gst_rate_bps\" >= 0 and \"supplier_bill_lines\".\"taxable_paise\" = \"supplier_bill_lines\".\"qty_packs\" * \"supplier_bill_lines\".\"rate_paise\""
-        },
-        "supplier_bill_lines_discount_ck": {
-          "name": "supplier_bill_lines_discount_ck",
-          "value": "(\"supplier_bill_lines\".\"list_rate_paise\" is null and \"supplier_bill_lines\".\"discount_bps\" = 0 and \"supplier_bill_lines\".\"discount_paise\" = 0) or (\"supplier_bill_lines\".\"list_rate_paise\" >= 0 and \"supplier_bill_lines\".\"discount_bps\" between 0 and 10000 and \"supplier_bill_lines\".\"discount_paise\" between 0 and \"supplier_bill_lines\".\"list_rate_paise\" and \"supplier_bill_lines\".\"rate_paise\" = \"supplier_bill_lines\".\"list_rate_paise\" - \"supplier_bill_lines\".\"discount_paise\" and (\"supplier_bill_lines\".\"discount_bps\" = 0 or \"supplier_bill_lines\".\"discount_paise\" = \"supplier_bill_lines\".\"list_rate_paise\" - (\"supplier_bill_lines\".\"list_rate_paise\" * (10000 - \"supplier_bill_lines\".\"discount_bps\") + 5000) / 10000))"
         }
       },
       "isRLSEnabled": false

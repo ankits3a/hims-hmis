@@ -101,6 +101,17 @@ describe("the document a desk photographs", () => {
     expect(store.files.size).toBe(0);
   });
 
+  it("G3b: the bytes must BE what the declared type says — a PDF starts %PDF-, a PNG and a JPEG carry their signatures", async () => {
+    const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00]);
+    const PDF = Buffer.from("%PDF-1.7\n%\u00e2\u00e3\n1 0 obj\n", "latin1");
+    await expect(capture({ mimeType: "image/png", bytes: JPEG })).rejects.toMatchObject({ code: "unsupported_document_type" });
+    await expect(capture({ mimeType: "application/pdf", bytes: Buffer.from("<html><script>x</script>") })).rejects.toMatchObject({ code: "unsupported_document_type" });
+    await expect(capture({ mimeType: "image/jpeg", bytes: PNG })).rejects.toMatchObject({ code: "unsupported_document_type" });
+    expect(store.files.size).toBe(0);
+    await expect(capture({ mimeType: "image/png", bytes: PNG })).resolves.toMatchObject({ documentId: expect.any(String) });
+    await expect(capture({ mimeType: "application/pdf", bytes: PDF })).resolves.toMatchObject({ documentId: expect.any(String) });
+  });
+
   it("G4: many documents per encounter — the thing patient_photos cannot do", async () => {
     await capture({ note: "page 1" });
     await capture({ note: "page 2" });

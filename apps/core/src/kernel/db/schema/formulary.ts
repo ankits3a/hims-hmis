@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
-  boolean, check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex,
+  boolean, check, date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -839,5 +839,76 @@ export const formularyRenalDoses = pgTable(
       "formulary_renal_doses_bounds_ck",
       sql`(${t.crclMin} is not null or ${t.crclMax} is not null) and (${t.crclMin} is null or ${t.crclMin} >= 0) and (${t.crclMin} is null or ${t.crclMax} is null or ${t.crclMin} < ${t.crclMax})`,
     ),
+  ],
+);
+
+/** #616 — the reference sections a US FDA label is cut into (decision 0051, plan 2026-10-07 §11). Text, verbatim. */
+export type ReferenceSections = Partial<Record<
+  | "uses" | "directions" | "boxed_warning" | "warnings" | "contraindications" | "side_effects" | "interactions" | "pregnancy"
+  | "lactation" | "children" | "elderly" | "overdose" | "storage" | "patient_information",
+  string
+>>;
+
+/**
+ * #616 (decision 0051) — US FDA LABEL TEXT AS A LABELLED REFERENCE LAYER, apart from the reviewed `formulary_monographs`.
+ *
+ * One row per US substance key ("acetaminophen", "amoxicillin + clavulanate" — US names, sorted, joined by " + ") per
+ * label VERSION: a refresh that brings a new label retires the live row and inserts the new one; nothing is updated in
+ * place or deleted. Every row carries its source and the date the export was retrieved (openFDA content is public domain,
+ * CC0). NOTHING READS THIS FOR A DOSE OR A SAFETY CHECK: the only reader is `modules/formulary/reference-labels.ts`
+ * (a census test pins that), and screens show it under "US FDA label · <product> · <effective date>" and "reference
+ * only — the US product may differ in strength, dose and approved use".
+ */
+export const formularyReferenceLabels = pgTable(
+  "formulary_reference_labels",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    /** Where the text came from, e.g. "openFDA drug/label bulk export". */
+    source: text("source").notNull(),
+    /** The date the export was retrieved (an IST calendar date typed by whoever ran the import). */
+    retrievedOn: date("retrieved_on", { mode: "string" }).notNull(),
+    refKey: text("ref_key").notNull(),
+    /** The SPL document id (one version) and the set id (all versions of one product's label). */
+    labelId: text("label_id").notNull(),
+    setId: text("set_id").notNull(),
+    version: text("version").notNull(),
+    /** The US product the label belongs to (brand), as printed in the reference line. */
+    product: text("product").notNull(),
+    productType: text("product_type"),
+    /** The label's own effective date; null when the label states none. */
+    effectiveDate: date("effective_date", { mode: "string" }),
+    /** How the coverage run found the label (`openfda.substance_name` or label text). */
+    matchTier: text("match_tier"),
+    sections: jsonb("sections").$type<ReferenceSections>().notNull(),
+    importBatch: text("import_batch").notNull(),
+    importedBy: text("imported_by").notNull(),
+    importedAt: timestamp("imported_at", { withTimezone: true }).notNull().defaultNow(),
+    retiredAt: timestamp("retired_at", { withTimezone: true }),
+    retiredBy: text("retired_by"),
+  },
+  (t) => [
+    uniqueIndex("formulary_reference_labels_live_ux").on(t.source, t.refKey).where(sql`${t.retiredAt} is null`),
+    index("formulary_reference_labels_key_idx").on(t.refKey),
+    // Search over the store is plain text and trigram first (plan §11).
+    index("formulary_reference_labels_key_trgm_idx").using("gin", sql`${t.refKey} gin_trgm_ops`),
+  ],
+);
+
+/**
+ * #616 — which US substance key a formulary substance NAME reads as ("paracetamol" → "acetaminophen", "amoxicillin
+ * trihydrate" → "amoxicillin"): the coverage run's salt stripping and 337-entry Indian/INN → US synonym map, loaded with
+ * the labels. Lower-cased name; one key per name; the import rewrites a changed key in place (`updated_at`).
+ */
+export const formularyReferenceNames = pgTable(
+  "formulary_reference_names",
+  {
+    name: text("name").primaryKey(),
+    refKey: text("ref_key").notNull(),
+    importBatch: text("import_batch").notNull(),
+    updatedBy: text("updated_by").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check("formulary_reference_names_lower_ck", sql`${t.name} = lower(${t.name})`),
   ],
 );

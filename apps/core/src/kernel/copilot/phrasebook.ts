@@ -1,3 +1,7 @@
+import { ALL_MANIFESTS } from "../modules/manifests";
+import { installedCopilotIntents, strongCue, weakCue } from "./intents";
+import type { CollectedCopilotIntent, CopilotIntentMenu, Cue, ModuleCopilotIntent } from "./intents";
+
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
  * FD-COPILOT — THE DETERMINISTIC FLOOR
@@ -22,12 +26,19 @@
  * one cheap model call; guessing costs a clerk's trust the first time it is confidently wrong.
  */
 
-/** The tools a question can be routed to. `none` is the model's way of saying it recognised nothing. */
-export type CopilotIntent = "visit_status" | "queue_depth" | "patient_dues" | "my_day_report" | "stock_on_shelf" | "paid_not_collected" | "draft_short_book_entry" | "draft_purchase_orders" | "draft_payment_run" | "draft_supplier_returns" | "find_duplicate_items"
-  | "roster.who_is_on" | "roster.unit_on_take" | "roster.my_duties" | "roster.ask_cover"
+/**
+ * The intents whose words the KERNEL still holds (the tables below). #598 opened the seam: a module may
+ * declare its own in `ModuleManifest.copilotIntents` (`intents.ts`) — `roster.ask_cover` was the first to
+ * move — and the rest move with their modules, one at a time.
+ */
+export type KernelCopilotIntent = "visit_status" | "queue_depth" | "patient_dues" | "my_day_report" | "stock_on_shelf" | "paid_not_collected" | "draft_short_book_entry" | "draft_purchase_orders" | "draft_payment_run" | "draft_supplier_returns" | "find_duplicate_items"
+  | "roster.who_is_on" | "roster.unit_on_take" | "roster.my_duties"
   | "appointment_book" | "appointment_move"
   | "roster.leave_apply" | "roster.leave_status"
   | "reminders.create";
+
+/** The tools a question can be routed to: the kernel's, and any a module declares (`<module>.<name>`). */
+export type CopilotIntent = KernelCopilotIntent | ModuleCopilotIntent;
 
 export type IntentMatch = {
   intent: CopilotIntent;
@@ -38,7 +49,6 @@ export type IntentMatch = {
   score: number;
 };
 
-type Cue = { token: string; weight: number };
 
 /**
  * STRONG cues name the intent almost by themselves. WEAK cues are the shared connective tissue of
@@ -51,9 +61,8 @@ type Cue = { token: string; weight: number };
  * rule refuses to answer. A phrase is strictly more evidence than any word inside it, so it scores
  * higher, and the tie disappears.
  */
-const PHRASE_WEIGHT = 4;
-const S = (token: string): Cue => ({ token, weight: token.includes(" ") ? PHRASE_WEIGHT : 3 });
-const W = (token: string): Cue => ({ token, weight: token.includes(" ") ? 2 : 1 });
+const S = strongCue;
+const W = weakCue;
 
 /**
  * Cues are matched as SUBSTRINGS, which is deliberate for Hindi: `dekh` has to catch "dekha",
@@ -61,7 +70,7 @@ const W = (token: string): Cue => ({ token, weight: token.includes(" ") ? 2 : 1 
  * The cost is that a cue must be long enough not to appear inside an unrelated word — hence `bakay`
  * rather than `baki`, and no cue shorter than three characters.
  */
-const CUES: Record<CopilotIntent, Cue[]> = {
+const CUES: Record<KernelCopilotIntent, Cue[]> = {
   /** "Has this person been seen yet / where are they?" — the owner's first example. */
   visit_status: [
     S("been seen"), S("seen by"), S("dekh"), S("देख"), S("mil gaya"), S("mila"),
@@ -232,18 +241,7 @@ const CUES: Record<CopilotIntent, Cue[]> = {
     S("am i on"), S("do i have duty"), S("am i working"),
     W("mera"), W("meri"), W("मेरी"), W("मेरा"), W("kab"), W("agla"), W("agli"), W("night"),
   ],
-  /**
-   * "Saturday night koi le sakta hai kya?" — somebody to take MY duty. The tool only DRAFTS (the
-   * person sends the request with their own tap). Bare `badal` is left out: "doctor badal do" at a
-   * counter is about a patient's doctor, not a duty.
-   */
-  "roster.ask_cover": [
-    S("le sakta"), S("le sakti"), S("le sakte"), S("le lega"), S("le legi"), S("koi le"), S("cover kar"), S("cover"), S("swap"),
-    S("duty badal"), S("meri jagah"), S("take my"), S("anyone take"), S("someone take"), S("मेरी जगह"), S("ले सकता"), S("ले सकती"),
-    /* #672 — "a swap FOR my night" was answered as the night itself (`my night`). */
-    S("swap for"), S("swap my"), S("cover my"), S("cover for my"),
-    W("koi"), W("कोई"),
-  ],
+  /* "roster.ask_cover" — somebody to take MY duty — is the roster's own declaration now (#598, `modules/roster/copilot-intents.ts`). */
   /*
     E2.1 — BOOK OR MOVE AN APPOINTMENT (act tools behind propose → confirm). "Appointment" alone is a
     booking: "Dr Singh kal 10 baje U00110012 ka appointment" has no verb at all. A move verb outweighs
@@ -306,7 +304,7 @@ const CUES: Record<CopilotIntent, Cue[]> = {
  * abstains and the chooser answers — admitting a miss is still cheaper than a confident wrong.
  */
 const NOT_WEIGHT = 3;
-const NOT_CUES: Partial<Record<CopilotIntent, string[]>> = {
+const NOT_CUES: Partial<Record<KernelCopilotIntent, string[]>> = {
   stock_on_shelf: ["bana do", "list bana", "return", "lautan", "लौटा", "supplier", "सप्लायर", "distributor"],
   draft_short_book_entry: ["printer", "paper", "toner", "cartridge"],
   /* E2.1 — "short book" is the pharmacy's register, and a move is never a second booking. */
@@ -372,25 +370,76 @@ function normalise(question: string): string {
  * became a space and the cue's did not. Any table matched against normalised text has to be
  * normalised by the same code, or the two drift the first time a cue contains punctuation.
  */
-const NORMALISED_CUES: Record<CopilotIntent, Cue[]> = Object.fromEntries(
-  (Object.keys(CUES) as CopilotIntent[]).map((intent) => {
-    /*
-      #672 — ONE CUE COUNTS ONCE. `on call` and `on-call` normalise to the same token, so "am I on
-      call" scored the board's `on call` twice (8) and nothing the asker's own duty had could reach it.
-    */
-    const seen = new Set<string>();
-    const cues: Cue[] = [];
-    for (const cue of CUES[intent]) {
-      const token = normalise(cue.token);
-      if (seen.has(token)) continue;
-      seen.add(token);
-      cues.push({ token, weight: cue.weight });
-    }
-    for (const not of NOT_CUES[intent] ?? []) cues.push({ token: normalise(not), weight: -NOT_WEIGHT });
-    if (intent !== "reminders.create") for (const not of REMINDER_ASKS) cues.push({ token: normalise(not), weight: -NOT_WEIGHT });
-    return [intent, cues];
-  }),
-) as Record<CopilotIntent, Cue[]>;
+function normaliseCues(intent: string, positive: readonly Cue[], not: readonly string[]): Cue[] {
+  /*
+    #672 — ONE CUE COUNTS ONCE. `on call` and `on-call` normalise to the same token, so "am I on
+    call" scored the board's `on call` twice (8) and nothing the asker's own duty had could reach it.
+  */
+  const seen = new Set<string>();
+  const cues: Cue[] = [];
+  for (const cue of positive) {
+    const token = normalise(cue.token);
+    if (seen.has(token)) continue;
+    seen.add(token);
+    cues.push({ token, weight: cue.weight });
+  }
+  for (const n of not) cues.push({ token: normalise(n), weight: -NOT_WEIGHT });
+  if (intent !== "reminders.create") for (const n of REMINDER_ASKS) cues.push({ token: normalise(n), weight: -NOT_WEIGHT });
+  return cues;
+}
+
+const NORMALISED_CUES: Record<KernelCopilotIntent, Cue[]> = Object.fromEntries(
+  (Object.keys(CUES) as KernelCopilotIntent[]).map((intent) => [intent, normaliseCues(intent, CUES[intent], NOT_CUES[intent] ?? [])]),
+) as Record<KernelCopilotIntent, Cue[]>;
+
+/**
+ * ═══ #598 — THE MODULES' OWN INTENTS, MERGED AFTER THE KERNEL'S ═══
+ *
+ * The set `CopilotController` installed at boot from the injected registry; until one is installed,
+ * the declarations read straight off `ALL_MANIFESTS` (the same list in production) — so a unit test or
+ * the eval recorder that calls `matchIntent` directly routes a module's intent exactly as the API does.
+ * Unchecked here: the boot refusals are `collectCopilotIntents`', and the API never runs without them.
+ */
+let fromManifests: readonly CollectedCopilotIntent[] | null = null;
+export function moduleCopilotIntents(): readonly CollectedCopilotIntent[] {
+  const live = installedCopilotIntents();
+  if (live !== null) return live;
+  fromManifests ??= ALL_MANIFESTS.flatMap((m) =>
+    Object.entries(m.copilotIntents ?? {}).map(([intent, decl]) => ({ intent: intent as ModuleCopilotIntent, module: m.key, decl })),
+  );
+  return fromManifests;
+}
+
+type Book = { modules: readonly CollectedCopilotIntent[]; cues: [CopilotIntent, Cue[]][]; words: string[] };
+let book: Book | null = null;
+
+/** Every intent's normalised cues, kernel first and in table order, then the modules' in registry order. */
+function currentBook(): Book {
+  const modules = moduleCopilotIntents();
+  if (book?.modules === modules) return book;
+  const cues: [CopilotIntent, Cue[]][] = [
+    ...(Object.keys(NORMALISED_CUES) as KernelCopilotIntent[]).map((i): [CopilotIntent, Cue[]] => [i, NORMALISED_CUES[i]]),
+    ...modules.map((m): [CopilotIntent, Cue[]] => [m.intent, normaliseCues(m.intent, m.decl.cues, m.decl.notCues ?? [])]),
+  ];
+  const words = new Set<string>();
+  for (const [, list] of cues) {
+    for (const cue of list) if (cue.weight > 0) for (const w of cue.token.split(" ")) if (w !== "") words.add(w);
+  }
+  book = { modules, cues, words: [...words] };
+  return book;
+}
+
+/** A cue token as the floor compares it — for the boot check that refuses a cue two intents claim. */
+export function normaliseCue(token: string): string {
+  return normalise(token);
+}
+
+/** The kernel-held intents' POSITIVE cue tokens, normalised, for the same boot check. */
+export function kernelCueTokens(): Map<KernelCopilotIntent, Set<string>> {
+  return new Map((Object.keys(NORMALISED_CUES) as KernelCopilotIntent[]).map((i) => [
+    i, new Set(NORMALISED_CUES[i].filter((c) => c.weight > 0).map((c) => c.token)),
+  ]));
+}
 
 /**
  * Route a MASKED question to one tool, or return null and let the model try.
@@ -404,10 +453,10 @@ export function matchIntent(question: string): IntentMatch | null {
   const text = normalise(question);
   if (text === "" || text.replace(PLACEHOLDER_RE, "").trim() === "") return null;
 
-  const scored = (Object.keys(NORMALISED_CUES) as CopilotIntent[]).map((intent) => {
+  const scored = currentBook().cues.map(([intent, list]) => {
     const cues: string[] = [];
     let score = 0;
-    for (const cue of NORMALISED_CUES[intent]) {
+    for (const cue of list) {
       if (!text.includes(cue.token)) continue;
       cues.push(cue.weight < 0 ? `not:${cue.token}` : cue.token);
       score += cue.weight;
@@ -434,7 +483,12 @@ export function matchIntent(question: string): IntentMatch | null {
  * time a tool was added.
  */
 export function intentNames(): CopilotIntent[] {
-  return Object.keys(CUES) as CopilotIntent[];
+  return [...kernelIntentNames(), ...moduleCopilotIntents().map((m) => m.intent)];
+}
+
+/** #598 — only the intents whose words the kernel itself holds. */
+export function kernelIntentNames(): KernelCopilotIntent[] {
+  return Object.keys(CUES) as KernelCopilotIntent[];
 }
 
 /**
@@ -444,11 +498,27 @@ export function intentNames(): CopilotIntent[] {
  * one. Keeping them off the menu also keeps the menu — and the eval set's recordings — unchanged.
  */
 export const FLOOR_ONLY_INTENTS = ["appointment_book", "appointment_move", "roster.leave_apply", "roster.leave_status", "reminders.create"] as const satisfies readonly CopilotIntent[];
-export type ModelIntent = Exclude<CopilotIntent, (typeof FLOOR_ONLY_INTENTS)[number]>;
+export type ModelIntent = Exclude<KernelCopilotIntent, (typeof FLOOR_ONLY_INTENTS)[number]>;
 
-/** The menu a model is offered: every intent except the floor-only ones. */
-export function modelIntentNames(): ModelIntent[] {
-  return intentNames().filter((i): i is ModelIntent => !(FLOOR_ONLY_INTENTS as readonly string[]).includes(i));
+/**
+ * The menu a model is offered: every kernel intent except the floor-only ones, then every module intent
+ * that declares a `menu` (one without is floor-only by construction).
+ */
+export function modelIntentNames(): (ModelIntent | ModuleCopilotIntent)[] {
+  return [
+    ...kernelIntentNames().filter((i): i is ModelIntent => !(FLOOR_ONLY_INTENTS as readonly string[]).includes(i)),
+    ...moduleMenus().map((m) => m.intent),
+  ];
+}
+
+/** #598 — the module intents a model may be offered, in registry order, each with its menu entry. */
+export function moduleMenus(): { intent: ModuleCopilotIntent; menu: CopilotIntentMenu }[] {
+  return moduleCopilotIntents().flatMap((m) => m.decl.menu === undefined ? [] : [{ intent: m.intent, menu: m.decl.menu }]);
+}
+
+/** #598 — the module intents the "I did not understand" help offers, after the kernel's own. */
+export function moduleHelpIntents(): ModuleCopilotIntent[] {
+  return moduleCopilotIntents().filter((m) => m.decl.help === true).map((m) => m.intent);
 }
 
 /**
@@ -457,9 +527,6 @@ export function modelIntentNames(): ModelIntent[] {
  * question), and never treats a near-spelling of one as a name.
  */
 export function cueWords(): string[] {
-  const words = new Set<string>();
-  for (const cues of Object.values(NORMALISED_CUES)) {
-    for (const cue of cues) if (cue.weight > 0) for (const w of cue.token.split(" ")) if (w !== "") words.add(w);
-  }
-  return [...words];
+  /* The same array until the installed set changes, so `names.ts` can cache what it derives by identity. */
+  return currentBook().words;
 }
