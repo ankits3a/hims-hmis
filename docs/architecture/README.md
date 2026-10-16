@@ -105,63 +105,63 @@ flowchart LR
 
 ## Modules
 
-| module | depends on | used by | routes | tables |
-|---|---|---|---|---|
-| [abdm](modules/abdm.md) | lab, opd, patients, radiology | — | 24 | 11 |
-| [aerb](modules/aerb.md) | patients | radiology | 30 | 9 |
-| [attendance](modules/attendance.md) | — | — | 19 | 11 |
-| [billing](modules/billing.md) | membership, opd, patients, tariff | lab, opd, ordering, ot, partners, pharmacy, radiology | 55 | 16 |
-| [cds](modules/cds.md) | formulary | opd | 0 | 0 |
-| [formulary](modules/formulary.md) | — | cds, materials, opd, pharmacy | 28 | 14 |
-| [lab](modules/lab.md) | billing, opd, patients, tariff | abdm, ordering, radiology | 78 | 25 |
-| [materials](modules/materials.md) | formulary | opd, ot, pharmacy | 120 | 39 |
-| [membership](modules/membership.md) | patients, tariff | billing, partners, pharmacy | 15 | 11 |
-| [opd](modules/opd.md) | billing, cds, formulary, materials, patients, roster | abdm, billing, lab, ordering, pharmacy, radiology | 174 | 32 |
-| [ordering](modules/ordering.md) | billing, lab, opd, radiology | — | 4 | 1 |
-| [ot](modules/ot.md) | billing, materials, patients, roster, tariff | radiology | 53 | 12 |
-| [partners](modules/partners.md) | billing, membership, patients, tariff | — | 10 | 7 |
-| [patients](modules/patients.md) | — | abdm, aerb, billing, lab, membership, opd, ot, partners, pharmacy, radiology | 36 | 8 |
-| [pcpndt](modules/pcpndt.md) | — | radiology | 10 | 5 |
-| [pharmacy](modules/pharmacy.md) | billing, formulary, materials, membership, opd, patients, tariff | — | 189 | 32 |
-| [radiology](modules/radiology.md) | aerb, billing, lab, opd, ot, patients, pcpndt, roster, tariff | abdm, ordering | 114 | 22 |
-| [roster](modules/roster.md) | — | opd, ot, radiology | 37 | 26 |
-| [tariff](modules/tariff.md) | — | billing, lab, membership, ot, partners, pharmacy, radiology | 18 | 7 |
+| module | depends on | used by |
+|---|---|---|
+| [abdm](modules/abdm.md) | lab, opd, patients, radiology | — |
+| [aerb](modules/aerb.md) | patients | radiology |
+| [attendance](modules/attendance.md) | — | — |
+| [billing](modules/billing.md) | membership, opd, patients, tariff | lab, opd, ordering, ot, partners, pharmacy, radiology |
+| [cds](modules/cds.md) | formulary | opd |
+| [formulary](modules/formulary.md) | — | cds, materials, opd, pharmacy |
+| [lab](modules/lab.md) | billing, opd, patients, tariff | abdm, ordering, radiology |
+| [materials](modules/materials.md) | formulary | opd, ot, pharmacy |
+| [membership](modules/membership.md) | patients, tariff | billing, partners, pharmacy |
+| [opd](modules/opd.md) | billing, cds, formulary, materials, patients, roster | abdm, billing, lab, ordering, pharmacy, radiology |
+| [ordering](modules/ordering.md) | billing, lab, opd, radiology | — |
+| [ot](modules/ot.md) | billing, materials, patients, roster, tariff | radiology |
+| [partners](modules/partners.md) | billing, membership, patients, tariff | — |
+| [patients](modules/patients.md) | — | abdm, aerb, billing, lab, membership, opd, ot, partners, pharmacy, radiology |
+| [pcpndt](modules/pcpndt.md) | — | radiology |
+| [pharmacy](modules/pharmacy.md) | billing, formulary, materials, membership, opd, patients, tariff | — |
+| [radiology](modules/radiology.md) | aerb, billing, lab, opd, ot, patients, pcpndt, roster, tariff | abdm, ordering |
+| [roster](modules/roster.md) | — | opd, ot, radiology |
+| [tariff](modules/tariff.md) | — | billing, lab, membership, ot, partners, pharmacy, radiology |
 
 ## Kernel subsystems
 
 Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see CLAUDE.md).
 
-| subsystem | used by modules | depends on kernel | routes |
+| subsystem | used by modules | depends on kernel | serves HTTP |
 |---|---|---|---|
-| `alerts` | attendance, opd, roster | approvals, auth, db, events, modules, notify, ops, realtime, reminders, tokens, workflow | 3 |
-| `approvals` | abdm, aerb, attendance, billing, lab, materials, membership, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | alerts, auth, db, events, modules, phi, tokens, workflow | 7 |
-| `auth` | abdm, aerb, attendance, billing, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | config, crypto, db, events, modules, printing, push, ratelimit, tokens | 33 |
+| `alerts` | attendance, opd, roster | approvals, auth, db, events, modules, notify, ops, realtime, reminders, tokens, workflow | yes |
+| `approvals` | abdm, aerb, attendance, billing, lab, materials, membership, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | alerts, auth, db, events, modules, phi, tokens, workflow | yes |
+| `auth` | abdm, aerb, attendance, billing, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | config, crypto, db, events, modules, printing, push, ratelimit, tokens | yes |
 | `config` | abdm, attendance, billing, membership, opd, ot, partners, patients, pharmacy, radiology | — | — |
-| `copilot` | billing, opd, pharmacy, roster | alerts, approvals, auth, config, db, desk, events, inference, modules, ratelimit, reminders, search, tokens, workflow | 10 |
+| `copilot` | billing, opd, pharmacy, roster | alerts, approvals, auth, config, db, desk, events, inference, modules, ratelimit, reminders, search, tokens, workflow | yes |
 | `crypto` | abdm, billing, opd, patients | — | — |
 | `db` | abdm, aerb, attendance, billing, cds, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | — | — |
-| `desk` | attendance, billing, lab, membership, opd, partners, patients, pharmacy, radiology, roster | approvals, auth, db, events, modules, reminders, report, tokens, workflow | 10 |
+| `desk` | attendance, billing, lab, membership, opd, partners, patients, pharmacy, radiology, roster | approvals, auth, db, events, modules, reminders, report, tokens, workflow | yes |
 | `documents` | patients, pharmacy | — | — |
 | `episodes` | billing, lab, materials, opd, ot, pharmacy, radiology | db | — |
 | `events` | abdm, aerb, attendance, billing, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | db, worker | — |
-| `inference` | opd | auth, config, db, ratelimit, search, tokens | 1 |
+| `inference` | opd | auth, config, db, ratelimit, search, tokens | yes |
 | `modules` | abdm, aerb, attendance, billing, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | alerts, approvals, auth, copilot, desk, ops, orders, resources, search, workflow | — |
-| `notify` | abdm, lab, pharmacy, radiology | auth, config, db, events, modules, tokens, workflow | 4 |
+| `notify` | abdm, lab, pharmacy, radiology | auth, config, db, events, modules, tokens, workflow | yes |
 | `obligations` | — | alerts, db, events, modules, workflow | — |
-| `ops` | lab, pharmacy | auth, config, crypto, db, events, modules, tokens | 11 |
+| `ops` | lab, pharmacy | auth, config, crypto, db, events, modules, tokens | yes |
 | `orders` | lab, ordering, pharmacy, radiology | auth, db, episodes, events, modules, phi | — |
 | `phi` | abdm, aerb, billing, lab, opd, patients, pcpndt, pharmacy, radiology | db | — |
-| `printing` | billing, lab, opd, pharmacy, roster | auth, crypto, db, events, phi, tokens | 15 |
+| `printing` | billing, lab, opd, pharmacy, roster | auth, crypto, db, events, phi, tokens | yes |
 | `push` | — | alerts, db, events, modules | — |
 | `ratelimit` | — | — | — |
 | `realtime` | lab, opd | auth, db, tokens | — |
-| `reminders` | — | alerts, auth, copilot, db, tokens | 3 |
+| `reminders` | — | alerts, auth, copilot, db, tokens | yes |
 | `report` | billing, lab, opd, pharmacy, radiology | db | — |
-| `resources` | aerb, lab, materials, opd, ot, pharmacy, radiology | auth, db, events, modules, tokens | 3 |
+| `resources` | aerb, lab, materials, opd, ot, pharmacy, radiology | auth, db, events, modules, tokens | yes |
 | `retention` | — | db, events, phi, search, worker | — |
-| `search` | billing, formulary, membership, opd, patients, tariff | auth, config, db, events, modules, tokens | 2 |
+| `search` | billing, formulary, membership, opd, patients, tariff | auth, config, db, events, modules, tokens | yes |
 | `tokens` | abdm, aerb, attendance, billing, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | — | — |
 | `worker` | — | alerts, approvals, auth, config, copilot, db, desk, events, modules, notify, obligations, ops, orders, push, reminders, resources, retention, tokens, workflow | — |
-| `workflow` | attendance, billing, lab, materials, membership, opd, ot, patients, pharmacy, radiology, roster, tariff | auth, db, events, modules, tokens | 9 |
+| `workflow` | attendance, billing, lab, materials, membership, opd, ot, patients, pharmacy, radiology, roster, tariff | auth, db, events, modules, tokens | yes |
 
 Kernel HTTP routes: [kernel-routes.md](kernel-routes.md). Database: [schema.md](schema.md). Web screens: [web.md](web.md).
