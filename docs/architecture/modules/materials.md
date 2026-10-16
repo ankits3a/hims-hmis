@@ -245,7 +245,8 @@ Source: `apps/core/src/modules/materials/`
   - `splitLikeDebitNote(amountPaise: number, note: { taxablePaise: number; cgstPaise: number; sgstPaise: number; igstPaise: number; totalPaise: …`
   - `stockValuationAt(db: Db | Tx, asOf: string, opts: { storeResourceId?: string | null } = {}): Promise<StockValuation>`
   - `supplierPaymentsBetween(db: Db | Tx, from: string, to: string): Promise<SupplierPaymentRead[]>`
-  - types: `BatchFacts`, `MaterialsDocKind`, `MaterialsDocRef`, `NonMovingReport`, `NonMovingRow`, `NonMovingSuggestion`, `PurchaseAdjustment`, `PurchaseRegister`, `PurchaseRegisterLine`, `PurchaseRegisterRow`, `ReconBill`, `StockValuation`, `SupplierPaymentRead`, `ValuationGroup`, `ValuationRow`
+  - `vendorDiscountReport(db: Db | Tx, from: string, to: string): Promise<VendorDiscountReport>`
+  - types: `BatchFacts`, `MaterialsDocKind`, `MaterialsDocRef`, `NonMovingReport`, `NonMovingRow`, `NonMovingSuggestion`, `PurchaseAdjustment`, `PurchaseRegister`, `PurchaseRegisterLine`, `PurchaseRegisterRow`, `ReconBill`, `StockValuation`, `SupplierPaymentRead`, `ValuationGroup`, `ValuationRow`, `VendorDiscountReport`, `VendorDiscountRow`
 - `settings.ts`
   - `loadMaterialsSettings(db: Db | Tx): Promise<MaterialsSettings>`
   - `updateMaterialsSettings(tx: Tx, actor: Actor, rawPatch: unknown, now: Date): Promise<MaterialsSettings>`

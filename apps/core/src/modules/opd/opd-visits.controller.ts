@@ -7,8 +7,8 @@ import { CONFIG, DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { copilotActs, opdQueueEntries } from "../../kernel/db/schema";
 import { getPatientSummaries, PatientError } from "../patients";
-import { findTodaysVisits, requestSlipRetake, slipDay, slipReadback } from "./slips";
-import type { SlipDay, SlipReadback } from "./slips";
+import { findTodaysVisits, mrdSlips, requestSlipRetake, slipDay, slipReadback } from "./slips";
+import type { MrdSlipRow, SlipDay, SlipReadback } from "./slips";
 import { appointmentForList, bookAppointment, cancelAppointment, checkInAppointment, listAppointments, rescheduleAppointment } from "./appointments";
 import {
   abandonVisit, counterState, deskComplaintFor, getEncounterByVisitNo, getVisit, grantFeeBypass, joinQueue, listVisits, openVisit,
@@ -618,6 +618,18 @@ export class OpdVisitsController {
   @Get("slips/today")
   async slipsToday(@CurrentActor() actor: Actor): Promise<SlipDay> {
     return slipDay(this.db, actor);
+  }
+
+  /**
+   * #659 — THE MRD DAY-END HAND-OFF (owner ruling 28-Sep-2026: "a missing slip … goes to MRD at day
+   * end"). The earlier days' finished consultations whose slip never landed (`slips.ts mrdSlips`).
+   * The slip desk reads it on its own grant; the records office (`mrd_officer`, which holds no OPD
+   * read) is admitted by `patients.merge`, the records officer's own grant — no new permission.
+   */
+  @RequirePermission("opd.visits.read", "hospital", { alsoAdmits: ["patients.merge"] })
+  @Get("slips/mrd")
+  async slipsMrd(@CurrentActor() actor: Actor): Promise<{ items: MrdSlipRow[] }> {
+    return { items: await mrdSlips(this.db, actor) };
   }
 
   /**

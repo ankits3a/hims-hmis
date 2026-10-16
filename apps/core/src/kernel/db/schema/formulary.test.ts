@@ -52,6 +52,12 @@ const CENSUS: Record<string, string[]> = {
   // The drug monograph (owner 2026-10-02): four JSON sections per generic, read only once reviewed; renal bands as rows.
   formulary_monographs: ["affordability", "created_at", "created_by", "generic_id", "id", "nursing", "patient", "prescriber", "reviewed_at", "reviewed_by", "source_version", "status", "updated_at", "updated_by"],
   formulary_renal_doses: ["crcl_max", "crcl_min", "dose", "id", "monograph_id", "position", "severity"],
+  // #616 (decision 0051): US FDA label text as a versioned reference layer, and the substance-name → US key map.
+  formulary_reference_labels: [
+    "effective_date", "id", "import_batch", "imported_at", "imported_by", "label_id", "match_tier", "product", "product_type", "ref_key",
+    "retired_at", "retired_by", "retrieved_on", "sections", "set_id", "source", "version",
+  ],
+  formulary_reference_names: ["import_batch", "name", "ref_key", "updated_at", "updated_by"],
 };
 
 describe("the formulary tables (Plan 16a T1)", () => {

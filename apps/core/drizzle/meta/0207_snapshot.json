@@ -1,5 +1,5 @@
 {
-  "id": "6737c604-b14c-42ad-83e2-5cd46bec2ee0",
+  "id": "96b24427-3aed-4c93-8dd7-ee83a8b6952f",
   "prevId": "3996038a-c693-44ce-8fea-89964e818eff",
   "version": "7",
   "dialect": "postgresql",
@@ -8273,6 +8273,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "renal_overrides": {
+          "name": "renal_overrides",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
         }
       },
       "indexes": {
@@ -54095,7 +54102,7 @@
       "checkConstraints": {
         "copilot_asks_outcome_ck": {
           "name": "copilot_asks_outcome_ck",
-          "value": "\"copilot_asks\".\"outcome\" in ('answered', 'notUnderstood', 'noTool', 'notPermitted', 'needSubject', 'failed', 'identifierLeak', 'refusedActor', 'badRequest', 'error', 'halted', 'confirmDone', 'confirmInvalid', 'confirmExpired', 'confirmNotAct', 'confirmHalted', 'confirmNotPermitted', 'confirmAlreadyDone', 'confirmStateChanged', 'confirmFailed')"
+          "value": "\"copilot_asks\".\"outcome\" in ('answered', 'notUnderstood', 'noTool', 'notPermitted', 'needSubject', 'failed', 'identifierLeak', 'refusedActor', 'badRequest', 'error', 'halted')"
         },
         "copilot_asks_route_ck": {
           "name": "copilot_asks_route_ck",

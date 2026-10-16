@@ -1,2 +1,0 @@
-ALTER TABLE "copilot_asks" DROP CONSTRAINT "copilot_asks_outcome_ck";--> statement-breakpoint
-ALTER TABLE "copilot_asks" ADD CONSTRAINT "copilot_asks_outcome_ck" CHECK ("copilot_asks"."outcome" in ('answered', 'notUnderstood', 'noTool', 'notPermitted', 'needSubject', 'failed', 'identifierLeak', 'refusedActor', 'badRequest', 'error', 'halted', 'confirmDone', 'confirmInvalid', 'confirmExpired', 'confirmNotAct', 'confirmHalted', 'confirmNotPermitted', 'confirmAlreadyDone', 'confirmStateChanged', 'confirmFailed'));

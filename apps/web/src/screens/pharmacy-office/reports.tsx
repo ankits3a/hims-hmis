@@ -7,7 +7,7 @@ import { pharmacyErrorText } from "../../lib/pharmacy-api";
 import {
   MARGIN_GROUPS, NON_MOVING_DAYS, RECON_BUCKETS, REPORT_PRESETS, SALES_GROUPS, STOCK_IN_KINDS, STOCK_OUT_KINDS, fetchActivity, fetchActivityFeed,
   fetchCatalogue, fetchDailyStock, fetchGstr3b, fetchHsn, fetchLossRegister, fetchMargin, fetchNonMoving, fetchPurchaseRegister, fetchReportStores,
-  fetchCreditNoteRegister, fetchPharmacyAccounts, fetchGstBook, fetchTicketInvoices, fetchSalesRegister, fetchTopSelling, fetchValuation, money, pct, printReport, reconcileGstr2b, todayIst, trimGstr2bJson,
+  fetchCreditNoteRegister, fetchPharmacyAccounts, fetchGstBook, fetchTicketInvoices, fetchSalesRegister, fetchTopSelling, fetchValuation, fetchVendorDiscounts, money, pct, printReport, reconcileGstr2b, todayIst, trimGstr2bJson,
 } from "../../lib/reports-api";
 import { downloadXlsx, toXlsx, toXlsxBook } from "../../lib/xlsx";
 import type { XlsxSheet } from "../../lib/xlsx";
@@ -33,10 +33,10 @@ import type {
  */
 export type ReportKey =
   | "sales" | "purchases" | "margin" | "valuation" | "nonMoving" | "hsn" | "gstr2b" | "gstr3b" | "activity" | "tally"
-  | "topSelling" | "losses" | "dailyStock" | "catalogue" | "creditNotes" | "ticketInvoices" | "gstBook" | "accounts";
+  | "topSelling" | "losses" | "dailyStock" | "catalogue" | "creditNotes" | "ticketInvoices" | "gstBook" | "accounts" | "vendorDiscounts";
 const ALL_REPORTS: readonly ReportKey[] = [
   "sales", "purchases", "margin", "valuation", "nonMoving", "hsn", "gstr2b", "gstr3b", "activity", "tally",
-  "topSelling", "losses", "dailyStock", "catalogue", "creditNotes", "ticketInvoices", "gstBook", "accounts",
+  "topSelling", "losses", "dailyStock", "catalogue", "creditNotes", "ticketInvoices", "gstBook", "accounts", "vendorDiscounts",
 ];
 /**
  * The list's keys: 1–9, then 0 for the tenth (GAP A4 made it ten), then letters (stage C made it
@@ -178,6 +178,7 @@ function ReportScreen({ report, onBack }: { report: ReportKey; onBack: () => voi
       {report === "ticketInvoices" && <TicketInvoicesReport {...bind} />}
       {report === "gstBook" && <GstBookReport {...bind} />}
       {report === "accounts" && <AccountsReport {...bind} />}
+      {report === "vendorDiscounts" && <VendorDiscountReport {...bind} />}
     </div>
   );
 }
@@ -729,6 +730,40 @@ function AccountsReport({ sheet, presetRef }: Bind): React.ReactElement {
           <Table testId="accounts-docs" cols={docCols} rows={docs} rowKey={(x) => `${x.type}-${x.no}-${x.at}-${String(x.amountPaise)}`} totals={null} />
         </>
       )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════ #637 the vendor discount, by vendor ═══════════════════════════════════
+
+function VendorDiscountReport({ sheet, presetRef }: Bind): React.ReactElement {
+  const { t } = useTranslation();
+  const [range, setRange] = useRange(presetRef, "month");
+  const q = useQuery({ queryKey: ["pharmacy", "reports", "vendor-discounts", range], queryFn: () => fetchVendorDiscounts(range) });
+  const d = q.data;
+  const L = (k: string): string => t(`pharmacyOffice.reports.col.${k}`);
+  type Row = NonNullable<typeof d>["rows"][number];
+  const cols: Col<Row>[] = [
+    { key: "vendor", label: L("supplier"), value: (r) => r.vendorName },
+    { key: "gstin", label: L("gstin"), value: (r) => r.gstin ?? "—" },
+    { key: "bills", label: L("bills"), num: true, value: (r) => r.bills },
+    { key: "gross", label: L("gross"), money: true, value: (r) => r.grossPaise },
+    { key: "discount", label: L("discount"), money: true, value: (r) => r.discountPaise },
+    { key: "discountPct", label: t("pharmacyOffice.reports.discountPct"), value: (r) => pct(r.discountBps) },
+    { key: "taxable", label: L("taxable"), money: true, value: (r) => r.taxablePaise },
+    { key: "gst", label: L("gst"), money: true, value: (r) => r.gstPaise },
+    { key: "total", label: L("total"), money: true, value: (r) => r.totalPaise },
+  ];
+  const totals: Totals | null = d === undefined ? null : {
+    vendor: t("pharmacyOffice.reports.allVendors"), bills: d.totals.bills, gross: d.totals.grossPaise, discount: d.totals.discountPaise,
+    discountPct: pct(d.totals.discountBps), taxable: d.totals.taxablePaise, gst: d.totals.gstPaise, total: d.totals.totalPaise,
+  };
+  if (d !== undefined) sheet.current = { title: t("pharmacyOffice.reports.name.vendorDiscounts"), subtitle: rangeText(d.from, d.to), file: `vendor-discounts-${d.from}-${d.to}`, cols: cols as Col<never>[], rows: d.rows, totals };
+  return (
+    <div className="space-y-3">
+      <RangeBar range={range} onChange={setRange} store={false} />
+      <Status loading={q.isLoading} error={q.error} />
+      {d !== undefined && <Table testId="vendor-discount-table" cols={cols} rows={d.rows} rowKey={(r) => r.vendorId} totals={totals} />}
     </div>
   );
 }

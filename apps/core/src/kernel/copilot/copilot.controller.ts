@@ -1,4 +1,5 @@
 import { BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, Inject, Logger, NotFoundException, Optional, Post, Put, Query } from "@nestjs/common";
+import { RateLimited } from "../ratelimit/rate-limit";
 import { z } from "zod";
 import { newId } from "@hmis/contracts";
 import { CONFIG, DB, MODULE_REGISTRY } from "../tokens";
@@ -8,7 +9,8 @@ import { istDayString as istDay } from "../approvals/cumulative";
 import { collectDeskProviders } from "../desk/registry";
 import { openAiCompatibleClient } from "../inference/openai-compatible";
 import { chooserFor } from "../inference/openai-decisions";
-import { collectCopilotTools, helpIntentsFor, permissionCheckFor, runTool } from "./catalog";
+import { collectCopilotIntents, collectCopilotTools, helpIntentsFor, permissionCheckFor, runTool } from "./catalog";
+import { installCopilotIntents } from "./intents";
 import { COPILOT_EXTRA_TOOLS, MAX_PROPOSALS, confirmProposal, issueProposal, proposalKey, proposalSchema } from "./act";
 import type { CopilotAskOutcome } from "../db/schema";
 import type { ConfirmOutcome, Proposal } from "./act";
@@ -140,6 +142,12 @@ export class CopilotController {
       BOOT rather than on the first question somebody asks. `collectDeskProviders` refuses on the
       same schedule and for the same reason.
     */
+    /*
+      #598 — and the modules' own INTENTS first, refused at boot on the same schedule (a duplicate, a
+      shared cue, an untranslated answer key), then installed so the phrasebook, the menus and the help
+      sentence read what THIS registry declares.
+    */
+    installCopilotIntents(collectCopilotIntents(registry));
     this.tools = collectCopilotTools(registry, [...kernelCopilotTools(collectDeskProviders(registry)), ...extraTools]);
     this.proposalKey = proposalKey(cfg.secretKey);
   }
@@ -150,6 +158,7 @@ export class CopilotController {
     key — a clerk who gets an HTTP error learns the box is broken, and a clerk who is told "which
     patient?" learns something they can act on.
   */
+  @RateLimited("copilot")
   @HttpCode(200)
   async ask(@CurrentActor() actor: Actor, @Body() raw: unknown): Promise<AskResponse> {
     /*

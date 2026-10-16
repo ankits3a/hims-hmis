@@ -1,0 +1,1 @@
+ALTER TABLE "opd_prescriptions" ADD COLUMN "renal_overrides" jsonb DEFAULT '[]'::jsonb NOT NULL;

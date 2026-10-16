@@ -1,8 +1,8 @@
-import { NON_MOVING_PRESETS, listStores, nonMovingStock, purchaseRegister, stockValuationAt } from "../materials";
+import { NON_MOVING_PRESETS, listStores, nonMovingStock, purchaseRegister, stockValuationAt, vendorDiscountReport } from "../materials";
 import { isIsoDate } from "./config";
 import { PharmacyError } from "./errors";
 import { REPORTS_READ, reportRange, reportToday, requireReportPermission } from "./report-range";
-import type { NonMovingReport, PurchaseRegister, StockValuation } from "../materials";
+import type { NonMovingReport, PurchaseRegister, StockValuation, VendorDiscountReport } from "../materials";
 import type { ReportInput } from "./sales-register";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -26,6 +26,13 @@ export async function officePurchaseRegister(db: Db, actor: Actor, input: Report
   await requireReportPermission(db, actor, REPORTS_READ, "the purchase register");
   const range = reportRange(input.preset, reportToday(now), input);
   return { ...(await purchaseRegister(db, range.from, range.to)), preset: range.preset };
+}
+
+/** #637 — the vendors' trade discount over the period's booked supplier bills, by vendor: gross, discount, taxable, GST. */
+export async function officeVendorDiscounts(db: Db, actor: Actor, input: ReportInput, now: Date = new Date()): Promise<VendorDiscountReport & { preset: string }> {
+  await requireReportPermission(db, actor, REPORTS_READ, "the vendor discount report");
+  const range = reportRange(input.preset, reportToday(now), input);
+  return { ...(await vendorDiscountReport(db, range.from, range.to)), preset: range.preset };
 }
 
 /** What the hospital held at the end of `asOf` (today when absent), at GRN cost and at MRP. */
