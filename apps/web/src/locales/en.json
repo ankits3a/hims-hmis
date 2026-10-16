@@ -14329,7 +14329,8 @@
       "noFamily": "not shown on a restricted record",
       "history": "History",
       "doctorOnly": "details for the treating doctor only",
-      "printAlias": "Print card (alias)"
+      "printAlias": "Print card (alias)",
+      "billStatus": {"settled": "Paid", "partial": "Part paid", "unpaid": "Unpaid"}
     },
     "hidden": "hidden",
     "hiddenWord": "hidden",

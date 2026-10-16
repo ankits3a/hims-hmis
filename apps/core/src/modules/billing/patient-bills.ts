@@ -70,7 +70,7 @@ async function departmentsByInvoice(db: Db, heads: { id: string; encounterId: st
   return out;
 }
 
-async function moneyByInvoice(db: Db, ids: readonly string[]): Promise<{ credited: Map<string, number>; paid: Map<string, number> }> {
+export async function moneyByInvoice(db: Db, ids: readonly string[]): Promise<{ credited: Map<string, number>; paid: Map<string, number> }> {
   const credited = new Map<string, number>();
   const paid = new Map<string, number>();
   if (ids.length === 0) return { credited, paid };

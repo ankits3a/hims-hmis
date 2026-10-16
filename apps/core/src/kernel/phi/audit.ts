@@ -24,6 +24,8 @@ export type PhiSurface =
   | "patient.profile_mobile" | "patient.profile_alias"
   /** #849 — the alias variant of the patient card (`GET /patients/:id/qr/alias`): alias, UHID, gender, the signed QR. */
   | "patient.card_alias"
+  /** #852 — billing's alias read of a sealed record's bills (`billing/bills-alias.ts`): date, number, status only. */
+  | "billing.bills_alias"
   /**
    * #653 — the merge review's "Show": the masked mobiles, and on a merge request the masked phone,
    * DOB, address and ABHA. Its own name: the comparison masks them by default, and revealing them is
