@@ -1,7 +1,7 @@
-import { and, eq, gte, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 import type { WireOwedRow } from "@hmis/contracts";
-import { alerts, doctorDeskNudges } from "../../kernel/db/schema";
-import { openCriticalsForClinician } from "../lab";
+import { alerts, doctorDeskActs, doctorDeskMoves, doctorDeskNudges } from "../../kernel/db/schema";
+import { closedCriticalsForClinician, openCriticalsForClinician } from "../lab";
 import { openVisitsForDoctor } from "../opd";
 import { addIstDays, istDateOfInstant, istMidnightUtc } from "../roster";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -47,7 +47,15 @@ export async function owedByUnit(
       inArray(alerts.userId, ids), isNull(alerts.ackKind), inArray(alerts.kind, [...OWED_ALERT_KINDS]),
       gte(alerts.createdAt, new Date(at.getTime() - OWED_ALERT_DAYS * 86_400_000)),
     ));
-  const crit = await openCriticalsForClinician(exec, ids);
+  const open = await openCriticalsForClinician(exec, ids);
+  // DD-1.3 (D3) — a call the lab closed (read back) is acknowledged, not done: it stays, amber, until
+  // somebody records what was done. An act removes either kind.
+  const closed = await closedCriticalsForClinician(exec, ids, new Date(at.getTime() - OWED_ALERT_DAYS * 86_400_000));
+  const acted = await actedKeys(exec, [...open, ...closed].map((c) => `lab_critical:${c.id}`));
+  const crit = [
+    ...open.map((c) => ({ ...c, acked: false })),
+    ...closed.map((c) => ({ ...c, acked: true })),
+  ].filter((c) => !acted.has(`lab_critical:${c.id}`));
   const visits = (await Promise.all(ids.map(async (id) => (await openVisitsForDoctor(exec, id, istDateOfInstant(at))).map((v) => ({ ...v, userId: id }))))).flat();
 
   const rows: OwedRowInternal[] = [
@@ -58,6 +66,7 @@ export async function owedByUnit(
     ...crit.map((c): OwedRowInternal => ({
       key: `lab_critical:${c.id}`, kind: "lab_critical", what: "lab_critical", holder: holder(c.orderingClinicianId),
       since: c.at.toISOString(), dueAt: new Date(c.at.getTime() + LAB_CRITICAL_DUE_MINUTES * 60_000).toISOString(),
+      ...(c.acked ? { acked: true } : {}),
     })),
     ...visits.map((v): OwedRowInternal => ({
       key: `visit:${v.encounterId}`, kind: "visit_open", what: "visit_open", holder: holder(v.userId),
@@ -65,7 +74,32 @@ export async function owedByUnit(
       dueAt: new Date(istMidnightUtc(addIstDays(v.serviceDate, 1)).getTime() + VISIT_DUE_HOURS_AFTER_DAY * 3_600_000).toISOString(),
     })),
   ];
-  return rows.sort((a, b) => a.dueAt.localeCompare(b.dueAt));
+  return (await withMoves(exec, rows, members)).sort((a, b) => a.dueAt.localeCompare(b.dueAt));
+}
+
+/** Of these owed-row keys, the ones somebody has recorded an act on (DD-1.3). */
+export async function actedKeys(exec: Db | Tx, keys: readonly string[]): Promise<Set<string>> {
+  if (keys.length === 0) return new Set();
+  const rows = await (exec as Db).select({ rowKey: doctorDeskActs.rowKey }).from(doctorDeskActs).where(inArray(doctorDeskActs.rowKey, [...new Set(keys)]));
+  return new Set(rows.map((r) => r.rowKey));
+}
+
+/**
+ * DD-1.2 — the newest MOVE of a row decides who the unit expects to act; the source row is untouched.
+ * A move to somebody who has since left the unit is ignored (the row goes back to its source holder).
+ */
+async function withMoves(exec: Db | Tx, rows: OwedRowInternal[], members: readonly { userId: string; name: string }[]): Promise<OwedRowInternal[]> {
+  if (rows.length === 0) return rows;
+  const moves = await (exec as Db).select().from(doctorDeskMoves)
+    .where(inArray(doctorDeskMoves.rowKey, rows.map((r) => r.key))).orderBy(desc(doctorDeskMoves.createdAt));
+  const newest = new Map<string, (typeof moves)[number]>();
+  for (const m of moves) if (!newest.has(m.rowKey)) newest.set(m.rowKey, m);
+  const nameOf = new Map(members.map((m) => [m.userId, m.name] as const));
+  return rows.map((r) => {
+    const m = newest.get(r.key);
+    if (m === undefined || !nameOf.has(m.toUserId)) return r;
+    return { ...r, holder: { userId: m.toUserId, name: nameOf.get(m.toUserId) ?? "" }, movedBy: { userId: m.movedBy, name: nameOf.get(m.movedBy) ?? "" } };
+  });
 }
 
 /** Marks the rows this sender has already nudged. */

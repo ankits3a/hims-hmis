@@ -1,8 +1,8 @@
-import { inArray } from "drizzle-orm";
-import { users } from "../../kernel/db/schema";
-import { doctorUnitsOn, istDateOfInstant, membershipsOf, teamMembers } from "../roster";
+import { and, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
+import { orgDepartments, roleAssignments, rolePermissions, rosterOfficiating, rosterTeams, users } from "../../kernel/db/schema";
+import { ROSTER_PUBLISH, doctorUnitsOn, istDateOfInstant, membershipsOf, teamMembers } from "../roster";
 import type { DoctorUnit, TeamMember } from "../roster";
-import type { Actor } from "@hmis/contracts";
+import type { Actor, DeskLevel, WireDeskScope } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
 /**
@@ -54,4 +54,57 @@ export function patientOf(
 ): { id: string; uhid: string | null; name: string | null; restricted: boolean } {
   if (s === undefined) return { id: fallbackId, uhid: null, name: null, restricted: false };
   return { id: s.id, uhid: s.uhid, name: s.restricted ? s.alias : s.name, restricted: s.restricted };
+}
+
+/**
+ * ═══ DD-1.1 (plan D11) — THE SCOPE A DESK READS AT, derived, never chosen ═══
+ *
+ *   hospital   — holds the `medical_superintendent` role (any scope).
+ *   department — HOD: an officiating `hod` row in force NOW on one of the department's teams, or a
+ *                department-scoped grant of `roster.periods.publish` (the rule `leaveDeciders` uses for
+ *                "the department head"). DECIDED: there is no substantive HOD column anywhere, and
+ *                these are the two records the hospital already keeps about who heads a department.
+ *   unit       — the head of the unit: `teamMembers` already returns an officiating head AS head only
+ *                inside the officiating window (plan E07), so an Asst Prof standing in gets the scope
+ *                for those days and loses it the minute the window ends.
+ *   member     — anyone else in a unit: her items, and her unit's clocks.
+ *   own        — in no unit (visiting faculty): own rows only.
+ * The highest that applies wins.
+ */
+export const MS_ROLE_KEY = "medical_superintendent";
+
+export async function deskLevel(exec: Db | Tx, actor: Actor, scope: DeskScope, at: Date): Promise<WireDeskScope> {
+  const none: WireDeskScope = { level: "own", officiating: false, departmentId: null, departmentName: null };
+  if (actor.type !== "user") return none;
+  const db = exec as Db;
+  const ms = await db.select({ id: roleAssignments.id }).from(roleAssignments)
+    .where(and(eq(roleAssignments.userId, actor.id), eq(roleAssignments.roleKey, MS_ROLE_KEY))).limit(1);
+  if (ms.length > 0) return { level: "hospital", officiating: false, departmentId: null, departmentName: null };
+
+  const hodStandIn = await db.select({ departmentId: rosterTeams.departmentId }).from(rosterOfficiating)
+    .innerJoin(rosterTeams, eq(rosterTeams.id, rosterOfficiating.teamId))
+    .where(and(
+      eq(rosterOfficiating.userId, actor.id), eq(rosterOfficiating.role, "hod"),
+      lte(rosterOfficiating.startsAt, at), or(isNull(rosterOfficiating.endsAt), gt(rosterOfficiating.endsAt, at)),
+    )).limit(1);
+  const publish = hodStandIn.length > 0 ? [] : await db.select({ departmentId: roleAssignments.scopeId }).from(roleAssignments)
+    .innerJoin(rolePermissions, eq(rolePermissions.roleKey, roleAssignments.roleKey))
+    .where(and(eq(roleAssignments.userId, actor.id), eq(roleAssignments.scopeType, "department"), eq(rolePermissions.permission, ROSTER_PUBLISH)))
+    .limit(1);
+  const dept = hodStandIn[0]?.departmentId ?? publish[0]?.departmentId ?? null;
+  if (dept !== null) {
+    const name = (await db.select({ name: orgDepartments.name }).from(orgDepartments).where(eq(orgDepartments.id, dept)))[0]?.name ?? null;
+    return { level: "department", officiating: hodStandIn.length > 0, departmentId: dept, departmentName: name };
+  }
+  if (scope.unit === null) return none;
+  const me = scope.members.find((m) => m.userId === actor.id);
+  const base = { departmentId: scope.unit.departmentId, departmentName: scope.unit.departmentName };
+  if (me?.roleInTeam === "head") return { level: "unit", officiating: me.officiating, ...base };
+  return { level: "member", officiating: false, ...base };
+}
+
+/** At least `level` (`own` < `member` < `unit` < `department` < `hospital`). */
+export function atLeast(have: DeskLevel, want: DeskLevel): boolean {
+  const order: DeskLevel[] = ["own", "member", "unit", "department", "hospital"];
+  return order.indexOf(have) >= order.indexOf(want);
 }

@@ -104,5 +104,5 @@ export type { AliasRunCaps, AliasRunReport } from "./alias-runner";
 export { ownerAppointments, ownerLearning } from "./owner-reads";
 export { runFlowLearning } from "./flow-learning";
 // DOCTOR DESK DD-0 (#626) — the Tower's OPD reads: a doctor's day line (counts, no money), open visits, closed visits.
-export { closedVisitNos, doctorDayLines, doctorPaceToday, earlierVisits, lastPrescriptionBy, openVisitsForDoctor, visitOfDoctor } from "./doctor-day";
-export type { DoctorDayLine, DoctorPaceToday, OpenVisitRow } from "./doctor-day";
+export { closedVisitNos, completedVisitById, completedVisitsOf, doctorDayLines, doctorPaceToday, earlierVisits, lastPrescriptionBy, openVisitsForDoctor, visitOfDoctor } from "./doctor-day";
+export type { CompletedVisitRow, DoctorDayLine, DoctorPaceToday, OpenVisitRow } from "./doctor-day";

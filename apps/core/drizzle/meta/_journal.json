@@ -1450,6 +1450,13 @@
       "when": 1792104544564,
       "tag": "0207_doctor_desk",
       "breakpoints": true
+    },
+    {
+      "idx": 207,
+      "version": "7",
+      "when": 1792145852502,
+      "tag": "0208_doctor_desk_dd1",
+      "breakpoints": true
     }
   ]
 }
