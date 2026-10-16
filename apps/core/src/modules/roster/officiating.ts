@@ -38,6 +38,11 @@ export async function recordOfficiating(tx: Tx, actor: Actor, input: Officiating
   const team = (await (tx as Db).select().from(rosterTeams).where(eq(rosterTeams.id, input.teamId)))[0];
   if (team === undefined) throw new RosterError("unknown_team", undefined, { teamId: input.teamId });
   await requireRosterAct(tx, actor, "publish", { departmentId: team.departmentId });
+  // Nobody appoints themselves: the row records who approved it, and a stand-in approved by the same
+  // person who stands in has been approved by nobody.
+  if (actor.id === input.userId) {
+    throw new RosterError("officiating_self_appointment", undefined, { teamId: input.teamId, role: input.role });
+  }
 
   if (!(ROSTER_OFFICIATING_ROLES as readonly string[]).includes(input.role)) {
     throw new RosterError("invalid_window", `"${input.role}" is not a role anybody officiates in`, { role: input.role });

@@ -972,6 +972,22 @@
     "agentIdle": "I read the filters on this screen, the doctor master and the day's bookings — and I say which one an answer came from."
   },
   "opdDesk": {
+    "deptQueue": "Department line",
+    "groupWaiting": "{{n}} waiting",
+    "pickDepartmentList": "Choose a department to see every doctor's line",
+    "noLines": "No doctor has a session open today",
+    "listSummary": "{{n}} waiting in the department",
+    "clocksIdleDept": "choose a department",
+    "agent": {
+      "placeholder": "Ask about the department's line…",
+      "idle": "I can see every doctor's line in this department. Ask who has waited longest, or how many are waiting.",
+      "longest": "Token {{tokenNo}} with {{doctor}} has waited longest — {{n}} min.",
+      "nobody": "Nobody is waiting in this department.",
+      "waiting": "{{n}} waiting across {{doctors}} doctors' lines.",
+      "abandoned": "Token {{tokenNo}} closed — {{reason}}",
+      "moved": "{{n}} moved from {{from}} to {{to}}.",
+      "refused": "Refused: {{message}}"
+    },
     "title": "OPD desk",
     "pickDepartment": "Choose a department",
     "pickDepartmentHint": "Choose a department to see today's doctors",
@@ -1041,7 +1057,7 @@
     "cancel": "Cancel",
     "barAbandon": "Closing token {{tokenNo}} — say why, then confirm.",
     "barTransfer": "Moving from {{from}} — choose the doctor, tick consent, confirm.",
-    "barPickDoctor": "Choose a doctor on the board — their line opens on the right.",
+    "barPickDoctor": "Choose a doctor on the board — their line opens in the list.",
     "barInHand": "Token {{tokenNo}} in hand — choose what happens to them.",
     "barPickToken": "Pick a token from the list to act on it."
   },
@@ -10105,6 +10121,7 @@
     "doctorIssued": "The doctor has already issued this visit's prescription on the screen, so no medicines are typed here. You can still type the tests.",
     "tests": "Tests",
     "testsHint": "Type two letters · Enter picks the first match",
+    "sugTests": "Doctor often advises",
     "testsPlaceholder": "CBC, X-ray chest, LFT…",
     "testsUnavailable": "The price list could not be read — tests cannot be typed right now",
     "removeTest": "Remove {{name}}",
@@ -15853,7 +15870,11 @@
     }
   },
   "agentDock": {
-    "title": "DESK AGENT"
+    "title": "DESK AGENT",
+    "log": "what happened on this screen",
+    "nothingYet": "Nothing yet.",
+    "nothingYetLong": "Nothing yet. Every server answer this screen gets lands here with the time it landed.",
+    "ask": "ASK THE COPILOT · F2"
   },
   "teleBills": {
     "lead": "When the doctor said “Spoke to patient” and the consultation bill could not be raised, the visit waits here. Fix the cause, then retry; the doctor's next “Spoke” goes through.",

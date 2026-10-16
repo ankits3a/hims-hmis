@@ -44,6 +44,13 @@ export type RxLine = {
    * reads it and no print shows it. Optional for ever: older lines and the web's lines lack it.
    */
   source?: RxLineSource | null;
+  /**
+   * Decision 0050 P0 (#620) — the suggestion this line was taken from: the id of the
+   * `opd_suggestion_events` row that says whether the doctor kept it as offered (`accepted`) or
+   * changed it before issuing (`edited`). Audit and learning only, like `source`; absent on a line
+   * nobody suggested and on every line written before.
+   */
+  suggestionEventId?: string | null;
 };
 
 /** od = right, os = left, ou = both — the ophthalmologist's own abbreviations. The vocabulary is shared with the web (`@hmis/contracts` rx-eye). */

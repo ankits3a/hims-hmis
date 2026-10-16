@@ -108,6 +108,8 @@ and swaps, and the readers every other module asks ("who is on now", "which unit
   Copilot answer cards are LIGHT, never dark slabs (owner).
 - Board auto-print prints only to a destination granted to a relay (`duty_board_a4`); otherwise it records
   `no_printer` rather than failing.
+- **Nobody appoints themselves to stand in.** `officiating.ts recordOfficiating` refuses `officiating_self_appointment`
+  when the actor is the person officiating, whatever grant they hold; the row's `approved_by` is always somebody else.
 
 ## 5. Who calls roster
 - opd: `opdUnitsOn` (Desk One department card, OPD day report), `doctorUnitsOn` (doctor label), prescriber print

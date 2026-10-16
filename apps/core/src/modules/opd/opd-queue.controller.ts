@@ -3,6 +3,7 @@ import { recordTeleOutcome, startTeleCall } from "./tele-call";
 import type { TeleCall, TeleOutcomeResult } from "./tele-call";
 import { z } from "zod";
 import { DX_SOURCES, LINE_SOURCES } from "@hmis/contracts";
+import { SIGNAL_ID } from "./consult-guards";
 import type { Actor } from "@hmis/contracts";
 import { CONFIG, DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
@@ -25,7 +26,7 @@ import {
 } from "./prescriptions";
 import { discardDraft, getPendingDraft, issueDraft, saveDraft } from "./prescription-drafts";
 import { SKIP_REASONS } from "./skip-reasons";
-import { boardSnapshot, callNext, listQueue, queueWithoutMoney, recallCalled, skipCalled, summaryByDoctor, undoSkip } from "./queue";
+import { boardSnapshot, callNext, departmentQueue, listQueue, queueWithoutMoney, recallCalled, skipCalled, summaryByDoctor, undoSkip } from "./queue";
 import { encounterWithoutMoney, seesFees } from "./fee-view";
 import { setSessionStatus } from "./sessions";
 import { istDate } from "./time";
@@ -34,7 +35,7 @@ import type { QueuePlace } from "./queue-place";
 import type { EncounterRow, PrescriptionRow, QueueEntryRow } from "./encounters";
 import type { IssuedPrescription, RxPrecheckResult, RxPrintData, RxVerifyResult } from "./prescriptions";
 import type { DraftRow } from "./prescription-drafts";
-import type { BoardItem, DoctorSummary, QueueView, QueueViewNoMoney } from "./queue";
+import type { BoardItem, DepartmentQueueDoctor, DoctorSummary, QueueView, QueueViewNoMoney } from "./queue";
 import type { SessionRow } from "./sessions";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
@@ -49,6 +50,7 @@ const transferBody = z.object({
   consented: z.boolean(),
   reason: z.string().max(500),
 });
+const departmentQueueQuery = z.object({ serviceDate: z.string().max(10).optional() });
 const queueQuery = z.object({ doctorId: z.string().min(1), serviceDate: z.string().max(10).optional() });
 const sessionStatusBody = z.object({ status: z.enum(["in", "out", "closed"]) });
 /** The doctor's sentence for seeing a patient before the bill — shown at every desk after this one. */
@@ -137,6 +139,9 @@ const consultNoteBody = z.object({
     })).max(8).nullish(),
     /** Decision 0050 P0 — where the row came from rides the draft, so a reload does not turn a suggested line into a searched one. */
     source: z.enum(LINE_SOURCES).optional(),
+    /* #620 — a filled row's suggestion event, and the row as it was offered: a reload must not lose whether the doctor changed it. */
+    suggestionEventId: z.string().regex(SIGNAL_ID).optional(),
+    suggestedAs: z.string().max(3000).optional(),
   })).max(30).nullable().optional(),
   leaseToken: z.string().min(8).max(64).optional(),
 });
@@ -175,6 +180,9 @@ export const rxLineBody = z.object({
   // Where the line came from (phone consult, decision 0049's review). Stored on the line for audit;
   // it changes no check and prints nowhere. Absent on every line written before, and on the web's.
   source: z.enum(LINE_SOURCES).nullish(),
+  // #620 — the suggestion event the line was taken from (`fhir.ts` RxLine). Named here for the
+  // reason `eye` is: an undeclared key is stripped, and the line would lose its join to the event.
+  suggestionEventId: z.string().regex(SIGNAL_ID).nullish(),
 }).refine((l) => (l.taper ?? null) !== null || l.frequency.length <= 100, {
   path: ["frequency"], message: "String must contain at most 100 character(s)",
 });
@@ -261,6 +269,26 @@ export class OpdQueueController {
     const q = parsed(summaryQuery, query);
     try {
       return { items: await summaryByDoctor(this.db, q.departmentId, q.serviceDate ?? istDate(new Date())) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * #660 — the OPD desk's department-wide line in ONE read: every doctor of the department with the
+   * exact view `GET /opd/queues` gives that doctor, behind the same grant and the same money rule
+   * (`fee-view.ts`, per caller), so it shows nobody anything the per-doctor read would not.
+   */
+  @RequirePermission("opd.queue.read", "hospital")
+  @Get("departments/:id/queue")
+  async departmentQueue(
+    @CurrentActor() actor: Actor, @Param("id") id: string, @Query() query: unknown,
+  ): Promise<{ departmentId: string; serviceDate: string; doctors: (Omit<DepartmentQueueDoctor, "queue"> & { queue: QueueView | QueueViewNoMoney | null })[] }> {
+    const q = parsed(departmentQueueQuery, query);
+    try {
+      const dq = await departmentQueue(this.db, actor, id, q.serviceDate ?? istDate(new Date()));
+      if (await seesFees(this.db, actor)) return dq;
+      return { ...dq, doctors: dq.doctors.map((d) => ({ ...d, queue: d.queue === null ? null : queueWithoutMoney(d.queue) })) };
     } catch (e) {
       toHttp(e);
     }
