@@ -1,0 +1,321 @@
+/*
+ * ER lane 1 (#808) — the ER desk and the tracking board (spec SPEC-emergency §5 A, C), in the house palette
+ * (`styles/paper-pine.css`, `.erx`). Both own the viewport. The board fits 1920×1080 and 1366×768 with no page scroll
+ * (columns scroll inside themselves); at phone width (≤ 760 px) everything stacks and the page scrolls. Targets are
+ * 48 px where a gloved thumb taps them. Colour never carries meaning alone: every clock and chip is a word.
+ */
+.erx {
+  height: 100vh;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", "IBM Plex Sans Devanagari", system-ui, sans-serif;
+  padding: 18px 24px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.erx * { box-sizing: border-box; }
+.erx .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+.erx .dim { color: var(--dim); }
+.erx button { font-family: inherit; cursor: pointer; }
+.erx button:focus-visible, .erx input:focus-visible, .erx select:focus-visible, .erx a:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.erx-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 14px; font-weight: 500; text-decoration: none; }
+.erx-btn.sm { min-height: 40px; padding: 0 12px; font-size: 13px; border-radius: 6px; }
+.erx-btn.pri { background: var(--green); border-color: var(--green); color: #fff; font-weight: 600; }
+.erx-btn.danger { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
+.erx-btn.big { min-height: 56px; font-size: 17px; width: 100%; }
+.erx-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+/* ── header ── */
+.erb-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; flex: none; }
+.erb-title { display: flex; align-items: baseline; gap: 6px 14px; flex-wrap: wrap; }
+.erb-title h1 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.01em; }
+.erb-title span { font-size: 15px; color: var(--dim); font-family: "IBM Plex Mono", monospace; }
+.erb-tools { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* ── the stat strip ── */
+.erb-stats { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; flex: none; }
+.erb-stat { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.erb-stat .lbl { font-size: 12px; color: var(--dim); font-weight: 500; }
+.erb-stat .val b { font-family: "IBM Plex Mono", monospace; font-size: 28px; font-weight: 600; letter-spacing: -0.02em; }
+.erb-stat .sub { font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.erb-stat .sub.bad { color: var(--red); font-weight: 600; }
+
+/* ── the three columns ── */
+.erb-cols { flex: 1 1 auto; min-height: 0; display: flex; gap: 16px; }
+.erb-col { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.erb-expected { flex: 0 1 330px; min-width: 250px; }
+.erb-waiting { flex: 1 1 560px; min-width: 0; }
+/* Lane 2: the department (triaged and beyond) is the working column — the widest. */
+.erb-treat { flex: 1.4 1 760px; min-width: 260px; }
+.erx h2 { margin: 0; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.erb-badge { font-family: "IBM Plex Mono", monospace; font-size: 12px; font-weight: 600; background: var(--ink); color: #fff; border-radius: 10px; padding: 1px 8px; }
+.erb-empty { background: var(--card); border: 1px dashed var(--line); border-radius: 8px; padding: 18px 14px; color: var(--dim); font-size: 14px; }
+.erb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; align-content: start; }
+
+/* ── a tile ── */
+.erb-tile, .erb-exp { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--line); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.erb-tile.late { border-left-color: var(--red); }
+.erb-exp { border-left-color: var(--blue); }
+.erb-exp.late { border-left-color: var(--gold); }
+.erb-tile-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.erb-name { font-size: 17px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.erb-alias-hi { font-size: 14px; color: var(--dim); margin-top: -4px; }
+.erd-band-id span[lang="hi"] { font-size: 15px; }
+.erb-since { font-size: 15px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.erb-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; color: var(--dim); }
+.erb-clock { font-size: 14px; font-weight: 600; color: var(--green); display: flex; align-items: center; gap: 6px; }
+.erb-clock i { font-style: normal; font-size: 11px; }
+.erb-clock.late { color: var(--red); }
+.erb-eta { font-family: "IBM Plex Mono", monospace; font-size: 14px; font-weight: 600; color: var(--blue); white-space: nowrap; }
+.erb-eta.late { color: #8a5a0e; }
+.erb-complaint { margin: 0; font-size: 14px; }
+.erb-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.erb-chip { font-size: 12px; font-weight: 600; border-radius: 4px; padding: 2px 8px; border: 1px solid var(--line); background: var(--wash); color: var(--ink); }
+.erb-chip.unidentified, .erb-chip.name_alert, .erb-chip.stale { background: var(--gold-soft); border-color: var(--gold-line); color: #7a4e0c; }
+.erb-chip.police { background: var(--wash); border-color: var(--ink); }
+.erb-chip.id-merged { background: var(--green-soft); border-color: var(--green-line); color: var(--green); }
+.erb-chip.id-refused { background: var(--red-soft); border-color: var(--red-line); color: var(--red); }
+
+/* ── footer ── */
+.erb-foot { flex: none; display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--dim); flex-wrap: wrap; }
+.erb-live { display: inline-flex; align-items: center; gap: 8px; color: var(--green); font-weight: 600; }
+.erb-live i { width: 9px; height: 9px; border-radius: 50%; background: var(--green); display: inline-block; }
+.erb-live.off { color: var(--red); }
+.erb-live.off i { background: var(--red); border-radius: 1px; }
+
+/* ── the wall display: bigger, no names (the server sends none), a slight hourly shift against burn-in ── */
+.erb.wall { padding: calc(22px + var(--erb-shift, 0px)) calc(32px - var(--erb-shift, 0px)) calc(14px - var(--erb-shift, 0px)) calc(32px + var(--erb-shift, 0px)); }
+.erb.wall .erb-title h1 { font-size: 34px; }
+.erb.wall .erb-stat .val b { font-size: 38px; }
+.erb.wall .erb-stat .lbl { font-size: 15px; }
+.erb.wall .erb-name { font-size: 24px; }
+.erb.wall .erb-since, .erb.wall .erb-clock, .erb.wall .erb-eta { font-size: 19px; }
+.erb.wall .erb-meta, .erb.wall .erb-chip { font-size: 15px; }
+.erb.wall h2 { font-size: 20px; }
+.erb.wall .erb-grid { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+
+/* ══════════════════ the ER desk ══════════════════ */
+.erd-cols { flex: 1 1 auto; min-height: 0; display: flex; gap: 18px; }
+.erd-new { flex: 1 1 560px; min-width: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+.erd-list { flex: 1 1 520px; min-width: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.erd-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; background: var(--wash); border-radius: 8px; padding: 4px; }
+.erd-tab { min-height: 44px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); font-size: 15px; font-weight: 500; }
+.erd-tab.on { background: var(--card); box-shadow: 0 1px 2px rgba(0,0,0,.08); font-weight: 600; }
+.erd-form { display: flex; flex-direction: column; gap: 14px; }
+.erd-choice { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.erd-choice legend { font-size: 13px; font-weight: 600; color: var(--dim); padding: 0; margin-bottom: 6px; }
+.erd-opts { display: flex; flex-wrap: wrap; gap: 8px; }
+.erd-opt { min-height: 48px; min-width: 88px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); font-size: 15px; font-weight: 500; }
+.erd-opt.sm { min-height: 40px; min-width: 0; font-size: 13px; }
+.erd-opt.on { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
+.erd-field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--dim); font-weight: 500; min-width: 0; }
+.erd-field input, .erd-field select { min-height: 44px; border: 1px solid var(--line); border-radius: 8px; padding: 0 12px; font: inherit; font-size: 15px; color: var(--ink); background: var(--card); width: 100%; }
+.erd-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.erd-more-btn { background: none; border: 0; color: var(--blue); font-size: 14px; font-weight: 600; padding: 4px 0; text-align: left; }
+.erd-more-body { display: flex; flex-direction: column; gap: 10px; padding-top: 6px; }
+.erd-hint { margin: 0; font-size: 13px; color: var(--dim); }
+.erd-check { display: flex; align-items: center; gap: 10px; font-size: 15px; min-height: 44px; }
+.erd-check input { width: 22px; height: 22px; }
+.erd-count { display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--dim); font-weight: 600; }
+.erd-count b { font-size: 22px; color: var(--ink); min-width: 28px; text-align: center; }
+.erd-from { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--wash); border: 1px solid var(--line); border-left: 4px solid var(--blue); border-radius: 8px; padding: 8px 12px; font-size: 14px; }
+.erd-refusal { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; background: var(--red-soft); border: 1px solid var(--red-line); border-radius: 8px; padding: 10px 12px; color: var(--red); font-size: 14px; }
+.erd-refusal span { color: var(--ink); }
+.erd-note { background: var(--green-soft); border: 1px solid var(--green-line); border-radius: 8px; padding: 10px 12px; color: var(--green); font-size: 14px; font-weight: 600; }
+.erd-find { display: flex; flex-direction: column; gap: 8px; }
+.erd-hits { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.erd-hits button { width: 100%; min-height: 48px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; text-align: left; border: 1px solid var(--line); background: var(--card); border-radius: 8px; padding: 8px 12px; font-size: 14px; color: var(--ink); }
+.erd-picked { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; border: 1px solid var(--green-line); background: var(--green-soft); border-radius: 8px; padding: 8px 12px; font-size: 14px; }
+.erd-newpatient { border: 1px dashed var(--line); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
+.erd-newpatient summary { cursor: pointer; font-weight: 600; font-size: 14px; color: var(--blue); min-height: 32px; display: flex; align-items: center; }
+.erd-newpatient[open] { display: flex; }
+.erd-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.erd-exp { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--blue); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.erd-ep { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.erd-ep.hl { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold-soft); }
+.erd-ep.closed { opacity: .75; }
+.erd-ep-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.erd-ep-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; }
+.erd-ep-name b { font-size: 16px; }
+.erd-ep-name span { font-size: 14px; color: var(--dim); }
+.erd-state { font-size: 12px; font-weight: 600; color: var(--dim); white-space: nowrap; }
+.erd-identify { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line2); padding-top: 8px; }
+
+/* The band as printed: a strip, monospace serial — what the desk hands to the nurse. */
+.erd-band-wrap { display: flex; flex-direction: column; gap: 10px; }
+.erd-band { display: flex; justify-content: space-between; align-items: center; gap: 12px; border: 2px solid var(--ink); border-radius: 22px; padding: 10px 18px; background: #fff; }
+.erd-band-id { display: flex; flex-direction: column; gap: 2px; font-size: 13px; min-width: 0; }
+.erd-band-id b { font-size: 17px; }
+.erd-band-alerts { font-weight: 600; }
+.erd-band-code { font-size: 13px; border-left: 1px dashed var(--line); padding-left: 12px; white-space: nowrap; }
+
+/* ══════════════════ lane 2 (#809): ESI, the bay, the triage screen ══════════════════ */
+/* ESI: colour AND word AND number (spec §3.1) — the ESI-3 yellow and ESI-4 green carry dark text for contrast. */
+.er-esi { display: inline-flex; align-items: center; font-size: 12px; font-weight: 700; border-radius: 4px; padding: 2px 8px; white-space: nowrap; border: 1px solid transparent; }
+.er-esi.big { font-size: 15px; padding: 4px 10px; }
+.er-esi.esi-1 { background: #b23a30; color: #fff; }
+.er-esi.esi-2 { background: #d9652b; color: #fff; }
+.er-esi.esi-3 { background: #f2c94c; color: #3a2a00; }
+.er-esi.esi-4 { background: #4f9d69; color: #fff; }
+.er-esi.esi-5 { background: #1f5f8b; color: #fff; }
+.erb-tile.esi-edge-1 { border-left-color: #b23a30; } .erb-tile.esi-edge-2 { border-left-color: #d9652b; }
+.erb-tile.esi-edge-3 { border-left-color: #f2c94c; } .erb-tile.esi-edge-4 { border-left-color: #4f9d69; }
+.erb-tile.esi-edge-5 { border-left-color: #1f5f8b; }
+.erb-link { color: inherit; text-decoration: none; }
+.erb-link:hover { border-color: var(--green-line); }
+.erb-esi-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.erb-bay { font-size: 13px; font-weight: 700; border: 1px solid var(--ink); border-radius: 4px; padding: 1px 6px; }
+.er-ews { font-size: 12px; font-weight: 600; color: var(--dim); }
+.er-ews.ews-medium, .er-ews.ews-low_medium { color: #8a5a0e; }
+.er-ews.ews-high { color: var(--red); }
+.erb.wall .er-esi { font-size: 15px; }
+.erb.wall .erb-bay { font-size: 16px; }
+
+.ert-body { flex: 1 1 auto; min-height: 0; display: flex; gap: 18px; }
+.ert-main { flex: 1 1 640px; min-width: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+.ert-side { flex: 0 1 360px; min-width: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+.ert-side section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.ert-queue { flex: 1 1 auto; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; max-width: 900px; }
+.ert-row { display: flex; align-items: center; gap: 12px; min-height: 56px; width: 100%; text-align: left; border: 1px solid var(--line); background: var(--card); border-radius: 8px; padding: 8px 12px; font-size: 14px; color: var(--ink); }
+.ert-row-main { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; }
+.ert-row-main b { font-size: 16px; }
+.ert-who { display: flex; flex-direction: column; gap: 6px; border-bottom: 1px solid var(--line2); padding-bottom: 10px; }
+.ert-who b { font-size: 19px; }
+.ert-qs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 18px; }
+.ert-q .erd-hint { margin: -2px 0 2px; }
+.ert-proposal { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; background: var(--agent); color: var(--agent-fg); border-radius: 8px; padding: 10px 12px; font-size: 14px; }
+.ert-proposal .dim { color: var(--agent-dim); }
+.ert-levels { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.ert-level { min-height: 64px; border-radius: 8px; border: 2px solid var(--line); background: var(--paper); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--ink); }
+.ert-level b { font-size: 22px; font-family: "IBM Plex Mono", monospace; }
+.ert-level span { font-size: 12px; font-weight: 600; text-align: center; }
+.ert-level.esi-1 { border-color: #b23a30; } .ert-level.esi-2 { border-color: #d9652b; } .ert-level.esi-3 { border-color: #f2c94c; }
+.ert-level.esi-4 { border-color: #4f9d69; } .ert-level.esi-5 { border-color: #1f5f8b; }
+.ert-level.on.esi-1 { background: #b23a30; color: #fff; } .ert-level.on.esi-2 { background: #d9652b; color: #fff; }
+.ert-level.on.esi-3 { background: #f2c94c; color: #3a2a00; } .ert-level.on.esi-4 { background: #4f9d69; color: #fff; }
+.ert-level.on.esi-5 { background: #1f5f8b; color: #fff; }
+.ert-vitals { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; align-items: end; }
+.ert-bays { display: flex; flex-wrap: wrap; gap: 6px; }
+.ert-history { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.ert-history li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.ert-actions .erx-btn.big { flex: 1 1 280px; width: auto; }
+/* A disabled button that floats over the form must stay solid, or the form shows through it. */
+.ert-actions .erx-btn:disabled { opacity: 1; background: #a9c9bd; border-color: #a9c9bd; color: #fff; }
+
+/* ══════════════════ lane 3 (#810): the ER patient ══════════════════ */
+.erp-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.erp-allergy { font-weight: 700; font-size: 14px; }
+.erp-critical { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; background: var(--red-soft); border: 2px solid var(--red); border-radius: 8px; padding: 10px 14px; color: var(--red); font-size: 15px; }
+.erp-critical span { color: var(--ink); font-weight: 600; }
+.erp-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.erp-panel { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px; max-width: 900px; }
+.erp-panel textarea { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font: inherit; font-size: 15px; color: var(--ink); background: var(--card); width: 100%; resize: vertical; }
+.erp-cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 14px; align-items: start; }
+.erp-cols section { display: flex; flex-direction: column; gap: 8px; }
+.erp-text { margin: 0; font-size: 14px; white-space: pre-wrap; }
+.erp-high { border-left: 4px solid var(--red); }
+.erb-chips .dim { font-size: 13px; align-self: center; }
+.erp-give { display: flex; flex-direction: column; gap: 8px; }
+.erb-chip.critical { background: var(--red-soft); border-color: var(--red-line); color: var(--red); }
+.erb-chip.call_waiting { background: var(--gold-soft); border-color: var(--gold-line); color: #7a4e0c; }
+.erb-chip.stabilised { background: var(--green-soft); border-color: var(--green-line); color: var(--green); }
+
+/* ── ER lane 4 (#811): the MLC desk ── */
+.erm-list .erm-row { align-items: flex-start; }
+.erm-row.on { border-color: var(--ink); box-shadow: 0 0 0 2px var(--line); }
+.erm-row .erb-chips { margin-top: 4px; }
+.erm-row .erb-clock { font-size: 13px; }
+.erm-detail { display: flex; flex-direction: column; gap: 10px; }
+.erm-form textarea { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font: inherit; font-size: 15px; color: var(--ink); background: var(--card); width: 100%; resize: vertical; }
+.erm-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* ── ER lane 7 (#814): codes — the scribe's timer, one-tap pads (48 px), the code buttons ── */
+.erc-timer { font-size: 18px; font-weight: 700; }
+.erc-timer.big { font-size: 34px; }
+.erc-timer.live { color: var(--red); }
+.erc-pads { display: flex; flex-wrap: wrap; gap: 8px; }
+.erc-pads .erd-opt { min-height: 48px; }
+.erc-blue { background: #1d4f91; border-color: #1d4f91; color: #fff; font-weight: 700; }
+.erc-grey { background: #4a4a4a; border-color: #4a4a4a; color: #fff; font-weight: 700; }
+.erc-call { display: flex; flex-direction: column; gap: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+.erc-timeline { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+
+/* ── ER lane 6 (#813): the ER bill desk (money: this screen only) ── */
+.erb-bill-amt { font-size: 15px; font-weight: 600; white-space: nowrap; }
+.erb-bill-lines { width: 100%; border-collapse: collapse; font-size: 14px; }
+.erb-bill-lines td { padding: 6px 4px; border-bottom: 1px solid var(--line2, var(--line)); vertical-align: top; }
+.erb-bill-lines td.num { text-align: right; white-space: nowrap; }
+
+@media (max-width: 1500px) {
+  .erb-stat .val b { font-size: 24px; }
+  .erb-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+}
+@media (max-width: 760px) {
+  .erx { height: auto; min-height: 100vh; overflow: visible; padding: 12px 16px; }
+  .erb-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .erb-stat { padding: 8px 10px; }
+  .erb-stat .val b { font-size: 22px; }
+  .erb-cols, .erd-cols { flex-direction: column; }
+  .erb-expected, .erb-waiting, .erb-treat, .erd-new, .erd-list { flex: none; width: 100%; min-width: 0; overflow: visible; }
+  .erb-grid { grid-template-columns: minmax(0, 1fr); }
+  .erd-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .erd-opt { min-width: 0; flex: 1 1 calc(50% - 8px); }
+  .erd-pair { grid-template-columns: 1fr; }
+  .erd-new { padding: 12px; }
+  .ert-body { flex-direction: column; }
+  .ert-main, .ert-side { flex: none; width: 100%; min-width: 0; overflow: visible; }
+  .ert-main { padding: 12px; }
+  .ert-qs { grid-template-columns: minmax(0, 1fr); }
+  .ert-levels { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
+  .ert-level span { font-size: 9px; letter-spacing: -0.02em; overflow-wrap: anywhere; line-height: 1.1; padding: 0 2px; }
+  .ert-vitals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ert-actions { position: sticky; bottom: 8px; z-index: 2; }
+  .erp-cols { grid-template-columns: minmax(0, 1fr); }
+  .erp-bar .erd-opt { flex: 1 1 calc(50% - 8px); }
+  /* The register button stays under the thumb while the desk scrolls the choices. */
+  .erd-form > .erx-btn.big { position: sticky; bottom: 8px; z-index: 2; box-shadow: 0 4px 14px rgba(19, 36, 32, .18); }
+}
+@media print {
+  .erd > *:not(.erd-cols), .erd-list, .erd-tabs, .erd-from, .erd-band-wrap .erd-row { display: none !important; }
+  .erx { height: auto; overflow: visible; padding: 0; background: #fff; }
+  .erd-new { border: 0; padding: 0; }
+  .erm-form, .erm-detail button { display: none !important; }
+}
+
+/* ═══ ER lane 8 (#815) — the MCI board (Code Yellow). Tags carry colour AND word. ═══ */
+.ery.running .erb-head { border-bottom: 4px solid #e0b100; }
+.ery-count { display: flex; flex-direction: column; gap: 6px; }
+.ery-tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.ery-tile { border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--line); background: var(--card); min-width: 0; }
+.ery-tile b { font-size: 28px; line-height: 1.1; }
+.ery-tile span { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.ery-tile.red, .ery-tag.red, .ery-pick.red.on { background: #b3261e; border-color: #b3261e; color: #fff; }
+.ery-tile.yellow, .ery-tag.yellow, .ery-pick.yellow.on { background: #f2c200; border-color: #c99f00; color: #1d1d1d; }
+.ery-tile.green, .ery-tag.green, .ery-pick.green.on { background: #2e7d32; border-color: #2e7d32; color: #fff; }
+.ery-tile.black, .ery-tag.black, .ery-pick.black.on { background: #1d1d1d; border-color: #1d1d1d; color: #fff; }
+.ery-pick.red { border-left: 6px solid #b3261e; }
+.ery-pick.yellow { border-left: 6px solid #f2c200; }
+.ery-pick.green { border-left: 6px solid #2e7d32; }
+.ery-pick.black { border-left: 6px solid #1d1d1d; }
+.ery-tag { display: inline-flex; align-items: center; min-height: 28px; padding: 0 10px; border-radius: 14px; font-size: 13px; font-weight: 700; border: 1px solid var(--line); white-space: nowrap; }
+.ery-tag.none { background: var(--card); color: var(--dim); }
+.ery-stats { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 14px; font-weight: 600; }
+.ery .erd-list > *, .ery .erd-new > * { flex-shrink: 0; }
+.ery-row { flex-wrap: wrap; align-items: center; gap: 8px; }
+.ery-row > .erd-row, .ery-row > .erd-field { flex: 1 1 100%; }
+.ery-packs { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.ery-declare { background: #e0b100; border-color: #c99f00; color: #1d1d1d; font-weight: 700; }
+.erb-chip.mci_red { background: #b3261e; color: #fff; }
+.erb-chip.mci_yellow { background: #f2c200; color: #1d1d1d; }
+.erb-chip.mci_green { background: #2e7d32; color: #fff; }
+.erb-chip.mci_black { background: #1d1d1d; color: #fff; }
+@media (max-width: 760px) {
+  .ery-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media print {
+  .ery > .ery-count, .ery > .ery-stats { display: flex !important; }
+  .ery .erd-cols .erd-list { display: none !important; }
+  .ery .erd-new > *:not(.ery-packs) { display: none !important; }
+}

@@ -15,7 +15,7 @@ import { imagingExposureRepeated, imagingStudyAcquired } from "./events";
 import type { RepeatReasonCode } from "./events";
 import { evaluateReadiness } from "./gates";
 import { assertContrastPermissible } from "./contrast";
-import { authorisationOf, encounterPayer, hasBillDecision, imagingFreeAt, raiseBillDecision } from "./money";
+import { authorisationOf, encounterPayer, hasBillDecision, imagingFreeAt, raiseBillDecision, studyOnRunningBill } from "./money";
 import { activeDoseReferenceLevels, drlFor, requireStudyType } from "./study-types";
 import { attachHeldAtSend, heldArrivalFor, pendingDoseFor, settlePendingDose } from "./pacs";
 import { assertIrSendable, assertIrStartable, raiseSkinDoseAlerts } from "./ir";
@@ -138,7 +138,8 @@ export async function startAcquisition(
 
   /** (2) DD12a — WHY this scan is allowed to start. `null` is the cashier's screen, not an error. */
   const payer = await encounterPayer(tx, study.encounterNo);
-  const authorisedBy = authorisationOf(study, payer, await imagingFreeAt(tx, study.createdAt));
+  const onRunningBill = await studyOnRunningBill(tx, study);
+  const authorisedBy = authorisationOf({ ...study, onRunningBill }, payer, await imagingFreeAt(tx, study.createdAt));
   if (authorisedBy === null) {
     throw new RadiologyError(
       "payment_required",
@@ -677,8 +678,13 @@ export async function recordAcquired(
   }
   /** I1 — images exist and nothing was billed. The `stat` lane is exactly how this happens. */
   /** A `free` study (the imaging fee switch was off) has nothing to bill, so nothing leaked. */
+  /**
+   * #785 — nor a scan charged on an inpatient's running bill: the line EXISTS (billing's sink `covers` the order item), so the
+   * counter billing it again would charge twice. Read from the line, not the admission's state (review of 47cd79f5): a scan
+   * ordered in the stay and acquired after discharge is still the running bill's; an inpatient scan with NO line is unbilled.
+   */
   if (study.invoiceLineId === null && study.authorisedBy !== "daycare" && study.authorisedBy !== "payer_branch"
-    && study.authorisedBy !== "free") {
+    && study.authorisedBy !== "free" && !(await studyOnRunningBill(tx, study))) {
     await raise("acquired_unbilled", { authorisedBy: study.authorisedBy, priority: study.priority });
   }
 

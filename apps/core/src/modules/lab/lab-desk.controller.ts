@@ -5,9 +5,9 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import { listOrdersForEncounter, listOrdersForPatient } from "../../kernel/orders/read";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
-import { previewInvoice, withIdempotency } from "../billing";
+import { withIdempotency } from "../billing";
 import { bookLab, bookingRules, closeBooking, listBookings, saveBookingHours, slotsForDay } from "./bookings";
-import { addOnOrder, deskFind, labDoctors, tubePlan } from "./desk";
+import { addOnOrder, deskFind, labDoctors, previewDeskOrder, tubePlan } from "./desk";
 import { labMode, setLabMode } from "./mode";
 import { commonOrderables, labFeeFree, recentLabOrders, walkInReadiness } from "./desk-picker";
 import { hasPermission } from "../../kernel/auth/permissions";
@@ -228,11 +228,7 @@ export class LabDeskController {
   async preview(@Body() body: unknown): Promise<unknown> {
     const input = parsed(previewBody, body);
     try {
-      const priced = await previewInvoice(this.db, {
-        patientId: input.patientId,
-        encounterId: input.encounterNo,
-        lines: input.serviceIds.map((serviceId, i) => ({ lineId: `preview-${String(i)}`, serviceId, qty: 1 })),
-      });
+      const priced = await previewDeskOrder(this.db, input);
       /** 17c T1 — the price and the tubes are one question at the counter: "what am I placing?" */
       return { ...priced, tubes: await tubePlan(this.db, input.serviceIds) };
     } catch (e) { toHttp(e); }

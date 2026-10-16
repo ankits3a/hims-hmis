@@ -1,0 +1,195 @@
+/*
+ * E1.1 — THE BEDS CAPACITY BOARD (spec §4.9 A), a port of design board A ("Beds — capacity board",
+ * Main.dc.html). 16:9 first: at 1920×1080 the header, the six-stat strip, the three columns and the
+ * footer fit the viewport and the PAGE never scrolls; each column scrolls inside itself if it must.
+ * Down to 1366×768 the columns narrow. Palette: `styles/paper-pine.css` (`.ipdb`).
+ */
+.ipdb {
+  height: 100vh;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", "IBM Plex Sans Devanagari", system-ui, sans-serif;
+  padding: 20px 24px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.ipdb * { box-sizing: border-box; }
+.ipdb .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+.ipdb button { font-family: inherit; cursor: pointer; }
+.ipdb button:focus-visible, .ipdb input:focus-visible, .ipdb select:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.ipdb .dim { color: var(--dim); }
+
+/* ── header ── */
+.ipdb-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; flex: none; }
+.ipdb-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 14px; }
+.ipdb-title h1 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.01em; }
+.ipdb-title span { font-size: 14px; color: var(--dim); }
+.ipdb-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.ipdb-find { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 12px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; min-width: 260px; }
+.ipdb-find input { border: 0; outline: none; background: transparent; font: inherit; font-size: 14px; color: var(--ink); flex: 1; min-width: 0; }
+.ipdb-find kbd { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--dim); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; }
+.ipdb-btn { min-height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 14px; font-weight: 500; }
+.ipdb-btn.sm { min-height: 40px; padding: 0 12px; border-radius: 6px; font-size: 13px; }
+.ipdb-btn.pri { background: var(--green); border-color: var(--green); color: #fff; font-weight: 600; }
+.ipdb-btn.quiet { background: var(--paper); }
+.ipdb-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ── the six-stat strip ── */
+.ipdb-stats { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; flex: none; }
+.ipdb-stat { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; min-width: 0; line-height: 1.3; }
+.ipdb-stat .lbl { font-size: 12px; color: var(--dim); font-weight: 500; }
+.ipdb-stat .val { display: flex; align-items: baseline; gap: 6px; }
+.ipdb-stat .val b { font-family: "IBM Plex Mono", monospace; font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
+.ipdb-stat .val span { font-family: "IBM Plex Mono", monospace; font-size: 14px; color: var(--dim); }
+/* IPD walk 2026-10-14: the subtitle wraps — "General 432 · Semi-pvt 144 · …" hid the very numbers the card is for. */
+.ipdb-stat .sub { font-size: 12px; color: var(--dim); white-space: normal; overflow-wrap: anywhere; }
+.ipdb-stat .sub.warn { color: #8a5a0e; font-weight: 600; }
+.ipdb-stat .sub.bad { color: var(--red); font-weight: 600; }
+
+/* ── the three columns ── */
+.ipdb-cols { flex: 1 1 auto; min-height: 0; display: flex; align-items: stretch; gap: 16px; }
+.ipdb-col { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.ipdb-left { flex: 0 1 340px; min-width: 260px; }
+.ipdb-centre { flex: 1 1 560px; min-width: 0; gap: 12px; }
+.ipdb-right { flex: 0 1 300px; min-width: 240px; gap: 12px; }
+.ipdb h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.ipdb-badge { font-family: "IBM Plex Mono", monospace; font-size: 12px; font-weight: 600; background: var(--ink); color: #fff; border-radius: 10px; padding: 1px 8px; }
+.ipdb-card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.ipdb-empty { background: var(--card); border: 1px dashed var(--line); border-radius: 8px; padding: 22px 14px; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.ipdb-empty b { font-size: 15px; font-weight: 600; }
+.ipdb-empty span { font-size: 12px; color: var(--dim); }
+
+/* ── floors ── */
+.ipdb-floorbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.ipdb-legend { display: flex; flex-wrap: wrap; gap: 10px; }
+.ipdb-legend span { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--dim); }
+.ipdb-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ipdb-chip { min-height: 40px; padding: 0 12px; border-radius: 20px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; }
+.ipdb-chip[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+.ipdb-chip .mono { opacity: .75; font-size: 12px; }
+.ipdb-floorlist { display: flex; flex-direction: column; gap: 14px; }
+.ipdb.wall > * { transform: translate(var(--ipdb-shift, 0px), var(--ipdb-shift, 0px)); }
+.ipdb-floorhead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+.ipdb-floorhead span:first-child { font-size: 13px; font-weight: 600; }
+.ipdb-floorhead span:last-child { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--dim); text-align: right; }
+.ipdb-floorhead span.outside:last-child { font-family: inherit; }
+.ipdb-wards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.ipdb-ward { text-align: left; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; color: var(--ink); }
+.ipdb-ward:hover { border-color: var(--green-line); }
+.ipdb-ward .top { display: flex; justify-content: space-between; gap: 8px; }
+.ipdb-ward .top b { font-size: 14px; font-weight: 600; }
+.ipdb-ward .top span { font-family: "IBM Plex Mono", monospace; font-size: 12px; }
+.ipdb-ward .sub { font-size: 12px; color: var(--dim); }
+.ipdb-ward .sub.full { color: var(--red); font-weight: 600; }
+.ipdb-dots { display: flex; flex-wrap: wrap; gap: 3px; }
+.ipdb-dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; flex: none; }
+
+/* status swatches — the board's six; every one is also a WORD on the tile, in the legend and in the dot's label */
+.s-occupied { background: #3d5a50; }
+.s-incumbent { background: repeating-linear-gradient(45deg, #8fa69c 0 2px, #e3eae6 2px 4px); }
+.s-reserved { background: var(--blue); }
+.s-cleaning { background: #f3d6a6; box-shadow: inset 0 0 0 1.5px var(--gold); }
+.s-available { background: #fff; box-shadow: inset 0 0 0 1.5px var(--green); }
+.s-blocked { background: #fff; box-shadow: inset 0 0 0 1.5px var(--red); }
+
+/* ── right column ── */
+.ipdb-big { display: flex; align-items: baseline; gap: 8px; }
+.ipdb-big b { font-family: "IBM Plex Mono", monospace; font-size: 32px; font-weight: 600; }
+.ipdb-block { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line2); padding-top: 10px; }
+.ipdb-block .t { font-size: 13px; font-weight: 600; }
+.ipdb-block .t .mono { color: #8a5a0e; }
+.ipdb-block .d { font-size: 12px; color: var(--dim); line-height: 1.45; }
+
+/* ── footer ── */
+.ipdb-foot { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--dim); border-top: 1px solid var(--line); padding-top: 10px; }
+.ipdb-live { display: flex; align-items: center; gap: 6px; }
+.ipdb-live i { width: 8px; height: 8px; border-radius: 50%; background: var(--green); display: inline-block; }
+.ipdb-live.off { color: var(--red); font-weight: 600; }
+.ipdb-live.off i { background: var(--red); }
+
+/* ── ward drawer ── */
+.ipdb-scrim { position: fixed; inset: 0; background: rgba(19, 36, 32, .28); z-index: 40; }
+.ipdb-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 100vw); background: var(--paper); border-left: 1px solid var(--line); z-index: 41; display: flex; flex-direction: column; }
+.ipdb-drawer header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 16px 18px; border-bottom: 1px solid var(--line); background: var(--card); }
+.ipdb-drawer .body { flex: 1; overflow-y: auto; padding: 14px 18px; display: flex; flex-direction: column; gap: 12px; }
+.ipdb-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.ipdb-tile { text-align: left; border: 1px solid var(--line); border-radius: 8px; background: var(--card); padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; color: var(--ink); min-height: 72px; }
+.ipdb-tile[aria-pressed="true"] { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+.ipdb-tile .code { font-family: "IBM Plex Mono", monospace; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.ipdb-tile .word { font-size: 12px; font-weight: 600; }
+.ipdb-tile .who { font-size: 12px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ipdb-act { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.ipdb-act .row { display: flex; flex-wrap: wrap; gap: 8px; }
+.ipdb-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
+.ipdb-form label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--dim); }
+.ipdb-form label.wide { grid-column: 1 / -1; }
+.ipdb-form label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--ink); font-size: 13px; }
+.ipdb-form input:not([type="checkbox"]), .ipdb-form select { height: 40px; border: 1px solid var(--line); border-radius: 6px; padding: 0 8px; font: inherit; font-size: 14px; color: var(--ink); background: #fff; }
+.ipdb-refusal { border: 1px solid var(--red-line); background: var(--red-soft); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.ipdb-refusal b { color: var(--red); font-size: 14px; }
+.ipdb-refusal span { font-size: 13px; }
+.ipdb-ok { color: var(--green); font-weight: 600; font-size: 13px; }
+
+/* ── 1366×768: the same board, narrower ── */
+@media (max-width: 1500px) {
+  .ipdb { padding: 14px 16px 8px; gap: 12px; }
+  .ipdb-title h1 { font-size: 22px; }
+  .ipdb-stat { padding: 9px 12px; }
+  .ipdb-stat .val b { font-size: 22px; }
+  .ipdb-left { flex-basis: 300px; min-width: 220px; }
+  .ipdb-right { flex-basis: 280px; min-width: 220px; }
+  .ipdb-wards { grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); }
+  .ipdb-find { min-width: 200px; }
+}
+
+/* ── wall display: no names, bigger type, nothing to press but the floor chips ── */
+.ipdb.wall .ipdb-title h1 { font-size: 34px; }
+.ipdb.wall .ipdb-stat .val b { font-size: 34px; }
+.ipdb.wall .ipdb-stat .lbl, .ipdb.wall .ipdb-stat .sub { font-size: 14px; }
+.ipdb.wall .ipdb-ward .top b { font-size: 16px; }
+.ipdb.wall .ipdb-dot { width: 13px; height: 13px; }
+.ipdb.wall .ipdb-ward .sub, .ipdb.wall .ipdb-block .d { font-size: 14px; }
+
+@media print {
+  .ipdb { height: auto; overflow: visible; }
+  .ipdb-col { overflow: visible; }
+  .ipdb-tools, .ipdb-foot button { display: none; }
+}
+/* E1.4 housekeeping — a slow clean in the blockers list, with its Nudge button beside it. */
+.ipdb-slow { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.ipdb-slow .d { font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ipdb-slow .d b { color: var(--ink); font-weight: 600; }
+.ipdb-slow .ipdb-btn { padding: 4px 8px; font-size: 12px; min-height: 0; }
+
+/* E1.2 — a waiting request card */
+.ipdb-wait { gap: 6px; padding: 12px; }
+.ipdb-wait-top { display: flex; align-items: center; gap: 10px; }
+.ipdb-wait-av { width: 36px; height: 36px; border-radius: 6px; background: var(--line); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; flex: none; }
+.ipdb-wait-who { display: flex; flex-direction: column; min-width: 0; flex: 1; font-size: 14px; }
+.ipdb-wait-who .dim { font-size: 12px; }
+.ipdb-wait-clock { font-size: 13px; font-weight: 600; }
+.ipdb-wait-need { font-size: 12px; }
+.ipdb-wait .ipdb-btn { align-self: flex-start; display: inline-flex; align-items: center; text-decoration: none; }
+/* E5.2 (#739) — Bed Flow's proposal on a waiting card: the bed, its reasons, Confirm. Wraps; never widens the column. */
+.ipdb-flow { border: 1px dashed var(--green); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ipdb-flow-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 14px; }
+.ipdb-flow-tag { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--green); }
+.ipdb-flow-why { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 4px; }
+.ipdb-flow-why li { font-size: 11px; line-height: 1.3; padding: 2px 6px; border-radius: 4px; background: var(--paper); border: 1px solid var(--line); overflow-wrap: anywhere; }
+.ipdb-flow-err { font-size: 12px; color: var(--red, #b42318); }
+.ipdb-wait-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.ipdb-wait-acts .ipdb-btn { display: inline-flex; align-items: center; text-decoration: none; }
+.ipdb-flow-head .dim { font-size: 12px; }
+
+/* E5.2 (#739) — phone width: one column the PAGE scrolls (down, never sideways); stats three to a row. */
+@media (max-width: 760px) {
+  .ipdb { height: auto; min-height: 100vh; overflow: visible; padding: 12px 16px; }
+  .ipdb-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .ipdb-cols { flex-direction: column; }
+  .ipdb-left, .ipdb-centre, .ipdb-right { flex: none; width: 100%; min-width: 0; overflow: visible; }
+  .ipdb-find { min-width: 0; flex: 1 1 100%; }
+  .ipdb-wards { grid-template-columns: minmax(0, 1fr); }
+}

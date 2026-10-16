@@ -22,6 +22,7 @@ import { deployImplant, explantImplant } from "./implants";
 import { createSpecimen, dispatchSpecimen } from "./specimens";
 import { handleMaterialConsumed } from "./consumers";
 import { OtError } from "./errors";
+import { proceduresDone } from "./index";
 import type { OtBaseFixture } from "../../../test/helpers/ot";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -707,5 +708,33 @@ describe("the OT cockpit (Plan 15 T5)", () => {
     await expect(backfillCase(db, f.incharge, {
       caseId, phases: [{ phase: "wheel_in", occurredAt: new Date(Date.now() - 3_600_000) }], reason: "  ",
     })).rejects.toThrow(/must carry a reason/);
+  });
+
+  // ═══════════════════ IPD E5.4 (#741) — the discharge drafter's read of the procedures done ═══════════════════
+
+  it("proceduresDone — a case is a procedure once its incision is recorded; inside the stay or by the converted encounter; converted names both", async () => {
+    const { caseId, encounterId } = await readyCase();
+    const stay = () => ({ patientId, from: new Date(Date.now() - 3_600_000), until: new Date(Date.now() + 3_600_000) });
+    await toTimedOut(caseId);
+    expect(await proceduresDone(db, stay())).toEqual([]); // no incision, no procedure
+
+    const { incision } = await markIncision(db, f.surgeon, caseId);
+    const done = await proceduresDone(db, stay());
+    expect(done).toEqual([{
+      caseId, encounterId, procedureCode: "GYN-DNC-01", convertedFrom: null, procedureClass: "gynae_dnc", laterality: null,
+      anaesthesiaType: done[0]!.anaesthesiaType, surgeonId: f.surgeon.id, incisionAt: incision, closureAt: null,
+    }]);
+
+    // Outside the stay's window: only the encounter the admission was converted from brings it in.
+    const before = { patientId, from: new Date(incision.getTime() + 1), until: new Date(incision.getTime() + 3_600_000) };
+    expect(await proceduresDone(db, before)).toEqual([]);
+    expect((await proceduresDone(db, { ...before, linkedRef: encounterId })).map((p) => p.caseId)).toEqual([caseId]);
+    expect((await proceduresDone(db, { ...before, linkedRef: caseId })).map((p) => p.caseId)).toEqual([caseId]);
+    // Another patient's stay never reads this case, whatever it links.
+    const other = await mkOtPatient(db, f.coordinator, "Kamla Devi", { phone: "9800003333" });
+    expect(await proceduresDone(db, { ...stay(), patientId: other, linkedRef: encounterId })).toEqual([]);
+
+    await recordProcedureConverted(db, f.surgeon, { caseId, toProcedureCode: "GYN-HYST-OP", reason: "polyp found" });
+    expect((await proceduresDone(db, stay()))[0]).toMatchObject({ procedureCode: "GYN-HYST-OP", convertedFrom: "GYN-DNC-01" });
   });
 });

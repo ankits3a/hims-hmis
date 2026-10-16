@@ -38,6 +38,27 @@ export type NotificationTemplate = {
    * that is ready is. Absent = the desk task, as every template before this one.
    */
   deskFlagOnFailure?: false;
+  /**
+   * IPD E2.3 (#727) — the pump SUPPRESSES every row of this template with this reason instead of sending it. For a
+   * template that no provider may carry yet: business-initiated WhatsApp needs a Meta-approved template, a live DLT SMS
+   * needs a registered id, and the daily-totals message goes to the ATTENDANT, whom the pump cannot address (it sends a
+   * patient row to the patient's own phone). The row is still the record that the message was due (goal G10 reads
+   * it); removing this field is the act that starts sending, after approval and a recipient seam.
+   */
+  heldReason?: "template_pending";
+  /**
+   * #761 — WHO a patient-audience row is addressed to. Absent = the patient, on their own phone (every template before
+   * this one). `"attendant"` = the patient's registered attendant, resolved AT SEND TIME by the pump's recipient seam
+   * (`NotifyPumpOptions.recipientResolvers.attendant`) from the references in `params` — never a phone in params. With
+   * no seam installed the row is undeliverable `no_phone`: it never falls back to the patient's phone.
+   */
+  recipient?: "attendant";
+  /**
+   * #761 — SENT ONLY AS AN APPROVED TEMPLATE. A rung whose provider id is not configured (WhatsApp: the approved template
+   * name; SMS: the DLT content-template id), or whose adapter is a console sink, leaves the ladder; with no rung left the
+   * row is suppressed `template_pending` before any adapter is called. Free text never leaves for such a template.
+   */
+  requiresApprovedTemplate?: true;
 };
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -182,6 +203,69 @@ const pharmacyTemplates: Record<string, NotificationTemplate> = {
     },
   },
 };
+/** Paise param → "1,234" (whole rupees, Indian grouping) — the family's message carries rounded totals only. */
+function rupeesOf(params: Record<string, unknown>, key: string): string {
+  return Math.round(Number(params[key]) / 100).toLocaleString("en-IN");
+}
+
+/** The same, signed ("-1,200" when the patient owes): one variable whatever the sign, so an approved template stays fixed. */
+function signedRupeesOf(params: Record<string, unknown>, key: string): string {
+  const rupees = Math.round(Number(params[key]) / 100);
+  return `${rupees < 0 ? "-" : ""}${Math.abs(rupees).toLocaleString("en-IN")}`;
+}
+
+/** #761 — the bill desk's phone, supplied at send time by the attendant seam (`renderParams.deskPhone`), or absent. */
+function deskPhoneOf(params: Record<string, unknown>): string | null {
+  const v = params.deskPhone;
+  return typeof v === "string" && v.trim() !== "" ? v.trim() : null;
+}
+
+/**
+ * ═══ IPD E2.3 (#727) / #761 — THE DAILY TOTALS TO THE ATTENDANT, AND WHAT IT MAY NOT SAY ═══
+ *
+ * Template variables only, in this order: the patient's first name (the alias for a confidential patient, chosen by the
+ * producer), the bill so far, the deposit balance (negative = the patient owes) and the bill desk's phone. NO line item,
+ * no diagnosis, no ward, no bed, no doctor, no clinical word — a line item can reveal a diagnosis (spec SPEC-ipd-core
+ * §4.3); line items are at the desk or behind the OTP link (E3.3). Producer: `modules/ipd/daily-totals.ts`, once per
+ * admission per IST day.
+ *
+ * RECIPIENT (#761): the registered attendant, resolved at send time by the IPD seam from `attendant` / `attendantRef`
+ * (`recipient: "attendant"`). SENDING (#761): only as an approved template (`requiresApprovedTemplate`) — with no approved
+ * WhatsApp name or DLT id configured the pump records the row suppressed `template_pending` ("not sent: template not
+ * configured" on the bill desk) and calls no adapter.
+ */
+const ipdTemplates: Record<string, NotificationTemplate> = {
+  "ipd.daily_totals": {
+    key: "ipd.daily_totals",
+    version: 2,
+    class: "transactional",
+    audience: "patient",
+    urgency: "routine",
+    channels: ["whatsapp", "sms"],
+    waApprovalStatus: "not_submitted",
+    deskFlagOnFailure: false,
+    recipient: "attendant",
+    requiresApprovedTemplate: true,
+    // Dies at the end of the IST day after the one it reports: tomorrow's message supersedes it.
+    expiresAt: (params) => new Date(new Date(`${paramStr(params, "billDate")}T00:00:00+05:30`).getTime() + 48 * HOUR_MS),
+    variables: (params) => [
+      paramStr(params, "name"), rupeesOf(params, "totalPaise"), signedRupeesOf(params, "balancePaise"), deskPhoneOf(params) ?? "",
+    ],
+    render: {
+      en: (params) => {
+        const desk = deskPhoneOf(params);
+        return `Hospital bill for ${paramStr(params, "name")}: total so far Rs ${rupeesOf(params, "totalPaise")}, ` +
+          `deposit balance Rs ${signedRupeesOf(params, "balancePaise")}. For details call the billing desk${desk === null ? "" : ` on ${desk}`}.`;
+      },
+      hi: (params) => {
+        const desk = deskPhoneOf(params);
+        return `${paramStr(params, "name")} का अस्पताल बिल: अब तक कुल ₹${rupeesOf(params, "totalPaise")}, ` +
+          `जमा शेष ₹${signedRupeesOf(params, "balancePaise")}। विवरण के लिए बिलिंग डेस्क${desk === null ? "" : ` (${desk})`} पर कॉल करें।`;
+      },
+    },
+  },
+};
+
 export const notificationTemplates: Record<string, NotificationTemplate> = {
   // Producer: patient.registered (modules/patients/events.ts). D8: patient/routine, dies 24h
   // after registration — a welcome nobody read in a day is stale, not late.
@@ -489,6 +573,9 @@ export const notificationTemplates: Record<string, NotificationTemplate> = {
 
   // PHARMACY P6 — the pharmacy's bill and refill reminder (defined above, with what they may not say).
   ...pharmacyTemplates,
+
+  // IPD E2.3 (#727) — the daily totals to the registered attendant (defined below, with what it may not say).
+  ...ipdTemplates,
 };
 
 export function templateByKey(key: string): NotificationTemplate {

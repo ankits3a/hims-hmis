@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/patients/`
 
 - **Depends on modules:** —
-- **Used by modules:** `abdm`, `aerb`, `billing`, `lab`, `membership`, `opd`, `ot`, `partners`, `pharmacy`, `radiology`
+- **Used by modules:** `abdm`, `aerb`, `billing`, `emergency`, `ipd`, `lab`, `membership`, `opd`, `ot`, `partners`, `passes`, `pharmacy`, `radiology`, `transport`
 - **Kernel used:** `approvals`, `auth`, `config`, `crypto`, `db`, `desk`, `documents`, `events`, `modules`, `phi`, `search`, `tokens`, `workflow`
 - **Subscribes to events:** `approvalRejected`
 
@@ -34,7 +34,11 @@ Source: `apps/core/src/modules/patients/`
 - `approval-consumer.ts`
   - `PATIENTS_APPROVAL_REJECTED_CONSUMER`
   - `approvalRejectedConsumer(db: Db): Handler`
+- `brought-dead.ts`
+  - `recordBroughtDeadDeath(tx: Tx, actor: Actor, patientId: string, diedAt: Date): Promise<void>`
+  - `recordErDeath(tx: Tx, actor: Actor, patientId: string, diedAt: Date, cert: { mccdNo: string } | { medicoLegal: true }): Promise<void>`
 - `coverages.ts`
+  - `coverageSumInsuredPaise(db: Db | Tx, coverageId: string): Promise<number | null>`
   - `listPatientCoverages(db: Db, actor: Actor, patientId: string, opts: { reason?: string } = {}): Promise<CoverageRow[]>`
   - types: `CoverageRow`
 - `display-name.ts`
@@ -76,6 +80,10 @@ Source: `apps/core/src/modules/patients/`
   - types: `LinkedPatientRow`, `LinkedPatients`
 - `manifest.ts`
   - `patientsManifest: ModuleManifest`
+- `merge.ts`
+  - `MERGE_APPROVAL_TYPE`
+  - `createMergeRequest(tx: Tx, actor: Actor, input: { winnerId: string; loserId: string; note: string }): Promise<{ mergeRequestId: string; app…`
+  - `getMergeRequest(db: Db, mergeRequestId: string): Promise<{ request: MergeRequestRow; approvalStatus: string | null; unmergeApprovalStatus: …`
 - `patients.module.ts`
   - `class PatientsModule`
 - `qr.ts`

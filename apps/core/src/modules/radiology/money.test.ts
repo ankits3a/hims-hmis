@@ -44,6 +44,10 @@ describe("DD12a — why a scan was allowed to start (18a T7 A4)", () => {
 
   it("A4: a `D…` day-care encounter starts as `daycare` — its discharge bill composes the scan", () => {
     expect(authorisationOf(study({ encounterNo: "D2608310001" }), { intendedPayer: "self" })).toBe("daycare");
+    // E4.2 (#734): only the exact IP grammar AND a live admission authorise; the flag alone or the number alone do not.
+    expect(authorisationOf(study({ encounterNo: "IP26-000123" }), { intendedPayer: "self", liveAdmission: true })).toBe("ipd_admission");
+    expect(authorisationOf(study({ encounterNo: "IP26-000123" }), { intendedPayer: "self", liveAdmission: false })).toBeNull();
+    expect(authorisationOf(study({ encounterNo: "V2608310001" }), { intendedPayer: "self", liveAdmission: true })).toBeNull();
   });
 
   it("money actually taken is `invoice`, and it outranks everything", () => {

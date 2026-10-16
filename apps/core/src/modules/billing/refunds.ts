@@ -1,9 +1,10 @@
+import { Logger } from "@nestjs/common";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import {
-  allocations, creditNoteLines, creditNotes, invoiceLines, invoices, refundVouchers,
+  allocations, creditNoteLines, creditNotes, invoiceLines, invoices, refundCancellations, refundVouchers,
 } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { appendEvent } from "../../kernel/events/append";
@@ -534,7 +535,7 @@ export async function issueRefundVoucher(
   });
   const guardFlags = await guardFlagsFor(db, { invoiceId: target.invoiceId, creditNoteId: target.creditNoteId });
 
-  return withTx(db, async (tx) => {
+  const issued = await withTx(db, async (tx): Promise<IssueRefundVoucherResult> => {
     /*
      * ONE APPROVAL, ONE VOUCHER (found 2026-10-03, building the office's issue-from-worklist door): the same
      * granted approval issued twice made two vouchers — the same approved refund payable twice, held back
@@ -545,6 +546,11 @@ export async function issueRefundVoucher(
     const [already] = await tx.select({ voucherNo: refundVouchers.voucherNo }).from(refundVouchers).where(eq(refundVouchers.approvalId, input.approvalId));
     if (already !== undefined) {
       throw new BillingError("voucher_state_conflict", `this approval already issued voucher ${already.voucherNo}`, { voucherNo: already.voucherNo });
+    }
+    // IPD #763 — a refund its raiser cancelled (`cancelRefundRequestOnTx`) never issues: read under this same row lock.
+    const [cancelled] = await tx.select({ at: refundCancellations.cancelledAt }).from(refundCancellations).where(eq(refundCancellations.approvalId, input.approvalId));
+    if (cancelled !== undefined) {
+      throw new BillingError("approval_not_granted", `refund approval ${input.approvalId} was cancelled by its raiser`, { cancelledAt: cancelled.at.toISOString() });
     }
     if (input.kind === "invoice_refund") {
       const invoiceId = target.invoiceId!; // an invoice_refund always resolves one (resolveTarget)
@@ -625,6 +631,51 @@ export async function issueRefundVoucher(
       status: "issued",
     };
   });
+  if (issued.kind === "advance_refund") await notifyAdvanceRefunded(db, issued.patientId, now);
+  return issued;
+}
+
+/**
+ * IPD E2.3 (#727, review 7) — WHO MUST HEAR THAT AN ADVANCE WENT BACK, after the voucher has committed: the IPD deposit
+ * ladder (an advance refund lowers the deposit held). Registered by the listening module at boot, like
+ * `registerReceiptGuard`. A listener's failure is logged and swallowed — the refund is issued whatever it does.
+ */
+/**
+ * IPD #763 — CANCEL A REFUND REQUEST (the IPD bill void). In the caller's transaction: locks the approval row (the same
+ * lock `issueRefundVoucher` takes first), refuses `voucher_state_conflict` once a voucher exists (the money is out), and
+ * records billing's own marker (`refund_cancellations`), which `issueRefundVoucher` reads — so the cancellation holds in
+ * every process, with no registration (fails closed). Idempotent per approval. Additive: no existing signature changed.
+ */
+export async function cancelRefundRequestOnTx(
+  tx: Tx, actor: Actor, input: { approvalId: string; reason: string }, now: Date = new Date(),
+): Promise<{ cancelled: boolean }> {
+  await tx.execute(sql`select id from approvals where id = ${input.approvalId} for update`);
+  const [voucher] = await tx.select({ voucherNo: refundVouchers.voucherNo }).from(refundVouchers).where(eq(refundVouchers.approvalId, input.approvalId));
+  if (voucher !== undefined) {
+    throw new BillingError("voucher_state_conflict", `this refund already issued voucher ${voucher.voucherNo}`, { voucherNo: voucher.voucherNo });
+  }
+  const rows = await tx.insert(refundCancellations).values({ approvalId: input.approvalId, reason: input.reason.trim(), cancelledBy: actor.id, cancelledAt: now })
+    .onConflictDoNothing().returning({ approvalId: refundCancellations.approvalId });
+  return { cancelled: rows.length > 0 };
+}
+
+export type AdvanceRefundListener = (db: Db, args: { patientId: string; at: Date }) => Promise<void>;
+const advanceRefundListeners = new Map<string, AdvanceRefundListener>();
+const refundLog = new Logger("billing.refunds");
+
+export function registerAdvanceRefundListener(key: string, listener: AdvanceRefundListener): () => void {
+  advanceRefundListeners.set(key, listener);
+  return () => { if (advanceRefundListeners.get(key) === listener) advanceRefundListeners.delete(key); };
+}
+
+async function notifyAdvanceRefunded(db: Db, patientId: string, at: Date): Promise<void> {
+  for (const [key, listener] of advanceRefundListeners) {
+    try {
+      await listener(db, { patientId, at });
+    } catch (e) {
+      refundLog.error(`advance-refund listener ${key} failed for patient ${patientId}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 }
 
 /**

@@ -1,0 +1,384 @@
+import { sql } from "drizzle-orm";
+import { boolean, check, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { ipdAdmissions } from "./ipd";
+import { ipdOrders } from "./ipd-rounds";
+import { patients } from "./patients";
+
+/**
+ * E4.3 (#735) — THE eMAR (spec SPEC-ipd-core §4.6). A file of its own so the parallel IPD lanes do not collide.
+ *
+ * APPEND-ONLY by trigger (`ipd_emar_forbid_mutation`, migration `ipd_emar`): `ipd_emar_verifications`, `ipd_emar_issues`,
+ * `ipd_emar_labels`, `ipd_emar_label_uses`, `ipd_emar_returns`, `ipd_emar_acts`, `ipd_emar_infusion_events`,
+ * `ipd_emar_narcotic_register` — UPDATE, DELETE and TRUNCATE refused; the verbal signature and the second-check spend may
+ * only set their own columns once (`ipd_emar_verbal_guard`, `ipd_emar_second_check_guard`). Every trigger is ENABLE ALWAYS
+ * and has no bypass switch. A
+ * wrong record is corrected by a NEW act (`entered_in_error` / `medication_incident`) naming it — never deleted.
+ *
+ * MUTABLE PROJECTIONS (each move is also an act row): `ipd_emar_doses` (the slot's status, locked FOR UPDATE by every act
+ * on it — the lock is what makes two nurses giving one dose record exactly one; `(dose_id, slot_seq)` unique is the
+ * backstop), `ipd_emar_verbal_orders` (the signature), `ipd_emar_second_checks` (spent once), `ipd_emar_allergy_flags`
+ * (resolved once). No money column anywhere (decision 0058): an issue and a return count units.
+ */
+
+export const ipdEmarVerifications = pgTable(
+  "ipd_emar_verifications",
+  {
+    id: text("id").primaryKey(),
+    orderId: text("order_id").notNull().references(() => ipdOrders.id),
+    decision: text("decision").notNull(),
+    /** The pharmacist's four ticks. */
+    checks: jsonb("checks").$type<Record<string, boolean>>().notNull(),
+    /** What the server's checks found, as shown. */
+    findings: jsonb("findings").$type<{ check: string; severity: string; words: string }[]>().notNull(),
+    note: text("note"),
+    /** E4.3 review: verifying through an allergy — the structured reason and its text. */
+    allergyOverrideReason: text("allergy_override_reason"),
+    allergyOverrideText: text("allergy_override_text"),
+    verifiedBy: text("verified_by").notNull(),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("ipd_emar_verifications_order_idx").on(t.orderId),
+    check("ipd_emar_verifications_decision_ck", sql`${t.decision} in ('verified', 'rejected', 'query')`),
+  ],
+);
+
+export const ipdEmarIssues = pgTable(
+  "ipd_emar_issues",
+  {
+    id: text("id").primaryKey(),
+    orderId: text("order_id").notNull().references(() => ipdOrders.id),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    /** The materials item and batch the stock left (null for the patient's own medicine). */
+    itemId: text("item_id"),
+    storeId: text("store_id"),
+    /** Every batch the issue took, FEFO: `[{ batchId, qty, ledgerEntryId }]`. */
+    batches: jsonb("batches").$type<{ batchId: string; qty: number; ledgerEntryId: string }[]>().notNull(),
+    units: integer("units").notNull(),
+    stripSize: integer("strip_size").notNull(),
+    ownMedicine: boolean("own_medicine").notNull(),
+    ownBatchNo: text("own_batch_no"),
+    ownExpiry: text("own_expiry"),
+    printerId: text("printer_id"),
+    /** E4.3 review: a second issue's reason; `lost` / `damaged` supersede `supersedes_issue_id`'s labels. */
+    reissueReason: text("reissue_reason"),
+    reissueNote: text("reissue_note"),
+    supersedesIssueId: text("supersedes_issue_id"),
+    issuedBy: text("issued_by").notNull(),
+    issuedAt: timestamp("issued_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("ipd_emar_issues_order_idx").on(t.orderId),
+    index("ipd_emar_issues_admission_idx").on(t.admissionId),
+    check("ipd_emar_issues_units_ck", sql`${t.units} > 0 and ${t.stripSize} > 0`),
+    check("ipd_emar_issues_reissue_ck", sql`${t.reissueReason} is null or ${t.reissueReason} in ('lost', 'damaged', 'extra_supply')`),
+    check("ipd_emar_issues_own_ck", sql`not ${t.ownMedicine} or (${t.ownBatchNo} is not null and ${t.ownExpiry} is not null and ${t.itemId} is null)`),
+  ],
+);
+
+export const ipdEmarLabels = pgTable(
+  "ipd_emar_labels",
+  {
+    id: text("id").primaryKey(),
+    issueId: text("issue_id").notNull().references(() => ipdEmarIssues.id),
+    orderId: text("order_id").notNull().references(() => ipdOrders.id),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    /** What the QR / barcode carries: `EML-<id>`. */
+    code: text("code").notNull(),
+    seq: integer("seq").notNull(),
+    units: integer("units").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("ipd_emar_labels_code_ux").on(t.code),
+    index("ipd_emar_labels_issue_idx").on(t.issueId),
+  ],
+);
+
+/**
+ * E4.3 review — THE LABEL LEDGER: every give consumes the dose in the label's units (`use`, positive); an entered-in-error
+ * give gives them back (`release`, negative). The sum is checked against the label's units under the admission lock.
+ */
+export const ipdEmarLabelUses = pgTable(
+  "ipd_emar_label_uses",
+  {
+    id: text("id").primaryKey(),
+    labelId: text("label_id").notNull().references(() => ipdEmarLabels.id),
+    actId: text("act_id").notNull(),
+    units: doublePrecision("units").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [index("ipd_emar_label_uses_label_idx").on(t.labelId), check("ipd_emar_label_uses_units_ck", sql`${t.units} <> 0`)],
+);
+
+export const ipdEmarReturns = pgTable(
+  "ipd_emar_returns",
+  {
+    id: text("id").primaryKey(),
+    issueId: text("issue_id").notNull().references(() => ipdEmarIssues.id),
+    orderId: text("order_id").notNull().references(() => ipdOrders.id),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    units: integer("units").notNull(),
+    /** Units taken off what the patient owes for (own medicine: 0 — it was never charged). */
+    creditedUnits: integer("credited_units").notNull(),
+    reason: text("reason").notNull(),
+    batches: jsonb("batches").$type<{ batchId: string; qty: number; ledgerEntryId: string }[]>().notNull(),
+    returnedBy: text("returned_by").notNull(),
+    returnedAt: timestamp("returned_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("ipd_emar_returns_issue_idx").on(t.issueId),
+    check("ipd_emar_returns_units_ck", sql`${t.units} > 0 and ${t.creditedUnits} >= 0 and ${t.creditedUnits} <= ${t.units}`),
+  ],
+);
+
+export const ipdEmarDoses = pgTable(
+  "ipd_emar_doses",
+  {
+    id: text("id").primaryKey(),
+    orderId: text("order_id").notNull().references(() => ipdOrders.id),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
+    windowMinutes: integer("window_minutes").notNull(),
+    prn: boolean("prn").notNull().default(false),
+    status: text("status").notNull(),
+    /** Held for NPO / off the ward: offered again on return (`reoffered_at` opens a new window). */
+    reoffer: boolean("reoffer").notNull().default(false),
+    reofferedAt: timestamp("reoffered_at", { withTimezone: true }),
+    /** Bumped by every outcome act; `(dose_id, slot_seq)` on the acts is unique. */
+    slotSeq: integer("slot_seq").notNull().default(0),
+    lastActId: text("last_act_id"),
+    missAlertedAt: timestamp("miss_alerted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("ipd_emar_doses_slot_ux").on(t.orderId, t.dueAt),
+    index("ipd_emar_doses_admission_idx").on(t.admissionId, t.dueAt),
+    index("ipd_emar_doses_open_idx").on(t.dueAt).where(sql`${t.status} = 'scheduled'`),
+    check("ipd_emar_doses_status_ck", sql`${t.status} in ('scheduled', 'given', 'held', 'missed', 'refused', 'cancelled')`),
+    check("ipd_emar_doses_window_ck", sql`${t.windowMinutes} > 0`),
+  ],
+);
+
+export const ipdEmarActs = pgTable(
+  "ipd_emar_acts",
+  {
+    id: text("id").primaryKey(),
+    doseId: text("dose_id").notNull().references(() => ipdEmarDoses.id),
+    orderId: text("order_id").notNull().references(() => ipdOrders.id),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    kind: text("kind").notNull(),
+    /** The slot's sequence number this outcome took (null on a correction). */
+    slotSeq: integer("slot_seq"),
+    /** The clinical time (given at, held at); `recorded_at` is the server's. */
+    at: timestamp("at", { withTimezone: true }).notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+    actorId: text("actor_id").notNull(),
+    provenance: text("provenance").notNull(),
+    reason: text("reason"),
+    note: text("note"),
+    patientCheck: text("patient_check"),
+    overrideReason: text("override_reason"),
+    wristbandCode: text("wristband_code"),
+    labelId: text("label_id"),
+    secondNurseId: text("second_nurse_id"),
+    weightKg: doublePrecision("weight_kg"),
+    late: boolean("late").notNull().default(false),
+    lasaConfirmed: boolean("lasa_confirmed").notNull().default(false),
+    /** E4.3 review: an oral dose given while NPO — `sips_allowed` (the nurse's confirmation) or `doctor_ok` (read back). */
+    npoOverride: text("npo_override"),
+    npoDoctorId: text("npo_doctor_id"),
+    npoReason: text("npo_reason"),
+    /** A correction names the act it corrects; one correction per act. */
+    correctsActId: text("corrects_act_id"),
+    incidentId: text("incident_id"),
+    wardId: text("ward_id"),
+  },
+  (t) => [
+    uniqueIndex("ipd_emar_acts_slot_ux").on(t.doseId, t.slotSeq).where(sql`${t.slotSeq} is not null`),
+    uniqueIndex("ipd_emar_acts_correction_ux").on(t.correctsActId).where(sql`${t.correctsActId} is not null`),
+    index("ipd_emar_acts_order_idx").on(t.orderId, t.at),
+    index("ipd_emar_acts_admission_idx").on(t.admissionId, t.at),
+    check("ipd_emar_acts_kind_ck", sql`${t.kind} in ('given', 'held', 'missed', 'refused', 'reoffered', 'cancelled', 'entered_in_error', 'medication_incident')`),
+    check("ipd_emar_acts_given_ck", sql`${t.kind} <> 'given' or (${t.patientCheck} in ('scan', 'override') and ${t.labelId} is not null)`),
+    check("ipd_emar_acts_override_ck", sql`coalesce(${t.patientCheck}, '') <> 'override' or (${t.overrideReason} is not null and ${t.note} is not null)`),
+    check("ipd_emar_acts_npo_ck", sql`${t.npoOverride} is null or (${t.npoOverride} in ('sips_allowed', 'doctor_ok') and ${t.npoReason} is not null and (${t.npoOverride} <> 'doctor_ok' or ${t.npoDoctorId} is not null))`),
+    check("ipd_emar_acts_correction_ck", sql`(${t.kind} in ('entered_in_error', 'medication_incident')) = (${t.correctsActId} is not null)`),
+  ],
+);
+
+export const ipdEmarInfusionEvents = pgTable(
+  "ipd_emar_infusion_events",
+  {
+    id: text("id").primaryKey(),
+    orderId: text("order_id").notNull().references(() => ipdOrders.id),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    event: text("event").notNull(),
+    rateMlPerHour: doublePrecision("rate_ml_per_hour"),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+    actorId: text("actor_id").notNull(),
+    secondNurseId: text("second_nurse_id"),
+    /** E4.3 review: a start or rate change is a give — how the patient was identified and the bag's label. */
+    patientCheck: text("patient_check"),
+    overrideReason: text("override_reason"),
+    overrideNote: text("override_note"),
+    wristbandCode: text("wristband_code"),
+    labelId: text("label_id"),
+  },
+  (t) => [
+    check("ipd_emar_infusion_check_ck", sql`${t.event} not in ('start', 'rate_change') or (${t.patientCheck} in ('scan', 'override') and ${t.labelId} is not null)`),
+    index("ipd_emar_infusion_order_idx").on(t.orderId, t.at),
+    check("ipd_emar_infusion_event_ck", sql`${t.event} in ('start', 'rate_change', 'pause', 'resume', 'stop')`),
+  ],
+);
+
+export const ipdEmarNarcoticRegister = pgTable(
+  "ipd_emar_narcotic_register",
+  {
+    id: text("id").primaryKey(),
+    orderId: text("order_id").notNull().references(() => ipdOrders.id),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    kind: text("kind").notNull(),
+    qty: doublePrecision("qty").notNull(),
+    unit: text("unit").notNull(),
+    issueId: text("issue_id"),
+    actId: text("act_id"),
+    reason: text("reason"),
+    actorId: text("actor_id").notNull(),
+    witnessId: text("witness_id"),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+    /**
+     * Ward narcotic register (2026-10-14): the ward whose cabinet the units are in when the row is written — the
+     * patient's ward then. Null only on rows written before the column existed (staging; IPD is not live).
+     */
+    wardId: text("ward_id"),
+    /** The server's clock when the row was written (`at` is a give's own stamp, up to 2 min earlier). The shift count's cut. */
+    recordedAt: timestamp("recorded_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("ipd_emar_narcotic_order_idx").on(t.orderId, t.at),
+    index("ipd_emar_narcotic_ward_idx").on(t.wardId, t.recordedAt),
+    // E4.3 review: `reversal` puts back a given dose later marked entered in error. Every row is in the issue's base unit.
+    // 2026-10-14: `transfer_out` / `transfer_in` move a patient's unused units with the patient to the new ward's cabinet.
+    check("ipd_emar_narcotic_kind_ck", sql`${t.kind} in ('received', 'given', 'wasted', 'returned', 'reversal', 'transfer_out', 'transfer_in')`),
+    // A wastage is always witnessed by somebody else (§4.6).
+    check("ipd_emar_narcotic_witness_ck", sql`${t.kind} <> 'wasted' or (${t.witnessId} is not null and ${t.witnessId} <> ${t.actorId})`),
+  ],
+);
+
+export const ipdEmarVerbalOrders = pgTable(
+  "ipd_emar_verbal_orders",
+  {
+    id: text("id").primaryKey(),
+    orderId: text("order_id").notNull().references(() => ipdOrders.id),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    recordedBy: text("recorded_by").notNull(),
+    fromDoctorId: text("from_doctor_id").notNull(),
+    readBack: boolean("read_back").notNull(),
+    emergency: text("emergency").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+    signBy: timestamp("sign_by", { withTimezone: true }).notNull(),
+    signedAt: timestamp("signed_at", { withTimezone: true }),
+    signedBy: text("signed_by"),
+    nudgedAt: timestamp("nudged_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("ipd_emar_verbal_order_ux").on(t.orderId),
+    check("ipd_emar_verbal_read_back_ck", sql`${t.readBack}`),
+  ],
+);
+
+export const ipdEmarSecondChecks = pgTable(
+  "ipd_emar_second_checks",
+  {
+    id: text("id").primaryKey(),
+    /** The second nurse (who typed their PIN) and the nurse the proof is for. */
+    checkerId: text("checker_id").notNull(),
+    forUserId: text("for_user_id").notNull(),
+    purpose: text("purpose").notNull(),
+    /** E4.3 review: the target the proof is bound to — the order, the slot (a scheduled dose) and the drug. */
+    orderId: text("order_id").notNull(),
+    doseId: text("dose_id"),
+    medicineId: text("medicine_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+  },
+  (t) => [check("ipd_emar_second_checks_self_ck", sql`${t.checkerId} <> ${t.forUserId}`)],
+);
+
+export const ipdEmarAllergyFlags = pgTable(
+  "ipd_emar_allergy_flags",
+  {
+    id: text("id").primaryKey(),
+    orderId: text("order_id").notNull().references(() => ipdOrders.id),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    allergyId: text("allergy_id").notNull(),
+    substances: jsonb("substances").$type<string[]>().notNull(),
+    raisedAt: timestamp("raised_at", { withTimezone: true }).notNull(),
+    /** E4.3 review: the doctor's decision first (stop, or continue with a reason); the pharmacist closes after. */
+    doctorDecision: text("doctor_decision"),
+    doctorReason: text("doctor_reason"),
+    decidedBy: text("decided_by"),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedBy: text("resolved_by"),
+    resolutionNote: text("resolution_note"),
+  },
+  (t) => [
+    uniqueIndex("ipd_emar_allergy_flags_ux").on(t.orderId, t.allergyId),
+    check("ipd_emar_allergy_flags_decision_ck", sql`${t.doctorDecision} is null or (${t.doctorDecision} in ('stop', 'continue') and ${t.doctorReason} is not null and ${t.decidedBy} is not null)`),
+    check("ipd_emar_allergy_flags_resolve_ck", sql`${t.resolvedAt} is null or ${t.doctorDecision} is not null`),
+    index("ipd_emar_allergy_flags_open_idx").on(t.admissionId).where(sql`${t.resolvedAt} is null`),
+  ],
+);
+
+/**
+ * 2026-10-14 — THE WARD NARCOTIC COUNT (NDPS / NABH: controlled drugs counted at every shift change by two nurses). One
+ * row per drug counted (ward × medicine × base unit); one submission shares `round_id`. `expected_qty` is what the
+ * register said at that instant: the last AGREED count (matched, or a mismatch resolved) plus every movement written after
+ * it. A non-zero `variance` is an exception for the nursing supervisor and the pharmacy until a resolution names it.
+ * APPEND-ONLY by trigger (`ipd_emar_forbid_mutation`), like the register.
+ */
+export const ipdNarcoticCounts = pgTable(
+  "ipd_narcotic_counts",
+  {
+    id: text("id").primaryKey(),
+    roundId: text("round_id").notNull(),
+    wardId: text("ward_id").notNull(),
+    medicineId: text("medicine_id").notNull(),
+    medicineName: text("medicine_name").notNull(),
+    unit: text("unit").notNull(),
+    expectedQty: doublePrecision("expected_qty").notNull(),
+    countedQty: doublePrecision("counted_qty").notNull(),
+    variance: doublePrecision("variance").notNull(),
+    /** The nursing shift the count closes or opens (`shiftOf`). */
+    shift: text("shift").notNull(),
+    countedBy: text("counted_by").notNull(),
+    witnessId: text("witness_id").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("ipd_narcotic_counts_ward_idx").on(t.wardId, t.medicineId, t.at),
+    check("ipd_narcotic_counts_witness_ck", sql`${t.witnessId} <> ${t.countedBy}`),
+    check("ipd_narcotic_counts_qty_ck", sql`${t.countedQty} >= 0`),
+  ],
+);
+
+/** A count exception closed: who (a nursing supervisor or a pharmacist), what was found. Once per count. Append-only. */
+export const ipdNarcoticCountResolutions = pgTable(
+  "ipd_narcotic_count_resolutions",
+  {
+    id: text("id").primaryKey(),
+    countId: text("count_id").notNull().references(() => ipdNarcoticCounts.id),
+    resolvedBy: text("resolved_by").notNull(),
+    note: text("note").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [uniqueIndex("ipd_narcotic_count_resolutions_count_ux").on(t.countId)],
+);

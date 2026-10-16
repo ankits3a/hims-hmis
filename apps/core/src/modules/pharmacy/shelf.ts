@@ -45,3 +45,11 @@ export async function shelfByMedicine(db: Db | Tx): Promise<Map<string, ShelfEnt
   }
   return out;
 }
+
+/**
+ * IPD E4.3 (#735) — the ward issue's seam: the item the pharmacy stocks for one formulary medicine (the shelf's own rule,
+ * last by code), or null when it does not stock it.
+ */
+export async function shelfItemForMedicine(db: Db | Tx, medicineId: string): Promise<ShelfEntry | null> {
+  return (await shelfByMedicine(db)).get(medicineId) ?? null;
+}

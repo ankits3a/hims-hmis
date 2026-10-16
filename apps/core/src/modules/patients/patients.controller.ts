@@ -54,7 +54,7 @@ const NOT_FOUND_CODES = new Set(["patient_not_found", "unknown_merge_request", "
  */
 const FORBIDDEN_CODES = new Set(["confidential_write_denied", "deceased_write_denied"]);
 const CONFLICT_CODES = new Set([
-  "patient_not_active", "merge_same_patient", "merge_already_requested", "merge_not_requested",
+  "patient_not_active", "merge_same_patient", "merge_into_unidentified", "merge_already_requested", "merge_not_requested",
   "merge_not_executed", "approval_not_granted", "unmerge_already_requested", "unmerge_not_requested",
   "allergy_not_active", "guardian_not_active",
   /* The stored bytes no longer match the hash taken at capture. The RECORD is wrong, not the

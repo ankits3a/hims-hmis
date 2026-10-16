@@ -510,6 +510,11 @@ export function todayIst(at: Date = new Date()): string {
   return new Date(Math.floor((at.getTime() + IST_OFFSET_MS) / DAY_MS) * DAY_MS).toISOString().slice(0, 10);
 }
 
+/** An IST wall time from a `datetime-local` field ('YYYY-MM-DDTHH:MM') as an ISO instant — same offset, same file. */
+export function istWallToIso(wall: string): string {
+  return new Date(Date.parse(`${wall}:00Z`) - IST_OFFSET_MS).toISOString();
+}
+
 // ——— tiny fetchers (the masters reads every OPD screen needs) ———
 
 export function listDepartments(): Promise<{ items: WireDepartment[] }> {
@@ -668,7 +673,12 @@ export function getContinuity(
  * from the model or the deterministic keyword table, because advice whose origin is hidden gets
  * trusted too much.
  */
-export type WireTriageSuggestion = { departmentId: string; reason: string };
+export type WireTriageSuggestion = {
+  departmentId: string;
+  reason: string;
+  /** #622 — a fixed reason code, translated on screen (`opdTriage.reason.*`); never a model's own words. */
+  reasonKey: "opdTriage.reason.model" | "opdTriage.reason.keywords";
+};
 /** Set when the desk must NOT book: an emergency, refusing rather than ranking. See `red-flags.ts`. */
 export type WireRedFlag = { reasonKey: string; matched: string };
 export type WireTriage = {

@@ -2,6 +2,7 @@ import { eq, inArray } from "drizzle-orm";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { setupTestDb, truncateAll } from "./helpers/db";
+import { mkGoLiveReadyWorld } from "./helpers/ipd-golive";
 import { activateOpdVisitDefinition, ensureRole, mkUser, seedOpdBase, seedOpdMasters } from "./helpers/opd";
 import { seedSodPairs } from "../src/kernel/auth/sod";
 import { createUser } from "../src/kernel/auth/identity";
@@ -94,6 +95,12 @@ const DEPARTMENTS: Record<string, string> = {
    * layer over one department rather than a department with its own seats.
    */
   pcpndt: "pcpndt",
+  /**
+   * RULED A DEPARTMENT 2026-10-14 by the IPD cutover lane (E3.4, #732), as E1.1 recorded it would be: beds, wards and
+   * admissions are commissioned on a go-live day. Its row set reads `scripts/ipd-golive-check.ts`'s items and its
+   * runbook is `ipd-go-live.md`, with an Executed section for the rehearsal and the cutover.
+   */
+  ipd: "ipd",
 };
 
 /**
@@ -119,7 +126,16 @@ const NOT_DEPARTMENTS: Record<string, string> = {
   alerts: "kernel — alert routing",
   ops: "kernel — operating mode, interfaces, downtime kits",
   attendance: "a copy of the attendance machine's records and its read routes — configured by three secret files and a switch, not commissioned like a department",
+  emergency: "OPEN, not decided (ER lane 1, issue #808, 2026-10-15): the emergency department WILL be a department — its bays, its casualty nurses and its ER desk are commissioned on a go-live day (decision 0076: hardware bought before the first rehearsal; ER rates before go-live). It sits here until the ER go-live lane writes its row set (episode workflow activated, roles held, bays in service) and an `er-go-live.md` with an Executed section; moving it to DEPARTMENTS then turns this suite red until both exist, which is the point",
+  transport: "E1.6 TRANSPORT (issue #723) — not a department: porters and patient movement on the task engine, like housekeeping. It goes live with the IPD admissions it moves; its people are `support_staff` and `services_supervisor`, granted by seed:roles",
+  housekeeping: "E1.4 HOUSEKEEPING (issue #721) — not a department: bed turnover on the task engine, like bmw and linen to come. It goes live with the IPD beds it cleans; its people are `support_staff` and `services_supervisor`, granted by seed:roles",
+  tasks: "E0.1 TASK ENGINE (issue #713) — not a department: the shared engine housekeeping, bmw, transport and linen raise their work through. Those owning modules are what a hospital commissions; the engine has nothing of its own to stand up",
+  maintenance: "E1.5 MAINTENANCE (issue #722) — not a department: repair tickets on the task engine for the engineering and biomedical teams. No master data a deploy cannot supply and no go-live day of its own; it starts working the day a technician role is assigned",
+  bmw: "E1.7 BIO-MEDICAL WASTE (issue #724) — DECIDED not a department: a statutory register over every ward's waste, run by the services supervisor's existing staff. It owns no seats, no theatres and no master data a go-live must commission (the treatment facility's name is typed on each manifest)",
+  linen: "E2.4 LINEN (issue #728) — DECIDED not a department: a ledger over every ward's linen, run by the services supervisor's existing staff. It owns no seats and no master data a go-live must commission (the item catalogue ships seeded and par is computed from the beds)",
   ordering: "DECISION 0067 — not a department: the door every doctor screen orders tests through and the outside-test list. The lab and imaging it routes to are the departments; it has nothing of its own to commission",
+  diet: "E4.4 DIET (issue #736) — not a department to commission here: the kitchen and dietetics companion to IPD. It goes live with the IPD admissions it feeds; its meal rounds are seeded by its migration and its people are `dietician` and `kitchen_staff`",
+  passes: "E1.3 (#720) — not a department: attendant and visitor passes ride the IPD admission desk and the security desk; nothing of its own to commission (visiting hours are a contract constant)",
   resources: "kernel — the registry the departments' theatres and benches live in",
   orders: "kernel — the order envelope; claimed by lab and radiology, owned by neither",
   desk: "cross-cutting — the front-desk shell; its commissioning IS `front-desk`'s",
@@ -159,6 +175,7 @@ const RUNBOOK_MODULE: Record<string, string> = {
    */
   "ot-go-live.md": "ot",
   "pcpndt-go-live.md": "pcpndt",
+  "ipd-go-live.md": "ipd",
   "pharmacy-go-live.md": "pharmacy",
   "radiation-safety-go-live.md": "radiology",
   "radiology-go-live.md": "radiology",
@@ -662,6 +679,22 @@ describe("standup:check — the readiness census (11i T2)", () => {
    * `opd/rx-checks.ts` runs on every prescription, and with an empty book `listInteractionsAmong`
    * returns `[]` — on screen, indistinguishable from a checker that ran and found nothing.
    */
+  /**
+   * E3.4 (#732) — IPD: nothing is a deploy fact, so every checkable row is RED after the deploy, and every one is ok
+   * once the hospital is ready (the go-live check's own READY fixture: workflow, approvals, rate card, beds, people).
+   */
+  it("IPD: every checkable row is RED after the deploy, and ok once the go-live acts are done", async () => {
+    await deployG2State(db);
+    const afterDeploy = (await runCensus(db, "ipd")).filter((r) => r.verdict !== "NOT MODELLED");
+    expect(afterDeploy.length).toBeGreaterThanOrEqual(10);
+    expect(afterDeploy.filter((r) => r.verdict !== "RED").map((r) => r.code)).toEqual([]);
+
+    await truncateAll(db);
+    await mkGoLiveReadyWorld(db);
+    const ready = (await runCensus(db, "ipd")).filter((r) => r.verdict !== "NOT MODELLED");
+    expect(ready.filter((r) => r.verdict !== "ok").map((r) => `${r.code} ${r.verdict}`)).toEqual([]);
+  });
+
   it("the interaction book: a PARTIAL seed reads RED, not just an empty one", async () => {
     await deployG2State(db);
     expect(verdictOf(await runCensus(db, "hospital"), "hospital", "formulary_interactions_loaded"))

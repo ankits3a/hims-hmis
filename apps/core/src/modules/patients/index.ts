@@ -8,6 +8,8 @@ export { patientsManifest } from "./manifest";
 export { PATIENTS_APPROVAL_REJECTED_CONSUMER, approvalRejectedConsumer } from "./approval-consumer";
 export { PatientsModule } from "./patients.module";
 export { getPatient, registerPatient, resolvePatientId, updatePatient } from "./registration";
+/** ER lane 4 (#811) — the one writer of the `brought_dead` death kind (no MCCD); the ER's `record_brought_dead` calls it. */
+export { recordBroughtDeadDeath, recordErDeath } from "./brought-dead";
 /**
  * ABDM S0 — the ONE writer of `abha_verification_status = 'verified'`. Reached by no route; the abdm
  * module's S1 handlers call it after ABDM has answered. The counter paths refuse `verified`.
@@ -29,7 +31,7 @@ export type { PatientSummary } from "./registration";
  * that meant: registration has been collecting policy numbers at the counter since FD-12 and the
  * product could not show one to anybody afterwards.
  */
-export { listPatientCoverages } from "./coverages";
+export { coverageSumInsuredPaise, listPatientCoverages } from "./coverages";
 export type { CoverageRow } from "./coverages";
 /**
  * `addAllergy` is exported for 18a-iii T2: a contrast reaction writes the patient's allergy in the
@@ -77,3 +79,9 @@ export type { QrVerifyResult } from "./qr";
 export { isValidUhid, registrationConfigured, PatientError } from "./uhid";
 export type { PatientErrorCode } from "./uhid";
 export * from "./events";
+/**
+ * ER lane 1 (#808) — the emergency department's `link_identity` FILES a merge request (unknown → true record) in its own
+ * transaction, through the one writer of `patient_merge_requests`, and reads the request's stage back for the ER desk. The
+ * merge itself, its approval and its execution stay here.
+ */
+export { MERGE_APPROVAL_TYPE, createMergeRequest, getMergeRequest } from "./merge";

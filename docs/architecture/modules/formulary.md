@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/formulary/`
 
 - **Depends on modules:** —
-- **Used by modules:** `cds`, `materials`, `opd`, `pharmacy`
+- **Used by modules:** `cds`, `emergency`, `ipd`, `materials`, `opd`, `pharmacy`
 - **Kernel used:** `auth`, `db`, `events`, `modules`, `search`, `tokens`
 
 ## Public API (`index.ts`), by declaring file
@@ -116,6 +116,7 @@ Source: `apps/core/src/modules/formulary/`
   - `unreviewedSaltIds(db: Db | Tx, ids: readonly string[]): Promise<Set<string>>`
   - types: `CatalogueCensus`, `MoietySuggestion`
 - `resolve.ts`
+  - `interactionRulesPresent(db: Db): Promise<boolean>`
   - `listDrugDiseaseFor(db: Db, saltIds: string[], icd10Codes: string[]): Promise<DrugDiseaseRow[]>`
   - `listInteractionsAmong(db: Db, saltIds: string[]): Promise<InteractionPair[]>`
   - `normalizeDrugName(raw: string): string`

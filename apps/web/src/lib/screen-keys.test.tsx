@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import "./i18n";
-import { ShortcutLegend, useScreenKeys } from "./keyboard";
+import { ShortcutLegend, legendAppliesTo, useScreenKeys } from "./keyboard";
 
 /**
  * PARITY P3 — the shell's key legend shows the CURRENT screen's keys when the screen registers
@@ -26,5 +26,27 @@ describe("ShortcutLegend and useScreenKeys", () => {
     rerender(<ShortcutLegend />);
     expect(screen.queryByTestId("shortcut-legend-screen")).toBeNull();
     expect(screen.getByRole("contentinfo")).toHaveTextContent("F4 New patient");
+  });
+});
+
+/** IPD walk 2026-10-14 — the desk's legend is not drawn under the ward and diet screens, nor on a phone. */
+describe("ShortcutLegend scope", () => {
+  it("draws nothing on an inpatient or diet path, and the desk legend elsewhere", () => {
+    const { rerender } = render(<ShortcutLegend path="/ipd/ward" />);
+    expect(screen.queryByRole("contentinfo")).toBeNull();
+    rerender(<ShortcutLegend path="/diet/kitchen" />);
+    expect(screen.queryByRole("contentinfo")).toBeNull();
+    rerender(<ShortcutLegend path="/registration" />);
+    expect(screen.getByRole("contentinfo")).toHaveTextContent("F4 New patient");
+    expect(legendAppliesTo("/ipdx")).toBe(true);
+    expect(legendAppliesTo("/ipd")).toBe(false);
+  });
+
+  it("is hidden below the sm breakpoint (a phone has no F-keys) and shown from it up", () => {
+    render(<ShortcutLegend />);
+    const classes = screen.getByRole("contentinfo").className.split(/\s+/);
+    expect(classes).toContain("hidden");
+    expect(classes).toContain("sm:flex");
+    expect(classes).not.toContain("flex");
   });
 });

@@ -520,6 +520,21 @@ it("SHELL-UX: the key legend drops F4/F7 for a person who cannot open them, and 
   expect(legend).not.toHaveTextContent("Esc");
 });
 
+/**
+ * IPD walk 2026-10-14 — the OPD desk's legend ("/ Search · F4 · F7 · Ctrl+⏎") sat under every IPD and diet screen.
+ * It belongs to the desk: the shell gives it the path, and an inpatient or diet screen draws none.
+ */
+it("IPD walk: no OPD key legend under an inpatient screen, and it comes back on the desk", async () => {
+  renderShell(["patients.register", "opd.appointments.read", "ipd.beds.view"]);
+  await act(async () => { await router.navigate({ to: "/ipd/beds" }); });
+  await screen.findByTestId("ipd-beds");
+  // The beds board has its own <footer> (its live line); the desk's legend is the one that must be gone.
+  expect(screen.queryByTestId("shortcut-legend")).not.toBeInTheDocument();
+  expect(screen.queryByText("F4 New patient")).not.toBeInTheDocument();
+  await act(async () => { await router.navigate({ to: "/merge" }); });
+  expect(await screen.findByTestId("shortcut-legend")).toHaveTextContent("F4 New patient");
+});
+
 it("SHELL-UX: the registration clerk who holds the book still sees F4 and F7", async () => {
   renderShell(["patients.register", "opd.appointments.read"]);
   await act(async () => { await router.navigate({ to: "/merge" }); }); // the router is a singleton: a prior test left it on Desk One

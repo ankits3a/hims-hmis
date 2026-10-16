@@ -216,6 +216,28 @@ describe("registerAllJobs threads NOTIFY_STUCK_AFTER_MS to the pump (Book R2)", 
     expect((failed[0]!.payload as { reason: string }).reason).toBe("stuck_sending");
   });
 
+  it("#761: the registered pump addresses an ipd.daily_totals row through the IPD attendant seam with the configured ids", async () => {
+    // A row whose admission does not exist: the IPD seam answers `recipient_blocked`. Before #761 the template was held and
+    // the row came back `template_pending`; with the seam missing it would be `no_phone`; to the patient it would be `sent`.
+    await db.insert(notifications).values({
+      id: "01HT761JOBSDAILYTOTALS001", audience: "patient", patientId: PATIENT, templateKey: "ipd.daily_totals",
+      params: { name: "Asha", billDate: "2026-08-20", totalPaise: 100, depositPaise: 100, balancePaise: 0, dayOfStay: 1, attendant: "deposit_payer", attendantRef: "dep-1" },
+      dedupeKey: "n:761:jobs:1", occurredAt: NOON, expiresAt: new Date(NOON.getTime() + 24 * 3600_000), refType: "admission", refId: "no-such-admission",
+    });
+    const sent: string[] = [];
+    const rec = (channel: "whatsapp" | "sms" | "web_push") => ({
+      channel, async send(to: string) { sent.push(to); return { providerMessageId: null }; },
+    });
+    const specs: JobSpec[] = [];
+    const cfg = { ipdDailyTotals: { whatsappTemplateName: "crk_ipd_daily_totals_v1", dltTemplateId: null, deskPhone: "0612-2200000" } };
+    registerAllJobs(recordingScheduler(specs), db, new ModuleRegistry(), {}, INTERVALS,
+      { whatsapp: rec("whatsapp"), sms: rec("sms"), web_push: rec("web_push") }, cfg as unknown as Parameters<typeof registerAllJobs>[6]);
+    await specs.find((s) => s.name === "runNotifyPump")!.run(NOON);
+    const row = (await db.select().from(notifications).where(eq(notifications.id, "01HT761JOBSDAILYTOTALS001")))[0]!;
+    expect(sent).toEqual([]);
+    expect(row).toMatchObject({ status: "suppressed", lastError: "recipient_blocked" });
+  });
+
   it("registers the pump on its own cadence — the widened Pick did not disturb the seventh job", () => {
     const pump = registeredPump();
     expect(pump).toEqual(expect.objectContaining({ name: "runNotifyPump", every: 5000 }));
@@ -385,7 +407,7 @@ describe("registerAllJobs threads WORKER_INTERFACE_SWEEP_INTERVAL_MS to the tent
     // nothing. T5 did not read it, and found this file, that file and `alerts.yml`'s three places by
     // going red instead. The tax is identical either way; the difference is whether it is paid once
     // or discovered three times.
-    expect(specs).toHaveLength(30); // COPILOT LEDGER E0.1: +1, pruneCopilotAsks (daily 01:20 IST, always on); ATTENDANCE (owner 2026-10-09): +1, syncAttendance (every 120 000), read off the red run // TELE-CALL (owner 2026-10-09): +1, openDueTeleVisits (every 60 000) // NICKNAMES (0051): +1, proposeMedicineNicknames (every 3 600 000), read off the red run // MOBILE §3i: +1, sweepStaffNotices (every 60 000), read off the red run // 20-U infra: +1, printRosterBoard (every 60 000), read off the red run // 18-S RS10: +1, sweepImagingEscalations (every 60 000) // 18-S RS11: +1, sweepOverdueQa (every 3 600 000), read off the red run // PHARMACY P6 (patient messages): +1, runRefillReminders (dailyIst 10:00), read off the red run // PHASE O T4: +1, runReachLadder, read off the red run // PHASE R (R7): +1, sweepRosterWindows // PHASE R (R9): +1, runMonthlyProposals
+    expect(specs).toHaveLength(34); // IPD NURSING E4.1 (#733): +1, sweepIpdNursing (every 60 000); IPD CHARGES E2.1: +1, postNightlyIpdCharges (dailyIst 00:05); IPD BEDS E1.1: +1, lapseBedReservations (every 60 000); E0.1 TASK ENGINE (issue #713): +1, sweepTasks (every 60 000), read off the red run // COPILOT LEDGER E0.1: +1, pruneCopilotAsks (daily 01:20 IST, always on); ATTENDANCE (owner 2026-10-09): +1, syncAttendance (every 120 000), read off the red run // TELE-CALL (owner 2026-10-09): +1, openDueTeleVisits (every 60 000) // NICKNAMES (0051): +1, proposeMedicineNicknames (every 3 600 000), read off the red run // MOBILE §3i: +1, sweepStaffNotices (every 60 000), read off the red run // 20-U infra: +1, printRosterBoard (every 60 000), read off the red run // 18-S RS10: +1, sweepImagingEscalations (every 60 000) // 18-S RS11: +1, sweepOverdueQa (every 3 600 000), read off the red run // PHARMACY P6 (patient messages): +1, runRefillReminders (dailyIst 10:00), read off the red run // PHASE O T4: +1, runReachLadder, read off the red run // PHASE R (R7): +1, sweepRosterWindows // PHASE R (R9): +1, runMonthlyProposals
     expect(specs).toContainEqual(
       expect.objectContaining({ name: "flagLateSurgeons", every: 60_000 }),
     );

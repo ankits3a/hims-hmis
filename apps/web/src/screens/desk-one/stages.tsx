@@ -35,6 +35,7 @@ import type { WireAbhaFlow, WireShare } from "../../lib/abdm-api";
 import { EMPTY_COVERAGE, EMPTY_FORM, ageOrDobText, formAgeYears, formNeedsGuardian, parseAgeOrDob, useDesk } from "./session";
 import { RebookingRail } from "./rebooking-rail";
 import { MoveDepartmentForm } from "./move-department";
+import { SendToCasualty } from "./send-to-casualty";
 import { RegAllergies } from "./reg-allergies";
 import { useAuth } from "../../lib/auth";
 import type { CoverageDraft, Person } from "./session";
@@ -1166,8 +1167,9 @@ function StageAppointment(): React.ReactElement {
           ))}
           {s.triageBusy ? <span className="tag">ranking…</span> : null}
           {s.triage === null ? null : (
-            <span className="pill" title="Where the ranking came from">
-              ranked by {s.triage.source === "model" ? "the triage model" : "the keyword table"}
+            /* #622 — a fixed, translated reason, never the model's own words (the server no longer sends them). */
+            <span className="pill" title="Where the ranking came from" data-testid="triage-source">
+              {t(s.triage.source === "model" ? "opdTriage.reason.model" : "opdTriage.reason.keywords")}
             </span>
           )}
         </div>
@@ -1191,6 +1193,8 @@ function StageAppointment(): React.ReactElement {
           <AgentLine>
             <b>{t(s.triage.redFlag.reasonKey)}</b>{" "}
             {t("opdTriage.redFlag.action")}
+            {/* ER lane 2 (#809, E9) — one tap puts the patient on the ER board as Expected from OPD. */}
+            {s.person !== null ? <>{" "}<SendToCasualty patientId={s.person.id} complaint={s.complaint} reasonKey={s.triage.redFlag.reasonKey} /></> : null}
           </AgentLine>
         ) : d.openVisits.length > 0 && s.complaint.trim() === "" ? (
           /*

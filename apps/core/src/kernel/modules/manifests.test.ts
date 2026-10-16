@@ -26,6 +26,11 @@ import { pharmacyManifest } from "../../modules/pharmacy";
 import { labManifest } from "../../modules/lab";
 import { abdmManifest } from "../../modules/abdm";
 import { orderingManifest } from "../../modules/ordering";
+import { housekeepingManifest } from "../../modules/housekeeping";
+import { maintenanceManifest } from "../../modules/maintenance";
+import { passesManifest } from "../../modules/passes";
+import { dietManifest } from "../../modules/diet";
+import { ipdManifest } from "../../modules/ipd";
 
 /**
  * Plan 11d / D2, Book row V4 — `ALL_MANIFESTS` is the ONE list, and a manifest installed outside
@@ -92,6 +97,11 @@ const MANIFEST_BY_IDENTIFIER: Record<string, ModuleManifest> = {
   pharmacyManifest, // PLAN 16c T3
   abdmManifest, // ABDM S2 — worker-only, the `notify` shape
   orderingManifest, // DECISION 0067 — both processes
+  housekeepingManifest, // E1.4 HOUSEKEEPING (issue #721) — both processes
+  maintenanceManifest, // E1.5 MAINTENANCE (issue #722) — API only
+  passesManifest, // E1.3 (#720) — both processes
+  ipdManifest, // E3.3 (#731) — both processes (the family-link stop consumer)
+  dietManifest, // E4.4 DIET (#736) — both processes (the `diet.reconcile` consumer)
 };
 
 /** The argument of every `registry.install(<identifier>)` call, in source order. Throws if there are none. */
@@ -198,13 +208,32 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       // TEST ORDERING (decision 0067, 2026-10-10) — appended. It reaches into lab, radiology, opd and
       // billing through their indexes; nothing imports it.
       "ordering",
+      // E0.1 TASK ENGINE (issue #713) — appended. It reaches into the roster through its index; owning
+      // modules (housekeeping, bmw …) will import it, never the other way.
+      "tasks",
+      "ipd", // IPD BEDS E1.1 (#718): the bed board
+      // E1.7 BIO-MEDICAL WASTE (issue #724) — appended. It raises its collection task through the tasks index.
+      "bmw",
+      // E2.4 LINEN (issue #728) — appended. It raises its linen change task through the tasks index.
+      "linen",
+      // E1.4 HOUSEKEEPING (issue #721) — appended. A leaf: it reaches into tasks and ipd through their indexes.
+      "housekeeping",
+      // E1.5 MAINTENANCE (issue #722) — appended. A leaf: it reaches into tasks and ipd through their indexes.
+      "maintenance",
+      "passes", // PASSES E1.3 (#720): attendant and visitor passes
+      // E1.6 TRANSPORT (issue #723) — appended. A leaf: it reaches into tasks, ipd and patients through their indexes.
+      "transport",
+      // E4.4 DIET (issue #736) — appended. A leaf: it reaches into ipd and tasks through their indexes; OT by its events.
+      "diet",
+      // ER lane 1 (issue #808) — appended. A leaf: it reaches into patients, ipd and billing through their indexes.
+      "emergency",
     ]);
-    expect(ALL_MANIFESTS).toHaveLength(25); // TEST ORDERING: 25; STAFF ATTENDANCE: 24; PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
+    expect(ALL_MANIFESTS).toHaveLength(35); // ER lane 1 (#808): 35, emergency; E4.4 DIET: 34, diet; E1.6 TRANSPORT: 29, transport; PASSES E1.3: 27, passes; //; E1.5 MAINTENANCE: 29, maintenance; E1.4 HOUSEKEEPING: 28, housekeeping; E2.4 LINEN: 27; E1.7 BIO-MEDICAL WASTE: 27; IPD BEDS E1.1: 26, ipd; E0.1 TASK ENGINE: 26; TEST ORDERING: 25; STAFF ATTENDANCE: 24; PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
     // Installable as a set: `ModuleRegistry.install` throws on a duplicate key, so this also
     // pins that no manifest appears twice.
     const registry = new ModuleRegistry();
     for (const manifest of ALL_MANIFESTS) registry.install(manifest);
-    expect(registry.all()).toHaveLength(25);
+    expect(registry.all()).toHaveLength(35); // ER lane 1 (#808); E4.4 DIET; IPD BEDS E1.1 + E0.1 TASK ENGINE + E1.4 HOUSEKEEPING + E1.6 TRANSPORT; PASSES E1.3; IPD BEDS E1.1 + E0.1 TASK ENGINE + E1.4 HOUSEKEEPING + E1.5 MAINTENANCE; IPD BEDS E1.1 + E0.1 TASK ENGINE + E1.4 HOUSEKEEPING; IPD BEDS E1.1
   });
 
   it("V4: app.module.ts installs ALL_MANIFESTS and nothing else", () => {
@@ -217,7 +246,7 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     expect(manifestKeys(extras, "app.module.ts")).toEqual([]);
   });
 
-  it("the worker's registry differs from ALL_MANIFESTS in exactly nine enumerated, intentional ways", () => {
+  it("the worker's registry differs from ALL_MANIFESTS in exactly fifteen enumerated, intentional ways", () => {
     const workerKeys = manifestKeys(
       installArguments(readFileSync(WORKER_MODULE, "utf8"), "worker.module.ts"),
       "worker.module.ts",
@@ -339,7 +368,22 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     // (1k) STAFF ATTENDANCE — the TWENTY-FOURTH, `attendance`, APP-ONLY on the roster's terms: it
     //      declares one permission and no subscription; the worker runs its job (`syncAttendance`)
     //      and needs no permission to, so installing it there would catalog nothing and subscribe to nothing.
-    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance"]);
+    // (1l) E0.1 TASK ENGINE — `tasks`, APP-ONLY on the same terms: three permissions, no subscription;
+    //      the worker runs `sweepTasks` and needs no permission to.
+    // (1l) IPD BEDS E1.1 — the TWENTY-SIXTH, `ipd`, APP-ONLY on the same terms: four permissions, no subscription;
+    //      the worker runs its job (`lapseBedReservations`) without the manifest.
+    // (1m) E1.7 BIO-MEDICAL WASTE — `bmw`, APP-ONLY on the same terms: three permissions, no subscription; its storage
+    //      clock rides `sweepTasks`, and the worker imports the bmw index for that (which also defines its task kind).
+    // (1m) E2.4 LINEN — `linen`, APP-ONLY on the same terms: three permissions, no subscription and no worker job (the
+    //      weekly variance is computed on read).
+    // (1n) E1.5 MAINTENANCE — the TWENTY-NINTH, `maintenance`, APP-ONLY: five permissions, no subscription, no job.
+    //      The worker IMPORTS the module (so its two repair kinds exist for the task clock) and installs nothing.
+    // (1n) E1.6 TRANSPORT — the TWENTY-NINTH, `transport`, APP-ONLY on the same terms: three permissions, no
+    //      subscription; the worker imports the module only so its task kinds are defined for the task clock.
+    // E3.3 FAMILY — `ipd` now declares a subscription (the family stop consumer), so the worker installs it: it leaves this list.
+    // (1o) ER lane 1 (#808) — `emergency`, APP-ONLY: two permissions, no subscription; its pre-alert lapse rides the
+    //      worker's `lapseBedReservations` job, which imports the emergency index and needs no permission to run it.
+    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance", "tasks", "bmw", "linen", "maintenance", "transport", "emergency"]);
 
     /**
      * ═══ THE COUNT IS THE FRICTION, AND UNTIL NOW NOTHING ENFORCED IT ═══
@@ -421,7 +465,16 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "pharmacy",
       // DECISION 0067 — the free-test consumer (`ordering.free_tests`); installed in both processes.
       "ordering",
+      // E1.4 HOUSEKEEPING (issue #721) — the bed-turnover consumer (`housekeeping.bed_turnover`); installed in both.
+      "housekeeping",
+      // E1.3 (#720) — the passes consumer (`passes.admission`); installed in both processes.
+      "passes",
+      // E4.4 DIET (#736) — the diet consumer (`diet.reconcile`); installed in both processes.
+      "diet",
+      // E3.3 (#731) — the family link's stop consumer (`ipd.family_stop`): death and absconding revoke the link. `ipd` moves
+      // from the app-only list to the shared one in the commit that declares its first subscription and registers its handler.
+      "ipd",
     ]);
-    expect(workerKeys).toHaveLength(20); // DECISION 0067: 19 -> 20, `ordering`; // PHASE O T1: 16 -> 17, `obligations`; ABDM S2: 17 -> 18, `abdm`; MOBILE M6b: 18 -> 19, `phone_push`
+    expect(workerKeys).toHaveLength(24); // E4.4 DIET: 23 -> 24, `diet`; E3.3 (#731): 20 -> 21, `ipd`; //; E1.3: 20 -> 21, `passes`; //; E1.4 HOUSEKEEPING: 20 -> 21, `housekeeping`; DECISION 0067: 19 -> 20, `ordering`; // PHASE O T1: 16 -> 17, `obligations`; ABDM S2: 17 -> 18, `abdm`; MOBILE M6b: 18 -> 19, `phone_push`
   });
 });

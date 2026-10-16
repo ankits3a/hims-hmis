@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/roster/`
 · Notes: [MAP.md](../../../apps/core/src/modules/roster/MAP.md)
 
 - **Depends on modules:** —
-- **Used by modules:** `opd`, `ot`, `radiology`
+- **Used by modules:** `emergency`, `ipd`, `opd`, `ot`, `radiology`, `tasks`
 - **Kernel used:** `alerts`, `approvals`, `auth`, `copilot`, `db`, `desk`, `events`, `modules`, `printing`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
@@ -74,6 +74,7 @@ Source: `apps/core/src/modules/roster/`
   - `departmentsWithoutPublishedCycle(exec: Db | Tx, at: Date = new Date()): Promise<string[]>`
   - `expandCycle(spec: CycleSpec, fromIstDate: string, toIstDate: string, holidays: readonly HolidaySpec[] = []): PlannedWindow[]`
   - `extendWindows(tx: Tx, actor: Actor, todayIstDate: string): Promise<{ departments: number; written: number }>`
+  - `holidaysBetween(exec: Db | Tx, from: string, to: string): Promise<HolidaySpec[]>`
   - `istDateOfInstant(at: Date): string`
   - `istMidnightUtc(istDate: string): Date`
   - `istMinutesOfInstant(at: Date): number`

@@ -63,10 +63,11 @@ export type WireDuplicateWarning = {
 export type WireDeskOrder = {
   encounterNo: string;
   orderId: string; orderNo: string; orderGroupId: string; itemIds: string[];
+  /** Null when the order went to an inpatient's running bill (#785): no invoice is raised at the counter. */
   invoice: {
     invoiceId: string; invoiceNo: string; netPayablePaise: number;
     receiptId: string | null; receiptNo: string | null; creditExtended: boolean;
-  };
+  } | null;
   reflexConsent: boolean;
   duplicates: { acknowledged: string[]; warnings: WireDuplicateWarning[] };
 };
@@ -134,7 +135,12 @@ export type WirePricedDraft = {
     cgstPaise: number; sgstPaise: number; roundingPaise: number; netPayablePaise: number };
   /** 17c T1 — what the chair will draw, in order of draw. */
   tubes: WireTubePlanRow[];
+  /** #785 — the patient is on a live IPD admission: the tests go on the running bill, nothing is collected here. */
+  runningBill?: boolean;
 };
+
+/** #785 — an inpatient admission number (`IP26-000123`): billed on the IPD running bill, never at the lab counter. */
+export const IPD_ADMISSION_NO_RE = /^IP\d{2}-\d{6}$/;
 
 export type WireTubePlanRow = { container: string; specimenType: string; codes: string[] };
 

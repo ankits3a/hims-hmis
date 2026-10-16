@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { workerConsumers } from "./worker.module";
+import { workerBackfills, workerConsumers } from "./worker.module";
 
 /**
  * D10 — first-boot cursor seeding, the step 08.5 booked and 10 re-booked.
@@ -45,6 +45,11 @@ export async function seedCursors(db: Db, now: Date = new Date()): Promise<Seede
       select last_seq as "lastSeq" from event_cursors where consumer = ${consumer}
     `)).rows as [{ lastSeq: number | string }];
     seeded.push({ consumer, lastSeq: Number(rows[0]!.lastSeq) });
+  }
+  // E1.4 — the state a seeded cursor skipped, rebuilt (idempotent; see `workerBackfills`).
+  for (const [consumer, backfill] of Object.entries(workerBackfills(db))) {
+    const n = await backfill();
+    if (n > 0) console.log(`seed-cursors: ${consumer} backfilled ${n}`);
   }
   return seeded;
 }

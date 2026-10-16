@@ -1,0 +1,155 @@
+/**
+ * ER lane 1 (#808) — EVERY REFUSAL AN ER INTENT CAN RETURN, WITH ITS RULE AND ITS FIX (spec §0: no dead ends). `rule`
+ * is one plain sentence a desk clerk or a casualty nurse can read; `fix` is the label of the button that offers the way
+ * forward. Data (the open episode, the ward the patient is admitted to) rides in the refusal's `detail`; the words here
+ * never carry numbers or names.
+ *
+ * The contract test proves every code here is used by some intent and every intent's code is here. Later lanes add
+ * their own codes to this one register.
+ */
+export const ER_REFUSALS = {
+  /* ═══ The patient and the episode ═══ */
+  patient_not_found: { rule: "No patient has this id.", fix: "Search patient" },
+  patient_deceased: { rule: "The patient is recorded as deceased.", fix: "Open patient record" },
+  patient_admitted: { rule: "The patient is admitted on a ward; the ward team looks after them.", fix: "Call the ward team" },
+  episode_not_found: { rule: "No emergency episode has this id.", fix: "Open ER desk" },
+  episode_wrong_state: { rule: "The emergency episode is not in a state that allows this act.", fix: "Open episode" },
+  episode_already_open: { rule: "A patient may have only one open emergency episode.", fix: "Open current episode" },
+  state_changed: { rule: "Someone changed this record after you opened it, so nothing was saved.", fix: "Reload" },
+  registration_not_ready: { rule: "Patient registration is not set up yet, so no UHID can be issued.", fix: "Ask the administrator" },
+
+  /* ═══ Arrival ═══ */
+  time_in_future: { rule: "A time cannot be later than now.", fix: "Fix the time" },
+  arrival_too_old: { rule: "An arrival more than a day ago is entered from its paper ER sheet.", fix: "Enter the paper serial" },
+  paper_serial_used: { rule: "This paper ER sheet serial is already entered for another episode.", fix: "Open that episode" },
+  pre_alert_not_found: { rule: "No pre-alert has this id.", fix: "Open ER desk" },
+  pre_alert_closed: { rule: "The pre-alert has already arrived, lapsed or been cancelled.", fix: "Register without it" },
+  examined_before_arrival: { rule: "The examination cannot be earlier than the arrival.", fix: "Fix the time" },
+
+  /* ═══ Triage, bays and the doctor (lane 2) ═══ */
+  down_triage_needs_reason: { rule: "A level less urgent than the proposal or the last level needs a reason.", fix: "Add reason" },
+  department_not_found: { rule: "No department has this code.", fix: "Pick department" },
+  already_in_bay: { rule: "The patient is already in a bay.", fix: "Move bay" },
+  not_in_bay: { rule: "The patient is not in a bay yet.", fix: "Place in bay" },
+  same_bay: { rule: "The patient is already in this bay.", fix: "Pick another bay" },
+  bay_not_found: { rule: "No bay has this id.", fix: "Open ER board" },
+  bay_not_emergency: { rule: "Only an emergency-class bed is an ER bay.", fix: "Pick an ER bay" },
+  bay_not_available: { rule: "The bay was just taken or is not free.", fix: "Pick another bay" },
+  not_a_doctor: { rule: "Only a doctor can be the ER doctor of record.", fix: "Pick a doctor" },
+
+  /* ═══ Care (lane 3) ═══ */
+  note_not_found: { rule: "No ER note has this id.", fix: "Open episode" },
+  note_signed: { rule: "The note is already signed.", fix: "Add an addendum" },
+  cosign_own_note: { rule: "A note is co-signed by someone other than its author.", fix: "Ask a senior" },
+  cosigner_not_senior: { rule: "A resident's note is co-signed by a senior doctor, not another resident.", fix: "Ask a senior" },
+  item_not_stocked: { rule: "This item is not stocked in the ER store.", fix: "Pick another item" },
+  stock_short: { rule: "The ER store does not hold enough of this item.", fix: "Ask pharmacy" },
+  allergy_override_needed: { rule: "A recorded allergy matches this drug: say why it goes ahead.", fix: "Give override reason" },
+  issue_not_found: { rule: "No ER medicine issue has this id.", fix: "Open episode" },
+  dose_given: { rule: "A dose was given from this issue; nothing is left to return.", fix: "Open medication record" },
+  already_returned: { rule: "This issue is already returned or recorded as wastage.", fix: "Open medication record" },
+  nothing_to_return: { rule: "The family's own medicine was never taken from stock.", fix: "Open medication record" },
+  wastage_needs_witness: { rule: "Wasting a high-alert or controlled drug needs a witness's PIN.", fix: "Ask a colleague" },
+  issue_returned: { rule: "This issue was returned or wasted; it cannot be given.", fix: "Issue again" },
+  dose_already_recorded: { rule: "This issue's dose is already recorded.", fix: "Open the medication record" },
+  second_check_needed: { rule: "A high-alert drug is given only after a second person checks it.", fix: "Second check" },
+  second_check_failed: { rule: "The second person's username or PIN did not match.", fix: "Try again" },
+  second_checker_same: { rule: "The second check is made by a different person.", fix: "Ask a colleague" },
+  verbal_not_pending: { rule: "There is no unsigned verbal order on this issue.", fix: "Open the medication record" },
+  not_ordering_doctor: { rule: "Only the doctor who gave the verbal order signs it.", fix: "Ask that doctor" },
+  consent_not_found: { rule: "No consent with this id is recorded for this patient.", fix: "Record consent" },
+  consent_witness_needed: { rule: "A paper consent names its witness, and a guardian or representative is named.", fix: "Add witness" },
+  emergency_needs_second_doctor: { rule: "Emergency treatment without consent needs a second doctor's concurrence.", fix: "Name second doctor" },
+  call_not_found: { rule: "No specialty call has this id.", fix: "Open episode" },
+  call_closed: { rule: "The specialty call is already answered and seen.", fix: "Open episode" },
+  call_already_open: { rule: "A call to this department is already waiting for this patient.", fix: "Open the call" },
+  already_stabilised: { rule: "The patient is already recorded as stabilised.", fix: "Open episode" },
+
+  /* ═══ The medico-legal case (lane 4) ═══ */
+  mlc_not_found: { rule: "No medico-legal case has this id.", fix: "Open MLC desk" },
+  mlc_already_open: { rule: "This emergency episode already has a medico-legal case; a change is an addendum.", fix: "Add an addendum" },
+  intimation_recorded: { rule: "The police intimation for this case is already recorded.", fix: "Add an addendum" },
+  mlc_countersigned: { rule: "The case is already countersigned.", fix: "Open MLC desk" },
+  countersign_own_mlc: { rule: "A case is countersigned by a doctor other than the one who opened it.", fix: "Ask a senior" },
+  intimation_before_arrival: { rule: "A police intimation is never dated before the patient arrived.", fix: "Enter the real time" },
+  seal_already_collected: { rule: "A seal is collected once; later links store or hand it over.", fix: "Pick the next step" },
+  seal_not_collected: { rule: "Evidence is stored or handed over only after it is collected under this seal.", fix: "Record collection" },
+  seal_already_handed_over: { rule: "The evidence under this seal is already handed over.", fix: "Open MLC desk" },
+
+  /* ═══ Disposition (lane 5) ═══ */
+  disposition_already_decided: { rule: "A disposition is decided once per episode.", fix: "Open episode" },
+  disposition_mismatch: { rule: "This act does not match the disposition already decided.", fix: "Open episode" },
+  disposition_reason_needed: { rule: "A disposition is decided with a reason.", fix: "Add reason" },
+  admission_refused: { rule: "The admission could not be raised.", fix: "Call the admission desk" },
+  bed_needs_admission_desk: { rule: "A bed is allotted by the admission desk; the doctor raises the admission and the patient waits here.", fix: "Hand over without a bed" },
+  already_boarding: { rule: "The patient is already waiting for an inpatient bed.", fix: "Open episode" },
+  referral_not_for_money: { rule: "A patient is never referred out because they cannot pay.", fix: "Pick the clinical reason" },
+  lama_witness_needed: { rule: "A refusal to sign is witnessed by a second staff member.", fix: "Name a witness" },
+  last_seen_before_arrival: { rule: "The last-seen time cannot be before the arrival.", fix: "Fix the time" },
+  died_before_arrival: { rule: "A death after arrival cannot be before the arrival; a body brought dead is recorded at the desk.", fix: "Fix the time" },
+  dispute_open: { rule: "A refusal for this patient is already waiting for the medical superintendent.", fix: "Open episode" },
+  dispute_not_found: { rule: "No admission dispute has this id.", fix: "Open ER board" },
+  dispute_ruled: { rule: "The medical superintendent has already ruled on this dispute.", fix: "Open episode" },
+  not_the_ms: { rule: "Only the medical superintendent arbitrates an admission refusal.", fix: "Ask the MS" },
+  mccd_required: { rule: "A death is recorded with its MCCD number, unless it is a medico-legal case already intimated to the police.", fix: "Enter MCCD number" },
+
+  /* ═══ The ER bill (lane 6) — the bill desk's words; no clinical screen shows them ═══ */
+  payer_ref_needed: { rule: "This payer needs its scheme or beneficiary reference.", fix: "Add reference" },
+  bnss_needs_mlc: { rule: "Free treatment by law applies to an MLC of sexual assault or acid attack.", fix: "Open the MLC" },
+  event_account_not_found: { rule: "No mass-casualty event account has this id.", fix: "Open event account" },
+  bill_settled: { rule: "The ER bill is already settled.", fix: "Open the bill" },
+  not_stabilised: { rule: "No money is asked or taken before the ER doctor records the patient stabilised.", fix: "Wait for stabilised" },
+  payer_pays_nothing: { rule: "This patient pays nothing under the payer recorded.", fix: "Check payer" },
+  lines_unpriced: { rule: "Some ER lines have no price yet.", fix: "Price lines" },
+  tender_short: { rule: "The money taken does not cover the patient's share; record the rest as dues.", fix: "Record dues" },
+  undertaking_invalid: { rule: "The undertaking must be one of this patient's own active documents.", fix: "File the undertaking" },
+  undertaking_needed: { rule: "Dues are recorded against a signed undertaking.", fix: "Add undertaking" },
+  patient_payable_forbidden: { rule: "This patient is treated free by law: nothing is payable.", fix: "Settle as nothing payable" },
+  rolled_to_ip: { rule: "The ER lines moved to the inpatient bill at admission; the IP bill settles them.", fix: "Open the IP bill" },
+
+  /* ═══ Codes (lane 7) ═══ */
+  code_needs_patient: { rule: "A clinical activation is called on a patient in the ER; Code Blue and Code Grey may be called anywhere.", fix: "Pick the patient" },
+  code_open: { rule: "This code is already running for this patient.", fix: "Open the code" },
+  code_not_found: { rule: "No code has this id.", fix: "Open codes" },
+  event_before_arrival: { rule: "Nothing on the record happened before the patient arrived.", fix: "Enter the real time" },
+  code_ended: { rule: "The code has ended; its record is closed.", fix: "Open the code" },
+  code_not_ended: { rule: "The debrief follows the end of the code.", fix: "End the code" },
+  milestone_unknown: { rule: "This activation has no such milestone.", fix: "Pick a milestone" },
+  debrief_recorded: { rule: "The debrief is already recorded.", fix: "Open the code" },
+  not_code_leader: { rule: "The team leader who ended the code records its debrief.", fix: "Ask the team leader" },
+
+  /* ═══ Mass casualty, Code Yellow (lane 8) ═══ */
+  mci_role_needed: { rule: "Only the medical superintendent or the duty manager commands a Code Yellow.", fix: "Call the duty manager" },
+  mci_active: { rule: "A Code Yellow is already running; one event at a time.", fix: "Open the MCI board" },
+  mci_not_found: { rule: "No mass-casualty event has this id.", fix: "Open the MCI board" },
+  mci_stood_down: { rule: "This Code Yellow has been stood down.", fix: "Open the MCI board" },
+  mci_not_active: { rule: "No Code Yellow is running; tags and packs belong to a declared event.", fix: "Register the usual way" },
+  pack_not_found: { rule: "No pre-made pack has this number.", fix: "Check the pack number" },
+  pack_used: { rule: "This pack is already on a patient.", fix: "Open that patient" },
+  retag_needs_reason: { rule: "A patient tagged Black is re-tagged only with the reason written down.", fix: "Add reason" },
+  surge_bed_not_overflow: { rule: "Surge bays come from the overflow beds of the bed registry.", fix: "Pick an overflow bed" },
+
+  /* ═══ The band ═══ */
+  printer_offline: { rule: "The chosen printer is not answering.", fix: "Pick nearest printer" },
+  band_already_printed: { rule: "A band is already printed for this episode.", fix: "Reprint band" },
+  no_band_to_reprint: { rule: "There is no band to reprint for this episode.", fix: "Print band" },
+
+  /* ═══ Identity ═══ */
+  not_unidentified: { rule: "Only an unidentified patient's record is linked to a true record.", fix: "Open patient record" },
+  same_patient: { rule: "The true record must be a different record.", fix: "Pick the true record" },
+  true_record_unidentified: { rule: "The true record is itself an unidentified record.", fix: "Pick the true record" },
+  merge_already_requested: { rule: "A merge for this record is already waiting for approval.", fix: "Open merge requests" },
+} as const satisfies Record<string, { rule: string; fix: string }>;
+
+export type ErRefusalCode = keyof typeof ER_REFUSALS;
+export const ER_REFUSAL_CODES = Object.keys(ER_REFUSALS) as ErRefusalCode[];
+
+/** The body of a refused ER request (HTTP 404 for `*_not_found`, 409 otherwise). */
+export type ErRefusalBody = {
+  statusCode: number;
+  code: string;
+  message: string;
+  rule: string;
+  fix: string;
+  detail?: Record<string, unknown>;
+};

@@ -16,8 +16,13 @@ import { PHARMACY_MESSAGES_CONSUMER, PHARMACY_RX_ISSUED_CONSUMER } from "../../m
 import { LAB_INTERFACE_CONSUMER } from "../../modules/lab";
 import { ABDM_CARE_CONTEXT_CONSUMER } from "../../modules/abdm";
 import { ORDERING_FREE_TESTS_CONSUMER } from "../../modules/ordering";
+import { HOUSEKEEPING_BED_CONSUMER } from "../../modules/housekeeping";
+import { PASSES_ADMISSION_CONSUMER } from "../../modules/passes";
+import { DIET_CONSUMER } from "../../modules/diet";
+import { IPD_EMAR_ALLERGY_CONSUMER, IPD_FAMILY_STOP_CONSUMER } from "../../modules/ipd";
 import { PATIENTS_APPROVAL_REJECTED_CONSUMER } from "../../modules/patients";
 import { seedCursors } from "./seed-cursors";
+import { workerBackfills } from "./worker.module";
 
 const mkInput = (name: string) => ({
   name, version: 1, occurredAt: new Date(),
@@ -172,6 +177,33 @@ describe("seedCursors", () => {
          * `max(seq)`, it orders only for consults completed after it ships.
          */
         ORDERING_FREE_TESTS_CONSUMER,
+        /**
+         * E1.4 HOUSEKEEPING (issue #721) — from zero it would walk every bed release since the registry opened
+         * and raise (and at once cancel) a clean for each. Seeded at `max(seq)`, it begins with the next
+         * release, and `workerBackfills` gives every bed already in cleaning its one clean.
+         */
+        HOUSEKEEPING_BED_CONSUMER,
+        /**
+         * E1.3 (#720) — passes. Its unseeded cursor would walk every stay-ending IPD event since the first
+         * admission; each would find no live pass and write nothing (passes did not exist), but it would still walk
+         * them. Seeded at `max(seq)`, it begins with the next discharge.
+         */
+        PASSES_ADMISSION_CONSUMER,
+        /**
+         * E3.3 (#731) — the family link's stop. Unseeded, it would walk every `ipd.admission.deceased` / `.absconded`
+         * since the IPD lanes began; each would find no live link and do nothing — harmless by construction, seeded anyway.
+         */
+        IPD_FAMILY_STOP_CONSUMER,
+        /**
+         * E4.3 (#735) — the eMAR's allergy re-check. Unseeded, it would walk every `allergy.recorded` since the first
+         * patient; each would find no active inpatient drug order and do nothing. Seeded at `max(seq)`.
+         */
+        IPD_EMAR_ALLERGY_CONSUMER,
+        /**
+         * E4.4 DIET (#736) — unseeded, it would walk every admission, transfer and stay ending since IPD began and
+         * every OT booking since the mini-OT (writing an NPO for each past case). Seeded at `max(seq)`.
+         */
+        DIET_CONSUMER,
       ].sort());
   });
 
@@ -195,6 +227,11 @@ describe("seedCursors", () => {
    * 5000 inserts, the same knob dispatcher.test.ts's own suite overrides explicitly for
    * determinism (its "does not redeliver ... re-reads" case sets `lookback: 5_000`).
    */
+  /** The state a seeded cursor skips, rebuilt at deploy: housekeeping's owed cleans, diet's OT NPOs (review item 7). */
+  it("workerBackfills names exactly housekeeping's bed turnover, diet's OT NPO sync and the eMAR's allergy re-check", () => {
+    expect(Object.keys(workerBackfills(db)).sort()).toEqual([DIET_CONSUMER, HOUSEKEEPING_BED_CONSUMER, IPD_EMAR_ALLERGY_CONSUMER].sort());
+  });
+
   it("V10 — leaves a newly-seeded consumer at max(seq); the next cycle delivers nothing", async () => {
     for (let i = 0; i < 4; i += 1) {
       await withTx(db, (tx) => appendEvent(tx, mkInput("alert.raised")));

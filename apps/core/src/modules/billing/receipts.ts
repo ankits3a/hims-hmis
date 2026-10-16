@@ -65,6 +65,11 @@ export async function enteredInErrorDocIds(exec: Db | Tx, docType: string, docId
 }
 
 /** Effective allocation per invoice: Sigma apply - Sigma reverse (D1). */
+/** IPD #763 — one invoice's effective allocation (Σ apply − Σ reverse): `allocatedByInvoice` for a caller outside billing. */
+export async function invoiceAllocatedPaise(exec: Db | Tx, invoiceId: string): Promise<number> {
+  return (await allocatedByInvoice(exec, [invoiceId])).get(invoiceId) ?? 0;
+}
+
 export async function allocatedByInvoice(exec: Db | Tx, invoiceIds: string[]): Promise<Map<string, number>> {
   if (invoiceIds.length === 0) return new Map();
   const rows = await exec
@@ -240,7 +245,63 @@ export async function recordReceipt(
   input: RecordReceiptInput,
   now: Date = new Date(),
 ): Promise<RecordReceiptResult> {
-  const cfg = await loadBillingConfig(db);
+  try {
+    return await withTx(db, (tx) => recordReceiptInTx(tx, actor, input, now));
+  } catch (e) {
+    if (e instanceof BillingError && e.code === "cash_threshold_blocked") {
+      // The same audit rule `issueInvoice` states: the refusal rolls its own transaction back, so
+      // the C-2 event is appended in a transaction of its own afterwards. An audit trail that only
+      // survives when the money was accepted is not an audit trail.
+      await recordCashThresholdBlocked(db, actor, input.patientId, e.detail as CashThresholdDetail);
+    }
+    throw e;
+  }
+}
+
+/**
+ * IPD E1.2 (#719) — THE RECEIPT GUARD SEAM. A module that owns a rule about WHO MAY PAY (an inpatient on a ₹0 scheme
+ * may not be asked for money unless an approver marked a line non-covered) registers a guard; every advance receipt
+ * runs every guard inside its own transaction, before the row is written, whatever route it came through. Billing
+ * imports no module for this (the guard is pushed in, the `registerEncounterResolver` shape). Default: no guards.
+ * A guard refuses by throwing `BillingError("receipt_guard_refused", …)`. `purpose` lets the owning module's own
+ * write path (which checks the same rule under its own lock) tell the guard it is the caller.
+ */
+export type ReceiptGuard = (tx: Tx, ctx: { patientId: string; totalPaise: number; purpose: string | null; at: Date }) => Promise<void>;
+const receiptGuards = new Map<string, ReceiptGuard>();
+
+/** Registers (or replaces) a guard under a key; returns the unregister function. */
+export function registerReceiptGuard(key: string, guard: ReceiptGuard): () => void {
+  receiptGuards.set(key, guard);
+  return () => { if (receiptGuards.get(key) === guard) receiptGuards.delete(key); };
+}
+
+/** The C-2 audit of a refused cash acceptance, in its own transaction (after the refused one rolled back). */
+export async function recordCashThresholdBlocked(db: Db, actor: Actor, patientId: string, detail: CashThresholdDetail): Promise<void> {
+  await withTx(db, (tx) =>
+    appendEvent(
+      tx,
+      cashThresholdBlocked.make({
+        actor,
+        payload: { patientId, episodeCashPaise: detail.episodeCashPaise, thresholdPaise: detail.thresholdPaise },
+        patientId,
+      }),
+    ),
+  );
+}
+
+/**
+ * IPD E1.2 — `recordReceipt`'s body on the CALLER's transaction, so a module can write the receipt and its own link
+ * row atomically (an admission deposit: receipt + link commit together or not at all). Same checks, same events; the
+ * caller owns the blocked-cash audit (`recordCashThresholdBlocked`) because its transaction is the one rolling back.
+ */
+export async function recordReceiptInTx(
+  tx: Tx,
+  actor: Actor,
+  input: RecordReceiptInput,
+  now: Date = new Date(),
+  opts: { purpose?: string } = {},
+): Promise<RecordReceiptResult> {
+  const cfg = await loadBillingConfig(tx);
   // The M3 belt at OUR boundary, before anything is read or written (the `issueInvoice` precedent).
   let totalPaise = 0;
   for (const tender of input.tenders) {
@@ -250,88 +311,64 @@ export async function recordReceipt(
   if (totalPaise <= 0) {
     throw new BillingError("invalid_paise", "a receipt must take a positive amount of money");
   }
-
-  try {
-    return await withTx(db, async (tx) => {
-      const session = await requireOpenSession(tx, actor); // D9 — the ACTING cashier's drawer
-      const verdict = await assertCashAccepted(tx, cfg, {
-        patientId: input.patientId,
-        tenders: input.tenders,
-        panNumber: input.panNumber,
-        form60: input.form60,
-        at: now,
-      });
-      const written = await insertReceiptWithTenders(tx, actor, cfg, {
-        patientId: input.patientId,
-        cashierSessionId: session.id,
-        tenders: input.tenders,
-        panNumber: input.panNumber,
-        form60: input.form60,
-        note: input.note,
-        at: now,
-      });
-
-      // No correlationId: a standalone advance has no invoice to correlate to (Global
-      // Constraints — receipt events carry their invoice's id WHERE ONE EXISTS).
-      const scope = { patientId: input.patientId };
-      await appendEvent(
-        tx,
-        receiptRecorded.make({
-          actor,
-          payload: {
-            receiptId: written.receiptId, receiptNo: written.receiptNo,
-            patientId: input.patientId, totalPaise: written.totalPaise,
-          },
-          ...scope,
-        }),
-      );
-      await appendEvent(
-        tx,
-        advanceReceived.make({
-          actor,
-          payload: { receiptId: written.receiptId, patientId: input.patientId, amountPaise: written.totalPaise },
-          ...scope,
-        }),
-      );
-      if (verdict.warned) {
-        await appendEvent(
-          tx,
-          cashThresholdWarned.make({
-            actor,
-            payload: {
-              patientId: input.patientId,
-              episodeCashPaise: verdict.episodeCashPaise,
-              thresholdPaise: cfg.cashWarnPaise,
-            },
-            ...scope,
-          }),
-        );
-      }
-      return written;
-    });
-  } catch (e) {
-    if (e instanceof BillingError && e.code === "cash_threshold_blocked") {
-      // The same audit rule `issueInvoice` states: the refusal rolls its own transaction back, so
-      // the C-2 event is appended in a transaction of its own afterwards. An audit trail that only
-      // survives when the money was accepted is not an audit trail.
-      const detail = e.detail as CashThresholdDetail;
-      await withTx(db, (tx) =>
-        appendEvent(
-          tx,
-          cashThresholdBlocked.make({
-            actor,
-            payload: {
-              patientId: input.patientId,
-              episodeCashPaise: detail.episodeCashPaise,
-              thresholdPaise: detail.thresholdPaise,
-            },
-            patientId: input.patientId,
-          }),
-        ),
-      );
-    }
-    throw e;
+  for (const guard of receiptGuards.values()) {
+    await guard(tx, { patientId: input.patientId, totalPaise, purpose: opts.purpose ?? null, at: now });
   }
+  const session = await requireOpenSession(tx, actor); // D9 — the ACTING cashier's drawer
+  const verdict = await assertCashAccepted(tx, cfg, {
+    patientId: input.patientId,
+    tenders: input.tenders,
+    panNumber: input.panNumber,
+    form60: input.form60,
+    at: now,
+  });
+  const written = await insertReceiptWithTenders(tx, actor, cfg, {
+    patientId: input.patientId,
+    cashierSessionId: session.id,
+    tenders: input.tenders,
+    panNumber: input.panNumber,
+    form60: input.form60,
+    note: input.note,
+    at: now,
+  });
+
+  // No correlationId: a standalone advance has no invoice to correlate to (Global
+  // Constraints — receipt events carry their invoice's id WHERE ONE EXISTS).
+  const scope = { patientId: input.patientId };
+  await appendEvent(
+    tx,
+    receiptRecorded.make({
+      actor,
+      payload: {
+        receiptId: written.receiptId, receiptNo: written.receiptNo,
+        patientId: input.patientId, totalPaise: written.totalPaise,
+      },
+      ...scope,
+    }),
+  );
+  await appendEvent(
+    tx,
+    advanceReceived.make({
+      actor,
+      payload: { receiptId: written.receiptId, patientId: input.patientId, amountPaise: written.totalPaise },
+      ...scope,
+    }),
+  );
+  if (verdict.warned) {
+    await appendEvent(
+      tx,
+      cashThresholdWarned.make({
+        actor,
+        payload: {
+          patientId: input.patientId,
+          episodeCashPaise: verdict.episodeCashPaise,
+          thresholdPaise: cfg.cashWarnPaise,
+        },
+        ...scope,
+      }),
+    );
+  }
+  return written;
 }
 
 // ---------------------------------------------------------------------------------------------

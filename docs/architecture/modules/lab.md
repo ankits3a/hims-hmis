@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/lab/`
 
 - **Depends on modules:** `billing`, `opd`, `patients`, `tariff`
-- **Used by modules:** `abdm`, `ordering`, `radiology`
+- **Used by modules:** `abdm`, `emergency`, `ipd`, `ordering`, `radiology`
 - **Kernel used:** `approvals`, `auth`, `db`, `desk`, `episodes`, `events`, `modules`, `notify`, `ops`, `orders`, `phi`, `printing`, `realtime`, `report`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `interfaceDown`, `interfaceRestored`
 
@@ -66,6 +66,7 @@ Source: `apps/core/src/modules/lab/`
   - `acknowledgeCritical(tx: Tx, actor: Actor, input: AcknowledgeCriticalInput, now: Date = new Date()): Promise<AcknowledgeCriticalOutcome>`
   - `nextRung(attempts: readonly CriticalAttempt[]): CriticalRung | null`
   - `openCriticalCalls(db: Db, actor: Actor, now: Date = new Date()): Promise<OpenCriticalCall[]>`
+  - `openCriticalsForEncounters(db: Db | Tx, encounterNos: readonly string[]): Promise<{ callId: string; encounterNo: string; openedAt: Date; an…`
   - types: `AcknowledgeCriticalInput`, `AcknowledgeCriticalOutcome`, `CriticalAttempt`, `OpenCriticalCall`
 - `definitions.ts`
   - `LAB_DEFINITIONS`
@@ -83,6 +84,7 @@ Source: `apps/core/src/modules/lab/`
   - `drawRank(container: string): number`
   - `labDoctors(db: Db): Promise<{ id: string; displayName: string }[]>`
   - `placeLabOrder(tx: Tx, actor: Actor, decls: readonly OrderKindDecl[], input: DeskOrderInput, now: Date = new Date()): Promise<DeskOrderResul…`
+  - `previewDeskOrder(db: Db, input: { patientId: string; encounterNo?: string; serviceIds: readonly string[] }): Promise<DeskPreview>`
   - `tubePlan(exec: Db | Tx, serviceIds: readonly string[]): Promise<TubePlanRow[]>`
   - types: `AddOnOrderInput`, `DeskAdvisedLine`, `DeskFindHit`, `DeskItemInput`, `DeskOrderInput`, `DeskOrderResult`, `DeskWalkinInput`, `LabCollectionSite`, `LabPriority`, `TubePlanRow`
 - `duplicates.ts`
@@ -216,6 +218,11 @@ Source: `apps/core/src/modules/lab/`
   - `getSpecimenByNo(exec: Db | Tx, specimenNo: string): Promise<{ specimen: SpecimenView; itemIds: string[] } | null>`
   - `printLabels(db: Db, actor: Actor, input: PrintLabelsInput, now: Date = new Date()): Promise<PrintLabelsResult>`
   - types: `PrintLabelsInput`, `PrintLabelsResult`, `PrintedSpecimen`, `SpecimenView`
+- `stay-values.ts`
+  - `RESULTED_VALUES_LIMIT`
+  - `printedNumber(raw: string, decimals: number): string`
+  - `resultedValuesForOrders(exec: Db | Tx, input: { orderIds: readonly string[]; since: Date; until: Date; limit?: number }): Promise<{ values:…`
+  - types: `ResultedValue`
 - `sweeps.ts`
   - `LAB_NON_RETURN_ACTOR: Actor`
   - `LAB_SLA_ACTOR: Actor`

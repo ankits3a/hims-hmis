@@ -10,7 +10,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { advanceOrderItem } from "../../kernel/orders/advance";
 import { placeOrder } from "../../kernel/orders/place";
 import { startInstance, transition } from "../../kernel/workflow/instances";
-import { BillingError, issueInvoice } from "../billing";
+import { BillingError, episodeChargeStanding, issueInvoice } from "../billing";
 import { TariffError } from "../tariff";
 import { activeReflexRules, analytesFor } from "./catalogue";
 import { LabError } from "./errors";
@@ -170,7 +170,8 @@ export type ReflexPlacement = {
   orderNo: string;
   orderItemId: string;
   addedServiceId: string;
-  invoiceId: string;
+  /** #785 — null when the reflex went to an inpatient's running bill. */
+  invoiceId: string | null;
 };
 
 /**
@@ -690,7 +691,12 @@ async function placeReflexOrders(
        * reflex as the placer would refuse every reflex in the system. The person answerable for the
        * charge is the person who signed the result that caused it.
        */
-      const invoice = await issueInvoice(
+      /**
+       * #785 — an inpatient's reflex goes on the running bill (live OR ended admission: the sample was taken during the
+       * stay, so the supplementary bill takes a line posted after it), never on an invoice of its own.
+       */
+      const episode = await episodeChargeStanding(sp, ctx.encounterNo, { lock: true });
+      const invoice = episode !== null ? null : await issueInvoice(
         sp as unknown as Db,
         actor,
         {
@@ -703,7 +709,7 @@ async function placeReflexOrders(
         },
         now,
       );
-      const [billedLine] = await sp
+      const [billedLine] = invoice === null ? [] : await sp
         .select({ id: invoiceLines.id })
         .from(invoiceLines).where(eq(invoiceLines.invoiceId, invoice.invoiceId));
 
@@ -714,7 +720,7 @@ async function placeReflexOrders(
         orderItemId: reflexItemId,
         instanceId,
         serviceId: match.addsServiceId,
-        invoiceId: invoice.invoiceId,
+        invoiceId: invoice?.invoiceId ?? null,
         invoiceLineId: billedLine?.id ?? null,
         chargeReason: "lab_reflex",
         /** DD8 — a reflex inherits the consent that allowed it, so a reflex OF a reflex is legitimate. */
@@ -753,10 +759,16 @@ async function placeReflexOrders(
         },
       }));
 
+      if (episode !== null) {
+        await episode.sink.post(sp, actor, {
+          encounterNo: ctx.encounterNo, department: "lab", at: now,
+          items: [{ orderId: order.orderId, orderItemId: reflexItemId, serviceId: match.addsServiceId }],
+        });
+      }
       placed.push({
         ruleId: match.ruleId, ruleVersion: match.ruleVersion, orderId: order.orderId,
         orderNo: order.orderNo, orderItemId: reflexItemId, addedServiceId: match.addsServiceId,
-        invoiceId: invoice.invoiceId,
+        invoiceId: invoice?.invoiceId ?? null,
       });
     });
     } catch (e) {
