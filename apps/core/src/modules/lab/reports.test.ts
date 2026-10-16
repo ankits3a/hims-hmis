@@ -22,6 +22,7 @@ import {
 } from "./reports";
 import { amendResult, enterResult } from "./results";
 import { verifyResult } from "./verify";
+import { publishableOrders } from "./worklist";
 import type { LabDeskFixture } from "../../../test/helpers/lab";
 import type { Db } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
@@ -638,6 +639,25 @@ describe("the report centre (17c T5)", () => {
     expect([after.reports[0]!.delivery.allowed, after.reports[0]!.delivery.reason, after.reports[0]!.snapshot !== null])
       .toEqual([true, "released_by_approval", true]);
     expect((await deliveryRegister(db, fx.desk.actor, "2026-08-29"))[0]!.delivery.reason).toBe("released_by_approval");
+  });
+
+  /**
+   * #889 — an order's tests come in ONE fixed order (by test name, then service id) on the publish
+   * queue, on the printed report's panels and on the delivery register. Ordered LFT first, so the
+   * heap order is the reverse of the name order; without each reader's ORDER BY these saw [LFT, CBC].
+   */
+  it("the publish queue, the report's panels and the register list an order's tests by test name (#889)", async () => {
+    const run = await runLabOrder(db, fx, ["LFT", "CBC"], { at: AT });
+    const queued = (await publishableOrders(db, fx.pathologist.actor, AT)).filter((o) => o.orderId === run.orderId);
+    expect(queued.map((o) => o.orderables)).toEqual([["CBC", "LFT"]]);
+
+    await publishReport(db, fx.pathologist.actor, { orderId: run.orderId }, AT);
+    const [row] = await db.select().from(labReports).where(eq(labReports.orderId, run.orderId));
+    const snapshot = row!.snapshot as { panels: { orderableCode: string }[] };
+    expect(snapshot.panels.map((p) => p.orderableCode)).toEqual(["CBC", "LFT"]);
+
+    await grantPermissionToRole(db, fx.registry, "lab_reception", "orders.read.restricted");
+    expect((await deliveryRegister(db, fx.desk.actor, "2026-08-29")).map((r) => r.orderables)).toEqual([["CBC", "LFT"]]);
   });
 
   it("A3: a reader without the print permission is refused", async () => {

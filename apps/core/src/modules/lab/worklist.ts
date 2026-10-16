@@ -373,7 +373,8 @@ export async function publishableOrders(
       /** Nothing to publish while an item has not been picked up at all. */
       ne(orderItems.status, "placed"),
     ))
-    .orderBy(asc(orders.placedAt));
+    /** #889 — an order's tests in one fixed order (by test name), not the heap's. */
+    .orderBy(asc(orders.placedAt), asc(orders.id), asc(labOrderables.nameEn), asc(orderItems.serviceId));
   if (rows.length === 0) return [];
 
   /**
