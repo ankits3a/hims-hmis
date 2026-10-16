@@ -4,7 +4,7 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { ModuleRegistry } from "../../kernel/modules/loader";
 import { grantPermissionToRole, syncPermissions } from "../../kernel/auth/permissions";
 import { activateOpdVisitDefinition, ensureRole, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters, testCfg } from "../../../test/helpers/opd";
-import { opdPrescriptionDrafts, patientAllergies } from "../../kernel/db/schema";
+import { cdsRxLines, opdPrescriptionDrafts, patientAllergies } from "../../kernel/db/schema";
 import { startConsultation } from "./consultation";
 import { openVisit } from "./encounters";
 import { discardDraft, getPendingDraft, issueDraft, saveDraft } from "./prescription-drafts";
@@ -160,7 +160,11 @@ describe("FD-30 — the transcription draft, and the doctor's tap", () => {
       `opd_prescriptions` needed no new column for any of this.
     */
     expect(rows[0]).toMatchObject({ doctorId: dra.doctorId, issuedBy: dra.userId, status: "active" });
-    expect(rows[0]!.lines).toEqual(SLIP);
+    /* #620 — every line says it came off the paper slip, and so does the countable copy: not the doctor's own typing. */
+    expect(rows[0]!.lines).toEqual(SLIP.map((l) => ({ ...l, source: "paper" })));
+    const counted = await db.select({ source: cdsRxLines.source, fromSuggestion: cdsRxLines.fromSuggestion }).from(cdsRxLines)
+      .where(eq(cdsRxLines.prescriptionId, issued.prescriptionId)).orderBy(cdsRxLines.lineIndex);
+    expect(counted).toEqual([{ source: "paper", fromSuggestion: false }, { source: "paper", fromSuggestion: false }]);
 
     const after = await db.select().from(opdPrescriptionDrafts).where(eq(opdPrescriptionDrafts.id, draft.id));
     expect(after[0]).toMatchObject({
