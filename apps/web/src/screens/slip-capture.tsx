@@ -137,6 +137,14 @@ function typingIn(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(target.tagName);
 }
+/**
+ * A letter key is only "typed" into a box that takes text. A focused BUTTON takes Enter (it clicks),
+ * not R or P: after "Use this" the dock's File button sits in the same place and keeps the focus, so
+ * counting a button here made R do nothing right after a photo.
+ */
+function typingText(target: EventTarget | null): boolean {
+  return typingIn(target) && !(target instanceof HTMLButtonElement);
+}
 
 const ScanIcon = (): React.ReactElement => (
   <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
@@ -476,8 +484,8 @@ export function SlipCapture(): React.ReactElement {
   onKeyRef.current = (e: KeyboardEvent): void => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key === "Escape" && resolved !== null) { e.preventDefault(); clearDesk(); return; }
-    if (typingIn(e.target)) return;
-    if (e.key === "Enter") { e.preventDefault(); act.current(); return; }
+    if (e.key === "Enter") { if (typingIn(e.target)) return; e.preventDefault(); act.current(); return; }
+    if (typingText(e.target)) return;
     const k = e.key.toLowerCase();
     if (k === "r" && (shot !== null || raw !== null)) { e.preventDefault(); retake(); return; }
     if (k === "p" && resolved === null && filed !== null) { e.preventDefault(); void addPage(); }
