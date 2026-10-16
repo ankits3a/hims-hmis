@@ -306,6 +306,30 @@ describe("Owner 2026-09-27 — the site's own pages may use the camera", () => {
 });
 
 /**
+ * The site isolates its own origin: the opener policy was already same-origin; the embedder and resource policies close
+ * the other two directions, so no other origin can embed this site's responses and the site embeds nothing it has not
+ * opted into. Everything it loads is its own origin (the content security policy says so too).
+ */
+describe("the site isolates its origin", () => {
+  const prod = parseCaddyfile(readFileSync(CADDYFILE, "utf8"));
+  const uat = parseCaddyfile(readFileSync(UAT_CADDYFILE, "utf8"));
+  // UAT too: staging is where a resource these headers refuse must show first, before production.
+  for (const [name, tree, site] of [
+    ["production", prod, /^hmis\.crkmch\.com$/],
+    ["uat", uat, /^http:\/\/\{\$HMIS_UAT_SITE\}:8080$/],
+  ] as const) {
+    it(`${name} sends opener, embedder and resource policies`, () => {
+      const lines = only(only(tree, site, `${name} site`), /^header$/, `${name} header block`).lines;
+      expect(lines).toEqual(expect.arrayContaining([
+        'Cross-Origin-Opener-Policy "same-origin"',
+        'Cross-Origin-Embedder-Policy "require-corp"',
+        'Cross-Origin-Resource-Policy "same-origin"',
+      ]));
+    });
+  }
+});
+
+/**
  * OWNER 2026-09-30 — THE STAGING SITE. https://stagehmis.crkmch.com is served by PRODUCTION'S caddy
  * (80 and 443 are production's) and proxied to UAT's caddy on docker0, where basic auth, the
  * headers and the /api split are applied. Each assertion below is a way the hop breaks quietly:
