@@ -68,6 +68,8 @@ const ROUTES: [method: "get" | "post" | "put", path: string, permission: string]
   ["post", "/billing/sessions", "billing.session.own"],
   ["get", "/billing/sessions/current", "billing.session.own"],
   ["get", "/billing/sessions/current/open-items", "billing.session.own"], // UX-AUDIT 2026-09-28
+  ["get", "/billing/sessions/last-closed", "billing.session.own"], // #656 — the close summary survives a reload
+  ["get", "/billing/sessions/X/variance-approval", "billing.session.own"], // #656 — her own approval's status
   ["post", "/billing/sessions/X/close", "billing.session.own"],
   ["post", "/billing/sessions/X/confirm-close", "billing.session.own"],
   ["get", "/billing/sessions", "billing.session.read"],
@@ -984,6 +986,46 @@ describe("billing e2e", () => {
   });
 
   /**
+   * #656 — the cashier holds `billing.session.own` and NOT `approvals.requests.read`, so before this
+   * she could neither see a closed drawer's summary after a reload nor whether her variance was
+   * approved. Both reads are her OWN drawer only: another cashier with the identical grants gets 404.
+   */
+  it("#656: the cashier reads her own variance approval's status and her last closed drawer, and nobody else's", async () => {
+    const before = await http().get("/billing/sessions/last-closed").set(...auth(cashier.token)).expect(200);
+    const sessionId = await openSession(cashier.token, 100_000);
+
+    // Open: before the count — no approval to read, and the open drawer is never the "last closed".
+    await http().get(`/billing/sessions/${sessionId}/variance-approval`).set(...auth(cashier.token)).expect(404);
+    const whileOpen = await http().get("/billing/sessions/last-closed").set(...auth(cashier.token)).expect(200);
+    expect(whileOpen.body.session?.id ?? null).toBe(before.body.session?.id ?? null);
+
+    const closing = await http().post(`/billing/sessions/${sessionId}/close`).set(...auth(cashier.token))
+      .send({ denominations: { "50000": 1 } }).expect(201);
+    expect(closing.body.status).toBe("closing");
+    const approvalId = closing.body.varianceApprovalId as string;
+
+    // The broad approvals read stays closed to her; the narrow one answers.
+    await http().get(`/approvals/${approvalId}`).set(...auth(cashier.token)).expect(403);
+    const pending = await http().get(`/billing/sessions/${sessionId}/variance-approval`).set(...auth(cashier.token)).expect(200);
+    expect(pending.body).toEqual({ status: "pending", requestedAt: expect.any(String), decidedAt: null, decisionNote: null });
+    await http().get(`/billing/sessions/${sessionId}/variance-approval`).set(...auth(cashier2.token)).expect(404);
+
+    await http().post(`/approvals/${approvalId}/approve`).set(...auth(manager.token)).send({ note: "counted together" }).expect(201);
+    const granted = await http().get(`/billing/sessions/${sessionId}/variance-approval`).set(...auth(cashier.token)).expect(200);
+    expect(granted.body).toEqual({ status: "granted", requestedAt: expect.any(String), decidedAt: expect.any(String), decisionNote: "counted together" });
+
+    await http().post(`/billing/sessions/${sessionId}/confirm-close`).set(...auth(cashier.token)).expect(201);
+    const last = await http().get("/billing/sessions/last-closed").set(...auth(cashier.token)).expect(200);
+    expect(last.body.session).toMatchObject({
+      id: sessionId, status: "closed", openingFloatPaise: 100_000, countedCashPaise: 50_000, expectedCashPaise: 100_000, variancePaise: -50_000,
+    });
+    expect(last.body.session.closedAt).toEqual(expect.any(String));
+
+    const others = await http().get("/billing/sessions/last-closed").set(...auth(cashier2.token)).expect(200);
+    expect(others.body.session?.id ?? null).not.toBe(sessionId);
+  });
+
+  /**
    * UX-AUDIT 2026-09-28 — "OPEN ON THIS DRAWER" reads the caller's own live drawer and carries NO
    * CASH FIGURE: the close is a blind count, so the payload's keys are pinned whole — a cash total,
    * a "collected" or an expected added later turns this red before it reaches the screen.
@@ -1039,7 +1081,8 @@ describe("billing e2e", () => {
     // the office's needs list. Measured from the failing run after merging main: `Received length: 34`.
     // OWNER APP 2026-10-09: 34 -> 35, `reports/owner-money` (measured: `Received length: 35`).
     // #852: 35 -> 36, `patients/X/bills-alias` (measured: `Received length: 36`).
-    expect(ROUTES).toHaveLength(36);
+    // #656: 36 -> 38, `sessions/last-closed` and `sessions/:id/variance-approval`.
+    expect(ROUTES).toHaveLength(38);
     for (const [method, path, permission] of ROUTES) {
       const res = await http()[method](path).set(...auth(rando.token)).send({});
       expect({ method, path, status: res.status, message: res.body.message }).toEqual({
