@@ -605,3 +605,21 @@ it("#777: Hospital numbers is one row for a holder of any numbers grant, and abs
   await waitFor(() => expect(screen.getByRole("link", { name: "Pharmacy office" })).toBeInTheDocument());
   expect(screen.queryByRole("link", { name: "Hospital numbers" })).not.toBeInTheDocument();
 });
+
+/*
+ * WALK 2026-10-14 — the shell's clock read "WED 14 OCT · 22:15 IST" on every Hindi screen. Its date
+ * follows the language like every other label in the header.
+ */
+it("the shell clock's date follows the language", async () => {
+  renderShell(["opd.visits.open"]);
+  const clock = (): HTMLElement => document.querySelector<HTMLElement>("header.shell .clock")!;
+  await waitFor(() => expect(clock()).not.toBeNull());
+  expect(clock()).toHaveTextContent(/(MON|TUE|WED|THU|FRI|SAT|SUN) \d/);
+  await act(async () => { await i18next.changeLanguage("hi"); });
+  try {
+    await waitFor(() => expect(clock()).not.toHaveTextContent(/(MON|TUE|WED|THU|FRI|SAT|SUN) \d/));
+    expect(clock().textContent).toMatch(/[ऀ-ॿ]/);
+  } finally {
+    await act(async () => { await i18next.changeLanguage("en"); });
+  }
+});

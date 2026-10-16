@@ -7,6 +7,7 @@ import { isApptPick, useCopilot } from "../../lib/use-copilot";
 import { CopilotActPicker } from "../copilot-act-pick";
 import { ModeBanner } from "../mode-banner";
 import "./frame.css";
+import { dateLocale } from "../../lib/date-locale";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -70,7 +71,7 @@ function useDeskClock(): string {
     return () => clearInterval(id);
   }, []);
   const d = new Date(now);
-  const day = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", weekday: "short", day: "numeric", month: "short", year: "numeric" })
+  const day = new Intl.DateTimeFormat(dateLocale(undefined, "en-GB"), { timeZone: "Asia/Kolkata", weekday: "short", day: "numeric", month: "short", year: "numeric" })
     .format(d).replace(/,/g, "");
   const time = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
   return `${day} · ${time}`;

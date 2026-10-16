@@ -301,15 +301,28 @@ describe("reconcile queue", () => {
     expect(JSON.stringify(item)).not.toContain("9812300127");
   });
 
-  it("BOARD — the band: Strong needs name, DOB and mobile; a differing sex or DOB makes it Weak", () => {
+  it("BOARD — the band: Strong needs name, DOB and mobile; a differing name or sex, or a differing DOB with under 2 of 4, makes it Weak", () => {
     const card = { name: "Suresh Kumar Yadav", dob: "1974-03-14", sex: "male", phone: "9812300127" };
     expect(compareCandidate(card, { name: "Suresh Kumar Yadav", dob: "1974-03-14", sex: "male", phone: "9812300127" }, 1).strength).toBe("strong");
-    expect(compareCandidate(card, { name: "Suresh Yadav", dob: "1997-07-02", sex: "male", phone: "9700000550" }, 0.4))
-      .toMatchObject({ name: "agrees", dob: "differs", strength: "weak", agrees: 2 });
     expect(compareCandidate({ ...card, dob: null }, { name: "Suresh Yadav", dob: null, sex: "male", phone: null }, 0.4))
       .toMatchObject({ name: "agrees", mobile: "not_on_record", strength: "possible" });
+    // A DOB that differs with nothing else agreeing beside the name is 1 of 4: Weak, a proof is still owed.
+    expect(compareCandidate({ ...card, sex: null }, { name: "Suresh Yadav", dob: "1997-07-02", sex: "male", phone: "9700000550" }, 0.4))
+      .toMatchObject({ name: "agrees", dob: "differs", agrees: 1, strength: "weak" });
     expect(maskMobile("+91 98123 00127")).toBe("98\u2022\u2022\u2022 \u2022\u2022127");
     expect(maskMobile(null)).toBeNull();
+  });
+
+  it("BOARD (#654) — the board's three columns: 4 of 4 Strong, 2 of 4 Possible (a DOB that differs alone is not Weak), 1 of 4 Weak", () => {
+    const card = { name: "Suresh Kumar Yadav", dob: "1974-03-14", sex: "male", phone: "9812300127" };
+    expect(compareCandidate(card, { name: "Suresh Kumar Yadav", dob: "1974-03-14", sex: "male", phone: "9812300127" }, 1))
+      .toMatchObject({ agrees: 4, strength: "strong" });
+    expect(compareCandidate(card, { name: "Suresh Yadav", dob: "1997-07-02", sex: "male", phone: "9700000550" }, 0.4))
+      .toMatchObject({ name: "agrees", dob: "differs", sex: "agrees", mobile: "differs", agrees: 2, strength: "possible" });
+    expect(compareCandidate(card, { name: "Suresha Kumari", dob: "1979-01-21", sex: "female", phone: "9812300127" }, 0.3))
+      .toMatchObject({ name: "differs", sex: "differs", mobile: "agrees", agrees: 1, strength: "weak" });
+    // A differing sex is Weak however many others agree; a mobile alone never lifts a match.
+    expect(compareCandidate(card, { name: "Suresh Kumar Yadav", dob: "1974-03-14", sex: "female", phone: "9812300127" }, 1).strength).toBe("weak");
   });
 
   it("BOARD — a WEAK link is refused without a stated proof and a confirm, and the proof is saved with the link", async () => {

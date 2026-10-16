@@ -15,6 +15,7 @@ import type { Eye } from "../lib/eye-line";
 import type {
   WireDoctorStock, WireExamFinding, WireRxHistoryItem, WireTimelineItem, WireVitals,
 } from "../lib/opd-api";
+import { dateLocale } from "../lib/date-locale";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -916,7 +917,7 @@ function PastVisitSections({ encounterId }: { encounterId: string }): React.Reac
 /** "2026-09-18" → "18 Sep 2026", the way a doctor reads a date (owner's walk, 2026-09-23). */
 export function fmtDay(iso: string): string {
   const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString(dateLocale(undefined, "en-GB"), { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 }
 
 export function HistoryBrowser({ visits, currentEncounterId }: {

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import {
   opdDepartments, opdDoctors, opdEncounters, opdQueueEntries, opdVitals, patientGuardians, patients, users,
 } from "../db/schema";
@@ -934,8 +934,10 @@ export async function renderPrescriptionSheet(
   /*
     ═══ GUARDIAN NAME — owner, 2026-10-07 ═══
     *"Add 'Guardian Name' label & field in the prescription slip print along with name, age and other
-    fields."* It sits under Name. The value is the guardian whose authority stands on the visit day
-    (the oldest link first — the one registration made), with the relation written the way an Indian
+    fields."* It sits under Name. The value is the newest guardian link still standing on the visit
+    day (owner 2026-10-15: *"print newest guardian"* — a changed guardian is a new link beside the
+    old one). `majority_ended` still prints: the nightly sweep ends an adult's guardian's AUTHORITY,
+    not who came with them; only a link the desk `ended` stays off. The relation is written the way an Indian
     record writes it: a father or mother is S/o or D/o by the patient's gender, a husband W/o, anyone
     else C/o. With no guardian linked it falls back to the registered father's / husband's name —
     S/o for a man; a woman's may be either, so the sheet does not guess and prints C/o.
@@ -947,8 +949,8 @@ export async function renderPrescriptionSheet(
     const female = s.gender.toLowerCase().startsWith("f");
     const links = await db.select({ name: patientGuardians.name, relationship: patientGuardians.relationship, validTo: patientGuardians.validTo })
       .from(patientGuardians)
-      .where(and(eq(patientGuardians.patientId, s.patientId), eq(patientGuardians.status, "active")))
-      .orderBy(asc(patientGuardians.createdAt));
+      .where(and(eq(patientGuardians.patientId, s.patientId), inArray(patientGuardians.status, ["active", "majority_ended"])))
+      .orderBy(desc(patientGuardians.createdAt));
     const standing = links.find((g) => g.name.trim() !== "" && (g.validTo === null || g.validTo.getTime() > now.getTime()));
     if (standing !== undefined) {
       const parent = standing.relationship === "father" || standing.relationship === "mother";

@@ -61,6 +61,24 @@ describe("the environment banner (11i T3)", () => {
     expect(document.title).toBe("UAT · HMIS");
   });
 
+  it("reserves its own height on <html> while shown, and nothing on production (walk 2026-10-14)", async () => {
+    // The banner is fixed; without a reserved strip it sat over the shell's logo and menu and over
+    // the pharmacy desk's header row. The page offsets itself only when this attribute is present.
+    stubFetch({ "GET /api/health": { status: "ok", db: "ok", worker: "ok", environment: "UAT" } });
+    const view = renderWithProviders(<EnvironmentBanner />);
+    await screen.findByRole("status");
+    await waitFor(() => { expect(document.documentElement).toHaveAttribute("data-env-banner"); });
+    view.unmount();
+    expect(document.documentElement).not.toHaveAttribute("data-env-banner");
+  });
+
+  it("leaves <html> untouched when the API reports no environment", async () => {
+    stubFetch({ "GET /api/health": { status: "ok", db: "ok", worker: "ok", environment: null } });
+    renderWithProviders(<EnvironmentBanner />);
+    await waitFor(() => { expect(document.title).toBe("HMIS"); });
+    expect(document.documentElement).not.toHaveAttribute("data-env-banner");
+  });
+
   it("renders nothing when /health cannot be reached — a blip must not invent an environment", async () => {
     stubFetch({}); // every route 404s
     renderWithProviders(<EnvironmentBanner />);
@@ -88,5 +106,22 @@ describe("the banner's two load-bearing style rules (11i T3)", () => {
     // `.d1` is 40 and its command palette is 60 (desk-one.css); anything at or below either is a
     // banner Desk One covers, on the seat where a trainee is most likely to type a real name.
     expect(Number(z[1])).toBeGreaterThan(60);
+  });
+
+  it("pushes the page and the full-screen desks below itself, through one variable that is 0 on production", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const read = (p: string): string => readFileSync(resolve(__dirname, p), "utf8");
+    const css = read("../styles.css");
+    expect(css).toMatch(/:root\s*\{\s*--env-banner-h:\s*0px;?\s*\}/);
+    expect(css).toMatch(/:root\[data-env-banner\]\s*\{\s*--env-banner-h:\s*20px;?\s*\}/);
+    const banner = /\.env-banner \{([\s\S]*?)\}/.exec(css)?.[1] ?? "";
+    expect(banner).toMatch(/height:\s*var\(--env-banner-h\)/);
+    expect(css).toMatch(/body\s*\{\s*padding-top:\s*var\(--env-banner-h, 0px\);?\s*\}/);
+    // the fixed, viewport-covering roots: Desk One (and every seat that wears .d1), the stations
+    const d1 = /\n\.d1 \{([\s\S]*?)\}/.exec(read("../screens/desk-one/desk-one.css"))?.[1] ?? "";
+    expect(d1).toMatch(/top:\s*var\(--env-banner-h, 0px\)/);
+    const st = /\n\.st \{([\s\S]*?)\}/.exec(read("./station/station.css"))?.[1] ?? "";
+    expect(st).toMatch(/top:\s*var\(--env-banner-h, 0px\)/);
   });
 });

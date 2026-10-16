@@ -37,7 +37,7 @@ const transcriptionBody = z.object({
     serviceId: z.string().min(1).max(64),
     code: z.string().min(1).max(64),
     name: z.string().min(1).max(300),
-    pricePaise: z.number().int().nonnegative(),
+    pricePaise: z.number().int().nonnegative().nullable(),
   })).max(20).optional(),
   note: z.string().max(2000).nullish(),
 });

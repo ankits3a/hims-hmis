@@ -9,14 +9,14 @@ import {
   purchaseOrderDocument, writeOffManifestDocument,
 } from "./office";
 import { officeNeeds } from "./office-needs";
-import { draftPurchaseOrders, planPurchaseDrafts } from "./purchase-drafts";
+import { draftPurchaseOrders, orderFromRates, planPurchaseDrafts, vendorRateSheet } from "./purchase-drafts";
 import { officeExecuteMerge, officeGetMerge, officeItems, officeMergePreview, officeRaiseMerge } from "./item-merge";
 import type { OfficeItems } from "./item-merge";
 import type { OfficeNeeds } from "./office-needs";
 import type { ItemMergeView, MergePreview } from "../materials";
 import type { OfficePay, OfficeRecall, OfficeReturns, OfficeToday } from "./office";
 import type { BillDraft } from "../materials";
-import type { PurchasePlan } from "./purchase-drafts";
+import type { PurchasePlan, RateSheetLine } from "./purchase-drafts";
 import type { PoView, ReturnView } from "../materials";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -84,6 +84,28 @@ export class PharmacyOfficeController {
     const b = parsed(assignBody, body ?? {});
     try {
       return { drafts: await draftPurchaseOrders(this.db, actor, new Date(), b.assign ?? []) };
+    } catch (e) { officeHttp(e); }
+  }
+
+  /** Owner 2026-10-04 — a vendor's contracted rates, as the office orders from them. */
+  @RequirePermission("materials.po.raise", "hospital")
+  @Get("vendor-rates/:vendorId")
+  async rateSheet(@CurrentActor() actor: Actor, @Param("vendorId") vendorId: string): Promise<{ lines: RateSheetLine[] }> {
+    try {
+      return { lines: await vendorRateSheet(this.db, actor, vendorId) };
+    } catch (e) { officeHttp(e); }
+  }
+
+  /** Owner 2026-10-04 — a DRAFT order at a vendor's contracted rates; the server prices every line. */
+  @RequirePermission("materials.po.raise", "hospital")
+  @Post("order-from-rates")
+  async fromRates(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ order: PoView }> {
+    const b = parsed(z.object({
+      vendorId: idSchema,
+      lines: z.array(z.object({ itemId: idSchema, qtyPacks: z.number().int().min(1).max(1_000_000), freePacks: z.number().int().min(0).max(1_000_000).optional() })).min(1).max(200),
+    }), body);
+    try {
+      return { order: await orderFromRates(this.db, actor, b.vendorId, b.lines) };
     } catch (e) { officeHttp(e); }
   }
 

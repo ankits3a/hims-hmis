@@ -13,6 +13,7 @@ import type {
   WireBook, WireBookVersion, WireBookedStudy, WireSetupDevice, WireSetupRoom,
 } from "../lib/radiology-setup-api";
 import { RadiologyStation } from "./radiology-station";
+import { dateLocale } from "../lib/date-locale";
 
 /**
  * PLAN 18-S RS4 T4 — **THE SETUP STATION: machines, books and prices.** One route, three header
@@ -36,7 +37,7 @@ export const SETUP_VIEWS: readonly SetupView[] = ["machines", "books", "prices"]
 
 function slotText(iso: string | null): string {
   if (iso === null) return "—";
-  return new Date(iso).toLocaleString("en-IN", {
+  return new Date(iso).toLocaleString(dateLocale(), {
     day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata",
   });
 }

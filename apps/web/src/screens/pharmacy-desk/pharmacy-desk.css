@@ -26,3 +26,49 @@
 /* Save draft's confirmation — a quiet green line at the top of the desk, where the ticket just was. */
 .d1 .draft-saved { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 18px; padding: 11px 14px; border-radius: 7px;
   border: 1px solid var(--green-line, #b9dccb); background: var(--green-soft); color: var(--green); font-size: 13px; line-height: 19px; font-weight: 500; }
+
+/* ══ WALK 2026-10-14 — the desk on a phone (≤900 px): one column, after Desk One's phone desk ══
+   The header and the menu reuse Desk One's `.top-compact` / `.d1-menu` rules; these are the desk's own. */
+@media (max-width: 900px) {
+  .d1 .pd-body.phone { flex-direction: column; overflow-y: auto; }
+  .d1 .pd-body.phone [hidden] { display: none !important; }
+  .d1 .pd-strip-wrap { flex-shrink: 0; background: var(--card); border-bottom: 1px solid var(--line); }
+  .d1 .pd-strip { display: flex; align-items: center; gap: 11px; width: 100%; min-height: 56px; padding: 8px 14px; }
+  .d1 .pd-strip-av { width: 36px; height: 36px; border-radius: 6px; background: var(--wash); border: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: center; font-weight: 600; color: var(--dim); flex-shrink: 0; }
+  .d1 .pd-strip-id { display: flex; flex-direction: column; min-width: 0; flex-grow: 1; }
+  .d1 .pd-strip-id strong { font-size: 15px; font-weight: 600; line-height: 19px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .d1 .pd-strip-id .mo { font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .d1 .pd-strip-allergy { align-self: flex-start; margin-top: 3px; height: 20px; font-size: 10.5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .d1 .pd-strip-no { font-size: 13px; font-weight: 600; flex-shrink: 0; }
+  .d1 .pd-strip-chev { width: 20px; text-align: center; color: var(--dim); flex-shrink: 0; }
+  .d1 .pd-strip-body { max-height: 60vh; overflow-y: auto; border-top: 1px solid var(--line2); }
+  .d1 .pd-tabs { display: flex; flex-shrink: 0; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2; }
+  .d1 .pd-tabs [role="tab"] { flex: 1 1 0; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    font-size: 13px; font-weight: 600; color: var(--dim); text-align: center; border-bottom: 2px solid transparent; }
+  .d1 .pd-tabs [role="tab"][aria-selected="true"] { color: var(--ink); border-bottom-color: var(--green); }
+  .d1 .pd-tab-n { font-size: 11px; padding: 0 6px; border-radius: 99px; background: var(--wash); border: 1px solid var(--line); }
+  /* Every pane full width; the desktop columns' fixed widths and side borders do not apply here. */
+  .d1 .pd-body.phone .rail, .d1 .pd-body.phone aside { width: auto !important; border-right: none !important; border-left: none !important; flex-shrink: 0; }
+  .d1 .pd-body.phone > main { flex: 0 0 auto; overflow: visible !important; padding: 16px 14px 24px !important; }
+  .d1 .pd-body.phone > main * { max-width: 100%; }
+  .d1 .pd-body.phone > main [style*="grid-template-columns"] { grid-template-columns: minmax(0, 1fr) !important; }
+  .d1 .pd-body.phone > main input { min-height: 44px; }
+  .d1 .pd-pane { flex: 1 0 auto; }
+  .d1 .pd-pane > aside { overflow: visible !important; min-height: 100%; }
+  /* A ticket line, stacked: tick · what the doctor wrote · ⋯ on the first row; → what you are giving
+     on the second; quantity and amount on the third. The column headings have no columns to head. */
+  .d1 .pd-body.phone .pd-lhead > :not(:nth-child(2)) { display: none; }
+  .d1 .pd-body.phone .pd-lhead > :nth-child(2) { width: auto !important; }
+  .d1 .pd-body.phone .pd-lrow { flex-wrap: wrap; row-gap: 6px; padding: 12px 12px !important; }
+  .d1 .pd-body.phone .pd-lrow > :nth-child(1) { order: 1; }
+  .d1 .pd-body.phone .pd-lrow > :nth-child(2) { order: 2; width: auto !important; flex: 1 1 calc(100% - 85px); min-width: 0; }
+  .d1 .pd-body.phone .pd-lrow > :nth-child(7) { order: 3; }
+  .d1 .pd-body.phone .pd-lrow > :nth-child(3) { order: 4; margin-left: 32px; }
+  .d1 .pd-body.phone .pd-lrow > :nth-child(4) { order: 5; flex: 1 1 calc(100% - 68px); min-width: 0; }
+  .d1 .pd-body.phone .pd-lrow > :nth-child(5) { order: 6; width: auto !important; margin-left: 32px; text-align: left !important; }
+  .d1 .pd-body.phone .pd-lrow > :nth-child(5) > span { display: inline !important; margin-right: 6px; }
+  .d1 .pd-body.phone .pd-lrow > :nth-child(6) { order: 7; width: auto !important; margin-left: auto; }
+  /* the dock's ask box gives way on a narrow screen instead of pushing the page sideways */
+  .d1[data-seat="pharmacy-desk"] input[aria-label][style*="width: 290px"] { width: clamp(110px, 38vw, 290px) !important; }
+}

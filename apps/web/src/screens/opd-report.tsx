@@ -15,6 +15,7 @@ import {
 import "../styles/paper-pine.css";
 import "./dashboard.css";
 import "./opd-report.css";
+import { dateLocale } from "../lib/date-locale";
 
 /**
  * ═══ THE OPD REPORT, DEPARTMENT BY DEPARTMENT ═══
@@ -58,7 +59,7 @@ function Counts({ c, total = false }: { c: DayCounts; total?: boolean }): React.
   );
 }
 
-const DAY_IN_MONTH = new Intl.DateTimeFormat("en-IN", { timeZone: "UTC", day: "2-digit", month: "short" });
+const DAY_IN_MONTH = { format: (d: Date | number): string => new Intl.DateTimeFormat(dateLocale(), { timeZone: "UTC", day: "2-digit", month: "short" }).format(d) };
 
 function Patients({ department, sel, span }: { department: DayDepartment; sel: Selection; span: number }): React.ReactElement {
   const { t } = useTranslation();
