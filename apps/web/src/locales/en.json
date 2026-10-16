@@ -20456,5 +20456,66 @@
     "standDownSure": "Yes, stand down",
     "stoodDown": "Stood down · {{n}} back to triage",
     "cancel": "Cancel"
+  },
+  "erCopilot": {
+    "suggestion": "Suggestion",
+    "esi": {
+      "title": "Copilot triage suggestion",
+      "says": "Suggests ESI {{n}} {{word}}",
+      "yours": "From the complaint, age and last recorded vitals. The level is yours to pick.",
+      "use": "Use these answers"
+    },
+    "since": {
+      "title": "Since arrival"
+    },
+    "source": {
+      "arrival": "Arrival",
+      "triage": "Triage",
+      "vitals": "Vitals",
+      "doctor": "Doctor",
+      "call": "Call",
+      "critical": "Critical",
+      "results": "Tests",
+      "meds": "Medicines",
+      "procedure": "Procedure",
+      "note": "Note",
+      "mlc": "MLC",
+      "disposition": "Decision"
+    },
+    "draft": {
+      "summary": "Draft summary",
+      "referral": "Draft referral letter",
+      "mlc_narrative": "Draft MLC narrative",
+      "label": "Draft",
+      "fromModel": "Course sentence by the copilot — check it before you sign.",
+      "unverified": "check these words: {{words}}",
+      "why": {
+        "barred": "From the record only (no model for this patient).",
+        "model_off": "From the record only (no model set up).",
+        "halted": "From the record only (copilot paused).",
+        "capped": "From the record only (today's copilot limit reached).",
+        "identifier_leak": "From the record only.",
+        "model_down": "From the record only (copilot not reachable).",
+        "over_budget": "From the record only (copilot too slow).",
+        "rejected": "From the record only (the copilot's sentence did not match the notes).",
+        "no_text": "From the record only.",
+        "template_only": "From the record only."
+      }
+    },
+    "waiting": {
+      "title": "Emergency — waiting area",
+      "titleHi": "आपातकालीन — प्रतीक्षा क्षेत्र",
+      "offline": "Offline · last update {{time}}",
+      "empty": "No one waiting.",
+      "foot": "Your token is the last four digits on the patient's band or slip. Ask at the ER desk for anything more."
+    },
+    "stage": {
+      "Waiting": "Waiting",
+      "Being seen": "Being seen",
+      "Waiting for test": "Waiting for test",
+      "Admitting": "Admitting",
+      "Going home soon": "Going home soon",
+      "Transfer arranged": "Transfer arranged"
+    }
   }
 }

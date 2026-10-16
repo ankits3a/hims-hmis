@@ -269,6 +269,31 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   `readMciCount` (`/er/mci/:id/count`, the district head count — counts only). Screen `apps/web/src/screens/er-mci.tsx`
   (`/er/mci`); the board tile carries `mciTag` (colour and word).
 
+### Lane 9 (er-copilot, #816)
+- T2: the copilot proposes, a person confirms. Nothing here writes a clinical record; the one write is `copilot_level` on
+  `er_triage_entries` (migration `er_copilot`): the proposal the screen showed, so a different pick is an override.
+- `now-cards.ts` — eleven desk providers on the manifest (`ER_NOW_CARD_KEYS`), each behind the permission of the act that
+  answers it: `casualty_now` (E10, stats; `er.board.view`), `retriage_due`, `lwbs_risk` (`er.triage`), `doctor_overdue`,
+  `call_unanswered`, `result_ready`, `critical_result` (`er.care`), `boarding_long` (`er.disposition`), `mlc_intimation_due`,
+  `mlc_countersign_due` (`er.mlc`), `pre_alert` (`er.arrival.register`). A card exists only while something is owed. DECIDED
+  thresholds are the file's constants (call 10 min, boarding 2 h / hot 4 h, MLC leads 15 min / 2 h, LWBS ESI 4–5 ≥ 60 min).
+  Rows alias unidentified / restricted patients; a sealed one is "Sealed patient" with no bay.
+- `copilot-esi.ts` + contracts `proposeEsi` — the ESI proposal: RULES ONLY, never a model; a read. The web card ticks the
+  four questions ("Use these answers"), never the level; the triage body carries `copilotLevel`.
+- `copilot-since.ts` — "since arrival": candidate lines with records whose LABELS are built from the row; `verifyErSinceLine`
+  (every number and time in the text is in the labels) drops a failing line. No model (DECIDED: the trolley cannot wait).
+  Lines state values and times, never a count the records do not state.
+- `copilot-drafts.ts` — summary (template + one verified model sentence over the masked notes), referral (template only),
+  MLC narrative (template only, ALWAYS). Reads stamped "Draft"; the doctor signs through `discharge_from_er`, `refer_out`,
+  `add_mlc_addendum`. Medicines are never drafted.
+- `copilot-model.ts` — the one door to a model (IPD's door, ER's bar): `erModelBarred` reads the record on every ask — an MLC
+  episode, a sealed or confidential patient = no call; then model off, halt / cap, identifier scrub, budget. Never throws.
+- `copilot-waiting.ts` — `/er/copilot/waiting` (`er.board.wall`): token (last four of the ER number) + stage word. MLC,
+  sealed and confidential patients are absent. Web: `/er/board?waiting=1` (no new route).
+- `copilot-tools.ts` — `emergency.casualty_now` and `emergency.mlc_due` through the #865 intent seam, FLOOR-ONLY (no menu,
+  no help) so the chooser request and the chat system prompt stay byte-identical. Cues are substrings: no "er mein".
+- Web: `apps/web/src/screens/er-copilot.tsx` (card, since arrival, draft button, waiting display).
+
 ## 4. Traps
 - `registerPatient` takes a `Tx` and the band reads the new patient in that same `tx` (`bandPerson(tx, …)`); reading it
   through `db` (`getPatient`) inside the transaction sees nothing.
@@ -324,7 +349,9 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   screen is the ER patient's); ER issue and procedure lines carried to the IP bill (lane 6). er-bill: the ER bill following the merge.
 - Desk: Aadhaar QR and ABHA scans (lane 1 takes the UHID card barcode, UHID, phone and name); a thermal ER band kind on
   the print relay (the browser prints today, decision 0045's fallback); downtime paper-serial reservation.
-- er-copilot: the `pre_alert` Now card; intents declared as copilot tools on the manifest.
+- Lane 9 built the copilot. Still owed: the two intents' model-menu lines (needs an eval re-recording); attendant
+  WhatsApp stage messages (IPD's channel, off for MLC and sealed); a bay proposal (T2); the proposal's "stale" withdrawal
+  (it is recomputed on every read today); "since arrival" model rewording (deterministic only).
 
 ## 6. Callers
 - API: `EmergencyController` (`/er/*`). Worker: `kernel/worker/jobs.ts` `lapseBedReservations` → `lapseErPreAlerts`.

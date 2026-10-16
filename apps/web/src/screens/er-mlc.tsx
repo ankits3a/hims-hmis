@@ -10,6 +10,7 @@ import {
   ER_BOARD_TOPIC, ER_EVIDENCE_KINDS, ER_MLC_CATEGORIES, erRefusalOf, fetchMlc, fetchMlcDesk, mlcAddendumApi, mlcBelongingsApi,
   mlcCountersignApi, mlcEvidenceApi, mlcIntimationApi,
 } from "../lib/er-api";
+import { DraftButton } from "./er-copilot";
 import "../styles/paper-pine.css";
 import "./er.css";
 
@@ -201,7 +202,7 @@ function Case({ m, t, now, busy, act, canSign, lang }: { m: ErMlcDetail; t: T; n
         </article>
       ))}
       {canSign ? <CustodyForms t={t} busy={busy} act={act} mlcId={m.mlcId} /> : null}
-      {canSign ? <AddendumForm t={t} busy={busy} onSave={(body) => act(async () => { await mlcAddendumApi({ mlcId: m.mlcId, ...body }); return t("erMlc.addendumSaved"); })} /> : null}
+      {canSign ? <AddendumForm t={t} busy={busy} episodeId={m.episodeId} onSave={(body) => act(async () => { await mlcAddendumApi({ mlcId: m.mlcId, ...body }); return t("erMlc.addendumSaved"); })} /> : null}
     </div>
   );
 }
@@ -316,13 +317,15 @@ function CustodyForms({ t, busy, act, mlcId }: { t: T; busy: boolean; act: Act; 
   );
 }
 
-function AddendumForm({ t, busy, onSave }: { t: T; busy: boolean; onSave: (body: Record<string, unknown>) => Promise<void> }): React.ReactElement {
+function AddendumForm({ t, busy, episodeId, onSave }: { t: T; busy: boolean; episodeId: string; onSave: (body: Record<string, unknown>) => Promise<void> }): React.ReactElement {
   const [text, setText] = useState("");
   const [category, setCategory] = useState("");
   const [refused, setRefused] = useState(false);
   return (
     <details className="erd-newpatient erm-form" data-testid="er-mlc-addendum-form">
       <summary>{t("erMlc.addAddendum")}</summary>
+      {/* Lane 9 (#816): the narrative Draft quotes the record (injuries, the informant's words); never a model call for an MLC. */}
+      <DraftButton episodeId={episodeId} kind="mlc_narrative" onUse={(f) => { if (f.text) setText(f.text); }} />
       <label className="erd-field"><span>{t("erMlc.addendumText")}</span><textarea rows={3} value={text} onChange={(e) => setText(e.target.value)} /></label>
       <label className="erd-field"><span>{t("erMlc.changeCategory")}</span>
         <select value={category} onChange={(e) => setCategory(e.target.value)}>

@@ -193,6 +193,6 @@ export async function readSinceArrival(db: Db, actor: Actor, episodeId: string, 
     return v.ok;
   });
   const chosen = kept.sort((a, b) => a.rank - b.rank || a.key.localeCompare(b.key)).slice(0, ER_SINCE_MAX_LINES)
-    .map(({ rank: _rank, ...line }) => line);
+    .map((l): ErSinceLine => ({ key: l.key, text: l.text, source: l.source, at: l.at, abnormal: l.abnormal, records: l.records }));
   return { episodeId, asOf: now.toISOString(), arrivedAt: arrivedAt.toISOString(), lines: chosen };
 }

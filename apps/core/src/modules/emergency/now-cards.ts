@@ -41,7 +41,7 @@ const SEV: Record<string, number> = { hot: 0, warn: 1 };
 
 function rank(rows: readonly NowRow[]): DeskRow[] {
   return [...rows].sort((a, b) => (SEV[a.severity ?? ""] ?? 2) - (SEV[b.severity ?? ""] ?? 2) || b.wait - a.wait || a.id.localeCompare(b.id))
-    .slice(0, ROWS).map(({ wait: _w, ...r }) => r);
+    .slice(0, ROWS).map((r): DeskRow => ({ id: r.id, badge: r.badge ?? null, title: r.title, subtitle: r.subtitle, action: r.action ?? null, href: r.href ?? null, severity: r.severity ?? null }));
 }
 
 const since = (from: Date, now: Date): number => Math.max(0, Math.floor((now.getTime() - from.getTime()) / MIN));

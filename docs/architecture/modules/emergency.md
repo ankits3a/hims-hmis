@@ -13,7 +13,7 @@ Source: `apps/core/src/modules/emergency/`
 
 - **Depends on modules:** `billing`, `formulary`, `ipd`, `lab`, `materials`, `ordering`, `patients`, `roster`, `tariff`, `tasks`
 - **Used by modules:** —
-- **Kernel used:** `alerts`, `approvals`, `auth`, `db`, `episodes`, `events`, `modules`, `orders`, `printing`, `realtime`, `tokens`, `workflow`
+- **Kernel used:** `alerts`, `approvals`, `auth`, `config`, `copilot`, `db`, `desk`, `episodes`, `events`, `modules`, `orders`, `printing`, `realtime`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
 
@@ -87,6 +87,30 @@ Source: `apps/core/src/modules/emergency/`
   - `readErCodes(db: Db, actor: Actor, opts: Opts = {}): Promise<ErCodes>`
   - `recordCodeDebrief(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_code_debrief">>`
   - `recordCodeEvent(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_code_event">>`
+- `copilot-drafts.ts`
+  - `ER_DRAFT_BUDGET_MS`
+  - `buildErDraft(db: Db, actor: Actor, episodeId: string, kind: ErDraftKind, opts: Opts = {}): Promise<ErDraft>`
+  - `buildErReferralDraft(db: Db, actor: Actor, episodeId: string, opts: Opts = {}): Promise<ErDraft>`
+  - `buildErSummaryDraft(db: Db, actor: Actor, episodeId: string, opts: Opts = {}): Promise<ErDraft>`
+  - `buildMlcNarrativeDraft(db: Db, actor: Actor, episodeId: string, opts: Opts = {}): Promise<ErDraft>`
+- `copilot-esi.ts`
+  - `readEsiProposal(db: Db, actor: Actor, episodeId: string): Promise<ErEsiProposal>`
+- `copilot-model.ts`
+  - `askErModel(db: Db, actor: Actor, model: ErModel | null | undefined, episodeId: string, ask: ErModelAsk, now: Date): Promise<ErModelAnswer>`
+  - `erModelBarred(db: Db, episodeId: string): Promise<"mlc" | "sealed" | "confidential" | "unknown" | null>`
+  - `erModelFrom(cfg: Pick<AppConfig, "copilot" | "copilotSpend">): ErModel`
+  - types: `ErFallback`, `ErModel`
+- `copilot-since.ts`
+  - `istHm(d: Date): string`
+  - `readSinceArrival(db: Db, actor: Actor, episodeId: string, opts: { now?: Date } = {}): Promise<ErSinceArrival>`
+  - `sinceCandidates(db: Db, episodeId: string, now: Date): Promise<{ arrivedAt: Date; lines: Candidate[] }>`
+  - `verifyErSinceLine(line: Pick<ErSinceLine, "text" | "records">): { ok: true } | { ok: false; reason: string }`
+- `copilot-tools.ts`
+  - `emergencyCopilotIntents: Readonly<Record<ModuleCopilotIntent, CopilotIntentDecl>>`
+  - `emergencyCopilotTools: readonly CopilotToolDecl[]`
+- `copilot-waiting.ts`
+  - `readErWaitingDisplay(db: Db, actor: Actor, opts: { now?: Date } = {}): Promise<ErWaitingDisplay>`
+  - `stageOf(e: Pick<EpisodeRow, "state" | "disposition">, testPending: boolean): ErStageWord`
 - `dispo.ts`
   - `ER_BOARDING_CLIMB_MIN`
   - `ER_BOARDING_TASK_MIN`
@@ -152,6 +176,18 @@ Source: `apps/core/src/modules/emergency/`
   - `ER_MCI`
   - `ER_MLC`
   - `ER_TRIAGE`
+- `now-cards.ts`
+  - `boardingLongCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `callUnansweredCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `casualtyNowCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `criticalResultCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `doctorOverdueCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `lwbsRiskCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `mlcCountersignDueCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `mlcIntimationDueCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `preAlertCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `resultReadyCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `retriageDueCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
 - `realtime.ts`
   - `ER_REALTIME_NAMES: string[]`
   - `ER_TOPIC_SPACES: TopicSpace[]`
@@ -190,8 +226,9 @@ Source: `apps/core/src/modules/emergency/`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (77)
+## HTTP routes (81)
 
+- `copilot.controller.ts` — 4: `/er/copilot`
 - `emergency.controller.ts` — 77: `/er/arrivals`, `/er/bands`, `/er/bays`, `/er/bill`, `/er/board`, `/er/calls`, `/er/care`, `/er/codes`, `/er/consents`, `/er/desk`, `/er/dispo`, `/er/doctor`, `/er/doctors`, `/er/episodes`, `/er/identity`, `/er/items`, `/er/mci`, `/er/meds`, `/er/mlc`, `/er/notes`, `/er/orders`, `/er/patients`, `/er/pre-alerts`, `/er/procedures`, `/er/stabilised`, `/er/triage`, `/er/triage-doctors`, `/er/vitals`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/emergency`
