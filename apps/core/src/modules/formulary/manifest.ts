@@ -45,7 +45,12 @@ export const formularyManifest: ModuleManifest = {
     WRITES a drug monograph and a PHYSICIAN reviews it — the Drugs and Therapeutics Committee's rule (NABH MOM).
     Held by `medical_superintendent`, not by `pharmacy`: the reviewer is not the department that wrote it.
   */
-  permissions: ["formulary.read", "formulary.manage", "formulary.staging.review", "formulary.monograph.review"],
+  /*
+    `formulary.crk.sign` (#618, decision 0053): the Pharmacology department signs CRK formulary entries. A different
+    act from the monograph review above, held by a different seat (`pharmacology_reviewer`): neither holder performs
+    the other's act.
+  */
+  permissions: ["formulary.read", "formulary.manage", "formulary.staging.review", "formulary.monograph.review", "formulary.crk.sign"],
   /**
    * EMPTY AND STAYING EMPTY THIS PHASE. The formulary is check-on-execute: `resolveDrugTexts` is
    * called by the prescription pipeline at issue time (T5), not driven by the event stream. A
