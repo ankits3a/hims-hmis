@@ -2655,7 +2655,35 @@
     "noMatch": {
       "title": "No card in the holder book matches {{code}}.",
       "body": "Check the digits, or search by the holder's mobile. If the partner's list has not reached us yet, a supervisor can allow it once (grace honour).",
-      "grace": "Grace honour needs a front office supervisor's approval before anything applies. Until then the visit is billed at the full rate."
+      "grace": "Grace honour needs a supervisor's approval before anything applies. Until then the visit is billed at the full rate."
+    },
+    "graceAsk": {
+      "title": "Ask for grace honour",
+      "patient": "Patient",
+      "change": "Change",
+      "plan": "Plan on the card",
+      "pickPlan": "Pick the plan",
+      "reason": "Reason",
+      "reasonHint": "e.g. card issued last week, not in the list yet",
+      "approver": "Approver",
+      "approverWho": "A supervisor",
+      "note": "Once approved the card is honoured on this patient's bill and marked \"grace\" everywhere it appears. Nothing applies before approval.",
+      "send": "Send for approval",
+      "pending": "Sent for approval · {{age}}",
+      "pendingBody": "waiting for a supervisor. Bill at the full rate or wait.",
+      "granted": "Approved · honour the card",
+      "honour": "Honour the card",
+      "rejected": "The last request was refused. You can ask again."
+    },
+    "clocks": {
+      "title": "Clocks running · {{count}}",
+      "none": "Nothing is waiting",
+      "gracePending": "grace approval",
+      "graceGranted": "approved, not honoured",
+      "noMatch": "no match",
+      "toLink": "to link",
+      "minutes": "{{m}} m",
+      "hours": "{{h}} h {{m}} m"
     },
     "next": "Next",
     "another": "Recognise another card",
