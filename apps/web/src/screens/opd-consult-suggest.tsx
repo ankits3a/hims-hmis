@@ -6,6 +6,7 @@ import { StockTag, useDoctorStock } from "./opd-consult-v2";
 import { Icd11Pill } from "../components/icd11";
 import type { WireAdvisedTest } from "../lib/opd-api";
 import type { WireRegimen, WireSyndromeHit } from "../lib/cds-api";
+import { LearnedAboutMe } from "../components/learned-about-me";
 import { dxKeyOf } from "../../../../packages/contracts/src/rx-line";
 import {
   SUGGESTION_PREFS_KEY, crossedHere, fetchSuggestionPrefs, hiddenLookup, setSuggestionsOn, tellOutcome, tellShown, useCrossedVersion, type SuggestKind,
@@ -211,6 +212,7 @@ export function CopilotSuggestions({ variant, encounterId, hits, diagnoses, onAd
   });
   const stock = useDoctorStock((regimen?.regimen.lines ?? []).map((l) => l.rx.medicineId ?? ""));
   const queryClient = useQueryClient();
+  const [learnedOpen, setLearnedOpen] = useState(false);
   /* Read once for the sitting: a third cross hides the chip from the NEXT sitting, not by re-ranking this one. */
   const prefs = useQuery({ queryKey: SUGGESTION_PREFS_KEY, queryFn: fetchSuggestionPrefs, staleTime: Infinity, retry: false });
   useCrossedVersion();
@@ -258,6 +260,7 @@ export function CopilotSuggestions({ variant, encounterId, hits, diagnoses, onAd
   }
 
   const pane = variant === "pane";
+  const quietLink: React.CSSProperties = { border: 0, background: "transparent", padding: "2px 0", fontSize: 11, color: "var(--dim)", textDecoration: "underline", cursor: "pointer" };
   /* The copilot column is WHITE now (the Consult Engine boards): the pane's chips read on paper, like the inline ones. */
   const chip: React.CSSProperties = {
     padding: "3px 11px", fontSize: 12.5, borderRadius: 15, border: "1.5px dashed var(--green)",
@@ -276,12 +279,19 @@ export function CopilotSuggestions({ variant, encounterId, hits, diagnoses, onAd
         : { display: "flex", flexDirection: "column", gap: 8, padding: "10px 12px", borderRadius: 8, border: "1px dashed var(--green)", background: "rgba(14,107,78,.03)" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
         {!pane ? <span className="mo" style={head}>{t("opdConsultV3.folded")}</span> : <span />}
-        <button type="button" data-testid="sug-turn-off" title={t("opdConsultV3.sugTurnOffHint")}
-          style={{ border: 0, background: "transparent", padding: "2px 0", fontSize: 11, color: "var(--dim)", textDecoration: "underline", cursor: "pointer" }}
-          onClick={() => { setOn(false); }}>
-          {t("opdConsultV3.sugTurnOff")}
-        </button>
+        <span style={{ display: "inline-flex", gap: 12 }}>
+          {/* decision 0050 P4 (#615): the doctor sees, and can reset, what the chips learned from them */}
+          <button type="button" data-testid="sug-learned" style={quietLink} onClick={() => { setLearnedOpen(true); }}>
+            {t("learnedAboutMe.open")}
+          </button>
+          <button type="button" data-testid="sug-turn-off" title={t("opdConsultV3.sugTurnOffHint")}
+            style={quietLink}
+            onClick={() => { setOn(false); }}>
+            {t("opdConsultV3.sugTurnOff")}
+          </button>
+        </span>
       </div>
+      <LearnedAboutMe open={learnedOpen} onClose={() => { setLearnedOpen(false); }} />
 
       {dxChips.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>

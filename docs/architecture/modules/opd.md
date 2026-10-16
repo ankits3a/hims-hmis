@@ -86,11 +86,13 @@ Source: `apps/core/src/modules/opd/`
   - `consultationParked`
   - `consultationResumed`
   - `consultationStarted`
+  - `copilotDraftProseSet`
   - `dangerFlagSchema`
   - `dayReportPatientsListed`
   - `doctorLeaveScheduled`
   - `flowFindingDismissed`
   - `flowFindingTried`
+  - `learningReset`
   - `paperPrescriptionTranscribed`
   - `patientCheckedIn`
   - `prescriptionIssued`
@@ -126,6 +128,9 @@ Source: `apps/core/src/modules/opd/`
   - types: `Eye`, `RxLine`, `TaperStep`
 - `flow-learning.ts`
   - `runFlowLearning(db: Db, enabled: boolean, now: Date = new Date()): Promise<FlowLearningReport>`
+- `kidney-function.ts`
+  - `registerKidneyFunctionReader(fn: KidneyFunctionReader): () => void`
+  - types: `KidneyFunctionReader`
 - `manifest.ts`
   - `opdManifest: ModuleManifest`
 - `masters.ts`
@@ -172,6 +177,7 @@ Source: `apps/core/src/modules/opd/`
   - types: `QueueNudge`
 - `rx-checks.ts`
   - `isCurrent(durationDays: number | null, issuedAt: Date, now: Date): { current: boolean; assumedCurrent: boolean }`
+  - types: `KidneyReading`, `RenalHit`
 - `skip-reasons.ts`
   - `SKIP_REASONS`
   - types: `SkipReason`
@@ -192,21 +198,21 @@ Source: `apps/core/src/modules/opd/`
 
 ## Tables (`kernel/db/schema/opd.ts`)
 
-`cds_aliases`, `cds_desk_routing_outcomes`, `cds_doctor_prefs`, `cds_rx_lines`, `opd_advice_templates`, `opd_appointments`, `opd_complaint_concepts`, `opd_complaint_term_usage`, `opd_complaint_terms`, `opd_config`, `opd_consult_layouts`, `opd_department_tokens`, `opd_departments`, `opd_doctor_leaves`, `opd_doctor_schedules`, `opd_doctors`, `opd_encounter_diagnoses`, `opd_encounters`, `opd_flow_baselines`, `opd_flow_findings`, `opd_lasa_pairs`, `opd_patient_reminders`, `opd_prescription_drafts`, `opd_prescriptions`, `opd_queue_entries`, `opd_queue_sessions`, `opd_rx_sets`, `opd_section_records`, `opd_suggestion_events`, `opd_term_misses`, `opd_vitals`, `opd_voice_settings`, `opd_voice_usage`
+`cds_aliases`, `cds_desk_routing_outcomes`, `cds_doctor_learning_resets`, `cds_doctor_prefs`, `cds_rx_lines`, `opd_advice_templates`, `opd_appointments`, `opd_complaint_concepts`, `opd_complaint_term_usage`, `opd_complaint_terms`, `opd_config`, `opd_consult_layouts`, `opd_department_tokens`, `opd_departments`, `opd_doctor_leaves`, `opd_doctor_schedules`, `opd_doctors`, `opd_encounter_diagnoses`, `opd_encounters`, `opd_flow_baselines`, `opd_flow_findings`, `opd_lasa_pairs`, `opd_patient_reminders`, `opd_prescription_drafts`, `opd_prescriptions`, `opd_queue_entries`, `opd_queue_sessions`, `opd_rx_sets`, `opd_section_records`, `opd_suggestion_events`, `opd_term_misses`, `opd_vitals`, `opd_voice_settings`, `opd_voice_usage`
 
 Foreign keys into: `billing`, `patients`, `resources`
 
-## HTTP routes (168)
+## HTTP routes (176)
 
 - `opd-advice.controller.ts` — 3: `/opd/advice-templates`
 - `opd-cds.controller.ts` — 8: `/opd/cds`
 - `opd-masters.controller.ts` — 24: `/opd/config`, `/opd/definition`, `/opd/departments`, `/opd/doctors`, `/opd/layouts`, `/opd/leaves`, `/opd/me`, `/opd/rooms`
 - `opd-pace.controller.ts` — 1: `/me/performance`
-- `opd-paper.controller.ts` — 11: `/opd/paper`
-- `opd-phone-consult.controller.ts` — 21: `/opd/consult`, `/opd/rx-sets`, `/opd/visits`
-- `opd-queue.controller.ts` — 37: `/opd/patients`, `/opd/prescriptions`, `/opd/queues`, `/opd/visits`
+- `opd-paper.controller.ts` — 12: `/opd/paper`
+- `opd-phone-consult.controller.ts` — 25: `/opd/consult`, `/opd/rx-sets`, `/opd/visits`
+- `opd-queue.controller.ts` — 39: `/opd/departments`, `/opd/patients`, `/opd/prescriptions`, `/opd/queues`, `/opd/visits`
 - `opd-reports.controller.ts` — 12: `/opd/reports`
-- `opd-visits.controller.ts` — 46: `/opd/appointments`, `/opd/bench`, `/opd/continuity`, `/opd/patients`, `/opd/scan`, `/opd/slips`, `/opd/slots`, `/opd/tele`, `/opd/triage`, `/opd/visits`, `/opd/vitals`, `/opd/walk-in`
+- `opd-visits.controller.ts` — 47: `/opd/appointments`, `/opd/bench`, `/opd/continuity`, `/opd/patients`, `/opd/scan`, `/opd/slips`, `/opd/slots`, `/opd/tele`, `/opd/triage`, `/opd/visits`, `/opd/vitals`, `/opd/walk-in`
 - `opd-vocabulary.controller.ts` — 5: `/opd/vocabulary`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/opd`

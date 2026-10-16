@@ -57,6 +57,10 @@ const resultBody = z.object({
   absurdOverride: z.object({ by: idSchema }).optional(),
   /** 17d T1 — the same shape, and never a boolean, for the same reason the header above gives. */
   impossibleOverride: z.object({ by: idSchema }).optional(),
+  /** #703 — a culture's antibiotic sensitivity table (MIC_AST only). Loose here; the row rules live in `cleanAstRows`. */
+  ast: z.array(z.object({
+    antibiotic: z.string().max(60), result: z.string().max(4).nullable(), mic: z.string().max(16).nullable(),
+  })).max(40).optional(),
 });
 /**
  * 17-E T7 — the bench's choice between an analyser's two runs of one tube. **The reason is a

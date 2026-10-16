@@ -3,11 +3,12 @@ import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { createUser, setPin, rotateBadge, deactivateUser, reactivateUser, setPassword } from "./identity";
 import {
-  createSession, findLiveSession, revokeSession, revokeUserSessions,
+  SESSION_IDLE_MS, createSession, findLiveSession, revokeSession, revokeUserSessions,
   loginWithPassword, switchWithPin, switchWithBadge,
 } from "./sessions";
 import { loadConfig } from "../config";
-import { authSessions } from "../db/schema";
+import { authDevices, authSessions } from "../db/schema";
+import { newId } from "@hmis/contracts";
 import type { Db } from "../db/client";
 
 const cfg = loadConfig({ DATABASE_URL: "postgres://unused", SECRET_KEY: process.env.SECRET_KEY! });
@@ -88,6 +89,30 @@ describe("sessions", () => {
       .set({ expiresAt: new Date(Date.now() - 1000) })
       .where(eq(authSessions.id, s2.sessionId));
     expect(await findLiveSession(db, s2.token)).toBeNull(); // past expiry ⇒ not live
+  });
+
+  /*
+   * A browser session left untouched for the idle window is no longer live (shared terminals); use slides the window.
+   * A phone session (bound to a device, behind the phone's own lock) keeps the absolute expiry only.
+   */
+  it("a browser session idle past the window is not live; use slides the window; a phone session is not idled", async () => {
+    const userId = await mkUser();
+    const ago = (ms: number): Date => new Date(Date.now() - ms);
+    const idle = await createSession(db, cfg, userId);
+    await db.update(authSessions).set({ createdAt: ago(SESSION_IDLE_MS + 60_000), lastSeenAt: null }).where(eq(authSessions.id, idle.sessionId));
+    expect(await findLiveSession(db, idle.token)).toBeNull();
+
+    const busy = await createSession(db, cfg, userId);
+    await db.update(authSessions).set({ createdAt: ago(3 * SESSION_IDLE_MS), lastSeenAt: ago(5 * 60_000) }).where(eq(authSessions.id, busy.sessionId));
+    expect(await findLiveSession(db, busy.token)).not.toBeNull();
+    const [slid] = await db.select({ lastSeenAt: authSessions.lastSeenAt }).from(authSessions).where(eq(authSessions.id, busy.sessionId));
+    expect(Date.now() - slid!.lastSeenAt!.getTime()).toBeLessThan(10_000);
+
+    const deviceRowId = newId();
+    await db.insert(authDevices).values({ id: deviceRowId, userId, deviceId: "dev-1" });
+    const phone = await createSession(db, cfg, userId);
+    await db.update(authSessions).set({ deviceRowId, createdAt: ago(3 * SESSION_IDLE_MS), lastSeenAt: null }).where(eq(authSessions.id, phone.sessionId));
+    expect(await findLiveSession(db, phone.token)).not.toBeNull();
   });
 
   it("revokeUserSessions kills every session of that user", async () => {

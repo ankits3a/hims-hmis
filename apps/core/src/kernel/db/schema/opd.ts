@@ -1172,6 +1172,12 @@ export const opdPrescriptions = pgTable(
      * the diagnosis, weighed it, and decided anyway. Defaults to `[]` like its two neighbours.
      */
     drugDiseaseOverrides: jsonb("drug_disease_overrides").notNull().default(sql`'[]'::jsonb`),
+    /**
+     * #621 — the fifth axis, the same law: a doctor who prescribes through a renal dose warning (a
+     * reviewed band the patient's eGFR reaches, or no eGFR within 90 days) types why, naming the
+     * generic. `{ lineIndex, genericId, reason }[]`; `[]` when none.
+     */
+    renalOverrides: jsonb("renal_overrides").notNull().default(sql`'[]'::jsonb`),
     status: text("status").notNull().default("active"), // 'active' | 'superseded'
     /**
      * ═══ FD-31 — TYPED FROM A PAPER SLIP, AND BY WHOM (OWNER RULING 2026-09-12) ═══
@@ -1667,15 +1673,44 @@ export const cdsDeskRoutingOutcomes = pgTable(
 /**
  * Decision 0050, P0 — each doctor's own switch for the suggestions this system draws from counts.
  * ON unless the doctor turns it off (DECIDED: these are the doctor's own patterns handed back, not
- * the copilot's proactive mode of decision 0006, whose two toggles still have no surface to govern).
+ * the copilot's proactive mode of decision 0006).
+ *
+ * #619 — decision 0006's two toggles live in the same per-doctor row, both OFF by default:
+ * `copilot_proactive` (off = the copilot speaks only when asked) and `copilot_draft_prose` (off =
+ * retrieve, check and structure only). A flip of `copilot_draft_prose` appends
+ * `opd.copilot_draft_prose_set` (`modules/opd/copilot-settings.ts`).
  */
 export const cdsDoctorPrefs = pgTable(
   "cds_doctor_prefs",
   {
     userId: text("user_id").primaryKey(),
     suggestionsOn: boolean("suggestions_on").notNull().default(true),
+    copilotProactive: boolean("copilot_proactive").notNull().default(false),
+    copilotDraftProse: boolean("copilot_draft_prose").notNull().default(false),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
   },
+);
+
+/**
+ * Decision 0050, plan §6 / P4 (#615) — A DOCTOR'S RESET WATERMARK, one row per (doctor's user,
+ * surface). The doctor's OWN ranking on that surface ignores evidence from before `reset_at`;
+ * nothing is deleted — the department's and hospital's counts keep every row, without a name.
+ * `complaint_baseline` is for the one surface whose evidence is a running counter
+ * (`opd_complaint_term_usage`): the doctor's uses per term at the moment of the reset, subtracted
+ * from their own count afterwards. Every other surface reads the timestamp.
+ */
+export const cdsDoctorLearningResets = pgTable(
+  "cds_doctor_learning_resets",
+  {
+    userId: text("user_id").notNull(),
+    surface: text("surface").notNull(),
+    resetAt: timestamp("reset_at", { withTimezone: true }).notNull(),
+    complaintBaseline: jsonb("complaint_baseline").$type<Record<string, number>>().notNull().default({}),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.surface] }),
+    check("cds_doctor_learning_resets_surface_ck", sql`${t.surface} in ('complaints', 'diagnoses', 'tests', 'findings', 'hidden')`),
+  ],
 );
 
 /**
@@ -1708,6 +1743,11 @@ export const cdsAliases = pgTable(
     termKey: text("term_key"),
     /** `formulary_medicines.id` — null only on a 'proposed' row whose chooser found no target. */
     medicineId: text("medicine_id"),
+    /**
+     * #613 — a COMPLAINT alias's target: an existing `opd_complaint_concepts.key` (plain text, as the
+     * complaint tables keep it). Null on a medicine alias and on a 'proposed' complaint row with no concept.
+     */
+    conceptKey: text("concept_key"),
     state: text("state").notNull(),
     /** The VERSIONED model id that chose, and how sure it was. */
     chooserName: text("chooser_name"),
@@ -1754,8 +1794,14 @@ export const cdsAliases = pgTable(
     /* A row anyone can be SHOWN names its medicine, passed every rule and was refused by nothing. */
     check(
       "cds_aliases_live_ck",
-      sql`${t.state} not in ('suggestion', 'trusted') or (${t.medicineId} is not null and ${t.ruleResult} = 'pass' and ${t.refusal} is null and ${t.reviewerAnswer} = 'yes')`,
+      /*
+        #613 — a live COMPLAINT alias names an existing concept and passed its rule; it has no reviewer
+        (the closed concept set is the check). A live medicine alias is exactly what it was.
+      */
+      sql`${t.state} not in ('suggestion', 'trusted') or (${t.ruleResult} = 'pass' and ${t.refusal} is null and ((${t.kind} = 'medicine' and ${t.medicineId} is not null and ${t.reviewerAnswer} = 'yes') or (${t.kind} = 'complaint' and ${t.conceptKey} is not null)))`,
     ),
+    /* #613 — a complaint alias never names a medicine, and a medicine alias never names a concept. */
+    check("cds_aliases_target_ck", sql`(${t.kind} = 'complaint' and ${t.medicineId} is null) or (${t.kind} <> 'complaint' and ${t.conceptKey} is null)`),
     check("cds_aliases_undone_ck", sql`(${t.undoneBy} is null) = (${t.undoneAt} is null) and ((${t.state} = 'undone') = (${t.undoneAt} is not null))`),
     check("cds_aliases_probabilities_ck", sql`(${t.chooserConfidence} is null or ${t.chooserConfidence} between 0 and 1) and (${t.reviewerProbability} is null or ${t.reviewerProbability} between 0 and 1)`),
   ],
