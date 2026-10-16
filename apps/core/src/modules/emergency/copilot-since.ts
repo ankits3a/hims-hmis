@@ -4,6 +4,7 @@ import { ER_ESI_INFO, ER_SINCE_MAX_LINES, erIstHm, renderSinceLine } from "@hmis
 import {
   erDoses, erEpisodes, erMedIssues, erMlcs, erNotes, erProcedures, erSpecialtyCalls, erTriageEntries, orderItems, orders, services, users,
 } from "../../kernel/db/schema";
+import { quantitiesIn } from "../ipd";
 import { openCriticalsForEncounters } from "../lab";
 import { requireErPermission } from "./core";
 import { ErRefusal } from "./errors";
@@ -35,7 +36,7 @@ export const ER_SINCE_EXCERPT_MAX = { complaint: 80, note: 120, answer: 60 } as 
 export const istHm = (d: Date): string => erIstHm(d);
 
 type Candidate = ErSinceLine & { rank: number };
-export type SinceCtx = { now: Date; episodeNo: string; viewer?: Actor };
+export type SinceCtx = { now: Date; episodeNo: string; viewer: Actor };
 
 const ref = (table: string, id: string, column: string): ErSinceRef => ({ table, id, column });
 
@@ -75,7 +76,7 @@ const minutesBetween = (from: Date, to: Date): number => Math.max(0, Math.floor(
 const vitalsLabel = (v: ErVitals): string => Object.entries(v).map(([k, x]) => `${k} ${String(x)}`).join("; ");
 
 /** Every candidate line for one episode (unchosen), each with its facts and records. Exported for the acceptance suite. */
-export async function sinceCandidates(db: Db, episodeId: string, now: Date, viewer?: Actor): Promise<{ arrivedAt: Date; episodeNo: string; lines: Candidate[] }> {
+export async function sinceCandidates(db: Db, episodeId: string, now: Date, viewer: Actor): Promise<{ arrivedAt: Date; episodeNo: string; lines: Candidate[] }> {
   const e = (await db.select().from(erEpisodes).where(eq(erEpisodes.id, episodeId)))[0];
   if (e === undefined) throw new ErRefusal("episode_not_found");
   const out: Candidate[] = [];
@@ -244,6 +245,38 @@ export async function sinceCandidates(db: Db, episodeId: string, now: Date, view
 
 type Row = Record<string, unknown>;
 
+/**
+ * Review #894 — WHICH FIELD EACH STORED COLUMN MAY BE SHOWN AS (fixed): a fact whose `field` is not its column's is
+ * refused, so a value cannot be presented as another measurement (a pulse as a systolic).
+ */
+export const SINCE_FACT_FIELDS: Readonly<Record<string, string>> = {
+  "er_episodes.arrivedAt": "arrivedAt", "er_episodes.arrivalMode": "arrivalMode", "er_episodes.complaint": "complaint",
+  "er_episodes.seenAt": "seenAt", "er_episodes.esi": "esi", "er_episodes.disposition": "disposition",
+  "er_episodes.dispositionAt": "dispositionAt", "er_episodes.boardingSince": "boardingSince",
+  "er_triage_entries.level": "level", "er_triage_entries.recordedAt": "recordedAt", "er_triage_entries.takenAt": "takenAt",
+  "er_triage_entries.vitals.pulse": "pulse", "er_triage_entries.vitals.systolic": "systolic", "er_triage_entries.vitals.diastolic": "diastolic",
+  "er_triage_entries.vitals.respRate": "respRate", "er_triage_entries.vitals.spo2": "spo2", "er_triage_entries.vitals.temperatureC": "temperatureC",
+  "er_triage_entries.vitals.consciousness": "consciousness", "er_triage_entries.ewsKind": "ewsKind", "er_triage_entries.ewsValue": "ewsValue",
+  "er_triage_entries.ewsBand": "ewsBand",
+  "users.fullName": "doctor",
+  "er_specialty_calls.departmentCode": "departmentCode", "er_specialty_calls.calledAt": "calledAt", "er_specialty_calls.answeredAt": "answeredAt",
+  "er_specialty_calls.answerNote": "answerNote",
+  "lab_critical.analyteCode": "analyteCode", "lab_critical.value": "value", "lab_critical.unit": "unit", "lab_critical.openedAt": "openedAt",
+  "order_items.name": "name", "order_items.completedAt": "completedAt",
+  "er_med_issues.name": "name", "er_med_issues.doseWords": "doseWords", "er_doses.outcome": "outcome", "er_doses.recordedAt": "recordedAt",
+  "er_procedures.name": "name", "er_procedures.performedAt": "performedAt",
+  "er_mlcs.mlcNo": "mlcNo", "er_mlcs.openedAt": "openedAt",
+  "er_notes.recordedAt": "recordedAt", "er_notes.text": "text",
+};
+
+/** Review #894 — the instants each derived minute count may be computed between (`to` on the same row, or the read's now). */
+export const SINCE_MINUTES_PAIRS: Readonly<Record<string, readonly { from: string; to: string }[]>> = {
+  doorToDoctor: [{ from: "er_episodes.arrivedAt", to: "er_episodes.seenAt" }],
+  waited: [{ from: "er_episodes.arrivedAt", to: "now" }, { from: "er_specialty_calls.calledAt", to: "now" }],
+};
+
+const SLOT_RE = /\{(\d+)\}/g;
+
 /** The stored row behind a reference, read fresh (never from the line). An unknown table reads as missing. */
 async function storedRow(db: Db, r: ErSinceRef, ctx: SinceCtx): Promise<Row | undefined> {
   const one = async (q: Promise<Row[]>): Promise<Row | undefined> => (await q)[0];
@@ -281,6 +314,21 @@ const asComparable = (v: unknown): string | number | null => (v instanceof Date 
  */
 export async function verifyErSinceLine(db: Db, line: Pick<ErSinceLine, "text" | "template" | "facts" | "records">, ctx: SinceCtx): Promise<{ ok: true } | { ok: false; reason: string }> {
   if (line.records.length === 0) return { ok: false, reason: "no_records" };
+  // The template's own words state no quantity: every number, number word, Devanagari digit and clock time is a slot.
+  const constant = quantitiesIn(line.template.replace(SLOT_RE, " "));
+  if (constant.numbers.length > 0 || constant.times.length > 0) return { ok: false, reason: "template_states_a_number" };
+  const slots = [...line.template.matchAll(SLOT_RE)].map((m) => Number(m[1]));
+  if (slots.some((i) => i >= line.facts.length)) return { ok: false, reason: "slot_without_fact" };
+  if (line.facts.some((_f, i) => !slots.includes(i))) return { ok: false, reason: "fact_without_slot" };
+  for (const f of line.facts) {
+    const col = `${f.ref.table}.${f.ref.column}`;
+    if (f.kind === "minutes") {
+      const to = f.to === undefined ? null : f.to === "now" ? "now" : `${f.to.table}.${f.to.column}`;
+      const ok = (SINCE_MINUTES_PAIRS[f.field] ?? []).some((p) => p.from === col && p.to === to)
+        && (f.to === "now" || (f.to !== undefined && f.to.table === f.ref.table && f.to.id === f.ref.id));
+      if (!ok) return { ok: false, reason: `minutes_pair_not_allowed:${f.field}` };
+    } else if (SINCE_FACT_FIELDS[col] !== f.field) return { ok: false, reason: `field_not_column:${f.field}` };
+  }
   const rows = new Map<string, Row | undefined>();
   const read = async (r: ErSinceRef): Promise<Row | undefined> => {
     const k = `${r.table}:${r.id}`;

@@ -165,7 +165,8 @@ export async function reTriage(db: Db, actor: Actor, raw: unknown, opts: Opts = 
   return onceEr(db, actor, "re_triage", input.idempotencyKey, input, async () => {
     const pre = await lockFree(db, input.episodeId);
     const ews = await scoreFor(db, actor, pre, input.vitals, input.obstetric, at);
-    const copilotLevel = (await esiProposalOf(db, actor, pre, at)).level;
+    // Review #894: the re-triage screen shows no copilot card, so a re-triage logs no proposal and no override.
+    const copilotLevel = undefined;
     return withTx(db, async (tx) => {
       const e = await lockEpisode(tx, input.episodeId);
       if (e.state !== "triaged" && e.state !== "in_treatment") throw new ErRefusal("episode_wrong_state", { state: e.state });

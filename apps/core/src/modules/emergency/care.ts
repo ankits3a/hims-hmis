@@ -580,7 +580,8 @@ export async function sweepErCareClocks(db: Db, now: Date): Promise<{ criticals:
   const open = await db.select({ id: erEpisodes.id, episodeNo: erEpisodes.episodeNo }).from(erEpisodes)
     .where(inArray(erEpisodes.state, [...ER_OPEN_STATE_VALUES]));
   const byNo = new Map(open.map((e) => [e.episodeNo, e.id] as const));
-  const crits = await openCriticalsForEncounters(db, [...byNo.keys()]);
+  // A system sweep: no reader — the restricted rows are masked below, in the bell's body.
+  const crits = await openCriticalsForEncounters(db, [...byNo.keys()], { system: true });
   // ER review (2026-10-15): read the alert rows first and lock only where there is something to do (a first notice, or a
   // climb that is due) — an alert already climbed, or not yet due, costs no transaction and no episode lock.
   const seen = new Map(crits.length === 0 ? [] : (await db.select().from(erCriticalAlerts)

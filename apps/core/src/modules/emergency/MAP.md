@@ -286,7 +286,12 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   stored table/id/column); text = `renderSinceLine(template, facts)` only. `verifyErSinceLine(db, line, ctx)` re-reads every
   fact from its column, recomputes derived minutes from the stored instants (to `asOf` for "now"), checks an excerpt is a
   word-boundary prefix of the stored text, and re-renders; a failing line is dropped. No constant number in a template
-  (a constant is not a fact). No model (DECIDED: the trolley cannot wait).
+  (a constant is not a fact; the verifier refuses any number, number word, Devanagari digit or clock time outside the slots,
+  a slot without a fact and a fact without a slot). Each fact's `field` must be its column's (`SINCE_FACT_FIELDS`); each
+  minute count's instants are pinned per field (`SINCE_MINUTES_PAIRS`). No model (DECIDED: the trolley cannot wait).
+- Re-triage logs NO copilot proposal (`copilot_level` null, `override` false): the re-triage screen shows no card.
+- Lab `openCriticalsForEncounters` REQUIRES a viewer: the reading actor, or an explicit `{ system: true }` (the board's chip,
+  the care sweep).
 - `copilot-drafts.ts` — summary (template + one verified model sentence over the masked notes), referral (template only),
   MLC narrative (template only, ALWAYS). Reads stamped "Draft"; the doctor signs through `discharge_from_er`, `refer_out`,
   `add_mlc_addendum`. Medicines are never drafted.

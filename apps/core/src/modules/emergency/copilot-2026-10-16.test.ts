@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { ER_NOW_CARD_KEYS, ER_STAGE_WORDS, proposeEsi } from "@hmis/contracts";
+import { ER_NOW_CARD_KEYS, ER_STAGE_WORDS, proposeEsi, renderSinceLine } from "@hmis/contracts";
 import { alerts, erTriageEntries, events, labAnalytes, orderItems, orders, patients } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
-import { collect, enterResult, printLabels, receive } from "../lab";
+import { collect, enterResult, openCriticalsForEncounters, printLabels, receive } from "../lab";
 import { serviceIdForLabCode } from "../../../scripts/seed-lab-catalogue";
 import { collectCopilotIntents } from "../../kernel/copilot/catalog";
 import { ALL_MANIFESTS } from "../../kernel/modules/manifests";
@@ -15,7 +15,7 @@ import { mkUser } from "../../../test/helpers/opd";
 import {
   casualtyNowCard, doctorOverdueCard, emergencyCopilotTools, emergencyManifest, lwbsRiskCard, mlcCountersignDueCard, mlcIntimationDueCard,
   assignErDoctor, criticalResultCard, openMlc, placeErOrder, preAlert, preAlertCard, readErBoard, readErCare, readErWaitingDisplay, readSinceArrival,
-  reTriage, registerErChargeSink, registerErEncounterResolver, sweepErCareClocks, registerArrival, registerUnidentified, retriageDueCard, triage,
+  reTriage, recordErVitals, verifyErSinceLine, registerErChargeSink, registerErEncounterResolver, sweepErCareClocks, registerArrival, registerUnidentified, retriageDueCard, triage,
 } from "./index";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -204,14 +204,49 @@ describe("ER copilot — Now cards, waiting display, copilot questions", () => {
     // A level smuggled in by a client is not part of the contract: refused before anything is written.
     await expect(triage(db, w.erNurse, { idempotencyKey: key(), episodeId: a.episodeId, level: 2, decision, copilotLevel: 5 })).rejects.toThrow();
     await triage(db, w.erNurse, { idempotencyKey: key(), episodeId: a.episodeId, level: 2, decision }, { now: new Date(t0.getTime() + 2 * MIN) });
-    // A re-triage to ESI 4 (with its reason): the server's proposal is still 2 — an override.
+    // A re-triage to ESI 4 (with its reason): the re-triage screen shows no copilot card, so nothing is logged as one.
     await reTriage(db, w.erNurse, { idempotencyKey: key(), episodeId: a.episodeId, level: 4, reason: "pain settled" }, { now: new Date(t0.getTime() + 9 * MIN) });
     const entries = await db.select().from(erTriageEntries).where(eq(erTriageEntries.episodeId, a.episodeId));
-    expect(entries.map((x) => [x.kind, x.level, x.copilotLevel]).sort()).toEqual([["re_triage", 4, 2], ["triage", 2, 2]]);
+    expect(entries.map((x) => [x.kind, x.level, x.copilotLevel]).sort()).toEqual([["re_triage", 4, null], ["triage", 2, 2]]);
     const evs = await db.select().from(events).where(eq(events.correlationId, a.episodeId));
     const payload = (name: string) => evs.find((x) => x.name === name)!.payload as Record<string, unknown>;
     expect(payload("er.triaged")).toMatchObject({ copilotLevel: 2, override: false });
-    expect(payload("er.retriaged")).toMatchObject({ copilotLevel: 2, override: true });
+    expect(payload("er.retriaged")).toMatchObject({ copilotLevel: null, override: false });
+  });
+
+  it("a since-line's template holds no number of its own, every slot has its fact, every fact its own column, every minute count its pinned instants", async () => {
+    const t0 = new Date(Date.now() - 60 * MIN);
+    const a = await arrive("Sita Devi", t0);
+    await tri(a.episodeId, 3, new Date(t0.getTime() + 2 * MIN));
+    await assignErDoctor(db, w.erNurse, { idempotencyKey: key(), episodeId: a.episodeId, doctorId: w.erDoctor.id }, { now: new Date(t0.getTime() + 20 * MIN) });
+    await recordErVitals(db, w.erNurse, { idempotencyKey: key(), episodeId: a.episodeId, vitals: { pulse: 118, systolic: 102 } }, { now: new Date(t0.getTime() + 25 * MIN) });
+    const now = new Date();
+    const since = await readSinceArrival(db, w.erDoctor, a.episodeId, { now });
+    const ctx = { now, episodeNo: a.episodeNo, viewer: w.erDoctor };
+    const vit = since.lines.find((l) => l.source === "vitals")!;
+    const doc = since.lines.find((l) => l.source === "doctor")!;
+    const check = (l: typeof vit) => verifyErSinceLine(db, l, ctx);
+    expect(await check(vit)).toEqual({ ok: true });
+    // A number, a number word, a Devanagari digit or a clock time written into the template itself.
+    for (const extra of [" (was 140)", " twice", " ४", " at 09:15"]) {
+      const t = `${vit.template}${extra}`;
+      expect(await check({ ...vit, template: t, text: renderSinceLine(t, vit.facts) })).toEqual({ ok: false, reason: "template_states_a_number" });
+    }
+    // A slot with no fact behind it.
+    const holed = `${vit.template} {${String(vit.facts.length)}}`;
+    expect(await check({ ...vit, template: holed, text: renderSinceLine(holed, vit.facts) })).toEqual({ ok: false, reason: "slot_without_fact" });
+    // A fact labelled as another column: the pulse's value presented as the systolic.
+    const relabelled = vit.facts.map((f) => (f.field === "pulse" ? { ...f, field: "systolic" } : f));
+    expect(await check({ ...vit, facts: relabelled })).toEqual({ ok: false, reason: "field_not_column:systolic" });
+    // A minute count between instants its field does not name (arrival to arrival is 0, and 0 is "right" — but not allowed).
+    const wrongPair = doc.facts.map((f) => (f.kind === "minutes" ? { ...f, value: 0, to: { ...f.ref } } : f));
+    expect(await check({ ...doc, facts: wrongPair, text: renderSinceLine(doc.template, wrongPair) })).toEqual({ ok: false, reason: "minutes_pair_not_allowed:doorToDoctor" });
+  });
+
+  it("the lab's critical reader refuses to answer without a viewer; a system caller says so explicitly", async () => {
+    await expect(openCriticalsForEncounters(db, ["ER26-000001"], undefined as never)).rejects.toThrow(/viewer/);
+    await expect(openCriticalsForEncounters(db, ["ER26-000001"], { system: true })).resolves.toEqual([]);
+    await expect(openCriticalsForEncounters(db, ["ER26-000001"], w.erDoctor)).resolves.toEqual([]);
   });
 
   it("the two copilot questions route by the floor and answer counts only", async () => {

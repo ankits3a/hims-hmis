@@ -521,10 +521,11 @@ export async function canonicalNames(
  * and when the call opened. The call still closes ONLY by a read-back (`acknowledgeCritical`); this reader changes nothing
  * about the ladder.
  *
- * ER lane 9 review (#894) — THE RESTRICTED-TEST RULE (DD11, as `patient-results.ts`): pass `viewer` when the answer is
- * shown to a person. A critical on a restricted item (consent-required or sensitive) then keeps its urgency but loses its
- * content — `masked: true`, no analyte, no value, no unit — unless the viewer ordered it or holds
- * `orders.read.restricted`. Without `viewer` (a system sweep) nothing is masked; `restricted` says which rows are.
+ * ER lane 9 review (#894) — THE RESTRICTED-TEST RULE (DD11, as `patient-results.ts`). `viewer` is REQUIRED: the person
+ * the answer is shown to, or an explicit `{ system: true }` for a caller with no reader (a sweep), which then decides
+ * itself what a restricted row may say (`restricted` marks them). For a person, a critical on a restricted item
+ * (consent-required or sensitive) keeps its urgency but loses its content — `masked: true`, no analyte, no value, no
+ * unit — unless the viewer ordered it or holds `orders.read.restricted`.
  */
 export type OpenCritical = {
   callId: string; encounterNo: string; openedAt: Date; analyteCode: string; value: string; unit: string | null;
@@ -532,8 +533,10 @@ export type OpenCritical = {
 };
 
 export async function openCriticalsForEncounters(
-  db: Db | Tx, encounterNos: readonly string[], viewer?: Actor,
+  db: Db | Tx, encounterNos: readonly string[], viewer: Actor | { system: true },
 ): Promise<OpenCritical[]> {
+  // A JS caller (or a cast) can still omit it: refuse rather than answer unmasked.
+  if (viewer === undefined || viewer === null) throw new Error("openCriticalsForEncounters: a viewer is required (the reading actor, or { system: true })");
   if (encounterNos.length === 0) return [];
   const rows = await (db as Db)
     .select({
@@ -548,10 +551,11 @@ export async function openCriticalsForEncounters(
     .where(and(isNull(labCriticalCalls.closedAt), inArray(orders.encounterNo, [...encounterNos])))
     .orderBy(labCriticalCalls.openedAt);
   const anyRestricted = rows.some((r) => r.restricted);
-  const seesAll = viewer === undefined || !anyRestricted ? true
-    : viewer.type === "user" && await hasPermission(db as Db, viewer.id, "orders.read.restricted", "hospital");
+  const person = "system" in viewer ? null : viewer;
+  const seesAll = person === null || !anyRestricted ? true
+    : person.type === "user" && await hasPermission(db as Db, person.id, "orders.read.restricted", "hospital");
   return rows.map((r) => {
-    const masked = r.restricted && !seesAll && !(viewer?.type === "user" && r.orderingClinicianId === viewer.id);
+    const masked = r.restricted && !seesAll && !(person?.type === "user" && r.orderingClinicianId === person.id);
     return {
       callId: r.call.id, encounterNo: r.encounterNo ?? "", openedAt: r.call.openedAt, restricted: r.restricted, masked,
       analyteCode: masked ? "" : r.analyteCode,
