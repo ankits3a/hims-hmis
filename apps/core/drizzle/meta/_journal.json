@@ -1457,6 +1457,13 @@
       "when": 1792160674012,
       "tag": "0208_formulary_reference_labels",
       "breakpoints": true
+    },
+    {
+      "idx": 208,
+      "version": "7",
+      "when": 1792162146667,
+      "tag": "0209_supplier_bill_line_discount",
+      "breakpoints": true
     }
   ]
 }

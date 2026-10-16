@@ -254,7 +254,7 @@ Source: `apps/core/src/modules/pharmacy/`
 
 Foreign keys into: `auth`, `billing`, `formulary`, `materials`, `opd`, `orders`, `patients`, `resources`, `tariff`
 
-## HTTP routes (188)
+## HTTP routes (189)
 
 - `pharmacy-adr.controller.ts` — 6: `/pharmacy/adr`
 - `pharmacy-cold-chain.controller.ts` — 8: `/pharmacy/cold-chain`
@@ -269,7 +269,7 @@ Foreign keys into: `auth`, `billing`, `formulary`, `materials`, `opd`, `orders`,
 - `pharmacy-office.controller.ts` — 20: `/pharmacy/office`
 - `pharmacy-opening-stock.controller.ts` — 8: `/pharmacy/opening-stock`
 - `pharmacy-pharmacists.controller.ts` — 4: `/pharmacy/pharmacists`
-- `pharmacy-reports.controller.ts` — 20: `/pharmacy/office`
+- `pharmacy-reports.controller.ts` — 21: `/pharmacy/office`
 - `pharmacy-retail.controller.ts` — 20: `/pharmacy/retail`
 - `pharmacy-tally.controller.ts` — 7: `/pharmacy/office`
 - `pharmacy-trays.controller.ts` — 9: `/pharmacy/trays`
