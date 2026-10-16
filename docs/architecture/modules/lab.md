@@ -43,7 +43,7 @@ Source: `apps/core/src/modules/lab/`
 - `clinician-reads.ts`
   - `deltaResultsForClinician(exec: Db | Tx, userIds: readonly string[], since: Date): Promise<ClinicianLabRow[]>`
   - `openCriticalsForClinician(exec: Db | Tx, userIds: readonly string[]): Promise<ClinicianLabRow[]>`
-  - `resultsForPatientSince(exec: Db | Tx, patientId: string, since: Date): Promise<PatientResultSince[]>`
+  - `resultsForPatientSince(exec: Db | Tx, actor: Actor, patientIds: readonly string[], since: Date): Promise<PatientResultSince[]>`
   - types: `ClinicianLabRow`, `PatientResultSince`
 - `coagulation.ts`
   - `INR_ANALYTE_CODES: readonly string[]`

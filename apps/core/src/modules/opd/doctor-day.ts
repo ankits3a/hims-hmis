@@ -122,19 +122,19 @@ export async function visitOfDoctor(exec: Db | Tx, userId: string, encounterId: 
 }
 
 /** The patient's earlier OPD visits (before `serviceDate`), newest first: the ordinal and "since you saw him". */
-export async function earlierVisits(exec: Db | Tx, patientId: string, serviceDate: string): Promise<{ serviceDate: string; doctorUserId: string | null }[]> {
+export async function earlierVisits(exec: Db | Tx, patientIds: readonly string[], serviceDate: string): Promise<{ serviceDate: string; doctorUserId: string | null }[]> {
   return (exec as Db).select({ serviceDate: opdEncounters.serviceDate, doctorUserId: opdDoctors.userId })
     .from(opdEncounters).leftJoin(opdDoctors, eq(opdDoctors.id, opdEncounters.doctorId))
-    .where(and(eq(opdEncounters.patientId, patientId), eq(opdEncounters.type, "opd"), lt(opdEncounters.serviceDate, serviceDate),
+    .where(and(inArray(opdEncounters.patientId, [...patientIds]), eq(opdEncounters.type, "opd"), lt(opdEncounters.serviceDate, serviceDate),
       inArray(opdEncounters.status, ["completed", "awaiting_results", "in_consultation"])))
     .orderBy(desc(opdEncounters.serviceDate));
 }
 
 /** "He is on": the last prescription this doctor issued for this patient before `serviceDate`. */
-export async function lastPrescriptionBy(exec: Db | Tx, userId: string, patientId: string, serviceDate: string): Promise<null | { issuedAt: Date; lines: unknown }> {
+export async function lastPrescriptionBy(exec: Db | Tx, userId: string, patientIds: readonly string[], serviceDate: string): Promise<null | { issuedAt: Date; lines: unknown }> {
   const row = (await (exec as Db).select({ issuedAt: opdPrescriptions.issuedAt, lines: opdPrescriptions.lines })
     .from(opdPrescriptions).innerJoin(opdEncounters, eq(opdEncounters.id, opdPrescriptions.encounterId))
-    .where(and(eq(opdPrescriptions.patientId, patientId), eq(opdPrescriptions.issuedBy, userId), eq(opdPrescriptions.status, "active"), lt(opdEncounters.serviceDate, serviceDate)))
+    .where(and(inArray(opdPrescriptions.patientId, [...patientIds]), eq(opdPrescriptions.issuedBy, userId), eq(opdPrescriptions.status, "active"), lt(opdEncounters.serviceDate, serviceDate)))
     .orderBy(desc(opdPrescriptions.issuedAt)).limit(1))[0];
   return row ?? null;
 }

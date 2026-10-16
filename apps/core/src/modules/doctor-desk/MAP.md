@@ -33,3 +33,9 @@ clinical row. It reads lab, radiology, opd, patients and roster through their `i
 - A stored brief keeps patient IDs only; names are resolved when read, so a later seal hides them.
 - One source failing drops its own rows, never the Tower.
 - Door is `opd.consult`; there is no doctor-desk permission (seed-roles untouched).
+- **Restricted tests** follow the kernel's rule (DD11, as `lab/patient-results.ts`): the NEXT card's results drop a
+  restricted test unless the asker ordered it or holds `orders.read.restricted`, BEFORE the per-analyte pick. The
+  Tower's lab readers are keyed on the asker's own orders; imaging uses radiology's `treatedBy` rule. Clocks Running
+  rows name no patient and no test.
+- Results are `verified` only (not `autoverified`), as the doctor's results reader. Merged patients: the NEXT card
+  reads the whole merge chain (`listMergedLoserIds`).

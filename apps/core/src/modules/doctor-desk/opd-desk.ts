@@ -4,7 +4,7 @@ import { users } from "../../kernel/db/schema";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { doctorDayLines, doctorPaceToday, earlierVisits, lastActiveVitals, lastPrescriptionBy, visitOfDoctor } from "../opd";
 import { resultsForPatientSince } from "../lab";
-import { getPatientSummaries, listAllergies } from "../patients";
+import { getPatientSummaries, listAllergies, listMergedLoserIds } from "../patients";
 import { DoctorDeskError } from "./errors";
 import { deskScope, patientOf } from "./scope";
 import { waitingOn } from "./waiting-on";
@@ -68,15 +68,18 @@ export async function nextCard(db: Db, actor: Actor, encounterId: string, at: Da
   const visit = await visitOfDoctor(db, actor.id, encounterId);
   if (visit === null) throw new DoctorDeskError("unknown_visit", "No such visit in your OPD.");
   const [summary] = await getPatientSummaries(db, actor, [visit.patientId]);
+  if (summary === undefined) throw new DoctorDeskError("unknown_visit", "No such visit in your OPD.");
   const p = patientOf(summary, visit.patientId);
+  // A merged patient's earlier records live under the ids merged into this one (`listMergedLoserIds`).
+  const chain = [p.id, ...(await listMergedLoserIds(db, p.id))];
   await recordPhiAccess(db, { actor, patientId: p.id, surface: "doctor_desk.next", encounterId: visit.id, sealed: p.restricted, now: at });
 
-  const earlier = await earlierVisits(db, p.id, visit.serviceDate);
+  const earlier = await earlierVisits(db, chain, visit.serviceDate);
   const lastWithMe = earlier.find((e) => e.doctorUserId === actor.id) ?? earlier[0] ?? null;
   const vitals = await lastActiveVitals(db, p.id);
   const allergies = (await listAllergies(db, p.id)).filter((a) => a.status === "active").map((a) => a.substance);
-  const since = lastWithMe === null ? [] : await resultsForPatientSince(db, p.id, new Date(`${lastWithMe.serviceDate}T00:00:00+05:30`));
-  const rx = await lastPrescriptionBy(db, actor.id, p.id, visit.serviceDate);
+  const since = lastWithMe === null ? [] : await resultsForPatientSince(db, actor, chain, new Date(`${lastWithMe.serviceDate}T00:00:00+05:30`));
+  const rx = await lastPrescriptionBy(db, actor.id, chain, visit.serviceDate);
   const nameIds = [visit.deskComplaintBy, vitals?.recordedBy].filter((x): x is string => x !== null && x !== undefined);
   const names = nameIds.length === 0 ? new Map<string, string>()
     : new Map((await db.select({ id: users.id, name: users.fullName }).from(users).where(inArray(users.id, nameIds))).map((u) => [u.id, u.name] as const));

@@ -67,7 +67,7 @@ describe("doctor-desk — the Tower (DD-0)", () => {
   }
 
   /** A verified result on an order whose responsible clinician is `clinicianId`, optionally delta-flagged and with an open critical call. */
-  async function labResult(clinicianId: string, patientId: string, encounterNo: string, o: { critical?: boolean; delta?: boolean; at?: Date; value?: string } = {}): Promise<{ resultId: string; callId: string | null }> {
+  async function labResult(clinicianId: string, patientId: string, encounterNo: string, o: { critical?: boolean; delta?: boolean; at?: Date; value?: string; restricted?: boolean; analyteId?: string; status?: "verified" | "autoverified" } = {}): Promise<{ resultId: string; callId: string | null }> {
     const orderId = newId();
     const itemId = newId();
     const resultId = newId();
@@ -77,11 +77,11 @@ describe("doctor-desk — the Tower (DD-0)", () => {
       serviceDate: TODAY, priority: "routine", authority: "clinician", orderedByType: "user", orderedById: clinicianId,
       orderingClinicianId: clinicianId, placedAt: min(-120),
     });
-    await db.insert(orderItems).values({ id: itemId, orderId, serviceId });
+    await db.insert(orderItems).values({ id: itemId, orderId, serviceId, restricted: o.restricted === true });
     await db.insert(labResults).values({
-      id: resultId, orderItemId: itemId, analyteId: analyteK, valueNumeric: o.value ?? "6.4", unit: "mmol/L", flag: o.critical === true ? "HH" : "H",
+      id: resultId, orderItemId: itemId, analyteId: o.analyteId ?? analyteK, valueNumeric: o.value ?? "6.4", unit: "mmol/L", flag: o.critical === true ? "HH" : "H",
       enteredByType: "user", enteredById: "t", entryMode: "manual", deltaFlag: o.delta === true,
-      verificationStatus: "verified", verifiedBy: "t", verifiedAt: o.at ?? min(-30),
+      verificationStatus: o.status ?? "verified", verifiedBy: "t", verifiedAt: o.at ?? min(-30),
     });
     let callId: string | null = null;
     if (o.critical === true) {
@@ -335,5 +335,47 @@ describe("doctor-desk — the Tower (DD-0)", () => {
     const v = await encounter(P.JR, patientA, TODAY, "waiting");
     const got = await nextCard(db, actor(P.SR), v.id, AT).then(() => "ok", (e: unknown) => (e instanceof DoctorDeskError ? e.code : String(e)));
     expect(got).toBe("unknown_visit");
+  });
+
+  it("the NEXT card follows the lab's restricted-test rule: another doctor's restricted test is absent, my own is shown", async () => {
+    const before = await encounter(P.SR, patientA, "2026-09-20", "completed");
+    const v = await encounter(P.SR, patientA, TODAY, "waiting");
+    const hiv = newId();
+    await db.insert(labAnalytes).values({ id: hiv, code: "HIV", nameEn: "HIV 1/2 antibody", resultType: "numeric", createdBy: "t", updatedBy: "t" });
+    await labResult(P.OUT, patientA, before.visitNo, { at: new Date("2026-10-01T10:00:00+05:30"), restricted: true, analyteId: hiv, value: "1" });
+    expect((await nextCard(db, actor(P.SR), v.id, AT)).since.map((s) => s.analyte)).toEqual([]);
+    await labResult(P.SR, patientA, before.visitNo, { at: new Date("2026-10-02T10:00:00+05:30"), restricted: true, analyteId: hiv, value: "1" });
+    expect((await nextCard(db, actor(P.SR), v.id, AT)).since.map((s) => s.analyte)).toEqual(["HIV 1/2 antibody"]);
+  });
+
+  it("the NEXT card reads only verified results — not autoverified ones, as the doctor's results reader", async () => {
+    const before = await encounter(P.SR, patientA, "2026-09-20", "completed");
+    const v = await encounter(P.SR, patientA, TODAY, "waiting");
+    await labResult(P.SR, patientA, before.visitNo, { at: new Date("2026-10-01T10:00:00+05:30"), status: "autoverified" });
+    expect((await nextCard(db, actor(P.SR), v.id, AT)).since).toEqual([]);
+  });
+
+  it("a confidential patient on the NEXT card shows the alias, with no age and no sex", async () => {
+    await db.update(patients).set({ isConfidential: true, alias: "Patient X-7", dob: new Date("1970-01-01") }).where(eq(patients.id, patientA));
+    const v = await encounter(P.SR, patientA, TODAY, "waiting");
+    const c = await nextCard(db, actor(P.SR), v.id, AT);
+    expect(c.patient).toMatchObject({ name: "Patient X-7", restricted: true, ageYears: null, sex: null });
+    expect(JSON.stringify(c)).not.toContain("Patient Alpha");
+  });
+
+  it("the NEXT card follows a merged patient's earlier records", async () => {
+    const before = await encounter(P.SR, patientB, "2026-09-20", "completed");
+    await labResult(P.SR, patientB, before.visitNo, { at: new Date("2026-10-01T10:00:00+05:30"), value: "7.1" });
+    await db.update(patients).set({ status: "merged", mergedIntoPatientId: patientA }).where(eq(patients.id, patientB));
+    const v = await encounter(P.SR, patientA, TODAY, "waiting");
+    const c = await nextCard(db, actor(P.SR), v.id, AT);
+    expect(c.ordinal).toBe(2);
+    expect(c.since.map((s) => s.value)).toEqual(["7.1000"]);
+  });
+
+  it("the Tower's Clinical change reads only verified results, as the doctor's results reader", async () => {
+    const v = await encounter(P.SR, patientB, TODAY, "in_consultation");
+    await labResult(P.SR, patientB, v.visitNo, { delta: true, status: "autoverified" });
+    expect((await towerView(db, actor(P.SR), AT)).attention.filter((r) => r.kind === "lab_delta")).toEqual([]);
   });
 });
