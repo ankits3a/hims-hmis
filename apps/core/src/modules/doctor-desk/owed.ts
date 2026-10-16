@@ -1,7 +1,7 @@
-import { and, desc, eq, gte, inArray, isNull, lte } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, like, lte } from "drizzle-orm";
 import type { WireOwedRow } from "@hmis/contracts";
 import { alerts, doctorDeskActs, doctorDeskMoves, doctorDeskNudges } from "../../kernel/db/schema";
-import { closedCriticalsForClinician, openCriticalsForClinician } from "../lab";
+import { closedCriticalsForClinician, criticalCallsByIds, openCriticalsForClinician } from "../lab";
 import { openVisitsForDoctor } from "../opd";
 import { addIstDays, istDateOfInstant, istMidnightUtc } from "../roster";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -104,6 +104,38 @@ async function withMoves(exec: Db | Tx, rows: OwedRowInternal[], members: readon
     if (m === undefined || !nameOf.has(m.toUserId)) return r;
     return { ...r, holder: { userId: m.toUserId, name: nameOf.get(m.toUserId) ?? "" }, movedBy: { userId: m.movedBy, name: nameOf.get(m.movedBy) ?? "" } };
   });
+}
+
+/**
+ * DD-1b (#903) — the lab criticals a MOVE has handed to or away from `me`, for my own Needs Your
+ * Attention and phone NOW (`waitingOn`), with the same holder rule as `withMoves`: the newest move of
+ * a row wins, a move to somebody no longer in the unit is ignored, and a row is the unit's only while
+ * its orderer is a member. `movedIn` are call ids now mine that I did not order; `movedOut` are keys
+ * of my own orders now held by another member. Outside a unit nothing moves.
+ */
+export async function criticalMoves(
+  exec: Db | Tx, me: string, members: readonly { userId: string }[], ownKeys: readonly string[],
+): Promise<{ movedIn: Awaited<ReturnType<typeof criticalCallsByIds>>; movedOut: Set<string> }> {
+  const inUnit = new Set(members.map((m) => m.userId));
+  if (!inUnit.has(me)) return { movedIn: [], movedOut: new Set() };
+  const toMe = await (exec as Db).selectDistinct({ rowKey: doctorDeskMoves.rowKey }).from(doctorDeskMoves)
+    .where(and(eq(doctorDeskMoves.toUserId, me), like(doctorDeskMoves.rowKey, "lab_critical:%")));
+  const keys = [...new Set([...ownKeys, ...toMe.map((r) => r.rowKey)])];
+  if (keys.length === 0) return { movedIn: [], movedOut: new Set() };
+  const moves = await (exec as Db).select().from(doctorDeskMoves)
+    .where(inArray(doctorDeskMoves.rowKey, keys)).orderBy(desc(doctorDeskMoves.createdAt));
+  const newest = new Map<string, (typeof moves)[number]>();
+  for (const m of moves) if (!newest.has(m.rowKey)) newest.set(m.rowKey, m);
+  const own = new Set(ownKeys);
+  const movedOut = new Set([...own].filter((k) => {
+    const m = newest.get(k);
+    return m !== undefined && m.toUserId !== me && inUnit.has(m.toUserId);
+  }));
+  const candidates = [...newest.values()].filter((m) => m.toUserId === me && !own.has(m.rowKey)).map((m) => m.rowKey.slice("lab_critical:".length));
+  const calls = await criticalCallsByIds(exec, candidates);
+  // The orderer must still be in the unit (the row is otherwise not the unit's, as `owedByUnit`).
+  const movedIn = calls.filter((c) => c.orderingClinicianId !== me && inUnit.has(c.orderingClinicianId));
+  return { movedIn, movedOut };
 }
 
 /** Marks the rows this sender has already nudged. */

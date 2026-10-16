@@ -51,6 +51,8 @@ Plan: `docs/superpowers/plans/2026-10-04-doctor-desk-PLAN.md` §3.1 (DD-0), §3.
   it" became this in DD-1.
 - **Move never edits the source row.** The newest `doctor_desk_moves` row of a key decides the holder in `owedByUnit`
   (`withMoves`); a move to someone who left the unit is ignored. Audit = the event, in the same transaction.
+  DD-1b (#903): `waitingOn` follows the same rule (`owed.ts criticalMoves`) — a moved lab critical is on the new
+  holder's Tower and NOW (restricted test dropped unless `orders.read.restricted`; patient by alias) and off the orderer's.
 - **Scope is derived.** HOD = officiating `hod` row in force, or a department-scoped `roster.periods.publish` grant (the
   rule leave uses); MS = the `medical_superintendent` role. An officiating head is `unit` only inside the window
   (`teamMembers` already returns them as head only then).

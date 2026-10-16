@@ -233,6 +233,46 @@ describe("doctor-desk — DD-1 the unit and the ladder", () => {
     expect(now.scope.level).toBe("member");
   });
 
+  /* ═══ DD-1b (#903) — a moved critical follows its new holder onto Now and the Tower ═══ */
+
+  it("DD-1b a critical moved to the SR is on the SR's Tower and NOW with the patient, off the JR's, and an act clears both", async () => {
+    const { key } = await critical(P.JR, { at: min(-10) });
+    await moveRow(db, actor(P.HEAD), key, P.SR, AT);
+    const t = min(1);
+    const srTower = await towerView(db, actor(P.SR), t);
+    expect(srTower.attention.map((r) => r.key)).toEqual([key]);
+    expect(srTower.attention[0]).toMatchObject({ kind: "lab_critical", params: { analyte: "Potassium", unit: "mmol/L" }, patient: { id: patientA, name: "Patient Alpha" } });
+    expect((await nowView(db, actor(P.SR), t)).now.map((r) => r.key)).toEqual([key]);
+    expect((await towerView(db, actor(P.JR), t)).attention.map((r) => r.key)).not.toContain(key);
+    expect((await nowView(db, actor(P.JR), t)).now).toEqual([]);
+    for (const p of [srTower, await nowView(db, actor(P.SR), t)]) expect(JSON.stringify(p)).not.toMatch(/fee|paid|paise|price|bypass|payer|pmjay|₹|rupee|invoice|bill/i);
+
+    // moved back to the orderer: hers again, once
+    await moveRow(db, actor(P.HEAD), key, P.JR, min(2));
+    expect((await nowView(db, actor(P.JR), min(3))).now.map((r) => r.key)).toEqual([key]);
+    expect((await nowView(db, actor(P.SR), min(3))).now).toEqual([]);
+    await moveRow(db, actor(P.HEAD), key, P.SR, min(4));
+
+    await recordAct(db, actor(P.SR), key, "treatment_started", null, min(5));
+    for (const who of [P.SR, P.JR]) {
+      expect((await nowView(db, actor(who), min(6))).now).toEqual([]);
+      expect((await towerView(db, actor(who), min(6))).attention).toEqual([]);
+    }
+  });
+
+  it("DD-1b the new holder's view keeps the lab's restricted-test rule and the alias rule", async () => {
+    const plain = await critical(P.JR);
+    const hidden = await critical(P.JR, { restricted: true });
+    await db.update(patients).set({ isConfidential: true, alias: "Patient X-7" }).where(eq(patients.id, patientA));
+    await moveRow(db, actor(P.HEAD), plain.key, P.SR, AT);
+    await moveRow(db, actor(P.HEAD), hidden.key, P.SR, AT);
+    const now = await nowView(db, actor(P.SR), min(1));
+    expect(now.now.map((r) => r.key)).toEqual([plain.key]);
+    expect(now.now[0]!.patient).toMatchObject({ name: "Patient X-7", restricted: true });
+    expect(JSON.stringify(now)).not.toContain("Patient Alpha");
+    expect((await towerView(db, actor(P.SR), min(1))).attention.map((r) => r.key)).toEqual([plain.key]);
+  });
+
   /* ═══ DM5 — restricted tests and confidential patients on "Handled without you" ═══ */
 
   it("DM5 handled without you drops a restricted test the viewer did not order, and shows a confidential patient by alias", async () => {

@@ -38,7 +38,7 @@ Source: `apps/core/src/modules/doctor-desk/`
 - `unit-board.ts`
   - `unitBoard(db: Db, actor: Actor, at: Date): Promise<WireUnitBoard>`
 - `waiting-on.ts`
-  - `waitingOn(db: Db, actor: Actor, at: Date, istDate: string): Promise<WireAttentionRow[]>`
+  - `waitingOn(db: Db, actor: Actor, at: Date, istDate: string, members: readonly { userId: string }[] = []): Promise<WireAttentionRow[]>`
 
 ## Tables (`kernel/db/schema/doctor-desk.ts`)
 
