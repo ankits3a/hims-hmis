@@ -38,6 +38,8 @@ const lineSchema = z.object({
   durationDays: z.number().int().positive().max(3650).nullable(),
   instructions: z.string().max(2000).nullable(),
   medicineId: z.string().min(1).max(64).nullish(),
+  /** Food timing as a language-neutral code; the phone puts it into words. Absent on a set saved before it (its words are in `instructions`). */
+  food: z.enum(["before", "after"]).nullish(),
 });
 const testSchema = z.object({
   serviceId: z.string().min(1).max(64), code: z.string().min(1).max(64), name: z.string().min(1).max(300),
@@ -178,7 +180,7 @@ export async function saveRxSet(tx: Tx, actor: Actor, input: SaveRxSetInput, now
     const rows = await tx.select().from(opdRxSets).where(and(eq(opdRxSets.id, id), eq(opdRxSets.active, true)));
     const row = rows[0];
     const mayEdit = row !== undefined && row.scope === input.scope
-      && (row.scope === "doctor" ? row.ownerUserId === userId : row.departmentId === departmentId);
+      && (row.scope === "doctor" ? row.ownerUserId === userId : row.departmentId === departmentId && await mayEditRxSet(tx, row, userId, now));
     if (!mayEdit) throw new OpdError("unknown_rx_set", `unknown set ${id}`);
     await tx.update(opdRxSets).set({ name, body, signedBy: null, signedAt: null, updatedBy: userId, updatedAt: now }).where(eq(opdRxSets.id, id));
     return { setId: id };
@@ -188,6 +190,49 @@ export async function saveRxSet(tx: Tx, actor: Actor, input: SaveRxSetInput, now
     id: setId, scope: input.scope, ownerUserId: input.scope === "doctor" ? userId : null, departmentId,
     name, body, createdBy: userId, updatedBy: userId, createdAt: now, updatedAt: now,
   });
+  return { setId };
+}
+
+/**
+ * #610 — WHO MAY EDIT A SET (spec approved 2026-10-10). A doctor's own set: its owner. A department's
+ * starter set: that department's unit head, or — while it is still an unsigned draft — the doctor who
+ * drafted it (the same rule as retiring it). A signed starter set is the head's to change: any other
+ * doctor of the department can only use it.
+ */
+async function mayEditRxSet(
+  db: Db | Tx, row: { scope: string; ownerUserId: string | null; departmentId: string | null; signedAt: Date | null; createdBy: string }, userId: string, now: Date,
+): Promise<boolean> {
+  if (row.scope === "doctor") return row.ownerUserId === userId;
+  if (row.departmentId === null) return false;
+  if (row.signedAt === null && row.createdBy === userId) return true;
+  return (await headedOpdDepartments(db, userId, now)).includes(row.departmentId);
+}
+
+/**
+ * #610 — EDIT A SAVED SET: its name and body are written over, keeping its id, scope, owner and
+ * department. The same vetting as a new set (no controlled medicine, not empty). An edit of a starter
+ * set CLEARS its signature, exactly as `saveRxSet` always has: what the unit head signed is what doctors
+ * see, so the edited set is hidden from them until the head signs it again (`signRxSet`).
+ *
+ * Recorded like save and retire: `updated_by` / `updated_at` on the row. A visit already prescribed
+ * from the set is untouched — a set fills a screen and the visit keeps its own lines.
+ *
+ * A set that does not exist (or is retired) is 404; a set that exists but is not this doctor's to edit
+ * is 403 (owner's "done means", 2026-10-10).
+ */
+export async function updateRxSet(tx: Tx, actor: Actor, setId: string, input: { name: string; body: unknown }, now: Date = new Date()): Promise<{ setId: string }> {
+  const userId = userOf(actor);
+  const rows = await tx.select().from(opdRxSets).where(and(eq(opdRxSets.id, setId), eq(opdRxSets.active, true)));
+  const row = rows[0];
+  if (row === undefined) throw new OpdError("unknown_rx_set", `unknown set ${setId}`);
+  if (!(await mayEditRxSet(tx, row, userId, now))) {
+    throw new OpdError("rx_set_not_permitted", row.scope === "doctor"
+      ? "a doctor's set is edited by that doctor only"
+      : "a starter set is edited by its department's unit head");
+  }
+  const name = nameOf(input.name);
+  const body = await vetBody(tx, input.body);
+  await tx.update(opdRxSets).set({ name, body, signedBy: null, signedAt: null, updatedBy: userId, updatedAt: now }).where(eq(opdRxSets.id, setId));
   return { setId };
 }
 

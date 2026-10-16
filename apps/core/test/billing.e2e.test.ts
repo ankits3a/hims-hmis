@@ -60,6 +60,7 @@ const ROUTES: [method: "get" | "post" | "put", path: string, permission: string]
   ["post", "/billing/eie", "billing.eie.mark"],
   ["get", "/billing/patients/X/balance", "billing.invoice.read"],
   ["get", "/billing/patients/X/dues", "billing.invoice.read"],
+  ["get", "/billing/patients/X/bills-alias", "billing.invoice.read"], // #852 — a sealed record's bill rows, no amounts
   ["post", "/billing/refunds/request", "billing.refund.request"],
   ["post", "/billing/refunds", "billing.refund.request"],
   ["post", "/billing/refunds/X/pay", "billing.refund.pay"],
@@ -92,6 +93,7 @@ const ROUTES: [method: "get" | "post" | "put", path: string, permission: string]
  */
 const ALSO_ADMITS: Record<string, readonly string[]> = {
   "get /billing/patients/X/dues": ["billing.dues.patient.read"],
+  "get /billing/patients/X/bills-alias": ["billing.dues.patient.read"], // #852 — the same narrow string, unsettled bills only
 };
 
 /** A complete, in-range adult reading — the opd.e2e fixture, so vitals move the encounter to `waiting`. */
@@ -1078,8 +1080,9 @@ describe("billing e2e", () => {
     // UX-AUDIT 2026-09-28: 31 -> 32, `sessions/current/open-items`; BOARD — +2, the mismatch decision and
     // the office's needs list. Measured from the failing run after merging main: `Received length: 34`.
     // OWNER APP 2026-10-09: 34 -> 35, `reports/owner-money` (measured: `Received length: 35`).
-    // #656: 35 -> 37, `sessions/last-closed` and `sessions/:id/variance-approval`.
-    expect(ROUTES).toHaveLength(37);
+    // #852: 35 -> 36, `patients/X/bills-alias` (measured: `Received length: 36`).
+    // #656: 36 -> 38, `sessions/last-closed` and `sessions/:id/variance-approval`.
+    expect(ROUTES).toHaveLength(38);
     for (const [method, path, permission] of ROUTES) {
       const res = await http()[method](path).set(...auth(rando.token)).send({});
       expect({ method, path, status: res.status, message: res.body.message }).toEqual({

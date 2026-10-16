@@ -1,6 +1,7 @@
 import {
   BadRequestException, Body, Controller, ForbiddenException, Inject, Post, ServiceUnavailableException,
 } from "@nestjs/common";
+import { RateLimited } from "../ratelimit/rate-limit";
 import { z } from "zod";
 import type { Actor } from "@hmis/contracts";
 import { CONFIG, DB } from "../tokens";
@@ -68,6 +69,7 @@ export class SpeechController {
     return workersAiSpeechClient(this.cfg.speechAccountId, this.cfg.speechApiToken);
   }
 
+  @RateLimited("speech")
   @Post("transcribe")
   async transcribe(@CurrentActor() actor: Actor, @Body() raw: unknown): Promise<{ text: string; auditId: string }> {
     /**

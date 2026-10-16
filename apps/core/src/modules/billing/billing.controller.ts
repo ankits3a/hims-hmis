@@ -5,7 +5,11 @@ import type { FeeSwitchesView } from "./fee-switches";
 import { changeConsultPricesNow, consultPricesView, consultTerms, decideConsultPrices, proposeConsultPrices } from "./consult-prices";
 import type { ConsultPricesView, ConsultTerms } from "./consult-prices";
 import { FEE_KINDS } from "./config";
-import { Body, Controller, Get, HttpCode, HttpException, Inject, Param, Post, Put, Query, Headers } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, HttpException, Inject, NotFoundException, Param, Post, Put, Query, Headers } from "@nestjs/common";
+import { billsAliasRows } from "./bills-alias";
+import type { BillAliasRow } from "./bills-alias";
+import { hasPermission } from "../../kernel/auth/permissions";
+import { recordPhiAccess } from "../../kernel/phi/audit";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { gstinState } from "@hmis/contracts";
@@ -167,7 +171,7 @@ type VisitFacts = {
 import type { OpdConfig } from "../opd";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
-import { patientBillDetail, patientBills } from "./patient-bills";
+import { logRestrictedRead, logSealedBillRead, patientBillDetail, patientBills } from "./patient-bills";
 import type { PatientBillDetail, PatientBillRow } from "./patient-bills";
 
 /**
@@ -710,9 +714,11 @@ export class BillingController {
 
   @RequirePermission("billing.invoice.read", "hospital")
   @Get("invoices/:id")
-  async invoice(@Param("id") id: string): Promise<InvoiceDetail> {
+  async invoice(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<InvoiceDetail> {
     const found = await getInvoice(this.db, id);
     if (!found) toHttp(new BillingError("unknown_invoice", `unknown invoice ${id}`));
+    // A restricted record's bill stays readable at the counter; a reader without the grant leaves an access row.
+    await logSealedBillRead(this.db, actor, found.invoice.patientId);
     return { ...found, settlement: await invoiceSettlement(this.db, id) };
   }
 
@@ -730,6 +736,7 @@ export class BillingController {
     try {
       const opd = await loadOpdConfig(this.db);
       const [patient] = await getPatientSummaries(this.db, actor, [found.invoice.patientId]);
+      if (patient !== undefined) await logRestrictedRead(this.db, actor, patient);
       const qrBody = `bil1.invoice.${id}`;
       return {
         letterhead: opd.letterhead,
@@ -1045,6 +1052,25 @@ export class BillingController {
     const found = await patientBillDetail(this.db, actor, id);
     if (found === null) toHttp(new BillingError("unknown_invoice", `unknown invoice ${id}`));
     return found!;
+  }
+
+  /**
+   * #852 — board §4's bill rows on a SEALED record the reader may not open (`bills-alias.ts`): date,
+   * bill number and status, never an amount. The same two strings the patient's dues route admits:
+   * a counter seat with `billing.invoice.read` reads every bill; the front desk's narrow
+   * `billing.dues.patient.read` reads the unsettled ones only, as it does everywhere else. A record
+   * the reader can open is a 404 — the full bill reads serve it. Each read writes one
+   * `billing.bills_alias` access row.
+   */
+  @RequirePermission("billing.invoice.read", "hospital", { alsoAdmits: ["billing.dues.patient.read"] })
+  @Get("patients/:patientId/bills-alias")
+  async billsAlias(@CurrentActor() actor: Actor, @Param("patientId") patientId: string): Promise<{ items: BillAliasRow[] }> {
+    const full = await hasPermission(this.db, actor.id, "billing.invoice.read", "hospital");
+    const items = await billsAliasRows(this.db, actor, patientId, { unsettledOnly: !full });
+    if (items === null) throw new NotFoundException(`unknown patient ${patientId}`);
+    const [summary] = await getPatientSummaries(this.db, actor, [patientId]);
+    await recordPhiAccess(this.db, { actor, patientId: summary?.id ?? patientId, surface: "billing.bills_alias", sealed: true, reason: null });
+    return { items };
   }
 
   @RequirePermission("billing.invoice.read", "hospital", { alsoAdmits: ["billing.dues.patient.read"] })

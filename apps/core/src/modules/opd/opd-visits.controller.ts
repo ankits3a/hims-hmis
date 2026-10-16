@@ -7,8 +7,8 @@ import { CONFIG, DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { copilotActs, opdQueueEntries } from "../../kernel/db/schema";
 import { getPatientSummaries, PatientError } from "../patients";
-import { findTodaysVisits, requestSlipRetake, slipDay, slipReadback } from "./slips";
-import type { SlipDay, SlipReadback } from "./slips";
+import { findTodaysVisits, mrdSlips, requestSlipRetake, slipDay, slipReadback } from "./slips";
+import type { MrdSlipRow, SlipDay, SlipReadback } from "./slips";
 import { appointmentForList, bookAppointment, cancelAppointment, checkInAppointment, listAppointments, rescheduleAppointment } from "./appointments";
 import {
   abandonVisit, counterState, deskComplaintFor, getEncounterByVisitNo, getVisit, grantFeeBypass, joinQueue, listVisits, openVisit,
@@ -21,6 +21,8 @@ import { listDepartments } from "./masters";
 import type { RxHistoryItem, VitalsHistoryItem } from "./history";
 import type { AppConfig } from "../../kernel/config";
 import { walkIn } from "./walk-in";
+import { listTeleBillFailures, retryTeleBill } from "./tele-bill-failures";
+import type { TeleBillFailureRow, TeleBillRetry } from "./tele-bill-failures";
 import { moveVisitDepartment, previewDepartmentMove } from "./department-move";
 import type { DepartmentMovePreview, DepartmentMoveResult } from "./department-move";
 import { continuityDoctorFor } from "./continuity";
@@ -454,6 +456,31 @@ export class OpdVisitsController {
     }
   }
 
+  /**
+   * #647 — the tele-call bills that failed at "Spoke to patient" and still wait, for the billing
+   * office. Guarded on the counter's invoice authority: never a doctor's read.
+   */
+  @RequirePermission("billing.invoice.issue", "hospital")
+  @Get("tele/bill-failures")
+  async teleBillFailures(@CurrentActor() actor: Actor): Promise<{ items: TeleBillFailureRow[] }> {
+    try {
+      return { items: await listTeleBillFailures(this.db, actor) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** #647 — raise the failed bill again, under the retrying person. Refused unless a failure waits on the visit. */
+  @RequirePermission("billing.invoice.issue", "hospital")
+  @Post("tele/bill-failures/:encounterId/retry")
+  async retryTeleBillRoute(@CurrentActor() actor: Actor, @Param("encounterId") encounterId: string): Promise<TeleBillRetry> {
+    try {
+      return await retryTeleBill(this.db, actor, encounterId);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
   /** Owner 2026-10-09 — what a tele-call costs: the in-person fee for that patient, doctor and slot date. Desk only. */
   @RequirePermission("opd.appointments.manage", "hospital", { alsoAdmits: ["billing.receipt.record"] })
   @Get("appointments/:id/tele-fee")
@@ -591,6 +618,18 @@ export class OpdVisitsController {
   @Get("slips/today")
   async slipsToday(@CurrentActor() actor: Actor): Promise<SlipDay> {
     return slipDay(this.db, actor);
+  }
+
+  /**
+   * #659 — THE MRD DAY-END HAND-OFF (owner ruling 28-Sep-2026: "a missing slip … goes to MRD at day
+   * end"). The earlier days' finished consultations whose slip never landed (`slips.ts mrdSlips`).
+   * The slip desk reads it on its own grant; the records office (`mrd_officer`, which holds no OPD
+   * read) is admitted by `patients.merge`, the records officer's own grant — no new permission.
+   */
+  @RequirePermission("opd.visits.read", "hospital", { alsoAdmits: ["patients.merge"] })
+  @Get("slips/mrd")
+  async slipsMrd(@CurrentActor() actor: Actor): Promise<{ items: MrdSlipRow[] }> {
+    return { items: await mrdSlips(this.db, actor) };
   }
 
   /**

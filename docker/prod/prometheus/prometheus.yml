@@ -36,6 +36,8 @@ rule_files:
   # on disk and deploy.sh's install of it from drifting apart: all three are ONE set, checked
   # in both directions, with the count of them pinned before anything is compared.
   - /etc/prometheus/alerts-meta.yml
+  # The FOURTH rule file: security-relevant events (alerts-security.yml's own header).
+  - /etc/prometheus/alerts-security.yml
 
 # Plan 11c / D10 — WHERE A FIRING RULE ACTUALLY GOES. Until this block existed, every rule in
 # `alerts.yml` evaluated correctly, turned red on Prometheus's own /alerts page, and reached

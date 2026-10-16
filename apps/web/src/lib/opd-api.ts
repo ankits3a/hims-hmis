@@ -245,7 +245,8 @@ export type WireQueueEntryView = WireQueueEntry & {
  * PLAN 07d T5 / DD4 — one advised test. The price is a SNAPSHOT taken when the doctor advised it,
  * never a live lookup: the slip is a quotation from a particular afternoon and the counter reprices.
  */
-export type WireAdvisedTest = { serviceId: string; code: string; name: string; pricePaise: number };
+/** `pricePaise` null: the tariff had no price when it was advised (#609) — printed as "Rate at counter". */
+export type WireAdvisedTest = { serviceId: string; code: string; name: string; pricePaise: number | null };
 
 /** PLAN 07d T5 — `GET /tariff/price-list`: the active version's list price per active service. */
 export type WirePriceListRow = {

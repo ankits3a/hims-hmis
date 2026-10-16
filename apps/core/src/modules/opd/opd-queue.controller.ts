@@ -29,6 +29,8 @@ import { boardSnapshot, callNext, listQueue, queueWithoutMoney, recallCalled, sk
 import { encounterWithoutMoney, seesFees } from "./fee-view";
 import { setSessionStatus } from "./sessions";
 import { istDate } from "./time";
+import { patientQueueToday } from "./queue-place";
+import type { QueuePlace } from "./queue-place";
 import type { EncounterRow, PrescriptionRow, QueueEntryRow } from "./encounters";
 import type { IssuedPrescription, RxPrecheckResult, RxPrintData, RxVerifyResult } from "./prescriptions";
 import type { DraftRow } from "./prescription-drafts";
@@ -96,7 +98,8 @@ const consultNoteBody = z.object({
     serviceId: z.string().min(1).max(64),
     code: z.string().min(1).max(64),
     name: z.string().min(1).max(300),
-    pricePaise: z.number().int().nonnegative(),
+    /** #609 — null: the tariff has no price for this test yet; the counter prices it. */
+    pricePaise: z.number().int().nonnegative().nullable(),
   })).max(20).nullable().optional(),
   /**
    * CONSULT V2 — bounded like everything else on this body. Sixty findings is a thorough examination;
@@ -494,6 +497,21 @@ export class OpdQueueController {
   async printGlassesRx(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ queued: boolean }> {
     try {
       return await printGlassesRx(this.db, actor, id);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * #657 — THE PROFILE'S TODAY BAND: this patient's live tokens today and, for a waiting one, the
+   * place in that doctor's line (`queue-place.ts`). `opd.queue.read`, the string the queue itself
+   * needs. Counts only: no other patient's identity crosses it.
+   */
+  @RequirePermission("opd.queue.read", "hospital")
+  @Get("patients/:patientId/queue-today")
+  async queueToday(@CurrentActor() actor: Actor, @Param("patientId") patientId: string): Promise<{ items: QueuePlace[] }> {
+    try {
+      return { items: await patientQueueToday(this.db, actor, patientId) };
     } catch (e) {
       toHttp(e);
     }
