@@ -9,7 +9,7 @@ import { withIdempotency } from "../billing";
 import { deliveryAllowed } from "./interlock";
 import {
   amendReport, getReport, listResultsForEncounter, listProvisionalResultsForEncounter,
-  printReport, publishReport, releaseUnpaid, reportVersions, deliveryRegister, reportsForPatient,
+  printReport, publishReport, releaseUnpaid, reportVersionsFor, deliveryRegister, reportsForPatient,
 } from "./reports";
 import { amendResult, requestRerun } from "./results";
 import { patientResultsForDoctor } from "./patient-results";
@@ -234,10 +234,10 @@ export class LabVerifyController {
   /** Every version of one order's report, newest first — the history a reprint reads. */
   @Get("reports/order/:orderId")
   @RequirePermission("lab.results.read", "hospital")
-  async versions(@Param("orderId") orderId: string): Promise<unknown> {
+  async versions(@CurrentActor() actor: Actor, @Param("orderId") orderId: string): Promise<unknown> {
     try {
       return {
-        versions: await reportVersions(this.db, orderId),
+        versions: await reportVersionsFor(this.db, actor, orderId),
         delivery: await deliveryAllowed(this.db, orderId),
       };
     } catch (e) { toHttp(e); }

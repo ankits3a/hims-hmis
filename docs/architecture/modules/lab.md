@@ -202,6 +202,7 @@ Source: `apps/core/src/modules/lab/`
   - `publishReport(db: Db, actor: Actor, input: PublishReportInput, now: Date = new Date()): Promise<PublishedReport>`
   - `releaseUnpaid(db: Db, actor: Actor, input: ReleaseUnpaidInput, now: Date = new Date()): Promise<PrintedReport>`
   - `reportVersions(exec: Db | Tx, orderId: string): Promise<ReportVersionRow[]>`
+  - `reportVersionsFor(db: Db, actor: Actor, orderId: string): Promise<ReportVersionRow[]>`
   - `reportsForPatient(db: Db, actor: Actor, patientId: string, now: Date = new Date()): Promise<PatientReports>`
   - types: `AmendReportInput`, `DeliveryRegisterRow`, `EncounterResultRow`, `PatientReportRow`, `PatientReports`, `PrintReportInput`, `PrintedReport`, `ProvisionalResultRow`, `PublishReportInput`, `PublishedReport`, `ReleaseUnpaidInput`, `ReportAnalyteLine`, `ReportDeliveryRow`, `ReportNotice`, `ReportPanel`, `ReportSnapshot`, `ReportVersionRow`, `ReportView`
 - `results.ts`

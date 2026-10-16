@@ -4,7 +4,7 @@ import { grantLabResultPermissions, runLabOrder, seedLabDeskBase } from "../../.
 import { mkUser } from "../../../test/helpers/opd";
 import { grantPermissionToRole } from "../../kernel/auth/permissions";
 import { orderItems } from "../../kernel/db/schema";
-import { getReport, publishReport } from "./reports";
+import { getReport, listProvisionalResultsForEncounter, listResultsForEncounter, publishReport, reportVersionsFor } from "./reports";
 import type { LabDeskFixture } from "../../../test/helpers/lab";
 import type { Db } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
@@ -35,8 +35,8 @@ describe("single lab report read — restricted tests", () => {
   });
   afterEach(() => { fx.unregister(); });
 
-  const published = async (codes: string[], restrict: number[]) => {
-    const run = await runLabOrder(db, fx, codes, { at: AT });
+  const published = async (codes: string[], restrict: number[], encounterNo?: string) => {
+    const run = await runLabOrder(db, fx, codes, { at: AT, encounterNo });
     for (const i of restrict) await db.update(orderItems).set({ restricted: true }).where(eq(orderItems.id, run.itemIds[i]!));
     const { reportId } = await publishReport(db, fx.pathologist.actor, { orderId: run.orderId }, AT);
     return { run, reportId };
@@ -67,5 +67,34 @@ describe("single lab report read — restricted tests", () => {
   it("an unrestricted report is unchanged for any holder of the read permission", async () => {
     const { run, reportId } = await published(["TSH", "GLUF"], []);
     expect(await panelItems(other.actor, reportId)).toEqual([...run.itemIds].sort());
+  });
+
+  /* ═══ The visit's result reads and the version history (same rule, one PR) ═══ */
+  const items = (rows: { orderItemId: string }[]) => [...new Set(rows.map((r) => r.orderItemId))].sort();
+
+  it("the visit's signed results drop a restricted test for a doctor who did not order it; legitimate readers keep it", async () => {
+    const { run } = await published(["TSH", "GLUF"], [0]);
+    expect(items(await listResultsForEncounter(db, other.actor, fx.encounterNo, READ_AT))).toEqual([run.itemIds[1]!]);
+    const all = [...run.itemIds].sort();
+    expect(items(await listResultsForEncounter(db, fx.pathologist.actor, fx.encounterNo, READ_AT))).toEqual(all);
+    expect(items(await listResultsForEncounter(db, fx.bench.actor, fx.encounterNo, READ_AT))).toEqual(all);
+    await grantPermissionToRole(db, fx.registry, "doctor", "orders.read.restricted");
+    expect(items(await listResultsForEncounter(db, other.actor, fx.encounterNo, READ_AT))).toEqual(all);
+  });
+
+  it("the visit's unsigned results follow the same rule", async () => {
+    const run = await runLabOrder(db, fx, ["TSH", "GLUF"], { at: AT, verify: false });
+    await db.update(orderItems).set({ restricted: true }).where(eq(orderItems.id, run.itemIds[0]!));
+    expect(items(await listProvisionalResultsForEncounter(db, other.actor, fx.encounterNo, READ_AT))).toEqual([run.itemIds[1]!]);
+    expect(items(await listProvisionalResultsForEncounter(db, fx.pathologist.actor, fx.encounterNo, READ_AT))).toEqual([...run.itemIds].sort());
+  });
+
+  it("an order's version history is refused as unknown to a doctor who may not see its restricted test", async () => {
+    const { run, reportId } = await published(["TSH", "GLUF"], [0]);
+    await expect(reportVersionsFor(db, other.actor, run.orderId)).rejects.toMatchObject({ code: "unknown_report" });
+    expect((await reportVersionsFor(db, fx.pathologist.actor, run.orderId)).map((v) => v.reportId)).toEqual([reportId]);
+    expect((await reportVersionsFor(db, fx.desk.actor, run.orderId)).map((v) => v.reportId)).toEqual([reportId]);
+    const open = await published(["GLUF"], [], fx.newVisit());
+    expect((await reportVersionsFor(db, other.actor, open.run.orderId)).map((v) => v.reportId)).toEqual([open.reportId]);
   });
 });

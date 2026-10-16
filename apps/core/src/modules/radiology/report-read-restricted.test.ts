@@ -8,6 +8,7 @@ import { orderItems, orders } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { draftReport, publishReport, signReport } from "./reports";
 import { reportView } from "./read";
+import { reportPrintView } from "./reading";
 import type { RadiologyFixture } from "../../../test/helpers/radiology";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -87,5 +88,14 @@ describe("single imaging report read — restricted studies", () => {
   it("an unrestricted report stays readable by any holder of the report permission (DD16)", async () => {
     const reportId = await released(false);
     expect((await reportView(db, other, reportId))?.reportId).toBe(reportId);
+  });
+
+  it("the print view follows the same rule as the report read", async () => {
+    const reportId = await released(true);
+    expect(await reportPrintView(db, other, reportId, NOW)).toBeNull();
+    expect((await reportPrintView(db, fx.doctor, reportId, NOW))?.reportId).toBe(reportId);
+    expect((await reportPrintView(db, fx.radiographer, reportId, NOW))?.reportId).toBe(reportId);
+    const open = await released(false);
+    expect((await reportPrintView(db, other, open, NOW))?.reportId).toBe(open);
   });
 });
