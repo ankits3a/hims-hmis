@@ -1,3 +1,5 @@
+import { COPILOT_DEFAULTS, doctorCopilotSettings, setDoctorCopilotSettings } from "./copilot-settings";
+import type { CopilotSettings } from "./copilot-settings";
 import { Body, Controller, Delete, Get, Inject, Param, Post, Put, Query } from "@nestjs/common";
 import { desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -70,6 +72,8 @@ export const signalsBody = z.object({
   })).max(60).default([]),
 });
 const prefsBody = z.object({ suggestionsOn: z.boolean() });
+/** #619 — either toggle, or both; an empty body changes nothing. */
+const copilotSettingsBody = z.object({ proactive: z.boolean().optional(), draftProse: z.boolean().optional() }).strict();
 const nicknamesQuery = z.object({ all: z.enum(["0", "1"]).optional() });
 const lasaBody = z.object({ nameA: z.string().min(3).max(60), nameB: z.string().min(3).max(60) });
 const settingsBody = z.object({
@@ -204,6 +208,28 @@ export class OpdPhoneConsultController {
     try {
       await setDoctorSuggestions(this.db, actor, b.suggestionsOn);
       return { on: b.suggestionsOn };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * #619 — decision 0006's two toggles, the doctor's own: proactive and drafting clinical prose. Both
+   * OFF until the doctor turns one on; a flip of drafting is recorded (`copilot-settings.ts`).
+   */
+  @RequirePermission("opd.consult", "hospital")
+  @Get("consult/copilot-settings")
+  async copilotSettings(@CurrentActor() actor: Actor): Promise<CopilotSettings> {
+    if (actor.type !== "user") return { ...COPILOT_DEFAULTS };
+    return doctorCopilotSettings(this.db, actor.id);
+  }
+
+  @RequirePermission("opd.consult", "hospital")
+  @Put("consult/copilot-settings")
+  async setCopilotSettings(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<CopilotSettings> {
+    const b = parsed(copilotSettingsBody, body);
+    try {
+      return await setDoctorCopilotSettings(this.db, actor, b);
     } catch (e) {
       toHttp(e);
     }
