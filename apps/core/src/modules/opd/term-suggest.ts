@@ -1,4 +1,7 @@
-import { sql } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
+import { dxKeyOf } from "@hmis/contracts";
+import { opdEncounterDiagnoses, opdEncounters } from "../../kernel/db/schema";
+import { OpdError } from "./errors";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -108,4 +111,57 @@ export async function testsForDiagnosis(
     mine: Number(r["mine"] ?? 0),
     hospital: Number(r["hospital"] ?? 0),
   }));
+}
+
+/**
+ * ═══ #620 — THE DESK SCRIBE'S TEST CHIPS (decision 0050, P0) ═══
+ *
+ * The scribe types the treating doctor's paper and has no diagnosis field, so its chips are the
+ * TREATING DOCTOR's pattern, never the scribe's: the tests advised for this visit's diagnoses when the
+ * doctor committed any (`testsForDiagnosis`, the consultation's own read), and otherwise the tests
+ * this doctor advised most on completed visits in the last ninety days. A chip only saves typing what
+ * the paper already says — the scribe adds nothing the doctor did not write — and every chip has the
+ * same × as the doctor's, counted against the scribe on the `scribe` surface.
+ *
+ * Counts, not a recommendation; no patient leaves the aggregate. `contextKey` is what a tap or a
+ * cross is counted against: the primary diagnosis's key, or null for the doctor's usual list.
+ */
+export const USUAL_TESTS_DAYS = 90;
+
+export async function usualTestsOf(db: Db, doctorId: string, now: Date = new Date(), limit = 6): Promise<TestHit[]> {
+  const capped = Math.min(Math.max(limit, 1), 12);
+  const since = new Date(now.getTime() - USUAL_TESTS_DAYS * 24 * 3600 * 1000);
+  const res = await db.execute(sql`
+    select t->>'serviceId' as service_id,
+           max(t->>'code') as code, max(t->>'name') as name,
+           max((t->>'pricePaise')::int) as price_paise,
+           count(*)::int as mine
+      from opd_encounters e
+      cross join lateral jsonb_array_elements(case when jsonb_typeof(e.advised_tests) = 'array' then e.advised_tests else '[]'::jsonb end) as t
+     where e.doctor_id = ${doctorId} and e.consult_completed_at is not null
+       and e.consult_completed_at >= ${since.toISOString()} and e.consult_completed_at <= ${now.toISOString()}
+       and t->>'serviceId' is not null
+     group by t->>'serviceId'
+     order by mine desc, max(t->>'name') asc
+     limit ${capped}`);
+  return (res.rows as Record<string, unknown>[]).map((r) => ({
+    serviceId: String(r["service_id"]),
+    code: String(r["code"] ?? ""),
+    name: String(r["name"] ?? ""),
+    pricePaise: Number(r["price_paise"] ?? 0),
+    mine: Number(r["mine"] ?? 0),
+    hospital: Number(r["mine"] ?? 0),
+  }));
+}
+
+export type ScribeTestChips = { contextKey: string | null; items: TestHit[] };
+
+export async function scribeTestChips(db: Db, encounterId: string, now: Date = new Date()): Promise<ScribeTestChips> {
+  const [enc] = await db.select({ doctorId: opdEncounters.doctorId }).from(opdEncounters).where(eq(opdEncounters.id, encounterId));
+  if (enc === undefined) throw new OpdError("unknown_encounter", `no encounter ${encounterId}`);
+  if (enc.doctorId === null) return { contextKey: null, items: [] };
+  const dx = await db.select({ text: opdEncounterDiagnoses.text, icd10: opdEncounterDiagnoses.icd10Code })
+    .from(opdEncounterDiagnoses).where(eq(opdEncounterDiagnoses.encounterId, encounterId)).orderBy(asc(opdEncounterDiagnoses.seq));
+  if (dx.length > 0) return { contextKey: dxKeyOf(dx[0]!.icd10, dx[0]!.text), items: await testsForDiagnosis(db, enc.doctorId, dx) };
+  return { contextKey: null, items: await usualTestsOf(db, enc.doctorId, now) };
 }

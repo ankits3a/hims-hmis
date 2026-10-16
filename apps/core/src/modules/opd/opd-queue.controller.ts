@@ -3,6 +3,7 @@ import { recordTeleOutcome, startTeleCall } from "./tele-call";
 import type { TeleCall, TeleOutcomeResult } from "./tele-call";
 import { z } from "zod";
 import { DX_SOURCES, LINE_SOURCES } from "@hmis/contracts";
+import { SIGNAL_ID } from "./consult-guards";
 import type { Actor } from "@hmis/contracts";
 import { CONFIG, DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
@@ -138,6 +139,9 @@ const consultNoteBody = z.object({
     })).max(8).nullish(),
     /** Decision 0050 P0 — where the row came from rides the draft, so a reload does not turn a suggested line into a searched one. */
     source: z.enum(LINE_SOURCES).optional(),
+    /* #620 — a filled row's suggestion event, and the row as it was offered: a reload must not lose whether the doctor changed it. */
+    suggestionEventId: z.string().regex(SIGNAL_ID).optional(),
+    suggestedAs: z.string().max(3000).optional(),
   })).max(30).nullable().optional(),
   leaseToken: z.string().min(8).max(64).optional(),
 });
@@ -176,6 +180,9 @@ export const rxLineBody = z.object({
   // Where the line came from (phone consult, decision 0049's review). Stored on the line for audit;
   // it changes no check and prints nowhere. Absent on every line written before, and on the web's.
   source: z.enum(LINE_SOURCES).nullish(),
+  // #620 — the suggestion event the line was taken from (`fhir.ts` RxLine). Named here for the
+  // reason `eye` is: an undeclared key is stripped, and the line would lose its join to the event.
+  suggestionEventId: z.string().regex(SIGNAL_ID).nullish(),
 }).refine((l) => (l.taper ?? null) !== null || l.frequency.length <= 100, {
   path: ["frequency"], message: "String must contain at most 100 character(s)",
 });

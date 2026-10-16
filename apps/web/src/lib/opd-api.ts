@@ -418,6 +418,8 @@ export type WireRxLine = {
   medicineId?: string | null;
   /** Decision 0050 P0 — typed, searched, suggested, from a set, a repeat, a voice note or the desk's paper. Audit and learning only. */
   source?: RxLineSource | null;
+  /** #620 — the suggestion event a filled line was taken from. Audit and learning only. */
+  suggestionEventId?: string | null;
 };
 
 /** An editor row as typed — blanks allowed; `durationDays` is the box's text. Not a prescription line. */
@@ -426,6 +428,8 @@ export type WireRxDraftLine = {
   instructions: string; noSubstitution: boolean; medicineId?: string | null; eye?: Eye | null; taper?: TaperStep[] | null;
   /** Decision 0050 P0 — where the row came from; absent on a row typed by hand and on every older draft. */
   source?: RxLineSource;
+  /** #620 — a filled row's suggestion event, and the row as it was offered (`lib/suggest-signals.ts`). */
+  suggestionEventId?: string; suggestedAs?: string;
 };
 
 export type WirePrescription = {
