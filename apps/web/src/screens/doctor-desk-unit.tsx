@@ -130,9 +130,12 @@ function Owes({ b }: { b: WireUnitBoard }): React.ReactElement {
                 <label htmlFor={`move-to-${o.key}`} className="dd-note">{t("doctorDesk.unit.moveTo")}</label>
                 <select id={`move-to-${o.key}`} value={to} data-testid={`dd-move-to-${o.key}`} onChange={(e) => setTo(e.target.value)}>
                   <option value="">{t("doctorDesk.unit.choose")}</option>
-                  {b.moveTo.filter((m) => m.userId !== o.holder.userId).map((m) => (
-                    <option key={m.userId} value={m.userId}>{`${m.name} · ${t(`doctorDesk.role.${m.role}`, { defaultValue: m.role })}`}</option>
-                  ))}
+                  {b.moveTo.filter((m) => m.userId !== o.holder.userId).map((m) => {
+                    // DD-1b — a restricted test goes only to someone who may see it (the server refuses otherwise).
+                    const no = o.cannotTake?.includes(m.userId) === true;
+                    const label = `${m.name} · ${t(`doctorDesk.role.${m.role}`, { defaultValue: m.role })}`;
+                    return <option key={m.userId} value={m.userId} disabled={no}>{no ? `${label} · ${t("doctorDesk.unit.cannotTake")}` : label}</option>;
+                  })}
                 </select>
                 <button type="button" className="dd-clock-btn" data-testid={`dd-move-go-${o.key}`} disabled={to === "" || move.isPending} onClick={() => move.mutate({ key: o.key, to })}>{t("doctorDesk.unit.moveGo")}</button>
               </div>

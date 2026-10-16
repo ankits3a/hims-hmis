@@ -57,7 +57,7 @@ export async function towerView(db: Db, actor: Actor, at: Date): Promise<WireTow
   const memberIds = scope.members.map((m) => m.userId);
   const lines = await doctorDayLines(db, [...new Set([actor.id, ...memberIds])], scope.istDate, at).catch(() => [] as DoctorDayLine[]);
   const mine = lines.find((l) => l.userId === actor.id) ?? null;
-  const attention = await waitingOn(db, actor, at, scope.istDate);
+  const attention = await waitingOn(db, actor, at, scope.istDate, scope.members);
 
   // The login brief is built BEFORE the read that shows it, inside one transaction with the read stamp.
   if (actor.type === "user") {

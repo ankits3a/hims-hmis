@@ -30,7 +30,7 @@ const unitOf = (scope: DeskScope): WireNow["unit"] => scope.unit === null ? null
 /** The SR's Now: NOW = my criticals (red open, amber read back with no act), TODAY = reports to open and visits to finish. */
 export async function nowView(db: Db, actor: Actor, at: Date): Promise<WireNow> {
   const scope = await deskScope(db, actor, at);
-  const rows = await waitingOn(db, actor, at, scope.istDate);
+  const rows = await waitingOn(db, actor, at, scope.istDate, scope.members);
   return {
     at: at.toISOString(), istDate: scope.istDate, you: youOf(scope, actor), unit: unitOf(scope),
     scope: await deskLevel(db, actor, scope, at),
