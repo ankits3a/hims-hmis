@@ -89,6 +89,11 @@ Source: `apps/core/src/modules/lab/`
   - `duplicateWarnings(exec: Db | Tx, actor: Actor, patientId: string, serviceIds: readonly string[], now: Date = new Date()): Promise<Duplicate…`
   - `overlappingAnalytes(exec: Db | Tx, serviceIds: readonly string[]): Promise<Map<string, string[]>>`
   - types: `DuplicateWarning`
+- `egfr.ts`
+  - `ckdEpi2021(creatinineMgDl: number, ageYears: number, sex: EgfrSex): number`
+  - `latestEgfr(exec: Db | Tx, patientId: string, now: Date): Promise<LatestEgfr | null>`
+  - `registerLabKidneyFunctionReader(): () => void`
+  - types: `EgfrSex`, `LatestEgfr`
 - `errors.ts`
   - `LAB_ERROR_CODES`
   - `class LabError`
@@ -202,6 +207,7 @@ Source: `apps/core/src/modules/lab/`
   - `publishReport(db: Db, actor: Actor, input: PublishReportInput, now: Date = new Date()): Promise<PublishedReport>`
   - `releaseUnpaid(db: Db, actor: Actor, input: ReleaseUnpaidInput, now: Date = new Date()): Promise<PrintedReport>`
   - `reportVersions(exec: Db | Tx, orderId: string): Promise<ReportVersionRow[]>`
+  - `reportVersionsFor(db: Db, actor: Actor, orderId: string): Promise<ReportVersionRow[]>`
   - `reportsForPatient(db: Db, actor: Actor, patientId: string, now: Date = new Date()): Promise<PatientReports>`
   - types: `AmendReportInput`, `DeliveryRegisterRow`, `EncounterResultRow`, `PatientReportRow`, `PatientReports`, `PrintReportInput`, `PrintedReport`, `ProvisionalResultRow`, `PublishReportInput`, `PublishedReport`, `ReleaseUnpaidInput`, `ReportAnalyteLine`, `ReportDeliveryRow`, `ReportNotice`, `ReportPanel`, `ReportSnapshot`, `ReportVersionRow`, `ReportView`
 - `results.ts`

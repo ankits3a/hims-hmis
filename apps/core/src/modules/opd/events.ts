@@ -144,6 +144,15 @@ export const teleVisitsOpened = defineEvent("tele.visits_opened", MODULE, z.obje
 }));
 
 /**
+ * #619 — decision 0006: a doctor turned the copilot's drafting of clinical prose on or off. Written so
+ * an audit can answer "was the copilot permitted to draft on the day this note was signed?"
+ * (`copilotDraftProseAt`). The proactive toggle is UX and writes no event (brainstorm §4.2).
+ */
+export const copilotDraftProseSet = defineEvent("opd.copilot_draft_prose_set", MODULE, z.object({
+  userId: z.string().min(1), draftProse: z.boolean(), previous: z.boolean(),
+}));
+
+/**
  * Fix round 2026-10-09 — a tele-call's bill could not be raised, so the doctor's 'spoke' was NOT
  * recorded. For the desk and billing side (the doctor is told only "Could not save — try again").
  * `code` is the refusing error's own code; no amount and no number is carried.
@@ -618,6 +627,8 @@ export const consultVoiceTranscribed = defineEvent("consultation.voice_transcrib
 export const aliasRunCompleted = defineEvent("alias.run_completed", MODULE, z.object({
   proposed: z.number().int().nonnegative(), suggestion: z.number().int().nonnegative(),
   refused: z.number().int().nonnegative(), failed: z.number().int().nonnegative(),
+  /** #613 — which runner: absent on the medicine runner's events (as before), "complaint" on complaint normalisation's. */
+  kind: z.enum(["medicine", "complaint"]).optional(),
 }));
 
 /**
@@ -638,3 +649,13 @@ const flowFindingAct = z.object({
 });
 export const flowFindingDismissed = defineEvent("flow.finding_dismissed", MODULE, flowFindingAct);
 export const flowFindingTried = defineEvent("flow.finding_tried", MODULE, flowFindingAct);
+
+/**
+ * Decision 0050 / plan P4 (#615) — a doctor reset what the system learned from them. The actor IS the
+ * doctor (nobody resets another's); the payload names the OPD doctor and the surfaces. No patient.
+ */
+export const learningReset = defineEvent("suggestions.learning_reset", MODULE, z.object({
+  doctorId: id,
+  surfaces: z.array(z.enum(["complaints", "diagnoses", "tests", "findings", "hidden"])).min(1),
+  resetAt: iso,
+}));

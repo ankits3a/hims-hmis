@@ -972,6 +972,22 @@
     "agentIdle": "I read the filters on this screen, the doctor master and the day's bookings — and I say which one an answer came from."
   },
   "opdDesk": {
+    "deptQueue": "Department line",
+    "groupWaiting": "{{n}} waiting",
+    "pickDepartmentList": "Choose a department to see every doctor's line",
+    "noLines": "No doctor has a session open today",
+    "listSummary": "{{n}} waiting in the department",
+    "clocksIdleDept": "choose a department",
+    "agent": {
+      "placeholder": "Ask about the department's line…",
+      "idle": "I can see every doctor's line in this department. Ask who has waited longest, or how many are waiting.",
+      "longest": "Token {{tokenNo}} with {{doctor}} has waited longest — {{n}} min.",
+      "nobody": "Nobody is waiting in this department.",
+      "waiting": "{{n}} waiting across {{doctors}} doctors' lines.",
+      "abandoned": "Token {{tokenNo}} closed — {{reason}}",
+      "moved": "{{n}} moved from {{from}} to {{to}}.",
+      "refused": "Refused: {{message}}"
+    },
     "title": "OPD desk",
     "pickDepartment": "Choose a department",
     "pickDepartmentHint": "Choose a department to see today's doctors",
@@ -1041,7 +1057,7 @@
     "cancel": "Cancel",
     "barAbandon": "Closing token {{tokenNo}} — say why, then confirm.",
     "barTransfer": "Moving from {{from}} — choose the doctor, tick consent, confirm.",
-    "barPickDoctor": "Choose a doctor on the board — their line opens on the right.",
+    "barPickDoctor": "Choose a doctor on the board — their line opens in the list.",
     "barInHand": "Token {{tokenNo}} in hand — choose what happens to them.",
     "barPickToken": "Pick a token from the list to act on it."
   },
@@ -1265,6 +1281,13 @@
     }
   },
   "opdConsult": {
+    "retake": {
+      "ask": "Ask the desk for a clearer photo",
+      "asked": "Clearer photo asked",
+      "reason": "What is unclear (optional)",
+      "send": "Send",
+      "cancel": "Cancel"
+    },
     "pickFromFormulary": "Pick from formulary",
     "regimenUnmatched": "Not matched — pick from the list so the checks can see it",
     "notInFormulary": "Not in formulary — advanced checks unavailable",
@@ -1285,6 +1308,10 @@
     "diseaseHit": "Line {{n}}: {{moiety}} is contraindicated in {{title}} — {{note}}",
     "diseaseNotice": "Line {{n}}: {{moiety}} with {{title}} — {{note}}",
     "diseaseCodedOn": "(recorded {{code}} on {{on}})",
+    "renalHitReduce": "Line {{n}}: {{drug}} — reduce the dose for eGFR {{egfr}} (measured {{days}} d ago): {{dose}}",
+    "renalHitAvoid": "Line {{n}}: {{drug}} — avoid at eGFR {{egfr}} (measured {{days}} d ago): {{dose}}",
+    "renalHitNone": "Line {{n}}: {{drug}} — no recent kidney function (no eGFR on record); its dose depends on it",
+    "renalHitStale": "Line {{n}}: {{drug}} — no recent kidney function (last eGFR {{days}} d ago); its dose depends on it",
     "diseaseStale": "(recorded {{code}} on {{on}} — over a year ago, so this is a note and not a block)",
     "switchTo": "Switch to:",
     "partlyChecked_one": "Line {{lines}}: checked only in part. A component is not yet reviewed by pharmacy, so its allergy class and interactions could not be checked.",
@@ -1788,6 +1815,8 @@
     "approvalPendingSince": "Waiting since {{time}}. Someone other than you has to decide it.",
     "approvalGranted": "A billing manager approved this variance. Finish closing to close the drawer.",
     "approvalRejected": "A billing manager did not approve this variance. Withdraw the count and count the drawer again.",
+    "approvalDecidedAt": "Decided at {{time}}",
+    "approvalNote": "Note: {{note}}",
     "lockout": "You cannot take money at the counter until a billing manager approves this variance.",
     "status": {
       "open": "OPEN",
@@ -1893,6 +1922,10 @@
       "kindAdvance": "From a patient advance",
       "patient": "Patient",
       "creditNote": "Credit note",
+      "pickCreditNote": "Credit note to refund against",
+      "noCreditNotes": "No credit note on this patient's bills.",
+      "creditNoteLine": "{{creditNote}} · bill {{invoice}} · {{left}} refundable",
+      "creditNoteDone": "{{creditNote}} · bill {{invoice}} · fully refunded",
       "amount": "Refund amount",
       "reasonClass": "Reason class",
       "mistake": "Mistake",
@@ -1961,6 +1994,7 @@
       "invoices": "Invoices",
       "creditNotes": "Credit notes",
       "vouchersPaid": "Refunds paid",
+      "bankCharges": "Bank charges accepted",
       "degraded": "Degraded receipts"
     },
     "gstr1": {
@@ -2124,7 +2158,9 @@
         },
         "gstr1_due": {
           "title": "{{month}} GSTR-1 due {{due}}",
-          "sub": "Summary by GSTIN, SAC and rate"
+          "sub": "Summary by GSTIN, SAC and rate",
+          "subCount_one": "{{count}} hospital GSTIN billed · B2C in one line",
+          "subCount_other": "{{count}} hospital GSTINs billed · B2C in one line"
         }
       },
       "pay": {
@@ -2171,7 +2207,11 @@
         "drawerBank": "No drawer: this refund leaves by bank transfer.",
         "drawerPill": "drawer open",
         "sign": "Take the payee’s signature",
-        "signM": "The payee signs for the money in the refund register. A printed voucher is not available on this screen yet.",
+        "signM": "The voucher prints when you pay; the payee signs it for the money.",
+        "someoneElse": "Someone else collects for the patient",
+        "relation": "Relation to the patient",
+        "relationHint": "son, husband…",
+        "relationRequired": "Name the relation of whoever collects for the patient.",
         "whyCash": "The drawer shortens by {{amount}} the moment you pay.",
         "whyBank": "Record it only after the transfer has left the bank.",
         "act": "Pay {{amount}} in cash",
@@ -2648,7 +2688,35 @@
     "noMatch": {
       "title": "No card in the holder book matches {{code}}.",
       "body": "Check the digits, or search by the holder's mobile. If the partner's list has not reached us yet, a supervisor can allow it once (grace honour).",
-      "grace": "Grace honour needs a front office supervisor's approval before anything applies. Until then the visit is billed at the full rate."
+      "grace": "Grace honour needs a supervisor's approval before anything applies. Until then the visit is billed at the full rate."
+    },
+    "graceAsk": {
+      "title": "Ask for grace honour",
+      "patient": "Patient",
+      "change": "Change",
+      "plan": "Plan on the card",
+      "pickPlan": "Pick the plan",
+      "reason": "Reason",
+      "reasonHint": "e.g. card issued last week, not in the list yet",
+      "approver": "Approver",
+      "approverWho": "A supervisor",
+      "note": "Once approved the card is honoured on this patient's bill and marked \"grace\" everywhere it appears. Nothing applies before approval.",
+      "send": "Send for approval",
+      "pending": "Sent for approval · {{age}}",
+      "pendingBody": "waiting for a supervisor. Bill at the full rate or wait.",
+      "granted": "Approved · honour the card",
+      "honour": "Honour the card",
+      "rejected": "The last request was refused. You can ask again."
+    },
+    "clocks": {
+      "title": "Clocks running · {{count}}",
+      "none": "Nothing is waiting",
+      "gracePending": "grace approval",
+      "graceGranted": "approved, not honoured",
+      "noMatch": "no match",
+      "toLink": "to link",
+      "minutes": "{{m}} m",
+      "hours": "{{h}} h {{m}} m"
     },
     "next": "Next",
     "another": "Recognise another card",
@@ -4084,6 +4152,7 @@
       "openQCollect": "Open Quick Collect"
     },
     "ast": {
+      "saveTable": "Save table",
       "title": "Antibiotic sensitivity",
       "panel": "Panel",
       "pickPanel": "Pick a panel…",
@@ -10068,6 +10137,7 @@
     "doctorIssued": "The doctor has already issued this visit's prescription on the screen, so no medicines are typed here. You can still type the tests.",
     "tests": "Tests",
     "testsHint": "Type two letters · Enter picks the first match",
+    "sugTests": "Doctor often advises",
     "testsPlaceholder": "CBC, X-ray chest, LFT…",
     "testsUnavailable": "The price list could not be read — tests cannot be typed right now",
     "removeTest": "Remove {{name}}",
@@ -10267,6 +10337,18 @@
     "fill": "Fill prescription ({{n}} lines)"
   },
   "slipCapture": {
+    "photoRead": {
+      "match": "The photo's QR reads {{visit}} — this visit",
+      "mismatch": "The photo's QR reads {{photo}}, not {{visit}} — retake, or scan this paper again",
+      "none": "No visit number read from the photo — check the paper against the visit"
+    },
+    "mrd": {
+      "title": "With MRD · {{count}}",
+      "waiting": "no slip filed",
+      "retake": "retake not answered: {{reason}}",
+      "noReason": "no reason given",
+      "note": "Slips missing when their day ended go to MRD. Filing the page takes the visit off this list."
+    },
     "miss": {
       "token": "Token {{token}} is not among today's finished consultations — type the visit number on the slip, or find the visit by name",
       "prescription": "That prescription's visit is not among today's finished consultations — type the visit number, or find the visit by name",
@@ -10617,6 +10699,28 @@
     "source_downtime": "Paper dispense"
   },
   "pharmacyRetail": {
+    "shelfAt": "Shelf: {{location}}",
+    "batchFor": "Batch for {{name}}",
+    "batchAuto": "Earliest expiry (automatic)",
+    "batchOption": "{{no}} · exp {{expiry}} · {{count}} left",
+    "allergiesTag": "Allergies",
+    "allergiesWithheld": "Allergies withheld — restricted record",
+    "noAllergies": "No allergies recorded.",
+    "allergicTo": "Allergic to {{substance}}",
+    "currentMedsTag": "Current medicines",
+    "noCurrentMeds": "No current prescription here.",
+    "mayHaveEnded": "may have ended",
+    "yourDay": "Your day: {{sales}} · {{lines}} · {{rx}}",
+    "daySales_one": "{{count}} sale",
+    "daySales_other": "{{count}} sales",
+    "dayLines_one": "{{count}} line",
+    "dayLines_other": "{{count}} lines",
+    "dayRx_one": "{{count}} on prescription",
+    "dayRx_other": "{{count}} on prescription",
+    "agent": {
+      "placeholder": "Ask about your day, a medicine or a sale…",
+      "idle": "I can see your sales today and the cart. Amounts stay with the count at closing."
+    },
     "title": "Walk-in sales",
     "intro": "Sell to a customer who walks in without an OPD prescription from this hospital. Every bill names a registered person. Schedule H and H1 medicines need the prescription they bring; Schedule X is not sold here.",
     "shut_no_store": "The walk-in pharmacy store has not been set up yet, so nothing can be sold here.",
@@ -10942,7 +11046,16 @@
         "refusedActor": "Refused (not a person)",
         "badRequest": "Malformed",
         "error": "Error",
-        "halted": "Halted"
+        "halted": "Halted",
+        "confirmDone": "Confirm: done",
+        "confirmInvalid": "Confirm refused: not valid",
+        "confirmExpired": "Confirm refused: expired",
+        "confirmNotAct": "Confirm refused: not an act",
+        "confirmHalted": "Confirm refused: paused",
+        "confirmNotPermitted": "Confirm refused: not permitted",
+        "confirmAlreadyDone": "Confirm: already done",
+        "confirmStateChanged": "Confirm refused: things changed",
+        "confirmFailed": "Confirm failed"
       },
       "routeName": {
         "phrasebook": "Phrasebook",
@@ -11336,6 +11449,41 @@
     "moreActions": "More actions",
     "vitalsAt": "Recorded at {{at}}",
     "dangerShort": "Danger"
+  },
+  "learnedAboutMe": {
+    "title": "What suggestions learned from you",
+    "intro": "Your own patterns only. A reset starts your own level again from today. Nothing is deleted.",
+    "close": "Close",
+    "loading": "Loading…",
+    "error": "Could not load. Try again.",
+    "nothing": "Nothing yet.",
+    "sinceStart": "Since you started",
+    "sinceReset": "Since your reset on {{date}}",
+    "reset": "Reset",
+    "resetAll": "Reset all",
+    "confirmOne": "Reset your {{surface}}? Suggestions start learning again from today.",
+    "confirmAll": "Reset everything learned from you? Suggestions start learning again from today.",
+    "confirmReset": "Yes, reset",
+    "keep": "Keep",
+    "resetFailed": "Reset failed. Try again.",
+    "uses_one": "{{count}} time",
+    "uses_other": "{{count}} times",
+    "testFor": "{{name}} for {{diagnosis}}",
+    "hiddenKind_one": "{{count}} {{kind}} hidden",
+    "hiddenKind_other": "{{count}} {{kind}} hidden",
+    "open": "What it learned",
+    "surface": {
+      "complaints": "Complaints",
+      "diagnoses": "Diagnoses",
+      "tests": "Tests",
+      "findings": "Findings and treatment words",
+      "hidden": "Crossed-off chips"
+    },
+    "kind": {
+      "diagnosis": "diagnosis",
+      "test": "test",
+      "medicine": "medicine"
+    }
   },
   "opdConsultV3": {
     "suggestions": "Copilot suggestions",
@@ -12457,6 +12605,10 @@
         "vendorBillNo": "Vendor's bill no.",
         "billDate": "Bill date",
         "interState": "Inter-state (IGST)",
+        "listRate": "List ₹",
+        "discount": "Disc",
+        "discountHint": "10% or ₹ off a pack",
+        "listLess": "list {{list}} − {{disc}}",
         "roundOff": "Round-off ₹",
         "received": "Received @ PO rate",
         "difference": "Difference",
@@ -12818,6 +12970,8 @@
       }
     },
     "reports": {
+      "discountPct": "Disc %",
+      "allVendors": "All vendors",
       "intro": "Every report reads; nothing is changed from here. Press a number to open one.",
       "back": "Reports",
       "export": "Export CSV",
@@ -12872,6 +13026,7 @@
       "name": {
         "sales": "Sales register",
         "purchases": "Purchase register",
+        "vendorDiscounts": "Vendor discounts",
         "margin": "Margin",
         "valuation": "Stock valuation",
         "nonMoving": "Non-moving stock",
@@ -12892,6 +13047,7 @@
       "about": {
         "sales": "Every sale and refund, by bill, item, doctor, patient, pharmacist or tender.",
         "purchases": "Supplier bills, our debit notes and vendor credits, with input GST.",
+        "vendorDiscounts": "Each vendor's trade discount on booked bills: gross, discount, taxable and GST.",
         "margin": "Taxable value less GRN cost, by item, category or doctor.",
         "valuation": "Stock on any day, at cost and at MRP, by batch, item or store.",
         "nonMoving": "Stock that has not moved in 30, 60, 90 or 180 days, and what to do with it.",
@@ -14219,6 +14375,23 @@
     }
   },
   "profile": {
+    "showMobile": "Show",
+    "card": {"label": "Card", "until": "valid to {{date}}"},
+    "queue": {
+      "token": "token {{token}}",
+      "next": "Next in line for {{doctor}}",
+      "ahead_one": "1 ahead in line for {{doctor}}",
+      "ahead_other": "{{count}} ahead in line for {{doctor}}",
+      "state": {"waiting_vitals": "Waiting for vitals · {{doctor}}", "waiting": "Waiting for {{doctor}}", "called": "Called now by {{doctor}}", "in_consult": "With {{doctor}} now"}
+    },
+    "breakGlass": {
+      "act": "Break glass",
+      "reason": "Reason for opening this record",
+      "note": "Opens the name, contact and address for a short time. Logged, and reviewed by someone else.",
+      "confirm": "Break glass and open",
+      "open": "Opened by break-glass.",
+      "openBody": "Reason: {{reason}}. Logged and reviewed later."
+    },
     "hv": {
       "choose": "How to show the history",
       "categories": "History categories",
@@ -14309,7 +14482,11 @@
       "title": "This record is restricted.",
       "body": "Staff see the alias, the UHID, age and allergies. The name, contact and address open only through break-glass by the Medical Superintendent (owner ruling 28-Sep-2026), with a reason, logged.",
       "editHidden": "Contact and address are not shown or edited on a restricted record.",
-      "noFamily": "not shown on a restricted record"
+      "noFamily": "not shown on a restricted record",
+      "history": "History",
+      "doctorOnly": "details for the treating doctor only",
+      "printAlias": "Print card (alias)",
+      "billStatus": {"settled": "Paid", "partial": "Part paid", "unpaid": "Unpaid"}
     },
     "hidden": "hidden",
     "hiddenWord": "hidden",
@@ -15761,7 +15938,38 @@
     }
   },
   "agentDock": {
-    "title": "DESK AGENT"
+    "title": "DESK AGENT",
+    "log": "what happened on this screen",
+    "nothingYet": "Nothing yet.",
+    "nothingYetLong": "Nothing yet. Every server answer this screen gets lands here with the time it landed.",
+    "ask": "ASK THE COPILOT · F2"
+  },
+  "formularyRef": {
+    "heading": "Drug reference",
+    "none": "No reference information yet",
+    "failed": "Could not load the reference.",
+    "componentsBanner": "No reference exists for this combination. Its parts are shown separately; they do not describe the combined dose.",
+    "missing": "No reference information yet: {{names}}",
+    "title": "US FDA label · {{product}} · {{date}}",
+    "noDate": "date not stated",
+    "caution": "Reference only — the US product may differ in strength, dose and approved use.",
+    "source": "Source: {{source}}, retrieved {{date}}",
+    "section": {
+      "boxed_warning": "Boxed warning",
+      "uses": "Uses",
+      "directions": "Directions",
+      "contraindications": "Contraindications",
+      "warnings": "Warnings",
+      "side_effects": "Side effects",
+      "interactions": "Interactions",
+      "pregnancy": "Pregnancy",
+      "lactation": "Breastfeeding",
+      "children": "Children",
+      "elderly": "Elderly",
+      "overdose": "Overdose",
+      "storage": "Storage",
+      "patient_information": "Patient information"
+    }
   },
   "teleBills": {
     "lead": "When the doctor said “Spoke to patient” and the consultation bill could not be raised, the visit waits here. Fix the cause, then retry; the doctor's next “Spoke” goes through.",
@@ -15773,5 +15981,19 @@
     "last": "last",
     "retry": "Retry bill",
     "billed": "Bill raised — waiting for the doctor"
+  },
+  "copilotSettings": {
+    "title": "Copilot settings",
+    "proactive": {
+      "label": "Speak up without being asked",
+      "off": "Off: the copilot answers only when you ask (F2).",
+      "on": "On: it may offer what it found when you open a patient."
+    },
+    "draftProse": {
+      "label": "Draft clinical sentences",
+      "off": "Off: it finds, checks and arranges — it writes no clinical sentence.",
+      "on": "On: it may draft a sentence for you to check; nothing is saved until you submit."
+    },
+    "always": "You always confirm and submit. Your own settings; they follow you to every computer."
   }
 }

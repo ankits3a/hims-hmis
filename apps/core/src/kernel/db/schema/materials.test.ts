@@ -151,9 +151,10 @@ const CENSUS: Record<string, string[]> = {
     "note", "paid_paise", "purchase_order_id", "round_off_paise", "sgst_paise", "status", "taxable_paise",
     "terms_days", "total_paise", "updated_at", "updated_by", "vendor_bill_key", "vendor_bill_no", "vendor_id",
   ],
+  // #637 — the vendor's trade discount on the line: list rate, percent, amount off per pack.
   supplier_bill_lines: [
-    "bill_id", "cgst_paise", "expected_base", "expected_gst_rate_bps", "expected_rate_paise",
-    "expected_taxable_paise", "grn_id", "gst_rate_bps", "id", "igst_paise", "item_id", "mismatch", "multiplier",
+    "bill_id", "cgst_paise", "discount_bps", "discount_paise", "expected_base", "expected_gst_rate_bps", "expected_rate_paise",
+    "expected_taxable_paise", "grn_id", "gst_rate_bps", "id", "igst_paise", "item_id", "list_rate_paise", "mismatch", "multiplier",
     "qty_packs", "rate_paise", "sgst_paise", "taxable_paise", "uom",
   ],
   supplier_payment_runs: [

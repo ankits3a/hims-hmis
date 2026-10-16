@@ -9,11 +9,12 @@ import { opdDepartments, opdEncounters, opdPrescriptions, opdVitals, outsideTest
 import { getPatientSummaries, listAllergies } from "../patients";
 import {
   listDrugDiseaseFor, listInteractionsAmong, normalizeDrugName, resolveDrugTexts, resolveMedicines,
-  unreviewedSaltIds,
+  renalRulesByMedicine, unreviewedSaltIds,
 } from "../formulary";
 import {
-  checkDrugDisease, checkDuplicateClass, checkDuplicateSalt, checkInteractions, matchAllergiesSaltAware,
+  checkDrugDisease, checkDuplicateClass, checkDuplicateSalt, checkInteractions, checkRenal, matchAllergiesSaltAware,
 } from "./rx-checks";
+import { readKidneyFunction } from "./kidney-function";
 import { listCodedDiagnoses } from "./diagnosis-history";
 import { loadOpdConfig } from "./config";
 import { refuseIfClosedOnPaper, refuseTeleBeforeSpoke, requireTreatingDoctor } from "./consultation";
@@ -32,7 +33,7 @@ import type { Letterhead } from "./config";
 import type { PrescriptionRow, VisitDiagnosis, VitalsRow } from "./encounters";
 import type { RxLine } from "./fhir";
 import type { DrugDiseaseAlternative } from "../formulary";
-import type { DrugDiseaseHit, DuplicateHit, InteractionHit, PriorRx, RxCheckLine } from "./rx-checks";
+import type { DrugDiseaseHit, DuplicateHit, InteractionHit, PriorRx, RenalHit, RxCheckLine } from "./rx-checks";
 import type { ResolvedDrug } from "../formulary";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
@@ -96,6 +97,11 @@ export type RxOverride = {
    * typed for one is not a reason for the other.
    */
   icd10Prefix?: string;
+  /**
+   * #621 — the renal rule this reason is about: the reviewed monograph's generic. A reason typed for
+   * one drug's kidney warning is not a reason for another's.
+   */
+  genericId?: string;
 };
 
 /** Same pair, whichever order either side names it in. */
@@ -111,6 +117,10 @@ function drugDiseaseCovered(hit: DrugDiseaseHit, overrides: RxOverride[]): boole
 function interactionCovered(hit: InteractionHit, overrides: RxOverride[]): boolean {
   return overrides.some((o) => o.lineIndex === hit.lineIndex
     && o.saltPair !== undefined && samePair(o.saltPair, hit.saltPair));
+}
+
+function renalCovered(hit: RenalHit, overrides: RxOverride[]): boolean {
+  return overrides.some((o) => o.lineIndex === hit.lineIndex && o.genericId === hit.genericId);
 }
 
 function duplicateCovered(hit: DuplicateHit, overrides: RxOverride[]): boolean {
@@ -134,6 +144,12 @@ export type RxCheckOutcome = {
   duplicates: DuplicateHit[];
   /** P24 — what the patient's own coded diagnosis forbids. Severe gates; moderate is a notice. */
   drugDisease: DrugDiseaseHit[];
+  /**
+   * #621 — the renal dose check: a reviewed monograph's renal bands against the patient's latest eGFR
+   * (within 90 days), or "no recent kidney function" for a drug that has a rule. Every hit is HARD:
+   * it is cleared only by a reasoned override naming its generic, and never blocks silently.
+   */
+  renal: RenalHit[];
   /**
    * PLAN 16a T6 — which lines the formulary could not resolve, decided by the SERVER.
    *
@@ -305,6 +321,15 @@ export async function runRxChecks(
   const unreviewed = await unreviewedSaltIds(
     db, checkLines.flatMap((l) => l.resolution?.salts.map((s) => s.saltId) ?? []),
   );
+  /*
+    #621 — the fifth axis. Rules first (one read for this prescription's products); the kidneys are
+    read only when some line has a reviewed renal rule, so an ordinary prescription pays nothing.
+    Deterministic rules, before any model: nothing here asks an LLM.
+  */
+  const renalRules = await renalRulesByMedicine(
+    db, checkLines.map((l) => l.resolution?.medicineId ?? null).filter((id): id is string => id !== null),
+  );
+  const kidney = renalRules.size > 0 ? await readKidneyFunction(db, patientId, now) : null;
 
   return {
     allergyMatches: matchAllergiesSaltAware(checkLines, allergies),
@@ -312,6 +337,7 @@ export async function runRxChecks(
     // P23 — class duplicates are always soft, so they reach the notices and gate nothing.
     duplicates: [...checkDuplicateSalt(checkLines, priors, now), ...checkDuplicateClass(checkLines, priors, now)],
     drugDisease: checkDrugDisease(checkLines, diagnoses, drugDiseaseRules, now),
+    renal: checkRenal(checkLines, renalRules, kidney),
     /**
      * A resolution with NO moieties is not a checked line — it is a line about which nothing can be
      * said, and reporting it as covered is how the coverage figure and the safety path came to
@@ -342,6 +368,8 @@ export type RxPrecheckResult = {
    * render as an interaction. Severe ones gate; moderate ones the screen shows beside the notices.
    */
   drugDisease: DrugDiseaseHit[];
+  /** #621 — every renal hit gates (a reasoned override per line and generic). Kept as its own list. */
+  renal: RenalHit[];
   notices: RxNotice[];
   /** Lines the formulary does not know — the coverage-gated hint's input (T6, DD5). */
   unresolvedLineIndexes: number[];
@@ -390,7 +418,8 @@ async function vetOffers(
     const clean = after.allergyMatches.every((m) => m.lineIndex !== hit.lineIndex)
       && after.interactions.every((h) => h.lineIndex !== hit.lineIndex || h.severity !== "severe")
       && after.duplicates.every((h) => h.lineIndex !== hit.lineIndex || !h.hard)
-      && after.drugDisease.every((h) => h.lineIndex !== hit.lineIndex || h.severity !== "severe");
+      && after.drugDisease.every((h) => h.lineIndex !== hit.lineIndex || h.severity !== "severe")
+      && after.renal.every((h) => h.lineIndex !== hit.lineIndex);
     verdict.set(key, clean);
     return clean;
   };
@@ -430,6 +459,7 @@ export async function precheckPrescription(
     allergyMatches: checks.allergyMatches,
     interactions: checks.interactions,
     drugDisease,
+    renal: checks.renal,
     duplicates: checks.duplicates,
     unresolvedLineIndexes: checks.unresolvedLineIndexes,
     unreviewedLineIndexes: checks.unreviewedLineIndexes,
@@ -447,6 +477,8 @@ export type IssuePrescriptionInput = {
   interactionOverrides?: RxOverride[];
   duplicateOverrides?: RxOverride[];
   drugDiseaseOverrides?: RxOverride[];
+  /** #621 — `{ lineIndex, genericId, reason }` per renal hit the doctor prescribes through. */
+  renalOverrides?: RxOverride[];
 };
 export type IssuedPrescription = {
   prescriptionId: string; version: number; qrPayload: string; allergyOverrideCount: number;
@@ -549,7 +581,7 @@ export async function issuePrescription(
       if (!signing.active) throw new OpdError("doctor_inactive", `doctor ${doctorId} is inactive`);
       doctor = signing;
     }
-    if (input.overrides?.length || input.interactionOverrides?.length || input.duplicateOverrides?.length || input.drugDiseaseOverrides?.length) {
+    if (input.overrides?.length || input.interactionOverrides?.length || input.duplicateOverrides?.length || input.drugDiseaseOverrides?.length || input.renalOverrides?.length) {
       throw new OpdError("override_reason_required", "a paper prescription entered at the pharmacy carries no override");
     }
   } else if (authority === "paper_slip") {
@@ -570,7 +602,7 @@ export async function issuePrescription(
       recorded against the prescriber. The desk typed the paper; it did not make that judgement, so
       an override arriving on this road is refused and the line waits for the doctor.
     */
-    if (input.overrides?.length || input.interactionOverrides?.length || input.duplicateOverrides?.length || input.drugDiseaseOverrides?.length) {
+    if (input.overrides?.length || input.interactionOverrides?.length || input.duplicateOverrides?.length || input.drugDiseaseOverrides?.length || input.renalOverrides?.length) {
       throw new OpdError("override_reason_required", "a prescription typed from paper carries no override — the line is held for the doctor");
     }
   } else {
@@ -664,14 +696,31 @@ export async function issuePrescription(
     );
   }
 
+  /**
+   * #621 — the fifth hard warning, same grammar. Every renal hit gates: a reduce/avoid band the
+   * patient's eGFR reaches, or no eGFR within 90 days for a drug that has a reviewed rule. The doctor
+   * prescribes through it with a reason naming the generic — warned, asked, never blocked silently.
+   */
+  const renalOverrides = input.renalOverrides ?? [];
+  const uncoveredRenal = checks.renal.filter((h) => !renalCovered(h, renalOverrides));
+  if (uncoveredRenal.length > 0) {
+    throw new OpdError(
+      "renal_conflict",
+      `${uncoveredRenal.length} line(s) need a reason against the patient's kidney function`,
+      // Its own key, for the reason `diseaseHits` has one: the browser's older filters key on `hits`.
+      { renalHits: checks.renal },
+    );
+  }
+  const matchedRenalOverrides = renalOverrides.filter((o) => checks.renal.some((h) => renalCovered(h, [o])));
+
   const matchedInteractionOverrides = interactionOverrides.filter((o) => severeHits.some((h) => interactionCovered(h, [o])));
   const matchedDuplicateOverrides = duplicateOverrides.filter((o) => hardDuplicates.some((h) => duplicateCovered(h, [o])));
   const matchedDrugDiseaseOverrides = drugDiseaseOverrides.filter((o) => severeDrugDisease.some((h) => drugDiseaseCovered(h, [o])));
 
-  // ONE reason gate for all FOUR kinds, reusing the shipped constant and the shipped code (DD3).
+  // ONE reason gate for all FIVE kinds (#621 added renal), reusing the shipped constant and code (DD3).
   for (const override of [
     ...matchedOverrides, ...matchedInteractionOverrides, ...matchedDuplicateOverrides,
-    ...matchedDrugDiseaseOverrides,
+    ...matchedDrugDiseaseOverrides, ...matchedRenalOverrides,
   ]) {
     if (override.reason.trim().length < MIN_OVERRIDE_REASON) {
       throw new OpdError("override_reason_required", "an override records WHY (the S10 safety-alert KPI)");
@@ -725,12 +774,13 @@ export async function issuePrescription(
       interactionOverrides: matchedInteractionOverrides,
       duplicateOverrides: matchedDuplicateOverrides,
       drugDiseaseOverrides: matchedDrugDiseaseOverrides,
+      renalOverrides: matchedRenalOverrides,
       status: "active", issuedBy: actor.id, transcribedBy, issuedAt: now,
     });
     /* Decision 0050, P0 — the countable copy, in this transaction: what was issued is what is learned from. */
     await writeCdsRxLines(tx, {
       prescriptionId, encounterId, doctorId: doctor?.id ?? null, lines,
-      overrides: [...matchedOverrides, ...matchedInteractionOverrides, ...matchedDuplicateOverrides, ...matchedDrugDiseaseOverrides],
+      overrides: [...matchedOverrides, ...matchedInteractionOverrides, ...matchedDuplicateOverrides, ...matchedDrugDiseaseOverrides, ...matchedRenalOverrides],
       transcribed: transcribedBy !== null, issuedAt: now,
     });
     await appendEvent(tx, prescriptionIssued.make({

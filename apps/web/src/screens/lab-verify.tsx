@@ -12,6 +12,7 @@ import { RerunChoicePair } from "../components/lab-rerun-choice";
 import { LabReportPrint } from "../components/lab-report-print";
 import { Button } from "@/components/ui/button";
 import { LabStation } from "./lab-seat";
+import { AstPreview } from "./lab-ast";
 import type { WireCriticalCall, WireReportView, WireWorklistRow } from "../lib/lab-api";
 
 /**
@@ -369,6 +370,10 @@ export function LabVerify(): React.ReactElement {
                           <td className={`pr-2 tabular-nums ${tone === "critical" ? "font-bold" : tone === "abnormal" ? "font-semibold" : ""}`}
                             style={tone === "critical" ? { color: "var(--state-danger)" } : undefined}>
                             {a.value} <span className="text-xs text-muted-foreground">{a.unit ?? ""}</span>
+                            {/* #703 — the culture's antibiotic table, read before the signature. */}
+                            {(a.ast ?? []).length > 0 && (
+                              <div className="mt-2"><AstPreview block={{ serviceId: row.serviceId, rows: a.ast ?? [] }} title={row.orderableName} /></div>
+                            )}
                           </td>
                           <td className="pr-2 font-semibold">{a.flag ?? ""}</td>
                           <td className="pr-2 text-xs text-muted-foreground">

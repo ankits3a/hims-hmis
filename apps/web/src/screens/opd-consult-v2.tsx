@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
+import { CopilotSettings } from "../components/copilot-settings";
 import { api } from "../lib/api";
 import { VisitTypeBadge, shownVisitType } from "../components/visit-type-badge";
 import { LastVisitCard } from "../components/last-visit";
@@ -138,6 +139,7 @@ export function CopilotPanel({ open, onToggle, alert, dock }: {
   open: boolean; onToggle: (next: boolean) => void; alert: boolean; dock: React.ReactNode;
 }): React.ReactElement {
   const { t } = useTranslation();
+  const [settingsOpen, setSettingsOpen] = useState(false);
   if (!open) {
     return (
       <aside data-testid="copilot-panel" data-state="closed" data-side="right" className="no-print cx-side cx-strip-rail" style={{ borderLeft: "1px solid var(--line)" }}>
@@ -157,9 +159,13 @@ export function CopilotPanel({ open, onToggle, alert, dock }: {
         <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 4, background: "var(--mint)" }} />
         <span className="mo" style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".14em" }}>COPILOT</span>
         <span style={{ flexGrow: 1 }} />
+        {/* #619 — decision 0006: the doctor's own two copilot toggles, behind one small button. */}
+        <button type="button" className="sec" data-testid="copilot-settings-open" aria-expanded={settingsOpen} aria-label={t("copilotSettings.title")}
+          title={t("copilotSettings.title")} onClick={() => { setSettingsOpen((o) => !o); }} style={{ width: 30, height: 30, padding: 0 }}>⚙</button>
         <button type="button" className="sec" data-testid="copilot-close" aria-label={t("opdConsultV2.hideCopilot")} onClick={() => { onToggle(false); }}
           style={{ width: 30, height: 30, padding: 0 }}>»</button>
       </div>
+      {settingsOpen && <div style={{ padding: "0 12px" }}><CopilotSettings /></div>}
       {/* the cards (suggestions, the zero-stock alternative) ride inside the dock's scroll, above its answer */}
       {dock}
     </aside>
