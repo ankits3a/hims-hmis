@@ -171,7 +171,13 @@
     "hospitalNumbers": "Hospital numbers",
     "ipdTpa": "TPA desk",
     "erDesk": "ER desk",
-    "erBoard": "ER board"
+    "erBoard": "ER board",
+    "erTriage": "ER triage",
+    "erPatient": "ER patient",
+    "erMlc": "MLC desk",
+    "erBill": "ER bill desk",
+    "erCodes": "ER codes",
+    "erMci": "MCI board"
   },
   "palette": {
     "title": "Search",
@@ -14748,13 +14754,21 @@
   },
   "profile": {
     "showMobile": "Show",
-    "card": {"label": "Card", "until": "valid to {{date}}"},
+    "card": {
+      "label": "Card",
+      "until": "valid to {{date}}"
+    },
     "queue": {
       "token": "token {{token}}",
       "next": "Next in line for {{doctor}}",
       "ahead_one": "1 ahead in line for {{doctor}}",
       "ahead_other": "{{count}} ahead in line for {{doctor}}",
-      "state": {"waiting_vitals": "Waiting for vitals · {{doctor}}", "waiting": "Waiting for {{doctor}}", "called": "Called now by {{doctor}}", "in_consult": "With {{doctor}} now"}
+      "state": {
+        "waiting_vitals": "Waiting for vitals · {{doctor}}",
+        "waiting": "Waiting for {{doctor}}",
+        "called": "Called now by {{doctor}}",
+        "in_consult": "With {{doctor}} now"
+      }
     },
     "breakGlass": {
       "act": "Break glass",
@@ -14858,7 +14872,11 @@
       "history": "History",
       "doctorOnly": "details for the treating doctor only",
       "printAlias": "Print card (alias)",
-      "billStatus": {"settled": "Paid", "partial": "Part paid", "unpaid": "Unpaid"}
+      "billStatus": {
+        "settled": "Paid",
+        "partial": "Part paid",
+        "unpaid": "Unpaid"
+      }
     },
     "hidden": "hidden",
     "hiddenWord": "hidden",
@@ -17158,7 +17176,8 @@
     "listForbidden": "Your account cannot see admission requests.",
     "listFailed": "Admission requests did not load.",
     "retry": "Try again",
-    "findShort": "Name, UHID or mobile"
+    "findShort": "Name, UHID or mobile",
+    "erArrival": "ER arrival"
   },
   "maintenance": {
     "title": "Maintenance",
@@ -17441,7 +17460,8 @@
       "cross_visit": "Cross-consultation",
       "lab": "Laboratory",
       "imaging": "Imaging",
-      "pharmacy": "Medicines"
+      "pharmacy": "Medicines",
+      "er": "Emergency"
     },
     "class": {
       "general": "General ward",
@@ -19642,7 +19662,8 @@
       "own_ambulance": "Our ambulance",
       "police": "Police",
       "referred_in": "Referred in",
-      "inter_facility": "From another hospital"
+      "inter_facility": "From another hospital",
+      "opd_red_flag": "From OPD (red flag)"
     },
     "sex": {
       "male": "Male",
@@ -19679,7 +19700,11 @@
       "name_alert": "Name alert",
       "police": "Police",
       "ambulance": "Ambulance",
-      "paper": "Paper sheet"
+      "paper": "Paper sheet",
+      "critical": "Critical result",
+      "call_waiting": "Call waiting",
+      "stabilised": "Stabilised",
+      "boarding": "Boarding"
     },
     "state": {
       "arrived": "Waiting for triage",
@@ -19773,7 +19798,364 @@
       "merge_already_requested": {
         "rule": "A merge is already waiting for approval.",
         "fix": "Open merge requests"
+      },
+      "down_triage_needs_reason": {
+        "rule": "Less urgent than the proposal or the last level — give a reason.",
+        "fix": "Add reason"
+      },
+      "department_not_found": {
+        "rule": "No department has this code.",
+        "fix": "Pick department"
+      },
+      "already_in_bay": {
+        "rule": "Already in a bay.",
+        "fix": "Move bay"
+      },
+      "not_in_bay": {
+        "rule": "Not in a bay yet.",
+        "fix": "Place in bay"
+      },
+      "same_bay": {
+        "rule": "Already in this bay.",
+        "fix": "Pick another bay"
+      },
+      "bay_not_found": {
+        "rule": "No such bay.",
+        "fix": "Open ER board"
+      },
+      "bay_not_emergency": {
+        "rule": "Only an ER bed is an ER bay.",
+        "fix": "Pick an ER bay"
+      },
+      "bay_not_available": {
+        "rule": "That bay was just taken or is not free.",
+        "fix": "Pick another bay"
+      },
+      "not_a_doctor": {
+        "rule": "Only a doctor can be the ER doctor.",
+        "fix": "Pick a doctor"
+      },
+      "note_not_found": {
+        "rule": "No such ER note.",
+        "fix": "Open episode"
+      },
+      "note_signed": {
+        "rule": "The note is already signed.",
+        "fix": "Add an addendum"
+      },
+      "cosign_own_note": {
+        "rule": "Someone else co-signs a note.",
+        "fix": "Ask a senior"
+      },
+      "cosigner_not_senior": {
+        "rule": "A senior doctor co-signs a resident's note.",
+        "fix": "Ask a senior"
+      },
+      "item_not_stocked": {
+        "rule": "Not stocked in the ER store.",
+        "fix": "Pick another item"
+      },
+      "stock_short": {
+        "rule": "Not enough of this in the ER store.",
+        "fix": "Ask pharmacy"
+      },
+      "allergy_override_needed": {
+        "rule": "A recorded allergy matches — say why it goes ahead.",
+        "fix": "Give override reason"
+      },
+      "issue_not_found": {
+        "rule": "No such ER medicine issue.",
+        "fix": "Open episode"
+      },
+      "dose_given": {
+        "rule": "A dose was given from this issue.",
+        "fix": "Open medication record"
+      },
+      "already_returned": {
+        "rule": "Already returned or wasted.",
+        "fix": "Open medication record"
+      },
+      "nothing_to_return": {
+        "rule": "Own medicine was never from stock.",
+        "fix": "Open medication record"
+      },
+      "wastage_needs_witness": {
+        "rule": "Wastage of this drug needs a witness.",
+        "fix": "Ask a colleague"
+      },
+      "issue_returned": {
+        "rule": "This issue was returned or wasted.",
+        "fix": "Issue again"
+      },
+      "dose_already_recorded": {
+        "rule": "This dose is already recorded.",
+        "fix": "Open the medication record"
+      },
+      "second_check_needed": {
+        "rule": "High-alert drug: a second person checks it first.",
+        "fix": "Second check"
+      },
+      "second_check_failed": {
+        "rule": "Second person's username or PIN did not match.",
+        "fix": "Try again"
+      },
+      "second_checker_same": {
+        "rule": "The second check is by a different person.",
+        "fix": "Ask a colleague"
+      },
+      "verbal_not_pending": {
+        "rule": "No unsigned verbal order here.",
+        "fix": "Open the medication record"
+      },
+      "not_ordering_doctor": {
+        "rule": "Only the ordering doctor signs it.",
+        "fix": "Ask that doctor"
+      },
+      "consent_not_found": {
+        "rule": "No such consent for this patient.",
+        "fix": "Record consent"
+      },
+      "consent_witness_needed": {
+        "rule": "Name the witness, and the guardian with relation.",
+        "fix": "Add witness"
+      },
+      "emergency_needs_second_doctor": {
+        "rule": "Emergency without consent needs a second doctor.",
+        "fix": "Name second doctor"
+      },
+      "call_not_found": {
+        "rule": "No such specialty call.",
+        "fix": "Open episode"
+      },
+      "call_closed": {
+        "rule": "The call is already answered and seen.",
+        "fix": "Open episode"
+      },
+      "call_already_open": {
+        "rule": "A call to this department is already waiting.",
+        "fix": "Open the call"
+      },
+      "already_stabilised": {
+        "rule": "Already recorded as stabilised.",
+        "fix": "Open episode"
+      },
+      "mlc_not_found": {
+        "rule": "No MLC with this id.",
+        "fix": "Open MLC desk"
+      },
+      "mlc_already_open": {
+        "rule": "This episode already has an MLC.",
+        "fix": "Add an addendum"
+      },
+      "intimation_recorded": {
+        "rule": "Police intimation already recorded.",
+        "fix": "Add an addendum"
+      },
+      "mlc_countersigned": {
+        "rule": "Already countersigned.",
+        "fix": "Open MLC desk"
+      },
+      "countersign_own_mlc": {
+        "rule": "Another doctor countersigns.",
+        "fix": "Ask a senior"
+      },
+      "intimation_before_arrival": {
+        "rule": "A police intimation is never dated before the arrival.",
+        "fix": "Enter the real time"
+      },
+      "seal_already_collected": {
+        "rule": "This seal is already collected.",
+        "fix": "Pick the next step"
+      },
+      "seal_not_collected": {
+        "rule": "Collect under this seal first.",
+        "fix": "Record collection"
+      },
+      "seal_already_handed_over": {
+        "rule": "This seal is already handed over.",
+        "fix": "Open MLC desk"
+      },
+      "disposition_already_decided": {
+        "rule": "Disposition already decided.",
+        "fix": "Open episode"
+      },
+      "disposition_mismatch": {
+        "rule": "Does not match the decided disposition.",
+        "fix": "Open episode"
+      },
+      "disposition_reason_needed": {
+        "rule": "Give the reason for the decision.",
+        "fix": "Add reason"
+      },
+      "admission_refused": {
+        "rule": "The admission could not be raised.",
+        "fix": "Call the admission desk"
+      },
+      "already_boarding": {
+        "rule": "Already waiting for a bed.",
+        "fix": "Open episode"
+      },
+      "referral_not_for_money": {
+        "rule": "Never referred for money.",
+        "fix": "Pick the clinical reason"
+      },
+      "lama_witness_needed": {
+        "rule": "A second staff member witnesses the refusal.",
+        "fix": "Name a witness"
+      },
+      "last_seen_before_arrival": {
+        "rule": "Last seen cannot be before arrival.",
+        "fix": "Fix the time"
+      },
+      "died_before_arrival": {
+        "rule": "Time of death is before arrival.",
+        "fix": "Fix the time"
+      },
+      "mccd_required": {
+        "rule": "Enter the MCCD number.",
+        "fix": "Enter MCCD number"
+      },
+      "payer_ref_needed": {
+        "rule": "Add the scheme reference.",
+        "fix": "Add reference"
+      },
+      "bnss_needs_mlc": {
+        "rule": "Free by law needs the MLC.",
+        "fix": "Open the MLC"
+      },
+      "event_account_not_found": {
+        "rule": "No such event account.",
+        "fix": "Open event account"
+      },
+      "bill_settled": {
+        "rule": "Already settled.",
+        "fix": "Open the bill"
+      },
+      "not_stabilised": {
+        "rule": "No money before stabilised.",
+        "fix": "Wait for stabilised"
+      },
+      "payer_pays_nothing": {
+        "rule": "This patient pays nothing.",
+        "fix": "Check payer"
+      },
+      "lines_unpriced": {
+        "rule": "Some lines have no price.",
+        "fix": "Price lines"
+      },
+      "tender_short": {
+        "rule": "Not enough taken; record dues.",
+        "fix": "Record dues"
+      },
+      "undertaking_invalid": {
+        "rule": "The undertaking must be this patient's own active document.",
+        "fix": "File the undertaking"
+      },
+      "undertaking_needed": {
+        "rule": "Dues need a signed undertaking.",
+        "fix": "Add undertaking"
+      },
+      "patient_payable_forbidden": {
+        "rule": "Free by law: nothing payable.",
+        "fix": "Settle as nothing payable"
+      },
+      "rolled_to_ip": {
+        "rule": "Moved to the inpatient bill.",
+        "fix": "Open the IP bill"
+      },
+      "code_needs_patient": {
+        "rule": "Activations are called on an ER patient.",
+        "fix": "Pick the patient"
+      },
+      "code_open": {
+        "rule": "This code is already running.",
+        "fix": "Open the code"
+      },
+      "code_not_found": {
+        "rule": "No such code.",
+        "fix": "Open codes"
+      },
+      "event_before_arrival": {
+        "rule": "Nothing on the record happened before arrival.",
+        "fix": "Enter the real time"
+      },
+      "code_ended": {
+        "rule": "The code has ended.",
+        "fix": "Open the code"
+      },
+      "code_not_ended": {
+        "rule": "End the code first.",
+        "fix": "End the code"
+      },
+      "milestone_unknown": {
+        "rule": "No such milestone.",
+        "fix": "Pick a milestone"
+      },
+      "debrief_recorded": {
+        "rule": "Debrief already recorded.",
+        "fix": "Open the code"
+      },
+      "not_code_leader": {
+        "rule": "The team leader records the debrief.",
+        "fix": "Ask the team leader"
+      },
+      "mci_role_needed": {
+        "rule": "Only MS or duty manager.",
+        "fix": "Call duty manager"
+      },
+      "mci_active": {
+        "rule": "Code Yellow already running.",
+        "fix": "Open MCI board"
+      },
+      "mci_not_found": {
+        "rule": "No such event.",
+        "fix": "Open MCI board"
+      },
+      "mci_stood_down": {
+        "rule": "Event stood down.",
+        "fix": "Open MCI board"
+      },
+      "mci_not_active": {
+        "rule": "No Code Yellow running.",
+        "fix": "Register usual way"
+      },
+      "pack_not_found": {
+        "rule": "No such pack.",
+        "fix": "Check pack number"
+      },
+      "pack_used": {
+        "rule": "Pack already used.",
+        "fix": "Open that patient"
+      },
+      "retag_needs_reason": {
+        "rule": "Black re-tag needs a reason.",
+        "fix": "Add reason"
+      },
+      "surge_bed_not_overflow": {
+        "rule": "Only overflow beds.",
+        "fix": "Pick overflow bed"
       }
+    },
+    "esi": {
+      "short": "ESI {{n}}",
+      "word": {
+        "1": "Resuscitation",
+        "2": "Emergent",
+        "3": "Urgent",
+        "4": "Less urgent",
+        "5": "Non-urgent"
+      }
+    },
+    "ews": {
+      "news2": "NEWS2",
+      "meows": "MEOWS",
+      "pews": "PEWS"
+    },
+    "ewsBand": {
+      "low": "Low",
+      "low_medium": "Low–medium",
+      "medium": "Medium",
+      "high": "High"
     }
   },
   "erBoard": {
@@ -19792,7 +20174,9 @@
       "bays": "Bays free",
       "baysOf": "of {{total}}",
       "arrivals": "Arrivals today",
-      "broughtDead": "Brought dead today"
+      "broughtDead": "Brought dead today",
+      "boarding": "{{n}} boarding",
+      "lwbs": "{{n}} left unseen"
     },
     "col": {
       "expected": "Expected",
@@ -19817,7 +20201,14 @@
     "offline": "Offline · last update {{time}}",
     "offlineNever": "Offline",
     "legend": "Time since arrival · triage due 5 min after the gate",
-    "triageNow": "Triage due now"
+    "triageNow": "Triage due now",
+    "doctorDue": "Doctor in {{minutes}} min",
+    "doctorNow": "Doctor due now",
+    "doctorLate": "Doctor overdue {{minutes}} min",
+    "retriageDue": "Re-triage in {{minutes}} min",
+    "retriageNow": "Re-triage now",
+    "retriageLate": "Re-triage overdue {{minutes}} min",
+    "doctor": "Doctor · {{name}}"
   },
   "erDesk": {
     "title": "ER desk",
@@ -19913,6 +20304,668 @@
       "barcode": "Band serial",
       "print": "Print band",
       "next": "Next arrival"
+    },
+    "casualty": {
+      "send": "Send to Casualty",
+      "sent": "On the ER board as Expected"
+    },
+    "lwbs": "Left unseen",
+    "lwbsSeen": "Last seen (IST, blank = now)",
+    "lwbsSave": "Record: left without being seen"
+  },
+  "erTriage": {
+    "title": "ER triage",
+    "queue": "Triage queue",
+    "loading": "Loading…",
+    "notTriaged": "Not triaged",
+    "yes": "Yes",
+    "no": "No",
+    "q": {
+      "lifeSaving": "Needs a life-saving step now?",
+      "lifeSavingHint": "Airway, CPR, shock, emergency drugs",
+      "highRisk": "High risk, confused, or in severe pain?",
+      "highRiskHint": "Chest pain, stroke signs, new confusion, pain 7/10 or more",
+      "resources": "How many resources?",
+      "resourcesHint": "Labs, imaging, IV fluids, a consult, a procedure",
+      "danger": "Danger-zone vitals?",
+      "dangerHint": "For the age: pulse, breathing, SpO₂ under 92%"
+    },
+    "resources": {
+      "none": "None",
+      "one": "One",
+      "many": "Two or more"
+    },
+    "proposal": "Proposal:",
+    "why": {
+      "lifeSaving": "life-saving step needed",
+      "highRisk": "high risk",
+      "manyDanger": "many resources, danger vitals",
+      "many": "many resources",
+      "one": "one resource",
+      "none": "no resources"
+    },
+    "level": "ESI level — your choice",
+    "relevel": "New ESI level",
+    "reason": "Why less urgent?",
+    "reasonHint": "What you saw, in a few words",
+    "vitals": "Vitals (optional)",
+    "v": {
+      "respRate": "Resp. rate",
+      "spo2": "SpO₂ %",
+      "systolic": "BP systolic",
+      "pulse": "Pulse",
+      "temperatureC": "Temp °C",
+      "onOxygen": "On oxygen"
+    },
+    "avpu": {
+      "alert": "Alert",
+      "confused": "Confused",
+      "voice": "Voice",
+      "pain": "Pain",
+      "unresponsive": "Unresponsive"
+    },
+    "dept": "Specialty (for the take unit)",
+    "depts": {
+      "MED": "Medicine",
+      "SUR": "Surgery",
+      "ORT": "Ortho",
+      "OBG": "Obs & Gynae",
+      "PAED": "Paediatrics",
+      "ENT": "ENT",
+      "OPH": "Eye",
+      "CARD": "Cardiology",
+      "NEURO": "Neurology",
+      "ANAES": "Anaesthesia"
+    },
+    "save": "Save triage",
+    "saveAgain": "Save re-triage",
+    "saveVitals": "Save vitals only",
+    "saved": "ESI {{n}} saved · re-triage {{time}}",
+    "savedNoClock": "ESI {{n}} saved",
+    "vitalsWorse": "Worse — re-triage now",
+    "vitalsSaved": "Vitals saved",
+    "inBay": "Bay {{bay}}",
+    "bay": "Bay",
+    "noBay": "No free ER bay",
+    "placed": "In bay {{bay}}",
+    "doctor": "ER doctor",
+    "pickDoctor": "Doctor seeing the patient",
+    "setDoctor": "Set doctor",
+    "doctorSet": "Doctor set — clocks stopped",
+    "history": "Triage so far",
+    "vitalsOnly": "Vitals"
+  },
+  "erPatient": {
+    "title": "ER patient",
+    "pick": "Open a patient from the ER board.",
+    "actions": "Actions",
+    "none": "Nothing yet",
+    "stabilisedAt": "Stabilised {{time}}",
+    "stabilisedDone": "Recorded: stabilised",
+    "critical": "Critical result —",
+    "criticalHint": "The lab is calling; read the value back to close it.",
+    "bar": {
+      "order": "Order tests",
+      "med": "Medicine",
+      "note": "Note",
+      "call": "Call specialty",
+      "procedure": "Procedure",
+      "consent": "Consent",
+      "stabilised": "Stabilised",
+      "mlc": "MLC",
+      "dispo": "Disposition",
+      "code": "Code"
+    },
+    "meds": "Medicines",
+    "calls": "Specialty calls",
+    "orders": "Tests",
+    "notes": "Notes",
+    "procedures": "Procedures and consent",
+    "order": {
+      "find": "Test",
+      "findHint": "CBC, troponin, CT head…",
+      "why": "Why (indication)",
+      "send": "Order — STAT",
+      "sent": "Ordered STAT",
+      "duplicates": "{{n}} already ordered (warning)"
+    },
+    "med": {
+      "find": "ER store",
+      "findHint": "Name of the drug",
+      "ownLabel": "Or the patient's own medicine",
+      "dose": "Dose",
+      "units": "Units",
+      "orderedBy": "Ordered by {{name}}",
+      "verbal": "Verbal order (read back)",
+      "override": "Allergy override reason",
+      "overrideHint": "Only if an allergy matches",
+      "issue": "Issue · print label",
+      "issued": "Issued",
+      "highAlert": "High alert",
+      "own": "Own medicine",
+      "verbalPending": "Verbal — to sign",
+      "secondUser": "Second person (username)",
+      "secondPin": "Their PIN",
+      "returnPrompt": "Not given — return it",
+      "returnUnopened": "Return unopened",
+      "returnOpened": "Opened — wastage",
+      "witnessHint": "High-alert or controlled: a witness's username and PIN",
+      "returned": "Returned to stock",
+      "wasted": "Recorded as wastage",
+      "whyNot": "Why held or refused",
+      "give": "Given",
+      "given": "Dose recorded",
+      "hold": "Held",
+      "refused": "Refused",
+      "signVerbal": "Sign verbal order",
+      "signed": "Verbal order signed",
+      "outcome": {
+        "given": "Given",
+        "held": "Held",
+        "refused": "Refused"
+      }
+    },
+    "note": {
+      "text": "Note",
+      "save": "Save note",
+      "saved": "Note saved",
+      "draftSaved": "Saved as draft — a senior co-signs",
+      "draft": "Draft",
+      "cosign": "Co-sign",
+      "cosigned": "Co-signed",
+      "kind": {
+        "assessment": "Assessment",
+        "progress": "Progress",
+        "nursing": "Nursing",
+        "procedure": "Procedure note",
+        "handover": "Handover"
+      }
+    },
+    "procedure": {
+      "name": "Procedure",
+      "hint": "Chest drain, suturing, CPR…",
+      "by": "Done by",
+      "save": "Record procedure",
+      "saved": "Procedure recorded"
+    },
+    "consent": {
+      "about": "Consent for",
+      "signerName": "Name",
+      "relation": "Relation",
+      "witness": "Witness",
+      "secondDoctor": "Second doctor (concurs)",
+      "save": "Record consent",
+      "saved": "Consent recorded",
+      "word": "Consent",
+      "hint": "Emergency without consent: no capacity, no relative, life at risk — two doctors.",
+      "kind": {
+        "general": "General",
+        "procedure": "Procedure",
+        "blood": "Blood",
+        "high_risk": "High risk",
+        "refusal_of_treatment": "Refusal"
+      },
+      "signer": {
+        "patient": "Patient",
+        "guardian": "Guardian",
+        "representative": "Representative",
+        "emergency": "Emergency (2 doctors)"
+      }
+    },
+    "call": {
+      "reason": "Why",
+      "send": "Call",
+      "sent": "Called: {{who}}",
+      "noRoster": "no roster names — phone the unit",
+      "waiting": "Waiting {{minutes}} min",
+      "answeredAt": "Answered {{time}}",
+      "seenAt": "Seen {{time}}",
+      "answered": "Answered",
+      "seen": "Seen",
+      "urgency": {
+        "immediate": "Immediate",
+        "urgent": "Urgent",
+        "routine": "Routine"
+      }
+    },
+    "mlc": {
+      "open": "Open MLC",
+      "opened": "MLC {{no}} opened",
+      "openedLate": "MLC {{no}} opened (late)"
+    },
+    "dispo": {
+      "tab": {
+        "discharge": "Discharge",
+        "admit": "Admit",
+        "refer": "Refer out",
+        "lama": "LAMA",
+        "death": "Death",
+        "left": "Left"
+      },
+      "reason": "Why (the decision)",
+      "diagnosis": "Diagnosis",
+      "treatment": "Treatment given",
+      "medicines": "Medicines (one per line)",
+      "medicinesHint": "Paracetamol · 500 mg · three times a day",
+      "returnIf": "Come back at once if",
+      "followDept": "Follow-up OPD (department)",
+      "followOn": "Follow-up date",
+      "dischargeNow": "Sign summary · discharge",
+      "discharged": "Discharged — bay to cleaning",
+      "consultant": "Admitting consultant",
+      "class": "Ward class",
+      "provisional": "Provisional diagnosis",
+      "admitNow": "Hand to unit",
+      "boarding": "Admission raised — boarding until the bed",
+      "admitted": "Admitted — bay to cleaning",
+      "facility": "Referred to",
+      "referralNote": "Referral note",
+      "escort": "Escort",
+      "transport": "Transport",
+      "referNow": "Refer out",
+      "referred": "Referred out — bay to cleaning",
+      "risks": "Risks explained",
+      "signerName": "Name of the person signing",
+      "relation": "Relation",
+      "witness": "Witness (staff)",
+      "lamaNow": "Record LAMA",
+      "lamaDone": "LAMA recorded — bay to cleaning",
+      "diedAt": "Time of death",
+      "mccd": "MCCD number",
+      "mccdHint": "Without the MCCD number only for an MLC already intimated to the police.",
+      "deathNow": "Record death",
+      "deathDone": "Death recorded — body to the mortuary register",
+      "lastSeen": "Last seen at",
+      "lwbsNow": "Left without being seen",
+      "lwbsDone": "Recorded: left without being seen",
+      "abscondNow": "Absconded",
+      "abscondDone": "Absconded — security told",
+      "abscondPolice": "Absconded — security told; inform the police (MLC)",
+      "sign": {
+        "chest_pain": "Chest pain",
+        "breathlessness": "Breathlessness",
+        "bleeding": "Bleeding",
+        "high_fever": "High fever",
+        "repeated_vomiting": "Repeated vomiting",
+        "fits": "Fits",
+        "drowsiness": "Drowsiness",
+        "worsening_pain": "Pain getting worse",
+        "wound_redness": "Wound red or swollen",
+        "less_urine": "Passing less urine",
+        "weakness_one_side": "Weakness of one side",
+        "severe_headache": "Severe headache"
+      },
+      "cls": {
+        "general": "General",
+        "semi_private": "Semi-private",
+        "private": "Private",
+        "icu": "ICU"
+      },
+      "referReason": {
+        "higher_centre_care": "Higher-centre care",
+        "specialty_not_available": "Specialty not here",
+        "bed_not_available": "No bed",
+        "equipment_not_available": "Equipment not here",
+        "patient_choice": "Patient's choice"
+      },
+      "escortOf": {
+        "doctor": "Doctor",
+        "nurse": "Nurse",
+        "paramedic": "Paramedic",
+        "family": "Family"
+      },
+      "transportOf": {
+        "own_ambulance": "Hospital ambulance",
+        "ambulance_108": "108 ambulance",
+        "private_vehicle": "Private vehicle",
+        "other": "Other"
+      },
+      "signer": {
+        "patient": "Patient signs",
+        "representative": "Representative signs",
+        "refused_to_sign": "Refused to sign"
+      },
+      "searched": "Searched the premises?",
+      "searchedYes": "Yes, searched",
+      "searchedNo": "Not searched"
     }
+  },
+  "erMlc": {
+    "title": "MLC desk",
+    "owed": "Owed",
+    "recent": "Last 7 days",
+    "noneOwed": "Nothing owed",
+    "case": "Case",
+    "pick": "Pick a case.",
+    "print": "Print MLC copy",
+    "late": "Opened late",
+    "byRule": "By rule",
+    "openedAs": "opened as {{cat}}",
+    "openedBy": "Opened by {{name}} · {{time}}",
+    "mortuary": "Body in the mortuary register — released only on police clearance.",
+    "original": "As opened",
+    "noInformant": "No informant recorded",
+    "addenda": "Addenda",
+    "refusedExam": "Examination refused",
+    "intimation": "Police intimation",
+    "countersign": "Countersign",
+    "recordedBy": "Recorded by {{name}}",
+    "intimated": "Intimation recorded",
+    "intimatedLate": "Intimation recorded (late)",
+    "countersignedBy": "Countersigned by {{name}}",
+    "countersigned": "Countersigned",
+    "countersignNow": "Countersign",
+    "custody": "Belongings and evidence",
+    "noCustody": "Nothing recorded",
+    "belongings": "Belongings",
+    "signedBy": "{{a}} · witness {{b}}",
+    "station": "Police station",
+    "receiver": "Officer",
+    "rank": "Rank",
+    "gd": "GD entry no.",
+    "intimate": "Record intimation",
+    "items": "Items (one per line)",
+    "itemsHint": "Mobile phone\nWallet",
+    "keptInLabel": "Kept with",
+    "keptRef": "Locker no. or name",
+    "evidenceKind": "Evidence",
+    "seal": "Seal no.",
+    "description": "Description",
+    "saveBelongings": "Save belongings",
+    "belongingsSaved": "Belongings recorded",
+    "saveEvidence": "Save link",
+    "linkSaved": "Link #{{link}} recorded",
+    "addAddendum": "Add addendum",
+    "addendumText": "Addendum",
+    "changeCategory": "Category",
+    "keepCategory": "Keep category",
+    "saveAddendum": "Save addendum",
+    "addendumSaved": "Addendum saved",
+    "informant": "Informant",
+    "relation": "Relation",
+    "words": "What happened (their words)",
+    "injurySite": "Injury site",
+    "injuryKind": "Kind",
+    "addInjury": "Add injury",
+    "clock": {
+      "done": "done {{time}}",
+      "doneLate": "done late {{time}}",
+      "dueIn": "due in {{minutes}} min",
+      "dueHours": "due in {{hours}} h",
+      "overdue": "overdue {{minutes}} min",
+      "overdueHours": "overdue {{hours}} h"
+    },
+    "mode": {
+      "written": "Written",
+      "phone_then_written": "Phone, then written",
+      "police_present": "Police present"
+    },
+    "keptIn": {
+      "locker": "Locker",
+      "relative": "Relative",
+      "police": "Police"
+    },
+    "action": {
+      "listed": "Listed",
+      "collected": "Collected",
+      "stored": "Stored",
+      "handed_over": "Handed over"
+    },
+    "evidence": {
+      "clothes": "Clothes",
+      "swab": "Swab",
+      "blood_sample": "Blood sample",
+      "projectile": "Bullet / pellet",
+      "weapon": "Weapon",
+      "viscera": "Viscera",
+      "other": "Other"
+    },
+    "injury": {
+      "abrasion": "Abrasion",
+      "laceration": "Laceration",
+      "contusion": "Contusion",
+      "incised": "Incised",
+      "stab": "Stab",
+      "burn": "Burn",
+      "fracture": "Fracture",
+      "firearm": "Firearm",
+      "bite": "Bite",
+      "ligature_mark": "Ligature mark",
+      "other": "Other"
+    },
+    "category": {
+      "assault": "Assault",
+      "road_accident": "Road accident",
+      "burns": "Burns",
+      "acid_attack": "Acid attack",
+      "poisoning": "Poisoning",
+      "hanging": "Hanging",
+      "drowning": "Drowning",
+      "fall_from_height": "Fall from height",
+      "bite_dispute": "Bite (dispute)",
+      "unknown_unconscious": "Unknown / unconscious",
+      "sexual_assault": "Sexual assault",
+      "brought_dead": "Brought dead",
+      "death_within_24h_injury": "Death within 24 h of injury",
+      "police_brought": "Brought by police",
+      "other": "Other"
+    },
+    "evidenceTab": "Evidence"
+  },
+  "erBill": {
+    "title": "ER bill desk",
+    "toSettle": "Left the ER — to settle",
+    "noneToSettle": "Nothing to settle",
+    "inDepartment": "In the department",
+    "pick": "Pick a patient.",
+    "stabilised": "Stabilised",
+    "notStabilised": "Not yet stabilised — no money asked",
+    "unpriced": "No price yet",
+    "total": "Total",
+    "payerShare": "Payer",
+    "patientShare": "Patient",
+    "advance": "Advance",
+    "balance": "Balance",
+    "price": "Price the lines",
+    "priced": "{{n}} lines priced",
+    "payerLabel": "Payer",
+    "schemeRef": "Scheme / reference no.",
+    "setPayer": "Set payer",
+    "payerSet": "Payer recorded",
+    "amount": "Amount (₹)",
+    "tender": "Tender",
+    "takeAdvance": "Take advance",
+    "advanceTaken": "Advance taken · receipt {{no}}",
+    "settleZero": "Settle — nothing payable",
+    "settlePaid": "Settle — paid",
+    "dues": "Patient cannot pay now — dues",
+    "signer": "Undertaking signed by",
+    "relation": "Relation",
+    "undertakingRef": "Undertaking no.",
+    "recordDues": "Record dues (invoice held)",
+    "settled": "Settled · bill {{no}}",
+    "settledDues": "Dues recorded: {{dues}} (invoice held)",
+    "payer": {
+      "self": "Self",
+      "pmjay": "PM-JAY",
+      "road_accident": "Road accident (cashless)",
+      "bnss_free": "Free by law (BNSS s.397)",
+      "mci_event": "Mass-casualty event"
+    },
+    "tenderOf": {
+      "cash": "Cash",
+      "upi": "UPI",
+      "card": "Card"
+    },
+    "settlement": {
+      "paid": "Paid",
+      "dues": "Dues against undertaking",
+      "nothing_payable": "Nothing payable"
+    },
+    "outcome": {
+      "discharged": "Discharged",
+      "referred_out": "Referred out",
+      "lama": "LAMA",
+      "absconded": "Absconded",
+      "lwbs": "Left unseen",
+      "died": "Died",
+      "admitted": "Admitted"
+    },
+    "source": {
+      "er.registration": "ER registration",
+      "er.physician": "ER physician fee",
+      "er.observation": "ER observation (6 h blocks)",
+      "er.order": "Test",
+      "er.issue": "Drug / consumable",
+      "er.procedure": "Procedure"
+    }
+  },
+  "erCodes": {
+    "title": "Codes — resus scribe",
+    "running": "Running",
+    "recent": "Last 24 hours",
+    "none": "No code running",
+    "pick": "Pick a code.",
+    "noPatient": "No patient",
+    "where": "Where",
+    "whereHint": "OPD 2 waiting, Ward 4 corridor …",
+    "paged": "Paged {{n}}",
+    "calledFor": "{{what}} called · {{n}} paged",
+    "openScribe": "Open the scribe",
+    "min": "min",
+    "dueAt": "due {{time}}",
+    "metAt": "done {{time}}",
+    "shock": "Shock {{j}} J",
+    "drug": "Drug",
+    "dose": "Dose",
+    "addDrug": "Add drug",
+    "end": "End — {{outcome}}",
+    "ended": "Code ended",
+    "wentWell": "What went well",
+    "improve": "What to improve",
+    "saveDebrief": "Save debrief",
+    "debriefed": "Debrief saved",
+    "debriefDone": "Debrief recorded",
+    "timeline": "Timeline",
+    "paper": "From paper",
+    "boardDue": "{{what}} in {{minutes}} min",
+    "boardLate": "{{what}} late {{minutes}} min",
+    "triageDesk": "Triage desk",
+    "sendGrey": "Send Code Grey",
+    "cancel": "Cancel",
+    "kind": {
+      "code_blue": "Code Blue",
+      "code_grey": "Code Grey",
+      "stemi": "STEMI",
+      "stroke": "Stroke",
+      "trauma": "Trauma",
+      "sepsis": "Sepsis",
+      "snakebite": "Snakebite",
+      "obstetric": "Obstetric emergency"
+    },
+    "milestone": {
+      "ecg": "ECG",
+      "balloon": "Balloon",
+      "ct": "CT",
+      "needle": "Needle (thrombolysis)",
+      "primary_survey": "Primary survey",
+      "antibiotics": "Antibiotics",
+      "asv": "ASV",
+      "lr_handover": "Labour room hand-over"
+    },
+    "event": {
+      "cpr_start": "CPR start",
+      "cpr_pause": "CPR pause",
+      "rhythm": "Rhythm",
+      "shock": "Shock",
+      "drug": "Drug",
+      "airway": "Airway",
+      "rosc": "ROSC",
+      "death": "Death",
+      "milestone": "Milestone",
+      "location": "Place",
+      "note": "Note"
+    },
+    "rhythm": {
+      "vf": "VF",
+      "pulseless_vt": "Pulseless VT",
+      "pea": "PEA",
+      "asystole": "Asystole",
+      "sinus": "Sinus",
+      "brady": "Brady",
+      "svt": "SVT",
+      "af": "AF"
+    },
+    "outcome": {
+      "rosc": "ROSC",
+      "died": "Died",
+      "stood_down": "Stood down",
+      "transferred": "Transferred",
+      "resolved": "Resolved"
+    },
+    "from": {
+      "door": "from the door",
+      "activation": "from the call"
+    }
+  },
+  "erMci": {
+    "title": "Mass casualty",
+    "running": "Code Yellow · {{name}}",
+    "since": "Since {{time}}",
+    "declare": "Declare Code Yellow",
+    "name": "Event",
+    "nameHint": "Bus collision NH-30",
+    "place": "Place",
+    "declareGo": "Declare Code Yellow",
+    "declareWho": "MS or duty manager only.",
+    "declared": "Code Yellow declared",
+    "recent": "Past events",
+    "packs": "Pre-made packs",
+    "packsHint": "UHID + band, ready at the desk.",
+    "howMany": "How many",
+    "mint": "Make packs",
+    "minted": "{{n}} packs made",
+    "printPacks": "Print packs",
+    "untagged": "Not tagged",
+    "tag": {
+      "red": "Red · Immediate",
+      "yellow": "Yellow · Delayed",
+      "green": "Green · Minor",
+      "black": "Black · Expectant"
+    },
+    "total": "{{n}} patients",
+    "out": {
+      "inDepartment": "{{n}} in ER",
+      "admitted": "{{n}} admitted",
+      "discharged": "{{n}} discharged",
+      "referredOut": "{{n}} referred",
+      "died": "{{n}} died",
+      "left": "{{n}} left"
+    },
+    "asOf": "As of {{time}}",
+    "bays": "ER bays {{free}}/{{total}} free",
+    "surge": "Surge bays {{free}}/{{total}} free",
+    "beds": "{{n}} ward beds free",
+    "packsLeft": "{{n}} packs left",
+    "patients": "Patients",
+    "packNo": "Pack number",
+    "register": "Register pack",
+    "registered": "{{alias}} · {{no}}",
+    "noPatients": "No patients yet",
+    "retagWhy": "Why re-tag (Black)",
+    "tagged": "{{label}}: {{tag}}",
+    "command": "Command",
+    "surgeTitle": "Surge bays",
+    "surgePick": "Pick overflow beds",
+    "noOverflow": "No overflow beds",
+    "surgeGo": "Open {{n}} as surge bays",
+    "surgeOpened": "{{n}} surge bays open",
+    "headCount": "Head count",
+    "headCountHint": "For the district. Counts only, no names.",
+    "printCount": "Print head count",
+    "standDown": "Stand down",
+    "standDownSure": "Yes, stand down",
+    "stoodDown": "Stood down · {{n}} back to triage",
+    "cancel": "Cancel"
   }
 }

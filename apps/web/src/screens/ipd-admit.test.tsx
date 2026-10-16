@@ -35,7 +35,7 @@ function view(over: Partial<IpdAdmissionView> = {}): IpdAdmissionView {
     mlc: false, requestedClass: "general", isolation: "none", icu: false, requestedAt: "2030-01-01T05:20:00.000Z",
     plannedFor: null, expiresAt: "2030-01-02T05:20:00.000Z", payerKind: null, coverageId: null, estimatePaise: null,
     depositRequiredPaise: null, depositBasis: null, depositPaidPaise: 0, depositCheckPending: false, deposits: [], consent: null, reservation: null, bed: null,
-    band: null, icuApproval: null, admittedAt: null, stabilisedAt: null, downtimeSerial: null, incomplete: [], ...over,
+    band: null, icuApproval: null, admittedAt: null, stabilisedAt: null, erArrivedAt: null, downtimeSerial: null, incomplete: [], ...over,
   };
 }
 const QUOTES: IpdClassQuote[] = [

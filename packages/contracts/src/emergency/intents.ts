@@ -81,11 +81,16 @@ export const preAlert = erIntent({
     caller: ErWordsSchema.optional(),
     callerPhone: ErPhoneSchema.optional(),
     vehicleNo: z.string().trim().min(1).max(20).optional(),
+    /** Lane 2 (seam E9): the OPD red flag names the patient it sends, and the rule that fired (`opdTriage.redFlag.<key>`). */
+    patientId: ErIdSchema.optional(),
+    redFlagKey: z.string().trim().min(1).max(80).optional(),
+  }).refine((i) => (i.mode === "opd_red_flag") === (i.patientId !== undefined), {
+    message: "an OPD red flag names its patient, and only it does", path: ["patientId"],
   }),
   output: z.strictObject({
     preAlertId: ErIdSchema, state: z.literal("expected"), expectedAt: ErInstantSchema, expiresAt: ErInstantSchema,
   }),
-  refusals: [],
+  refusals: ["patient_not_found", "patient_deceased"],
   actors: ["desk", "er_nurse", "doctor", "duty_manager"],
   copilotProposable: true,
   agentTier: "none",
@@ -167,7 +172,9 @@ export const registerUnidentified = erIntent({
 
 /**
  * The brought-dead MARKER (lane 1): a body arrives, a doctor examines it, and the episode is terminal at once — no
- * treatment episode, no band, no charge. The MLC, the mortuary hand-over and the police clearance are lane 4's.
+ * treatment episode, no band, no charge. Lane 4 (#811): the same act opens the MLC (category `brought_dead`), marks the
+ * patient deceased with the `brought_dead` death kind (no MCCD) and opens the body's IPD mortuary register entry (MLC:
+ * released only after the police clearance).
  */
 export const recordBroughtDead = erIntent({
   input: erInput({
@@ -187,6 +194,8 @@ export const recordBroughtDead = erIntent({
   output: z.strictObject({
     episodeId: ErIdSchema, episodeNo: z.string(), patientId: ErIdSchema, uhid: z.string(), alias: z.string().nullable(),
     state: z.literal("brought_dead"),
+    /** Lane 4 (#811): always an MLC (opened by rule), and the body's entry in the IPD mortuary register. */
+    mlcId: ErIdSchema, mlcNo: z.string(), mortuaryEntryId: ErIdSchema,
   }),
   refusals: [
     "patient_not_found", "patient_deceased", "patient_admitted", "episode_already_open", "pre_alert_not_found",
@@ -196,7 +205,7 @@ export const recordBroughtDead = erIntent({
   copilotProposable: false,
   agentTier: "none",
   undo: "entered_in_error",
-  events: ["er.brought_dead"],
+  events: ["er.brought_dead", "er.mlc_opened"],
   idempotent: true,
 });
 
@@ -251,7 +260,7 @@ export const linkIdentity = erIntent({
   }),
   refusals: [
     "episode_not_found", "not_unidentified", "same_patient", "patient_not_found", "true_record_unidentified",
-    "merge_already_requested",
+    "merge_already_requested", "patient_deceased", "episode_already_open",
   ],
   actors: ["desk", "supervisor", "duty_manager"],
   copilotProposable: true,

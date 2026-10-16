@@ -1751,10 +1751,72 @@ note, the NPO reason and who set them; without it (the kitchen) a reader sees th
 casualty nurse.
 `er.arrival.register` is held by `front_office`, `front_office_supervisor`, `duty_manager` and `er_nurse`;
 `er.board.view` by the same four and `doctor` and `medical_superintendent`.
+`er.board.wall` (the wall screen only: initials or the alias, no UHID, no complaint, no police mark) is held by the same six and the kiosk `display` role.
 The first records an arrival (a known patient, a new named patient, or an unidentified patient with a real UHID and an
 alias), a pre-alert, a brought-dead marker, and prints or reprints the ER band; the second reads the board. Linking an
 unidentified patient to the true record files a `patient_merge` request and asks `patients.merge`, as the merge screen
 does. No ER screen shows money.
+
+**Emergency triage (ER lane 2, issue #809, decision 0076, built 2026-10-15, awaiting owner review).** The triage
+screen at `/er/triage`: ESI v4 by its four questions, the level the person's choice, a reason for any down-triage,
+vitals scored by NEWS2 / MEOWS / PEWS beside the level, the re-triage clock (a task when overdue, climbing after 15
+minutes), ER bays from the bed registry and the ER doctor of record.
+`er.triage` is held by `er_nurse` and `doctor`.
+
+**Emergency care (ER lane 3, issue #810, decision 0076, built 2026-10-15, awaiting owner review).** The ER patient screen
+at `/er/patient`: notes (a resident's note is a draft until a senior co-signs), STAT tests through the ordering door,
+the ER store issue with patient labels and the dose record (a high-alert dose with a second person's PIN), procedures,
+consent (emergency treatment without consent needs a second doctor), specialty calls to the unit on take, critical
+results to the ER doctor of record, and "stabilised". No ER clinical screen shows money.
+`er.care` is held by `doctor` and `er_nurse`.
+
+**Emergency MLC (ER lane 4, issue #811, decision 0076, built 2026-10-15, awaiting owner review).** The MLC desk at
+`/er/mlc`: the medico-legal case register (serial `MLC26-000123`), opened by the ER doctor or by rule at arrival (an
+unidentified patient, a body brought dead, a patient the police bring); the police intimation due within 1 hour (a
+task, then a climb) and the faculty countersign due within 24 hours (an obligation, still owed after a death); the
+belongings list and the evidence chain of custody, each signed by two staff; corrections only as addenda (the record is
+never edited or deleted). A body brought dead is marked deceased with the `brought_dead` death kind (no MCCD) and goes to
+the mortuary register, released only on police clearance. The MLC never delays treatment.
+`er.mlc` is held by `doctor`, `er_nurse`, `front_office`, `front_office_supervisor`, `duty_manager` and `medical_superintendent`.
+
+**Emergency disposition (ER lane 5, issue #812, decision 0076, built 2026-10-15, awaiting owner review).** Every way out of
+the ER: one disposition per episode decided by a doctor with a reason; discharge with the signed ER summary (diagnosis,
+treatment, medicines, return-if signs in Hindi and English, follow-up); hand to a unit (the IPD admission with the ER gate
+time and "stabilised" copied — the patient boards on the ER board until the bed is placed, and the ER test lines move to
+the IP running bill); refer out with the referral note (never because the patient cannot pay); LAMA with the risks and a
+signature or a witnessed refusal; left without being seen; absconded (security told, the police for an MLC); death with
+the MCCD number, or an MLC already intimated to the police, the body to the mortuary register. Every exit frees the bay.
+A patient waiting for a bed past 2 hours is a task for the bed manager and reaches the MS at 4 hours; a specialty refusing
+the admission is recorded and the MS arbitrates.
+`er.disposition` is held by `doctor`, `er_nurse`, `front_office`, `duty_manager` and `medical_superintendent`.
+
+**Emergency bill (ER lane 6, issue #813, decision 0076, built 2026-10-15, awaiting owner review).** The ER bill desk at
+`/er/bill`: the ER tariff's own lines (registration and physician fee once per visit; observation per started 6 hours
+after the first 6), drugs at the batch MRP and every other line at the hospital tariff; no money asked or taken before the
+ER doctor records "stabilised"; settle at departure, or dues against a signed undertaking with the invoice held (never
+credit, 0013); ₹0 for PM-JAY, road-accident cashless (up to ₹1.5 lakh for 7 days), BNSS s.397 (sexual assault, acid
+attack: nothing patient-payable, ever) and a mass-casualty event account, each leaving a claim for the TPA desk; at
+admission every ER line rolls into the IP running bill. No ER clinical screen shows money.
+`er.bill` is held by `front_office`, `front_office_supervisor`, `cashier`, `billing_manager` and `duty_manager`.
+
+**Emergency codes (ER lane 7, issue #814, decision 0076, built 2026-10-15, awaiting owner review).** Code Blue and Code
+Grey from any staff phone (anywhere in the hospital), the clinical activations (STEMI, stroke, trauma, sepsis, snakebite,
+obstetric) on an ER patient: the roster's team is paged at once (the page names the code and the bay, never the patient),
+the resus scribe taps the timeline (CPR, rhythm, shock, drug, airway, ROSC, death; a paper sheet back-filled and
+flagged), the activation clocks run from the door (door-to-ECG 10 minutes, door-to-CT 25, door-to-needle 60, …), the team
+leader ends the code with an outcome and records the debrief. Code Grey pages security with the place and drafts the
+incident report.
+`er.codes` is held by `doctor`, `er_nurse`, `ward_nurse`, `nursing_supervisor`, `front_office`, `front_office_supervisor`, `duty_manager`, `security_guard` and `medical_superintendent`.
+
+**Emergency mass casualty (ER lane 8, issue #815, decision 0076, built 2026-10-15, awaiting owner review).** The medical
+superintendent or the duty manager declares a Code Yellow, and the event's account opens with it: every patient tagged
+to the event pays nothing at the point of care, and the charges post to the account at full tariff. Pre-made
+unidentified packs (a real UHID each, alias `Unknown-MCI26-007`, the band printed ahead) let the desk register an arrival
+by the pack number alone. Nurses and doctors tag each patient START (adult) or JumpSTART (child) — Red Immediate, Yellow
+Delayed, Green Minor, Black Expectant — and a Black re-tag needs its reason. The duty manager opens overflow beds as
+surge bays. The MCI board shows the counts by tag, packs ready, bays and surge bays left and hospital beds free; the head
+count for the district authority carries counts only, never names. The stand-down returns every patient to the ESI flow.
+`er.mci` is held by `doctor`, `er_nurse`, `front_office`, `front_office_supervisor`, `duty_manager` and `medical_superintendent`.
 
 **Copilot halt switch and spend cap (plan E0.3/E0.5, decision 0064, built 2026-10-11, awaiting owner review).**
 `copilot.halt.set` (owner, medical_superintendent, quality_manager) pauses the copilot by scope — read, act,

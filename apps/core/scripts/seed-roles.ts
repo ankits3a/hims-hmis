@@ -85,9 +85,19 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "front_office",
     permissions: [
+      // ER lane 8 (#815) — mass casualty (Code Yellow): the MCI board, START / JumpSTART tags, the head count. README "Emergency mass casualty" prose.
+      "er.mci",
+      // ER lane 7 (#814) — call a code (Code Blue / Code Grey anywhere), the resuscitation record. README "Emergency codes" prose.
+      "er.codes",
       // ER lane 1 (#808, decision 0076) — the ER desk registers arrivals and prints the band; the tracking board.
       // README "Emergency arrival" prose.
-      "er.board.view", "er.arrival.register",
+      "er.board.view", "er.board.wall", "er.arrival.register",
+      // ER lane 4 (#811) — the MLC desk: writes the police intimation, lists belongings. README "Emergency MLC" prose.
+      "er.mlc",
+      // ER lane 5 (#812) — records "left without being seen" at the desk. README "Emergency disposition" prose.
+      "er.disposition",
+      // ER lane 6 (#813) — the ER bill desk: payer, advance after "stabilised", settle or dues. README "Emergency bill" prose.
+      "er.bill",
       // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
       "ipd.beds.view",
       "ipd.beds.manage",
@@ -144,8 +154,16 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "front_office_supervisor",
     permissions: [
+      // ER lane 8 (#815) — mass casualty (Code Yellow): the MCI board, START / JumpSTART tags, the head count. README "Emergency mass casualty" prose.
+      "er.mci",
+      // ER lane 7 (#814) — call a code (Code Blue / Code Grey anywhere), the resuscitation record. README "Emergency codes" prose.
+      "er.codes",
       // ER lane 1 (#808) — as the front office: the ER desk and the tracking board. README "Emergency arrival" prose.
-      "er.board.view", "er.arrival.register",
+      "er.board.view", "er.board.wall", "er.arrival.register",
+      // ER lane 4 (#811) — as the front office: the MLC desk. README "Emergency MLC" prose.
+      "er.mlc",
+      // ER lane 6 (#813) — the ER bill desk. README "Emergency bill" prose.
+      "er.bill",
       // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
       "ipd.beds.view",
       "ipd.beds.manage",
@@ -255,8 +273,21 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "doctor",
     permissions: [
+      // ER lane 8 (#815) — mass casualty (Code Yellow): the MCI board, START / JumpSTART tags, the head count. README "Emergency mass casualty" prose.
+      "er.mci",
+      // ER lane 7 (#814) — call a code (Code Blue / Code Grey anywhere), the resuscitation record. README "Emergency codes" prose.
+      "er.codes",
       // ER lane 1 (#808) — the tracking board (no money on it, decision 0058). README "Emergency arrival" prose.
-      "er.board.view",
+      "er.board.view", "er.board.wall",
+      // ER lane 2 (#809) — triage by ESI, vitals, bays and the ER doctor of record. README "Emergency triage" prose.
+      "er.triage",
+      // ER lane 3 (#810) — ER care: notes, STAT orders, the ER issue and doses, procedures, consent, calls, stabilised.
+      // README "Emergency care" prose. No money behind it (0058).
+      "er.care",
+      // ER lane 4 (#811) — the MLC: open, addendum, countersign (a senior), intimation, custody. README "Emergency MLC" prose.
+      "er.mlc",
+      // ER lane 5 (#812) — decide, discharge with the summary, hand to a unit, refer out, LAMA, death. README "Emergency disposition" prose.
+      "er.disposition",
       // DIET E4.4 (#736) — the doctor orders the diet, sets or lifts NPO, and reads the ward diet sheet and kitchen board.
       "diet.view", "diet.order", "diet.npo", "diet.clinical.view",
       // IPD ADMISSION E1.2 (#719) — a doctor advises admission (raises the request); answers carry no money (0058).
@@ -544,7 +575,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * account drives the TV in either waiting hall, and both boards show tokens (imaging: token plus
    * first name and initial) and nothing else.
    */
-  { roleKey: "display", permissions: ["opd.display.read", "radiology.display.read"] },
+  // ER review (2026-10-15) — the ER wall screen (`er.board.wall`: initials or the alias, no UHID, no police chip).
+  { roleKey: "display", permissions: ["opd.display.read", "radiology.display.read", "er.board.wall"] },
   {
     roleKey: "pharmacy",
     permissions: [
@@ -678,6 +710,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "cashier",
     permissions: [
+      // ER lane 6 (#813) — the ER bill desk. README "Emergency bill" prose.
+      "er.bill",
       // IPD CHARGES E2.1 (#725, decision 0072) — the interim bill; README "IPD running bill" prose. Never a doctor (0058).
       "ipd.bill.view",
       // IPD BILL DESK E2.3 (#727, decision 0072) — the exceptions-only bill desk and its deposit_low card; README "IPD bill desk" prose. Never a doctor (0058).
@@ -768,6 +802,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "billing_manager",
     permissions: [
+      // ER lane 6 (#813) — the ER bill desk. README "Emergency bill" prose.
+      "er.bill",
       // IPD ADMISSION E1.2 (#719) — the TPA desk sits in billing: the manual authorisation record.
       "ipd.payer.manage",
       // IPD CHARGES E2.1 (#725) — the interim bill, and the reversal line against a wrong charge (never an edit).
@@ -1048,8 +1084,16 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "medical_superintendent",
     permissions: [
+      // ER lane 8 (#815) — mass casualty (Code Yellow): the MCI board, START / JumpSTART tags, the head count. README "Emergency mass casualty" prose.
+      "er.mci",
+      // ER lane 7 (#814) — call a code (Code Blue / Code Grey anywhere), the resuscitation record. README "Emergency codes" prose.
+      "er.codes",
       // ER lane 1 (#808) — the tracking board. README "Emergency arrival" prose.
-      "er.board.view",
+      "er.board.view", "er.board.wall",
+      // ER lane 4 (#811) — the MLC desk: the countersign breach reaches the MS. README "Emergency MLC" prose.
+      "er.mlc",
+      // ER lane 5 (#812) — arbitrates an admission a specialty refused. README "Emergency disposition" prose.
+      "er.disposition",
       // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
       "ipd.beds.view",
       // PASSES E1.3 (#720) — a visitor ban, and the manager's pause and police custody.
@@ -1203,9 +1247,19 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     // E0.1 TASK ENGINE (issue #713) — the duty manager sees the task board and may assign, cancel and take back a
     // task out of hours, when no services supervisor is on.
     permissions: [
+      // ER lane 8 (#815) — mass casualty (Code Yellow): the MCI board, START / JumpSTART tags, the head count. README "Emergency mass casualty" prose.
+      "er.mci",
+      // ER lane 7 (#814) — call a code (Code Blue / Code Grey anywhere), the resuscitation record. README "Emergency codes" prose.
+      "er.codes",
       "auth.temp_role.grant", "roster.read", "copilot.health.read",
       // ER lane 1 (#808) — runs the ER desk at night and reads the board. README "Emergency arrival" prose.
-      "er.board.view", "er.arrival.register",
+      "er.board.view", "er.board.wall", "er.arrival.register",
+      // ER lane 4 (#811) — the MLC desk at night; the intimation climb reaches the duty manager. README "Emergency MLC" prose.
+      "er.mlc",
+      // ER lane 5 (#812) — LAMA and abscond at night. README "Emergency disposition" prose.
+      "er.disposition",
+      // ER lane 6 (#813) — the ER bill desk at night; opens a mass-casualty event account. README "Emergency bill" prose.
+      "er.bill",
       "tasks.view", "tasks.supervise",
       // IPD BEDS E1.1 (#718) — the duty manager approves overflow beds (spec §4.1) and runs the board at night.
       "ipd.beds.view", "ipd.beds.manage", "ipd.beds.clean", "ipd.beds.overflow",
@@ -1241,7 +1295,7 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    */
   {
     roleKey: "security_guard",
-    permissions: ["passes.scan"],
+    permissions: ["er.codes", "passes.scan"],
   },
   /**
    * ═══ PLAN 07c T9 / DD14 — OWNER RULING 2026-08-29: ONE NAMED PERSON MAY OPEN THE ROWS ═══
@@ -2205,6 +2259,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "ward_nurse",
     permissions: [
+      // ER lane 7 (#814) — call a code (Code Blue / Code Grey anywhere), the resuscitation record. README "Emergency codes" prose.
+      "er.codes",
       "ipd.nursing.view", "ipd.vitals.record", "ipd.assessment.record", "ipd.handover.shift",
       "ipd.beds.view", "ipd.beds.clean", "ipd.transfer.start", "ipd.transfer.accept", "ipd.discharge.view", "ipd.discharge.confirm",
       "maintenance.raise", "maintenance.confirm", "transport.request",
@@ -2219,6 +2275,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "nursing_supervisor",
     permissions: [
+      // ER lane 7 (#814) — call a code (Code Blue / Code Grey anywhere), the resuscitation record. README "Emergency codes" prose.
+      "er.codes",
       "ipd.nursing.view", "ipd.vitals.record", "ipd.assessment.record", "ipd.handover.shift", "ipd.ews.respond",
       "ipd.beds.view", "ipd.beds.clean", "ipd.transfer.start", "ipd.transfer.accept", "ipd.discharge.view", "ipd.discharge.confirm",
       "ipd.family.issue",
@@ -2250,7 +2308,12 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * Lane 1 grants the arrival and the board: at night the casualty nurse registers the arrival and prints the band
    * when no clerk is at the ER desk. Triage (`er.triage`) arrives with lane 2. NOBODY is assigned by any seed.
    */
-  { roleKey: "er_nurse", permissions: ["er.board.view", "er.arrival.register"] },
+  // ER lane 2 (#809) — `er.triage`: the casualty nurse triages by ESI, re-triages, records vitals, places in bays.
+  // ER lane 3 (#810) — `er.care`: notes, the ER issue and the doses (a high-alert dose with a second person), consent.
+  // ER lane 4 (#811) — `er.mlc`: the intimation, belongings and the evidence chain (a second person's PIN).
+  // ER lane 5 (#812) — `er.disposition`: LWBS and abscond (the doctor's acts check the doctor role).
+  // ER lane 8 (#815) — `er.mci`: START / JumpSTART tags and the MCI board during a Code Yellow.
+  { roleKey: "er_nurse", permissions: ["er.mci", "er.codes", "er.board.view", "er.board.wall", "er.arrival.register", "er.triage", "er.care", "er.mlc", "er.disposition"] },
 ];
 
 /**
@@ -2517,7 +2580,7 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   // E4.4 DIET (#736).
   dietician: "Dietician (diet orders, NPO, consults, meal rounds and the kitchen lists)",
   kitchen_staff: "Kitchen Staff (builds, prints and dispatches the meal lists)",
-  er_nurse: "Casualty Nurse (registers ER arrivals and prints the ER band; the tracking board)",
+  er_nurse: "Casualty Nurse (registers ER arrivals, prints the ER band, triages by ESI; the tracking board)",
   maintenance_staff: "Maintenance Staff (engineering technicians: electrical, plumbing, AC, carpentry repairs)",
   // IPD NURSING E4.1 (#733) — the ward nursing ladder.
   ward_nurse: "Ward Nurse (staff nurse: vitals, assessment, intake/output, notes, shift handover, transfers)",

@@ -514,3 +514,28 @@ export async function canonicalNames(
   }
   return out;
 }
+
+/**
+ * ER lane 3 (#810) — THE OPEN CRITICAL CALLS OF SOME EPISODES, for a module that must tell its own doctor (the emergency
+ * department tells the ER doctor of record and climbs while the call stays open). A read for a system sweep: no actor,
+ * no name — ids, the analyte, the value as entered and when the call opened. The call still closes ONLY by a read-back
+ * (`acknowledgeCritical`); this reader changes nothing about the ladder.
+ */
+export async function openCriticalsForEncounters(
+  db: Db | Tx, encounterNos: readonly string[],
+): Promise<{ callId: string; encounterNo: string; openedAt: Date; analyteCode: string; value: string; unit: string | null }[]> {
+  if (encounterNos.length === 0) return [];
+  const rows = await (db as Db)
+    .select({ call: labCriticalCalls, result: labResults, analyteCode: labAnalytes.code, encounterNo: orders.encounterNo })
+    .from(labCriticalCalls)
+    .innerJoin(labResults, eq(labResults.id, labCriticalCalls.resultId))
+    .innerJoin(labAnalytes, eq(labAnalytes.id, labResults.analyteId))
+    .innerJoin(orderItems, eq(orderItems.id, labResults.orderItemId))
+    .innerJoin(orders, eq(orders.id, orderItems.orderId))
+    .where(and(isNull(labCriticalCalls.closedAt), inArray(orders.encounterNo, [...encounterNos])))
+    .orderBy(labCriticalCalls.openedAt);
+  return rows.map((r) => ({
+    callId: r.call.id, encounterNo: r.encounterNo ?? "", openedAt: r.call.openedAt, analyteCode: r.analyteCode,
+    value: r.result.valueNumeric ?? r.result.valueText ?? r.result.valueCoded ?? "", unit: r.result.unit,
+  }));
+}

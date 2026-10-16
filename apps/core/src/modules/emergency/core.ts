@@ -38,7 +38,7 @@ export function onceEr<T>(db: Db, actor: Actor, intent: ErIntentName, key: strin
   return withIdempotency(db, { actorId: actor.id, route: `er:${intent}`, key: key.toLowerCase() }, body, work, now);
 }
 
-const lockKey = (tx: Tx, key: string) => tx.execute(sql`select pg_advisory_xact_lock(hashtext(${key}))`);
+export const lockKey = (tx: Tx, key: string) => tx.execute(sql`select pg_advisory_xact_lock(hashtext(${key}))`);
 
 export async function erPatientLock(tx: Tx, patientId: string): Promise<void> {
   await lockKey(tx, `er_patient:${patientId}`);
@@ -114,7 +114,7 @@ export function workflowRefusal(e: unknown): unknown {
 }
 
 /** IST calendar year of an instant (the ER number and the alias restart every IST year). */
-function istYear(at: Date): number {
+export function istYear(at: Date): number {
   return Number(istDayString(at).slice(0, 4));
 }
 

@@ -62,6 +62,10 @@ export {
 export { IPD_APPROVAL_TYPES, IPD_APPROVAL_TYPE_KEYS, ipdApprovalDefinition, registerIpdApprovalTypes } from "./approval-types";
 export { IPD_ADMISSION_BOARD_EVENT_NAMES } from "./admission-events";
 export { assignBedIn, endAdmissionHolds, placementContext, proposeBeds, readBedFacts } from "./beds";
+// ER lane 2 (#809) — ER bays are emergency-class beds placed and emptied under the same bed lock.
+export { OCCUPANT_ER_EPISODE, placeErEpisodeIn, releaseErBayIn } from "./beds";
+// ER review — `move_bay` locks both bays in one global order before it places and releases (no crossed-zone deadlock).
+export { lockBedsInOrder } from "./beds";
 export type { BedPlacementInput, PlacementContext } from "./beds";
 // E1.3 (#720) — where an admission is, and the stay-ending and transfer event names, for the companion modules (passes).
 export {
@@ -131,6 +135,10 @@ export type { VoidBillResult } from "./bill-void";
 export {
   issueGatePass, listMortuary, receiveBody, recordAbscond, recordDeath, recordLama, recordPoliceClearance, releaseBody, scanGatePass,
 } from "./discharge-exit";
+/** ER lane 4 (#811) — a body brought dead to the ER opens its mortuary entry (an MLC: released only on police clearance). */
+export { openErMortuaryEntry } from "./discharge-exit";
+/** ER lane 5 (#812) — the hand-off: the ER gate time and "stabilised" onto the admission; the ER order lines onto the IP bill. */
+export { cancelErAdmissionIn, carryErAdvanceIn, carryErLineIn, carryErOrderLinesIn, erAdmissionState, erOpenAdmissionFor, stampErHandOffIn } from "./er-handoff";
 export { readDischargeBoard, readDischargeTracker } from "./discharge-read";
 export { IPD_DISCHARGE_EVENT_NAMES } from "./discharge-events";
 // E3.3 (#731) — the family link: issue / revoke, the condition word, callbacks, the public OTP page, the stop consumer.

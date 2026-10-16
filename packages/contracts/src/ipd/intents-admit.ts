@@ -71,7 +71,8 @@ const BandOutput = z.strictObject({
 export const requestAdmission = ipdIntent({
   input: ipdInput({
     patientId: IpdIdSchema,
-    source: z.enum(["opd_advice", "ot_daycare_conversion", "direct"]),
+    // ER lane 5 (#812): `er` — the ER's `hand_to_unit` with no bed yet (the patient boards in the ER); `sourceRef` = the ER episode.
+    source: z.enum(["opd_advice", "ot_daycare_conversion", "direct", "er"]),
     /** The OPD advice, the converted day-care case, … — the record the request is built from (principle 1). */
     sourceRef: IpdIdSchema.optional(),
     consultantId: IpdUserRefSchema,

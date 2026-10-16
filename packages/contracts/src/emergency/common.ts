@@ -51,7 +51,8 @@ export const ER_ARRIVAL_MODES = [
 export type ErArrivalMode = (typeof ER_ARRIVAL_MODES)[number];
 export const ErArrivalModeSchema = z.enum(ER_ARRIVAL_MODES);
 /** The modes that can call ahead. */
-export const ER_PRE_ALERT_MODES = ["own_ambulance", "ambulance_108", "police", "referred_in", "inter_facility"] as const;
+/** Lane 2 (#809, seam E9): `opd_red_flag` — the OPD desk's red-flag brake sends a known patient to Casualty. */
+export const ER_PRE_ALERT_MODES = ["own_ambulance", "ambulance_108", "police", "referred_in", "inter_facility", "opd_red_flag"] as const;
 export const ErPreAlertModeSchema = z.enum(ER_PRE_ALERT_MODES);
 
 export const ER_SEXES = ["male", "female", "other", "unknown"] as const;
@@ -154,18 +155,18 @@ export const ER_INTENT_CATALOGUE = [
   "pre_alert", "cancel_pre_alert", "register_arrival", "register_unidentified", "record_brought_dead",
   "print_er_band", "reprint_er_band", "link_identity",
   // triage (lane 2)
-  "triage", "re_triage", "place_in_bay", "move_bay", "assign_er_doctor",
+  "triage", "re_triage", "record_er_vitals", "place_in_bay", "move_bay", "assign_er_doctor",
   // care (lane 3)
-  "call_specialty", "answer_call", "record_er_note", "place_er_order", "issue_er_med", "give_er_dose", "record_procedure",
-  "declare_stabilised", "record_consent",
+  "call_specialty", "answer_call", "record_er_note", "cosign_er_note", "place_er_order", "issue_er_med", "give_er_dose",
+  "sign_er_verbal_order", "record_procedure", "declare_stabilised", "record_consent", "return_er_med",
   // law (lane 4)
-  "open_mlc", "record_police_intimation", "countersign_mlc", "record_belongings", "hand_over_evidence",
+  "open_mlc", "add_mlc_addendum", "record_police_intimation", "countersign_mlc", "record_belongings", "hand_over_evidence",
   // disposition (lane 5)
   "decide_disposition", "discharge_from_er", "hand_to_unit", "refer_out", "record_lama", "record_lwbs", "record_abscond",
-  "record_er_death",
+  "record_er_death", "record_specialty_refusal", "arbitrate_admission",
   // money (lane 6)
-  "settle_er_bill", "record_er_dues",
+  "settle_er_bill", "record_er_dues", "set_er_payer", "take_er_advance", "price_er_lines", "open_er_event_account",
   // codes and MCI (lanes 7, 8)
-  "call_code", "record_code_event", "end_code", "declare_mci", "mci_tag", "stand_down_mci",
+  "call_code", "record_code_event", "end_code", "record_code_debrief", "declare_mci", "mci_tag", "stand_down_mci", "mint_mci_packs", "register_mci_arrival", "open_surge_bays",
 ] as const;
 export type ErCatalogueIntent = (typeof ER_INTENT_CATALOGUE)[number];

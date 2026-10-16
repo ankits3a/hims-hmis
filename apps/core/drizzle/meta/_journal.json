@@ -1646,6 +1646,62 @@
       "when": 1792097887634,
       "tag": "0234_patients_identity_status_ck",
       "breakpoints": true
+    },
+    {
+      "idx": 235,
+      "version": "7",
+      "when": 1792097888634,
+      "tag": "0235_er_triage",
+      "breakpoints": true
+    },
+    {
+      "idx": 236,
+      "version": "7",
+      "when": 1792097889634,
+      "tag": "0236_er_care",
+      "breakpoints": true
+    },
+    {
+      "idx": 237,
+      "version": "7",
+      "when": 1792097890634,
+      "tag": "0237_er_mlc",
+      "breakpoints": true
+    },
+    {
+      "idx": 238,
+      "version": "7",
+      "when": 1792097891634,
+      "tag": "0238_er_dispo",
+      "breakpoints": true
+    },
+    {
+      "idx": 239,
+      "version": "7",
+      "when": 1792097892634,
+      "tag": "0239_er_bill",
+      "breakpoints": true
+    },
+    {
+      "idx": 240,
+      "version": "7",
+      "when": 1792097893634,
+      "tag": "0240_er_codes",
+      "breakpoints": true
+    },
+    {
+      "idx": 241,
+      "version": "7",
+      "when": 1792097894634,
+      "tag": "0241_er_mci",
+      "breakpoints": true
+    },
+    {
+      "idx": 242,
+      "version": "7",
+      "when": 1792097895634,
+      "tag": "0242_er_guards",
+      "breakpoints": true
     }
   ]
 }

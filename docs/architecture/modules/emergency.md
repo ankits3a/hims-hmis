@@ -11,9 +11,9 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/emergency/`
 · Notes: [MAP.md](../../../apps/core/src/modules/emergency/MAP.md)
 
-- **Depends on modules:** `billing`, `ipd`, `patients`
+- **Depends on modules:** `billing`, `formulary`, `ipd`, `lab`, `materials`, `ordering`, `patients`, `roster`, `tariff`, `tasks`
 - **Used by modules:** —
-- **Kernel used:** `approvals`, `auth`, `db`, `events`, `modules`, `printing`, `realtime`, `tokens`, `workflow`
+- **Kernel used:** `alerts`, `approvals`, `auth`, `db`, `episodes`, `events`, `modules`, `orders`, `printing`, `realtime`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
 
@@ -28,11 +28,81 @@ Source: `apps/core/src/modules/emergency/`
 - `bands.ts`
   - `printErBand(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"print_er_band">>`
   - `reprintErBand(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"reprint_er_band">>`
+- `bill.ts`
+  - `composeErBill(db: Db | Tx, e: EpisodeRow, now: Date = new Date()): Promise<Composed>`
+  - `listErClaims(db: Db | Tx): Promise<(typeof erPayerClaims.$inferSelect)[]>`
+  - `observationBlocks(arrivedAt: Date, until: Date): number`
+  - `openErEventAccount(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"open_er_event_account">>`
+  - `priceErLines(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"price_er_lines">>`
+  - `readErBill(db: Db, actor: Actor, episodeId: string, opts: Opts = {}): Promise<ErBill>`
+  - `readErBillDesk(db: Db, actor: Actor, opts: Opts = {}): Promise<ErBillDesk>`
+  - `rollErLinesIn(tx: Tx, actor: Actor, e: EpisodeRow, admissionId: string, at: Date): Promise<number>`
+  - `setErPayer(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"set_er_payer">>`
+  - `settleErBill(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"settle_er_bill">>`
+  - `takeErAdvance(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"take_er_advance">>`
+  - `visitFeeLines(db: Db | Tx, e: EpisodeRow, now: Date): Promise<BillLine[]>`
 - `board.ts`
-  - `listErDoctors(db: Db, actor: Actor): Promise<ErDoctorOption[]>`
+  - `listErBays(db: Db, actor: Actor): Promise<ErBay[]>`
+  - `listErDoctors(db: Db, actor: Actor, permission: string = ER_ARRIVAL_REGISTER): Promise<ErDoctorOption[]>`
   - `readErBoard(db: Db, actor: Actor, opts: { wall?: boolean; now?: Date } = {}): Promise<ErBoard>`
   - `readErDesk(db: Db, actor: Actor, opts: { now?: Date } = {}): Promise<ErDeskView>`
+  - `readErEpisode(db: Db, actor: Actor, episodeId: string, opts: { now?: Date } = {}): Promise<ErEpisodeView>`
   - `searchErPatients(db: Db, actor: Actor, q: string, opts: { now?: Date } = {}): Promise<ErPatientHit[]>`
+- `care-read.ts`
+  - `listErItems(db: Db, actor: Actor, q: string): Promise<ErItemOption[]>`
+  - `readErCare(db: Db, actor: Actor, episodeId: string): Promise<ErCareView>`
+- `care.ts`
+  - `ER_CALL_CLIMB_MIN`
+  - `ER_CARE_ACTOR: Actor`
+  - `ER_CRITICAL_CLIMB_MIN`
+  - `ER_SATELLITE_STORE_CODE`
+  - `ER_VERBAL_SIGN_MIN`
+  - `answerCall(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"answer_call">>`
+  - `callSpecialty(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"call_specialty">>`
+  - `cosignErNote(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"cosign_er_note">>`
+  - `declareStabilised(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"declare_stabilised">>`
+  - `giveErDose(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"give_er_dose">>`
+  - `issueErMed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"issue_er_med">>`
+  - `placeErOrder(db: Db, actor: Actor, raw: unknown, opts: Opts & { orderKinds: readonly OrderKindDecl[] }): Promise<Output<"place_er_order">>`
+  - `recordConsent(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_consent">>`
+  - `recordErNote(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_er_note">>`
+  - `recordProcedure(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_procedure">>`
+  - `returnErMed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"return_er_med">>`
+  - `signErVerbalOrder(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"sign_er_verbal_order">>`
+  - `sweepErCareClocks(db: Db, now: Date): Promise<{ criticals: number; climbs: number; calls: number; verbal: number }>`
+- `charge-sink.ts`
+  - `ER_EPISODE_NO_RE`
+  - `ER_EPISODE_PREFIX`
+  - `erChargeLinesOf(db: Db | Tx, episodeIds: readonly string[])`
+  - `erChargeSink: EpisodeChargeSink`
+  - `postErChargeIn(tx: Tx, actor: Actor, line: { episodeId: string; source: "er.order" | "er.issue" | "er.procedure"; department?: string; orde…`
+  - `registerErChargeSink(): () => void`
+  - `registerErEncounterResolver(): () => void`
+- `codes.ts`
+  - `activationClocksFor(db: Db | Tx, episodeIds: readonly string[]): Promise<Map<string, { kind: string; milestone: string; dueAt: string; metA…`
+  - `callCode(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"call_code">>`
+  - `codeClocks(c: Pick<CodeRow, "kind" | "doorAt" | "calledAt">, events: readonly Pick<EventRow, "kind" | "detail" | "at">[])`
+  - `endCode(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"end_code">>`
+  - `readErCode(db: Db, actor: Actor, codeId: string): Promise<ErCodeView>`
+  - `readErCodes(db: Db, actor: Actor, opts: Opts = {}): Promise<ErCodes>`
+  - `recordCodeDebrief(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_code_debrief">>`
+  - `recordCodeEvent(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_code_event">>`
+- `dispo.ts`
+  - `ER_BOARDING_CLIMB_MIN`
+  - `ER_BOARDING_TASK_MIN`
+  - `ER_DISPO_ACTOR: Actor`
+  - `arbitrateAdmission(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"arbitrate_admission">>`
+  - `decideDisposition(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"decide_disposition">>`
+  - `departIn(tx: Tx, actor: Actor, e: EpisodeRow, outcome: Outcome, departedAt: Date, at: Date): Promise<string | null>`
+  - `dischargeFromEr(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"discharge_from_er">>`
+  - `handToUnit(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"hand_to_unit">>`
+  - `recordAbscond(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_abscond">>`
+  - `recordErDeathIntent(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_er_death">>`
+  - `recordLama(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_lama">>`
+  - `recordLwbs(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_lwbs">>`
+  - `recordSpecialtyRefusal(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_specialty_refusal">>`
+  - `referOut(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"refer_out">>`
+  - `sweepErBoarding(db: Db, now: Date): Promise<{ departed: number; lapsed: number; tasks: number; climbs: number }>`
 - `emergency.module.ts`
   - `class EmergencyModule`
 - `errors.ts`
@@ -46,15 +116,67 @@ Source: `apps/core/src/modules/emergency/`
   - `linkIdentity(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"link_identity">>`
 - `manifest.ts`
   - `emergencyManifest: ModuleManifest`
+- `mci.ts`
+  - `declareMci(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"declare_mci">>`
+  - `listMciOverflowBeds(db: Db, actor: Actor): Promise<ErMciSurgeBed[]>`
+  - `listMciPacks(db: Db, actor: Actor): Promise<{ ready: { packNo: string; uhid: string; alias: string; band: ErBandPayload }[] }>`
+  - `mciTag(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"mci_tag">>`
+  - `mintMciPacks(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"mint_mci_packs">>`
+  - `openSurgeBays(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"open_surge_bays">>`
+  - `packNoOf(year: number, serial: number): string`
+  - `readMciBoard(db: Db, actor: Actor, opts: Opts = {}): Promise<ErMciBoard>`
+  - `readMciCount(db: Db, actor: Actor, mciId: string, opts: Opts = {}): Promise<ErMciCount>`
+  - `registerMciArrival(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"register_mci_arrival">>`
+  - `standDownMci(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"stand_down_mci">>`
+- `mlc.ts`
+  - `ER_MLC_ACTOR: Actor`
+  - `ER_MLC_INTIMATION_CLIMB_MIN`
+  - `addMlcAddendum(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"add_mlc_addendum">>`
+  - `countersignMlc(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"countersign_mlc">>`
+  - `handOverEvidence(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"hand_over_evidence">>`
+  - `mlcOfEpisode(db: Db | Tx, episodeId: string): Promise<MlcRow | undefined>`
+  - `openMlc(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"open_mlc">>`
+  - `readMlc(db: Db, actor: Actor, mlcId: string, opts: Opts = {}): Promise<ErMlcDetail>`
+  - `readMlcDesk(db: Db, actor: Actor, opts: Opts = {}): Promise<ErMlcDesk>`
+  - `recordBelongings(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_belongings">>`
+  - `recordPoliceIntimation(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_police_intimation">>`
+  - `sweepErMlcClocks(db: Db, now: Date): Promise<{ tasks: number; climbs: number; breaches: number }>`
 - `names.ts`
   - `ER_ARRIVAL_REGISTER`
+  - `ER_BILL`
   - `ER_BOARD_VIEW`
+  - `ER_CARE`
+  - `ER_CODES`
+  - `ER_DISPOSITION`
   - `ER_IDENTITY_LINK`
+  - `ER_MCI`
+  - `ER_MLC`
+  - `ER_TRIAGE`
 - `realtime.ts`
   - `ER_REALTIME_NAMES: string[]`
   - `ER_TOPIC_SPACES: TopicSpace[]`
   - `erTopicRouter: TopicRouter`
   - `erTopicsFor(e: Pick<TailedEvent, "name">): string[]`
+- `task-kinds.ts`
+  - `ER_ARBITRATION_TASK`
+  - `ER_BED_SKILL`
+  - `ER_BOARDING_TASK`
+  - `ER_MLC_INTIMATION_TASK`
+  - `ER_MLC_SKILL`
+  - `ER_MS_SKILL`
+  - `ER_RETRIAGE_TASK`
+  - `ER_TRIAGE_DUE_TASK`
+  - `ER_TRIAGE_SKILL`
+- `triage.ts`
+  - `ER_CLOCK_ACTOR: Actor`
+  - `ER_RETRIAGE_FALLBACK_ROLE`
+  - `assignErDoctor(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"assign_er_doctor">>`
+  - `moveBay(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"move_bay">>`
+  - `placeInBay(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"place_in_bay">>`
+  - `reTriage(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"re_triage">>`
+  - `recordErVitals(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_er_vitals">>`
+  - `sweepErTriageClocks(db: Db, now: Date): Promise<{ tasks: number; climbs: number }>`
+  - `triage(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"triage">>`
 - `workflow.ts`
   - `ER_ACTOR_ROLE_KEYS: Record<ErActorKind, readonly string[]>`
   - `ER_EPISODE_TRANSITIONS: readonly ErEpisodeTransition[]`
@@ -64,12 +186,12 @@ Source: `apps/core/src/modules/emergency/`
 
 ## Tables (`kernel/db/schema/emergency.ts`)
 
-`er_bands`, `er_episodes`, `er_pre_alerts`
+`er_admission_disputes`, `er_advances`, `er_bands`, `er_bills`, `er_charge_lines`, `er_code_events`, `er_codes`, `er_consents`, `er_critical_alerts`, `er_departure_records`, `er_doses`, `er_episodes`, `er_event_accounts`, `er_mci_events`, `er_mci_packs`, `er_mci_surge_beds`, `er_mci_tags`, `er_med_issues`, `er_med_returns`, `er_mlc_addenda`, `er_mlc_custody`, `er_mlc_intimations`, `er_mlc_obligations`, `er_mlcs`, `er_notes`, `er_payer_claims`, `er_pre_alerts`, `er_procedures`, `er_specialty_calls`, `er_triage_entries`
 
-Foreign keys into: `patients`
+Foreign keys into: `patients`, `resources`
 
-## HTTP routes (12)
+## HTTP routes (77)
 
-- `emergency.controller.ts` — 12: `/er/arrivals`, `/er/bands`, `/er/board`, `/er/desk`, `/er/doctors`, `/er/identity`, `/er/patients`, `/er/pre-alerts`
+- `emergency.controller.ts` — 77: `/er/arrivals`, `/er/bands`, `/er/bays`, `/er/bill`, `/er/board`, `/er/calls`, `/er/care`, `/er/codes`, `/er/consents`, `/er/desk`, `/er/dispo`, `/er/doctor`, `/er/doctors`, `/er/episodes`, `/er/identity`, `/er/items`, `/er/mci`, `/er/meds`, `/er/mlc`, `/er/notes`, `/er/orders`, `/er/patients`, `/er/pre-alerts`, `/er/procedures`, `/er/stabilised`, `/er/triage`, `/er/triage-doctors`, `/er/vitals`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/emergency`

@@ -48,7 +48,8 @@ export type EpisodeChargeSink = {
  * department, sink or no sink: `issueInvoice` refuses it (`ipd_running_bill`), and a department that finds no sink
  * registered for it refuses the order (`running_bill_unavailable`) instead of billing it the old way.
  */
-export const RUNNING_BILL_EPISODE_RES: readonly RegExp[] = [/^IP\d{2}-\d{6}$/];
+// ER lane 3 (#810): the emergency episode (`ER26-000123`) bills on its own charge sink too — never invoiced at a counter.
+export const RUNNING_BILL_EPISODE_RES: readonly RegExp[] = [/^IP\d{2}-\d{6}$/, /^ER\d{2}-\d{6}$/];
 export function isRunningBillEpisode(encounterNo: string | undefined | null): boolean {
   return typeof encounterNo === "string" && RUNNING_BILL_EPISODE_RES.some((re) => re.test(encounterNo));
 }

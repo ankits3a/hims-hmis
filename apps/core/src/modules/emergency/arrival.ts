@@ -6,8 +6,8 @@ import { withTx } from "../../kernel/db/client";
 import { erEpisodes, erPreAlerts } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { startInstance } from "../../kernel/workflow/instances";
-import { placedAdmissionOf } from "../ipd";
-import { PatientError, getPatient, registerPatient } from "../patients";
+import { openErMortuaryEntry, placedAdmissionOf } from "../ipd";
+import { PatientError, getPatient, recordBroughtDeadDeath, registerPatient } from "../patients";
 import { bandPerson, checkPrinter, mintBandIn } from "./bands";
 import {
   alreadyOpen, erPatientLock, isOpenEpisodeRace, mintAlias, mintEpisodeNo, moveEpisode, onceEr, openEpisodeOf,
@@ -15,6 +15,7 @@ import {
 } from "./core";
 import { ErRefusal } from "./errors";
 import { erArrived, erBroughtDead, erPreAlertCancelled, erPreAlerted } from "./events";
+import { openMlcIn } from "./mlc";
 import { ER_ARRIVAL_REGISTER } from "./names";
 import { ER_EPISODE_WORKFLOW_DEF_KEY } from "./workflow";
 import type { Actor, ErAgeBand, ErArrivalMode, ErBroughtBy, ErIntentName, ErSex } from "@hmis/contracts";
@@ -47,7 +48,10 @@ export async function preAlert(db: Db, actor: Actor, raw: unknown, opts: Opts = 
   const input: Input<"pre_alert"> = ER_INTENTS.pre_alert.input.parse(raw);
   await requireErPermission(db, actor, ER_ARRIVAL_REGISTER);
   const at = opts.now ?? new Date();
-  return onceEr(db, actor, "pre_alert", input.idempotencyKey, input, () => withTx(db, async (tx) => {
+  return onceEr(db, actor, "pre_alert", input.idempotencyKey, input, async () => {
+    // Lane 2 (E9): the OPD red flag names a known patient (through the merge chain).
+    const patientId = input.patientId === undefined ? null : (await knownPerson(db, actor, input.patientId)).patientId;
+    return withTx(db, async (tx) => {
     const id = newId();
     const expectedAt = new Date(at.getTime() + input.etaMinutes * 60_000);
     const expiresAt = new Date(expectedAt.getTime() + ER_PRE_ALERT_LAPSE_MINUTES * 60_000);
@@ -55,13 +59,15 @@ export async function preAlert(db: Db, actor: Actor, raw: unknown, opts: Opts = 
       id, state: "expected", mode: input.mode, expectedAt, expiresAt, count: input.count, sex: input.sex ?? null,
       ageBand: input.ageBand ?? null, complaint: input.complaint ?? null, caller: input.caller ?? null,
       callerPhone: input.callerPhone ?? null, vehicleNo: input.vehicleNo ?? null, createdBy: actor.id, createdAt: at,
+      patientId, redFlagKey: input.redFlagKey ?? null,
     });
     await appendEvent(tx, erPreAlerted.make({
       payload: { preAlertId: id, mode: input.mode, count: input.count, provenance: provenanceOf(actor) },
       actor, correlationId: id, occurredAt: at,
     }));
     return { preAlertId: id, state: "expected" as const, expectedAt: expectedAt.toISOString(), expiresAt: expiresAt.toISOString() };
-  }), at);
+    });
+  }, at);
 }
 
 export async function cancelPreAlert(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"cancel_pre_alert">> {
@@ -123,7 +129,7 @@ type ArrivalCommon = {
 };
 
 /** The gate instant: refuses a future time and, without a paper serial, one more than a day back (spec §4.1 downtime). */
-function gateInstant(input: { arrivedAt?: string; paperSerial?: string }, at: Date): Date {
+export function gateInstant(input: { arrivedAt?: string; paperSerial?: string }, at: Date): Date {
   if (input.arrivedAt === undefined) return at;
   if (erIsInFuture(input.arrivedAt, at)) throw new ErRefusal("time_in_future");
   const gate = new Date(input.arrivedAt);
@@ -142,11 +148,12 @@ async function registerHere(tx: Tx, actor: Actor, input: Parameters<typeof regis
   }
 }
 
-type ArriveArgs = {
+export type ArriveArgs = {
   patientId: string;
   /** The person's records (canonical + merged); a just-registered patient has only their own. */
   personIds: readonly string[];
-  unidentified: { year: number; serial: number; alias: string } | null;
+  /** Lane 8 (#815): a pack's alias carries no per-year serial (`Unknown-MCI26-007`): year and serial null. */
+  unidentified: { year: number | null; serial: number | null; alias: string } | null;
   ageBand: ErAgeBand | null;
   marks: string | null;
   common: ArrivalCommon;
@@ -155,7 +162,7 @@ type ArriveArgs = {
 };
 
 /** Every arrival's rules and writes, in the caller's transaction. Returns the episode row (state `arrived`). */
-async function arriveIn(tx: Tx, actor: Actor, args: ArriveArgs, at: Date): Promise<EpisodeRow> {
+export async function arriveIn(tx: Tx, actor: Actor, args: ArriveArgs, at: Date): Promise<EpisodeRow> {
   await erPatientLock(tx, args.patientId);
   const placed = await placedAdmissionOf(tx, args.personIds);
   if (placed !== null) {
@@ -206,7 +213,7 @@ async function arriveIn(tx: Tx, actor: Actor, args: ArriveArgs, at: Date): Promi
   return (await tx.select().from(erEpisodes).where(eq(erEpisodes.id, id)))[0]!;
 }
 
-async function arrivedEvent(tx: Tx, actor: Actor, e: EpisodeRow, at: Date): Promise<void> {
+export async function arrivedEvent(tx: Tx, actor: Actor, e: EpisodeRow, at: Date): Promise<void> {
   await appendEvent(tx, erArrived.make({
     payload: {
       episodeId: e.id, episodeNo: e.episodeNo, patientId: e.patientId, arrivalMode: e.arrivalMode,
@@ -253,6 +260,11 @@ export async function registerArrival(db: Db, actor: Actor, raw: unknown, opts: 
       }
       const e = await arriveIn(tx, actor, { patientId, personIds, unidentified: null, ageBand, marks: null, common: input, gate }, at);
       await arrivedEvent(tx, actor, e, at);
+      // Lane 4 (#811): the police brought the patient → an MLC by rule; their arrival is the intimation (spec §4.4).
+      // ER review (2026-10-15): the same predicate as the MLC's own — police bringing the patient by any vehicle.
+      if (e.arrivalMode === "police" || (e.broughtBy as { kind?: string } | null)?.kind === "police") {
+        await openMlcIn(tx, actor, e, { category: "police_brought", byRule: true }, at);
+      }
       const band = await mintBandIn(db, tx, actor, e, { site: input.bandSite ?? "wrist", printerId: input.printerId }, at);
       return {
         episodeId: e.id, episodeNo: e.episodeNo, patientId, uhid: band.band.uhid, state: "arrived" as const,
@@ -285,6 +297,8 @@ export async function registerUnidentified(db: Db, actor: Actor, raw: unknown, o
       patientId, personIds: [patientId], unidentified: alias, ageBand: input.ageBand, marks: input.marks ?? null, common: input, gate,
     }, at);
     await arrivedEvent(tx, actor, e, at);
+    // Lane 4 (#811, spec §4.4): an unknown patient is an MLC by default (by rule; the doctor corrects the category by addendum).
+    await openMlcIn(tx, actor, e, { category: e.arrivalMode === "police" ? "police_brought" : "unknown_unconscious", byRule: true }, at);
     const band = await mintBandIn(db, tx, actor, e, { site: input.bandSite ?? "wrist", printerId: input.printerId }, at);
     return {
       episodeId: e.id, episodeNo: e.episodeNo, patientId, uhid: band.band.uhid, state: "arrived" as const,
@@ -298,9 +312,10 @@ export async function registerUnidentified(db: Db, actor: Actor, raw: unknown, o
 
 /**
  * The brought-dead MARKER: the episode is minted and moved `arrived → brought_dead` in one act — no band, no treatment
- * episode, no charge (spec §3.8). DECIDED (lane 1): the patient master is NOT marked deceased here — 0018's death needs
- * an MCCD number and a body brought dead gets none (police inquest and post-mortem decide); the `brought_dead` death kind
- * on the patient, the MLC and the mortuary hand-over are lane 4's (er-mlc) seam.
+ * episode, no charge (spec §3.8). Lane 4 (#811): the same act opens the MLC by rule, marks the patient deceased through
+ * the patients seam with the `brought_dead` death kind (0018's MCCD number does not apply: the hospital issues none —
+ * police inquest and post-mortem decide) and opens the body's IPD mortuary register entry (an MLC: released only on
+ * police clearance).
  */
 export async function recordBroughtDead(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_brought_dead">> {
   const input: Input<"record_brought_dead"> = ER_INTENTS.record_brought_dead.input.parse(raw);
@@ -340,8 +355,16 @@ export async function recordBroughtDead(db: Db, actor: Actor, raw: unknown, opts
         },
         actor, correlationId: e.id, patientId, occurredAt: at,
       }));
+      // Lane 4 (#811, spec §3.8): always an MLC; the patient deceased by the `brought_dead` kind (no MCCD — the police inquest
+      // and the post-mortem decide); the body to the IPD mortuary register, released only on police clearance. No charge.
+      const mlc = await openMlcIn(tx, actor, e, { category: "brought_dead", byRule: true }, at);
+      await recordBroughtDeadDeath(tx, actor, patientId, examinedAt);
+      const { entryId } = await openErMortuaryEntry(tx, actor, { erEpisodeId: e.id, patientId, diedAt: examinedAt }, at);
       const { uhid } = await bandPerson(tx, patientId);
-      return { episodeId: e.id, episodeNo: e.episodeNo, patientId, uhid, alias: alias?.alias ?? null, state: "brought_dead" as const };
+      return {
+        episodeId: e.id, episodeNo: e.episodeNo, patientId, uhid, alias: alias?.alias ?? null, state: "brought_dead" as const,
+        mlcId: mlc.id, mlcNo: mlc.mlcNo, mortuaryEntryId: entryId,
+      };
     });
   }, at);
 }
