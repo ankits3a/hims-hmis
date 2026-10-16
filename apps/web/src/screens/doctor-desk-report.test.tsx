@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
 import { renderWithProviders } from "../test-utils";
 import { DoctorDeskReport } from "./doctor-desk-report";
-import type { WireUnitReport, WireUnitReports } from "../lib/doctor-desk-api";
+import type { WireDepartmentReport, WireHospitalReport, WireUnitReport, WireUnitReports } from "../lib/doctor-desk-api";
 
 /** DD-report v0 — the 08:00 unit report page against the server's wire: counts only, floors honoured, neutral. */
 const R1: WireUnitReport = {
@@ -14,13 +14,27 @@ const R1: WireUnitReport = {
   opd: { date: "2026-10-05", seen: 142, doctors: 4 },
   owed: { open: 4, past: 2, criticalsWithoutAct: 1 },
 };
+const DEPT: WireDepartmentReport = {
+  id: "d1", departmentId: "med", departmentName: "General Medicine", reportDate: "2026-10-06",
+  windowFrom: "2026-10-05T02:30:00.000Z", windowTo: "2026-10-06T02:30:00.000Z", sentAt: "2026-10-06T02:30:05.000Z",
+  units: [
+    { teamId: "u1", short: "Unit I", acts: 2, median: null, over: 0, owedOpen: 3, owedPast: 1, opdSeen: 96 },
+    { teamId: "u2", short: "Unit II", acts: 5, median: 8, over: 1, owedOpen: 4, owedPast: 2, opdSeen: 142 },
+  ],
+  median: null, hospital: 9, totals: { acts: 7, over: 1, owedOpen: 7, owedPast: 3, opdSeen: 238 },
+};
+const HOSP: WireHospitalReport = {
+  id: "h1", reportDate: "2026-10-05", windowFrom: "2026-09-28T02:30:00.000Z", windowTo: "2026-10-05T02:30:00.000Z", sentAt: "2026-10-05T02:30:06.000Z", days: 7,
+  departments: [{ departmentId: "med", departmentName: "General Medicine", units: 3, acts: 31, median: 9, over: 4, opdSeen: 812, owedOpen: 7, owedPast: 3 }],
+  median: 10, totals: { acts: 31, over: 4, opdSeen: 812, owedOpen: 7, owedPast: 3 },
+};
 const R0: WireUnitReport = { ...R1, id: "run0", reportDate: "2026-10-05", critical: { acts: 3, median: null, over: 0, longest: 12, overMinutes: 15 } };
 
 describe("Doctor Desk unit report (DD-report v0)", () => {
   let body: WireUnitReports;
   beforeEach(() => {
     setToken("t");
-    body = { scope: { level: "unit", officiating: false, departmentId: "med", departmentName: "General Medicine" }, reports: [R1, R0] };
+    body = { scope: { level: "unit", officiating: false, departmentId: "med", departmentName: "General Medicine" }, reports: [R1, R0], departments: [], hospital: [] };
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
       const b = raw.endsWith("/auth/me") ? { actor: { type: "user", id: "hd" }, permissions: { hospital: ["opd.consult"], scoped: { department: {}, floor: {} } } }
@@ -55,6 +69,21 @@ describe("Doctor Desk unit report (DD-report v0)", () => {
   it("someone who receives no report is told where it goes", async () => {
     body = { ...body, scope: { ...body.scope, level: "member" }, reports: [] };
     renderWithProviders(<DoctorDeskReport />);
-    expect(await screen.findByTestId("dd-report-none")).toHaveTextContent("It is sent at 08:00 to the unit head");
+    expect(await screen.findByTestId("dd-report-none")).toHaveTextContent("The unit report goes at 08:00 to the unit head");
+  });
+
+  it("the HOD reads the department's units side by side; the MS the hospital's week — counts only, medians below the floor drawn as —", async () => {
+    body = { ...body, scope: { level: "hospital", officiating: false, departmentId: null, departmentName: null }, departments: [DEPT], hospital: [HOSP] };
+    const { container } = renderWithProviders(<DoctorDeskReport />);
+    expect(await screen.findByTestId("dd-hosp-report")).toHaveTextContent("Hospital report · the week to 2026-10-05");
+    expect(screen.getByTestId("dd-hosp-dept-med")).toHaveTextContent("General Medicine3 units319 min47381");
+    expect(screen.getByTestId("dd-hosp-median")).toHaveTextContent("10 min");
+    await userEvent.click(screen.getByTestId("dd-report-kind-department"));
+    expect(screen.getByTestId("dd-dept-unit-u1")).toHaveTextContent("Unit I2—03196");
+    expect(screen.getByTestId("dd-dept-unit-u2")).toHaveTextContent("Unit II58 min142142");
+    expect(screen.getByTestId("dd-dept-median")).toHaveTextContent("— · 9 min");
+    await userEvent.click(screen.getByTestId("dd-report-kind-unit"));
+    expect(await screen.findByTestId("dd-report")).toBeInTheDocument();
+    expect(container.textContent ?? "").not.toMatch(/Dr\.|Patient|HMS-|fee|paid|₹|rupee/);
   });
 });

@@ -15485,7 +15485,7 @@
     },
     "report": {
       "context": "Doctor Desk · Unit report",
-      "none": "No unit report for you yet. It is sent at 08:00 to the unit head; the HOD and the Medical Superintendent read their units'.",
+      "none": "No report for you yet. The unit report goes at 08:00 to the unit head, the department's to the HOD, and the weekly hospital report on Monday to the Medical Superintendent.",
       "title": "Unit report · {{unit}} · {{date}}",
       "sent": "sent {{at}} · nobody typed it",
       "window": "The 24 hours from {{from}} to {{to}} IST.",
@@ -15509,7 +15509,29 @@
       "doctors_one": "{{count}} doctor with a session",
       "doctors_other": "{{count}} doctors with a session",
       "foot": "Daily to the unit head · counts only, no patient or person named",
-      "print": "Print"
+      "print": "Print",
+      "kind": {
+        "unit": "Unit",
+        "department": "Department · daily",
+        "hospital": "Hospital · weekly"
+      },
+      "deptTitle": "Department report · {{dept}} · {{date}}",
+      "hospTitle": "Hospital report · the week to {{date}}",
+      "weekWindow": "The {{n}} days from {{from}} to {{to}} IST.",
+      "hospMedian": "Hospital median, critical result to act",
+      "unitsN_one": "{{count}} unit",
+      "unitsN_other": "{{count}} units",
+      "col": {
+        "acts": "Acts",
+        "median": "Median",
+        "over": "Over 15 min",
+        "open": "Open",
+        "past": "Past time",
+        "opd": "OPD seen",
+        "opdWeek": "OPD seen",
+        "dept": "Department"
+      },
+      "footAll": "Counts only — no patient or person named. An average shows only once enough units and acts count."
     }
   },
   "roster": {

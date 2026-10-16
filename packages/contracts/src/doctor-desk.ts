@@ -337,4 +337,40 @@ export type WireUnitReport = {
   owed: { open: number; past: number; criticalsWithoutAct: number };
 };
 
-export type WireUnitReports = { scope: WireDeskScope; reports: WireUnitReport[] };
+/** One unit's row inside a department or hospital report: counts only, the unit median already floored. */
+export type WireReportUnitRow = {
+  teamId: string; short: string;
+  acts: number; median: number | null; over: number; owedOpen: number; owedPast: number; opdSeen: number;
+};
+
+/** The HOD's daily report (D8): the department's units side by side for the same 24 h, counts only. */
+export type WireDepartmentReport = {
+  id: string; departmentId: string; departmentName: string;
+  reportDate: string; windowFrom: string; windowTo: string; sentAt: string;
+  units: WireReportUnitRow[];
+  /** The department's median critical→act (pool floor) and the hospital's beside it. */
+  median: number | null; hospital: number | null;
+  totals: { acts: number; over: number; owedOpen: number; owedPast: number; opdSeen: number };
+};
+
+/** The MS's weekly report (D8, D-G): Monday 08:00 IST, the 7 days before it, every department. */
+export const WEEKLY_REPORT_DAYS = 7;
+export type WireDepartmentWeekRow = {
+  departmentId: string; departmentName: string; units: number;
+  acts: number; median: number | null; over: number; opdSeen: number; owedOpen: number; owedPast: number;
+};
+export type WireHospitalReport = {
+  id: string; reportDate: string; windowFrom: string; windowTo: string; sentAt: string; days: number;
+  departments: WireDepartmentWeekRow[];
+  median: number | null;
+  totals: { acts: number; over: number; opdSeen: number; owedOpen: number; owedPast: number };
+};
+
+export type WireUnitReports = {
+  scope: WireDeskScope;
+  reports: WireUnitReport[];
+  /** HOD and MS: the departments' daily reports they may read. */
+  departments: WireDepartmentReport[];
+  /** MS: the hospital's weekly reports. */
+  hospital: WireHospitalReport[];
+};

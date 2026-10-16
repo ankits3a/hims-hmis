@@ -11,7 +11,7 @@ export type {
   AttentionTab, BriefStage, WireAgentRun, WireAttentionRow, WireBrief, WireBriefFact, WireBriefs, WireDayLine,
   WireNextCard, WireOpdDesk, WireOwedRow, WireScheduleRow, WireTeamMember, WireTower,
   ActChoice, DeskLevel, WireDeskScope, WireHandledRow, WireMyRatings, WireNow, WirePersonWeek, WireProfessor, WireRateItem,
-  WireUnitBoard, WireUnitOwedRow, WireUnitSummary, WorkRating, WireUnitReport, WireUnitReports,
+  WireUnitBoard, WireUnitOwedRow, WireUnitSummary, WorkRating, WireUnitReport, WireUnitReports, WireDepartmentReport, WireHospitalReport,
 } from "../../../../packages/contracts/src/doctor-desk";
 
 export const fetchTower = () => api<WireTower>("GET", "/doctor-desk/tower");

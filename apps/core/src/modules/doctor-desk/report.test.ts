@@ -4,11 +4,11 @@ import type { Actor } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { seedConfirmedUnits } from "../../../test/helpers/units";
 import {
-  alerts, doctorDeskActs, doctorDeskAgentRuns, opdDepartments, patients, registrationConfig, rosterOfficiating,
+  alerts, doctorDeskActs, doctorDeskAgentRuns, opdDepartments, patients, registrationConfig, roleAssignments, roles, rosterOfficiating,
   rosterTeamMemberships, users,
 } from "../../kernel/db/schema";
-import { teamByCode } from "../roster";
-import { reportDateAt, reportsFor, sendUnitReports } from "./report";
+import { orgDepartmentByCode, teamByCode } from "../roster";
+import { DEPARTMENT_REPORT_AGENT, HOSPITAL_REPORT_AGENT, reportDateAt, reportsFor, sendUnitReports } from "./report";
 import { towerView } from "./tower";
 import type { Db } from "../../kernel/db/client";
 
@@ -142,5 +142,78 @@ describe("doctor-desk — DD-report v0, the unit report", () => {
     const run = t.agentRuns.find((r) => r.agent === "unit_report")!;
     expect(run).toMatchObject({ summaryKey: "reportSent", params: { reportDate: "2026-10-06", heads: 1 } });
     expect(Object.values(run.params).every((v) => typeof v === "string" || typeof v === "number")).toBe(true);
+  });
+
+  /* ═══ the HOD's daily report and the MS's weekly report ═══ */
+
+  const makeHod = async (userId: string) => db.insert(rosterOfficiating).values({
+    id: newId(), teamId: U1, userId, role: "hod", startsAt: min(-60 * 24 * 30), endsAt: min(60 * 24 * 30), reason: "HOD on leave",
+    approvedBy: P.HEAD, createdBy: "t", updatedBy: "t",
+  });
+  const makeMs = async (userId: string) => {
+    await db.insert(roles).values({ key: "medical_superintendent", title: "MS" }).onConflictDoNothing();
+    await db.insert(roleAssignments).values({ id: newId(), userId, roleKey: "medical_superintendent", scopeType: "hospital" });
+  };
+
+  it("the HOD's daily report: the department's units side by side, counts only, once per department per day", async () => {
+    await makeHod(P.U3HEAD);
+    await db.insert(doctorDeskActs).values([
+      ...[4, 6, 8, 10, 20].map((m, i) => act(U2, P.SR, m, min(-60 * (i + 1)))),
+      act(U1, P.U1HEAD, 9, min(-30)),
+    ]);
+    await sendUnitReports(db, AT);
+    await sendUnitReports(db, min(2));
+    const med = (await orgDepartmentByCode(db, "MED"))!;
+    const runs = await db.select().from(doctorDeskAgentRuns).where(eq(doctorDeskAgentRuns.agent, DEPARTMENT_REPORT_AGENT));
+    expect(runs.filter((r) => (r.params as { departmentId: string }).departmentId === med.id)).toHaveLength(1);
+    const page = await reportsFor(db, actor(P.U3HEAD), min(3));
+    expect(page.departments).toHaveLength(1);
+    const d = page.departments[0]!;
+    expect(d).toMatchObject({ departmentId: med.id, departmentName: "General Medicine", reportDate: "2026-10-06", median: null, hospital: null });
+    expect(d.units.find((u) => u.teamId === U2)).toMatchObject({ short: "Unit II", acts: 5, median: 8, over: 1 });
+    expect(d.units.find((u) => u.teamId === U1)).toMatchObject({ acts: 1, median: null });
+    expect(d.totals.acts).toBe(6);
+    const bells = (await db.select().from(alerts).where(eq(alerts.userId, P.U3HEAD))).filter((b) => b.refType === "doctor_desk_department_report");
+    expect(bells).toHaveLength(1);
+    expect(JSON.stringify([d, bells[0]!.title, bells[0]!.body])).not.toMatch(/Dr\.|Head|Senior|Patient|HMS-|fee|paid|₹/);
+    expect((await reportsFor(db, actor(P.HEAD), min(3))).departments).toEqual([]);
+  });
+
+  it("the department median opens only at three units and ten acts", async () => {
+    await makeHod(P.U3HEAD);
+    await db.insert(doctorDeskActs).values([
+      ...[4, 6, 8, 10].map((m, i) => act(U2, P.SR, m, min(-60 * (i + 1)))),
+      ...[5, 7, 9].map((m, i) => act(U1, P.U1HEAD, m, min(-30 - i))),
+      ...[11, 13, 15].map((m, i) => act(U3, P.U3HEAD, m, min(-40 - i))),
+    ]);
+    await sendUnitReports(db, AT);
+    expect((await reportsFor(db, actor(P.U3HEAD), min(3))).departments[0]!.median).toBe(9);
+  });
+
+  it("the MS's weekly report: Monday 08:00, the seven days before, every department; once per week; not on a Tuesday", async () => {
+    await makeMs(P.JR);
+    const MON = new Date("2026-10-05T08:00:00+05:30");
+    const day = (d: number) => new Date(MON.getTime() - d * 86_400_000);
+    await db.insert(doctorDeskActs).values([
+      act(U2, P.SR, 6, day(1)), act(U2, P.SR, 12, day(6)), act(U1, P.U1HEAD, 30, day(3)),
+      act(U2, P.SR, 3, day(8)), // the week before: not counted
+    ]);
+    await sendUnitReports(db, MON);
+    await sendUnitReports(db, new Date(MON.getTime() + 60_000)); // a restart
+    await sendUnitReports(db, AT); // Tuesday: no weekly
+    const runs = await db.select().from(doctorDeskAgentRuns).where(eq(doctorDeskAgentRuns.agent, HOSPITAL_REPORT_AGENT));
+    expect(runs).toHaveLength(1);
+    const page = await reportsFor(db, actor(P.JR), AT);
+    expect(page.scope.level).toBe("hospital");
+    expect(page.hospital).toHaveLength(1);
+    const h = page.hospital[0]!;
+    expect(h).toMatchObject({ reportDate: "2026-10-05", days: 7, median: null, totals: { acts: 3, over: 1 } });
+    expect(h.departments.find((x) => x.departmentName === "General Medicine")).toMatchObject({ acts: 3, over: 1, median: null });
+    const bells = (await db.select().from(alerts).where(eq(alerts.userId, P.JR))).filter((b) => b.refType === "doctor_desk_hospital_report");
+    expect(bells).toHaveLength(1);
+    expect(JSON.stringify([h, bells[0]!.title, bells[0]!.body])).not.toMatch(/Dr\.|Head|Senior|Patient|HMS-|fee|paid|₹/);
+    // a HOD reads no weekly
+    await makeHod(P.U3HEAD);
+    expect((await reportsFor(db, actor(P.U3HEAD), AT)).hospital).toEqual([]);
   });
 });

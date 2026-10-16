@@ -108,3 +108,28 @@ export function atLeast(have: DeskLevel, want: DeskLevel): boolean {
   const order: DeskLevel[] = ["own", "member", "unit", "department", "hospital"];
   return order.indexOf(have) >= order.indexOf(want);
 }
+
+/**
+ * DD-report — WHO HEADS A DEPARTMENT at `at`, by the same two records `deskLevel` reads: an officiating
+ * `hod` row in force on one of its teams, or a department-scoped grant of `roster.periods.publish`.
+ */
+export async function departmentHeads(exec: Db | Tx, departmentId: string, at: Date): Promise<string[]> {
+  const db = exec as Db;
+  const standIn = await db.select({ userId: rosterOfficiating.userId }).from(rosterOfficiating)
+    .innerJoin(rosterTeams, eq(rosterTeams.id, rosterOfficiating.teamId))
+    .where(and(
+      eq(rosterTeams.departmentId, departmentId), eq(rosterOfficiating.role, "hod"),
+      lte(rosterOfficiating.startsAt, at), or(isNull(rosterOfficiating.endsAt), gt(rosterOfficiating.endsAt, at)),
+    ));
+  const grants = await db.selectDistinct({ userId: roleAssignments.userId }).from(roleAssignments)
+    .innerJoin(rolePermissions, eq(rolePermissions.roleKey, roleAssignments.roleKey))
+    .where(and(eq(roleAssignments.scopeType, "department"), eq(roleAssignments.scopeId, departmentId), eq(rolePermissions.permission, ROSTER_PUBLISH)));
+  return [...new Set([...standIn, ...grants].map((r) => r.userId))].sort();
+}
+
+/** DD-report — the Medical Superintendents (holders of the `medical_superintendent` role). */
+export async function superintendents(exec: Db | Tx): Promise<string[]> {
+  const rows = await (exec as Db).selectDistinct({ userId: roleAssignments.userId }).from(roleAssignments)
+    .where(eq(roleAssignments.roleKey, MS_ROLE_KEY));
+  return rows.map((r) => r.userId).sort();
+}

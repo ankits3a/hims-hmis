@@ -63,6 +63,9 @@ Plan: `docs/superpowers/plans/2026-10-04-doctor-desk-PLAN.md` §3.1 (DD-0), §3.
   per unit per report date, written under `pg_advisory_xact_lock` and only if none exists; the bell's source key is the
   same unit+date. `runsFor` hands the Tower only the flat params. Counts only — no patient, no person, no names in the
   bell. Medians use the ratings' floors (`RATING_MIN_OWN` for the unit; 3 units + 10 acts for department/hospital).
+- **One job, three reports.** `sendUnitReports` also makes the HOD's daily (`department_report`, scope = `params.departmentId`;
+  recipients `departmentHeads`) and, on a Monday, the MS's weekly (`hospital_report`, the 7 days before; recipients
+  `superintendents`). Same `deliverOnce` (lock + row + bell key per scope per period); no new job name, so no new alert rule.
 - **A new job is a seven-site census** (`kernel/worker/jobs.ts`, `kernel/worker/jobs.test.ts`, `kernel/worker/scheduler.test.ts` ×2,
   alerts-parity ×2, alerts.yml ×2, worker-runtime e2e). A `dailyIst` job leaves the interval pool sum (`kernel/db/client.test.ts`) unchanged.
 

@@ -242,6 +242,7 @@ a.dd-brief-item:hover { background: var(--dd-bg); }
 .dd-share-v { font-size: 22px; line-height: 26px; font-weight: 600; color: var(--dd-ink); }
 .dd-share-k { font-size: 12px; color: var(--dd-dim); }
 .dd-grid-report { grid-template-columns: minmax(0, 1fr) 140px minmax(0, 220px); }
+.dd-grid-side { grid-template-columns: minmax(0, 1fr) repeat(6, 76px); }
 .dd-row-acked { font-size: 11.5px; color: var(--dd-amber); font-weight: 600; }
 @media (max-width: 1023px) {
   .dd-grid-people { grid-template-columns: minmax(0, 1fr) 120px 50px 60px 110px; }
@@ -261,6 +262,8 @@ a.dd-brief-item:hover { background: var(--dd-bg); }
   .dd-shares { grid-template-columns: minmax(0, 1fr); }
   .dd-grid-report { grid-template-columns: minmax(0, 1fr) auto; }
   .dd-grid-report > :nth-child(3) { grid-column: 1 / -1; }
+  .dd-grid-side { grid-template-columns: minmax(0, 1fr) repeat(4, 44px); gap: 8px; }
+  .dd-grid-side > :nth-child(4), .dd-grid-side > :nth-child(6) { display: none; }
 }
 @media print {
   .dd-noprint { display: none !important; }
