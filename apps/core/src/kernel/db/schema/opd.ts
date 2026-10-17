@@ -118,6 +118,40 @@ export const opdDoctors = pgTable(
   ],
 );
 
+/**
+ * #914 (owner 2026-10-17) — a doctor's SECONDARY OPD department, held until a specialist fills a
+ * vacant department. The primary stays on `opd_doctors.department_id`, so every reader of that
+ * column (lab, radiology, roster units, pace, bench) keeps the doctor where it was.
+ *
+ * At most one per doctor at a time: the open row (`to_date` null) is unique, and `secondary.ts`
+ * refuses a second while one still runs on or after today. `to_date` is the LAST day served,
+ * inclusive, like `opd_doctor_leaves.to_date`. Rows are never deleted: an ended row is history, and
+ * one withdrawn before its first day keeps `to_date = from_date - 1` (it served no day).
+ *
+ * Money (owner 2026-10-17): the visit's department decides the charge and any split; nothing here
+ * prices anything.
+ */
+export const opdDoctorSecondaryDepartments = pgTable(
+  "opd_doctor_secondary_departments",
+  {
+    id: text("id").primaryKey(),
+    doctorId: text("doctor_id").notNull().references(() => opdDoctors.id),
+    departmentId: text("department_id").notNull().references(() => opdDepartments.id),
+    fromDate: date("from_date", { mode: "string" }).notNull(),
+    toDate: date("to_date", { mode: "string" }), // inclusive; null = until ended
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    endedBy: text("ended_by"),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("opd_doctor_secondary_departments_doctor_idx").on(t.doctorId),
+    index("opd_doctor_secondary_departments_department_idx").on(t.departmentId),
+    uniqueIndex("opd_doctor_secondary_departments_open_ux").on(t.doctorId).where(sql`to_date is null`),
+    check("opd_doctor_secondary_departments_dates_ck", sql`${t.toDate} is null or ${t.toDate} >= ${t.fromDate} - 1`),
+  ],
+);
+
 /** Weekly availability template. Times are IST 'HH:MM'. Slots are derived, never materialised (slots.ts). */
 export const opdDoctorSchedules = pgTable(
   "opd_doctor_schedules",
@@ -130,6 +164,8 @@ export const opdDoctorSchedules = pgTable(
     // PLAN 13 T6 — REPOINTED at the registry. The value is UNCHANGED: room ids are ULIDs, so
     // `0032` preserved every one of them and only this foreign key's TARGET moved.
     roomId: text("room_id").notNull().references(() => resources.id),
+    // #914 — the department this session serves; null ⇒ the doctor's primary department.
+    departmentId: text("department_id").references(() => opdDepartments.id),
     slotMinutes: integer("slot_minutes"), // null ⇒ opd_config.slot_minutes
     validFrom: date("valid_from", { mode: "string" }).notNull(),
     validTo: date("valid_to", { mode: "string" }), // null = open-ended

@@ -1052,7 +1052,8 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
 
   /** A slot on a later day. It is held BESIDE today's session and never replaces it. */
   const holdFutureSlot = useCallback(async (
-    doctorId: string, slot: WireSlot, departmentName: string, doctorName: string, tele: { mode?: "tele"; telePhone?: string } = {},
+    doctorId: string, slot: WireSlot, departmentName: string, doctorName: string,
+    tele: { mode?: "tele"; telePhone?: string; departmentId?: string } = {},
   ) => {
     const person = s.person;
     if (person === null) return;

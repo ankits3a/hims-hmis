@@ -166,6 +166,14 @@ export function OpdDesk(): React.ReactElement {
   });
 
   const department = departmentItems.find((d) => d.id === departmentId) ?? null;
+  const departmentNameOf = (id: string | null | undefined): string | null => departmentItems.find((d) => d.id === id)?.name ?? null;
+  /* #914 — a doctor covering this department from another one says so beside the name. */
+  const tagOf = (doctor: { departmentId: string; designation?: string | null; userId: string }): string | null => {
+    const covering = departmentId !== "" && doctor.departmentId !== departmentId
+      ? t("opdDesk.coveringFrom", { dept: departmentNameOf(doctor.departmentId) ?? "" }) : null;
+    const parts = [doctorLabel(doctor), covering].filter((x): x is string => x !== null);
+    return parts.length === 0 ? null : parts.join(" · ");
+  };
   const doctorRow = summaryItems.find((s) => s.doctor.id === selectedDoctorId) ?? null;
   const doctorNameOf = (id: string): string => summaryItems.find((s) => s.doctor.id === id)?.doctor.displayName ?? "";
   const queueView: WireQueueView | null = doctorRow?.queue ?? null;
@@ -396,7 +404,7 @@ export function OpdDesk(): React.ReactElement {
       {orderedGroups.map((g) => {
         const chosen = g.doctor.id === selectedDoctorId;
         const rows = g.queue?.ordered ?? [];
-        const tag = doctorLabel(g.doctor);
+        const tag = tagOf(g.doctor);
         return (
           <section
             key={g.doctor.id}
@@ -443,6 +451,10 @@ export function OpdDesk(): React.ReactElement {
                           <span className="od-chip" data-class={e.queueClass}>{t(`opd.queueClass.${e.queueClass}`)}</span>
                         )}
                         {e.status !== "waiting" && <span>· {t(`opd.queueStatus.${e.status}`)}</span>}
+                        {/* #914 — this doctor's one line holds their other department's patients too. */}
+                        {e.encounter.departmentId != null && e.encounter.departmentId !== departmentId && (
+                          <span className="od-chip" data-testid={`queue-dept-${e.id}`}>{departmentNameOf(e.encounter.departmentId)}</span>
+                        )}
                       </span>
                     </span>
                     <span className="od-qr">
@@ -604,7 +616,7 @@ export function OpdDesk(): React.ReactElement {
                     <span className="od-dot" style={{ background: dotOf(s) }} />
                     <span className="od-dname">
                       {s.doctor.displayName}
-                      {(() => { const tag = doctorLabel(s.doctor); return tag === null ? null : <span className="od-dtag" data-testid={`doctor-tag-${s.doctor.id}`}> · {tag}</span>; })()}
+                      {(() => { const tag = tagOf(s.doctor); return tag === null ? null : <span className="od-dtag" data-testid={`doctor-tag-${s.doctor.id}`}> · {tag}</span>; })()}
                     </span>
                     <span className="od-room">{t("opd.labels.room")}: {s.roomCode ?? "—"}</span>
                     <span className="od-bar"><i style={{ width: bar.pct, background: bar.ink }} /></span>

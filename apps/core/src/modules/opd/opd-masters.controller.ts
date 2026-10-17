@@ -25,7 +25,9 @@ import { OPD_VISIT_DEFINITION_JSON } from "./workflow-def";
 import type { DangerRangesConfig, Letterhead, OpdConfig, OpdConfigPatch } from "./config";
 import type { OpdErrorCode } from "./errors";
 import type { LeaveRow } from "./leaves";
-import type { DepartmentRow, DoctorRow, RoomRow } from "./masters";
+import type { DepartmentRow, DoctorListRow, DoctorRow, RoomRow } from "./masters";
+import { endSecondaryDepartment, setSecondaryDepartment } from "./secondary";
+import type { SecondaryRow } from "./secondary";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -177,7 +179,13 @@ const scheduleItemBody = z.object({
   slotMinutes: z.coerce.number().int().nullable().optional(),
   validFrom: z.string().min(1).max(10),
   validTo: z.string().max(10).nullable().optional(),
+  /* #914 — the department this session serves (primary or secondary); null/omitted ⇒ either. */
+  departmentId: z.string().min(1).nullable().optional(),
 });
+/* #914 — a doctor's secondary OPD department. Dates are IST 'YYYY-MM-DD'; omitted ⇒ today. */
+const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const secondarySetBody = z.object({ departmentId: z.string().min(1), fromDate: isoDay.optional() });
+const secondaryEndBody = z.object({ lastDate: isoDay.optional() });
 const schedulesBody = z.object({ items: z.array(scheduleItemBody) });
 const leavesQuery = z.object({
   doctorId: z.string().min(1).optional(),
@@ -417,7 +425,7 @@ export class OpdMastersController {
 
   @RequirePermission("opd.masters.read", "hospital")
   @Get("doctors")
-  async doctors(@Query() query: unknown): Promise<{ items: DoctorRow[] }> {
+  async doctors(@Query() query: unknown): Promise<{ items: DoctorListRow[] }> {
     const q = parsed(doctorsQuery, query);
     return { items: await listDoctors(this.db, { departmentId: q.departmentId, activeOnly: q.active === "true" }) };
   }
@@ -474,7 +482,34 @@ export class OpdMastersController {
         slotMinutes: item.slotMinutes ?? null,
         validFrom: item.validFrom,
         validTo: item.validTo ?? null,
+        departmentId: item.departmentId ?? null,
       }))));
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  // ——— #914 · secondary department ———
+
+  @RequirePermission("opd.masters.manage", "hospital")
+  @Put("doctors/:id/secondary-department")
+  async putSecondary(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<SecondaryRow> {
+    const b = parsed(secondarySetBody, body);
+    try {
+      return await setSecondaryDepartment(this.db, actor, id, b);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("opd.masters.manage", "hospital")
+  @Post("doctors/:id/secondary-department/end")
+  async endSecondary(
+    @CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown,
+  ): Promise<{ secondary: SecondaryRow; affectedAppointmentIds: string[] }> {
+    const b = parsed(secondaryEndBody, body);
+    try {
+      return await endSecondaryDepartment(this.db, actor, id, b);
     } catch (e) {
       toHttp(e);
     }

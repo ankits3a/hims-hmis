@@ -66,7 +66,8 @@ import type { Db } from "../../kernel/db/client";
 /* UX-AUDIT 2026-09-28 · BOARD — the slip desk's torn-QR search and the doctor's retake request. */
 const slipFindQuery = z.object({ q: z.string().trim().min(2).max(120) });
 const slipRetakeBody = z.object({ reason: z.string().max(300).nullable().optional() });
-const slotsQuery = z.object({ doctorId: z.string().min(1), date: z.string().max(10).optional() });
+// #914 — `departmentId` narrows to that department's book (a doctor with a secondary department).
+const slotsQuery = z.object({ doctorId: z.string().min(1), date: z.string().max(10).optional(), departmentId: z.string().min(1).optional() });
 /**
  * FD-7 T2 — both ids are REQUIRED. A continuity read without a department would be "list the places
  * this patient has been", which is the diagnosis-shaped read this route exists not to be.
@@ -126,6 +127,8 @@ const appointmentCreateBody = z.object({
   patientId: z.string().min(1),
   doctorId: z.string().min(1),
   slotStart: z.coerce.date(),
+  // #914 — which of the doctor's departments; omitted ⇒ the session's, else the primary.
+  departmentId: z.string().min(1).optional(),
   source: z.enum(["desk", "phone"]).optional(),
   note: z.string().max(1000).optional(),
   // Owner 2026-10-09 — tele-call. The service judges the number (and names the refusal).
@@ -140,7 +143,10 @@ const teleAdvanceBody = z.object({
     mode: z.enum(["cash", "upi", "card"]), amountPaise: z.number().int().positive(), refText: z.string().trim().max(80).optional(),
   })).max(3).optional(),
 });
-const rescheduleBody = z.object({ slotStart: z.coerce.date(), doctorId: z.string().min(1).optional(), reason: z.string().max(400).optional(), telePhone: z.string().max(40).optional() });
+const rescheduleBody = z.object({
+  slotStart: z.coerce.date(), doctorId: z.string().min(1).optional(), reason: z.string().max(400).optional(), telePhone: z.string().max(40).optional(),
+  departmentId: z.string().min(1).optional(), // #914
+});
 const reasonBody = z.object({ reason: z.string().max(500) }); // blank ⇒ reason_required from the service, with its code
 /* FD-32 — the same shape, and the same choice: a blank reason is refused by the SERVICE so the
    clerk gets `reason_required` with its code rather than a zod shape error they cannot map. */
@@ -340,7 +346,7 @@ export class OpdVisitsController {
   async slots(@Query() query: unknown): Promise<{ slots: Slot[] }> {
     const q = parsed(slotsQuery, query);
     try {
-      return { slots: await availableSlots(this.db, q.doctorId, q.date ?? istDate(new Date())) };
+      return { slots: await availableSlots(this.db, q.doctorId, q.date ?? istDate(new Date()), new Date(), { departmentId: q.departmentId }) };
     } catch (e) {
       toHttp(e);
     }
