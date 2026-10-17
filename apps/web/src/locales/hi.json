@@ -812,6 +812,15 @@
     "specialty": "विशेषज्ञता",
     "designation": "पद",
     "designationHint": "जैसे गेस्ट फ़ैकल्टी, सीनियर रेज़िडेंट — डेस्क पर नाम के साथ दिखता है, कभी छपता नहीं",
+    "secondaryDepartment": "दूसरा विभाग",
+    "secondaryNone": "— कोई नहीं —",
+    "secondarySince": "{{date}} से",
+    "secondaryUntil": "{{date}} तक",
+    "secondaryEnd": "बंद करें",
+    "secondaryEndConfirm": "{{name}} का दूसरा विभाग {{dept}} आज से बंद करें? वहाँ की आगे की बुकिंग दोबारा करनी होगी।",
+    "secondaryEnded": "बंद हुआ। {{count}} बुकिंग दोबारा करनी होगी।",
+    "sessionDepartment": "विभाग",
+    "sessionAnyDepartment": "कोई भी",
     "pickDepartment": "विभाग चुनें",
     "pickDoctor": "डॉक्टर चुनें",
     "pickDoctorHint": "साप्ताहिक समय-सारणी व अवकाश संपादित करने के लिए डॉक्टर चुनें",
@@ -973,6 +982,7 @@
     "agentIdle": "मैं इस स्क्रीन के फ़िल्टर, डॉक्टर सूची और दिन की बुकिंग पढ़ता हूँ — और बताता हूँ कि उत्तर कहाँ से आया।"
   },
   "opdDesk": {
+    "coveringFrom": "{{dept}} से",
     "deptQueue": "विभाग की कतार",
     "groupWaiting": "{{n}} प्रतीक्षारत",
     "pickDepartmentList": "हर डॉक्टर की कतार देखने के लिए विभाग चुनें",

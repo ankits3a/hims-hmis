@@ -1,10 +1,12 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
-import { opdAppointments, opdDoctorLeaves, opdDoctorSchedules, resources } from "../../kernel/db/schema";
+import { opdAppointments, opdDoctorLeaves, opdDoctorSchedules, opdDoctors, resources } from "../../kernel/db/schema";
 import { KERNEL_RESOURCE_KINDS, findKindDecl } from "../../kernel/resources";
 import { OpdError } from "./errors";
 import { loadOpdConfig } from "./config";
+import { currentSecondary, doctorServesDepartment } from "./secondary";
 import { slotsForDate } from "./slots";
+import { istDate } from "./time";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Slot } from "./slots";
@@ -15,6 +17,8 @@ const ROOM_RETIRED = findKindDecl(KERNEL_RESOURCE_KINDS, "room")!.retired;
 export type ScheduleInput = {
   weekday: number; startTime: string; endTime: string; roomId: string;
   slotMinutes?: number | null; validFrom: string; validTo?: string | null;
+  /** #914 — the department this session serves: the primary or the current secondary. Omitted/null ⇒ either. */
+  departmentId?: string | null;
 };
 
 const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -54,6 +58,7 @@ export async function replaceDoctorSchedules(
   actor: Actor,
   doctorId: string,
   items: ScheduleInput[],
+  now: Date = new Date(),
 ): Promise<{ scheduleIds: string[] }> {
   if (actor.type !== "user") throw new OpdError("user_actor_required", "only a user actor may write OPD masters");
   validateScheduleSet(items);
@@ -76,6 +81,18 @@ export async function replaceDoctorSchedules(
     }
   }
 
+  const named = [...new Set(items.map((i) => i.departmentId ?? null).filter((d): d is string => d !== null))];
+  if (named.length > 0) {
+    const doctor = (await tx.select().from(opdDoctors).where(eq(opdDoctors.id, doctorId)))[0];
+    if (!doctor) throw new OpdError("unknown_doctor");
+    const secondary = await currentSecondary(tx, doctorId, istDate(now));
+    for (const departmentId of named) {
+      if (departmentId !== doctor.departmentId && departmentId !== secondary?.departmentId) {
+        throw new OpdError("invalid_schedule", `department ${departmentId} is neither this doctor's primary nor secondary`);
+      }
+    }
+  }
+
   await tx.update(opdDoctorSchedules).set({ active: false }).where(eq(opdDoctorSchedules.doctorId, doctorId));
 
   const ids = items.map(() => newId());
@@ -88,6 +105,7 @@ export async function replaceDoctorSchedules(
         startTime: item.startTime,
         endTime: item.endTime,
         roomId: item.roomId,
+        departmentId: item.departmentId ?? null,
         slotMinutes: item.slotMinutes ?? null,
         validFrom: item.validFrom,
         validTo: item.validTo ?? null,
@@ -110,9 +128,20 @@ export async function listDoctorSchedules(
 
 const LIVE_APPOINTMENT_STATUSES: string[] = ["booked", "checked_in", "needs_rebooking"];
 
-/** Slots of one date for one doctor: config + active templates + scheduled leaves + live bookings → slotsForDate. */
-export async function availableSlots(db: Db | Tx, doctorId: string, date: string, now: Date = new Date()): Promise<Slot[]> {
+/**
+ * Slots of one date for one doctor: config + active templates + scheduled leaves + live bookings → slotsForDate.
+ *
+ * #914 — with `departmentId`, only that department's book: none when the doctor does not sit there
+ * that day, else the sessions named for it plus the sessions that name no department.
+ */
+export async function availableSlots(
+  db: Db | Tx, doctorId: string, date: string, now: Date = new Date(), opts: { departmentId?: string } = {},
+): Promise<Slot[]> {
   const cfg = await loadOpdConfig(db);
+  if (opts.departmentId !== undefined) {
+    const doctor = (await db.select().from(opdDoctors).where(eq(opdDoctors.id, doctorId)))[0];
+    if (!doctor || !await doctorServesDepartment(db, doctor, opts.departmentId, date)) return [];
+  }
   const templates = await db
     .select()
     .from(opdDoctorSchedules)
@@ -132,15 +161,16 @@ export async function availableSlots(db: Db | Tx, doctorId: string, date: string
       ),
     );
 
-  return slotsForDate({
+  const slots = slotsForDate({
     date,
     templates: templates.map((t) => ({
       id: t.id, weekday: t.weekday, startTime: t.startTime, endTime: t.endTime, roomId: t.roomId,
-      slotMinutes: t.slotMinutes, validFrom: t.validFrom, validTo: t.validTo, active: t.active,
+      slotMinutes: t.slotMinutes, validFrom: t.validFrom, validTo: t.validTo, active: t.active, departmentId: t.departmentId,
     })),
     leaves: leaveRows.map((l) => ({ fromDate: l.fromDate, toDate: l.toDate, status: l.status })),
     bookedStarts: bookedRows.map((r) => r.slotStart.getTime()),
     defaultSlotMinutes: cfg.slotMinutes,
     now,
   });
+  return opts.departmentId === undefined ? slots : slots.filter((x) => x.departmentId === null || x.departmentId === opts.departmentId);
 }

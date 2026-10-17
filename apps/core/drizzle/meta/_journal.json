@@ -1534,6 +1534,13 @@
       "when": 1792180074500,
       "tag": "0219_doctor_desk",
       "breakpoints": true
+    },
+    {
+      "idx": 219,
+      "version": "7",
+      "when": 1792262256470,
+      "tag": "0220_opd_secondary_department",
+      "breakpoints": true
     }
   ]
 }

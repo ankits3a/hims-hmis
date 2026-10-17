@@ -812,6 +812,15 @@
     "specialty": "Specialty",
     "designation": "Designation",
     "designationHint": "e.g. Guest Faculty, Senior Resident — shown beside the name at the desk, never printed",
+    "secondaryDepartment": "Second department",
+    "secondaryNone": "— none —",
+    "secondarySince": "since {{date}}",
+    "secondaryUntil": "until {{date}}",
+    "secondaryEnd": "End",
+    "secondaryEndConfirm": "End {{name}}'s second department {{dept}} today? Their later bookings there will need rebooking.",
+    "secondaryEnded": "Ended. {{count}} booking(s) need rebooking.",
+    "sessionDepartment": "Department",
+    "sessionAnyDepartment": "Either",
     "pickDepartment": "Choose a department",
     "pickDoctor": "Choose a doctor",
     "pickDoctorHint": "Choose a doctor to edit their weekly schedule and leaves",
@@ -973,6 +982,7 @@
     "agentIdle": "I read the filters on this screen, the doctor master and the day's bookings — and I say which one an answer came from."
   },
   "opdDesk": {
+    "coveringFrom": "from {{dept}}",
     "deptQueue": "Department line",
     "groupWaiting": "{{n}} waiting",
     "pickDepartmentList": "Choose a department to see every doctor's line",
