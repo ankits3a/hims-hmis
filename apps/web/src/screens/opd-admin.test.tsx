@@ -297,7 +297,7 @@ describe("OpdAdmin", () => {
     expect(callsTo("POST", "/api/opd/doctors/doc-1/secondary-department/end")).toHaveLength(0); // declined
     await user.click(screen.getByRole("button", { name: "End" }));
     await waitFor(() => expect(callsTo("POST", "/api/opd/doctors/doc-1/secondary-department/end")).toHaveLength(1));
-    expect(await screen.findByText("Ended. 2 booking(s) need rebooking.")).toBeInTheDocument();
+    expect(await screen.findByText("Ended. 2 bookings need rebooking.")).toBeInTheDocument();
     confirm.mockRestore();
   });
 
