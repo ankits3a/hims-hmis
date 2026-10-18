@@ -19,8 +19,10 @@ brief-subagent, serena, token-audit.
 - **One task per session**: start a new task with `/clear` or a fresh session, naming the module.
 - **A red `main` freezes merges.** Whoever pushed the red fixes it first, before anything else.
 - **Spec before build** (owner 2026-10-07): for a feature or behaviour change, ask at most five questions the rulings and
-  code cannot answer, write a ~10-line spec with **"done means"** checks, build only after the owner's yes. Obvious bug
-  fixes skip this.
+  code cannot answer, write a ~10-line spec with **"done means"** checks (ids `D1`..`Dn` under `## Done means`), build
+  only after the owner's yes. Obvious bug fixes skip this. Approved specs live in `docs/specs/<issue#>-<slug>.md` (public:
+  scrub first); the build lane's first commit adds one red `acceptance/` test per id named `spec #N Dk`; the PR that
+  closes #N updates the spec (`status: built`). `spec-guard` in CI enforces both (decision 0081).
 - **Take the test lock around every jest/vitest run**, targeted or full; the full core suite belongs to CI. → skill `run-tests`
 - **Staging first; merging to `main` IS the production push.** Stage the lane, ask the owner "OK for production?", merge
   only on their yes (docs/CI-only changes: say so, still ask). Never run `deploy.sh` by hand. → skill `staging-and-deploy`
