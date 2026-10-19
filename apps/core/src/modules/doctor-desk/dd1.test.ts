@@ -18,6 +18,7 @@ import { recordAct } from "./acts";
 import { nowView, professorView } from "./phone";
 import { logbookCsv, myRatings, rateWork } from "./ratings";
 import { towerView } from "./tower";
+import { doctorDeskCopilotTools, waitingOnMeAnswer } from "./copilot-tools";
 import { owedByUnit } from "./owed";
 import { DoctorDeskError } from "./errors";
 import type { Db } from "../../kernel/db/client";
@@ -257,6 +258,33 @@ describe("doctor-desk — DD-1 the unit and the ladder", () => {
     for (const who of [P.SR, P.JR]) {
       expect((await nowView(db, actor(who), min(6))).now).toEqual([]);
       expect((await towerView(db, actor(who), min(6))).attention).toEqual([]);
+    }
+  });
+
+  /*
+   * #912 × #905 — the Ask bar's "what is waiting on me" (`doctor-desk.waiting_on_me`) reads the same
+   * waitingOn as the Tower, so it must pass the unit's members: without them a moved critical stays
+   * counted for the JR it left and is never counted for the SR it reached. The tool reads the real
+   * clock, so `new Date()` is pinned (timers, sockets and pg stay real — scheduler.test's pinDateOnly).
+   */
+  it("DD-1b the Ask bar's waiting-on-me counts a moved critical for its new holder, not the orderer", async () => {
+    const { key } = await critical(P.JR, { at: min(-10) });
+    await moveRow(db, actor(P.HEAD), key, P.SR, AT);
+    const ask = doctorDeskCopilotTools.find((t) => t.intent === "doctor-desk.waiting_on_me")!;
+    const ctxOf = (id: string) => ({ db, actor: actor(id), subject: null, serviceDate: "2026-10-06", question: "" });
+    jest.useFakeTimers({
+      now: min(1),
+      doNotFake: [
+        "hrtime", "nextTick", "performance", "queueMicrotask", "requestAnimationFrame", "cancelAnimationFrame",
+        "requestIdleCallback", "cancelIdleCallback", "setImmediate", "clearImmediate", "setInterval", "clearInterval",
+        "setTimeout", "clearTimeout",
+      ],
+    });
+    try {
+      expect(await ask.run(ctxOf(P.SR))).toEqual(waitingOnMeAnswer([{ kind: "lab_critical" }]));
+      expect(await ask.run(ctxOf(P.JR))).toEqual({ key: "copilot.answer.ddWaitingOnMeNone", params: {} });
+    } finally {
+      jest.useRealTimers();
     }
   });
 
