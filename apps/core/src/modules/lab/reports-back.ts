@@ -1,10 +1,11 @@
-import { and, desc, eq, gte, inArray, isNotNull } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { labReports, orderItems, orders, patients } from "../../kernel/db/schema";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { displayName, resolvePatientId } from "../patients";
 import { LabError } from "./errors";
-import { LAB_REPORTS_BACK_HOURS } from "./waiting";
+import { DOCTOR_SCREEN } from "./doctor-read";
+import { LAB_REPORTS_BACK_DAYS } from "./waiting";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { ReportSnapshot } from "./reports";
@@ -12,7 +13,8 @@ import type { ReportSnapshot } from "./reports";
 /**
  * #681 — THE DOCTOR'S "LAB REPORTS BACK", READ ON THE PHONE.
  *
- * Open loops counts `lab.reportsBack` (`waiting.ts`): current reports published in the last day on orders
+ * Open loops counts `lab.reportsBack` (`waiting.ts`): current reports published in the last week, not yet opened by a
+ * treating doctor (#682), on orders
  * this person is the RESPONSIBLE clinician of. These two readers list exactly that set and open one of
  * it, read-only:
  *
@@ -98,11 +100,14 @@ const mineSince = (me: string, since: Date) => and(
   inArray(labReports.status, [...CURRENT]),
   isNotNull(labReports.publishedAt),
   gte(labReports.publishedAt, since),
+  /* #682 — the same set Open loops counts: a report leaves once a treating doctor has opened it. */
+  sql`not exists (select 1 from lab_report_deliveries d
+    where d.report_id = ${labReports.id} and d.channel = ${DOCTOR_SCREEN})`,
 );
 
 export async function myReportsBack(db: Db, actor: Actor, now: Date = new Date()): Promise<ReportBackRow[]> {
   const c = await clearanceOf(db, actor);
-  const since = new Date(now.getTime() - LAB_REPORTS_BACK_HOURS * 3_600_000);
+  const since = new Date(now.getTime() - LAB_REPORTS_BACK_DAYS * 24 * 3_600_000);
   const rows = await db
     .select({ report: labReports, orderingClinicianId: orders.orderingClinicianId })
     .from(labReports)
