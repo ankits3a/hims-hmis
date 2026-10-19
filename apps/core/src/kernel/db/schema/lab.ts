@@ -657,6 +657,15 @@ export const labReportDeliveries = pgTable(
 );
 
 /**
+ * E3.2 (#595) — THE CHASE LADDER of a lab critical nobody has read back: the ordering doctor, the
+ * unit head, the duty RMO, the HOD. One rung every `LAB_CHASE_RUNG_MINUTES`; `ladder_rung` indexes
+ * this array. Distinct from `RUNGS` in `modules/lab/criticals.ts`, which names who the technologist
+ * rings by hand.
+ */
+export const LAB_CHASE_RUNGS = ["ordering_doctor", "unit_head", "duty_rmo", "hod"] as const;
+export type LabChaseRung = (typeof LAB_CHASE_RUNGS)[number];
+
+/**
  * DD12 — THE CALL LADDER. Opened at ENTRY (not at verify — the 15-minute clinical need is the call,
  * not the signature) and closed only by a READ-BACK, which is the whole of 02 §3.6.
  *
@@ -675,6 +684,19 @@ export const labCriticalCalls = pgTable(
     readbackText: text("readback_text"),
     closedBy: text("closed_by"),
     closedAt: timestamp("closed_at", { withTimezone: true }),
+    /**
+     * E3.2 (#595) — THE CHASE. The ordering doctor: rung 0's person, and the call's owner. NULL when
+     * the order names no clinician (a walk-in); the ladder then starts from the fallback.
+     */
+    ownerUserId: text("owner_user_id"),
+    /**
+     * E3.2 — the rung the chase has reached: 0 ordering doctor · 1 unit head · 2 duty RMO · 3 HOD
+     * (`LAB_CHASE_RUNGS`). It only climbs. NULL = OUTSIDE the ladder: calls opened before the ladder
+     * existed, which the sweep never wakes. The clock is `opened_at`.
+     */
+    ladderRung: integer("ladder_rung"),
+    /** E3.2 — when the current rung's alert was raised. A record that a chase happened, not a status. */
+    lastChasedAt: timestamp("last_chased_at", { withTimezone: true }),
   },
   (t) => [
     index("lab_critical_calls_open_idx").on(t.openedAt).where(sql`closed_at is null`),
@@ -684,6 +706,7 @@ export const labCriticalCalls = pgTable(
       "lab_critical_calls_closed_ck",
       sql`(${t.closedAt} is null) = (${t.readbackText} is null) and (${t.closedAt} is null) = (${t.closedBy} is null)`,
     ),
+    check("lab_critical_calls_rung_ck", sql`${t.ladderRung} is null or ${t.ladderRung} between 0 and 3`),
   ],
 );
 

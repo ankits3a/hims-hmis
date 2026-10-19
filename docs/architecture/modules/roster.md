@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/roster/`
 · Notes: [MAP.md](../../../apps/core/src/modules/roster/MAP.md)
 
 - **Depends on modules:** —
-- **Used by modules:** `doctor-desk`, `opd`, `ot`, `radiology`
+- **Used by modules:** `doctor-desk`, `lab`, `opd`, `ot`, `radiology`
 - **Kernel used:** `alerts`, `approvals`, `auth`, `copilot`, `db`, `desk`, `events`, `modules`, `printing`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
@@ -370,9 +370,9 @@ Source: `apps/core/src/modules/roster/`
 
 Foreign keys into: `auth`, `org`, `resources`
 
-## HTTP routes (37)
+## HTTP routes
 
-- `leave.controller.ts` — 5: `/roster/leave`
-- `roster-board.controller.ts` — 32: `/roster/aebas`, `/roster/as-it-stood`, `/roster/board-prints`, `/roster/covers`, `/roster/declarations`, `/roster/doctor-units`, `/roster/duties`, `/roster/evidence`, `/roster/flags`, `/roster/holidays`, `/roster/modes`, `/roster/my-duties`, `/roster/on-now`, `/roster/opd-units`, `/roster/periods`, `/roster/slots`, `/roster/staff-today`, `/roster/unit-heads-without-regn`, `/roster/units`
+- `leave.controller.ts` — `/roster/leave`
+- `roster-board.controller.ts` — `/roster/aebas`, `/roster/as-it-stood`, `/roster/board-prints`, `/roster/covers`, `/roster/declarations`, `/roster/doctor-units`, `/roster/duties`, `/roster/evidence`, `/roster/flags`, `/roster/holidays`, `/roster/modes`, `/roster/my-duties`, `/roster/on-now`, `/roster/opd-units`, `/roster/periods`, `/roster/slots`, `/roster/staff-today`, `/roster/unit-heads-without-regn`, `/roster/units`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/roster`

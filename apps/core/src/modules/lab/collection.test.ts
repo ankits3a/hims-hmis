@@ -97,6 +97,24 @@ describe("the collection seat's queue (17c T2)", () => {
     }
   });
 
+  /**
+   * #889 — a row's codes come in ONE fixed order (by test code), not in the order the rows came off
+   * the heap. Ordered LFT first, so without the reader's ORDER BY this saw [LFT, CBC].
+   */
+  it("an awaiting row lists its tests by test code, not by the order they were placed in (#889)", async () => {
+    await withTx(db, (tx) => deskOrder(tx, fx.desk.actor, fx.decls, {
+      patientId: fx.patientId, encounterNo: fx.encounterNo, serviceDate: fx.serviceDate,
+      orderingClinicianId: fx.pathologist.id,
+      items: [{ serviceId: serviceIdForLabCode("LFT") }, { serviceId: serviceIdForLabCode("CBC") }],
+      credit: { reason: "counter order" },
+    }));
+    await grantPermissionToRole(db, fx.registry, "lab_technician", "orders.read.restricted");
+    for (let i = 0; i < 3; i++) {
+      const rows = await awaitingLabels(db, fx.bench.actor, { serviceDate: fx.serviceDate });
+      expect(rows.map((r) => r.orderableCodes)).toEqual([["CBC", "LFT"]]);
+    }
+  });
+
   it("A2: a rejected tube's free recollection is back on the TUBE queue by itself, not on the awaiting list", async () => {
     const { specimens } = await deskAndLabel(db, fx, ["CBC"]);
     expect(await collectionQueue(db, fx.bench.actor, { serviceDate: fx.serviceDate })).toEqual([]);

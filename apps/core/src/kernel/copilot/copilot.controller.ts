@@ -75,6 +75,16 @@ const askBody = z.object({
 
 /** E1.3 — the one-tap "Wrong" on an answer card. Only `true` exists: there is no "right" tap to record. */
 const feedbackBody = z.object({ askId: z.string().min(1).max(64), wrong: z.literal(true) });
+/**
+ * #686 — each confirm outcome's ledger outcome. A `Record` over `ConfirmOutcome`, so a new outcome
+ * does not compile until it has a ledger name (and the CHECK list in `schema/copilot.ts` a migration);
+ * a string cast would let it reach the database and fail the tap there.
+ */
+const CONFIRM_LEDGER_OUTCOME: Readonly<Record<ConfirmOutcome, CopilotAskOutcome>> = {
+  done: "confirmDone", invalid: "confirmInvalid", expired: "confirmExpired", notAct: "confirmNotAct",
+  halted: "confirmHalted", notPermitted: "confirmNotPermitted", alreadyDone: "confirmAlreadyDone",
+  stateChanged: "confirmStateChanged", failed: "confirmFailed",
+};
 /** E0.2 — the confirm tap carries the proposal back exactly as the ask handed it out. */
 const confirmBody = z.object({ proposal: proposalSchema }).strict();
 
@@ -379,7 +389,7 @@ export class CopilotController {
       record is not sent.
     */
     await recordAsk(this.db, {
-      actor, outcome: `confirm${res.outcome[0]!.toUpperCase()}${res.outcome.slice(1)}` as CopilotAskOutcome,
+      actor, outcome: CONFIRM_LEDGER_OUTCOME[res.outcome],
       route: "none", intent: parsed.data.proposal.tool.slice(0, 64), answerKey: res.answer.key,
       ms: Date.now() - started, maskedQuestion: null, screen: null,
     });

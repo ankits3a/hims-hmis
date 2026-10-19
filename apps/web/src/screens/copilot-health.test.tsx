@@ -5,7 +5,7 @@ import { CopilotHealthScreen } from "./copilot-health";
 
 /** E0.1 done-means 8 — the health page shows a day's totals and names nobody. */
 const HEALTH = {
-  date: "2026-10-10", asks: 12, askers: 4, notUnderstoodShare: 0.25, acts: 0,
+  date: "2026-10-10", asks: 12, askers: 4, notUnderstoodShare: 0.25, wrongTaps: 2, wrongShare: 0.25, acts: 0, confirms: 0,
   byOutcome: { answered: 8, notUnderstood: 3, notPermitted: 1, noTool: 0 },
   byRoute: {
     phrasebook: { asks: 9, p50Ms: 40, p95Ms: 120 }, chooser: { asks: 0, p50Ms: null, p95Ms: null },
@@ -26,6 +26,8 @@ describe("Copilot health", () => {
     expect(await screen.findByTestId("copilot-health-asks")).toHaveTextContent("12");
     expect(screen.getByTestId("copilot-health-askers")).toHaveTextContent("4");
     expect(screen.getByTestId("copilot-health-notUnderstoodShare")).toHaveTextContent("25%");
+    expect(screen.getByTestId("copilot-health-wrongTaps")).toHaveTextContent("Wrong taps2");
+    expect(screen.getByTestId("copilot-health-wrongShare")).toHaveTextContent("Wrong share25%");
     expect(screen.getByText("Phrasebook").closest("tr")).toHaveTextContent("940 ms120 ms");
     expect(screen.getByText("Not understood", { selector: "td" }).closest("tr")).toHaveTextContent("3");
     expect(screen.queryByText("Not available yet")).toBeNull(); // zero rows are not listed
@@ -40,6 +42,8 @@ describe("Copilot health", () => {
     renderWithProviders(<CopilotHealthScreen />);
     expect((await screen.findByText("Confirm: done", { selector: "td" })).closest("tr")).toHaveTextContent("1");
     expect(screen.getByText("Confirm refused: expired", { selector: "td" }).closest("tr")).toHaveTextContent("2");
+    expect(screen.getByTestId("copilot-health-confirms")).toHaveTextContent("Confirm taps3");
+    expect(screen.getByTestId("copilot-health-asks")).toHaveTextContent("12"); // taps are not questions
   });
 
   it("E0.5/E0.3: shows AI calls and ₹, says when the cap is reached, and offers only the switches this person may throw", async () => {

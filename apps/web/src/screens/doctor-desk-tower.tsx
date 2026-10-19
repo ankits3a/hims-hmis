@@ -289,6 +289,7 @@ function Attention({ tower, lang }: { tower: WireTower; lang: string }): React.R
             <span className="dd-row-sig">
               <span className={`dd-row-signal dd-sig-${r.tab}`}>{signalText(r, t)}</span>
               <span className="dd-row-sub">{rowSub(r, tower.istDate, lang, t)}</span>
+              {r.acked === true && <span className="dd-row-acked" data-testid={`dd-acked-${r.key}`}>{t("doctorDesk.now.ackedNoAct")}</span>}
             </span>
             <a
               href={r.href} className="dd-verb" data-testid={`dd-open-${r.key}`}

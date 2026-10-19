@@ -4,10 +4,14 @@ import { appendEvent } from "../../kernel/events/append";
 import {
   IMAGING_CRITICAL_RUNGS, imagingCriticalFindings, imagingReportDelivery, imagingReports, imagingStudies,
 } from "../../kernel/db/schema/radiology";
+import { events } from "../../kernel/db/schema/events";
+import { orders } from "../../kernel/db/schema/orders";
+import { users } from "../../kernel/db/schema/auth";
 import { withTx } from "../../kernel/db/client";
 import { activeDefinitionRow, parseDefinitionBody } from "./definitions";
 import { imagingCriticalOverdue, imagingReportUnread } from "./events";
 import type { Actor } from "@hmis/contracts";
+import type { SQL } from "drizzle-orm";
 import type { Db } from "../../kernel/db/client";
 import type { CriticalCategoriesBody } from "./definitions";
 
@@ -70,6 +74,17 @@ export const CHASER_ACTOR: Actor = { type: "system", id: "radiology-chasers" };
  */
 export const UNREAD_REPORT_HOURS = 24;
 
+/**
+ * DOCTOR DESK DD-0.11 (#890) — how long the ORDERING DOCTOR has, after the first chase, before the
+ * report climbs to the duty-manager route. **Twelve hours** is one shift: the doctor who was told on
+ * the morning round and has not opened it by the night handover is the case a second person must
+ * hear about. DECIDED; not money, procurement or law.
+ */
+export const UNREAD_ESCALATE_HOURS = 12;
+
+/** The two rungs of the unread ladder (DD-0.11). Absent on a pre-DD-0.11 event = `department`. */
+export type UnreadRung = "ordering_clinician" | "department";
+
 /** RS8b — the HOD's rung: the chaser escalates at most this many windows. */
 const TOP_RUNG = IMAGING_CRITICAL_RUNGS.length - 1;
 
@@ -77,7 +92,7 @@ const TOP_RUNG = IMAGING_CRITICAL_RUNGS.length - 1;
 const CHASE_LIMIT = 200;
 
 export type CriticalChaseResult = { chased: { criticalId: string; category: string; overdueMin: number; rung: string }[] };
-export type UnreadChaseResult = { chased: { reportId: string; studyId: string; unreadHours: number }[] };
+export type UnreadChaseResult = { chased: { reportId: string; studyId: string; unreadHours: number; rung: UnreadRung }[] };
 
 /**
  * ═══ THE CRITICAL CHASER ═══
@@ -187,6 +202,24 @@ export async function sweepCriticalChaser(db: Db, now: Date = new Date()): Promi
  * own comment for why the signer is excluded and why it is the FIRST read).
  */
 export async function sweepUnreadWatchman(db: Db, now: Date = new Date()): Promise<UnreadChaseResult> {
+  const first = await firstUnreadChase(db, now);
+  const second = await escalateUnreadChase(db, now);
+  return { chased: [...first, ...second] };
+}
+
+/**
+ * ═══ RUNG 1 — THE FIRST CHASE GOES TO THE DOCTOR WHO ORDERED IT (DD-0.11) ═══
+ *
+ * `orders.ordering_clinician_id` is the responsible clinician (DD6), and the one person who can
+ * close this loop by opening the report. It is plain text, not a foreign key, so it is joined to an
+ * ACTIVE user: an id that is no live login (a visiting consultant keyed by name, a doctor who has
+ * left) would be a bell nobody hears, and the report goes straight to rung 2 instead.
+ *
+ * **The restricted-study rule (DD11) holds by construction:** the ordering clinician may always see
+ * what they ordered, nobody else is added at this rung, and the alert text is structural — no
+ * patient, no study name — on every rung (`kernel/alerts/consumer.ts`, GC6).
+ */
+async function firstUnreadChase(db: Db, now: Date): Promise<UnreadChaseResult["chased"]> {
   const cutoff = new Date(now.getTime() - UNREAD_REPORT_HOURS * 3_600_000);
 
   /**
@@ -202,9 +235,12 @@ export async function sweepUnreadWatchman(db: Db, now: Date = new Date()): Promi
       publishedAt: imagingReports.publishedAt,
       patientId: imagingStudies.patientId,
       deliveryId: imagingReportDelivery.id,
+      orderingDoctorId: users.id,
     })
     .from(imagingReports)
     .innerJoin(imagingStudies, eq(imagingStudies.id, imagingReports.studyId))
+    .leftJoin(orders, eq(orders.id, imagingStudies.orderId))
+    .leftJoin(users, and(eq(users.id, orders.orderingClinicianId), eq(users.active, true)))
     .leftJoin(imagingReportDelivery, eq(imagingReportDelivery.reportId, imagingReports.id))
     .where(and(
       eq(imagingReports.status, "signed"),
@@ -221,6 +257,7 @@ export async function sweepUnreadWatchman(db: Db, now: Date = new Date()): Promi
     const publishedAt = report.publishedAt;
     if (publishedAt === null) continue;
     const unreadHours = Math.floor((now.getTime() - publishedAt.getTime()) / 3_600_000);
+    const rung: UnreadRung = report.orderingDoctorId === null ? "department" : "ordering_clinician";
 
     /**
      * The mark is an UPSERT on the delivery row, because the row may not exist — and the conflict
@@ -246,12 +283,94 @@ export async function sweepUnreadWatchman(db: Db, now: Date = new Date()): Promi
       await appendEvent(tx, imagingReportUnread.make({
         actor: CHASER_ACTOR,
         patientId: report.patientId,
-        payload: { reportId: report.id, studyId: report.studyId, unreadHours },
+        payload: rung === "ordering_clinician"
+          ? { reportId: report.id, studyId: report.studyId, unreadHours, rung, notifyUserIds: [report.orderingDoctorId!] }
+          : { reportId: report.id, studyId: report.studyId, unreadHours, rung },
       }));
       return true;
     });
 
-    if (won) chased.push({ reportId: report.id, studyId: report.studyId, unreadHours });
+    if (won) chased.push({ reportId: report.id, studyId: report.studyId, unreadHours, rung });
   }
-  return { chased };
+  return chased;
+}
+
+/**
+ * ═══ RUNG 2 — STILL UNREAD A SHIFT AFTER THE DOCTOR WAS TOLD: THE DUTY-MANAGER ROUTE ═══
+ *
+ * The route the Watchman always used (`escalationRecipients("imaging.report_unread")`, which a
+ * roster target may point at a unit or a department), kept as the next rung rather than removed.
+ *
+ * **No new column.** The ladder's memory is this module's own event log: a report is due here when
+ * its one chase so far went to the ordering clinician (`unread_chased_at` is that chase's instant)
+ * and no `department` chase exists for it. A pre-DD-0.11 chase carries no rung and reads as
+ * `department`, so a report the duty manager already heard about is never chased a second time.
+ * The event lookup rides `events_patient_idx` — every one of these events carries the patient.
+ *
+ * Two overlapping cycles are serialised per report by an advisory lock, and the loser re-reads the
+ * log under it and emits nothing.
+ */
+async function escalateUnreadChase(db: Db, now: Date): Promise<UnreadChaseResult["chased"]> {
+  const cutoff = new Date(now.getTime() - UNREAD_ESCALATE_HOURS * 3_600_000);
+  const unreadEvent = imagingReportUnread.name;
+  const chaseOf = (rungSql: SQL): SQL => sql`exists (
+    select 1 from ${events}
+    where ${events.name} = ${unreadEvent}
+      and ${events.patientId} = ${imagingStudies.patientId}
+      and ${events.payload}->>'reportId' = ${imagingReports.id}
+      and ${rungSql})`;
+  const doctorChase = chaseOf(sql`${events.payload}->>'rung' = 'ordering_clinician'`);
+  const departmentChase = chaseOf(sql`coalesce(${events.payload}->>'rung', 'department') = 'department'`);
+
+  const due = await db
+    .select({
+      id: imagingReports.id,
+      studyId: imagingReports.studyId,
+      publishedAt: imagingReports.publishedAt,
+      patientId: imagingStudies.patientId,
+    })
+    .from(imagingReportDelivery)
+    .innerJoin(imagingReports, eq(imagingReports.id, imagingReportDelivery.reportId))
+    .innerJoin(imagingStudies, eq(imagingStudies.id, imagingReports.studyId))
+    .where(and(
+      eq(imagingReports.status, "signed"),
+      isNull(imagingReportDelivery.firstReadAt),
+      lt(imagingReportDelivery.unreadChasedAt, cutoff),
+      doctorChase,
+      sql`not ${departmentChase}`,
+    ))
+    .orderBy(asc(imagingReportDelivery.unreadChasedAt))
+    .limit(CHASE_LIMIT);
+
+  const chased: UnreadChaseResult["chased"] = [];
+  for (const report of due) {
+    const publishedAt = report.publishedAt;
+    if (publishedAt === null) continue;
+    const unreadHours = Math.floor((now.getTime() - publishedAt.getTime()) / 3_600_000);
+
+    const won = await withTx(db, async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`radiology.unread:${report.id}`}))`);
+      const still = await (tx as unknown as Db)
+        .select({ id: imagingReports.id })
+        .from(imagingReportDelivery)
+        .innerJoin(imagingReports, eq(imagingReports.id, imagingReportDelivery.reportId))
+        .innerJoin(imagingStudies, eq(imagingStudies.id, imagingReports.studyId))
+        .where(and(
+          eq(imagingReportDelivery.reportId, report.id),
+          isNull(imagingReportDelivery.firstReadAt),
+          sql`not ${departmentChase}`,
+        ));
+      if (still.length === 0) return false;
+
+      await appendEvent(tx, imagingReportUnread.make({
+        actor: CHASER_ACTOR,
+        patientId: report.patientId,
+        payload: { reportId: report.id, studyId: report.studyId, unreadHours, rung: "department" },
+      }));
+      return true;
+    });
+
+    if (won) chased.push({ reportId: report.id, studyId: report.studyId, unreadHours, rung: "department" });
+  }
+  return chased;
 }

@@ -54,6 +54,7 @@
     "opsMode": "Operating mode",
     "opsDowntimeKit": "Downtime kit",
     "adminUsers": "Users",
+    "attendanceLinks": "Attendance links",
     "counterInstruments": "Card recognition",
     "counterReconcile": "Card reconcile",
     "noneAvailable": "No screens are available to your role — ask an administrator",
@@ -2433,6 +2434,103 @@
     "rule": "At least 10 characters. No upper-case or symbol rules — length is what matters. It must not be your username.",
     "mismatch": "The two new passwords do not match",
     "submit": "Change password (Alt+S)"
+  },
+  "attendanceLinks": {
+    "heading": "Attendance links",
+    "sub": "Machine list ↔ HMIS logins, by mobile or Aadhaar only",
+    "denied": "You do not have access to attendance links.",
+    "tab": {
+      "unlinked": "Not linked",
+      "suggestions": "Suggestions",
+      "byHand": "Link by hand"
+    },
+    "count": {
+      "linked": "{{linked}} of {{active}} linked",
+      "pct": "{{pct}}%",
+      "unlinked": "Not linked: {{n}}",
+      "attention": "Need a person: {{n}}",
+      "logins": "Logins linked: {{linked}} of {{active}}"
+    },
+    "reason": {
+      "no_match": "No login matches",
+      "aadhaar_shared": "Aadhaar on two logins",
+      "mobile_shared_on_machine": "Mobile shared on machine",
+      "mobile_shared_by_logins": "Mobile on two logins",
+      "login_linked_elsewhere": "Login already linked"
+    },
+    "unlinked": {
+      "search": "Search name, department or pin",
+      "total": "{{n}} not linked",
+      "none": "Nobody here.",
+      "more": "Show more"
+    },
+    "suggestions": {
+      "why": "Same mobile on both sides. Check, then link each one.",
+      "none": "No mobile matches waiting.",
+      "mobile": "mobile ··{{last4}}",
+      "shared": "Shared number"
+    },
+    "byHand": {
+      "search": "Find on machine list: name, department or pin",
+      "none": "Nobody on the machine list matches.",
+      "back": "← Back",
+      "matches": "Matching logins",
+      "noMatches": "No login has this person's mobile or Aadhaar.",
+      "findLogin": "Find a login",
+      "loginSearch": "Username, name or staff ID",
+      "noLogins": "No login found."
+    },
+    "state": {
+      "linked": "Linked · {{username}}",
+      "left": "Has left"
+    },
+    "login": {
+      "taken": "Already linked · #{{pin}}",
+      "match": {
+        "mobile": "Mobile matches",
+        "aadhaar": "Aadhaar matches"
+      },
+      "noMatch": "No match",
+      "give": "Add mobile / Aadhaar",
+      "mobile": "Mobile",
+      "aadhaar": "Aadhaar",
+      "save": "Save"
+    },
+    "link": "Link",
+    "confirm": {
+      "title": "Link {{name}} (#{{pin}}) to {{username}}?",
+      "by": {
+        "mobile": "Their mobile numbers match.",
+        "aadhaar": "Their Aadhaar matches."
+      },
+      "yes": "Confirm link",
+      "no": "Cancel"
+    },
+    "linkedNotice": "Linked {{name}} to {{username}}",
+    "error": {
+      "no_match": "Mobile or Aadhaar must match first.",
+      "person_linked": "This person is already linked.",
+      "login_linked": "This login is already linked.",
+      "login_inactive": "This login is deactivated.",
+      "unknown_person": "Not on the machine list.",
+      "user_not_found": "Login not found.",
+      "mobile_invalid": "Not a mobile number. Ten digits, starting 6–9.",
+      "aadhaar_invalid": "Not a valid Aadhaar number.",
+      "aadhaar_key_not_configured": "Aadhaar cannot be saved yet on this server.",
+      "not_linked": "This person is not linked.",
+      "reason_has_number": "Leave numbers out of the reason.",
+      "bad_body": "Give a short reason."
+    },
+    "unlink": {
+      "button": "Unlink",
+      "title": "Unlink {{name}} (#{{pin}}) from {{username}}?",
+      "marksStay": "Past attendance marks stay with the person. To re-point, unlink, then link the right login.",
+      "reason": "Reason",
+      "reasonHint": "e.g. linked to the wrong login",
+      "yes": "Confirm unlink",
+      "relinks": "same mobile or Aadhaar links them again at the next sync — correct the login first"
+    },
+    "unlinkedNotice": "Unlinked {{name}} from {{username}}"
   },
   "adminUsers": {
     "heading": "Users",
@@ -11020,7 +11118,10 @@
       "asks": "Questions",
       "askers": "People who asked",
       "notUnderstoodShare": "Not understood",
+      "wrongTaps": "Wrong taps",
+      "wrongShare": "Wrong share",
       "acts": "Acts",
+      "confirms": "Confirm taps",
       "byOutcome": "How questions ended",
       "byRoute": "Who answered, and how fast",
       "route": "Route",
@@ -11108,6 +11209,13 @@
       "reminderTooLong": "Keep it under 80 letters.",
       "reminderLimit": "You have 20 reminders. Clear one first.",
       "reminderSet": "Reminder set {{when}}.",
+      "ddWaitingOnMe": "Waiting on you: {{critical}} critical, {{unread}} unread reports, {{deltas}} changed results, {{openVisits}} open visits.",
+      "ddWaitingOnMeNone": "Nothing is waiting on you.",
+      "ddUnitOwes": "{{unit}} owes {{open}}; {{overdue}} past their time. Open the Doctor Desk.",
+      "ddUnitOwesNone": "{{unit}} owes nothing right now.",
+      "ddNoUnit": "You are in no unit today, so there is no unit list.",
+      "ddMyDay": "Your OPD: {{booked}} booked, {{seen}} seen, {{waiting}} waiting (longest {{longestWait}} min).",
+      "ddMyDayNoOpd": "You have no OPD session today.",
       "notPermitted": "You do not have access to that. Ask whoever manages roles if you need it.",
       "needSubject": "Which patient? Give me a UHID or the visit number from their slip.",
       "failed": "I could not get an answer just now. Try the screen for this.",
@@ -15410,22 +15518,35 @@
       "failed_one": "{{count}} failed",
       "failed_other": "{{count}} failed",
       "agent": {
-        "login_brief": "Login brief"
+        "login_brief": "Login brief",
+        "unit_report": "Unit report"
       },
       "did": {
-        "briefBuilt": "Prepared your login brief · {{lines}} patient lines"
+        "briefBuilt": "Prepared your login brief · {{lines}} patient lines",
+        "reportSent": "the {{reportDate}} report was sent",
+        "reportFailed": "the {{reportDate}} report could not be made"
       }
     },
     "refusal": {
       "unknown_visit": "That visit is not in your OPD.",
-      "not_unit_member": "Only a member of the unit can nudge.",
+      "not_unit_member": "Only a member of the unit can do this.",
       "already_nudged": "You have already nudged this.",
       "own_row": "This one is yours.",
       "unknown_row": "This is no longer owed — it may just have been done.",
       "unknown_brief": "That brief is not yours.",
       "closed": "This screen is not open to you.",
       "network": "Could not reach the server. Try again.",
-      "other": "Refused ({{code}})."
+      "other": "Refused ({{code}}).",
+      "not_allowed_to_move": "Only the unit head or a senior resident moves an item.",
+      "same_holder": "That doctor holds it already.",
+      "move_target_cannot_view": "That doctor may not see this restricted test. It stays where it is.",
+      "already_acted": "What was done is already recorded.",
+      "not_actable": "This item takes no act here.",
+      "note_required": "Say in a few words.",
+      "not_a_senior": "Only a senior of this resident's unit rates this work.",
+      "self_rating": "Your own work is rated by your seniors.",
+      "already_rated": "You have already rated this work.",
+      "unknown_work": "That work is not one you can rate here."
     },
     "briefs": {
       "context": "Doctor Desk · AI Briefs",
@@ -15468,7 +15589,12 @@
       "onNow": "Who Is On Now",
       "myDuties": "My Duties",
       "evidence": "Duty Evidence",
-      "aebas": "AEBAS To-do"
+      "aebas": "AEBAS To-do",
+      "now": "Now (phone)",
+      "professor": "Sign & Rate (phone)",
+      "myRatings": "My Ratings",
+      "unitBoard": "Unit Board",
+      "unitReport": "Unit Report"
     },
     "menu": "Menu",
     "showMenu": "Show the menu",
@@ -15495,6 +15621,216 @@
       "jr3": "JR-3",
       "intern": "Intern",
       "medical_officer": "MO"
+    },
+    "phone": {
+      "tabs": "Doctor Desk sections",
+      "tab": {
+        "now": "Now",
+        "opd": "OPD",
+        "unit": "Unit"
+      }
+    },
+    "copilot": {
+      "word": "COPILOT",
+      "proactive": "PROACTIVE ON",
+      "askOnly": "ASK-ONLY",
+      "draftOn": "DRAFTING ON",
+      "draftOff": "DRAFTING OFF"
+    },
+    "act": {
+      "recorded": "Recorded · {{what}} · {{n}} min from the result",
+      "question": "What did you do?",
+      "why": "The loop closes on the act, not the tap.",
+      "choice": {
+        "seen_at_bedside": "Seen at bedside",
+        "ecg_ordered": "ECG ordered",
+        "repeat_sample_sent": "Repeat sample sent",
+        "treatment_started": "Treatment started",
+        "other": "Other"
+      },
+      "otherLabel": "What you did, in a few words",
+      "save": "Save"
+    },
+    "now": {
+      "askPlaceholder": "kal raat se kya badla?",
+      "onTake": "ON TAKE",
+      "admitsTill": "{{unit}} admits till {{at}}",
+      "off": "Off",
+      "fromRoster": "From the published roster.",
+      "flagSent": "The desk has been told.",
+      "wrong": "Wrong? Tell the desk",
+      "wrongLabel": "What is wrong, in one line",
+      "send": "Send",
+      "waiting": "Waiting on you",
+      "counts": "{{now}} now · {{today}} today",
+      "nowWord": "NOW",
+      "nowEmpty": "No critical result is waiting on you.",
+      "todayWord": "TODAY",
+      "todayEmpty": "No report or visit is waiting on you today.",
+      "goneHome": "patient has gone home",
+      "ackedNoAct": "Read back by the lab · no act recorded yet",
+      "imagingAck": "Acknowledge it in the reading room's own report."
+    },
+    "gradeLong": {
+      "professor": "Professor",
+      "associate_professor": "Associate Professor",
+      "assistant_professor": "Assistant Professor",
+      "senior_resident": "Senior Resident",
+      "jr1": "Junior Resident · PG1",
+      "jr2": "Junior Resident · PG2",
+      "jr3": "Junior Resident · PG3",
+      "intern": "Intern",
+      "medical_officer": "Medical Officer"
+    },
+    "prof": {
+      "proactivePast_one": "{{count}} item owed by your unit is past its time.",
+      "proactivePast_other": "{{count}} items owed by your unit are past their time.",
+      "proactiveNone": "Nothing owed by your unit is past its time.",
+      "askPlaceholder": "is hafte unit ka kaam kaisa raha?",
+      "sign": "Needs your signature",
+      "signNone": "Nothing waits for your signature.",
+      "cover": "Duty cover · {{day}}",
+      "swap": "Duty swap · {{day}}",
+      "warn": "the roster rules warn",
+      "approve": "Approve",
+      "refuse": "Refuse",
+      "open": "Open",
+      "owed": "Owed by your unit",
+      "with": "With {{name}}",
+      "openBoard_one": "Open the unit board · {{count}} item",
+      "openBoard_other": "Open the unit board · {{count}} items",
+      "handled": "HANDLED WITHOUT YOU",
+      "handledNone": "Nothing in the last day.",
+      "handledLine": "{{what}} · {{who}} · {{by}} took it in {{n}} min · {{act}} {{at}}",
+      "askedAt": "Asked {{at}}"
+    },
+    "unit": {
+      "oldestFirst": "oldest first",
+      "acked": "read back · no act yet",
+      "contextDept": "Doctor Desk · {{dept}} · Unit board",
+      "context": "Doctor Desk · {{dept}} · {{unit}} · Unit board",
+      "unitsHospital": "The hospital's units",
+      "unitsDept": "{{dept}} · the units side by side",
+      "unitsNote": "Counts only — no patient, no person.",
+      "col": {
+        "unit": "Unit",
+        "members": "Doctors",
+        "open": "Open",
+        "past": "Past time",
+        "seen": "OPD seen today",
+        "act": "Critical → act",
+        "what": "What is owed",
+        "with": "With",
+        "age": "Age",
+        "doctor": "Doctor",
+        "now": "Now",
+        "visits": "Visits done",
+        "word": "Your last word"
+      },
+      "owesTitle": "What {{unit}} owes, and who owes it",
+      "owesCount_one": "{{count}} open · oldest first",
+      "owesCount_other": "{{count}} open · oldest first",
+      "movedBy": "given by {{name}}",
+      "since": "since {{at}}",
+      "move": "Move",
+      "moveTo": "Give to",
+      "choose": "Choose a doctor",
+      "moveGo": "Give",
+      "cannotTake": "cannot see this test",
+      "nudgeNote": "A nudge is a message from you, not from the machine. It reaches that doctor with your name on it, once.",
+      "people": "Your people · this week",
+      "peopleNote": "Counts of acts, never of screens. Each doctor sees their own row. SRs see their JRs. The head sees the unit.",
+      "actLine_one": "{{span}} · {{count}} act",
+      "actLine_other": "{{span}} · {{count}} acts",
+      "word": "{{rating}} · {{date}}"
+    },
+    "scope": {
+      "own": "OWN",
+      "member": "UNIT MEMBER",
+      "unit": "UNIT HEAD",
+      "department": "HOD",
+      "hospital": "HOSPITAL",
+      "officiating": "officiating"
+    },
+    "rate": {
+      "title": "Rate work",
+      "note": "Goes to the resident's PG logbook, not to a league table.",
+      "opdVisit": "OPD VISIT",
+      "question": "How was {{name}}'s visit?",
+      "given": "You rated it {{rating}}.",
+      "r": {
+        "good": "Good",
+        "fine": "Fine",
+        "needs_rework": "Needs rework"
+      },
+      "label": {
+        "good": "Good — teach from it",
+        "fine": "Fine",
+        "needs_rework": "Needs rework — say why"
+      },
+      "why": "What needs rework, in a few words",
+      "context": "Doctor Desk · My ratings",
+      "tooFew": "too few ratings yet",
+      "mine": "My work this month · {{month}}",
+      "logbook": "PG logbook (CSV)",
+      "total": "rated",
+      "shareTitle": "Share rated Good",
+      "you": "You",
+      "department": "Department average",
+      "hospital": "Hospital average",
+      "neutral": "Averages are anonymous and appear once enough work is rated; yours appears after {{n}} ratings. Ratings are a senior's word for your logbook, not a rank.",
+      "recent": "Recent words",
+      "none": "No work of yours has been rated this month."
+    },
+    "report": {
+      "context": "Doctor Desk · Unit report",
+      "none": "No report for you yet. The unit report goes at 08:00 to the unit head, the department's to the HOD, and the weekly hospital report on Monday to the Medical Superintendent.",
+      "title": "Unit report · {{unit}} · {{date}}",
+      "sent": "sent {{at}} · nobody typed it",
+      "window": "The 24 hours from {{from}} to {{to}} IST.",
+      "critical": "Critical values, time from the result to a doctor acting",
+      "noActs": "none",
+      "acts_one": "{{count}} act",
+      "acts_other": "{{count}} acts",
+      "median": "{{span}} median",
+      "tooFew": "too few to average",
+      "over_one": "{{count}} over {{n}} min",
+      "over_other": "{{count}} over {{n}} min",
+      "longest": "The longest from result to act",
+      "compare": "Department and hospital median",
+      "compareNote": "an average shows once enough units and acts count",
+      "noAct": "Critical results still waiting for an act at 08:00",
+      "owed": "Items the unit owed at 08:00",
+      "past_one": "{{count}} past its time",
+      "past_other": "{{count}} past their time",
+      "opd": "OPD on {{date}}",
+      "seen": "{{n}} seen",
+      "doctors_one": "{{count}} doctor with a session",
+      "doctors_other": "{{count}} doctors with a session",
+      "foot": "Daily to the unit head · counts only, no patient or person named",
+      "print": "Print",
+      "kind": {
+        "unit": "Unit",
+        "department": "Department · daily",
+        "hospital": "Hospital · weekly"
+      },
+      "deptTitle": "Department report · {{dept}} · {{date}}",
+      "hospTitle": "Hospital report · the week to {{date}}",
+      "weekWindow": "The {{n}} days from {{from}} to {{to}} IST.",
+      "hospMedian": "Hospital median, critical result to act",
+      "unitsN_one": "{{count}} unit",
+      "unitsN_other": "{{count}} units",
+      "col": {
+        "acts": "Acts",
+        "median": "Median",
+        "over": "Over 15 min",
+        "open": "Open",
+        "past": "Past time",
+        "opd": "OPD seen",
+        "opdWeek": "OPD seen",
+        "dept": "Department"
+      },
+      "footAll": "Counts only — no patient or person named. An average shows only once enough units and acts count."
     }
   },
   "roster": {

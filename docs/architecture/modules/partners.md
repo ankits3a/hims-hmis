@@ -120,8 +120,8 @@ Source: `apps/core/src/modules/partners/`
 
 Foreign keys into: `billing`, `patients`
 
-## HTTP routes (10)
+## HTTP routes
 
-- `partners.controller.ts` — 10: `/partners/attributions`, `/partners/pnl`, `/partners/receivables`, `/partners/refs`, `/partners/statements`
+- `partners.controller.ts` — `/partners/attributions`, `/partners/pnl`, `/partners/receivables`, `/partners/refs`, `/partners/statements`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/partners`

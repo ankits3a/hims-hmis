@@ -93,6 +93,11 @@ export {
 export type {
   AcknowledgeCriticalInput, AcknowledgeCriticalOutcome, CriticalAttempt, OpenCriticalCall,
 } from "./criticals";
+// ── E3.2 (#595) — the critical chase ladder and the G5 read-back report ──
+export {
+  LAB_CHASE_ACTOR, LAB_CHASE_RUNG_MINUTES, chaseRecipients, criticalReadbackByWeek, rungDue, sweepLabCriticalLadder,
+} from "./critical-ladder";
+export type { LabChaseResult, ReadbackWeek } from "./critical-ladder";
 // ── PLAN 17b T7 — the money rule, the delivery interlock, and the document ──
 // `money.ts` and `interlock.ts` are the close reviewer's first two files (§9.6): every threshold on
 // this phase's money path is in one of them, and `deliveryAllowed` is the function 22c-F, 24a and
@@ -139,5 +144,5 @@ export {
 export type { LatestLabNumber } from "./coagulation";
 export type { LabReleaseTest, LabReleaseValue } from "./abdm-release";
 // DOCTOR DESK DD-0.2 (#626) — the clinician's own lab rows: open criticals and delta-flagged results.
-export { deltaResultsForClinician, openCriticalsForClinician, resultsForPatientSince } from "./clinician-reads";
+export { closedCriticalsForClinician, criticalCallsByIds, deltaResultsForClinician, openCriticalsForClinician, resultsForPatientSince } from "./clinician-reads";
 export type { ClinicianLabRow, PatientResultSince } from "./clinician-reads";

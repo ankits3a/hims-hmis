@@ -9,6 +9,7 @@ import { color, radius, space, type } from "../theme";
 import { Band, Button, KeyboardScrollView, s as ui } from "../ui";
 import { ApptPick } from "../copilot/appt-pick";
 import { ActPick } from "../copilot/act-pick";
+import { DayReport, isDayReport, type CopilotDayReport } from "../copilot/report";
 import { PHONE_SCREEN, answerText, chipsFor, isActPick, type AskReply, type AskSource, type ConfirmReply, type CopilotActPick, type CopilotProposal } from "../copilot/model";
 
 /**
@@ -21,7 +22,7 @@ import { PHONE_SCREEN, answerText, chipsFor, isActPick, type AskReply, type AskS
  * stays above the Android keyboard (the vc24 rule).
  */
 type Turn = {
-  n: number; question: string; text: string | null; askId: string | null; report: boolean; wrong: "no" | "sending" | "yes";
+  n: number; question: string; text: string | null; askId: string | null; report: CopilotDayReport | null; wrong: "no" | "sending" | "yes";
   /** E2.1 — an appointment to pick and confirm; gone once confirmed or dismissed. */
   pick: { pick: CopilotActPick; proposals: CopilotProposal[] } | null;
   /** E2.3 — a reminder was just set: the answer offers the Reminders screen. */
@@ -57,7 +58,7 @@ export function CopilotScreen() {
     const q = question.trim();
     if (q === "" || busy) return;
     const n = ++counter.current;
-    setTurns((all) => [{ n, question: q, text: null, askId: null, report: false, wrong: "no", pick: null }, ...all]);
+    setTurns((all) => [{ n, question: q, text: null, askId: null, report: null, wrong: "no", pick: null }, ...all]);
     if (source === "typed") setText("");
     setBusy(true);
     try {
@@ -66,7 +67,8 @@ export function CopilotScreen() {
         text: answerText(reply, t, lang),
         // "Wrong" is for an answer; "I did not understand" is already counted as notUnderstood (G3a).
         askId: reply.source === "none" ? null : reply.askId ?? null,
-        report: reply.intent === "my_day_report" && reply.answer.payload !== undefined,
+        // #674 — the day report drawn as compact sections, the web dock's table read across.
+        report: reply.intent === "my_day_report" && isDayReport(reply.answer.payload) ? reply.answer.payload : null,
         pick: isActPick(reply.answer.payload) && reply.proposals !== undefined ? { pick: reply.answer.payload, proposals: reply.proposals } : null,
       });
     } catch (e) {
@@ -153,7 +155,7 @@ export function CopilotScreen() {
                 <Button kind="secondary" label={t("copilot.act.openReminders")} testID={`copilot-reminders-${String(turn.n)}`} onPress={() => { router.push("/reminders"); }} />
               </View>
             )}
-            {turn.report && <Text testID={`copilot-report-${String(turn.n)}`} numberOfLines={1} style={[type.small, { color: color.dim }]}>{t("copilotPhone.report")}</Text>}
+            {turn.report !== null && <DayReport n={turn.n} report={turn.report} t={t} />}
             {turn.askId !== null && (
               <View style={{ flexDirection: "row", justifyContent: "flex-end" }}>
                 {turn.wrong === "yes"

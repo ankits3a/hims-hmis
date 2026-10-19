@@ -1,5 +1,5 @@
 {
-  "id": "26fb5adc-8b01-4371-92b6-c16666c559f5",
+  "id": "521c6f1b-533f-42f3-855c-eb7f9f4980ff",
   "prevId": "7e2628cc-a0e3-4de7-bbef-883df0944bd1",
   "version": "7",
   "dialect": "postgresql",
@@ -4800,114 +4800,6 @@
         "cds_aliases_probabilities_ck": {
           "name": "cds_aliases_probabilities_ck",
           "value": "(\"cds_aliases\".\"chooser_confidence\" is null or \"cds_aliases\".\"chooser_confidence\" between 0 and 1) and (\"cds_aliases\".\"reviewer_probability\" is null or \"cds_aliases\".\"reviewer_probability\" between 0 and 1)"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.cds_desk_routing_feeds": {
-      "name": "cds_desk_routing_feeds",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "built_at": {
-          "name": "built_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "tail": {
-          "name": "tail",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "examples": {
-          "name": "examples",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "fingerprint": {
-          "name": "fingerprint",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "floor_score": {
-          "name": "floor_score",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "baseline_floor_score": {
-          "name": "baseline_floor_score",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "holdout_score": {
-          "name": "holdout_score",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "holdout_visits": {
-          "name": "holdout_visits",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "cds_desk_routing_feeds_built_idx": {
-          "name": "cds_desk_routing_feeds_built_idx",
-          "columns": [
-            {
-              "expression": "built_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "cds_desk_routing_feeds_status_ck": {
-          "name": "cds_desk_routing_feeds_status_ck",
-          "value": "\"cds_desk_routing_feeds\".\"status\" in ('live', 'refused', 'failed', 'empty')"
         }
       },
       "isRLSEnabled": false
@@ -55434,6 +55326,172 @@
       },
       "isRLSEnabled": false
     },
+    "public.doctor_desk_acts": {
+      "name": "doctor_desk_acts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "row_key": {
+          "name": "row_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "team_id": {
+          "name": "team_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "holder_id": {
+          "name": "holder_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "choice": {
+          "name": "choice",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "opened_at": {
+          "name": "opened_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "acted_at": {
+          "name": "acted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "doctor_desk_acts_once_ux": {
+          "name": "doctor_desk_acts_once_ux",
+          "columns": [
+            {
+              "expression": "row_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "doctor_desk_acts_team_idx": {
+          "name": "doctor_desk_acts_team_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "acted_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "doctor_desk_acts_actor_idx": {
+          "name": "doctor_desk_acts_actor_idx",
+          "columns": [
+            {
+              "expression": "actor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "acted_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "doctor_desk_acts_holder_id_users_id_fk": {
+          "name": "doctor_desk_acts_holder_id_users_id_fk",
+          "tableFrom": "doctor_desk_acts",
+          "tableTo": "users",
+          "columnsFrom": [
+            "holder_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "doctor_desk_acts_actor_id_users_id_fk": {
+          "name": "doctor_desk_acts_actor_id_users_id_fk",
+          "tableFrom": "doctor_desk_acts",
+          "tableTo": "users",
+          "columnsFrom": [
+            "actor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "doctor_desk_acts_choice_ck": {
+          "name": "doctor_desk_acts_choice_ck",
+          "value": "\"doctor_desk_acts\".\"choice\" in ('seen_at_bedside', 'ecg_ordered', 'repeat_sample_sent', 'treatment_started', 'other')"
+        },
+        "doctor_desk_acts_other_ck": {
+          "name": "doctor_desk_acts_other_ck",
+          "value": "\"doctor_desk_acts\".\"choice\" <> 'other' or length(btrim(coalesce(\"doctor_desk_acts\".\"note\", ''))) between 3 and 200"
+        },
+        "doctor_desk_acts_order_ck": {
+          "name": "doctor_desk_acts_order_ck",
+          "value": "\"doctor_desk_acts\".\"acted_at\" >= \"doctor_desk_acts\".\"opened_at\""
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.doctor_desk_agent_runs": {
       "name": "doctor_desk_agent_runs",
       "schema": "",
@@ -55658,6 +55716,156 @@
       },
       "isRLSEnabled": false
     },
+    "public.doctor_desk_moves": {
+      "name": "doctor_desk_moves",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "row_key": {
+          "name": "row_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "team_id": {
+          "name": "team_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "from_user_id": {
+          "name": "from_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "to_user_id": {
+          "name": "to_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "moved_by": {
+          "name": "moved_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "alert_id": {
+          "name": "alert_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "doctor_desk_moves_row_idx": {
+          "name": "doctor_desk_moves_row_idx",
+          "columns": [
+            {
+              "expression": "row_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "doctor_desk_moves_team_idx": {
+          "name": "doctor_desk_moves_team_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "doctor_desk_moves_from_user_id_users_id_fk": {
+          "name": "doctor_desk_moves_from_user_id_users_id_fk",
+          "tableFrom": "doctor_desk_moves",
+          "tableTo": "users",
+          "columnsFrom": [
+            "from_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "doctor_desk_moves_to_user_id_users_id_fk": {
+          "name": "doctor_desk_moves_to_user_id_users_id_fk",
+          "tableFrom": "doctor_desk_moves",
+          "tableTo": "users",
+          "columnsFrom": [
+            "to_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "doctor_desk_moves_moved_by_users_id_fk": {
+          "name": "doctor_desk_moves_moved_by_users_id_fk",
+          "tableFrom": "doctor_desk_moves",
+          "tableTo": "users",
+          "columnsFrom": [
+            "moved_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "doctor_desk_moves_not_same_ck": {
+          "name": "doctor_desk_moves_not_same_ck",
+          "value": "\"doctor_desk_moves\".\"from_user_id\" <> \"doctor_desk_moves\".\"to_user_id\""
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.doctor_desk_nudges": {
       "name": "doctor_desk_nudges",
       "schema": "",
@@ -55785,6 +55993,204 @@
         "doctor_desk_nudges_not_self_ck": {
           "name": "doctor_desk_nudges_not_self_ck",
           "value": "\"doctor_desk_nudges\".\"sender_id\" <> \"doctor_desk_nudges\".\"holder_id\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.doctor_desk_ratings": {
+      "name": "doctor_desk_ratings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "work_kind": {
+          "name": "work_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "work_id": {
+          "name": "work_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "work_date": {
+          "name": "work_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rated_user_id": {
+          "name": "rated_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rater_id": {
+          "name": "rater_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "team_id": {
+          "name": "team_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "department_id": {
+          "name": "department_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rating": {
+          "name": "rating",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "doctor_desk_ratings_once_ux": {
+          "name": "doctor_desk_ratings_once_ux",
+          "columns": [
+            {
+              "expression": "work_kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "work_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "rater_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "doctor_desk_ratings_rated_idx": {
+          "name": "doctor_desk_ratings_rated_idx",
+          "columns": [
+            {
+              "expression": "rated_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "work_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "doctor_desk_ratings_department_idx": {
+          "name": "doctor_desk_ratings_department_idx",
+          "columns": [
+            {
+              "expression": "department_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "work_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "doctor_desk_ratings_rated_user_id_users_id_fk": {
+          "name": "doctor_desk_ratings_rated_user_id_users_id_fk",
+          "tableFrom": "doctor_desk_ratings",
+          "tableTo": "users",
+          "columnsFrom": [
+            "rated_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "doctor_desk_ratings_rater_id_users_id_fk": {
+          "name": "doctor_desk_ratings_rater_id_users_id_fk",
+          "tableFrom": "doctor_desk_ratings",
+          "tableTo": "users",
+          "columnsFrom": [
+            "rater_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "doctor_desk_ratings_kind_ck": {
+          "name": "doctor_desk_ratings_kind_ck",
+          "value": "\"doctor_desk_ratings\".\"work_kind\" in ('opd_visit')"
+        },
+        "doctor_desk_ratings_rating_ck": {
+          "name": "doctor_desk_ratings_rating_ck",
+          "value": "\"doctor_desk_ratings\".\"rating\" in ('good', 'fine', 'needs_rework')"
+        },
+        "doctor_desk_ratings_not_self_ck": {
+          "name": "doctor_desk_ratings_not_self_ck",
+          "value": "\"doctor_desk_ratings\".\"rater_id\" <> \"doctor_desk_ratings\".\"rated_user_id\""
+        },
+        "doctor_desk_ratings_reason_ck": {
+          "name": "doctor_desk_ratings_reason_ck",
+          "value": "\"doctor_desk_ratings\".\"rating\" <> 'needs_rework' or length(btrim(coalesce(\"doctor_desk_ratings\".\"reason\", ''))) between 3 and 200"
+        },
+        "doctor_desk_ratings_reason_len_ck": {
+          "name": "doctor_desk_ratings_reason_len_ck",
+          "value": "\"doctor_desk_ratings\".\"reason\" is null or length(\"doctor_desk_ratings\".\"reason\") <= 200"
         }
       },
       "isRLSEnabled": false

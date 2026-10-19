@@ -151,9 +151,27 @@ const SENTENCES: Record<PushCategory | "test", Record<"en" | "hi", string>> = {
   personal: { en: "You have a reminder. Open HMIS to see it.", hi: "आपका एक रिमाइंडर है। देखने के लिए HMIS खोलें।" },
   test: { en: "Test — this phone can receive HMIS notifications.", hi: "जाँच — यह फ़ोन HMIS की सूचनाएँ पा सकता है।" },
 };
+/**
+ * E3.2 (#595) — the few alert KINDS that say more than their category's sentence. Keyed by the kind
+ * WORD (a closed vocabulary), so it is still a table and still takes nothing from the alert's row:
+ * "Critical lab result waiting" names no patient, no UHID and no value.
+ */
+const KIND_SENTENCES: Record<string, Record<"en" | "hi", string>> = {
+  lab_critical: { en: "Critical lab result waiting", hi: "क्रिटिकल लैब रिपोर्ट प्रतीक्षा में" },
+};
+/** The kind's own sentence, or null when the kind has none and its category's sentence stands. */
+export function kindSentence(kind: string, language: string): string | null {
+  return KIND_SENTENCES[kind]?.[language === "hi" ? "hi" : "en"] ?? null;
+}
 export function phoneMessage(category: PushCategory | "test", link: PushLink, language: string): PhoneMessage {
   const lang = language === "hi" ? "hi" : "en";
   return { title: "HMIS", body: SENTENCES[category][lang], data: { category: category === "test" ? "alert" : category, link } };
+}
+/** One alert's message: its category's, with the kind's own sentence when the kind has one. */
+function alertMessage(category: PushCategory, link: PushLink, language: string, kind: string): PhoneMessage {
+  const message = phoneMessage(category, link, language);
+  const said = kindSentence(kind, language);
+  return said === null ? message : { ...message, body: said };
 }
 
 export type PushState = {
@@ -257,7 +275,7 @@ export async function relayAlertToPhones(
     if (done.some((d) => d.deviceRowId === phone.deviceRowId)) { result.skipped += 1; continue; }
     if (budget <= 0) { result.limited = true; result.skipped += 1; continue; }
     try {
-      const outcome = await sender.send(phone.token, phoneMessage(category, link, phone.language));
+      const outcome = await sender.send(phone.token, alertMessage(category, link, phone.language, alert.kind));
       if (outcome === "gone") {
         await clearPushToken(db, phone.deviceRowId);
         result.gone += 1;

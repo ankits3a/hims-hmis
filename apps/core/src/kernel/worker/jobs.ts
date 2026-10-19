@@ -11,7 +11,7 @@ import { sweepAppointmentNoShows } from "../../modules/opd/appointments";
 import { openDueTeleVisits } from "../../modules/opd/tele";
 import { sweepQueueNudges } from "../../modules/opd/queue-nudges";
 import { sweepBatchExpiry } from "../../modules/materials";
-import { sweepLabNonReturn, sweepLabSla } from "../../modules/lab";
+import { sweepLabCriticalLadder, sweepLabNonReturn, sweepLabSla } from "../../modules/lab";
 import { collectOrderKinds } from "../orders/kinds";
 import { flagLateSurgeons } from "../../modules/ot";
 import { runDailyClose } from "../../modules/billing/daily-close";
@@ -37,6 +37,7 @@ import { collectResourceKinds } from "../resources/kinds";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
 import { printBoardIfDue, runMonthlyProposals, sweepDutyReminders, sweepRosterWindows } from "../../modules/roster";
+import { sendUnitReports } from "../../modules/doctor-desk";
 
 // D9/step 2: the daily jobs' clock instants are CODE CONSTANTS beside their registration, not
 // deployment knobs — design decisions from the roadmap (2026-08-12 owner decision Q4), not
@@ -65,6 +66,8 @@ const LAB_NON_RETURN_IST = "07:00";
  * window it measures is a working day, so the hour it runs at is about who is awake to act on it.
  */
 const RADIOLOGY_UNREAD_WATCHMAN_IST = "08:00";
+/** DD-report v0 — the unit report, at the take boundary (plan D-G); equals contracts `UNIT_REPORT_IST`. */
+const DOCTOR_DESK_UNIT_REPORT_IST = "08:00";
 // Plan 11a D6: an hour after the new month's partitions exist and well inside the quiet window —
 // a partition DROP takes ACCESS EXCLUSIVE on `events`, which is not a lock to take during a
 // clinic. Like its neighbours it is a code constant, not a deployment knob: WHAT retention does
@@ -515,6 +518,17 @@ export function registerAllJobs(
     run: async (now) => { await sweepLabSla(db, now); },
   });
   /**
+   * E3.2 (#595) — THE LAB CRITICAL LADDER. Every minute, for `sweepCriticalChaser`'s reason: its
+   * rungs are 15 minutes apart, and a sweep coarser than the window it enforces cannot enforce it.
+   * A literal cadence, not a `JobIntervals` key (16c's reason). It writes a rung and one event; the
+   * alerts consumer turns that into a row in front of the rung's people.
+   */
+  scheduler.register({
+    name: "sweepLabCriticalLadder",
+    every: 60_000,
+    run: async (now) => { await sweepLabCriticalLadder(db, now); },
+  });
+  /**
    * PLAN 16c CLOSE / F11 — THE SIXTEENTH JOB, and it exists because a constant lied.
    *
    * `PICK_RESERVATION_MINUTES = 30` and D2 promised that a pharmacy pick releases its batch if the
@@ -711,5 +725,16 @@ export function registerAllJobs(
     name: "syncAttendance",
     every: 120_000,
     run: async (now) => { await syncAttendance(db, aliasConfig?.attendance, now); },
+  });
+  /**
+   * DOCTOR DESK DD-report v0 — THE UNIT REPORT AT 08:00 IST, the take boundary (plan D-G): one report
+   * per counting unit for the 24 h that ended, counts only, a bell to the unit head. A `dailyIst` job,
+   * so it adds nothing to the interval pool arithmetic (`client.test.ts`). Idempotent per unit per day
+   * (advisory lock + the run row), so a restart at 08:00 sends nothing twice.
+   */
+  scheduler.register({
+    name: "sendUnitReports",
+    dailyIst: DOCTOR_DESK_UNIT_REPORT_IST,
+    run: async (now) => { await sendUnitReports(db, now); },
   });
 }

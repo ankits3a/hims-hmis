@@ -79,6 +79,8 @@ export type WireAttentionRow = {
   goneHome: boolean;
   source: { module: "lab" | "radiology" | "opd"; ref: string };
   href: string;
+  /** DD-1.3 — a lab critical the lab closed (read back) with no act recorded: it stays, amber. */
+  acked?: boolean;
 };
 
 /* ═══ Clocks Running ═══ */
@@ -96,6 +98,10 @@ export type WireOwedRow = {
   dueAt: string;
   /** Whether the asker has already nudged this row (the button then reads Nudged). */
   nudgedByMe: boolean;
+  /** DD-1.3 — a lab critical the lab has closed (read back) with no act recorded yet: amber, not red. */
+  acked?: boolean;
+  /** DD-1.2 — the row was moved to its holder by this person (newest move wins). */
+  movedBy?: { userId: string; name: string } | null;
 };
 
 /** "3 min over" / "in 4 min" / "26 h over": the clock's words as a key and a number. */
@@ -193,4 +199,197 @@ export type WireNextCard = {
   lastSeen: string | null;
   since: { analyte: string; value: string | null; unit: string | null; flag: string | null; previous: string | null; at: string }[];
   lastRx: null | { issuedAt: string; lines: { drug: string; dose: string; frequency: string }[] };
+};
+
+/* ═══ DD-1 — the unit and the ladder (spec SPEC-doctor-desk-dd1-2026-10-16) ═══ */
+
+/**
+ * D11 — the scope a doctor's desk reads at, derived from the roster and grants, never chosen:
+ * `own` (no unit) · `member` (her items) · `unit` (head, or officiating head inside the window) ·
+ * `department` (HOD) · `hospital` (Medical Superintendent).
+ */
+export const DESK_LEVELS = ["own", "member", "unit", "department", "hospital"] as const;
+export type DeskLevel = (typeof DESK_LEVELS)[number];
+export type WireDeskScope = { level: DeskLevel; officiating: boolean; departmentId: string | null; departmentName: string | null };
+
+/** D3 — "What did you do?" The loop closes on the act, not the tap. `other` needs a few words. */
+export const ACT_CHOICES = ["seen_at_bedside", "ecg_ordered", "repeat_sample_sent", "treatment_started", "other"] as const;
+export type ActChoice = (typeof ACT_CHOICES)[number];
+export const ACT_NOTE_MAX = 200;
+
+/**
+ * `cannotTake` (DD-1b): on a restricted-test critical, the members who may not see it and so may not be
+ * given it (`move_target_cannot_view`) — the Move picker greys them out.
+ */
+export type WireUnitOwedRow = WireOwedRow & { mayMove: boolean; cannotTake?: string[] };
+
+/** "Your people · this week": counts of acts, never of screens (D6). */
+export type WirePersonWeek = {
+  userId: string; name: string; role: string; officiating: boolean;
+  onDutyUntil: string | null;
+  /** Owed rows this person holds now. */
+  open: number;
+  /** OPD visits this person finished in the last 7 IST days, today included. */
+  visitsDone: number;
+  /** Median minutes from a lab critical opening to this person's recorded act, last 7 days; null when none. */
+  criticalToActMedian: number | null;
+  criticalActs: number;
+  /** The asker's own last rating of this person's work, or null. */
+  lastWord: null | { rating: WorkRating; workDate: string };
+};
+
+/** HOD / MS: one unit's counts, side by side. No patient, no person. */
+export type WireUnitSummary = {
+  teamId: string; name: string; short: string; departmentName: string;
+  members: number; open: number; past: number; seenToday: number; criticalToActMedian: number | null;
+};
+
+export type WireUnitBoard = {
+  at: string; istDate: string;
+  you: WireTower["you"]; unit: WireTower["unit"]; scope: WireDeskScope;
+  /** The unit's owed rows, oldest first (C26). */
+  owed: WireUnitOwedRow[];
+  /** Who a row may be moved to (current members). Empty when the asker may not move. */
+  moveTo: { userId: string; name: string; role: string }[];
+  people: WirePersonWeek[];
+  /** Department or hospital scope: the units side by side. Empty below. */
+  units: WireUnitSummary[];
+};
+
+/** SR phone "Now" (Main.dc.html, OPD/roster parts): NOW = criticals, TODAY = unread reports and unfinished visits. */
+export type WireNow = {
+  at: string; istDate: string;
+  you: WireTower["you"]; unit: WireTower["unit"]; scope: WireDeskScope;
+  now: WireAttentionRow[];
+  today: WireAttentionRow[];
+};
+
+/** Professor phone: "Handled without you" — a unit critical someone else acted on. */
+export type WireHandledRow = {
+  key: string; analyte: string; value: string; unit: string;
+  patient: WireAttentionRow["patient"];
+  by: { userId: string; name: string };
+  choice: ActChoice; minutes: number; actedAt: string;
+};
+
+export const WORK_RATINGS = ["good", "fine", "needs_rework"] as const;
+export type WorkRating = (typeof WORK_RATINGS)[number];
+export const RATING_REASON_MAX = 200;
+
+/** A resident's finished work the asker may rate (DD-1: an OPD visit, today or yesterday). */
+export type WireRateItem = {
+  workKind: "opd_visit"; workId: string; visitNo: string; workDate: string;
+  patient: WireAttentionRow["patient"];
+  resident: { userId: string; name: string; role: string };
+  completedAt: string | null;
+  /** What the asker already gave, or null. */
+  mine: WorkRating | null;
+};
+
+export type WireProfessor = {
+  at: string; istDate: string;
+  you: WireTower["you"]; unit: WireTower["unit"]; scope: WireDeskScope;
+  /** Oldest first, the first few; `owedTotal` is the whole list (the unit board). */
+  owed: WireOwedRow[];
+  owedTotal: number;
+  /** Owed rows past their time — the proactive line's count (shown only when proactive is ON). */
+  past: number;
+  handled: WireHandledRow[];
+  toRate: WireRateItem[];
+  /**
+   * Approvals waiting for this approver, of a NON-MONEY kind only (`PROFESSOR_ASK_KINDS`): the id, the
+   * kind and when it was asked — no amount, no note, no patient. The phone opens the inbox card to decide.
+   */
+  asks: { id: string; typeKey: string; requestedAt: string }[];
+};
+
+/**
+ * The approval kinds the Professor's phone lists — an ALLOWLIST, so a kind added later is absent until
+ * someone decides it carries no money (decision 0058). Merge/unmerge, the restricted antimicrobial, and
+ * the two definition publishes.
+ */
+export const PROFESSOR_ASK_KINDS = [
+  "patient_merge", "patient_unmerge", "pharmacy_restricted_antimicrobial", "imaging_definition_publish", "ot_definition_publish",
+] as const;
+
+/** "My performance vs averages" (owner 2026-10-09): an average shows only above these floors. */
+export const RATING_MIN_OWN = 5;
+/** For ratings: three residents OTHER than the asker (the asker is left out of the pool); for the report: three units. */
+export const RATING_MIN_POOL_PEOPLE = 3;
+export const RATING_MIN_POOL_RATINGS = 10;
+
+/** A resident's own ratings this month, beside the department's and the hospital's share — no names. */
+export type WireMyRatings = {
+  month: string;
+  counts: Record<WorkRating, number> & { total: number };
+  /** Share rated Good, 0–100, or null below the floor. */
+  share: { you: number | null; department: number | null; hospital: number | null };
+  recent: { workDate: string; workKind: "opd_visit"; rating: WorkRating; reason: string | null }[];
+};
+
+/** Share rated Good, rounded, or null below `min` ratings. */
+export function goodShare(good: number, total: number, min: number): number | null {
+  return total < min || total === 0 ? null : Math.round((good * 100) / total);
+}
+
+/* ═══ DD-report v0 — the unit report at 08:00 IST (plan DD-R.1/R.2, D8, D-G) ═══ */
+
+/** The report's instant: 08:00 IST, the take boundary. It covers the 24 h that ended then. */
+export const UNIT_REPORT_IST = "08:00";
+
+/**
+ * One unit's report for one take day. COUNTS ONLY: no patient, no UHID, no person's name (D8). A median
+ * is null below its floor — the unit's own needs `RATING_MIN_OWN` acts; the department's and the
+ * hospital's need `RATING_MIN_POOL_PEOPLE` units contributing and `RATING_MIN_POOL_RATINGS` acts.
+ */
+export type WireUnitReport = {
+  id: string;
+  teamId: string; unitName: string; short: string; departmentName: string;
+  /** The IST date of the 08:00 the report was made at. */
+  reportDate: string;
+  windowFrom: string; windowTo: string; sentAt: string;
+  critical: { acts: number; median: number | null; over: number; longest: number | null; overMinutes: number };
+  compare: { department: number | null; hospital: number | null };
+  /** OPD on the IST day before the report date. */
+  opd: { date: string; seen: number; doctors: number };
+  /** What the unit owed at 08:00, and how much of it was past its time; criticals still without an act. */
+  owed: { open: number; past: number; criticalsWithoutAct: number };
+};
+
+/** One unit's row inside a department or hospital report: counts only, the unit median already floored. */
+export type WireReportUnitRow = {
+  teamId: string; short: string;
+  acts: number; median: number | null; over: number; owedOpen: number; owedPast: number; opdSeen: number;
+};
+
+/** The HOD's daily report (D8): the department's units side by side for the same 24 h, counts only. */
+export type WireDepartmentReport = {
+  id: string; departmentId: string; departmentName: string;
+  reportDate: string; windowFrom: string; windowTo: string; sentAt: string;
+  units: WireReportUnitRow[];
+  /** The department's median critical→act (pool floor) and the hospital's beside it. */
+  median: number | null; hospital: number | null;
+  totals: { acts: number; over: number; owedOpen: number; owedPast: number; opdSeen: number };
+};
+
+/** The MS's weekly report (D8, D-G): Monday 08:00 IST, the 7 days before it, every department. */
+export const WEEKLY_REPORT_DAYS = 7;
+export type WireDepartmentWeekRow = {
+  departmentId: string; departmentName: string; units: number;
+  acts: number; median: number | null; over: number; opdSeen: number; owedOpen: number; owedPast: number;
+};
+export type WireHospitalReport = {
+  id: string; reportDate: string; windowFrom: string; windowTo: string; sentAt: string; days: number;
+  departments: WireDepartmentWeekRow[];
+  median: number | null;
+  totals: { acts: number; over: number; opdSeen: number; owedOpen: number; owedPast: number };
+};
+
+export type WireUnitReports = {
+  scope: WireDeskScope;
+  reports: WireUnitReport[];
+  /** HOD and MS: the departments' daily reports they may read. */
+  departments: WireDepartmentReport[];
+  /** MS: the hospital's weekly reports. */
+  hospital: WireHospitalReport[];
 };
