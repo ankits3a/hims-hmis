@@ -84,7 +84,7 @@
 .d1.pof .prow:first-child { border-top: none; }
 .d1.pof .prow .src { width: auto; min-width: 54px; height: 19px; padding: 0 5px; font-size: 8.5px; }
 .d1.pof .prow .pill { height: 21px; padding: 0 7px; font-size: 10px; }
-.d1.pof .pof-full { position: fixed; inset: 0; z-index: 44; display: flex; flex-direction: column; background: var(--card); }
+.d1.pof .pof-full { position: fixed; inset: 0; top: var(--env-banner-h, 0px); z-index: 44; display: flex; flex-direction: column; background: var(--card); }
 
 /* ── narrower desks: the header gives before the columns do ── */
 .d1.pof .pof-user { font-size: 12.5px; font-weight: 600; white-space: nowrap; }

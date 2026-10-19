@@ -21,7 +21,8 @@ export type ConsultLine = {
   /** Shown beside a line that came from "Repeat last" or a set and was then changed, or was added new. */
   mark?: "changed" | "new" | null; was?: string | null;
 };
-export type ConsultTest = { serviceId: string; code: string; name: string; pricePaise: number };
+/** `pricePaise` null: the tariff has no price for it (#609) — the slip says "Rate at counter". */
+export type ConsultTest = { serviceId: string; code: string; name: string; pricePaise: number | null };
 /** `source` (decision 0050 P0): picked from the doctor's most-used list (`suggested`), from the search, or typed. Absent on an older draft. */
 export type ConsultDx = { text: string; icd10Code: string | null; source?: DxSource | null };
 export type ConsultDraft = {
@@ -149,13 +150,20 @@ export type WirePrecheck = {
   interactions: { severity: "severe" | "moderate"; lineIndex: number; saltPair: [string, string]; note: string; against: { scope: string; lineIndex?: number } }[];
   duplicates: { moiety: string; lineIndex: number; hard: boolean; drugClass?: string; with?: string }[];
   drugDisease: { severity: "severe" | "moderate"; lineIndex: number; moiety: string; icd10Prefix: string; icd10Title: string; diagnosis: { text: string } }[];
+  /** #621 — renal dose warnings (always hard). Optional: an older server sends none. */
+  renal?: {
+    lineIndex: number; genericId: string; genericName: string; kind: "band" | "no_recent_kidney_function";
+    severity: "reduce" | "avoid" | null; dose: string | null; egfr: number | null; sampledAt: string | null; ageDays: number | null;
+    reason: "no_result" | "stale" | "no_dob" | "sex_not_binary" | "under_18" | null;
+  }[];
   notices?: unknown[];
 };
 export type LineWarning =
   | { kind: "allergy"; hard: true; lineIndex: number; key: string; substance: string }
   | { kind: "interaction"; hard: boolean; lineIndex: number; key: string; saltPair: [string, string]; note: string }
   | { kind: "duplicate"; hard: boolean; lineIndex: number; key: string; moiety: string; drugClass: string | null }
-  | { kind: "disease"; hard: boolean; lineIndex: number; key: string; moiety: string; icd10Prefix: string; title: string };
+  | { kind: "disease"; hard: boolean; lineIndex: number; key: string; moiety: string; icd10Prefix: string; title: string }
+  | { kind: "renal"; hard: true; lineIndex: number; key: string; genericId: string; genericName: string; egfr: number | null; ageDays: number | null; dose: string | null };
 
 /** A warning's identity: the line's DRUG and what the warning is about — so a reason typed for it survives a re-check and does not attach to another line. */
 export function warningsOf(p: WirePrecheck | null, lines: readonly ConsultLine[]): LineWarning[] {
@@ -169,6 +177,7 @@ export function warningsOf(p: WirePrecheck | null, lines: readonly ConsultLine[]
   }
   for (const h of p.duplicates) out.push({ kind: "duplicate", hard: h.hard, lineIndex: h.lineIndex, key: `duplicate|${drug(h.lineIndex)}|${h.moiety.toLowerCase()}`, moiety: h.moiety, drugClass: h.drugClass ?? null });
   for (const h of p.drugDisease) out.push({ kind: "disease", hard: h.severity === "severe", lineIndex: h.lineIndex, key: `disease|${drug(h.lineIndex)}|${h.moiety.toLowerCase()}|${h.icd10Prefix}`, moiety: h.moiety, icd10Prefix: h.icd10Prefix, title: h.icd10Title });
+  for (const h of p.renal ?? []) out.push({ kind: "renal", hard: true, lineIndex: h.lineIndex, key: `renal|${drug(h.lineIndex)}|${h.genericId}`, genericId: h.genericId, genericName: h.genericName, egfr: h.egfr, ageDays: h.ageDays, dose: h.dose });
   // One card per identity: the same pair can be reported from both of its lines.
   const seen = new Set<string>();
   return out.filter((w) => (seen.has(`${w.lineIndex}|${w.key}`) ? false : (seen.add(`${w.lineIndex}|${w.key}`), true)));
@@ -186,6 +195,7 @@ export function overridesOf(warnings: readonly LineWarning[], reasons: Readonly<
   interactionOverrides?: { lineIndex: number; reason: string; saltPair: [string, string] }[];
   duplicateOverrides?: { lineIndex: number; reason: string; moiety: string }[];
   drugDiseaseOverrides?: { lineIndex: number; reason: string; moiety: string; icd10Prefix: string }[];
+  renalOverrides?: { lineIndex: number; reason: string; genericId: string }[];
 } {
   const r = (w: LineWarning): string => (reasons[w.key] ?? "").trim();
   const hard = warnings.filter((w) => w.hard && r(w).length >= MIN_REASON);
@@ -193,15 +203,22 @@ export function overridesOf(warnings: readonly LineWarning[], reasons: Readonly<
   const i = hard.filter((w): w is Extract<LineWarning, { kind: "interaction" }> => w.kind === "interaction").map((w) => ({ lineIndex: w.lineIndex, reason: r(w), saltPair: w.saltPair }));
   const u = hard.filter((w): w is Extract<LineWarning, { kind: "duplicate" }> => w.kind === "duplicate").map((w) => ({ lineIndex: w.lineIndex, reason: r(w), moiety: w.moiety }));
   const dd = hard.filter((w): w is Extract<LineWarning, { kind: "disease" }> => w.kind === "disease").map((w) => ({ lineIndex: w.lineIndex, reason: r(w), moiety: w.moiety, icd10Prefix: w.icd10Prefix }));
+  const rn = hard.filter((w): w is Extract<LineWarning, { kind: "renal" }> => w.kind === "renal").map((w) => ({ lineIndex: w.lineIndex, reason: r(w), genericId: w.genericId }));
   return {
     ...(a.length > 0 ? { overrides: a } : {}), ...(i.length > 0 ? { interactionOverrides: i } : {}),
     ...(u.length > 0 ? { duplicateOverrides: u } : {}), ...(dd.length > 0 ? { drugDiseaseOverrides: dd } : {}),
+    ...(rn.length > 0 ? { renalOverrides: rn } : {}),
   };
 }
 
 // ——— repeat last, and sets ———
 
-export type WireLastLine = { drug: string; dose: string; route: string; frequency: string; durationDays: number | null; instructions: string | null; medicineId?: string | null };
+/**
+ * `food` — a SET line's food timing as a language-neutral code (put into words only when shown). Absent on
+ * a prescription line and on a set saved before the code existed; those carry it as words in
+ * `instructions`, which `foodOf` maps back.
+ */
+export type WireLastLine = { drug: string; dose: string; route: string; frequency: string; durationDays: number | null; instructions: string | null; medicineId?: string | null; food?: "before" | "after" | null };
 
 function foodOf(instructions: string | null): { food: "before" | "after" | null; rest: string } {
   const s = (instructions ?? "").trim();
@@ -212,7 +229,7 @@ function foodOf(instructions: string | null): { food: "before" | "after" | null;
 
 export function linesFrom(lines: readonly WireLastLine[], source: LineSource | null = null): ConsultLine[] {
   return lines.slice(0, MAX_LINES).map((l) => {
-    const f = foodOf(l.instructions);
+    const f = l.food === "before" || l.food === "after" ? { food: l.food, rest: (l.instructions ?? "").trim() } : foodOf(l.instructions);
     return { drug: l.drug, dose: l.dose, frequency: l.frequency, durationDays: l.durationDays, food: f.food, instructions: f.rest, route: l.route, medicineId: l.medicineId ?? null, mark: null, was: null, source };
   });
 }
@@ -234,12 +251,12 @@ export function childDoseMissing(d: ConsultDraft, band: Band): boolean {
 }
 
 export type WireSetBody = {
-  lines: { drug: string; dose: string; route: string; frequency: string; durationDays: number | null; instructions: string | null; medicineId?: string | null }[];
+  lines: { drug: string; dose: string; route: string; frequency: string; durationDays: number | null; instructions: string | null; medicineId?: string | null; food?: "before" | "after" | null }[];
   tests: { serviceId: string; code: string; name: string }[]; advice: string | null; reviewDays: number | null;
 };
 
 /** A set FILLS the visit: its lines after the ones already there (a drug already on the visit is not added twice), its tests, its advice. */
-export function applySet(d: ConsultDraft, name: string, body: WireSetBody, priceOf: (serviceId: string) => number, now: number, band: Band = "adult"): ConsultDraft {
+export function applySet(d: ConsultDraft, name: string, body: WireSetBody, priceOf: (serviceId: string) => number | null, now: number, band: Band = "adult"): ConsultDraft {
   const have = new Set(d.lines.map((l) => l.drug.trim().toLowerCase()));
   /* A set's doses were written for an adult: for a child the set brings the medicines and the doctor enters each dose. */
   const add = withoutDoseForChild(linesFrom(body.lines, "set").filter((l) => !have.has(l.drug.trim().toLowerCase())), band);
@@ -252,12 +269,16 @@ export function applySet(d: ConsultDraft, name: string, body: WireSetBody, price
   };
 }
 
-/** The draft as a set body — what "Save as a set" stores. No patient is in it: lines, tests, advice, review. */
-export function setBodyOf(d: ConsultDraft, food: { before: string; after: string }): WireSetBody {
+/**
+ * The draft as a set body — what "Save as a set" and "Edit set" store. No patient is in it: lines, tests,
+ * advice, review. The food timing is stored as its CODE and the instructions without it, so a set saved
+ * on a phone in Hindi reads in English on the next one (and the reverse).
+ */
+export function setBodyOf(d: ConsultDraft): WireSetBody {
   return {
     lines: d.lines.filter(lineComplete).slice(0, 12).map((l) => {
-      const w = wireLine(l, food);
-      return { drug: w.drug, dose: w.dose, route: w.route, frequency: w.frequency, durationDays: w.durationDays, instructions: w.instructions, ...(l.medicineId === null ? {} : { medicineId: l.medicineId }) };
+      const w = wireLine({ ...l, food: null }, { before: "", after: "" });
+      return { drug: w.drug, dose: w.dose, route: w.route, frequency: w.frequency, durationDays: w.durationDays, instructions: w.instructions, food: l.food, ...(l.medicineId === null ? {} : { medicineId: l.medicineId }) };
     }),
     tests: d.tests.slice(0, 12).map((t) => ({ serviceId: t.serviceId, code: t.code, name: t.name })),
     advice: [...d.adviceChips, d.adviceText.trim()].filter((x) => x !== "").join(". ") || null,

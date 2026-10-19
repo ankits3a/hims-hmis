@@ -24,6 +24,7 @@ import { pharmacyManifest } from "../../modules/pharmacy";
 import { rosterManifest } from "../../modules/roster";
 import { attendanceManifest } from "../../modules/attendance";
 import { orderingManifest } from "../../modules/ordering";
+import { doctorDeskManifest } from "../../modules/doctor-desk";
 
 /**
  * `ALL_MANIFESTS` — ONE list of the manifests the API installs, consumed by everything that
@@ -189,4 +190,7 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   // TEST ORDERING (owner 2026-10-10, decision 0067) — appended. No permission of its own; the outside-test
   // menu entry and the free-test consumer.
   orderingManifest,
+  // DOCTOR DESK DD-0 (#626) — appended. A leaf: no permission of its own (its routes open on opd's
+  // `opd.consult`), one menu entry, no subscription, no job — app-only, the `attendance` shape.
+  doctorDeskManifest,
 ];

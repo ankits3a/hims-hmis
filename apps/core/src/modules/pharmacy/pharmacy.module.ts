@@ -16,6 +16,7 @@ import { PharmacyOpeningStockController } from "./pharmacy-opening-stock.control
 import { PharmacyPharmacistsController } from "./pharmacy-pharmacists.controller";
 import { PharmacyReportsController } from "./pharmacy-reports.controller";
 import { PharmacyTallyController } from "./pharmacy-tally.controller";
+import { PharmacyMetricsController } from "./pharmacy-metrics.controller";
 import { PharmacyDowntimeController, PharmacyRetailController } from "./pharmacy-retail.controller";
 import { renderPharmacyPaper } from "./print";
 import type { OnModuleInit } from "@nestjs/common";
@@ -42,7 +43,7 @@ export function registerPharmacyPrinting(): () => void {
  * retail counter; P20 the paper-dispense entry; Consult v2 the doctor's read of the shelf; parity
  * P1 the desk's paper; P6 (patient messages) the desk's consent chip and the office's Messages side; stage D1 the ADR register; stage D2 the medication incident log; stage D3 the fridge log; stage D4 the emergency trays; gap A6 the rack and strip labels.
  */
-@Module({ controllers: [PharmacyItemsController, PharmacyCounterController, PharmacyPharmacistsController, PharmacyRetailController, PharmacyDowntimeController, PharmacyDoctorController, PharmacyOfficeController, PharmacyReportsController, PharmacyTallyController, PharmacyControlledController, PharmacyMessagesController, PharmacyOpeningStockController, PharmacyAdrController, PharmacyIncidentsController, PharmacyColdChainController, PharmacyTraysController, PharmacyLabelsController] })
+@Module({ controllers: [PharmacyItemsController, PharmacyCounterController, PharmacyPharmacistsController, PharmacyRetailController, PharmacyDowntimeController, PharmacyDoctorController, PharmacyOfficeController, PharmacyReportsController, PharmacyTallyController, PharmacyControlledController, PharmacyMessagesController, PharmacyOpeningStockController, PharmacyAdrController, PharmacyIncidentsController, PharmacyColdChainController, PharmacyTraysController, PharmacyLabelsController, PharmacyMetricsController] })
 export class PharmacyModule implements OnModuleInit {
   onModuleInit(): void {
     registerPharmacyPrinting();

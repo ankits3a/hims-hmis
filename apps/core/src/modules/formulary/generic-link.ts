@@ -14,12 +14,12 @@
  * `linkMedicinesToGenerics` only ever fills an EMPTY link: a link a person set is never overwritten by a
  * bundle, and a second run does nothing.
  */
-import { and, eq, inArray, sql } from "drizzle-orm";
-import { formularyGenerics, formularyMedicines, formularyMonographs } from "../../kernel/db/schema";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { formularyGenerics, formularyMedicines, formularyMonographs, formularyRenalDoses } from "../../kernel/db/schema";
 import { getMonograph } from "./monographs";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { MonographSection } from "../../kernel/db/schema";
-import type { Monograph } from "./monographs";
+import type { Monograph, RenalDose, RenalSeverity } from "./monographs";
 
 export type GenericLinkReport = {
   /** Pairs the caller passed. */
@@ -115,6 +115,39 @@ export async function counsellingByMedicine(db: Db | Tx, medicineIds: string[]):
   for (const r of rows) {
     const c = counsellingOf(r.patient);
     if (c !== null) out.set(r.medicineId, c);
+  }
+  return out;
+}
+
+/** #621 — a product's REVIEWED renal bands, through its generic's monograph. */
+export type RenalRuleOfMedicine = { genericId: string; genericName: string; bands: RenalDose[] };
+
+/**
+ * #621 — the renal bands of each of these products, from the REVIEWED monograph of the generic it is
+ * linked to (`generic_sctid`). A product with no link, no reviewed monograph or no bands is absent from
+ * the map: the renal check speaks only where a second person has signed the bands. A draft, or the
+ * September clinical master's class-templated text, never reaches it.
+ */
+export async function renalRulesByMedicine(db: Db | Tx, medicineIds: readonly string[]): Promise<Map<string, RenalRuleOfMedicine>> {
+  const ids = [...new Set(medicineIds)];
+  if (ids.length === 0) return new Map();
+  const rows = await db.select({
+    medicineId: formularyMedicines.id, genericId: formularyGenerics.id, genericName: formularyGenerics.nameNormalized, band: formularyRenalDoses,
+  })
+    .from(formularyMedicines)
+    .innerJoin(formularyGenerics, eq(formularyGenerics.sctid, formularyMedicines.genericSctid))
+    .innerJoin(formularyMonographs, eq(formularyMonographs.genericId, formularyGenerics.id))
+    .innerJoin(formularyRenalDoses, eq(formularyRenalDoses.monographId, formularyMonographs.id))
+    .where(and(inArray(formularyMedicines.id, ids), eq(formularyMonographs.status, "reviewed")))
+    .orderBy(asc(formularyRenalDoses.position));
+  const out = new Map<string, RenalRuleOfMedicine>();
+  for (const r of rows) {
+    const rule = out.get(r.medicineId) ?? { genericId: r.genericId, genericName: r.genericName, bands: [] };
+    rule.bands.push({
+      id: r.band.id, position: r.band.position, crclMin: r.band.crclMin, crclMax: r.band.crclMax,
+      dose: r.band.dose, severity: r.band.severity as RenalSeverity,
+    });
+    out.set(r.medicineId, rule);
   }
   return out;
 }

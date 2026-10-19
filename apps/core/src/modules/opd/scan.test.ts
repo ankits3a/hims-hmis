@@ -107,6 +107,22 @@ describe("opd — the quick scan's one read", () => {
     expect(after).toMatchObject({ outcome: "visit", visit: { vitalsDone: true, guardianOffer: false } });
   });
 
+  /* #771 — the guardian mark was a mistake: the card offers "Undo — patient is here" until the doctor has the visit. */
+  it("'Undo — patient is here' is offered on a guardian's visit to the bay and the desk only, and not once the doctor called it", async () => {
+    const asha = await mkPatient(db, clerk.actor);
+    const v = await open(asha.id);
+    const undo = async (actor: typeof vd.actor): Promise<boolean | undefined> => {
+      const r = await scanResolve(db, actor, { by: "encounter", encounterId: v.encounter.id }, MON);
+      if (r.outcome !== "visit") throw new Error("the visit was not found");
+      return r.visit.guardianUndo;
+    };
+    expect([await undo(vd.actor), await undo(clerk.actor)]).toEqual([false, false]); // no mark yet
+    await markPatientAbsent(db, vd.actor, v.encounter.id, { relation: "son", name: null }, MON);
+    expect([await undo(vd.actor), await undo(clerk.actor), await undo(reader.actor), await undo(dra.actor)]).toEqual([true, true, false, false]);
+    await callNext(db, dra.actor, v.sessionId, MON);
+    expect([await undo(vd.actor), await undo(clerk.actor)]).toEqual([false, false]);
+  });
+
   /**
    * Owner 2026-10-09 — *"Doctor's screens must not show money."* The card a DOCTOR's scan opens is
    * never told the fee is unpaid; the bay's and the desk's cards still are (billing is real here).

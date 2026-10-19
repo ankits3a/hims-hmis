@@ -15,6 +15,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { APPROVAL_KINDS, ageOf, decisionErrorKey, isKnownKind, patientName } from "./approval-kinds";
 import type { ApprovalPatient } from "./approval-kinds";
 import { RunApprovalSheet } from "./pharmacy-office/run-approval";
+import { dateLocale } from "../lib/date-locale";
 
 /**
  * ═══ APPROVALS-UX — THE OWNER'S INBOX, REBUILT FROM "THIS SCREEN CONFUSES ME" ═══
@@ -173,7 +174,7 @@ function StewardLine({ approvalId }: { approvalId: string }): React.ReactElement
 
 /** "5 Dec 2026" — a calendar date as the carton prints it, never shifted by the reader's timezone. */
 function calendarDate(iso: string): string {
-  return new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(Date.parse(`${iso}T00:00:00Z`));
+  return new Intl.DateTimeFormat(dateLocale(), { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(Date.parse(`${iso}T00:00:00Z`));
 }
 
 /**

@@ -6,6 +6,8 @@ import {
   updateResource,
 } from "../../kernel/resources";
 import { OpdError } from "./errors";
+import { currentSecondaries, secondaryDepartmentsOn } from "./secondary";
+import { istDate } from "./time";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -343,11 +345,28 @@ export async function updateDoctor(
   await tx.update(opdDoctors).set({ ...patch, ...code, ...designation, updatedBy: actor.id, updatedAt: new Date() }).where(eq(opdDoctors.id, id));
 }
 
-export async function listDoctors(db: Db, opts: { departmentId?: string; activeOnly?: boolean } = {}): Promise<DoctorRow[]> {
+/** #914 — the doctor's running or coming secondary department, or null; the admin screen edits it. */
+export type DoctorSecondary = { departmentId: string; fromDate: string; toDate: string | null };
+export type DoctorListRow = DoctorRow & { secondary: DoctorSecondary | null };
+
+/**
+ * #914 — `departmentId` lists the department's own doctors AND those whose secondary is in force
+ * there today: this is the appointment book's and the referral picker's doctor list.
+ */
+export async function listDoctors(
+  db: Db, opts: { departmentId?: string; activeOnly?: boolean } = {}, now: Date = new Date(),
+): Promise<DoctorListRow[]> {
+  const today = istDate(now);
   const rows = await db.select().from(opdDoctors).orderBy(opdDoctors.displayName);
-  return rows.filter(
-    (r) => (opts.departmentId === undefined || r.departmentId === opts.departmentId) && (!opts.activeOnly || r.active),
-  );
+  const inForce = await secondaryDepartmentsOn(db, today);
+  const secondaryOf = await currentSecondaries(db, today);
+  return rows
+    .filter((r) => (opts.departmentId === undefined || r.departmentId === opts.departmentId || inForce.get(r.id) === opts.departmentId)
+      && (!opts.activeOnly || r.active))
+    .map((r) => {
+      const sec = secondaryOf.get(r.id);
+      return { ...r, secondary: sec === undefined ? null : { departmentId: sec.departmentId, fromDate: sec.fromDate, toDate: sec.toDate } };
+    });
 }
 
 export async function getDoctor(db: Db, id: string): Promise<DoctorRow | null> {

@@ -14,6 +14,9 @@ import type {
   WireAdvisedTest, WireHeldAlert, WirePaperOutcome, WirePriceListRow, WireRxLine, WireTranscription,
 } from "../lib/opd-api";
 import { advisableTests } from "../lib/ordering-api";
+import {
+  SUGGESTION_PREFS_KEY, crossedHere, fetchSuggestionPrefs, hiddenLookup, tellOutcome, tellShown, useCrossedVersion,
+} from "../lib/suggest-signals";
 import "./paper-consult.css";
 
 /**
@@ -90,6 +93,51 @@ function SentBack({ onOpen }: { onOpen: (visitNo: string) => void }): React.Reac
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/**
+ * ═══ #620 — THE SCRIBE'S CHIPS, AND THEIR × (decision 0050, P0) ═══
+ *
+ * The tests the TREATING doctor advises — for this visit's diagnosis when the doctor committed one,
+ * else the doctor's usual ones (`GET /opd/paper/visits/:id/suggest-tests`). A tap only saves typing
+ * what the paper says; nothing is added until it is tapped. Each chip has the doctor's ×: crossed,
+ * it leaves this visit's screen, and three crosses hide it from this desk until it is typed again.
+ * The scribe's own switch and crosses are its own (`GET /opd/consult/suggestions`).
+ */
+type ChipTest = WireAdvisedTest & { mine: number; hospital: number };
+function ScribeTestChips({ encounterId, have, onAdd }: { encounterId: string; have: readonly string[]; onAdd: (x: WireAdvisedTest) => void }): React.ReactElement | null {
+  const { t } = useTranslation();
+  const chips = useQuery({
+    queryKey: ["paper", "suggest-tests", encounterId],
+    queryFn: () => api<{ contextKey: string | null; items: ChipTest[] }>("GET", `/opd/paper/visits/${encodeURIComponent(encounterId)}/suggest-tests`),
+    staleTime: 60_000, retry: false,
+  });
+  const prefs = useQuery({ queryKey: SUGGESTION_PREFS_KEY, queryFn: fetchSuggestionPrefs, staleTime: Infinity, retry: false });
+  useCrossedVersion();
+  const contextKey = chips.data?.contextKey ?? null;
+  const isHidden = hiddenLookup(prefs.data?.hidden);
+  const taken = new Set(have);
+  const shown = prefs.data?.on === false ? [] : (chips.data?.items ?? [])
+    .filter((x) => !taken.has(x.serviceId) && !crossedHere(encounterId, "test", x.serviceId) && !isHidden("test", contextKey, x.serviceId)).slice(0, 6);
+  const told = shown.map((x) => x.serviceId).join("\n");
+  useEffect(() => { if (told !== "") tellShown("scribe", encounterId, "test", contextKey, told.split("\n")); }, [encounterId, contextKey, told]);
+  if (shown.length === 0) return null;
+  return (
+    <div className="pc-sug" data-testid="scribe-sug-tests" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 8 }}>
+      <span className="pc-hint">{t("scribe.sugTests")}</span>
+      {shown.map((x, rank) => (
+        <span key={x.serviceId} style={{ display: "inline-flex", alignItems: "stretch", borderRadius: 15, border: "1.5px dashed var(--green)", color: "var(--green)", overflow: "hidden" }}>
+          <button type="button" tabIndex={-1} data-testid={`scribe-sug-test-${x.code}`} style={{ padding: "3px 4px 3px 11px", fontSize: 12.5, border: 0, background: "transparent", color: "inherit", cursor: "pointer" }}
+            onClick={() => { tellOutcome("scribe", encounterId, "test", contextKey, x.serviceId, rank, "accepted"); onAdd({ serviceId: x.serviceId, code: x.code, name: x.name, pricePaise: x.pricePaise }); }}>
+            + {x.name}
+          </button>
+          <button type="button" tabIndex={-1} data-testid={`scribe-sug-test-x-${x.code}`} aria-label={t("opdConsultV3.sugCross", { name: x.name })} title={t("opdConsultV3.sugCross", { name: x.name })}
+            style={{ minWidth: 32, minHeight: 28, padding: "0 9px 0 7px", fontSize: 15, lineHeight: 1, border: 0, background: "transparent", color: "var(--dim)", cursor: "pointer" }}
+            onClick={() => { tellOutcome("scribe", encounterId, "test", contextKey, x.serviceId, rank, "dismissed"); }}>×</button>
+        </span>
+      ))}
     </div>
   );
 }
@@ -433,6 +481,10 @@ export function OpdScribe(): React.ReactElement {
                     )}
                   </div>
                 </div>
+                {encounterId !== null && (
+                  <ScribeTestChips encounterId={encounterId} have={tests.map((x) => x.serviceId)}
+                    onAdd={(x) => { setTests((prev) => (prev.some((y) => y.serviceId === x.serviceId) ? prev : [...prev, x])); testRef.current?.focus(); }} />
+                )}
               </div>
 
               <div className="box pc-card">

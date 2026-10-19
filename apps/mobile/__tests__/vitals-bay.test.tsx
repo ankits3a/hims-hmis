@@ -162,6 +162,32 @@ describe("the vitals bay on a phone", () => {
     expect(await screen.findByTestId("identify-error")).toHaveTextContent("Visit V2610050003 is from 05-Oct-2026, not today — send them to the front desk for today's visit");
   });
 
+  /* #770 / #771 — a guardian's slip at the bay: the reason in a few words, and the undo puts the patient in hand. */
+  it("a guardian's visit says so, and 'Undo — patient is here' brings the row back and takes it", async () => {
+    let bench = [KID_ROW];
+    const s = server(base({
+      "GET /opd/bench": () => ({ status: 200, body: { items: bench } }),
+      "GET /opd/bench/locate": () => ({ status: 200, body: { onBench: false, visitNo: "V2610060004", reason: "guardian_visit", encounterId: "e4" } }),
+      "POST /opd/visits/e4/patient-absent/undo": () => { bench = [row({}), KID_ROW]; return { status: 200, body: { alreadyCleared: false } }; },
+    }));
+    await mount(s.fetcher);
+    await fireEvent.changeText(await screen.findByTestId("identify"), "V2610060004");
+    await fireEvent.press(screen.getByTestId("begin"));
+    expect(await screen.findByTestId("identify-error")).toHaveTextContent("Guardian visit — no vitals");
+    await fireEvent.press(await screen.findByTestId("identify-undo-guardian"));
+    await screen.findByTestId("tiles");
+    expect(s.of("POST /opd/visits/e4/patient-absent/undo")).toHaveLength(1);
+  });
+
+  it("a phone consult says so, and offers no undo", async () => {
+    const s = server(base({ "GET /opd/bench/locate": () => ({ status: 200, body: { onBench: false, visitNo: "V2610060009", reason: "tele_visit" } }) }));
+    await mount(s.fetcher);
+    await fireEvent.changeText(await screen.findByTestId("identify"), "V2610060009");
+    await fireEvent.press(screen.getByTestId("begin"));
+    expect(await screen.findByTestId("identify-error")).toHaveTextContent("Phone consult — no vitals");
+    expect(screen.queryByTestId("identify-undo-guardian")).toBeNull();
+  });
+
   it("reads a BP typed with a dash and a temperature typed in °F, before they are charted", async () => {
     const { fetcher } = server(base());
     await mount(fetcher);

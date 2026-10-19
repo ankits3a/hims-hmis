@@ -1,5 +1,6 @@
-import { and, count, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
+import { and, count, eq, gte, inArray, lt, lte, notInArray, sql } from "drizzle-orm";
 import { opdAppointments, opdEncounters } from "../../kernel/db/schema";
+import { correctionIdsIn } from "./report";
 import { istDateTimeToUtc } from "./time";
 import { addDays } from "../../kernel/desk/rollup";
 import { dropEmptyBuckets } from "../../kernel/desk/range";
@@ -102,8 +103,16 @@ export async function opdRange(ctx: RangeCtx): Promise<RangeBucket[]> {
     const dims = [...new Set<RangeDimension>([...groupBy, "visitType"])];
     const cols = dims.map((d) => ({ d, col: encounterColumn(d)! }));
 
+    /*
+     * #772 — a desk correction ("Wrong department? Move patient", "change the doctor") abandons one
+     * visit and opens another for the same person: the desk opened ONE visit. The report's rule
+     * (`isCorrection`, via `correctionIdsIn`) decides which, so the phone's "OPD today" and the
+     * report's "Visits opened" are the same number.
+     */
+    const corrections = [...await correctionIdsIn(db, filters.from, filters.to)];
     const where = and(
       eq(opdEncounters.type, "opd"), // 2026-09-30 — a pharmacy visit (`openPharmacyVisitInTx`) is no OPD consultation
+      ...(corrections.length > 0 ? [notInArray(opdEncounters.id, corrections)] : []),
       gte(opdEncounters.serviceDate, filters.from),
       lte(opdEncounters.serviceDate, filters.to),
       ...(filters.userIds !== undefined ? [inArray(opdEncounters.openedBy, filters.userIds)] : []),

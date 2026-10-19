@@ -11,8 +11,8 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/radiology/`
 
 - **Depends on modules:** `aerb`, `billing`, `lab`, `opd`, `ot`, `patients`, `pcpndt`, `roster`, `tariff`
-- **Used by modules:** `abdm`, `ordering`
-- **Kernel used:** `approvals`, `auth`, `config`, `db`, `desk`, `episodes`, `events`, `modules`, `notify`, `orders`, `phi`, `resources`, `tokens`, `workflow`
+- **Used by modules:** `abdm`, `doctor-desk`, `ordering`
+- **Kernel used:** `approvals`, `auth`, `config`, `db`, `desk`, `episodes`, `events`, `modules`, `notify`, `orders`, `phi`, `report`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `approvalGranted`, `orderPlaced`
 
 ## Public API (`index.ts`), by declaring file
@@ -66,6 +66,9 @@ Source: `apps/core/src/modules/radiology/`
   - `criticalTermsIn(text: string): string[]`
   - `runPreSignChecks(ctx: PreSignContext, checks: readonly PreSignCheck[] = PRE_SIGN_CHECKS): PreSignFinding[]`
   - types: `PreSignCheck`, `PreSignContext`, `PreSignFinding`, `PreSignLevel`
+- `clinician-reads.ts`
+  - `unreadReportsForClinician(exec: Db | Tx, userId: string): Promise<ClinicianImagingRow[]>`
+  - types: `ClinicianImagingRow`
 - `closed-loop.ts`
   - `isTreatingDoctor(exec: Db | Tx, actor: Actor, studyId: string): Promise<boolean>`
   - `treatingDoctorsOf(exec: Db | Tx, studyId: string): Promise<TreatingDoctors | null>`
@@ -118,7 +121,6 @@ Source: `apps/core/src/modules/radiology/`
   - `IV_HYDRATION_INSTRUCTION`
   - `METFORMIN_NOTE`
   - `assessEgfr(creatinineUmolL: number, patient: { sex: string; ageYears: number | null }): EgfrAssessment`
-  - `ckdEpi2021(creatinineMgDl: number, ageYears: number, sex: EgfrSex): number`
   - `renalBand(egfr: number): RenalBand`
   - types: `EgfrAssessment`, `RenalBand`
 - `errors.ts`
@@ -238,6 +240,8 @@ Source: `apps/core/src/modules/radiology/`
   - types: `BookedStudyRow`, `CreateImagingDeviceInput`, `EditImagingDevicePatch`, `SettableDeviceStatus`
 - `manifest.ts`
   - `radiologyManifest: ModuleManifest`
+- `modules/lab/egfr.ts`
+  - `ckdEpi2021(creatinineMgDl: number, ageYears: number, sex: EgfrSex): number`
 - `money.ts`
   - `authorisationOf(study: AuthorisationStudyFacts, encounter: AuthorisationEncounterFacts, imagingFree = false): ImagingAuthorisation | null`
   - `encounterPayer(exec: Db | Tx, encounterNo: string): Promise<{ intendedPayer: string }>`
@@ -420,7 +424,7 @@ Source: `apps/core/src/modules/radiology/`
 
 Foreign keys into: `billing`, `orders`, `patients`, `resources`, `tariff`
 
-## HTTP routes (113)
+## HTTP routes (114)
 
 - `radiology-acquisition.controller.ts` — 8: `/radiology/studies`
 - `radiology-bill-decisions.controller.ts` — 2: `/radiology/bill-decisions`
@@ -428,6 +432,7 @@ Foreign keys into: `billing`, `orders`, `patients`, `resources`, `tariff`
 - `radiology-floor.controller.ts` — 3: `/radiology/devices`, `/radiology/display`, `/radiology/portable`
 - `radiology-images.controller.ts` — 1: `/radiology/studies`
 - `radiology-ir.controller.ts` — 10: `/radiology/ir`, `/radiology/studies`
+- `radiology-metrics.controller.ts` — 1: `/radiology/metrics`
 - `radiology-mwl.controller.ts` — 1: `/radiology/mwl`
 - `radiology-orders.controller.ts` — 3: `/radiology/advised`, `/radiology/orders`
 - `radiology-pacs.controller.ts` — 5: `/radiology/pacs`

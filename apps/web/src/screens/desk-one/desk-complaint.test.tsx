@@ -48,6 +48,7 @@ function mount(
   summaries: unknown[],
   anchor: { doctorId: string; doctorName: string; seenOn: string } | null,
   assigned: { departmentId: string; doctorId: string }[],
+  triageAnswer: unknown = { suggestions: [], source: "table" },
 ): void {
   stubFetch({
     "GET /api/auth/me": {
@@ -66,7 +67,7 @@ function mount(
     "GET /api/opd/departments": { items: [{ id: "d-1", name: "Cardiology", code: "CARD" }] },
     "GET /api/opd/queues/summary": { items: summaries },
     "GET /api/opd/continuity": { anchor },
-    "POST /api/opd/triage": { suggestions: [], source: "table" },
+    "POST /api/opd/triage": triageAnswer,
     "GET /api/billing/session/current": { session: null },
     "GET /api/me/desk": { stats: [] },
     "GET /api/membership/recognition": { card: null, coupons: [] },
@@ -134,5 +135,29 @@ describe("the desk complaint travels with the walk-in", () => {
     await user.click(screen.getByTestId("propose-assign"));
     await waitFor(() => expect(assigned).toHaveLength(1));
     expect("deskComplaint" in assigned[0]!).toBe(false);
+  });
+
+  it("#614 — the triageId the ranking answered with goes back on the walk-in, and a prior says so", async () => {
+    const assigned: Record<string, unknown>[] = [];
+    mount([doctor("doc-verma", "Dr. Verma", 0)], null, assigned as never, {
+      suggestions: [{ departmentId: "d-1", reason: "where these visits ended" }], source: "prior", triageId: "tr-9",
+    });
+    await holdPatient();
+    const user = userEvent.setup({ delay: null });
+    await user.type(screen.getByTestId("complaint"), "seene mein dard");
+    await waitFor(() => expect(screen.getByText(/ranked by this hospital's past visits/)).toBeInTheDocument());
+    await user.click(screen.getByTestId("propose-assign"));
+    await waitFor(() => expect(assigned).toHaveLength(1));
+    expect(assigned[0]!.triageId).toBe("tr-9");
+  });
+
+  it("no triage answer sends no triageId key at all", async () => {
+    const assigned: Record<string, unknown>[] = [];
+    mount([doctor("doc-verma", "Dr. Verma", 0)], null, assigned as never);
+    await holdPatient();
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByTestId("propose-assign"));
+    await waitFor(() => expect(assigned).toHaveLength(1));
+    expect("triageId" in assigned[0]!).toBe(false);
   });
 });

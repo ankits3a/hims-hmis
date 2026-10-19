@@ -193,7 +193,7 @@ export function RxPrint({ data }: { data: WireRxPrint }): React.ReactElement {
             <ul className="ml-4 list-disc">
               {inHospitalTests.map((test) => (
                 <li key={test.serviceId}>
-                  {test.name} — {fmtPaise(test.pricePaise)}
+                  {test.name} — {test.pricePaise === null ? t("rx.rateAtCounter") : fmtPaise(test.pricePaise)}
                 </li>
               ))}
             </ul>

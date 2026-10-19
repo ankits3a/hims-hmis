@@ -501,7 +501,9 @@ export async function quickCollectQueue(db: Db, actor: Actor, now: Date = new Da
       sql`not exists (select 1 from lab_quick_reports q where q.order_id = ${orders.id})`,
       sql`not exists (select 1 from lab_specimen_items si where si.order_item_id = ${orderItems.id} and si.active)`,
     ))
-    .orderBy(asc(orders.placedAt));
+    // Tests within an order by code: order_items has no insertion-order column and ids are not
+    // monotonic, so without a second key the tube label's test list came back in plan order.
+    .orderBy(asc(orders.placedAt), asc(orders.id), asc(labOrderables.code));
   const byOrder = new Map<string, { row: (typeof items)[number]; tests: QuickChosenTest[] }>();
   for (const it of items) {
     const g = byOrder.get(it.orderId) ?? { row: it, tests: [] };

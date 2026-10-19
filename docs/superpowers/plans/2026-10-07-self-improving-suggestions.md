@@ -220,12 +220,16 @@ Each phase is its own PR(s), tests fail-first, web and phone both, English and H
     server-side (`hiddenSuggestions`); the graded score stays in P1;
   - a child: a set or Repeat last brings the medicines without dose, frequency or days;
   - `cds_doctor_prefs.suggestions_on` (default on) is each doctor's own switch for the chips.
-  - The scribe has no suggestion chips, so it has no ×; its frequency box snaps to the closed set.
+  - The scribe's frequency box snaps to the closed set.
+  - #620 (2026-10-15): a regimen-filled line on the web carries `suggestionEventId` onto the issue, and
+    once the issue stands each is told `accepted` (went out as offered) or `edited` (changed first); the
+    server keeps the first outcome per id. A door-slip draft issues as `paper`, by the tap and from the
+    editor. The scribe has test chips — the treating doctor's tests for the visit's diagnosis, else the
+    doctor's usual ones of 90 days — with the same ×, counted on the `scribe` surface.
   - STILL OWED from P0: run `scripts/backfill-cds-rx-lines.ts` on production and read its report (0 issued
     prescriptions there on 2026-10-07, so it has nothing to do yet); the phone has no control for the
-    doctor's own switch (it honours the one set on the web); `suggestionEventId` on a line and the
-    `edited` outcome are not written by any screen yet; the door-slip draft loaded into the web editor is
-    recorded as typed.
+    doctor's own switch (it honours the one set on the web), and the phone's lines carry no
+    `suggestionEventId` yet (#620).
 
 **P1 — Own-pattern medicines, diagnosis from complaints, three numbers** (about 7 days; 0–1 migration)
 - §7 rank, dismissal, stewardship and adult dose; naive-Bayes diagnosis chips; complaint completion; live SQL

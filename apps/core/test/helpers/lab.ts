@@ -20,7 +20,7 @@ import { tariffManifest } from "../../src/modules/tariff/manifest";
 import { upsertGstCategory } from "../../src/modules/tariff/gst-config";
 import { activateVersion, createDraftVersion, setTariffItem, submitVersion } from "../../src/modules/tariff";
 import { approveRequest } from "../../src/kernel/approvals/decisions";
-import { seedLabCatalogue, serviceIdForLabCode } from "../../scripts/seed-lab-catalogue";
+import { LAB_CATALOGUE_STANDARD_DATA, seedLabCatalogue, serviceIdForLabCode } from "../../scripts/seed-lab-catalogue";
 import {
   analytesFor, collect, deskOrder, duplicateWarnings, enterResult, printLabels, receive, verifyResult,
 } from "../../src/modules/lab";
@@ -129,7 +129,12 @@ export const NON_OVERLAPPING_PAIRS: readonly (readonly [string, string])[] = [
  * a service id the catalogue does not carry would be refused by the desk's own `unknown_service`
  * gate long before the money path, and would assert nothing about the transaction.
  */
-export async function seedLabDeskBase(db: Db, encounterNo = "V2608290001"): Promise<LabDeskFixture> {
+/**
+ * `opts.standardCodes` (#703) — orderables from the STANDARD menu (`lab-catalogue-standard.ts`) the golden fixture lacks,
+ * seeded with their analytes and ranges and PRICED in the fixture's tariff version like the rest (a Full-mode order of a
+ * culture goes through the desk and its invoice).
+ */
+export async function seedLabDeskBase(db: Db, encounterNo = "V2608290001", opts: { standardCodes?: readonly string[] } = {}): Promise<LabDeskFixture> {
   const serviceDate = "2026-08-29";
   await db.insert(registrationConfig).values({ id: "main", uhidPrefix: "HMS", updatedBy: "t" }).onConflictDoNothing();
   await seedOpdBase(db);
@@ -219,6 +224,16 @@ export async function seedLabDeskBase(db: Db, encounterNo = "V2608290001"): Prom
         : null);
 
   await seedLabCatalogue(db, pathologistUser.actor);
+  const extra = opts.standardCodes ?? [];
+  if (extra.length > 0) {
+    const S = LAB_CATALOGUE_STANDARD_DATA;
+    const orderables = S.orderables.filter((o) => extra.includes(o.code));
+    const codes = new Set(orderables.flatMap((o) => o.analyteCodes));
+    await seedLabCatalogue(db, pathologistUser.actor, {
+      analytes: S.analytes.filter((a) => codes.has(a.code)), orderables,
+      referenceRanges: S.referenceRanges.filter((r) => codes.has(r.analyteCode)), reflexRules: [],
+    });
+  }
 
   /**
    * A SECOND tariff version carrying the base three PLUS the lab codes, copied from the base one
@@ -232,7 +247,7 @@ export async function seedLabDeskBase(db: Db, encounterNo = "V2608290001"): Prom
   }));
   const draft = await withTx(db, async (tx) => {
     const d = await createDraftVersion(tx, base.drafter, { copyFromVersionId: base.tariffVersionId });
-    for (const code of PRICED_LAB_CODES) {
+    for (const code of [...PRICED_LAB_CODES, ...extra]) {
       await setTariffItem(tx, base.drafter, d.versionId, serviceIdForLabCode(code), 30000);
     }
     return d;
@@ -290,6 +305,8 @@ export async function deskAndLabel(
     draw?: boolean; wristbandScanned?: boolean; priority?: "routine" | "urgent" | "stat";
     /** A visit other than `fx.encounterNo` — see `newVisit`. */
     encounterNo?: string;
+    /** #703 — analyte codes NOT keyed here, for a test that enters them itself. */
+    skip?: readonly string[];
   } = {},
 ): Promise<{
   orderId: string; orderGroupId: string; itemIds: string[];
@@ -409,6 +426,8 @@ export async function runLabOrder(
     verifyActor?: Actor;
     /** A visit other than `fx.encounterNo` — see `newVisit`. */
     encounterNo?: string;
+    /** #703 — analyte codes NOT keyed here, for a test that enters them itself. */
+    skip?: readonly string[];
   } = {},
 ): Promise<LabRun> {
   const now = opts.at ?? new Date();
@@ -444,6 +463,7 @@ export async function runLabOrder(
     for (const analyte of analytes) {
       /** A calculated analyte is written BY `enterResult` when its inputs land — never keyed. */
       if (analyte.resultType === "formula") continue;
+      if (opts.skip?.includes(analyte.code) === true) continue;
       const ranges = await db.select({ low: labReferenceRanges.low, high: labReferenceRanges.high })
         .from(labReferenceRanges).where(eq(labReferenceRanges.analyteId, analyte.id));
       const out = await enterResult(db, enterActor, {

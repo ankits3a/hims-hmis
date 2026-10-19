@@ -180,6 +180,35 @@ describe("appointments on the phone's Desk One", () => {
     expect(await screen.findByTestId("appt-a1")).toHaveTextContent(/09:30/);
   });
 
+  it("#914 — a doctor covering a second department is offered there, reads that department's book and books into it", async () => {
+    const covering = DOCTORS.map((d) => (d.id === "d3" ? { ...d, secondary: { departmentId: "eye", fromDate: TODAY, toDate: null } } : d));
+    const s = world({ routes: {
+      "GET /opd/doctors": () => ({ status: 200, body: { items: covering } }),
+      "POST /opd/appointments": () => ({ status: 201, body: { appointment: appt({ doctorId: "d3", departmentId: "eye" }) } }),
+    } });
+    await mount(s.fetcher);
+    await findAndHold();
+    await fireEvent.press(screen.getByTestId("person-book"));
+    // Ophthalmology has no doctor of its own; the covering doctor puts it on the list.
+    await fireEvent.press(await screen.findByTestId("book-dept-eye"));
+    expect(screen.queryByTestId("book-doctor-d2")).toBeNull();
+    await fireEvent.press(await screen.findByTestId("book-doctor-d3"));
+    await waitFor(() => expect(s.of("GET /opd/slots").some((c) => c.url.includes("departmentId=eye"))).toBe(true));
+    await fireEvent.press(await screen.findByTestId("book-part-morning"));
+    await fireEvent.press(await screen.findByTestId("book-slot-09:30"));
+    await fireEvent.press(await screen.findByTestId("book-go"));
+    await screen.findByTestId("book-done-word");
+    expect(s.of("POST /opd/appointments")[0]!.body).toMatchObject({ doctorId: "d3", departmentId: "eye" });
+  });
+
+  it("#914 — a doctor with no second department reads the book and books exactly as before", async () => {
+    const s = world({ routes: { "POST /opd/appointments": () => ({ status: 201, body: { appointment: appt() } }) } });
+    await mount(s.fetcher);
+    await findAndHold();
+    await toConfirm();
+    expect(s.of("GET /opd/slots").every((c) => !c.url.includes("departmentId="))).toBe(true);
+  });
+
   it("a closed day is explained, never skipped silently: leave with its reason; a weekday the doctor does not sit", async () => {
     const s = world();
     await mount(s.fetcher);
