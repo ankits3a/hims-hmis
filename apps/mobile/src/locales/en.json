@@ -2764,6 +2764,11 @@
     }
   },
   "copilot": {
+    "report": {
+      "title": "Your day — {{date}}",
+      "provisional": "provisional",
+      "emptySection": "Nothing in this section."
+    },
     "notice": {
       "text": "Copilot questions are logged for 180 days for safety and quality. No one sees a per-person list.",
       "ok": "OK"
@@ -2937,7 +2942,7 @@
     "wrong": "Wrong",
     "marked": "Marked wrong",
     "offline": "No signal",
-    "report": "Full report on computer",
+    "more": "+{{n}} more on computer",
     "chip": {
       "queue": "Shortest line?",
       "myDuty": "My next duty",
@@ -3006,6 +3011,10 @@
     "copilot": "Copilot",
     "copilotOn": "Copilot icon is on the top bar",
     "copilotOff": "Off. Turn on to ask the copilot",
+    "suggestions": "Doctor suggestions",
+    "suggestionsOn": "Chips show in the consult",
+    "suggestionsOff": "Off for you",
+    "suggestionsHospitalOff": "Off for the hospital",
     "account": "Account",
     "logout": "Log out of this phone",
     "offline": "No signal. Try again"
@@ -3192,5 +3201,67 @@
       "lab_department_inactive": "Lab department off",
       "no_pathologist": "No pathologist"
     }
+  },
+  "report": {
+    "opd": {
+      "myVisits": "Visits I opened",
+      "myConsults": "Consultations I completed"
+    },
+    "col": {
+      "time": "Time",
+      "visitNo": "Visit no",
+      "uhid": "UHID",
+      "patient": "Patient",
+      "type": "Type",
+      "status": "Status",
+      "mode": "Mode",
+      "amount": "Amount",
+      "total": "Total",
+      "outcome": "Outcome"
+    },
+    "billing": {
+      "myCollections": "My collections"
+    },
+    "mode": {
+      "cash": "Cash",
+      "upi": "UPI",
+      "card": "Card"
+    },
+    "value": {
+      "new": "New",
+      "revisit": "Revisit",
+      "renewal": "Renewal",
+      "registered": "Registered",
+      "waiting": "Waiting",
+      "in_consultation": "With doctor",
+      "awaiting_results": "Awaiting results",
+      "completed": "Done",
+      "abandoned": "Left",
+      "prescribed": "Rx given",
+      "referred": "Referred",
+      "paper": "On paper"
+    }
+  },
+  "results": {
+    "lab": "Lab reports",
+    "imaging": "Imaging reports",
+    "back": "Back",
+    "none": "Nothing here",
+    "offline": "No signal",
+    "failed": "Could not open",
+    "gone": "Report not available",
+    "critical": "Critical",
+    "ackOnComputer": "Acknowledge on computer",
+    "state": {
+      "unread": "Unread",
+      "read": "Read",
+      "acted": "Acted on"
+    },
+    "abnormal_one": "{{count}} out of range",
+    "abnormal_other": "{{count}} out of range",
+    "amended": "Amended",
+    "partial": "Partial report",
+    "impression": "Impression",
+    "signed": "Signed by {{who}}"
   }
 }
