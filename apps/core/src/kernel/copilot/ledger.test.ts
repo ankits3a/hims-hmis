@@ -166,6 +166,18 @@ describe("E0.1 — the copilot ledger at the database", () => {
     expect(empty.wrongShare).toBeNull();
   });
 
+  it("G3b: only Wrong taps on ANSWERED asks count — a tap on a not-understood reply or a confirm row never lifts the share past 1", async () => {
+    const answered = await anAsk(0);
+    const notUnderstood = await anAsk(0, { outcome: "notUnderstood" });
+    const confirmRow = await anAsk(0, { outcome: "confirmDone" });
+    for (const id of [answered, notUnderstood, confirmRow]) expect(await recordWrong(db, "u-1", id)).toBe(true);
+
+    const h = await readCopilotHealth(db, istToday());
+    expect(h.byOutcome.answered).toBe(1);
+    expect(h.wrongTaps).toBe(1);
+    expect(h.wrongShare).toBe(1);
+  });
+
   it("the staff notice: unseen until acknowledged, then seen for good; acknowledging twice is harmless", async () => {
     expect(await noticeSeen(db, "u-9")).toBe(false);
     await acknowledgeNotice(db, "u-9");
