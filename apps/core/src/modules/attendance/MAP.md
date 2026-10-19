@@ -33,6 +33,11 @@ stored as a place word and metres — evidence beside the machine's record, neve
   `storePunches` (insert-or-ignore on id) and `storeDays` (never overwrites a locked row).
 - `linking.ts` — `decideLinks` (pure) and `linkPeople`: Aadhaar first, else a mobile exactly one active machine
   person and one active login share. `linkStates` is the Users screen's word per login.
+- `links.ts` + `links.controller.ts` (#634) — linking BY HAND and the count to watch: `linkCounts`, `unlinkedPeople`
+  (`GET /attendance/links`, `attendance.all.read`), `searchMachine`, `suggestions` (exact mobile matches only, `shared`
+  when a number is not one-to-one), `candidatesFor` and `linkByHand` (`/admin/users/attendance-links…`,
+  `auth.users.manage`). `matchOf` is the owner's two keys; a hand link with neither is `no_match`. Web screen
+  `apps/web/src/screens/attendance-links.tsx` (`/attendance/links`).
 - `aadhaar.ts` — `aadhaarHash`: bioattend's keyed hash, key HEX-DECODED. `webhook.ts` —
   `verifyBioattendWebhook`: secret used AS TEXT. Both are pinned by the guide's test vectors.
 - `reads.ts` — every read view, `dayWord` / `selfWord` (the words a person sees of their own day), `readRange`.
@@ -52,6 +57,9 @@ stored as a place word and metres — evidence beside the machine's record, neve
   hash and the last four digits.
 - No read route returns a mobile number or an Aadhaar hash: `reads.ts` selects neither column.
 - A link (`att_staff.user_id`) is 1:1 and is never re-pointed by code; a staff refresh cannot unlink.
+- A HAND link still needs a match: `linkByHand` refuses a pair whose mobile or Aadhaar hash differ (`no_match`) — a
+  name is never enough. Its event is `attendance.person_linked` with the ADMINISTRATOR as actor; the job's is
+  `attendance-linking`. A suggestion carries the matching mobile's last four digits only.
 - The pull's cursor (`att_sync_state`, stage `punches`) is moved only by the pull. The webhook never moves it.
 - A person's own attendance is words, not times, unless `ATTENDANCE_SELF_SHOWS_TIMES` is true — the times are
   absent from the payload, not hidden by the app. `/attendance/person/<own pin>` answers the same self shape
