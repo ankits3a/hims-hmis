@@ -10,9 +10,9 @@ generated: { by: tools/arch/gen.mjs }
 
 Source: `apps/core/src/modules/lab/`
 
-- **Depends on modules:** `billing`, `opd`, `patients`, `tariff`
+- **Depends on modules:** `billing`, `opd`, `patients`, `roster`, `tariff`
 - **Used by modules:** `abdm`, `doctor-desk`, `ordering`, `radiology`
-- **Kernel used:** `approvals`, `auth`, `db`, `desk`, `episodes`, `events`, `modules`, `notify`, `ops`, `orders`, `phi`, `printing`, `realtime`, `report`, `resources`, `tokens`, `workflow`
+- **Kernel used:** `alerts`, `approvals`, `auth`, `db`, `desk`, `episodes`, `events`, `modules`, `notify`, `ops`, `orders`, `phi`, `printing`, `realtime`, `report`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `interfaceDown`, `interfaceRestored`
 
 ## Public API (`index.ts`), by declaring file
@@ -66,6 +66,14 @@ Source: `apps/core/src/modules/lab/`
   - `CREATININE_ANALYTE_CODES: readonly string[]`
   - `latestVerifiedCreatinine(exec: Db | Tx, patientId: string): Promise<LatestCreatinine | null>`
   - types: `LatestCreatinine`
+- `critical-ladder.ts`
+  - `LAB_CHASE_ACTOR: Actor`
+  - `LAB_CHASE_RUNG_MINUTES`
+  - `chaseRecipients(exec: Db | Tx, rung: number, ownerUserId: string | null, at: Date, env: NodeJS.ProcessEnv = process.env): Promise<string[]>`
+  - `criticalReadbackByWeek(exec: Db | Tx, opts: { since?: Date } = {}): Promise<ReadbackWeek[]>`
+  - `rungDue(openedAt: Date, now: Date): number`
+  - `sweepLabCriticalLadder(db: Db, now: Date = new Date(), env: NodeJS.ProcessEnv = process.env): Promise<LabChaseResult>`
+  - types: `LabChaseResult`, `ReadbackWeek`
 - `criticals.ts`
   - `CRITICAL_CALL_TARGET_MINUTES`
   - `LAB_CRITICALS_CLOSE`
@@ -113,6 +121,7 @@ Source: `apps/core/src/modules/lab/`
   - `labBookingHoursChanged`
   - `labBookingMade`
   - `labCriticalAcknowledged`
+  - `labCriticalOverdue`
   - `labLabelPrinted`
   - `labModeChanged`
   - `labNightReleaseReviewed`

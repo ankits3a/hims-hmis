@@ -201,10 +201,13 @@ describe("alerts.yml mirrors the scheduler's job registry (Plan 11a residual 4)"
         // Doctor Desk DD-report v0 — the thirty-first: the unit report at 08:00 IST. Daily, so leg
         // 1b, and an `absent()` term: a report that never ran looks exactly like a quiet unit.
         "sendUnitReports",
+        // E3.2 (#595) — the thirty-second: the lab critical ladder. `every(60_000)`, so leg 1a, and an
+        // `absent()` term: a ladder that never runs looks exactly like a lab whose criticals are all read back.
+        "sweepLabCriticalLadder",
       ].sort(),
     );
-    expect(registered).toHaveLength(31); // DOCTOR DESK DD-report v0: +1, sendUnitReports (dailyIst 08:00) // COPILOT LEDGER E0.1: +1, pruneCopilotAsks; ATTENDANCE: +1, syncAttendance (every 120 000), read off the red run // TELE-CALL: +1, openDueTeleVisits (every 60 000) // NICKNAMES: +1, proposeMedicineNicknames (every 3 600 000) // MOBILE §3i: +1, sweepStaffNotices (every 60 000), read off the red run // 20-U infra: +1, printRosterBoard (every 60 000), read off the red run // 18-S RS10: +1, sweepImagingEscalations // 18-S RS11: +1, sweepOverdueQa // PHARMACY P6: +1, runRefillReminders // PHASE O T4: +1, runReachLadder // PHASE R (R7): +1, sweepRosterWindows // PHASE R (R9): +1, runMonthlyProposals
-    expect(new Set(registered).size).toBe(31); // no job registered twice (DD-report v0: 30 -> 31)
+    expect(registered).toHaveLength(32); // E3.2: +1, sweepLabCriticalLadder (every 60 000), read off the red run // DOCTOR DESK DD-report v0: +1, sendUnitReports (dailyIst 08:00) // COPILOT LEDGER E0.1: +1, pruneCopilotAsks; ATTENDANCE: +1, syncAttendance (every 120 000), read off the red run // TELE-CALL: +1, openDueTeleVisits (every 60 000) // NICKNAMES: +1, proposeMedicineNicknames (every 3 600 000) // MOBILE §3i: +1, sweepStaffNotices (every 60 000), read off the red run // 20-U infra: +1, printRosterBoard (every 60 000), read off the red run // 18-S RS10: +1, sweepImagingEscalations // 18-S RS11: +1, sweepOverdueQa // PHARMACY P6: +1, runRefillReminders // PHASE O T4: +1, runReachLadder // PHASE R (R7): +1, sweepRosterWindows // PHASE R (R9): +1, runMonthlyProposals
+    expect(new Set(registered).size).toBe(32); // no job registered twice (DD-report v0 + E3.2: 30 -> 32)
   });
 
   it("the two staleness legs together cover every registered job, exactly once each", () => {

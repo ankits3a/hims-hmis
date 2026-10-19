@@ -46,13 +46,16 @@ const DEFAULT_POOL_MAX = 20;
  * So the number is derived: every interval job may be in flight at once and each holds one client,
  * and the work needs real headroom on top. `client.test.ts` reads `jobs.ts` and refuses a default
  * that is not at least (interval jobs + 8) — the next job added moves this number in the same
- * commit or the suite is red. Postgres still runs at `max_connections = 100`: 20 (API) + 25
+ * commit or the suite is red. Postgres still runs at `max_connections = 100`: 20 (API) + 26
  * (worker) plus the exporter and pgBackRest fits, on each site.
  *
  * 24 -> 25 (2026-10-09): tele-call's `openDueTeleVisits` (60 s) and staff attendance's
  * `syncAttendance` (120 s) arrived together, making SEVENTEEN interval jobs: 17 + 8 = 25.
+ *
+ * 25 -> 26 (2026-10-12, E3.2 #595): the lab critical ladder `sweepLabCriticalLadder` (60 s), the
+ * EIGHTEENTH interval job: 18 + 8 = 26. 20 (API) + 26 (worker) still fits `max_connections = 100`.
  */
-export const DEFAULT_WORKER_POOL_MAX = 25;
+export const DEFAULT_WORKER_POOL_MAX = 26;
 const DEFAULT_CONNECT_TIMEOUT_MS = 10_000;
 
 function readPositiveInt(key: string, fallback: number): number {
