@@ -183,8 +183,13 @@ async function buildSnapshot(
     })
     .from(orderItems)
     .innerJoin(labItems, eq(labItems.orderItemId, orderItems.id))
+    .innerJoin(labOrderables, eq(labOrderables.serviceId, orderItems.serviceId))
     .where(eq(orderItems.orderId, order.id))
-    .orderBy(orderItems.createdAt);
+    /**
+     * #889 — the panels print in this order, so it must be fixed: by test code (the lab's one rule),
+     * then item for a repeated test. `created_at` alone tied for every item placed in one statement.
+     */
+    .orderBy(asc(labOrderables.code), asc(orderItems.id));
 
   /**
    * A CANCELLED ITEM IS NOT ON THE REPORT. It was withdrawn, DD7 decided what it cost, and printing
@@ -1517,7 +1522,9 @@ export async function deliveryRegister(db: Db, actor: Actor, serviceDate: string
   const [items, deliveries, notices, names] = await Promise.all([
     db.select({ orderId: orderItems.orderId, code: labOrderables.code, sensitive: labOrderables.sensitive, status: orderItems.status })
       .from(orderItems).innerJoin(labOrderables, eq(labOrderables.serviceId, orderItems.serviceId))
-      .where(inArray(orderItems.orderId, orderIds)),
+      .where(inArray(orderItems.orderId, orderIds))
+      /** #889 — a row's tests in one fixed order (by test code), not the heap's. */
+      .orderBy(asc(labOrderables.code)),
     db.select().from(labReportDeliveries).where(inArray(labReportDeliveries.reportId, reportIds)).orderBy(asc(labReportDeliveries.at)),
     db.select({ refId: notifications.refId, status: notifications.status, sentChannel: notifications.sentChannel, sentAt: notifications.sentAt })
       .from(notifications).where(and(eq(notifications.refType, "lab_report"), inArray(notifications.refId, reportIds))),
