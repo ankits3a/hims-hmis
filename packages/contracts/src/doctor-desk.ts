@@ -217,7 +217,11 @@ export const ACT_CHOICES = ["seen_at_bedside", "ecg_ordered", "repeat_sample_sen
 export type ActChoice = (typeof ACT_CHOICES)[number];
 export const ACT_NOTE_MAX = 200;
 
-export type WireUnitOwedRow = WireOwedRow & { mayMove: boolean };
+/**
+ * `cannotTake` (DD-1b): on a restricted-test critical, the members who may not see it and so may not be
+ * given it (`move_target_cannot_view`) — the Move picker greys them out.
+ */
+export type WireUnitOwedRow = WireOwedRow & { mayMove: boolean; cannotTake?: string[] };
 
 /** "Your people · this week": counts of acts, never of screens (D6). */
 export type WirePersonWeek = {

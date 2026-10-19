@@ -97,7 +97,7 @@ export const doctorDeskCopilotTools: readonly CopilotToolDecl[] = [
     async run(ctx): Promise<CopilotAnswer> {
       const at = new Date();
       const scope = await deskScope(ctx.db, ctx.actor, at);
-      return waitingOnMeAnswer(await waitingOn(ctx.db, ctx.actor, at, scope.istDate));
+      return waitingOnMeAnswer(await waitingOn(ctx.db, ctx.actor, at, scope.istDate, scope.members));
     },
   },
   {

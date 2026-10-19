@@ -66,17 +66,20 @@ describe("Doctor Desk DD-1", () => {
   let toggles: { status: number; body: unknown } = { status: 200, body: { proactive: false, draftProse: false } };
   let ratings: WireMyRatings;
   let board: WireUnitBoard = BOARD;
+  let moveRefusal: string | null = null;
   beforeEach(() => {
     setToken("t");
     posted.length = 0;
     asked.length = 0;
     board = BOARD;
+    moveRefusal = null;
     toggles = { status: 200, body: { proactive: false, draftProse: false } };
     ratings = { month: "2026-10", counts: { good: 2, fine: 1, needs_rework: 0, total: 3 }, share: { you: null, department: null, hospital: null }, recent: [{ workDate: "2026-10-05", workKind: "opd_visit", rating: "fine", reason: null }] };
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
       asked.push(raw);
       if (init?.method === "POST") posted.push({ url: raw, body: init.body === undefined ? undefined : JSON.parse(String(init.body)) });
+      if (raw.endsWith("/clocks/move") && moveRefusal !== null) return new Response(JSON.stringify({ statusCode: 403, code: moveRefusal, message: "x" }), { status: 403, headers: { "Content-Type": "application/json" } });
       if (raw.endsWith("/opd/consult/copilot-settings")) return new Response(JSON.stringify(toggles.body), { status: toggles.status, headers: { "Content-Type": "application/json" } });
       const body = raw.endsWith("/auth/me") ? { actor: { type: "user", id: "hd" }, permissions: { hospital: ["opd.consult", "roster.read"], scoped: { department: {}, floor: {} } } }
         : raw.endsWith("/ops/mode") ? { mode: "normal", since: null, note: null, reportId: null }
@@ -116,6 +119,21 @@ describe("Doctor Desk DD-1", () => {
     expect(screen.getByTestId("dd-person-sr")).toHaveTextContent("12 min · 2 acts");
     expect(screen.getByTestId("dd-person-jr")).toHaveTextContent("Good · 2026-10-05");
     expect(screen.queryByTestId("dd-units")).toBeNull();
+  });
+
+  it("DD-1b on a restricted critical the Move picker greys out who may not see it; a refusal shows its own words", async () => {
+    board = { ...BOARD, owed: BOARD.owed.map((o) => (o.key === "lab_critical:c9" ? { ...o, cannotTake: ["hd"] } : o)) };
+    moveRefusal = "move_target_cannot_view";
+    renderWithProviders(<DoctorDeskUnit />);
+    await userEvent.click(await screen.findByTestId("dd-move-lab_critical:c9"));
+    const select = screen.getByTestId("dd-move-to-lab_critical:c9");
+    const head = within(select).getByRole("option", { name: /Dr. Test Head/ }) as HTMLOptionElement;
+    expect(head.disabled).toBe(true);
+    expect(head).toHaveTextContent("cannot see this test");
+    expect((within(select).getByRole("option", { name: /Dr. Test Junior/ }) as HTMLOptionElement).disabled).toBe(false);
+    await userEvent.selectOptions(select, "jr");
+    await userEvent.click(screen.getByTestId("dd-move-go-lab_critical:c9"));
+    expect(await screen.findByTestId("dd-owes-error")).toHaveTextContent("That doctor may not see this restricted test. It stays where it is.");
   });
 
   it("without the right to move there is no Move button; a HOD sees the units side by side, counts only", async () => {
