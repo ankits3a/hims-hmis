@@ -8,6 +8,9 @@ export type OpdErrorCode =
   // is reached only at ten thousand doctors, where the caller's answer is to supply one.
   | "invalid_doctor_code" | "doctor_code_exhausted"
   | "not_a_doctor" | "not_your_patient"
+  // #914 — a doctor's second department. A bad department or date is a malformed request (400); a
+  // second secondary while one runs, or ending one that is not running, is a state (409 by rule).
+  | "invalid_secondary_department" | "secondary_department_state_conflict"
   | "invalid_schedule" | "unknown_schedule" | "unknown_leave" | "leave_not_scheduled" | "invalid_leave_range"
   | "patient_not_found" | "duplicate_suspected" | "registration_not_permitted"
   | "invalid_slot" | "slot_taken" | "slot_in_past" | "doctor_on_leave" | "unknown_appointment"

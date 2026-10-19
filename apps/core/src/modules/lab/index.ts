@@ -104,7 +104,7 @@ export type { DeliveryVerdict } from "./interlock";
 export {
   amendReport, deliveryRegister, getReport, listResultsForEncounter, listProvisionalResultsForEncounter,
   printReport, publishReport, releaseUnpaid,
-  reportsForPatient, reportVersions, LAB_REPORTS_AMEND, LAB_REPORTS_PRINT, LAB_REPORTS_PUBLISH, LAB_RESULTS_READ,
+  reportsForPatient, reportVersions, reportVersionsFor, LAB_REPORTS_AMEND, LAB_REPORTS_PRINT, LAB_REPORTS_PUBLISH, LAB_RESULTS_READ,
   PATIENT_LAB_REPORT_READY,
 } from "./reports";
 export type { DeliveryRegisterRow, PatientReportRow, PatientReports, ReportDeliveryRow, ReportNotice } from "./reports";
@@ -138,3 +138,6 @@ export {
 } from "./coagulation";
 export type { LatestLabNumber } from "./coagulation";
 export type { LabReleaseTest, LabReleaseValue } from "./abdm-release";
+// DOCTOR DESK DD-0.2 (#626) — the clinician's own lab rows: open criticals and delta-flagged results.
+export { deltaResultsForClinician, openCriticalsForClinician, resultsForPatientSince } from "./clinician-reads";
+export type { ClinicianLabRow, PatientResultSince } from "./clinician-reads";

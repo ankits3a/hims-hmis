@@ -191,11 +191,11 @@ Source: `apps/core/src/modules/ot/`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (53)
+## HTTP routes
 
-- `ot-cases.controller.ts` — 16: `/ot/cases`, `/ot/encounters`, `/ot/gates`, `/ot/list`, `/ot/lists`
-- `ot-cockpit.controller.ts` — 22: `/ot/cockpit`
-- `ot-definitions.controller.ts` — 4: `/ot/definitions`
-- `ot-recovery.controller.ts` — 11: `/ot/recovery`
+- `ot-cases.controller.ts` — `/ot/cases`, `/ot/encounters`, `/ot/gates`, `/ot/list`, `/ot/lists`
+- `ot-cockpit.controller.ts` — `/ot/cockpit`
+- `ot-definitions.controller.ts` — `/ot/definitions`
+- `ot-recovery.controller.ts` — `/ot/recovery`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/ot`

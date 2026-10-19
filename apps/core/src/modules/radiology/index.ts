@@ -214,3 +214,6 @@ export { assertNotTeleReader, teleBoard, teleReaderOf } from "./tele";
 export type { TeleBoard, TeleQueueRow, TeleReader } from "./tele";
 export { overReadNightPrelim } from "./reports";
 export type { TeleradiologyBody } from "./definitions";
+// DOCTOR DESK DD-0.2 (#626) — the treating doctor's imaging rows: unread released reports and open criticals.
+export { unreadReportsForClinician } from "./clinician-reads";
+export type { ClinicianImagingRow } from "./clinician-reads";

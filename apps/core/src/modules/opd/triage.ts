@@ -44,8 +44,8 @@ export type TriageSuggestion = {
 
 export type TriageResult = {
   suggestions: TriageSuggestion[];
-  /** `"model"` or `"keywords"` — the seat SAYS which, because advice whose origin is hidden is trusted too much. */
-  source: "model" | "keywords";
+  /** `"model"`, `"keywords"` or `"prior"` (`desk-routing.ts`) — the seat SAYS which, because advice whose origin is hidden is trusted too much. */
+  source: "model" | "keywords" | "prior";
   /**
    * ═══ SET WHEN THE DESK MUST NOT BOOK AT ALL ═══
    *
@@ -391,7 +391,7 @@ export async function suggestDepartments(
  * counter, which is rarely the registered name in full. One-letter initials are dropped — an "R"
  * would mask every standalone r in the complaint and protect nobody.
  */
-function nameTerms(names: readonly string[]): string[] {
+export function nameTerms(names: readonly string[]): string[] {
   const terms = new Set<string>();
   for (const name of names) {
     const whole = name.trim();

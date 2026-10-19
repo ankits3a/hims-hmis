@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CrkInfoButton, useSignedCrk } from "../components/crk-entry";
 import { TeleCallPanel, teleLockedOf } from "../components/tele-call-panel";
 import { TeleMark } from "../components/tele-mark";
 import { slotClock } from "../lib/appointment-view";
@@ -966,6 +967,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     return rxOpen !== i && l !== undefined && l.drug.trim() !== "" && String(l.durationDays ?? "").trim() !== "";
   };
   const stockByMedicine = useDoctorStock(watchedLines.map((l) => l.medicineId ?? ""));
+  /* #882 — a medicine's SIGNED CRK formulary entry, behind a small Info chip; absent while unsigned. */
+  const crkByMedicine = useSignedCrk(watchedLines.map((l) => l.medicineId ?? ""));
   const stockAlerts = watchedLines.flatMap((l, index) => {
     const id = l.medicineId ?? "";
     const st = id === "" ? undefined : stockByMedicine.get(id);
@@ -2408,6 +2411,12 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
         </span>
       )}
       <VisitTypeBadge visitType={shownVisitType(e.encounter)} size="sm" testId={`queue-visit-type-${e.id}`} />
+      {/* #914 — a patient who came to this doctor's second department says which one. */}
+      {e.encounter.departmentId != null && me.data !== undefined && e.encounter.departmentId !== me.data.departmentId && (
+        <span data-testid={`queue-dept-${e.id}`} className="tag" style={{ fontSize: 10.5, padding: "1px 6px", borderRadius: 4, border: "1px solid var(--line)" }}>
+          {e.encounter.departmentName ?? ""}
+        </span>
+      )}
       {/* Owner 2026-10-07 — nobody to call into the room: the guardian came with the reports. */}
       {e.encounter.patientAbsent != null && <PatientAbsentTag absent={e.encounter.patientAbsent} visitType={e.encounter.visitType} testId={`queue-absent-${e.id}`} />}
       {/*
@@ -3655,6 +3664,11 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                         <div key={f.id} className={`cx-rxcard${(watchedLines[i]?.drug.trim() ?? "") === "" || String(watchedLines[i]?.durationDays ?? "").trim() === "" ? " writing" : ""}`}
                           data-testid={`rx-card-${String(i)}`} style={{ marginTop: 14 }}>
                         <StockTag stock={stockByMedicine.get(watchedLines[i]?.medicineId ?? "")} testId={`rx-stock-${String(i)}`} />
+                        {crkByMedicine.has(watchedLines[i]?.medicineId ?? "") && (
+                          <span style={{ position: "absolute", top: -10, left: 40 }}>
+                            <CrkInfoButton entry={crkByMedicine.get(watchedLines[i]?.medicineId ?? "")} testId={`rx-info-${String(i)}`} />
+                          </span>
+                        )}
                         {(() => {
                           /*
                             THE LINE AS A CARD (the Consult Engine board): name, strength, the sig in one

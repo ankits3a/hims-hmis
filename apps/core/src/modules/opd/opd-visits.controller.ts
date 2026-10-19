@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Inject, NotFoundException, Param, Post, Query } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Inject, Logger, NotFoundException, Param, Post, Query } from "@nestjs/common";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { APPOINTMENT_MODES, patientAbsentBody } from "@hmis/contracts";
@@ -27,6 +27,9 @@ import { moveVisitDepartment, previewDepartmentMove } from "./department-move";
 import type { DepartmentMovePreview, DepartmentMoveResult } from "./department-move";
 import { continuityDoctorFor } from "./continuity";
 import { suggestDepartments } from "./triage";
+import {
+  applyRouting, bandForAge, defaultTriageMemo, priorFor, recordRoutingOutcome, routingConcepts,
+} from "./desk-routing";
 import type { TriageChoice } from "./triage";
 import { chooserFor } from "../../kernel/inference/openai-decisions";
 import type { TriageResult } from "./triage";
@@ -63,7 +66,8 @@ import type { Db } from "../../kernel/db/client";
 /* UX-AUDIT 2026-09-28 · BOARD — the slip desk's torn-QR search and the doctor's retake request. */
 const slipFindQuery = z.object({ q: z.string().trim().min(2).max(120) });
 const slipRetakeBody = z.object({ reason: z.string().max(300).nullable().optional() });
-const slotsQuery = z.object({ doctorId: z.string().min(1), date: z.string().max(10).optional() });
+// #914 — `departmentId` narrows to that department's book (a doctor with a secondary department).
+const slotsQuery = z.object({ doctorId: z.string().min(1), date: z.string().max(10).optional(), departmentId: z.string().min(1).optional() });
 /**
  * FD-7 T2 — both ids are REQUIRED. A continuity read without a department would be "list the places
  * this patient has been", which is the diagnosis-shaped read this route exists not to be.
@@ -93,6 +97,9 @@ const triageBody = z.object({
    */
   names: z.array(z.string().min(1).max(120)).max(4).optional(),
 });
+const triageLog = new Logger("DeskRouting");
+/** #614 — the id `POST /opd/triage` answered with. Only the id: the server holds what it suggested. */
+const triageIdField = z.string().min(1).max(64).optional();
 
 const continuityQuery = z.object({
   patientId: z.string().min(1),
@@ -120,11 +127,14 @@ const appointmentCreateBody = z.object({
   patientId: z.string().min(1),
   doctorId: z.string().min(1),
   slotStart: z.coerce.date(),
+  // #914 — which of the doctor's departments; omitted ⇒ the session's, else the primary.
+  departmentId: z.string().min(1).optional(),
   source: z.enum(["desk", "phone"]).optional(),
   note: z.string().max(1000).optional(),
   // Owner 2026-10-09 — tele-call. The service judges the number (and names the refusal).
   mode: z.enum(APPOINTMENT_MODES).optional(),
   telePhone: z.string().max(40).optional(),
+  triageId: triageIdField,
 });
 /** Owner 2026-10-09 — the desk collects a tele-call's fee. The service judges the amount, the tenders and the UPI reference. */
 const teleAdvanceBody = z.object({
@@ -133,7 +143,10 @@ const teleAdvanceBody = z.object({
     mode: z.enum(["cash", "upi", "card"]), amountPaise: z.number().int().positive(), refText: z.string().trim().max(80).optional(),
   })).max(3).optional(),
 });
-const rescheduleBody = z.object({ slotStart: z.coerce.date(), doctorId: z.string().min(1).optional(), reason: z.string().max(400).optional(), telePhone: z.string().max(40).optional() });
+const rescheduleBody = z.object({
+  slotStart: z.coerce.date(), doctorId: z.string().min(1).optional(), reason: z.string().max(400).optional(), telePhone: z.string().max(40).optional(),
+  departmentId: z.string().min(1).optional(), // #914
+});
 const reasonBody = z.object({ reason: z.string().max(500) }); // blank ⇒ reason_required from the service, with its code
 /* FD-32 — the same shape, and the same choice: a blank reason is refused by the SERVICE so the
    clerk gets `reason_required` with its code rather than a zod shape error they cannot map. */
@@ -181,6 +194,7 @@ const walkInBody = z.object({
   // RC-1 T3 / D4 — bill-first defers the QUEUE JOIN, never the doctor: the visit opens with its
   // assignment, the token arrives with POST /opd/visits/:id/join-queue after the money.
   join: z.enum(["queue", "defer"]).optional(),
+  triageId: triageIdField,
 });
 /* Owner 2026-10-05 — a blank reason is the SERVICE's `reason_required`, as for abandon. */
 const moveDepartmentBody = z.object({
@@ -332,7 +346,7 @@ export class OpdVisitsController {
   async slots(@Query() query: unknown): Promise<{ slots: Slot[] }> {
     const q = parsed(slotsQuery, query);
     try {
-      return { slots: await availableSlots(this.db, q.doctorId, q.date ?? istDate(new Date())) };
+      return { slots: await availableSlots(this.db, q.doctorId, q.date ?? istDate(new Date()), new Date(), { departmentId: q.departmentId }) };
     } catch (e) {
       toHttp(e);
     }
@@ -356,18 +370,31 @@ export class OpdVisitsController {
   @RequirePermission("opd.visits.open", "hospital")
   @Post("triage")
   @HttpCode(200) // a suggestion is an answer, not a created thing
-  async triage(@Body() body: unknown): Promise<TriageResult> {
+  async triage(@Body() body: unknown): Promise<TriageResult & { triageId?: string }> {
     const b = parsed(triageBody, body);
-    const departments = await listDepartments(this.db, { activeOnly: true });
-    return suggestDepartments(
+    const departments = (await listDepartments(this.db, { activeOnly: true })).map((d) => ({ id: d.id, name: d.name }));
+    const ageYears = b.ageYears ?? null;
+    const ranked = await suggestDepartments(
       b.text,
-      departments.map((d) => ({ id: d.id, name: d.name })),
+      departments,
       this.config.triage,
       undefined,
       undefined,
-      { ageYears: b.ageYears ?? null, names: b.names ?? [] },
+      { ageYears, names: b.names ?? [] },
       this.triageChoice(),
     );
+    /* A red flag is final: no child rule, no prior, no triageId — the desk must not book. */
+    if (ranked.redFlag !== undefined) return ranked;
+    /* #614 — rules around the ranking (`desk-routing.ts`); the prior only for an aged adult. */
+    const concepts = await routingConcepts(this.db, b.text, b.names ?? []);
+    const band = bandForAge(ageYears);
+    const prior = band === "adult" && concepts.key !== null ? await priorFor(this.db, concepts.key) : null;
+    const routed = applyRouting(ranked, { departments, ageYears, prior });
+    const triageId = defaultTriageMemo.issue({
+      suggested: routed.suggestions.map((s) => s.departmentId),
+      source: routed.source, conceptKey: concepts.key, band, holdout: concepts.holdout,
+    });
+    return { ...routed, triageId };
   }
 
   /**
@@ -424,9 +451,11 @@ export class OpdVisitsController {
   @RequirePermission("opd.appointments.manage", "hospital")
   @Post("appointments")
   async book(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ appointment: AppointmentRow }> {
-    const b = parsed(appointmentCreateBody, body);
+    const { triageId, ...b } = parsed(appointmentCreateBody, body);
     try {
-      return await bookAppointment(this.db, actor, b);
+      const booked = await bookAppointment(this.db, actor, b);
+      await this.linkTriage(triageId, { appointmentId: booked.appointment.id, pickedDepartmentId: booked.appointment.departmentId });
+      return booked;
     } catch (e) {
       toHttp(e);
     }
@@ -554,11 +583,30 @@ export class OpdVisitsController {
   async walkInRoute(
     @CurrentActor() actor: Actor, @Body() body: unknown, @Headers("idempotency-key") idemKey?: string,
   ): Promise<WalkInResult | WalkInDeferredResult> {
-    const b = parsed(walkInBody, body);
+    const { triageId, ...b } = parsed(walkInBody, body);
     try {
-      return await walkIn(this.db, actor, b as unknown as WalkInInput, idemKey);
+      const opened = await walkIn(this.db, actor, b as unknown as WalkInInput, idemKey);
+      await this.linkTriage(triageId, { encounterId: opened.encounter.id, pickedDepartmentId: b.departmentId });
+      return opened;
     } catch (e) {
       toHttp(e);
+    }
+  }
+
+  /**
+   * #614 — the routing the desk was shown, joined to the visit or booking it became. Best effort by
+   * design: the patient is already booked, and a lost link costs one row of evidence, never the visit.
+   */
+  private async linkTriage(
+    triageId: string | undefined, link: { encounterId?: string; appointmentId?: string; pickedDepartmentId: string },
+  ): Promise<void> {
+    if (triageId === undefined) return;
+    const memo = defaultTriageMemo.take(triageId);
+    if (memo === null) return;
+    try {
+      await recordRoutingOutcome(this.db, memo, { triageId, ...link });
+    } catch (e) {
+      triageLog.warn(`routing outcome not recorded: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 

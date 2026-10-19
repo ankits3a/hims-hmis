@@ -58,12 +58,16 @@ export type WireDoctor = {
   specialty: string | null; active: boolean;
   /** 2026-10-04 — "Guest Faculty", "Senior Resident" (migration 0177). Optional: older servers send none. */
   designation?: string | null;
+  /** #914 — the running or coming secondary department (GET /opd/doctors only). Optional: older servers send none. */
+  secondary?: { departmentId: string; fromDate: string; toDate: string | null } | null;
   createdBy: string; createdAt: string; updatedBy: string; updatedAt: string;
 };
 
 export type WireSchedule = {
   id: string; doctorId: string; weekday: number; startTime: string; endTime: string; roomId: string;
   slotMinutes: number | null; validFrom: string; validTo: string | null; active: boolean;
+  /** #914 — the department the session serves; null ⇒ any of the doctor's departments. */
+  departmentId?: string | null;
   createdBy: string; createdAt: string;
 };
 
@@ -115,7 +119,11 @@ export function putCounterFlow(body: Partial<WireCounterFlow>): Promise<WireOpdC
 
 // ——— appointments and slots ———
 
-export type WireSlot = { start: string; end: string; roomId: string; scheduleId: string; booked: boolean; past: boolean };
+export type WireSlot = {
+  start: string; end: string; roomId: string; scheduleId: string; booked: boolean; past: boolean;
+  /** #914 — the session's department; null when it names none. Optional: older servers. */
+  departmentId?: string | null;
+};
 
 export type WireAppointment = {
   id: string; patientId: string; doctorId: string; departmentId: string; serviceDate: string;
@@ -208,6 +216,9 @@ export type WireQueueEntryView = WireQueueEntry & {
     id: string; patientId: string; visitType: string; dangerFlagged: boolean; status: string;
     /** Owner ruling 2026-09-24 — an internal referral opened this visit. Optional: an older server sends none. */
     referredFromEncounterId?: string | null;
+    /** #914 — the visit's department; another one than the board's on a covering doctor's line. Optional: older servers. */
+    departmentId?: string | null;
+    departmentName?: string | null;
     /**
      * OWNER RULING 2026-09-20 — the two sentences that explain an unpaid token. `feeBypassReason`
      * is the front desk's or the bay's (FD-32: why this patient reached the nurse unbilled);
@@ -368,6 +379,8 @@ export type WireDoctorSummary = {
    * name. Before T8 the server never consulted `opd_doctor_leaves` on the queue side at all.
    */
   onLeaveToday: boolean;
+  /** #914 — the doctor's second department that day; they are listed there too. Optional: older servers. */
+  secondaryDepartmentId?: string | null;
 };
 
 /** The public board (§11.5): token, room and doctor ONLY — no patient identity ever reaches this shape. */
@@ -609,6 +622,8 @@ export type WireWalkInBody = {
   acknowledgedDuplicates?: boolean;
   /** RC-1 CLOSE M2 — bill-first defers the queue join; a caller that sends "defer" reads WireWalkInDeferredResult. */
   join?: "queue" | "defer";
+  /** #614 — the id `triage()` answered with; the server links its own copy of the suggestion to this visit. */
+  triageId?: string;
 };
 
 export type WireWalkInResult = WireOpenVisitResult & { patientId: string; registered: boolean };
@@ -693,8 +708,10 @@ export type WireTriageSuggestion = { departmentId: string; reason: string };
 export type WireRedFlag = { reasonKey: string; matched: string };
 export type WireTriage = {
   suggestions: WireTriageSuggestion[];
-  source: "model" | "keywords";
+  source: "model" | "keywords" | "prior";
   redFlag?: WireRedFlag;
+  /** #614 — absent on a red flag. Sent back on the walk-in or booking that follows. */
+  triageId?: string;
 };
 
 /**
@@ -711,12 +728,14 @@ export function triage(text: string, ageYears: number | null = null, names: stri
 }
 
 /** The future lane. `date` is an IST calendar date; the server refuses a slot it has already passed. */
-export function getSlots(doctorId: string, date: string): Promise<{ slots: WireSlot[] }> {
-  return api("GET", `/opd/slots?doctorId=${encodeURIComponent(doctorId)}&date=${encodeURIComponent(date)}`);
+export function getSlots(doctorId: string, date: string, departmentId?: string): Promise<{ slots: WireSlot[] }> {
+  // #914 — with a department, only that department's book (a doctor who covers a second one).
+  const dept = departmentId === undefined || departmentId === "" ? "" : `&departmentId=${encodeURIComponent(departmentId)}`;
+  return api("GET", `/opd/slots?doctorId=${encodeURIComponent(doctorId)}&date=${encodeURIComponent(date)}${dept}`);
 }
 
 export function bookAppointment(
-  body: { patientId: string; doctorId: string; slotStart: string; note?: string; mode?: "tele"; telePhone?: string },
+  body: { patientId: string; doctorId: string; slotStart: string; note?: string; mode?: "tele"; telePhone?: string; triageId?: string; departmentId?: string },
 ): Promise<{ appointment: WireAppointment }> {
   return api("POST", "/opd/appointments", body);
 }
@@ -1023,10 +1042,11 @@ export function reclassifyVisit(
  * the owner's second route — find the doctor, move the patient off them — the same call as the first.
  */
 export function rescheduleAppointment(
-  appointmentId: string, slotStart: string, doctorId?: string, reason?: string,
+  appointmentId: string, slotStart: string, doctorId?: string, reason?: string, departmentId?: string,
 ): Promise<{ from: WireAppointment; to: WireAppointment }> {
   return api("POST", `/opd/appointments/${encodeURIComponent(appointmentId)}/reschedule`, {
     slotStart, ...(doctorId === undefined ? {} : { doctorId }), ...(reason === undefined || reason.trim() === "" ? {} : { reason: reason.trim() }),
+    ...(departmentId === undefined || departmentId === "" ? {} : { departmentId }),
   });
 }
 

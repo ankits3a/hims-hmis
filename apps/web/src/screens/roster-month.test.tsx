@@ -55,6 +55,10 @@ describe("RosterMonth (20-U U5b)", () => {
   let covers: WireCoverRequest[];
 
   beforeEach(() => {
+    // The grid opens on "this week" by the real clock, and these fixtures sit in the week of 12–13 Oct 2026; freeze
+    // the clock there (Date only, so user-event's timers still run). Main went red on 19 Oct without it.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-13T06:00:00.000Z"));
     setToken("t");
     calls.length = 0;
     current = month();
@@ -87,7 +91,7 @@ describe("RosterMonth (20-U U5b)", () => {
       return json(afterWrite);
     }));
   });
-  afterEach(() => { vi.unstubAllGlobals(); });
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
   it("publish is disabled, and says why, while a must-fix finding stands — and the finding is a sentence naming the person and the day", async () => {
     renderWithProviders(<RosterMonth team="u2" month="2026-10" />);

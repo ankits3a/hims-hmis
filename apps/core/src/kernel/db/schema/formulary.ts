@@ -786,6 +786,21 @@ export const formularyDrugDisease = pgTable(
  */
 export type MonographSection = Record<string, unknown>;
 
+/**
+ * #618 / decision 0053 — THE CRK FORMULARY ENTRY. A model DRAFTS it from public sources; a named
+ * Pharmacology reviewer edits and SIGNS it; a high-alert medicine takes a second signature. Every
+ * statement names one of the entry's own sources by `ref`. A field with no sourced statement is absent,
+ * never filled. `modules/formulary/crk-formulary.ts` owns the shape and the rules.
+ */
+export type CrkSource = { ref: string; kind: string; title: string; url: string | null; asOf: string | null };
+export type CrkStatement = { text: string; source: string };
+export type CrkEntry = {
+  sources: CrkSource[];
+  fields: Record<string, CrkStatement[]>;
+  /** A combination with no reference of its own says so, in these words, beside its CDSCO status. */
+  combinationNote: string | null;
+};
+
 export const formularyMonographs = pgTable(
   "formulary_monographs",
   {
@@ -812,6 +827,89 @@ export const formularyMonographs = pgTable(
       "formulary_monographs_review_ck",
       sql`(${t.status} = 'reviewed') = (${t.reviewedBy} is not null) and (${t.status} = 'reviewed') = (${t.reviewedAt} is not null)`,
     ),
+  ],
+);
+
+/**
+ * ═══ #618 / #884 / DECISION 0053 — THE CRK FORMULARY ENTRY: ITS OWN ROW, ITS OWN STATE ═══
+ *
+ * One row per generic, apart from `formulary_monographs` on purpose: the pharmacy's monograph (its sections
+ * and the renal bands a check computes on) is reviewed by a physician on its own `status`, and a CRK act
+ * must never publish or withdraw it, nor a pharmacy act the CRK entry.
+ *
+ * Two texts live here. `signed_crk` is the LIVE version doctors read, with its signatures and due date;
+ * `draft_crk` is a pending version (a model's draft or a person's edit) that only reviewers see. Signing
+ * the draft replaces the live text; until then the last signed version stays live. `first_signed_*` holds
+ * a high-alert entry's first signature while it waits for a second: on the draft when one is pending,
+ * otherwise on the live text's 12-month renewal.
+ */
+export const formularyCrkEntries = pgTable(
+  "formulary_crk_entries",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    genericId: text("generic_id").notNull().references(() => formularyGenerics.id),
+    /* ── the live, signed version ── */
+    signedCrk: jsonb("signed_crk").$type<CrkEntry>(),
+    reviewedBy: text("reviewed_by"),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    /** The designation of `reviewed_by`, as signed ("Professor, Pharmacology"). */
+    reviewerDesignation: text("reviewer_designation"),
+    secondReviewedBy: text("second_reviewed_by"),
+    secondReviewedAt: timestamp("second_reviewed_at", { withTimezone: true }),
+    secondReviewerDesignation: text("second_reviewer_designation"),
+    /** Twelve months after the last signature or renewal. Past it the entry is still shown, labelled overdue. */
+    reviewDueOn: date("review_due_on", { mode: "string" }),
+    /** Bumped each time a version goes live or is renewed; `formulary_crk_signatures` keeps each. */
+    version: integer("version").notNull().default(0),
+    /* ── the pending version ── */
+    draftCrk: jsonb("draft_crk").$type<CrkEntry>(),
+    /** The model id that drafted `draft_crk`, when a model did; null for a hand-written draft. */
+    draftedModel: text("drafted_model"),
+    draftedAt: timestamp("drafted_at", { withTimezone: true }),
+    draftUsage: jsonb("draft_usage").$type<{ inputTokens: number; outputTokens: number }>(),
+    /** What every model draft of this entry has cost, kept across signatures so the drafting can be priced. */
+    modelDrafts: integer("model_drafts").notNull().default(0),
+    modelInputTokens: integer("model_input_tokens").notNull().default(0),
+    modelOutputTokens: integer("model_output_tokens").notNull().default(0),
+    /* ── signing ── */
+    /** High-alert as last signed: the reviewer's flag, or any stocked item of the generic flagged high-alert. */
+    highAlert: boolean("high_alert").notNull().default(false),
+    /** A high-alert first signature waiting for its second. Cleared when the second lands, the text changes or the flag goes. */
+    firstSignedBy: text("first_signed_by"),
+    firstSignedAt: timestamp("first_signed_at", { withTimezone: true }),
+    firstSignerDesignation: text("first_signer_designation"),
+    ...auditColumns,
+  },
+  (t) => [
+    uniqueIndex("formulary_crk_entries_generic_ux").on(t.genericId),
+    check("formulary_crk_entries_text_ck", sql`${t.signedCrk} is not null or ${t.draftCrk} is not null`),
+    check(
+      "formulary_crk_entries_signed_ck",
+      sql`(${t.signedCrk} is not null) = (${t.reviewedBy} is not null) and (${t.signedCrk} is not null) = (${t.reviewedAt} is not null)`,
+    ),
+  ],
+);
+
+/**
+ * #618 — EVERY SIGNATURE, KEPT, with the text exactly as signed. `kind`: `sole` (one signature made a version
+ * live), `first` / `second` (a high-alert version's pair); #884's 12-month renewal of the unchanged live text:
+ * `renewal`, or `renewal_first` / `renewal_second` for a high-alert entry.
+ */
+export const formularyCrkSignatures = pgTable(
+  "formulary_crk_signatures",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    entryId: text("entry_id").notNull().references(() => formularyCrkEntries.id),
+    version: integer("version").notNull(),
+    kind: text("kind").notNull(),
+    signedBy: text("signed_by").notNull(),
+    designation: text("designation").notNull(),
+    signedAt: timestamp("signed_at", { withTimezone: true }).notNull().defaultNow(),
+    crk: jsonb("crk").$type<CrkEntry>().notNull(),
+  },
+  (t) => [
+    index("formulary_crk_signatures_entry_idx").on(t.entryId, t.signedAt),
+    check("formulary_crk_signatures_kind_ck", sql`${t.kind} in ('sole', 'first', 'second', 'renewal', 'renewal_first', 'renewal_second')`),
   ],
 );
 
