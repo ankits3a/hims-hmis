@@ -1548,6 +1548,13 @@
       "when": 1792410813765,
       "tag": "0221_doctor_desk_dd1",
       "breakpoints": true
+    },
+    {
+      "idx": 221,
+      "version": "7",
+      "when": 1792418752696,
+      "tag": "0222_lab_critical_ladder",
+      "breakpoints": true
     }
   ]
 }
