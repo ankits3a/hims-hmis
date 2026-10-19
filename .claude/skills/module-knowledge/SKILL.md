@@ -7,7 +7,9 @@ description: How the repo's knowledge files work — the generated architecture 
 
 - `docs/architecture/` is generated from the source by `node tools/arch/gen.mjs`; CI runs `--check`. After changing
   module imports, an `index.ts`, routes, tables or web routes, regenerate and commit. On a rebase conflict in
-  `docs/architecture/`, regenerate instead of merging by hand.
+  `docs/architecture/`, regenerate instead of merging by hand. The map is count-free on purpose, so two PRs that each add
+  a route merge without leaving it stale (#906); never render a tally from `gen.mjs`, and after changing what it renders
+  run `node tools/arch/commute-proof.mjs` (slow, by hand).
 - `apps/core/src/modules/<m>/MAP.md`: hand-written flows, invariants, traps, callers (billing, roster, tariff so far).
   OKF frontmatter (`type: module-notes`, `resource`, `generated`, `verified`, `stale_after`). Update it in the same PR as a
   flow or trap change. Cite a file and a symbol, never a line number — `--check` fails on line numbers and missing files.

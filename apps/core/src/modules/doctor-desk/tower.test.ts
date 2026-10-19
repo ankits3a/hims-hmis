@@ -13,6 +13,7 @@ import { towerView } from "./tower";
 import { nudge } from "./nudge";
 import { listBriefs, markBriefSeen } from "./briefs";
 import { DoctorDeskError } from "./errors";
+import { recordAct } from "./acts";
 import { nextCard, opdDeskView, paceOf } from "./opd-desk";
 import type { Db } from "../../kernel/db/client";
 
@@ -134,7 +135,7 @@ describe("doctor-desk — the Tower (DD-0)", () => {
     await db.insert(labAnalytes).values({ id: analyteK, code: "K", nameEn: "Potassium", resultType: "numeric", unit: "mmol/L", createdBy: "t", updatedBy: "t" });
   });
 
-  it("a lab critical on my order is a Critical row with its source; closing the call drops it on the next read", async () => {
+  it("a lab critical on my order is a Critical row with its source; a read-back keeps it amber; the act drops it (DD-1.3, D3)", async () => {
     const v = await encounter(P.SR, patientA, TODAY, "in_consultation");
     const { resultId, callId } = await labResult(P.SR, patientA, v.visitNo, { critical: true });
     const t = await towerView(db, actor(P.SR), AT);
@@ -146,7 +147,10 @@ describe("doctor-desk — the Tower (DD-0)", () => {
     });
     expect(t.tabCounts).toEqual({ all: 1, critical: 1, change: 0, new: 0, pending: 0 });
     await db.update(labCriticalCalls).set({ closedAt: min(1), closedBy: "t", readbackText: "read back" }).where(eq(labCriticalCalls.id, callId!));
-    expect((await towerView(db, actor(P.SR), min(2))).attention).toHaveLength(0);
+    // DD-1.3 (plan E20, D3): the lab's read-back is an acknowledgement, not the act — the row stays, amber.
+    expect((await towerView(db, actor(P.SR), min(2))).attention).toMatchObject([{ kind: "lab_critical", acked: true }]);
+    await recordAct(db, actor(P.SR), `lab_critical:${callId!}`, "repeat_sample_sent", null, min(3));
+    expect((await towerView(db, actor(P.SR), min(4))).attention).toHaveLength(0);
   });
 
   it("a critical on a visit that is over says the patient has gone home", async () => {

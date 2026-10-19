@@ -1541,6 +1541,13 @@
       "when": 1792262256470,
       "tag": "0220_opd_secondary_department",
       "breakpoints": true
+    },
+    {
+      "idx": 220,
+      "version": "7",
+      "when": 1792410813765,
+      "tag": "0221_doctor_desk_dd1",
+      "breakpoints": true
     }
   ]
 }

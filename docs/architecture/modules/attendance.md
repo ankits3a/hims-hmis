@@ -83,12 +83,12 @@ Source: `apps/core/src/modules/attendance/`
 
 Foreign keys into: `auth`
 
-## HTTP routes (25)
+## HTTP routes
 
-- `attendance.controller.ts` — 14: `/attendance/me`, `/attendance/person`, `/attendance/requests`, `/attendance/summary`, `/attendance/sync-state`, `/attendance/team`, `/attendance/today`
-- `links.controller.ts` — 6: `/attendance/links`
-- `me-identity.controller.ts` — 2: `/me/identity`
-- `users-identity.controller.ts` — 2: `/admin/users`
-- `webhook.controller.ts` — 1: `/webhooks/bioattend`
+- `attendance.controller.ts` — `/attendance/me`, `/attendance/person`, `/attendance/requests`, `/attendance/summary`, `/attendance/sync-state`, `/attendance/team`, `/attendance/today`
+- `links.controller.ts` — `/attendance/links`
+- `me-identity.controller.ts` — `/me/identity`
+- `users-identity.controller.ts` — `/admin/users`
+- `webhook.controller.ts` — `/webhooks/bioattend`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/attendance`

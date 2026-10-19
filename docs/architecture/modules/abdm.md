@@ -150,9 +150,9 @@ Source: `apps/core/src/modules/abdm/`
 
 Foreign keys into: `opd`, `patients`
 
-## HTTP routes (24)
+## HTTP routes
 
-- `abha.controller.ts` — 20: `/abdm/abha`, `/abdm/scan-share`
-- `hiu.controller.ts` — 4: `/abdm/hiu`
+- `abha.controller.ts` — `/abdm/abha`, `/abdm/scan-share`
+- `hiu.controller.ts` — `/abdm/hiu`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/abdm`

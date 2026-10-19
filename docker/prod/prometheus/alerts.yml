@@ -49,7 +49,7 @@ groups:
       - alert: HmisSchedulerJobStaleDaily
         expr: |
           hmis_scheduler_heartbeat_staleness_seconds{
-            job=~"sweepGuardianMajority|sweepAppointmentNoShows|sweepBatchExpiry|runDailyClose|createEventPartitions|retentionSweep|rollupUserDayFacts|sweepLabNonReturn|sweepUnreadWatchman|sweepRosterWindows|runMonthlyProposals|runRefillReminders|sweepOverdueQa|proposeMedicineNicknames|pruneCopilotAsks"
+            job=~"sweepGuardianMajority|sweepAppointmentNoShows|sweepBatchExpiry|runDailyClose|createEventPartitions|retentionSweep|rollupUserDayFacts|sweepLabNonReturn|sweepUnreadWatchman|sweepRosterWindows|runMonthlyProposals|runRefillReminders|sweepOverdueQa|proposeMedicineNicknames|pruneCopilotAsks|sendUnitReports"
           } > 93600
         for: 5m
         labels:
@@ -152,6 +152,9 @@ groups:
           # leg 1a. A sync that never started is silent in the worst way: every screen keeps showing
           # yesterday's attendance as though it were today's.
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="syncAttendance"})
+          # DOCTOR DESK DD-report v0 — the thirty-first, a DAILY job (08:00 IST), joining leg 1b. A
+          # report job that never started looks exactly like a unit with nothing to report.
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sendUnitReports"})
         for: 5m
         labels:
           severity: critical
