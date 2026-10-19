@@ -1,6 +1,7 @@
 import { ATTENTION_TAB_OF } from "@hmis/contracts";
 import type { Actor, AttentionKind, WireAttentionRow } from "@hmis/contracts";
-import { deltaResultsForClinician, openCriticalsForClinician } from "../lab";
+import { closedCriticalsForClinician, deltaResultsForClinician, openCriticalsForClinician } from "../lab";
+import { actedKeys, OWED_ALERT_DAYS } from "./owed";
 import { unreadReportsForClinician } from "../radiology";
 import { closedVisitNos, openVisitsForDoctor } from "../opd";
 import { getPatientSummaries } from "../patients";
@@ -36,12 +37,17 @@ const RANK: Record<AttentionKind, number> = { lab_critical: 0, imaging_critical:
 
 export async function waitingOn(db: Db, actor: Actor, at: Date, istDate: string): Promise<WireAttentionRow[]> {
   const me = actor.id;
-  const [crit, imaging, deltas, visits] = await Promise.all([
+  const [openCrit, closedCrit, imaging, deltas, visits] = await Promise.all([
     safely(() => openCriticalsForClinician(db, [me])),
+    safely(() => closedCriticalsForClinician(db, [me], new Date(at.getTime() - OWED_ALERT_DAYS * 86_400_000))),
     safely(() => unreadReportsForClinician(db, me)),
     safely(() => deltaResultsForClinician(db, [me], new Date(at.getTime() - DELTA_WINDOW_HOURS * 3_600_000))),
     safely(() => openVisitsForDoctor(db, me, istDate)),
   ]);
+  // DD-1.3 (D3) — an open call is red; a call the lab closed with no act recorded stays, amber; an act removes both.
+  const acted = await actedKeys(db, [...openCrit, ...closedCrit].map((c) => `lab_critical:${c.id}`)).catch(() => new Set<string>());
+  const crit = [...openCrit.map((c) => ({ ...c, acked: false })), ...closedCrit.map((c) => ({ ...c, acked: true }))]
+    .filter((c) => !acted.has(`lab_critical:${c.id}`));
   const gone = await closedVisitNos(db, [...crit.map((c) => c.encounterNo), ...imaging.filter((i) => i.critical).map((i) => i.encounterNo)]).catch(() => new Set<string>());
 
   const raw: Raw[] = [
@@ -50,6 +56,7 @@ export async function waitingOn(db: Db, actor: Actor, at: Date, istDate: string)
       params: { analyte: c.analyte, value: c.value ?? "", unit: c.unit ?? "" },
       at: c.at.toISOString(), goneHome: gone.has(c.encounterNo),
       source: { module: "lab", ref: c.resultId }, href: `/patients/${c.patientId}`,
+      ...(c.acked ? { acked: true } : {}),
     })),
     ...imaging.map((i): Raw => ({
       key: `${i.critical ? "imaging_critical" : "imaging_unread"}:${i.reportId}`, kind: i.critical ? "imaging_critical" : "imaging_unread",

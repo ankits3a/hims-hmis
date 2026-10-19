@@ -141,7 +141,7 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 | subsystem | used by modules | depends on kernel | serves HTTP |
 |---|---|---|---|
 | `alerts` | attendance, doctor-desk, opd, roster | approvals, auth, db, events, modules, notify, ops, realtime, reminders, tokens, workflow | yes |
-| `approvals` | abdm, aerb, attendance, billing, formulary, lab, materials, membership, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | alerts, auth, db, events, modules, phi, tokens, workflow | yes |
+| `approvals` | abdm, aerb, attendance, billing, doctor-desk, formulary, lab, materials, membership, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | alerts, auth, db, events, modules, phi, tokens, workflow | yes |
 | `auth` | abdm, aerb, attendance, billing, doctor-desk, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | config, crypto, db, events, modules, printing, push, ratelimit, tokens | yes |
 | `config` | abdm, attendance, billing, formulary, membership, opd, ot, partners, patients, pharmacy, radiology | — | — |
 | `copilot` | billing, doctor-desk, formulary, opd, pharmacy, roster | alerts, approvals, auth, config, db, desk, events, inference, modules, ratelimit, reminders, search, tokens, workflow | yes |
@@ -150,7 +150,7 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 | `desk` | attendance, billing, doctor-desk, lab, membership, opd, partners, patients, pharmacy, radiology, roster | approvals, auth, db, events, modules, reminders, report, tokens, workflow | yes |
 | `documents` | patients, pharmacy | — | — |
 | `episodes` | billing, lab, materials, opd, ot, pharmacy, radiology | db | — |
-| `events` | abdm, aerb, attendance, billing, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | db, worker | — |
+| `events` | abdm, aerb, attendance, billing, doctor-desk, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | db, worker | — |
 | `inference` | formulary, opd | auth, config, db, ratelimit, search, tokens | yes |
 | `modules` | abdm, aerb, attendance, billing, doctor-desk, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | alerts, approvals, auth, copilot, desk, ops, orders, resources, search, workflow | — |
 | `notify` | abdm, lab, pharmacy, radiology | auth, config, db, events, modules, tokens, workflow | yes |
