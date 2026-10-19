@@ -422,6 +422,25 @@ async function handleImagingCriticalOverdue(db: Db, e: DispatchedEvent): Promise
  */
 async function handleImagingReportUnread(db: Db, e: DispatchedEvent): Promise<void> {
   const payload = imagingReportUnread.payloadSchema.parse(e.payload);
+  /**
+   * DOCTOR DESK DD-0.11 — RUNG 1 IS THE DOCTOR WHO ORDERED IT. The chaser names the ordering
+   * clinician in `notifyUserIds` (staff ids only); the duty-manager route below is rung 2, a later
+   * event of its own. An event with no `rung` predates DD-0.11 and takes the route below, as it did.
+   * The text is structural like every other alert here: no patient, no study name (GC6, and DD11 —
+   * for a restricted study the existence of the study is itself the sensitive fact).
+   */
+  if (payload.rung === "ordering_clinician" && (payload.notifyUserIds?.length ?? 0) > 0) {
+    await raiseAlerts(db, e, payload.notifyUserIds!, {
+      kind: ALERT_KIND_IMAGING_CHASE,
+      title: "Your imaging report is unread",
+      body:
+        `A report on a study you ordered has been signed for ${String(payload.unreadHours)} hours and you `
+        + "have not opened it. Open the study to read it.",
+      refType: IMAGING_CHASE_REF_TYPE,
+      refId: payload.studyId,
+    });
+    return;
+  }
   // PHASE R (R6) — the destination is configuration now, resolved at the EVENT's own
   // instant. With no `roster_escalation_targets` row this is exactly the duty manager's
   // holders, as before; with one, it is whoever is ON as that position tonight.

@@ -138,3 +138,34 @@ export async function lastPrescriptionBy(exec: Db | Tx, userId: string, patientI
     .orderBy(desc(opdPrescriptions.issuedAt)).limit(1))[0];
   return row ?? null;
 }
+
+/**
+ * DOCTOR DESK DD-1.7 — visits these doctors FINISHED on these IST days: the work a senior may rate.
+ * No fee column, as every reader here.
+ */
+export type CompletedVisitRow = { encounterId: string; patientId: string; visitNo: string; serviceDate: string; userId: string; completedAt: Date | null };
+
+export async function completedVisitsOf(exec: Db | Tx, userIds: readonly string[], serviceDates: readonly string[]): Promise<CompletedVisitRow[]> {
+  if (userIds.length === 0 || serviceDates.length === 0) return [];
+  const rows = await (exec as Db).select({
+    encounterId: opdEncounters.id, patientId: opdEncounters.patientId, visitNo: opdEncounters.visitNo,
+    serviceDate: opdEncounters.serviceDate, userId: opdDoctors.userId, completedAt: opdEncounters.consultCompletedAt,
+  })
+    .from(opdEncounters)
+    .innerJoin(opdDoctors, eq(opdDoctors.id, opdEncounters.doctorId))
+    .where(and(inArray(opdDoctors.userId, [...userIds]), inArray(opdEncounters.serviceDate, [...serviceDates]), eq(opdEncounters.status, "completed")))
+    .orderBy(desc(opdEncounters.serviceDate), desc(opdEncounters.consultCompletedAt));
+  return rows.filter((r): r is CompletedVisitRow => r.userId !== null);
+}
+
+/** One finished visit by id, whoever's it is — the rating act re-checks the doctor's unit itself. */
+export async function completedVisitById(exec: Db | Tx, encounterId: string): Promise<CompletedVisitRow | null> {
+  const row = (await (exec as Db).select({
+    encounterId: opdEncounters.id, patientId: opdEncounters.patientId, visitNo: opdEncounters.visitNo,
+    serviceDate: opdEncounters.serviceDate, userId: opdDoctors.userId, completedAt: opdEncounters.consultCompletedAt,
+  })
+    .from(opdEncounters)
+    .innerJoin(opdDoctors, eq(opdDoctors.id, opdEncounters.doctorId))
+    .where(and(eq(opdEncounters.id, encounterId), eq(opdEncounters.status, "completed"))))[0];
+  return row === undefined || row.userId === null ? null : (row as CompletedVisitRow);
+}

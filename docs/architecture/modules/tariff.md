@@ -94,8 +94,8 @@ Source: `apps/core/src/modules/tariff/`
 
 Foreign keys into: —
 
-## HTTP routes (18)
+## HTTP routes
 
-- `tariff.controller.ts` — 18: `/tariff/gst`, `/tariff/price-list`, `/tariff/rules`, `/tariff/services`, `/tariff/versions`
+- `tariff.controller.ts` — `/tariff/gst`, `/tariff/price-list`, `/tariff/rules`, `/tariff/services`, `/tariff/versions`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/tariff`

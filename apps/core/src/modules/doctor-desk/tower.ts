@@ -27,7 +27,7 @@ const toWireLine = (l: DoctorDayLine): WireDayLine => ({
   waiting: l.waiting, inConsult: l.inConsult, longestWaitMinutes: l.longestWaitMinutes,
 });
 
-async function onDutyUntil(db: Db, userId: string, at: Date): Promise<string | null> {
+export async function onDutyUntil(db: Db, userId: string, at: Date): Promise<string | null> {
   try {
     const live = (await dutiesOf(db, userId, at, new Date(at.getTime() + 60_000)))
       .filter((d) => d.kind !== "off" && d.startsAt <= at && d.endsAt > at);
@@ -57,7 +57,7 @@ export async function towerView(db: Db, actor: Actor, at: Date): Promise<WireTow
   const memberIds = scope.members.map((m) => m.userId);
   const lines = await doctorDayLines(db, [...new Set([actor.id, ...memberIds])], scope.istDate, at).catch(() => [] as DoctorDayLine[]);
   const mine = lines.find((l) => l.userId === actor.id) ?? null;
-  const attention = await waitingOn(db, actor, at, scope.istDate);
+  const attention = await waitingOn(db, actor, at, scope.istDate, scope.members);
 
   // The login brief is built BEFORE the read that shows it, inside one transaction with the read stamp.
   if (actor.type === "user") {

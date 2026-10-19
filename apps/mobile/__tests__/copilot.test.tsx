@@ -191,15 +191,55 @@ describe("E1.3 — the screen", () => {
     expect(screen.queryByTestId("copilot-wrong-1")).toBeNull();
   });
 
-  it("the day report is the web's sentence plus where the full report is", async () => {
+  it("#674: the day report is the web's sentence, then each section drawn compactly as the web dock's table", async () => {
+    const consults = Array.from({ length: 10 }, (_, i) => [`10:${String(i).padStart(2, "0")}`, `V-${String(i)}`, `U${String(i)}`, i === 0 ? "report.col.total" : `Pt ${String(i)}`, "revisit", "referred"]);
+    const payload = {
+      date: "2026-10-17", provisional: true,
+      sections: [
+        { key: "opd.myConsults", titleKey: "report.opd.myConsults", columnKeys: ["report.col.time", "report.col.visitNo", "report.col.uhid", "report.col.patient", "report.col.type", "report.col.outcome"], rows: consults },
+        { key: "billing.myCollections", titleKey: "report.billing.myCollections", columnKeys: ["report.col.mode", "report.col.amount"], rows: [["report.mode.cash", "₹1,200"]], totals: ["report.col.total", "₹1,200"] },
+        { key: "opd.myVisits", titleKey: "report.opd.myVisits", columnKeys: ["report.col.time"], rows: [] },
+      ],
+    };
     const s = server({
       "GET /copilot/notice": { status: 200, body: { seen: true } },
-      "POST /copilot/ask": { status: 200, body: { answer: { key: "copilot.answer.dayReportProvisional", params: { date: "2026-10-17", sections: 2 }, payload: { sections: [] } }, source: "phrasebook", intent: "my_day_report", askId: "a9" } },
+      "POST /copilot/ask": { status: 200, body: { answer: { key: "copilot.answer.dayReportProvisional", params: { date: "2026-10-17", sections: 3 }, payload }, source: "phrasebook", intent: "my_day_report", askId: "a9" } },
     });
     await mount(s.fetcher);
     await fireEvent.press(await screen.findByTestId("copilot-chip-myDuty"));
-    expect(await screen.findByTestId("copilot-answer-1")).toHaveTextContent(webEn.copilot.answer.dayReportProvisional.replace("{{date}}", "2026-10-17").replace("{{sections}}", "2"));
-    expect(screen.getByTestId("copilot-report-1")).toHaveTextContent("Full report on computer");
+    expect(await screen.findByTestId("copilot-answer-1")).toHaveTextContent(webEn.copilot.answer.dayReportProvisional.replace("{{date}}", "2026-10-17").replace("{{sections}}", "3"));
+    expect(screen.getByTestId("copilot-report-1-title")).toHaveTextContent("Your day — 2026-10-17");
+    expect(screen.getByTestId("copilot-report-1-provisional")).toHaveTextContent("provisional");
+    // Section titles and column heads in the web's words; a coded cell worded, a name left as data.
+    expect(screen.getByTestId("copilot-report-1-s0-title")).toHaveTextContent("Consultations I completed");
+    expect(screen.getByTestId("copilot-report-1-s0-head")).toHaveTextContent("Time · Visit no · UHID · Patient · Type · Outcome");
+    expect(screen.getByTestId("copilot-report-1-s0-r0")).toHaveTextContent("10:00 · V-0 · U0 · report.col.total · Revisit · Referred");
+    // A long section shows its first eight rows and says how many more.
+    expect(screen.queryByTestId("copilot-report-1-s0-r7")).not.toBeNull();
+    expect(screen.queryByTestId("copilot-report-1-s0-r8")).toBeNull();
+    expect(screen.getByTestId("copilot-report-1-s0-more")).toHaveTextContent("+2 more on computer");
+    expect(screen.getByTestId("copilot-report-1-s1-r0")).toHaveTextContent("Cash · ₹1,200");
+    expect(screen.getByTestId("copilot-report-1-s1-total")).toHaveTextContent("Total · ₹1,200");
+    expect(screen.getByTestId("copilot-report-1-s2-empty")).toHaveTextContent(webEn.copilot.report.emptySection);
+    expect(screen.queryByText("Full report on computer")).toBeNull();
+    // The same words as the web, in both languages.
+    expect(en.report).toEqual(webEn.report);
+    expect(hi.report).toEqual(webHi.report);
+    for (const k of ["title", "provisional", "emptySection"] as const) {
+      expect(en.copilot.report[k]).toBe(webEn.copilot.report[k]);
+      expect(hi.copilot.report[k]).toBe(webHi.copilot.report[k]);
+    }
+  });
+
+  it("#674: a day report with no payload draws only its sentence", async () => {
+    const s = server({
+      "GET /copilot/notice": { status: 200, body: { seen: true } },
+      "POST /copilot/ask": { status: 200, body: { answer: { key: "copilot.answer.dayReportProvisional", params: { date: "2026-10-17", sections: 0 } }, source: "phrasebook", intent: "my_day_report", askId: "a9" } },
+    });
+    await mount(s.fetcher);
+    await fireEvent.press(await screen.findByTestId("copilot-chip-myDuty"));
+    await screen.findByTestId("copilot-answer-1");
+    expect(screen.queryByTestId("copilot-report-1-title")).toBeNull();
   });
 
   it("no signal says so, in a few words", async () => {
@@ -309,6 +349,17 @@ describe("E2.1 — an appointment from the chat on the phone", () => {
     await waitFor(() => expect(screen.queryByTestId("copilot-appt-pick-1")).toBeNull());
     expect(s.calls.filter((c) => c.key === "POST /copilot/confirm").map((c) => c.body)).toEqual([{ proposal: { id: "p2" } }]);
     expect(screen.getByTestId("copilot-answer-1")).toHaveTextContent("Booked: Ramesh Kumar (HMS00110020) with Dr Meera Rao, on Wednesday 19 Aug at 09:10.");
+  });
+
+  it("#686: a pick-shaped answer with no signed proposal offers no Confirm", async () => {
+    const { proposals: _none, ...noProposal } = PICK;
+    const s = server({ "GET /copilot/notice": { status: 200, body: { seen: true } }, "POST /copilot/ask": { status: 200, body: noProposal } });
+    await mount(s.fetcher);
+    await fireEvent.changeText(await screen.findByTestId("copilot-input"), "Ramesh Kumar ka appointment");
+    await fireEvent.press(screen.getByTestId("copilot-ask"));
+    expect(await screen.findByTestId("copilot-answer-1")).toHaveTextContent("Pick the patient, then a time.");
+    expect(screen.queryByTestId("copilot-appt-pick-1")).toBeNull();
+    expect(screen.queryByTestId("copilot-appt-confirm-go-1")).toBeNull();
   });
 
   it("a refusal at confirm is said in the web's words, and nothing else is offered", async () => {

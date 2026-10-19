@@ -29,6 +29,7 @@ import * as pharmacyMessagesMod from "../../modules/pharmacy/messages";
 import * as aerbQaMod from "../../modules/aerb/qa";
 import * as opdAliasRunnerMod from "../../modules/opd/alias-runner";
 import * as attendanceSyncMod from "../../modules/attendance/sync";
+import * as doctorDeskReportMod from "../../modules/doctor-desk/report";
 import * as opdTeleMod from "../../modules/opd/tele";
 import * as dispatcherMod from "../events/dispatcher";
 import * as timersMod from "../workflow/timers";
@@ -433,6 +434,12 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
       invoked.push("syncAttendance");
       return { ran: false, why: "not_configured" };
     }),
+    // DOCTOR DESK DD-report v0 — the thirty-first, stubbed on `modules/doctor-desk/report` (the file the index
+    // re-exports FROM). Its behaviour (counts only, idempotent per unit per day) is in `doctor-desk/report.test.ts`.
+    jest.spyOn(doctorDeskReportMod, "sendUnitReports").mockImplementation(async () => {
+      invoked.push("sendUnitReports");
+      return { sent: 0, failed: 0 };
+    }),
     // TELE-CALL (owner 2026-10-09) — the twenty-eighth, stubbed on `modules/opd/tele` (the file jobs.ts imports FROM).
     jest.spyOn(opdTeleMod, "openDueTeleVisits").mockImplementation(async () => {
       invoked.push("openDueTeleVisits");
@@ -544,6 +551,8 @@ const THE_EIGHTEEN = [
   "openDueTeleVisits",
   // STAFF ATTENDANCE (owner 2026-10-09) — the TWENTY-NINTH, `every(120_000)`: HMIS's copy of the attendance machine. Off until configured.
   "syncAttendance",
+  // DOCTOR DESK DD-report v0 — the THIRTY-FIRST, `dailyIst("08:00")`: the unit report at the take boundary.
+  "sendUnitReports",
 ];
 
 /**

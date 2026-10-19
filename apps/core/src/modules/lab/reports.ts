@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, ne, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { withTx } from "../../kernel/db/client";
@@ -19,6 +19,7 @@ import { displayName, listMergedLoserIds, resolvePatientId } from "../patients";
 import { RELEASE_UNPAID_APPROVAL_TYPE } from "./approval-types";
 import { canonicalNames } from "./criticals";
 import { LabError } from "./errors";
+import { DOCTOR_SCREEN, stampDoctorRead } from "./doctor-read";
 import { deliveryAllowed } from "./interlock";
 import {
   labReportAmended, labReportPrintBlocked, labReportPrinted, labReportPublished,
@@ -183,8 +184,13 @@ async function buildSnapshot(
     })
     .from(orderItems)
     .innerJoin(labItems, eq(labItems.orderItemId, orderItems.id))
+    .innerJoin(labOrderables, eq(labOrderables.serviceId, orderItems.serviceId))
     .where(eq(orderItems.orderId, order.id))
-    .orderBy(orderItems.createdAt);
+    /**
+     * #889 — the panels print in this order, so it must be fixed: by test code (the lab's one rule),
+     * then item for a repeated test. `created_at` alone tied for every item placed in one statement.
+     */
+    .orderBy(asc(labOrderables.code), asc(orderItems.id));
 
   /**
    * A CANCELLED ITEM IS NOT ON THE REPORT. It was withdrawn, DD7 decided what it cost, and printing
@@ -638,7 +644,8 @@ export type PrintReportInput = {
    * `['in_person']` or `['print','whatsapp','in_person']`, so the channel could never match the
    * stored list and the refusal came back saying *"a confidentiality-class result is collected in
    * person"* — the wrong reason, about a report that is not sensitive. A doctor reading on screen
-   * goes through `listResultsForEncounter`, which is not a hand-over and writes no delivery row.
+   * goes through `listResultsForEncounter`, which is not a hand-over: it stamps the treating
+   * doctor's first read on `doctor_screen` itself (#682, `doctor-read.ts`), never through here.
    */
   channel: "print" | "whatsapp" | "in_person";
   /** 02 J2 — WHO took the report away. Required for a physical hand-over (T7 A9). */
@@ -1003,6 +1010,12 @@ export async function getReport(
     sealed: patient?.isConfidential ?? false,
     now,
   });
+  /**
+   * #682 — the treating doctor's first read closes "lab reports back"; anyone else's stamps nothing.
+   * A read with a restricted panel held back (DD11) is not the whole report, so it stamps nothing either:
+   * the orderer, who sees every panel, still has it waiting.
+   */
+  if (shown === report.snapshot) await stampDoctorRead(db, actor, [report.orderId], now);
 
   return {
     reportId: report.id,
@@ -1069,6 +1082,8 @@ export async function listResultsForEncounter(
 ): Promise<EncounterResultRow[]> {
   await assertMay(db, actor, LAB_RESULTS_READ, "read lab results");
 
+  /** Orders with a restricted test held back from this reader: their report was not read whole (#682). */
+  const partlyHidden = new Set<string>();
   const rows = await db
     .select({
       orderId: orders.id,
@@ -1095,7 +1110,9 @@ export async function listResultsForEncounter(
     .then(async (all) => {
       /* DD11 — a restricted test is omitted (never badged) for a reader who is not cleared for it. */
       const cleared = await restrictedClearance(db, actor);
-      return all.filter((r) => !r.restricted || cleared(r.orderingClinicianId));
+      const shown = all.filter((r) => !r.restricted || cleared(r.orderingClinicianId));
+      for (const r of all) if (!shown.includes(r)) partlyHidden.add(r.orderId);
+      return shown;
     });
 
   /**
@@ -1112,6 +1129,8 @@ export async function listResultsForEncounter(
       actor, patientId: canonical, surface: "lab.results", encounterId: encounterNo,
       sealed: sealed?.isConfidential ?? false, now,
     });
+    /** #682 — the consult's results panel IS the doctor opening these reports. */
+    await stampDoctorRead(db, actor, [...new Set(rows.map((r) => r.orderId))].filter((id) => !partlyHidden.has(id)), now);
   }
 
   return rows.map((r) => ({
@@ -1430,7 +1449,8 @@ export async function reportsForPatient(
   for (const r of published) if (!latest.has(r.orderId)) latest.set(r.orderId, r);
   const reportIds = [...latest.values()].map((r) => r.id);
   const [deliveries, notices] = reportIds.length === 0 ? [[], []] : await Promise.all([
-    db.select().from(labReportDeliveries).where(inArray(labReportDeliveries.reportId, reportIds)).orderBy(asc(labReportDeliveries.at)),
+    /** A doctor's screen read (#682) is not a hand-over: the register lists only what left the lab. */
+    db.select().from(labReportDeliveries).where(and(inArray(labReportDeliveries.reportId, reportIds), ne(labReportDeliveries.channel, DOCTOR_SCREEN))).orderBy(asc(labReportDeliveries.at)),
     db.select({ refId: notifications.refId, status: notifications.status, sentChannel: notifications.sentChannel, sentAt: notifications.sentAt })
       .from(notifications).where(and(eq(notifications.refType, "lab_report"), inArray(notifications.refId, reportIds))),
   ]);
@@ -1517,8 +1537,11 @@ export async function deliveryRegister(db: Db, actor: Actor, serviceDate: string
   const [items, deliveries, notices, names] = await Promise.all([
     db.select({ orderId: orderItems.orderId, code: labOrderables.code, sensitive: labOrderables.sensitive, status: orderItems.status })
       .from(orderItems).innerJoin(labOrderables, eq(labOrderables.serviceId, orderItems.serviceId))
-      .where(inArray(orderItems.orderId, orderIds)),
-    db.select().from(labReportDeliveries).where(inArray(labReportDeliveries.reportId, reportIds)).orderBy(asc(labReportDeliveries.at)),
+      .where(inArray(orderItems.orderId, orderIds))
+      /** #889 — a row's tests in one fixed order (by test code), not the heap's. */
+      .orderBy(asc(labOrderables.code)),
+    /** A doctor's screen read (#682) is not a hand-over: the register lists only what left the lab. */
+    db.select().from(labReportDeliveries).where(and(inArray(labReportDeliveries.reportId, reportIds), ne(labReportDeliveries.channel, DOCTOR_SCREEN))).orderBy(asc(labReportDeliveries.at)),
     db.select({ refId: notifications.refId, status: notifications.status, sentChannel: notifications.sentChannel, sentAt: notifications.sentAt })
       .from(notifications).where(and(eq(notifications.refType, "lab_report"), inArray(notifications.refId, reportIds))),
     canonicalNames(db, [...new Set(rows.map((r) => r.patientId))], canSeeConfidential),

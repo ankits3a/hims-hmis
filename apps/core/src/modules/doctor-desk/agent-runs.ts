@@ -37,6 +37,10 @@ export async function runsFor(exec: Db | Tx, teamId: string | null, userId: stri
     .orderBy(desc(doctorDeskAgentRuns.ranAt)).limit(AGENT_RUNS_LIMIT);
   return rows.map((r) => ({
     id: r.id, agent: r.agent, outcome: r.outcome as WireAgentRun["outcome"], summaryKey: r.summaryKey,
-    params: r.params as Record<string, string | number>, ranAt: r.ranAt.toISOString(),
+    // A run may keep a structured record beside its line (the unit report keeps the report): the line's
+    // params are its flat values only.
+    params: Object.fromEntries(Object.entries(r.params as Record<string, unknown>)
+      .filter((e): e is [string, string | number] => typeof e[1] === "string" || typeof e[1] === "number")),
+    ranAt: r.ranAt.toISOString(),
   }));
 }

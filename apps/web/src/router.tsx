@@ -44,6 +44,11 @@ import { DoctorDeskTower } from "./screens/doctor-desk-tower";
 import { DoctorDeskBriefs } from "./screens/doctor-desk-briefs";
 import { DoctorDeskOpd } from "./screens/doctor-desk-opd";
 import { DoctorLanding } from "./screens/doctor-desk-landing";
+import { DoctorDeskUnit } from "./screens/doctor-desk-unit";
+import { DoctorDeskNow } from "./screens/doctor-desk-now";
+import { DoctorDeskProfessor } from "./screens/doctor-desk-professor";
+import { DoctorDeskRatings } from "./screens/doctor-desk-ratings";
+import { DoctorDeskReport } from "./screens/doctor-desk-report";
 import { RosterEvidence } from "./screens/roster-evidence";
 import { RosterAebas } from "./screens/roster-aebas";
 import { OpdAdmin } from "./screens/opd-admin";
@@ -62,6 +67,7 @@ import { BillingSession } from "./screens/billing-session";
 import { BillingOffice } from "./screens/billing-office";
 import { OpsMode } from "./screens/ops-mode";
 import { AdminUsers } from "./screens/admin-users";
+import { AttendanceLinks } from "./screens/attendance-links";
 import { ChangePassword } from "./screens/change-password";
 import { OpsDowntimeKit } from "./screens/ops-downtime-kit";
 import { CounterInstruments } from "./screens/counter-instruments";
@@ -260,6 +266,9 @@ const NAV: readonly NavEntry[] = [
   { to: "/ops/mode", label: "nav.opsMode", permission: "ops.mode.set", group: "admin" },
   { to: "/ops/downtime-kit", label: "nav.opsDowntimeKit", permission: "ops.downtime.generate", group: "admin" },
   { to: "/admin/users", label: "nav.adminUsers", permission: "auth.users.manage", group: "admin" },
+  // #634 — who on the attendance machine's list is which login: the count and the unlinked list for the
+  // owner and the Attendance Committee, the suggestions and the hand link for the Users administrator.
+  { to: "/attendance/links", label: "nav.attendanceLinks", permission: "attendance.all.read", anyOf: ["auth.users.manage"], group: "admin" },
   // Decision 0067 — the outside-test list (ECG, echo …), `orderingManifest.menu`'s entry.
   { to: "/ordering/outside-tests", label: "nav.outsideTests", permission: "tariff.services.manage", group: "admin" },
   // PLAN 18a T9 — the entries `radiologyManifest.menu` declares (three since 18-S RS2b), path and permission matching
@@ -752,6 +761,26 @@ const doctorDeskOpdRoute = createRoute({
   path: "/doctor-desk/opd",
   staticData: { fullViewport: true },
   component: DoctorDeskOpd,
+});
+/** DD-1.2 — the Unit board (`UnitBoard.dc.html`). */
+const doctorDeskUnitRoute = createRoute({
+  getParentRoute: () => authedRoute, path: "/doctor-desk/unit", staticData: { fullViewport: true }, component: DoctorDeskUnit,
+});
+/** DD-1.5 — the SR phone "Now" (`Main.dc.html`), a web view. */
+const doctorDeskNowRoute = createRoute({
+  getParentRoute: () => authedRoute, path: "/doctor-desk/now", staticData: { fullViewport: true }, component: DoctorDeskNow,
+});
+/** DD-1.4 — the Professor phone (`Professor.dc.html`), a web view. */
+const doctorDeskProfessorRoute = createRoute({
+  getParentRoute: () => authedRoute, path: "/doctor-desk/professor", staticData: { fullViewport: true }, component: DoctorDeskProfessor,
+});
+/** DD-1.7 — my work ratings and my PG logbook. */
+const doctorDeskRatingsRoute = createRoute({
+  getParentRoute: () => authedRoute, path: "/doctor-desk/ratings", staticData: { fullViewport: true }, component: DoctorDeskRatings,
+});
+/** DD-report v0 — the 08:00 unit report. */
+const doctorDeskReportRoute = createRoute({
+  getParentRoute: () => authedRoute, path: "/doctor-desk/report", staticData: { fullViewport: true }, component: DoctorDeskReport,
 });
 const doctorDeskBriefsRoute = createRoute({
   getParentRoute: () => authedRoute,
@@ -1811,6 +1840,15 @@ const adminUsersRoute = createRoute({
   component: AdminUsers,
 });
 
+// #634 — attendance links. The server guards each route (`attendance.all.read` for the count and the
+// unlinked list, `auth.users.manage` for suggestions and the hand link); the screen shows the tabs the
+// viewer may use.
+const attendanceLinksRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/attendance/links",
+  component: AttendanceLinks,
+});
+
 /**
  * PLAN 09 T3 / DD8 — card recognition. It is under `/counter/…` rather than `/billing/…` because
  * recognition DEPLOYS BEFORE the billing integration is armed: the counter has to be able to look a
@@ -1915,7 +1953,7 @@ export const router = createRouter({
     authedRoute.addChildren([
       indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
-      billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
+      billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute, attendanceLinksRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
       // FD-2 — 47 -> 46. `/counter/seat` is GONE, the seat serves `counterDeskRoute` above, and
       // `/counter/seat/figures` follows it to `/counter/figures`. `caddyfile-parity.test.ts` pins
@@ -1985,6 +2023,13 @@ export const router = createRouter({
       doctorDeskBriefsRoute,
       // DD-0.8 (#890) — +1, `/doctor-desk/opd`.
       doctorDeskOpdRoute,
+      // DD-1 — +4, `/doctor-desk/unit`, `/doctor-desk/now`, `/doctor-desk/professor`, `/doctor-desk/ratings`.
+      doctorDeskUnitRoute,
+      doctorDeskNowRoute,
+      doctorDeskProfessorRoute,
+      doctorDeskRatingsRoute,
+      // DD-report v0 — +1, `/doctor-desk/report`.
+      doctorDeskReportRoute,
     ]),
   ]),
 });

@@ -5,7 +5,7 @@ import { CopilotHealthScreen } from "./copilot-health";
 
 /** E0.1 done-means 8 — the health page shows a day's totals and names nobody. */
 const HEALTH = {
-  date: "2026-10-10", asks: 12, askers: 4, notUnderstoodShare: 0.25, acts: 0,
+  date: "2026-10-10", asks: 12, askers: 4, notUnderstoodShare: 0.25, acts: 0, confirms: 0,
   byOutcome: { answered: 8, notUnderstood: 3, notPermitted: 1, noTool: 0 },
   byRoute: {
     phrasebook: { asks: 9, p50Ms: 40, p95Ms: 120 }, chooser: { asks: 0, p50Ms: null, p95Ms: null },
@@ -40,6 +40,8 @@ describe("Copilot health", () => {
     renderWithProviders(<CopilotHealthScreen />);
     expect((await screen.findByText("Confirm: done", { selector: "td" })).closest("tr")).toHaveTextContent("1");
     expect(screen.getByText("Confirm refused: expired", { selector: "td" }).closest("tr")).toHaveTextContent("2");
+    expect(screen.getByTestId("copilot-health-confirms")).toHaveTextContent("Confirm taps3");
+    expect(screen.getByTestId("copilot-health-asks")).toHaveTextContent("12"); // taps are not questions
   });
 
   it("E0.5/E0.3: shows AI calls and ₹, says when the cap is reached, and offers only the switches this person may throw", async () => {
