@@ -87,6 +87,10 @@ Source: `apps/core/src/modules/emergency/`
   - `readErCodes(db: Db, actor: Actor, opts: Opts = {}): Promise<ErCodes>`
   - `recordCodeDebrief(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_code_debrief">>`
   - `recordCodeEvent(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_code_event">>`
+- `copilot-bay.ts`
+  - `bayProposalOf(db: Db, actor: Actor, e: EpisodeRow, at: Date): Promise<Proposal>`
+  - `erBayZone(b: BayFacts): ErBayZone | null`
+  - `readBayProposal(db: Db, actor: Actor, episodeId: string): Promise<ErBayProposal>`
 - `copilot-drafts.ts`
   - `ER_DRAFT_BUDGET_MS`
   - `buildErDraft(db: Db, actor: Actor, episodeId: string, kind: ErDraftKind, opts: Opts = {}): Promise<ErDraft>`
@@ -227,9 +231,9 @@ Source: `apps/core/src/modules/emergency/`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (82)
+## HTTP routes (83)
 
-- `copilot.controller.ts` — 5: `/er/copilot`
+- `copilot.controller.ts` — 6: `/er/copilot`
 - `emergency.controller.ts` — 77: `/er/arrivals`, `/er/bands`, `/er/bays`, `/er/bill`, `/er/board`, `/er/calls`, `/er/care`, `/er/codes`, `/er/consents`, `/er/desk`, `/er/dispo`, `/er/doctor`, `/er/doctors`, `/er/episodes`, `/er/identity`, `/er/items`, `/er/mci`, `/er/meds`, `/er/mlc`, `/er/notes`, `/er/orders`, `/er/patients`, `/er/pre-alerts`, `/er/procedures`, `/er/stabilised`, `/er/triage`, `/er/triage-doctors`, `/er/vitals`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/emergency`

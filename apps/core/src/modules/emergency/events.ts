@@ -49,6 +49,8 @@ export const erVitalsRecorded = defineEvent("er.vitals_recorded", MODULE, z.obje
 }));
 export const erPlaced = defineEvent("er.placed", MODULE, z.object({
   episodeId: id, bedId: id, bayCode: z.string(), provenance: ErProvenanceSchema,
+  /** #898: the copilot's bay proposal, recomputed by the server at the tap (null when it had none), and whether the pick differs. */
+  copilotBedId: id.nullable().optional(), override: z.boolean().optional(),
 }));
 export const erMoved = defineEvent("er.moved", MODULE, z.object({
   episodeId: id, fromBedId: id, bedId: id, bayCode: z.string(), reason: z.string().nullable(), provenance: ErProvenanceSchema,

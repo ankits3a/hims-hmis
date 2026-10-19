@@ -3,6 +3,7 @@ import { z } from "zod";
 import { ER_DRAFT_KINDS } from "@hmis/contracts";
 import { CONFIG, DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
+import { readBayProposal } from "./copilot-bay";
 import { buildErDraft } from "./copilot-drafts";
 import { checkEsiProposal, readEsiProposal } from "./copilot-esi";
 import { erModelFrom } from "./copilot-model";
@@ -10,7 +11,7 @@ import { readSinceArrival } from "./copilot-since";
 import { readErWaitingDisplay } from "./copilot-waiting";
 import { ErError, ErRefusal, erRefusalStatus } from "./errors";
 import { ER_BOARD_WAITING, ER_CARE, ER_DISPOSITION, ER_MLC, ER_TRIAGE } from "./names";
-import type { Actor, ErDraft, ErEsiProposal, ErEsiProposalCheck, ErRefusalBody, ErSinceArrival, ErWaitingDisplay } from "@hmis/contracts";
+import type { Actor, ErBayProposal, ErDraft, ErEsiProposal, ErEsiProposalCheck, ErRefusalBody, ErSinceArrival, ErWaitingDisplay } from "@hmis/contracts";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
 import type { ErModel } from "./copilot-model";
@@ -62,6 +63,13 @@ export class EmergencyCopilotController {
   @RequirePermission(ER_TRIAGE, "hospital")
   async esiCheck(@CurrentActor() actor: Actor, @Param("episodeId") id: string, @Query("basis") basis: unknown): Promise<ErEsiProposalCheck> {
     try { return await checkEsiProposal(this.db, actor, idParam.parse(id), basisParam.parse(basis)); } catch (e) { toHttp(e); }
+  }
+
+  /** #898 — the bay proposal (T2): one free bay, never resus or isolation; a person places through `place_in_bay`. */
+  @Get("bay/:episodeId")
+  @RequirePermission(ER_TRIAGE, "hospital")
+  async bay(@CurrentActor() actor: Actor, @Param("episodeId") id: string): Promise<ErBayProposal> {
+    try { return await readBayProposal(this.db, actor, idParam.parse(id)); } catch (e) { toHttp(e); }
   }
 
   @Get("since/:episodeId")

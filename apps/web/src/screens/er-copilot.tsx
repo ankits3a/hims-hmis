@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type React from "react";
-import type { ErDraft, ErDraftKind, ErEsiProposal, ErEsiProposalCheck, ErSinceArrival, ErWaitingDisplay } from "@hmis/contracts";
+import type { ErBayProposal, ErDraft, ErDraftKind, ErEsiProposal, ErEsiProposalCheck, ErSinceArrival, ErWaitingDisplay } from "@hmis/contracts";
 import { fmtIst } from "../lib/format";
 import { useRealtime } from "../lib/realtime";
-import { ER_BOARD_TOPIC, checkEsiProposal, draftApi, fetchEsiProposal, fetchSinceArrival, fetchWaitingDisplay } from "../lib/er-api";
+import { ER_BOARD_TOPIC, checkEsiProposal, draftApi, fetchBayProposal, fetchEsiProposal, fetchSinceArrival, fetchWaitingDisplay } from "../lib/er-api";
 import type { EsiDecision } from "../lib/er-api";
 
 /**
  * ER lane 9 (#816) — THE ER COPILOT's SURFACES (spec §4.9, T2: it proposes, a person confirms). Each piece is a read:
  *  - `EsiCopilotCard` — the triage proposal (rules) with its reasons. "Use these answers" ticks the four questions; it
  *    never picks the level and never saves: the nurse still taps a level and Triage.
+ *  - `BayCopilotCard` — #898: one free bay by acuity, never resus or isolation; "Place in Y-01" goes through the screen's
+ *    own place_in_bay (a person's tap). Re-read on every board event, so a bay taken elsewhere drops out.
  *  - `SinceArrival` — four to six lines, each with its source chip; the doctor's patient view opens on it.
  *  - `DraftButton` — builds a draft on a tap and hands its fields to the form it belongs to, stamped "Draft".
  *  - `WaitingDisplay` — the waiting-area screen: a token and a stage word, nothing else.
@@ -76,6 +78,29 @@ export function EsiCopilotCard({ episodeId, onUse }: { episodeId: string; onUse:
       <ul>{p.reasons.map((r) => <li key={r}>{r}</li>)}</ul>
       <p className="dim">{t("erCopilot.esi.yours")}</p>
       <button type="button" className="erx-btn" data-testid="er-triage-copilot-use" onClick={() => onUse(p.decision as EsiDecision)}>{t("erCopilot.esi.use")}</button>
+    </section>
+  );
+}
+
+export function BayCopilotCard({ episodeId, busy, onPlace }: { episodeId: string; busy: boolean; onPlace: (bedId: string) => void }): React.ReactElement | null {
+  const { t } = useTranslation();
+  const [p, setP] = useState<ErBayProposal | null>(null);
+  const load = useCallback(() => { fetchBayProposal(episodeId).then(setP, () => setP(null)); }, [episodeId]);
+  useEffect(() => { load(); }, [load]);
+  useRealtime([ER_BOARD_TOPIC], () => load());
+  // Nothing to propose (not triaged, ESI 1, in a bay, no free bay in the zone) or an older server: no card.
+  if (p === null || p.bay === null || p.bay === undefined || !Array.isArray(p.reasons)) return null;
+  const bay = p.bay;
+  return (
+    <section className="erc-copilot erc-bay" data-testid="er-triage-bay-copilot" aria-label={t("erCopilot.bay.title")}>
+      <header>
+        <span className="erc-tag">{t("erCopilot.suggestion")}</span>
+        <b>{t("erCopilot.bay.says", { bay: bay.code, zone: t(`erCopilot.bay.zone.${bay.zone}`) })}</b>
+      </header>
+      <ul>{p.reasons.map((r) => <li key={r}>{r}</li>)}</ul>
+      <button type="button" className="erx-btn" disabled={busy} data-testid="er-triage-bay-copilot-place" onClick={() => onPlace(bay.bedId)}>
+        {t("erCopilot.bay.place", { bay: bay.code })}
+      </button>
     </section>
   );
 }

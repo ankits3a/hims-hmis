@@ -20527,6 +20527,17 @@
       "Admitting": "Admitting",
       "Going home soon": "Going home soon",
       "Transfer arranged": "Transfer arranged"
+    },
+    "bay": {
+      "title": "Copilot bay suggestion",
+      "says": "Suggests {{bay}} · {{zone}}",
+      "place": "Place in {{bay}}",
+      "zone": {
+        "paeds": "Paeds",
+        "red": "Red zone",
+        "yellow": "Yellow zone",
+        "green": "Green zone"
+      }
     }
   }
 }

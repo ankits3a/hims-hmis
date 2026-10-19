@@ -20527,6 +20527,17 @@
       "Admitting": "भर्ती हो रहे हैं",
       "Going home soon": "जल्द घर",
       "Transfer arranged": "स्थानांतरण तय"
+    },
+    "bay": {
+      "title": "कोपायलट बे सुझाव",
+      "says": "सुझाव: {{bay}} · {{zone}}",
+      "place": "{{bay}} में रखें",
+      "zone": {
+        "paeds": "बाल",
+        "red": "रेड ज़ोन",
+        "yellow": "येलो ज़ोन",
+        "green": "ग्रीन ज़ोन"
+      }
     }
   }
 }

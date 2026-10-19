@@ -190,6 +190,35 @@ export function erWithdrawText(w: { reason: ErProposalWithdrawReason; at: string
   }
 }
 
+/* ═══════════════════════════════ #898 — the bay proposal (T2) ═══════════════════════════════ */
+
+/**
+ * What an ER bay is FOR (spec §3.3 "zones are beds"), read off the bay: an explicit `erZone` attribute, or a zone word in
+ * the bed's or its room's code or name. The copilot proposes only red / yellow / green / paeds bays; resus and isolation
+ * are NEVER proposed (autonomy ladder), triage and observation bays are not destinations a proposal sends anyone to.
+ */
+export const ER_BAY_ZONES = ["resus", "isolation", "triage", "observation", "paeds", "red", "yellow", "green"] as const;
+export type ErBayZone = (typeof ER_BAY_ZONES)[number];
+/** Zones the copilot may propose. */
+export const ER_PROPOSABLE_BAY_ZONES = ["paeds", "red", "yellow", "green"] as const satisfies readonly ErBayZone[];
+
+/** Why there is no bay to propose. */
+export const ER_BAY_PROPOSAL_NONE = ["closed", "in_bay", "not_triaged", "esi_1", "no_bay"] as const;
+export type ErBayProposalNone = (typeof ER_BAY_PROPOSAL_NONE)[number];
+
+export const ErBayProposalSchema = z.strictObject({
+  episodeId: ErIdSchema,
+  /** The bay proposed (a person confirms through `place_in_bay`), or null with `none`. */
+  bay: z.strictObject({ bedId: ErIdSchema, code: z.string(), room: z.string().nullable(), zone: z.enum(ER_PROPOSABLE_BAY_ZONES) }).nullable(),
+  none: z.enum(ER_BAY_PROPOSAL_NONE).nullable(),
+  /** The zones looked in, in order. */
+  wanted: z.array(z.enum(ER_PROPOSABLE_BAY_ZONES)),
+  reasons: z.array(z.string()),
+  /** Always "rules": a bay is never proposed by a model. */
+  source: z.literal("rules"),
+});
+export type ErBayProposal = z.infer<typeof ErBayProposalSchema>;
+
 /** The proposal's level with its word, for a screen (never colour alone). */
 export const esiWord = (level: ErEsiLevel): string => `ESI ${String(level)} ${ER_ESI_INFO[level].word}`;
 
@@ -324,6 +353,8 @@ export const ER_COPILOT_ROUTES = {
   since: "/er/copilot/since",
   /** POST /er/copilot/drafts/:episodeId/:kind — build a draft (summary, referral: er.disposition; MLC: er.mlc). */
   drafts: "/er/copilot/drafts",
+  /** GET /er/copilot/bay/:episodeId — the bay proposal (er.triage; #898). */
+  bay: "/er/copilot/bay",
   /** GET /er/copilot/waiting — the waiting-area display (er.board.wall). */
   waiting: "/er/copilot/waiting",
 } as const;
