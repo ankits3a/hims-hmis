@@ -50,6 +50,10 @@ export { feedFingerprint } from "./triage";
  * live. Nothing learned is `empty` and costs no model call at all. Red flags and the child rule are
  * untouched — they run before (`suggestDepartments`) and after (`applyRouting`) the chooser, which
  * is the only reader of anything here.
+ *
+ * SHIPS OFF (`DESK_ROUTING_LEARNING_ENABLED`, decision 0051). Off, nothing is built or stored: the
+ * evaluation is a model call. `kernel/config.ts` says how the owner turns it on and which numbers
+ * the first rows carry.
  */
 
 export const TAIL_MIN_N = 10;

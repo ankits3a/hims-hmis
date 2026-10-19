@@ -406,13 +406,23 @@ const configSchema = z.object({
   /**
    * #614 (plan P3, channels 2 and 3) — the desk's nightly routing learning
    * (`modules/opd/desk-routing-feed.ts`): a vocabulary tail and mined examples for the department
-   * chooser, live only after the night's evaluation. ON by default: with nothing learned it calls no
-   * model; with something learned it asks the desk's own chooser about masked sentences only. "false"
-   * stops the nightly build AND serves the hand-written descriptions alone — the one-switch rollback.
+   * chooser, live only after the night's evaluation.
+   *
+   * OFF BY DEFAULT (decision 0051: evaluation numbers reach the owner before anything that changes
+   * suggestions is switched on). The evaluation IS a model call, so off computes and stores nothing,
+   * and the desk serves the hand-written descriptions alone. Only the exact string "true" turns it on.
+   *
+   * TO TURN IT ON: add `DESK_ROUTING_LEARNING_ENABLED=true` to the env file, restart the api and the
+   * worker — staging first. Each night after that writes one row to `cds_desk_routing_feeds`, the
+   * first numbers the owner sees: `status` (live / refused / failed / empty), `floor_score` against
+   * `baseline_floor_score` (percent right on the 46 fixed cases, with and without what was learned),
+   * `holdout_score` and `holdout_visits` (percent of held-out visits right, and how many). Until about
+   * ten completed visits share a word, the row is `empty`: nothing learned, no model call, no numbers.
+   * "false" (or removing the line) is the rollback.
    */
   DESK_ROUTING_LEARNING_ENABLED: z
     .enum(["true", "false"])
-    .default("true")
+    .default("false")
     .transform((v) => v === "true"),
   NOTIFY_STUCK_AFTER_MS: z.coerce.number().int().positive().default(300000),
   // Plan 11a D6/D7 (retention). All three defaulted, same B1 scar as the block above: no .env
@@ -664,7 +674,7 @@ export type AppConfig = {
   aliases: { enabled: boolean; chooserOrder: ("typesafe" | "openai")[]; chooserLine: number; reviewerLine: number; perRun: number; perDay: number };
   /** The waits' nightly learning (`FLOW_FINDINGS_ENABLED`, default true). */
   flowFindings: { enabled: boolean };
-  /** #614 — the desk's nightly routing learning (`DESK_ROUTING_LEARNING_ENABLED`, default true). */
+  /** #614 — the desk's nightly routing learning (`DESK_ROUTING_LEARNING_ENABLED`, default false). */
   deskRouting: { learningEnabled: boolean };
   notifyStuckAfterMs: number;
   // Plan 11a D6/D7. `retentionEnabled` is FALSE unless an operator says otherwise, in as many

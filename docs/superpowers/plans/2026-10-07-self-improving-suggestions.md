@@ -275,8 +275,10 @@ Each phase is its own PR(s), tests fail-first, web and phone both, English and H
   different patients and an example ≥ 2, with a placeholder left in it refused; a negated sentence never feeds
   the tail; the floor is "no lower than the descriptions alone on the 46 cases"; the week is held-out visits
   right, weighted by visits, against the best live night of the last 7; a refused night serves the
-  descriptions alone, a failed night (chooser down or absent) changes nothing; `DESK_ROUTING_LEARNING_ENABLED`
-  (default on) is the one-switch rollback. The owner's weekly list with one-tap undo is not built.
+  descriptions alone, a failed night (chooser down or absent) changes nothing. `DESK_ROUTING_LEARNING_ENABLED`
+  ships **off** (decision 0051: numbers to the owner first); off it computes nothing, because the evaluation is a
+  model call. The owner turns it on (staging first) and reads each night's row in `cds_desk_routing_feeds`:
+  status, floor vs baseline floor score, held-out score and visits. The weekly list with one-tap undo is #924.
 
 **P4 — What the system learned about me; stewardship; digest** (about 4 days; 1 migration)
 - A doctor's page: top patterns per diagnosis, what is hidden, Reset (the watermark; personal levels only).
