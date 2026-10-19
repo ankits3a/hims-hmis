@@ -2,7 +2,9 @@ import { and, eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { grantLabResultPermissions, runLabOrder, seedLabDeskBase } from "../../../test/helpers/lab";
 import { mkUser } from "../../../test/helpers/opd";
-import { orderItems, patients, phiAccessLog } from "../../kernel/db/schema";
+import { labReportDeliveries, orderItems, patients, phiAccessLog } from "../../kernel/db/schema";
+import { newId } from "@hmis/contracts";
+import { DOCTOR_SCREEN } from "./doctor-read";
 import { LabError } from "./errors";
 import { publishReport } from "./reports";
 import { REPORTS_BACK_LIMIT, myReportBack, myReportsBack } from "./reports-back";
@@ -18,6 +20,7 @@ import type { Actor } from "@hmis/contracts";
 const AT = new Date("2026-08-30T06:00:00Z");
 const SOON = new Date(AT.getTime() + 3600_000);
 const NEXT_DAY = new Date(AT.getTime() + 25 * 3600_000);
+const NEXT_WEEK = new Date(AT.getTime() + 8 * 24 * 3600_000);
 
 describe("#681 lab reports back — the doctor's list and one report", () => {
   let db: Db;
@@ -41,15 +44,23 @@ describe("#681 lab reports back — the doctor's list and one report", () => {
     return { run, reportId: report.reportId };
   };
 
-  it("lists my published report of the last day with its tests, and nothing once the day has passed", async () => {
+  it("lists my published, unread report of the last week with its tests, and nothing once the week has passed", async () => {
     const { run, reportId } = await published();
     const rows = await myReportsBack(db, fx.pathologist.actor, SOON);
     expect(rows.map((r) => r.reportId)).toEqual([reportId]);
     expect(rows[0]!.orderNo).toBe(run.orderNo);
     expect(rows[0]!.tests.length).toBe(1);
     expect(rows[0]!.publishedAt).toBe(AT.toISOString());
-    expect(await myReportsBack(db, fx.pathologist.actor, NEXT_DAY)).toEqual([]);
+    expect((await myReportsBack(db, fx.pathologist.actor, NEXT_DAY)).map((r) => r.reportId)).toEqual([reportId]);
+    expect(await myReportsBack(db, fx.pathologist.actor, NEXT_WEEK)).toEqual([]);
     expect(REPORTS_BACK_LIMIT).toBeGreaterThan(0);
+  });
+
+  it("#682: once a treating doctor has opened it, the report leaves the list, as it leaves the Open loops count", async () => {
+    const { reportId } = await published();
+    expect((await myReportsBack(db, fx.pathologist.actor, SOON)).map((r) => r.reportId)).toEqual([reportId]);
+    await db.insert(labReportDeliveries).values({ id: newId(), reportId, channel: DOCTOR_SCREEN, deliveredBy: other.id, at: SOON });
+    expect(await myReportsBack(db, fx.pathologist.actor, SOON)).toEqual([]);
   });
 
   it("another doctor sees none of it, and opening it by id is refused as unknown", async () => {
