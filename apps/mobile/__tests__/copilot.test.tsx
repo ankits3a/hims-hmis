@@ -311,6 +311,17 @@ describe("E2.1 — an appointment from the chat on the phone", () => {
     expect(screen.getByTestId("copilot-answer-1")).toHaveTextContent("Booked: Ramesh Kumar (HMS00110020) with Dr Meera Rao, on Wednesday 19 Aug at 09:10.");
   });
 
+  it("#686: a pick-shaped answer with no signed proposal offers no Confirm", async () => {
+    const { proposals: _none, ...noProposal } = PICK;
+    const s = server({ "GET /copilot/notice": { status: 200, body: { seen: true } }, "POST /copilot/ask": { status: 200, body: noProposal } });
+    await mount(s.fetcher);
+    await fireEvent.changeText(await screen.findByTestId("copilot-input"), "Ramesh Kumar ka appointment");
+    await fireEvent.press(screen.getByTestId("copilot-ask"));
+    expect(await screen.findByTestId("copilot-answer-1")).toHaveTextContent("Pick the patient, then a time.");
+    expect(screen.queryByTestId("copilot-appt-pick-1")).toBeNull();
+    expect(screen.queryByTestId("copilot-appt-confirm-go-1")).toBeNull();
+  });
+
   it("a refusal at confirm is said in the web's words, and nothing else is offered", async () => {
     const s = server({
       "GET /copilot/notice": { status: 200, body: { seen: true } }, "POST /copilot/ask": { status: 200, body: PICK },
