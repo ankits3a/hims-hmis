@@ -70,7 +70,7 @@ Source: `apps/core/src/modules/cds/`
 
 None under this name.
 
-## HTTP routes (0)
+## HTTP routes
 
 None.
 

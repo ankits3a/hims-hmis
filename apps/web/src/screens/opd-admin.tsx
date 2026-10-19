@@ -456,6 +456,30 @@ function DoctorsTab({
     }
   };
 
+  /* #914 (owner 2026-10-17) — a doctor covers a second department until its specialist joins. */
+  const [secondaryNote, setSecondaryNote] = useState<string | null>(null);
+  const setSecondary = async (row: WireDoctor, departmentId: string): Promise<void> => {
+    setError(null); setSecondaryNote(null);
+    try {
+      await api("PUT", `/opd/doctors/${row.id}/secondary-department`, { departmentId });
+      await refresh();
+    } catch (e) {
+      setError(opdErrorMessage(e));
+    }
+  };
+  const endSecondary = async (row: WireDoctor): Promise<void> => {
+    if (!row.secondary) return;
+    if (!window.confirm(t("opdAdmin.secondaryEndConfirm", { name: row.displayName, dept: departmentName(row.secondary.departmentId) }))) return;
+    setError(null); setSecondaryNote(null);
+    try {
+      const r = await api<{ affectedAppointmentIds: string[] }>("POST", `/opd/doctors/${row.id}/secondary-department/end`, {});
+      setSecondaryNote(t("opdAdmin.secondaryEnded", { count: r.affectedAppointmentIds.length }));
+      await refresh();
+    } catch (e) {
+      setError(opdErrorMessage(e));
+    }
+  };
+
   const toggle = async (row: WireDoctor): Promise<void> => {
     setError(null);
     try {
@@ -481,6 +505,7 @@ function DoctorsTab({
             <TableHead>{t("opdAdmin.doctorCode")}</TableHead>
             <TableHead>{t("opd.labels.name")}</TableHead>
             <TableHead>{t("opd.labels.department")}</TableHead>
+            <TableHead>{t("opdAdmin.secondaryDepartment")}</TableHead>
             <TableHead>{t("opdAdmin.registrationNo")}</TableHead>
             <TableHead>{t("opdAdmin.designation")}</TableHead>
             <TableHead>{t("opd.labels.actions")}</TableHead>
@@ -492,6 +517,29 @@ function DoctorsTab({
               <TableCell className="mo">{d.code}</TableCell>
               <TableCell>{d.displayName}</TableCell>
               <TableCell>{departmentName(d.departmentId)}</TableCell>
+              <TableCell>
+                {d.secondary ? (
+                  <span style={{ display: "inline-flex", gap: 8, alignItems: "center", whiteSpace: "nowrap" }}>
+                    {departmentName(d.secondary.departmentId)}
+                    <span style={{ fontSize: 11.5, color: "var(--dim)" }}>
+                      {d.secondary.toDate === null
+                        ? t("opdAdmin.secondarySince", { date: d.secondary.fromDate })
+                        : t("opdAdmin.secondaryUntil", { date: d.secondary.toDate })}
+                    </span>
+                    {d.secondary.toDate === null && (
+                      <button type="button" className="sec" style={{ height: 26 }} onClick={() => void endSecondary(d)}>{t("opdAdmin.secondaryEnd")}</button>
+                    )}
+                  </span>
+                ) : (
+                  <select
+                    className="in" aria-label={`${t("opdAdmin.secondaryDepartment")} — ${d.displayName}`} value="" style={{ height: 30, minWidth: 140 }}
+                    onChange={(e) => { if (e.currentTarget.value !== "") void setSecondary(d, e.currentTarget.value); }}
+                  >
+                    <option value="">{t("opdAdmin.secondaryNone")}</option>
+                    {departments.filter((x) => x.active && x.id !== d.departmentId).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                  </select>
+                )}
+              </TableCell>
               <TableCell className="mo">{d.registrationNo ?? "—"}</TableCell>
               <TableCell>
                 {/*
@@ -511,6 +559,7 @@ function DoctorsTab({
         </TableBody>
       </Table>
       </div>
+      {secondaryNote !== null && <p role="status" style={{ gridColumn: "1 / -1", margin: 0, fontSize: 12.5 }}>{secondaryNote}</p>}
       <FormProvider {...form}>
         <FormKit onSubmit={submit}>
           <h2 className="tag" style={{ margin: 0 }}>{t("opdAdmin.newDoctor")}</h2>
@@ -550,14 +599,25 @@ const scheduleRowSchema = z.object({
   slotMinutes: z.string().transform((v) => (v.trim() === "" ? null : Number(v))).pipe(z.number().int().positive().nullable()),
   validFrom: z.string().min(1),
   validTo: z.string().transform((v) => (v.trim() === "" ? null : v)).pipe(z.string().nullable()),
+  departmentId: z.string().transform((v) => (v === "" ? null : v)).pipe(z.string().nullable()),
 });
 const schedulesSchema = z.object({ items: z.array(scheduleRowSchema) });
 type SchedulesInput = z.input<typeof schedulesSchema>;
 type SchedulesValues = z.output<typeof schedulesSchema>;
 
+/**
+ * #914 — a doctor with a second department names which one each session serves; empty means
+ * either. Without a second department there is nothing to choose and the field is not shown.
+ */
+function sessionDepartments(doctor: WireDoctor | undefined, departments: WireDepartment[]): WireDepartment[] {
+  if (!doctor?.secondary) return [];
+  const ids = [doctor.departmentId, doctor.secondary.departmentId];
+  return ids.map((id) => departments.find((d) => d.id === id)).filter((d): d is WireDepartment => d !== undefined);
+}
+
 function SchedulesEditor({
-  doctorId, rooms, loaded, queryClient,
-}: { doctorId: string; rooms: WireRoom[]; loaded: WireSchedule[]; queryClient: QueryClient }): React.ReactElement {
+  doctorId, rooms, departmentChoices, loaded, queryClient,
+}: { doctorId: string; rooms: WireRoom[]; departmentChoices: WireDepartment[]; loaded: WireSchedule[]; queryClient: QueryClient }): React.ReactElement {
   const { t } = useTranslation();
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -572,6 +632,8 @@ function SchedulesEditor({
         slotMinutes: r.slotMinutes === null ? "" : String(r.slotMinutes),
         validFrom: r.validFrom,
         validTo: r.validTo ?? "",
+        // A session named for a second department that has since ended reads as "either" again.
+        departmentId: departmentChoices.some((d) => d.id === r.departmentId) ? r.departmentId! : "",
       })),
     },
   });
@@ -610,6 +672,13 @@ function SchedulesEditor({
               <TextField name={`items.${i}.startTime`} label={t("opdAdmin.startTime")} type="time" />
               <TextField name={`items.${i}.endTime`} label={t("opdAdmin.endTime")} type="time" />
               <SelectField name={`items.${i}.roomId`} label={t("opd.labels.room")} options={roomOptions} />
+              {departmentChoices.length > 0 && (
+                <SelectField
+                  name={`items.${i}.departmentId`}
+                  label={t("opdAdmin.sessionDepartment")}
+                  options={[{ value: "", label: t("opdAdmin.sessionAnyDepartment") }, ...departmentChoices.map((d) => ({ value: d.id, label: d.name }))]}
+                />
+              )}
               <TextField name={`items.${i}.slotMinutes`} label={t("opdAdmin.slotMinutes")} type="number" />
               <TextField name={`items.${i}.validFrom`} label={t("opdAdmin.validFrom")} type="date" />
               <TextField name={`items.${i}.validTo`} label={t("opdAdmin.validTo")} type="date" />
@@ -624,7 +693,7 @@ function SchedulesEditor({
               type="button"
               className="sec"
               onClick={() =>
-                append({ weekday: "0", startTime: "", endTime: "", roomId: "", slotMinutes: "", validFrom: todayIst(), validTo: "" })
+                append({ weekday: "0", startTime: "", endTime: "", roomId: "", slotMinutes: "", validFrom: todayIst(), validTo: "", departmentId: "" })
               }
             >
               {t("opdAdmin.addRow")}
@@ -733,8 +802,8 @@ function LeavesPanel({
 }
 
 function SchedulesAndLeavesTab({
-  doctors, rooms, queryClient,
-}: { doctors: WireDoctor[]; rooms: WireRoom[]; queryClient: QueryClient }): React.ReactElement {
+  doctors, rooms, departments, queryClient,
+}: { doctors: WireDoctor[]; rooms: WireRoom[]; departments: WireDepartment[]; queryClient: QueryClient }): React.ReactElement {
   const { t } = useTranslation();
   const picker = useForm<{ doctorId: string }>({ defaultValues: { doctorId: "" } });
   const doctorId = picker.watch("doctorId");
@@ -778,6 +847,7 @@ function SchedulesAndLeavesTab({
           key={`schedules-${doctorId}`}
           doctorId={doctorId}
           rooms={rooms}
+          departmentChoices={sessionDepartments(doctors.find((d) => d.id === doctorId), departments)}
           loaded={schedules.data.items}
           queryClient={queryClient}
         />
@@ -868,7 +938,7 @@ export function OpdAdmin(): React.ReactElement {
         {tab === "departments" && <DepartmentsTab items={departmentItems} queryClient={queryClient} />}
         {tab === "rooms" && <RoomsTab items={roomItems} queryClient={queryClient} />}
         {tab === "doctors" && <DoctorsTab items={doctorItems} departments={departmentItems} queryClient={queryClient} />}
-        {tab === "schedules" && <SchedulesAndLeavesTab doctors={doctorItems} rooms={roomItems} queryClient={queryClient} />}
+        {tab === "schedules" && <SchedulesAndLeavesTab doctors={doctorItems} rooms={roomItems} departments={departmentItems} queryClient={queryClient} />}
         {tab === "vocabulary" && <VocabularyTab queryClient={queryClient} />}
         {/* Board `Profiles` — the department default of the consult's sections (opd-layout.tsx). */}
         {tab === "layout" && <ConsultLayoutAdmin departments={departmentItems} />}

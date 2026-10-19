@@ -21,7 +21,7 @@ approved: 2026-10-14
    "superseded by milestones" header; CLAUDE.md and the lane-workflow skill say where specs and roadmap live.
    New decision record (next free number) states 1–3.
 
-**Done means**
+## Done means
 - D1 `node --test tools/ci/spec-guard.test.mjs` covers: code PR without spec edit → fail; with edit → pass;
   no spec file → pass; non-PR event → pass; `built` with a missing `Dk` test → fail. Each case red first.
 - D2 CI `static` job runs `spec-guard` on every PR; a deliberate violating PR shows it red in the Checks tab.

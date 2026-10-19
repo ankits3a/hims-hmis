@@ -37,8 +37,8 @@ Source: `apps/core/src/modules/doctor-desk/`
 
 Foreign keys into: `auth`
 
-## HTTP routes (7)
+## HTTP routes
 
-- `doctor-desk.controller.ts` — 7: `/doctor-desk/briefs`, `/doctor-desk/clocks`, `/doctor-desk/landing`, `/doctor-desk/opd`, `/doctor-desk/tower`
+- `doctor-desk.controller.ts` — `/doctor-desk/briefs`, `/doctor-desk/clocks`, `/doctor-desk/landing`, `/doctor-desk/opd`, `/doctor-desk/tower`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/doctor-desk`
