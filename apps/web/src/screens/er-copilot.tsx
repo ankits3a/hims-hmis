@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type React from "react";
-import type { ErDraft, ErDraftKind, ErEsiProposal, ErSinceArrival, ErWaitingDisplay } from "@hmis/contracts";
+import type { ErDraft, ErDraftKind, ErEsiProposal, ErEsiProposalCheck, ErSinceArrival, ErWaitingDisplay } from "@hmis/contracts";
 import { fmtIst } from "../lib/format";
 import { useRealtime } from "../lib/realtime";
-import { ER_BOARD_TOPIC, draftApi, fetchEsiProposal, fetchSinceArrival, fetchWaitingDisplay } from "../lib/er-api";
+import { ER_BOARD_TOPIC, checkEsiProposal, draftApi, fetchEsiProposal, fetchSinceArrival, fetchWaitingDisplay } from "../lib/er-api";
 import type { EsiDecision } from "../lib/er-api";
 
 /**
@@ -18,17 +18,55 @@ import type { EsiDecision } from "../lib/er-api";
  */
 type T = (k: string, o?: Record<string, unknown>) => string;
 
-/** The server recomputes the proposal at the tap and logs an override itself (review #894): the card sends nothing. */
+/** How often an open card asks whether its proposal still stands, beside the board's live events (#899). */
+export const ESI_CHECK_MS = 30_000;
+
+/**
+ * The server recomputes the proposal at the tap and logs an override itself (review #894): the card sends nothing.
+ * #899 (spec §6 edge 1): a card left open asks, on every board event and every 30 s, whether the proposal it shows still
+ * stands (its `basis`). If not, it withdraws itself with the reason and no "Use" button; a failed check withdraws it too
+ * (fail closed). When the patient still waits for triage, "Show new suggestion" fetches the current one.
+ */
 export function EsiCopilotCard({ episodeId, onUse }: { episodeId: string; onUse: (d: EsiDecision) => void }): React.ReactElement | null {
   const { t } = useTranslation();
   const [p, setP] = useState<ErEsiProposal | null>(null);
+  const [gone, setGone] = useState<NonNullable<ErEsiProposalCheck["withdrawn"]> | null>(null);
+  const [round, setRound] = useState(0);
   useEffect(() => {
     let live = true;
+    setGone(null);
     fetchEsiProposal(episodeId).then((x) => { if (live) setP(x); }, () => { if (live) setP(null); });
     return () => { live = false; };
-  }, [episodeId]);
+  }, [episodeId, round]);
+  const basis = p?.basis ?? null;
+  const recheck = useCallback(() => {
+    if (basis === null) return;
+    checkEsiProposal(episodeId, basis).then(
+      (c) => { if (!c.current) setGone(c.withdrawn ?? { reason: "out_of_date", at: null, level: null, bayCode: null, text: "", fresh: false }); },
+      () => setGone({ reason: "out_of_date", at: null, level: null, bayCode: null, text: "", fresh: false }),
+    );
+  }, [episodeId, basis]);
+  useRealtime([ER_BOARD_TOPIC], () => recheck());
+  useEffect(() => {
+    if (basis === null) return undefined;
+    const id = setInterval(recheck, ESI_CHECK_MS);
+    return () => clearInterval(id);
+  }, [basis, recheck]);
   // A reply without reasons (an older server) shows nothing rather than a broken card.
   if (p === null || !Array.isArray(p.reasons)) return null;
+  if (gone !== null) {
+    return (
+      <section className="erc-copilot withdrawn" data-testid="er-triage-copilot" aria-label={t("erCopilot.esi.title")}>
+        <header>
+          <span className="erc-tag">{t("erCopilot.esi.withdrawn")}</span>
+          <b data-testid="er-triage-copilot-why">{t(`erCopilot.esi.why.${gone.reason}`, {
+            level: gone.level ?? "", bay: gone.bayCode ?? "", time: gone.at === null ? "" : fmtIst(gone.at),
+          })}</b>
+        </header>
+        {gone.fresh ? <button type="button" className="erx-btn sm" data-testid="er-triage-copilot-fresh" onClick={() => setRound((n) => n + 1)}>{t("erCopilot.esi.fresh")}</button> : null}
+      </section>
+    );
+  }
   return (
     <section className="erc-copilot" data-testid="er-triage-copilot" aria-label={t("erCopilot.esi.title")}>
       <header>

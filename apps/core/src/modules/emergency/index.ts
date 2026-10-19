@@ -63,7 +63,7 @@ export {
   declareMci, listMciOverflowBeds, listMciPacks, mciTag, mintMciPacks, openSurgeBays, packNoOf, readMciBoard, readMciCount, registerMciArrival, standDownMci,
 } from "./mci";
 // Lane 9 (#816) — the ER copilot: Now cards, the ESI proposal (rules), "since arrival", drafts, the waiting display, tools.
-export { readEsiProposal } from "./copilot-esi";
+export { checkEsiProposal, readEsiProposal } from "./copilot-esi";
 export { istHm, readSinceArrival, sinceCandidates, verifyErSinceLine } from "./copilot-since";
 export { ER_DRAFT_BUDGET_MS, buildErDraft, buildErReferralDraft, buildErSummaryDraft, buildMlcNarrativeDraft } from "./copilot-drafts";
 export { askErModel, erModelBarred, erModelFrom } from "./copilot-model";

@@ -43,11 +43,11 @@ export { ErBandPayloadSchema } from "./intents";
 // Lane 9 (#816) — the ER copilot: Now card keys, the ESI proposal (rules only), "since arrival", drafts, the waiting display.
 export {
   ER_COPILOT_ROUTES, ER_DRAFT_FALLBACKS, ER_DRAFT_KINDS, ER_NOW_CARD_KEYS, ER_SINCE_MAX_LINES, ER_SINCE_MIN_LINES, ER_SINCE_SOURCES, ER_STAGE_WORDS,
-  ER_STAGE_WORDS_HI, ER_MODE_WORDS, ER_SINCE_FACT_KINDS, ErSinceFactSchema, ErSinceRefSchema, erIstHm, formatSinceFact, renderSinceLine, ErDraftSchema, ErEsiProposalSchema, ErSinceArrivalSchema, ErSinceLineSchema, ErWaitingDisplaySchema, esiDangerZone, esiWord,
+  ER_STAGE_WORDS_HI, ER_MODE_WORDS, ER_SINCE_FACT_KINDS, ErSinceFactSchema, ErSinceRefSchema, erIstHm, formatSinceFact, renderSinceLine, ErDraftSchema, ErEsiProposalSchema, ErEsiProposalCheckSchema, ER_PROPOSAL_WITHDRAW_REASONS, erWithdrawText, ErSinceArrivalSchema, ErSinceLineSchema, ErWaitingDisplaySchema, esiDangerZone, esiWord,
   proposeEsi,
 } from "./copilot";
 export type {
-  ErDraft, ErDraftKind, ErEsiProposal, ErNowCardKey, ErSinceArrival, ErSinceFact, ErSinceLine, ErSinceRef, ErSinceSource, ErStageWord, ErWaitingDisplay, EsiProposal,
+  ErDraft, ErDraftKind, ErEsiProposal, ErEsiProposalCheck, ErProposalWithdrawReason, ErNowCardKey, ErSinceArrival, ErSinceFact, ErSinceLine, ErSinceRef, ErSinceSource, ErStageWord, ErWaitingDisplay, EsiProposal,
   EsiProposalInput,
 } from "./copilot";
 export type { ErBandPayload } from "./intents";

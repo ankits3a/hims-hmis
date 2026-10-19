@@ -141,8 +141,54 @@ export const ErEsiProposalSchema = z.strictObject({
   basedOn: z.strictObject({ complaint: z.string().nullable(), ageYears: z.number().nullable(), vitalsAt: ErInstantSchema.nullable() }),
   /** Always "rules": the ESI proposal never comes from a model. */
   source: z.literal("rules"),
+  /**
+   * #899 — the proposal's identity: the rows it was read from (the episode's latest triage entry, its bay) and a digest
+   * of what it says. Opaque to a screen: the card sends it back to `…/check` and the server says whether it still stands.
+   */
+  basis: z.string().min(1).max(200),
 });
 export type ErEsiProposal = z.infer<typeof ErEsiProposalSchema>;
+
+/**
+ * #899 (spec §6 edge 1) — why a shown proposal withdrew itself. DECIDED (lane 9): the record's own words, one line at
+ * 390 px: a person triaged or re-triaged, the patient moved bay or left the ER, new vitals, the complaint or age changed;
+ * a basis the server cannot read is "out of date" (fail closed — never "still current").
+ */
+export const ER_PROPOSAL_WITHDRAW_REASONS = ["triaged", "re_triaged", "moved", "departed", "new_vitals", "details_changed", "out_of_date"] as const;
+export type ErProposalWithdrawReason = (typeof ER_PROPOSAL_WITHDRAW_REASONS)[number];
+
+export const ErEsiProposalCheckSchema = z.strictObject({
+  episodeId: ErIdSchema,
+  /** True only when the shown proposal is the one the server would show now. */
+  current: z.boolean(),
+  withdrawn: z.strictObject({
+    reason: z.enum(ER_PROPOSAL_WITHDRAW_REASONS),
+    /** The record's instant (the triage, the move, the vital set, the departure), when it has one. */
+    at: ErInstantSchema.nullable(),
+    level: ErEsiLevelSchema.nullable(),
+    bayCode: z.string().nullable(),
+    /** The reason in words (English; a screen may say it in its own language from the fields above). */
+    text: z.string(),
+    /** A new proposal can be shown (the patient is still waiting for triage). */
+    fresh: z.boolean(),
+  }).nullable(),
+});
+export type ErEsiProposalCheck = z.infer<typeof ErEsiProposalCheckSchema>;
+
+/** The reason in words, one short line (DECIDED wording, #899). */
+export function erWithdrawText(w: { reason: ErProposalWithdrawReason; at: string | null; level: ErEsiLevel | null; bayCode: string | null }): string {
+  const time = w.at === null ? "" : ` at ${erIstHm(w.at)}`;
+  const esi = w.level === null ? "" : ` ESI ${String(w.level)}`;
+  switch (w.reason) {
+    case "triaged": return `Triaged${esi}${time}`;
+    case "re_triaged": return `Re-triaged${esi}${time}`;
+    case "moved": return w.bayCode === null ? `Moved bay${time}` : `Moved to ${w.bayCode}${time}`;
+    case "departed": return `Left the ER${time}`;
+    case "new_vitals": return `New vitals${time}`;
+    case "details_changed": return "Complaint or age changed";
+    case "out_of_date": return "Suggestion out of date";
+  }
+}
 
 /** The proposal's level with its word, for a screen (never colour alone). */
 export const esiWord = (level: ErEsiLevel): string => `ESI ${String(level)} ${ER_ESI_INFO[level].word}`;
@@ -271,7 +317,8 @@ export const ErWaitingDisplaySchema = z.strictObject({
 export type ErWaitingDisplay = z.infer<typeof ErWaitingDisplaySchema>;
 
 export const ER_COPILOT_ROUTES = {
-  /** GET /er/copilot/esi/:episodeId — the triage proposal (er.triage). */
+  /** GET /er/copilot/esi/:episodeId — the triage proposal (er.triage). GET …/:episodeId/check?basis= — does a shown one
+   *  still stand (#899)? */
   esi: "/er/copilot/esi",
   /** GET /er/copilot/since/:episodeId — "since arrival" (er.care). */
   since: "/er/copilot/since",

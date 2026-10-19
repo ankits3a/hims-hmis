@@ -20463,7 +20463,18 @@
       "title": "Copilot triage suggestion",
       "says": "Suggests ESI {{n}} {{word}}",
       "yours": "From the complaint, age and last recorded vitals. The level is yours to pick.",
-      "use": "Use these answers"
+      "use": "Use these answers",
+      "withdrawn": "Suggestion withdrawn",
+      "fresh": "Show new suggestion",
+      "why": {
+        "triaged": "Triaged ESI {{level}} at {{time}}",
+        "re_triaged": "Re-triaged ESI {{level}} at {{time}}",
+        "moved": "Moved to {{bay}}",
+        "departed": "Left the ER at {{time}}",
+        "new_vitals": "New vitals at {{time}}",
+        "details_changed": "Complaint or age changed",
+        "out_of_date": "Suggestion out of date"
+      }
     },
     "since": {
       "title": "Since arrival"

@@ -24,7 +24,7 @@ const tile = (state: string) => ({
 const PROPOSAL: ErEsiProposal = {
   episodeId: EP, level: 2, word: "ESI 2 Emergent", decision: { lifeSaving: false, highRisk: true, resources: "many", dangerVitals: false },
   reasons: ['Complaint: "chest pain" (high risk)', 'Complaint: "chest pain" usually needs tests and treatment'], resourcesGuessed: false,
-  basedOn: { complaint: "chest pain since 1 hour", ageYears: 52, vitalsAt: null }, source: "rules",
+  basedOn: { complaint: "chest pain since 1 hour", ageYears: 52, vitalsAt: null }, source: "rules", basis: "v1.-.-.0123456789abcdef",
 };
 const SINCE: ErSinceArrival = {
   episodeId: EP, asOf: new Date().toISOString(), arrivedAt: new Date().toISOString(),
@@ -54,6 +54,7 @@ describe("ER lane 9 (#816) copilot screens", () => {
         if (raw.includes("/er/copilot/drafts/")) return json(DRAFT);
         return json({ episodeId: EP, level: 1, algorithmLevel: 2, downTriage: false, retriageDueAt: null, doctorDueAt: new Date().toISOString(), ews: null, take: null });
       }
+      if (raw.includes("/er/copilot/esi/") && raw.includes("/check?")) return json({ episodeId: EP, current: true, withdrawn: null });
       if (raw.includes("/er/copilot/esi/")) return json(PROPOSAL);
       if (raw.includes("/er/copilot/since/")) return json(SINCE);
       if (raw.endsWith("/er/copilot/waiting")) return json(WAITING);

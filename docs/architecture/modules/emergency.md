@@ -94,6 +94,7 @@ Source: `apps/core/src/modules/emergency/`
   - `buildErSummaryDraft(db: Db, actor: Actor, episodeId: string, opts: Opts = {}): Promise<ErDraft>`
   - `buildMlcNarrativeDraft(db: Db, actor: Actor, episodeId: string, opts: Opts = {}): Promise<ErDraft>`
 - `copilot-esi.ts`
+  - `checkEsiProposal(db: Db, actor: Actor, episodeId: string, basisRaw: string): Promise<ErEsiProposalCheck>`
   - `readEsiProposal(db: Db, actor: Actor, episodeId: string): Promise<ErEsiProposal>`
 - `copilot-model.ts`
   - `askErModel(db: Db, actor: Actor, model: ErModel | null | undefined, episodeId: string, ask: ErModelAsk, now: Date): Promise<ErModelAnswer>`
@@ -226,9 +227,9 @@ Source: `apps/core/src/modules/emergency/`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (81)
+## HTTP routes (82)
 
-- `copilot.controller.ts` — 4: `/er/copilot`
+- `copilot.controller.ts` — 5: `/er/copilot`
 - `emergency.controller.ts` — 77: `/er/arrivals`, `/er/bands`, `/er/bays`, `/er/bill`, `/er/board`, `/er/calls`, `/er/care`, `/er/codes`, `/er/consents`, `/er/desk`, `/er/dispo`, `/er/doctor`, `/er/doctors`, `/er/episodes`, `/er/identity`, `/er/items`, `/er/mci`, `/er/meds`, `/er/mlc`, `/er/notes`, `/er/orders`, `/er/patients`, `/er/pre-alerts`, `/er/procedures`, `/er/stabilised`, `/er/triage`, `/er/triage-doctors`, `/er/vitals`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/emergency`

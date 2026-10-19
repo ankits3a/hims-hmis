@@ -1,16 +1,16 @@
-import { Controller, Get, HttpCode, HttpException, Inject, Param, Post } from "@nestjs/common";
+import { Controller, Get, HttpCode, HttpException, Inject, Param, Post, Query } from "@nestjs/common";
 import { z } from "zod";
 import { ER_DRAFT_KINDS } from "@hmis/contracts";
 import { CONFIG, DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { buildErDraft } from "./copilot-drafts";
-import { readEsiProposal } from "./copilot-esi";
+import { checkEsiProposal, readEsiProposal } from "./copilot-esi";
 import { erModelFrom } from "./copilot-model";
 import { readSinceArrival } from "./copilot-since";
 import { readErWaitingDisplay } from "./copilot-waiting";
 import { ErError, ErRefusal, erRefusalStatus } from "./errors";
 import { ER_BOARD_WAITING, ER_CARE, ER_DISPOSITION, ER_MLC, ER_TRIAGE } from "./names";
-import type { Actor, ErDraft, ErEsiProposal, ErRefusalBody, ErSinceArrival, ErWaitingDisplay } from "@hmis/contracts";
+import type { Actor, ErDraft, ErEsiProposal, ErEsiProposalCheck, ErRefusalBody, ErSinceArrival, ErWaitingDisplay } from "@hmis/contracts";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
 import type { ErModel } from "./copilot-model";
@@ -40,6 +40,8 @@ function toHttp(e: unknown): never {
 
 const idParam = z.string().trim().min(1).max(64);
 const kindParam = z.enum(ER_DRAFT_KINDS);
+/** #899 — the basis a screen was handed; any string up to the contract's length (an unreadable one is "out of date"). */
+const basisParam = z.string().min(1).max(200);
 
 @Controller("er/copilot")
 export class EmergencyCopilotController {
@@ -53,6 +55,13 @@ export class EmergencyCopilotController {
   @RequirePermission(ER_TRIAGE, "hospital")
   async esi(@CurrentActor() actor: Actor, @Param("episodeId") id: string): Promise<ErEsiProposal> {
     try { return await readEsiProposal(this.db, actor, idParam.parse(id)); } catch (e) { toHttp(e); }
+  }
+
+  /** #899 — does the proposal a screen shows (its `basis`) still stand? If not: withdrawn, with the reason. */
+  @Get("esi/:episodeId/check")
+  @RequirePermission(ER_TRIAGE, "hospital")
+  async esiCheck(@CurrentActor() actor: Actor, @Param("episodeId") id: string, @Query("basis") basis: unknown): Promise<ErEsiProposalCheck> {
+    try { return await checkEsiProposal(this.db, actor, idParam.parse(id), basisParam.parse(basis)); } catch (e) { toHttp(e); }
   }
 
   @Get("since/:episodeId")

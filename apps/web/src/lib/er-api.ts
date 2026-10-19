@@ -1,6 +1,6 @@
 import { ApiError, api } from "./api";
 import type {
-  ErDraft, ErDraftKind, ErEsiProposal, ErSinceArrival, ErWaitingDisplay,
+  ErDraft, ErDraftKind, ErEsiProposal, ErEsiProposalCheck, ErSinceArrival, ErWaitingDisplay,
   ErBay, ErBill, ErBillDesk, ErBoard, ErCodeView, ErCodes, ErMciBoard, ErMciCount, ErMciPack, ErMciSurgeBed, ErCareView, ErDeskView, ErDoctorOption, ErEpisodeView, ErItemOption, ErMlcDesk, ErMlcDetail, ErPatientHit, ErRefusalBody,
 } from "@hmis/contracts";
 
@@ -273,6 +273,9 @@ export const surgeApi = (body: Record<string, unknown>) => post<{ opened: { bedI
  * only: nothing here records anything — a draft fills a form; the doctor signs through the act that owns it. ═══ */
 const ER_COPILOT_ROUTES = { esi: "/er/copilot/esi", since: "/er/copilot/since", drafts: "/er/copilot/drafts", waiting: "/er/copilot/waiting" } as const;
 export const fetchEsiProposal = (episodeId: string) => api<ErEsiProposal>("GET", `${ER_COPILOT_ROUTES.esi}/${encodeURIComponent(episodeId)}`);
+/** #899 — does the proposal on the screen (its basis) still stand? */
+export const checkEsiProposal = (episodeId: string, basis: string) =>
+  api<ErEsiProposalCheck>("GET", `${ER_COPILOT_ROUTES.esi}/${encodeURIComponent(episodeId)}/check?basis=${encodeURIComponent(basis)}`);
 export const fetchSinceArrival = (episodeId: string) => api<ErSinceArrival>("GET", `${ER_COPILOT_ROUTES.since}/${encodeURIComponent(episodeId)}`);
 export const draftApi = (episodeId: string, kind: ErDraftKind) => api<ErDraft>("POST", `${ER_COPILOT_ROUTES.drafts}/${encodeURIComponent(episodeId)}/${kind}`, {});
 export const fetchWaitingDisplay = () => api<ErWaitingDisplay>("GET", ER_COPILOT_ROUTES.waiting);
