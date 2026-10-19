@@ -1,10 +1,11 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import { newId } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { mkCashier, openSessionFor } from "../../../test/helpers/billing";
 import { grantLabResultPermissions, runLabOrder, seedLabDeskBase, settleInvoice } from "../../../test/helpers/lab";
 import { mkUser } from "../../../test/helpers/opd";
 import { grantPermissionToRole } from "../../kernel/auth/permissions";
-import { labReportDeliveries, orders } from "../../kernel/db/schema";
+import { labReportDeliveries, opdDoctors, opdEncounters, orderItems, orders } from "../../kernel/db/schema";
 import { getReport, listResultsForEncounter, printReport, publishReport, reportsForPatient } from "./reports";
 import { labWaitingMine } from "./waiting";
 import type { LabDeskFixture } from "../../../test/helpers/lab";
@@ -94,6 +95,12 @@ describe("lab — the treating doctor's read (#682)", () => {
     expect(await reportsBack(new Date(AT.getTime() + 30 * H))).toBe(1);
   });
 
+  it("(c) reports from before the read stamp existed do not flood the line: unread past the 7-day horizon drops off", async () => {
+    await reportBack("TSH", AT);
+    expect(await reportsBack(new Date(AT.getTime() + 6 * 24 * H))).toBe(1);
+    expect(await reportsBack(new Date(AT.getTime() + 8 * 24 * H))).toBe(0);
+  });
+
   it("(d) the lab's own handling — print, the counter's read, the signer's read — is not the doctor's read", async () => {
     const cashier = await mkCashier(db, "lab.cashier");
     await openSessionFor(db, cashier, 0);
@@ -112,6 +119,53 @@ describe("lab — the treating doctor's read (#682)", () => {
     const r = await reportBack("TSH", AT);
     await getReport(db, other.actor, r.reportId, AT);
     expect(await doctorReads()).toEqual([]);
+  });
+
+  /** The OPD visit's doctor — a treating doctor who did NOT order, so the restricted-test rule hides restricted panels from them. */
+  const visitDoctorOn = async (visitNo: string) => {
+    const visit = await mkUser(db, "dr.visit", ["doctor"]);
+    const doctorId = newId();
+    await db.insert(opdDoctors).values({
+      id: doctorId, userId: visit.id, displayName: "Dr Visit", code: "DR-VISIT", departmentId: fx.labDepartmentId, createdBy: "t", updatedBy: "t",
+    });
+    await db.insert(opdEncounters).values({
+      id: newId(), patientId: fx.patientId, workflowInstanceId: "wf-visit", serviceDate: "2026-08-30", visitType: "new",
+      openedBy: "t", updatedBy: "t", visitNo, doctorId,
+    } as typeof opdEncounters.$inferInsert);
+    return visit;
+  };
+
+  it("restricted-test rule: the visit doctor's read stamps an ordinary report, but not one whose restricted panel they could not see", async () => {
+    const plainVisit = fx.newVisit();
+    const plain = await reportBack("TSH", AT, plainVisit);
+    const visit = await visitDoctorOn(plainVisit);
+    await getReport(db, visit.actor, plain.reportId, AT);
+    expect((await doctorReads()).map((d) => d.reportId)).toEqual([plain.reportId]);
+
+    /* One order, two panels: TSH and a B12 marked restricted (a stand-in: HIV itself needs recorded consent to order). The visit doctor sees the TSH panel only. */
+    const mixedVisit = fx.newVisit();
+    await db.insert(opdEncounters).values({
+      id: newId(), patientId: fx.patientId, workflowInstanceId: "wf-visit-2", serviceDate: "2026-08-30", visitType: "new",
+      openedBy: "t", updatedBy: "t", visitNo: mixedVisit,
+      doctorId: (await db.select({ id: opdDoctors.id }).from(opdDoctors).where(eq(opdDoctors.userId, visit.id)))[0]!.id,
+    } as typeof opdEncounters.$inferInsert);
+    const run = await runLabOrder(db, fx, ["TSH", "B12"], { at: AT, encounterNo: mixedVisit });
+    await db.update(orders).set({ orderingClinicianId: doctor.id }).where(eq(orders.id, run.orderId));
+    const items = await db.select({ id: orderItems.id }).from(orderItems).where(eq(orderItems.orderId, run.orderId));
+    expect(items).toHaveLength(2);
+    const hivItem = (await db.execute<{ id: string }>(sql`select oi.id from order_items oi
+      join lab_orderables lo on lo.service_id = oi.service_id where oi.order_id = ${run.orderId} and lo.code = 'B12'`)).rows[0]!.id;
+    await db.update(orderItems).set({ restricted: true }).where(inArray(orderItems.id, [hivItem]));
+    const mixed = await publishReport(db, fx.pathologist.actor, { orderId: run.orderId }, AT);
+
+    const seen = await getReport(db, visit.actor, mixed.reportId, AT);
+    expect(seen.snapshot.panels).toHaveLength(1);
+    await listResultsForEncounter(db, visit.actor, mixedVisit, AT);
+    expect((await doctorReads()).map((d) => d.reportId)).toEqual([plain.reportId]);
+    expect(await reportsBack(AT)).toBe(1); // the orderer still has the mixed report waiting
+
+    await getReport(db, doctor.actor, mixed.reportId, AT); // the orderer sees all of it: that read lands
+    expect((await doctorReads()).map((d) => d.reportId).sort()).toEqual([plain.reportId, mixed.reportId].sort());
   });
 
   it("a screen read is not a hand-over: the counter's reader does not list it as a delivery", async () => {

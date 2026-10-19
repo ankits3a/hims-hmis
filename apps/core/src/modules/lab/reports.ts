@@ -1005,8 +1005,12 @@ export async function getReport(
     sealed: patient?.isConfidential ?? false,
     now,
   });
-  /** #682 — the treating doctor's first read closes "lab reports back"; anyone else's stamps nothing. */
-  await stampDoctorRead(db, actor, [report.orderId], now);
+  /**
+   * #682 — the treating doctor's first read closes "lab reports back"; anyone else's stamps nothing.
+   * A read with a restricted panel held back (DD11) is not the whole report, so it stamps nothing either:
+   * the orderer, who sees every panel, still has it waiting.
+   */
+  if (shown === report.snapshot) await stampDoctorRead(db, actor, [report.orderId], now);
 
   return {
     reportId: report.id,
@@ -1073,6 +1077,8 @@ export async function listResultsForEncounter(
 ): Promise<EncounterResultRow[]> {
   await assertMay(db, actor, LAB_RESULTS_READ, "read lab results");
 
+  /** Orders with a restricted test held back from this reader: their report was not read whole (#682). */
+  const partlyHidden = new Set<string>();
   const rows = await db
     .select({
       orderId: orders.id,
@@ -1099,7 +1105,9 @@ export async function listResultsForEncounter(
     .then(async (all) => {
       /* DD11 — a restricted test is omitted (never badged) for a reader who is not cleared for it. */
       const cleared = await restrictedClearance(db, actor);
-      return all.filter((r) => !r.restricted || cleared(r.orderingClinicianId));
+      const shown = all.filter((r) => !r.restricted || cleared(r.orderingClinicianId));
+      for (const r of all) if (!shown.includes(r)) partlyHidden.add(r.orderId);
+      return shown;
     });
 
   /**
@@ -1117,7 +1125,7 @@ export async function listResultsForEncounter(
       sealed: sealed?.isConfidential ?? false, now,
     });
     /** #682 — the consult's results panel IS the doctor opening these reports. */
-    await stampDoctorRead(db, actor, [...new Set(rows.map((r) => r.orderId))], now);
+    await stampDoctorRead(db, actor, [...new Set(rows.map((r) => r.orderId))].filter((id) => !partlyHidden.has(id)), now);
   }
 
   return rows.map((r) => ({
