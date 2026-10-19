@@ -325,7 +325,9 @@ export async function acknowledgeCritical(
    * E3.2 (#595) — the chase is over, so every ladder alert still open for this call is acknowledged
    * by the closer in this same transaction; the reach ladder relays nothing more about it.
    */
-  await acknowledgeAlertsAbout(tx, actor, { refType: "lab_critical_call", refId: input.callId }, now, "closed by read-back");
+  for (const refType of ["lab_critical_call", "lab_critical_call_unit"]) {
+    await acknowledgeAlertsAbout(tx, actor, { refType, refId: input.callId }, now, "closed by read-back");
+  }
 
   await appendEvent(tx, labCriticalAcknowledged.make({
     actor,

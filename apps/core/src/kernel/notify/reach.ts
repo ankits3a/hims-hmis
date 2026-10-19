@@ -100,6 +100,8 @@ function linkFor(refType: string | null, refId: string | null): string {
   // E3.2 (#595) — the ladder's people are doctors; `/lab/bench` needs `lab.criticals.close`. My Day's
   // "Waiting for me" holds the doctor's open lab criticals, and every signed-in user can open it.
   if (refType === "lab_critical_call") return "/my-day";
+  // Rungs 1–3 (unit head, duty RMO, HOD): the Doctor Desk holds the unit's open criticals.
+  if (refType === "lab_critical_call_unit") return "/doctor-desk";
   return "/";
 }
 

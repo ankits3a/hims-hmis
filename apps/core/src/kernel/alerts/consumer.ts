@@ -85,6 +85,12 @@ const IMAGING_CHASE_REF_TYPE = "imaging_study";
 const ALERT_KIND_LAB_CRITICAL = "lab_critical";
 const LAB_CRITICAL_REF_TYPE = "lab_critical_call";
 /**
+ * Rungs 1–3 (unit head, duty RMO, HOD) are not the ordering doctor: their row opens the Doctor Desk,
+ * where the unit's open criticals are, not My Day (which lists only their own orders). The read-back
+ * acknowledges both ref types (`modules/lab/criticals.ts`).
+ */
+const LAB_CRITICAL_UNIT_REF_TYPE = "lab_critical_call_unit";
+/**
  * Plan 11c D4, CORRECTED BY 11d D6. The mode service has exactly ONE hospital-wide subject and no
  * per-subject instances (D2), so 11c made the "id" this alert refers to the mode WORD. That named
  * a STATE rather than the fact the owner was woken for, and it was the odd one out: both other ref
@@ -461,7 +467,7 @@ async function handleLabCriticalOverdue(db: Db, e: DispatchedEvent): Promise<voi
     body:
       `A critical lab result has waited ${String(payload.minutesOpen)} minutes with no read-back. `
       + `You are called as the ${LAB_RUNG_WORDS[payload.rung] ?? payload.rung}. Ring the lab: the call closes when the value is read back.`,
-    refType: LAB_CRITICAL_REF_TYPE,
+    refType: payload.rung === "ordering_doctor" ? LAB_CRITICAL_REF_TYPE : LAB_CRITICAL_UNIT_REF_TYPE,
     refId: payload.callId,
   });
 }

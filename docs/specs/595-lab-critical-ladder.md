@@ -35,7 +35,7 @@ approved: 2026-10-12
 **As built (PR #706):**
 - Migration `0222_lab_critical_ladder` (rung, owner and last-chase columns; `lab.critical_overdue` added to the roster escalation kinds).
 - Rung people as the radiology chaser reads them: unit head = roster `unit_head` of the doctor's unit, else that unit's head; duty RMO = roster `casualty_mo`; HOD = `medical_superintendent` holders. A rung that names nobody falls back to `escalationRecipients("lab.critical_overdue")`.
-- The alert opens My Day for a doctor and the bench for a holder of `lab.criticals.close` (the bench needs that grant).
+- The alert opens My Day for the ordering doctor (rung 0), the Doctor Desk for the unit head, duty RMO and HOD (rungs 1–3, where the unit's open criticals are), and the bench for a holder of `lab.criticals.close` (the bench needs that grant).
 - A read-back also acknowledges the call's open ladder alerts, so the relay stops.
 - Calls opened before the change are never chased.
 - Done-means 5 is owed after deploy: run `node dist/scripts/g5-critical-readback.js` on production.

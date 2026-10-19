@@ -54,11 +54,15 @@ const DEEP_LINKS: Record<string, (refId: string) => { to: string; search: Record
   // (`/lab/bench`) needs `lab.criticals.close`: a doctor goes to My Day, whose "Waiting for me" holds
   // their open lab criticals; only a reader who can take the read-back goes to the bench.
   lab_critical_call: () => ({ to: "/my-day", search: {} }),
+  // Rungs 1–3 (unit head, duty RMO, HOD) are not the ordering doctor: the Doctor Desk shows the unit's criticals.
+  lab_critical_call_unit: () => ({ to: "/doctor-desk", search: {} }),
 };
 
 function deepLinkFor(a: WireAlert, can: (permission: string) => boolean): { to: string; search: Record<string, string> } | null {
   if (a.refType === null || a.refId === null) return null;
-  if (a.refType === "lab_critical_call" && can("lab.criticals.close")) return { to: "/lab/bench", search: {} };
+  if ((a.refType === "lab_critical_call" || a.refType === "lab_critical_call_unit") && can("lab.criticals.close")) {
+    return { to: "/lab/bench", search: {} };
+  }
   const build = DEEP_LINKS[a.refType];
   return build === undefined ? null : build(a.refId);
 }

@@ -195,6 +195,19 @@ describe("lab critical ladder (E3.2)", () => {
     expect(relayed.map((n) => [n.userId, n.params.link])).toEqual([[doc, "/my-day"]]);
   });
 
+  it("rungs 1–3 open the Doctor Desk (the unit's open criticals); the ordering doctor's rung 0 keeps My Day", async () => {
+    const { callId } = await criticalCall();
+    await sweepLabCriticalLadder(db, after(15), RESOLVER_ON);
+    await deliver();
+    expect((await alertsFor(doc)).map((a) => a.refType)).toEqual(["lab_critical_call"]);
+    expect((await alertsFor(head)).map((a) => a.refType)).toEqual(["lab_critical_call_unit"]);
+
+    const raisedAt = Math.max(...(await db.select().from(alerts).where(eq(alerts.refId, callId))).map((a) => a.createdAt.getTime()));
+    await runReachLadder(db, new Date(raisedAt + 6 * 60_000));
+    const relayed = await db.select().from(notifications).where(eq(notifications.refId, callId));
+    expect(relayed.map((n) => [n.userId, n.params.link]).sort()).toEqual([[doc, "/my-day"], [head, "/doctor-desk"]].sort());
+  });
+
   it("a read-back acknowledges every open alert of the call (owned, by the closer), and the reach ladder relays none of them", async () => {
     const { callId } = await criticalCall();
     await sweepLabCriticalLadder(db, after(15), RESOLVER_ON);
