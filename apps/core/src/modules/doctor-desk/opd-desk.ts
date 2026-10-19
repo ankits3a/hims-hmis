@@ -52,7 +52,7 @@ export async function opdDeskView(db: Db, actor: Actor, at: Date): Promise<WireO
     line: mine === null ? null : toWire(mine),
     pace: paceOf(pace.seen, pace.firstStartedAt, mine?.waiting ?? 0, at),
     colleagues: lines.filter((l) => l.userId !== actor.id && l.session !== "none").map(toWire),
-    waitingOn: (await waitingOn(db, actor, at, scope.istDate)).filter((r) => OPD_KINDS.has(r.kind)),
+    waitingOn: (await waitingOn(db, actor, at, scope.istDate, scope.members)).filter((r) => OPD_KINDS.has(r.kind)),
   };
 }
 

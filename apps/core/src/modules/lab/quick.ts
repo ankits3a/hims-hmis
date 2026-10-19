@@ -501,8 +501,11 @@ export async function quickCollectQueue(db: Db, actor: Actor, now: Date = new Da
       sql`not exists (select 1 from lab_quick_reports q where q.order_id = ${orders.id})`,
       sql`not exists (select 1 from lab_specimen_items si where si.order_item_id = ${orderItems.id} and si.active)`,
     ))
-    // Tests within an order by code: order_items has no insertion-order column and ids are not
-    // monotonic, so without a second key the tube label's test list came back in plan order.
+    /**
+     * #889/#909 — orders oldest first, and an order's tests by test CODE: unique, what every lab
+     * screen shows (pills, `orderableCodes`), what the requisition slip prints. order_items has no
+     * insertion-order column and ULIDs are not monotonic, so without a second key the heap decided.
+     */
     .orderBy(asc(orders.placedAt), asc(orders.id), asc(labOrderables.code));
   const byOrder = new Map<string, { row: (typeof items)[number]; tests: QuickChosenTest[] }>();
   for (const it of items) {
@@ -540,7 +543,9 @@ export async function quickCollect(tx: Tx, actor: Actor, orderId: string, now: D
   if (done) throw new QuickEntryError("already_collected", `blood for ${order.orderNo} is already confirmed`, { quickId: done.id });
   const live = await tx.select({ serviceId: orderItems.serviceId, code: labOrderables.code, nameEn: labOrderables.nameEn })
     .from(orderItems).innerJoin(labOrderables, eq(labOrderables.serviceId, orderItems.serviceId))
-    .where(and(eq(orderItems.orderId, orderId), inArray(orderItems.status, [...LIVE_ITEM_STATUSES])));
+    .where(and(eq(orderItems.orderId, orderId), inArray(orderItems.status, [...LIVE_ITEM_STATUSES])))
+    /** #889 — stored order is the bench form's and the printed report's group order: fix it by code. */
+    .orderBy(asc(labOrderables.code));
   if (live.length === 0) throw new QuickEntryError("no_tests", `${order.orderNo} has no test left to collect`);
   const tests: QuickChosenTest[] = [];
   for (const t of live) if (!tests.some((x) => x.serviceId === t.serviceId)) tests.push(t);

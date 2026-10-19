@@ -104,9 +104,9 @@ export { outsideStudyFor, registerOutsideStudy } from "./outside";
 export type { OutsideStudyRow, RegisterOutsideStudyInput } from "./outside";
 /** 18a-iii T5 — the worker's two chasers. `jobs.ts` imports them through this barrel, as it does the lab's. */
 export {
-  CHASER_ACTOR, UNREAD_REPORT_HOURS, sweepCriticalChaser, sweepUnreadWatchman,
+  CHASER_ACTOR, UNREAD_ESCALATE_HOURS, UNREAD_REPORT_HOURS, sweepCriticalChaser, sweepUnreadWatchman,
 } from "./chasers";
-export type { CriticalChaseResult, UnreadChaseResult } from "./chasers";
+export type { CriticalChaseResult, UnreadChaseResult, UnreadRung } from "./chasers";
 export {
   authorisationOf, encounterPayer, hasBillDecision, imagingFreeAt, linkInvoiceLine, openBillDecisions,
   raiseBillDecision, resolveBillDecision,

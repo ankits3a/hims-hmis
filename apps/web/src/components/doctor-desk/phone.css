@@ -1,0 +1,75 @@
+/*
+ * ═══ DD-1 — THE PHONE BOARDS (`Main.dc.html`, `Professor.dc.html`), ported as web views ═══
+ *
+ * The board's 390 px column: IBM Plex, the board's greens, 44–48 px touch targets. The dock is LIGHT
+ * with an ink edge (owner R13: no dark slabs). Wider than a phone the column stays 480 px and centred.
+ */
+.ddp {
+  --dd-bg: #f4f7f4; --dd-ink: #132420; --dd-acc: #0e6b4e; --dd-line: #dfe7e1; --dd-line2: #ecf1ed;
+  --dd-dim: #5c6f66; --dd-red: #b23a30; --dd-amber: #8a5a0b;
+  min-height: 100vh; background: var(--dd-bg); color: var(--dd-ink);
+  font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif; font-size: 14px; line-height: 20px;
+  -webkit-font-smoothing: antialiased;
+}
+.ddp a { color: var(--dd-acc); text-decoration: none; }
+.ddp button { font: inherit; cursor: pointer; }
+.ddp-col { max-width: 480px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; box-sizing: border-box; }
+.ddp-scroll { flex-grow: 1; padding: 18px 16px 16px; display: flex; flex-direction: column; gap: 14px; }
+.ddp-top { display: flex; align-items: center; justify-content: space-between; }
+.ddp-brand { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 10.5px; font-weight: 700; letter-spacing: .16em; color: var(--dd-ink) !important; }
+.ddp-clock { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 11px; color: var(--dd-dim); }
+.ddp-hello { display: flex; flex-direction: column; gap: 4px; }
+.ddp-h1 { margin: 0; font-size: 22px; line-height: 28px; font-weight: 600; }
+.ddp-h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.ddp-sub, .ddp-dim { font-size: 13px; color: var(--dd-dim); }
+.ddp-mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 11px; color: var(--dd-dim); }
+.ddp-eyebrow { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 10px; font-weight: 600; letter-spacing: .14em; color: var(--dd-dim); }
+.ddp-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.ddp-card { display: flex; flex-direction: column; gap: 8px; padding: 12px; background: #ffffff; border: 1px solid var(--dd-line); border-radius: 8px; }
+.ddp-list { display: flex; flex-direction: column; background: #ffffff; border: 1px solid var(--dd-line); border-radius: 8px; }
+.ddp-li { display: flex; align-items: center; gap: 10px; padding: 12px; border-bottom: 1px solid var(--dd-line2); }
+.ddp-li:last-child { border-bottom: none; }
+.ddp-li-main { flex-grow: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ddp-li-t { font-size: 13.5px; font-weight: 600; }
+.ddp-li-s { font-size: 12px; color: var(--dd-dim); }
+.ddp-li-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
+.ddp-empty { padding: 12px; font-size: 12.5px; color: var(--dd-dim); }
+.ddp-tag { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 4px; background: var(--dd-acc); color: #f2faf6; font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 10.5px; font-weight: 700; letter-spacing: .1em; }
+.ddp-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.ddp-day { display: flex; flex-direction: column; gap: 2px; padding: 6px 4px; border-radius: 6px; background: #f4f7f4; min-width: 0; }
+.ddp-day-on { background: rgba(14, 107, 78, .1); }
+.ddp-day-d { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 10px; font-weight: 600; color: var(--dd-dim); }
+.ddp-day-w { font-size: 11px; line-height: 14px; overflow: hidden; text-overflow: ellipsis; }
+.ddp-crit { display: flex; flex-direction: column; gap: 8px; padding: 14px; background: #ffffff; border: 1.5px solid var(--dd-red); border-radius: 8px; }
+.ddp-crit-acked { border-color: #dd8f1c; background: #fffaf0; }
+.ddp-crit-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.ddp-crit-who { font-size: 15px; font-weight: 600; }
+.ddp-crit-v { font-size: 22px; line-height: 28px; font-weight: 700; color: var(--dd-red); }
+.ddp-crit-acked .ddp-crit-v { color: var(--dd-amber); }
+.ddp-act { display: flex; flex-direction: column; gap: 8px; }
+.ddp-act-q { font-size: 13px; font-weight: 600; }
+.ddp-act-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.ddp-act-other { display: flex; gap: 8px; }
+.ddp-acted { padding: 9px 10px; background: rgba(14, 107, 78, .08); border: 1px solid rgba(14, 107, 78, .35); border-radius: 6px; font-size: 12.5px; color: var(--dd-acc); font-weight: 500; }
+.ddp-btn { min-height: 44px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--dd-line); background: #ffffff; color: var(--dd-ink); font-size: 13px; font-weight: 500; }
+.ddp-btn:disabled { opacity: .55; cursor: default; }
+.ddp-btn-on { border-color: var(--dd-acc); background: var(--dd-acc); color: #f2faf6; }
+.ddp-btn-acc { border-color: var(--dd-acc); color: var(--dd-acc); font-weight: 600; }
+.ddp-btn-ink { border-color: var(--dd-acc); background: var(--dd-acc); color: #f2faf6; font-weight: 600; }
+.ddp-btn-done { border-color: rgba(14, 107, 78, .35); background: rgba(14, 107, 78, .08); color: var(--dd-acc); }
+.ddp-input { flex-grow: 1; min-height: 44px; box-sizing: border-box; padding: 0 10px; border-radius: 6px; border: 1px solid var(--dd-line); font: inherit; min-width: 0; }
+.ddp-red { color: var(--dd-red); font-weight: 700; }
+.ddp-amber { color: var(--dd-amber); font-weight: 600; }
+.ddp-link { display: flex; align-items: center; justify-content: center; min-height: 48px; font-size: 13px; font-weight: 600; }
+.ddp-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.ddp-rates { display: flex; flex-wrap: wrap; gap: 8px; }
+/* The dock and the tabs are ONE sticky footer, so neither covers the other. */
+.ddp-foot { position: sticky; bottom: 0; z-index: 2; }
+.ddp-dock { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 12px; background: #ffffff; border-top: 2px solid var(--dd-ink); }
+.ddp-cop { display: flex; align-items: center; gap: 8px; }
+.ddp-cop-dot { width: 7px; height: 7px; border-radius: 4px; background: #35c48f; }
+.ddp-cop-t { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 10px; letter-spacing: .12em; color: var(--dd-dim); }
+.ddp-cop-line { font-size: 13px; }
+.ddp-tabs { display: flex; background: #ffffff; border-top: 1px solid var(--dd-line); }
+.ddp-tab { flex: 1 1 0; display: flex; align-items: center; justify-content: center; min-height: 48px; font-size: 12.5px; font-weight: 500; color: var(--dd-dim) !important; }
+.ddp-tab-on { color: var(--dd-acc) !important; font-weight: 700; box-shadow: inset 0 2px 0 var(--dd-acc); }
