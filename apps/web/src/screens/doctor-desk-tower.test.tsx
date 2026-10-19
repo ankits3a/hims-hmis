@@ -152,7 +152,11 @@ describe("Doctor Desk Tower (DD-0)", () => {
     const menu = await screen.findByTestId("desk-menu");
     await waitFor(() => expect(within(menu).getByTestId("desk-menu-dashboard")).toHaveAttribute("aria-current", "page"));
     const hrefs = within(menu).getAllByRole("link").map((a) => a.getAttribute("href"));
-    expect(hrefs).toEqual(["/doctor-desk", "/doctor-desk/opd", "/roster/my-duties", "/roster/month", "/roster/on-now", "/doctor-desk/briefs"]);
+    // DD-1 — Now, Sign & Rate and My Ratings under DOCTOR DESK; the Unit board first under UNIT.
+    expect(hrefs).toEqual([
+      "/doctor-desk", "/doctor-desk/opd", "/roster/my-duties", "/doctor-desk/now", "/doctor-desk/professor", "/doctor-desk/ratings",
+      "/doctor-desk/unit", "/doctor-desk/report", "/roster/month", "/roster/on-now", "/doctor-desk/briefs",
+    ]);
     expect(within(menu).getByTestId("desk-menu-aiBriefs-n")).toHaveTextContent("2");
     expect(menu).toHaveTextContent("CRKMEDICAL COLLEGE & HOSPITAL");
     const quick = screen.getByTestId("dd-quick").querySelectorAll("a");

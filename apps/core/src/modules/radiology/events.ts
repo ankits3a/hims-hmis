@@ -172,6 +172,14 @@ export const imagingCriticalOverdue = defineEvent("imaging.critical_overdue", MO
 
 export const imagingReportUnread = defineEvent("imaging.report_unread", MODULE, z.object({
   reportId: id, studyId: id, unreadHours: z.number().int().nonnegative(),
+  /**
+   * DOCTOR DESK DD-0.11 — the rung. `ordering_clinician` goes to `notifyUserIds` (the order's
+   * ordering clinician); `department` goes to the duty-manager route (`escalationRecipients`). An
+   * event written before DD-0.11 has neither field and is read as `department`, which is what it was.
+   */
+  rung: z.enum(["ordering_clinician", "department"]).optional(),
+  /** Staff ids only, never a patient (rung `ordering_clinician`). */
+  notifyUserIds: z.array(id).optional(),
 }));
 
 /**
