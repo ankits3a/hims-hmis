@@ -16,6 +16,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/admin/users` | `apps/web/src/screens/admin-users` |
 | `/appointment` | `apps/web/src/screens/desk-one/desk-one` |
 | `/approvals` | `apps/web/src/screens/approvals-inbox` |
+| `/attendance/links` | `apps/web/src/screens/attendance-links` |
 | `/billing` | `apps/web/src/screens/desk-one/seat-shell` |
 | `/billing/dues` | `apps/web/src/screens/billing-dues` |
 | `/billing/office` | `apps/web/src/screens/billing-office` |

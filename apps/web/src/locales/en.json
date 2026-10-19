@@ -54,6 +54,7 @@
     "opsMode": "Operating mode",
     "opsDowntimeKit": "Downtime kit",
     "adminUsers": "Users",
+    "attendanceLinks": "Attendance links",
     "counterInstruments": "Card recognition",
     "counterReconcile": "Card reconcile",
     "noneAvailable": "No screens are available to your role — ask an administrator",
@@ -2433,6 +2434,103 @@
     "rule": "At least 10 characters. No upper-case or symbol rules — length is what matters. It must not be your username.",
     "mismatch": "The two new passwords do not match",
     "submit": "Change password (Alt+S)"
+  },
+  "attendanceLinks": {
+    "heading": "Attendance links",
+    "sub": "Machine list ↔ HMIS logins, by mobile or Aadhaar only",
+    "denied": "You do not have access to attendance links.",
+    "tab": {
+      "unlinked": "Not linked",
+      "suggestions": "Suggestions",
+      "byHand": "Link by hand"
+    },
+    "count": {
+      "linked": "{{linked}} of {{active}} linked",
+      "pct": "{{pct}}%",
+      "unlinked": "Not linked: {{n}}",
+      "attention": "Need a person: {{n}}",
+      "logins": "Logins linked: {{linked}} of {{active}}"
+    },
+    "reason": {
+      "no_match": "No login matches",
+      "aadhaar_shared": "Aadhaar on two logins",
+      "mobile_shared_on_machine": "Mobile shared on machine",
+      "mobile_shared_by_logins": "Mobile on two logins",
+      "login_linked_elsewhere": "Login already linked"
+    },
+    "unlinked": {
+      "search": "Search name, department or pin",
+      "total": "{{n}} not linked",
+      "none": "Nobody here.",
+      "more": "Show more"
+    },
+    "suggestions": {
+      "why": "Same mobile on both sides. Check, then link each one.",
+      "none": "No mobile matches waiting.",
+      "mobile": "mobile ··{{last4}}",
+      "shared": "Shared number"
+    },
+    "byHand": {
+      "search": "Find on machine list: name, department or pin",
+      "none": "Nobody on the machine list matches.",
+      "back": "← Back",
+      "matches": "Matching logins",
+      "noMatches": "No login has this person's mobile or Aadhaar.",
+      "findLogin": "Find a login",
+      "loginSearch": "Username, name or staff ID",
+      "noLogins": "No login found."
+    },
+    "state": {
+      "linked": "Linked · {{username}}",
+      "left": "Has left"
+    },
+    "login": {
+      "taken": "Already linked · #{{pin}}",
+      "match": {
+        "mobile": "Mobile matches",
+        "aadhaar": "Aadhaar matches"
+      },
+      "noMatch": "No match",
+      "give": "Add mobile / Aadhaar",
+      "mobile": "Mobile",
+      "aadhaar": "Aadhaar",
+      "save": "Save"
+    },
+    "link": "Link",
+    "confirm": {
+      "title": "Link {{name}} (#{{pin}}) to {{username}}?",
+      "by": {
+        "mobile": "Their mobile numbers match.",
+        "aadhaar": "Their Aadhaar matches."
+      },
+      "yes": "Confirm link",
+      "no": "Cancel"
+    },
+    "linkedNotice": "Linked {{name}} to {{username}}",
+    "error": {
+      "no_match": "Mobile or Aadhaar must match first.",
+      "person_linked": "This person is already linked.",
+      "login_linked": "This login is already linked.",
+      "login_inactive": "This login is deactivated.",
+      "unknown_person": "Not on the machine list.",
+      "user_not_found": "Login not found.",
+      "mobile_invalid": "Not a mobile number. Ten digits, starting 6–9.",
+      "aadhaar_invalid": "Not a valid Aadhaar number.",
+      "aadhaar_key_not_configured": "Aadhaar cannot be saved yet on this server.",
+      "not_linked": "This person is not linked.",
+      "reason_has_number": "Leave numbers out of the reason.",
+      "bad_body": "Give a short reason."
+    },
+    "unlink": {
+      "button": "Unlink",
+      "title": "Unlink {{name}} (#{{pin}}) from {{username}}?",
+      "marksStay": "Past attendance marks stay with the person. To re-point, unlink, then link the right login.",
+      "reason": "Reason",
+      "reasonHint": "e.g. linked to the wrong login",
+      "yes": "Confirm unlink",
+      "relinks": "same mobile or Aadhaar links them again at the next sync — correct the login first"
+    },
+    "unlinkedNotice": "Unlinked {{name}} from {{username}}"
   },
   "adminUsers": {
     "heading": "Users",

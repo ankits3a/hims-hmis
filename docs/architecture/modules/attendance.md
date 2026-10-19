@@ -32,6 +32,7 @@ Source: `apps/core/src/modules/attendance/`
   - `ATTENDANCE_EVENTS`
   - `attendanceAppMarked`
   - `attendancePersonLinked`
+  - `attendancePersonUnlinked`
   - `attendanceRead`
   - `attendanceSyncRefused`
   - `attendanceSynced`
@@ -85,6 +86,7 @@ Foreign keys into: `auth`
 ## HTTP routes
 
 - `attendance.controller.ts` — `/attendance/me`, `/attendance/person`, `/attendance/requests`, `/attendance/summary`, `/attendance/sync-state`, `/attendance/team`, `/attendance/today`
+- `links.controller.ts` — `/attendance/links`
 - `me-identity.controller.ts` — `/me/identity`
 - `users-identity.controller.ts` — `/admin/users`
 - `webhook.controller.ts` — `/webhooks/bioattend`
