@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { labAnalytes, labCriticalCalls, labResults, orderItems, orders } from "../../kernel/db/schema";
 import { hasPermission } from "../../kernel/auth/permissions";
 import type { Actor } from "@hmis/contracts";
@@ -29,6 +29,8 @@ export type ClinicianLabRow = {
   flag: string | null;
   /** When the call opened (critical) or the result was verified (delta). */
   at: Date;
+  /** DD-1 — the order item is a restricted test (DD11): shown only to its orderer or `orders.read.restricted`. */
+  restricted: boolean;
 };
 
 const valueOf = (r: { valueNumeric: string | null; valueText: string | null; valueCoded: string | null }): string | null =>
@@ -38,7 +40,7 @@ const COLUMNS = {
   resultId: labResults.id, orderId: orders.id, patientId: orders.patientId, encounterNo: orders.encounterNo,
   orderingClinicianId: orders.orderingClinicianId, analyte: labAnalytes.nameEn,
   valueNumeric: labResults.valueNumeric, valueText: labResults.valueText, valueCoded: labResults.valueCoded,
-  unit: labResults.unit, flag: labResults.flag,
+  unit: labResults.unit, flag: labResults.flag, restricted: orderItems.restricted,
 };
 
 /** Critical calls still open on orders these clinicians are responsible for, oldest first. */
@@ -54,6 +56,41 @@ export async function openCriticalsForClinician(exec: Db | Tx, userIds: readonly
     .where(and(isNull(labCriticalCalls.closedAt), inArray(orders.orderingClinicianId, [...userIds])))
     .orderBy(labCriticalCalls.openedAt);
   return rows.map((r) => ({ ...r, orderingClinicianId: r.orderingClinicianId!, value: valueOf(r) }));
+}
+
+/**
+ * DOCTOR DESK DD-1.3 — critical calls the lab has CLOSED (read back to a clinician) since `since`, on
+ * these clinicians' orders. The Desk keeps such a row amber until the doctor records what was done
+ * (D3: the act, not the acknowledgement, closes the loop). Oldest first.
+ */
+export async function closedCriticalsForClinician(
+  exec: Db | Tx, userIds: readonly string[], since: Date,
+): Promise<(ClinicianLabRow & { closedAt: Date })[]> {
+  if (userIds.length === 0) return [];
+  const rows = await (exec as Db)
+    .select({ id: labCriticalCalls.id, at: labCriticalCalls.openedAt, closedAt: labCriticalCalls.closedAt, ...COLUMNS })
+    .from(labCriticalCalls)
+    .innerJoin(labResults, eq(labResults.id, labCriticalCalls.resultId))
+    .innerJoin(labAnalytes, eq(labAnalytes.id, labResults.analyteId))
+    .innerJoin(orderItems, eq(orderItems.id, labResults.orderItemId))
+    .innerJoin(orders, eq(orders.id, orderItems.orderId))
+    .where(and(isNotNull(labCriticalCalls.closedAt), gte(labCriticalCalls.closedAt, since), inArray(orders.orderingClinicianId, [...userIds])))
+    .orderBy(labCriticalCalls.openedAt);
+  return rows.map((r) => ({ ...r, closedAt: r.closedAt!, orderingClinicianId: r.orderingClinicianId!, value: valueOf(r) }));
+}
+
+/** DOCTOR DESK DD-1 — critical calls by id, open or closed (the Professor's "Handled without you"). */
+export async function criticalCallsByIds(exec: Db | Tx, ids: readonly string[]): Promise<(ClinicianLabRow & { closedAt: Date | null })[]> {
+  if (ids.length === 0) return [];
+  const rows = await (exec as Db)
+    .select({ id: labCriticalCalls.id, at: labCriticalCalls.openedAt, closedAt: labCriticalCalls.closedAt, ...COLUMNS })
+    .from(labCriticalCalls)
+    .innerJoin(labResults, eq(labResults.id, labCriticalCalls.resultId))
+    .innerJoin(labAnalytes, eq(labAnalytes.id, labResults.analyteId))
+    .innerJoin(orderItems, eq(orderItems.id, labResults.orderItemId))
+    .innerJoin(orders, eq(orders.id, orderItems.orderId))
+    .where(inArray(labCriticalCalls.id, [...new Set(ids)]));
+  return rows.filter((r) => r.orderingClinicianId !== null).map((r) => ({ ...r, orderingClinicianId: r.orderingClinicianId!, value: valueOf(r) }));
 }
 
 /**

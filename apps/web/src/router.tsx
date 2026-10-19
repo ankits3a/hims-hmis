@@ -44,6 +44,11 @@ import { DoctorDeskTower } from "./screens/doctor-desk-tower";
 import { DoctorDeskBriefs } from "./screens/doctor-desk-briefs";
 import { DoctorDeskOpd } from "./screens/doctor-desk-opd";
 import { DoctorLanding } from "./screens/doctor-desk-landing";
+import { DoctorDeskUnit } from "./screens/doctor-desk-unit";
+import { DoctorDeskNow } from "./screens/doctor-desk-now";
+import { DoctorDeskProfessor } from "./screens/doctor-desk-professor";
+import { DoctorDeskRatings } from "./screens/doctor-desk-ratings";
+import { DoctorDeskReport } from "./screens/doctor-desk-report";
 import { RosterEvidence } from "./screens/roster-evidence";
 import { RosterAebas } from "./screens/roster-aebas";
 import { OpdAdmin } from "./screens/opd-admin";
@@ -752,6 +757,26 @@ const doctorDeskOpdRoute = createRoute({
   path: "/doctor-desk/opd",
   staticData: { fullViewport: true },
   component: DoctorDeskOpd,
+});
+/** DD-1.2 — the Unit board (`UnitBoard.dc.html`). */
+const doctorDeskUnitRoute = createRoute({
+  getParentRoute: () => authedRoute, path: "/doctor-desk/unit", staticData: { fullViewport: true }, component: DoctorDeskUnit,
+});
+/** DD-1.5 — the SR phone "Now" (`Main.dc.html`), a web view. */
+const doctorDeskNowRoute = createRoute({
+  getParentRoute: () => authedRoute, path: "/doctor-desk/now", staticData: { fullViewport: true }, component: DoctorDeskNow,
+});
+/** DD-1.4 — the Professor phone (`Professor.dc.html`), a web view. */
+const doctorDeskProfessorRoute = createRoute({
+  getParentRoute: () => authedRoute, path: "/doctor-desk/professor", staticData: { fullViewport: true }, component: DoctorDeskProfessor,
+});
+/** DD-1.7 — my work ratings and my PG logbook. */
+const doctorDeskRatingsRoute = createRoute({
+  getParentRoute: () => authedRoute, path: "/doctor-desk/ratings", staticData: { fullViewport: true }, component: DoctorDeskRatings,
+});
+/** DD-report v0 — the 08:00 unit report. */
+const doctorDeskReportRoute = createRoute({
+  getParentRoute: () => authedRoute, path: "/doctor-desk/report", staticData: { fullViewport: true }, component: DoctorDeskReport,
 });
 const doctorDeskBriefsRoute = createRoute({
   getParentRoute: () => authedRoute,
@@ -1985,6 +2010,13 @@ export const router = createRouter({
       doctorDeskBriefsRoute,
       // DD-0.8 (#890) — +1, `/doctor-desk/opd`.
       doctorDeskOpdRoute,
+      // DD-1 — +4, `/doctor-desk/unit`, `/doctor-desk/now`, `/doctor-desk/professor`, `/doctor-desk/ratings`.
+      doctorDeskUnitRoute,
+      doctorDeskNowRoute,
+      doctorDeskProfessorRoute,
+      doctorDeskRatingsRoute,
+      // DD-report v0 — +1, `/doctor-desk/report`.
+      doctorDeskReportRoute,
     ]),
   ]),
 });

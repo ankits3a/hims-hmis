@@ -13,6 +13,7 @@ import {
 } from "./reports";
 import { amendResult, requestRerun } from "./results";
 import { patientResultsForDoctor } from "./patient-results";
+import { myReportBack, myReportsBack } from "./reports-back";
 import { nightReleasesAwaitingReview, reviewNightRelease, verifyResult } from "./verify";
 import { publishableOrders, verifyWorklist } from "./worklist";
 import { LAB_IDEMPOTENT_ROUTES, LAB_REPORT_ROUTES, idSchema, isoDateSchema, parsed, toHttp } from "./lab-http";
@@ -353,6 +354,19 @@ export class LabVerifyController {
     @Param("patientId") patientId: string,
   ): Promise<unknown> {
     try { return { items: await patientResultsForDoctor(this.db, actor, parsed(idSchema, patientId)) }; } catch (e) { toHttp(e); }
+  }
+
+  /** #681 — the phone's "Lab reports back": my orders' reports of the last day, and one of them (`reports-back.ts`). No money. */
+  @Get("results/mine")
+  @RequirePermission("lab.results.read", "hospital")
+  async mine(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return { items: await myReportsBack(this.db, actor) }; } catch (e) { toHttp(e); }
+  }
+
+  @Get("results/mine/:reportId")
+  @RequirePermission("lab.results.read", "hospital")
+  async mineOne(@CurrentActor() actor: Actor, @Param("reportId") reportId: string): Promise<unknown> {
+    try { return { report: await myReportBack(this.db, actor, parsed(idSchema, reportId)) }; } catch (e) { toHttp(e); }
   }
 
   /**

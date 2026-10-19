@@ -37,6 +37,7 @@ import { collectResourceKinds } from "../resources/kinds";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
 import { printBoardIfDue, runMonthlyProposals, sweepDutyReminders, sweepRosterWindows } from "../../modules/roster";
+import { sendUnitReports } from "../../modules/doctor-desk";
 
 // D9/step 2: the daily jobs' clock instants are CODE CONSTANTS beside their registration, not
 // deployment knobs — design decisions from the roadmap (2026-08-12 owner decision Q4), not
@@ -65,6 +66,8 @@ const LAB_NON_RETURN_IST = "07:00";
  * window it measures is a working day, so the hour it runs at is about who is awake to act on it.
  */
 const RADIOLOGY_UNREAD_WATCHMAN_IST = "08:00";
+/** DD-report v0 — the unit report, at the take boundary (plan D-G); equals contracts `UNIT_REPORT_IST`. */
+const DOCTOR_DESK_UNIT_REPORT_IST = "08:00";
 // Plan 11a D6: an hour after the new month's partitions exist and well inside the quiet window —
 // a partition DROP takes ACCESS EXCLUSIVE on `events`, which is not a lock to take during a
 // clinic. Like its neighbours it is a code constant, not a deployment knob: WHAT retention does
@@ -696,5 +699,16 @@ export function registerAllJobs(
     name: "syncAttendance",
     every: 120_000,
     run: async (now) => { await syncAttendance(db, aliasConfig?.attendance, now); },
+  });
+  /**
+   * DOCTOR DESK DD-report v0 — THE UNIT REPORT AT 08:00 IST, the take boundary (plan D-G): one report
+   * per counting unit for the 24 h that ended, counts only, a bell to the unit head. A `dailyIst` job,
+   * so it adds nothing to the interval pool arithmetic (`client.test.ts`). Idempotent per unit per day
+   * (advisory lock + the run row), so a restart at 08:00 sends nothing twice.
+   */
+  scheduler.register({
+    name: "sendUnitReports",
+    dailyIst: DOCTOR_DESK_UNIT_REPORT_IST,
+    run: async (now) => { await sendUnitReports(db, now); },
   });
 }

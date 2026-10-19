@@ -27,7 +27,7 @@ const toWireLine = (l: DoctorDayLine): WireDayLine => ({
   waiting: l.waiting, inConsult: l.inConsult, longestWaitMinutes: l.longestWaitMinutes,
 });
 
-async function onDutyUntil(db: Db, userId: string, at: Date): Promise<string | null> {
+export async function onDutyUntil(db: Db, userId: string, at: Date): Promise<string | null> {
   try {
     const live = (await dutiesOf(db, userId, at, new Date(at.getTime() + 60_000)))
       .filter((d) => d.kind !== "off" && d.startsAt <= at && d.endsAt > at);

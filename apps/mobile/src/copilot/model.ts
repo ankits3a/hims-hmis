@@ -1,5 +1,6 @@
 import { SEATS, type EffectivePermissions, type Seat } from "../seats";
-import type { CopilotApptPick, CopilotCoverPick, CopilotLeavePick, CopilotReminderPick } from "../../../../packages/contracts/src/copilot";
+import { COPILOT_ANSWER_VOICE } from "../../../../packages/contracts/src/copilot";
+import type { CopilotAnswerKey, CopilotApptPick, CopilotCoverPick, CopilotLeavePick, CopilotReminderPick } from "../../../../packages/contracts/src/copilot";
 
 /** E2.1–E2.3 — what an act's answer offers to pick and confirm. */
 export type CopilotActPick = CopilotApptPick | CopilotLeavePick | CopilotCoverPick | CopilotReminderPick;
@@ -83,9 +84,10 @@ export function chipsFor(p: EffectivePermissions): ChipKey[] {
   return out.slice(0, 3);
 }
 
-/* ═══ ANSWERS IN THE BOARDS' VOICE (roster; E2.1 appointments) — ported from apps/web/src/lib/use-copilot.tsx `sayParams` ═══
- * The roster tools send a day as its IST date and an instant as ISO; they are said as the web says them,
- * so the phone's sentence is the web's sentence. Every other key's params pass through untouched. */
+/* ═══ ANSWERS IN THE BOARDS' VOICE — ported from apps/web/src/lib/use-copilot.tsx `sayParams` ═══
+ * The roster, appointment, leave and reminder tools send a day as its IST date and an instant as ISO; they
+ * are said as the web says them, so the phone's sentence is the web's sentence. Which keys are said so is
+ * the contract's `COPILOT_ANSWER_VOICE` (#866); every other key's params pass through untouched. */
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?Z$/;
 type Tr = (key: string, vars?: Record<string, string | number>) => string;
@@ -111,12 +113,14 @@ export function sayParams(key: string, params: Record<string, string | number>, 
     const or = lang.startsWith("hi") ? " या " : " or ";
     return { can: can.length < 2 ? can.join("") : `${can.slice(0, -1).join(", ")}${or}${can[can.length - 1]!}` };
   }
-  if (!key.startsWith("copilot.answer.roster") && !key.startsWith("copilot.answer.appt") && !key.startsWith("copilot.answer.leave") && !key.startsWith("copilot.answer.reminder")) return params;
+  // #866 — the voice is the contract's (`COPILOT_ANSWER_VOICE`, beside the keys), never guessed from a key's name.
+  const voice = COPILOT_ANSWER_VOICE[key as CopilotAnswerKey];
+  if (voice === undefined) return params;
   const out: Record<string, string | number> = {};
   for (const [k, v] of Object.entries(params)) {
     if (typeof v !== "string") { out[k] = v; continue; }
     // E2.2 — a leave's kind is a code; said as My leave says it. A refusal's reason is the decider's own words.
-    if (k === "kind" && key.startsWith("copilot.answer.leave")) { const w = t(`myLeave.kind.${v}`); out[k] = w === `myLeave.kind.${v}` ? v : w; continue; }
+    if (k === "kind" && voice === "leave") { const w = t(`myLeave.kind.${v}`); out[k] = w === `myLeave.kind.${v}` ? v : w; continue; }
     if (k === "why") { out[k] = v; continue; }
     if (v === "") out[k] = t("copilot.when.nobody");
     else if (k === "when" && v === "now") out[k] = t("copilot.when.now");
