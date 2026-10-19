@@ -6,7 +6,7 @@ import { loadOpdConfig } from "./config";
 import { LAB_DEPARTMENT_CODE } from "./encounters";
 import { addDays, ageYearsAt, istDate, istHourMinute, istWeekday } from "./time";
 import type { Actor } from "@hmis/contracts";
-import type { Db } from "../../kernel/db/client";
+import type { Db, Tx } from "../../kernel/db/client";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -194,6 +194,33 @@ export function isCorrection(e: RangeEncounter, sameDay: readonly RangeEncounter
   if (at === null) return false;
   return sameDay.some((o) => o !== e && o.patientId === e.patientId && o.serviceDate === e.serviceDate
     && o.openedAt.getTime() >= at.getTime());
+}
+
+/**
+ * #772 — the ids of the desk corrections among the OPD visits of `[from, to]`, by `isCorrection` over
+ * the same set the report hands it (OPD encounters, the laboratory's walk-in department left out).
+ * The dashboards (`range.ts`, `desk-provider.ts`) leave these out of "visits opened", so a phone tile
+ * and the report cannot disagree about a visit the desk moved: one rule, here.
+ */
+export async function correctionIdsIn(db: Db | Tx, from: string, to: string): Promise<Set<string>> {
+  const fields = {
+    id: opdEncounters.id, visitNo: opdEncounters.visitNo, patientId: opdEncounters.patientId,
+    departmentId: opdEncounters.departmentId, doctorId: opdEncounters.doctorId, status: opdEncounters.status,
+    visitType: opdEncounters.visitType, serviceDate: opdEncounters.serviceDate,
+    consultCompletedAt: opdEncounters.consultCompletedAt,
+    openedBy: opdEncounters.openedBy, openedAt: opdEncounters.openedAt,
+    abandonedAt: opdEncounters.abandonedAt, abandonReason: opdEncounters.abandonReason,
+  };
+  const inRange = and(gte(opdEncounters.serviceDate, from), lte(opdEncounters.serviceDate, to), eq(opdEncounters.type, "opd"));
+  const abandoned = await db.select(fields).from(opdEncounters).where(and(inRange, eq(opdEncounters.status, "abandoned")));
+  if (abandoned.length === 0) return new Set();
+  const [depts, sameDay] = await Promise.all([
+    db.select({ id: opdDepartments.id }).from(opdDepartments).where(eq(opdDepartments.code, LAB_DEPARTMENT_CODE)),
+    db.select(fields).from(opdEncounters).where(and(inRange, inArray(opdEncounters.patientId, [...new Set(abandoned.map((e) => e.patientId))]))),
+  ]);
+  const lab = new Set(depts.map((d) => d.id));
+  const clinical = sameDay.filter((e) => e.departmentId === null || !lab.has(e.departmentId));
+  return new Set(clinical.filter((e) => isCorrection(e, clinical)).map((e) => e.id));
 }
 
 /**

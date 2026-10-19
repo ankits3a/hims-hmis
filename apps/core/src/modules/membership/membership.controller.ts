@@ -15,6 +15,7 @@ import { instrumentLookupRefused } from "./events";
 import { enrolMember } from "./enrolment";
 import { graceHonor } from "./recognition";
 import { cardsToday, recogniseAtCounter, recordRecognition } from "./counter-view";
+import { gracePlanOptions, myGraceRequests, requestGraceHonor } from "./grace-requests";
 import { importHolderBook } from "./import/importer";
 import { listQuarantine } from "./import/quarantine";
 import {
@@ -23,6 +24,7 @@ import {
 import { INSTRUMENT_SEARCH_PROVIDER_KEY, instrumentSearchProvider } from "./search-providers";
 import type { GraceHonorResult } from "./recognition";
 import type { CardTodayRow, CounterRecognition } from "./counter-view";
+import type { GracePlanOption, GraceRequestRow } from "./grace-requests";
 import type { HolderBookImportResult } from "./import/importer";
 import type { QuarantineRow } from "./import/quarantine";
 import type { LapsedRestoreItem, MatchQueueItem } from "./import/match-queue";
@@ -93,6 +95,12 @@ const recognitionQuery = z.object({
   codes: z.string().optional(),
 });
 
+/** #658 — the counter PRESENTS a card: at least one code, which is what gets recorded. */
+const recogniseBody = z.object({
+  patientId: z.string().min(1).optional(),
+  codes: z.array(z.string().trim().min(1).max(64)).min(1).max(10),
+});
+
 /**
  * PLAN 09 T5 — the drop arrives as TEXT IN A JSON BODY, the `reconUploadBody` precedent.
  *
@@ -126,6 +134,14 @@ const dismissMatchBody = z.object({
 });
 
 const lapsedCheckedBody = z.object({ movementId: z.string().min(1) });
+
+/** #658 — the counter ASKS; `graceHonorBody` below is the execute, which needs the granted approval. */
+const graceRequestBody = z.object({
+  cardCode: z.string().trim().min(1).max(64),
+  patientId: z.string().min(1),
+  planId: z.string().min(1),
+  reason: z.string().trim().min(1).max(500),
+});
 
 const graceHonorBody = z.object({
   cardCode: z.string().min(1),
@@ -271,19 +287,39 @@ export class MembershipController {
   /*
     UX-AUDIT 2026-09-28 · BOARD — the counter's view: the same recognition plus the holder, benefits
     left as COUNTS (never a rupee balance — owner ruling 28-Sep-2026), how the card stands today and
-    the one next act. A presented code is recorded as `instrument.recognised` so "cards today" has a
-    source; the response is fully formed before the event is written, so a failed write is a 500
-    rather than a recognition that was shown and never recorded.
+    the one next act.
+
+    #658 — A PURE READ. It used to write `instrument.recognised` whenever a code was presented, which
+    made a GET a write: a prefetch, a retry or a proxy replay put the same card into "cards today"
+    again. The record now belongs to `POST /membership/recognition` below, the counter's explicit act.
+    Desk One and the lab desk read by patient here and never recorded anything.
   */
   @RequirePermission("membership.instrument.recognise", "hospital")
   @Get("recognition")
   async recognition(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<CounterRecognition> {
     const q = parsed(recognitionQuery, query);
     const codes = (q.codes ?? "").split(",").map((c) => c.trim()).filter((c) => c !== "");
+    try {
+      return await recogniseAtCounter(this.db, actor, { patientId: q.patientId ?? null, presentedCodes: codes, at: new Date() });
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /*
+    #658 — THE COUNTER PRESENTS A CARD. The same recognition as the GET, and it records the presented
+    code as `instrument.recognised` — exactly once per call — so "cards today" has a source. The
+    response is fully formed before the event is written, so a failed write is a 500 rather than a
+    recognition that was shown and never recorded.
+  */
+  @RequirePermission("membership.instrument.recognise", "hospital")
+  @Post("recognition")
+  async recognise(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<CounterRecognition> {
+    const b = parsed(recogniseBody, body);
     const at = new Date();
     try {
-      const result = await recogniseAtCounter(this.db, actor, { patientId: q.patientId ?? null, presentedCodes: codes, at });
-      await recordRecognition(this.db, actor, codes, result, at);
+      const result = await recogniseAtCounter(this.db, actor, { patientId: b.patientId ?? null, presentedCodes: b.codes, at });
+      await recordRecognition(this.db, actor, b.codes, result, at);
       return result;
     } catch (e) {
       toHttp(e);
@@ -314,6 +350,45 @@ export class MembershipController {
    * checked the approver's permission would be a second authority on the same question and the two
    * would drift.
    */
+  /**
+   * #658 — the plans a grace request can name: id, code and title of each active plan, nothing about
+   * its benefits. Same grant as asking, because asking is the only thing it is for.
+   */
+  @RequirePermission("membership.grace_honor.request", "hospital")
+  @Get("plans")
+  async plans(): Promise<{ items: GracePlanOption[] }> {
+    return { items: await gracePlanOptions(this.db) };
+  }
+
+  /**
+   * #658 — the counter ASKS for grace honour: files one `membership_grace_honor` approval about this
+   * card for this patient. Nothing is honoured here; the execute below still needs the grant.
+   */
+  @RequirePermission("membership.grace_honor.request", "hospital")
+  @Post("grace-honor/request")
+  async askGrace(
+    @CurrentActor() actor: Actor,
+    @Body() body: unknown,
+  ): Promise<{ approvalId: string; status: "pending"; alreadyAsked: boolean }> {
+    const b = parsed(graceRequestBody, body);
+    try {
+      return await requestGraceHonor(this.db, actor, b);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** #658 — this counter's own grace requests: pending, and decided today. Feeds "Clocks running". */
+  @RequirePermission("membership.grace_honor.request", "hospital")
+  @Get("grace-honor/requests")
+  async graceRequests(@CurrentActor() actor: Actor): Promise<{ items: GraceRequestRow[] }> {
+    try {
+      return { items: await myGraceRequests(this.db, actor, new Date()) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
   @RequirePermission("membership.grace_honor.request", "hospital")
   @Post("grace-honor")
   async honour(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<GraceHonorResult> {

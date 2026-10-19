@@ -64,6 +64,9 @@ export function vitalsApi(call: Call) {
     /** Owner 2026-10-07 — a revisit whose guardian came with the reports skips the bay (`opd/patient-absent.ts`). */
     markPatientAbsent: (encounterId: string, body: { relation: GuardianRelation; name?: string | null }) =>
       call<{ patientAbsent: WirePatientAbsent; alreadyMarked: boolean }>("POST", `/opd/visits/${enc(encounterId)}/patient-absent`, body),
+    /** #771 — undo the guardian mark: the patient is here after all; the token goes back to the bay. */
+    undoPatientAbsent: (encounterId: string) =>
+      call<{ alreadyCleared: boolean }>("POST", `/opd/visits/${enc(encounterId)}/patient-absent/undo`),
     completeAllergen: (q: string) => call<{ items: WireAllergenHit[]; known: boolean }>("GET", `/opd/cds/complete/allergen?q=${enc(q)}`),
   };
 }

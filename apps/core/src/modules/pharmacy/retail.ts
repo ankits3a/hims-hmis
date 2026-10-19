@@ -7,8 +7,9 @@ import { kitSheetOf, verifyKitSerial } from "../../kernel/ops/downtime-kit";
 import { operatingModeAt } from "../../kernel/ops/mode";
 import { usersHoldingRoleAtScope } from "../../kernel/workflow/roles";
 import {
-  pharmacyRegH1, pharmacyRetailLicences, pharmacyRetailSaleLines, pharmacyRetailSales, users,
+  opdPrescriptions, pharmacyRegH1, pharmacyRetailLicences, pharmacyRetailSaleLines, pharmacyRetailSales, pharmacyShelfLocations, users,
 } from "../../kernel/db/schema";
+import { recordPhiAccess } from "../../kernel/phi/audit";
 import { appendEvent } from "../../kernel/events/append";
 import { getInvoice, issueInvoice, previewInvoice, withIdempotency } from "../billing";
 import { medicinesByIds, ndpsClassByMedicine, resolveDrugTexts } from "../formulary";
@@ -16,8 +17,8 @@ import {
   MaterialsError, availableQty, availableQtyByItem, balances, fefoPick, findStoreByCode, getBatch, itemsByIds, postMovements,
   requireStore, resolveBarcode, returnedQtyByRef,
 } from "../materials";
-import { runRxChecks } from "../opd";
-import { captureDocument, getPatient, getPatientSummaries, nearMatches, registerPatient, resolvePatientId } from "../patients";
+import { isCurrentDose, runRxChecks } from "../opd";
+import { captureDocument, getPatient, getPatientSummaries, listAllergies, nearMatches, registerPatient, resolvePatientId } from "../patients";
 import { assertIssuedDiscount, displayDraft, gstCategoryMap, invoiceInputsOf, mainRowsOf, priceBatchLine, roundingRuleForTender, tenderPayables, winnerOf } from "./bill";
 import type { TenderKind, TenderPayables } from "./bill";
 import { assertDiscountCovered, pharmacyRoundingRule, quoteDiscount, requestDiscountApproval, saleDiscountPaise, saleDiscountReason } from "./discount";
@@ -1108,4 +1109,71 @@ async function saleRows(db: Db, sales: (typeof pharmacyRetailSales.$inferSelect)
     });
   }
   return out;
+}
+
+
+// ═══════════════════════════════════ #638 — the walk-in desk's lane and cart reads ═══════════════════════════════════
+
+export type RetailBatchChoice = { batchId: string; batchNo: string; expiryDate: string | null; available: number };
+
+/**
+ * #638 (UX audit §5.9) — the batches of an item the retail store can SELL now, earliest expiry first (FEFO's own
+ * order, so the first is what the desk would pick by itself), and the item's shelf there. Expired, recalled and empty
+ * batches are left out: the sale refuses them anyway (`planLines`). The seller's own grant.
+ */
+export async function retailBatches(db: Db, actor: Actor, itemId: string, now: Date): Promise<{ location: string | null; batches: RetailBatchChoice[] }> {
+  await requirePermission(db, actor, SELL, "choosing a batch at the walk-in counter");
+  const store = await retailStore(db);
+  const today = istDateOf(now);
+  const out: RetailBatchChoice[] = [];
+  for (const r of await balances(db, { resourceId: store.id, itemId })) {
+    const available = r.qtyOnHand - r.qtyReserved - r.qtyFrozen;
+    if (available <= 0) continue;
+    const batch = await getBatch(db, r.batchId);
+    if (batch === undefined || batch.recallStatus !== "none" || (batch.expiryDate !== null && batch.expiryDate < today)) continue;
+    out.push({ batchId: r.batchId, batchNo: batch.batchNo, expiryDate: batch.expiryDate, available });
+  }
+  out.sort((a, b) => (a.expiryDate ?? "9999").localeCompare(b.expiryDate ?? "9999") || a.batchNo.localeCompare(b.batchNo));
+  const shelf = (await db.select({ location: pharmacyShelfLocations.location }).from(pharmacyShelfLocations)
+    .where(and(eq(pharmacyShelfLocations.storeResourceId, store.id), eq(pharmacyShelfLocations.itemId, itemId))))[0];
+  return { location: shelf?.location ?? null, batches: out };
+}
+
+export type RetailPatientContext = {
+  allergies: { substance: string; reaction: string | null; severity: string | null }[];
+  /** Lines of this patient's active issued prescriptions whose course has not ended (`isCurrentDose`), newest first. */
+  currentMedicines: { drug: string; dose: string; frequency: string; durationDays: number | null; issuedAt: string; assumedCurrent: boolean }[];
+};
+
+/**
+ * #638 — what the walk-in lane shows of the customer in hand: ACTIVE allergies (an `entered_in_error` row is history,
+ * never a warning) and what an issued prescription still has them taking. The patient read gate (`getPatient`: merged
+ * chain, sealed record) and two PHI log rows; the seller's own grant. A missing or invisible patient answers `null`.
+ */
+export async function retailPatientContext(db: Db, actor: Actor, patientId: string, now: Date): Promise<RetailPatientContext> {
+  await requirePermission(db, actor, SELL, "reading the customer's allergies and medicines");
+  const found = await getPatient(db, actor, patientId);
+  if (found === null) throw new PharmacyError("not_found", "no such customer");
+  const id = found.patient.id;
+  const sealed = found.patient.isConfidential;
+  const reason = found.breakGlass?.reason ?? null;
+  await recordPhiAccess(db, { actor, patientId: id, surface: "patient.allergies", sealed, reason });
+  const allergies = (await listAllergies(db, id)).filter((a) => a.status === "active")
+    .map((a) => ({ substance: a.substance, reaction: a.reaction ?? null, severity: a.severity ?? null }));
+  await recordPhiAccess(db, { actor, patientId: id, surface: "opd.rx_history", sealed, reason });
+  const rows = await db.select({ issuedAt: opdPrescriptions.issuedAt, lines: opdPrescriptions.lines }).from(opdPrescriptions)
+    .where(and(eq(opdPrescriptions.patientId, id), eq(opdPrescriptions.status, "active"))).orderBy(desc(opdPrescriptions.issuedAt)).limit(20);
+  const currentMedicines: RetailPatientContext["currentMedicines"] = [];
+  for (const r of rows) {
+    for (const l of (r.lines ?? []) as { drug?: unknown; dose?: unknown; frequency?: unknown; durationDays?: unknown }[]) {
+      const durationDays = typeof l.durationDays === "number" ? l.durationDays : null;
+      const cur = isCurrentDose(durationDays, r.issuedAt, now);
+      if (!cur.current || typeof l.drug !== "string") continue;
+      currentMedicines.push({
+        drug: l.drug, dose: typeof l.dose === "string" ? l.dose : "", frequency: typeof l.frequency === "string" ? l.frequency : "",
+        durationDays, issuedAt: r.issuedAt.toISOString(), assumedCurrent: cur.assumedCurrent,
+      });
+    }
+  }
+  return { allergies, currentMedicines };
 }

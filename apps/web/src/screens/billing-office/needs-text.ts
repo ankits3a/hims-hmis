@@ -80,7 +80,8 @@ export function needSub(row: WireNeedRow, t: TFunction): string {
     case "daybook_paper":
       return t("billingOffice.board.need.daybook_paper.sub", { amount: fmtPaise(num(p.totalPaise)) });
     case "gstr1_due":
-      return t("billingOffice.board.need.gstr1_due.sub");
+      // #655 — the board's "4 hospital GSTINs billed · B2C in one line"; an older server sends no count.
+      return typeof p.gstinCount === "number" ? t("billingOffice.board.need.gstr1_due.subCount", { count: p.gstinCount }) : t("billingOffice.board.need.gstr1_due.sub");
     default:
       return "";
   }

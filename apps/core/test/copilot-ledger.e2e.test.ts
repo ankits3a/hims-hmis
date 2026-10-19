@@ -133,7 +133,8 @@ describe("E0.1 — every copilot ask leaves one ledger row", () => {
       expect(res.body.byOutcome.notUnderstood).toBe(1);
       expect(Object.keys(res.body).sort()).toEqual(
         // E0.3/E0.5 added the cost meter, the cap and the halt switch — still nothing that names a person.
-        ["acts", "askers", "asks", "byOutcome", "byRoute", "capInr", "capped", "cappedAsks", "date", "halts", "modelCalls",
+        // #863 added the confirm-tap counts, kept apart from the asks; G3b (#673) the Wrong taps.
+        ["acts", "askers", "asks", "byOutcome", "byRoute", "capInr", "capped", "cappedAsks", "confirms", "date", "halts", "modelCalls",
           "notUnderstoodShare", "spendInr", "wrongShare", "wrongTaps"],
       );
       expect(JSON.stringify(res.body)).not.toContain(clerk.id);

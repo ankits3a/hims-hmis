@@ -2,6 +2,7 @@ import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import {
   COPILOT_ASK_OUTCOMES, COPILOT_ROUTES, copilotActs, copilotAskFeedback, copilotAsks, copilotNoticeAcks, copilotUserSettings,
+  isConfirmOutcome,
 } from "../db/schema";
 import { withTx } from "../db/client";
 import { appendEvent } from "../events/append";
@@ -154,7 +155,10 @@ export type CopilotHealth = {
   asks: number;
   /** Distinct people who asked — a count, never a list. */
   askers: number;
+  /** Asks AND confirm taps by outcome (#686: the `confirm*` keys are taps). */
   byOutcome: Record<CopilotAskOutcome, number>;
+  /** #686 — confirm taps that day (every outcome); they are not counted in `asks`, `askers` or the routes. */
+  confirms: number;
   byRoute: Record<CopilotRoute, RouteTimings>;
   /** notUnderstood ÷ asks (goal G3a); null on a day with no asks. */
   notUnderstoodShare: number | null;
@@ -176,13 +180,16 @@ export async function readCopilotHealth(db: Db, date: string): Promise<CopilotHe
   const from = new Date(`${date}T00:00:00+05:30`);
   const to = new Date(from.getTime() + DAY_MS);
 
-  const asks = await db
+  const rows = await db
     .select({
       actorType: copilotAsks.actorType, actorId: copilotAsks.actorId, outcome: copilotAsks.outcome, route: copilotAsks.route, ms: copilotAsks.ms,
       modelCalls: copilotAsks.modelCalls, costMicroInr: copilotAsks.costMicroInr, capped: copilotAsks.capped,
     })
     .from(copilotAsks)
     .where(and(gte(copilotAsks.at, from), lt(copilotAsks.at, to)));
+  /* #686 — a confirm tap is a ledger row but not an ask: the ask figures read the asks alone. */
+  const taps = rows.filter((r) => isConfirmOutcome(r.outcome));
+  const asks = rows.filter((r) => !isConfirmOutcome(r.outcome));
   const [acts] = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(copilotActs)
@@ -194,7 +201,7 @@ export async function readCopilotHealth(db: Db, date: string): Promise<CopilotHe
     .where(and(eq(copilotAskFeedback.verdict, "wrong"), gte(copilotAsks.at, from), lt(copilotAsks.at, to)));
 
   const byOutcome = Object.fromEntries(COPILOT_ASK_OUTCOMES.map((o) => [o, 0])) as Record<CopilotAskOutcome, number>;
-  for (const a of asks) byOutcome[a.outcome as CopilotAskOutcome] += 1;
+  for (const a of rows) byOutcome[a.outcome as CopilotAskOutcome] += 1;
 
   const byRoute = Object.fromEntries(COPILOT_ROUTES.map((r) => {
     const ms = asks.filter((a) => a.route === r).map((a) => a.ms).sort((x, y) => x - y);
@@ -211,6 +218,7 @@ export async function readCopilotHealth(db: Db, date: string): Promise<CopilotHe
     wrongTaps: wrong?.n ?? 0,
     wrongShare: byOutcome.answered === 0 ? null : (wrong?.n ?? 0) / byOutcome.answered,
     acts: acts?.n ?? 0,
+    confirms: taps.length,
     modelCalls: asks.reduce((n, a) => n + a.modelCalls, 0),
     spendInr: Math.round(asks.reduce((n, a) => n + a.costMicroInr, 0) / 10_000) / 100,
     cappedAsks: asks.filter((a) => a.capped).length,

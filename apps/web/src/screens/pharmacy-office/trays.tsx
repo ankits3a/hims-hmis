@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet } from "./sheet";
 import type { TrayCheckKind, WireTray, WireTrayTemplateLine } from "../../lib/trays-api";
+import { dateLocale } from "../../lib/date-locale";
 
 /**
  * ═══ PHARMACY STAGE D4 — CRASH-CART AND EMERGENCY-TRAY CHECKS (an office page under Stock) ═══
@@ -28,7 +29,7 @@ import type { TrayCheckKind, WireTray, WireTrayTemplateLine } from "../../lib/tr
  */
 const areaCls = "min-h-16 w-full rounded-md border bg-background p-2 text-sm";
 const stateCls: Record<string, string> = { done: "pill on", due: "pill gd", missed: "pill rd", not_due: "pill" };
-const when = (iso: string): string => new Date(iso).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false });
+const when = (iso: string): string => new Date(iso).toLocaleString(dateLocale(), { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false });
 
 export function TrayChecksView(): React.ReactElement {
   const { t } = useTranslation();

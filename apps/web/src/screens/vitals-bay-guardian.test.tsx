@@ -163,4 +163,47 @@ describe("the vitals bay — guardian with reports, on any visit still waiting f
     expect(posted[0]).toContain("/opd/visits/E-W/patient-absent");
     expect(screen.getByTestId("bench-row-33")).toBeInTheDocument();
   });
+
+  /* #770 / #771 — the slip of a guardian's visit is typed at the bay: the bay says why it is not on the bench, and may undo the mark. */
+  it("a guardian's visit number says so in a few words, and 'Undo — patient is here' puts the patient in hand", async () => {
+    let bench: WireBenchRow[] = [NEW];
+    let undone = 0;
+    stubFetch({
+      "GET /api/auth/me": { actor: { type: "user", id: "u-vd" }, permissions: { hospital: ["opd.vitals.record", "opd.queue.read"], scoped: { department: {}, floor: {} } } },
+      "GET /api/opd/bench": () => ({ items: bench }),
+      "GET /api/opd/queues/summary": { items: [] },
+      "GET /api/opd/visits/E-R/prestage": pre("P-R"),
+      "GET /api/opd/bench/locate": { onBench: false, visitNo: "V2610070031", reason: "guardian_visit", encounterId: "E-R" },
+      "POST /api/opd/visits/E-R/patient-absent/undo": () => {
+        undone += 1;
+        bench = [{ ...REVISIT, visitNo: "V2610070031" }, NEW];
+        return { alreadyCleared: false };
+      },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<VitalsBay />);
+    await waitFor(() => expect(screen.getByTestId("bench-row-32")).toBeInTheDocument());
+    await user.type(screen.getByTestId("identify"), "V2610070031{Enter}");
+    await waitFor(() => expect(screen.getByTestId("identify-error").textContent).toBe("Guardian visit — no vitals"));
+
+    await user.click(await screen.findByTestId("identify-undo-guardian"));
+    await waitFor(() => expect(screen.getByTestId("session").getAttribute("data-encounter")).toBe("E-R"));
+    expect(undone).toBe(1);
+    expect(screen.queryByTestId("identify-undo-guardian")).toBeNull();
+  });
+
+  it("a phone consult's visit number says so, and offers no undo", async () => {
+    stubFetch({
+      "GET /api/auth/me": { actor: { type: "user", id: "u-vd" }, permissions: { hospital: ["opd.vitals.record", "opd.queue.read"], scoped: { department: {}, floor: {} } } },
+      "GET /api/opd/bench": { items: [NEW] },
+      "GET /api/opd/queues/summary": { items: [] },
+      "GET /api/opd/bench/locate": { onBench: false, visitNo: "V2610070040", reason: "tele_visit" },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<VitalsBay />);
+    await waitFor(() => expect(screen.getByTestId("bench-row-32")).toBeInTheDocument());
+    await user.type(screen.getByTestId("identify"), "V2610070040{Enter}");
+    await waitFor(() => expect(screen.getByTestId("identify-error").textContent).toBe("Phone consult — no vitals"));
+    expect(screen.queryByTestId("identify-undo-guardian")).toBeNull();
+  });
 });

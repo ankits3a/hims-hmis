@@ -75,6 +75,17 @@ export const appointmentNoShow = defineEvent("appointment.no_show", MODULE, z.ob
   appointmentId: id, patientId: id, doctorId: id, serviceDate: isoDate, slotStart: iso,
 }));
 
+/** #914 — a doctor starts serving a second OPD department (the primary is unchanged). */
+export const doctorSecondaryDepartmentSet = defineEvent("doctor.secondary_department_set", MODULE, z.object({
+  secondaryId: id, doctorId: id, departmentId: id, fromDate: isoDate,
+}));
+
+/** #914 — the secondary ends after `lastDate`; booked appointments there after it go to needs_rebooking. */
+export const doctorSecondaryDepartmentEnded = defineEvent("doctor.secondary_department_ended", MODULE, z.object({
+  secondaryId: id, doctorId: id, departmentId: id, lastDate: isoDate,
+  affectedAppointmentIds: z.array(id),
+}));
+
 export const doctorLeaveScheduled = defineEvent("doctor_leave.scheduled", MODULE, z.object({
   leaveId: id, doctorId: id, fromDate: isoDate, toDate: isoDate, reason: z.string().min(1),
   affectedAppointmentIds: z.array(id), // marked needs_rebooking in the same transaction (§11.5 cascade)
@@ -141,6 +152,15 @@ export const queueFeeStatusChanged = defineEvent("queue.fee_status_changed", MOD
  */
 export const teleVisitsOpened = defineEvent("tele.visits_opened", MODULE, z.object({
   serviceDate: isoDate, due: z.number().int().nonnegative(), opened: z.number().int().nonnegative(), failed: z.number().int().nonnegative(),
+}));
+
+/**
+ * #619 — decision 0006: a doctor turned the copilot's drafting of clinical prose on or off. Written so
+ * an audit can answer "was the copilot permitted to draft on the day this note was signed?"
+ * (`copilotDraftProseAt`). The proactive toggle is UX and writes no event (brainstorm §4.2).
+ */
+export const copilotDraftProseSet = defineEvent("opd.copilot_draft_prose_set", MODULE, z.object({
+  userId: z.string().min(1), draftProse: z.boolean(), previous: z.boolean(),
 }));
 
 /**
@@ -257,6 +277,29 @@ export const visitPatientAbsent = defineEvent("visit.patient_absent", MODULE, z.
   encounterId: id, patientId: id, ...where,
   relation: z.enum(["father", "mother", "spouse", "son", "daughter", "brother", "sister", "other_relative", "attendant"]),
   named: z.boolean(),
+}));
+
+/**
+ * #771 — the guardian mark was a mistake: the patient IS here. The mark is cleared and the token goes
+ * back to the bay (`undoPatientAbsent`). Carries the relation the mark named and whether a name was
+ * given, as `visit.patient_absent` does — never the name.
+ */
+export const visitPatientAbsentUndone = defineEvent("visit.patient_absent_undone", MODULE, z.object({
+  encounterId: id, patientId: id, ...where,
+  relation: z.enum(["father", "mother", "spouse", "son", "daughter", "brother", "sister", "other_relative", "attendant"]),
+  named: z.boolean(),
+  markedBy: id,
+}));
+
+/**
+ * #773 — a desk correction ("Wrong department? Move patient", "change the doctor") closed a visit
+ * whose vitals were already taken; its ACTIVE chart rows now belong to the replacement visit
+ * (`vitals-carry.ts`). The rows keep their recorder and time; this names the move.
+ */
+export const visitVitalsMoved = defineEvent("visit.vitals_moved", MODULE, z.object({
+  patientId: id, ...where,
+  fromEncounterId: id, toEncounterId: id,
+  vitalsIds: z.array(id).min(1),
 }));
 
 export const vitalsDangerFlagged = defineEvent("vitals.danger_flagged", MODULE, z.object({
@@ -595,6 +638,8 @@ export const consultVoiceTranscribed = defineEvent("consultation.voice_transcrib
 export const aliasRunCompleted = defineEvent("alias.run_completed", MODULE, z.object({
   proposed: z.number().int().nonnegative(), suggestion: z.number().int().nonnegative(),
   refused: z.number().int().nonnegative(), failed: z.number().int().nonnegative(),
+  /** #613 — which runner: absent on the medicine runner's events (as before), "complaint" on complaint normalisation's. */
+  kind: z.enum(["medicine", "complaint"]).optional(),
 }));
 
 /**
@@ -615,3 +660,13 @@ const flowFindingAct = z.object({
 });
 export const flowFindingDismissed = defineEvent("flow.finding_dismissed", MODULE, flowFindingAct);
 export const flowFindingTried = defineEvent("flow.finding_tried", MODULE, flowFindingAct);
+
+/**
+ * Decision 0050 / plan P4 (#615) — a doctor reset what the system learned from them. The actor IS the
+ * doctor (nobody resets another's); the payload names the OPD doctor and the surfaces. No patient.
+ */
+export const learningReset = defineEvent("suggestions.learning_reset", MODULE, z.object({
+  doctorId: id,
+  surfaces: z.array(z.enum(["complaints", "diagnoses", "tests", "findings", "hidden"])).min(1),
+  resetAt: iso,
+}));

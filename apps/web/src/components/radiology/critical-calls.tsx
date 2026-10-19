@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { radiologyErrorCode, radiologyErrorText } from "../../lib/radiology-api";
 import { CRITICAL_RUNGS, closeCriticalCall, recordCriticalCall } from "../../lib/radiology-reading-api";
 import type { WireCriticalCall } from "../../lib/radiology-reading-api";
+import { dateLocale } from "../../lib/date-locale";
 
 /**
  * PLAN 18-S RS8b T4 — **THE CRITICAL CALLS VIEW** (board: Reading room → Critical calls).
@@ -214,7 +215,7 @@ export function AcknowledgedLog({ calls }: { calls: WireCriticalCall[] }): React
               <li key={c.criticalId} className="rounded border p-1 text-xs">
                 <b>{c.category.toUpperCase()}</b> · {c.patientName} · {c.studyTypeName} · {t("radiology.calls.closedBy", {
                   name: c.acknowledgedByName ?? "—",
-                  at: c.acknowledgedAt === null ? "—" : new Date(c.acknowledgedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }),
+                  at: c.acknowledgedAt === null ? "—" : new Date(c.acknowledgedAt).toLocaleString(dateLocale(), { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }),
                 })}
                 {c.readBack !== null && <span className="block">“{c.readBack}”</span>}
               </li>

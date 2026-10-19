@@ -1,5 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { vi } from "vitest";
 import { setToken } from "../lib/api";
 import { todayIst } from "../lib/opd-api";
 import { renderWithProviders, stubFetch } from "../test-utils";
@@ -264,6 +265,57 @@ describe("OpdAdmin", () => {
     await user.tab();
     await waitFor(() => expect(callsTo("PATCH", "/api/opd/doctors/doc-1")).toHaveLength(1));
     expect(bodyOf("PATCH", "/api/opd/doctors/doc-1")).toEqual({ designation: "Senior Resident" });
+  });
+
+  it("#914 — the doctors tab gives a doctor a second department, and ends it", async () => {
+    stubFetch({ ...MASTERS, "PUT /api/opd/doctors/doc-1/secondary-department": { id: "sec-1" } });
+    renderWithProviders(<OpdAdmin />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Doctors" }));
+    const pick = await screen.findByLabelText("Second department — Dr Meera Rao");
+    // The primary is not offered as the second department.
+    expect([...(pick as HTMLSelectElement).options].map((o) => o.value)).toEqual(["", "dep-2"]);
+    await user.selectOptions(pick, "dep-2");
+    await waitFor(() => expect(callsTo("PUT", "/api/opd/doctors/doc-1/secondary-department")).toHaveLength(1));
+    expect(bodyOf("PUT", "/api/opd/doctors/doc-1/secondary-department")).toEqual({ departmentId: "dep-2" });
+  });
+
+  it("#914 — a covering doctor's second department shows with its day, and End asks before it ends", async () => {
+    const covering = [{ ...DOCTORS[0]!, secondary: { departmentId: "dep-2", fromDate: "2026-10-17", toDate: null } }];
+    stubFetch({
+      ...MASTERS, "GET /api/opd/doctors": { items: covering },
+      "POST /api/opd/doctors/doc-1/secondary-department/end": { secondary: {}, affectedAppointmentIds: ["a-1", "a-2"] },
+    });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
+    renderWithProviders(<OpdAdmin />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Doctors" }));
+    expect(await screen.findByText("since 2026-10-17")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Second department — Dr Meera Rao")).toBeNull(); // no picker while one runs
+
+    await user.click(screen.getByRole("button", { name: "End" }));
+    expect(callsTo("POST", "/api/opd/doctors/doc-1/secondary-department/end")).toHaveLength(0); // declined
+    await user.click(screen.getByRole("button", { name: "End" }));
+    await waitFor(() => expect(callsTo("POST", "/api/opd/doctors/doc-1/secondary-department/end")).toHaveLength(1));
+    expect(await screen.findByText("Ended. 2 bookings need rebooking.")).toBeInTheDocument();
+    confirm.mockRestore();
+  });
+
+  it("#914 — a covering doctor's schedule row names the department the session serves", async () => {
+    const covering = [{ ...DOCTORS[0]!, secondary: { departmentId: "dep-2", fromDate: "2026-10-17", toDate: null } }];
+    stubFetch({
+      ...MASTERS, "GET /api/opd/doctors": { items: covering },
+      "GET /api/opd/doctors/doc-1/schedules": { items: [EXISTING_SCHEDULE] },
+      "GET /api/opd/leaves": { items: [] },
+      "PUT /api/opd/doctors/doc-1/schedules": { scheduleIds: ["sch-1"] },
+    });
+    renderWithProviders(<OpdAdmin />);
+    const user = userEvent.setup();
+    await openSchedulesTabFor(user, "doc-1");
+    await user.selectOptions(await screen.findByLabelText("Department"), "dep-2");
+    await user.click(screen.getByRole("button", { name: "Save schedules" }));
+    await waitFor(() => expect(callsTo("PUT", "/api/opd/doctors/doc-1/schedules")).toHaveLength(1));
+    expect(bodyOf("PUT", "/api/opd/doctors/doc-1/schedules")).toMatchObject({ items: [{ weekday: 3, departmentId: "dep-2" }] });
   });
 
   it("2026-10-04 — the doctors tab names every unit head with no registration number (the prescription's Dept. Regn prints blank for them)", async () => {

@@ -10,10 +10,11 @@ import {
   activateOpdVisitDefinition, ensureRole, mkDoctor, mkPatient, mkUser, openOpdVisit, seedOpdBase, seedOpdMasters,
 } from "./helpers/opd";
 import { grantPermissionToRole, hasPermission, syncPermissions } from "../src/kernel/auth/permissions";
-import { collectDeskProviders } from "../src/kernel/desk/registry";
+import { DESK_PROVIDER_BUDGET_MS, collectDeskProviders } from "../src/kernel/desk/registry";
 import { oldestDayRead } from "../src/kernel/desk/brief";
 import { FLOOR_DAYS, horizonFrom } from "../src/kernel/desk/horizon";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
+import { patientsDeskProvider } from "../src/modules/patients/desk-provider";
 import { ALL_MANIFESTS } from "../src/kernel/modules/manifests";
 import { events } from "../src/kernel/db/schema/events";
 import { requireEnv } from "../src/kernel/config";
@@ -346,7 +347,30 @@ describe("me (desk / report / export) e2e — 07c", () => {
     await grantPermissionToRole(db, registry, "front_desk_t", "opd.appointments.read");
     const ramesh = await mkUser(db, "ramesh", ["front_desk_t"]);
     await mkPatient(db, ramesh.actor, { name: "Kamla", phone: undefined });   // no mobile, registered today by him
-    const res = await get(`/me/desk?date=${new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10)}`, ramesh.token).expect(200);
+    /*
+      #807's red (core shard 5, a 19-minute runner, 2026-10-14): ONE read of the desk came back with no
+      cards at all — every provider lost its 250 ms race (`DESK_PROVIDER_BUDGET_MS`, kept as it is). So
+      the desk is read through `deskCard`, which re-polls until the registration tile arrives, exactly as
+      the drawer cases below do. The budget is all-or-nothing per provider, so a card that does arrive
+      is the card `load()` built and every claim below still holds. The spy pins the case: the FIRST
+      registration load overruns the budget, as on the loaded runner, and the case must still pass.
+    */
+    const realLoad = patientsDeskProvider.load;
+    let firstLoad = true;
+    const slowFirst = jest.spyOn(patientsDeskProvider, "load").mockImplementation(async (ctx) => {
+      if (firstLoad) {
+        firstLoad = false;
+        await new Promise((r) => setTimeout(r, DESK_PROVIDER_BUDGET_MS + 150));
+      }
+      return realLoad(ctx);
+    });
+    let res: { body: { cards: Card[] } };
+    try {
+      res = await deskCard(`/me/desk?date=${new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10)}`, ramesh.token, "patients.registration");
+    } finally {
+      slowFirst.mockRestore();
+    }
+    expect(firstLoad).toBe(false); // the overrun really happened on the first poll
     const cards = res.body.cards as { key: string; stats?: { key: string; value: string; href?: string }[]; rows?: unknown[] }[];
     /**
      * SUBSET, not equality — see the budget note on T1. Five providers each needing to land under

@@ -12,7 +12,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 
 | path | screen |
 |---|---|
-| `/` | `apps/web/src/screens/desk` |
+| `/` | `apps/web/src/screens/doctor-desk-landing` |
 | `/admin/users` | `apps/web/src/screens/admin-users` |
 | `/appointment` | `apps/web/src/screens/desk-one/desk-one` |
 | `/approvals` | `apps/web/src/screens/approvals-inbox` |
@@ -28,11 +28,16 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/counter/reconcile` | `apps/web/src/screens/instrument-reconcile` |
 | `/counter/seat` | `(redirect)` |
 | `/counter/seat/figures` | `(redirect)` |
+| `/crk-formulary` | `apps/web/src/screens/crk-formulary` |
+| `/doctor-desk` | `apps/web/src/screens/doctor-desk-tower` |
+| `/doctor-desk/briefs` | `apps/web/src/screens/doctor-desk-briefs` |
+| `/doctor-desk/opd` | `apps/web/src/screens/doctor-desk-opd` |
 | `/formulary/admin` | `(redirect)` |
 | `/lab/bench` | `apps/web/src/screens/lab-bench` |
 | `/lab/collection` | `apps/web/src/screens/lab-collection` |
 | `/lab/counter` | `apps/web/src/screens/lab-desk` |
 | `/lab/desk` | `apps/web/src/screens/lab-desk` |
+| `/lab/metrics` | `(redirect)` |
 | `/lab/qbench` | `apps/web/src/screens/lab-qchain` |
 | `/lab/qcollect` | `apps/web/src/screens/lab-qchain` |
 | `/lab/qreports` | `apps/web/src/screens/lab-qchain` |
@@ -101,6 +106,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/radiology/usg` | `apps/web/src/screens/radiology-usg` |
 | `/radiology/worklist` | `apps/web/src/screens/radiology-worklist` |
 | `/registration` | `apps/web/src/screens/desk-one/desk-one` |
+| `/reports/numbers` | `apps/web/src/screens/hospital-numbers` |
 | `/reports/opd-day` | `apps/web/src/screens/opd-report` |
 | `/roster/aebas` | `apps/web/src/screens/roster-aebas` |
 | `/roster/evidence` | `apps/web/src/screens/roster-evidence` |

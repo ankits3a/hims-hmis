@@ -68,7 +68,7 @@ export function TicketPanel({
   /** 2026-09-30 (owner) — nobody found: register the person here and dispense from their paper prescription. */
   registerDoor?: { onOpen: () => void } | null;
 }): React.ReactElement {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const alerts = (
     <>
       {error !== null ? <p role="alert" style={{ margin: "14px 0 0 0", fontSize: 12.5, color: "var(--red)" }}>{error}</p> : null}
@@ -122,7 +122,7 @@ export function TicketPanel({
 
   const stage = stageOf(inHand, me);
   const who = whoLabel(inHand.patient);
-  const label = ticketLabel(inHand.dispenseNo, istToday());
+  const label = ticketLabel(inHand.dispenseNo, istToday(), i18n.language);
 
   if (stage === "found") {
     const cancelled = inHand.status === "cancelled";

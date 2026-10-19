@@ -18,6 +18,7 @@ import { OBLIGATIONS_CONSUMER, obligationsConsumer } from "../src/kernel/obligat
 import { PHONE_PUSH_CONSUMER, phonePushConsumer } from "../src/kernel/push/consumer";
 import { fixedPhonePushSource } from "../src/kernel/push/sender";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
+import { PATIENTS_APPROVAL_REJECTED_CONSUMER, approvalRejectedConsumer } from "../src/modules/patients";
 import { runDueTimers } from "../src/kernel/workflow/timers";
 import { runDispatchCycle } from "../src/kernel/events/dispatcher";
 import { startInstance } from "../src/kernel/workflow/instances";
@@ -539,6 +540,8 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
           "partners.accrual",
           ["allocation.reversed", "credit_note.issued", "payment.received", "payment.refunded"],
         ],
+        // #653 — a refused merge closes its request at refusal time. `partners.` < `patients.` < `pharmacy.`.
+        ["patients.approval_rejected", ["approval.rejected"]],
         // PLAN 16c T3 / D10 — the counter's queue: `prescription.issued` → a queued dispense. Sorts before `radiology.*`.
         // PHARMACY P6 (patient messages) — the bill's message, once per invoice. Sorts after `pharmacy.`
         // `patient_messages` < `rx_issued`.
@@ -556,18 +559,23 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
       // why each install and its consumers-map entry are one edit that must never be split:
       // ship the install alone and the worker throws at startup, behind a suite that would
       // otherwise still be green. Both directions, so DELETING EITHER ENTRY fails here (N12).
-      expect(() => buildSubscriptionBus(registry, {})).toThrow(/kernel\.alerts/);
+      const PATIENT = { [PATIENTS_APPROVAL_REJECTED_CONSUMER]: approvalRejectedConsumer(workerDb) };
+      expect(() => buildSubscriptionBus(registry, {})).toThrow(/patients\.approval_rejected/);
+      // #653 — `patients` is installed ahead of the kernel's own wires, so it is the first one a bare
+      // map misses. Every leg below passes its handler (`PATIENT`) so each still names the wire it pins.
+      expect(() => buildSubscriptionBus(registry, { ...PATIENT })).toThrow(/kernel\.alerts/);
       expect(() =>
-        buildSubscriptionBus(registry, { [ALERTS_CONSUMER]: alertsConsumer(workerDb) }),
+        buildSubscriptionBus(registry, { ...PATIENT, [ALERTS_CONSUMER]: alertsConsumer(workerDb) }),
       ).toThrow(/kernel\.notify/);
       expect(() =>
-        buildSubscriptionBus(registry, { [NOTIFY_CONSUMER]: notifyConsumer(workerDb) }),
+        buildSubscriptionBus(registry, { ...PATIENT, [NOTIFY_CONSUMER]: notifyConsumer(workerDb) }),
       ).toThrow(/kernel\.alerts/);
       // PHASE O T1: the same both-directions proof for the obligation spine's wire. Pass the two
       // shipped kernel handlers, omit `kernel.obligations`, and the worker refuses to boot — the
       // mechanism that stops "an ack stops the respond clock" being shipped as a dead consumer.
       expect(() =>
         buildSubscriptionBus(registry, {
+          ...PATIENT,
           [ALERTS_CONSUMER]: alertsConsumer(workerDb),
           [NOTIFY_CONSUMER]: notifyConsumer(workerDb),
         }),
@@ -576,6 +584,7 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
       // `kernel.phone_push`, and the worker refuses to boot.
       expect(() =>
         buildSubscriptionBus(registry, {
+          ...PATIENT,
           [ALERTS_CONSUMER]: alertsConsumer(workerDb),
           [NOTIFY_CONSUMER]: notifyConsumer(workerDb),
           [OBLIGATIONS_CONSUMER]: obligationsConsumer(workerDb),
@@ -586,6 +595,7 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
       // "declare the subscriptions and the handler in ONE commit" a mechanism rather than a habit.
       expect(() =>
         buildSubscriptionBus(registry, {
+          ...PATIENT,
           [ALERTS_CONSUMER]: alertsConsumer(workerDb),
           [NOTIFY_CONSUMER]: notifyConsumer(workerDb),
           [OBLIGATIONS_CONSUMER]: obligationsConsumer(workerDb),
