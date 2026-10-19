@@ -4,6 +4,8 @@
  * Everything else in this folder is private.
  */
 export { patientsManifest } from "./manifest";
+// #653 — the approvals → patients hook: a refused merge closes its request at refusal time.
+export { PATIENTS_APPROVAL_REJECTED_CONSUMER, approvalRejectedConsumer } from "./approval-consumer";
 export { PatientsModule } from "./patients.module";
 export { getPatient, registerPatient, resolvePatientId, updatePatient } from "./registration";
 /**

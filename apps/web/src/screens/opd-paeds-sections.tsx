@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Status, fetchVisitSections, useSection } from "./opd-eye-sections";
+import { dateLocale } from "../lib/date-locale";
 
 /**
  * ═══ THE CHILD TAB — THE PAEDIATRICS SECTIONS (01-CONSULT-ENGINE.md §6.2) ═══
@@ -91,7 +92,7 @@ const badge = (tone: "red" | "gold" | "green" | "dim"): React.CSSProperties => (
 });
 
 const fmtDate = (iso: string | null): string => (iso === null ? "—"
-  : new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }));
+  : new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString(dateLocale(), { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }));
 const fmtZ = (z: number): string => `${z > 0 ? "+" : z < 0 ? "−" : ""}${Math.abs(z).toFixed(2)}`;
 const numOrNull = (s: string): number | null => {
   const t = s.trim();

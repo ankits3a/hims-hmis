@@ -6,6 +6,7 @@ import { todayIst } from "../lib/desk-api";
 import { downloadReportCsv, fetchReport, openReportPdf } from "../lib/opd-reports-api";
 import type { DayCounts, OpdReport, OpenedBy, ReportRange, Selection } from "../lib/opd-reports-api";
 import "../screens/opd-report.css";
+import { dateLocale } from "../lib/date-locale";
 
 /**
  * ═══ THE OPD REPORT, WHERE THE DAY IS ALREADY OPEN ═══
@@ -28,12 +29,12 @@ export function yesterdayOf(date: string): string {
 
 /** `Sunday, 20 Sept 2026` — the day in words, so a picked date is never read wrong. */
 export function longDay(date: string): string {
-  return new Intl.DateTimeFormat("en-IN", {
+  return new Intl.DateTimeFormat(dateLocale(), {
     timeZone: "UTC", weekday: "long", day: "numeric", month: "short", year: "numeric",
   }).format(new Date(`${date}T00:00:00Z`));
 }
 
-const SHORT = new Intl.DateTimeFormat("en-IN", { timeZone: "UTC", day: "numeric", month: "short" });
+const SHORT = { format: (d: Date | number): string => new Intl.DateTimeFormat(dateLocale(), { timeZone: "UTC", day: "numeric", month: "short" }).format(d) };
 
 /** `Mon 14 Sep – Sat 19 Sep 2026 · 6 days`, or the single day in words. */
 export function rangeText(range: { from: string; to: string }): string {

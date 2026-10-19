@@ -218,7 +218,7 @@
       "followUpDays": "{{days}} days",
       "rxBlock_one": "{{count}} medicine is typed on the computer and not issued. Issue the prescription there, then complete.",
       "rxBlock_other": "{{count}} medicines are typed on the computer and not issued. Issue the prescription there, then complete.",
-      "parked": "Token {{token}} parked",
+      "parked": "Token {{token}} on hold",
       "started": "Consultation started · token {{token}}",
       "calledNow": "Token {{token}} called",
       "nobodyToCall": "Nobody is waiting to be called.",
@@ -808,6 +808,7 @@
       "fromRepeat": "copied from {{date}}",
       "fromSet": "from “{{name}}”",
       "five": {
+        "complaint": "Complaint",
         "notes": "Notes",
         "dx": "Diagnosis",
         "meds": "Medicines",
@@ -821,6 +822,14 @@
       "adviceTitle": "Advice and follow-up",
       "history": "Patient's history ›",
       "allergy": "Allergy · {{substance}}",
+      "allergyAdd": {
+        "open": "+ Allergy",
+        "title": "Add allergy",
+        "placeholder": "Type 3 letters, e.g. pen",
+        "reactionHint": "e.g. rash",
+        "noRule": "No check rule for this",
+        "failed": "Not saved — {{why}}"
+      },
       "pulse": "Pulse",
       "temp": "Temp",
       "toldDesk": "Told the desk: “{{words}}”",
@@ -894,11 +903,15 @@
         "duplicateBody": "The same medicine is already on this prescription or one still running.",
         "duplicateClass": "Another medicine of the same class is already given: {{cls}}.",
         "disease": "{{moiety}} with {{title}}",
-        "diseaseBody": "This patient's recorded diagnosis advises against it."
+        "diseaseBody": "This patient's recorded diagnosis advises against it.",
+        "renal": "Kidney: {{drug}}",
+        "renalBody": "eGFR {{egfr}}, {{days}} d ago · {{dose}}",
+        "renalNone": "No recent kidney function.",
+        "renalStale": "No recent kidney function: last eGFR {{days}} d ago."
       },
       "testSearch": "test name — CBC, X-ray chest",
       "testsBefore": "You advised these before for this diagnosis",
-      "testNone": "No test by that name in the hospital's list.",
+      "testNone": "Not in the lab's list — ask the lab to add it",
       "testsHint": "Tests go to the lab and imaging counters when you issue.",
       "adviceLang": "Language on the paper",
       "adviceChips": "Advice · yours first",
@@ -918,6 +931,14 @@
         "hint": "A set only fills the lines. You change anything, and every line is still checked for this patient.",
         "saveTitle": "Save this visit's lines as a set",
         "nameHint": "name, for example: Viral fever",
+        "edit": "Edit",
+        "editA11y": "Edit set {{name}}",
+        "editTitle": "Edit set",
+        "name": "Name",
+        "none": "None",
+        "cancel": "Cancel",
+        "saveOver": "Save set",
+        "saveSign": "Save and sign",
         "save": "Save as a set",
         "saved": "Saved",
         "signedBy": "signed by {{name}}",
@@ -1166,7 +1187,9 @@
           "other_day": "Visit {{visitNo}} is from {{date}}, not today — send them to the front desk for today's visit",
           "abandoned": "Visit {{visitNo}} was withdrawn at the front desk — send them back there",
           "completed": "Visit {{visitNo}} is already finished — the consultation is done",
-          "not_queued": "Visit {{visitNo}} is not in any doctor's queue — send them to the front desk"
+          "not_queued": "Visit {{visitNo}} is not in any doctor's queue — send them to the front desk",
+          "guardian_visit": "Guardian visit — no vitals",
+          "tele_visit": "Phone consult — no vitals"
         }
       }
     },
@@ -1412,10 +1435,10 @@
     "followUpDefault": "{{days}} days (default)",
     "testsOrdered": "Tests ordered — patient returns today",
     "complete": "Complete consultation",
-    "park": "Park patient",
+    "park": "Hold patient",
     "resume": "Resume",
-    "parkedFor": "Parked {{minutes}} min",
-    "parkedJustNow": "Parked just now",
+    "parkedFor": "On hold {{minutes}} min",
+    "parkedJustNow": "On hold just now",
     "skipTitle": "Skip token {{token}}",
     "skipHint": "Why is this patient not being seen now? It goes on the visit's record.",
     "skipNote": "Note (optional)",
@@ -2369,6 +2392,8 @@
     "ready": "ready"
   },
   "patientAbsent": {
+    "undo": "Undo — patient is here",
+    "undone": "Back on the bench",
     "action": "Patient not present — guardian with reports",
     "title": "Who came?",
     "hint": "No vitals. Fee unchanged.",
@@ -2405,7 +2430,8 @@
       "patient_absent_returning_only": "Only a returning patient (revisit or renewal) can skip vitals for a guardian.",
       "encounter_state_conflict": "This visit is no longer waiting for vitals.",
       "consult_gate_refused": "This visit has not been billed yet — take the fee at the counter first.",
-      "patient_absent_not_permitted": "Your account may not send a guardian's visit to the doctor."
+      "patient_absent_not_permitted": "Your account may not send a guardian's visit to the doctor.",
+      "patient_absent_undo_state_conflict": "The doctor has this visit — cannot undo."
     }
   },
   "recorded": {

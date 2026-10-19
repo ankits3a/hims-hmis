@@ -366,10 +366,11 @@ export function sanityGates(
   }
 
   // ── 2 · the shrinking adult. A spine does bend at 72, which is why this is a gate and not a
-  //      refusal: re-measure once, and if it stands, the doctor sees BOTH numbers.
+  //      refusal: re-measure once, and if it stands, the doctor sees BOTH numbers. Adults only
+  //      (2026-10-13): a child under 13 grows, so 3 cm since the last visit is expected, not a slip.
   const ht = v.heightCm;
   const lastHt = last?.heightCm ?? null;
-  if (overrides.heightCm === undefined && ht !== undefined && ht !== null && lastHt !== null && Math.abs(ht - lastHt) >= g.heightDeltaCm) {
+  if (overrides.heightCm === undefined && !isChild && ht !== undefined && ht !== null && lastHt !== null && Math.abs(ht - lastHt) >= g.heightDeltaCm) {
     gates.push({
       key: "heightCm", kind: "shrinking_adult", value: ht, suggestion: lastHt,
       message: `height ${ht} against ${lastHt} — ${Math.round(Math.abs(ht - lastHt) * 10) / 10} cm apart; re-measure once before it becomes true`,

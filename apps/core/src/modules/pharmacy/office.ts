@@ -77,10 +77,16 @@ export async function purchaseOrderDocument(db: Db, actor: Actor, poId: string):
   const letterhead = (await loadOpdConfig(db)).letterhead;
   const authorised = ["approved", "sent", "part_received", "received"].includes(po.status);
   const approver = po.approvedBy === null ? "" : (po.names[po.approvedBy] ?? po.approvedBy);
+  // #637: an order with any discounted line prints the vendor's list rate and discount before the net rate it is priced at.
+  const discounted = po.lines.some((l) => l.discountBps > 0);
+  const pct = (bps: number): string => `${(bps / 100).toFixed(bps % 100 === 0 ? 0 : 2).replace(/(\.\d)0$/, "$1")}%`;
+  const discountCells = (l: (typeof po.lines)[number]): string => !discounted ? ""
+    : `<td class="n">${rupees(l.listRatePaise)}</td><td class="n">${l.discountBps === 0 ? "—" : pct(l.discountBps)}</td>`;
+  const span = discounted ? 10 : 8;
   const rows = po.lines.map((l, i) => `<tr>
       <td>${String(i + 1)}</td><td>${esc(l.itemName)}<div class="c">${esc(l.itemCode)}</div></td>
       <td>${esc(l.uom)} of ${String(l.multiplier)}</td><td class="n">${String(l.qtyPacks)}</td><td class="n">${l.freePacks === 0 ? "—" : String(l.freePacks)}</td>
-      <td class="n">${rupees(l.ratePaise)}</td><td class="n">${(l.gstRateBps / 100).toFixed(l.gstRateBps % 100 === 0 ? 0 : 2)}%</td>
+      ${discountCells(l)}<td class="n">${rupees(l.ratePaise)}</td><td class="n">${(l.gstRateBps / 100).toFixed(l.gstRateBps % 100 === 0 ? 0 : 2)}%</td>
       <td class="n">${l.mrpPaise === null ? "—" : rupees(l.mrpPaise)}</td><td class="n">${rupees(l.lineTotalPaise)}</td></tr>`).join("");
   const body = `
   ${authorised ? "" : `<div class="stamp">DRAFT — NOT AN ORDER (${esc(po.status.replace("_", " "))})</div>`}
@@ -89,11 +95,11 @@ export async function purchaseOrderDocument(db: Db, actor: Actor, poId: string):
     <div class="t"><h1>Purchase Order</h1><div>${esc(po.poNo)}</div><div>${dayLabel(po.createdAt.slice(0, 10))}</div></div></header>
   <section class="two"><div><b>To</b><br>${esc(po.vendorName)}<br>${po.vendorGstin === null ? "" : `GSTIN ${esc(po.vendorGstin)}`}</div>
     <div><b>Deliver to</b><br>${esc(po.storeName)} (${esc(po.storeCode)})<br>Expected by ${dayLabel(po.expectedDate)}</div></section>
-  <table><thead><tr><th>#</th><th>Item</th><th>Pack</th><th class="n">Qty</th><th class="n">Free</th><th class="n">Rate ₹</th><th class="n">GST</th><th class="n">MRP ₹</th><th class="n">Amount ₹</th></tr></thead>
+  <table><thead><tr><th>#</th><th>Item</th><th>Pack</th><th class="n">Qty</th><th class="n">Free</th>${discounted ? `<th class="n">List ₹</th><th class="n">Disc</th>` : ""}<th class="n">Rate ₹</th><th class="n">GST</th><th class="n">MRP ₹</th><th class="n">Amount ₹</th></tr></thead>
   <tbody>${rows}</tbody>
-  <tfoot><tr><td colspan="8" class="n">Taxable value</td><td class="n">${rupees(po.subtotalPaise)}</td></tr>
-  <tr><td colspan="8" class="n">GST</td><td class="n">${rupees(po.gstPaise)}</td></tr>
-  <tr class="tot"><td colspan="8" class="n">Total</td><td class="n">${rupees(po.totalPaise)}</td></tr></tfoot></table>
+  <tfoot><tr><td colspan="${String(span)}" class="n">Taxable value</td><td class="n">${rupees(po.subtotalPaise)}</td></tr>
+  <tr><td colspan="${String(span)}" class="n">GST</td><td class="n">${rupees(po.gstPaise)}</td></tr>
+  <tr class="tot"><td colspan="${String(span)}" class="n">Total</td><td class="n">${rupees(po.totalPaise)}</td></tr></tfoot></table>
   ${po.terms === null ? "" : `<p><b>Terms.</b> ${esc(po.terms)}</p>`}
   <p class="small">Supply batch number, expiry and MRP on the invoice for every line. Goods short-dated, damaged or above the MRP stated are refused at the gate. Quantities above the order are not accepted.</p>
   <footer><div>${authorised ? `Approved by ${esc(approver)}` : ""}</div><div>Authorised signatory · ${esc(letterhead.legalName ?? letterhead.name)}</div></footer>`;

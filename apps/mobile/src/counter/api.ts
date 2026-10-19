@@ -80,11 +80,19 @@ export type WireMoveResult = {
 export type WireDoctorUnit = { userId: string; short: string };
 
 // ——— appointments (the web's `/opd/slots` and `/opd/appointments…`; `opd.appointments.read` / `.manage`) ———
-export type WireMasterDoctor = { id: string; userId: string; displayName: string; departmentId: string; active: boolean; designation?: string | null };
+export type WireMasterDoctor = {
+  id: string; userId: string; displayName: string; departmentId: string; active: boolean; designation?: string | null;
+  /** #914 — the doctor's running or coming second department. Optional: older servers send none. */
+  secondary?: { departmentId: string; fromDate: string; toDate: string | null } | null;
+};
 export type WireRoom = { id: string; code: string; name: string; active: boolean };
 export type WireSchedule = { id: string; doctorId: string; weekday: number; startTime: string; endTime: string; roomId: string; validFrom: string; validTo: string | null; active: boolean };
 export type WireLeave = { id: string; doctorId: string; fromDate: string; toDate: string; reason: string; status: "scheduled" | "cancelled" };
-export type WireSlot = { start: string; end: string; roomId: string; scheduleId: string; booked: boolean; past: boolean };
+export type WireSlot = {
+  start: string; end: string; roomId: string; scheduleId: string; booked: boolean; past: boolean;
+  /** #914 — the session's department; null when it names none. Optional: older servers. */
+  departmentId?: string | null;
+};
 export type WireAppointment = {
   id: string; appointmentNo?: string | null; patientId: string; doctorId: string; departmentId: string; serviceDate: string;
   slotStart: string; slotEnd: string;
@@ -155,14 +163,16 @@ export function counterApi(call: Call) {
     rooms: () => call<{ items: WireRoom[] }>("GET", "/opd/rooms"),
     schedules: (doctorId: string) => call<{ items: WireSchedule[] }>("GET", `/opd/doctors/${enc(doctorId)}/schedules`),
     leaves: (doctorId: string, from: string, to: string) => call<{ items: WireLeave[] }>("GET", `/opd/leaves?doctorId=${enc(doctorId)}&from=${enc(from)}&to=${enc(to)}&status=scheduled`),
-    slots: (doctorId: string, date: string) => call<{ slots: WireSlot[] }>("GET", `/opd/slots?doctorId=${enc(doctorId)}&date=${enc(date)}`),
+    /** #914 — with `departmentId`, only that department's book (a doctor who covers a second one). */
+    slots: (doctorId: string, date: string, departmentId?: string) =>
+      call<{ slots: WireSlot[] }>("GET", `/opd/slots?doctorId=${enc(doctorId)}&date=${enc(date)}${departmentId === undefined ? "" : `&departmentId=${enc(departmentId)}`}`),
     /** Every appointment this patient holds or held — the list the lost-answer re-read settles against. */
     patientAppointments: async (patientId: string) => (await call<{ items: WireAppointment[] }>("GET", `/opd/appointments?patientId=${enc(patientId)}`)).items,
     dayAppointments: async (serviceDate: string) => (await call<{ items: WireAppointment[] }>("GET", `/opd/appointments?serviceDate=${enc(serviceDate)}`)).items,
     /** The one read that carries telephone numbers; the server records each disclosure with its reason. */
     needsRebooking: async () => (await call<{ items: WireAppointment[] }>("GET", "/opd/appointments?needsRebooking=true&contact=true")).items,
-    book: (body: { patientId: string; doctorId: string; slotStart: string; note?: string; mode?: "tele"; telePhone?: string }) => call<{ appointment: WireAppointment }>("POST", "/opd/appointments", body),
-    reschedule: (appointmentId: string, body: { slotStart: string; doctorId?: string; reason?: string }) =>
+    book: (body: { patientId: string; doctorId: string; slotStart: string; note?: string; mode?: "tele"; telePhone?: string; departmentId?: string }) => call<{ appointment: WireAppointment }>("POST", "/opd/appointments", body),
+    reschedule: (appointmentId: string, body: { slotStart: string; doctorId?: string; reason?: string; departmentId?: string }) =>
       call<{ from: WireAppointment; to: WireAppointment }>("POST", `/opd/appointments/${enc(appointmentId)}/reschedule`, body),
     cancelAppointment: (appointmentId: string, reason: string) => call<{ appointment: WireAppointment }>("POST", `/opd/appointments/${enc(appointmentId)}/cancel`, { reason }),
     /** What a tele-call costs, and — when the hospital has a UPI id — the QR for exactly that amount (rows of 0/1, encoded by the server). */

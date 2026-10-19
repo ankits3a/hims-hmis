@@ -20,7 +20,15 @@ import { bigserial, boolean, check, index, integer, jsonb, pgTable, primaryKey, 
 export const COPILOT_ASK_OUTCOMES = [
   "answered", "notUnderstood", "noTool", "notPermitted", "needSubject", "failed",
   "identifierLeak", "refusedActor", "badRequest", "error", "halted",
+  /*
+    #686 (2) — the confirm tap's outcomes, one ledger row per `POST /copilot/confirm` (refusals
+    included). Prefixed so the health page can count taps apart from asks.
+  */
+  "confirmDone", "confirmInvalid", "confirmExpired", "confirmNotAct", "confirmHalted", "confirmNotPermitted",
+  "confirmAlreadyDone", "confirmStateChanged", "confirmFailed",
 ] as const;
+/** #686 — the confirm outcomes among `COPILOT_ASK_OUTCOMES`: a confirm row is a tap, not an ask. */
+export const isConfirmOutcome = (o: string): boolean => o.startsWith("confirm");
 export type CopilotAskOutcome = (typeof COPILOT_ASK_OUTCOMES)[number];
 
 /** Which route answered. `chooser` and `model` are separate on purpose: G4 reads timings per route. */

@@ -3,9 +3,15 @@ import { istDateTimeToUtc, istWeekday } from "./time";
 export type ScheduleTemplate = {
   id: string; weekday: number; startTime: string; endTime: string; roomId: string;
   slotMinutes: number | null; validFrom: string; validTo: string | null; active: boolean;
+  /** #914 — the department the session serves; null ⇒ any department the doctor sits in that day. */
+  departmentId: string | null;
 };
 export type LeaveRange = { fromDate: string; toDate: string; status: string };
-export type Slot = { start: Date; end: Date; roomId: string; scheduleId: string; booked: boolean; past: boolean };
+export type Slot = {
+  start: Date; end: Date; roomId: string; scheduleId: string; booked: boolean; past: boolean;
+  /** #914 — the template's department, null when the session names none. */
+  departmentId: string | null;
+};
 
 /** Slots of one IST date: active templates for that weekday inside their validity, minus scheduled leaves. Pure. */
 export function slotsForDate(input: {
@@ -22,7 +28,7 @@ export function slotsForDate(input: {
     const step = (t.slotMinutes ?? input.defaultSlotMinutes) * 60_000;
     const endMs = istDateTimeToUtc(date, t.endTime).getTime();
     for (let s = istDateTimeToUtc(date, t.startTime).getTime(); s + step <= endMs; s += step) {
-      out.push({ start: new Date(s), end: new Date(s + step), roomId: t.roomId, scheduleId: t.id, booked: booked.has(s), past: s < input.now.getTime() });
+      out.push({ start: new Date(s), end: new Date(s + step), roomId: t.roomId, scheduleId: t.id, booked: booked.has(s), past: s < input.now.getTime(), departmentId: t.departmentId });
     }
   }
   return out.sort((a, b) => a.start.getTime() - b.start.getTime());

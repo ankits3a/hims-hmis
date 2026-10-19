@@ -81,6 +81,7 @@
     "staffReports": "Staff reports",
     "outsideTests": "Outside tests",
     "copilotHealth": "Copilot health",
+    "crkFormulary": "CRK formulary",
     "labDesk": "Lab desk",
     "labCollection": "Collection",
     "labBench": "Bench",
@@ -94,6 +95,7 @@
     "labQCollect": "Quick Collect",
     "labQBench": "Quick Bench",
     "labQReports": "Quick Reports",
+    "hospitalNumbers": "Hospital numbers",
     "pharmacyCounter": "Dispense counter",
     "pharmacyDesk": "Pharmacy desk",
     "pharmacyItems": "Pharmacy sale items",
@@ -294,6 +296,8 @@
     }
   },
   "merge": {
+    "showMobile": "Show",
+    "showFailed": "Could not show. Try again.",
     "title": "Merge review",
     "heading": "Merge two records of one person",
     "left": "Record A",
@@ -808,6 +812,16 @@
     "specialty": "Specialty",
     "designation": "Designation",
     "designationHint": "e.g. Guest Faculty, Senior Resident — shown beside the name at the desk, never printed",
+    "secondaryDepartment": "Second department",
+    "secondaryNone": "— none —",
+    "secondarySince": "since {{date}}",
+    "secondaryUntil": "until {{date}}",
+    "secondaryEnd": "End",
+    "secondaryEndConfirm": "End {{name}}'s second department {{dept}} today? Their later bookings there will need rebooking.",
+    "secondaryEnded_one": "Ended. {{count}} booking needs rebooking.",
+    "secondaryEnded_other": "Ended. {{count}} bookings need rebooking.",
+    "sessionDepartment": "Department",
+    "sessionAnyDepartment": "Either",
     "pickDepartment": "Choose a department",
     "pickDoctor": "Choose a doctor",
     "pickDoctorHint": "Choose a doctor to edit their weekly schedule and leaves",
@@ -947,6 +961,11 @@
     "slotBooked": "Booked",
     "confirmTitle": "Confirm this booking",
     "confirmBooking": "Confirm booking",
+    "confirmMoveTitle": "Confirm the move",
+    "confirmMove": "Confirm move",
+    "moveFrom": "From",
+    "moveTo": "To",
+    "back": "Back",
     "how": "How",
     "inPerson": "In person",
     "tele": "Tele-call",
@@ -964,6 +983,23 @@
     "agentIdle": "I read the filters on this screen, the doctor master and the day's bookings — and I say which one an answer came from."
   },
   "opdDesk": {
+    "coveringFrom": "from {{dept}}",
+    "deptQueue": "Department line",
+    "groupWaiting": "{{n}} waiting",
+    "pickDepartmentList": "Choose a department to see every doctor's line",
+    "noLines": "No doctor has a session open today",
+    "listSummary": "{{n}} waiting in the department",
+    "clocksIdleDept": "choose a department",
+    "agent": {
+      "placeholder": "Ask about the department's line…",
+      "idle": "I can see every doctor's line in this department. Ask who has waited longest, or how many are waiting.",
+      "longest": "Token {{tokenNo}} with {{doctor}} has waited longest — {{n}} min.",
+      "nobody": "Nobody is waiting in this department.",
+      "waiting": "{{n}} waiting across {{doctors}} doctors' lines.",
+      "abandoned": "Token {{tokenNo}} closed — {{reason}}",
+      "moved": "{{n}} moved from {{from}} to {{to}}.",
+      "refused": "Refused: {{message}}"
+    },
     "title": "OPD desk",
     "pickDepartment": "Choose a department",
     "pickDepartmentHint": "Choose a department to see today's doctors",
@@ -1033,7 +1069,7 @@
     "cancel": "Cancel",
     "barAbandon": "Closing token {{tokenNo}} — say why, then confirm.",
     "barTransfer": "Moving from {{from}} — choose the doctor, tick consent, confirm.",
-    "barPickDoctor": "Choose a doctor on the board — their line opens on the right.",
+    "barPickDoctor": "Choose a doctor on the board — their line opens in the list.",
     "barInHand": "Token {{tokenNo}} in hand — choose what happens to them.",
     "barPickToken": "Pick a token from the list to act on it."
   },
@@ -1257,6 +1293,13 @@
     }
   },
   "opdConsult": {
+    "retake": {
+      "ask": "Ask the desk for a clearer photo",
+      "asked": "Clearer photo asked",
+      "reason": "What is unclear (optional)",
+      "send": "Send",
+      "cancel": "Cancel"
+    },
     "pickFromFormulary": "Pick from formulary",
     "regimenUnmatched": "Not matched — pick from the list so the checks can see it",
     "notInFormulary": "Not in formulary — advanced checks unavailable",
@@ -1277,6 +1320,10 @@
     "diseaseHit": "Line {{n}}: {{moiety}} is contraindicated in {{title}} — {{note}}",
     "diseaseNotice": "Line {{n}}: {{moiety}} with {{title}} — {{note}}",
     "diseaseCodedOn": "(recorded {{code}} on {{on}})",
+    "renalHitReduce": "Line {{n}}: {{drug}} — reduce the dose for eGFR {{egfr}} (measured {{days}} d ago): {{dose}}",
+    "renalHitAvoid": "Line {{n}}: {{drug}} — avoid at eGFR {{egfr}} (measured {{days}} d ago): {{dose}}",
+    "renalHitNone": "Line {{n}}: {{drug}} — no recent kidney function (no eGFR on record); its dose depends on it",
+    "renalHitStale": "Line {{n}}: {{drug}} — no recent kidney function (last eGFR {{days}} d ago); its dose depends on it",
     "diseaseStale": "(recorded {{code}} on {{on}} — over a year ago, so this is a note and not a block)",
     "switchTo": "Switch to:",
     "partlyChecked_one": "Line {{lines}}: checked only in part. A component is not yet reviewed by pharmacy, so its allergy class and interactions could not be checked.",
@@ -1455,13 +1502,13 @@
       "moderate": "Moderate",
       "severe": "Severe"
     },
-    "park": "Park patient",
+    "park": "Hold patient",
     "resume": "Resume",
     "openPatient": "Open",
     "inChair": "In consultation",
-    "parkedFor": "Parked {{minutes}} min",
-    "parkedJustNow": "Parked just now",
-    "parkedHint": "Parked patients keep their turn, their note and their token. Pick one to carry on.",
+    "parkedFor": "On hold {{minutes}} min",
+    "parkedJustNow": "On hold just now",
+    "parkedHint": "Patients on hold keep their turn, their note and their token. Pick one to carry on.",
     "cancel": "Cancel",
     "skipTitle": "Skip token {{token}}",
     "skipHint": "Why is this patient not being seen now? It goes on the visit's record.",
@@ -1560,6 +1607,7 @@
     "print": "Print prescription",
     "advisedTests": "Advised investigations",
     "advisedTestsNote": "Prices are as of {{date}} and are confirmed at the lab or imaging counter.",
+    "rateAtCounter": "Rate at counter",
     "outsideTests": "Tests to be done outside"
   },
   "slip": {
@@ -1779,6 +1827,8 @@
     "approvalPendingSince": "Waiting since {{time}}. Someone other than you has to decide it.",
     "approvalGranted": "A billing manager approved this variance. Finish closing to close the drawer.",
     "approvalRejected": "A billing manager did not approve this variance. Withdraw the count and count the drawer again.",
+    "approvalDecidedAt": "Decided at {{time}}",
+    "approvalNote": "Note: {{note}}",
     "lockout": "You cannot take money at the counter until a billing manager approves this variance.",
     "status": {
       "open": "OPEN",
@@ -1884,6 +1934,10 @@
       "kindAdvance": "From a patient advance",
       "patient": "Patient",
       "creditNote": "Credit note",
+      "pickCreditNote": "Credit note to refund against",
+      "noCreditNotes": "No credit note on this patient's bills.",
+      "creditNoteLine": "{{creditNote}} · bill {{invoice}} · {{left}} refundable",
+      "creditNoteDone": "{{creditNote}} · bill {{invoice}} · fully refunded",
       "amount": "Refund amount",
       "reasonClass": "Reason class",
       "mistake": "Mistake",
@@ -1952,6 +2006,7 @@
       "invoices": "Invoices",
       "creditNotes": "Credit notes",
       "vouchersPaid": "Refunds paid",
+      "bankCharges": "Bank charges accepted",
       "degraded": "Degraded receipts"
     },
     "gstr1": {
@@ -2011,6 +2066,7 @@
         "daybook": "Day book — any date",
         "gstr1": "Summary by GSTIN, SAC and rate",
         "unbilled": "Visits with no bill — any date",
+        "tele": "Tele-call bills that failed",
         "fees": "Fees — switch on or off",
         "prices": "Prices — OPD consultation"
       },
@@ -2026,6 +2082,7 @@
         "daybook": "was: Day book tab",
         "gstr1": "was: GSTR-1 tab",
         "unbilled": "was: Unbilled visits tab",
+        "tele": "new",
         "fees": "new: owner, 1 Oct",
         "prices": "new: owner, 5 Oct"
       },
@@ -2113,7 +2170,9 @@
         },
         "gstr1_due": {
           "title": "{{month}} GSTR-1 due {{due}}",
-          "sub": "Summary by GSTIN, SAC and rate"
+          "sub": "Summary by GSTIN, SAC and rate",
+          "subCount_one": "{{count}} hospital GSTIN billed · B2C in one line",
+          "subCount_other": "{{count}} hospital GSTINs billed · B2C in one line"
         }
       },
       "pay": {
@@ -2160,7 +2219,11 @@
         "drawerBank": "No drawer: this refund leaves by bank transfer.",
         "drawerPill": "drawer open",
         "sign": "Take the payee’s signature",
-        "signM": "The payee signs for the money in the refund register. A printed voucher is not available on this screen yet.",
+        "signM": "The voucher prints when you pay; the payee signs it for the money.",
+        "someoneElse": "Someone else collects for the patient",
+        "relation": "Relation to the patient",
+        "relationHint": "son, husband…",
+        "relationRequired": "Name the relation of whoever collects for the patient.",
         "whyCash": "The drawer shortens by {{amount}} the moment you pay.",
         "whyBank": "Record it only after the transfer has left the bank.",
         "act": "Pay {{amount}} in cash",
@@ -2637,7 +2700,35 @@
     "noMatch": {
       "title": "No card in the holder book matches {{code}}.",
       "body": "Check the digits, or search by the holder's mobile. If the partner's list has not reached us yet, a supervisor can allow it once (grace honour).",
-      "grace": "Grace honour needs a front office supervisor's approval before anything applies. Until then the visit is billed at the full rate."
+      "grace": "Grace honour needs a supervisor's approval before anything applies. Until then the visit is billed at the full rate."
+    },
+    "graceAsk": {
+      "title": "Ask for grace honour",
+      "patient": "Patient",
+      "change": "Change",
+      "plan": "Plan on the card",
+      "pickPlan": "Pick the plan",
+      "reason": "Reason",
+      "reasonHint": "e.g. card issued last week, not in the list yet",
+      "approver": "Approver",
+      "approverWho": "A supervisor",
+      "note": "Once approved the card is honoured on this patient's bill and marked \"grace\" everywhere it appears. Nothing applies before approval.",
+      "send": "Send for approval",
+      "pending": "Sent for approval · {{age}}",
+      "pendingBody": "waiting for a supervisor. Bill at the full rate or wait.",
+      "granted": "Approved · honour the card",
+      "honour": "Honour the card",
+      "rejected": "The last request was refused. You can ask again."
+    },
+    "clocks": {
+      "title": "Clocks running · {{count}}",
+      "none": "Nothing is waiting",
+      "gracePending": "grace approval",
+      "graceGranted": "approved, not honoured",
+      "noMatch": "no match",
+      "toLink": "to link",
+      "minutes": "{{m}} m",
+      "hours": "{{h}} h {{m}} m"
     },
     "next": "Next",
     "another": "Recognise another card",
@@ -4073,6 +4164,7 @@
       "openQCollect": "Open Quick Collect"
     },
     "ast": {
+      "saveTable": "Save table",
       "title": "Antibiotic sensitivity",
       "panel": "Panel",
       "pickPanel": "Pick a panel…",
@@ -7785,7 +7877,9 @@
           "other_day": "Visit {{visitNo}} is from {{date}}, not today — send them to the front desk for today's visit",
           "abandoned": "Visit {{visitNo}} was withdrawn at the front desk — send them back there",
           "completed": "Visit {{visitNo}} is already finished — the consultation is done",
-          "not_queued": "Visit {{visitNo}} is not in any doctor's queue — send them to the front desk"
+          "not_queued": "Visit {{visitNo}} is not in any doctor's queue — send them to the front desk",
+          "guardian_visit": "Guardian visit — no vitals",
+          "tele_visit": "Phone consult — no vitals"
         }
       },
       "notOnBench": "{{who}} is not on this bench — check the slip, or send them to the front desk",
@@ -8587,6 +8681,15 @@
   },
   "pharmacyDesk": {
     "wordmark": "PHARMACY DESK",
+    "phone": {
+      "menu": "Menu",
+      "tabTicket": "Ticket",
+      "tabLine": "The line",
+      "tabBill": "Bill",
+      "tabDay": "Your day",
+      "showPatient": "Show the full record",
+      "hidePatient": "Hide the full record"
+    },
     "where": "OPD counter",
     "thisDesk": "this desk",
     "waiting": "{{count}} waiting",
@@ -10046,6 +10149,7 @@
     "doctorIssued": "The doctor has already issued this visit's prescription on the screen, so no medicines are typed here. You can still type the tests.",
     "tests": "Tests",
     "testsHint": "Type two letters · Enter picks the first match",
+    "sugTests": "Doctor often advises",
     "testsPlaceholder": "CBC, X-ray chest, LFT…",
     "testsUnavailable": "The price list could not be read — tests cannot be typed right now",
     "removeTest": "Remove {{name}}",
@@ -10245,6 +10349,18 @@
     "fill": "Fill prescription ({{n}} lines)"
   },
   "slipCapture": {
+    "photoRead": {
+      "match": "The photo's QR reads {{visit}} — this visit",
+      "mismatch": "The photo's QR reads {{photo}}, not {{visit}} — retake, or scan this paper again",
+      "none": "No visit number read from the photo — check the paper against the visit"
+    },
+    "mrd": {
+      "title": "With MRD · {{count}}",
+      "waiting": "no slip filed",
+      "retake": "retake not answered: {{reason}}",
+      "noReason": "no reason given",
+      "note": "Slips missing when their day ended go to MRD. Filing the page takes the visit off this list."
+    },
     "miss": {
       "token": "Token {{token}} is not among today's finished consultations — type the visit number on the slip, or find the visit by name",
       "prescription": "That prescription's visit is not among today's finished consultations — type the visit number, or find the visit by name",
@@ -10595,6 +10711,28 @@
     "source_downtime": "Paper dispense"
   },
   "pharmacyRetail": {
+    "shelfAt": "Shelf: {{location}}",
+    "batchFor": "Batch for {{name}}",
+    "batchAuto": "Earliest expiry (automatic)",
+    "batchOption": "{{no}} · exp {{expiry}} · {{count}} left",
+    "allergiesTag": "Allergies",
+    "allergiesWithheld": "Allergies withheld — restricted record",
+    "noAllergies": "No allergies recorded.",
+    "allergicTo": "Allergic to {{substance}}",
+    "currentMedsTag": "Current medicines",
+    "noCurrentMeds": "No current prescription here.",
+    "mayHaveEnded": "may have ended",
+    "yourDay": "Your day: {{sales}} · {{lines}} · {{rx}}",
+    "daySales_one": "{{count}} sale",
+    "daySales_other": "{{count}} sales",
+    "dayLines_one": "{{count}} line",
+    "dayLines_other": "{{count}} lines",
+    "dayRx_one": "{{count}} on prescription",
+    "dayRx_other": "{{count}} on prescription",
+    "agent": {
+      "placeholder": "Ask about your day, a medicine or a sale…",
+      "idle": "I can see your sales today and the cart. Amounts stay with the count at closing."
+    },
     "title": "Walk-in sales",
     "intro": "Sell to a customer who walks in without an OPD prescription from this hospital. Every bill names a registered person. Schedule H and H1 medicines need the prescription they bring; Schedule X is not sold here.",
     "shut_no_store": "The walk-in pharmacy store has not been set up yet, so nothing can be sold here.",
@@ -10920,7 +11058,16 @@
         "refusedActor": "Refused (not a person)",
         "badRequest": "Malformed",
         "error": "Error",
-        "halted": "Halted"
+        "halted": "Halted",
+        "confirmDone": "Confirm: done",
+        "confirmInvalid": "Confirm refused: not valid",
+        "confirmExpired": "Confirm refused: expired",
+        "confirmNotAct": "Confirm refused: not an act",
+        "confirmHalted": "Confirm refused: paused",
+        "confirmNotPermitted": "Confirm refused: not permitted",
+        "confirmAlreadyDone": "Confirm: already done",
+        "confirmStateChanged": "Confirm refused: things changed",
+        "confirmFailed": "Confirm failed"
       },
       "routeName": {
         "phrasebook": "Phrasebook",
@@ -11315,6 +11462,41 @@
     "vitalsAt": "Recorded at {{at}}",
     "dangerShort": "Danger"
   },
+  "learnedAboutMe": {
+    "title": "What suggestions learned from you",
+    "intro": "Your own patterns only. A reset starts your own level again from today. Nothing is deleted.",
+    "close": "Close",
+    "loading": "Loading…",
+    "error": "Could not load. Try again.",
+    "nothing": "Nothing yet.",
+    "sinceStart": "Since you started",
+    "sinceReset": "Since your reset on {{date}}",
+    "reset": "Reset",
+    "resetAll": "Reset all",
+    "confirmOne": "Reset your {{surface}}? Suggestions start learning again from today.",
+    "confirmAll": "Reset everything learned from you? Suggestions start learning again from today.",
+    "confirmReset": "Yes, reset",
+    "keep": "Keep",
+    "resetFailed": "Reset failed. Try again.",
+    "uses_one": "{{count}} time",
+    "uses_other": "{{count}} times",
+    "testFor": "{{name}} for {{diagnosis}}",
+    "hiddenKind_one": "{{count}} {{kind}} hidden",
+    "hiddenKind_other": "{{count}} {{kind}} hidden",
+    "open": "What it learned",
+    "surface": {
+      "complaints": "Complaints",
+      "diagnoses": "Diagnoses",
+      "tests": "Tests",
+      "findings": "Findings and treatment words",
+      "hidden": "Crossed-off chips"
+    },
+    "kind": {
+      "diagnosis": "diagnosis",
+      "test": "test",
+      "medicine": "medicine"
+    }
+  },
   "opdConsultV3": {
     "suggestions": "Copilot suggestions",
     "folded": "COPILOT IS FOLDED — SUGGESTIONS SHOW HERE",
@@ -11582,13 +11764,14 @@
     "feedingNote": "Feeding note"
   },
   "pharmacyOffice": {
-    "priceList": {"how6": "Packing like 10*15 (ten strips of 15), 4*5*10 or 5*2ML (five 2 ml ampoules) is understood. If the list's MRP is for the whole packing, the screen asks once and divides it for you.", "basisTitle": "The MRP in this list is for…", "basisPack": "one pack the counter sells (a strip, a vial, a bottle)", "basisPacking": "the whole packing as written (10*15 = 10 strips)", "basisSuggested": "suggested from the prices", "basisExample": "Example: {{brand}}, packing {{pack}}, MRP ₹{{mrp}}. Per {{unit}} that is ₹{{asPack}} if the MRP is for one pack, or ₹{{asPacking}} if it is for the whole packing of {{outer}}.", "basisNeeded": "Say what the MRP is for before creating items.", "unitOf": {"tablet_strip_one": "strip of {{count}} tablet", "tablet_strip_other": "strip of {{count}} tablets", "capsule_strip_one": "strip of {{count}} capsule", "capsule_strip_other": "strip of {{count}} capsules", "bottle": "bottle", "vial": "vial", "ampoule": "ampoule", "tube": "tube", "pouch": "pouch", "sachet": "sachet", "box": "box", "other": "pack"}, "twinOption": "+ Add “{{name}}” to the drug catalogue (same as {{template}})", "newToCatalogue": "New to the catalogue: check the composition", "chooseKind": "Choose: the catalogue has this drug as {{count}} different kinds", "guideTwin_one": "{{count}} brand is not in the drug catalogue, but its composition matched a catalogue drug. It will be added as a new brand carrying that drug's salts and schedule. Adding to the catalogue needs the Formulary right (pharmacist in charge).", "guideTwin_other": "{{count}} brands are not in the drug catalogue, but their composition matched a catalogue drug. Each will be added as a new brand carrying that drug's salts and schedule. Adding to the catalogue needs the Formulary right (pharmacist in charge).", "guideChoose_one": "{{count}} row matches the drug in more than one kind (for example a depot suspension and an injection solution, or two salts). Pick the right one.", "guideChoose_other": "{{count}} rows match the drug in more than one kind (for example a depot suspension and an injection solution, or two salts). Pick the right one for each.", "outerNote": "{{outer}} of these in the packing", "variantNote": "Size {{variant}} goes in the item's name", "title": "Import a vendor's price list", "lead": "Turn a vendor's list of drugs into items, matched to the national drug catalogue. You review every row before anything is created.", "step1": "1 · The vendor's list", "orPaste": "Choose a CSV or Excel (.xlsx) file — or copy the rows (with the heading row) from Excel and paste them here:", "pastePlaceholder": "Manufacturer\tBrand\tComposition\tPacking\tMRP …", "readPaste": "Read the pasted rows", "pdfNote": "A PDF cannot be read here: open it in Excel or ask the vendor for the Excel file. Best columns: manufacturer, brand, composition, packing, HSN, GST %, MRP per pack.", "tooShort": "The list needs a heading row and at least one drug.", "step2_one": "2 · Which column is which · {{count}} row", "step2_other": "2 · Which column is which · {{count}} rows", "noColumn": "— not in the list —", "column": "Column {{n}}", "field": {"brand": "Brand name (needed)", "manufacturer": "Manufacturer", "composition": "Composition", "pack": "Packing", "mrp": "MRP per pack", "gst": "GST %", "hsn": "HSN"}, "match": "Match with the drug catalogue", "working": "Working…", "step3": "3 · Review, then create", "summary": "{{total}} rows · {{matched}} matched in the catalogue · {{twins}} to add as new brands · {{existing}} already in your item master · {{chosen}} ticked to create", "col": {"vendor": "Vendor's row", "match": "Catalogue match", "pack": "Pack", "mrp": "MRP (₹ per pack)", "cold": "2–8 °C", "result": "Result"}, "include": "Create {{brand}}", "packSize": "Units per pack of {{brand}}", "hsn": "HSN of {{brand}}", "mrp": "MRP of {{brand}}", "cold": "{{brand}} is kept at 2–8 °C", "already": "Already an item ({{code}})", "noMatch": "No match — add it by hand", "pickNone": "— do not create —", "packType": {"tablet_strip": "Strip of tablets", "capsule_strip": "Strip of capsules", "bottle": "Bottle", "vial": "Vial", "ampoule": "Ampoule", "tube": "Tube", "pouch": "Pouch", "sachet": "Sachet", "box": "Box", "other": "Other"}, "blocked_one": "{{count}} ticked row still needs a catalogue match, an MRP or an HSN.", "blocked_other": "{{count}} ticked rows still need a catalogue match, an MRP or an HSN.", "create_one": "Create {{count}} item", "create_other": "Create {{count}} items", "made": "Created · {{code}}", "done": "{{made}} created, {{failed}} not created — the reason is on each row. Next: set reorder levels, then raise a purchase order.", "check": "Check this match", "matching": "Matching {{count}} rows — about {{seconds}} seconds…", "howTitle": "How to import a vendor's drug list", "sample": "Download a sample CSV", "how1": "Get the vendor's list as Excel or CSV (a PDF cannot be read — open it in Excel, or ask the vendor for the Excel file). Or download the sample below, fill it in, and use that.", "how2": "Choose the file, or copy the rows from Excel (with the heading row) and paste them in step 1.", "how3": "Check step 2: each column is recognised from its heading. Anything not found is listed with what happens without it. Only the brand name is needed.", "how4": "Press Match. Every row is looked up in the national drug catalogue; nothing is created yet. Check the matches marked “Check this match”, type any missing MRP, and untick what you will not stock.", "how5": "Press Create. Each ticked row becomes an item, like + New drug. Then set reorder levels and raise a purchase order.", "colHeading": "Column", "colNeeded": "Needed?", "colExample": "Example", "colIfMissing": "If it is missing", "needed": "Needed", "recommended": "Recommended", "optional": "Optional", "example": {"brand": "Dolo 650", "manufacturer": "Micro Labs", "composition": "Paracetamol 650 mg", "pack": "15 Tab · 10x15 · 100 ml · 2 ml amp", "mrp": "33.60 (per pack)", "gst": "5", "hsn": "3004"}, "ifMissing": {"brand": "Cannot import — every row needs a brand.", "manufacturer": "Fine — shown for reference only.", "composition": "Matching uses the brand alone; check the strength.", "pack": "Pack is guessed from the drug's form; check each row.", "mrp": "You type the MRP on each row before creating.", "gst": "5% is used (medicines); change on the row if needed.", "hsn": "3004 is used (medicines); change on the row if needed."}, "skipped_one": "{{count}} line above the headings was skipped (a title or address).", "skipped_other": "{{count}} lines above the headings were skipped (a title or address).", "guideNoMatch_one": "{{count}} row has no catalogue match: add it by hand with + New drug, or check the brand spelling.", "guideNoMatch_other": "{{count}} rows have no catalogue match: add them by hand with + New drug, or check the brand spelling.", "guideCheck_one": "{{count}} match is not certain (marked “Check this match”): open the dropdown and confirm the strength and form.", "guideCheck_other": "{{count}} matches are not certain (marked “Check this match”): open each dropdown and confirm the strength and form.", "guideMrp_one": "{{count}} row needs its MRP typed (₹ per pack) before it can be created.", "guideMrp_other": "{{count}} rows need their MRP typed (₹ per pack) before they can be created.", "guideExisting_one": "{{count}} brand is already in your item master and will not be created again.", "guideExisting_other": "{{count}} brands are already in your item master and will not be created again.", "guidePack": "Pack: a strip's size is the tablets in ONE strip (10x15 → 15); a bottle, vial or tube counts as 1."},
+    "rates": {"title": "Vendor rates", "lead": "A vendor's quoted rates (before GST, per pack). Type the packs you want and make a draft order: every line is priced from the contract, then the order goes for approval as usual.", "vendor": "Vendor", "pickVendor": "— pick a vendor —", "search": "Find an item", "empty": "No rates recorded for this vendor yet. Record them from Items → Import a price list (choose the vendor and the rate column).", "col": {"item": "Item", "pack": "Pack", "rate": "Rate (ex-GST)", "mrp": "MRP", "margin": "Margin", "lastPaid": "Last paid", "valid": "Valid", "packs": "Packs", "free": "Free"}, "pack_one": "{{uom}} of {{count}} {{base}}", "pack_other": "{{uom}} of {{count}} {{base}}", "open": "until replaced", "until": "until {{date}}", "dearer": "The contract is dearer than the last purchase", "packsOf": "Packs of {{item}}", "freeOf": "Free packs of {{item}}", "end": "End rate", "total_one": "{{count}} item · {{subtotal}} + GST {{gst}} = {{total}}", "total_other": "{{count}} items · {{subtotal}} + GST {{gst}} = {{total}}", "order": "Make a draft order", "working": "Working…", "orderNote": "Free packs (a scheme, a free first month) are received on the GRN as free goods.", "made": "Draft order {{poNo}} made ({{total}}). Open Orders to check it and submit it for approval."},
+    "priceList": {"rate": "Rate of {{brand}} (ex-GST, per pack)", "ratesTitle": "The vendor's rates", "ratesNoRight": "This list has a rate column. Keeping it as the vendor's contract needs the vendor right (materials head or owner): ask them to run the import, or record the rates later.", "ratesVendor": "These are the rates of", "ratesNoVendor": "— do not keep the rates —", "ratesInclGst": "The rates in the list include GST (divide it out)", "ratesHow": "Each rate is kept per the pack the counter sells and before GST, like a purchase order line. Orders to this vendor are then priced from it (Buy → Vendor rates).", "ratesSaved_one": "{{count}} rate kept as {{vendor}}'s contract.", "ratesSaved_other": "{{count}} rates kept as {{vendor}}'s contract.", "rateSource": "Price list import", "saveRatesOnly": "Keep the rates", "how6": "Packing like 10*15 (ten strips of 15), 4*5*10 or 5*2ML (five 2 ml ampoules) is understood. If the list's MRP is for the whole packing, the screen asks once and divides it for you.", "basisTitle": "The MRP in this list is for…", "basisPack": "one pack the counter sells (a strip, a vial, a bottle)", "basisPacking": "the whole packing as written (10*15 = 10 strips)", "basisSuggested": "suggested from the prices", "basisExample": "Example: {{brand}}, packing {{pack}}, MRP ₹{{mrp}}. Per {{unit}} that is ₹{{asPack}} if the MRP is for one pack, or ₹{{asPacking}} if it is for the whole packing of {{outer}}.", "basisNeeded": "Say what the MRP is for before creating items.", "unitOf": {"tablet_strip_one": "strip of {{count}} tablet", "tablet_strip_other": "strip of {{count}} tablets", "capsule_strip_one": "strip of {{count}} capsule", "capsule_strip_other": "strip of {{count}} capsules", "bottle": "bottle", "vial": "vial", "ampoule": "ampoule", "tube": "tube", "pouch": "pouch", "sachet": "sachet", "box": "box", "other": "pack"}, "twinOption": "+ Add “{{name}}” to the drug catalogue (same as {{template}})", "newToCatalogue": "New to the catalogue: check the composition", "chooseKind": "Choose: the catalogue has this drug as {{count}} different kinds", "guideTwin_one": "{{count}} brand is not in the drug catalogue, but its composition matched a catalogue drug. It will be added as a new brand carrying that drug's salts and schedule. Adding to the catalogue needs the Formulary right (pharmacist in charge).", "guideTwin_other": "{{count}} brands are not in the drug catalogue, but their composition matched a catalogue drug. Each will be added as a new brand carrying that drug's salts and schedule. Adding to the catalogue needs the Formulary right (pharmacist in charge).", "guideChoose_one": "{{count}} row matches the drug in more than one kind (for example a depot suspension and an injection solution, or two salts). Pick the right one.", "guideChoose_other": "{{count}} rows match the drug in more than one kind (for example a depot suspension and an injection solution, or two salts). Pick the right one for each.", "outerNote": "{{outer}} of these in the packing", "variantNote": "Size {{variant}} goes in the item's name", "title": "Import a vendor's price list", "lead": "Turn a vendor's list of drugs into items, matched to the national drug catalogue. You review every row before anything is created.", "step1": "1 · The vendor's list", "orPaste": "Choose a CSV or Excel (.xlsx) file — or copy the rows (with the heading row) from Excel and paste them here:", "pastePlaceholder": "Manufacturer\tBrand\tComposition\tPacking\tMRP …", "readPaste": "Read the pasted rows", "pdfNote": "A PDF cannot be read here: open it in Excel or ask the vendor for the Excel file. Best columns: manufacturer, brand, composition, packing, HSN, GST %, MRP per pack.", "tooShort": "The list needs a heading row and at least one drug.", "step2_one": "2 · Which column is which · {{count}} row", "step2_other": "2 · Which column is which · {{count}} rows", "noColumn": "— not in the list —", "column": "Column {{n}}", "field": {"rate": "Rate (PTR)", "brand": "Brand name (needed)", "manufacturer": "Manufacturer", "composition": "Composition", "pack": "Packing", "mrp": "MRP per pack", "gst": "GST %", "hsn": "HSN"}, "match": "Match with the drug catalogue", "working": "Working…", "step3": "3 · Review, then create", "summary": "{{total}} rows · {{matched}} matched in the catalogue · {{twins}} to add as new brands · {{existing}} already in your item master · {{chosen}} ticked to create", "col": {"rate": "Rate ₹ (ex-GST)", "vendor": "Vendor's row", "match": "Catalogue match", "pack": "Pack", "mrp": "MRP (₹ per pack)", "cold": "2–8 °C", "result": "Result"}, "include": "Create {{brand}}", "packSize": "Units per pack of {{brand}}", "hsn": "HSN of {{brand}}", "mrp": "MRP of {{brand}}", "cold": "{{brand}} is kept at 2–8 °C", "already": "Already an item ({{code}})", "noMatch": "No match — add it by hand", "pickNone": "— do not create —", "packType": {"tablet_strip": "Strip of tablets", "capsule_strip": "Strip of capsules", "bottle": "Bottle", "vial": "Vial", "ampoule": "Ampoule", "tube": "Tube", "pouch": "Pouch", "sachet": "Sachet", "box": "Box", "other": "Other"}, "blocked_one": "{{count}} ticked row still needs a catalogue match, an MRP or an HSN.", "blocked_other": "{{count}} ticked rows still need a catalogue match, an MRP or an HSN.", "create_one": "Create {{count}} item", "create_other": "Create {{count}} items", "made": "Created · {{code}}", "done": "{{made}} created, {{failed}} not created — the reason is on each row. Next: set reorder levels, then raise a purchase order.", "check": "Check this match", "matching": "Matching {{count}} rows — about {{seconds}} seconds…", "howTitle": "How to import a vendor's drug list", "sample": "Download a sample CSV", "how1": "Get the vendor's list as Excel or CSV (a PDF cannot be read — open it in Excel, or ask the vendor for the Excel file). Or download the sample below, fill it in, and use that.", "how2": "Choose the file, or copy the rows from Excel (with the heading row) and paste them in step 1.", "how3": "Check step 2: each column is recognised from its heading. Anything not found is listed with what happens without it. Only the brand name is needed.", "how4": "Press Match. Every row is looked up in the national drug catalogue; nothing is created yet. Check the matches marked “Check this match”, type any missing MRP, and untick what you will not stock.", "how5": "Press Create. Each ticked row becomes an item, like + New drug. Then set reorder levels and raise a purchase order.", "colHeading": "Column", "colNeeded": "Needed?", "colExample": "Example", "colIfMissing": "If it is missing", "needed": "Needed", "recommended": "Recommended", "optional": "Optional", "example": {"rate": "21.50", "brand": "Dolo 650", "manufacturer": "Micro Labs", "composition": "Paracetamol 650 mg", "pack": "15 Tab · 10x15 · 100 ml · 2 ml amp", "mrp": "33.60 (per pack)", "gst": "5", "hsn": "3004"}, "ifMissing": {"rate": "The vendor's rates are not kept; orders are priced by hand.", "brand": "Cannot import — every row needs a brand.", "manufacturer": "Fine — shown for reference only.", "composition": "Matching uses the brand alone; check the strength.", "pack": "Pack is guessed from the drug's form; check each row.", "mrp": "You type the MRP on each row before creating.", "gst": "5% is used (medicines); change on the row if needed.", "hsn": "3004 is used (medicines); change on the row if needed."}, "skipped_one": "{{count}} line above the headings was skipped (a title or address).", "skipped_other": "{{count}} lines above the headings were skipped (a title or address).", "guideNoMatch_one": "{{count}} row has no catalogue match: add it by hand with + New drug, or check the brand spelling.", "guideNoMatch_other": "{{count}} rows have no catalogue match: add them by hand with + New drug, or check the brand spelling.", "guideCheck_one": "{{count}} match is not certain (marked “Check this match”): open the dropdown and confirm the strength and form.", "guideCheck_other": "{{count}} matches are not certain (marked “Check this match”): open each dropdown and confirm the strength and form.", "guideMrp_one": "{{count}} row needs its MRP typed (₹ per pack) before it can be created.", "guideMrp_other": "{{count}} rows need their MRP typed (₹ per pack) before they can be created.", "guideExisting_one": "{{count}} brand is already in your item master and will not be created again.", "guideExisting_other": "{{count}} brands are already in your item master and will not be created again.", "guidePack": "Pack: a strip's size is the tablets in ONE strip (10x15 → 15); a bottle, vial or tube counts as 1."},
     "menu": {
       "was": "was {{path}}",
       "page": {
         "orders": "Purchase orders",
         "reorder": "Shelf — reorder & short book",
-        "vendors": "Suppliers",
+        "vendors": "Suppliers", "rates": "Vendor rates",
         "bills": "Supplier bills & payment runs",
         "returns": "Returns, expiry & write-offs",
         "grn": "Goods receipt (GRN)",
@@ -12282,7 +12465,7 @@
       "made_one": "{{count}} draft made — check it and submit.",
       "made_other": "{{count}} drafts made — check each and submit."
     },
-    "plan": {
+    "plan": {"contractRate": "contract rate", 
       "title": "Orders the agent would draft",
       "intro": "One draft per last supplier, at the last receipt's rate, expected {{date}}. Nothing is sent until approved.",
       "reason_reorder": "reorder level",
@@ -12298,7 +12481,7 @@
       "make": "Make the drafts",
       "notNow": "Not now"
     },
-    "sheet": {
+    "sheet": {"contract": "contract {{rate}}", "aboveContract": "above contract {{rate}}", 
       "loading": "Loading…",
       "store": "Deliver to {{store}}",
       "expected": "Expected",
@@ -12434,6 +12617,10 @@
         "vendorBillNo": "Vendor's bill no.",
         "billDate": "Bill date",
         "interState": "Inter-state (IGST)",
+        "listRate": "List ₹",
+        "discount": "Disc",
+        "discountHint": "10% or ₹ off a pack",
+        "listLess": "list {{list}} − {{disc}}",
         "roundOff": "Round-off ₹",
         "received": "Received @ PO rate",
         "difference": "Difference",
@@ -12795,6 +12982,8 @@
       }
     },
     "reports": {
+      "discountPct": "Disc %",
+      "allVendors": "All vendors",
       "intro": "Every report reads; nothing is changed from here. Press a number to open one.",
       "back": "Reports",
       "export": "Export CSV",
@@ -12849,6 +13038,7 @@
       "name": {
         "sales": "Sales register",
         "purchases": "Purchase register",
+        "vendorDiscounts": "Vendor discounts",
         "margin": "Margin",
         "valuation": "Stock valuation",
         "nonMoving": "Non-moving stock",
@@ -12869,6 +13059,7 @@
       "about": {
         "sales": "Every sale and refund, by bill, item, doctor, patient, pharmacist or tender.",
         "purchases": "Supplier bills, our debit notes and vendor credits, with input GST.",
+        "vendorDiscounts": "Each vendor's trade discount on booked bills: gross, discount, taxable and GST.",
         "margin": "Taxable value less GRN cost, by item, category or doctor.",
         "valuation": "Stock on any day, at cost and at MRP, by batch, item or store.",
         "nonMoving": "Stock that has not moved in 30, 60, 90 or 180 days, and what to do with it.",
@@ -14196,6 +14387,23 @@
     }
   },
   "profile": {
+    "showMobile": "Show",
+    "card": {"label": "Card", "until": "valid to {{date}}"},
+    "queue": {
+      "token": "token {{token}}",
+      "next": "Next in line for {{doctor}}",
+      "ahead_one": "1 ahead in line for {{doctor}}",
+      "ahead_other": "{{count}} ahead in line for {{doctor}}",
+      "state": {"waiting_vitals": "Waiting for vitals · {{doctor}}", "waiting": "Waiting for {{doctor}}", "called": "Called now by {{doctor}}", "in_consult": "With {{doctor}} now"}
+    },
+    "breakGlass": {
+      "act": "Break glass",
+      "reason": "Reason for opening this record",
+      "note": "Opens the name, contact and address for a short time. Logged, and reviewed by someone else.",
+      "confirm": "Break glass and open",
+      "open": "Opened by break-glass.",
+      "openBody": "Reason: {{reason}}. Logged and reviewed later."
+    },
     "hv": {
       "choose": "How to show the history",
       "categories": "History categories",
@@ -14286,7 +14494,11 @@
       "title": "This record is restricted.",
       "body": "Staff see the alias, the UHID, age and allergies. The name, contact and address open only through break-glass by the Medical Superintendent (owner ruling 28-Sep-2026), with a reason, logged.",
       "editHidden": "Contact and address are not shown or edited on a restricted record.",
-      "noFamily": "not shown on a restricted record"
+      "noFamily": "not shown on a restricted record",
+      "history": "History",
+      "doctorOnly": "details for the treating doctor only",
+      "printAlias": "Print card (alias)",
+      "billStatus": {"settled": "Paid", "partial": "Part paid", "unpaid": "Unpaid"}
     },
     "hidden": "hidden",
     "hiddenWord": "hidden",
@@ -14958,12 +15170,299 @@
     }
   },
   "doctorDesk": {
+    "opd": {
+      "visitType": {
+        "new": "New",
+        "revisit": "Revisit",
+        "renewal": "Renewal"
+      },
+      "state": {
+        "waiting_vitals": "vitals pending",
+        "waiting": "vitals done",
+        "called": "called",
+        "in_consult": "with you"
+      },
+      "reEntry": "back with reports",
+      "noSession": "no session today",
+      "noSessionLong": "You have no OPD session today. Your line appears here when the desk opens one.",
+      "session": {
+        "not_started": "not started",
+        "in": "In",
+        "out": "Out",
+        "closed": "Closed"
+      },
+      "sessionLabel": "Your OPD session",
+      "askPlaceholder": "\"show his last HbA1c and kidney function\"",
+      "notDoctor": "You are not set up as an OPD doctor, so there is no line to show.",
+      "nobody": "Nobody waiting",
+      "call": "Call token {{token}} ⏎",
+      "lineEmpty": "Nobody is in your line right now.",
+      "line": "Your line",
+      "lineSum": "{{seen}} seen · {{waiting}} waiting",
+      "longest": "longest wait {{span}}",
+      "withYou": "with you",
+      "withYouTag": "WITH YOU · TOKEN {{token}}",
+      "nextTag": "NEXT · TOKEN {{token}}",
+      "sex": {
+        "female": "F",
+        "male": "M",
+        "other": "O",
+        "unknown": ""
+      },
+      "firstVisitShort": "first visit",
+      "visitN": "visit {{n}}",
+      "allergy": "Allergy: {{list}}",
+      "why": "Why they came · as told at the desk",
+      "whyNone": "The desk wrote no complaint.",
+      "whyBy": "Typed by {{by}} at {{at}} · their words, not a summary",
+      "theDesk": "the desk",
+      "v": {
+        "pulse": "Pulse",
+        "weight": "Weight",
+        "sugar": "Sugar"
+      },
+      "vitalsBy": "Bay One, {{at}}, {{by}}",
+      "vitalsOld": "Last vitals on file: {{at}}, {{by}} — none taken today",
+      "noVitals": "No vitals on file.",
+      "firstVisit": "First visit — nothing to compare",
+      "since": "Since you saw them · {{date}}",
+      "sinceNone": "No new result since then.",
+      "labOn": "lab {{at}}",
+      "heIsOn": "On · your last prescription",
+      "noRx": "No prescription of yours on file.",
+      "notSuggestion": "Nothing on this card is a suggestion. It is what the desks already entered, in order.",
+      "open": "Open consultation →",
+      "pace": "YOUR PACE",
+      "paceSeen": "{{seen}} seen in {{span}}",
+      "paceEach": "{{n}} min each",
+      "paceEnds": "at this pace the line ends {{at}}",
+      "paceNone": "No consultation started yet today.",
+      "colleague": "{{name}} has {{n}} waiting",
+      "waiting": "Waiting on you",
+      "waitingSub": "OPD only",
+      "waitingNone": "Nothing from the OPD is waiting on you."
+    },
+    "contextOwn": "Doctor Desk · your own items",
+    "loading": "Loading…",
+    "show": "Show",
+    "hide": "Hide",
+    "patientSealed": "Confidential patient",
+    "tower": {
+      "pillOpd": "OPD DAY",
+      "pillNoUnit": "no unit today",
+      "askPlaceholder": "\"what is waiting on me\"",
+      "noUnitLine": "Not in a unit today — your own items only",
+      "band": "Teaching · Care · Research",
+      "bandSub": "For a healthier tomorrow",
+      "quick": "Quick Actions",
+      "summary": "Today's Clinical Summary",
+      "noOpdToday": "No OPD session for you today, so the OPD figures are not shown.",
+      "attention": "Needs Your Attention",
+      "fewer": "Show fewer",
+      "allRows": "Show all {{n}} →",
+      "overview": "Unit Overview",
+      "overviewSub": "OPD today",
+      "overviewNone": "No doctor of {{unit}} has an OPD session today.",
+      "overviewDoctors": "Doctors in OPD",
+      "overviewLine": "{{booked}} booked · {{seen}} seen · {{waiting}} waiting"
+    },
+    "span": {
+      "min": "{{n}} min",
+      "h": "{{n}} h",
+      "hm": "{{h}} h {{m}}"
+    },
+    "signal": {
+      "lab_critical": "{{analyte}} {{value}} {{unit}}",
+      "imaging_critical": "{{study}} — critical finding",
+      "lab_delta": "{{analyte}} {{value}} {{unit}}",
+      "imaging_unread": "{{study}} reported",
+      "visit_open": "Visit not finished"
+    },
+    "sub": {
+      "lab_critical": "Lab {{at}} · critical call still open",
+      "imaging_critical": "Radiology {{at}} · not acknowledged",
+      "lab_delta": "Lab {{at}} · changed from the last result",
+      "imaging_unread": "Radiology {{at}} · nobody has opened it",
+      "visit_open": "OPD · {{date}} · visit {{visitNo}}",
+      "goneHome": "{{at}} · the patient has gone home — the desk can call"
+    },
+    "brief": {
+      "tag": "NEW SINCE YOU LEFT",
+      "since": "Since you left at {{at}}",
+      "quiet": "A quiet spell — nothing new came for you.",
+      "lifecycle": "Highlighted for 5 minutes · stays here for 1 hour · then kept in AI Briefs",
+      "gotIt": "Got it",
+      "moves": "seen · moves to AI Briefs at {{at}}",
+      "open": "Open in AI Briefs →",
+      "lab_critical": "{{who}}: critical {{analyte}} {{value}} {{unit}}",
+      "imaging_critical": "{{who}}: critical finding on {{study}}",
+      "lab_delta": "{{who}}: {{analyte}} changed to {{value}} {{unit}}",
+      "imaging_unread": "{{who}}: {{study}} reported",
+      "papersToSign_one": "{{n}} visit waits for you to finish",
+      "papersToSign_other": "{{n}} visits wait for you to finish",
+      "papersToSign": "{{n}} visits wait for you to finish",
+      "opdToday": "OPD today: {{booked}} booked, {{waiting}} waiting"
+    },
+    "tile": {
+      "booked": "Booked today",
+      "seen": "Seen",
+      "waiting": "Waiting",
+      "longest": "longest {{span}}",
+      "results": "New results to review",
+      "papers": "Visits to finish"
+    },
+    "tab": {
+      "all": "All",
+      "critical": "Critical",
+      "change": "Clinical Change",
+      "new": "New",
+      "pending": "Pending"
+    },
+    "empty": {
+      "all": "Nothing is waiting on you.",
+      "critical": "No critical result is open on your orders.",
+      "change": "No result of yours changed sharply in the last 24 hours.",
+      "new": "New admissions to your unit will show here once the wards are on HMIS.",
+      "pending": "No report waits to be opened and no visit waits to be finished."
+    },
+    "kind": {
+      "lab_critical": "Critical",
+      "imaging_critical": "Critical finding",
+      "lab_delta": "Clinical change",
+      "imaging_unread": "Result pending",
+      "visit_open": "Your signature"
+    },
+    "verb": {
+      "lab_critical": "Review",
+      "imaging_critical": "Review",
+      "lab_delta": "Review",
+      "imaging_unread": "Open",
+      "visit_open": "Finish"
+    },
+    "source": {
+      "lab": "Lab",
+      "radiology": "Radiology",
+      "opd": "OPD"
+    },
+    "session": {
+      "none": "—",
+      "not_started": "not started",
+      "in": "in",
+      "out": "out",
+      "closed": "closed"
+    },
+    "clock": {
+      "over": "{{span}} over",
+      "in": "in {{span}}"
+    },
+    "clocks": {
+      "title": "Clocks Running",
+      "sub": "what {{unit}} owes, to whom, by when",
+      "late_one": "{{count}} past its time",
+      "late_other": "{{count}} past their time",
+      "none": "Nothing is owed by {{unit}} right now.",
+      "you": "You",
+      "nudge": "Nudge",
+      "nudged": "Nudged"
+    },
+    "owed": {
+      "respond_overdue": "An answer is overdue",
+      "escalation": "An escalation is open",
+      "imaging_chase": "A report is unread",
+      "approval_requested": "An approval waits",
+      "lab_critical": "A critical lab result is open",
+      "visit_open": "A visit is not finished",
+      "other": "An item is open"
+    },
+    "schedule": {
+      "title": "Today's Schedule",
+      "none": "No duty on the roster for you today.",
+      "opd": "OPD",
+      "opdNote": "{{booked}} booked · {{waiting}} waiting",
+      "till": "till {{at}}"
+    },
+    "role": {
+      "head": "Unit Head",
+      "faculty": "Faculty",
+      "senior_resident": "Senior Resident",
+      "junior_resident": "Junior Resident",
+      "intern": "Intern",
+      "member": "Member",
+      "lead": "Lead",
+      "officiating": "{{role}} (officiating)"
+    },
+    "team": {
+      "title": "{{unit}} Team (Today)",
+      "summary_one": "{{count}} doctor · {{onDuty}} on duty now",
+      "summary_other": "{{count}} doctors · {{onDuty}} on duty now",
+      "holds": "{{name}} holds {{n}}",
+      "off": "Off duty",
+      "on": "On duty till {{at}}",
+      "legend": "last column · items each doctor holds right now"
+    },
+    "agents": {
+      "title": "AI Agent Activity",
+      "none": "No agent has worked for you in the last 24 hours.",
+      "count_one": "{{count}} run since {{since}}",
+      "count_other": "{{count}} runs since {{since}}",
+      "last": "last at {{at}}",
+      "noneFailed": "nothing failed",
+      "failed_one": "{{count}} failed",
+      "failed_other": "{{count}} failed",
+      "agent": {
+        "login_brief": "Login brief"
+      },
+      "did": {
+        "briefBuilt": "Prepared your login brief · {{lines}} patient lines"
+      }
+    },
+    "refusal": {
+      "unknown_visit": "That visit is not in your OPD.",
+      "not_unit_member": "Only a member of the unit can nudge.",
+      "already_nudged": "You have already nudged this.",
+      "own_row": "This one is yours.",
+      "unknown_row": "This is no longer owed — it may just have been done.",
+      "unknown_brief": "That brief is not yours.",
+      "closed": "This screen is not open to you.",
+      "network": "Could not reach the server. Try again.",
+      "other": "Refused ({{code}})."
+    },
+    "briefs": {
+      "context": "Doctor Desk · AI Briefs",
+      "askPlaceholder": "\"show last week's login briefs\"",
+      "h1": "AI Briefs",
+      "lede": "Every brief the desk prepared for you. Nothing is deleted; login briefs come here an hour after they were shown.",
+      "filter": {
+        "all": "All",
+        "login": "Login briefs"
+      },
+      "none": "No brief yet. One is prepared when you come back after three hours or more.",
+      "kind": {
+        "login": "LOGIN BRIEF",
+        "morning": "MORNING BRIEF",
+        "round": "ROUND BRIEF"
+      },
+      "title": {
+        "login": "Since you left at {{at}}",
+        "morning": "Morning brief",
+        "round": "Round brief"
+      },
+      "window": "{{from}} → {{to}}",
+      "moved": "Shown on your dashboard at {{at}} · stayed till {{till}} · then moved here",
+      "countLine": "OPD",
+      "sources": "Prepared from: Lab · Radiology · OPD. Every line opens the record it came from.",
+      "back": "← Dashboard",
+      "print": "Print"
+    },
     "group": {
+      "ai": "AI",
       "desk": "DOCTOR DESK",
       "unit": "UNIT",
       "office": "OFFICE"
     },
     "item": {
+      "dashboard": "Dashboard",
+      "aiBriefs": "AI Briefs",
       "myOpd": "My OPD",
       "roster": "Roster",
       "onNow": "Who Is On Now",
@@ -15183,6 +15682,8 @@
     "ready": "ready"
   },
   "patientAbsent": {
+    "undo": "Undo — patient is here",
+    "undone": "Back on the bench",
     "action": "Patient not present — guardian with reports",
     "title": "Who came?",
     "hint": "No vitals. Fee unchanged.",
@@ -15219,7 +15720,8 @@
       "patient_absent_returning_only": "Only a returning patient (revisit or renewal) can skip vitals for a guardian.",
       "encounter_state_conflict": "This visit is no longer waiting for vitals.",
       "consult_gate_refused": "This visit has not been billed yet — take the fee at the counter first.",
-      "patient_absent_not_permitted": "Your account may not send a guardian's visit to the doctor."
+      "patient_absent_not_permitted": "Your account may not send a guardian's visit to the doctor.",
+      "patient_absent_undo_state_conflict": "The doctor has this visit — cannot undo."
     }
   },
   "printComputers": {
@@ -15612,5 +16114,273 @@
       "rejected": "Not approved",
       "cancelled": "Taken back"
     }
+  },
+  "labMetrics": {
+    "title": "Lab numbers",
+    "period": "Period",
+    "periods": {
+      "today": "Today",
+      "week": "This week",
+      "month": "This month",
+      "custom": "Custom"
+    },
+    "from": "From",
+    "to": "To",
+    "legend": "Minutes: median / 90% · n = count",
+    "badRange": "From must be on or before To",
+    "failed": "Could not load",
+    "loading": "Loading…",
+    "empty": "No data",
+    "bySource": "Counts by source",
+    "byTest": "Counts by test",
+    "reportTimes": "Report time",
+    "testTimes": "Test time by step",
+    "paramTimes": "Parameter time",
+    "total": "Total",
+    "sources": {
+      "opd": "OPD",
+      "ipd": "IPD",
+      "walk_in": "Walk-in"
+    },
+    "modes": {
+      "machine": "Machine",
+      "manual": "Manual"
+    },
+    "cols": {
+      "source": "Source",
+      "orders": "Orders",
+      "tests": "Tests",
+      "published": "Published",
+      "delivered": "Delivered",
+      "test": "Test",
+      "parameter": "Parameter",
+      "entry": "Entry",
+      "step": "Step",
+      "time": "Time"
+    },
+    "steps": {
+      "placedToPublished": "Order → published",
+      "receivedToPublished": "Sample → published",
+      "publishedToDelivered": "Published → delivered",
+      "placedToCollected": "Order → collected",
+      "collectedToReceived": "Collected → received",
+      "receivedToEntered": "Received → entered",
+      "enteredToVerified": "Entered → verified",
+      "placedToVerified": "Order → verified"
+    }
+  },
+  "hospitalNumbers": {
+    "title": "Hospital numbers",
+    "tabsLabel": "Department",
+    "none": "No numbers for your role",
+    "tabs": {
+      "lab": "Lab",
+      "imaging": "Imaging",
+      "pharmacy": "Pharmacy"
+    },
+    "imaging": {
+      "bySource": "Counts by source",
+      "byModality": "Counts by modality",
+      "times": "Report time",
+      "cols": {
+        "source": "Source",
+        "modality": "Modality",
+        "orders": "Orders",
+        "studies": "Studies done",
+        "signed": "Signed",
+        "delivered": "Delivered"
+      },
+      "modalities": {
+        "xray": "X-ray",
+        "usg": "Ultrasound",
+        "ct": "CT",
+        "mri": "MRI",
+        "mammography": "Mammography",
+        "other": "Other"
+      },
+      "steps": {
+        "placedToDone": "Order → done",
+        "doneToSigned": "Done → signed",
+        "signedToDelivered": "Signed → delivered",
+        "placedToSigned": "Order → signed"
+      }
+    },
+    "pharmacy": {
+      "sales": "Sales",
+      "rx": "Prescriptions",
+      "top": "Top 10 items",
+      "purchases": "Purchases received",
+      "cols": {
+        "figure": "Figure",
+        "value": "Value",
+        "item": "Item",
+        "qty": "Qty",
+        "amount": "Amount"
+      },
+      "rows": {
+        "bills": "Bills",
+        "sales": "Sales",
+        "returns": "Returns",
+        "net": "Net sales",
+        "revenue": "Revenue (taxable)",
+        "cost": "Cost",
+        "profit": "Profit",
+        "margin": "Margin",
+        "received": "Received",
+        "full": "Given in full",
+        "part": "Given in part",
+        "none": "Not given",
+        "time": "Received → given",
+        "grns": "GRNs",
+        "value": "Value at cost"
+      }
+    }
+  },
+  "agentDock": {
+    "title": "DESK AGENT",
+    "log": "what happened on this screen",
+    "nothingYet": "Nothing yet.",
+    "nothingYetLong": "Nothing yet. Every server answer this screen gets lands here with the time it landed.",
+    "ask": "ASK THE COPILOT · F2"
+  },
+  "formularyRef": {
+    "heading": "Drug reference",
+    "none": "No reference information yet",
+    "failed": "Could not load the reference.",
+    "componentsBanner": "No reference exists for this combination. Its parts are shown separately; they do not describe the combined dose.",
+    "missing": "No reference information yet: {{names}}",
+    "title": "US FDA label · {{product}} · {{date}}",
+    "noDate": "date not stated",
+    "caution": "Reference only — the US product may differ in strength, dose and approved use.",
+    "source": "Source: {{source}}, retrieved {{date}}",
+    "section": {
+      "boxed_warning": "Boxed warning",
+      "uses": "Uses",
+      "directions": "Directions",
+      "contraindications": "Contraindications",
+      "warnings": "Warnings",
+      "side_effects": "Side effects",
+      "interactions": "Interactions",
+      "pregnancy": "Pregnancy",
+      "lactation": "Breastfeeding",
+      "children": "Children",
+      "elderly": "Elderly",
+      "overdose": "Overdose",
+      "storage": "Storage",
+      "patient_information": "Patient information"
+    }
+  },
+  "teleBills": {
+    "lead": "When the doctor said “Spoke to patient” and the consultation bill could not be raised, the visit waits here. Fix the cause, then retry; the doctor's next “Spoke” goes through.",
+    "loading": "Loading…",
+    "none": "No failed tele-call bills.",
+    "slot": "slot",
+    "tries_one": "{{count}} try",
+    "tries_other": "{{count}} tries",
+    "last": "last",
+    "retry": "Retry bill",
+    "billed": "Bill raised — waiting for the doctor"
+  },
+  "copilotSettings": {
+    "title": "Copilot settings",
+    "proactive": {
+      "label": "Speak up without being asked",
+      "off": "Off: the copilot answers only when you ask (F2).",
+      "on": "On: it may offer what it found when you open a patient."
+    },
+    "draftProse": {
+      "label": "Draft clinical sentences",
+      "off": "Off: it finds, checks and arranges — it writes no clinical sentence.",
+      "on": "On: it may draft a sentence for you to check; nothing is saved until you submit."
+    },
+    "always": "You always confirm and submit. Your own settings; they follow you to every computer."
+  },
+  "crk": {
+    "title": "CRK formulary",
+    "intro": "Drafts wait for a Pharmacology signature.",
+    "count": {
+      "none": "Not drafted",
+      "draft": "To sign",
+      "awaitingSecond": "Need 2nd",
+      "signed": "Signed",
+      "dueForReview": "Due",
+      "overdue": "Overdue",
+      "pending": "New version"
+    },
+    "cost": "{{n}} drafts · {{inTok}} in · {{outTok}} out tokens",
+    "noModel": "No drafting model set",
+    "empty": "Nothing waiting.",
+    "state": {
+      "draft": "To sign",
+      "awaiting_second": "Needs 2nd signer",
+      "due": "Due for review",
+      "overdue": "Review overdue",
+      "pending": "New version pending"
+    },
+    "byModel": "AI draft",
+    "byHand": "By hand",
+    "write": "Write an entry",
+    "searchPlaceholder": "Medicine name — 2 letters",
+    "back": "Back",
+    "status": {
+      "renewalAwaiting": "Renewal · needs 2nd",
+      "overdue": "Signed · review overdue",
+      "none": "No entry yet",
+      "draft": "Draft · not shown",
+      "awaiting": "Signed once · needs 2nd",
+      "reviewed": "Signed · shown",
+      "due": "Signed · review due",
+      "pending": "New version pending · live stays"
+    },
+    "firstBy": "1st: {{who}}",
+    "youSignedFirst": "You signed first. Another reviewer signs.",
+    "sources": "Sources",
+    "noSource": "No source",
+    "combination": "Combination",
+    "field": {
+      "uses": "Uses",
+      "howToTake": "How to take",
+      "commonSideEffects": "Common side effects",
+      "seriousSideEffects": "Serious side effects",
+      "warnings": "Warnings",
+      "pregnancyBreastfeeding": "Pregnancy, feeding",
+      "children": "Children",
+      "elderlyKidneyLiver": "Elderly, kidney, liver",
+      "interactions": "Interactions",
+      "storage": "Storage",
+      "patientAdviceEn": "Advice (English)",
+      "patientAdviceHi": "Advice (Hindi)"
+    },
+    "edit": "Edit",
+    "cancel": "Cancel",
+    "save": "Save draft",
+    "saveUnsigns": "Saving restarts the signatures.",
+    "saved": "Saved as draft",
+    "addStatement": "+ Line",
+    "addSource": "+ Source",
+    "remove": "Remove",
+    "statement": "Statement",
+    "source": "Source",
+    "sourceKind": "Kind",
+    "sourceTitle": "Title",
+    "sourceUrl": "Link",
+    "designation": "Your designation",
+    "designationPlaceholder": "Professor, Pharmacology",
+    "highAlert": "High-alert (needs 2 signers)",
+    "sign": "Sign",
+    "signSecond": "Sign as 2nd",
+    "signed": "Signed · shown to doctors",
+    "awaitingSecond": "Signed · needs a 2nd signer",
+    "info": "Info",
+    "infoTitle": "{{name}}",
+    "highAlertTag": "High-alert",
+    "renew": "Renew unchanged",
+    "renewSecond": "Renew as 2nd",
+    "renewed": "Renewed · due in 12 months",
+    "renewHint": "Re-signs the same text.",
+    "overdueTag": "Review overdue",
+    "close": "Close",
+    "liveStays": "Live v{{n}} stays shown until signed.",
+    "saveNewVersion": "Saves a new version; the live one stays."
   }
 }

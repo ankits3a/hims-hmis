@@ -127,7 +127,7 @@ describe("the doctor's consultation on the phone (decision 0048)", () => {
     expect(screen.getByTestId("consult-allergy")).toHaveTextContent("Allergy · Penicillin");
     expect(screen.getByTestId("consult-desk-words")).toHaveTextContent(/bukhar 3 din se/);
     expect(screen.getByTestId("consult-vitals")).toHaveTextContent(/BP 150\/90/);
-    for (const k of ["notes", "dx", "meds", "tests", "advice"]) expect(screen.getByTestId(`open-${k}`)).toBeTruthy();
+    for (const k of ["complaint", "dx", "meds", "tests", "advice", "notes"]) expect(screen.getByTestId(`open-${k}`)).toBeTruthy();
     expect(screen.getByTestId("issue-complete").props.accessibilityState.disabled).toBe(true);
     // No print anywhere on this screen (owner 2026-10-07).
     expect(screen.queryByText(/print/i)).toBeNull();
@@ -255,8 +255,10 @@ describe("the doctor's consultation on the phone (decision 0048)", () => {
     await screen.findByTestId("visit-empty");
     await press("open-notes");
     await type("notes-input", "Throat congested, chest clear.");
-    await press("complaint-Fever");
     await press("notes-drawer-done");
+    await press("open-complaint");
+    await press("complaint-Fever");
+    await press("complaint-drawer-done");
     expect(screen.getByTestId("issue-complete")).toHaveTextContent("Complete");
     await press("issue-complete");
     await waitFor(() => expect(m.onDone).toHaveBeenCalled());
@@ -708,5 +710,33 @@ describe("the doctor's consultation on the phone (decision 0048)", () => {
     expect(screen.getByTestId("consult-vitals")).toBeTruthy();
     await writeNote();
     expect(screen.getByTestId("issue-complete").props.accessibilityState).toMatchObject({ disabled: false });
+  });
+});
+
+describe("the Tests tab's search (issue #609)", () => {
+  it("a picked test carries the list price as its quotation snapshot; a test the tariff has not priced carries null (prints \"Rate at counter\", never ₹0)", async () => {
+    const w = world({
+      "GET /ordering/tests": (_b, url) => ({ status: 200, body: { items: /q=cb/.test(url)
+        ? [{ serviceId: "svc-cbc", code: "CBC", name: "Complete blood count", department: "lab", departmentName: null }]
+        : [{ serviceId: "svc-new", code: "NEWT", name: "New test", department: "lab", departmentName: null }] } }),
+      "GET /tariff/price-list": () => ({ status: 200, body: { items: [{ serviceId: "svc-cbc", code: "CBC", name: "CBC", pricePaise: 25000 }] } }),
+    });
+    const m = await mount(w);
+    await screen.findByTestId("visit-empty");
+    await press("open-tests");
+    await type("test-input", "cbc");
+    await fireEvent.press(await screen.findByTestId("test-hit-svc-cbc"));
+    await type("test-input", "newt");
+    await fireEvent.press(await screen.findByTestId("test-hit-svc-new"));
+    // The drawer never shows a price (doctor screens show no money).
+    expect(screen.getByTestId("tests-drawer")).not.toHaveTextContent(/₹|250/);
+    await press("tests-drawer-done");
+    await press("issue-complete");
+    await waitFor(() => expect(m.onDone).toHaveBeenCalled());
+    const note = (w.of("POST /opd/visits/e13/consult/complete")[0]!.body as { note: { advisedTests: unknown[] } }).note;
+    expect(note.advisedTests).toEqual([
+      { serviceId: "svc-cbc", code: "CBC", name: "Complete blood count", pricePaise: 25000 },
+      { serviceId: "svc-new", code: "NEWT", name: "New test", pricePaise: null },
+    ]);
   });
 });

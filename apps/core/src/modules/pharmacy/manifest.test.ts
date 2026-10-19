@@ -55,6 +55,8 @@ describe("the pharmacy manifest claims the medication order kind (16c T1)", () =
       "pharmacy.antimicrobial.approve",
       // Stage D4 — the emergency trays: check, restock and receive; set up a tray and keep its list.
       "pharmacy.trays.check", "pharmacy.trays.manage",
+      // #777 (owner 2026-10-13) — the pharmacy tab of Hospital numbers, read-only.
+      "pharmacy.metrics.read",
     ]);
     expect(pharmacyManifest.menu.map((e) => e.path)).toEqual(["/pharmacy/desk", "/pharmacy/items", "/pharmacy/pharmacists", "/pharmacy/reorder", "/pharmacy/office", "/pharmacy/office/reports", "/pharmacy/registers/h1", "/pharmacy/leakage", "/pharmacy/retail", "/pharmacy/retail-licence", "/pharmacy/downtime"]);
     expect(pharmacyManifest.subscriptions).toEqual([

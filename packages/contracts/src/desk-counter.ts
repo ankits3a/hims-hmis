@@ -41,6 +41,8 @@ export type CounterFeeQuote = {
 export type CounterDoctorSummary = {
   doctor: { id: string; departmentId: string; active: boolean };
   waitingCount: number; waitingVitalsCount: number; scheduledToday: boolean; avgConsultMinutes: number;
+  /** #914 — the doctor's secondary department that day; they are listed there too. Absent on older servers. */
+  secondaryDepartmentId?: string | null;
 };
 
 /**
@@ -310,9 +312,12 @@ export function deptQueues<D extends CounterDoctorSummary>(
 ): DeptQueue<D>[] {
   const byDept = new Map<string, D[]>();
   for (const s of summaries) {
-    const list = byDept.get(s.doctor.departmentId) ?? [];
-    list.push(s);
-    byDept.set(s.doctor.departmentId, list);
+    for (const departmentId of [s.doctor.departmentId, s.secondaryDepartmentId ?? null]) {
+      if (departmentId === null) continue;
+      const list = byDept.get(departmentId) ?? [];
+      list.push(s);
+      byDept.set(departmentId, list);
+    }
   }
   const out: DeptQueue<D>[] = [];
   for (const dept of departments) {

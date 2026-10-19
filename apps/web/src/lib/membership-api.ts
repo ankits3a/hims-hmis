@@ -107,11 +107,54 @@ export function fetchRecognition(input: { patientId?: string; codes?: string[] }
   return api("GET", `/membership/recognition?${params.toString()}`);
 }
 
-/** The same route, typed with the counter's additions — the counter screen reads these, Desk One does not. */
+/** The same recognition, typed with the counter's additions — the counter screen reads these, Desk One does not. */
 export type WireCounterRecognition = Omit<WireRecognition, "memberships"> & { memberships: WireCounterMembership[] };
 
-export function fetchCounterRecognition(code: string): Promise<WireCounterRecognition> {
-  return api("GET", `/membership/recognition?${new URLSearchParams({ codes: code }).toString()}`);
+/**
+ * #658 — THE COUNTER PRESENTS A CARD, and that is a POST: the server records it as
+ * `instrument.recognised` (the source of "cards today"), once per call. The GET above is a pure read.
+ */
+export function presentCard(code: string): Promise<WireCounterRecognition> {
+  return api("POST", "/membership/recognition", { codes: [code] });
+}
+
+/** #658 — the plans a grace request can name. Id, code and title; no benefit, no money. */
+export type WireGracePlan = { id: string; code: string; title: string };
+
+export function fetchGracePlans(): Promise<{ items: WireGracePlan[] }> {
+  return api("GET", "/membership/plans");
+}
+
+/** #658 — the counter ASKS for grace honour; nothing is honoured until an approver grants it. */
+export function requestGraceHonor(
+  body: { cardCode: string; patientId: string; planId: string; reason: string },
+): Promise<{ approvalId: string; status: "pending"; alreadyAsked: boolean }> {
+  return api("POST", "/membership/grace-honor/request", body);
+}
+
+export type WireGraceRequest = {
+  approvalId: string;
+  cardCode: string;
+  patientId: string | null;
+  status: "pending" | "granted" | "rejected";
+  requestedAt: string;
+  decidedAt: string | null;
+  note: string | null;
+  honoured: boolean;
+  holder: { name: string | null; alias: string | null; restricted: boolean; uhid: string } | null;
+};
+
+/** #658 — this counter's own grace requests: pending, and decided since IST midnight. */
+export function fetchGraceRequests(): Promise<{ items: WireGraceRequest[] }> {
+  return api("GET", "/membership/grace-honor/requests");
+}
+
+/**
+ * #657 — the cards linked to one patient, for the profile's "Card" line: the same recognition route
+ * asked by patient id alone (no code is presented, so the server records no recognition event).
+ */
+export function fetchPatientCards(patientId: string): Promise<WireCounterRecognition> {
+  return api("GET", `/membership/recognition?${new URLSearchParams({ patientId }).toString()}`);
 }
 
 export type WireGraceHonorBody = {

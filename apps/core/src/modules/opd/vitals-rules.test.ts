@@ -1,6 +1,6 @@
 import { DEFAULT_DANGER_RANGES } from "./config";
 import {
-  bandFor, CHILD_UNDER_YEARS, evaluateVitals, inputToReadings, missingRequired, requiredFor, muacZone, readingsToInput, validateVitalsRanges,
+  bandFor, CHILD_UNDER_YEARS, evaluateVitals, inputToReadings, missingRequired, requiredFor, muacZone, readingsToInput, sanityGates, validateVitalsRanges,
 } from "./vitals-rules";
 import { VITAL_KEYS } from "./config";
 import type { Readings } from "./vitals-rules";
@@ -174,5 +174,14 @@ describe("owner 2026-10-05 — temperature optional, a child's BP optional", () 
   });
   it("leaves the emergency set alone — an emergency still demands the cuff", () => {
     expect(missingRequired({ pulse: 100, spo2: 97 }, 8, cfg, { emergency: true })).toEqual(["sbp", "dbp"]);
+  });
+});
+
+describe("2026-10-13 — a child's height is expected to change", () => {
+  it("does not gate a child who grew 6 cm since the last visit", () => {
+    expect(sanityGates({ heightCm: 98 }, 4, cfg, { heightCm: 92 })).toEqual([]);
+  });
+  it("still gates an adult whose height moved 3 cm", () => {
+    expect(sanityGates({ heightCm: 148 }, 40, cfg, { heightCm: 151 })).toMatchObject([{ key: "heightCm", kind: "shrinking_adult", value: 148, suggestion: 151 }]);
   });
 });

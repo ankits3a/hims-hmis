@@ -109,7 +109,7 @@ export type { DeliveryVerdict } from "./interlock";
 export {
   amendReport, deliveryRegister, getReport, listResultsForEncounter, listProvisionalResultsForEncounter,
   printReport, publishReport, releaseUnpaid,
-  reportsForPatient, reportVersions, LAB_REPORTS_AMEND, LAB_REPORTS_PRINT, LAB_REPORTS_PUBLISH, LAB_RESULTS_READ,
+  reportsForPatient, reportVersions, reportVersionsFor, LAB_REPORTS_AMEND, LAB_REPORTS_PRINT, LAB_REPORTS_PUBLISH, LAB_RESULTS_READ,
   PATIENT_LAB_REPORT_READY,
 } from "./reports";
 export type { DeliveryRegisterRow, PatientReportRow, PatientReports, ReportDeliveryRow, ReportNotice } from "./reports";
@@ -133,6 +133,9 @@ export { encounterNoOfLabOrder, verifiedLabTestsForRelease } from "./abdm-releas
 // ── PLAN 18-S RS5 — the imaging kidney gate reads the latest signed serum creatinine from here ──
 export { CREATININE_ANALYTE_CODES, latestVerifiedCreatinine } from "./creatinine";
 export type { LatestCreatinine } from "./creatinine";
+// ── #621 — the renal dose check (opd) and the contrast gate (radiology) read the eGFR equation from here ──
+export { ckdEpi2021, latestEgfr, registerLabKidneyFunctionReader } from "./egfr";
+export type { EgfrSex, LatestEgfr } from "./egfr";
 // ── PLAN 18-S RS12b — the IR sign-in reads the latest signed INR and platelet count from here ──
 export {
   INR_ANALYTE_CODES, PLATELET_ANALYTE_CODES, inrFromReported, latestVerifiedInr, latestVerifiedPlatelets,
@@ -140,3 +143,6 @@ export {
 } from "./coagulation";
 export type { LatestLabNumber } from "./coagulation";
 export type { LabReleaseTest, LabReleaseValue } from "./abdm-release";
+// DOCTOR DESK DD-0.2 (#626) — the clinician's own lab rows: open criticals and delta-flagged results.
+export { deltaResultsForClinician, openCriticalsForClinician, resultsForPatientSince } from "./clinician-reads";
+export type { ClinicianLabRow, PatientResultSince } from "./clinician-reads";

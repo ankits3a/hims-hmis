@@ -724,7 +724,7 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
         setS((prev) => ({
           ...prev,
           triageBusy: false,
-          triage: { departmentIds: r.suggestions.map((x) => x.departmentId), source: r.source, redFlag: r.redFlag ?? null },
+          triage: { departmentIds: r.suggestions.map((x) => x.departmentId), source: r.source, redFlag: r.redFlag ?? null, ...(r.triageId === undefined ? {} : { triageId: r.triageId }) },
         }));
       },
       () => {
@@ -791,6 +791,7 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
         ...(s.attributionCode === "" ? {} : { attributionCode: s.attributionCode }),
         // The patient's words go WITH the visit, so the doctor does not ask again (2026-09-23).
         ...(s.complaint.trim() === "" ? {} : { deskComplaint: s.complaint.trim() }),
+        ...(s.triage?.triageId === undefined ? {} : { triageId: s.triage.triageId }),
       }, newIdempotencyKey());
       const wait = waitMinutes(chosen);
       setS((prev) => ({
@@ -830,7 +831,7 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
         log: logged(prev.log, `assignment REFUSED — ${opdErrorMessage(e)}`, "err"),
       }));
     }
-  }, [s.person, s.attributionCode, s.complaint, queues, summaries.data, lane, patch, qc, seat]);
+  }, [s.person, s.attributionCode, s.complaint, s.triage, queues, summaries.data, lane, patch, qc, seat]);
 
   /**
    * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -1051,13 +1052,17 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
 
   /** A slot on a later day. It is held BESIDE today's session and never replaces it. */
   const holdFutureSlot = useCallback(async (
-    doctorId: string, slot: WireSlot, departmentName: string, doctorName: string, tele: { mode?: "tele"; telePhone?: string } = {},
+    doctorId: string, slot: WireSlot, departmentName: string, doctorName: string,
+    tele: { mode?: "tele"; telePhone?: string; departmentId?: string } = {},
   ) => {
     const person = s.person;
     if (person === null) return;
     patch({ busy: "future", error: null });
     try {
-      const { appointment } = await bookAppointment({ patientId: person.id, doctorId, slotStart: slot.start, ...tele });
+      const { appointment } = await bookAppointment({
+        patientId: person.id, doctorId, slotStart: slot.start, ...tele,
+        ...(s.triage?.triageId === undefined ? {} : { triageId: s.triage.triageId }),
+      });
       // The left lane's "upcoming" and the stage's "their bookings" share this key; without the
       // invalidate both answer from a 30 s cache and contradict the booking made a second ago.
       void qc.invalidateQueries({ queryKey: ["d1", "their-appointments", person.id] });
@@ -1074,7 +1079,7 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
         log: logged(prev.log, `slot REFUSED — ${opdErrorMessage(e)}`, "err"),
       }));
     }
-  }, [s.person, patch, qc]);
+  }, [s.person, s.triage, patch, qc]);
 
   const presentCoupon = useCallback((code: string) => {
     const clean = code.trim().toUpperCase();

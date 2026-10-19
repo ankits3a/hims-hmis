@@ -458,6 +458,12 @@ export const labResults = pgTable(
     valueNumeric: numeric("value_numeric", { precision: 14, scale: 4 }),
     valueText: text("value_text"),
     valueCoded: text("value_coded"),
+    /**
+     * #703 — the antibiotic sensitivity table on a culture's `MIC_AST` line in FULL lab mode, as `{ antibiotic,
+     * result: S|I|R, mic }[]` (`packages/contracts/src/lab-ast.ts`); null on every other result. `value_text` holds
+     * its one-line summary, so every text reader still reads the gist.
+     */
+    ast: jsonb("ast").$type<{ antibiotic: string; result: "S" | "I" | "R"; mic: string | null }[]>(),
     unit: text("unit"),
     flag: text("flag"),
     refLow: numeric("ref_low", { precision: 14, scale: 4 }),

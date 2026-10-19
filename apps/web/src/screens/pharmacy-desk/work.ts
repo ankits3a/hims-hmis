@@ -1,5 +1,6 @@
 import type { PickLine, VerifyLine, WireBatch, WireDispenseLine, WireRxLine } from "../../lib/pharmacy-api";
 import { eyeTextOf } from "../../lib/eye-line";
+import { dateLocale } from "../../lib/date-locale";
 
 /**
  * ═══ PD-4 — THE TICK IS THE PICK, AS FAR AS THE SERVER LETS IT BE (PD-D2) ═══
@@ -260,7 +261,7 @@ export function qtyLabels(qtyBase: number | null, pack: Pack | null, baseUom: st
 /** `2026-10-21` → `21 Oct 2026`, as the board prints an expiry. */
 export function expiryLabel(iso: string | null): string {
   if (iso === null) return "—";
-  return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${iso}T00:00:00Z`));
+  return new Intl.DateTimeFormat(dateLocale(undefined, "en-GB"), { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${iso}T00:00:00Z`));
 }
 
 /** Days from `today` to `expiry` (both `YYYY-MM-DD`), negative once past. */

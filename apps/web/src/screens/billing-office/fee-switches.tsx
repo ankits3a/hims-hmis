@@ -5,6 +5,7 @@ import { useAuth } from "../../lib/auth";
 import { billingErrorMessage, fetchFeeSwitches, saveFeeSwitch } from "../../lib/billing-api";
 import { fmtPaise } from "../../lib/format";
 import type { FeeKind } from "../../lib/billing-api";
+import { dateLocale } from "../../lib/date-locale";
 
 /**
  * ═══ THE FEE SWITCHES (owner, 2026-10-01) ═══
@@ -18,7 +19,7 @@ import type { FeeKind } from "../../lib/billing-api";
  * `billing.config.write` change one, and audits each change (`fee_switch.changed`).
  */
 const istWhen = (iso: string): string =>
-  new Date(iso).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false });
+  new Date(iso).toLocaleString(dateLocale(), { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false });
 
 export function FeeSwitches(): React.ReactElement {
   const { t } = useTranslation();

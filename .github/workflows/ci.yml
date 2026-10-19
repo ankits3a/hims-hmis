@@ -138,6 +138,12 @@ jobs:
       # every open lane until it rebased. After the owner labels a PR, push a commit to re-run.
       - run: node --test tools/ci/acceptance-guard.test.mjs
       - run: node tools/ci/acceptance-guard.mjs
+      # SPECS CHANGE WITH THE CODE (owner 2026-10-14, #695): a code PR that closes #N fails when docs/specs/N-*.md exists
+      # and the PR leaves it untouched. Same job, same reason as the guard above.
+      - run: node --test tools/ci/spec-guard.test.mjs
+      - run: node tools/ci/spec-guard.mjs
+      # Acceptance checks for the CI tooling itself (spec #695, decision 0081). A quoted glob: node 22 will not take a directory.
+      - run: node --test 'tools/ci/acceptance/*.test.mjs'
       - run: node --test tools/print-relay/spool.test.mjs tools/print-relay/platform.test.mjs tools/print-relay/program.test.mjs
         env:
           RELAY_CHROMIUM: /nonexistent-chromium-ci-forces-the-skip

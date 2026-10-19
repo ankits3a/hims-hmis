@@ -27,6 +27,8 @@ export const OFFICE_PAGES: readonly OfficePage[] = [
   { side: "daybook", key: "daybook" },
   { side: "gstr1", key: "gstr1" },
   { side: "unbilled", key: "unbilled" },
+  // #647 — tele-call bills that failed at "Spoke to patient" (`tele-bills.tsx`).
+  { side: "unbilled", key: "tele" },
   // Owner, 2026-10-01 — the fee switches (`fee-switches.tsx`): consultation and laboratory fees, off and on.
   { side: "fees", key: "fees" },
   { side: "prices", key: "prices" },

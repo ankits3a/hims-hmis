@@ -272,7 +272,7 @@ export function tokenText(door: Extract<Door, { kind: "token" }>): string {
 /** Why a visit number is not on today's bench — `GET /opd/bench/locate` (opd/bench.ts `locateVisit`). */
 export type WireVisitOnBench =
   | { onBench: true; visitNo: string; encounterId: string }
-  | { onBench: false; visitNo: string; reason: "unknown_visit" | "other_day" | "abandoned" | "completed" | "not_queued"; serviceDate?: string };
+  | { onBench: false; visitNo: string; reason: "unknown_visit" | "other_day" | "abandoned" | "completed" | "not_queued" | "guardian_visit" | "tele_visit"; serviceDate?: string; encounterId?: string };
 
 /**
  * WHAT TO SAY when nobody on the bench answers — the i18n key under `vitalsBay.identify.miss` and
@@ -458,11 +458,20 @@ const TEMP_C: readonly [number, number] = [25, 45];
 const TEMP_F: readonly [number, number] = [77, 113];
 const round1 = (n: number): number => Math.round(n * 10) / 10;
 
+/*
+  2026-10-13 — A DECIMAL PAD IS NOT ALWAYS A DOT. Some Android keyboards put "," on the decimal pad,
+  and a thumb leaves "92." or types ".5". Each is one number, read as the nurse meant it: 92,5 = 92.5,
+  92. = 92, .5 = 0.5. Two separators, two dots or a space inside is still not a number.
+*/
+function plainNumber(raw: string): number | null {
+  const s = raw.trim().replace(",", ".");
+  return /^(\d+\.?\d*|\.\d+)$/.test(s) ? Number(s) : null;
+}
+
 /** A typed temperature, read: which scale it was in, and both readings (to one decimal). */
 export function tempNote(raw: string): { unit: "C" | "F"; f: number; c: number } | null {
-  const s = raw.trim();
-  if (!/^\d+(\.\d+)?$/.test(s)) return null;
-  const n = Number(s);
+  const n = plainNumber(raw);
+  if (n === null) return null;
   if (n >= TEMP_C[0] && n <= TEMP_C[1]) return { unit: "C", c: n, f: round1(n * 9 / 5 + 32) };
   if (n >= TEMP_F[0] && n <= TEMP_F[1]) return { unit: "F", f: n, c: round1((n - 32) * 5 / 9) };
   return null;
@@ -484,14 +493,14 @@ export function parseTake(key: TileKey, raw: string): Take | null {
     const n = Number(s);
     return n >= GLUCOSE_MIN && n <= GLUCOSE_MAX ? n : null;
   }
-  return /^\d+(\.\d+)?$/.test(s) ? Number(s) : null;
+  return plainNumber(s);
 }
 
 /** Why `parseTake` said no — the i18n key under `vitalsBay.capture`. */
 export function takeError(key: TileKey, raw: string): "bpBoth" | "bpOrder" | "tempUnit" | "glucoseRange" | "notANumber" {
   if (key === "glucoseMgDl") return "glucoseRange";
   if (key === "bp") return BP_RE.test(raw.trim()) ? "bpOrder" : "bpBoth";
-  if (key === "tempC" && /^\d+(\.\d+)?$/.test(raw.trim())) return "tempUnit";
+  if (key === "tempC" && plainNumber(raw) !== null) return "tempUnit";
   return "notANumber";
 }
 
@@ -579,7 +588,8 @@ export function mirrorFor(key: TileKey, take: Take, ageYears: number | null, ran
     const shifted = Math.round(take * 100) / 10;
     return { kind: "slipped_digit", key, value: take, suggestion: shifted >= 30 && shifted <= 150 ? shifted : null };
   }
-  if (key === "heightCm" && tile.override === null && last !== null && last.heightCm !== null && Math.abs(take - last.heightCm) >= g.heightDeltaCm) {
+  // 2026-10-13 — a child grows: 3 cm since the last visit is expected, not a slip. Adults only, as the server.
+  if (key === "heightCm" && tile.override === null && !isChild && last !== null && last.heightCm !== null && Math.abs(take - last.heightCm) >= g.heightDeltaCm) {
     return { kind: "shrinking_adult", key, value: take, last: last.heightCm };
   }
   // pass 2 / F4 — a confirmed 68 does not switch the hold OFF: a later slip to 40 is held again

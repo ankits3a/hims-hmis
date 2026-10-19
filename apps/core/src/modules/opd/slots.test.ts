@@ -1,6 +1,7 @@
 import { slotsForDate } from "./slots";
+import type { ScheduleTemplate } from "./slots";
 
-const tpl = { id: "T1", weekday: 1, startTime: "09:00", endTime: "10:00", roomId: "R1", slotMinutes: null, validFrom: "2026-01-01", validTo: null, active: true };
+const tpl: ScheduleTemplate = { id: "T1", weekday: 1, startTime: "09:00", endTime: "10:00", roomId: "R1", slotMinutes: null, validFrom: "2026-01-01", validTo: null, active: true, departmentId: null };
 const base = { date: "2026-08-17", templates: [tpl], leaves: [], bookedStarts: [] as number[], defaultSlotMinutes: 10, now: new Date("2026-08-17T00:00:00.000Z") };
 
 describe("slotsForDate (pure)", () => {

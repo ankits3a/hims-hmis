@@ -135,6 +135,9 @@ export const radiologyManifest: ModuleManifest = {
     // radiology NURSE (who injects and watches for the reaction) can record both without being
     // able to start or finish an acquisition. Held by everyone who held `acquire` for these routes.
     "radiology.contrast.record",
+    // #777 (owner 2026-10-13) — the imaging numbers: counts and turnaround times (`GET /radiology/metrics`),
+    // aggregate only. Held by `owner`, `admin` and `radiologist`; any role may be granted it.
+    "radiology.metrics.read",
   ],
   subscriptions: [
     { event: orderPlaced.name, consumer: RADIOLOGY_ORDER_PLACED_CONSUMER },

@@ -121,6 +121,60 @@ export function GuardianSheet({ api, encounterId, onDone, onClose, confirmHere =
   );
 }
 
+/**
+ * #771 — "Undo — patient is here": the guardian mark was a mistake. One button, no form; the server
+ * clears the mark and puts the token back at the bay, or refuses once the doctor has the visit.
+ */
+export function GuardianUndoButton({ api, encounterId, onDone, testID = "patient-absent-undo" }: {
+  api: Pick<VitalsApi, "undoPatientAbsent">; encounterId: string; onDone: () => void; testID?: string;
+}) {
+  const { t } = useI18n();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const undo = async (): Promise<void> => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.undoPatientAbsent(encounterId);
+      onDone();
+    } catch (e) {
+      if (e instanceof ApiError) {
+        const known = t(`patientAbsent.errors.${e.code}`);
+        setError(known === `patientAbsent.errors.${e.code}` ? refusalText(e.body, e.code) : known);
+      } else setError(t("home.cover.failed"));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <View style={{ gap: space.xs }}>
+      <Button testID={testID} kind="secondary" label={t("patientAbsent.undo")} busy={busy} onPress={() => { void undo(); }} />
+      {error !== null && <Note tone="bad" testID={`${testID}-error`}>{error}</Note>}
+    </View>
+  );
+}
+
+/** #771 — the action card's undo, as a sheet: one button, then "Back on the bench" and Close. */
+export function GuardianUndoSheet({ api, encounterId, onDone, onClose }: {
+  api: Pick<VitalsApi, "undoPatientAbsent">; encounterId: string; onDone: () => void; onClose: () => void;
+}) {
+  const { t } = useI18n();
+  const insets = useSafeAreaInsets();
+  const [sent, setSent] = useState(false);
+  return (
+    <KeyboardModal visible transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={s.scrim} onPress={onClose} accessibilityLabel={t("patientAbsent.cancel")} testID="patient-absent-undo-scrim" />
+      <View style={[s.sheet, { paddingBottom: insets.bottom + space.lg, gap: space.md }]} testID="patient-absent-undo-sheet">
+        {sent
+          ? <Text style={s.sent} testID="patient-absent-undone">✓ {t("patientAbsent.undone")}</Text>
+          : <GuardianUndoButton api={api} encounterId={encounterId} onDone={() => { setSent(true); onDone(); }} />}
+        <Button testID="patient-absent-undo-close" kind="secondary" label={t(sent ? "mobile.scan.close" : "patientAbsent.cancel")} onPress={onClose} />
+      </View>
+    </KeyboardModal>
+  );
+}
+
 /** The visible, non-gesture way in: a text link under "Details" in the vitals form. */
 export function GuardianLink({ onPress }: { onPress: () => void }) {
   const { t } = useI18n();

@@ -1,6 +1,6 @@
 {
-  "id": "97453e0e-5ac1-454f-bca4-6ff607229fe3",
-  "prevId": "0684ebdc-e631-48fc-928c-a7eaf0580318",
+  "id": "187d337f-6b7c-463e-b49e-f3cae8423c94",
+  "prevId": "20748ce2-8c7e-4373-8b01-5c0bef8e739c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -552,6 +552,12 @@
         },
         "step_up_at": {
           "name": "step_up_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_seen_at": {
+          "name": "last_seen_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
@@ -4581,6 +4587,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "concept_key": {
+          "name": "concept_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "state": {
           "name": "state",
           "type": "text",
@@ -4775,7 +4787,11 @@
         },
         "cds_aliases_live_ck": {
           "name": "cds_aliases_live_ck",
-          "value": "\"cds_aliases\".\"state\" not in ('suggestion', 'trusted') or (\"cds_aliases\".\"medicine_id\" is not null and \"cds_aliases\".\"rule_result\" = 'pass' and \"cds_aliases\".\"refusal\" is null and \"cds_aliases\".\"reviewer_answer\" = 'yes')"
+          "value": "\"cds_aliases\".\"state\" not in ('suggestion', 'trusted') or (\"cds_aliases\".\"rule_result\" = 'pass' and \"cds_aliases\".\"refusal\" is null and ((\"cds_aliases\".\"kind\" = 'medicine' and \"cds_aliases\".\"medicine_id\" is not null and \"cds_aliases\".\"reviewer_answer\" = 'yes') or (\"cds_aliases\".\"kind\" = 'complaint' and \"cds_aliases\".\"concept_key\" is not null)))"
+        },
+        "cds_aliases_target_ck": {
+          "name": "cds_aliases_target_ck",
+          "value": "(\"cds_aliases\".\"kind\" = 'complaint' and \"cds_aliases\".\"medicine_id\" is null) or (\"cds_aliases\".\"kind\" <> 'complaint' and \"cds_aliases\".\"concept_key\" is null)"
         },
         "cds_aliases_undone_ck": {
           "name": "cds_aliases_undone_ck",
@@ -4804,6 +4820,20 @@
           "primaryKey": false,
           "notNull": true,
           "default": true
+        },
+        "copilot_proactive": {
+          "name": "copilot_proactive",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "copilot_draft_prose": {
+          "name": "copilot_draft_prose",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "updated_at": {
           "name": "updated_at",
@@ -8248,6 +8278,13 @@
           "notNull": true,
           "default": "'[]'::jsonb"
         },
+        "renal_overrides": {
+          "name": "renal_overrides",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
         "status": {
           "name": "status",
           "type": "text",
@@ -11505,6 +11542,12 @@
         },
         "payee_id_ref": {
           "name": "payee_id_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "payee_relation": {
+          "name": "payee_relation",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -17170,6 +17213,224 @@
         "formulary_monographs_review_ck": {
           "name": "formulary_monographs_review_ck",
           "value": "(\"formulary_monographs\".\"status\" = 'reviewed') = (\"formulary_monographs\".\"reviewed_by\" is not null) and (\"formulary_monographs\".\"status\" = 'reviewed') = (\"formulary_monographs\".\"reviewed_at\" is not null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.formulary_reference_labels": {
+      "name": "formulary_reference_labels",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "retrieved_on": {
+          "name": "retrieved_on",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ref_key": {
+          "name": "ref_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "label_id": {
+          "name": "label_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "set_id": {
+          "name": "set_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "product": {
+          "name": "product",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "product_type": {
+          "name": "product_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "effective_date": {
+          "name": "effective_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "match_tier": {
+          "name": "match_tier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sections": {
+          "name": "sections",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "import_batch": {
+          "name": "import_batch",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "imported_by": {
+          "name": "imported_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "imported_at": {
+          "name": "imported_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "retired_at": {
+          "name": "retired_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "retired_by": {
+          "name": "retired_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "formulary_reference_labels_live_ux": {
+          "name": "formulary_reference_labels_live_ux",
+          "columns": [
+            {
+              "expression": "source",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "ref_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"formulary_reference_labels\".\"retired_at\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "formulary_reference_labels_key_idx": {
+          "name": "formulary_reference_labels_key_idx",
+          "columns": [
+            {
+              "expression": "ref_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "formulary_reference_labels_key_trgm_idx": {
+          "name": "formulary_reference_labels_key_trgm_idx",
+          "columns": [
+            {
+              "expression": "\"ref_key\" gin_trgm_ops",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.formulary_reference_names": {
+      "name": "formulary_reference_names",
+      "schema": "",
+      "columns": {
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "ref_key": {
+          "name": "ref_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "import_batch": {
+          "name": "import_batch",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "formulary_reference_names_lower_ck": {
+          "name": "formulary_reference_names_lower_ck",
+          "value": "\"formulary_reference_names\".\"name\" = lower(\"formulary_reference_names\".\"name\")"
         }
       },
       "isRLSEnabled": false
@@ -23304,6 +23565,26 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "list_rate_paise": {
+          "name": "list_rate_paise",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "discount_bps": {
+          "name": "discount_bps",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "discount_paise": {
+          "name": "discount_paise",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         }
       },
       "indexes": {
@@ -23395,6 +23676,10 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
+        "supplier_bill_lines_discount_ck": {
+          "name": "supplier_bill_lines_discount_ck",
+          "value": "(\"supplier_bill_lines\".\"list_rate_paise\" is null and \"supplier_bill_lines\".\"discount_bps\" = 0 and \"supplier_bill_lines\".\"discount_paise\" = 0) or (\"supplier_bill_lines\".\"list_rate_paise\" >= 0 and \"supplier_bill_lines\".\"discount_bps\" between 0 and 10000 and \"supplier_bill_lines\".\"discount_paise\" between 0 and \"supplier_bill_lines\".\"list_rate_paise\" and \"supplier_bill_lines\".\"rate_paise\" = \"supplier_bill_lines\".\"list_rate_paise\" - \"supplier_bill_lines\".\"discount_paise\" and (\"supplier_bill_lines\".\"discount_bps\" = 0 or \"supplier_bill_lines\".\"discount_paise\" = \"supplier_bill_lines\".\"list_rate_paise\" - (\"supplier_bill_lines\".\"list_rate_paise\" * (10000 - \"supplier_bill_lines\".\"discount_bps\") + 5000) / 10000))"
+        },
         "supplier_bill_lines_qty_ck": {
           "name": "supplier_bill_lines_qty_ck",
           "value": "\"supplier_bill_lines\".\"qty_packs\" >= 0 and \"supplier_bill_lines\".\"multiplier\" > 0 and \"supplier_bill_lines\".\"expected_base\" >= 0"
@@ -25535,6 +25820,188 @@
         "vendor_documents_type_ck": {
           "name": "vendor_documents_type_ck",
           "value": "\"vendor_documents\".\"type\" in ('drug_licence_20b', 'drug_licence_21b', 'gst_certificate', 'pan', 'cancelled_cheque', 'udyam', 'dpdp_processor_agreement', 'consignment_agreement', 'iso', 'aerb_type_approval')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.vendor_item_rates": {
+      "name": "vendor_item_rates",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "vendor_id": {
+          "name": "vendor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "uom": {
+          "name": "uom",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "multiplier": {
+          "name": "multiplier",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rate_paise": {
+          "name": "rate_paise",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "gst_rate_bps": {
+          "name": "gst_rate_bps",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mrp_paise": {
+          "name": "mrp_paise",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "valid_from": {
+          "name": "valid_from",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "valid_to": {
+          "name": "valid_to",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "ended_by": {
+          "name": "ended_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "vendor_item_rates_open_ux": {
+          "name": "vendor_item_rates_open_ux",
+          "columns": [
+            {
+              "expression": "vendor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "item_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"vendor_item_rates\".\"ended_at\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "vendor_item_rates_item_idx": {
+          "name": "vendor_item_rates_item_idx",
+          "columns": [
+            {
+              "expression": "item_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "vendor_item_rates_vendor_id_vendors_id_fk": {
+          "name": "vendor_item_rates_vendor_id_vendors_id_fk",
+          "tableFrom": "vendor_item_rates",
+          "tableTo": "vendors",
+          "columnsFrom": [
+            "vendor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "vendor_item_rates_item_id_items_id_fk": {
+          "name": "vendor_item_rates_item_id_items_id_fk",
+          "tableFrom": "vendor_item_rates",
+          "tableTo": "items",
+          "columnsFrom": [
+            "item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "vendor_item_rates_money_ck": {
+          "name": "vendor_item_rates_money_ck",
+          "value": "\"vendor_item_rates\".\"rate_paise\" >= 0 and \"vendor_item_rates\".\"gst_rate_bps\" >= 0 and \"vendor_item_rates\".\"multiplier\" > 0 and (\"vendor_item_rates\".\"mrp_paise\" is null or \"vendor_item_rates\".\"mrp_paise\" > 0)"
+        },
+        "vendor_item_rates_period_ck": {
+          "name": "vendor_item_rates_period_ck",
+          "value": "\"vendor_item_rates\".\"valid_to\" is null or \"vendor_item_rates\".\"valid_to\" >= \"vendor_item_rates\".\"valid_from\""
+        },
+        "vendor_item_rates_ended_ck": {
+          "name": "vendor_item_rates_ended_ck",
+          "value": "(\"vendor_item_rates\".\"ended_at\" is null) = (\"vendor_item_rates\".\"ended_by\" is null)"
         }
       },
       "isRLSEnabled": false
@@ -29096,24 +29563,6 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
-        },
-        "owner_user_id": {
-          "name": "owner_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "ladder_rung": {
-          "name": "ladder_rung",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_chased_at": {
-          "name": "last_chased_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -29171,10 +29620,6 @@
         "lab_critical_calls_closed_ck": {
           "name": "lab_critical_calls_closed_ck",
           "value": "(\"lab_critical_calls\".\"closed_at\" is null) = (\"lab_critical_calls\".\"readback_text\" is null) and (\"lab_critical_calls\".\"closed_at\" is null) = (\"lab_critical_calls\".\"closed_by\" is null)"
-        },
-        "lab_critical_calls_rung_ck": {
-          "name": "lab_critical_calls_rung_ck",
-          "value": "\"lab_critical_calls\".\"ladder_rung\" is null or \"lab_critical_calls\".\"ladder_rung\" between 0 and 3"
         }
       },
       "isRLSEnabled": false
@@ -31309,6 +31754,12 @@
         "value_coded": {
           "name": "value_coded",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ast": {
+          "name": "ast",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
@@ -47074,7 +47525,7 @@
       "checkConstraints": {
         "roster_escalation_targets_kind_ck": {
           "name": "roster_escalation_targets_kind_ck",
-          "value": "\"roster_escalation_targets\".\"alert_kind\" in ('escalation.triggered', 'notification.failed', 'ops.mode_changed', 'imaging.critical_overdue', 'imaging.report_unread', 'workflow.timer_rung', 'lab.critical_overdue')"
+          "value": "\"roster_escalation_targets\".\"alert_kind\" in ('escalation.triggered', 'notification.failed', 'ops.mode_changed', 'imaging.critical_overdue', 'imaging.report_unread', 'workflow.timer_rung')"
         }
       },
       "isRLSEnabled": false
@@ -53935,7 +54386,7 @@
       "checkConstraints": {
         "copilot_asks_outcome_ck": {
           "name": "copilot_asks_outcome_ck",
-          "value": "\"copilot_asks\".\"outcome\" in ('answered', 'notUnderstood', 'noTool', 'notPermitted', 'needSubject', 'failed', 'identifierLeak', 'refusedActor', 'badRequest', 'error', 'halted')"
+          "value": "\"copilot_asks\".\"outcome\" in ('answered', 'notUnderstood', 'noTool', 'notPermitted', 'needSubject', 'failed', 'identifierLeak', 'refusedActor', 'badRequest', 'error', 'halted', 'confirmDone', 'confirmInvalid', 'confirmExpired', 'confirmNotAct', 'confirmHalted', 'confirmNotPermitted', 'confirmAlreadyDone', 'confirmStateChanged', 'confirmFailed')"
         },
         "copilot_asks_route_ck": {
           "name": "copilot_asks_route_ck",

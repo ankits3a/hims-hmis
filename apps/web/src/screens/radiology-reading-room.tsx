@@ -12,6 +12,7 @@ import { RadiologyStation } from "./radiology-station";
 import type {
   FollowupChannel, FollowupCloseReason, OverreadGrade, PeerScore, WireFollowup, WirePeerBoard, WireTeleBoard, WireTeleRow,
 } from "../lib/radiology-reading-room-api";
+import { dateLocale } from "../lib/date-locale";
 
 /**
  * PLAN 18-S RS8c T4 — **THE READING ROOM, PART 3** (board: Reading room → Follow-ups · Peer review ·
@@ -31,9 +32,9 @@ import type {
  */
 
 const dayWord = (d: string): string =>
-  new Date(`${d}T00:00:00Z`).toLocaleDateString("en-IN", { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" });
+  new Date(`${d}T00:00:00Z`).toLocaleDateString(dateLocale(), { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" });
 const timeWord = (iso: string): string =>
-  new Date(iso).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  new Date(iso).toLocaleString(dateLocale(), { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 
 /** The dock: one act, Enter runs it outside a text box. */
 function Dock({ hint, label, run, testId }: { hint: string; label: string; run: (() => void) | null; testId: string }): React.ReactElement {

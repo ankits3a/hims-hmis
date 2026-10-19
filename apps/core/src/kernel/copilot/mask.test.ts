@@ -1,4 +1,4 @@
-import { assertNoIdentifiers, maskQuestion, rehydrate } from "./mask";
+import { asciiDigits, assertNoIdentifiers, maskQuestion, rehydrate } from "./mask";
 
 /**
  * FD-COPILOT T1 — THE TEST THAT IS THE WHOLE GUARANTEE.
@@ -166,5 +166,46 @@ describe("maskQuestion — wholeWords", () => {
 
   it("leaves the default exactly as it was: a substring match", () => {
     expect(maskQuestion("aaram nahi mila", ["Ram"]).masked).toBe("aa<<P1>> nahi mila");
+  });
+});
+
+/**
+ * Digits in another script are the same identifier. Before this, a mobile or a UHID serial typed in Devanagari (or any
+ * other Indic numerals) passed the masker AND the scrubber untouched, because `\d` is ASCII-only.
+ */
+describe("identifiers written in non-ASCII digits", () => {
+  it("turns Indic, Arabic-Indic and fullwidth digits into ASCII digits, position for position", () => {
+    expect(asciiDigits("९८७६५४३२१०")).toBe("9876543210");
+    expect(asciiDigits("৯৮৭ ௯௮௭ ౯౮౭ ೯೮೭ ൯൮൭ ੯੮੭ ૯૮૭ ୯୮୭")).toBe("987 987 987 987 987 987 987 987");
+    expect(asciiDigits("٩٨٧ ۹۸۷ ９８７")).toBe("987 987 987");
+    expect(asciiDigits("बुखार ३ दिन")).toHaveLength("बुखार ३ दिन".length);
+    expect(asciiDigits("plain 123")).toBe("plain 123");
+  });
+
+  it("masks a mobile number typed in Devanagari digits, and keeps what was typed in the slot", () => {
+    const { masked, slots } = maskQuestion("मरीज़ का नंबर ९८७६५४३२१० है");
+    expect(masked).toBe("मरीज़ का नंबर <<P1>> है");
+    expect(slots["<<P1>>"]).toBe("९८७६५४३२१०");
+  });
+
+  it("masks a UHID whose serial is in Devanagari or mixed digits, and a long Bengali digit run", () => {
+    expect(maskQuestion("U१२३४५०१३ ka bill").masked).toBe("<<P1>> ka bill");
+    expect(maskQuestion("U1234५०१३ ka bill").masked).toBe("<<P1>> ka bill");
+    expect(maskQuestion("token ৪০০১২ dikhao").masked).toBe("token <<P1>> dikhao");
+  });
+
+  it("leaves short quantities in any script alone, and the text unchanged", () => {
+    const q = "३ बजे, ५०० rupees, २ line";
+    expect(maskQuestion(q)).toEqual({ masked: q, slots: {} });
+    expect(() => assertNoIdentifiers(q)).not.toThrow();
+  });
+
+  it("the scrubber refuses an identifier in non-ASCII digits, and its message never carries it", () => {
+    for (const leak of ["call ९८७६५४३२१०", "uhid U१२३४५०१३", "ref ৪০০১২৩", "id ٤٠٠١٢"]) {
+      let thrown: unknown;
+      try { assertNoIdentifiers(leak); } catch (e) { thrown = e; }
+      expect({ leak, name: (thrown as Error | undefined)?.name }).toEqual({ leak, name: "IdentifierLeak" });
+      expect((thrown as Error).message).not.toMatch(/[0-9\u0660-\u0669\u0966-\u096f\u09e6-\u09ef]{5,}/);
+    }
   });
 });

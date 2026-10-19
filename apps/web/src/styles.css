@@ -379,9 +379,16 @@
    FD-11 found the shell alive and tabbable UNDER Desk One and that is the defect this must not
    repeat. It renders only when the API reports an environment label, which production never sets.
    ══════════════════════════════════════════════════════════════════════════════════════════════ */
+:root { --env-banner-h: 0px; }
+:root[data-env-banner] { --env-banner-h: 20px; }
+/* The strip the banner sits in: the page and the full-screen desks start below it. 0px on production. */
+body { padding-top: var(--env-banner-h, 0px); }
 .env-banner {
   position: fixed;
   top: 0;
+  height: var(--env-banner-h);
+  box-sizing: border-box;
+  overflow: hidden;
   left: 0;
   right: 0;
   z-index: 9000;

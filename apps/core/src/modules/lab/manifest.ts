@@ -82,6 +82,13 @@ export const labManifest: ModuleManifest = {
     { label: "Report centre", path: "/lab/reports", permission: "lab.reports.print" },
     /** Decision 0061 — quick mode: Start (tests + blood collected) into a queue, then results and print. */
     { label: "Quick lab", path: "/lab/quick", permission: "lab.results.enter" },
+    /**
+     * Owner 2026-10-13 (#768) — lab counts and turnaround times, read-only. #777 moved the screen to
+     * Hospital numbers (`/reports/numbers`, its Lab tab), beside imaging's and the pharmacy's tabs;
+     * `/lab/metrics` forwards there. The row pairs the screen with the lab's grant; the web nav also
+     * shows it to a holder of `radiology.metrics.read` or `pharmacy.metrics.read` (`anyOf`).
+     */
+    { label: "Hospital numbers", path: "/reports/numbers", permission: "lab.metrics.read" },
   ],
   permissions: [
     "lab.orders.place",
@@ -113,6 +120,8 @@ export const labManifest: ModuleManifest = {
      * never resolve the rows its own transmission parked.
      */
     "lab.instruments.operate",
+    /** Owner 2026-10-13 (#768) — reading the lab's counts and turnaround times (`GET /lab/metrics`). */
+    "lab.metrics.read",
   ],
   subscriptions: [
     { event: interfaceDown.name, consumer: LAB_INTERFACE_CONSUMER },

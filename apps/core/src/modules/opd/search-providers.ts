@@ -3,6 +3,7 @@ import type { SearchHit } from "@hmis/contracts";
 import { opdAppointments, opdDepartments, opdDoctors } from "../../kernel/db/schema";
 import { wordPrefixMatch } from "../../kernel/search/text";
 import { getPatientSummaries, searchPatients, visiblePatientIds } from "../patients";
+import { secondaryDoctorIdsIn } from "./secondary";
 import type { SearchProvider, SearchProviderCtx, SearchProviderResult } from "../../kernel/search/types";
 
 /**
@@ -45,7 +46,13 @@ export const doctorSearchProvider: SearchProvider = {
 
     const conditions = [eq(opdDoctors.active, true)];
     if (text.length >= 2) conditions.push(wordPrefixMatch(opdDoctors.displayName, text)); // 'Dr Mehra' must answer to `mehra`
-    if (departmentId !== undefined) conditions.push(eq(opdDoctors.departmentId, departmentId));
+    if (departmentId !== undefined) {
+      // #914 — a doctor whose secondary is in force there today answers to the chip too.
+      const visiting = await secondaryDoctorIdsIn(ctx.db, departmentId, istDate(new Date(), 0));
+      conditions.push(visiting.length === 0
+        ? eq(opdDoctors.departmentId, departmentId)
+        : or(eq(opdDoctors.departmentId, departmentId), inArray(opdDoctors.id, visiting))!);
+    }
     const where = and(...conditions);
 
     const [rows, counted] = await Promise.all([

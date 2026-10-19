@@ -38,6 +38,7 @@ import { MoveDepartmentForm } from "./move-department";
 import { RegAllergies } from "./reg-allergies";
 import { useAuth } from "../../lib/auth";
 import type { CoverageDraft, Person } from "./session";
+import { dateLocale } from "../../lib/date-locale";
 
 /**
  * ═══ THE FIVE STAGES OF ONE SESSION ═══
@@ -481,7 +482,7 @@ function StageRegister(): React.ReactElement {
           ) : ageRead.kind === "dob" ? (
             <div data-testid="reg-age-read" style={{ fontSize: 11, color: "var(--green)", marginTop: 4 }}>
               {t("registrationCounter.register.ageOrDobBorn", {
-                date: new Date(`${ageRead.iso}T00:00:00Z`).toLocaleDateString("en-IN", { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" }),
+                date: new Date(`${ageRead.iso}T00:00:00Z`).toLocaleDateString(dateLocale(), { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" }),
                 years: formAgeYears(f) ?? 0,
               })}
             </div>
@@ -1166,7 +1167,7 @@ function StageAppointment(): React.ReactElement {
           {s.triageBusy ? <span className="tag">ranking…</span> : null}
           {s.triage === null ? null : (
             <span className="pill" title="Where the ranking came from">
-              ranked by {s.triage.source === "model" ? "the triage model" : "the keyword table"}
+              ranked by {s.triage.source === "model" ? "the triage model" : s.triage.source === "prior" ? "this hospital's past visits" : "the keyword table"}
             </span>
           )}
         </div>
@@ -1625,7 +1626,8 @@ function FutureTab(): React.ReactElement {
   const doctors = useQuery({ queryKey: ["d1", "all-doctors"], queryFn: listDoctors, staleTime: 5 * 60 * 1000 });
   const [departmentId, setDepartmentId] = useState("");
   const allActive = (doctors.data?.items ?? []).filter((x) => x.active);
-  const bookable = (departmentId === "" ? allActive : allActive.filter((x) => x.departmentId === departmentId))
+  // #914 — a doctor covering this department as their second one is bookable here too.
+  const bookable = (departmentId === "" ? allActive : allActive.filter((x) => x.departmentId === departmentId || x.secondary?.departmentId === departmentId))
     .map((doctor) => ({ doctor }));
   const [doctorId, setDoctorId] = useState("");
   const [date, setDate] = useState(() => {
@@ -1642,8 +1644,8 @@ function FutureTab(): React.ReactElement {
   const chosen = bookable.find((x) => x.doctor.id === doctorId) ?? bookable[0] ?? null;
   const activeDoctorId = chosen?.doctor.id ?? "";
   const slots = useQuery({
-    queryKey: ["d1", "slots", activeDoctorId, date],
-    queryFn: () => getSlots(activeDoctorId, date),
+    queryKey: ["d1", "slots", activeDoctorId, date, departmentId],
+    queryFn: () => getSlots(activeDoctorId, date, departmentId),
     enabled: activeDoctorId !== "",
   });
   /** FD-16 — the day's book for the doctor and date in the pickers, from a route nothing called. */
@@ -1730,7 +1732,7 @@ function FutureTab(): React.ReactElement {
   const move = async (appointmentId: string, slotStart: string, reason?: string): Promise<void> => {
     d.patch({ busy: "future", error: null });
     try {
-      await rescheduleAppointment(appointmentId, slotStart, chosen?.doctor.id, reason);
+      await rescheduleAppointment(appointmentId, slotStart, chosen?.doctor.id, reason, departmentId);
       await Promise.all([dayBook.refetch(), theirs.refetch()]);
       d.patch({ busy: null });
       d.note(`appointment moved to ${slotClock(slotStart)}`, "ok");
@@ -1782,10 +1784,12 @@ function FutureTab(): React.ReactElement {
     }
   };
 
-  const deptName = d.departments.find((x) => x.id === chosen?.doctor.departmentId)?.name ?? "";
+  // #914 — the picked department when there is one: a covering doctor books into it, not their own.
+  const deptName = d.departments.find((x) => x.id === (departmentId === "" ? chosen?.doctor.departmentId : departmentId))?.name ?? "";
   /* Owner 2026-10-05 — the booking's department, and whether the picked doctor is in ANOTHER one. */
   const movingFromDept = moving === null ? null : d.summaries.find((x) => x.doctor.id === moving.doctorId)?.doctor.departmentId ?? null;
-  const crossDept = moving !== null && chosen !== null && movingFromDept !== null && movingFromDept !== chosen.doctor.departmentId;
+  const crossDept = moving !== null && chosen !== null && movingFromDept !== null
+    && movingFromDept !== (departmentId === "" ? chosen.doctor.departmentId : departmentId);
   const movingFromName = d.departments.find((x) => x.id === movingFromDept)?.name ?? "";
   const all = slots.data?.slots ?? [];
   const free = all.filter((x) => !x.booked && !x.past);
@@ -2146,7 +2150,9 @@ function FutureTab(): React.ReactElement {
                   void move(moving.id, slot.start, crossDept ? moveReason.trim() : undefined);
                   return;
                 }
-                void d.holdFutureSlot(chosen.doctor.id, slot, deptName, chosen.doctor.displayName, teleHowBody(how));
+                void d.holdFutureSlot(chosen.doctor.id, slot, deptName, chosen.doctor.displayName, {
+                  ...teleHowBody(how), ...(departmentId === "" ? {} : { departmentId }),
+                });
                 setPicked(null);
               }}
             >
