@@ -25,6 +25,8 @@
 
 import { assertNoIdentifiers, maskQuestion } from "../../kernel/copilot/mask";
 import { chooseDepartments, departmentOptions } from "./triage-choice";
+import type { RoutingFeed } from "./triage-choice";
+import { createHash } from "node:crypto";
 import type { ChoiceClient } from "../../kernel/inference/types";
 import { defaultTriageCache, triageCacheKey } from "./triage-cache";
 import type { TriageCache } from "./triage-cache";
@@ -288,8 +290,23 @@ export function parseSuggestions(raw: string, departments: TriageDepartment[]): 
   return out;
 }
 
-/** TypeSafe, when configured, and the confidence it must reach before its answer is used. */
-export type TriageChoice = { client: ChoiceClient; minConfidence: number };
+/**
+ * TypeSafe, when configured, and the confidence it must reach before its answer is used. `feed` is
+ * what the nightly learning added to the descriptions (#614, `desk-routing-feed.ts`) — only the
+ * chooser sees it; the red flag, the keyword table and the chat model never do.
+ */
+export type TriageChoice = { client: ChoiceClient; minConfidence: number; feed?: RoutingFeed | null };
+
+/** Empty for no feed, so the cache key of a hospital with nothing learned is the key it always was. */
+export function feedFingerprint(feed: RoutingFeed | null | undefined): string {
+  if (feed === null || feed === undefined) return "";
+  const canon = (r: Record<string, string[]>) =>
+    Object.keys(r).filter((k) => (r[k] ?? []).length > 0).sort().map((k) => [k, r[k]]);
+  const tail = canon(feed.tail);
+  const examples = canon(feed.examples);
+  if (tail.length === 0 && examples.length === 0) return "";
+  return createHash("sha1").update(JSON.stringify([tail, examples])).digest("hex").slice(0, 16);
+}
 
 /**
  * Ask the models, and fall back to the table on ANY failure.
@@ -365,7 +382,8 @@ export async function suggestDepartments(
    * Keyed on the MASKED complaint: the answer depends only on what the model saw, so "Ramesh ko
    * bukhar" and "Suresh ko bukhar" are one question and one call.
    */
-  const key = triageCacheKey(masked, departments);
+  // #614 — and the learned feed's fingerprint: a new nightly feed is never answered from the old one.
+  const key = triageCacheKey(masked, departments, feedFingerprint(choice?.feed));
   const cached = cache.get(key);
   if (cached !== undefined) return cached;
 
@@ -425,11 +443,11 @@ async function askModels(
       is offered. The same content would go to the chat model, so a refusal here refuses both.
     */
     try {
-      assertNoIdentifiers(JSON.stringify([masked, departmentOptions(departments).options]));
+      assertNoIdentifiers(JSON.stringify([masked, departmentOptions(departments, choice.feed ?? null).options]));
     } catch {
       return table;
     }
-    const picked = await chooseDepartments(masked, departments, choice.client, choice.minConfidence);
+    const picked = await chooseDepartments(masked, departments, choice.client, choice.minConfidence, choice.feed ?? null);
     // Sure it is none of our departments: the table's answer stands, and the chat model is not asked to overrule it.
     if (picked === "none") return table;
     if (picked !== "unsure") return { suggestions: picked, source: "model" };

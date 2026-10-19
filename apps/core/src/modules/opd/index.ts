@@ -103,6 +103,7 @@ export type { AliasRunCaps, AliasRunReport } from "./alias-runner";
 // The owner's Appointments and Learning pages in the staff app (owner 2026-10-09): counts, read-only.
 export { ownerAppointments, ownerLearning } from "./owner-reads";
 export { runFlowLearning } from "./flow-learning";
+export { routingChooserFor, runDeskRoutingLearning } from "./desk-routing-feed";
 // DOCTOR DESK DD-0 (#626) — the Tower's OPD reads: a doctor's day line (counts, no money), open visits, closed visits.
 export { closedVisitNos, completedVisitById, completedVisitsOf, doctorDayLines, doctorPaceToday, earlierVisits, lastPrescriptionBy, openVisitsForDoctor, visitOfDoctor } from "./doctor-day";
 export type { CompletedVisitRow, DoctorDayLine, DoctorPaceToday, OpenVisitRow } from "./doctor-day";

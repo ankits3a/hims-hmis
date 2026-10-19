@@ -31,7 +31,7 @@ import {
   sweepCriticalChaser, sweepImagingEscalations, sweepOverdueFollowups, sweepPeerSample, sweepUnreadWatchman,
 } from "../../modules/radiology";
 import { sweepOverdueQa } from "../../modules/aerb";
-import { runAliasJob, runFlowLearning } from "../../modules/opd";
+import { routingChooserFor, runAliasJob, runDeskRoutingLearning, runFlowLearning } from "../../modules/opd";
 import { syncAttendance } from "../../modules/attendance";
 import { collectResourceKinds } from "../resources/kinds";
 import type { AppConfig } from "../config";
@@ -288,6 +288,21 @@ export function registerAllJobs(
         await runFlowLearning(db, aliasConfig?.flowFindings.enabled ?? true, now);
       } catch (err) {
         throw new Error(`flow learning: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      /*
+        #614 (plan P3, channels 2 and 3) — the desk's routing learning rides here too, last: the day's
+        visits are done. Unlike the two above it may ask the desk's own chooser about MASKED sentences
+        (the evaluation), and only when something was learned. No config — every test that does not
+        pass one — is off. `DESK_ROUTING_LEARNING_ENABLED` (default false, decision 0051) switches it.
+      */
+      try {
+        await runDeskRoutingLearning(db, {
+          enabled: aliasConfig?.deskRouting.learningEnabled ?? false,
+          chooser: aliasConfig === undefined ? null : routingChooserFor(aliasConfig),
+          now,
+        });
+      } catch (err) {
+        throw new Error(`desk routing learning: ${err instanceof Error ? err.message : String(err)}`);
       }
     },
   });

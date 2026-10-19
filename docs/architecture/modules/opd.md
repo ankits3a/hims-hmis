@@ -38,6 +38,9 @@ Source: `apps/core/src/modules/opd/`
   - `resumeConsultation(db: Db, actor: Actor, encounterId: string, now: Date = new Date()): Promise<{ encounter: EncounterRow; queueEntry: Queue…`
   - `vitalsGateVerdict(db: Db | Tx, encounter: EncounterRow): Promise<{ ok: true } | { ok: false; code: string; detail?: unknown }>`
   - types: `AdvisedTest`, `ConsultStartGuard`, `VitalsStartGuard`
+- `desk-routing-feed.ts`
+  - `routingChooserFor(config: AppConfig): TriageChoice | null`
+  - `runDeskRoutingLearning(db: Db, opts: { enabled: boolean; chooser: TriageChoice | null; now: Date }): Promise<LearningReport>`
 - `doctor-day.ts`
   - `closedVisitNos(exec: Db | Tx, visitNos: readonly string[]): Promise<Set<string>>`
   - `completedVisitById(exec: Db | Tx, encounterId: string): Promise<CompletedVisitRow | null>`
@@ -211,7 +214,7 @@ Source: `apps/core/src/modules/opd/`
 
 ## Tables (`kernel/db/schema/opd.ts`)
 
-`cds_aliases`, `cds_desk_routing_outcomes`, `cds_doctor_learning_resets`, `cds_doctor_prefs`, `cds_rx_lines`, `opd_advice_templates`, `opd_appointments`, `opd_complaint_concepts`, `opd_complaint_term_usage`, `opd_complaint_terms`, `opd_config`, `opd_consult_layouts`, `opd_department_tokens`, `opd_departments`, `opd_doctor_leaves`, `opd_doctor_schedules`, `opd_doctor_secondary_departments`, `opd_doctors`, `opd_encounter_diagnoses`, `opd_encounters`, `opd_flow_baselines`, `opd_flow_findings`, `opd_lasa_pairs`, `opd_patient_reminders`, `opd_prescription_drafts`, `opd_prescriptions`, `opd_queue_entries`, `opd_queue_sessions`, `opd_rx_sets`, `opd_section_records`, `opd_suggestion_events`, `opd_term_misses`, `opd_vitals`, `opd_voice_settings`, `opd_voice_usage`
+`cds_aliases`, `cds_desk_routing_feeds`, `cds_desk_routing_outcomes`, `cds_doctor_learning_resets`, `cds_doctor_prefs`, `cds_rx_lines`, `opd_advice_templates`, `opd_appointments`, `opd_complaint_concepts`, `opd_complaint_term_usage`, `opd_complaint_terms`, `opd_config`, `opd_consult_layouts`, `opd_department_tokens`, `opd_departments`, `opd_doctor_leaves`, `opd_doctor_schedules`, `opd_doctor_secondary_departments`, `opd_doctors`, `opd_encounter_diagnoses`, `opd_encounters`, `opd_flow_baselines`, `opd_flow_findings`, `opd_lasa_pairs`, `opd_patient_reminders`, `opd_prescription_drafts`, `opd_prescriptions`, `opd_queue_entries`, `opd_queue_sessions`, `opd_rx_sets`, `opd_section_records`, `opd_suggestion_events`, `opd_term_misses`, `opd_vitals`, `opd_voice_settings`, `opd_voice_usage`
 
 Foreign keys into: `billing`, `patients`, `resources`
 

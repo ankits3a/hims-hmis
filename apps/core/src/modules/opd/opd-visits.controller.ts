@@ -30,8 +30,8 @@ import { suggestDepartments } from "./triage";
 import {
   applyRouting, bandForAge, defaultTriageMemo, priorFor, recordRoutingOutcome, routingConcepts,
 } from "./desk-routing";
+import { activeRoutingFeed, routingChooserFor } from "./desk-routing-feed";
 import type { TriageChoice } from "./triage";
-import { chooserFor } from "../../kernel/inference/openai-decisions";
 import type { TriageResult } from "./triage";
 import type { ContinuityAnchor } from "./continuity";
 import type { WalkInDeferredResult, WalkInInput, WalkInResult } from "./walk-in";
@@ -381,7 +381,7 @@ export class OpdVisitsController {
       undefined,
       undefined,
       { ageYears, names: b.names ?? [] },
-      this.triageChoice(),
+      await this.triageChoice(),
     );
     /* A red flag is final: no child rule, no prior, no triageId — the desk must not book. */
     if (ranked.redFlag !== undefined) return ranked;
@@ -401,12 +401,12 @@ export class OpdVisitsController {
    * Triage's FIRST model (owner, 2026-09-19: TypeSafe as priority, the chat model its fallback), or
    * null with no key configured — and then `config.triage` answers alone, exactly as before.
    */
-  private triageChoice(): TriageChoice | null {
-    const client = chooserFor({
-      order: this.config.triageChooserOrder, typesafe: this.config.triageChoice, decisions: this.config.decisions,
-      openaiKeyFile: this.config.openaiKeyFile, minConfidence: this.config.triageChoice.minConfidence,
-    });
-    return client === null ? null : { client, minConfidence: this.config.triageChoice.minConfidence };
+  private async triageChoice(): Promise<TriageChoice | null> {
+    const choice = routingChooserFor(this.config);
+    if (choice === null) return null;
+    /* #614 channels 2 and 3 — what the nightly learning added, when it is live (`desk-routing-feed.ts`). */
+    const learning = (this.config.deskRouting as AppConfig["deskRouting"] | undefined)?.learningEnabled === true;
+    return { ...choice, feed: await activeRoutingFeed(this.db, learning) };
   }
 
   @RequirePermission("opd.visits.open", "hospital")
