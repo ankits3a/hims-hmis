@@ -2516,8 +2516,21 @@
       "user_not_found": "Login not found.",
       "mobile_invalid": "Not a mobile number. Ten digits, starting 6–9.",
       "aadhaar_invalid": "Not a valid Aadhaar number.",
-      "aadhaar_key_not_configured": "Aadhaar cannot be saved yet on this server."
-    }
+      "aadhaar_key_not_configured": "Aadhaar cannot be saved yet on this server.",
+      "not_linked": "This person is not linked.",
+      "reason_has_number": "Leave numbers out of the reason.",
+      "bad_body": "Give a short reason."
+    },
+    "unlink": {
+      "button": "Unlink",
+      "title": "Unlink {{name}} (#{{pin}}) from {{username}}?",
+      "marksStay": "Past attendance marks stay with the person. To re-point, unlink, then link the right login.",
+      "reason": "Reason",
+      "reasonHint": "e.g. linked to the wrong login",
+      "yes": "Confirm unlink",
+      "relinks": "same mobile or Aadhaar links them again at the next sync — correct the login first"
+    },
+    "unlinkedNotice": "Unlinked {{name}} from {{username}}"
   },
   "adminUsers": {
     "heading": "Users",

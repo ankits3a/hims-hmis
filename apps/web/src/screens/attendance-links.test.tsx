@@ -131,6 +131,32 @@ describe("AttendanceLinks", () => {
     expect(calls.filter((c) => c.path === "/admin/users/attendance-links" && c.method === "POST").map((c) => c.body)).toEqual([{ pin: "305", userId: "u-twin.b" }]);
   });
 
+  it("unlink: a linked person offers Unlink, which asks for a reason and confirms before sending", async () => {
+    const LINKED = { ...PERSON, needsAttention: null, login: { userId: "u-wrong", username: "wrong.one", fullName: "Wrong One", source: "mobile" } };
+    let unlinked = false;
+    mockRoutes(["auth.users.manage"], {
+      "GET /admin/users/attendance-links": { status: 200, body: { counts: COUNTS, people: [] } },
+      "GET /admin/users/attendance-links?q=five": { status: 200, body: { counts: COUNTS, people: [LINKED] } },
+      "GET /admin/users/attendance-links/305/candidates": () => ({ status: 200, body: { person: unlinked ? PERSON : LINKED, matches: [], found: [] } }),
+      "POST /admin/users/attendance-links/305/unlink": () => { unlinked = true; return { status: 200, body: { pin: "305", userId: "u-wrong", relinksOnSync: true, counts: COUNTS } }; },
+    });
+    renderWithProviders(<AttendanceLinks />);
+    await userEvent.click(await screen.findByTestId("links-tab-byHand"));
+    await userEvent.type(screen.getByTestId("byhand-search"), "five");
+    await userEvent.click(await screen.findByTestId("byhand-person-305"));
+    await userEvent.click(await screen.findByTestId("byhand-unlink"));
+    const box = screen.getByTestId("byhand-unlink-confirm");
+    expect(box).toHaveTextContent("Unlink Person Five (#305) from wrong.one?");
+    expect(box).toHaveTextContent("Past attendance marks stay with the person.");
+    expect(within(box).getByTestId("byhand-unlink-yes")).toBeDisabled(); // a reason first
+    await userEvent.type(within(box).getByTestId("byhand-unlink-reason"), "Wrong login");
+    expect(calls.filter((c) => c.method === "POST")).toEqual([]);
+    await userEvent.click(within(box).getByTestId("byhand-unlink-yes"));
+    expect(await screen.findByTestId("links-notice")).toHaveTextContent("Unlinked Person Five from wrong.one");
+    expect(screen.getByTestId("links-notice")).toHaveTextContent("same mobile or Aadhaar links them again at the next sync");
+    expect(calls.filter((c) => c.method === "POST").map((c) => [c.path, c.body])).toEqual([["/admin/users/attendance-links/305/unlink", { reason: "Wrong login" }]]);
+  });
+
   it("a refused link is said in words by its code", async () => {
     mockRoutes(["auth.users.manage"], {
       "GET /admin/users/attendance-links": { status: 200, body: { counts: COUNTS, people: [] } },

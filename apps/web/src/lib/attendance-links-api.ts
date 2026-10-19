@@ -45,3 +45,7 @@ export function linkCandidates(pin: string, q: string): Promise<{ person: WireMa
 export function linkPerson(pin: string, userId: string): Promise<{ pin: string; userId: string; source: WireMatch; counts: WireLinkCounts }> {
   return api("POST", "/admin/users/attendance-links", { pin, userId });
 }
+/** Undo a link with a short reason. `relinksOnSync`: the pair still matches, so the next sync may link it again. */
+export function unlinkPerson(pin: string, reason: string): Promise<{ pin: string; userId: string; relinksOnSync: boolean; counts: WireLinkCounts }> {
+  return api("POST", `/admin/users/attendance-links/${encodeURIComponent(pin)}/unlink`, { reason });
+}

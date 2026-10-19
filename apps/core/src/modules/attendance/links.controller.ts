@@ -3,7 +3,7 @@ import { z } from "zod";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
-import { LinkError, candidatesFor, linkByHand, linkCounts, searchMachine, suggestions, unlinkedPeople } from "./links";
+import { LinkError, candidatesFor, linkByHand, unlinkByHand, linkCounts, searchMachine, suggestions, unlinkedPeople } from "./links";
 import { ATTENDANCE_ALL_READ } from "./manifest";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -15,6 +15,9 @@ const USERS_MANAGE = "auth.users.manage";
 const searchQuery = z.object({ q: z.string().max(80).optional() });
 const unlinkedQuery = z.object({ q: z.string().max(80).optional(), offset: z.coerce.number().int().min(0).max(100_000).optional() });
 const linkBody = z.object({ pin: z.string().min(1).max(40), userId: z.string().min(1).max(40) }).strict();
+const unlinkBody = z.object({ reason: z.string().trim().min(1).max(200) }).strict();
+/** Six digits in a row (spaces and dashes between them allowed) could be part of a mobile or an Aadhaar: refused, never stored. */
+const LONG_NUMBER = /\d(?:[\s-]?\d){5,}/;
 
 function q<T>(schema: z.ZodType<T>, value: unknown): T {
   const r = schema.safeParse(value);
@@ -92,6 +95,21 @@ export class AdminAttendanceLinksController {
     const now = new Date();
     try {
       const done = await withTx(this.db, (tx) => linkByHand(tx, actor, now, parsed.data.pin, parsed.data.userId));
+      return { ...done, counts: await linkCounts(this.db) };
+    } catch (e) { return linkHttp(e); }
+  }
+
+  /** Undo a link, with a short reason. POST rather than DELETE so the reason travels in a body every proxy keeps. */
+  @RequirePermission(USERS_MANAGE, "hospital")
+  @Post(":pin/unlink")
+  @HttpCode(200)
+  async unlink(@CurrentActor() actor: Actor, @Param("pin") pin: string, @Body() body: unknown): Promise<{ pin: string; userId: string; relinksOnSync: boolean; counts: LinkCounts }> {
+    const parsed = unlinkBody.safeParse(body);
+    if (!parsed.success) throw new BadRequestException({ code: "bad_body" });
+    if (LONG_NUMBER.test(parsed.data.reason)) throw new BadRequestException({ code: "reason_has_number" });
+    const now = new Date();
+    try {
+      const done = await withTx(this.db, (tx) => unlinkByHand(tx, actor, now, pin, parsed.data.reason));
       return { ...done, counts: await linkCounts(this.db) };
     } catch (e) { return linkHttp(e); }
   }

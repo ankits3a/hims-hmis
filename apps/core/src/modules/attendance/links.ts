@@ -2,7 +2,7 @@ import { and, asc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { attStaff, users } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { maskedAadhaar } from "./aadhaar";
-import { attendancePersonLinked } from "./events";
+import { attendancePersonLinked, attendancePersonUnlinked } from "./events";
 import { normaliseMobile, pinOfUser } from "./linking";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -183,7 +183,7 @@ export async function suggestions(db: Db | Tx): Promise<Suggestion[]> {
 }
 
 export class LinkError extends Error {
-  constructor(readonly code: "unknown_person" | "user_not_found" | "person_linked" | "login_linked" | "login_inactive" | "no_match") { super(code); }
+  constructor(readonly code: "unknown_person" | "user_not_found" | "person_linked" | "login_linked" | "login_inactive" | "no_match" | "not_linked") { super(code); }
 }
 
 async function machinePerson(db: Db | Tx, pin: string): Promise<{ pin: string; name: string; dept: string | null; post: string | null; status: string; mobile: string | null; aadhaarHash: string | null; userId: string | null; source: string | null; attention: string | null; username: string | null; fullName: string | null }> {
@@ -247,4 +247,26 @@ export async function linkByHand(tx: Tx, actor: Actor, now: Date, pin: string, u
   if (done.length === 0) throw new LinkError("person_linked");
   await appendEvent(tx, attendancePersonLinked.make({ actor, occurredAt: now, payload: { pin, userId, source } }));
   return { pin, userId, source };
+}
+
+/**
+ * UNLINK — a wrong link mended (#634). Both sides become free; nothing else moves. The person's app
+ * marks (`att_app_marks`) keep the login and pin they were made under: they are what happened, and
+ * an unlink is not a rewrite of the past. Re-pointing is this, then `linkByHand` (or the automatic
+ * rule) under the same match rule — there is no "move" that skips the match.
+ *
+ * `relinksOnSync` says whether the same pair still MATCHES: if it does, the automatic rule may link
+ * it again at the next sync unless another login is linked first or the login's key is corrected.
+ */
+export async function unlinkByHand(tx: Tx, actor: Actor, now: Date, pin: string, reason: string): Promise<{ pin: string; userId: string; relinksOnSync: boolean }> {
+  const locked = (await tx.select({ pin: attStaff.pin }).from(attStaff).where(eq(attStaff.pin, pin)).for("update"))[0];
+  if (locked === undefined) throw new LinkError("unknown_person");
+  const p = await machinePerson(tx, pin);
+  if (p.userId === null) throw new LinkError("not_linked");
+  const userId = p.userId;
+  const source = (p.source === "aadhaar" ? "aadhaar" : "mobile") as Match;
+  await tx.update(attStaff).set({ userId: null, linkSource: null, linkedAt: null, needsAttention: null, updatedAt: now }).where(eq(attStaff.pin, pin));
+  await appendEvent(tx, attendancePersonUnlinked.make({ actor, occurredAt: now, payload: { pin, userId, source, reason } }));
+  const u = (await tx.select({ phone: users.phone, aadhaarHash: users.aadhaarHash, active: users.active }).from(users).where(eq(users.id, userId)))[0];
+  return { pin, userId, relinksOnSync: u !== undefined && u.active && matchOf(p, u) !== null };
 }

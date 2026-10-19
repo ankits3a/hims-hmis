@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import { AppModule } from "../src/app.module";
 import { configureApp } from "../src/app.bootstrap";
 import { setupTestDb, truncateAll } from "./helpers/db";
-import { attStaff, events, roles, users } from "../src/kernel/db/schema";
+import { attAppMarks, attStaff, events, roles, users } from "../src/kernel/db/schema";
 import { requireEnv } from "../src/kernel/config";
 import { createUser } from "../src/kernel/auth/identity";
 import { assignRole, grantPermissionToRole, syncPermissions } from "../src/kernel/auth/permissions";
@@ -236,6 +236,53 @@ describe("attendance links e2e (#634)", () => {
       expect([nope.status, nope.body]).toEqual([404, { code: "unknown_person" }]);
       expect((await http().post("/admin/users/attendance-links").set(admin).send({ pin: "303", userId: "01JZZZZZZZZZZZZZZZZZZZZZZZ" })).body).toEqual({ code: "user_not_found" });
       expect((await http().post("/admin/users/attendance-links").set(admin).send({ pin: "303", userId: gone, extra: 1 })).body).toEqual({ code: "bad_body" });
+    });
+
+    describe("unlinking (a wrong link mended; re-point = unlink, then link again by the match rule)", () => {
+      const unlink = (pin: string, body: unknown, who: { Authorization: string } = admin) => http().post(`/admin/users/attendance-links/${pin}/unlink`).set(who).send(body as object);
+
+      it("needs a short reason; frees both sides; the event names the admin and the reason; past app marks stay", async () => {
+        const wrong = await mk("d.nair", "D Nair", { phone: mobileOf("301") });
+        await http().post("/admin/users/attendance-links").set(admin).send({ pin: "301", userId: wrong }).expect(200);
+        await db.insert(attAppMarks).values({ id: "mark-1", userId: wrong, pin: "301", day: istDate(new Date()), kind: "in", place: "inside", distanceM: 12 });
+
+        expect((await unlink("301", {})).body).toEqual({ code: "bad_body" });
+        expect((await unlink("301", { reason: "  " })).body).toEqual({ code: "bad_body" });
+        expect((await unlink("301", { reason: "x".repeat(201) })).body).toEqual({ code: "bad_body" });
+        // A reason is free text: a number long enough to be a mobile or an Aadhaar is refused, never stored.
+        expect((await unlink("301", { reason: `wrong person, real one is ${mobileOf("301")}` })).body).toEqual({ code: "reason_has_number" });
+        expect((await db.select().from(attStaff).where(eq(attStaff.pin, "301")))[0]!.userId).toBe(wrong);
+
+        const res = await unlink("301", { reason: "Linked to the wrong login" }).expect(200);
+        expect(res.body).toMatchObject({ pin: "301", userId: wrong, relinksOnSync: true });
+        expect(res.body.counts.linked).toBe(0);
+        expect((await db.select().from(attStaff).where(eq(attStaff.pin, "301")))[0]).toMatchObject({ userId: null, linkSource: null, linkedAt: null });
+        const ev = await db.select().from(events).where(eq(events.name, "attendance.person_unlinked"));
+        expect(ev.map((e) => [e.actorType, e.actorId, e.payload])).toEqual([["user", adminId, { pin: "301", userId: wrong, source: "mobile", reason: "Linked to the wrong login" }]]);
+        clean(ev.map((e) => e.payload));
+        // The mark made while linked is the person's record and stays exactly as it was.
+        expect(await db.select().from(attAppMarks)).toEqual([expect.objectContaining({ id: "mark-1", userId: wrong, pin: "301" })]);
+      });
+
+      it("re-point: unlink, then the right login links through the normal match rule (and a non-matching one is still refused)", async () => {
+        const wrong = await mk("d.nair", "D Nair", { phone: mobileOf("301") });
+        const right = await mk("m.nair", "M Nair", { phone: mobileOf("301") });
+        const bare = await mk("bare", "Bare");
+        await http().post("/admin/users/attendance-links").set(admin).send({ pin: "301", userId: wrong }).expect(200);
+        expect((await http().post("/admin/users/attendance-links").set(admin).send({ pin: "301", userId: right })).body).toEqual({ code: "person_linked" });
+        await unlink("301", { reason: "Wrong login" }).expect(200);
+        expect((await http().post("/admin/users/attendance-links").set(admin).send({ pin: "301", userId: bare })).body).toEqual({ code: "no_match" });
+        const done = await http().post("/admin/users/attendance-links").set(admin).send({ pin: "301", userId: right }).expect(200);
+        expect(done.body.source).toBe("mobile");
+      });
+
+      it("a person not linked is 409 not_linked; an unknown pin is 404; only the Users permission may unlink", async () => {
+        expect((await unlink("301", { reason: "x" })).body).toEqual({ code: "not_linked" });
+        const nope = await unlink("999", { reason: "x" });
+        expect([nope.status, nope.body]).toEqual([404, { code: "unknown_person" }]);
+        for (const who of [committee, plain]) expect((await unlink("301", { reason: "x" }, who)).status).toBe(403);
+        expect((await http().post("/admin/users/attendance-links/301/unlink").send({ reason: "x" })).status).toBe(401);
+      });
     });
 
     it("every admin route is the Users screen's permission: the committee and a plain person are refused", async () => {

@@ -5,7 +5,7 @@ import { PaperScreen } from "../components/paper-screen";
 import { SubmitButton } from "../components/submit-button";
 import { useAuth } from "../lib/auth";
 import { adminErrorCode, adminErrorMessage, setUserIdentity } from "../lib/admin-api";
-import { linkCandidates, linkPerson, listSuggestions, listUnlinked, searchMachinePeople } from "../lib/attendance-links-api";
+import { linkCandidates, linkPerson, listSuggestions, listUnlinked, searchMachinePeople, unlinkPerson } from "../lib/attendance-links-api";
 import type { WireLinkCounts, WireLoginRow, WireMachinePerson, WireSuggestion } from "../lib/attendance-links-api";
 
 const WATCH = "attendance.all.read";
@@ -157,7 +157,7 @@ function UnlinkedTab(): React.ReactElement {
 
 function linkRefusal(t: (k: string) => string, e: unknown): string {
   const code = adminErrorCode(e);
-  const known = ["no_match", "person_linked", "login_linked", "login_inactive", "unknown_person", "user_not_found", "mobile_invalid", "aadhaar_invalid", "aadhaar_key_not_configured"];
+  const known = ["no_match", "not_linked", "reason_has_number", "bad_body", "person_linked", "login_linked", "login_inactive", "unknown_person", "user_not_found", "mobile_invalid", "aadhaar_invalid", "aadhaar_key_not_configured"];
   return code !== null && known.includes(code) ? t(`attendanceLinks.error.${code}`) : adminErrorMessage(e);
 }
 
@@ -259,6 +259,22 @@ function PersonPanel({ pin, onBack, onLinked }: { pin: string; onBack: () => voi
     } catch (e) { setError(linkRefusal(t, e)); }
   };
 
+  // UNLINK (#634): a wrong link mended. A reason is required; the server refuses one holding a long number.
+  const [unlinking, setUnlinking] = useState(false);
+  const [reason, setReason] = useState("");
+  const unlink = async (): Promise<void> => {
+    const was = data.data?.person;
+    if (was?.login == null) return;
+    setError(null);
+    try {
+      const done = await unlinkPerson(pin, reason.trim());
+      setUnlinking(false); setReason("");
+      const said = t("attendanceLinks.unlinkedNotice", { name: was.name, username: was.login.username });
+      onLinked(done.relinksOnSync ? `${said} · ${t("attendanceLinks.unlink.relinks")}` : said);
+      await refresh();
+    } catch (e) { setError(linkRefusal(t, e)); }
+  };
+
   const person = data.data?.person;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -267,6 +283,25 @@ function PersonPanel({ pin, onBack, onLinked }: { pin: string; onBack: () => voi
         <div className="box" data-testid="byhand-person" style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ flex: 1, minWidth: 0 }}><PersonLine {...person} /></span>
           <PersonState p={person} />
+          {person.login !== null && !unlinking && (
+            <button type="button" className="sec" style={small} data-testid="byhand-unlink" onClick={() => { setError(null); setUnlinking(true); }}>{t("attendanceLinks.unlink.button")}</button>
+          )}
+        </div>
+      )}
+      {person !== undefined && person.login !== null && unlinking && (
+        <div role="dialog" aria-labelledby="links-unlink-title" className="box" data-testid="byhand-unlink-confirm"
+          style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, borderColor: "var(--gold-line)", background: "var(--gold-soft)" }}>
+          <span id="links-unlink-title" style={{ fontWeight: 700, fontSize: 13.5 }}>
+            {t("attendanceLinks.unlink.title", { name: person.name, pin: person.pin, username: person.login.username })}
+          </span>
+          <span style={{ fontSize: 12 }}>{t("attendanceLinks.unlink.marksStay")}</span>
+          <label className="tag" htmlFor="links-unlink-reason">{t("attendanceLinks.unlink.reason")}</label>
+          <input id="links-unlink-reason" className="in" data-testid="byhand-unlink-reason" maxLength={200} autoComplete="off"
+            placeholder={t("attendanceLinks.unlink.reasonHint")} style={{ height: 34, fontSize: 13, maxWidth: 420 }} value={reason} onChange={(e) => setReason(e.target.value)} />
+          <div style={{ display: "flex", gap: 8 }}>
+            <SubmitButton plain type="button" className="pri" data-testid="byhand-unlink-yes" style={small} disabled={reason.trim() === ""} onClick={unlink}>{t("attendanceLinks.unlink.yes")}</SubmitButton>
+            <button type="button" className="sec" style={small} onClick={() => { setUnlinking(false); setReason(""); }}>{t("attendanceLinks.confirm.no")}</button>
+          </div>
         </div>
       )}
       {person !== undefined && person.login === null && (
