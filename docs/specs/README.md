@@ -14,3 +14,11 @@ repo, so a pull request shows the spec and the code changing together.
 or `packages/`, closes issue #N (`Closes`/`Fixes`/`Resolves #N`), and leaves `docs/specs/N-*.md` untouched. When the
 build is done, the same PR sets `status: built` and records anything that changed against the spec. `Refs #N` never
 binds, and an issue with no spec (a bug fix) passes.
+
+**Done means are tests.** A spec's `## Done means` section lists ids `D1`..`Dn`. The build lane's first commit adds
+one test per id under an `acceptance/` folder, its name carrying `spec #N Dk`, red against `main`; `acceptance-guard`
+then locks them. `spec-guard` fails a PR that leaves a spec `status: built` while any id has no such test. Specs whose
+done-means carry no ids are not checked.
+
+**Roadmap.** GitHub milestones are the only roadmap; the `ROADMAP` files under `docs/` are superseded history.
+Decision 0081 records all of the above.

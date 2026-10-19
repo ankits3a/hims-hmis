@@ -1,5 +1,5 @@
 {
-  "id": "c4573d8e-69d8-4c17-9d90-c6f4b680a6a3",
+  "id": "7e2628cc-a0e3-4de7-bbef-883df0944bd1",
   "prevId": "612051c1-1d27-4a66-bd81-580a2d5707ec",
   "version": "7",
   "dialect": "postgresql",
@@ -6584,6 +6584,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "department_id": {
+          "name": "department_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "slot_minutes": {
           "name": "slot_minutes",
           "type": "integer",
@@ -6666,12 +6672,172 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "opd_doctor_schedules_department_id_opd_departments_id_fk": {
+          "name": "opd_doctor_schedules_department_id_opd_departments_id_fk",
+          "tableFrom": "opd_doctor_schedules",
+          "tableTo": "opd_departments",
+          "columnsFrom": [
+            "department_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.opd_doctor_secondary_departments": {
+      "name": "opd_doctor_secondary_departments",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "doctor_id": {
+          "name": "doctor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "department_id": {
+          "name": "department_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "from_date": {
+          "name": "from_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "to_date": {
+          "name": "to_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "ended_by": {
+          "name": "ended_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "opd_doctor_secondary_departments_doctor_idx": {
+          "name": "opd_doctor_secondary_departments_doctor_idx",
+          "columns": [
+            {
+              "expression": "doctor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "opd_doctor_secondary_departments_department_idx": {
+          "name": "opd_doctor_secondary_departments_department_idx",
+          "columns": [
+            {
+              "expression": "department_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "opd_doctor_secondary_departments_open_ux": {
+          "name": "opd_doctor_secondary_departments_open_ux",
+          "columns": [
+            {
+              "expression": "doctor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "to_date is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "opd_doctor_secondary_departments_doctor_id_opd_doctors_id_fk": {
+          "name": "opd_doctor_secondary_departments_doctor_id_opd_doctors_id_fk",
+          "tableFrom": "opd_doctor_secondary_departments",
+          "tableTo": "opd_doctors",
+          "columnsFrom": [
+            "doctor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "opd_doctor_secondary_departments_department_id_opd_departments_id_fk": {
+          "name": "opd_doctor_secondary_departments_department_id_opd_departments_id_fk",
+          "tableFrom": "opd_doctor_secondary_departments",
+          "tableTo": "opd_departments",
+          "columnsFrom": [
+            "department_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "opd_doctor_secondary_departments_dates_ck": {
+          "name": "opd_doctor_secondary_departments_dates_ck",
+          "value": "\"opd_doctor_secondary_departments\".\"to_date\" is null or \"opd_doctor_secondary_departments\".\"to_date\" >= \"opd_doctor_secondary_departments\".\"from_date\" - 1"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.opd_doctors": {
@@ -55160,172 +55326,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.doctor_desk_acts": {
-      "name": "doctor_desk_acts",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "row_key": {
-          "name": "row_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "team_id": {
-          "name": "team_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "holder_id": {
-          "name": "holder_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "actor_id": {
-          "name": "actor_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "choice": {
-          "name": "choice",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "note": {
-          "name": "note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "opened_at": {
-          "name": "opened_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "acted_at": {
-          "name": "acted_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "doctor_desk_acts_once_ux": {
-          "name": "doctor_desk_acts_once_ux",
-          "columns": [
-            {
-              "expression": "row_key",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "doctor_desk_acts_team_idx": {
-          "name": "doctor_desk_acts_team_idx",
-          "columns": [
-            {
-              "expression": "team_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "acted_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "doctor_desk_acts_actor_idx": {
-          "name": "doctor_desk_acts_actor_idx",
-          "columns": [
-            {
-              "expression": "actor_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "acted_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "doctor_desk_acts_holder_id_users_id_fk": {
-          "name": "doctor_desk_acts_holder_id_users_id_fk",
-          "tableFrom": "doctor_desk_acts",
-          "tableTo": "users",
-          "columnsFrom": [
-            "holder_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "doctor_desk_acts_actor_id_users_id_fk": {
-          "name": "doctor_desk_acts_actor_id_users_id_fk",
-          "tableFrom": "doctor_desk_acts",
-          "tableTo": "users",
-          "columnsFrom": [
-            "actor_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "doctor_desk_acts_choice_ck": {
-          "name": "doctor_desk_acts_choice_ck",
-          "value": "\"doctor_desk_acts\".\"choice\" in ('seen_at_bedside', 'ecg_ordered', 'repeat_sample_sent', 'treatment_started', 'other')"
-        },
-        "doctor_desk_acts_other_ck": {
-          "name": "doctor_desk_acts_other_ck",
-          "value": "\"doctor_desk_acts\".\"choice\" <> 'other' or length(btrim(coalesce(\"doctor_desk_acts\".\"note\", ''))) between 3 and 200"
-        },
-        "doctor_desk_acts_order_ck": {
-          "name": "doctor_desk_acts_order_ck",
-          "value": "\"doctor_desk_acts\".\"acted_at\" >= \"doctor_desk_acts\".\"opened_at\""
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.doctor_desk_agent_runs": {
       "name": "doctor_desk_agent_runs",
       "schema": "",
@@ -55550,156 +55550,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.doctor_desk_moves": {
-      "name": "doctor_desk_moves",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "row_key": {
-          "name": "row_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "team_id": {
-          "name": "team_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "from_user_id": {
-          "name": "from_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "to_user_id": {
-          "name": "to_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "moved_by": {
-          "name": "moved_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "alert_id": {
-          "name": "alert_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "doctor_desk_moves_row_idx": {
-          "name": "doctor_desk_moves_row_idx",
-          "columns": [
-            {
-              "expression": "row_key",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "doctor_desk_moves_team_idx": {
-          "name": "doctor_desk_moves_team_idx",
-          "columns": [
-            {
-              "expression": "team_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "doctor_desk_moves_from_user_id_users_id_fk": {
-          "name": "doctor_desk_moves_from_user_id_users_id_fk",
-          "tableFrom": "doctor_desk_moves",
-          "tableTo": "users",
-          "columnsFrom": [
-            "from_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "doctor_desk_moves_to_user_id_users_id_fk": {
-          "name": "doctor_desk_moves_to_user_id_users_id_fk",
-          "tableFrom": "doctor_desk_moves",
-          "tableTo": "users",
-          "columnsFrom": [
-            "to_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "doctor_desk_moves_moved_by_users_id_fk": {
-          "name": "doctor_desk_moves_moved_by_users_id_fk",
-          "tableFrom": "doctor_desk_moves",
-          "tableTo": "users",
-          "columnsFrom": [
-            "moved_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "doctor_desk_moves_not_same_ck": {
-          "name": "doctor_desk_moves_not_same_ck",
-          "value": "\"doctor_desk_moves\".\"from_user_id\" <> \"doctor_desk_moves\".\"to_user_id\""
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.doctor_desk_nudges": {
       "name": "doctor_desk_nudges",
       "schema": "",
@@ -55827,204 +55677,6 @@
         "doctor_desk_nudges_not_self_ck": {
           "name": "doctor_desk_nudges_not_self_ck",
           "value": "\"doctor_desk_nudges\".\"sender_id\" <> \"doctor_desk_nudges\".\"holder_id\""
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.doctor_desk_ratings": {
-      "name": "doctor_desk_ratings",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "work_kind": {
-          "name": "work_kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "work_id": {
-          "name": "work_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "work_date": {
-          "name": "work_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "rated_user_id": {
-          "name": "rated_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "rater_id": {
-          "name": "rater_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "team_id": {
-          "name": "team_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "department_id": {
-          "name": "department_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "rating": {
-          "name": "rating",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "doctor_desk_ratings_once_ux": {
-          "name": "doctor_desk_ratings_once_ux",
-          "columns": [
-            {
-              "expression": "work_kind",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "work_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "rater_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "doctor_desk_ratings_rated_idx": {
-          "name": "doctor_desk_ratings_rated_idx",
-          "columns": [
-            {
-              "expression": "rated_user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "work_date",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "doctor_desk_ratings_department_idx": {
-          "name": "doctor_desk_ratings_department_idx",
-          "columns": [
-            {
-              "expression": "department_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "work_date",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "doctor_desk_ratings_rated_user_id_users_id_fk": {
-          "name": "doctor_desk_ratings_rated_user_id_users_id_fk",
-          "tableFrom": "doctor_desk_ratings",
-          "tableTo": "users",
-          "columnsFrom": [
-            "rated_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "doctor_desk_ratings_rater_id_users_id_fk": {
-          "name": "doctor_desk_ratings_rater_id_users_id_fk",
-          "tableFrom": "doctor_desk_ratings",
-          "tableTo": "users",
-          "columnsFrom": [
-            "rater_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "doctor_desk_ratings_kind_ck": {
-          "name": "doctor_desk_ratings_kind_ck",
-          "value": "\"doctor_desk_ratings\".\"work_kind\" in ('opd_visit')"
-        },
-        "doctor_desk_ratings_rating_ck": {
-          "name": "doctor_desk_ratings_rating_ck",
-          "value": "\"doctor_desk_ratings\".\"rating\" in ('good', 'fine', 'needs_rework')"
-        },
-        "doctor_desk_ratings_not_self_ck": {
-          "name": "doctor_desk_ratings_not_self_ck",
-          "value": "\"doctor_desk_ratings\".\"rater_id\" <> \"doctor_desk_ratings\".\"rated_user_id\""
-        },
-        "doctor_desk_ratings_reason_ck": {
-          "name": "doctor_desk_ratings_reason_ck",
-          "value": "\"doctor_desk_ratings\".\"rating\" <> 'needs_rework' or length(btrim(coalesce(\"doctor_desk_ratings\".\"reason\", ''))) between 3 and 200"
-        },
-        "doctor_desk_ratings_reason_len_ck": {
-          "name": "doctor_desk_ratings_reason_len_ck",
-          "value": "\"doctor_desk_ratings\".\"reason\" is null or length(\"doctor_desk_ratings\".\"reason\") <= 200"
         }
       },
       "isRLSEnabled": false
