@@ -13,7 +13,7 @@ Source: `apps/core/src/modules/doctor-desk/`
 
 - **Depends on modules:** `lab`, `opd`, `patients`, `radiology`, `roster`
 - **Used by modules:** —
-- **Kernel used:** `alerts`, `approvals`, `auth`, `db`, `desk`, `events`, `modules`, `phi`, `tokens`
+- **Kernel used:** `alerts`, `approvals`, `auth`, `copilot`, `db`, `desk`, `events`, `modules`, `phi`, `tokens`
 
 ## Public API (`index.ts`), by declaring file
 
@@ -46,8 +46,8 @@ Source: `apps/core/src/modules/doctor-desk/`
 
 Foreign keys into: `auth`
 
-## HTTP routes (16)
+## HTTP routes
 
-- `doctor-desk.controller.ts` — 16: `/doctor-desk/acts`, `/doctor-desk/briefs`, `/doctor-desk/clocks`, `/doctor-desk/landing`, `/doctor-desk/now`, `/doctor-desk/opd`, `/doctor-desk/professor`, `/doctor-desk/ratings`, `/doctor-desk/reports`, `/doctor-desk/tower`, `/doctor-desk/unit`
+- `doctor-desk.controller.ts` — `/doctor-desk/acts`, `/doctor-desk/briefs`, `/doctor-desk/clocks`, `/doctor-desk/landing`, `/doctor-desk/now`, `/doctor-desk/opd`, `/doctor-desk/professor`, `/doctor-desk/ratings`, `/doctor-desk/reports`, `/doctor-desk/tower`, `/doctor-desk/unit`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/doctor-desk`

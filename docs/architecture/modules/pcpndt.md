@@ -76,8 +76,8 @@ Source: `apps/core/src/modules/pcpndt/`
 
 Foreign keys into: `auth`, `patients`, `resources`
 
-## HTTP routes (10)
+## HTTP routes
 
-- `pcpndt.controller.ts` — 10: `/pcpndt/form-f`, `/pcpndt/machines`, `/pcpndt/persons`, `/pcpndt/registrations`, `/pcpndt/studies`
+- `pcpndt.controller.ts` — `/pcpndt/form-f`, `/pcpndt/machines`, `/pcpndt/persons`, `/pcpndt/registrations`, `/pcpndt/studies`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/pcpndt`

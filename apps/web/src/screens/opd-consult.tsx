@@ -2411,6 +2411,12 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
         </span>
       )}
       <VisitTypeBadge visitType={shownVisitType(e.encounter)} size="sm" testId={`queue-visit-type-${e.id}`} />
+      {/* #914 — a patient who came to this doctor's second department says which one. */}
+      {e.encounter.departmentId != null && me.data !== undefined && e.encounter.departmentId !== me.data.departmentId && (
+        <span data-testid={`queue-dept-${e.id}`} className="tag" style={{ fontSize: 10.5, padding: "1px 6px", borderRadius: 4, border: "1px solid var(--line)" }}>
+          {e.encounter.departmentName ?? ""}
+        </span>
+      )}
       {/* Owner 2026-10-07 — nobody to call into the room: the guardian came with the reports. */}
       {e.encounter.patientAbsent != null && <PatientAbsentTag absent={e.encounter.patientAbsent} visitType={e.encounter.visitType} testId={`queue-absent-${e.id}`} />}
       {/*

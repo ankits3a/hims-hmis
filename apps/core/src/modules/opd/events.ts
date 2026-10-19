@@ -75,6 +75,17 @@ export const appointmentNoShow = defineEvent("appointment.no_show", MODULE, z.ob
   appointmentId: id, patientId: id, doctorId: id, serviceDate: isoDate, slotStart: iso,
 }));
 
+/** #914 — a doctor starts serving a second OPD department (the primary is unchanged). */
+export const doctorSecondaryDepartmentSet = defineEvent("doctor.secondary_department_set", MODULE, z.object({
+  secondaryId: id, doctorId: id, departmentId: id, fromDate: isoDate,
+}));
+
+/** #914 — the secondary ends after `lastDate`; booked appointments there after it go to needs_rebooking. */
+export const doctorSecondaryDepartmentEnded = defineEvent("doctor.secondary_department_ended", MODULE, z.object({
+  secondaryId: id, doctorId: id, departmentId: id, lastDate: isoDate,
+  affectedAppointmentIds: z.array(id),
+}));
+
 export const doctorLeaveScheduled = defineEvent("doctor_leave.scheduled", MODULE, z.object({
   leaveId: id, doctorId: id, fromDate: isoDate, toDate: isoDate, reason: z.string().min(1),
   affectedAppointmentIds: z.array(id), // marked needs_rebooking in the same transaction (§11.5 cascade)

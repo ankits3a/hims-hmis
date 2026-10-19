@@ -258,7 +258,8 @@ This is deliberately WIDER than the patients/tariff modules' `code: message` str
 side is realigned.
 
 **Events** (all `module: "opd"`): `appointment.booked` · `appointment.rescheduled` ·
-`appointment.cancelled` · `appointment.no_show` · `doctor_leave.scheduled` · `visit.opened` ·
+`appointment.cancelled` · `appointment.no_show` · `doctor_leave.scheduled` · `doctor.secondary_department_set` ·
+`doctor.secondary_department_ended` · `visit.opened` ·
 `patient.checked_in` · `visit.transferred` · `visit.abandoned` · `vitals.recorded` ·
 `vitals.danger_flagged` · `queue.called` · `queue.skipped` · `consultation.started` ·
 `consultation.completed` · `prescription.issued` · `referral.issued` · `admission.requested`, plus
