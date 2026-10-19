@@ -307,6 +307,16 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
 - `copilot-tools.ts` — `emergency.casualty_now` and `emergency.mlc_due` through the #865 intent seam, FLOOR-ONLY (no menu,
   no help) so the chooser request and the chat system prompt stay byte-identical. Cues are substrings: no "er mein".
 - Web: `apps/web/src/screens/er-copilot.tsx` (card, since arrival, draft button, waiting display).
+- #899 stale withdrawal (no migration): the proposal carries an id built from existing rows (latest triage entry, bay)
+  plus a fingerprint of what it said. `GET /er/copilot/esi/:id/check?basis=` (read) says whether it still stands; the
+  card asks on every board event and every 30 s. Re-triage, a move, departure, new vitals or a changed complaint/age
+  withdraw it with a one-line reason and remove "Use these answers"; a failed check withdraws it too (fail closed).
+- #898 T2 bay proposal: `copilot-bay.ts`, `GET /er/copilot/bay/:id`. Only triaged ESI 2–5 patients with no bay (ESI 1 =
+  resus by a person); ESI 2 red bay with a monitor, 3 yellow, 4–5 green; a child under 14 gets a paeds bay first, an
+  adult never. Zone = `erZone` attribute or zone words in the bed/room name; unreadable or ambiguous zone = never
+  proposed. Resus (ICU, `ventilator_ready`) and isolation (isolation, negative pressure) bays are never proposed; surge,
+  triage and observation bays excluded; lowest free bed code wins. The nurse's tap places it through `place_in_bay`;
+  `er.placed` records the proposed bay and whether the nurse chose another (the measure a T3 climb needs).
 
 ## 4. Traps
 - `registerPatient` takes a `Tx` and the band reads the new patient in that same `tx` (`bandPerson(tx, …)`); reading it
@@ -364,8 +374,9 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
 - Desk: Aadhaar QR and ABHA scans (lane 1 takes the UHID card barcode, UHID, phone and name); a thermal ER band kind on
   the print relay (the browser prints today, decision 0045's fallback); downtime paper-serial reservation.
 - Lane 9 built the copilot. Still owed: the two intents' model-menu lines (needs an eval re-recording); attendant
-  WhatsApp stage messages (IPD's channel, off for MLC and sealed); a bay proposal (T2); the proposal's "stale" withdrawal
-  (it is recomputed on every read today); "since arrival" model rewording (deterministic only).
+  WhatsApp stage messages (IPD's channel, off for MLC and sealed); "since arrival" model rewording (deterministic only);
+  the T3 climb for green-zone bays. Real ER bays need zone names or `erZone`: the generated planning layout names rooms
+  "Bay N", so no bay is proposed there.
 
 ## 6. Callers
 - API: `EmergencyController` (`/er/*`). Worker: `kernel/worker/jobs.ts` `lapseBedReservations` → `lapseErPreAlerts`.
