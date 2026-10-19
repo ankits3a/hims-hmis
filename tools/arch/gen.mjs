@@ -14,8 +14,13 @@
  * main red on a calendar day with no code change.
  *
  * Static analysis only (regex over source). It never imports the app, never touches a database.
- * Output is deterministic and carries no counts that change on every commit (no line counts, no
- * import counts), so two lanes conflict here only when they change real structure.
+ * Output is deterministic and COUNT-FREE: every line is a set-valued fact (which modules, which tables,
+ * which URL areas), never a tally. That makes merges commute. Two PRs that each add a route to the
+ * same module both leave its lines unchanged, or change the same line to the same text, or change it
+ * to different texts (a git conflict, which blocks the merge instead of reddening main). A count
+ * breaks this: both PRs write 174 -> 175, git merges the identical edits cleanly, the truth is 176,
+ * and main's `--check` turns red with no PR to blame (#906). So never render a number derived from
+ * how many things exist. `node tools/arch/commute-proof.mjs` replays that two-PR merge.
  */
 import { readFileSync, writeFileSync, readdirSync, statSync, mkdirSync, rmSync, existsSync } from "node:fs";
 import { join, relative, resolve, dirname, sep } from "node:path";
@@ -383,20 +388,19 @@ function renderReadme() {
   for (const m of moduleNames) for (const d of depsOf(`module:${m}`, "module")) L.push(`  ${mermaidId(m)} --> ${mermaidId(d)}`);
   L.push("```\n");
   L.push("## Modules\n");
-  L.push("| module | depends on | used by | routes | tables |");
-  L.push("|---|---|---|---|---|");
+  // No route or table counts: a count is the one cell two PRs both bump to the same wrong number (#906).
+  L.push("| module | depends on | used by |");
+  L.push("|---|---|---|");
   for (const m of moduleNames) {
-    const r = routesIn(MODULES, m).length;
-    const t = (tables.get(`${m}.ts`) ?? []).length;
-    L.push(`| [${m}](modules/${m}.md) | ${depsOf(`module:${m}`, "module").join(", ") || "—"} | ${usedBy(`module:${m}`, "module").join(", ") || "—"} | ${r} | ${t} |`);
+    L.push(`| [${m}](modules/${m}.md) | ${depsOf(`module:${m}`, "module").join(", ") || "—"} | ${usedBy(`module:${m}`, "module").join(", ") || "—"} |`);
   }
   L.push("\n## Kernel subsystems\n");
   L.push("Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see CLAUDE.md).\n");
-  L.push("| subsystem | used by modules | depends on kernel | routes |");
+  L.push("| subsystem | used by modules | depends on kernel | serves HTTP |");
   L.push("|---|---|---|---|");
   for (const k of kernelNames) {
     const r = routesIn(KERNEL, k).length;
-    L.push(`| \`${k}\` | ${usedBy(`kernel:${k}`, "module").join(", ") || "—"} | ${depsOf(`kernel:${k}`, "kernel").join(", ") || "—"} | ${r || "—"} |`);
+    L.push(`| \`${k}\` | ${usedBy(`kernel:${k}`, "module").join(", ") || "—"} | ${depsOf(`kernel:${k}`, "kernel").join(", ") || "—"} | ${r ? "yes" : "—"} |`);
   }
   L.push("\nKernel HTTP routes: [kernel-routes.md](kernel-routes.md). Database: [schema.md](schema.md). Web screens: [web.md](web.md).\n");
   return L.join("\n");
@@ -434,7 +438,7 @@ function renderModule(m) {
   L.push(own.length ? list(own.map((t) => t.sql)) : "None under this name.");
   if (own.length) L.push(`\nForeign keys into: ${list([...(fk.get(`${m}.ts`) ?? [])].sort(byName).map((f) => f.replace(/\.ts$/, "")))}`);
   // Routes are cheap to grep, so the page names each controller and the URL areas it serves, not every route.
-  L.push(`\n## HTTP routes (${routes.length})\n`);
+  L.push("\n## HTTP routes\n");
   const byCtl = new Map();
   for (const r of routes) {
     const f = r.file.replace(`apps/core/src/modules/${m}/`, "");
@@ -445,7 +449,7 @@ function renderModule(m) {
   for (const f of [...byCtl.keys()].sort(byName)) {
     const rs = byCtl.get(f);
     const areas = uniqSorted(rs.map((r) => "/" + r.path.split("/").filter(Boolean).slice(0, 2).join("/")));
-    L.push(`- \`${f}\` — ${rs.length}: ${areas.map((a) => `\`${a}\``).join(", ")}`);
+    L.push(`- \`${f}\` — ${areas.map((a) => `\`${a}\``).join(", ")}`);
   }
   L.push(`\nFull list: \`grep -rnE "@(Get|Post|Put|Patch|Delete)\\(" apps/core/src/modules/${m}\``);
   L.push("");

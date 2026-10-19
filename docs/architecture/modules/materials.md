@@ -375,9 +375,9 @@ Source: `apps/core/src/modules/materials/`
 
 Foreign keys into: `formulary`, `resources`
 
-## HTTP routes (120)
+## HTTP routes
 
-- `materials-indents.controller.ts` — 6: `/materials/indents`
-- `materials.controller.ts` — 114: `/materials/adjustments`, `/materials/bank-changes`, `/materials/barcodes`, `/materials/consumptions`, `/materials/counts`, `/materials/expiring`, `/materials/expiry-report`, `/materials/grns`, `/materials/items`, `/materials/payables`, `/materials/payment-runs`, `/materials/purchase-orders`, `/materials/purchase-vendors`, `/materials/recalls`, `/materials/settings`, `/materials/stock`, `/materials/stock-levels`, `/materials/stores`, `/materials/supplier-bills`, `/materials/supplier-returns`, `/materials/transfers`, `/materials/vendor-rates`, `/materials/vendors`, `/materials/write-offs`
+- `materials-indents.controller.ts` — `/materials/indents`
+- `materials.controller.ts` — `/materials/adjustments`, `/materials/bank-changes`, `/materials/barcodes`, `/materials/consumptions`, `/materials/counts`, `/materials/expiring`, `/materials/expiry-report`, `/materials/grns`, `/materials/items`, `/materials/payables`, `/materials/payment-runs`, `/materials/purchase-orders`, `/materials/purchase-vendors`, `/materials/recalls`, `/materials/settings`, `/materials/stock`, `/materials/stock-levels`, `/materials/stores`, `/materials/supplier-bills`, `/materials/supplier-returns`, `/materials/transfers`, `/materials/vendor-rates`, `/materials/vendors`, `/materials/write-offs`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/materials`
