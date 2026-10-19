@@ -24,6 +24,8 @@ export * from "./lab-formula";
 export * from "./lab-ast";
 export * from "./ipd-bed-classes";
 export * from "./ipd";
+// ER lane 1 (#808) — the emergency department: arrival and identity intents, the tracking board and the ER desk.
+export * from "./emergency";
 export * from "./tasks";
 export * from "./bmw";
 export * from "./linen";

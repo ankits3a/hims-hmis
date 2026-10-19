@@ -75,3 +75,9 @@ export type { QrVerifyResult } from "./qr";
 export { isValidUhid, registrationConfigured, PatientError } from "./uhid";
 export type { PatientErrorCode } from "./uhid";
 export * from "./events";
+/**
+ * ER lane 1 (#808) — the emergency department's `link_identity` FILES a merge request (unknown → true record) in its own
+ * transaction, through the one writer of `patient_merge_requests`, and reads the request's stage back for the ER desk. The
+ * merge itself, its approval and its execution stay here.
+ */
+export { MERGE_APPROVAL_TYPE, createMergeRequest, getMergeRequest } from "./merge";
