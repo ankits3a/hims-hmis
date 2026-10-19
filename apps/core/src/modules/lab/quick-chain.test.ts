@@ -58,6 +58,22 @@ describe("the quick lab chain (owner 2026-10-11)", () => {
     expect(await code(withTx(db, (tx) => quickCollect(tx, fx.desk.actor, placed.orderId)))).toBe("already_collected");
   });
 
+  /**
+   * #889 — an order's tests come back in ONE fixed order (by test code, as every lab screen shows
+   * them), whatever order they were ordered or stored in. The order is placed LFT first so the heap
+   * order is the reverse of the code order; without the reader's ORDER BY this saw [LFT, CBC].
+   */
+  it("an order's tests are listed by test code, not by the order they were placed in (#889)", async () => {
+    const placed = await order(["LFT", "CBC"]);
+    for (let i = 0; i < 3; i++) {
+      const waiting = await quickCollectQueue(db, fx.desk.actor);
+      expect(waiting.map((w) => w.tests.map((t) => t.code))).toEqual([["CBC", "LFT"]]);
+    }
+    /** Blood collected stores the same order, so the bench form and the printed groups follow it. */
+    const row = await withTx(db, (tx) => quickCollect(tx, fx.desk.actor, placed.orderId));
+    expect(row.tests.map((t) => t.code)).toEqual(["CBC", "LFT"]);
+  });
+
   it("Save draft stays on the bench; Save & Complete goes to the reports; Send back returns it as a draft; Hand over closes it", async () => {
     const placed = await order();
     const { id } = await withTx(db, (tx) => quickCollect(tx, fx.desk.actor, placed.orderId));

@@ -1,6 +1,8 @@
 import { ATTENTION_TAB_OF } from "@hmis/contracts";
 import type { Actor, AttentionKind, WireAttentionRow } from "@hmis/contracts";
-import { deltaResultsForClinician, openCriticalsForClinician } from "../lab";
+import { closedCriticalsForClinician, deltaResultsForClinician, openCriticalsForClinician } from "../lab";
+import { actedKeys, criticalMoves, OWED_ALERT_DAYS } from "./owed";
+import { hasPermission } from "../../kernel/auth/permissions";
 import { unreadReportsForClinician } from "../radiology";
 import { closedVisitNos, openVisitsForDoctor } from "../opd";
 import { getPatientSummaries } from "../patients";
@@ -34,14 +36,37 @@ async function safely<T>(f: () => Promise<T[]>): Promise<T[]> {
 
 const RANK: Record<AttentionKind, number> = { lab_critical: 0, imaging_critical: 1, lab_delta: 2, imaging_unread: 3, visit_open: 4 };
 
-export async function waitingOn(db: Db, actor: Actor, at: Date, istDate: string): Promise<WireAttentionRow[]> {
+/**
+ * DD-1b (#903) — a MOVE (`doctor_desk_moves`) changes whose a lab critical is: `members` (the asker's
+ * unit, `deskScope`) lets the newest move hand a critical to me — I did not order it, so the lab's
+ * restricted-test rule applies (dropped unless I hold `orders.read.restricted`, DD11) and the patient
+ * shows by alias as every Desk line — and takes my own critical off my list once it is another
+ * member's. Clocks Running keeps the row for the unit either way.
+ */
+export async function waitingOn(
+  db: Db, actor: Actor, at: Date, istDate: string, members: readonly { userId: string }[],
+): Promise<WireAttentionRow[]> {
   const me = actor.id;
-  const [crit, imaging, deltas, visits] = await Promise.all([
+  const since = new Date(at.getTime() - OWED_ALERT_DAYS * 86_400_000);
+  const [openCrit, closedCrit, imaging, deltas, visits] = await Promise.all([
     safely(() => openCriticalsForClinician(db, [me])),
+    safely(() => closedCriticalsForClinician(db, [me], since)),
     safely(() => unreadReportsForClinician(db, me)),
     safely(() => deltaResultsForClinician(db, [me], new Date(at.getTime() - DELTA_WINDOW_HOURS * 3_600_000))),
     safely(() => openVisitsForDoctor(db, me, istDate)),
   ]);
+  const { movedIn, movedOut } = await criticalMoves(db, me, members, [...openCrit, ...closedCrit].map((c) => `lab_critical:${c.id}`))
+    .catch(() => ({ movedIn: [], movedOut: new Set<string>() }));
+  const canSeeRestricted = movedIn.some((c) => c.restricted) && actor.type === "user"
+    && await hasPermission(db, me, "orders.read.restricted", "hospital").catch(() => false);
+  const given = movedIn.filter((c) => (c.closedAt === null || c.closedAt >= since) && (!c.restricted || canSeeRestricted));
+  // DD-1.3 (D3) — an open call is red; a call the lab closed with no act recorded stays, amber; an act removes both.
+  const all = [
+    ...openCrit.map((c) => ({ ...c, acked: false })), ...closedCrit.map((c) => ({ ...c, acked: true })),
+    ...given.map((c) => ({ ...c, acked: c.closedAt !== null })),
+  ].filter((c) => !movedOut.has(`lab_critical:${c.id}`));
+  const acted = await actedKeys(db, all.map((c) => `lab_critical:${c.id}`)).catch(() => new Set<string>());
+  const crit = all.filter((c) => !acted.has(`lab_critical:${c.id}`));
   const gone = await closedVisitNos(db, [...crit.map((c) => c.encounterNo), ...imaging.filter((i) => i.critical).map((i) => i.encounterNo)]).catch(() => new Set<string>());
 
   const raw: Raw[] = [
@@ -50,6 +75,7 @@ export async function waitingOn(db: Db, actor: Actor, at: Date, istDate: string)
       params: { analyte: c.analyte, value: c.value ?? "", unit: c.unit ?? "" },
       at: c.at.toISOString(), goneHome: gone.has(c.encounterNo),
       source: { module: "lab", ref: c.resultId }, href: `/patients/${c.patientId}`,
+      ...(c.acked ? { acked: true } : {}),
     })),
     ...imaging.map((i): Raw => ({
       key: `${i.critical ? "imaging_critical" : "imaging_unread"}:${i.reportId}`, kind: i.critical ? "imaging_critical" : "imaging_unread",
