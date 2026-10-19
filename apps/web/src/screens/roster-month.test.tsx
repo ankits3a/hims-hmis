@@ -55,6 +55,10 @@ describe("RosterMonth (20-U U5b)", () => {
   let covers: WireCoverRequest[];
 
   beforeEach(() => {
+    // The grid opens on "this week" by the real clock, and these fixtures sit in the week of 12–13 Oct 2026; freeze
+    // the clock there (Date only, so user-event's timers still run). Main went red on 19 Oct without it.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-13T06:00:00.000Z"));
     setToken("t");
     calls.length = 0;
     current = month();
@@ -87,7 +91,7 @@ describe("RosterMonth (20-U U5b)", () => {
       return json(afterWrite);
     }));
   });
-  afterEach(() => { vi.unstubAllGlobals(); });
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
   it("publish is disabled, and says why, while a must-fix finding stands — and the finding is a sentence naming the person and the day", async () => {
     renderWithProviders(<RosterMonth team="u2" month="2026-10" />);
@@ -244,7 +248,9 @@ describe("RosterMonth (20-U U5b)", () => {
     renderWithProviders(<RosterMonth team="u2" month="2026-10" />);
     await screen.findByTestId("month-grid");
     await user.click(screen.getByTestId("zoom-day"));
-    // Page to the 13th.
+    // Page to the 13th. The day view opens on today's real date, so go back to the month's first day first:
+    // paging only "Later" never reaches the 13th once the real clock is past it.
+    while (!(screen.getByRole("button", { name: "Earlier" }) as HTMLButtonElement).disabled) await user.click(screen.getByRole("button", { name: "Earlier" }));
     while (!screen.getByTestId("pager-range").textContent!.includes("13 Oct")) await user.click(screen.getByRole("button", { name: "Later" }));
     const list = screen.getByTestId("month-grid");
     const rows = [...list.querySelectorAll(".rm-dl-row")].map((r) => r.textContent);
