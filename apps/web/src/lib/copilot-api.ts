@@ -84,6 +84,8 @@ export type CopilotHealth = {
   wrongTaps: number;
   wrongShare: number | null;
   acts: number;
+  /** #686 — confirm taps that day, every outcome; not counted in `asks`. */
+  confirms: number;
   /** E0.5 — chooser + model calls that day and their ESTIMATED cost in rupees. */
   modelCalls: number;
   spendInr: number;

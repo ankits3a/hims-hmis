@@ -80,6 +80,7 @@ export function CopilotHealthScreen(): React.ReactElement {
               ["wrongTaps", String(health.wrongTaps)],
               ["wrongShare", share(health.wrongShare)],
               ["acts", String(health.acts)],
+              ["confirms", String(health.confirms)],
               ["modelCalls", String(health.modelCalls)],
               ["spend", inr(health.spendInr)],
             ] as const).map(([k, v]) => (
