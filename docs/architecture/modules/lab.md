@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/lab/`
 
 - **Depends on modules:** `billing`, `opd`, `patients`, `tariff`
-- **Used by modules:** `abdm`, `ordering`, `radiology`
+- **Used by modules:** `abdm`, `doctor-desk`, `ordering`, `radiology`
 - **Kernel used:** `approvals`, `auth`, `db`, `desk`, `episodes`, `events`, `modules`, `notify`, `ops`, `orders`, `phi`, `printing`, `realtime`, `report`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `interfaceDown`, `interfaceRestored`
 
@@ -40,6 +40,11 @@ Source: `apps/core/src/modules/lab/`
   - `upsertAnalyte(exec: Db | Tx, actor: Actor, input: AnalyteInput): Promise<string>`
   - `upsertOrderable(exec: Db | Tx, actor: Actor, input: OrderableInput): Promise<void>`
   - types: `AnalyteInput`, `OrderableInput`, `ReferenceRangeInput`
+- `clinician-reads.ts`
+  - `deltaResultsForClinician(exec: Db | Tx, userIds: readonly string[], since: Date): Promise<ClinicianLabRow[]>`
+  - `openCriticalsForClinician(exec: Db | Tx, userIds: readonly string[]): Promise<ClinicianLabRow[]>`
+  - `resultsForPatientSince(exec: Db | Tx, actor: Actor, patientIds: readonly string[], since: Date): Promise<PatientResultSince[]>`
+  - types: `ClinicianLabRow`, `PatientResultSince`
 - `coagulation.ts`
   - `INR_ANALYTE_CODES: readonly string[]`
   - `PLATELET_ANALYTE_CODES: readonly string[]`
@@ -207,6 +212,7 @@ Source: `apps/core/src/modules/lab/`
   - `publishReport(db: Db, actor: Actor, input: PublishReportInput, now: Date = new Date()): Promise<PublishedReport>`
   - `releaseUnpaid(db: Db, actor: Actor, input: ReleaseUnpaidInput, now: Date = new Date()): Promise<PrintedReport>`
   - `reportVersions(exec: Db | Tx, orderId: string): Promise<ReportVersionRow[]>`
+  - `reportVersionsFor(db: Db, actor: Actor, orderId: string): Promise<ReportVersionRow[]>`
   - `reportsForPatient(db: Db, actor: Actor, patientId: string, now: Date = new Date()): Promise<PatientReports>`
   - types: `AmendReportInput`, `DeliveryRegisterRow`, `EncounterResultRow`, `PatientReportRow`, `PatientReports`, `PrintReportInput`, `PrintedReport`, `ProvisionalResultRow`, `PublishReportInput`, `PublishedReport`, `ReleaseUnpaidInput`, `ReportAnalyteLine`, `ReportDeliveryRow`, `ReportNotice`, `ReportPanel`, `ReportSnapshot`, `ReportVersionRow`, `ReportView`
 - `results.ts`

@@ -118,6 +118,40 @@ export const opdDoctors = pgTable(
   ],
 );
 
+/**
+ * #914 (owner 2026-10-17) — a doctor's SECONDARY OPD department, held until a specialist fills a
+ * vacant department. The primary stays on `opd_doctors.department_id`, so every reader of that
+ * column (lab, radiology, roster units, pace, bench) keeps the doctor where it was.
+ *
+ * At most one per doctor at a time: the open row (`to_date` null) is unique, and `secondary.ts`
+ * refuses a second while one still runs on or after today. `to_date` is the LAST day served,
+ * inclusive, like `opd_doctor_leaves.to_date`. Rows are never deleted: an ended row is history, and
+ * one withdrawn before its first day keeps `to_date = from_date - 1` (it served no day).
+ *
+ * Money (owner 2026-10-17): the visit's department decides the charge and any split; nothing here
+ * prices anything.
+ */
+export const opdDoctorSecondaryDepartments = pgTable(
+  "opd_doctor_secondary_departments",
+  {
+    id: text("id").primaryKey(),
+    doctorId: text("doctor_id").notNull().references(() => opdDoctors.id),
+    departmentId: text("department_id").notNull().references(() => opdDepartments.id),
+    fromDate: date("from_date", { mode: "string" }).notNull(),
+    toDate: date("to_date", { mode: "string" }), // inclusive; null = until ended
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    endedBy: text("ended_by"),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("opd_doctor_secondary_departments_doctor_idx").on(t.doctorId),
+    index("opd_doctor_secondary_departments_department_idx").on(t.departmentId),
+    uniqueIndex("opd_doctor_secondary_departments_open_ux").on(t.doctorId).where(sql`to_date is null`),
+    check("opd_doctor_secondary_departments_dates_ck", sql`${t.toDate} is null or ${t.toDate} >= ${t.fromDate} - 1`),
+  ],
+);
+
 /** Weekly availability template. Times are IST 'HH:MM'. Slots are derived, never materialised (slots.ts). */
 export const opdDoctorSchedules = pgTable(
   "opd_doctor_schedules",
@@ -130,6 +164,8 @@ export const opdDoctorSchedules = pgTable(
     // PLAN 13 T6 — REPOINTED at the registry. The value is UNCHANGED: room ids are ULIDs, so
     // `0032` preserved every one of them and only this foreign key's TARGET moved.
     roomId: text("room_id").notNull().references(() => resources.id),
+    // #914 — the department this session serves; null ⇒ the doctor's primary department.
+    departmentId: text("department_id").references(() => opdDepartments.id),
     slotMinutes: integer("slot_minutes"), // null ⇒ opd_config.slot_minutes
     validFrom: date("valid_from", { mode: "string" }).notNull(),
     validTo: date("valid_to", { mode: "string" }), // null = open-ended
@@ -1633,6 +1669,44 @@ export const cdsRxLines = pgTable(
 );
 
 /**
+ * #614 (plan P3) — ONE ROW PER DESK ROUTING THAT BECAME A VISIT OR AN APPOINTMENT. The desk's
+ * department suggestion (`POST /opd/triage`) hands back a `triageId`; the walk-in or the booking
+ * carries it, and this row joins what was suggested to where the patient was sent. The LABEL — the
+ * department where the visit completed — is read from `opd_encounters` at query time, so a move after
+ * the desk is counted where it ended and nothing has to write here at completion.
+ *
+ * No complaint text and no patient id: the concept set is a sorted list of the hospital's own
+ * complaint concept keys, recognised in the MASKED complaint (`desk-routing.ts`).
+ */
+export const cdsDeskRoutingOutcomes = pgTable(
+  "cds_desk_routing_outcomes",
+  {
+    id: text("id").primaryKey(),
+    triageId: text("triage_id").notNull(),
+    encounterId: text("encounter_id").references(() => opdEncounters.id),
+    appointmentId: text("appointment_id").references(() => opdAppointments.id),
+    /** Sorted concept keys joined by '|'; null when the words did not reduce to a usable set. */
+    conceptKey: text("concept_key"),
+    /** `adult` | `pediatric` | `unknown` — the age the desk sent, cut where `cds/regimen.ts` cuts it. */
+    band: text("band").notNull(),
+    /** Held out of every learned channel for good: the evaluation set grows from these. */
+    holdout: boolean("holdout").notNull(),
+    suggested: jsonb("suggested").$type<string[]>().notNull(),
+    /** What ranked the suggestion the desk saw: `keywords` | `model` | `prior`. */
+    source: text("source").notNull(),
+    pickedDepartmentId: text("picked_department_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("cds_desk_routing_outcomes_triage_uq").on(t.triageId),
+    index("cds_desk_routing_outcomes_concept_idx").on(t.conceptKey),
+    check("cds_desk_routing_outcomes_band_ck", sql`${t.band} in ('adult', 'pediatric', 'unknown')`),
+    check("cds_desk_routing_outcomes_source_ck", sql`${t.source} in ('keywords', 'model', 'prior')`),
+    check("cds_desk_routing_outcomes_link_ck", sql`${t.encounterId} is not null or ${t.appointmentId} is not null`),
+  ],
+);
+
+/**
  * Decision 0050, P0 — each doctor's own switch for the suggestions this system draws from counts.
  * ON unless the doctor turns it off (DECIDED: these are the doctor's own patterns handed back, not
  * the copilot's proactive mode of decision 0006).
@@ -1651,6 +1725,28 @@ export const cdsDoctorPrefs = pgTable(
     copilotDraftProse: boolean("copilot_draft_prose").notNull().default(false),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
   },
+);
+
+/**
+ * Decision 0050, plan §6 / P4 (#615) — A DOCTOR'S RESET WATERMARK, one row per (doctor's user,
+ * surface). The doctor's OWN ranking on that surface ignores evidence from before `reset_at`;
+ * nothing is deleted — the department's and hospital's counts keep every row, without a name.
+ * `complaint_baseline` is for the one surface whose evidence is a running counter
+ * (`opd_complaint_term_usage`): the doctor's uses per term at the moment of the reset, subtracted
+ * from their own count afterwards. Every other surface reads the timestamp.
+ */
+export const cdsDoctorLearningResets = pgTable(
+  "cds_doctor_learning_resets",
+  {
+    userId: text("user_id").notNull(),
+    surface: text("surface").notNull(),
+    resetAt: timestamp("reset_at", { withTimezone: true }).notNull(),
+    complaintBaseline: jsonb("complaint_baseline").$type<Record<string, number>>().notNull().default({}),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.surface] }),
+    check("cds_doctor_learning_resets_surface_ck", sql`${t.surface} in ('complaints', 'diagnoses', 'tests', 'findings', 'hidden')`),
+  ],
 );
 
 /**

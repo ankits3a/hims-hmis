@@ -18,6 +18,8 @@ tools/lane.sh drop <name>       # when the PR merged/closed; archives the handof
 - Before the PR: `git fetch && git merge origin/main` (or rebase if nothing is pushed yet — never rewrite pushed history).
   Migrations take the next free number at that moment: `python3 tools/renumber-lane-migrations.py --apply`, then drop the lane's test DBs.
 - `gh pr create` (draft until the owner says yes); CI is the gate; squash-merge.
+- A feature lane starts from its approved spec `docs/specs/<issue#>-<slug>.md`: first commit = one red `acceptance/` test
+  per done-means id (name carries `spec #N Dk`); the PR body says `Closes #N` and the PR sets the spec to `status: built`.
 - A red `main` freezes merges; whoever pushed the red fixes it first.
 - Close the session when the lane closes; idle sessions hold the box's memory and that OOM-kills jest.
 

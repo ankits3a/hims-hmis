@@ -27,6 +27,7 @@ import { MyDay } from "./screens/my-day";
 import { MyLeave } from "./screens/my-leave";
 import { StaffReports } from "./screens/staff-reports";
 import { CopilotHealthScreen } from "./screens/copilot-health";
+import { CrkFormularyScreen } from "./screens/crk-formulary";
 import { CopilotNoticeHost } from "./components/copilot-notice";
 import { OpdReportScreen } from "./screens/opd-report";
 import { DeskOne } from "./screens/desk-one/desk-one";
@@ -39,6 +40,10 @@ import { MyReach } from "./screens/my-reach";
 import { RosterOnNow } from "./screens/roster-on-now";
 import { RosterMonth } from "./screens/roster-month";
 import { RosterMyDuties } from "./screens/roster-my-duties";
+import { DoctorDeskTower } from "./screens/doctor-desk-tower";
+import { DoctorDeskBriefs } from "./screens/doctor-desk-briefs";
+import { DoctorDeskOpd } from "./screens/doctor-desk-opd";
+import { DoctorLanding } from "./screens/doctor-desk-landing";
 import { RosterEvidence } from "./screens/roster-evidence";
 import { RosterAebas } from "./screens/roster-aebas";
 import { OpdAdmin } from "./screens/opd-admin";
@@ -292,6 +297,8 @@ const NAV: readonly NavEntry[] = [
   { to: "/staff", label: "nav.staffReports", permission: "staff.reports.read", group: "admin" },
   // E0.1 (decision 0064) — the copilot's health; path and permission match `deskManifest.menu`.
   { to: "/copilot-health", label: "nav.copilotHealth", permission: "copilot.health.read", group: "admin" },
+  // #882 / decision 0053 — the CRK formulary: Pharmacology signs; the pharmacy may correct a draft.
+  { to: "/crk-formulary", label: "nav.crkFormulary", permission: "formulary.crk.sign", group: "pharmacy", anyOf: ["formulary.manage"] },
   // The OPD day report (owner, 2026-09-19): the hospital's day by department, PDF and CSV.
   { to: "/reports/opd-day", label: "nav.opdDayReport", permission: "opd.reports.read", group: "opd" },
   // 20-U U5a — who is on now, the hospital's unit board. `roster.read` matches `rosterManifest.menu`.
@@ -724,7 +731,33 @@ const authedRoute = createRoute({
 const indexRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/",
-  component: Desk,
+  // DD-0 (#626, owner R5 2026-09-18) — a doctor of a unit lands on the Tower once per browser
+  // session; everybody else (and the doctor's next visit to `/`) gets the Desk, unchanged.
+  component: function HomeScreen() { return <DoctorLanding><Desk /></DoctorLanding>; },
+});
+
+/**
+ * DD-0 (#626) — the Doctor Desk: the Tower (`Tower.dc.html`) and AI Briefs (`AiBriefs.dc.html`),
+ * both inside the Doctor Desk frame, which owns the viewport.
+ */
+const doctorDeskRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/doctor-desk",
+  staticData: { fullViewport: true },
+  component: DoctorDeskTower,
+});
+/** DD-0.8 (#890) — the OPD desk (`OpdDesk.dc.html`): my line, the NEXT card, pace, waiting on me. */
+const doctorDeskOpdRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/doctor-desk/opd",
+  staticData: { fullViewport: true },
+  component: DoctorDeskOpd,
+});
+const doctorDeskBriefsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/doctor-desk/briefs",
+  staticData: { fullViewport: true },
+  component: DoctorDeskBriefs,
 });
 
 /**
@@ -755,6 +788,13 @@ const copilotHealthRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/copilot-health",
   component: CopilotHealthScreen,
+});
+
+/** #882 / decision 0053 — the CRK formulary worklist and sign screen. */
+const crkFormularyRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/crk-formulary",
+  component: CrkFormularyScreen,
 });
 
 /**
@@ -1873,7 +1913,7 @@ export const router = createRouter({
     loginRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
@@ -1940,6 +1980,11 @@ export const router = createRouter({
       myLeaveRoute,
       rosterEvidenceRoute,
       rosterAebasRoute,
+      // DD-0 (#626) — +2, `/doctor-desk` and `/doctor-desk/briefs`. `caddyfile-parity.test.ts` pins the count.
+      doctorDeskRoute,
+      doctorDeskBriefsRoute,
+      // DD-0.8 (#890) — +1, `/doctor-desk/opd`.
+      doctorDeskOpdRoute,
     ]),
   ]),
 });
