@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { erMlcObligations, idempotencyKeys, opdDepartments, opdDoctors } from "../../kernel/db/schema";
-import { requestHashOf } from "../billing/idempotency";
+import { requestHashOf } from "../billing";
 import { taskKind } from "../tasks";
 import { mkUser } from "../../../test/helpers/opd";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
