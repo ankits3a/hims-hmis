@@ -403,6 +403,17 @@ const configSchema = z.object({
     .enum(["true", "false"])
     .default("true")
     .transform((v) => v === "true"),
+  /**
+   * #614 (plan P3, channels 2 and 3) — the desk's nightly routing learning
+   * (`modules/opd/desk-routing-feed.ts`): a vocabulary tail and mined examples for the department
+   * chooser, live only after the night's evaluation. ON by default: with nothing learned it calls no
+   * model; with something learned it asks the desk's own chooser about masked sentences only. "false"
+   * stops the nightly build AND serves the hand-written descriptions alone — the one-switch rollback.
+   */
+  DESK_ROUTING_LEARNING_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
   NOTIFY_STUCK_AFTER_MS: z.coerce.number().int().positive().default(300000),
   // Plan 11a D6/D7 (retention). All three defaulted, same B1 scar as the block above: no .env
   // entry is required anywhere, on the server or in CI.
@@ -653,6 +664,8 @@ export type AppConfig = {
   aliases: { enabled: boolean; chooserOrder: ("typesafe" | "openai")[]; chooserLine: number; reviewerLine: number; perRun: number; perDay: number };
   /** The waits' nightly learning (`FLOW_FINDINGS_ENABLED`, default true). */
   flowFindings: { enabled: boolean };
+  /** #614 — the desk's nightly routing learning (`DESK_ROUTING_LEARNING_ENABLED`, default true). */
+  deskRouting: { learningEnabled: boolean };
   notifyStuckAfterMs: number;
   // Plan 11a D6/D7. `retentionEnabled` is FALSE unless an operator says otherwise, in as many
   // letters; `worker/jobs.ts` threads all three into `retentionSweep` through the registration,
@@ -1006,6 +1019,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       perDay: parsed.ALIAS_DAILY_MAX_TERMS,
     },
     flowFindings: { enabled: parsed.FLOW_FINDINGS_ENABLED },
+    deskRouting: { learningEnabled: parsed.DESK_ROUTING_LEARNING_ENABLED },
     notifyStuckAfterMs: parsed.NOTIFY_STUCK_AFTER_MS,
     retentionEnabled: parsed.RETENTION_ENABLED,
     retentionEventsMonths: parsed.RETENTION_EVENTS_MONTHS,

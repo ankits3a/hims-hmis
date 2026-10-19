@@ -25,8 +25,8 @@ import type { TriageDepartment, TriageResult, TriageSuggestion } from "./triage"
  *   3. THE LINK. Each answer carries a `triageId`; the walk-in or booking that follows sends it back
  *      and `recordRoutingOutcome` writes one row. That row is the prior's evidence.
  *
- * The vocabulary tail and the few-shot channel of P3 are not here: they feed the model and wait
- * for evidence this table has to collect first.
+ * The vocabulary tail and the few-shot channel of P3 feed the MODEL, not these rules, and live in
+ * `desk-routing-feed.ts`: built nightly from the same rows, live only after an evaluation.
  *
  * Nothing here stores words. The concept set is the hospital's own concept keys, found in the
  * MASKED complaint, and the holdout hash is computed and thrown away.
@@ -48,7 +48,7 @@ export function bandForAge(ageYears: number | null): RoutingBand {
 }
 
 /* Words that carry no complaint: they would lower the coverage of every ordinary sentence. */
-const FILLER = new Set([
+export const FILLER: ReadonlySet<string> = new Set([
   "a", "an", "the", "and", "or", "of", "in", "on", "at", "to", "for", "with", "since", "from", "is", "has", "have",
   "days", "day", "weeks", "week", "months", "month", "years", "year", "patient", "pt", "c", "o", "h",
   "ko", "ka", "ki", "ke", "se", "me", "mein", "mai", "hai", "he", "h", "ho", "raha", "rahi", "rahe", "aur", "bhi",
@@ -57,7 +57,7 @@ const FILLER = new Set([
 ]);
 
 /* A negation in the sentence makes the concept set a lie ("no fever" holds `fever`). */
-const NEGATION = new Set(["no", "not", "without", "denies", "nil", "nahi", "nahin", "na", "नहीं", "ना"]);
+export const NEGATION: ReadonlySet<string> = new Set(["no", "not", "without", "denies", "nil", "nahi", "nahin", "na", "नहीं", "ना"]);
 
 export type RoutingConcepts = {
   /** Sorted concept keys joined by '|'; null when the set is unusable for the prior. */
@@ -65,10 +65,15 @@ export type RoutingConcepts = {
   holdout: boolean;
 };
 
-const PLACEHOLDER = /<<P\d+>>/g;
+const PLACEHOLDER = /<<P\d+>>/gi; // case-blind: a normalised (lowercased) sentence carries <<p1>>
 
-function words(text: string): string[] {
+export function words(text: string): string[] {
   return text.toLowerCase().normalize("NFC").split(/[^\p{L}\p{M}\p{N}]+/u).filter((w) => w !== "");
+}
+
+/** The words the holdout hash is taken over: the MASKED text, placeholders and bare numbers dropped. */
+export function holdoutWords(masked: string): string[] {
+  return words(masked.replace(PLACEHOLDER, " ")).filter((w) => !/^\p{N}+$/u.test(w));
 }
 
 /**
@@ -82,7 +87,7 @@ export function isHoldout(normalised: string): boolean {
 
 export async function routingConcepts(db: Db, text: string, names: readonly string[]): Promise<RoutingConcepts> {
   const masked = maskQuestion(text, nameTerms(names), { wholeWords: true }).masked.replace(PLACEHOLDER, " ");
-  const all = words(masked).filter((w) => !/^\p{N}+$/u.test(w));
+  const all = holdoutWords(masked);
   const holdout = isHoldout(all.join(" "));
   if (all.length === 0 || all.some((w) => NEGATION.has(w))) return { key: null, holdout };
   const content = all.filter((w) => !FILLER.has(w));

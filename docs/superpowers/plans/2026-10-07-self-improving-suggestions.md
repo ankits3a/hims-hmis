@@ -268,6 +268,15 @@ Each phase is its own PR(s), tests fail-first, web and phone both, English and H
 - **Guardrails:** red flags first and never learned; a child by age goes to Paediatrics first (Jev's specialty
   may take slot two); the prior never routes a child to adult medicine; only active departments; never an
   empty list. Age is not passed to Jev today — it is applied by rule around it.
+- **BUILT** — channel 1 and the link in #879 (`opd/desk-routing.ts`, migration 0217); channels 2 and 3 and the
+  growing held-out set in `opd/desk-routing-feed.ts` (table `cds_desk_routing_feeds`, one version row a night).
+  DECIDED there (standard practice, not owner rulings): the words come from the visit's stored desk complaint,
+  masked with the patient's name; adults only, never a routing the prior led; a tail word also needs ≥ 3
+  different patients and an example ≥ 2, with a placeholder left in it refused; a negated sentence never feeds
+  the tail; the floor is "no lower than the descriptions alone on the 46 cases"; the week is held-out visits
+  right, weighted by visits, against the best live night of the last 7; a refused night serves the
+  descriptions alone, a failed night (chooser down or absent) changes nothing; `DESK_ROUTING_LEARNING_ENABLED`
+  (default on) is the one-switch rollback. The owner's weekly list with one-tap undo is not built.
 
 **P4 — What the system learned about me; stewardship; digest** (about 4 days; 1 migration)
 - A doctor's page: top patterns per diagnosis, what is hidden, Reset (the watermark; personal levels only).

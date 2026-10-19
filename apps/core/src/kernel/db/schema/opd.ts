@@ -1707,6 +1707,43 @@ export const cdsDeskRoutingOutcomes = pgTable(
 );
 
 /**
+ * #614 (plan P3, channels 2 and 3) — ONE ROW PER NIGHTLY BUILD OF WHAT THE DESK'S MODEL IS FED
+ * beyond the hand-written department descriptions: a vocabulary TAIL per department and a few
+ * EXAMPLES mined from corrections, both keyed by department id, and the evaluation that decided
+ * whether they went live (`desk-routing-feed.ts`). The newest row that is not `failed` is what the
+ * desk serves: `live` serves its feed, `refused` and `empty` serve the descriptions alone.
+ *
+ * No patient and no visit is named here. The tail is single words seen at several patients; an
+ * example is a masked sentence of at most twelve words that recurred at two or more patients.
+ */
+export const cdsDeskRoutingFeeds = pgTable(
+  "cds_desk_routing_feeds",
+  {
+    id: text("id").primaryKey(),
+    builtAt: timestamp("built_at", { withTimezone: true }).notNull(),
+    /** `live` | `refused` | `failed` | `empty`. */
+    status: text("status").notNull(),
+    /** A closed code: `floor` | `weekly_drop` | `no_chooser` | `provider_failed`; null when live or empty. */
+    reason: text("reason"),
+    tail: jsonb("tail").$type<Record<string, string[]>>().notNull(),
+    examples: jsonb("examples").$type<Record<string, string[]>>().notNull(),
+    /** What the triage cache key carries, so a new feed is never answered from an old one. */
+    fingerprint: text("fingerprint").notNull(),
+    /** Percent right on the 46 fixed cases with the feed, and with the descriptions alone. */
+    floorScore: doublePrecision("floor_score"),
+    baselineFloorScore: doublePrecision("baseline_floor_score"),
+    /** Percent of held-out visits right with the feed; null when there were none. */
+    holdoutScore: doublePrecision("holdout_score"),
+    holdoutVisits: integer("holdout_visits").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("cds_desk_routing_feeds_built_idx").on(t.builtAt),
+    check("cds_desk_routing_feeds_status_ck", sql`${t.status} in ('live', 'refused', 'failed', 'empty')`),
+  ],
+);
+
+/**
  * Decision 0050, P0 — each doctor's own switch for the suggestions this system draws from counts.
  * ON unless the doctor turns it off (DECIDED: these are the doctor's own patterns handed back, not
  * the copilot's proactive mode of decision 0006).
