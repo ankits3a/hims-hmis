@@ -245,7 +245,8 @@ Source: `apps/core/src/modules/materials/`
   - `splitLikeDebitNote(amountPaise: number, note: { taxablePaise: number; cgstPaise: number; sgstPaise: number; igstPaise: number; totalPaise: …`
   - `stockValuationAt(db: Db | Tx, asOf: string, opts: { storeResourceId?: string | null } = {}): Promise<StockValuation>`
   - `supplierPaymentsBetween(db: Db | Tx, from: string, to: string): Promise<SupplierPaymentRead[]>`
-  - types: `BatchFacts`, `MaterialsDocKind`, `MaterialsDocRef`, `NonMovingReport`, `NonMovingRow`, `NonMovingSuggestion`, `PurchaseAdjustment`, `PurchaseRegister`, `PurchaseRegisterLine`, `PurchaseRegisterRow`, `ReconBill`, `StockValuation`, `SupplierPaymentRead`, `ValuationGroup`, `ValuationRow`
+  - `vendorDiscountReport(db: Db | Tx, from: string, to: string): Promise<VendorDiscountReport>`
+  - types: `BatchFacts`, `MaterialsDocKind`, `MaterialsDocRef`, `NonMovingReport`, `NonMovingRow`, `NonMovingSuggestion`, `PurchaseAdjustment`, `PurchaseRegister`, `PurchaseRegisterLine`, `PurchaseRegisterRow`, `ReconBill`, `StockValuation`, `SupplierPaymentRead`, `ValuationGroup`, `ValuationRow`, `VendorDiscountReport`, `VendorDiscountRow`
 - `settings.ts`
   - `loadMaterialsSettings(db: Db | Tx): Promise<MaterialsSettings>`
   - `updateMaterialsSettings(tx: Tx, actor: Actor, rawPatch: unknown, now: Date): Promise<MaterialsSettings>`
@@ -374,9 +375,9 @@ Source: `apps/core/src/modules/materials/`
 
 Foreign keys into: `formulary`, `resources`
 
-## HTTP routes (120)
+## HTTP routes
 
-- `materials-indents.controller.ts` — 6: `/materials/indents`
-- `materials.controller.ts` — 114: `/materials/adjustments`, `/materials/bank-changes`, `/materials/barcodes`, `/materials/consumptions`, `/materials/counts`, `/materials/expiring`, `/materials/expiry-report`, `/materials/grns`, `/materials/items`, `/materials/payables`, `/materials/payment-runs`, `/materials/purchase-orders`, `/materials/purchase-vendors`, `/materials/recalls`, `/materials/settings`, `/materials/stock`, `/materials/stock-levels`, `/materials/stores`, `/materials/supplier-bills`, `/materials/supplier-returns`, `/materials/transfers`, `/materials/vendor-rates`, `/materials/vendors`, `/materials/write-offs`
+- `materials-indents.controller.ts` — `/materials/indents`
+- `materials.controller.ts` — `/materials/adjustments`, `/materials/bank-changes`, `/materials/barcodes`, `/materials/consumptions`, `/materials/counts`, `/materials/expiring`, `/materials/expiry-report`, `/materials/grns`, `/materials/items`, `/materials/payables`, `/materials/payment-runs`, `/materials/purchase-orders`, `/materials/purchase-vendors`, `/materials/recalls`, `/materials/settings`, `/materials/stock`, `/materials/stock-levels`, `/materials/stores`, `/materials/supplier-bills`, `/materials/supplier-returns`, `/materials/transfers`, `/materials/vendor-rates`, `/materials/vendors`, `/materials/write-offs`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/materials`

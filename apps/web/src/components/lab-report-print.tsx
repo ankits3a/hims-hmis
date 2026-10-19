@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { flagTone } from "../lib/lab-api";
+import { astName } from "../../../../packages/contracts/src/lab-ast";
 import type { WireReportPanel, WireReportView } from "../lib/lab-api";
 
 /**
@@ -104,6 +105,31 @@ function Panel({ panel, t }: { panel: WireReportPanel; t: (k: string) => string 
           })}
         </tbody>
       </table>
+      {/* #703 — a culture's antibiotic sensitivity table, under its panel: Antibiotic | Result | MIC, Resistant in bold. */}
+      {panel.analytes.filter((l) => (l.ast ?? []).length > 0).map((l) => {
+        const rows = l.ast ?? [];
+        const withMic = rows.some((r) => r.mic !== null);
+        return (
+          <table key={`ast-${l.analyteCode}`} className="mt-2 w-full border-collapse text-xs" data-testid={`report-ast-${panel.orderItemId}`}>
+            <thead>
+              <tr className="bg-neutral-100">
+                <th className="border border-neutral-400 px-2 py-1 text-left">{t("lab.ast.antibiotic")}</th>
+                <th className="border border-neutral-400 px-2 py-1 text-left">{t("lab.ast.result")}</th>
+                {withMic && <th className="border border-neutral-400 px-2 py-1 text-left">{t("lab.ast.micUnit")}</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.antibiotic} className={r.result === "R" ? "font-bold" : ""}>
+                  <td className="border border-neutral-400 px-2 py-1">{astName(r.antibiotic)}</td>
+                  <td className="border border-neutral-400 px-2 py-1">{t(`lab.ast.${r.result}`)}</td>
+                  {withMic && <td className="border border-neutral-400 px-2 py-1 tabular-nums">{r.mic ?? "—"}</td>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        );
+      })}
       {/*
         DD11 — A NIGHT-MODE RELEASE PRINTS AS PROVISIONAL. The technologist signed it alone and the
         pathologist has not reviewed it yet; a report that hid that would present a single-operator

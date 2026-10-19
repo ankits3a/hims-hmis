@@ -44,6 +44,9 @@ export type WireQueueEntryView = {
   encounter: {
     id: string; patientId: string; visitType: string; dangerFlagged: boolean; status: string;
     referredFromEncounterId?: string | null;
+    /** #914 — the visit's department; differs from `doctor.departmentId` on a secondary-department visit. Optional: older servers. */
+    departmentId?: string | null;
+    departmentName?: string | null;
     /**
      * Owner 2026-10-07 — the guardian came with the reports; the patient did not, and no vitals were
      * taken. Same shape as `WirePatientAbsent` in `patient-absent.ts` (this file imports nothing).

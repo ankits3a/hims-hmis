@@ -4,6 +4,8 @@ import { opdDepartments, opdDoctors } from "../../kernel/db/schema";
 import { requireTreatingDoctor, saveConsultNote } from "./consultation";
 import { getEncounter, openVisit } from "./encounters";
 import { OpdError } from "./errors";
+import { doctorServesDepartment } from "./secondary";
+import { istDate } from "./time";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -35,7 +37,9 @@ export async function referInternally(
   if (enc.status !== "in_consultation") throw new OpdError("encounter_state_conflict", `a referral needs in_consultation, not ${enc.status}`);
   const [to] = await db.select().from(opdDoctors).where(eq(opdDoctors.id, input.doctorId));
   if (!to) throw new OpdError("unknown_doctor", `unknown doctor ${input.doctorId}`);
-  if (to.departmentId !== input.departmentId) throw new OpdError("doctor_department_mismatch", "that doctor is not in that department");
+  if (!await doctorServesDepartment(db, to, input.departmentId, istDate(now))) {
+    throw new OpdError("doctor_department_mismatch", "that doctor is not in that department");
+  }
   if (to.id === from.id) throw new OpdError("invalid_transfer", "a referral goes to another doctor");
   const [dept] = await db.select().from(opdDepartments).where(eq(opdDepartments.id, input.departmentId));
   if (!dept) throw new OpdError("unknown_department", `unknown department ${input.departmentId}`);

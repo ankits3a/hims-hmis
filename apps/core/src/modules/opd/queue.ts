@@ -17,6 +17,7 @@ import { queueCalled, queueFeeStatusChanged, queueSkipUndone, queueSkipped } fro
 import { classOf, nextInQueue, orderQueue } from "./queue-engine";
 import type { SkipReason } from "./skip-reasons";
 import { istDate, istWeekday } from "./time";
+import { secondaryDepartmentsOn, secondaryDoctorIdsIn } from "./secondary";
 import type { OpdConfig } from "./config";
 import type { EncounterRow, QueueEntryRow } from "./encounters";
 import type { DoctorRow } from "./masters";
@@ -88,6 +89,12 @@ export type QueueEntryView = QueueEntryRow & {
   position: number | null; queueClass: QueueClass | null;
   encounter: {
     id: string; patientId: string; visitType: string; dangerFlagged: boolean; status: string;
+    /**
+     * #914 — the visit's department. A doctor with a secondary department holds ONE line for the
+     * day; the row says which department each patient came to.
+     */
+    departmentId: string | null;
+    departmentName: string | null;
     /**
      * The desk's (or the bay's) sentence for letting the visit past the counter, and the override a
      * doctor or the paper road wrote before 2026-10-09. MONEY FIELDS: the route strips them — and
@@ -201,6 +208,10 @@ async function queueViews(
   const summaryByPatient = new Map(summaries.map((s) => [s.requestedId, s] as const));
   // The stamp, batched: a fixed number of queries however long the queue (the CI perf budget).
   const feeStatuses = await encounterFeeStatuses(db, encounters);
+  // #914 — the department's NAME rides with the row, so the doctor's screen can tag a visit to their other department.
+  const deptIds = [...new Set(encounters.map((e) => e.departmentId).filter((d): d is string => d !== null))];
+  const deptNames = deptIds.length === 0 ? new Map<string, string>()
+    : new Map((await db.select({ id: opdDepartments.id, name: opdDepartments.name }).from(opdDepartments).where(inArray(opdDepartments.id, deptIds))).map((d) => [d.id, d.name] as const));
 
   const toView = (row: QueueEntryRow, position: number | null, queueClass: QueueClass | null): QueueEntryView => {
     const encounter = encounterById.get(row.encounterId)!;
@@ -209,7 +220,8 @@ async function queueViews(
       ...row, position, queueClass,
       encounter: {
         id: encounter.id, patientId: encounter.patientId, visitType: encounter.visitType,
-        dangerFlagged: encounter.dangerFlagged, status: encounter.status,
+        dangerFlagged: encounter.dangerFlagged, status: encounter.status, departmentId: encounter.departmentId,
+        departmentName: encounter.departmentId === null ? null : deptNames.get(encounter.departmentId) ?? null,
         ...(tele ? {} : { feeBypassReason: encounter.feeBypassReason, consultFeeOverrideReason: encounter.consultFeeOverrideReason }),
         referredFromEncounterId: encounter.referredFromEncounterId,
         patientAbsent: patientAbsentOf(encounter),
@@ -581,6 +593,12 @@ export type DoctorSummary = {
    */
   onLeaveToday: boolean;
   /**
+   * #914 — the doctor's secondary department in force on the day, or null. The desk lists the doctor
+   * under it as well as under `doctor.departmentId`. `waitingCount` stays the doctor's whole day: one
+   * session holds the patients of both departments, and that is the line a walk-in joins.
+   */
+  secondaryDepartmentId: string | null;
+  /**
    * RC-1 T5 / D7 — wait v0's pace term: the department's `avg_consult_minutes` (a masters column,
    * default 6). The seat renders `waitingCount × this` as minutes AND a clock time; a future pace
    * model replaces THIS COLUMN'S READ, never the wire shape.
@@ -591,11 +609,16 @@ export type DoctorSummary = {
 /** The front desk's overview of a department's doctors for one IST day (every active doctor, session or not). */
 export async function summaryByDoctor(db: Db, departmentId: string | undefined, serviceDate: string, now: Date = new Date()): Promise<DoctorSummary[]> {
   const cfg = await loadOpdConfig(db);
+  const visiting = departmentId === undefined ? [] : await secondaryDoctorIdsIn(db, departmentId, serviceDate);
   const doctors = await db
     .select().from(opdDoctors)
-    .where(departmentId === undefined ? eq(opdDoctors.active, true) : and(eq(opdDoctors.active, true), eq(opdDoctors.departmentId, departmentId)));
+    .where(departmentId === undefined ? eq(opdDoctors.active, true) : and(
+      eq(opdDoctors.active, true),
+      visiting.length === 0 ? eq(opdDoctors.departmentId, departmentId) : or(eq(opdDoctors.departmentId, departmentId), inArray(opdDoctors.id, visiting)),
+    ));
   if (doctors.length === 0) return [];
   const doctorIds = doctors.map((d) => d.id);
+  const secondaryOf = await secondaryDepartmentsOn(db, serviceDate, doctorIds);
 
   const sessions = await db
     .select().from(opdQueueSessions)
@@ -658,6 +681,7 @@ export async function summaryByDoctor(db: Db, departmentId: string | undefined, 
         // A doctor on leave is NOT scheduled today, whatever the weekly template says.
         scheduledToday: scheduledRoom.has(doctor.id) && !onLeave.has(doctor.id),
         onLeaveToday: onLeave.has(doctor.id),
+        secondaryDepartmentId: secondaryOf.get(doctor.id) ?? null,
         roomCode: room === null ? null : roomCode.get(room) ?? null,
         avgConsultMinutes: avgByDept.get(doctor.departmentId) ?? 6,
       };

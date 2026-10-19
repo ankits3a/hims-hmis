@@ -127,8 +127,8 @@ Source: `apps/core/src/modules/aerb/`
 
 Foreign keys into: `auth`, `patients`, `resources`
 
-## HTTP routes (30)
+## HTTP routes
 
-- `aerb.controller.ts` — 30: `/aerb/attention`, `/aerb/badges`, `/aerb/calendar`, `/aerb/doses`, `/aerb/incidents`, `/aerb/licences`, `/aerb/persons`, `/aerb/pickers`, `/aerb/pregnancy`, `/aerb/qa`, `/aerb/settings`
+- `aerb.controller.ts` — `/aerb/attention`, `/aerb/badges`, `/aerb/calendar`, `/aerb/doses`, `/aerb/incidents`, `/aerb/licences`, `/aerb/persons`, `/aerb/pickers`, `/aerb/pregnancy`, `/aerb/qa`, `/aerb/settings`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/aerb`

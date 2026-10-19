@@ -130,8 +130,11 @@ function RescheduleDialog({
   const [busy, setBusy] = useState(false);
 
   const slots = useQuery({
-    queryKey: ["opd", "slots", appointment.doctorId, date],
-    queryFn: () => api<{ slots: WireSlot[] }>("GET", `/opd/slots?doctorId=${appointment.doctorId}&date=${date}`),
+    queryKey: ["opd", "slots", appointment.doctorId, date, appointment.departmentId],
+    // #914 — the booking's own department's book: a move keeps the patient where they were booked.
+    // A booking flagged because the doctor's second department ended reads the doctor's whole book.
+    queryFn: () => api<{ slots: WireSlot[] }>("GET", `/opd/slots?doctorId=${appointment.doctorId}&date=${date}${
+      appointment.status === "needs_rebooking" ? "" : `&departmentId=${appointment.departmentId}`}`),
     enabled: open,
   });
 
@@ -373,9 +376,15 @@ function DayTab({
     return () => { live = false; };
   }, [initialPatientId]);
 
+  /*
+    #914 — a doctor with a second department has a book per department: the slots ask for this
+    department's, and a booking made here while covering names it. Everyone else's requests are unchanged.
+  */
+  const pickedDoctor = doctors.find((d) => d.id === doctorId);
+  const bookDept = pickedDoctor?.secondary != null && departmentId !== "" ? departmentId : "";
   const slots = useQuery({
-    queryKey: ["opd", "slots", doctorId, date],
-    queryFn: () => api<{ slots: WireSlot[] }>("GET", `/opd/slots?doctorId=${doctorId}&date=${date}`),
+    queryKey: ["opd", "slots", doctorId, date, bookDept],
+    queryFn: () => api<{ slots: WireSlot[] }>("GET", `/opd/slots?doctorId=${doctorId}&date=${date}${bookDept === "" ? "" : `&departmentId=${bookDept}`}`),
     enabled: doctorId !== "",
   });
   const appointments = useQuery({
@@ -419,6 +428,7 @@ function DayTab({
       await api("POST", "/opd/appointments", {
         patientId: patient.id, doctorId, slotStart: slot.start,
         ...teleHowBody(how),
+        ...(bookDept === "" ? {} : { departmentId: bookDept }),
       });
       /*
         LOGGED AFTER THE SERVER ANSWERED, never before: a log that narrates intentions lies the

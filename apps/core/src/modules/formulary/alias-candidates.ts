@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import type { Db } from "../../kernel/db/client";
 import { escapeLike } from "../../kernel/search/text";
+import { ndpsClassOfMoieties } from "./ndps";
 
 /**
  * ═══ CANDIDATES FOR A TERM NOTHING MATCHED (decision 0051, plan §7a step 1) ═══
@@ -31,7 +32,10 @@ export type AliasCandidateRow = {
   generic: boolean;
   /** Moiety names, lower-cased and sorted. */
   salts: string[];
-  /** A moiety carries an NDPS class (`formulary_salts.ndps_class`). */
+  /**
+   * The formulary reads the medicine as NDPS-controlled: a moiety's stored class (`formulary_salts.ndps_class`)
+   * or, where none is stored, the cited list (`ndpsClassOfMoieties`, #613). Never a word of the name.
+   */
   ndps: boolean;
   /** 2 — the name IS the words ("pan (…", "paracetamol 650 …"); 1 — it starts with them; 0 — only near. */
   tier: 0 | 1 | 2;
@@ -43,7 +47,7 @@ export const ALIAS_POOL_SIZE = 200;
 /** Below pg_trgm's default 0.6 on purpose: a misspelt or misheard name ("pantaprazol") scores about 0.5. */
 export const ALIAS_WORD_SIMILARITY = 0.45;
 
-type Wire = { id: string; brand_name: string; form: string; schedule_flag: string | null; code: string | null; tier: number; sim: number; salts: { name: string; ndps: boolean }[] | null };
+type Wire = { id: string; brand_name: string; form: string; schedule_flag: string | null; code: string | null; tier: number; sim: number; salts: { name: string; cls: string | null }[] | null };
 
 /**
  * `words` is the NAME part of the term, lower-cased ("pan", "dolo", "amoxyclav"); `numbers` are the
@@ -69,7 +73,7 @@ export async function aliasCandidatePool(db: Db, words: string, numbers: readonl
     await tx.execute(sql`select set_config('pg_trgm.word_similarity_threshold', ${String(ALIAS_WORD_SIMILARITY)}, true)`);
     return tx.execute(sql`
       select t.*, (
-        select json_agg(json_build_object('name', lower(s.name), 'ndps', s.ndps_class is not null))
+        select json_agg(json_build_object('name', lower(s.name), 'cls', s.ndps_class))
         from formulary_medicine_salts ms join formulary_salts s on s.id = ms.salt_id
         where ms.medicine_id = t.id
       ) as salts
@@ -98,7 +102,7 @@ export async function aliasCandidatePool(db: Db, words: string, numbers: readonl
     return {
       id: r.id, name: r.brand_name, form: r.form, scheduleFlag: r.schedule_flag, generic: r.code !== null,
       salts: [...new Set(salts.map((s) => s.name))].sort(),
-      ndps: salts.some((s) => s.ndps),
+      ndps: ndpsClassOfMoieties(salts.map((s) => ({ name: s.name, ndpsClass: s.cls }))) !== null,
       tier: (r.tier === 2 ? 2 : r.tier === 1 ? 1 : 0),
       similarity: Number(r.sim),
     };

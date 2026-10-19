@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/radiology/`
 
 - **Depends on modules:** `aerb`, `billing`, `lab`, `opd`, `ot`, `patients`, `pcpndt`, `roster`, `tariff`
-- **Used by modules:** `abdm`, `ordering`
+- **Used by modules:** `abdm`, `doctor-desk`, `ordering`
 - **Kernel used:** `approvals`, `auth`, `config`, `db`, `desk`, `episodes`, `events`, `modules`, `notify`, `orders`, `phi`, `report`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `approvalGranted`, `orderPlaced`
 
@@ -66,6 +66,9 @@ Source: `apps/core/src/modules/radiology/`
   - `criticalTermsIn(text: string): string[]`
   - `runPreSignChecks(ctx: PreSignContext, checks: readonly PreSignCheck[] = PRE_SIGN_CHECKS): PreSignFinding[]`
   - types: `PreSignCheck`, `PreSignContext`, `PreSignFinding`, `PreSignLevel`
+- `clinician-reads.ts`
+  - `unreadReportsForClinician(exec: Db | Tx, userId: string): Promise<ClinicianImagingRow[]>`
+  - types: `ClinicianImagingRow`
 - `closed-loop.ts`
   - `isTreatingDoctor(exec: Db | Tx, actor: Actor, studyId: string): Promise<boolean>`
   - `treatingDoctorsOf(exec: Db | Tx, studyId: string): Promise<TreatingDoctors | null>`
@@ -118,7 +121,6 @@ Source: `apps/core/src/modules/radiology/`
   - `IV_HYDRATION_INSTRUCTION`
   - `METFORMIN_NOTE`
   - `assessEgfr(creatinineUmolL: number, patient: { sex: string; ageYears: number | null }): EgfrAssessment`
-  - `ckdEpi2021(creatinineMgDl: number, ageYears: number, sex: EgfrSex): number`
   - `renalBand(egfr: number): RenalBand`
   - types: `EgfrAssessment`, `RenalBand`
 - `errors.ts`
@@ -238,6 +240,8 @@ Source: `apps/core/src/modules/radiology/`
   - types: `BookedStudyRow`, `CreateImagingDeviceInput`, `EditImagingDevicePatch`, `SettableDeviceStatus`
 - `manifest.ts`
   - `radiologyManifest: ModuleManifest`
+- `modules/lab/egfr.ts`
+  - `ckdEpi2021(creatinineMgDl: number, ageYears: number, sex: EgfrSex): number`
 - `money.ts`
   - `authorisationOf(study: AuthorisationStudyFacts, encounter: AuthorisationEncounterFacts, imagingFree = false): ImagingAuthorisation | null`
   - `encounterPayer(exec: Db | Tx, encounterNo: string): Promise<{ intendedPayer: string }>`
@@ -420,28 +424,28 @@ Source: `apps/core/src/modules/radiology/`
 
 Foreign keys into: `billing`, `orders`, `patients`, `resources`, `tariff`
 
-## HTTP routes (114)
+## HTTP routes
 
-- `radiology-acquisition.controller.ts` — 8: `/radiology/studies`
-- `radiology-bill-decisions.controller.ts` — 2: `/radiology/bill-decisions`
-- `radiology-definitions.controller.ts` — 3: `/radiology/definitions`
-- `radiology-floor.controller.ts` — 3: `/radiology/devices`, `/radiology/display`, `/radiology/portable`
-- `radiology-images.controller.ts` — 1: `/radiology/studies`
-- `radiology-ir.controller.ts` — 10: `/radiology/ir`, `/radiology/studies`
-- `radiology-metrics.controller.ts` — 1: `/radiology/metrics`
-- `radiology-mwl.controller.ts` — 1: `/radiology/mwl`
-- `radiology-orders.controller.ts` — 3: `/radiology/advised`, `/radiology/orders`
-- `radiology-pacs.controller.ts` — 5: `/radiology/pacs`
-- `radiology-pcpndt.controller.ts` — 3: `/radiology/pcpndt`
-- `radiology-prep.controller.ts` — 4: `/radiology/gate-override-requests`, `/radiology/prep`
-- `radiology-reading-room.controller.ts` — 10: `/radiology/followups`, `/radiology/reading`, `/radiology/results`, `/radiology/tele`
-- `radiology-reading.controller.ts` — 4: `/radiology/reading`, `/radiology/reports`
-- `radiology-release.controller.ts` — 9: `/radiology/media`, `/radiology/north-star`, `/radiology/release`, `/radiology/reports`, `/radiology/results`, `/radiology/studies`
-- `radiology-reports.controller.ts` — 15: `/radiology/criticals`, `/radiology/reports`, `/radiology/studies`, `/radiology/worklist`
-- `radiology-room.controller.ts` — 3: `/radiology/room`, `/radiology/studies`
-- `radiology-schedule.controller.ts` — 8: `/radiology/studies`
-- `radiology-setup.controller.ts` — 6: `/radiology/setup`
-- `radiology-study.controller.ts` — 7: `/radiology/studies`
-- `radiology-supervisor.controller.ts` — 8: `/radiology/supervisor`
+- `radiology-acquisition.controller.ts` — `/radiology/studies`
+- `radiology-bill-decisions.controller.ts` — `/radiology/bill-decisions`
+- `radiology-definitions.controller.ts` — `/radiology/definitions`
+- `radiology-floor.controller.ts` — `/radiology/devices`, `/radiology/display`, `/radiology/portable`
+- `radiology-images.controller.ts` — `/radiology/studies`
+- `radiology-ir.controller.ts` — `/radiology/ir`, `/radiology/studies`
+- `radiology-metrics.controller.ts` — `/radiology/metrics`
+- `radiology-mwl.controller.ts` — `/radiology/mwl`
+- `radiology-orders.controller.ts` — `/radiology/advised`, `/radiology/orders`
+- `radiology-pacs.controller.ts` — `/radiology/pacs`
+- `radiology-pcpndt.controller.ts` — `/radiology/pcpndt`
+- `radiology-prep.controller.ts` — `/radiology/gate-override-requests`, `/radiology/prep`
+- `radiology-reading-room.controller.ts` — `/radiology/followups`, `/radiology/reading`, `/radiology/results`, `/radiology/tele`
+- `radiology-reading.controller.ts` — `/radiology/reading`, `/radiology/reports`
+- `radiology-release.controller.ts` — `/radiology/media`, `/radiology/north-star`, `/radiology/release`, `/radiology/reports`, `/radiology/results`, `/radiology/studies`
+- `radiology-reports.controller.ts` — `/radiology/criticals`, `/radiology/reports`, `/radiology/studies`, `/radiology/worklist`
+- `radiology-room.controller.ts` — `/radiology/room`, `/radiology/studies`
+- `radiology-schedule.controller.ts` — `/radiology/studies`
+- `radiology-setup.controller.ts` — `/radiology/setup`
+- `radiology-study.controller.ts` — `/radiology/studies`
+- `radiology-supervisor.controller.ts` — `/radiology/supervisor`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/radiology`
