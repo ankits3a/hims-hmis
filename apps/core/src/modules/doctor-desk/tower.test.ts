@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
+import { jsonWithoutIds } from "../../../test/helpers/ids";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { seedConfirmedUnits } from "../../../test/helpers/units";
 import {
@@ -267,6 +268,12 @@ describe("doctor-desk — the Tower (DD-0)", () => {
     expect(await db.select().from(doctorDeskBriefs)).toHaveLength(1);
   });
 
+  it("the money-word scan reads past ids: a random ULID can spell FEE or PAYER (main, 2026-10-21)", () => {
+    const tower = { you: { userId: "01M5FEE5MMN2MR0JEBT5X4N8S4" }, team: [{ userId: "01M5PAYER5MPCEN0E6PNZMGKAG" }] };
+    expect(JSON.stringify(tower)).toMatch(/fee/i);
+    expect(jsonWithoutIds(tower)).not.toMatch(/fee|paid|paise|price|bypass|payer|pmjay|₹|rupee|invoice|bill/i);
+  });
+
   it("carries no money: no fee, paid, price or payer word anywhere in the Tower", async () => {
     const sessionId = newId();
     await db.insert(opdQueueSessions).values({ id: sessionId, doctorId: doctorOf[P.SR]!, serviceDate: TODAY, status: "in" });
@@ -276,7 +283,7 @@ describe("doctor-desk — the Tower (DD-0)", () => {
     await towerView(db, actor(P.SR), min(-200));
     const t = await towerView(db, actor(P.SR), AT);
     expect(t.brief).not.toBeNull();
-    expect(JSON.stringify(t)).not.toMatch(/fee|paid|paise|price|bypass|payer|pmjay|₹|rupee|invoice|bill/i);
+    expect(jsonWithoutIds(t)).not.toMatch(/fee|paid|paise|price|bypass|payer|pmjay|₹|rupee|invoice|bill/i);
   });
 
   /* ═══ DD-0.8 — the OPD desk ═══ */
@@ -300,7 +307,7 @@ describe("doctor-desk — the Tower (DD-0)", () => {
     expect(d.pace).toEqual({ seen: 2, sinceMinutes: 60, eachMinutes: 30, endsAt: min(60).toISOString() });
     expect(d.colleagues.map((c) => c.userId)).toEqual([P.JR]);
     expect(d.waitingOn.map((r) => r.kind)).toEqual(["visit_open"]); // the delta is the NEXT card's, not this list's
-    expect(JSON.stringify(d)).not.toMatch(/\bfees?\b|\bpaid\b|paise|price|bypass|payer|₹|invoice|\bbill/i);
+    expect(jsonWithoutIds(d)).not.toMatch(/\bfees?\b|\bpaid\b|paise|price|bypass|payer|₹|invoice|\bbill/i);
   });
 
   it("pace says nothing it cannot know: no start, no 'each'; nobody waiting, no end", () => {
@@ -332,7 +339,7 @@ describe("doctor-desk — the Tower (DD-0)", () => {
     });
     expect(c.since.map((s) => [s.analyte, s.value])).toEqual([["Potassium", "8.9000"]]);
     expect(await db.select().from(phiAccessLog).where(and(eq(phiAccessLog.patientId, patientA), eq(phiAccessLog.surface, "doctor_desk.next")))).toHaveLength(1);
-    expect(JSON.stringify(c)).not.toMatch(/\bfees?\b|\bpaid\b|paise|price|bypass|payer|₹|invoice|\bbill/i);
+    expect(jsonWithoutIds(c)).not.toMatch(/\bfees?\b|\bpaid\b|paise|price|bypass|payer|₹|invoice|\bbill/i);
   });
 
   it("another doctor's visit is not on my OPD desk", async () => {

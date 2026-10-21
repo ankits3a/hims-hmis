@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
+import { jsonWithoutIds } from "../../../test/helpers/ids";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { seedConfirmedUnits } from "../../../test/helpers/units";
 import {
@@ -246,7 +247,7 @@ describe("doctor-desk — DD-1 the unit and the ladder", () => {
     expect((await nowView(db, actor(P.SR), t)).now.map((r) => r.key)).toEqual([key]);
     expect((await towerView(db, actor(P.JR), t)).attention.map((r) => r.key)).not.toContain(key);
     expect((await nowView(db, actor(P.JR), t)).now).toEqual([]);
-    for (const p of [srTower, await nowView(db, actor(P.SR), t)]) expect(JSON.stringify(p)).not.toMatch(/fee|paid|paise|price|bypass|payer|pmjay|₹|rupee|invoice|bill/i);
+    for (const p of [srTower, await nowView(db, actor(P.SR), t)]) expect(jsonWithoutIds(p)).not.toMatch(/fee|paid|paise|price|bypass|payer|pmjay|₹|rupee|invoice|bill/i);
 
     // moved back to the orderer: hers again, once
     await moveRow(db, actor(P.HEAD), key, P.JR, min(2));
@@ -435,7 +436,7 @@ describe("doctor-desk — DD-1 the unit and the ladder", () => {
       await unitBoard(db, actor(P.HEAD), AT), await nowView(db, actor(P.JR), AT),
       await professorView(db, actor(P.HEAD), AT), await myRatings(db, actor(P.JR), AT),
     ];
-    for (const p of payloads) expect(JSON.stringify(p)).not.toMatch(/fee|paid|paise|price|bypass|payer|pmjay|₹|rupee|invoice|bill/i);
+    for (const p of payloads) expect(jsonWithoutIds(p)).not.toMatch(/fee|paid|paise|price|bypass|payer|pmjay|₹|rupee|invoice|bill/i);
   });
 
   /* ═══ review fixes ═══ */
@@ -464,7 +465,7 @@ describe("doctor-desk — DD-1 the unit and the ladder", () => {
     await ask("some_future_kind", "anything");
     const prof = await professorView(db, actor(P.HEAD), AT);
     expect(prof.asks).toEqual([{ id: merge, typeKey: "patient_merge", requestedAt: min(-20).toISOString() }]);
-    expect(JSON.stringify(prof)).not.toMatch(/fee|paid|paise|price|discount|%|₹|rupee|bill|amount/i);
+    expect(jsonWithoutIds(prof)).not.toMatch(/fee|paid|paise|price|discount|%|₹|rupee|bill|amount/i);
     expect((await professorView(db, actor(P.SR), AT)).asks).toEqual([]);
   });
 
