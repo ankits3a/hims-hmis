@@ -9,12 +9,12 @@ status: draft
 ruling: partly-open
 tags: [mobile, opd, doctor, voice, privacy]
 supersedes: []
-superseded_by: ["0049"]
+superseded_by: ["0049", "0082"]
 sources: []
 ---
 # 0048 — The doctor consults on the phone — one screen, five drawers; voice notes through OpenAI, never Sarvam, no patient name sent
 
-- **Date:** 2026-10-07   **Status:** Built (see "Built" below); rulings recorded; the spoken-name wording is superseded by 0049
+- **Date:** 2026-10-07   **Status:** Built (see "Built" below); rulings recorded; the spoken-name wording is superseded by 0049; lab analyser slip images are excepted from "never the patient's name" by 0082
 - **Area:** mobile staff app, OPD consultation, voice, privacy
 
 ## What the owner saw
