@@ -226,6 +226,28 @@ describe("AdminUsers", () => {
     expect(callsTo("POST", "/api/admin/users/u-asha/pin-reset")[0]!.body).toEqual({ newPin: "417293" });
   });
 
+  /** #932 — a typo in a masked, unconfirmed reset box locks the person out with a password nobody knows. */
+  it("#932 — the reset box can show the new password before it is saved, and opens hidden again", async () => {
+    mockRoutes({ "GET /api/admin/users": { status: 200, body: { users: [ASHA] } } });
+    renderWithProviders(<AdminUsers />);
+    const user = userEvent.setup();
+    const drawer = await openPerson("asha");
+
+    await user.click(within(drawer).getByRole("button", { name: "Reset password" }));
+    let panel = screen.getByTestId("admin-reset-panel");
+    expect(within(panel).getByLabelText("Password")).toHaveAttribute("type", "password");
+    await user.click(within(panel).getByRole("button", { name: "SHOW" }));
+    expect(within(panel).getByLabelText("Password")).toHaveAttribute("type", "text");
+    await user.click(within(panel).getByRole("button", { name: "HIDE" }));
+    expect(within(panel).getByLabelText("Password")).toHaveAttribute("type", "password");
+
+    await user.click(within(panel).getByRole("button", { name: "SHOW" }));
+    await user.click(within(panel).getByRole("button", { name: "Cancel" }));
+    await user.click(within(screen.getByTestId("admin-user-drawer")).getByRole("button", { name: "Reset password" }));
+    panel = screen.getByTestId("admin-reset-panel");
+    expect(within(panel).getByLabelText("Password")).toHaveAttribute("type", "password");
+  });
+
   it("CLOSE — a double click on the Deactivate check fires ONE request, not two", async () => {
     let resolveDeactivate: (() => void) | undefined;
     mockRoutes({
