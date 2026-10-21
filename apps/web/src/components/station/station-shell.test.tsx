@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { setToken } from "../../lib/api";
+import { getToken, setToken } from "../../lib/api";
 import { renderWithProviders } from "../../test-utils";
 import { LabStation } from "../../screens/lab-seat";
 import { StationShell } from "./station-shell";
@@ -158,4 +158,23 @@ it("UX-AUDIT 2026-09-28 · BOARD — `laneHead={false}` leaves the lane to the s
   expect(within(lane).queryByRole("list", { name: "Your day" })).toBeNull();
   expect(within(lane).getByText("Nobody in hand")).toBeInTheDocument();
   expect(within(screen.getByRole("banner")).getByTestId("shell-status")).toHaveTextContent("9 waiting");
+});
+
+/** #936 — a station draws its own header, so without this the quick lab counter had no way to sign out. */
+it("#936 — every station header has Log out, and it ends the session", async () => {
+  me([]);
+  const calls: string[] = [];
+  const inner = globalThis.fetch;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    calls.push(`${init?.method ?? "GET"} ${raw.split("?")[0]}`);
+    if (raw.split("?")[0] === "/api/auth/logout") return new Response(null, { status: 204 });
+    return inner(input, init);
+  }));
+  renderWithProviders(
+    <LabStation station="qbench" title="Quick bench" place="Lab" stats={[]} list={<p>queue</p>}><p>work</p></LabStation>,
+  );
+  await userEvent.setup().click(within(screen.getByRole("banner")).getByRole("button", { name: "Log out" }));
+  await waitFor(() => expect(calls).toContain("POST /api/auth/logout"));
+  await waitFor(() => expect(getToken()).toBeNull());
 });

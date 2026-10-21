@@ -127,7 +127,7 @@ export function StationShell({
   children: React.ReactNode;
 }): React.ReactElement {
   const { t, i18n } = useTranslation();
-  const { can, username } = useAuth();
+  const { can, username, logout } = useAuth();
   const router = useRouter({ warn: false });
   const palette = usePaletteOptional();
   const clock = useIstClock();
@@ -224,6 +224,15 @@ export function StationShell({
             ⌘ <span className="kb">F8</span>
           </button>
         )}
+        {/* #936 — a station draws its own header, so it carries its own way out; shown at every width. */}
+        <button
+          type="button"
+          className="st-btn st-logout"
+          data-testid="station-logout"
+          onClick={() => { void logout().then(() => router?.navigate({ to: "/login" })); }}
+        >
+          {t("app.logout")}
+        </button>
       </header>
       <ModeBanner />
       <div className="st-body">
