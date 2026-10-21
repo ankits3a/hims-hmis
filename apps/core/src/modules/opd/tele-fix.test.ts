@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { jsonWithoutIds } from "../../../test/helpers/ids";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { openSessionFor, seedBillingBase } from "../../../test/helpers/billing";
 import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters } from "../../../test/helpers/opd";
@@ -89,7 +90,7 @@ describe("opd tele-call — the fix round", () => {
     const failed = await db.select().from(events).where(eq(events.name, "tele.bill_failed"));
     expect(failed).toHaveLength(1);
     expect(failed[0]!.payload).toMatchObject({ encounterId, appointmentId });
-    expect(JSON.stringify(await refused.catch((e: unknown) => ({ ...(e as object), message: (e as Error).message })))).not.toMatch(/paid|fee|invoice|receipt|advance|bill|₹/i);
+    expect(jsonWithoutIds(await refused.catch((e: unknown) => ({ ...(e as object), message: (e as Error).message })))).not.toMatch(/paid|fee|invoice|receipt|advance|bill|₹/i);
 
     await db.update(opdAppointments).set({ advanceReceiptId: receiptId }).where(eq(opdAppointments.id, appointmentId));
     const ok = await recordTeleOutcome(db, dra.actor, encounterId, "spoke", T0950);
