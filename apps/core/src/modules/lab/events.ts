@@ -356,6 +356,32 @@ export const labModeChanged = defineEvent("lab.mode_changed", MODULE, z.object({
   from: z.enum(["quick", "full"]), to: z.enum(["quick", "full"]),
 }));
 
+/**
+ * SPEC #934 — THE PHOTOGRAPHED ANALYSER SLIP. Ids and counts only, never a name or a value (the
+ * `lab.quick_reported` rule): the slip image and the model's reply hold those, on their own tables.
+ * A row resolution carries the person's reason, which is a sentence about the ROW ("QC channel").
+ */
+export const labSlipScanned = defineEvent("lab.slip_scanned", MODULE, z.object({
+  scanId: id, source: z.enum(["camera", "gallery"]), instrumentId: id, provider: z.string(), model: z.string(),
+  promptVersion: z.string(), rowCount: z.number().int().min(0), mappedCount: z.number().int().min(0),
+  checkCount: z.number().int().min(0), ms: z.number().int().min(0),
+}));
+
+export const labSlipReadFailed = defineEvent("lab.slip_read_failed", MODULE, z.object({ scanId: id, reason: z.string() }));
+
+export const labSlipAttached = defineEvent("lab.slip_attached", MODULE, z.object({
+  scanId: id, quickId: id, matchKind: z.enum(["sample_no", "uhid", "staff_pick", "from_report"]),
+}));
+
+export const labSlipDetached = defineEvent("lab.slip_detached", MODULE, z.object({ scanId: id, quickId: id }));
+
+export const labSlipRowResolved = defineEvent("lab.slip_row_resolved", MODULE, z.object({
+  scanId: id, row: z.number().int().min(0), action: z.enum(["place", "map", "ignore", "ignore_always", "checked"]),
+  reason: z.string().nullable(),
+}));
+
+export const labSlipDiscarded = defineEvent("lab.slip_discarded", MODULE, z.object({ scanId: id, reason: z.string() }));
+
 export const LAB_EVENTS = [
   labOrderDesked, labAttributionUnverifiedFlagged,
   labLabelPrinted, labTubeMismatchFlagged, labSpecimenCollected, labSpecimenReceived,
@@ -369,4 +395,5 @@ export const LAB_EVENTS = [
   labBookingMade, labBookingClosed, labBookingHoursChanged,
   labQuickStarted, labQuickReported, labQuickHandedOver, labQuickSentBack, labReportShared,
   labModeChanged,
+  labSlipScanned, labSlipReadFailed, labSlipAttached, labSlipDetached, labSlipRowResolved, labSlipDiscarded,
 ] as const;

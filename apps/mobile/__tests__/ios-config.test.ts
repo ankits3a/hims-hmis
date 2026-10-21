@@ -24,7 +24,12 @@ function configFor(env: Record<string, string>): ExpoConfig & { mods?: { ios?: R
 
 const ICON = { backgroundColor: "#FFFFFF", foregroundImage: "./assets/android-icon-foreground.png", backgroundImage: "./assets/android-icon-background.png" };
 // Decision 0062 (#571) added these to the Android block: location while in use only.
-const BLOCKED = ["android.permission.ACCESS_BACKGROUND_LOCATION", "android.permission.FOREGROUND_SERVICE_LOCATION"];
+const BLOCKED = [
+  "android.permission.ACCESS_BACKGROUND_LOCATION", "android.permission.FOREGROUND_SERVICE_LOCATION",
+  // #934 — the analyser-slip picker is the system picker: no photo or storage read permission reaches the manifest.
+  "android.permission.READ_MEDIA_IMAGES", "android.permission.READ_MEDIA_VIDEO", "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+  "android.permission.READ_EXTERNAL_STORAGE",
+];
 
 describe("app.config.ts — the Android half is what it was before the iPhone was added", () => {
   it("is, key for key, the block the APK has always been built from", () => {
@@ -69,14 +74,22 @@ describe("app.config.ts — the iPhone half", () => {
       isIosBackgroundLocationEnabled: false, isAndroidBackgroundLocationEnabled: false,
     });
     const all = JSON.stringify(configFor({ APP_ENV: "production" }));
-    for (const never of ["NSPhotoLibrary", "NSLocationAlways", "NSUserTracking", "UIBackgroundModes", "expo-image-picker", "expo-media-library", "expo-tracking-transparency", "aps-environment"]) {
+    // #934: expo-image-picker is in the build for ONE analyser-slip photo, with `photosPermission: false`, so the
+    // photo library is still never declared; its camera and microphone sentences are the app's own.
+    expect(of("expo-image-picker")).toEqual({
+      photosPermission: false,
+      cameraPermission: "HMIS uses the camera to photograph prescription slips and scan patient codes.",
+      microphonePermission: "HMIS uses the microphone to record a doctor's spoken note. The recording is sent through the hospital's server to a speech-to-text service to be typed, and is not stored.",
+    });
+    for (const never of ["NSPhotoLibrary", "NSLocationAlways", "NSUserTracking", "UIBackgroundModes", "expo-media-library", "expo-tracking-transparency", "aps-environment"]) {
       expect(all).not.toContain(never);
     }
   });
 
-  it("no screen picks from the photo gallery — which is why the photo library is not declared", () => {
+  it("one picker only — the system one, for the analyser slip (#934) — and no photo-library or document access", () => {
     const pkg = JSON.parse(readFileSync(join(__dirname, "../package.json"), "utf8")) as { dependencies: Record<string, string> };
-    for (const picker of ["expo-image-picker", "expo-media-library", "expo-document-picker", "react-native-image-picker"]) expect(pkg.dependencies[picker]).toBeUndefined();
+    expect(pkg.dependencies["expo-image-picker"]).toBeDefined();
+    for (const picker of ["expo-media-library", "expo-document-picker", "react-native-image-picker"]) expect(pkg.dependencies[picker]).toBeUndefined();
   });
 });
 

@@ -111,6 +111,24 @@ const configSchema = z.object({
    */
   HMIS_OPENAI_KEY_FILE: z.string().optional(),
   /**
+   * LAB SLIP SCAN (#934, decision 0082) — the photographed analyser slip is read by ONE configured
+   * provider: Gemini when its key file is readable, otherwise OpenRouter, otherwise reading is off and
+   * the bench types as today. Both keys are FILES on the OpenAI key's terms (read on use, never from the
+   * environment). The Gemini key must belong to a paid-tier (billing-enabled) project, never the free tier.
+   *
+   * THE MODEL IS A VERSION, NEVER AN ALIAS (the TRIAGE / COPILOT rule): a `-latest` id is refused at
+   * boot. So is any OpenRouter model under `anthropic/` — the intended model is Gemini served through
+   * OpenRouter, so the same prompt and eval (`scripts/lab-slip-eval.ts`) apply.
+   */
+  HMIS_GEMINI_KEY_FILE: z.string().optional(),
+  HMIS_OPENROUTER_KEY_FILE: z.string().optional(),
+  LAB_SLIP_GEMINI_MODEL: z.string().trim().min(1).default("gemini-2.5-flash")
+    .refine((m) => !/-latest$/i.test(m), { message: "LAB_SLIP_GEMINI_MODEL must be a pinned version, never a -latest alias" }),
+  LAB_SLIP_OPENROUTER_MODEL: z.string().trim().min(1).default("google/gemini-2.5-flash")
+    .refine((m) => !/^anthropic\//i.test(m), { message: "LAB_SLIP_OPENROUTER_MODEL may not be an anthropic/ model (decision 0082)" })
+    .refine((m) => !/-latest$/i.test(m), { message: "LAB_SLIP_OPENROUTER_MODEL must be a pinned version, never a -latest alias" }),
+  LAB_SLIP_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
+  /**
    * STAFF ATTENDANCE (owner 2026-10-09) — the hospital's attendance system, "bioattend"
    * (`modules/attendance`). Three secret FILES on the OpenAI key's terms (read on use, re-read when
    * they change, never an environment value): the API key, the webhook signing secret and the
@@ -629,6 +647,8 @@ export type AppConfig = {
   /** MOBILE M6b — where the Firebase service-account key is expected, or null. The file may not exist yet. */
   fcmServiceAccountFile: string | null;
   openaiKeyFile: string | null;
+  /** #934 — the lab slip reader's provider files, pinned models and the in-request budget. */
+  labSlip: { geminiKeyFile: string | null; openrouterKeyFile: string | null; geminiModel: string; openrouterModel: string; timeoutMs: number };
   /** Staff attendance from bioattend — where to call, the master switch, and the three secret files (paths, never contents). */
   attendance: { baseUrl: string; syncEnabled: boolean; selfShowsTimes: boolean; apiKeyFile: string | null; webhookSecretFile: string | null; aadhaarKeyFile: string | null };
   /** Where an app mark counts as "inside premises" (`modules/attendance/marks.ts`). */
@@ -972,6 +992,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     notifyPushProvider: parsed.NOTIFY_PUSH_PROVIDER,
     fcmServiceAccountFile: parsed.HMIS_FCM_SERVICE_ACCOUNT_FILE === undefined || parsed.HMIS_FCM_SERVICE_ACCOUNT_FILE.trim() === "" ? null : parsed.HMIS_FCM_SERVICE_ACCOUNT_FILE.trim(),
     openaiKeyFile: parsed.HMIS_OPENAI_KEY_FILE === undefined || parsed.HMIS_OPENAI_KEY_FILE.trim() === "" ? null : parsed.HMIS_OPENAI_KEY_FILE.trim(),
+    labSlip: {
+      geminiKeyFile: pathOrNull(parsed.HMIS_GEMINI_KEY_FILE),
+      openrouterKeyFile: pathOrNull(parsed.HMIS_OPENROUTER_KEY_FILE),
+      geminiModel: parsed.LAB_SLIP_GEMINI_MODEL,
+      openrouterModel: parsed.LAB_SLIP_OPENROUTER_MODEL,
+      timeoutMs: parsed.LAB_SLIP_TIMEOUT_MS,
+    },
     attendance: {
       baseUrl: parsed.BIOATTEND_BASE_URL.replace(/\/+$/, ""),
       syncEnabled: parsed.ATTENDANCE_SYNC_ENABLED,

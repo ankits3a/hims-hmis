@@ -625,7 +625,7 @@ describe("spec #934 — lab slip scan", () => {
       for (const id of [discarded.id, neverAttached.id, attached.id]) await db.update(labSlipScans).set({ capturedAt: daysAgo(91) }).where(eq(labSlipScans.id, id));
       await db.update(labSlipScans).set({ capturedAt: daysAgo(89) }).where(eq(labSlipScans.id, young.id));
       const stuck = await scan(slip({ name: "D" }), { tag: "d11-stuck" });
-      await db.update(labSlipScans).set({ status: "reading", capturedAt: minutesAgo(3) }).where(eq(labSlipScans.id, stuck.id));
+      await db.update(labSlipScans).set({ status: "reading", capturedAt: minutesAgo(3), readStartedAt: minutesAgo(3) }).where(eq(labSlipScans.id, stuck.id));
       const eventsBefore = (await db.select().from(events).where(like(events.name, "lab.slip_%"))).length;
 
       const report = await sweepLabSlips(db, store, NOW);

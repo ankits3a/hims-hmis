@@ -1562,6 +1562,13 @@
       "when": 1792419953257,
       "tag": "0223_desk_routing_feeds",
       "breakpoints": true
+    },
+    {
+      "idx": 223,
+      "version": "7",
+      "when": 1792593453586,
+      "tag": "0224_lab_slip_scans",
+      "breakpoints": true
     }
   ]
 }

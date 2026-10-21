@@ -156,7 +156,7 @@ describe("spec #934 D12 — scan slip on the phone", () => {
     const on = server(BENCH, routes());
     const a = await mount(on.fetcher, <QuickBench />);
     expect(await screen.findByTestId("qb-scan")).toBeTruthy();
-    a.unmount();
+    await a.unmount();
 
     const off = server(BENCH, routes({ reading: false }));
     await mount(off.fetcher, <QuickBench />);
