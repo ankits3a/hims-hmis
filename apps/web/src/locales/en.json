@@ -19613,9 +19613,8 @@
       "PED": "Paediatrics",
       "ENT": "ENT",
       "OPH": "Eye",
-      "CARD": "Cardiology",
-      "NEURO": "Neurology",
-      "ANAES": "Anaesthesia"
+      "CAR": "Cardiology",
+      "ANAE": "Anaesthesia"
     },
     "save": "Save triage",
     "saveAgain": "Save re-triage",
