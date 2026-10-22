@@ -51,7 +51,8 @@ async function priceOf(exec: Db | Tx, serviceId: string, at: Date): Promise<numb
     if (svc === undefined || !svc.active) return null;
     const price = ctx.tariff.items[serviceId];
     if (price === undefined || price < 0) return null;
-    const [line] = priceInvoiceLines(ctx, [{ lineId: newId(), serviceId, qty: 1 }]);
+    // Lane 6 (#813): an ER line is part of the hospital's composite healthcare supply (the invoice prices it so too).
+    const [line] = priceInvoiceLines(ctx, [{ lineId: newId(), serviceId, qty: 1, supplyContext: "composite_healthcare" }]);
     return line === undefined ? null : line.netPaise;
   } catch {
     return null;

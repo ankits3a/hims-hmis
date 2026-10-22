@@ -172,7 +172,8 @@
     "erBoard": "ER बोर्ड",
     "erTriage": "ER ट्राइएज",
     "erPatient": "ER मरीज़",
-    "erMlc": "MLC डेस्क"
+    "erMlc": "MLC डेस्क",
+    "erBill": "ER बिल डेस्क"
   },
   "palette": {
     "title": "खोज",
@@ -17326,7 +17327,8 @@
       "visit": "कंसल्टेंट विज़िट",
       "cross_visit": "क्रॉस-कंसल्टेशन",
       "lab": "लैब जाँच",
-      "imaging": "इमेजिंग"
+      "imaging": "इमेजिंग",
+      "er": "आपातकाल"
     },
     "class": {
       "general": "जनरल वार्ड",
@@ -19458,6 +19460,54 @@
       "mccd_required": {
         "rule": "MCCD संख्या दर्ज करें।",
         "fix": "MCCD संख्या दर्ज करें"
+      },
+      "payer_ref_needed": {
+        "rule": "योजना संदर्भ जोड़ें।",
+        "fix": "संदर्भ जोड़ें"
+      },
+      "bnss_needs_mlc": {
+        "rule": "कानूनन मुफ़्त के लिए MLC चाहिए।",
+        "fix": "MLC खोलें"
+      },
+      "event_account_not_found": {
+        "rule": "ऐसा खाता नहीं।",
+        "fix": "खाता खोलें"
+      },
+      "bill_settled": {
+        "rule": "पहले से निपटा।",
+        "fix": "बिल खोलें"
+      },
+      "not_stabilised": {
+        "rule": "स्थिर होने से पहले पैसे नहीं।",
+        "fix": "स्थिर होने तक रुकें"
+      },
+      "payer_pays_nothing": {
+        "rule": "इस मरीज़ को कुछ नहीं देना।",
+        "fix": "भुगतानकर्ता देखें"
+      },
+      "lines_unpriced": {
+        "rule": "कुछ लाइनों का दाम नहीं।",
+        "fix": "दाम लगाएँ"
+      },
+      "tender_short": {
+        "rule": "कम लिया; बकाया दर्ज करें।",
+        "fix": "बकाया दर्ज करें"
+      },
+      "undertaking_invalid": {
+        "rule": "वचनपत्र इसी मरीज़ का सक्रिय दस्तावेज़ होना चाहिए।",
+        "fix": "वचनपत्र दर्ज करें"
+      },
+      "undertaking_needed": {
+        "rule": "बकाया के लिए वचन-पत्र चाहिए।",
+        "fix": "वचन-पत्र जोड़ें"
+      },
+      "patient_payable_forbidden": {
+        "rule": "कानूनन मुफ़्त: कुछ देय नहीं।",
+        "fix": "कुछ देय नहीं से निपटाएँ"
+      },
+      "rolled_to_ip": {
+        "rule": "भर्ती बिल में चला गया।",
+        "fix": "IP बिल खोलें"
       }
     },
     "esi": {
@@ -20073,5 +20123,73 @@
       "other": "अन्य"
     },
     "evidenceTab": "साक्ष्य"
+  },
+  "erBill": {
+    "title": "ER बिल डेस्क",
+    "toSettle": "ER से गए — निपटाना है",
+    "noneToSettle": "कुछ बाकी नहीं",
+    "inDepartment": "विभाग में",
+    "pick": "एक मरीज़ चुनें।",
+    "stabilised": "स्थिर",
+    "notStabilised": "अभी स्थिर नहीं — पैसे नहीं माँगे जाते",
+    "unpriced": "दाम नहीं",
+    "total": "कुल",
+    "payerShare": "भुगतानकर्ता",
+    "patientShare": "मरीज़",
+    "advance": "अग्रिम",
+    "balance": "बकाया",
+    "price": "लाइनों का दाम लगाएँ",
+    "priced": "{{n}} लाइनों का दाम लगा",
+    "payerLabel": "भुगतानकर्ता",
+    "schemeRef": "योजना / संदर्भ संख्या",
+    "setPayer": "भुगतानकर्ता दर्ज करें",
+    "payerSet": "भुगतानकर्ता दर्ज",
+    "amount": "राशि (₹)",
+    "tender": "भुगतान तरीका",
+    "takeAdvance": "अग्रिम लें",
+    "advanceTaken": "अग्रिम लिया · रसीद {{no}}",
+    "settleZero": "निपटाएँ — कुछ देय नहीं",
+    "settlePaid": "निपटाएँ — भुगतान हुआ",
+    "dues": "मरीज़ अभी नहीं दे सकते — बकाया",
+    "signer": "वचन-पत्र पर हस्ताक्षर",
+    "relation": "रिश्ता",
+    "undertakingRef": "वचन-पत्र संख्या",
+    "recordDues": "बकाया दर्ज करें (बिल रोका)",
+    "settled": "निपटा · बिल {{no}}",
+    "settledDues": "बकाया दर्ज: {{dues}} (बिल रोका)",
+    "payer": {
+      "self": "स्वयं",
+      "pmjay": "PM-JAY",
+      "road_accident": "सड़क दुर्घटना (कैशलेस)",
+      "bnss_free": "कानूनन मुफ़्त (BNSS धारा 397)",
+      "mci_event": "सामूहिक दुर्घटना"
+    },
+    "tenderOf": {
+      "cash": "नकद",
+      "upi": "UPI",
+      "card": "कार्ड"
+    },
+    "settlement": {
+      "paid": "भुगतान",
+      "dues": "वचन-पत्र पर बकाया",
+      "nothing_payable": "कुछ देय नहीं"
+    },
+    "outcome": {
+      "discharged": "छुट्टी",
+      "referred_out": "रेफ़र",
+      "lama": "LAMA",
+      "absconded": "भाग गए",
+      "lwbs": "बिना दिखाए गए",
+      "died": "मृत्यु",
+      "admitted": "भर्ती"
+    },
+    "source": {
+      "er.registration": "ER पंजीकरण",
+      "er.physician": "ER चिकित्सक शुल्क",
+      "er.observation": "ER निगरानी (6 घंटे के खंड)",
+      "er.order": "जाँच",
+      "er.issue": "दवा / सामग्री",
+      "er.procedure": "प्रक्रिया"
+    }
   }
 }

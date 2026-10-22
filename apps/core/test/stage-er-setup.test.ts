@@ -1,5 +1,5 @@
 import { setupTestDb, truncateAll } from "./helpers/db";
-import { resources, roleAssignments, stockLedger } from "../src/kernel/db/schema";
+import { resources, roleAssignments, services, stockLedger, tariffVersions } from "../src/kernel/db/schema";
 import { createUser } from "../src/kernel/auth/identity";
 import { assignRole, createRole } from "../src/kernel/auth/permissions";
 import { listDefinitions } from "../src/kernel/workflow/definitions";
@@ -40,11 +40,19 @@ describe("stageErSetup against a database", () => {
     expect(first.testingRoles).toMatchObject({ action: "granted", granted: ["er_nurse"] });
     expect((await db.select().from(roleAssignments)).filter((r) => r.userId === all).map((r) => r.roleKey).sort()).toEqual(["admin", "er_nurse", "owner"]);
 
+    // d. the sample ER tariff: a DRAFT version, its services inactive.
+    expect(first.sampleTariff.action).toBe("drafted");
+    expect(first.sampleTariff.servicesCreated.sort()).toEqual(["ER-DRUG", "ER-OBS", "ER-PHYS", "ER-REG"]);
+    const versions = await db.select().from(tariffVersions);
+    expect(versions.filter((v) => (v.notes ?? "").includes("UAT SAMPLE")).map((v) => v.status)).toEqual(["draft"]);
+    expect((await db.select().from(services)).filter((s) => s.code.startsWith("ER-")).every((s) => s.active === false)).toBe(true);
+
     const second = await stageErSetup(db);
     expect(second).toMatchObject({
       workflow: { action: "already", definitionId: first.workflow.definitionId, status: "draft" },
       store: { action: "already", storeId: first.store.storeId },
       testingRoles: { action: "already", granted: [] },
+      sampleTariff: { action: "already" },
     });
     expect((await db.select().from(resources)).filter((r) => r.kind === "store")).toHaveLength(1);
   });

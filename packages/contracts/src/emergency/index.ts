@@ -2,6 +2,7 @@ import * as arrival from "./intents";
 import * as triageIntents from "./triage";
 import * as care from "./care";
 import * as mlc from "./mlc";
+import * as bill from "./bill";
 import * as dispo from "./dispo";
 
 export * from "./common";
@@ -19,6 +20,13 @@ export {
 } from "./mlc";
 export type { ErMlcCategory, ErMlcClock, ErMlcDesk, ErMlcDetail, ErMlcRow } from "./mlc";
 export { ER_DISPOSITIONS, ER_REFERRAL_REASONS, ER_RETURN_IF_SIGNS } from "./dispo";
+export {
+  ER_OBSERVATION_BLOCK_HOURS, ER_OBSERVATION_FREE_HOURS, ER_PAYER_KINDS, ER_ROAD_ACCIDENT_CAP_PAISE, ER_ROAD_ACCIDENT_DAYS, ER_SERVICE_CODES,
+  ErBillDeskSchema, ErBillLineSchema, ErBillSchema,
+} from "./bill";
+export type { ErBill, ErBillDesk, ErPayerKind } from "./bill";
+/** ER lane 6 (#813): the intents whose answers name money — the bill desk's, never a clinical screen's (0058). */
+export const ER_MONEY_INTENTS = ["set_er_payer", "take_er_advance", "price_er_lines", "settle_er_bill", "open_er_event_account"] as const;
 export type { ErDisposition, ErReturnIfSign } from "./dispo";
 export { ErBandPayloadSchema } from "./intents";
 export type { ErBandPayload } from "./intents";
@@ -71,6 +79,12 @@ export const ER_INTENTS = {
   record_er_death: dispo.recordErDeath,
   record_specialty_refusal: dispo.recordSpecialtyRefusal,
   arbitrate_admission: dispo.arbitrateAdmission,
+  // lane 6 (#813) — money: the ER bill desk only
+  set_er_payer: bill.setErPayer,
+  take_er_advance: bill.takeErAdvance,
+  price_er_lines: bill.priceErLines,
+  settle_er_bill: bill.settleErBill,
+  open_er_event_account: bill.openErEventAccount,
 } as const;
 export type ErIntentName = keyof typeof ER_INTENTS;
 export const ER_INTENT_NAMES = Object.keys(ER_INTENTS) as ErIntentName[];

@@ -92,6 +92,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "er.mlc",
       // ER lane 5 (#812) — records "left without being seen" at the desk. README "Emergency disposition" prose.
       "er.disposition",
+      // ER lane 6 (#813) — the ER bill desk: payer, advance after "stabilised", settle or dues. README "Emergency bill" prose.
+      "er.bill",
       // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
       "ipd.beds.view",
       "ipd.beds.manage",
@@ -152,6 +154,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "er.board.view", "er.board.wall", "er.arrival.register",
       // ER lane 4 (#811) — as the front office: the MLC desk. README "Emergency MLC" prose.
       "er.mlc",
+      // ER lane 6 (#813) — the ER bill desk. README "Emergency bill" prose.
+      "er.bill",
       // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
       "ipd.beds.view",
       "ipd.beds.manage",
@@ -694,6 +698,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "cashier",
     permissions: [
+      // ER lane 6 (#813) — the ER bill desk. README "Emergency bill" prose.
+      "er.bill",
       // IPD CHARGES E2.1 (#725, decision 0072) — the interim bill; README "IPD running bill" prose. Never a doctor (0058).
       "ipd.bill.view",
       // IPD BILL DESK E2.3 (#727, decision 0072) — the exceptions-only bill desk and its deposit_low card; README "IPD bill desk" prose. Never a doctor (0058).
@@ -784,6 +790,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "billing_manager",
     permissions: [
+      // ER lane 6 (#813) — the ER bill desk. README "Emergency bill" prose.
+      "er.bill",
       // IPD ADMISSION E1.2 (#719) — the TPA desk sits in billing: the manual authorisation record.
       "ipd.payer.manage",
       // IPD CHARGES E2.1 (#725) — the interim bill, and the reversal line against a wrong charge (never an edit).
@@ -1224,6 +1232,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "er.mlc",
       // ER lane 5 (#812) — LAMA and abscond at night. README "Emergency disposition" prose.
       "er.disposition",
+      // ER lane 6 (#813) — the ER bill desk at night; opens a mass-casualty event account. README "Emergency bill" prose.
+      "er.bill",
       "tasks.view", "tasks.supervise",
       // IPD BEDS E1.1 (#718) — the duty manager approves overflow beds (spec §4.1) and runs the board at night.
       "ipd.beds.view", "ipd.beds.manage", "ipd.beds.clean", "ipd.beds.overflow",

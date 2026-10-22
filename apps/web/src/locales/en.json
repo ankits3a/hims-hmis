@@ -172,7 +172,8 @@
     "erBoard": "ER board",
     "erTriage": "ER triage",
     "erPatient": "ER patient",
-    "erMlc": "MLC desk"
+    "erMlc": "MLC desk",
+    "erBill": "ER bill desk"
   },
   "palette": {
     "title": "Search",
@@ -17326,7 +17327,8 @@
       "visit": "Consultant visit",
       "cross_visit": "Cross-consultation",
       "lab": "Laboratory",
-      "imaging": "Imaging"
+      "imaging": "Imaging",
+      "er": "Emergency"
     },
     "class": {
       "general": "General ward",
@@ -19458,6 +19460,54 @@
       "mccd_required": {
         "rule": "Enter the MCCD number.",
         "fix": "Enter MCCD number"
+      },
+      "payer_ref_needed": {
+        "rule": "Add the scheme reference.",
+        "fix": "Add reference"
+      },
+      "bnss_needs_mlc": {
+        "rule": "Free by law needs the MLC.",
+        "fix": "Open the MLC"
+      },
+      "event_account_not_found": {
+        "rule": "No such event account.",
+        "fix": "Open event account"
+      },
+      "bill_settled": {
+        "rule": "Already settled.",
+        "fix": "Open the bill"
+      },
+      "not_stabilised": {
+        "rule": "No money before stabilised.",
+        "fix": "Wait for stabilised"
+      },
+      "payer_pays_nothing": {
+        "rule": "This patient pays nothing.",
+        "fix": "Check payer"
+      },
+      "lines_unpriced": {
+        "rule": "Some lines have no price.",
+        "fix": "Price lines"
+      },
+      "tender_short": {
+        "rule": "Not enough taken; record dues.",
+        "fix": "Record dues"
+      },
+      "undertaking_invalid": {
+        "rule": "The undertaking must be this patient's own active document.",
+        "fix": "File the undertaking"
+      },
+      "undertaking_needed": {
+        "rule": "Dues need a signed undertaking.",
+        "fix": "Add undertaking"
+      },
+      "patient_payable_forbidden": {
+        "rule": "Free by law: nothing payable.",
+        "fix": "Settle as nothing payable"
+      },
+      "rolled_to_ip": {
+        "rule": "Moved to the inpatient bill.",
+        "fix": "Open the IP bill"
       }
     },
     "esi": {
@@ -20073,5 +20123,73 @@
       "other": "Other"
     },
     "evidenceTab": "Evidence"
+  },
+  "erBill": {
+    "title": "ER bill desk",
+    "toSettle": "Left the ER — to settle",
+    "noneToSettle": "Nothing to settle",
+    "inDepartment": "In the department",
+    "pick": "Pick a patient.",
+    "stabilised": "Stabilised",
+    "notStabilised": "Not yet stabilised — no money asked",
+    "unpriced": "No price yet",
+    "total": "Total",
+    "payerShare": "Payer",
+    "patientShare": "Patient",
+    "advance": "Advance",
+    "balance": "Balance",
+    "price": "Price the lines",
+    "priced": "{{n}} lines priced",
+    "payerLabel": "Payer",
+    "schemeRef": "Scheme / reference no.",
+    "setPayer": "Set payer",
+    "payerSet": "Payer recorded",
+    "amount": "Amount (₹)",
+    "tender": "Tender",
+    "takeAdvance": "Take advance",
+    "advanceTaken": "Advance taken · receipt {{no}}",
+    "settleZero": "Settle — nothing payable",
+    "settlePaid": "Settle — paid",
+    "dues": "Patient cannot pay now — dues",
+    "signer": "Undertaking signed by",
+    "relation": "Relation",
+    "undertakingRef": "Undertaking no.",
+    "recordDues": "Record dues (invoice held)",
+    "settled": "Settled · bill {{no}}",
+    "settledDues": "Dues recorded: {{dues}} (invoice held)",
+    "payer": {
+      "self": "Self",
+      "pmjay": "PM-JAY",
+      "road_accident": "Road accident (cashless)",
+      "bnss_free": "Free by law (BNSS s.397)",
+      "mci_event": "Mass-casualty event"
+    },
+    "tenderOf": {
+      "cash": "Cash",
+      "upi": "UPI",
+      "card": "Card"
+    },
+    "settlement": {
+      "paid": "Paid",
+      "dues": "Dues against undertaking",
+      "nothing_payable": "Nothing payable"
+    },
+    "outcome": {
+      "discharged": "Discharged",
+      "referred_out": "Referred out",
+      "lama": "LAMA",
+      "absconded": "Absconded",
+      "lwbs": "Left unseen",
+      "died": "Died",
+      "admitted": "Admitted"
+    },
+    "source": {
+      "er.registration": "ER registration",
+      "er.physician": "ER physician fee",
+      "er.observation": "ER observation (6 h blocks)",
+      "er.order": "Test",
+      "er.issue": "Drug / consumable",
+      "er.procedure": "Procedure"
+    }
   }
 }

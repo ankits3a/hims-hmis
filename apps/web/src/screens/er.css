@@ -231,6 +231,11 @@
 .erm-detail { display: flex; flex-direction: column; gap: 10px; }
 .erm-form textarea { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font: inherit; font-size: 15px; color: var(--ink); background: var(--card); width: 100%; resize: vertical; }
 .erm-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* ── ER lane 6 (#813): the ER bill desk (money: this screen only) ── */
+.erb-bill-amt { font-size: 15px; font-weight: 600; white-space: nowrap; }
+.erb-bill-lines { width: 100%; border-collapse: collapse; font-size: 14px; }
+.erb-bill-lines td { padding: 6px 4px; border-bottom: 1px solid var(--line2, var(--line)); vertical-align: top; }
+.erb-bill-lines td.num { text-align: right; white-space: nowrap; }
 
 @media (max-width: 1500px) {
   .erb-stat .val b { font-size: 24px; }
