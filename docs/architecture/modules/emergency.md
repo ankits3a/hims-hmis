@@ -117,6 +117,7 @@ Source: `apps/core/src/modules/emergency/`
 - `manifest.ts`
   - `emergencyManifest: ModuleManifest`
 - `mci.ts`
+  - `decideMciStops(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"decide_mci_stops">>`
   - `declareMci(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"declare_mci">>`
   - `listMciOverflowBeds(db: Db, actor: Actor): Promise<ErMciSurgeBed[]>`
   - `listMciPacks(db: Db, actor: Actor): Promise<{ ready: { packNo: string; uhid: string; alias: string; band: ErBandPayload }[] }>`
@@ -126,6 +127,7 @@ Source: `apps/core/src/modules/emergency/`
   - `packNoOf(year: number, serial: number): string`
   - `readMciBoard(db: Db, actor: Actor, opts: Opts = {}): Promise<ErMciBoard>`
   - `readMciCount(db: Db, actor: Actor, mciId: string, opts: Opts = {}): Promise<ErMciCount>`
+  - `readMciFamilyDesk(db: Db, actor: Actor, opts: Opts = {}): Promise<ErMciFamilyDesk>`
   - `registerMciArrival(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"register_mci_arrival">>`
   - `standDownMci(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"stand_down_mci">>`
 - `mlc.ts`
@@ -161,6 +163,7 @@ Source: `apps/core/src/modules/emergency/`
   - `ER_ARBITRATION_TASK`
   - `ER_BED_SKILL`
   - `ER_BOARDING_TASK`
+  - `ER_MCI_STOPS_TASK`
   - `ER_MLC_INTIMATION_TASK`
   - `ER_MLC_SKILL`
   - `ER_MS_SKILL`
@@ -190,8 +193,8 @@ Source: `apps/core/src/modules/emergency/`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (77)
+## HTTP routes (79)
 
-- `emergency.controller.ts` — 77: `/er/arrivals`, `/er/bands`, `/er/bays`, `/er/bill`, `/er/board`, `/er/calls`, `/er/care`, `/er/codes`, `/er/consents`, `/er/desk`, `/er/dispo`, `/er/doctor`, `/er/doctors`, `/er/episodes`, `/er/identity`, `/er/items`, `/er/mci`, `/er/meds`, `/er/mlc`, `/er/notes`, `/er/orders`, `/er/patients`, `/er/pre-alerts`, `/er/procedures`, `/er/stabilised`, `/er/triage`, `/er/triage-doctors`, `/er/vitals`
+- `emergency.controller.ts` — 79: `/er/arrivals`, `/er/bands`, `/er/bays`, `/er/bill`, `/er/board`, `/er/calls`, `/er/care`, `/er/codes`, `/er/consents`, `/er/desk`, `/er/dispo`, `/er/doctor`, `/er/doctors`, `/er/episodes`, `/er/identity`, `/er/items`, `/er/mci`, `/er/meds`, `/er/mlc`, `/er/notes`, `/er/orders`, `/er/patients`, `/er/pre-alerts`, `/er/procedures`, `/er/stabilised`, `/er/triage`, `/er/triage-doctors`, `/er/vitals`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/emergency`
