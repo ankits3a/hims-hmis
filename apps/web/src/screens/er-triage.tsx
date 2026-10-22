@@ -28,7 +28,8 @@ import "./er.css";
  */
 type T = (k: string, o?: Record<string, unknown>) => string;
 const LEVELS: readonly EsiLevel[] = [1, 2, 3, 4, 5];
-const DEPARTMENTS = ["MED", "SUR", "ORT", "OBG", "PAED", "ENT", "OPH"] as const;
+/** The take-unit specialties; each is a roster department master code (pinned by er-departments.test.ts, #870). */
+export const ER_TRIAGE_DEPARTMENTS = ["MED", "SUR", "ORT", "OBG", "PED", "ENT", "OPH"] as const;
 const AVPU = ["alert", "confused", "voice", "pain", "unresponsive"] as const;
 type VitalKey = "respRate" | "spo2" | "systolic" | "pulse" | "temperatureC";
 const VITALS: readonly VitalKey[] = ["respRate", "spo2", "systolic", "pulse", "temperatureC"];
@@ -241,7 +242,7 @@ export function ErTriage(): React.ReactElement {
             <fieldset className="erd-choice" data-testid="er-triage-dept">
               <legend>{t("erTriage.dept")}</legend>
               <div className="erd-opts">
-                {DEPARTMENTS.map((c) => (
+                {ER_TRIAGE_DEPARTMENTS.map((c) => (
                   <button key={c} type="button" className={`erd-opt sm${dept === c ? " on" : ""}`} aria-pressed={dept === c} onClick={() => setDept(dept === c ? null : c)}>{t(`erTriage.depts.${c}`)}</button>
                 ))}
               </div>
