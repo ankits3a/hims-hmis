@@ -20366,7 +20366,7 @@
     "place": "Place",
     "declareGo": "Declare Code Yellow",
     "declareWho": "MS or duty manager only.",
-    "declared": "Code Yellow declared",
+    "declared": "Code Yellow declared · phones paged: {{n}}",
     "recent": "Past events",
     "packs": "Pre-made packs",
     "packsHint": "UHID + band, ready at the desk.",

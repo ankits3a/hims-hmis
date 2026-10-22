@@ -1,12 +1,15 @@
 import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { ER_INTENTS, ER_MCI_COMMAND_ROLES, ER_OPEN_STATES, mciTagProposal, newId } from "@hmis/contracts";
+import { raiseNoticeIn } from "../../kernel/alerts/notices";
 import { withTx } from "../../kernel/db/client";
 import {
   erBands, erBills, erEpisodes, erEventAccounts, erMciEvents, erMciPacks, erMciSurgeBeds, erMciTags, resources, roleAssignments, users,
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
+import { usersHoldingRole } from "../../kernel/workflow/roles";
 import { initialsOf } from "../ipd";
 import { PatientError, getPatientSummaries, registerPatient } from "../patients";
+import { calloutList, orgDepartmentByCode } from "../roster";
 import { arriveIn, arrivedEvent, gateInstant } from "./arrival";
 import { bandPerson } from "./bands";
 import { aliasHiOf, istYear, lockEpisode, lockKey, onceEr, provenanceOf, requireErPermission } from "./core";
@@ -77,6 +80,27 @@ function packBand(packNo: string, uhid: string): ErBandPayload {
 
 // ═══════════════════════════════════════════ declare and stand down ═══════════════════════════════════════════
 
+/** The Casualty department of the roster (`org_departments.code`). */
+export const ER_ROSTER_DEPARTMENT = "CAS";
+/** #877: the most phones one Code Yellow rings (a bound, not a target: a 1,200-bed hospital's ER + on-call is well under). */
+const MCI_PAGE_MAX = 100;
+
+/**
+ * #877 item 1 — WHO A CODE YELLOW PAGES (DECIDED, the standard disaster call-out): every person on the roster's call-out
+ * list for Casualty NOW (its own duty plus the hospital-wide on-call cover the roster carries), then everyone who commands
+ * a Code Yellow (the MS and the duty managers, by role). Nobody on the roster → the casualty nurses (`er_nurse`). The
+ * declarer is not paged (they are on the board).
+ */
+async function mciPageList(tx: Tx, declarer: string, at: Date): Promise<string[]> {
+  const ids = new Set<string>();
+  const cas = await orgDepartmentByCode(tx, ER_ROSTER_DEPARTMENT);
+  if (cas !== undefined) for (const r of await calloutList(tx, cas.id, at)) if (r.userId !== null) ids.add(r.userId);
+  if (ids.size === 0) for (const u of await usersHoldingRole(tx, "er_nurse")) ids.add(u);
+  for (const role of ER_MCI_COMMAND_ROLES) for (const u of await usersHoldingRole(tx, role)) ids.add(u);
+  ids.delete(declarer);
+  return [...ids].slice(0, MCI_PAGE_MAX);
+}
+
 export async function declareMci(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"declare_mci">> {
   const input: Input<"declare_mci"> = ER_INTENTS.declare_mci.input.parse(raw);
   await requireErPermission(db, actor, ER_MCI);
@@ -94,7 +118,16 @@ export async function declareMci(db: Db, actor: Actor, raw: unknown, opts: Opts 
       id, name: input.name, place: input.place ?? null, note: input.note ?? null, eventAccountId: accountId, declaredBy: actor.id, declaredAt: at,
     });
     await appendEvent(tx, erMciDeclared.make({ payload: { mciId: id, eventAccountId: accountId, provenance: provenanceOf(actor) }, actor, correlationId: id, occurredAt: at }));
-    return { mciId: id, eventAccountId: accountId, declaredAt: at.toISOString() };
+    // #877: THE PAGE, in the declaration's transaction — a bell row per person, relayed to the phones as the platform's
+    // content-free notice. Words: the code and the place; there is no patient in them (there is none yet).
+    const pageIds = await mciPageList(tx, actor.id, at);
+    for (const userId of pageIds) {
+      await raiseNoticeIn(tx, {
+        userId, kind: "er.code_yellow", title: `Code Yellow · ${input.place ?? "ER"}`, body: "Mass casualty · report to the ER",
+        refType: "er_mci", refId: id, sourceKey: `er_mci:${id}`, at,
+      });
+    }
+    return { mciId: id, eventAccountId: accountId, declaredAt: at.toISOString(), paged: pageIds.length };
   }), at);
 }
 

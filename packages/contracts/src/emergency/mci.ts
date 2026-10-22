@@ -76,7 +76,8 @@ export function mciTagProposal(method: ErMciMethod, f: ErMciFindings): ErMciTag 
 
 export const declareMci = erIntent({
   input: erInput({ name: ErWordsSchema, place: ErWordsSchema.optional(), note: ErNoteSchema.optional() }),
-  output: z.strictObject({ mciId: ErIdSchema, eventAccountId: ErIdSchema, declaredAt: ErInstantSchema }),
+  /** `paged`: #877 — how many phones the declaration rang (the Casualty roster, the on-call cover, the command). */
+  output: z.strictObject({ mciId: ErIdSchema, eventAccountId: ErIdSchema, declaredAt: ErInstantSchema, paged: z.number().int().nonnegative() }),
   refusals: ["mci_role_needed", "mci_active"],
   actors: ["duty_manager", "supervisor"],
   copilotProposable: false,

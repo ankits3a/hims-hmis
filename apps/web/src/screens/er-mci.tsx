@@ -105,7 +105,7 @@ function Idle({ board, t, busy, act }: { board: ErMciBoard; t: T; busy: boolean;
           <label className="erd-field"><span>{t("erMci.name")}</span><input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("erMci.nameHint")} /></label>
           <label className="erd-field"><span>{t("erMci.place")}</span><input value={place} onChange={(e) => setPlace(e.target.value)} /></label>
           <button type="button" className="erx-btn ery-declare big" disabled={busy || name.trim() === ""} data-testid="er-mci-declare-go"
-            onClick={() => void act(async () => { await declareMciApi({ name: name.trim(), ...(place.trim() === "" ? {} : { place: place.trim() }) }); return t("erMci.declared"); })}>
+            onClick={() => void act(async () => { const r = await declareMciApi({ name: name.trim(), ...(place.trim() === "" ? {} : { place: place.trim() }) }); return t("erMci.declared", { n: r.paged }); })}>
             {t("erMci.declareGo")}</button>
           <p className="dim">{t("erMci.declareWho")}</p>
         </div>

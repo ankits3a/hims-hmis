@@ -261,7 +261,7 @@ export const fetchMciBoard = () => api<ErMciBoard>("GET", ER_ROUTES.mci);
 export const fetchMciPacks = () => api<{ ready: Omit<ErMciPack, "packId" | "patientId" | "aliasHi">[] }>("GET", ER_ROUTES.mciPacks);
 export const fetchMciOverflowBeds = () => api<ErMciSurgeBed[]>("GET", ER_ROUTES.mciOverflow);
 export const fetchMciCount = (mciId: string) => api<ErMciCount>("GET", `${ER_ROUTES.mci}/${encodeURIComponent(mciId)}/count`);
-export const declareMciApi = (body: Record<string, unknown>) => post<{ mciId: string }>(ER_ROUTES.mciDeclare, body);
+export const declareMciApi = (body: Record<string, unknown>) => post<{ mciId: string; paged: number }>(ER_ROUTES.mciDeclare, body);
 export const standDownMciApi = (body: Record<string, unknown>) => post<{ backToEsi: number }>(ER_ROUTES.mciStandDown, body);
 export const mintPacksApi = (body: Record<string, unknown>) => post<{ packs: ErMciPack[] }>(ER_ROUTES.mciPacks, body);
 export const mciArrivalApi = (body: Record<string, unknown>) => post<{ episodeNo: string; alias: string }>(ER_ROUTES.mciArrival, body);
