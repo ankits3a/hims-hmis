@@ -146,3 +146,7 @@ export type { LabReleaseTest, LabReleaseValue } from "./abdm-release";
 // DOCTOR DESK DD-0.2 (#626) — the clinician's own lab rows: open criticals and delta-flagged results.
 export { closedCriticalsForClinician, criticalCallsByIds, deltaResultsForClinician, openCriticalsForClinician, resultsForPatientSince } from "./clinician-reads";
 export type { ClinicianLabRow, PatientResultSince } from "./clinician-reads";
+
+// #934 — the photographed analyser slip: its controller, and the sweep the worker runs with the SLA sweep.
+export { LabSlipsController } from "./lab-slips.controller";
+export { LAB_SLIP_ACTOR, sweepLabSlips } from "./slips";

@@ -1054,6 +1054,46 @@ export const LAB_CATALOGUE_STANDARD_DATA: LabCatalogueFixture = {
       "formulaGuard": null
     },
     {
+      "code": "GRAN",
+      "nameEn": "Granulocytes %",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 1
+    },
+    {
+      "code": "MID",
+      "nameEn": "Mid cells %",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 1
+    },
+    {
+      "code": "GRAN_ABS",
+      "nameEn": "Granulocytes, absolute",
+      "resultType": "formula",
+      "unit": "10^3/uL",
+      "decimals": 2,
+      "absurdLow": null,
+      "absurdHigh": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "formula": "WBC * GRAN / 100",
+      "formulaGuard": null
+    },
+    {
+      "code": "MID_ABS",
+      "nameEn": "Mid cells, absolute",
+      "resultType": "formula",
+      "unit": "10^3/uL",
+      "decimals": 2,
+      "absurdLow": null,
+      "absurdHigh": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "formula": "WBC * MID / 100",
+      "formulaGuard": null
+    },
+    {
       "code": "EOS_ABS",
       "nameEn": "Absolute eosinophil count (calculated)",
       "resultType": "formula",
@@ -6734,11 +6774,15 @@ export const LAB_CATALOGUE_STANDARD_DATA: LabCatalogueFixture = {
         "MONO",
         "EOS",
         "BASO",
+        "GRAN",
+        "MID",
         "ANC",
         "LYMPH_ABS",
         "MONO_ABS",
         "EOS_ABS",
         "BASO_ABS",
+        "GRAN_ABS",
+        "MID_ABS",
         "NLR",
         "NRBC",
         "PLT",

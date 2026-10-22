@@ -11,7 +11,8 @@ import { sweepAppointmentNoShows } from "../../modules/opd/appointments";
 import { openDueTeleVisits } from "../../modules/opd/tele";
 import { sweepQueueNudges } from "../../modules/opd/queue-nudges";
 import { sweepBatchExpiry } from "../../modules/materials";
-import { sweepLabCriticalLadder, sweepLabNonReturn, sweepLabSla } from "../../modules/lab";
+import { sweepLabCriticalLadder, sweepLabNonReturn, sweepLabSla, sweepLabSlips } from "../../modules/lab";
+import { DiskDocumentStore } from "../documents/disk";
 import { collectOrderKinds } from "../orders/kinds";
 import { flagLateSurgeons } from "../../modules/ot";
 import { runDailyClose } from "../../modules/billing/daily-close";
@@ -512,10 +513,20 @@ export function registerAllJobs(
     dailyIst: LAB_NON_RETURN_IST,
     run: async (now) => { await sweepLabNonReturn(db, now, orderKinds); },
   });
+  /**
+   * #934 — the lab slip sweep rides the SLA sweep's job (no new job, so the worker pool and the job
+   * censuses do not move): a slip read left `reading` past two minutes is failed, and a discarded or
+   * never-attached slip's image leaves the document store at 90 days. It needs the store, which only
+   * a worker given its config has; without one (every census test) it does not run.
+   */
+  const slipStore = aliasConfig === undefined ? null : new DiskDocumentStore(aliasConfig.documentStorePath);
   scheduler.register({
     name: "sweepLabSla",
     every: intervals.workerLabSweepIntervalMs,
-    run: async (now) => { await sweepLabSla(db, now); },
+    run: async (now) => {
+      await sweepLabSla(db, now);
+      if (slipStore !== null) await sweepLabSlips(db, slipStore, now);
+    },
   });
   /**
    * E3.2 (#595) — THE LAB CRITICAL LADDER. Every minute, for `sweepCriticalChaser`'s reason: its

@@ -3263,5 +3263,98 @@
     "partial": "Partial report",
     "impression": "Impression",
     "signed": "Signed by {{who}}"
+  },
+  "labSlip": {
+    "scan": "Scan slip",
+    "fill": "Fill from slip",
+    "waiting": "Slips waiting ({{n}})",
+    "title": "Analyser slip",
+    "camera": "Camera",
+    "gallery": "Choose from gallery",
+    "cancel": "Cancel",
+    "analyser": "Analyser",
+    "oldPhoto": "This photo is from {{date}}.",
+    "noDate": "This photo has no date.",
+    "oldAsk": "Is it today's slip?",
+    "yes": "Yes",
+    "no": "No",
+    "use": "Use this",
+    "retake": "Retake",
+    "reading": "Reading the slip…",
+    "attached": "{{test}} draft · {{n}} rows need your eyes",
+    "attachedClean": "{{test}} draft · every row placed",
+    "open": "Open in Quick Bench",
+    "hint": "Next time, type the sample no. in Patient ID",
+    "differs": "This slip says {{says}}.",
+    "differsAsk": "Is it this patient's slip?",
+    "pick": "Pick the patient",
+    "slipName": "Slip name: {{name}}",
+    "confirm": "Confirm",
+    "keep": "Keep for later",
+    "discard": "Discard",
+    "discardWhy": "Why discard? (required)",
+    "discarded": "Slip discarded",
+    "noOpen": "No open CBC for this patient",
+    "noCandidates": "No open report fits this slip",
+    "noName": "No name on the slip",
+    "failedNotSlip": "Not a result slip",
+    "failedBlurred": "Too blurred",
+    "failedOther": "Couldn't read the slip",
+    "reread": "Read again",
+    "offline": "No connection — try again",
+    "tooLarge": "Photo too large — retake closer",
+    "off": "Slip reading is off — type the values",
+    "spendCap": "AI limit reached — type the values",
+    "reportClosed": "That report is complete or handed over",
+    "checksOpen": "Check the slip rows first",
+    "tag": "SLIP",
+    "checked": "Checked",
+    "viewSlip": "View slip",
+    "notPlaced": "From the slip, not placed",
+    "ignore": "Ignore",
+    "ignoreWhy": "Reason to ignore",
+    "ignoredBySetting": "Ignored by analyser setting ({{n}})",
+    "check": {
+      "unsure_read": "Unsure reading",
+      "no_value": "No value printed",
+      "no_unit": "No unit printed",
+      "flag_differs": "Machine flag and our range disagree",
+      "index_mismatch": "Doesn't add up with the other values",
+      "duplicate_row": "Printed twice on the slip",
+      "typed_differs": "You typed {{typed}}, the slip says {{slip}}",
+      "slip_replaced": "An earlier slip said otherwise",
+      "cross_check_differs": "Slip says {{slip}}"
+    },
+    "reason": {
+      "unmapped": "Not mapped for this analyser",
+      "ambiguous_code": "Code matches two mappings",
+      "unit_differs": "Unit differs",
+      "not_numeric": "Not a number",
+      "not_possible": "Not possible — check the value",
+      "no_value": "No value",
+      "not_in_this_report": "Not in this report"
+    },
+    "chip": {
+      "name": {
+        "same": "Name same",
+        "close": "Name close",
+        "differs": "Name differs",
+        "unread": "Name unread"
+      },
+      "age": {
+        "same": "Age same",
+        "pm1": "Age ±1",
+        "differs": "Age differs",
+        "unread": "Age unread"
+      },
+      "gender": {
+        "same": "Sex same",
+        "differs": "Sex differs",
+        "unread": "Sex unread"
+      },
+      "time": {
+        "before_print": "Collected before print"
+      }
+    }
   }
 }

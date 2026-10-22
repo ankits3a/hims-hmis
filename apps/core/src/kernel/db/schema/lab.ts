@@ -1313,3 +1313,91 @@ export const labQuickReports = pgTable(
     uniqueIndex("lab_quick_reports_sample_ux").on(t.sampleNo),
   ],
 );
+
+/**
+ * SPEC #934 — THE PHOTOGRAPHED ANALYSER SLIP (decision 0082). One row per scan, kept for good: a
+ * discard is a record, never a delete (the inbox's rule). The IMAGE lives in the DocumentStore under
+ * `storage_key`; a discarded or never-attached scan's image is purged at 90 days (`image_purged_at`),
+ * an attached one is kept as long as the report it fed. `raw_reply` is the model's answer verbatim, so
+ * a mapping change re-maps without asking the model again; `rows` is the latest mapping with each
+ * row's placement, open checks and the person's resolution.
+ */
+export const labSlipScans = pgTable(
+  "lab_slip_scans",
+  {
+    id: text("id").primaryKey(),
+    status: text("status").notNull(),
+    storageKey: text("storage_key").notNull(),
+    mimeType: text("mime_type").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    sha256: text("sha256").notNull(),
+    imagePurgedAt: timestamp("image_purged_at", { withTimezone: true }),
+    source: text("source").notNull(),
+    /** The phone's EXIF date for a gallery pick: stored, shown, never trusted. */
+    photoTakenAt: timestamp("photo_taken_at", { withTimezone: true }),
+    capturedBy: text("captured_by").notNull(),
+    capturedAt: timestamp("captured_at", { withTimezone: true }).notNull(),
+    /** When the current read began (a Read again restarts it): the lab sweep fails a read older than two minutes. */
+    readStartedAt: timestamp("read_started_at", { withTimezone: true }),
+    instrumentId: text("instrument_id").notNull().references(() => labInstruments.id),
+    provider: text("provider"),
+    model: text("model"),
+    promptVersion: text("prompt_version"),
+    latencyMs: integer("latency_ms"),
+    tokensIn: integer("tokens_in"),
+    tokensOut: integer("tokens_out"),
+    rawReply: jsonb("raw_reply"),
+    identity: jsonb("identity"),
+    rows: jsonb("rows").notNull().default(sql`'[]'::jsonb`),
+    /** Fill from slip: the report the bench had open when it scanned (the slip may still name someone else). */
+    requestedReportId: text("requested_report_id").references(() => labQuickReports.id),
+    quickReportId: text("quick_report_id").references(() => labQuickReports.id),
+    matchKind: text("match_kind"),
+    matchedBy: text("matched_by"),
+    matchedAt: timestamp("matched_at", { withTimezone: true }),
+    confirmNote: text("confirm_note"),
+    discardReason: text("discard_reason"),
+    discardedBy: text("discarded_by"),
+    discardedAt: timestamp("discarded_at", { withTimezone: true }),
+    error: text("error"),
+  },
+  (t) => [
+    index("lab_slip_scans_status_idx").on(t.status, t.capturedAt),
+    index("lab_slip_scans_sha256_idx").on(t.sha256),
+    index("lab_slip_scans_report_idx").on(t.quickReportId),
+    check("lab_slip_scans_status_ck", sql`${t.status} in ('reading', 'read', 'failed', 'waiting', 'attached', 'discarded')`),
+    check("lab_slip_scans_source_ck", sql`${t.source} in ('camera', 'gallery')`),
+    /** Attached means a report and who attached it, and only then. */
+    check(
+      "lab_slip_scans_attached_ck",
+      sql`(${t.status} = 'attached') = (${t.quickReportId} is not null and ${t.matchKind} is not null and ${t.matchedBy} is not null and ${t.matchedAt} is not null)`,
+    ),
+    /** Discarded means a reason that is not blank and who, and only then. */
+    check(
+      "lab_slip_scans_discarded_ck",
+      sql`(${t.status} = 'discarded') = (${t.discardReason} is not null and btrim(${t.discardReason}) <> '' and ${t.discardedBy} is not null and ${t.discardedAt} is not null)`,
+    ),
+    check("lab_slip_scans_match_kind_ck", sql`${t.matchKind} is null or ${t.matchKind} in ('sample_no', 'uhid', 'staff_pick', 'from_report')`),
+  ],
+);
+
+/**
+ * SPEC #934 — codes an analyser PRINTS that the report does not carry (the platelet indices PDW,
+ * PCT, P-LCR, P-LCC on a 3-part machine). Slip-only: the interface ingest never reads it. A row with
+ * such a code is "ignored by analyser setting", counted and never printed, and never confused with a
+ * row that is merely unmapped. Set by `lab.instruments.manage`, like the code map.
+ */
+export const labSlipIgnoredCodes = pgTable(
+  "lab_slip_ignored_codes",
+  {
+    instrumentId: text("instrument_id").notNull().references(() => labInstruments.id),
+    code: text("code").notNull(),
+    reason: text("reason").notNull(),
+    setBy: text("set_by").notNull(),
+    setAt: timestamp("set_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.instrumentId, t.code] }),
+    check("lab_slip_ignored_codes_reason_ck", sql`btrim(${t.reason}) <> ''`),
+  ],
+);

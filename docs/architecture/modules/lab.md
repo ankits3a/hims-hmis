@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/lab/`
 
 - **Depends on modules:** `billing`, `opd`, `patients`, `roster`, `tariff`
 - **Used by modules:** `abdm`, `doctor-desk`, `ordering`, `radiology`
-- **Kernel used:** `alerts`, `approvals`, `auth`, `db`, `desk`, `episodes`, `events`, `modules`, `notify`, `ops`, `orders`, `phi`, `printing`, `realtime`, `report`, `resources`, `tokens`, `workflow`
+- **Kernel used:** `alerts`, `approvals`, `auth`, `config`, `copilot`, `db`, `desk`, `documents`, `episodes`, `events`, `inference`, `modules`, `notify`, `ops`, `orders`, `phi`, `printing`, `realtime`, `report`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `interfaceDown`, `interfaceRestored`
 
 ## Public API (`index.ts`), by declaring file
@@ -146,6 +146,12 @@ Source: `apps/core/src/modules/lab/`
   - `labResultEntered`
   - `labResultVerified`
   - `labSlaBreached`
+  - `labSlipAttached`
+  - `labSlipDetached`
+  - `labSlipDiscarded`
+  - `labSlipReadFailed`
+  - `labSlipRowResolved`
+  - `labSlipScanned`
   - `labSodViolationBlocked`
   - `labSpecimenCollected`
   - `labSpecimenReceived`
@@ -180,6 +186,8 @@ Source: `apps/core/src/modules/lab/`
   - `LAB_IDEMPOTENT_ROUTES`
   - `LAB_REPORT_ROUTES`
   - `toHttp(e: unknown): never`
+- `lab-slips.controller.ts`
+  - `class LabSlipsController`
 - `lab-verify.controller.ts`
   - `class LabVerifyController`
 - `lab.module.ts`
@@ -234,6 +242,9 @@ Source: `apps/core/src/modules/lab/`
   - `requestRerun(tx: Tx, actor: Actor, input: RequestRerunInput, now: Date = new Date()): Promise<{ resultId: string; orderItemId: string; stat…`
   - `resultContext(tx: Tx, orderItemId: string): Promise<ResultContext>`
   - types: `AmendResultInput`, `ChooseReportedResultInput`, `EnterResultInput`, `EnterResultOutcome`, `EnteredResult`, `LabEntryMode`, `RequestRerunInput`
+- `slips.ts`
+  - `LAB_SLIP_ACTOR: Actor`
+  - `sweepLabSlips(db: Db, store: DocumentStore, now: Date): Promise<{ failed: number; purged: number }>`
 - `specimens.ts`
   - `getSpecimenByNo(exec: Db | Tx, specimenNo: string): Promise<{ specimen: SpecimenView; itemIds: string[] } | null>`
   - `printLabels(db: Db, actor: Actor, input: PrintLabelsInput, now: Date = new Date()): Promise<PrintLabelsResult>`
@@ -275,7 +286,7 @@ Source: `apps/core/src/modules/lab/`
 
 ## Tables (`kernel/db/schema/lab.ts`)
 
-`lab_analytes`, `lab_booking_settings`, `lab_bookings`, `lab_catalogue_imports`, `lab_critical_calls`, `lab_instrument_codes`, `lab_instruments`, `lab_items`, `lab_orderable_analytes`, `lab_orderables`, `lab_parked_results`, `lab_plate_maps`, `lab_plate_wells`, `lab_quick_reports`, `lab_reference_ranges`, `lab_reflex_rules`, `lab_report_deliveries`, `lab_reports`, `lab_results`, `lab_run_sheet_positions`, `lab_run_sheets`, `lab_sla_breaches`, `lab_specimen_items`, `lab_specimens`, `lab_transmissions`
+`lab_analytes`, `lab_booking_settings`, `lab_bookings`, `lab_catalogue_imports`, `lab_critical_calls`, `lab_instrument_codes`, `lab_instruments`, `lab_items`, `lab_orderable_analytes`, `lab_orderables`, `lab_parked_results`, `lab_plate_maps`, `lab_plate_wells`, `lab_quick_reports`, `lab_reference_ranges`, `lab_reflex_rules`, `lab_report_deliveries`, `lab_reports`, `lab_results`, `lab_run_sheet_positions`, `lab_run_sheets`, `lab_sla_breaches`, `lab_slip_ignored_codes`, `lab_slip_scans`, `lab_specimen_items`, `lab_specimens`, `lab_transmissions`
 
 Foreign keys into: `billing`, `ops`, `orders`, `patients`, `resources`, `tariff`
 
@@ -288,6 +299,7 @@ Foreign keys into: `billing`, `ops`, `orders`, `patients`, `resources`, `tariff`
 - `lab-instruments.controller.ts` — `/lab/instruments`
 - `lab-metrics.controller.ts` — `/lab/metrics`
 - `lab-quick.controller.ts` — `/lab/quick`
+- `lab-slips.controller.ts` — `/lab/slips`
 - `lab-verify.controller.ts` — `/lab/reports`, `/lab/results`, `/lab/verify`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/lab`

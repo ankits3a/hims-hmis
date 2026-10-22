@@ -1,5 +1,6 @@
 import { ApiError, NetworkError } from "../api";
 import type { LabMode } from "../seats";
+import type { LineSlip, SlipBench } from "./slip-scan";
 import type { AstBlock, AstDraftRow } from "../../../../packages/contracts/src/lab-ast";
 
 /**
@@ -25,6 +26,8 @@ export type QuickFlag = "L" | "H" | "LL" | "HH" | "N" | null;
 export type QuickLine = {
   analyteId: string; code: string; nameEn: string; unit: string | null;
   value: string; low: string | null; high: string | null; refText: string | null; flag: QuickFlag;
+  /** #934 — the line came from an analyser slip: its scan, row and the checks still open. */
+  slip?: LineSlip;
 };
 export type QuickChosenTest = { serviceId: string; code: string; nameEn: string };
 export type QuickPatient = { id: string; uhid: string; display: string; administrativeGender: string; dob: string | null };
@@ -44,6 +47,8 @@ export type QuickReport = QuickRow & {
   visitQrSvg: string | null;
   /** Owner 2026-10-12 — each culture test's antibiotic sensitivity table (absent on older servers). */
   ast?: AstBlock[];
+  /** #934 — the analyser slips attached to this report (absent on older servers). */
+  slips?: SlipBench[];
 };
 export type QuickCollectRow = {
   orderId: string; orderNo: string; encounterNo: string; placedAt: string; priority: string;
@@ -132,6 +137,7 @@ type T = (key: string, vars?: Record<string, string | number>) => string;
 export function labRefusal(e: unknown, t: T): string {
   if (e instanceof NetworkError) return t("quickLab.err.offline");
   if (e instanceof ApiError) {
+    if (e.code === "slip_checks_open") return t("labSlip.checksOpen");
     const known = ["lab_mode_off", "not_completed", "not_found", "forbidden"];
     if (known.includes(e.code)) return t(`quickLab.err.${e.code}`);
     if (e.status === 403) return t("quickLab.err.forbidden");

@@ -15,10 +15,12 @@ import { displayNameFor, getPatient, listMergedLoserIds } from "../patients";
 import { labQuickHandedOver, labQuickReported, labQuickSentBack, labQuickStarted, labReportShared } from "./events";
 import { flagFor, resolveRange } from "./ranges";
 import { evaluateFormula, formulaInputCodes } from "./formula";
+import { recordSlipEdits, slipBench, slipChecksOpen } from "./slip-lines";
 import type { FormulaOutcome } from "./formula";
 import type { Actor, AstBlock, AstDraftRow } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { RangeRow, ResolvedRange } from "./ranges";
+import type { QuickLineSlip, SlipBenchView } from "./slip-lines";
 
 /**
  * QUICK MODE (owner 2026-10-09, decision 0061) — the lab without bills, tokens or signatures:
@@ -58,6 +60,8 @@ export type QuickFlag = "L" | "H" | "LL" | "HH" | "N" | null;
 export type QuickLine = {
   analyteId: string; code: string; nameEn: string; unit: string | null;
   value: string; low: string | null; high: string | null; refText: string | null; flag: QuickFlag;
+  /** #934 — the line came from a photographed analyser slip (`slip-lines.ts`): its scan, row and open checks. */
+  slip?: QuickLineSlip;
 };
 
 export type QuickChosenTest = { serviceId: string; code: string; nameEn: string };
@@ -94,6 +98,8 @@ export type QuickReport = QuickRow & {
   summary: string;
   /** Owner 2026-10-12 — each culture test's antibiotic sensitivity table (`[]` when none). */
   ast: AstBlock[];
+  /** #934 — the analyser slips attached to this report: counts, the "not placed" panel, the ignored rows. */
+  slips: SlipBenchView[];
 };
 
 export type StartQuickInput = {
@@ -102,7 +108,8 @@ export type StartQuickInput = {
 
 export type SaveQuickResultsInput = {
   id: string;
-  lines: { analyteId: string; value: string }[];
+  /** `slip` is the SERVER's (slips.ts); the HTTP body schema has no such key, so a screen cannot forge one. */
+  lines: { analyteId: string; value: string; slip?: QuickLineSlip }[];
   summary: string;
   /** Owner 2026-10-11 — `false` is /lab/qbench's Save draft; absent or `true` completes the report. */
   complete?: boolean;
@@ -111,13 +118,18 @@ export type SaveQuickResultsInput = {
    * (an older screen that knows no table cannot wipe one); present replaces every table.
    */
   ast?: { serviceId: string; rows: AstDraftRow[] }[];
+  /**
+   * #934 — `slip` when an analyser slip writes the draft (attach, detach, a placed row): its markers are
+   * taken as given and no edit is recorded. Absent for every person's save.
+   */
+  origin?: "slip";
 };
 
 export type QuickEntryErrorCode =
   | "patient_not_found" | "test_not_found" | "no_tests" | "blood_not_collected"
   | "analyte_not_found" | "value_not_numeric" | "value_absurd" | "report_not_found"
   | "order_not_found" | "already_collected" | "not_completed" | "already_handed_over" | "not_permitted"
-  | "ast_invalid";
+  | "ast_invalid" | "slip_checks_open";
 
 export class QuickEntryError extends Error {
   constructor(readonly code: QuickEntryErrorCode, message: string, readonly detail?: unknown) {
@@ -257,7 +269,8 @@ export async function getQuickReport(exec: Db | Tx, actor: Actor, id: string): P
     }
     if (mine.length > 0) groups.push({ title: t.nameEn, analyteIds: mine });
   }
-  const lines = r.lines as QuickLine[];
+  const bench = await slipBench(exec, r.id, r.lines as QuickLine[]);
+  const lines = bench.lines;
   const extra = lines.map((l) => l.analyteId).filter((id) => !ordered.includes(id));
   ordered.push(...extra);
   if (extra.length > 0) groups.push({ title: null, analyteIds: extra });
@@ -265,7 +278,7 @@ export async function getQuickReport(exec: Db | Tx, actor: Actor, id: string): P
   const names = new Map((await exec.select({ id: users.id, fullName: users.fullName }).from(users)
     .where(inArray(users.id, people))).map((u) => [u.id, u.fullName]));
   return {
-    ...row!, analyteIds: ordered, groups, lines, summary: r.summary, ast: r.ast as AstBlock[],
+    ...row!, analyteIds: ordered, groups, lines, summary: r.summary, ast: r.ast as AstBlock[], slips: bench.slips,
     collectedByName: names.get(r.collectedBy) ?? null,
     reportedByName: r.reportedBy === null ? null : names.get(r.reportedBy) ?? null,
     hospital: {
@@ -344,6 +357,28 @@ export async function saveQuickResults(
   const analyteById = new Map(analytes.map((a) => [a.id, a]));
   const rangeRows = ids.length === 0 ? [] : await tx.select().from(labReferenceRanges).where(inArray(labReferenceRanges.analyteId, ids));
 
+  /**
+   * #934 — A SLIP'S MARKER FOLLOWS ITS LINE. On a person's save, a slip-placed value they changed (or
+   * cleared) becomes theirs: its checks close and the scan records who. The slip's own writes carry
+   * their markers in (`origin: "slip"`).
+   */
+  const before = new Map((existing.lines as QuickLine[]).filter((l) => l.slip !== undefined).map((l) => [l.analyteId, l]));
+  const edits: { scanId: string; row: number }[] = [];
+  const markerFor = (analyteId: string, value: string, given: QuickLineSlip | undefined): QuickLineSlip | undefined => {
+    if (input.origin === "slip") return given;
+    const had = before.get(analyteId);
+    if (had?.slip === undefined) return undefined;
+    if (had.value.trim() === value) return had.slip;
+    if (had.slip.edited !== true) edits.push({ scanId: had.slip.scanId, row: had.slip.row });
+    return { ...had.slip, checks: [], edited: true, checkedBy: actor.id };
+  };
+  if (input.origin !== "slip") {
+    for (const [analyteId, had] of before) {
+      const kept = input.lines.some((l) => l.analyteId === analyteId && l.value.trim() !== "");
+      if (!kept && had.slip !== undefined && had.slip.edited !== true) edits.push({ scanId: had.slip.scanId, row: had.slip.row });
+    }
+  }
+
   const lines: QuickLine[] = [];
   for (const l of input.lines) {
     const a = analyteById.get(l.analyteId);
@@ -361,9 +396,11 @@ export async function saveQuickResults(
       }
       flag = flagFor(n, range);
     }
+    const slip = markerFor(a.id, value, l.slip);
     lines.push({
       analyteId: a.id, code: a.code, nameEn: a.nameEn, unit: a.unit, value,
       low: range.low, high: range.high, refText: range.text, flag,
+      ...(slip !== undefined ? { slip } : {}),
     });
   }
 
@@ -376,7 +413,11 @@ export async function saveQuickResults(
   /** An older screen sends no `ast`: what is stored stays, unless the organism now says "No growth". */
   const ast = astTables(chosen, lines, analytes, input.ast ?? (existing.ast as AstBlock[]));
   const first = existing.status !== "reported" && existing.reportedAt === null;
-  const complete = input.complete !== false;
+  const complete = input.origin !== "slip" && input.complete !== false;
+  await recordSlipEdits(tx, actor, edits, now);
+  if (complete && await slipChecksOpen(tx, input.id)) {
+    throw new QuickEntryError("slip_checks_open", "a slip value still needs checking, or a slip row is not placed or ignored", { reportId: input.id });
+  }
   await tx.update(labQuickReports).set({
     lines, summary: input.summary, ast,
     ...(complete

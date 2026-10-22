@@ -1,0 +1,168 @@
+{
+  "id": "haem3-06",
+  "synthetic": true,
+  "analyser": "3part",
+  "photo": "poor",
+  "note": "Synthetic slip for the #934 eval: made-up name and IDs, internally consistent values. Never a patient's slip.",
+  "reply": {
+    "slipKind": "analyser_result",
+    "analyserText": "HAEM-3 SYNTHETIC",
+    "header": {
+      "name": "PRIYA PLACEHOLDER",
+      "patientId": "S2610210019",
+      "sampleId": "0028",
+      "gender": "Female",
+      "age": "29Y",
+      "printedAt": "2026-10-21 12:30"
+    },
+    "rows": [
+      {
+        "code": "WBC",
+        "value": "5.42",
+        "unit": "10^9/L",
+        "flag": null,
+        "legible": "clear"
+      },
+      {
+        "code": "Lym%",
+        "value": "35.6",
+        "unit": "%",
+        "flag": null,
+        "legible": "clear"
+      },
+      {
+        "code": "Gran%",
+        "value": "57.1",
+        "unit": "%",
+        "flag": null,
+        "legible": "clear"
+      },
+      {
+        "code": "Mid%",
+        "value": "7.3",
+        "unit": "%",
+        "flag": null,
+        "legible": "clear"
+      },
+      {
+        "code": "Lym#",
+        "value": "1.93",
+        "unit": "10^9/L",
+        "flag": null,
+        "legible": "clear"
+      },
+      {
+        "code": "Gran#",
+        "value": "3.09",
+        "unit": "10^9/L",
+        "flag": null,
+        "legible": "clear"
+      },
+      {
+        "code": "Mid#",
+        "value": "0.40",
+        "unit": "10^9/L",
+        "flag": null,
+        "legible": "clear"
+      },
+      {
+        "code": "RBC",
+        "value": "4.21",
+        "unit": "10^12/L",
+        "flag": null,
+        "legible": "clear"
+      },
+      {
+        "code": "HGB",
+        "value": "12.7",
+        "unit": "g/dL",
+        "flag": null,
+        "legible": "clear"
+      },
+      {
+        "code": "HCT",
+        "value": "37.9",
+        "unit": "%",
+        "flag": null,
+        "legible": "clear"
+      },
+      {
+        "code": "MCV",
+        "value": "90.0",
+        "unit": "fL",
+        "flag": null,
+        "legible": "clear"
+      },
+      {
+        "code": "MCH",
+        "value": "30.2",
+        "unit": "pg",
+        "flag": null,
+        "legible": "unsure"
+      },
+      {
+        "code": "MCHC",
+        "value": "33.5",
+        "unit": "g/dL",
+        "flag": null,
+        "legible": "clear"
+      },
+      {
+        "code": "RDW-CV",
+        "value": "13.1",
+        "unit": "%",
+        "flag": null,
+        "legible": "clear"
+      },
+      {
+        "code": "RDW-SD",
+        "value": "41.8",
+        "unit": "fL",
+        "flag": null,
+        "legible": "clear"
+      },
+      {
+        "code": "PLT",
+        "value": "198",
+        "unit": "10^9/L",
+        "flag": null,
+        "legible": "clear"
+      },
+      {
+        "code": "MPV",
+        "value": "10.4",
+        "unit": "fL",
+        "flag": null,
+        "legible": "clear"
+      },
+      {
+        "code": "PDW",
+        "value": "16.1",
+        "unit": null,
+        "flag": null,
+        "legible": "clear"
+      },
+      {
+        "code": "PCT",
+        "value": "0.206",
+        "unit": "%",
+        "flag": null,
+        "legible": "clear"
+      },
+      {
+        "code": "P-LCR",
+        "value": "28.3",
+        "unit": "%",
+        "flag": null,
+        "legible": "clear"
+      },
+      {
+        "code": "P-LCC",
+        "value": "36",
+        "unit": "10^9/L",
+        "flag": null,
+        "legible": "clear"
+      }
+    ]
+  }
+}

@@ -1,11 +1,11 @@
 ---
 issue: 934
-status: approved
+status: built
 approved: 2026-10-21
 ---
 # SPEC — Scan the analyser's printed slip into the quick lab report (#934)
 
-Status: APPROVED 2026-10-21. The owner answered the five open questions: 1B, 2 yes, 3 yes, 4 yes, 5 yes. The answers
+Status: BUILT 2026-10-21 (see "As built" at the end for what differs and what is owed). APPROVED 2026-10-21. The owner answered the five open questions: 1B, 2 yes, 3 yes, 4 yes, 5 yes. The answers
 are under "Decisions" below, and the privacy ruling is decision 0082.
 
 ## What
@@ -588,3 +588,50 @@ At the cap, reading pauses until midnight IST and the bench types as today.
 4. **Bench practice.** Staff type our sample number (`S…`) or the UHID into the analyser's Patient ID field. That
    is the primary match path; name + age + gender is the fallback, and staff always confirm it.
 5. **Retention.** An attached slip image is kept with the report. Unattached or discarded scans are kept 90 days.
+
+## As built (2026-10-21)
+
+All done-means ids have locked acceptance tests: D1–D11 and D13 in
+`apps/core/src/modules/lab/acceptance/slip-scan-934.test.ts`, D12 in
+`apps/mobile/__tests__/acceptance/lab-slip-scan.test.tsx`.
+
+**Owed after merge** (not tests):
+- **D12:** the new APK goes to staging first, then production after the owner's OK.
+- **D13:** the production eval run. `node dist/scripts/lab-slip-eval.js` (with `HMIS_EVAL_NETWORK=1`) runs once a
+  paid-tier key is configured, and #934 records that the key is paid-tier and no-training. Reading stays off until
+  then. `--render <dir>` writes the synthetic slips as PNGs to print and photograph. A photo saved as `<id>.jpg`
+  beside its truth file is then used instead of the render.
+- No server wires `HMIS_GEMINI_KEY_FILE` / `HMIS_OPENROUTER_KEY_FILE` yet (`docker/prod`, as the OpenAI key is). With
+  no key, reading is off and the API logs that once at boot.
+- **Web `/lab/qbench`:** the slip highlights, the waiting list and View slip are a follow-up (owner 2026-10-21). The
+  API they need is built.
+
+**Where the build differs from the text above:**
+- **Data model.** `lab_slip_scans` gains `read_started_at`, so the sweep's two minutes run from the latest Read
+  again, not from capture. It also gains `requested_report_id`, the report Fill from slip was started from. Migration
+  `0224_lab_slip_scans`.
+- **Reply schema.** The zod mirror lives in `modules/lab/slip-reader.ts`, not `packages/contracts`, because only the
+  server parses a reply.
+- **OpenRouter.** The request is built in `slip-reader.ts` in the shape of `kernel/inference/openai-compatible.ts`
+  (`stream: false`, `temperature: 0`, plus the image part). The kernel client is text-only and is not extended.
+- **Upload size.** The API's JSON body limit is 1 MB and the image travels as base64, so the phone flattens a slip
+  to at most 720 kB at 2400 px. The server's refusal stays at 1.5 MB.
+- **`GET /lab/slips/setup`** (added) says whether reading is on and which analysers have a code map. The phone hides
+  Scan slip when reading is off or no analyser is mapped.
+- **Checked** is `POST /lab/slips/:id/rows/:n` with `{ action: "checked" }`.
+- **Not placed:** a row printed with no value is not placed with reason `no_value`, and carries the `no_value`
+  check.
+- **Cross-check:** a computed line that differs from the slip's `#` carries the open check `cross_check_differs`
+  ("slip says …"), so it must be checked before Save & Complete.
+- **PHI log.** A slip image read is logged under the existing `lab.quick_reports` surface. An image of a scan not yet
+  attached is logged against `slip:<scanId>`, because no patient is known yet.
+- **The lab sweep** runs inside the existing `sweepLabSla` job, so no new worker job is added.
+- **Spend cap.** A slip read is refused at decision 0064's daily cap (copilot spend plus slip spend, ₹ estimates in
+  `slip-reader.ts`). The copilot's own gate does not yet count slip spend (`kernel/copilot`). That is owed.
+- **Name matching** uses pg_trgm's trigram similarity, computed in TypeScript (`slip-match.ts`).
+- **The phone** has Scan slip, Fill from slip, Slips waiting, the slip tag with plain-word checks and Checked, the
+  not-placed panel with Ignore (reason), the ignored-by-setting count and View slip. Place in…, the lab head's Map
+  and Always ignore, and Search patient are on the API for the web follow-up.
+- **Default models** are `gemini-2.5-flash` and `google/gemini-2.5-flash`. Both are pinned. The D13 run confirms or
+  replaces them.
+

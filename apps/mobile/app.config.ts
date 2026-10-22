@@ -44,8 +44,9 @@ const VERSION_CODE = Number(process.env.HMIS_VERSION_CODE ?? "1");
 /**
  * iPHONE (owner 2026-10-08: about 100 iPhone users; built by EAS, distributed as an Unlisted app).
  * What iOS shows the person the FIRST time the app reaches for each of these. Exactly what the app
- * uses and nothing else: no photo library (no screen picks from the gallery), no location, no
- * tracking, no background mode. Each sentence is handed to the config plugin that owns its key.
+ * uses and nothing else: no photo-library PERMISSION (the lab bench picks one analyser-slip photo
+ * through the system picker, which needs none — spec #934), no location, no tracking, no background
+ * mode. Each sentence is handed to the config plugin that owns its key.
  */
 const IOS_CAMERA = "HMIS uses the camera to photograph prescription slips and scan patient codes.";
 const IOS_MICROPHONE = "HMIS uses the microphone to record a doctor's spoken note. The recording is sent through the hospital's server to a speech-to-text service to be typed, and is not stored.";
@@ -73,7 +74,13 @@ const config: ExpoConfig = {
     },
     predictiveBackGestureEnabled: false,
     // Location is foreground-only: never the background permission, never a location foreground service.
-    blockedPermissions: ["android.permission.ACCESS_BACKGROUND_LOCATION", "android.permission.FOREGROUND_SERVICE_LOCATION"],
+    // #934 — the slip picker is the SYSTEM photo picker, which needs no storage or media permission:
+    // whatever a library brings for the photo library is taken back out of the merged manifest.
+    blockedPermissions: [
+      "android.permission.ACCESS_BACKGROUND_LOCATION", "android.permission.FOREGROUND_SERVICE_LOCATION",
+      "android.permission.READ_MEDIA_IMAGES", "android.permission.READ_MEDIA_VIDEO", "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+      "android.permission.READ_EXTERNAL_STORAGE",
+    ],
     ...(PUSH_IN_BUILD ? { googleServicesFile: GOOGLE_SERVICES } : {}),
   },
   ios: {
@@ -109,6 +116,11 @@ const config: ExpoConfig = {
     // M6b — the small icon in the tray is the HMIS diamond (alpha only), tinted pine. Android only in
     // this version: see `withoutApplePush` at the foot of this file.
     ["expo-notifications", { icon: "./assets/notification-icon.png", color: "#0E6B4E" }],
+    // Spec #934 — Quick Bench's "Choose from gallery": ONE photo of an analyser slip through the system picker.
+    // `photosPermission: false`: no photo-library permission, on either platform. The camera and microphone
+    // keys repeat expo-camera's and expo-audio's own sentences: `false` there would BLOCK the camera and the
+    // microphone the scan door and the spoken note need (the plugin blocks a permission set to `false`).
+    ["expo-image-picker", { photosPermission: false, cameraPermission: IOS_CAMERA, microphonePermission: IOS_MICROPHONE }],
     // Decision 0064 (E1.1) — the "HMIS Scan" home-screen widget, Android only: one tap opens hmis://scan.
     // It draws a fixed icon and runs no JavaScript, so it never shows a patient (plugins/with-scan-widget.js).
     ["./plugins/with-scan-widget", { label: ENV === "production" ? "HMIS Scan" : "HMIS Scan (staging)" }],
