@@ -297,7 +297,7 @@ export const ErMciFamilyDeskSchema = z.object({
     /** "ER", "ER · B4", the ward's name once admitted; null once gone. */
     where: z.string().nullable(),
   })),
-  /** MLC, sealed and confidential patients of the event: never listed, only counted — the desk sends those families to the ER desk. */
+  /** MLC (except Code Yellow pack arrivals, decision 0083), sealed and confidential patients of the event: never listed, only counted — the desk sends those families to the ER desk. */
   withheld: z.number().int().nonnegative(),
   script: z.array(z.string()),
 });
