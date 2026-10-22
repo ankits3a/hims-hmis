@@ -8,6 +8,7 @@ import {
 } from "../../lib/billing-api";
 import { fmtPaise } from "../../lib/format";
 import type { ConsultBranch, WireConsultPrices } from "../../lib/billing-api";
+import { dateLocale } from "../../lib/date-locale";
 
 /**
  * ═══ THE CONSULTATION PRICE LIST (owner, 2026-10-05) ═══
@@ -23,7 +24,7 @@ import type { ConsultBranch, WireConsultPrices } from "../../lib/billing-api";
 const KEY = ["billing", "consult-prices"] as const;
 
 const istWhen = (iso: string): string =>
-  new Date(iso).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false });
+  new Date(iso).toLocaleString(dateLocale(), { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false });
 
 /** "100", "100.5", "1,250.00" → paise; null when it is not a sum of money. */
 export function rupeesToPaise(text: string): number | null {

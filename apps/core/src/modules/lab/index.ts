@@ -93,6 +93,11 @@ export {
 export type {
   AcknowledgeCriticalInput, AcknowledgeCriticalOutcome, CriticalAttempt, OpenCriticalCall,
 } from "./criticals";
+// ── E3.2 (#595) — the critical chase ladder and the G5 read-back report ──
+export {
+  LAB_CHASE_ACTOR, LAB_CHASE_RUNG_MINUTES, chaseRecipients, criticalReadbackByWeek, rungDue, sweepLabCriticalLadder,
+} from "./critical-ladder";
+export type { LabChaseResult, ReadbackWeek } from "./critical-ladder";
 // ── PLAN 17b T7 — the money rule, the delivery interlock, and the document ──
 // `money.ts` and `interlock.ts` are the close reviewer's first two files (§9.6): every threshold on
 // this phase's money path is in one of them, and `deliveryAllowed` is the function 22c-F, 24a and
@@ -104,7 +109,7 @@ export type { DeliveryVerdict } from "./interlock";
 export {
   amendReport, deliveryRegister, getReport, listResultsForEncounter, listProvisionalResultsForEncounter,
   printReport, publishReport, releaseUnpaid,
-  reportsForPatient, reportVersions, LAB_REPORTS_AMEND, LAB_REPORTS_PRINT, LAB_REPORTS_PUBLISH, LAB_RESULTS_READ,
+  reportsForPatient, reportVersions, reportVersionsFor, LAB_REPORTS_AMEND, LAB_REPORTS_PRINT, LAB_REPORTS_PUBLISH, LAB_RESULTS_READ,
   PATIENT_LAB_REPORT_READY,
 } from "./reports";
 export type { DeliveryRegisterRow, PatientReportRow, PatientReports, ReportDeliveryRow, ReportNotice } from "./reports";
@@ -128,6 +133,9 @@ export { encounterNoOfLabOrder, verifiedLabTestsForRelease } from "./abdm-releas
 // ── PLAN 18-S RS5 — the imaging kidney gate reads the latest signed serum creatinine from here ──
 export { CREATININE_ANALYTE_CODES, latestVerifiedCreatinine } from "./creatinine";
 export type { LatestCreatinine } from "./creatinine";
+// ── #621 — the renal dose check (opd) and the contrast gate (radiology) read the eGFR equation from here ──
+export { ckdEpi2021, latestEgfr, registerLabKidneyFunctionReader } from "./egfr";
+export type { EgfrSex, LatestEgfr } from "./egfr";
 // ── PLAN 18-S RS12b — the IR sign-in reads the latest signed INR and platelet count from here ──
 export {
   INR_ANALYTE_CODES, PLATELET_ANALYTE_CODES, inrFromReported, latestVerifiedInr, latestVerifiedPlatelets,
@@ -135,3 +143,10 @@ export {
 } from "./coagulation";
 export type { LatestLabNumber } from "./coagulation";
 export type { LabReleaseTest, LabReleaseValue } from "./abdm-release";
+// DOCTOR DESK DD-0.2 (#626) — the clinician's own lab rows: open criticals and delta-flagged results.
+export { closedCriticalsForClinician, criticalCallsByIds, deltaResultsForClinician, openCriticalsForClinician, resultsForPatientSince } from "./clinician-reads";
+export type { ClinicianLabRow, PatientResultSince } from "./clinician-reads";
+
+// #934 — the photographed analyser slip: its controller, and the sweep the worker runs with the SLA sweep.
+export { LabSlipsController } from "./lab-slips.controller";
+export { LAB_SLIP_ACTOR, sweepLabSlips } from "./slips";

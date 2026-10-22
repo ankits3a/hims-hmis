@@ -11,11 +11,12 @@ import { events, schedulerHeartbeats } from "../db/schema";
 import { authManifest } from "../auth/manifest";
 import { workflowManifest } from "../workflow/manifest";
 import { approvalsManifest } from "../approvals/manifest";
-import { patientsManifest } from "../../modules/patients";
+import { PATIENTS_APPROVAL_REJECTED_CONSUMER, approvalRejectedConsumer, patientsManifest } from "../../modules/patients";
 import { tariffManifest } from "../../modules/tariff";
 import { opdManifest } from "../../modules/opd";
 import { billingManifest } from "../../modules/billing";
 import * as labSweepsMod from "../../modules/lab/sweeps";
+import * as labCriticalLadderMod from "../../modules/lab/critical-ladder";
 import * as pharmacyExpiryMod from "../../modules/pharmacy/expiry";
 import * as radiologyChasersMod from "../../modules/radiology/chasers";
 import * as radiologyEscalationsMod from "../../modules/radiology/escalations";
@@ -28,6 +29,7 @@ import * as pharmacyMessagesMod from "../../modules/pharmacy/messages";
 import * as aerbQaMod from "../../modules/aerb/qa";
 import * as opdAliasRunnerMod from "../../modules/opd/alias-runner";
 import * as attendanceSyncMod from "../../modules/attendance/sync";
+import * as doctorDeskReportMod from "../../modules/doctor-desk/report";
 import * as opdTeleMod from "../../modules/opd/tele";
 import * as dispatcherMod from "../events/dispatcher";
 import * as timersMod from "../workflow/timers";
@@ -45,6 +47,7 @@ import * as materialsExpiryMod from "../../modules/materials/expiry";
 import * as otListsMod from "../../modules/ot/lists";
 import * as rollupMod from "../desk/rollup";
 import type { Db } from "../db/client";
+import type { Handler } from "../events/subscriptions";
 
 // D3/halt condition 7: no test in this file ever observes the advisory lock. Every test below
 // injects this always-true stub instead — the lock is proven separately (spike B2, quoted in
@@ -329,6 +332,12 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
       invoked.push("sweepLabSla");
       return { breached: [] };
     }),
+    // E3.2 (#595) — un-stubbed, the lab critical ladder WRITES a rung and APPENDS an event; its
+    // behaviour is asserted in `modules/lab/critical-ladder.test.ts` on a fixture clock.
+    jest.spyOn(labCriticalLadderMod, "sweepLabCriticalLadder").mockImplementation(async () => {
+      invoked.push("sweepLabCriticalLadder");
+      return { chased: [] };
+    }),
     jest.spyOn(pharmacyExpiryMod, "sweepExpiredPicks").mockImplementation(async () => {
       invoked.push("sweepExpiredPharmacyPicks");
       return { cancelled: [] };
@@ -425,6 +434,12 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
       invoked.push("syncAttendance");
       return { ran: false, why: "not_configured" };
     }),
+    // DOCTOR DESK DD-report v0 — the thirty-first, stubbed on `modules/doctor-desk/report` (the file the index
+    // re-exports FROM). Its behaviour (counts only, idempotent per unit per day) is in `doctor-desk/report.test.ts`.
+    jest.spyOn(doctorDeskReportMod, "sendUnitReports").mockImplementation(async () => {
+      invoked.push("sendUnitReports");
+      return { sent: 0, failed: 0 };
+    }),
     // TELE-CALL (owner 2026-10-09) — the twenty-eighth, stubbed on `modules/opd/tele` (the file jobs.ts imports FROM).
     jest.spyOn(opdTeleMod, "openDueTeleVisits").mockImplementation(async () => {
       invoked.push("openDueTeleVisits");
@@ -485,6 +500,8 @@ const THE_EIGHTEEN = [
    */
   "sweepLabNonReturn",
   "sweepLabSla",
+  /** E3.2 (#595) — the lab critical ladder, `every(60_000)`, registered right after `sweepLabSla`. */
+  "sweepLabCriticalLadder",
   /**
    * PLAN 16c CLOSE / F11 — the SIXTEENTH, registered last, which is where `jobs.ts` puts it. An
    * `every(60_000)` job that widened NOTHING: it takes its cadence as a literal, exactly as
@@ -534,6 +551,8 @@ const THE_EIGHTEEN = [
   "openDueTeleVisits",
   // STAFF ATTENDANCE (owner 2026-10-09) — the TWENTY-NINTH, `every(120_000)`: HMIS's copy of the attendance machine. Off until configured.
   "syncAttendance",
+  // DOCTOR DESK DD-report v0 — the THIRTY-FIRST, `dailyIst("08:00")`: the unit report at the take boundary.
+  "sendUnitReports",
 ];
 
 /**
@@ -555,6 +574,11 @@ function censusRegistry(): ModuleRegistry {
   registry.install(opdManifest);
   registry.install(billingManifest);
   return registry;
+}
+
+/** #653 — the one handler `censusRegistry`'s manifests declare (patients' approvals → patients hook). */
+function censusConsumers(db: Db): Record<string, Handler> {
+  return { [PATIENTS_APPROVAL_REJECTED_CONSUMER]: approvalRejectedConsumer(db) };
 }
 
 function freshWorkerDb(): { db: Db; pool: Pool; close: () => Promise<void> } {
@@ -811,7 +835,7 @@ describe("Scheduler", () => {
       jest.useFakeTimers({ now: CENSUS_PIN });
       try {
         const scheduler = new Scheduler(fresh.db, fresh.pool, stubLocks(), CENSUS_DAILY_TICK_MS);
-        registerAllJobs(scheduler, fresh.db, registry, {}, CENSUS_INTERVALS);
+        registerAllJobs(scheduler, fresh.db, registry, censusConsumers(fresh.db), CENSUS_INTERVALS);
         expect(scheduler.jobs()).toEqual(THE_EIGHTEEN);
 
         // Fake milliseconds advanced so far, measured from the pin. The walk only moves forward,
@@ -922,7 +946,7 @@ describe("Scheduler", () => {
         pinDateOnly(NOW);
         try {
           const scheduler = new Scheduler(fresh.db, fresh.pool, stubLocks(), 10);
-          registerAllJobs(scheduler, fresh.db, registry, {}, CENSUS_INTERVALS);
+          registerAllJobs(scheduler, fresh.db, registry, censusConsumers(fresh.db), CENSUS_INTERVALS);
           scheduler.start();
           for (let i = 0; i < 400 && !invoked.includes("sweepGuardianMajority"); i += 1) {
             await new Promise((r) => setTimeout(r, 5)); // REAL setTimeout — only Date is faked

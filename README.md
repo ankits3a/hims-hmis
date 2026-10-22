@@ -258,7 +258,8 @@ This is deliberately WIDER than the patients/tariff modules' `code: message` str
 side is realigned.
 
 **Events** (all `module: "opd"`): `appointment.booked` · `appointment.rescheduled` ·
-`appointment.cancelled` · `appointment.no_show` · `doctor_leave.scheduled` · `visit.opened` ·
+`appointment.cancelled` · `appointment.no_show` · `doctor_leave.scheduled` · `doctor.secondary_department_set` ·
+`doctor.secondary_department_ended` · `visit.opened` ·
 `patient.checked_in` · `visit.transferred` · `visit.abandoned` · `vitals.recorded` ·
 `vitals.danger_flagged` · `queue.called` · `queue.skipped` · `consultation.started` ·
 `consultation.completed` · `prescription.issued` · `referral.issued` · `admission.requested`, plus
@@ -967,6 +968,15 @@ account exists.
 Therapeutics Committee's rule is that the reviewer is not the department that wrote the text. Saving a
 monograph stays under `formulary.manage`; nothing reads a monograph until it is reviewed.
 
+**Permissions (decision 0053, #618): the CRK formulary is drafted by a model and signed by Pharmacology.**
+CRK signing has its own permission, `formulary.crk.sign`, held by one new role, `pharmacology_reviewer`, which also
+holds `formulary.read`. It is the Pharmacology department's reviewer-only seat: it opens a drafted entry beside its
+sources, edits it and signs it (name, designation, date), renews it every 12 months, and holds no stock, sale or
+patient string. A high-alert medicine needs a second signature from a different reviewer. Signing a CRK entry and
+reviewing the pharmacy's drug monograph (`formulary.monograph.review`, the physician's act) are separate acts with
+separate holders: neither seat performs the other's. The owner names the faculty and residents who hold the role;
+it is created with grants and no holders.
+
 **Mined data is never authority.** `formulary_staging` is a lookup dictionary, not a review queue:
 the pharmacist types a name, gets the mined record pre-filling composition and schedule, verifies,
 and admits. Nothing is bulk-approved, staging rows are invisible to every resolution path, and the
@@ -1225,6 +1235,15 @@ tests, reports published and delivered, by source and by test) and its turnaroun
 90th percentile per report, per test step and per parameter), aggregate only and naming nobody.
 `lab.metrics.read` is held by `owner`, `admin` and `pathologist`, and any other role may be granted it.
 
+**Hospital numbers (owner request 2026-10-13, #777).** `/reports/numbers` gathers the lab's numbers
+with imaging's and the pharmacy's, one tab each, a tab shown only to a holder of its permission
+(`/lab/metrics` now opens its Lab tab). Imaging: orders, studies done, reports signed and handed over,
+by source and by modality, with median and 90th-percentile times. Pharmacy: bills, sales, returns and
+net (the sales register's own figures), prescriptions dispensed in full, in part or not at all, the
+top ten items and the goods received; margin only for a holder of `pharmacy.reports.margin`.
+`radiology.metrics.read` is held by `owner`, `admin` and `radiologist`, and any other role may be granted it.
+`pharmacy.metrics.read` is held by `owner`, `admin` and `pharmacy_incharge`, and any other role may be granted it.
+
 Thirty-four grants are held outside that table. **`doctor` gains `lab.orders.place`,
 `lab.results.read` and `lab.catalogue.read`** — the doctor orders the test and reads the result, and
 `lab.results.read` is the safety grant of the whole phase: the delivery interlock holds a printed
@@ -1289,6 +1308,7 @@ floor raised, and the override demands a reason and is evented.
 | `radiology.pacs.interface` | | | | | ✓ | | | |
 | `radiology.pacs.reconcile` | ✓ | ✓ | | | | | | |
 | `radiology.contrast.record` | ✓ | ✓ | | | | | ✓ | |
+| `radiology.metrics.read` | ✓ | | | | | | | |
 | `pcpndt.registrations.manage` | | | | ✓ | | | | |
 | `pcpndt.registrations.read` | ✓ | | | ✓ | | | | |
 | `pcpndt.form_f.write` | ✓ | | | | | | | |
@@ -1478,6 +1498,7 @@ owner. Nobody approves a discount they asked for.
 | `pharmacy.downtime.enter` | ✓ | | |
 | `pharmacy.reports.read` | | | ✓ |
 | `pharmacy.reports.margin` | | | ✓ |
+| `pharmacy.metrics.read` | | | ✓ |
 | `pharmacy.ndps.custody` | ✓ | | ✓ |
 | `pharmacy.ndps.witness` | ✓ | | ✓ |
 | `pharmacy.licences.manage` | | | ✓ |
@@ -1678,17 +1699,20 @@ holds `attendance_committee`; nobody is assigned to that role by any seed.
 **Copilot health (decision 0064, E0.1, 2026-10-10).** Every question put to the copilot leaves one
 row in its ledger for 180 days — the masked question only, never a name or number typed into it —
 and staff see a one-line notice saying so before their first question. One permission reads the
-totals: `copilot.health.read` is held by `owner`, `admin`, `duty_manager` and the new role `quality_manager`
-(the copilot steward), and the steward role holds nothing else but the halt switch. The page shows counts, routes,
+totals: `copilot.health.read` is held by `owner`, `admin`, `duty_manager`, `medical_superintendent` and the new role
+`quality_manager` (the copilot steward), and the steward role holds nothing else but the halt switch. The page shows counts, routes,
 timings, model calls and estimated AI spend for a day and never a per-person list; nobody is assigned to
 `quality_manager` by any seed.
 
 **Copilot halt switch and spend cap (plan E0.3/E0.5, decision 0064, built 2026-10-11, awaiting owner review).**
-`copilot.halt.set` (owner, admin, duty_manager, quality_manager) pauses the copilot by scope — read, act,
-draft or global; `copilot.halt.clear` (owner, duty_manager) clears read, act and draft; and
+`copilot.halt.set` (owner, medical_superintendent, quality_manager) pauses the copilot by scope — read, act,
+draft or global;
+`copilot.halt.clear` (owner, medical_superintendent, quality_manager) clears read, act and draft (owner ruling
+2026-10-15, #581); and
 `copilot.halt.clear_global` is held by `owner` alone. Each halt and clear is an audit event naming who.
 When the day's estimated AI spend reaches ₹5,000 (`COPILOT_DAILY_CAP_INR`), the copilot answers from its
-phrasebook only until midnight IST and the health page says so.
+phrasebook only until midnight IST and the health page says so. At 80 % of the cap every `owner` gets one bell
+notice for that IST day (#583).
 
 **My duties, covers and swaps (20-U U5c/U6).** `/roster/my-duties` is a resident's phone: today, the
 rest of the week, and on every duty still ahead *"I can't do this"* — which lists who could take it

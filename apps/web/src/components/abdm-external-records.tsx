@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { abdmErrorText, externalRecords, refreshExternalRequest, requestExternalRecords } from "../lib/abdm-api";
 import type { WireExternalRecord, WireExternalRecords, WireHiuRequest } from "../lib/abdm-api";
+import { dateLocale } from "../lib/date-locale";
 
 /**
  * ═══ ABDM S3 — RECORDS FROM OTHER HOSPITALS, IN THE CONSULT'S HISTORY ═══
@@ -20,7 +21,7 @@ const IST = "Asia/Kolkata";
 const day = (iso: string | null): string => {
   if (iso === null) return "—";
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: IST });
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString(dateLocale(undefined, "en-GB"), { day: "numeric", month: "short", year: "numeric", timeZone: IST });
 };
 /** An ISO instant → the IST calendar date a date input holds. */
 const istDate = (iso: string): string => new Date(new Date(iso).getTime() + 330 * 60_000).toISOString().slice(0, 10);

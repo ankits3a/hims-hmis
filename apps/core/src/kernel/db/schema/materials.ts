@@ -463,6 +463,49 @@ export const vendorBankChanges = pgTable(
   ],
 );
 
+/**
+ * OWNER 2026-10-04 — A VENDOR'S RATE CONTRACT: the rate a vendor quoted for an item, per pack, before GST.
+ *
+ * Aptus Drugs quoted 206 Hauz Pharma drugs with an MRP and a rate per packing. Until now the only rate the
+ * system knew was the LAST GRN's, so a vendor's first order had no price at all and a bill above the quote
+ * passed unnoticed. One row is one quoted rate for one item from one vendor:
+ *
+ *   - `rate_paise`: NET rate per `uom` pack, EXCLUDING GST (a quote "inclusive of GST" is divided out
+ *     before it gets here — the PO line's `rate_paise` is ex-GST too, and that is what this prefills).
+ *   - `mrp_paise`: the MRP per pack the vendor quoted, when it did.
+ *   - `valid_from` / `valid_to`: the quote's period (`valid_to` null = until replaced).
+ *   - A new rate for the same vendor and item ENDS the old row (`ended_at`, `ended_by`) and inserts a new
+ *     one: the history is the table. At most one open row per vendor and item.
+ */
+export const vendorItemRates = pgTable(
+  "vendor_item_rates",
+  {
+    id: text("id").primaryKey(),
+    vendorId: text("vendor_id").notNull().references(() => vendors.id),
+    itemId: text("item_id").notNull().references(() => items.id),
+    uom: text("uom").notNull(),
+    multiplier: integer("multiplier").notNull(),
+    ratePaise: bigint("rate_paise", { mode: "number" }).notNull(),
+    gstRateBps: integer("gst_rate_bps").notNull(),
+    mrpPaise: bigint("mrp_paise", { mode: "number" }),
+    validFrom: date("valid_from").notNull(),
+    validTo: date("valid_to"),
+    /** Where the rate came from: "Aptus quotation 2026-10-04", "price-list import". */
+    source: text("source"),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    endedBy: text("ended_by"),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("vendor_item_rates_open_ux").on(t.vendorId, t.itemId).where(sql`${t.endedAt} is null`),
+    index("vendor_item_rates_item_idx").on(t.itemId),
+    check("vendor_item_rates_money_ck", sql`${t.ratePaise} >= 0 and ${t.gstRateBps} >= 0 and ${t.multiplier} > 0 and (${t.mrpPaise} is null or ${t.mrpPaise} > 0)`),
+    check("vendor_item_rates_period_ck", sql`${t.validTo} is null or ${t.validTo} >= ${t.validFrom}`),
+    check("vendor_item_rates_ended_ck", sql`(${t.endedAt} is null) = (${t.endedBy} is null)`),
+  ],
+);
+
 // ═══════════════════════════════════ BATCHES AND LOTS ═══════════════════════════════════
 
 /**
@@ -1121,8 +1164,21 @@ export const supplierBillLines = pgTable(
     expectedTaxablePaise: bigint("expected_taxable_paise", { mode: "number" }).notNull(),
     expectedGstRateBps: integer("expected_gst_rate_bps").notNull(),
     mismatch: text("mismatch"),
+    /**
+     * #637 — the vendor's trade discount, as billed. `list_rate_paise` is the rate per pack before it (null = no discount
+     * named); `discount_paise` is the amount off per pack actually applied, so `rate_paise = list − discount` and the
+     * taxable value and GST stay on the discounted rate; `discount_bps` is the percent when the bill stated one (the
+     * amount is then list less the half-up net rate, as on the PO line, #450, and the check holds the two to that), else 0.
+     */
+    listRatePaise: bigint("list_rate_paise", { mode: "number" }),
+    discountBps: integer("discount_bps").notNull().default(0),
+    discountPaise: bigint("discount_paise", { mode: "number" }).notNull().default(0),
   },
   (t) => [
+    check(
+      "supplier_bill_lines_discount_ck",
+      sql`(${t.listRatePaise} is null and ${t.discountBps} = 0 and ${t.discountPaise} = 0) or (${t.listRatePaise} >= 0 and ${t.discountBps} between 0 and 10000 and ${t.discountPaise} between 0 and ${t.listRatePaise} and ${t.ratePaise} = ${t.listRatePaise} - ${t.discountPaise} and (${t.discountBps} = 0 or ${t.discountPaise} = ${t.listRatePaise} - (${t.listRatePaise} * (10000 - ${t.discountBps}) + 5000) / 10000))`,
+    ),
     uniqueIndex("supplier_bill_lines_grn_item_ux").on(t.billId, t.grnId, t.itemId),
     index("supplier_bill_lines_grn_idx").on(t.grnId),
     check("supplier_bill_lines_qty_ck", sql`${t.qtyPacks} >= 0 and ${t.multiplier} > 0 and ${t.expectedBase} >= 0`),

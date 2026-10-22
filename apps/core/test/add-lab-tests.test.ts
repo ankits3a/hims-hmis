@@ -53,8 +53,9 @@ describe("add-lab-tests", () => {
     await expect(addLabTests(db, "lab.desk", true, NOW)).rejects.toThrow(/pathologist's grant/);
   });
 
-  it("the baseline is the 2026-10-12 production load: 331 tests, 583 parameters", () => {
-    expect([baseline.length, d.analytes.length - NEW_PARAMETERS.length]).toEqual([331, 583]);
+  it("the baseline is the 2026-10-12 production load (331 tests, 583 parameters) plus #934's four differential parameters", () => {
+    // #934 added GRAN, GRAN_ABS, MID and MID_ABS to the standard data: 583 -> 587.
+    expect([baseline.length, d.analytes.length - NEW_PARAMETERS.length]).toEqual([331, 587]);
   });
 
   it("dry run writes nothing; --apply adds the 378 tests, their new parameters and reviewed ranges; existing rows stand; a rerun writes nothing", async () => {

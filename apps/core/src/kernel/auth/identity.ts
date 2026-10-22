@@ -1,5 +1,6 @@
 import argon2 from "argon2";
 import { eq, sql } from "drizzle-orm";
+import type { SQL } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { users } from "../db/schema";
 import { makeBadgeToken, parseBadgeToken, randomToken } from "../crypto";
@@ -143,12 +144,26 @@ async function burnOneVerify(candidate: string): Promise<void> {
   await argon2.verify(await dummyHash, candidate);
 }
 
+/**
+ * #932 — THE NAME TYPED AT SIGN-IN IS MATCHED TRIMMED AND CASE-INSENSITIVELY. An exact match turned
+ * `ABHA` for `abha` into a 401 indistinguishable from a wrong password, right after an admin reset,
+ * while the throttle already counted both spellings as one person (`throttleSubject`). New usernames
+ * are lower-case by the admin route's own regex; `exactFirst` keeps a legacy mixed-case pair, should
+ * one ever exist, resolving to the spelling actually typed rather than to whichever row came first.
+ */
+function signInName(username: string): SQL {
+  return sql`lower(${users.username}) = ${username.trim().toLowerCase()}`;
+}
+function exactFirst(username: string): SQL {
+  return sql`(${users.username} = ${username.trim()}) desc`;
+}
+
 export async function verifyPassword(
   db: Db,
   username: string,
   password: string,
 ): Promise<{ userId: string } | null> {
-  const rows = await db.select().from(users).where(eq(users.username, username));
+  const rows = await db.select().from(users).where(signInName(username)).orderBy(exactFirst(username)).limit(1);
   const user = rows[0];
   if (!user || !user.active) {
     await burnOneVerify(password);
@@ -211,7 +226,7 @@ export async function verifyPinByUsername(
   username: string,
   pin: string,
 ): Promise<{ userId: string } | null> {
-  const rows = await db.select({ id: users.id }).from(users).where(eq(users.username, username));
+  const rows = await db.select({ id: users.id }).from(users).where(signInName(username)).orderBy(exactFirst(username)).limit(1);
   const user = rows[0];
   if (!user) {
     await burnOneVerify(pin);

@@ -1,7 +1,7 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
-import { opdComplaintConcepts, opdComplaintTermUsage, opdComplaintTerms } from "../../kernel/db/schema";
+import { cdsAliases, opdComplaintConcepts, opdComplaintTermUsage, opdComplaintTerms } from "../../kernel/db/schema";
 import { OpdError } from "./errors";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -84,10 +84,19 @@ export async function suggestComplaints(
       select term, concept_key from mapped
       union
       select term, concept_key from used
+    ),
+    -- the doctor's own "complaints" reset (decision 0050, #615): "mine" counts only uses above the snapshot
+    baseline as (
+      select r.complaint_baseline as base
+        from cds_doctor_learning_resets r
+        join opd_doctors od on od.user_id = r.user_id
+       where od.id = ${who} and r.surface = 'complaints'
     )
     select c.term,
            max(c.concept_key) as concept_key,
-           coalesce((select sum(u.uses) from opd_complaint_term_usage u
+           coalesce((select sum(greatest(u.uses - coalesce((b.base->>u.term)::int, 0), 0))
+                       from opd_complaint_term_usage u
+                       left join baseline b on true
                       where lower(u.term) = lower(c.term) and u.doctor_id = ${who}), 0) as mine,
            coalesce((select sum(u.uses) from opd_complaint_term_usage u
                       where lower(u.term) = lower(c.term)), 0) as hospital
@@ -118,11 +127,44 @@ export async function suggestComplaints(
 export async function conceptsForTerms(db: Db, terms: string[]): Promise<Map<string, string>> {
   const wanted = [...new Set(terms.map((t) => t.trim().toLowerCase()).filter((t) => t !== ""))];
   if (wanted.length === 0) return new Map();
+  const mapped = await personMapped(db, wanted);
+  // #613 — a learned phrase the machines read only once doctors' use has made it TRUSTED (switch on).
+  for (const [term, a] of await learnedAliases(db, wanted.filter((w) => !mapped.has(w)), ["trusted"])) mapped.set(term, a.conceptKey);
+  return mapped;
+}
+
+/** What a PERSON mapped: case-folded, exact. */
+async function personMapped(db: Db, wanted: readonly string[]): Promise<Map<string, string>> {
+  if (wanted.length === 0) return new Map();
   const rows = await db
     .select({ term: opdComplaintTerms.term, conceptKey: opdComplaintTerms.conceptKey })
     .from(opdComplaintTerms)
     .where(sql`lower(${opdComplaintTerms.term}) = any(${sql`array[${sql.join(wanted.map((w) => sql`${w}`), sql`, `)}]::text[]`})`);
   return new Map(rows.map((r) => [r.term.toLowerCase(), r.conceptKey]));
+}
+
+/**
+ * ═══ #613 — COMPLAINT PHRASES THE CHOOSER LEARNED (`cds_aliases`, kind 'complaint') ═══
+ *
+ * Switched off (the default, and with the alias pipeline off), nothing learned is read anywhere: every
+ * reader is exactly what a person mapped. Switched on, a TRUSTED alias (≥ 3 doctors, ≥ 10 taps) is read
+ * like a mapped phrase; a mere SUGGESTION is offered only where the caller asks for live learning (the
+ * consult's chips, marked as learned), never by a machine reader.
+ */
+let learnedComplaintsOn = false;
+export function setLearnedComplaintsOn(on: boolean): void { learnedComplaintsOn = on; }
+
+type LearnedAlias = { id: string; conceptKey: string; state: "suggestion" | "trusted" };
+async function learnedAliases(db: Db, wanted: readonly string[], states: readonly ("suggestion" | "trusted")[]): Promise<Map<string, LearnedAlias>> {
+  if (!learnedComplaintsOn || wanted.length === 0) return new Map();
+  const rows = await db.select({ id: cdsAliases.id, term: cdsAliases.term, conceptKey: cdsAliases.conceptKey, state: cdsAliases.state })
+    .from(cdsAliases)
+    .where(and(
+      eq(cdsAliases.kind, "complaint"),
+      sql`${cdsAliases.term} = any(${sql`array[${sql.join(wanted.map((w) => sql`${w}`), sql`, `)}]::text[]`})`,
+      sql`${cdsAliases.state} = any(${sql`array[${sql.join(states.map((s) => sql`${s}`), sql`, `)}]::text[]`})`,
+    ));
+  return new Map(rows.filter((r) => r.conceptKey !== null).map((r) => [r.term, { id: r.id, conceptKey: r.conceptKey!, state: r.state as LearnedAlias["state"] }]));
 }
 
 /**
@@ -345,33 +387,45 @@ export async function createComplaintConcept(
  * is one row per concept, in the order the patient said them. Nothing fuzzy, nothing invented: a
  * sentence that names nothing known yields nothing.
  */
+export type RecognisedComplaint = {
+  conceptKey: string; label: string; matched: string;
+  /** #613 — present only when a LEARNED phrase matched, so the screen can mark it as learned. */
+  alias?: { id: string; state: "suggestion" | "trusted" };
+};
+
 export async function recognisedComplaintConcepts(
-  db: Db, text: string,
-): Promise<{ conceptKey: string; label: string; matched: string }[]> {
+  db: Db, text: string, opts: { learned?: "live" } = {},
+): Promise<RecognisedComplaint[]> {
   const words = text.toLowerCase().normalize("NFC").split(/[^\p{L}\p{M}\p{N}]+/u).filter((w) => w !== "").slice(0, 60);
   if (words.length === 0) return [];
   const grams: { start: number; len: number; text: string }[] = [];
   for (let len = 4; len >= 1; len--) {
     for (let start = 0; start + len <= words.length; start++) grams.push({ start, len, text: words.slice(start, start + len).join(" ") });
   }
-  const known = await conceptsForTerms(db, grams.map((g) => g.text));
-  if (known.size === 0) return [];
+  const texts = [...new Set(grams.map((g) => g.text))];
+  const mapped = await personMapped(db, texts);
+  const learned = await learnedAliases(db, texts.filter((t) => !mapped.has(t)), opts.learned === "live" ? ["suggestion", "trusted"] : ["trusted"]);
+  if (mapped.size === 0 && learned.size === 0) return [];
   const used = new Set<number>();
-  const hits: { start: number; conceptKey: string; matched: string }[] = [];
+  const hits: { start: number; conceptKey: string; matched: string; alias?: LearnedAlias }[] = [];
   for (const g of grams) {
-    const key = known.get(g.text);
+    const a = mapped.has(g.text) ? undefined : learned.get(g.text);
+    const key = mapped.get(g.text) ?? a?.conceptKey;
     if (key === undefined) continue;
     const span = Array.from({ length: g.len }, (_, k) => g.start + k);
     if (span.some((k) => used.has(k))) continue;
     span.forEach((k) => { used.add(k); });
-    hits.push({ start: g.start, conceptKey: key, matched: g.text });
+    hits.push({ start: g.start, conceptKey: key, matched: g.text, ...(a === undefined ? {} : { alias: a }) });
   }
   const labels = new Map((await listComplaintConcepts(db)).map((c) => [c.key, c.label]));
   const seen = new Set<string>();
   return hits
     .sort((a, b) => a.start - b.start)
     .filter((h) => labels.has(h.conceptKey) && !seen.has(h.conceptKey) && (seen.add(h.conceptKey), true))
-    .map((h) => ({ conceptKey: h.conceptKey, label: labels.get(h.conceptKey)!, matched: h.matched }));
+    .map((h) => ({
+      conceptKey: h.conceptKey, label: labels.get(h.conceptKey)!, matched: h.matched,
+      ...(h.alias === undefined ? {} : { alias: { id: h.alias.id, state: h.alias.state } }),
+    }));
 }
 
 export async function listComplaintConcepts(db: Db): Promise<{ key: string; label: string }[]> {

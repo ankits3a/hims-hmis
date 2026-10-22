@@ -33,6 +33,7 @@ const doc = (over: Partial<WireDoctorSummary> & { id: string; departmentId: stri
   roomCode: over.roomCode ?? "OPD-1",
   avgConsultMinutes: over.avgConsultMinutes ?? 6,
   onLeaveToday: over.onLeaveToday ?? false,
+  secondaryDepartmentId: over.secondaryDepartmentId ?? null,
 });
 
 describe("the counter lane — three names for two server columns", () => {
@@ -245,6 +246,17 @@ describe("the board — two queues per doctor, and they are never added together
    * "not scheduled today" is a sentence they can say — but it must never be the agent's pick and
    * `firstFreeDoctor` must refuse it rather than seat a patient with an absent doctor.
    */
+  /* #914 — a doctor covering a second department is in BOTH departments' lines, with one queue. */
+  it("lists a covering doctor under their primary and their secondary department", () => {
+    const qs = deptQueues([
+      doc({ id: "cover", departmentId: "d-med", waitingCount: 2, secondaryDepartmentId: "d-ortho" }),
+      doc({ id: "med", departmentId: "d-med", waitingCount: 5 }),
+    ], departments);
+    expect(qs.map((q) => q.departmentId)).toEqual(["d-med", "d-ortho"]);
+    expect(qs[0]?.doctors.map((x) => x.doctor.id)).toEqual(["cover", "med"]);
+    expect(qs[1]?.doctors.map((x) => x.doctor.id)).toEqual(["cover"]);
+  });
+
   it("a department whose doctors are all away is listed, never picked, and seats nobody", () => {
     const qs = deptQueues([
       doc({ id: "away", departmentId: "d-med", scheduledToday: false, onLeaveToday: true }),

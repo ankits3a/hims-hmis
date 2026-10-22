@@ -27,6 +27,18 @@ export const attendancePersonLinked = defineEvent("attendance.person_linked", MO
   source: z.enum(["mobile", "aadhaar"]),
 }));
 
+/**
+ * An administrator undid a link (#634): the machine person and the login are both free again. The
+ * reason is the administrator's own short words — refused at the route if it holds a long number,
+ * so no mobile or Aadhaar can arrive here by it. App marks made while linked are NOT touched.
+ */
+export const attendancePersonUnlinked = defineEvent("attendance.person_unlinked", MODULE, z.object({
+  pin: z.string().min(1),
+  userId: z.string().min(1),
+  source: z.enum(["mobile", "aadhaar"]),
+  reason: z.string().min(1).max(200),
+}).strict());
+
 /** An administrator set or removed a person's Aadhaar or mobile on the Users screen. WHICH, never WHAT. */
 export const userIdentityChanged = defineEvent("attendance.user_identity_changed", MODULE, z.object({
   userId: z.string().min(1),
@@ -76,4 +88,4 @@ export const attendanceAppMarked = defineEvent("attendance.app_marked", MODULE, 
   distanceM: count.nullable(),
 }).strict());
 
-export const ATTENDANCE_EVENTS = [attendanceSynced, attendanceSyncRefused, attendancePersonLinked, userIdentityChanged, attendanceRead, meetingRequested, meetingRequestSeen, meetingRequestClosed, attendanceAppMarked] as const;
+export const ATTENDANCE_EVENTS = [attendanceSynced, attendanceSyncRefused, attendancePersonLinked, attendancePersonUnlinked, userIdentityChanged, attendanceRead, meetingRequested, meetingRequestSeen, meetingRequestClosed, attendanceAppMarked] as const;

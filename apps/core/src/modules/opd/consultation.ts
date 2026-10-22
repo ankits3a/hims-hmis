@@ -33,7 +33,8 @@ export type AdvisedTest = {
   serviceId: string;
   code: string;
   name: string;
-  pricePaise: number;
+  /** Issue #609 (DECIDED 2026-10-14): null when the tariff has no price for it — the slip says "Rate at counter", never ₹0. */
+  pricePaise: number | null;
 };
 
 /**
@@ -106,6 +107,8 @@ export type RxDraftLine = {
   instructions: string; noSubstitution: boolean; medicineId?: string | null;
   eye?: "od" | "os" | "ou" | null; taper?: { timesPerDay: number; days: number }[] | null;
   source?: RxLineSource;
+  /** #620 — the suggestion event a filled row came from, and the row as it was offered. */
+  suggestionEventId?: string; suggestedAs?: string;
 };
 
 /**

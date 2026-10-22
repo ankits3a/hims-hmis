@@ -11,7 +11,7 @@ import { requireEnv } from "../src/kernel/config";
 import { createRole, grantPermissionToRole, syncPermissions } from "../src/kernel/auth/permissions";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { ALL_MANIFESTS } from "../src/kernel/modules/manifests";
-import { copilotActs, events, rolePermissions } from "../src/kernel/db/schema";
+import { copilotActs, copilotAsks, events, rolePermissions } from "../src/kernel/db/schema";
 import { appendEvent } from "../src/kernel/events/append";
 import { COPILOT_EXTRA_TOOLS, argsHash, issueProposal, proposalKey } from "../src/kernel/copilot/act";
 import { defineAct } from "../src/kernel/copilot/types";
@@ -110,7 +110,7 @@ describe("E0.2 — propose → confirm → act", () => {
     await createRole(db, "desk", "Desk");
     await grantPermissionToRole(db, registry, "desk", "opd.queue.read");
     await createRole(db, "owner", "Owner");
-    for (const p of ["copilot.halt.set", "copilot.halt.clear"]) await grantPermissionToRole(db, registry, "owner", p);
+    for (const p of ["copilot.halt.set", "copilot.halt.clear", "copilot.health.read"]) await grantPermissionToRole(db, registry, "owner", p);
     clerk = await mkUser(db, "confirm_clerk", ["desk"]);
     owner = await mkUser(db, "confirm_owner", ["owner"]);
   });
@@ -209,6 +209,53 @@ describe("E0.2 — propose → confirm → act", () => {
     const p = issueProposal(key, { ...bookSlot, intent: "queue_depth" }, { type: "user", id: clerk.id }, { args: { slot: "10:30" } }, null, new Date())!;
     expect((await confirm(clerk.token, p)).body).toMatchObject({ outcome: "notAct", answer: { key: "copilot.answer.actInvalid" } });
     expect(await booked()).toBe(0);
+  });
+
+  /*
+    #686 (2) — EVERY CONFIRM IS A LEDGER ROW, refusals included: outcome `confirm<Outcome>`, the tool as
+    the intent, the answer key, no question text. /copilot/health counts them apart from asks, so the
+    ask figures (asks, askers, routes, the not-understood share) are not diluted by taps.
+  */
+  it("#686: each confirm outcome is written to the ledger and counted on the health page apart from asks", async () => {
+    await confirm(clerk.token, propose());                         // done
+    await confirm(clerk.token, issueProposal(key, bookSlot, { type: "user", id: clerk.id }, { args: { slot: "11:30" } }, null, new Date(Date.now() - 6 * 60_000))!); // expired
+    await confirm(owner.token, propose("12:30"));                  // invalid (not the owner's proposal)
+    const rows = await db.select({ outcome: copilotAsks.outcome, intent: copilotAsks.intent, q: copilotAsks.maskedQuestion, route: copilotAsks.route })
+      .from(copilotAsks);
+    expect(rows.map((r) => r.outcome).sort()).toEqual(["confirmDone", "confirmExpired", "confirmInvalid"]);
+    expect(rows.every((r) => r.q === null && r.route === "none" && r.intent !== null)).toBe(true);
+    const istToday = new Date(Date.now() + 19_800_000).toISOString().slice(0, 10);
+    const health = (await http().get(`/copilot/health?date=${istToday}`).set("Authorization", `Bearer ${owner.token}`).expect(200)).body;
+    expect(health).toMatchObject({ asks: 0, confirms: 3, byOutcome: { confirmDone: 1, confirmExpired: 1, confirmInvalid: 1 } });
+  });
+
+  it("#686 done-means 2: all nine confirm outcomes are ledgered and each is counted on /copilot/health", async () => {
+    const outcomes: string[] = [];
+    const tap = async (token: string, p: unknown): Promise<void> => { outcomes.push((await confirm(token, p)).body.outcome); };
+    const first = propose("10:30");
+    await tap(clerk.token, first);                                                       // done
+    await tap(clerk.token, first);                                                       // alreadyDone
+    await tap(clerk.token, propose("10:30"));                                            // stateChanged (slot taken)
+    await tap(clerk.token, issueProposal(key, bookSlot, { type: "user", id: clerk.id }, { args: { slot: "11:00" } }, null, new Date(Date.now() - 6 * 60_000))!); // expired
+    await tap(owner.token, propose("11:30"));                                            // invalid
+    await tap(clerk.token, issueProposal(key, { ...bookSlot, intent: "queue_depth" }, { type: "user", id: clerk.id }, { args: { slot: "12:00" } }, null, new Date())!); // notAct
+    fault.throwAfterWrite = true;
+    await tap(clerk.token, propose("12:30"));                                            // failed
+    fault.throwAfterWrite = false;
+    await http().post("/copilot/halt").set("Authorization", `Bearer ${owner.token}`).send({ scope: "act" }).expect(200);
+    await tap(clerk.token, propose("13:00"));                                            // halted
+    await http().post("/copilot/halt/clear").set("Authorization", `Bearer ${owner.token}`).send({ scope: "act" }).expect(200);
+    await db.delete(rolePermissions).where(and(eq(rolePermissions.roleKey, "desk"), eq(rolePermissions.permission, "opd.queue.read")));
+    await tap(clerk.token, propose("13:30"));                                            // notPermitted
+    const NINE = ["done", "alreadyDone", "stateChanged", "expired", "invalid", "notAct", "failed", "halted", "notPermitted"];
+    expect(outcomes).toEqual(NINE);
+
+    const ledgered = (await db.select({ outcome: copilotAsks.outcome }).from(copilotAsks)).map((r) => r.outcome).sort();
+    const asLedger = (o: string): string => `confirm${o[0]!.toUpperCase()}${o.slice(1)}`;
+    expect(ledgered).toEqual(NINE.map(asLedger).sort());
+    const istToday = new Date(Date.now() + 19_800_000).toISOString().slice(0, 10);
+    const health = (await http().get(`/copilot/health?date=${istToday}`).set("Authorization", `Bearer ${owner.token}`).expect(200)).body;
+    expect(health).toMatchObject({ asks: 0, confirms: 9, byOutcome: Object.fromEntries(NINE.map((o) => [asLedger(o), 1])) });
   });
 
   it("a malformed body is a 400, and an unauthenticated confirm a 401", async () => {

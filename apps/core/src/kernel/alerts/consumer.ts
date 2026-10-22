@@ -10,6 +10,7 @@ import { modeChanged } from "../ops/events";
 import { escalationTriggered, respondOverdue } from "../workflow/events";
 import { approvalRequested } from "../approvals/events";
 import { imagingCriticalOverdue, imagingReportUnread } from "../../modules/radiology/events";
+import { labCriticalOverdue } from "../../modules/lab/events";
 import { usersHoldingRole } from "../workflow/roles";
 import {
   ROSTER_DUTY_REF_TYPE, amendmentIsOfCover, coverForAlert, dutyManagersAt, dutyWindowsForAlert, escalationRecipients, flagForAlert,
@@ -78,6 +79,18 @@ const APPROVAL_REF_TYPE = "approval";
 const ALERT_KIND_IMAGING_CHASE = "imaging_chase";
 const IMAGING_CHASE_REF_TYPE = "imaging_study";
 /**
+ * E3.2 (#595) — A LAB CRITICAL NOBODY HAS READ BACK, one row per rung's person. `refId` is the
+ * `lab_critical_calls` row; the bell opens the bench's critical calls, where the read-back is taken.
+ */
+const ALERT_KIND_LAB_CRITICAL = "lab_critical";
+const LAB_CRITICAL_REF_TYPE = "lab_critical_call";
+/**
+ * Rungs 1–3 (unit head, duty RMO, HOD) are not the ordering doctor: their row opens the Doctor Desk,
+ * where the unit's open criticals are, not My Day (which lists only their own orders). The read-back
+ * acknowledges both ref types (`modules/lab/criticals.ts`).
+ */
+const LAB_CRITICAL_UNIT_REF_TYPE = "lab_critical_call_unit";
+/**
  * Plan 11c D4, CORRECTED BY 11d D6. The mode service has exactly ONE hospital-wide subject and no
  * per-subject instances (D2), so 11c made the "id" this alert refers to the mode WORD. That named
  * a STATE rather than the fact the owner was woken for, and it was the odd one out: both other ref
@@ -139,6 +152,10 @@ export function alertsConsumer(db: Db): Handler {
     }
     if (e.name === imagingReportUnread.name) {
       await handleImagingReportUnread(db, e);
+      return;
+    }
+    if (e.name === labCriticalOverdue.name) {
+      await handleLabCriticalOverdue(db, e);
       return;
     }
     if (e.name === approvalRequested.name) {
@@ -405,6 +422,25 @@ async function handleImagingCriticalOverdue(db: Db, e: DispatchedEvent): Promise
  */
 async function handleImagingReportUnread(db: Db, e: DispatchedEvent): Promise<void> {
   const payload = imagingReportUnread.payloadSchema.parse(e.payload);
+  /**
+   * DOCTOR DESK DD-0.11 — RUNG 1 IS THE DOCTOR WHO ORDERED IT. The chaser names the ordering
+   * clinician in `notifyUserIds` (staff ids only); the duty-manager route below is rung 2, a later
+   * event of its own. An event with no `rung` predates DD-0.11 and takes the route below, as it did.
+   * The text is structural like every other alert here: no patient, no study name (GC6, and DD11 —
+   * for a restricted study the existence of the study is itself the sensitive fact).
+   */
+  if (payload.rung === "ordering_clinician" && (payload.notifyUserIds?.length ?? 0) > 0) {
+    await raiseAlerts(db, e, payload.notifyUserIds!, {
+      kind: ALERT_KIND_IMAGING_CHASE,
+      title: "Your imaging report is unread",
+      body:
+        `A report on a study you ordered has been signed for ${String(payload.unreadHours)} hours and you `
+        + "have not opened it. Open the study to read it.",
+      refType: IMAGING_CHASE_REF_TYPE,
+      refId: payload.studyId,
+    });
+    return;
+  }
   // PHASE R (R6) — the destination is configuration now, resolved at the EVENT's own
   // instant. With no `roster_escalation_targets` row this is exactly the duty manager's
   // holders, as before; with one, it is whoever is ON as that position tonight.
@@ -420,6 +456,38 @@ async function handleImagingReportUnread(db: Db, e: DispatchedEvent): Promise<vo
       + "its author has opened it. Check that the referring clinician has the result.",
     refType: IMAGING_CHASE_REF_TYPE,
     refId: payload.studyId,
+  });
+}
+
+/**
+ * ═══ E3.2 (#595) — THE LAB CRITICAL LADDER: ONE ROW PER PERSON ON THE RUNG ═══
+ *
+ * The lab resolved the rung's people (`modules/lab/critical-ladder.ts`) and carries their ids. A
+ * rung that named nobody falls back to `escalationRecipients("lab.critical_overdue")` — the duty
+ * managers unless the hospital configured a target — so a critical is never chased into silence.
+ *
+ * **The title and body carry the rung's NAME and the minutes, and nothing else.** No value, no
+ * analyte, no patient: the row is fanned to a browser and relayed to a phone's lock screen.
+ */
+const LAB_RUNG_WORDS: Record<string, string> = {
+  ordering_doctor: "ordering doctor", unit_head: "unit head", duty_rmo: "duty RMO", hod: "HOD",
+};
+async function handleLabCriticalOverdue(db: Db, e: DispatchedEvent): Promise<void> {
+  const payload = labCriticalOverdue.payloadSchema.parse(e.payload);
+  const recipients = payload.recipientIds.length > 0
+    ? [...new Set(payload.recipientIds)]
+    : (await withTx(db, (tx) => escalationRecipients(
+      tx, "lab.critical_overdue", { fallbackRoleKey: DUTY_MANAGER_ROLE }, e.occurredAt,
+    ))).userIds;
+
+  await raiseAlerts(db, e, recipients, {
+    kind: ALERT_KIND_LAB_CRITICAL,
+    title: "Critical lab result waiting",
+    body:
+      `A critical lab result has waited ${String(payload.minutesOpen)} minutes with no read-back. `
+      + `You are called as the ${LAB_RUNG_WORDS[payload.rung] ?? payload.rung}. Ring the lab: the call closes when the value is read back.`,
+    refType: payload.rung === "ordering_doctor" ? LAB_CRITICAL_REF_TYPE : LAB_CRITICAL_UNIT_REF_TYPE,
+    refId: payload.callId,
   });
 }
 

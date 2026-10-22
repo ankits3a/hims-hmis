@@ -1,0 +1,1 @@
+ALTER TABLE "lab_results" ADD COLUMN "ast" jsonb;

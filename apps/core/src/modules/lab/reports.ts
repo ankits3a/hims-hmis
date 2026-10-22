@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, ne, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { withTx } from "../../kernel/db/client";
@@ -19,12 +19,13 @@ import { displayName, listMergedLoserIds, resolvePatientId } from "../patients";
 import { RELEASE_UNPAID_APPROVAL_TYPE } from "./approval-types";
 import { canonicalNames } from "./criticals";
 import { LabError } from "./errors";
+import { DOCTOR_SCREEN, stampDoctorRead } from "./doctor-read";
 import { deliveryAllowed } from "./interlock";
 import {
   labReportAmended, labReportPrintBlocked, labReportPrinted, labReportPublished,
   labReportReleasedUnpaid,
 } from "./events";
-import type { Actor } from "@hmis/contracts";
+import type { Actor, AstRow } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { DeliveryVerdict } from "./interlock";
 
@@ -79,6 +80,11 @@ export type ReportAnalyteLine = {
   verifiedAt: string | null;
   /** DD11 — a night-mode release the pathologist has not yet reviewed prints as provisional. */
   pathologistReviewPending: boolean;
+  /**
+   * #703 — a culture's antibiotic sensitivity table (MIC_AST line), printed under the line. Optional: a snapshot
+   * published before #703 has no key, and every other line carries null.
+   */
+  ast?: AstRow[] | null;
 };
 
 export type ReportPanel = {
@@ -178,8 +184,13 @@ async function buildSnapshot(
     })
     .from(orderItems)
     .innerJoin(labItems, eq(labItems.orderItemId, orderItems.id))
+    .innerJoin(labOrderables, eq(labOrderables.serviceId, orderItems.serviceId))
     .where(eq(orderItems.orderId, order.id))
-    .orderBy(orderItems.createdAt);
+    /**
+     * #889 — the panels print in this order, so it must be fixed: by test code (the lab's one rule),
+     * then item for a repeated test. `created_at` alone tied for every item placed in one statement.
+     */
+    .orderBy(asc(labOrderables.code), asc(orderItems.id));
 
   /**
    * A CANCELLED ITEM IS NOT ON THE REPORT. It was withdrawn, DD7 decided what it cost, and printing
@@ -289,6 +300,7 @@ async function buildSnapshot(
         deltaFlag: value.deltaFlag,
         verifiedAt: value.verifiedAt?.toISOString() ?? null,
         pathologistReviewPending: value.pathologistReviewPending,
+        ast: value.ast ?? null,
       });
     }
     panels.push({
@@ -632,7 +644,8 @@ export type PrintReportInput = {
    * `['in_person']` or `['print','whatsapp','in_person']`, so the channel could never match the
    * stored list and the refusal came back saying *"a confidentiality-class result is collected in
    * person"* — the wrong reason, about a report that is not sensitive. A doctor reading on screen
-   * goes through `listResultsForEncounter`, which is not a hand-over and writes no delivery row.
+   * goes through `listResultsForEncounter`, which is not a hand-over: it stamps the treating
+   * doctor's first read on `doctor_screen` itself (#682, `doctor-read.ts`), never through here.
    */
   channel: "print" | "whatsapp" | "in_person";
   /** 02 J2 — WHO took the report away. Required for a physical hand-over (T7 A9). */
@@ -933,6 +946,36 @@ export type ReportView = {
  * `kernel/orders/read.ts` follows and for the same reason: "who looked at this report" is the only
  * question the log exists to answer.
  */
+/**
+ * DD11 ON THE SINGLE REPORT (`GET /lab/reports/:reportId`) — the lab's restricted-test rule, as
+ * `patient-results.ts` applies it: a restricted test is shown to its ordering clinician and to a holder
+ * of `orders.read.restricted`. The lab itself is the third reader — its own worklists read its own
+ * tables (F45's precedent): whoever keys, signs or hands over a result (`lab.results.enter`,
+ * `lab.results.verify`, `lab.reports.print`). For anyone else the panel is OMITTED, never badged, and a
+ * report with nothing left is `null`, which the caller refuses exactly as an unknown id.
+ */
+const LAB_DEPARTMENT_GRANTS = ["lab.results.enter", "lab.results.verify", "lab.reports.print"] as const;
+
+/** Whether this reader sees restricted tests, given the order's responsible clinician. Asked once per read. */
+async function restrictedClearance(db: Db, actor: Actor): Promise<(orderingClinicianId: string | null) => boolean> {
+  if (actor.type !== "user") return () => false;
+  for (const p of ["orders.read.restricted", ...LAB_DEPARTMENT_GRANTS]) {
+    if (await hasPermission(db, actor.id, p, "hospital")) return () => true;
+  }
+  return (orderingClinicianId) => orderingClinicianId === actor.id;
+}
+
+async function restrictedPanelsFor(db: Db, actor: Actor, orderId: string, snapshot: ReportSnapshot): Promise<ReportSnapshot | null> {
+  const hidden = await db.select({ id: orderItems.id }).from(orderItems)
+    .where(and(eq(orderItems.orderId, orderId), eq(orderItems.restricted, true)));
+  if (hidden.length === 0) return snapshot;
+  const [order] = await db.select({ orderingClinicianId: orders.orderingClinicianId }).from(orders).where(eq(orders.id, orderId));
+  if ((await restrictedClearance(db, actor))(order?.orderingClinicianId ?? null)) return snapshot;
+  const out = new Set(hidden.map((h) => h.id));
+  const panels = snapshot.panels.filter((p) => !out.has(p.orderItemId));
+  return panels.length === 0 ? null : { ...snapshot, panels };
+}
+
 export async function getReport(
   db: Db,
   actor: Actor,
@@ -944,7 +987,9 @@ export async function getReport(
   const [report] = await db.select().from(labReports).where(eq(labReports.id, reportId));
   if (!report) throw new LabError("unknown_report", `no lab report ${reportId}`);
 
-  const snapshot = report.snapshot as ReportSnapshot;
+  const shown = await restrictedPanelsFor(db, actor, report.orderId, report.snapshot as ReportSnapshot);
+  if (shown === null) throw new LabError("unknown_report", `no lab report ${reportId}`);
+  const snapshot = shown;
   /**
    * THE CANONICAL PATIENT, not the snapshotted id (close review m3). The snapshot freezes the
    * identity as it was at signature (E4) and a merge afterwards does not rewrite it — but the
@@ -965,6 +1010,12 @@ export async function getReport(
     sealed: patient?.isConfidential ?? false,
     now,
   });
+  /**
+   * #682 — the treating doctor's first read closes "lab reports back"; anyone else's stamps nothing.
+   * A read with a restricted panel held back (DD11) is not the whole report, so it stamps nothing either:
+   * the orderer, who sees every panel, still has it waiting.
+   */
+  if (shown === report.snapshot) await stampDoctorRead(db, actor, [report.orderId], now);
 
   return {
     reportId: report.id,
@@ -1031,6 +1082,8 @@ export async function listResultsForEncounter(
 ): Promise<EncounterResultRow[]> {
   await assertMay(db, actor, LAB_RESULTS_READ, "read lab results");
 
+  /** Orders with a restricted test held back from this reader: their report was not read whole (#682). */
+  const partlyHidden = new Set<string>();
   const rows = await db
     .select({
       orderId: orders.id,
@@ -1041,6 +1094,8 @@ export async function listResultsForEncounter(
       analyteCode: labAnalytes.code,
       analyteName: labAnalytes.nameEn,
       result: labResults,
+      restricted: orderItems.restricted,
+      orderingClinicianId: orders.orderingClinicianId,
     })
     .from(labResults)
     .innerJoin(orderItems, eq(orderItems.id, labResults.orderItemId))
@@ -1051,7 +1106,14 @@ export async function listResultsForEncounter(
       eq(orders.encounterNo, encounterNo),
       eq(labResults.verificationStatus, "verified"),
     ))
-    .orderBy(labResults.verifiedAt);
+    .orderBy(labResults.verifiedAt)
+    .then(async (all) => {
+      /* DD11 — a restricted test is omitted (never badged) for a reader who is not cleared for it. */
+      const cleared = await restrictedClearance(db, actor);
+      const shown = all.filter((r) => !r.restricted || cleared(r.orderingClinicianId));
+      for (const r of all) if (!shown.includes(r)) partlyHidden.add(r.orderId);
+      return shown;
+    });
 
   /**
    * THE LOG IS WRITTEN WHEN THERE IS A PATIENT TO NAME. An encounter with no lab results discloses
@@ -1067,6 +1129,8 @@ export async function listResultsForEncounter(
       actor, patientId: canonical, surface: "lab.results", encounterId: encounterNo,
       sealed: sealed?.isConfidential ?? false, now,
     });
+    /** #682 — the consult's results panel IS the doctor opening these reports. */
+    await stampDoctorRead(db, actor, [...new Set(rows.map((r) => r.orderId))].filter((id) => !partlyHidden.has(id)), now);
   }
 
   return rows.map((r) => ({
@@ -1155,6 +1219,8 @@ export async function listProvisionalResultsForEncounter(
       analyteCode: labAnalytes.code,
       analyteName: labAnalytes.nameEn,
       result: labResults,
+      restricted: orderItems.restricted,
+      orderingClinicianId: orders.orderingClinicianId,
     })
     .from(labResults)
     .innerJoin(orderItems, eq(orderItems.id, labResults.orderItemId))
@@ -1165,7 +1231,12 @@ export async function listProvisionalResultsForEncounter(
       eq(orders.encounterNo, encounterNo),
       eq(labResults.verificationStatus, "unverified"),
     ))
-    .orderBy(labResults.enteredAt);
+    .orderBy(labResults.enteredAt)
+    .then(async (all) => {
+      /* DD11 — a restricted test is omitted (never badged) for a reader who is not cleared for it. */
+      const cleared = await restrictedClearance(db, actor);
+      return all.filter((r) => !r.restricted || cleared(r.orderingClinicianId));
+    });
 
   /**
    * The rows this encounter's own values have replaced — the laboratory's working-out, not a result.
@@ -1269,6 +1340,20 @@ export async function reportVersions(
   return rows.map((r) => ({ ...r, publishedAt: r.publishedAt?.toISOString() ?? null }));
 }
 
+/**
+ * `GET /lab/reports/order/:orderId` — the version history, behind DD11: an order holding a restricted
+ * test is refused as unknown to a reader not cleared for it (the order's existence is the fact).
+ */
+export async function reportVersionsFor(db: Db, actor: Actor, orderId: string): Promise<ReportVersionRow[]> {
+  const [order] = await db.select({ orderingClinicianId: orders.orderingClinicianId }).from(orders).where(eq(orders.id, orderId));
+  const [restricted] = await db.select({ id: orderItems.id }).from(orderItems)
+    .where(and(eq(orderItems.orderId, orderId), eq(orderItems.restricted, true))).limit(1);
+  if (restricted !== undefined && !(await restrictedClearance(db, actor))(order?.orderingClinicianId ?? null)) {
+    throw new LabError("unknown_report", `no lab report for order ${orderId}`);
+  }
+  return reportVersions(db, orderId);
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════════════════════ */
 /* PLAN 17c T5 — THE REPORT CENTRE'S TWO READERS: by patient, and the day's register             */
 /* ═══════════════════════════════════════════════════════════════════════════════════════════ */
@@ -1364,7 +1449,8 @@ export async function reportsForPatient(
   for (const r of published) if (!latest.has(r.orderId)) latest.set(r.orderId, r);
   const reportIds = [...latest.values()].map((r) => r.id);
   const [deliveries, notices] = reportIds.length === 0 ? [[], []] : await Promise.all([
-    db.select().from(labReportDeliveries).where(inArray(labReportDeliveries.reportId, reportIds)).orderBy(asc(labReportDeliveries.at)),
+    /** A doctor's screen read (#682) is not a hand-over: the register lists only what left the lab. */
+    db.select().from(labReportDeliveries).where(and(inArray(labReportDeliveries.reportId, reportIds), ne(labReportDeliveries.channel, DOCTOR_SCREEN))).orderBy(asc(labReportDeliveries.at)),
     db.select({ refId: notifications.refId, status: notifications.status, sentChannel: notifications.sentChannel, sentAt: notifications.sentAt })
       .from(notifications).where(and(eq(notifications.refType, "lab_report"), inArray(notifications.refId, reportIds))),
   ]);
@@ -1451,8 +1537,11 @@ export async function deliveryRegister(db: Db, actor: Actor, serviceDate: string
   const [items, deliveries, notices, names] = await Promise.all([
     db.select({ orderId: orderItems.orderId, code: labOrderables.code, sensitive: labOrderables.sensitive, status: orderItems.status })
       .from(orderItems).innerJoin(labOrderables, eq(labOrderables.serviceId, orderItems.serviceId))
-      .where(inArray(orderItems.orderId, orderIds)),
-    db.select().from(labReportDeliveries).where(inArray(labReportDeliveries.reportId, reportIds)).orderBy(asc(labReportDeliveries.at)),
+      .where(inArray(orderItems.orderId, orderIds))
+      /** #889 — a row's tests in one fixed order (by test code), not the heap's. */
+      .orderBy(asc(labOrderables.code)),
+    /** A doctor's screen read (#682) is not a hand-over: the register lists only what left the lab. */
+    db.select().from(labReportDeliveries).where(and(inArray(labReportDeliveries.reportId, reportIds), ne(labReportDeliveries.channel, DOCTOR_SCREEN))).orderBy(asc(labReportDeliveries.at)),
     db.select({ refId: notifications.refId, status: notifications.status, sentChannel: notifications.sentChannel, sentAt: notifications.sentAt })
       .from(notifications).where(and(eq(notifications.refType, "lab_report"), inArray(notifications.refId, reportIds))),
     canonicalNames(db, [...new Set(rows.map((r) => r.patientId))], canSeeConfidential),

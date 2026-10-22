@@ -242,6 +242,8 @@ describe("OpdAppointments", () => {
     const dialog = await screen.findByRole("dialog");
     const newSlot = await within(dialog).findByTestId("slot-2026-08-18T04:10:00.000Z");
     await user.click(newSlot);
+    // #652 — a click asks; Confirm moves.
+    await user.click(within(dialog).getByRole("button", { name: "Confirm move" }));
 
     await waitFor(() => expect(callsTo("POST", "/api/opd/appointments/ap-1/reschedule")).toHaveLength(1));
     expect(bodyOf("POST", "/api/opd/appointments/ap-1/reschedule")).toEqual({
@@ -256,6 +258,54 @@ describe("OpdAppointments", () => {
 
     await waitFor(() => expect(callsTo("POST", "/api/opd/appointments/ap-1/cancel")).toHaveLength(1));
     expect(bodyOf("POST", "/api/opd/appointments/ap-1/cancel")).toEqual({ reason: "Patient requested" });
+  });
+
+  it("#652: Reschedule asks before it moves — who, with whom, from when to when; Back returns to the times; a refusal stays in the dialog", async () => {
+    const booked = apt({ id: "ap-1" });
+    const routes = {
+      "GET /api/opd/departments": { items: DEPARTMENTS },
+      "GET /api/opd/doctors": { items: [DOCTOR_1] },
+      "GET /api/opd/rooms": { items: ROOMS },
+      "GET /api/opd/slots": { slots: SLOTS },
+      "GET /api/opd/appointments": { items: [booked] },
+    };
+    // First the server refuses (no route ⇒ 404), then it accepts.
+    stubFetch(routes);
+    renderWithProviders(<OpdAppointments />);
+    const user = userEvent.setup();
+    await pickDeptAndDoctor(user);
+    await screen.findByText("Asha Devi");
+
+    await user.click(screen.getByRole("button", { name: "Reschedule" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(await within(dialog).findByTestId("slot-2026-08-18T04:10:00.000Z"));
+
+    // Nothing moved on the click.
+    expect(callsTo("POST", "/api/opd/appointments/ap-1/reschedule")).toHaveLength(0);
+    const sheet = within(dialog).getByTestId("reschedule-confirm");
+    expect(sheet).toHaveTextContent("Asha Devi");
+    expect(sheet).toHaveTextContent("HMS0000001234");
+    expect(sheet).toHaveTextContent("Dr Meera Rao");
+    expect(within(sheet).getByTestId("reschedule-from")).toHaveTextContent("09:00");
+    expect(within(sheet).getByTestId("reschedule-to")).toHaveTextContent("09:40");
+
+    // Back: the times again, still nothing posted.
+    await user.click(within(dialog).getByRole("button", { name: "Back" }));
+    expect(within(dialog).queryByTestId("reschedule-confirm")).toBeNull();
+    expect(callsTo("POST", "/api/opd/appointments/ap-1/reschedule")).toHaveLength(0);
+
+    // Confirm: one POST; a refusal stays in the dialog, beside the Confirm.
+    await user.click(within(dialog).getByTestId("slot-2026-08-18T04:10:00.000Z"));
+    await user.click(within(dialog).getByRole("button", { name: "Confirm move" }));
+    await waitFor(() => expect(callsTo("POST", "/api/opd/appointments/ap-1/reschedule")).toHaveLength(1));
+    expect(await within(dialog).findByRole("alert")).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(within(dialog).getByTestId("reschedule-confirm")).toBeInTheDocument();
+
+    stubFetch({ ...routes, "POST /api/opd/appointments/ap-1/reschedule": { from: booked, to: apt({ id: "ap-10", slotStart: "2026-08-18T04:10:00.000Z" }) } });
+    await user.click(within(dialog).getByRole("button", { name: "Confirm move" }));
+    await waitFor(() => expect(callsTo("POST", "/api/opd/appointments/ap-1/reschedule")).toHaveLength(1));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
   it("the needs-rebooking tab lists across doctors from GET /opd/appointments?needsRebooking=true with a one-tap Reschedule", async () => {
@@ -288,6 +338,7 @@ describe("OpdAppointments", () => {
     const dialog = await screen.findByRole("dialog");
     const slotBtn = await within(dialog).findByTestId("slot-2026-08-18T03:30:00.000Z");
     await user.click(slotBtn);
+    await user.click(within(dialog).getByRole("button", { name: "Confirm move" }));
 
     await waitFor(() => expect(callsTo("POST", "/api/opd/appointments/ap-3/reschedule")).toHaveLength(1));
     expect(bodyOf("POST", "/api/opd/appointments/ap-3/reschedule")).toEqual({

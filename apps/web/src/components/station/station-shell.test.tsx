@@ -1,7 +1,8 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { setToken } from "../../lib/api";
-import { renderWithProviders } from "../../test-utils";
+import { useRouterState } from "@tanstack/react-router";
+import { getToken, setToken } from "../../lib/api";
+import { renderWithProviders, renderWithRouter } from "../../test-utils";
 import { LabStation } from "../../screens/lab-seat";
 import { StationShell } from "./station-shell";
 
@@ -158,4 +159,42 @@ it("UX-AUDIT 2026-09-28 · BOARD — `laneHead={false}` leaves the lane to the s
   expect(within(lane).queryByRole("list", { name: "Your day" })).toBeNull();
   expect(within(lane).getByText("Nobody in hand")).toBeInTheDocument();
   expect(within(screen.getByRole("banner")).getByTestId("shell-status")).toHaveTextContent("9 waiting");
+});
+
+function Where(): React.ReactElement {
+  return <p data-testid="where">{useRouterState({ select: (st) => st.location.pathname })}</p>;
+}
+
+it("OWNER 2026-10-21 — a station's header has Log out: the app's logout runs and the person lands on sign-in", async () => {
+  me(["lab.reports.print"]);
+  const fetchMock = vi.mocked(fetch);
+  const meOnly = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation(async (input, init) =>
+    String(input).endsWith("/api/auth/logout") && init?.method === "POST"
+      ? new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } })
+      : meOnly(input, init));
+  renderWithRouter(
+    <LabStation station="qreports" title="Reports" place="Counter" stats={[]} list={<p>queue</p>}>
+      <Where />
+    </LabStation>,
+    "/lab/qreports",
+  );
+  const out = await screen.findByTestId("station-logout");
+  expect(within(screen.getByRole("banner")).getByRole("button", { name: "Log out" })).toBe(out);
+  expect(screen.getByTestId("where")).toHaveTextContent("/lab/qreports");
+  await userEvent.click(out);
+  await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent("/login"));
+  expect(fetchMock.mock.calls.some(([u, init]) => String(u).endsWith("/api/auth/logout") && init?.method === "POST")).toBe(true);
+  expect(getToken()).toBeNull();
+});
+
+it("OWNER 2026-10-21 — Log out still lands on sign-in when the server's logout call fails", async () => {
+  me([]);
+  renderWithRouter(
+    <LabStation station="quick" title="Quick" place="Counter" stats={[]} list={<p>queue</p>}><Where /></LabStation>,
+    "/lab/quick",
+  );
+  await userEvent.click(await screen.findByTestId("station-logout"));
+  await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent("/login"));
+  expect(getToken()).toBeNull();
 });

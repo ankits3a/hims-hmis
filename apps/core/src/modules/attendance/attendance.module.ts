@@ -2,6 +2,7 @@ import { Inject, Module } from "@nestjs/common";
 import type { OnModuleInit } from "@nestjs/common";
 import { CONFIG } from "../../kernel/tokens";
 import { AttendanceController } from "./attendance.controller";
+import { AdminAttendanceLinksController, AttendanceLinksController } from "./links.controller";
 import { MeIdentityController } from "./me-identity.controller";
 import { describeAttendance } from "./secrets";
 import { UsersIdentityController } from "./users-identity.controller";
@@ -14,7 +15,7 @@ import type { AppConfig } from "../../kernel/config";
  * the webhook (public to user auth, signed instead).
  * The sync itself is the WORKER's job (`syncAttendance`, `kernel/worker/jobs.ts`), not this module's.
  */
-@Module({ controllers: [UsersIdentityController, MeIdentityController, AttendanceController, BioattendWebhookController] })
+@Module({ controllers: [UsersIdentityController, MeIdentityController, AttendanceController, AttendanceLinksController, AdminAttendanceLinksController, BioattendWebhookController] })
 export class AttendanceModule implements OnModuleInit {
   constructor(@Inject(CONFIG) private readonly cfg: AppConfig) {}
 

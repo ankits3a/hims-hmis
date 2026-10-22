@@ -8,6 +8,9 @@ export type OpdErrorCode =
   // is reached only at ten thousand doctors, where the caller's answer is to supply one.
   | "invalid_doctor_code" | "doctor_code_exhausted"
   | "not_a_doctor" | "not_your_patient"
+  // #914 — a doctor's second department. A bad department or date is a malformed request (400); a
+  // second secondary while one runs, or ending one that is not running, is a state (409 by rule).
+  | "invalid_secondary_department" | "secondary_department_state_conflict"
   | "invalid_schedule" | "unknown_schedule" | "unknown_leave" | "leave_not_scheduled" | "invalid_leave_range"
   | "patient_not_found" | "duplicate_suspected" | "registration_not_permitted"
   | "invalid_slot" | "slot_taken" | "slot_in_past" | "doctor_on_leave" | "unknown_appointment"
@@ -27,6 +30,9 @@ export type OpdErrorCode =
   // 'Spoke' could not be recorded because what must be written beside it could not be (409, listed).
   // The message is the doctor's — neutral, no money word; the cause goes to the log and `tele.bill_failed`.
   | "tele_save_failed"
+  // #647 — the billing office's retry of a failed tele-call bill. The bill still cannot be raised
+  // (409, listed; `detail.code` is billing's own refusal), or the visit has no failed bill waiting (409, suffix rule).
+  | "tele_bill_retry_failed" | "tele_bill_state_conflict"
   | "unknown_encounter" | "encounter_state_conflict" | "edit_lease_state_conflict" | "consult_gate_refused" | "unknown_session" | "session_closed" | "doctor_out"
   // The co-pilot's syndrome key. A key the knowledge file does not hold is a CLIENT error with a
   // domain name, not a 500 — the screen sends what a previous build's suggest route gave it.
@@ -71,6 +77,8 @@ export type OpdErrorCode =
   // hits in `detail` and are cleared by an override with a reason, exactly as `allergy_conflict` is.
   // A severe interaction, and the same moiety twice on one slip under two brand names.
   | "interaction_conflict" | "duplicate_salt_conflict" | "drug_disease_conflict"
+  // #621 — a renal dose warning, in the same grammar: hits in `detail.renalHits`, cleared by `renalOverrides`.
+  | "renal_conflict"
   // 17d T4 — a SECOND open laboratory walk-in for one patient on one day. Scoped to the lab door,
   // never to `openVisitInTx`: OPD legitimately opens a second visit the same day, and the lab is
   // the case where it is always a mistake — a walk-in is one draw, and tests remembered on the way

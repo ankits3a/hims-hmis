@@ -1,4 +1,4 @@
-import { QUALITIES, detectDocument, fitToMaxEdge, fitsBudget, flatSize, frameQuad, pageAspect, warpPixels } from "./rules";
+import { QUALITIES, TARGET_BYTES, base64Bytes, detectDocument, flatSize, frameQuad, pageAspect, warpPixels } from "./rules";
 import type { Detection, Pixels, Quad } from "./rules";
 
 /**
@@ -32,12 +32,16 @@ function canvasOf(w: number, h: number): { canvas: HTMLCanvasElement; ctx: Canva
   if (ctx === null) throw new Error("no canvas");
   return { canvas, ctx };
 }
-function encode(canvas: HTMLCanvasElement): string | null {
+function encode(canvas: HTMLCanvasElement, budget: number): string | null {
   for (const q of QUALITIES) {
     const b64 = canvas.toDataURL("image/jpeg", q).split(",")[1] ?? "";
-    if (fitsBudget(b64)) return b64;
+    if (base64Bytes(b64) <= budget) return b64;
   }
   return null;
+}
+function fitTo(width: number, height: number, maxEdge: number): { width: number; height: number } {
+  const scale = Math.min(1, maxEdge / Math.max(width, height, 1));
+  return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
 }
 
 export async function normalize(shot: Photo): Promise<Photo> {
@@ -60,13 +64,13 @@ export async function findPage(photo: Photo): Promise<Detection> {
   }
 }
 
-export async function flatten(photo: Photo, quad: Quad | null, maxEdge: number): Promise<Flat | null> {
+export async function flatten(photo: Photo, quad: Quad | null, maxEdge: number, budget: number = TARGET_BYTES): Promise<Flat | null> {
   const img = await load(photo.uri);
   if (quad === null) {
-    const fit = fitToMaxEdge(photo.width, photo.height);
+    const fit = fitTo(photo.width, photo.height, maxEdge);
     const { canvas, ctx } = canvasOf(fit.width, fit.height);
     ctx.drawImage(img, 0, 0, fit.width, fit.height);
-    const b64 = encode(canvas);
+    const b64 = encode(canvas, budget);
     return b64 === null ? null : { base64: b64, ...fit, straightened: false };
   }
   const src = canvasOf(photo.width, photo.height);
@@ -75,7 +79,7 @@ export async function flatten(photo: Photo, quad: Quad | null, maxEdge: number):
   const flat = warpPixels(src.ctx.getImageData(0, 0, photo.width, photo.height) as unknown as Pixels, quad, size.width, size.height);
   const out = canvasOf(size.width, size.height);
   out.ctx.putImageData(new ImageData(flat.data, flat.width, flat.height), 0, 0);
-  const b64 = encode(out.canvas);
+  const b64 = encode(out.canvas, budget);
   return b64 === null ? null : { base64: b64, ...size, straightened: true };
 }
 

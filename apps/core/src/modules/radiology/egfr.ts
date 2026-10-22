@@ -1,3 +1,5 @@
+import { ckdEpi2021 } from "../lab";
+import type { EgfrSex } from "../lab";
 /**
  * PLAN 18-S RS5 T1 (Gap 3, DECIDED clinical standard) — **eGFR in the kidney gate.**
  *
@@ -48,22 +50,12 @@ export const IV_HYDRATION_INSTRUCTION =
 export const METFORMIN_NOTE =
   "If the patient takes metformin: hold it for 48 hours after contrast and restart only after renal function is rechecked";
 
-export type EgfrSex = "female" | "male";
-
-/** CKD-EPI 2021 in mL/min/1.73 m², unrounded. Throws on a non-positive creatinine or age. */
-export function ckdEpi2021(creatinineMgDl: number, ageYears: number, sex: EgfrSex): number {
-  if (!(creatinineMgDl > 0)) throw new RangeError("creatinine must be positive");
-  if (!(ageYears > 0)) throw new RangeError("age must be positive");
-  const kappa = sex === "female" ? 0.7 : 0.9;
-  const alpha = sex === "female" ? -0.241 : -0.302;
-  const ratio = creatinineMgDl / kappa;
-  return 142
-    * Math.min(ratio, 1) ** alpha
-    * Math.max(ratio, 1) ** -1.2
-    * 0.9938 ** ageYears
-    * (sex === "female" ? 1.012 : 1);
-}
-
+/**
+ * #621 — the equation now lives in the lab (`lab/egfr.ts`), beside the creatinine it reads, so the
+ * renal dose check and this gate compute one number one way. Re-exported unchanged for this module.
+ */
+export { ckdEpi2021 } from "../lab";
+export type { EgfrSex } from "../lab";
 export type RenalBand = "hold" | "hydrate" | "clear";
 
 /** The gate's three lanes, by eGFR. */

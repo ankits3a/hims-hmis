@@ -220,12 +220,16 @@ Each phase is its own PR(s), tests fail-first, web and phone both, English and H
     server-side (`hiddenSuggestions`); the graded score stays in P1;
   - a child: a set or Repeat last brings the medicines without dose, frequency or days;
   - `cds_doctor_prefs.suggestions_on` (default on) is each doctor's own switch for the chips.
-  - The scribe has no suggestion chips, so it has no ×; its frequency box snaps to the closed set.
+  - The scribe's frequency box snaps to the closed set.
+  - #620 (2026-10-15): a regimen-filled line on the web carries `suggestionEventId` onto the issue, and
+    once the issue stands each is told `accepted` (went out as offered) or `edited` (changed first); the
+    server keeps the first outcome per id. A door-slip draft issues as `paper`, by the tap and from the
+    editor. The scribe has test chips — the treating doctor's tests for the visit's diagnosis, else the
+    doctor's usual ones of 90 days — with the same ×, counted on the `scribe` surface.
   - STILL OWED from P0: run `scripts/backfill-cds-rx-lines.ts` on production and read its report (0 issued
     prescriptions there on 2026-10-07, so it has nothing to do yet); the phone has no control for the
-    doctor's own switch (it honours the one set on the web); `suggestionEventId` on a line and the
-    `edited` outcome are not written by any screen yet; the door-slip draft loaded into the web editor is
-    recorded as typed.
+    doctor's own switch (it honours the one set on the web), and the phone's lines carry no
+    `suggestionEventId` yet (#620).
 
 **P1 — Own-pattern medicines, diagnosis from complaints, three numbers** (about 7 days; 0–1 migration)
 - §7 rank, dismissal, stewardship and adult dose; naive-Bayes diagnosis chips; complaint completion; live SQL
@@ -264,6 +268,17 @@ Each phase is its own PR(s), tests fail-first, web and phone both, English and H
 - **Guardrails:** red flags first and never learned; a child by age goes to Paediatrics first (Jev's specialty
   may take slot two); the prior never routes a child to adult medicine; only active departments; never an
   empty list. Age is not passed to Jev today — it is applied by rule around it.
+- **BUILT** — channel 1 and the link in #879 (`opd/desk-routing.ts`, migration 0217); channels 2 and 3 and the
+  growing held-out set in `opd/desk-routing-feed.ts` (table `cds_desk_routing_feeds`, one version row a night).
+  DECIDED there (standard practice, not owner rulings): the words come from the visit's stored desk complaint,
+  masked with the patient's name; adults only, never a routing the prior led; a tail word also needs ≥ 3
+  different patients and an example ≥ 2, with a placeholder left in it refused; a negated sentence never feeds
+  the tail; the floor is "no lower than the descriptions alone on the 46 cases"; the week is held-out visits
+  right, weighted by visits, against the best live night of the last 7; a refused night serves the
+  descriptions alone, a failed night (chooser down or absent) changes nothing. `DESK_ROUTING_LEARNING_ENABLED`
+  ships **off** (decision 0051: numbers to the owner first); off it computes nothing, because the evaluation is a
+  model call. The owner turns it on (staging first) and reads each night's row in `cds_desk_routing_feeds`:
+  status, floor vs baseline floor score, held-out score and visits. The weekly list with one-tap undo is #924.
 
 **P4 — What the system learned about me; stewardship; digest** (about 4 days; 1 migration)
 - A doctor's page: top patterns per diagnosis, what is hidden, Reset (the watermark; personal levels only).

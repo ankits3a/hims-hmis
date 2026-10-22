@@ -1,0 +1,104 @@
+{
+ "source": "SYNTHETIC test fixture shaped like the openFDA coverage file - not real data",
+ "substances": {
+  "acetaminophen": {
+   "formulary_names": [
+    "Paracetamol"
+   ],
+   "status": "single_label",
+   "us_name": "acetaminophen",
+   "label_id": "fake-label-0001",
+   "set_id": "fake-set-0001",
+   "version": "3",
+   "effective_date": "20250101",
+   "brand": "Fakeamol",
+   "tier": "openfda.substance_name"
+  },
+  "amoxicillin": {
+   "formulary_names": [
+    "Amoxicillin",
+    "Amoxicillin trihydrate"
+   ],
+   "status": "single_label",
+   "us_name": "amoxicillin",
+   "label_id": "fake-label-0002",
+   "set_id": "fake-set-0002",
+   "version": "7",
+   "effective_date": "20240615",
+   "brand": "Fakemox",
+   "tier": "openfda.substance_name"
+  },
+  "clavulanate": {
+   "formulary_names": [
+    "Clavulanic acid",
+    "Potassium clavulanate"
+   ],
+   "status": "combination_label_only",
+   "us_name": "clavulanate"
+  },
+  "cetirizine": {
+   "formulary_names": [
+    "Cetirizine",
+    "Cetirizine hydrochloride"
+   ],
+   "status": "single_label",
+   "us_name": "cetirizine",
+   "label_id": "fake-label-0004",
+   "set_id": "fake-set-0004",
+   "version": "1",
+   "effective_date": "20200101",
+   "brand": "Fakecool",
+   "tier": "spl_product_data_elements text (label has no openfda block)"
+  },
+  "aceclofenac": {
+   "formulary_names": [
+    "Aceclofenac"
+   ],
+   "status": "none",
+   "us_name": null
+  },
+  "ornidazole": {
+   "formulary_names": [
+    "Ornidazole"
+   ],
+   "status": "none",
+   "us_name": null
+  },
+  "lost": {
+   "formulary_names": [
+    "Lostamine"
+   ],
+   "status": "single_label",
+   "us_name": "lostamine",
+   "label_id": "fake-label-0009",
+   "set_id": "fake-set-0009",
+   "version": "1",
+   "effective_date": "20200101",
+   "brand": "Gone",
+   "tier": "openfda.substance_name"
+  }
+ },
+ "combinations": {
+  "amoxicillin + clavulanate": {
+   "status": "exact_combo",
+   "formulary_rows": 1,
+   "components": {
+    "amoxicillin": "single_label",
+    "clavulanate": "combination_label_only"
+   },
+   "label_id": "fake-label-0003",
+   "set_id": "fake-set-0003",
+   "version": "2",
+   "effective_date": "20230301",
+   "brand": "Fakmentin"
+  },
+  "aceclofenac + acetaminophen": {
+   "status": "components_partial",
+   "formulary_rows": 1,
+   "components": {
+    "aceclofenac": "none",
+    "acetaminophen": "single_label"
+   }
+  }
+ }
+}

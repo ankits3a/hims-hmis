@@ -69,9 +69,21 @@ export async function createSession(
  * ONE QUERY STILL. The join adds no round-trip to a request path that runs on every single call,
  * and `users.id` is the primary key `auth_sessions.user_id` already references.
  */
+/**
+ * A BROWSER session unused for this long is no longer live: hospital terminals are shared, and a session left open on
+ * one is the next person's. Thirty minutes is the common hospital setting (and the ASVS level-2 ceiling). Any API call
+ * counts as use. A phone session is bound to a device behind the phone's own lock and keeps the absolute expiry only.
+ */
+export const SESSION_IDLE_MS = 30 * 60_000;
+/** The idle clock is slid at most this often, so a busy screen does not write on every request. */
+const SLIDE_EVERY_MS = 60_000;
+
 export async function findLiveSession(db: Db, token: string): Promise<LiveSession | null> {
+  const now = new Date();
   const rows = await db
     .select({
+      createdAt: authSessions.createdAt,
+      lastSeenAt: authSessions.lastSeenAt,
       sessionId: authSessions.id,
       userId: authSessions.userId,
       terminalId: authSessions.terminalId,
@@ -90,7 +102,17 @@ export async function findLiveSession(db: Db, token: string): Promise<LiveSessio
         eq(users.active, true),
       ),
     );
-  return rows[0] ?? null;
+  const row = rows[0];
+  if (row === undefined) return null;
+  const { createdAt, lastSeenAt, ...live } = row;
+  if (live.deviceRowId === null) {
+    const seen = (lastSeenAt ?? createdAt).getTime();
+    if (now.getTime() - seen > SESSION_IDLE_MS) return null;
+    if (now.getTime() - seen > SLIDE_EVERY_MS) {
+      await db.update(authSessions).set({ lastSeenAt: now }).where(eq(authSessions.id, live.sessionId));
+    }
+  }
+  return live;
 }
 
 export async function revokeSession(db: Db, sessionId: string): Promise<void> {

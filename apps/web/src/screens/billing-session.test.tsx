@@ -582,24 +582,31 @@ describe("FD-11: withdrawing a mistyped closing count", () => {
  * cashier holds no `approvals.requests.read`, so the tests above run without it; a billing manager
  * counting a drawer herself does, and for her the finish step appears only once it can succeed.
  */
-describe("UX-AUDIT 2026-09-28: the approval's state, for a reader who may read it", () => {
+/**
+ * #656 — THE APPROVAL'S STATE, FOR THE CASHIER HERSELF. It used to be fetched from `GET /approvals/:id`
+ * and only for a reader holding `approvals.requests.read`, which the seeded cashier does not — so
+ * the cashier it concerns never saw it. It now comes from the narrow own-drawer read
+ * `GET /billing/sessions/:id/variance-approval`, and this reader holds `billing.session.own` ONLY.
+ */
+describe("#656: the approval's state, for the cashier whose drawer it is", () => {
   const REQUESTED_AT = "2026-08-20T12:31:00.000Z"; // 18:01 IST
+  const DECIDED_AT = "2026-08-20T12:52:00.000Z"; // 18:22 IST
   afterEach(() => { setToken(null); localStorage.clear(); vi.unstubAllGlobals(); });
 
-  function renderAs(status: "pending" | "granted" | "rejected"): void {
+  function renderAs(status: "pending" | "granted" | "rejected", decisionNote: string | null = null): void {
     setToken("t-1");
     mockRoutes({
       "GET /api/auth/me": {
         status: 200,
         body: {
           actor: { type: "user", id: "u-1" },
-          permissions: { hospital: ["billing.session.own", "approvals.requests.read"], scoped: { department: {}, floor: {} } },
+          permissions: { hospital: ["billing.session.own"], scoped: { department: {}, floor: {} } },
         },
       },
       "GET /api/billing/sessions/current": { status: 200, body: { session: CLOSING } },
-      "GET /api/approvals/apr-77": {
+      "GET /api/billing/sessions/cs-1/variance-approval": {
         status: 200,
-        body: { approval: { id: "apr-77", typeKey: "billing_variance", status, requestedAt: REQUESTED_AT } },
+        body: { status, requestedAt: REQUESTED_AT, decidedAt: status === "pending" ? null : DECIDED_AT, decisionNote },
       },
     });
     renderWithProviders(<BillingSession />);
@@ -610,21 +617,62 @@ describe("UX-AUDIT 2026-09-28: the approval's state, for a reader who may read i
     await waitFor(() => expect(screen.getByTestId("approval-pending")).toHaveTextContent("Waiting since 18:01"));
     expect(screen.queryByTestId("confirm-close")).toBeNull();
     expect(screen.getByTestId("lockout-banner")).toBeInTheDocument();
+    expect(screen.queryByTestId("approval-decision")).toBeNull();
+    // The broad approvals read is never asked for.
+    expect(callsTo("GET", "/api/approvals/apr-77")).toHaveLength(0);
   });
 
-  it("granted: the finish step is offered and the lockout is not repeated", async () => {
-    renderAs("granted");
+  it("granted: the finish step is offered, the lockout is not repeated, and the decision's time and note show", async () => {
+    renderAs("granted", "counted together");
     await waitFor(() => expect(screen.getByTestId("approval-pending")).toHaveTextContent("approved this variance"));
     expect(screen.getByTestId("confirm-close")).toBeInTheDocument();
     expect(screen.queryByTestId("confirm-close-hint")).toBeNull();
     expect(screen.queryByTestId("lockout-banner")).toBeNull();
+    expect(screen.getByTestId("approval-decision")).toHaveTextContent("18:22");
+    expect(screen.getByTestId("approval-decision")).toHaveTextContent("counted together");
   });
 
   it("rejected: no finish step — the way out is the re-count", async () => {
-    renderAs("rejected");
+    renderAs("rejected", "count it again with me");
     await waitFor(() => expect(screen.getByTestId("approval-pending")).toHaveTextContent("did not approve"));
     expect(screen.queryByTestId("confirm-close")).toBeNull();
     expect(screen.getByTestId("recount-open")).toBeInTheDocument();
+    expect(screen.getByTestId("approval-decision")).toHaveTextContent("count it again with me");
+  });
+});
+
+/**
+ * #656 — THE CLOSE SUMMARY SURVIVES A RELOAD. `sessions/current` serves only live drawers, so a
+ * freshly mounted screen used to show only "No drawer is open". It now reads the cashier's own last
+ * closed drawer from `GET /billing/sessions/last-closed`.
+ */
+describe("#656: the close summary after a reload", () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("with no live drawer, the last closed drawer's summary is read back from the server, and the next drawer is offered", async () => {
+    mockRoutes({
+      "GET /api/billing/sessions/current": { status: 200, body: { session: null } },
+      "GET /api/billing/sessions/last-closed": { status: 200, body: { session: CONFIRMED } },
+    });
+    renderWithProviders(<BillingSession />);
+
+    await screen.findByTestId("day-summary");
+    expect(screen.getByTestId("summary-closed-at")).toHaveTextContent("18:10");
+    expect(screen.getByTestId("summary-counted")).toHaveTextContent("₹7,100.00");
+    expect(screen.getByTestId("summary-expected")).toHaveTextContent("₹8,820.00");
+    expect(screen.getByTestId("summary-variance")).toHaveTextContent("-₹1,720.00");
+    expect(screen.getByTestId("open-submit")).toBeInTheDocument();
+  });
+
+  it("with a live drawer, the last closed one is not shown", async () => {
+    mockRoutes({
+      "GET /api/billing/sessions/current": { status: 200, body: { session: OPEN } },
+      "GET /api/billing/sessions/last-closed": { status: 200, body: { session: session({ ...CONFIRMED, id: "cs-0" }) } },
+    });
+    renderWithProviders(<BillingSession />);
+
+    await screen.findByTestId("drawer-strip");
+    expect(screen.queryByTestId("day-summary")).toBeNull();
   });
 });
 

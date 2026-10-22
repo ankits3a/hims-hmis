@@ -127,8 +127,8 @@ Source: `apps/core/src/modules/membership/`
 
 Foreign keys into: `billing`, `partners`, `patients`
 
-## HTTP routes (11)
+## HTTP routes
 
-- `membership.controller.ts` — 11: `/membership/grace-honor`, `/membership/import`, `/membership/instruments`, `/membership/recognition`, `/membership/reconcile`
+- `membership.controller.ts` — `/membership/grace-honor`, `/membership/import`, `/membership/instruments`, `/membership/plans`, `/membership/recognition`, `/membership/reconcile`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/membership`

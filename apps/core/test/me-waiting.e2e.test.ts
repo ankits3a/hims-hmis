@@ -35,8 +35,8 @@ import type { Db } from "../src/kernel/db/client";
  *   5. no kind is money, so a doctor is never handed one.
  *
  * The radiology study runs on the closed-loop suite's fixed instants (the code under test reads no
- * clock for "unread"); the lab reports are placed relative to the REAL clock, because the route
- * reads it for the 24-hour "back" window.
+ * clock for "unread"); the lab reports are placed relative to the REAL clock (no window reads it
+ * since #682 — "back" is unread — but the instants stay real so nothing is pinned).
  */
 describe("GET /me/waiting — open loops and the morning card (E1.4, E1.5)", () => {
   let app: INestApplication;
@@ -110,7 +110,7 @@ describe("GET /me/waiting — open loops and the morning card (E1.4, E1.5)", () 
       authority: "clinician", orderedByType: "user", orderedById: clinician, orderingClinicianId: clinician, placedAt: at,
     });
     await db.insert(labReports).values({
-      id: newId(), orderId, version: 1, status, snapshot: {}, signedBy: fx.radiologist.id, signedAt: at, publishedAt: at,
+      id: newId(), orderId, version: 1, status, snapshot: { patient: { id: fx.patientId }, encounterNo: fx.visitNo }, signedBy: fx.radiologist.id, signedAt: at, publishedAt: at,
     });
     return orderId;
   };
@@ -149,13 +149,16 @@ describe("GET /me/waiting — open loops and the morning card (E1.4, E1.5)", () 
     expect(body.items.every((i) => (WAITING_KINDS as readonly string[]).includes(i.kind))).toBe(true);
   });
 
-  it("closes the loop: an opened study, an old or superseded report, and another doctor's orders do not count", async () => {
-    await labReport(30); // older than a day
+  it("closes the loop: an opened study or report, a superseded report, and another doctor's orders do not count", async () => {
+    const opened = await labReport(30); // #682: age does not close it — the doctor's read does
     await labReport(2, fx.doctor.id, "superseded");
     await labReport(1, fx.radiologist.id); // somebody else's order
     const s = await releasedStudy();
-    expect((await waitingOf(fx.doctor)).items.map((i) => i.kind)).toEqual(["radiology.unreadMine"]);
+    expect((await waitingOf(fx.doctor)).items.map((i) => [i.kind, i.count]))
+      .toEqual([["lab.reportsBack", 1], ["radiology.unreadMine", 1]]);
 
+    const [report] = await db.select({ id: labReports.id }).from(labReports).where(eq(labReports.orderId, opened));
+    await request(app.getHttpServer()).get(`/lab/reports/${report!.id}`).set("Authorization", `Bearer ${doctorToken}`).expect(200);
     await stampFirstRead(db, s.reportId, fx.doctor.id, new Date());
     expect((await waitingOf(fx.doctor)).items).toEqual([]);
   });

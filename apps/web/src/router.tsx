@@ -27,6 +27,7 @@ import { MyDay } from "./screens/my-day";
 import { MyLeave } from "./screens/my-leave";
 import { StaffReports } from "./screens/staff-reports";
 import { CopilotHealthScreen } from "./screens/copilot-health";
+import { CrkFormularyScreen } from "./screens/crk-formulary";
 import { CopilotNoticeHost } from "./components/copilot-notice";
 import { OpdReportScreen } from "./screens/opd-report";
 import { DeskOne } from "./screens/desk-one/desk-one";
@@ -39,6 +40,15 @@ import { MyReach } from "./screens/my-reach";
 import { RosterOnNow } from "./screens/roster-on-now";
 import { RosterMonth } from "./screens/roster-month";
 import { RosterMyDuties } from "./screens/roster-my-duties";
+import { DoctorDeskTower } from "./screens/doctor-desk-tower";
+import { DoctorDeskBriefs } from "./screens/doctor-desk-briefs";
+import { DoctorDeskOpd } from "./screens/doctor-desk-opd";
+import { DoctorLanding } from "./screens/doctor-desk-landing";
+import { DoctorDeskUnit } from "./screens/doctor-desk-unit";
+import { DoctorDeskNow } from "./screens/doctor-desk-now";
+import { DoctorDeskProfessor } from "./screens/doctor-desk-professor";
+import { DoctorDeskRatings } from "./screens/doctor-desk-ratings";
+import { DoctorDeskReport } from "./screens/doctor-desk-report";
 import { RosterEvidence } from "./screens/roster-evidence";
 import { RosterAebas } from "./screens/roster-aebas";
 import { OpdAdmin } from "./screens/opd-admin";
@@ -57,6 +67,7 @@ import { BillingSession } from "./screens/billing-session";
 import { BillingOffice } from "./screens/billing-office";
 import { OpsMode } from "./screens/ops-mode";
 import { AdminUsers } from "./screens/admin-users";
+import { AttendanceLinks } from "./screens/attendance-links";
 import { ChangePassword } from "./screens/change-password";
 import { OpsDowntimeKit } from "./screens/ops-downtime-kit";
 import { CounterInstruments } from "./screens/counter-instruments";
@@ -101,7 +112,8 @@ import { LabVerify } from "./screens/lab-verify";
 import { LabReports } from "./screens/lab-reports";
 import { LabQuick } from "./screens/lab-quick";
 import { LabQBench, LabQCollect, LabQReports } from "./screens/lab-qchain";
-import { LabMetrics } from "./screens/lab-metrics";
+import { HospitalNumbers, NUMBERS_TABS } from "./screens/hospital-numbers";
+import type { NumbersTab } from "./screens/hospital-numbers";
 
 /**
  * PLAN 11h T6 — the shell's navigation, PAIRED WITH THE PERMISSION EACH SCREEN'S ROUTE ACTUALLY
@@ -254,6 +266,9 @@ const NAV: readonly NavEntry[] = [
   { to: "/ops/mode", label: "nav.opsMode", permission: "ops.mode.set", group: "admin" },
   { to: "/ops/downtime-kit", label: "nav.opsDowntimeKit", permission: "ops.downtime.generate", group: "admin" },
   { to: "/admin/users", label: "nav.adminUsers", permission: "auth.users.manage", group: "admin" },
+  // #634 — who on the attendance machine's list is which login: the count and the unlinked list for the
+  // owner and the Attendance Committee, the suggestions and the hand link for the Users administrator.
+  { to: "/attendance/links", label: "nav.attendanceLinks", permission: "attendance.all.read", anyOf: ["auth.users.manage"], group: "admin" },
   // Decision 0067 — the outside-test list (ECG, echo …), `orderingManifest.menu`'s entry.
   { to: "/ordering/outside-tests", label: "nav.outsideTests", permission: "tariff.services.manage", group: "admin" },
   // PLAN 18a T9 — the entries `radiologyManifest.menu` declares (three since 18-S RS2b), path and permission matching
@@ -291,6 +306,8 @@ const NAV: readonly NavEntry[] = [
   { to: "/staff", label: "nav.staffReports", permission: "staff.reports.read", group: "admin" },
   // E0.1 (decision 0064) — the copilot's health; path and permission match `deskManifest.menu`.
   { to: "/copilot-health", label: "nav.copilotHealth", permission: "copilot.health.read", group: "admin" },
+  // #882 / decision 0053 — the CRK formulary: Pharmacology signs; the pharmacy may correct a draft.
+  { to: "/crk-formulary", label: "nav.crkFormulary", permission: "formulary.crk.sign", group: "pharmacy", anyOf: ["formulary.manage"] },
   // The OPD day report (owner, 2026-09-19): the hospital's day by department, PDF and CSV.
   { to: "/reports/opd-day", label: "nav.opdDayReport", permission: "opd.reports.read", group: "opd" },
   // 20-U U5a — who is on now, the hospital's unit board. `roster.read` matches `rosterManifest.menu`.
@@ -367,8 +384,12 @@ const NAV: readonly NavEntry[] = [
   { to: "/lab/qcollect", label: "nav.labQCollect", permission: "lab.worklist.read", group: "lab", labMode: "quick" },
   { to: "/lab/qbench", label: "nav.labQBench", permission: "lab.results.enter", group: "lab", labMode: "quick" },
   { to: "/lab/qreports", label: "nav.labQReports", permission: "lab.reports.print", group: "lab", labMode: "quick" },
-  /** Owner 2026-10-13 (#768) — lab counts and turnaround times, read-only; in both lab modes. Matches `labManifest.menu`. */
-  { to: "/lab/metrics", label: "nav.labMetrics", permission: "lab.metrics.read", group: "lab" },
+  /**
+   * Owner 2026-10-13 (#768, #777) — Hospital numbers: the lab's, imaging's and the pharmacy's counts and times,
+   * read-only; a tab per grant. `permission` is `labManifest.menu`'s pairing; `anyOf` shows it to a holder
+   * of either other tab's grant. `/lab/metrics` forwards here.
+   */
+  { to: "/reports/numbers", label: "nav.hospitalNumbers", permission: "lab.metrics.read", group: "admin", anyOf: ["radiology.metrics.read", "pharmacy.metrics.read"] },
   // PHASE PD — the pharmacy desk: one ticket in hand, one screen. PARITY P1 retired `/pharmacy/counter` into it.
   { to: "/pharmacy/desk", label: "nav.pharmacyDesk", permission: "pharmacy.dispense.read", group: "pharmacy" },
   /*
@@ -422,7 +443,7 @@ declare module "@tanstack/react-router" {
  * that RENDERS `PaletteProvider`. A hook cannot read a context its own caller provides.
  */
 function ShellChrome(): React.ReactElement {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { username, can, logout } = useAuth();
   const navigate = useNavigate();
   const palette = usePalette();
@@ -504,7 +525,7 @@ function ShellChrome(): React.ReactElement {
           {t("app.menu")}
         </button>
         <div className="right">
-          <span className="mo clock">{istDateLabel()} · {istClock()} IST</span>
+          <span className="mo clock">{istDateLabel(new Date(), i18n.language.startsWith("hi") ? "hi-IN" : "en-IN")} · {istClock()} IST</span>
           {/*
             The search button the owner ruled stays in the header. It advertises F8 and not
             Ctrl+K: Chrome answers Ctrl+K with its own address bar first, which FD-9 measured.
@@ -719,7 +740,53 @@ const authedRoute = createRoute({
 const indexRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/",
-  component: Desk,
+  // DD-0 (#626, owner R5 2026-09-18) — a doctor of a unit lands on the Tower once per browser
+  // session; everybody else (and the doctor's next visit to `/`) gets the Desk, unchanged.
+  component: function HomeScreen() { return <DoctorLanding><Desk /></DoctorLanding>; },
+});
+
+/**
+ * DD-0 (#626) — the Doctor Desk: the Tower (`Tower.dc.html`) and AI Briefs (`AiBriefs.dc.html`),
+ * both inside the Doctor Desk frame, which owns the viewport.
+ */
+const doctorDeskRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/doctor-desk",
+  staticData: { fullViewport: true },
+  component: DoctorDeskTower,
+});
+/** DD-0.8 (#890) — the OPD desk (`OpdDesk.dc.html`): my line, the NEXT card, pace, waiting on me. */
+const doctorDeskOpdRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/doctor-desk/opd",
+  staticData: { fullViewport: true },
+  component: DoctorDeskOpd,
+});
+/** DD-1.2 — the Unit board (`UnitBoard.dc.html`). */
+const doctorDeskUnitRoute = createRoute({
+  getParentRoute: () => authedRoute, path: "/doctor-desk/unit", staticData: { fullViewport: true }, component: DoctorDeskUnit,
+});
+/** DD-1.5 — the SR phone "Now" (`Main.dc.html`), a web view. */
+const doctorDeskNowRoute = createRoute({
+  getParentRoute: () => authedRoute, path: "/doctor-desk/now", staticData: { fullViewport: true }, component: DoctorDeskNow,
+});
+/** DD-1.4 — the Professor phone (`Professor.dc.html`), a web view. */
+const doctorDeskProfessorRoute = createRoute({
+  getParentRoute: () => authedRoute, path: "/doctor-desk/professor", staticData: { fullViewport: true }, component: DoctorDeskProfessor,
+});
+/** DD-1.7 — my work ratings and my PG logbook. */
+const doctorDeskRatingsRoute = createRoute({
+  getParentRoute: () => authedRoute, path: "/doctor-desk/ratings", staticData: { fullViewport: true }, component: DoctorDeskRatings,
+});
+/** DD-report v0 — the 08:00 unit report. */
+const doctorDeskReportRoute = createRoute({
+  getParentRoute: () => authedRoute, path: "/doctor-desk/report", staticData: { fullViewport: true }, component: DoctorDeskReport,
+});
+const doctorDeskBriefsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/doctor-desk/briefs",
+  staticData: { fullViewport: true },
+  component: DoctorDeskBriefs,
 });
 
 /**
@@ -750,6 +817,13 @@ const copilotHealthRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/copilot-health",
   component: CopilotHealthScreen,
+});
+
+/** #882 / decision 0053 — the CRK formulary worklist and sign screen. */
+const crkFormularyRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/crk-formulary",
+  component: CrkFormularyScreen,
 });
 
 /**
@@ -1576,11 +1650,27 @@ const labQReportsRoute = createRoute({
   staticData: { fullViewport: true },
 });
 
-/** Owner 2026-10-13 (#768) — lab numbers: counts and turnaround times. Path matches `labManifest.menu`. */
+/**
+ * Owner 2026-10-13 (#768) — lab numbers. #777 folded it into Hospital numbers as the Lab tab; the old
+ * address (a bookmark, a link) forwards there with the Lab tab chosen.
+ */
 const labMetricsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/lab/metrics",
-  component: LabMetrics,
+  beforeLoad: () => { throw redirect({ to: "/reports/numbers", search: { tab: "lab" } }); },
+});
+
+/** Owner 2026-10-13 (#777) — Hospital numbers: Lab / Imaging / Pharmacy tabs, each on its own grant. */
+const hospitalNumbersRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/reports/numbers",
+  validateSearch: (search: Record<string, unknown>): { tab?: NumbersTab } => ({
+    tab: (NUMBERS_TABS as readonly unknown[]).includes(search.tab) ? (search.tab as NumbersTab) : undefined,
+  }),
+  component: function HospitalNumbersRoute() {
+    const { tab } = hospitalNumbersRoute.useSearch();
+    return <HospitalNumbers initialTab={tab} />;
+  },
 });
 
 const labQuickRoute = createRoute({
@@ -1686,9 +1776,11 @@ const billingRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/billing",
   // The OPD desk hands a walk-in straight to the counter as `/billing?encounterId=…` (flag ⑧);
-  // without one the cashier types or scans the encounter id at the counter.
-  validateSearch: (search: Record<string, unknown>): { encounterId?: string } => ({
+  // without one the cashier types or scans the encounter id at the counter. #658 — the card
+  // recognition counter also hands over `?coupon=` (comma-separated codes) to fill the coupon field.
+  validateSearch: (search: Record<string, unknown>): { encounterId?: string; coupon?: string } => ({
     encounterId: typeof search.encounterId === "string" ? search.encounterId : undefined,
+    coupon: typeof search.coupon === "string" ? search.coupon : undefined,
   }),
   staticData: { fullViewport: true },
   component: function BillingSeat() {
@@ -1746,6 +1838,15 @@ const adminUsersRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/admin/users",
   component: AdminUsers,
+});
+
+// #634 — attendance links. The server guards each route (`attendance.all.read` for the count and the
+// unlinked list, `auth.users.manage` for suggestions and the hand link); the screen shows the tabs the
+// viewer may use.
+const attendanceLinksRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/attendance/links",
+  component: AttendanceLinks,
 });
 
 /**
@@ -1850,9 +1951,9 @@ export const router = createRouter({
     loginRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
-      billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
+      billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute, attendanceLinksRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
       // FD-2 — 47 -> 46. `/counter/seat` is GONE, the seat serves `counterDeskRoute` above, and
       // `/counter/seat/figures` follows it to `/counter/figures`. `caddyfile-parity.test.ts` pins
@@ -1889,6 +1990,8 @@ export const router = createRouter({
       // OWNER 2026-10-11 — the quick chain (+4).
       labCounterRoute, labQCollectRoute, labQBenchRoute, labQReportsRoute,
       labMetricsRoute,
+      // #777 — Hospital numbers (+1); `/lab/metrics` above now forwards to it.
+      hospitalNumbersRoute,
       // PLAN 18a T9 — 39 -> 44, imaging. FIVE routes and TWO nav links: the study console, the
       // report and the Form F are all reached from a study rather than browsed, and the Form F is
       // unlisted on purpose (see the route's own comment). `caddyfile-parity.test.ts` pins the
@@ -1915,6 +2018,18 @@ export const router = createRouter({
       myLeaveRoute,
       rosterEvidenceRoute,
       rosterAebasRoute,
+      // DD-0 (#626) — +2, `/doctor-desk` and `/doctor-desk/briefs`. `caddyfile-parity.test.ts` pins the count.
+      doctorDeskRoute,
+      doctorDeskBriefsRoute,
+      // DD-0.8 (#890) — +1, `/doctor-desk/opd`.
+      doctorDeskOpdRoute,
+      // DD-1 — +4, `/doctor-desk/unit`, `/doctor-desk/now`, `/doctor-desk/professor`, `/doctor-desk/ratings`.
+      doctorDeskUnitRoute,
+      doctorDeskNowRoute,
+      doctorDeskProfessorRoute,
+      doctorDeskRatingsRoute,
+      // DD-report v0 — +1, `/doctor-desk/report`.
+      doctorDeskReportRoute,
     ]),
   ]),
 });

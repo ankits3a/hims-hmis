@@ -66,6 +66,17 @@ export function EnvironmentBanner(): React.ReactElement | null {
     document.title = `${label} · HMIS`;
   }, [label]);
 
+  // The banner is fixed, so it owns no space of its own. This attribute switches on the strip the
+  // page reserves for it (`--env-banner-h` in styles.css): the shell's logo and menu and every
+  // full-screen desk sit below it instead of under it. Absent on production, where the variable
+  // stays 0px and every layout is what it always was.
+  useEffect(() => {
+    if (label === "") return;
+    const root = document.documentElement;
+    root.setAttribute("data-env-banner", "");
+    return () => { root.removeAttribute("data-env-banner"); };
+  }, [label]);
+
   if (label === "") return null;
 
   return (

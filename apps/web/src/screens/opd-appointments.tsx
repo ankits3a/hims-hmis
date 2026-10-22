@@ -27,6 +27,7 @@ import { TeleDeskPay } from "../components/tele-desk-pay";
 import type { QrCardData } from "../components/qr-card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { dateLocale } from "../lib/date-locale";
 
 /**
  * Appointments (D7): slot picker → book, the day list with reschedule/cancel, the needs-rebooking
@@ -108,51 +109,90 @@ function SlotGrid(
 // ——— reschedule: `booked` AND `needs_rebooking` both ride the same route (D7 / appointments.ts) ———
 
 function RescheduleDialog({
-  appointment, queryClient, onNote,
+  appointment, queryClient, onNote, doctorName = null,
 }: {
   appointment: WireAppointment; queryClient: QueryClient;
   onNote: (text: string, kind?: AgentLine["kind"]) => void;
+  /** Shown on the confirmation; the row's own lookup, since the bare appointment carries only the id. */
+  doctorName?: string | null;
 }): React.ReactElement {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [date, setDate] = useState(todayIst());
   const [error, setError] = useState<string | null>(null);
+  /*
+    #652 (UX audit §5.1) — A CLICK ASKS; CONFIRM MOVES, as booking does (UX-AUDIT 2026-09-28). A
+    move is a promise to a patient about a new time, and it used to be made on the slot's single
+    click. The click now holds the slot in `pending`; the POST rides Confirm, and a refusal stays
+    beside it (FD-22's rule).
+  */
+  const [pending, setPending] = useState<WireSlot | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const slots = useQuery({
-    queryKey: ["opd", "slots", appointment.doctorId, date],
-    queryFn: () => api<{ slots: WireSlot[] }>("GET", `/opd/slots?doctorId=${appointment.doctorId}&date=${date}`),
+    queryKey: ["opd", "slots", appointment.doctorId, date, appointment.departmentId],
+    // #914 — the booking's own department's book: a move keeps the patient where they were booked.
+    // A booking flagged because the doctor's second department ended reads the doctor's whole book.
+    queryFn: () => api<{ slots: WireSlot[] }>("GET", `/opd/slots?doctorId=${appointment.doctorId}&date=${date}${
+      appointment.status === "needs_rebooking" ? "" : `&departmentId=${appointment.departmentId}`}`),
     enabled: open,
   });
 
-  const pick = async (slot: WireSlot): Promise<void> => {
+  const move = async (slot: WireSlot): Promise<void> => {
     setError(null);
+    setBusy(true);
     try {
       await api("POST", `/opd/appointments/${appointment.id}/reschedule`, { slotStart: slot.start, doctorId: appointment.doctorId });
       onNote(`moved ${patientLabel(appointment.patient)} to ${fmtIst(slot.start)}`, "ok");
       setOpen(false);
+      setPending(null);
       await queryClient.invalidateQueries({ queryKey: ["opd", "appointments"] });
     } catch (e) {
       setError(opdErrorMessage(e));
+    } finally {
+      setBusy(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(o) => { if (busy) return; setOpen(o); if (!o) { setPending(null); setError(null); } }}>
       <DialogTrigger asChild>
         <button className="sec">{t("opdAppt.reschedule")}</button>
       </DialogTrigger>
       <DialogContent className="pp">
-        <DialogHeader><DialogTitle>{t("opdAppt.reschedule")}</DialogTitle></DialogHeader>
-        <label className="block text-sm font-medium" htmlFor={`reschedule-date-${appointment.id}`}>{t("opdAppt.newDate")}</label>
-        <input
-          id={`reschedule-date-${appointment.id}`}
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="rounded border px-2 py-1"
-        />
-        {slots.data !== undefined && <SlotGrid slots={slots.data.slots} onPick={(slot) => void pick(slot)} />}
-        <ErrorLine message={error} />
+        <DialogHeader><DialogTitle>{t(pending === null ? "opdAppt.reschedule" : "opdAppt.confirmMoveTitle")}</DialogTitle></DialogHeader>
+        {pending === null ? (
+          <>
+            <label className="block text-sm font-medium" htmlFor={`reschedule-date-${appointment.id}`}>{t("opdAppt.newDate")}</label>
+            <input
+              id={`reschedule-date-${appointment.id}`}
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="rounded border px-2 py-1"
+            />
+            {slots.data !== undefined && <SlotGrid slots={slots.data.slots} onPick={(slot) => { setError(null); setPending(slot); }} />}
+          </>
+        ) : (
+          <div data-testid="reschedule-confirm">
+            <dl className="confirm-list">
+              <dt className="tag">{t("opd.labels.patient")}</dt>
+              <dd><span className="block">{patientLabel(appointment.patient)}</span><span className="block mo" style={{ fontSize: 12, color: "var(--dim)" }}>{appointment.patient?.uhid ?? "—"}</span></dd>
+              <dt className="tag">{t("opd.labels.doctor")}</dt>
+              <dd>{doctorName ?? "—"}</dd>
+              <dt className="tag">{t("opdAppt.moveFrom")}</dt>
+              <dd className="mo" data-testid="reschedule-from">{appointment.serviceDate.slice(0, 10)} · {fmtIst(appointment.slotStart)}</dd>
+              <dt className="tag">{t("opdAppt.moveTo")}</dt>
+              <dd className="mo" data-testid="reschedule-to" style={{ fontWeight: 700 }}>{date} · {fmtIst(pending.start)}</dd>
+            </dl>
+            <ErrorLine message={error} />
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
+              <button type="button" className="sec" disabled={busy} onClick={() => { setPending(null); setError(null); }}>{t("opdAppt.back")}</button>
+              <button type="button" className="pri" disabled={busy} onClick={() => { void move(pending); }}>{t("opdAppt.confirmMove")}</button>
+            </div>
+          </div>
+        )}
+        {pending === null && <ErrorLine message={error} />}
       </DialogContent>
     </Dialog>
   );
@@ -298,7 +338,7 @@ function PatientBookings({
           <TeleDeskPay appointment={apt} compact />
           <span style={{ fontSize: 12.5, color: "var(--dim)", flexGrow: 1, minWidth: 0 }}>{doctors.find((d) => d.id === apt.doctorId)?.displayName ?? ""}</span>
           <StatusBadge status={apt.status} />
-          <RescheduleDialog appointment={apt} queryClient={queryClient} onNote={onNote} />
+          <RescheduleDialog appointment={apt} queryClient={queryClient} onNote={onNote} doctorName={doctors.find((d) => d.id === apt.doctorId)?.displayName ?? null} />
           {apt.status === "booked" && <CancelDialog appointment={apt} queryClient={queryClient} onNote={onNote} />}
         </div>
       ))}
@@ -336,9 +376,15 @@ function DayTab({
     return () => { live = false; };
   }, [initialPatientId]);
 
+  /*
+    #914 — a doctor with a second department has a book per department: the slots ask for this
+    department's, and a booking made here while covering names it. Everyone else's requests are unchanged.
+  */
+  const pickedDoctor = doctors.find((d) => d.id === doctorId);
+  const bookDept = pickedDoctor?.secondary != null && departmentId !== "" ? departmentId : "";
   const slots = useQuery({
-    queryKey: ["opd", "slots", doctorId, date],
-    queryFn: () => api<{ slots: WireSlot[] }>("GET", `/opd/slots?doctorId=${doctorId}&date=${date}`),
+    queryKey: ["opd", "slots", doctorId, date, bookDept],
+    queryFn: () => api<{ slots: WireSlot[] }>("GET", `/opd/slots?doctorId=${doctorId}&date=${date}${bookDept === "" ? "" : `&departmentId=${bookDept}`}`),
     enabled: doctorId !== "",
   });
   const appointments = useQuery({
@@ -382,6 +428,7 @@ function DayTab({
       await api("POST", "/opd/appointments", {
         patientId: patient.id, doctorId, slotStart: slot.start,
         ...teleHowBody(how),
+        ...(bookDept === "" ? {} : { departmentId: bookDept }),
       });
       /*
         LOGGED AFTER THE SERVER ANSWERED, never before: a log that narrates intentions lies the
@@ -487,7 +534,7 @@ function DayTab({
                       <div className="flex flex-wrap gap-2" style={{ alignItems: "center" }}>
                         <TeleDeskPay appointment={apt} />
                         {(apt.status === "booked" || apt.status === "needs_rebooking") && (
-                          <RescheduleDialog appointment={apt} queryClient={queryClient} onNote={onNote} />
+                          <RescheduleDialog appointment={apt} queryClient={queryClient} onNote={onNote} doctorName={doctor?.displayName ?? null} />
                         )}
                         {apt.status === "booked" && <CancelDialog appointment={apt} queryClient={queryClient} onNote={onNote} />}
                         {/* A tele-call is not checked in at a desk: the row says its slot and its pay state, and the visit opens itself. */}
@@ -584,7 +631,7 @@ function NeedsRebookingTab(
                   </td>
                   <td>{doctorName(apt.doctorId)}</td>
                   <td className="mo" style={{ whiteSpace: "nowrap" }}>{fmtIst(apt.slotStart)} <TeleMark mode={apt.mode} /></td>
-                  <td><div className="flex flex-wrap gap-2" style={{ alignItems: "center" }}><TeleDeskPay appointment={apt} /><RescheduleDialog appointment={apt} queryClient={queryClient} onNote={onNote} /></div></td>
+                  <td><div className="flex flex-wrap gap-2" style={{ alignItems: "center" }}><TeleDeskPay appointment={apt} /><RescheduleDialog appointment={apt} queryClient={queryClient} onNote={onNote} doctorName={doctorName(apt.doctorId)} /></div></td>
                 </tr>
               ))}
             </tbody>
@@ -599,7 +646,7 @@ function NeedsRebookingTab(
 
 /** "Mon 5 Oct" — the booked day as the unit line says it. */
 function dayLabel(iso: string): string {
-  return new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" })
+  return new Intl.DateTimeFormat(dateLocale(undefined, "en-GB"), { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" })
     .format(new Date(`${iso}T00:00:00Z`)).replace(",", "");
 }
 

@@ -75,6 +75,11 @@ const CENSUS: Record<string, string[]> = {
     "applied_at", "approval_id", "cooling_off_until", "created_at", "id", "new_bank", "new_masked",
     "old_masked", "requested_by", "status", "vendor_id",
   ],
+  // Owner 2026-10-04 — a vendor's quoted rate per item (the rate contract).
+  vendor_item_rates: [
+    "created_at", "created_by", "ended_at", "ended_by", "gst_rate_bps", "id", "item_id", "mrp_paise", "multiplier",
+    "rate_paise", "source", "uom", "valid_from", "valid_to", "vendor_id",
+  ],
   stock_batches: [
     "batch_no", "consignment_lot_id", "created_at", "created_by", "expiry_date",
     "expiry_notified_thresholds", "grn_line_id", "id", "item_id", "landed_cost_paise", "mfg_date",
@@ -146,9 +151,10 @@ const CENSUS: Record<string, string[]> = {
     "note", "paid_paise", "purchase_order_id", "round_off_paise", "sgst_paise", "status", "taxable_paise",
     "terms_days", "total_paise", "updated_at", "updated_by", "vendor_bill_key", "vendor_bill_no", "vendor_id",
   ],
+  // #637 — the vendor's trade discount on the line: list rate, percent, amount off per pack.
   supplier_bill_lines: [
-    "bill_id", "cgst_paise", "expected_base", "expected_gst_rate_bps", "expected_rate_paise",
-    "expected_taxable_paise", "grn_id", "gst_rate_bps", "id", "igst_paise", "item_id", "mismatch", "multiplier",
+    "bill_id", "cgst_paise", "discount_bps", "discount_paise", "expected_base", "expected_gst_rate_bps", "expected_rate_paise",
+    "expected_taxable_paise", "grn_id", "gst_rate_bps", "id", "igst_paise", "item_id", "list_rate_paise", "mismatch", "multiplier",
     "qty_packs", "rate_paise", "sgst_paise", "taxable_paise", "uom",
   ],
   supplier_payment_runs: [
@@ -230,8 +236,8 @@ describe("the materials tables (Plan 14 T1)", () => {
    * each, and the prose count followed the bullets rather than the tables. Recorded here as a
    * number rather than only in CLOSE, so the next phase that reads this family counts what exists.
    */
-  it("there are exactly THIRTY-FOUR of them — the plan's prose said fifteen (F2); parity P2 added three, P3 five, P4 six, P6's item merge one, A6b's indent two, the 2026-09-30 settings row one", () => {
-    expect(Object.keys(CENSUS)).toHaveLength(34);
+  it("there are exactly THIRTY-FIVE of them — the plan's prose said fifteen (F2); parity P2 added three, P3 five, P4 six, P6's item merge one, A6b's indent two, the 2026-09-30 settings row one, the 2026-10-04 vendor rate contract one", () => {
+    expect(Object.keys(CENSUS)).toHaveLength(35);
   });
 
   // ───────────────────── the five semantic CHECKs, read out BY NAME ─────────────────────
