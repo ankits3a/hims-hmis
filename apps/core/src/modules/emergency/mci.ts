@@ -1,13 +1,13 @@
 import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
-import { ER_INTENTS, ER_MCI_COMMAND_ROLES, ER_OPEN_STATES, mciTagProposal, newId } from "@hmis/contracts";
+import { ER_INTENTS, ER_MCI_COMMAND_ROLES, ER_MCI_PRESS_SCRIPT, ER_OPEN_STATES, mciFamilyStage, mciTagProposal, newId } from "@hmis/contracts";
 import { raiseNoticeIn } from "../../kernel/alerts/notices";
 import { withTx } from "../../kernel/db/client";
 import {
-  erBands, erBills, erEpisodes, erEventAccounts, erMciEvents, erMciPacks, erMciSurgeBeds, erMciTags, resources, roleAssignments, users,
+  erBands, erBills, erEpisodes, erEventAccounts, erMciEvents, erMciPacks, erMciSurgeBeds, erMciTags, erMlcs, patients, resources, roleAssignments, users,
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { actorHoldsAnyRole, usersHoldingRole } from "../../kernel/workflow/roles";
-import { initialsOf } from "../ipd";
+import { initialsOf, placedAdmissionOf } from "../ipd";
 import { PatientError, getPatientSummaries, registerPatient } from "../patients";
 import { calloutList, orgDepartmentByCode } from "../roster";
 import { cancelTask, findTasks, raiseTask } from "../tasks";
@@ -23,7 +23,7 @@ import { openMlcIn } from "./mlc";
 import { ER_ARRIVAL_REGISTER, ER_MCI } from "./names";
 import { ER_MCI_STOPS_TASK } from "./task-kinds";
 import type { TaskRow } from "../tasks";
-import type { Actor, ErBandPayload, ErIntentName, ErMciBoard, ErMciCount, ErMciSurgeBed, ErMciTag } from "@hmis/contracts";
+import type { Actor, ErBandPayload, ErIntentName, ErMciBoard, ErMciFamilyDesk, ErMciCount, ErMciSurgeBed, ErMciTag } from "@hmis/contracts";
 import type { z } from "zod";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -462,4 +462,45 @@ export async function readMciBoard(db: Db, actor: Actor, opts: Opts = {}): Promi
     bays: { free: Number(b.er_free), total: Number(b.er_total) }, surge, hospitalBedsFree: Number(b.ip_free),
     stops: m === undefined ? null : stopsView(await stopsTaskOf(db, m)), serverNow: at.toISOString(),
   };
+}
+
+// ═══════════════════════════════════════════ #877: the family information desk ═══════════════════════════════════════════
+
+/**
+ * #877 item 3 — the family information desk's list for the running Code Yellow (else the last one stood down): per patient
+ * the name (the pack / unknown alias while unidentified), a stage word and where — nothing clinical. MLC, sealed and
+ * confidential patients are never listed (lane 9's family-surface rule, read from the record — the true record too once an
+ * unknown is merged); the desk sees only how many are withheld and sends those families to the ER desk. With the fixed
+ * press / VIP script.
+ */
+export async function readMciFamilyDesk(db: Db, actor: Actor, opts: Opts = {}): Promise<ErMciFamilyDesk> {
+  await requireErPermission(db, actor, ER_MCI);
+  const at = opts.now ?? new Date();
+  const m = (await runningMci(db)) ?? (await db.select().from(erMciEvents).orderBy(desc(erMciEvents.declaredAt)).limit(1))[0];
+  const empty = { asOf: at.toISOString(), rows: [], withheld: 0, script: [...ER_MCI_PRESS_SCRIPT] };
+  if (m === undefined) return { mciId: null, name: null, ...empty };
+  const rows = await db.select().from(erEpisodes).where(eq(erEpisodes.mciId, m.id)).orderBy(erEpisodes.arrivedAt).limit(500);
+  if (rows.length === 0) return { mciId: m.id, name: m.name, ...empty };
+  const people = new Map((await getPatientSummaries(db, actor, rows.map((e) => e.patientId))).map((p) => [p.requestedId, p] as const));
+  const ids = [...new Set(rows.flatMap((e) => [e.patientId, people.get(e.patientId)?.id ?? e.patientId]))];
+  const flags = new Map((await db.select({ id: patients.id, sealed: patients.sensitiveContext, confidential: patients.isConfidential })
+    .from(patients).where(inArray(patients.id, ids))).map((p) => [p.id, p.sealed || p.confidential] as const));
+  const mlc = new Set((await db.select({ id: erMlcs.episodeId }).from(erMlcs).where(inArray(erMlcs.episodeId, rows.map((e) => e.id)))).map((r) => r.id));
+  const bayIds = [...new Set(rows.flatMap((e) => (e.bayId === null ? [] : [e.bayId])))];
+  const bays = new Map(bayIds.length === 0 ? [] : (await db.select({ id: resources.id, code: resources.code }).from(resources)
+    .where(inArray(resources.id, bayIds))).map((b) => [b.id, b.code] as const));
+  let withheld = 0;
+  const out: ErMciFamilyDesk["rows"] = [];
+  for (const e of rows) {
+    const p = people.get(e.patientId);
+    const trueId = p?.id ?? e.patientId;
+    if (mlc.has(e.id) || flags.get(e.patientId) === true || flags.get(trueId) === true) { withheld += 1; continue; }
+    const named = p !== undefined && (!e.unidentified || p.id !== e.patientId);
+    const stage = mciFamilyStage({ state: e.state, disposition: e.disposition, outcome: e.outcome });
+    let where: string | null = null;
+    if (OPEN.includes(e.state)) where = e.bayId === null ? "ER" : `ER · ${bays.get(e.bayId) ?? ""}`.trim();
+    else if (stage === "Admitted") where = (await placedAdmissionOf(db, [trueId]))?.wardName ?? null;
+    out.push({ label: named ? (p.name ?? e.alias ?? e.episodeNo) : (e.alias ?? e.episodeNo), packNo: e.mciPackNo ?? null, stage, where });
+  }
+  return { mciId: m.id, name: m.name, asOf: at.toISOString(), rows: out, withheld, script: [...ER_MCI_PRESS_SCRIPT] };
 }

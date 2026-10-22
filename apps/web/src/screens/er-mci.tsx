@@ -2,12 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import type React from "react";
-import type { ErMciBoard, ErMciCount, ErMciPack, ErMciSurgeBed, ErRefusalBody } from "@hmis/contracts";
+import type { ErMciBoard, ErMciCount, ErMciFamilyDesk, ErMciPack, ErMciSurgeBed, ErRefusalBody } from "@hmis/contracts";
 import { useAuth } from "../lib/auth";
 import { dayMonthIst, fmtIst } from "../lib/format";
 import { useRealtime } from "../lib/realtime";
 import {
-  ER_BOARD_TOPIC, ER_MCI_TAGS, declareMciApi, erRefusalOf, fetchMciBoard, fetchMciOverflowBeds, mciArrivalApi, mciStopsApi, mciTagApi, mintPacksApi,
+  ER_BOARD_TOPIC, ER_MCI_TAGS, declareMciApi, erRefusalOf, fetchMciBoard, fetchMciFamilyDesk, fetchMciOverflowBeds, mciArrivalApi, mciStopsApi, mciTagApi, mintPacksApi,
   standDownMciApi, surgeApi,
 } from "../lib/er-api";
 import type { ErMciTagName } from "../lib/er-api";
@@ -193,6 +193,7 @@ function Running({ board, m, t, busy, act, canRegister }: {
               ) : null}
             </div>
           ))}
+          <FamilyDesk t={t} />
         </section>
         <section className="erd-new" aria-label={t("erMci.command")}>
           {board.stops !== null ? <Stops stops={board.stops} mciId={m.mciId} t={t} busy={busy} act={act} /> : null}
@@ -259,6 +260,35 @@ function Stops({ stops, mciId, t, busy, act }: { stops: NonNullable<ErMciBoard["
           {stops.note !== null ? <span className="dim"> · {stops.note}</span> : null}
         </p>
       )}
+    </div>
+  );
+}
+
+/** #877 — the family information desk: name (or alias), stage word and place only; MLC / sealed / confidential only counted. */
+function FamilyDesk({ t }: { t: T }): React.ReactElement {
+  const [desk, setDesk] = useState<ErMciFamilyDesk | null>(null);
+  const [failed, setFailed] = useState(false);
+  const open = () => { fetchMciFamilyDesk().then((d) => { setDesk(d); setFailed(false); }, () => setFailed(true)); };
+  return (
+    <div className="erd-form" data-testid="er-mci-family">
+      <h2>{t("erMci.familyTitle")}</h2>
+      <p className="dim">{t("erMci.familyHint")}</p>
+      <button type="button" className="erx-btn" data-testid="er-mci-family-open" onClick={open}>{t("erMci.familyOpen")}</button>
+      {failed ? <div className="erb-empty">{t("erDesk.failed")}</div> : null}
+      {desk !== null ? (
+        <>
+          {desk.rows.length === 0 ? <div className="erb-empty">{t("erMci.familyNone")}</div> : (
+            <ol className="ery-packs" data-testid="er-mci-family-rows">
+              {desk.rows.map((r, i) => (
+                <li key={`${r.label}-${String(i)}`}><b>{r.label}</b>{r.packNo !== null ? <span className="dim mono"> {r.packNo}</span> : null} · {r.stage}{r.where !== null ? ` · ${r.where}` : ""}</li>
+              ))}
+            </ol>
+          )}
+          {desk.withheld > 0 ? <p className="erp-text" data-testid="er-mci-family-withheld">{t("erMci.familyWithheld", { n: desk.withheld })}</p> : null}
+          <h3>{t("erMci.familyScript")}</h3>
+          <ul className="erp-text" data-testid="er-mci-press-script">{desk.script.map((line) => <li key={line}>{line}</li>)}</ul>
+        </>
+      ) : null}
     </div>
   );
 }

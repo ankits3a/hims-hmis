@@ -20423,6 +20423,12 @@
     "stopsDecline": "Decline",
     "stopsConfirmed": "MS confirmed the stop at {{time}}",
     "stopsDeclined": "MS declined the stop at {{time}}",
-    "stopsDone": "Answer recorded"
+    "stopsDone": "Answer recorded",
+    "familyTitle": "Family information desk",
+    "familyOpen": "Open the family list",
+    "familyHint": "Name, stage and place only. Never read out a condition.",
+    "familyNone": "No one to list yet",
+    "familyWithheld": "Not listed here: {{n}} · send these families to the ER desk",
+    "familyScript": "Press and VIP script"
   }
 }

@@ -34,6 +34,12 @@ describe("ER lane 8 (#815) the MCI board", () => {
         return json({ episodeNo: "ER26-000502", alias: "Unknown-MCI26-004", tag: "red", mciId: MCI, packs: [] });
       }
       if (raw.endsWith("/er/mci")) return json(board);
+      if (raw.endsWith("/er/mci/family")) {
+        return json({
+          mciId: MCI, name: "Bus collision NH-30", asOf: now, withheld: 2, script: ["We do not give the name or the condition of any patient to the press or over the phone."],
+          rows: [{ label: "Asha Family", packNo: null, stage: "Being seen", where: "ER · B4" }],
+        });
+      }
       if (raw.endsWith("/auth/me")) return json({ actor: { type: "user", id: "me" }, permissions: { hospital: ["er.mci", "er.arrival.register"], scoped: { department: {}, floor: {} } } });
       return json([]);
     }));
@@ -80,6 +86,14 @@ describe("ER lane 8 (#815) the MCI board", () => {
     renderWithRouter(<ErMciScreen />, "/er/mci");
     expect(await screen.findByTestId("er-mci-stops-answer")).toHaveTextContent("MS declined the stop");
     expect(screen.queryByTestId("er-mci-stops-confirm")).toBeNull();
+  });
+
+  it("#877: the family desk lists name, stage and place only, counts the withheld and shows the press script", async () => {
+    renderWithRouter(<ErMciScreen />, "/er/mci");
+    await userEvent.click(await screen.findByTestId("er-mci-family-open"));
+    expect(await screen.findByTestId("er-mci-family-rows")).toHaveTextContent("Asha Family · Being seen · ER · B4");
+    expect(screen.getByTestId("er-mci-family-withheld")).toHaveTextContent("Not listed here: 2");
+    expect(screen.getByTestId("er-mci-press-script")).toHaveTextContent("We do not give the name");
   });
 
   it("with no Code Yellow running, offers the declaration and the packs", async () => {

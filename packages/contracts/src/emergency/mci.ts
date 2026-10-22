@@ -233,3 +233,58 @@ export const ErMciBoardSchema = z.object({
   serverNow: ErInstantSchema,
 });
 export type ErMciBoard = z.infer<typeof ErMciBoardSchema>;
+
+// ═══════════════════════════════════════ #877: the family information desk and the press script ═══════════════════════════════════════
+
+/**
+ * #877 item 3 — the family information desk's words for where a patient of the event is in their stay (DECIDED, the
+ * standard desk words; the open ones are lane 9's waiting-display words). Never clinical: no tag, no ESI, no complaint.
+ * A death is never told from a list: the family is sent to the duty doctor, who tells them in person.
+ */
+export const ER_MCI_FAMILY_STAGES = [
+  "Waiting", "Being seen", "Admitting", "Transfer arranged", "Going home soon", "Admitted", "Gone home", "Transferred",
+  "Left the hospital", "Please meet the duty doctor",
+] as const;
+export type ErMciFamilyStage = (typeof ER_MCI_FAMILY_STAGES)[number];
+
+export function mciFamilyStage(e: { state: string; disposition: string | null; outcome: string | null }): ErMciFamilyStage {
+  if (e.state === "brought_dead" || e.outcome === "died") return "Please meet the duty doctor";
+  if (e.outcome === "admitted") return "Admitted";
+  if (e.outcome === "discharged") return "Gone home";
+  if (e.outcome === "referred_out") return "Transferred";
+  if (e.outcome !== null) return "Left the hospital";
+  if (e.state === "disposition_decided") {
+    return e.disposition === "admit" ? "Admitting" : e.disposition === "refer_out" ? "Transfer arranged" : "Going home soon";
+  }
+  if (e.state === "triaged" || e.state === "in_treatment") return "Being seen";
+  return "Waiting";
+}
+
+/**
+ * The press / VIP script (fixed text, DECIDED: the standard hospital disaster-plan lines). No names, no conditions, no
+ * figures — the MS's office alone gives figures.
+ */
+export const ER_MCI_PRESS_SCRIPT = [
+  "The hospital has declared a Code Yellow and is receiving people from the incident.",
+  "We do not give the name or the condition of any patient to the press or over the phone.",
+  "Families: please come to the family information desk with a photo ID; our staff will help you find your relative.",
+  "Official updates come only from the Medical Superintendent's office.",
+  "Officials and VIP callers: please leave a number; the duty manager will call you back.",
+] as const;
+
+export const ErMciFamilyDeskSchema = z.object({
+  /** The running Code Yellow, else the last one stood down (families keep coming); null when there has been none. */
+  mciId: ErIdSchema.nullable(), name: z.string().nullable(), asOf: ErInstantSchema,
+  rows: z.array(z.strictObject({
+    /** The name on the record, or the pack / unknown alias while the person is unidentified. */
+    label: z.string(),
+    packNo: z.string().nullable(),
+    stage: z.enum(ER_MCI_FAMILY_STAGES),
+    /** "ER", "ER · B4", the ward's name once admitted; null once gone. */
+    where: z.string().nullable(),
+  })),
+  /** MLC, sealed and confidential patients of the event: never listed, only counted — the desk sends those families to the ER desk. */
+  withheld: z.number().int().nonnegative(),
+  script: z.array(z.string()),
+});
+export type ErMciFamilyDesk = z.infer<typeof ErMciFamilyDeskSchema>;
