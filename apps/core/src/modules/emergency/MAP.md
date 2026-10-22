@@ -281,6 +281,55 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   (decision 0083, owner 2026-10-23). Board fields `stops` and `teams` (teams per zone: ER = Casualty
   teams + who is on duty; each surge ward its own zone with the teams homed there).
 
+### Lane 9 (er-copilot, #816)
+- T2: the copilot proposes, a person confirms. Nothing here writes a clinical record; the one write is `copilot_level` on
+  `er_triage_entries` (migration `er_copilot`): the proposal the screen showed, so a different pick is an override.
+- `now-cards.ts` — eleven desk providers on the manifest (`ER_NOW_CARD_KEYS`), each behind the permission of the act that
+  answers it: `casualty_now` (E10, stats; `er.board.view`), `retriage_due`, `lwbs_risk` (`er.triage`), `doctor_overdue`,
+  `call_unanswered`, `result_ready`, `critical_result` (`er.care`), `boarding_long` (`er.disposition`), `mlc_intimation_due`,
+  `mlc_countersign_due` (`er.mlc`), `pre_alert` (`er.arrival.register`). A card exists only while something is owed. DECIDED
+  thresholds are the file's constants (call 10 min, boarding 2 h / hot 4 h, MLC leads 15 min / 2 h, LWBS ESI 4–5 ≥ 60 min).
+  Rows alias unidentified / restricted patients; a sealed one is "Sealed patient" with no bay.
+- `copilot-esi.ts` + contracts `proposeEsi` — the ESI proposal: RULES ONLY, never a model; a read. The web card ticks the
+  four questions ("Use these answers"), never the level. `triage` / `re_triage` RECOMPUTE the proposal server-side
+  (`esiProposalOf`, before the locks) and keep it as `copilot_level`; the events carry `copilotLevel` + `override`. A
+  client cannot send one (strict input).
+- `copilot-since.ts` — "since arrival": each line is a template + TYPED FACTS (`{kind, field, value, ref}`, `ref` = the
+  stored table/id/column); text = `renderSinceLine(template, facts)` only. `verifyErSinceLine(db, line, ctx)` re-reads every
+  fact from its column, recomputes derived minutes from the stored instants (to `asOf` for "now"), checks an excerpt is a
+  word-boundary prefix of the stored text, and re-renders; a failing line is dropped. No constant number in a template
+  (a constant is not a fact; the verifier refuses any number, number word, Devanagari digit or clock time outside the slots,
+  a slot without a fact and a fact without a slot). Each fact's `field` must be its column's (`SINCE_FACT_FIELDS`); each
+  minute count's instants are pinned per field (`SINCE_MINUTES_PAIRS`). No model (DECIDED: the trolley cannot wait).
+- Re-triage logs NO copilot proposal (`copilot_level` null, `override` false): the re-triage screen shows no card.
+- Lab `openCriticalsForEncounters` REQUIRES a viewer: the reading actor, or an explicit `{ system: true }` (the board's chip,
+  the care sweep).
+- `copilot-drafts.ts` — summary (template + one verified model sentence over the masked notes), referral (template only),
+  MLC narrative (template only, ALWAYS). Reads stamped "Draft"; the doctor signs through `discharge_from_er`, `refer_out`,
+  `add_mlc_addendum`. Medicines are never drafted.
+- `copilot-model.ts` — the one door to a model (IPD's door, ER's bar): `erModelBarred` reads the record on every ask — an MLC
+  episode, a sealed or confidential patient = no call; then model off, halt / cap, identifier scrub, budget. Never throws.
+- `copilot-waiting.ts` — `/er/copilot/waiting` (`er.board.waiting`, its own string, held only by the `waiting_display`
+  seat — the TV's sign-in must not open the wall board; `display` keeps `er.board.wall`): token (last four of the ER number)
+  + stage word. MLC, sealed and confidential patients are absent. Web: `/er/board?waiting=1` (no new route).
+- Criticals on ER screens (Now card, since-arrival, `readErCare`) pass the reader to lab `openCriticalsForEncounters`: a
+  critical on a RESTRICTED test shows "Critical result (restricted test)" unless the reader ordered it or holds
+  `orders.read.restricted`. The care sweep (system, no reader) rings the same bell for a restricted test with the body
+  "Critical result (restricted test)" — never its analyte or value.
+- `copilot-tools.ts` — `emergency.casualty_now` and `emergency.mlc_due` through the #865 intent seam, FLOOR-ONLY (no menu,
+  no help) so the chooser request and the chat system prompt stay byte-identical. Cues are substrings: no "er mein".
+- Web: `apps/web/src/screens/er-copilot.tsx` (card, since arrival, draft button, waiting display).
+- #899 stale withdrawal (no migration): the proposal carries an id built from existing rows (latest triage entry, bay)
+  plus a fingerprint of what it said. `GET /er/copilot/esi/:id/check?basis=` (read) says whether it still stands; the
+  card asks on every board event and every 30 s. Re-triage, a move, departure, new vitals or a changed complaint/age
+  withdraw it with a one-line reason and remove "Use these answers"; a failed check withdraws it too (fail closed).
+- #898 T2 bay proposal: `copilot-bay.ts`, `GET /er/copilot/bay/:id`. Only triaged ESI 2–5 patients with no bay (ESI 1 =
+  resus by a person); ESI 2 red bay with a monitor, 3 yellow, 4–5 green; a child under 14 gets a paeds bay first, an
+  adult never. Zone = `erZone` attribute or zone words in the bed/room name; unreadable or ambiguous zone = never
+  proposed. Resus (ICU, `ventilator_ready`) and isolation (isolation, negative pressure) bays are never proposed; surge,
+  triage and observation bays excluded; lowest free bed code wins. The nurse's tap places it through `place_in_bay`;
+  `er.placed` records the proposed bay and whether the nurse chose another (the measure a T3 climb needs).
+
 ## 4. Traps
 - `registerPatient` takes a `Tx` and the band reads the new patient in that same `tx` (`bandPerson(tx, …)`); reading it
   through `db` (`getPatient`) inside the transaction sees nothing.
@@ -334,7 +383,10 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   screen is the ER patient's); ER issue and procedure lines carried to the IP bill (lane 6). er-bill: the ER bill following the merge.
 - Desk: Aadhaar QR and ABHA scans (lane 1 takes the UHID card barcode, UHID, phone and name); a thermal ER band kind on
   the print relay (the browser prints today, decision 0045's fallback); downtime paper-serial reservation.
-- er-copilot: the `pre_alert` Now card; intents declared as copilot tools on the manifest.
+- Lane 9 built the copilot. Still owed: the two intents' model-menu lines (needs an eval re-recording); attendant
+  WhatsApp stage messages (IPD's channel, off for MLC and sealed); "since arrival" model rewording (deterministic only);
+  the T3 climb for green-zone bays. Real ER bays need zone names or `erZone`: the generated planning layout names rooms
+  "Bay N", so no bay is proposed there.
 
 ## 6. Callers
 - API: `EmergencyController` (`/er/*`). Worker: `kernel/worker/jobs.ts` `lapseBedReservations` → `lapseErPreAlerts`.

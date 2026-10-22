@@ -63,3 +63,16 @@ export {
   decideMciStops, declareMci, listMciOverflowBeds, listMciPacks, mciTag, mintMciPacks, openSurgeBays, packNoOf, readMciBoard, readMciCount, readMciFamilyDesk, registerMciArrival, standDownMci,
 } from "./mci";
 export { ER_MCI_STOPS_TASK } from "./task-kinds";
+// Lane 9 (#816) — the ER copilot: Now cards, the ESI proposal (rules), "since arrival", drafts, the waiting display, tools.
+export { checkEsiProposal, readEsiProposal } from "./copilot-esi";
+export { bayProposalOf, erBayZone, readBayProposal } from "./copilot-bay";
+export { istHm, readSinceArrival, sinceCandidates, verifyErSinceLine } from "./copilot-since";
+export { ER_DRAFT_BUDGET_MS, buildErDraft, buildErReferralDraft, buildErSummaryDraft, buildMlcNarrativeDraft } from "./copilot-drafts";
+export { askErModel, erModelBarred, erModelFrom } from "./copilot-model";
+export type { ErFallback, ErModel } from "./copilot-model";
+export { readErWaitingDisplay, stageOf } from "./copilot-waiting";
+export { emergencyCopilotIntents, emergencyCopilotTools } from "./copilot-tools";
+export {
+  boardingLongCard, callUnansweredCard, casualtyNowCard, criticalResultCard, doctorOverdueCard, lwbsRiskCard, mlcCountersignDueCard,
+  mlcIntimationDueCard, preAlertCard, resultReadyCard, retriageDueCard,
+} from "./now-cards";

@@ -114,7 +114,7 @@ async function tilesFor(db: Db, actor: Actor, eps: readonly EpisodeRow[], at: Da
     .where(inArray(users.id, docIds))).map((d) => [d.id, d.name] as const));
   // Lane 3 (#810): an open critical (the lab's ladder), a specialty call not yet answered, stabilised.
   const openEps = eps.filter((e) => (ER_OPEN_STATE_VALUES as readonly string[]).includes(e.state));
-  const critical = new Set((await openCriticalsForEncounters(db, openEps.map((e) => e.episodeNo))).map((c) => c.encounterNo));
+  const critical = new Set((await openCriticalsForEncounters(db, openEps.map((e) => e.episodeNo), { system: true })).map((c) => c.encounterNo));
   const waitingCall = new Set(openEps.length === 0 ? [] : (await db.select({ id: erSpecialtyCalls.episodeId }).from(erSpecialtyCalls)
     .where(and(inArray(erSpecialtyCalls.episodeId, openEps.map((e) => e.id)), isNull(erSpecialtyCalls.answeredAt)))).map((r) => r.id));
   // Lane 7 (#814): the activation clocks of the running codes (STEMI door-to-ECG …), from the door.

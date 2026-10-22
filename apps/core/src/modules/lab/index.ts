@@ -93,7 +93,7 @@ export {
   LAB_CRITICALS_CLOSE,
 } from "./criticals";
 export type {
-  AcknowledgeCriticalInput, AcknowledgeCriticalOutcome, CriticalAttempt, OpenCriticalCall,
+  AcknowledgeCriticalInput, AcknowledgeCriticalOutcome, CriticalAttempt, OpenCritical, OpenCriticalCall,
 } from "./criticals";
 // ── PLAN 17b T7 — the money rule, the delivery interlock, and the document ──
 // `money.ts` and `interlock.ts` are the close reviewer's first two files (§9.6): every threshold on

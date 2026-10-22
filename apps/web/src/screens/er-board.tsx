@@ -7,6 +7,7 @@ import { useAuth } from "../lib/auth";
 import { fmtIst } from "../lib/format";
 import { realtimeClient, useRealtime } from "../lib/realtime";
 import { ER_BOARD_TOPIC, ER_WALL_TOPIC, fetchErBoard, minutesSince } from "../lib/er-api";
+import { WaitingDisplay } from "./er-copilot";
 import "../styles/paper-pine.css";
 import "./er.css";
 
@@ -150,7 +151,18 @@ function Stat({ label, value, sub, tone }: { label: string; value: string; sub?:
   );
 }
 
+/**
+ * Lane 9 (#816) — `/er/board?waiting=1` is the WAITING-AREA DISPLAY (spec §5 I): a token and a stage word, no name, no
+ * clinical text, MLC and sealed patients absent (the server's rule). Same route, so no new path or menu entry.
+ */
 export function ErBoardScreen(): React.ReactElement {
+  const { t } = useTranslation();
+  const search = useSearch({ strict: false }) as { waiting?: string | number | boolean };
+  const waiting = search.waiting === "1" || search.waiting === 1 || search.waiting === true;
+  return waiting ? <WaitingDisplay t={t} /> : <ErTrackingBoard />;
+}
+
+function ErTrackingBoard(): React.ReactElement {
   const { t } = useTranslation();
   const { can } = useAuth();
   const navigate = useNavigate();

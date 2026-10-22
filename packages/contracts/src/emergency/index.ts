@@ -40,6 +40,16 @@ export type { ErMciBoard, ErMciCount, ErMciFamilyDesk, ErMciFamilyStage, ErMciFi
 export const ER_MONEY_INTENTS = ["set_er_payer", "take_er_advance", "price_er_lines", "settle_er_bill", "open_er_event_account"] as const;
 export type { ErDisposition, ErReturnIfSign } from "./dispo";
 export { ErBandPayloadSchema } from "./intents";
+// Lane 9 (#816) — the ER copilot: Now card keys, the ESI proposal (rules only), "since arrival", drafts, the waiting display.
+export {
+  ER_COPILOT_ROUTES, ER_DRAFT_FALLBACKS, ER_DRAFT_KINDS, ER_NOW_CARD_KEYS, ER_SINCE_MAX_LINES, ER_SINCE_MIN_LINES, ER_SINCE_SOURCES, ER_STAGE_WORDS,
+  ER_STAGE_WORDS_HI, ER_MODE_WORDS, ER_SINCE_FACT_KINDS, ErSinceFactSchema, ErSinceRefSchema, erIstHm, formatSinceFact, renderSinceLine, ER_BAY_PROPOSAL_NONE, ER_BAY_ZONES, ER_PROPOSABLE_BAY_ZONES, ErBayProposalSchema, ErDraftSchema, ErEsiProposalSchema, ErEsiProposalCheckSchema, ER_PROPOSAL_WITHDRAW_REASONS, erWithdrawText, ErSinceArrivalSchema, ErSinceLineSchema, ErWaitingDisplaySchema, esiDangerZone, esiWord,
+  proposeEsi,
+} from "./copilot";
+export type {
+  ErBayProposal, ErBayProposalNone, ErBayZone, ErDraft, ErDraftKind, ErEsiProposal, ErEsiProposalCheck, ErProposalWithdrawReason, ErNowCardKey, ErSinceArrival, ErSinceFact, ErSinceLine, ErSinceRef, ErSinceSource, ErStageWord, ErWaitingDisplay, EsiProposal,
+  EsiProposalInput,
+} from "./copilot";
 export type { ErBandPayload } from "./intents";
 
 /** ER lane 1 (#808) — the contracted intents, by their spec §2 names. Later lanes add theirs here. */
