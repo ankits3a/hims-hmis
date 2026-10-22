@@ -1,11 +1,11 @@
 ---
 issue: 942
-status: approved
+status: built
 approved: 2026-10-22
 ---
 # SPEC — Spouse on the profile guardian list; Husband Name on a woman's prescription (#942)
 
-Status: APPROVED 2026-10-22.
+Status: APPROVED 2026-10-22; BUILT 2026-10-22 as specified. D4–D6 pin behaviour that already held, so they passed before the build; D1–D3 were red.
 
 ## What
 

@@ -14582,6 +14582,8 @@
     "relationship": {
       "father": "पिता",
       "mother": "माता",
+      "spouse": "पति/पत्नी",
+      "sibling": "भाई/बहन",
       "legal_guardian": "कानूनी अभिभावक",
       "other": "प्रतिनिधि"
     },

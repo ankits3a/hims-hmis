@@ -520,7 +520,7 @@ describe("FD-24 T3: rendering the counter's documents", () => {
     /**
      * OWNER, 2026-10-07: *"Add 'Guardian Name' label & field in the prescription slip print along
      * with name, age and other fields."* The row sits under Name. The value is the ACTIVE guardian
-     * with the relation written the way an Indian record writes it (S/o, D/o, W/o, C/o); with no
+     * with the relation written the way an Indian record writes it (S/o, D/o, C/o; a woman's husband: #942); with no
      * guardian linked it falls back to the registered father's / husband's name; with neither the
      * label still prints and the value is blank — the Dept. Regn rule. A sealed patient's is blank.
      */
@@ -548,9 +548,9 @@ describe("FD-24 T3: rendering the counter's documents", () => {
       expect(doc!.html).toContain(field("Guardian Name:", "C/o Suresh Arora"));
 
       // An active guardian outranks the registration field, and the relation is spelled out.
-      await guardian({ name: "Rakesh Arora", relationship: "spouse" });
+      await guardian({ name: "Rakesh Arora", relationship: "legal_guardian" });
       doc = await renderPrescriptionSheet(db, { encounterId }, MON);
-      expect(doc!.html).toContain(field("Guardian Name:", "W/o Rakesh Arora"));
+      expect(doc!.html).toContain(field("Guardian Name:", "C/o Rakesh Arora"));
       expect(doc!.html).not.toContain("Old Guardian");
       expect(doc!.html).not.toContain("Lapsed Order");
       const at = NEW_ORDER.filter((l) => l !== "Address:").map((label) => doc!.html.indexOf(`<span class="lb">${label}</span>`));

@@ -14582,6 +14582,8 @@
     "relationship": {
       "father": "father",
       "mother": "mother",
+      "spouse": "spouse",
+      "sibling": "sibling",
       "legal_guardian": "legal guardian",
       "other": "representative"
     },
