@@ -29,7 +29,8 @@ import "./er.css";
  */
 type T = (k: string, o?: Record<string, unknown>) => string;
 type Panel = null | "order" | "med" | "note" | "procedure" | "consent" | "call" | "mlc";
-const DEPTS = ["MED", "SUR", "ORT", "OBG", "PAED", "CARD", "NEURO", "ANAES"] as const;
+/** The specialties a call can go to; each is a roster department master code (pinned by er-departments.test.ts, #870). */
+export const ER_CALL_DEPARTMENTS = ["MED", "SUR", "ORT", "OBG", "PED", "CAR", "ANAE"] as const;
 
 function Refusal({ r, t }: { r: ErRefusalBody | string; t: T }): React.ReactElement {
   if (typeof r === "string") return <div className="erd-refusal" role="alert"><b>{r}</b></div>;
@@ -437,7 +438,7 @@ function CallPanel({ t, busy, onCall }: { t: T; busy: boolean; onCall: (dept: st
   const [reason, setReason] = useState("");
   return (
     <section className="erp-panel" data-testid="er-patient-callform">
-      <div className="erd-opts">{DEPTS.map((d) => (
+      <div className="erd-opts">{ER_CALL_DEPARTMENTS.map((d) => (
         <button key={d} type="button" className={`erd-opt sm${dept === d ? " on" : ""}`} aria-pressed={dept === d} onClick={() => setDept(d)}>{t(`erTriage.depts.${d}`, { defaultValue: d })}</button>
       ))}</div>
       <div className="erd-opts">{["immediate", "urgent", "routine"].map((u) => (
