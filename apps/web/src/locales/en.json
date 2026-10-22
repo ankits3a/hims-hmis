@@ -20429,6 +20429,9 @@
     "familyHint": "Name, stage and place only. Never read out a condition.",
     "familyNone": "No one to list yet",
     "familyWithheld": "Not listed here: {{n}} · send these families to the ER desk",
-    "familyScript": "Press and VIP script"
+    "familyScript": "Press and VIP script",
+    "teamsTitle": "Teams",
+    "teamsOnDuty": "On duty now",
+    "teamsNone": "No team on the roster for this zone"
   }
 }

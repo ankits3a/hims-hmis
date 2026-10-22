@@ -33,9 +33,9 @@ export {
 export type { ErCodeClockDef, ErCodeKind, ErCodeView, ErCodes } from "./codes";
 export {
   ER_MCI_COMMAND_ROLES, ER_MCI_METHODS, ER_MCI_PACKS_MAX, ER_MCI_TAGS, ER_MCI_TAG_WORDS, ErMciBoardSchema, ErMciCountSchema, ErMciFindingsSchema,
-  ER_MCI_FAMILY_STAGES, ER_MCI_PRESS_SCRIPT, ER_MCI_STOPS_DECISIONS, ER_MCI_STOPS_STATES, ErMciFamilyDeskSchema, ErMciPackSchema, ErMciSurgeBedSchema, ErMciTagSchema, mciFamilyStage, mciTagProposal,
+  ER_MCI_FAMILY_STAGES, ER_MCI_PRESS_SCRIPT, ER_MCI_STOPS_DECISIONS, ER_MCI_STOPS_STATES, ErMciFamilyDeskSchema, ErMciPackSchema, ErMciZoneSchema, ErMciSurgeBedSchema, ErMciTagSchema, mciFamilyStage, mciTagProposal,
 } from "./mci";
-export type { ErMciBoard, ErMciCount, ErMciFamilyDesk, ErMciFamilyStage, ErMciFindings, ErMciMethod, ErMciPack, ErMciSurgeBed, ErMciTag } from "./mci";
+export type { ErMciBoard, ErMciCount, ErMciFamilyDesk, ErMciFamilyStage, ErMciFindings, ErMciMethod, ErMciPack, ErMciSurgeBed, ErMciTag, ErMciZone } from "./mci";
 /** ER lane 6 (#813): the intents whose answers name money — the bill desk's, never a clinical screen's (0058). */
 export const ER_MONEY_INTENTS = ["set_er_payer", "take_er_advance", "price_er_lines", "settle_er_bill", "open_er_event_account"] as const;
 export type { ErDisposition, ErReturnIfSign } from "./dispo";

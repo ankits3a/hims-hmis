@@ -217,6 +217,18 @@ export const ErMciPatientSchema = z.object({
 export const ErMciSurgeBedSchema = z.object({ bedId: ErIdSchema, code: z.string(), ward: z.string().nullable(), status: z.enum(["free", "occupied", "cleaning", "blocked"]), approved: z.boolean() });
 export type ErMciSurgeBed = z.infer<typeof ErMciSurgeBedSchema>;
 
+/**
+ * #877 item 4 — a zone of the Code Yellow and the people in it, from the roster: the ER (Casualty's active teams and who
+ * is on duty in Casualty now) and one surge zone per ward whose overflow beds were opened (the teams homed in that ward).
+ * Names and roles only — no phone numbers on a board.
+ */
+export const ErMciZoneSchema = z.object({
+  zone: z.string(),
+  teams: z.array(z.object({ code: z.string(), name: z.string(), members: z.array(z.object({ name: z.string(), role: z.string() })) })),
+  onDuty: z.array(z.object({ name: z.string(), position: z.string() })),
+});
+export type ErMciZone = z.infer<typeof ErMciZoneSchema>;
+
 export const ErMciBoardSchema = z.object({
   /** The running Code Yellow (null when none) and its head count. */
   active: ErMciCountSchema.nullable(),
@@ -230,6 +242,8 @@ export const ErMciBoardSchema = z.object({
   hospitalBedsFree: z.number().int(),
   /** #877 — the OPD / elective OT stop proposed to the MS for the running event (null when none is running). */
   stops: z.object({ state: z.enum(ER_MCI_STOPS_STATES), decidedAt: ErInstantSchema.nullable(), note: z.string().nullable() }).nullable(),
+  /** #877 — the teams per zone for the running event (empty when none is running). */
+  teams: z.array(ErMciZoneSchema),
   serverNow: ErInstantSchema,
 });
 export type ErMciBoard = z.infer<typeof ErMciBoardSchema>;

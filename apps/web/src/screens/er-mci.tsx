@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import type React from "react";
-import type { ErMciBoard, ErMciCount, ErMciFamilyDesk, ErMciPack, ErMciSurgeBed, ErRefusalBody } from "@hmis/contracts";
+import type { ErMciBoard, ErMciCount, ErMciFamilyDesk, ErMciZone, ErMciPack, ErMciSurgeBed, ErRefusalBody } from "@hmis/contracts";
 import { useAuth } from "../lib/auth";
 import { dayMonthIst, fmtIst } from "../lib/format";
 import { useRealtime } from "../lib/realtime";
@@ -156,6 +156,7 @@ function Running({ board, m, t, busy, act, canRegister }: {
         <span>{t("erMci.beds", { n: board.hospitalBedsFree })}</span>
         <span>{t("erMci.packsLeft", { n: board.packsReady })}</span>
       </div>
+      {board.teams.length > 0 ? <Teams zones={board.teams} t={t} /> : null}
       <div className="erd-cols">
         <section className="erd-list" aria-label={t("erMci.patients")}>
           {canRegister ? (
@@ -290,5 +291,24 @@ function FamilyDesk({ t }: { t: T }): React.ReactElement {
         </>
       ) : null}
     </div>
+  );
+}
+
+/** #877 — the teams per zone from the roster: names and roles, who is on duty; no phone numbers. */
+function Teams({ zones, t }: { zones: ErMciZone[]; t: T }): React.ReactElement {
+  return (
+    <section className="erd-form" aria-label={t("erMci.teamsTitle")} data-testid="er-mci-teams">
+      <h2>{t("erMci.teamsTitle")}</h2>
+      {zones.map((z) => (
+        <div key={z.zone} data-testid="er-mci-zone">
+          <h3>{z.zone}</h3>
+          {z.teams.length === 0 && z.onDuty.length === 0 ? <p className="dim">{t("erMci.teamsNone")}</p> : null}
+          {z.teams.map((tm) => (
+            <p key={tm.code} className="erp-text"><b>{tm.name}</b> <span className="dim mono">{tm.code}</span>{tm.members.length > 0 ? ` · ${tm.members.map((x) => `${x.name} (${x.role})`).join(", ")}` : ""}</p>
+          ))}
+          {z.onDuty.length > 0 ? <p className="erp-text"><span className="dim">{t("erMci.teamsOnDuty")}:</span> {z.onDuty.map((d) => `${d.name} · ${d.position}`).join(", ")}</p> : null}
+        </div>
+      ))}
+    </section>
   );
 }

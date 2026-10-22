@@ -16,7 +16,7 @@ const count = {
   byOutcome: { inDepartment: 3, admitted: 0, discharged: 0, referredOut: 0, died: 0, left: 0 },
 };
 const RUNNING: ErMciBoard = {
-  active: count, recent: [], packsReady: 37, bays: { free: 4, total: 60 }, surge: { free: 2, total: 2 }, hospitalBedsFree: 41, stops: null, serverNow: now,
+  active: count, recent: [], packsReady: 37, bays: { free: 4, total: 60 }, surge: { free: 2, total: 2 }, hospitalBedsFree: 41, stops: null, teams: [], serverNow: now,
   patients: [{ episodeId: EP, episodeNo: "ER26-000501", label: "Unknown-MCI26-003", tag: "black", esi: null, bayCode: null, state: "arrived", arrivedAt: now }],
 };
 const IDLE: ErMciBoard = { ...RUNNING, active: null, patients: [], surge: { free: 0, total: 0 } };
@@ -94,6 +94,22 @@ describe("ER lane 8 (#815) the MCI board", () => {
     expect(await screen.findByTestId("er-mci-family-rows")).toHaveTextContent("Asha Family · Being seen · ER · B4");
     expect(screen.getByTestId("er-mci-family-withheld")).toHaveTextContent("Not listed here: 2");
     expect(screen.getByTestId("er-mci-press-script")).toHaveTextContent("We do not give the name");
+  });
+
+  it("#877: the teams per zone from the roster, with who is on duty", async () => {
+    board = {
+      ...RUNNING,
+      teams: [
+        { zone: "ER", teams: [{ code: "CAS-A", name: "Casualty team A", members: [{ name: "Dr Lead", role: "lead" }] }], onDuty: [{ name: "Sister One", position: "Staff nurse" }] },
+        { zone: "Surge · Ward 7", teams: [], onDuty: [] },
+      ],
+    };
+    renderWithRouter(<ErMciScreen />, "/er/mci");
+    const zones = await screen.findAllByTestId("er-mci-zone");
+    expect(zones[0]).toHaveTextContent("Casualty team A");
+    expect(zones[0]).toHaveTextContent("Dr Lead (lead)");
+    expect(zones[0]).toHaveTextContent("Sister One · Staff nurse");
+    expect(zones[1]).toHaveTextContent("No team on the roster for this zone");
   });
 
   it("with no Code Yellow running, offers the declaration and the packs", async () => {

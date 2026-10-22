@@ -9,7 +9,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { actorHoldsAnyRole, usersHoldingRole } from "../../kernel/workflow/roles";
 import { initialsOf, placedAdmissionOf } from "../ipd";
 import { PatientError, getPatientSummaries, registerPatient } from "../patients";
-import { calloutList, orgDepartmentByCode } from "../roster";
+import { calloutList, listRosterPositions, listTeams, onDutyNow, orgDepartmentByCode, teamMembers } from "../roster";
 import { cancelTask, findTasks, raiseTask } from "../tasks";
 import { arriveIn, arrivedEvent, gateInstant } from "./arrival";
 import { bandPerson } from "./bands";
@@ -23,7 +23,7 @@ import { openMlcIn } from "./mlc";
 import { ER_ARRIVAL_REGISTER, ER_MCI } from "./names";
 import { ER_MCI_STOPS_TASK } from "./task-kinds";
 import type { TaskRow } from "../tasks";
-import type { Actor, ErBandPayload, ErIntentName, ErMciBoard, ErMciFamilyDesk, ErMciCount, ErMciSurgeBed, ErMciTag } from "@hmis/contracts";
+import type { Actor, ErBandPayload, ErIntentName, ErMciBoard, ErMciFamilyDesk, ErMciZone, ErMciCount, ErMciSurgeBed, ErMciTag } from "@hmis/contracts";
 import type { z } from "zod";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -419,6 +419,47 @@ export async function readMciCount(db: Db, actor: Actor, mciId: string, opts: Op
   return countOf(db, m, opts.now ?? new Date());
 }
 
+/**
+ * #877 item 4 — the teams per zone (DECIDED: a zone is a PLACE): the ER — Casualty's active roster teams and who is on duty
+ * in Casualty now (the published roster) — then one surge zone per ward whose overflow beds this event opened, with the
+ * teams homed in that ward. Names and roles only.
+ */
+async function zonesOf(db: Db, m: MciRow, at: Date): Promise<ErMciZone[]> {
+  const names = new Map<string, string>();
+  const nameOf = async (ids: readonly string[]): Promise<void> => {
+    const missing = ids.filter((id) => !names.has(id));
+    if (missing.length === 0) return;
+    for (const u of await db.select({ id: users.id, n: users.fullName }).from(users).where(inArray(users.id, missing))) names.set(u.id, u.n);
+  };
+  const teamsView = async (rows: { id: string; code: string; name: string }[]): Promise<ErMciZone["teams"]> => {
+    const out: ErMciZone["teams"] = [];
+    for (const t of rows) {
+      const members = await teamMembers(db, t.id, at);
+      await nameOf(members.map((x) => x.userId));
+      out.push({ code: t.code, name: t.name, members: members.map((x) => ({ name: names.get(x.userId) ?? x.userId, role: x.roleInTeam })) });
+    }
+    return out;
+  };
+  const zones: ErMciZone[] = [];
+  const cas = await orgDepartmentByCode(db, ER_ROSTER_DEPARTMENT);
+  if (cas !== undefined) {
+    const labels = new Map((await listRosterPositions(db)).map((p) => [p.key, p.label] as const));
+    const duty = await onDutyNow(db, cas.id, at);
+    await nameOf(duty.positions.flatMap((p) => p.userIds));
+    const onDuty = duty.positions.flatMap((p) => p.userIds.map((u) => ({ name: names.get(u) ?? u, position: labels.get(p.positionKey) ?? p.positionKey })));
+    zones.push({ zone: "ER", teams: await teamsView(await listTeams(db, { departmentId: cas.id, activeOnly: true })), onDuty });
+  }
+  const wards = (await db.execute(sql`
+    select distinct w.id, w.name from ${erMciSurgeBeds} s join ${resources} b on b.id = s.bed_id join ${resources} w on w.id = b.parent_id
+    where s.mci_id = ${m.id} order by w.name
+  `)).rows as { id: string; name: string }[];
+  if (wards.length > 0) {
+    const all = await listTeams(db, { activeOnly: true });
+    for (const w of wards) zones.push({ zone: `Surge · ${w.name}`, teams: await teamsView(all.filter((t) => t.homeLocationResourceId === w.id)), onDuty: [] });
+  }
+  return zones;
+}
+
 export async function readMciBoard(db: Db, actor: Actor, opts: Opts = {}): Promise<ErMciBoard> {
   await requireErPermission(db, actor, ER_MCI);
   const at = opts.now ?? new Date();
@@ -460,7 +501,7 @@ export async function readMciBoard(db: Db, actor: Actor, opts: Opts = {}): Promi
   return {
     active: m === undefined ? null : await countOf(db, m, at), recent, patients, packsReady: Number(packs?.n ?? 0),
     bays: { free: Number(b.er_free), total: Number(b.er_total) }, surge, hospitalBedsFree: Number(b.ip_free),
-    stops: m === undefined ? null : stopsView(await stopsTaskOf(db, m)), serverNow: at.toISOString(),
+    stops: m === undefined ? null : stopsView(await stopsTaskOf(db, m)), teams: m === undefined ? [] : await zonesOf(db, m, at), serverNow: at.toISOString(),
   };
 }
 
