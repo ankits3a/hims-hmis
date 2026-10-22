@@ -46,6 +46,11 @@ export type OrderTestsInput = {
   protocolRef?: string;
   /** Limit the departments ordered (the free-test order orders only what is free). Default: both. */
   departments?: { lab: boolean; imaging: boolean };
+  /**
+   * ER lane 3 (#810) — the lab duplicates the caller has shown and accepted (`duplicateOfItemId`s, the lab desk's own
+   * acknowledgement). The emergency department passes them: a repeated STAT test is a warning there, never a block.
+   */
+  acknowledgedDuplicates?: readonly string[];
 };
 
 export type SkippedDepartment = { department: "lab" | "imaging"; serviceIds: string[]; code: string; message: string };
@@ -119,6 +124,7 @@ export async function orderTests(
          * counter did not take payment for (`holdUntilPaid`, DD23's interlock). A free test bills ₹0.
          */
         holdUntilPaid: { reason: "ordered by the doctor; paid at the lab counter" },
+        ...(input.acknowledgedDuplicates === undefined ? {} : { acknowledgedDuplicates: input.acknowledgedDuplicates }),
         ...protocol,
       }, now);
       result.lab = opts.tx === undefined

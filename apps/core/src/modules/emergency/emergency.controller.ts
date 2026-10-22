@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpException, Inject, Param, Post, Query } from "@nestjs/common";
 import { z } from "zod";
-import { DB } from "../../kernel/tokens";
+import { DB, MODULE_REGISTRY } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { BillingError, billingHttpStatus } from "../billing";
 import { PatientError } from "../patients";
@@ -8,10 +8,17 @@ import { cancelPreAlert, preAlert, recordBroughtDead, registerArrival, registerU
 import { printErBand, reprintErBand } from "./bands";
 import { listErBays, listErDoctors, readErBoard, readErDesk, readErEpisode, searchErPatients } from "./board";
 import { assignErDoctor, moveBay, placeInBay, reTriage, recordErVitals, triage } from "./triage";
+import {
+  answerCall, callSpecialty, cosignErNote, declareStabilised, giveErDose, issueErMed, returnErMed, placeErOrder, recordConsent, recordErNote,
+  recordProcedure, signErVerbalOrder,
+} from "./care";
+import { listErItems, readErCare } from "./care-read";
+import { collectOrderKinds } from "../../kernel/orders/kinds";
+import type { ModuleRegistry } from "../../kernel/modules/loader";
 import { ErError, ErRefusal, erRefusalStatus } from "./errors";
 import { linkIdentity } from "./identity";
-import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_IDENTITY_LINK, ER_TRIAGE } from "./names";
-import type { Actor, ErBay, ErBoard, ErDeskView, ErDoctorOption, ErEpisodeView, ErPatientHit, ErRefusalBody } from "@hmis/contracts";
+import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_CARE, ER_IDENTITY_LINK, ER_TRIAGE } from "./names";
+import type { Actor, ErBay, ErBoard, ErCareView, ErDeskView, ErDoctorOption, ErEpisodeView, ErItemOption, ErPatientHit, ErRefusalBody } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -48,7 +55,12 @@ const searchQuery = z.object({ q: z.string().max(80).default("") });
 
 @Controller("er")
 export class EmergencyController {
-  constructor(@Inject(DB) private readonly db: Db) {}
+  constructor(
+    @Inject(DB) private readonly db: Db,
+    @Inject(MODULE_REGISTRY) private readonly registry: ModuleRegistry,
+  ) {}
+
+  private orderKinds() { return collectOrderKinds(this.registry); }
 
   @Get("board")
   @RequirePermission(ER_BOARD_VIEW, "hospital")
@@ -186,5 +198,92 @@ export class EmergencyController {
   @RequirePermission(ER_TRIAGE, "hospital")
   async doctor(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
     try { return await assignErDoctor(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  /* ═══ lane 3 (#810) — care ═══ */
+
+  @Get("care/:id")
+  @RequirePermission(ER_CARE, "hospital")
+  async care(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<ErCareView> {
+    try { return await readErCare(this.db, actor, id); } catch (e) { toHttp(e); }
+  }
+
+  @Get("items")
+  @RequirePermission(ER_CARE, "hospital")
+  async items(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<ErItemOption[]> {
+    try { return await listErItems(this.db, actor, searchQuery.parse(query).q); } catch (e) { toHttp(e); }
+  }
+
+  @Post("notes")
+  @RequirePermission(ER_CARE, "hospital")
+  async note(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await recordErNote(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("notes/cosign")
+  @RequirePermission(ER_CARE, "hospital")
+  async cosign(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await cosignErNote(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("orders")
+  @RequirePermission(ER_CARE, "hospital")
+  async order(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await placeErOrder(this.db, actor, body, { orderKinds: this.orderKinds() }); } catch (e) { toHttp(e); }
+  }
+
+  @Post("meds/issue")
+  @RequirePermission(ER_CARE, "hospital")
+  async issue(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await issueErMed(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("meds/dose")
+  @RequirePermission(ER_CARE, "hospital")
+  async dose(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await giveErDose(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  /** ER review 2 (2026-10-15) — a medicine not given goes back unopened, or is recorded as wastage. */
+  @Post("meds/return")
+  @RequirePermission(ER_CARE, "hospital")
+  async returnMed(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await returnErMed(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("meds/sign-verbal")
+  @RequirePermission(ER_CARE, "hospital")
+  async signVerbal(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await signErVerbalOrder(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("procedures")
+  @RequirePermission(ER_CARE, "hospital")
+  async procedure(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await recordProcedure(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("consents")
+  @RequirePermission(ER_CARE, "hospital")
+  async consent(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await recordConsent(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("calls")
+  @RequirePermission(ER_CARE, "hospital")
+  async call(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await callSpecialty(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("calls/answer")
+  @RequirePermission(ER_CARE, "hospital")
+  async answer(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await answerCall(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("stabilised")
+  @RequirePermission(ER_CARE, "hospital")
+  async stabilised(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await declareStabilised(this.db, actor, body); } catch (e) { toHttp(e); }
   }
 }

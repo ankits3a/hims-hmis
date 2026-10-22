@@ -205,6 +205,24 @@
 /* A disabled button that floats over the form must stay solid, or the form shows through it. */
 .ert-actions .erx-btn:disabled { opacity: 1; background: #a9c9bd; border-color: #a9c9bd; color: #fff; }
 
+/* ══════════════════ lane 3 (#810): the ER patient ══════════════════ */
+.erp-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.erp-allergy { font-weight: 700; font-size: 14px; }
+.erp-critical { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; background: var(--red-soft); border: 2px solid var(--red); border-radius: 8px; padding: 10px 14px; color: var(--red); font-size: 15px; }
+.erp-critical span { color: var(--ink); font-weight: 600; }
+.erp-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.erp-panel { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px; max-width: 900px; }
+.erp-panel textarea { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font: inherit; font-size: 15px; color: var(--ink); background: var(--card); width: 100%; resize: vertical; }
+.erp-cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 14px; align-items: start; }
+.erp-cols section { display: flex; flex-direction: column; gap: 8px; }
+.erp-text { margin: 0; font-size: 14px; white-space: pre-wrap; }
+.erp-high { border-left: 4px solid var(--red); }
+.erb-chips .dim { font-size: 13px; align-self: center; }
+.erp-give { display: flex; flex-direction: column; gap: 8px; }
+.erb-chip.critical { background: var(--red-soft); border-color: var(--red-line); color: var(--red); }
+.erb-chip.call_waiting { background: var(--gold-soft); border-color: var(--gold-line); color: #7a4e0c; }
+.erb-chip.stabilised { background: var(--green-soft); border-color: var(--green-line); color: var(--green); }
+
 @media (max-width: 1500px) {
   .erb-stat .val b { font-size: 24px; }
   .erb-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
@@ -229,6 +247,8 @@
   .ert-level span { font-size: 9px; letter-spacing: -0.02em; overflow-wrap: anywhere; line-height: 1.1; padding: 0 2px; }
   .ert-vitals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ert-actions { position: sticky; bottom: 8px; z-index: 2; }
+  .erp-cols { grid-template-columns: minmax(0, 1fr); }
+  .erp-bar .erd-opt { flex: 1 1 calc(50% - 8px); }
   /* The register button stays under the thumb while the desk scrolls the choices. */
   .erd-form > .erx-btn.big { position: sticky; bottom: 8px; z-index: 2; box-shadow: 0 4px 14px rgba(19, 36, 32, .18); }
 }

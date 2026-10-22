@@ -1,3 +1,4 @@
+import { ER_CALL_DEPARTMENTS } from "./er-patient";
 import { ER_TRIAGE_DEPARTMENTS } from "./er-triage";
 
 /**
@@ -14,5 +15,9 @@ const ROSTER_DEPARTMENT_CODES = new Set([
 describe("ER department pickers offer roster department codes only", () => {
   it("triage's take-unit specialties", () => {
     expect(ER_TRIAGE_DEPARTMENTS.filter((c) => !ROSTER_DEPARTMENT_CODES.has(c))).toEqual([]);
+  });
+
+  it("the specialty call's departments", () => {
+    expect(ER_CALL_DEPARTMENTS.filter((c) => !ROSTER_DEPARTMENT_CODES.has(c))).toEqual([]);
   });
 });

@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/ordering/`
 · Notes: [MAP.md](../../../apps/core/src/modules/ordering/MAP.md)
 
 - **Depends on modules:** `billing`, `lab`, `opd`, `radiology`
-- **Used by modules:** `ipd`
+- **Used by modules:** `emergency`, `ipd`
 - **Kernel used:** `auth`, `db`, `events`, `modules`, `orders`, `tokens`
 - **Subscribes to events:** `consultationCompleted`, `paperPrescriptionTranscribed`
 

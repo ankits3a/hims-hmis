@@ -157,8 +157,8 @@ export const ER_INTENT_CATALOGUE = [
   // triage (lane 2)
   "triage", "re_triage", "record_er_vitals", "place_in_bay", "move_bay", "assign_er_doctor",
   // care (lane 3)
-  "call_specialty", "answer_call", "record_er_note", "place_er_order", "issue_er_med", "give_er_dose", "record_procedure",
-  "declare_stabilised", "record_consent",
+  "call_specialty", "answer_call", "record_er_note", "cosign_er_note", "place_er_order", "issue_er_med", "give_er_dose",
+  "sign_er_verbal_order", "record_procedure", "declare_stabilised", "record_consent", "return_er_med",
   // law (lane 4)
   "open_mlc", "record_police_intimation", "countersign_mlc", "record_belongings", "hand_over_evidence",
   // disposition (lane 5)

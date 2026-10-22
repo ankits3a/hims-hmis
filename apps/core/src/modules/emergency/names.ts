@@ -20,3 +20,9 @@ export const ER_IDENTITY_LINK = "patients.merge";
  * acts; no money behind any of them.
  */
 export const ER_TRIAGE = "er.triage";
+/**
+ * ER lane 3 (#810) — care: notes, the ordering door, the ER issue and the medication record, procedures, consent,
+ * specialty calls and "stabilised". Doctor-only acts (orders, emergency consent, stabilised, co-sign, answering a call,
+ * signing a verbal order) also check the actor holds the `doctor` role; nothing here names money.
+ */
+export const ER_CARE = "er.care";
