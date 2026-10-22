@@ -867,7 +867,7 @@ function AuthorityBadge({ label, on }: { label: string; on: boolean }): React.Re
   );
 }
 
-const RELATIONSHIPS = ["father", "mother", "legal_guardian", "other"] as const;
+const RELATIONSHIPS = ["father", "mother", "spouse", "sibling", "legal_guardian", "other"] as const;
 
 const addGuardianSchema = z.object({
   name: z.string().min(1),
