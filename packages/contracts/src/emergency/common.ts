@@ -163,7 +163,7 @@ export const ER_INTENT_CATALOGUE = [
   "open_mlc", "add_mlc_addendum", "record_police_intimation", "countersign_mlc", "record_belongings", "hand_over_evidence",
   // disposition (lane 5)
   "decide_disposition", "discharge_from_er", "hand_to_unit", "refer_out", "record_lama", "record_lwbs", "record_abscond",
-  "record_er_death",
+  "record_er_death", "record_specialty_refusal", "arbitrate_admission",
   // money (lane 6)
   "settle_er_bill", "record_er_dues",
   // codes and MCI (lanes 7, 8)

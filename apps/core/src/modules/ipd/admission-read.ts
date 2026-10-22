@@ -92,6 +92,7 @@ async function toViews(db: Db, actor: Actor, rows: AdmissionRow[], at: Date): Pr
       band: band === undefined ? null : { id: band.id, serial: band.serial, printedAt: band.printedAt.toISOString() },
       icuApproval: a.icu ? (a.icuApprovalId !== null ? { id: a.icuApprovalId, status: "granted" } : await latestApproval(db, "icu", [a.id, a.patientId])) : null,
       admittedAt: a.admittedAt?.toISOString() ?? null, stabilisedAt: a.stabilisedAt?.toISOString() ?? null,
+      erArrivedAt: a.erArrivedAt?.toISOString() ?? null,
       downtimeSerial: a.downtimeSerial,
       incomplete: a.state === "admitted" ? incompleteOf(a, band !== undefined) : [],
     });

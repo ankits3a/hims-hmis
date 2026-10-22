@@ -16,11 +16,14 @@ import { listErItems, readErCare } from "./care-read";
 import {
   addMlcAddendum, countersignMlc, handOverEvidence, openMlc, readMlc, readMlcDesk, recordBelongings, recordPoliceIntimation,
 } from "./mlc";
+import {
+  arbitrateAdmission, decideDisposition, dischargeFromEr, recordSpecialtyRefusal, handToUnit, recordAbscond, recordErDeathIntent, recordLama, recordLwbs, referOut,
+} from "./dispo";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import type { ModuleRegistry } from "../../kernel/modules/loader";
 import { ErError, ErRefusal, erRefusalStatus } from "./errors";
 import { linkIdentity } from "./identity";
-import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_CARE, ER_IDENTITY_LINK, ER_MLC, ER_TRIAGE } from "./names";
+import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_CARE, ER_DISPOSITION, ER_IDENTITY_LINK, ER_MLC, ER_TRIAGE } from "./names";
 import type {
   Actor, ErBay, ErBoard, ErCareView, ErDeskView, ErDoctorOption, ErEpisodeView, ErItemOption, ErMlcDesk, ErMlcDetail, ErPatientHit, ErRefusalBody,
 } from "@hmis/contracts";
@@ -339,5 +342,66 @@ export class EmergencyController {
   @RequirePermission(ER_MLC, "hospital")
   async mlcEvidence(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
     try { return await handOverEvidence(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  // ═══ lane 5 (#812) — disposition and departure ═══
+  @Post("dispo/decide")
+  @RequirePermission(ER_DISPOSITION, "hospital")
+  async dispoDecide(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await decideDisposition(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("dispo/discharge")
+  @RequirePermission(ER_DISPOSITION, "hospital")
+  async dispoDischarge(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await dischargeFromEr(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("dispo/admit")
+  @RequirePermission(ER_DISPOSITION, "hospital")
+  async dispoAdmit(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await handToUnit(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("dispo/refer")
+  @RequirePermission(ER_DISPOSITION, "hospital")
+  async dispoRefer(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await referOut(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("dispo/lama")
+  @RequirePermission(ER_DISPOSITION, "hospital")
+  async dispoLama(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await recordLama(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("dispo/lwbs")
+  @RequirePermission(ER_DISPOSITION, "hospital")
+  async dispoLwbs(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await recordLwbs(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("dispo/abscond")
+  @RequirePermission(ER_DISPOSITION, "hospital")
+  async dispoAbscond(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await recordAbscond(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("dispo/death")
+  @RequirePermission(ER_DISPOSITION, "hospital")
+  async dispoDeath(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await recordErDeathIntent(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("dispo/refused")
+  @RequirePermission(ER_DISPOSITION, "hospital")
+  async dispoRefused(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await recordSpecialtyRefusal(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("dispo/arbitrate")
+  @RequirePermission(ER_DISPOSITION, "hospital")
+  async dispoArbitrate(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await arbitrateAdmission(this.db, actor, body); } catch (e) { toHttp(e); }
   }
 }

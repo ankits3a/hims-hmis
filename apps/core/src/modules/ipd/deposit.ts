@@ -180,7 +180,7 @@ export async function planAdmission(db: Db, actor: Actor, raw: unknown, opts: Op
       const a = await lockAdmission(tx, input.admissionId);
       const emergencyOpen = a.source === "er" && a.state === "admitted";
       if (a.state !== "requested" && a.state !== "reserved" && !emergencyOpen) throw new IpdRefusal("admission_wrong_state");
-      if (!emergencyOpen && a.expiresAt.getTime() < at.getTime()) throw new IpdRefusal("advice_expired");
+      if (!emergencyOpen && a.source !== "er" && a.expiresAt.getTime() < at.getTime()) throw new IpdRefusal("advice_expired");
       // Review #6: the class is resolved FIRST and the quote is for the class actually recorded.
       const requestedClass = planClass(a, input.requestedClass);
       const q = quoteOrRefuse(prices, {

@@ -1768,6 +1768,17 @@ never edited or deleted). A body brought dead is marked deceased with the `broug
 the mortuary register, released only on police clearance. The MLC never delays treatment.
 `er.mlc` is held by `doctor`, `er_nurse`, `front_office`, `front_office_supervisor`, `duty_manager` and `medical_superintendent`.
 
+**Emergency disposition (ER lane 5, issue #812, decision 0076, built 2026-10-15, awaiting owner review).** Every way out of
+the ER: one disposition per episode decided by a doctor with a reason; discharge with the signed ER summary (diagnosis,
+treatment, medicines, return-if signs in Hindi and English, follow-up); hand to a unit (the IPD admission with the ER gate
+time and "stabilised" copied — the patient boards on the ER board until the bed is placed, and the ER test lines move to
+the IP running bill); refer out with the referral note (never because the patient cannot pay); LAMA with the risks and a
+signature or a witnessed refusal; left without being seen; absconded (security told, the police for an MLC); death with
+the MCCD number, or an MLC already intimated to the police, the body to the mortuary register. Every exit frees the bay.
+A patient waiting for a bed past 2 hours is a task for the bed manager and reaches the MS at 4 hours; a specialty refusing
+the admission is recorded and the MS arbitrates.
+`er.disposition` is held by `doctor`, `er_nurse`, `front_office`, `duty_manager` and `medical_superintendent`.
+
 **Copilot halt switch and spend cap (plan E0.3/E0.5, decision 0064, built 2026-10-11, awaiting owner review).**
 `copilot.halt.set` (owner, admin, duty_manager, quality_manager) pauses the copilot by scope — read, act,
 draft or global; `copilot.halt.clear` (owner, duty_manager) clears read, act and draft; and

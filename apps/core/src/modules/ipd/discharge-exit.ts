@@ -369,11 +369,12 @@ function holderOf(e: MortuaryRow): string {
  * recorded, exactly as for an MLC death on a ward. In the ER's transaction; the register's own intents do the rest.
  */
 export async function openErMortuaryEntry(
-  tx: Tx, actor: Actor, args: { erEpisodeId: string; patientId: string; diedAt: Date }, at: Date,
+  tx: Tx, actor: Actor, args: { erEpisodeId: string; patientId: string; diedAt: Date; mlc?: boolean }, at: Date,
 ): Promise<{ entryId: string }> {
   const id = newId();
   await tx.insert(ipdMortuaryRegister).values({
-    id, admissionId: null, erEpisodeId: args.erEpisodeId, patientId: args.patientId, status: "expected", diedAt: args.diedAt, mlc: true,
+    // Lane 5 (#812): a death in the ER is an MLC only when the case is one (a body brought dead always is).
+    id, admissionId: null, erEpisodeId: args.erEpisodeId, patientId: args.patientId, status: "expected", diedAt: args.diedAt, mlc: args.mlc ?? true,
     createdBy: actor.id, createdAt: at,
   });
   return { entryId: id };

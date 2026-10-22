@@ -17047,7 +17047,8 @@
       "admittedAt": "भर्ती समय (कागज़)",
       "save": "भर्ती दर्ज करें"
     },
-    "capWarning": "कमरा किराया सीमा"
+    "capWarning": "कमरा किराया सीमा",
+    "erArrival": "ER आगमन"
   },
   "maintenance": {
     "title": "मेंटेनेंस",
@@ -19146,7 +19147,8 @@
       "paper": "कागज़ी शीट",
       "critical": "गंभीर रिपोर्ट",
       "call_waiting": "कॉल प्रतीक्षा में",
-      "stabilised": "स्थिर"
+      "stabilised": "स्थिर",
+      "boarding": "बिस्तर प्रतीक्षा"
     },
     "state": {
       "arrived": "ट्राइएज की प्रतीक्षा",
@@ -19416,6 +19418,46 @@
       "seal_already_handed_over": {
         "rule": "यह सील पहले ही सौंपी गई।",
         "fix": "MLC डेस्क खोलें"
+      },
+      "disposition_already_decided": {
+        "rule": "निर्णय पहले से हो चुका।",
+        "fix": "एपिसोड खोलें"
+      },
+      "disposition_mismatch": {
+        "rule": "तय निर्णय से मेल नहीं।",
+        "fix": "एपिसोड खोलें"
+      },
+      "disposition_reason_needed": {
+        "rule": "निर्णय का कारण दें।",
+        "fix": "कारण जोड़ें"
+      },
+      "admission_refused": {
+        "rule": "भर्ती अनुरोध नहीं बन सका।",
+        "fix": "भर्ती डेस्क को कॉल करें"
+      },
+      "already_boarding": {
+        "rule": "पहले से बिस्तर की प्रतीक्षा में।",
+        "fix": "एपिसोड खोलें"
+      },
+      "referral_not_for_money": {
+        "rule": "पैसे के लिए कभी रेफ़र नहीं।",
+        "fix": "चिकित्सीय कारण चुनें"
+      },
+      "lama_witness_needed": {
+        "rule": "इनकार का गवाह दूसरा स्टाफ़।",
+        "fix": "गवाह चुनें"
+      },
+      "last_seen_before_arrival": {
+        "rule": "आगमन से पहले का समय नहीं।",
+        "fix": "समय ठीक करें"
+      },
+      "died_before_arrival": {
+        "rule": "मृत्यु का समय आगमन से पहले।",
+        "fix": "समय ठीक करें"
+      },
+      "mccd_required": {
+        "rule": "MCCD संख्या दर्ज करें।",
+        "fix": "MCCD संख्या दर्ज करें"
       }
     },
     "esi": {
@@ -19456,7 +19498,9 @@
       "bays": "खाली बेड",
       "baysOf": "{{total}} में से",
       "arrivals": "आज आए",
-      "broughtDead": "आज मृत लाए गए"
+      "broughtDead": "आज मृत लाए गए",
+      "boarding": "{{n}} बिस्तर प्रतीक्षा में",
+      "lwbs": "{{n}} बिना दिखाए गए"
     },
     "col": {
       "expected": "आने वाले",
@@ -19588,7 +19632,10 @@
     "casualty": {
       "send": "कैजुअल्टी भेजें",
       "sent": "ER बोर्ड पर आने वाले में"
-    }
+    },
+    "lwbs": "बिना दिखाए गए",
+    "lwbsSeen": "आख़िरी बार देखा (IST, ख़ाली = अभी)",
+    "lwbsSave": "दर्ज करें: बिना दिखाए चले गए"
   },
   "erTriage": {
     "title": "ER ट्राइएज",
@@ -19688,7 +19735,8 @@
       "procedure": "प्रक्रिया",
       "consent": "सहमति",
       "stabilised": "स्थिर",
-      "mlc": "MLC"
+      "mlc": "MLC",
+      "dispo": "निर्णय"
     },
     "meds": "दवाएँ",
     "calls": "विशेषज्ञ कॉल",
@@ -19806,6 +19854,102 @@
       "open": "MLC खोलें",
       "opened": "MLC {{no}} खुला",
       "openedLate": "MLC {{no}} खुला (देर से)"
+    },
+    "dispo": {
+      "tab": {
+        "discharge": "छुट्टी",
+        "admit": "भर्ती",
+        "refer": "रेफ़र",
+        "lama": "LAMA",
+        "death": "मृत्यु",
+        "left": "चले गए"
+      },
+      "reason": "क्यों (निर्णय)",
+      "diagnosis": "निदान",
+      "treatment": "दिया गया इलाज",
+      "medicines": "दवाएँ (हर पंक्ति में एक)",
+      "medicinesHint": "पैरासिटामोल · 500 mg · दिन में तीन बार",
+      "returnIf": "तुरंत वापस आएँ अगर",
+      "followDept": "फ़ॉलो-अप OPD (विभाग)",
+      "followOn": "फ़ॉलो-अप तारीख",
+      "dischargeNow": "सारांश पर हस्ताक्षर · छुट्टी",
+      "discharged": "छुट्टी — बे सफ़ाई में",
+      "consultant": "भर्ती करने वाले कंसल्टेंट",
+      "class": "वार्ड श्रेणी",
+      "provisional": "अस्थायी निदान",
+      "admitNow": "यूनिट को सौंपें",
+      "boarding": "भर्ती अनुरोध — बिस्तर तक यहीं",
+      "admitted": "भर्ती — बे सफ़ाई में",
+      "facility": "कहाँ रेफ़र",
+      "referralNote": "रेफ़रल नोट",
+      "escort": "साथ में",
+      "transport": "वाहन",
+      "referNow": "रेफ़र करें",
+      "referred": "रेफ़र — बे सफ़ाई में",
+      "risks": "बताए गए जोखिम",
+      "signerName": "हस्ताक्षर करने वाले का नाम",
+      "relation": "रिश्ता",
+      "witness": "गवाह (स्टाफ़)",
+      "lamaNow": "LAMA दर्ज करें",
+      "lamaDone": "LAMA दर्ज — बे सफ़ाई में",
+      "diedAt": "मृत्यु का समय",
+      "mccd": "MCCD संख्या",
+      "mccdHint": "MCCD संख्या के बिना केवल पुलिस को सूचित MLC में।",
+      "deathNow": "मृत्यु दर्ज करें",
+      "deathDone": "मृत्यु दर्ज — शव मुर्दाघर रजिस्टर में",
+      "lastSeen": "आख़िरी बार देखा",
+      "lwbsNow": "बिना दिखाए चले गए",
+      "lwbsDone": "दर्ज: बिना दिखाए चले गए",
+      "abscondNow": "भाग गए",
+      "abscondDone": "भाग गए — सुरक्षा को बताया",
+      "abscondPolice": "भाग गए — सुरक्षा को बताया; पुलिस को सूचित करें (MLC)",
+      "sign": {
+        "chest_pain": "सीने में दर्द",
+        "breathlessness": "साँस फूलना",
+        "bleeding": "ख़ून आना",
+        "high_fever": "तेज़ बुख़ार",
+        "repeated_vomiting": "बार-बार उल्टी",
+        "fits": "दौरे",
+        "drowsiness": "बहुत नींद / बेहोशी",
+        "worsening_pain": "दर्द बढ़ना",
+        "wound_redness": "घाव लाल या सूजा",
+        "less_urine": "पेशाब कम",
+        "weakness_one_side": "एक तरफ़ कमज़ोरी",
+        "severe_headache": "तेज़ सिरदर्द"
+      },
+      "cls": {
+        "general": "जनरल",
+        "semi_private": "सेमी-प्राइवेट",
+        "private": "प्राइवेट",
+        "icu": "ICU"
+      },
+      "referReason": {
+        "higher_centre_care": "बड़े केंद्र की ज़रूरत",
+        "specialty_not_available": "विशेषज्ञ नहीं",
+        "bed_not_available": "बिस्तर नहीं",
+        "equipment_not_available": "उपकरण नहीं",
+        "patient_choice": "मरीज़ की इच्छा"
+      },
+      "escortOf": {
+        "doctor": "डॉक्टर",
+        "nurse": "नर्स",
+        "paramedic": "पैरामेडिक",
+        "family": "परिवार"
+      },
+      "transportOf": {
+        "own_ambulance": "अस्पताल एम्बुलेंस",
+        "ambulance_108": "108 एम्बुलेंस",
+        "private_vehicle": "निजी वाहन",
+        "other": "अन्य"
+      },
+      "signer": {
+        "patient": "मरीज़ हस्ताक्षर",
+        "representative": "प्रतिनिधि हस्ताक्षर",
+        "refused_to_sign": "हस्ताक्षर से इनकार"
+      },
+      "searched": "परिसर में खोजा?",
+      "searchedYes": "हाँ, खोजा",
+      "searchedNo": "नहीं खोजा"
     }
   },
   "erMlc": {

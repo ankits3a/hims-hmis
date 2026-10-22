@@ -32,6 +32,7 @@ Source: `apps/core/src/modules/patients/`
   - types: `AllergyRow`
 - `brought-dead.ts`
   - `recordBroughtDeadDeath(tx: Tx, actor: Actor, patientId: string, diedAt: Date): Promise<void>`
+  - `recordErDeath(tx: Tx, actor: Actor, patientId: string, diedAt: Date, cert: { mccdNo: string } | { medicoLegal: true }): Promise<void>`
 - `coverages.ts`
   - `coverageSumInsuredPaise(db: Db | Tx, coverageId: string): Promise<number | null>`
   - `listPatientCoverages(db: Db, actor: Actor, patientId: string, opts: { reason?: string } = {}): Promise<CoverageRow[]>`

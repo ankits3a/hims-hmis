@@ -7,7 +7,7 @@
 // Importing this module DEFINES the re-triage task kind and its skill (the API and the worker both need them).
 import "./task-kinds";
 export { emergencyManifest } from "./manifest";
-export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_CARE, ER_IDENTITY_LINK, ER_MLC, ER_TRIAGE } from "./names";
+export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_CARE, ER_DISPOSITION, ER_IDENTITY_LINK, ER_MLC, ER_TRIAGE } from "./names";
 export { EmergencyModule } from "./emergency.module";
 export { ErError, ErRefusal, erRefusalStatus } from "./errors";
 export type { ErErrorCode } from "./errors";
@@ -45,3 +45,9 @@ export {
   readMlc, readMlcDesk, recordBelongings, recordPoliceIntimation, sweepErMlcClocks,
 } from "./mlc";
 export { ER_MLC_INTIMATION_TASK, ER_MLC_SKILL } from "./task-kinds";
+// Lane 5 (#812) — disposition and departure: decide, discharge, hand to a unit (boarding), refer out, LAMA, LWBS, abscond, death.
+export {
+  ER_BOARDING_CLIMB_MIN, ER_BOARDING_TASK_MIN, ER_DISPO_ACTOR, arbitrateAdmission, decideDisposition, recordSpecialtyRefusal, departIn, dischargeFromEr, handToUnit, recordAbscond, recordErDeathIntent, recordLama, recordLwbs, referOut,
+  sweepErBoarding,
+} from "./dispo";
+export { ER_ARBITRATION_TASK, ER_BED_SKILL, ER_BOARDING_TASK, ER_MS_SKILL } from "./task-kinds";
