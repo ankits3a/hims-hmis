@@ -1,6 +1,6 @@
 import { ApiError, api } from "./api";
 import type {
-  ErBay, ErBill, ErBillDesk, ErBoard, ErCodeView, ErCodes, ErMciBoard, ErMciCount, ErMciPack, ErMciSurgeBed, ErCareView, ErDeskView, ErDoctorOption, ErEpisodeView, ErItemOption, ErMlcDesk, ErMlcDetail, ErPatientHit, ErRefusalBody,
+  ErBay, ErBill, ErBillDesk, ErBoard, ErCodeView, ErCodes, ErMciBoard, ErMciCount, ErMciFamilyDesk, ErMciPack, ErMciSurgeBed, ErCareView, ErDeskView, ErDoctorOption, ErEpisodeView, ErItemOption, ErMlcDesk, ErMlcDetail, ErPatientHit, ErRefusalBody,
 } from "@hmis/contracts";
 
 /* ═══ ER lane 1 (#808) — `apps/core/src/modules/emergency/emergency.controller.ts`. The paths are the contract's
@@ -82,6 +82,8 @@ const ER_ROUTES = {
   mciArrival: "/er/mci/arrivals",
   mciTag: "/er/mci/tag",
   mciSurge: "/er/mci/surge",
+  mciStops: "/er/mci/stops",
+  mciFamily: "/er/mci/family",
 } as const;
 export const ER_BOARD_TOPIC = "er:board";
 export const ER_WALL_TOPIC = "erwall:board";
@@ -261,9 +263,11 @@ export const fetchMciBoard = () => api<ErMciBoard>("GET", ER_ROUTES.mci);
 export const fetchMciPacks = () => api<{ ready: Omit<ErMciPack, "packId" | "patientId" | "aliasHi">[] }>("GET", ER_ROUTES.mciPacks);
 export const fetchMciOverflowBeds = () => api<ErMciSurgeBed[]>("GET", ER_ROUTES.mciOverflow);
 export const fetchMciCount = (mciId: string) => api<ErMciCount>("GET", `${ER_ROUTES.mci}/${encodeURIComponent(mciId)}/count`);
-export const declareMciApi = (body: Record<string, unknown>) => post<{ mciId: string }>(ER_ROUTES.mciDeclare, body);
+export const declareMciApi = (body: Record<string, unknown>) => post<{ mciId: string; paged: number }>(ER_ROUTES.mciDeclare, body);
 export const standDownMciApi = (body: Record<string, unknown>) => post<{ backToEsi: number }>(ER_ROUTES.mciStandDown, body);
 export const mintPacksApi = (body: Record<string, unknown>) => post<{ packs: ErMciPack[] }>(ER_ROUTES.mciPacks, body);
 export const mciArrivalApi = (body: Record<string, unknown>) => post<{ episodeNo: string; alias: string }>(ER_ROUTES.mciArrival, body);
 export const mciTagApi = (body: Record<string, unknown>) => post<{ tag: ErMciTagName }>(ER_ROUTES.mciTag, body);
+export const fetchMciFamilyDesk = () => api<ErMciFamilyDesk>("GET", ER_ROUTES.mciFamily);
+export const mciStopsApi = (body: Record<string, unknown>) => post<{ decision: "confirm" | "decline"; decidedAt: string }>(ER_ROUTES.mciStops, body);
 export const surgeApi = (body: Record<string, unknown>) => post<{ opened: { bedId: string; code: string }[] }>(ER_ROUTES.mciSurge, body);

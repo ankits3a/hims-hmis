@@ -1,21 +1,29 @@
 import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
-import { ER_INTENTS, ER_MCI_COMMAND_ROLES, ER_OPEN_STATES, mciTagProposal, newId } from "@hmis/contracts";
+import { ER_INTENTS, ER_MCI_COMMAND_ROLES, ER_MCI_PRESS_SCRIPT, ER_OPEN_STATES, mciFamilyStage, mciTagProposal, newId } from "@hmis/contracts";
+import { raiseNoticeIn } from "../../kernel/alerts/notices";
 import { withTx } from "../../kernel/db/client";
 import {
-  erBands, erBills, erEpisodes, erEventAccounts, erMciEvents, erMciPacks, erMciSurgeBeds, erMciTags, resources, roleAssignments, users,
+  erBands, erBills, erEpisodes, erEventAccounts, erMciEvents, erMciPacks, erMciSurgeBeds, erMciTags, erMlcs, patients, resources, roleAssignments, users,
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
-import { initialsOf } from "../ipd";
+import { actorHoldsAnyRole, usersHoldingRole } from "../../kernel/workflow/roles";
+import { initialsOf, placedAdmissionOf } from "../ipd";
 import { PatientError, getPatientSummaries, registerPatient } from "../patients";
+import { calloutList, listRosterPositions, listTeams, onDutyNow, orgDepartmentByCode, teamMembers } from "../roster";
+import { cancelTask, findTasks, raiseTask } from "../tasks";
 import { arriveIn, arrivedEvent, gateInstant } from "./arrival";
 import { bandPerson } from "./bands";
 import { aliasHiOf, istYear, lockEpisode, lockKey, onceEr, provenanceOf, requireErPermission } from "./core";
 import { ErRefusal } from "./errors";
-import { erBandPrinted, erEventAccountOpened, erMciDeclared, erMciPacksMinted, erMciStoodDown, erMciSurgeOpened, erMciTagged } from "./events";
+import {
+  erBandPrinted, erEventAccountOpened, erMciDeclared, erMciPacksMinted, erMciStopsDecided, erMciStoodDown, erMciSurgeOpened, erMciTagged,
+} from "./events";
 import { runningMci } from "./mci-bays";
 import { openMlcIn } from "./mlc";
 import { ER_ARRIVAL_REGISTER, ER_MCI } from "./names";
-import type { Actor, ErBandPayload, ErIntentName, ErMciBoard, ErMciCount, ErMciSurgeBed, ErMciTag } from "@hmis/contracts";
+import { ER_MCI_STOPS_TASK } from "./task-kinds";
+import type { TaskRow } from "../tasks";
+import type { Actor, ErBandPayload, ErIntentName, ErMciBoard, ErMciFamilyDesk, ErMciZone, ErMciCount, ErMciSurgeBed, ErMciTag } from "@hmis/contracts";
 import type { z } from "zod";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -77,6 +85,27 @@ function packBand(packNo: string, uhid: string): ErBandPayload {
 
 // ═══════════════════════════════════════════ declare and stand down ═══════════════════════════════════════════
 
+/** The Casualty department of the roster (`org_departments.code`). */
+export const ER_ROSTER_DEPARTMENT = "CAS";
+/** #877: the most phones one Code Yellow rings (a bound, not a target: a 1,200-bed hospital's ER + on-call is well under). */
+const MCI_PAGE_MAX = 100;
+
+/**
+ * #877 item 1 — WHO A CODE YELLOW PAGES (DECIDED, the standard disaster call-out): every person on the roster's call-out
+ * list for Casualty NOW (its own duty plus the hospital-wide on-call cover the roster carries), then everyone who commands
+ * a Code Yellow (the MS and the duty managers, by role). Nobody on the roster → the casualty nurses (`er_nurse`). The
+ * declarer is not paged (they are on the board).
+ */
+async function mciPageList(tx: Tx, declarer: string, at: Date): Promise<string[]> {
+  const ids = new Set<string>();
+  const cas = await orgDepartmentByCode(tx, ER_ROSTER_DEPARTMENT);
+  if (cas !== undefined) for (const r of await calloutList(tx, cas.id, at)) if (r.userId !== null) ids.add(r.userId);
+  if (ids.size === 0) for (const u of await usersHoldingRole(tx, "er_nurse")) ids.add(u);
+  for (const role of ER_MCI_COMMAND_ROLES) for (const u of await usersHoldingRole(tx, role)) ids.add(u);
+  ids.delete(declarer);
+  return [...ids].slice(0, MCI_PAGE_MAX);
+}
+
 export async function declareMci(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"declare_mci">> {
   const input: Input<"declare_mci"> = ER_INTENTS.declare_mci.input.parse(raw);
   await requireErPermission(db, actor, ER_MCI);
@@ -94,7 +123,21 @@ export async function declareMci(db: Db, actor: Actor, raw: unknown, opts: Opts 
       id, name: input.name, place: input.place ?? null, note: input.note ?? null, eventAccountId: accountId, declaredBy: actor.id, declaredAt: at,
     });
     await appendEvent(tx, erMciDeclared.make({ payload: { mciId: id, eventAccountId: accountId, provenance: provenanceOf(actor) }, actor, correlationId: id, occurredAt: at }));
-    return { mciId: id, eventAccountId: accountId, declaredAt: at.toISOString() };
+    // #877: THE PAGE, in the declaration's transaction — a bell row per person, relayed to the phones as the platform's
+    // content-free notice. Words: the code and the place; there is no patient in them (there is none yet).
+    const pageIds = await mciPageList(tx, actor.id, at);
+    for (const userId of pageIds) {
+      await raiseNoticeIn(tx, {
+        userId, kind: "er.code_yellow", title: `Code Yellow · ${input.place ?? "ER"}`, body: "Mass casualty · report to the ER",
+        refType: "er_mci", refId: id, sourceKey: `er_mci:${id}`, at,
+      });
+    }
+    // #877 item 2: the OPD / elective OT stop is PROPOSED to the MS — a task, never a switch.
+    await raiseTask(tx, MCI_ACTOR, {
+      kind: ER_MCI_STOPS_TASK, priority: "stat", dueAt: new Date(at.getTime() + 15 * 60_000).toISOString(), sourceRef: stopsRef(id),
+      note: `Code Yellow (${input.name}): stop new OPD registrations and elective OT lists? Answer on the MCI board.`, raisedAt: at.toISOString(),
+    }, at);
+    return { mciId: id, eventAccountId: accountId, declaredAt: at.toISOString(), paged: pageIds.length };
   }), at);
 }
 
@@ -107,10 +150,62 @@ export async function standDownMci(db: Db, actor: Actor, raw: unknown, opts: Opt
     const m = await lockMci(tx, input.mciId);
     if (m.stoodDownAt !== null) throw new ErRefusal("mci_stood_down", { stoodDownAt: m.stoodDownAt.toISOString() });
     await tx.update(erMciEvents).set({ stoodDownBy: actor.id, stoodDownAt: at, standDownNote: input.note ?? null }).where(eq(erMciEvents.id, m.id));
+    // #877: an undecided OPD / OT stop proposal is withdrawn with the event.
+    const stops = await stopsTaskOf(tx, m);
+    if (stops !== undefined && OPEN_TASK.includes(stops.state)) await cancelTask(tx, MCI_ACTOR, { taskId: stops.id, version: stops.version, reason: "stood_down" }, at);
     // Back to ESI: the untriaged patients of the event go back on the door-to-triage clock (the sweep reads the stand-down).
     const back = await tx.select({ id: erEpisodes.id }).from(erEpisodes).where(and(eq(erEpisodes.mciId, m.id), eq(erEpisodes.state, "arrived")));
     await appendEvent(tx, erMciStoodDown.make({ payload: { mciId: m.id, backToEsi: back.length, provenance: provenanceOf(actor) }, actor, correlationId: m.id, occurredAt: at }));
     return { mciId: m.id, stoodDownAt: at.toISOString(), backToEsi: back.length };
+  }), at);
+}
+
+// ═══════════════════════════════════════════ #877: the OPD / elective OT stop, proposed to the MS ═══════════════════════════════════════════
+
+const MCI_ACTOR: Actor = { type: "system", id: "er-mci" };
+const OPEN_TASK: readonly string[] = ["created", "assigned", "accepted", "in_progress"];
+const stopsRef = (mciId: string): string => `er_mci_stops:${mciId}`;
+/** The answer is kept on the task itself: `cancel_reason` "confirmed" / "declined" (+ the MS's note), or "stood_down". */
+const STOPS_REASON = { confirm: "confirmed", decline: "declined" } as const;
+
+async function stopsTaskOf(db: Db | Tx, m: Pick<MciRow, "id">): Promise<TaskRow | undefined> {
+  // One task per event, newest first: the last fifty events' proposals are more than any board needs.
+  const rows = await findTasks(db, { kinds: [ER_MCI_STOPS_TASK], limit: 50 });
+  return rows.find((t) => t.sourceRef === stopsRef(m.id));
+}
+
+function stopsView(t: TaskRow | undefined): ErMciBoard["stops"] {
+  if (t === undefined) return null;
+  if (OPEN_TASK.includes(t.state)) return { state: "proposed", decidedAt: null, note: null };
+  const [reason, ...rest] = (t.cancelReason ?? "").split(": ");
+  if (reason !== "confirmed" && reason !== "declined") return null;
+  return { state: reason, decidedAt: t.updatedAt.toISOString(), note: rest.length === 0 ? null : rest.join(": ") };
+}
+
+export async function decideMciStops(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"decide_mci_stops">> {
+  const input: Input<"decide_mci_stops"> = ER_INTENTS.decide_mci_stops.input.parse(raw);
+  await requireErPermission(db, actor, ER_MCI);
+  const at = opts.now ?? new Date();
+  return onceEr(db, actor, "decide_mci_stops", input.idempotencyKey, input, () => withTx(db, async (tx) => {
+    if (actor.type !== "user" || !(await actorHoldsAnyRole(tx, actor.id, ["medical_superintendent"]))) throw new ErRefusal("mci_stops_not_ms");
+    const m = await lockMci(tx, input.mciId);
+    if (m.stoodDownAt !== null) throw new ErRefusal("mci_stood_down", { stoodDownAt: m.stoodDownAt.toISOString() });
+    const t = await stopsTaskOf(tx, m);
+    if (t === undefined || !OPEN_TASK.includes(t.state)) throw new ErRefusal("mci_stops_decided", { state: stopsView(t)?.state ?? null });
+    const reason = `${STOPS_REASON[input.decision]}${input.note === undefined ? "" : `: ${input.note}`}`.slice(0, 280);
+    await cancelTask(tx, MCI_ACTOR, { taskId: t.id, version: t.version, reason }, at);
+    if (input.decision === "confirm") {
+      // The duty managers carry the stop out in person (OPD registration desks, the OT list); no screen is switched off.
+      for (const userId of await usersHoldingRole(tx, "duty_manager")) {
+        if (userId === actor.id) continue;
+        await raiseNoticeIn(tx, {
+          userId, kind: "er.mci_stops", title: "Code Yellow · MS: stop OPD intake", body: "Stop new OPD registrations and elective OT lists",
+          refType: "er_mci", refId: m.id, sourceKey: `er_mci_stops:${m.id}`, at,
+        });
+      }
+    }
+    await appendEvent(tx, erMciStopsDecided.make({ payload: { mciId: m.id, decision: input.decision, provenance: provenanceOf(actor) }, actor, correlationId: m.id, occurredAt: at }));
+    return { mciId: m.id, decision: input.decision, decidedAt: at.toISOString() };
   }), at);
 }
 
@@ -324,6 +419,47 @@ export async function readMciCount(db: Db, actor: Actor, mciId: string, opts: Op
   return countOf(db, m, opts.now ?? new Date());
 }
 
+/**
+ * #877 item 4 — the teams per zone (DECIDED: a zone is a PLACE): the ER — Casualty's active roster teams and who is on duty
+ * in Casualty now (the published roster) — then one surge zone per ward whose overflow beds this event opened, with the
+ * teams homed in that ward. Names and roles only.
+ */
+async function zonesOf(db: Db, m: MciRow, at: Date): Promise<ErMciZone[]> {
+  const names = new Map<string, string>();
+  const nameOf = async (ids: readonly string[]): Promise<void> => {
+    const missing = ids.filter((id) => !names.has(id));
+    if (missing.length === 0) return;
+    for (const u of await db.select({ id: users.id, n: users.fullName }).from(users).where(inArray(users.id, missing))) names.set(u.id, u.n);
+  };
+  const teamsView = async (rows: { id: string; code: string; name: string }[]): Promise<ErMciZone["teams"]> => {
+    const out: ErMciZone["teams"] = [];
+    for (const t of rows) {
+      const members = await teamMembers(db, t.id, at);
+      await nameOf(members.map((x) => x.userId));
+      out.push({ code: t.code, name: t.name, members: members.map((x) => ({ name: names.get(x.userId) ?? x.userId, role: x.roleInTeam })) });
+    }
+    return out;
+  };
+  const zones: ErMciZone[] = [];
+  const cas = await orgDepartmentByCode(db, ER_ROSTER_DEPARTMENT);
+  if (cas !== undefined) {
+    const labels = new Map((await listRosterPositions(db)).map((p) => [p.key, p.label] as const));
+    const duty = await onDutyNow(db, cas.id, at);
+    await nameOf(duty.positions.flatMap((p) => p.userIds));
+    const onDuty = duty.positions.flatMap((p) => p.userIds.map((u) => ({ name: names.get(u) ?? u, position: labels.get(p.positionKey) ?? p.positionKey })));
+    zones.push({ zone: "ER", teams: await teamsView(await listTeams(db, { departmentId: cas.id, activeOnly: true })), onDuty });
+  }
+  const wards = (await db.execute(sql`
+    select distinct w.id, w.name from ${erMciSurgeBeds} s join ${resources} b on b.id = s.bed_id join ${resources} w on w.id = b.parent_id
+    where s.mci_id = ${m.id} order by w.name
+  `)).rows as { id: string; name: string }[];
+  if (wards.length > 0) {
+    const all = await listTeams(db, { activeOnly: true });
+    for (const w of wards) zones.push({ zone: `Surge · ${w.name}`, teams: await teamsView(all.filter((t) => t.homeLocationResourceId === w.id)), onDuty: [] });
+  }
+  return zones;
+}
+
 export async function readMciBoard(db: Db, actor: Actor, opts: Opts = {}): Promise<ErMciBoard> {
   await requireErPermission(db, actor, ER_MCI);
   const at = opts.now ?? new Date();
@@ -364,6 +500,48 @@ export async function readMciBoard(db: Db, actor: Actor, opts: Opts = {}): Promi
   const packs = (await db.select({ n: sql<number>`count(*)` }).from(erMciPacks).where(isNull(erMciPacks.usedEpisodeId)))[0];
   return {
     active: m === undefined ? null : await countOf(db, m, at), recent, patients, packsReady: Number(packs?.n ?? 0),
-    bays: { free: Number(b.er_free), total: Number(b.er_total) }, surge, hospitalBedsFree: Number(b.ip_free), serverNow: at.toISOString(),
+    bays: { free: Number(b.er_free), total: Number(b.er_total) }, surge, hospitalBedsFree: Number(b.ip_free),
+    stops: m === undefined ? null : stopsView(await stopsTaskOf(db, m)), teams: m === undefined ? [] : await zonesOf(db, m, at), serverNow: at.toISOString(),
   };
+}
+
+// ═══════════════════════════════════════════ #877: the family information desk ═══════════════════════════════════════════
+
+/**
+ * #877 item 3 — the family information desk's list for the running Code Yellow (else the last one stood down): per patient
+ * the name (the pack / unknown alias while unidentified), a stage word and where — nothing clinical. MLC, sealed and
+ * confidential patients are never listed (lane 9's family-surface rule, read from the record — the true record too once an
+ * unknown is merged); the desk sees only how many are withheld and sends those families to the ER desk. With the fixed
+ * press / VIP script.
+ */
+export async function readMciFamilyDesk(db: Db, actor: Actor, opts: Opts = {}): Promise<ErMciFamilyDesk> {
+  await requireErPermission(db, actor, ER_MCI);
+  const at = opts.now ?? new Date();
+  const m = (await runningMci(db)) ?? (await db.select().from(erMciEvents).orderBy(desc(erMciEvents.declaredAt)).limit(1))[0];
+  const empty = { asOf: at.toISOString(), rows: [], withheld: 0, script: [...ER_MCI_PRESS_SCRIPT] };
+  if (m === undefined) return { mciId: null, name: null, ...empty };
+  const rows = await db.select().from(erEpisodes).where(eq(erEpisodes.mciId, m.id)).orderBy(erEpisodes.arrivedAt).limit(500);
+  if (rows.length === 0) return { mciId: m.id, name: m.name, ...empty };
+  const people = new Map((await getPatientSummaries(db, actor, rows.map((e) => e.patientId))).map((p) => [p.requestedId, p] as const));
+  const ids = [...new Set(rows.flatMap((e) => [e.patientId, people.get(e.patientId)?.id ?? e.patientId]))];
+  const flags = new Map((await db.select({ id: patients.id, sealed: patients.sensitiveContext, confidential: patients.isConfidential })
+    .from(patients).where(inArray(patients.id, ids))).map((p) => [p.id, p.sealed || p.confidential] as const));
+  const mlc = new Set((await db.select({ id: erMlcs.episodeId }).from(erMlcs).where(inArray(erMlcs.episodeId, rows.map((e) => e.id)))).map((r) => r.id));
+  const bayIds = [...new Set(rows.flatMap((e) => (e.bayId === null ? [] : [e.bayId])))];
+  const bays = new Map(bayIds.length === 0 ? [] : (await db.select({ id: resources.id, code: resources.code }).from(resources)
+    .where(inArray(resources.id, bayIds))).map((b) => [b.id, b.code] as const));
+  let withheld = 0;
+  const out: ErMciFamilyDesk["rows"] = [];
+  for (const e of rows) {
+    const p = people.get(e.patientId);
+    const trueId = p?.id ?? e.patientId;
+    if (mlc.has(e.id) || flags.get(e.patientId) === true || flags.get(trueId) === true) { withheld += 1; continue; }
+    const named = p !== undefined && (!e.unidentified || p.id !== e.patientId);
+    const stage = mciFamilyStage({ state: e.state, disposition: e.disposition, outcome: e.outcome });
+    let where: string | null = null;
+    if (OPEN.includes(e.state)) where = e.bayId === null ? "ER" : `ER · ${bays.get(e.bayId) ?? ""}`.trim();
+    else if (stage === "Admitted") where = (await placedAdmissionOf(db, [trueId]))?.wardName ?? null;
+    out.push({ label: named ? (p.name ?? e.alias ?? e.episodeNo) : (e.alias ?? e.episodeNo), packNo: e.mciPackNo ?? null, stage, where });
+  }
+  return { mciId: m.id, name: m.name, asOf: at.toISOString(), rows: out, withheld, script: [...ER_MCI_PRESS_SCRIPT] };
 }

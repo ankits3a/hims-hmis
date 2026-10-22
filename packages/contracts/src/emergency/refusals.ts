@@ -123,6 +123,8 @@ export const ER_REFUSALS = {
   mci_active: { rule: "A Code Yellow is already running; one event at a time.", fix: "Open the MCI board" },
   mci_not_found: { rule: "No mass-casualty event has this id.", fix: "Open the MCI board" },
   mci_stood_down: { rule: "This Code Yellow has been stood down.", fix: "Open the MCI board" },
+  mci_stops_not_ms: { rule: "Only the medical superintendent stops OPD intake and elective OT.", fix: "Ask the MS" },
+  mci_stops_decided: { rule: "The MS has already answered the OPD and elective OT stop for this Code Yellow.", fix: "Open the MCI board" },
   mci_not_active: { rule: "No Code Yellow is running; tags and packs belong to a declared event.", fix: "Register the usual way" },
   pack_not_found: { rule: "No pre-made pack has this number.", fix: "Check the pack number" },
   pack_used: { rule: "This pack is already on a patient.", fix: "Open that patient" },
