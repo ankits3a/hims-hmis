@@ -30,6 +30,8 @@ Source: `apps/core/src/modules/patients/`
   - `addAllergy(tx: Tx, actor: Actor, patientId: string, input: { substance: string; reaction?: string; severity?: "mild" | "moderate" | "severe…`
   - `listAllergies(db: Db, patientId: string): Promise<AllergyRow[]>`
   - types: `AllergyRow`
+- `brought-dead.ts`
+  - `recordBroughtDeadDeath(tx: Tx, actor: Actor, patientId: string, diedAt: Date): Promise<void>`
 - `coverages.ts`
   - `coverageSumInsuredPaise(db: Db | Tx, coverageId: string): Promise<number | null>`
   - `listPatientCoverages(db: Db, actor: Actor, patientId: string, opts: { reason?: string } = {}): Promise<CoverageRow[]>`

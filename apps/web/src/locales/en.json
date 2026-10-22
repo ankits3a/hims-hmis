@@ -171,7 +171,8 @@
     "erDesk": "ER desk",
     "erBoard": "ER board",
     "erTriage": "ER triage",
-    "erPatient": "ER patient"
+    "erPatient": "ER patient",
+    "erMlc": "MLC desk"
   },
   "palette": {
     "title": "Search",
@@ -19379,6 +19380,42 @@
       "already_stabilised": {
         "rule": "Already recorded as stabilised.",
         "fix": "Open episode"
+      },
+      "mlc_not_found": {
+        "rule": "No MLC with this id.",
+        "fix": "Open MLC desk"
+      },
+      "mlc_already_open": {
+        "rule": "This episode already has an MLC.",
+        "fix": "Add an addendum"
+      },
+      "intimation_recorded": {
+        "rule": "Police intimation already recorded.",
+        "fix": "Add an addendum"
+      },
+      "mlc_countersigned": {
+        "rule": "Already countersigned.",
+        "fix": "Open MLC desk"
+      },
+      "countersign_own_mlc": {
+        "rule": "Another doctor countersigns.",
+        "fix": "Ask a senior"
+      },
+      "intimation_before_arrival": {
+        "rule": "A police intimation is never dated before the arrival.",
+        "fix": "Enter the real time"
+      },
+      "seal_already_collected": {
+        "rule": "This seal is already collected.",
+        "fix": "Pick the next step"
+      },
+      "seal_not_collected": {
+        "rule": "Collect under this seal first.",
+        "fix": "Record collection"
+      },
+      "seal_already_handed_over": {
+        "rule": "This seal is already handed over.",
+        "fix": "Open MLC desk"
       }
     },
     "esi": {
@@ -19650,7 +19687,8 @@
       "call": "Call specialty",
       "procedure": "Procedure",
       "consent": "Consent",
-      "stabilised": "Stabilised"
+      "stabilised": "Stabilised",
+      "mlc": "MLC"
     },
     "meds": "Medicines",
     "calls": "Specialty calls",
@@ -19763,6 +19801,133 @@
         "urgent": "Urgent",
         "routine": "Routine"
       }
+    },
+    "mlc": {
+      "open": "Open MLC",
+      "opened": "MLC {{no}} opened",
+      "openedLate": "MLC {{no}} opened (late)"
     }
+  },
+  "erMlc": {
+    "title": "MLC desk",
+    "owed": "Owed",
+    "recent": "Last 7 days",
+    "noneOwed": "Nothing owed",
+    "case": "Case",
+    "pick": "Pick a case.",
+    "print": "Print MLC copy",
+    "late": "Opened late",
+    "byRule": "By rule",
+    "openedAs": "opened as {{cat}}",
+    "openedBy": "Opened by {{name}} · {{time}}",
+    "mortuary": "Body in the mortuary register — released only on police clearance.",
+    "original": "As opened",
+    "noInformant": "No informant recorded",
+    "addenda": "Addenda",
+    "refusedExam": "Examination refused",
+    "intimation": "Police intimation",
+    "countersign": "Countersign",
+    "recordedBy": "Recorded by {{name}}",
+    "intimated": "Intimation recorded",
+    "intimatedLate": "Intimation recorded (late)",
+    "countersignedBy": "Countersigned by {{name}}",
+    "countersigned": "Countersigned",
+    "countersignNow": "Countersign",
+    "custody": "Belongings and evidence",
+    "noCustody": "Nothing recorded",
+    "belongings": "Belongings",
+    "signedBy": "{{a}} · witness {{b}}",
+    "station": "Police station",
+    "receiver": "Officer",
+    "rank": "Rank",
+    "gd": "GD entry no.",
+    "intimate": "Record intimation",
+    "items": "Items (one per line)",
+    "itemsHint": "Mobile phone\nWallet",
+    "keptInLabel": "Kept with",
+    "keptRef": "Locker no. or name",
+    "evidenceKind": "Evidence",
+    "seal": "Seal no.",
+    "description": "Description",
+    "saveBelongings": "Save belongings",
+    "belongingsSaved": "Belongings recorded",
+    "saveEvidence": "Save link",
+    "linkSaved": "Link #{{link}} recorded",
+    "addAddendum": "Add addendum",
+    "addendumText": "Addendum",
+    "changeCategory": "Category",
+    "keepCategory": "Keep category",
+    "saveAddendum": "Save addendum",
+    "addendumSaved": "Addendum saved",
+    "informant": "Informant",
+    "relation": "Relation",
+    "words": "What happened (their words)",
+    "injurySite": "Injury site",
+    "injuryKind": "Kind",
+    "addInjury": "Add injury",
+    "clock": {
+      "done": "done {{time}}",
+      "doneLate": "done late {{time}}",
+      "dueIn": "due in {{minutes}} min",
+      "dueHours": "due in {{hours}} h",
+      "overdue": "overdue {{minutes}} min",
+      "overdueHours": "overdue {{hours}} h"
+    },
+    "mode": {
+      "written": "Written",
+      "phone_then_written": "Phone, then written",
+      "police_present": "Police present"
+    },
+    "keptIn": {
+      "locker": "Locker",
+      "relative": "Relative",
+      "police": "Police"
+    },
+    "action": {
+      "listed": "Listed",
+      "collected": "Collected",
+      "stored": "Stored",
+      "handed_over": "Handed over"
+    },
+    "evidence": {
+      "clothes": "Clothes",
+      "swab": "Swab",
+      "blood_sample": "Blood sample",
+      "projectile": "Bullet / pellet",
+      "weapon": "Weapon",
+      "viscera": "Viscera",
+      "other": "Other"
+    },
+    "injury": {
+      "abrasion": "Abrasion",
+      "laceration": "Laceration",
+      "contusion": "Contusion",
+      "incised": "Incised",
+      "stab": "Stab",
+      "burn": "Burn",
+      "fracture": "Fracture",
+      "firearm": "Firearm",
+      "bite": "Bite",
+      "ligature_mark": "Ligature mark",
+      "other": "Other"
+    },
+    "category": {
+      "assault": "Assault",
+      "road_accident": "Road accident",
+      "burns": "Burns",
+      "acid_attack": "Acid attack",
+      "poisoning": "Poisoning",
+      "hanging": "Hanging",
+      "drowning": "Drowning",
+      "fall_from_height": "Fall from height",
+      "bite_dispute": "Bite (dispute)",
+      "unknown_unconscious": "Unknown / unconscious",
+      "sexual_assault": "Sexual assault",
+      "brought_dead": "Brought dead",
+      "death_within_24h_injury": "Death within 24 h of injury",
+      "police_brought": "Brought by police",
+      "other": "Other"
+    },
+    "evidenceTab": "Evidence"
   }
 }

@@ -1,10 +1,10 @@
-import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_CARE, ER_TRIAGE } from "./names";
+import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_CARE, ER_MLC, ER_TRIAGE } from "./names";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
-export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_CARE, ER_TRIAGE };
+export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_CARE, ER_MLC, ER_TRIAGE };
 
 /**
- * ER lane 1 (#808, decision 0076) — the emergency department's declared surface: four permissions, four menu entries,
+ * ER lane 1 (#808, decision 0076) — the emergency department's declared surface: five permissions, five menu entries,
  * no subscription (spec SPEC-emergency §4.1, §5 A and C).
  *
  *   er.board.view        read the tracking board (wall and desktop) and the ER desk's lists, and subscribe to `er:board`
@@ -22,6 +22,11 @@ export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_CARE, ER_TRIAGE }
  *                        record, procedures, consent, specialty calls, "stabilised" — doctors and the casualty nurse
  *                        (doctor-only acts also check the doctor role)
  *
+ *   er.mlc               (lane 4, #811) the medico-legal case: open, addendum, police intimation, countersign,
+ *                        belongings, evidence chain of custody, and the MLC desk — doctors, the casualty nurse, the
+ *                        front office and its supervisor, the duty manager, the MS (opening, addenda and countersign
+ *                        also check the doctor role; the countersign a senior one)
+ *
  * Linking an unidentified patient to the true record files a `patient_merge` request and asks `patients.merge`, the
  * permission the merge screen already asks (DECIDED: no third string). No ER string names money (decision 0058).
  * API ONLY: the worker runs the pre-alert lapse inside the bed-reservation minute job and installs nothing.
@@ -37,7 +42,9 @@ export const emergencyManifest: ModuleManifest = {
     { label: "ER triage", path: "/er/triage", permission: ER_TRIAGE },
     // Lane 3 (#810) — the ER patient: care in one place (phone or tablet).
     { label: "ER patient", path: "/er/patient", permission: ER_CARE },
+    // Lane 4 (#811) — the MLC desk: owed intimations and countersigns with their clocks.
+    { label: "MLC desk", path: "/er/mlc", permission: ER_MLC },
   ],
-  permissions: [ER_BOARD_VIEW, ER_ARRIVAL_REGISTER, ER_TRIAGE, ER_BOARD_WALL, ER_CARE],
+  permissions: [ER_BOARD_VIEW, ER_ARRIVAL_REGISTER, ER_TRIAGE, ER_BOARD_WALL, ER_CARE, ER_MLC],
   subscriptions: [],
 };

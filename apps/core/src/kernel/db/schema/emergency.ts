@@ -430,3 +430,144 @@ export const erCriticalAlerts = pgTable(
   },
   (t) => [uniqueIndex("er_critical_alerts_call_ux").on(t.callId)],
 );
+
+/* ═══════════════════════════════ ER lane 4 (#811) — the medico-legal case ═══════════════════════════════ */
+
+/**
+ * The MLC register: one case per ER episode, serial `MLC26-000123` per IST year. IMMUTABLE — a trigger in the
+ * migration refuses every UPDATE and DELETE (`er_mlc_append_only`); a correction is an addendum (`er_mlc_addenda`), the
+ * obligations' clocks live in `er_mlc_obligations`. Opened by a doctor, or by rule at arrival (an unidentified patient, a
+ * body brought dead). Retyped value lists: `ER_MLC_CATEGORY_VALUES` mirrors the contract (schema-parity test).
+ */
+export const ER_MLC_CATEGORY_VALUES = [
+  "assault", "road_accident", "burns", "acid_attack", "poisoning", "hanging", "drowning", "fall_from_height", "bite_dispute",
+  "unknown_unconscious", "sexual_assault", "brought_dead", "death_within_24h_injury", "police_brought", "other",
+] as const;
+const MLC_CATEGORIES_SQL = list(ER_MLC_CATEGORY_VALUES);
+
+export const erMlcs = pgTable(
+  "er_mlcs",
+  {
+    id: text("id").primaryKey(),
+    mlcNo: text("mlc_no").notNull(),
+    mlcYear: integer("mlc_year").notNull(),
+    mlcSerial: integer("mlc_serial").notNull(),
+    episodeId: text("episode_id").notNull().references(() => erEpisodes.id),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    category: text("category").notNull(),
+    informant: jsonb("informant").$type<{ name: string; relation: string; phone?: string; words: string }>(),
+    injuries: jsonb("injuries").$type<{ site: string; kind: string; sizeCm?: string; description?: string }[]>().notNull(),
+    pocso: boolean("pocso").notNull(),
+    freeByLaw: boolean("free_by_law").notNull(),
+    openedBy: text("opened_by").notNull(),
+    openedByRule: boolean("opened_by_rule").notNull(),
+    openedAt: timestamp("opened_at", { withTimezone: true }).notNull(),
+    late: boolean("late").notNull(),
+    provenance: text("provenance").notNull(),
+  },
+  (t) => [
+    uniqueIndex("er_mlcs_no_ux").on(t.mlcNo),
+    uniqueIndex("er_mlcs_serial_ux").on(t.mlcYear, t.mlcSerial),
+    uniqueIndex("er_mlcs_episode_ux").on(t.episodeId),
+    index("er_mlcs_opened_idx").on(t.openedAt),
+    check("er_mlcs_category_ck", sql`${t.category} in (${MLC_CATEGORIES_SQL})`),
+  ],
+);
+
+/**
+ * The two obligations of every MLC (spec §3.7): `police_intimation` due 1 h after opening (a task at the due instant,
+ * then one climb), `faculty_countersign` due in 24 h (breached → one notice on the ladder; still owed after a death).
+ * The ONE mutable MLC table: the clock's bookkeeping (met, task, climb, breach), each stamped once.
+ */
+export const erMlcObligations = pgTable(
+  "er_mlc_obligations",
+  {
+    id: text("id").primaryKey(),
+    mlcId: text("mlc_id").notNull().references(() => erMlcs.id),
+    kind: text("kind").notNull(),
+    dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
+    metAt: timestamp("met_at", { withTimezone: true }),
+    metBy: text("met_by"),
+    taskId: text("task_id"),
+    climbedAt: timestamp("climbed_at", { withTimezone: true }),
+    breachedAt: timestamp("breached_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("er_mlc_obligations_kind_ux").on(t.mlcId, t.kind),
+    index("er_mlc_obligations_owed_idx").on(t.dueAt).where(sql`${t.metAt} is null`),
+    check("er_mlc_obligations_kind_ck", sql`${t.kind} in ('police_intimation', 'faculty_countersign')`),
+    check("er_mlc_obligations_met_ck", sql`(${t.metAt} is null) = (${t.metBy} is null)`),
+  ],
+);
+
+/** A correction or addition to an MLC, by a doctor. Append-only (trigger). */
+export const erMlcAddenda = pgTable(
+  "er_mlc_addenda",
+  {
+    id: text("id").primaryKey(),
+    mlcId: text("mlc_id").notNull().references(() => erMlcs.id),
+    text: text("text").notNull(),
+    category: text("category"),
+    examinationRefused: boolean("examination_refused").notNull(),
+    injuries: jsonb("injuries").$type<{ site: string; kind: string; sizeCm?: string; description?: string }[]>().notNull(),
+    authorId: text("author_id").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("er_mlc_addenda_mlc_idx").on(t.mlcId, t.at),
+    check("er_mlc_addenda_category_ck", sql`${t.category} is null or ${t.category} in (${MLC_CATEGORIES_SQL})`),
+  ],
+);
+
+/** The police intimation (one per case): mode, station, the receiving officer, GD entry number. Append-only (trigger). */
+export const erMlcIntimations = pgTable(
+  "er_mlc_intimations",
+  {
+    id: text("id").primaryKey(),
+    mlcId: text("mlc_id").notNull().references(() => erMlcs.id),
+    mode: text("mode").notNull(),
+    station: text("station").notNull(),
+    receiverName: text("receiver_name").notNull(),
+    receiverRank: text("receiver_rank"),
+    gdEntryNo: text("gd_entry_no"),
+    intimatedAt: timestamp("intimated_at", { withTimezone: true }).notNull(),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("er_mlc_intimations_mlc_ux").on(t.mlcId),
+    check("er_mlc_intimations_mode_ck", sql`${t.mode} in ('written', 'phone_then_written', 'police_present')`),
+  ],
+);
+
+/**
+ * The custody log: belongings lists and the evidence chain, one numbered link per act, each signed by the recorder and
+ * a second person (PIN). Append-only (trigger): a seal moves collected → stored → handed over by NEW links.
+ */
+export const erMlcCustody = pgTable(
+  "er_mlc_custody",
+  {
+    id: text("id").primaryKey(),
+    mlcId: text("mlc_id").notNull().references(() => erMlcs.id),
+    link: integer("link").notNull(),
+    kind: text("kind").notNull(),
+    evidenceKind: text("evidence_kind"),
+    description: text("description"),
+    sealNo: text("seal_no"),
+    action: text("action").notNull(),
+    items: jsonb("items").$type<{ description: string; qty: number }[]>(),
+    keptIn: jsonb("kept_in").$type<{ kind: string; ref: string }>(),
+    receiver: jsonb("receiver").$type<{ name: string; rank: string; station: string }>(),
+    recordedBy: text("recorded_by").notNull(),
+    witnessedBy: text("witnessed_by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("er_mlc_custody_link_ux").on(t.mlcId, t.link),
+    index("er_mlc_custody_seal_idx").on(t.mlcId, t.sealNo),
+    check("er_mlc_custody_kind_ck", sql`${t.kind} in ('belongings', 'evidence')`),
+    check("er_mlc_custody_action_ck", sql`(${t.kind} = 'belongings' and ${t.action} = 'listed') or (${t.kind} = 'evidence' and ${t.action} in ('collected', 'stored', 'handed_over') and ${t.sealNo} is not null)`),
+    check("er_mlc_custody_receiver_ck", sql`(${t.action} = 'handed_over') = (${t.receiver} is not null)`),
+    check("er_mlc_custody_witness_ck", sql`${t.witnessedBy} <> ${t.recordedBy}`),
+  ],
+);

@@ -68,9 +68,11 @@ export const TESTING_ROLES = ["ward_nurse", "nursing_supervisor", "nursing_super
 
 /**
  * Step d. The all-roles account = the ONE active account holding `owner` and `admin` at hospital scope with strictly
- * the most hospital roles. No such account, or a tie → refused, nothing written.
+ * the most hospital roles. No such account, or a tie → refused, nothing written. `stage-er-setup` reuses it with its role.
  */
-export async function grantTestingRoles(db: Db): Promise<StageIpdReport["testingRoles"]> {
+export async function grantTestingRoles(
+  db: Db, testingRoles: readonly string[] = TESTING_ROLES,
+): Promise<StageIpdReport["testingRoles"]> {
   const rows = await db.select({ userId: roleAssignments.userId, roleKey: roleAssignments.roleKey }).from(roleAssignments)
     .innerJoin(users, eq(users.id, roleAssignments.userId))
     .where(and(eq(users.active, true), eq(roleAssignments.scopeType, "hospital")));
@@ -84,12 +86,12 @@ export async function grantTestingRoles(db: Db): Promise<StageIpdReport["testing
     return { action: "refused", ...none, why: "more than one account ties for the most roles — the all-roles account is not unique" };
   }
   const account = candidates[0]!;
-  const existing = new Set((await db.select({ key: roles.key }).from(roles).where(inArray(roles.key, [...TESTING_ROLES]))).map((r) => r.key));
+  const existing = new Set((await db.select({ key: roles.key }).from(roles).where(inArray(roles.key, [...testingRoles]))).map((r) => r.key));
   const granted: string[] = [];
   const already: string[] = [];
-  const missingRoles = TESTING_ROLES.filter((r) => !existing.has(r));
+  const missingRoles = testingRoles.filter((r) => !existing.has(r));
   await withTx(db, async (tx) => {
-    for (const roleKey of TESTING_ROLES) {
+    for (const roleKey of testingRoles) {
       if (!existing.has(roleKey)) continue;
       if (account.set.has(roleKey)) { already.push(roleKey); continue; }
       const { id: assignmentId } = await assignRole(tx, { userId: account.userId, roleKey, scopeType: "hospital" });

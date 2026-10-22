@@ -283,8 +283,11 @@ export type IpdDischargeBoard = z.infer<typeof IpdDischargeBoardSchema>;
 
 export const IpdMortuaryEntrySchema = z.object({
   id: IpdIdSchema,
-  admissionId: IpdIdSchema,
+  /** The holder: an IPD admission, or (ER lane 4, #811) an ER episode for a body brought dead — exactly one is set. */
+  admissionId: IpdIdSchema.nullable(),
   admissionNo: z.string().nullable(),
+  erEpisodeId: IpdIdSchema.nullable(),
+  erEpisodeNo: z.string().nullable(),
   patientName: z.string().nullable(),
   uhid: z.string(),
   status: z.enum(["expected", "received", "released"]),

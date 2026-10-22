@@ -825,6 +825,8 @@ export const ROSTER_ESCALATION_KINDS = [
   "er_retriage",
   // ER lane 3 (#810) — a specialty call unanswered 15 min, and a critical result unacknowledged by the ER doctor of record.
   "er_call", "er_critical",
+  // ER lane 4 (#811) — an MLC's police intimation 30 min past its 1-hour target, and a faculty countersign past 24 h.
+  "mlc_intimation", "mlc_countersign",
 ] as const;
 export type RosterEscalationKind = (typeof ROSTER_ESCALATION_KINDS)[number];
 
@@ -850,7 +852,7 @@ export const rosterEscalationTargets = pgTable(
     /** One answer per (kind, department). Two rows for one question is two answers at 02:14. */
     uniqueIndex("roster_escalation_targets_kind_dept_ux")
       .on(t.siteId, t.alertKind, sql`coalesce(${t.departmentId}, '')`),
-    check("roster_escalation_targets_kind_ck", sql`${t.alertKind} in ('escalation.triggered', 'notification.failed', 'ops.mode_changed', 'imaging.critical_overdue', 'imaging.report_unread', 'workflow.timer_rung', 'er_retriage', 'er_call', 'er_critical')`),
+    check("roster_escalation_targets_kind_ck", sql`${t.alertKind} in ('escalation.triggered', 'notification.failed', 'ops.mode_changed', 'imaging.critical_overdue', 'imaging.report_unread', 'workflow.timer_rung', 'er_retriage', 'er_call', 'er_critical', 'mlc_intimation', 'mlc_countersign')`),
   ],
 );
 
