@@ -268,6 +268,17 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
 - Reads: `readMciBoard` (counts by tag, packs ready, ER bays, surge bays, ward beds free, patients by alias or initials),
   `readMciCount` (`/er/mci/:id/count`, the district head count — counts only). Screen `apps/web/src/screens/er-mci.tsx`
   (`/er/mci`); the board tile carries `mciTag` (colour and word).
+- #877 follow-ups: `declare_mci` pages (same transaction, returns `paged`) everyone on the Casualty roster on duty
+  (`ER_ROSTER_DEPARTMENT = "CAS"`), the hospital on-call cover, the MS and duty managers; nobody on the roster = the
+  casualty nurses; never the declarer; at most 100 phones. Bell kinds `er.code_yellow` (no patient text) and
+  `er.mci_stops`. The declaration raises task `er_mci_stops` (`sourceRef er_mci_stops:<mciId>`) proposing OPD-intake and
+  elective-OT stops; `decide_mci_stops` (POST /er/mci/stops) is the MS's alone, once; the answer is stored on the task
+  (`cancel_reason` = confirmed / declined + note; no migration). A confirmation rings the duty managers; stand-down
+  withdraws an unanswered proposal; nothing in OPD or OT switches off by itself. `readMciFamilyDesk` (GET /er/mci/family,
+  the running event else the last stood-down one): name or alias, stage word, place, nothing clinical, plus a fixed
+  press/VIP script; MLC, sealed and confidential patients are only counted (OPEN: every pack arrival opens an MLC by
+  rule, so pack patients never show there — owner call). Board fields `stops` and `teams` (teams per zone: ER = Casualty
+  teams + who is on duty; each surge ward its own zone with the teams homed there).
 
 ## 4. Traps
 - `registerPatient` takes a `Tx` and the band reads the new patient in that same `tx` (`bandPerson(tx, …)`); reading it
@@ -308,12 +319,10 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   examination protocol form; `free_by_law` read by lane 6's bill desk; death in ER (lane 5's `record_er_death`) opening
   the mortuary entry through the same seam.
 - Lane 7 built codes. Still owed: a hospital-wide wall "code" button (any staff phone works today); STEMI door-to-balloon
-  read from the cath lab instead of tapped; the code sheet print; Code Grey's incident report filed into the quality
-  module (drafted on the code row today); the scribe tablet's offline queue (paper back-fill is the fallback).
-- Lane 8 built Code Yellow. Still owed: the Code Yellow page to every ER and on-call phone (today the board and the desk
-  see it); OPD and elective OT stops proposed to the MS; the family information desk list and press script; teams on
-  the MCI board; designed print of the pack sheet and the head count (the browser prints the page); merge of a person
-  registered twice in the rush (after the event, through `link_identity`).
+  read from the cath lab instead of tapped; the code sheet print; Code Grey's incident report filed into a quality
+  module (none exists yet: no general incident intake; drafted on the code row today); the scribe tablet's offline queue (paper back-fill is the fallback).
+- Lane 8 built Code Yellow. Still owed: designed print of the pack sheet and the head count (the browser prints the
+  page); merge of a person registered twice in the rush (after the event, through `link_identity`).
 - Lane 6 built the bill. Still owed: the incumbent's real ER rates (0076 go-live blocker); a claim's status flow at the
   TPA desk (#822 reads `er_payer_claims`); MCI tagging of episodes at scale (lane 8 opens the account); printed ER bill.
 - DECIDED (coordinator 2026-10-15, to match decision 0075): a REJECTED road-accident claim's difference is NEVER billed to
