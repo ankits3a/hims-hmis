@@ -76,7 +76,8 @@ export function mciTagProposal(method: ErMciMethod, f: ErMciFindings): ErMciTag 
 
 export const declareMci = erIntent({
   input: erInput({ name: ErWordsSchema, place: ErWordsSchema.optional(), note: ErNoteSchema.optional() }),
-  output: z.strictObject({ mciId: ErIdSchema, eventAccountId: ErIdSchema, declaredAt: ErInstantSchema }),
+  /** `paged`: #877 — how many phones the declaration rang (the Casualty roster, the on-call cover, the command). */
+  output: z.strictObject({ mciId: ErIdSchema, eventAccountId: ErIdSchema, declaredAt: ErInstantSchema, paged: z.number().int().nonnegative() }),
   refusals: ["mci_role_needed", "mci_active"],
   actors: ["duty_manager", "supervisor"],
   copilotProposable: false,
@@ -172,6 +173,25 @@ export const openSurgeBays = erIntent({
   idempotent: true,
 });
 
+/**
+ * #877 item 2 — the MS's answer to the proposal raised with the declaration: stop new OPD registrations and the elective
+ * OT lists for the event. A proposal and a person's decision only — no OPD or OT screen is switched off by it; a
+ * confirmation tells the duty managers, who carry it out in person. One decision per event.
+ */
+export const ER_MCI_STOPS_DECISIONS = ["confirm", "decline"] as const;
+export const ER_MCI_STOPS_STATES = ["proposed", "confirmed", "declined"] as const;
+export const decideMciStops = erIntent({
+  input: erInput({ mciId: ErIdSchema, decision: z.enum(ER_MCI_STOPS_DECISIONS), note: ErNoteSchema.optional() }),
+  output: z.strictObject({ mciId: ErIdSchema, decision: z.enum(ER_MCI_STOPS_DECISIONS), decidedAt: ErInstantSchema }),
+  refusals: ["mci_not_found", "mci_stood_down", "mci_stops_not_ms", "mci_stops_decided"],
+  actors: ["supervisor"],
+  copilotProposable: false,
+  agentTier: "none",
+  undo: "irreversible",
+  events: ["er.mci_stops_decided"],
+  idempotent: true,
+});
+
 // ═══════════════════════════════════════ reads: the MCI board and the head count ═══════════════════════════════════════
 
 const TagCountsSchema = z.object({
@@ -197,6 +217,18 @@ export const ErMciPatientSchema = z.object({
 export const ErMciSurgeBedSchema = z.object({ bedId: ErIdSchema, code: z.string(), ward: z.string().nullable(), status: z.enum(["free", "occupied", "cleaning", "blocked"]), approved: z.boolean() });
 export type ErMciSurgeBed = z.infer<typeof ErMciSurgeBedSchema>;
 
+/**
+ * #877 item 4 — a zone of the Code Yellow and the people in it, from the roster: the ER (Casualty's active teams and who
+ * is on duty in Casualty now) and one surge zone per ward whose overflow beds were opened (the teams homed in that ward).
+ * Names and roles only — no phone numbers on a board.
+ */
+export const ErMciZoneSchema = z.object({
+  zone: z.string(),
+  teams: z.array(z.object({ code: z.string(), name: z.string(), members: z.array(z.object({ name: z.string(), role: z.string() })) })),
+  onDuty: z.array(z.object({ name: z.string(), position: z.string() })),
+});
+export type ErMciZone = z.infer<typeof ErMciZoneSchema>;
+
 export const ErMciBoardSchema = z.object({
   /** The running Code Yellow (null when none) and its head count. */
   active: ErMciCountSchema.nullable(),
@@ -208,6 +240,65 @@ export const ErMciBoardSchema = z.object({
   surge: z.object({ free: z.number().int(), total: z.number().int() }),
   /** Inpatient beds free across the hospital (IPD registry: available, no occupant; ER bays and overflow excluded). */
   hospitalBedsFree: z.number().int(),
+  /** #877 — the OPD / elective OT stop proposed to the MS for the running event (null when none is running). */
+  stops: z.object({ state: z.enum(ER_MCI_STOPS_STATES), decidedAt: ErInstantSchema.nullable(), note: z.string().nullable() }).nullable(),
+  /** #877 — the teams per zone for the running event (empty when none is running). */
+  teams: z.array(ErMciZoneSchema),
   serverNow: ErInstantSchema,
 });
 export type ErMciBoard = z.infer<typeof ErMciBoardSchema>;
+
+// ═══════════════════════════════════════ #877: the family information desk and the press script ═══════════════════════════════════════
+
+/**
+ * #877 item 3 — the family information desk's words for where a patient of the event is in their stay (DECIDED, the
+ * standard desk words; the open ones are lane 9's waiting-display words). Never clinical: no tag, no ESI, no complaint.
+ * A death is never told from a list: the family is sent to the duty doctor, who tells them in person.
+ */
+export const ER_MCI_FAMILY_STAGES = [
+  "Waiting", "Being seen", "Admitting", "Transfer arranged", "Going home soon", "Admitted", "Gone home", "Transferred",
+  "Left the hospital", "Please meet the duty doctor",
+] as const;
+export type ErMciFamilyStage = (typeof ER_MCI_FAMILY_STAGES)[number];
+
+export function mciFamilyStage(e: { state: string; disposition: string | null; outcome: string | null }): ErMciFamilyStage {
+  if (e.state === "brought_dead" || e.outcome === "died") return "Please meet the duty doctor";
+  if (e.outcome === "admitted") return "Admitted";
+  if (e.outcome === "discharged") return "Gone home";
+  if (e.outcome === "referred_out") return "Transferred";
+  if (e.outcome !== null) return "Left the hospital";
+  if (e.state === "disposition_decided") {
+    return e.disposition === "admit" ? "Admitting" : e.disposition === "refer_out" ? "Transfer arranged" : "Going home soon";
+  }
+  if (e.state === "triaged" || e.state === "in_treatment") return "Being seen";
+  return "Waiting";
+}
+
+/**
+ * The press / VIP script (fixed text, DECIDED: the standard hospital disaster-plan lines). No names, no conditions, no
+ * figures — the MS's office alone gives figures.
+ */
+export const ER_MCI_PRESS_SCRIPT = [
+  "The hospital has declared a Code Yellow and is receiving people from the incident.",
+  "We do not give the name or the condition of any patient to the press or over the phone.",
+  "Families: please come to the family information desk with a photo ID; our staff will help you find your relative.",
+  "Official updates come only from the Medical Superintendent's office.",
+  "Officials and VIP callers: please leave a number; the duty manager will call you back.",
+] as const;
+
+export const ErMciFamilyDeskSchema = z.object({
+  /** The running Code Yellow, else the last one stood down (families keep coming); null when there has been none. */
+  mciId: ErIdSchema.nullable(), name: z.string().nullable(), asOf: ErInstantSchema,
+  rows: z.array(z.strictObject({
+    /** The name on the record, or the pack / unknown alias while the person is unidentified. */
+    label: z.string(),
+    packNo: z.string().nullable(),
+    stage: z.enum(ER_MCI_FAMILY_STAGES),
+    /** "ER", "ER · B4", the ward's name once admitted; null once gone. */
+    where: z.string().nullable(),
+  })),
+  /** MLC, sealed and confidential patients of the event: never listed, only counted — the desk sends those families to the ER desk. */
+  withheld: z.number().int().nonnegative(),
+  script: z.array(z.string()),
+});
+export type ErMciFamilyDesk = z.infer<typeof ErMciFamilyDeskSchema>;

@@ -18,7 +18,7 @@ import {
 } from "./mlc";
 import { callCode, endCode, readErCode, readErCodes, recordCodeDebrief, recordCodeEvent } from "./codes";
 import {
-  declareMci, listMciOverflowBeds, listMciPacks, mciTag, mintMciPacks, openSurgeBays, readMciBoard, readMciCount, registerMciArrival, standDownMci,
+  decideMciStops, declareMci, listMciOverflowBeds, listMciPacks, mciTag, mintMciPacks, openSurgeBays, readMciBoard, readMciCount, readMciFamilyDesk, registerMciArrival, standDownMci,
 } from "./mci";
 import { openErEventAccount, priceErLines, readErBill, readErBillDesk, setErPayer, settleErBill, takeErAdvance } from "./bill";
 import {
@@ -30,7 +30,7 @@ import { ErError, ErRefusal, erRefusalStatus } from "./errors";
 import { linkIdentity } from "./identity";
 import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_CARE, ER_BILL, ER_CODES, ER_DISPOSITION, ER_IDENTITY_LINK, ER_MCI, ER_MLC, ER_TRIAGE } from "./names";
 import type {
-  Actor, ErBay, ErBoard, ErCareView, ErDeskView, ErDoctorOption, ErEpisodeView, ErBill, ErBillDesk, ErCodeView, ErCodes, ErItemOption, ErMciBoard, ErMciCount, ErMciSurgeBed, ErMlcDesk, ErMlcDetail, ErPatientHit, ErRefusalBody,
+  Actor, ErBay, ErBoard, ErCareView, ErDeskView, ErDoctorOption, ErEpisodeView, ErBill, ErBillDesk, ErCodeView, ErCodes, ErItemOption, ErMciBoard, ErMciCount, ErMciFamilyDesk, ErMciSurgeBed, ErMlcDesk, ErMlcDetail, ErPatientHit, ErRefusalBody,
 } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -509,6 +509,13 @@ export class EmergencyController {
     try { return await listMciOverflowBeds(this.db, actor); } catch (e) { toHttp(e); }
   }
 
+  /** #877 — the family information desk's list (no clinical detail) and the press / VIP script. */
+  @Get("mci/family")
+  @RequirePermission(ER_MCI, "hospital")
+  async mciFamily(@CurrentActor() actor: Actor): Promise<ErMciFamilyDesk> {
+    try { return await readMciFamilyDesk(this.db, actor); } catch (e) { toHttp(e); }
+  }
+
   @Get("mci/:id/count")
   @RequirePermission(ER_MCI, "hospital")
   async mciCount(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<ErMciCount> {
@@ -549,5 +556,12 @@ export class EmergencyController {
   @RequirePermission(ER_MCI, "hospital")
   async mciSurge(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
     try { return await openSurgeBays(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  /** #877 — the MS's answer to the OPD / elective OT stop proposed with the Code Yellow. */
+  @Post("mci/stops")
+  @RequirePermission(ER_MCI, "hospital")
+  async mciStops(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await decideMciStops(this.db, actor, body); } catch (e) { toHttp(e); }
   }
 }
