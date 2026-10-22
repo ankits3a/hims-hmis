@@ -511,8 +511,9 @@ export async function readMciBoard(db: Db, actor: Actor, opts: Opts = {}): Promi
  * #877 item 3 — the family information desk's list for the running Code Yellow (else the last one stood down): per patient
  * the name (the pack / unknown alias while unidentified), a stage word and where — nothing clinical. MLC, sealed and
  * confidential patients are never listed (lane 9's family-surface rule, read from the record — the true record too once an
- * unknown is merged); the desk sees only how many are withheld and sends those families to the ER desk. With the fixed
- * press / VIP script.
+ * unknown is merged); the desk sees only how many are withheld and sends those families to the ER desk. Except (decision
+ * 0083, owner 2026-10-23): a Code Yellow PACK arrival is listed although the pack rule opened its MLC — sealed and
+ * confidential still win. With the fixed press / VIP script.
  */
 export async function readMciFamilyDesk(db: Db, actor: Actor, opts: Opts = {}): Promise<ErMciFamilyDesk> {
   await requireErPermission(db, actor, ER_MCI);
@@ -527,6 +528,10 @@ export async function readMciFamilyDesk(db: Db, actor: Actor, opts: Opts = {}): 
   const flags = new Map((await db.select({ id: patients.id, sealed: patients.sensitiveContext, confidential: patients.isConfidential })
     .from(patients).where(inArray(patients.id, ids))).map((p) => [p.id, p.sealed || p.confidential] as const));
   const mlc = new Set((await db.select({ id: erMlcs.episodeId }).from(erMlcs).where(inArray(erMlcs.episodeId, rows.map((e) => e.id)))).map((r) => r.id));
+  // Decision 0083: a Code Yellow PACK arrival (its er_mci_packs row used by this episode) is listed although the pack rule
+  // opened its MLC; every other MLC stays withheld.
+  const packed = new Set((await db.select({ id: erMciPacks.usedEpisodeId }).from(erMciPacks)
+    .where(inArray(erMciPacks.usedEpisodeId, rows.map((e) => e.id)))).flatMap((r) => (r.id === null ? [] : [r.id])));
   const bayIds = [...new Set(rows.flatMap((e) => (e.bayId === null ? [] : [e.bayId])))];
   const bays = new Map(bayIds.length === 0 ? [] : (await db.select({ id: resources.id, code: resources.code }).from(resources)
     .where(inArray(resources.id, bayIds))).map((b) => [b.id, b.code] as const));
@@ -535,7 +540,7 @@ export async function readMciFamilyDesk(db: Db, actor: Actor, opts: Opts = {}): 
   for (const e of rows) {
     const p = people.get(e.patientId);
     const trueId = p?.id ?? e.patientId;
-    if (mlc.has(e.id) || flags.get(e.patientId) === true || flags.get(trueId) === true) { withheld += 1; continue; }
+    if ((mlc.has(e.id) && !packed.has(e.id)) || flags.get(e.patientId) === true || flags.get(trueId) === true) { withheld += 1; continue; }
     const named = p !== undefined && (!e.unidentified || p.id !== e.patientId);
     const stage = mciFamilyStage({ state: e.state, disposition: e.disposition, outcome: e.outcome });
     let where: string | null = null;

@@ -5,7 +5,7 @@ import { patients } from "../../kernel/db/schema";
 import { mkUser } from "../../../test/helpers/opd";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { mkErWorld } from "../../../test/helpers/emergency";
-import { declareMci, mciTag, mintMciPacks, placeInBay, readMciFamilyDesk, registerArrival, registerMciArrival, standDownMci } from "./index";
+import { declareMci, mciTag, mintMciPacks, openMlc, placeInBay, readMciFamilyDesk, registerArrival, registerMciArrival, standDownMci } from "./index";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { ErWorld } from "../../../test/helpers/emergency";
@@ -15,6 +15,8 @@ import type { ErWorld } from "../../../test/helpers/emergency";
  * when unknown), a stage word and where — nothing clinical (no tag, no ESI, no complaint). MLC, sealed and confidential
  * patients are not listed (lane 9's family-surface rule); the desk sees only how many are withheld. The press / VIP script
  * is fixed text with no names.
+ * Decision 0083 (owner 2026-10-23): Code Yellow PACK arrivals are listed although the pack rule opened their MLC; sealed
+ * and confidential patients, and every MLC patient who is not a pack arrival, stay hidden and counted.
  */
 
 jest.setTimeout(240_000);
@@ -52,7 +54,7 @@ describe("#877 the family information desk list and the press script", () => {
     const bay = await w.bed("ER-B1", { class: "emergency" });
     const m = await declareMci(db, dm, { idempotencyKey: key(), name: "Bus collision" });
     const { packs } = await mintMciPacks(db, dm, { idempotencyKey: key(), count: 1 });
-    await registerMciArrival(db, w.erDesk, { idempotencyKey: key(), packNo: packs[0]!.packNo, tag: "red" }); // MLC by rule
+    await registerMciArrival(db, w.erDesk, { idempotencyKey: key(), packNo: packs[0]!.packNo, tag: "red" }); // MLC by rule — listed (decision 0083)
     const named = await registerArrival(db, w.erDesk, { idempotencyKey: key(), patientId: await w.patient("female", 34, "Asha Family"), arrivalMode: "walk_in" });
     await mciTag(db, w.erNurse, { idempotencyKey: key(), episodeId: named.episodeId, tag: "yellow" });
     await placeInBay(db, w.erNurse, { idempotencyKey: key(), episodeId: named.episodeId, bedId: bay });
@@ -62,8 +64,12 @@ describe("#877 the family information desk list and the press script", () => {
     await mciTag(db, w.erNurse, { idempotencyKey: key(), episodeId: vip.episodeId, tag: "green" });
 
     const desk = await readMciFamilyDesk(db, w.erDesk);
-    expect(desk).toMatchObject({ mciId: m.mciId, name: "Bus collision", withheld: 2 });
-    expect(desk.rows).toEqual([{ label: "Asha Family", packNo: null, stage: "Waiting", where: "ER · ER-B1" }]);
+    expect(desk).toMatchObject({ mciId: m.mciId, name: "Bus collision", withheld: 1 });
+    expect(desk.rows).toEqual([
+      { label: packs[0]!.alias, packNo: packs[0]!.packNo, stage: "Waiting", where: "ER" },
+      { label: "Asha Family", packNo: null, stage: "Waiting", where: "ER · ER-B1" },
+    ]);
+    expect(JSON.stringify(desk.rows)).not.toMatch(/red|Immediate|unknown_unconscious|mlc/i);
     expect(JSON.stringify(desk.rows)).not.toMatch(/yellow|Delayed|"esi"|Vip Person|Patient-88/i);
     expect(desk.script).toEqual([...ER_MCI_PRESS_SCRIPT]);
     expect(desk.script.join(" ")).not.toMatch(/Asha|Unknown-MCI/);
@@ -72,5 +78,21 @@ describe("#877 the family information desk list and the press script", () => {
     await standDownMci(db, dm, { idempotencyKey: key(), mciId: m.mciId });
     expect((await readMciFamilyDesk(db, w.erDesk)).mciId).toBe(m.mciId);
     await expect(readMciFamilyDesk(db, w.mrd)).rejects.toMatchObject({ code: "er_forbidden" });
+  });
+
+  it("decision 0083: pack arrivals are listed although their MLC is by rule; a sealed pack arrival and a non-pack MLC are counted", async () => {
+    await declareMci(db, dm, { idempotencyKey: key(), name: "Factory fire" });
+    const { packs } = await mintMciPacks(db, dm, { idempotencyKey: key(), count: 2 });
+    await registerMciArrival(db, w.erDesk, { idempotencyKey: key(), packNo: packs[0]!.packNo, tag: "yellow" });
+    await registerMciArrival(db, w.erDesk, { idempotencyKey: key(), packNo: packs[1]!.packNo, tag: "green" });
+    await db.update(patients).set({ sensitiveContext: true }).where(eq(patients.id, packs[1]!.patientId));
+    const walkIn = await registerArrival(db, w.erDesk, { idempotencyKey: key(), patientId: await w.patient("male", 28, "Ravi Assault"), arrivalMode: "walk_in" });
+    await mciTag(db, w.erNurse, { idempotencyKey: key(), episodeId: walkIn.episodeId, tag: "green" });
+    await openMlc(db, w.erDoctor, { idempotencyKey: key(), episodeId: walkIn.episodeId, category: "assault" });
+
+    const desk = await readMciFamilyDesk(db, w.erDesk);
+    expect(desk.withheld).toBe(2);
+    expect(desk.rows).toEqual([{ label: packs[0]!.alias, packNo: packs[0]!.packNo, stage: "Waiting", where: "ER" }]);
+    expect(JSON.stringify(desk.rows)).not.toMatch(new RegExp(`Ravi Assault|${packs[1]!.alias}|${packs[1]!.packNo}|yellow|Delayed|assault`, "i"));
   });
 });
