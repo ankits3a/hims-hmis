@@ -204,7 +204,14 @@ export function ErDesk(): React.ReactElement {
   });
 
   const fromPreAlert = (c: ErExpectedCard): void => {
-    reset(); setPreAlert(c); setMode(c.mode ?? "walk_in"); setTab("unknown");
+    reset(); setPreAlert(c);
+    // Lane 2 (E9): the OPD red flag's patient is known — straight to Known with them picked, walked in from OPD.
+    if (c.mode === "opd_red_flag" && c.patientId !== null) {
+      setTab("known"); setMode("walk_in");
+      setPicked({ patientId: c.patientId, uhid: "", name: c.patientLabel ?? "", sex: c.sex ?? "unknown", ageYears: null, phoneTail: null, unidentified: false });
+      return;
+    }
+    setMode(c.mode === "opd_red_flag" || c.mode === null ? "walk_in" : c.mode); setTab("unknown");
     if (c.sex !== null) setSex(c.sex);
     if (c.ageBand !== null) setBand(c.ageBand);
   };
@@ -370,6 +377,7 @@ export function ErDesk(): React.ReactElement {
           {desk !== null && desk.expected.length === 0 ? <div className="erb-empty">{t("erBoard.empty.expected")}</div> : null}
           {desk?.expected.map((c) => (
             <article key={c.preAlertId} className="erd-exp" data-testid="er-desk-expected">
+              {c.patientLabel !== null ? <div><b>{c.patientLabel}</b></div> : null}
               <div><b>{modeWord(c.mode)}</b> · {fmtIst(c.expectedAt)}{c.count > 1 ? ` · ${t("erBoard.count", { arrived: c.arrivedCount, total: c.count })}` : ""}</div>
               {c.complaint !== null ? <p className="erb-complaint">{c.complaint}</p> : null}
               <div className="erd-row">

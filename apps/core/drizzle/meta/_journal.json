@@ -1604,6 +1604,13 @@
       "when": 1792006573487,
       "tag": "0228_er_arrival",
       "breakpoints": true
+    },
+    {
+      "idx": 229,
+      "version": "7",
+      "when": 1792049803932,
+      "tag": "0229_er_triage",
+      "breakpoints": true
     }
   ]
 }

@@ -1746,6 +1746,12 @@ alias), a pre-alert, a brought-dead marker, and prints or reprints the ER band; 
 unidentified patient to the true record files a `patient_merge` request and asks `patients.merge`, as the merge screen
 does. No ER screen shows money.
 
+**Emergency triage (ER lane 2, issue #809, decision 0076, built 2026-10-15, awaiting owner review).** The triage
+screen at `/er/triage`: ESI v4 by its four questions, the level the person's choice, a reason for any down-triage,
+vitals scored by NEWS2 / MEOWS / PEWS beside the level, the re-triage clock (a task when overdue, climbing after 15
+minutes), ER bays from the bed registry and the ER doctor of record.
+`er.triage` is held by `er_nurse` and `doctor`.
+
 **Copilot halt switch and spend cap (plan E0.3/E0.5, decision 0064, built 2026-10-11, awaiting owner review).**
 `copilot.halt.set` (owner, admin, duty_manager, quality_manager) pauses the copilot by scope — read, act,
 draft or global; `copilot.halt.clear` (owner, duty_manager) clears read, act and draft; and

@@ -960,3 +960,46 @@ export async function bedRoomGender(db: Db | Tx, bedId: string): Promise<"male" 
   const parent = (await db.select({ kind: resources.kind }).from(resources).where(eq(resources.id, row.parentId)))[0];
   return parent?.kind === "room" ? roomGender(db as Tx, row.parentId, bedId) : null;
 }
+
+// ═══════════════════════════════════ ER lane 2 (#809) — the ER bay seam ═══════════════════════════════════
+
+/** The occupant type an ER episode takes on an emergency-class bed (the kernel's occupant triad). */
+export const OCCUPANT_ER_EPISODE = "er_episode";
+
+/**
+ * ER lane 2 (#809, spec SPEC-emergency §3.3) — PLACE AN ER EPISODE IN A BAY. Bays are the emergency-class beds of this
+ * registry (no second bed table, no rent); the ER places a patient through here, under THE SAME BED LOCK (room, then
+ * bed) every IPD placement takes, so an ER nurse and an admission desk racing for one bed answer "just taken" alike.
+ * Refusals are IPD words the emergency module maps to its own: `bed_not_found`, `bed_class_mismatch` (not an emergency
+ * bed), `bed_retired`, `bed_not_available` (occupied, held, blocked, cleaning, or an open repair ticket).
+ */
+export async function placeErEpisodeIn(
+  tx: Tx, actor: Actor, input: { bedId: string; episodeId: string }, at: Date,
+): Promise<{ bedId: string; bedCode: string }> {
+  const { row, attrs } = await lockBed(tx, input.bedId);
+  if (attrs.class !== "emergency") throw new IpdRefusal("bed_class_mismatch", "Not an ER bay");
+  if (row.status === "retired") throw new IpdRefusal("bed_retired", "Retired bed");
+  if (await currentHold(tx, row, at) !== undefined) throw new IpdRefusal("bed_not_available", "Bed is reserved");
+  if (row.occupantRef !== null || row.status !== "available") throw new IpdRefusal("bed_not_available", notAvailableRule(row));
+  if (await liveBlock(tx, row.id) !== undefined) throw new IpdRefusal("bed_not_available", "Bed is blocked");
+  await refuseOpenRepair(tx, row.id);
+  await assignResource(tx, actor, KERNEL_RESOURCE_KINDS, row.id, {
+    occupantType: OCCUPANT_ER_EPISODE, occupantRef: input.episodeId, at, reason: "er_bay",
+  });
+  return { bedId: row.id, bedCode: row.code };
+}
+
+/**
+ * ER lane 2 — EMPTY AN ER BAY (a move to another bay; lane 5's departure). Through `releaseBedOccupant`, so the bay goes
+ * to cleaning (housekeeping raises its task from the kernel event) and a pending block applies. Refuses a bed the given
+ * episode does not occupy, so an ER act can never empty an inpatient's bed.
+ */
+export async function releaseErBayIn(
+  tx: Tx, actor: Actor, input: { bedId: string; episodeId: string }, at: Date,
+): Promise<{ bedStatus: "cleaning" | "blocked" }> {
+  const { row } = await lockBed(tx, input.bedId);
+  if (row.occupantType !== OCCUPANT_ER_EPISODE || row.occupantRef !== input.episodeId) {
+    throw new IpdRefusal("bed_not_available", "Not this ER patient's bay");
+  }
+  return releaseBedOccupant(tx, actor, row.id, at);
+}

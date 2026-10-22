@@ -169,7 +169,8 @@
     "ipdMar": "MAR",
     "ipdPharmacy": "IP pharmacy",
     "erDesk": "ER desk",
-    "erBoard": "ER board"
+    "erBoard": "ER board",
+    "erTriage": "ER triage"
   },
   "palette": {
     "title": "Search",
@@ -19102,7 +19103,8 @@
       "own_ambulance": "Our ambulance",
       "police": "Police",
       "referred_in": "Referred in",
-      "inter_facility": "From another hospital"
+      "inter_facility": "From another hospital",
+      "opd_red_flag": "From OPD (red flag)"
     },
     "sex": {
       "male": "Male",
@@ -19233,7 +19235,64 @@
       "merge_already_requested": {
         "rule": "A merge is already waiting for approval.",
         "fix": "Open merge requests"
+      },
+      "down_triage_needs_reason": {
+        "rule": "Less urgent than the proposal or the last level — give a reason.",
+        "fix": "Add reason"
+      },
+      "department_not_found": {
+        "rule": "No department has this code.",
+        "fix": "Pick department"
+      },
+      "already_in_bay": {
+        "rule": "Already in a bay.",
+        "fix": "Move bay"
+      },
+      "not_in_bay": {
+        "rule": "Not in a bay yet.",
+        "fix": "Place in bay"
+      },
+      "same_bay": {
+        "rule": "Already in this bay.",
+        "fix": "Pick another bay"
+      },
+      "bay_not_found": {
+        "rule": "No such bay.",
+        "fix": "Open ER board"
+      },
+      "bay_not_emergency": {
+        "rule": "Only an ER bed is an ER bay.",
+        "fix": "Pick an ER bay"
+      },
+      "bay_not_available": {
+        "rule": "That bay was just taken or is not free.",
+        "fix": "Pick another bay"
+      },
+      "not_a_doctor": {
+        "rule": "Only a doctor can be the ER doctor.",
+        "fix": "Pick a doctor"
       }
+    },
+    "esi": {
+      "short": "ESI {{n}}",
+      "word": {
+        "1": "Resuscitation",
+        "2": "Emergent",
+        "3": "Urgent",
+        "4": "Less urgent",
+        "5": "Non-urgent"
+      }
+    },
+    "ews": {
+      "news2": "NEWS2",
+      "meows": "MEOWS",
+      "pews": "PEWS"
+    },
+    "ewsBand": {
+      "low": "Low",
+      "low_medium": "Low–medium",
+      "medium": "Medium",
+      "high": "High"
     }
   },
   "erBoard": {
@@ -19277,7 +19336,14 @@
     "offline": "Offline · last update {{time}}",
     "offlineNever": "Offline",
     "legend": "Time since arrival · triage due 5 min after the gate",
-    "triageNow": "Triage due now"
+    "triageNow": "Triage due now",
+    "doctorDue": "Doctor in {{minutes}} min",
+    "doctorNow": "Doctor due now",
+    "doctorLate": "Doctor overdue {{minutes}} min",
+    "retriageDue": "Re-triage in {{minutes}} min",
+    "retriageNow": "Re-triage now",
+    "retriageLate": "Re-triage overdue {{minutes}} min",
+    "doctor": "Doctor · {{name}}"
   },
   "erDesk": {
     "title": "ER desk",
@@ -19373,6 +19439,89 @@
       "barcode": "Band serial",
       "print": "Print band",
       "next": "Next arrival"
+    },
+    "casualty": {
+      "send": "Send to Casualty",
+      "sent": "On the ER board as Expected"
     }
+  },
+  "erTriage": {
+    "title": "ER triage",
+    "queue": "Triage queue",
+    "loading": "Loading…",
+    "notTriaged": "Not triaged",
+    "yes": "Yes",
+    "no": "No",
+    "q": {
+      "lifeSaving": "Needs a life-saving step now?",
+      "lifeSavingHint": "Airway, CPR, shock, emergency drugs",
+      "highRisk": "High risk, confused, or in severe pain?",
+      "highRiskHint": "Chest pain, stroke signs, new confusion, pain 7/10 or more",
+      "resources": "How many resources?",
+      "resourcesHint": "Labs, imaging, IV fluids, a consult, a procedure",
+      "danger": "Danger-zone vitals?",
+      "dangerHint": "For the age: pulse, breathing, SpO₂ under 92%"
+    },
+    "resources": {
+      "none": "None",
+      "one": "One",
+      "many": "Two or more"
+    },
+    "proposal": "Proposal:",
+    "why": {
+      "lifeSaving": "life-saving step needed",
+      "highRisk": "high risk",
+      "manyDanger": "many resources, danger vitals",
+      "many": "many resources",
+      "one": "one resource",
+      "none": "no resources"
+    },
+    "level": "ESI level — your choice",
+    "relevel": "New ESI level",
+    "reason": "Why less urgent?",
+    "reasonHint": "What you saw, in a few words",
+    "vitals": "Vitals (optional)",
+    "v": {
+      "respRate": "Resp. rate",
+      "spo2": "SpO₂ %",
+      "systolic": "BP systolic",
+      "pulse": "Pulse",
+      "temperatureC": "Temp °C",
+      "onOxygen": "On oxygen"
+    },
+    "avpu": {
+      "alert": "Alert",
+      "confused": "Confused",
+      "voice": "Voice",
+      "pain": "Pain",
+      "unresponsive": "Unresponsive"
+    },
+    "dept": "Specialty (for the take unit)",
+    "depts": {
+      "MED": "Medicine",
+      "SUR": "Surgery",
+      "ORT": "Ortho",
+      "OBG": "Obs & Gynae",
+      "PED": "Paediatrics",
+      "ENT": "ENT",
+      "OPH": "Eye"
+    },
+    "save": "Save triage",
+    "saveAgain": "Save re-triage",
+    "saveVitals": "Save vitals only",
+    "saved": "ESI {{n}} saved · re-triage {{time}}",
+    "savedNoClock": "ESI {{n}} saved",
+    "vitalsWorse": "Worse — re-triage now",
+    "vitalsSaved": "Vitals saved",
+    "inBay": "Bay {{bay}}",
+    "bay": "Bay",
+    "noBay": "No free ER bay",
+    "placed": "In bay {{bay}}",
+    "doctor": "ER doctor",
+    "pickDoctor": "Doctor seeing the patient",
+    "setDoctor": "Set doctor",
+    "doctorSet": "Doctor set — clocks stopped",
+    "history": "Triage so far",
+    "vitalsOnly": "Vitals"
   }
 }

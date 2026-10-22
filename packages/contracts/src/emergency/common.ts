@@ -51,7 +51,8 @@ export const ER_ARRIVAL_MODES = [
 export type ErArrivalMode = (typeof ER_ARRIVAL_MODES)[number];
 export const ErArrivalModeSchema = z.enum(ER_ARRIVAL_MODES);
 /** The modes that can call ahead. */
-export const ER_PRE_ALERT_MODES = ["own_ambulance", "ambulance_108", "police", "referred_in", "inter_facility"] as const;
+/** Lane 2 (#809, seam E9): `opd_red_flag` — the OPD desk's red-flag brake sends a known patient to Casualty. */
+export const ER_PRE_ALERT_MODES = ["own_ambulance", "ambulance_108", "police", "referred_in", "inter_facility", "opd_red_flag"] as const;
 export const ErPreAlertModeSchema = z.enum(ER_PRE_ALERT_MODES);
 
 export const ER_SEXES = ["male", "female", "other", "unknown"] as const;
@@ -154,7 +155,7 @@ export const ER_INTENT_CATALOGUE = [
   "pre_alert", "cancel_pre_alert", "register_arrival", "register_unidentified", "record_brought_dead",
   "print_er_band", "reprint_er_band", "link_identity",
   // triage (lane 2)
-  "triage", "re_triage", "place_in_bay", "move_bay", "assign_er_doctor",
+  "triage", "re_triage", "record_er_vitals", "place_in_bay", "move_bay", "assign_er_doctor",
   // care (lane 3)
   "call_specialty", "answer_call", "record_er_note", "place_er_order", "issue_er_med", "give_er_dose", "record_procedure",
   "declare_stabilised", "record_consent",

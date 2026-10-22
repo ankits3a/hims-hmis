@@ -81,11 +81,16 @@ export const preAlert = erIntent({
     caller: ErWordsSchema.optional(),
     callerPhone: ErPhoneSchema.optional(),
     vehicleNo: z.string().trim().min(1).max(20).optional(),
+    /** Lane 2 (seam E9): the OPD red flag names the patient it sends, and the rule that fired (`opdTriage.redFlag.<key>`). */
+    patientId: ErIdSchema.optional(),
+    redFlagKey: z.string().trim().min(1).max(80).optional(),
+  }).refine((i) => (i.mode === "opd_red_flag") === (i.patientId !== undefined), {
+    message: "an OPD red flag names its patient, and only it does", path: ["patientId"],
   }),
   output: z.strictObject({
     preAlertId: ErIdSchema, state: z.literal("expected"), expectedAt: ErInstantSchema, expiresAt: ErInstantSchema,
   }),
-  refusals: [],
+  refusals: ["patient_not_found", "patient_deceased"],
   actors: ["desk", "er_nurse", "doctor", "duty_manager"],
   copilotProposable: true,
   agentTier: "none",

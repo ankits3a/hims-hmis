@@ -14,3 +14,9 @@ export const ER_BOARD_WALL = "er.board.wall";
  * same permission the patients module's route asks. DECIDED (lane 1): no new ER string for it.
  */
 export const ER_IDENTITY_LINK = "patients.merge";
+/**
+ * ER lane 2 (#809) — triage, re-triage, vitals, bays and the ER doctor of record: the casualty nurse's and the doctor's
+ * clinical acts (spec §4.2: "triage by a nurse or doctor with the er.triage grant"). DECIDED: one string for the five
+ * acts; no money behind any of them.
+ */
+export const ER_TRIAGE = "er.triage";
