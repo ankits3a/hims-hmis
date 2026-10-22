@@ -173,7 +173,8 @@
     "erTriage": "ER triage",
     "erPatient": "ER patient",
     "erMlc": "MLC desk",
-    "erBill": "ER bill desk"
+    "erBill": "ER bill desk",
+    "erCodes": "ER codes"
   },
   "palette": {
     "title": "Search",
@@ -19508,6 +19509,42 @@
       "rolled_to_ip": {
         "rule": "Moved to the inpatient bill.",
         "fix": "Open the IP bill"
+      },
+      "code_needs_patient": {
+        "rule": "Activations are called on an ER patient.",
+        "fix": "Pick the patient"
+      },
+      "code_open": {
+        "rule": "This code is already running.",
+        "fix": "Open the code"
+      },
+      "code_not_found": {
+        "rule": "No such code.",
+        "fix": "Open codes"
+      },
+      "event_before_arrival": {
+        "rule": "Nothing on the record happened before arrival.",
+        "fix": "Enter the real time"
+      },
+      "code_ended": {
+        "rule": "The code has ended.",
+        "fix": "Open the code"
+      },
+      "code_not_ended": {
+        "rule": "End the code first.",
+        "fix": "End the code"
+      },
+      "milestone_unknown": {
+        "rule": "No such milestone.",
+        "fix": "Pick a milestone"
+      },
+      "debrief_recorded": {
+        "rule": "Debrief already recorded.",
+        "fix": "Open the code"
+      },
+      "not_code_leader": {
+        "rule": "The team leader records the debrief.",
+        "fix": "Ask the team leader"
       }
     },
     "esi": {
@@ -19786,7 +19823,8 @@
       "consent": "Consent",
       "stabilised": "Stabilised",
       "mlc": "MLC",
-      "dispo": "Disposition"
+      "dispo": "Disposition",
+      "code": "Code"
     },
     "meds": "Medicines",
     "calls": "Specialty calls",
@@ -20190,6 +20228,94 @@
       "er.order": "Test",
       "er.issue": "Drug / consumable",
       "er.procedure": "Procedure"
+    }
+  },
+  "erCodes": {
+    "title": "Codes — resus scribe",
+    "running": "Running",
+    "recent": "Last 24 hours",
+    "none": "No code running",
+    "pick": "Pick a code.",
+    "noPatient": "No patient",
+    "where": "Where",
+    "whereHint": "OPD 2 waiting, Ward 4 corridor …",
+    "paged": "Paged {{n}}",
+    "calledFor": "{{what}} called · {{n}} paged",
+    "openScribe": "Open the scribe",
+    "min": "min",
+    "dueAt": "due {{time}}",
+    "metAt": "done {{time}}",
+    "shock": "Shock {{j}} J",
+    "drug": "Drug",
+    "dose": "Dose",
+    "addDrug": "Add drug",
+    "end": "End — {{outcome}}",
+    "ended": "Code ended",
+    "wentWell": "What went well",
+    "improve": "What to improve",
+    "saveDebrief": "Save debrief",
+    "debriefed": "Debrief saved",
+    "debriefDone": "Debrief recorded",
+    "timeline": "Timeline",
+    "paper": "From paper",
+    "boardDue": "{{what}} in {{minutes}} min",
+    "boardLate": "{{what}} late {{minutes}} min",
+    "triageDesk": "Triage desk",
+    "sendGrey": "Send Code Grey",
+    "cancel": "Cancel",
+    "kind": {
+      "code_blue": "Code Blue",
+      "code_grey": "Code Grey",
+      "stemi": "STEMI",
+      "stroke": "Stroke",
+      "trauma": "Trauma",
+      "sepsis": "Sepsis",
+      "snakebite": "Snakebite",
+      "obstetric": "Obstetric emergency"
+    },
+    "milestone": {
+      "ecg": "ECG",
+      "balloon": "Balloon",
+      "ct": "CT",
+      "needle": "Needle (thrombolysis)",
+      "primary_survey": "Primary survey",
+      "antibiotics": "Antibiotics",
+      "asv": "ASV",
+      "lr_handover": "Labour room hand-over"
+    },
+    "event": {
+      "cpr_start": "CPR start",
+      "cpr_pause": "CPR pause",
+      "rhythm": "Rhythm",
+      "shock": "Shock",
+      "drug": "Drug",
+      "airway": "Airway",
+      "rosc": "ROSC",
+      "death": "Death",
+      "milestone": "Milestone",
+      "location": "Place",
+      "note": "Note"
+    },
+    "rhythm": {
+      "vf": "VF",
+      "pulseless_vt": "Pulseless VT",
+      "pea": "PEA",
+      "asystole": "Asystole",
+      "sinus": "Sinus",
+      "brady": "Brady",
+      "svt": "SVT",
+      "af": "AF"
+    },
+    "outcome": {
+      "rosc": "ROSC",
+      "died": "Died",
+      "stood_down": "Stood down",
+      "transferred": "Transferred",
+      "resolved": "Resolved"
+    },
+    "from": {
+      "door": "from the door",
+      "activation": "from the call"
     }
   }
 }

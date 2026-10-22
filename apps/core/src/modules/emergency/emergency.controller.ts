@@ -16,6 +16,7 @@ import { listErItems, readErCare } from "./care-read";
 import {
   addMlcAddendum, countersignMlc, handOverEvidence, openMlc, readMlc, readMlcDesk, recordBelongings, recordPoliceIntimation,
 } from "./mlc";
+import { callCode, endCode, readErCode, readErCodes, recordCodeDebrief, recordCodeEvent } from "./codes";
 import { openErEventAccount, priceErLines, readErBill, readErBillDesk, setErPayer, settleErBill, takeErAdvance } from "./bill";
 import {
   arbitrateAdmission, decideDisposition, dischargeFromEr, recordSpecialtyRefusal, handToUnit, recordAbscond, recordErDeathIntent, recordLama, recordLwbs, referOut,
@@ -24,9 +25,9 @@ import { collectOrderKinds } from "../../kernel/orders/kinds";
 import type { ModuleRegistry } from "../../kernel/modules/loader";
 import { ErError, ErRefusal, erRefusalStatus } from "./errors";
 import { linkIdentity } from "./identity";
-import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_CARE, ER_BILL, ER_DISPOSITION, ER_IDENTITY_LINK, ER_MLC, ER_TRIAGE } from "./names";
+import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_CARE, ER_BILL, ER_CODES, ER_DISPOSITION, ER_IDENTITY_LINK, ER_MLC, ER_TRIAGE } from "./names";
 import type {
-  Actor, ErBay, ErBoard, ErCareView, ErDeskView, ErDoctorOption, ErEpisodeView, ErBill, ErBillDesk, ErItemOption, ErMlcDesk, ErMlcDetail, ErPatientHit, ErRefusalBody,
+  Actor, ErBay, ErBoard, ErCareView, ErDeskView, ErDoctorOption, ErEpisodeView, ErBill, ErBillDesk, ErCodeView, ErCodes, ErItemOption, ErMlcDesk, ErMlcDetail, ErPatientHit, ErRefusalBody,
 } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -447,5 +448,42 @@ export class EmergencyController {
   @RequirePermission(ER_BILL, "hospital")
   async billEventAccount(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
     try { return await openErEventAccount(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  // ═══ lane 7 (#814) — codes ═══
+  @Get("codes")
+  @RequirePermission(ER_CODES, "hospital")
+  async codes(@CurrentActor() actor: Actor): Promise<ErCodes> {
+    try { return await readErCodes(this.db, actor); } catch (e) { toHttp(e); }
+  }
+
+  @Get("codes/:id")
+  @RequirePermission(ER_CODES, "hospital")
+  async code(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<ErCodeView> {
+    try { return await readErCode(this.db, actor, id); } catch (e) { toHttp(e); }
+  }
+
+  @Post("codes/call")
+  @RequirePermission(ER_CODES, "hospital")
+  async codeCall(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await callCode(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("codes/event")
+  @RequirePermission(ER_CODES, "hospital")
+  async codeEvent(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await recordCodeEvent(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("codes/end")
+  @RequirePermission(ER_CODES, "hospital")
+  async codeEnd(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await endCode(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("codes/debrief")
+  @RequirePermission(ER_CODES, "hospital")
+  async codeDebrief(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await recordCodeDebrief(this.db, actor, body); } catch (e) { toHttp(e); }
   }
 }

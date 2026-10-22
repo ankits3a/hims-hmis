@@ -1788,6 +1788,15 @@ attack: nothing patient-payable, ever) and a mass-casualty event account, each l
 admission every ER line rolls into the IP running bill. No ER clinical screen shows money.
 `er.bill` is held by `front_office`, `front_office_supervisor`, `cashier`, `billing_manager` and `duty_manager`.
 
+**Emergency codes (ER lane 7, issue #814, decision 0076, built 2026-10-15, awaiting owner review).** Code Blue and Code
+Grey from any staff phone (anywhere in the hospital), the clinical activations (STEMI, stroke, trauma, sepsis, snakebite,
+obstetric) on an ER patient: the roster's team is paged at once (the page names the code and the bay, never the patient),
+the resus scribe taps the timeline (CPR, rhythm, shock, drug, airway, ROSC, death; a paper sheet back-filled and
+flagged), the activation clocks run from the door (door-to-ECG 10 minutes, door-to-CT 25, door-to-needle 60, …), the team
+leader ends the code with an outcome and records the debrief. Code Grey pages security with the place and drafts the
+incident report.
+`er.codes` is held by `doctor`, `er_nurse`, `ward_nurse`, `nursing_supervisor`, `front_office`, `front_office_supervisor`, `duty_manager`, `security_guard` and `medical_superintendent`.
+
 **Copilot halt switch and spend cap (plan E0.3/E0.5, decision 0064, built 2026-10-11, awaiting owner review).**
 `copilot.halt.set` (owner, admin, duty_manager, quality_manager) pauses the copilot by scope — read, act,
 draft or global; `copilot.halt.clear` (owner, duty_manager) clears read, act and draft; and

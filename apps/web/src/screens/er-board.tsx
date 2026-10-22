@@ -84,6 +84,12 @@ function clocksOf(t: T, tile: ErTile, now: number): { text: string; late: boolea
   if (tri !== null) out.push(tri);
   if (tile.doctorDueAt !== null) out.push(doctorClock(t, tile.doctorDueAt, now));
   if (tile.retriageDueAt !== null) out.push(retriageClock(t, tile.retriageDueAt, now));
+  // Lane 7 (#814): the activation clocks from the door (STEMI door-to-ECG …), each in words.
+  for (const a of tile.activations ?? []) {
+    if (a.metAt !== null) continue;
+    const left = -minutesSince(a.dueAt, now);
+    out.push({ text: t(left >= 0 ? "erCodes.boardDue" : "erCodes.boardLate", { what: t(`erCodes.milestone.${a.milestone}`), minutes: Math.abs(left) }), late: left < 0 });
+  }
   return out.sort((a, b) => Number(b.late) - Number(a.late));
 }
 

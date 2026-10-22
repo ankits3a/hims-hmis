@@ -1,7 +1,7 @@
-import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_BILL, ER_CARE, ER_DISPOSITION, ER_MLC, ER_TRIAGE } from "./names";
+import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_BILL, ER_CARE, ER_CODES, ER_DISPOSITION, ER_MLC, ER_TRIAGE } from "./names";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
-export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_BILL, ER_CARE, ER_DISPOSITION, ER_MLC, ER_TRIAGE };
+export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_BILL, ER_CARE, ER_CODES, ER_DISPOSITION, ER_MLC, ER_TRIAGE };
 
 /**
  * ER lane 1 (#808, decision 0076) — the emergency department's declared surface: five permissions, five menu entries,
@@ -25,6 +25,9 @@ export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_BILL, ER_CARE, ER
  *   er.disposition       (lane 5, #812) decide the disposition, discharge with the summary, hand to a unit, refer out,
  *                        LAMA, LWBS, abscond, death — doctors, the casualty nurse, the duty manager, the front office
  *                        (the doctor's acts also check the doctor role; LAMA a doctor or the duty manager)
+ *
+ *   er.codes             (lane 7, #814) call a code (Code Blue / Code Grey anywhere), the resuscitation record, end, debrief
+ *                        — doctors, nurses, the ER desk, its supervisor, the duty manager, security, the MS
  *
  *   er.bill              (lane 6, #813) the ER bill desk: payer, advance (after "stabilised"), pricing, settle or dues,
  *                        a mass-casualty event account — front office, its supervisor, cashier, billing manager, duty manager
@@ -53,7 +56,9 @@ export const emergencyManifest: ModuleManifest = {
     { label: "MLC desk", path: "/er/mlc", permission: ER_MLC },
     // Lane 6 (#813) — the ER bill desk (money: desk and billing roles only).
     { label: "ER bill desk", path: "/er/bill", permission: ER_BILL },
+    // Lane 7 (#814) — the resus scribe (tablet landscape): codes running, the timeline by tap.
+    { label: "ER codes", path: "/er/codes", permission: ER_CODES },
   ],
-  permissions: [ER_BOARD_VIEW, ER_ARRIVAL_REGISTER, ER_TRIAGE, ER_BOARD_WALL, ER_CARE, ER_MLC, ER_DISPOSITION, ER_BILL],
+  permissions: [ER_BOARD_VIEW, ER_ARRIVAL_REGISTER, ER_TRIAGE, ER_BOARD_WALL, ER_CARE, ER_MLC, ER_DISPOSITION, ER_BILL, ER_CODES],
   subscriptions: [],
 };

@@ -729,3 +729,61 @@ export const erPayerClaims = pgTable(
     check("er_payer_claims_status_ck", sql`${t.status} in ('to_file', 'filed', 'settled', 'rejected')`),
   ],
 );
+
+/* ═══════════════════════════════ ER lane 7 (#814) — codes and activations ═══════════════════════════════ */
+
+export const ER_CODE_KIND_VALUES = ["code_blue", "code_grey", "stemi", "stroke", "trauma", "sepsis", "snakebite", "obstetric"] as const;
+
+/**
+ * One code: called (kind, where, who was paged), the scribe and the team leader, the end and its outcome, the debrief.
+ * Code Blue and Code Grey may have no episode (anywhere in the hospital). Two codes at once are two rows; one running
+ * code of a kind per episode. The timeline is `er_code_events` (append-only).
+ */
+export const erCodes = pgTable(
+  "er_codes",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull(),
+    episodeId: text("episode_id").references(() => erEpisodes.id),
+    patientId: text("patient_id"),
+    bayId: text("bay_id"),
+    place: text("place"),
+    note: text("note"),
+    calledBy: text("called_by").notNull(),
+    calledAt: timestamp("called_at", { withTimezone: true }).notNull(),
+    /** The ER gate instant (activation clocks run from the door); null for a code with no episode. */
+    doorAt: timestamp("door_at", { withTimezone: true }),
+    team: jsonb("team").$type<{ userId: string; name: string }[]>().notNull(),
+    scribeId: text("scribe_id"),
+    leaderId: text("leader_id"),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    outcome: text("outcome"),
+    /** Code Grey: the incident report as drafted at the call (location, time, who called) for the duty manager. */
+    incidentDraft: text("incident_draft"),
+    debrief: jsonb("debrief").$type<{ wentWell: string; improve: string; actions: string[] }>(),
+    debriefBy: text("debrief_by"),
+    debriefAt: timestamp("debrief_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("er_codes_running_ux").on(t.episodeId, t.kind).where(sql`${t.endedAt} is null and ${t.episodeId} is not null`),
+    index("er_codes_running_idx").on(t.calledAt).where(sql`${t.endedAt} is null`),
+    check("er_codes_kind_ck", sql`${t.kind} in (${list(ER_CODE_KIND_VALUES)})`),
+    check("er_codes_outcome_ck", sql`(${t.endedAt} is null) = (${t.outcome} is null)`),
+  ],
+);
+
+/** The resuscitation record: one tapped event per row, server time (or the paper sheet's time, flagged). Append-only. */
+export const erCodeEvents = pgTable(
+  "er_code_events",
+  {
+    id: text("id").primaryKey(),
+    codeId: text("code_id").notNull().references(() => erCodes.id),
+    kind: text("kind").notNull(),
+    detail: jsonb("detail").$type<Record<string, unknown>>().notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+    fromPaper: boolean("from_paper").notNull(),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [index("er_code_events_code_idx").on(t.codeId, t.at)],
+);

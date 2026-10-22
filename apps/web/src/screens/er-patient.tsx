@@ -9,7 +9,7 @@ import { useRealtime } from "../lib/realtime";
 import { searchOrderableTests } from "../lib/ordering-api";
 import type { WireOrderableTest } from "../lib/ordering-api";
 import {
-  ER_BOARD_TOPIC, ER_INJURY_KINDS, ER_MED_ROUTES, ER_MLC_CATEGORIES, ER_REFERRAL_REASONS, ER_RETURN_IF_SIGNS, abscondApi, answerCallApi, deathApi,
+  ER_BOARD_TOPIC, ER_CODE_KINDS, ER_INJURY_KINDS, ER_MED_ROUTES, ER_MLC_CATEGORIES, ER_REFERRAL_REASONS, ER_RETURN_IF_SIGNS, abscondApi, answerCallApi, callCodeApi, deathApi,
   dischargeApi, handToUnitApi, lamaApi, lwbsApi, newKey, referApi, callApi, consentApi, cosignApi, doseApi, returnMedApi, erRefusalOf, fetchErCare, fetchErEpisode,
   fetchErItems, fetchTriageDoctors, issueApi, noteApi, openMlcApi, orderApi, procedureApi, signVerbalApi, stabilisedApi,
 } from "../lib/er-api";
@@ -29,7 +29,7 @@ import "./er.css";
  * NO MONEY ANYWHERE (decision 0058): no price on a test, no rate on a drug, no paid word. Disposition is lane 5's.
  */
 type T = (k: string, o?: Record<string, unknown>) => string;
-type Panel = null | "order" | "med" | "note" | "procedure" | "consent" | "call" | "mlc" | "dispo";
+type Panel = null | "order" | "med" | "note" | "procedure" | "consent" | "call" | "mlc" | "dispo" | "code";
 /** The specialties a call can go to; each is a roster department master code (pinned by er-departments.test.ts, #870). */
 export const ER_CALL_DEPARTMENTS = ["MED", "SUR", "ORT", "OBG", "PED", "CAR", "ANAE"] as const;
 
@@ -124,6 +124,10 @@ export function ErPatient(): React.ReactElement {
             <button key={p} type="button" className={`erd-opt${panel === p ? " on" : ""}`} aria-pressed={panel === p} onClick={() => setPanel(panel === p ? null : p)}
               data-testid={`er-patient-bar-${p}`}>{t(`erPatient.bar.${p}`)}</button>
           ))}
+          {can("er.codes") ? (
+            <button type="button" className={`erd-opt erc-bar${panel === "code" ? " on" : ""}`} aria-pressed={panel === "code"} onClick={() => setPanel(panel === "code" ? null : "code")}
+              data-testid="er-patient-bar-code">{t("erPatient.bar.code")}</button>
+          ) : null}
           {can("er.disposition") ? (
             <button type="button" className={`erd-opt${panel === "dispo" ? " on" : ""}`} aria-pressed={panel === "dispo"} onClick={() => setPanel(panel === "dispo" ? null : "dispo")}
               data-testid="er-patient-bar-dispo">{t("erPatient.bar.dispo")}</button>
@@ -169,6 +173,16 @@ export function ErPatient(): React.ReactElement {
           const said = await work(episodeId);
           return said;
         })} /> : null}
+        {panel === "code" ? (
+          <section className="erp-panel" data-testid="er-patient-codeform">
+            <div className="erd-opts">{ER_CODE_KINDS.map((k) => (
+              <button key={k} type="button" className={`erd-opt${k === "code_blue" ? " erc-blue" : k === "code_grey" ? " erc-grey" : ""}`} disabled={busy} data-testid={`er-patient-code-${k}`}
+                onClick={() => void act(async () => { const r = await callCodeApi({ kind: k, episodeId }); return t("erCodes.calledFor", { what: t(`erCodes.kind.${k}`), n: r.paged }); })}>
+                {t(`erCodes.kind.${k}`)}</button>
+            ))}</div>
+            <Link to="/er/codes" className="erx-btn sm">{t("erCodes.openScribe")}</Link>
+          </section>
+        ) : null}
         {panel === "mlc" ? <MlcPanel t={t} busy={busy} onOpen={(body) => act(async () => {
           const r = await openMlcApi({ episodeId, ...body });
           return t(r.late ? "erPatient.mlc.openedLate" : "erPatient.mlc.opened", { no: r.mlcNo });

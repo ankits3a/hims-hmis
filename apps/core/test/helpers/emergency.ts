@@ -68,6 +68,8 @@ export async function mkErWorld(db: Db): Promise<ErWorld> {
   for (const r of ["front_office", "er_nurse", "doctor"]) await grantPermissionToRole(db, registry, r, "er.mlc");
   // Lane 5 (#812) — disposition and departure: the same three (seed-roles adds the duty manager).
   for (const r of ["front_office", "er_nurse", "doctor"]) await grantPermissionToRole(db, registry, r, "er.disposition");
+  // Lane 7 (#814) — codes: the same three (seed-roles adds more).
+  for (const r of ["front_office", "er_nurse", "doctor"]) await grantPermissionToRole(db, registry, r, "er.codes");
   const erNurse = (await mkUser(db, "er.nurse", ["er_nurse"])).actor;
   const mrd = (await mkUser(db, "er.mrd", ["mrd_officer"])).actor;
   const erDoctor = (await mkUser(db, "er.doctor", ["doctor"])).actor;

@@ -231,6 +231,17 @@
 .erm-detail { display: flex; flex-direction: column; gap: 10px; }
 .erm-form textarea { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font: inherit; font-size: 15px; color: var(--ink); background: var(--card); width: 100%; resize: vertical; }
 .erm-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* ── ER lane 7 (#814): codes — the scribe's timer, one-tap pads (48 px), the code buttons ── */
+.erc-timer { font-size: 18px; font-weight: 700; }
+.erc-timer.big { font-size: 34px; }
+.erc-timer.live { color: var(--red); }
+.erc-pads { display: flex; flex-wrap: wrap; gap: 8px; }
+.erc-pads .erd-opt { min-height: 48px; }
+.erc-blue { background: #1d4f91; border-color: #1d4f91; color: #fff; font-weight: 700; }
+.erc-grey { background: #4a4a4a; border-color: #4a4a4a; color: #fff; font-weight: 700; }
+.erc-call { display: flex; flex-direction: column; gap: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+.erc-timeline { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+
 /* ── ER lane 6 (#813): the ER bill desk (money: this screen only) ── */
 .erb-bill-amt { font-size: 15px; font-weight: 600; white-space: nowrap; }
 .erb-bill-lines { width: 100%; border-collapse: collapse; font-size: 14px; }
