@@ -123,8 +123,12 @@ function Tile({ tile, now, wall, href }: { tile: ErTile; now: number; wall: bool
           <i aria-hidden="true">{c.late ? "■" : "○"}</i>{c.text}
         </div>
       )) : <div className="erb-clock">{t(`er.state.${tile.state}`)}</div>}
-      {tile.chips.length > 0 ? (
-        <div className="erb-chips">{tile.chips.map((c) => <span key={c} className={`erb-chip ${c}`}>{t(`er.chip.${c}`)}</span>)}</div>
+      {tile.chips.length > 0 || tile.mciTag !== undefined ? (
+        <div className="erb-chips">
+          {/* Lane 8 (#815): the Code Yellow tag, colour and word. */}
+          {tile.mciTag !== undefined ? <span className={`erb-chip mci_${tile.mciTag}`} data-testid="er-tile-mci-tag">{t(`erMci.tag.${tile.mciTag}`)}</span> : null}
+          {tile.chips.map((c) => <span key={c} className={`erb-chip ${c}`}>{t(`er.chip.${c}`)}</span>)}
+        </div>
       ) : null}
     </>
   );

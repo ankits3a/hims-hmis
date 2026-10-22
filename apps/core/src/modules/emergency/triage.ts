@@ -14,6 +14,7 @@ import { getPatientSummaries } from "../patients";
 import { lockEpisode, moveEpisode, onceEr, provenanceOf, requireErPermission, yearsOld } from "./core";
 import { ErRefusal } from "./errors";
 import { erDoctorAssigned, erMoved, erPlaced, erRetriaged, erTriaged, erVitalsRecorded } from "./events";
+import { isSurgeBay } from "./mci-bays";
 import { ER_TRIAGE } from "./names";
 import { ER_RETRIAGE_TASK, ER_TRIAGE_DUE_TASK } from "./task-kinds";
 import type { Actor, ErEsiDecision, ErEsiLevel, ErEws, ErIntentName, ErVitals } from "@hmis/contracts";
@@ -247,7 +248,8 @@ export async function placeInBay(db: Db, actor: Actor, raw: unknown, opts: Opts 
     if (!OPEN_STATES.includes(e.state)) throw new ErRefusal("episode_wrong_state", { state: e.state });
     if (e.bayId !== null) throw new ErRefusal("already_in_bay", { bedId: e.bayId, bayCode: await bayCode(tx, e.bayId) });
     let placed: { bedId: string; bedCode: string };
-    try { placed = await placeErEpisodeIn(tx, actor, { bedId: input.bedId, episodeId: e.id }, at); } catch (err) { throw bayRefusal(err); }
+    const surge = await isSurgeBay(tx, input.bedId);
+    try { placed = await placeErEpisodeIn(tx, actor, { bedId: input.bedId, episodeId: e.id }, at, { surge }); } catch (err) { throw bayRefusal(err); }
     await tx.update(erEpisodes).set({ bayId: placed.bedId, updatedAt: at }).where(eq(erEpisodes.id, e.id));
     await appendEvent(tx, erPlaced.make({
       payload: { episodeId: e.id, bedId: placed.bedId, bayCode: placed.bedCode, provenance: provenanceOf(actor) },
@@ -273,7 +275,7 @@ export async function moveBay(db: Db, actor: Actor, raw: unknown, opts: Opts = {
       // Both beds (and their zones) in one global order first, as the IPD transfer does: two opposite moves between
       // two zones would otherwise each hold one zone and wait for the other (a deadlock).
       await lockBedsInOrder(tx, [from, input.bedId]);
-      placed = await placeErEpisodeIn(tx, actor, { bedId: input.bedId, episodeId: e.id }, at);
+      placed = await placeErEpisodeIn(tx, actor, { bedId: input.bedId, episodeId: e.id }, at, { surge: await isSurgeBay(tx, input.bedId) });
       await releaseErBayIn(tx, actor, { bedId: from, episodeId: e.id }, at);
     } catch (err) { throw bayRefusal(err); }
     await tx.update(erEpisodes).set({ bayId: placed.bedId, updatedAt: at }).where(eq(erEpisodes.id, e.id));
@@ -334,6 +336,8 @@ export async function assignErDoctor(db: Db, actor: Actor, raw: unknown, opts: O
  * The act the task asks for (triage, re-triage, the doctor) cancels it. Notices carry the ER number, never a name.
  * The two clocks share the episode's stamps: an episode is in one state, so only one of them can be running.
  */
+const notInRunningMci = sql`not exists (select 1 from er_mci_events m where m.id = ${erEpisodes.mciId} and m.stood_down_at is null)`;
+
 export async function sweepErTriageClocks(db: Db, now: Date): Promise<{ tasks: number; climbs: number }> {
   const triageCutoff = new Date(now.getTime() - ER_DOOR_TO_TRIAGE_MINUTES * MIN);
   const due = await db.select({ id: erEpisodes.id }).from(erEpisodes).where(or(
@@ -341,7 +345,9 @@ export async function sweepErTriageClocks(db: Db, now: Date): Promise<{ tasks: n
     // left out here, so a stale episode costs no transaction and no row lock every minute.
     and(eq(erEpisodes.state, "triaged"), isNotNull(erEpisodes.retriageDueAt), lte(erEpisodes.retriageDueAt, now),
       sql`${erEpisodes.retriageClimbedDueAt} is distinct from ${erEpisodes.retriageDueAt}`),
-    and(eq(erEpisodes.state, "arrived"), lte(erEpisodes.arrivedAt, triageCutoff),
+    // Lane 8 (#815): a patient of a RUNNING Code Yellow is tagged (START / JumpSTART), not on the door-to-triage clock;
+    // the stand-down puts them back on it.
+    and(eq(erEpisodes.state, "arrived"), lte(erEpisodes.arrivedAt, triageCutoff), notInRunningMci,
       sql`${erEpisodes.retriageClimbedDueAt} is distinct from ${erEpisodes.arrivedAt} + make_interval(mins => ${ER_DOOR_TO_TRIAGE_MINUTES})`),
   ));
   let tasks = 0;

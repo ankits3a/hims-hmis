@@ -7,7 +7,7 @@
 // Importing this module DEFINES the re-triage task kind and its skill (the API and the worker both need them).
 import "./task-kinds";
 export { emergencyManifest } from "./manifest";
-export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_CARE, ER_BILL, ER_CODES, ER_DISPOSITION, ER_IDENTITY_LINK, ER_MLC, ER_TRIAGE } from "./names";
+export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_CARE, ER_BILL, ER_CODES, ER_DISPOSITION, ER_IDENTITY_LINK, ER_MCI, ER_MLC, ER_TRIAGE } from "./names";
 export { EmergencyModule } from "./emergency.module";
 export { ErError, ErRefusal, erRefusalStatus } from "./errors";
 export type { ErErrorCode } from "./errors";
@@ -58,3 +58,8 @@ export {
 } from "./bill";
 // Lane 7 (#814) — codes and activations: call, the resuscitation record, end, debrief, clocks.
 export { activationClocksFor, callCode, codeClocks, endCode, readErCode, readErCodes, recordCodeDebrief, recordCodeEvent } from "./codes";
+// Lane 8 (#815) — mass casualty, Code Yellow: declare, packs, arrival from a pack, START / JumpSTART tags, surge bays, board.
+export {
+  decideMciStops, declareMci, listMciOverflowBeds, listMciPacks, mciTag, mintMciPacks, openSurgeBays, packNoOf, readMciBoard, readMciCount, readMciFamilyDesk, registerMciArrival, standDownMci,
+} from "./mci";
+export { ER_MCI_STOPS_TASK } from "./task-kinds";

@@ -66,3 +66,15 @@ defineTaskKind({
   acceptWithinMin: 15, doneWithinMin: 60, escalateTo: "medical_superintendent",
   proofNeeded: "none", verifyRequired: false, ladderMin: [0],
 });
+
+/**
+ * #877 item 2 — during a Code Yellow the MS is proposed a stop of new OPD registrations and the elective OT lists. A task
+ * for the MS (the `er_ms` skill), raised with the declaration, stat; the MS's answer (`decide_mci_stops`) closes it, the
+ * stand-down withdraws it. Nothing stops by itself.
+ */
+export const ER_MCI_STOPS_TASK = "er_mci_stops";
+defineTaskKind({
+  kind: ER_MCI_STOPS_TASK, label: "Code Yellow: stop OPD intake and elective OT?", skill: ER_MS_SKILL,
+  acceptWithinMin: 5, doneWithinMin: 15, escalateTo: "medical_superintendent",
+  proofNeeded: "none", verifyRequired: false, ladderMin: [0],
+});

@@ -283,3 +283,39 @@
   .erd-new { border: 0; padding: 0; }
   .erm-form, .erm-detail button { display: none !important; }
 }
+
+/* ═══ ER lane 8 (#815) — the MCI board (Code Yellow). Tags carry colour AND word. ═══ */
+.ery.running .erb-head { border-bottom: 4px solid #e0b100; }
+.ery-count { display: flex; flex-direction: column; gap: 6px; }
+.ery-tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.ery-tile { border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--line); background: var(--card); min-width: 0; }
+.ery-tile b { font-size: 28px; line-height: 1.1; }
+.ery-tile span { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.ery-tile.red, .ery-tag.red, .ery-pick.red.on { background: #b3261e; border-color: #b3261e; color: #fff; }
+.ery-tile.yellow, .ery-tag.yellow, .ery-pick.yellow.on { background: #f2c200; border-color: #c99f00; color: #1d1d1d; }
+.ery-tile.green, .ery-tag.green, .ery-pick.green.on { background: #2e7d32; border-color: #2e7d32; color: #fff; }
+.ery-tile.black, .ery-tag.black, .ery-pick.black.on { background: #1d1d1d; border-color: #1d1d1d; color: #fff; }
+.ery-pick.red { border-left: 6px solid #b3261e; }
+.ery-pick.yellow { border-left: 6px solid #f2c200; }
+.ery-pick.green { border-left: 6px solid #2e7d32; }
+.ery-pick.black { border-left: 6px solid #1d1d1d; }
+.ery-tag { display: inline-flex; align-items: center; min-height: 28px; padding: 0 10px; border-radius: 14px; font-size: 13px; font-weight: 700; border: 1px solid var(--line); white-space: nowrap; }
+.ery-tag.none { background: var(--card); color: var(--dim); }
+.ery-stats { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 14px; font-weight: 600; }
+.ery .erd-list > *, .ery .erd-new > * { flex-shrink: 0; }
+.ery-row { flex-wrap: wrap; align-items: center; gap: 8px; }
+.ery-row > .erd-row, .ery-row > .erd-field { flex: 1 1 100%; }
+.ery-packs { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.ery-declare { background: #e0b100; border-color: #c99f00; color: #1d1d1d; font-weight: 700; }
+.erb-chip.mci_red { background: #b3261e; color: #fff; }
+.erb-chip.mci_yellow { background: #f2c200; color: #1d1d1d; }
+.erb-chip.mci_green { background: #2e7d32; color: #fff; }
+.erb-chip.mci_black { background: #1d1d1d; color: #fff; }
+@media (max-width: 760px) {
+  .ery-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media print {
+  .ery > .ery-count, .ery > .ery-stats { display: flex !important; }
+  .ery .erd-cols .erd-list { display: none !important; }
+  .ery .erd-new > *:not(.ery-packs) { display: none !important; }
+}

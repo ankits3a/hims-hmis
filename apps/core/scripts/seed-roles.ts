@@ -85,6 +85,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "front_office",
     permissions: [
+      // ER lane 8 (#815) — mass casualty (Code Yellow): the MCI board, START / JumpSTART tags, the head count. README "Emergency mass casualty" prose.
+      "er.mci",
       // ER lane 7 (#814) — call a code (Code Blue / Code Grey anywhere), the resuscitation record. README "Emergency codes" prose.
       "er.codes",
       // ER lane 1 (#808, decision 0076) — the ER desk registers arrivals and prints the band; the tracking board.
@@ -152,6 +154,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "front_office_supervisor",
     permissions: [
+      // ER lane 8 (#815) — mass casualty (Code Yellow): the MCI board, START / JumpSTART tags, the head count. README "Emergency mass casualty" prose.
+      "er.mci",
       // ER lane 7 (#814) — call a code (Code Blue / Code Grey anywhere), the resuscitation record. README "Emergency codes" prose.
       "er.codes",
       // ER lane 1 (#808) — as the front office: the ER desk and the tracking board. README "Emergency arrival" prose.
@@ -269,6 +273,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "doctor",
     permissions: [
+      // ER lane 8 (#815) — mass casualty (Code Yellow): the MCI board, START / JumpSTART tags, the head count. README "Emergency mass casualty" prose.
+      "er.mci",
       // ER lane 7 (#814) — call a code (Code Blue / Code Grey anywhere), the resuscitation record. README "Emergency codes" prose.
       "er.codes",
       // ER lane 1 (#808) — the tracking board (no money on it, decision 0058). README "Emergency arrival" prose.
@@ -1076,6 +1082,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "medical_superintendent",
     permissions: [
+      // ER lane 8 (#815) — mass casualty (Code Yellow): the MCI board, START / JumpSTART tags, the head count. README "Emergency mass casualty" prose.
+      "er.mci",
       // ER lane 7 (#814) — call a code (Code Blue / Code Grey anywhere), the resuscitation record. README "Emergency codes" prose.
       "er.codes",
       // ER lane 1 (#808) — the tracking board. README "Emergency arrival" prose.
@@ -1233,6 +1241,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     // E0.1 TASK ENGINE (issue #713) — the duty manager sees the task board and may assign, cancel and take back a
     // task out of hours, when no services supervisor is on.
     permissions: [
+      // ER lane 8 (#815) — mass casualty (Code Yellow): the MCI board, START / JumpSTART tags, the head count. README "Emergency mass casualty" prose.
+      "er.mci",
       // ER lane 7 (#814) — call a code (Code Blue / Code Grey anywhere), the resuscitation record. README "Emergency codes" prose.
       "er.codes",
       "auth.temp_role.grant", "roster.read", "copilot.health.read", "copilot.halt.set", "copilot.halt.clear",
@@ -2290,7 +2300,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // ER lane 3 (#810) — `er.care`: notes, the ER issue and the doses (a high-alert dose with a second person), consent.
   // ER lane 4 (#811) — `er.mlc`: the intimation, belongings and the evidence chain (a second person's PIN).
   // ER lane 5 (#812) — `er.disposition`: LWBS and abscond (the doctor's acts check the doctor role).
-  { roleKey: "er_nurse", permissions: ["er.codes", "er.board.view", "er.board.wall", "er.arrival.register", "er.triage", "er.care", "er.mlc", "er.disposition"] },
+  // ER lane 8 (#815) — `er.mci`: START / JumpSTART tags and the MCI board during a Code Yellow.
+  { roleKey: "er_nurse", permissions: ["er.mci", "er.codes", "er.board.view", "er.board.wall", "er.arrival.register", "er.triage", "er.care", "er.mlc", "er.disposition"] },
 ];
 
 /**
