@@ -7,7 +7,7 @@ import { useAuth } from "../lib/auth";
 import { dayMonthIst, fmtIst } from "../lib/format";
 import { useRealtime } from "../lib/realtime";
 import {
-  ER_BOARD_TOPIC, ER_MCI_TAGS, declareMciApi, erRefusalOf, fetchMciBoard, fetchMciOverflowBeds, mciArrivalApi, mciTagApi, mintPacksApi,
+  ER_BOARD_TOPIC, ER_MCI_TAGS, declareMciApi, erRefusalOf, fetchMciBoard, fetchMciOverflowBeds, mciArrivalApi, mciStopsApi, mciTagApi, mintPacksApi,
   standDownMciApi, surgeApi,
 } from "../lib/er-api";
 import type { ErMciTagName } from "../lib/er-api";
@@ -195,6 +195,7 @@ function Running({ board, m, t, busy, act, canRegister }: {
           ))}
         </section>
         <section className="erd-new" aria-label={t("erMci.command")}>
+          {board.stops !== null ? <Stops stops={board.stops} mciId={m.mciId} t={t} busy={busy} act={act} /> : null}
           <h2>{t("erMci.surgeTitle")}</h2>
           {beds === null ? (
             <button type="button" className="erx-btn" disabled={busy} data-testid="er-mci-surge-open"
@@ -228,5 +229,36 @@ function Running({ board, m, t, busy, act, canRegister }: {
         </section>
       </div>
     </>
+  );
+}
+
+/** #877 — the OPD / elective OT stop proposed to the MS: the MS answers here; nothing stops by itself. */
+function Stops({ stops, mciId, t, busy, act }: { stops: NonNullable<ErMciBoard["stops"]>; mciId: string; t: T; busy: boolean; act: Act }): React.ReactElement {
+  const [note, setNote] = useState("");
+  const answer = (decision: "confirm" | "decline") => act(async () => {
+    await mciStopsApi({ mciId, decision, ...(note.trim() === "" ? {} : { note: note.trim() }) });
+    setNote("");
+    return t("erMci.stopsDone");
+  });
+  return (
+    <div className="erd-form" data-testid="er-mci-stops">
+      <h2>{t("erMci.stopsTitle")}</h2>
+      {stops.state === "proposed" ? (
+        <>
+          <p className="erp-text">{t("erMci.stopsProposed")}</p>
+          <label className="erd-field"><span>{t("erMci.stopsNote")}</span><input value={note} onChange={(e) => setNote(e.target.value)} /></label>
+          <div className="erd-row">
+            <button type="button" className="erx-btn pri" disabled={busy} data-testid="er-mci-stops-confirm" onClick={() => void answer("confirm")}>{t("erMci.stopsConfirm")}</button>
+            <button type="button" className="erx-btn" disabled={busy} data-testid="er-mci-stops-decline" onClick={() => void answer("decline")}>{t("erMci.stopsDecline")}</button>
+          </div>
+          <p className="dim">{t("erMci.stopsWho")}</p>
+        </>
+      ) : (
+        <p className="erp-text" data-testid="er-mci-stops-answer">
+          {t(stops.state === "confirmed" ? "erMci.stopsConfirmed" : "erMci.stopsDeclined", { time: stops.decidedAt === null ? "" : whenIst(stops.decidedAt) })}
+          {stops.note !== null ? <span className="dim"> · {stops.note}</span> : null}
+        </p>
+      )}
+    </div>
   );
 }

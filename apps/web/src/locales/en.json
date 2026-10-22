@@ -20414,6 +20414,15 @@
     "standDown": "Stand down",
     "standDownSure": "Yes, stand down",
     "stoodDown": "Stood down · {{n}} back to triage",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "stopsTitle": "OPD and elective OT",
+    "stopsProposed": "Proposed to the MS: stop new OPD registrations and elective OT lists",
+    "stopsWho": "Only the MS answers. Nothing stops by itself.",
+    "stopsNote": "Note",
+    "stopsConfirm": "Confirm the stop",
+    "stopsDecline": "Decline",
+    "stopsConfirmed": "MS confirmed the stop at {{time}}",
+    "stopsDeclined": "MS declined the stop at {{time}}",
+    "stopsDone": "Answer recorded"
   }
 }

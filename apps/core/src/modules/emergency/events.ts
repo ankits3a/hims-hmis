@@ -139,6 +139,8 @@ export const erMciTagged = defineEvent("er.mci_tagged", MODULE, z.object({
   mciId: id, episodeId: id, tag: z.string(), previous: z.string().nullable(), provenance: ErProvenanceSchema,
 }));
 export const erMciSurgeOpened = defineEvent("er.mci_surge_opened", MODULE, z.object({ mciId: id, bedIds: z.array(id), provenance: ErProvenanceSchema }));
+/** #877 — the MS's answer to the OPD / elective OT stop proposed with a Code Yellow. */
+export const erMciStopsDecided = defineEvent("er.mci_stops_decided", MODULE, z.object({ mciId: id, decision: z.enum(["confirm", "decline"]), provenance: ErProvenanceSchema }));
 
 /** Every event the tracking board refetches on. */
 export const ER_BOARD_EVENT_NAMES: readonly string[] = [
@@ -151,5 +153,5 @@ export const ER_BOARD_EVENT_NAMES: readonly string[] = [
   // board subscriber; the board shows the MLC mark on its next read.
   erDispositionDecided.name, erHandedToUnit.name, erDeparted.name,
   erCodeCalled.name, erCodeEvent.name, erCodeEnded.name,
-  erMciDeclared.name, erMciStoodDown.name, erMciTagged.name, erMciSurgeOpened.name,
+  erMciDeclared.name, erMciStoodDown.name, erMciTagged.name, erMciSurgeOpened.name, erMciStopsDecided.name,
 ];

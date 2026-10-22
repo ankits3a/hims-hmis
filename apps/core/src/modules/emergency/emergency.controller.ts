@@ -18,7 +18,7 @@ import {
 } from "./mlc";
 import { callCode, endCode, readErCode, readErCodes, recordCodeDebrief, recordCodeEvent } from "./codes";
 import {
-  declareMci, listMciOverflowBeds, listMciPacks, mciTag, mintMciPacks, openSurgeBays, readMciBoard, readMciCount, registerMciArrival, standDownMci,
+  decideMciStops, declareMci, listMciOverflowBeds, listMciPacks, mciTag, mintMciPacks, openSurgeBays, readMciBoard, readMciCount, registerMciArrival, standDownMci,
 } from "./mci";
 import { openErEventAccount, priceErLines, readErBill, readErBillDesk, setErPayer, settleErBill, takeErAdvance } from "./bill";
 import {
@@ -549,5 +549,12 @@ export class EmergencyController {
   @RequirePermission(ER_MCI, "hospital")
   async mciSurge(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
     try { return await openSurgeBays(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  /** #877 — the MS's answer to the OPD / elective OT stop proposed with the Code Yellow. */
+  @Post("mci/stops")
+  @RequirePermission(ER_MCI, "hospital")
+  async mciStops(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await decideMciStops(this.db, actor, body); } catch (e) { toHttp(e); }
   }
 }

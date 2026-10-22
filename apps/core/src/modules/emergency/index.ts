@@ -60,5 +60,6 @@ export {
 export { activationClocksFor, callCode, codeClocks, endCode, readErCode, readErCodes, recordCodeDebrief, recordCodeEvent } from "./codes";
 // Lane 8 (#815) — mass casualty, Code Yellow: declare, packs, arrival from a pack, START / JumpSTART tags, surge bays, board.
 export {
-  declareMci, listMciOverflowBeds, listMciPacks, mciTag, mintMciPacks, openSurgeBays, packNoOf, readMciBoard, readMciCount, registerMciArrival, standDownMci,
+  decideMciStops, declareMci, listMciOverflowBeds, listMciPacks, mciTag, mintMciPacks, openSurgeBays, packNoOf, readMciBoard, readMciCount, registerMciArrival, standDownMci,
 } from "./mci";
+export { ER_MCI_STOPS_TASK } from "./task-kinds";

@@ -16,7 +16,7 @@ const count = {
   byOutcome: { inDepartment: 3, admitted: 0, discharged: 0, referredOut: 0, died: 0, left: 0 },
 };
 const RUNNING: ErMciBoard = {
-  active: count, recent: [], packsReady: 37, bays: { free: 4, total: 60 }, surge: { free: 2, total: 2 }, hospitalBedsFree: 41, serverNow: now,
+  active: count, recent: [], packsReady: 37, bays: { free: 4, total: 60 }, surge: { free: 2, total: 2 }, hospitalBedsFree: 41, stops: null, serverNow: now,
   patients: [{ episodeId: EP, episodeNo: "ER26-000501", label: "Unknown-MCI26-003", tag: "black", esi: null, bayCode: null, state: "arrived", arrivedAt: now }],
 };
 const IDLE: ErMciBoard = { ...RUNNING, active: null, patients: [], surge: { free: 0, total: 0 } };
@@ -62,6 +62,24 @@ describe("ER lane 8 (#815) the MCI board", () => {
     await userEvent.type(within(row).getByRole("textbox"), "Breathing on re-check");
     await userEvent.click(red);
     expect(posted[0]!.body).toMatchObject({ episodeId: EP, tag: "red", reason: "Breathing on re-check" });
+  });
+
+  it("#877: the MS answers the OPD / elective OT stop proposal; the answer is shown", async () => {
+    board = { ...RUNNING, stops: { state: "proposed", decidedAt: null, note: null } };
+    renderWithRouter(<ErMciScreen />, "/er/mci");
+    const box = await screen.findByTestId("er-mci-stops");
+    expect(box).toHaveTextContent("stop new OPD registrations and elective OT lists");
+    await userEvent.type(within(box).getByRole("textbox"), "Till 18:00");
+    await userEvent.click(within(box).getByTestId("er-mci-stops-confirm"));
+    expect(posted[0]!.url).toContain("/er/mci/stops");
+    expect(posted[0]!.body).toMatchObject({ mciId: MCI, decision: "confirm", note: "Till 18:00" });
+  });
+
+  it("#877: a decided stop shows the MS's answer, without buttons", async () => {
+    board = { ...RUNNING, stops: { state: "declined", decidedAt: now, note: null } };
+    renderWithRouter(<ErMciScreen />, "/er/mci");
+    expect(await screen.findByTestId("er-mci-stops-answer")).toHaveTextContent("MS declined the stop");
+    expect(screen.queryByTestId("er-mci-stops-confirm")).toBeNull();
   });
 
   it("with no Code Yellow running, offers the declaration and the packs", async () => {

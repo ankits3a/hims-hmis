@@ -33,7 +33,7 @@ export {
 export type { ErCodeClockDef, ErCodeKind, ErCodeView, ErCodes } from "./codes";
 export {
   ER_MCI_COMMAND_ROLES, ER_MCI_METHODS, ER_MCI_PACKS_MAX, ER_MCI_TAGS, ER_MCI_TAG_WORDS, ErMciBoardSchema, ErMciCountSchema, ErMciFindingsSchema,
-  ErMciPackSchema, ErMciSurgeBedSchema, ErMciTagSchema, mciTagProposal,
+  ER_MCI_STOPS_DECISIONS, ER_MCI_STOPS_STATES, ErMciPackSchema, ErMciSurgeBedSchema, ErMciTagSchema, mciTagProposal,
 } from "./mci";
 export type { ErMciBoard, ErMciCount, ErMciFindings, ErMciMethod, ErMciPack, ErMciSurgeBed, ErMciTag } from "./mci";
 /** ER lane 6 (#813): the intents whose answers name money — the bill desk's, never a clinical screen's (0058). */
@@ -108,6 +108,7 @@ export const ER_INTENTS = {
   register_mci_arrival: mci.registerMciArrival,
   mci_tag: mci.mciTag,
   open_surge_bays: mci.openSurgeBays,
+  decide_mci_stops: mci.decideMciStops,
 } as const;
 export type ErIntentName = keyof typeof ER_INTENTS;
 export const ER_INTENT_NAMES = Object.keys(ER_INTENTS) as ErIntentName[];

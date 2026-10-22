@@ -173,6 +173,25 @@ export const openSurgeBays = erIntent({
   idempotent: true,
 });
 
+/**
+ * #877 item 2 — the MS's answer to the proposal raised with the declaration: stop new OPD registrations and the elective
+ * OT lists for the event. A proposal and a person's decision only — no OPD or OT screen is switched off by it; a
+ * confirmation tells the duty managers, who carry it out in person. One decision per event.
+ */
+export const ER_MCI_STOPS_DECISIONS = ["confirm", "decline"] as const;
+export const ER_MCI_STOPS_STATES = ["proposed", "confirmed", "declined"] as const;
+export const decideMciStops = erIntent({
+  input: erInput({ mciId: ErIdSchema, decision: z.enum(ER_MCI_STOPS_DECISIONS), note: ErNoteSchema.optional() }),
+  output: z.strictObject({ mciId: ErIdSchema, decision: z.enum(ER_MCI_STOPS_DECISIONS), decidedAt: ErInstantSchema }),
+  refusals: ["mci_not_found", "mci_stood_down", "mci_stops_not_ms", "mci_stops_decided"],
+  actors: ["supervisor"],
+  copilotProposable: false,
+  agentTier: "none",
+  undo: "irreversible",
+  events: ["er.mci_stops_decided"],
+  idempotent: true,
+});
+
 // ═══════════════════════════════════════ reads: the MCI board and the head count ═══════════════════════════════════════
 
 const TagCountsSchema = z.object({
@@ -209,6 +228,8 @@ export const ErMciBoardSchema = z.object({
   surge: z.object({ free: z.number().int(), total: z.number().int() }),
   /** Inpatient beds free across the hospital (IPD registry: available, no occupant; ER bays and overflow excluded). */
   hospitalBedsFree: z.number().int(),
+  /** #877 — the OPD / elective OT stop proposed to the MS for the running event (null when none is running). */
+  stops: z.object({ state: z.enum(ER_MCI_STOPS_STATES), decidedAt: ErInstantSchema.nullable(), note: z.string().nullable() }).nullable(),
   serverNow: ErInstantSchema,
 });
 export type ErMciBoard = z.infer<typeof ErMciBoardSchema>;
