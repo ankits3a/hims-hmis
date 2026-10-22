@@ -276,8 +276,9 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   (`cancel_reason` = confirmed / declined + note; no migration). A confirmation rings the duty managers; stand-down
   withdraws an unanswered proposal; nothing in OPD or OT switches off by itself. `readMciFamilyDesk` (GET /er/mci/family,
   the running event else the last stood-down one): name or alias, stage word, place, nothing clinical, plus a fixed
-  press/VIP script; MLC, sealed and confidential patients are only counted (OPEN: every pack arrival opens an MLC by
-  rule, so pack patients never show there — owner call). Board fields `stops` and `teams` (teams per zone: ER = Casualty
+  press/VIP script; sealed and confidential patients are only counted, and so is every MLC patient except a Code Yellow
+  pack arrival (an `er_mci_packs` row used by the episode), which is listed although the pack rule opened its MLC
+  (decision 0083, owner 2026-10-23). Board fields `stops` and `teams` (teams per zone: ER = Casualty
   teams + who is on duty; each surge ward its own zone with the teams homed there).
 
 ### Lane 9 (er-copilot, #816)
