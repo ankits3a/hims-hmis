@@ -7717,7 +7717,9 @@
       },
       "searchFailed": "खोज उपलब्ध नहीं है — जब तक यह ठीक न हो, नया रिकॉर्ड न बनाएँ",
       "noDistrict": "क्षेत्र दर्ज नहीं",
-      "onFileSince": "{{since}} से दर्ज"
+      "onFileSince": "{{since}} से दर्ज",
+      "noGuardian": "अभिभावक दर्ज नहीं",
+      "guardian": { "fatherHusband": "पिता/पति", "father": "पिता", "mother": "माता", "husband": "पति", "wife": "पत्नी", "spouse": "पति/पत्नी", "sibling": "भाई/बहन", "legal_guardian": "कानूनी अभिभावक", "other": "अभिभावक" }
     },
     "register": {
       "title": "नया मरीज़",

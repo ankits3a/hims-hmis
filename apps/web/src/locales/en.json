@@ -7717,7 +7717,9 @@
       },
       "searchFailed": "Search is unavailable — do not register a new record until it works",
       "noDistrict": "no area on file",
-      "onFileSince": "on file since {{since}}"
+      "onFileSince": "on file since {{since}}",
+      "noGuardian": "no guardian on file",
+      "guardian": { "fatherHusband": "Father/Husband", "father": "Father", "mother": "Mother", "husband": "Husband", "wife": "Wife", "spouse": "Spouse", "sibling": "Sibling", "legal_guardian": "Legal guardian", "other": "Guardian" }
     },
     "register": {
       "title": "New patient",

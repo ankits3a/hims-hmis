@@ -194,6 +194,10 @@ describe("patients e2e", () => {
         referredBySpeciality: "Cardiology", acknowledgedDuplicates: true,
       })
       .expect(201);
+    // Owner 2026-10-23 — the desk search carries the guardian; here the registration's father / husband box.
+    const found = await request(app.getHttpServer())
+      .get("/patients/search").query({ q: "9812300002" }).set(...auth(clerkToken)).expect(200);
+    expect(found.body.items[0].guardian).toEqual({ name: "Ravi Kumar", relation: null });
   });
 
   /*
