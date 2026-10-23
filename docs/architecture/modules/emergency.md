@@ -13,7 +13,7 @@ Source: `apps/core/src/modules/emergency/`
 
 - **Depends on modules:** `billing`, `formulary`, `ipd`, `lab`, `materials`, `ordering`, `patients`, `roster`, `tariff`, `tasks`
 - **Used by modules:** —
-- **Kernel used:** `alerts`, `approvals`, `auth`, `db`, `episodes`, `events`, `modules`, `orders`, `printing`, `realtime`, `tokens`, `workflow`
+- **Kernel used:** `alerts`, `approvals`, `auth`, `config`, `copilot`, `db`, `desk`, `episodes`, `events`, `modules`, `orders`, `printing`, `realtime`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
 
@@ -87,6 +87,35 @@ Source: `apps/core/src/modules/emergency/`
   - `readErCodes(db: Db, actor: Actor, opts: Opts = {}): Promise<ErCodes>`
   - `recordCodeDebrief(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_code_debrief">>`
   - `recordCodeEvent(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_code_event">>`
+- `copilot-bay.ts`
+  - `bayProposalOf(db: Db, actor: Actor, e: EpisodeRow, at: Date): Promise<Proposal>`
+  - `erBayZone(b: BayFacts): ErBayZone | null`
+  - `readBayProposal(db: Db, actor: Actor, episodeId: string): Promise<ErBayProposal>`
+- `copilot-drafts.ts`
+  - `ER_DRAFT_BUDGET_MS`
+  - `buildErDraft(db: Db, actor: Actor, episodeId: string, kind: ErDraftKind, opts: Opts = {}): Promise<ErDraft>`
+  - `buildErReferralDraft(db: Db, actor: Actor, episodeId: string, opts: Opts = {}): Promise<ErDraft>`
+  - `buildErSummaryDraft(db: Db, actor: Actor, episodeId: string, opts: Opts = {}): Promise<ErDraft>`
+  - `buildMlcNarrativeDraft(db: Db, actor: Actor, episodeId: string, opts: Opts = {}): Promise<ErDraft>`
+- `copilot-esi.ts`
+  - `checkEsiProposal(db: Db, actor: Actor, episodeId: string, basisRaw: string): Promise<ErEsiProposalCheck>`
+  - `readEsiProposal(db: Db, actor: Actor, episodeId: string): Promise<ErEsiProposal>`
+- `copilot-model.ts`
+  - `askErModel(db: Db, actor: Actor, model: ErModel | null | undefined, episodeId: string, ask: ErModelAsk, now: Date): Promise<ErModelAnswer>`
+  - `erModelBarred(db: Db, episodeId: string): Promise<"mlc" | "sealed" | "confidential" | "unknown" | null>`
+  - `erModelFrom(cfg: Pick<AppConfig, "copilot" | "copilotSpend">): ErModel`
+  - types: `ErFallback`, `ErModel`
+- `copilot-since.ts`
+  - `istHm(d: Date): string`
+  - `readSinceArrival(db: Db, actor: Actor, episodeId: string, opts: { now?: Date } = {}): Promise<ErSinceArrival>`
+  - `sinceCandidates(db: Db, episodeId: string, now: Date, viewer: Actor): Promise<{ arrivedAt: Date; episodeNo: string; lines: Candidate[] }>`
+  - `verifyErSinceLine(db: Db, line: Pick<ErSinceLine, "text" | "template" | "facts" | "records">, ctx: SinceCtx): Promise<{ ok: true } | { ok: …`
+- `copilot-tools.ts`
+  - `emergencyCopilotIntents: Readonly<Record<ModuleCopilotIntent, CopilotIntentDecl>>`
+  - `emergencyCopilotTools: readonly CopilotToolDecl[]`
+- `copilot-waiting.ts`
+  - `readErWaitingDisplay(db: Db, actor: Actor, opts: { now?: Date } = {}): Promise<ErWaitingDisplay>`
+  - `stageOf(e: Pick<EpisodeRow, "state" | "disposition">, testPending: boolean): ErStageWord`
 - `dispo.ts`
   - `ER_BOARDING_CLIMB_MIN`
   - `ER_BOARDING_TASK_MIN`
@@ -117,6 +146,7 @@ Source: `apps/core/src/modules/emergency/`
 - `manifest.ts`
   - `emergencyManifest: ModuleManifest`
 - `mci.ts`
+  - `decideMciStops(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"decide_mci_stops">>`
   - `declareMci(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"declare_mci">>`
   - `listMciOverflowBeds(db: Db, actor: Actor): Promise<ErMciSurgeBed[]>`
   - `listMciPacks(db: Db, actor: Actor): Promise<{ ready: { packNo: string; uhid: string; alias: string; band: ErBandPayload }[] }>`
@@ -126,6 +156,7 @@ Source: `apps/core/src/modules/emergency/`
   - `packNoOf(year: number, serial: number): string`
   - `readMciBoard(db: Db, actor: Actor, opts: Opts = {}): Promise<ErMciBoard>`
   - `readMciCount(db: Db, actor: Actor, mciId: string, opts: Opts = {}): Promise<ErMciCount>`
+  - `readMciFamilyDesk(db: Db, actor: Actor, opts: Opts = {}): Promise<ErMciFamilyDesk>`
   - `registerMciArrival(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"register_mci_arrival">>`
   - `standDownMci(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"stand_down_mci">>`
 - `mlc.ts`
@@ -152,6 +183,18 @@ Source: `apps/core/src/modules/emergency/`
   - `ER_MCI`
   - `ER_MLC`
   - `ER_TRIAGE`
+- `now-cards.ts`
+  - `boardingLongCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `callUnansweredCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `casualtyNowCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `criticalResultCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `doctorOverdueCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `lwbsRiskCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `mlcCountersignDueCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `mlcIntimationDueCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `preAlertCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `resultReadyCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `retriageDueCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
 - `realtime.ts`
   - `ER_REALTIME_NAMES: string[]`
   - `ER_TOPIC_SPACES: TopicSpace[]`
@@ -161,6 +204,7 @@ Source: `apps/core/src/modules/emergency/`
   - `ER_ARBITRATION_TASK`
   - `ER_BED_SKILL`
   - `ER_BOARDING_TASK`
+  - `ER_MCI_STOPS_TASK`
   - `ER_MLC_INTIMATION_TASK`
   - `ER_MLC_SKILL`
   - `ER_MS_SKILL`
@@ -192,6 +236,7 @@ Foreign keys into: `patients`, `resources`
 
 ## HTTP routes
 
+- `copilot.controller.ts` — `/er/copilot`
 - `emergency.controller.ts` — `/er/arrivals`, `/er/bands`, `/er/bays`, `/er/bill`, `/er/board`, `/er/calls`, `/er/care`, `/er/codes`, `/er/consents`, `/er/desk`, `/er/dispo`, `/er/doctor`, `/er/doctors`, `/er/episodes`, `/er/identity`, `/er/items`, `/er/mci`, `/er/meds`, `/er/mlc`, `/er/notes`, `/er/orders`, `/er/patients`, `/er/pre-alerts`, `/er/procedures`, `/er/stabilised`, `/er/triage`, `/er/triage-doctors`, `/er/vitals`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/emergency`

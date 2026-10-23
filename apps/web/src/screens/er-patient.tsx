@@ -14,6 +14,7 @@ import {
   fetchErItems, fetchTriageDoctors, issueApi, noteApi, openMlcApi, orderApi, procedureApi, signVerbalApi, stabilisedApi,
 } from "../lib/er-api";
 import { EsiBadge, ageSexWords, aliasFirst } from "./er-board";
+import { DraftButton, SinceArrival } from "./er-copilot";
 import "../styles/paper-pine.css";
 import "./er.css";
 
@@ -30,7 +31,8 @@ import "./er.css";
  */
 type T = (k: string, o?: Record<string, unknown>) => string;
 type Panel = null | "order" | "med" | "note" | "procedure" | "consent" | "call" | "mlc" | "dispo" | "code";
-const DEPTS = ["MED", "SUR", "ORT", "OBG", "PAED", "CARD", "NEURO", "ANAES"] as const;
+/** The specialties a call can go to; each is a roster department master code (pinned by er-departments.test.ts, #870). */
+export const ER_CALL_DEPARTMENTS = ["MED", "SUR", "ORT", "OBG", "PED", "CAR", "ANAE"] as const;
 
 function Refusal({ r, t }: { r: ErRefusalBody | string; t: T }): React.ReactElement {
   if (typeof r === "string") return <div className="erd-refusal" role="alert"><b>{r}</b></div>;
@@ -109,6 +111,9 @@ export function ErPatient(): React.ReactElement {
           </section>
         ) : <div className="erb-empty">{t("erTriage.loading")}</div>}
 
+        {/* Lane 9 (#816, spec §5 D): the patient view opens on "since arrival" — source-chipped lines, no model, no money. */}
+        {can("er.care") ? <SinceArrival episodeId={episodeId} /> : null}
+
         {care !== null && care.criticals.length > 0 ? (
           <section className="erp-critical" role="alert" data-testid="er-patient-critical">
             <b>{t("erPatient.critical")}</b>
@@ -168,7 +173,7 @@ export function ErPatient(): React.ReactElement {
           return t("erPatient.call.sent", { who: r.callees.map((c) => c.name).join(", ") || t("erPatient.call.noRoster") });
         })} /> : null}
 
-        {panel === "dispo" && tile !== null ? <DispoPanel t={t} busy={busy} doctors={doctors} state={tile.state} act={(work) => act(async () => {
+        {panel === "dispo" && tile !== null ? <DispoPanel t={t} busy={busy} doctors={doctors} state={tile.state} episodeId={episodeId} act={(work) => act(async () => {
           const said = await work(episodeId);
           return said;
         })} /> : null}
@@ -460,7 +465,7 @@ function CallPanel({ t, busy, onCall }: { t: T; busy: boolean; onCall: (dept: st
   const [reason, setReason] = useState("");
   return (
     <section className="erp-panel" data-testid="er-patient-callform">
-      <div className="erd-opts">{DEPTS.map((d) => (
+      <div className="erd-opts">{ER_CALL_DEPARTMENTS.map((d) => (
         <button key={d} type="button" className={`erd-opt sm${dept === d ? " on" : ""}`} aria-pressed={dept === d} onClick={() => setDept(d)}>{t(`erTriage.depts.${d}`, { defaultValue: d })}</button>
       ))}</div>
       <div className="erd-opts">{["immediate", "urgent", "routine"].map((u) => (
@@ -515,8 +520,8 @@ function MlcPanel({ t, busy, onOpen }: { t: T; busy: boolean; onOpen: (body: Rec
  * decided yet. No money anywhere: nobody is held, and "cannot pay" is not a referral reason.
  */
 type DispoTab = "discharge" | "admit" | "refer" | "lama" | "death" | "left";
-function DispoPanel({ t, busy, doctors, state, act }: {
-  t: T; busy: boolean; doctors: ErDoctorOption[]; state: string; act: (work: (episodeId: string) => Promise<string | null>) => Promise<void>;
+function DispoPanel({ t, busy, doctors, state, episodeId, act }: {
+  t: T; busy: boolean; doctors: ErDoctorOption[]; state: string; episodeId: string; act: (work: (episodeId: string) => Promise<string | null>) => Promise<void>;
 }): React.ReactElement {
   const [tab, setTab] = useState<DispoTab>("discharge");
   const [reason, setReason] = useState("");
@@ -573,6 +578,8 @@ function DispoPanel({ t, busy, doctors, state, act }: {
       ) : null}
       {shown === "discharge" ? (
         <>
+          {/* Lane 9 (#816): a Draft fills diagnosis and treatment; the doctor edits and signs with "Discharge". Medicines are never drafted. */}
+          <DraftButton episodeId={episodeId} kind="summary" onUse={(f) => { if (f.diagnosis) setDiagnosis(f.diagnosis); if (f.treatmentGiven) setTreatment(f.treatmentGiven); }} />
           <label className="erd-field"><span>{t("erPatient.dispo.diagnosis")}</span><input value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} /></label>
           <label className="erd-field"><span>{t("erPatient.dispo.treatment")}</span><textarea rows={2} value={treatment} onChange={(e) => setTreatment(e.target.value)} /></label>
           <label className="erd-field"><span>{t("erPatient.dispo.medicines")}</span><textarea rows={3} value={meds} onChange={(e) => setMeds(e.target.value)} placeholder={t("erPatient.dispo.medicinesHint")} /></label>
@@ -623,6 +630,7 @@ function DispoPanel({ t, busy, doctors, state, act }: {
             <button key={x} type="button" className={`erd-opt sm${refReason === x ? " on" : ""}`} aria-pressed={refReason === x} onClick={() => setRefReason(x)}>{t(`erPatient.dispo.referReason.${x}`)}</button>
           ))}</div>
           <label className="erd-field"><span>{t("erPatient.dispo.facility")}</span><input value={facility} onChange={(e) => setFacility(e.target.value)} /></label>
+          <DraftButton episodeId={episodeId} kind="referral" onUse={(f) => { if (f.note) setRefNote(f.note); }} />
           <label className="erd-field"><span>{t("erPatient.dispo.referralNote")}</span><textarea rows={3} value={refNote} onChange={(e) => setRefNote(e.target.value)} /></label>
           <div className="erd-pair">
             <label className="erd-field"><span>{t("erPatient.dispo.escort")}</span>

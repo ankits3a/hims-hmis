@@ -1835,6 +1835,13 @@
       "when": 1792097914634,
       "tag": "0261_stage_roster_kinds_union",
       "breakpoints": true
+    },
+    {
+      "idx": 262,
+      "version": "7",
+      "when": 1792097915634,
+      "tag": "0262_er_copilot",
+      "breakpoints": true
     }
   ]
 }

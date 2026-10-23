@@ -1,6 +1,7 @@
 import { ApiError, api } from "./api";
 import type {
-  ErBay, ErBill, ErBillDesk, ErBoard, ErCodeView, ErCodes, ErMciBoard, ErMciCount, ErMciPack, ErMciSurgeBed, ErCareView, ErDeskView, ErDoctorOption, ErEpisodeView, ErItemOption, ErMlcDesk, ErMlcDetail, ErPatientHit, ErRefusalBody,
+  ErBayProposal, ErDraft, ErDraftKind, ErEsiProposal, ErEsiProposalCheck, ErSinceArrival, ErWaitingDisplay,
+  ErBay, ErBill, ErBillDesk, ErBoard, ErCodeView, ErCodes, ErMciBoard, ErMciCount, ErMciFamilyDesk, ErMciPack, ErMciSurgeBed, ErCareView, ErDeskView, ErDoctorOption, ErEpisodeView, ErItemOption, ErMlcDesk, ErMlcDetail, ErPatientHit, ErRefusalBody,
 } from "@hmis/contracts";
 
 /* ═══ ER lane 1 (#808) — `apps/core/src/modules/emergency/emergency.controller.ts`. The paths are the contract's
@@ -82,6 +83,8 @@ const ER_ROUTES = {
   mciArrival: "/er/mci/arrivals",
   mciTag: "/er/mci/tag",
   mciSurge: "/er/mci/surge",
+  mciStops: "/er/mci/stops",
+  mciFamily: "/er/mci/family",
 } as const;
 export const ER_BOARD_TOPIC = "er:board";
 export const ER_WALL_TOPIC = "erwall:board";
@@ -261,9 +264,24 @@ export const fetchMciBoard = () => api<ErMciBoard>("GET", ER_ROUTES.mci);
 export const fetchMciPacks = () => api<{ ready: Omit<ErMciPack, "packId" | "patientId" | "aliasHi">[] }>("GET", ER_ROUTES.mciPacks);
 export const fetchMciOverflowBeds = () => api<ErMciSurgeBed[]>("GET", ER_ROUTES.mciOverflow);
 export const fetchMciCount = (mciId: string) => api<ErMciCount>("GET", `${ER_ROUTES.mci}/${encodeURIComponent(mciId)}/count`);
-export const declareMciApi = (body: Record<string, unknown>) => post<{ mciId: string }>(ER_ROUTES.mciDeclare, body);
+export const declareMciApi = (body: Record<string, unknown>) => post<{ mciId: string; paged: number }>(ER_ROUTES.mciDeclare, body);
 export const standDownMciApi = (body: Record<string, unknown>) => post<{ backToEsi: number }>(ER_ROUTES.mciStandDown, body);
 export const mintPacksApi = (body: Record<string, unknown>) => post<{ packs: ErMciPack[] }>(ER_ROUTES.mciPacks, body);
 export const mciArrivalApi = (body: Record<string, unknown>) => post<{ episodeNo: string; alias: string }>(ER_ROUTES.mciArrival, body);
 export const mciTagApi = (body: Record<string, unknown>) => post<{ tag: ErMciTagName }>(ER_ROUTES.mciTag, body);
+export const fetchMciFamilyDesk = () => api<ErMciFamilyDesk>("GET", ER_ROUTES.mciFamily);
+export const mciStopsApi = (body: Record<string, unknown>) => post<{ decision: "confirm" | "decline"; decidedAt: string }>(ER_ROUTES.mciStops, body);
 export const surgeApi = (body: Record<string, unknown>) => post<{ opened: { bedId: string; code: string }[] }>(ER_ROUTES.mciSurge, body);
+
+/* ═══ lane 9 (#816) — the ER copilot (`copilot.controller.ts`, the contract's `ER_COPILOT_ROUTES`, copied). Reads and drafts
+ * only: nothing here records anything — a draft fills a form; the doctor signs through the act that owns it. ═══ */
+const ER_COPILOT_ROUTES = { esi: "/er/copilot/esi", bay: "/er/copilot/bay", since: "/er/copilot/since", drafts: "/er/copilot/drafts", waiting: "/er/copilot/waiting" } as const;
+export const fetchEsiProposal = (episodeId: string) => api<ErEsiProposal>("GET", `${ER_COPILOT_ROUTES.esi}/${encodeURIComponent(episodeId)}`);
+/** #899 — does the proposal on the screen (its basis) still stand? */
+export const checkEsiProposal = (episodeId: string, basis: string) =>
+  api<ErEsiProposalCheck>("GET", `${ER_COPILOT_ROUTES.esi}/${encodeURIComponent(episodeId)}/check?basis=${encodeURIComponent(basis)}`);
+/** #898 — the copilot's bay proposal (a read; the nurse places through place_in_bay). */
+export const fetchBayProposal = (episodeId: string) => api<ErBayProposal>("GET", `${ER_COPILOT_ROUTES.bay}/${encodeURIComponent(episodeId)}`);
+export const fetchSinceArrival = (episodeId: string) => api<ErSinceArrival>("GET", `${ER_COPILOT_ROUTES.since}/${encodeURIComponent(episodeId)}`);
+export const draftApi = (episodeId: string, kind: ErDraftKind) => api<ErDraft>("POST", `${ER_COPILOT_ROUTES.drafts}/${encodeURIComponent(episodeId)}/${kind}`, {});
+export const fetchWaitingDisplay = () => api<ErWaitingDisplay>("GET", ER_COPILOT_ROUTES.waiting);

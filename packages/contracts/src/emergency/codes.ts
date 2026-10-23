@@ -32,12 +32,17 @@ export const ER_CODE_CLOCKS: Record<ErCodeKind, readonly ErCodeClockDef[]> = {
   snakebite: [{ milestone: "asv", targetMin: 30, from: "activation" }],
   obstetric: [{ milestone: "lr_handover", targetMin: 15, from: "activation" }],
 };
-/** DECIDED (lane 7): who a code pages — the department on take through the roster's call-out list, else this role. */
+/**
+ * DECIDED (lane 7): who a code pages — the department on take through the roster's call-out list, else this role.
+ * Each departmentCode is a roster department master code (roster/masters.ts ORG_DEPARTMENTS; pinned by
+ * emergency/code-team-departments.test.ts, #870). The masters have no Neurology department, so stroke names none and
+ * pages the role on purpose.
+ */
 export const ER_CODE_TEAM: Record<ErCodeKind, { departmentCode: string | null; fallbackRole: string }> = {
-  code_blue: { departmentCode: "ANAES", fallbackRole: "anaesthetist" },
+  code_blue: { departmentCode: "ANAE", fallbackRole: "anaesthetist" },
   code_grey: { departmentCode: null, fallbackRole: "security_guard" },
-  stemi: { departmentCode: "CARD", fallbackRole: "doctor" },
-  stroke: { departmentCode: "NEURO", fallbackRole: "doctor" },
+  stemi: { departmentCode: "CAR", fallbackRole: "doctor" },
+  stroke: { departmentCode: null, fallbackRole: "doctor" },
   trauma: { departmentCode: "SUR", fallbackRole: "surgeon" },
   sepsis: { departmentCode: "MED", fallbackRole: "doctor" },
   snakebite: { departmentCode: "MED", fallbackRole: "doctor" },

@@ -4051,6 +4051,43 @@
     "ipdNewOrder": {
       "title": "New orders"
     },
+    "erCasualtyNow": {
+      "title": "Casualty now",
+      "inDepartment": "In the department",
+      "waitingTriage": "Waiting for triage",
+      "boarding": "Boarding",
+      "expected": "Expected"
+    },
+    "erRetriageDue": {
+      "title": "Re-triage due"
+    },
+    "erDoctorOverdue": {
+      "title": "Waiting for the ER doctor"
+    },
+    "erCallUnanswered": {
+      "title": "Specialty calls unanswered"
+    },
+    "erResultReady": {
+      "title": "Results ready"
+    },
+    "erCriticalResult": {
+      "title": "Critical results"
+    },
+    "erBoardingLong": {
+      "title": "Boarding in the ER"
+    },
+    "erMlcIntimationDue": {
+      "title": "MLC: police intimation due"
+    },
+    "erMlcCountersignDue": {
+      "title": "MLC: countersign due"
+    },
+    "erPreAlert": {
+      "title": "Expected in the ER"
+    },
+    "erLwbsRisk": {
+      "title": "Long wait: may leave unseen"
+    },
     "ipdAllergyFlags": {
       "title": "Allergies to review"
     },
@@ -11420,6 +11457,10 @@
       "reminderTooLong": "Keep it under 80 letters.",
       "reminderLimit": "You have 20 reminders. Clear one first.",
       "reminderSet": "Reminder set {{when}}.",
+      "erCasualtyNow": "Casualty now: {{inDepartment}} in the department, {{waitingTriage}} waiting for triage (longest {{longestWait}} min), {{boarding}} boarding, {{expected}} expected.",
+      "erCasualtyQuiet": "Casualty is empty right now, and no ambulance is expected.",
+      "erMlcDue": "MLC owed: {{intimations}} police intimations and {{countersigns}} countersigns — {{overdue}} past due. Open the MLC desk.",
+      "erMlcNoneDue": "No MLC intimation or countersign is owed.",
       "ddWaitingOnMe": "Waiting on you: {{critical}} critical, {{unread}} unread reports, {{deltas}} changed results, {{openVisits}} open visits.",
       "ddWaitingOnMeNone": "Nothing is waiting on you.",
       "ddUnitOwes": "{{unit}} owes {{open}}; {{overdue}} past their time. Open the Doctor Desk.",
@@ -21304,12 +21345,11 @@
       "SUR": "Surgery",
       "ORT": "Ortho",
       "OBG": "Obs & Gynae",
-      "PAED": "Paediatrics",
+      "PED": "Paediatrics",
       "ENT": "ENT",
       "OPH": "Eye",
-      "CARD": "Cardiology",
-      "NEURO": "Neurology",
-      "ANAES": "Anaesthesia"
+      "CAR": "Cardiology",
+      "ANAE": "Anaesthesia"
     },
     "save": "Save triage",
     "saveAgain": "Save re-triage",
@@ -21852,7 +21892,7 @@
     "place": "Place",
     "declareGo": "Declare Code Yellow",
     "declareWho": "MS or duty manager only.",
-    "declared": "Code Yellow declared",
+    "declared": "Code Yellow declared · phones paged: {{n}}",
     "recent": "Past events",
     "packs": "Pre-made packs",
     "packsHint": "UHID + band, ready at the desk.",
@@ -21900,6 +21940,107 @@
     "standDown": "Stand down",
     "standDownSure": "Yes, stand down",
     "stoodDown": "Stood down · {{n}} back to triage",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "stopsTitle": "OPD and elective OT",
+    "stopsProposed": "Proposed to the MS: stop new OPD registrations and elective OT lists",
+    "stopsWho": "Only the MS answers. Nothing stops by itself.",
+    "stopsNote": "Note",
+    "stopsConfirm": "Confirm the stop",
+    "stopsDecline": "Decline",
+    "stopsConfirmed": "MS confirmed the stop at {{time}}",
+    "stopsDeclined": "MS declined the stop at {{time}}",
+    "stopsDone": "Answer recorded",
+    "familyTitle": "Family information desk",
+    "familyOpen": "Open the family list",
+    "familyHint": "Name, stage and place only. Never read out a condition.",
+    "familyNone": "No one to list yet",
+    "familyWithheld": "Not listed here: {{n}} · send these families to the ER desk",
+    "familyScript": "Press and VIP script",
+    "teamsTitle": "Teams",
+    "teamsOnDuty": "On duty now",
+    "teamsNone": "No team on the roster for this zone"
+  },
+  "erCopilot": {
+    "suggestion": "Suggestion",
+    "esi": {
+      "title": "Copilot triage suggestion",
+      "says": "Suggests ESI {{n}} {{word}}",
+      "yours": "From the complaint, age and last recorded vitals. The level is yours to pick.",
+      "use": "Use these answers",
+      "withdrawn": "Suggestion withdrawn",
+      "fresh": "Show new suggestion",
+      "why": {
+        "triaged": "Triaged ESI {{level}} at {{time}}",
+        "re_triaged": "Re-triaged ESI {{level}} at {{time}}",
+        "moved": "Moved to {{bay}}",
+        "departed": "Left the ER at {{time}}",
+        "new_vitals": "New vitals at {{time}}",
+        "details_changed": "Complaint or age changed",
+        "out_of_date": "Suggestion out of date"
+      }
+    },
+    "since": {
+      "title": "Since arrival"
+    },
+    "source": {
+      "arrival": "Arrival",
+      "triage": "Triage",
+      "vitals": "Vitals",
+      "doctor": "Doctor",
+      "call": "Call",
+      "critical": "Critical",
+      "results": "Tests",
+      "meds": "Medicines",
+      "procedure": "Procedure",
+      "note": "Note",
+      "mlc": "MLC",
+      "disposition": "Decision"
+    },
+    "draft": {
+      "summary": "Draft summary",
+      "referral": "Draft referral letter",
+      "mlc_narrative": "Draft MLC narrative",
+      "label": "Draft",
+      "fromModel": "Course sentence by the copilot — check it before you sign.",
+      "unverified": "check these words: {{words}}",
+      "why": {
+        "barred": "From the record only (no model for this patient).",
+        "model_off": "From the record only (no model set up).",
+        "halted": "From the record only (copilot paused).",
+        "capped": "From the record only (today's copilot limit reached).",
+        "identifier_leak": "From the record only.",
+        "model_down": "From the record only (copilot not reachable).",
+        "over_budget": "From the record only (copilot too slow).",
+        "rejected": "From the record only (the copilot's sentence did not match the notes).",
+        "no_text": "From the record only.",
+        "template_only": "From the record only."
+      }
+    },
+    "waiting": {
+      "title": "Emergency — waiting area",
+      "titleHi": "आपातकालीन — प्रतीक्षा क्षेत्र",
+      "offline": "Offline · last update {{time}}",
+      "empty": "No one waiting.",
+      "foot": "Your token is the last four digits on the patient's band or slip. Ask at the ER desk for anything more."
+    },
+    "stage": {
+      "Waiting": "Waiting",
+      "Being seen": "Being seen",
+      "Waiting for test": "Waiting for test",
+      "Admitting": "Admitting",
+      "Going home soon": "Going home soon",
+      "Transfer arranged": "Transfer arranged"
+    },
+    "bay": {
+      "title": "Copilot bay suggestion",
+      "says": "Suggests {{bay}} · {{zone}}",
+      "place": "Place in {{bay}}",
+      "zone": {
+        "paeds": "Paeds",
+        "red": "Red zone",
+        "yellow": "Yellow zone",
+        "green": "Green zone"
+      }
+    }
   }
 }

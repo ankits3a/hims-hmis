@@ -201,11 +201,11 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 | `alerts` | attendance, bmw, diet, doctor-desk, emergency, ipd, lab, maintenance, opd, roster, tasks, transport | approvals, auth, db, events, modules, notify, ops, realtime, reminders, tokens, workflow | yes |
 | `approvals` | abdm, aerb, attendance, billing, bmw, diet, doctor-desk, emergency, formulary, ipd, lab, linen, materials, membership, ot, partners, passes, patients, pcpndt, pharmacy, radiology, roster, tariff | alerts, auth, db, events, modules, phi, tokens, workflow | yes |
 | `auth` | abdm, aerb, attendance, billing, bmw, diet, doctor-desk, emergency, formulary, housekeeping, ipd, lab, linen, maintenance, materials, membership, opd, ordering, ot, partners, passes, patients, pcpndt, pharmacy, radiology, roster, tariff, tasks, transport | config, crypto, db, events, modules, printing, push, ratelimit, tokens | yes |
-| `config` | abdm, attendance, billing, formulary, ipd, lab, membership, opd, ot, partners, patients, pharmacy, radiology | — | — |
-| `copilot` | billing, doctor-desk, formulary, ipd, lab, opd, pharmacy, roster | alerts, approvals, auth, config, db, desk, events, inference, modules, ratelimit, reminders, search, tokens, workflow | yes |
+| `config` | abdm, attendance, billing, emergency, formulary, ipd, lab, membership, opd, ot, partners, patients, pharmacy, radiology | — | — |
+| `copilot` | billing, doctor-desk, emergency, formulary, ipd, lab, opd, pharmacy, roster | alerts, approvals, auth, config, db, desk, events, inference, modules, ratelimit, reminders, search, tokens, workflow | yes |
 | `crypto` | abdm, billing, ipd, opd, patients | — | — |
 | `db` | abdm, aerb, attendance, billing, bmw, cds, diet, doctor-desk, emergency, formulary, housekeeping, ipd, lab, linen, maintenance, materials, membership, opd, ordering, ot, partners, passes, patients, pcpndt, pharmacy, radiology, roster, tariff, tasks, transport | — | — |
-| `desk` | attendance, billing, diet, doctor-desk, ipd, lab, membership, opd, partners, patients, pharmacy, radiology, roster | approvals, auth, db, events, modules, reminders, report, tokens, workflow | yes |
+| `desk` | attendance, billing, diet, doctor-desk, emergency, ipd, lab, membership, opd, partners, patients, pharmacy, radiology, roster | approvals, auth, db, events, modules, reminders, report, tokens, workflow | yes |
 | `documents` | lab, patients, pharmacy | — | — |
 | `episodes` | billing, emergency, ipd, lab, materials, opd, ot, pharmacy, radiology | db | — |
 | `events` | abdm, aerb, attendance, billing, diet, doctor-desk, emergency, formulary, housekeeping, ipd, lab, materials, membership, opd, ordering, ot, partners, passes, patients, pcpndt, pharmacy, radiology, roster, tariff | db, worker | — |

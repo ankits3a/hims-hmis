@@ -2,12 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import type React from "react";
-import type { ErMciBoard, ErMciCount, ErMciPack, ErMciSurgeBed, ErRefusalBody } from "@hmis/contracts";
+import type { ErMciBoard, ErMciCount, ErMciFamilyDesk, ErMciZone, ErMciPack, ErMciSurgeBed, ErRefusalBody } from "@hmis/contracts";
 import { useAuth } from "../lib/auth";
 import { dayMonthIst, fmtIst } from "../lib/format";
 import { useRealtime } from "../lib/realtime";
 import {
-  ER_BOARD_TOPIC, ER_MCI_TAGS, declareMciApi, erRefusalOf, fetchMciBoard, fetchMciOverflowBeds, mciArrivalApi, mciTagApi, mintPacksApi,
+  ER_BOARD_TOPIC, ER_MCI_TAGS, declareMciApi, erRefusalOf, fetchMciBoard, fetchMciFamilyDesk, fetchMciOverflowBeds, mciArrivalApi, mciStopsApi, mciTagApi, mintPacksApi,
   standDownMciApi, surgeApi,
 } from "../lib/er-api";
 import type { ErMciTagName } from "../lib/er-api";
@@ -105,7 +105,7 @@ function Idle({ board, t, busy, act }: { board: ErMciBoard; t: T; busy: boolean;
           <label className="erd-field"><span>{t("erMci.name")}</span><input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("erMci.nameHint")} /></label>
           <label className="erd-field"><span>{t("erMci.place")}</span><input value={place} onChange={(e) => setPlace(e.target.value)} /></label>
           <button type="button" className="erx-btn ery-declare big" disabled={busy || name.trim() === ""} data-testid="er-mci-declare-go"
-            onClick={() => void act(async () => { await declareMciApi({ name: name.trim(), ...(place.trim() === "" ? {} : { place: place.trim() }) }); return t("erMci.declared"); })}>
+            onClick={() => void act(async () => { const r = await declareMciApi({ name: name.trim(), ...(place.trim() === "" ? {} : { place: place.trim() }) }); return t("erMci.declared", { n: r.paged }); })}>
             {t("erMci.declareGo")}</button>
           <p className="dim">{t("erMci.declareWho")}</p>
         </div>
@@ -156,6 +156,7 @@ function Running({ board, m, t, busy, act, canRegister }: {
         <span>{t("erMci.beds", { n: board.hospitalBedsFree })}</span>
         <span>{t("erMci.packsLeft", { n: board.packsReady })}</span>
       </div>
+      {board.teams.length > 0 ? <Teams zones={board.teams} t={t} /> : null}
       <div className="erd-cols">
         <section className="erd-list" aria-label={t("erMci.patients")}>
           {canRegister ? (
@@ -193,8 +194,10 @@ function Running({ board, m, t, busy, act, canRegister }: {
               ) : null}
             </div>
           ))}
+          <FamilyDesk t={t} />
         </section>
         <section className="erd-new" aria-label={t("erMci.command")}>
+          {board.stops !== null ? <Stops stops={board.stops} mciId={m.mciId} t={t} busy={busy} act={act} /> : null}
           <h2>{t("erMci.surgeTitle")}</h2>
           {beds === null ? (
             <button type="button" className="erx-btn" disabled={busy} data-testid="er-mci-surge-open"
@@ -228,5 +231,84 @@ function Running({ board, m, t, busy, act, canRegister }: {
         </section>
       </div>
     </>
+  );
+}
+
+/** #877 — the OPD / elective OT stop proposed to the MS: the MS answers here; nothing stops by itself. */
+function Stops({ stops, mciId, t, busy, act }: { stops: NonNullable<ErMciBoard["stops"]>; mciId: string; t: T; busy: boolean; act: Act }): React.ReactElement {
+  const [note, setNote] = useState("");
+  const answer = (decision: "confirm" | "decline") => act(async () => {
+    await mciStopsApi({ mciId, decision, ...(note.trim() === "" ? {} : { note: note.trim() }) });
+    setNote("");
+    return t("erMci.stopsDone");
+  });
+  return (
+    <div className="erd-form" data-testid="er-mci-stops">
+      <h2>{t("erMci.stopsTitle")}</h2>
+      {stops.state === "proposed" ? (
+        <>
+          <p className="erp-text">{t("erMci.stopsProposed")}</p>
+          <label className="erd-field"><span>{t("erMci.stopsNote")}</span><input value={note} onChange={(e) => setNote(e.target.value)} /></label>
+          <div className="erd-row">
+            <button type="button" className="erx-btn pri" disabled={busy} data-testid="er-mci-stops-confirm" onClick={() => void answer("confirm")}>{t("erMci.stopsConfirm")}</button>
+            <button type="button" className="erx-btn" disabled={busy} data-testid="er-mci-stops-decline" onClick={() => void answer("decline")}>{t("erMci.stopsDecline")}</button>
+          </div>
+          <p className="dim">{t("erMci.stopsWho")}</p>
+        </>
+      ) : (
+        <p className="erp-text" data-testid="er-mci-stops-answer">
+          {t(stops.state === "confirmed" ? "erMci.stopsConfirmed" : "erMci.stopsDeclined", { time: stops.decidedAt === null ? "" : whenIst(stops.decidedAt) })}
+          {stops.note !== null ? <span className="dim"> · {stops.note}</span> : null}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** #877 — the family information desk: name (or alias), stage word and place only; MLC / sealed / confidential only counted. */
+function FamilyDesk({ t }: { t: T }): React.ReactElement {
+  const [desk, setDesk] = useState<ErMciFamilyDesk | null>(null);
+  const [failed, setFailed] = useState(false);
+  const open = () => { fetchMciFamilyDesk().then((d) => { setDesk(d); setFailed(false); }, () => setFailed(true)); };
+  return (
+    <div className="erd-form" data-testid="er-mci-family">
+      <h2>{t("erMci.familyTitle")}</h2>
+      <p className="dim">{t("erMci.familyHint")}</p>
+      <button type="button" className="erx-btn" data-testid="er-mci-family-open" onClick={open}>{t("erMci.familyOpen")}</button>
+      {failed ? <div className="erb-empty">{t("erDesk.failed")}</div> : null}
+      {desk !== null ? (
+        <>
+          {desk.rows.length === 0 ? <div className="erb-empty">{t("erMci.familyNone")}</div> : (
+            <ol className="ery-packs" data-testid="er-mci-family-rows">
+              {desk.rows.map((r, i) => (
+                <li key={`${r.label}-${String(i)}`}><b>{r.label}</b>{r.packNo !== null ? <span className="dim mono"> {r.packNo}</span> : null} · {r.stage}{r.where !== null ? ` · ${r.where}` : ""}</li>
+              ))}
+            </ol>
+          )}
+          {desk.withheld > 0 ? <p className="erp-text" data-testid="er-mci-family-withheld">{t("erMci.familyWithheld", { n: desk.withheld })}</p> : null}
+          <h3>{t("erMci.familyScript")}</h3>
+          <ul className="erp-text" data-testid="er-mci-press-script">{desk.script.map((line) => <li key={line}>{line}</li>)}</ul>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+/** #877 — the teams per zone from the roster: names and roles, who is on duty; no phone numbers. */
+function Teams({ zones, t }: { zones: ErMciZone[]; t: T }): React.ReactElement {
+  return (
+    <section className="erd-form" aria-label={t("erMci.teamsTitle")} data-testid="er-mci-teams">
+      <h2>{t("erMci.teamsTitle")}</h2>
+      {zones.map((z) => (
+        <div key={z.zone} data-testid="er-mci-zone">
+          <h3>{z.zone}</h3>
+          {z.teams.length === 0 && z.onDuty.length === 0 ? <p className="dim">{t("erMci.teamsNone")}</p> : null}
+          {z.teams.map((tm) => (
+            <p key={tm.code} className="erp-text"><b>{tm.name}</b> <span className="dim mono">{tm.code}</span>{tm.members.length > 0 ? ` · ${tm.members.map((x) => `${x.name} (${x.role})`).join(", ")}` : ""}</p>
+          ))}
+          {z.onDuty.length > 0 ? <p className="erp-text"><span className="dim">{t("erMci.teamsOnDuty")}:</span> {z.onDuty.map((d) => `${d.name} · ${d.position}`).join(", ")}</p> : null}
+        </div>
+      ))}
+    </section>
   );
 }

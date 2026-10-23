@@ -93,7 +93,7 @@ export {
   LAB_CRITICALS_CLOSE,
 } from "./criticals";
 export type {
-  AcknowledgeCriticalInput, AcknowledgeCriticalOutcome, CriticalAttempt, OpenCriticalCall,
+  AcknowledgeCriticalInput, AcknowledgeCriticalOutcome, CriticalAttempt, OpenCritical, OpenCriticalCall,
 } from "./criticals";
 // ── E3.2 (#595) — the critical chase ladder and the G5 read-back report ──
 export {

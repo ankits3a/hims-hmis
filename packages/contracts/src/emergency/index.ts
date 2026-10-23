@@ -33,13 +33,23 @@ export {
 export type { ErCodeClockDef, ErCodeKind, ErCodeView, ErCodes } from "./codes";
 export {
   ER_MCI_COMMAND_ROLES, ER_MCI_METHODS, ER_MCI_PACKS_MAX, ER_MCI_TAGS, ER_MCI_TAG_WORDS, ErMciBoardSchema, ErMciCountSchema, ErMciFindingsSchema,
-  ErMciPackSchema, ErMciSurgeBedSchema, ErMciTagSchema, mciTagProposal,
+  ER_MCI_FAMILY_STAGES, ER_MCI_PRESS_SCRIPT, ER_MCI_STOPS_DECISIONS, ER_MCI_STOPS_STATES, ErMciFamilyDeskSchema, ErMciPackSchema, ErMciZoneSchema, ErMciSurgeBedSchema, ErMciTagSchema, mciFamilyStage, mciTagProposal,
 } from "./mci";
-export type { ErMciBoard, ErMciCount, ErMciFindings, ErMciMethod, ErMciPack, ErMciSurgeBed, ErMciTag } from "./mci";
+export type { ErMciBoard, ErMciCount, ErMciFamilyDesk, ErMciFamilyStage, ErMciFindings, ErMciMethod, ErMciPack, ErMciSurgeBed, ErMciTag, ErMciZone } from "./mci";
 /** ER lane 6 (#813): the intents whose answers name money — the bill desk's, never a clinical screen's (0058). */
 export const ER_MONEY_INTENTS = ["set_er_payer", "take_er_advance", "price_er_lines", "settle_er_bill", "open_er_event_account"] as const;
 export type { ErDisposition, ErReturnIfSign } from "./dispo";
 export { ErBandPayloadSchema } from "./intents";
+// Lane 9 (#816) — the ER copilot: Now card keys, the ESI proposal (rules only), "since arrival", drafts, the waiting display.
+export {
+  ER_COPILOT_ROUTES, ER_DRAFT_FALLBACKS, ER_DRAFT_KINDS, ER_NOW_CARD_KEYS, ER_SINCE_MAX_LINES, ER_SINCE_MIN_LINES, ER_SINCE_SOURCES, ER_STAGE_WORDS,
+  ER_STAGE_WORDS_HI, ER_MODE_WORDS, ER_SINCE_FACT_KINDS, ErSinceFactSchema, ErSinceRefSchema, erIstHm, formatSinceFact, renderSinceLine, ER_BAY_PROPOSAL_NONE, ER_BAY_ZONES, ER_PROPOSABLE_BAY_ZONES, ErBayProposalSchema, ErDraftSchema, ErEsiProposalSchema, ErEsiProposalCheckSchema, ER_PROPOSAL_WITHDRAW_REASONS, erWithdrawText, ErSinceArrivalSchema, ErSinceLineSchema, ErWaitingDisplaySchema, esiDangerZone, esiWord,
+  proposeEsi,
+} from "./copilot";
+export type {
+  ErBayProposal, ErBayProposalNone, ErBayZone, ErDraft, ErDraftKind, ErEsiProposal, ErEsiProposalCheck, ErProposalWithdrawReason, ErNowCardKey, ErSinceArrival, ErSinceFact, ErSinceLine, ErSinceRef, ErSinceSource, ErStageWord, ErWaitingDisplay, EsiProposal,
+  EsiProposalInput,
+} from "./copilot";
 export type { ErBandPayload } from "./intents";
 
 /** ER lane 1 (#808) — the contracted intents, by their spec §2 names. Later lanes add theirs here. */
@@ -108,6 +118,7 @@ export const ER_INTENTS = {
   register_mci_arrival: mci.registerMciArrival,
   mci_tag: mci.mciTag,
   open_surge_bays: mci.openSurgeBays,
+  decide_mci_stops: mci.decideMciStops,
 } as const;
 export type ErIntentName = keyof typeof ER_INTENTS;
 export const ER_INTENT_NAMES = Object.keys(ER_INTENTS) as ErIntentName[];

@@ -2079,11 +2079,37 @@
     "today": "Today",
     "dayLabel": "{{dow}} {{d}}",
     "dateLabel": "{{dow}} {{d}} {{month}}",
-    "dow": { "0": "Mon", "1": "Tue", "2": "Wed", "3": "Thu", "4": "Fri", "5": "Sat", "6": "Sun" },
-    "dowLetter": { "0": "M", "1": "T", "2": "W", "3": "T", "4": "F", "5": "S", "6": "S" },
+    "dow": {
+      "0": "Mon",
+      "1": "Tue",
+      "2": "Wed",
+      "3": "Thu",
+      "4": "Fri",
+      "5": "Sat",
+      "6": "Sun"
+    },
+    "dowLetter": {
+      "0": "M",
+      "1": "T",
+      "2": "W",
+      "3": "T",
+      "4": "F",
+      "5": "S",
+      "6": "S"
+    },
     "month": {
-      "01": "January", "02": "February", "03": "March", "04": "April", "05": "May", "06": "June",
-      "07": "July", "08": "August", "09": "September", "10": "October", "11": "November", "12": "December"
+      "01": "January",
+      "02": "February",
+      "03": "March",
+      "04": "April",
+      "05": "May",
+      "06": "June",
+      "07": "July",
+      "08": "August",
+      "09": "September",
+      "10": "October",
+      "11": "November",
+      "12": "December"
     },
     "of": "{{n}} / {{of}}",
     "in": "In",
@@ -2806,6 +2832,10 @@
       "reminderTooLong": "Keep it under 80 letters.",
       "reminderLimit": "You have 20 reminders. Clear one first.",
       "reminderSet": "Reminder set {{when}}.",
+      "erCasualtyNow": "Casualty now: {{inDepartment}} in the department, {{waitingTriage}} waiting for triage (longest {{longestWait}} min), {{boarding}} boarding, {{expected}} expected.",
+      "erCasualtyQuiet": "Casualty is empty right now, and no ambulance is expected.",
+      "erMlcDue": "MLC owed: {{intimations}} police intimations and {{countersigns}} countersigns — {{overdue}} past due. Open the MLC desk.",
+      "erMlcNoneDue": "No MLC intimation or countersign is owed.",
       "ddWaitingOnMe": "Waiting on you: {{critical}} critical, {{unread}} unread reports, {{deltas}} changed results, {{openVisits}} open visits.",
       "ddWaitingOnMeNone": "Nothing is waiting on you.",
       "ddUnitOwes": "{{unit}} owes {{open}}; {{overdue}} past their time. Open the Doctor Desk.",
@@ -3104,26 +3134,6 @@
       "shareUnavailable": "Sharing not available",
       "shareFailed": "PDF not shared",
       "shareNotRecorded": "Shared; not recorded"
-    },
-    "ast": {
-      "title": "Sensitivity",
-      "empty": "Pick a panel",
-      "add": "Add antibiotic",
-      "addFree": "Add “{{name}}”",
-      "mic": "MIC",
-      "micUnit": "MIC µg/mL",
-      "noGrowth": "No growth · no table",
-      "remove": "Remove {{name}}",
-      "S": "Sensitive",
-      "I": "Intermediate",
-      "R": "Resistant",
-      "panels": {
-        "ent_urine": "Entero · urine",
-        "ent_other": "Entero · other",
-        "pse_aci": "Pseudo / Acineto",
-        "staph_ent": "Staph / Entero",
-        "strep": "Strep"
-      }
     },
     "ast": {
       "title": "Sensitivity",
