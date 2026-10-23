@@ -163,6 +163,9 @@ const registerBody = z.object({
   altPhone: phoneField.optional(),
   dob: z.coerce.date().optional(),
   ageYears: z.number().int().min(0).max(130).optional(),
+  /** An infant's age: "3 months" is `ageMonths: 3`, "45 days" is `ageDays: 45` (`registration.ts`). */
+  ageMonths: z.number().int().min(0).max(11).optional(),
+  ageDays: z.number().int().min(0).max(365).optional(),
   sex: sexEnum,
   addressLine: z.string().max(500).optional(),
   district: z.string().max(100).optional(),
@@ -218,7 +221,7 @@ const patchBody = registerBody
   // `.partial()` would give it replace-the-whole-set semantics on a route whose every other field
   // means "change just this one". Editing an entitlement is add/amend/end, not overwrite, and it
   // gets its own surface rather than a silently destructive corner of this one.
-  .omit({ ageYears: true, guardian: true, acknowledgedDuplicates: true, coverages: true })
+  .omit({ ageYears: true, ageMonths: true, ageDays: true, guardian: true, acknowledgedDuplicates: true, coverages: true })
   .partial()
   .extend({
     phone: phoneField.nullable().optional(),
@@ -576,7 +579,7 @@ export class PatientsController {
         walk-in customer and other in-module callers of the function keep their own rules. It runs
         before the duplicate probe so an incomplete form is told what is missing first.
       */
-      if (b.dob === undefined && b.ageYears === undefined) {
+      if (b.dob === undefined && b.ageYears === undefined && b.ageMonths === undefined && b.ageDays === undefined) {
         throw new PatientError("age_or_dob_required", "an age (an estimate is fine) or a date of birth is required to register");
       }
       if (b.acknowledgedDuplicates !== true) {

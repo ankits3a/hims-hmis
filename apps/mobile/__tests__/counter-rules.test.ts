@@ -120,6 +120,10 @@ describe("the counter's rules — one file for the counter PC and the phone", ()
       name: "Ravi", sex: "male", ageYears: 8,
       guardian: { name: "Mohan Kumar", relationship: "father", authorityMessages: true, authorityBills: true, authorityConsents: false, authorityDsr: false },
     });
+    // A baby's age in months is a minor's, and travels as months rather than "0 years".
+    const baby = { ...withGuardian, name: "Baby of Sita", ageOrDob: "3m" };
+    expect(shortFormGaps({ ...baby, guardianName: "" }, TODAY)).toEqual(["guardian"]);
+    expect(shortRegisterBody(baby, {}, TODAY)).toMatchObject({ ageYears: 0, ageMonths: 3 });
   });
 
   it("a department move: the server's amount wins, and the four money rules say what happens", () => {
