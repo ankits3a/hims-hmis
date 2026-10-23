@@ -1,0 +1,9 @@
+DDInterID_A,Drug_A,DDInterID_B,Drug_B,Level
+DDInter0001,Warfarin,DDInter0002,Aspirin,Major
+DDInter0001,Warfarin,DDInter0003,Fluconazole,Major
+DDInter0004,"Sodium chloride, hypertonic",DDInter0003,Fluconazole,Major
+DDInter0005,Clarithromycin,DDInter0006,Simvastatin,Major
+DDInter0001,Warfarin,DDInter0007,Acetaminophen,Moderate
+DDInter0008,Cetirizine,DDInter0009,Ibuprofen,Minor
+DDInter0010,Ketoconazole,DDInter0011,Diclofenac,Unknown
+DDInter0012,Methotrexate,DDInter0013,Trimethoprim,Major
