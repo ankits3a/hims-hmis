@@ -20,7 +20,8 @@ rate with and without the layer. It ships OFF.
 - Curated pairs always win: any curated row for the same two moieties, active or retired, hides the reference pair.
 - A reference pair gates like a curated severe pair: the doctor overrides it with a reason (decision 0052).
 - Reference pairs are systemic only: a topical line never raises one (DECIDED; DDInter carries no route).
-- Name mapping is exact: moiety name, moiety alias, or the FDA reference name map. Anything else is reported, not guessed.
+- Name mapping is exact: the moiety name or one of its aliases. Anything else is reported, not guessed; the FDA label
+  layer's US-name map is not used, because that layer never feeds a safety check.
 - A re-import retires pairs the new file no longer holds; nothing is deleted.
 
 ## Done means
