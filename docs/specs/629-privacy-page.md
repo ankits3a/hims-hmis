@@ -1,6 +1,6 @@
 ---
 issue: 629
-status: approved
+status: built
 approved: 2026-10-23
 ---
 # SPEC — Privacy policy page for the staff app (#629) — APPROVED by owner 2026-10-23 ("OK to build")

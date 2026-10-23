@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HMIS Privacy Policy</title>
+<meta name="description" content="How the HMIS staff app uses and keeps information.">
+<!--
+  ISSUE #629, spec docs/specs/629-privacy-page.md. A static page in the web build, served at /privacy.html by the
+  site's catch-all with no sign-in. No script and nothing from another origin: the site's CSP serves it as-is.
+  Every sentence must stay true of the code; the acceptance test apps/web/src/acceptance/privacy-page-629.test.ts
+  pins the facts.
+-->
+<style>
+  :root { --paper: #fbfaf7; --ink: #1d232b; --dim: #4c5662; --line: #dcd8cf; --accent: #1f5f8b; }
+  @media (prefers-color-scheme: dark) {
+    :root { --paper: #15191e; --ink: #e9ecef; --dim: #aab3bd; --line: #2f3741; --accent: #7fb8e0; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif; }
+  main { max-width: 42rem; margin: 0 auto; padding: 2rem 16px 4rem; }
+  h1 { font-size: 1.6rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 { font-size: 1.1rem; margin: 2rem 0 .5rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+  p, li { margin: .4rem 0; }
+  ul { padding-left: 1.25rem; }
+  .meta { color: var(--dim); margin: 0 0 1.5rem; }
+  strong { font-weight: 650; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+<h1>HMIS staff app: privacy policy</h1>
+<p class="meta">Last updated 23 October 2026</p>
+
+<p>HMIS is the hospital's own information system. The HMIS staff app is for the hospital's staff only. You need an
+account from the hospital to sign in. This page says what the app collects, why, where it is kept and who can
+see it.</p>
+
+<h2>Patient information</h2>
+<p>The app shows and records patient information as part of the hospital's medical records. The hospital is
+responsible for this information under Indian law, including the Digital Personal Data Protection Act, 2023.
+Staff see a patient's information only when their job needs it.</p>
+
+<h2>What the app uses, and why</h2>
+<ul>
+  <li><strong>Your account.</strong> Your name, username and job in the hospital. The app keeps your sign-in on
+  the phone in the phone's secure storage. Fingerprint or face unlock is checked by the phone itself. HMIS never
+  receives it.</li>
+  <li><strong>Location, for attendance only.</strong> When you tap <strong>Mark attendance</strong>, the app asks
+  for your location and reads it once, never in the background. The hospital's server
+  works out whether you are inside or outside the hospital premises, and how many metres away you are. It saves
+  only that result. Your exact coordinates are never stored. If you do not allow location, the mark is saved as
+  "location not shared". An app mark does not change the attendance machine's record.</li>
+  <li><strong>Aadhaar, if you enter it.</strong> It links you to the attendance machine. The hospital keeps it
+  only as a code, plus the Aadhaar's last four digits. The full number is not stored.</li>
+  <li><strong>Camera.</strong> The camera opens only when you open it. It is used to scan a barcode or QR code
+  (for example on a patient card), to photograph paper prescription slips, and to photograph a lab analyser's
+  printed slip. You can also pick one photo of a lab slip from your gallery. The app does not ask for access to
+  your photo library. Photos go to the hospital's servers.</li>
+  <li><strong>Microphone, for voice notes.</strong> A doctor can record a spoken note during a consultation. The
+  recording goes through the hospital's server to an outside speech-to-text service, which turns it into text.
+  The audio is not kept. The patient's name is not sent with it, but anything said aloud is in the recording. The
+  text becomes part of the consultation note.</li>
+  <li><strong>Lab slip reading.</strong> A photo of a lab analyser's slip is sent to an outside AI service to read
+  the results into a draft report. The slip may show the patient's name and hospital number. The service is used
+  on paid terms under which the provider does not use it to train its models. A staff member checks the draft
+  before it is saved.</li>
+  <li><strong>Copilot (optional).</strong> The copilot is off until you turn it on in Settings. Some questions go
+  to an outside AI service, only to work out which action you mean. Patient names and numbers are replaced
+  before a question is sent. Every action waits for your tap.</li>
+  <li><strong>Notifications.</strong> Notifications carry no patient details: only a short notice and which
+  screen to open. They reach your phone through the phone's notification service. You can turn each kind of
+  notification off in the app.</li>
+</ul>
+
+<h2>What stays on your phone</h2>
+<p>Your sign-in and a short copy of your home screen are kept in the phone's secure storage, so the app opens
+fast. Logging out clears them. On Android the app blocks screenshots. On iPhone it hides its screen in the app
+switcher.</p>
+
+<h2>Where information is kept</h2>
+<p>Everything the app records is kept on the hospital's HMIS servers. The outside services named above receive
+only what is described there. The app has no advertising, no tracking and no outside analytics. Information is
+not sold.</p>
+
+<h2>Who can see it</h2>
+<ul>
+  <li>Staff see what their role allows, and nothing more.</li>
+  <li>Every change to a record is logged with the staff member who made it.</li>
+  <li>Attendance: you see your own. Your unit head sees your team's. The Medical Superintendent and the
+  Attendance Committee see everyone's.</li>
+</ul>
+
+<h2>How long it is kept</h2>
+<ul>
+  <li>Patient records are kept as part of the hospital's medical records.</li>
+  <li>Copilot questions are deleted after 180 days.</li>
+  <li>A lab slip photo that was not used in a report is deleted after 90 days. A photo used in a report is kept
+  with that report.</li>
+</ul>
+
+<h2>Your choices</h2>
+<p>You can refuse location, camera or microphone access in your phone's settings. The rest of the app still
+works. Only the feature that needs that access stops.</p>
+
+<h2>Contact</h2>
+<p>For any question about this policy or your information, contact the hospital's IT office. If this policy
+changes, this page will be updated and the date above will change.</p>
+</main>
+</body>
+</html>
