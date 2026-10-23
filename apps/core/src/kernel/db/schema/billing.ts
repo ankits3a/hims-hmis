@@ -285,6 +285,8 @@ export const refundVouchers = pgTable("refund_vouchers", {
   payeeName: text("payee_name"), // refund-to-payer identity, mandatory at PAY time
   payeeIdType: text("payee_id_type"),
   payeeIdRef: text("payee_id_ref"),
+  /** #655 (board: "Someone else collects for the patient — name the relation") — null when the patient collects. A word, never a number. */
+  payeeRelation: text("payee_relation"),
   reasonClass: text("reason_class").notNull(), // guard 4: 'mistake'|'genuine'
   reason: text("reason").notNull(),
   guardFlags: jsonb("guard_flags").notNull(), // guards 2+3: terminal_encounter / delivered_line

@@ -482,3 +482,50 @@ export async function listSessions(
   const where = conditions.length > 0 ? and(...conditions) : undefined;
   return db.select().from(cashierSessions).where(where).orderBy(desc(cashierSessions.openedAt));
 }
+
+/**
+ * #656 — THE CASHIER'S OWN LAST CLOSED DRAWER. The close summary used to exist only in the close
+ * RESPONSE (`sessions/current` serves live drawers only), so a reload lost it. Only `closed` rows
+ * are read: a `closed` drawer was counted before it closed, so its expected figure is past the blind
+ * count (decision 0014) — an `open` one is never returned here. Newest close first.
+ */
+export async function lastClosedSession(db: Db, cashierUserId: string): Promise<CashierSessionRow | null> {
+  const rows = await db
+    .select()
+    .from(cashierSessions)
+    .where(and(eq(cashierSessions.cashierUserId, cashierUserId), eq(cashierSessions.status, "closed")))
+    .orderBy(desc(cashierSessions.closedAt), desc(cashierSessions.openedAt))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/**
+ * #656 — the fields of a variance approval its requester may see, and nothing else: its state, when
+ * she asked (the screen's "waiting since"), when it was decided and the approver's note.
+ */
+export type VarianceApprovalStatus = {
+  status: "pending" | "granted" | "rejected";
+  requestedAt: Date;
+  decidedAt: Date | null;
+  decisionNote: string | null;
+};
+
+/**
+ * #656 — WAS MY VARIANCE APPROVED? The approval row is readable in full only with
+ * `approvals.requests.read`, which a cashier does not hold. This answers its status for the
+ * approval the CALLER's OWN drawer currently carries, and nothing more (no request note, no approver
+ * id: the note carries the figures). `null` — the route's 404 — for another cashier's drawer, an unknown one, or
+ * a drawer carrying no approval (an open drawer, or a re-counted one whose approval was cleared).
+ */
+export async function ownVarianceApprovalStatus(db: Db, actor: Actor, sessionId: string): Promise<VarianceApprovalStatus | null> {
+  const rows = await db
+    .select({ varianceApprovalId: cashierSessions.varianceApprovalId })
+    .from(cashierSessions)
+    .where(and(eq(cashierSessions.id, sessionId), eq(cashierSessions.cashierUserId, actor.id)));
+  const approvalId = rows[0]?.varianceApprovalId ?? null;
+  if (approvalId === null) return null;
+  const approval = await getApproval(db, approvalId);
+  if (approval === null) return null;
+  const status = approval.status === "granted" || approval.status === "rejected" ? approval.status : "pending";
+  return { status, requestedAt: approval.requestedAt, decidedAt: approval.decidedAt, decisionNote: approval.decisionNote };
+}

@@ -938,28 +938,36 @@ export async function renderPrescriptionSheet(
     day (owner 2026-10-15: *"print newest guardian"* — a changed guardian is a new link beside the
     old one). `majority_ended` still prints: the nightly sweep ends an adult's guardian's AUTHORITY,
     not who came with them; only a link the desk `ended` stays off. The relation is written the way an Indian
-    record writes it: a father or mother is S/o or D/o by the patient's gender, a husband W/o, anyone
+    record writes it: a father or mother is S/o or D/o by the patient's gender (a husband: see below), anyone
     else C/o. With no guardian linked it falls back to the registered father's / husband's name —
-    S/o for a man; a woman's may be either, so the sheet does not guess and prints C/o.
+    S/o for a man; a woman's may be either, so the sheet does not guess and prints C/o (owner
+    2026-10-22: even for a married woman).
+    ═══ HUSBAND NAME — owner, 2026-10-22 (#942) ═══ *"Intelligently show 'Husband' name in the
+    prescription if the patient is female."* A woman with a standing spouse link prints the row as
+    `Husband Name: <name>`, and the spouse wins over a newer link (a father added later does not hide
+    the husband). A man's wife stays C/o under Guardian Name. A sealed patient keeps the Guardian Name
+    label, so the label itself never says a husband exists.
     Nothing recorded prints the label and a blank value (the Dept. Regn rule), and a sealed patient's
     is blank too: §14 covers who stands beside them as much as where they live.
   */
-  const guardianText = home === undefined || home.sealed ? "" : await (async (): Promise<string> => {
+  const guardianRow = home === undefined || home.sealed ? { label: "Guardian Name:", text: "" } : await (async (): Promise<{ label: string; text: string }> => {
     const male = s.gender.toLowerCase().startsWith("m");
     const female = s.gender.toLowerCase().startsWith("f");
     const links = await db.select({ name: patientGuardians.name, relationship: patientGuardians.relationship, validTo: patientGuardians.validTo })
       .from(patientGuardians)
       .where(and(eq(patientGuardians.patientId, s.patientId), inArray(patientGuardians.status, ["active", "majority_ended"])))
       .orderBy(desc(patientGuardians.createdAt));
-    const standing = links.find((g) => g.name.trim() !== "" && (g.validTo === null || g.validTo.getTime() > now.getTime()));
+    const standingLinks = links.filter((g) => g.name.trim() !== "" && (g.validTo === null || g.validTo.getTime() > now.getTime()));
+    const husband = female ? standingLinks.find((g) => g.relationship === "spouse") : undefined;
+    if (husband !== undefined) return { label: "Husband Name:", text: husband.name.trim() };
+    const standing = standingLinks[0];
     if (standing !== undefined) {
       const parent = standing.relationship === "father" || standing.relationship === "mother";
-      const prefix = parent && male ? "S/o" : parent && female ? "D/o"
-        : standing.relationship === "spouse" && female ? "W/o" : "C/o";
-      return `${prefix} ${standing.name.trim()}`;
+      const prefix = parent && male ? "S/o" : parent && female ? "D/o" : "C/o";
+      return { label: "Guardian Name:", text: `${prefix} ${standing.name.trim()}` };
     }
     const registered = home.fatherHusbandName?.trim() ?? "";
-    return registered === "" ? "" : `${male ? "S/o" : "C/o"} ${registered}`;
+    return { label: "Guardian Name:", text: registered === "" ? "" : `${male ? "S/o" : "C/o"} ${registered}` };
   })();
   const ageCell = s.ageYears === null ? "—" : `${s.dobEstimated ? "≈" : ""}${String(s.ageYears)} years`;
   const signatureCaption = "Signature of the treating physician";
@@ -1111,7 +1119,7 @@ export async function renderPrescriptionSheet(
         </div>
         <div class="f">
           <div class="c-name">${idRow("Name:", esc(s.patientName))}</div>
-          <div class="c-guard">${idRow("Guardian Name:", esc(guardianText))}</div>
+          <div class="c-guard">${idRow(guardianRow.label, esc(guardianRow.text))}</div>
           <div class="c-uhid">${idRow("UHID:", `<span class="num">${esc(s.uhid)}</span>`)}</div>
           <div class="c-ga">${idRow("Gender:", esc(genderLetter(s.gender)))}${idRow("Age:", `<span class="num">${esc(ageCell)}</span>`)}</div>
           ${addressText === "" ? "" : `<div class="c-addr${addressText.length > ADDRESS_LONG_CHARS ? " long" : ""}">${idRow("Address:", esc(addressText))}</div>`}

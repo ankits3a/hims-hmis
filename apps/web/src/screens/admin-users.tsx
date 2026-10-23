@@ -73,6 +73,7 @@ export function AdminUsers(): React.ReactElement {
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingReset | null>(null);
   const [resetValue, setResetValue] = useState("");
+  const [revealed, setRevealed] = useState(false);
   const [phonesOf, setPhonesOf] = useState<WireAdminUser | null>(null);
   const [printComputers, setPrintComputers] = useState(false);
   const [identityOf, setIdentityOf] = useState<WireAdminUser | null>(null);
@@ -168,8 +169,8 @@ export function AdminUsers(): React.ReactElement {
   };
 
   const clearOutcome = (): void => { setRowError(null); setNotice(null); };
-  const openReset = (user: WireAdminUser, kind: PendingReset["kind"]): void => { clearOutcome(); setResetValue(""); setPending({ user, kind }); };
-  const closeReset = (): void => { setRowError(null); setPending(null); setResetValue(""); };
+  const openReset = (user: WireAdminUser, kind: PendingReset["kind"]): void => { clearOutcome(); setResetValue(""); setRevealed(false); setPending({ user, kind }); };
+  const closeReset = (): void => { setRowError(null); setPending(null); setResetValue(""); setRevealed(false); };
   const submitReset = async (): Promise<void> => {
     if (pending === null) return;
     const { user, kind } = pending;
@@ -413,11 +414,17 @@ export function AdminUsers(): React.ReactElement {
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <p style={{ margin: 0, fontSize: 11.5, color: "var(--dim)" }}>{t(pending.kind === "password" ? "adminUsers.resetPasswordWhy" : "adminUsers.resetPinWhy")}</p>
             <label className="tag" style={{ display: "block" }} htmlFor="reset-value">{t(pending.kind === "password" ? "adminUsers.password" : "adminUsers.pin")}</label>
-            <input id="reset-value" type="password"
-              /* A fresh secret, never the operator's own: without this a browser offers the ADMINISTRATOR's saved password. */
-              autoComplete="new-password" className="in mo" style={{ width: "100%", height: 34, fontSize: 13 }}
-              value={resetValue} onChange={(e) => setResetValue(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void submitReset(); } }} />
+            {/* #932 — a SHOW, because the box is masked and asked once: a typo here locks the person out with a password nobody knows. */}
+            <div style={{ display: "flex", gap: 6 }}>
+              <input id="reset-value" type={revealed ? "text" : "password"}
+                /* A fresh secret, never the operator's own: without this a browser offers the ADMINISTRATOR's saved password. */
+                autoComplete="new-password" className="in mo" style={{ flex: 1, minWidth: 0, height: 34, fontSize: 13 }}
+                value={resetValue} onChange={(e) => setResetValue(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void submitReset(); } }} />
+              <button type="button" className="sec" onClick={() => setRevealed((v) => !v)}>
+                {revealed ? t("login.hide") : t("login.reveal")}
+              </button>
+            </div>
             {errorLine("reset")}
             <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
               <SubmitButton plain type="button" className="pri" onClick={submitReset}>{t("adminUsers.confirmReset")}</SubmitButton>

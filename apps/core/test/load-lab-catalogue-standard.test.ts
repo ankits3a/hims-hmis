@@ -37,18 +37,18 @@ describe("load-lab-catalogue-standard", () => {
     await expect(loadStandardCatalogue(db, "nobody", true, NOW)).rejects.toThrow(/no user nobody/);
   });
 
-  it("a dry run writes nothing; --apply loads 340 tests with every range naming its review, records the import, and a second run is refused", async () => {
+  it("a dry run writes nothing; --apply loads 709 tests with every range naming its review, records the import, and a second run is refused", async () => {
     const dry = await loadStandardCatalogue(db, "dr.archana", false, NOW);
-    expect([dry.applied, dry.tests, dry.parameters, dry.ranges]).toEqual([false, 340, 585, 569]);
+    expect([dry.applied, dry.tests, dry.parameters, dry.ranges]).toEqual([false, 709, 1010, 1001]);
     expect(await db.select().from(labOrderables)).toHaveLength(0);
 
     const done = await loadStandardCatalogue(db, "dr.archana", true, NOW);
-    expect([done.applied, done.tests, done.parameters, done.ranges]).toEqual([true, 340, 585, 569]);
+    expect([done.applied, done.tests, done.parameters, done.ranges]).toEqual([true, 709, 1010, 1001]);
     const sources = new Set((await db.select().from(labReferenceRanges)).map((r) => r.source));
     expect([...sources]).toEqual(["Reviewed against this lab's kits by dr.archana (dr.archana), 2026-10-12"]);
     const [imp] = await db.select().from(labCatalogueImports);
-    expect([imp!.orderablesWritten, imp!.analytesWritten, imp!.rangesWritten, imp!.finishedAt !== null]).toEqual([340, 585, 569, true]);
+    expect([imp!.orderablesWritten, imp!.analytesWritten, imp!.rangesWritten, imp!.finishedAt !== null]).toEqual([709, 1010, 1001, true]);
 
-    await expect(loadStandardCatalogue(db, "dr.archana", true, NOW)).rejects.toThrow(/already holds 340 lab tests/);
+    await expect(loadStandardCatalogue(db, "dr.archana", true, NOW)).rejects.toThrow(/already holds 709 lab tests/);
   });
 });

@@ -32,6 +32,8 @@ export type BillingErrorCode =
    * and a pay call that carries an Aadhaar number (or any 12-digit number) is refused.
    */
   | "aadhaar_not_stored"
+  /** #655 — "someone else collects": the relation is a word (son, husband…), never a number, so no ID can ride in it. */
+  | "payee_relation_invalid"
   /** UX-AUDIT 2026-09-28 · BOARD — resolving a settlement mismatch (`recon-resolve.ts`). */
   | "unknown_tender" | "tender_not_mismatched" | "not_short_settled" | "recon_already_disputed"
   /**
@@ -108,7 +110,7 @@ const VALIDATION_CODES = new Set<BillingErrorCode>(["invalid_upi_id",
   */
   "patient_encounter_mismatch",
   // OWNER RULING 2026-09-28 — the request itself carries what the hospital may not keep.
-  "aadhaar_not_stored",
+  "aadhaar_not_stored", "payee_relation_invalid",
   // OWNER RULING 2026-09-30 — the request itself asks for what cannot be given.
   "pharmacy_bill_only", "sale_discount_refused",
   // OWNER 2026-10-05 — a price proposal that changes nothing.

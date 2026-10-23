@@ -5,7 +5,7 @@ import { appendEvent } from "../events/append";
 import { alertAcknowledged, alertRead } from "./events";
 import type { AlertAckKind } from "../db/schema";
 import type { Actor } from "@hmis/contracts";
-import type { Db } from "../db/client";
+import type { Db, Tx } from "../db/client";
 
 /**
  * BOUNDED BY CONSTRUCTION (D6). The bell reads the newest page and the badge is a separate
@@ -324,4 +324,47 @@ export async function acknowledgeAlert(
 
     return { alertId, kind: input.kind, acknowledgedAt: now, ownedUntil, handedToUserId, ackExtensions: extensions, changed: true };
   });
+}
+
+/**
+ * E3.2 (#595) — THE THING ITSELF WAS ANSWERED, SO EVERY ROW ABOUT IT IS. When the subject of a set
+ * of alerts is closed by an act (a lab critical read back), every still-unanswered row that names
+ * it — one per person the ladder reached — is acknowledged `owned` by the person who did the act,
+ * with a deadline of that instant (the promise is already kept). Without it the reach ladder relays
+ * each of those rows for days about a call that is over.
+ *
+ * Inside the CALLER's transaction, so the close and the acknowledgements commit together. Rows
+ * already answered (seen, owned, handed over) are left as their owners left them. Each row appends
+ * `alert.acknowledged` exactly as `acknowledgeAlert` does — the event's `userId` is the row's owner
+ * (the realtime topic key, so their bell clears), its actor is the closer.
+ */
+export async function acknowledgeAlertsAbout(
+  tx: Tx,
+  closer: Actor,
+  ref: { refType: string; refId: string },
+  now: Date,
+  note: string,
+): Promise<number> {
+  const rows = await tx
+    .update(alerts)
+    .set({
+      ackKind: "owned",
+      acknowledgedAt: now,
+      ownedUntil: now,
+      ackNote: note,
+      readAt: sql`coalesce(${alerts.readAt}, ${now.toISOString()}::timestamptz)`,
+    })
+    .where(and(eq(alerts.refType, ref.refType), eq(alerts.refId, ref.refId), isNull(alerts.ackKind)))
+    .returning({ id: alerts.id, userId: alerts.userId });
+  for (const row of rows) {
+    await appendEvent(tx, alertAcknowledged.make({
+      actor: closer,
+      occurredAt: now,
+      payload: {
+        alertId: row.id, userId: row.userId, kind: "owned", ownedUntil: now.toISOString(),
+        refType: ref.refType, refId: ref.refId,
+      },
+    }));
+  }
+  return rows.length;
 }

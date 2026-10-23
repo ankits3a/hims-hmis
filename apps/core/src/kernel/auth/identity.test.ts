@@ -3,7 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import {
   createUser, verifyPassword, setPin, verifyPin, rotateBadge, resolveBadge, deactivateUser,
-  reactivateUser, setPassword,
+  reactivateUser, setPassword, verifyPinByUsername,
 } from "./identity";
 import { loadConfig } from "../config";
 import { users } from "../db/schema";
@@ -26,6 +26,20 @@ describe("identity", () => {
     expect(await verifyPassword(db, "asha", "s3cret-pass")).toEqual({ userId: id });
     expect(await verifyPassword(db, "asha", "wrong")).toBeNull();
     expect(await verifyPassword(db, "nobody", "s3cret-pass")).toBeNull();
+  });
+
+  /**
+   * #932 — an admin reset a password and the person still could not sign in: they typed `ABHA` for
+   * `abha`, and an exact match turned a correct password into a 401. The throttle already keys on the
+   * trimmed, lower-cased name (`throttleSubject`); the credential lookup now agrees with it.
+   */
+  it("#932 — the sign-in username ignores case and surrounding spaces, the password does not", async () => {
+    const { id } = await createUser(db, { username: "abha", fullName: "Abha", password: "s3cret-pass" });
+    await setPin(db, id, "4821");
+    expect(await verifyPassword(db, "ABHA", "s3cret-pass")).toEqual({ userId: id });
+    expect(await verifyPassword(db, "  Abha ", "s3cret-pass")).toEqual({ userId: id });
+    expect(await verifyPassword(db, "ABHA", "S3CRET-PASS")).toBeNull();
+    expect(await verifyPinByUsername(db, " ABHA", "4821")).toEqual({ userId: id });
   });
 
   /**

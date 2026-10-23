@@ -84,13 +84,17 @@ describe("E1.4 / E1.5 waiting for me — phone", () => {
     expect(mockPush).toHaveBeenCalledTimes(5);
   });
 
-  it("Open loops reads GET /me/waiting and lists the same lines; computer-only work says where", async () => {
+  it("Open loops reads GET /me/waiting and lists the same lines; computer-only work says where (#681: reports open the viewer)", async () => {
     mockParams = { kind: "lab.reportsBack" };
     await mountLoops(server(WAITING_FIXTURE));
     await screen.findByTestId("waiting-line-lab.criticalsMine", {}, { timeout: 5000 });
     const drawn = screen.getAllByTestId(/^waiting-line-/).map((n) => n.props.testID.replace("waiting-line-", ""));
     expect(drawn).toEqual(WAITING_EXPECTED.map(([k]) => k));
-    expect(screen.getByTestId("waiting-where-lab.reportsBack")).toHaveTextContent("On computer · Consult");
+    // #681 — lab reports back now opens the phone results viewer; a lab critical still says where.
+    expect(screen.queryByTestId("waiting-where-lab.reportsBack")).toBeNull();
+    expect(screen.getByTestId("waiting-where-lab.criticalsMine")).toHaveTextContent("On computer · Consult");
+    await fireEvent.press(screen.getByTestId("waiting-line-lab.reportsBack"));
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: "/results", params: { kind: "lab" } });
     expect(seenKeys).toContain("GET /me/waiting");
     await fireEvent.press(screen.getByTestId("waiting-line-alerts.unanswered"));
     expect(mockPush).toHaveBeenLastCalledWith("/alerts");

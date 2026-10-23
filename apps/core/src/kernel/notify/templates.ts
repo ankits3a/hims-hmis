@@ -72,6 +72,19 @@ function paramStr(params: Record<string, unknown>, key: string): string {
   return typeof value === "string" ? value : String(value);
 }
 
+/**
+ * E3.2 (#595) — the relay's `kind` word, said in words for the kinds that have them. A kind with no
+ * entry prints its word as before. A CLOSED table keyed by the kind word: nothing from an alert's
+ * title or body can reach it, so it can carry no patient, UHID or value.
+ */
+const RELAY_KIND_WORDS: Record<string, { en: string; hi: string }> = {
+  lab_critical: { en: "Critical lab result waiting", hi: "क्रिटिकल लैब रिपोर्ट प्रतीक्षा में" },
+};
+function relayKind(params: Record<string, unknown>, lang: "en" | "hi"): string {
+  const kind = paramStr(params, "kind");
+  return RELAY_KIND_WORDS[kind]?.[lang] ?? kind;
+}
+
 // serviceDate is an ISO calendar date ("YYYY-MM-DD", opd/events.ts's `isoDate`) — anchor it at
 // IST midnight so the formatted day never shifts across the UTC boundary.
 function formatServiceDate(params: Record<string, unknown>): string {
@@ -515,9 +528,9 @@ export const notificationTemplates: Record<string, NotificationTemplate> = {
     expiresAt: (_params, occurredAt) => new Date(occurredAt.getTime() + 2 * HOUR_MS),
     render: {
       en: (params) =>
-        `${paramStr(params, "kind")} · now · ${paramStr(params, "remainingMinutes")} min left. Open: ${paramStr(params, "link")}`,
+        `${relayKind(params, "en")} · now · ${paramStr(params, "remainingMinutes")} min left. Open: ${paramStr(params, "link")}`,
       hi: (params) =>
-        `${paramStr(params, "kind")} · अभी · ${paramStr(params, "remainingMinutes")} मिनट शेष। खोलें: ${paramStr(params, "link")}`,
+        `${relayKind(params, "hi")} · अभी · ${paramStr(params, "remainingMinutes")} मिनट शेष। खोलें: ${paramStr(params, "link")}`,
     },
   },
 
@@ -540,9 +553,9 @@ export const notificationTemplates: Record<string, NotificationTemplate> = {
     expiresAt: (_params, occurredAt) => new Date(occurredAt.getTime() + 24 * HOUR_MS),
     render: {
       en: (params) =>
-        `${paramStr(params, "kind")} · ${paramStr(params, "lane")} · ${paramStr(params, "remainingMinutes")} min left. Open: ${paramStr(params, "link")}`,
+        `${relayKind(params, "en")} · ${paramStr(params, "lane")} · ${paramStr(params, "remainingMinutes")} min left. Open: ${paramStr(params, "link")}`,
       hi: (params) =>
-        `${paramStr(params, "kind")} · ${paramStr(params, "lane")} · ${paramStr(params, "remainingMinutes")} मिनट शेष। खोलें: ${paramStr(params, "link")}`,
+        `${relayKind(params, "hi")} · ${paramStr(params, "lane")} · ${paramStr(params, "remainingMinutes")} मिनट शेष। खोलें: ${paramStr(params, "link")}`,
     },
   },
 

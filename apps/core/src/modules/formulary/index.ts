@@ -112,11 +112,19 @@ export type { DrugDiseaseAlternative } from "../../kernel/db/schema";
  * PHARMACY P6 — the NDPS Act's classes on the moieties: the cited list, the medicine's strictest class,
  * and the classification (a script's door, `classify-ndps-salts`).
  */
-export { NDPS_CLASSES, NDPS_LIST, classifyNdpsSalts, ndpsClassByMedicine } from "./ndps";
+export { NDPS_CLASSES, NDPS_LIST, classifyNdpsSalts, ndpsClassByMedicine, ndpsClassOfMoieties, ndpsListEntryOf } from "./ndps";
 export type { NdpsClass, NdpsClassificationReport, NdpsEntry } from "./ndps";
 
 export { getMonograph, renalDoseFor, reviewMonograph, saveMonograph, searchGenerics } from "./monographs";
 export type { GenericHit, Monograph, MonographInput, RenalDose, RenalDoseInput, RenalSeverity } from "./monographs";
+/**
+ * #616 (decision 0051) — US FDA label text as a labelled REFERENCE layer: the importer (a person runs the script) and the
+ * one read. Reference only: nothing here feeds a dose or a safety check, and nothing changes a prescription.
+ */
+export {
+  importReferenceLabels, planReferenceImport, REFERENCE_SECTIONS, referenceForGeneric, referenceSectionsOf,
+} from "./reference-labels";
+export type { GenericReference, ReferenceEntry, ReferenceImportResult, ReferencePlan, ReferenceSectionName } from "./reference-labels";
 
-export { counsellingByMedicine, counsellingOf, linkMedicinesToGenerics, monographForMedicine } from "./generic-link";
-export type { Counselling, GenericLinkReport } from "./generic-link";
+export { counsellingByMedicine, counsellingOf, linkMedicinesToGenerics, monographForMedicine, renalRulesByMedicine } from "./generic-link";
+export type { Counselling, GenericLinkReport, RenalRuleOfMedicine } from "./generic-link";

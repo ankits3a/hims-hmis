@@ -112,13 +112,15 @@ import type { BenefitBalance } from "./invoices";
 import {
   allocateReceipt, listDues, markEnteredInError, patientBalance, recordReceipt, reverseAllocation,
 } from "./receipts";
-import { issueRefundVoucher, issueVoucherForApproval, payRefundVoucher, requestRefund } from "./refunds";
+import { issueRefundVoucher, issueVoucherForApproval, patientCreditNotes, payRefundVoucher, requestRefund } from "./refunds";
 import { listMismatches, setDegraded, uploadSettlement } from "./recon";
 import { resolveMismatch } from "./recon-resolve";
 import type { ResolveMismatchResult } from "./recon-resolve";
 import { billingOfficeNeeds } from "./office-needs";
 import type { BillingOfficeNeeds } from "./office-needs";
-import { beginClose, confirmClose, isDrawerSupervisor, listSessions, openSession, recountSession } from "./sessions";
+import {
+  beginClose, confirmClose, isDrawerSupervisor, lastClosedSession, listSessions, openSession, ownVarianceApprovalStatus, recountSession,
+} from "./sessions";
 import { drawerOpenItems } from "./drawer-open-items";
 import type { DrawerOpenItems, PartPaidItem } from "./drawer-open-items";
 import { istDay } from "./time";
@@ -129,9 +131,9 @@ import type { CreditNoteRow, IssueCreditNoteInput, IssueCreditNoteResult } from 
 import type { InvoiceLineRow, InvoiceRow, IssueInvoiceResult, PricedDraft } from "./invoices";
 import type { EncounterFeeStatus } from "./fee-status";
 import type { AllocateReceiptResult, DueRow, MarkEnteredInErrorResult, PatientBalance, RecordReceiptResult, ReverseAllocationResult } from "./receipts";
-import type { IssueRefundVoucherResult, PayRefundVoucherResult, RequestRefundResult, RefundVoucherRow } from "./refunds";
+import type { IssueRefundVoucherResult, PatientCreditNoteRow, PayRefundVoucherResult, RequestRefundResult, RefundVoucherRow } from "./refunds";
 import type { MismatchRow, UploadSettlementResult } from "./recon";
-import type { CashierSessionRow } from "./sessions";
+import type { CashierSessionRow, VarianceApprovalStatus } from "./sessions";
 import type { Settlement } from "./settlement";
 import type { PatientSummary } from "../patients";
 
@@ -169,7 +171,7 @@ type VisitFacts = {
 import type { OpdConfig } from "../opd";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
-import { patientBillDetail, patientBills } from "./patient-bills";
+import { logRestrictedRead, logSealedBillRead, patientBillDetail, patientBills } from "./patient-bills";
 import type { PatientBillDetail, PatientBillRow } from "./patient-bills";
 
 /**
@@ -440,6 +442,7 @@ const issueRefundBody = z.discriminatedUnion("kind", [
 // and `payRefundVoucher` refuses an Aadhaar number in it.
 const payRefundBody = z.object({
   payeeName: z.string().min(1), payeeIdType: z.string().min(1), payeeIdRef: z.string().min(1).optional(),
+  payeeRelation: z.string().max(40).optional(),
 });
 // UX-AUDIT 2026-09-28 · BOARD — what the office decided about a settlement mismatch (`recon-resolve.ts`).
 const resolveMismatchBody = z.object({
@@ -712,9 +715,11 @@ export class BillingController {
 
   @RequirePermission("billing.invoice.read", "hospital")
   @Get("invoices/:id")
-  async invoice(@Param("id") id: string): Promise<InvoiceDetail> {
+  async invoice(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<InvoiceDetail> {
     const found = await getInvoice(this.db, id);
     if (!found) toHttp(new BillingError("unknown_invoice", `unknown invoice ${id}`));
+    // A restricted record's bill stays readable at the counter; a reader without the grant leaves an access row.
+    await logSealedBillRead(this.db, actor, found.invoice.patientId);
     return { ...found, settlement: await invoiceSettlement(this.db, id) };
   }
 
@@ -732,6 +737,7 @@ export class BillingController {
     try {
       const opd = await loadOpdConfig(this.db);
       const [patient] = await getPatientSummaries(this.db, actor, [found.invoice.patientId]);
+      if (patient !== undefined) await logRestrictedRead(this.db, actor, patient);
       const qrBody = `bil1.invoice.${id}`;
       return {
         letterhead: opd.letterhead,
@@ -1080,6 +1086,21 @@ export class BillingController {
 
   // ——— refunds ————————————————————————————————————————————————————————————————————————————————
 
+  /**
+   * #655 — the refund form's credit-note picker: the patient's credit notes, each with what is still
+   * refundable on it. On the request's own permission — whoever may ask for a refund may see what it
+   * can be asked against.
+   */
+  @RequirePermission("billing.refund.request", "hospital")
+  @Get("patients/:patientId/credit-notes")
+  async patientCreditNotesRoute(@Param("patientId") patientId: string): Promise<{ items: PatientCreditNoteRow[] }> {
+    try {
+      return { items: await patientCreditNotes(this.db, patientId) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
   @RequirePermission("billing.refund.request", "hospital")
   @Post("refunds/request")
   async refundRequest(@CurrentActor() actor: Actor, @Body() body: unknown, @Headers("idempotency-key") idemKey?: string): Promise<RequestRefundResult> {
@@ -1173,6 +1194,7 @@ export class BillingController {
         method: refundVouchers.method,
         payeeName: refundVouchers.payeeName,
         payeeIdType: refundVouchers.payeeIdType,
+        payeeRelation: refundVouchers.payeeRelation,
         reasonClass: refundVouchers.reasonClass,
         reason: refundVouchers.reason,
         guardFlags: refundVouchers.guardFlags,
@@ -1219,6 +1241,29 @@ export class BillingController {
   async sessionCurrent(@CurrentActor() actor: Actor): Promise<{ session: CashierSessionRow | null }> {
     const own = await listSessions(this.db, { cashierUserId: actor.id });
     return { session: own.find((s) => s.status === "open" || s.status === "closing") ?? null };
+  }
+
+  /**
+   * #656 — the acting cashier's own most recently CLOSED drawer, or null: the day summary the close
+   * response showed, read back after a reload. Only `closed` rows, so nothing here precedes the count.
+   */
+  @RequirePermission("billing.session.own", "hospital")
+  @Get("sessions/last-closed")
+  async sessionLastClosed(@CurrentActor() actor: Actor): Promise<{ session: CashierSessionRow | null }> {
+    return { session: await lastClosedSession(this.db, actor.id) };
+  }
+
+  /**
+   * #656 — whether the variance approval on the caller's OWN drawer is pending, granted or rejected
+   * (with when, and the approver's note). Not `approvals.requests.read`: three fields of one
+   * approval, for its requester's own drawer. 404 for another cashier's drawer or no approval.
+   */
+  @RequirePermission("billing.session.own", "hospital")
+  @Get("sessions/:id/variance-approval")
+  async sessionVarianceApproval(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<VarianceApprovalStatus> {
+    const found = await ownVarianceApprovalStatus(this.db, actor, id);
+    if (found === null) throw httpError(404, `no variance approval on a drawer of yours with id ${id}`, "no_variance_approval", { sessionId: id });
+    return found;
   }
 
   /**

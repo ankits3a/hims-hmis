@@ -609,6 +609,8 @@ describe("billing lifecycle e2e", () => {
       invoices: { count: 7, netPayablePaise: 1_706_000 },
       creditNotes: { count: 2, netPaise: 1_420_000 },
       vouchersPaid: { count: 1, amountPaise: 1_400_000 },
+      // #853 — the day book's bank charges on card/UPI tenders; this story accepts none.
+      bankCharges: { count: 0, amountPaise: 0 },
     });
 
     // Idempotent: the claim is `ON CONFLICT DO NOTHING` inside the same tx as the events it

@@ -96,7 +96,13 @@ export type PrintDocument =
    * weight line and the bag's bar code (BMW Rules 2016, Schedule IV label). Producer and renderer both in
    * `modules/bmw/label.ts` (the renderer registered by the bmw module); params are the bag id only.
    */
-  | "bmw_bag_label";
+  | "bmw_bag_label"
+  /**
+   * #655 (board "Billing back office": "Print the voucher and take a signature") — the refund voucher
+   * the payee signs when the money leaves. Producer `payRefundVoucher` and renderer both in
+   * `modules/billing` (`refund-print.ts`, registered by the billing module). Params: the voucher id.
+   */
+  | "billing_refund_voucher";
 
 /**
  * LOGICAL destinations, never CUPS queue names.
@@ -158,6 +164,9 @@ export const DESTINATION_OF: Record<PrintDocument, PrintDestination> = {
   print_test_page: "front_desk_a4",
   // E1.7 — a waste bag's sticker never goes to a patient-facing desk's printer.
   bmw_bag_label: "bmw_label",
+  // #655 — the cash counter's A4 laser, where the payee stands and signs. DECIDED: not `office_a4`, the
+  // superintendent's printer — a patient's paper does not come off a staff office's printer.
+  billing_refund_voucher: "front_desk_a4",
 };
 
 /**

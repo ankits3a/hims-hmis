@@ -5,6 +5,7 @@ import type { WireFeeQuote, WireIssueInvoiceResult, TenderMode } from "../../lib
 import type { WireRecognition } from "../../lib/membership-api";
 import type { WireOpdUnit } from "../../lib/roster-api";
 import type { BillLine, DeptQueue, Lane, LogLine, OpenVisit, Seat, Stage } from "./model";
+import { ageBodyOf, parseAgeOrDob } from "../../../../../packages/contracts/src/desk-counter";
 
 /**
  * ═══ THE PERSON IN HAND ═══
@@ -230,8 +231,10 @@ export type Session = {
    */
   triage: {
     departmentIds: string[];
-    source: "model" | "keywords";
+    source: "model" | "keywords" | "prior";
     redFlag: { reasonKey: string; matched: string } | null;
+    /** #614 — handed back on the walk-in or booking, so the server can learn where the visit ended. */
+    triageId?: string;
   } | null;
   triageBusy: boolean;
   tab: "now" | "future";
@@ -420,8 +423,8 @@ export function useDeskOptional(): DeskApi | null {
  */
 export function formAgeYears(f: Pick<Form, "age" | "dob" | "ageMode">): number | null {
   if (f.ageMode === "age") {
-    const n = Number.parseInt(f.age, 10);
-    return Number.isFinite(n) && n >= 0 && n <= 130 ? n : null;
+    const read = parseAgeOrDob(f.age);
+    return read?.kind === "age" ? read.years : null;
   }
   const d = new Date(f.dob);
   if (Number.isNaN(d.getTime())) return null;
@@ -436,9 +439,12 @@ export function formAgeYears(f: Pick<Form, "age" | "dob" | "ageMode">): number |
   ONE BOX, AGE OR DATE OF BIRTH (owner 2026-10-01) — `parseAgeOrDob` lives in
   packages/contracts/src/desk-counter.ts since 2026-10-06; the phone's registration reads the same box.
 */
-export { parseAgeOrDob } from "../../../../../packages/contracts/src/desk-counter";
+export { parseAgeOrDob, ageReadingText, agePartsOf } from "../../../../../packages/contracts/src/desk-counter";
 export type { AgeOrDob } from "../../../../../packages/contracts/src/desk-counter";
-/** The box's text for a form that already holds an age or a date of birth (a prefill, an ABHA). */
+/**
+ * The box's text for a form that already holds an age or a date of birth (a prefill, an ABHA). An
+ * age is kept as `ageReadingText` writes it — `34`, or `3m` / `1y 6m` for a baby — so it reads back.
+ */
 export function ageOrDobText(f: Pick<Form, "age" | "dob" | "ageMode">): string {
   if (f.ageMode !== "dob") return f.age;
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(f.dob);
@@ -490,7 +496,7 @@ export function registerBodyOf(
 ): WireRegisterBody {
   const t = (v: string): string => v.trim();
   const opt = (key: string, v: string): Record<string, string> => (t(v) === "" ? {} : { [key]: t(v) });
-  const age = Number.parseInt(f.age, 10);
+  const age = parseAgeOrDob(f.age);
   const income = Number.parseInt(f.monthlyIncome, 10);
   return {
     name: t(f.name),
@@ -502,7 +508,7 @@ export function registerBodyOf(
     */
     ...(f.ageMode === "dob"
       ? opt("dob", f.dob)
-      : (Number.isFinite(age) && age >= 0 && age <= 130 ? { ageYears: age } : {})),
+      : (age?.kind === "age" ? ageBodyOf(age) : {})),
     ...opt("addressLine", f.address),
     ...(f.altPhone.replace(/\s/g, "") === "" ? {} : { altPhone: f.altPhone.replace(/\s/g, "") }),
     ...opt("title", f.title),

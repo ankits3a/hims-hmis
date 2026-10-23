@@ -9,10 +9,11 @@ import { withIdempotency } from "../billing";
 import { deliveryAllowed } from "./interlock";
 import {
   amendReport, getReport, listResultsForEncounter, listProvisionalResultsForEncounter,
-  printReport, publishReport, releaseUnpaid, reportVersions, deliveryRegister, reportsForPatient,
+  printReport, publishReport, releaseUnpaid, reportVersionsFor, deliveryRegister, reportsForPatient,
 } from "./reports";
 import { amendResult, requestRerun } from "./results";
 import { patientResultsForDoctor } from "./patient-results";
+import { myReportBack, myReportsBack } from "./reports-back";
 import { nightReleasesAwaitingReview, reviewNightRelease, verifyResult } from "./verify";
 import { publishableOrders, verifyWorklist } from "./worklist";
 import { LAB_IDEMPOTENT_ROUTES, LAB_REPORT_ROUTES, idSchema, isoDateSchema, parsed, toHttp } from "./lab-http";
@@ -60,6 +61,10 @@ const amendReportBody = z.object({
 export const amendResultBody = z.object({
   resultId: idSchema,
   value: z.string().min(1).max(500),
+  /** #703 — a corrected sensitivity table (MIC_AST only); the row rules live in `cleanAstRows`. */
+  ast: z.array(z.object({
+    antibiotic: z.string().max(60), result: z.string().max(4).nullable(), mic: z.string().max(16).nullable(),
+  })).max(40).optional(),
   unit: z.string().max(32).nullish(),
   remarks: z.string().max(500).nullish(),
   /**
@@ -234,10 +239,10 @@ export class LabVerifyController {
   /** Every version of one order's report, newest first — the history a reprint reads. */
   @Get("reports/order/:orderId")
   @RequirePermission("lab.results.read", "hospital")
-  async versions(@Param("orderId") orderId: string): Promise<unknown> {
+  async versions(@CurrentActor() actor: Actor, @Param("orderId") orderId: string): Promise<unknown> {
     try {
       return {
-        versions: await reportVersions(this.db, orderId),
+        versions: await reportVersionsFor(this.db, actor, orderId),
         delivery: await deliveryAllowed(this.db, orderId),
       };
     } catch (e) { toHttp(e); }
@@ -349,6 +354,19 @@ export class LabVerifyController {
     @Param("patientId") patientId: string,
   ): Promise<unknown> {
     try { return { items: await patientResultsForDoctor(this.db, actor, parsed(idSchema, patientId)) }; } catch (e) { toHttp(e); }
+  }
+
+  /** #681 — the phone's "Lab reports back": my orders' reports of the last day, and one of them (`reports-back.ts`). No money. */
+  @Get("results/mine")
+  @RequirePermission("lab.results.read", "hospital")
+  async mine(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return { items: await myReportsBack(this.db, actor) }; } catch (e) { toHttp(e); }
+  }
+
+  @Get("results/mine/:reportId")
+  @RequirePermission("lab.results.read", "hospital")
+  async mineOne(@CurrentActor() actor: Actor, @Param("reportId") reportId: string): Promise<unknown> {
+    try { return { report: await myReportBack(this.db, actor, parsed(idSchema, reportId)) }; } catch (e) { toHttp(e); }
   }
 
   /**

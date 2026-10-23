@@ -281,8 +281,13 @@ export function BookAppointment({ api, person, today, departments, labelOf, term
   const doctor = (doctors ?? []).find((d) => d.id === doctorId) ?? null;
   // The department follows the doctor in hand (a preset, or the booking being moved) until the clerk picks one.
   const shownDept = deptId ?? doctor?.departmentId ?? null;
-  const inDept = (doctors ?? []).filter((d) => d.departmentId === shownDept);
-  const withDoctors = departments.filter((d) => (doctors ?? []).some((x) => x.departmentId === d.id));
+  // #914 — a doctor covering a second department is listed, and booked, there too.
+  const sitsIn = (d: WireMasterDoctor, departmentId: string | null): boolean =>
+    departmentId !== null && (d.departmentId === departmentId || d.secondary?.departmentId === departmentId);
+  const inDept = (doctors ?? []).filter((d) => sitsIn(d, shownDept));
+  const withDoctors = departments.filter((d) => (doctors ?? []).some((x) => sitsIn(x, d.id)));
+  // Only a doctor with a second department has a book per department; everyone else's requests are unchanged.
+  const bookDept = doctor?.secondary != null && shownDept !== null ? shownDept : undefined;
   const deptNameOf = (id: string | null | undefined): string => departments.find((d) => d.id === id)?.name ?? "";
 
   // ——— the doctor's timetable and leave: only to EXPLAIN a closed day; the server's slot list stays the judge ———
@@ -312,11 +317,11 @@ export function BookAppointment({ api, person, today, departments, labelOf, term
   const readSlots = useCallback(() => {
     if (doctorId === null || date === null) { setSlots(null); return; }
     setSlots(null); setSlotsError(null); setSlotsOf(null);
-    api.slots(doctorId, date).then(
+    api.slots(doctorId, date, bookDept).then(
       (r) => { setSlots(r.slots); setSlotsOf(`${doctorId}|${date}`); },
       (e: unknown) => { setSlots([]); setSlotsError(said(e, t)); },
     );
-  }, [api, doctorId, date, t]);
+  }, [api, doctorId, date, bookDept, t]);
   useEffect(() => { readSlots(); }, [readSlots]);
 
   const counts = useMemo(() => partCounts(slots ?? []), [slots]);
@@ -361,7 +366,7 @@ export function BookAppointment({ api, person, today, departments, labelOf, term
 
   const slot = (slots ?? []).find((x) => x.start === picked) ?? null;
   const sameDay = theirs.filter((a) => (a.status === "booked" || a.status === "needs_rebooking") && a.serviceDate.slice(0, 10) === date && a.id !== moving?.id);
-  const crossDept = moving !== null && doctor !== null && doctor.departmentId !== moving.departmentId;
+  const crossDept = moving !== null && doctor !== null && (bookDept ?? doctor.departmentId) !== moving.departmentId;
   const roomCode = slot === null ? null : rooms.find((r) => r.id === slot.roomId)?.code ?? null;
   const tele = moving === null ? mode === "tele" : moving.mode === "tele";
   const teleReady = moving !== null || mode !== "tele" || telePhoneOf(telePhone) !== null;
@@ -384,10 +389,10 @@ export function BookAppointment({ api, person, today, departments, labelOf, term
         if (landed !== null) { finish(landed, moving === null ? "booked" : "moved"); return; }
       }
       if (moving === null) {
-        const r = await api.book({ patientId: person.id, doctorId: doctor.id, slotStart: slot.start, ...(note.trim() === "" ? {} : { note: note.trim() }), ...(mode === "tele" ? { mode: "tele" as const, telePhone: telePhoneOf(telePhone) ?? telePhone } : {}) });
+        const r = await api.book({ patientId: person.id, doctorId: doctor.id, slotStart: slot.start, ...(note.trim() === "" ? {} : { note: note.trim() }), ...(mode === "tele" ? { mode: "tele" as const, telePhone: telePhoneOf(telePhone) ?? telePhone } : {}), ...(bookDept === undefined ? {} : { departmentId: bookDept }) });
         finish(r.appointment, "booked");
       } else {
-        const r = await api.reschedule(moving.id, { slotStart: slot.start, doctorId: doctor.id, ...(crossDept ? { reason: reason.trim() } : {}) });
+        const r = await api.reschedule(moving.id, { slotStart: slot.start, doctorId: doctor.id, ...(crossDept ? { reason: reason.trim() } : {}), ...(bookDept === undefined ? {} : { departmentId: bookDept }) });
         finish(r.to, "moved");
       }
     } catch (e) {
@@ -579,7 +584,7 @@ export function BookAppointment({ api, person, today, departments, labelOf, term
               <Text style={[type.tag, { color: color.dim, fontFamily: MONO }]}>{t("mobile.counter.appt.confirm")}</Text>
               <Text style={[type.heading, { color: color.ink }]} testID="book-confirm-when">{dayWord(date, t)} · {slotClock(slot.start)}–{slotClock(slot.end)}</Text>
               <Text style={[type.body, { color: color.ink }]}>{doctor.displayName}{labelOf(doctor) === null ? "" : ` · ${labelOf(doctor)}`}</Text>
-              <Text style={s.dim}>{[deptNameOf(doctor.departmentId), roomCode === null ? null : t("mobile.counter.appt.room", { room: roomCode })].filter((x) => x !== null && x !== "").join(" · ")}</Text>
+              <Text style={s.dim}>{[deptNameOf(bookDept ?? doctor.departmentId), roomCode === null ? null : t("mobile.counter.appt.room", { room: roomCode })].filter((x) => x !== null && x !== "").join(" · ")}</Text>
               {sameDay.length > 0 && (
                 <Note tone="warn" testID="book-same-day">
                   {t("registrationCounter.book.alreadyBooked", { count: sameDay.length, name: person.name })} — {sameDay.map((a) => slotClock(a.slotStart)).join(" · ")}. {t("registrationCounter.book.alreadyBookedHint")}
@@ -587,7 +592,7 @@ export function BookAppointment({ api, person, today, departments, labelOf, term
               )}
               {crossDept && (
                 <View style={{ gap: 6 }} testID="book-cross">
-                  <Text style={[type.small, { color: color.ink, fontWeight: "700" }]}>{t("registrationCounter.move.apptCross", { from: deptNameOf(moving?.departmentId), to: deptNameOf(doctor.departmentId) })}</Text>
+                  <Text style={[type.small, { color: color.ink, fontWeight: "700" }]}>{t("registrationCounter.move.apptCross", { from: deptNameOf(moving?.departmentId), to: deptNameOf(bookDept ?? doctor.departmentId) })}</Text>
                   <TextInput testID="book-reason" style={s.input} value={reason} editable={!unknown} onChangeText={(v) => { setReason(v); setError(null); }}
                     placeholder={t("registrationCounter.move.reasonHint")} placeholderTextColor={color.faint} accessibilityLabel={t("registrationCounter.move.reasonHint")} />
                 </View>

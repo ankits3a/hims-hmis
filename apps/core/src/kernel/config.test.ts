@@ -211,6 +211,13 @@ describe("loadConfig — the chooser order", () => {
     expect(() => loadConfig({ ...base, ALIAS_CHOOSER_ORDER: "jev" })).toThrow(/ALIAS_CHOOSER_ORDER/);
   });
 
+  /* #614 / decision 0051 — the evaluation numbers reach the owner before anything that changes suggestions is on. */
+  it("the desk's routing learning ships OFF, and only the exact string \"true\" turns it on", () => {
+    expect(loadConfig(base).deskRouting).toEqual({ learningEnabled: false });
+    expect(loadConfig({ ...base, DESK_ROUTING_LEARNING_ENABLED: "true" }).deskRouting).toEqual({ learningEnabled: true });
+    expect(() => loadConfig({ ...base, DESK_ROUTING_LEARNING_ENABLED: "1" })).toThrow();
+  });
+
   it.each(["", "typesafe,grok", "openai,openai", ","])("refuses to boot on the order %p — a typo must not look like an unsure model", (order) => {
     expect(() => loadConfig({ ...base, TRIAGE_CHOOSER_ORDER: order })).toThrow(/TRIAGE_CHOOSER_ORDER/);
   });

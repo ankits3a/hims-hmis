@@ -7,6 +7,7 @@ import {
   fetchMonographDraft, formularyErrorMessage, reviewMonograph, saveMonograph, searchMonographGenerics,
 } from "../lib/formulary-api";
 import type { MonographSection, RenalSeverity, WireGenericHit, WireRenalDose } from "../lib/formulary-api";
+import { FdaReference } from "./formulary-reference";
 
 const SECTIONS = ["patient", "prescriber", "nursing", "affordability"] as const;
 type SectionName = (typeof SECTIONS)[number];
@@ -193,6 +194,8 @@ export function FormularyMonograph(): React.ReactElement {
           </div>
         </div>
       )}
+      {/* #616 — the US FDA label beside the monograph: reference text to read, never copied into a dose. */}
+      {picked !== null && <FdaReference sctid={picked.sctid} />}
       {said !== null && <p data-testid="monograph-said" className="text-sm text-emerald-700">{said}</p>}
       {error !== null && <p role="alert" className="text-sm text-red-700">{error}</p>}
     </div>

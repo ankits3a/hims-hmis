@@ -12,6 +12,7 @@ import { chooserFor } from "../inference/openai-decisions";
 import { collectCopilotIntents, collectCopilotTools, helpIntentsFor, permissionCheckFor, runTool } from "./catalog";
 import { installCopilotIntents } from "./intents";
 import { COPILOT_EXTRA_TOOLS, MAX_PROPOSALS, confirmProposal, issueProposal, proposalKey, proposalSchema } from "./act";
+import type { CopilotAskOutcome } from "../db/schema";
 import type { ConfirmOutcome, Proposal } from "./act";
 import { kernelCopilotTools } from "./kernel-tools";
 import { IdentifierLeak, rehydrate } from "./mask";
@@ -74,6 +75,16 @@ const askBody = z.object({
 
 /** E1.3 — the one-tap "Wrong" on an answer card. Only `true` exists: there is no "right" tap to record. */
 const feedbackBody = z.object({ askId: z.string().min(1).max(64), wrong: z.literal(true) });
+/**
+ * #686 — each confirm outcome's ledger outcome. A `Record` over `ConfirmOutcome`, so a new outcome
+ * does not compile until it has a ledger name (and the CHECK list in `schema/copilot.ts` a migration);
+ * a string cast would let it reach the database and fail the tap there.
+ */
+const CONFIRM_LEDGER_OUTCOME: Readonly<Record<ConfirmOutcome, CopilotAskOutcome>> = {
+  done: "confirmDone", invalid: "confirmInvalid", expired: "confirmExpired", notAct: "confirmNotAct",
+  halted: "confirmHalted", notPermitted: "confirmNotPermitted", alreadyDone: "confirmAlreadyDone",
+  stateChanged: "confirmStateChanged", failed: "confirmFailed",
+};
 /** E0.2 — the confirm tap carries the proposal back exactly as the ask handed it out. */
 const confirmBody = z.object({ proposal: proposalSchema }).strict();
 
@@ -363,6 +374,7 @@ export class CopilotController {
     const parsed = confirmBody.safeParse(raw);
     if (!parsed.success) throw new BadRequestException("invalid proposal");
     const now = new Date();
+    const started = Date.now();
     const gate = await readCopilotGate(this.db, now);
     const res = await confirmProposal({
       db: this.db, key: this.proposalKey, tools: this.tools, halts: gate.halts, now,
@@ -370,6 +382,17 @@ export class CopilotController {
     }, actor, parsed.data.proposal);
     // The outcome and the tool only: never the args, the subject or the signature.
     if (res.outcome !== "done") this.logger.log(`copilot confirm refused: ${res.outcome} (tool ${parsed.data.proposal.tool.slice(0, 64)})`);
+    /*
+      #686 (2) — the tap is a ledger row too, refusals included, so /copilot/health counts them. The
+      tool name as the intent and the answer key only: never the args, the subject or the signature,
+      and no question text (there is none). Awaited, like an ask's row: an outcome the ledger could not
+      record is not sent.
+    */
+    await recordAsk(this.db, {
+      actor, outcome: CONFIRM_LEDGER_OUTCOME[res.outcome],
+      route: "none", intent: parsed.data.proposal.tool.slice(0, 64), answerKey: res.answer.key,
+      ms: Date.now() - started, maskedQuestion: null, screen: null,
+    });
     return { outcome: res.outcome, answer: res.answer };
   }
 

@@ -2314,6 +2314,16 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // ER lane 5 (#812) — `er.disposition`: LWBS and abscond (the doctor's acts check the doctor role).
   // ER lane 8 (#815) — `er.mci`: START / JumpSTART tags and the MCI board during a Code Yellow.
   { roleKey: "er_nurse", permissions: ["er.mci", "er.codes", "er.board.view", "er.board.wall", "er.arrival.register", "er.triage", "er.care", "er.mlc", "er.disposition"] },
+  /**
+   * #618 / DECISION 0053 — the Pharmacology department's REVIEWER-ONLY seat. It signs CRK formulary entries
+   * (`formulary.crk.sign`) and reads the formulary it signs for (`formulary.read`, the catalogue doctors read).
+   * It does NOT hold `formulary.monograph.review`, the physician's review of the pharmacy monograph (owner
+   * 2026-10-02), and no stock, sale or patient string. The owner names the faculty and residents who hold it.
+   */
+  {
+    roleKey: "pharmacology_reviewer",
+    permissions: ["formulary.read", "formulary.crk.sign"],
+  },
 ];
 
 /**
@@ -2505,6 +2515,8 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   opd_scribe: "OPD Door Scribe (paper-slip transcription)",
   // Owner ruling 2026-10-06 (B) — the seat that photographs the doctor's paper and, by doing so, marks the visit consulted.
   opd_slip_desk: "OPD Slip Desk (photographs the prescription slip)",
+  // #618 / decision 0053 — signs the CRK formulary; no stock, sale or patient access.
+  pharmacology_reviewer: "Pharmacology Reviewer (signs CRK formulary entries)",
   pharmacy: "Pharmacy (prescription verification)",
   cashier: "Cashier",
   billing_manager: "Billing Manager",

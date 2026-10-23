@@ -3,7 +3,7 @@ import { newId } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters } from "../../../test/helpers/opd";
 import { loadConfig } from "../../kernel/config";
-import { cdsAliases, cdsRxLines, events, formularyMedicineSalts, formularyMedicines, formularySalts, opdEncounters, opdPrescriptions, opdSuggestionEvents, opdTermMisses } from "../../kernel/db/schema";
+import { cdsAliases, cdsRxLines, events, formularyMedicineSalts, formularyMedicines, formularySalts, opdEncounters, opdLasaPairs, opdPrescriptions, opdSuggestionEvents, opdTermMisses } from "../../kernel/db/schema";
 import { InferenceUnavailable } from "../../kernel/inference/types";
 import type { ChoiceClient, PredicateClient } from "../../kernel/inference/types";
 import { aliasCandidatePool, normalizeDrugName, registerNicknameLookup, searchMedicines, searchMedicinesForPrescribing } from "../formulary";
@@ -156,9 +156,26 @@ describe("medicine nicknames — live", () => {
       if (firstNonPrefix !== -1) expect(digits.findIndex((h) => h.alias !== undefined)).toBeLessThan(firstNonPrefix);
     });
 
+    it("the second tap is asked only when the medicine is on the look-alike list TODAY, whatever was stored at proposal (#613)", async () => {
+      /* Rows proposed under the old near-name rule carry lasa_guard = true. The flag is read from the list now. */
+      const id = await nickname("panforty", "m_pan40", "trusted", { lasaGuard: true });
+      unregister = registerNicknameLookup(nicknameLookupFor(ON));
+      await db.delete(opdLasaPairs);
+      expect((await searchMedicinesForPrescribing(db, "panforty", 10))[0]?.alias).toEqual({ id, state: "trusted", lasaGuard: false });
+      await db.insert(opdLasaPairs).values({ id: "lasa_t1", nameA: "esomeprazole", nameB: "pantoprazole" });
+      expect((await searchMedicinesForPrescribing(db, "panforty", 10))[0]?.alias).toEqual({ id, state: "trusted", lasaGuard: true });
+      // a pair that is switched off does not count
+      await db.update(opdLasaPairs).set({ active: false }).where(eq(opdLasaPairs.id, "lasa_t1"));
+      expect((await guardedMedicineSearch(db, "panforty", 8))[0]).toMatchObject({ id: "m_pan40", alias: { id, state: "trusted", lasaGuard: false } });
+      // the medicine on the OTHER side of a pair (the list stores name_a < name_b) counts the same
+      await db.insert(opdLasaPairs).values({ id: "lasa_t3", nameA: "pantoprazole", nameB: "rabeprazole" });
+      expect((await searchMedicinesForPrescribing(db, "panforty", 10))[0]?.alias).toEqual({ id, state: "trusted", lasaGuard: true });
+    });
+
     it("a TRUSTED nickname is the first row, and the phone's search carries the same mark", async () => {
       await medicine("m_panx", "Panforty (pantoprazole) 80 mg oral tablet", "Oral tablet", ["s_panto"]);
       const id = await nickname("panforty", "m_pan40", "trusted", { lasaGuard: true });
+      await db.insert(opdLasaPairs).values({ id: "lasa_t2", nameA: "esomeprazole", nameB: "pantoprazole" });
       unregister = registerNicknameLookup(nicknameLookupFor(ON));
       const rows = await searchMedicinesForPrescribing(db, "panforty", 10);
       expect(rows.map((h) => h.id)).toEqual(["m_pan40", "m_panx"]);
@@ -247,6 +264,13 @@ describe("medicine nicknames — live", () => {
       await db.update(cdsRxLines).set({ medicineId: "m_pan40", moietySet: "s_panto" }).where(eq(cdsRxLines.prescriptionId, rxId));
       await act(c, id, "accepted");
       expect((await stateOf(id))?.state).toBe("trusted");
+    });
+
+    it("a SUGGESTION whose medicine has become controlled is demoted at its next tap, not kept (#613)", async () => {
+      const id = await nickname("pan forty", "m_pan40", "suggestion");
+      await db.update(formularyMedicines).set({ scheduleFlag: "H1" }).where(eq(formularyMedicines.id, "m_pan40"));
+      await act(doctors[0]!, id, "accepted");
+      expect(await stateOf(id)).toMatchObject({ state: "demoted", ruleResult: "controlled_drug", refusal: "controlled_drug" });
     });
 
     it("three crosses in a row by two doctors demote it; a tap in between starts the count again", async () => {
@@ -350,11 +374,34 @@ describe("medicine nicknames — live", () => {
       expect((await db.select().from(cdsAliases))[0]?.state).toBe(state);
     });
 
-    it("a controlled target on the cited NDPS list is refused with no schedule flag and no stored class", async () => {
+    it("a controlled target on the cited NDPS list is refused with no schedule flag and no stored class — before either model is asked (#613)", async () => {
       await typed("morphine ten", 2);
       const f = fakeDeps();
       expect(await runAliasProposals(db, f.deps, { perRun: 40, perDay: 300 }, NOW)).toEqual({ ran: true, proposed: 1, suggestion: 0, refused: 1, failed: 0 });
-      expect((await db.select().from(cdsAliases))[0]).toMatchObject({ term: "morphine ten", medicineId: "m_morph", state: "proposed", refusal: "controlled_drug", ruleResult: "controlled_drug" });
+      expect((await db.select().from(cdsAliases))[0]).toMatchObject({ term: "morphine ten", medicineId: null, state: "proposed", refusal: "controlled_drug", ruleResult: "controlled_drug" });
+      expect(f.calls).toEqual({ choose: 0, predicate: 0 });
+    });
+
+    it("the formulary's candidate rows carry its NDPS answer: a listed moiety with no stored class reads as NDPS (#613)", async () => {
+      const rows = await aliasCandidatePool(db, "morphine", ["10"]);
+      expect(rows.find((r) => r.id === "m_morph")).toMatchObject({ ndps: true, scheduleFlag: null });
+      expect((await aliasCandidatePool(db, "pan", ["40"])).every((r) => !r.ndps)).toBe(true);
+    });
+
+    it("a LIVE nickname whose medicine the formulary now reads as NDPS is taken back at the next run — suggestion and trusted alike (#613)", async () => {
+      const sug = await nickname("pan forty", "m_pan40", "suggestion");
+      const tru = await nickname("pan twenty", "m_pan20", "trusted");
+      const other = await nickname("pan d", "m_pand", "suggestion");
+      // A stored NDPS class arrives on pantoprazole (the pharmacy classified it): the formulary's data, no name involved.
+      await db.update(formularySalts).set({ ndpsClass: "psychotropic" } as never).where(eq(formularySalts.id, "s_panto"));
+      const f = fakeDeps();
+      await runAliasProposals(db, f.deps, { perRun: 40, perDay: 300 }, NOW);
+      expect(await stateOf(sug)).toMatchObject({ state: "demoted", ruleResult: "controlled_drug", refusal: "controlled_drug" });
+      expect(await stateOf(tru)).toMatchObject({ state: "demoted", ruleResult: "controlled_drug" });
+      expect((await stateOf(other))?.state).toBe("demoted"); // Pan-D holds pantoprazole too
+      const list = await listNicknames(db, { all: true, on: true }, NOW);
+      expect(list.items.find((r) => r.id === sug)).toMatchObject({ state: "removed", removedBy: null });
+      expect(f.calls).toEqual({ choose: 0, predicate: 0 });
     });
   });
 

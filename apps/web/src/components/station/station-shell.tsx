@@ -127,7 +127,7 @@ export function StationShell({
   children: React.ReactNode;
 }): React.ReactElement {
   const { t, i18n } = useTranslation();
-  const { can, username } = useAuth();
+  const { can, username, logout } = useAuth();
   const router = useRouter({ warn: false });
   const palette = usePaletteOptional();
   const clock = useIstClock();
@@ -219,6 +219,22 @@ export function StationShell({
         </button>
         <time className="mo st-clock" data-testid="seat-clock">{clock}</time>
         <span className="st-user">{username ?? ""}</span>
+        {/*
+          OWNER 2026-10-21 — a station draws its own header, so the app shell's "Log out" is not on it
+          and a lab person on the quick chain had no way to sign out. The same button, the same
+          `auth.tsx` logout, the same landing on /login.
+        */}
+        <button
+          type="button"
+          className="st-btn st-out"
+          data-testid="station-logout"
+          onClick={() => {
+            /* logout() signs out locally even when the server call fails, so sign-in is right either way. */
+            void logout().catch(() => undefined).then(() => router?.navigate({ to: "/login" }));
+          }}
+        >
+          {t("app.logout")}
+        </button>
         {palette !== null && (
           <button type="button" className="st-btn st-cmd" data-testid="station-command" onClick={() => palette.open()}>
             ⌘ <span className="kb">F8</span>

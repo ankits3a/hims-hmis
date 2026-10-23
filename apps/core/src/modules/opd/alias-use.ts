@@ -1,7 +1,7 @@
 import { and, asc, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
-import { cdsAliases, cdsRxLines, opdSuggestionEvents } from "../../kernel/db/schema";
+import { cdsAliases, cdsRxLines, opdComplaintConcepts, opdSuggestionEvents } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { medicinesByIds } from "../formulary";
 import { trustByUse } from "./alias-pipeline";
@@ -41,7 +41,10 @@ export async function applyAliasUse(db: Db, aliasKey: string, now: Date = new Da
   return db.transaction(async (tx) => {
     /* The log keeps keys lower-cased (`recordSignals`), so a nickname is found by its id in either case. */
     const [alias] = await tx.select().from(cdsAliases).where(sql`lower(${cdsAliases.id}) = ${aliasKey.toLowerCase()}`).for("update");
-    if (alias === undefined || alias.medicineId === null || (alias.state !== "suggestion" && alias.state !== "trusted")) return "absent";
+    if (alias === undefined || (alias.state !== "suggestion" && alias.state !== "trusted")) return "absent";
+    /* #613 — a complaint alias names a concept, not a medicine: no composition, nothing controlled. */
+    const target = alias.kind === "complaint" ? alias.conceptKey : alias.medicineId;
+    if (target === null) return "absent";
     const aliasId = alias.id;
 
     const events = await tx.select({
@@ -54,10 +57,10 @@ export async function applyAliasUse(db: Db, aliasKey: string, now: Date = new Da
     const taps = events.filter((e) => e.outcome === "accepted");
     const distinctDoctors = new Set(taps.map(who)).size;
 
-    const tapsByTarget: Record<string, number> = { [alias.medicineId]: taps.length };
+    const tapsByTarget: Record<string, number> = { [target]: taps.length };
     for (const e of events) if (e.outcome === "manual" && e.contextKey !== null) tapsByTarget[e.contextKey] = (tapsByTarget[e.contextKey] ?? 0) + 1;
 
-    const today = await controlledToday(tx as unknown as Db, alias.medicineId);
+    const today = alias.kind === "complaint" || alias.medicineId === null ? null : await controlledToday(tx as unknown as Db, alias.medicineId);
     /* A tapped visit whose ISSUED prescription holds neither the medicine nor its composition: the doctor changed it. */
     const visits = [...new Set(taps.map((e) => e.encounterId).filter((x): x is string => x !== null))];
     let editedToAnotherMoiety = 0;
@@ -72,13 +75,23 @@ export async function applyAliasUse(db: Db, aliasKey: string, now: Date = new Da
 
     const acts = events.filter((e) => e.outcome === "accepted" || e.outcome === "dismissed").slice(-DEMOTE_AFTER_CROSSES);
     const crossedOut = acts.length === DEMOTE_AFTER_CROSSES && acts.every((e) => e.outcome === "dismissed") && new Set(acts.map(who)).size >= DEMOTE_MIN_DOCTORS;
-    const controlled = today === null || today.controlled;
+    const controlled = alias.kind === "complaint" ? false : today === null || today.controlled;
 
+    /*
+      #613 — a LIVE nickname (suggestion or trusted) whose medicine is controlled today is demoted at its
+      next tap, and the row says why; a suggestion is no longer kept waiting for trust it can never earn.
+    */
     let state = alias.state;
-    if (crossedOut || (alias.state === "trusted" && controlled)) state = "demoted";
+    const controlledNow = alias.kind !== "complaint" && today !== null && today.controlled;
+    // A medicine gone from the catalogue still demotes a TRUSTED nickname only, as before.
+    const takenBack = controlledNow || (alias.kind !== "complaint" && today === null && alias.state === "trusted");
+    if (crossedOut || takenBack) state = "demoted";
     else if (alias.state === "suggestion" && trustByUse({ distinctDoctors, tapsByTarget, editedToAnotherMoiety, controlled }).trusted) state = "trusted";
 
-    await tx.update(cdsAliases).set({ distinctDoctors, taps: taps.length, state, updatedAt: state === alias.state ? alias.updatedAt : now }).where(eq(cdsAliases.id, aliasId));
+    await tx.update(cdsAliases).set({
+      distinctDoctors, taps: taps.length, state, updatedAt: state === alias.state ? alias.updatedAt : now,
+      ...(controlledNow && !crossedOut ? { ruleResult: "controlled_drug", refusal: "controlled_drug" } : {}),
+    }).where(eq(cdsAliases.id, aliasId));
     return state === alias.state ? "unchanged" : state === "trusted" ? "trusted" : "demoted";
   });
 }
@@ -87,12 +100,14 @@ export async function applyAliasUse(db: Db, aliasKey: string, now: Date = new Da
 
 export type NicknameRow = {
   id: string;
+  /** #613 — a medicine nickname, or a complaint phrase learned onto an existing concept. */
+  kind: "medicine" | "complaint";
   nickname: string;
   /** The catalogue's full product name, and its strength and form — never a model's words. */
   medicine: string | null;
   detail: string | null;
   state: "suggested" | "trusted" | "removed";
-  /** How a removed one was removed: by the owner here, or by doctors crossing it off. */
+  /** How a removed one was removed: by the owner here, or by doctors crossing it off; null when the rules took it back (its medicine became controlled). */
   removedBy: "owner" | "doctors" | null;
   doctors: number;
   taps: number;
@@ -109,26 +124,36 @@ const SHOWN_STATES = ["suggestion", "trusted", "demoted", "undone"] as const;
  */
 export async function listNicknames(db: Db, opts: { all: boolean; on: boolean }, now: Date = new Date()): Promise<NicknameList> {
   const tally = await db.select({ state: cdsAliases.state, n: count() }).from(cdsAliases)
-    .where(and(eq(cdsAliases.kind, "medicine"), inArray(cdsAliases.state, [...SHOWN_STATES]))).groupBy(cdsAliases.state);
+    .where(and(inArray(cdsAliases.kind, ["medicine", "complaint"]), inArray(cdsAliases.state, [...SHOWN_STATES]))).groupBy(cdsAliases.state);
   const n = (s: string): number => Number(tally.find((r) => r.state === s)?.n ?? 0);
   const since = new Date(now.getTime() - 7 * 86_400_000);
   const rows = await db.select().from(cdsAliases)
-    .where(and(eq(cdsAliases.kind, "medicine"), inArray(cdsAliases.state, [...SHOWN_STATES]), opts.all ? sql`true` : gte(cdsAliases.updatedAt, since)))
+    .where(and(inArray(cdsAliases.kind, ["medicine", "complaint"]), inArray(cdsAliases.state, [...SHOWN_STATES]), opts.all ? sql`true` : gte(cdsAliases.updatedAt, since)))
     .orderBy(desc(cdsAliases.updatedAt), asc(cdsAliases.term)).limit(500);
   const ids = [...new Set(rows.map((r) => r.medicineId).filter((x): x is string => x !== null))];
   const meds = new Map<string, { brandName: string; strengthLabel: string | null; form: string }>();
   for (let i = 0; i < ids.length; i += 200) for (const [id, m] of await medicinesByIds(db, ids.slice(i, i + 200))) meds.set(id, m);
+  const conceptKeys = [...new Set(rows.map((r) => r.conceptKey).filter((x): x is string => x !== null))];
+  const concepts = new Map(conceptKeys.length === 0 ? [] : (await db.select({ key: opdComplaintConcepts.key, label: opdComplaintConcepts.label })
+    .from(opdComplaintConcepts).where(inArray(opdComplaintConcepts.key, conceptKeys))).map((c) => [c.key, c.label] as const));
   return {
     on: opts.on,
     counts: { suggested: n("suggestion"), trusted: n("trusted"), removed: n("demoted") + n("undone") },
-    items: rows.map((r) => {
+    items: rows.map((r): NicknameRow => {
+      const removedBy = r.state === "undone" ? "owner" : r.state === "demoted" ? (r.refusal === "controlled_drug" ? null : "doctors") : null;
+      const state = r.state === "suggestion" ? "suggested" : r.state === "trusted" ? "trusted" : "removed";
+      if (r.kind === "complaint") {
+        return {
+          id: r.id, kind: "complaint", nickname: r.term, medicine: r.conceptKey === null ? null : concepts.get(r.conceptKey) ?? r.conceptKey, detail: null,
+          state, removedBy, doctors: r.distinctDoctors, taps: r.taps, changedAt: (r.undoneAt ?? r.updatedAt).toISOString(),
+        };
+      }
       const m = r.medicineId === null ? undefined : meds.get(r.medicineId);
       /* A combination's stored strength is its FIRST component's alone (measured 2026-10-08): its name carries all of them, so only the form is added. */
       const strength = m?.strengthLabel == null || m.brandName.includes(" + ") ? null : m.strengthLabel.replace(/\/\s*$/, "").trim() || null;
       return {
-        id: r.id, nickname: r.term, medicine: m?.brandName ?? null, detail: m === undefined ? null : [strength, m.form].filter((x) => x !== null && x !== "").join(" · "),
-        state: r.state === "suggestion" ? "suggested" : r.state === "trusted" ? "trusted" : "removed",
-        removedBy: r.state === "undone" ? "owner" : r.state === "demoted" ? "doctors" : null,
+        id: r.id, kind: "medicine", nickname: r.term, medicine: m?.brandName ?? null, detail: m === undefined ? null : [strength, m.form].filter((x) => x !== null && x !== "").join(" · "),
+        state, removedBy,
         doctors: r.distinctDoctors, taps: r.taps, changedAt: (r.undoneAt ?? r.updatedAt).toISOString(),
       };
     }),

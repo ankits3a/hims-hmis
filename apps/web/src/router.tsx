@@ -66,6 +66,7 @@ import { IpdRoundPatientRoute, IpdRounds } from "./screens/ipd-rounds";
 import { IpdMar } from "./screens/ipd-mar";
 import { IpdNarcotics } from "./screens/ipd-narcotics";
 import { IpdPharmacy } from "./screens/ipd-pharmacy";
+import { CrkFormularyScreen } from "./screens/crk-formulary";
 import { CopilotNoticeHost } from "./components/copilot-notice";
 import { OpdReportScreen } from "./screens/opd-report";
 import { DeskOne } from "./screens/desk-one/desk-one";
@@ -78,6 +79,15 @@ import { MyReach } from "./screens/my-reach";
 import { RosterOnNow } from "./screens/roster-on-now";
 import { RosterMonth } from "./screens/roster-month";
 import { RosterMyDuties } from "./screens/roster-my-duties";
+import { DoctorDeskTower } from "./screens/doctor-desk-tower";
+import { DoctorDeskBriefs } from "./screens/doctor-desk-briefs";
+import { DoctorDeskOpd } from "./screens/doctor-desk-opd";
+import { DoctorLanding } from "./screens/doctor-desk-landing";
+import { DoctorDeskUnit } from "./screens/doctor-desk-unit";
+import { DoctorDeskNow } from "./screens/doctor-desk-now";
+import { DoctorDeskProfessor } from "./screens/doctor-desk-professor";
+import { DoctorDeskRatings } from "./screens/doctor-desk-ratings";
+import { DoctorDeskReport } from "./screens/doctor-desk-report";
 import { RosterEvidence } from "./screens/roster-evidence";
 import { RosterAebas } from "./screens/roster-aebas";
 import { OpdAdmin } from "./screens/opd-admin";
@@ -97,6 +107,7 @@ import { BillingOffice } from "./screens/billing-office";
 import { AdminWorkflows } from "./screens/admin-workflows";
 import { OpsMode } from "./screens/ops-mode";
 import { AdminUsers } from "./screens/admin-users";
+import { AttendanceLinks } from "./screens/attendance-links";
 import { ChangePassword } from "./screens/change-password";
 import { OpsDowntimeKit } from "./screens/ops-downtime-kit";
 import { CounterInstruments } from "./screens/counter-instruments";
@@ -297,6 +308,9 @@ const NAV: readonly NavEntry[] = [
   { to: "/admin/users", label: "nav.adminUsers", permission: "auth.users.manage", group: "admin" },
   // GO-LIVE SCREENS — the workflow definitions board: approve (owner, MS) and activate (owner). Matches `workflowManifest.menu`.
   { to: "/admin/workflows", label: "nav.adminWorkflows", permission: "workflow.definitions.read", group: "admin" },
+  // #634 — who on the attendance machine's list is which login: the count and the unlinked list for the
+  // owner and the Attendance Committee, the suggestions and the hand link for the Users administrator.
+  { to: "/attendance/links", label: "nav.attendanceLinks", permission: "attendance.all.read", anyOf: ["auth.users.manage"], group: "admin" },
   // Decision 0067 — the outside-test list (ECG, echo …), `orderingManifest.menu`'s entry.
   { to: "/ordering/outside-tests", label: "nav.outsideTests", permission: "tariff.services.manage", group: "admin" },
   // PLAN 18a T9 — the entries `radiologyManifest.menu` declares (three since 18-S RS2b), path and permission matching
@@ -356,6 +370,8 @@ const NAV: readonly NavEntry[] = [
   { to: "/diet/ward", label: "nav.dietWard", permission: "diet.view", group: "services" },
   { to: "/diet/kitchen", label: "nav.dietKitchen", permission: "diet.kitchen", group: "services" },
   { to: "/diet/consults", label: "nav.dietConsults", permission: "diet.manage", group: "services" },
+  // #882 / decision 0053 — the CRK formulary: Pharmacology signs; the pharmacy may correct a draft.
+  { to: "/crk-formulary", label: "nav.crkFormulary", permission: "formulary.crk.sign", group: "pharmacy", anyOf: ["formulary.manage"] },
   // The OPD day report (owner, 2026-09-19): the hospital's day by department, PDF and CSV.
   { to: "/reports/opd-day", label: "nav.opdDayReport", permission: "opd.reports.read", group: "opd" },
   // 20-U U5a — who is on now, the hospital's unit board. `roster.read` matches `rosterManifest.menu`.
@@ -835,7 +851,53 @@ const authedRoute = createRoute({
 const indexRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/",
-  component: Desk,
+  // DD-0 (#626, owner R5 2026-09-18) — a doctor of a unit lands on the Tower once per browser
+  // session; everybody else (and the doctor's next visit to `/`) gets the Desk, unchanged.
+  component: function HomeScreen() { return <DoctorLanding><Desk /></DoctorLanding>; },
+});
+
+/**
+ * DD-0 (#626) — the Doctor Desk: the Tower (`Tower.dc.html`) and AI Briefs (`AiBriefs.dc.html`),
+ * both inside the Doctor Desk frame, which owns the viewport.
+ */
+const doctorDeskRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/doctor-desk",
+  staticData: { fullViewport: true },
+  component: DoctorDeskTower,
+});
+/** DD-0.8 (#890) — the OPD desk (`OpdDesk.dc.html`): my line, the NEXT card, pace, waiting on me. */
+const doctorDeskOpdRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/doctor-desk/opd",
+  staticData: { fullViewport: true },
+  component: DoctorDeskOpd,
+});
+/** DD-1.2 — the Unit board (`UnitBoard.dc.html`). */
+const doctorDeskUnitRoute = createRoute({
+  getParentRoute: () => authedRoute, path: "/doctor-desk/unit", staticData: { fullViewport: true }, component: DoctorDeskUnit,
+});
+/** DD-1.5 — the SR phone "Now" (`Main.dc.html`), a web view. */
+const doctorDeskNowRoute = createRoute({
+  getParentRoute: () => authedRoute, path: "/doctor-desk/now", staticData: { fullViewport: true }, component: DoctorDeskNow,
+});
+/** DD-1.4 — the Professor phone (`Professor.dc.html`), a web view. */
+const doctorDeskProfessorRoute = createRoute({
+  getParentRoute: () => authedRoute, path: "/doctor-desk/professor", staticData: { fullViewport: true }, component: DoctorDeskProfessor,
+});
+/** DD-1.7 — my work ratings and my PG logbook. */
+const doctorDeskRatingsRoute = createRoute({
+  getParentRoute: () => authedRoute, path: "/doctor-desk/ratings", staticData: { fullViewport: true }, component: DoctorDeskRatings,
+});
+/** DD-report v0 — the 08:00 unit report. */
+const doctorDeskReportRoute = createRoute({
+  getParentRoute: () => authedRoute, path: "/doctor-desk/report", staticData: { fullViewport: true }, component: DoctorDeskReport,
+});
+const doctorDeskBriefsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/doctor-desk/briefs",
+  staticData: { fullViewport: true },
+  component: DoctorDeskBriefs,
 });
 
 /**
@@ -1097,6 +1159,13 @@ const copilotHealthRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/copilot-health",
   component: CopilotHealthScreen,
+});
+
+/** #882 / decision 0053 — the CRK formulary worklist and sign screen. */
+const crkFormularyRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/crk-formulary",
+  component: CrkFormularyScreen,
 });
 
 /**
@@ -2147,9 +2216,11 @@ const billingRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/billing",
   // The OPD desk hands a walk-in straight to the counter as `/billing?encounterId=…` (flag ⑧);
-  // without one the cashier types or scans the encounter id at the counter.
-  validateSearch: (search: Record<string, unknown>): { encounterId?: string } => ({
+  // without one the cashier types or scans the encounter id at the counter. #658 — the card
+  // recognition counter also hands over `?coupon=` (comma-separated codes) to fill the coupon field.
+  validateSearch: (search: Record<string, unknown>): { encounterId?: string; coupon?: string } => ({
     encounterId: typeof search.encounterId === "string" ? search.encounterId : undefined,
+    coupon: typeof search.coupon === "string" ? search.coupon : undefined,
   }),
   staticData: { fullViewport: true },
   component: function BillingSeat() {
@@ -2214,6 +2285,15 @@ const adminWorkflowsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/admin/workflows",
   component: AdminWorkflows,
+});
+
+// #634 — attendance links. The server guards each route (`attendance.all.read` for the count and the
+// unlinked list, `auth.users.manage` for suggestions and the hand link); the screen shows the tabs the
+// viewer may use.
+const attendanceLinksRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/attendance/links",
+  component: AttendanceLinks,
 });
 
 /**
@@ -2319,9 +2399,9 @@ export const router = createRouter({
     familyRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, erDeskRoute, erBoardRoute, erTriageRoute, erPatientRoute, erMlcRoute, erBillRoute, erCodesRoute, erMciRoute, ipdBedsRoute, ipdAdmitRoute, ipdPassesRoute, passesScanRoute, ipdBillRoute, ipdHandoversRoute, ipdWardRoute, ipdMyShiftRoute, ipdBillDeskRoute, ipdTpaRoute, ipdDischargeRoute, ipdFamilyCallbacksRoute, ipdRoundsRoute, ipdRoundPatientRoute, ipdMarRoute, ipdPharmacyRoute, ipdNarcoticsRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, crkFormularyRoute, erDeskRoute, erBoardRoute, erTriageRoute, erPatientRoute, erMlcRoute, erBillRoute, erCodesRoute, erMciRoute, ipdBedsRoute, ipdAdmitRoute, ipdPassesRoute, passesScanRoute, ipdBillRoute, ipdHandoversRoute, ipdWardRoute, ipdMyShiftRoute, ipdBillDeskRoute, ipdTpaRoute, ipdDischargeRoute, ipdFamilyCallbacksRoute, ipdRoundsRoute, ipdRoundPatientRoute, ipdMarRoute, ipdPharmacyRoute, ipdNarcoticsRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
-      billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
+      billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute, attendanceLinksRoute,
       // GO-LIVE SCREENS — +1, `/admin/workflows`. `caddyfile-parity.test.ts` pins the count.
       adminWorkflowsRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
@@ -2402,6 +2482,18 @@ export const router = createRouter({
       dietWardRoute, dietKitchenRoute, dietConsultsRoute,
       rosterEvidenceRoute,
       rosterAebasRoute,
+      // DD-0 (#626) — +2, `/doctor-desk` and `/doctor-desk/briefs`. `caddyfile-parity.test.ts` pins the count.
+      doctorDeskRoute,
+      doctorDeskBriefsRoute,
+      // DD-0.8 (#890) — +1, `/doctor-desk/opd`.
+      doctorDeskOpdRoute,
+      // DD-1 — +4, `/doctor-desk/unit`, `/doctor-desk/now`, `/doctor-desk/professor`, `/doctor-desk/ratings`.
+      doctorDeskUnitRoute,
+      doctorDeskNowRoute,
+      doctorDeskProfessorRoute,
+      doctorDeskRatingsRoute,
+      // DD-report v0 — +1, `/doctor-desk/report`.
+      doctorDeskReportRoute,
     ]),
   ]),
 });

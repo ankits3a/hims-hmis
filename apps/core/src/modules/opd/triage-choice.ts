@@ -60,19 +60,48 @@ const INSTRUCTIONS =
   "`complaint` is what a walk-in patient told the front desk of an Indian hospital, typed by a clerk in Hindi, " +
   "English, Hinglish or Bhojpuri. Patient identifiers are masked as <<P1>>. Which OUT-PATIENT department should see them?";
 
-/** The departments as options: a key per department (duplicates disambiguated) and the way back to its id. */
-export function departmentOptions(departments: TriageDepartment[]): { options: Record<string, string | null>; idOf: Map<string, TriageDepartment> } {
-  const options: Record<string, string | null> = {};
+/**
+ * #614 (plan P3, channels 2 and 3) — what the nightly learning adds to the options, keyed by
+ * department id (`desk-routing-feed.ts`). The TAIL is appended after the hand-written description,
+ * never instead of it; the EXAMPLES ride the option as `{ what, examples }`, the shape the copilot's
+ * router already hands the same clients. Absent or empty, the options are byte-for-byte what they were.
+ */
+export type RoutingFeed = { tail: Record<string, string[]>; examples: Record<string, string[]> };
+
+/** Every word the hand-written descriptions already say — the tail must never repeat or rewrite one. */
+export function handWrittenWords(): Set<string> {
+  const out = new Set<string>();
+  for (const d of Object.values(DESCRIPTIONS)) {
+    for (const w of d.toLowerCase().split(/[^\p{L}\p{M}]+/u)) if (w !== "") out.add(w);
+  }
+  return out;
+}
+
+/**
+ * The departments as options: a key per department (duplicates disambiguated), the way back to its
+ * id, and the REASON a clerk may be shown — always the hand-written description, never a learned word.
+ */
+export function departmentOptions(
+  departments: TriageDepartment[],
+  feed: RoutingFeed | null = null,
+): { options: Record<string, unknown>; idOf: Map<string, TriageDepartment>; reasonOf: Map<string, string | null> } {
+  const options: Record<string, unknown> = {};
   const idOf = new Map<string, TriageDepartment>();
+  const reasonOf = new Map<string, string | null>();
   for (const d of departments) {
     let key = d.name;
     // Two departments with one name are still two departments; "ENT", "ENT #2".
     for (let n = 2; Object.hasOwn(options, key) || key === NONE; n += 1) key = `${d.name} #${String(n)}`;
-    options[key] = DESCRIPTIONS[d.name.trim().toLowerCase()] ?? null;
+    const hand = DESCRIPTIONS[d.name.trim().toLowerCase()] ?? null;
+    const tail = feed?.tail[d.id] ?? [];
+    const examples = feed?.examples[d.id] ?? [];
+    const what = tail.length === 0 ? hand : `${hand ?? d.name}; also: ${tail.join(", ")}`;
+    options[key] = examples.length === 0 ? what : { what: what ?? d.name, examples: [...examples] };
     idOf.set(key, d);
+    reasonOf.set(key, hand);
   }
   options[NONE] = NONE_DESCRIPTION;
-  return { options, idOf };
+  return { options, idOf, reasonOf };
 }
 
 /** Ranked suggestions when sure; `none` when sure it is none of them; `unsure` hands over to the fallback. */
@@ -83,20 +112,35 @@ export async function chooseDepartments(
   departments: TriageDepartment[],
   chooser: ChoiceClient,
   minConfidence: number,
+  feed: RoutingFeed | null = null,
 ): Promise<TriageChoiceOutcome> {
-  const { options, idOf } = departmentOptions(departments);
-
-  let answer;
   try {
-    const out = await chooser.choose({
-      state: { complaint: masked },
-      questions: { department: { instructions: INSTRUCTIONS, options } },
-    });
-    answer = out.answers.department;
+    return await askChooser(masked, departments, chooser, minConfidence, feed);
   } catch {
     // Unreachable, slow, malformed — every one of them is "ask the fallback", never a guess.
     return "unsure";
   }
+}
+
+/**
+ * The same question, but a provider failure THROWS instead of reading as "unsure". The nightly
+ * evaluation (`desk-routing-feed.ts`) needs the difference: a model that could not be reached has
+ * measured nothing, and a feed must never go live on a score that was really an outage.
+ */
+export async function askChooser(
+  masked: string,
+  departments: TriageDepartment[],
+  chooser: ChoiceClient,
+  minConfidence: number,
+  feed: RoutingFeed | null = null,
+): Promise<TriageChoiceOutcome> {
+  const { options, idOf, reasonOf } = departmentOptions(departments, feed);
+
+  const out = await chooser.choose({
+    state: { complaint: masked },
+    questions: { department: { instructions: INSTRUCTIONS, options } },
+  });
+  const answer = out.answers.department;
   if (answer === undefined || answer.confidence < minConfidence) return "unsure";
   if (answer.choice === NONE) return "none";
 
@@ -112,7 +156,7 @@ export async function chooseDepartments(
   const suggestions: TriageSuggestion[] = [];
   for (const [key] of ranked) {
     const dept = idOf.get(key);
-    if (dept !== undefined) suggestions.push({ departmentId: dept.id, reason: options[key] ?? dept.name, reasonKey: "opdTriage.reason.model" });
+    if (dept !== undefined) suggestions.push({ departmentId: dept.id, reason: reasonOf.get(key) ?? dept.name, reasonKey: "opdTriage.reason.model" });
   }
   return suggestions.length > 0 ? suggestions : "unsure";
 }

@@ -136,6 +136,7 @@ const NOT_DEPARTMENTS: Record<string, string> = {
   ordering: "DECISION 0067 — not a department: the door every doctor screen orders tests through and the outside-test list. The lab and imaging it routes to are the departments; it has nothing of its own to commission",
   diet: "E4.4 DIET (issue #736) — not a department to commission here: the kitchen and dietetics companion to IPD. It goes live with the IPD admissions it feeds; its meal rounds are seeded by its migration and its people are `dietician` and `kitchen_staff`",
   passes: "E1.3 (#720) — not a department: attendant and visitor passes ride the IPD admission desk and the security desk; nothing of its own to commission (visiting hours are a contract constant)",
+  "doctor-desk": "DD-0 #626 — not a department: the doctor's Tower and briefs over lab, radiology and opd rows; nothing to commission",
   resources: "kernel — the registry the departments' theatres and benches live in",
   orders: "kernel — the order envelope; claimed by lab and radiology, owned by neither",
   desk: "cross-cutting — the front-desk shell; its commissioning IS `front-desk`'s",

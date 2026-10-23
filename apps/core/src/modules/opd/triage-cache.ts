@@ -76,8 +76,14 @@ export function departmentFingerprint(departments: TriageDepartment[]): string {
   return createHash("sha1").update(departments.map((d) => `${d.id}:${d.name}`).join("\u0000")).digest("hex").slice(0, 16);
 }
 
-export function triageCacheKey(text: string, departments: TriageDepartment[]): string {
-  return `${departmentFingerprint(departments)}|${normaliseComplaint(text)}`;
+/**
+ * `feed` is the fingerprint of what the nightly learning adds to the descriptions (#614, plan P3:
+ * "the triage cache key includes a fingerprint of the descriptions"). Empty — nothing learned — the
+ * key is exactly the key it always was.
+ */
+export function triageCacheKey(text: string, departments: TriageDepartment[], feed = ""): string {
+  const depts = feed === "" ? departmentFingerprint(departments) : `${departmentFingerprint(departments)}~${feed}`;
+  return `${depts}|${normaliseComplaint(text)}`;
 }
 
 /**

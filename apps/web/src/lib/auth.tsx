@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, getToken, setToken } from "./api";
 import { isPasswordChangeRequired } from "./admin-api";
@@ -43,6 +43,37 @@ type AuthState = {
 };
 
 const AuthContext = createContext<AuthState | null>(null);
+
+/**
+ * A browser left untouched on a shared terminal signs itself out after this long (the server also refuses a browser
+ * session idle this long, `SESSION_IDLE_MS`). Screens that poll keep the server session warm, so the browser counts the
+ * person's own input. The wall displays — queue boards nobody types at — stay signed in.
+ */
+export const IDLE_SIGN_OUT_MS = 30 * 60_000;
+const DISPLAY_PATHS = ["/opd/display", "/radiology/display"];
+export function idleSignOutDue(lastInputAt: number, now: number, path: string): boolean {
+  if (DISPLAY_PATHS.some((p) => path === p || path.startsWith(`${p}/`))) return false;
+  return now - lastInputAt > IDLE_SIGN_OUT_MS;
+}
+const INPUT_EVENTS = ["keydown", "pointerdown", "mousemove", "touchstart", "wheel"] as const;
+/**
+ * Every tab of a browser shares one token, so one tab's sign-out signs them all out. The last input is therefore kept
+ * where every tab reads it: a tab nobody looks at must not sign out the person typing in the next one.
+ */
+export const IDLE_INPUT_KEY = "hmis.lastInputAt";
+/** The shared stamp is written at most this often (mousemove fires constantly). */
+const SHARE_INPUT_EVERY_MS = 5_000;
+function sharedLastInput(): number {
+  try {
+    const v = Number(localStorage.getItem(IDLE_INPUT_KEY));
+    return Number.isFinite(v) ? v : 0;
+  } catch {
+    return 0;
+  }
+}
+function shareLastInput(at: number): void {
+  try { localStorage.setItem(IDLE_INPUT_KEY, String(at)); } catch { /* storage unavailable: this tab's own clock still counts */ }
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }): React.ReactElement {
   const queryClient = useQueryClient();
@@ -118,6 +149,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
       queryClient.clear();
     }
   }, [queryClient]);
+
+  /* The idle sign-out: only while someone is signed in; any input resets the clock; checked every 15 s. */
+  const lastInput = useRef(Date.now());
+  useEffect(() => {
+    if (actor === null) return;
+    lastInput.current = Date.now();
+    let sharedAt = lastInput.current;
+    shareLastInput(sharedAt);
+    const touch = (): void => {
+      const now = Date.now();
+      lastInput.current = now;
+      if (now - sharedAt >= SHARE_INPUT_EVERY_MS) { sharedAt = now; shareLastInput(now); }
+    };
+    for (const e of INPUT_EVENTS) window.addEventListener(e, touch, { passive: true });
+    const timer = setInterval(() => {
+      const last = Math.max(lastInput.current, sharedLastInput());
+      if (idleSignOutDue(last, Date.now(), window.location.pathname)) void logout();
+    }, 15_000);
+    return () => {
+      clearInterval(timer);
+      for (const e of INPUT_EVENTS) window.removeEventListener(e, touch);
+    };
+  }, [actor, logout]);
 
   const can = useCallback((permission: string) => permissions.hospital.includes(permission), [permissions]);
 

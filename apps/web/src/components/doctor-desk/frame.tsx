@@ -34,25 +34,45 @@ import { dateLocale } from "../../lib/date-locale";
  * `ModeBanner` itself, and the ◆ DESK ONE wordmark is the way back to the rest of HMIS.
  */
 
-type IconKey = "doc" | "cal" | "phone";
+type IconKey = "doc" | "cal" | "phone" | "grid" | "spark";
 const ICON: Record<IconKey, string> = {
+  // DD-0 (#626) — the board's Dashboard and AI Briefs glyphs (Tower.dc.html `I.grid`, `I.spark`).
+  grid: "M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z",
+  spark: "M8 1.5l1.6 4.9 4.9 1.6-4.9 1.6L8 14.5 6.4 9.6 1.5 8l4.9-1.6z",
   doc: "M4 1.5h5.5l3 3v10H4zM9.5 1.5v3h3M6 8h4.5M6 10.5h4.5",
   cal: "M2.5 3.5h11v10h-11zM2.5 6.5h11M5.5 2v3M10.5 2v3",
   phone: "M3 2.5h3l1 3-1.7 1.2a8 8 0 004 4L10.5 9l3 1v3a1 1 0 01-1 1A10.5 10.5 0 012 3.5a1 1 0 011-1z",
 };
 
-export type DeskMenuKey = "myOpd" | "myDuties" | "roster" | "onNow" | "evidence" | "aebas";
+export type DeskMenuKey =
+  | "dashboard" | "myOpd" | "myDuties" | "roster" | "onNow" | "evidence" | "aebas" | "aiBriefs"
+  // DD-1 — the Unit board, the two phone boards, my work ratings.
+  | "unitBoard" | "now" | "professor" | "myRatings"
+  // DD-report v0 — the unit report.
+  | "unitReport";
 type MenuItem = { key: DeskMenuKey; to: string; label: string; permission: string; icon: IconKey };
 type MenuGroup = { key: string; label: string; items: MenuItem[] };
 
 /** The board's groups, in the board's order, with only the destinations that are built. */
 export const MENU: readonly MenuGroup[] = [
   { key: "desk", label: "doctorDesk.group.desk", items: [
-    { key: "myOpd", to: "/opd/consult", label: "doctorDesk.item.myOpd", permission: "opd.consult", icon: "doc" },
+    // DD-0 (#626) — the board's first entry: the Tower.
+    { key: "dashboard", to: "/doctor-desk", label: "doctorDesk.item.dashboard", permission: "opd.consult", icon: "grid" },
+    // DD-0.8 (#890) — the board's "My OPD" is the OPD desk (OpdDesk.dc.html); it opens the consult screen.
+    { key: "myOpd", to: "/doctor-desk/opd", label: "doctorDesk.item.myOpd", permission: "opd.consult", icon: "doc" },
     // 20-U U5c — the board's "My Duties", under DOCTOR DESK after My OPD (Main.dc.html's menu).
     { key: "myDuties", to: "/roster/my-duties", label: "doctorDesk.item.myDuties", permission: "roster.read", icon: "cal" },
+    // DD-1.5 / 1.4 — the phone boards (Main.dc.html, Professor.dc.html), as web views.
+    { key: "now", to: "/doctor-desk/now", label: "doctorDesk.item.now", permission: "opd.consult", icon: "phone" },
+    { key: "professor", to: "/doctor-desk/professor", label: "doctorDesk.item.professor", permission: "opd.consult", icon: "phone" },
+    // DD-1.7 — my work ratings and my PG logbook.
+    { key: "myRatings", to: "/doctor-desk/ratings", label: "doctorDesk.item.myRatings", permission: "opd.consult", icon: "doc" },
   ] },
   { key: "unit", label: "doctorDesk.group.unit", items: [
+    // DD-1.2 — the Unit board (UnitBoard.dc.html): what the unit owes, and your people this week.
+    { key: "unitBoard", to: "/doctor-desk/unit", label: "doctorDesk.item.unitBoard", permission: "opd.consult", icon: "grid" },
+    // DD-report v0 — the 08:00 unit report (UnitBoard.dc.html's right column).
+    { key: "unitReport", to: "/doctor-desk/report", label: "doctorDesk.item.unitReport", permission: "opd.consult", icon: "doc" },
     { key: "roster", to: "/roster/month", label: "doctorDesk.item.roster", permission: "roster.read", icon: "cal" },
     { key: "onNow", to: "/roster/on-now", label: "doctorDesk.item.onNow", permission: "roster.read", icon: "phone" },
   ] },
@@ -60,6 +80,10 @@ export const MENU: readonly MenuGroup[] = [
   { key: "office", label: "doctorDesk.group.office", items: [
     { key: "evidence", to: "/roster/evidence", label: "doctorDesk.item.evidence", permission: "roster.periods.publish", icon: "doc" },
     { key: "aebas", to: "/roster/aebas", label: "doctorDesk.item.aebas", permission: "roster.periods.publish", icon: "cal" },
+  ] },
+  // DD-0 (#626) — the board's AI group, with only its built entry: AI Briefs (R9: the item shows a count only).
+  { key: "ai", label: "doctorDesk.group.ai", items: [
+    { key: "aiBriefs", to: "/doctor-desk/briefs", label: "doctorDesk.item.aiBriefs", permission: "opd.consult", icon: "spark" },
   ] },
 ];
 
@@ -100,9 +124,11 @@ export function initialsOf(name: string): string {
 }
 
 export function DoctorDeskFrame({
-  active, context, pill, rail, ask, who, menuDefault = "open", railWidth = 348, testId, children,
+  active, context, pill, rail, ask, who, menuDefault = "open", railWidth = 348, testId, counts, children,
 }: {
   active: DeskMenuKey;
+  /** DD-0 — a count beside a menu entry (the board's `it.n`); a zero or absent count draws nothing. */
+  counts?: Partial<Record<DeskMenuKey, number>>;
   /** The header's context line — "Doctor Desk · General Medicine · Unit I". */
   context: string;
   /** The centre context pill: a tag ("TODAY") and its line. Omitted when the screen has none. */
@@ -207,10 +233,13 @@ export function DoctorDeskFrame({
                 >
                   <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={ICON[it.icon]} /></svg>
                   <span style={{ flexGrow: 1 }}>{t(it.label)}</span>
+                  {(counts?.[it.key] ?? 0) > 0 && <span className="ddf-item-n" data-testid={`desk-menu-${it.key}-n`}>{counts?.[it.key]}</span>}
                 </a>
               ))}
             </div>
           ))}
+          {/* DD-0 (owner R10) — the board's footer brand under the menu. */}
+          <div className="ddf-menu-brand" aria-hidden="true">CRK<br />MEDICAL COLLEGE &amp; HOSPITAL</div>
         </nav>
         <main className="ddf-main">
           {pill !== undefined && (

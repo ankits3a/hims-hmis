@@ -79,8 +79,8 @@ Source: `apps/core/src/modules/tasks/`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (11)
+## HTTP routes
 
-- `tasks.controller.ts` — 11: `/tasks`, `/tasks/:id`, `/tasks/board`, `/tasks/mine`, `/tasks/places`
+- `tasks.controller.ts` — `/tasks`, `/tasks/:id`, `/tasks/board`, `/tasks/mine`, `/tasks/places`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/tasks`

@@ -153,3 +153,4 @@ export * from "./diet";
 // ER lane 1 (#808, decision 0076) — the emergency department: the ER episode, the pre-alert and the ER band register.
 // References `patients`; nothing reads it but `modules/emergency`.
 export * from "./emergency";
+export * from "./doctor-desk"; // DOCTOR DESK DD-0 (#626) — briefs, nudges, agent runs, reads; references auth.users only

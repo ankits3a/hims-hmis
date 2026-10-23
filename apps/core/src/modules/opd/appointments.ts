@@ -10,8 +10,10 @@ import { openVisitInTx } from "./encounters";
 import { OpdError } from "./errors";
 import { appointmentBooked, appointmentCancelled, appointmentNoShow, appointmentRescheduled } from "./events";
 import { availableSlots } from "./schedules";
+import { doctorServesDepartment } from "./secondary";
 import { istDate } from "./time";
 import type { OpenVisitResult } from "./encounters";
+import type { Slot } from "./slots";
 import type { Db, Tx } from "../../kernel/db/client";
 
 export type AppointmentRow = typeof opdAppointments.$inferSelect;
@@ -53,6 +55,24 @@ async function assertNotOnLeave(tx: Tx, doctorId: string, serviceDate: string): 
 }
 
 /**
+ * #914 — the department a booking belongs to: the one asked for, else the session's own, else the
+ * doctor's primary. A session named for one department books nowhere else, and the doctor must sit
+ * in the department on the slot's day (a secondary in force then, or the primary).
+ */
+async function bookingDepartment(
+  tx: Tx, doctor: { id: string; departmentId: string }, slot: Slot, serviceDate: string, wanted: string | undefined,
+): Promise<string> {
+  const departmentId = wanted ?? slot.departmentId ?? doctor.departmentId;
+  if (slot.departmentId !== null && slot.departmentId !== departmentId) {
+    throw new OpdError("invalid_slot", "that session belongs to another department");
+  }
+  if (!await doctorServesDepartment(tx, doctor, departmentId, serviceDate)) {
+    throw new OpdError("doctor_department_mismatch", "that doctor is not in that department on that day");
+  }
+  return departmentId;
+}
+
+/**
  * Books a slot. The partial unique index (doctor_id, slot_start) WHERE status IN ('booked','checked_in',
  * 'needs_rebooking') is the SOLE arbiter — the booking-race loser code is slot_taken on every interleaving because
  * availableSlots(...).booked is never read here for correctness (that flag is display data only). The membership
@@ -64,6 +84,8 @@ export async function bookAppointment(
   input: {
     patientId: string; doctorId: string; slotStart: Date; source?: "desk" | "phone"; note?: string;
     mode?: AppointmentMode; telePhone?: string | null;
+    /** #914 — which of the doctor's departments the booking is for; omitted ⇒ the session's, else the primary. */
+    departmentId?: string;
   },
   now: Date = new Date(),
 ): Promise<{ appointment: AppointmentRow }> {
@@ -94,6 +116,7 @@ export async function bookAppointmentInTx(
   const slots = await availableSlots(tx, doctor.id, serviceDate, now);
   const slot = slots.find((s) => s.start.getTime() === input.slotStart.getTime());
   if (!slot) throw new OpdError("invalid_slot", `${input.slotStart.toISOString()} is not a slot for doctor ${doctor.id}`);
+  const departmentId = await bookingDepartment(tx, doctor, slot, serviceDate, input.departmentId);
 
   const appointmentId = newId();
   // Allocated BEFORE the insert, because it is a column of it — so a lost slot race (the
@@ -101,7 +124,7 @@ export async function bookAppointmentInTx(
   // alternative is a second round trip to keep a counter tidy that nothing audits.
   const appointmentNo = await nextEpisodeNo(tx, "appointment", serviceDate);
   const inserted = await tx.insert(opdAppointments).values({
-    id: appointmentId, appointmentNo, patientId: canonical, doctorId: doctor.id, departmentId: doctor.departmentId,
+    id: appointmentId, appointmentNo, patientId: canonical, doctorId: doctor.id, departmentId,
     serviceDate, slotStart: input.slotStart, slotEnd: slot.end, status: "booked",
     source: input.source ?? "desk", note: input.note ?? null, mode: how.mode, telePhone: how.telePhone,
     bookedBy: actor.id, updatedBy: actor.id,
@@ -112,7 +135,7 @@ export async function bookAppointmentInTx(
   await appendEvent(tx, appointmentBooked.make({
     actor, patientId: canonical,
     payload: {
-      appointmentId, patientId: canonical, doctorId: doctor.id, departmentId: doctor.departmentId,
+      appointmentId, patientId: canonical, doctorId: doctor.id, departmentId,
       serviceDate, slotStart: input.slotStart.toISOString(), source: appointment.source,
     },
   }));
@@ -125,7 +148,11 @@ export async function rescheduleAppointment(
   db: Db,
   actor: Actor,
   appointmentId: string,
-  input: { slotStart: Date; doctorId?: string; reason?: string; /** A tele-call's number may change with the move; the mode may not. */ telePhone?: string },
+  input: {
+    slotStart: Date; doctorId?: string; reason?: string; /** A tele-call's number may change with the move; the mode may not. */ telePhone?: string;
+    /** #914 — omitted: the same doctor keeps the booking's department; another doctor takes the session's or their primary. */
+    departmentId?: string;
+  },
   now: Date = new Date(),
 ): Promise<{ from: AppointmentRow; to: AppointmentRow }> {
   return withTx(db, (tx) => rescheduleAppointmentInTx(tx, actor, appointmentId, input, now));
@@ -163,6 +190,11 @@ export async function rescheduleAppointmentInTx(
   const slots = await availableSlots(tx, doctor.id, serviceDate, now);
   const slot = slots.find((s) => s.start.getTime() === input.slotStart.getTime());
   if (!slot) throw new OpdError("invalid_slot", `${input.slotStart.toISOString()} is not a slot for doctor ${doctor.id}`);
+  // The same doctor keeps the booking's department while they still sit there that day; a booking
+  // flagged because a secondary ended falls back to the primary rather than refusing the rebook.
+  const keep = input.departmentId === undefined && doctor.id === loaded.doctorId && slot.departmentId === null
+    && loaded.departmentId !== null && await doctorServesDepartment(tx, doctor, loaded.departmentId, serviceDate);
+  const departmentId = await bookingDepartment(tx, doctor, slot, serviceDate, input.departmentId ?? (keep ? loaded.departmentId! : undefined));
 
   const toId = newId();
   const flipped = await tx
@@ -178,7 +210,7 @@ export async function rescheduleAppointmentInTx(
   // which is what makes the paper trail readable when a patient quotes the number they were given.
   const appointmentNo = await nextEpisodeNo(tx, "appointment", serviceDate);
   const inserted = await tx.insert(opdAppointments).values({
-    id: toId, appointmentNo, patientId: loaded.patientId, doctorId: doctor.id, departmentId: doctor.departmentId,
+    id: toId, appointmentNo, patientId: loaded.patientId, doctorId: doctor.id, departmentId,
     serviceDate, slotStart: input.slotStart, slotEnd: slot.end, status: "booked",
     source: loaded.source, note: loaded.note, rescheduledFromId: appointmentId,
     mode: loaded.mode, telePhone, // a moved tele-call is still a tele-call — to the same number unless the desk gave another
@@ -193,10 +225,10 @@ export async function rescheduleAppointmentInTx(
     actor, patientId: loaded.patientId,
     payload: {
       fromAppointmentId: appointmentId, toAppointmentId: toId, patientId: loaded.patientId,
-      doctorId: doctor.id, departmentId: doctor.departmentId, serviceDate, slotStart: input.slotStart.toISOString(),
+      doctorId: doctor.id, departmentId, serviceDate, slotStart: input.slotStart.toISOString(),
       previousDoctorId: loaded.doctorId, previousSlotStart: loaded.slotStart.toISOString(),
       // Owner 2026-10-05 — "wrong department": the move to another department records why.
-      ...(doctor.departmentId !== loaded.departmentId ? { previousDepartmentId: loaded.departmentId } : {}),
+      ...(departmentId !== loaded.departmentId ? { previousDepartmentId: loaded.departmentId } : {}),
       ...((input.reason ?? "").trim() === "" ? {} : { reason: input.reason!.trim() }),
     },
   }));

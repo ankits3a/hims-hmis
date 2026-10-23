@@ -3,6 +3,7 @@ import {
   allocations, creditNotes, imagingStudies, invoiceLines, invoices, labItems, opdEncounters, pharmacyDispenses,
   pharmacyRetailSales, receiptTenders, receipts, users,
 } from "../../kernel/db/schema";
+import { recordPhiAccess } from "../../kernel/phi/audit";
 import { getPatientSummaries } from "../patients";
 import { settlementState } from "./settlement";
 import { istDay } from "./time";
@@ -83,9 +84,26 @@ export async function moneyByInvoice(db: Db, ids: readonly string[]): Promise<{ 
   return { credited, paid };
 }
 
+/**
+ * DECIDED 2026-10-15 (standard practice) — the counter must be able to bill a restricted record, so
+ * the bills reads stay open to `billing.invoice.read`. A reader WITHOUT the restricted-records grant
+ * (`getPatientSummaries` answers `restricted: true` exactly then) leaves one access row per read.
+ */
+export async function logRestrictedRead(db: Db, actor: Actor, who: { id: string; restricted: boolean }): Promise<void> {
+  if (!who.restricted) return;
+  await recordPhiAccess(db, { actor, patientId: who.id, surface: "billing.sealed_bill_read", sealed: true });
+}
+
+/** The same rule for a read that holds only the bill's patient id (`GET /billing/invoices/:id`). */
+export async function logSealedBillRead(db: Db, actor: Actor, patientId: string): Promise<void> {
+  const [who] = await getPatientSummaries(db, actor, [patientId]);
+  if (who !== undefined) await logRestrictedRead(db, actor, who);
+}
+
 export async function patientBills(db: Db, actor: Actor, patientId: string): Promise<{ bills: PatientBillRow[] }> {
   const [who] = await getPatientSummaries(db, actor, [patientId]);
   if (who === undefined) return { bills: [] };
+  await logRestrictedRead(db, actor, who);
   const heads = await db.select().from(invoices).where(eq(invoices.patientId, patientId)).orderBy(desc(invoices.issuedAt)).limit(300);
   if (heads.length === 0) return { bills: [] };
   const ids = heads.map((h) => h.id);
@@ -124,6 +142,7 @@ export async function patientBillDetail(db: Db, actor: Actor, invoiceId: string)
   if (h === undefined) return null;
   const [who] = await getPatientSummaries(db, actor, [h.patientId]);
   if (who === undefined) return null;
+  await logRestrictedRead(db, actor, who);
   const [lines, notes, allocs, issuer] = await Promise.all([
     db.select().from(invoiceLines).where(eq(invoiceLines.invoiceId, h.id)).orderBy(invoiceLines.lineNo),
     db.select().from(creditNotes).where(eq(creditNotes.invoiceId, h.id)).orderBy(creditNotes.issuedAt),

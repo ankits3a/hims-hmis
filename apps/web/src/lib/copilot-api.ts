@@ -80,7 +80,12 @@ export type CopilotHealth = {
   byOutcome: Record<string, number>;
   byRoute: Record<"phrasebook" | "chooser" | "model" | "none", CopilotRouteTimings>;
   notUnderstoodShare: number | null;
+  /** G3b — "Wrong" taps on the day's asks, and their share of answered asks (null with none answered). */
+  wrongTaps: number;
+  wrongShare: number | null;
   acts: number;
+  /** #686 — confirm taps that day, every outcome; not counted in `asks`. */
+  confirms: number;
   /** E0.5 — chooser + model calls that day and their ESTIMATED cost in rupees. */
   modelCalls: number;
   spendInr: number;

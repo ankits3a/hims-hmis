@@ -458,6 +458,12 @@ export const labResults = pgTable(
     valueNumeric: numeric("value_numeric", { precision: 14, scale: 4 }),
     valueText: text("value_text"),
     valueCoded: text("value_coded"),
+    /**
+     * #703 — the antibiotic sensitivity table on a culture's `MIC_AST` line in FULL lab mode, as `{ antibiotic,
+     * result: S|I|R, mic }[]` (`packages/contracts/src/lab-ast.ts`); null on every other result. `value_text` holds
+     * its one-line summary, so every text reader still reads the gist.
+     */
+    ast: jsonb("ast").$type<{ antibiotic: string; result: "S" | "I" | "R"; mic: string | null }[]>(),
     unit: text("unit"),
     flag: text("flag"),
     refLow: numeric("ref_low", { precision: 14, scale: 4 }),
@@ -651,6 +657,15 @@ export const labReportDeliveries = pgTable(
 );
 
 /**
+ * E3.2 (#595) — THE CHASE LADDER of a lab critical nobody has read back: the ordering doctor, the
+ * unit head, the duty RMO, the HOD. One rung every `LAB_CHASE_RUNG_MINUTES`; `ladder_rung` indexes
+ * this array. Distinct from `RUNGS` in `modules/lab/criticals.ts`, which names who the technologist
+ * rings by hand.
+ */
+export const LAB_CHASE_RUNGS = ["ordering_doctor", "unit_head", "duty_rmo", "hod"] as const;
+export type LabChaseRung = (typeof LAB_CHASE_RUNGS)[number];
+
+/**
  * DD12 — THE CALL LADDER. Opened at ENTRY (not at verify — the 15-minute clinical need is the call,
  * not the signature) and closed only by a READ-BACK, which is the whole of 02 §3.6.
  *
@@ -669,6 +684,19 @@ export const labCriticalCalls = pgTable(
     readbackText: text("readback_text"),
     closedBy: text("closed_by"),
     closedAt: timestamp("closed_at", { withTimezone: true }),
+    /**
+     * E3.2 (#595) — THE CHASE. The ordering doctor: rung 0's person, and the call's owner. NULL when
+     * the order names no clinician (a walk-in); the ladder then starts from the fallback.
+     */
+    ownerUserId: text("owner_user_id"),
+    /**
+     * E3.2 — the rung the chase has reached: 0 ordering doctor · 1 unit head · 2 duty RMO · 3 HOD
+     * (`LAB_CHASE_RUNGS`). It only climbs. NULL = OUTSIDE the ladder: calls opened before the ladder
+     * existed, which the sweep never wakes. The clock is `opened_at`.
+     */
+    ladderRung: integer("ladder_rung"),
+    /** E3.2 — when the current rung's alert was raised. A record that a chase happened, not a status. */
+    lastChasedAt: timestamp("last_chased_at", { withTimezone: true }),
   },
   (t) => [
     index("lab_critical_calls_open_idx").on(t.openedAt).where(sql`closed_at is null`),
@@ -678,6 +706,7 @@ export const labCriticalCalls = pgTable(
       "lab_critical_calls_closed_ck",
       sql`(${t.closedAt} is null) = (${t.readbackText} is null) and (${t.closedAt} is null) = (${t.closedBy} is null)`,
     ),
+    check("lab_critical_calls_rung_ck", sql`${t.ladderRung} is null or ${t.ladderRung} between 0 and 3`),
   ],
 );
 
@@ -1282,5 +1311,93 @@ export const labQuickReports = pgTable(
     /** One quick report per order: the blood is confirmed once. */
     uniqueIndex("lab_quick_reports_order_ux").on(t.orderId),
     uniqueIndex("lab_quick_reports_sample_ux").on(t.sampleNo),
+  ],
+);
+
+/**
+ * SPEC #934 — THE PHOTOGRAPHED ANALYSER SLIP (decision 0082). One row per scan, kept for good: a
+ * discard is a record, never a delete (the inbox's rule). The IMAGE lives in the DocumentStore under
+ * `storage_key`; a discarded or never-attached scan's image is purged at 90 days (`image_purged_at`),
+ * an attached one is kept as long as the report it fed. `raw_reply` is the model's answer verbatim, so
+ * a mapping change re-maps without asking the model again; `rows` is the latest mapping with each
+ * row's placement, open checks and the person's resolution.
+ */
+export const labSlipScans = pgTable(
+  "lab_slip_scans",
+  {
+    id: text("id").primaryKey(),
+    status: text("status").notNull(),
+    storageKey: text("storage_key").notNull(),
+    mimeType: text("mime_type").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    sha256: text("sha256").notNull(),
+    imagePurgedAt: timestamp("image_purged_at", { withTimezone: true }),
+    source: text("source").notNull(),
+    /** The phone's EXIF date for a gallery pick: stored, shown, never trusted. */
+    photoTakenAt: timestamp("photo_taken_at", { withTimezone: true }),
+    capturedBy: text("captured_by").notNull(),
+    capturedAt: timestamp("captured_at", { withTimezone: true }).notNull(),
+    /** When the current read began (a Read again restarts it): the lab sweep fails a read older than two minutes. */
+    readStartedAt: timestamp("read_started_at", { withTimezone: true }),
+    instrumentId: text("instrument_id").notNull().references(() => labInstruments.id),
+    provider: text("provider"),
+    model: text("model"),
+    promptVersion: text("prompt_version"),
+    latencyMs: integer("latency_ms"),
+    tokensIn: integer("tokens_in"),
+    tokensOut: integer("tokens_out"),
+    rawReply: jsonb("raw_reply"),
+    identity: jsonb("identity"),
+    rows: jsonb("rows").notNull().default(sql`'[]'::jsonb`),
+    /** Fill from slip: the report the bench had open when it scanned (the slip may still name someone else). */
+    requestedReportId: text("requested_report_id").references(() => labQuickReports.id),
+    quickReportId: text("quick_report_id").references(() => labQuickReports.id),
+    matchKind: text("match_kind"),
+    matchedBy: text("matched_by"),
+    matchedAt: timestamp("matched_at", { withTimezone: true }),
+    confirmNote: text("confirm_note"),
+    discardReason: text("discard_reason"),
+    discardedBy: text("discarded_by"),
+    discardedAt: timestamp("discarded_at", { withTimezone: true }),
+    error: text("error"),
+  },
+  (t) => [
+    index("lab_slip_scans_status_idx").on(t.status, t.capturedAt),
+    index("lab_slip_scans_sha256_idx").on(t.sha256),
+    index("lab_slip_scans_report_idx").on(t.quickReportId),
+    check("lab_slip_scans_status_ck", sql`${t.status} in ('reading', 'read', 'failed', 'waiting', 'attached', 'discarded')`),
+    check("lab_slip_scans_source_ck", sql`${t.source} in ('camera', 'gallery')`),
+    /** Attached means a report and who attached it, and only then. */
+    check(
+      "lab_slip_scans_attached_ck",
+      sql`(${t.status} = 'attached') = (${t.quickReportId} is not null and ${t.matchKind} is not null and ${t.matchedBy} is not null and ${t.matchedAt} is not null)`,
+    ),
+    /** Discarded means a reason that is not blank and who, and only then. */
+    check(
+      "lab_slip_scans_discarded_ck",
+      sql`(${t.status} = 'discarded') = (${t.discardReason} is not null and btrim(${t.discardReason}) <> '' and ${t.discardedBy} is not null and ${t.discardedAt} is not null)`,
+    ),
+    check("lab_slip_scans_match_kind_ck", sql`${t.matchKind} is null or ${t.matchKind} in ('sample_no', 'uhid', 'staff_pick', 'from_report')`),
+  ],
+);
+
+/**
+ * SPEC #934 — codes an analyser PRINTS that the report does not carry (the platelet indices PDW,
+ * PCT, P-LCR, P-LCC on a 3-part machine). Slip-only: the interface ingest never reads it. A row with
+ * such a code is "ignored by analyser setting", counted and never printed, and never confused with a
+ * row that is merely unmapped. Set by `lab.instruments.manage`, like the code map.
+ */
+export const labSlipIgnoredCodes = pgTable(
+  "lab_slip_ignored_codes",
+  {
+    instrumentId: text("instrument_id").notNull().references(() => labInstruments.id),
+    code: text("code").notNull(),
+    reason: text("reason").notNull(),
+    setBy: text("set_by").notNull(),
+    setAt: timestamp("set_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.instrumentId, t.code] }),
+    check("lab_slip_ignored_codes_reason_ck", sql`btrim(${t.reason}) <> ''`),
   ],
 );

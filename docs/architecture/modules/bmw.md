@@ -72,8 +72,8 @@ Source: `apps/core/src/modules/bmw/`
 
 Foreign keys into: `resources`
 
-## HTTP routes (14)
+## HTTP routes
 
-- `bmw.controller.ts` — 14: `/bmw/bags`, `/bmw/board`, `/bmw/disputes`, `/bmw/handler`, `/bmw/manifests`, `/bmw/reports`
+- `bmw.controller.ts` — `/bmw/bags`, `/bmw/board`, `/bmw/disputes`, `/bmw/handler`, `/bmw/manifests`, `/bmw/reports`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/bmw`

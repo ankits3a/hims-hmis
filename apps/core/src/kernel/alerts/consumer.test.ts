@@ -36,6 +36,13 @@ const ASHA_UHID = "HMIS-00004242-7";
 
 const ASHA_PHONE = "9876500001";
 
+/**
+ * Every row carries ULIDs, and a ULID is 26 random Crockford letters: one can spell ASHA or DEVI
+ * (main CI, 2026-10-16: `01M52P5VHB8EEG05ASHA93XMS5`). Ids are masked to `<id>` before a name
+ * check; the patient id itself is asserted separately with `not.toContain(patientId)`.
+ */
+const withoutIds = (s: string): string => s.replace(/\b[0-9A-HJKMNP-TV-Z]{26}\b/g, "<id>");
+
 const DEF_KEY = "opd_wait";
 const STATE = "waiting";
 const RUNG_ROLE = "floor_supervisor";
@@ -202,6 +209,8 @@ describe("kernel alerts consumer", () => {
       // front of a human declares a subscription rather than writing one.
       { event: "imaging.critical_overdue", consumer: ALERTS_CONSUMER },
       { event: "imaging.report_unread", consumer: ALERTS_CONSUMER },
+      // E3.2 (#595): a lab critical nobody has read back, one rung at a time. Read off the red run.
+      { event: "lab.critical_overdue", consumer: ALERTS_CONSUMER },
       // OBLIGATION SPINE T2: the SIXTH, and the one the approvals spine measured as missing (M2 /
       // E4): filing an approval notified nobody, ever. Every holder of the approver role gets a
       // row; the requester never does (O17: nobody decides what they filed).
@@ -253,6 +262,8 @@ describe("kernel alerts consumer", () => {
           "escalation.triggered", "notification.failed", "ops.mode_changed",
           // 18a-iii T5 — the two radiology chasers, on the same consumer.
           "imaging.critical_overdue", "imaging.report_unread",
+          // E3.2 (#595) — the lab critical ladder.
+          "lab.critical_overdue",
           // Obligation spine T2 — filing tells somebody.
           "approval.requested",
           // Obligation spine T1 — and this one says nobody has answered yet.
@@ -356,8 +367,8 @@ describe("kernel alerts consumer", () => {
     const everyColumn = Object.values(alert)
       .map((v) => (v instanceof Date ? v.toISOString() : String(v)))
       .join(" | ");
-    expect(everyColumn).not.toMatch(/Asha/i);
-    expect(everyColumn).not.toMatch(/Devi/i);
+    expect(withoutIds(everyColumn)).not.toMatch(/Asha/i);
+    expect(withoutIds(everyColumn)).not.toMatch(/Devi/i);
     expect(everyColumn).not.toContain(ASHA_UHID);
     expect(everyColumn).not.toContain(patientId);
     // And the title is exactly what D6 says it is built from: defKey · state · rung.
@@ -371,7 +382,7 @@ describe("kernel alerts consumer", () => {
       .from(events)
       .where(eq(events.name, "alert.raised"));
     expect(raised).toHaveLength(1);
-    expect(JSON.stringify(raised[0]!.payload)).not.toMatch(/Asha|Devi/i);
+    expect(withoutIds(JSON.stringify(raised[0]!.payload))).not.toMatch(/Asha|Devi/i);
     expect(JSON.stringify(raised[0]!.payload)).not.toContain(ASHA_UHID);
     expect(raised[0]!.patientId).toBeNull();
   });
@@ -504,8 +515,8 @@ describe("kernel alerts consumer", () => {
         .flatMap((r) => Object.values(r))
         .map((v) => (v instanceof Date ? v.toISOString() : String(v)))
         .join(" | ");
-      expect(everyColumn).not.toMatch(/Asha/i);
-      expect(everyColumn).not.toMatch(/Devi/i);
+      expect(withoutIds(everyColumn)).not.toMatch(/Asha/i);
+      expect(withoutIds(everyColumn)).not.toMatch(/Devi/i);
       expect(everyColumn).not.toContain(ASHA_UHID);
       expect(everyColumn).not.toContain(ASHA_PHONE);
 
@@ -516,7 +527,7 @@ describe("kernel alerts consumer", () => {
         .where(eq(events.name, "alert.raised"));
       expect(raised).toHaveLength(2);
       const raisedJson = JSON.stringify(raised.map((r) => r.payload));
-      expect(raisedJson).not.toMatch(/Asha|Devi/i);
+      expect(withoutIds(raisedJson)).not.toMatch(/Asha|Devi/i);
       expect(raisedJson).not.toContain(ASHA_UHID);
       expect(raisedJson).not.toContain(ASHA_PHONE);
       expect(raised.map((r) => r.patientId)).toEqual([null, null]);
@@ -814,8 +825,8 @@ describe("kernel alerts consumer", () => {
         .flatMap((r) => Object.values(r))
         .map((v) => (v instanceof Date ? v.toISOString() : String(v)))
         .join(" | ");
-      expect(everyColumn).not.toMatch(/Asha/i);
-      expect(everyColumn).not.toMatch(/Devi/i);
+      expect(withoutIds(everyColumn)).not.toMatch(/Asha/i);
+      expect(withoutIds(everyColumn)).not.toMatch(/Devi/i);
       expect(everyColumn).not.toContain(ASHA_UHID);
       expect(everyColumn).not.toContain(ASHA_PHONE);
       expect(everyColumn).not.toContain(patientId);
@@ -827,7 +838,7 @@ describe("kernel alerts consumer", () => {
       expect(raised).toHaveLength(2);
       expect(raised.map((r) => r.patientId)).toEqual([null, null]);
       const raisedJson = JSON.stringify(raised.map((r) => r.payload));
-      expect(raisedJson).not.toMatch(/Asha|Devi/i);
+      expect(withoutIds(raisedJson)).not.toMatch(/Asha|Devi/i);
       expect(raisedJson).not.toContain(ASHA_UHID);
     });
   });
@@ -962,7 +973,7 @@ describe("kernel alerts consumer", () => {
       const rows = await db.select().from(alerts);
       expect(rows).toHaveLength(1);
       const everyColumn = JSON.stringify(rows);
-      expect(everyColumn).not.toMatch(/Asha|Devi/i);
+      expect(withoutIds(everyColumn)).not.toMatch(/Asha|Devi/i);
       expect(everyColumn).not.toContain(ASHA_UHID);
       expect(everyColumn).not.toContain(ASHA_PHONE);
       expect(everyColumn).not.toContain(patientId);
@@ -974,7 +985,7 @@ describe("kernel alerts consumer", () => {
       expect(raised).toHaveLength(1);
       expect(raised[0]!.patientId).toBeNull();
       const raisedJson = JSON.stringify(raised[0]!.payload);
-      expect(raisedJson).not.toMatch(/Asha|Devi/i);
+      expect(withoutIds(raisedJson)).not.toMatch(/Asha|Devi/i);
       expect(raisedJson).not.toContain(ASHA_UHID);
       expect(raisedJson).not.toContain(patientId);
     });

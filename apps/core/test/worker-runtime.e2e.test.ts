@@ -148,6 +148,8 @@ const THE_EIGHTEEN = [
    */
   "sweepLabNonReturn",
   "sweepLabSla",
+  /** E3.2 (#595) — the lab critical ladder, `every(60_000)`, registered right after `sweepLabSla`. */
+  "sweepLabCriticalLadder",
   /**
    * PLAN 16c CLOSE / F11 — the SIXTEENTH, an `every(60_000)` job registered LAST, which is where
    * `jobs.ts` puts it. It releases a pharmacy pick whose 30-minute reservation ran out: `pick.ts`
@@ -215,6 +217,8 @@ const THE_EIGHTEEN = [
   "sweepIpdNursing",
   /** IPD CHARGES E2.1 (#725) — `dailyIst("00:05")`: the running bill's nightly rent, nursing and RMO posting. */
   "postNightlyIpdCharges",
+  /** DOCTOR DESK DD-report v0 — `dailyIst("08:00")`: the unit report, counts only, to the unit head. */
+  "sendUnitReports",
 ];
 
 type Frame = { type: string } & Record<string, unknown>;
@@ -456,6 +460,8 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
           "roster.cover_requested", "roster.cover_answered", "roster.cover_decided", "roster.duty_changed",
           // E2.2 (decision 0069): a leave waiting reaches its deciders; the answer reaches the person.
           "roster.absence_requested", "roster.absence_approved", "roster.absence_refused",
+          // E3.2 (#595): a lab critical nobody has read back. Read off the red run.
+          "lab.critical_overdue",
         ].sort()],
         [
           "kernel.notify",

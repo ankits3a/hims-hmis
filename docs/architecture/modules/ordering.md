@@ -55,8 +55,8 @@ Source: `apps/core/src/modules/ordering/`
 
 Foreign keys into: `tariff`
 
-## HTTP routes (4)
+## HTTP routes
 
-- `ordering.controller.ts` — 4: `/ordering/orders`, `/ordering/outside-tests`, `/ordering/tests`
+- `ordering.controller.ts` — `/ordering/orders`, `/ordering/outside-tests`, `/ordering/tests`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/ordering`

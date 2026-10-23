@@ -12,11 +12,12 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 
 | path | screen |
 |---|---|
-| `/` | `apps/web/src/screens/desk` |
+| `/` | `apps/web/src/screens/doctor-desk-landing` |
 | `/admin/users` | `apps/web/src/screens/admin-users` |
 | `/admin/workflows` | `apps/web/src/screens/admin-workflows` |
 | `/appointment` | `apps/web/src/screens/desk-one/desk-one` |
 | `/approvals` | `apps/web/src/screens/approvals-inbox` |
+| `/attendance/links` | `apps/web/src/screens/attendance-links` |
 | `/billing` | `apps/web/src/screens/desk-one/seat-shell` |
 | `/billing/dues` | `apps/web/src/screens/billing-dues` |
 | `/billing/office` | `apps/web/src/screens/billing-office` |
@@ -32,9 +33,18 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/counter/reconcile` | `apps/web/src/screens/instrument-reconcile` |
 | `/counter/seat` | `(redirect)` |
 | `/counter/seat/figures` | `(redirect)` |
+| `/crk-formulary` | `apps/web/src/screens/crk-formulary` |
 | `/diet/consults` | `apps/web/src/screens/diet-consults` |
 | `/diet/kitchen` | `apps/web/src/screens/diet-kitchen` |
 | `/diet/ward` | `apps/web/src/screens/diet-ward` |
+| `/doctor-desk` | `apps/web/src/screens/doctor-desk-tower` |
+| `/doctor-desk/briefs` | `apps/web/src/screens/doctor-desk-briefs` |
+| `/doctor-desk/now` | `apps/web/src/screens/doctor-desk-now` |
+| `/doctor-desk/opd` | `apps/web/src/screens/doctor-desk-opd` |
+| `/doctor-desk/professor` | `apps/web/src/screens/doctor-desk-professor` |
+| `/doctor-desk/ratings` | `apps/web/src/screens/doctor-desk-ratings` |
+| `/doctor-desk/report` | `apps/web/src/screens/doctor-desk-report` |
+| `/doctor-desk/unit` | `apps/web/src/screens/doctor-desk-unit` |
 | `/er/bill` | `apps/web/src/screens/er-bill` |
 | `/er/board` | `apps/web/src/screens/er-board` |
 | `/er/codes` | `apps/web/src/screens/er-codes` |

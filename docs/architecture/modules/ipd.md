@@ -625,21 +625,21 @@ Source: `apps/core/src/modules/ipd/`
 
 Foreign keys into: `emergency`, `patients`, `resources`
 
-## HTTP routes (159)
+## HTTP routes
 
-- `admissions.controller.ts` — 22: `/ipd/admissions`
-- `beds.controller.ts` — 8: `/ipd/beds`
-- `billdesk.controller.ts` — 5: `/ipd/admissions`, `/ipd/bill-desk`
-- `charges.controller.ts` — 2: `/ipd/charge-lines`
-- `copilot.controller.ts` — 4: `/ipd/discharge`, `/ipd/nursing`, `/ipd/rounds`
-- `counter.controller.ts` — 5: `/ipd/counter`
-- `discharge.controller.ts` — 27: `/ipd/discharge`, `/ipd/mortuary`
-- `emar.controller.ts` — 27: `/ipd/emar`
-- `family.controller.ts` — 12: `/ipd/admissions`, `/ipd/family`, `/ipd/family-callbacks`, `/ipd/family-links`
-- `nursing.controller.ts` — 12: `/ipd/nursing`
-- `payer.controller.ts` — 5: `/ipd/admissions`, `/ipd/payer`
-- `rounds.controller.ts` — 11: `/ipd/charge-exceptions`, `/ipd/consults`, `/ipd/orders`, `/ipd/rounds`
-- `tpa.controller.ts` — 12: `/ipd/admissions`, `/ipd/tpa`
-- `transfers.controller.ts` — 7: `/ipd/transfers`
+- `admissions.controller.ts` — `/ipd/admissions`
+- `beds.controller.ts` — `/ipd/beds`
+- `billdesk.controller.ts` — `/ipd/admissions`, `/ipd/bill-desk`
+- `charges.controller.ts` — `/ipd/charge-lines`
+- `copilot.controller.ts` — `/ipd/discharge`, `/ipd/nursing`, `/ipd/rounds`
+- `counter.controller.ts` — `/ipd/counter`
+- `discharge.controller.ts` — `/ipd/discharge`, `/ipd/mortuary`
+- `emar.controller.ts` — `/ipd/emar`
+- `family.controller.ts` — `/ipd/admissions`, `/ipd/family`, `/ipd/family-callbacks`, `/ipd/family-links`
+- `nursing.controller.ts` — `/ipd/nursing`
+- `payer.controller.ts` — `/ipd/admissions`, `/ipd/payer`
+- `rounds.controller.ts` — `/ipd/charge-exceptions`, `/ipd/consults`, `/ipd/orders`, `/ipd/rounds`
+- `tpa.controller.ts` — `/ipd/admissions`, `/ipd/tpa`
+- `transfers.controller.ts` — `/ipd/transfers`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/ipd`

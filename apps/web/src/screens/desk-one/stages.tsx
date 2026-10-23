@@ -32,7 +32,7 @@ import { Field, Fold, Picker, TogglePills, GRID3, GRID4 } from "../../components
 import { AbdmVerifyPanel } from "../../components/abdm-verify";
 import { ScanSharePanel } from "../../components/abdm-scan-share";
 import type { WireAbhaFlow, WireShare } from "../../lib/abdm-api";
-import { EMPTY_COVERAGE, EMPTY_FORM, ageOrDobText, formAgeYears, formNeedsGuardian, parseAgeOrDob, useDesk } from "./session";
+import { EMPTY_COVERAGE, EMPTY_FORM, agePartsOf, ageOrDobText, ageReadingText, formAgeYears, formNeedsGuardian, parseAgeOrDob, useDesk } from "./session";
 import { RebookingRail } from "./rebooking-rail";
 import { MoveDepartmentForm } from "./move-department";
 import { SendToCasualty } from "./send-to-casualty";
@@ -335,6 +335,12 @@ function StageRegister(): React.ReactElement {
   const { s } = d;
   const f = s.form;
   const set = (next: Partial<typeof f>): void => d.patch({ form: { ...f, ...next }, duplicates: null });
+  /* "1 y 6 m", "3 m 9 d", "0 d" — a baby is never read back as "0 y". */
+  const ageWords = (a: { years: number; months: number; days: number }): string => {
+    const parts = ([["y", a.years], ["m", a.months], ["d", a.days]] as const).filter(([, n]) => n > 0);
+    return (parts.length === 0 ? [["d", 0] as const] : parts)
+      .map(([unit, n]) => t(`registrationCounter.register.ageUnit.${unit}`, { n })).join(" ");
+  };
   const canRecordAllergy = useAuth().can("patients.update");
 
   const [open, setOpen] = useState<Record<string, boolean>>({});
@@ -407,9 +413,10 @@ function StageRegister(): React.ReactElement {
     });
     setAbdmPanel(null);
   };
+  const typedYears = f.ageMode === "age" ? formAgeYears(f) : null;
   const againstForm = {
     name: f.name.trim() === "" ? null : f.name,
-    dob: f.ageMode === "dob" ? (f.dob === "" ? null : f.dob) : (/^\d+$/.test(f.age) ? String(new Date().getFullYear() - Number(f.age)) : null),
+    dob: f.ageMode === "dob" ? (f.dob === "" ? null : f.dob) : (typedYears === null ? null : String(new Date().getFullYear() - typedYears)),
     gender: f.sex === "" ? null : f.sex,
     phone: f.phone.trim() === "" ? null : f.phone,
   };
@@ -421,10 +428,11 @@ function StageRegister(): React.ReactElement {
   */
   const [ageText, setAgeText] = useState(() => ageOrDobText(f));
   const ageRead = parseAgeOrDob(ageText);
+  const bornAge = ageRead?.kind === "dob" ? agePartsOf(ageRead.iso) : null;
   const formText = ageOrDobText(f);
   useEffect(() => {
     const read = parseAgeOrDob(ageText);
-    const same = read === null ? formText === "" : read.kind === "age" ? f.ageMode === "age" && f.age === String(read.years) : f.ageMode === "dob" && f.dob.slice(0, 10) === read.iso;
+    const same = read === null ? formText === "" : read.kind === "age" ? f.ageMode === "age" && f.age === ageReadingText(read) : f.ageMode === "dob" && f.dob.slice(0, 10) === read.iso;
     if (!same) setAgeText(formText);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- follows the FORM; the text changing is not a reason to run
   }, [formText, f.ageMode]);
@@ -472,7 +480,7 @@ function StageRegister(): React.ReactElement {
               setAgeText(raw);
               const read = parseAgeOrDob(raw);
               set(read === null ? { ageMode: "age", age: "", dob: "" }
-                : read.kind === "age" ? { ageMode: "age", age: String(read.years), dob: "" }
+                : read.kind === "age" ? { ageMode: "age", age: ageReadingText(read), dob: "" }
                 : { ageMode: "dob", age: "", dob: read.iso });
             }}
           />
@@ -484,7 +492,13 @@ function StageRegister(): React.ReactElement {
             <div data-testid="reg-age-read" style={{ fontSize: 11, color: "var(--green)", marginTop: 4 }}>
               {t("registrationCounter.register.ageOrDobBorn", {
                 date: new Date(`${ageRead.iso}T00:00:00Z`).toLocaleDateString(dateLocale(), { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" }),
-                years: formAgeYears(f) ?? 0,
+                age: ageWords(bornAge !== null && bornAge.years >= 1 ? { ...bornAge, months: 0, days: 0 } : bornAge ?? { years: 0, months: 0, days: 0 }),
+              })}
+            </div>
+          ) : ageRead.months !== undefined || ageRead.days !== undefined ? (
+            <div data-testid="reg-age-read" style={{ fontSize: 11, color: "var(--green)", marginTop: 4 }}>
+              {t("registrationCounter.register.ageOrDobAge", {
+                age: ageWords({ years: ageRead.years, months: ageRead.months ?? 0, days: ageRead.days ?? 0 }),
               })}
             </div>
           ) : null}
@@ -1169,7 +1183,7 @@ function StageAppointment(): React.ReactElement {
           {s.triage === null ? null : (
             /* #622 — a fixed, translated reason, never the model's own words (the server no longer sends them). */
             <span className="pill" title="Where the ranking came from" data-testid="triage-source">
-              {t(s.triage.source === "model" ? "opdTriage.reason.model" : "opdTriage.reason.keywords")}
+              {t(s.triage.source === "model" ? "opdTriage.reason.model" : s.triage.source === "prior" ? "opdTriage.reason.prior" : "opdTriage.reason.keywords")}
             </span>
           )}
         </div>
@@ -1630,7 +1644,8 @@ function FutureTab(): React.ReactElement {
   const doctors = useQuery({ queryKey: ["d1", "all-doctors"], queryFn: listDoctors, staleTime: 5 * 60 * 1000 });
   const [departmentId, setDepartmentId] = useState("");
   const allActive = (doctors.data?.items ?? []).filter((x) => x.active);
-  const bookable = (departmentId === "" ? allActive : allActive.filter((x) => x.departmentId === departmentId))
+  // #914 — a doctor covering this department as their second one is bookable here too.
+  const bookable = (departmentId === "" ? allActive : allActive.filter((x) => x.departmentId === departmentId || x.secondary?.departmentId === departmentId))
     .map((doctor) => ({ doctor }));
   const [doctorId, setDoctorId] = useState("");
   const [date, setDate] = useState(() => {
@@ -1647,8 +1662,8 @@ function FutureTab(): React.ReactElement {
   const chosen = bookable.find((x) => x.doctor.id === doctorId) ?? bookable[0] ?? null;
   const activeDoctorId = chosen?.doctor.id ?? "";
   const slots = useQuery({
-    queryKey: ["d1", "slots", activeDoctorId, date],
-    queryFn: () => getSlots(activeDoctorId, date),
+    queryKey: ["d1", "slots", activeDoctorId, date, departmentId],
+    queryFn: () => getSlots(activeDoctorId, date, departmentId),
     enabled: activeDoctorId !== "",
   });
   /** FD-16 — the day's book for the doctor and date in the pickers, from a route nothing called. */
@@ -1735,7 +1750,7 @@ function FutureTab(): React.ReactElement {
   const move = async (appointmentId: string, slotStart: string, reason?: string): Promise<void> => {
     d.patch({ busy: "future", error: null });
     try {
-      await rescheduleAppointment(appointmentId, slotStart, chosen?.doctor.id, reason);
+      await rescheduleAppointment(appointmentId, slotStart, chosen?.doctor.id, reason, departmentId);
       await Promise.all([dayBook.refetch(), theirs.refetch()]);
       d.patch({ busy: null });
       d.note(`appointment moved to ${slotClock(slotStart)}`, "ok");
@@ -1787,10 +1802,12 @@ function FutureTab(): React.ReactElement {
     }
   };
 
-  const deptName = d.departments.find((x) => x.id === chosen?.doctor.departmentId)?.name ?? "";
+  // #914 — the picked department when there is one: a covering doctor books into it, not their own.
+  const deptName = d.departments.find((x) => x.id === (departmentId === "" ? chosen?.doctor.departmentId : departmentId))?.name ?? "";
   /* Owner 2026-10-05 — the booking's department, and whether the picked doctor is in ANOTHER one. */
   const movingFromDept = moving === null ? null : d.summaries.find((x) => x.doctor.id === moving.doctorId)?.doctor.departmentId ?? null;
-  const crossDept = moving !== null && chosen !== null && movingFromDept !== null && movingFromDept !== chosen.doctor.departmentId;
+  const crossDept = moving !== null && chosen !== null && movingFromDept !== null
+    && movingFromDept !== (departmentId === "" ? chosen.doctor.departmentId : departmentId);
   const movingFromName = d.departments.find((x) => x.id === movingFromDept)?.name ?? "";
   const all = slots.data?.slots ?? [];
   const free = all.filter((x) => !x.booked && !x.past);
@@ -2151,7 +2168,9 @@ function FutureTab(): React.ReactElement {
                   void move(moving.id, slot.start, crossDept ? moveReason.trim() : undefined);
                   return;
                 }
-                void d.holdFutureSlot(chosen.doctor.id, slot, deptName, chosen.doctor.displayName, teleHowBody(how));
+                void d.holdFutureSlot(chosen.doctor.id, slot, deptName, chosen.doctor.displayName, {
+                  ...teleHowBody(how), ...(departmentId === "" ? {} : { departmentId }),
+                });
                 setPicked(null);
               }}
             >

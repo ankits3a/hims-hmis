@@ -296,7 +296,7 @@
         "sex_female": "Female",
         "sex_other": "Other",
         "age": "Age or date of birth",
-        "ageHint": "34  or  14/03/1986",
+        "ageHint": "34  or  3m  or  14/03/1986",
         "phone": "Mobile (optional)",
         "address": "Address (optional)",
         "guardianTitle": "Guardian — needed for a patient under 18",
@@ -904,7 +904,11 @@
         "duplicateBody": "The same medicine is already on this prescription or one still running.",
         "duplicateClass": "Another medicine of the same class is already given: {{cls}}.",
         "disease": "{{moiety}} with {{title}}",
-        "diseaseBody": "This patient's recorded diagnosis advises against it."
+        "diseaseBody": "This patient's recorded diagnosis advises against it.",
+        "renal": "Kidney: {{drug}}",
+        "renalBody": "eGFR {{egfr}}, {{days}} d ago · {{dose}}",
+        "renalNone": "No recent kidney function.",
+        "renalStale": "No recent kidney function: last eGFR {{days}} d ago."
       },
       "testSearch": "test name — CBC, X-ray chest",
       "testsBefore": "You advised these before for this diagnosis",
@@ -2761,6 +2765,11 @@
     }
   },
   "copilot": {
+    "report": {
+      "title": "Your day — {{date}}",
+      "provisional": "provisional",
+      "emptySection": "Nothing in this section."
+    },
     "notice": {
       "text": "Copilot questions are logged for 180 days for safety and quality. No one sees a per-person list.",
       "ok": "OK"
@@ -2797,6 +2806,13 @@
       "reminderTooLong": "Keep it under 80 letters.",
       "reminderLimit": "You have 20 reminders. Clear one first.",
       "reminderSet": "Reminder set {{when}}.",
+      "ddWaitingOnMe": "Waiting on you: {{critical}} critical, {{unread}} unread reports, {{deltas}} changed results, {{openVisits}} open visits.",
+      "ddWaitingOnMeNone": "Nothing is waiting on you.",
+      "ddUnitOwes": "{{unit}} owes {{open}}; {{overdue}} past their time. Open the Doctor Desk.",
+      "ddUnitOwesNone": "{{unit}} owes nothing right now.",
+      "ddNoUnit": "You are in no unit today, so there is no unit list.",
+      "ddMyDay": "Your OPD: {{booked}} booked, {{seen}} seen, {{waiting}} waiting (longest {{longestWait}} min).",
+      "ddMyDayNoOpd": "You have no OPD session today.",
       "actDone": "Done.",
       "actExpired": "That expired. Ask again.",
       "actInvalid": "Cannot confirm that. Ask again.",
@@ -2927,7 +2943,7 @@
     "wrong": "Wrong",
     "marked": "Marked wrong",
     "offline": "No signal",
-    "report": "Full report on computer",
+    "more": "+{{n}} more on computer",
     "chip": {
       "queue": "Shortest line?",
       "myDuty": "My next duty",
@@ -2996,6 +3012,10 @@
     "copilot": "Copilot",
     "copilotOn": "Copilot icon is on the top bar",
     "copilotOff": "Off. Turn on to ask the copilot",
+    "suggestions": "Doctor suggestions",
+    "suggestionsOn": "Chips show in the consult",
+    "suggestionsOff": "Off for you",
+    "suggestionsHospitalOff": "Off for the hospital",
     "account": "Account",
     "logout": "Log out of this phone",
     "offline": "No signal. Try again"
@@ -3181,6 +3201,161 @@
       "no_lab_department": "No lab department",
       "lab_department_inactive": "Lab department off",
       "no_pathologist": "No pathologist"
+    }
+  },
+  "report": {
+    "opd": {
+      "myVisits": "Visits I opened",
+      "myConsults": "Consultations I completed"
+    },
+    "col": {
+      "time": "Time",
+      "visitNo": "Visit no",
+      "uhid": "UHID",
+      "patient": "Patient",
+      "type": "Type",
+      "status": "Status",
+      "mode": "Mode",
+      "amount": "Amount",
+      "total": "Total",
+      "outcome": "Outcome"
+    },
+    "billing": {
+      "myCollections": "My collections"
+    },
+    "mode": {
+      "cash": "Cash",
+      "upi": "UPI",
+      "card": "Card"
+    },
+    "value": {
+      "new": "New",
+      "revisit": "Revisit",
+      "renewal": "Renewal",
+      "registered": "Registered",
+      "waiting": "Waiting",
+      "in_consultation": "With doctor",
+      "awaiting_results": "Awaiting results",
+      "completed": "Done",
+      "abandoned": "Left",
+      "prescribed": "Rx given",
+      "referred": "Referred",
+      "paper": "On paper"
+    }
+  },
+  "results": {
+    "lab": "Lab reports",
+    "imaging": "Imaging reports",
+    "back": "Back",
+    "none": "Nothing here",
+    "offline": "No signal",
+    "failed": "Could not open",
+    "gone": "Report not available",
+    "critical": "Critical",
+    "ackOnComputer": "Acknowledge on computer",
+    "state": {
+      "unread": "Unread",
+      "read": "Read",
+      "acted": "Acted on"
+    },
+    "abnormal_one": "{{count}} out of range",
+    "abnormal_other": "{{count}} out of range",
+    "amended": "Amended",
+    "partial": "Partial report",
+    "impression": "Impression",
+    "signed": "Signed by {{who}}"
+  },
+  "labSlip": {
+    "scan": "Scan slip",
+    "fill": "Fill from slip",
+    "waiting": "Slips waiting ({{n}})",
+    "title": "Analyser slip",
+    "camera": "Camera",
+    "gallery": "Choose from gallery",
+    "cancel": "Cancel",
+    "analyser": "Analyser",
+    "oldPhoto": "This photo is from {{date}}.",
+    "noDate": "This photo has no date.",
+    "oldAsk": "Is it today's slip?",
+    "yes": "Yes",
+    "no": "No",
+    "use": "Use this",
+    "retake": "Retake",
+    "reading": "Reading the slip…",
+    "attached": "{{test}} draft · {{n}} rows need your eyes",
+    "attachedClean": "{{test}} draft · every row placed",
+    "open": "Open in Quick Bench",
+    "hint": "Next time, type the sample no. in Patient ID",
+    "differs": "This slip says {{says}}.",
+    "differsAsk": "Is it this patient's slip?",
+    "pick": "Pick the patient",
+    "slipName": "Slip name: {{name}}",
+    "confirm": "Confirm",
+    "keep": "Keep for later",
+    "discard": "Discard",
+    "discardWhy": "Why discard? (required)",
+    "discarded": "Slip discarded",
+    "noOpen": "No open CBC for this patient",
+    "noCandidates": "No open report fits this slip",
+    "noName": "No name on the slip",
+    "failedNotSlip": "Not a result slip",
+    "failedBlurred": "Too blurred",
+    "failedOther": "Couldn't read the slip",
+    "reread": "Read again",
+    "offline": "No connection — try again",
+    "tooLarge": "Photo too large — retake closer",
+    "off": "Slip reading is off — type the values",
+    "spendCap": "AI limit reached — type the values",
+    "reportClosed": "That report is complete or handed over",
+    "checksOpen": "Check the slip rows first",
+    "tag": "SLIP",
+    "checked": "Checked",
+    "viewSlip": "View slip",
+    "notPlaced": "From the slip, not placed",
+    "ignore": "Ignore",
+    "ignoreWhy": "Reason to ignore",
+    "ignoredBySetting": "Ignored by analyser setting ({{n}})",
+    "check": {
+      "unsure_read": "Unsure reading",
+      "no_value": "No value printed",
+      "no_unit": "No unit printed",
+      "flag_differs": "Machine flag and our range disagree",
+      "index_mismatch": "Doesn't add up with the other values",
+      "duplicate_row": "Printed twice on the slip",
+      "typed_differs": "You typed {{typed}}, the slip says {{slip}}",
+      "slip_replaced": "An earlier slip said otherwise",
+      "cross_check_differs": "Slip says {{slip}}"
+    },
+    "reason": {
+      "unmapped": "Not mapped for this analyser",
+      "ambiguous_code": "Code matches two mappings",
+      "unit_differs": "Unit differs",
+      "not_numeric": "Not a number",
+      "not_possible": "Not possible — check the value",
+      "no_value": "No value",
+      "not_in_this_report": "Not in this report"
+    },
+    "chip": {
+      "name": {
+        "same": "Name same",
+        "close": "Name close",
+        "differs": "Name differs",
+        "unread": "Name unread"
+      },
+      "age": {
+        "same": "Age same",
+        "pm1": "Age ±1",
+        "differs": "Age differs",
+        "unread": "Age unread"
+      },
+      "gender": {
+        "same": "Sex same",
+        "differs": "Sex differs",
+        "unread": "Sex unread"
+      },
+      "time": {
+        "before_print": "Collected before print"
+      }
     }
   }
 }

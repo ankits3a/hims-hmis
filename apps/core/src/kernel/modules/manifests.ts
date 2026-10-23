@@ -34,6 +34,7 @@ import { passesManifest } from "../../modules/passes";
 import { transportManifest } from "../../modules/transport";
 import { dietManifest } from "../../modules/diet";
 import { emergencyManifest } from "../../modules/emergency";
+import { doctorDeskManifest } from "../../modules/doctor-desk";
 
 /**
  * `ALL_MANIFESTS` — ONE list of the manifests the API installs, consumed by everything that
@@ -226,4 +227,7 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   // ER lane 1 (issue #808, decision 0076) — appended. Two permissions, two menu entries, no subscription: API only (the
   // worker runs the pre-alert lapse inside the bed-reservation minute job and installs nothing).
   emergencyManifest,
+  // DOCTOR DESK DD-0 (#626) — appended. A leaf: no permission of its own (its routes open on opd's
+  // `opd.consult`), one menu entry, no subscription, no job — app-only, the `attendance` shape.
+  doctorDeskManifest,
 ];

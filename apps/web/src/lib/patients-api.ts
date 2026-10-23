@@ -139,6 +139,9 @@ export type WireRegisterBody = {
   sex: "male" | "female" | "other" | "unknown";
   phone?: string;
   ageYears?: number;
+  /** A baby's age: `3m` sends `ageYears: 0, ageMonths: 3` (`ageBodyOf`). */
+  ageMonths?: number;
+  ageDays?: number;
   dob?: string;
   addressLine?: string;
   /**

@@ -15,6 +15,8 @@ import type { Db } from "../db/client";
 /** The surfaces that read a patient's record. Extended by each module that adds one. */
 export type PhiSurface =
   | "patient.detail" | "patient.allergies"
+  /** A bills read (list or one bill in full) of a restricted record by a reader without the restricted-records grant. */
+  | "billing.sealed_bill_read"
   /**
    * #657 — the patient profile's two own reads. `patient.profile_mobile` is the logged "Show" of the
    * full mobile (the screen masks it to the last four by default); `patient.profile_alias` is the
@@ -41,6 +43,8 @@ export type PhiSurface =
    */
   | "patient.documents" | "patient.document.image"
   | "opd.timeline" | "opd.vitals" | "opd.prescriptions" | "opd.visit"
+  /** DD-0.8 (#626) — the Doctor Desk OPD desk's NEXT card: complaint, vitals, allergies, last prescription, labs since. */
+  | "doctor_desk.next"
   /** PLAN 16c T3 — the dispensing counter's read of a dispense (its Rx lines): its own name, so the pharmacy's reads count apart from the consult's. */
   | "pharmacy.dispense"
   /**
