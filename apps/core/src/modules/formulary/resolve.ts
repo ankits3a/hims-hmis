@@ -17,6 +17,8 @@ export type ResolvedDrug = {
 export type InteractionPair = {
   saltAId: string; saltBId: string;
   severity: "severe" | "moderate"; note: string; routeScope: "systemic_only" | null;
+  /** #617 — set on a DDInter reference pair (`reference-interactions.ts`); absent on every curated pair. */
+  reference?: "ddinter";
 };
 
 /**
