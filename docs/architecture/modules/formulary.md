@@ -23,6 +23,7 @@ Source: `apps/core/src/modules/formulary/`
   - `ALIAS_POOL_SIZE`
   - `ALIAS_WORD_SIMILARITY`
   - `aliasCandidatePool(db: Db, words: string, numbers: readonly string[] = [], pool = ALIAS_POOL_SIZE): Promise<AliasCandidateRow[]>`
+  - `spellingNeighbours(db: Db, word: string): Promise<{ moieties: string[]; brands: { name: string; salts: string[] }[] }>`
   - types: `AliasCandidateRow`
 - `allergy-classes.ts`
   - `adoptAllergyClasses(tx: Tx, actor: Actor, resolution: string, book: readonly AllergyClassEntry[]): Promise<AllergyClassAdoptionReport>`
