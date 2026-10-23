@@ -52,7 +52,11 @@ export type TriageSuggestion = {
 };
 
 /** #622 — the fixed reason codes a suggestion can carry; each is a key in the web's `opdTriage.reason`. */
-export type TriageReasonKey = "opdTriage.reason.model" | "opdTriage.reason.keywords";
+export type TriageReasonKey =
+  | "opdTriage.reason.model" | "opdTriage.reason.keywords"
+  // ipd-stage integration (2026-10-23): main's desk routing (#614) leads with Paediatrics for a child, or with the
+  // department this hospital's past visits ended in.
+  | "opdTriage.reason.child" | "opdTriage.reason.prior";
 
 /**
  * #622 — WHAT A CHAT-MODEL ROW SAYS, AND IT IS OURS. The model's free-text `reason` used to reach the
