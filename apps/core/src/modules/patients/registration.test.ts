@@ -88,6 +88,29 @@ describe("registration service", () => {
     expect(patient.dob!.getUTCFullYear()).toBe(yearNow - 30);
   });
 
+  /* A three-month-old used to be registrable only as 0 or 1 year old. */
+  it("an infant's age in months or days becomes an estimated dob that many months or days back", async () => {
+    const mother = { name: "Sita Devi", relationship: "mother" as const };
+    const back = (months: number, days: number): string[] => {
+      // either side of the call, so a UTC midnight between the two cannot fail it
+      const at = (now: Date): string => new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - months, now.getUTCDate() - days)).toISOString();
+      return [at(new Date()), at(new Date(Date.now() + 60_000))];
+    };
+
+    const threeMonths = back(3, 0);
+    const { patient: a } = await withTx(db, (tx) => registerPatient(tx, clerk, { ...baseInput, ageMonths: 3, guardian: mother }));
+    expect(a.dobEstimated).toBe(true);
+    expect(threeMonths).toContain(a.dob!.toISOString());
+
+    const fortyFiveDays = back(0, 45);
+    const { patient: b } = await withTx(db, (tx) => registerPatient(tx, clerk, { ...baseInput, phone: "9876500002", ageYears: 0, ageDays: 45, guardian: mother }));
+    expect(fortyFiveDays).toContain(b.dob!.toISOString());
+
+    await expect(
+      withTx(db, (tx) => registerPatient(tx, clerk, { ...baseInput, dob: new Date(Date.UTC(2026, 0, 1)), ageMonths: 3, guardian: mother })),
+    ).rejects.toMatchObject({ code: "dob_or_age" });
+  });
+
   it("requires an alias for confidential patients (§14)", async () => {
     await expect(
       withTx(db, (tx) => registerPatient(tx, clerk, { ...baseInput, isConfidential: true })),
