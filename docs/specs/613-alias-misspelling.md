@@ -1,11 +1,11 @@
 ---
 issue: 613
-status: approved
+status: built
 approved: 2026-10-23
 ---
 # SPEC — Medicine aliases: misspellings and abbreviations (#613 item 4)
 
-Status: APPROVED 2026-10-23. Draft of 2026-10-15 (lane alias-ndps-normalise, PR #873). The strict line
+Status: BUILT 2026-10-23 (see "As built"). APPROVED 2026-10-23. Draft of 2026-10-15 (lane alias-ndps-normalise, PR #873). The strict line
 (chooser 0.95, reviewer 0.9, decision 0055) is NOT lowered. The pipeline stays switched off
 (`ALIAS_PIPELINE_ENABLED`); switching it on is a separate step.
 
@@ -67,3 +67,26 @@ One new evaluation run (outside APIs, about $0.02), shown to the owner: 0 wrong 
 misspelling and abbreviation answered counts. The held-out set's labels are not changed, and the abbreviation
 rows in the evaluated catalogue are as shipped (unsigned), so abbreviations are measured as the owner will
 first see them.
+
+## As built (2026-10-23)
+
+- **Departure from the draft's wording, DECIDED:** the draft said "no other moiety or brand within distance + 1".
+  Read as the look-alike distance + 1, it refuses its own D1 examples ("pantaprazole" has lansoprazole three
+  edits away; "amoxycillin" has oxacillin, ampicillin and cloxacillin). So the rival radius is `d + 1` (the
+  distance to the corrected moiety), and the kept first three letters are what refuse "amlodarone". A brand
+  whose moieties include the target is not a rival ("Amoxycillin (amoxicillin)" is a brand of amoxicillin).
+- **Stricter than the draft, DECIDED:** the rules run on the term as typed over the pool of BOTH searches (the
+  typed word's and the corrected word's), so the other strengths and combinations of the target are seen.
+  A word that corrects to a controlled product is refused like the correctly spelt word.
+- The list's screen is not built: rows are signed through `PUT /opd/consult/abbreviations/:id`
+  (`opd.masters.manage`, a person only). Seven proposed rows ship unsigned (amox, azithro, cipro, doxy, hctz,
+  metro, pcm); error-prone abbreviations (MTX, ASA, HCT, MS) are left out.
+- **The one paid evaluation (2026-10-23, 296 terms, chooser 0.95 / reviewer 0.9, staging catalogue copy):**
+  43 answered, 43 right, **0 wrong**. Misspellings: 2 of 38 answered (unchanged). Abbreviations: 0 of 25 (no
+  row is signed yet). The rule corrected 14 misspelt terms, every one to the right moiety, and no term of any
+  other category. None of the 14 became an answer: the chooser still said none or stayed below 0.95 on the
+  corrected word (eleven), two were refused as controlled because the corrected generic also appears in a
+  controlled combination, and one ("levothyroxin 50 mcg", right before) is now refused as a look-alike
+  conflict because the wider pool shows a levothyroxine + liothyronine combination. So the misspelling was
+  not the main reason for the refusals: the correctly spelt generics answer 2 of 26 as well. Cost: the
+  reviewer used 140,456 input tokens, $0.014 at OpenAI's published price; the chooser used 139,998 input tokens.

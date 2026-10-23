@@ -1,3 +1,5 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { sql } from "drizzle-orm";
 import { setupTestDb } from "../../../../test/helpers/db";
 import type { ChoiceClient, ChooseInput, PredicateClient, PredicateInput } from "../../../kernel/inference/types";
@@ -149,6 +151,12 @@ describe("spec #613 — medicine aliases: misspellings and abbreviations", () =>
     afterAll(async () => { await teardown(); });
 
     it("ships proposed rows, none signed, and refuses a row marked signed without a signer", async () => {
+      /* The worker database may have been truncated by another suite: replay the migration's own seed (idempotent). */
+      const dir = join(__dirname, "../../../../drizzle");
+      const file = readdirSync(dir).find((f) => f.endsWith("_opd_medicine_abbreviations.sql"));
+      const seed = /INSERT INTO "opd_medicine_abbreviations"[\s\S]*?;/.exec(readFileSync(join(dir, file ?? "missing"), "utf8"))?.[0];
+      expect(seed).toBeDefined();
+      await db.execute(sql.raw(seed as string));
       const rows = (await db.execute(sql`select abbreviation, moiety, active, reviewed_by, reviewed_at from opd_medicine_abbreviations`)).rows as { reviewed_by: string | null; reviewed_at: string | null }[];
       expect(rows.length).toBeGreaterThan(0);
       expect(rows.every((r) => r.reviewed_by === null && r.reviewed_at === null)).toBe(true);
