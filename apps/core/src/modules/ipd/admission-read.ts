@@ -13,9 +13,10 @@ import { allergyWords } from "./bands";
 import { initialsOf } from "./beds-board";
 import { ageInYears } from "./bed-rules";
 import { proposeBeds } from "./beds";
-import { classQuotes, depositPaidPaise } from "./deposit";
+import { classQuotes, depositPaidPaise, loadPriceBook } from "./deposit";
 import { IpdError, IpdRefusal } from "./errors";
 import { IPD_ADMIT, IPD_ADMIT_REQUEST } from "./manifest";
+import { capWarningsFor } from "./payer-bill";
 import type {
   Actor, IpdAdmissionView, IpdAdvice, IpdApprovalKind, IpdBedClass, IpdBedProposal, IpdClassQuote,
 } from "@hmis/contracts";
@@ -113,7 +114,10 @@ export async function quotesFor(db: Db, actor: Actor, admissionId: string, at: D
   const { freeByClass } = await proposeBeds(db, actor, { patientId: a.patientId, need: needOf(a), at, limit: 0 });
   const base: IpdBedClass[] = ["general", "semi_private", "private", "deluxe"];
   const classes = base.includes(a.requestedClass as IpdBedClass) ? base : [a.requestedClass as IpdBedClass, ...base.slice(0, 3)];
-  return classQuotes(db, a, classes, freeByClass, at);
+  const quotes = await classQuotes(db, a, classes, freeByClass, at);
+  // E2.2 (#726): the room-rent cap warning on each class card (§4.9 B), from the authorisation's cap when recorded.
+  const warnings = await capWarningsFor(db, a, classes, at, await loadPriceBook(db, at));
+  return quotes.map((q) => ({ ...q, capWarning: warnings.get(q.class) ?? null }));
 }
 
 export async function bedProposalsFor(db: Db, actor: Actor, admissionId: string, at: Date = new Date()): Promise<IpdBedProposal[]> {

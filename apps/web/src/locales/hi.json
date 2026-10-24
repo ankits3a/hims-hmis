@@ -188,6 +188,7 @@
     }
   },
   "ipdAdmit": {
+    "capWarning": "कमरा किराया सीमा",
     "findPatient": "यूएचआईडी कार्ड स्कैन करें, या नाम, यूएचआईडी, मोबाइल लिखें",
     "title": "भर्ती",
     "subtitle": "भर्ती डेस्क · एक ही शीट",
@@ -17822,6 +17823,49 @@
     }
   },
   "ipdBill": {
+    "split": {
+      "printFailed": "दर्ज नहीं हुआ — फिर से कोशिश करें",
+      "title": "भुगतानकर्ता विभाजन",
+      "label": "भुगतानकर्ता विभाजन",
+      "payer": "भुगतानकर्ता देगा",
+      "patient": "मरीज़ देगा",
+      "patientDue": "मरीज़ का बकाया",
+      "patientLeft": "जमा शेष (मरीज़ का हिस्सा)",
+      "preAuth": "प्री-ऑथ {{no}}",
+      "approved": "स्वीकृत {{amount}}",
+      "nonCovered": "स्वीकृत गैर-कवर",
+      "colPayer": "भुगतानकर्ता",
+      "colPatient": "मरीज़",
+      "state": {
+        "none": "कोई स्वीकृति नहीं",
+        "pending": "स्वीकृति प्रतीक्षित",
+        "approved": "स्वीकृत",
+        "denied": "अस्वीकृत"
+      },
+      "mode": {
+        "cash": "नकद",
+        "reimbursement": "प्रतिपूर्ति",
+        "insured": "कैशलेस",
+        "scheme": "योजना"
+      },
+      "why": {
+        "non_payable": "अदेय",
+        "room_rent_over_cap": "कमरा सीमा से ऊपर",
+        "room_rent_cap_proportional": "सीमा अनुपात",
+        "co_pay": "को-पे",
+        "over_approved_amount": "स्वीकृति से ऊपर",
+        "denied": "अस्वीकृत",
+        "cash": "नकद",
+        "auth_pending": "स्वीकृति प्रतीक्षित",
+        "scheme": "योजना",
+        "reversed": "रद्द",
+        "non_covered": "गैर-कवर"
+      },
+      "exception": {
+        "cash_consent_missing": "नकद सहमति नहीं",
+        "room_rent_cap_unresolved": "सीमा % के लिए बीमा राशि चाहिए"
+      }
+    },
     "postingFailed": "रात की पोस्टिंग विफल ({{count}} प्रयास) — बिल डेस्क दोबारा चलाएगा",
     "title": "अंतरिम बिल",
     "loading": "बिल लोड हो रहा है…",

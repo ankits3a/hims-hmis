@@ -35,6 +35,7 @@ Source: `apps/core/src/modules/patients/`
   - `PATIENTS_APPROVAL_REJECTED_CONSUMER`
   - `approvalRejectedConsumer(db: Db): Handler`
 - `coverages.ts`
+  - `coverageSumInsuredPaise(db: Db | Tx, coverageId: string): Promise<number | null>`
   - `listPatientCoverages(db: Db, actor: Actor, patientId: string, opts: { reason?: string } = {}): Promise<CoverageRow[]>`
   - types: `CoverageRow`
 - `display-name.ts`

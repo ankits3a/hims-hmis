@@ -5,6 +5,7 @@ import { IpdAdmissionsController } from "./admissions.controller";
 import { IpdBedsController } from "./beds.controller";
 import { IpdChargesController } from "./charges.controller";
 import { registerIpdReceiptGuard } from "./deposit";
+import { IpdPayerController } from "./payer.controller";
 import { IPD_TOPIC_SPACES, ipdTopicRouter } from "./realtime";
 
 /**
@@ -25,7 +26,7 @@ class IpdRealtimeRegistrar implements OnModuleInit {
 
 @Module({
   imports: [RealtimeModule],
-  controllers: [IpdBedsController, IpdAdmissionsController, IpdChargesController],
+  controllers: [IpdBedsController, IpdAdmissionsController, IpdChargesController, IpdPayerController],
   providers: [IpdRealtimeRegistrar],
 })
 export class IpdModule {}

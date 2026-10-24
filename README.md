@@ -1785,6 +1785,11 @@ front_office_supervisor, duty_manager, cashier, billing_manager, owner) reads an
 role holds it, a doctor's screen shows no money; and `ipd.charges.reverse` is held by `billing_manager` alone — a wrong
 charge is answered by a reversal line, never an edit.
 
+**IPD payer split (E2.2, decision 0072, built 2026-10-13, awaiting owner review).** Each line of the interim bill is
+payer- or patient-payable from the manual authorisation record. `ipd.payer.terms` is held by `billing_manager` alone —
+the letter's money terms (room-rent cap, co-pay) and the non-payables list are the TPA desk's in billing; the status and
+pre-auth number stay with `ipd.payer.manage`.
+
 **My duties, covers and swaps (20-U U5c/U6).** `/roster/my-duties` is a resident's phone: today, the
 rest of the week, and on every duty still ahead *"I can't do this"* — which lists who could take it
 without breaking a rule and, for everybody else, why not (*unavailable*, never the kind of leave). A

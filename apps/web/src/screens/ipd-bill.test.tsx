@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { ApiError } from "../lib/api";
 import { renderWithRouter } from "../test-utils";
 import { IpdBillScreen } from "./ipd-bill";
@@ -9,7 +9,7 @@ import type { IpdInterimBill } from "@hmis/contracts";
   the shape is the contract's (`packages/contracts/src/ipd/charges.ts`).
 */
 
-const api = vi.hoisted(() => ({ getInterimBill: vi.fn() }));
+const api = vi.hoisted(() => ({ getInterimBill: vi.fn(), printInterimBill: vi.fn() }));
 vi.mock("../lib/ipd-bill-api", () => api);
 
 const id = (n: number): string => `01FAKE${String(n).padStart(20, "0")}`;
@@ -42,14 +42,19 @@ function bill(over: Partial<IpdInterimBill> = {}): IpdInterimBill {
     ],
     byComponent: [{ component: "room", netPaise: 150_000 }, { component: "nursing", netPaise: 50_000 }, { component: "visit", netPaise: 120_000 }],
     totals: { grossPaise: 320_000, discountPaise: 0, gstPaise: 0, netPaise: 320_000, roundedPaise: 320_000 },
-    depositPaidPaise: 500_000, balancePaise: 180_000,
+    depositPaidPaise: 500_000, balancePaise: 180_000, patientBalancePaise: 180_000,
+    payerSplit: {
+      mode: "cash", authState: "none", preAuthNumber: null, approvedTotalPaise: null, roomRentCapPaise: null, coPayBp: null,
+      lines: [], totals: { payerPaise: 0, patientPaise: 320_000, nonPayablePaise: 0, capDeductionPaise: 0, coPayPaise: 0, overApprovedPaise: 0 },
+      schemeNonCoveredPaise: 0, words: ["Cash: patient pays all"], exceptions: [],
+    },
     exceptions: [{ serviceDate: "2030-01-01", component: "nursing", billedClass: "private", serviceCode: "IPD_NURSING_PRIVATE", reason: "rate_missing", errorCode: null, failCount: 0, firstSeenAt: "2030-01-01T18:35:00.000Z" }],
     ...over,
   };
 }
 
 describe("IpdBillScreen", () => {
-  beforeEach(() => { api.getInterimBill.mockReset(); });
+  beforeEach(() => { api.getInterimBill.mockReset(); api.printInterimBill.mockReset(); });
 
   it("shows the days with their class, each move with its hour, the missing rate, and the deposit left in words", async () => {
     api.getInterimBill.mockResolvedValue(bill());
@@ -79,6 +84,83 @@ describe("IpdBillScreen", () => {
     const totals = await screen.findByRole("region", { name: "Totals" });
     expect(within(totals).getByText("Due")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Not posted" })).toBeNull();
+  });
+
+  it("E2.2: a cashless stay shows Payer and Patient per line with the reason, the cap deduction in words, and the patient balance", async () => {
+    const insured = bill({
+      payerKind: "insurance_cashless", patientBalancePaise: -20_000,
+      payerSplit: {
+        mode: "insured", authState: "approved", preAuthNumber: "PA-FAKE-1", approvedTotalPaise: 1_000_000, roomRentCapPaise: 100_000, coPayBp: null,
+        lines: [
+          { lineId: id(10), payerPaise: 100_000, patientPaise: 50_000, reasons: ["room_rent_over_cap"] },
+          { lineId: id(11), payerPaise: 33_333, patientPaise: 16_667, reasons: ["room_rent_cap_proportional"] },
+          { lineId: id(12), payerPaise: 0, patientPaise: 0, reasons: ["reversed"] },
+          { lineId: id(13), payerPaise: 0, patientPaise: 0, reasons: ["reversed"] },
+          { lineId: id(14), payerPaise: 120_000, patientPaise: 0, reasons: [] },
+        ],
+        totals: { payerPaise: 253_333, patientPaise: 66_667, nonPayablePaise: 0, capDeductionPaise: 66_667, coPayPaise: 0, overApprovedPaise: 0 },
+        schemeNonCoveredPaise: 0, words: ["Room ₹1,500/day over ₹1,000 cap: nursing, RMO, visits paid 66.66 %", "Room-rent cap deduction ₹666.67"], exceptions: [],
+      },
+    });
+    api.getInterimBill.mockResolvedValue(insured);
+    renderWithRouter(<IpdBillScreen admissionId={ADM} />);
+    const lines = await screen.findByRole("region", { name: "Charges by day" });
+    expect(within(lines).getByRole("columnheader", { name: "Payer" })).toBeInTheDocument();
+    expect(within(lines).getByRole("columnheader", { name: "Patient" })).toBeInTheDocument();
+    expect(within(lines).getByText("Over room cap")).toBeInTheDocument();
+    expect(within(lines).getByText("Cap proportional")).toBeInTheDocument();
+    const split = screen.getByRole("region", { name: "Payer split" });
+    expect(within(split).getByText("Authorised")).toBeInTheDocument();
+    expect(within(split).getByText("Pre-auth PA-FAKE-1")).toBeInTheDocument();
+    expect(within(split).getByText(/over ₹1,000 cap/)).toBeInTheDocument();
+    expect(within(split).getByText("Room-rent cap deduction ₹666.67")).toBeInTheDocument();
+    expect(within(split).getByText("Patient due")).toBeInTheDocument();
+    expect(within(split).getByText("₹200.00")).toBeInTheDocument();
+  });
+
+  it("E2.2: a denied stay flags the missing cash consent; a plain cash stay shows no split card or columns", async () => {
+    api.getInterimBill.mockResolvedValue(bill({
+      payerSplit: {
+        mode: "insured", authState: "denied", preAuthNumber: null, approvedTotalPaise: null, roomRentCapPaise: null, coPayBp: null,
+        lines: [{ lineId: id(10), payerPaise: 0, patientPaise: 150_000, reasons: ["denied"] }],
+        totals: { payerPaise: 0, patientPaise: 150_000, nonPayablePaise: 0, capDeductionPaise: 0, coPayPaise: 0, overApprovedPaise: 0 },
+        schemeNonCoveredPaise: 0, words: ["Pre-auth denied: cash from admission"], exceptions: ["cash_consent_missing"],
+      },
+    }));
+    const first = renderWithRouter(<IpdBillScreen admissionId={ADM} />);
+    const split = await screen.findByRole("region", { name: "Payer split" });
+    expect(within(split).getByRole("alert")).toHaveTextContent("Cash consent missing");
+    first.unmount();
+    api.getInterimBill.mockResolvedValue(bill());
+    renderWithRouter(<IpdBillScreen admissionId={ADM} />);
+    await screen.findByRole("region", { name: "Totals" });
+    expect(screen.queryByRole("region", { name: "Payer split" })).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "Payer" })).toBeNull();
+  });
+
+  it("review 5: Print keeps the split first and the paper shows the KEPT split; a failed keep blocks printing", async () => {
+    api.getInterimBill.mockResolvedValue(bill());
+    const kept = bill().payerSplit;
+    api.printInterimBill.mockResolvedValue({
+      snapshotId: id(99), printedAt: "2030-01-02T00:00:00.000Z", payerPaise: 0, patientPaise: 320_000, patientBalancePaise: 180_000,
+      payerSplit: { ...kept, mode: "insured", authState: "denied", words: ["Pre-auth denied: cash from admission"], exceptions: ["cash_consent_missing"],
+        lines: [{ lineId: id(10), payerPaise: 0, patientPaise: 150_000, reasons: ["denied"] }] },
+    });
+    const printSpy = vi.spyOn(window, "print").mockImplementation(() => undefined);
+    renderWithRouter(<IpdBillScreen admissionId={ADM} />);
+    expect(screen.queryByRole("region", { name: "Payer split" })).toBeNull();
+    fireEvent.click(await screen.findByRole("button", { name: "Print" }));
+    await waitFor(() => expect(printSpy).toHaveBeenCalledTimes(1));
+    expect(api.printInterimBill).toHaveBeenCalledWith(ADM);
+    // What prints is the snapshot's split, not the one loaded earlier.
+    const split = screen.getByRole("region", { name: "Payer split" });
+    expect(within(split).getByText("Cash consent missing")).toBeInTheDocument();
+    printSpy.mockClear();
+    api.printInterimBill.mockRejectedValue(new ApiError(500, { code: "boom" }));
+    fireEvent.click(screen.getByRole("button", { name: "Print" }));
+    expect(await screen.findByText("Could not record — try again")).toBeInTheDocument();
+    expect(printSpy).not.toHaveBeenCalled();
+    printSpy.mockRestore();
   });
 
   it("a user without the bill permission is told so, with no amounts", async () => {
