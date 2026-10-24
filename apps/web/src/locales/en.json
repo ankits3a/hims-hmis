@@ -6035,6 +6035,9 @@
     "nextStep": "Please go to the vitals desk next."
   },
   "desk": {
+    "ipdAllergyFlags": {
+      "title": "Allergies to review"
+    },
     "ipdNewOrder": {
       "title": "New orders"
     },

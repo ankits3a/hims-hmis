@@ -3,6 +3,7 @@ import { familyCallbacksCard } from "./family";
 import { bedProposalCard, cleaningOverdueCard, dischargeBlockedCard } from "./now-cards";
 import { assessmentDueCard, ewsRisingCard, handoverPendingCard, overdueVitalsCard } from "./nursing-cards";
 import { dueDoseCard, newOrderCard } from "./emar-cards";
+import { allergyFlagsCard } from "./rounds-cards";
 import { IPD_EMAR_ALLERGY_CONSUMER } from "./emar-events";
 import {
   IPD_BEDS_VIEW, IPD_BEDS_MANAGE, IPD_BEDS_CLEAN, IPD_BEDS_OVERFLOW, IPD_ADMIT_REQUEST, IPD_ADMIT, IPD_PAYER_MANAGE, IPD_BAND_PRINT, IPD_BILL_VIEW, IPD_CHARGES_REVERSE, IPD_PAYER_TERMS, IPD_TRANSFER_START, IPD_TRANSFER_ACCEPT, IPD_DISCHARGE_VIEW, IPD_DISCHARGE_DECLARE, IPD_DISCHARGE_CONFIRM, IPD_DISCHARGE_BILL, IPD_GATE_PASS, IPD_GATE_SCAN, IPD_DISCHARGE_EXIT, IPD_MORTUARY_MANAGE, IPD_BILLDESK_VIEW, IPD_FAMILY_ISSUE, IPD_CONDITION_SET, IPD_ROUND_SIGN, IPD_ORDER_PLACE,
@@ -181,5 +182,8 @@ export const ipdManifest: ModuleManifest = {
     // E4.3 (#735) — the eMAR's two nurse cards, each with its own permission.
     { key: "ipd.due_dose", permission: IPD_EMAR_GIVE, load: async (ctx) => dueDoseCard(ctx) },
     { key: "ipd.new_order", permission: IPD_EMAR_VIEW, load: async (ctx) => newOrderCard(ctx) },
+    // The doctor's allergy card: an open eMAR allergy flag waiting on the doctor's decision, or an allergy recorded since the
+    // doctor's last round — on the rounds list's own patients; a row opens the round page (`rounds-cards.ts`).
+    { key: "ipd.allergy_flags", permission: IPD_ROUND_SIGN, load: async (ctx) => allergyFlagsCard(ctx) },
   ],
 };

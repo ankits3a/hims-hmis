@@ -6035,6 +6035,9 @@
     "nextStep": "कृपया अगले वाइटल्स डेस्क पर जाएँ।"
   },
   "desk": {
+    "ipdAllergyFlags": {
+      "title": "जाँचने योग्य एलर्जी"
+    },
     "ipdNewOrder": {
       "title": "नए आदेश"
     },
