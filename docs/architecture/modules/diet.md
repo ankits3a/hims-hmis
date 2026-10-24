@@ -92,8 +92,8 @@ Source: `apps/core/src/modules/diet/`
 
 Foreign keys into: `ipd`, `resources`
 
-## HTTP routes (17)
+## HTTP routes
 
-- `diet.controller.ts` — 17: `/diet/catalogue`, `/diet/consults`, `/diet/kitchen`, `/diet/lines`, `/diet/lists`, `/diet/npo`, `/diet/orders`, `/diet/rounds`, `/diet/wards`
+- `diet.controller.ts` — `/diet/catalogue`, `/diet/consults`, `/diet/kitchen`, `/diet/lines`, `/diet/lists`, `/diet/npo`, `/diet/orders`, `/diet/rounds`, `/diet/wards`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/diet`

@@ -14,6 +14,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 |---|---|
 | `/` | `apps/web/src/screens/doctor-desk-landing` |
 | `/admin/users` | `apps/web/src/screens/admin-users` |
+| `/admin/workflows` | `apps/web/src/screens/admin-workflows` |
 | `/appointment` | `apps/web/src/screens/desk-one/desk-one` |
 | `/approvals` | `apps/web/src/screens/approvals-inbox` |
 | `/attendance/links` | `apps/web/src/screens/attendance-links` |
@@ -54,9 +55,14 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/ipd/discharge` | `apps/web/src/screens/ipd-discharge` |
 | `/ipd/family-callbacks` | `apps/web/src/screens/ipd-family-callbacks` |
 | `/ipd/handovers` | `apps/web/src/screens/ipd-handovers` |
+| `/ipd/mar` | `apps/web/src/screens/ipd-mar` |
 | `/ipd/my-shift` | `apps/web/src/screens/ipd-my-shift` |
 | `/ipd/narcotics` | `apps/web/src/screens/ipd-narcotics` |
 | `/ipd/passes` | `apps/web/src/screens/ipd-passes` |
+| `/ipd/pharmacy` | `apps/web/src/screens/ipd-pharmacy` |
+| `/ipd/rounds` | `apps/web/src/screens/ipd-rounds` |
+| `/ipd/rounds/$admissionId` | `apps/web/src/screens/ipd-rounds` |
+| `/ipd/tpa` | `apps/web/src/screens/ipd-tpa` |
 | `/ipd/ward` | `apps/web/src/screens/ipd-ward` |
 | `/lab/bench` | `apps/web/src/screens/lab-bench` |
 | `/lab/collection` | `apps/web/src/screens/lab-collection` |

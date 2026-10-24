@@ -1693,7 +1693,70 @@
       "idx": 241,
       "version": "7",
       "when": 1792593471586,
-      "tag": "0241_ipd_attendant_messages",
+      "tag": "0241_ipd_nursing",
+      "breakpoints": true
+    },
+    {
+      "idx": 242,
+      "version": "7",
+      "when": 1792593472586,
+      "tag": "0242_diet",
+      "breakpoints": true
+    },
+    {
+      "idx": 243,
+      "version": "7",
+      "when": 1792593473586,
+      "tag": "0243_ipd_rounds",
+      "breakpoints": true
+    },
+    {
+      "idx": 244,
+      "version": "7",
+      "when": 1792593474586,
+      "tag": "0244_ipd_orderbill",
+      "breakpoints": true
+    },
+    {
+      "idx": 245,
+      "version": "7",
+      "when": 1792593475586,
+      "tag": "0245_ipd_emar",
+      "breakpoints": true
+    },
+    {
+      "idx": 246,
+      "version": "7",
+      "when": 1792593476586,
+      "tag": "0246_ipd_drugbill",
+      "breakpoints": true
+    },
+    {
+      "idx": 247,
+      "version": "7",
+      "when": 1792593477586,
+      "tag": "0247_ipd_copilot",
+      "breakpoints": true
+    },
+    {
+      "idx": 248,
+      "version": "7",
+      "when": 1792593478586,
+      "tag": "0248_ipd_narcotic_register",
+      "breakpoints": true
+    },
+    {
+      "idx": 249,
+      "version": "7",
+      "when": 1792593479586,
+      "tag": "0249_ipd_attendant_messages",
+      "breakpoints": true
+    },
+    {
+      "idx": 250,
+      "version": "7",
+      "when": 1792593480586,
+      "tag": "0250_ipd_tpa",
       "breakpoints": true
     }
   ]

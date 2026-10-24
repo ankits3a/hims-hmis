@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/formulary/`
 
 - **Depends on modules:** —
-- **Used by modules:** `cds`, `materials`, `opd`, `pharmacy`
+- **Used by modules:** `cds`, `ipd`, `materials`, `opd`, `pharmacy`
 - **Kernel used:** `approvals`, `auth`, `config`, `copilot`, `db`, `events`, `inference`, `modules`, `search`, `tokens`
 
 ## Public API (`index.ts`), by declaring file
@@ -126,6 +126,7 @@ Source: `apps/core/src/modules/formulary/`
   - `referenceSectionsOf(label: Record<string, unknown>): ReferenceSections`
   - types: `GenericReference`, `ReferenceEntry`, `ReferenceImportResult`, `ReferencePlan`, `ReferenceSectionName`
 - `resolve.ts`
+  - `interactionRulesPresent(db: Db): Promise<boolean>`
   - `listDrugDiseaseFor(db: Db, saltIds: string[], icd10Codes: string[]): Promise<DrugDiseaseRow[]>`
   - `listInteractionsAmong(db: Db, saltIds: string[]): Promise<InteractionPair[]>`
   - `normalizeDrugName(raw: string): string`

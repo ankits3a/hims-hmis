@@ -36,6 +36,7 @@ Source: `apps/core/src/modules/tariff/`
   - `configValidated`
   - `tariffRevisionApplied`
   - `tariffRevisionAppliedDirectly`
+  - `tariffServiceSwitchedOn`
 - `gst-config.ts`
   - `getGstSettings(db: Db): Promise<GstSettings>`
   - `listGstCategories(db: Db): Promise<GstCategoryConfig[]>`
@@ -85,6 +86,11 @@ Source: `apps/core/src/modules/tariff/`
 - `simulation.ts`
   - `simulateRevision(currentCtx: PricingContext, draftCtx: PricingContext, lines: InvoiceLineInput[]): ImpactReport`
   - types: `ImpactByService`, `ImpactLineDelta`, `ImpactReport`, `ImpactTotals`
+- `switch-on.ts`
+  - `SWITCH_ON_MAX`
+  - `listVersionsForOffice(db: Db, opts: { withNames: boolean }): Promise<OfficeVersion[]>`
+  - `switchOnServices(db: Db, actor: Actor, serviceIds: readonly string[], at: Date = new Date()): Promise<SwitchOnResult>`
+  - types: `OfficeVersion`, `SwitchOnResult`
 - `tariff.module.ts`
   - `class TariffModule`
 - `types.ts`
@@ -97,7 +103,6 @@ Source: `apps/core/src/modules/tariff/`
   - `activePricePaise(db: Db | Tx, serviceId: string, at: Date): Promise<number | null>`
   - `createDraftVersion(tx: Tx, actor: Actor, input?: { notes?: string; copyFromVersionId?: string }): Promise<{ versionId: string; versionNo: n…`
   - `getVersion(db: Db, versionId: string): Promise<{ version: TariffVersionRow; items: TariffItemRow[] } | null>`
-  - `listVersions(db: Db): Promise<TariffVersionRow[]>`
   - `resolveActiveTariffVersion(db: Db, at: Date): Promise<{ versionId: string; versionNo: number } | null>`
   - `setTariffItem(tx: Tx, actor: Actor, versionId: string, serviceId: string, pricePaise: number): Promise<void>`
   - `submitVersion(tx: Tx, actor: Actor, versionId: string, requestNote?: string): Promise<{ approvalId: string; instanceId: string }>`

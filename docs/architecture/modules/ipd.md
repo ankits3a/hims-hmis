@@ -11,9 +11,9 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/ipd/`
 · Notes: [MAP.md](../../../apps/core/src/modules/ipd/MAP.md)
 
-- **Depends on modules:** `billing`, `opd`, `patients`, `tariff`
+- **Depends on modules:** `billing`, `formulary`, `lab`, `materials`, `opd`, `ordering`, `ot`, `patients`, `pharmacy`, `roster`, `tariff`
 - **Used by modules:** `diet`, `housekeeping`, `maintenance`, `passes`, `transport`
-- **Kernel used:** `alerts`, `approvals`, `auth`, `config`, `crypto`, `db`, `desk`, `events`, `modules`, `notify`, `printing`, `realtime`, `resources`, `tokens`, `workflow`
+- **Kernel used:** `alerts`, `approvals`, `auth`, `config`, `copilot`, `crypto`, `db`, `desk`, `episodes`, `events`, `inference`, `modules`, `notify`, `orders`, `printing`, `realtime`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `admissionAbsconded`, `admissionDeceased`
 
 ## Public API (`index.ts`), by declaring file
@@ -153,17 +153,70 @@ Source: `apps/core/src/modules/ipd/`
 - `charges.ts`
   - `IPD_DAILY_COMPONENTS`
   - `IPD_NIGHTLY_ACTOR: Actor`
+  - `keepOrderCharge(db: Db, actor: Actor, input: { chargeLineId: string; reason: string }, opts: { now?: Date } = {}): Promise<{ resolved: numb…`
   - `postAdmissionCharges(db: Db, admissionId: string, opts: { upToIstDate: string; now: Date; cache?: PricingCache; presumedDischargeAt?: Date;…`
   - `postConsultantVisit(tx: Tx, input: ConsultantVisitInput): Promise<ConsultantVisitResult>`
   - `postNightlyIpdCharges(db: Db, now: Date): Promise<NightlyResult>`
   - `priceComponent(ctx: PricingContext, cls: IpdBedClass, component: IpdRateComponent): Priced`
+  - `raiseBackdatedVisitIn(tx: Tx, actor: Actor, admissionId: string, consultantUserId: string, seenAt: Date, now: Date): Promise<void>`
+  - `resolveBackdatedVisit(db: Db, actor: Actor, input: { exceptionId: string; decision: "charge" | "waive"; reason: string }, opts: { now?: Dat…`
   - `reverseChargeLine(db: Db, actor: Actor, input: { chargeLineId: string; reason: string }, opts: { now?: Date } = {}): Promise<{ reversalLine…`
+  - `visitChargeableAt(seenAt: Date, now: Date): boolean`
   - types: `AdmissionPostResult`, `ConsultantVisitInput`, `ConsultantVisitResult`, `NightlyResult`
 - `class-change.ts`
   - `applyClassChanges(stays: readonly S[], changes: readonly StayClassChange[]): S[]`
   - `classChangesOf(db: Db | Tx, admissionId: string): Promise<StayClassChange[]>`
   - `nextNoonIst(at: Date): Date`
   - types: `StayClassChange`
+- `copilot-drafts.ts`
+  - `MODEL_COOLDOWN_MS`
+  - `checkSbarDraftForGive(db: Db | Tx, draftId: string, a: { id: string; patientId: string }, sbar: { situation: string; background: string; as…`
+  - `dischargeRecordsHash(db: Db | Tx, a: RecordsAdmission): Promise<string>`
+  - `sbarTextHash(sbar: { situation: string; background: string; assessment: string; recommendation: string }): string`
+- `copilot-facts.ts`
+  - `buildFactSet(db: Db, a: Pick<AdmissionRow, "id" | "patientId">, w: FactWindow, opts: { actorId?: string; rowLimit?: number } = {}): Promise…`
+  - `buildFacts(db: Db, a: Pick<AdmissionRow, "id" | "patientId">, w: FactWindow, opts: { actorId?: string; rowLimit?: number } = {}): Promise<F…`
+  - `factsHash(facts: readonly Fact[]): string`
+- `copilot-lines.ts`
+  - `CONNECTIVES: Readonly<Record<"en" | "hi", ReadonlySet<string>>>`
+  - `SINCE_MAX_LINES`
+  - `applyRewordings(lines: readonly Line[], reworded: readonly { key: string; text: string }[]): { lines: (Line & { by: "template" | "model" })…`
+  - `chooseLines(facts: readonly Fact[]): Line[]`
+  - `isAbnormal(f: Fact): boolean`
+  - `lineTokens(text: string): { tokens: string[]; foreign: string | null }`
+  - `quantitiesIn(text: string): Quantities`
+  - `renderLine(f: Fact): string`
+  - `unverifiedWords(text: string, sources: readonly string[], known: ReadonlySet<string> = new Set()): string[]`
+  - `verifyFreeText(text: string, sources: readonly string[], allowed: Quantities = { numbers: [], times: [] }, maxChars = FREE_TEXT_MAX_CHARS, …`
+  - `verifyReworded(text: string, line: Pick<Line, "text" | "fact">): Verdict`
+  - types: `Fact`, `FactRecord`, `Line`, `Quantities`, `Verdict`
+- `copilot-model.ts`
+  - `askIpdModel(db: Db, actor: Actor, model: IpdModel | null | undefined, admissionId: string, ask: ModelAsk, now: Date): Promise<ModelAnswer>`
+  - `ipdModelFrom(cfg: Pick<AppConfig, "copilot" | "copilotSpend">): IpdModel`
+  - `maskForModel(text: string, names: readonly (string | null | undefined)[], places: readonly (string | null | undefined)[] = []): string`
+  - `modelBarred(db: Db, admissionId: string): Promise<"sealed" | "confidential" | "mlc" | "unknown" | null>`
+  - types: `FallbackReason`, `IpdModel`
+- `copilot.ts`
+  - `DISCHARGE_LIMITS`
+  - `DISCHARGE_PROMPT_VERSION`
+  - `DRAFT_BUDGET_MS`
+  - `HANDOVER_GRACE_MS`
+  - `SBAR_PROMPT_VERSION`
+  - `SINCE_BUDGET_MS`
+  - `SINCE_PROMPT_VERSION`
+  - `buildDischargeDraft(db: Db, actor: Actor, admissionId: string, opts: CopilotOpts & { limits?: Partial<Record<keyof typeof DISCHARGE_LIMITS,…`
+  - `buildSbarDraft(db: Db, actor: Actor, admissionId: string, opts: CopilotOpts = {}): Promise<IpdHandoverDraft>`
+  - `medicinesNamedWithoutOrder(db: Db, text: string, drugOrders: readonly IpdOrderRow[], by: "template" | "model", sources: readonly string[] =…`
+  - `polishSinceYesterday(db: Db, actor: Actor, admissionId: string, opts: CopilotOpts = {}): Promise<IpdSinceYesterday>`
+  - `readHandoverDraft(db: Db, actor: Actor, admissionId: string, opts: { now?: Date; rowLimit?: number } = {}): Promise<IpdHandoverDraft>`
+  - `readSinceYesterday(db: Db, actor: Actor, admissionId: string, opts: CopilotOpts = {}): Promise<IpdSinceYesterday>`
+  - types: `CopilotOpts`
+- `counter-charge.ts`
+  - `counterCharge(db: Db, actor: Actor, raw: unknown, opts: CounterOpts = {}): Promise<Output<"counter_charge">>`
+  - `counterReturn(db: Db, actor: Actor, raw: unknown, opts: CounterOpts = {}): Promise<Output<"counter_return">>`
+  - `lookupCounterAdmission(db: Db, actor: Actor, q: string, opts: CounterOpts = {}): Promise<IpdCounterAdmission>`
+  - `readCounterSales(db: Db, actor: Actor, admissionId: string): Promise<IpdCounterSales>`
+  - `searchCounterShelfForIp(db: Db, actor: Actor, q: string, opts: CounterOpts = {}): Promise<IpdCounterShelfEntry[]>`
 - `daily-totals.ts`
   - `IPD_DAILY_TOTALS_SEND_HOUR_IST`
   - `attendantOf(db: Db | Tx, patientId: string, admissionId: string): Promise<Attendant | null>`
@@ -226,6 +279,10 @@ Source: `apps/core/src/modules/ipd/`
   - `recordPoliceClearance(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<IpdMortuaryEntry>`
   - `releaseBody(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<IpdMortuaryEntry>`
   - `scanGatePass(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"scan_gate_pass">>`
+- `discharge-medicines.ts`
+  - `medicineFlagsOf(medicines: readonly IpdSummaryMedicine[], drugOrders: readonly IpdOrderRow[]): IpdMedicineFlag[]`
+  - `medicineRowReason(m: Pick<IpdSummaryMedicine, "name" | "orderId">, drugOrders: readonly IpdOrderRow[]): IpdMedicineFlag["reason"] | null`
+  - `sameMedicineName(a: string, b: string): boolean`
 - `discharge-read.ts`
   - `readDischargeBoard(db: Db, actor: Actor, opts: { now?: Date } = {}): Promise<IpdDischargeBoard>`
   - `readDischargeTracker(db: Db, actor: Actor, admissionId: string, opts: { now?: Date } = {}): Promise<IpdDischargeTracker>`
@@ -235,9 +292,75 @@ Source: `apps/core/src/modules/ipd/`
   - `cancelFit(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"cancel_fit">>`
   - `confirmCharges(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"confirm_charges">>`
   - `declareFit(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"declare_fit">>`
+  - `declareFitIn(tx: Tx, actor: Actor, a: AdmissionRow, input: Pick<Input<"declare_fit">, "when" | "disposition" | "note">, at: Date): Promise<…`
   - `readSummary(db: Db, actor: Actor, admissionId: string): Promise<IpdSummaryView>`
   - `saveSummaryDraft(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<IpdSummaryView>`
   - `signSummary(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"sign_summary">>`
+- `drug-charges.ts`
+  - `postDrugIssueChargesIn(tx: Tx, actor: Actor, a: AdmissionRow, input: DrugIssueCharge): Promise<{ posted: string[]; missing: number }>`
+  - `postDrugReturnCreditsIn(tx: Tx, actor: Actor, a: AdmissionRow, input: { issueId: string; returnId: string; batches: readonly { batchId: str…`
+  - `retryDrugExceptionsIn(tx: Tx, actor: Actor, a: AdmissionRow, at: Date): Promise<number>`
+  - `versionPricedServices(db: Db | Tx, serviceIds: readonly string[], at: Date): Promise<Set<string>>`
+  - types: `DrugIssueCharge`, `DrugReturnOutcome`
+- `emar-cards.ts`
+  - `IPD_NEW_ORDER_HOURS`
+  - `dueDoseCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `newOrderCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+- `emar-doses.ts`
+  - `cancelFutureDosesIn(tx: Tx, actor: Actor, o: Pick<IpdOrderRow, "id" | "admissionId" | "patientId">, at: Date): Promise<number>`
+  - `scheduleDosesIn(tx: Tx, o: IpdOrderRow, from: Date, to: Date, at: Date): Promise<number>`
+- `emar-events.ts`
+  - `IPD_EMAR_ALLERGY_CONSUMER`
+  - `IPD_EMAR_EVENT_NAMES: readonly string[]`
+- `emar-read.ts`
+  - `readAdmissionAllergyFlags(db: Db, actor: Actor, admissionId: string, opts: { now?: Date } = {}): Promise<{ flags: IpdEmarPharmacyQueue["all…`
+  - `readEmarDue(db: Db, actor: Actor, opts: { wardId?: string; now?: Date } = {}): Promise<IpdEmarDueList>`
+  - `readEmarPatient(db: Db, actor: Actor, admissionId: string, opts: { now?: Date; from?: Date; to?: Date } = {}): Promise<IpdEmarPatient>`
+  - `readLabelSheet(db: Db, actor: Actor, issueId: string): Promise<IpdEmarLabelSheet>`
+  - `readOverrideCounts(db: Db, actor: Actor, opts: { now?: Date; days?: number } = {}): Promise<IpdEmarOverrideCounts>`
+  - `readPharmacyQueue(db: Db, actor: Actor, opts: { now?: Date } = {}): Promise<IpdEmarPharmacyQueue>`
+  - `readWardChart(db: Db, actor: Actor, opts: { wardId?: string; now?: Date; day?: Date } = {}): Promise<IpdEmarWardChart>`
+  - `scanAtBedside(db: Db, actor: Actor, input: { wristbandCode?: string; admissionId?: string; labelCode?: string }, opts: { now?: Date } = {})…`
+- `emar-rules.ts`
+  - `ISMP_HIGH_ALERT_NAMES`
+  - `dueTimesFor(o: { frequency: string; startAt: Date; stopAt: Date | null; durationDays: number | null }, from: Date, to: Date): Date[]`
+  - `giveTiming(slot: { dueAt: Date; windowMinutes: number; reofferedAt: Date | null }, at: Date): "early" | "open" | "late" | "closed"`
+  - `isHighAlert(itemFlag: boolean, narcotic: boolean, w: DrugWords): boolean`
+  - `isTimeCritical(antibiotic: boolean, w: DrugWords): boolean`
+  - `prnState(given: readonly Date[], prn: { minIntervalMinutes: number; max24h: number }, at: Date): { nextAt: Date | null; in24h: number; capp…`
+  - `unitsPerDose(o: { doseValue: number; doseUnit: string }, strengthLabel: string | null, baseUom: string | null): number | null`
+- `emar.ts`
+  - `EMAR_SYSTEM_ACTOR: Actor`
+  - `IPD_EMAR_NURSE_ROLES`
+  - `NPO_ROUTES: readonly string[]`
+  - `administerDose(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"administer_dose">>`
+  - `backfillEmarAllergyFlags(db: Db, now: Date = new Date()): Promise<number>`
+  - `confirmSecondNursePin(db: Db, actor: Actor, rawUsername: string, pin: string, at: Date): Promise<string>`
+  - `decideAllergyFlag(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"decide_allergy_flag">>`
+  - `emarAllergyConsumer(db: Db): Handler`
+  - `holdDose(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"hold_dose">>`
+  - `issueMed(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"issue_med">>`
+  - `markDoseInError(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"mark_dose_in_error">>`
+  - `missDose(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"miss_dose">>`
+  - `npoAt(exec: Db | Tx, patientId: string, at: Date): Promise<{ source: string } | null>`
+  - `recheckOrdersForAllergy(tx: Tx, payload: { patientId: string; allergyId: string; substance: string }, at: Date): Promise<number>`
+  - `recordInfusionEvent(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"record_infusion_event">>`
+  - `recordNarcoticWastage(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"record_narcotic_wastage">>`
+  - `refuseDose(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"refuse_dose">>`
+  - `reofferHeldDoses(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"reoffer_held_doses">>`
+  - `resolveAllergyFlag(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"resolve_allergy_flag">>`
+  - `returnMed(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"return_med">>`
+  - `secondCheck(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"second_check">>`
+  - `signVerbalOrder(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"sign_verbal_order">>`
+  - `sweepIpdEmar(db: Db, now: Date): Promise<EmarSweepResult>`
+  - `verifyFindingsOf(db: Db | Tx, o: IpdOrderRow, drug: EmarDrug | undefined, at: Date): Promise<{ findings: IpdEmarFinding[]; interactionDataP…`
+  - `verifyOrder(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"verify_order">>`
+  - types: `EmarSweepResult`
+- `encounter.ts`
+  - `IPD_ADMISSION_NO_RE`
+  - `IPD_ADMISSION_PREFIX`
+  - `intendedPayerOfAdmission(payerKind: string | null): string`
+  - `registerIpdEncounterResolver(): () => void`
 - `errors.ts`
   - `class IpdError`
   - `class IpdRefusal`
@@ -294,6 +417,15 @@ Source: `apps/core/src/modules/ipd/`
   - `class IpdModule`
 - `manifest.ts`
   - `ipdManifest: ModuleManifest`
+- `narcotic-ledger.ts`
+  - `followNarcoticsIn(tx: Tx, actor: Actor, admissionId: string, at: Date, move: NarcoticMove): Promise<number>`
+  - `wardNarcoticBalances(exec: Db | Tx, wardId: string, opts: { cut?: Date } = {}): Promise<NarcoticBalance[]>`
+  - types: `NarcoticBalance`, `NarcoticMove`
+- `narcotic.ts`
+  - `IPD_NARCOTIC_RESOLVER_ROLES`
+  - `readNarcoticWard(db: Db, actor: Actor, opts: { wardId?: string; now?: Date } = {}): Promise<IpdNarcoticWard>`
+  - `recordNarcoticCount(db: Db, actor: Actor, raw: unknown, opts: NarcoticOpts = {}): Promise<Output<"record_narcotic_count">>`
+  - `resolveNarcoticException(db: Db, actor: Actor, raw: unknown, opts: NarcoticOpts = {}): Promise<Output<"resolve_narcotic_exception">>`
 - `now-cards.ts`
   - `IPD_DISCHARGE_STEP_STUCK_MINUTES`
   - `SEALED_LABEL`
@@ -304,6 +436,51 @@ Source: `apps/core/src/modules/ipd/`
   - `rankNowRows(rows: readonly NowRow[]): DeskRow[]`
   - `stuckStepOf(args: { state: string; declaredAt: Date; confirmations: Parameters<typeof pendingDepartments>[0]; summarySignedAt: Date | null;…`
   - types: `Identity`, `NowRow`, `StuckStep`
+- `nursing-cards.ts`
+  - `assessmentDueCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `ewsRisingCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `handoverPendingCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `overdueVitalsCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+- `nursing-events.ts`
+  - `IPD_NURSING_EVENT_NAMES: readonly string[]`
+- `nursing-read.ts`
+  - `listShiftHandovers(db: Db, actor: Actor, opts: { wardId?: string; now?: Date } = {}): Promise<IpdShiftHandoverList>`
+  - `nextDueOf(f: DueFacts, now: Date): { kind: "vitals" | "assessment"; dueAt: Date; overdue: boolean } | null`
+  - `readMyShift(db: Db, actor: Actor, opts: { wardId?: string; now?: Date } = {}): Promise<IpdMyShift>`
+  - `readNurseStation(db: Db, actor: Actor, opts: { wardId?: string; now?: Date } = {}): Promise<IpdNurseStation>`
+  - `readNursingChart(db: Db, actor: Actor, admissionId: string, opts: { now?: Date } = {}): Promise<IpdNursingChart>`
+- `nursing.ts`
+  - `IPD_NURSING_STATES`
+  - `acceptShiftHandover(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ handoverId: string; acceptedAt: string }>`
+  - `acknowledgeEwsAlert(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ alertId: string; acknowledgedAt: string | null; seenAt:…`
+  - `addNursingNote(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ noteId: string; lateEntry: boolean }>`
+  - `dutyDoctorsFor(tx: Tx, a: Pick<AdmissionRow, "consultantId" | "department">, at: Date): Promise<string[]>`
+  - `giveShiftHandover(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ handoverId: string; supersedes: string | null }>`
+  - `ioDayStart(at: Date): Date`
+  - `isNightIst(at: Date): boolean`
+  - `recordIntakeOutput(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ entryId: string; lateEntry: boolean }>`
+  - `recordNursingAssessment(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_nursing_assessment">>`
+  - `recordVitals(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_vitals">>`
+  - `scoreContextOf(db: Db | Tx, a: Pick<AdmissionRow, "id" | "patientId" | "department">, at: Date): Promise<ScoreContext>`
+  - `shiftOf(at: Date): { key: IpdShiftKey; startsAt: Date; endsAt: Date }`
+  - `sweepIpdNursing(db: Db, now: Date, hooks: { beforeRow?: (admissionId: string) => void } = {}): Promise<NursingSweepResult>`
+  - types: `NursingSweepResult`
+- `order-charges.ts`
+  - `ipdCoversOrderItem(exec: Db | Tx, orderItemId: string): Promise<boolean>`
+  - `ipdOrderStanding(exec: Db | Tx, encounterNo: string): Promise<EpisodeStanding>`
+  - `lockIpdOrderStanding(tx: Tx, encounterNo: string): Promise<EpisodeStanding>`
+  - `postIpdOrderCharges(tx: Tx, actor: Actor, input: { encounterNo: string; department: "lab" | "imaging"; items: readonly { orderId: string; o…`
+  - `registerIpdOrderChargeSink(): () => void`
+  - `reverseIpdOrderCharge(tx: Tx, actor: Actor, input: { orderItemId: string; workStarted: boolean; reason: string; at: Date }): Promise<{ outc…`
+- `orders.ts`
+  - `activeIpdOrdersOf(exec: Db | Tx, admissionId: string, kinds: readonly string[] = ["drug", "lab", "imaging"]): Promise<IpdOrderRow[]>`
+  - `cancelIpOrder(db: Db, actor: Actor, raw: unknown, opts: Pick<IpdOrderOpts, "now"> = {}): Promise<Output<"cancel_ip_order">>`
+  - `drugFactsOf(o: IpdOrderRow): IpdOrderDrugFacts | null`
+  - `markIpdOrderIssuedIn(tx: Tx, orderId: string, at: Date): Promise<IpdOrderIssueStamp>`
+  - `placeIpOrder(db: Db, actor: Actor, raw: unknown, opts: IpdOrderOpts = {}): Promise<Output<"place_ip_order">>`
+  - `readIpdOrder(exec: Db | Tx, orderId: string): Promise<IpdOrderRow | null>`
+  - `stopIpOrder(db: Db, actor: Actor, raw: unknown, opts: Pick<IpdOrderOpts, "now"> = {}): Promise<Output<"stop_ip_order">>`
+  - types: `IpdOrderDoor`, `IpdOrderIssueStamp`, `IpdOrderOpts`, `IpdOrderRow`
 - `payer-bill.ts`
   - `addPayerNonPayable(db: Db, actor: Actor, raw: unknown, at: Date = new Date()): Promise<IpdNonPayable>`
   - `computePayerSplit(db: Db | Tx, a: AdmissionRow, lines: readonly ChargeLineRow[]): Promise<IpdPayerSplit>`
@@ -312,7 +489,7 @@ Source: `apps/core/src/modules/ipd/`
   - `roomRentCapWarning(db: Db, actor: Actor, admissionId: string, targetClass: IpdBedClass, at: Date = new Date()): Promise<IpdRoomRentCapWarni…`
 - `payer-split.ts`
   - `CAP_EXEMPT_CLASSES: ReadonlySet<IpdBedClass>`
-  - `PROPORTIONAL_COMPONENTS: ReadonlySet<IpdRateComponent>`
+  - `PROPORTIONAL_COMPONENTS: ReadonlySet<IpdChargeComponent>`
   - `capWarningOf(cls: IpdBedClass, capPerDayPaise: number | null, rentPerDayPaise: number | null): { targetClass: IpdBedClass; capPerDayPaise: …`
   - `splitBill(lines: readonly SplitLineInput[], terms: SplitTerms, nonPayables: NonPayables = NO_NON_PAYABLES): IpdPayerSplit`
   - `splitModeOf(payerKind: string | null): SplitMode`
@@ -323,6 +500,7 @@ Source: `apps/core/src/modules/ipd/`
 - `permissions.ts`
   - `IPD_ADMIT`
   - `IPD_ADMIT_REQUEST`
+  - `IPD_ASSESSMENT_RECORD`
   - `IPD_BAND_PRINT`
   - `IPD_BEDS_CLEAN`
   - `IPD_BEDS_MANAGE`
@@ -337,19 +515,79 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_DISCHARGE_DECLARE`
   - `IPD_DISCHARGE_EXIT`
   - `IPD_DISCHARGE_VIEW`
+  - `IPD_EMAR_GIVE`
+  - `IPD_EMAR_ISSUE`
+  - `IPD_EMAR_VERIFY`
+  - `IPD_EMAR_VIEW`
+  - `IPD_EWS_RESPOND`
   - `IPD_FAMILY_ISSUE`
   - `IPD_GATE_PASS`
   - `IPD_GATE_SCAN`
   - `IPD_MORTUARY_MANAGE`
+  - `IPD_NURSING_VIEW`
+  - `IPD_ORDER_PLACE`
   - `IPD_PAYER_MANAGE`
   - `IPD_PAYER_TERMS`
+  - `IPD_ROUND_SIGN`
+  - `IPD_SHIFT_HANDOVER`
   - `IPD_TRANSFER_ACCEPT`
   - `IPD_TRANSFER_START`
+  - `IPD_VITALS_RECORD`
 - `realtime.ts`
   - `IPD_REALTIME_NAMES: string[]`
   - `IPD_TOPIC_SPACES: TopicSpace[]`
   - `ipdTopicRouter: TopicRouter`
   - `ipdTopicsFor(e: Pick<TailedEvent, "name" | "payload">): string[]`
+- `rounds-clock.ts`
+  - `IPD_COVER_KIND`
+  - `IPD_ROUNDS_REF_TYPE`
+  - `IPD_ROUND_NUDGE_HEAD_KIND`
+  - `IPD_ROUND_NUDGE_KIND`
+  - `applyCovers(db: Db, at: Date, now: Date): Promise<number>`
+  - `nudgeUnrounded(db: Db, now: Date, heads: boolean): Promise<number>`
+  - `sweepIpdRoundsClock(db: Db, now: Date): Promise<{ covers: number; nudges: number; drafts: number }>`
+- `rounds-events.ts`
+  - `orderCancelled`
+  - `orderPlaced`
+  - `orderStopped`
+  - `roundSigned`
+- `rounds-read.ts`
+  - `readRoundPatient(db: Db, actor: Actor, admissionId: string, now: Date = new Date()): Promise<IpdRoundPatient>`
+  - `readRoundsList(db: Db, actor: Actor, now: Date = new Date()): Promise<IpdRoundsList>`
+  - `roundsConsultantChoices(db: Db, actor: Actor): Promise<{ userId: string; name: string; department: string | null }[]>`
+- `rounds-team.ts`
+  - `CONSULTANT_GRADES: readonly string[]`
+  - `NON_CONSULTANT_ROLE_KEYS: readonly string[]`
+  - `consultantIdsAmong(exec: Db | Tx, userIds: readonly string[], at: Date): Promise<Set<string>>`
+  - `coveringConsultantFor(exec: Db | Tx, consultantId: string, at: Date, units?: Map<string, string>): Promise<string | null>`
+  - `isConsultant(exec: Db | Tx, userId: string, at: Date): Promise<boolean>`
+  - `unitHeadFor(exec: Db | Tx, consultantId: string, at: Date, units?: Map<string, string>): Promise<string | null>`
+- `rounds.ts`
+  - `IPD_CONSULT_NOTICE_KIND`
+  - `closeConsult(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"close_consult">>`
+  - `cosignRound(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"cosign_round">>`
+  - `requestConsult(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"request_consult">>`
+  - `signRound(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"sign_round">>`
+- `tpa-packages.ts`
+  - `importSchemePackages(db: Db, actor: Actor, raw: unknown, at: Date = new Date()): Promise<IpdPackageImportResult>`
+  - `packageShares(list: readonly T[]): (T & { shareBp: number; amountPaise: number })[]`
+  - `parseSchemePackagesCsv(csv: string): { rows: PackageCsvRow[]; problems: string[] }`
+  - `searchSchemePackages(db: Db, actor: Actor, args: { scheme: "pmjay" | "state_scheme"; q?: string; limit?: number }): Promise<IpdSchemePackag…`
+- `tpa-read.ts`
+  - `authStateOf(rowsNewestFirst: readonly AuthRow[])`
+  - `readTpaBoard(db: Db, actor: Actor, now: Date = new Date()): Promise<IpdTpaBoard>`
+  - `readTpaPanel(db: Db, actor: Actor, admissionId: string, now: Date = new Date()): Promise<IpdTpaPanel>`
+  - `tpaDueCard(ctx: Pick<DeskProviderCtx, "db" | "now">): Promise<DeskCard[]>`
+- `tpa.ts`
+  - `answerTpaQuery(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"answer_tpa_query">>`
+  - `attachTpaDocument(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"attach_tpa_document">>`
+  - `packageAmountOf(db: Db | Tx, admissionId: string): Promise<{ amountPaise: number; count: number }>`
+  - `recordClaimRejection(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_claim_rejection">>`
+  - `recordClaimSettlement(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_claim_settlement">>`
+  - `recordTpaQuery(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_tpa_query">>`
+  - `removeSchemePackage(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"remove_scheme_package">>`
+  - `selectSchemePackage(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"select_scheme_package">>`
+  - `submitClaim(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"submit_claim">>`
 - `transfer-events.ts`
   - `IPD_TRANSFER_EVENT_NAMES`
 - `transfers.ts`
@@ -369,7 +607,7 @@ Source: `apps/core/src/modules/ipd/`
 
 ## Tables (`kernel/db/schema/ipd.ts`)
 
-`ipd_admission_conditions`, `ipd_admission_deposits`, `ipd_admissions`, `ipd_attendant_message_consents`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_proposals`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_charge_exceptions`, `ipd_charge_lines`, `ipd_class_changes`, `ipd_daily_totals`, `ipd_deposit_alerts`, `ipd_discharge_confirmations`, `ipd_discharge_summaries`, `ipd_discharges`, `ipd_family_callbacks`, `ipd_family_links`, `ipd_family_otps`, `ipd_family_sessions`, `ipd_final_bills`, `ipd_gate_passes`, `ipd_mortuary_register`, `ipd_payer_auths`, `ipd_payer_claims`, `ipd_payer_non_payables`, `ipd_payer_split_snapshots`, `ipd_stay_exits`, `ipd_transfers`
+`ipd_admission_conditions`, `ipd_admission_deposits`, `ipd_admissions`, `ipd_attendant_message_consents`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_proposals`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_charge_exceptions`, `ipd_charge_lines`, `ipd_class_changes`, `ipd_daily_totals`, `ipd_deposit_alerts`, `ipd_discharge_confirmations`, `ipd_discharge_summaries`, `ipd_discharges`, `ipd_family_callbacks`, `ipd_family_links`, `ipd_family_otps`, `ipd_family_sessions`, `ipd_final_bills`, `ipd_gate_passes`, `ipd_intake_output`, `ipd_mortuary_register`, `ipd_nursing_alerts`, `ipd_nursing_assessments`, `ipd_nursing_notes`, `ipd_payer_auths`, `ipd_payer_claims`, `ipd_payer_non_payables`, `ipd_payer_split_snapshots`, `ipd_shift_handovers`, `ipd_stay_exits`, `ipd_transfers`, `ipd_vitals`
 
 Foreign keys into: `patients`, `resources`
 
@@ -379,9 +617,15 @@ Foreign keys into: `patients`, `resources`
 - `beds.controller.ts` — `/ipd/beds`
 - `billdesk.controller.ts` — `/ipd/admissions`, `/ipd/bill-desk`
 - `charges.controller.ts` — `/ipd/charge-lines`
+- `copilot.controller.ts` — `/ipd/discharge`, `/ipd/nursing`, `/ipd/rounds`
+- `counter.controller.ts` — `/ipd/counter`
 - `discharge.controller.ts` — `/ipd/discharge`, `/ipd/mortuary`
+- `emar.controller.ts` — `/ipd/emar`
 - `family.controller.ts` — `/ipd/admissions`, `/ipd/family`, `/ipd/family-callbacks`, `/ipd/family-links`
+- `nursing.controller.ts` — `/ipd/nursing`
 - `payer.controller.ts` — `/ipd/admissions`, `/ipd/payer`
+- `rounds.controller.ts` — `/ipd/charge-exceptions`, `/ipd/consults`, `/ipd/orders`, `/ipd/rounds`
+- `tpa.controller.ts` — `/ipd/admissions`, `/ipd/tpa`
 - `transfers.controller.ts` — `/ipd/transfers`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/ipd`
