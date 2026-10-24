@@ -11,7 +11,7 @@ import { userNames } from "./admissions";
 import { IPD_ENDED_STATES } from "./charges";
 import { IPD_BILL_VIEW } from "./manifest";
 import { computePayerSplit } from "./payer-bill";
-import type { Actor, IpdBedClass, IpdBillDay, IpdChargeLineView, IpdInterimBill, IpdRateComponent, IpdSplitSnapshot } from "@hmis/contracts";
+import type { Actor, IpdBedClass, IpdBillDay, IpdChargeComponent, IpdChargeLineView, IpdInterimBill, IpdRateComponent, IpdSplitSnapshot } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { AdmissionRow } from "./admission-core";
 
@@ -46,11 +46,11 @@ export async function readInterimBill(db: Db, actor: Actor, admissionId: string)
     : (await db.select({ no: tariffVersions.versionNo }).from(tariffVersions).where(eq(tariffVersions.id, versionId)))[0];
 
   const byDay = new Map<string, IpdBillDay>();
-  const byComponent = new Map<IpdRateComponent, number>();
+  const byComponent = new Map<IpdChargeComponent, number>(); // IPD/ER train B2: the contracts are final (#893 union)
   const totals = { grossPaise: 0, discountPaise: 0, gstPaise: 0, netPaise: 0 };
   for (const l of lines) {
     const view: IpdChargeLineView = {
-      id: l.id, serviceDate: l.serviceDate, component: l.component as IpdRateComponent,
+      id: l.id, serviceDate: l.serviceDate, component: l.component as IpdChargeComponent,
       billedClass: l.billedClass as IpdBedClass | null, serviceCode: l.serviceCode, serviceName: l.serviceName, qty: l.qty,
       unitPaise: l.unitPaise, grossPaise: l.grossPaise, discountPaise: l.discountPaise, gstPaise: l.cgstPaise + l.sgstPaise,
       netPaise: l.netPaise, source: l.source as IpdChargeLineView["source"],

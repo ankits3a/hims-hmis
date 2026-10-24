@@ -33,7 +33,7 @@ class IpdRealtimeRegistrar implements OnModuleInit {
 
 @Module({
   imports: [RealtimeModule],
-  controllers: [IpdBedsController, IpdAdmissionsController, IpdChargesController, IpdPayerController, IpdBillDeskController],
+  controllers: [IpdBedsController, IpdAdmissionsController, IpdChargesController, IpdPayerController, IpdTransfersController, IpdBillDeskController, IpdDischargeController, IpdFamilyController],
   providers: [IpdRealtimeRegistrar],
 })
 export class IpdModule {}

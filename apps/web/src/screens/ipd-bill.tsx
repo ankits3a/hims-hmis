@@ -11,6 +11,7 @@ import type {
 } from "@hmis/contracts";
 import "../styles/paper-pine.css";
 import "./ipd-bill.css";
+import { dateLocale } from "../lib/date-locale";
 
 /*
  * E2.1 (#725) — THE INTERIM BILL (spec §4.3 "interim bill on screen any time", §4.9 H). Read-only: the lines the nightly
@@ -25,10 +26,10 @@ import "./ipd-bill.css";
 
 /** "10 Mar" — an IST calendar date (`YYYY-MM-DD`) as the bill prints it. */
 const dayLabel = (date: string): string =>
-  new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", day: "2-digit", month: "short", weekday: "short" }).format(new Date(`${date}T00:00:00Z`));
+  new Intl.DateTimeFormat(dateLocale(undefined, "en-GB"), { timeZone: "UTC", day: "2-digit", month: "short", weekday: "short" }).format(new Date(`${date}T00:00:00Z`));
 /** "10 Mar 23:00" — an instant in IST. */
 const dayTime = (iso: string): string =>
-  `${new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short" }).format(new Date(iso))} ${fmtIst(iso)}`;
+  `${new Intl.DateTimeFormat(dateLocale(undefined, "en-GB"), { timeZone: "Asia/Kolkata", day: "2-digit", month: "short" }).format(new Date(iso))} ${fmtIst(iso)}`;
 
 function ClassName({ cls }: { cls: IpdBedClass | null }): React.ReactElement {
   const { t } = useTranslation();

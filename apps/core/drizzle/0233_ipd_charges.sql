@@ -14,7 +14,7 @@ CREATE TABLE "ipd_charge_exceptions" (
 	"last_seen_at" timestamp with time zone NOT NULL,
 	"resolved_at" timestamp with time zone,
 	"resolved_line_id" text,
-	CONSTRAINT "ipd_charge_exceptions_component_ck" CHECK ("ipd_charge_exceptions"."component" is null or "ipd_charge_exceptions"."component" in ('room', 'nursing', 'rmo', 'visit', 'cross_visit')),
+	CONSTRAINT "ipd_charge_exceptions_component_ck" CHECK ("ipd_charge_exceptions"."component" is null or "ipd_charge_exceptions"."component" in ('room', 'nursing', 'rmo', 'visit', 'cross_visit', 'lab', 'imaging', 'pharmacy', 'er')),
 	CONSTRAINT "ipd_charge_exceptions_reason_ck" CHECK ("ipd_charge_exceptions"."reason" in ('rate_missing', 'tariff_missing', 'posting_failed')),
 	CONSTRAINT "ipd_charge_exceptions_shape_ck" CHECK (("ipd_charge_exceptions"."reason" = 'posting_failed') = ("ipd_charge_exceptions"."component" is null) and ("ipd_charge_exceptions"."component" is null) = ("ipd_charge_exceptions"."service_date" is null))
 );
@@ -47,8 +47,8 @@ CREATE TABLE "ipd_charge_lines" (
 	"reason" text,
 	"posted_by" text NOT NULL,
 	"posted_at" timestamp with time zone NOT NULL,
-	CONSTRAINT "ipd_charge_lines_component_ck" CHECK ("ipd_charge_lines"."component" in ('room', 'nursing', 'rmo', 'visit', 'cross_visit')),
-	CONSTRAINT "ipd_charge_lines_source_ck" CHECK ("ipd_charge_lines"."source" in ('ipd.nightly', 'ipd.visit', 'ipd.reversal')),
+	CONSTRAINT "ipd_charge_lines_component_ck" CHECK ("ipd_charge_lines"."component" in ('room', 'nursing', 'rmo', 'visit', 'cross_visit', 'lab', 'imaging', 'pharmacy', 'er')),
+	CONSTRAINT "ipd_charge_lines_source_ck" CHECK ("ipd_charge_lines"."source" in ('ipd.nightly', 'ipd.visit', 'ipd.reversal', 'ipd.order', 'ipd.pharmacy', 'ipd.er')),
 	CONSTRAINT "ipd_charge_lines_qty_ck" CHECK ("ipd_charge_lines"."qty" > 0),
 	CONSTRAINT "ipd_charge_lines_reversal_ck" CHECK (("ipd_charge_lines"."source" = 'ipd.reversal') = ("ipd_charge_lines"."reversal_of" is not null)),
 	CONSTRAINT "ipd_charge_lines_sign_ck" CHECK (case when "ipd_charge_lines"."reversal_of" is null then "ipd_charge_lines"."unit_paise" >= 0 and "ipd_charge_lines"."gross_paise" >= 0 and "ipd_charge_lines"."discount_paise" >= 0 and "ipd_charge_lines"."net_paise" >= 0

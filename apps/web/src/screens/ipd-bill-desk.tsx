@@ -10,6 +10,7 @@ import type { IpdBillDesk, IpdBillDeskReason, IpdBillDeskRow } from "@hmis/contr
 import "../styles/paper-pine.css";
 import "./ipd-bill.css";
 import "./ipd-bill-desk.css";
+import { dateLocale } from "../lib/date-locale";
 
 /*
  * E2.3 (#727) — THE BILL DESK (spec SPEC-ipd-core §4.3 deposit ladder, §4.9 H). EXCEPTIONS ONLY: a row is an admission that
@@ -29,7 +30,7 @@ const HOT: ReadonlySet<IpdBillDeskReason> = new Set(["deposit_90", "icu_low_days
 
 /** "11 Mar 09:30" — an instant in IST. */
 const when = (iso: string): string =>
-  new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })
+  new Intl.DateTimeFormat(dateLocale(undefined, "en-GB"), { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })
     .format(new Date(iso));
 
 function Used({ bp }: { bp: number | null }): React.ReactElement {

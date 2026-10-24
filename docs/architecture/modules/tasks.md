@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/tasks/`
 · Notes: [MAP.md](../../../apps/core/src/modules/tasks/MAP.md)
 
 - **Depends on modules:** `roster`
-- **Used by modules:** `bmw`, `housekeeping`, `linen`, `maintenance`
+- **Used by modules:** `bmw`, `housekeeping`, `linen`, `maintenance`, `transport`
 - **Kernel used:** `alerts`, `auth`, `db`, `modules`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
@@ -30,14 +30,15 @@ Source: `apps/core/src/modules/tasks/`
   - `assignTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow>`
   - `cancelTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date(), opts: CancelOptions = {}): Promise<TaskRow>`
   - `cancelTasksForPlace(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<string[]>`
-  - `completeTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow>`
+  - `completeTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date(), opts: HookOptions = {}): Promise<TaskRow>`
   - `raiseTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<RaiseResult>`
   - `returnToPool(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date(), opts: ActOptions = {}): Promise<TaskRow>`
-  - `startTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow>`
+  - `startTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date(), opts: HookOptions = {}): Promise<TaskRow>`
   - `verifyTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow>`
-  - types: `ActOptions`, `CancelOptions`, `RaiseResult`, `TaskRow`
+  - types: `ActOptions`, `CancelOptions`, `HookOptions`, `RaiseResult`, `TaskRow`
 - `errors.ts`
   - `class TaskError`
+  - `class TaskKindRefusal`
   - `taskHttpStatus(code: TaskRefusalCode): number`
 - `kinds.ts`
   - `DEFAULT_LADDER_MIN: readonly number[]`

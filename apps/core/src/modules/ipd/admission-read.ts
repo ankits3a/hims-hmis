@@ -93,6 +93,7 @@ async function toViews(db: Db, actor: Actor, rows: AdmissionRow[], at: Date): Pr
       icuApproval: a.icu ? (a.icuApprovalId !== null ? { id: a.icuApprovalId, status: "granted" } : await latestApproval(db, "icu", [a.id, a.patientId])) : null,
       admittedAt: a.admittedAt?.toISOString() ?? null, stabilisedAt: a.stabilisedAt?.toISOString() ?? null,
       downtimeSerial: a.downtimeSerial,
+      erArrivedAt: null, // IPD/ER train B2 — the contracts are final; the ER arrival time arrives with the ER lanes (B4)
       incomplete: a.state === "admitted" ? incompleteOf(a, band !== undefined) : [],
     });
   }

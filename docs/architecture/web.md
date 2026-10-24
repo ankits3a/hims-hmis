@@ -41,9 +41,16 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/doctor-desk/ratings` | `apps/web/src/screens/doctor-desk-ratings` |
 | `/doctor-desk/report` | `apps/web/src/screens/doctor-desk-report` |
 | `/doctor-desk/unit` | `apps/web/src/screens/doctor-desk-unit` |
+| `/family` | `apps/web/src/screens/ipd-family` |
 | `/formulary/admin` | `(redirect)` |
 | `/housekeeping` | `apps/web/src/screens/housekeeping-board` |
+| `/ipd/admissions/$admissionId/bill` | `apps/web/src/screens/ipd-bill` |
+| `/ipd/admit` | `apps/web/src/screens/ipd-admit` |
 | `/ipd/beds` | `apps/web/src/screens/ipd-beds` |
+| `/ipd/bill-desk` | `apps/web/src/screens/ipd-bill-desk` |
+| `/ipd/discharge` | `apps/web/src/screens/ipd-discharge` |
+| `/ipd/family-callbacks` | `apps/web/src/screens/ipd-family-callbacks` |
+| `/ipd/handovers` | `apps/web/src/screens/ipd-handovers` |
 | `/ipd/passes` | `apps/web/src/screens/ipd-passes` |
 | `/lab/bench` | `apps/web/src/screens/lab-bench` |
 | `/lab/collection` | `apps/web/src/screens/lab-collection` |
@@ -133,3 +140,5 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/staff` | `apps/web/src/screens/staff-reports` |
 | `/tasks` | `apps/web/src/screens/my-tasks` |
 | `/tasks/board` | `apps/web/src/screens/tasks-board` |
+| `/transport` | `apps/web/src/screens/transport-board` |
+| `/transport/request` | `apps/web/src/screens/transport-request` |

@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/patients/`
 
 - **Depends on modules:** —
-- **Used by modules:** `abdm`, `aerb`, `billing`, `doctor-desk`, `ipd`, `lab`, `membership`, `opd`, `ot`, `partners`, `pharmacy`, `radiology`
+- **Used by modules:** `abdm`, `aerb`, `billing`, `doctor-desk`, `ipd`, `lab`, `membership`, `opd`, `ot`, `partners`, `passes`, `pharmacy`, `radiology`, `transport`
 - **Kernel used:** `approvals`, `auth`, `config`, `crypto`, `db`, `desk`, `documents`, `events`, `modules`, `phi`, `search`, `tokens`, `workflow`
 - **Subscribes to events:** `approvalRejected`
 

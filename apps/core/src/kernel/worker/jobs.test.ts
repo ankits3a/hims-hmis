@@ -229,7 +229,9 @@ describe("registerAllJobs threads NOTIFY_STUCK_AFTER_MS to the pump (Book R2)", 
       channel, async send(to: string) { sent.push(to); return { providerMessageId: null }; },
     });
     const specs: JobSpec[] = [];
-    const cfg = { ipdDailyTotals: { whatsappTemplateName: "crk_ipd_daily_totals_v1", dltTemplateId: null, deskPhone: "0612-2200000" } };
+    // IPD/ER train (as ipd-stage): main's #934 slip sweep builds a document store from any config it is given, so the
+    // config names a path (nothing is written; only the notify pump runs here).
+    const cfg = { documentStorePath: "/tmp/hmis-jobs-761-documents", ipdDailyTotals: { whatsappTemplateName: "crk_ipd_daily_totals_v1", dltTemplateId: null, deskPhone: "0612-2200000" } };
     registerAllJobs(recordingScheduler(specs), db, new ModuleRegistry(), {}, INTERVALS,
       { whatsapp: rec("whatsapp"), sms: rec("sms"), web_push: rec("web_push") }, cfg as unknown as Parameters<typeof registerAllJobs>[6]);
     await specs.find((s) => s.name === "runNotifyPump")!.run(NOON);

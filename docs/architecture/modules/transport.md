@@ -57,8 +57,8 @@ Source: `apps/core/src/modules/transport/`
 
 Foreign keys into: `ipd`, `resources`, `tasks`
 
-## HTTP routes (8)
+## HTTP routes
 
-- `transport.controller.ts` — 8: `/transport/board`, `/transport/details`, `/transport/escorts`, `/transport/patients`, `/transport/places`, `/transport/requests`, `/transport/tasks`
+- `transport.controller.ts` — `/transport/board`, `/transport/details`, `/transport/escorts`, `/transport/patients`, `/transport/places`, `/transport/requests`, `/transport/tasks`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/transport`

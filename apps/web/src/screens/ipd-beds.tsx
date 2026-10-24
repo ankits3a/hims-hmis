@@ -521,7 +521,7 @@ function WardCard({ ward, onOpen, cleans, tickets }: {
 
 function WardDrawer(p: {
   ward: IpdBoardWard; wall: boolean; selected: string | null; onSelect: (id: string | null) => void; onClose: () => void;
-  mayManage: boolean; mayClean: boolean; onDone: () => void;
+  mayManage: boolean; mayClean: boolean; onDone: () => void; mayTransfer: boolean; mayClass: boolean;
   cleans: Map<string, BedCleanView> | null; mayVerify: boolean; mayNudge: boolean;
   tickets: Map<string, BedTicketView> | null; mayRaise: boolean; mayConfirmRepair: boolean;
 }): React.ReactElement {

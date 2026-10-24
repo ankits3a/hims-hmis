@@ -298,7 +298,17 @@ export const ipdBands = pgTable(
 // ═══════════════════════════════════════ E2.1 (#725) — the running bill ═══════════════════════════════════════
 
 /** The daily and per-visit components the running bill posts (`IPD_RATE_COMPONENTS`, retyped for drizzle-kit). */
-const CHARGE_COMPONENTS_SQL = sql.raw(["room", "nursing", "rmo", "visit", "cross_visit"].map((c) => `'${c}'`).join(", "));
+/**
+ * #893 — the running bill's component and source CHECKs list exactly the contracts' `IPD_CHARGE_COMPONENTS` /
+ * `IPD_CHARGE_SOURCES` (packages/contracts/src/ipd/charges.ts), the one owner of both; retyped here for the reason
+ * `IPD_BED_CLASS_VALUES` is (drizzle-kit loads this file without the workspace packages), and held equal by
+ * `modules/ipd/charge-lists-parity.test.ts`. Every migration that rebuilds these CHECKs lists the whole of each
+ * (`charge-checks-893.test.ts`, and its twin in the ER bill suite).
+ */
+export const IPD_CHARGE_COMPONENT_VALUES = ["room", "nursing", "rmo", "visit", "cross_visit", "lab", "imaging", "pharmacy", "er"] as const;
+export const IPD_CHARGE_SOURCE_VALUES = ["ipd.nightly", "ipd.visit", "ipd.reversal", "ipd.order", "ipd.pharmacy", "ipd.er"] as const;
+const CHARGE_COMPONENTS_SQL = sql.raw(IPD_CHARGE_COMPONENT_VALUES.map((c) => `'${c}'`).join(", "));
+const CHARGE_SOURCES_SQL = sql.raw(IPD_CHARGE_SOURCE_VALUES.map((c) => `'${c}'`).join(", "));
 
 /**
  * One posted line of an admission's running bill (spec SPEC-ipd-core §4.3). APPEND-ONLY: a wrong line is answered by
@@ -355,7 +365,7 @@ export const ipdChargeLines = pgTable(
     uniqueIndex("ipd_charge_lines_reversal_ux").on(t.reversalOf).where(sql`${t.reversalOf} is not null`),
     index("ipd_charge_lines_admission_idx").on(t.admissionId, t.serviceDate),
     check("ipd_charge_lines_component_ck", sql`${t.component} in (${CHARGE_COMPONENTS_SQL})`),
-    check("ipd_charge_lines_source_ck", sql`${t.source} in ('ipd.nightly', 'ipd.visit', 'ipd.reversal')`),
+    check("ipd_charge_lines_source_ck", sql`${t.source} in (${CHARGE_SOURCES_SQL})`),
     check("ipd_charge_lines_qty_ck", sql`${t.qty} > 0`),
     check("ipd_charge_lines_reversal_ck", sql`(${t.source} = 'ipd.reversal') = (${t.reversalOf} is not null)`),
     // A posted line is never negative; a reversal is never positive. Zero is allowed both ways (a fully discounted line).

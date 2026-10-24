@@ -311,7 +311,9 @@ async function readSummaryIn(db: Db, admissionId: string): Promise<IpdSummaryVie
     provenance: {
       source: s.draftSource as "person" | "copilot_draft", draftModelId: s.draftModelId, draftPromptVersion: s.draftPromptVersion,
       draftedBy: { id: s.draftedBy, name: names.get(s.draftedBy) ?? s.draftedBy }, draftedAt: s.draftedAt.toISOString(),
+      draft: null, // IPD/ER train B2 — the copilot draft arrives with ipd-copilot (B3)
     },
+    medicineFlags: [], stamp: null, // IPD/ER train B2 — the copilot draft's flags and stamp arrive with ipd-copilot (B3)
     label: s.status === "signed" ? "Signed" : s.status === "awaiting_cosign" ? "Awaiting co-sign" : "Draft",
     residentSignedBy: who(s.residentSignedBy), signedBy: who(s.signedBy), signedAt: s.signedAt?.toISOString() ?? null,
     documentId: s.documentId,

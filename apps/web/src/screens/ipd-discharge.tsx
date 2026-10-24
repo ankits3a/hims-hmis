@@ -326,7 +326,8 @@ function SummaryCard({ tr, onDone }: { tr: IpdDischargeTracker; onDone: () => vo
     setBusy(true); clear();
     signSummary(tr.admissionId, view.summaryId, view.version).then(() => { setBusy(false); onDone(); }, (e: unknown) => { setBusy(false); fail(e); });
   };
-  const field = (k: Exclude<keyof IpdSummaryContent, "diagnosis" | "medicines">, rows = 2) => (
+  // IPD/ER train B2 — the contract carries ipd-copilot's draft fields (B3); they are not free-text boxes.
+  const field = (k: Exclude<keyof IpdSummaryContent, "diagnosis" | "medicines" | "medicineFlags" | "medicineAck" | "recordsHash">, rows = 2) => (
     <label key={k}>{t(`ipdDischarge.summary.f.${k}`)}
       <textarea rows={rows} value={draft[k]} onChange={(e) => setDraft({ ...draft, [k]: e.target.value })} />
     </label>

@@ -33,6 +33,8 @@ function desk(over: Partial<IpdBillDesk> = {}): IpdBillDesk {
   const counts = {
     deposit_90: 1, deposit_75: 1, icu_low_days: 0, posting_failed: 1, rate_missing: 0, tariff_missing: 0, deposit_check_pending: 1,
     cash_consent_missing: 0, auth_pending_24h: 0, discharge_balance: 0,
+    // IPD/ER train B2 — the contracts are final: the order, return and reissue exceptions arrive with later lanes.
+    visit_backdated: 0, order_cancelled_after_bill: 0, order_cancelled_after_work: 0, return_after_bill: 0, reissue_lost_damaged: 0,
   };
   const dailyTotals = {
     billDate: "2030-01-01", sending: { on: true, channels: ["whatsapp" as const], missing: [], sendHourIst: 9 }, sent: 5, waiting: 0, notSent: [],

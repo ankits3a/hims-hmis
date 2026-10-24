@@ -62,8 +62,8 @@ Source: `apps/core/src/modules/passes/`
 
 Foreign keys into: `ipd`, `resources`
 
-## HTTP routes (9)
+## HTTP routes
 
-- `passes.controller.ts` — 9: `/passes/admissions`, `/passes/custody`, `/passes/issue`, `/passes/pause`, `/passes/reissue`, `/passes/resume`, `/passes/scan`, `/passes/visitor`, `/passes/wards`
+- `passes.controller.ts` — `/passes/admissions`, `/passes/custody`, `/passes/issue`, `/passes/pause`, `/passes/reissue`, `/passes/resume`, `/passes/scan`, `/passes/visitor`, `/passes/wards`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/passes`

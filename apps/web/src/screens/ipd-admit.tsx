@@ -19,6 +19,7 @@ import type { BandResult, Consultant, ConsentInput, DepositChoice } from "../lib
 import { code128BBars } from "../components/specimen-label";
 import "../styles/paper-pine.css";
 import "./ipd-admit.css";
+import { dateLocale } from "../lib/date-locale";
 
 /**
  * E1.2 (#719) — ADMIT, THE ONE FLOWING SHEET (spec §4.9 B; design board B, Admit.dc.html).
@@ -46,7 +47,7 @@ const ISOLATIONS = ["none", "contact", "droplet", "airborne"] as const;
 
 /** "13 Oct 04:24" in IST — a validity that runs into tomorrow needs its day. */
 const dayTimeIst = (iso: string): string =>
-  new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
+  new Intl.DateTimeFormat(dateLocale(undefined, "en-GB"), { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
 
 const refusalText = (e: unknown): Refusal => refusalOf(e) ?? { message: e instanceof Error ? e.message : String(e) };
 

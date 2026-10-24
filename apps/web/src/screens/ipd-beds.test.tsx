@@ -52,7 +52,7 @@ function boardOf(wall: boolean): IpdBedBoard {
   ];
   const daycare = [bed("F05-DC-01", { class: "daycare", inCensus: false, genderRule: "any", status: "occupied", occupant: { initials: "R.K.", name: name("Ram Kumar") } })];
   return {
-    asOf: "2026-01-01T05:00:00.000Z", wall, waiting: [],
+    asOf: "2026-01-01T05:00:00.000Z", wall,
     totals: {
       census: { occupied: 2, total: 4 }, free: 1, freeByClass: { general: 1 }, reserved: 0, cleaning: 1, cleaningOver60: 1,
       blocked: 0, blockedPastReturn: 0, incumbent: 1, overflow: { occupied: 0, total: 1 }, outsideCensus: { occupied: 1, total: 1 },

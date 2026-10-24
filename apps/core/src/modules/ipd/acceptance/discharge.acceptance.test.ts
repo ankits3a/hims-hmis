@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { jsonWithoutIds } from "../../../../test/helpers/ids";
 import { and, eq, inArray } from "drizzle-orm";
 import { IPD_INTENTS, ipdSchemaKeys, newId } from "@hmis/contracts";
 import {
@@ -331,12 +332,13 @@ describe("E3.2 discharge — acceptance", () => {
     const { admissionId } = await w.admitAt("general", ist("2026-03-10T10:00:00"));
     const out = await fit(admissionId, ist("2026-03-12T09:00:00"));
     expect(Object.keys(out).filter((k) => MONEY_WORDS.test(k))).toEqual([]);
-    expect(JSON.stringify(out)).not.toMatch(/paise|₹/i);
+    // #944 — the scans read past ids (#940): a random ULID can spell FEE, BILL or DUES by chance.
+    expect(jsonWithoutIds(out)).not.toMatch(/paise|₹/i);
     expect(out).toEqual({
       admissionId, state: "fit_declared", clockStartedAt: ist("2026-03-12T09:00:00").toISOString(), targetAt: ist("2026-03-12T12:00:00").toISOString(),
     });
     const fitEvents = await db.select().from(events).where(and(eq(events.name, "ipd.discharge.fit_declared"), inArray(events.correlationId, [admissionId])));
     expect(fitEvents).toHaveLength(1);
-    expect(JSON.stringify(fitEvents[0]!.payload)).not.toMatch(MONEY_WORDS);
+    expect(jsonWithoutIds(fitEvents[0]!.payload)).not.toMatch(MONEY_WORDS);
   });
 });
