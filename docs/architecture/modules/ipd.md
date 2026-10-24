@@ -13,10 +13,18 @@ Source: `apps/core/src/modules/ipd/`
 
 - **Depends on modules:** —
 - **Used by modules:** —
-- **Kernel used:** `auth`, `db`, `resources`
+- **Kernel used:** `auth`, `db`, `resources`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
 
+- `admission-workflow.ts`
+  - `ADMISSION_TRANSITIONS: readonly AdmissionTransition[]`
+  - `ADMISSION_WORKFLOW_DEF_KEY`
+  - `IPD_ACTOR_ROLE_KEYS: Record<IpdActorKind, readonly string[]>`
+  - `admissionIntentFor(from: string, to: string): IpdIntentName | null`
+  - `admissionWorkflowDefinition: WorkflowDefinition`
+  - `requestedBudgetMinutes(requestedAt: Date, plannedFor?: Date): number`
+  - types: `AdmissionTransition`
 - `bed-attributes.ts`
   - `IPD_BED_EQUIPMENT`
   - `IPD_BED_RULE_CODES`
