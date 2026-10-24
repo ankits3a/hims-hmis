@@ -26,6 +26,7 @@ import { pharmacyManifest } from "../../modules/pharmacy";
 import { labManifest } from "../../modules/lab";
 import { abdmManifest } from "../../modules/abdm";
 import { orderingManifest } from "../../modules/ordering";
+import { housekeepingManifest } from "../../modules/housekeeping";
 import { doctorDeskManifest } from "../../modules/doctor-desk";
 
 /**
@@ -93,6 +94,7 @@ const MANIFEST_BY_IDENTIFIER: Record<string, ModuleManifest> = {
   pharmacyManifest, // PLAN 16c T3
   abdmManifest, // ABDM S2 — worker-only, the `notify` shape
   orderingManifest, // DECISION 0067 — both processes
+  housekeepingManifest, // E1.4 HOUSEKEEPING (issue #721) — both processes
   doctorDeskManifest, // DOCTOR DESK DD-0 — app-only
 };
 
@@ -208,6 +210,8 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "bmw",
       // E2.4 LINEN (issue #728) — appended. It raises its linen change task through the tasks index.
       "linen",
+      // E1.4 HOUSEKEEPING (issue #721) — appended. A leaf: it reaches into tasks and ipd through their indexes.
+      "housekeeping",
       // DOCTOR DESK DD-0 (#626) — appended. A leaf: it reads lab, radiology, opd, patients and roster
       // through their indexes; nothing imports it.
       "doctor-desk",
@@ -440,7 +444,9 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "pharmacy",
       // DECISION 0067 — the free-test consumer (`ordering.free_tests`); installed in both processes.
       "ordering",
+      // E1.4 HOUSEKEEPING (issue #721) — the bed-turnover consumer (`housekeeping.bed_turnover`); installed in both.
+      "housekeeping",
     ]);
-    expect(workerKeys).toHaveLength(20); // DECISION 0067: 19 -> 20, `ordering`; // PHASE O T1: 16 -> 17, `obligations`; ABDM S2: 17 -> 18, `abdm`; MOBILE M6b: 18 -> 19, `phone_push`
+    expect(workerKeys).toHaveLength(21); // E1.4 HOUSEKEEPING: 20 -> 21, `housekeeping`; DECISION 0067: 19 -> 20, `ordering`; // PHASE O T1: 16 -> 17, `obligations`; ABDM S2: 17 -> 18, `abdm`; MOBILE M6b: 18 -> 19, `phone_push`
   });
 });

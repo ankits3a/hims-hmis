@@ -977,6 +977,17 @@ const LINEN_PAIRS: readonly string[] = [
   "admin/linen.manage",
 ];
 
+/** The README prose line authorising housekeeping's grants (E1.4, issue #721). Quoted, not paraphrased. */
+const HOUSEKEEPING_README_PROSE =
+  "`housekeeping.verify_terminal` is held by `services_supervisor` alone — a terminal clean (isolation bed, infection,\ndeath) is checked by the housekeeping supervisor.";
+
+/** E1.4 HOUSEKEEPING (issue #721) — the services supervisor holds both; the duty manager reads the board out of hours. */
+const HOUSEKEEPING_PAIRS: readonly string[] = [
+  "services_supervisor/housekeeping.view",
+  "services_supervisor/housekeeping.verify_terminal",
+  "duty_manager/housekeeping.view",
+];
+
 /** The README prose line authorising the copilot health read (decision 0064, E0.1). Quoted, not paraphrased. */
 const COPILOT_HEALTH_README_PROSE =
   "`copilot.health.read` is held by `owner`, `admin`, `duty_manager`, `medical_superintendent` and the new role\n`quality_manager` (the copilot steward), and the steward role holds nothing else but the halt switch.";
@@ -1151,6 +1162,7 @@ const NON_TABLE_PAIRS: readonly string[] = [
   ...TASKS_PAIRS,
   ...BMW_PAIRS,
   ...LINEN_PAIRS,
+  ...HOUSEKEEPING_PAIRS,
   ...COPILOT_HEALTH_PAIRS,
   ...COPILOT_HALT_PAIRS,
   ...LAB_METRICS_PAIRS,
@@ -1457,6 +1469,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       tasks: 3, // E0.1 TASK ENGINE (issue #713) — tasks.view, tasks.work, tasks.supervise
       bmw: 3, // E1.7 BIO-MEDICAL WASTE (issue #724) — bmw.view, bmw.handle, bmw.manage
       linen: 3, // E2.4 LINEN (issue #728) — linen.view, linen.handle, linen.manage
+      housekeeping: 2, // E1.4 HOUSEKEEPING (issue #721) — housekeeping.view, housekeeping.verify_terminal
       attendance: 1, // STAFF ATTENDANCE (owner 2026-10-09) — attendance.all.read; a team and oneself are computed, not granted
       ipd: 4, // IPD BEDS E1.1 (2026-10-12), read off the failing run: ipd.beds.view, .manage, .clean, .overflow
       ordering: 0, // DECISION 0067 — no permission of its own: rides tariff.read, tariff.services.manage and orders.place
@@ -2326,6 +2339,7 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(readme).toContain(TASKS_README_PROSE);
     expect(readme).toContain(BMW_README_PROSE);
     expect(readme).toContain(LINEN_README_PROSE);
+    expect(readme).toContain(HOUSEKEEPING_README_PROSE);
     expect(readme).toContain(COPILOT_HALT_README_PROSE);
     expect(readme).toContain(IPD_BEDS_README_PROSE);
     expect(readme).toContain(APPROVALS_SPINE_README_PROSE);

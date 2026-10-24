@@ -127,5 +127,6 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 ## 5. Callers
 - `scripts/load-bed-layout.ts` (operator).
 - `beds.controller.ts` (the web board), `kernel/worker/jobs.ts` (`lapseBedReservations`),
-  `scripts/mark-incumbent-beds.ts` (cutover). ipd-admit, ipd-transfer, ipd-discharge and housekeeping call
-  `assignBed`/`reserveBed`, `releaseBedOccupant` and `markBedCleanIn`.
+  `scripts/mark-incumbent-beds.ts` (cutover). ipd-admit, ipd-transfer and ipd-discharge call
+  `assignBed`/`reserveBed` and `releaseBedOccupant`. housekeeping (E1.4) listens to the bed's KERNEL events (it
+  raises one clean per release) and calls `markBedCleanIn` from its verified clean's transaction.

@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/ipd/`
 · Notes: [MAP.md](../../../apps/core/src/modules/ipd/MAP.md)
 
 - **Depends on modules:** `billing`, `patients`
-- **Used by modules:** —
+- **Used by modules:** `housekeeping`
 - **Kernel used:** `approvals`, `auth`, `db`, `events`, `modules`, `realtime`, `resources`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file

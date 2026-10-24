@@ -441,6 +441,8 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
         // silence beside the lateness. Sorted, it lands last.
         // 20-U infra (owner 2026-10-04): `roster.flag_raised` is the EIGHTH — a "this is wrong"
         // flag pages the duty manager on duty. Read off the red run; sorted, it lands last.
+        // E1.4 HOUSEKEEPING (issue #721) — the bed's kernel events drive its cleaning task. Sorted, after `abdm.`.
+        ["housekeeping.bed_turnover", ["resource.assigned", "resource.released", "resource.status_changed"]],
         ["kernel.alerts", [
           "approval.requested",
           "escalation.triggered", "imaging.critical_overdue", "imaging.report_unread",

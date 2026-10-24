@@ -32,6 +32,7 @@ import { BmwHandle } from "./screens/bmw-handle";
 import { BmwReports } from "./screens/bmw-reports";
 import { LinenBoard } from "./screens/linen-board";
 import { LinenHandle } from "./screens/linen-handle";
+import { HousekeepingBoard } from "./screens/housekeeping-board";
 import { StaffReports } from "./screens/staff-reports";
 import { CopilotHealthScreen } from "./screens/copilot-health";
 import { CrkFormularyScreen } from "./screens/crk-formulary";
@@ -328,6 +329,7 @@ const NAV: readonly NavEntry[] = [
   // E2.4 LINEN (issue #728) — the handler's phone and the supervisor's board; paths and permissions match `linenManifest.menu`.
   { to: "/linen/handle", label: "nav.linenHandle", permission: "linen.handle", group: "services" },
   { to: "/linen", label: "nav.linenBoard", permission: "linen.view", group: "services", anyOf: ["linen.manage"] },
+  { to: "/housekeeping", label: "nav.housekeeping", permission: "housekeeping.view", group: "services" },
   // The OPD day report (owner, 2026-09-19): the hospital's day by department, PDF and CSV.
   { to: "/reports/opd-day", label: "nav.opdDayReport", permission: "opd.reports.read", group: "opd" },
   // 20-U U5a — who is on now, the hospital's unit board. `roster.read` matches `rosterManifest.menu`.
@@ -1245,6 +1247,13 @@ const tasksBoardRoute = createRoute({
   component: TasksBoard,
 });
 
+/** E1.4 HOUSEKEEPING (issue #721) — the housekeeping supervisor's board: 16:9, open cleans by floor, late first. */
+const housekeepingBoardRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/housekeeping",
+  component: HousekeepingBoard,
+});
+
 const myReachRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/me/reach",
@@ -2107,6 +2116,8 @@ export const router = createRouter({
       bmwBoardRoute, bmwHandleRoute, bmwReportsRoute,
       // E2.4 LINEN — +2, `/linen` and `/linen/handle`. `caddyfile-parity.test.ts` pins the count.
       linenBoardRoute, linenHandleRoute,
+      // E1.4 HOUSEKEEPING — +1, `/housekeeping`. `caddyfile-parity.test.ts` pins the count.
+      housekeepingBoardRoute,
       rosterEvidenceRoute,
       rosterAebasRoute,
       // DD-0 (#626) — +2, `/doctor-desk` and `/doctor-desk/briefs`. `caddyfile-parity.test.ts` pins the count.

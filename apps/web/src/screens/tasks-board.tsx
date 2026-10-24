@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { PaperScreen } from "../components/paper-screen";
 import { fetchTaskBoard } from "../lib/tasks-api";
 import { clockOf, kindLabel, useServerNow } from "./my-tasks";
-import type { BoardFloor, BoardWorker, TaskCard } from "@hmis/contracts";
+import type { BoardFloor, BoardWorker, TaskBoardView, TaskCard } from "@hmis/contracts";
 import "./tasks.css";
 
 /**
@@ -41,10 +41,35 @@ function useRowsThatFit(): [React.RefObject<HTMLDivElement | null>, number] {
   return [ref, rows];
 }
 
-export function TasksBoard(): React.ReactElement {
+/**
+ * An owning module's board is this board over its own kinds (E1.4 housekeeping): its own title and fetch, a flag in
+ * words on some rows (a terminal clean), and Check buttons on the cards waiting for a check.
+ */
+export type TasksBoardProps = {
+  titleKey?: string;
+  queryKey?: readonly unknown[];
+  fetchBoard?: () => Promise<TaskBoardView>;
+  testId?: string;
+  rowFlag?: (c: TaskCard) => string | null;
+  /** Resolves with null when checked, or with the refusal's words. Absent: the to-check list is read-only. */
+  onVerify?: (c: TaskCard) => Promise<string | null>;
+};
+
+export function TasksBoard(p: TasksBoardProps = {}): React.ReactElement {
   const { t, i18n } = useTranslation();
   const lang = (i18n.language as string | undefined) ?? "en";
-  const q = useQuery({ queryKey: ["tasks", "board"], queryFn: fetchTaskBoard, refetchInterval: 15_000 });
+  const q = useQuery({ queryKey: p.queryKey ?? ["tasks", "board"], queryFn: p.fetchBoard ?? fetchTaskBoard, refetchInterval: 15_000 });
+  const [verifyNote, setVerifyNote] = useState<{ id: string; text: string } | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const check = (c: TaskCard): void => {
+    if (p.onVerify === undefined) return;
+    setBusy(c.id); setVerifyNote(null);
+    void p.onVerify(c).then((refused) => {
+      setBusy(null);
+      setVerifyNote({ id: c.id, text: refused ?? t("housekeeping.checked") });
+      void q.refetch();
+    });
+  };
   const now = useServerNow(q.data?.serverNow);
   const [floorsRef, rows] = useRowsThatFit();
   const clock = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(now));
@@ -54,10 +79,10 @@ export function TasksBoard(): React.ReactElement {
     : Math.max(board.counts.late, board.floors.reduce((n, f) => n + f.tasks.filter((c) => Date.parse(c.dueAt) <= now).length, 0));
 
   return (
-    <PaperScreen testId="tasks-board" style={{ height: "var(--pp-h)" }}>
+    <PaperScreen testId={p.testId ?? "tasks-board"} style={{ height: "var(--pp-h)" }}>
       <div className="tk-board">
         <div className="tk-head">
-          <h1>{t("tasks.board.title")}</h1>
+          <h1>{t(p.titleKey ?? "tasks.board.title")}</h1>
           {board !== undefined && (
             <div className="tk-sum">
               <span className="tk-count" data-testid="board-open"><b>{board.counts.open}</b>{t("tasks.board.open")}</span>
@@ -76,15 +101,22 @@ export function TasksBoard(): React.ReactElement {
             {board !== undefined && board.floors.length === 0 && (
               <div className="box tk-floor"><div className="tk-empty" data-testid="board-none">{t("tasks.board.none")}</div></div>
             )}
-            {(board?.floors ?? []).map((f) => <Floor key={f.floorName ?? "-"} f={f} now={now} lang={lang} rows={rows} />)}
+            {(board?.floors ?? []).map((f) => <Floor key={f.floorName ?? "-"} f={f} now={now} lang={lang} rows={rows} flag={p.rowFlag} />)}
           </div>
           <div className="tk-side">
             <Workers workers={board?.workers ?? []} />
             {(board?.toVerify.length ?? 0) > 0 && (
               <section className="box tk-verify" data-testid="board-verify">
                 <header>{t("tasks.board.toVerify", { count: board!.toVerify.length })}</header>
-                {board!.toVerify.slice(0, 4).map((c) => (
-                  <div key={c.id} className="tk-worker"><span className="n">{kindLabel(c, t)}</span><span className="c">{c.placeCode ?? ""}</span></div>
+                {board!.toVerify.slice(0, p.onVerify === undefined ? 4 : 6).map((c) => (
+                  <div key={c.id} className="tk-worker" data-testid={`verify-${c.id}`}>
+                    <span className="n">{c.placeCode ?? c.placeName ?? ""} · {kindLabel(c, t)}</span>
+                    {p.onVerify !== undefined ? (
+                      <button type="button" className="tk-check" disabled={busy === c.id} onClick={() => check(c)}>{t("housekeeping.check")}</button>
+                    ) : <span className="c">{c.placeCode ?? ""}</span>}
+                    {p.rowFlag?.(c) ? <span className="s"><b className="tk-clock late">{p.rowFlag(c)}</b></span> : null}
+                    {verifyNote?.id === c.id ? <span className="s" role="status">{verifyNote.text}</span> : null}
+                  </div>
                 ))}
               </section>
             )}
@@ -95,7 +127,7 @@ export function TasksBoard(): React.ReactElement {
   );
 }
 
-function Floor({ f, now, lang, rows }: { f: BoardFloor; now: number; lang: string; rows: number }): React.ReactElement {
+function Floor({ f, now, lang, rows, flag }: { f: BoardFloor; now: number; lang: string; rows: number; flag?: (c: TaskCard) => string | null }): React.ReactElement {
   const { t } = useTranslation();
   const lateHere = f.tasks.filter((c) => Date.parse(c.dueAt) <= now).length;
   const shown = f.tasks.length > rows ? f.tasks.slice(0, rows) : f.tasks;
@@ -108,7 +140,7 @@ function Floor({ f, now, lang, rows }: { f: BoardFloor; now: number; lang: strin
         </span>
       </header>
       <div className="tk-rows">
-        {shown.map((c) => <Row key={c.id} c={c} now={now} lang={lang} />)}
+        {shown.map((c) => <Row key={c.id} c={c} now={now} lang={lang} flag={flag?.(c) ?? null} />)}
         {shown.length < f.tasks.length && (
           <div className="tk-more" data-testid="floor-more">{t("tasks.board.more", { count: f.tasks.length - shown.length })}</div>
         )}
@@ -117,7 +149,7 @@ function Floor({ f, now, lang, rows }: { f: BoardFloor; now: number; lang: strin
   );
 }
 
-function Row({ c, now, lang }: { c: TaskCard; now: number; lang: string }): React.ReactElement {
+function Row({ c, now, lang, flag }: { c: TaskCard; now: number; lang: string; flag: string | null }): React.ReactElement {
   const { t } = useTranslation();
   const clock = clockOf(c.dueAt, now, t, lang);
   const who = c.assigneeName ?? t("tasks.board.unassigned");
@@ -127,6 +159,7 @@ function Row({ c, now, lang }: { c: TaskCard; now: number; lang: string }): Reac
       <span style={{ minWidth: 0 }}>
         <div className="t1">{c.placeName ?? t("tasks.noPlace")}</div>
         <div className="t2">
+          {flag !== null && <b className="tk-clock late" data-testid="row-flag">{flag} · </b>}
           {c.priority !== "routine" && <b className={c.priority === "stat" ? "tk-clock late" : "tk-clock soon"}>{t(`tasks.priority.${c.priority}`)} · </b>}
           {kindLabel(c, t)} · {who} · {t(`tasks.state.${c.state}`)}
         </div>

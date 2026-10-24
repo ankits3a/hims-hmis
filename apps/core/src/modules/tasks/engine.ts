@@ -6,7 +6,7 @@ import {
 import { hasPermission } from "../../kernel/auth/permissions";
 import { resources, taskEvents, tasks, users } from "../../kernel/db/schema";
 import { TaskError } from "./errors";
-import { requireTaskKind, skillRoles, taskKind } from "./kinds";
+import { requireTaskKind, skillRoles, taskKind, verifierPermissionsOf } from "./kinds";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
 import { dutyCovering, pickWorker } from "./dispatch";
 import type { Actor, TaskAct, TaskEventSource, TaskSource } from "@hmis/contracts";
@@ -29,6 +29,8 @@ import type { Db, Tx } from "../../kernel/db/client";
 export type TaskRow = typeof tasks.$inferSelect;
 export type Exec = Db | Tx;
 export type ActOptions = { asSupervisor?: boolean; source?: TaskSource };
+/** `closeDone`: an owning module may also cancel a task that is done but not yet checked (the place moved on). */
+export type CancelOptions = { closeDone?: boolean };
 
 const OPEN: readonly string[] = ["created", "assigned", "accepted", "in_progress"];
 const HELD: readonly string[] = ["assigned", "accepted", "in_progress"];
@@ -82,7 +84,8 @@ const tx = <T>(exec: Exec, fn: (t: Tx) => Promise<T>): Promise<T> => (exec as Db
 
 /* ═══════════════════════════════ raise ═══════════════════════════════ */
 
-export type RaiseResult = { task: TaskRow; merged: boolean };
+/** `duplicate`: the input's `sourceRef` had already raised this task; nothing was written. */
+export type RaiseResult = { task: TaskRow; merged: boolean; duplicate?: boolean };
 
 /**
  * Raise a task. Same kind + same place + an open task raised within ten minutes = MERGED into that
@@ -96,7 +99,16 @@ export async function raiseTask(exec: Exec, actor: Actor, raw: unknown, now: Dat
   const source = eventSource(actor, input.source);
   return tx(exec, async (t) => {
     const place = input.placeResourceId ?? null;
-    if (place !== null) {
+    // One task per source: the owning module's key decides, exactly, instead of the ten-minute merge window.
+    if (input.sourceRef !== undefined) {
+      await t.execute(sql`select pg_advisory_xact_lock(hashtext(${`tasks:source:${input.sourceRef}`}))`);
+      const seen = (await t.select().from(tasks).where(eq(tasks.sourceRef, input.sourceRef)).limit(1))[0];
+      if (seen !== undefined) return { task: seen, merged: false, duplicate: true };
+      if (place !== null) {
+        const found = await t.select({ id: resources.id }).from(resources).where(eq(resources.id, place));
+        if (found.length === 0) throw new TaskError("unknown_place", { placeResourceId: place });
+      }
+    } else if (place !== null) {
       const found = await t.select({ id: resources.id }).from(resources).where(eq(resources.id, place));
       if (found.length === 0) throw new TaskError("unknown_place", { placeResourceId: place });
       const patient = input.patientId ?? null;
@@ -124,6 +136,7 @@ export async function raiseTask(exec: Exec, actor: Actor, raw: unknown, now: Dat
       verifyRequired: kind.verifyRequired, state: "created", note: input.note ?? null,
       requestedBy: actor.id, source: input.source ?? (actor.type === "agent" ? "agent" : "person"),
       createdAt: now, updatedAt: now, version: 1,
+      sourceRef: input.sourceRef ?? null, raisedAt: input.raisedAt !== undefined ? new Date(input.raisedAt) : now,
     }).returning())[0]!;
     await logEvent(t, inserted, "raised", actor, source, now, {});
     const dispatched = await dispatchInto(t, inserted, now, []);
@@ -263,24 +276,34 @@ export async function verifyTask(exec: Exec, actor: Actor, raw: unknown, now: Da
     if (!row.verifyRequired) throw new TaskError("no_verify_step", { taskId: row.id });
     if (row.state !== "done") throw new TaskError(row.state === "verified" || row.state === "cancelled" ? "not_open" : "wrong_state", { taskId: row.id, state: row.state });
     if (row.doneBy === actor.id) throw new TaskError("verifier_is_doer", { taskId: row.id });
-    const permission = taskKind(row.kind)?.verifierPermission ?? "tasks.supervise";
-    if (actor.type !== "system" && !(await hasPermission(t as unknown as Db, actor.id, permission, "hospital"))) {
-      throw new TaskError("not_permitted", { taskId: row.id, permission });
+    const decl = taskKind(row.kind);
+    const permissions = verifierPermissionsOf(decl);
+    if (actor.type !== "system") {
+      let admitted = false;
+      for (const p of permissions) {
+        if (await hasPermission(t as unknown as Db, actor.id, p, "hospital")) { admitted = true; break; }
+      }
+      if (!admitted) throw new TaskError("not_permitted", { taskId: row.id, permission: permissions.join(" or ") });
     }
     const next = await update(t, row.id, { state: "verified", verifiedBy: actor.id, verifiedAt: now }, now);
     await logEvent(t, next, "verified", actor, eventSource(actor), now, {});
+    // The owning module's consequence of a passed check, in the SAME transaction (housekeeping: the bed is free).
+    if (decl?.onVerified !== undefined) await decl.onVerified(t, next, actor, now);
     return next;
   });
 }
 
 /* ═══════════════════════════════ cancel, return ═══════════════════════════════ */
 
-export async function cancelTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow> {
+export async function cancelTask(
+  exec: Exec, actor: Actor, raw: unknown, now: Date = new Date(), opts: CancelOptions = {},
+): Promise<TaskRow> {
   const input = parse(cancelTaskInput, raw);
   return tx(exec, async (t) => {
     const row = await lockTask(t, input.taskId);
     checkVersion(row, input.version);
-    if (!OPEN.includes(row.state)) throw new TaskError("not_open", { taskId: row.id, state: row.state });
+    const closable = opts.closeDone === true ? [...OPEN, "done"] : OPEN;
+    if (!closable.includes(row.state)) throw new TaskError("not_open", { taskId: row.id, state: row.state });
     const next = await update(t, row.id, { state: "cancelled", cancelReason: input.reason }, now);
     await logEvent(t, next, "cancelled", actor, eventSource(actor), now, { reason: input.reason });
     return next;
@@ -329,6 +352,8 @@ export async function returnToPool(
     return next;
   });
 }
+
+export { eventSource };
 
 /** For the sweep: the event writer, so every state change the clock makes carries the same history. */
 export { logEvent as appendTaskEvent, update as updateTaskRow, lockTask };

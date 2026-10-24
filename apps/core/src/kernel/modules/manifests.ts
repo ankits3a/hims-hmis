@@ -28,6 +28,7 @@ import { tasksManifest } from "../../modules/tasks";
 import { ipdManifest } from "../../modules/ipd";
 import { bmwManifest } from "../../modules/bmw";
 import { linenManifest } from "../../modules/linen";
+import { housekeepingManifest } from "../../modules/housekeeping";
 import { doctorDeskManifest } from "../../modules/doctor-desk";
 
 /**
@@ -204,6 +205,9 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   // E2.4 LINEN (issue #728) — appended. Three permissions, two menu entries, no subscription, no worker job. API only, the
   // `tasks` shape: the weekly variance is computed on read.
   linenManifest,
+  // E1.4 HOUSEKEEPING (issue #721) — appended. Two permissions, one menu entry, and the bed's kernel events
+  // (released, status changed, assigned) -> `housekeeping.bed_turnover`. Installed in BOTH processes.
+  housekeepingManifest,
   // DOCTOR DESK DD-0 (#626) — appended. A leaf: no permission of its own (its routes open on opd's
   // `opd.consult`), one menu entry, no subscription, no job — app-only, the `attendance` shape.
   doctorDeskManifest,

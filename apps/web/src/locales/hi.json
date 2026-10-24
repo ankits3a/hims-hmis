@@ -1,4 +1,28 @@
 {
+  "housekeeping": {
+    "title": "हाउसकीपिंग",
+    "terminal": "सुपरवाइज़र जाँचेगा",
+    "check": "जाँचें",
+    "checked": "जाँचा गया",
+    "clean": {
+      "line": "सफ़ाई · {{minutes}} मिनट",
+      "minutes": "{{minutes}} मिनट",
+      "by": "{{who}} को सौंपा",
+      "pool": "सफ़ाईकर्मी की प्रतीक्षा",
+      "done": "साफ़ · जाँच बाकी",
+      "late": "देर",
+      "terminal": "टर्मिनल सफ़ाई",
+      "verify": "सफ़ाई जाँचें",
+      "verified": "सफ़ाई जाँची · बेड ख़ाली",
+      "nudge": "हाउसकीपिंग को याद दिलाएँ",
+      "nudged": "याद दिलाया"
+    },
+    "refusal": {
+      "terminal_needs_supervisor": "टर्मिनल सफ़ाई सुपरवाइज़र जाँचता है",
+      "not_a_clean": "हाउसकीपिंग का काम नहीं",
+      "bad_input": "अनुरोध अधूरा"
+    }
+  },
   "testPicker": {
     "placeholder": "जाँच खोजें — 2 अक्षर",
     "none": "कोई जाँच नहीं मिली।",
@@ -38,6 +62,7 @@
     "menu": "मेनू"
   },
   "nav": {
+    "housekeeping": "हाउसकीपिंग",
     "formularyAdmin": "फ़ॉर्मुलरी",
     "merge": "मर्ज समीक्षा",
     "approvals": "अनुमोदन",
@@ -16840,6 +16865,8 @@
       "forecast": "अनुमान बाद में आएगा"
     },
     "blockers": {
+      "nudged": "याद दिलाया",
+      "nudge": "हाउसकीपिंग को याद दिलाएँ",
       "title": "रुकावटें",
       "none": "अभी कोई नहीं",
       "cleaning": "60 मिनट से ज़्यादा सफ़ाई",
@@ -17055,6 +17082,10 @@
     "noPlace": "जगह नहीं बताई",
     "askedAgain": "{{count}}× माँगा",
     "kind": {
+      "room_inspection": "कमरा जाँच (Room inspection)",
+      "spill": "फैलाव सफ़ाई (Spill clean)",
+      "bed_clean_terminal": "टर्मिनल सफ़ाई (Terminal clean)",
+      "bed_clean_routine": "बेड सफ़ाई (Bed clean)",
       "general": "सामान्य काम"
     },
     "priority": {
@@ -17106,6 +17137,7 @@
       "toVerify": "जाँचने को ({{count}})"
     },
     "refusal": {
+      "nudged_recently": "कुछ मिनट पहले याद दिलाया",
       "failed": "नहीं हुआ",
       "bad_input": "अनुरोध अधूरा",
       "unknown_kind": "अनजान काम",

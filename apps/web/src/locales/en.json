@@ -1,4 +1,28 @@
 {
+  "housekeeping": {
+    "title": "Housekeeping",
+    "terminal": "Supervisor checks",
+    "check": "Check",
+    "checked": "Checked",
+    "clean": {
+      "line": "Cleaning · {{minutes}} min",
+      "minutes": "{{minutes}} min",
+      "by": "assigned to {{who}}",
+      "pool": "waiting for a cleaner",
+      "done": "Cleaned · waiting for check",
+      "late": "late",
+      "terminal": "Terminal clean",
+      "verify": "Verify clean",
+      "verified": "Clean checked · bed free",
+      "nudge": "Nudge housekeeping",
+      "nudged": "Housekeeping nudged"
+    },
+    "refusal": {
+      "terminal_needs_supervisor": "Supervisor checks terminal cleans",
+      "not_a_clean": "Not a housekeeping task",
+      "bad_input": "Request incomplete"
+    }
+  },
   "testPicker": {
     "placeholder": "Search a test — 2 letters",
     "none": "No test matches.",
@@ -38,6 +62,7 @@
     "menu": "Menu"
   },
   "nav": {
+    "housekeeping": "Housekeeping",
     "formularyAdmin": "Formulary",
     "merge": "Merge review",
     "approvals": "Approvals",
@@ -16840,6 +16865,8 @@
       "forecast": "Forecast comes later"
     },
     "blockers": {
+      "nudged": "Housekeeping nudged",
+      "nudge": "Nudge housekeeping",
       "title": "Blockers",
       "none": "None now",
       "cleaning": "Cleaning over 60 min",
@@ -17055,6 +17082,10 @@
     "noPlace": "No place given",
     "askedAgain": "Asked {{count}}×",
     "kind": {
+      "room_inspection": "Room inspection",
+      "spill": "Spill clean",
+      "bed_clean_terminal": "Terminal clean",
+      "bed_clean_routine": "Bed clean",
       "general": "General task"
     },
     "priority": {
@@ -17106,6 +17137,7 @@
       "toVerify": "To check ({{count}})"
     },
     "refusal": {
+      "nudged_recently": "Nudged a few min ago",
       "failed": "Did not go through",
       "bad_input": "Request incomplete",
       "unknown_kind": "Unknown task kind",

@@ -205,6 +205,17 @@ describe("the resource registry write surface (Plan 13 T3)", () => {
     expect(reassigned.since).not.toEqual(T0);
   });
 
+  it("E1.4: `resource.released` carries the release's reason on its payload (null when none was given)", async () => {
+    const id = await mk("bed", "R1");
+    await withTx(db, (tx) => assignResource(tx, ACTOR, KINDS, id, { occupantType: "admission", occupantRef: "ADM-R1", at: T0 }));
+    await withTx(db, (tx) => releaseResource(tx, ACTOR, KINDS, id, { at: T1, reason: "clean:terminal" }));
+    await withTx(db, (tx) => assignResource(tx, ACTOR, KINDS, id, { occupantType: "admission", occupantRef: "ADM-R2", at: T2 }));
+    await withTx(db, (tx) => releaseResource(tx, ACTOR, KINDS, id, { at: new Date(T2.getTime() + 60_000) }));
+    const released = await db.select({ payload: events.payload }).from(events)
+      .where(eq(events.name, "resource.released")).orderBy(asc(events.seq));
+    expect(released.map((r) => (r.payload as { reason?: unknown }).reason)).toEqual(["clean:terminal", null]);
+  });
+
   /**
    * F1's corrected leg — see the block above. The row is constructed by RAW SQL because the shipped
    * write path cannot produce it: a stale `since` standing on a resource with no occupant. Against

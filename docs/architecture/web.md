@@ -42,6 +42,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/doctor-desk/report` | `apps/web/src/screens/doctor-desk-report` |
 | `/doctor-desk/unit` | `apps/web/src/screens/doctor-desk-unit` |
 | `/formulary/admin` | `(redirect)` |
+| `/housekeeping` | `apps/web/src/screens/housekeeping-board` |
 | `/ipd/beds` | `apps/web/src/screens/ipd-beds` |
 | `/lab/bench` | `apps/web/src/screens/lab-bench` |
 | `/lab/collection` | `apps/web/src/screens/lab-collection` |

@@ -1122,6 +1122,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "tasks.view", "tasks.supervise",
       // IPD BEDS E1.1 (#718) — the duty manager approves overflow beds (spec §4.1) and runs the board at night.
       "ipd.beds.view", "ipd.beds.manage", "ipd.beds.clean", "ipd.beds.overflow",
+      "tasks.view", "tasks.supervise",
+      // E1.4 HOUSEKEEPING (issue #721) — the housekeeping board out of hours (not the terminal-clean check).
+      "housekeeping.view",
     ],
   },
   /**
@@ -2025,9 +2028,17 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // send and receive laundry and raise a condemn (`linen.handle`); the services supervisor is the linen supervisor: the
   // board, par levels and condemn approvals. DECIDED by the standard Indian corporate-hospital split.
   { roleKey: "support_staff", permissions: ["tasks.work", "bmw.handle", "linen.handle"] },
+  /**
+   * E1.4 HOUSEKEEPING (issue #721, decision 0072) — the services supervisor IS the housekeeping supervisor: the
+   * housekeeping board, and the check of a TERMINAL clean (isolation, infection, death), which NABH infection
+   * control keeps with the supervisor alone. A routine clean is also checked by `ipd.beds.clean` holders.
+   */
   {
     roleKey: "services_supervisor",
-    permissions: ["tasks.view", "tasks.work", "tasks.supervise", "bmw.view", "bmw.handle", "bmw.manage", "linen.view", "linen.handle", "linen.manage"],
+    permissions: [
+      "tasks.view", "tasks.work", "tasks.supervise", "bmw.view", "bmw.handle", "bmw.manage", "linen.view", "linen.handle", "linen.manage",
+      "housekeeping.view", "housekeeping.verify_terminal",
+    ],
   },
 ];
 

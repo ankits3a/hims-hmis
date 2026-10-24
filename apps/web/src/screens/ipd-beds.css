@@ -156,3 +156,8 @@
   .ipdb-col { overflow: visible; }
   .ipdb-tools, .ipdb-foot button { display: none; }
 }
+/* E1.4 housekeeping — a slow clean in the blockers list, with its Nudge button beside it. */
+.ipdb-slow { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.ipdb-slow .d { font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ipdb-slow .d b { color: var(--ink); font-weight: 600; }
+.ipdb-slow .ipdb-btn { padding: 4px 8px; font-size: 12px; min-height: 0; }
