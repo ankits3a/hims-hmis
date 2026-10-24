@@ -1,5 +1,7 @@
 import { ApiError, api } from "./api";
-import type { ErBay, ErBoard, ErCareView, ErDeskView, ErDoctorOption, ErEpisodeView, ErItemOption, ErPatientHit, ErRefusalBody } from "@hmis/contracts";
+import type {
+  ErBay, ErBill, ErBillDesk, ErBoard, ErCareView, ErDeskView, ErDoctorOption, ErEpisodeView, ErItemOption, ErMlcDesk, ErMlcDetail, ErPatientHit, ErRefusalBody,
+} from "@hmis/contracts";
 
 /* ═══ ER lane 1 (#808) — `apps/core/src/modules/emergency/emergency.controller.ts`. The paths are the contract's
  * `ER_ROUTES` and the topic its `ER_BOARD_TOPIC`, copied: the web bundle imports the contract package for TYPES only. ═══ */
@@ -42,6 +44,29 @@ const ER_ROUTES = {
   calls: "/er/calls",
   answerCall: "/er/calls/answer",
   stabilised: "/er/stabilised",
+  // lane 4 (#811)
+  mlc: "/er/mlc",
+  mlcOpen: "/er/mlc/open",
+  mlcAddendum: "/er/mlc/addendum",
+  mlcIntimation: "/er/mlc/intimation",
+  mlcCountersign: "/er/mlc/countersign",
+  mlcBelongings: "/er/mlc/belongings",
+  mlcEvidence: "/er/mlc/evidence",
+  // lane 5 (#812)
+  dispoDecide: "/er/dispo/decide",
+  dispoDischarge: "/er/dispo/discharge",
+  dispoAdmit: "/er/dispo/admit",
+  dispoRefer: "/er/dispo/refer",
+  dispoLama: "/er/dispo/lama",
+  dispoLwbs: "/er/dispo/lwbs",
+  dispoAbscond: "/er/dispo/abscond",
+  dispoDeath: "/er/dispo/death",
+  // lane 6 (#813) — the ER bill desk (money)
+  bill: "/er/bill",
+  billPayer: "/er/bill/payer",
+  billAdvance: "/er/bill/advance",
+  billPrice: "/er/bill/price",
+  billSettle: "/er/bill/settle",
 } as const;
 export const ER_BOARD_TOPIC = "er:board";
 export const ER_WALL_TOPIC = "erwall:board";
@@ -155,3 +180,47 @@ export const consentApi = (body: Record<string, unknown>) => post<{ consentId: s
 export const callApi = (body: Record<string, unknown>) => post<{ callId: string; callees: { name: string }[] }>(ER_ROUTES.calls, body);
 export const answerCallApi = (callId: string, step: "answered" | "seen") => post<{ callId: string }>(ER_ROUTES.answerCall, { callId, step });
 export const stabilisedApi = (episodeId: string, note?: string) => post<{ stabilisedAt: string }>(ER_ROUTES.stabilised, { episodeId, ...(note ? { note } : {}) });
+
+/* ═══ lane 4 (#811) — the medico-legal case. The categories are the contract's `ER_MLC_CATEGORIES`, copied. ═══ */
+export const ER_MLC_CATEGORIES = [
+  "assault", "road_accident", "burns", "acid_attack", "poisoning", "hanging", "drowning", "fall_from_height", "bite_dispute",
+  "unknown_unconscious", "sexual_assault", "brought_dead", "death_within_24h_injury", "police_brought", "other",
+] as const;
+export const ER_INJURY_KINDS = ["abrasion", "laceration", "contusion", "incised", "stab", "burn", "fracture", "firearm", "bite", "ligature_mark", "other"] as const;
+export const ER_EVIDENCE_KINDS = ["clothes", "swab", "blood_sample", "projectile", "weapon", "viscera", "other"] as const;
+export const fetchMlcDesk = () => api<ErMlcDesk>("GET", ER_ROUTES.mlc);
+export const fetchMlc = (id: string) => api<ErMlcDetail>("GET", `${ER_ROUTES.mlc}/${encodeURIComponent(id)}`);
+export const openMlcApi = (body: Record<string, unknown>) => post<{ mlcId: string; mlcNo: string; late: boolean }>(ER_ROUTES.mlcOpen, body);
+export const mlcAddendumApi = (body: Record<string, unknown>) => post<{ addendumId: string }>(ER_ROUTES.mlcAddendum, body);
+export const mlcIntimationApi = (body: Record<string, unknown>) => post<{ withinTarget: boolean }>(ER_ROUTES.mlcIntimation, body);
+export const mlcCountersignApi = (mlcId: string) => post<{ withinTarget: boolean }>(ER_ROUTES.mlcCountersign, { mlcId });
+export const mlcBelongingsApi = (body: Record<string, unknown>) => post<{ custodyId: string }>(ER_ROUTES.mlcBelongings, body);
+export const mlcEvidenceApi = (body: Record<string, unknown>) => post<{ custodyId: string; link: number }>(ER_ROUTES.mlcEvidence, body);
+
+/* ═══ lane 5 (#812) — disposition and departure. Lists are the contract's (`emergency/dispo.ts`), copied. ═══ */
+export const ER_RETURN_IF_SIGNS = [
+  "chest_pain", "breathlessness", "bleeding", "high_fever", "repeated_vomiting", "fits", "drowsiness", "worsening_pain",
+  "wound_redness", "less_urine", "weakness_one_side", "severe_headache",
+] as const;
+export const ER_REFERRAL_REASONS = [
+  "higher_centre_care", "specialty_not_available", "bed_not_available", "equipment_not_available", "patient_choice",
+] as const;
+export type DepartureOut = { episodeId: string; state: "departed"; outcome: string; departedAt: string; bayReleased: string | null };
+/** Review #4: one idempotency key per ATTEMPT (kept across a retried click, renewed after success) — not per click. */
+const postK = <T>(path: string, body: Record<string, unknown>, idempotencyKey: string) => api<T>("POST", path, { idempotencyKey, ...body });
+export const dischargeApi = (body: Record<string, unknown>, k: string) => postK<DepartureOut>(ER_ROUTES.dispoDischarge, body, k);
+export const handToUnitApi = (body: Record<string, unknown>, k: string) => postK<{ admissionId: string; boarding: boolean }>(ER_ROUTES.dispoAdmit, body, k);
+export const referApi = (body: Record<string, unknown>, k: string) => postK<DepartureOut>(ER_ROUTES.dispoRefer, body, k);
+export const lamaApi = (body: Record<string, unknown>, k: string) => postK<DepartureOut>(ER_ROUTES.dispoLama, body, k);
+export const lwbsApi = (body: Record<string, unknown>, k: string = newKey()) => postK<DepartureOut>(ER_ROUTES.dispoLwbs, body, k);
+export const abscondApi = (body: Record<string, unknown>, k: string) => postK<DepartureOut & { policeToBeInformed: boolean }>(ER_ROUTES.dispoAbscond, body, k);
+export const deathApi = (body: Record<string, unknown>, k: string) => postK<DepartureOut>(ER_ROUTES.dispoDeath, body, k);
+
+/* ═══ lane 6 (#813) — the ER bill desk (money: desk and billing roles only) ═══ */
+export const ER_PAYER_KINDS = ["self", "pmjay", "road_accident", "bnss_free", "mci_event"] as const;
+export const fetchErBillDesk = () => api<ErBillDesk>("GET", ER_ROUTES.bill);
+export const fetchErBill = (episodeId: string) => api<ErBill>("GET", `${ER_ROUTES.bill}/${encodeURIComponent(episodeId)}`);
+export const setPayerApi = (body: Record<string, unknown>) => post<{ payer: string }>(ER_ROUTES.billPayer, body);
+export const advanceApi = (body: Record<string, unknown>) => post<{ receiptNo: string; amountPaise: number }>(ER_ROUTES.billAdvance, body);
+export const priceLinesApi = (episodeId: string) => post<{ priced: number; stillMissing: number }>(ER_ROUTES.billPrice, { episodeId });
+export const settleApi = (body: Record<string, unknown>, k: string) => postK<{ invoiceNo: string | null; duesPaise: number; paidPaise: number }>(ER_ROUTES.billSettle, body, k);

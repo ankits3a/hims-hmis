@@ -3,6 +3,7 @@ import { newId } from "@hmis/contracts";
 import { ER_OPEN_STATE_VALUES, erChargeLines, erEpisodes } from "../../kernel/db/schema";
 import { registerEncounterResolver } from "../../kernel/episodes/encounter-resolvers";
 import { registerEpisodeChargeSink } from "../billing";
+import { reverseIpdOrderCharge } from "../ipd";
 import { resolvePatientId } from "../patients";
 import { loadPricingContext, priceInvoiceLines } from "../tariff";
 import type { Actor } from "@hmis/contracts";
@@ -50,7 +51,8 @@ async function priceOf(exec: Db | Tx, serviceId: string, at: Date): Promise<numb
     if (svc === undefined || !svc.active) return null;
     const price = ctx.tariff.items[serviceId];
     if (price === undefined || price < 0) return null;
-    const [line] = priceInvoiceLines(ctx, [{ lineId: newId(), serviceId, qty: 1 }]);
+    // Lane 6 (#813): an ER line is part of the hospital's composite healthcare supply (the invoice prices it so too).
+    const [line] = priceInvoiceLines(ctx, [{ lineId: newId(), serviceId, qty: 1, supplyContext: "composite_healthcare" }]);
     return line === undefined ? null : line.netPaise;
   } catch {
     return null;
@@ -102,6 +104,9 @@ export const erChargeSink: EpisodeChargeSink = {
     const line = (await tx.select().from(erChargeLines).where(eq(erChargeLines.orderItemId, input.orderItemId)).for("update"))[0];
     if (line === undefined) return "none";
     if (line.status === "reversed") return "none";
+    // Lane 5 (#812, review #6): the line moved onto the IP running bill at hand-off — the cancel goes to IPD's own reversal
+    // path (`reverseIpdOrderCharge`: a reversal line, or the bill desk's decision once the work started or it is billed).
+    if (line.status === "moved") return (await reverseIpdOrderCharge(tx, _actor, input)).outcome;
     if (input.workStarted) return "work_done";
     await tx.update(erChargeLines).set({ status: "reversed", amountPaise: null, reversedAt: input.at, reverseReason: input.reason })
       .where(eq(erChargeLines.id, line.id));

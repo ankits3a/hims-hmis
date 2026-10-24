@@ -6,8 +6,8 @@ import { withTx } from "../../kernel/db/client";
 import { erEpisodes, erPreAlerts } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { startInstance } from "../../kernel/workflow/instances";
-import { placedAdmissionOf } from "../ipd";
-import { PatientError, getPatient, registerPatient } from "../patients";
+import { openErMortuaryEntry, placedAdmissionOf } from "../ipd";
+import { PatientError, getPatient, recordBroughtDeadDeath, registerPatient } from "../patients";
 import { bandPerson, checkPrinter, mintBandIn } from "./bands";
 import {
   alreadyOpen, erPatientLock, isOpenEpisodeRace, mintAlias, mintEpisodeNo, moveEpisode, onceEr, openEpisodeOf,
@@ -15,6 +15,7 @@ import {
 } from "./core";
 import { ErRefusal } from "./errors";
 import { erArrived, erBroughtDead, erPreAlertCancelled, erPreAlerted } from "./events";
+import { openMlcIn } from "./mlc";
 import { ER_ARRIVAL_REGISTER } from "./names";
 import { ER_EPISODE_WORKFLOW_DEF_KEY } from "./workflow";
 import type { Actor, ErAgeBand, ErArrivalMode, ErBroughtBy, ErIntentName, ErSex } from "@hmis/contracts";
@@ -258,6 +259,11 @@ export async function registerArrival(db: Db, actor: Actor, raw: unknown, opts: 
       }
       const e = await arriveIn(tx, actor, { patientId, personIds, unidentified: null, ageBand, marks: null, common: input, gate }, at);
       await arrivedEvent(tx, actor, e, at);
+      // Lane 4 (#811): the police brought the patient → an MLC by rule; their arrival is the intimation (spec §4.4).
+      // ER review (2026-10-15): the same predicate as the MLC's own — police bringing the patient by any vehicle.
+      if (e.arrivalMode === "police" || (e.broughtBy as { kind?: string } | null)?.kind === "police") {
+        await openMlcIn(tx, actor, e, { category: "police_brought", byRule: true }, at);
+      }
       const band = await mintBandIn(db, tx, actor, e, { site: input.bandSite ?? "wrist", printerId: input.printerId }, at);
       return {
         episodeId: e.id, episodeNo: e.episodeNo, patientId, uhid: band.band.uhid, state: "arrived" as const,
@@ -290,6 +296,8 @@ export async function registerUnidentified(db: Db, actor: Actor, raw: unknown, o
       patientId, personIds: [patientId], unidentified: alias, ageBand: input.ageBand, marks: input.marks ?? null, common: input, gate,
     }, at);
     await arrivedEvent(tx, actor, e, at);
+    // Lane 4 (#811, spec §4.4): an unknown patient is an MLC by default (by rule; the doctor corrects the category by addendum).
+    await openMlcIn(tx, actor, e, { category: e.arrivalMode === "police" ? "police_brought" : "unknown_unconscious", byRule: true }, at);
     const band = await mintBandIn(db, tx, actor, e, { site: input.bandSite ?? "wrist", printerId: input.printerId }, at);
     return {
       episodeId: e.id, episodeNo: e.episodeNo, patientId, uhid: band.band.uhid, state: "arrived" as const,
@@ -303,9 +311,10 @@ export async function registerUnidentified(db: Db, actor: Actor, raw: unknown, o
 
 /**
  * The brought-dead MARKER: the episode is minted and moved `arrived → brought_dead` in one act — no band, no treatment
- * episode, no charge (spec §3.8). DECIDED (lane 1): the patient master is NOT marked deceased here — 0018's death needs
- * an MCCD number and a body brought dead gets none (police inquest and post-mortem decide); the `brought_dead` death kind
- * on the patient, the MLC and the mortuary hand-over are lane 4's (er-mlc) seam.
+ * episode, no charge (spec §3.8). Lane 4 (#811): the same act opens the MLC by rule, marks the patient deceased through
+ * the patients seam with the `brought_dead` death kind (0018's MCCD number does not apply: the hospital issues none —
+ * police inquest and post-mortem decide) and opens the body's IPD mortuary register entry (an MLC: released only on
+ * police clearance).
  */
 export async function recordBroughtDead(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_brought_dead">> {
   const input: Input<"record_brought_dead"> = ER_INTENTS.record_brought_dead.input.parse(raw);
@@ -345,8 +354,16 @@ export async function recordBroughtDead(db: Db, actor: Actor, raw: unknown, opts
         },
         actor, correlationId: e.id, patientId, occurredAt: at,
       }));
+      // Lane 4 (#811, spec §3.8): always an MLC; the patient deceased by the `brought_dead` kind (no MCCD — the police inquest
+      // and the post-mortem decide); the body to the IPD mortuary register, released only on police clearance. No charge.
+      const mlc = await openMlcIn(tx, actor, e, { category: "brought_dead", byRule: true }, at);
+      await recordBroughtDeadDeath(tx, actor, patientId, examinedAt);
+      const { entryId } = await openErMortuaryEntry(tx, actor, { erEpisodeId: e.id, patientId, diedAt: examinedAt }, at);
       const { uhid } = await bandPerson(tx, patientId);
-      return { episodeId: e.id, episodeNo: e.episodeNo, patientId, uhid, alias: alias?.alias ?? null, state: "brought_dead" as const };
+      return {
+        episodeId: e.id, episodeNo: e.episodeNo, patientId, uhid, alias: alias?.alias ?? null, state: "brought_dead" as const,
+        mlcId: mlc.id, mlcNo: mlc.mlcNo, mortuaryEntryId: entryId,
+      };
     });
   }, at);
 }

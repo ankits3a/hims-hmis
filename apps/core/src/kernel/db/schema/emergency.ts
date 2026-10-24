@@ -93,6 +93,30 @@ export const erEpisodes = pgTable(
     /* ═══ ER lane 3 (#810) — "stabilised", a clinical word only (lane 6 reads it; lane 5 copies it to the admission) ═══ */
     stabilisedAt: timestamp("stabilised_at", { withTimezone: true }),
     stabilisedBy: text("stabilised_by"),
+    /* ═══ ER lane 6 (#813) — the payer (0076 §3): self, PM-JAY, road-accident cashless, BNSS s.397, a mass-casualty event ═══ */
+    payer: text("payer").notNull().default("self"),
+    payerRef: text("payer_ref"),
+    coverCapPaise: integer("cover_cap_paise"),
+    coverUntil: timestamp("cover_until", { withTimezone: true }),
+    /** ER review 3 (2026-10-15): the accident this road-accident cover is for — a person's episodes of ONE accident share
+     *  its ₹1.5 lakh / 7-day cap. */
+    accidentRef: text("accident_ref"),
+    accidentAt: timestamp("accident_at", { withTimezone: true }),
+    eventAccountId: text("event_account_id"),
+    /* ═══ ER lane 5 (#812) — the disposition, the boarding admission, the last-seen time of LWBS / abscond ═══ */
+    disposition: text("disposition"),
+    dispositionReason: text("disposition_reason"),
+    dispositionBy: text("disposition_by"),
+    dispositionAt: timestamp("disposition_at", { withTimezone: true }),
+    /** The IPD admission raised by `hand_to_unit` (requested while boarding; admitted once the bed is placed). */
+    admissionId: text("admission_id"),
+    boardingSince: timestamp("boarding_since", { withTimezone: true }),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+    /** Decision-to-bed (spec §3.2 ≤ 2 h): the bed manager's task at 2 h, and the climb to the MS at 4 h — each once. */
+    boardingTaskId: text("boarding_task_id"),
+    boardingClimbedAt: timestamp("boarding_climbed_at", { withTimezone: true }),
+    /** Hand-offs cancelled by IPD so far: the next attempt's stable IPD idempotency key (review #4). */
+    handOffAttempts: integer("hand_off_attempts").notNull().default(0),
   },
   (t) => [
     uniqueIndex("er_episodes_no_ux").on(t.episodeNo),
@@ -110,6 +134,10 @@ export const erEpisodes = pgTable(
     check("er_episodes_esi_ck", sql`${t.esi} is null or ${t.esi} between 1 and 5`),
     // One ER patient per bay (the kernel's occupant triad is the arbiter; this is the backstop on the ER side).
     uniqueIndex("er_episodes_open_bay_ux").on(t.bayId).where(sql`${t.bayId} is not null and ${t.state} in (${OPEN})`),
+    check("er_episodes_disposition_ck", sql`${t.disposition} is null or ${t.disposition} in ('discharge', 'admit', 'refer_out')`),
+    check("er_episodes_outcome_ck", sql`${t.outcome} is null or ${t.outcome} in ('discharged', 'admitted', 'referred_out', 'lama', 'absconded', 'lwbs', 'died')`),
+    index("er_episodes_boarding_idx").on(t.boardingSince).where(sql`${t.boardingSince} is not null and ${t.state} = 'disposition_decided'`),
+    check("er_episodes_payer_ck", sql`${t.payer} in ('self', 'pmjay', 'road_accident', 'bnss_free', 'mci_event')`),
     index("er_episodes_retriage_due_idx").on(t.retriageDueAt).where(sql`${t.state} = 'triaged' and ${t.retriageDueAt} is not null`),
   ],
 );
@@ -407,13 +435,18 @@ export const erChargeLines = pgTable(
     postedAt: timestamp("posted_at", { withTimezone: true }).notNull(),
     reversedAt: timestamp("reversed_at", { withTimezone: true }),
     reverseReason: text("reverse_reason"),
+    /** Lane 5 (#812): the admission this line moved to at hand-off, and its IP running-bill line (null: the bill desk's exception). */
+    movedToAdmissionId: text("moved_to_admission_id"),
+    movedIpdLineId: text("moved_ipd_line_id"),
   },
   (t) => [
     uniqueIndex("er_charge_lines_order_item_ux").on(t.orderItemId).where(sql`${t.orderItemId} is not null`),
     index("er_charge_lines_episode_idx").on(t.episodeId),
     check("er_charge_lines_source_ck", sql`${t.source} in ('er.order', 'er.issue', 'er.procedure')`),
-    check("er_charge_lines_status_ck", sql`${t.status} in ('posted', 'rate_missing', 'rate_pending', 'reversed')`),
-    check("er_charge_lines_amount_ck", sql`(${t.status} = 'posted') = (${t.amountPaise} is not null)`),
+    // Lane 5 (#812): `moved` — carried onto the IP running bill at hand-off (the IPD line id kept; never twice).
+    check("er_charge_lines_status_ck", sql`${t.status} in ('posted', 'rate_missing', 'rate_pending', 'reversed', 'moved')`),
+    check("er_charge_lines_amount_ck", sql`(${t.status} = 'posted') = (${t.amountPaise} is not null) or ${t.status} = 'moved'`),
+    check("er_charge_lines_moved_ck", sql`(${t.status} = 'moved') = (${t.movedToAdmissionId} is not null)`),
   ],
 );
 
@@ -429,4 +462,270 @@ export const erCriticalAlerts = pgTable(
     climbedAt: timestamp("climbed_at", { withTimezone: true }),
   },
   (t) => [uniqueIndex("er_critical_alerts_call_ux").on(t.callId)],
+);
+
+/* ═══════════════════════════════ ER lane 4 (#811) — the medico-legal case ═══════════════════════════════ */
+
+/**
+ * The MLC register: one case per ER episode, serial `MLC26-000123` per IST year. IMMUTABLE — a trigger in the
+ * migration refuses every UPDATE and DELETE (`er_mlc_append_only`); a correction is an addendum (`er_mlc_addenda`), the
+ * obligations' clocks live in `er_mlc_obligations`. Opened by a doctor, or by rule at arrival (an unidentified patient, a
+ * body brought dead). Retyped value lists: `ER_MLC_CATEGORY_VALUES` mirrors the contract (schema-parity test).
+ */
+export const ER_MLC_CATEGORY_VALUES = [
+  "assault", "road_accident", "burns", "acid_attack", "poisoning", "hanging", "drowning", "fall_from_height", "bite_dispute",
+  "unknown_unconscious", "sexual_assault", "brought_dead", "death_within_24h_injury", "police_brought", "other",
+] as const;
+const MLC_CATEGORIES_SQL = list(ER_MLC_CATEGORY_VALUES);
+
+export const erMlcs = pgTable(
+  "er_mlcs",
+  {
+    id: text("id").primaryKey(),
+    mlcNo: text("mlc_no").notNull(),
+    mlcYear: integer("mlc_year").notNull(),
+    mlcSerial: integer("mlc_serial").notNull(),
+    episodeId: text("episode_id").notNull().references(() => erEpisodes.id),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    category: text("category").notNull(),
+    informant: jsonb("informant").$type<{ name: string; relation: string; phone?: string; words: string }>(),
+    injuries: jsonb("injuries").$type<{ site: string; kind: string; sizeCm?: string; description?: string }[]>().notNull(),
+    pocso: boolean("pocso").notNull(),
+    freeByLaw: boolean("free_by_law").notNull(),
+    openedBy: text("opened_by").notNull(),
+    openedByRule: boolean("opened_by_rule").notNull(),
+    openedAt: timestamp("opened_at", { withTimezone: true }).notNull(),
+    late: boolean("late").notNull(),
+    provenance: text("provenance").notNull(),
+  },
+  (t) => [
+    uniqueIndex("er_mlcs_no_ux").on(t.mlcNo),
+    uniqueIndex("er_mlcs_serial_ux").on(t.mlcYear, t.mlcSerial),
+    uniqueIndex("er_mlcs_episode_ux").on(t.episodeId),
+    index("er_mlcs_opened_idx").on(t.openedAt),
+    check("er_mlcs_category_ck", sql`${t.category} in (${MLC_CATEGORIES_SQL})`),
+  ],
+);
+
+/**
+ * The two obligations of every MLC (spec §3.7): `police_intimation` due 1 h after opening (a task at the due instant,
+ * then one climb), `faculty_countersign` due in 24 h (breached → one notice on the ladder; still owed after a death).
+ * The ONE mutable MLC table: the clock's bookkeeping (met, task, climb, breach), each stamped once.
+ */
+export const erMlcObligations = pgTable(
+  "er_mlc_obligations",
+  {
+    id: text("id").primaryKey(),
+    mlcId: text("mlc_id").notNull().references(() => erMlcs.id),
+    kind: text("kind").notNull(),
+    dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
+    metAt: timestamp("met_at", { withTimezone: true }),
+    metBy: text("met_by"),
+    taskId: text("task_id"),
+    climbedAt: timestamp("climbed_at", { withTimezone: true }),
+    breachedAt: timestamp("breached_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("er_mlc_obligations_kind_ux").on(t.mlcId, t.kind),
+    index("er_mlc_obligations_owed_idx").on(t.dueAt).where(sql`${t.metAt} is null`),
+    check("er_mlc_obligations_kind_ck", sql`${t.kind} in ('police_intimation', 'faculty_countersign')`),
+    check("er_mlc_obligations_met_ck", sql`(${t.metAt} is null) = (${t.metBy} is null)`),
+  ],
+);
+
+/** A correction or addition to an MLC, by a doctor. Append-only (trigger). */
+export const erMlcAddenda = pgTable(
+  "er_mlc_addenda",
+  {
+    id: text("id").primaryKey(),
+    mlcId: text("mlc_id").notNull().references(() => erMlcs.id),
+    text: text("text").notNull(),
+    category: text("category"),
+    examinationRefused: boolean("examination_refused").notNull(),
+    injuries: jsonb("injuries").$type<{ site: string; kind: string; sizeCm?: string; description?: string }[]>().notNull(),
+    authorId: text("author_id").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("er_mlc_addenda_mlc_idx").on(t.mlcId, t.at),
+    check("er_mlc_addenda_category_ck", sql`${t.category} is null or ${t.category} in (${MLC_CATEGORIES_SQL})`),
+  ],
+);
+
+/** The police intimation (one per case): mode, station, the receiving officer, GD entry number. Append-only (trigger). */
+export const erMlcIntimations = pgTable(
+  "er_mlc_intimations",
+  {
+    id: text("id").primaryKey(),
+    mlcId: text("mlc_id").notNull().references(() => erMlcs.id),
+    mode: text("mode").notNull(),
+    station: text("station").notNull(),
+    receiverName: text("receiver_name").notNull(),
+    receiverRank: text("receiver_rank"),
+    gdEntryNo: text("gd_entry_no"),
+    intimatedAt: timestamp("intimated_at", { withTimezone: true }).notNull(),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("er_mlc_intimations_mlc_ux").on(t.mlcId),
+    check("er_mlc_intimations_mode_ck", sql`${t.mode} in ('written', 'phone_then_written', 'police_present')`),
+  ],
+);
+
+/**
+ * The custody log: belongings lists and the evidence chain, one numbered link per act, each signed by the recorder and
+ * a second person (PIN). Append-only (trigger): a seal moves collected → stored → handed over by NEW links.
+ */
+export const erMlcCustody = pgTable(
+  "er_mlc_custody",
+  {
+    id: text("id").primaryKey(),
+    mlcId: text("mlc_id").notNull().references(() => erMlcs.id),
+    link: integer("link").notNull(),
+    kind: text("kind").notNull(),
+    evidenceKind: text("evidence_kind"),
+    description: text("description"),
+    sealNo: text("seal_no"),
+    action: text("action").notNull(),
+    items: jsonb("items").$type<{ description: string; qty: number }[]>(),
+    keptIn: jsonb("kept_in").$type<{ kind: string; ref: string }>(),
+    receiver: jsonb("receiver").$type<{ name: string; rank: string; station: string }>(),
+    recordedBy: text("recorded_by").notNull(),
+    witnessedBy: text("witnessed_by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("er_mlc_custody_link_ux").on(t.mlcId, t.link),
+    index("er_mlc_custody_seal_idx").on(t.mlcId, t.sealNo),
+    check("er_mlc_custody_kind_ck", sql`${t.kind} in ('belongings', 'evidence')`),
+    check("er_mlc_custody_action_ck", sql`(${t.kind} = 'belongings' and ${t.action} = 'listed') or (${t.kind} = 'evidence' and ${t.action} in ('collected', 'stored', 'handed_over') and ${t.sealNo} is not null)`),
+    check("er_mlc_custody_receiver_ck", sql`(${t.action} = 'handed_over') = (${t.receiver} is not null)`),
+    check("er_mlc_custody_witness_ck", sql`${t.witnessedBy} <> ${t.recordedBy}`),
+  ],
+);
+
+/* ═══════════════════════════════ ER lane 5 (#812) — the departure record ═══════════════════════════════ */
+
+/**
+ * The signed paper of a departure, one per episode: the discharge summary, the referral note, the LAMA form, the LWBS /
+ * abscond note, the death note. The document is the contract-validated input (`kind` names its shape). Append-only
+ * (trigger): a departure is not edited.
+ */
+export const erDepartureRecords = pgTable(
+  "er_departure_records",
+  {
+    id: text("id").primaryKey(),
+    episodeId: text("episode_id").notNull().references(() => erEpisodes.id),
+    kind: text("kind").notNull(),
+    document: jsonb("document").$type<Record<string, unknown>>().notNull(),
+    signedBy: text("signed_by").notNull(),
+    signedAt: timestamp("signed_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("er_departure_records_episode_ux").on(t.episodeId),
+    check("er_departure_records_kind_ck", sql`${t.kind} in ('discharge_summary', 'admission', 'referral', 'lama', 'lwbs', 'abscond', 'death')`),
+  ],
+);
+
+/**
+ * A specialty refused the ER admission (spec §4.5 edge): the refusal, the MS's arbitration task and the ruling. One open
+ * dispute per episode; the ruling is written once.
+ */
+export const erAdmissionDisputes = pgTable(
+  "er_admission_disputes",
+  {
+    id: text("id").primaryKey(),
+    episodeId: text("episode_id").notNull().references(() => erEpisodes.id),
+    departmentCode: text("department_code").notNull(),
+    reason: text("reason").notNull(),
+    refusedBy: text("refused_by").notNull(),
+    refusedAt: timestamp("refused_at", { withTimezone: true }).notNull(),
+    taskId: text("task_id"),
+    ruling: text("ruling"),
+    rulingDepartmentCode: text("ruling_department_code"),
+    rulingNote: text("ruling_note"),
+    ruledBy: text("ruled_by"),
+    ruledAt: timestamp("ruled_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("er_admission_disputes_open_ux").on(t.episodeId).where(sql`${t.ruledAt} is null`),
+    check("er_admission_disputes_ruling_ck", sql`${t.ruling} is null or ${t.ruling} in ('admit_under', 'refer_out')`),
+    check("er_admission_disputes_ruled_ck", sql`(${t.ruling} is null) = (${t.ruledAt} is null)`),
+  ],
+);
+
+/* ═══════════════════════════════ ER lane 6 (#813) — the ER bill (money; the bill desk only) ═══════════════════════════════ */
+
+/** A mass-casualty event's account (0076 §4): charges post at full tariff; the owner decides afterwards. */
+export const erEventAccounts = pgTable("er_event_accounts", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+  openedBy: text("opened_by").notNull(),
+  openedAt: timestamp("opened_at", { withTimezone: true }).notNull(),
+});
+
+/** An advance taken at the ER desk after "stabilised": billing's receipt, applied when the bill settles. */
+export const erAdvances = pgTable(
+  "er_advances",
+  {
+    id: text("id").primaryKey(),
+    episodeId: text("episode_id").notNull().references(() => erEpisodes.id),
+    receiptId: text("receipt_id").notNull(),
+    amountPaise: integer("amount_paise").notNull(),
+    takenBy: text("taken_by").notNull(),
+    takenAt: timestamp("taken_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [index("er_advances_episode_idx").on(t.episodeId), check("er_advances_amount_ck", sql`${t.amountPaise} > 0`)],
+);
+
+/** The settled ER bill: one per episode (the invoice billing issued for the patient's share; dues held, never credit). */
+export const erBills = pgTable(
+  "er_bills",
+  {
+    id: text("id").primaryKey(),
+    episodeId: text("episode_id").notNull().references(() => erEpisodes.id),
+    settlement: text("settlement").notNull(),
+    payer: text("payer").notNull(),
+    totalPaise: integer("total_paise").notNull(),
+    payerPaise: integer("payer_paise").notNull(),
+    patientPaise: integer("patient_paise").notNull(),
+    paidPaise: integer("paid_paise").notNull(),
+    duesPaise: integer("dues_paise").notNull(),
+    invoiceId: text("invoice_id"),
+    invoiceNo: text("invoice_no"),
+    undertaking: jsonb("undertaking").$type<{ signerName: string; relation: string; documentRef: string }>(),
+    settledBy: text("settled_by").notNull(),
+    settledAt: timestamp("settled_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("er_bills_episode_ux").on(t.episodeId),
+    check("er_bills_settlement_ck", sql`${t.settlement} in ('paid', 'dues', 'nothing_payable')`),
+    check("er_bills_split_ck", sql`${t.payerPaise} + ${t.patientPaise} = ${t.totalPaise}`),
+    check("er_bills_dues_ck", sql`(${t.settlement} = 'dues') = (${t.duesPaise} > 0)`),
+  ],
+);
+
+/**
+ * A payer's claim for an ER bill (PM-JAY, road-accident cashless, a mass-casualty event): THE TPA DESK'S SEAM. The desk
+ * files it by hand (0076 §3); this row is what it reads (`listErClaims`) and closes.
+ */
+export const erPayerClaims = pgTable(
+  "er_payer_claims",
+  {
+    id: text("id").primaryKey(),
+    episodeId: text("episode_id").notNull().references(() => erEpisodes.id),
+    payer: text("payer").notNull(),
+    payerRef: text("payer_ref"),
+    eventAccountId: text("event_account_id"),
+    amountPaise: integer("amount_paise").notNull(),
+    status: text("status").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("er_payer_claims_episode_ux").on(t.episodeId),
+    check("er_payer_claims_payer_ck", sql`${t.payer} in ('pmjay', 'road_accident', 'bnss_free', 'mci_event')`),
+    check("er_payer_claims_status_ck", sql`${t.status} in ('to_file', 'filed', 'settled', 'rejected')`),
+  ],
 );

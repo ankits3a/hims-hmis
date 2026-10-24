@@ -827,6 +827,14 @@ export const ROSTER_ESCALATION_KINDS = [
   "er_retriage",
   // ER lane 3 (#810) — a specialty call unanswered 15 min, and a critical result unacknowledged by the ER doctor of record.
   "er_call", "er_critical",
+  // ER lane 4 (#811) — an MLC's police intimation 30 min past its 1-hour target, and a faculty countersign past 24 h.
+  "mlc_intimation", "mlc_countersign",
+  // ER lane 5 (#812) — a patient absconded from the ER: security (and the duty manager, the police for an MLC).
+  "er_abscond",
+  // ER lane 5 follow-up — decision-to-bed past 4 h climbs past the bed manager to the MS.
+  "er_boarding",
+  // Review #7 — an MLC patient absconded: the duty manager (for the police) on a ladder of its own, apart from security.
+  "er_abscond_mlc",
 ] as const;
 export type RosterEscalationKind = (typeof ROSTER_ESCALATION_KINDS)[number];
 

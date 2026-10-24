@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { bigint, boolean, check, date, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { erEpisodes } from "./emergency";
 import { patients } from "./patients";
 import { resources } from "./resources";
 
@@ -166,6 +167,8 @@ export const ipdAdmissions = pgTable(
     admittedAt: timestamp("admitted_at", { withTimezone: true }),
     admittedBy: text("admitted_by"),
     stabilisedAt: timestamp("stabilised_at", { withTimezone: true }),
+    /** ER lane 5 (#812): an admission from the ER keeps the ER gate instant (spec §3.10: IPD copies `arrived_at`). */
+    erArrivedAt: timestamp("er_arrived_at", { withTimezone: true }),
     downtimeSerial: text("downtime_serial"),
     /** Downtime: the paper deposit receipt's number, when the paper form carried one. */
     paperReceiptNo: text("paper_receipt_no"),
@@ -367,6 +370,8 @@ export const ipdChargeLines = pgTable(
      */
     visitSeq: integer("visit_seq"),
     reversalOf: text("reversal_of"),
+    /** ER lane 6 (#813): the ER charge line an `ipd.er` line carries (and its reversal copies). */
+    erChargeLineId: text("er_charge_line_id"),
     reason: text("reason"),
     postedBy: text("posted_by").notNull(),
     postedAt: timestamp("posted_at", { withTimezone: true }).notNull(),
@@ -386,6 +391,8 @@ export const ipdChargeLines = pgTable(
       "ipd_charge_lines_pharmacy_ck",
       sql`${t.source} = 'ipd.reversal' or (${t.source} = 'ipd.pharmacy') = (${t.issueId} is not null and ${t.batchId} is not null and ${t.drugSeq} is not null and ${t.orderId} is not null)`,
     ),
+    // ER lane 6 (#813): one IP line per ER line, ever.
+    uniqueIndex("ipd_charge_lines_er_line_ux").on(t.erChargeLineId).where(sql`${t.source} = 'ipd.er'`),
     check("ipd_charge_lines_order_ck", sql`${t.source} = 'ipd.reversal' or (${t.source} = 'ipd.order') = (${t.orderItemId} is not null and ${t.orderId} is not null)`),
     check("ipd_charge_lines_qty_ck", sql`${t.qty} > 0`),
     check("ipd_charge_lines_reversal_ck", sql`(${t.source} = 'ipd.reversal') = (${t.reversalOf} is not null)`),
@@ -908,7 +915,9 @@ export const ipdMortuaryRegister = pgTable(
   "ipd_mortuary_register",
   {
     id: text("id").primaryKey(),
-    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    /** The holder: an IPD admission, or (ER lane 4, #811) an ER episode — a body brought dead. Exactly one. */
+    admissionId: text("admission_id").references(() => ipdAdmissions.id),
+    erEpisodeId: text("er_episode_id").references(() => erEpisodes.id),
     patientId: text("patient_id").notNull(),
     status: text("status").notNull(),
     diedAt: timestamp("died_at", { withTimezone: true }).notNull(),
@@ -927,6 +936,8 @@ export const ipdMortuaryRegister = pgTable(
   },
   (t) => [
     uniqueIndex("ipd_mortuary_register_admission_ux").on(t.admissionId),
+    uniqueIndex("ipd_mortuary_register_er_episode_ux").on(t.erEpisodeId),
+    check("ipd_mortuary_register_holder_ck", sql`(${t.admissionId} is null) <> (${t.erEpisodeId} is null)`),
     index("ipd_mortuary_register_status_idx").on(t.status),
     check("ipd_mortuary_register_status_ck", sql`${t.status} in ('expected', 'received', 'released')`),
     check("ipd_mortuary_register_received_ck", sql`(${t.status} = 'expected') = (${t.receivedAt} is null)`),

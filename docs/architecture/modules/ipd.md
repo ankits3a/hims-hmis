@@ -276,6 +276,7 @@ Source: `apps/core/src/modules/ipd/`
 - `discharge-exit.ts`
   - `issueGatePass(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"issue_gate_pass">>`
   - `listMortuary(db: Db, actor: Actor): Promise<IpdMortuaryEntry[]>`
+  - `openErMortuaryEntry(tx: Tx, actor: Actor, args: { erEpisodeId: string; patientId: string; diedAt: Date; mlc?: boolean }, at: Date): Promise…`
   - `receiveBody(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<IpdMortuaryEntry>`
   - `recordAbscond(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_abscond">>`
   - `recordDeath(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_death">>`
@@ -365,6 +366,14 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_ADMISSION_PREFIX`
   - `intendedPayerOfAdmission(payerKind: string | null): string`
   - `registerIpdEncounterResolver(): () => void`
+- `er-handoff.ts`
+  - `cancelErAdmissionIn(tx: Tx, actor: Actor, admissionId: string, note: string, at: Date): Promise<"cancelled" | "not_open" | "held_deposit">`
+  - `carryErAdvanceIn(tx: Tx, admissionId: string, adv: { advanceId: string; receiptId: string; receiptNo: string; amountPaise: number; tender: …`
+  - `carryErLineIn(tx: Tx, actor: Actor, admissionId: string, line: { erChargeLineId: string; serviceId: string; qty: number; prepaidUnitPaise?:…`
+  - `carryErOrderLinesIn(tx: Tx, actor: Actor, admissionId: string, items: readonly { orderId: string; orderItemId: string; serviceId: string; c…`
+  - `erAdmissionState(db: Db | Tx, admissionId: string): Promise<string | null>`
+  - `erOpenAdmissionFor(db: Db | Tx, erEpisodeId: string): Promise<{ id: string; state: string } | undefined>`
+  - `stampErHandOffIn(tx: Tx, input: { admissionId: string; erArrivedAt: Date; stabilisedAt: Date | null }): Promise<void>`
 - `errors.ts`
   - `class IpdError`
   - `class IpdRefusal`
@@ -613,7 +622,7 @@ Source: `apps/core/src/modules/ipd/`
 
 `ipd_admission_conditions`, `ipd_admission_deposits`, `ipd_admissions`, `ipd_attendant_message_consents`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_proposals`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_charge_exceptions`, `ipd_charge_lines`, `ipd_class_changes`, `ipd_daily_totals`, `ipd_deposit_alerts`, `ipd_discharge_confirmations`, `ipd_discharge_summaries`, `ipd_discharges`, `ipd_family_callbacks`, `ipd_family_links`, `ipd_family_otps`, `ipd_family_sessions`, `ipd_final_bills`, `ipd_gate_passes`, `ipd_intake_output`, `ipd_mortuary_register`, `ipd_nursing_alerts`, `ipd_nursing_assessments`, `ipd_nursing_notes`, `ipd_payer_auths`, `ipd_payer_claims`, `ipd_payer_non_payables`, `ipd_payer_split_snapshots`, `ipd_shift_handovers`, `ipd_stay_exits`, `ipd_transfers`, `ipd_vitals`
 
-Foreign keys into: `patients`, `resources`
+Foreign keys into: `emergency`, `patients`, `resources`
 
 ## HTTP routes
 

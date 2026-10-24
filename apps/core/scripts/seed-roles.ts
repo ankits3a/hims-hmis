@@ -87,7 +87,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     permissions: [
       // ER lane 1 (#808, decision 0076) — the ER desk registers arrivals and prints the band; the tracking board.
       // README "Emergency arrival" prose.
-      "er.board.view", "er.board.wall", "er.arrival.register",
+      // ER lane 4 (#811) — the MLC desk: writes the police intimation, lists belongings. README "Emergency MLC" prose.
+      // ER lane 5 (#812) — records "left without being seen" at the desk. README "Emergency disposition" prose.
+      // ER lane 6 (#813) — the ER bill desk: payer, advance after "stabilised", settle or dues. README "Emergency bill" prose.
+      "er.board.view", "er.board.wall", "er.arrival.register", "er.mlc", "er.disposition", "er.bill",
       // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
       "ipd.beds.view",
       "ipd.beds.manage",
@@ -145,7 +148,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     roleKey: "front_office_supervisor",
     permissions: [
       // ER lane 1 (#808) — as the front office: the ER desk and the tracking board. README "Emergency arrival" prose.
-      "er.board.view", "er.board.wall", "er.arrival.register",
+      // ER lane 4 (#811) — as the front office: the MLC desk. README "Emergency MLC" prose.
+      // ER lane 6 (#813) — the ER bill desk. README "Emergency bill" prose.
+      "er.board.view", "er.board.wall", "er.arrival.register", "er.mlc", "er.bill",
       // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
       "ipd.beds.view",
       "ipd.beds.manage",
@@ -262,6 +267,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // ER lane 3 (#810) — ER care: notes, STAT orders, the ER issue and doses, procedures, consent, calls, stabilised.
       // README "Emergency care" prose. No money behind it (0058).
       "er.care",
+      // ER lane 4 (#811) — the MLC: open, addendum, countersign (a senior), intimation, custody. README "Emergency MLC" prose.
+      "er.mlc",
+      // ER lane 5 (#812) — decide, discharge with the summary, hand to a unit, refer out, LAMA, death. README "Emergency disposition" prose.
+      "er.disposition",
       // DIET E4.4 (#736) — the doctor orders the diet, sets or lifts NPO, and reads the ward diet sheet and kitchen board.
       "diet.view", "diet.order", "diet.npo", "diet.clinical.view",
       // IPD ADMISSION E1.2 (#719) — a doctor advises admission (raises the request); answers carry no money (0058).
@@ -684,6 +693,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "cashier",
     permissions: [
+      // ER lane 6 (#813) — the ER bill desk. README "Emergency bill" prose.
+      "er.bill",
       // IPD CHARGES E2.1 (#725, decision 0072) — the interim bill; README "IPD running bill" prose. Never a doctor (0058).
       "ipd.bill.view",
       // IPD BILL DESK E2.3 (#727, decision 0072) — the exceptions-only bill desk and its deposit_low card; README "IPD bill desk" prose. Never a doctor (0058).
@@ -774,6 +785,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "billing_manager",
     permissions: [
+      // ER lane 6 (#813) — the ER bill desk. README "Emergency bill" prose.
+      "er.bill",
       // IPD ADMISSION E1.2 (#719) — the TPA desk sits in billing: the manual authorisation record.
       "ipd.payer.manage",
       // IPD CHARGES E2.1 (#725) — the interim bill, and the reversal line against a wrong charge (never an edit).
@@ -1055,7 +1068,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     roleKey: "medical_superintendent",
     permissions: [
       // ER lane 1 (#808) — the tracking board. README "Emergency arrival" prose.
-      "er.board.view", "er.board.wall",
+      // ER lane 4 (#811) — the MLC desk: the countersign breach reaches the MS. README "Emergency MLC" prose.
+      // ER lane 5 (#812) — arbitrates an admission a specialty refused. README "Emergency disposition" prose.
+      "er.board.view", "er.board.wall", "er.mlc", "er.disposition",
       // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
       "ipd.beds.view",
       // PASSES E1.3 (#720) — a visitor ban, and the manager's pause and police custody.
@@ -1211,7 +1226,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     permissions: [
       "auth.temp_role.grant", "roster.read", "copilot.health.read",
       // ER lane 1 (#808) — runs the ER desk at night and reads the board. README "Emergency arrival" prose.
-      "er.board.view", "er.board.wall", "er.arrival.register",
+      // ER lane 4 (#811) — the MLC desk at night; the intimation climb reaches the duty manager. README "Emergency MLC" prose.
+      // ER lane 5 (#812) — LAMA and abscond at night. README "Emergency disposition" prose.
+      // ER lane 6 (#813) — the ER bill desk at night; opens a mass-casualty event account. README "Emergency bill" prose.
+      "er.board.view", "er.board.wall", "er.arrival.register", "er.mlc", "er.disposition", "er.bill",
       "tasks.view", "tasks.supervise",
       // IPD BEDS E1.1 (#718) — the duty manager approves overflow beds (spec §4.1) and runs the board at night.
       "ipd.beds.view", "ipd.beds.manage", "ipd.beds.clean", "ipd.beds.overflow",
@@ -2268,7 +2286,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    */
   // ER lane 2 (#809) — `er.triage`: the casualty nurse triages by ESI, re-triages, records vitals, places in bays.
   // ER lane 3 (#810) — `er.care`: notes, the ER issue and the doses (a high-alert dose with a second person), consent.
-  { roleKey: "er_nurse", permissions: ["er.board.view", "er.board.wall", "er.arrival.register", "er.triage", "er.care"] },
+  // ER lane 4 (#811) — `er.mlc`: the intimation, belongings and the evidence chain (a second person's PIN).
+  // ER lane 5 (#812) — `er.disposition`: LWBS and abscond (the doctor's acts check the doctor role).
+  { roleKey: "er_nurse", permissions: ["er.board.view", "er.board.wall", "er.arrival.register", "er.triage", "er.care", "er.mlc", "er.disposition"] },
 ];
 
 /**

@@ -26,3 +26,20 @@ export const ER_TRIAGE = "er.triage";
  * signing a verbal order) also check the actor holds the `doctor` role; nothing here names money.
  */
 export const ER_CARE = "er.care";
+/**
+ * ER lane 4 (#811) — the medico-legal case: open it (a doctor), add an addendum (a doctor), record the police intimation,
+ * countersign (a senior doctor), list belongings and log the evidence chain (two staff), and read the MLC desk. DECIDED:
+ * one string; the doctor-only acts also check the doctor role. Nothing behind it names money.
+ */
+export const ER_MLC = "er.mlc";
+/**
+ * ER lane 5 (#812) — disposition and departure: decide, discharge with the summary, hand to a unit, refer out, LAMA,
+ * LWBS, abscond, death. DECIDED: one string; the doctor's acts (decide, discharge, hand, refer, death) also check the
+ * doctor role, LAMA a doctor or the duty manager. Nothing behind it names money.
+ */
+export const ER_DISPOSITION = "er.disposition";
+/**
+ * ER lane 6 (#813) — THE ER BILL DESK: the payer, an advance after "stabilised", pricing, settling at departure or dues
+ * against an undertaking, a mass-casualty event account. Money: billing and desk roles only — never a clinician (0058).
+ */
+export const ER_BILL = "er.bill";

@@ -165,7 +165,7 @@ export async function linkReservation(
   if (a === undefined) return;
   if (a.patientId !== args.patientId || !needMatches(a, args.need)) throw new IpdRefusal("state_changed", "Request changed");
   if (a.state !== "requested" && a.state !== "reserved") throw new IpdRefusal("admission_wrong_state");
-  if (a.expiresAt.getTime() < at.getTime()) throw new IpdRefusal("advice_expired");
+  if (a.source !== "er" && a.expiresAt.getTime() < at.getTime()) throw new IpdRefusal("advice_expired"); // ER: never while boarding
   if (a.state === "requested") await moveAdmission(tx, actor, a, "reserved", at);
   await appendEvent(tx, admissionReserved.make({
     payload: { admissionId: a.id, bedId: args.bedId, reservationId: args.reservationId, provenance: provenanceOf(actor) },

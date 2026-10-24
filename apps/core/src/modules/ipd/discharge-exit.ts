@@ -3,7 +3,7 @@ import { IPD_INTENTS, IpdPoliceClearanceSchema, IpdReceiveBodySchema, IpdRelease
 import { istDayString } from "../../kernel/approvals/cumulative";
 import { withTx } from "../../kernel/db/client";
 import {
-  ipdAdmissions, ipdBedStays, ipdChargeLines, ipdDischargeSummaries, ipdDischarges, ipdGatePasses, ipdMortuaryRegister, ipdStayExits, ipdTransfers, users,
+  erEpisodes, ipdAdmissions, ipdBedStays, ipdChargeLines, ipdDischargeSummaries, ipdDischarges, ipdGatePasses, ipdMortuaryRegister, ipdStayExits, ipdTransfers, users,
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { withIdempotency } from "../billing";
@@ -320,8 +320,8 @@ export async function receiveBody(db: Db, actor: Actor, raw: unknown, opts: Opts
     await tx.update(ipdMortuaryRegister).set({ status: "received", receivedAt: at, receivedBy: actor.id, identityCheckedBy: input.identityCheckedBy })
       .where(eq(ipdMortuaryRegister.id, e.id));
     await appendEvent(tx, mortuaryReceived.make({
-      payload: { admissionId: e.admissionId, entryId: e.id, provenance: provenanceOf(actor) },
-      actor, correlationId: e.admissionId, patientId: e.patientId, occurredAt: at,
+      payload: { admissionId: e.admissionId, erEpisodeId: e.erEpisodeId, entryId: e.id, provenance: provenanceOf(actor) },
+      actor, correlationId: holderOf(e), patientId: e.patientId, occurredAt: at,
     }));
   }), at);
   return readMortuaryEntry(db, actor, input.entryId);
@@ -351,18 +351,44 @@ export async function releaseBody(db: Db, actor: Actor, raw: unknown, opts: Opts
     await tx.update(ipdMortuaryRegister).set({ status: "released", releasedTo: input.releasedTo, releasedAt: at, releasedBy: actor.id })
       .where(eq(ipdMortuaryRegister.id, e.id));
     await appendEvent(tx, mortuaryReleased.make({
-      payload: { admissionId: e.admissionId, entryId: e.id, provenance: provenanceOf(actor) },
-      actor, correlationId: e.admissionId, patientId: e.patientId, occurredAt: at,
+      payload: { admissionId: e.admissionId, erEpisodeId: e.erEpisodeId, entryId: e.id, provenance: provenanceOf(actor) },
+      actor, correlationId: holderOf(e), patientId: e.patientId, occurredAt: at,
     }));
   }), at);
   return readMortuaryEntry(db, actor, input.entryId);
 }
 
+/** The entry's holder: its admission, or the ER episode of a body brought dead (the events' correlation id). */
+function holderOf(e: MortuaryRow): string {
+  return e.admissionId ?? e.erEpisodeId!;
+}
+
+/**
+ * ER lane 4 (#811, spec SPEC-emergency §3.8) — THE ER's SEAM INTO THIS REGISTER: a body brought dead to the ER opens an
+ * `expected` entry held by the ER episode, always an MLC — so `releaseBody` refuses it until the police clearance is
+ * recorded, exactly as for an MLC death on a ward. In the ER's transaction; the register's own intents do the rest.
+ */
+export async function openErMortuaryEntry(
+  tx: Tx, actor: Actor, args: { erEpisodeId: string; patientId: string; diedAt: Date; mlc?: boolean }, at: Date,
+): Promise<{ entryId: string }> {
+  const id = newId();
+  await tx.insert(ipdMortuaryRegister).values({
+    // Lane 5 (#812): a death in the ER is an MLC only when the case is one (a body brought dead always is).
+    id, admissionId: null, erEpisodeId: args.erEpisodeId, patientId: args.patientId, status: "expected", diedAt: args.diedAt, mlc: args.mlc ?? true,
+    createdBy: actor.id, createdAt: at,
+  });
+  return { entryId: id };
+}
+
 async function toEntries(db: Db, actor: Actor, rows: MortuaryRow[]): Promise<IpdMortuaryEntry[]> {
   if (rows.length === 0) return [];
   const people = new Map((await getPatientSummaries(db, actor, [...new Set(rows.map((r) => r.patientId))])).map((p) => [p.requestedId, p] as const));
-  const adm = new Map((await db.select({ id: ipdAdmissions.id, no: ipdAdmissions.admissionNo }).from(ipdAdmissions)
-    .where(inArray(ipdAdmissions.id, [...new Set(rows.map((r) => r.admissionId))]))).map((r) => [r.id, r.no] as const));
+  const admIds = [...new Set(rows.flatMap((r) => (r.admissionId === null ? [] : [r.admissionId])))];
+  const erIds = [...new Set(rows.flatMap((r) => (r.erEpisodeId === null ? [] : [r.erEpisodeId])))];
+  const adm = new Map(admIds.length === 0 ? [] : (await db.select({ id: ipdAdmissions.id, no: ipdAdmissions.admissionNo }).from(ipdAdmissions)
+    .where(inArray(ipdAdmissions.id, admIds))).map((r) => [r.id, r.no] as const));
+  const er = new Map(erIds.length === 0 ? [] : (await db.select({ id: erEpisodes.id, no: erEpisodes.episodeNo }).from(erEpisodes)
+    .where(inArray(erEpisodes.id, erIds))).map((r) => [r.id, r.no] as const));
   return rows.map((r) => {
     const p = people.get(r.patientId);
     return {

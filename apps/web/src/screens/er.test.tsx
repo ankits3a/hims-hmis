@@ -22,7 +22,7 @@ const tile = (over: Partial<ErTile>): ErTile => ({
 });
 const BOARD: ErBoard = {
   generatedAt: iso(0), wall: false,
-  stats: { inDepartment: 2, waitingTriage: 2, longestTriageWaitMinutes: 9, expected: 1, arrivalsToday: 7, broughtDeadToday: 0, bays: { free: 52, total: 60 } },
+  stats: { inDepartment: 2, waitingTriage: 2, longestTriageWaitMinutes: 9, expected: 1, arrivalsToday: 7, broughtDeadToday: 0, boarding: 0, lwbsToday: 0, bays: { free: 52, total: 60 } },
   expected: [{ preAlertId: "p1", mode: "ambulance_108", expectedAt: iso(6), expiresAt: iso(126), count: 2, arrivedCount: 0, sex: "male", ageBand: null, complaint: "Road accident", patientId: null, patientLabel: null }],
   waiting: [tile({}), tile({ episodeId: "e2", episodeNo: "ER26-000102", label: "Ramesh Kumar", labelHi: null, ageYears: 41, ageBand: null, arrivedAt: iso(-2), triageDueAt: iso(3), chips: ["name_alert"], arrivalMode: "walk_in" })],
   inTreatment: [],

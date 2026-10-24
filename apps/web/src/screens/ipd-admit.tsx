@@ -307,6 +307,7 @@ export function IpdAdmit(): React.ReactElement {
                   <div><span>{t("ipdAdmit.diagnosis")}</span><b>{selected.provisionalDiagnosis ?? "—"}</b></div>
                   <div><span>{t("ipdAdmit.consultant")}</span><b>{selected.consultant.name}</b></div>
                   <div><span>{t("ipdAdmit.department")}</span><b>{selected.department ?? "—"}</b></div>
+                  {selected.erArrivedAt !== null ? <div data-testid="ipda-er-arrival"><span>{t("ipdAdmit.erArrival")}</span><b className="mono">{dayTimeIst(selected.erArrivedAt)}</b></div> : null}
                   <div><span>{t("ipdAdmit.validUntil")}</span><b className="mono">{dayTimeIst(selected.expiresAt)}</b></div>
                 </div>
               </section>

@@ -7,7 +7,7 @@
 // Importing this module DEFINES the re-triage task kind and its skill (the API and the worker both need them).
 import "./task-kinds";
 export { emergencyManifest } from "./manifest";
-export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_CARE, ER_IDENTITY_LINK, ER_TRIAGE } from "./names";
+export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_CARE, ER_BILL, ER_CODES, ER_DISPOSITION, ER_IDENTITY_LINK, ER_MCI, ER_MLC, ER_TRIAGE } from "./names";
 export { EmergencyModule } from "./emergency.module";
 export { ErError, ErRefusal, erRefusalStatus } from "./errors";
 export type { ErErrorCode } from "./errors";
@@ -39,3 +39,40 @@ export {
   ER_EPISODE_NO_RE, ER_EPISODE_PREFIX, erChargeLinesOf, erChargeSink, postErChargeIn, registerErChargeSink, registerErEncounterResolver,
 } from "./charge-sink";
 export { listErItems, readErCare } from "./care-read";
+// Lane 4 (#811) — the medico-legal case: the register, its obligations and clocks, custody, the MLC desk reads.
+export {
+  ER_MLC_ACTOR, ER_MLC_INTIMATION_CLIMB_MIN, addMlcAddendum, countersignMlc, handOverEvidence, mlcOfEpisode, openMlc,
+  readMlc, readMlcDesk, recordBelongings, recordPoliceIntimation, sweepErMlcClocks,
+} from "./mlc";
+export { ER_MLC_INTIMATION_TASK, ER_MLC_SKILL } from "./task-kinds";
+// Lane 5 (#812) — disposition and departure: decide, discharge, hand to a unit (boarding), refer out, LAMA, LWBS, abscond, death.
+export {
+  ER_BOARDING_CLIMB_MIN, ER_BOARDING_TASK_MIN, ER_DISPO_ACTOR, arbitrateAdmission, decideDisposition, recordSpecialtyRefusal, departIn, dischargeFromEr, handToUnit, recordAbscond, recordErDeathIntent, recordLama, recordLwbs, referOut,
+  sweepErBoarding,
+} from "./dispo";
+export { ER_ARBITRATION_TASK, ER_BED_SKILL, ER_BOARDING_TASK, ER_MS_SKILL } from "./task-kinds";
+// Lane 6 (#813) — the ER bill (money; the bill desk only): payer, advance, pricing, settle / dues, event account, roll-over.
+export {
+  composeErBill, listErClaims, observationBlocks, openErEventAccount, priceErLines, readErBill, readErBillDesk, rollErLinesIn, setErPayer,
+  settleErBill, takeErAdvance, visitFeeLines,
+} from "./bill";
+// Lane 7 (#814) — codes and activations: call, the resuscitation record, end, debrief, clocks.
+export { activationClocksFor, callCode, codeClocks, endCode, readErCode, readErCodes, recordCodeDebrief, recordCodeEvent } from "./codes";
+// Lane 8 (#815) — mass casualty, Code Yellow: declare, packs, arrival from a pack, START / JumpSTART tags, surge bays, board.
+export {
+  decideMciStops, declareMci, listMciOverflowBeds, listMciPacks, mciTag, mintMciPacks, openSurgeBays, packNoOf, readMciBoard, readMciCount, readMciFamilyDesk, registerMciArrival, standDownMci,
+} from "./mci";
+export { ER_MCI_STOPS_TASK } from "./task-kinds";
+// Lane 9 (#816) — the ER copilot: Now cards, the ESI proposal (rules), "since arrival", drafts, the waiting display, tools.
+export { checkEsiProposal, readEsiProposal } from "./copilot-esi";
+export { bayProposalOf, erBayZone, readBayProposal } from "./copilot-bay";
+export { istHm, readSinceArrival, sinceCandidates, verifyErSinceLine } from "./copilot-since";
+export { ER_DRAFT_BUDGET_MS, buildErDraft, buildErReferralDraft, buildErSummaryDraft, buildMlcNarrativeDraft } from "./copilot-drafts";
+export { askErModel, erModelBarred, erModelFrom } from "./copilot-model";
+export type { ErFallback, ErModel } from "./copilot-model";
+export { readErWaitingDisplay, stageOf } from "./copilot-waiting";
+export { emergencyCopilotIntents, emergencyCopilotTools } from "./copilot-tools";
+export {
+  boardingLongCard, callUnansweredCard, casualtyNowCard, criticalResultCard, doctorOverdueCard, lwbsRiskCard, mlcCountersignDueCard,
+  mlcIntimationDueCard, preAlertCard, resultReadyCard, retriageDueCard,
+} from "./now-cards";

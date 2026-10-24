@@ -1780,6 +1780,35 @@ consent (emergency treatment without consent needs a second doctor), specialty c
 results to the ER doctor of record, and "stabilised". No ER clinical screen shows money.
 `er.care` is held by `doctor` and `er_nurse`.
 
+**Emergency MLC (ER lane 4, issue #811, decision 0076, built 2026-10-15, awaiting owner review).** The MLC desk at
+`/er/mlc`: the medico-legal case register (serial `MLC26-000123`), opened by the ER doctor or by rule at arrival (an
+unidentified patient, a body brought dead, a patient the police bring); the police intimation due within 1 hour (a
+task, then a climb) and the faculty countersign due within 24 hours (an obligation, still owed after a death); the
+belongings list and the evidence chain of custody, each signed by two staff; corrections only as addenda (the record is
+never edited or deleted). A body brought dead is marked deceased with the `brought_dead` death kind (no MCCD) and goes to
+the mortuary register, released only on police clearance. The MLC never delays treatment.
+`er.mlc` is held by `doctor`, `er_nurse`, `front_office`, `front_office_supervisor`, `duty_manager` and `medical_superintendent`.
+
+**Emergency disposition (ER lane 5, issue #812, decision 0076, built 2026-10-15, awaiting owner review).** Every way out of
+the ER: one disposition per episode decided by a doctor with a reason; discharge with the signed ER summary (diagnosis,
+treatment, medicines, return-if signs in Hindi and English, follow-up); hand to a unit (the IPD admission with the ER gate
+time and "stabilised" copied — the patient boards on the ER board until the bed is placed, and the ER test lines move to
+the IP running bill); refer out with the referral note (never because the patient cannot pay); LAMA with the risks and a
+signature or a witnessed refusal; left without being seen; absconded (security told, the police for an MLC); death with
+the MCCD number, or an MLC already intimated to the police, the body to the mortuary register. Every exit frees the bay.
+A patient waiting for a bed past 2 hours is a task for the bed manager and reaches the MS at 4 hours; a specialty refusing
+the admission is recorded and the MS arbitrates.
+`er.disposition` is held by `doctor`, `er_nurse`, `front_office`, `duty_manager` and `medical_superintendent`.
+
+**Emergency bill (ER lane 6, issue #813, decision 0076, built 2026-10-15, awaiting owner review).** The ER bill desk at
+`/er/bill`: the ER tariff's own lines (registration and physician fee once per visit; observation per started 6 hours
+after the first 6), drugs at the batch MRP and every other line at the hospital tariff; no money asked or taken before the
+ER doctor records "stabilised"; settle at departure, or dues against a signed undertaking with the invoice held (never
+credit, 0013); ₹0 for PM-JAY, road-accident cashless (up to ₹1.5 lakh for 7 days), BNSS s.397 (sexual assault, acid
+attack: nothing patient-payable, ever) and a mass-casualty event account, each leaving a claim for the TPA desk; at
+admission every ER line rolls into the IP running bill. No ER clinical screen shows money.
+`er.bill` is held by `front_office`, `front_office_supervisor`, `cashier`, `billing_manager` and `duty_manager`.
+
 **Copilot halt switch and spend cap (plan E0.3/E0.5, decision 0064, built 2026-10-11, awaiting owner review).**
 `copilot.halt.set` (owner, medical_superintendent, quality_manager) pauses the copilot by scope — read, act,
 draft or global;

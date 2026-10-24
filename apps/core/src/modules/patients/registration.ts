@@ -707,6 +707,11 @@ export async function updatePatient(
     changes.push({ field: "deathCertificateNo", from: current.deathCertificateNo, to: null });
     set.deathCertificateNo = null;
   }
+  // ER lane 4 (#811): clearing a mistaken mark clears the `brought_dead` death kind with it (the column's check holds).
+  if (resultingDeceased === null && deceasedChanged && current.deathKind !== null) {
+    changes.push({ field: "deathKind", from: current.deathKind, to: null });
+    set.deathKind = null;
+  }
 
   /**
    * PLAN 22c-A T3/DD5 — THE ASSURANCE DROP IS COMPUTED BEFORE THE WRITE AND APPLIED IN IT.

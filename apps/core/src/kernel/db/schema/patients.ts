@@ -181,6 +181,11 @@ export const patients = pgTable(
     // death: for a death in this hospital, the MCCD certificate (Form 4 / 4A) number. NULL while
     // `deceased_at` is NULL; `updatePatient` refuses a date without it (`death_certificate_required`).
     deathCertificateNo: text("death_certificate_no"),
+    // ER lane 4 (#811, spec SPEC-emergency §3.8) — HOW the death is known. NULL for every death recorded through the
+    // patient master (0018's MCCD rule holds there); `brought_dead` for a body brought to the ER dead: the hospital issues
+    // no MCCD (police inquest and post-mortem decide), so this kind is the one deceased record without a certificate
+    // number. Written only by `recordBroughtDeadDeath` (the ER's seam); cleared with `deceased_at` if a mark is undone.
+    deathKind: text("death_kind"),
     status: text("status").notNull().default("active"), // 'active' | 'merged'
     mergedIntoPatientId: text("merged_into_patient_id"), // set when status='merged'; resolution follows the chain
     createdBy: text("created_by").notNull(),
@@ -222,6 +227,9 @@ export const patients = pgTable(
       .where(sql`${t.abhaAddress} is not null and btrim(${t.abhaAddress}) <> '' and ${t.status} = 'active'`),
     // ER lane 1 (#808; ER review 2026-10-15) — one of two words, checked by the database.
     check("patients_identity_status_ck", sql`${t.identityStatus} in ('identified', 'unidentified')`),
+    // ER lane 4 (#811): the one death kind, and only on a deceased record.
+    // ER lane 5 (#812): `medico_legal` — a death in the ER under an MLC already intimated to the police, no MCCD yet.
+    check("patients_death_kind_ck", sql`${t.deathKind} is null or (${t.deathKind} in ('brought_dead', 'medico_legal') and ${t.deceasedAt} is not null)`),
   ],
 );
 

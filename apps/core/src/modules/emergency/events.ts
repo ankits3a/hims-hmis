@@ -36,16 +36,21 @@ export const erIdentityLinked = defineEvent("er.identity_linked", MODULE, z.obje
 export const erTriaged = defineEvent("er.triaged", MODULE, z.object({
   episodeId: id, level: z.number().int(), algorithmLevel: z.number().int().nullable(), downTriage: z.boolean(),
   triagedAt: z.string(), takeTeamId: id.nullable(), provenance: ErProvenanceSchema,
+  /** Lane 9 review (#894): the copilot's ESI proposal, recomputed by the server at the tap, and whether the pick differs. */
+  copilotLevel: z.number().int().nullable().optional(), override: z.boolean().optional(),
 }));
 export const erRetriaged = defineEvent("er.retriaged", MODULE, z.object({
   episodeId: id, level: z.number().int(), fromLevel: z.number().int().nullable(), algorithmLevel: z.number().int().nullable(),
   downTriage: z.boolean(), provenance: ErProvenanceSchema,
+  copilotLevel: z.number().int().nullable().optional(), override: z.boolean().optional(),
 }));
 export const erVitalsRecorded = defineEvent("er.vitals_recorded", MODULE, z.object({
   episodeId: id, ewsKind: z.string(), ewsValue: z.number().int(), ewsBand: z.string(), worse: z.boolean(), provenance: ErProvenanceSchema,
 }));
 export const erPlaced = defineEvent("er.placed", MODULE, z.object({
   episodeId: id, bedId: id, bayCode: z.string(), provenance: ErProvenanceSchema,
+  /** #898: the copilot's bay proposal, recomputed by the server at the tap (null when it had none), and whether the pick differs. */
+  copilotBedId: id.nullable().optional(), override: z.boolean().optional(),
 }));
 export const erMoved = defineEvent("er.moved", MODULE, z.object({
   episodeId: id, fromBedId: id, bedId: id, bayCode: z.string(), reason: z.string().nullable(), provenance: ErProvenanceSchema,
@@ -80,6 +85,75 @@ export const erMedReturned = defineEvent("er.med_returned", MODULE, z.object({
 export const erCallAnswered = defineEvent("er.call_answered", MODULE, z.object({ episodeId: id, callId: id, step: z.string(), minutes: z.number().int(), provenance: ErProvenanceSchema }));
 export const erStabilised = defineEvent("er.stabilised", MODULE, z.object({ episodeId: id, stabilisedAt: z.string(), provenance: ErProvenanceSchema }));
 
+/* ═══ lane 4 (#811) — the medico-legal case (ids and codes only: no informant words, no injuries, no officer names) ═══ */
+export const erMlcOpened = defineEvent("er.mlc_opened", MODULE, z.object({
+  episodeId: id, mlcId: id, mlcNo: z.string(), category: z.string(), byRule: z.boolean(), late: z.boolean(), provenance: ErProvenanceSchema,
+}));
+export const erMlcAddendum = defineEvent("er.mlc_addendum", MODULE, z.object({ episodeId: id, mlcId: id, addendumId: id, provenance: ErProvenanceSchema }));
+export const erPoliceIntimated = defineEvent("er.police_intimated", MODULE, z.object({
+  episodeId: id, mlcId: id, mode: z.string(), withinTarget: z.boolean(), provenance: ErProvenanceSchema,
+}));
+export const erMlcCountersigned = defineEvent("er.mlc_countersigned", MODULE, z.object({
+  episodeId: id, mlcId: id, withinTarget: z.boolean(), provenance: ErProvenanceSchema,
+}));
+export const erBelongingsRecorded = defineEvent("er.belongings_recorded", MODULE, z.object({
+  episodeId: id, mlcId: id, custodyId: id, items: z.number().int(), provenance: ErProvenanceSchema,
+}));
+export const erEvidenceCustody = defineEvent("er.evidence_custody", MODULE, z.object({
+  episodeId: id, mlcId: id, custodyId: id, link: z.number().int(), action: z.string(), provenance: ErProvenanceSchema,
+}));
+
+/* ═══ lane 5 (#812) — disposition and departure (ids and codes only) ═══ */
+export const erDispositionDecided = defineEvent("er.disposition_decided", MODULE, z.object({
+  episodeId: id, disposition: z.string(), /** Review #3: a re-decision after IPD cancelled the hand-off names the one it replaces. */
+  previous: z.string().nullable().optional(), provenance: ErProvenanceSchema,
+}));
+export const erHandedToUnit = defineEvent("er.handed_to_unit", MODULE, z.object({
+  episodeId: id, admissionId: id, boarding: z.boolean(), provenance: ErProvenanceSchema,
+}));
+export const erDeparted = defineEvent("er.departed", MODULE, z.object({
+  episodeId: id, outcome: z.string(), bayId: id.nullable(), admissionId: id.nullable(), provenance: ErProvenanceSchema,
+}));
+export const erAdmissionDisputed = defineEvent("er.admission_disputed", MODULE, z.object({
+  episodeId: id, disputeId: id, departmentCode: z.string(), provenance: ErProvenanceSchema,
+}));
+export const erAdmissionArbitrated = defineEvent("er.admission_arbitrated", MODULE, z.object({
+  episodeId: id, disputeId: id, ruling: z.string(), provenance: ErProvenanceSchema,
+}));
+
+/* ═══ lane 6 (#813) — the ER bill (the bill desk's events; amounts only where the desk needs them) ═══ */
+export const erPayerSet = defineEvent("er.payer_set", MODULE, z.object({ episodeId: id, payer: z.string(), provenance: ErProvenanceSchema }));
+export const erAdvanceTaken = defineEvent("er.advance_taken", MODULE, z.object({ episodeId: id, receiptId: id, amountPaise: z.number().int(), provenance: ErProvenanceSchema }));
+export const erLinesPriced = defineEvent("er.lines_priced", MODULE, z.object({ episodeId: id, priced: z.number().int(), stillMissing: z.number().int(), provenance: ErProvenanceSchema }));
+export const erBillSettled = defineEvent("er.bill_settled", MODULE, z.object({ episodeId: id, settlement: z.string(), duesPaise: z.number().int(), provenance: ErProvenanceSchema }));
+export const erEventAccountOpened = defineEvent("er.event_account_opened", MODULE, z.object({ eventAccountId: id, provenance: ErProvenanceSchema }));
+
+/* ═══ lane 7 (#814) — codes (ids and kinds only: no names, no place on the realtime wire) ═══ */
+export const erCodeCalled = defineEvent("er.code_called", MODULE, z.object({
+  codeId: id, kind: z.string(), episodeId: id.nullable(), paged: z.number().int(), provenance: ErProvenanceSchema,
+}));
+export const erCodeEvent = defineEvent("er.code_event", MODULE, z.object({ codeId: id, eventId: id, kind: z.string(), fromPaper: z.boolean(), provenance: ErProvenanceSchema }));
+export const erCodeEnded = defineEvent("er.code_ended", MODULE, z.object({ codeId: id, outcome: z.string(), provenance: ErProvenanceSchema }));
+export const erCodeDebriefed = defineEvent("er.code_debriefed", MODULE, z.object({ codeId: id, provenance: ErProvenanceSchema }));
+
+/* ═══ lane 8 (#815) — mass casualty, Code Yellow (ids, tags and counts only: no names on the wire) ═══ */
+export const erMciDeclared = defineEvent("er.mci_declared", MODULE, z.object({ mciId: id, eventAccountId: id, provenance: ErProvenanceSchema }));
+export const erMciStoodDown = defineEvent("er.mci_stood_down", MODULE, z.object({ mciId: id, backToEsi: z.number().int(), provenance: ErProvenanceSchema }));
+export const erMciPacksMinted = defineEvent("er.mci_packs_minted", MODULE, z.object({ first: z.string(), last: z.string(), count: z.number().int(), provenance: ErProvenanceSchema }));
+export const erMciTagged = defineEvent("er.mci_tagged", MODULE, z.object({
+  mciId: id, episodeId: id, tag: z.string(), previous: z.string().nullable(), provenance: ErProvenanceSchema,
+}));
+export const erMciSurgeOpened = defineEvent("er.mci_surge_opened", MODULE, z.object({ mciId: id, bedIds: z.array(id), provenance: ErProvenanceSchema }));
+/** #877 — the MS's answer to the OPD / elective OT stop proposed with a Code Yellow. */
+export const erMciStopsDecided = defineEvent("er.mci_stops_decided", MODULE, z.object({ mciId: id, decision: z.enum(["confirm", "decline"]), provenance: ErProvenanceSchema }));
+
+/* ═══ lane 6 (#813) — the ER bill (the bill desk's events; amounts only where the desk needs them) ═══ */
+export const erPayerSet = defineEvent("er.payer_set", MODULE, z.object({ episodeId: id, payer: z.string(), provenance: ErProvenanceSchema }));
+export const erAdvanceTaken = defineEvent("er.advance_taken", MODULE, z.object({ episodeId: id, receiptId: id, amountPaise: z.number().int(), provenance: ErProvenanceSchema }));
+export const erLinesPriced = defineEvent("er.lines_priced", MODULE, z.object({ episodeId: id, priced: z.number().int(), stillMissing: z.number().int(), provenance: ErProvenanceSchema }));
+export const erBillSettled = defineEvent("er.bill_settled", MODULE, z.object({ episodeId: id, settlement: z.string(), duesPaise: z.number().int(), provenance: ErProvenanceSchema }));
+export const erEventAccountOpened = defineEvent("er.event_account_opened", MODULE, z.object({ eventAccountId: id, provenance: ErProvenanceSchema }));
+
 /** Every event the tracking board refetches on. */
 export const ER_BOARD_EVENT_NAMES: readonly string[] = [
   erPreAlerted.name, erPreAlertCancelled.name, erArrived.name, erBroughtDead.name, erBandPrinted.name, erBandVoided.name,
@@ -87,4 +161,9 @@ export const ER_BOARD_EVENT_NAMES: readonly string[] = [
   erTriaged.name, erRetriaged.name, erVitalsRecorded.name, erPlaced.name, erMoved.name, erDoctorAssigned.name,
   erNoteRecorded.name, erNoteCosigned.name, erOrderPlaced.name, erMedIssued.name, erDoseRecorded.name, erMedReturned.name, erVerbalSigned.name,
   erProcedureRecorded.name, erConsentRecorded.name, erCallRaised.name, erCallAnswered.name, erStabilised.name,
+  // ER review (2026-10-15): NOT `er.mlc_opened` — the gateway forwards the whole payload (MLC number, category) to every
+  // board subscriber; the board shows the MLC mark on its next read.
+  erDispositionDecided.name, erHandedToUnit.name, erDeparted.name,
+  erCodeCalled.name, erCodeEvent.name, erCodeEnded.name,
+  erMciDeclared.name, erMciStoodDown.name, erMciTagged.name, erMciSurgeOpened.name, erMciStopsDecided.name,
 ];
