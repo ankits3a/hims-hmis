@@ -27,3 +27,17 @@ export {
 export type { AdmissionTransition } from "./admission-workflow";
 // E0.5 — one named query per IPD goal (plan §1, §6).
 export * from "./goals";
+// E1.1 (#718) — the bed intents, the release and housekeeping seams, the capacity board and the module surface.
+export { ipdManifest, IPD_BEDS_CLEAN, IPD_BEDS_MANAGE, IPD_BEDS_OVERFLOW, IPD_BEDS_VIEW } from "./manifest";
+export { IpdModule } from "./ipd.module";
+export { IpdRefusal, ipdRefusalStatus } from "./errors";
+export {
+  IPD_SYSTEM_ACTOR, assignBed, blockBed, lapseBedReservations, markBedClean, markBedCleanIn, markIncumbentBeds,
+  nextRuleValidBeds, releaseBedOccupant, releaseIncumbentBed, releaseReservation, reserveBed, retireBed, unblockBed,
+} from "./beds";
+export type { IncumbentBedLine, IncumbentBedReport } from "./beds";
+export { PAEDIATRIC_AGE_LIMIT_YEARS, checkBedRules, placementGender } from "./bed-rules";
+export type { BedRuleBreach, BedRuleContext, BedRulePatient } from "./bed-rules";
+export { initialsOf, readBedBoard } from "./beds-board";
+export { IPD_BED_EVENT_NAMES } from "./bed-events";
+export { IPD_REALTIME_NAMES, IPD_TOPIC_SPACES, ipdTopicRouter, ipdTopicsFor } from "./realtime";

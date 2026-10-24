@@ -1714,6 +1714,13 @@ When the day's estimated AI spend reaches ₹5,000 (`COPILOT_DAILY_CAP_INR`), th
 phrasebook only until midnight IST and the health page says so. At 80 % of the cap every `owner` gets one bell
 notice for that IST day (#583).
 
+**IPD beds (E1.1, decision 0072, built 2026-10-12, awaiting owner review).** The capacity board at
+`/ipd/beds` and the bed acts behind it. `ipd.beds.view` (front_office, front_office_supervisor,
+duty_manager, medical_superintendent, owner, admin) reads the board; `ipd.beds.manage` (front_office,
+front_office_supervisor, duty_manager) reserves, assigns, blocks, unblocks and releases incumbent beds;
+`ipd.beds.clean` (front_office_supervisor, duty_manager) marks a cleaned bed ready until housekeeping
+lands; and `ipd.beds.overflow` is held by `duty_manager` alone — an overflow bed needs the duty manager.
+
 **My duties, covers and swaps (20-U U5c/U6).** `/roster/my-duties` is a resident's phone: today, the
 rest of the week, and on every duty still ahead *"I can't do this"* — which lists who could take it
 without breaking a rule and, for everybody else, why not (*unavailable*, never the kind of leave). A

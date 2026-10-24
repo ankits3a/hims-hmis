@@ -119,6 +119,7 @@ const NOT_DEPARTMENTS: Record<string, string> = {
   alerts: "kernel — alert routing",
   ops: "kernel — operating mode, interfaces, downtime kits",
   attendance: "a copy of the attendance machine's records and its read routes — configured by three secret files and a switch, not commissioned like a department",
+  ipd: "OPEN, not decided (E1.1, 2026-10-13): the inpatient module WILL be a department — beds, wards and admissions are commissioned on a go-live day. It sits here until the IPD cutover lane writes its row set (bed layout loaded, incumbent beds marked, roles held) and `ipd-go-live.md` with an Executed section; moving it to DEPARTMENTS then turns this suite red until both exist, which is the point",
   ordering: "DECISION 0067 — not a department: the door every doctor screen orders tests through and the outside-test list. The lab and imaging it routes to are the departments; it has nothing of its own to commission",
   "doctor-desk": "DD-0 #626 — not a department: the doctor's Tower and briefs over lab, radiology and opd rows; nothing to commission",
   resources: "kernel — the registry the departments' theatres and benches live in",

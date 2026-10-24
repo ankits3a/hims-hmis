@@ -85,6 +85,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "front_office",
     permissions: [
+      // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
+      "ipd.beds.view",
+      "ipd.beds.manage",
       "opd.masters.read",
       "opd.appointments.read",
       "opd.appointments.manage",
@@ -124,6 +127,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "front_office_supervisor",
     permissions: [
+      // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
+      "ipd.beds.view",
+      "ipd.beds.manage",
+      "ipd.beds.clean",
       "opd.masters.read",
       // RC-1 T2 / D5 — the counter-flow lock pill. DECIDED (2026-08-31): no `counter_supervisor`
       // role is minted; this role already carries the desk's SLA escalation and queue-transfer
@@ -812,6 +819,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "owner",
     permissions: [
+      // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
+      "ipd.beds.view",
       "workflow.definitions.approve",
       // The ACTIVATOR half of the two-key ceremony. `opd_admin` drafts; whoever holds `owner`
       // activates; `sod.ts`'s `workflow_drafter_activator` pair means they cannot be one person.
@@ -960,6 +969,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "medical_superintendent",
     permissions: [
+      // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
+      "ipd.beds.view",
       // STAFF ATTENDANCE (owner 2026-10-09: "the rules doesn't apply to owner/admin/superitendent/
       // Unit head/committee") — the superintendent is among those who see everyone's attendance in full.
       "attendance.all.read",
@@ -1104,7 +1115,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // the owner, the MS and the copilot steward.
   {
     roleKey: "duty_manager",
-    permissions: ["auth.temp_role.grant", "roster.read", "copilot.health.read"],
+    permissions: [
+      "auth.temp_role.grant", "roster.read", "copilot.health.read",
+      // IPD BEDS E1.1 (#718) — the duty manager approves overflow beds (spec §4.1) and runs the board at night.
+      "ipd.beds.view", "ipd.beds.manage", "ipd.beds.clean", "ipd.beds.overflow",
+    ],
   },
   /**
    * ═══ PLAN 07c T9 / DD14 — OWNER RULING 2026-08-29: ONE NAMED PERSON MAY OPEN THE ROWS ═══
@@ -1979,7 +1994,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // OWNER RULING 2026-10-15 (#581) — IT no longer halts the copilot; it keeps the health read.
   // LAB NUMBERS (owner 2026-10-13, #768) — admin reads the lab's counts and turnaround times too (owner's request).
   // HOSPITAL NUMBERS (owner 2026-10-13, #777) — and imaging's and the pharmacy's (owner: "not just admin but owner").
-  { roleKey: "admin", permissions: ["copilot.health.read", "lab.metrics.read", "radiology.metrics.read", "pharmacy.metrics.read"] },
+  // IPD BEDS E1.1 (#718) — and the Beds board.
+  { roleKey: "admin", permissions: ["copilot.health.read", "lab.metrics.read", "radiology.metrics.read", "pharmacy.metrics.read", "ipd.beds.view"] },
   /**
    * #618 / DECISION 0053 — the Pharmacology department's REVIEWER-ONLY seat. It signs CRK formulary entries
    * (`formulary.crk.sign`) and reads the formulary it signs for (`formulary.read`, the catalogue doctors read).

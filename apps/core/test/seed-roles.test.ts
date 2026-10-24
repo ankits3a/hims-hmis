@@ -962,6 +962,22 @@ const COPILOT_HALT_PAIRS: readonly string[] = [
   "quality_manager/copilot.halt.clear",
 ];
 
+/** The README prose line authorising the IPD bed board (E1.1, decision 0072). Quoted, not paraphrased. */
+const IPD_BEDS_README_PROSE =
+  "`ipd.beds.overflow` is held by `duty_manager` alone — an overflow bed needs the duty manager.";
+
+/**
+ * IPD BEDS E1.1 (#718, decision 0072; built overnight 2026-10-12, awaiting owner review) — the admission desk
+ * (front office) reserves and assigns, its supervisor also marks beds clean, the duty manager holds all four
+ * (overflow alone), and the board is read by the MS, the owner and IT.
+ */
+const IPD_BEDS_PAIRS: readonly string[] = [
+  "front_office/ipd.beds.view", "front_office/ipd.beds.manage",
+  "front_office_supervisor/ipd.beds.view", "front_office_supervisor/ipd.beds.manage", "front_office_supervisor/ipd.beds.clean",
+  "duty_manager/ipd.beds.view", "duty_manager/ipd.beds.manage", "duty_manager/ipd.beds.clean", "duty_manager/ipd.beds.overflow",
+  "medical_superintendent/ipd.beds.view", "owner/ipd.beds.view", "admin/ipd.beds.view",
+];
+
 /** The README prose line authorising the 2026-09-20 approvals-spine ruling R1. Quoted, not paraphrased. */
 const APPROVALS_SPINE_README_PROSE =
   "The approvals spine (owner ruling R1,\n2026-09-20)";
@@ -1085,6 +1101,7 @@ const NON_TABLE_PAIRS: readonly string[] = [
   ...COPILOT_HALT_PAIRS,
   ...LAB_METRICS_PAIRS,
   ...HOSPITAL_NUMBERS_PAIRS,
+  ...IPD_BEDS_PAIRS,
   ...APPROVALS_SPINE_PAIRS,
   ...PHARMACY_REPORTS_PAIRS,
   ...PHARMACY_TALLY_PAIRS,
@@ -1384,6 +1401,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       pharmacy: 29, // HOSPITAL NUMBERS (#777, 2026-10-13), read off the failing run: +1, pharmacy.metrics.read; ITEM DISCOUNT (owner 2026-10-02): +1, pharmacy.sale_items.discount; STAGE D4: +2, pharmacy.trays.check and .manage; STAGE D5: +1, pharmacy.antimicrobial.approve; STAGE D3: +2, pharmacy.coldchain.record and .manage; STAGE D2: +2, pharmacy.incidents.record and .review; STAGE D1: +2, pharmacy.adr.record and .manage; PHARMACY P6 (patient messages): +2, pharmacy.messages.consent and .manage; PHARMACY P6: +3, pharmacy.ndps.custody, .witness and pharmacy.licences.manage; parity P5 (Tally): +1, pharmacy.tally.export; parity P5: +2, pharmacy.reports.read and .margin; P20: +1, pharmacy.downtime.enter; P19: +2, pharmacy.retail.*; PLAN 16c T1; P2: +1, pharmacy.pharmacists.manage; P9: +1, pharmacy.register.read; P17: +1, read_sealed
       roster: 3, // PHASE R (R1) — manage, publish, read; the seam ships inert (no menu, no route)
       attendance: 1, // STAFF ATTENDANCE (owner 2026-10-09) — attendance.all.read; a team and oneself are computed, not granted
+      ipd: 4, // IPD BEDS E1.1 (2026-10-12), read off the failing run: ipd.beds.view, .manage, .clean, .overflow
       ordering: 0, // DECISION 0067 — no permission of its own: rides tariff.read, tariff.services.manage and orders.place
       "doctor-desk": 0, // DD-0 #626 — no permission of its own; rides opd.consult
       radiology: 22, // HOSPITAL NUMBERS (#777, 2026-10-13), read off the failing run: +1, radiology.metrics.read; 18-S RS12 — `radiology.pacs.interface`, `radiology.pacs.reconcile`; 18-S RS5 — `radiology.contrast.record`; 18-S RS4 — `radiology.devices.manage`; 18-S RS3 — `radiology.display.read`; PLAN 18b T1 — `radiology.mwl.read`
@@ -1483,13 +1501,13 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // recognise, request), +1 to billing_manager (approve). No other role gained anything, and
       // `vitals_desk` deliberately gained nothing — vitals are recorded against a patient who is
       // already at the counter, and recognition happens where the invoice is.
-      front_office: 15, // 20-U U5a, read off the failing run: +1, roster.read; FRONT-DESK DUES (owner ruling 2026-09-30), read off the failing run: +1, billing.dues.patient.read
+      front_office: 17, // IPD BEDS E1.1 (2026-10-12), read off the failing run: +2, ipd.beds.view and .manage;  20-U U5a, read off the failing run: +1, roster.read; FRONT-DESK DUES (owner ruling 2026-09-30), read off the failing run: +1, billing.dues.patient.read
       // PLAN 07c T9 — 13 → 14 with `staff.reports.read`. This is the role the phrase "the
       // supervisor" in owner ruling O-2 actually means.
       // RC-1 T2 — 14 -> 15 with the counter-flow lock (D5): the pill, not the config editor.
       // RC-2 T4 — 15 -> 16 with `membership.instrument.enrol` (D5): this role may MINT a card;
       // `front_office` above may only honour one, which is the whole of the enrol/apply split.
-      front_office_supervisor: 20, // 20-U U5a, read off the failing run: +1, roster.read; FRONT-DESK DUES (owner ruling 2026-09-30), read off the failing run: +1, billing.dues.patient.read;  staff-reports T0: +1, staff.reports.history.year (the one-year tier); OPD day report: +1, opd.reports.read
+      front_office_supervisor: 23, // IPD BEDS E1.1 (2026-10-12), read off the failing run: +3, ipd.beds.view, .manage and .clean;  20-U U5a, read off the failing run: +1, roster.read; FRONT-DESK DUES (owner ruling 2026-09-30), read off the failing run: +1, billing.dues.patient.read;  staff-reports T0: +1, staff.reports.history.year (the one-year tier); OPD day report: +1, opd.reports.read
       vitals_desk: 7, // 20-U U5a, read off the failing run: +1, roster.read; VD-1 T4 — 5 -> 6 with `opd.vitals.history.read`, the bay's pre-stage read
       // Group B, 2026-08-26: +2, the patient record and the allergy register.
       // Plan 16a / DD10: +1, the formulary read the consult autocomplete needs.
@@ -2240,6 +2258,7 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(readme).toContain(LAB_METRICS_README_PROSE);
     for (const line of HOSPITAL_NUMBERS_README_PROSE) expect(readme).toContain(line);
     expect(readme).toContain(COPILOT_HALT_README_PROSE);
+    expect(readme).toContain(IPD_BEDS_README_PROSE);
     expect(readme).toContain(APPROVALS_SPINE_README_PROSE);
     // Parity P5's two sentences: who reads the office's reports, and who reads the margin.
     expect(readme).toContain(PHARMACY_REPORTS_README_PROSE);

@@ -36,6 +36,7 @@ import { RadiologyModule } from "./modules/radiology/radiology.module";
 import { PcpndtModule } from "./modules/pcpndt/pcpndt.module";
 import { AttendanceModule } from "./modules/attendance";
 import { OrderingModule } from "./modules/ordering";
+import { IpdModule } from "./modules/ipd";
 import { DoctorDeskModule } from "./modules/doctor-desk";
 import { AerbModule } from "./modules/aerb/aerb.module";
 import { PrintingModule } from "./kernel/printing/printing.module";
@@ -57,7 +58,9 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
  * that `HMIS_MODULES_ON` does not name is left out of `imports` below: none of its routes is mounted. Their manifests
  * stay in `ALL_MANIFESTS` (permissions exist either way); every collector reads `registry.live()`.
  */
-const DARK_MODULES: readonly (readonly [DarkModuleKey, Type<unknown>])[] = [];
+const DARK_MODULES: readonly (readonly [DarkModuleKey, Type<unknown>])[] = [
+  ["ipd", IpdModule], // E1.1 (#718) — the bed routes and the bed board's live topic
+];
 
 @Global()
 @Module({
