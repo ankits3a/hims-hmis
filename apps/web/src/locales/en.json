@@ -17709,5 +17709,87 @@
       "request_closed": "Already decided",
       "approver_is_requester": "Another person must approve"
     }
+  },
+  "ipdBill": {
+    "postingFailed": "Nightly posting failed ({{count}} tries) — the bill desk retries it",
+    "title": "Interim bill",
+    "loading": "Loading the bill…",
+    "loadFailed": "The bill could not be loaded. Try again.",
+    "forbidden": "You do not have access to inpatient bills.",
+    "notFound": "No such admission.",
+    "backToBeds": "Beds",
+    "print": "Print",
+    "factsLabel": "Admission",
+    "admitted": "Admitted",
+    "discharged": "Discharged",
+    "inBed": "In bed",
+    "payer": "Payer",
+    "tariff": "Tariff",
+    "tariffVersion": "Version {{no}} (locked at admission)",
+    "postedThrough": "Posted through",
+    "linesLabel": "Charges by day",
+    "noLines": "No charges posted yet.",
+    "todayNote": "Room, nursing and RMO post after midnight for the day just ended; today is not on the bill yet.",
+    "col": {
+      "item": "Item",
+      "code": "Code",
+      "qty": "Qty",
+      "rate": "Rate",
+      "gst": "GST",
+      "amount": "Amount"
+    },
+    "reversal": "Reversal",
+    "reversed": "Reversed",
+    "exempt": "Exempt",
+    "totalsLabel": "Totals",
+    "gross": "Charges",
+    "discount": "Discount",
+    "gst": "GST",
+    "total": "Total (rounded)",
+    "deposit": "Deposit paid",
+    "due": "Due",
+    "depositLeft": "Deposit left",
+    "exceptionsLabel": "Not posted",
+    "exceptionsTitle": "Not posted ({{count}})",
+    "exceptionsFix": "A missing rate is never guessed. Billing adds the rate on the tariff; the bill desk resolves the day.",
+    "movesLabel": "Beds and moves",
+    "movesTitle": "Beds and moves",
+    "billsAs": "bills as",
+    "now": "now",
+    "reason": {
+      "rate_missing": "Rate missing",
+      "tariff_missing": "No tariff",
+      "posting_failed": "Posting failed"
+    },
+    "component": {
+      "room": "Room rent",
+      "nursing": "Nursing",
+      "rmo": "RMO",
+      "visit": "Consultant visit",
+      "cross_visit": "Cross-consultation"
+    },
+    "class": {
+      "general": "General ward",
+      "semi_private": "Semi-private",
+      "private": "Private room",
+      "deluxe": "Deluxe room",
+      "suite": "Suite",
+      "hdu": "HDU",
+      "icu": "ICU",
+      "nicu": "NICU",
+      "picu": "PICU",
+      "ldr": "LDR",
+      "daycare": "Day care",
+      "emergency": "Emergency",
+      "overflow": "Overflow"
+    },
+    "payerKind": {
+      "cash": "Cash",
+      "insurance_cashless": "Insurance (cashless)",
+      "insurance_reimbursement": "Insurance (reimbursement)",
+      "pmjay": "PM-JAY",
+      "state_scheme": "State scheme",
+      "corporate": "Corporate"
+    }
   }
 }

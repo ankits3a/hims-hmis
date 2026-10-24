@@ -1096,6 +1096,20 @@ const PASSES_PAIRS: readonly string[] = [
   "security_guard/passes.scan",
 ];
 
+/** The README prose line authorising the IPD running bill (E2.1, decision 0072). Quoted, not paraphrased. */
+const IPD_CHARGES_README_PROSE =
+  "`ipd.charges.reverse` is held by `billing_manager` alone — a wrong\ncharge is answered by a reversal line, never an edit.";
+
+/**
+ * IPD CHARGES E2.1 (#725, decision 0072; built overnight 2026-10-13, awaiting owner review) — the interim bill is read
+ * by the admission desk, its supervisor, the duty manager, the cashier, the billing manager and the owner; NO doctor
+ * role (decision 0058). A reversal line is the billing manager's alone.
+ */
+const IPD_CHARGES_PAIRS: readonly string[] = [
+  "front_office/ipd.bill.view", "front_office_supervisor/ipd.bill.view", "duty_manager/ipd.bill.view", "cashier/ipd.bill.view",
+  "billing_manager/ipd.bill.view", "billing_manager/ipd.charges.reverse", "owner/ipd.bill.view",
+];
+
 /** The README prose line authorising the 2026-09-20 approvals-spine ruling R1. Quoted, not paraphrased. */
 const APPROVALS_SPINE_README_PROSE =
   "The approvals spine (owner ruling R1,\n2026-09-20)";
@@ -1227,6 +1241,7 @@ const NON_TABLE_PAIRS: readonly string[] = [
   ...IPD_BEDS_PAIRS,
   ...IPD_ADMIT_PAIRS,
   ...PASSES_PAIRS,
+  ...IPD_CHARGES_PAIRS,
   ...APPROVALS_SPINE_PAIRS,
   ...PHARMACY_REPORTS_PAIRS,
   ...PHARMACY_TALLY_PAIRS,
@@ -1683,7 +1698,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // FD-25 / owner ruling 2026-09-04 — 11 -> 13: `tariff.read` (a live 403 on the deployed
       // counter) and `patients.read` (the DPDP ruling on reading patient identity). Close pass 1
       // removed the two `opd.visits.*` strings this comment used to list; see `CASHIER_SEAT_PAIRS`.
-      cashier: 14,
+      cashier: 15, // IPD CHARGES E2.1 (2026-10-13), read off the failing run: +1, ipd.bill.view
       // PLAN 07b O-1, OWNER RULING 2026-08-29 — 11 -> 18. Seven strings that let this role WORK A
       // COUNTER while a cashier's drawer is locked pending its variance approval. Under R-4's
       // one-staffer counter that lockout closes the hospital's front door, and a cover that first
@@ -1693,7 +1708,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // patient who is asking.
       // PLAN 18a T2 — 19 -> 20: the imaging bill-decision queue (T7). A repeat film and a
       // contrast escalation are questions answered in money, which is this office's call.
-      billing_manager: 23, // IPD ADMISSION E1.2: +1, ipd.payer.manage; parity P5 (Tally): +1, pharmacy.tally.export; parity P5: +1, pharmacy.reports.read (not the margin)
+      billing_manager: 25, // IPD CHARGES E2.1 (2026-10-13), read off the failing run: +2, ipd.bill.view and ipd.charges.reverse; IPD ADMISSION E1.2: +1, ipd.payer.manage; parity P5 (Tally): +1, pharmacy.tally.export; parity P5: +1, pharmacy.reports.read (not the margin)
       // Group A, 2026-08-26: +4 — tariff.read, the activator key, tariff config, and approval-type
       // governance. `owner` is now the activator for BOTH ceremonies, workflow and price list.
       // Group B then added +3: the invoice, the daybook and the cashier sessions. NOT patients.read.
@@ -2415,6 +2430,7 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(readme).toContain(IPD_BEDS_README_PROSE);
     expect(readme).toContain(IPD_ADMIT_README_PROSE);
     expect(readme).toContain(PASSES_README_PROSE);
+    expect(readme).toContain(IPD_CHARGES_README_PROSE);
     expect(readme).toContain(APPROVALS_SPINE_README_PROSE);
     // Parity P5's two sentences: who reads the office's reports, and who reads the margin.
     expect(readme).toContain(PHARMACY_REPORTS_README_PROSE);

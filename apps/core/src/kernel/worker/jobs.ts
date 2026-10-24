@@ -35,7 +35,7 @@ import {
 import { sweepOverdueQa } from "../../modules/aerb";
 import { routingChooserFor, runAliasJob, runDeskRoutingLearning, runFlowLearning } from "../../modules/opd";
 import { syncAttendance } from "../../modules/attendance";
-import { lapseBedReservations } from "../../modules/ipd";
+import { lapseBedReservations, postNightlyIpdCharges } from "../../modules/ipd";
 import { sweepTasks } from "../../modules/tasks";
 import { sweepBmwStorage } from "../../modules/bmw";
 import { collectResourceKinds } from "../resources/kinds";
@@ -795,11 +795,15 @@ export function registerAllJobs(
     every: 60_000,
     run: async () => { await runIfModuleOn("sweepIpdNursing", "ipd", async () => {}); },
   });
-  /** IPD CHARGES E2.1 (#725) — `dailyIst` 00:05: the running bill's nightly rent, nursing and RMO lines. */
+  /**
+   * E2.1 (#725) — THE THIRTY-SECOND JOB, `dailyIst` 00:05: rent, nursing and RMO lines for every admission, one per
+   * admission, day and component (a unique index — a rerun posts nothing). Batches of admissions, each in its own
+   * transaction; idempotent and multi-process-safe on its own.
+   */
   scheduler.register({
     name: "postNightlyIpdCharges",
     dailyIst: IPD_NIGHTLY_CHARGES_IST,
-    run: async () => { await runIfModuleOn("postNightlyIpdCharges", "ipd", async () => {}); },
+    run: async (now) => { await runIfModuleOn("postNightlyIpdCharges", "ipd", () => postNightlyIpdCharges(db, now)); },
   });
   /**
    * DOCTOR DESK DD-report v0 — THE UNIT REPORT AT 08:00 IST, the take boundary (plan D-G): one report

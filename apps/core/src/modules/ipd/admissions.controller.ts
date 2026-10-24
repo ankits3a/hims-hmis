@@ -15,7 +15,8 @@ import {
 import { printBand, reprintBand } from "./bands";
 import { planAdmission, takeDeposit } from "./deposit";
 import { IpdError, IpdRefusal, ipdRefusalStatus } from "./errors";
-import { IPD_ADMIT, IPD_ADMIT_REQUEST, IPD_BAND_PRINT, IPD_PAYER_MANAGE } from "./manifest";
+import { IPD_ADMIT, IPD_ADMIT_REQUEST, IPD_BAND_PRINT, IPD_BILL_VIEW, IPD_PAYER_MANAGE } from "./manifest";
+import { readInterimBill } from "./interim-bill";
 import { recordPayerAuth } from "./payer";
 import type { Actor, IpdRefusalBody } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -99,6 +100,13 @@ export class IpdAdmissionsController {
   @RequirePermission(IPD_ADMIT, "hospital")
   async quotes(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<unknown> {
     try { return { items: await quotesFor(this.db, actor, id) }; } catch (e) { toHttp(e); }
+  }
+
+  /** E2.1 (#725) — the interim bill. `ipd.bill.view`: billing and front office; no doctor role holds it (0058). */
+  @Get(":id/interim-bill")
+  @RequirePermission(IPD_BILL_VIEW, "hospital")
+  async interimBill(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<unknown> {
+    try { return await readInterimBill(this.db, actor, id); } catch (e) { toHttp(e); }
   }
 
   @Get(":id/beds")

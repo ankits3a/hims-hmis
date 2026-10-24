@@ -1,9 +1,9 @@
 ---
 type: module-notes
 title: "ipd — module notes"
-description: "Why and traps of the inpatient module: validated bed and ward attributes and the bed-layout loader (E0.3), the bed intents and the Beds board (E1.1), and admission — request, plan and deposit from the tariff, admit onto a bed in one transaction, the payer record, the band, the emergency lane and the downtime back-fill (E1.2)."
+description: "Why and traps of the inpatient module: validated bed and ward attributes and the bed-layout loader (E0.3), the bed intents and the Beds board (E1.1), admission — request, plan and deposit from the tariff, admit onto a bed in one transaction, the payer record, the band, the emergency lane and the downtime back-fill (E1.2) — and the running bill: tariff lock, day rule, nightly posting, visit seam, reversals, interim bill (E2.1)."
 resource: apps/core/src/modules/ipd
-tags: [ipd, beds, resources, admission]
+tags: [ipd, beds, resources, admission, billing]
 generated: { by: agent:claude, at: 2026-10-12 }
 verified: []
 stale_after: 2027-01-12
@@ -61,6 +61,14 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `ipd_admit`). `packages/contracts/src/ipd/admissions.ts` — read models and routes.
 - `apps/web/src/screens/ipd-admit.tsx` — the Admit sheet (`/ipd/admit`, `?admission=<id>`); the Beds board's waiting
   column links to it.
+
+- (E2.1) `charge-days.ts` — `ipdChargeableDays(stays, admittedAt, dischargedAt, upToIstDate)`, the pure day rule;
+  `rentClassOf`, `classRank`. `charges.ts` — `postAdmissionCharges` (one admission up to a day), `postNightlyIpdCharges`
+  (the job), `postConsultantVisit(tx, …)` (the rounds seam), `reverseChargeLine`, `priceComponent`. `interim-bill.ts` —
+  `readInterimBill`. `charge-events.ts` — `ipd.charge.rent_posted` (G5b), `.visit_recorded`, `.exception_raised`,
+  `.reversed`. `kernel/db/schema/ipd.ts` — `ipd_charge_lines`, `ipd_charge_exceptions`, `ipd_admissions.tariff_version_id`
+  (migration `ipd_charges`). `packages/contracts/src/ipd/charges.ts` — `IpdInterimBill`, `IPD_CHARGE_ROUTES`.
+  `apps/web/src/screens/ipd-bill.tsx` — the interim bill (`/ipd/admissions/$admissionId/bill`, no nav entry).
 
 ## 3. Invariants
 - A bed is a kernel `bed` row. No new resource kind, no kernel edit, no migration: the attributes are jsonb,
@@ -151,6 +159,53 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - Downtime back-fill keeps the paper's request and admission times on the row, the stay and the events; the paper
   serial is upper-cased and unique.
 
+### Running bill (E2.1)
+- TARIFF LOCK: every admit path (`admit`, `emergencyAdmit`, `backfillDowntime`) records the version in force at the
+  admitted instant in `ipd_admissions.tariff_version_id`; every charge prices from it through the tariff engine
+  (`loadPricingContext({ tariffVersionId })` + `priceInvoiceLines`), so a later revision never reaches the stay and a lower
+  regulated price still wins. Null (no tariff active, or admitted before E2.1) → the version in force at `admitted_at`,
+  else a `tariff_missing` exception.
+- LINES ARE NOT A BILLING INVOICE. Billing's invoices are issued, numbered, immutable documents with one live invoice per
+  encounter; a running bill cannot live on one. Lines go to `ipd_charge_lines` (append-only: a trigger refuses UPDATE and
+  DELETE) with their price frozen at posting; the final bill (E3.2) composes ONE invoice from them, the OT
+  `composeDischargeBill` pattern (DECIDED). No billing or tariff signature changed.
+- DAY RULE (DECIDED, see `charge-days.ts`): IST midnight to midnight; admission day billed whatever the hour; discharge
+  day free up to 14:00 IST inclusive; highest class held MORE than an hour that day, else the longest; an ended stay under
+  an hour is transit and dropped; the stay's `billed_class` (protected/booked) wins over the bed's; overflow bills general;
+  daycare, emergency and LDR carry no rent; general < … < suite < hdu < icu = nicu = picu; home leave keeps billing.
+  Review #756: overlapping stays are clipped to the previous stay's end first; when EVERY stay is under an hour none is
+  dropped (minimum one day — admit 10:00, leave 10:30 bills that day at the stay's class).
+- DECIDED (review #756): a day spent on an LDR, day-care or emergency bed posts no rent, nursing or RMO — those beds
+  carry packages and services, not daily rates.
+- IDEMPOTENCY IS THE DATABASE: partial unique indexes — one `ipd.nightly` line per (admission, service date, component),
+  one `ipd.visit` line per (admission, date, consultant), one reversal per line. Inserts are `on conflict do nothing`;
+  `ipd.charge.rent_posted` goes out only with a room line that was actually inserted, so G5b sees one per night.
+- MISSING RATE: no item on the locked version, ₹0, or the service absent or SWITCHED OFF → required components (room,
+  nursing, visit) raise one `ipd_charge_exceptions` row per key (event once) and post nothing; `rmo` is skipped silently;
+  `cross_visit` falls back to `visit`. A later run that can price it posts the line and resolves the row.
+- NIGHTLY JOB: `postNightlyIpdCharges(db, now)`, `dailyIst` 00:05; admissions in a bed plus ENDED ones whose
+  `charges_posted_through` is short of the discharge day or that have an open exception (no age window); posts every
+  unposted day up to YESTERDAY (a missed night is caught up with its own dates). One transaction per admission; the
+  admission and stays are RE-READ under its advisory lock before the days are computed; a null tariff pin is resolved
+  and persisted in that transaction. A DOMAIN failure (IPD/tariff/zod error, SQLSTATE 22/23) becomes a `posting_failed`
+  exception (`error_code`, `fail_count`); at 3 consecutive the job skips the admission until `retryAdmissionCharges`
+  (billing manager) resolves it. Only infrastructure errors fail the run. Today is never posted.
+- VISITS: `postConsultantVisit(tx, { admissionId, consultantUserId, seenAt, source: "rounds_tap" })` — a consultant is a
+  user with an ACTIVE `opd_doctors` row (residents are not on it → not charged); first tap per IST day posts, repeats post
+  nothing; every tap emits `ipd.charge.visit_recorded`. Not the admitting/covering consultant → `cross_visit` (else `visit`).
+  Class = billed class of the bed held at `seenAt` (no-rent bed → general, DECIDED). The answer carries no money.
+  A REVERSED visit does not count: the day can be charged again, the new line taking the next `visit_seq` (the visit
+  unique index is (admission, day, consultant, visit_seq) — a partial index cannot see another row's reversal).
+- REVERSAL: `reverseChargeLine` (`ipd.charges.reverse`, billing_manager; HTTP `POST /ipd/charge-lines/:id/reverse`,
+  `charges.controller.ts`, reason required) inserts the negated twin with a reason (zero-net lines too; a lost race on
+  the unique index answers `charge_line_already_reversed`); a
+  reversed nightly line is NOT re-posted by the job (its key is spent) — the corrected charge is the bill desk's (E2.3).
+- DEPOSIT on the interim bill (`depositHeldPaise`): Σ deposit receipts (entered-in-error excepted) − the patient's
+  advance refunds issued since the request, floored at 0 (billing refunds advances per patient, not per receipt).
+- MONEY OFF DOCTORS (0058): `ipd.bill.view` (front office, its supervisor, duty manager, cashier, billing manager, owner)
+  gates the interim bill; charge events carry ids and dates only; acceptance (viii) pins the doctor-reachable IPD routes and
+  scans their answers for money keys.
+
 ## 4. Traps
 - `docker/prod/deploy.sh` runs every seed on every deploy. The loader is a script a person runs; never wire it
   into a seed.
@@ -189,6 +244,16 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - (E1.2) The thermal relay has no `ipd_wristband` print document (a kernel print-outbox edit, owed): the band
   prints from the desk's browser at band size; a named `printerId` is only checked to be alive.
 
+- (E2.1) GO-LIVE: the rate card lane creates the IPD services INACTIVE (so `validateTariffConfig` stays green); the
+  charges treat an inactive service as a missing rate. At cutover the priced IPD services must be switched on (a
+  person's act in the tariff screen; no script yet — owed), or every day lands as an exception.
+- (E2.1) SEAMS LEFT OPEN: pharmacy issue/return posting (§4.3) is not here — it will post its own source into
+  `ipd_charge_lines` (add a source value and its idempotency index); ward consumables by scan likewise. Payer split and
+  the room-rent cap are E2.2; deposit ladder and bill desk E2.3; the final bill E3.2 (`postAdmissionCharges` up to the
+  discharge day, then compose the invoice).
+- (E2.1) The transfer and discharge lanes do not exist yet: the acceptance tests write class moves and the discharge
+  directly into `ipd_bed_stays` / `ipd_admissions` (`test/helpers/ipd.ts` `mkChargesWorld`).
+
 ## 5. Callers
 - `scripts/load-bed-layout.ts` (operator).
 - `beds.controller.ts` (the web board), `kernel/worker/jobs.ts` (`lapseBedReservations`),
@@ -198,3 +263,5 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - (E1.2) `admit`/`emergencyAdmit`/`backfillDowntime` call `assignBedIn` and `endAdmissionHolds`; the Beds board reads
   open requests for its waiting column (`beds-board.ts`); ipd-charges (E2.1) reads `ipd_admissions` (payer, deposit)
   and `ipd_admission_deposits`; eMAR resolves band serials against `ipd_bands`.
+- (E2.1) `kernel/worker/jobs.ts` (`postNightlyIpdCharges`, daily 00:05 IST); the rounds lane calls `postConsultantVisit`;
+  the final bill (E3.2) calls `postAdmissionCharges`; `admissions.controller.ts` serves `readInterimBill`.
