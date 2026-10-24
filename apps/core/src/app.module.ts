@@ -40,6 +40,7 @@ import { IpdModule } from "./modules/ipd";
 import { DoctorDeskModule } from "./modules/doctor-desk";
 import { TasksModule } from "./modules/tasks";
 import { BmwModule } from "./modules/bmw";
+import { LinenModule } from "./modules/linen";
 import { AerbModule } from "./modules/aerb/aerb.module";
 import { PrintingModule } from "./kernel/printing/printing.module";
 import { RosterModule } from "./modules/roster/roster.module";

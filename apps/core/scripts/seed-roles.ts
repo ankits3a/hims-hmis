@@ -1999,7 +1999,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // HOSPITAL NUMBERS (owner 2026-10-13, #777) — and imaging's and the pharmacy's (owner: "not just admin but owner").
   // IPD BEDS E1.1 (#718) — and the Beds board.
   // E1.7 BIO-MEDICAL WASTE (#724) — and the waste board and its two legal reports.
-  { roleKey: "admin", permissions: ["copilot.health.read", "lab.metrics.read", "radiology.metrics.read", "pharmacy.metrics.read", "ipd.beds.view", "bmw.view", "bmw.manage"] },
+  // E2.4 LINEN (issue #728) — the administration reads the linen board and holds the par levels and the condemn
+  // approvals (a write-off needs a second person); it does not count or carry linen.
+  { roleKey: "admin", permissions: ["copilot.health.read", "lab.metrics.read", "radiology.metrics.read", "pharmacy.metrics.read", "ipd.beds.view", "bmw.view", "bmw.manage", "linen.view", "linen.manage"] },
   /**
    * #618 / DECISION 0053 — the Pharmacology department's REVIEWER-ONLY seat. It signs CRK formulary entries
    * (`formulary.crk.sign`) and reads the formulary it signs for (`formulary.read`, the catalogue doctors read).
@@ -2019,10 +2021,13 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // E1.7 BIO-MEDICAL WASTE (issue #724) — the people who carry waste generate, weigh, collect and store bags
   // (`bmw.handle`); the services supervisor is the BMW supervisor: the board, the handover to the treatment
   // facility, disputes and the legal reports. DECIDED by the standard Indian corporate-hospital split.
-  { roleKey: "support_staff", permissions: ["tasks.work", "bmw.handle"] },
+  // E2.4 LINEN (issue #728) — the ward attendants and linen handlers top up, return soiled and infected linen, count,
+  // send and receive laundry and raise a condemn (`linen.handle`); the services supervisor is the linen supervisor: the
+  // board, par levels and condemn approvals. DECIDED by the standard Indian corporate-hospital split.
+  { roleKey: "support_staff", permissions: ["tasks.work", "bmw.handle", "linen.handle"] },
   {
     roleKey: "services_supervisor",
-    permissions: ["tasks.view", "tasks.work", "tasks.supervise", "bmw.view", "bmw.handle", "bmw.manage"],
+    permissions: ["tasks.view", "tasks.work", "tasks.supervise", "bmw.view", "bmw.handle", "bmw.manage", "linen.view", "linen.handle", "linen.manage"],
   },
 ];
 

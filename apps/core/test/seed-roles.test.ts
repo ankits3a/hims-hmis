@@ -960,6 +960,23 @@ const BMW_PAIRS: readonly string[] = [
   "admin/bmw.manage",
 ];
 
+/** The README prose line authorising the linen grants (issue #728, decision 0072). Quoted, not paraphrased. */
+const LINEN_README_PROSE =
+  "`support_staff` holds `linen.handle` (top up, soiled and infected returns, ward counts,\nlaundry out and in, borrowing, a condemn request); `services_supervisor` holds `linen.view`, `linen.handle` and\n`linen.manage`; `admin` holds `linen.view` and `linen.manage` for par levels and condemn approvals and never\nhandles linen.";
+
+/**
+ * E2.4 LINEN (issue #728) — three permissions, three holders: the linen handlers handle, the services supervisor (the
+ * linen supervisor) holds all three, the administration reads the board and approves write-offs.
+ */
+const LINEN_PAIRS: readonly string[] = [
+  "support_staff/linen.handle",
+  "services_supervisor/linen.view",
+  "services_supervisor/linen.handle",
+  "services_supervisor/linen.manage",
+  "admin/linen.view",
+  "admin/linen.manage",
+];
+
 /** The README prose line authorising the copilot health read (decision 0064, E0.1). Quoted, not paraphrased. */
 const COPILOT_HEALTH_README_PROSE =
   "`copilot.health.read` is held by `owner`, `admin`, `duty_manager`, `medical_superintendent` and the new role\n`quality_manager` (the copilot steward), and the steward role holds nothing else but the halt switch.";
@@ -1133,6 +1150,7 @@ const NON_TABLE_PAIRS: readonly string[] = [
   ...ATTENDANCE_PAIRS,
   ...TASKS_PAIRS,
   ...BMW_PAIRS,
+  ...LINEN_PAIRS,
   ...COPILOT_HEALTH_PAIRS,
   ...COPILOT_HALT_PAIRS,
   ...LAB_METRICS_PAIRS,
@@ -1438,6 +1456,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       roster: 3, // PHASE R (R1) — manage, publish, read; the seam ships inert (no menu, no route)
       tasks: 3, // E0.1 TASK ENGINE (issue #713) — tasks.view, tasks.work, tasks.supervise
       bmw: 3, // E1.7 BIO-MEDICAL WASTE (issue #724) — bmw.view, bmw.handle, bmw.manage
+      linen: 3, // E2.4 LINEN (issue #728) — linen.view, linen.handle, linen.manage
       attendance: 1, // STAFF ATTENDANCE (owner 2026-10-09) — attendance.all.read; a team and oneself are computed, not granted
       ipd: 4, // IPD BEDS E1.1 (2026-10-12), read off the failing run: ipd.beds.view, .manage, .clean, .overflow
       ordering: 0, // DECISION 0067 — no permission of its own: rides tariff.read, tariff.services.manage and orders.place
@@ -2306,6 +2325,7 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     for (const line of HOSPITAL_NUMBERS_README_PROSE) expect(readme).toContain(line);
     expect(readme).toContain(TASKS_README_PROSE);
     expect(readme).toContain(BMW_README_PROSE);
+    expect(readme).toContain(LINEN_README_PROSE);
     expect(readme).toContain(COPILOT_HALT_README_PROSE);
     expect(readme).toContain(IPD_BEDS_README_PROSE);
     expect(readme).toContain(APPROVALS_SPINE_README_PROSE);

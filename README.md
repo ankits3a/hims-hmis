@@ -1717,6 +1717,13 @@ Three permissions guard it. `support_staff` holds `bmw.handle` (generate a bag a
 store); `services_supervisor` holds `bmw.view`, `bmw.handle` and `bmw.manage`; `admin` holds `bmw.view` and
 `bmw.manage` for the annual report and never handles a bag.
 
+**Linen (issue #728, decision 0072, 2026-10-12).** Par stock per ward from its beds and their class, soiled and
+infected linen counted apart, laundry out and in with short deliveries recorded, and a weekly loss per ward and item.
+Three permissions guard it. `support_staff` holds `linen.handle` (top up, soiled and infected returns, ward counts,
+laundry out and in, borrowing, a condemn request); `services_supervisor` holds `linen.view`, `linen.handle` and
+`linen.manage`; `admin` holds `linen.view` and `linen.manage` for par levels and condemn approvals and never
+handles linen.
+
 **Copilot halt switch and spend cap (plan E0.3/E0.5, decision 0064, built 2026-10-11, awaiting owner review).**
 `copilot.halt.set` (owner, medical_superintendent, quality_manager) pauses the copilot by scope — read, act,
 draft or global;

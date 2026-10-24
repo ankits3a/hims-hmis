@@ -39,6 +39,7 @@ import {
 import { PHARMACY_MESSAGES_CONSUMER, PHARMACY_RX_ISSUED_CONSUMER, pharmacyManifest, pharmacyMessagesConsumer, rxIssuedConsumer } from "../../modules/pharmacy";
 import { ABDM_CARE_CONTEXT_CONSUMER, abdmManifest, careContextConsumer } from "../../modules/abdm";
 import { ORDERING_FREE_TESTS_CONSUMER, freeTestsConsumer, orderingManifest } from "../../modules/ordering";
+import { LINEN_CHANGE_TASK } from "../../modules/linen";
 import { collectResourceKinds } from "../resources/kinds";
 import { collectOrderKinds } from "../orders/kinds";
 import type { Handler } from "../events/subscriptions";
@@ -46,6 +47,15 @@ import type { Scheduler } from "./scheduler";
 
 type DbBundle = { db: Db; pool: Pool };
 const DB_BUNDLE = Symbol("DB_BUNDLE");
+
+/**
+ * TASK KINDS THE WORKER MUST KNOW (tasks MAP §4: the kind registry is in-process). `sweepTasks` runs here, and a kind
+ * this process never defined is swept with the default ladder and escalates to no one. Importing an owning module's
+ * index defines its kinds; naming them here keeps the import a value import and makes the list testable
+ * (`task-kinds.test.ts`). E2.4 LINEN (issue #728) — `linen_change`, raised by IPD admission and discharge. The linen
+ * MANIFEST stays API-only (no subscription, no job), so only the kind is loaded, not installed.
+ */
+export const WORKER_TASK_KINDS: readonly string[] = [LINEN_CHANGE_TASK.kind];
 
 /**
  * D1 (FORK-A, RESOLVED by spike question A — see the plan's Spike verdicts block):
@@ -65,6 +75,7 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
  * resolves fine under ts-jest). This module has no class-typed providers to get wrong, and it
  * must stay that way.
  */
+
 @Global()
 @Module({
   providers: [

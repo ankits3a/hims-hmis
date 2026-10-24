@@ -30,6 +30,8 @@ import { TasksBoard } from "./screens/tasks-board";
 import { BmwBoard } from "./screens/bmw-board";
 import { BmwHandle } from "./screens/bmw-handle";
 import { BmwReports } from "./screens/bmw-reports";
+import { LinenBoard } from "./screens/linen-board";
+import { LinenHandle } from "./screens/linen-handle";
 import { StaffReports } from "./screens/staff-reports";
 import { CopilotHealthScreen } from "./screens/copilot-health";
 import { CrkFormularyScreen } from "./screens/crk-formulary";
@@ -323,6 +325,9 @@ const NAV: readonly NavEntry[] = [
   { to: "/bmw/handle", label: "nav.bmwHandle", permission: "bmw.handle", group: "services" },
   { to: "/bmw", label: "nav.bmwBoard", permission: "bmw.view", group: "services", anyOf: ["bmw.manage"] },
   { to: "/bmw/reports", label: "nav.bmwReports", permission: "bmw.manage", group: "services" },
+  // E2.4 LINEN (issue #728) — the handler's phone and the supervisor's board; paths and permissions match `linenManifest.menu`.
+  { to: "/linen/handle", label: "nav.linenHandle", permission: "linen.handle", group: "services" },
+  { to: "/linen", label: "nav.linenBoard", permission: "linen.view", group: "services", anyOf: ["linen.manage"] },
   // The OPD day report (owner, 2026-09-19): the hospital's day by department, PDF and CSV.
   { to: "/reports/opd-day", label: "nav.opdDayReport", permission: "opd.reports.read", group: "opd" },
   // 20-U U5a — who is on now, the hospital's unit board. `roster.read` matches `rosterManifest.menu`.
@@ -1219,6 +1224,20 @@ const bmwReportsRoute = createRoute({
   component: BmwReports,
 });
 
+/** E2.4 LINEN (issue #728) — the linen supervisor's board: 16:9, wards below par first, laundry out and in, weekly loss. */
+const linenBoardRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/linen",
+  component: LinenBoard,
+});
+
+/** E2.4 — the linen handler's phone (390 px, Hindi first): pick a ward, count with big steppers, save. */
+const linenHandleRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/linen/handle",
+  component: LinenHandle,
+});
+
 /** E0.1 TASK ENGINE — the supervisor's task board: 16:9, open work by floor, late first, worker load. */
 const tasksBoardRoute = createRoute({
   getParentRoute: () => authedRoute,
@@ -2086,6 +2105,8 @@ export const router = createRouter({
       myTasksRoute, tasksBoardRoute,
       // E1.7 BIO-MEDICAL WASTE — +3, `/bmw`, `/bmw/handle`, `/bmw/reports`. `caddyfile-parity.test.ts` pins the count.
       bmwBoardRoute, bmwHandleRoute, bmwReportsRoute,
+      // E2.4 LINEN — +2, `/linen` and `/linen/handle`. `caddyfile-parity.test.ts` pins the count.
+      linenBoardRoute, linenHandleRoute,
       rosterEvidenceRoute,
       rosterAebasRoute,
       // DD-0 (#626) — +2, `/doctor-desk` and `/doctor-desk/briefs`. `caddyfile-parity.test.ts` pins the count.

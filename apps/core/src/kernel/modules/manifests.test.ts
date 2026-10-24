@@ -206,6 +206,8 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "ipd", // IPD BEDS E1.1 (#718): the bed board
       // E1.7 BIO-MEDICAL WASTE (issue #724) — appended. It raises its collection task through the tasks index.
       "bmw",
+      // E2.4 LINEN (issue #728) — appended. It raises its linen change task through the tasks index.
+      "linen",
       // DOCTOR DESK DD-0 (#626) — appended. A leaf: it reads lab, radiology, opd, patients and roster
       // through their indexes; nothing imports it.
       "doctor-desk",
