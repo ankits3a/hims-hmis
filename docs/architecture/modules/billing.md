@@ -55,6 +55,14 @@ Source: `apps/core/src/modules/billing/`
 - `desk-provider.ts`
   - `cashierDay(exec: Db | Tx, userId: string, day: string): Promise<CashierDay>`
   - types: `CashierDay`
+- `episode-charges.ts`
+  - `RUNNING_BILL_EPISODE_RES: readonly RegExp[]`
+  - `episodeChargeSinkFor(encounterNo: string): EpisodeChargeSink | null`
+  - `episodeChargeStanding(exec: Db | Tx, encounterNo: string, opts: { lock?: boolean } = {}): Promise<{ sink: EpisodeChargeSink; standing: "liv…`
+  - `isRunningBillEpisode(encounterNo: string | undefined | null): boolean`
+  - `refuseRunningBillTender(encounterNo: string): never`
+  - `registerEpisodeChargeSink(prefix: string, sink: EpisodeChargeSink): () => void`
+  - types: `EpisodeChargeItem`, `EpisodeChargeSink`, `EpisodeReverseOutcome`, `EpisodeStanding`
 - `errors.ts`
   - `class BillingError`
   - `billingHttpStatus(code: BillingErrorCode): number`

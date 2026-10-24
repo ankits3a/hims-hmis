@@ -209,6 +209,14 @@ const THE_EIGHTEEN = [
   "openDueTeleVisits",
   /** STAFF ATTENDANCE (owner 2026-10-09) — `every(120_000)`: the copy of the attendance machine's records. Makes no call until configured and switched on. */
   "syncAttendance",
+  /** E0.1 TASK ENGINE (issue #713, #833) — `every(60_000)`: the task clock. Registered dark: a no-op while `tasks` is off. */
+  "sweepTasks",
+  /** IPD BEDS E1.1 (#718, #833) — `every(60_000)`: a two-hour bed hold lapses back. A no-op while `ipd` is off. */
+  "lapseBedReservations",
+  /** IPD NURSING E4.1 (#733, #833) — `every(60_000)`: assessment overdue; an unacknowledged early warning. A no-op while off. */
+  "sweepIpdNursing",
+  /** IPD CHARGES E2.1 (#725, #833) — `dailyIst("00:05")`: the running bill's nightly posting. A no-op while `ipd` is off. */
+  "postNightlyIpdCharges",
   /** DOCTOR DESK DD-report v0 — `dailyIst("08:00")`: the unit report, counts only, to the unit head. */
   "sendUnitReports",
 ];

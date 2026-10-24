@@ -176,6 +176,18 @@ export type EffectivePermissions = {
   scoped: { department: Record<string, string[]>; floor: Record<string, string[]> };
 };
 
+/**
+ * Decision 0085 — the same projection without the permissions of modules switched off (`ModuleRegistry.darkPermissions`).
+ * Presentation only, like the projection itself: a dark module's routes are simply not mounted.
+ */
+export function withoutPermissions(p: EffectivePermissions, drop: ReadonlySet<string>): EffectivePermissions {
+  if (drop.size === 0) return p;
+  const keep = (list: string[]): string[] => list.filter((x) => !drop.has(x));
+  const scope = (m: Record<string, string[]>): Record<string, string[]> =>
+    Object.fromEntries(Object.entries(m).map(([id, list]) => [id, keep(list)] as const).filter(([, list]) => list.length > 0));
+  return { hospital: keep(p.hospital), scoped: { department: scope(p.scoped.department), floor: scope(p.scoped.floor) } };
+}
+
 export async function effectivePermissions(db: Db, userId: string): Promise<EffectivePermissions> {
   const permanent = await db
     .select({

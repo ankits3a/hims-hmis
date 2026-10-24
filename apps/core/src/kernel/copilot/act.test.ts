@@ -116,7 +116,7 @@ describe("E0.2 — confirm refuses before touching the database", () => {
 });
 
 describe("E0.2 / #678 — the catalog refuses a half-declared write at boot", () => {
-  const registry = { all: () => [], allPermissions: () => ["opd.queue.read"] } as unknown as ModuleRegistry;
+  const registry = { all: () => [], live: () => [], allPermissions: () => ["opd.queue.read"] } as unknown as ModuleRegistry;
 
   it("refuses kind act without an act block, and an act block without kind act", () => {
     const { act: _drop, ...noBlock } = bookSlot;

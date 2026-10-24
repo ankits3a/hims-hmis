@@ -46,6 +46,7 @@ import * as interfacesMod from "../ops/interfaces";
 import * as materialsExpiryMod from "../../modules/materials/expiry";
 import * as otListsMod from "../../modules/ot/lists";
 import * as rollupMod from "../desk/rollup";
+import * as moduleSwitchMod from "../modules/switch";
 import type { Db } from "../db/client";
 import type { Handler } from "../events/subscriptions";
 
@@ -434,6 +435,12 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
       invoked.push("syncAttendance");
       return { ran: false, why: "not_configured" };
     }),
+    // #833 (decision 0085) — the four IPD jobs registered dark, stubbed on `kernel/modules/switch` (each body goes
+    // through `runIfModuleOn`, named by its job). The gate itself (off = body never called) is in `switch.test.ts`.
+    jest.spyOn(moduleSwitchMod, "runIfModuleOn").mockImplementation(async (job: string) => {
+      invoked.push(job);
+      return "off";
+    }),
     // DOCTOR DESK DD-report v0 — the thirty-first, stubbed on `modules/doctor-desk/report` (the file the index
     // re-exports FROM). Its behaviour (counts only, idempotent per unit per day) is in `doctor-desk/report.test.ts`.
     jest.spyOn(doctorDeskReportMod, "sendUnitReports").mockImplementation(async () => {
@@ -551,6 +558,11 @@ const THE_EIGHTEEN = [
   "openDueTeleVisits",
   // STAFF ATTENDANCE (owner 2026-10-09) — the TWENTY-NINTH, `every(120_000)`: HMIS's copy of the attendance machine. Off until configured.
   "syncAttendance",
+  // #833 (decision 0085) — the THIRTIETH to THIRTY-THIRD, registered dark: three `every(60_000)` and one `dailyIst("00:05")`.
+  "sweepTasks",
+  "lapseBedReservations",
+  "sweepIpdNursing",
+  "postNightlyIpdCharges",
   // DOCTOR DESK DD-report v0 — the THIRTY-FIRST, `dailyIst("08:00")`: the unit report at the take boundary.
   "sendUnitReports",
 ];
@@ -751,7 +763,7 @@ describe("Scheduler", () => {
     const DAILY_INSTANTS_MS = [
       6 * HOUR_MS + 25 * MINUTE_MS, // 18:25Z = 23:55 IST 08-21 · sweepAppointmentNoShows (5-min window)
       6 * HOUR_MS + 29 * MINUTE_MS, // 18:29Z = 23:59 IST 08-21 · runDailyClose (ONE-minute window — the flake)
-      6 * HOUR_MS + 35 * MINUTE_MS, // 18:35Z = 00:05 IST 08-22 · sweepGuardianMajority
+      6 * HOUR_MS + 35 * MINUTE_MS, // 18:35Z = 00:05 IST 08-22 · sweepGuardianMajority and postNightlyIpdCharges (#833)
       6 * HOUR_MS + 45 * MINUTE_MS, // 18:45Z = 00:15 IST 08-22 · createEventPartitions
       7 * HOUR_MS + 45 * MINUTE_MS, // 19:45Z = 01:15 IST 08-22 · retentionSweep
       7 * HOUR_MS + 50 * MINUTE_MS, // 19:50Z = 01:20 IST 08-22 · pruneCopilotAsks (E0.1)

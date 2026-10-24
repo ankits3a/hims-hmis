@@ -102,7 +102,8 @@ export type OrderKindDecl = {
  * manifest that claims it.
  */
 export function collectOrderKinds(registry: ModuleRegistry): OrderKindDecl[] {
-  const decls = registry.all().flatMap((m) => m.orderKinds ?? []);
+  // Decision 0085 — a module switched off claims no order kind, so `placeOrder` refuses its kinds `unknown_kind`.
+  const decls = registry.live().flatMap((m) => m.orderKinds ?? []);
   const seen = new Map<string, OrderKindDecl>();
   const declaredPermissions = new Set(registry.allPermissions());
   for (const d of decls) {
