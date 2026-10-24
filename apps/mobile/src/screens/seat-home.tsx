@@ -11,6 +11,7 @@ import { useSession } from "../session";
 import { color, radius, space, TOUCH, type } from "../theme";
 import { APP_VERSION, APP_VERSION_CODE } from "../config";
 import { Band, Button, MONO, Note, Tag } from "../ui";
+import { ota, otaStamp } from "../ota";
 import { checkForUpdate, updatesFromFeed, type UpdateAnswer } from "../update";
 import { loadHome, type HeaderFacts, type OwnerHome } from "../home/load";
 import { buildOwnerTiles, coldOwnerTiles, isWideTile, type OwnerTile } from "../owner/model";
@@ -188,10 +189,13 @@ export function SeatHome() {
   }, [fetcher]);
   const checkNow = useCallback(async () => {
     setAsked("checking");
+    // Asked by hand: a bundle published a minute ago is fetched and run now (src/ota.ts) — this is the home screen.
+    if (await ota.settle(() => true, true)) return;
     setUpdate(await checkForUpdate(fetcher));
     setLater(false);
     setAsked("yes");
   }, [fetcher]);
+  const stamp = otaStamp();
   if (state.status !== "signedIn") return null;
   const seats = seatsFor(state.me.permissions, labMode);
   const who = headerOf(state.me.profile, state.username, home?.header ?? null, t);
@@ -534,6 +538,7 @@ export function SeatHome() {
               <Text style={{ color: color.green, fontSize: 13, fontWeight: "700" }}>{t(asked === "checking" ? "mobile.update.checking" : "mobile.update.check")}</Text>
             </Pressable>}
           </View>
+          {stamp !== null && <Text testID="ota-stamp" style={[type.small, { color: color.faint, fontFamily: MONO }]}>{t("mobile.update.ota", { when: stamp })}</Text>}
           {asked === "yes" && update?.kind === "latest" && <Text testID="update-latest" style={[type.small, { color: color.dim }]}>{t("mobile.update.latest", { version: APP_VERSION })}</Text>}
           {asked === "yes" && update?.kind === "unknown" && <Text testID="update-unknown" style={[type.small, { color: color.dim }]}>{t("mobile.update.failed")}</Text>}
         </View>
