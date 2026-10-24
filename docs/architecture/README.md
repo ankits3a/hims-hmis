@@ -144,7 +144,7 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 | `alerts` | attendance, doctor-desk, lab, opd, roster | approvals, auth, db, events, modules, notify, ops, realtime, reminders, tokens, workflow | yes |
 | `approvals` | abdm, aerb, attendance, billing, doctor-desk, formulary, lab, materials, membership, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | alerts, auth, db, events, modules, phi, tokens, workflow | yes |
 | `auth` | abdm, aerb, attendance, billing, doctor-desk, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | config, crypto, db, events, modules, printing, push, ratelimit, tokens | yes |
-| `config` | abdm, attendance, billing, formulary, lab, membership, opd, ot, partners, patients, pharmacy, radiology | — | — |
+| `config` | abdm, attendance, billing, formulary, lab, membership, opd, ot, partners, patients, pharmacy, radiology | modules | — |
 | `copilot` | billing, doctor-desk, formulary, lab, opd, pharmacy, roster | alerts, approvals, auth, config, db, desk, events, inference, modules, ratelimit, reminders, search, tokens, workflow | yes |
 | `crypto` | abdm, billing, opd, patients | — | — |
 | `db` | abdm, aerb, attendance, billing, cds, doctor-desk, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | — | — |
@@ -153,7 +153,7 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 | `episodes` | billing, lab, materials, opd, ot, pharmacy, radiology | db | — |
 | `events` | abdm, aerb, attendance, billing, doctor-desk, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | db, worker | — |
 | `inference` | formulary, lab, opd | auth, config, db, ratelimit, search, tokens | yes |
-| `modules` | abdm, aerb, attendance, billing, doctor-desk, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | alerts, approvals, auth, copilot, desk, ops, orders, resources, search, workflow | — |
+| `modules` | abdm, aerb, attendance, billing, doctor-desk, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | alerts, approvals, auth, config, copilot, desk, ops, orders, resources, search, workflow | — |
 | `notify` | abdm, lab, pharmacy, radiology | auth, config, db, events, modules, tokens, workflow | yes |
 | `obligations` | — | alerts, db, events, modules, workflow | — |
 | `ops` | lab, pharmacy | auth, config, crypto, db, events, modules, tokens | yes |

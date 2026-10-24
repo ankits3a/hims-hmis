@@ -35,6 +35,7 @@ import { sweepOverdueQa } from "../../modules/aerb";
 import { routingChooserFor, runAliasJob, runDeskRoutingLearning, runFlowLearning } from "../../modules/opd";
 import { syncAttendance } from "../../modules/attendance";
 import { collectResourceKinds } from "../resources/kinds";
+import { runIfModuleOn } from "../modules/switch";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
 import { printBoardIfDue, runMonthlyProposals, sweepDutyReminders, sweepRosterWindows } from "../../modules/roster";
@@ -87,6 +88,12 @@ const COPILOT_ASK_PRUNE_IST = "01:20";
  * which is A5, and it is the reason this is a sweep rather than an incremental append.
  */
 const USER_DAY_ROLLUP_IST = "02:00";
+/**
+ * E2.1 (#725) — the IPD nightly charges: five past IST midnight, once the day being billed is over. It posts every
+ * unposted chargeable day up to YESTERDAY, so a night the worker missed is posted on the next run with its own dates;
+ * a failed run retries on the next tick (the scheduler keys daily memory on `last_ok_at`).
+ */
+const IPD_NIGHTLY_CHARGES_IST = "00:05";
 
 /**
  * Amendment 6 (the plan's own resolution to the T2/T4 wave-order contradiction; spike
@@ -108,7 +115,9 @@ export function buildSubscriptionBus(
   consumers: Record<string, Handler>,
 ): SubscriptionBus {
   const bus = new SubscriptionBus();
-  for (const manifest of registry.all()) {
+  // Decision 0085 — a module switched off consumes nothing: its subscriptions are not put on the bus, so its consumers
+  // are never called (and a missing handler for an off module is not a boot error either).
+  for (const manifest of registry.live()) {
     for (const sub of manifest.subscriptions) {
       const handler = consumers[sub.consumer];
       if (!handler) {
@@ -736,6 +745,38 @@ export function registerAllJobs(
     name: "syncAttendance",
     every: 120_000,
     run: async (now) => { await syncAttendance(db, aliasConfig?.attendance, now); },
+  });
+  /*
+   * ═══ #833 / DECISION 0085 — THE FOUR IPD JOBS, REGISTERED DARK ═══
+   * Each registers whatever `HMIS_MODULES_ON` says, so `alerts.yml` and the censuses carry it from the day the seams
+   * land; while its module is off, `runIfModuleOn` never calls the body and the tick only heartbeats. The bodies arrive
+   * with their modules: sweepTasks (tasks; the waste and meal clocks ride it), lapseBedReservations (ipd; the ER
+   * clocks ride it), sweepIpdNursing (ipd; the eMAR sweep rides it), postNightlyIpdCharges (ipd; the bill desk's
+   * nightly rides it).
+   */
+  /** E0.1 TASK ENGINE (#713) — the task clock, every minute: shift end, re-dispatch, the pool, the ladder. */
+  scheduler.register({
+    name: "sweepTasks",
+    every: 60_000,
+    run: async () => { await runIfModuleOn("sweepTasks", "tasks", async () => {}); },
+  });
+  /** IPD BEDS E1.1 (#718) — a bed held for a patient lapses back after two hours; every minute. */
+  scheduler.register({
+    name: "lapseBedReservations",
+    every: 60_000,
+    run: async () => { await runIfModuleOn("lapseBedReservations", "ipd", async () => {}); },
+  });
+  /** IPD NURSING E4.1 (#733) — assessment overdue after an hour; an early warning unacknowledged for 10 minutes. */
+  scheduler.register({
+    name: "sweepIpdNursing",
+    every: 60_000,
+    run: async () => { await runIfModuleOn("sweepIpdNursing", "ipd", async () => {}); },
+  });
+  /** IPD CHARGES E2.1 (#725) — `dailyIst` 00:05: the running bill's nightly rent, nursing and RMO lines. */
+  scheduler.register({
+    name: "postNightlyIpdCharges",
+    dailyIst: IPD_NIGHTLY_CHARGES_IST,
+    run: async () => { await runIfModuleOn("postNightlyIpdCharges", "ipd", async () => {}); },
   });
   /**
    * DOCTOR DESK DD-report v0 — THE UNIT REPORT AT 08:00 IST, the take boundary (plan D-G): one report

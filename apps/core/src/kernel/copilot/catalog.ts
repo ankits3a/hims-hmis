@@ -32,7 +32,8 @@ export function collectCopilotTools(
    */
   kernelTools: readonly CopilotToolDecl[] = [],
 ): CopilotToolDecl[] {
-  const tools = [...kernelTools, ...registry.all().flatMap((m) => m.copilotTools ?? [])];
+  // Decision 0085 — a module switched off brings no copilot tool.
+  const tools = [...kernelTools, ...registry.live().flatMap((m) => m.copilotTools ?? [])];
   const claimed = new Set<string>();
   const declared = new Set(registry.allPermissions());
 
@@ -120,7 +121,8 @@ export function collectCopilotIntents(
   const claimed = new Set<string>(kernelCueTokens().keys());
   const out: CollectedCopilotIntent[] = [];
 
-  for (const m of registry.all()) {
+  // Decision 0085 — a module switched off brings no intent: its words route nowhere, as before it shipped.
+  for (const m of registry.live()) {
     for (const [intent, decl] of Object.entries(m.copilotIntents ?? {})) {
       if (!intent.startsWith(`${m.key}.`) || intent.length === m.key.length + 1) {
         throw new CopilotIntentError(

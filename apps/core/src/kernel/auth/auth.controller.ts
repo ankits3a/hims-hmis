@@ -7,12 +7,13 @@ import type { Request, Response } from "express";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import type { Actor } from "@hmis/contracts";
-import { CONFIG, DB } from "../tokens";
+import { CONFIG, DB, MODULE_REGISTRY } from "../tokens";
+import type { ModuleRegistry } from "../modules/loader";
 import {
   loginWithPassword, revokeOtherUserSessions, revokeSession, switchWithBadge, switchWithPin,
 } from "./sessions";
 import { setPassword, verifyPassword, verifyPin } from "./identity";
-import { effectivePermissions } from "./permissions";
+import { effectivePermissions, withoutPermissions } from "./permissions";
 import type { EffectivePermissions } from "./permissions";
 import { checkPassword } from "./password-policy";
 import { clearThrottle, recordThrottleFailure, throttleRetryAt, tooManyAttempts } from "./throttle";
@@ -134,6 +135,7 @@ export class AuthController {
   constructor(
     @Inject(DB) private readonly db: Db,
     @Inject(CONFIG) private readonly cfg: AppConfig,
+    @Inject(MODULE_REGISTRY) private readonly registry: ModuleRegistry,
   ) {}
 
   /**
@@ -500,8 +502,10 @@ export class AuthController {
     // for its phone. A browser session has no phone and stamps nothing.
     const deviceRowId = req.hmisSession?.deviceRowId ?? null;
     if (deviceRowId !== null) await touchPhone(this.db, deviceRowId, clientContext(req).ip);
+    // Decision 0085 — a module switched off is not offered: its permissions stay granted (turning it on needs no
+    // re-seed) but leave this projection, so the shell draws none of its links. Its routes are not mounted at all.
     const permissions = actor.type === "user"
-      ? await effectivePermissions(this.db, actor.id)
+      ? withoutPermissions(await effectivePermissions(this.db, actor.id), this.registry.darkPermissions())
       : { hospital: [], scoped: { department: {}, floor: {} } };
     return { actor, permissions, profile: actor.type === "user" ? await meProfile(this.db, actor.id) : null };
   }
