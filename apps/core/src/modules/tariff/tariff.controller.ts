@@ -9,6 +9,7 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { ApprovalError } from "../../kernel/approvals/types";
 import { WorkflowError } from "../../kernel/workflow/instances";
 import { withTx } from "../../kernel/db/client";
+import { hasPermission } from "../../kernel/auth/permissions";
 import { TariffError } from "./errors";
 import { DISCOUNT_CATEGORIES } from "./types";
 import { appendRegulatedPrice, createService, listRegulatedPrices, listServices, updateService, listPriceList } from "./services";
@@ -249,9 +250,13 @@ export class TariffController {
 
   @RequirePermission("tariff.read", "hospital")
   @Get("versions")
-  async listVersionsRoute(): Promise<{ items: unknown[] }> {
-    // GO-LIVE SCREENS — the same rows plus drafter / submitter names and the approval's state (additive fields).
-    return { items: await listVersionsForOffice(this.db) };
+  async listVersionsRoute(@CurrentActor() actor: Actor): Promise<{ items: unknown[] }> {
+    // GO-LIVE SCREENS — the rows plus the approval's state; drafter / submitter / activator (ids and names) only to a
+    // holder of `tariff.versions.draft` or `tariff.versions.activate` (DECIDED: the doctor's `tariff.read` sees none).
+    const withNames = actor.type === "user" && (
+      await hasPermission(this.db, actor.id, "tariff.versions.draft", "hospital")
+      || await hasPermission(this.db, actor.id, "tariff.versions.activate", "hospital"));
+    return { items: await listVersionsForOffice(this.db, { withNames }) };
   }
 
   @RequirePermission("tariff.versions.draft", "hospital")

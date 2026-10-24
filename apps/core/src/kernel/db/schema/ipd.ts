@@ -345,8 +345,11 @@ export const ipdChargeLines = pgTable(
     netPaise: bigint("net_paise", { mode: "number" }).notNull(),
     gstRateBps: integer("gst_rate_bps").notNull(),
     gstExempt: boolean("gst_exempt").notNull(),
-    /** `ipd.nightly` (rent, nursing, RMO), `ipd.visit` (the rounds tap), `ipd.reversal`. */
+    /** `ipd.nightly` (rent, nursing, RMO), `ipd.visit` (the rounds tap), `ipd.reversal`, `ipd.order` (#785: a lab / imaging order item). */
     source: text("source").notNull(),
+    /** #785 — order lines: the department order (kernel `orders.id`) and the order item the line charges (copied onto the reversal). */
+    orderId: text("order_id"),
+    orderItemId: text("order_item_id"),
     /** The visiting consultant (visit lines; copied onto their reversal). */
     consultantUserId: text("consultant_user_id"),
     /**
@@ -363,9 +366,12 @@ export const ipdChargeLines = pgTable(
     uniqueIndex("ipd_charge_lines_nightly_ux").on(t.admissionId, t.serviceDate, t.component).where(sql`${t.source} = 'ipd.nightly'`),
     uniqueIndex("ipd_charge_lines_visit_ux").on(t.admissionId, t.serviceDate, t.consultantUserId, t.visitSeq).where(sql`${t.source} = 'ipd.visit'`),
     uniqueIndex("ipd_charge_lines_reversal_ux").on(t.reversalOf).where(sql`${t.reversalOf} is not null`),
+    // #785: one order line per order item, ever (a retried placement posts nothing).
+    uniqueIndex("ipd_charge_lines_order_ux").on(t.orderItemId).where(sql`${t.source} = 'ipd.order'`),
     index("ipd_charge_lines_admission_idx").on(t.admissionId, t.serviceDate),
     check("ipd_charge_lines_component_ck", sql`${t.component} in (${CHARGE_COMPONENTS_SQL})`),
     check("ipd_charge_lines_source_ck", sql`${t.source} in (${CHARGE_SOURCES_SQL})`),
+    check("ipd_charge_lines_order_ck", sql`${t.source} = 'ipd.reversal' or (${t.source} = 'ipd.order') = (${t.orderItemId} is not null and ${t.orderId} is not null)`),
     check("ipd_charge_lines_qty_ck", sql`${t.qty} > 0`),
     check("ipd_charge_lines_reversal_ck", sql`(${t.source} = 'ipd.reversal') = (${t.reversalOf} is not null)`),
     // A posted line is never negative; a reversal is never positive. Zero is allowed both ways (a fully discounted line).
@@ -414,7 +420,7 @@ export const ipdChargeExceptions = pgTable(
     uniqueIndex("ipd_charge_exceptions_key_ux").on(t.key),
     index("ipd_charge_exceptions_open_idx").on(t.admissionId).where(sql`${t.resolvedAt} is null`),
     check("ipd_charge_exceptions_component_ck", sql`${t.component} is null or ${t.component} in (${CHARGE_COMPONENTS_SQL})`),
-    check("ipd_charge_exceptions_reason_ck", sql`${t.reason} in ('rate_missing', 'tariff_missing', 'posting_failed', 'visit_backdated')`),
+    check("ipd_charge_exceptions_reason_ck", sql`${t.reason} in ('rate_missing', 'tariff_missing', 'posting_failed', 'visit_backdated', 'order_cancelled_after_bill', 'order_cancelled_after_work')`),
     check("ipd_charge_exceptions_shape_ck", sql`(${t.reason} = 'posting_failed') = (${t.component} is null) and (${t.component} is null) = (${t.serviceDate} is null)`),
   ],
 );

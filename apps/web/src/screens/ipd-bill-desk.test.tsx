@@ -9,7 +9,8 @@ import type { IpdBillDesk, IpdBillDeskRow } from "@hmis/contracts";
   shape is the contract's (`packages/contracts/src/ipd/bill-desk.ts`).
 */
 
-const api = vi.hoisted(() => ({ getBillDesk: vi.fn(), retryPosting: vi.fn(), getInterimBill: vi.fn(), printInterimBill: vi.fn(), resolveBackdatedVisit: vi.fn() }));
+const api = vi.hoisted(() => ({ getBillDesk: vi.fn(), retryPosting: vi.fn(), getInterimBill: vi.fn(), printInterimBill: vi.fn(), resolveBackdatedVisit: vi.fn(),
+  keepOrderCharge: vi.fn(), reverseOrderCharge: vi.fn() }));
 vi.mock("../lib/ipd-bill-api", () => api);
 // #763: the settled-bills panel under the list has its own wire (tested in ipd-settled-bills.test.tsx); silent here.
 vi.mock("../lib/ipd-discharge-api", () => ({ getSettledBills: vi.fn(() => Promise.reject(new Error("not in this test"))) }));
@@ -129,5 +130,41 @@ describe("IpdBillDeskScreen", () => {
     fireEvent.click(waive);
     await waitFor(() => expect(api.resolveBackdatedVisit).toHaveBeenCalledWith("x-1", "waive", "Night round, written late"));
     expect(await screen.findByText("Backdated visit settled")).toBeInTheDocument();
+  });
+
+  it("#785: a cancelled order's charge offers Keep charge and Reverse after void, each needing a reason, to ipd.charges.reverse only", async () => {
+    const cancelled = row(6, {
+      reasons: ["order_cancelled_after_bill", "order_cancelled_after_work"],
+      orderCancels: [
+        { chargeLineId: "line-1", reason: "order_cancelled_after_bill", serviceName: "CBC", serviceDate: "2030-01-01" },
+        { chargeLineId: "line-2", reason: "order_cancelled_after_work", serviceName: "LFT", serviceDate: "2030-01-01" },
+      ],
+    } as Partial<IpdBillDeskRow>);
+    api.getBillDesk.mockResolvedValue(desk({ canRetry: false, rows: [cancelled] }));
+    const { unmount } = renderWithRouter(<IpdBillDeskScreen />);
+    expect((await screen.findAllByText("Cancelled after bill")).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "Keep charge" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reverse after void" })).toBeNull();
+    unmount();
+
+    api.getBillDesk.mockResolvedValue(desk({ canRetry: true, rows: [cancelled] }));
+    api.keepOrderCharge.mockResolvedValue({ resolved: 1 });
+    api.reverseOrderCharge.mockResolvedValue({ reversalLineId: "rev-1" });
+    renderWithRouter(<IpdBillDeskScreen />);
+    const billed = await screen.findByTestId("order-cancel-line-1");
+    expect(billed).toHaveTextContent("CBC · 2030-01-01 — cancelled after the bill");
+    const keep = within(billed).getByRole("button", { name: "Keep charge" });
+    const reverse = within(billed).getByRole("button", { name: "Reverse after void" });
+    expect(keep).toBeDisabled();
+    expect(reverse).toBeDisabled();
+    fireEvent.change(within(billed).getByLabelText("Reason (required)"), { target: { value: "Bill voided; test not done" } });
+    fireEvent.click(reverse);
+    await waitFor(() => expect(api.reverseOrderCharge).toHaveBeenCalledWith("line-1", "Bill voided; test not done"));
+    const work = screen.getByTestId("order-cancel-line-2");
+    expect(work).toHaveTextContent("LFT · 2030-01-01 — cancelled after the sample");
+    fireEvent.change(within(work).getByLabelText("Reason (required)"), { target: { value: "Sample processed" } });
+    fireEvent.click(within(work).getByRole("button", { name: "Keep charge" }));
+    await waitFor(() => expect(api.keepOrderCharge).toHaveBeenCalledWith("line-2", "Sample processed"));
+    expect(await screen.findByText("Cancelled order settled")).toBeInTheDocument();
   });
 });

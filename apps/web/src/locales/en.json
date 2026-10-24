@@ -205,6 +205,7 @@
     "blockedSubmitter": "You submitted this version: another person activates it."
   },
   "workflows": {
+    "drafterCannotApprove": "You drafted it: two other people approve.",
     "title": "Workflows",
     "lead": "Approve and switch on the hospital's workflows. Class A needs the medical superintendent and the owner, two different people; then the owner activates.",
     "loading": "Loading…",
@@ -1085,6 +1086,15 @@
     }
   },
   "ipdBillDesk": {
+    "orderCancel": {
+      "order_cancelled_after_bill": "{{name}} · {{date}} — cancelled after the bill",
+      "order_cancelled_after_work": "{{name}} · {{date}} — cancelled after the sample",
+      "reason": "Reason (required)",
+      "keep": "Keep charge",
+      "reverse": "Reverse after void",
+      "done": "Cancelled order settled",
+      "failed": "Could not save — try again"
+    },
     "settled": {
       "title": "Settled bills",
       "empty": "No settled bill needs the desk.",
@@ -1145,6 +1155,8 @@
     "all": "All",
     "empty": "Nothing needs the desk. Normal running bills are not listed.",
     "reason": {
+      "order_cancelled_after_work": "Cancelled after sample",
+      "order_cancelled_after_bill": "Cancelled after bill",
       "visit_backdated": "Visit backdated",
       "deposit_90": "Deposit 90 % used",
       "deposit_75": "Deposit 75 % used",
@@ -6298,6 +6310,7 @@
       "flag_N": "Normal"
     },
     "desk": {
+      "runningBill": "Billed to IPD running bill",
       "title": "Lab reception",
       "place": "Counter L-01",
       "arrivedToday": "arrived on the portal today",
@@ -19296,12 +19309,16 @@
     "billsAs": "bills as",
     "now": "now",
     "reason": {
+      "order_cancelled_after_work": "Order cancelled after the sample",
+      "order_cancelled_after_bill": "Order cancelled after the bill",
       "visit_backdated": "Backdated round visit",
       "rate_missing": "Rate missing",
       "tariff_missing": "No tariff",
       "posting_failed": "Posting failed"
     },
     "component": {
+      "imaging": "Imaging",
+      "lab": "Laboratory",
       "room": "Room rent",
       "nursing": "Nursing",
       "rmo": "RMO",

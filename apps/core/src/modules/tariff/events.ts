@@ -1,4 +1,4 @@
-// events.ts — the module's complete catalog (§10.6 discipline)
+// events.ts — the module's complete catalog: EXACTLY these four names (§10.6 discipline)
 import { z } from "zod";
 import { defineEvent } from "@hmis/contracts";
 const MODULE = "tariff";

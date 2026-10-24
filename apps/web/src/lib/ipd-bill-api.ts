@@ -26,6 +26,16 @@ export function retryPosting(admissionId: string): Promise<{ posted: number; ren
 }
 
 /** E4.2 (#734) — billing charges or waives a round entered too late to charge (`IPD_BILLDESK_ROUTES.backdatedVisit`). */
+/** #785 — billing keeps a late-cancelled order's charge (`POST /ipd/charge-lines/:id/keep`, `ipd.charges.reverse`). */
+export function keepOrderCharge(chargeLineId: string, reason: string): Promise<{ resolved: number }> {
+  return api("POST", `/ipd/charge-lines/${encodeURIComponent(chargeLineId)}/keep`, { reason });
+}
+
+/** #785 — billing reverses it once the settled bill is voided (`POST /ipd/charge-lines/:id/reverse`). */
+export function reverseOrderCharge(chargeLineId: string, reason: string): Promise<{ reversalLineId: string }> {
+  return api("POST", `/ipd/charge-lines/${encodeURIComponent(chargeLineId)}/reverse`, { reason });
+}
+
 export function resolveBackdatedVisit(exceptionId: string, decision: "charge" | "waive", reason: string): Promise<{ outcome: string }> {
   return api("POST", "/ipd/charge-exceptions/backdated-visit", { exceptionId, decision, reason });
 }

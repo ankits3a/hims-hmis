@@ -98,6 +98,7 @@ Source: `apps/core/src/modules/lab/`
   - `drawRank(container: string): number`
   - `labDoctors(db: Db): Promise<{ id: string; displayName: string }[]>`
   - `placeLabOrder(tx: Tx, actor: Actor, decls: readonly OrderKindDecl[], input: DeskOrderInput, now: Date = new Date()): Promise<DeskOrderResul…`
+  - `previewDeskOrder(db: Db, input: { patientId: string; encounterNo?: string; serviceIds: readonly string[] }): Promise<DeskPreview>`
   - `tubePlan(exec: Db | Tx, serviceIds: readonly string[]): Promise<TubePlanRow[]>`
   - types: `AddOnOrderInput`, `DeskAdvisedLine`, `DeskFindHit`, `DeskItemInput`, `DeskOrderInput`, `DeskOrderResult`, `DeskWalkinInput`, `LabCollectionSite`, `LabPriority`, `TubePlanRow`
 - `duplicates.ts`

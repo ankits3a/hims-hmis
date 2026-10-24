@@ -197,3 +197,5 @@ export { raiseBackdatedVisitIn, resolveBackdatedVisit, visitChargeableAt } from 
 export { declareFitIn } from "./discharge";
 export { orderCancelled, orderPlaced, orderStopped, roundSigned } from "./rounds-events";
 export { IPD_ADMISSION_NO_RE, IPD_ADMISSION_PREFIX, intendedPayerOfAdmission, registerIpdEncounterResolver } from "./encounter";
+export { ipdCoversOrderItem, ipdOrderStanding, lockIpdOrderStanding, postIpdOrderCharges, registerIpdOrderChargeSink, reverseIpdOrderCharge } from "./order-charges";
+export { keepOrderCharge } from "./charges";

@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../lib/api";
 import { fmtPaise } from "../lib/format";
-import { getBillDesk, resolveBackdatedVisit, retryPosting } from "../lib/ipd-bill-api";
+import { getBillDesk, keepOrderCharge, resolveBackdatedVisit, retryPosting, reverseOrderCharge } from "../lib/ipd-bill-api";
 import { IpdSettledBills } from "./ipd-settled-bills";
 import type React from "react";
 import type { IpdBillDesk, IpdBillDeskReason, IpdBillDeskRow } from "@hmis/contracts";
@@ -25,6 +25,7 @@ import { dateLocale } from "../lib/date-locale";
 const REASONS: readonly IpdBillDeskReason[] = [
   "deposit_90", "deposit_75", "icu_low_days", "posting_failed", "rate_missing", "tariff_missing", "deposit_check_pending",
   "cash_consent_missing", "auth_pending_24h", "discharge_balance", "visit_backdated",
+  "order_cancelled_after_bill", "order_cancelled_after_work",
 ];
 const HOT: ReadonlySet<IpdBillDeskReason> = new Set(["deposit_90", "icu_low_days", "posting_failed", "discharge_balance"]);
 
@@ -69,8 +70,32 @@ function BackdatedVisit({ v, onDone }: { v: NonNullable<IpdBillDeskRow["backdate
   );
 }
 
-function Row({ r, canRetry, onRetry, busy, onBackdated }: {
+/**
+ * #785 — a lab / imaging order cancelled after its line went on a settled bill, or (lab) after the sample: billing KEEPS
+ * the charge or REVERSES it (once the bill is voided), and either way gives the reason. `ipd.charges.reverse` only.
+ */
+function OrderCancel({ c, onDone }: { c: NonNullable<IpdBillDeskRow["orderCancels"]>[number]; onDone: (ok: boolean) => void }): React.ReactElement {
+  const { t } = useTranslation();
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const go = (act: "keep" | "reverse"): void => {
+    setBusy(true);
+    const call = act === "keep" ? keepOrderCharge(c.chargeLineId, reason.trim()) : reverseOrderCharge(c.chargeLineId, reason.trim());
+    call.then(() => onDone(true), () => onDone(false)).finally(() => setBusy(false));
+  };
+  return (
+    <div className="ipdbd-backdated" data-testid={`order-cancel-${c.chargeLineId}`}>
+      <span className="small">{t(`ipdBillDesk.orderCancel.${c.reason}`, { name: c.serviceName, date: c.serviceDate })}</span>
+      <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("ipdBillDesk.orderCancel.reason")} aria-label={t("ipdBillDesk.orderCancel.reason")} />
+      <button type="button" className="ipdb-btn" disabled={busy || reason.trim() === ""} onClick={() => go("keep")}>{t("ipdBillDesk.orderCancel.keep")}</button>
+      <button type="button" className="ipdb-btn" disabled={busy || reason.trim() === ""} onClick={() => go("reverse")}>{t("ipdBillDesk.orderCancel.reverse")}</button>
+    </div>
+  );
+}
+
+function Row({ r, canRetry, onRetry, busy, onBackdated, onOrderCancel }: {
   r: IpdBillDeskRow; canRetry: boolean; onRetry: (id: string) => void; busy: boolean; onBackdated: (ok: boolean) => void;
+  onOrderCancel: (ok: boolean) => void;
 }): React.ReactElement {
   const { t } = useTranslation();
   const due = r.balancePaise < 0;
@@ -88,6 +113,7 @@ function Row({ r, canRetry, onRetry, busy, onBackdated }: {
       <td className="ipdbd-why">
         {r.reasons.map((x) => <span key={x} className={`ipdb-tag ${HOT.has(x) ? "hot" : "warn"}`}>{t(`ipdBillDesk.reason.${x}`)}</span>)}
         {canRetry ? (r.backdatedVisits ?? []).map((v) => <BackdatedVisit key={v.exceptionId} v={v} onDone={onBackdated} />) : null}
+        {canRetry ? (r.orderCancels ?? []).map((c) => <OrderCancel key={c.chargeLineId} c={c} onDone={onOrderCancel} />) : null}
       </td>
       <td><Used bp={r.usedBp} /></td>
       <td className="num">{fmtPaise(r.patientPayablePaise)}</td>
@@ -164,6 +190,10 @@ export function IpdBillDeskScreen(): React.ReactElement {
     ).finally(() => setBusy(null));
   };
 
+  const orderCancelDone = (ok: boolean): void => {
+    setNotice(ok ? t("ipdBillDesk.orderCancel.done") : t("ipdBillDesk.orderCancel.failed"));
+    if (ok) void load();
+  };
   const backdatedDone = (ok: boolean): void => {
     setNotice(ok ? t("ipdBillDesk.backdated.done") : t("ipdBillDesk.backdated.failed"));
     if (ok) void load();
@@ -223,7 +253,7 @@ export function IpdBillDeskScreen(): React.ReactElement {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => <Row key={r.admissionId} r={r} canRetry={desk.canRetry} onRetry={retry} busy={busy === r.admissionId} onBackdated={backdatedDone} />)}
+              {rows.map((r) => <Row key={r.admissionId} r={r} canRetry={desk.canRetry} onRetry={retry} busy={busy === r.admissionId} onBackdated={backdatedDone} onOrderCancel={orderCancelDone} />)}
             </tbody>
           </table>
         )}

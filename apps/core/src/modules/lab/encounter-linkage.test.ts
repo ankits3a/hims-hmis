@@ -62,7 +62,7 @@ describe("lab desk — the encounter link is an ID, not a visit number", () => {
       credit: { reason: "outside prescription" },
     }));
     const [enc] = await db.select().from(opdEncounters).where(eq(opdEncounters.visitNo, placed.encounterNo));
-    return { encounterId: enc!.id, visitNo: placed.encounterNo, invoiceId: placed.invoice.invoiceId };
+    return { encounterId: enc!.id, visitNo: placed.encounterNo, invoiceId: placed.invoice!.invoiceId };
   }
 
   it("the invoice carries the encounter's ID — a walk-in's bill is linkable at all", async () => {
