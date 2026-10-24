@@ -1,4 +1,200 @@
 {
+  "ipdTpa": {
+    "title": "टीपीए डेस्क",
+    "subtitle": "प्री-ऑथ, बीमा प्रश्न, बढ़ोतरी और क्लेम",
+    "asOf": "{{at}} तक",
+    "billDesk": "बिल डेस्क",
+    "refresh": "ताज़ा करें",
+    "countsLabel": "प्रकार से छाँटें",
+    "all": "सभी",
+    "listLabel": "काम की सूची",
+    "empty": "टीपीए डेस्क पर कुछ बाकी नहीं।",
+    "portalNote": "बीमा या योजना पोर्टल पर भेजें, फिर यहाँ दर्ज करें।",
+    "loading": "लोड हो रहा है…",
+    "loadFailed": "टीपीए डेस्क लोड नहीं हुआ। फिर कोशिश करें।",
+    "forbidden": "आपको टीपीए डेस्क की अनुमति नहीं है।",
+    "open": "खोलें",
+    "since": "{{at}} से",
+    "failed": "सेव नहीं हुआ। फिर कोशिश करें।",
+    "waiting": "{{clock}} से इंतज़ार",
+    "withUs": "हमारे पास {{clock}}",
+    "enhancementDue": "बढ़ोतरी माँगें",
+    "claimableOf": "{{approved}} स्वीकृत में से {{claimable}}",
+    "approved": "स्वीकृत {{amount}}",
+    "preAuth": "प्री-ऑथ {{no}}",
+    "stageLabel": "चरण",
+    "clock": {
+      "days_one": "{{count}} दिन",
+      "days_other": "{{count}} दिन",
+      "hm": "{{h}} घं {{m}} मि",
+      "m": "{{m}} मि"
+    },
+    "sev": {
+      "ok": "समय पर",
+      "warn": "देय",
+      "hot": "देर"
+    },
+    "kind": {
+      "query_open": "प्रश्न हमारे पास",
+      "preauth_waiting": "प्री-ऑथ इंतज़ार",
+      "enhancement_due": "बढ़ोतरी देय",
+      "claim_to_submit": "क्लेम भेजना है",
+      "claim_with_payer": "क्लेम बीमा के पास"
+    },
+    "stage": {
+      "preauth": "प्री-ऑथ",
+      "enhancement": "बढ़ोतरी",
+      "final": "अंतिम स्वीकृति",
+      "claim": "क्लेम"
+    },
+    "col": {
+      "patient": "मरीज़",
+      "payer": "भुगतानकर्ता",
+      "what": "किसका इंतज़ार",
+      "clock": "समय",
+      "state": "स्थिति",
+      "amount": "राशि"
+    },
+    "panel": {
+      "title": "टीपीए डेस्क"
+    },
+    "auths": {
+      "title": "स्वीकृति रिकॉर्ड ({{count}})"
+    },
+    "entry": {
+      "initial": "प्रारंभिक",
+      "enhancement": "बढ़ोतरी",
+      "final": "अंतिम",
+      "denial": "अस्वीकार",
+      "payer_change": "भुगतानकर्ता बदला"
+    },
+    "status": {
+      "requested": "माँगा",
+      "approved": "स्वीकृत",
+      "partially_approved": "आंशिक स्वीकृत",
+      "denied": "अस्वीकृत",
+      "final_approved": "अंतिम स्वीकृत"
+    },
+    "queries": {
+      "title": "बीमा प्रश्न",
+      "open_one": "{{count}} खुला",
+      "open_other": "{{count}} खुले",
+      "answer": "हमारा उत्तर",
+      "answered": "उत्तर दर्ज",
+      "send": "उत्तर दर्ज करें",
+      "history_one": "{{count}} उत्तरित",
+      "history_other": "{{count}} उत्तरित",
+      "raisedAt": "पूछा गया",
+      "text": "प्रश्न",
+      "add": "प्रश्न जोड़ें",
+      "recorded": "प्रश्न दर्ज"
+    },
+    "docs": {
+      "title": "भेजे गए दस्तावेज़",
+      "none": "अभी कोई दस्तावेज़ नहीं।",
+      "attached": "दस्तावेज़ जुड़ा",
+      "kind": "दस्तावेज़",
+      "file": "मरीज़ की फ़ाइल",
+      "noFiles": "मरीज़ की कोई फ़ाइल नहीं",
+      "pick": "फ़ाइल चुनें",
+      "attach": "जोड़ें"
+    },
+    "docKind": {
+      "preauth_form": "प्री-ऑथ फ़ॉर्म",
+      "id_proof": "पहचान पत्र",
+      "policy_card": "पॉलिसी कार्ड",
+      "doctor_notes": "डॉक्टर के नोट",
+      "investigations": "जाँचें",
+      "estimate": "अनुमान",
+      "approval_letter": "स्वीकृति पत्र",
+      "discharge_summary": "डिस्चार्ज सारांश",
+      "final_bill": "अंतिम बिल",
+      "pharmacy_bills": "फ़ार्मेसी बिल",
+      "consent": "सहमति",
+      "other": "अन्य"
+    },
+    "pkg": {
+      "title": "योजना पैकेज",
+      "none": "कोई पैकेज नहीं चुना।",
+      "share": "{{pct}} %",
+      "reason": "हटाने का कारण",
+      "remove": "हटाएँ",
+      "removed": "पैकेज हटा",
+      "payerAmount": "भुगतानकर्ता राशि",
+      "rule": "सबसे बड़ा पैकेज 100 %, दूसरा 50 %, बाकी 25 %। पैकेज की चीज़ों का मरीज़ कुछ नहीं देता।",
+      "search": "पैकेज खोजें",
+      "searchHint": "कोड या नाम",
+      "select": "चुनें",
+      "selected": "पैकेज चुना"
+    },
+    "claim": {
+      "title": "क्लेम",
+      "state": {
+        "to_submit": "भेजना है",
+        "with_payer": "बीमा के पास",
+        "settled": "निपटा",
+        "short_paid": "कम भुगतान",
+        "rejected": "अस्वीकृत",
+        "withdrawn": "वापस"
+      },
+      "age_one": "{{count}} दिन बीमा के पास",
+      "age_other": "{{count}} दिन बीमा के पास",
+      "billPayer": "बिल, बीमा भाग",
+      "claimed": "क्लेम राशि",
+      "variance": "पैकेज से ऊपर (अस्पताल)",
+      "net": "शुद्ध भुगतान",
+      "tds": "टीडीएस",
+      "deductions": "कटौती",
+      "unexplained": "बिना कारण",
+      "utr": "यूटीआर",
+      "rejectedWhy": "अस्वीकृत: {{reason}}",
+      "missing": "पहले जोड़ें: {{docs}}",
+      "submittedAt": "भेजा गया",
+      "ref": "क्लेम नं.",
+      "amount": "क्लेम राशि (₹)",
+      "resubmit": "फिर भेजें",
+      "submit": "भेजा दर्ज करें",
+      "submitted": "क्लेम भेजा",
+      "settledOn": "निपटान तिथि",
+      "dedReason": "कटौती का कारण",
+      "dedAmount": "कटौती राशि",
+      "dedNote": "नोट",
+      "dedRemove": "कटौती हटाएँ",
+      "dedAdd": "कटौती जोड़ें",
+      "addsUp": "क्लेम से मेल खाता है",
+      "gap": "{{amount}} का अंतर",
+      "settle": "निपटान दर्ज करें",
+      "settled": "निपटान दर्ज",
+      "rejectReason": "अस्वीकृति का कारण",
+      "reject": "अस्वीकृत दर्ज करें",
+      "rejected": "अस्वीकृति दर्ज"
+    },
+    "deduction": {
+      "non_payable_items": "गैर-देय चीज़ें",
+      "room_rent_cap": "कमरा किराया सीमा",
+      "proportionate": "आनुपातिक कटौती",
+      "co_pay": "सह-भुगतान",
+      "tariff_difference": "दर अंतर",
+      "over_package": "पैकेज से ऊपर",
+      "documents_missing": "दस्तावेज़ कम",
+      "policy_exclusion": "पॉलिसी अपवाद",
+      "other": "अन्य"
+    },
+    "refused": {
+      "package_claim_filed": "क्लेम दाखिल है — पैकेज तय हैं।",
+      "claim_exceeds_claimable": "इस बिल पर इतना क्लेम नहीं हो सकता।",
+      "claim_documents_missing": "पहले डिस्चार्ज सारांश और अंतिम बिल जोड़ें।",
+      "settlement_does_not_add_up": "शुद्ध भुगतान, टीडीएस और कटौती का जोड़ क्लेम के बराबर हो।",
+      "claim_wrong_state": "क्लेम इस काम की स्थिति में नहीं है।",
+      "query_already_answered": "उत्तर पहले ही दर्ज है।",
+      "tpa_document_invalid": "यह फ़ाइल इस मरीज़ की नहीं है।",
+      "package_needs_scheme": "पैकेज केवल पीएम-जय या राज्य योजना के लिए।",
+      "package_not_found": "इस योजना में यह पैकेज नहीं।",
+      "package_already_selected": "पहले से चुना है।",
+      "time_in_future": "समय अभी से बाद का नहीं हो सकता।",
+      "invalid_request": "फ़ील्ड जाँचें और फिर कोशिश करें।"
+    }
+  },
   "ipdNarcotic": {
     "title": "नारकोटिक रजिस्टर",
     "print": "प्रिंट",
@@ -1509,6 +1705,7 @@
         "supplementary_owed": "पूरक बिल बाकी"
       },
       "refusal": {
+        "payer_claim_filed": "दावा भुगतानकर्ता के पास है — रद्द नहीं",
         "refund_issued": "रिफंड दिया जा चुका — रद्द नहीं हो सकता",
         "void_needs_approval": "दूसरे व्यक्ति की अनुमति चाहिए",
         "void_newer_bill_first": "पहले नया बिल रद्द करें",
@@ -2273,6 +2470,7 @@
     "menu": "मेनू"
   },
   "nav": {
+    "ipdTpa": "टीपीए डेस्क",
     "ipdNarcotics": "नारकोटिक्स",
     "ipdPharmacy": "IP फ़ार्मेसी",
     "ipdMar": "MAR",
@@ -6091,6 +6289,12 @@
     "nextStep": "कृपया अगले वाइटल्स डेस्क पर जाएँ।"
   },
   "desk": {
+    "ipdTpaDue": {
+      "title": "टीपीए डेस्क देय",
+      "preauth": "प्री-ऑथ और प्रश्न",
+      "enhancement": "बढ़ोतरी देय",
+      "claims": "क्लेम 30+ दिन"
+    },
     "ipdAllergyFlags": {
       "title": "जाँचने योग्य एलर्जी"
     },

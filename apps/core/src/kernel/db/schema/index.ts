@@ -130,6 +130,9 @@ export * from "./ipd-rounds";
 export * from "./ipd-emar";
 // E5.3 (#740), E5.4 (#741) — copilot drafts of an admission (since yesterday, SBAR, discharge). References `ipd_admissions`.
 export * from "./ipd-copilot";
+// #604 (decision 0075) — the TPA desk: insurer queries, documents, scheme packages, claim events and deductions.
+// References `ipd_admissions` and `ipd_payer_claims`.
+export * from "./ipd-tpa";
 // E1.7 BIO-MEDICAL WASTE (issue #724, decision 0072) — bags, manifests, disputes and the bags' append-only history.
 // References `resources` (the place a bag is generated at); nothing reads it but `modules/bmw`.
 export * from "./bmw";

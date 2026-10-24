@@ -1,0 +1,9 @@
+Speciality Code,Speciality,Package Code,Procedure Code,Procedure Name,Procedure Price,Procedure Type,Pre-auth Required
+SMP-SG,General Surgery (SAMPLE),SMP-SG01,SMP-SG01A,Sample: laparoscopic cholecystectomy,"30,000",Surgical,Y
+SMP-SG,General Surgery (SAMPLE),SMP-SG02,SMP-SG02A,Sample: inguinal hernia repair,"20,000",Surgical,Y
+SMP-SG,General Surgery (SAMPLE),SMP-SG03,SMP-SG03A,Sample: appendicectomy,"18,000",Surgical,Y
+SMP-SO,Orthopaedics (SAMPLE),SMP-SO01,SMP-SO01A,Sample: fracture fixation with plate,"25,000",Surgical,Y
+SMP-SB,Obstetrics (SAMPLE),SMP-SB01,SMP-SB01A,Sample: caesarean delivery,"12,000",Surgical,Y
+SMP-MG,General Medicine (SAMPLE),SMP-MG01,SMP-MG01A,Sample: acute febrile illness (per day),"1,800",Medical,Y
+SMP-MG,General Medicine (SAMPLE),SMP-MG02,SMP-MG02A,Sample: dengue fever,"9,000",Medical,Y
+SMP-DC,Day Care (SAMPLE),SMP-DC01,SMP-DC01A,Sample: chemotherapy cycle,"5,500",Day care,N

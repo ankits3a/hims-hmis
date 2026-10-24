@@ -1,4 +1,200 @@
 {
+  "ipdTpa": {
+    "title": "TPA desk",
+    "subtitle": "Pre-auths, payer queries, enhancements and claims",
+    "asOf": "As of {{at}}",
+    "billDesk": "Bill desk",
+    "refresh": "Refresh",
+    "countsLabel": "Filter by kind",
+    "all": "All",
+    "listLabel": "Work list",
+    "empty": "Nothing waits on the TPA desk.",
+    "portalNote": "File on the insurer or scheme portal, then record it here.",
+    "loading": "Loading…",
+    "loadFailed": "The TPA desk could not be loaded. Try again.",
+    "forbidden": "You do not have access to the TPA desk.",
+    "open": "Open",
+    "since": "since {{at}}",
+    "failed": "Not saved. Try again.",
+    "waiting": "waiting {{clock}}",
+    "withUs": "with us {{clock}}",
+    "enhancementDue": "Enhancement due",
+    "claimableOf": "{{claimable}} of {{approved}} approved",
+    "approved": "Approved {{amount}}",
+    "preAuth": "Pre-auth {{no}}",
+    "stageLabel": "Stage",
+    "clock": {
+      "days_one": "{{count}} day",
+      "days_other": "{{count}} days",
+      "hm": "{{h}} h {{m}} min",
+      "m": "{{m}} min"
+    },
+    "sev": {
+      "ok": "On time",
+      "warn": "Due",
+      "hot": "Overdue"
+    },
+    "kind": {
+      "query_open": "Query with us",
+      "preauth_waiting": "Pre-auth waiting",
+      "enhancement_due": "Enhancement due",
+      "claim_to_submit": "Claim to file",
+      "claim_with_payer": "Claim with payer"
+    },
+    "stage": {
+      "preauth": "Pre-auth",
+      "enhancement": "Enhancement",
+      "final": "Final approval",
+      "claim": "Claim"
+    },
+    "col": {
+      "patient": "Patient",
+      "payer": "Payer",
+      "what": "Waiting for",
+      "clock": "Clock",
+      "state": "State",
+      "amount": "Amount"
+    },
+    "panel": {
+      "title": "TPA desk"
+    },
+    "auths": {
+      "title": "Authorisation record ({{count}})"
+    },
+    "entry": {
+      "initial": "Initial",
+      "enhancement": "Enhancement",
+      "final": "Final",
+      "denial": "Denial",
+      "payer_change": "Payer change"
+    },
+    "status": {
+      "requested": "requested",
+      "approved": "approved",
+      "partially_approved": "partly approved",
+      "denied": "denied",
+      "final_approved": "final approved"
+    },
+    "queries": {
+      "title": "Payer queries",
+      "open_one": "{{count}} open",
+      "open_other": "{{count}} open",
+      "answer": "Our answer",
+      "answered": "Answer recorded",
+      "send": "Record answer",
+      "history_one": "{{count}} answered",
+      "history_other": "{{count}} answered",
+      "raisedAt": "Raised at",
+      "text": "Query",
+      "add": "Add query",
+      "recorded": "Query recorded"
+    },
+    "docs": {
+      "title": "Documents sent",
+      "none": "No documents attached yet.",
+      "attached": "Document attached",
+      "kind": "Document",
+      "file": "Patient file",
+      "noFiles": "No files on the patient",
+      "pick": "Pick a file",
+      "attach": "Attach"
+    },
+    "docKind": {
+      "preauth_form": "Pre-auth form",
+      "id_proof": "ID proof",
+      "policy_card": "Policy card",
+      "doctor_notes": "Doctor's notes",
+      "investigations": "Investigations",
+      "estimate": "Estimate",
+      "approval_letter": "Approval letter",
+      "discharge_summary": "Discharge summary",
+      "final_bill": "Final bill",
+      "pharmacy_bills": "Pharmacy bills",
+      "consent": "Consent",
+      "other": "Other"
+    },
+    "pkg": {
+      "title": "Scheme packages",
+      "none": "No package chosen.",
+      "share": "{{pct}} %",
+      "reason": "Why remove",
+      "remove": "Remove",
+      "removed": "Package removed",
+      "payerAmount": "Payer amount",
+      "rule": "Highest package 100 %, second 50 %, third on 25 %. The patient pays nothing for package items.",
+      "search": "Find a package",
+      "searchHint": "Code or name",
+      "select": "Choose",
+      "selected": "Package chosen"
+    },
+    "claim": {
+      "title": "Claims",
+      "state": {
+        "to_submit": "To file",
+        "with_payer": "With payer",
+        "settled": "Settled",
+        "short_paid": "Short-paid",
+        "rejected": "Rejected",
+        "withdrawn": "Withdrawn"
+      },
+      "age_one": "{{count}} day with payer",
+      "age_other": "{{count}} days with payer",
+      "billPayer": "Bill, payer part",
+      "claimed": "Claimed",
+      "variance": "Over package (hospital)",
+      "net": "Net paid",
+      "tds": "TDS",
+      "deductions": "Deductions",
+      "unexplained": "Unexplained",
+      "utr": "UTR",
+      "rejectedWhy": "Rejected: {{reason}}",
+      "missing": "Attach first: {{docs}}",
+      "submittedAt": "Filed at",
+      "ref": "Claim no.",
+      "amount": "Claim amount (₹)",
+      "resubmit": "File again",
+      "submit": "Mark filed",
+      "submitted": "Claim filed",
+      "settledOn": "Settled on",
+      "dedReason": "Deduction reason",
+      "dedAmount": "Deduction amount",
+      "dedNote": "Note",
+      "dedRemove": "Remove deduction",
+      "dedAdd": "Add deduction",
+      "addsUp": "Adds up to the claim",
+      "gap": "Off by {{amount}}",
+      "settle": "Record settlement",
+      "settled": "Settlement recorded",
+      "rejectReason": "Rejection reason",
+      "reject": "Mark rejected",
+      "rejected": "Rejection recorded"
+    },
+    "deduction": {
+      "non_payable_items": "Non-payable items",
+      "room_rent_cap": "Room-rent cap",
+      "proportionate": "Proportionate deduction",
+      "co_pay": "Co-pay",
+      "tariff_difference": "Tariff difference",
+      "over_package": "Over package",
+      "documents_missing": "Documents missing",
+      "policy_exclusion": "Policy exclusion",
+      "other": "Other"
+    },
+    "refused": {
+      "package_claim_filed": "A claim is filed — packages are fixed.",
+      "claim_exceeds_claimable": "More than this bill can claim.",
+      "claim_documents_missing": "Attach the discharge summary and the final bill first.",
+      "settlement_does_not_add_up": "Net paid, TDS and deductions must add up to the claim.",
+      "claim_wrong_state": "The claim is not in a state for this.",
+      "query_already_answered": "Already answered.",
+      "tpa_document_invalid": "That file is not this patient's.",
+      "package_needs_scheme": "Packages are for PM-JAY or state-scheme stays.",
+      "package_not_found": "No such package for this scheme.",
+      "package_already_selected": "Already chosen.",
+      "time_in_future": "A time cannot be later than now.",
+      "invalid_request": "Check the fields and try again."
+    }
+  },
   "ipdNarcotic": {
     "title": "Narcotic register",
     "print": "Print",
@@ -1509,6 +1705,7 @@
         "supplementary_owed": "Supplementary bill owed"
       },
       "refusal": {
+        "payer_claim_filed": "Claim is with the payer — cannot void",
         "refund_issued": "Refund already paid out — cannot void",
         "void_needs_approval": "Needs another person's approval",
         "void_newer_bill_first": "Void the newer bill first",
@@ -2273,6 +2470,7 @@
     "menu": "Menu"
   },
   "nav": {
+    "ipdTpa": "TPA desk",
     "ipdNarcotics": "Narcotics",
     "ipdPharmacy": "IP pharmacy",
     "ipdMar": "MAR",
@@ -6091,6 +6289,12 @@
     "nextStep": "Please go to the vitals desk next."
   },
   "desk": {
+    "ipdTpaDue": {
+      "title": "TPA desk due",
+      "preauth": "Pre-auths and queries",
+      "enhancement": "Enhancements due",
+      "claims": "Claims 30+ days"
+    },
     "ipdAllergyFlags": {
       "title": "Allergies to review"
     },

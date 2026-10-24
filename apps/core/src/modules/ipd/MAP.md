@@ -1067,6 +1067,43 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - NO MONEY: nothing here reads a charge line; `MONEY_RE` refuses a model's money word. No permission was added:
   `ipd.round.sign` + the treating team (since yesterday), `ipd.handover.shift` (SBAR), `ipd.discharge.declare` (discharge).
 
+### TPA desk (#604, decision 0075 — SPEC-tpa-desk-2026-10-15)
+- FILES: `tpa.ts` (the eight acts), `tpa-read.ts` (`readTpaBoard`, `readTpaPanel`, `tpaDueCard`, `authStateOf`), `tpa-packages.ts`
+  (`parseSchemePackagesCsv`, `importSchemePackages`, `searchSchemePackages`, `packageShares`), `tpa-events.ts`, `tpa.controller.ts`
+  (`IPD_TPA_ROUTES`), `kernel/db/schema/ipd-tpa.ts` (migration `ipd_tpa`), `packages/contracts/src/ipd/intents-tpa.ts` + `tpa.ts`,
+  `scripts/import-scheme-packages.ts` (not a seed), `scripts/data/nha-hbp-sample.csv` (8 SYNTHETIC rows — never the NHA list).
+  Web: `/ipd/tpa` (`apps/web/src/screens/ipd-tpa.tsx`) and the panel on the bill page (`apps/web/src/screens/ipd-tpa-panel.tsx`).
+- THE PRE-AUTH RECORD IS STILL `ipd_payer_auths` and the claim is still `ipd_payer_claims` (one per settled bill): the desk adds
+  queries, documents, packages, claim events and deductions beside them, and moves `ipd_payer_claims.status` only forward
+  (`pending` → `filed` on submit; `filed` → `settled` on a settlement or a short payment, → `rejected`; `rejected` → `filed` on a
+  resubmission). `settled` is what #763's void reads (`payer_claim_settled`). Claim acts take the ADMISSION lock first, as the void does.
+- CLOCK (DECIDED, IRDAI master circular 2024 / NHA TMS; `IPD_TPA_SLA_MINUTES`): a waiting request (latest entry of the current
+  authorisation is `requested`) is due in 60 min (scheme 360), a final approval in 180; hot at twice. An OPEN query on a pre-auth
+  stage stops the insurer's clock (row `query_open`, ours: due 60, hot 240); its answer RESTARTS the insurer's clock from the
+  answer time. Nothing is stored: the clocks are read from rows.
+- ENHANCEMENT DUE (DECIDED $): insured (cashless / corporate), approved, nothing waiting, placed, and claimable ≥ 90 % of the
+  approved total, claimable = the payer split's payer share + its `over_approved_amount` (what the approval holds back). Hot at 100 %.
+- PACKAGES (DECIDED $): only on a pmjay / state_scheme admission and only that scheme's LIVE packages; the rate is a snapshot at
+  selection; highest 100 %, second 50 %, third on 25 % (`IPD_PACKAGE_SHARES_BP`); Σ is the payer amount and the default claimed
+  amount. The scheme split is untouched (patient ₹0, the receipt guard): package lines never bill the patient; the bill's payer
+  part minus the claimed amount is the hospital's package variance, never the patient's.
+- IMPORT (DECIDED): NHA's column names accepted in priority order (Procedure Code beats Package Code); a bad row refuses the whole
+  file (`package_import_invalid`, `detail.problems` by line); adds and updates, never retires an omitted package; a change retires
+  the live row and inserts the new one. `ipd.payer.terms`.
+- CLAIM (DECIDED): filed only with `discharge_summary` and `final_bill` attached at stage `claim` (`IPD_CLAIM_REQUIRED_DOCUMENTS`);
+  settlement net + TDS + Σ deductions = the claimed amount to the paisa, else `settlement_does_not_add_up` with `detail.gapPaise`;
+  TDS typed, never computed; deductions never re-billed to the patient by the system. Ageing from the latest submission: card at
+  30 days, hot at 60; a pending claim is late after 7 days (board only).
+- CLAIM GUARDS (#604 review, `tpa-claims.test.ts`): a scheme stay's packages are claimed ONCE across its bills (final +
+  supplementary each carry a claim row): the cap and default is Σ packages less what the stay's other filed / settled /
+  rejected claims claimed; any other claim is capped at its bill's payer portion (`claim_exceeds_claimable`, `detail.capPaise`).
+  Packages freeze once any claim of the stay is filed (`package_claim_filed`). A void refuses while the bill's claim is `filed`
+  (`payer_claim_filed`): withdrawing it would make the payer's settlement unrecordable and free the stay to claim again. A
+  `final_bill` document counts only if named to the claim or attached at or after the claim's bill was settled.
+- WHO (DECIDED, no new permission): `ipd.payer.manage` for the board, panel, queries, documents, packages, submit, reject and the
+  `ipd.tpa_due` card; `ipd.payer.terms` for a settlement and the import. The card shows the admission number, never a name.
+- Acceptance: `acceptance/tpa.acceptance.test.ts` (i–ix); each guard was killed by a mutant before it went green.
+
 ## 4. Traps
 - `docker/prod/deploy.sh` runs every seed on every deploy. The loader is a script a person runs; never wire it
   into a seed.

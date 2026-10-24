@@ -51,6 +51,7 @@ import { IpdHandovers } from "./screens/ipd-handovers";
 import { IpdWard } from "./screens/ipd-ward";
 import { IpdMyShift } from "./screens/ipd-my-shift";
 import { IpdBillDesk } from "./screens/ipd-bill-desk";
+import { IpdTpa } from "./screens/ipd-tpa";
 import { IpdDischarge } from "./screens/ipd-discharge";
 import { FamilyPage } from "./screens/ipd-family";
 import { IpdFamilyCallbacks } from "./screens/ipd-family-callbacks";
@@ -424,6 +425,8 @@ const NAV: readonly NavEntry[] = [
   { to: "/ipd/handovers", label: "nav.ipdHandovers", permission: "ipd.transfer.accept", group: "wards" },
   // E2.3 (#727) — the bill desk (exceptions only); path and permission match `ipdManifest.menu`.
   { to: "/ipd/bill-desk", label: "nav.ipdBillDesk", permission: "ipd.billdesk.view", group: "wards" },
+  // #604 (decision 0075) — the TPA desk board; path and permission match `ipdManifest.menu`.
+  { to: "/ipd/tpa", label: "nav.ipdTpa", permission: "ipd.payer.manage", group: "wards" },
   // E3.2 (#730) — the discharge desk; path and permission match `ipdManifest.menu`.
   { to: "/ipd/discharge", label: "nav.ipdDischarge", permission: "ipd.discharge.view", group: "wards" },
   // E3.3 (#731) — the ward desk's family callback requests; path and permission match `ipdManifest.menu`.
@@ -989,6 +992,12 @@ const ipdBillDeskRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/ipd/bill-desk",
   component: IpdBillDesk,
+});
+// #604 (decision 0075) — the TPA desk board; path and permission match `ipdManifest.menu`.
+const ipdTpaRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/tpa",
+  component: IpdTpa,
 });
 
 /**
@@ -2286,7 +2295,7 @@ export const router = createRouter({
     familyRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, ipdBedsRoute, ipdAdmitRoute, ipdBillRoute, ipdBillDeskRoute, ipdFamilyCallbacksRoute, ipdRoundsRoute, ipdRoundPatientRoute, ipdMarRoute, ipdPharmacyRoute, ipdNarcoticsRoute, ipdHandoversRoute, ipdWardRoute, ipdMyShiftRoute, ipdDischargeRoute, ipdPassesRoute, passesScanRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, ipdBedsRoute, ipdAdmitRoute, ipdBillRoute, ipdBillDeskRoute, ipdTpaRoute, ipdFamilyCallbacksRoute, ipdRoundsRoute, ipdRoundPatientRoute, ipdMarRoute, ipdPharmacyRoute, ipdNarcoticsRoute, ipdHandoversRoute, ipdWardRoute, ipdMyShiftRoute, ipdDischargeRoute, ipdPassesRoute, passesScanRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute, attendanceLinksRoute,
       // GO-LIVE SCREENS — +1, `/admin/workflows`. `caddyfile-parity.test.ts` pins the count.
