@@ -124,3 +124,6 @@ export * from "./ipd";
 // E0.1 TASK ENGINE (issue #713, decision 0072) — service work at a place and its append-only history.
 // References `resources` (the place) and `patients` (optional); nothing reads it but `modules/tasks`.
 export * from "./tasks";
+// E1.7 BIO-MEDICAL WASTE (issue #724, decision 0072) — bags, manifests, disputes and the bags' append-only history.
+// References `resources` (the place a bag is generated at); nothing reads it but `modules/bmw`.
+export * from "./bmw";

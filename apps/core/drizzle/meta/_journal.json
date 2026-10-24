@@ -1569,6 +1569,13 @@
       "when": 1792593453586,
       "tag": "0224_lab_slip_scans",
       "breakpoints": true
+    },
+    {
+      "idx": 206,
+      "version": "7",
+      "when": 1791845315087,
+      "tag": "0206_bmw",
+      "breakpoints": true
     }
   ]
 }

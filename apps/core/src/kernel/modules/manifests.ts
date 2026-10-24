@@ -26,6 +26,7 @@ import { attendanceManifest } from "../../modules/attendance";
 import { orderingManifest } from "../../modules/ordering";
 import { tasksManifest } from "../../modules/tasks";
 import { ipdManifest } from "../../modules/ipd";
+import { bmwManifest } from "../../modules/bmw";
 import { doctorDeskManifest } from "../../modules/doctor-desk";
 
 /**
@@ -196,6 +197,9 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   // `roster` shape: the worker runs `sweepTasks` and needs no permission to.
   tasksManifest,
   ipdManifest,
+  // E1.7 BIO-MEDICAL WASTE (issue #724) — appended. Three permissions, two menu entries, no subscription. API only, the
+  // `tasks` shape: the storage clock rides the task clock's job and needs no permission to.
+  bmwManifest,
   // DOCTOR DESK DD-0 (#626) — appended. A leaf: no permission of its own (its routes open on opd's
   // `opd.consult`), one menu entry, no subscription, no job — app-only, the `attendance` shape.
   doctorDeskManifest,

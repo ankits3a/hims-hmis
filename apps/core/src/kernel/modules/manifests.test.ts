@@ -204,6 +204,8 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       // modules (housekeeping, bmw …) will import it, never the other way.
       "tasks",
       "ipd", // IPD BEDS E1.1 (#718): the bed board
+      // E1.7 BIO-MEDICAL WASTE (issue #724) — appended. It raises its collection task through the tasks index.
+      "bmw",
       // DOCTOR DESK DD-0 (#626) — appended. A leaf: it reads lab, radiology, opd, patients and roster
       // through their indexes; nothing imports it.
       "doctor-desk",
@@ -226,7 +228,7 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     expect(manifestKeys(extras, "app.module.ts")).toEqual([]);
   });
 
-  it("the worker's registry differs from ALL_MANIFESTS in exactly ten enumerated, intentional ways", () => {
+  it("the worker's registry differs from ALL_MANIFESTS in exactly eleven enumerated, intentional ways", () => {
     const workerKeys = manifestKeys(
       installArguments(readFileSync(WORKER_MODULE, "utf8"), "worker.module.ts"),
       "worker.module.ts",

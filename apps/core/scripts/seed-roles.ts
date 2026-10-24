@@ -1998,7 +1998,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // LAB NUMBERS (owner 2026-10-13, #768) — admin reads the lab's counts and turnaround times too (owner's request).
   // HOSPITAL NUMBERS (owner 2026-10-13, #777) — and imaging's and the pharmacy's (owner: "not just admin but owner").
   // IPD BEDS E1.1 (#718) — and the Beds board.
-  { roleKey: "admin", permissions: ["copilot.health.read", "lab.metrics.read", "radiology.metrics.read", "pharmacy.metrics.read", "ipd.beds.view"] },
+  // E1.7 BIO-MEDICAL WASTE (#724) — and the waste board and its two legal reports.
+  { roleKey: "admin", permissions: ["copilot.health.read", "lab.metrics.read", "radiology.metrics.read", "pharmacy.metrics.read", "ipd.beds.view", "bmw.view", "bmw.manage"] },
   /**
    * #618 / DECISION 0053 — the Pharmacology department's REVIEWER-ONLY seat. It signs CRK formulary entries
    * (`formulary.crk.sign`) and reads the formulary it signs for (`formulary.read`, the catalogue doctors read).
@@ -2015,8 +2016,14 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * housekeeping, porters) hold `tasks.work` and nothing else; the services supervisor sees the board, assigns,
    * cancels and verifies. A kind's escalations go to `services_supervisor`. NOBODY is assigned to either by any seed.
    */
-  { roleKey: "support_staff", permissions: ["tasks.work"] },
-  { roleKey: "services_supervisor", permissions: ["tasks.view", "tasks.work", "tasks.supervise"] },
+  // E1.7 BIO-MEDICAL WASTE (issue #724) — the people who carry waste generate, weigh, collect and store bags
+  // (`bmw.handle`); the services supervisor is the BMW supervisor: the board, the handover to the treatment
+  // facility, disputes and the legal reports. DECIDED by the standard Indian corporate-hospital split.
+  { roleKey: "support_staff", permissions: ["tasks.work", "bmw.handle"] },
+  {
+    roleKey: "services_supervisor",
+    permissions: ["tasks.view", "tasks.work", "tasks.supervise", "bmw.view", "bmw.handle", "bmw.manage"],
+  },
 ];
 
 /**

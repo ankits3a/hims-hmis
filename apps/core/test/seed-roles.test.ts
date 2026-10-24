@@ -943,6 +943,23 @@ const TASKS_PAIRS: readonly string[] = [
   "services_supervisor/tasks.supervise",
 ];
 
+/** The README prose line authorising the bio-medical waste grants (issue #724, decision 0072). Quoted, not paraphrased. */
+const BMW_README_PROSE =
+  "`support_staff` holds `bmw.handle` (generate a bag and its label, weigh, collect,\nstore); `services_supervisor` holds `bmw.view`, `bmw.handle` and `bmw.manage`; `admin` holds `bmw.view` and\n`bmw.manage` for the annual report and never handles a bag.";
+
+/**
+ * E1.7 BIO-MEDICAL WASTE (issue #724) — three permissions, three holders: the waste handlers handle, the services
+ * supervisor (the BMW supervisor) holds all three, the administration reads and files the reports.
+ */
+const BMW_PAIRS: readonly string[] = [
+  "support_staff/bmw.handle",
+  "services_supervisor/bmw.view",
+  "services_supervisor/bmw.handle",
+  "services_supervisor/bmw.manage",
+  "admin/bmw.view",
+  "admin/bmw.manage",
+];
+
 /** The README prose line authorising the copilot health read (decision 0064, E0.1). Quoted, not paraphrased. */
 const COPILOT_HEALTH_README_PROSE =
   "`copilot.health.read` is held by `owner`, `admin`, `duty_manager`, `medical_superintendent` and the new role\n`quality_manager` (the copilot steward), and the steward role holds nothing else but the halt switch.";
@@ -1115,6 +1132,7 @@ const NON_TABLE_PAIRS: readonly string[] = [
   ...ROSTER_FLAGS_PAIRS,
   ...ATTENDANCE_PAIRS,
   ...TASKS_PAIRS,
+  ...BMW_PAIRS,
   ...COPILOT_HEALTH_PAIRS,
   ...COPILOT_HALT_PAIRS,
   ...LAB_METRICS_PAIRS,
@@ -1419,6 +1437,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       pharmacy: 29, // HOSPITAL NUMBERS (#777, 2026-10-13), read off the failing run: +1, pharmacy.metrics.read; ITEM DISCOUNT (owner 2026-10-02): +1, pharmacy.sale_items.discount; STAGE D4: +2, pharmacy.trays.check and .manage; STAGE D5: +1, pharmacy.antimicrobial.approve; STAGE D3: +2, pharmacy.coldchain.record and .manage; STAGE D2: +2, pharmacy.incidents.record and .review; STAGE D1: +2, pharmacy.adr.record and .manage; PHARMACY P6 (patient messages): +2, pharmacy.messages.consent and .manage; PHARMACY P6: +3, pharmacy.ndps.custody, .witness and pharmacy.licences.manage; parity P5 (Tally): +1, pharmacy.tally.export; parity P5: +2, pharmacy.reports.read and .margin; P20: +1, pharmacy.downtime.enter; P19: +2, pharmacy.retail.*; PLAN 16c T1; P2: +1, pharmacy.pharmacists.manage; P9: +1, pharmacy.register.read; P17: +1, read_sealed
       roster: 3, // PHASE R (R1) — manage, publish, read; the seam ships inert (no menu, no route)
       tasks: 3, // E0.1 TASK ENGINE (issue #713) — tasks.view, tasks.work, tasks.supervise
+      bmw: 3, // E1.7 BIO-MEDICAL WASTE (issue #724) — bmw.view, bmw.handle, bmw.manage
       attendance: 1, // STAFF ATTENDANCE (owner 2026-10-09) — attendance.all.read; a team and oneself are computed, not granted
       ipd: 4, // IPD BEDS E1.1 (2026-10-12), read off the failing run: ipd.beds.view, .manage, .clean, .overflow
       ordering: 0, // DECISION 0067 — no permission of its own: rides tariff.read, tariff.services.manage and orders.place
@@ -2286,6 +2305,7 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(readme).toContain(LAB_METRICS_README_PROSE);
     for (const line of HOSPITAL_NUMBERS_README_PROSE) expect(readme).toContain(line);
     expect(readme).toContain(TASKS_README_PROSE);
+    expect(readme).toContain(BMW_README_PROSE);
     expect(readme).toContain(COPILOT_HALT_README_PROSE);
     expect(readme).toContain(IPD_BEDS_README_PROSE);
     expect(readme).toContain(APPROVALS_SPINE_README_PROSE);

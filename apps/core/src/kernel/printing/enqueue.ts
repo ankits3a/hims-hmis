@@ -96,7 +96,13 @@ export type PrintDocument =
    * the payee signs when the money leaves. Producer `payRefundVoucher` and renderer both in
    * `modules/billing` (`refund-print.ts`, registered by the billing module). Params: the voucher id.
    */
-  | "billing_refund_voucher";
+  | "billing_refund_voucher"
+  /**
+   * E1.7 BIO-MEDICAL WASTE (issue #724) — the 75 × 50 mm sticker on every waste bag: category, place, date and time,
+   * weight line and the bag's bar code (BMW Rules 2016, Schedule IV label). Producer and renderer both in
+   * `modules/bmw/label.ts` (the renderer registered by the bmw module); params are the bag id only.
+   */
+  | "bmw_bag_label";
 
 /**
  * LOGICAL destinations, never CUPS queue names.
@@ -124,7 +130,12 @@ export type PrintDestination =
    * logical destination today: per-ward printers have no master data yet, and the relay owns which
    * physical queue(s) this maps to. A relay must be GRANTED it (`set-agent-print-destinations`).
    */
-  | "duty_board_a4";
+  | "duty_board_a4"
+  /**
+   * E1.7 BIO-MEDICAL WASTE — the waste-bag label printer (75 × 50 mm roll). One logical destination today, as for
+   * the duty board: per-ward label printers have no master data yet, and the relay owns which queue it maps to.
+   */
+  | "bmw_label";
 
 /**
  * WHERE EACH DOCUMENT GOES, from the owner's rulings and `PrinterChoice.dc.html`.
@@ -154,6 +165,8 @@ export const DESTINATION_OF: Record<PrintDocument, PrintDestination> = {
   // #655 — the cash counter's A4 laser, where the payee stands and signs. DECIDED: not `office_a4`, the
   // superintendent's printer — a patient's paper does not come off a staff office's printer.
   billing_refund_voucher: "front_desk_a4",
+  // E1.7 — a waste bag's sticker never goes to a patient-facing desk's printer.
+  bmw_bag_label: "bmw_label",
 };
 
 /**
