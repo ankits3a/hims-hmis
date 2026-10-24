@@ -720,6 +720,8 @@ export const ipdDischargeSummaries = pgTable(
     signedAt: timestamp("signed_at", { withTimezone: true }),
     /** The signed copy's document id (minted at sign; the print names the doctor). */
     documentId: text("document_id"),
+    /** E5.4 — the copilot draft (`ipd_copilot_drafts.id`) the text was started from; kept on the signed copy. */
+    draftId: text("draft_id"),
   },
   (t) => [
     uniqueIndex("ipd_discharge_summaries_admission_ux").on(t.admissionId),
@@ -1330,6 +1332,10 @@ export const ipdShiftHandovers = pgTable(
     givenAt: timestamp("given_at", { withTimezone: true }).notNull(),
     acceptedBy: text("accepted_by"),
     acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    /** E5.4 — the copilot draft (`ipd_copilot_drafts.id`) the giving nurse edited and signed; null when typed. */
+    draftId: text("draft_id"),
+    /** E5.4 — whether the text given differs from that draft's text; null when there is no draft. */
+    draftEdited: boolean("draft_edited"),
   },
   (t) => [
     uniqueIndex("ipd_shift_handovers_open_ux").on(t.admissionId).where(sql`${t.status} = 'given'`),

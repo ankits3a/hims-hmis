@@ -105,3 +105,7 @@ export type { ComposedBill, ImplantLine, SettleResult } from "./bill";
 // ── 20-U U8 — the roster's duty-evidence report reads theatre times through here, and nothing clinical ──
 export { registerOtDutyEvidence, theatreTimesOf } from "./duty-evidence";
 export type { TheatreTime } from "./duty-evidence";
+
+// ── IPD E5.4 (#741) — the inpatient discharge drafter reads the procedures done through here, and nothing about money ──
+export { PROCEDURES_DONE_LIMIT, proceduresDone } from "./procedures-done";
+export type { ProcedureDone } from "./procedures-done";

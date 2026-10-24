@@ -1,4 +1,76 @@
 {
+  "ipdCopilot": {
+    "list": {
+      "orders": "ऑर्डर",
+      "vitals": "वाइटल्स",
+      "doses": "खुराक",
+      "results": "रिपोर्ट",
+      "notes": "नोट",
+      "io": "I/O",
+      "consults": "कंसल्ट",
+      "rounds": "राउंड"
+    },
+    "truncated": "सूची अधूरी है — {{lists}} देखें",
+    "draft": "ड्राफ़्ट",
+    "template": "टेम्पलेट",
+    "builtAt": "{{time}} पर बना",
+    "source": {
+      "ot": "ओटी",
+      "vitals": "वाइटल्स",
+      "ews": "चेतावनी स्कोर",
+      "lab": "लैब",
+      "imaging": "इमेजिंग",
+      "emar": "eMAR",
+      "note": "नोट",
+      "io": "I/O",
+      "consult": "कंसल्ट",
+      "diet": "आहार",
+      "order": "ऑर्डर",
+      "round": "राउंड",
+      "admission": "भर्ती",
+      "assessment": "आकलन"
+    },
+    "since": {
+      "label": "कल से अब तक",
+      "title": "कल से अब तक {{time}}",
+      "titleToday": "आज {{time}} से अब तक",
+      "titleOlder": "{{day}} से अब तक",
+      "modeTimeline": "सादी टाइमलाइन",
+      "modeModel": "AI शब्द · {{model}} · {{version}}",
+      "ai": "AI शब्द",
+      "aiHint": "मॉडल ने शब्द बदले हैं। अंक रिकॉर्ड से जाँचे गए हैं।",
+      "attention": "ध्यान दें:",
+      "records": "रिकॉर्ड",
+      "loading": "लोड हो रहा है…",
+      "failed": "टाइमलाइन नहीं खुली"
+    },
+    "sbar": {
+      "building": "बन रहा है…",
+      "rebuild": "फिर बनाएँ",
+      "build": "ड्राफ़्ट बनाएँ",
+      "stale": "रिकॉर्ड बदल गए। फिर बनाएँ।",
+      "unedited": "बिना बदलाव",
+      "edited": "बदला गया",
+      "builtBy": "{{name}} ने बनाया",
+      "youSign": "आप सुधारें और साइन करें",
+      "signedFrom": "कोपायलट ड्राफ़्ट से · {{model}} · {{version}}"
+    },
+    "discharge": {
+      "print": "सारांश प्रिंट करें",
+      "ackBy": "बिना ऑर्डर की दवा — कारण: {{reason}} ({{name}})",
+      "ackLabel": "बिना चालू ऑर्डर की दवा का कारण",
+      "notSigned": "साइन नहीं हुआ",
+      "draftBtn": "रिकॉर्ड से ड्राफ़्ट",
+      "youSign": "जाँचें, सुधारें और साइन करें",
+      "startedFrom": "कोपायलट ड्राफ़्ट से शुरू · {{model}} · {{version}}",
+      "flag": {
+        "unverified": "नोट या ऑर्डर में नहीं — जाँचें",
+        "no_active_order": "कोई चालू ऑर्डर नहीं",
+        "order_stopped": "ऑर्डर बंद है",
+        "model_invented": "किसी ऑर्डर में नहीं — मॉडल का पाठ हटाया"
+      }
+    }
+  },
   "ipdEmar": {
     "wastage": {
       "open": "बर्बादी दर्ज करें",
@@ -771,6 +843,14 @@
       "recommendation": "सुझाव"
     },
     "sbarSource": {
+      "round": "राउंड",
+      "order": "ऑर्डर",
+      "diet": "आहार",
+      "consult": "कंसल्ट",
+      "emar": "eMAR",
+      "imaging": "इमेजिंग",
+      "lab": "लैब",
+      "ews": "चेतावनी स्कोर",
       "vitals": "वाइटल्स",
       "assessment": "आकलन",
       "io": "I/O",

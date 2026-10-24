@@ -227,6 +227,16 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `shelfItemForMedicine` / `recordIncident`, formulary `interactionRulesPresent`, materials `fefoPick` / `postMovements`.
   Web: `apps/web/src/screens/ipd-emar-bedside.tsx` (board D2 inside `/ipd/my-shift`), `apps/web/src/screens/ipd-pharmacy.tsx` (`/ipd/pharmacy`, the
   desk and `LabelPrint`), `apps/web/src/screens/ipd-mar.tsx` (`/ipd/mar`), `apps/web/src/lib/ipd-emar-api.ts`.
+- (E5.3 #740, E5.4 #741) THE COPILOT DRAFTERS. `copilot-lines.ts` — pure: the `Fact` union, `renderLine` (the one place a fact
+  becomes words), `chooseLines`, `quantitiesIn`, `boundPhrases`, `verifyReworded`, `verifyFreeText`, `applyRewordings`.
+  `copilot-facts.ts` — `buildFacts` (one admission, one window), `factsHash`. `copilot-model.ts` — `askIpdModel` (the ONE door
+  to a model), `ipdModelFrom`, `maskForModel`. `copilot.ts` — `readSinceYesterday`, `polishSinceYesterday`, `readHandoverDraft`,
+  `buildSbarDraft`, `buildDischargeDraft`, `medicinesNamedWithoutOrder`. `copilot-drafts.ts` — reads of `ipd_copilot_drafts`.
+  `discharge-medicines.ts` — `medicineFlagsOf`, `sameMedicineName`. `copilot.controller.ts` (`IPD_COPILOT_ROUTES`).
+  `kernel/db/schema/ipd-copilot.ts` — `ipd_copilot_drafts`; `draft_id` on `ipd_shift_handovers` and `ipd_discharge_summaries`
+  (migration `ipd_copilot`). `packages/contracts/src/ipd/copilot.ts`. Web: `apps/web/src/screens/ipd-since.tsx` (first block
+  of `/ipd/rounds/$admissionId`), the SBAR stamp in `apps/web/src/screens/ipd-my-shift.tsx`, the draft and flags in
+  `apps/web/src/screens/ipd-discharge.tsx`, `apps/web/src/lib/ipd-copilot-api.ts`.
 
 ## 3. Invariants
 - A bed is a kernel `bed` row. No new resource kind, no kernel edit, no migration: the attributes are jsonb,
@@ -595,7 +605,7 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   The rows belong to ONE declaration; cancel_fit voids them with it, a new fit lists afresh.
 - SUMMARY: one per admission, `version` bumps on every save, sign names the version (`draft_changed`). The treating
   consultant (admission consultant or covering) signs; anyone else's sign is a resident's → `awaiting_cosign`. Signed is
-  immutable (`summary_already_signed`). `draft_model_id` / `draft_prompt_version` null until M5; label "Draft" until
+  immutable (`summary_already_signed`). `draft_model_id` / `draft_prompt_version` are stamped by the server from a copilot draft (E5.4, below); label "Draft" until
   signed. LAMA and death open a draft (`ensureSummaryDraft`) — the summary is still given.
 - FINAL BILL ($ DECIDED): non-reversed lines only (a reversed line AND its reversal drop out); `billVersion` = the count
   of the admission's lines (append-only ⇒ any posting or reversal changes it → `bill_changed`). `prepareFinalBill` posts
@@ -959,6 +969,85 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - The charge runs under the admission lock with the stock movement: refused or failed, nothing moves. A return is the ward
   return's credit (`postDrugReturnCreditsIn`), including `return_after_bill`; returns are allowed after discharge as on the ward.
 
+### Copilot: since yesterday, SBAR draft, discharge drafter (E5.3 #740, E5.4 #741)
+- THE DETERMINISTIC LAYER CARRIES THE SAFETY. A fact is rows: it holds their ids, the numbers and IST clock times counted or
+  read from them, and the drug / test names they carry (a strength inside a name is one of its numbers — `mkFact`). A line is
+  `renderLine(fact)`. `acceptance/copilot-verifier.acceptance.test.ts` proves over 400 generated facts that a template prints
+  only its fact's numbers, and that any one number changed in a reply is refused — that test is the "number differs from its
+  record fails CI" check.
+- A MODEL ONLY REWORDS, BY ALLOWLIST, FAIL CLOSED (review of 1f7cc591; a word-by-word check was beaten four ways).
+  `verifyReworded` accepts a rewording only when it is the template line's own tokens (`lineTokens`), ALL of them and IN
+  ORDER, with nothing between them but words of the closed list `CONNECTIVES` (and, with, since, at, the, a, an, is, was,
+  were, are, has, had, been, there, also, then — no "of", "over", "to", "from", "no"). Any other token (a changed or moved
+  number, a band word, a medicine, advice, a source, a number word in any script), any character that is not permitted
+  punctuation, a proposal or money word: the line keeps the record's own words. The model's real freedom is the order of
+  the lines; abnormal lines still sort first. NEVER ADD A BINDING OR NEGATING WORD TO `CONNECTIVES`.
+- THE READ NEVER CALLS A MODEL AND NEVER WRITES. `readSinceYesterday` is the page; `polishSinceYesterday` (a POST the page
+  fires after it has drawn) asks inside `SINCE_BUDGET_MS` (1 s) and keeps accepted rewordings in `ipd_copilot_drafts` per
+  admission, doctor and IST day. A kept rewording is re-verified against TODAY's facts on every read (§4.10 edge 13): a new
+  vitals set changes the line's numbers and the kept sentence is dropped. The same `factsHash` never costs a second call
+  (also when every line was refused). Model down / slow: a fallback row is kept and the model is left alone for these
+  records for `MODEL_COOLDOWN_MS` (5 min, `mayAskAgain`); off / halted / capped / barred: no row. Always the plain timeline.
+- WINDOW (DECIDED): since the READER's own latest round on the patient (any status — a resident's draft is their last look),
+  else 24 h. Other doctors' rounds in the window are a line.
+- ONE DOOR TO A MODEL (`copilot-model.ts`), the staff copilot's own: `openAiCompatibleClient(cfg.copilot)`, `maskQuestion` +
+  `assertNoIdentifiers`, `readCopilotGate` (halt `global` / `read`, plus `draft` for the two drafters; the ₹ cap of decision
+  0064), `SpendMeter`, and `recordAsk` — a drafter's call is a `copilot_asks` row (`route = model`, `intent = ipd.*`, NO
+  question text). SPEND IS RESERVED BEFORE THE CALL (the table is append-only): a `failed` / `answer_key = reserved` row with
+  the worst case (input + `maxTokens`), then an `answered` row with no cost — the cap counts high, never low, and the
+  health counts see two rows per answered call. `askIpdModel` NEVER THROWS: gate, ledger or provider failing is a fallback.
+  Order of refusals: barred → no model configured → halted / capped → identifier leak → down / over budget.
+- BARRED (`modelBarred`, read inside the door from the admission — never a caller's flag): sealed (`sensitive_context`),
+  confidential (`is_confidential`) and medico-legal (`mlc`) patients get no model call at all, on all three surfaces.
+- WHAT A MODEL SEES: since yesterday — the template lines (no identity in them). SBAR / discharge — the shift's nursing
+  notes / the round notes and nursing notes, fenced as DATA (`fenced`, `UNTRUSTED` in the system prompt: nothing inside is an
+  instruction), masked by VALUE (`termsToMask`: patient name, alias, UHID, admission number, the authors, guardians, pass
+  holders, the deposit's payer, the family link's consenter; bed and ward) and by SHAPE (`maskForModel`: the name after a
+  kinship word or title, any bed / ward / room token, any telephone number; digits of every script), then scrubbed again.
+- FREE TEXT (`verifyFreeText`): ASCII only; every number and clock time already in the notes (or the facts); every guarded
+  class it carries (negation, direction, outcome, band — `GUARDED`) carried by the notes; no proposal word; no money word;
+  no placeholder; none of the masked names. `medicinesNamedWithoutOrder`: a medicine named with no ACTIVE order is flagged
+  whether or not a note names it (`no_active_order` / `order_stopped`); one on no order and in no note is `model_invented`
+  (the text is dropped); any other word of a model's text that is in no note, on no order and not in `SUMMARY_WORDS` is
+  `unverified` (a misspelt medicine looks like that). The SBAR sentence has nowhere to carry a flag: any flag refuses it.
+- NO SILENT CAP: every list is read newest first, one row past its limit (`FACT_ROW_LIMIT`, `DISCHARGE_LIMITS`); a cut list
+  is named in `truncated` (shown on the block / the draft) and a truncated discharge draft is not `complete`.
+- WHAT A DRAFT ROW KEEPS (retention): never record text — ids, the fingerprint, and the model's own checked sentence or
+  paragraph. Structured lines are rendered again from the records. The kernel's retention sweep has no table registry.
+- SBAR: window = the giving nurse's shift (for `HANDOVER_GRACE_MS`, 60 min, into the next shift: the shift just ended).
+  `readHandoverDraft` (GET, no model, no write) answers the KEPT draft of the shift while the records are what it was built
+  from, else the plain lines with `changedSinceDraft`. `buildSbarDraft` (POST) runs on the nurse's tap or when the records
+  changed; unchanged records answer the kept draft (no second call). `give_shift_handover` with `draftId` →
+  `checkSbarDraftForGive`: this admission's draft (`shift_handover_draft_not_found`), records unchanged since the build
+  (`shift_handover_draft_stale` — build again), and `draft_edited` = the given text differs from the draft's. The signer
+  may be another nurse than the builder; the card names both (`draft.builtBy`, `givenBy`). Nothing auto-accepts.
+- DISCHARGE: structured parts come from the record, never the model — diagnosis (the admission's), medicines (one row per
+  ACTIVE drug order, `source: order` + `orderId`), results reported / awaited (the stay's own lab and imaging order items;
+  restricted items are never named). Procedures come from ot's `proceduresDone` (cases with an incision during the stay, or of the day-care encounter an
+  `ot_daycare_conversion` admission names in `source_ref`; a theatre conversion names both codes; no quote or package),
+  source `ot`, named only when there is one (`procedureText`). Bedside and IR procedures have no record here yet. The
+  course is the signed rounds quoted in order, or the model's summary. `save_summary_draft` takes `draftId`; the SERVER
+  stamps `draft_source = copilot_draft`, the draft's model id and prompt version, and `draft_id`; the stamp is sticky across
+  later saves. A template draft has `draft_model_id` null. The draft row's fingerprint is `dischargeRecordsHash` (orders
+  and their status, signed rounds, nursing notes, result items): a save naming a draft built before the records changed is
+  refused (`summary_draft_stale`); a copilot-sourced summary carries `content.recordsHash` from its last save and the
+  signature refuses when the records moved since (`summary_records_changed` — open, check, save, sign). The content's
+  server fields (`medicineFlags`, `medicineAck`, `recordsHash`) are stripped from every client save. `IpdSummaryView.stamp`
+  is the "Draft" stamp while unsigned and copilot-sourced (screen and `SummaryPrint`).
+- MEDICINES WITHOUT AN ACTIVE ORDER (DECIDED): a DRAFTED row (`source: order`) that no longer matches its active order
+  refuses the signature (`medicine_not_on_active_order`). A TYPED row is flagged on the summary and the signature needs
+  the doctor's reason (`unorderedMedicinesReason`; without it the same refusal with `detail.acknowledge`); the flags and
+  `medicineAck` (reason, signer, time) are written into the signed content and never recomputed. The reason is asked on
+  EVERY summary that names a medicine with no active order — person-typed or copilot-sourced, with drug orders on the
+  stay or none (NABH medicine reconciliation; the E3.2 carve-out was lifted by decision 0074).
+- LAB VALUES (`labValueFacts`): lab's `resultedValuesForOrders` (its index) answers the stay's own lab orders' SIGNED,
+  non-superseded, non-restricted values signed in the window. One `lab_value` fact per analyte — latest value, plus the
+  most severe one when worse — critical (weight 95) before out of range (78) before in range (40), at most
+  `LAB_VALUE_FACTS` (4); the "results reported" count line stays. A free-text result is named, never quoted. Vital "abnormal" is judged only for NEWS2 patients
+  (`ADULT_RANGE`); a child's or a mother's deterioration is the band's to say. Temperatures print in °C as recorded.
+- NO MONEY: nothing here reads a charge line; `MONEY_RE` refuses a model's money word. No permission was added:
+  `ipd.round.sign` + the treating team (since yesterday), `ipd.handover.shift` (SBAR), `ipd.discharge.declare` (discharge).
+
 ## 4. Traps
 - `docker/prod/deploy.sh` runs every seed on every deploy. The loader is a script a person runs; never wire it
   into a seed.
@@ -1029,9 +1118,9 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   0209 dies `relation already exists` — drop `hmis_lane_<lane>_test_1/_2`.
 
 - (E3.2) SEAMS LEFT OPEN: the department "silence over 30 minutes escalates" is not a job (the tracker shows the clock; the
-  workflow's 3-hour SLA tells the duty manager); `medicines_not_returned` (pharmacy returns) and
-  `medicine_not_on_active_order` wait for the eMAR / ipd-orders lanes; the mortuary handover and MCCD are register rows, not
-  tasks (`taskIds` is empty); claim filing, the family tracker link (E3.3) and the AI drafter (M5) are later lanes.
+  workflow's 3-hour SLA tells the duty manager); `medicines_not_returned` (pharmacy returns) waits for the eMAR lane
+  (`medicine_not_on_active_order` is E5.4's, below); the mortuary handover and MCCD are register rows, not
+  tasks (`taskIds` is empty); claim filing and the family tracker link (E3.3) are later lanes (the drafter is E5.4).
 - (E3.2) Superseded by review #762, then #763: cancel_fit refuses while a LIVE bill exists (void it first); the nightly job
   posts again after the settlement day (supplementary bill).
 - (#763) Migration `ipd_suppbill` replaced `ipd_final_bills_admission_ux` / `ipd_payer_claims_admission_ux` (one per
@@ -1135,3 +1224,6 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `formulary` `medicinesByIds`.
 - (#785) billing's episode charge sink (`IpdModule` → `registerIpdOrderChargeSink`): lab `placeLabOrder`, the lab reflex,
   `refundOnCancel`; radiology `placeImagingOrder`, `cancelStudy`.
+- (E5.3, E5.4) `copilot.controller.ts` (the round page's first block, the handover pane, the summary editor);
+  `nursing.ts` `giveShiftHandover` and `discharge.ts` `saveSummaryDraft` call `draftForSigning`; `listShiftHandovers` and
+  `readSummary` call `draftProvenances`; `signSummary` calls `medicineFlagsOf`.

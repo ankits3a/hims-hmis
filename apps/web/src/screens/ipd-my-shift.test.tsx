@@ -19,6 +19,8 @@ vi.mock("../lib/ipd-nursing-api", async (orig) => {
     giveShiftHandover: api.giveShiftHandover, acceptShiftHandover: api.acceptShiftHandover,
   };
 });
+// E5.4 — the kept SBAR draft is its own test's (`ipd-copilot.test.tsx`); here the build is simply not available.
+vi.mock("../lib/ipd-copilot-api", () => ({ buildSbarDraft: vi.fn(async () => { throw new Error("not in this test"); }) }));
 vi.mock("../lib/realtime", () => ({
   useRealtime: () => ({ connected: false }),
   realtimeClient: () => ({ ping: () => {}, onPong: () => () => {} }),

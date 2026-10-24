@@ -11,18 +11,19 @@ import { readAdmission, requireIpdPermission } from "./admission-core";
 import { IpdBedAttributesSchema } from "./bed-attributes";
 import { ageInYears } from "./bed-rules";
 import { holdIsLive } from "./beds";
-import { IPD_NURSING_STATES, ioDayStart, istClock, istDayIndex, isNightIst, lastSetAt, latestScores, scoreContextOf, scoreContextsOf, shiftOf } from "./nursing";
+import { IPD_NURSING_STATES, ioDayStart, istDayIndex, isNightIst, lastSetAt, latestScores, scoreContextOf, scoreContextsOf, shiftOf } from "./nursing";
+import { draftProvenances } from "./copilot-drafts";
 import { SEALED_LABEL } from "./now-cards";
 import { IPD_NURSING_VIEW, IPD_SHIFT_HANDOVER } from "./permissions";
 import type {
-  Actor, IpdEwsKind, IpdHandoverDraft, IpdMyShift, IpdNurseStation, IpdNursingChart, IpdNursingChip, IpdNursingIdentity,
+  Actor, IpdEwsKind, IpdMyShift, IpdNurseStation, IpdNursingChart, IpdNursingChip, IpdNursingIdentity,
   IpdShiftHandoverList, IpdShiftItem, IpdStationBed,
 } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { ScoredSet } from "./nursing";
 
 /**
- * E4.1 (#733) — THE NURSING READS: the nurse station (board C), my shift (board D1), the chart, the SBAR draft and the
+ * E4.1 (#733) — THE NURSING READS: the nurse station (board C), my shift (board D1), the chart and the
  * shift handover list. Read-only (no read writes). Names pass through ONE identity rule (`identitiesOf`): alias when the
  * reader may not see a restricted patient, "Sealed patient" and no UHID for a sealed one. No money (decision 0058).
  *
@@ -338,50 +339,6 @@ export async function readNursingChart(db: Db, actor: Actor, admissionId: string
   };
 }
 
-// ═══════════════════════════════════════════ the SBAR draft ═══════════════════════════════════════════
-
-type DraftLine = Pick<IpdHandoverDraft["situation"][number], "text" | "source">;
-const KIND_WORD: Record<IpdEwsKind, string> = { news2: "NEWS2", meows: "MEOWS", pews: "PEWS" };
-
-/**
- * The shift handover's SBAR, DRAFTED FROM RECORDS (spec §0A principle 6): every line is built from a row and carries its
- * source; numbers come from the rows, never from a model. The nurse edits and gives it; the next nurse accepts.
- */
-export async function readHandoverDraft(db: Db, actor: Actor, admissionId: string, opts: { now?: Date } = {}): Promise<IpdHandoverDraft> {
-  await requireIpdPermission(db, actor, IPD_SHIFT_HANDOVER);
-  const now = opts.now ?? new Date();
-  const chart = await readNursingChart(db, actor, admissionId, { now });
-  const a = await readAdmission(db, admissionId);
-  const lastScored = chart.vitals.find((v) => v.score !== null);
-  const situation: DraftLine[] = [];
-  if (lastScored?.score != null) {
-    situation.push({ text: `${KIND_WORD[lastScored.score.kind]} ${String(lastScored.score.value)} at ${istClock(new Date(lastScored.observedAt))}`, source: "vitals" });
-  }
-  if (chart.alert !== null) situation.push({ text: chart.alert.acknowledgedAt === null ? "Early-warning alert open — not acknowledged" : "Early-warning alert open — acknowledged", source: "vitals" });
-  const background: DraftLine[] = [];
-  if (a.provisionalDiagnosis !== null) background.push({ text: a.provisionalDiagnosis, source: "admission" });
-  if (a.admittedAt !== null) background.push({ text: `Admitted day ${String(istDayIndex(now) - istDayIndex(a.admittedAt) + 1)}`, source: "admission" });
-  const assessment: DraftLine[] = [];
-  if (chart.assessment !== null) {
-    assessment.push({ text: `Morse ${String(chart.assessment.morse)} (${chart.assessment.morseRisk}) · Braden ${String(chart.assessment.braden)} (${chart.assessment.bradenRisk})`, source: "assessment" });
-    if (chart.assessment.allergies.length > 0) assessment.push({ text: `Allergies: ${chart.assessment.allergies.join(", ")}`, source: "assessment" });
-    if (chart.assessment.linesDevices.length > 0) assessment.push({ text: `Lines: ${chart.assessment.linesDevices.map((l) => l.kind.replace(/_/g, " ")).join(", ")}`, source: "assessment" });
-  } else {
-    assessment.push({ text: "Admission assessment not recorded", source: "assessment" });
-  }
-  assessment.push({ text: `I/O since 08:00: in ${String(chart.io.inMl)} ml, out ${String(chart.io.outMl)} ml`, source: "io" });
-  const lastNote = chart.notes[0];
-  if (lastNote !== undefined) assessment.push({ text: lastNote.text.slice(0, 200), source: "note" });
-  const recommendation: DraftLine[] = [];
-  if (chart.next !== null) recommendation.push({ text: `${chart.next.kind === "assessment" ? "Assessment" : "Vitals"} due ${istClock(new Date(chart.next.dueAt))}${chart.next.overdue ? " — overdue" : ""}`, source: chart.next.kind === "assessment" ? "assessment" : "vitals" });
-  // IPD/ER train B3 — the contract carries ipd-copilot's draft fields; until that lane, every line is the template's.
-  const tpl = (xs: DraftLine[]): IpdHandoverDraft["situation"] => xs.map((x) => ({ ...x, by: "template" as const, records: [] }));
-  return {
-    admissionId, draftId: null, stamp: null, changedSinceDraft: false, truncated: [],
-    situation: tpl(situation), background: tpl(background), assessment: tpl(assessment), recommendation: tpl(recommendation),
-  };
-}
-
 // ═══════════════════════════════════════════ shift handovers waiting ═══════════════════════════════════════════
 
 export async function listShiftHandovers(db: Db, actor: Actor, opts: { wardId?: string; now?: Date } = {}): Promise<IpdShiftHandoverList> {
@@ -399,6 +356,8 @@ export async function listShiftHandovers(db: Db, actor: Actor, opts: { wardId?: 
   const bedOf = new Map(stays.map((s) => [s.admissionId, s.code] as const));
   const wardIds = [...new Set(rows.flatMap((r) => (r.wardId === null ? [] : [r.wardId])))];
   const wardNames = new Map((wardIds.length === 0 ? [] : await db.select({ id: resources.id, name: resources.name }).from(resources).where(inArray(resources.id, wardIds))).map((w) => [w.id, w.name] as const));
+  const drafts = await draftProvenances(db, rows.flatMap((r) => (r.draftId === null ? [] : [r.draftId])),
+    new Map(rows.flatMap((r) => (r.draftId === null ? [] : [[r.draftId, r.draftEdited] as const]))));
   const givers = new Map((await db.select({ id: users.id, name: users.fullName }).from(users).where(inArray(users.id, [...new Set(rows.map((r) => r.givenBy))]))).map((u) => [u.id, u.name] as const));
   return {
     asOf: now.toISOString(),
@@ -410,7 +369,8 @@ export async function listShiftHandovers(db: Db, actor: Actor, opts: { wardId?: 
         wardName: r.wardId === null ? null : wardNames.get(r.wardId) ?? null, shift: r.shift as "morning",
         sbar: { situation: r.situation, background: r.background, assessment: r.assessment, recommendation: r.recommendation },
         givenAt: r.givenAt.toISOString(), givenBy: { id: r.givenBy, name: givers.get(r.givenBy) ?? r.givenBy }, givenByViewer: r.givenBy === actor.id,
-        draft: null, // IPD/ER train B3 — the signed copy's draft arrives with ipd-copilot
+        // E5.4 — the signed copy names the nurse (`givenBy`) and keeps the draft it was signed from.
+        draft: r.draftId === null ? null : drafts.get(r.draftId) ?? null,
       }];
     }),
   };

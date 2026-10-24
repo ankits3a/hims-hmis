@@ -1,4 +1,76 @@
 {
+  "ipdCopilot": {
+    "list": {
+      "orders": "orders",
+      "vitals": "vitals",
+      "doses": "doses",
+      "results": "results",
+      "notes": "notes",
+      "io": "I/O",
+      "consults": "consults",
+      "rounds": "rounds"
+    },
+    "truncated": "List cut short — check {{lists}}",
+    "draft": "Draft",
+    "template": "Template",
+    "builtAt": "built {{time}}",
+    "source": {
+      "ot": "Theatre",
+      "vitals": "Vitals",
+      "ews": "Warning score",
+      "lab": "Lab",
+      "imaging": "Imaging",
+      "emar": "eMAR",
+      "note": "Notes",
+      "io": "I/O",
+      "consult": "Consult",
+      "diet": "Diet",
+      "order": "Orders",
+      "round": "Rounds",
+      "admission": "Admission",
+      "assessment": "Assessment"
+    },
+    "since": {
+      "label": "Since yesterday",
+      "title": "Since yesterday {{time}}",
+      "titleToday": "Since {{time}} today",
+      "titleOlder": "Since {{day}}",
+      "modeTimeline": "Plain timeline",
+      "modeModel": "AI wording · {{model}} · {{version}}",
+      "ai": "AI wording",
+      "aiHint": "Reworded by a model. Numbers are checked against the records.",
+      "attention": "Needs attention:",
+      "records": "Records",
+      "loading": "Loading…",
+      "failed": "Could not load the timeline"
+    },
+    "sbar": {
+      "building": "Building…",
+      "rebuild": "Build again",
+      "build": "Build draft",
+      "stale": "Records changed. Build again.",
+      "unedited": "not edited",
+      "edited": "edited",
+      "builtBy": "built by {{name}}",
+      "youSign": "you edit and sign",
+      "signedFrom": "From copilot draft · {{model}} · {{version}}"
+    },
+    "discharge": {
+      "print": "Print summary",
+      "ackBy": "Medicine with no order — reason: {{reason}} ({{name}})",
+      "ackLabel": "Reason for medicine with no active order",
+      "notSigned": "not signed",
+      "draftBtn": "Draft from record",
+      "youSign": "check, edit and sign",
+      "startedFrom": "Started from copilot draft · {{model}} · {{version}}",
+      "flag": {
+        "unverified": "not in notes or orders — check",
+        "no_active_order": "no active order",
+        "order_stopped": "order stopped",
+        "model_invented": "on no order — model text dropped"
+      }
+    }
+  },
   "ipdEmar": {
     "wastage": {
       "open": "Record wastage",
@@ -771,6 +843,14 @@
       "recommendation": "Recommendation"
     },
     "sbarSource": {
+      "round": "rounds",
+      "order": "orders",
+      "diet": "diet",
+      "consult": "consult",
+      "emar": "eMAR",
+      "imaging": "imaging",
+      "lab": "lab",
+      "ews": "warning score",
       "vitals": "vitals",
       "assessment": "assessment",
       "io": "I/O",

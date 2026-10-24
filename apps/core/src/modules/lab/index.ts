@@ -150,3 +150,6 @@ export type { ClinicianLabRow, PatientResultSince } from "./clinician-reads";
 // #934 — the photographed analyser slip: its controller, and the sweep the worker runs with the SLA sweep.
 export { LabSlipsController } from "./lab-slips.controller";
 export { LAB_SLIP_ACTOR, sweepLabSlips } from "./slips";
+// ── IPD E5.3 (#740) — the inpatient copilot's "since yesterday" reads an admission's signed values through here ──
+export { RESULTED_VALUES_LIMIT, printedNumber, resultedValuesForOrders } from "./stay-values";
+export type { ResultedValue } from "./stay-values";

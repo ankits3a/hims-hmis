@@ -64,7 +64,14 @@ describe("E3.2 discharge — acceptance", () => {
       idempotencyKey: key(), admissionId, expectedVersion: 0,
       content: { diagnosis: { text: "Community-acquired pneumonia" }, course: "Treated with antibiotics; improved.", medicines: [{ name: "Amoxicillin 500 mg", frequency: "TDS", duration: "5 days" }] },
     }, { now: at });
-    return signSummary(db, w.doctor, { idempotencyKey: key(), admissionId, draftId: draft.summaryId, draftVersion: draft.version }, { now: at });
+    const ids = { admissionId, draftId: draft.summaryId, draftVersion: draft.version };
+    // A typed medicine no hospital order carries needs the doctor's no-order reason — on a stay with no drug order too
+    // (NABH medicine reconciliation; the E3.2 carve-out is lifted by decision 0074).
+    const unexplained = await refusal(signSummary(db, w.doctor, { idempotencyKey: key(), ...ids }, { now: at }));
+    expect([unexplained.code, unexplained.detail]).toEqual(["medicine_not_on_active_order", { medicines: ["Amoxicillin 500 mg"], acknowledge: true }]);
+    const signed = await signSummary(db, w.doctor, { idempotencyKey: key(), ...ids, unorderedMedicinesReason: "Take-home antibiotic" }, { now: at });
+    expect((await readSummary(db, w.doctor, admissionId)).content.medicineAck).toMatchObject({ reason: "Take-home antibiotic", by: { id: w.doctor.id } });
+    return signed;
   };
   const settle = async (admissionId: string, at: Date, extra: Record<string, unknown> = {}) => {
     const bill = await prepareFinalBill(db, w.cashier, admissionId, { now: at });
