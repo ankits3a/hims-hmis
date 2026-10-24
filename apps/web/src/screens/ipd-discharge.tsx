@@ -17,6 +17,7 @@ import { newIdempotencyKey } from "../lib/api";
 import { listPatientDocuments } from "../lib/patients-api";
 import type { WirePatientDocument } from "../lib/patients-api";
 import type { Tender } from "../lib/ipd-discharge-api";
+import { FamilyCard } from "./ipd-family-panel";
 import "./ipd-discharge.css";
 
 /*
@@ -187,6 +188,8 @@ function Tracker({ admissionId, now, onChanged }: { admissionId: string; now: nu
             <SummaryCard tr={tr} onDone={changed} />
             <BillCard tr={tr} onDone={changed} onPrint={() => setPrinting("bill")} />
             <GatePassCard tr={tr} onDone={changed} onPrint={() => setPrinting("pass")} />
+            {/* E3.3 (#731) — the family link, the condition word and the family's callbacks. */}
+            <FamilyCard admissionId={tr.admissionId} />
           </div>
         </div>
       </div>

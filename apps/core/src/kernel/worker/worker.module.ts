@@ -48,6 +48,7 @@ import { PASSES_ADMISSION_CONSUMER, passesAdmissionConsumer, passesManifest } fr
 // E1.6 TRANSPORT (issue #723) — imported for its side effect only: it DEFINES the transport task kinds (patient move,
 // sample run, document run) so the task clock knows their windows and escalation role. Nothing is installed.
 import "../../modules/transport";
+import { IPD_FAMILY_STOP_CONSUMER, familyStopConsumer, ipdManifest } from "../../modules/ipd";
 import { collectResourceKinds } from "../resources/kinds";
 import { collectOrderKinds } from "../orders/kinds";
 import type { Handler } from "../events/subscriptions";
@@ -227,6 +228,9 @@ export const WORKER_TASK_KINDS: readonly string[] = [LINEN_CHANGE_TASK.kind];
         // E1.3 (#720) — passes: the stay-ending and transfer events -> `passes.admission`. Installed in BOTH processes (the
         // API mounts the desk and the scan); the install and the `workerConsumers` entry below are ONE edit.
         registry.install(passesManifest);
+        // E3.3 (#731) — `ipdManifest`'s one subscription: `ipd.admission.deceased` / `.absconded` -> `ipd.family_stop`
+        // (death and absconding revoke the family link). The install and the `workerConsumers` entry are ONE edit.
+        registry.install(ipdManifest);
         // ══ PLAN 13 CLOSE / M2's CARRY-FORWARD, CLOSED HERE (Plan 14 DD2, Spike Q6) ══
         //
         // This is `app.module.ts:73`'s line, in the process that did not have it. Plan 13's close
@@ -355,6 +359,8 @@ export function workerConsumers(db: Db, cfg: AppConfig | null = null): Record<st
     // PLAN 15 T5 / DD9 — the scan's asynchronous half. `otManifest` declares
     // `material.consumed` -> `ot.implant_confirmed` in the commit that adds this line.
     [OT_IMPLANT_CONFIRMED_CONSUMER]: implantConfirmedConsumer(db),
+    // E3.3 (#731) — the other half of `ipdManifest`'s subscription: death and absconding revoke the family link.
+    [IPD_FAMILY_STOP_CONSUMER]: familyStopConsumer(db),
     /**
      * PLAN 17-E T7b — the EIGHTH, and the other half of the lab's first subscription. `labManifest`
      * declares `interface.down` and `interface.restored` -> `lab.interface_status` in the commit that

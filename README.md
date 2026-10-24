@@ -1805,6 +1805,11 @@ fit declared → every department confirms → summary signed → final bill set
 the cashier and the billing manager alone; `ipd.gate.scan` by the front office and the duty manager until a security
 role is seeded. Nobody is detained for dues: an unpaid balance goes to the billing manager's approval and the dues list.
 
+**IPD family link (E3.3, decision 0072, built 2026-10-13, awaiting owner review).** `ipd.family.issue` is held by
+`front_office`, `front_office_supervisor` and `duty_manager` — the ward desk issues the attendant's link (an OTP to the
+registered phone only) and works the family's callback requests; `ipd.condition.set` is held by `doctor` — the condition
+word the family sees is set by the treating team, never by a model. Off for sealed and medico-legal admissions.
+
 **My duties, covers and swaps (20-U U5c/U6).** `/roster/my-duties` is a resident's phone: today, the
 rest of the week, and on every duty still ahead *"I can't do this"* — which lists who could take it
 without breaking a rule and, for everybody else, why not (*unavailable*, never the kind of leave). A

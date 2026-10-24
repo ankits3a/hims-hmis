@@ -127,3 +127,16 @@ export {
 } from "./discharge-exit";
 export { readDischargeBoard, readDischargeTracker } from "./discharge-read";
 export { IPD_DISCHARGE_EVENT_NAMES } from "./discharge-events";
+// E3.3 (#731) — the family link: issue / revoke, the condition word, callbacks, the public OTP page, the stop consumer.
+export { IPD_CONDITION_SET, IPD_FAMILY_ISSUE } from "./manifest";
+export {
+  closeFamilyCallback, familyBlockOf, familyCallbacksCard, familyStopConsumer, handleFamilyStop, issueFamilyLink, listFamilyCallbacks,
+  readFamilyPanel, revokeFamilyLink, setCondition,
+} from "./family";
+export {
+  familyGate, readFamilyBillDetails, readFamilyView, requestFamilyCallback, sendFamilyOtp, verifyFamilyOtp,
+} from "./family-public";
+export { FamilyOtpUnavailable, LoggingFamilyOtpSender, SmsFamilyOtpSender, familyOtpSender } from "./family-otp";
+export type { FamilyOtpSender } from "./family-otp";
+export { IPD_FAMILY_STOP_CONSUMER } from "./family-events";
+export { attendantOf, attendantPhoneOf } from "./daily-totals";

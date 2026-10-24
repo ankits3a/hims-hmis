@@ -29,6 +29,7 @@ import { orderingManifest } from "../../modules/ordering";
 import { housekeepingManifest } from "../../modules/housekeeping";
 import { maintenanceManifest } from "../../modules/maintenance";
 import { passesManifest } from "../../modules/passes";
+import { ipdManifest } from "../../modules/ipd";
 import { doctorDeskManifest } from "../../modules/doctor-desk";
 
 /**
@@ -99,6 +100,7 @@ const MANIFEST_BY_IDENTIFIER: Record<string, ModuleManifest> = {
   housekeepingManifest, // E1.4 HOUSEKEEPING (issue #721) — both processes
   maintenanceManifest, // E1.5 MAINTENANCE (issue #722) — API only
   passesManifest, // E1.3 (#720) — both processes
+  ipdManifest, // E3.3 (#731) — both processes (the family-link stop consumer)
   doctorDeskManifest, // DOCTOR DESK DD-0 — app-only
 };
 
@@ -375,7 +377,8 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     //      subscription; their clocks run in the worker without the manifest (maintenance: the worker IMPORTS the module so
     //      its two repair kinds exist for the task clock, and installs nothing).
     //      E1.6 TRANSPORT — `transport`, app-only too: the worker imports the module only so its task kinds are defined.
-    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance", "tasks", "ipd", "bmw", "linen", "maintenance", "transport", "doctor-desk"]);
+    //      E3.3 (#731): `ipd` is no longer app-only — its family-link stop is a subscription, so the worker installs it.
+    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance", "tasks", "bmw", "linen", "maintenance", "transport", "doctor-desk"]);
 
     /**
      * ═══ THE COUNT IS THE FRICTION, AND UNTIL NOW NOTHING ENFORCED IT ═══
@@ -461,6 +464,9 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "housekeeping",
       // E1.3 (#720) — the passes consumer (`passes.admission`); installed in both processes.
       "passes",
+      // E3.3 (#731) — the family link's stop consumer (`ipd.family_stop`): death and absconding revoke the link. `ipd` moves
+      // from the app-only list to the shared one in the commit that declares its first subscription and registers its handler.
+      "ipd",
     ]);
     expect(workerKeys).toHaveLength(21); // E1.4 HOUSEKEEPING: 20 -> 21, `housekeeping`; DECISION 0067: 19 -> 20, `ordering`; // PHASE O T1: 16 -> 17, `obligations`; ABDM S2: 17 -> 18, `abdm`; MOBILE M6b: 18 -> 19, `phone_push`
   });

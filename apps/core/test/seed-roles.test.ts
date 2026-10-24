@@ -1179,6 +1179,15 @@ const IPD_DISCHARGE_PAIRS: readonly string[] = [
   "duty_manager/ipd.mortuary.manage",
 ];
 
+/** The README prose line authorising the IPD family link (E3.3, decision 0072). Quoted, not paraphrased. */
+const IPD_FAMILY_README_PROSE =
+  "`ipd.family.issue` is held by\n`front_office`, `front_office_supervisor` and `duty_manager`";
+
+/** IPD FAMILY E3.3 (#731, decision 0072, awaiting owner review) — the ward desk issues the link; the doctor sets the condition. */
+const IPD_FAMILY_PAIRS: readonly string[] = [
+  "front_office/ipd.family.issue", "front_office_supervisor/ipd.family.issue", "duty_manager/ipd.family.issue", "doctor/ipd.condition.set",
+];
+
 /** The README prose line authorising the 2026-09-20 approvals-spine ruling R1. Quoted, not paraphrased. */
 const APPROVALS_SPINE_README_PROSE =
   "The approvals spine (owner ruling R1,\n2026-09-20)";
@@ -1316,6 +1325,7 @@ const NON_TABLE_PAIRS: readonly string[] = [
   ...IPD_TRANSFER_PAIRS,
   ...IPD_BILLDESK_PAIRS,
   ...IPD_DISCHARGE_PAIRS,
+  ...IPD_FAMILY_PAIRS,
   ...APPROVALS_SPINE_PAIRS,
   ...PHARMACY_REPORTS_PAIRS,
   ...PHARMACY_TALLY_PAIRS,
@@ -2511,6 +2521,7 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(readme).toContain(IPD_TRANSFER_README_PROSE);
     expect(readme).toContain(IPD_BILLDESK_README_PROSE);
     expect(readme).toContain(IPD_DISCHARGE_README_PROSE);
+    expect(readme).toContain(IPD_FAMILY_README_PROSE);
     expect(readme).toContain(APPROVALS_SPINE_README_PROSE);
     // Parity P5's two sentences: who reads the office's reports, and who reads the margin.
     expect(readme).toContain(PHARMACY_REPORTS_README_PROSE);

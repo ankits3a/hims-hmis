@@ -16,7 +16,7 @@ import {
   IPD_GATE_SCAN, IPD_MORTUARY_MANAGE,
 } from "./manifest";
 import type {
-  Actor, IpdBillDesk, IpdDischargeBoard, IpdDischargeTracker, IpdFinalBill, IpdMortuaryEntry, IpdRefusalBody, IpdSummaryView,
+  Actor, IpdDischargeBillDesk, IpdDischargeBoard, IpdDischargeTracker, IpdFinalBill, IpdMortuaryEntry, IpdRefusalBody, IpdSummaryView,
 } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -114,7 +114,7 @@ export class IpdDischargeController {
   /** Review #762: the bill desk — settled bills with dues awaiting approval, a stay not out, an ending after the bill. */
   @Get("discharge/bill-desk")
   @RequirePermission(IPD_DISCHARGE_BILL, "hospital")
-  async billDesk(@CurrentActor() actor: Actor): Promise<IpdBillDesk> {
+  async billDesk(@CurrentActor() actor: Actor): Promise<IpdDischargeBillDesk> {
     try { return await listBillDesk(this.db, actor); } catch (e) { toHttp(e); }
   }
 
