@@ -113,8 +113,8 @@ Source: `apps/core/src/modules/ipd/`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (8)
+## HTTP routes
 
-- `beds.controller.ts` — 8: `/ipd/beds`
+- `beds.controller.ts` — `/ipd/beds`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/ipd`

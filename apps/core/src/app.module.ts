@@ -67,6 +67,7 @@ const DARK_MODULES: readonly (readonly [DarkModuleKey, Type<unknown>])[] = [
   ["tasks", TasksModule], // E0.1 task engine (#713) — the task doors: raise, accept, start, done, verify, cancel, my list, the board
   ["ipd", IpdModule], // E1.1 (#718) — the bed routes and the bed board's live topic
   ["bmw", BmwModule], // E1.7 bio-medical waste (#724) — the bag doors, the board and the two legal reports
+  ["linen", LinenModule], // E2.4 linen (#728) — top up, returns, counts, laundry, borrow, condemn, par, the board, the handler phone
   ["housekeeping", HousekeepingModule], // E1.4 (#721) — the Beds board's cleaning clocks, the housekeeping board, verify and nudge
   ["maintenance", MaintenanceModule], // E1.5 (#722) — repair tickets: raise, confirm, cancel, dispatch, the board, the Beds board's repair line
 ];

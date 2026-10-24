@@ -193,5 +193,6 @@ export async function readBedBoard(db: Db, actor: Actor, opts: { wall?: boolean;
     for (const w of f.wards) w.beds.sort(byCode);
   }
   next24h.cleaningOver60.sort((a, b) => b.minutes - a.minutes);
-  return { asOf: now.toISOString(), wall, totals, floors: floorList, next24h };
+  // IPD/ER train B1 — the contracts are the stack's final ones; the waiting-for-a-bed column is filled by admission (E1.2).
+  return { asOf: now.toISOString(), wall, totals, waiting: [], floors: floorList, next24h };
 }

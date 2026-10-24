@@ -68,8 +68,8 @@ Source: `apps/core/src/modules/linen/`
 
 Foreign keys into: `resources`
 
-## HTTP routes (14)
+## HTTP routes
 
-- `linen.controller.ts` — 14: `/linen/board`, `/linen/borrow`, `/linen/condemn`, `/linen/handler`, `/linen/laundry`, `/linen/variance`, `/linen/wards`
+- `linen.controller.ts` — `/linen/board`, `/linen/borrow`, `/linen/condemn`, `/linen/handler`, `/linen/laundry`, `/linen/variance`, `/linen/wards`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/linen`

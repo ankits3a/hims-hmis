@@ -29,13 +29,13 @@ const IN_FORCE_CARD: WireIpdRateCard = {
   ready: 0, missing: 2,
 };
 
-function mock(perms: string[]): { cardCalls: string[] } {
+function mock(perms: string[], on: string[] = ["ipd"]): { cardCalls: string[] } {
   const cardCalls: string[] = [];
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
     const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     const path = raw.replace(/^.*\/api/, "");
     const json = (body: unknown): Response => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
-    if (path === "/auth/me") return json({ actor: { type: "user", id: "u-owner" }, permissions: { hospital: perms, scoped: { department: {}, floor: {} } } });
+    if (path === "/auth/me") return json({ actor: { type: "user", id: "u-owner" }, permissions: { hospital: perms, scoped: { department: {}, floor: {} } }, modules: { dark: ["ipd"], on } });
     if (path === "/billing/office/needs") return json({ rows: [], money: { toPayCount: 0, toPayPaise: 0, shortPaise: 0 } });
     if (path === "/billing/consult-prices") return json({
       rows: [
@@ -98,5 +98,14 @@ describe("the IPD rate card (E0.4)", () => {
     renderWithRouter(<BillingOffice />, "/billing/office?view=prices");
     expect(await screen.findByTestId("office-page-prices")).toBeInTheDocument();
     expect(await screen.findByTestId("ipd-rate-card-count")).toHaveTextContent("1 classes ready to go live, 1 missing");
+  });
+
+  it("decision 0085 — is not on the Prices page while the server has `ipd` switched off, and asks for nothing", async () => {
+    const { cardCalls } = mock(["billing.reports.read", "tariff.read"], []);
+    renderWithRouter(<BillingOffice />, "/billing/office?view=prices");
+    expect(await screen.findByTestId("office-page-prices")).toBeInTheDocument();
+    await screen.findByText(/OPD-CONSULT-NEW|consult/i).catch(() => undefined);
+    expect(screen.queryByTestId("ipd-rate-card")).not.toBeInTheDocument();
+    expect(cardCalls).toEqual([]);
   });
 });

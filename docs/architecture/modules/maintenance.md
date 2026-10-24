@@ -57,8 +57,8 @@ Source: `apps/core/src/modules/maintenance/`
 
 Foreign keys into: `ipd`, `resources`, `tasks`
 
-## HTTP routes (7)
+## HTTP routes
 
-- `maintenance.controller.ts` — 7: `/maintenance/bed-tickets`, `/maintenance/board`, `/maintenance/places`, `/maintenance/tickets`
+- `maintenance.controller.ts` — `/maintenance/bed-tickets`, `/maintenance/board`, `/maintenance/places`, `/maintenance/tickets`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/maintenance`

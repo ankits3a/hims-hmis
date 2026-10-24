@@ -1126,7 +1126,6 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "tasks.view", "tasks.supervise",
       // IPD BEDS E1.1 (#718) — the duty manager approves overflow beds (spec §4.1) and runs the board at night.
       "ipd.beds.view", "ipd.beds.manage", "ipd.beds.clean", "ipd.beds.overflow",
-      "tasks.view", "tasks.supervise",
       // E1.4 HOUSEKEEPING (issue #721) — the housekeeping board out of hours (not the terminal-clean check).
       "housekeeping.view",
       // E1.5 MAINTENANCE (issue #722) — the maintenance board, raise, confirm a repair and cancel or re-dispatch a ticket out of hours.

@@ -1199,7 +1199,7 @@ function whereOf(search: Record<string, unknown>): Where {
  */
 export function BillingOffice(): React.ReactElement {
   const { t, i18n } = useTranslation();
-  const { username } = useAuth();
+  const { username, moduleOn } = useAuth();
   const navigate = useNavigate();
   const phone = useNarrow(900);
   const folded = useNarrow(1100);
@@ -1393,7 +1393,7 @@ export function BillingOffice(): React.ReactElement {
             {page !== null && (page.key === "fees"
               ? <><FeeSwitches /><UpiPayee /></>
               : page.key === "prices"
-              ? <><ConsultPrices /><IpdRateCard /></>
+              ? <><ConsultPrices />{moduleOn("ipd") && <IpdRateCard />}</>
               : page.key === "tele"
               ? <TeleBills />
               : <OfficePages key={page.key} page={page.key} onHand={(id) => go("today", undefined, id)} onGo={(v, pg) => go(v, pg)} />)}

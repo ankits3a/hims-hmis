@@ -6,6 +6,7 @@ import type {
   BedCleanView, BedTicketView, IpdBedBoard, IpdBedClass, IpdBoardBed, IpdBoardBedStatus, IpdBoardFloor, IpdBoardWard, IpdRefusalBody,
 } from "@hmis/contracts";
 import { useAuth } from "../lib/auth";
+import { dateLocale } from "../lib/date-locale";
 import { fmtIst } from "../lib/format";
 import { realtimeClient, useRealtime } from "../lib/realtime";
 import {
@@ -76,8 +77,9 @@ function repairLine(r: BedTicketView, t: T, short = false): string {
 /** The blockers list shows this many slow cleans, then "+N more" (the right column never grows a page scroll). */
 const SLOW_SHOWN = 4;
 
+// IPD/ER train B1 — main's #803 guard: the named weekday and month follow the language (#801 brings the shared label).
 const istDate = (d: Date): string =>
-  new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", weekday: "short", day: "numeric", month: "short" }).format(d);
+  new Intl.DateTimeFormat(dateLocale(), { timeZone: "Asia/Kolkata", weekday: "short", day: "numeric", month: "short" }).format(d);
 const istSeconds = (d: Date): string =>
   new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(d);
 

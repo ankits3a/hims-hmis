@@ -220,12 +220,12 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       // through their indexes; nothing imports it.
       "doctor-desk",
     ]);
-    expect(ALL_MANIFESTS).toHaveLength(28); // E0.1 TASK ENGINE: 28, tasks; IPD BEDS E1.1: 27, ipd; DOCTOR DESK DD-0: 26; TEST ORDERING: 25; STAFF ATTENDANCE: 24; PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
+    expect(ALL_MANIFESTS).toHaveLength(32); // IPD/ER train B1: tasks, ipd, bmw, linen, housekeeping, maintenance; // E0.1 TASK ENGINE: 28, tasks; IPD BEDS E1.1: 27, ipd; DOCTOR DESK DD-0: 26; TEST ORDERING: 25; STAFF ATTENDANCE: 24; PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
     // Installable as a set: `ModuleRegistry.install` throws on a duplicate key, so this also
     // pins that no manifest appears twice.
     const registry = new ModuleRegistry();
     for (const manifest of ALL_MANIFESTS) registry.install(manifest);
-    expect(registry.all()).toHaveLength(28); // IPD BEDS E1.1, E0.1 TASK ENGINE
+    expect(registry.all()).toHaveLength(32); // IPD BEDS E1.1, E0.1 TASK ENGINE
   });
 
   it("V4: app.module.ts installs ALL_MANIFESTS and nothing else", () => {
@@ -238,7 +238,7 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     expect(manifestKeys(extras, "app.module.ts")).toEqual([]);
   });
 
-  it("the worker's registry differs from ALL_MANIFESTS in exactly twelve enumerated, intentional ways", () => {
+  it("the worker's registry differs from ALL_MANIFESTS in exactly fifteen enumerated, intentional ways", () => {
     const workerKeys = manifestKeys(
       installArguments(readFileSync(WORKER_MODULE, "utf8"), "worker.module.ts"),
       "worker.module.ts",

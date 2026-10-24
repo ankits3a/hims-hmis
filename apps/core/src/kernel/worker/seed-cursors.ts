@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { workerBackfills, workerConsumers } from "./worker.module";
+import { isModuleOn } from "../modules/switch";
 
 /**
  * D10 — first-boot cursor seeding, the step 08.5 booked and 10 re-booked.
@@ -48,6 +49,8 @@ export async function seedCursors(db: Db, now: Date = new Date()): Promise<Seede
   }
   // E1.4 — the state a seeded cursor skipped, rebuilt (idempotent; see `workerBackfills`).
   for (const [consumer, backfill] of Object.entries(workerBackfills(db))) {
+    // Decision 0085 — a backfill writes its module's rows: none while that module (the consumer key's prefix) is off.
+    if (!isModuleOn(consumer.split(".")[0] ?? consumer)) continue;
     const n = await backfill();
     if (n > 0) console.log(`seed-cursors: ${consumer} backfilled ${n}`);
   }
