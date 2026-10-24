@@ -44,6 +44,7 @@ import { HOUSEKEEPING_BED_CONSUMER, backfillBedCleans, bedTurnoverConsumer, hous
 // E1.5 MAINTENANCE (issue #722) — no subscription and no job, so nothing to install; importing the module DEFINES its
 // two repair kinds in this process, so the task clock knows their windows and their escalation role (tasks MAP §4).
 import "../../modules/maintenance";
+import { PASSES_ADMISSION_CONSUMER, passesAdmissionConsumer, passesManifest } from "../../modules/passes";
 import { collectResourceKinds } from "../resources/kinds";
 import { collectOrderKinds } from "../orders/kinds";
 import type { Handler } from "../events/subscriptions";
@@ -220,6 +221,9 @@ export const WORKER_TASK_KINDS: readonly string[] = [LINEN_CHANGE_TASK.kind];
         // (the pharmacy shape); this install and the `workerConsumers` entry are ONE edit. Importing the module also
         // defines its task kinds in the worker, so the task clock knows their windows and ladders.
         registry.install(housekeepingManifest);
+        // E1.3 (#720) — passes: the stay-ending and transfer events -> `passes.admission`. Installed in BOTH processes (the
+        // API mounts the desk and the scan); the install and the `workerConsumers` entry below are ONE edit.
+        registry.install(passesManifest);
         // ══ PLAN 13 CLOSE / M2's CARRY-FORWARD, CLOSED HERE (Plan 14 DD2, Spike Q6) ══
         //
         // This is `app.module.ts:73`'s line, in the process that did not have it. Plan 13's close
@@ -372,6 +376,9 @@ export function workerConsumers(db: Db, cfg: AppConfig | null = null): Record<st
      * ABDM unconfigured does.
      */
     [ABDM_CARE_CONTEXT_CONSUMER]: careContextConsumer(db, cfg),
+    // E1.3 (#720) — the other half of `passesManifest`: discharge, LAMA, absconding and death expire every live pass of
+    // the admission at once; a ward transfer moves them. One without the other is a boot error.
+    [PASSES_ADMISSION_CONSUMER]: passesAdmissionConsumer(db),
   };
 }
 

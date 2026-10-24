@@ -39,6 +39,8 @@ import { CopilotHealthScreen } from "./screens/copilot-health";
 import { CrkFormularyScreen } from "./screens/crk-formulary";
 import { IpdBeds } from "./screens/ipd-beds";
 import { IpdAdmit } from "./screens/ipd-admit";
+import { IpdPasses } from "./screens/ipd-passes";
+import { PassesScan } from "./screens/passes-scan";
 import { CopilotNoticeHost } from "./components/copilot-notice";
 import { OpdReportScreen } from "./screens/opd-report";
 import { DeskOne } from "./screens/desk-one/desk-one";
@@ -387,6 +389,9 @@ const NAV: readonly NavEntry[] = [
   { to: "/ipd/beds", label: "nav.ipdBeds", permission: "ipd.beds.view", group: "wards" },
   // E1.2 (#719) — the Admit sheet; path and permission match `ipdManifest.menu`.
   { to: "/ipd/admit", label: "nav.ipdAdmit", permission: "ipd.admit", group: "wards" },
+  // E1.3 (#720) — attendant and visitor passes and the guard's scan; paths and permissions match `passesManifest.menu`.
+  { to: "/ipd/passes", label: "nav.ipdPasses", permission: "passes.issue", group: "wards" },
+  { to: "/passes/scan", label: "nav.passScan", permission: "passes.scan", group: "wards" },
   { to: "/ot/list", label: "nav.otList", permission: "ot.cases.read", group: "theatre" },
   { to: "/ot/book", label: "nav.otBook", permission: "ot.cases.book", group: "theatre" },
   { to: "/ot/recovery", label: "nav.otRecovery", permission: "ot.recovery.operate", group: "theatre" },
@@ -863,6 +868,23 @@ const ipdAdmitRoute = createRoute({
     admission: typeof search.admission === "string" && /^[0-9A-HJKMNP-TV-Z]{26}$/.test(search.admission) ? search.admission : undefined,
   }),
   component: IpdAdmit,
+});
+
+/** E1.3 (#720) — passes at the admission desk; `?admission=<id>` opens one admission (the Admit sheet links it). */
+const ipdPassesRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/passes",
+  validateSearch: (search: Record<string, unknown>): { admission?: string } => ({
+    admission: typeof search.admission === "string" && /^[0-9A-HJKMNP-TV-Z]{26}$/.test(search.admission) ? search.admission : undefined,
+  }),
+  component: IpdPasses,
+});
+
+/** E1.3 (#720) — the guard's scan at a ward door (390 px first). */
+const passesScanRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/passes/scan",
+  component: PassesScan,
 });
 
 /** E0.1 (decision 0064) — one day's copilot totals; aggregate only, it names nobody. */
@@ -2067,7 +2089,7 @@ export const router = createRouter({
     loginRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, ipdBedsRoute, ipdAdmitRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, ipdBedsRoute, ipdAdmitRoute, ipdPassesRoute, passesScanRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute, attendanceLinksRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,

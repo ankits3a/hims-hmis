@@ -1764,6 +1764,13 @@ the deposit, admits, cancels, runs the emergency lane and the downtime back-fill
 (front_office, front_office_supervisor, duty_manager, billing_manager) keeps the manual authorisation record; and
 `ipd.band.print` (front_office, front_office_supervisor, duty_manager) prints and reprints the wristband.
 
+**Attendant and visitor passes (E1.3, decision 0072, built 2026-10-12, awaiting owner review).** The Passes panel at
+`/ipd/passes` and the scan screen at `/passes/scan`. `passes.issue` (front_office, front_office_supervisor,
+duty_manager) issues the passes a bed class allows, visitor passes in visiting hours and reissues a lost pass;
+`passes.scan` (security_guard, duty_manager) scans a pass at a ward door; `passes.pause` (doctor, medical_superintendent,
+duty_manager) stops visitors for a patient and lifts the ban; and `passes.manage` (front_office_supervisor,
+medical_superintendent, duty_manager) pauses every pass and records police custody.
+
 **My duties, covers and swaps (20-U U5c/U6).** `/roster/my-duties` is a resident's phone: today, the
 rest of the week, and on every duty still ahead *"I can't do this"* — which lists who could take it
 without breaking a rule and, for everybody else, why not (*unavailable*, never the kind of leave). A

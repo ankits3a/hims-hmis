@@ -558,6 +558,8 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
         ],
         // #653 — a refused merge closes its request at refusal time. `partners.` < `patients.` < `pharmacy.`.
         ["patients.approval_rejected", ["approval.rejected"]],
+        // E1.3 (#720) — the stay-ending events expire every pass of the admission; a transfer moves them. `partners.` < `passes.` < `pharmacy.`.
+        ["passes.admission", ["ipd.admission.absconded", "ipd.admission.deceased", "ipd.admission.discharged", "ipd.admission.lama", "ipd.transfer.accepted"]],
         // PLAN 16c T3 / D10 — the counter's queue: `prescription.issued` → a queued dispense. Sorts before `radiology.*`.
         // PHARMACY P6 (patient messages) — the bill's message, once per invoice. Sorts after `pharmacy.`
         // `patient_messages` < `rx_issued`.

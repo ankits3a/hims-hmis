@@ -43,6 +43,7 @@ import { BmwModule } from "./modules/bmw";
 import { LinenModule } from "./modules/linen";
 import { HousekeepingModule } from "./modules/housekeeping";
 import { MaintenanceModule } from "./modules/maintenance";
+import { PassesModule } from "./modules/passes";
 import { AerbModule } from "./modules/aerb/aerb.module";
 import { PrintingModule } from "./kernel/printing/printing.module";
 import { RosterModule } from "./modules/roster/roster.module";
@@ -70,6 +71,7 @@ const DARK_MODULES: readonly (readonly [DarkModuleKey, Type<unknown>])[] = [
   ["linen", LinenModule], // E2.4 linen (#728) — top up, returns, counts, laundry, borrow, condemn, par, the board, the handler phone
   ["housekeeping", HousekeepingModule], // E1.4 (#721) — the Beds board's cleaning clocks, the housekeeping board, verify and nudge
   ["maintenance", MaintenanceModule], // E1.5 (#722) — repair tickets: raise, confirm, cancel, dispatch, the board, the Beds board's repair line
+  ["passes", PassesModule], // E1.3 (#720) — attendant and visitor passes, the scan at a ward door
 ];
 
 @Global()

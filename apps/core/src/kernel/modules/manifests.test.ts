@@ -28,6 +28,7 @@ import { abdmManifest } from "../../modules/abdm";
 import { orderingManifest } from "../../modules/ordering";
 import { housekeepingManifest } from "../../modules/housekeeping";
 import { maintenanceManifest } from "../../modules/maintenance";
+import { passesManifest } from "../../modules/passes";
 import { doctorDeskManifest } from "../../modules/doctor-desk";
 
 /**
@@ -97,6 +98,7 @@ const MANIFEST_BY_IDENTIFIER: Record<string, ModuleManifest> = {
   orderingManifest, // DECISION 0067 — both processes
   housekeepingManifest, // E1.4 HOUSEKEEPING (issue #721) — both processes
   maintenanceManifest, // E1.5 MAINTENANCE (issue #722) — API only
+  passesManifest, // E1.3 (#720) — both processes
   doctorDeskManifest, // DOCTOR DESK DD-0 — app-only
 };
 
@@ -216,6 +218,7 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "housekeeping",
       // E1.5 MAINTENANCE (issue #722) — appended. A leaf: it reaches into tasks and ipd through their indexes.
       "maintenance",
+      "passes", // PASSES E1.3 (#720): attendant and visitor passes
       // DOCTOR DESK DD-0 (#626) — appended. A leaf: it reads lab, radiology, opd, patients and roster
       // through their indexes; nothing imports it.
       "doctor-desk",
@@ -453,6 +456,8 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "ordering",
       // E1.4 HOUSEKEEPING (issue #721) — the bed-turnover consumer (`housekeeping.bed_turnover`); installed in both.
       "housekeeping",
+      // E1.3 (#720) — the passes consumer (`passes.admission`); installed in both processes.
+      "passes",
     ]);
     expect(workerKeys).toHaveLength(21); // E1.4 HOUSEKEEPING: 20 -> 21, `housekeeping`; DECISION 0067: 19 -> 20, `ordering`; // PHASE O T1: 16 -> 17, `obligations`; ABDM S2: 17 -> 18, `abdm`; MOBILE M6b: 18 -> 19, `phone_push`
   });

@@ -1,4 +1,86 @@
 {
+  "passes": {
+    "title": "पास",
+    "subtitle": "अटेंडेंट और विज़िटर पास",
+    "toScan": "पास स्कैन",
+    "admitted": "भर्ती मरीज़",
+    "noneAdmitted": "इस सूची में कोई भर्ती मरीज़ नहीं।",
+    "pick": "पास देखने के लिए भर्ती मरीज़ चुनें।",
+    "issuedOf": "{{max}} में से {{live}} जारी",
+    "entitled": "हक़",
+    "custodyOn": "पुलिस हिरासत: केवल पुलिस गार्ड पास",
+    "banOn": "डॉक्टर ने विज़िटर रोके: {{reason}}",
+    "issueTitle": "अटेंडेंट पास",
+    "kindLabel": "पास",
+    "babyAdmission": "शिशु की भर्ती आईडी (NICU)",
+    "issue": "पास जारी करें",
+    "visitorTitle": "विज़िटर पास",
+    "visitorHours": "मिलने का समय {{hours}} · {{max}} में से {{live}} चालू",
+    "visitorClosed": "अभी बंद",
+    "issueVisitor": "विज़िटर पास जारी करें",
+    "live": "चालू पास",
+    "noneLive": "कोई चालू पास नहीं।",
+    "endedCount": "{{n}} समाप्त (रद्द या ख़त्म)",
+    "print": "प्रिंट",
+    "lost": "खोया — नया दें",
+    "manageTitle": "डॉक्टर की रोक और हिरासत",
+    "reason": "कारण",
+    "stopVisitors": "विज़िटर रोकें",
+    "resume": "फिर से अनुमति",
+    "custodySet": "पुलिस हिरासत",
+    "custodyClear": "पुलिस हिरासत समाप्त",
+    "fix": "उपाय",
+    "holder": {
+      "name": "नाम",
+      "phone": "मोबाइल (वैकल्पिक)",
+      "relation": "रिश्ता"
+    },
+    "col": {
+      "kind": "पास",
+      "holder": "धारक",
+      "state": "स्थिति",
+      "until": "कब तक मान्य"
+    },
+    "state": {
+      "active": "चालू",
+      "paused": "रुका",
+      "revoked": "रद्द",
+      "expired": "ख़त्म"
+    },
+    "kind": {
+      "attendant": "अटेंडेंट",
+      "visitor": "विज़िटर",
+      "parent_stay": "अभिभावक",
+      "nicu_mother": "NICU माँ",
+      "police_guard": "पुलिस गार्ड",
+      "lounge": "ICU लाउंज"
+    },
+    "card": {
+      "patient": "मरीज़",
+      "untilDischarge": "छुट्टी तक",
+      "until": "तक",
+      "hours": "मिलने का समय {{hours}}",
+      "foot": "वार्ड के दरवाज़े पर दिखाएँ। खो गया? तुरंत डेस्क को बताएँ — पुराना पास बंद हो जाएगा।"
+    },
+    "scan": {
+      "title": "पास स्कैन",
+      "door": "दरवाज़ा",
+      "mainGate": "मुख्य गेट (वार्ड जाँच नहीं)",
+      "ready": "पास स्कैन करें",
+      "token": "पास कोड स्कैन करें या लिखें",
+      "check": "जाँचें",
+      "recent": "हाल के स्कैन",
+      "result": {
+        "valid": "मान्य",
+        "wrong_ward": "ग़लत वार्ड",
+        "outside_hours": "मिलने के समय के बाहर",
+        "expired": "ख़त्म",
+        "revoked": "रद्द",
+        "paused": "रुका",
+        "unknown": "पास नहीं"
+      }
+    }
+  },
   "ipdAdmit": {
     "findPatient": "यूएचआईडी कार्ड स्कैन करें, या नाम, यूएचआईडी, मोबाइल लिखें",
     "title": "भर्ती",
@@ -397,6 +479,8 @@
     "menu": "मेनू"
   },
   "nav": {
+    "passScan": "पास स्कैन",
+    "ipdPasses": "पास",
     "ipdAdmit": "भर्ती",
     "maintenance": "मेंटेनेंस",
     "housekeeping": "हाउसकीपिंग",

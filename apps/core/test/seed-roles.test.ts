@@ -1078,6 +1078,24 @@ const IPD_ADMIT_PAIRS: readonly string[] = [
   "doctor/ipd.admit.request", "billing_manager/ipd.payer.manage",
 ];
 
+/** The README prose line authorising attendant and visitor passes (E1.3, decision 0072). Quoted, not paraphrased. */
+const PASSES_README_PROSE =
+  "`passes.scan` (security_guard, duty_manager) scans a pass at a ward door;";
+
+/**
+ * PASSES E1.3 (#720, decision 0072; built overnight 2026-10-12, awaiting owner review) — the admission desk issues,
+ * the new security_guard role scans, a doctor stops visitors, and the supervisor and MS manage (custody, pause all);
+ * the duty manager holds all four at night.
+ */
+const PASSES_PAIRS: readonly string[] = [
+  "front_office/passes.issue",
+  "front_office_supervisor/passes.issue", "front_office_supervisor/passes.manage",
+  "doctor/passes.pause",
+  "medical_superintendent/passes.pause", "medical_superintendent/passes.manage",
+  "duty_manager/passes.issue", "duty_manager/passes.scan", "duty_manager/passes.pause", "duty_manager/passes.manage",
+  "security_guard/passes.scan",
+];
+
 /** The README prose line authorising the 2026-09-20 approvals-spine ruling R1. Quoted, not paraphrased. */
 const APPROVALS_SPINE_README_PROSE =
   "The approvals spine (owner ruling R1,\n2026-09-20)";
@@ -1208,6 +1226,7 @@ const NON_TABLE_PAIRS: readonly string[] = [
   ...HOSPITAL_NUMBERS_PAIRS,
   ...IPD_BEDS_PAIRS,
   ...IPD_ADMIT_PAIRS,
+  ...PASSES_PAIRS,
   ...APPROVALS_SPINE_PAIRS,
   ...PHARMACY_REPORTS_PAIRS,
   ...PHARMACY_TALLY_PAIRS,
@@ -1512,6 +1531,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       maintenance: 5, // E1.5 MAINTENANCE (issue #722) — maintenance.view, .raise, .work, .confirm, .manage
       housekeeping: 2, // E1.4 HOUSEKEEPING (issue #721) — housekeeping.view, housekeeping.verify_terminal
       attendance: 1, // STAFF ATTENDANCE (owner 2026-10-09) — attendance.all.read; a team and oneself are computed, not granted
+      passes: 4, // PASSES E1.3 (2026-10-12): passes.issue, .scan, .pause, .manage
       ipd: 8, // IPD ADMISSION E1.2 (2026-10-12): +4, ipd.admit.request, .admit, ipd.payer.manage, ipd.band.print; IPD BEDS E1.1 (2026-10-12), read off the failing run: ipd.beds.view, .manage, .clean, .overflow
       ordering: 0, // DECISION 0067 — no permission of its own: rides tariff.read, tariff.services.manage and orders.place
       "doctor-desk": 0, // DD-0 #626 — no permission of its own; rides opd.consult
@@ -1541,6 +1561,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // model row at all. It joins for ONE string — the temp-role mechanism built for the night
       // shift — and that row was unsafe to write before the elevation ceiling landed.
       "duty_manager",
+      "security_guard", // PASSES E1.3 (#720) — the guard at the ward door; scans and nothing else
       // OWNER RULING 2026-08-29 (Plan 07c T9 / DD14) — the TWENTY-FIFTH role, registered directly
       // after the duty manager. It exists so `staff.reports.drill` reaches exactly ONE named
       // person: adding the string to `duty_manager`, which that person already holds, would have
@@ -1638,7 +1659,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // FD-30 — 20 -> 21 with `opd.prescription.draft`. `RequirePermission` takes one string, so the
       // draft routes BOTH seats read are gated on the scribe's key and the doctor is given it here.
       // It widens nothing: `opd.consult` is the whole prescribing surface and drafting is less.
-      doctor: 25, // IPD ADMISSION E1.2: +1, ipd.admit.request; 20-U U5a, read off the failing run: +1, roster.read; STAGE D2: +1, pharmacy.incidents.record; STAGE D1: +1, pharmacy.adr.record; VD-1 T4 — 19 -> 20, the same string: the bay reads it and the clinician it hands to must too
+      doctor: 26, // PASSES E1.3: +1, passes.pause; IPD ADMISSION E1.2: +1, ipd.admit.request; 20-U U5a, read off the failing run: +1, roster.read; STAGE D2: +1, pharmacy.incidents.record; STAGE D1: +1, pharmacy.adr.record; VD-1 T4 — 19 -> 20, the same string: the bay reads it and the clinician it hands to must too
       // Plan 13 / DD14: +1, the registry read — the same room book this role already administers,
       // now behind a kernel permission. No new authority (see RESOURCES_PAIRS).
       opd_scribe: 18, // CONSULTED ON PAPER (owner 2026-10-06): +3 (opd.consult.paper, formulary.read, tariff.read); FD-31 +transcribe; FD-30 — the OPD-door transcription seat (owner ruling 2026-09-12)
@@ -1685,6 +1706,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       medical_superintendent: 29, // COPILOT HALT #581 (DECIDED 2026-10-14): +3, copilot.health.read, copilot.halt.set and .clear; STAFF ATTENDANCE (owner 2026-10-09): +1, attendance.all.read; MONOGRAPH REVIEW (owner 2026-10-02): +1, formulary.monograph.review; BREAK-GLASS (owner ruling 2026-09-28): +1, auth.break_glass.use; STAGE D2: +1, pharmacy.incidents.review; STAGE D1: +1, pharmacy.adr.manage; PHARMACY P6: +2, pharmacy.licences.manage and pharmacy.ndps.witness; PHASE R (R1): +3, roster manage/publish/read; OPD day report: +1, opd.reports.read; P19: +1, pharmacy.retail.manage; P17: +2, pharmacy.register.read and .read_sealed; staff-reports T0: +1, staff.reports.history.full
       duty_manager: 14, // OWNER RULING 2026-10-15 (#581), read off the failing run: -2, copilot.halt.set and .clear removed; COPILOT HALT E0.3 (2026-10-11), read off the failing run: +3, copilot.health.read, copilot.halt.set and .clear; 20-U U6, read off the failing run: +1, roster.read (the "this is wrong" flags are theirs to read)
       // OWNER RULING 2026-08-29 — two strings, one role, one holder: the figures and the rows.
+      security_guard: 1, // PASSES E1.3: passes.scan
       staff_auditor: 3, // staff-reports T0: +1, staff.reports.history.full
       tariff_editor: 3,
       // RC-2 T4 — 2 -> 3 with `membership.instrument.enrol`: the role that works the holder book
@@ -2067,6 +2089,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // OWNER RULING 2026-08-29 — `staff_auditor` is declared locally: it is not an OPD station, it
       // is a governance seat, held by ONE person by design (DD14). This list is in ROLE_MODEL
       // order, and the role is registered directly after `duty_manager`.
+      "security_guard", // PASSES E1.3 — declared locally: a ward door is not an OPD station
       "staff_auditor",
       "tariff_editor", "membership_admin", "mrd_officer",
       "biomedical_engineer", "materials_head", "storekeeper",
@@ -2123,7 +2146,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // PLAN 18c T1 — the RSO.
       "radiation_safety_officer",
       "lab_bridge", // PLAN 17-E T2 — the analyser bridge
-      "recovery_nurse", "staff_auditor", "storekeeper", "surgeon", "tariff_editor",
+      "recovery_nurse", "security_guard", "staff_auditor", "storekeeper", "surgeon", "tariff_editor",
       "pharmacy_assistant",
       "pharmacy_incharge", // P17
       "antimicrobial_steward", // PHARMACY STAGE D5 — a governance seat held beside a clinical role
@@ -2391,6 +2414,7 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(readme).toContain(COPILOT_HALT_README_PROSE);
     expect(readme).toContain(IPD_BEDS_README_PROSE);
     expect(readme).toContain(IPD_ADMIT_README_PROSE);
+    expect(readme).toContain(PASSES_README_PROSE);
     expect(readme).toContain(APPROVALS_SPINE_README_PROSE);
     // Parity P5's two sentences: who reads the office's reports, and who reads the margin.
     expect(readme).toContain(PHARMACY_REPORTS_README_PROSE);

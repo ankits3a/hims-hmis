@@ -56,6 +56,8 @@ flowchart LR
   ot[ot] --> resources[resources]
   partners[partners] --> billing[billing]
   partners[partners] --> patients[patients]
+  passes[passes] --> ipd[ipd]
+  passes[passes] --> resources[resources]
   pcpndt[pcpndt] --> auth[auth]
   pcpndt[pcpndt] --> patients[patients]
   pcpndt[pcpndt] --> resources[resources]
@@ -118,6 +120,7 @@ flowchart LR
 | `org.ts` | kernel | `org_departments` |
 | `ot.ts` | module ot | `daycare_encounters`, `ot_case_gates`, `ot_case_implants`, `ot_cases`, `ot_checklist_runs`, `ot_counts`, `ot_definitions`, `ot_deposit_holds`, `ot_incidents`, `ot_lists`, `ot_specimens`, `pacu_scores` |
 | `partners.ts` | module partners | `attribution_ids`, `commission_accrual_subjects`, `commission_accruals`, `counterparties`, `partner_agreements`, `partner_ref_map`, `receivable_expectations` |
+| `passes.ts` | module passes | `pass_admission_flags`, `pass_events`, `pass_scans`, `passes` |
 | `patients.ts` | module patients | `patient_allergies`, `patient_coverages`, `patient_guardians`, `patient_identity_versions`, `patient_merge_requests`, `patient_photos`, `patients`, `registration_config` |
 | `pcpndt.ts` | module pcpndt | `pcpndt_form_f`, `pcpndt_form_f_serials`, `pcpndt_registered_machines`, `pcpndt_registered_persons`, `pcpndt_registrations` |
 | `pharmacy.ts` | module pharmacy | `pharmacy_adr_events`, `pharmacy_adr_reports`, `pharmacy_adr_suspects`, `pharmacy_authorisations`, `pharmacy_cold_excursion_batches`, `pharmacy_cold_excursion_closes`, `pharmacy_cold_excursion_decisions`, `pharmacy_cold_excursions`, `pharmacy_cold_readings`, `pharmacy_cold_units`, `pharmacy_controlled_licences`, `pharmacy_credit_moves`, `pharmacy_dispense_lines`, `pharmacy_dispenses`, `pharmacy_end_prescribers`, `pharmacy_medication_incident_events`, `pharmacy_medication_incidents`, `pharmacy_message_settings`, `pharmacy_pharmacist_registrations`, `pharmacy_reg_h1`, `pharmacy_retail_licences`, `pharmacy_retail_sale_lines`, `pharmacy_retail_sales`, `pharmacy_sale_items`, `pharmacy_settings`, `pharmacy_shelf_locations`, `pharmacy_short_book`, `pharmacy_tally_config`, `pharmacy_tally_exports`, `pharmacy_tray_check_lines`, `pharmacy_tray_checks`, `pharmacy_tray_templates` |
