@@ -1,13 +1,15 @@
-import { and, asc, eq, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, lte, sql } from "drizzle-orm";
 import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
+import { hasPermission } from "../../kernel/auth/permissions";
 import { usersHoldingRole } from "../../kernel/workflow/roles";
 import { istDayString } from "../../kernel/approvals/cumulative";
-import { LAB_CHASE_RUNGS, labCriticalCalls, labResults, orderItems, orders } from "../../kernel/db/schema";
-import { doctorUnitsOn, prescriberPrint, resolverEnabled, whoIsOn } from "../roster";
+import { LAB_CHASE_RUNGS, doctorDeskMoves, labCriticalCalls, labResults, orderItems, orders } from "../../kernel/db/schema";
+import { doctorUnitsOn, prescriberPrint, resolverEnabled, teamMembers, whoIsOn } from "../roster";
 import { resolvePatientId } from "../patients";
 import { labCriticalOverdue } from "./events";
 import type { LabChaseRung } from "../../kernel/db/schema";
+import type { TeamMember } from "../roster";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -41,6 +43,21 @@ import type { Db, Tx } from "../../kernel/db/client";
  * nobody sends `recipientIds: []`, and the consumer falls back to `escalationRecipients(
  * "lab.critical_overdue")` — the duty managers unless the hospital configures a target. Silence is
  * never an outcome.
+ *
+ * ═══ A CRITICAL THE DOCTOR DESK MOVED (#929, after DD-1b #905) ═══
+ *
+ * A unit's head or senior resident can give an open critical to another member of the unit
+ * (`doctor_desk_moves`); the Desk never edits this call (plan D-A). From then on the ladder chases the
+ * HOLDER: the unit-head rung goes to the head of the unit the critical was moved in — the holder's
+ * unit, and the one whose Desk shows the row (DECIDED: a resident rotating in from another unit is
+ * chased up the unit that gave it to them, not their parent unit, whose Desk does not show it). Who
+ * holds it is the Desk's own rule (`doctor-desk/owed.ts` `withMoves`, `criticalMoves`), read here from
+ * the table because the Desk imports the lab and cannot be imported back: the newest move at or before
+ * the sweep stands while the holder and the orderer are both still members of that unit and, for a
+ * restricted test, the holder is the orderer or holds `orders.read.restricted` (DD11). Otherwise the
+ * call climbs the ordering doctor's unit, as it always did. `owner_user_id` is not rewritten — a move
+ * can be undone or outlived, so the sweep asks again each time. Rung 0 is spent when the call opens;
+ * the holder's own alert is the Desk's move bell.
  */
 
 /** Minutes per rung: the advisory 15-minute call target (`CRITICAL_CALL_TARGET_MINUTES`), now enforced by a voice. */
@@ -77,6 +94,13 @@ async function publishedOrNull(
   }
 }
 
+/** A unit's head at `at` from its members: whoever officiates as head, else the substantive head (`prescriberPrint`'s rule). */
+function headsOf(members: readonly TeamMember[]): string[] {
+  const heads = members.filter((m) => m.roleInTeam === "head");
+  const acting = heads.filter((m) => m.officiating);
+  return [...new Set((acting.length > 0 ? acting : heads.filter((m) => m.kind === "parent")).map((m) => m.userId))];
+}
+
 /**
  * Who a rung is, at `at`. The ordering doctor by id; the unit head by the published roster for the
  * doctor's unit, else the unit's head (officiating or substantive, `prescriberPrint`'s answer); the
@@ -85,10 +109,21 @@ async function publishedOrNull(
 export async function chaseRecipients(
   exec: Db | Tx, rung: number, ownerUserId: string | null, at: Date, env: NodeJS.ProcessEnv = process.env,
 ): Promise<string[]> {
+  return rungRecipients(exec, rung, ownerUserId, null, at, env);
+}
+
+/** `chaseRecipients`, and for a call a Doctor Desk move gave away (#929) the unit head of `unitTeamId`, the unit that moved it. */
+async function rungRecipients(
+  exec: Db | Tx, rung: number, ownerUserId: string | null, unitTeamId: string | null, at: Date, env: NodeJS.ProcessEnv,
+): Promise<string[]> {
   switch (LAB_CHASE_RUNGS[rung]) {
     case "ordering_doctor":
       return ownerUserId === null ? [] : [ownerUserId];
     case "unit_head": {
+      if (unitTeamId !== null) {
+        const rostered = await publishedOrNull(exec, { position: UNIT_HEAD_POSITION, teamId: unitTeamId }, at, env);
+        return rostered ?? headsOf(await teamMembers(exec, unitTeamId, at));
+      }
       if (ownerUserId === null) return [];
       const istDate = istDayString(at);
       const unit = (await doctorUnitsOn(exec, istDate)).find((u) => u.userId === ownerUserId);
@@ -105,6 +140,42 @@ export async function chaseRecipients(
     default:
       return [];
   }
+}
+
+const MOVED_ROW = "lab_critical:";
+
+/**
+ * #929 — the calls a standing Doctor Desk move has given to another member, by the Desk's rule (see
+ * the header): call id → the unit that moved it, which its ladder now climbs. Unmoved calls are absent.
+ */
+async function movedUnits(
+  exec: Db | Tx, calls: readonly { id: string; ownerUserId: string | null; restricted: boolean }[], at: Date,
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const owned = calls.filter((c) => c.ownerUserId !== null);
+  if (owned.length === 0) return out;
+  const moves = await (exec as Db)
+    .select({ rowKey: doctorDeskMoves.rowKey, teamId: doctorDeskMoves.teamId, toUserId: doctorDeskMoves.toUserId })
+    .from(doctorDeskMoves)
+    .where(and(inArray(doctorDeskMoves.rowKey, owned.map((c) => `${MOVED_ROW}${c.id}`)), lte(doctorDeskMoves.createdAt, at)))
+    .orderBy(desc(doctorDeskMoves.createdAt));
+  const newest = new Map<string, (typeof moves)[number]>();
+  for (const m of moves) if (!newest.has(m.rowKey)) newest.set(m.rowKey, m);
+  const units = new Map<string, Set<string>>();
+  for (const c of owned) {
+    const m = newest.get(`${MOVED_ROW}${c.id}`);
+    if (m === undefined) continue;
+    let members = units.get(m.teamId);
+    if (members === undefined) {
+      members = new Set((await teamMembers(exec, m.teamId, at)).map((t) => t.userId));
+      units.set(m.teamId, members);
+    }
+    if (!members.has(m.toUserId) || !members.has(c.ownerUserId!)) continue;
+    if (c.restricted && m.toUserId !== c.ownerUserId
+      && !(await hasPermission(exec as Db, m.toUserId, "orders.read.restricted", "hospital").catch(() => false))) continue;
+    out.set(c.id, m.teamId);
+  }
+  return out;
 }
 
 function overdueEvent(
@@ -148,7 +219,8 @@ export type LabChaseResult = { chased: { callId: string; rung: LabChaseRung; rec
  * Every OPEN call on the ladder below the HOD whose clock has passed its next rung. It jumps to the
  * rung the clock says (a worker that was down for 40 minutes alerts the duty RMO, not the unit head
  * and then the duty RMO a minute later), and the climb is a CAS on (rung, `closed_at IS NULL`):
- * two overlapping cycles alert once, and a read-back that lands first wins.
+ * two overlapping cycles alert once, and a read-back that lands first wins. A call a Doctor Desk
+ * move gave to another member climbs the unit that moved it (#929).
  */
 export async function sweepLabCriticalLadder(
   db: Db, now: Date = new Date(), env: NodeJS.ProcessEnv = process.env,
@@ -157,7 +229,7 @@ export async function sweepLabCriticalLadder(
     .select({
       id: labCriticalCalls.id, resultId: labCriticalCalls.resultId, openedAt: labCriticalCalls.openedAt,
       ladderRung: labCriticalCalls.ladderRung, ownerUserId: labCriticalCalls.ownerUserId,
-      orderId: orders.id, patientId: orders.patientId,
+      orderId: orders.id, patientId: orders.patientId, restricted: orderItems.restricted,
     })
     .from(labCriticalCalls)
     .innerJoin(labResults, eq(labResults.id, labCriticalCalls.resultId))
@@ -171,12 +243,13 @@ export async function sweepLabCriticalLadder(
     .orderBy(asc(labCriticalCalls.openedAt))
     .limit(CHASE_LIMIT);
 
+  const due = open.map((call) => ({ call, to: rungDue(call.openedAt, now) })).filter(({ call, to }) => to > call.ladderRung!);
+  /* A holder that cannot be worked out is no reason to go silent: the call climbs the orderer's unit. */
+  const moved = await movedUnits(db, due.map(({ call }) => call), now).catch(() => new Map<string, string>());
   const chased: LabChaseResult["chased"] = [];
-  for (const call of open) {
+  for (const { call, to } of due) {
     const from = call.ladderRung!;
-    const to = rungDue(call.openedAt, now);
-    if (to <= from) continue;
-    const recipientIds = await chaseRecipients(db, to, call.ownerUserId, now, env);
+    const recipientIds = await rungRecipients(db, to, call.ownerUserId, moved.get(call.id) ?? null, now, env);
     const patientId = (await resolvePatientId(db, call.patientId)) ?? call.patientId;
 
     const won = await withTx(db, async (tx) => {
