@@ -4,7 +4,7 @@ import { labReports, orderItems, orders, patients } from "../../kernel/db/schema
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { displayName, resolvePatientId } from "../patients";
 import { LabError } from "./errors";
-import { DOCTOR_SCREEN } from "./doctor-read";
+import { DOCTOR_SCREEN, stampDoctorRead } from "./doctor-read";
 import { LAB_REPORTS_BACK_DAYS } from "./waiting";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -16,7 +16,7 @@ import type { ReportSnapshot } from "./reports";
  * Open loops counts `lab.reportsBack` (`waiting.ts`): current reports published in the last week, not yet opened by a
  * treating doctor (#682), on orders
  * this person is the RESPONSIBLE clinician of. These two readers list exactly that set and open one of
- * it, read-only:
+ * it, read-only but for the read itself (#930): opening one is the doctor's read, stamped as the web's is:
  *
  *  · **Only my orders.** `orders.ordering_clinician_id = me` (DD6), so a report is never opened by id
  *    from someone else's order — an unknown and a not-mine report are the same refusal.
@@ -30,6 +30,9 @@ import type { ReportSnapshot } from "./reports";
  *    projection carries none of it. A doctor's read is never held for money (02 O-1) and never shows it.
  *  · **One `phi_access_log` row per read** under `lab.report`, as `getReport` writes: the list logs one
  *    per patient listed, the open logs one for its patient.
+ *  · **The open stamps the doctor's read (#930)** — `stampDoctorRead`, the web's rule (#682): the whole
+ *    report shown (no panel held back), never the signer's read, the first read only. Without it a report
+ *    opened only on the phone stayed in this list and in Open loops' count.
  */
 
 /** How many reports the list returns. A doctor's day is far below it. */
@@ -151,6 +154,8 @@ export async function myReportBack(db: Db, actor: Actor, reportId: string, now: 
   if (panels.length === 0) throw new LabError("unknown_report", `no lab report ${reportId} for this doctor`);
   const who = await nameOf(db, snapshot, c);
   await recordPhiAccess(db, { actor, patientId: who.patientId, surface: "lab.report", encounterId: snapshot.encounterNo, sealed: who.sealed, now });
+  /* #930 — as `getReport`: a read with a panel held back (DD11) is not the whole report, so it stamps nothing. */
+  if (panels.length === snapshot.panels.length) await stampDoctorRead(db, actor, [r.report.orderId], now);
   return {
     reportId: r.report.id, orderNo: snapshot.orderNo, encounterNo: snapshot.encounterNo,
     patientName: who.name, uhid: snapshot.patient.uhid, publishedAt: r.report.publishedAt!.toISOString(),
