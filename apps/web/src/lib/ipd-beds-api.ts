@@ -28,6 +28,7 @@ export type BedNeedInput = {
   requestedClass: IpdBedClass;
   isolation: "none" | "contact" | "droplet" | "airborne";
   icu: boolean;
+  placeAs?: "male" | "female";
 };
 export type BedActInput = {
   admissionId: string;

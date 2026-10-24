@@ -1,5 +1,6 @@
 import { depositLowCard } from "./bill-desk";
 import { familyCallbacksCard } from "./family";
+import { bedProposalCard, cleaningOverdueCard, dischargeBlockedCard } from "./now-cards";
 import {
   IPD_BEDS_VIEW, IPD_BEDS_MANAGE, IPD_BEDS_CLEAN, IPD_BEDS_OVERFLOW, IPD_ADMIT_REQUEST, IPD_ADMIT, IPD_PAYER_MANAGE, IPD_BAND_PRINT, IPD_BILL_VIEW, IPD_CHARGES_REVERSE, IPD_PAYER_TERMS, IPD_TRANSFER_START, IPD_TRANSFER_ACCEPT, IPD_DISCHARGE_VIEW, IPD_DISCHARGE_DECLARE, IPD_DISCHARGE_CONFIRM, IPD_DISCHARGE_BILL, IPD_GATE_PASS, IPD_GATE_SCAN, IPD_DISCHARGE_EXIT, IPD_MORTUARY_MANAGE, IPD_BILLDESK_VIEW, IPD_FAMILY_ISSUE, IPD_CONDITION_SET,
 } from "./permissions";
@@ -108,10 +109,17 @@ export const ipdManifest: ModuleManifest = {
     // Review #764 — a patient sealed after the link was issued: revoke on that path.
     { event: "patient.updated", consumer: IPD_FAMILY_STOP_CONSUMER },
   ],
-  // E2.3 (#727) — the bill desk's `deposit_low` Now card.
-  // Declared here (not in bill-desk.ts) because that file imports this one: the card is called lazily.
+  // The Now cards (E5.1, #738): one provider and one permission per card type, its key the card's own key.
+  // Declared here (not in their files) because those files import this one: the cards are called lazily.
   desk: [
-    { key: "ipd.billdesk", permission: IPD_BILLDESK_VIEW, load: async (ctx) => depositLowCard(ctx.db) },
+    // E2.3 (#727) — MONEY: `ipd.billdesk.view`, which no doctor or nurse role holds (decision 0058).
+    { key: "ipd.deposit_low", permission: IPD_BILLDESK_VIEW, load: async (ctx) => depositLowCard(ctx) },
+    // E5.2 (#739) — a waiting request with Bed Flow's proposal; Confirm needs the same permission (`reserve_bed`).
+    { key: "ipd.bed_proposal", permission: IPD_BEDS_MANAGE, load: async (ctx) => bedProposalCard(ctx) },
+    // E5.1 (#738) — a fit-for-discharge stay stuck at a named step; no money on it.
+    { key: "ipd.discharge_blocked", permission: IPD_DISCHARGE_VIEW, load: async (ctx) => dischargeBlockedCard(ctx) },
+    // E5.1 (#738) — a bed in cleaning over 60 minutes (housekeeping's permission).
+    { key: "ipd.cleaning_overdue", permission: IPD_BEDS_CLEAN, load: async (ctx) => cleaningOverdueCard(ctx) },
     // E3.3 (#731) — open family callback requests for the ward desk.
     { key: "ipd.family_callbacks", permission: IPD_FAMILY_ISSUE, load: async (ctx) => familyCallbacksCard(ctx.db) },
   ],

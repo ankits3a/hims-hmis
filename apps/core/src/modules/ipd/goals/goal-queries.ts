@@ -63,7 +63,7 @@ async function durationGoal(db: Db, a: GoalRunArgs, measures: SQL): Promise<Goal
  * A share goal. `measures` selects one row per item in the population: `item`, `grp`, `at`, `hit` (boolean).
  * `rows` are the misses, the items to chase.
  */
-async function shareGoal(db: Db, a: GoalRunArgs, measures: SQL): Promise<GoalMeasured> {
+export async function shareGoal(db: Db, a: GoalRunArgs, measures: SQL): Promise<GoalMeasured> {
   const key = a.groupBy === "day" ? IST_DAY(sql`at`) : sql`grp`;
   const stats = await rows<{ k: string | null; total: boolean; n: number; hits: number }>(db, sql`
     with m as (${measures})

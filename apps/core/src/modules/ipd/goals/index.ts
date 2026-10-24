@@ -2,3 +2,4 @@
 export * from "./goal-events";
 export * from "./goal-queries";
 export type * from "./types";
+export * from "./bed-flow-queries";

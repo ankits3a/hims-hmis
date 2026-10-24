@@ -4956,6 +4956,15 @@
     "nextStep": "कृपया अगले वाइटल्स डेस्क पर जाएँ।"
   },
   "desk": {
+    "ipdCleaningOverdue": {
+      "title": "सफ़ाई 60 मिनट से ज़्यादा"
+    },
+    "ipdDischargeBlocked": {
+      "title": "अटकी छुट्टियाँ"
+    },
+    "ipdBedProposal": {
+      "title": "पक्का करने को बेड प्रस्ताव"
+    },
     "ipdFamilyCallbacks": {
       "title": "परिवार ने कॉल माँगा",
       "open": "कॉल की प्रतीक्षा"
@@ -17889,6 +17898,43 @@
     "saveNewVersion": "नया संस्करण सहेजेगा; पुराना दिखता रहेगा।"
   },
   "ipdBeds": {
+    "flow": {
+      "tag": "बेड फ़्लो",
+      "why": "यह बेड क्यों",
+      "none": "कोई ख़ाली बेड सभी नियमों पर खरा नहीं",
+      "confirm": "{{bed}} पक्का करें",
+      "failed": "बेड नहीं रुका — फिर कोशिश करें",
+      "free": "{{minutes}} मिनट से ख़ाली",
+      "reason": {
+        "class_requested": "माँगी गई श्रेणी",
+        "gender_male_bay": "पुरुष बे",
+        "gender_female_bay": "महिला बे",
+        "gender_any": "कोई भी लिंग",
+        "gender_paediatric": "बाल बेड",
+        "room_shared_male": "साझा कमरा पुरुष",
+        "room_shared_female": "साझा कमरा महिला",
+        "isolation_contact": "संपर्क आइसोलेशन",
+        "isolation_droplet": "ड्रॉपलेट आइसोलेशन",
+        "isolation_airborne": "हवाई आइसोलेशन, नेगेटिव प्रेशर",
+        "icu_bed": "आईसीयू बेड",
+        "own_department": "{{dept}} वार्ड"
+      },
+      "refused": {
+        "bed_not_available": "बेड अभी लिया गया — दूसरा चुनें",
+        "bed_gender_mismatch": "बेड का लिंग नियम मेल नहीं खाता",
+        "bed_isolation_mismatch": "बेड का आइसोलेशन मेल नहीं खाता",
+        "bed_age_mismatch": "बेड का आयु नियम मेल नहीं खाता",
+        "bed_class_mismatch": "बेड की श्रेणी मेल नहीं खाती",
+        "room_gender_unknown": "कमरे का लिंग दर्ज नहीं",
+        "bed_retired": "बेड हटाया गया",
+        "bed_not_found": "बेड नहीं मिला",
+        "overflow_needs_duty_manager": "ओवरफ़्लो बेड पर ड्यूटी मैनेजर चाहिए",
+        "admission_wrong_state": "अनुरोध आगे बढ़ चुका",
+        "admission_not_found": "अनुरोध नहीं मिला",
+        "state_changed": "अनुरोध बदला — रीफ़्रेश करें",
+        "advice_expired": "सलाह की अवधि ख़त्म"
+      }
+    },
     "title": "बेड",
     "allFloors": "सभी मंज़िलें",
     "find": "मरीज़, UHID या बेड खोजें",
@@ -17898,6 +17944,7 @@
     "home": "होम",
     "totals": "अस्पताल का योग",
     "stat": {
+      "tomorrow": "कल {{n}} छुट्टी योग्य",
       "occupied": "भरे",
       "occupiedSub": "{{pct}} % · {{reserved}} आरक्षित",
       "overflow": "अतिरिक्त {{occupied}} / {{total}} · क्षमता नहीं",

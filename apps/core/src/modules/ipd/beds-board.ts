@@ -1,7 +1,9 @@
 import { and, asc, desc, eq, gte, inArray, isNull, ne, sql } from "drizzle-orm";
 import { IPD_BED_CLASS_INFO, IPD_CLEANING_OVERDUE_MINUTES } from "@hmis/contracts";
-import { ipdAdmissions, ipdBedBlocks, ipdBedReservations, ipdBedStays, ipdTransfers, resourceStatusHistory, resources } from "../../kernel/db/schema";
+import { ipdAdmissions, ipdBedBlocks, ipdBedReservations, ipdBedStays, ipdDischarges, ipdTransfers, resourceStatusHistory, resources } from "../../kernel/db/schema";
 import { istDayWindow } from "../../kernel/approvals/cumulative";
+import { readBedFlow } from "./bed-flow";
+import { nowIdentities } from "./now-cards";
 import { getPatientSummaries } from "../patients";
 import { IpdBedAttributesSchema, IpdWardAttributesSchema } from "./bed-attributes";
 import type {
@@ -210,11 +212,14 @@ export async function readBedBoard(db: Db, actor: Actor, opts: { wall?: boolean;
   // E1.2 — the waiting column: open admission requests, oldest first (wall: initials only).
   const open = await db.select().from(ipdAdmissions).where(inArray(ipdAdmissions.state, ["requested", "reserved"]))
     .orderBy(asc(ipdAdmissions.requestedAt)).limit(100);
-  const waitNames = new Map((await getPatientSummaries(db, actor, open.map((a) => a.patientId)))
-    .map((p) => [p.requestedId, { name: p.restricted ? p.alias : p.name, uhid: p.uhid }] as const));
+  // Review #767: one identity rule with the Now cards — alias when restricted; sealed = alias or label, no UHID.
+  const waitNames = await nowIdentities(db, actor, open);
   const heldCode = new Map(reservations.map((r) => [r.admissionId, byId.get(r.bedId)?.code ?? null] as const));
+  // E5.2 (#739) — Bed Flow's proposal per request with no bed held. Never on the wall (no names, no Confirm there).
+  const flowOf = wall ? new Map<string, IpdWaitingCard["flow"]>()
+    : new Map((await readBedFlow(db, actor, now)).map((e) => [e.admission.id, e.proposal] as const));
   const waitingCards: IpdWaitingCard[] = open.map((a) => {
-    const who = waitNames.get(a.patientId);
+    const who = waitNames.get(a.id);
     return {
       admissionId: a.id, state: a.state as "requested" | "reserved", source: a.source as IpdWaitingCard["source"],
       initials: initialsOf(who?.name ?? who?.uhid ?? "?"), name: wall ? null : who?.name ?? null,
@@ -222,8 +227,14 @@ export async function readBedBoard(db: Db, actor: Actor, opts: { wall?: boolean;
       requestedAt: a.requestedAt.toISOString(),
       waitMinutes: Math.max(0, Math.floor((now.getTime() - a.requestedAt.getTime()) / 60_000)),
       reservedBedCode: heldCode.get(a.id) ?? null,
+      uhid: wall ? "" : who?.uhid ?? "",
+      ...(wall || a.state !== "requested" ? {} : { flow: flowOf.get(a.id) ?? null }),
     };
   });
+  // E5.2 (#739) — tomorrow's predicted discharges: live fit marks declared today for tomorrow (the marks alone, no model).
+  const [fitTomorrow] = await db.select({ n: sql<number>`count(*)::int` }).from(ipdDischarges)
+    .where(and(eq(ipdDischarges.status, "active"), eq(ipdDischarges.fitWhen, "tomorrow"), gte(ipdDischarges.declaredAt, midnight)));
+  totals.predictedDischargesTomorrow = fitTomorrow?.n ?? 0;
   totals.waiting = { count: waitingCards.length, longestMinutes: waitingCards.length === 0 ? null : Math.max(...waitingCards.map((w) => w.waitMinutes)) };
   return { asOf: now.toISOString(), wall, totals, waiting: waitingCards, floors: floorList, next24h };
 }

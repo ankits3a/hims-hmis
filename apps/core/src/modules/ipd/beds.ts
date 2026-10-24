@@ -17,6 +17,7 @@ import {
   bedUnblocked,
 } from "./bed-events";
 import { ageInYears, checkBedRules, placementGender } from "./bed-rules";
+import { settleBedProposalIn } from "./bed-flow-log";
 import { IpdError, IpdRefusal } from "./errors";
 import { IPD_BEDS_CLEAN, IPD_BEDS_MANAGE, IPD_BEDS_OVERFLOW } from "./manifest";
 import type { Actor, IpdBedClass, IpdBedNeed, IpdIntentName } from "@hmis/contracts";
@@ -112,9 +113,28 @@ async function liveReservation(tx: Tx, bedId: string) {
     .where(and(eq(ipdBedReservations.bedId, bedId), eq(ipdBedReservations.status, "active"))))[0];
 }
 
+/**
+ * THE HOLD AND BLOCK PREDICATE — one definition for the acts (`currentHold`, `liveBlock`) and Bed Flow's read
+ * (`bedHoldsAndBlocks`), so a proposal never disagrees with the act about whether a bed is held (E5.2 review #767). A hold
+ * counts while `active` AND before its `expiresAt` (an act meeting a lapsed one lapses it inline); a block while
+ * `pending_release` or `active`.
+ */
+export const LIVE_BLOCK_STATUSES = ["pending_release", "active"] as const;
+export function holdIsLive(h: { status: string; expiresAt: Date }, at: Date): boolean {
+  return h.status === "active" && h.expiresAt.getTime() > at.getTime();
+}
+
+/** The beds held (live holds only) and blocked at `at` — the read-side twin of `currentHold` and `liveBlock`. */
+export async function bedHoldsAndBlocks(db: Db | Tx, at: Date): Promise<{ held: Set<string>; blocked: Set<string> }> {
+  const holds_ = await db.select({ bedId: ipdBedReservations.bedId, status: ipdBedReservations.status, expiresAt: ipdBedReservations.expiresAt })
+    .from(ipdBedReservations).where(eq(ipdBedReservations.status, "active"));
+  const blocks = await db.select({ bedId: ipdBedBlocks.bedId }).from(ipdBedBlocks).where(inArray(ipdBedBlocks.status, [...LIVE_BLOCK_STATUSES]));
+  return { held: new Set(holds_.filter((h) => holdIsLive(h, at)).map((h) => h.bedId)), blocked: new Set(blocks.map((b) => b.bedId)) };
+}
+
 async function liveBlock(tx: Tx, bedId: string) {
   return (await tx.select().from(ipdBedBlocks)
-    .where(and(eq(ipdBedBlocks.bedId, bedId), inArray(ipdBedBlocks.status, ["pending_release", "active"]))))[0];
+    .where(and(eq(ipdBedBlocks.bedId, bedId), inArray(ipdBedBlocks.status, [...LIVE_BLOCK_STATUSES]))))[0];
 }
 
 /**
@@ -148,21 +168,50 @@ async function patientFacts(db: Db, actor: Actor, patientId: string, at: Date): 
  */
 async function roomGender(tx: Tx, roomId: string | null, bedId: string): Promise<"male" | "female" | "unknown" | null> {
   if (roomId === null) return null;
-  const siblings = await tx.select().from(resources)
-    .where(and(eq(resources.parentId, roomId), eq(resources.kind, "bed"), ne(resources.id, bedId)));
-  if (siblings.length === 0) return null;
-  const ids = siblings.map((s) => s.id);
-  const holders: { at: Date; gender: "male" | "female" | "unknown" }[] = [];
+  return earliestHolderGender((await roomHolders(tx, [roomId])).get(roomId) ?? [], bedId);
+}
+
+type RoomHolder = { bedId: string; at: Date; gender: "male" | "female" | "unknown" };
+
+/** Every holder of every bed in these rooms (incumbent beds, open stays, live holds), by room. */
+async function roomHolders(db: Db | Tx, roomIds: readonly string[]): Promise<Map<string, RoomHolder[]>> {
+  const out = new Map<string, RoomHolder[]>();
+  if (roomIds.length === 0) return out;
+  const beds = await db.select().from(resources).where(and(inArray(resources.parentId, [...roomIds]), eq(resources.kind, "bed")));
+  if (beds.length === 0) return out;
+  const roomOf = new Map(beds.map((b) => [b.id, b.parentId!] as const));
+  const ids = beds.map((b) => b.id);
   const known = (g: unknown): "male" | "female" | "unknown" => (g === "male" || g === "female" ? g : "unknown");
+  const push = (bedId: string, at: Date, gender: "male" | "female" | "unknown"): void => {
+    const room = roomOf.get(bedId)!;
+    out.set(room, [...(out.get(room) ?? []), { bedId, at, gender }]);
+  };
   // An incumbent with no recorded gender is a holder too: the room is "unknown" until someone records it.
-  for (const s of siblings) if (isIncumbent(s)) holders.push({ at: s.since ?? new Date(0), gender: known(s.attributes.incumbentGender) });
-  const stays = await tx.select().from(ipdBedStays).where(and(inArray(ipdBedStays.bedId, ids), isNull(ipdBedStays.endedAt)));
-  for (const s of stays) holders.push({ at: s.startedAt, gender: known(s.placedAs) });
-  const holds_ = await tx.select().from(ipdBedReservations)
-    .where(and(inArray(ipdBedReservations.bedId, ids), eq(ipdBedReservations.status, "active")));
-  for (const r of holds_) holders.push({ at: r.reservedAt, gender: known(r.placedAs) });
-  holders.sort((a, b) => a.at.getTime() - b.at.getTime());
-  return holders[0]?.gender ?? null;
+  for (const s of beds) if (isIncumbent(s)) push(s.id, s.since ?? new Date(0), known(s.attributes.incumbentGender));
+  for (const s of await db.select().from(ipdBedStays).where(and(inArray(ipdBedStays.bedId, ids), isNull(ipdBedStays.endedAt)))) {
+    push(s.bedId, s.startedAt, known(s.placedAs));
+  }
+  for (const r of await db.select().from(ipdBedReservations)
+    .where(and(inArray(ipdBedReservations.bedId, ids), eq(ipdBedReservations.status, "active")))) push(r.bedId, r.reservedAt, known(r.placedAs));
+  return out;
+}
+
+/** The earliest holder's gender among the room's OTHER beds; null when none holds one. */
+function earliestHolderGender(holders: readonly RoomHolder[], bedId: string): "male" | "female" | "unknown" | null {
+  const others = holders.filter((h) => h.bedId !== bedId).sort((a, b) => a.at.getTime() - b.at.getTime());
+  return others[0]?.gender ?? null;
+}
+
+/**
+ * E5.2 (#739) — the twin-room gender of many candidate beds at once, as `roomGender` reads it for one (Bed Flow's read;
+ * the act re-checks under lock). Beds not hanging from a room answer null.
+ */
+export async function roomGendersFor(db: Db | Tx, beds: readonly { id: string; parentId: string | null }[]): Promise<Map<string, "male" | "female" | "unknown" | null>> {
+  const parentIds = [...new Set(beds.flatMap((b) => (b.parentId === null ? [] : [b.parentId])))];
+  const rooms = parentIds.length === 0 ? new Set<string>()
+    : new Set((await db.select({ id: resources.id }).from(resources).where(and(inArray(resources.id, parentIds), eq(resources.kind, "room")))).map((r) => r.id));
+  const holders = await roomHolders(db, [...rooms]);
+  return new Map(beds.map((b) => [b.id, b.parentId !== null && rooms.has(b.parentId) ? earliestHolderGender(holders.get(b.parentId) ?? [], b.id) : null] as const));
 }
 
 /** Serialises every act on one admission (one bed per admission), taken before the room and bed locks. */
@@ -178,7 +227,7 @@ function isUniqueViolation(e: unknown): boolean {
 /** A live hold whose time has passed is lapsed here and now, even if the minute job has not run yet. */
 async function currentHold(tx: Tx, bed: BedRow, at: Date) {
   const held = await liveReservation(tx, bed.id);
-  if (held === undefined || held.expiresAt.getTime() > at.getTime()) return held;
+  if (held === undefined || holdIsLive(held, at)) return held;
   await endReservation(tx, IPD_SYSTEM_ACTOR, held, bed.code, "lapsed", at);
   return undefined;
 }
@@ -377,6 +426,8 @@ export async function reserveBed(db: Db, actor: Actor, raw: unknown, opts: Opts 
         },
         actor, correlationId: input.admissionId, patientId: patient.id, occurredAt: at,
       }));
+      // E5.2 (#739): Bed Flow's open proposal for this admission ends accepted (this bed) or overridden (another).
+      await settleBedProposalIn(tx, input.admissionId, row.id, at);
       // E1.2: on a real admission the hold moves it requested → reserved (and checks the caller's copy of it).
       await linkReservation(tx, actor, { admissionId: input.admissionId, patientId: patient.id, need: input.need, bedId: row.id, reservationId }, at);
       return { reservationId, bedId: row.id, state: "reserved" as const, expiresAt: expiresAt.toISOString() };
@@ -515,6 +566,8 @@ export async function assignBedIn(
       .where(eq(ipdBedReservations.id, held.id));
   }
   await endOtherReservations(tx, actor, input.admissionId, row.id, at);
+  // E5.2 (#739): admit, the emergency lane, the back-fill and assign_bed all place here — the proposal's outcome with them.
+  await settleBedProposalIn(tx, input.admissionId, row.id, at);
 
   const billedClass: IpdBedClass = input.protectBookedClass ?? IPD_BED_CLASS_INFO[attrs.class].billsAs ?? attrs.class;
   const protectedUntil = input.protectBookedClass === undefined ? null : new Date(at.getTime() + PROTECT_HOURS * 3_600_000);
