@@ -7,8 +7,8 @@ import {
 import { ensureRole, mkUser } from "../../../test/helpers/opd";
 import { withTx } from "../../kernel/db/client";
 import {
-  alerts, events, labAnalytes, notifications, labCriticalCalls, orgDepartments, patients, rosterAssignments, rosterPeriods,
-  rosterTeamMemberships, rosterTeams,
+  alerts, doctorDeskMoves, events, labAnalytes, notifications, labCriticalCalls, orderItems, orgDepartments, patients,
+  rosterAssignments, rosterPeriods, rosterTeamMemberships, rosterTeams,
 } from "../../kernel/db/schema";
 import { alertsConsumer } from "../../kernel/alerts/consumer";
 import { usersHoldingRole } from "../../kernel/workflow/roles";
@@ -40,6 +40,7 @@ describe("lab critical ladder (E3.2)", () => {
   let teardown: () => Promise<void>;
   let fx: LabDeskFixture;
   let doc: string; let head: string; let rmo: string; let hod: string; let dutyManager: string;
+  let unit9: string; let deptId: string;
 
   beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
   afterAll(async () => { await teardown(); });
@@ -59,15 +60,11 @@ describe("lab critical ladder (E3.2)", () => {
     await seedOrgDepartments(db);
     await seedRosterPositions(db);
     const [dept] = await db.select({ id: orgDepartments.id }).from(orgDepartments).limit(1);
-    const team = newId();
-    await db.insert(rosterTeams).values({
-      id: team, kind: "clinical_unit", departmentId: dept!.id, code: "MED-U9", name: "Medicine Unit IX",
-      active: true, createdBy: "t", updatedBy: "t",
-    });
-    const since = new Date("2026-01-01T00:00:00Z");
+    deptId = dept!.id;
+    unit9 = await clinicalUnit("MED-U9", "Medicine Unit IX");
     await db.insert(rosterTeamMemberships).values([
-      { id: newId(), teamId: team, userId: doc, positionKey: "unit_sr", grade: "assistant_professor", roleInTeam: "faculty", startsAt: since, createdBy: "t", updatedBy: "t" },
-      { id: newId(), teamId: team, userId: head, positionKey: "unit_head", grade: "professor", roleInTeam: "head", startsAt: since, createdBy: "t", updatedBy: "t" },
+      { id: newId(), teamId: unit9, userId: doc, positionKey: "unit_sr", grade: "assistant_professor", roleInTeam: "faculty", startsAt: SINCE, createdBy: "t", updatedBy: "t" },
+      { id: newId(), teamId: unit9, userId: head, positionKey: "unit_head", grade: "professor", roleInTeam: "head", startsAt: SINCE, createdBy: "t", updatedBy: "t" },
     ]);
     /** Tonight's published duty RMO (`casualty_mo`), hospital-wide. */
     const period = newId();
@@ -84,11 +81,18 @@ describe("lab critical ladder (E3.2)", () => {
   });
   afterEach(() => { fx.unregister(); });
 
+  const SINCE = new Date("2026-01-01T00:00:00Z");
+  async function clinicalUnit(code: string, name: string): Promise<string> {
+    const id = newId();
+    await db.insert(rosterTeams).values({ id, kind: "clinical_unit", departmentId: deptId, code, name, active: true, createdBy: "t", updatedBy: "t" });
+    return id;
+  }
+
   /** A potassium of 6.8 keyed at 02:00 IST on an RFT the ordering doctor asked for. */
-  async function criticalCall(): Promise<{ callId: string; resultId: string }> {
+  async function criticalCall(orderer: string = doc): Promise<{ callId: string; resultId: string; itemId: string }> {
     const placed = await withTx(db, (tx) => deskOrder(tx, fx.desk.actor, fx.decls, {
       patientId: fx.patientId, encounterNo: fx.newVisit(), serviceDate: fx.serviceDate,
-      orderingClinicianId: doc,
+      orderingClinicianId: orderer,
       items: [{ serviceId: serviceIdForLabCode("RFT") }],
       credit: { reason: "counter order" }, placedAt: AT,
     }, AT));
@@ -103,7 +107,7 @@ describe("lab critical ladder (E3.2)", () => {
     const entered = await enterResult(db, fx.bench.actor, {
       orderItemId: placed.itemIds[0]!, analyteId: k!.id, value: "6.8", entryMode: "manual",
     }, AT);
-    return { callId: entered.criticalCallId!, resultId: entered.resultId };
+    return { callId: entered.criticalCallId!, resultId: entered.resultId, itemId: placed.itemIds[0]! };
   }
 
   const overdueEvents = () => db.select().from(events).where(eq(events.name, "lab.critical_overdue")).orderBy(asc(events.seq));
@@ -268,5 +272,101 @@ describe("lab critical ladder (E3.2)", () => {
       { week: "2026-W36", count: 5, medianMin: 6, p95Min: 33.6 },
     ]);
     expect(await criticalReadbackByWeek(db, { since: after(60) })).toEqual([]);
+  });
+
+  /* ═══ #929 — a critical the Doctor Desk MOVED (DD-1b, #905) climbs the unit it was moved in ═══ */
+
+  /**
+   * Medicine Unit X: its own head, and a resident whose parent unit is X and who is ROTATING through
+   * Unit IX — so the resident is a member of both, and the roster calls Unit X "the resident's unit".
+   */
+  async function rotatingResident(): Promise<{ res: string; head10: string; rotation: string }> {
+    const res = (await mkUser(db, "rotating.resident", ["doctor"])).id;
+    const head10 = (await mkUser(db, "unit10.head", ["doctor"])).id;
+    const unit10 = await clinicalUnit("MED-U10", "Medicine Unit X");
+    const rotation = newId();
+    await db.insert(rosterTeamMemberships).values([
+      { id: newId(), teamId: unit10, userId: head10, positionKey: "unit_head", grade: "professor", roleInTeam: "head", startsAt: SINCE, createdBy: "t", updatedBy: "t" },
+      { id: newId(), teamId: unit10, userId: res, positionKey: "unit_sr", grade: "senior_resident", roleInTeam: "senior_resident", startsAt: SINCE, createdBy: "t", updatedBy: "t" },
+      { id: rotation, teamId: unit9, userId: res, positionKey: "unit_sr", grade: "senior_resident", roleInTeam: "senior_resident", kind: "rotation", startsAt: SINCE, createdBy: "t", updatedBy: "t" },
+    ]);
+    return { res, head10, rotation };
+  }
+  /** What `moveRow` writes (the Desk's module is not this one's to call): Unit IX's head gives the row to `to`. */
+  const moved = (callId: string, from: string, to: string, at: Date) => db.insert(doctorDeskMoves).values({
+    id: newId(), rowKey: `lab_critical:${callId}`, teamId: unit9, fromUserId: from, toUserId: to, movedBy: head, createdAt: at,
+  });
+  const recipientsOf = async (callId: string, rung: string): Promise<string[]> =>
+    (await overdueEvents()).map((e) => e.payload as { callId: string; rung: string; recipientIds: string[] })
+      .filter((p) => p.callId === callId && p.rung === rung).flatMap((p) => p.recipientIds);
+
+  it("#929 D1 — moved on Unit IX's Desk, the next rung goes to the new holder's unit head, not the ordering doctor's", async () => {
+    const { res, head10 } = await rotatingResident();
+    const kept = await criticalCall(res);
+    const given = await criticalCall(res);
+    await moved(given.callId, res, doc, after(5));
+
+    const chased = (await sweepLabCriticalLadder(db, after(15), RESOLVER_ON)).chased;
+    expect(chased.map((c) => c.callId).sort()).toEqual([kept.callId, given.callId].sort());
+    expect(await recipientsOf(given.callId, "unit_head")).toEqual([head]);
+    // Never moved: the ordering doctor's own unit, as before.
+    expect(await recipientsOf(kept.callId, "unit_head")).toEqual([head10]);
+    // The rest of the ladder is hospital-wide and unchanged.
+    await sweepLabCriticalLadder(db, after(30), RESOLVER_ON);
+    expect(await recipientsOf(given.callId, "duty_rmo")).toEqual([rmo]);
+    await deliver();
+    expect((await alertsFor(head)).map((a) => [a.refId, a.refType])).toEqual([[given.callId, "lab_critical_call_unit"]]);
+    expect((await alertsFor(head10)).map((a) => a.refId)).toEqual([kept.callId]);
+  });
+
+  it("#929 — a holder rotating in from another unit: the unit that moved it to them (whose Desk shows it) is climbed", async () => {
+    const { res, head10 } = await rotatingResident();
+    const { callId } = await criticalCall(doc);
+    await moved(callId, doc, res, after(5));
+    await sweepLabCriticalLadder(db, after(15), RESOLVER_ON);
+    expect(await recipientsOf(callId, "unit_head")).toEqual([head]);
+    expect(await recipientsOf(callId, "unit_head")).not.toContain(head10);
+  });
+
+  it("#929 — a move the Desk would ignore leaves the ladder on the ordering doctor's unit", async () => {
+    const { res, head10 } = await rotatingResident();
+    // a restricted test given to a member who may not see it (an old move, before `move_target_cannot_view`)
+    const hidden = await criticalCall(res);
+    await db.update(orderItems).set({ restricted: true }).where(eq(orderItems.id, hidden.itemId));
+    await moved(hidden.callId, res, doc, after(5));
+    // given to somebody who has since left the unit
+    const leaver = (await mkUser(db, "unit9.leaver", ["doctor"])).id;
+    await db.insert(rosterTeamMemberships).values({
+      id: newId(), teamId: unit9, userId: leaver, positionKey: "unit_sr", grade: "senior_resident", roleInTeam: "senior_resident",
+      startsAt: SINCE, endsAt: after(10), createdBy: "t", updatedBy: "t",
+    });
+    const gone = await criticalCall(res);
+    await moved(gone.callId, res, leaver, after(5));
+    // a move written after the sweep's own clock
+    const later = await criticalCall(res);
+    await moved(later.callId, res, doc, after(16));
+
+    await sweepLabCriticalLadder(db, after(15), RESOLVER_ON);
+    for (const c of [hidden, gone, later]) expect(await recipientsOf(c.callId, "unit_head")).toEqual([head10]);
+  });
+
+  it("#929 — once the ordering doctor has left the unit that moved it, the row is not that unit's: their own unit is climbed", async () => {
+    const { res, head10, rotation } = await rotatingResident();
+    const { callId } = await criticalCall(res);
+    await moved(callId, res, doc, after(5));
+    await db.update(rosterTeamMemberships).set({ endsAt: after(10) }).where(eq(rosterTeamMemberships.id, rotation));
+    await sweepLabCriticalLadder(db, after(15), RESOLVER_ON);
+    expect(await recipientsOf(callId, "unit_head")).toEqual([head10]);
+  });
+
+  it("#929 D3 — after a move, a read-back still stops the chase at any rung", async () => {
+    const { res } = await rotatingResident();
+    const { callId } = await criticalCall(res);
+    await moved(callId, res, doc, after(5));
+    await sweepLabCriticalLadder(db, after(15), RESOLVER_ON);
+    await withTx(db, (tx) => acknowledgeCritical(tx, fx.bench.actor, { callId, readback: "potassium six point eight" }, after(20)));
+    for (const m of [30, 45, 60]) expect((await sweepLabCriticalLadder(db, after(m), RESOLVER_ON)).chased).toEqual([]);
+    expect((await overdueEvents()).map((e) => (e.payload as { rung: string }).rung)).toEqual(["ordering_doctor", "unit_head"]);
+    expect(await recipientsOf(callId, "unit_head")).toEqual([head]);
   });
 });
