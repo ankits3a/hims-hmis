@@ -34,6 +34,8 @@ export const IPD_APPROVAL_TYPE_KEYS: Record<IpdApprovalKind, string> = {
   deposit_waiver: "ipd_deposit_waiver",
   // E3.2 (#730) — ⚖ leaving with an unpaid balance: approved and recorded as dues, never a detention.
   discharge_dues: "ipd_discharge_dues",
+  // #763 — voiding a settled final or supplementary bill: billing manager (or the owner); requester ≠ approver.
+  bill_void: "ipd_bill_void",
 };
 
 type IpdApprovalTypeSpec = ApprovalTypeSpec & { closureSlaMinutes: number; alsoDecides: string[] };
@@ -59,6 +61,14 @@ export const IPD_APPROVAL_TYPES: readonly IpdApprovalTypeSpec[] = [
   {
     typeKey: IPD_APPROVAL_TYPE_KEYS.discharge_dues, title: "Discharge with dues — undertaking", approverRole: "billing_manager",
     urgencyClass: "urgent", actFirstAllowed: false, closureSlaMinutes: 60, alsoDecides: ["medical_superintendent"],
+  },
+  /**
+   * #763 — DECIDED $: a settled bill is voided only on the billing manager's approval (the owner may also decide) — the same
+   * manager level as billing's own refund and discount approvals. The request names the BILL (subject id = the bill row).
+   */
+  {
+    typeKey: IPD_APPROVAL_TYPE_KEYS.bill_void, title: "Void a settled IPD bill", approverRole: "billing_manager",
+    urgencyClass: "routine", actFirstAllowed: false, closureSlaMinutes: 240, alsoDecides: ["owner"],
   },
 ];
 

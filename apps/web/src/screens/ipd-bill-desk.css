@@ -58,3 +58,14 @@
 .ipdbd-dt-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 14px; }
 .ipdbd-dt-list { margin: 0; padding: 0; list-style: none; max-height: 120px; overflow: auto; font-size: 13px; }
 .ipdbd-dt-list li { display: flex; gap: 12px; padding: 2px 0; }
+
+/* #763 — settled bills: Supplementary bill and Void bill. Wraps to one column on a phone (no horizontal scroll). */
+.ipdsb h2 { margin: 0; font-size: 16px; }
+.ipdsb-rows, .ipdsb-bills { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.ipdsb-row { border-top: 1px solid var(--wash); padding-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.ipdsb-head, .ipdsb-bills li, .ipdsb-supp, .ipdsb-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ipdsb-bills .num { font-variant-numeric: tabular-nums; }
+.ipdsb-supp { background: var(--wash); border-radius: 8px; padding: 8px; }
+.ipdsb-supp label, .ipdsb-form label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.ipdsb input { min-height: 36px; border: 1px solid var(--line); border-radius: 6px; padding: 0 8px; font: inherit; max-width: 100%; }
+.ipdsb .ipdb-btn { min-height: 36px; font-size: 13px; }

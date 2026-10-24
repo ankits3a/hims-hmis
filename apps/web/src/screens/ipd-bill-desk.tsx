@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { ApiError } from "../lib/api";
 import { fmtPaise } from "../lib/format";
 import { getBillDesk, retryPosting } from "../lib/ipd-bill-api";
+import { IpdSettledBills } from "./ipd-settled-bills";
 import type React from "react";
 import type { IpdBillDesk, IpdBillDeskReason, IpdBillDeskRow } from "@hmis/contracts";
 import "../styles/paper-pine.css";
@@ -196,6 +197,7 @@ export function IpdBillDeskScreen(): React.ReactElement {
           </table>
         )}
       </section>
+      <IpdSettledBills />
       <p className="dim small">{t("ipdBillDesk.careNote")}</p>
     </main>
   );

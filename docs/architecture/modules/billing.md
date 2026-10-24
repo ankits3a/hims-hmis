@@ -126,6 +126,7 @@ Source: `apps/core/src/modules/billing/`
 - `receipts.ts`
   - `advanceOf(exec: Db | Tx, patientId: string): Promise<number>`
   - `allocateReceipt(db: Db, actor: Actor, input: AllocateReceiptInput, now: Date = new Date()): Promise<AllocateReceiptResult>`
+  - `invoiceAllocatedPaise(exec: Db | Tx, invoiceId: string): Promise<number>`
   - `listDues(db: Db, actor: Actor, filters: { patientId?: string } = {}): Promise<DueRow[]>`
   - `markEnteredInError(db: Db, actor: Actor, input: { receiptId: string; reason: string }, now: Date = new Date()): Promise<MarkEnteredInErrorR…`
   - `patientBalance(db: Db, actor: Actor, patientId: string): Promise<PatientBalance>`
@@ -138,6 +139,7 @@ Source: `apps/core/src/modules/billing/`
   - `reverseAllocation(db: Db, actor: Actor, input: { allocationId: string; reason?: string }, now: Date = new Date()): Promise<ReverseAllocatio…`
   - types: `AllocationRow`, `DueRow`, `PatientBalance`, `ReceiptGuard`, `ReceiptRow`
 - `refunds.ts`
+  - `cancelRefundRequestOnTx(tx: Tx, actor: Actor, input: { approvalId: string; reason: string }, now: Date = new Date()): Promise<{ cancelled: …`
   - `issueRefundVoucher(db: Db, actor: Actor, rawInput: IssueRefundVoucherInput, now: Date = new Date()): Promise<IssueRefundVoucherResult>`
   - `payRefundVoucher(db: Db, actor: Actor, rawInput: PayRefundVoucherInput, now: Date = new Date()): Promise<PayRefundVoucherResult>`
   - `registerAdvanceRefundListener(key: string, listener: AdvanceRefundListener): () => void`
@@ -190,7 +192,7 @@ Source: `apps/core/src/modules/billing/`
 
 ## Tables (`kernel/db/schema/billing.ts`)
 
-`allocations`, `billing_config`, `cashier_sessions`, `credit_note_lines`, `credit_notes`, `daily_closes`, `document_series`, `entered_in_error_marks`, `idempotency_keys`, `invoice_lines`, `invoices`, `receipt_tenders`, `receipts`, `recon_batches`, `recon_resolutions`, `refund_vouchers`
+`allocations`, `billing_config`, `cashier_sessions`, `credit_note_lines`, `credit_notes`, `daily_closes`, `document_series`, `entered_in_error_marks`, `idempotency_keys`, `invoice_lines`, `invoices`, `receipt_tenders`, `receipts`, `recon_batches`, `recon_resolutions`, `refund_cancellations`, `refund_vouchers`
 
 Foreign keys into: `patients`
 

@@ -357,6 +357,7 @@
       }
     },
     "pass": {
+      "suppDues": "Charges after the final bill — record them as dues against the signed undertaking",
       "title": "Gate pass",
       "issue": "Issue gate pass",
       "print": "Print gate pass",
@@ -398,6 +399,47 @@
     }
   },
   "ipdBillDesk": {
+    "settled": {
+      "title": "Settled bills",
+      "empty": "No settled bill needs the desk.",
+      "finalBill": "Final bill",
+      "supplementaryBill": "Supplementary bill {{n}}",
+      "supplementary": "Supplementary bill",
+      "askVoid": "Ask to void",
+      "voidBill": "Void bill",
+      "voidWaiting": "Void waiting for approval",
+      "reason": "Reason",
+      "reasonNeeded": "Give a reason",
+      "voidAsked": "Void asked — waiting for the billing manager",
+      "voided": "Bill voided — credit note issued",
+      "failed": "Could not do that — try again",
+      "suppLines_one": "{{count}} charge",
+      "suppLines_other": "{{count}} charges",
+      "suppPatient": "Patient {{amount}}",
+      "suppBalance": "To collect {{amount}}",
+      "cash": "Cash received ₹",
+      "undertaking": "Undertaking document",
+      "undertakingNeeded": "Dues need the signed undertaking",
+      "settle": "Settle",
+      "cancel": "Cancel",
+      "suppSettled": "Supplementary bill {{billNo}} settled",
+      "exception": {
+        "settled_not_exited": "Settled, not out",
+        "ended_after_bill": "Ended after bill",
+        "dues_awaiting_approval": "Dues: approval due",
+        "refund_pending": "Refund pending",
+        "supplementary_owed": "Supplementary bill owed"
+      },
+      "refusal": {
+        "refund_issued": "Refund already paid out — cannot void",
+        "void_needs_approval": "Needs another person's approval",
+        "void_newer_bill_first": "Void the newer bill first",
+        "bill_already_voided": "Already voided",
+        "gate_pass_live": "Gate pass issued — void after the exit",
+        "payer_claim_settled": "Payer settled the claim — cannot void",
+        "nothing_to_bill": "No charge waits for a supplementary bill"
+      }
+    },
     "dailyTotals": {
       "label": "Daily totals to attendants",
       "title": "Daily totals to attendants · {{date}}",

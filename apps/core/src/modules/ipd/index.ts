@@ -119,9 +119,12 @@ export {
   IPD_DEPARTMENT_ROLES, IPD_DISCHARGE_TARGET_MINUTES, cancelFit, confirmCharges, declareFit, readSummary, saveSummaryDraft, signSummary,
 } from "./discharge";
 export {
-  askDuesApproval, assertPayerAccounted, composeFinalBill, listBillDesk, prepareFinalBill, priceFinalBill, readFinalBill, recordDuesApproval,
-  settleFinalBill,
+  IPD_SETTLED_BILL_RECENT_DAYS, askDuesApproval, assertPayerAccounted, composeFinalBill, listBillDesk, prepareFinalBill, prepareSupplementaryBill,
+  priceFinalBill, readFinalBill, recordDuesApproval, settleFinalBill, settleSupplementaryBill,
 } from "./discharge-bill";
+// #763 — voiding a settled bill.
+export { askBillVoid, voidBill } from "./bill-void";
+export type { VoidBillResult } from "./bill-void";
 export {
   issueGatePass, listMortuary, receiveBody, recordAbscond, recordDeath, recordLama, recordPoliceClearance, releaseBody, scanGatePass,
 } from "./discharge-exit";

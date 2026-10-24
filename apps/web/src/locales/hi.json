@@ -357,6 +357,7 @@
       }
     },
     "pass": {
+      "suppDues": "अंतिम बिल के बाद के शुल्क — हस्ताक्षरित वचन-पत्र पर बकाया दर्ज करें",
       "title": "गेट पास",
       "issue": "गेट पास जारी करें",
       "print": "गेट पास छापें",
@@ -398,6 +399,47 @@
     }
   },
   "ipdBillDesk": {
+    "settled": {
+      "title": "निपटाए गए बिल",
+      "empty": "किसी निपटाए बिल पर काम बाकी नहीं।",
+      "finalBill": "अंतिम बिल",
+      "supplementaryBill": "पूरक बिल {{n}}",
+      "supplementary": "पूरक बिल",
+      "askVoid": "रद्द करने की अनुमति माँगें",
+      "voidBill": "बिल रद्द करें",
+      "voidWaiting": "रद्द करना अनुमति की प्रतीक्षा में",
+      "reason": "कारण",
+      "reasonNeeded": "कारण लिखें",
+      "voidAsked": "अनुमति माँगी गई — बिलिंग मैनेजर की प्रतीक्षा",
+      "voided": "बिल रद्द — क्रेडिट नोट जारी",
+      "failed": "नहीं हो सका — फिर कोशिश करें",
+      "suppLines_one": "{{count}} शुल्क",
+      "suppLines_other": "{{count}} शुल्क",
+      "suppPatient": "मरीज़ {{amount}}",
+      "suppBalance": "लेना है {{amount}}",
+      "cash": "नकद प्राप्त ₹",
+      "undertaking": "वचन-पत्र दस्तावेज़",
+      "undertakingNeeded": "बकाया के लिए हस्ताक्षरित वचन-पत्र चाहिए",
+      "settle": "निपटाएँ",
+      "cancel": "रद्द",
+      "suppSettled": "पूरक बिल {{billNo}} निपटाया गया",
+      "exception": {
+        "settled_not_exited": "निपटा, पर गए नहीं",
+        "ended_after_bill": "बिल के बाद समाप्त",
+        "dues_awaiting_approval": "बकाया: अनुमति बाकी",
+        "refund_pending": "रिफंड बाकी",
+        "supplementary_owed": "पूरक बिल बाकी"
+      },
+      "refusal": {
+        "refund_issued": "रिफंड दिया जा चुका — रद्द नहीं हो सकता",
+        "void_needs_approval": "दूसरे व्यक्ति की अनुमति चाहिए",
+        "void_newer_bill_first": "पहले नया बिल रद्द करें",
+        "bill_already_voided": "पहले ही रद्द",
+        "gate_pass_live": "गेट पास जारी — निकास के बाद रद्द करें",
+        "payer_claim_settled": "भुगतानकर्ता ने दावा निपटा दिया — रद्द नहीं",
+        "nothing_to_bill": "पूरक बिल के लिए कोई शुल्क नहीं"
+      }
+    },
     "dailyTotals": {
       "label": "परिजन को रोज़ का बिल संदेश",
       "title": "परिजन को रोज़ का बिल संदेश · {{date}}",

@@ -7,6 +7,7 @@ import { ipdAdmissions, ipdBedStays, ipdChargeExceptions, ipdChargeLines, opdDoc
 import { appendEvent } from "../../kernel/events/append";
 import { TariffError, loadPricingContext, priceInvoiceLines, resolveActiveTariffVersion } from "../tariff";
 import { admissionAdvisoryLock, provenanceOf, readAdmission, requireIpdPermission } from "./admission-core";
+import { closedThroughOf, lineIsBilled, liveBills } from "./bill-cover";
 import { ipdChargeableDays, rentClassOf } from "./charge-days";
 import { applyClassChanges, classChangesOf } from "./class-change";
 import { evaluateDepositLadderSafely } from "./deposit-ladder";
@@ -171,6 +172,8 @@ export async function postAdmissionCharges(
      * by the nightly job (the day is not in the done set) and billed as a supplementary line.
      */
     presumedDischargeAt?: Date;
+    /** #763 — the nightly job: a live bill's settlement day and before are left to the exit acts (see the body). */
+    nightly?: boolean;
   },
 ): Promise<AdmissionPostResult> {
   const result: AdmissionPostResult = { posted: 0, rentDays: [], exceptions: 0 };
@@ -193,7 +196,14 @@ export async function postAdmissionCharges(
     }
     const ctx = versionId === null ? null : await pricingFor(tx as unknown as Db, cache, versionId, opts.now);
     const stays = await staysOf(tx, a.id);
-    const days = ipdChargeableDays(stays, admittedAt, dischargedAtOf(a) ?? opts.presumedDischargeAt ?? null, opts.upToIstDate);
+    // #763 (review of a0d85914, RED 1): every chargeable day under the day rule (`charge-days.ts`) is posted; the `done`
+    // set below is the dedupe, so a component a settled bill already took is never posted twice and an unposted one (the
+    // settlement day, once the stay ran past 14:00 on it) lands in the next bill. Only the NIGHTLY run leaves a live bill's
+    // settlement day alone: at that midnight the stay's exit time is not known yet (review #762 RED 2, locked) — the exit
+    // acts (gate pass, supplementary bill) post it with the real presumed exit.
+    const closed = opts.nightly === true ? closedThroughOf(await liveBills(tx, a.id)) : null;
+    const days = ipdChargeableDays(stays, admittedAt, dischargedAtOf(a) ?? opts.presumedDischargeAt ?? null, opts.upToIstDate)
+      .filter((d) => closed === null || d.date > closed);
     const done = new Set((await tx.select({ d: ipdChargeLines.serviceDate, c: ipdChargeLines.component }).from(ipdChargeLines)
       .where(and(eq(ipdChargeLines.admissionId, a.id), eq(ipdChargeLines.source, "ipd.nightly")))).map((r) => `${r.d}:${r.c}`));
     const todo = days.flatMap((d) => IPD_DAILY_COMPONENTS.filter((c) => !done.has(`${d.date}:${c}`)).map((c) => ({ ...d, component: c })));
@@ -288,12 +298,10 @@ export async function postNightlyIpdCharges(db: Db, now: Date): Promise<NightlyR
   const rows = await db.select({ id: ipdAdmissions.id, skip: sql<boolean>`${quarantined}` }).from(ipdAdmissions).where(and(
     isNotNull(ipdAdmissions.admittedAt),
     or(
-      // E3.2 review (#762, RED 2): a settled final bill closes the running bill — the job never posts behind it (a stay
-      // still open the next IST day is the bill desk's `settled_not_exited` exception; a supplementary bill is owed).
-      and(
-        inArray(ipdAdmissions.state, ["admitted", "transferring", "fit_declared", "discharging"]),
-        sql`not exists (select 1 from ipd_final_bills fb where fb.admission_id = "ipd_admissions"."id")`,
-      ),
+      // #763 (was review #762 RED 2): a settled bill closes the days up to its settlement day (`postAdmissionCharges`
+      // never posts behind it); a patient still in a bed after that day is posted again — the supplementary bill's lines
+      // (the bill desk's `settled_not_exited` / `supplementary_owed`).
+      inArray(ipdAdmissions.state, ["admitted", "transferring", "fit_declared", "discharging"]),
       and(
         inArray(ipdAdmissions.state, [...IPD_ENDED_STATES]),
         or(
@@ -310,7 +318,7 @@ export async function postNightlyIpdCharges(db: Db, now: Date): Promise<NightlyR
     for (const row of rows.slice(i, i + IPD_NIGHTLY_BATCH)) {
       if (row.skip) { out.quarantined += 1; continue; }
       try {
-        const r = await postAdmissionCharges(db, row.id, { upToIstDate: yesterday, now, cache });
+        const r = await postAdmissionCharges(db, row.id, { upToIstDate: yesterday, now, cache, nightly: true });
         out.posted += r.posted;
         out.exceptions += r.exceptions;
       } catch (e) {
@@ -454,6 +462,8 @@ export async function reverseChargeLine(
     await admissionAdvisoryLock(tx, line.admissionId);
     const done = (await tx.select({ id: ipdChargeLines.id }).from(ipdChargeLines).where(eq(ipdChargeLines.reversalOf, line.id)))[0];
     if (done !== undefined) throw new IpdError("charge_line_already_reversed", "this line is already reversed", { reversalLineId: done.id });
+    // #763: a line a settled bill took is corrected by voiding that bill first — never by a reversal behind the invoice.
+    if (await lineIsBilled(tx, line.admissionId, line.id)) throw new IpdError("charge_line_billed", "a settled bill took this line: void the bill first");
     const id = newId();
     // The advisory lock serialises reversals; the unique index is the backstop, answered in the same words.
     await tx.insert(ipdChargeLines).values({

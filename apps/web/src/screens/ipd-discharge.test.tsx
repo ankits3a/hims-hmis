@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { setToken } from "../lib/api";
+import { ApiError, setToken } from "../lib/api";
 import { renderWithRouter } from "../test-utils";
 import { IpdDischarge } from "./ipd-discharge";
 import type { IpdDischargeBoard, IpdDischargeTracker, IpdFinalBill } from "@hmis/contracts";
@@ -12,8 +12,13 @@ import type { IpdDischargeBoard, IpdDischargeTracker, IpdFinalBill } from "@hmis
 
 const api = vi.hoisted(() => ({
   getDischargeBoard: vi.fn(), getDischargeTracker: vi.fn(), getSummary: vi.fn(), confirmDepartment: vi.fn(), scanGatePass: vi.fn(),
-  prepareFinalBill: vi.fn(), settleFinalBill: vi.fn(),
+  prepareFinalBill: vi.fn(), settleFinalBill: vi.fn(), issueGatePass: vi.fn(),
 }));
+const docsApi = vi.hoisted(() => ({ listPatientDocuments: vi.fn() }));
+vi.mock("../lib/patients-api", async (orig) => {
+  const real = await orig<typeof import("../lib/patients-api")>();
+  return { ...real, ...docsApi };
+});
 vi.mock("../lib/ipd-discharge-api", async (orig) => {
   const real = await orig<typeof import("../lib/ipd-discharge-api")>();
   return { ...real, ...api };
@@ -71,6 +76,8 @@ beforeEach(() => {
   api.scanGatePass.mockReset().mockResolvedValue({ admissionId: id(1), state: "discharged" });
   api.prepareFinalBill.mockReset().mockResolvedValue({ ...BILL, balancePaise: 40_000, depositHeldPaise: 400_000 });
   api.settleFinalBill.mockReset();
+  api.issueGatePass.mockReset();
+  docsApi.listPatientDocuments.mockReset().mockResolvedValue([]);
 });
 afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
 
@@ -119,6 +126,30 @@ describe("Discharge desk (E3.2)", () => {
     await userEvent.click(screen.getByRole("button", { name: "Scan" }));
     await waitFor(() => expect(api.scanGatePass).toHaveBeenCalledWith("GP-FAKE00001", "01K0000000000000000000GATE"));
     expect(await screen.findByRole("status")).toHaveTextContent("GP-FAKE00001 — patient left");
+  });
+
+  it("#763 ⚖: charges after the settled bill — the gate pass records them as dues against the picked undertaking", async () => {
+    const settledBill: IpdFinalBill = {
+      ...BILL, balancePaise: 0,
+      settled: { billNo: "B1", settlement: "paid", paidPaise: 0, refundPaise: 0, refundState: "none", duesPaise: 0, duesApproved: false, settledAt: ago(60) },
+      exceptions: ["settled_not_exited"],
+    };
+    api.getDischargeTracker.mockResolvedValue(tracker({ bill: settledBill, can: { ...tracker().can, issueGatePass: true, confirm: [] } }));
+    docsApi.listPatientDocuments.mockResolvedValue([{ id: id(9), kind: "consent", capturedAt: ago(5) }] as never);
+    api.issueGatePass.mockRejectedValueOnce(new ApiError(409, {
+      statusCode: 409, code: "supplementary_unsettled", message: "x",
+      rule: "Charges after the final bill need a supplementary bill settled or dues recorded.", fix: "Settle or record dues",
+    })).mockResolvedValue({ code: "GP-FAKE00002" });
+    renderWithRouter(<IpdDischarge />, `/ipd/discharge?admission=${id(1)}`);
+    const issue = await screen.findByRole("button", { name: "Issue gate pass" });
+    await userEvent.click(issue);
+    expect(await screen.findByText(/Charges after the final bill — record them as dues/)).toBeInTheDocument();
+    // The final bill's own capture: pick the signed undertaking from the patient's documents; not issuable without it.
+    expect(issue).toBeDisabled();
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Signed undertaking (filed document)" }), id(9));
+    await userEvent.click(issue);
+    await waitFor(() => expect(api.issueGatePass).toHaveBeenCalledTimes(2));
+    expect(api.issueGatePass.mock.calls[1]).toEqual([id(1), undefined, id(9)]);
   });
 
   it("review #762 item 12: a retried settle re-sends the SAME idempotency key; a changed form gets a new one", async () => {

@@ -65,6 +65,11 @@ export async function enteredInErrorDocIds(exec: Db | Tx, docType: string, docId
 }
 
 /** Effective allocation per invoice: Sigma apply - Sigma reverse (D1). */
+/** IPD #763 — one invoice's effective allocation (Σ apply − Σ reverse): `allocatedByInvoice` for a caller outside billing. */
+export async function invoiceAllocatedPaise(exec: Db | Tx, invoiceId: string): Promise<number> {
+  return (await allocatedByInvoice(exec, [invoiceId])).get(invoiceId) ?? 0;
+}
+
 export async function allocatedByInvoice(exec: Db | Tx, invoiceIds: string[]): Promise<Map<string, number>> {
   if (invoiceIds.length === 0) return new Map();
   const rows = await exec
