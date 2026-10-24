@@ -25,9 +25,10 @@ import { createDb } from "../src/kernel/db/client";
 import { openAiDecisionsClient } from "../src/kernel/inference/openai-decisions";
 import { typesafeClient } from "../src/kernel/inference/typesafe";
 import type { ChoiceClient, PredicateClient } from "../src/kernel/inference/types";
-import { aliasCandidatePool } from "../src/modules/formulary";
+import { aliasCandidatePool, spellingNeighbours } from "../src/modules/formulary";
 import { ALIAS_REASON_CODES, compositionKey, proposeAlias, readTerm, shownCandidates } from "../src/modules/opd/alias-pipeline";
 import type { AliasDeps, AliasProposal } from "../src/modules/opd/alias-pipeline";
+import { medicineAbbreviations } from "../src/modules/opd/alias-store";
 import { lasaPairs } from "../src/modules/opd/consult-guards";
 import { ALIAS_EVAL } from "./data/alias-eval-set";
 import type { AliasEvalCategory } from "./data/alias-eval-set";
@@ -102,6 +103,8 @@ type Row = {
   i: number; term: string; cat: AliasEvalCategory; want: string | null;
   shown: string[]; shownKeys: string[]; wantShown: boolean | null;
   state: string; refusal: string | null; ruleResult: string; lasaGuard: boolean;
+  /** Spec #613: the word the models were shown in place of the typed one. */
+  correction: { kind: string; from: string; to: string } | null;
   target: string | null; targetKey: string | null; targetRight: boolean | null;
   chooser: { model: string; confidence: number } | null;
   reviewer: { model: string; answer: string; probability: number; reasonCode: string } | null;
@@ -168,6 +171,8 @@ async function run(): Promise<void> {
       candidates: async (words, numbers) => { const t = performance.now(); try { return await aliasCandidatePool(db, words, numbers); } finally { lastDb = performance.now() - t; dbMs.push(lastDb); } },
       lasa: () => Promise.resolve(pairs),
       chooser, reviewer, chooserLine: CHOOSER_LINE, reviewerLine: REVIEWER_LINE,
+      // Spec #613: the product's own correction step, over the same catalogue copy (its abbreviation rows as they stand there).
+      spelling: { neighbours: (word) => spellingNeighbours(db, word), abbreviations: () => medicineAbbreviations(db) },
     };
     // one throwaway call each so the first measured item does not carry the TLS handshake
     try { await chooser.choose({ state: { term: "x" }, questions: { q: { instructions: "Which?", options: { a: "a", b: "b" } } } }); } catch { /* warm-up */ }
@@ -195,7 +200,7 @@ async function run(): Promise<void> {
       rows.push({
         i, term: item.term, cat: item.cat, want: item.want,
         shown: p.shown.map((s) => s.name), shownKeys, wantShown: item.want === null ? null : shownKeys.includes(item.want),
-        state: p.state, refusal: p.refusal, ruleResult: p.ruleResult, lasaGuard: p.lasaGuard,
+        state: p.state, refusal: p.refusal, ruleResult: p.ruleResult, lasaGuard: p.lasaGuard, correction: p.correction,
         target: target?.name ?? null, targetKey, targetRight, chooser: p.chooser, reviewer: p.reviewer, verdict,
         ms: { candidates: Math.round(lastDb), chooser: c.ms, reviewer: r.ms, total: Math.round(total) },
         tokens: { chooser: c.tokens, reviewer: r.tokens },
@@ -209,11 +214,13 @@ async function run(): Promise<void> {
     const zeroWrong = lines.filter((l) => l.wrong === 0).sort((a, b) => b.answered - a.answered)[0] ?? null;
     const refusals: Record<string, number> = {};
     for (const r of rows) if (r.refusal !== null) refusals[r.refusal] = (refusals[r.refusal] ?? 0) + 1;
+    const corrections: Record<string, number> = {};
+    for (const r of rows) if (r.correction !== null) corrections[`${r.cat}:${r.correction.kind}`] = (corrections[`${r.cat}:${r.correction.kind}`] ?? 0) + 1;
     const lunaTokens = luna.inputTokens - warm.lunaTokens;
     const out = {
       at: new Date().toISOString(), paceMs: PACE_MS, lines: { chooser: CHOOSER_LINE, reviewer: REVIEWER_LINE },
       models: { chooser: rows.find((r) => r.chooser !== null)?.chooser?.model ?? null, reviewer: rows.find((r) => r.reviewer !== null)?.reviewer?.model ?? null },
-      summary, refusals,
+      summary, refusals, corrections,
       candidateRecall: { labelled: rows.filter((r) => r.want !== null).length, wantAmongShown: rows.filter((r) => r.wantShown === true).length },
       modelsAlone: {
         note: "what chooser and reviewer said above their lines BEFORE the rules, among items whose chooser picked a product",
@@ -240,7 +247,7 @@ async function run(): Promise<void> {
       rows,
     };
     process.stdout.write(JSON.stringify(out));
-    process.stderr.write(`${JSON.stringify({ summary, refusals, bestZeroWrongLine: zeroWrong, latencyMs: out.latencyMs, cost: out.cost, modelsAlone: out.modelsAlone, candidateRecall: out.candidateRecall }, null, 1)}\n`);
+    process.stderr.write(`${JSON.stringify({ summary, refusals, corrections, bestZeroWrongLine: zeroWrong, latencyMs: out.latencyMs, cost: out.cost, modelsAlone: out.modelsAlone, candidateRecall: out.candidateRecall }, null, 1)}\n`);
   } finally {
     await pool.end();
   }

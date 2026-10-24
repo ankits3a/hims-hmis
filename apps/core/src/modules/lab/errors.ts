@@ -135,6 +135,8 @@ export const LAB_ERROR_CODES = [
   "lab_mode_off",
   "unknown_booking",
   "booking_not_open",
+  // ── #785 — an inpatient admission that has ended takes no new order ──
+  "encounter_closed",
 ] as const;
 
 export type LabErrorCode = (typeof LAB_ERROR_CODES)[number];
@@ -262,6 +264,8 @@ const STATUS: Record<LabErrorCode, number> = {
   lab_mode_off: 409,
   unknown_booking: 404,
   booking_not_open: 409,
+  /** #785 — the admission named as the episode has ended: a new order goes on a new episode (re-read, not re-send). */
+  encounter_closed: 409,
 };
 
 export function labHttpStatus(code: LabErrorCode): number {

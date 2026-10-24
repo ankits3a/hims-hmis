@@ -5,7 +5,7 @@ import { TeleDeskPay } from "../../components/tele-desk-pay";
 import { TeleMark } from "../../components/tele-mark";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { abhaCapability, matchReasonKeys, matchReasonsDiscriminate, searchPatients } from "../../lib/patients-api";
+import { abhaCapability, guardianRelationKey, matchReasonKeys, matchReasonsDiscriminate, searchPatients } from "../../lib/patients-api";
 import type { WirePatientHit } from "../../lib/patients-api";
 import {
   cancelAppointment, checkInAppointment, getContinuity, getSlots, listDayAppointments, listDoctors,
@@ -35,6 +35,7 @@ import type { WireAbhaFlow, WireShare } from "../../lib/abdm-api";
 import { EMPTY_COVERAGE, EMPTY_FORM, agePartsOf, ageOrDobText, ageReadingText, formAgeYears, formNeedsGuardian, parseAgeOrDob, useDesk } from "./session";
 import { RebookingRail } from "./rebooking-rail";
 import { MoveDepartmentForm } from "./move-department";
+import { SendToCasualty } from "./send-to-casualty";
 import { RegAllergies } from "./reg-allergies";
 import { useAuth } from "../../lib/auth";
 import type { CoverageDraft, Person } from "./session";
@@ -86,6 +87,34 @@ export function Stage(): React.ReactElement {
 /* ══════════════════════════════════════════════════════════════════════════════════════════════
    1 · FIND — "Search before you type a single form field"
    ══════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Owner 2026-10-23 — the guardian under a counter hit, the next thing a desk asks ("pita ka naam?").
+ * One line, cut with an ellipsis rather than wrapped, so every row keeps one height and the UHID and
+ * the button stay in line down the list; the title holds the whole name. A row with none says so,
+ * as the area line does.
+ */
+function HitGuardian({ hit }: { hit: WirePatientHit }): React.ReactElement {
+  const { t } = useTranslation();
+  if (hit.guardian == null) {
+    return (
+      <div style={{ fontSize: 11.5, color: "var(--faint)", marginTop: 1 }} data-testid="hit-guardian">
+        {t("registrationCounter.find.noGuardian")}
+      </div>
+    );
+  }
+  const relation = t(guardianRelationKey(hit.guardian.relation, hit.administrativeGender), { defaultValue: hit.guardian.relation ?? "" });
+  return (
+    <div
+      style={{ fontSize: 11.5, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+      title={`${relation}: ${hit.guardian.name}`}
+      data-testid="hit-guardian"
+    >
+      <span style={{ color: "var(--dim)" }}>{relation}:</span>{" "}
+      <span style={{ color: "var(--ink)", fontWeight: 500 }}>{hit.guardian.name}</span>
+    </div>
+  );
+}
 
 function personOf(hit: WirePatientHit): Person {
   return {
@@ -228,7 +257,8 @@ function StageFind(): React.ReactElement {
             }}>
               {initialsOf(hit.name)}
             </div>
-            <div style={{ width: 210 }}>
+            {/* 250, not 210: the guardian line needs the room, and the reasons column gives it up. */}
+            <div style={{ width: 250, minWidth: 0 }}>
               <div style={{ fontSize: 14, fontWeight: 600 }}>
                 {hit.name}
                 {hit.isConfidential ? <span className="pill rd" style={{ height: 19, marginLeft: 6 }}>restricted</span> : null}
@@ -236,6 +266,7 @@ function StageFind(): React.ReactElement {
               <div className="mo" style={{ fontSize: 11, color: "var(--dim)" }}>
                 {ageOf(hit.dob) === "" ? "" : `${ageOf(hit.dob)} `}{sexLetter(hit.administrativeGender)} · {hit.phone ?? "no mobile"}
               </div>
+              <HitGuardian hit={hit} />
               {/*
                 FD-11 — THE LINE THAT TELLS TWO RAMESH KUMARS APART.
 
@@ -1180,8 +1211,9 @@ function StageAppointment(): React.ReactElement {
           ))}
           {s.triageBusy ? <span className="tag">ranking…</span> : null}
           {s.triage === null ? null : (
-            <span className="pill" title="Where the ranking came from">
-              ranked by {s.triage.source === "model" ? "the triage model" : s.triage.source === "prior" ? "this hospital's past visits" : "the keyword table"}
+            /* #622 — a fixed, translated reason, never the model's own words (the server no longer sends them). */
+            <span className="pill" title="Where the ranking came from" data-testid="triage-source">
+              {t(s.triage.source === "model" ? "opdTriage.reason.model" : s.triage.source === "prior" ? "opdTriage.reason.prior" : "opdTriage.reason.keywords")}
             </span>
           )}
         </div>
@@ -1205,6 +1237,8 @@ function StageAppointment(): React.ReactElement {
           <AgentLine>
             <b>{t(s.triage.redFlag.reasonKey)}</b>{" "}
             {t("opdTriage.redFlag.action")}
+            {/* ER lane 2 (#809, E9) — one tap puts the patient on the ER board as Expected from OPD. */}
+            {s.person !== null ? <>{" "}<SendToCasualty patientId={s.person.id} complaint={s.complaint} reasonKey={s.triage.redFlag.reasonKey} /></> : null}
           </AgentLine>
         ) : d.openVisits.length > 0 && s.complaint.trim() === "" ? (
           /*

@@ -24,6 +24,8 @@ describe("the notification template registry (D8)", () => {
       "imaging_appointment_booked",
       /** PLAN 18a T2 — the imaging twin of the lab's notice, same shape and same omissions. */
       "imaging_report_ready",
+      // IPD E2.3 (#727, 2026-10-13): 12 -> 13, read off the red run — the daily totals to the attendant (held).
+      "ipd.daily_totals",
       "owner_escalation_sms",
       /** PLAN 17 §9.2 F3 / 17b T7 — the fourth kernel edit of the lab's build (spike S7). */
       "patient_lab_report_ready",

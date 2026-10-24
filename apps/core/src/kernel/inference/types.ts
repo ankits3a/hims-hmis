@@ -21,11 +21,10 @@
  * tool-calling protocol, no temperature knob: each of those would invite a second caller to use this
  * for something the DPIA has not been asked about. One system prompt, one user string, text back.
  *
- * Note for whoever writes 12a proper: `modules/opd/triage.ts` still makes its own `fetch` to
- * `/chat/completions` with its own `TRIAGE_API_KEY`, which contradicts this file's first paragraph
- * today. It predates this declaration and is the obvious first migration onto `complete`. It is NOT
- * done here — triage is a live path with measured cache and in-flight coalescing behaviour, and
- * moving it belongs in a change whose tests are about triage rather than about the copilot.
+ * #622 — `modules/opd/triage.ts`'s chat-model fallback used to make its own `fetch` to
+ * `/chat/completions`. It now calls `complete()` on `openAiCompatibleClient`, with its own `TRIAGE_*`
+ * provider settings (system prompt = task + department list, user = the masked complaint), so no
+ * outbound AI request is made outside this directory.
  */
 export type TranscribeInput = {
   /** Raw audio bytes. Never persisted — see the controller. */

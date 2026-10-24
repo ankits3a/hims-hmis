@@ -55,7 +55,9 @@ export const notificationSuppressed = defineEvent(
     // PHARMACY P6 (patient messages) — `opted_out`: the patient asked for no messages at all;
     // `no_consent`: the template needs an opt-in (`requiresOptIn`) the patient has not given, or took back
     // after the row was queued. Both are the patient's own word, read at send time (D4).
-    reason: z.enum(["deceased", "promotional_blocked", "merge_unresolvable", "opted_out", "no_consent"]),
+    // IPD E2.3 (#727) — `template_pending`: the template is held (`heldReason`) until a provider may carry it.
+    // #761 — `recipient_blocked`: the recipient seam found the patient sealed or the family channel turned off at send time.
+    reason: z.enum(["deceased", "promotional_blocked", "merge_unresolvable", "opted_out", "no_consent", "template_pending", "recipient_blocked"]),
   }),
 );
 

@@ -51,11 +51,17 @@ const DEFAULT_POOL_MAX = 20;
  *
  * 24 -> 25 (2026-10-09): tele-call's `openDueTeleVisits` (60 s) and staff attendance's
  * `syncAttendance` (120 s) arrived together, making SEVENTEEN interval jobs: 17 + 8 = 25.
+ * 25 -> 26 (2026-10-12): the task engine's `sweepTasks` (60 s), EIGHTEEN interval jobs: 18 + 8 = 26.
+ * 20 (API) + 26 (worker) still fits `max_connections = 100` with the exporter and pgBackRest.
+ * 25 -> 26 (2026-10-13): IPD's `lapseBedReservations` (60 s), EIGHTEEN interval jobs: 18 + 8 = 26.
+ * 26 -> 27 (ipd-stage integration): both of the above together, NINETEEN interval jobs: 19 + 8 = 27.
+ * 27 -> 28 (E4.1 #733): IPD nursing's `sweepIpdNursing` (60 s), TWENTY interval jobs: 20 + 8 = 28.
  *
  * 25 -> 26 (2026-10-12, E3.2 #595): the lab critical ladder `sweepLabCriticalLadder` (60 s), the
  * EIGHTEENTH interval job: 18 + 8 = 26. 20 (API) + 26 (worker) still fits `max_connections = 100`.
+ * 28 -> 29 (ipd-stage integration, 2026-10-23): main's `sweepLabCriticalLadder` beside the IPD jobs, TWENTY-ONE interval jobs: 21 + 8 = 29.
  */
-export const DEFAULT_WORKER_POOL_MAX = 26;
+export const DEFAULT_WORKER_POOL_MAX = 29;
 const DEFAULT_CONNECT_TIMEOUT_MS = 10_000;
 
 function readPositiveInt(key: string, fallback: number): number {

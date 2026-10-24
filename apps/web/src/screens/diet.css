@@ -1,0 +1,139 @@
+/*
+ * E4.4 DIET (issue #736) — the kitchen board (16:9, no page scroll), the ward diet sheet (390 px, Hindi first, 52 px
+ * targets) and the dietician's consult queue. Paper & pine tokens; every colour comes with a word.
+ */
+.pp .dk-empty { padding: 16px 12px; text-align: center; font-size: 15px; color: var(--dim); }
+.pp .dk-dim { color: var(--dim); }
+.pp .dk-err { color: var(--red); font-weight: 600; font-size: 13px; }
+
+/* ── the kitchen board ── */
+.pp .dk-board { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 12px; flex: 1 1 auto; min-height: 0; padding: 12px 16px; box-sizing: border-box; overflow: hidden; }
+.pp .dk-head { display: flex; align-items: center; gap: 10px; flex-wrap: nowrap; min-width: 0; }
+.pp .dk-head h1 { margin: 0; font-size: 20px; color: var(--ink); white-space: nowrap; }
+.pp .dk-meal { font-size: 17px; font-weight: 700; color: var(--green); white-space: nowrap; }
+.pp .dk-count { display: inline-flex; align-items: baseline; gap: 6px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); font-size: 13px; color: var(--dim); white-space: nowrap; }
+.pp .dk-count b { font-size: 18px; color: var(--ink); }
+.pp .dk-count.npo { border-color: var(--red-line); background: var(--red-soft); color: var(--red); }
+.pp .dk-count.npo b { color: var(--red); }
+.pp .dk-clock { font-size: 13px; color: var(--dim); white-space: nowrap; }
+.pp .dk-meals { display: inline-flex; gap: 4px; margin-left: auto; }
+.pp .dk-tab { min-height: 36px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 14px; font-weight: 600; white-space: nowrap; }
+.pp .dk-tab.on { border-color: var(--green); background: var(--green); color: #f2faf6; }
+.pp .dk-now { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 18px; font-weight: 600; color: var(--ink); }
+.pp .dk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); grid-auto-rows: 196px; gap: 12px; min-height: 0; overflow: hidden; align-content: start; }
+.pp .dk-card { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; min-width: 0; overflow: hidden; border-left: 4px solid var(--line); box-sizing: border-box; }
+.pp .dk-card.preview { border-left-color: var(--gold); }
+.pp .dk-card.built { border-left-color: var(--ink); }
+.pp .dk-card.printed { border-left-color: var(--green); }
+.pp .dk-card.dispatched, .pp .dk-card.delivered { border-left-color: var(--line); opacity: .85; }
+.pp .dk-card > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pp .dk-card > header b { font-size: 16px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp .dk-state { font-size: 12.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--dim); white-space: nowrap; }
+.pp .dk-state.preview { color: var(--gold); }
+.pp .dk-state.printed { color: var(--green); }
+.pp .dk-nums { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; font-size: 12px; color: var(--dim); }
+.pp .dk-nums span { display: flex; flex-direction: column; }
+.pp .dk-nums b { font-size: 20px; color: var(--ink); line-height: 1.1; }
+.pp .dk-nums .npo b { color: var(--red); }
+.pp .dk-nums .late b { color: var(--gold); }
+.pp .dk-chips { display: flex; flex-wrap: wrap; gap: 4px; height: 44px; overflow: hidden; align-content: flex-start; }
+.pp .dk-chip { box-sizing: border-box; height: 20px; line-height: 18px; padding: 0 8px; border-radius: 10px; border: 1px solid var(--line); font-size: 12px; color: var(--ink); white-space: nowrap; }
+.pp .dk-acts { display: flex; align-items: center; gap: 6px; margin-top: auto; min-width: 0; min-height: 34px; flex: none; }
+.pp .dk-btn { min-height: 32px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 700; border: 1px solid var(--green); background: var(--green); color: #f2faf6; white-space: nowrap; }
+.pp .dk-btn.ghost { background: var(--card); color: var(--green); }
+.pp .dk-btn:disabled { opacity: .45; }
+.pp .dk-more { display: flex; align-items: center; justify-content: center; border: 1px dashed var(--line); border-radius: 8px; font-size: 15px; color: var(--dim); }
+.pp .dk-print { display: none; }
+
+@media (max-width: 760px) {
+  .pp .dk-head { flex-wrap: wrap; }
+  /* IPD walk 2026-10-14: four meal tabs ran off a 390 px phone in Hindi. They wrap onto a second row instead. */
+  .pp .dk-meals { margin-left: 0; display: flex; flex-wrap: wrap; width: 100%; }
+}
+
+@media print {
+  /* Other screens' print isolation hides `body *` with !important (the CSS is global): answer in kind, on our paper only. */
+  body * { visibility: hidden !important; }
+  .dk-board[data-print] .dk-print, .dk-board[data-print] .dk-print * { visibility: visible !important; }
+  .dk-board[data-print] .dk-print {
+    display: block !important; position: absolute; left: 0; top: 0; width: 100%; color: #000; background: #fff; page: dk-a4;
+    font-family: "IBM Plex Sans", system-ui, sans-serif; font-size: 10.5pt;
+  }
+  @page dk-a4 { size: A4 portrait; margin: 10mm; }
+  .dk-print h1 { font-size: 15pt; margin: 0 0 4pt; }
+  .dk-print .dk-sub { margin: 0 0 6pt; font-size: 10pt; }
+  .dk-print table { width: 100%; border-collapse: collapse; }
+  .dk-print th, .dk-print td { border-bottom: 1px solid #999; padding: 3pt 4pt; text-align: left; vertical-align: top; }
+  .dk-print tr.out td { color: #555; font-style: italic; }
+  .dk-print td.alg { font-weight: 700; }
+  .dk-print .dk-labels { break-before: page; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; }
+  .dk-print .dk-label { border: 1px dashed #000; padding: 3mm; break-inside: avoid; font-size: 10pt; }
+  .dk-print .dk-label .l2 { font-size: 12pt; font-weight: 700; }
+  .dk-print .dk-label .l5 { font-weight: 700; }
+}
+
+/* ── the ward diet sheet ── */
+.pp .dw-phone { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 720px; margin: 0 auto; padding: 12px 16px 24px; box-sizing: border-box; }
+.pp .dw-phone h1 { margin: 0; font-size: 20px; color: var(--ink); }
+.pp .dw-phone select, .pp .dw-panel input, .pp .dw-panel select { min-height: 52px; font-size: 17px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); box-sizing: border-box; width: 100%; min-width: 0; }
+.pp .dw-next { margin: 0; font-size: 14px; color: var(--dim); }
+.pp .dw-two { display: inline-flex; flex-direction: column; align-items: center; line-height: 1.15; }
+.pp .dw-two .en { font-size: .72em; font-weight: 500; opacity: .8; }
+.pp .dw-notice { margin: 0; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--red-line); background: var(--red-soft); color: var(--red); font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp .dw-notice.ok { border-color: var(--green); background: var(--card); color: var(--green); }
+.pp .dw-card { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-left: 4px solid var(--green); min-width: 0; box-sizing: border-box; }
+.pp .dw-card.npo { border-left-color: var(--red); }
+.pp .dw-top { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.pp .dw-bed { font-family: "IBM Plex Mono", ui-monospace, monospace; font-weight: 700; font-size: 16px; color: var(--ink); white-space: nowrap; }
+.pp .dw-name { font-size: 17px; font-weight: 700; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.pp .dw-uhid { font-size: 12.5px; color: var(--dim); white-space: nowrap; margin-left: auto; }
+.pp .dw-npo { padding: 6px 10px; border-radius: 6px; background: var(--red-soft); border: 1px solid var(--red-line); color: var(--red); font-size: 15px; overflow-wrap: anywhere; }
+.pp .dw-why { color: var(--ink); }
+.pp .dw-diet { font-size: 15px; color: var(--ink); overflow-wrap: anywhere; }
+.pp .dw-flag { font-weight: 700; color: var(--gold); }
+.pp .dw-flag.gd { margin-left: 6px; }
+.pp .dw-alg { font-size: 14px; font-weight: 700; color: var(--red); overflow-wrap: anywhere; }
+.pp .dw-tray { font-size: 14px; color: var(--dim); }
+.pp .dw-acts { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.pp .dw-btn { display: flex; align-items: center; justify-content: center; min-height: 52px; padding: 4px 10px; border-radius: 10px; font-size: 16px; font-weight: 700; border: 1px solid var(--green); background: var(--green); color: #f2faf6; }
+.pp .dw-btn.ghost { background: var(--card); color: var(--green); }
+.pp .dw-btn.red { border-color: var(--red); background: var(--red); color: #fff; }
+.pp .dw-btn.big { width: 100%; min-height: 56px; }
+.pp .dw-btn:disabled { opacity: .45; }
+.pp .dw-panel { display: flex; flex-direction: column; gap: 8px; padding-top: 6px; border-top: 1px solid var(--line2); }
+.pp .dw-prefs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.pp .dw-pref { min-height: 52px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 16px; font-weight: 700; }
+.pp .dw-pref.on { border: 2px solid var(--green); background: var(--green); color: #f2faf6; }
+.pp .dw-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pp .dw-pair label, .pp .dw-until { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--dim); }
+
+/* ── the consult queue ── */
+.pp .dc-page { display: flex; flex-direction: column; gap: 12px; padding: 12px 16px; max-width: 1200px; width: 100%; margin: 0 auto; box-sizing: border-box; }
+.pp .dc-page h1 { margin: 0; font-size: 20px; color: var(--ink); }
+.pp .dc-list { display: flex; flex-direction: column; }
+.pp .dc-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.4fr) 90px minmax(0, 1.6fr); gap: 8px 12px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--line2); border-left: 4px solid var(--gold); }
+.pp .dc-row.hot { border-left-color: var(--red); }
+.pp .dc-who { display: flex; flex-direction: column; min-width: 0; }
+.pp .dc-who b { font-size: 15px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp .dc-who span { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp .dc-why { font-size: 14px; color: var(--ink); }
+.pp .dc-wait { font-weight: 700; color: var(--ink); }
+.pp .dc-row.hot .dc-wait { color: var(--red); }
+.pp .dc-act { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.pp .dc-act input { flex: 1; min-width: 0; min-height: 36px; padding: 0 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink); }
+.pp .dc-rounds > header { display: flex; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.pp .dc-round { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 8px 12px; border-bottom: 1px solid var(--line2); }
+.pp .dc-round .m { width: 110px; font-weight: 700; color: var(--ink); }
+.pp .dc-round label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--dim); white-space: nowrap; }
+/* Outranks paper-pine's `.pp input:not(.in):not(…):not(…)` (width: 100%): an HH:MM box is five characters wide. */
+.pp .dc-rounds .dc-round label input.dc-clock { height: 36px; min-height: 36px; width: 6ch; padding: 0 8px; box-sizing: content-box; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink); font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 15px; }
+.pp .dc-rounds .dc-round label input.dc-clock[aria-invalid="true"] { border-color: var(--red); }
+@media (max-width: 760px) {
+  .pp .dc-row { grid-template-columns: minmax(0, 1fr); }
+}
+/* Review of 01d53113: each live NPO lifts on its own; changed lines are highlighted on the reprint. */
+.pp .dw-npo { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.pp .dw-npo .dw-lift { margin-left: auto; min-height: 44px; }
+.pp .dk-changed { color: var(--red); font-weight: 700; }
+.pp .dk-confirm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; font-weight: 600; }
+@media print { .dk-print tr.chg td, .dk-print .dk-label.chg { background: #fff3b0 !important; font-weight: 700 !important; } }

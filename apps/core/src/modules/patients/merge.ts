@@ -134,6 +134,11 @@ export async function createMergeRequest(
   if (winner.status !== "active" || loser.status !== "active") {
     throw new PatientError("patient_not_active", "both records must be active to merge");
   }
+  // ER lane 1 (#808) — an unidentified record (the ER's alias) is merged INTO the true record, never kept over it:
+  // keeping it would rename an identified patient to "Unknown-0412" everywhere. Two unknowns may merge either way.
+  if (winner.identityStatus === "unidentified" && loser.identityStatus !== "unidentified") {
+    throw new PatientError("merge_into_unidentified", "keep the identified record: the unidentified one is merged into it");
+  }
 
   // UX-AUDIT 2026-09-28 · BOARD — a refused earlier request for this record is closed FIRST, in this
   // transaction, so the one-live-request-per-loser index sees it closed (`settleRefusedMerges`).

@@ -118,4 +118,39 @@ export * from "./ordering";
 export * from "./copilot";
 // E1.2 — personal reminders (decision 0064): a person's own reminders, raised on their own bell and phone.
 export * from "./reminders";
+// E0.1 TASK ENGINE (issue #713, decision 0072) — service work at a place and its append-only history.
+// References `resources` (the place) and `patients` (optional); nothing reads it but `modules/tasks`.
+export * from "./tasks";
+// E1.1 (#718) — IPD bed reservations and blocks. References `resources` (the bed) and nothing of any module's.
+export * from "./ipd";
+// E4.2 (#734) — rounds, inpatient orders, cross-consults. References `ipd_admissions` and `patients`.
+export * from "./ipd-rounds";
+// E4.3 (#735) — the eMAR: verify, issue, labels, doses, acts, infusions, narcotic register. References `ipd_orders`.
+export * from "./ipd-emar";
+// E5.3 (#740), E5.4 (#741) — copilot drafts of an admission (since yesterday, SBAR, discharge). References `ipd_admissions`.
+export * from "./ipd-copilot";
+// #604 (decision 0075) — the TPA desk: insurer queries, documents, scheme packages, claim events and deductions.
+// References `ipd_admissions` and `ipd_payer_claims`.
+export * from "./ipd-tpa";
+// E1.7 BIO-MEDICAL WASTE (issue #724, decision 0072) — bags, manifests, disputes and the bags' append-only history.
+// References `resources` (the place a bag is generated at); nothing reads it but `modules/bmw`.
+export * from "./bmw";
+// E2.4 LINEN (issue #728, decision 0072) — the linen catalogue, par levels, the append-only movement ledger, laundry
+// batches and their short deliveries, condemn requests and ward counts. References `resources` (wards); nothing reads
+// it but `modules/linen`.
+export * from "./linen";
+// E1.5 MAINTENANCE (issue #722, decision 0072) — repair tickets and their append-only history. References
+// `resources` (the place), `ipd_bed_blocks` (the bed's block) and `tasks` (the repair task).
+export * from "./maintenance";
+// E1.3 (#720) — attendant and visitor passes. References `ipd_admissions` and `resources` (the ward).
+export * from "./passes";
+// E1.6 TRANSPORT (issue #723, decision 0072) — a transport task's extra facts (mode, oxygen, escort, handover).
+// References `tasks`, `ipd_admissions` and `resources`; nothing reads it but `modules/transport`.
+export * from "./transport";
+// E4.4 DIET (#736, decision 0072) — meal rounds, diet orders, NPO, the meal lists and their trays, dietician consults.
+// References `ipd_admissions` and `resources` (the ward); nothing reads it but `modules/diet`.
+export * from "./diet";
+// ER lane 1 (#808, decision 0076) — the emergency department: the ER episode, the pre-alert and the ER band register.
+// References `patients`; nothing reads it but `modules/emergency`.
+export * from "./emergency";
 export * from "./doctor-desk"; // DOCTOR DESK DD-0 (#626) — briefs, nudges, agent runs, reads; references auth.users only

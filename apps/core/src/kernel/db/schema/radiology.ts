@@ -89,8 +89,10 @@ export const IMAGE_SOURCES = ["pacs", "no_pacs_images", "outside"] as const;
  * discharge bill composes it (Plan 15); `stat` is D3 — an emergency never waits on the cashier, and
  * the fact that it did not is recorded rather than inferred. `free` (owner 2026-10-10, decision 0067) is
  * the billing office's imaging fee switch, off when the study was ordered: there is no bill to take.
+ * `ipd_admission` (E4.2 #734) is a LIVE inpatient admission (`IP26-000123`, not ended): the IPD bill settles at discharge
+ * and nobody's scan waits on the cashier for it; billing the study onto the running bill is issue #785.
  */
-export const IMAGING_AUTHORISATIONS = ["invoice", "payer_branch", "daycare", "stat", "free"] as const;
+export const IMAGING_AUTHORISATIONS = ["invoice", "payer_branch", "daycare", "stat", "free", "ipd_admission"] as const;
 
 /** DD7 — the ten gate kinds this slice ships. A later slice widens this list AND the CHECK (§6.3). */
 export const IMAGING_GATE_KIND_VALUES = [

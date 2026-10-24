@@ -18,7 +18,7 @@ export type { InteractionRow, MedicineWithSalts, MedicineRow, RouteClass, SaltRo
  * these four are what the prescription pipeline calls at issue time. DD2 lives in
  * `resolveDrugTexts`: exact resolution only, `null` for anything else.
  */
-export { listInteractionsAmong, normalizeDrugName, resolveDrugTexts, resolveMedicines } from "./resolve";
+export { interactionRulesPresent, listInteractionsAmong, normalizeDrugName, resolveDrugTexts, resolveMedicines } from "./resolve";
 export type { InteractionPair, ResolvedDrug, SaltRef } from "./resolve";
 /**
  * THE BOUNDED READS, AND THEY ARE THE ONLY READS.
@@ -47,7 +47,7 @@ export type { StagingRow } from "./staging";
 
 export { medicinesByBrandPrefix, searchMedicines } from "./search";
 /** Decision 0051 — the catalogue rows an unmatched term could mean, for the alias pipeline (`opd/alias-pipeline.ts`). Offline, never a typeahead. */
-export { ALIAS_POOL_SIZE, ALIAS_WORD_SIMILARITY, aliasCandidatePool } from "./alias-candidates";
+export { ALIAS_POOL_SIZE, ALIAS_WORD_SIMILARITY, aliasCandidatePool, spellingNeighbours } from "./alias-candidates";
 export type { AliasCandidateRow } from "./alias-candidates";
 /** Decisions 0051/0055 — the prescriber's medicine search: the catalogue's answer plus a learned nickname OPD registers. */
 export { medicineHitById, registerNicknameLookup, searchMedicinesForPrescribing } from "./prescribing-search";
@@ -125,6 +125,15 @@ export {
   importReferenceLabels, planReferenceImport, REFERENCE_SECTIONS, referenceForGeneric, referenceSectionsOf,
 } from "./reference-labels";
 export type { GenericReference, ReferenceEntry, ReferenceImportResult, ReferencePlan, ReferenceSectionName } from "./reference-labels";
+/**
+ * #617 (decision 0052) — DDInter 2.0 major interactions as a labelled reference layer. `listInteractionsForCheck` is what
+ * the prescription check reads: the curated book, plus reference pairs only when `DDINTER_REFERENCE_ENABLED` is "true".
+ */
+export {
+  DDINTER_LICENCE, DDINTER_SOURCE, REFERENCE_INTERACTION_LABEL, countReferenceInteractions, ddinterReferenceEnabled,
+  importDdinterInteractions, listInteractionsForCheck, listReferenceInteractionsAmong, parseDdinterCsv, replayReferenceInteractions,
+} from "./reference-interactions";
+export type { DdinterImportReport, DdinterPair, DdinterParse, ReferenceReplay } from "./reference-interactions";
 
 export { counsellingByMedicine, counsellingOf, linkMedicinesToGenerics, monographForMedicine, renalRulesByMedicine } from "./generic-link";
 export type { Counselling, GenericLinkReport, RenalRuleOfMedicine } from "./generic-link";

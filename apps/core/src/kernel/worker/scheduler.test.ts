@@ -29,8 +29,12 @@ import * as pharmacyMessagesMod from "../../modules/pharmacy/messages";
 import * as aerbQaMod from "../../modules/aerb/qa";
 import * as opdAliasRunnerMod from "../../modules/opd/alias-runner";
 import * as attendanceSyncMod from "../../modules/attendance/sync";
+import * as ipdBedsMod from "../../modules/ipd/beds";
+import * as ipdChargesMod from "../../modules/ipd/charges";
+import * as ipdNursingMod from "../../modules/ipd/nursing";
 import * as doctorDeskReportMod from "../../modules/doctor-desk/report";
 import * as opdTeleMod from "../../modules/opd/tele";
+import * as tasksSweepMod from "../../modules/tasks/sweep";
 import * as dispatcherMod from "../events/dispatcher";
 import * as timersMod from "../workflow/timers";
 import * as tempRolesMod from "../auth/temp-roles";
@@ -434,6 +438,30 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
       invoked.push("syncAttendance");
       return { ran: false, why: "not_configured" };
     }),
+    // E0.1 TASK ENGINE (issue #713) — stubbed on `modules/tasks/sweep`, the module the index re-exports FROM. Its
+    // behaviour (shift end, re-dispatch, the pool, the ladder) is asserted in `modules/tasks/sweep.test.ts` and `acceptance/`.
+    jest.spyOn(tasksSweepMod, "sweepTasks").mockImplementation(async () => {
+      invoked.push("sweepTasks");
+      return { returned: 0, redispatched: 0, dispatched: 0, escalated: 0, failed: 0 };
+    }),
+    // IPD BEDS E1.1 (#718) — the thirty-first, stubbed on `modules/ipd/beds` (the file the index re-exports FROM).
+    // Its behaviour (lapse at 2 h, idempotent) is asserted in `modules/ipd/acceptance/beds.acceptance.test.ts` (iii).
+    jest.spyOn(ipdBedsMod, "lapseBedReservations").mockImplementation(async () => {
+      invoked.push("lapseBedReservations");
+      return { lapsed: 0 };
+    }),
+    // IPD NURSING E4.1 (#733) — the thirty-fourth, stubbed on `modules/ipd/nursing` (the file the index re-exports FROM).
+    // Its behaviour (one assessment-overdue alert, the 10-minute supervisor step) is asserted in `modules/ipd/acceptance/`.
+    jest.spyOn(ipdNursingMod, "sweepIpdNursing").mockImplementation(async () => {
+      invoked.push("sweepIpdNursing");
+      return { assessmentOverdue: 0, ewsUnacked: 0, ewsRetried: 0, failed: 0 };
+    }),
+    // IPD CHARGES E2.1 (#725) — the thirty-second, stubbed on `modules/ipd/charges` (the file the index re-exports FROM).
+    // Its behaviour (idempotent, catches up a missed night) is asserted in `modules/ipd/acceptance/charges.acceptance.test.ts` (iv).
+    jest.spyOn(ipdChargesMod, "postNightlyIpdCharges").mockImplementation(async () => {
+      invoked.push("postNightlyIpdCharges");
+      return { admissions: 0, posted: 0, exceptions: 0, failed: 0, quarantined: 0 };
+    }),
     // DOCTOR DESK DD-report v0 — the thirty-first, stubbed on `modules/doctor-desk/report` (the file the index
     // re-exports FROM). Its behaviour (counts only, idempotent per unit per day) is in `doctor-desk/report.test.ts`.
     jest.spyOn(doctorDeskReportMod, "sendUnitReports").mockImplementation(async () => {
@@ -551,6 +579,14 @@ const THE_EIGHTEEN = [
   "openDueTeleVisits",
   // STAFF ATTENDANCE (owner 2026-10-09) — the TWENTY-NINTH, `every(120_000)`: HMIS's copy of the attendance machine. Off until configured.
   "syncAttendance",
+  // E0.1 TASK ENGINE (issue #713) — the THIRTIETH, `every(60_000)`: shift end, re-dispatch, the pool, the escalation ladder.
+  "sweepTasks",
+  // IPD BEDS E1.1 (#718) — the THIRTY-FIRST, `every(60_000)`: a two-hour bed hold lapses back to available.
+  "lapseBedReservations",
+  // IPD NURSING E4.1 (#733) — the THIRTY-FOURTH, `every(60_000)`: assessment overdue after an hour; an unacknowledged early warning.
+  "sweepIpdNursing",
+  // IPD CHARGES E2.1 (#725) — the THIRTY-SECOND, `dailyIst("00:05")`: the running bill's nightly posting.
+  "postNightlyIpdCharges",
   // DOCTOR DESK DD-report v0 — the THIRTY-FIRST, `dailyIst("08:00")`: the unit report at the take boundary.
   "sendUnitReports",
 ];
@@ -751,7 +787,7 @@ describe("Scheduler", () => {
     const DAILY_INSTANTS_MS = [
       6 * HOUR_MS + 25 * MINUTE_MS, // 18:25Z = 23:55 IST 08-21 · sweepAppointmentNoShows (5-min window)
       6 * HOUR_MS + 29 * MINUTE_MS, // 18:29Z = 23:59 IST 08-21 · runDailyClose (ONE-minute window — the flake)
-      6 * HOUR_MS + 35 * MINUTE_MS, // 18:35Z = 00:05 IST 08-22 · sweepGuardianMajority
+      6 * HOUR_MS + 35 * MINUTE_MS, // 18:35Z = 00:05 IST 08-22 · sweepGuardianMajority and postNightlyIpdCharges (E2.1)
       6 * HOUR_MS + 45 * MINUTE_MS, // 18:45Z = 00:15 IST 08-22 · createEventPartitions
       7 * HOUR_MS + 45 * MINUTE_MS, // 19:45Z = 01:15 IST 08-22 · retentionSweep
       7 * HOUR_MS + 50 * MINUTE_MS, // 19:50Z = 01:20 IST 08-22 · pruneCopilotAsks (E0.1)

@@ -1,0 +1,135 @@
+/*
+ * E3.2 (#730) — the discharge desk (`.ipdd`, the paper-pine tokens of the IPD family boards). Colour never carries
+ * meaning alone: every state is a word, a late clock also an icon. 1920×1080 first; at 1366×768 the list narrows and the
+ * cards wrap under the steps. Prints: only the chosen paper (final bill or gate pass).
+ */
+.ipdd {
+  --paper: #f4f7f4; --card: #ffffff; --ink: #132420; --line: #dfe7e1; --dim: #5c6f66; --wash: #eef3ef;
+  --green: #0e6b4e; --green-soft: rgba(14, 107, 78, .08); --gold: #8a5a0e; --gold-soft: rgba(221, 143, 28, .14);
+  --red: #b23a30; --red-soft: rgba(178, 58, 48, .08); --blue: #1f5f8b;
+  min-height: 100vh; box-sizing: border-box; background: var(--paper); color: var(--ink);
+  font-family: "IBM Plex Sans", "Noto Sans Devanagari", system-ui, sans-serif; padding: 14px 16px;
+}
+.ipdd .mono, .ipdd-print .mono { font-family: "IBM Plex Mono", monospace; }
+.ipdd .dim { color: var(--dim); }
+.ipdd-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 12px; }
+.ipdd-head h1 { font-size: 20px; margin: 0; }
+.ipdd-head .count { color: var(--dim); font-size: 14px; }
+.ipdd-scan { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ipdd-scan input { min-height: 40px; width: 220px; border: 1px solid var(--line); border-radius: 6px; padding: 0 10px; font: inherit; font-family: "IBM Plex Mono", monospace; text-transform: uppercase; }
+.ipdd-scan .ok { color: var(--green); font-weight: 600; font-size: 13px; }
+.ipdd-grid { display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 14px; align-items: start; }
+.ipdd-list { display: flex; flex-direction: column; gap: 8px; max-height: calc(100vh - 90px); overflow-y: auto; }
+.ipdd-row {
+  display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--card); color: var(--ink); font: inherit; cursor: pointer; border-left: 4px solid var(--line);
+}
+.ipdd-row.on { border-color: var(--ink); border-left-color: var(--ink); box-shadow: 0 0 0 1px var(--ink) inset; }
+.ipdd-row.late { border-left-color: var(--red); }
+.ipdd-row .who { display: flex; justify-content: space-between; gap: 8px; font-size: 15px; }
+.ipdd-row .meta { display: flex; flex-wrap: wrap; gap: 6px; font-size: 12.5px; color: var(--dim); align-items: center; }
+.ipdd-row .blocker { font-size: 12.5px; color: var(--gold); }
+.clock { font-size: 13px; font-weight: 600; color: var(--green); }
+.clock.late { color: var(--red); }
+.chip { display: inline-block; border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; font-size: 12px; font-weight: 600; background: var(--wash); color: var(--ink); }
+.chip.ok, .chip.st-discharged, .chip.sum-signed, .chip.pass-used { background: var(--green-soft); border-color: rgba(14, 107, 78, .35); color: var(--green); }
+.chip.warn, .chip.st-fit_declared, .chip.sum-awaiting_cosign { background: var(--gold-soft); border-color: rgba(138, 90, 14, .35); color: var(--gold); }
+.chip.st-discharging, .chip.pass-issued { background: rgba(31, 95, 139, .08); border-color: rgba(31, 95, 139, .35); color: var(--blue); }
+.chip.st-deceased, .chip.st-absconded, .chip.st-lama { background: var(--red-soft); border-color: rgba(178, 58, 48, .35); color: var(--red); }
+.ipdd-empty { padding: 24px; text-align: center; color: var(--dim); border: 1px dashed var(--line); border-radius: 10px; background: var(--card); }
+.ipdd-refusal { margin-top: 6px; padding: 8px 10px; border: 1px solid rgba(178, 58, 48, .4); background: var(--red-soft); color: var(--red); border-radius: 6px; font-size: 13px; }
+.ipdd-refusal .fix { color: var(--ink); }
+.ipdd-detail { min-width: 0; }
+.ipdd-tracker { display: flex; flex-direction: column; gap: 10px; }
+.ipdd-id { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+.ipdd-id > div { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; font-size: 14px; }
+.ipdd-id .name { font-size: 18px; }
+.ipdd-id .clockline { gap: 8px 14px; }
+.ipdd-blocker { padding: 10px 14px; border-radius: 10px; background: var(--gold-soft); border: 1px solid rgba(138, 90, 14, .35); color: var(--gold); font-weight: 600; font-size: 14px; margin-top: 10px; }
+.ipdd-cols { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 12px; align-items: start; margin-top: 10px; }
+.ipdd-steps { list-style: none; margin: 0; padding: 14px 16px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+.ipdd-steps li { position: relative; display: grid; grid-template-columns: 22px 1fr; column-gap: 12px; padding-bottom: 14px; }
+.ipdd-steps .dot { grid-row: 1 / span 2; width: 22px; height: 22px; border-radius: 50%; box-sizing: border-box; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; background: #fff; border: 2px solid #c9d6ce; position: relative; z-index: 1; }
+.ipdd-steps .rail { position: absolute; left: 10px; top: 22px; bottom: 0; width: 2px; background: var(--line); }
+.ipdd-steps .s-done .dot { background: var(--green); border-color: var(--green); color: #fff; }
+.ipdd-steps .s-done .rail { background: var(--green); }
+.ipdd-steps .s-now .dot { border: 3px solid var(--green); }
+.ipdd-steps .s-now .label { font-weight: 600; }
+.ipdd-steps .s-waiting .label, .ipdd-steps .s-skipped .label { color: var(--dim); }
+.ipdd-steps .label { font-size: 14.5px; }
+.ipdd-steps .when { font-size: 12.5px; color: var(--dim); }
+.ipdd-cards { columns: 340px 3; column-gap: 12px; }
+.ipdd-cards > .ipdd-card { break-inside: avoid; margin-bottom: 12px; }
+.ipdd-card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ipdd-card h2 { font-size: 15px; margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ipdd-card .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ipdd-card input, .ipdd-card select, .ipdd-card textarea {
+  min-height: 40px; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 14px; color: var(--ink); background: #fff; box-sizing: border-box;
+}
+.ipdd-card textarea { width: 100%; resize: vertical; }
+.ipdd-form { display: flex; flex-direction: column; gap: 8px; }
+.ipdd-form label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--dim); }
+.ipdd-form label input, .ipdd-form label select { width: 100%; }
+.ipdd-form .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ipdd-form .check { flex-direction: row; align-items: center; gap: 6px; color: var(--ink); font-size: 13px; }
+.ipdd-form .check input { min-height: 0; width: 18px; height: 18px; }
+.ipdd-btn { min-height: 40px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line); background: #fff; color: var(--ink); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.ipdd-btn.pri { background: var(--green); border-color: var(--green); color: #fff; }
+.ipdd-btn:disabled { opacity: .5; cursor: default; }
+.ipdd-depts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ipdd-depts li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px 8px; border-radius: 6px; background: var(--wash); }
+.ipdd-depts li.done { background: var(--green-soft); }
+.ipdd-depts .name { font-weight: 600; font-size: 14px; }
+.ipdd-depts .dim { font-size: 12.5px; flex: 1; }
+.ipdd-sum p { margin: 0 0 4px; font-size: 13.5px; }
+.ipdd-money { width: 100%; border-collapse: collapse; font-size: 14px; }
+.ipdd-money td { padding: 3px 0; }
+.ipdd-money .num { text-align: right; font-family: "IBM Plex Mono", monospace; }
+.ipdd-money .sum td { border-top: 1px solid var(--line); font-weight: 600; padding-top: 6px; }
+.ipdd-money .dues td { color: var(--gold); font-weight: 600; }
+.ipdd-dues { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: 6px; background: var(--gold-soft); color: var(--gold); font-size: 13px; }
+.ipdd-pass { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ipdd-pass .code { font-size: 22px; font-weight: 600; letter-spacing: .04em; }
+.ipdd-print { display: none; }
+
+@media (max-width: 1500px) {
+  .ipdd-grid { grid-template-columns: 320px minmax(0, 1fr); }
+  .ipdd-cols { grid-template-columns: 240px minmax(0, 1fr); }
+}
+@media (max-width: 900px) {
+  .ipdd-grid, .ipdd-cols { grid-template-columns: minmax(0, 1fr); }
+  .ipdd-list { max-height: none; }
+  .ipdd-scan { margin-left: 0; width: 100%; }
+  .ipdd-scan input { flex: 1; width: auto; }
+  .ipdd-form .pair { grid-template-columns: 1fr; }
+}
+
+@media print {
+  /* Other screens' print isolation hides `body *` with !important (the CSS is global): answer in kind, on our paper only. */
+  body * { visibility: hidden !important; }
+  .ipdd-tracker[data-print] .ipdd-print, .ipdd-tracker[data-print] .ipdd-print * { visibility: visible !important; }
+  .ipdd-tracker[data-print] .ipdd-print {
+    display: block; position: fixed; left: 0; top: 0; width: 100%; color: #000; background: #fff; page: ipdd-a4;
+    font-family: "IBM Plex Sans", system-ui, sans-serif; font-size: 11pt;
+  }
+  @page ipdd-a4 { size: A4 portrait; margin: 12mm; }
+  .ipdd-print h1 { font-size: 16pt; margin: 0 0 6pt; }
+  .ipdd-print dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2pt 12pt; margin: 0 0 8pt; }
+  .ipdd-print dt { font-size: 8pt; color: #444; }
+  .ipdd-print dd { margin: 0; }
+  .ipdd-print table { width: 100%; border-collapse: collapse; }
+  .ipdd-print th, .ipdd-print td { border-bottom: 1px solid #999; padding: 3pt 4pt; text-align: left; }
+  .ipdd-print .num { text-align: right; }
+  .ipdd-print tfoot td { font-weight: 600; }
+  .ipdd-print .passcode { display: flex; align-items: center; gap: 16pt; margin: 10pt 0; }
+  .ipdd-print .bigcode { font-size: 28pt; font-weight: 700; letter-spacing: .08em; margin: 12pt 0; }
+  .ipdd-print .dues { font-weight: 700; }
+  .ipdd-print .foot { margin-top: 14pt; font-size: 9pt; color: #333; }
+}
+
+/* E5.4 (#741) — the discharge draft's stamp and the medicines no active order carries (a flag mark and a word). */
+.ipdd-stamp { margin: 0; padding: 6px 10px; border: 1px dashed #c9b27a; border-radius: 6px; font-size: 13px; overflow-wrap: anywhere; }
+.ipdd-flags { list-style: none; margin: 0; padding: 6px 10px; border: 1px solid #e3b4a8; border-radius: 6px; background: #fdf3f0; color: #9a3412; font-size: 13.5px; display: flex; flex-direction: column; gap: 2px; }
+.ipdd-flags li { overflow-wrap: anywhere; }
+.ipdd-ack { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+@media print { .ipdd-print .ipdd-stamp { border: 1pt dashed #000; padding: 3pt 6pt; margin: 0 0 6pt; } .ipdd-print .ipdd-flags { border: 1pt solid #000; background: #fff; color: #000; } }

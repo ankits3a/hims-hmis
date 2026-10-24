@@ -27,8 +27,8 @@ import { SUGGEST_DEFAULT, type SuggestState } from "../consult/signals";
 import type { DoctorApi, WireAllergyRow, WireVisitDetail, WireVisitVitals } from "../doctor/api";
 import type { WireFollowUpConfig, WireQueueEntryView, WireQueuePatient } from "../doctor/rules";
 import { TestsDrawer } from "../consult/sheets";
-import { SetEditor } from "../consult/set-editor";
 import { AllergySheet } from "../consult/allergy-sheet";
+import { SetEditor } from "../consult/set-editor";
 
 /**
  * THE DOCTOR'S CONSULTATION, ON A PHONE (decision 0048; board "Phone consult", owner 2026-10-07:

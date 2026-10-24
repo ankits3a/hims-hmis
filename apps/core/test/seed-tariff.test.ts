@@ -40,7 +40,7 @@ describe("seed:tariff (Plan 11g / DD2)", () => {
 
     expect(report.settings).toBe("seeded");
     expect(report.categoriesSeeded.sort()).toEqual(
-      ["consultation", "device", "investigation", "pharmacy", "pharmacy_18", "pharmacy_5", "pharmacy_exempt", "procedure", "room_rent"], // 16c T2: +3 medicine slabs
+      ["consultation", "device", "investigation", "ipd_care", "pharmacy", "pharmacy_18", "pharmacy_5", "pharmacy_exempt", "procedure", "room_rent", "room_rent_icu"], // 16c T2: +3 medicine slabs
     );
     expect(report.categoriesLeft).toEqual([]);
     expect(report.capsSeeded.sort()).toEqual(
@@ -49,7 +49,7 @@ describe("seed:tariff (Plan 11g / DD2)", () => {
 
     // The CONTROL for R1: the row cannot pass by writing nothing.
     expect(await db.select().from(gstSettings).where(eq(gstSettings.id, "main"))).toHaveLength(1);
-    expect(await listGstCategories(db)).toHaveLength(9); // 18-S RS4: +1 investigation; 16c T2: +3 medicine slabs
+    expect(await listGstCategories(db)).toHaveLength(11); // 18-S RS4: +1 investigation; 16c T2: +3 medicine slabs; E0.4: +2 IPD
     expect(await listAdjustmentRules(db)).toHaveLength(4);
   });
 
@@ -65,6 +65,16 @@ describe("seed:tariff (Plan 11g / DD2)", () => {
     expect(investigation).toEqual({
       category: "investigation", sacCode: "9993", exempt: true, rateBps: 0, specialRule: null, thresholdPaise: null,
     });
+  });
+
+  /** E0.4 — ICU-class room rent and inpatient care charges are exempt, 0% (decision 0072; Notification 12/2017 entry 46). */
+  it("seeds the two IPD rate card categories — exempt, 0%, SAC 999311 (E0.4)", async () => {
+    await seedTariffConfig(db);
+    const cats = (await listGstCategories(db)).filter((c) => c.category === "room_rent_icu" || c.category === "ipd_care");
+    expect(cats.sort((a, b) => a.category.localeCompare(b.category))).toEqual([
+      { category: "ipd_care", sacCode: "999311", exempt: true, rateBps: 0, specialRule: null, thresholdPaise: null },
+      { category: "room_rent_icu", sacCode: "999311", exempt: true, rateBps: 0, specialRule: null, thresholdPaise: null },
+    ]);
   });
 
   it("R1 — a SECOND run over a CORRECTED gst_config row leaves the correction alone", async () => {
@@ -84,7 +94,7 @@ describe("seed:tariff (Plan 11g / DD2)", () => {
     expect(report.settings).toBe("left untouched");
     expect(report.categoriesSeeded).toEqual([]);
     expect(report.categoriesLeft.sort()).toEqual(
-      ["consultation", "device", "investigation", "pharmacy", "pharmacy_18", "pharmacy_5", "pharmacy_exempt", "procedure", "room_rent"], // 16c T2
+      ["consultation", "device", "investigation", "ipd_care", "pharmacy", "pharmacy_18", "pharmacy_5", "pharmacy_exempt", "procedure", "room_rent", "room_rent_icu"], // 16c T2
     );
     expect(report.capsSeeded).toEqual([]);
 
@@ -93,7 +103,7 @@ describe("seed:tariff (Plan 11g / DD2)", () => {
     expect(consultation?.rateBps).toBe(500);
     expect(consultation?.exempt).toBe(false);
     // …and nothing was duplicated on the way.
-    expect(await listGstCategories(db)).toHaveLength(9); // 18-S RS4: +1 investigation; 16c T2: +3 medicine slabs
+    expect(await listGstCategories(db)).toHaveLength(11); // 18-S RS4: +1 investigation; 16c T2: +3 medicine slabs; E0.4: +2 IPD
   });
 
   it("R1 — a SECOND run over a CORRECTED discount cap leaves the correction alone", async () => {

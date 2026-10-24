@@ -17,6 +17,8 @@ export type ResolvedDrug = {
 export type InteractionPair = {
   saltAId: string; saltBId: string;
   severity: "severe" | "moderate"; note: string; routeScope: "systemic_only" | null;
+  /** #617 — set on a DDInter reference pair (`reference-interactions.ts`); absent on every curated pair. */
+  reference?: "ddinter";
 };
 
 /**
@@ -433,4 +435,10 @@ export async function listDrugDiseaseFor(
     alternatives: r.alternatives,
     routeScope: r.routeScope === "systemic_only" ? "systemic_only" : null,
   }));
+}
+
+/** IPD E4.3 (#735) — whether ANY active interaction rule is adopted: the verify queue says "no interaction data" otherwise. */
+export async function interactionRulesPresent(db: Db): Promise<boolean> {
+  const rows = await db.select({ id: formularyInteractions.saltAId }).from(formularyInteractions).where(eq(formularyInteractions.active, true)).limit(1);
+  return rows.length > 0;
 }

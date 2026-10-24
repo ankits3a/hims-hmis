@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/opd/`
 
 - **Depends on modules:** `billing`, `cds`, `formulary`, `materials`, `patients`, `roster`
-- **Used by modules:** `abdm`, `billing`, `doctor-desk`, `lab`, `ordering`, `pharmacy`, `radiology`
+- **Used by modules:** `abdm`, `billing`, `doctor-desk`, `ipd`, `lab`, `ordering`, `pharmacy`, `radiology`
 - **Kernel used:** `alerts`, `auth`, `config`, `copilot`, `crypto`, `db`, `desk`, `episodes`, `events`, `inference`, `modules`, `phi`, `printing`, `realtime`, `report`, `resources`, `search`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
@@ -193,7 +193,8 @@ Source: `apps/core/src/modules/opd/`
   - types: `QueueNudge`
 - `rx-checks.ts`
   - `isCurrent(durationDays: number | null, issuedAt: Date, now: Date): { current: boolean; assumedCurrent: boolean }`
-  - types: `KidneyReading`, `RenalHit`
+  - `matchAllergiesSaltAware(lines: RxCheckLine[], allergies: { substance: string; resolution: ResolvedDrug | null; allergenClass?: string | nul…`
+  - types: `KidneyReading`, `RenalHit`, `RxCheckLine`
 - `skip-reasons.ts`
   - `SKIP_REASONS`
   - types: `SkipReason`
@@ -214,7 +215,7 @@ Source: `apps/core/src/modules/opd/`
 
 ## Tables (`kernel/db/schema/opd.ts`)
 
-`cds_aliases`, `cds_desk_routing_feeds`, `cds_desk_routing_outcomes`, `cds_doctor_learning_resets`, `cds_doctor_prefs`, `cds_rx_lines`, `opd_advice_templates`, `opd_appointments`, `opd_complaint_concepts`, `opd_complaint_term_usage`, `opd_complaint_terms`, `opd_config`, `opd_consult_layouts`, `opd_department_tokens`, `opd_departments`, `opd_doctor_leaves`, `opd_doctor_schedules`, `opd_doctor_secondary_departments`, `opd_doctors`, `opd_encounter_diagnoses`, `opd_encounters`, `opd_flow_baselines`, `opd_flow_findings`, `opd_lasa_pairs`, `opd_patient_reminders`, `opd_prescription_drafts`, `opd_prescriptions`, `opd_queue_entries`, `opd_queue_sessions`, `opd_rx_sets`, `opd_section_records`, `opd_suggestion_events`, `opd_term_misses`, `opd_vitals`, `opd_voice_settings`, `opd_voice_usage`
+`cds_aliases`, `cds_desk_routing_feeds`, `cds_desk_routing_outcomes`, `cds_doctor_learning_resets`, `cds_doctor_prefs`, `cds_rx_lines`, `opd_advice_templates`, `opd_appointments`, `opd_complaint_concepts`, `opd_complaint_term_usage`, `opd_complaint_terms`, `opd_config`, `opd_consult_layouts`, `opd_department_tokens`, `opd_departments`, `opd_doctor_leaves`, `opd_doctor_schedules`, `opd_doctor_secondary_departments`, `opd_doctors`, `opd_encounter_diagnoses`, `opd_encounters`, `opd_flow_baselines`, `opd_flow_findings`, `opd_lasa_pairs`, `opd_medicine_abbreviations`, `opd_patient_reminders`, `opd_prescription_drafts`, `opd_prescriptions`, `opd_queue_entries`, `opd_queue_sessions`, `opd_rx_sets`, `opd_section_records`, `opd_suggestion_events`, `opd_term_misses`, `opd_vitals`, `opd_voice_settings`, `opd_voice_usage`
 
 Foreign keys into: `billing`, `patients`, `resources`
 

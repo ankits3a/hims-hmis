@@ -22,7 +22,7 @@ import { abhaCapabilityFrom } from "./abdm";
 import type { AbhaCapability } from "./abdm";
 import { AMENDMENT_REASONS, IDENTITY_ASSURANCE, touchesIdentity, upgradeAssurance } from "./identity";
 import { recordPhiAccess } from "../../kernel/phi/audit";
-import { searchPatients } from "./search";
+import { guardiansOfHits, searchPatients } from "./search";
 import { readPatientPhoto, storePatientPhoto } from "./photos";
 import {
   captureDocument, listDocuments, markDocumentEnteredInError, readDocument,
@@ -54,7 +54,7 @@ const NOT_FOUND_CODES = new Set(["patient_not_found", "unknown_merge_request", "
  */
 const FORBIDDEN_CODES = new Set(["confidential_write_denied", "deceased_write_denied"]);
 const CONFLICT_CODES = new Set([
-  "patient_not_active", "merge_same_patient", "merge_already_requested", "merge_not_requested",
+  "patient_not_active", "merge_same_patient", "merge_into_unidentified", "merge_already_requested", "merge_not_requested",
   "merge_not_executed", "approval_not_granted", "unmerge_already_requested", "unmerge_not_requested",
   "allergy_not_active", "guardian_not_active",
   /* The stored bytes no longer match the hash taken at capture. The RECORD is wrong, not the
@@ -386,7 +386,10 @@ export class PatientsController {
   async search(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ items: unknown[] }> {
     const q = parsed(searchQuery, query);
     try {
-      return { items: await searchPatients(this.db, actor, q.q, q.limit) };
+      const items = await searchPatients(this.db, actor, q.q, q.limit);
+      // Owner 2026-10-23 — the counter's suggestion rows show the guardian (`guardiansOfHits`).
+      const guardians = await guardiansOfHits(this.db, items);
+      return { items: items.map((hit) => ({ ...hit, guardian: guardians.get(hit.id) ?? null })) };
     } catch (e) {
       toHttp(e);
     }

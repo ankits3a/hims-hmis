@@ -12,7 +12,7 @@ import { activeDefinition, criteriaFor } from "./definitions";
 import { requiredDeposit } from "./deposit";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
 import { OtError } from "./errors";
-import { caseCancelled, daycareBooked, payerClassChanged } from "./events";
+import { caseCancelled, casePostponed, daycareBooked, payerClassChanged } from "./events";
 import { DAYCARE_CASE_DEF_KEY, OT_GATE_DEF_KEY, POSTPONE_REASONS } from "./workflow-def";
 import type { CriteriaEntry } from "./definitions";
 import type { PayerClass } from "./deposit";
@@ -369,11 +369,20 @@ export async function postponeCase(
     const rows = await tx.select().from(otCases).where(eq(otCases.id, input.caseId));
     const kase = rows[0];
     if (!kase) throw new OtError("unknown_case", `unknown case ${input.caseId}`);
+    const before = await currentState(tx, kase.workflowInstanceId);
     await transition(tx, kase.workflowInstanceId, "postponed", actor, { note: input.reason });
     const { state } = await transition(tx, kase.workflowInstanceId, "booked", actor, { note: `re-listed ${input.newListDate}` });
     await tx.update(otCases).set({
       listDate: input.newListDate, updatedBy: actor.id, updatedAt: new Date(),
     }).where(eq(otCases.id, input.caseId));
+    // 2026-10-14 — the move is a fact of its own: the ward's NPO (diet) moves on it, not only at the list's publish.
+    await appendEvent(tx, casePostponed.make({
+      actor, patientId: kase.patientId, encounterId: kase.encounterId,
+      payload: {
+        caseId: kase.id, encounterId: kase.encounterId, patientId: kase.patientId, reason: input.reason,
+        fromListDate: kase.listDate, newListDate: input.newListDate, atState: before,
+      },
+    }));
     // §3A / D5 — the deposit STAYS. A postponed case is the same case with a later date, and
     // `releaseHolds` is deliberately NOT called here.
     return { state };

@@ -127,5 +127,11 @@ export const resourceReleased = defineEvent(
     occupantType: z.string().min(1),
     occupantRef: z.string().min(1),
     status: z.string().min(1),
+    /**
+     * E1.4 (additive, optional for events written before it) — WHY it was released, as the status history row says
+     * (`clean:routine` / `clean:terminal` for an IPD bed). Null when the caller gave none. Housekeeping reads it to
+     * choose a terminal clean without a second lookup.
+     */
+    reason: z.string().nullable().optional(),
   }),
 );

@@ -135,6 +135,8 @@ const OWNED_BY: Record<LabErrorCode, string> = {
   unknown_interface: "instruments.ts",
   /** DD11's morning review lives with the signature it completes. */
   review_not_pending: "verify.ts",
+  /** #785 — the desk refuses a new order on an ended inpatient admission (the episode charge sink's answer). */
+  encounter_closed: "desk.ts",
 };
 
 describe("the lab error union (Plan 17 T2)", () => {
@@ -195,6 +197,8 @@ describe("the lab error union (Plan 17 T2)", () => {
       /** Owner 2026-10-11 — a full, past or closed slot; a booking already arrived, cancelled or missed. */
       "booking_not_open", "booking_slot_unavailable",
       "critical_already_closed",
+      /** #785 — an ended inpatient admission takes no new order. */
+      "encounter_closed",
       "item_not_cancellable", "item_not_resultable",
       /** Owner 2026-10-12 — the other lab mode is running; switching back is the fix, not a new body. */
       "lab_mode_off", "no_active_order",

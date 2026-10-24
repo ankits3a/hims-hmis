@@ -107,6 +107,8 @@ describe("alerts.yml mirrors the scheduler's job registry (Plan 11a residual 4)"
         "flagLateSurgeons",
         // E0.1 (decision 0064) — the copilot ask prune, DAILY (01:20 IST), always on; joins leg 1b and leg 2.
         "pruneCopilotAsks",
+        // IPD charges E2.1 (#725) — the thirty-second, DAILY (00:05 IST): the running bill's nightly posting; leg 1b + leg 2.
+        "postNightlyIpdCharges",
         "retentionSweep",
         // PLAN 07c T8 — the THIRTEENTH job, a DAILY one (`dailyIst("02:00")`): the per-user daily
         // rollup the six-period briefs read. Like the eleventh it joins leg 1b's `job=~`
@@ -198,6 +200,15 @@ describe("alerts.yml mirrors the scheduler's job registry (Plan 11a residual 4)"
         // Staff attendance (owner 2026-10-09) — the twenty-ninth: HMIS's copy of the attendance
         // machine. `every(120_000)`, inside leg 1a's 300 s, and an `absent()` term.
         "syncAttendance",
+        // E0.1 task engine (issue #713) — the thirtieth: the task clock. `every(60_000)`, so leg 1a, and
+        // an `absent()` term: a clock that never ran is a late task nobody is told about.
+        "sweepTasks",
+        // IPD beds E1.1 (#718) — the thirty-first: a 2-hour bed hold lapses back. `every(60_000)`, leg 1a,
+        // and an `absent()` term.
+        "lapseBedReservations",
+        // IPD nursing E4.1 (#733) — the thirty-fourth: assessment overdue, an unacknowledged early warning.
+        // `every(60_000)`, leg 1a, and an `absent()` term.
+        "sweepIpdNursing",
         // Doctor Desk DD-report v0 — the thirty-first: the unit report at 08:00 IST. Daily, so leg
         // 1b, and an `absent()` term: a report that never ran looks exactly like a quiet unit.
         "sendUnitReports",
@@ -206,8 +217,8 @@ describe("alerts.yml mirrors the scheduler's job registry (Plan 11a residual 4)"
         "sweepLabCriticalLadder",
       ].sort(),
     );
-    expect(registered).toHaveLength(32); // E3.2: +1, sweepLabCriticalLadder (every 60 000), read off the red run // DOCTOR DESK DD-report v0: +1, sendUnitReports (dailyIst 08:00) // COPILOT LEDGER E0.1: +1, pruneCopilotAsks; ATTENDANCE: +1, syncAttendance (every 120 000), read off the red run // TELE-CALL: +1, openDueTeleVisits (every 60 000) // NICKNAMES: +1, proposeMedicineNicknames (every 3 600 000) // MOBILE §3i: +1, sweepStaffNotices (every 60 000), read off the red run // 20-U infra: +1, printRosterBoard (every 60 000), read off the red run // 18-S RS10: +1, sweepImagingEscalations // 18-S RS11: +1, sweepOverdueQa // PHARMACY P6: +1, runRefillReminders // PHASE O T4: +1, runReachLadder // PHASE R (R7): +1, sweepRosterWindows // PHASE R (R9): +1, runMonthlyProposals
-    expect(new Set(registered).size).toBe(32); // no job registered twice (DD-report v0 + E3.2: 30 -> 32)
+    expect(registered).toHaveLength(36); // ipd-stage integration (2026-10-23): 34 + main's sendUnitReports and sweepLabCriticalLadder; IPD NURSING E4.1: +1, sweepIpdNursing (every 60 000); IPD CHARGES E2.1: +1, postNightlyIpdCharges (dailyIst 00:05); IPD BEDS E1.1: +1, lapseBedReservations (every 60 000); E0.1 TASK ENGINE (issue #713): +1, sweepTasks (every 60 000), read off the red run // COPILOT LEDGER E0.1: +1, pruneCopilotAsks; ATTENDANCE: +1, syncAttendance (every 120 000), read off the red run // TELE-CALL: +1, openDueTeleVisits (every 60 000) // NICKNAMES: +1, proposeMedicineNicknames (every 3 600 000) // MOBILE §3i: +1, sweepStaffNotices (every 60 000), read off the red run // 20-U infra: +1, printRosterBoard (every 60 000), read off the red run // 18-S RS10: +1, sweepImagingEscalations // 18-S RS11: +1, sweepOverdueQa // PHARMACY P6: +1, runRefillReminders // PHASE O T4: +1, runReachLadder // PHASE R (R7): +1, sweepRosterWindows // PHASE R (R9): +1, runMonthlyProposals
+    expect(new Set(registered).size).toBe(36); // ipd-stage integration: 34 -> 36; IPD NURSING E4.1: 33 -> 34; IPD CHARGES E2.1: 31 -> 32; IPD BEDS E1.1: 30 -> 31; no job registered twice (E0.1 TASK ENGINE: 30 -> 31; COPILOT LEDGER E0.1: 29 -> 30)
   });
 
   it("the two staleness legs together cover every registered job, exactly once each", () => {

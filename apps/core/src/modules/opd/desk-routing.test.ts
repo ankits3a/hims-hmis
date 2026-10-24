@@ -165,7 +165,7 @@ describe("desk routing — link, child rule, prior", () => {
 
 describe("applyRouting — the rules without a database", () => {
   const depts = [{ id: "A", name: "General Medicine" }, { id: "B", name: "ENT" }, { id: "P", name: "Paediatrics" }];
-  const ranked: TriageResult = { suggestions: [{ departmentId: "B", reason: "x" }, { departmentId: "A", reason: "y" }], source: "keywords" };
+  const ranked: TriageResult = { suggestions: [{ departmentId: "B", reason: "x", reasonKey: "opdTriage.reason.keywords" }, { departmentId: "A", reason: "y", reasonKey: "opdTriage.reason.keywords" }], source: "keywords" };
 
   it("n 10–19 only swaps the top two when the prior's department is second", () => {
     const out = applyRouting(ranked, { departments: depts, ageYears: 40, prior: { departmentId: "A", n: 12, share: 0.9 } });
