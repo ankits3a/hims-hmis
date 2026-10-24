@@ -10,12 +10,12 @@ export {
   allSkills, defineSkill, defineTaskKind, requireTaskKind, skillRoles, taskKind, taskKinds, verifierPermissionsOf,
 } from "./kinds";
 export type { TaskKindDecl } from "./kinds";
-export { TaskError, taskHttpStatus } from "./errors";
+export { TaskError, TaskKindRefusal, taskHttpStatus } from "./errors";
 export {
   DISPATCH_ACTOR, MERGE_WINDOW_MS, acceptTask, assignTask, cancelTask, cancelTasksForPlace, completeTask, raiseTask,
   returnToPool, startTask, verifyTask,
 } from "./engine";
-export type { ActOptions, CancelOptions, RaiseResult, TaskRow } from "./engine";
+export type { ActOptions, CancelOptions, HookOptions, RaiseResult, TaskRow } from "./engine";
 export { dutyCovering, onDutyForSkill, openLoad, pickWorker } from "./dispatch";
 export type { OnDutyWorker } from "./dispatch";
 export { SWEEP_ACTOR, SWEEP_BATCH, nudgeTask, sweepTasks } from "./sweep";

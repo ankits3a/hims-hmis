@@ -119,6 +119,7 @@ const NOT_DEPARTMENTS: Record<string, string> = {
   alerts: "kernel — alert routing",
   ops: "kernel — operating mode, interfaces, downtime kits",
   attendance: "a copy of the attendance machine's records and its read routes — configured by three secret files and a switch, not commissioned like a department",
+  transport: "E1.6 TRANSPORT (issue #723) — not a department: porters and patient movement on the task engine, like housekeeping. It goes live with the IPD admissions it moves; its people are `support_staff` and `services_supervisor`, granted by seed:roles",
   housekeeping: "E1.4 HOUSEKEEPING (issue #721) — not a department: bed turnover on the task engine, like bmw and linen to come. It goes live with the IPD beds it cleans; its people are `support_staff` and `services_supervisor`, granted by seed:roles",
   tasks: "E0.1 TASK ENGINE (issue #713) — not a department: the shared engine housekeeping, bmw, transport and linen raise their work through. Those owning modules are what a hospital commissions; the engine has nothing of its own to stand up",
   maintenance: "E1.5 MAINTENANCE (issue #722) — not a department: repair tickets on the task engine for the engineering and biomedical teams. No master data a deploy cannot supply and no go-live day of its own; it starts working the day a technician role is assigned",

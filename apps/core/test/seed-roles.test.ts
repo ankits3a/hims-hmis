@@ -1009,6 +1009,22 @@ const MAINTENANCE_PAIRS: readonly string[] = [
   "maintenance_staff/maintenance.work", "maintenance_staff/maintenance.raise",
 ];
 
+/** The README prose line authorising transport's grants (E1.6, issue #723). Quoted, not paraphrased. */
+const TRANSPORT_README_PROSE =
+  "`transport.work` is held by `support_staff` (porters); `transport.manage` by `services_supervisor` and\n`duty_manager`; `transport.request` by `front_office`, `duty_manager` and the nursing roles `ot_nurse`,\n`recovery_nurse` and `radiology_nurse`.";
+
+/** E1.6 TRANSPORT (issue #723) — eight grants: the porter, the two supervisors, and five requesters. */
+const TRANSPORT_PAIRS: readonly string[] = [
+  "front_office/transport.request",
+  "ot_nurse/transport.request",
+  "recovery_nurse/transport.request",
+  "radiology_nurse/transport.request",
+  "duty_manager/transport.request",
+  "duty_manager/transport.manage",
+  "support_staff/transport.work",
+  "services_supervisor/transport.manage",
+];
+
 /** The README prose line authorising the copilot health read (decision 0064, E0.1). Quoted, not paraphrased. */
 const COPILOT_HEALTH_README_PROSE =
   "`copilot.health.read` is held by `owner`, `admin`, `duty_manager`, `medical_superintendent` and the new role\n`quality_manager` (the copilot steward), and the steward role holds nothing else but the halt switch.";
@@ -1234,6 +1250,7 @@ const NON_TABLE_PAIRS: readonly string[] = [
   ...LINEN_PAIRS,
   ...HOUSEKEEPING_PAIRS,
   ...MAINTENANCE_PAIRS,
+  ...TRANSPORT_PAIRS,
   ...COPILOT_HEALTH_PAIRS,
   ...COPILOT_HALT_PAIRS,
   ...LAB_METRICS_PAIRS,
@@ -1545,6 +1562,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       linen: 3, // E2.4 LINEN (issue #728) — linen.view, linen.handle, linen.manage
       maintenance: 5, // E1.5 MAINTENANCE (issue #722) — maintenance.view, .raise, .work, .confirm, .manage
       housekeeping: 2, // E1.4 HOUSEKEEPING (issue #721) — housekeeping.view, housekeeping.verify_terminal
+      transport: 3, // E1.6 TRANSPORT (issue #723) — transport.request, transport.work, transport.manage
       attendance: 1, // STAFF ATTENDANCE (owner 2026-10-09) — attendance.all.read; a team and oneself are computed, not granted
       passes: 4, // PASSES E1.3 (2026-10-12): passes.issue, .scan, .pause, .manage
       ipd: 8, // IPD ADMISSION E1.2 (2026-10-12): +4, ipd.admit.request, .admit, ipd.payer.manage, ipd.band.print; IPD BEDS E1.1 (2026-10-12), read off the failing run: ipd.beds.view, .manage, .clean, .overflow
@@ -2426,6 +2444,7 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(readme).toContain(LINEN_README_PROSE);
     expect(readme).toContain(HOUSEKEEPING_README_PROSE);
     expect(readme).toContain(MAINTENANCE_README_PROSE);
+    expect(readme).toContain(TRANSPORT_README_PROSE);
     expect(readme).toContain(COPILOT_HALT_README_PROSE);
     expect(readme).toContain(IPD_BEDS_README_PROSE);
     expect(readme).toContain(IPD_ADMIT_README_PROSE);

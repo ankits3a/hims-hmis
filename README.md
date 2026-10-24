@@ -1739,6 +1739,14 @@ holder of `ipd.beds.clean` may confirm too; the new role `maintenance_staff` (en
 the services supervisor, the nurses and the technicians; `maintenance.view` and `maintenance.manage` by the duty manager
 and the services supervisor (the board at `/maintenance`); `maintenance.work` by the two technician roles.
 
+**Transport (E1.6, issue #723, decision 0072, built 2026-10-13, awaiting owner review).** Porter and patient-movement
+tasks on the task engine: a critical patient's move cannot start without a nurse or doctor escort recorded, an oxygen
+move cannot start before the cylinder check, and the move is done only when the patient's wristband scanned at the
+destination is the same admission's.
+`transport.work` is held by `support_staff` (porters); `transport.manage` by `services_supervisor` and
+`duty_manager`; `transport.request` by `front_office`, `duty_manager` and the nursing roles `ot_nurse`,
+`recovery_nurse` and `radiology_nurse`. Ward nurses get `transport.request` when the nursing lane seeds their role.
+
 **Copilot halt switch and spend cap (plan E0.3/E0.5, decision 0064, built 2026-10-11, awaiting owner review).**
 `copilot.halt.set` (owner, medical_superintendent, quality_manager) pauses the copilot by scope — read, act,
 draft or global;

@@ -31,6 +31,7 @@ import { linenManifest } from "../../modules/linen";
 import { housekeepingManifest } from "../../modules/housekeeping";
 import { maintenanceManifest } from "../../modules/maintenance";
 import { passesManifest } from "../../modules/passes";
+import { transportManifest } from "../../modules/transport";
 import { doctorDeskManifest } from "../../modules/doctor-desk";
 
 /**
@@ -215,6 +216,9 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   maintenanceManifest,
   // E1.3 (#720) — attendant and visitor passes; its one consumer runs in the worker too.
   passesManifest,
+  // E1.6 TRANSPORT (issue #723) — appended. Three permissions, two menu entries, no subscription: API only (the worker
+  // imports the module for its task kinds and installs nothing).
+  transportManifest,
   // DOCTOR DESK DD-0 (#626) — appended. A leaf: no permission of its own (its routes open on opd's
   // `opd.consult`), one menu entry, no subscription, no job — app-only, the `attendance` shape.
   doctorDeskManifest,

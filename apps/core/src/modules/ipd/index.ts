@@ -79,3 +79,6 @@ export {
 } from "./charges";
 export type { AdmissionPostResult, ConsultantVisitInput, ConsultantVisitResult, NightlyResult } from "./charges";
 export { readInterimBill } from "./interim-bill";
+// E1.6 TRANSPORT (#723) — an admission's movable facts (current bed, critical-care class) and the wristband scan.
+export { CRITICAL_CARE_BED_CLASSES, admissionForTransport, movableAdmissions, resolveBandScan } from "./transport-seam";
+export type { BandScan, TransportAdmissionFacts } from "./transport-seam";

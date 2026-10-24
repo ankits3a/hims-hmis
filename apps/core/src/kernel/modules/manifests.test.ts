@@ -219,6 +219,8 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       // E1.5 MAINTENANCE (issue #722) — appended. A leaf: it reaches into tasks and ipd through their indexes.
       "maintenance",
       "passes", // PASSES E1.3 (#720): attendant and visitor passes
+      // E1.6 TRANSPORT (issue #723) — appended. A leaf: it reaches into tasks, ipd and patients through their indexes.
+      "transport",
       // DOCTOR DESK DD-0 (#626) — appended. A leaf: it reads lab, radiology, opd, patients and roster
       // through their indexes; nothing imports it.
       "doctor-desk",
@@ -372,7 +374,8 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     // (1m) E0.1 TASK ENGINE, E1.1 IPD BEDS, E1.7 BMW, E2.4 LINEN and E1.5 MAINTENANCE — APP-ONLY on the same terms: no
     //      subscription; their clocks run in the worker without the manifest (maintenance: the worker IMPORTS the module so
     //      its two repair kinds exist for the task clock, and installs nothing).
-    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance", "tasks", "ipd", "bmw", "linen", "maintenance", "doctor-desk"]);
+    //      E1.6 TRANSPORT — `transport`, app-only too: the worker imports the module only so its task kinds are defined.
+    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance", "tasks", "ipd", "bmw", "linen", "maintenance", "transport", "doctor-desk"]);
 
     /**
      * ═══ THE COUNT IS THE FRICTION, AND UNTIL NOW NOTHING ENFORCED IT ═══

@@ -1,4 +1,110 @@
 {
+  "transport": {
+    "board": {
+      "title": "ट्रांसपोर्ट",
+      "waitingEscort": "एस्कॉर्ट का इंतज़ार",
+      "waitingPorter": "पोर्टर का इंतज़ार",
+      "request": "माँगें",
+      "none": "कोई खुली शिफ्टिंग नहीं",
+      "colClock": "समय",
+      "colWhat": "क्या",
+      "colRoute": "कहाँ से → कहाँ",
+      "colHow": "कैसे",
+      "colEscort": "एस्कॉर्ट",
+      "colPorter": "पोर्टर",
+      "noPorter": "अभी पोर्टर नहीं",
+      "porters": "पोर्टर"
+    },
+    "mode": {
+      "wheelchair": "व्हीलचेयर",
+      "stretcher": "स्ट्रेचर",
+      "bed": "बेड",
+      "walking": "पैदल"
+    },
+    "isolation": {
+      "none": "कोई नहीं",
+      "contact": "संपर्क आइसोलेशन",
+      "droplet": "ड्रॉपलेट आइसोलेशन",
+      "airborne": "एयरबोर्न आइसोलेशन"
+    },
+    "reason": {
+      "admit": "भर्ती",
+      "transfer": "ट्रांसफ़र",
+      "imaging": "जाँच (इमेजिंग)",
+      "ot": "ओटी",
+      "discharge": "छुट्टी",
+      "other": "अन्य"
+    },
+    "priority": {
+      "routine": "सामान्य",
+      "urgent": "जल्दी",
+      "stat": "तुरंत"
+    },
+    "monitor": "मॉनिटर",
+    "o2": {
+      "needed": "ऑक्सीजन · सिलेंडर जाँचें",
+      "checked": "ऑक्सीजन · सिलेंडर जाँचा",
+      "check": "सिलेंडर जाँच लिया",
+      "short": "ऑक्सीजन"
+    },
+    "escort": {
+      "waiting": "एस्कॉर्ट का इंतज़ार",
+      "with": "एस्कॉर्ट: {{name}}",
+      "withShort": "एस्कॉर्ट साथ",
+      "add": "एस्कॉर्ट जोड़ें",
+      "none": "कोई नर्स या डॉक्टर नहीं मिला"
+    },
+    "scan": {
+      "label": "रिस्टबैंड स्कैन करें",
+      "placeholder": "बैंड स्कैन करें या कोड लिखें",
+      "handover": "सौंप दें"
+    },
+    "req": {
+      "title": "पोर्टर माँगें",
+      "patient": "मरीज़",
+      "findPatient": "नाम, UHID, IP नं. या बेड",
+      "noPatient": "कोई भर्ती मरीज़ नहीं मिला",
+      "change": "बदलें",
+      "critical": "ICU",
+      "escortForced": "क्रिटिकल केयर बेड: एस्कॉर्ट ज़रूरी",
+      "from": "कहाँ से",
+      "to": "कहाँ",
+      "pick": "जगह चुनें",
+      "toNote": "या लिखें कहाँ (जैसे CT, गेट)",
+      "reason": "क्यों",
+      "how": "कैसे",
+      "oxygen": "ऑक्सीजन",
+      "isolation": "आइसोलेशन",
+      "escort": "एस्कॉर्ट",
+      "escortNeeded": "नर्स या डॉक्टर साथ",
+      "highRisk": "हाई रिस्क",
+      "priority": "प्राथमिकता",
+      "note": "पोर्टर के लिए नोट (वैकल्पिक)",
+      "send": "पोर्टर माँगें",
+      "sent": "पोर्टर माँगा गया",
+      "sentEscort": "पोर्टर माँगा · एस्कॉर्ट ज़रूरी",
+      "merged": "पहली माँग में जुड़ा"
+    },
+    "refusal": {
+      "bad_input": "माँग अधूरी",
+      "admission_required": "मरीज़ चुनें",
+      "admission_not_open": "मरीज़ भर्ती नहीं",
+      "no_destination": "कहाँ ले जाना है?",
+      "no_origin": "कहाँ से?",
+      "unknown_place": "जगह नहीं मिली",
+      "not_transport": "ट्रांसपोर्ट का काम नहीं",
+      "escort_required": "एस्कॉर्ट ज़रूरी · एस्कॉर्ट जोड़ें",
+      "escort_not_clinical": "एस्कॉर्ट नर्स या डॉक्टर हो",
+      "escort_is_porter": "पोर्टर एस्कॉर्ट नहीं",
+      "oxygen_not_checked": "पहले सिलेंडर जाँचें",
+      "already_started": "शिफ्टिंग शुरू हो चुकी",
+      "scan_required": "रिस्टबैंड स्कैन करें",
+      "band_unknown": "बैंड नहीं पहचाना",
+      "band_void": "पुराना बैंड · नया स्कैन करें",
+      "wrong_patient": "गलत मरीज़ · रुकें",
+      "band_mismatch": "बैंड कोड मरीज़ से मेल नहीं · रुकें"
+    }
+  },
   "passes": {
     "title": "पास",
     "subtitle": "अटेंडेंट और विज़िटर पास",
@@ -479,6 +585,8 @@
     "menu": "मेनू"
   },
   "nav": {
+    "transportRequest": "पोर्टर माँगें",
+    "transport": "ट्रांसपोर्ट",
     "passScan": "पास स्कैन",
     "ipdPasses": "पास",
     "ipdAdmit": "भर्ती",
@@ -17507,6 +17615,9 @@
     "noPlace": "जगह नहीं बताई",
     "askedAgain": "{{count}}× माँगा",
     "kind": {
+      "document_run": "काग़ज़ ले जाना (Document run)",
+      "sample_run": "सैंपल ले जाना (Sample run)",
+      "patient_move": "मरीज़ शिफ्टिंग (Patient move)",
       "repair_biomedical": "उपकरण मरम्मत (Equipment repair)",
       "repair_general": "मरम्मत (Repair)",
       "room_inspection": "कमरा जाँच (Room inspection)",
