@@ -15,6 +15,7 @@ import { join } from "node:path";
  */
 const TAKEN_BY_ARGUMENT: Record<string, string> = {
   "pharmacy-starter-list.csv": "load-pharmacy-shelf.ts --list",
+  "ipd-bed-layout.planning.csv": "load-bed-layout.ts --file",
 };
 
 describe("scripts/data ships inside the server image", () => {
