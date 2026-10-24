@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { boolean, check, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { resources } from "./resources";
 import { patients } from "./patients";
 
 /**
@@ -67,6 +68,28 @@ export const erEpisodes = pgTable(
     departedAt: timestamp("departed_at", { withTimezone: true }),
     provenance: text("provenance").notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+    /* ═══ ER lane 2 (#809) — triage, the bay, the doctor and the clocks (mirrors of `er_triage_entries`) ═══ */
+    esi: integer("esi"),
+    triagedAt: timestamp("triaged_at", { withTimezone: true }),
+    lastTriageAt: timestamp("last_triage_at", { withTimezone: true }),
+    /** Null for ESI 1 and once a doctor has seen the patient. A worse vital set pulls it to now. */
+    retriageDueAt: timestamp("retriage_due_at", { withTimezone: true }),
+    /** The last early-warning score (kind, value, band) — the second signal beside the level. */
+    ewsKind: text("ews_kind"),
+    ewsValue: integer("ews_value"),
+    ewsBand: text("ews_band"),
+    /** The bay: an emergency-class bed of the registry, occupied with occupant type `er_episode`. */
+    bayId: text("bay_id").references(() => resources.id),
+    doctorId: text("doctor_id"),
+    seenAt: timestamp("seen_at", { withTimezone: true }),
+    /** The take (seam E2): the specialty at triage and the unit on take at the GATE instant. */
+    takeDepartmentId: text("take_department_id"),
+    takeTeamId: text("take_team_id"),
+    takeSource: text("take_source"),
+    /** The re-triage clock's task (raised once per due instant) and the climb (once per due instant). */
+    retriageTaskId: text("retriage_task_id"),
+    retriageTaskDueAt: timestamp("retriage_task_due_at", { withTimezone: true }),
+    retriageClimbedDueAt: timestamp("retriage_climbed_due_at", { withTimezone: true }),
   },
   (t) => [
     uniqueIndex("er_episodes_no_ux").on(t.episodeNo),
@@ -81,6 +104,10 @@ export const erEpisodes = pgTable(
     check("er_episodes_band_ck", sql`${t.ageBand} is null or ${t.ageBand} in (${BANDS})`),
     check("er_episodes_alias_ck", sql`${t.unidentified} = (${t.alias} is not null)`),
     check("er_episodes_dead_ck", sql`(${t.state} = 'brought_dead') = (${t.broughtDeadExaminedAt} is not null)`),
+    check("er_episodes_esi_ck", sql`${t.esi} is null or ${t.esi} between 1 and 5`),
+    // One ER patient per bay (the kernel's occupant triad is the arbiter; this is the backstop on the ER side).
+    uniqueIndex("er_episodes_open_bay_ux").on(t.bayId).where(sql`${t.bayId} is not null and ${t.state} in (${OPEN})`),
+    index("er_episodes_retriage_due_idx").on(t.retriageDueAt).where(sql`${t.state} = 'triaged' and ${t.retriageDueAt} is not null`),
   ],
 );
 
@@ -109,6 +136,9 @@ export const erPreAlerts = pgTable(
     createdBy: text("created_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
     closedAt: timestamp("closed_at", { withTimezone: true }),
+    /** Lane 2 (#809, E9): the OPD red flag's patient and the rule that fired. */
+    patientId: text("patient_id").references(() => patients.id),
+    redFlagKey: text("red_flag_key"),
   },
   (t) => [
     index("er_pre_alerts_expected_idx").on(t.expiresAt).where(sql`${t.state} = 'expected'`),
@@ -142,5 +172,36 @@ export const erBands = pgTable(
     uniqueIndex("er_bands_serial_ux").on(t.serial),
     uniqueIndex("er_bands_live_episode_ux").on(t.episodeId).where(sql`${t.status} = 'printed'`),
     check("er_bands_status_ck", sql`${t.status} in ('printed', 'void')`),
+  ],
+);
+
+/**
+ * ER lane 2 (#809) — every triage, re-triage and vital set. The intents only ever insert here (no update path): a wrong
+ * entry is followed by a corrected one. The level is the person's; `algorithm_level` is what the ESI decision points gave; a level less
+ * urgent than either the algorithm's or the last one carries its `reason` (refused without).
+ */
+export const erTriageEntries = pgTable(
+  "er_triage_entries",
+  {
+    id: text("id").primaryKey(),
+    episodeId: text("episode_id").notNull().references(() => erEpisodes.id),
+    kind: text("kind").notNull(),
+    level: integer("level"),
+    algorithmLevel: integer("algorithm_level"),
+    decision: jsonb("decision").$type<Record<string, unknown>>(),
+    reason: text("reason"),
+    vitals: jsonb("vitals").$type<Record<string, unknown>>(),
+    ewsKind: text("ews_kind"),
+    ewsValue: integer("ews_value"),
+    ewsBand: text("ews_band"),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+    takenAt: timestamp("taken_at", { withTimezone: true }).notNull(),
+    provenance: text("provenance").notNull(),
+  },
+  (t) => [
+    index("er_triage_entries_episode_idx").on(t.episodeId, t.recordedAt),
+    check("er_triage_entries_kind_ck", sql`${t.kind} in ('triage', 're_triage', 'vitals')`),
+    check("er_triage_entries_level_ck", sql`(${t.kind} = 'vitals') = (${t.level} is null)`),
   ],
 );

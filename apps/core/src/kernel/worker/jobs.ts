@@ -40,7 +40,7 @@ import {
   sweepIpdEmar, sweepIpdRoundsClock,
 } from "../../modules/ipd";
 import { sweepTasks } from "../../modules/tasks";
-import { lapseErPreAlerts } from "../../modules/emergency";
+import { lapseErPreAlerts, sweepErBoarding, sweepErCareClocks, sweepErMlcClocks, sweepErTriageClocks } from "../../modules/emergency";
 import { sweepBmwStorage } from "../../modules/bmw";
 import { buildDueLists } from "../../modules/diet";
 import { collectResourceKinds } from "../resources/kinds";
@@ -810,12 +810,21 @@ export function registerAllJobs(
   scheduler.register({
     name: "lapseBedReservations",
     every: 60_000,
-    // ER lane 1 (#808): the ER pre-alert lapse (2 h after the expected time) rides this job — no job, no pool client of
-    // its own. Its own try: a failing pre-alert lapse never stops the bed lapse. Decision 0085: each behind its own module.
+    // ER lanes 1–5 (#808–#812): the ER pre-alert lapse, the re-triage, care and MLC clocks and the boarding sweep ride this
+    // job — no job, no pool client of their own; each in its own try, so a failing one never stops the bed lapse.
+    // Decision 0085: the bed lapse runs while `ipd` is on, the ER clocks while `emergency` is on.
     run: async (now) => {
       await runIfModuleOn("lapseBedReservations", "ipd", () => lapseBedReservations(db, now));
       if (isModuleOn("emergency")) {
         try { await lapseErPreAlerts(db, now); } catch (e) { erLog.error(`lapseErPreAlerts failed: ${e instanceof Error ? e.message : String(e)}`); }
+        // ER lane 2 (#809): the re-triage clock — one task per overdue re-triage, one climb 15 min later.
+        try { await sweepErTriageClocks(db, now); } catch (e) { erLog.error(`sweepErTriageClocks failed: ${e instanceof Error ? e.message : String(e)}`); }
+        // ER lane 3 (#810): criticals to the ER doctor of record (and the climb), unanswered specialty calls, unsigned verbal orders.
+        try { await sweepErCareClocks(db, now); } catch (e) { erLog.error(`sweepErCareClocks failed: ${e instanceof Error ? e.message : String(e)}`); }
+        // ER lane 4 (#811): the MLC clocks — the police intimation task (1 h) and its climb, the countersign breach (24 h).
+        try { await sweepErMlcClocks(db, now); } catch (e) { erLog.error(`sweepErMlcClocks failed: ${e instanceof Error ? e.message : String(e)}`); }
+        // ER lane 5 (#812): a boarding patient leaves the ER when IPD places the bed (or stops boarding if the admission is cancelled).
+        try { await sweepErBoarding(db, now); } catch (e) { erLog.error(`sweepErBoarding failed: ${e instanceof Error ? e.message : String(e)}`); }
       }
     },
   });

@@ -47,7 +47,10 @@ export async function preAlert(db: Db, actor: Actor, raw: unknown, opts: Opts = 
   const input: Input<"pre_alert"> = ER_INTENTS.pre_alert.input.parse(raw);
   await requireErPermission(db, actor, ER_ARRIVAL_REGISTER);
   const at = opts.now ?? new Date();
-  return onceEr(db, actor, "pre_alert", input.idempotencyKey, input, () => withTx(db, async (tx) => {
+  return onceEr(db, actor, "pre_alert", input.idempotencyKey, input, async () => {
+    // Lane 2 (E9): the OPD red flag names a known patient (through the merge chain).
+    const patientId = input.patientId === undefined ? null : (await knownPerson(db, actor, input.patientId)).patientId;
+    return withTx(db, async (tx) => {
     const id = newId();
     const expectedAt = new Date(at.getTime() + input.etaMinutes * 60_000);
     const expiresAt = new Date(expectedAt.getTime() + ER_PRE_ALERT_LAPSE_MINUTES * 60_000);
@@ -55,13 +58,15 @@ export async function preAlert(db: Db, actor: Actor, raw: unknown, opts: Opts = 
       id, state: "expected", mode: input.mode, expectedAt, expiresAt, count: input.count, sex: input.sex ?? null,
       ageBand: input.ageBand ?? null, complaint: input.complaint ?? null, caller: input.caller ?? null,
       callerPhone: input.callerPhone ?? null, vehicleNo: input.vehicleNo ?? null, createdBy: actor.id, createdAt: at,
+      patientId, redFlagKey: input.redFlagKey ?? null,
     });
     await appendEvent(tx, erPreAlerted.make({
       payload: { preAlertId: id, mode: input.mode, count: input.count, provenance: provenanceOf(actor) },
       actor, correlationId: id, occurredAt: at,
     }));
     return { preAlertId: id, state: "expected" as const, expectedAt: expectedAt.toISOString(), expiresAt: expiresAt.toISOString() };
-  }), at);
+    });
+  }, at);
 }
 
 export async function cancelPreAlert(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"cancel_pre_alert">> {

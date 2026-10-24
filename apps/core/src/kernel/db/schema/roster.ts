@@ -822,6 +822,9 @@ export const ROSTER_ESCALATION_KINDS = [
   "imaging.critical_overdue", "imaging.report_unread", "workflow.timer_rung",
   // E3.2 (#595) — a lab critical with no read-back; the fallback when a rung names nobody.
   "lab.critical_overdue",
+  // ER lane 2 (#809) — an overdue ER re-triage climbs past the triage nurse to whoever is on as this target's position
+  // (the ER charge nurse when the roster names one; the nursing supervisor's holders otherwise).
+  "er_retriage",
 ] as const;
 export type RosterEscalationKind = (typeof ROSTER_ESCALATION_KINDS)[number];
 
@@ -847,7 +850,7 @@ export const rosterEscalationTargets = pgTable(
     /** One answer per (kind, department). Two rows for one question is two answers at 02:14. */
     uniqueIndex("roster_escalation_targets_kind_dept_ux")
       .on(t.siteId, t.alertKind, sql`coalesce(${t.departmentId}, '')`),
-    check("roster_escalation_targets_kind_ck", sql`${t.alertKind} in ('escalation.triggered', 'notification.failed', 'ops.mode_changed', 'imaging.critical_overdue', 'imaging.report_unread', 'workflow.timer_rung', 'lab.critical_overdue')`),
+    check("roster_escalation_targets_kind_ck", sql`${t.alertKind} in ('escalation.triggered', 'notification.failed', 'ops.mode_changed', 'imaging.critical_overdue', 'imaging.report_unread', 'workflow.timer_rung', 'er_retriage', 'er_call', 'er_critical', 'mlc_intimation', 'mlc_countersign', 'er_abscond', 'er_boarding', 'er_abscond_mlc', 'code_blue', 'code_grey', 'lab.critical_overdue')`),
   ],
 );
 

@@ -257,6 +257,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     permissions: [
       // ER lane 1 (#808) — the tracking board (no money on it, decision 0058). README "Emergency arrival" prose.
       "er.board.view", "er.board.wall",
+      // ER lane 2 (#809) — triage by ESI, vitals, bays and the ER doctor of record. README "Emergency triage" prose.
+      "er.triage",
       // DIET E4.4 (#736) — the doctor orders the diet, sets or lifts NPO, and reads the ward diet sheet and kitchen board.
       "diet.view", "diet.order", "diet.npo", "diet.clinical.view",
       // IPD ADMISSION E1.2 (#719) — a doctor advises admission (raises the request); answers carry no money (0058).
@@ -2261,7 +2263,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * Lane 1 grants the arrival and the board: at night the casualty nurse registers the arrival and prints the band
    * when no clerk is at the ER desk. Triage (`er.triage`) arrives with lane 2. NOBODY is assigned by any seed.
    */
-  { roleKey: "er_nurse", permissions: ["er.board.view", "er.board.wall", "er.arrival.register"] },
+  // ER lane 2 (#809) — `er.triage`: the casualty nurse triages by ESI, re-triages, records vitals, places in bays.
+  { roleKey: "er_nurse", permissions: ["er.board.view", "er.board.wall", "er.arrival.register", "er.triage"] },
 ];
 
 /**
@@ -2530,7 +2533,7 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   // E4.4 DIET (#736).
   dietician: "Dietician (diet orders, NPO, consults, meal rounds and the kitchen lists)",
   kitchen_staff: "Kitchen Staff (builds, prints and dispatches the meal lists)",
-  er_nurse: "Casualty Nurse (registers ER arrivals and prints the ER band; the tracking board)",
+  er_nurse: "Casualty Nurse (registers ER arrivals, prints the ER band, triages by ESI; the tracking board)",
   maintenance_staff: "Maintenance Staff (engineering technicians: electrical, plumbing, AC, carpentry repairs)",
   // IPD NURSING E4.1 (#733) — the ward nursing ladder.
   ward_nurse: "Ward Nurse (staff nurse: vitals, assessment, intake/output, notes, shift handover, transfers)",

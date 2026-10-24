@@ -1132,7 +1132,13 @@ const ER_PAIRS: readonly string[] = [
   // ER review (2026-10-15, DECIDED) — the wall screen's own string: the six board readers and the kiosk `display` role.
   "front_office/er.board.wall", "front_office_supervisor/er.board.wall", "duty_manager/er.board.wall", "er_nurse/er.board.wall",
   "doctor/er.board.wall", "medical_superintendent/er.board.wall", "display/er.board.wall",
+  // ER lane 2 (#809) — triage: the casualty nurse and doctors (ER_TRIAGE_README_PROSE).
+  "er_nurse/er.triage",
+  "doctor/er.triage",
 ];
+
+/** The README prose line authorising ER triage (ER lane 2, issue #809). Quoted, not paraphrased. */
+const ER_TRIAGE_README_PROSE = "`er.triage` is held by `er_nurse` and `doctor`.";
 
 /** The README prose line authorising attendant and visitor passes (E1.3, decision 0072). Quoted, not paraphrased. */
 const PASSES_README_PROSE =
@@ -2635,6 +2641,7 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(readme).toContain(DIET_README_PROSE);
     expect(readme).toContain(ER_README_PROSE);
     expect(readme).toContain(ER_WALL_README_PROSE);
+    expect(readme).toContain(ER_TRIAGE_README_PROSE);
     expect(readme).toContain(COPILOT_HALT_README_PROSE);
     expect(readme).toContain(IPD_BEDS_README_PROSE);
     expect(readme).toContain(IPD_ADMIT_README_PROSE);

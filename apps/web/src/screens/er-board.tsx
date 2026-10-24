@@ -3,9 +3,11 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import type React from "react";
 import type { ErBoard, ErExpectedCard, ErTile } from "@hmis/contracts";
+import { useAuth } from "../lib/auth";
 import { fmtIst } from "../lib/format";
 import { realtimeClient, useRealtime } from "../lib/realtime";
 import { ER_BOARD_TOPIC, ER_WALL_TOPIC, fetchErBoard, minutesSince } from "../lib/er-api";
+import { WaitingDisplay } from "./er-copilot";
 import "../styles/paper-pine.css";
 import "./er.css";
 
@@ -55,32 +57,88 @@ export function aliasFirst(label: string, labelHi: string | null, lang: string):
   return lang.startsWith("hi") ? { main: labelHi, other: label } : { main: label, other: labelHi };
 }
 
-function Tile({ tile, now, wall }: { tile: ErTile; now: number; wall: boolean }): React.ReactElement {
+/** ESI as a colour AND a word AND a number (never colour alone, spec §3.1). */
+export function EsiBadge({ level, t, big }: { level: number | null; t: T; big?: boolean }): React.ReactElement | null {
+  if (level === null) return null;
+  return <span className={`er-esi esi-${String(level)}${big ? " big" : ""}`}>{t("er.esi.short", { n: level })} · {t(`er.esi.word.${String(level)}`)}</span>;
+}
+
+/** Door-to-doctor by ESI from the gate (§3.2), in words. */
+export function doctorClock(t: T, dueAt: string, now: number): { text: string; late: boolean } {
+  const left = -minutesSince(dueAt, now);
+  if (left > 0) return { text: t("erBoard.doctorDue", { minutes: left }), late: false };
+  if (left === 0) return { text: t("erBoard.doctorNow"), late: false };
+  return { text: t("erBoard.doctorLate", { minutes: -left }), late: true };
+}
+
+function retriageClock(t: T, dueAt: string, now: number): { text: string; late: boolean } {
+  const left = -minutesSince(dueAt, now);
+  if (left > 0) return { text: t("erBoard.retriageDue", { minutes: left }), late: false };
+  if (left === 0) return { text: t("erBoard.retriageNow"), late: false };
+  return { text: t("erBoard.retriageLate", { minutes: -left }), late: true };
+}
+
+/** The tile's clocks, most pressing first: triage (arrived), then the doctor and the re-triage (triaged). */
+function clocksOf(t: T, tile: ErTile, now: number): { text: string; late: boolean }[] {
+  const out: { text: string; late: boolean }[] = [];
+  const tri = triageClock(t, tile, now);
+  if (tri !== null) out.push(tri);
+  if (tile.doctorDueAt !== null) out.push(doctorClock(t, tile.doctorDueAt, now));
+  if (tile.retriageDueAt !== null) out.push(retriageClock(t, tile.retriageDueAt, now));
+  // Lane 7 (#814): the activation clocks from the door (STEMI door-to-ECG …), each in words.
+  for (const a of tile.activations ?? []) {
+    if (a.metAt !== null) continue;
+    const left = -minutesSince(a.dueAt, now);
+    out.push({ text: t(left >= 0 ? "erCodes.boardDue" : "erCodes.boardLate", { what: t(`erCodes.milestone.${a.milestone}`), minutes: Math.abs(left) }), late: left < 0 });
+  }
+  return out.sort((a, b) => Number(b.late) - Number(a.late));
+}
+
+function Tile({ tile, now, wall, href }: { tile: ErTile; now: number; wall: boolean; href: boolean }): React.ReactElement {
   const { t, i18n } = useTranslation();
   const name = aliasFirst(tile.label, tile.labelHi, i18n.language);
-  const clock = triageClock(t, tile, now);
-  return (
-    <article className={`erb-tile${clock?.late ? " late" : ""}`} data-testid="er-board-tile">
+  const clocks = clocksOf(t, tile, now);
+  const late = clocks.some((c) => c.late);
+  const body = (
+    <>
       <div className="erb-tile-top">
         <b className="erb-name" title={name.main}>{name.main}</b>
         <span className="erb-since mono">{t("erBoard.since", { minutes: Math.max(0, minutesSince(tile.arrivedAt, now)) })}</span>
       </div>
       {name.other !== null && !wall ? <span className="erb-alias-hi">{name.other}</span> : null}
+      {tile.esi !== null || tile.bayCode !== null ? (
+        <div className="erb-esi-row">
+          <EsiBadge level={tile.esi} t={t} />
+          {tile.bayCode !== null ? <span className="erb-bay mono">{tile.bayCode}</span> : null}
+          {tile.ews !== null ? <span className={`er-ews ews-${tile.ews.band}`}>{tile.ews.kind !== null ? `${t(`er.ews.${tile.ews.kind}`)} ` : ""}{tile.ews.value} · {t(`er.ewsBand.${tile.ews.band}`)}</span> : null}
+        </div>
+      ) : null}
       <div className="erb-meta">
         <span>{ageSexWords(t, tile.ageYears, tile.ageBand, tile.sex)}</span>
         <span className="mono">{tile.episodeNo}</span>
         {tile.arrivalMode !== null ? <span>{t(`er.mode.${tile.arrivalMode}`)}</span> : null}
+        {tile.doctor !== null ? <span>{t("erBoard.doctor", { name: tile.doctor })}</span> : null}
       </div>
-      {clock !== null ? (
-        <div className={`erb-clock${clock.late ? " late" : ""}`} role={clock.late ? "alert" : undefined}>
-          <i aria-hidden="true">{clock.late ? "■" : "○"}</i>{clock.text}
+      {clocks.length > 0 ? clocks.slice(0, 2).map((c) => (
+        <div key={c.text} className={`erb-clock${c.late ? " late" : ""}`} role={c.late ? "alert" : undefined}>
+          <i aria-hidden="true">{c.late ? "■" : "○"}</i>{c.text}
         </div>
-      ) : <div className="erb-clock">{t(`er.state.${tile.state}`)}</div>}
-      {tile.chips.length > 0 ? (
-        <div className="erb-chips">{tile.chips.map((c) => <span key={c} className={`erb-chip ${c}`}>{t(`er.chip.${c}`)}</span>)}</div>
+      )) : <div className="erb-clock">{t(`er.state.${tile.state}`)}</div>}
+      {tile.chips.length > 0 || tile.mciTag !== undefined ? (
+        <div className="erb-chips">
+          {/* Lane 8 (#815): the Code Yellow tag, colour and word. */}
+          {tile.mciTag !== undefined ? <span className={`erb-chip mci_${tile.mciTag}`} data-testid="er-tile-mci-tag">{t(`erMci.tag.${tile.mciTag}`)}</span> : null}
+          {tile.chips.map((c) => <span key={c} className={`erb-chip ${c}`}>{t(`er.chip.${c}`)}</span>)}
+        </div>
       ) : null}
-    </article>
+    </>
   );
+  const cls = `erb-tile${late ? " late" : ""}${tile.esi !== null ? ` esi-edge-${String(tile.esi)}` : ""}`;
+  // Lane 3: a patient a doctor has seen opens on their care; before that, on triage.
+  const to = tile.state === "arrived" || tile.state === "triaged" ? "/er/triage" : "/er/patient";
+  return href ? (
+    <Link to={to} search={{ episode: tile.episodeId } as never} className={`${cls} erb-link`} data-testid="er-board-tile">{body}</Link>
+  ) : <article className={cls} data-testid="er-board-tile">{body}</article>;
 }
 
 function Stat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "warn" | "bad" }): React.ReactElement {
@@ -93,8 +151,20 @@ function Stat({ label, value, sub, tone }: { label: string; value: string; sub?:
   );
 }
 
+/**
+ * Lane 9 (#816) — `/er/board?waiting=1` is the WAITING-AREA DISPLAY (spec §5 I): a token and a stage word, no name, no
+ * clinical text, MLC and sealed patients absent (the server's rule). Same route, so no new path or menu entry.
+ */
 export function ErBoardScreen(): React.ReactElement {
   const { t } = useTranslation();
+  const search = useSearch({ strict: false }) as { waiting?: string | number | boolean };
+  const waiting = search.waiting === "1" || search.waiting === 1 || search.waiting === true;
+  return waiting ? <WaitingDisplay t={t} /> : <ErTrackingBoard />;
+}
+
+function ErTrackingBoard(): React.ReactElement {
+  const { t } = useTranslation();
+  const { can } = useAuth();
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { wall?: string | number | boolean };
   const wall = search.wall === "1" || search.wall === 1 || search.wall === true;
@@ -146,19 +216,22 @@ export function ErBoardScreen(): React.ReactElement {
         <div className="erb-tools">
           <button type="button" className="erx-btn" onClick={toggleWall}>{wall ? t("erBoard.showNames") : t("erBoard.wallMode")}</button>
           {wall ? null : <Link to="/er/desk" className="erx-btn">{t("erBoard.desk")}</Link>}
+          {wall || !can("er.triage") ? null : <Link to="/er/triage" className="erx-btn">{t("erTriage.title")}</Link>}
           {wall ? null : <Link to="/" className="erx-btn">{t("erBoard.home")}</Link>}
         </div>
       </header>
 
       <section className="erb-stats" aria-label={t("erBoard.totals")}>
-        <Stat label={t("erBoard.stat.inDept")} value={s ? String(s.inDepartment) : "—"} />
+        <Stat label={t("erBoard.stat.inDept")} value={s ? String(s.inDepartment) : "—"}
+          sub={s && s.boarding > 0 ? t("erBoard.stat.boarding", { n: s.boarding }) : undefined} />
         <Stat label={t("erBoard.stat.waiting")} value={s ? String(s.waitingTriage) : "—"}
           sub={s ? (s.longestTriageWaitMinutes === null ? t("erBoard.stat.noneWaiting") : t("erBoard.stat.longest", { minutes: s.longestTriageWaitMinutes })) : undefined}
           tone={s && s.longestTriageWaitMinutes !== null && s.longestTriageWaitMinutes > 5 ? "bad" : undefined} />
         <Stat label={t("erBoard.stat.expected")} value={s ? String(s.expected) : "—"} />
         <Stat label={t("erBoard.stat.bays")} value={s ? String(s.bays.free) : "—"} sub={s ? t("erBoard.stat.baysOf", { total: s.bays.total }) : undefined}
           tone={s && s.bays.total > 0 && s.bays.free === 0 ? "bad" : undefined} />
-        <Stat label={t("erBoard.stat.arrivals")} value={s ? String(s.arrivalsToday) : "—"} />
+        <Stat label={t("erBoard.stat.arrivals")} value={s ? String(s.arrivalsToday) : "—"}
+          sub={s && s.lwbsToday > 0 ? t("erBoard.stat.lwbs", { n: s.lwbsToday }) : undefined} />
         <Stat label={t("erBoard.stat.broughtDead")} value={s ? String(s.broughtDeadToday) : "—"} />
       </section>
 
@@ -175,6 +248,7 @@ export function ErBoardScreen(): React.ReactElement {
                   {c.count > 1 ? <span>{t("erBoard.count", { arrived: c.arrivedCount, total: c.count })}</span> : null}
                   {c.sex !== null || c.ageBand !== null ? <span>{[c.ageBand !== null ? t(`er.bandShort.${c.ageBand}`) : null, c.sex !== null ? t(`er.sex.${c.sex}`) : null].filter(Boolean).join(" ")}</span> : null}
                 </div>
+                {c.patientLabel !== null ? <p className="erb-complaint"><b>{c.patientLabel}</b></p> : null}
                 {c.complaint !== null ? <p className="erb-complaint">{c.complaint}</p> : null}
               </article>
             );
@@ -184,13 +258,13 @@ export function ErBoardScreen(): React.ReactElement {
         <section className="erb-col erb-waiting" aria-label={t("erBoard.col.waiting")}>
           <h2>{t("erBoard.col.waiting")} <span className="erb-badge">{board?.waiting.length ?? 0}</span></h2>
           {board !== null && board.waiting.length === 0 ? <div className="erb-empty">{t("erBoard.empty.waiting")}</div> : null}
-          <div className="erb-grid">{board?.waiting.map((tile) => <Tile key={tile.episodeId} tile={tile} now={now} wall={wall} />)}</div>
+          <div className="erb-grid">{board?.waiting.map((tile) => <Tile key={tile.episodeId} tile={tile} now={now} wall={wall} href={!wall && can("er.triage")} />)}</div>
         </section>
 
         <section className="erb-col erb-treat" aria-label={t("erBoard.col.inTreatment")}>
           <h2>{t("erBoard.col.inTreatment")} <span className="erb-badge">{board?.inTreatment.length ?? 0}</span></h2>
           {board !== null && board.inTreatment.length === 0 ? <div className="erb-empty">{t("erBoard.empty.inTreatment")}</div> : null}
-          <div className="erb-grid">{board?.inTreatment.map((tile) => <Tile key={tile.episodeId} tile={tile} now={now} wall={wall} />)}</div>
+          <div className="erb-grid">{board?.inTreatment.map((tile) => <Tile key={tile.episodeId} tile={tile} now={now} wall={wall} href={!wall && can("er.triage")} />)}</div>
         </section>
       </div>
 

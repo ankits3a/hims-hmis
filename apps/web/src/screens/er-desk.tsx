@@ -9,7 +9,7 @@ import { useRealtime } from "../lib/realtime";
 import {
   ER_AGE_BANDS, ER_ARRIVAL_MODES, ER_BOARD_TOPIC, ER_PRE_ALERT_MODES, ER_SEXES, broughtDeadApi, cancelPreAlertApi,
   erRefusalOf, fetchErDesk, fetchErDoctors, linkIdentityApi, newKey, preAlertApi, printBandApi, registerArrivalApi,
-  registerUnidentifiedApi, reprintBandApi, searchErPatients,
+  lwbsApi, registerUnidentifiedApi, reprintBandApi, searchErPatients,
 } from "../lib/er-api";
 import type { ArrivalOut, BandOut, ErAgeBandValue, ErArrivalModeValue, ErSexValue } from "../lib/er-api";
 import { ageSexWords, aliasFirst } from "./er-board";
@@ -204,7 +204,14 @@ export function ErDesk(): React.ReactElement {
   });
 
   const fromPreAlert = (c: ErExpectedCard): void => {
-    reset(); setPreAlert(c); setMode(c.mode ?? "walk_in"); setTab("unknown");
+    reset(); setPreAlert(c);
+    // Lane 2 (E9): the OPD red flag's patient is known — straight to Known with them picked, walked in from OPD.
+    if (c.mode === "opd_red_flag" && c.patientId !== null) {
+      setTab("known"); setMode("walk_in");
+      setPicked({ patientId: c.patientId, uhid: "", name: c.patientLabel ?? "", sex: c.sex ?? "unknown", ageYears: null, phoneTail: null, unidentified: false });
+      return;
+    }
+    setMode(c.mode === "opd_red_flag" || c.mode === null ? "walk_in" : c.mode); setTab("unknown");
     if (c.sex !== null) setSex(c.sex);
     if (c.ageBand !== null) setBand(c.ageBand);
   };
@@ -370,6 +377,7 @@ export function ErDesk(): React.ReactElement {
           {desk !== null && desk.expected.length === 0 ? <div className="erb-empty">{t("erBoard.empty.expected")}</div> : null}
           {desk?.expected.map((c) => (
             <article key={c.preAlertId} className="erd-exp" data-testid="er-desk-expected">
+              {c.patientLabel !== null ? <div><b>{c.patientLabel}</b></div> : null}
               <div><b>{modeWord(c.mode)}</b> · {fmtIst(c.expectedAt)}{c.count > 1 ? ` · ${t("erBoard.count", { arrived: c.arrivedCount, total: c.count })}` : ""}</div>
               {c.complaint !== null ? <p className="erb-complaint">{c.complaint}</p> : null}
               <div className="erd-row">
@@ -381,7 +389,7 @@ export function ErDesk(): React.ReactElement {
           <h2>{t("erDesk.today")} <span className="erb-badge">{desk?.episodes.length ?? 0}</span></h2>
           {desk !== null && desk.episodes.length === 0 ? <div className="erb-empty">{t("erDesk.noneToday")}</div> : null}
           {desk?.episodes.map((row) => (
-            <DeskRow key={row.episodeId} row={row} t={t} highlight={highlight === row.episodeId} mayLink={can("patients.merge")} onChanged={load} />
+            <DeskRow key={row.episodeId} row={row} t={t} highlight={highlight === row.episodeId} mayLink={can("patients.merge")} mayLeave={can("er.disposition")} onChanged={load} />
           ))}
         </section>
       </div>
@@ -389,7 +397,9 @@ export function ErDesk(): React.ReactElement {
   );
 }
 
-function DeskRow({ row, t, highlight, mayLink, onChanged }: { row: ErDeskRow; t: T; highlight: boolean; mayLink: boolean; onChanged: () => void }): React.ReactElement {
+function DeskRow({ row, t, highlight, mayLink, mayLeave, onChanged }: {
+  row: ErDeskRow; t: T; highlight: boolean; mayLink: boolean; mayLeave: boolean; onChanged: () => void;
+}): React.ReactElement {
   const { i18n } = useTranslation();
   const name = aliasFirst(row.name, row.nameHi, i18n.language);
   const [identify, setIdentify] = useState(false);
@@ -401,6 +411,9 @@ function DeskRow({ row, t, highlight, mayLink, onChanged }: { row: ErDeskRow; t:
   const [why, setWhy] = useState("");
   const [msg, setMsg] = useState<ErRefusalBody | string | null>(null);
   const [band, setBand] = useState<BandOut | null>(null);
+  // Lane 5 (#812) — "left without being seen", recorded at the desk with the last-seen IST clock time (blank = now).
+  const [leaving, setLeaving] = useState(false);
+  const [seenAt, setSeenAt] = useState("");
   useEffect(() => {
     if (!identify || dq.trim().length < 2) { setHits([]); return; }
     searchErPatients(dq).then((h) => setHits(h.filter((x) => !x.unidentified && x.patientId !== row.patientId)), () => setHits([]));
@@ -437,6 +450,21 @@ function DeskRow({ row, t, highlight, mayLink, onChanged }: { row: ErDeskRow; t:
           {row.unidentified && row.identity?.stage !== "waiting" && row.identity?.stage !== "granted" && mayLink ? (
             <button type="button" className="erx-btn sm" onClick={() => setIdentify(!identify)} aria-expanded={identify}>{t("erDesk.identify")}</button>
           ) : null}
+          {mayLeave && (row.state === "arrived" || row.state === "triaged") ? (
+            <button type="button" className="erx-btn sm" onClick={() => setLeaving(!leaving)} aria-expanded={leaving} data-testid="er-desk-lwbs-open">{t("erDesk.lwbs")}</button>
+          ) : null}
+        </div>
+      ) : null}
+      {leaving ? (
+        <div className="erd-identify" data-testid="er-desk-lwbs">
+          <label className="erd-field"><span>{t("erDesk.lwbsSeen")}</span><input value={seenAt} onChange={(e) => setSeenAt(e.target.value)} inputMode="numeric" placeholder="HH:MM" /></label>
+          <button type="button" className="erx-btn pri" data-testid="er-desk-lwbs-save"
+            onClick={() => void run(async () => {
+              const iso = seenAt.trim() === "" ? new Date().toISOString() : istClockToIso(seenAt, Date.now());
+              if (iso === null) throw new Error("time");
+              await lwbsApi({ episodeId: row.episodeId, lastSeenAt: iso });
+              setLeaving(false);
+            })}>{t("erDesk.lwbsSave")}</button>
         </div>
       ) : null}
       {band !== null ? <p className="erd-hint" role="status">{t("erDesk.bandPrinted", { serial: band.bandSerial })}</p> : null}

@@ -75,6 +75,29 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   (`episode_already_open`). `patients.identity_status` is CHECKed (`patients_identity_status_ck`, migration er_arrival);
   `patient_merge` refuses to keep an unidentified record over an identified one (`merge_into_unidentified`).
 
+### Lane 2 (er-triage, #809)
+- ESI v4 (`packages/contracts/src/emergency/triage.ts`: `ER_ESI_INFO`, `esiAlgorithm`). The level is the person's; the
+  four decision points give the algorithm's level (the proposal). A level less urgent than the proposal or the last
+  level is refused `down_triage_needs_reason` without a reason; an up-triage never asks. Every entry is a row of
+  `er_triage_entries` (the intents only insert); `er_episodes` mirrors the last level, score and clocks.
+- The re-triage clock: from each triage, ESI 2/3/4/5 → 15/30/60/120 min (ESI 1 none), only while `triaged` (a doctor
+  seeing the patient stops it). A vital set with a WORSE early-warning band pulls the due instant to now.
+- `sweepErTriageClocks` (rides `lapseBedReservations`) runs TWO clocks on ONE ladder: door-to-triage (an `arrived`
+  patient 5 min past the gate → task `er_triage_due`, stat; climb notice `er.triage_overdue`) and re-triage. Re-triage overdue → ONE task (`er_retriage`, `sourceRef`
+  `er_retriage:<episode>:<due>`, skill `er_triage` → `er_nurse`, its one rung bells the casualty nurses); 15 min past due →
+  ONE climb (`escalationRecipients("er_retriage")`, fallback `nursing_supervisor`; notice kind `er.retriage_overdue`),
+  stamped per due instant. A re-triage, the doctor or (lane 5) departure cancels the task.
+- The take (seam E2): `triage.departmentCode` → `unitOnTake(dept, arrived_at)` — the GATE instant, so a 07:55 arrival
+  entered at 08:10 belongs to the night's unit. Stamped once on the episode (`take_*`).
+- Bays: `placeInBay` / `moveBay` through IPD `placeErEpisodeIn` / `releaseErBayIn` (same room → bed lock; occupant
+  type `er_episode`). LOCK ORDER: the episode first, then the bed. One bay per episode (`already_in_bay` names it);
+  `er_episodes_open_bay_ux` backs one ER patient per bay. A move takes the new bay first, then sends the old to cleaning.
+- `assign_er_doctor`: only an active `doctor` role holder; the first assignment moves `arrived|triaged → in_treatment`,
+  stamps `seen_at` (door-to-doctor), clears the re-triage clock and cancels its task.
+- OPD red flag (E9): `pre_alert` mode `opd_red_flag` names the patient (Desk One's "Send to Casualty"); the card
+  carries the patient label (initials on the wall); "Arrived" on the ER desk opens Known with the patient picked.
+- Permission `er.triage` (er_nurse, doctor). Screen `apps/web/src/screens/er-triage.tsx` (`/er/triage`).
+
 ## 4. Traps
 - `registerPatient` takes a `Tx` and the band reads the new patient in that same `tx` (`bandPerson(tx, …)`); reading it
   through `db` (`getPatient`) inside the transaction sees nothing.
@@ -86,8 +109,9 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   app-only list), caddyfile-parity routes (131), standup-check (`emergency` in NOT_DEPARTMENTS, OPEN).
 
 ## 5. Seams owed to later lanes
-- er-triage (#809): ESI, bays (place through an IPD bed export with an `er_episode` holder), door-to-triage clock as a
-  task on the roster ladder (the `arrived` SLA is record-only today), OPD red-flag "Expected from OPD" card.
+- Lane 2 built ESI, bays, the door-to-triage and re-triage tasks and climbs, and the OPD card. Still owed after lane 2: LWBS (lane 5's `record_lwbs`),
+  child-without-guardian social-worker task, Code Grey from triage (lane 7), the copilot's ESI proposal (lane 9),
+  bay release on departure (lane 5 through `releaseErBayIn`), the ER bay on the IPD Beds board shows no ER name.
 - er-care: the `ER` encounter resolver and episode charge sink (ordering door), orders following the merge.
 - er-mlc: the MLC register, police intimation, the `brought_dead` death kind on patients, mortuary register seam.
 - er-dispo: `hand_to_unit` → IPD `emergencyAdmit`; outcomes on `departed`. er-bill: the ER bill following the merge.

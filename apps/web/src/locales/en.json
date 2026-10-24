@@ -726,6 +726,7 @@
     },
     "dept": "Specialty (for the take unit)",
     "depts": {
+      "PAED": "Paediatrics",
       "MED": "Medicine",
       "SUR": "Surgery",
       "ORT": "Ortho",
