@@ -40,7 +40,6 @@ const key = (): string => randomUUID();
 const NOW = new Date();
 const ago = (minutes: number): Date => new Date(NOW.getTime() - minutes * 60_000);
 const CARD_KEYS = ["ipd.bed_proposal", "ipd.discharge_blocked", "ipd.deposit_low", "ipd.cleaning_overdue"] as const;
-const M4_CARD_KEYS = ["due_dose", "overdue_vitals", "new_order", "ews_rising", "handover_pending", "assessment_due"];
 
 describe("E5.1 Now cards + E5.2 Bed Flow — acceptance", () => {
   let db: Db;
@@ -172,7 +171,7 @@ describe("E5.1 Now cards + E5.2 Bed Flow — acceptance", () => {
     expect(await IPD_BED_FLOW_QUERIES.BF1!.run(db, { from: ago(60 * 24 * 60), to: ago(59 * 24 * 60) })).toMatchObject({ value: null });
   });
 
-  it("(iv) each card type has its own provider and its own declared permission; the M4 types are not stubbed", async () => {
+  it("(iv) each card type has its own provider and its own declared permission", async () => {
     const desk = ipdManifest.desk ?? [];
     const perms = CARD_KEYS.map((k) => desk.find((p) => p.key === k)?.permission);
     expect(perms.every((p) => p !== undefined && ipdManifest.permissions!.includes(p))).toBe(true);
@@ -181,7 +180,7 @@ describe("E5.1 Now cards + E5.2 Bed Flow — acceptance", () => {
       "ipd.bed_proposal": "ipd.beds.manage", "ipd.discharge_blocked": "ipd.discharge.view",
       "ipd.deposit_low": "ipd.billdesk.view", "ipd.cleaning_overdue": "ipd.beds.clean",
     });
-    for (const m4 of M4_CARD_KEYS) expect(desk.some((p) => p.key.endsWith(m4))).toBe(false);
+    // The "M4 card types not yet built" pin is retired: nursing and eMAR now build them (decision 0074).
 
     // Each provider answers with ITS card when its fact is present — with the patient's name, UHID and bed.
     const waiting = await w.patient("male", 40, "Synthetic Waiting");

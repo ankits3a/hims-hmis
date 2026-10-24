@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type React from "react";
-import type { IpdHandoverCard, IpdHandoverList, IpdRefusalBody } from "@hmis/contracts";
+import type { IpdHandoverCard, IpdHandoverList, IpdRefusalBody, IpdShiftHandoverCard, IpdShiftHandoverList } from "@hmis/contracts";
 import { ApiError } from "../lib/api";
+import { useAuth } from "../lib/auth";
+import { fmtIst } from "../lib/format";
 import { refusalOf } from "../lib/ipd-beds-api";
+import { acceptShiftHandover, getShiftHandovers } from "../lib/ipd-nursing-api";
 import { acceptHandover, cancelTransfer, getHandovers } from "../lib/ipd-transfer-api";
 import "./ipd-transfer.css";
 
@@ -71,6 +74,7 @@ export function IpdHandovers(): React.ReactElement {
       <div className="ipdh-list">
         {cards.map((h) => <HandoverCard key={h.transferId} h={h} now={now} onDone={load} />)}
       </div>
+      <ShiftHandovers />
     </main>
   );
 }
@@ -137,6 +141,65 @@ function HandoverCard({ h, now, onDone }: { h: IpdHandoverCard; now: number; onD
       )}
       {refusal !== null ? <div className="ipdh-refusal" role="alert">{refusal.bedRule ? <b>{refusal.bedRule}: </b> : null}{refusal.rule}</div> : null}
       {failed ? <div className="ipdh-refusal" role="alert">{t("ipdTransfer.panel.actFailed")}</div> : null}
+    </article>
+  );
+}
+
+/**
+ * E4.1 (#733) — THE SHIFT HANDOVER, on the same "Waiting for you" page (not a second handover screen): the patients the
+ * outgoing nurse handed over with an SBAR, each accepted by the incoming nurse — never by the nurse who gave it. Shown
+ * to holders of `ipd.handover.shift`; the server re-checks. Polls with the page.
+ */
+function ShiftHandovers(): React.ReactElement | null {
+  const { t } = useTranslation();
+  const { can } = useAuth();
+  const allowed = can("ipd.handover.shift");
+  const [list, setList] = useState<IpdShiftHandoverList | null>(null);
+  const load = useCallback(() => { getShiftHandovers().then(setList, () => setList(null)); }, []);
+  useEffect(() => {
+    if (!allowed) return undefined;
+    load(); const id = setInterval(load, POLL_MS); return () => clearInterval(id);
+  }, [allowed, load]);
+  if (!allowed) return null;
+  const items = list?.handovers ?? [];
+  return (
+    <section className="ipdh-shift" aria-label={t("ipdNursing.handover.shiftTitle")} data-testid="ipd-shift-handovers">
+      <h2>{t("ipdNursing.handover.shiftTitle")}</h2>
+      {list !== null && items.length === 0 ? <div className="ipdh-empty">{t("ipdNursing.handover.noneWaiting")}</div> : null}
+      <div className="ipdh-list">{items.map((h) => <ShiftCard key={h.handoverId} h={h} onDone={load} />)}</div>
+    </section>
+  );
+}
+
+function ShiftCard({ h, onDone }: { h: IpdShiftHandoverCard; onDone: () => void }): React.ReactElement {
+  const { t } = useTranslation();
+  const [busy, setBusy] = useState(false);
+  const [refusal, setRefusal] = useState<IpdRefusalBody | null>(null);
+  const [done, setDone] = useState(false);
+  const accept = (): void => {
+    setBusy(true); setRefusal(null);
+    acceptShiftHandover(h.handoverId).then(() => { setBusy(false); setDone(true); onDone(); }, (e: unknown) => { setBusy(false); setRefusal(refusalOf(e)); });
+  };
+  return (
+    <article className="ipdh-card" data-testid={`ipd-shift-handover-${h.handoverId}`}>
+      <div className="ipdh-who">
+        <b>{h.identity.name}</b><span>{h.identity.ageSex}</span>
+        {h.identity.uhid ? <span className="mono">UHID {h.identity.uhid}</span> : null}
+        {h.bedCode !== null ? <span className="bed mono">{h.bedCode}</span> : null}
+      </div>
+      <div className="ipdh-meta">
+        <span>{t(`ipdNursing.shift.${h.shift}`)}</span>
+        <span>{t("ipdNursing.handover.from", { name: h.givenBy.name, time: fmtIst(h.givenAt) })}</span>
+      </div>
+      <dl className="ipdh-sbar">
+        {(["situation", "background", "assessment", "recommendation"] as const).map((k) => (
+          <div key={k}><dt>{t(`ipdTransfer.sbar.${k}`)}</dt><dd>{h.sbar[k]}</dd></div>
+        ))}
+      </dl>
+      {done ? <span className="ipdh-ok" role="status">✓ {t("ipdNursing.handover.accepted")}</span> : h.givenByViewer
+        ? <span className="dim">{t("ipdNursing.handover.youGave")}</span>
+        : <div className="ipdh-acts"><button type="button" className="ipdh-btn pri" disabled={busy} onClick={accept}>{t("ipdNursing.handover.accept")}</button></div>}
+      {refusal !== null ? <div className="ipdh-refusal" role="alert">{refusal.rule}</div> : null}
     </article>
   );
 }

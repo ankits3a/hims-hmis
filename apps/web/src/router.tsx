@@ -48,6 +48,8 @@ import { IpdPasses } from "./screens/ipd-passes";
 import { PassesScan } from "./screens/passes-scan";
 import { IpdBill } from "./screens/ipd-bill";
 import { IpdHandovers } from "./screens/ipd-handovers";
+import { IpdWard } from "./screens/ipd-ward";
+import { IpdMyShift } from "./screens/ipd-my-shift";
 import { IpdBillDesk } from "./screens/ipd-bill-desk";
 import { IpdDischarge } from "./screens/ipd-discharge";
 import { FamilyPage } from "./screens/ipd-family";
@@ -419,6 +421,10 @@ const NAV: readonly NavEntry[] = [
   { to: "/ipd/discharge", label: "nav.ipdDischarge", permission: "ipd.discharge.view", group: "wards" },
   // E3.3 (#731) — the ward desk's family callback requests; path and permission match `ipdManifest.menu`.
   { to: "/ipd/family-callbacks", label: "nav.ipdFamilyCalls", permission: "ipd.family.issue", group: "wards" },
+  // E4.1 (#733) — the ward nurse station (board C) and my shift on the phone (board D1); paths and permissions match
+  // `ipdManifest.menu`.
+  { to: "/ipd/ward", label: "nav.ipdWard", permission: "ipd.nursing.view", group: "wards" },
+  { to: "/ipd/my-shift", label: "nav.ipdMyShift", permission: "ipd.vitals.record", group: "wards" },
   { to: "/ot/list", label: "nav.otList", permission: "ot.cases.read", group: "theatre" },
   { to: "/ot/book", label: "nav.otBook", permission: "ot.cases.book", group: "theatre" },
   { to: "/ot/recovery", label: "nav.otRecovery", permission: "ot.recovery.operate", group: "theatre" },
@@ -937,6 +943,28 @@ const ipdHandoversRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/ipd/handovers",
   component: IpdHandovers,
+});
+
+/**
+ * E4.1 (#733) — the ward nurse station (spec §4.9 C). A 16:9 command board: it owns the viewport and draws its own
+ * header. `?ward=<id>` picks the ward, `?admission=<id>` opens a patient's nursing chart.
+ */
+const ipdWardRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/ward",
+  staticData: { fullViewport: true },
+  validateSearch: (search: Record<string, unknown>): { ward?: string; admission?: string } => ({
+    ward: typeof search.ward === "string" && /^[0-9A-HJKMNP-TV-Z]{26}$/.test(search.ward) ? search.ward : undefined,
+    admission: typeof search.admission === "string" && /^[0-9A-HJKMNP-TV-Z]{26}$/.test(search.admission) ? search.admission : undefined,
+  }),
+  component: IpdWard,
+});
+
+/** E4.1 (#733) — my shift on the nurse's phone (spec §4.9 D1), 390 px first. */
+const ipdMyShiftRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/my-shift",
+  component: IpdMyShift,
 });
 
 /**
@@ -2207,7 +2235,7 @@ export const router = createRouter({
     familyRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, ipdBedsRoute, ipdAdmitRoute, ipdBillRoute, ipdBillDeskRoute, ipdFamilyCallbacksRoute, ipdHandoversRoute, ipdDischargeRoute, ipdPassesRoute, passesScanRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, ipdBedsRoute, ipdAdmitRoute, ipdBillRoute, ipdBillDeskRoute, ipdFamilyCallbacksRoute, ipdHandoversRoute, ipdWardRoute, ipdMyShiftRoute, ipdDischargeRoute, ipdPassesRoute, passesScanRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute, attendanceLinksRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,

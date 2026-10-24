@@ -36,11 +36,11 @@ import { sweepOverdueQa } from "../../modules/aerb";
 import { routingChooserFor, runAliasJob, runDeskRoutingLearning, runFlowLearning } from "../../modules/opd";
 import { syncAttendance } from "../../modules/attendance";
 import {
-  ipdAttendantRecipient, ipdTemplateRegistrations, lapseBedReservations, postNightlyIpdCharges, runIpdBillDeskNightly,
+  ipdAttendantRecipient, ipdTemplateRegistrations, lapseBedReservations, postNightlyIpdCharges, runIpdBillDeskNightly, sweepIpdNursing,
 } from "../../modules/ipd";
 import { sweepTasks } from "../../modules/tasks";
-import { buildDueLists } from "../../modules/diet";
 import { sweepBmwStorage } from "../../modules/bmw";
+import { buildDueLists } from "../../modules/diet";
 import { collectResourceKinds } from "../resources/kinds";
 import { isModuleOn, runIfModuleOn } from "../modules/switch";
 import type { DarkModuleKey } from "../modules/switch";
@@ -798,11 +798,16 @@ export function registerAllJobs(
     every: 60_000,
     run: async (now) => { await runIfModuleOn("lapseBedReservations", "ipd", () => lapseBedReservations(db, now)); },
   });
-  /** IPD NURSING E4.1 (#733) — assessment overdue after an hour; an early warning unacknowledged for 10 minutes. */
+  /*
+   * IPD NURSING E4.1 (#733) — the nursing clock, every minute: an admission with no nursing assessment one hour after
+   * admission raises ONE alert to the nursing supervisors; an early-warning alert unacknowledged for 10 minutes goes to
+   * them once per band (spec §4.5, §4.10 edge 12). Idempotent (a partial unique and a stamp under the admission's lock);
+   * a tick with nothing due runs two indexed reads and writes nothing.
+   */
   scheduler.register({
     name: "sweepIpdNursing",
     every: 60_000,
-    run: async () => { await runIfModuleOn("sweepIpdNursing", "ipd", async () => {}); },
+    run: async (now) => { await runIfModuleOn("sweepIpdNursing", "ipd", () => sweepIpdNursing(db, now)); },
   });
   /**
    * E2.1 (#725) — THE THIRTY-SECOND JOB, `dailyIst` 00:05: rent, nursing and RMO lines for every admission, one per

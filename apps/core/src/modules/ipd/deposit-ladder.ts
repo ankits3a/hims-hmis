@@ -67,6 +67,8 @@ export const IPD_DEPOSIT_RECIPIENT_ROLES: Record<DepositLevel, readonly string[]
 export const IPD_CLINICAL_ROLES: readonly string[] = [
   "doctor", "resident", "intensivist", "consultant", "surgeon", "anaesthetist", "pathologist", "radiologist", "radiology_resident",
   "medical_superintendent", "antimicrobial_steward",
+  // E4.1 (#733) — the ward nursing roles: a nurse is never sent a money notice either (decision 0058).
+  "ward_nurse", "nursing_supervisor", "nursing_superintendent",
 ];
 
 const SCHEME_PAYERS: ReadonlySet<string> = new Set(["pmjay", "state_scheme"]);

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { IPD_BEDS_TOPIC, IpdBedBoardSchema, newId } from "@hmis/contracts";
+import { IPD_BEDS_TOPIC, IPD_NURSING_TOPIC, IpdBedBoardSchema, newId } from "@hmis/contracts";
 import { events, ipdBedReservations, ipdBedStays, resources } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
@@ -115,7 +115,8 @@ describe("E1.1 bed intents and the capacity board", () => {
   });
 
   it("realtime: every bed act and every place change reaches the board topic; other resources do not", () => {
-    expect(ipdTopicsFor({ name: "ipd.bed.cleaned", payload: {} })).toEqual([IPD_BEDS_TOPIC]);
+    // E4.1 (#733): a bed act also refreshes the nurse station (a patient arrives, a bed is cleaned).
+    expect(ipdTopicsFor({ name: "ipd.bed.cleaned", payload: {} })).toEqual([IPD_BEDS_TOPIC, IPD_NURSING_TOPIC]);
     expect(ipdTopicsFor({ name: "resource.released", payload: { kind: "bed" } })).toEqual([IPD_BEDS_TOPIC]);
     expect(ipdTopicsFor({ name: "resource.status_changed", payload: { kind: "theatre" } })).toEqual([]);
   });

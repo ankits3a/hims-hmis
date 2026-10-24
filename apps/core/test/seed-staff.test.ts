@@ -193,6 +193,8 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       "modality_bridge", // PLAN 18b T1 — the machine account that pulls the modality worklist
       "mrd_officer",
       "nurse",
+      "nursing_superintendent", // IPD NURSING E4.1 (#733) — the head of nursing, by derivation from ROLE_MODEL
+      "nursing_supervisor", // IPD NURSING E4.1 (#733) — the shift in-charge, by derivation from ROLE_MODEL
       "opd_admin",
       "opd_scribe", // FD-30 — the OPD-door transcription seat (owner ruling 2026-09-12)
       "opd_slip_desk", // CONSULTED ON PAPER — the slip desk (owner ruling 2026-10-06, B)
@@ -255,6 +257,7 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       // so it grew on its own; what is pinned here is that somebody noticed.
       "tariff_editor",
       "vitals_desk",
+      "ward_nurse", // IPD NURSING E4.1 (#733) — the staff nurse on a ward, by derivation from ROLE_MODEL
     ]);
     // Derived from the three shipped constants rather than re-listed: a fourth copy of "the role
     // keys" is exactly the drift D2 exists to close (§2.54).

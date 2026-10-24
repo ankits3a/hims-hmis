@@ -165,3 +165,16 @@ export { placedCensus } from "./diet-seam";
 export type { PlacedPatient } from "./diet-seam";
 export { nowIdentities } from "./now-cards";
 export type { Identity as NowIdentity } from "./now-cards";
+// E4.1 (#733) — nursing: the assessment, vitals scored by NEWS2 / MEOWS / PEWS, one alert per breach, I/O, notes, the
+// shift handover, the nurse station and my shift, the four nursing Now cards, the minute sweep.
+export {
+  IPD_ASSESSMENT_RECORD, IPD_EWS_RESPOND, IPD_NURSING_VIEW, IPD_SHIFT_HANDOVER, IPD_VITALS_RECORD,
+} from "./manifest";
+export {
+  IPD_NURSING_STATES, acceptShiftHandover, acknowledgeEwsAlert, addNursingNote, dutyDoctorsFor, giveShiftHandover, ioDayStart,
+  isNightIst, recordIntakeOutput, recordNursingAssessment, recordVitals, scoreContextOf, shiftOf, sweepIpdNursing,
+} from "./nursing";
+export type { NursingSweepResult } from "./nursing";
+export { listShiftHandovers, nextDueOf, readHandoverDraft, readMyShift, readNurseStation, readNursingChart } from "./nursing-read";
+export { assessmentDueCard, ewsRisingCard, handoverPendingCard, overdueVitalsCard } from "./nursing-cards";
+export { IPD_NURSING_EVENT_NAMES } from "./nursing-events";

@@ -1154,7 +1154,7 @@ const IPD_PAYER_PAIRS: readonly string[] = ["billing_manager/ipd.payer.terms"];
 
 /** The README prose line authorising the IPD transfer (E3.1, decision 0072). Quoted, not paraphrased. */
 const IPD_TRANSFER_README_PROSE =
-  "`ipd.transfer.start` and `ipd.transfer.accept` are\nheld by `duty_manager` until the nursing roles are seeded";
+  "`ipd.transfer.start` and `ipd.transfer.accept` are\nheld by `duty_manager`, `ward_nurse` and `nursing_supervisor`";
 
 /**
  * IPD TRANSFER E3.1 (#729, decision 0072; built overnight 2026-10-13, awaiting owner review) — no ward_nurse or
@@ -1202,6 +1202,26 @@ const IPD_FAMILY_README_PROSE =
 /** IPD FAMILY E3.3 (#731, decision 0072, awaiting owner review) — the ward desk issues the link; the doctor sets the condition. */
 const IPD_FAMILY_PAIRS: readonly string[] = [
   "front_office/ipd.family.issue", "front_office_supervisor/ipd.family.issue", "duty_manager/ipd.family.issue", "doctor/ipd.condition.set",
+];
+
+/** The README prose line authorising the IPD nursing grants (E4.1, decision 0072). Quoted, not paraphrased. */
+const IPD_NURSING_README_PROSE =
+  "`ipd.ews.respond` (acknowledge\nan early-warning alert) by `doctor`, `nursing_supervisor` and `nursing_superintendent`";
+
+/**
+ * IPD NURSING E4.1 (#733, decision 0072; built 2026-10-13, awaiting owner review) — the three ward nursing roles and the
+ * doctor's and duty manager's nursing reads. No nursing role holds `ipd.condition.set` (the doctor's word).
+ */
+const NURSE_COMMON = [
+  "ipd.nursing.view", "ipd.vitals.record", "ipd.assessment.record", "ipd.handover.shift", "ipd.beds.view", "ipd.beds.clean",
+  "ipd.transfer.start", "ipd.transfer.accept", "ipd.discharge.view", "ipd.discharge.confirm", "maintenance.raise", "maintenance.confirm",
+  "transport.request",
+];
+const IPD_NURSING_PAIRS: readonly string[] = [
+  "doctor/ipd.nursing.view", "doctor/ipd.vitals.record", "doctor/ipd.ews.respond", "duty_manager/ipd.nursing.view",
+  ...NURSE_COMMON.map((p) => `ward_nurse/${p}`),
+  ...NURSE_COMMON.map((p) => `nursing_supervisor/${p}`), "nursing_supervisor/ipd.ews.respond", "nursing_supervisor/ipd.family.issue",
+  ...["ipd.nursing.view", "ipd.ews.respond", "ipd.beds.view", "ipd.discharge.view", "ipd.family.issue"].map((p) => `nursing_superintendent/${p}`),
 ];
 
 /** The README prose line authorising the 2026-09-20 approvals-spine ruling R1. Quoted, not paraphrased. */
@@ -1343,6 +1363,7 @@ const NON_TABLE_PAIRS: readonly string[] = [
   ...IPD_BILLDESK_PAIRS,
   ...IPD_DISCHARGE_PAIRS,
   ...IPD_FAMILY_PAIRS,
+  ...IPD_NURSING_PAIRS,
   ...APPROVALS_SPINE_PAIRS,
   ...PHARMACY_REPORTS_PAIRS,
   ...PHARMACY_TALLY_PAIRS,
@@ -1753,6 +1774,8 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // DIET E4.4 (#736) — the dietician and the kitchen staff, appended. Grants and no holders.
       "dietician",
       "kitchen_staff",
+      // IPD NURSING E4.1 (#733) — the three ward nursing roles, appended. Grants and no holders.
+      "ward_nurse", "nursing_supervisor", "nursing_superintendent",
     ]);
     expect(Object.fromEntries(ROLE_MODEL.map((r) => [r.roleKey, r.permissions.length]))).toEqual({
       // Plan 09 / DD18 moved four of these: +3 each to the two desk roles and the cashier (read,
@@ -1895,6 +1918,9 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       maintenance_staff: 5, // E1.5 MAINTENANCE — tasks.view, tasks.work, maintenance.view, .work, .raise
       dietician: 8, // DIET E4.4 (#736) — the seven diet.* strings and tasks.view
       kitchen_staff: 2, // DIET E4.4 (#736) — diet.view, diet.kitchen
+      ward_nurse: 13, // IPD NURSING E4.1 (#733) — the four nursing strings, beds view/clean, transfers, discharge view/confirm, repairs, porter
+      nursing_supervisor: 15, // IPD NURSING E4.1 (#733) — the ward nurse's thirteen, ipd.ews.respond and ipd.family.issue
+      nursing_superintendent: 5, // IPD NURSING E4.1 (#733) — nursing view, ews respond, beds view, discharge view, family callbacks
       antimicrobial_steward: 3, // PHARMACY STAGE D5 — approvals.requests.read and .decide (it is the approverRole) and pharmacy.antimicrobial.approve
     });
     // PLAN 07c T9 — 156 → 158: `staff.reports.read` to `front_office_supervisor` and to
@@ -2253,6 +2279,8 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // DIET E4.4 appends the dietician and the kitchen staff.
       "dietician",
       "kitchen_staff",
+      // IPD NURSING E4.1 appends the three ward nursing roles.
+      "ward_nurse", "nursing_supervisor", "nursing_superintendent",
     ]);
     // `nurse` is now the ONLY constant entry with no permission column anywhere — `duty_manager`
     // left this list on 2026-08-26 when Group C gave it one.
@@ -2285,6 +2313,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       "pharmacology_reviewer", // #618 / decision 0053 — signs the CRK formulary
       "support_staff", "services_supervisor", // E0.1 TASK ENGINE (issue #713)
       "maintenance_staff", // E1.5 MAINTENANCE (issue #722)
+      "ward_nurse", "nursing_supervisor", "nursing_superintendent", // IPD NURSING E4.1 (#733)
     ].sort());
     expect(Object.keys(LOCAL_ROLE_TITLES).filter((k) => opdKeys.includes(k))).toEqual([]);
     for (const key of modelKeys) expect(roleTitle(key).length).toBeGreaterThan(0);
@@ -2550,6 +2579,7 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(readme).toContain(IPD_BILLDESK_README_PROSE);
     expect(readme).toContain(IPD_DISCHARGE_README_PROSE);
     expect(readme).toContain(IPD_FAMILY_README_PROSE);
+    expect(readme).toContain(IPD_NURSING_README_PROSE);
     expect(readme).toContain(APPROVALS_SPINE_README_PROSE);
     // Parity P5's two sentences: who reads the office's reports, and who reads the margin.
     expect(readme).toContain(PHARMACY_REPORTS_README_PROSE);

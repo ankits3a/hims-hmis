@@ -1,9 +1,10 @@
-import { IPD_BEDS_TOPIC } from "@hmis/contracts";
+import { IPD_BEDS_TOPIC, IPD_NURSING_TOPIC } from "@hmis/contracts";
 import { IPD_ADMISSION_BOARD_EVENT_NAMES } from "./admission-events";
 import { IPD_BED_EVENT_NAMES } from "./bed-events";
 import { IPD_TRANSFER_EVENT_NAMES } from "./transfer-events";
 import { IPD_DISCHARGE_EVENT_NAMES } from "./discharge-events";
-import { IPD_BEDS_VIEW } from "./manifest";
+import { IPD_BEDS_VIEW, IPD_NURSING_VIEW } from "./manifest";
+import { IPD_NURSING_EVENT_NAMES } from "./nursing-events";
 import type { TailedEvent } from "../../kernel/realtime/tail";
 import type { TopicRouter, TopicSpace } from "../../kernel/realtime/gateway";
 
@@ -12,7 +13,11 @@ import type { TopicRouter, TopicSpace } from "../../kernel/realtime/gateway";
  * Every IPD bed act, and every registry change to a place (a bed loaded, a ward renamed, a kernel release), tells
  * the board to refetch; the board never patches itself from an event payload.
  */
-export const IPD_TOPIC_SPACES: TopicSpace[] = [{ prefix: IPD_BEDS_TOPIC.split(":")[0]!, permission: IPD_BEDS_VIEW }];
+export const IPD_TOPIC_SPACES: TopicSpace[] = [
+  { prefix: IPD_BEDS_TOPIC.split(":")[0]!, permission: IPD_BEDS_VIEW },
+  // E4.1 (#733) — the nurse station and my shift refetch on any nursing event (ids only in the payloads).
+  { prefix: IPD_NURSING_TOPIC.split(":")[0]!, permission: IPD_NURSING_VIEW },
+];
 
 const RESOURCE_NAMES = [
   "resource.registered", "resource.updated", "resource.status_changed", "resource.assigned", "resource.released",
@@ -28,10 +33,12 @@ const BOARD_NAMES: readonly string[] = [
   ...IPD_DISCHARGE_EVENT_NAMES,
 ];
 
-export const IPD_REALTIME_NAMES: string[] = [...BOARD_NAMES, ...RESOURCE_NAMES];
+export const IPD_REALTIME_NAMES: string[] = [...BOARD_NAMES, ...RESOURCE_NAMES, ...IPD_NURSING_EVENT_NAMES];
 
 export function ipdTopicsFor(e: Pick<TailedEvent, "name" | "payload">): string[] {
-  if (BOARD_NAMES.includes(e.name)) return [IPD_BEDS_TOPIC];
+  // E4.1 (#733): a bed act also moves the station (a patient arrives or leaves); a nursing act moves only the station.
+  if (BOARD_NAMES.includes(e.name)) return [IPD_BEDS_TOPIC, IPD_NURSING_TOPIC];
+  if (IPD_NURSING_EVENT_NAMES.includes(e.name)) return [IPD_NURSING_TOPIC];
   const kind = (e.payload as { kind?: unknown } | null)?.kind;
   return typeof kind === "string" && PLACE_KINDS.has(kind) ? [IPD_BEDS_TOPIC] : [];
 }
