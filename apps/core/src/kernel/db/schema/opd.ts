@@ -1542,6 +1542,30 @@ export const opdLasaPairs = pgTable(
 );
 
 /**
+ * SPEC #613 — THE PHARMACIST'S ABBREVIATION LIST: "amox" means amoxicillin. One abbreviation names one
+ * moiety. The alias pipeline uses a row ONLY when it is active AND signed (`reviewed_by`): the opposite
+ * of `opd_lasa_pairs`, which warns while unreviewed, because a list that answers must be stricter than
+ * one that only warns. The shipped rows arrive unsigned.
+ */
+export const opdMedicineAbbreviations = pgTable(
+  "opd_medicine_abbreviations",
+  {
+    id: text("id").primaryKey(),
+    abbreviation: text("abbreviation").notNull(),
+    moiety: text("moiety").notNull(),
+    active: boolean("active").notNull().default(true),
+    reviewedBy: text("reviewed_by"),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("opd_medicine_abbreviations_abbreviation_uq").on(t.abbreviation),
+    check("opd_medicine_abbreviations_lower_ck", sql`${t.abbreviation} = lower(${t.abbreviation}) and ${t.moiety} = lower(${t.moiety}) and ${t.abbreviation} <> ${t.moiety}`),
+    check("opd_medicine_abbreviations_reviewed_ck", sql`(${t.reviewedBy} is null) = (${t.reviewedAt} is null)`),
+  ],
+);
+
+/**
  * PHONE CONSULT — A WORD THAT MATCHED NOTHING. A medicine, test or diagnosis term a doctor typed
  * or spoke that the catalogue could not answer. The TERM only (≤ 60 characters), never a patient,
  * a visit or the sentence around it. It feeds a later alias tool; nothing reads it to decide care.

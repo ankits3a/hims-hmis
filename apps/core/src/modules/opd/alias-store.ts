@@ -2,13 +2,13 @@ import { and, eq, inArray } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
-import { cdsAliases } from "../../kernel/db/schema";
+import { cdsAliases, opdMedicineAbbreviations } from "../../kernel/db/schema";
 import { chooserFor, openAiDecisionsClient } from "../../kernel/inference/openai-decisions";
 import { openAiKeyFromFile } from "../../kernel/inference/openai-speech";
-import { aliasCandidatePool, medicinesByIds, ndpsClassOfMoieties, saltsByIds } from "../formulary";
+import { aliasCandidatePool, medicinesByIds, ndpsClassOfMoieties, saltsByIds, spellingNeighbours } from "../formulary";
 import type { NicknameLookup } from "../formulary";
 import { headOf, isControlled, normaliseTerm, readTerm } from "./alias-pipeline";
-import type { AliasDeps, AliasProposal } from "./alias-pipeline";
+import type { AliasDeps, AliasProposal, MedicineAbbreviation } from "./alias-pipeline";
 import { lasaPairs, lasaPartner } from "./consult-guards";
 
 /**
@@ -40,7 +40,14 @@ export function aliasDepsFrom(db: Db, config: AppConfig): AliasDeps {
     reviewer: !enabled ? null : openAiDecisionsClient(config.decisions, () => openAiKeyFromFile(config.openaiKeyFile)),
     chooserLine,
     reviewerLine,
+    spelling: { neighbours: (word) => spellingNeighbours(db, word), abbreviations: () => medicineAbbreviations(db) },
   };
+}
+
+/** SPEC #613 — the pharmacist's abbreviation list as the pipeline reads it. `signed` is a person's review; only signed, active rows answer. */
+export async function medicineAbbreviations(db: Db): Promise<MedicineAbbreviation[]> {
+  const rows = await db.select().from(opdMedicineAbbreviations);
+  return rows.map((r) => ({ abbreviation: r.abbreviation, moiety: r.moiety, active: r.active, signed: r.reviewedBy !== null }));
 }
 
 /**

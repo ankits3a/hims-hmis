@@ -1569,6 +1569,13 @@
       "when": 1792593453586,
       "tag": "0224_lab_slip_scans",
       "breakpoints": true
+    },
+    {
+      "idx": 224,
+      "version": "7",
+      "when": 1792733004171,
+      "tag": "0225_opd_medicine_abbreviations",
+      "breakpoints": true
     }
   ]
 }
