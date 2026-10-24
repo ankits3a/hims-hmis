@@ -16,6 +16,7 @@ import type { WireOrderableTest } from "../lib/ordering-api";
 import { AllergyFlags } from "./ipd-emar-flags";
 import { SinceYesterday } from "./ipd-since";
 import "./ipd-rounds.css";
+import { dateLocale } from "../lib/date-locale";
 
 /*
  * E4.2 (#734) — ROUNDS, the doctor's phone or tablet and the ward desktop (spec §4.9 E).
@@ -30,7 +31,7 @@ import "./ipd-rounds.css";
  */
 
 const when = (iso: string): string =>
-  new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })
+  new Intl.DateTimeFormat(dateLocale(undefined, "en-GB"), { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })
     .format(new Date(iso));
 
 function Identity({ p, bed, ward, boarded, t }: {

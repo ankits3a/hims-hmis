@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type React from "react";
 import type { IpdSinceLine, IpdSinceYesterday } from "@hmis/contracts";
 import { getSince, polishSince } from "../lib/ipd-copilot-api";
+import { dateLocale } from "../lib/date-locale";
 
 /*
  * E5.3 (#740) — "SINCE YESTERDAY", the first block of the rounds patient page (spec §4.9 E).
@@ -17,7 +18,7 @@ import { getSince, polishSince } from "../lib/ipd-copilot-api";
 const clock = (iso: string): string =>
   new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
 const dayClock = (iso: string): string =>
-  new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
+  new Intl.DateTimeFormat(dateLocale(undefined, "en-GB"), { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
 
 const istDay = (iso: string): number => Math.floor((new Date(iso).getTime() + 330 * 60_000) / 86_400_000);
 /**
