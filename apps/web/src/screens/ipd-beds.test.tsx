@@ -57,6 +57,7 @@ function boardOf(wall: boolean): IpdBedBoard {
       blocked: 0, blockedPastReturn: 0, incumbent: 1, overflow: { occupied: 0, total: 1 }, outsideCensus: { occupied: 1, total: 1 },
       dischargesToday: 3, waiting: { count: 0, longestMinutes: null },
     },
+    waiting: [],
     floors: [{
       id: id(1), code: "F05", name: "Floor 5 · Medicine", census: { occupied: 2, total: 4 },
       wards: [
@@ -112,6 +113,24 @@ describe("Beds capacity board (E1.1)", () => {
   it("the waiting column is the shell with an empty state until admissions arrive", async () => {
     renderWithRouter(<IpdBedsUnderTest />, "/ipd/beds");
     expect(await screen.findByTestId("ipd-beds-waiting-empty")).toHaveTextContent("No one waiting");
+  });
+
+  it("E1.2 — the waiting column lists open admission requests, oldest first, each opening the Admit sheet", async () => {
+    const b = boardOf(false);
+    api.getBedBoard.mockResolvedValue({
+      ...b, totals: { ...b.totals, waiting: { count: 1, longestMinutes: 42 } },
+      waiting: [{
+        admissionId: id(77), state: "reserved", source: "opd_advice", initials: "R.K.", name: "Ramesh Kumar", requestedClass: "general",
+        isolation: "none", icu: false, requestedAt: "2030-01-01T04:30:00.000Z", waitMinutes: 42, reservedBedCode: "F05-MED-F-B03",
+      }],
+    });
+    renderWithRouter(<IpdBedsUnderTest />, "/ipd/beds");
+    const card = await screen.findByTestId("ipd-beds-waiting-card");
+    expect(card).toHaveTextContent("Ramesh Kumar");
+    expect(card).toHaveTextContent("OPD advice");
+    expect(card).toHaveTextContent("42 min");
+    expect(card).toHaveTextContent("Held · F05-MED-F-B03");
+    expect(screen.queryByTestId("ipd-beds-waiting-empty")).toBeNull();
   });
 
   it("wall mode asks the server for initials only and shows no name and no act", async () => {

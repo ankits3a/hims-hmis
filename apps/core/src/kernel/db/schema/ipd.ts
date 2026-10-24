@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, index, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { bigint, boolean, check, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { patients } from "./patients";
 import { resources } from "./resources";
 
@@ -110,5 +110,163 @@ export const ipdBedStays = pgTable(
     check("ipd_bed_stays_billed_class_ck", sql`${t.billedClass} in (${CLASS_LIST})`),
     check("ipd_bed_stays_placed_as_ck", sql`${t.placedAs} is null or ${t.placedAs} in ('male', 'female')`),
     check("ipd_bed_stays_class_change_ck", sql`${t.classChange} is null or ${t.classChange} in ('upgrade', 'downgrade')`),
+  ],
+);
+
+// ═══════════════════════════════════════ E1.2 (#719) — admission ═══════════════════════════════════════
+
+/** The states in which an admission is OPEN: one per patient (§4.2), enforced by a partial unique index. */
+export const IPD_OPEN_ADMISSION_STATES = ["requested", "reserved", "admitted", "transferring", "fit_declared", "discharging"] as const;
+const OPEN_STATES_SQL = sql.raw(IPD_OPEN_ADMISSION_STATES.map((s) => `'${s}'`).join(", "));
+
+/**
+ * One row per admission (spec SPEC-ipd-core §4.2): the request, the payer and plan the deposit was computed from, the
+ * consent, the IP number and the downtime serial. `state` MIRRORS the admission workflow instance (one instance per
+ * admission, spec v4.6 §10.2): every state change moves both in one transaction. The admission is the IP encounter:
+ * its id is the encounter id. Money is integer paise.
+ */
+export const ipdAdmissions = pgTable(
+  "ipd_admissions",
+  {
+    id: text("id").primaryKey(),
+    patientId: text("patient_id").notNull(),
+    workflowInstanceId: text("workflow_instance_id").notNull(),
+    state: text("state").notNull(),
+    source: text("source").notNull(),
+    sourceRef: text("source_ref"),
+    consultantId: text("consultant_id").notNull(),
+    coveringFor: text("covering_for"),
+    department: text("department"),
+    requestedClass: text("requested_class").notNull(),
+    isolation: text("isolation").notNull(),
+    icu: boolean("icu").notNull(),
+    placeAs: text("place_as"),
+    provisionalDiagnosis: text("provisional_diagnosis"),
+    mlc: boolean("mlc").notNull().default(false),
+    plannedFor: timestamp("planned_for", { withTimezone: true }),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull(),
+    /** Advice validity: planned date (or request) + 24 h. */
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    requestedBy: text("requested_by").notNull(),
+    payerKind: text("payer_kind"),
+    coverageId: text("coverage_id"),
+    planKind: text("plan_kind"),
+    procedureEstimatePaise: bigint("procedure_estimate_paise", { mode: "number" }),
+    estimatePaise: bigint("estimate_paise", { mode: "number" }),
+    depositRequiredPaise: bigint("deposit_required_paise", { mode: "number" }),
+    depositBasis: text("deposit_basis"),
+    depositExemption: text("deposit_exemption"),
+    depositExemptionApprovalId: text("deposit_exemption_approval_id"),
+    consent: jsonb("consent").$type<Record<string, unknown>>(),
+    consentAt: timestamp("consent_at", { withTimezone: true }),
+    icuApprovalId: text("icu_approval_id"),
+    admissionYear: integer("admission_year"),
+    admissionSerial: integer("admission_serial"),
+    admissionNo: text("admission_no"),
+    admittedAt: timestamp("admitted_at", { withTimezone: true }),
+    admittedBy: text("admitted_by"),
+    stabilisedAt: timestamp("stabilised_at", { withTimezone: true }),
+    downtimeSerial: text("downtime_serial"),
+    /** Downtime: the paper deposit receipt's number, when the paper form carried one. */
+    paperReceiptNo: text("paper_receipt_no"),
+    /** Downtime back-fill: the deposit was taken (or not) on paper; the bill desk lists these until checked. */
+    depositCheckPending: boolean("deposit_check_pending").notNull().default(false),
+    cancelReason: text("cancel_reason"),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    endedBy: text("ended_by"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("ipd_admissions_open_patient_ux").on(t.patientId).where(sql`${t.state} in (${OPEN_STATES_SQL})`),
+    uniqueIndex("ipd_admissions_no_ux").on(t.admissionNo).where(sql`${t.admissionNo} is not null`),
+    uniqueIndex("ipd_admissions_serial_ux").on(t.admissionYear, t.admissionSerial).where(sql`${t.admissionSerial} is not null`),
+    uniqueIndex("ipd_admissions_downtime_serial_ux").on(t.downtimeSerial).where(sql`${t.downtimeSerial} is not null`),
+    uniqueIndex("ipd_admissions_instance_ux").on(t.workflowInstanceId),
+    index("ipd_admissions_state_idx").on(t.state),
+    index("ipd_admissions_patient_idx").on(t.patientId),
+    check("ipd_admissions_source_ck", sql`${t.source} in ('opd_advice', 'ot_daycare_conversion', 'er', 'direct', 'transfer_in', 'downtime')`),
+    check("ipd_admissions_payer_ck", sql`${t.payerKind} is null or ${t.payerKind} in ('cash', 'insurance_cashless', 'insurance_reimbursement', 'pmjay', 'state_scheme', 'corporate')`),
+    check("ipd_admissions_money_ck", sql`coalesce(${t.estimatePaise}, 0) >= 0 and coalesce(${t.depositRequiredPaise}, 0) >= 0 and coalesce(${t.procedureEstimatePaise}, 0) >= 0`),
+  ],
+);
+
+/**
+ * The manual authorisation record (§2 answer 5): every entry is a row — the initial pre-auth, each enhancement, the
+ * final approval or a denial, a payer change. Rows are never updated; `approved_total_paise` is the running total.
+ */
+export const ipdPayerAuths = pgTable(
+  "ipd_payer_auths",
+  {
+    id: text("id").primaryKey(),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    payerKind: text("payer_kind").notNull(),
+    payerRef: text("payer_ref"),
+    entry: text("entry").notNull(),
+    preAuthNumber: text("pre_auth_number"),
+    status: text("status").notNull(),
+    approvedAmountPaise: bigint("approved_amount_paise", { mode: "number" }),
+    approvedTotalPaise: bigint("approved_total_paise", { mode: "number" }).notNull(),
+    coversFrom: timestamp("covers_from", { withTimezone: true }),
+    provisionalCashlessSigned: boolean("provisional_cashless_signed").notNull(),
+    counsellingDocumentId: text("counselling_document_id"),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("ipd_payer_auths_admission_idx").on(t.admissionId, t.recordedAt),
+    check("ipd_payer_auths_entry_ck", sql`${t.entry} in ('initial', 'enhancement', 'final', 'denial', 'payer_change')`),
+    check("ipd_payer_auths_status_ck", sql`${t.status} in ('requested', 'approved', 'partially_approved', 'denied', 'final_approved')`),
+  ],
+);
+
+/** A deposit receipt (billing's advance) taken for one admission, and who paid it: a refund goes back to them. */
+export const ipdAdmissionDeposits = pgTable(
+  "ipd_admission_deposits",
+  {
+    id: text("id").primaryKey(),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    receiptId: text("receipt_id").notNull(),
+    receiptNo: text("receipt_no").notNull(),
+    amountPaise: bigint("amount_paise", { mode: "number" }).notNull(),
+    tender: text("tender").notNull(),
+    payerName: text("payer_name").notNull(),
+    payerRelation: text("payer_relation").notNull(),
+    payerPhone: text("payer_phone"),
+    nonCoveredApprovalId: text("non_covered_approval_id"),
+    /** The intent's idempotency key, committed WITH the receipt: a retry finds this row and never takes money twice. */
+    idempotencyKey: text("idempotency_key").notNull(),
+    takenBy: text("taken_by").notNull(),
+    takenAt: timestamp("taken_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("ipd_admission_deposits_receipt_ux").on(t.receiptId),
+    uniqueIndex("ipd_admission_deposits_key_ux").on(t.takenBy, t.idempotencyKey),
+    index("ipd_admission_deposits_admission_idx").on(t.admissionId),
+    check("ipd_admission_deposits_amount_ck", sql`${t.amountPaise} > 0`),
+  ],
+);
+
+/** Every band printed: one live band per admission; a reprint voids the old one with its reason (§4.2). */
+export const ipdBands = pgTable(
+  "ipd_bands",
+  {
+    id: text("id").primaryKey(),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    serial: text("serial").notNull(),
+    size: text("size").notNull(),
+    site: text("site").notNull(),
+    printerId: text("printer_id"),
+    status: text("status").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    printedBy: text("printed_by").notNull(),
+    printedAt: timestamp("printed_at", { withTimezone: true }).notNull(),
+    voidReason: text("void_reason"),
+    voidedBy: text("voided_by"),
+    voidedAt: timestamp("voided_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("ipd_bands_serial_ux").on(t.serial),
+    uniqueIndex("ipd_bands_live_admission_ux").on(t.admissionId).where(sql`${t.status} = 'printed'`),
+    check("ipd_bands_status_ck", sql`${t.status} in ('printed', 'void')`),
   ],
 );

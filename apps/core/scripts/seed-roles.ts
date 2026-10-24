@@ -90,6 +90,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "ipd.beds.manage",
       // E1.5 MAINTENANCE (issue #722) — the desk reports a fault it sees (Beds board "Report a fault").
       "maintenance.raise",
+      // IPD ADMISSION E1.2 (#719, decision 0072) — the admission desk; README "IPD admission" prose.
+      "ipd.admit.request", "ipd.admit", "ipd.payer.manage", "ipd.band.print",
       "opd.masters.read",
       "opd.appointments.read",
       "opd.appointments.manage",
@@ -135,6 +137,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "ipd.beds.clean",
       // E1.5 MAINTENANCE (issue #722) — reports a fault; confirms a repair through `ipd.beds.clean` (the kind's verifier list).
       "maintenance.raise",
+      // IPD ADMISSION E1.2 (#719, decision 0072) — the admission desk; README "IPD admission" prose.
+      "ipd.admit.request", "ipd.admit", "ipd.payer.manage", "ipd.band.print",
       "opd.masters.read",
       // RC-1 T2 / D5 — the counter-flow lock pill. DECIDED (2026-08-31): no `counter_supervisor`
       // role is minted; this role already carries the desk's SLA escalation and queue-transfer
@@ -226,6 +230,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "doctor",
     permissions: [
+      // IPD ADMISSION E1.2 (#719) — a doctor advises admission (raises the request); answers carry no money (0058).
+      "ipd.admit.request",
       "opd.masters.read",
       "opd.appointments.read",
       "opd.visits.read",
@@ -707,6 +713,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "billing_manager",
     permissions: [
+      // IPD ADMISSION E1.2 (#719) — the TPA desk sits in billing: the manual authorisation record.
+      "ipd.payer.manage",
       /**
        * PLAN 17 T2 / DD6 — **THE INTERLOCK'S OVERRIDE, AND IT LIVES HERE RATHER THAN IN THE LAB.**
        *
@@ -1130,6 +1138,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "housekeeping.view",
       // E1.5 MAINTENANCE (issue #722) — the maintenance board, raise, confirm a repair and cancel or re-dispatch a ticket out of hours.
       "maintenance.view", "maintenance.raise", "maintenance.confirm", "maintenance.manage",
+      // IPD ADMISSION E1.2 (#719) — the duty manager runs the admission desk at night (and the emergency lane).
+      "ipd.admit.request", "ipd.admit", "ipd.payer.manage", "ipd.band.print",
     ],
   },
   /**

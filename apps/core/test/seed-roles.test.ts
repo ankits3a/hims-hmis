@@ -1061,6 +1061,23 @@ const IPD_BEDS_PAIRS: readonly string[] = [
   "medical_superintendent/ipd.beds.view", "owner/ipd.beds.view", "admin/ipd.beds.view",
 ];
 
+/** The README prose line authorising the IPD admission desk (E1.2, decision 0072). Quoted, not paraphrased. */
+const IPD_ADMIT_README_PROSE =
+  "`ipd.band.print` (front_office, front_office_supervisor, duty_manager) prints and reprints the wristband.";
+
+/**
+ * IPD ADMISSION E1.2 (#719, decision 0072; built overnight 2026-10-12, awaiting owner review) — the admission desk
+ * (front office, its supervisor, the duty manager at night) holds the four; a doctor raises requests only (no money,
+ * 0058); the TPA desk in billing keeps the authorisation record.
+ */
+const IPD_ADMIT_PAIRS: readonly string[] = [
+  "front_office/ipd.admit.request", "front_office/ipd.admit", "front_office/ipd.payer.manage", "front_office/ipd.band.print",
+  "front_office_supervisor/ipd.admit.request", "front_office_supervisor/ipd.admit", "front_office_supervisor/ipd.payer.manage",
+  "front_office_supervisor/ipd.band.print",
+  "duty_manager/ipd.admit.request", "duty_manager/ipd.admit", "duty_manager/ipd.payer.manage", "duty_manager/ipd.band.print",
+  "doctor/ipd.admit.request", "billing_manager/ipd.payer.manage",
+];
+
 /** The README prose line authorising the 2026-09-20 approvals-spine ruling R1. Quoted, not paraphrased. */
 const APPROVALS_SPINE_README_PROSE =
   "The approvals spine (owner ruling R1,\n2026-09-20)";
@@ -1190,6 +1207,7 @@ const NON_TABLE_PAIRS: readonly string[] = [
   ...LAB_METRICS_PAIRS,
   ...HOSPITAL_NUMBERS_PAIRS,
   ...IPD_BEDS_PAIRS,
+  ...IPD_ADMIT_PAIRS,
   ...APPROVALS_SPINE_PAIRS,
   ...PHARMACY_REPORTS_PAIRS,
   ...PHARMACY_TALLY_PAIRS,
@@ -1494,7 +1512,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       maintenance: 5, // E1.5 MAINTENANCE (issue #722) — maintenance.view, .raise, .work, .confirm, .manage
       housekeeping: 2, // E1.4 HOUSEKEEPING (issue #721) — housekeeping.view, housekeeping.verify_terminal
       attendance: 1, // STAFF ATTENDANCE (owner 2026-10-09) — attendance.all.read; a team and oneself are computed, not granted
-      ipd: 4, // IPD BEDS E1.1 (2026-10-12), read off the failing run: ipd.beds.view, .manage, .clean, .overflow
+      ipd: 8, // IPD ADMISSION E1.2 (2026-10-12): +4, ipd.admit.request, .admit, ipd.payer.manage, ipd.band.print; IPD BEDS E1.1 (2026-10-12), read off the failing run: ipd.beds.view, .manage, .clean, .overflow
       ordering: 0, // DECISION 0067 — no permission of its own: rides tariff.read, tariff.services.manage and orders.place
       "doctor-desk": 0, // DD-0 #626 — no permission of its own; rides opd.consult
       radiology: 22, // HOSPITAL NUMBERS (#777, 2026-10-13), read off the failing run: +1, radiology.metrics.read; 18-S RS12 — `radiology.pacs.interface`, `radiology.pacs.reconcile`; 18-S RS5 — `radiology.contrast.record`; 18-S RS4 — `radiology.devices.manage`; 18-S RS3 — `radiology.display.read`; PLAN 18b T1 — `radiology.mwl.read`
@@ -1620,7 +1638,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // FD-30 — 20 -> 21 with `opd.prescription.draft`. `RequirePermission` takes one string, so the
       // draft routes BOTH seats read are gated on the scribe's key and the doctor is given it here.
       // It widens nothing: `opd.consult` is the whole prescribing surface and drafting is less.
-      doctor: 24, // 20-U U5a, read off the failing run: +1, roster.read; STAGE D2: +1, pharmacy.incidents.record; STAGE D1: +1, pharmacy.adr.record; VD-1 T4 — 19 -> 20, the same string: the bay reads it and the clinician it hands to must too
+      doctor: 25, // IPD ADMISSION E1.2: +1, ipd.admit.request; 20-U U5a, read off the failing run: +1, roster.read; STAGE D2: +1, pharmacy.incidents.record; STAGE D1: +1, pharmacy.adr.record; VD-1 T4 — 19 -> 20, the same string: the bay reads it and the clinician it hands to must too
       // Plan 13 / DD14: +1, the registry read — the same room book this role already administers,
       // now behind a kernel permission. No new authority (see RESOURCES_PAIRS).
       opd_scribe: 18, // CONSULTED ON PAPER (owner 2026-10-06): +3 (opd.consult.paper, formulary.read, tariff.read); FD-31 +transcribe; FD-30 — the OPD-door transcription seat (owner ruling 2026-09-12)
@@ -1654,7 +1672,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // patient who is asking.
       // PLAN 18a T2 — 19 -> 20: the imaging bill-decision queue (T7). A repeat film and a
       // contrast escalation are questions answered in money, which is this office's call.
-      billing_manager: 22, // parity P5 (Tally): +1, pharmacy.tally.export; parity P5: +1, pharmacy.reports.read (not the margin)
+      billing_manager: 23, // IPD ADMISSION E1.2: +1, ipd.payer.manage; parity P5 (Tally): +1, pharmacy.tally.export; parity P5: +1, pharmacy.reports.read (not the margin)
       // Group A, 2026-08-26: +4 — tariff.read, the activator key, tariff config, and approval-type
       // governance. `owner` is now the activator for BOTH ceremonies, workflow and price list.
       // Group B then added +3: the invoice, the daybook and the cashier sessions. NOT patients.read.
@@ -2372,6 +2390,7 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(readme).toContain(MAINTENANCE_README_PROSE);
     expect(readme).toContain(COPILOT_HALT_README_PROSE);
     expect(readme).toContain(IPD_BEDS_README_PROSE);
+    expect(readme).toContain(IPD_ADMIT_README_PROSE);
     expect(readme).toContain(APPROVALS_SPINE_README_PROSE);
     // Parity P5's two sentences: who reads the office's reports, and who reads the margin.
     expect(readme).toContain(PHARMACY_REPORTS_README_PROSE);

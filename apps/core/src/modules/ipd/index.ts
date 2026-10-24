@@ -42,3 +42,24 @@ export type { BedRuleBreach, BedRuleContext, BedRulePatient } from "./bed-rules"
 export { initialsOf, readBedBoard } from "./beds-board";
 export { IPD_BED_EVENT_NAMES } from "./bed-events";
 export { IPD_REALTIME_NAMES, IPD_TOPIC_SPACES, ipdTopicRouter, ipdTopicsFor } from "./realtime";
+// E1.2 (#719) — admission: the intents, the deposit, the band, the payer record, the desk's reads, the approvals.
+export {
+  IPD_ADMIT, IPD_ADMIT_REQUEST, IPD_BAND_PRINT, IPD_PAYER_MANAGE,
+} from "./manifest";
+export {
+  admit, backfillDowntime, cancelAdmission, emergencyAdmit, incompleteOf, recordConsent, recordStabilised, requestAdmission,
+} from "./admissions";
+export {
+  IPD_DEPOSIT_COMPONENTS, IPD_DEPOSIT_POLICY, ipdNonPayableDepositCode, ipdSchemeReceiptGuard, planAdmission, quoteDeposit,
+  registerIpdReceiptGuard, takeDeposit,
+} from "./deposit";
+export type { DepositQuote, DepositQuoteArgs } from "./deposit";
+export { allergyWords, printBand, reprintBand } from "./bands";
+export { recordPayerAuth } from "./payer";
+export {
+  askApproval, askEmergencyIcuApproval, bedProposalsFor, pendingDepositChecks, consultantChoices, listDeskAdmissions, quotesFor, recentAdvice, viewAdmission,
+} from "./admission-read";
+export { IPD_APPROVAL_TYPES, IPD_APPROVAL_TYPE_KEYS, ipdApprovalDefinition, registerIpdApprovalTypes } from "./approval-types";
+export { IPD_ADMISSION_BOARD_EVENT_NAMES } from "./admission-events";
+export { assignBedIn, endAdmissionHolds, placementContext, proposeBeds, readBedFacts } from "./beds";
+export type { BedPlacementInput, PlacementContext } from "./beds";

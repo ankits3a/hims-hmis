@@ -10,6 +10,7 @@ import {
 import { withIdempotency } from "../billing";
 import { getPatientSummaries } from "../patients";
 import { IpdBedAttributesSchema } from "./bed-attributes";
+import { admissionAdvisoryLock, linkPlacement, linkReservation, linkReservationEnded } from "./admission-core";
 import {
   bedAssigned, bedBlocked, bedCleaned, bedIncumbentReleased, bedOccupied, bedReservationReleased, bedReserved,
   bedUnblocked,
@@ -164,8 +165,9 @@ async function roomGender(tx: Tx, roomId: string | null, bedId: string): Promise
 }
 
 /** Serialises every act on one admission (one bed per admission), taken before the room and bed locks. */
+/** The admission's advisory lock (one definition, `admission-core.ts`, shared with the admission intents). */
 async function lockAdmission(tx: Tx, admissionId: string): Promise<void> {
-  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`ipd_admission:${admissionId}`}))`);
+  await admissionAdvisoryLock(tx, admissionId);
 }
 
 function isUniqueViolation(e: unknown): boolean {
@@ -217,6 +219,54 @@ export async function nextRuleValidBeds(
     if (out.length === 3) break;
   }
   return out;
+}
+
+const EQUIPMENT_WORDS: Record<string, string> = {
+  monitor: "Monitor", ventilator_ready: "Ventilator ready", oxygen_point: "Oxygen point", suction: "Suction", infusion_pumps: "Infusion pumps",
+};
+const GENDER_WORDS: Record<string, string> = { male: "Male bay", female: "Female bay", any: "Any gender", paediatric: "Paediatric" };
+
+/**
+ * E1.2 — the Admit sheet's "top three beds" (§4.9 B): free, unheld, rule-valid beds of the requested class, the
+ * admission's own held bed first, then by code; each with its reasons in words. A proposal, not an act: the act
+ * re-checks every rule under lock. `freeByClass` counts the rule-valid free beds per class for the class cards.
+ */
+export async function proposeBeds(
+  db: Db, actor: Actor, args: { patientId: string; need: IpdBedNeed; at: Date; heldBedId?: string | null; limit?: number },
+): Promise<{ beds: { bedId: string; code: string; wardName: string | null; class: IpdBedClass; reasons: string[] }[]; freeByClass: Record<string, number> }> {
+  const patient = await patientFacts(db, actor, args.patientId, args.at);
+  const mayUseOverflow = await holds(db, actor, IPD_BEDS_OVERFLOW);
+  const free = await db.select().from(resources)
+    .where(and(eq(resources.kind, "bed"), eq(resources.status, "available"), isNull(resources.occupantRef)))
+    .orderBy(asc(resources.code));
+  const holdsRows = await db.select({ bedId: ipdBedReservations.bedId }).from(ipdBedReservations).where(eq(ipdBedReservations.status, "active"));
+  const reserved = new Set(holdsRows.map((r) => r.bedId).filter((b) => b !== args.heldBedId));
+  const parents = new Map((await db.select({ id: resources.id, name: resources.name, kind: resources.kind, parentId: resources.parentId })
+    .from(resources).where(inArray(resources.kind, ["ward", "hall", "room"]))).map((r) => [r.id, r] as const));
+  const wardOf = (b: BedRow): string | null => {
+    let p = b.parentId === null ? undefined : parents.get(b.parentId);
+    if (p?.kind === "room") p = p.parentId === null ? undefined : parents.get(p.parentId);
+    return p?.name ?? null;
+  };
+  const freeByClass: Record<string, number> = {};
+  const beds: { bedId: string; code: string; wardName: string | null; class: IpdBedClass; reasons: string[] }[] = [];
+  const ordered = [...free].sort((a, b) => (a.id === args.heldBedId ? -1 : b.id === args.heldBedId ? 1 : 0));
+  for (const b of ordered) {
+    if (reserved.has(b.id)) continue;
+    const attrs = bedAttributes(b);
+    if (attrs === null) continue;
+    const icuNeed = { ...args.need, requestedClass: attrs.class, icu: attrs.icu };
+    if (checkBedRules({ code: b.code, attributes: attrs }, patient, icuNeed, undefined, { roomGender: null, mayUseOverflow }) === null) {
+      freeByClass[attrs.class] = (freeByClass[attrs.class] ?? 0) + 1;
+    }
+    if (beds.length >= (args.limit ?? 3)) continue;
+    if (checkBedRules({ code: b.code, attributes: attrs }, patient, args.need, undefined, { roomGender: null, mayUseOverflow }) !== null) continue;
+    const reasons = [GENDER_WORDS[attrs.genderRule] ?? attrs.genderRule, ...attrs.equipment.map((e) => EQUIPMENT_WORDS[e] ?? e)];
+    if (attrs.isolation !== "none") reasons.push(`Isolation: ${attrs.isolation}`);
+    if (b.id === args.heldBedId) reasons.unshift("Held for this patient");
+    beds.push({ bedId: b.id, code: b.code, wardName: wardOf(b), class: attrs.class, reasons });
+  }
+  return { beds, freeByClass };
 }
 
 async function withNextBeds<T>(
@@ -304,6 +354,8 @@ export async function reserveBed(db: Db, actor: Actor, raw: unknown, opts: Opts 
         },
         actor, correlationId: input.admissionId, patientId: patient.id, occurredAt: at,
       }));
+      // E1.2: on a real admission the hold moves it requested → reserved (and checks the caller's copy of it).
+      await linkReservation(tx, actor, { admissionId: input.admissionId, patientId: patient.id, need: input.need, bedId: row.id, reservationId }, at);
       return { reservationId, bedId: row.id, state: "reserved" as const, expiresAt: expiresAt.toISOString() };
     });
   }), at);
@@ -317,15 +369,18 @@ async function releaseReservationCore(
   return withTx(db, async (tx) => {
     const peek = (await tx.select().from(ipdBedReservations).where(eq(ipdBedReservations.id, input.reservationId)))[0];
     if (peek === undefined) throw new IpdRefusal("reservation_not_found");
+    // E1.2 lock order: the admission's advisory lock before the bed (cancel takes it, then the row, then the bed).
+    await lockAdmission(tx, peek.admissionId);
     const { row } = await lockBed(tx, peek.bedId);
     const r = (await tx.select().from(ipdBedReservations).where(eq(ipdBedReservations.id, input.reservationId)).for("update"))[0]!;
     if (r.status !== "active") throw new IpdRefusal("reservation_ended", undefined, { status: r.status });
     // The lapse job only ends what has actually lapsed: a reservation renewed or re-read late is never cut short.
     if (input.reason === "lapsed" && r.expiresAt.getTime() > at.getTime()) throw new IpdRefusal("reservation_ended");
     await endReservation(tx, actor, r, row.code, input.reason, at);
-    // DECIDED (E1.1): with no admission record yet, the admission is reported back at `requested` (§0B: reserved →
-    // requested is the lapse's edge); ipd-admit moves the real workflow instance.
-    return { bedId: row.id, bedStatus: row.status as Output<"release_reservation">["bedStatus"], admissionState: "requested" as const };
+    // E1.2: a real admission with no other live hold goes reserved → requested (§0B: the lapse's edge). A request id
+    // with no admission row is reported back at `requested`, as E1.1 did.
+    const admissionState = await linkReservationEnded(tx, actor, r.admissionId, at);
+    return { bedId: row.id, bedStatus: row.status as Output<"release_reservation">["bedStatus"], admissionState };
   });
 }
 
@@ -370,66 +425,120 @@ export async function assignBed(db: Db, actor: Actor, raw: unknown, opts: Opts =
   await requirePermission(db, actor, IPD_BEDS_MANAGE);
   const at = opts.now ?? new Date();
   return once(db, actor, "assign_bed", input.idempotencyKey, input, () => withNextBeds(db, actor, { ...input, at }, async () => {
-    const patient = await patientFacts(db, actor, input.patientId, at);
-    const mayUseOverflow = await holds(db, actor, IPD_BEDS_OVERFLOW);
-    return withTx(db, async (tx) => {
-      await lockAdmission(tx, input.admissionId);
-      const { row, attrs, roomId } = await lockBed(tx, input.bedId);
-      if (row.status === "retired") throw new IpdRefusal("bed_retired", "Retired bed");
-      const elsewhere = (await tx.select().from(ipdBedStays)
-        .where(and(eq(ipdBedStays.admissionId, input.admissionId), isNull(ipdBedStays.endedAt))))[0];
-      if (elsewhere !== undefined) {
-        // Moving an admitted patient is a transfer (ipd-transfer), never a second assignment.
-        throw new IpdRefusal("admission_wrong_state", "Already on a bed", { bedId: elsewhere.bedId });
-      }
-      const held = await currentHold(tx, row, at);
-      if (held !== undefined && held.admissionId !== input.admissionId) {
-        throw new IpdRefusal("bed_not_available", "Bed is reserved", { reservationId: held.id, expiresAt: held.expiresAt.toISOString() });
-      }
-      if (row.occupantRef !== null || row.status !== "available") throw new IpdRefusal("bed_not_available", notAvailableRule(row));
-      if (await liveBlock(tx, row.id) !== undefined) throw new IpdRefusal("bed_not_available", "Bed is blocked");
-      await refuseOpenRepair(tx, row.id);
-      const breach = checkBedRules({ code: row.code, attributes: attrs }, patient, input.need, input.classChange, {
-        roomGender: await roomGender(tx, roomId, row.id), mayUseOverflow,
-      });
-      if (breach !== null) throw new IpdRefusal(breach.code, breach.bedRule);
-
-      await assignResource(tx, actor, KERNEL_RESOURCE_KINDS, row.id, {
-        occupantType: OCCUPANT_ADMISSION, occupantRef: input.admissionId, at, reason: "assign",
-      });
-      if (held !== undefined) {
-        await tx.update(ipdBedReservations)
-          .set({ status: "consumed", endedBy: actor.id, endedAt: at, endReason: "assigned" })
-          .where(eq(ipdBedReservations.id, held.id));
-      }
-      await endOtherReservations(tx, actor, input.admissionId, row.id, at);
-
-      const billedClass: IpdBedClass = input.protectBookedClass ?? IPD_BED_CLASS_INFO[attrs.class].billsAs ?? attrs.class;
-      const protectedUntil = input.protectBookedClass === undefined ? null : new Date(at.getTime() + PROTECT_HOURS * 3_600_000);
-      const stayId = newId();
-      await tx.insert(ipdBedStays).values({
-        id: stayId, bedId: row.id, admissionId: input.admissionId, patientId: patient.id, placedAs: placementGender(patient, input.need), bedClass: attrs.class,
-        billedClass, protectedUntil, classChange: input.classChange ?? null, startedBy: actor.id, startedAt: at,
-      });
-      const provenance = provenanceOf(actor);
-      await appendEvent(tx, bedAssigned.make({
-        payload: {
-          stayId, bedId: row.id, bedCode: row.code, admissionId: input.admissionId, patientId: patient.id,
-          bedClass: attrs.class, billedClass, classChange: input.classChange ?? null, reservationId: held?.id ?? null, provenance,
-        },
-        actor, correlationId: input.admissionId, patientId: patient.id, occurredAt: at,
-      }));
-      await appendEvent(tx, bedOccupied.make({
-        payload: { bedId: row.id, bedCode: row.code, admissionId: input.admissionId, patientId: patient.id, provenance },
-        actor, correlationId: input.admissionId, patientId: patient.id, occurredAt: at,
-      }));
-      return { admissionId: input.admissionId, bedId: row.id, billedClass, protectedUntil: protectedUntil?.toISOString() ?? null };
-    }).catch((e: unknown) => {
+    const ctx = await placementContext(db, actor, input.patientId, at);
+    return withTx(db, (tx) => assignBedIn(tx, db, actor, input, at, ctx)).catch((e: unknown) => {
       // Belt to the admission lock: the open-stay unique index answers as the rule, never as a raw 500.
       if (isUniqueViolation(e)) throw new IpdRefusal("admission_wrong_state", "Already on a bed");
       throw e;
     });
   }), at);
+}
+
+export type BedPlacementInput = {
+  admissionId: string; bedId: string; patientId: string; need: IpdBedNeed;
+  classChange?: "upgrade" | "downgrade"; protectBookedClass?: IpdBedClass;
+};
+export type PlacementContext = { patient: BedRulePatient & { id: string }; mayUseOverflow: boolean };
+
+/** The patient's rule facts and the overflow gate, read before the placing transaction. */
+export async function placementContext(db: Db, actor: Actor, patientId: string, at: Date): Promise<PlacementContext> {
+  return { patient: await patientFacts(db, actor, patientId, at), mayUseOverflow: await holds(db, actor, IPD_BEDS_OVERFLOW) };
+}
+
+/** `withNextBeds` for callers outside this file (admit): "bed just taken" answers with the next three beds. */
+export function withNextRuleValidBeds<T>(db: Db, actor: Actor, args: Parameters<typeof nextRuleValidBeds>[2], work: () => Promise<T>): Promise<T> {
+  return withNextBeds(db, actor, args, work);
+}
+
+/**
+ * THE PLACEMENT, inside the caller's transaction — `assign_bed`'s body, and what `admit`, the emergency lane and the
+ * downtime back-fill call so the bed and the admission move in ONE transaction (E1.2). Locks the room and the bed
+ * (lock order: room, bed, then IPD rows), re-checks every rule, occupies the bed and opens the stay.
+ * `viaAdmit`: the caller is moving the admission itself, so the "only an admitted patient is placed this way" link is
+ * skipped.
+ */
+export async function assignBedIn(
+  tx: Tx, db: Db, actor: Actor, input: BedPlacementInput, at: Date, ctx: PlacementContext, opts: { viaAdmit?: boolean } = {},
+): Promise<Output<"assign_bed">> {
+  const { patient, mayUseOverflow } = ctx;
+  await lockAdmission(tx, input.admissionId);
+  const { row, attrs, roomId } = await lockBed(tx, input.bedId);
+  if (row.status === "retired") throw new IpdRefusal("bed_retired", "Retired bed");
+  const elsewhere = (await tx.select().from(ipdBedStays)
+    .where(and(eq(ipdBedStays.admissionId, input.admissionId), isNull(ipdBedStays.endedAt))))[0];
+  if (elsewhere !== undefined) {
+    // Moving an admitted patient is a transfer (ipd-transfer), never a second assignment.
+    throw new IpdRefusal("admission_wrong_state", "Already on a bed", { bedId: elsewhere.bedId });
+  }
+  const held = await currentHold(tx, row, at);
+  if (held !== undefined && held.admissionId !== input.admissionId) {
+    throw new IpdRefusal("bed_not_available", "Bed is reserved", { reservationId: held.id, expiresAt: held.expiresAt.toISOString() });
+  }
+  if (row.occupantRef !== null || row.status !== "available") throw new IpdRefusal("bed_not_available", notAvailableRule(row));
+  if (await liveBlock(tx, row.id) !== undefined) throw new IpdRefusal("bed_not_available", "Bed is blocked");
+  await refuseOpenRepair(tx, row.id);
+  const breach = checkBedRules({ code: row.code, attributes: attrs }, patient, input.need, input.classChange, {
+    roomGender: await roomGender(tx, roomId, row.id), mayUseOverflow,
+  });
+  if (breach !== null) throw new IpdRefusal(breach.code, breach.bedRule);
+  if (opts.viaAdmit !== true) await linkPlacement(tx, { admissionId: input.admissionId, patientId: patient.id, need: input.need });
+
+  await assignResource(tx, actor, KERNEL_RESOURCE_KINDS, row.id, {
+    occupantType: OCCUPANT_ADMISSION, occupantRef: input.admissionId, at, reason: "assign",
+  });
+  if (held !== undefined) {
+    await tx.update(ipdBedReservations)
+      .set({ status: "consumed", endedBy: actor.id, endedAt: at, endReason: "assigned" })
+      .where(eq(ipdBedReservations.id, held.id));
+  }
+  await endOtherReservations(tx, actor, input.admissionId, row.id, at);
+
+  const billedClass: IpdBedClass = input.protectBookedClass ?? IPD_BED_CLASS_INFO[attrs.class].billsAs ?? attrs.class;
+  const protectedUntil = input.protectBookedClass === undefined ? null : new Date(at.getTime() + PROTECT_HOURS * 3_600_000);
+  const stayId = newId();
+  await tx.insert(ipdBedStays).values({
+    id: stayId, bedId: row.id, admissionId: input.admissionId, patientId: patient.id, placedAs: placementGender(patient, input.need),
+    bedClass: attrs.class, billedClass, protectedUntil, classChange: input.classChange ?? null, startedBy: actor.id, startedAt: at,
+  });
+  const provenance = provenanceOf(actor);
+  await appendEvent(tx, bedAssigned.make({
+    payload: {
+      stayId, bedId: row.id, bedCode: row.code, admissionId: input.admissionId, patientId: patient.id,
+      bedClass: attrs.class, billedClass, classChange: input.classChange ?? null, reservationId: held?.id ?? null, provenance,
+    },
+    actor, correlationId: input.admissionId, patientId: patient.id, occurredAt: at,
+  }));
+  await appendEvent(tx, bedOccupied.make({
+    payload: { bedId: row.id, bedCode: row.code, admissionId: input.admissionId, patientId: patient.id, provenance },
+    actor, correlationId: input.admissionId, patientId: patient.id, occurredAt: at,
+  }));
+  return { admissionId: input.admissionId, bedId: row.id, billedClass, protectedUntil: protectedUntil?.toISOString() ?? null };
+}
+
+/** A bed's class and ICU flag (the emergency lane derives the patient's need from the bed it is given). */
+export async function readBedFacts(db: Db | Tx, bedId: string): Promise<{ id: string; code: string; class: IpdBedClass; icu: boolean }> {
+  const row = (await db.select().from(resources).where(eq(resources.id, bedId)))[0];
+  const attrs = row === undefined ? null : bedAttributes(row);
+  if (row === undefined || attrs === null) throw new IpdRefusal("bed_not_found");
+  return { id: row.id, code: row.code, class: attrs.class, icu: attrs.icu };
+}
+
+/**
+ * Ends every live hold of one admission inside the caller's transaction (cancel_admission). Lock order: each bed
+ * (room, bed), then its reservation — the caller locks the admission row only after this returns.
+ */
+export async function endAdmissionHolds(tx: Tx, actor: Actor, admissionId: string, at: Date): Promise<string | null> {
+  const live = await tx.select().from(ipdBedReservations)
+    .where(and(eq(ipdBedReservations.admissionId, admissionId), eq(ipdBedReservations.status, "active")));
+  let released: string | null = null;
+  for (const r of live) {
+    const { row } = await lockBed(tx, r.bedId);
+    const fresh = (await tx.select().from(ipdBedReservations).where(eq(ipdBedReservations.id, r.id)).for("update"))[0]!;
+    if (fresh.status !== "active") continue;
+    await endReservation(tx, actor, fresh, row.code, "plan_changed", at);
+    released = row.id;
+  }
+  return released;
 }
 
 // ═══════════════════════════════════════════ releasing a bed ═══════════════════════════════════════════

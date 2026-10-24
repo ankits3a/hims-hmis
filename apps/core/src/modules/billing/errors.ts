@@ -55,6 +55,11 @@ export type BillingErrorCode =
    */
   | "move_needs_billing_office" | "move_fee_differs" | "move_difference_unpaid"
   /**
+   * IPD E1.2 (#719) — a module's receipt guard (`registerReceiptGuard`) refused the receipt: e.g. an inpatient on a
+   * ₹0 scheme with no approved non-covered line. `detail` carries the owning module's rule, fix and data.
+   */
+  | "receipt_guard_refused"
+  /**
    * #785 — an inpatient admission number (`IP26-000123`) bills on the IPD running bill: no invoice or tender is taken
    * against it at a department counter, and a process with no running bill registered refuses the order.
    */

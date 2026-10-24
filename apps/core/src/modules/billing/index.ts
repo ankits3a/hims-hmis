@@ -34,8 +34,9 @@ export type { EncounterResolver, IssueInvoiceInput, IssueInvoiceResult, InvoiceR
  * Reaching around this index into `receipts.ts` would be the §4 violation; widening the index by
  * one export is the sanctioned way, and it exposes nothing `patientBalance` did not already.
  */
-export { recordReceipt, allocateReceipt, reverseAllocation, patientBalance, listDues, markEnteredInError, advanceOf, receiptUnallocatedPaise, releaseInvoiceSurplusOnTx } from "./receipts";
-export type { PatientBalance, DueRow, ReceiptRow, AllocationRow } from "./receipts";
+export { recordReceipt, recordReceiptInTx, registerReceiptGuard, recordCashThresholdBlocked, allocateReceipt, reverseAllocation, patientBalance, listDues, markEnteredInError, advanceOf, receiptUnallocatedPaise, releaseInvoiceSurplusOnTx } from "./receipts";
+export type { PatientBalance, DueRow, ReceiptRow, AllocationRow, ReceiptGuard } from "./receipts";
+export type { CashThresholdDetail } from "./cash-law";
 /** #785 — the episode charge sink: an inpatient admission bills its lab / imaging orders on its running bill. */
 export {
   RUNNING_BILL_EPISODE_RES, episodeChargeSinkFor, episodeChargeStanding, isRunningBillEpisode, refuseRunningBillTender,
