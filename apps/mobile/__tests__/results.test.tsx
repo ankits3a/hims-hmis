@@ -47,6 +47,7 @@ const LAB_REPORT = {
 function server(perms: string[] = ["radiology.reports.read", "lab.results.read"]) {
   const calls: string[] = [];
   let read = false;
+  let labRead = false;
   const f = jest.fn(async (url: string, init?: RequestInit) => {
     const key = `${init?.method ?? "GET"} ${url.replace(/^https?:\/\/[^/]+\/api/, "")}`;
     calls.push(key);
@@ -54,8 +55,9 @@ function server(perms: string[] = ["radiology.reports.read", "lab.results.read"]
     if (key === "GET /auth/me") return ok({ actor: { type: "user", id: "u1" }, permissions: { hospital: perms, scoped: { department: {}, floor: {} } } });
     if (key === "GET /radiology/results") return ok({ rows: IMAGING_ROWS.map((r) => ({ ...r, state: read ? "read" : "unread" })) });
     if (key === "GET /radiology/reports/r1") { read = true; return ok({ report: IMAGING_REPORT }); }
-    if (key === "GET /lab/results/mine") return ok({ items: LAB_ROWS });
-    if (key === "GET /lab/results/mine/l1") return ok({ report: LAB_REPORT });
+    if (key === "GET /lab/results/mine") return ok({ items: labRead ? [] : LAB_ROWS });
+    /* #930 — as the server: the open stamps the doctor's read, and a read report leaves "Lab reports back". */
+    if (key === "GET /lab/results/mine/l1") { labRead = true; return ok({ report: LAB_REPORT }); }
     if (key === "GET /me/waiting") return ok({ items: [
       { kind: "lab.reportsBack", count: 1, tone: "calm", oldestAt: null, href: "/opd/consult" },
       { kind: "radiology.unreadMine", count: 1, tone: "warn", oldestAt: null, href: "/opd/consult" },
@@ -133,6 +135,19 @@ describe("#681 — lab", () => {
     expect(s.calls.filter((c) => !c.startsWith("GET "))).toEqual([]);
     expect(words(screen.toJSON())).not.toMatch(MONEY_EN);
     expect(words(screen.toJSON())).not.toMatch(/50000|500\.00|unpaid_invoices/);
+  });
+
+  it("#930 opening a report is the doctor's read: Back reads the list again and the report has left it", async () => {
+    mockParams = { kind: "lab" };
+    const s = server();
+    await mount(s.fetcher);
+    await fireEvent.press(await screen.findByTestId("results-row-l1"));
+    expect(await screen.findByTestId("results-line-0-0")).toHaveTextContent(/TSH/);
+    await fireEvent.press(screen.getByTestId("results-back"));
+    expect(await screen.findByTestId("results-none")).toBeTruthy();
+    expect(screen.queryByTestId("results-row-l1")).toBeNull();
+    expect(s.calls.filter((c) => c === "GET /lab/results/mine")).toHaveLength(2);
+    expect(s.calls.filter((c) => !c.startsWith("GET "))).toEqual([]);
   });
 });
 
