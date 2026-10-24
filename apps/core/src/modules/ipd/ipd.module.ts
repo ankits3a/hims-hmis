@@ -6,6 +6,7 @@ import { IpdBedsController } from "./beds.controller";
 import { IpdChargesController } from "./charges.controller";
 import { registerIpdReceiptGuard } from "./deposit";
 import { IpdPayerController } from "./payer.controller";
+import { IpdTransfersController } from "./transfers.controller";
 import { IPD_TOPIC_SPACES, ipdTopicRouter } from "./realtime";
 
 /**

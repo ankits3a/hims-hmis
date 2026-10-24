@@ -1136,6 +1136,17 @@ const IPD_PAYER_README_PROSE =
  */
 const IPD_PAYER_PAIRS: readonly string[] = ["billing_manager/ipd.payer.terms"];
 
+/** The README prose line authorising the IPD transfer (E3.1, decision 0072). Quoted, not paraphrased. */
+const IPD_TRANSFER_README_PROSE =
+  "`ipd.transfer.start` and `ipd.transfer.accept` are\nheld by `duty_manager` until the nursing roles are seeded";
+
+/**
+ * IPD TRANSFER E3.1 (#729, decision 0072; built overnight 2026-10-13, awaiting owner review) — no ward_nurse or
+ * nursing_supervisor role exists yet (the ipd-nursing lane seeds them), so the duty manager starts and accepts; the
+ * sender may never accept their own handover (`sender_cannot_accept`).
+ */
+const IPD_TRANSFER_PAIRS: readonly string[] = ["duty_manager/ipd.transfer.start", "duty_manager/ipd.transfer.accept"];
+
 /** The README prose line authorising the 2026-09-20 approvals-spine ruling R1. Quoted, not paraphrased. */
 const APPROVALS_SPINE_README_PROSE =
   "The approvals spine (owner ruling R1,\n2026-09-20)";
@@ -1270,6 +1281,7 @@ const NON_TABLE_PAIRS: readonly string[] = [
   ...PASSES_PAIRS,
   ...IPD_CHARGES_PAIRS,
   ...IPD_PAYER_PAIRS,
+  ...IPD_TRANSFER_PAIRS,
   ...APPROVALS_SPINE_PAIRS,
   ...PHARMACY_REPORTS_PAIRS,
   ...PHARMACY_TALLY_PAIRS,
@@ -2462,6 +2474,7 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(readme).toContain(PASSES_README_PROSE);
     expect(readme).toContain(IPD_CHARGES_README_PROSE);
     expect(readme).toContain(IPD_PAYER_README_PROSE);
+    expect(readme).toContain(IPD_TRANSFER_README_PROSE);
     expect(readme).toContain(APPROVALS_SPINE_README_PROSE);
     // Parity P5's two sentences: who reads the office's reports, and who reads the margin.
     expect(readme).toContain(PHARMACY_REPORTS_README_PROSE);

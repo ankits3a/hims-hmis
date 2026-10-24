@@ -1,4 +1,112 @@
 {
+  "ipdTransfer": {
+    "panel": {
+      "loading": "Loading transfer options…",
+      "loadFailed": "Transfer options could not be loaded.",
+      "billsAs": "Bills as {{cls}}",
+      "pendingClass": "{{cls}} from {{time}}",
+      "waitingAt": "Waiting for acceptance at {{bed}} · sent {{time}}",
+      "cancelTransfer": "Cancel transfer",
+      "transfer": "Transfer",
+      "swap": "Swap beds",
+      "changeClass": "Change class",
+      "targetsLabel": "Move to (beds that fit)",
+      "reasonLabel": "Reason",
+      "start": "Send handover",
+      "noTargets": "No free bed fits this patient now.",
+      "noSwap": "No other admitted patient to swap with.",
+      "swapWith": "Swap with",
+      "pick": "Choose…",
+      "swapNote": "Both patients move at once; each bills at the new bed's class.",
+      "doSwap": "Swap now",
+      "toClass": "New class",
+      "upgradeNote": "Upgrade · takes effect at the next 12 noon",
+      "downgradeNote": "Downgrade · takes effect at the next 12 noon",
+      "signedBy": "Consent signed by",
+      "signerName": "Signer's name",
+      "relation": "Relation",
+      "representativeReason": "Why the patient cannot sign",
+      "method": "Consent taken on",
+      "methodPaper": "Paper, with witness",
+      "methodDocument": "Filed document",
+      "witnessName": "Witness name",
+      "documentId": "Document id",
+      "capAck": "Room-rent cap explained: an insurer may pay only up to its room limit, and charges linked to the room can be cut in proportion.",
+      "applyClass": "Record class change",
+      "effectiveToday": "Class change recorded · takes effect 12:00 today",
+      "effectiveTomorrow": "Class change recorded · takes effect 12:00 tomorrow",
+      "effectiveOn": "Class change recorded · takes effect {{time}}",
+      "nextBeds": "Free beds that fit:",
+      "actFailed": "That did not go through. Try again."
+    },
+    "done": {
+      "started": "Handover sent · waiting for the receiving nurse",
+      "swapped": "Beds swapped",
+      "cancelled": "Transfer cancelled · patient stays on this bed"
+    },
+    "mark": {
+      "origin": "Transfer out",
+      "target": "Transfer in"
+    },
+    "reason": {
+      "clinical_step_up": "Clinical step-up",
+      "clinical_step_down": "Clinical step-down",
+      "post_op": "Post-op",
+      "isolation": "Isolation",
+      "gender_fix": "Gender bay fix",
+      "patient_request": "Patient request",
+      "bed_management": "Bed management"
+    },
+    "swapReason": {
+      "gender_fix": "Gender bay fix",
+      "isolation_fix": "Isolation fix",
+      "clinical": "Clinical",
+      "patient_request": "Patient request"
+    },
+    "cancelReason": {
+      "patient_deteriorated": "Patient worsened",
+      "receiving_ward_declined": "Receiving ward declined",
+      "bed_unsuitable": "Bed unsuitable",
+      "plan_changed": "Plan changed",
+      "other": "Other"
+    },
+    "signer": {
+      "patient": "Patient",
+      "guardian": "Guardian",
+      "representative": "Representative"
+    },
+    "sbar": {
+      "situation": "Situation",
+      "background": "Background",
+      "assessment": "Assessment",
+      "recommendation": "Recommendation"
+    },
+    "dur": {
+      "justNow": "just now",
+      "min": "{{n}} min",
+      "hourMin": "{{h}} h {{m}} min"
+    },
+    "handovers": {
+      "title": "Waiting for you",
+      "count": "{{count}} waiting",
+      "wards": "Receiving wards",
+      "allWards": "All wards · {{count}}",
+      "loading": "Loading handovers…",
+      "loadFailed": "Handovers could not be loaded. Retrying.",
+      "forbidden": "You do not accept handovers.",
+      "empty": "No handover is waiting.",
+      "uhid": "UHID {{uhid}}",
+      "to": "to",
+      "sent": "Sent {{span}} ago by {{name}}",
+      "escalatesIn": "Escalates in {{span}}",
+      "escalated": "Escalated {{span}} ago",
+      "youSent": "You sent this",
+      "accept": "Accept patient",
+      "decline": "Decline",
+      "accepted": "Accepted · patient now on {{bed}}",
+      "declined": "Transfer called off"
+    }
+  },
   "transport": {
     "board": {
       "title": "Transport",
@@ -586,6 +694,7 @@
     "menu": "Menu"
   },
   "nav": {
+    "ipdHandovers": "Handovers",
     "transportRequest": "Request porter",
     "transport": "Transport",
     "passScan": "Pass scan",

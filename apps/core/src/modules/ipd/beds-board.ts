@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gte, inArray, isNull, ne, sql } from "drizzle-orm";
 import { IPD_BED_CLASS_INFO, IPD_CLEANING_OVERDUE_MINUTES } from "@hmis/contracts";
-import { ipdAdmissions, ipdBedBlocks, ipdBedReservations, ipdBedStays, resourceStatusHistory, resources } from "../../kernel/db/schema";
+import { ipdAdmissions, ipdBedBlocks, ipdBedReservations, ipdBedStays, ipdTransfers, resourceStatusHistory, resources } from "../../kernel/db/schema";
 import { istDayWindow } from "../../kernel/approvals/cumulative";
 import { getPatientSummaries } from "../patients";
 import { IpdBedAttributesSchema, IpdWardAttributesSchema } from "./bed-attributes";
@@ -54,6 +54,14 @@ export async function readBedBoard(db: Db, actor: Actor, opts: { wall?: boolean;
   const resByBed = new Map(reservations.map((r) => [r.bedId, r]));
   const blockByBed = new Map(blocks.map((b) => [b.bedId, b]));
   const stayByBed = new Map(stays.map((s) => [s.bedId, s]));
+  // E3.1 (#729): open transfers mark their origin (patient still here) and target (held) tiles.
+  const transferOf = new Map<string, { transferId: string; role: "origin" | "target" }>();
+  if (bedIds.length > 0) {
+    for (const t of await db.select().from(ipdTransfers).where(eq(ipdTransfers.status, "open"))) {
+      transferOf.set(t.fromBedId, { transferId: t.id, role: "origin" });
+      transferOf.set(t.toBedId, { transferId: t.id, role: "target" });
+    }
+  }
 
   const summaries = await getPatientSummaries(db, actor, stays.map((s) => s.patientId));
   const nameOf = new Map(summaries.map((s) => [s.requestedId, s.name ?? s.alias ?? null]));
@@ -116,7 +124,11 @@ export async function readBedBoard(db: Db, actor: Actor, opts: { wall?: boolean;
 
     const stay = stayByBed.get(bed.id);
     const fullName = stay === undefined ? null : nameOf.get(stay.patientId) ?? null;
-    const occupant = stay === undefined ? null : { initials: fullName === null ? "—" : initialsOf(fullName), name: wall ? null : fullName };
+    const occupant = stay === undefined ? null : {
+      initials: fullName === null ? "—" : initialsOf(fullName), name: wall ? null : fullName,
+      ...(wall ? {} : { admissionId: stay.admissionId }), // E3.1: the drawer's Transfer panel opens it
+    };
+    const transfer = transferOf.get(bed.id);
 
     const overflow = attrs.overflow;
     const inCensus = IPD_BED_CLASS_INFO[attrs.class].inCensus && !overflow;
@@ -130,6 +142,7 @@ export async function readBedBoard(db: Db, actor: Actor, opts: { wall?: boolean;
         id: block.id, reason: block.reason, note: wall ? "" : block.note,
         expectedReturnAt: block.expectedReturnAt.toISOString(), onRelease: block.status === "pending_release",
       },
+      ...(transfer === undefined ? {} : { transfer }),
     };
 
     let f = floors.get(floor.id);

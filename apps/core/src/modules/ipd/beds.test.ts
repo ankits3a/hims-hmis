@@ -106,7 +106,8 @@ describe("E1.1 bed intents and the capacity board", () => {
     expect(board.totals.outsideCensus).toEqual({ occupied: 0, total: 1 });
     expect(board.totals.freeByClass).toEqual({ private: 1 });
     const tile = board.floors[0]!.wards[0]!.beds.find((b) => b.code === "U-G1")!;
-    expect(tile.occupant).toEqual({ initials: "R. K. D.", name: "Rekha Kumari Devi" });
+    // E3.1 (#729): off the wall the tile also names its admission (the drawer's Transfer panel opens it).
+    expect(tile.occupant).toEqual({ initials: "R. K. D.", name: "Rekha Kumari Devi", admissionId: expect.any(String) });
 
     const wall = await readBedBoard(db, w.viewer, { wall: true });
     expect(wall.floors[0]!.wards[0]!.beds.find((b) => b.code === "U-G1")!.occupant).toEqual({ initials: "R. K. D.", name: null });
