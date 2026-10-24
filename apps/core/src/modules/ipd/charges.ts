@@ -162,7 +162,16 @@ function lastDayOf(a: AdmissionRow, upToIstDate: string): string {
  * discharge day.
  */
 export async function postAdmissionCharges(
-  db: Db, admissionId: string, opts: { upToIstDate: string; now: Date; cache?: PricingCache },
+  db: Db, admissionId: string,
+  opts: {
+    upToIstDate: string; now: Date; cache?: PricingCache;
+    /**
+     * E3.2 (#730) — the final bill posts as if the patient leaves at this instant (the day rule's discharge-day grace
+     * applies to it). Ignored once the stay has really ended (`ended_at` wins). A later real exit after 14:00 is caught
+     * by the nightly job (the day is not in the done set) and billed as a supplementary line.
+     */
+    presumedDischargeAt?: Date;
+  },
 ): Promise<AdmissionPostResult> {
   const result: AdmissionPostResult = { posted: 0, rentDays: [], exceptions: 0 };
   const cache = opts.cache ?? new Map<string, PricingContext>();
@@ -184,7 +193,7 @@ export async function postAdmissionCharges(
     }
     const ctx = versionId === null ? null : await pricingFor(tx as unknown as Db, cache, versionId, opts.now);
     const stays = await staysOf(tx, a.id);
-    const days = ipdChargeableDays(stays, admittedAt, dischargedAtOf(a), opts.upToIstDate);
+    const days = ipdChargeableDays(stays, admittedAt, dischargedAtOf(a) ?? opts.presumedDischargeAt ?? null, opts.upToIstDate);
     const done = new Set((await tx.select({ d: ipdChargeLines.serviceDate, c: ipdChargeLines.component }).from(ipdChargeLines)
       .where(and(eq(ipdChargeLines.admissionId, a.id), eq(ipdChargeLines.source, "ipd.nightly")))).map((r) => `${r.d}:${r.c}`));
     const todo = days.flatMap((d) => IPD_DAILY_COMPONENTS.filter((c) => !done.has(`${d.date}:${c}`)).map((c) => ({ ...d, component: c })));
@@ -279,7 +288,12 @@ export async function postNightlyIpdCharges(db: Db, now: Date): Promise<NightlyR
   const rows = await db.select({ id: ipdAdmissions.id, skip: sql<boolean>`${quarantined}` }).from(ipdAdmissions).where(and(
     isNotNull(ipdAdmissions.admittedAt),
     or(
-      inArray(ipdAdmissions.state, ["admitted", "transferring", "fit_declared", "discharging"]),
+      // E3.2 review (#762, RED 2): a settled final bill closes the running bill — the job never posts behind it (a stay
+      // still open the next IST day is the bill desk's `settled_not_exited` exception; a supplementary bill is owed).
+      and(
+        inArray(ipdAdmissions.state, ["admitted", "transferring", "fit_declared", "discharging"]),
+        sql`not exists (select 1 from ipd_final_bills fb where fb.admission_id = "ipd_admissions"."id")`,
+      ),
       and(
         inArray(ipdAdmissions.state, [...IPD_ENDED_STATES]),
         or(

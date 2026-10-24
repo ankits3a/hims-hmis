@@ -1157,6 +1157,28 @@ const IPD_BILLDESK_PAIRS: readonly string[] = [
   "duty_manager/ipd.billdesk.view", "owner/ipd.billdesk.view",
 ];
 
+/** The README prose line authorising the IPD discharge strings (E3.2, decision 0072). Quoted, not paraphrased. */
+const IPD_DISCHARGE_README_PROSE =
+  "`ipd.discharge.bill` is held by\nthe cashier and the billing manager alone";
+
+/**
+ * IPD DISCHARGE E3.2 (#730, decision 0072; built overnight 2026-10-13, awaiting owner review) — the discharge cascade's
+ * people. The doctor declares fit, signs the summary and records a death or LAMA (no money, 0058); the departments
+ * confirm their own charges; billing composes and settles the final bill; the desk and the duty manager issue and scan
+ * the gate pass (no security role is seeded yet); the duty manager keeps the mortuary register.
+ */
+const IPD_DISCHARGE_PAIRS: readonly string[] = [
+  ...["doctor", "front_office", "front_office_supervisor", "cashier", "billing_manager", "duty_manager", "pharmacy", "pharmacy_incharge",
+    "lab_reception", "radiology_receptionist", "ot_incharge", "medical_superintendent"].map((r) => `${r}/ipd.discharge.view`),
+  "doctor/ipd.discharge.declare", "doctor/ipd.discharge.exit", "duty_manager/ipd.discharge.exit",
+  ...["cashier", "billing_manager", "duty_manager", "pharmacy", "pharmacy_incharge", "lab_reception", "radiology_receptionist", "ot_incharge"]
+    .map((r) => `${r}/ipd.discharge.confirm`),
+  "cashier/ipd.discharge.bill", "billing_manager/ipd.discharge.bill",
+  ...["front_office", "front_office_supervisor", "cashier", "billing_manager", "duty_manager"].map((r) => `${r}/ipd.gate.pass`),
+  ...["front_office", "front_office_supervisor", "duty_manager"].map((r) => `${r}/ipd.gate.scan`),
+  "duty_manager/ipd.mortuary.manage",
+];
+
 /** The README prose line authorising the 2026-09-20 approvals-spine ruling R1. Quoted, not paraphrased. */
 const APPROVALS_SPINE_README_PROSE =
   "The approvals spine (owner ruling R1,\n2026-09-20)";
@@ -1293,6 +1315,7 @@ const NON_TABLE_PAIRS: readonly string[] = [
   ...IPD_PAYER_PAIRS,
   ...IPD_TRANSFER_PAIRS,
   ...IPD_BILLDESK_PAIRS,
+  ...IPD_DISCHARGE_PAIRS,
   ...APPROVALS_SPINE_PAIRS,
   ...PHARMACY_REPORTS_PAIRS,
   ...PHARMACY_TALLY_PAIRS,
@@ -1746,7 +1769,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // PHARMACY P5: 20 -> 22, billing.credit_note.issue and billing.refund.request (PHARMACY_REFUND_PAIRS).
       // PHARMACY P9: 22 -> 23, pharmacy.register.read (the Schedule H1 register).
       // 14c first slice: 23 -> 24, materials.counts.perform (a pharmacist counts the main store).
-      pharmacy: 39, // STAGE D4: +1, pharmacy.trays.check; GAP A3b: +1, billing.credit.extend (the right to ask the owner); STAGE D3: +1, pharmacy.coldchain.record; STAGE D2: +1, pharmacy.incidents.record; STAGE D1: +1, pharmacy.adr.record; PHARMACY P6 (patient messages): +1, pharmacy.messages.consent; PHARMACY P6: +2, pharmacy.ndps.custody and .witness; parity P4: +1, materials.returns.manage; parity P3: +1, materials.bills.manage; parity P2: +1, materials.po.raise; P19: +2, pharmacy.retail.sell and patients.register; P20: +1, pharmacy.downtime.enter; transfer screen: +1, materials.stock.receive
+      pharmacy: 41, // IPD DISCHARGE E3.2 (2026-10-13), read off the failing run: +2; STAGE D4: +1, pharmacy.trays.check; GAP A3b: +1, billing.credit.extend (the right to ask the owner); STAGE D3: +1, pharmacy.coldchain.record; STAGE D2: +1, pharmacy.incidents.record; STAGE D1: +1, pharmacy.adr.record; PHARMACY P6 (patient messages): +1, pharmacy.messages.consent; PHARMACY P6: +2, pharmacy.ndps.custody and .witness; parity P4: +1, materials.returns.manage; parity P3: +1, materials.bills.manage; parity P2: +1, materials.po.raise; P19: +2, pharmacy.retail.sell and patients.register; P20: +1, pharmacy.downtime.enter; transfer screen: +1, materials.stock.receive
       // FD-25 / owner ruling 2026-09-04 — 11 -> 13: `tariff.read` (a live 403 on the deployed
       // counter) and `patients.read` (the DPDP ruling on reading patient identity). Close pass 1
       // removed the two `opd.visits.*` strings this comment used to list; see `CASHIER_SEAT_PAIRS`.
@@ -1795,7 +1818,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // total moves by thirty-five and not by thirty-two.
       // PLAN 17 T2 / DD16 — 11 -> 15: the pre-op panel is ordered from the theatre, not from an
       // OPD chair, and the coordinator is who orders it.
-      ot_incharge: 15,
+      ot_incharge: 17, // IPD DISCHARGE E3.2 (2026-10-13), read off the failing run: +2, ipd.discharge.view and .confirm
       // PLAN 17 T2 / DD16 — 4 -> 9: orders the pre-op panel and reads it. NOT `orders.cancel`:
       // calling off a lab order the coordinator placed is the coordinator's act.
       surgeon: 9,
@@ -2487,6 +2510,7 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(readme).toContain(IPD_PAYER_README_PROSE);
     expect(readme).toContain(IPD_TRANSFER_README_PROSE);
     expect(readme).toContain(IPD_BILLDESK_README_PROSE);
+    expect(readme).toContain(IPD_DISCHARGE_README_PROSE);
     expect(readme).toContain(APPROVALS_SPINE_README_PROSE);
     // Parity P5's two sentences: who reads the office's reports, and who reads the margin.
     expect(readme).toContain(PHARMACY_REPORTS_README_PROSE);

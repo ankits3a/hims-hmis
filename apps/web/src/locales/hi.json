@@ -1,4 +1,191 @@
 {
+  "ipdDischarge": {
+    "title": "डिस्चार्ज डेस्क",
+    "inCascade": "{{count}} डिस्चार्ज में",
+    "listLabel": "डिस्चार्ज",
+    "loading": "लोड हो रहा है…",
+    "loadFailed": "लोड नहीं हुआ — फिर कोशिश करें",
+    "forbidden": "डिस्चार्ज डेस्क की अनुमति नहीं है।",
+    "empty": "कोई डिस्चार्ज चल नहीं रहा।",
+    "pick": "बाईं ओर मरीज़ चुनें।",
+    "actFailed": "दर्ज नहीं हुआ — फिर कोशिश करें",
+    "cancel": "रद्द करें",
+    "dur": {
+      "justNow": "अभी",
+      "min": "{{n}} मिनट",
+      "hourMin": "{{h}} घं {{m}} मि"
+    },
+    "leftIn": "{{span}} बाकी",
+    "overBy": "लक्ष्य से {{span}} ज़्यादा",
+    "next": "अगला: {{step}}",
+    "consultant": "डॉ {{name}}",
+    "referOut": "रेफ़र",
+    "fitAt": "फ़िट {{time}}",
+    "targetAt": "लक्ष्य {{time}}",
+    "stepsTitle": "डिस्चार्ज के चरण",
+    "doneAt": "पूरा {{time}}",
+    "skipped": "ज़रूरी नहीं",
+    "waitingFor": "इंतज़ार: {{who}}",
+    "stepState": {
+      "done": "पूरा",
+      "now": "अभी",
+      "waiting": "बाद में",
+      "skipped": "ज़रूरी नहीं"
+    },
+    "step": {
+      "fit": "छुट्टी के लिए फ़िट",
+      "departments": "विभाग बिल की पुष्टि करें",
+      "summary": "सारांश पर हस्ताक्षर",
+      "bill": "अंतिम बिल चुकता",
+      "gate_pass": "गेट पास",
+      "exit": "अस्पताल से गए"
+    },
+    "state": {
+      "requested": "अनुरोध",
+      "reserved": "आरक्षित",
+      "admitted": "भर्ती",
+      "transferring": "स्थानांतरण में",
+      "fit_declared": "फ़िट घोषित",
+      "discharging": "गेट पास जारी",
+      "discharged": "डिस्चार्ज",
+      "lama": "लामा",
+      "absconded": "भाग गए",
+      "deceased": "मृत्यु",
+      "transferred_out": "रेफ़र किया",
+      "cancelled": "रद्द"
+    },
+    "fit": {
+      "title": "छुट्टी के लिए फ़िट",
+      "disposition": "कहाँ",
+      "home": "घर",
+      "transferOut": "दूसरे अस्पताल",
+      "declare": "फ़िट घोषित करें",
+      "cancelReason": "कारण (हालत बिगड़ी…)",
+      "cancel": "फ़िट रद्द करें"
+    },
+    "depts": {
+      "title": "विभाग",
+      "confirm": "कोई बकाया शुल्क नहीं — पुष्टि",
+      "confirmedBy": "{{name}} · {{time}}",
+      "basis": {
+        "lines": "बिल पर शुल्क हैं",
+        "open_orders": "खुले ऑर्डर हैं",
+        "always": "हमेशा पुष्टि"
+      }
+    },
+    "dept": {
+      "pharmacy": "फ़ार्मेसी",
+      "lab": "लैब",
+      "radiology": "रेडियोलॉजी",
+      "ot": "ओटी",
+      "ward": "वार्ड नर्सिंग",
+      "dietary": "आहार",
+      "cssd": "सीएसएसडी",
+      "blood_bank": "ब्लड बैंक",
+      "billing": "बिलिंग"
+    },
+    "summary": {
+      "title": "डिस्चार्ज सारांश",
+      "status": {
+        "none": "शुरू नहीं",
+        "draft": "ड्राफ़्ट",
+        "awaiting_cosign": "सह-हस्ताक्षर बाकी",
+        "signed": "हस्ताक्षरित"
+      },
+      "f": {
+        "diagnosis": "निदान",
+        "icd10": "ICD-10 कोड",
+        "course": "अस्पताल में इलाज",
+        "procedures": "प्रक्रियाएँ",
+        "conditionAtDischarge": "छुट्टी के समय हालत",
+        "medicines": "छुट्टी की दवाइयाँ",
+        "followUp": "फ़ॉलो-अप",
+        "advice": "सलाह",
+        "warningSigns": "तुरंत लौटें अगर",
+        "pendingResults": "बाकी रिपोर्ट"
+      },
+      "medsHint": "हर पंक्ति में एक: नाम — खुराक — कब — कितने दिन",
+      "write": "सारांश लिखें",
+      "edit": "बदलें",
+      "save": "ड्राफ़्ट सहेजें",
+      "sign": "हस्ताक्षर करें",
+      "signedBy": "डॉ {{name}} के हस्ताक्षर · {{time}}",
+      "residentSigned": "{{name}} के हस्ताक्षर — कंसल्टेंट का सह-हस्ताक्षर चाहिए",
+      "draftBy": "ड्राफ़्ट: {{name}}"
+    },
+    "bill": {
+      "title": "अंतिम बिल",
+      "total": "कुल बिल",
+      "payer": "बीमा / भुगतानकर्ता",
+      "patient": "मरीज़ देगा",
+      "deposit": "जमा राशि",
+      "toPay": "देना बाकी",
+      "refund": "वापसी",
+      "dues": "बकाया दर्ज",
+      "prepare": "अंतिम बिल खोलें",
+      "tender": "भुगतान",
+      "cash": "नकद",
+      "card": "कार्ड",
+      "amount": "राशि (₹)",
+      "ref": "UPI / कार्ड संदर्भ",
+      "settle": "बिल चुकता करें",
+      "duesLine": "{{amount}} बाकी — मरीज़ फिर भी घर जाएगा; बकाया दर्ज करें",
+      "askDues": "बकाया की मंज़ूरी माँगें",
+      "duesAsked": "मंज़ूरी माँगी — बिलिंग मैनेजर तय करेंगे",
+      "undertaking": "हस्ताक्षरित वचन-पत्र (फ़ाइल किया दस्तावेज़)",
+      "pickUndertaking": "फ़ाइल किया वचन-पत्र चुनें",
+      "refundPending": "वापसी बाकी",
+      "duesNote": "छुट्टी पर बकाया; वचन-पत्र लिया",
+      "billNo": "बिल {{no}} · {{time}}",
+      "print": "अंतिम बिल छापें",
+      "settlement": {
+        "paid": "चुकता",
+        "refund_due": "वापसी बाकी",
+        "dues_recorded": "बकाया दर्ज",
+        "insurer_pending_undertaking": "बीमा मंज़ूरी बाकी"
+      }
+    },
+    "pass": {
+      "title": "गेट पास",
+      "issue": "गेट पास जारी करें",
+      "print": "गेट पास छापें",
+      "hospital": "दूसरा अस्पताल",
+      "confirmedBy": "किसने पुष्टि की (नाम, कैसे)",
+      "notYet": "विभाग, सारांश और बिल पूरे होने पर जारी होगा।",
+      "dues": "बकाया दर्ज",
+      "status": {
+        "issued": "अभी स्कैन नहीं",
+        "used": "गेट पर स्कैन",
+        "void": "रद्द"
+      }
+    },
+    "scan": {
+      "label": "गेट पास स्कैन",
+      "placeholder": "GP-…",
+      "go": "स्कैन",
+      "ok": "{{code}} — मरीज़ चले गए"
+    },
+    "print": {
+      "patient": "मरीज़",
+      "ipNo": "आईपी नं.",
+      "bed": "बेड",
+      "consultant": "कंसल्टेंट",
+      "billTitle": "अंतिम बिल",
+      "billNo": "बिल नं. {{no}}",
+      "date": "तारीख़",
+      "item": "विवरण",
+      "qty": "मात्रा",
+      "amount": "राशि",
+      "paid": "अभी भुगतान",
+      "billFoot": "राशि रुपये में। कुल पर एक बार राउंड। यह कंप्यूटर से छपा बिल है।",
+      "passTitle": "गेट पास — डिस्चार्ज",
+      "passReferTitle": "गेट पास — रेफ़र",
+      "issuedAt": "जारी {{time}}",
+      "to": "को: {{hospital}}",
+      "duesRecorded": "बकाया दर्ज — मरीज़ को जाने दें।",
+      "passFoot": "सुरक्षा: बाहर निकलते समय यह कोड स्कैन करें। केवल एक बार।"
+    }
+  },
   "ipdBillDesk": {
     "title": "बिल डेस्क",
     "subtitle": "केवल अपवाद",
@@ -743,6 +930,7 @@
     "menu": "मेनू"
   },
   "nav": {
+    "ipdDischarge": "डिस्चार्ज",
     "ipdBillDesk": "बिल डेस्क",
     "ipdHandovers": "हैंडओवर",
     "transportRequest": "पोर्टर माँगें",

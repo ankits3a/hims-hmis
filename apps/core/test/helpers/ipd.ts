@@ -301,3 +301,40 @@ export async function mkTransferWorld(db: Db): Promise<TransferWorld> {
       (await db.select().from(ipdBedStays).where(and(eq(ipdBedStays.admissionId, admissionId), isNull(ipdBedStays.endedAt))))[0],
   };
 }
+
+// ═══ E3.2 — discharge: the cascade's people (doctor, cashier, duty manager, desk) holding the discharge strings ═══
+
+export type DischargeWorld = TransferWorld & {
+  /** Cashier: confirms billing, composes and settles the final bill, issues the gate pass; an open drawer. */
+  cashier: Actor;
+  /** Duty manager (= `sender`): confirms the ward, issues and scans gate passes, records LAMA / abscond, the mortuary. */
+  duty: Actor;
+  /** A second person for the mortuary's two-person identity check. */
+  witness: Actor;
+};
+
+export async function mkDischargeWorld(db: Db): Promise<DischargeWorld> {
+  const w = await mkTransferWorld(db);
+  const registry = new ModuleRegistry();
+  registry.install(authManifest);
+  registry.install(patientsManifest);
+  registry.install(ipdManifest);
+  await syncPermissions(db, registry);
+  const grants: Record<string, string[]> = {
+    doctor: ["ipd.discharge.view", "ipd.discharge.declare", "ipd.discharge.exit"],
+    cashier: ["ipd.discharge.view", "ipd.discharge.confirm", "ipd.discharge.bill", "ipd.gate.pass", "ipd.bill.view"],
+    duty_manager: [
+      "ipd.discharge.view", "ipd.discharge.confirm", "ipd.gate.pass", "ipd.gate.scan", "ipd.discharge.exit", "ipd.mortuary.manage",
+    ],
+    front_office: ["ipd.discharge.view", "ipd.gate.pass", "ipd.gate.scan"],
+    billing_manager: ["ipd.discharge.view", "ipd.discharge.confirm", "ipd.discharge.bill", "ipd.gate.pass", "ipd.bill.view"],
+  };
+  for (const [role, perms] of Object.entries(grants)) {
+    await ensureRole(db, role);
+    for (const p of perms) await grantPermissionToRole(db, registry, role, p);
+  }
+  const cashier = (await mkUser(db, "dis.cashier", ["cashier"])).actor;
+  const witness = (await mkUser(db, "dis.witness", ["duty_manager"])).actor;
+  await openSession(db, cashier, 0);
+  return { ...w, cashier, duty: w.sender, witness };
+}

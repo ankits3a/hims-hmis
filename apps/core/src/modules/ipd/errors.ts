@@ -32,7 +32,21 @@ export type IpdErrorCode =
   | "charge_line_already_reversed"
   /** E2.2 (#726) — the non-payables list: a live row already matches; no live row with that id. */
   | "non_payable_exists"
-  | "non_payable_not_found";
+  | "non_payable_not_found"
+  /** E3.2 (#730) — a signed summary is immutable; an addendum is a later lane's. */
+  | "summary_already_signed"
+  /** E3.2 — no draft to sign yet. */
+  | "summary_not_found"
+  /** E3.2 — the diagnosis names an ICD-10 code the catalogue does not carry. */
+  | "icd10_unknown"
+  /** E3.2 — the tenders exceed the patient's bill: record what is applied and give the change. */
+  | "tender_exceeds_bill"
+  /** E3.2 — the mortuary register: no such row; the act does not fit its status; the two-person check needs two people. */
+  | "mortuary_entry_not_found"
+  | "mortuary_wrong_state"
+  | "identity_check_same_person"
+  /** E3.2 — ⚖ an MLC body is released only after the police clearance is recorded. */
+  | "police_clearance_required";
 
 export class IpdError extends Error {
   constructor(

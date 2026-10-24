@@ -1799,6 +1799,12 @@ receiving nurse accepts it, and the sender may never accept their own. A class c
 `billing_manager`, `front_office_supervisor`, `duty_manager` and `owner` — the exceptions-only bill desk and its deposit
 card; no doctor role holds it. The deposit ladder tells the desk at 75 % and management at 90 % and never refuses care.
 
+**IPD discharge (E3.2, decision 0072, built 2026-10-13, awaiting owner review).** The Discharge desk at `/ipd/discharge`:
+fit declared → every department confirms → summary signed → final bill settled → gate pass → scan at the exit.
+`ipd.discharge.declare` is the doctor's (fit, summary, death) and never touches money; `ipd.discharge.bill` is held by
+the cashier and the billing manager alone; `ipd.gate.scan` by the front office and the duty manager until a security
+role is seeded. Nobody is detained for dues: an unpaid balance goes to the billing manager's approval and the dues list.
+
 **My duties, covers and swaps (20-U U5c/U6).** `/roster/my-duties` is a resident's phone: today, the
 rest of the week, and on every duty still ahead *"I can't do this"* — which lists who could take it
 without breaking a rule and, for everybody else, why not (*unavailable*, never the kind of leave). A

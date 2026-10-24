@@ -594,3 +594,269 @@ export const ipdDailyTotals = pgTable(
     check("ipd_daily_totals_outcome_ck", sql`${t.outcome} in ('queued', 'no_attendant_phone', 'sealed')`),
   ],
 );
+
+// ═══════════════════════════════════════ E3.2 (#730) — discharge and the other ways a stay ends ═══════════════════════════════════════
+
+/**
+ * One row per fit declaration (spec SPEC-ipd-core §4.7): the discharge cascade's clock starts here. `active` →
+ * `completed` (the gate scan) | `cancelled` (the patient worsened: cancel_fit). A new declaration after a cancel is a new
+ * row; one active row per admission (partial unique).
+ */
+export const ipdDischarges = pgTable(
+  "ipd_discharges",
+  {
+    id: text("id").primaryKey(),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    status: text("status").notNull(),
+    /** `today` or `tomorrow` (an expected discharge for the evening huddle). */
+    fitWhen: text("fit_when").notNull(),
+    /** `home` or `transfer_out` (refer to another hospital). */
+    disposition: text("disposition").notNull(),
+    note: text("note"),
+    declaredBy: text("declared_by").notNull(),
+    declaredAt: timestamp("declared_at", { withTimezone: true }).notNull(),
+    /** The 3-hour target for cash (the workflow's `fit_declared` SLA). */
+    targetAt: timestamp("target_at", { withTimezone: true }).notNull(),
+    endedBy: text("ended_by"),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    cancelReason: text("cancel_reason"),
+  },
+  (t) => [
+    uniqueIndex("ipd_discharges_active_ux").on(t.admissionId).where(sql`${t.status} = 'active'`),
+    index("ipd_discharges_admission_idx").on(t.admissionId, t.declaredAt),
+    check("ipd_discharges_status_ck", sql`${t.status} in ('active', 'completed', 'cancelled')`),
+    check("ipd_discharges_when_ck", sql`${t.fitWhen} in ('today', 'tomorrow')`),
+    check("ipd_discharges_disposition_ck", sql`${t.disposition} in ('home', 'transfer_out')`),
+    check("ipd_discharges_ended_ck", sql`(${t.status} = 'active') = (${t.endedAt} is null)`),
+    check("ipd_discharges_cancel_ck", sql`(${t.status} = 'cancelled') = (${t.cancelReason} is not null)`),
+  ],
+);
+
+/**
+ * The departments that must confirm "no pending charge" for one fit declaration. DECIDED (E3.2): the departments are
+ * those with lines or open orders for the admission (`ward` always — the nightly lines; `lab` / `radiology` when an
+ * order placed since admission is still open), plus `billing`, which confirms last. One row per (discharge, department).
+ */
+export const ipdDischargeConfirmations = pgTable(
+  "ipd_discharge_confirmations",
+  {
+    id: text("id").primaryKey(),
+    dischargeId: text("discharge_id").notNull().references(() => ipdDischarges.id),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    department: text("department").notNull(),
+    /** Why the department is on the list: `lines`, `open_orders` or `always`. */
+    basis: text("basis").notNull(),
+    confirmedBy: text("confirmed_by"),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+    note: text("note"),
+  },
+  (t) => [
+    uniqueIndex("ipd_discharge_confirmations_ux").on(t.dischargeId, t.department),
+    check(
+      "ipd_discharge_confirmations_dept_ck",
+      sql`${t.department} in ('pharmacy', 'lab', 'radiology', 'ot', 'ward', 'dietary', 'cssd', 'blood_bank', 'billing')`,
+    ),
+    check("ipd_discharge_confirmations_basis_ck", sql`${t.basis} in ('lines', 'open_orders', 'always')`),
+    check("ipd_discharge_confirmations_by_ck", sql`(${t.confirmedBy} is null) = (${t.confirmedAt} is null)`),
+  ],
+);
+
+/**
+ * The structured discharge summary (spec §4.7: signed before the patient leaves; a resident's sign needs the consultant's
+ * co-sign). One per admission; every save bumps `version`, and signing names the version read (`draft_changed`).
+ * `draft_model_id` / `draft_prompt_version` stay null until the copilot drafter (M5) writes a draft; the screen shows
+ * "Draft" until a named consultant signs. A signed summary is immutable (the intent refuses a save after it).
+ */
+export const ipdDischargeSummaries = pgTable(
+  "ipd_discharge_summaries",
+  {
+    id: text("id").primaryKey(),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    status: text("status").notNull(),
+    version: integer("version").notNull(),
+    content: jsonb("content").$type<Record<string, unknown>>().notNull(),
+    /** Provenance of the draft text: `person` (typed from the template) or `copilot_draft` (M5). */
+    draftSource: text("draft_source").notNull(),
+    draftModelId: text("draft_model_id"),
+    draftPromptVersion: text("draft_prompt_version"),
+    draftedBy: text("drafted_by").notNull(),
+    draftedAt: timestamp("drafted_at", { withTimezone: true }).notNull(),
+    residentSignedBy: text("resident_signed_by"),
+    residentSignedAt: timestamp("resident_signed_at", { withTimezone: true }),
+    signedBy: text("signed_by"),
+    signedAt: timestamp("signed_at", { withTimezone: true }),
+    /** The signed copy's document id (minted at sign; the print names the doctor). */
+    documentId: text("document_id"),
+  },
+  (t) => [
+    uniqueIndex("ipd_discharge_summaries_admission_ux").on(t.admissionId),
+    check("ipd_discharge_summaries_status_ck", sql`${t.status} in ('draft', 'awaiting_cosign', 'signed')`),
+    check("ipd_discharge_summaries_source_ck", sql`${t.draftSource} in ('person', 'copilot_draft')`),
+    check("ipd_discharge_summaries_signed_ck", sql`(${t.status} = 'signed') = (${t.signedAt} is not null)`),
+    check("ipd_discharge_summaries_version_ck", sql`${t.version} > 0`),
+  ],
+);
+
+/**
+ * The final bill (spec §4.7): ONE billing invoice for the admission's PATIENT-payable portion, composed from the
+ * non-reversed running-bill lines; deposits applied, excess refunded (a refund request), any unpaid balance recorded as
+ * dues against the signed undertaking — never a detention; the dues approval follows the exit. One per admission.
+ * Integer paise: `total_paise` = Σ the non-reversed lines' net; `patient_paise` = the invoice before rounding (as billing
+ * prices it); `payer_paise` = total − patient (the claim). payer + patient = total, always.
+ */
+export const ipdFinalBills = pgTable(
+  "ipd_final_bills",
+  {
+    id: text("id").primaryKey(),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    /** The running bill's version the cashier read (the count of its lines, append-only). */
+    billVersion: integer("bill_version").notNull(),
+    invoiceId: text("invoice_id"),
+    invoiceNo: text("invoice_no"),
+    totalPaise: bigint("total_paise", { mode: "number" }).notNull(),
+    payerPaise: bigint("payer_paise", { mode: "number" }).notNull(),
+    /** The invoice's net payable (rounded once, by billing). */
+    patientPaise: bigint("patient_paise", { mode: "number" }).notNull(),
+    depositAppliedPaise: bigint("deposit_applied_paise", { mode: "number" }).notNull(),
+    paidPaise: bigint("paid_paise", { mode: "number" }).notNull(),
+    refundPaise: bigint("refund_paise", { mode: "number" }).notNull(),
+    refundApprovalId: text("refund_approval_id"),
+    duesPaise: bigint("dues_paise", { mode: "number" }).notNull(),
+    settlement: text("settlement").notNull(),
+    duesApprovalId: text("dues_approval_id"),
+    duesApprovedBy: text("dues_approved_by"),
+    /** E3.2 review ⚖: the dues approval is recorded AFTER the exit (a ledger step), never before it. */
+    duesApprovedAt: timestamp("dues_approved_at", { withTimezone: true }),
+    undertakingDocumentId: text("undertaking_document_id"),
+    /** The payer split as it stood at settlement (the printed final bill's evidence). */
+    split: jsonb("split").$type<Record<string, unknown>>().notNull(),
+    settledBy: text("settled_by").notNull(),
+    settledAt: timestamp("settled_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("ipd_final_bills_admission_ux").on(t.admissionId),
+    check("ipd_final_bills_settlement_ck", sql`${t.settlement} in ('paid', 'refund_due', 'dues_recorded', 'insurer_pending_undertaking')`),
+    check(
+      "ipd_final_bills_money_ck",
+      sql`${t.totalPaise} >= 0 and ${t.payerPaise} >= 0 and ${t.patientPaise} >= 0 and ${t.depositAppliedPaise} >= 0 and ${t.paidPaise} >= 0 and ${t.refundPaise} >= 0 and ${t.duesPaise} >= 0`,
+    ),
+    check("ipd_final_bills_dues_ck", sql`${t.duesPaise} = 0 or ${t.undertakingDocumentId} is not null`),
+  ],
+);
+
+/**
+ * The payer's portion of the final bill (DECIDED $, E3.2): billing has no payer-credit model, so the invoice carries the
+ * patient's portion and the insurer / corporate / scheme portion is this claim record. Filing is out of scope (later).
+ */
+export const ipdPayerClaims = pgTable(
+  "ipd_payer_claims",
+  {
+    id: text("id").primaryKey(),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    finalBillId: text("final_bill_id").notNull().references(() => ipdFinalBills.id),
+    payerKind: text("payer_kind").notNull(),
+    coverageId: text("coverage_id"),
+    preAuthNumber: text("pre_auth_number"),
+    claimPaise: bigint("claim_paise", { mode: "number" }).notNull(),
+    status: text("status").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("ipd_payer_claims_admission_ux").on(t.admissionId),
+    check("ipd_payer_claims_status_ck", sql`${t.status} in ('pending', 'filed', 'settled', 'rejected')`),
+    check("ipd_payer_claims_money_ck", sql`${t.claimPaise} > 0`),
+  ],
+);
+
+/**
+ * The gate pass (spec §4.7): issued only when charges are confirmed, the summary signed and the bill settled (or its
+ * dues approved); security scans it at the exit, which ends the stay. One live pass per admission; a cancel_fit voids it.
+ */
+export const ipdGatePasses = pgTable(
+  "ipd_gate_passes",
+  {
+    id: text("id").primaryKey(),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    code: text("code").notNull(),
+    kind: text("kind").notNull(),
+    status: text("status").notNull(),
+    duesRecorded: boolean("dues_recorded").notNull(),
+    receivingHospital: jsonb("receiving_hospital").$type<{ name: string; confirmedBy: string }>(),
+    followUpAppointmentId: text("follow_up_appointment_id"),
+    issuedBy: text("issued_by").notNull(),
+    issuedAt: timestamp("issued_at", { withTimezone: true }).notNull(),
+    scannedBy: text("scanned_by"),
+    scannedAt: timestamp("scanned_at", { withTimezone: true }),
+    gateId: text("gate_id"),
+    voidedBy: text("voided_by"),
+    voidedAt: timestamp("voided_at", { withTimezone: true }),
+    voidReason: text("void_reason"),
+  },
+  (t) => [
+    uniqueIndex("ipd_gate_passes_code_ux").on(t.code),
+    uniqueIndex("ipd_gate_passes_live_ux").on(t.admissionId).where(sql`${t.status} = 'issued'`),
+    check("ipd_gate_passes_kind_ck", sql`${t.kind} in ('discharge', 'transfer_out')`),
+    check("ipd_gate_passes_status_ck", sql`${t.status} in ('issued', 'used', 'void')`),
+    check("ipd_gate_passes_used_ck", sql`(${t.status} = 'used') = (${t.scannedAt} is not null)`),
+    check("ipd_gate_passes_void_ck", sql`(${t.status} = 'void') = (${t.voidedAt} is not null)`),
+    check("ipd_gate_passes_refer_ck", sql`(${t.kind} = 'transfer_out') = (${t.receivingHospital} is not null)`),
+  ],
+);
+
+/**
+ * The other ways a stay ends (spec §4.7 edge cases): LAMA / DAMA, absconded, death. One per admission; `details` keeps the
+ * form, witness, police intimation and the cause fields an MCCD will need later (no form generation here).
+ */
+export const ipdStayExits = pgTable(
+  "ipd_stay_exits",
+  {
+    id: text("id").primaryKey(),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    kind: text("kind").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+    details: jsonb("details").$type<Record<string, unknown>>().notNull(),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("ipd_stay_exits_admission_ux").on(t.admissionId),
+    check("ipd_stay_exits_kind_ck", sql`${t.kind} in ('lama', 'dama', 'absconded', 'deceased')`),
+  ],
+);
+
+/**
+ * The minimal mortuary register (spec §4.7 death edge case). A death opens the row (`expected`); the mortuary receives the
+ * body with a two-person identity check (`received`); release to the next of kin (`released`) needs police clearance
+ * for an MLC. ⚖ Dues NEVER block a release: nothing here reads the bill.
+ */
+export const ipdMortuaryRegister = pgTable(
+  "ipd_mortuary_register",
+  {
+    id: text("id").primaryKey(),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    patientId: text("patient_id").notNull(),
+    status: text("status").notNull(),
+    diedAt: timestamp("died_at", { withTimezone: true }).notNull(),
+    mlc: boolean("mlc").notNull(),
+    receivedAt: timestamp("received_at", { withTimezone: true }),
+    receivedBy: text("received_by"),
+    /** The second person of the two-person identity check at handover. */
+    identityCheckedBy: text("identity_checked_by"),
+    policeClearance: boolean("police_clearance").notNull().default(false),
+    policeClearanceRef: text("police_clearance_ref"),
+    releasedTo: jsonb("released_to").$type<{ name: string; relation: string; idProofRef: string }>(),
+    releasedAt: timestamp("released_at", { withTimezone: true }),
+    releasedBy: text("released_by"),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("ipd_mortuary_register_admission_ux").on(t.admissionId),
+    index("ipd_mortuary_register_status_idx").on(t.status),
+    check("ipd_mortuary_register_status_ck", sql`${t.status} in ('expected', 'received', 'released')`),
+    check("ipd_mortuary_register_received_ck", sql`(${t.status} = 'expected') = (${t.receivedAt} is null)`),
+    check("ipd_mortuary_register_released_ck", sql`(${t.status} = 'released') = (${t.releasedAt} is not null)`),
+    check("ipd_mortuary_register_mlc_ck", sql`${t.status} <> 'released' or not ${t.mlc} or ${t.policeClearance}`),
+  ],
+);

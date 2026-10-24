@@ -32,6 +32,8 @@ export const IPD_APPROVAL_TYPE_KEYS: Record<IpdApprovalKind, string> = {
   icu: "ipd_icu_admission",
   non_covered: "ipd_non_covered_line",
   deposit_waiver: "ipd_deposit_waiver",
+  // E3.2 (#730) — ⚖ leaving with an unpaid balance: approved and recorded as dues, never a detention.
+  discharge_dues: "ipd_discharge_dues",
 };
 
 type IpdApprovalTypeSpec = ApprovalTypeSpec & { closureSlaMinutes: number; alsoDecides: string[] };
@@ -48,6 +50,15 @@ export const IPD_APPROVAL_TYPES: readonly IpdApprovalTypeSpec[] = [
   {
     typeKey: IPD_APPROVAL_TYPE_KEYS.deposit_waiver, title: "Admission deposit waiver", approverRole: "billing_manager",
     urgencyClass: "routine", actFirstAllowed: false, closureSlaMinutes: 120, alsoDecides: ["medical_superintendent"],
+  },
+  /**
+   * E3.2 (#730) — DECIDED ⚖ (Consumer Protection Act; state clinical-establishment rules; NHRC patients' charter): a patient
+   * is never detained for unpaid dues. The unpaid patient-payable balance is approved by the billing manager (or the MS)
+   * against a signed undertaking, and the gate pass issues with "dues recorded". Urgent: the patient is waiting to leave.
+   */
+  {
+    typeKey: IPD_APPROVAL_TYPE_KEYS.discharge_dues, title: "Discharge with dues — undertaking", approverRole: "billing_manager",
+    urgencyClass: "urgent", actFirstAllowed: false, closureSlaMinutes: 60, alsoDecides: ["medical_superintendent"],
   },
 ];
 
