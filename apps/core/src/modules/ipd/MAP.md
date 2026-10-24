@@ -199,6 +199,17 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   (migration `ipd_drugbill`). Contracts `IPD_DRUG_COMPONENT`, `IPD_CHARGE_EXCEPTION_REASONS`, `IPD_LINE_DECISION_REASONS`. Web:
   the bill desk's order-cancel row serves the two new decisions (`apps/web/src/screens/ipd-bill-desk.tsx` `REVERSE_LABEL`).
 
+- (#787 IP counter) `counter-charge.ts` — CHARGE TO IP at the OPD pharmacy counter: `lookupCounterAdmission` (IP number or
+  UHID; bed and ward), `searchCounterShelfForIp` (pharmacy `searchShelfAt` at PHARM-OPD), `counterCharge` (intent
+  `counter_charge`), `counterReturn` (`counter_return`), `readCounterSales`. `counter.controller.ts` — `IPD_COUNTER_ROUTES`
+  (`/ipd/counter/*`, `ipd.emar.issue`). `drug-charges.ts` `postCounterDrugLinesIn` (the ward issue's price; a missing price
+  REFUSES `price_missing`), and `takeWaitingReturnsIn` counts counter returns from the stock ledger. No table: the sale is
+  the ledger rows (`ref_type` `ipd_counter_sale`, returns `ipd_counter_return` with `ref_id` `<sale>:<return>`), the
+  `ipd.pharmacy` lines (`order_id` = `issue_id` = the sale) and the event `ipd.med.counter_charged` (the audit).
+  Contracts `packages/contracts/src/ipd/counter.ts`; refusals `not_admitted`, `ip_discharged`, `ip_bill_settled`,
+  `controlled_at_counter`, `price_missing`, `counter_sale_not_found`, `not_on_sale`. Web:
+  `apps/web/src/screens/pharmacy-desk/ip-charge.tsx` (the desk's "Charge to IP" door), `apps/web/src/lib/ipd-counter-api.ts`.
+
 - (E4.3 #735) `emar.ts` — the acts: `verifyOrder` (+ `verifyFindingsOf`), `issueMed`, `returnMed`, `resolveAllergyFlag`,
   `secondCheck`, `administerDose`, `holdDose`, `refuseDose`, `missDose`, `reofferHeldDoses`, `markDoseInError`,
   `recordInfusionEvent`, `recordNarcoticWastage`, `signVerbalOrder`, the consumer `emarAllergyConsumer` /
@@ -934,6 +945,19 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   DELETE and TRUNCATE; the verbal signature and the second-check spend are write-once (`ipd_emar_verbal_guard`,
   `ipd_emar_second_check_guard`). `test/helpers/db.ts` `truncateAll` turns the TRUNCATE triggers off for its one statement.
   More than five wristband overrides by one nurse in 24 h tell the ward in-charge once a day.
+
+### Charge to IP at the OPD counter (#787 IP counter)
+- DECIDED (standard Indian corporate-hospital "IP credit" sale; money from decisions 0073 / 0074): store PHARM-OPD; the ward
+  issue's price (batch MRP at the sale instant, tax-inclusive, NO member benefit), one `ipd.pharmacy` line per batch; no
+  invoice, no tender, no counter discount. Who: `ipd.emar.issue` (the pharmacist who issues to the ward).
+- REFUSED: `not_admitted` (requested / reserved / cancelled, or a UHID with no open stay), `ip_discharged` (the stay ended),
+  `ip_bill_settled` (a live final bill: the supplementary bill through the ward, or a cash sale), `controlled_at_counter`
+  (Schedule X / NDPS only against a ward order), `price_missing` (never ₹0, and nothing waits on the bill desk). The lookup
+  gives the same refusals as the charge. A sealed patient's UHID answers `not_admitted` (only the IP number finds the
+  stay) and the answer carries no admission number, bed or ward. A named batch must be sellable today (FEFO's own list:
+  not expired, not recalled) or `batch_mismatch`. The same medicine twice in one sale is one line per batch.
+- The charge runs under the admission lock with the stock movement: refused or failed, nothing moves. A return is the ward
+  return's credit (`postDrugReturnCreditsIn`), including `return_after_bill`; returns are allowed after discharge as on the ward.
 
 ## 4. Traps
 - `docker/prod/deploy.sh` runs every seed on every deploy. The loader is a script a person runs; never wire it
