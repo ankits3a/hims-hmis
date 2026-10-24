@@ -125,6 +125,15 @@ export {
   importReferenceLabels, planReferenceImport, REFERENCE_SECTIONS, referenceForGeneric, referenceSectionsOf,
 } from "./reference-labels";
 export type { GenericReference, ReferenceEntry, ReferenceImportResult, ReferencePlan, ReferenceSectionName } from "./reference-labels";
+/**
+ * #617 (decision 0052) — DDInter 2.0 major interactions as a labelled reference layer. `listInteractionsForCheck` is what
+ * the prescription check reads: the curated book, plus reference pairs only when `DDINTER_REFERENCE_ENABLED` is "true".
+ */
+export {
+  DDINTER_LICENCE, DDINTER_SOURCE, REFERENCE_INTERACTION_LABEL, countReferenceInteractions, ddinterReferenceEnabled,
+  importDdinterInteractions, listInteractionsForCheck, listReferenceInteractionsAmong, parseDdinterCsv, replayReferenceInteractions,
+} from "./reference-interactions";
+export type { DdinterImportReport, DdinterPair, DdinterParse, ReferenceReplay } from "./reference-interactions";
 
 export { counsellingByMedicine, counsellingOf, linkMedicinesToGenerics, monographForMedicine, renalRulesByMedicine } from "./generic-link";
 export type { Counselling, GenericLinkReport, RenalRuleOfMedicine } from "./generic-link";

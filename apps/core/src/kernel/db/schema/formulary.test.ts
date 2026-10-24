@@ -62,6 +62,11 @@ const CENSUS: Record<string, string[]> = {
     "retired_at", "retired_by", "retrieved_on", "sections", "set_id", "source", "version",
   ],
   formulary_reference_names: ["import_batch", "name", "ref_key", "updated_at", "updated_by"],
+  // #617 (decision 0052): DDInter 2.0 major pairs as a reference layer beside the curated book.
+  formulary_reference_interactions: [
+    "ddinter_id_a", "ddinter_id_b", "drug_a_name", "drug_b_name", "id", "import_batch", "imported_at", "imported_by", "level", "licence",
+    "retired_at", "retired_by", "retrieved_on", "salt_a_id", "salt_b_id", "source",
+  ],
 };
 
 describe("the formulary tables (Plan 16a T1)", () => {

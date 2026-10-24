@@ -118,6 +118,18 @@ Source: `apps/core/src/modules/formulary/`
   - `suggestMoieties(db: Db, query: string, limit: number): Promise<MoietySuggestion[]>`
   - `unreviewedSaltIds(db: Db | Tx, ids: readonly string[]): Promise<Set<string>>`
   - types: `CatalogueCensus`, `MoietySuggestion`
+- `reference-interactions.ts`
+  - `DDINTER_LICENCE`
+  - `DDINTER_SOURCE`
+  - `REFERENCE_INTERACTION_LABEL`
+  - `countReferenceInteractions(db: Db): Promise<number>`
+  - `ddinterReferenceEnabled(env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env): boolean`
+  - `importDdinterInteractions(db: Db, actor: Actor, input: { files: readonly string[]; retrievedOn: string; apply: boolean }): Promise<DdinterI…`
+  - `listInteractionsForCheck(db: Db, saltIds: string[], env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env): Promise<Int…`
+  - `listReferenceInteractionsAmong(db: Db, saltIds: readonly string[]): Promise<InteractionPair[]>`
+  - `parseDdinterCsv(text: string): DdinterParse`
+  - `replayReferenceInteractions(db: Db, window: { since: Date; until: Date }): Promise<ReferenceReplay>`
+  - types: `DdinterImportReport`, `DdinterPair`, `DdinterParse`, `ReferenceReplay`
 - `reference-labels.ts`
   - `REFERENCE_SECTIONS`
   - `importReferenceLabels(db: Db, actor: Actor, raw: unknown, at: Date = new Date()): Promise<ReferenceImportResult>`
@@ -166,7 +178,7 @@ Source: `apps/core/src/modules/formulary/`
 
 ## Tables (`kernel/db/schema/formulary.ts`)
 
-`formulary_crk_entries`, `formulary_crk_signatures`, `formulary_drug_disease`, `formulary_generic_substances`, `formulary_generics`, `formulary_interactions`, `formulary_mapping_proposals`, `formulary_medicine_salts`, `formulary_medicines`, `formulary_monographs`, `formulary_reference_labels`, `formulary_reference_names`, `formulary_renal_doses`, `formulary_salts`, `formulary_staging`, `formulary_substances`
+`formulary_crk_entries`, `formulary_crk_signatures`, `formulary_drug_disease`, `formulary_generic_substances`, `formulary_generics`, `formulary_interactions`, `formulary_mapping_proposals`, `formulary_medicine_salts`, `formulary_medicines`, `formulary_monographs`, `formulary_reference_interactions`, `formulary_reference_labels`, `formulary_reference_names`, `formulary_renal_doses`, `formulary_salts`, `formulary_staging`, `formulary_substances`
 
 Foreign keys into: —
 

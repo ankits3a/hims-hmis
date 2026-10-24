@@ -8,7 +8,7 @@ import { withTx } from "../../kernel/db/client";
 import { opdDepartments, opdEncounters, opdPrescriptions, opdVitals, outsideTests, users } from "../../kernel/db/schema";
 import { getPatientSummaries, listAllergies } from "../patients";
 import {
-  listDrugDiseaseFor, listInteractionsAmong, normalizeDrugName, resolveDrugTexts, resolveMedicines,
+  listDrugDiseaseFor, listInteractionsForCheck, normalizeDrugName, resolveDrugTexts, resolveMedicines,
   renalRulesByMedicine, unreviewedSaltIds,
 } from "../formulary";
 import {
@@ -306,7 +306,9 @@ export async function runRxChecks(
     ...checkLines.flatMap((l) => l.resolution?.salts.map((s) => s.saltId) ?? []),
     ...priors.flatMap((p) => p.lines.flatMap((l) => l.resolution?.salts.map((s) => s.saltId) ?? [])),
   ];
-  const pairs = await listInteractionsAmong(db, saltIds);
+  // #617 — the curated book, plus DDInter's major pairs only when DDINTER_REFERENCE_ENABLED is "true" (ships OFF);
+  // a curated row for the same pair always wins.
+  const pairs = await listInteractionsForCheck(db, saltIds);
   /**
    * P24 — the fourth axis. Only THIS prescription's moieties are asked about, not the priors':
    * the doctor can act on the line they are writing, and an alert about a drug issued last month

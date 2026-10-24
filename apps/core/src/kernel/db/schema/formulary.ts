@@ -1010,3 +1010,47 @@ export const formularyReferenceNames = pgTable(
     check("formulary_reference_names_lower_ck", sql`${t.name} = lower(${t.name})`),
   ],
 );
+
+/**
+ * #617 (decision 0052; licence confirmed by the owner 2026-10-23) — DDInter 2.0 MAJOR INTERACTIONS AS A LABELLED REFERENCE
+ * LAYER, beside and never inside `formulary_interactions` (the curated book).
+ *
+ * One live row per moiety pair (`salt_a_id < salt_b_id`, the curated book's order), loaded by
+ * `scripts/import-ddinter.ts` from the DDInter export files the owner supplies. Only Major pairs are stored; DDInter's
+ * own names and ids are kept beside the mapped moieties. A re-import retires a pair the new file no longer holds and
+ * inserts a new one; nothing is updated in place or deleted. Every row carries its source, licence (the share-alike
+ * notice travels with the data) and retrieval date.
+ *
+ * The prescription check reads it only through `modules/formulary/reference-interactions.ts`, only when
+ * `DDINTER_REFERENCE_ENABLED` is "true" (ships OFF), and any curated row for the same pair — active or retired — wins.
+ */
+export const formularyReferenceInteractions = pgTable(
+  "formulary_reference_interactions",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    saltAId: text("salt_a_id").notNull().references(() => formularySalts.id),
+    saltBId: text("salt_b_id").notNull().references(() => formularySalts.id),
+    /** DDInter's names and ids for the two drugs, in the same order as the salts. */
+    drugAName: text("drug_a_name").notNull(),
+    drugBName: text("drug_b_name").notNull(),
+    ddinterIdA: text("ddinter_id_a"),
+    ddinterIdB: text("ddinter_id_b"),
+    /** DDInter's level. Only 'major' is loaded (decision 0052). */
+    level: text("level").notNull(),
+    source: text("source").notNull(),
+    licence: text("licence").notNull(),
+    /** The date the export was downloaded (an IST calendar date typed by whoever ran the import). */
+    retrievedOn: date("retrieved_on", { mode: "string" }).notNull(),
+    importBatch: text("import_batch").notNull(),
+    importedBy: text("imported_by").notNull(),
+    importedAt: timestamp("imported_at", { withTimezone: true }).notNull().defaultNow(),
+    retiredAt: timestamp("retired_at", { withTimezone: true }),
+    retiredBy: text("retired_by"),
+  },
+  (t) => [
+    uniqueIndex("formulary_reference_interactions_live_ux").on(t.saltAId, t.saltBId).where(sql`${t.retiredAt} is null`),
+    index("formulary_reference_interactions_b_idx").on(t.saltBId),
+    check("formulary_reference_interactions_ordered_ck", sql`${t.saltAId} < ${t.saltBId}`),
+    check("formulary_reference_interactions_level_ck", sql`${t.level} = 'major'`),
+  ],
+);
