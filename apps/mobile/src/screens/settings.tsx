@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Pressable, Switch, View } from "react-native";
+import { Linking, Pressable, Switch, View } from "react-native";
 import { useRouter } from "expo-router";
+import { PRIVACY_URL } from "../config";
 import { useI18n } from "../i18n";
 import { useSession } from "../session";
 import { Text } from "../text";
@@ -77,6 +78,7 @@ export function SettingsScreen() {
 
         {head("settings.account")}
         {row("settings-account", t("mobile.account.open"), () => router.push("/account"))}
+        {row("settings-privacy", t("settings.privacy"), () => { void Linking.openURL(PRIVACY_URL).catch(() => setProblem(t("settings.offline"))); })}
 
         <View style={{ marginTop: space.lg }}>
           <Button kind="secondary" label={t("settings.logout")} testID="settings-logout"
