@@ -29,6 +29,7 @@ import { orderingManifest } from "../../modules/ordering";
 import { housekeepingManifest } from "../../modules/housekeeping";
 import { maintenanceManifest } from "../../modules/maintenance";
 import { passesManifest } from "../../modules/passes";
+import { dietManifest } from "../../modules/diet";
 import { ipdManifest } from "../../modules/ipd";
 import { doctorDeskManifest } from "../../modules/doctor-desk";
 
@@ -101,6 +102,7 @@ const MANIFEST_BY_IDENTIFIER: Record<string, ModuleManifest> = {
   maintenanceManifest, // E1.5 MAINTENANCE (issue #722) — API only
   passesManifest, // E1.3 (#720) — both processes
   ipdManifest, // E3.3 (#731) — both processes (the family-link stop consumer)
+  dietManifest, // E4.4 DIET (#736) — both processes (the `diet.reconcile` consumer)
   doctorDeskManifest, // DOCTOR DESK DD-0 — app-only
 };
 
@@ -223,6 +225,8 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "passes", // PASSES E1.3 (#720): attendant and visitor passes
       // E1.6 TRANSPORT (issue #723) — appended. A leaf: it reaches into tasks, ipd and patients through their indexes.
       "transport",
+      // E4.4 DIET (issue #736) — appended. A leaf: it reaches into ipd and tasks through their indexes; OT by its events.
+      "diet",
       // DOCTOR DESK DD-0 (#626) — appended. A leaf: it reads lab, radiology, opd, patients and roster
       // through their indexes; nothing imports it.
       "doctor-desk",
@@ -464,6 +468,8 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "housekeeping",
       // E1.3 (#720) — the passes consumer (`passes.admission`); installed in both processes.
       "passes",
+      // E4.4 DIET (#736) — the diet consumer (`diet.reconcile`); installed in both processes.
+      "diet",
       // E3.3 (#731) — the family link's stop consumer (`ipd.family_stop`): death and absconding revoke the link. `ipd` moves
       // from the app-only list to the shared one in the commit that declares its first subscription and registers its handler.
       "ipd",

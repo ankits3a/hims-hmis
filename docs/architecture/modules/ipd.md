@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/ipd/`
 · Notes: [MAP.md](../../../apps/core/src/modules/ipd/MAP.md)
 
 - **Depends on modules:** `billing`, `opd`, `patients`, `tariff`
-- **Used by modules:** `housekeeping`, `maintenance`, `passes`, `transport`
+- **Used by modules:** `diet`, `housekeeping`, `maintenance`, `passes`, `transport`
 - **Kernel used:** `alerts`, `approvals`, `auth`, `config`, `crypto`, `db`, `desk`, `events`, `modules`, `notify`, `printing`, `realtime`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `admissionAbsconded`, `admissionDeceased`
 
@@ -198,6 +198,9 @@ Source: `apps/core/src/modules/ipd/`
   - `registerIpdReceiptGuard(): () => void`
   - `takeDeposit(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<DepositOut>`
   - types: `DepositQuote`, `DepositQuoteArgs`
+- `diet-seam.ts`
+  - `placedCensus(exec: Db | Tx, wardId?: string): Promise<PlacedPatient[]>`
+  - types: `PlacedPatient`
 - `discharge-bill.ts`
   - `IPD_SETTLED_BILL_RECENT_DAYS`
   - `askDuesApproval(db: Db, actor: Actor, body: { admissionId: string; amountPaise: number; note: string }): Promise<{ approvalId: string }>`
@@ -297,9 +300,10 @@ Source: `apps/core/src/modules/ipd/`
   - `bedProposalCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
   - `cleaningOverdueCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
   - `dischargeBlockedCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `nowIdentities(db: Db, reader: Actor, admissions: readonly { id: string; patientId: string }[]): Promise<Map<string, Identity>>`
   - `rankNowRows(rows: readonly NowRow[]): DeskRow[]`
   - `stuckStepOf(args: { state: string; declaredAt: Date; confirmations: Parameters<typeof pendingDepartments>[0]; summarySignedAt: Date | null;…`
-  - types: `NowRow`, `StuckStep`
+  - types: `Identity`, `NowRow`, `StuckStep`
 - `payer-bill.ts`
   - `addPayerNonPayable(db: Db, actor: Actor, raw: unknown, at: Date = new Date()): Promise<IpdNonPayable>`
   - `computePayerSplit(db: Db | Tx, a: AdmissionRow, lines: readonly ChargeLineRow[]): Promise<IpdPayerSplit>`

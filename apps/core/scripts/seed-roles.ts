@@ -250,6 +250,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "doctor",
     permissions: [
+      // DIET E4.4 (#736) — the doctor orders the diet, sets or lifts NPO, and reads the ward diet sheet and kitchen board.
+      "diet.view", "diet.order", "diet.npo", "diet.clinical.view",
       // IPD ADMISSION E1.2 (#719) — a doctor advises admission (raises the request); answers carry no money (0058).
       "ipd.admit.request",
       // PASSES E1.3 (#720) — a doctor's visitor ban: pause visitor passes with a reason, and lift it.
@@ -2144,7 +2146,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // send and receive laundry and raise a condemn (`linen.handle`); the services supervisor is the linen supervisor: the
   // board, par levels and condemn approvals. DECIDED by the standard Indian corporate-hospital split.
   // E1.6 TRANSPORT (#723) — porters are support staff (one cadre with ward attendants): their transport card details.
-  { roleKey: "support_staff", permissions: ["tasks.work", "bmw.handle", "linen.handle", "transport.work"] },
+  // E4.4 DIET (#736) — the ward's food-service attendant takes the meal-delivery task and taps a tray delivered or refused.
+  { roleKey: "support_staff", permissions: ["tasks.work", "bmw.handle", "linen.handle", "transport.work", "diet.serve"] },
   /**
    * E1.4 HOUSEKEEPING (issue #721, decision 0072) — the services supervisor IS the housekeeping supervisor: the
    * housekeeping board, and the check of a TERMINAL clean (isolation, infection, death), which NABH infection
@@ -2173,6 +2176,15 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     roleKey: "maintenance_staff",
     permissions: ["tasks.view", "tasks.work", "maintenance.view", "maintenance.work", "maintenance.raise"],
   },
+  /**
+   * E4.4 DIET (issue #736, decision 0072) — no dietary role existed, so two are minted by the standard Indian
+   * corporate-hospital split: the DIETICIAN (clinical nutrition: orders and changes diets, NPO, the consult queue, the
+   * meal rounds' cut-offs, and the kitchen's lists when the kitchen is short) and the KITCHEN STAFF (food service:
+   * build, print and dispatch the meal lists). The ward nurse gets `diet.view`, `diet.npo`, `diet.serve` and `diet.clinical.view` when the ipd-nursing
+   * lane seeds the nursing roles (the `transport.request` precedent). NOBODY is assigned by any seed.
+   */
+  { roleKey: "dietician", permissions: ["diet.view", "diet.order", "diet.npo", "diet.serve", "diet.kitchen", "diet.manage", "diet.clinical.view", "tasks.view"] },
+  { roleKey: "kitchen_staff", permissions: ["diet.view", "diet.kitchen"] },
 ];
 
 /**
@@ -2438,6 +2450,9 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   attendance_committee: "Attendance Committee (reads everyone's attendance from the attendance machine; handles meeting requests)",
   support_staff: "Support Staff (ward attendants, housekeeping, porters: takes and does tasks)",
   services_supervisor: "Services Supervisor (task board: assigns, cancels and verifies service tasks)",
+  // E4.4 DIET (#736).
+  dietician: "Dietician (diet orders, NPO, consults, meal rounds and the kitchen lists)",
+  kitchen_staff: "Kitchen Staff (builds, prints and dispatches the meal lists)",
   maintenance_staff: "Maintenance Staff (engineering technicians: electrical, plumbing, AC, carpentry repairs)",
   radiology_resident: "Radiology Resident (drafts, issues prelims, calls criticals; signs for a consultant's co-sign — publishes nothing alone)",
 };

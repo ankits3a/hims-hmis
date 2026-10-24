@@ -32,6 +32,9 @@ import { BmwHandle } from "./screens/bmw-handle";
 import { BmwReports } from "./screens/bmw-reports";
 import { LinenBoard } from "./screens/linen-board";
 import { LinenHandle } from "./screens/linen-handle";
+import { DietConsults } from "./screens/diet-consults";
+import { DietKitchen } from "./screens/diet-kitchen";
+import { DietWard } from "./screens/diet-ward";
 import { HousekeepingBoard } from "./screens/housekeeping-board";
 import { MaintenanceBoard } from "./screens/maintenance-board";
 import { TransportBoard } from "./screens/transport-board";
@@ -346,6 +349,11 @@ const NAV: readonly NavEntry[] = [
   // E1.6 TRANSPORT (issue #723) — the supervisor's board (`transportManifest.menu`) and the request sheet.
   { to: "/transport", label: "nav.transport", permission: "transport.manage", group: "services" },
   { to: "/transport/request", label: "nav.transportRequest", permission: "transport.request", group: "services", anyOf: ["transport.manage"] },
+  // E4.4 DIET (issue #736) — the ward diet sheet, the kitchen board and the dietician's consults; paths and permissions
+  // match `dietManifest.menu`.
+  { to: "/diet/ward", label: "nav.dietWard", permission: "diet.view", group: "services" },
+  { to: "/diet/kitchen", label: "nav.dietKitchen", permission: "diet.kitchen", group: "services" },
+  { to: "/diet/consults", label: "nav.dietConsults", permission: "diet.manage", group: "services" },
   // The OPD day report (owner, 2026-09-19): the hospital's day by department, PDF and CSV.
   { to: "/reports/opd-day", label: "nav.opdDayReport", permission: "opd.reports.read", group: "opd" },
   // 20-U U5a — who is on now, the hospital's unit board. `roster.read` matches `rosterManifest.menu`.
@@ -1386,6 +1394,27 @@ const transportRequestRoute = createRoute({
   component: TransportRequest,
 });
 
+/** E4.4 DIET (issue #736) — the ward diet sheet (390 px first): diet, NPO, allergies and the next tray per bed. */
+const dietWardRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/diet/ward",
+  component: DietWard,
+});
+
+/** E4.4 DIET — the kitchen board (16:9): every ward's list for one meal, print (A4 + labels), dispatch. */
+const dietKitchenRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/diet/kitchen",
+  component: DietKitchen,
+});
+
+/** E4.4 DIET — the dietician's consult queue and the meal rounds' cut-offs. */
+const dietConsultsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/diet/consults",
+  component: DietConsults,
+});
+
 const myReachRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/me/reach",
@@ -2255,6 +2284,8 @@ export const router = createRouter({
       maintenanceBoardRoute,
       // E1.6 TRANSPORT — +2, `/transport` and `/transport/request`.
       transportBoardRoute, transportRequestRoute,
+      // E4.4 DIET — +3, `/diet/ward`, `/diet/kitchen`, `/diet/consults`. `caddyfile-parity.test.ts` pins the count.
+      dietWardRoute, dietKitchenRoute, dietConsultsRoute,
       rosterEvidenceRoute,
       rosterAebasRoute,
       // DD-0 (#626) — +2, `/doctor-desk` and `/doctor-desk/briefs`. `caddyfile-parity.test.ts` pins the count.

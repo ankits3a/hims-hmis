@@ -153,6 +153,7 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       "biomedical_engineer",
       "cashier",
       "daycare_coordinator",
+      "dietician", // DIET E4.4 (#736) — by derivation from ROLE_MODEL
       "display",
       "doctor",
       "duty_manager",
@@ -175,6 +176,7 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       // This file is not in 17-E T2's Files list either, and it is the TENTH census site the task
       // moved — found by CI on the shard that runs it, not locally, because the phase ran
       // `seed-roles.test.ts` and this is `seed-staff`'s own separate census.
+      "kitchen_staff", // DIET E4.4 (#736) — by derivation from ROLE_MODEL
       "lab_bridge",
       "lab_reception",
       "lab_technician",

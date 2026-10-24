@@ -1094,6 +1094,22 @@ const IPD_ADMIT_PAIRS: readonly string[] = [
   "doctor/ipd.admit.request", "billing_manager/ipd.payer.manage",
 ];
 
+/** The README prose line authorising diet and kitchen (E4.4, decision 0072). Quoted, not paraphrased. */
+const DIET_README_PROSE =
+  "`diet.npo` (doctor, dietician) sets or lifts NPO —\na ward nurse may do that and nothing else once the nursing lane seeds her role;";
+
+/**
+ * DIET E4.4 (#736, decision 0072; built 2026-10-13, awaiting owner review) — two new roles (dietician, kitchen_staff);
+ * the doctor orders and sets NPO, the ward nurse joins with the nursing lane, the ward attendant taps trays, the kitchen dispatches.
+ */
+const DIET_PAIRS: readonly string[] = [
+  "doctor/diet.view", "doctor/diet.order", "doctor/diet.npo", "doctor/diet.clinical.view",
+  "support_staff/diet.serve",
+  "dietician/diet.view", "dietician/diet.order", "dietician/diet.npo", "dietician/diet.serve", "dietician/diet.kitchen",
+  "dietician/diet.manage", "dietician/diet.clinical.view", "dietician/tasks.view",
+  "kitchen_staff/diet.view", "kitchen_staff/diet.kitchen",
+];
+
 /** The README prose line authorising attendant and visitor passes (E1.3, decision 0072). Quoted, not paraphrased. */
 const PASSES_README_PROSE =
   "`passes.scan` (security_guard, duty_manager) scans a pass at a ward door;";
@@ -1313,6 +1329,7 @@ const NON_TABLE_PAIRS: readonly string[] = [
   ...HOUSEKEEPING_PAIRS,
   ...MAINTENANCE_PAIRS,
   ...TRANSPORT_PAIRS,
+  ...DIET_PAIRS,
   ...COPILOT_HEALTH_PAIRS,
   ...COPILOT_HALT_PAIRS,
   ...LAB_METRICS_PAIRS,
@@ -1630,6 +1647,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       maintenance: 5, // E1.5 MAINTENANCE (issue #722) — maintenance.view, .raise, .work, .confirm, .manage
       housekeeping: 2, // E1.4 HOUSEKEEPING (issue #721) — housekeeping.view, housekeeping.verify_terminal
       transport: 3, // E1.6 TRANSPORT (issue #723) — transport.request, transport.work, transport.manage
+      diet: 7, // DIET E4.4 (issue #736) — diet.view, .order, .npo, .serve, .kitchen, .manage, .clinical.view
       attendance: 1, // STAFF ATTENDANCE (owner 2026-10-09) — attendance.all.read; a team and oneself are computed, not granted
       passes: 4, // PASSES E1.3 (2026-10-12): passes.issue, .scan, .pause, .manage
       ipd: 24, // IPD ADMISSION E1.2 (2026-10-12): +4, ipd.admit.request, .admit, ipd.payer.manage, ipd.band.print; IPD BEDS E1.1 (2026-10-12), read off the failing run: ipd.beds.view, .manage, .clean, .overflow
@@ -1732,6 +1750,9 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       "services_supervisor",
       // E1.5 MAINTENANCE (issue #722) — the engineering technicians, appended. Grants and no holders.
       "maintenance_staff",
+      // DIET E4.4 (#736) — the dietician and the kitchen staff, appended. Grants and no holders.
+      "dietician",
+      "kitchen_staff",
     ]);
     expect(Object.fromEntries(ROLE_MODEL.map((r) => [r.roleKey, r.permissions.length]))).toEqual({
       // Plan 09 / DD18 moved four of these: +3 each to the two desk roles and the cashier (read,
@@ -1872,6 +1893,8 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       support_staff: 4, // E0.1 TASK ENGINE — tasks.work and nothing else
       services_supervisor: 15, // E0.1 TASK ENGINE — tasks.view, tasks.work, tasks.supervise
       maintenance_staff: 5, // E1.5 MAINTENANCE — tasks.view, tasks.work, maintenance.view, .work, .raise
+      dietician: 8, // DIET E4.4 (#736) — the seven diet.* strings and tasks.view
+      kitchen_staff: 2, // DIET E4.4 (#736) — diet.view, diet.kitchen
       antimicrobial_steward: 3, // PHARMACY STAGE D5 — approvals.requests.read and .decide (it is the approverRole) and pharmacy.antimicrobial.approve
     });
     // PLAN 07c T9 — 156 → 158: `staff.reports.read` to `front_office_supervisor` and to
@@ -2227,6 +2250,9 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       "services_supervisor",
       // E1.5 MAINTENANCE appends the engineering technicians.
       "maintenance_staff",
+      // DIET E4.4 appends the dietician and the kitchen staff.
+      "dietician",
+      "kitchen_staff",
     ]);
     // `nurse` is now the ONLY constant entry with no permission column anywhere — `duty_manager`
     // left this list on 2026-08-26 when Group C gave it one.
@@ -2251,6 +2277,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       "pharmacy_incharge", // P17
       "antimicrobial_steward", // PHARMACY STAGE D5 — a governance seat held beside a clinical role
       "radiology_resident", // 18-S RS8b — signs for a consultant's co-sign
+      "dietician", "kitchen_staff", // DIET E4.4 (#736); `.sort()` places them
       "attendance_committee", // STAFF ATTENDANCE (owner 2026-10-09) — reads everyone's attendance; `.sort()` places it
       "opd_scribe", // FD-30 — the OPD-door transcription seat; `.sort()` places it, not this line
       "opd_slip_desk", // CONSULTED ON PAPER — the slip desk (owner ruling 2026-10-06, B)
@@ -2512,6 +2539,7 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(readme).toContain(HOUSEKEEPING_README_PROSE);
     expect(readme).toContain(MAINTENANCE_README_PROSE);
     expect(readme).toContain(TRANSPORT_README_PROSE);
+    expect(readme).toContain(DIET_README_PROSE);
     expect(readme).toContain(COPILOT_HALT_README_PROSE);
     expect(readme).toContain(IPD_BEDS_README_PROSE);
     expect(readme).toContain(IPD_ADMIT_README_PROSE);

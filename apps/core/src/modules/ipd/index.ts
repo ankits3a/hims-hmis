@@ -159,3 +159,9 @@ export {
   IPD_DISCHARGE_STEP_STUCK_MINUTES, bedProposalCard, cleaningOverdueCard, dischargeBlockedCard, rankNowRows, stuckStepOf,
 } from "./now-cards";
 export type { NowRow, StuckStep } from "./now-cards";
+// E4.4 DIET (#736) — who lies on a bed now and in which ward (the meal lists), and the shared Now-card identity rule
+// (name, alias for a sealed or confidential patient) for the kitchen's labels and the ward diet sheet.
+export { placedCensus } from "./diet-seam";
+export type { PlacedPatient } from "./diet-seam";
+export { nowIdentities } from "./now-cards";
+export type { Identity as NowIdentity } from "./now-cards";

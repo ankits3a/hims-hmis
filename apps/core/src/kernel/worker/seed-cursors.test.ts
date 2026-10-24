@@ -20,8 +20,10 @@ import { PATIENTS_APPROVAL_REJECTED_CONSUMER } from "../../modules/patients";
 import { HOUSEKEEPING_BED_CONSUMER } from "../../modules/housekeeping";
 import * as housekeepingTurnover from "../../modules/housekeeping/turnover";
 import { PASSES_ADMISSION_CONSUMER } from "../../modules/passes";
+import { DIET_CONSUMER } from "../../modules/diet";
 import { IPD_FAMILY_STOP_CONSUMER } from "../../modules/ipd";
 import { seedCursors } from "./seed-cursors";
+import { workerBackfills } from "./worker.module";
 
 const mkInput = (name: string) => ({
   name, version: 1, occurredAt: new Date(),
@@ -193,6 +195,11 @@ describe("seedCursors", () => {
          * since the IPD lanes began; each would find no live link and do nothing — harmless by construction, seeded anyway.
          */
         IPD_FAMILY_STOP_CONSUMER,
+        /**
+         * E4.4 DIET (#736) — unseeded, it would walk every admission, transfer and stay ending since IPD began and
+         * every OT booking since the mini-OT (writing an NPO for each past case). Seeded at `max(seq)`.
+         */
+        DIET_CONSUMER,
       ].sort());
   });
 
@@ -216,6 +223,11 @@ describe("seedCursors", () => {
    * 5000 inserts, the same knob dispatcher.test.ts's own suite overrides explicitly for
    * determinism (its "does not redeliver ... re-reads" case sets `lookback: 5_000`).
    */
+  /** The state a seeded cursor skips, rebuilt at deploy: housekeeping's owed cleans, diet's OT NPOs (review item 7). */
+  it("workerBackfills names exactly housekeeping's bed turnover and diet's OT NPO sync", () => {
+    expect(Object.keys(workerBackfills(db)).sort()).toEqual([DIET_CONSUMER, HOUSEKEEPING_BED_CONSUMER].sort());
+  });
+
   it("V10 — leaves a newly-seeded consumer at max(seq); the next cycle delivers nothing", async () => {
     for (let i = 0; i < 4; i += 1) {
       await withTx(db, (tx) => appendEvent(tx, mkInput("alert.raised")));

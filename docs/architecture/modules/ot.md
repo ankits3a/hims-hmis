@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/ot/`
 
 - **Depends on modules:** `billing`, `materials`, `patients`, `roster`, `tariff`
-- **Used by modules:** `radiology`
+- **Used by modules:** `diet`, `radiology`
 - **Kernel used:** `approvals`, `auth`, `config`, `db`, `episodes`, `events`, `modules`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `materialConsumed`, `patientMerged`
 

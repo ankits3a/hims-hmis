@@ -45,6 +45,7 @@ import { HousekeepingModule } from "./modules/housekeeping";
 import { MaintenanceModule } from "./modules/maintenance";
 import { PassesModule } from "./modules/passes";
 import { TransportModule } from "./modules/transport";
+import { DietModule } from "./modules/diet";
 import { AerbModule } from "./modules/aerb/aerb.module";
 import { PrintingModule } from "./kernel/printing/printing.module";
 import { RosterModule } from "./modules/roster/roster.module";

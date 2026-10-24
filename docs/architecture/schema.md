@@ -22,6 +22,8 @@ flowchart LR
   attendance[attendance] --> auth[auth]
   billing[billing] --> patients[patients]
   bmw[bmw] --> resources[resources]
+  diet[diet] --> ipd[ipd]
+  diet[diet] --> resources[resources]
   doctor_desk[doctor-desk] --> auth[auth]
   documents[documents] --> opd[opd]
   documents[documents] --> patients[patients]
@@ -102,6 +104,7 @@ flowchart LR
 | `clinical-coding.ts` | kernel | `icd10_codes`, `icd11_map_loads`, `icd11_map_rows` |
 | `copilot.ts` | kernel | `copilot_acts`, `copilot_ask_feedback`, `copilot_asks`, `copilot_halts`, `copilot_notice_acks`, `copilot_user_settings` |
 | `desk.ts` | kernel | `user_day_facts` |
+| `diet.ts` | module diet | `diet_consults`, `diet_meal_lines`, `diet_meal_lists`, `diet_meal_rounds`, `diet_npo`, `diet_orders` |
 | `doctor-desk.ts` | module doctor-desk | `doctor_desk_acts`, `doctor_desk_agent_runs`, `doctor_desk_briefs`, `doctor_desk_moves`, `doctor_desk_nudges`, `doctor_desk_ratings`, `doctor_desk_reads` |
 | `documents.ts` | kernel | `patient_documents` |
 | `episodes.ts` | kernel | `episode_series` |
