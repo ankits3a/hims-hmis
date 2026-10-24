@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/ipd/`
 · Notes: [MAP.md](../../../apps/core/src/modules/ipd/MAP.md)
 
 - **Depends on modules:** `billing`, `formulary`, `lab`, `materials`, `opd`, `ordering`, `ot`, `patients`, `pharmacy`, `roster`, `tariff`
-- **Used by modules:** `diet`, `housekeeping`, `maintenance`, `passes`, `transport`
+- **Used by modules:** `diet`, `emergency`, `housekeeping`, `maintenance`, `passes`, `transport`
 - **Kernel used:** `alerts`, `approvals`, `auth`, `config`, `copilot`, `crypto`, `db`, `desk`, `episodes`, `events`, `inference`, `modules`, `notify`, `orders`, `printing`, `realtime`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `admissionAbsconded`, `admissionDeceased`
 
@@ -26,6 +26,7 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_PLACED_STATES`
   - `IPD_TRANSFER_ACCEPTED_EVENT_NAME`
   - `admissionPlace(db: Db | Tx, admissionId: string): Promise<AdmissionPlace | null>`
+  - `placedAdmissionOf(db: Db | Tx, patientIds: readonly string[]): Promise<AdmissionPlace | null>`
   - types: `AdmissionPlace`
 - `admission-read.ts`
   - `askApproval(db: Db, actor: Actor, admissionId: string, body: { kind: IpdApprovalKind; note: string; amountPaise?: number }): Promise<{ appr…`

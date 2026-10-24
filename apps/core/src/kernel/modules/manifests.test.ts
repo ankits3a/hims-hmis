@@ -227,6 +227,8 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "transport",
       // E4.4 DIET (issue #736) — appended. A leaf: it reaches into ipd and tasks through their indexes; OT by its events.
       "diet",
+      // ER lane 1 (issue #808) — appended. A leaf: it reaches into patients, ipd and billing through their indexes.
+      "emergency",
       // DOCTOR DESK DD-0 (#626) — appended. A leaf: it reads lab, radiology, opd, patients and roster
       // through their indexes; nothing imports it.
       "doctor-desk",
@@ -382,7 +384,8 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     //      its two repair kinds exist for the task clock, and installs nothing).
     //      E1.6 TRANSPORT — `transport`, app-only too: the worker imports the module only so its task kinds are defined.
     //      E3.3 (#731): `ipd` is no longer app-only — its family-link stop is a subscription, so the worker installs it.
-    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance", "tasks", "bmw", "linen", "maintenance", "transport", "doctor-desk"]);
+    // (1o) ER lane 1 (#808) — `emergency`, APP-ONLY: no subscription; its clocks ride the worker's `lapseBedReservations` job.
+    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance", "tasks", "bmw", "linen", "maintenance", "transport", "emergency", "doctor-desk"]);
 
     /**
      * ═══ THE COUNT IS THE FRICTION, AND UNTIL NOW NOTHING ENFORCED IT ═══

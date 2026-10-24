@@ -27,6 +27,7 @@ flowchart LR
   doctor_desk[doctor-desk] --> auth[auth]
   documents[documents] --> opd[opd]
   documents[documents] --> patients[patients]
+  emergency[emergency] --> patients[patients]
   ipd_copilot[ipd-copilot] --> ipd[ipd]
   ipd_copilot[ipd-copilot] --> patients[patients]
   ipd_emar[ipd-emar] --> ipd_rounds[ipd-rounds]
@@ -115,6 +116,7 @@ flowchart LR
 | `diet.ts` | module diet | `diet_consults`, `diet_meal_lines`, `diet_meal_lists`, `diet_meal_rounds`, `diet_npo`, `diet_orders` |
 | `doctor-desk.ts` | module doctor-desk | `doctor_desk_acts`, `doctor_desk_agent_runs`, `doctor_desk_briefs`, `doctor_desk_moves`, `doctor_desk_nudges`, `doctor_desk_ratings`, `doctor_desk_reads` |
 | `documents.ts` | kernel | `patient_documents` |
+| `emergency.ts` | module emergency | `er_bands`, `er_episodes`, `er_pre_alerts` |
 | `episodes.ts` | kernel | `episode_series` |
 | `eventCursors.ts` | kernel | `event_cursors` |
 | `eventIdempotency.ts` | kernel | `event_idempotency` |

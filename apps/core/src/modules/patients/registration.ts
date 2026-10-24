@@ -84,6 +84,11 @@ export type RegisterPatientInput = {
   administrativeGender?: Sex;
   /** DD2 — omitted at the counter (defaults to `staff_verified`); 22c-B passes `self_declared`. */
   identityAssurance?: string;
+  /**
+   * ER lane 1 (#808) — `unidentified` for the emergency department's unknown patient (a real UHID with the ER's alias as
+   * its name); omitted = `identified`. Only the emergency module's `register_unidentified` passes it.
+   */
+  identityStatus?: "identified" | "unidentified";
   addressLine?: string;
   district?: string;
   stateName?: string;
@@ -258,6 +263,7 @@ export async function registerPatient(
        * to think about this at all.
        */
       identityAssurance: input.identityAssurance ?? "staff_verified",
+      identityStatus: input.identityStatus ?? "identified",
       addressLine: input.addressLine ?? null,
       district: input.district ?? null,
       stateName: input.stateName ?? null,

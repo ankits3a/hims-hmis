@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/billing/`
 · Notes: [MAP.md](../../../apps/core/src/modules/billing/MAP.md)
 
 - **Depends on modules:** `membership`, `opd`, `patients`, `tariff`
-- **Used by modules:** `ipd`, `lab`, `opd`, `ordering`, `ot`, `partners`, `passes`, `pharmacy`, `radiology`
+- **Used by modules:** `emergency`, `ipd`, `lab`, `opd`, `ordering`, `ot`, `partners`, `passes`, `pharmacy`, `radiology`
 - **Kernel used:** `approvals`, `auth`, `config`, `copilot`, `crypto`, `db`, `desk`, `episodes`, `events`, `modules`, `phi`, `printing`, `report`, `search`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file

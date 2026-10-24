@@ -43,6 +43,8 @@ import { StaffReports } from "./screens/staff-reports";
 import { CopilotHealthScreen } from "./screens/copilot-health";
 import { CrkFormularyScreen } from "./screens/crk-formulary";
 import { IpdBeds } from "./screens/ipd-beds";
+import { ErBoardScreen } from "./screens/er-board";
+import { ErDesk } from "./screens/er-desk";
 import { IpdAdmit } from "./screens/ipd-admit";
 import { IpdPasses } from "./screens/ipd-passes";
 import { PassesScan } from "./screens/passes-scan";
@@ -415,6 +417,9 @@ const NAV: readonly NavEntry[] = [
    * `otManifest.menu` declares the same three, so the two tables agree.
    */
   // E1.1 (#718) — the Beds capacity board; path and permission match `ipdManifest.menu`.
+  // ER lane 1 (#808) — the ER desk (`emergencyManifest.menu`) and the tracking board.
+  { to: "/er/desk", label: "nav.erDesk", permission: "er.arrival.register", group: "desk" },
+  { to: "/er/board", label: "nav.erBoard", permission: "er.board.view", group: "wards" },
   { to: "/ipd/beds", label: "nav.ipdBeds", permission: "ipd.beds.view", group: "wards" },
   // E1.2 (#719) — the Admit sheet; path and permission match `ipdManifest.menu`.
   { to: "/ipd/admit", label: "nav.ipdAdmit", permission: "ipd.admit", group: "wards" },
@@ -908,6 +913,28 @@ const staffReportsRoute = createRoute({
  * E1.1 (#718) — the Beds capacity board (spec §4.9 A). A command board: it owns the viewport (16:9, no page
  * scroll) and draws its own header. `?wall=1` is the wall display — the server sends initials, never names.
  */
+/**
+ * ER lane 1 (#808) — the ER desk (spec SPEC-emergency §5 C): arrival in three taps, the band, pre-alerts, brought dead,
+ * identity. It owns the viewport (desk and phone).
+ */
+const erDeskRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/er/desk",
+  staticData: { fullViewport: true },
+  component: ErDesk,
+});
+
+/** ER lane 1 (#808) — the tracking board (spec §5 A): 16:9, no page scroll; `?wall=1` is the wall screen (no names). */
+const erBoardRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/er/board",
+  staticData: { fullViewport: true },
+  validateSearch: (search: Record<string, unknown>): { wall?: string } => ({
+    wall: search.wall === "1" || search.wall === 1 || search.wall === true ? "1" : undefined,
+  }),
+  component: ErBoardScreen,
+});
+
 const ipdBedsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/ipd/beds",
@@ -2295,7 +2322,7 @@ export const router = createRouter({
     familyRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, ipdBedsRoute, ipdAdmitRoute, ipdBillRoute, ipdBillDeskRoute, ipdTpaRoute, ipdFamilyCallbacksRoute, ipdRoundsRoute, ipdRoundPatientRoute, ipdMarRoute, ipdPharmacyRoute, ipdNarcoticsRoute, ipdHandoversRoute, ipdWardRoute, ipdMyShiftRoute, ipdDischargeRoute, ipdPassesRoute, passesScanRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, erDeskRoute, erBoardRoute, ipdBedsRoute, ipdAdmitRoute, ipdBillRoute, ipdBillDeskRoute, ipdTpaRoute, ipdFamilyCallbacksRoute, ipdRoundsRoute, ipdRoundPatientRoute, ipdMarRoute, ipdPharmacyRoute, ipdNarcoticsRoute, ipdHandoversRoute, ipdWardRoute, ipdMyShiftRoute, ipdDischargeRoute, ipdPassesRoute, passesScanRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute, attendanceLinksRoute,
       // GO-LIVE SCREENS — +1, `/admin/workflows`. `caddyfile-parity.test.ts` pins the count.

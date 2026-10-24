@@ -157,6 +157,7 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       "display",
       "doctor",
       "duty_manager",
+      "er_nurse", // ER lane 1 (#808) — the casualty nurse, by derivation from ROLE_MODEL
       "front_office",
       "front_office_supervisor",
       // PLAN 17 T2 / DD16, 2026-08-29 — the LAB's four, arriving by the same DERIVATION as the six

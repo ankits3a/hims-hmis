@@ -1110,6 +1110,30 @@ const DIET_PAIRS: readonly string[] = [
   "kitchen_staff/diet.view", "kitchen_staff/diet.kitchen",
 ];
 
+/** The README prose line authorising the emergency department's grants (ER lane 1, issue #808). Quoted, not paraphrased. */
+const ER_README_PROSE =
+  "`er.arrival.register` is held by `front_office`, `front_office_supervisor`, `duty_manager` and `er_nurse`;\n`er.board.view` by the same four and `doctor` and `medical_superintendent`.";
+
+/** ER review (2026-10-15) — the README prose line authorising the wall screen's string. Quoted, not paraphrased. */
+const ER_WALL_README_PROSE =
+  "`er.board.wall` (the wall screen only: initials or the alias, no UHID, no complaint, no police mark) is held by the same six and the kiosk `display` role.";
+
+/**
+ * ER lane 1 (#808, decision 0076; built 2026-10-15, awaiting owner review) — the ER desk (front office, its supervisor,
+ * the duty manager at night, and the new casualty nurse role) and the tracking board (the same four, doctors, the MS).
+ */
+const ER_PAIRS: readonly string[] = [
+  "front_office/er.board.view", "front_office/er.arrival.register",
+  "front_office_supervisor/er.board.view", "front_office_supervisor/er.arrival.register",
+  "duty_manager/er.board.view", "duty_manager/er.arrival.register",
+  "er_nurse/er.board.view", "er_nurse/er.arrival.register",
+  "doctor/er.board.view",
+  "medical_superintendent/er.board.view",
+  // ER review (2026-10-15, DECIDED) — the wall screen's own string: the six board readers and the kiosk `display` role.
+  "front_office/er.board.wall", "front_office_supervisor/er.board.wall", "duty_manager/er.board.wall", "er_nurse/er.board.wall",
+  "doctor/er.board.wall", "medical_superintendent/er.board.wall", "display/er.board.wall",
+];
+
 /** The README prose line authorising attendant and visitor passes (E1.3, decision 0072). Quoted, not paraphrased. */
 const PASSES_README_PROSE =
   "`passes.scan` (security_guard, duty_manager) scans a pass at a ward door;";
@@ -1381,6 +1405,7 @@ const NON_TABLE_PAIRS: readonly string[] = [
   ...MAINTENANCE_PAIRS,
   ...TRANSPORT_PAIRS,
   ...DIET_PAIRS,
+  ...ER_PAIRS,
   ...COPILOT_HEALTH_PAIRS,
   ...COPILOT_HALT_PAIRS,
   ...LAB_METRICS_PAIRS,
@@ -1703,6 +1728,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       housekeeping: 2, // E1.4 HOUSEKEEPING (issue #721) — housekeeping.view, housekeeping.verify_terminal
       transport: 3, // E1.6 TRANSPORT (issue #723) — transport.request, transport.work, transport.manage
       diet: 7, // DIET E4.4 (issue #736) — diet.view, .order, .npo, .serve, .kitchen, .manage, .clinical.view
+      emergency: 3, // ER lane 1 (#808) — er.board.view, er.arrival.register; ER review (2026-10-15): er.board.wall
       attendance: 1, // STAFF ATTENDANCE (owner 2026-10-09) — attendance.all.read; a team and oneself are computed, not granted
       passes: 4, // PASSES E1.3 (2026-10-12): passes.issue, .scan, .pause, .manage
       ipd: 35, // IPD ADMISSION E1.2 (2026-10-12): +4, ipd.admit.request, .admit, ipd.payer.manage, ipd.band.print; IPD BEDS E1.1 (2026-10-12), read off the failing run: ipd.beds.view, .manage, .clean, .overflow
@@ -1810,6 +1836,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       "kitchen_staff",
       // IPD NURSING E4.1 (#733) — the three ward nursing roles, appended. Grants and no holders.
       "ward_nurse", "nursing_supervisor", "nursing_superintendent",
+      "er_nurse",
     ]);
     expect(Object.fromEntries(ROLE_MODEL.map((r) => [r.roleKey, r.permissions.length]))).toEqual({
       // Plan 09 / DD18 moved four of these: +3 each to the two desk roles and the cashier (read,
@@ -1844,7 +1871,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       opd_slip_desk: 7, // CONSULTED ON PAPER — the slip desk (owner ruling 2026-10-06, B)
       opd_admin: 9, // 20-U U5a, read off the failing run: +1, roster.read; RC-1 T2 — 7 -> 8: the admin who edits the whole config can also flip the flow
 
-      display: 2, // 18-S RS3 — + `radiology.display.read`
+      display: 3, // ER review (2026-10-15): +1, er.board.wall; // 18-S RS3 — + `radiology.display.read`
       // Group B, 2026-08-26: +1, the allergy register at the dispensing counter.
       // Plan 16a / DD10: +3, the whole formulary — read, manage, and staging review. The module is
       // curated at the pharmacy and nowhere else.
@@ -1955,6 +1982,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       ward_nurse: 21, // IPD NURSING E4.1 (#733) — the four nursing strings, beds view/clean, transfers, discharge view/confirm, repairs, porter
       nursing_supervisor: 23, // IPD NURSING E4.1 (#733) — the ward nurse's thirteen, ipd.ews.respond and ipd.family.issue
       nursing_superintendent: 8, // IPD NURSING E4.1 (#733) — nursing view, ews respond, beds view, discharge view, family callbacks
+      er_nurse: 2, // ER lane 1 (#808) — er.board.view, er.arrival.register
       antimicrobial_steward: 3, // PHARMACY STAGE D5 — approvals.requests.read and .decide (it is the approverRole) and pharmacy.antimicrobial.approve
     });
     // PLAN 07c T9 — 156 → 158: `staff.reports.read` to `front_office_supervisor` and to
@@ -2315,6 +2343,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       "kitchen_staff",
       // IPD NURSING E4.1 appends the three ward nursing roles.
       "ward_nurse", "nursing_supervisor", "nursing_superintendent",
+      "er_nurse",
     ]);
     // `nurse` is now the ONLY constant entry with no permission column anywhere — `duty_manager`
     // left this list on 2026-08-26 when Group C gave it one.
@@ -2340,6 +2369,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       "antimicrobial_steward", // PHARMACY STAGE D5 — a governance seat held beside a clinical role
       "radiology_resident", // 18-S RS8b — signs for a consultant's co-sign
       "dietician", "kitchen_staff", // DIET E4.4 (#736); `.sort()` places them
+      "er_nurse", // ER lane 1 (#808); `.sort()` places it
       "attendance_committee", // STAFF ATTENDANCE (owner 2026-10-09) — reads everyone's attendance; `.sort()` places it
       "opd_scribe", // FD-30 — the OPD-door transcription seat; `.sort()` places it, not this line
       "opd_slip_desk", // CONSULTED ON PAPER — the slip desk (owner ruling 2026-10-06, B)
@@ -2603,6 +2633,8 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(readme).toContain(MAINTENANCE_README_PROSE);
     expect(readme).toContain(TRANSPORT_README_PROSE);
     expect(readme).toContain(DIET_README_PROSE);
+    expect(readme).toContain(ER_README_PROSE);
+    expect(readme).toContain(ER_WALL_README_PROSE);
     expect(readme).toContain(COPILOT_HALT_README_PROSE);
     expect(readme).toContain(IPD_BEDS_README_PROSE);
     expect(readme).toContain(IPD_ADMIT_README_PROSE);
