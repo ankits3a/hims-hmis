@@ -41,11 +41,14 @@ describe("lab critical ladder (E3.2)", () => {
   let fx: LabDeskFixture;
   let doc: string; let head: string; let rmo: string; let hod: string; let dutyManager: string;
   let unit9: string; let deptId: string;
+  /** The RFT items ordered so far: a second call on the same patient is a repeat the counter acknowledges. */
+  let ordered: string[] = [];
 
   beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
   afterAll(async () => { await teardown(); });
   beforeEach(async () => {
     await truncateAll(db);
+    ordered = [];
     fx = await seedLabDeskBase(db);
     await grantLabResultPermissions(db, fx);
     doc = (await mkUser(db, "ordering.doctor", ["doctor"])).id;
@@ -93,9 +96,10 @@ describe("lab critical ladder (E3.2)", () => {
     const placed = await withTx(db, (tx) => deskOrder(tx, fx.desk.actor, fx.decls, {
       patientId: fx.patientId, encounterNo: fx.newVisit(), serviceDate: fx.serviceDate,
       orderingClinicianId: orderer,
-      items: [{ serviceId: serviceIdForLabCode("RFT") }],
+      items: [{ serviceId: serviceIdForLabCode("RFT") }], acknowledgedDuplicates: [...ordered],
       credit: { reason: "counter order" }, placedAt: AT,
     }, AT));
+    ordered.push(placed.itemIds[0]!);
     const { specimens } = await printLabels(db, fx.bench.actor, {
       orderGroupId: placed.orderGroupId, scannedUhid: await uhidOf(db, fx.patientId),
     }, AT);
