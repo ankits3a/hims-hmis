@@ -245,7 +245,7 @@ Source: `apps/core/src/modules/radiology/`
   - `ckdEpi2021(creatinineMgDl: number, ageYears: number, sex: EgfrSex): number`
 - `money.ts`
   - `authorisationOf(study: AuthorisationStudyFacts, encounter: AuthorisationEncounterFacts, imagingFree = false): ImagingAuthorisation | null`
-  - `encounterPayer(exec: Db | Tx, encounterNo: string): Promise<{ intendedPayer: string }>`
+  - `encounterPayer(exec: Db | Tx, encounterNo: string): Promise<{ intendedPayer: string; liveAdmission?: boolean }>`
   - `hasBillDecision(exec: Db | Tx, studyId: string, kind: ImagingBillDecisionKind): Promise<boolean>`
   - `imagingFreeAt(exec: Db | Tx, orderedAt: Date): Promise<boolean>`
   - `linkInvoiceLine(tx: Tx, studyId: string, invoiceLineId: string): Promise<{ studyId: string; invoiceLineId: string }>`

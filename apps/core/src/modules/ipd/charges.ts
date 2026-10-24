@@ -1,9 +1,11 @@
 import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { ZodError } from "zod";
 import { ipdRateServiceCode, newId } from "@hmis/contracts";
-import { istDayString } from "../../kernel/approvals/cumulative";
+import { istDayString, istDayWindow } from "../../kernel/approvals/cumulative";
 import { withTx } from "../../kernel/db/client";
-import { ipdAdmissions, ipdBedStays, ipdChargeExceptions, ipdChargeLines, opdDoctors } from "../../kernel/db/schema";
+import { ipdAdmissions, ipdBedStays, ipdChargeExceptions, ipdChargeLines } from "../../kernel/db/schema";
+import { isConsultant, treatingTeamOf } from "./rounds-team";
+import { istMinutesOfInstant } from "../roster";
 import { appendEvent } from "../../kernel/events/append";
 import { TariffError, loadPricingContext, priceInvoiceLines, resolveActiveTariffVersion } from "../tariff";
 import { admissionAdvisoryLock, provenanceOf, readAdmission, requireIpdPermission } from "./admission-core";
@@ -29,7 +31,7 @@ import type { ChargeStay } from "./charge-days";
  * (`ipd_admissions.tariff_version_id`; a lower regulated price still wins inside the engine). A rate is MISSING when
  * the version has no item for the service, the item is ₹0, or the service is absent or switched off — a required
  * component (room, nursing, visit) then becomes an `ipd_charge_exceptions` row and posts nothing; an optional one
- * (rmo) is skipped silently; `cross_visit` falls back to the `visit` rate. Nothing is ever guessed.
+ * (rmo) is skipped silently; a missing `cross_visit` rate is an exception (review of 72f10b68 — never the `visit` rate). Nothing is ever guessed.
  */
 
 export const IPD_NIGHTLY_ACTOR: Actor = { type: "system", id: "ipd-nightly-charges" };
@@ -127,10 +129,10 @@ function exceptionKey(admissionId: string, date: string, component: IpdRateCompo
 async function raiseException(
   tx: Tx, actor: Actor, a: AdmissionRow, x: {
     date: string; component: IpdRateComponent; billedClass: IpdBedClass | null; code: string | null;
-    reason: "rate_missing" | "tariff_missing"; versionId: string | null; consultantUserId?: string;
+    reason: "rate_missing" | "tariff_missing" | "visit_backdated"; versionId: string | null; consultantUserId?: string;
   }, at: Date,
 ): Promise<void> {
-  const key = exceptionKey(a.id, x.date, x.component, x.consultantUserId);
+  const key = exceptionKey(a.id, x.date, x.component, x.consultantUserId) + (x.reason === "visit_backdated" ? ":backdated" : "");
   const fresh = await tx.insert(ipdChargeExceptions).values({
     id: newId(), key, admissionId: a.id, serviceDate: x.date, component: x.component, billedClass: x.billedClass,
     serviceCode: x.code, reason: x.reason, tariffVersionId: x.versionId, firstSeenAt: at, lastSeenAt: at,
@@ -391,9 +393,8 @@ export async function postConsultantVisit(tx: Tx, input: ConsultantVisitInput): 
     return { outcome, chargeLineId };
   };
 
-  const consultant = (await tx.select({ id: opdDoctors.id }).from(opdDoctors)
-    .where(and(eq(opdDoctors.userId, input.consultantUserId), eq(opdDoctors.active, true))))[0];
-  if (consultant === undefined) return record("not_chargeable", null);
+  // Review of 72f10b68 (DECIDED): the CONSULTANT CADRE, not a doctor-master row alone (`rounds-team.ts` `isConsultant`).
+  if (!(await isConsultant(tx, input.consultantUserId, at))) return record("not_chargeable", null);
   // Review #756 item 7: a REVERSED visit does not count — the day can be charged again (next `visit_seq`).
   const earlier = (await tx.select({ id: ipdChargeLines.id }).from(ipdChargeLines).where(and(
     eq(ipdChargeLines.admissionId, a.id), eq(ipdChargeLines.serviceDate, date), eq(ipdChargeLines.source, "ipd.visit"),
@@ -408,7 +409,10 @@ export async function postConsultantVisit(tx: Tx, input: ConsultantVisitInput): 
   const held = stays.find((s) => s.startedAt.getTime() <= at.getTime() && (s.endedAt === null || s.endedAt.getTime() > at.getTime()))
     ?? stays.filter((s) => s.startedAt.getTime() <= at.getTime()).at(-1);
   const billedClass: IpdBedClass = (held === undefined ? null : rentClassOf(held.billedClass)) ?? "general";
-  const cross = input.consultantUserId !== a.consultantId && input.consultantUserId !== a.coveringFor;
+  // Review of 72f10b68 ($ DECIDED, owner to confirm): any consultant of the TREATING UNIT (the admitting consultant's roster
+  // unit on the day) bills `visit`; only a consultant from a different unit bills `cross_visit`. Coverage is read now.
+  const team = await treatingTeamOf(tx, a, at);
+  const cross = input.consultantUserId !== a.consultantId && input.consultantUserId !== a.coveringFor && !team.unitMemberIds.has(input.consultantUserId);
 
   // The pricing loader reads only; inside the caller's transaction it sees what the transaction sees.
   const db = tx as unknown as Db;
@@ -421,12 +425,9 @@ export async function postConsultantVisit(tx: Tx, input: ConsultantVisitInput): 
     return record("rate_missing", null);
   }
   const ctx = await pricingFor(db, new Map(), versionId, at);
-  let component: IpdRateComponent = cross ? "cross_visit" : "visit";
-  let priced = priceComponent(ctx, billedClass, component);
-  if (!priced.ok && component === "cross_visit") {
-    component = "visit";
-    priced = priceComponent(ctx, billedClass, component);
-  }
+  // Review of 72f10b68 ($ DECIDED): a missing cross-visit rate is a `rate_missing` exception — never the visit rate.
+  const component: IpdRateComponent = cross ? "cross_visit" : "visit";
+  const priced = priceComponent(ctx, billedClass, component);
   if (!priced.ok) {
     await raiseException(tx, actor, a, { date, component, billedClass, code: priced.code, reason: "rate_missing", versionId, consultantUserId: input.consultantUserId }, at);
     return record("rate_missing", null);
@@ -436,6 +437,59 @@ export async function postConsultantVisit(tx: Tx, input: ConsultantVisitInput): 
     source: "ipd.visit", consultantUserId: input.consultantUserId, visitSeq, actor, at,
   });
   return id === null ? record("repeat", null) : record("charged", id);
+}
+
+/**
+ * E4.2 review of 72f10b68 ($ DECIDED): a round entered for a day that is neither today (IST) nor yesterday before 10:00
+ * (a night round written up in the morning) is RECORDED but NOT CHARGED: the bill desk gets a `visit_backdated` exception
+ * (key `…:backdated`, one per admission, day and consultant) for billing to charge or waive (`resolveBackdatedVisit`).
+ */
+/** 10:00 IST — a night round may be written up until then and still be the previous day's visit. */
+export const NIGHT_ROUND_ENTRY_UNTIL_MINUTES = 10 * 60;
+
+export function visitChargeableAt(seenAt: Date, now: Date): boolean {
+  const seenDay = istDayString(seenAt);
+  const today = istDayString(now);
+  if (seenDay === today) return true;
+  const { start } = istDayWindow(now);
+  const yesterday = istDayString(new Date(start.getTime() - 1));
+  return seenDay === yesterday && istMinutesOfInstant(now) < NIGHT_ROUND_ENTRY_UNTIL_MINUTES;
+}
+
+export async function raiseBackdatedVisitIn(tx: Tx, actor: Actor, admissionId: string, consultantUserId: string, seenAt: Date, now: Date): Promise<void> {
+  const a = await readAdmission(tx, admissionId);
+  await raiseException(tx, actor, a, {
+    date: istDayString(seenAt), component: "visit", billedClass: null, code: null, reason: "visit_backdated", versionId: null, consultantUserId,
+  }, now);
+}
+
+/** Billing's answer to a `visit_backdated` exception: post the visit as of its day (`charge`) or close it (`waive`). */
+export async function resolveBackdatedVisit(
+  db: Db, actor: Actor, input: { exceptionId: string; decision: "charge" | "waive"; reason: string }, opts: { now?: Date } = {},
+): Promise<{ outcome: "charged" | "repeat" | "not_chargeable" | "rate_missing" | "waived" }> {
+  await requireIpdPermission(db, actor, IPD_CHARGES_REVERSE);
+  const reason = input.reason.trim();
+  if (reason === "") throw new IpdError("reversal_reason_required", "charging or waiving a backdated visit needs a reason");
+  const now = opts.now ?? new Date();
+  return withTx(db, async (tx) => {
+    const x = (await tx.select().from(ipdChargeExceptions).where(eq(ipdChargeExceptions.id, input.exceptionId)).for("update"))[0];
+    if (x === undefined || x.reason !== "visit_backdated" || x.resolvedAt !== null || x.serviceDate === null) {
+      throw new IpdError("charge_line_not_found", "no open backdated visit with this id", { exceptionId: input.exceptionId });
+    }
+    const consultantUserId = x.key.split(":")[3]!;
+    let outcome: "charged" | "repeat" | "not_chargeable" | "rate_missing" | "waived" = "waived";
+    let lineId: string | null = null;
+    if (input.decision === "charge") {
+      const r = await postConsultantVisit(tx, {
+        admissionId: x.admissionId, consultantUserId, seenAt: new Date(`${x.serviceDate}T12:00:00+05:30`), source: "rounds_tap", actor,
+      });
+      outcome = r.outcome;
+      lineId = r.chargeLineId;
+    }
+    await tx.update(ipdChargeExceptions).set({ resolvedAt: now, resolvedLineId: lineId, resolutionNote: `${input.decision}: ${reason}` })
+      .where(eq(ipdChargeExceptions.id, x.id));
+    return { outcome };
+  });
 }
 
 // ═══════════════════════════════════════════ reversal ═══════════════════════════════════════════

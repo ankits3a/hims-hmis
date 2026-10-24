@@ -74,6 +74,7 @@ Source: `apps/core/src/modules/roster/`
   - `departmentsWithoutPublishedCycle(exec: Db | Tx, at: Date = new Date()): Promise<string[]>`
   - `expandCycle(spec: CycleSpec, fromIstDate: string, toIstDate: string, holidays: readonly HolidaySpec[] = []): PlannedWindow[]`
   - `extendWindows(tx: Tx, actor: Actor, todayIstDate: string): Promise<{ departments: number; written: number }>`
+  - `holidaysBetween(exec: Db | Tx, from: string, to: string): Promise<HolidaySpec[]>`
   - `istDateOfInstant(at: Date): string`
   - `istMidnightUtc(istDate: string): Date`
   - `istMinutesOfInstant(at: Date): number`

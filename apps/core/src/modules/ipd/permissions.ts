@@ -33,3 +33,6 @@ export const IPD_VITALS_RECORD = "ipd.vitals.record";
 export const IPD_ASSESSMENT_RECORD = "ipd.assessment.record";
 export const IPD_SHIFT_HANDOVER = "ipd.handover.shift";
 export const IPD_EWS_RESPOND = "ipd.ews.respond";
+// E4.2 (#734) — rounds and inpatient orders (the doctor's; clinical, no money).
+export const IPD_ROUND_SIGN = "ipd.round.sign";
+export const IPD_ORDER_PLACE = "ipd.order.place";

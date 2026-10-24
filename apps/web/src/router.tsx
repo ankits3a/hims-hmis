@@ -54,6 +54,7 @@ import { IpdBillDesk } from "./screens/ipd-bill-desk";
 import { IpdDischarge } from "./screens/ipd-discharge";
 import { FamilyPage } from "./screens/ipd-family";
 import { IpdFamilyCallbacks } from "./screens/ipd-family-callbacks";
+import { IpdRoundPatientRoute, IpdRounds } from "./screens/ipd-rounds";
 import { CopilotNoticeHost } from "./components/copilot-notice";
 import { OpdReportScreen } from "./screens/opd-report";
 import { DeskOne } from "./screens/desk-one/desk-one";
@@ -91,6 +92,7 @@ import { BillingCounter } from "./screens/billing-counter";
 import { BillingDues } from "./screens/billing-dues";
 import { BillingSession } from "./screens/billing-session";
 import { BillingOffice } from "./screens/billing-office";
+import { AdminWorkflows } from "./screens/admin-workflows";
 import { OpsMode } from "./screens/ops-mode";
 import { AdminUsers } from "./screens/admin-users";
 import { AttendanceLinks } from "./screens/attendance-links";
@@ -295,6 +297,8 @@ const NAV: readonly NavEntry[] = [
   // #634 — who on the attendance machine's list is which login: the count and the unlinked list for the
   // owner and the Attendance Committee, the suggestions and the hand link for the Users administrator.
   { to: "/attendance/links", label: "nav.attendanceLinks", permission: "attendance.all.read", anyOf: ["auth.users.manage"], group: "admin" },
+  // GO-LIVE SCREENS — the workflow definitions board: approve (owner, MS) and activate (owner). Matches `workflowManifest.menu`.
+  { to: "/admin/workflows", label: "nav.adminWorkflows", permission: "workflow.definitions.read", group: "admin" },
   // Decision 0067 — the outside-test list (ECG, echo …), `orderingManifest.menu`'s entry.
   { to: "/ordering/outside-tests", label: "nav.outsideTests", permission: "tariff.services.manage", group: "admin" },
   // PLAN 18a T9 — the entries `radiologyManifest.menu` declares (three since 18-S RS2b), path and permission matching
@@ -425,6 +429,8 @@ const NAV: readonly NavEntry[] = [
   // `ipdManifest.menu`.
   { to: "/ipd/ward", label: "nav.ipdWard", permission: "ipd.nursing.view", group: "wards" },
   { to: "/ipd/my-shift", label: "nav.ipdMyShift", permission: "ipd.vitals.record", group: "wards" },
+  // E4.2 (#734) — the doctor's inpatient rounds; path and permission match `ipdManifest.menu`.
+  { to: "/ipd/rounds", label: "nav.ipdRounds", permission: "ipd.round.sign", group: "wards" },
   { to: "/ot/list", label: "nav.otList", permission: "ot.cases.read", group: "theatre" },
   { to: "/ot/book", label: "nav.otBook", permission: "ot.cases.book", group: "theatre" },
   { to: "/ot/recovery", label: "nav.otRecovery", permission: "ot.recovery.operate", group: "theatre" },
@@ -995,6 +1001,18 @@ const ipdFamilyCallbacksRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/ipd/family-callbacks",
   component: IpdFamilyCallbacks,
+});
+
+/** E4.2 (#734) — the doctor's rounds list and a patient's round page (`ipd.round.sign`). 16:9 desktop and 390 px. */
+const ipdRoundsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/rounds",
+  component: IpdRounds,
+});
+const ipdRoundPatientRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/rounds/$admissionId",
+  component: IpdRoundPatientRoute,
 });
 
 /** E0.1 (decision 0064) — one day's copilot totals; aggregate only, it names nobody. */
@@ -2132,6 +2150,13 @@ const attendanceLinksRoute = createRoute({
   component: AttendanceLinks,
 });
 
+/** GO-LIVE SCREENS — every workflow definition, its approvals and the approve / activate buttons. */
+const adminWorkflowsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/admin/workflows",
+  component: AdminWorkflows,
+});
+
 /**
  * PLAN 09 T3 / DD8 — card recognition. It is under `/counter/…` rather than `/billing/…` because
  * recognition DEPLOYS BEFORE the billing integration is armed: the counter has to be able to look a
@@ -2235,9 +2260,11 @@ export const router = createRouter({
     familyRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, ipdBedsRoute, ipdAdmitRoute, ipdBillRoute, ipdBillDeskRoute, ipdFamilyCallbacksRoute, ipdHandoversRoute, ipdWardRoute, ipdMyShiftRoute, ipdDischargeRoute, ipdPassesRoute, passesScanRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, ipdBedsRoute, ipdAdmitRoute, ipdBillRoute, ipdBillDeskRoute, ipdFamilyCallbacksRoute, ipdRoundsRoute, ipdRoundPatientRoute, ipdHandoversRoute, ipdWardRoute, ipdMyShiftRoute, ipdDischargeRoute, ipdPassesRoute, passesScanRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute, attendanceLinksRoute,
+      // GO-LIVE SCREENS — +1, `/admin/workflows`. `caddyfile-parity.test.ts` pins the count.
+      adminWorkflowsRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
       // FD-2 — 47 -> 46. `/counter/seat` is GONE, the seat serves `counterDeskRoute` above, and
       // `/counter/seat/figures` follows it to `/counter/figures`. `caddyfile-parity.test.ts` pins

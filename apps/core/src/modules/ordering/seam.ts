@@ -6,7 +6,7 @@ import { LabError, placeLabOrder } from "../lab";
 import { placeImagingOrder, RadiologyError } from "../radiology";
 import { routeTests } from "./route";
 import type { Actor } from "@hmis/contracts";
-import type { Db } from "../../kernel/db/client";
+import type { Db, Tx } from "../../kernel/db/client";
 import type { OrderKindDecl } from "../../kernel/orders/kinds";
 import type { DeskOrderResult } from "../lab";
 import type { PlaceImagingOrderResult } from "../radiology";
@@ -64,12 +64,21 @@ function refusal(e: unknown): { code: string; message: string } | null {
   return null;
 }
 
+/**
+ * E4.2 (#734) — what an IPD caller needs so a retry never orders twice: `tx` runs the LAB order inside the caller's
+ * transaction (a savepoint: a lab refusal rolls back only the lab's writes), so the caller's own row and the order commit
+ * together; `imagingKey` is handed to radiology's own idempotency (`placeImagingOrder`), so a retried imaging order
+ * replays the first one. Both optional: every existing caller is unchanged.
+ */
+export type OrderTestsOpts = { tx?: Tx; imagingKey?: string };
+
 export async function orderTests(
   db: Db,
   actor: Actor,
   decls: readonly OrderKindDecl[],
   input: OrderTestsInput,
   now: Date = new Date(),
+  opts: OrderTestsOpts = {},
 ): Promise<OrderTestsResult> {
   const routed = await routeTests(db, input.serviceIds);
   const want = input.departments ?? { lab: true, imaging: true };
@@ -95,7 +104,7 @@ export async function orderTests(
 
   if (want.lab && labIds.length > 0) {
     try {
-      result.lab = await withTx(db, (tx) => placeLabOrder(tx, actor, decls, {
+      const inTx = (tx: Tx) => placeLabOrder(tx, actor, decls, {
         patientId: input.patientId, encounterNo: input.encounterNo, serviceDate: input.serviceDate,
         orderingClinicianId: input.orderingClinicianId, priority: input.priority,
         items: labIds.map((serviceId) => ({ serviceId })),
@@ -105,7 +114,10 @@ export async function orderTests(
          */
         holdUntilPaid: { reason: "ordered by the doctor; paid at the lab counter" },
         ...protocol,
-      }, now));
+      }, now);
+      result.lab = opts.tx === undefined
+        ? await withTx(db, inTx)
+        : await (opts.tx as unknown as { transaction: <T>(f: (sp: Tx) => Promise<T>) => Promise<T> }).transaction(inTx);
     } catch (e) {
       const r = refusal(e);
       if (r === null) throw e;
@@ -120,7 +132,7 @@ export async function orderTests(
         orderingClinicianId: input.orderingClinicianId, priority: input.priority, indication: input.indication,
         items: routed.imaging.map((serviceId) => ({ serviceId })),
         ...protocol,
-      }, undefined, now);
+      }, opts.imagingKey, now);
     } catch (e) {
       const r = refusal(e);
       if (r === null) throw e;

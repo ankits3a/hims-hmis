@@ -1224,6 +1224,13 @@ const IPD_NURSING_PAIRS: readonly string[] = [
   ...["ipd.nursing.view", "ipd.ews.respond", "ipd.beds.view", "ipd.discharge.view", "ipd.family.issue"].map((p) => `nursing_superintendent/${p}`),
 ];
 
+/** The README prose line authorising IPD rounds (E4.2, decision 0072). Quoted, not paraphrased. */
+const IPD_ROUNDS_README_PROSE =
+  "`ipd.round.sign` and `ipd.order.place` are\nheld by `doctor`";
+
+/** IPD ROUNDS E4.2 (#734, decision 0072, awaiting owner review) — the doctor's rounds and inpatient orders. Clinical, no money. */
+const IPD_ROUNDS_PAIRS: readonly string[] = ["doctor/ipd.round.sign", "doctor/ipd.order.place"];
+
 /** The README prose line authorising the 2026-09-20 approvals-spine ruling R1. Quoted, not paraphrased. */
 const APPROVALS_SPINE_README_PROSE =
   "The approvals spine (owner ruling R1,\n2026-09-20)";
@@ -1364,6 +1371,7 @@ const NON_TABLE_PAIRS: readonly string[] = [
   ...IPD_DISCHARGE_PAIRS,
   ...IPD_FAMILY_PAIRS,
   ...IPD_NURSING_PAIRS,
+  ...IPD_ROUNDS_PAIRS,
   ...APPROVALS_SPINE_PAIRS,
   ...PHARMACY_REPORTS_PAIRS,
   ...PHARMACY_TALLY_PAIRS,
@@ -2580,6 +2588,7 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(readme).toContain(IPD_DISCHARGE_README_PROSE);
     expect(readme).toContain(IPD_FAMILY_README_PROSE);
     expect(readme).toContain(IPD_NURSING_README_PROSE);
+    expect(readme).toContain(IPD_ROUNDS_README_PROSE);
     expect(readme).toContain(APPROVALS_SPINE_README_PROSE);
     // Parity P5's two sentences: who reads the office's reports, and who reads the margin.
     expect(readme).toContain(PHARMACY_REPORTS_README_PROSE);

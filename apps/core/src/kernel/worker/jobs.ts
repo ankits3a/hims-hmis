@@ -37,6 +37,7 @@ import { routingChooserFor, runAliasJob, runDeskRoutingLearning, runFlowLearning
 import { syncAttendance } from "../../modules/attendance";
 import {
   ipdAttendantRecipient, ipdTemplateRegistrations, lapseBedReservations, postNightlyIpdCharges, runIpdBillDeskNightly, sweepIpdNursing,
+  sweepIpdRoundsClock,
 } from "../../modules/ipd";
 import { sweepTasks } from "../../modules/tasks";
 import { sweepBmwStorage } from "../../modules/bmw";
@@ -719,7 +720,19 @@ export function registerAllJobs(
     name: "sweepStaffNotices",
     every: 60_000,
     // An approval past its deadline tells its deciders once (decision 0043) — same clock, same job.
-    run: async (now) => { await sweepDutyReminders(db, now); await sweepQueueNudges(db, now); await sweepOverdueApprovals(db, now); },
+    // E4.2 (#734): the inpatient rounds clock (08:00 cover hand-over, 14:00 / 16:00 round nudges) rides this tick too —
+    // no job (and no pool client) of its own; it runs last, so a failure there never keeps the others from running.
+    run: async (now) => {
+      await sweepDutyReminders(db, now); await sweepQueueNudges(db, now); await sweepOverdueApprovals(db, now);
+      // Review of 72f10b68: the rounds clock never fails the tick silently nor masks the others — logged, then rethrown.
+      try {
+        // Decision 0085: the rounds clock is the inpatient module's — it runs only while `ipd` is on.
+        if (isModuleOn("ipd")) await sweepIpdRoundsClock(db, now);
+      } catch (e) {
+        roundsClockLog.error(`sweepIpdRoundsClock failed: ${e instanceof Error ? e.message : String(e)}`);
+        throw e;
+      }
+    },
   });
   /**
    * MEDICINE NICKNAMES (owner 2026-10-08: "switch ON medicine nicknames") — the words doctors typed
@@ -836,6 +849,7 @@ export function registerAllJobs(
 }
 
 const clockLog = new Logger("worker.sweepTasks");
+const roundsClockLog = new Logger("worker.ipdRoundsClock");
 
 /**
  * Decision 0085 — a clock that rides another module's tick (the waste clock on the task clock's) runs only while its own

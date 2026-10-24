@@ -37,6 +37,9 @@ export type { IssuedPrescription } from "./prescriptions";
 /* `isCurrent` under its telling name: the pharmacy asks the same question about a prior course
    ("is the patient still on this?") that the duplicate check asks (`patient-rail.ts`). */
 export { isCurrent as isCurrentDose } from "./rx-checks";
+// E4.2 (#734) — the inpatient drug order runs the same salt-aware allergy check as the OPD prescription.
+export { matchAllergiesSaltAware } from "./rx-checks";
+export type { RxCheckLine } from "./rx-checks";
 export { discardDraft, getPendingDraft, issueDraft, saveDraft } from "./prescription-drafts";
 export { registerVitalsStartGuard, vitalsGateVerdict } from "./consultation";
 // 18-S RS5 — the imaging prep bay reads the latest weight (contrast volume by weight) from here.

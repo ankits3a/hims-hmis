@@ -377,6 +377,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // IPD NURSING E4.1 (#733) — reads the nurse station and the nursing chart, records vitals on a round, and acknowledges an
       // early-warning alert (G7 counts a doctor's acknowledgement); README "IPD nursing" prose.
       "ipd.nursing.view", "ipd.vitals.record", "ipd.ews.respond",
+      // IPD ROUNDS E4.2 (#734) — the rounds list and round page, sign / co-sign a round, cross-consults; inpatient orders
+      // (drugs; lab and imaging through the ordering door). Clinical, no money (0058); README "IPD rounds" prose.
+      "ipd.round.sign", "ipd.order.place",
     ],
   },
   /**

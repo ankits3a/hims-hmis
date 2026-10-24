@@ -1,0 +1,111 @@
+/* E4.2 (#734) — Rounds (`.ipdr`): the doctor's list and the patient's round page. Scoped: vite loads every screen's CSS
+   globally. Desktop 16:9 (1920 × 1080, down to 1366 × 768): list in a card grid, the round page in two columns. Phone
+   390 px: one column, 48 px targets, the sign button full width at the thumb. Colour never carries meaning alone — every
+   chip says its word. */
+.ipdr { --ink: #132420; --dim: #5c6f66; --line: #dfe7e1; --green: #0e6b4e; --warn: #9a3412; --amber: #8a5a00; --bg: #f6f8f6;
+  max-width: 1800px; margin: 0 auto; padding: 16px 24px; color: var(--ink); box-sizing: border-box; }
+.ipdr *, .ipdr *::before, .ipdr *::after { box-sizing: border-box; }
+.ipdr .dim { color: var(--dim); }
+.ipdr .small { font-size: 12px; }
+.ipdr .warn { color: var(--warn); }
+.ipdr .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 13px; }
+.ipdr h1 { font-size: 22px; margin: 0; }
+.ipdr h2 { font-size: 15px; margin: 0 0 8px; display: flex; align-items: center; gap: 8px; }
+.ipdr h2 .count { background: var(--ink); color: #fff; border-radius: 10px; padding: 0 8px; font-size: 12px; }
+.ipdr button { min-height: 40px; padding: 0 14px; border: 1px solid var(--line); border-radius: 8px; background: #fff; font: inherit; font-size: 14px; cursor: pointer; color: var(--ink); }
+.ipdr button.primary { background: var(--green); border-color: var(--green); color: #fff; font-weight: 600; }
+.ipdr button:disabled { opacity: .5; cursor: default; }
+.ipdr input, .ipdr select, .ipdr textarea { min-height: 40px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 14px; width: 100%; min-width: 0; background: #fff; }
+.ipdr textarea { resize: vertical; }
+.ipdr .chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 12px; padding: 1px 8px; font-size: 12px; white-space: nowrap; background: #fff; }
+.ipdr .chip.boarded { border-color: var(--amber); color: var(--amber); font-weight: 600; }
+.ipdr .chip.boarded::before { content: "⇄"; }
+.ipdr .chip.fit { border-color: var(--green); color: var(--green); }
+.ipdr .chip.alert { border-color: var(--warn); color: var(--warn); }
+.ipdr .chip.abx { border-color: var(--amber); color: var(--amber); }
+.ipdr .chip.seen.none { border-color: var(--warn); color: var(--warn); font-weight: 600; }
+.ipdr .chip.seen.none::before { content: "○"; }
+.ipdr .chip.seen.draft { border-color: var(--amber); color: var(--amber); }
+.ipdr .chip.seen.draft::before { content: "◐"; }
+.ipdr .chip.seen.remote::before { content: "☏"; }
+.ipdr .chip.seen.signed { border-color: var(--green); color: var(--green); }
+.ipdr .chip.seen.signed::before { content: "✓"; }
+.ipdr-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; margin-bottom: 12px; }
+.ipdr-empty { padding: 24px; text-align: center; color: var(--dim); border: 1px dashed var(--line); border-radius: 10px; }
+.ipdr-empty.warn { color: var(--warn); }
+.ipdr-empty.small { padding: 12px; }
+.ipdr-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 10px; }
+.ipdr-card { background: #fff; border: 1px solid var(--line); border-left: 4px solid var(--warn); border-radius: 10px; min-width: 0; }
+.ipdr-card.seen-signed { border-left-color: var(--green); }
+.ipdr-card.seen-remote, .ipdr-card.seen-draft { border-left-color: var(--amber); }
+.ipdr .row-link { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; color: inherit; text-decoration: none; min-height: 48px; }
+.ipdr-card .meta, .ipdr-header .meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; }
+.ipdr-id { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; min-width: 0; }
+.ipdr-id .name { font-size: 16px; overflow-wrap: anywhere; }
+.ipdr-id .bed { font-weight: 600; background: var(--bg); border-radius: 6px; padding: 0 6px; }
+.ipdr-cosign { background: #fff8eb; border: 1px solid #f0d9a8; border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; }
+.ipdr-cosign ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.ipdr-cosign li { background: #fff; border-radius: 8px; border: 1px solid #f0d9a8; }
+.ipdr-cosign .row-link { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+
+.ipdr-patient { max-width: 1800px; }
+.ipdr-back { margin-bottom: 6px; font-size: 14px; }
+.ipdr-back a { color: var(--green); }
+.ipdr-header { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; position: sticky; top: 0; z-index: 2; }
+.ipdr-header .name { font-size: 20px; }
+.ipdr-header .alerts { display: flex; flex-wrap: wrap; gap: 6px; }
+.ipdr-header .dx { margin: 0; font-size: 14px; }
+.ipdr-refused { margin-top: 10px; padding: 10px 14px; border-radius: 8px; background: #fdecea; color: var(--warn); font-weight: 600; }
+.ipdr-cols { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 14px; margin-top: 12px; align-items: start; }
+.ipdr .col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.ipdr-panel { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+.ipdr .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin-bottom: 8px; }
+.ipdr .seg button { border: 0; border-radius: 0; min-height: 40px; }
+.ipdr .seg button.on { background: var(--ink); color: #fff; }
+.ipdr-sign .soap { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ipdr-sign .soap label { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--dim); }
+.ipdr-sign .plan-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+.ipdr-sign .plan-bar button.on { background: var(--green); color: #fff; border-color: var(--green); }
+.ipdr button.big { width: 100%; min-height: 48px; font-size: 16px; margin-top: 8px; }
+.ipdr-round { border-top: 1px solid var(--line); padding: 8px 0; display: flex; flex-direction: column; gap: 4px; }
+.ipdr-round:first-of-type { border-top: 0; }
+.ipdr-round .top { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ipdr-round .top .when { margin-left: auto; }
+.ipdr-round dl { margin: 0; display: flex; flex-direction: column; gap: 2px; }
+.ipdr-round dl div { display: flex; gap: 8px; }
+.ipdr-round dt { font-weight: 700; color: var(--dim); width: 14px; flex: none; }
+.ipdr-round dd { margin: 0; overflow-wrap: anywhere; font-size: 14px; }
+.ipdr-round .draft { align-self: flex-start; background: #fff8eb; color: var(--amber); border-radius: 6px; padding: 0 8px; font-size: 12px; font-weight: 700; }
+.ipdr-round button { align-self: flex-start; }
+.ipdr-orders { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ipdr-order { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
+.ipdr-order.stopped, .ipdr-order.cancelled { opacity: .7; }
+.ipdr-order .top { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+.ipdr-order .title { overflow-wrap: anywhere; }
+.ipdr-order .sub { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; }
+.ipdr .acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.ipdr .acts input { flex: 1; min-width: 160px; }
+.ipdr-form { display: flex; flex-direction: column; gap: 8px; border: 1px dashed var(--line); border-radius: 8px; padding: 10px; margin-bottom: 10px; }
+.ipdr-form .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.ipdr-form .grid label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--dim); }
+.ipdr-form .hits { list-style: none; margin: 0; padding: 0; }
+.ipdr-form .hits button { width: 100%; text-align: left; border-radius: 0; border-width: 0 0 1px; }
+.ipdr-form .picked { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ipdr .check { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+.ipdr .check input { width: 20px; min-height: 20px; }
+.ipdr .picked-tests { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.ipdr .picked-tests button { min-height: 32px; padding: 0 10px; margin-left: 6px; }
+.ipdr-consult { display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--line); padding: 8px 0; }
+.ipdr-consult q { overflow-wrap: anywhere; }
+.ipdr .ended summary { cursor: pointer; font-size: 13px; color: var(--dim); margin-top: 8px; }
+
+@media (max-width: 1100px) { .ipdr-cols { grid-template-columns: 1fr; } }
+@media (max-width: 760px) {
+  .ipdr { padding: 10px 12px; }
+  .ipdr-list { grid-template-columns: 1fr; }
+  .ipdr-sign .soap { grid-template-columns: 1fr; }
+  .ipdr-form .grid { grid-template-columns: 1fr 1fr; }
+  .ipdr button { min-height: 48px; }
+  .ipdr-header { position: static; }
+}
+.ipdr .allergy-hit { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: 8px; background: #fdecea; color: var(--warn); }

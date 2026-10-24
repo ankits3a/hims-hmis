@@ -1,4 +1,246 @@
 {
+  "ipdRounds": {
+    "overrideReason": "Reason to order despite the allergy",
+    "allergyHit": "Allergy: {{substances}}",
+    "longCourse": "Reason for a course over 14 days",
+    "prnMax": "Max doses / 24 h",
+    "prnGap": "Min hours apart",
+    "weight": "Weight (kg)",
+    "title": "Rounds",
+    "counts": "{{total}} patients · {{pending}} to see today",
+    "loading": "Loading…",
+    "failed": "Could not load — try again",
+    "forbidden": "Rounds are for doctors on the treating team",
+    "empty": "No inpatients on your list today",
+    "sealed": "Sealed patient",
+    "boardedOn": "On {{ward}}",
+    "boardedHint": "Lying on another department's ward",
+    "day": "Day {{n}}",
+    "activeOrders_one": "{{count}} active order",
+    "activeOrders_other": "{{count}} active orders",
+    "today": {
+      "none": "Not seen today",
+      "draft": "Draft round",
+      "remote": "Remote review",
+      "signed": "Seen today"
+    },
+    "why": {
+      "own": "My patient",
+      "covering": "Covering · {{name}}",
+      "unit": "Unit · {{name}}",
+      "consult": "Consult · {{name}}"
+    },
+    "fit": {
+      "today": "Fit today",
+      "tomorrow": "Fit tomorrow"
+    },
+    "cosignQueue": "Waiting for your co-sign",
+    "draftBy": "Draft by {{name}} · {{time}}",
+    "cosign": "Co-sign",
+    "cosignedBy": "Co-signed by {{name}}",
+    "draft": "Draft",
+    "under": "Under {{name}}",
+    "coveredBy": "Covered by {{name}}",
+    "dx": "Diagnosis",
+    "notOnTeam": "You are not on this patient's treating team",
+    "history": "Rounds",
+    "noRounds": "No signed round yet",
+    "vitals": "Latest vitals",
+    "vitalsPending": "Vitals appear here once the ward nursing records are live",
+    "signTitle": "Today's round",
+    "modeLabel": "Where",
+    "mode": {
+      "bedside": "Bedside",
+      "remote_review": "Remote review"
+    },
+    "remoteHint": "Phone or video review — recorded as a remote review",
+    "soap": {
+      "subjective": "Subjective",
+      "objective": "Objective",
+      "assessment": "Assessment",
+      "plan": "Plan"
+    },
+    "fitLabel": "Fit for discharge",
+    "fitButton": {
+      "today": "Today",
+      "tomorrow": "Tomorrow"
+    },
+    "sign": "Sign round",
+    "signAndFit": "Sign round · start discharge",
+    "kind": {
+      "consultant": "Consultant",
+      "resident": "Resident"
+    },
+    "source": {
+      "typed": "Typed",
+      "voice": "Voice",
+      "copilot_draft": "Copilot draft"
+    },
+    "sourceHint": "Where the words came from",
+    "orders": "Orders",
+    "addDrug": "+ Medicine",
+    "addTests": "+ Tests",
+    "noOrders": "No active order",
+    "endedOrders_one": "{{count}} ended order",
+    "endedOrders_other": "{{count}} ended orders",
+    "orderKind": {
+      "drug": "Medicine",
+      "lab": "Lab",
+      "imaging": "Imaging"
+    },
+    "orderStatus": {
+      "active": "Active",
+      "stopped": "Stopped",
+      "cancelled": "Cancelled"
+    },
+    "verification": {
+      "pending": "Awaiting pharmacist",
+      "verified": "Verified",
+      "rejected": "Pharmacist rejected",
+      "query": "Pharmacist query"
+    },
+    "antibiotic": "Antibiotic",
+    "until": "Till {{time}}",
+    "forDays_one": "For {{count}} day",
+    "forDays_other": "For {{count}} days",
+    "returnOwed": "Return to pharmacy owed",
+    "stop": "Stop",
+    "cancelOrder": "Cancel order",
+    "reason": "Reason",
+    "back": "Back",
+    "drugSearch": "Search medicine — 2 letters",
+    "change": "Change",
+    "dose": "Dose",
+    "unit": "Unit",
+    "route": "Route",
+    "frequency": "How often",
+    "days": "Days",
+    "stopDate": "Stop date",
+    "placeOrder": "Place order",
+    "routes": {
+      "oral": "Oral",
+      "iv": "IV",
+      "im": "IM",
+      "sc": "SC",
+      "inhaled": "Inhaled",
+      "topical": "Topical",
+      "rectal": "Rectal",
+      "sublingual": "Sublingual",
+      "ng": "NG tube",
+      "other": "Other"
+    },
+    "indication": "Why — clinical indication",
+    "outside": "done outside — not ordered here",
+    "remove": "Remove",
+    "consults": "Consults",
+    "askColleague": "Ask a colleague",
+    "consultant": "Consultant",
+    "question": "Question for the consultant",
+    "urgent": "Urgent",
+    "sendConsult": "Send request",
+    "closeConsult": "Close consult",
+    "askedBy": "Asked by {{name}} · {{time}}",
+    "refused": {
+      "round_not_found": "The round was not found",
+      "route_mismatch": "That route does not fit this medicine",
+      "dose_unit_mismatch": "That unit does not fit this medicine",
+      "dose_out_of_range": "Check the dose",
+      "prn_mismatch": "SOS needs its limits; only SOS has them",
+      "course_too_long": "An antibiotic course over 14 days needs a reason",
+      "stop_date_past": "The stop time must be later than now",
+      "allergy_conflict": "Conflicts with a recorded allergy — give a reason to override",
+      "weight_required": "Record the patient's weight first",
+      "failed": "Could not save — try again",
+      "admission_wrong_state": "The patient is not in a bed now",
+      "not_treating_team": "Only the treating or consulted team may do this",
+      "not_treating_consultant": "Only the treating consultant may do this",
+      "consultant_cosign_required": "A resident's round needs the consultant's co-sign",
+      "time_in_future": "The time is later than now",
+      "antibiotic_stop_date_required": "An antibiotic needs a stop date",
+      "duration_required": "Add a duration or a stop date",
+      "medicine_not_found": "Medicine not in the formulary",
+      "duplicate_order": "This medicine is already ordered by this route",
+      "order_kind_not_here": "Place this order on its own screen",
+      "test_not_orderable": "The department could not take this test",
+      "order_not_active": "The order is already stopped or cancelled",
+      "order_already_issued": "Already issued — stop it instead",
+      "round_not_awaiting_cosign": "Already co-signed",
+      "consultant_not_found": "Pick an active consultant",
+      "consult_already_open": "This consultant is already asked",
+      "consult_closed": "The consult is already closed"
+    }
+  },
+  "ipdSwitchOn": {
+    "title": "Switch on IPD services",
+    "lead": "New IPD services start switched off. Tick the ones priced in the version in force (version {{no}}) and switch them on.",
+    "none": "No switched-off IPD service.",
+    "pickPriced_one": "Tick all priced ({{count}})",
+    "pickPriced_other": "Tick all priced ({{count}})",
+    "go_one": "Switch on {{count}} service",
+    "go_other": "Switch on {{count}} services",
+    "noPrice": "No price in force",
+    "done_one": "{{count}} service switched on.",
+    "done_other": "{{count}} services switched on."
+  },
+  "tariffVersions": {
+    "title": "Price list versions",
+    "lead": "Submit a draft for the owner's approval, then activate it from a date.",
+    "none": "No draft or submitted version.",
+    "version": "Version {{no}}",
+    "state": {
+      "draft": "Draft",
+      "approval_pending": "Submitted · waiting for the owner",
+      "approval_granted": "Approved · ready to activate",
+      "approval_rejected": "Rejected"
+    },
+    "draftedBy": "Drafted by {{who}}",
+    "submittedBy": "submitted by {{who}}",
+    "notePlaceholder": "Note for the owner (optional)",
+    "submit": "Submit for approval",
+    "waitingOwner": "Waiting for the owner's decision in Approvals.",
+    "rejected": "The owner rejected this version.",
+    "effectiveFrom": "In force from",
+    "activate": "Activate",
+    "blockedDrafter": "You drafted this version: another person activates it.",
+    "blockedSubmitter": "You submitted this version: another person activates it."
+  },
+  "workflows": {
+    "title": "Workflows",
+    "lead": "Approve and switch on the hospital's workflows. Class A needs the medical superintendent and the owner, two different people; then the owner activates.",
+    "loading": "Loading…",
+    "awaiting_one": "Waiting for approval ({{count}})",
+    "awaiting_other": "Waiting for approval ({{count}})",
+    "noDrafts": "Nothing waiting.",
+    "inForce": "In force and past versions",
+    "class": "class {{c}}",
+    "state": {
+      "draft": "Draft",
+      "active": "Active",
+      "retired": "Retired"
+    },
+    "drafted": "Drafted by {{who}}, {{at}}",
+    "activated": "Activated by {{who}}, {{at}}",
+    "noApprovalsNeeded": "No approvals needed.",
+    "waiting": "Waiting",
+    "approvedBy": "Approved by {{who}}, {{at}}",
+    "diffTitle": "Change from the active version:",
+    "diffNone": "No change in steps.",
+    "state1": "state {{s}}",
+    "steps": "Steps: {{states}} states, {{transitions}} moves",
+    "note": "Note",
+    "defaultNote": "Reviewed and approved",
+    "approveAs": "Approve as {{role}}",
+    "activate": "Activate",
+    "youApproved": "You have approved this.",
+    "youDrafted": "You drafted it: another person activates.",
+    "waitingFor": "Waiting for: {{roles}}",
+    "role": {
+      "owner": "Owner",
+      "medical_superintendent": "Medical superintendent",
+      "department_head": "Department head",
+      "duty_manager": "Duty manager"
+    }
+  },
   "ipdNursing": {
     "dropped": {
       "title": "Not sent",
@@ -903,6 +1145,7 @@
     "all": "All",
     "empty": "Nothing needs the desk. Normal running bills are not listed.",
     "reason": {
+      "visit_backdated": "Visit backdated",
       "deposit_90": "Deposit 90 % used",
       "deposit_75": "Deposit 75 % used",
       "icu_low_days": "ICU: a day of deposit left",
@@ -1634,6 +1877,8 @@
     "menu": "Menu"
   },
   "nav": {
+    "ipdRounds": "Rounds",
+    "adminWorkflows": "Workflows",
     "ipdMyShift": "My shift",
     "ipdWard": "Nurse station",
     "dietConsults": "Diet consults",
@@ -18095,6 +18340,14 @@
       "reminders": {
         "today": "on the phone"
       }
+    },
+    "backdated": {
+      "what": "Round on {{date}} by {{name}} — entered late",
+      "reason": "Reason (required)",
+      "charge": "Charge visit",
+      "waive": "Waive",
+      "done": "Backdated visit settled",
+      "failed": "Could not save — try again"
     }
   },
   "myLeave": {
@@ -19043,6 +19296,7 @@
     "billsAs": "bills as",
     "now": "now",
     "reason": {
+      "visit_backdated": "Backdated round visit",
       "rate_missing": "Rate missing",
       "tariff_missing": "No tariff",
       "posting_failed": "Posting failed"
