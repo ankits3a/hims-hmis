@@ -111,8 +111,16 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `depositLowCard` (the desk's `ipd.deposit_low` Now card, declared in `manifest.ts`). `billdesk.controller.ts` —
   `IPD_BILLDESK_ROUTES` (`GET /ipd/bill-desk`, `POST /ipd/admissions/:id/charges/retry`). `billdesk-events.ts`.
   `kernel/db/schema/ipd.ts` — `ipd_deposit_alerts` (migration `ipd_billdesk`). `packages/contracts/src/ipd/bill-desk.ts`.
-  `kernel/notify/templates.ts` — template `ipd.daily_totals` (held: `heldReason`), `kernel/notify/pump.ts` suppresses a held
-  template `template_pending`. Web: `apps/web/src/screens/ipd-bill-desk.tsx` (`/ipd/bill-desk`, nav "Bill desk").
+  `kernel/notify/templates.ts` — template `ipd.daily_totals` (#761: `recipient: "attendant"`, `requiresApprovedTemplate`).
+  Web: `apps/web/src/screens/ipd-bill-desk.tsx` (`/ipd/bill-desk`, nav "Bill desk").
+- (#761) `attendant-messages.ts` — the pump's ATTENDANT SEAM `ipdAttendantRecipient(cfg)` and the config switch
+  `ipdTemplateRegistrations(cfg)` (both installed by `kernel/worker/jobs.ts` on `runNotifyPump`), `dailyTotalsSendingOf`,
+  `dailyTotalsWords`, `readDailyTotalsStrip` (the bill desk's `dailyTotals`), `readAttendantMessages`, `recordAttendantConsent`,
+  `stopAttendantMessages`. Routes on `billdesk.controller.ts` (`IPD_BILLDESK_ROUTES.attendant*`). `kernel/db/schema/ipd.ts` —
+  `ipd_attendant_message_consents` (migration `ipd_attendant_messages`). Config `IPD_DAILY_TOTALS_WHATSAPP_TEMPLATE`,
+  `IPD_DAILY_TOTALS_DLT_TEMPLATE_ID`, `IPD_BILL_DESK_PHONE` (`kernel/config.ts` `ipdDailyTotals`). Kernel seam:
+  `kernel/notify/pump.ts` `recipientResolvers`, `templateRegistrations`, `RecipientResolution`. Web:
+  `apps/web/src/screens/ipd-attendant-card.tsx` (on the interim bill), `apps/web/src/lib/ipd-attendant-api.ts`.
 
 - (E3.3) `family.ts` — staff side: `issueFamilyLink`, `revokeFamilyLink`, `setCondition` (word + family-off switch),
   `listFamilyCallbacks`, `closeFamilyCallback`, `readFamilyPanel`, `familyBlockOf`, the stop consumer `familyStopConsumer` /
@@ -458,6 +466,28 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   vii; the fit event's id is `declarationId`, never `dischargeId` — "charge" is a money word to the scanner). The tracker's
   `bill` is filled only for `ipd.bill.view` / `ipd.discharge.bill` holders.
 
+  #761 (supersedes "held"): the row is queued for 09:00 IST (`scheduledFor`, `dailyTotalsSendAt`) and addressed through the
+  pump's attendant seam — `attendantRef` resolved to a phone at send time, never the patient's phone. It leaves ONLY as an
+  approved template named in config; otherwise `suppressed` / `template_pending` with no adapter call, and the bill desk shows
+  "Not sent: template not configured". See "Attendant seam" below.
+### Attendant seam and the send switch (#761)
+- ⚖ RECIPIENT = the registered attendant (`attendantOf`'s rule) — the reference in params must still BE `attendantOf` at
+  send time (a row queued for an attendant since replaced, or whose phone was cleared, is undeliverable `no_phone`), and the
+  phone is the one `attendantOf` reads then. No input anywhere chooses a number.
+- At send time, in this order: stay ended or `familyBlockOf` (sealed, MLC, team switch) → `recipient_blocked`; a desk STOP →
+  `opted_out` (beats every consent); not the current attendant → `no_phone`; no desk consent AND no live family link for the
+  SAME phone → `no_consent`. ⚖ DECIDED (DPDP practice): consent is for a number — desk consent keeps the phone's HMAC in its
+  `consent` jsonb (`phoneHash`, `familyPhoneDigest` under `SECRET_KEY`; never sent to the web), a family link its
+  `phone_hash`; a number changed since → no consent until recorded again (card state `number_changed`, "Consent needed
+  again (number changed)"). No key = no consent (fail closed).
+  Re-consenting clears a stop. Consent and stop are `ipd.family.issue`; the card is read under `ipd.bill.view`.
+- SWITCH (DECIDED): ON only when config names an approved WhatsApp template name and/or DLT id AND `IPD_BILL_DESK_PHONE`;
+  `ipdTemplateRegistrations` then gives the pump those ids, else explicit nulls (no table row can turn it on). The pump drops
+  rungs with no id and console-sink rungs for this template; none left → `template_pending`. The message carries only the
+  template variables: first name, total, deposit balance (signed), desk phone (`renderParams`, never stored on the row).
+- AUDIT: `ipd.daily_totals.skipped`, `notification.sent|suppressed|failed|expired`, `ipd.attendant_messages.consented|stopped`.
+  A retry inside a rung updates the row's `last_error` only (the pump appends events on terminal states).
+
 ### Family link (E3.3, #731)
 - ⚖ ONLY THE REGISTERED ATTENDANT: the recipient is `attendantOf` (the daily totals' rule); the desk cannot type a number. The
   link stores the attendant REFERENCE + an HMAC-SHA256 of the phone under `SECRET_KEY` (`familyPhoneDigest`, kernel/crypto
@@ -571,6 +601,12 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - (E3.2) Print isolation: other screens hide `body *` with `!important` in print (all CSS is global), so the discharge
   prints answer with `!important` and a named page (`@page ipdd-a4`).
 
+- (#761) Switching the daily totals on is CONFIG ONLY, on the API and the worker: `IPD_DAILY_TOTALS_WHATSAPP_TEMPLATE` (Meta-
+  approved name, body variables {{1}} name, {{2}} total, {{3}} deposit balance, {{4}} desk phone) and/or
+  `IPD_DAILY_TOTALS_DLT_TEMPLATE_ID` (+ the MSG91 mapping), plus `IPD_BILL_DESK_PHONE`, with `NOTIFY_PROVIDER=live` and the
+  channel's gateway keys. The approved text must match `kernel/notify/templates.ts` `ipd.daily_totals` v2's render.
+- (#761) The billdesk acceptance test (iii) pins the params keys (`dayOfStay` included) and `template_pending` for a pump run
+  with no config: the seam keeps both (the gate reuses `template_pending`; `dayOfStay` stays in params, unused by the text).
 - (E3.3) HELD: the OTP SMS needs a DLT template id (`IPD_FAMILY_OTP_DLT_TEMPLATE_ID`); without it every send answers
   `family_otp_unavailable` (503). The link itself is handed over at the desk (QR / copy) — no SMS/WhatsApp of the link yet.
 - (E3.3) `ipdManifest` now has a subscription, so the WORKER installs it (`kernel/modules/manifests.test.ts`, `kernel/worker/seed-cursors.test.ts`,

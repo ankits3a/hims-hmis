@@ -508,6 +508,38 @@ async function prepareRow(tx: Tx, row: NotificationRow, now: Date, adapters: Ada
     return { kind: "done" };
   }
 
+  // PHARMACY P6: the provider's ids for this template — a live DLT gateway refuses without its id. #761: config first.
+  const reg: TemplateProviderIds | undefined = seams.templateRegistrations?.[row.templateKey]
+    ?? (await tx.select().from(notifyTemplateRegistrations).where(eq(notifyTemplateRegistrations.templateKey, row.templateKey)))[0];
+
+  // ── 3c. APPROVED TEMPLATE ONLY (#761). A rung with no provider id configured, or on a console sink, cannot carry an
+  // approved template; with none left the row is recorded `template_pending` and no adapter is ever called.
+  const approvedOnly = (channels: Channel[]): Channel[] => template.requiresApprovedTemplate === true
+    ? channels.filter((c) => adapters[c].sink !== true && providerIdFor(c, reg) !== null)
+    : channels;
+  if (approvedOnly(template.channels ?? DEFAULT_CHANNELS).length === 0) {
+    await markSuppressed(tx, row, "template_pending", now);
+    return { kind: "done" };
+  }
+
+  // ── 3d. THE RECIPIENT SEAM (#761). Read at send time, before quiet hours, so a stop never waits overnight.
+  let seamTo: Extract<RecipientResolution, { kind: "send" }> | null = null;
+  if (template.recipient !== undefined) {
+    const resolve = seams.recipientResolvers?.[template.recipient];
+    const found: RecipientResolution = resolve === undefined
+      ? { kind: "no_phone", detail: `no recipient seam is installed for "${template.recipient}" — never the patient's phone` }
+      : await resolve(tx, row);
+    if (found.kind === "suppress") {
+      await markSuppressed(tx, row, found.reason, now);
+      return { kind: "done" };
+    }
+    if (found.kind === "no_phone") {
+      await markUndeliverable(tx, row, "no_phone", now, found.detail);
+      return { kind: "done" };
+    }
+    seamTo = found;
+  }
+
   // ── 4. QUIET HOURS (D7, + T4's staff leg). Not a suppression: back to `queued`, no attempt
   // counted. The exemption is read per person, and only for the audience that can carry one.
   const quietExempt = row.audience === "staff" && row.userId !== null

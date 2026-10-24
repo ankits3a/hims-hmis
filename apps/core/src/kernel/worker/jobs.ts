@@ -35,7 +35,9 @@ import {
 import { sweepOverdueQa } from "../../modules/aerb";
 import { routingChooserFor, runAliasJob, runDeskRoutingLearning, runFlowLearning } from "../../modules/opd";
 import { syncAttendance } from "../../modules/attendance";
-import { lapseBedReservations, postNightlyIpdCharges, runIpdBillDeskNightly } from "../../modules/ipd";
+import {
+  ipdAttendantRecipient, ipdTemplateRegistrations, lapseBedReservations, postNightlyIpdCharges, runIpdBillDeskNightly,
+} from "../../modules/ipd";
 import { sweepTasks } from "../../modules/tasks";
 import { sweepBmwStorage } from "../../modules/bmw";
 import { collectResourceKinds } from "../resources/kinds";
@@ -379,12 +381,18 @@ export function registerAllJobs(
   // registers through this exact call with a distinct value and asserts a stale `sending` row
   // flips under this job's own `run(now)` (Book R2) — asserting that config PARSES the key
   // would discharge nothing, which is what the dead key looked like for a whole plan.
+  // #761 — the IPD attendant seam and the daily totals' approved template ids, from the config the caller resolved
+  // (`aliasConfig`, the whole AppConfig). Without it (census tests) the template has no ids and is never sent.
+  const ipdDailyTotals = aliasConfig?.ipdDailyTotals;
+  const recipientResolvers = { attendant: ipdAttendantRecipient(ipdDailyTotals, aliasConfig?.secretKey) };
+  const templateRegistrations = ipdTemplateRegistrations(ipdDailyTotals);
   scheduler.register({
     name: "runNotifyPump",
     every: intervals.workerNotifyIntervalMs,
     run: async (now) => {
       await runNotifyPump(db, {
         now, stuckAfterMs: intervals.notifyStuckAfterMs, ...(notifyAdapters === undefined ? {} : { adapters: notifyAdapters }),
+        recipientResolvers, templateRegistrations,
       });
     },
   });

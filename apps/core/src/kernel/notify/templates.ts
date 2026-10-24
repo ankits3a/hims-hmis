@@ -67,6 +67,19 @@ export type NotificationTemplate = {
    * it); removing this field is the act that starts sending, after approval and a recipient seam.
    */
   heldReason?: "template_pending";
+  /**
+   * #761 — WHO a patient-audience row is addressed to. Absent = the patient, on their own phone (every template before
+   * this one). `"attendant"` = the patient's registered attendant, resolved AT SEND TIME by the pump's recipient seam
+   * (`NotifyPumpOptions.recipientResolvers.attendant`) from the references in `params` — never a phone in params. With
+   * no seam installed the row is undeliverable `no_phone`: it never falls back to the patient's phone.
+   */
+  recipient?: "attendant";
+  /**
+   * #761 — SENT ONLY AS AN APPROVED TEMPLATE. A rung whose provider id is not configured (WhatsApp: the approved template
+   * name; SMS: the DLT content-template id), or whose adapter is a console sink, leaves the ladder; with no rung left the
+   * row is suppressed `template_pending` before any adapter is called. Free text never leaves for such a template.
+   */
+  requiresApprovedTemplate?: true;
 };
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -229,48 +242,60 @@ function rupeesOf(params: Record<string, unknown>, key: string): string {
   return Math.round(Number(params[key]) / 100).toLocaleString("en-IN");
 }
 
-/** The same, unsigned: a negative balance is worded "amount due" by the body, not printed with a minus. */
-function absRupeesOf(params: Record<string, unknown>, key: string): string {
-  return Math.abs(Math.round(Number(params[key]) / 100)).toLocaleString("en-IN");
+/** The same, signed ("-1,200" when the patient owes): one variable whatever the sign, so an approved template stays fixed. */
+function signedRupeesOf(params: Record<string, unknown>, key: string): string {
+  const rupees = Math.round(Number(params[key]) / 100);
+  return `${rupees < 0 ? "-" : ""}${Math.abs(rupees).toLocaleString("en-IN")}`;
+}
+
+/** #761 — the bill desk's phone, supplied at send time by the attendant seam (`renderParams.deskPhone`), or absent. */
+function deskPhoneOf(params: Record<string, unknown>): string | null {
+  const v = params.deskPhone;
+  return typeof v === "string" && v.trim() !== "" ? v.trim() : null;
 }
 
 /**
- * ═══ IPD E2.3 (#727) — THE DAILY TOTALS TO THE FAMILY, AND WHAT IT MAY NOT SAY ═══
+ * ═══ IPD E2.3 (#727) / #761 — THE DAILY TOTALS TO THE ATTENDANT, AND WHAT IT MAY NOT SAY ═══
  *
- * Totals only: the day of stay, the bill so far, the deposit held and the balance. NO line item, no diagnosis, no ward,
- * no bed, no doctor — a line item can reveal a diagnosis (spec SPEC-ipd-core §4.3); line items are at the desk or behind
- * an OTP link (E3.3). The name is the patient's first name, or the alias for a confidential patient, passed in already
- * chosen. Producer: `modules/ipd/daily-totals.ts` once per admission per IST day, after the nightly charges.
+ * Template variables only, in this order: the patient's first name (the alias for a confidential patient, chosen by the
+ * producer), the bill so far, the deposit balance (negative = the patient owes) and the bill desk's phone. NO line item,
+ * no diagnosis, no ward, no bed, no doctor, no clinical word — a line item can reveal a diagnosis (spec SPEC-ipd-core
+ * §4.3); line items are at the desk or behind the OTP link (E3.3). Producer: `modules/ipd/daily-totals.ts`, once per
+ * admission per IST day.
  *
- * HELD (`heldReason`): no approved WhatsApp template, no DLT registration, and the attendant is not the patient — the
- * pump records every row as suppressed `template_pending` until all three exist (decision recorded in ipd MAP.md).
- * RELEASE NEEDS AN ATTENDANT-RECIPIENT SEAM in this module (resolve `attendantRef` to the guardian's or deposit payer's
- * phone at send time) — GitHub issue #761. Do not remove `heldReason` before it exists.
+ * RECIPIENT (#761): the registered attendant, resolved at send time by the IPD seam from `attendant` / `attendantRef`
+ * (`recipient: "attendant"`). SENDING (#761): only as an approved template (`requiresApprovedTemplate`) — with no approved
+ * WhatsApp name or DLT id configured the pump records the row suppressed `template_pending` ("not sent: template not
+ * configured" on the bill desk) and calls no adapter.
  */
 const ipdTemplates: Record<string, NotificationTemplate> = {
   "ipd.daily_totals": {
     key: "ipd.daily_totals",
-    version: 1,
+    version: 2,
     class: "transactional",
     audience: "patient",
     urgency: "routine",
     channels: ["whatsapp", "sms"],
     waApprovalStatus: "not_submitted",
     deskFlagOnFailure: false,
-    heldReason: "template_pending",
+    recipient: "attendant",
+    requiresApprovedTemplate: true,
     // Dies at the end of the IST day after the one it reports: tomorrow's message supersedes it.
     expiresAt: (params) => new Date(new Date(`${paramStr(params, "billDate")}T00:00:00+05:30`).getTime() + 48 * HOUR_MS),
     variables: (params) => [
-      paramStr(params, "name"), paramStr(params, "dayOfStay"), rupeesOf(params, "totalPaise"), rupeesOf(params, "depositPaise"),
-      absRupeesOf(params, "balancePaise"),
+      paramStr(params, "name"), rupeesOf(params, "totalPaise"), signedRupeesOf(params, "balancePaise"), deskPhoneOf(params) ?? "",
     ],
     render: {
-      en: (params) =>
-        `Hospital bill for ${paramStr(params, "name")}, day ${paramStr(params, "dayOfStay")}: total so far Rs ${rupeesOf(params, "totalPaise")}, ` +
-        `deposit held Rs ${rupeesOf(params, "depositPaise")}, ${Number(params.balancePaise) < 0 ? "amount due" : "balance"} Rs ${absRupeesOf(params, "balancePaise")}. Details at the billing desk.`,
-      hi: (params) =>
-        `${paramStr(params, "name")} का अस्पताल बिल, दिन ${paramStr(params, "dayOfStay")}: अब तक कुल ₹${rupeesOf(params, "totalPaise")}, ` +
-        `जमा राशि ₹${rupeesOf(params, "depositPaise")}, ${Number(params.balancePaise) < 0 ? "देय राशि" : "शेष"} ₹${absRupeesOf(params, "balancePaise")}। विवरण बिलिंग डेस्क पर।`,
+      en: (params) => {
+        const desk = deskPhoneOf(params);
+        return `Hospital bill for ${paramStr(params, "name")}: total so far Rs ${rupeesOf(params, "totalPaise")}, ` +
+          `deposit balance Rs ${signedRupeesOf(params, "balancePaise")}. For details call the billing desk${desk === null ? "" : ` on ${desk}`}.`;
+      },
+      hi: (params) => {
+        const desk = deskPhoneOf(params);
+        return `${paramStr(params, "name")} का अस्पताल बिल: अब तक कुल ₹${rupeesOf(params, "totalPaise")}, ` +
+          `जमा शेष ₹${signedRupeesOf(params, "balancePaise")}। विवरण के लिए बिलिंग डेस्क${desk === null ? "" : ` (${desk})`} पर कॉल करें।`;
+      },
     },
   },
 };

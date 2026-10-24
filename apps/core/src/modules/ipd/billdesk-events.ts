@@ -24,3 +24,16 @@ export const dailyTotalsSkipped = defineEvent("ipd.daily_totals.skipped", MODULE
   admissionId: id, billDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), reason: z.enum(["no_attendant_phone", "sealed"]),
   provenance: IpdProvenanceSchema,
 }));
+
+/**
+ * #761 — the attendant's word on the daily totals: consent recorded at the desk (who, relation, how) and the stop. Ids and
+ * codes only: no phone, no name of the attendant.
+ */
+export const attendantMessagesConsented = defineEvent("ipd.attendant_messages.consented", MODULE, z.object({
+  admissionId: id, attendantKind: z.enum(["guardian", "deposit_payer"]), relation: z.string(), method: z.enum(["verbal", "paper"]),
+  provenance: IpdProvenanceSchema,
+}));
+
+export const attendantMessagesStopped = defineEvent("ipd.attendant_messages.stopped", MODULE, z.object({
+  admissionId: id, attendantKind: z.enum(["guardian", "deposit_payer"]), provenance: IpdProvenanceSchema,
+}));
