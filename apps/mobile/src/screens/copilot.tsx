@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, View } from "react-native";
+import { Pressable, View, type TextInput as RNTextInput } from "react-native";
 import { useRouter } from "expo-router";
 import { NetworkError } from "../api";
 import { useI18n } from "../i18n";
@@ -10,6 +10,7 @@ import { Band, Button, KeyboardScrollView, s as ui } from "../ui";
 import { ApptPick } from "../copilot/appt-pick";
 import { ActPick } from "../copilot/act-pick";
 import { DayReport, isDayReport, type CopilotDayReport } from "../copilot/report";
+import { VOICE_ASK, VoiceAsk } from "../copilot/voice";
 import { PHONE_SCREEN, answerText, chipsFor, isActPick, type AskReply, type AskSource, type ConfirmReply, type CopilotActPick, type CopilotProposal } from "../copilot/model";
 
 /**
@@ -20,6 +21,10 @@ import { PHONE_SCREEN, answerText, chipsFor, isActPick, type AskReply, type AskS
  * THE NOTICE FIRST (decision 0065): until the server says this person dismissed it, the one line and
  * OK sit above the chips. Everything — box included — is inside the KeyboardScrollView, so the box
  * stays above the Android keyboard (the vc24 rule).
+ *
+ * #590 — FROM THE ASK WIDGET: `keyboard`, the box is focused and the keyboard up; `listen`, the widget's
+ * mic — the strip starts listening, and what it heard lands in the box to be edited before Ask. Without
+ * ruling R-2 (`VOICE_ASK`) there is no strip at all, and `listen` falls back to the keyboard.
  */
 type Turn = {
   n: number; question: string; text: string | null; askId: string | null; report: CopilotDayReport | null; wrong: "no" | "sending" | "yes";
@@ -29,7 +34,7 @@ type Turn = {
   reminders?: boolean;
 };
 
-export function CopilotScreen() {
+export function CopilotScreen({ keyboard = false, listen = false }: { keyboard?: boolean; listen?: boolean } = {}) {
   const { t, lang } = useI18n();
   const router = useRouter();
   const { call, state } = useSession();
@@ -39,6 +44,7 @@ export function CopilotScreen() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [busy, setBusy] = useState(false);
   const counter = useRef(0);
+  const input = useRef<RNTextInput>(null);
 
   useEffect(() => {
     let live = true;
@@ -128,12 +134,17 @@ export function CopilotScreen() {
 
         <View testID="copilot-input-row" style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
           <View style={[ui.input, { flex: 1 }]}>
-            <TextInput testID="copilot-input" value={text} onChangeText={setText} placeholder={t("copilotPhone.placeholder")} placeholderTextColor={color.faint}
+            <TextInput ref={input} testID="copilot-input" autoFocus={keyboard || (listen && !VOICE_ASK)} value={text} onChangeText={setText} placeholder={t("copilotPhone.placeholder")} placeholderTextColor={color.faint}
               accessibilityLabel={t("copilotPhone.placeholder")} maxLength={500} returnKeyType="send" onSubmitEditing={() => { void ask(text, "typed"); }}
               style={[ui.inputText, { fontFamily: undefined, fontSize: 16 }]} />
           </View>
           <Button label={t("copilotPhone.ask")} onPress={() => { void ask(text, "typed"); }} busy={busy} disabled={text.trim() === ""} testID="copilot-ask" />
         </View>
+        {/* Asked as "typed": the person read the words in the box and tapped Ask. */}
+        {VOICE_ASK && (
+          <VoiceAsk autoStart={listen} disabled={busy}
+            onHeard={(heard) => { setText((had) => (had.trim() === "" ? heard : `${had.trim()} ${heard}`).slice(0, 500)); input.current?.focus(); }} />
+        )}
 
         {turns.map((turn) => (
           <View key={turn.n} testID={`copilot-turn-${String(turn.n)}`} style={{ backgroundColor: color.card, borderWidth: 1, borderColor: color.line, borderRadius: radius.lg, padding: space.md, gap: 6 }}>

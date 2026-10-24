@@ -26,11 +26,13 @@ jest.mock("expo-secure-store", () => {
 });
 jest.mock("expo-local-authentication", () => ({ hasHardwareAsync: jest.fn(async () => false), isEnrolledAsync: jest.fn(async () => false), authenticateAsync: jest.fn(async () => ({ success: true })) }));
 const mockPush = jest.fn();
+const mockReplace = jest.fn();
 jest.mock("expo-router", () => {
   const { createElement } = jest.requireActual<typeof import("react")>("react");
   const { Text } = jest.requireActual<typeof import("react-native")>("react-native");
   return {
-    useRouter: () => ({ push: mockPush, back: jest.fn() }),
+    useRouter: () => ({ push: mockPush, back: jest.fn(), canGoBack: () => false, replace: mockReplace }),
+    useLocalSearchParams: () => ({}),
     Redirect: ({ href }: { href: string }) => createElement(Text, { testID: "redirect" }, href),
   };
 });
@@ -307,7 +309,8 @@ describe("E1.3 — the keyboard, the header and signing in", () => {
   it("signed out, /copilot sends the person to sign in", async () => {
     const s = server({}, { signedOut: true });
     await mount(s.fetcher, <CopilotPage />);
-    expect(await screen.findByTestId("redirect")).toHaveTextContent("/");
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/"));
+    expect(screen.queryByTestId("copilot")).toBeNull();
   });
 });
 
