@@ -75,6 +75,7 @@ const DARK_MODULES: readonly (readonly [DarkModuleKey, Type<unknown>])[] = [
   ["maintenance", MaintenanceModule], // E1.5 (#722) — repair tickets: raise, confirm, cancel, dispatch, the board, the Beds board's repair line
   ["passes", PassesModule], // E1.3 (#720) — attendant and visitor passes, the scan at a ward door
   ["transport", TransportModule], // E1.6 (#723) — the transport request, the porter's details, escort and oxygen check, the supervisor board
+  ["diet", DietModule], // E4.4 (#736) — diet orders, NPO, the kitchen board and meal lists, the ward diet sheet, dietician consults
 ];
 
 @Global()

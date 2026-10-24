@@ -850,7 +850,7 @@ function whenModuleOn<F extends (db: Db, now: Date) => Promise<unknown>>(key: Da
  * past its cut-off and not yet served gets its lists built (`buildDueLists`, idempotent). Same try/catch rule.
  */
 export async function runTaskAndWasteClocks(
-  db: Db, now: Date, sweeps: { sweepTasks: typeof sweepTasks; sweepBmwStorage: typeof sweepBmwStorage } = { sweepTasks, sweepBmwStorage: whenModuleOn("bmw", sweepBmwStorage) },
+  db: Db, now: Date,
   sweeps: { sweepTasks: typeof sweepTasks; sweepBmwStorage: typeof sweepBmwStorage; buildDueLists?: typeof buildDueLists } = { sweepTasks, sweepBmwStorage: whenModuleOn("bmw", sweepBmwStorage), buildDueLists: whenModuleOn("diet", buildDueLists) },
 ): Promise<void> {
   let first: unknown = undefined;

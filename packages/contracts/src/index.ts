@@ -34,5 +34,4 @@ export * from "./maintenance";
 export * from "./passes";
 export * from "./transport";
 export * from "./diet";
-export * from "./diet";
 export * from "./doctor-desk";
