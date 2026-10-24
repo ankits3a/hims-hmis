@@ -261,6 +261,9 @@ export async function completeTask(exec: Exec, actor: Actor, raw: unknown, now: 
       state: "done", proof: (input.proof ?? null) as Record<string, unknown> | null, doneBy: actor.id, doneAt: now,
     }, now);
     await logEvent(t, next, "done", actor, eventSource(actor), now, input.proof === undefined ? {} : { proof: input.proof.kind });
+    // The owning module's record of the finished work, in the SAME transaction (maintenance: the ticket is fixed).
+    const decl = taskKind(row.kind);
+    if (decl?.onDone !== undefined) await decl.onDone(t, next, actor, now);
     return next;
   });
 }

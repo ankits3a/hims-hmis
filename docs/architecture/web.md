@@ -58,6 +58,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/linen` | `apps/web/src/screens/linen-board` |
 | `/linen/handle` | `apps/web/src/screens/linen-handle` |
 | `/login` | `apps/web/src/screens/login` |
+| `/maintenance` | `apps/web/src/screens/maintenance-board` |
 | `/materials/counts` | `(redirect)` |
 | `/materials/grn` | `(redirect)` |
 | `/materials/items` | `(redirect)` |

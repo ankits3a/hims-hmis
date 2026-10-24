@@ -237,3 +237,43 @@ describe("Beds board — housekeeping's cleaning clocks (E1.4)", () => {
     expect(posted).toEqual(["/api/housekeeping/cleans/01FAKETASK0000000000000001/verify"]);
   });
 });
+
+describe("Beds board — repair tickets (E1.5)", () => {
+  it("a bed blocked by a repair says so in words, offers no hand Unblock, and a fixed repair is confirmed from the drawer", async () => {
+    const user = userEvent.setup();
+    const blocked = bed("F05-MED-F-B09", {
+      status: "blocked", block: { id: id(900), reason: "maintenance", note: "Repair #123: Bed", expectedReturnAt: "2026-01-02T05:00:00.000Z", onRelease: false },
+    });
+    api.getBedBoard.mockImplementation(async () => {
+      const b = boardOf(false);
+      b.floors[0]!.wards[0]!.beds.push(blocked);
+      return b;
+    });
+    const posted: string[] = [];
+    setToken("stub-token");
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (init?.method === "POST") { posted.push(raw); return new Response(JSON.stringify({ id: "k", number: 123, state: "closed", version: 3 }), { status: 200 }); }
+      if (raw.startsWith("/api/auth/me")) {
+        return new Response(JSON.stringify({ actor: { type: "user", id: "u1" }, permissions: { hospital: ["ipd.beds.view", "ipd.beds.manage", "ipd.beds.clean", "maintenance.raise"], scoped: { department: {}, floor: {} } } }), { status: 200 });
+      }
+      if (raw.endsWith("/maintenance/bed-tickets")) {
+        return new Response(JSON.stringify({ serverNow: "2026-01-01T05:00:00.000Z", tickets: [
+          { bedId: blocked.id, ticketId: "k", number: 123, state: "fixed", urgency: "urgent", itemKind: "bed", taskId: "t", blockOnRelease: false },
+        ] }), { status: 200 });
+      }
+      return new Response("{}", { status: 200 });
+    }));
+    renderWithRouter(<IpdBedsUnderTest />, "/ipd/beds");
+    expect(await screen.findByRole("img", { name: "F05-MED-F-B09 · Blocked · repair #123 · fixed, waiting nurse" })).toBeInTheDocument();
+    await user.click(screen.getByTestId("ipd-ward-F05-MED-F"));
+    await user.click(await screen.findByTestId("ipd-bed-F05-MED-F-B09"));
+    const acts = screen.getByTestId("ipd-bed-acts");
+    expect(within(acts).getByTestId("ipd-bed-repair")).toHaveTextContent("Blocked · repair #123 · fixed, waiting nurse · Bed · Urgent");
+    expect(within(acts).queryByRole("button", { name: "Unblock" })).toBeNull();
+    expect(within(acts).getByRole("button", { name: "Report a fault" })).toBeInTheDocument();
+    await user.click(within(acts).getByRole("button", { name: "Confirm repair" }));
+    expect(await within(acts).findByText(/Repair confirmed/)).toBeInTheDocument();
+    expect(posted).toEqual(["/api/maintenance/tickets/k/confirm"]);
+  });
+});

@@ -27,6 +27,7 @@ import { labManifest } from "../../modules/lab";
 import { abdmManifest } from "../../modules/abdm";
 import { orderingManifest } from "../../modules/ordering";
 import { housekeepingManifest } from "../../modules/housekeeping";
+import { maintenanceManifest } from "../../modules/maintenance";
 import { doctorDeskManifest } from "../../modules/doctor-desk";
 
 /**
@@ -95,6 +96,7 @@ const MANIFEST_BY_IDENTIFIER: Record<string, ModuleManifest> = {
   abdmManifest, // ABDM S2 — worker-only, the `notify` shape
   orderingManifest, // DECISION 0067 — both processes
   housekeepingManifest, // E1.4 HOUSEKEEPING (issue #721) — both processes
+  maintenanceManifest, // E1.5 MAINTENANCE (issue #722) — API only
   doctorDeskManifest, // DOCTOR DESK DD-0 — app-only
 };
 
@@ -212,6 +214,8 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "linen",
       // E1.4 HOUSEKEEPING (issue #721) — appended. A leaf: it reaches into tasks and ipd through their indexes.
       "housekeeping",
+      // E1.5 MAINTENANCE (issue #722) — appended. A leaf: it reaches into tasks and ipd through their indexes.
+      "maintenance",
       // DOCTOR DESK DD-0 (#626) — appended. A leaf: it reads lab, radiology, opd, patients and roster
       // through their indexes; nothing imports it.
       "doctor-desk",
@@ -234,7 +238,7 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     expect(manifestKeys(extras, "app.module.ts")).toEqual([]);
   });
 
-  it("the worker's registry differs from ALL_MANIFESTS in exactly eleven enumerated, intentional ways", () => {
+  it("the worker's registry differs from ALL_MANIFESTS in exactly twelve enumerated, intentional ways", () => {
     const workerKeys = manifestKeys(
       installArguments(readFileSync(WORKER_MODULE, "utf8"), "worker.module.ts"),
       "worker.module.ts",
@@ -362,7 +366,10 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     //      the worker runs `sweepTasks` and needs no permission to.
     // (1n) IPD BEDS E1.1 — `ipd`, APP-ONLY on the same terms: four permissions, no subscription;
     //      the worker runs its job (`lapseBedReservations`) without the manifest.
-    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance", "tasks", "ipd", "doctor-desk"]);
+    // (1m) E0.1 TASK ENGINE, E1.1 IPD BEDS, E1.7 BMW, E2.4 LINEN and E1.5 MAINTENANCE — APP-ONLY on the same terms: no
+    //      subscription; their clocks run in the worker without the manifest (maintenance: the worker IMPORTS the module so
+    //      its two repair kinds exist for the task clock, and installs nothing).
+    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance", "tasks", "ipd", "bmw", "linen", "maintenance", "doctor-desk"]);
 
     /**
      * ═══ THE COUNT IS THE FRICTION, AND UNTIL NOW NOTHING ENFORCED IT ═══

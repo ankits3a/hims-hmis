@@ -29,6 +29,7 @@ import { ipdManifest } from "../../modules/ipd";
 import { bmwManifest } from "../../modules/bmw";
 import { linenManifest } from "../../modules/linen";
 import { housekeepingManifest } from "../../modules/housekeeping";
+import { maintenanceManifest } from "../../modules/maintenance";
 import { doctorDeskManifest } from "../../modules/doctor-desk";
 
 /**
@@ -208,6 +209,9 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   // E1.4 HOUSEKEEPING (issue #721) — appended. Two permissions, one menu entry, and the bed's kernel events
   // (released, status changed, assigned) -> `housekeeping.bed_turnover`. Installed in BOTH processes.
   housekeepingManifest,
+  // E1.5 MAINTENANCE (issue #722) — appended. Five permissions and one menu entry; no subscription, no job. The API
+  // mounts its routes; the worker imports the module only to define the two repair kinds for the task clock.
+  maintenanceManifest,
   // DOCTOR DESK DD-0 (#626) — appended. A leaf: no permission of its own (its routes open on opd's
   // `opd.consult`), one menu entry, no subscription, no job — app-only, the `attendance` shape.
   doctorDeskManifest,

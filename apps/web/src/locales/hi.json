@@ -1,4 +1,137 @@
 {
+  "maintenance": {
+    "title": "मेंटेनेंस",
+    "report": "ख़राबी बताएँ",
+    "close": "बंद करें",
+    "done": "हो गया",
+    "failed": "सेव नहीं हुआ। फिर कोशिश करें।",
+    "offline": "ऑफ़लाइन",
+    "none": "कोई खुली मरम्मत नहीं",
+    "noFloor": "मंज़िल नहीं",
+    "someone": "कोई",
+    "floorOpen": "{{count}} खुले",
+    "floorCritical": "{{count}} गंभीर · {{open}} खुले",
+    "late": "देर",
+    "blocked": "बेड बंद",
+    "onRelease": "ख़ाली होने पर बंद",
+    "dispatch": "भेजें",
+    "dispatched": "भेज दिया",
+    "confirm": "पुष्टि",
+    "confirmRepair": "मरम्मत की पुष्टि",
+    "confirmed": "मरम्मत की पुष्टि हुई",
+    "count": {
+      "open": "खुले",
+      "critical": "गंभीर",
+      "late": "देर",
+      "toConfirm": "नर्स की प्रतीक्षा",
+      "blockedBeds": "बेड बंद",
+      "notShown": "नहीं दिखाए"
+    },
+    "side": {
+      "toConfirm": "ठीक · नर्स की प्रतीक्षा ({{count}})",
+      "noneToConfirm": "कुछ बाकी नहीं",
+      "blockedBeds": "मरम्मत से बंद बेड ({{count}})",
+      "noBeds": "कोई बेड बंद नहीं",
+      "replace": "बदलें? ({{count}})",
+      "noReplace": "कुछ चिह्नित नहीं"
+    },
+    "replace": {
+      "short": "बदलें?",
+      "why": "30 दिन में 3 ख़राबी",
+      "flagged": "30 दिन में तीसरी ख़राबी — बदलने के लिए चिह्नित"
+    },
+    "state": {
+      "open": "तकनीशियन की प्रतीक्षा",
+      "undispatched": "भेजा नहीं गया",
+      "assigned": "{{who}} के पास",
+      "in_progress": "{{who}} काम पर",
+      "fixed": "ठीक, नर्स की प्रतीक्षा",
+      "closed": "बंद",
+      "cancelled": "रद्द"
+    },
+    "bedState": {
+      "open": "तकनीशियन की प्रतीक्षा",
+      "assigned": "तकनीशियन तय",
+      "in_progress": "मरम्मत जारी",
+      "fixed": "ठीक, नर्स की प्रतीक्षा",
+      "closed": "बंद",
+      "cancelled": "रद्द"
+    },
+    "bedLine": "{{head}} · मरम्मत #{{n}} · {{state}}",
+    "bedShort": "मरम्मत #{{n}} · {{state}}",
+    "age": {
+      "min": "{{m}} मिनट",
+      "hmin": "{{h}} घं {{m}} मिनट",
+      "dh": "{{d}} दिन {{h}} घं"
+    },
+    "item": {
+      "bed": "बेड",
+      "oxygen_point": "ऑक्सीजन पॉइंट",
+      "suction": "सक्शन",
+      "monitor": "मॉनिटर",
+      "fixture": "फ़िटिंग",
+      "electrical": "बिजली",
+      "plumbing": "पानी/नल",
+      "ac": "एसी",
+      "other": "अन्य"
+    },
+    "urgency": {
+      "routine": "सामान्य",
+      "urgent": "जल्दी",
+      "critical": "गंभीर"
+    },
+    "urgencyBack": {
+      "routine": "3 दिन में",
+      "urgent": "24 घं में",
+      "critical": "4 घं में"
+    },
+    "placeKind": {
+      "bed": "बेड",
+      "room": "कमरा",
+      "ward": "वार्ड",
+      "hall": "हॉल",
+      "floor": "मंज़िल"
+    },
+    "bedEffect": {
+      "blocked": "पुष्टि तक बेड बंद",
+      "block_on_release": "मरीज़ जाने पर बेड बंद होगा",
+      "joined_block": "बेड की मरम्मत में जोड़ा",
+      "already_blocked": "बेड पहले से किसी और कारण बंद",
+      "not_blocked_status": "बेड बंद नहीं हुआ (अनपेक्षित स्थिति) — मरम्मत दर्ज",
+      "not_blocked_reserved": "बेड आरक्षित है — बंद नहीं",
+      "not_a_bed": "मरम्मत भेजी गई"
+    },
+    "raise": {
+      "title": "ख़राबी बताएँ",
+      "place": "कहाँ",
+      "placeHint": "बेड, कमरा या वार्ड कोड",
+      "change": "बदलें",
+      "item": "क्या ख़राब है",
+      "urgency": "कितना ज़रूरी",
+      "note": "क्या दिक्कत है",
+      "noteHint": "कुछ शब्द",
+      "tag": "एसेट टैग (अगर हो)",
+      "tagHint": "जैसे OX-12",
+      "send": "भेजें",
+      "sending": "भेज रहे हैं…",
+      "raised": "मरम्मत #{{n}} दर्ज",
+      "merged": "पहले से दर्ज · मरम्मत #{{n}}",
+      "failed": "दर्ज नहीं हुआ। फिर कोशिश करें।"
+    },
+    "refusal": {
+      "forbidden": "आपको अनुमति नहीं।",
+      "unknown_place": "जगह नहीं मिली।",
+      "place_retired": "यह जगह बंद है।",
+      "ticket_not_found": "मरम्मत नहीं मिली।",
+      "ticket_closed": "मरम्मत पहले से बंद।",
+      "already_fixed": "पहले से ठीक।",
+      "not_fixed_yet": "अभी ठीक नहीं हुआ।",
+      "task_still_open": "काम जारी है।",
+      "verifier_is_doer": "तकनीशियन अपनी मरम्मत की पुष्टि नहीं कर सकता।",
+      "not_permitted": "आप इस मरम्मत की पुष्टि नहीं कर सकते।",
+      "repair_ticket_open": "पहले मरम्मत टिकट बंद करें।"
+    }
+  },
   "housekeeping": {
     "title": "हाउसकीपिंग",
     "terminal": "सुपरवाइज़र जाँचेगा",
@@ -62,6 +195,7 @@
     "menu": "मेनू"
   },
   "nav": {
+    "maintenance": "मेंटेनेंस",
     "housekeeping": "हाउसकीपिंग",
     "formularyAdmin": "फ़ॉर्मुलरी",
     "merge": "मर्ज समीक्षा",
@@ -17082,6 +17216,8 @@
     "noPlace": "जगह नहीं बताई",
     "askedAgain": "{{count}}× माँगा",
     "kind": {
+      "repair_biomedical": "उपकरण मरम्मत (Equipment repair)",
+      "repair_general": "मरम्मत (Repair)",
       "room_inspection": "कमरा जाँच (Room inspection)",
       "spill": "फैलाव सफ़ाई (Spill clean)",
       "bed_clean_terminal": "टर्मिनल सफ़ाई (Terminal clean)",

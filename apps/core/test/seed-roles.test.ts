@@ -988,6 +988,27 @@ const HOUSEKEEPING_PAIRS: readonly string[] = [
   "duty_manager/housekeeping.view",
 ];
 
+/** The README prose line authorising maintenance's grants (E1.5, issue #722). Quoted, not paraphrased. */
+const MAINTENANCE_README_PROSE =
+  "`maintenance.confirm` is held by `duty_manager` and the nurses (`ot_nurse`, `recovery_nurse`, `radiology_nurse`), and a\nholder of `ipd.beds.clean` may confirm too; the new role `maintenance_staff` (engineering technicians) and\n`biomedical_engineer` take the repairs.";
+
+/**
+ * E1.5 MAINTENANCE (issue #722) — anyone on a ward raises; the nurses (and `ipd.beds.clean` holders) confirm; the two
+ * technician roles work the repairs on the task engine; the duty manager and the services supervisor run the board.
+ */
+const MAINTENANCE_PAIRS: readonly string[] = [
+  "front_office/maintenance.raise", "front_office_supervisor/maintenance.raise",
+  "duty_manager/maintenance.view", "duty_manager/maintenance.raise", "duty_manager/maintenance.confirm", "duty_manager/maintenance.manage",
+  "ot_nurse/maintenance.raise", "ot_nurse/maintenance.confirm",
+  "recovery_nurse/maintenance.raise", "recovery_nurse/maintenance.confirm",
+  "radiology_nurse/maintenance.raise", "radiology_nurse/maintenance.confirm",
+  "biomedical_engineer/tasks.view", "biomedical_engineer/tasks.work", "biomedical_engineer/maintenance.view",
+  "biomedical_engineer/maintenance.work", "biomedical_engineer/maintenance.raise",
+  "services_supervisor/maintenance.view", "services_supervisor/maintenance.raise", "services_supervisor/maintenance.manage",
+  "maintenance_staff/tasks.view", "maintenance_staff/tasks.work", "maintenance_staff/maintenance.view",
+  "maintenance_staff/maintenance.work", "maintenance_staff/maintenance.raise",
+];
+
 /** The README prose line authorising the copilot health read (decision 0064, E0.1). Quoted, not paraphrased. */
 const COPILOT_HEALTH_README_PROSE =
   "`copilot.health.read` is held by `owner`, `admin`, `duty_manager`, `medical_superintendent` and the new role\n`quality_manager` (the copilot steward), and the steward role holds nothing else but the halt switch.";
@@ -1163,6 +1184,7 @@ const NON_TABLE_PAIRS: readonly string[] = [
   ...BMW_PAIRS,
   ...LINEN_PAIRS,
   ...HOUSEKEEPING_PAIRS,
+  ...MAINTENANCE_PAIRS,
   ...COPILOT_HEALTH_PAIRS,
   ...COPILOT_HALT_PAIRS,
   ...LAB_METRICS_PAIRS,
@@ -1469,6 +1491,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       tasks: 3, // E0.1 TASK ENGINE (issue #713) — tasks.view, tasks.work, tasks.supervise
       bmw: 3, // E1.7 BIO-MEDICAL WASTE (issue #724) — bmw.view, bmw.handle, bmw.manage
       linen: 3, // E2.4 LINEN (issue #728) — linen.view, linen.handle, linen.manage
+      maintenance: 5, // E1.5 MAINTENANCE (issue #722) — maintenance.view, .raise, .work, .confirm, .manage
       housekeeping: 2, // E1.4 HOUSEKEEPING (issue #721) — housekeeping.view, housekeeping.verify_terminal
       attendance: 1, // STAFF ATTENDANCE (owner 2026-10-09) — attendance.all.read; a team and oneself are computed, not granted
       ipd: 4, // IPD BEDS E1.1 (2026-10-12), read off the failing run: ipd.beds.view, .manage, .clean, .overflow
@@ -1568,19 +1591,21 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // E0.1 TASK ENGINE (issue #713) — the two service roles, appended. Grants and no holders.
       "support_staff",
       "services_supervisor",
+      // E1.5 MAINTENANCE (issue #722) — the engineering technicians, appended. Grants and no holders.
+      "maintenance_staff",
     ]);
     expect(Object.fromEntries(ROLE_MODEL.map((r) => [r.roleKey, r.permissions.length]))).toEqual({
       // Plan 09 / DD18 moved four of these: +3 each to the two desk roles and the cashier (read,
       // recognise, request), +1 to billing_manager (approve). No other role gained anything, and
       // `vitals_desk` deliberately gained nothing — vitals are recorded against a patient who is
       // already at the counter, and recognition happens where the invoice is.
-      front_office: 17, // IPD BEDS E1.1 (2026-10-12), read off the failing run: +2, ipd.beds.view and .manage;  20-U U5a, read off the failing run: +1, roster.read; FRONT-DESK DUES (owner ruling 2026-09-30), read off the failing run: +1, billing.dues.patient.read
+      front_office: 18, // E1.5 MAINTENANCE: +1, maintenance.raise; IPD BEDS E1.1 (2026-10-12), read off the failing run: +2, ipd.beds.view and .manage;  20-U U5a, read off the failing run: +1, roster.read; FRONT-DESK DUES (owner ruling 2026-09-30), read off the failing run: +1, billing.dues.patient.read
       // PLAN 07c T9 — 13 → 14 with `staff.reports.read`. This is the role the phrase "the
       // supervisor" in owner ruling O-2 actually means.
       // RC-1 T2 — 14 -> 15 with the counter-flow lock (D5): the pill, not the config editor.
       // RC-2 T4 — 15 -> 16 with `membership.instrument.enrol` (D5): this role may MINT a card;
       // `front_office` above may only honour one, which is the whole of the enrol/apply split.
-      front_office_supervisor: 23, // IPD BEDS E1.1 (2026-10-12), read off the failing run: +3, ipd.beds.view, .manage and .clean;  20-U U5a, read off the failing run: +1, roster.read; FRONT-DESK DUES (owner ruling 2026-09-30), read off the failing run: +1, billing.dues.patient.read;  staff-reports T0: +1, staff.reports.history.year (the one-year tier); OPD day report: +1, opd.reports.read
+      front_office_supervisor: 24, // E1.5 MAINTENANCE: +1, maintenance.raise; IPD BEDS E1.1 (2026-10-12), read off the failing run: +3, ipd.beds.view, .manage and .clean;  20-U U5a, read off the failing run: +1, roster.read; FRONT-DESK DUES (owner ruling 2026-09-30), read off the failing run: +1, billing.dues.patient.read;  staff-reports T0: +1, staff.reports.history.year (the one-year tier); OPD day report: +1, opd.reports.read
       vitals_desk: 7, // 20-U U5a, read off the failing run: +1, roster.read; VD-1 T4 — 5 -> 6 with `opd.vitals.history.read`, the bay's pre-stage read
       // Group B, 2026-08-26: +2, the patient record and the allergy register.
       // Plan 16a / DD10: +1, the formulary read the consult autocomplete needs.
@@ -1652,7 +1677,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // of authority over the same object, so they sit with the role that already holds
       // `patients.merge`.
       mrd_officer: 5,
-      biomedical_engineer: 1,
+      biomedical_engineer: 6, // E1.5 MAINTENANCE: +5, tasks.view, tasks.work, maintenance.view, .work, .raise
       // PLAN 14 T2 / DD11 — the two stores roles. `pharmacy` moved 5 → 8 in the same commit (the
       // three read/QC strings), which is why the grant total moves by twenty and not by seventeen.
       // 14c first slice: the head +2 (counts.manage, counts.perform), the storekeeper +1 (counts.perform).
@@ -1668,8 +1693,8 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // calling off a lab order the coordinator placed is the coordinator's act.
       surgeon: 9,
       anaesthetist: 4,
-      ot_nurse: 5, // STAGE D4: +1, pharmacy.trays.check (the OT's emergency tray)
-      recovery_nurse: 4, // STAGE D4: +1, pharmacy.trays.check (the recovery bay's tray)
+      ot_nurse: 7, // E1.5 MAINTENANCE: +2, maintenance.raise and .confirm; STAGE D4: +1, pharmacy.trays.check (the OT's emergency tray)
+      recovery_nurse: 6, // E1.5 MAINTENANCE: +2, maintenance.raise and .confirm; STAGE D4: +1, pharmacy.trays.check (the recovery bay's tray)
       daycare_coordinator: 7, // STAGE D4: +1, pharmacy.trays.check (the day-care tray)
       // ── PLAN 17 T2 / DD16 — the LAB's four, and the SHAPE is the decision ──
       // `pathologist` 17 against `lab_technician` 8: the difference is `lab.results.verify`,
@@ -1692,7 +1717,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       radiographer: 13, // STAGE D4: +1, pharmacy.trays.check (the CT / MRI room's tray); 18-S RS12: +`radiology.pacs.reconcile`; 18-S RS5: +`radiology.contrast.record`; 18b T1: +`radiology.mwl.read`; 18c T1: +`aerb.doses.read`
       radiologist: 22, // HOSPITAL NUMBERS (#777, 2026-10-13), read off the failing run: +1, radiology.metrics.read; 18-S RS12: +`radiology.pacs.reconcile`, the PACS inbox; 18-S RS11: +`aerb.incidents.read`, the incident register; 18-S RS5: +`radiology.contrast.record`, +`approvals.requests.read` and `.decide` (imaging_gate_override); 18-S RS4: +`radiology.devices.manage`, the machine register; 18c T1: +`aerb.doses.read`, the cumulative nudge at protocolling
       radiology_receptionist: 15, // 18-S RS3 — + `radiology.checkin`, `radiology.display.read`
-      radiology_nurse: 3, // 18-S RS5 — worklist.read, gates.satisfy, contrast.record; NO override
+      radiology_nurse: 5, // E1.5 MAINTENANCE: +2, maintenance.raise and .confirm; 18-S RS5 — worklist.read, gates.satisfy, contrast.record; NO override
       lab_reception: 18, // §13 walk + owner credit ruling 2026-09-28: +lab.reports.release_unpaid (the counter performs the owner-approved release); 17c owner ruling 2026-09-02: +approvals.requests.create
       // PLAN 18b T1 — one string, on purpose (see the role's docstring in seed-roles.ts).
       modality_bridge: 2, // 18-S RS12: +`radiology.pacs.interface`, the archive posts back
@@ -1706,6 +1731,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       pharmacology_reviewer: 2, // #618 / DECISION 0053 — formulary.read and formulary.crk.sign, nothing else
       support_staff: 1, // E0.1 TASK ENGINE — tasks.work and nothing else
       services_supervisor: 3, // E0.1 TASK ENGINE — tasks.view, tasks.work, tasks.supervise
+      maintenance_staff: 5, // E1.5 MAINTENANCE — tasks.view, tasks.work, maintenance.view, .work, .raise
       antimicrobial_steward: 3, // PHARMACY STAGE D5 — approvals.requests.read and .decide (it is the approverRole) and pharmacy.antimicrobial.approve
     });
     // PLAN 07c T9 — 156 → 158: `staff.reports.read` to `front_office_supervisor` and to
@@ -2058,6 +2084,8 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // E0.1 TASK ENGINE appends the two service roles.
       "support_staff",
       "services_supervisor",
+      // E1.5 MAINTENANCE appends the engineering technicians.
+      "maintenance_staff",
     ]);
     // `nurse` is now the ONLY constant entry with no permission column anywhere — `duty_manager`
     // left this list on 2026-08-26 when Group C gave it one.
@@ -2088,6 +2116,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       "quality_manager", "admin", // COPILOT LEDGER E0.1 (decision 0064)
       "pharmacology_reviewer", // #618 / decision 0053 — signs the CRK formulary
       "support_staff", "services_supervisor", // E0.1 TASK ENGINE (issue #713)
+      "maintenance_staff", // E1.5 MAINTENANCE (issue #722)
     ].sort());
     expect(Object.keys(LOCAL_ROLE_TITLES).filter((k) => opdKeys.includes(k))).toEqual([]);
     for (const key of modelKeys) expect(roleTitle(key).length).toBeGreaterThan(0);
@@ -2340,6 +2369,7 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(readme).toContain(BMW_README_PROSE);
     expect(readme).toContain(LINEN_README_PROSE);
     expect(readme).toContain(HOUSEKEEPING_README_PROSE);
+    expect(readme).toContain(MAINTENANCE_README_PROSE);
     expect(readme).toContain(COPILOT_HALT_README_PROSE);
     expect(readme).toContain(IPD_BEDS_README_PROSE);
     expect(readme).toContain(APPROVALS_SPINE_README_PROSE);
