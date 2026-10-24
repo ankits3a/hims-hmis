@@ -12,6 +12,7 @@ import { IPD_APPROVAL_TYPE_KEYS, grantedApproval, requestIpdApproval } from "./a
 import type { GrantedApproval } from "./approval-types";
 import { coveredLineIds, hasUnbilledLines, liveBills } from "./bill-cover";
 import { postAdmissionCharges } from "./charges";
+import { versionPricedServices } from "./drug-charges";
 import { activeDischarge, confirmationsOf, pendingDepartments } from "./discharge";
 import { billSettled } from "./discharge-events";
 import { IpdError, IpdRefusal } from "./errors";
@@ -112,11 +113,29 @@ export async function composeFinalBill(db: Db | Tx, a: AdmissionRow, take?: (lin
   };
 }
 
-/** The invoice lines for the patient's portion, each at its frozen price (see the header). */
-export function patientInvoiceLines(c: ComposedFinalBill): InvoiceLineInput[] {
+/**
+ * The invoice lines for the patient's portion, each at its frozen price (see the header).
+ *
+ * #787 — a PHARMACY line was priced inclusive of its GST (an MRP holds the tax), so it goes on the invoice `taxInclusive`
+ * at the amount the stay was charged, as per-unit lines (see the body). `versionPriced` names the services today's tariff version prices (`versionPricedServices`):
+ * those take the frozen amount as a prepaid quote, every other one as its batch price — never today's list price.
+ */
+export function patientInvoiceLines(c: ComposedFinalBill, versionPriced: ReadonlySet<string> = new Set()): InvoiceLineInput[] {
   const out: InvoiceLineInput[] = [];
   for (const { line, patientPaise } of c.live) {
     if (patientPaise <= 0) continue;
+    if (line.component === "pharmacy") {
+      // Review of 70115d2d: ALWAYS per-unit lines — a REGULATED service's bound is per unit, and one line carrying the
+      // whole amount would be clamped down to it. The units at the amount's per-unit share (rounded down, so never above
+      // the price they were charged at), then the few paise left over at 1 paisa each: together the amount, to the paisa.
+      const whole = patientPaise === line.netPaise && line.discountPaise === 0 && line.grossPaise === line.qty * line.unitPaise;
+      const unit = whole ? line.unitPaise : Math.floor(patientPaise / line.qty);
+      const priceAt = (u: number) => (versionPriced.has(line.serviceId) ? { prepaidUnitPaise: u } : { batchUnitPaise: u, capUnitPaise: u });
+      if (unit > 0) out.push({ lineId: `ipd-${line.id}`, serviceId: line.serviceId, qty: line.qty, taxInclusive: true, ...priceAt(unit) });
+      const left = patientPaise - unit * line.qty;
+      if (left > 0) out.push({ lineId: `ipd-${line.id}-r`, serviceId: line.serviceId, qty: left, taxInclusive: true, ...priceAt(1) });
+      continue;
+    }
     if (patientPaise === line.netPaise) {
       out.push({ lineId: `ipd-${line.id}`, serviceId: line.serviceId, qty: line.qty, prepaidUnitPaise: line.unitPaise });
       continue;
@@ -141,7 +160,8 @@ export type PricedFinalBill = {
 };
 
 export async function priceFinalBill(db: Db | Tx, a: AdmissionRow, c: ComposedFinalBill, at: Date): Promise<PricedFinalBill> {
-  const lines = patientInvoiceLines(c);
+  const drugServices = c.live.filter((x) => x.line.component === "pharmacy" && x.patientPaise > 0).map((x) => x.line.serviceId);
+  const lines = patientInvoiceLines(c, await versionPricedServices(db, drugServices, at));
   const preview = lines.length === 0 ? null : await previewInvoice(db as unknown as Db, { lines, patientId: a.patientId }, at);
   const patientPaise = preview?.totals.rawTotalPaise ?? 0;
   const payerPaise = c.totalPaise - patientPaise;

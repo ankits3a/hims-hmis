@@ -1330,6 +1330,10 @@
   },
   "ipdBillDesk": {
     "orderCancel": {
+      "reverse_reissue_lost_damaged": "Waive charge",
+      "reverse_return_after_bill": "Credit return after void",
+      "reissue_lost_damaged": "{{name}} · {{date}} — lost or damaged, replaced",
+      "return_after_bill": "{{name}} · {{date}} — returned after the bill",
       "order_cancelled_after_bill": "{{name}} · {{date}} — cancelled after the bill",
       "order_cancelled_after_work": "{{name}} · {{date}} — cancelled after the sample",
       "reason": "Reason (required)",
@@ -1398,6 +1402,8 @@
     "all": "All",
     "empty": "Nothing needs the desk. Normal running bills are not listed.",
     "reason": {
+      "reissue_lost_damaged": "Lost or damaged re-issue",
+      "return_after_bill": "Returned after bill",
       "order_cancelled_after_work": "Cancelled after sample",
       "order_cancelled_after_bill": "Cancelled after bill",
       "visit_backdated": "Visit backdated",
@@ -19560,6 +19566,8 @@
     "billsAs": "bills as",
     "now": "now",
     "reason": {
+      "reissue_lost_damaged": "Lost or damaged medicine replaced",
+      "return_after_bill": "Medicine returned after the bill",
       "order_cancelled_after_work": "Order cancelled after the sample",
       "order_cancelled_after_bill": "Order cancelled after the bill",
       "visit_backdated": "Backdated round visit",
@@ -19568,6 +19576,7 @@
       "posting_failed": "Posting failed"
     },
     "component": {
+      "pharmacy": "Medicines",
       "imaging": "Imaging",
       "lab": "Laboratory",
       "room": "Room rent",

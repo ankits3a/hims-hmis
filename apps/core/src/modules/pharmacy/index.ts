@@ -55,6 +55,9 @@ export { pickDispense } from "./pick";
 export type { PickInput, PickLineInput } from "./pick";
 export { billDispense, previewDispenseBill } from "./bill";
 export type { BillInput } from "./bill";
+// #787 — the counter's batch price, for the IPD running bill's ward-issue lines (one price function, two doors).
+export { gstCategoryMap, invoiceInputsOf, priceBatchLine } from "./bill";
+export type { GstCategoryMap, PricedBatchLine } from "./bill";
 export { handOverDispense } from "./handover";
 /** STAGE D5 — the restricted-antimicrobial approval type (registered by `seed:pharmacy`) and the steward's gate. */
 export { ANTIMICROBIAL_STEWARD_ROLE, PHARMACY_APPROVAL_TYPES, RESTRICTED_ANTIMICROBIAL_APPROVAL_TYPE, registerPharmacyApprovalTypes } from "./approval-types";

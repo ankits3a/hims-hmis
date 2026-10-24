@@ -1330,6 +1330,10 @@
   },
   "ipdBillDesk": {
     "orderCancel": {
+      "reverse_reissue_lost_damaged": "शुल्क माफ़ करें",
+      "reverse_return_after_bill": "वॉइड के बाद वापसी घटाएँ",
+      "reissue_lost_damaged": "{{name}} · {{date}} — खोई या खराब, दोबारा दी गई",
+      "return_after_bill": "{{name}} · {{date}} — बिल के बाद वापस",
       "order_cancelled_after_bill": "{{name}} · {{date}} — बिल के बाद रद्द",
       "order_cancelled_after_work": "{{name}} · {{date}} — सैंपल के बाद रद्द",
       "reason": "कारण (ज़रूरी)",
@@ -1398,6 +1402,8 @@
     "all": "सभी",
     "empty": "कुछ भी लंबित नहीं। सामान्य चालू बिल यहाँ नहीं दिखते।",
     "reason": {
+      "reissue_lost_damaged": "खोई / खराब दवा दोबारा",
+      "return_after_bill": "बिल के बाद वापस",
       "order_cancelled_after_work": "सैंपल के बाद रद्द",
       "order_cancelled_after_bill": "बिल के बाद रद्द",
       "visit_backdated": "पुरानी तारीख़ की विज़िट",
@@ -19560,6 +19566,8 @@
     "billsAs": "बिल दर",
     "now": "अभी",
     "reason": {
+      "reissue_lost_damaged": "खोई या खराब दवा दोबारा दी गई",
+      "return_after_bill": "बिल के बाद दवा वापस",
       "order_cancelled_after_work": "सैंपल के बाद ऑर्डर रद्द",
       "order_cancelled_after_bill": "बिल के बाद ऑर्डर रद्द",
       "visit_backdated": "पुरानी तारीख़ का राउंड",
@@ -19568,6 +19576,7 @@
       "posting_failed": "पोस्टिंग विफल"
     },
     "component": {
+      "pharmacy": "दवाइयाँ",
       "imaging": "इमेजिंग",
       "lab": "लैब जाँच",
       "room": "कमरा किराया",

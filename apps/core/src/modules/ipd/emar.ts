@@ -23,6 +23,7 @@ import { admissionPlace } from "./admission-place";
 import { checkPrinter } from "./bands";
 import { ageInYears } from "./bed-rules";
 import { IPD_SYSTEM_ACTOR } from "./beds";
+import { creditedUnitsOf, postDrugIssueChargesIn, postDrugReturnCreditsIn } from "./drug-charges";
 import { horizonOf, scheduleDosesIn } from "./emar-doses";
 import { emarDrugsOf } from "./emar-drug";
 import {
@@ -289,6 +290,11 @@ export async function issueMed(db: Db, actor: Actor, raw: unknown, opts: EmarOpt
     const stamp = await markIpdOrderIssuedIn(tx, o.id, at);
     if (stamp === "not_active" || stamp === "not_found") throw new IpdRefusal("order_not_active", undefined, { stamp });
     if (stamp === "already_issued" && earlier.length === 0) throw new IpdRefusal("already_issued");
+    // #787: the issue is charged HERE — one running-bill line per batch, in this transaction, under the admission lock
+    // `lockOrderIn` took first. The patient's own medicine is never charged. Nothing about money goes back to this screen.
+    if (!input.ownMedicine && itemId !== null) {
+      await postDrugIssueChargesIn(tx, actor, a, { orderId: o.id, issueId, itemId, batches, reissueReason: input.reissue?.reason ?? null, at });
+    }
     if (drug?.narcotic === true) {
       await tx.insert(ipdEmarNarcoticRegister).values({
         id: newId(), orderId: o.id, admissionId: a.id, kind: "received", qty: input.units, unit: drug.shelf?.item.baseUom ?? "unit", issueId, actorId: actor.id, at,
@@ -305,8 +311,8 @@ export async function issueMed(db: Db, actor: Actor, raw: unknown, opts: EmarOpt
 /**
  * Unused units back to the pharmacy. Stock returns to the batches it left (newest-taken first); the units are CREDITED —
  * the patient owes for issued minus returned (own medicine: never charged, 0 credited). A return on a stopped order
- * clears `return_owed` (the pharmacist counted what came back). DECIDED: no running-bill line exists for a ward issue yet
- * (the charges lane's seam, MAP.md), so the credit is recorded in units on the issue; billing composes from them.
+ * clears `return_owed` (the pharmacist counted what came back). #787: the running bill is credited in the same
+ * transaction (`drug-charges.ts` `postDrugReturnCreditsIn`) — the answer here still carries units only, never money.
  */
 export async function returnMed(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"return_med">> {
   const input: Input<"return_med"> = IPD_INTENTS.return_med.input.parse(raw);
@@ -321,11 +327,17 @@ export async function returnMed(db: Db, actor: Actor, raw: unknown, opts: EmarOp
     const returnId = newId();
     let batches: { batchId: string; qty: number; ledgerEntryId: string }[] = [];
     if (!first.ownMedicine && first.storeId !== null) {
+      // #787 review: each batch takes back only what is still out of it — an earlier return's units are not offered again
+      // (stock went back to the wrong batch, and that batch's charge was never credited).
+      const earlier = await tx.select({ batches: ipdEmarReturns.batches }).from(ipdEmarReturns).where(eq(ipdEmarReturns.issueId, first.id));
+      const out = new Map<string, number>();
+      for (const r of earlier) for (const x of r.batches) out.set(x.batchId, (out.get(x.batchId) ?? 0) + x.qty);
       let left = input.units;
       const plan: { batchId: string; qty: number }[] = [];
       for (const b of [...first.batches].reverse()) {
         if (left <= 0) break;
-        const q = Math.min(b.qty, left);
+        const q = Math.min(b.qty - (out.get(b.batchId) ?? 0), left);
+        if (q <= 0) continue;
         plan.push({ batchId: b.batchId, qty: q });
         left -= q;
       }
@@ -336,7 +348,11 @@ export async function returnMed(db: Db, actor: Actor, raw: unknown, opts: EmarOp
       })));
       batches = plan.map((p, i) => ({ ...p, ledgerEntryId: moved[i]!.ledgerEntryId }));
     }
-    const creditedUnits = first.ownMedicine ? 0 : input.units;
+    // #787: the returned units come off the running bill at the price they were issued at (never today's); a line a
+    // settled bill took raises the bill desk's `return_after_bill` decision instead. `creditedUnits` is what really came
+    // off what the patient owes (review of 70115d2d) — own medicine, a billed line and a waived line credit nothing.
+    const creditedUnits = first.ownMedicine ? 0
+      : creditedUnitsOf(await postDrugReturnCreditsIn(tx, actor, a, { issueId: first.id, returnId, batches, reason: input.reason, at }));
     await tx.insert(ipdEmarReturns).values({
       id: returnId, issueId: first.id, orderId: o.id, admissionId: a.id, units: input.units, creditedUnits, reason: input.reason, batches,
       returnedBy: actor.id, returnedAt: at,

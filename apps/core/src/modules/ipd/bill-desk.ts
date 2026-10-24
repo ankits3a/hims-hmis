@@ -1,7 +1,8 @@
 import { userNames } from "./admissions";
 import { Logger } from "@nestjs/common";
 import { and, asc, count, desc, eq, inArray, isNotNull, isNull, ne } from "drizzle-orm";
-import { IPD_BILLDESK_REASONS } from "@hmis/contracts";
+import { IPD_BILLDESK_REASONS, IPD_LINE_DECISION_REASONS } from "@hmis/contracts";
+import type { IpdChargeExceptionReason, IpdLineDecisionReason } from "@hmis/contracts";
 import {
   ipdAdmissions, ipdBedStays, ipdChargeExceptions, ipdChargeLines, ipdDepositAlerts, ipdPayerAuths, patients, resources,
 } from "../../kernel/db/schema";
@@ -73,7 +74,7 @@ export async function readBillDesk(
   // Open charge exceptions (an ended stay keeps its exception until it is posted or retried).
   for (const x of await db.select({ admissionId: ipdChargeExceptions.admissionId, reason: ipdChargeExceptions.reason, at: ipdChargeExceptions.firstSeenAt })
     .from(ipdChargeExceptions).where(isNull(ipdChargeExceptions.resolvedAt))) {
-    note(cand, x.admissionId, x.reason as "rate_missing" | "tariff_missing" | "posting_failed" | "visit_backdated" | "order_cancelled_after_bill" | "order_cancelled_after_work", x.at);
+    note(cand, x.admissionId, x.reason as IpdChargeExceptionReason, x.at);
   }
   // E4.2 (#734): the backdated round visits, by admission, for the Charge / Waive buttons.
   const backdated = new Map<string, { exceptionId: string; serviceDate: string; consultantId: string }[]>();
@@ -84,15 +85,21 @@ export async function readBillDesk(
     backdated.set(x.admissionId, list);
   }
   // #785: late-cancelled orders, by admission, for the Keep charge / Reverse after void buttons.
-  const orderCancels = new Map<string, { chargeLineId: string; reason: "order_cancelled_after_bill" | "order_cancelled_after_work"; serviceName: string; serviceDate: string }[]>();
-  for (const x of await db.select({ admissionId: ipdChargeExceptions.admissionId, key: ipdChargeExceptions.key, reason: ipdChargeExceptions.reason })
+  // #787: the same two answers for a medicine returned after the bill and a charged lost / damaged replacement — those
+  // decisions name their charge line (the key's fourth part), an order's names its order item.
+  const orderCancels = new Map<string, { chargeLineId: string; reason: IpdLineDecisionReason; serviceName: string; serviceDate: string }[]>();
+  for (const x of await db.select({ admissionId: ipdChargeExceptions.admissionId, key: ipdChargeExceptions.key, reason: ipdChargeExceptions.reason, component: ipdChargeExceptions.component })
     .from(ipdChargeExceptions).where(and(isNull(ipdChargeExceptions.resolvedAt),
-      inArray(ipdChargeExceptions.reason, ["order_cancelled_after_bill", "order_cancelled_after_work"])))) {
+      inArray(ipdChargeExceptions.reason, [...IPD_LINE_DECISION_REASONS])))) {
+    const token = x.key.split(":")[3] ?? "";
     const line = (await db.select({ id: ipdChargeLines.id, serviceName: ipdChargeLines.serviceName, serviceDate: ipdChargeLines.serviceDate })
-      .from(ipdChargeLines).where(and(eq(ipdChargeLines.orderItemId, x.key.split(":")[3] ?? ""), eq(ipdChargeLines.source, "ipd.order"))))[0];
+      .from(ipdChargeLines).where(x.component === "pharmacy" ? eq(ipdChargeLines.id, token)
+        : and(eq(ipdChargeLines.orderItemId, token), eq(ipdChargeLines.source, "ipd.order"))))[0];
     if (line === undefined) continue;
     const list = orderCancels.get(x.admissionId) ?? [];
-    list.push({ chargeLineId: line.id, reason: x.reason as "order_cancelled_after_bill", serviceName: line.serviceName, serviceDate: line.serviceDate });
+    // Two returns waiting on one line are one question to billing.
+    if (list.some((c) => c.chargeLineId === line.id && c.reason === x.reason)) continue;
+    list.push({ chargeLineId: line.id, reason: x.reason as IpdLineDecisionReason, serviceName: line.serviceName, serviceDate: line.serviceDate });
     orderCancels.set(x.admissionId, list);
   }
   const consultantNames = await userNames(db, [...backdated.values()].flat().map((b) => b.consultantId));
