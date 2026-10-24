@@ -199,3 +199,19 @@ export { orderCancelled, orderPlaced, orderStopped, roundSigned } from "./rounds
 export { IPD_ADMISSION_NO_RE, IPD_ADMISSION_PREFIX, intendedPayerOfAdmission, registerIpdEncounterResolver } from "./encounter";
 export { ipdCoversOrderItem, ipdOrderStanding, lockIpdOrderStanding, postIpdOrderCharges, registerIpdOrderChargeSink, reverseIpdOrderCharge } from "./order-charges";
 export { keepOrderCharge } from "./charges";
+// E4.3 (#735) — the eMAR: pharmacist verify (allergy, interaction, dose, duplicate), issue with patient labels and returns,
+// the dose schedule, the bedside acts (give with both scans or a counted override, hold / refuse / miss / re-offer,
+// corrections never deleting), the second nurse's PIN, infusions, the narcotic register, verbal orders, the allergy
+// re-check consumer, the minute sweep (missed doses, verbal-order nudges), the two nurse Now cards and the reads.
+export { IPD_EMAR_GIVE, IPD_EMAR_ISSUE, IPD_EMAR_VERIFY, IPD_EMAR_VIEW } from "./permissions";
+export {
+  EMAR_SYSTEM_ACTOR, IPD_EMAR_NURSE_ROLES, NPO_ROUTES, administerDose, backfillEmarAllergyFlags, decideAllergyFlag, npoAt, emarAllergyConsumer, holdDose, issueMed, markDoseInError, missDose,
+  recheckOrdersForAllergy, recordInfusionEvent, recordNarcoticWastage, refuseDose, reofferHeldDoses, resolveAllergyFlag, returnMed,
+  secondCheck, signVerbalOrder, sweepIpdEmar, verifyFindingsOf, verifyOrder,
+} from "./emar";
+export type { EmarSweepResult } from "./emar";
+export { cancelFutureDosesIn, scheduleDosesIn } from "./emar-doses";
+export { ISMP_HIGH_ALERT_NAMES, dueTimesFor, giveTiming, isHighAlert, isTimeCritical, prnState, unitsPerDose } from "./emar-rules";
+export { readAdmissionAllergyFlags, readEmarDue, readEmarPatient, readLabelSheet, readOverrideCounts, readPharmacyQueue, readWardChart, scanAtBedside } from "./emar-read";
+export { IPD_NEW_ORDER_HOURS, dueDoseCard, newOrderCard } from "./emar-cards";
+export { IPD_EMAR_ALLERGY_CONSUMER, IPD_EMAR_EVENT_NAMES } from "./emar-events";

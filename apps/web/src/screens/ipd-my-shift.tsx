@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type React from "react";
-import type { IpdHandoverDraft, IpdMyShift, IpdRefusalBody, IpdShiftHandoverList, IpdShiftItem } from "@hmis/contracts";
+import type { IpdEmarDueList, IpdHandoverDraft, IpdMyShift, IpdRefusalBody, IpdShiftHandoverList, IpdShiftItem } from "@hmis/contracts";
 import { ApiError } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { fmtIst } from "../lib/format";
 import { refusalOf } from "../lib/ipd-beds-api";
 import { acceptShiftHandover, getHandoverDraft, getMyShift, getShiftHandovers, giveShiftHandover } from "../lib/ipd-nursing-api";
 import type { SbarText } from "../lib/ipd-nursing-api";
+import { getDue, scan } from "../lib/ipd-emar-api";
+import { Bedside, DueDoses, ScanBox } from "./ipd-emar-bedside";
 import { LiveLine, VitalsForm, ageFromAgeSex, dueWords, savedWords, useLiveLoad, useNight } from "./ipd-nursing-shared";
 import type { T } from "./ipd-nursing-shared";
 import "./ipd-nursing.css";
@@ -26,12 +28,17 @@ import "./ipd-nursing.css";
  */
 
 const TICK_MS = 30_000;
-type Mode = { kind: "list" } | { kind: "vitals"; admissionId: string } | { kind: "handover" };
+type Mode = { kind: "list" } | { kind: "vitals"; admissionId: string } | { kind: "handover" }
+  // E4.3 (#735) — board D2: the bedside (doses) and the wristband scan that pivots to a patient.
+  | { kind: "bedside"; admissionId: string; band: string | null } | { kind: "scan" };
 
 export function IpdMyShift(): React.ReactElement {
   const { t } = useTranslation();
+  const { can } = useAuth();
   const [shift, setShift] = useState<IpdMyShift | null>(null);
   const [handovers, setHandovers] = useState<IpdShiftHandoverList | null>(null);
+  const [due, setDue] = useState<IpdEmarDueList | null>(null);
+  const [scanRefusal, setScanRefusal] = useState<string | null>(null);
   const [error, setError] = useState<"forbidden" | null>(null);
   const [wardId, setWardId] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>({ kind: "list" });
@@ -41,7 +48,8 @@ export function IpdMyShift(): React.ReactElement {
   const load = useCallback(() => Promise.all([
     getMyShift(wardId).then((s) => { setShift(s); setError(null); setNow(Date.now()); }),
     getShiftHandovers(wardId).then(setHandovers, () => setHandovers(null)),
-  ]).catch((e: unknown) => { if (e instanceof ApiError && e.status === 403) setError("forbidden"); throw e; }), [wardId]);
+    can("ipd.emar.view") ? getDue(wardId).then(setDue, () => setDue(null)) : Promise.resolve(),
+  ]).catch((e: unknown) => { if (e instanceof ApiError && e.status === 403) setError("forbidden"); throw e; }), [wardId, can]);
   const live = useLiveLoad(load);
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), TICK_MS); return () => clearInterval(id); }, []);
   const [night, flipNight] = useNight(shift?.night);
@@ -80,6 +88,7 @@ export function IpdMyShift(): React.ReactElement {
 
       {mode.kind === "list" && shift !== null ? (
         <>
+          {due !== null ? <DueDoses items={due.items} now={now} onOpen={(id) => { setNotice(null); setMode({ kind: "bedside", admissionId: id, band: null }); }} /> : null}
           <section aria-label={t("ipdNursing.shiftPage.now")}>
             <h2 className="ipdn-h2">{t("ipdNursing.shiftPage.now")}</h2>
             {shift.now.length === 0 ? <div className="ipdn-empty">{t("ipdNursing.shiftPage.nothingDue")}</div> : null}
@@ -117,14 +126,36 @@ export function IpdMyShift(): React.ReactElement {
         </section>
       ) : null}
 
+      {mode.kind === "scan" ? (
+        <section className="ipdn-pane" aria-label={t("ipdEmar.bedside.scanBand")}>
+          <ScanBox label={t("ipdEmar.bedside.scanBand")} testId="ipde-pivot-input" onCode={(code) => {
+            setScanRefusal(null);
+            scan({ wristbandCode: code }).then((r) => { try { navigator.vibrate?.(80); } catch { /* not a phone */ } setMode({ kind: "bedside", admissionId: r.admissionId, band: code }); },
+              (e: unknown) => setScanRefusal(refusalOf(e)?.rule ?? t("ipdNursing.actFailed")));
+          }} />
+          {scanRefusal !== null ? <div className="ipdn-refusal" role="alert">{scanRefusal}</div> : null}
+          <footer className="ipdn-thumb"><button type="button" className="ipdn-btn wide" onClick={() => setMode({ kind: "list" })}>{t("ipdNursing.back")}</button></footer>
+        </section>
+      ) : null}
+
+      {mode.kind === "bedside" ? (
+        <Bedside key={`${mode.admissionId}-${mode.band ?? ""}`} admissionId={mode.admissionId} bandCode={mode.band} online={live.online}
+          onBack={() => setMode({ kind: "list" })}
+          onPivot={(id, band) => setMode({ kind: "bedside", admissionId: id, band: band === "" ? null : band })}
+          onDone={(w) => { setNotice(w); void load().catch(() => undefined); }} />
+      ) : null}
+
       {mode.kind === "handover" && shift !== null ? (
         <HandoverPane shift={shift} toAccept={toAccept} online={live.online} onBack={() => setMode({ kind: "list" })}
           onDone={(w) => { setNotice(w); void load().catch(() => undefined); }} />
       ) : null}
 
       {mode.kind === "list" && shift !== null ? (
-        <footer className="ipdn-thumb">
-          <button type="button" className="ipdn-btn pri wide" onClick={() => setMode({ kind: "handover" })} data-testid="ipdn-handover-open">
+        <footer className="ipdn-thumb ipdn-thumb2">
+          {can("ipd.emar.give") ? (
+            <button type="button" className="ipdn-btn pri wide ipde-scanbtn" onClick={() => { setScanRefusal(null); setMode({ kind: "scan" }); }} data-testid="ipde-scan-open">⌗ {t("ipdEmar.scan")}</button>
+          ) : null}
+          <button type="button" className="ipdn-btn wide" onClick={() => setMode({ kind: "handover" })} data-testid="ipdn-handover-open">
             {t("ipdNursing.handover.ready", { count: shift.patients.length })}{toAccept.length > 0 ? ` · ${t("ipdNursing.handover.toAccept", { count: toAccept.length })}` : ""}
           </button>
         </footer>

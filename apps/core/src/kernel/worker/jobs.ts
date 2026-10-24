@@ -37,7 +37,7 @@ import { routingChooserFor, runAliasJob, runDeskRoutingLearning, runFlowLearning
 import { syncAttendance } from "../../modules/attendance";
 import {
   ipdAttendantRecipient, ipdTemplateRegistrations, lapseBedReservations, postNightlyIpdCharges, runIpdBillDeskNightly, sweepIpdNursing,
-  sweepIpdRoundsClock,
+  sweepIpdEmar, sweepIpdRoundsClock,
 } from "../../modules/ipd";
 import { sweepTasks } from "../../modules/tasks";
 import { sweepBmwStorage } from "../../modules/bmw";
@@ -820,7 +820,15 @@ export function registerAllJobs(
   scheduler.register({
     name: "sweepIpdNursing",
     every: 60_000,
-    run: async (now) => { await runIfModuleOn("sweepIpdNursing", "ipd", () => sweepIpdNursing(db, now)); },
+    // E4.3 (#735): the eMAR's minute sweep rides this job (no job, no pool client of its own): it tops up the dose
+    // schedule, marks a dose past its window MISSED with one notice per dose, and nudges unsigned verbal orders. Its own
+    // try: a failing eMAR sweep never stops the nursing clock.
+    run: async (now) => {
+      await runIfModuleOn("sweepIpdNursing", "ipd", async () => {
+        await sweepIpdNursing(db, now);
+        try { await sweepIpdEmar(db, now); } catch (e) { emarLog.error(`sweepIpdEmar failed: ${e instanceof Error ? e.message : String(e)}`); }
+      });
+    },
   });
   /**
    * E2.1 (#725) — THE THIRTY-SECOND JOB, `dailyIst` 00:05: rent, nursing and RMO lines for every admission, one per
@@ -849,6 +857,7 @@ export function registerAllJobs(
 }
 
 const clockLog = new Logger("worker.sweepTasks");
+const emarLog = new Logger("worker.ipdEmar");
 const roundsClockLog = new Logger("worker.ipdRoundsClock");
 
 /**

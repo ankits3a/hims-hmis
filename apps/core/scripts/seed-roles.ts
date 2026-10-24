@@ -380,6 +380,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // IPD ROUNDS E4.2 (#734) — the rounds list and round page, sign / co-sign a round, cross-consults; inpatient orders
       // (drugs; lab and imaging through the ordering door). Clinical, no money (0058); README "IPD rounds" prose.
       "ipd.round.sign", "ipd.order.place",
+      // IPD eMAR E4.3 (#735) — reads the MAR (what was given, held, refused) and holds a dose by instruction; signs verbal
+      // orders with `ipd.order.place`. README "IPD eMAR" prose.
+      "ipd.emar.view",
     ],
   },
   /**
@@ -660,6 +663,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "pharmacy.trays.check",
       // IPD DISCHARGE E3.2 (#730) — sees the discharge desk and confirms its own department's charges; README "IPD discharge" prose.
       "ipd.discharge.view", "ipd.discharge.confirm",
+      // IPD eMAR E4.3 (#735) — the inpatient pharmacist: verify (allergy, interaction, dose, duplicate), issue to the ward with
+      // patient labels, take returns back; README "IPD eMAR" prose.
+      "ipd.emar.view", "ipd.emar.verify", "ipd.emar.issue",
     ],
   },
   {
@@ -2002,6 +2008,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "pharmacy_incharge",
     permissions: [
+      // IPD eMAR E4.3 (#735) — the in-charge covers the inpatient verify and issue like any pharmacist; README "IPD eMAR" prose.
+      "ipd.emar.view", "ipd.emar.verify", "ipd.emar.issue",
       // OWNER 2026-10-02 — an item's standing discount to the patient (0 to 25%) is set by the in-charge,
       // whose own discount limit under the 2026-09-30 ruling is 25%. The counter does not hold it.
       "pharmacy.sale_items.discount",
@@ -2210,6 +2218,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "maintenance.raise", "maintenance.confirm", "transport.request",
       // INTEGRATION (ipd-stage, DECIDED — owed by diet's MAP §5): the ward nurse sees the diet, marks NPO and serves.
       "diet.view", "diet.npo", "diet.serve", "diet.clinical.view",
+      // IPD eMAR E4.3 (#735) — the bedside: scan, give, hold, refuse, miss, the second-nurse PIN, infusions, narcotic wastage, a
+      // read-back verbal order; reprints an unreadable wristband; a dose given in error goes to the medication-incident log.
+      // README "IPD eMAR" prose.
+      "ipd.emar.view", "ipd.emar.give", "ipd.band.print", "pharmacy.incidents.record",
     ],
   },
   {
@@ -2221,12 +2233,15 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "maintenance.raise", "maintenance.confirm", "transport.request",
       // INTEGRATION (ipd-stage, DECIDED — owed by diet's MAP §5): as the ward nurse.
       "diet.view", "diet.npo", "diet.serve", "diet.clinical.view",
+      // IPD eMAR E4.3 (#735) — as the ward nurse, and reads the override counts; README "IPD eMAR" prose.
+      "ipd.emar.view", "ipd.emar.give", "ipd.band.print", "pharmacy.incidents.record",
     ],
   },
   {
     roleKey: "nursing_superintendent",
     // INTEGRATION (ipd-stage, DECIDED): the nursing superintendent reads the diet (`diet.view`, `diet.clinical.view`).
-    permissions: ["ipd.nursing.view", "ipd.ews.respond", "ipd.beds.view", "ipd.discharge.view", "ipd.family.issue", "diet.view", "diet.clinical.view"],
+    // IPD eMAR E4.3 (#735): reads the MAR and the override counts (`ipd.emar.view`); README "IPD eMAR" prose.
+    permissions: ["ipd.nursing.view", "ipd.ews.respond", "ipd.beds.view", "ipd.discharge.view", "ipd.family.issue", "diet.view", "diet.clinical.view", "ipd.emar.view"],
   },
 ];
 

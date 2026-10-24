@@ -1231,6 +1231,21 @@ const IPD_ROUNDS_README_PROSE =
 /** IPD ROUNDS E4.2 (#734, decision 0072, awaiting owner review) — the doctor's rounds and inpatient orders. Clinical, no money. */
 const IPD_ROUNDS_PAIRS: readonly string[] = ["doctor/ipd.round.sign", "doctor/ipd.order.place"];
 
+/** The README prose line authorising the IPD eMAR (E4.3, decision 0072). Quoted, not paraphrased. */
+const IPD_EMAR_README_PROSE =
+  "`ipd.emar.view` is held by `doctor`,\n`ward_nurse`, `nursing_supervisor`, `nursing_superintendent`, `pharmacy` and `pharmacy_incharge`";
+
+/**
+ * IPD eMAR E4.3 (#735, decision 0072, awaiting owner review) — verify, issue and the bedside. Clinical, no money. The ward
+ * nurses also reprint a wristband (`ipd.band.print`) and log a dose given in error (`pharmacy.incidents.record`, a role
+ * with no pharmacy-table column, like the doctor's).
+ */
+const IPD_EMAR_PAIRS: readonly string[] = [
+  "doctor/ipd.emar.view", "nursing_superintendent/ipd.emar.view",
+  ...["ward_nurse", "nursing_supervisor"].flatMap((r) => ["ipd.emar.view", "ipd.emar.give", "ipd.band.print", "pharmacy.incidents.record"].map((p) => `${r}/${p}`)),
+  ...["pharmacy", "pharmacy_incharge"].flatMap((r) => ["ipd.emar.view", "ipd.emar.verify", "ipd.emar.issue"].map((p) => `${r}/${p}`)),
+];
+
 /** The README prose line authorising the 2026-09-20 approvals-spine ruling R1. Quoted, not paraphrased. */
 const APPROVALS_SPINE_README_PROSE =
   "The approvals spine (owner ruling R1,\n2026-09-20)";
@@ -1372,6 +1387,7 @@ const NON_TABLE_PAIRS: readonly string[] = [
   ...IPD_FAMILY_PAIRS,
   ...IPD_NURSING_PAIRS,
   ...IPD_ROUNDS_PAIRS,
+  ...IPD_EMAR_PAIRS,
   ...APPROVALS_SPINE_PAIRS,
   ...PHARMACY_REPORTS_PAIRS,
   ...PHARMACY_TALLY_PAIRS,
@@ -1831,7 +1847,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // PHARMACY P5: 20 -> 22, billing.credit_note.issue and billing.refund.request (PHARMACY_REFUND_PAIRS).
       // PHARMACY P9: 22 -> 23, pharmacy.register.read (the Schedule H1 register).
       // 14c first slice: 23 -> 24, materials.counts.perform (a pharmacist counts the main store).
-      pharmacy: 41, // IPD DISCHARGE E3.2 (2026-10-13), read off the failing run: +2; STAGE D4: +1, pharmacy.trays.check; GAP A3b: +1, billing.credit.extend (the right to ask the owner); STAGE D3: +1, pharmacy.coldchain.record; STAGE D2: +1, pharmacy.incidents.record; STAGE D1: +1, pharmacy.adr.record; PHARMACY P6 (patient messages): +1, pharmacy.messages.consent; PHARMACY P6: +2, pharmacy.ndps.custody and .witness; parity P4: +1, materials.returns.manage; parity P3: +1, materials.bills.manage; parity P2: +1, materials.po.raise; P19: +2, pharmacy.retail.sell and patients.register; P20: +1, pharmacy.downtime.enter; transfer screen: +1, materials.stock.receive
+      pharmacy: 44, // IPD eMAR E4.3 (2026-10-13), read off the failing run: +3, ipd.emar.view/.verify/.issue; IPD DISCHARGE E3.2 (2026-10-13), read off the failing run: +2; STAGE D4: +1, pharmacy.trays.check; GAP A3b: +1, billing.credit.extend (the right to ask the owner); STAGE D3: +1, pharmacy.coldchain.record; STAGE D2: +1, pharmacy.incidents.record; STAGE D1: +1, pharmacy.adr.record; PHARMACY P6 (patient messages): +1, pharmacy.messages.consent; PHARMACY P6: +2, pharmacy.ndps.custody and .witness; parity P4: +1, materials.returns.manage; parity P3: +1, materials.bills.manage; parity P2: +1, materials.po.raise; P19: +2, pharmacy.retail.sell and patients.register; P20: +1, pharmacy.downtime.enter; transfer screen: +1, materials.stock.receive
       // FD-25 / owner ruling 2026-09-04 — 11 -> 13: `tariff.read` (a live 403 on the deployed
       // counter) and `patients.read` (the DPDP ruling on reading patient identity). Close pass 1
       // removed the two `opd.visits.*` strings this comment used to list; see `CASHIER_SEAT_PAIRS`.
@@ -2589,6 +2605,7 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(readme).toContain(IPD_FAMILY_README_PROSE);
     expect(readme).toContain(IPD_NURSING_README_PROSE);
     expect(readme).toContain(IPD_ROUNDS_README_PROSE);
+    expect(readme).toContain(IPD_EMAR_README_PROSE);
     expect(readme).toContain(APPROVALS_SPINE_README_PROSE);
     // Parity P5's two sentences: who reads the office's reports, and who reads the margin.
     expect(readme).toContain(PHARMACY_REPORTS_README_PROSE);

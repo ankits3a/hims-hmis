@@ -16,6 +16,7 @@ import { IPD_TOPIC_SPACES, ipdTopicRouter } from "./realtime";
 import { registerIpdEncounterResolver } from "./encounter";
 import { registerIpdOrderChargeSink } from "./order-charges";
 import { IpdRoundsController } from "./rounds.controller";
+import { IpdEmarController } from "./emar.controller";
 
 /**
  * E1.1 (#718) — the inpatient module. Mounts the bed routes and registers the bed board's live topic. Guards are
@@ -41,7 +42,7 @@ class IpdRealtimeRegistrar implements OnModuleInit {
 
 @Module({
   imports: [RealtimeModule],
-  controllers: [IpdBedsController, IpdAdmissionsController, IpdChargesController, IpdPayerController, IpdTransfersController, IpdBillDeskController, IpdDischargeController, IpdFamilyController, IpdNursingController, IpdRoundsController],
+  controllers: [IpdBedsController, IpdAdmissionsController, IpdChargesController, IpdPayerController, IpdTransfersController, IpdBillDeskController, IpdDischargeController, IpdFamilyController, IpdNursingController, IpdRoundsController, IpdEmarController],
   providers: [IpdRealtimeRegistrar],
 })
 export class IpdModule {}

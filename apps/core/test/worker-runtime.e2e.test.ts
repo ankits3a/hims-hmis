@@ -445,6 +445,9 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
         // flag pages the duty manager on duty. Read off the red run; sorted, it lands last.
         // E1.4 HOUSEKEEPING (issue #721) — the bed's kernel events drive its cleaning task. Sorted, after `abdm.`.
         ["housekeeping.bed_turnover", ["resource.assigned", "resource.released", "resource.status_changed"]],
+        // E4.3 (#735) — the eMAR's allergy re-check: an allergy recorded later re-checks every active drug order (flags, the
+        // doctor and the pharmacist told). `ipdManifest`; sorted, `ipd.emar_` lands before `ipd.family_`.
+        ["ipd.emar_allergy_recheck", ["allergy.recorded"]],
         // E3.3 (#731) — the family link's stop: death and absconding revoke the attendant's link. `ipdManifest`, both
         // processes. Read off the red run; sorted, `ipd.` lands after `housekeeping.` and before `kernel.`.
         ["ipd.family_stop", ["ipd.admission.absconded", "ipd.admission.deceased", "patient.updated"]],

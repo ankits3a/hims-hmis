@@ -51,7 +51,7 @@ import "../../modules/transport";
 // E4.4 DIET (issue #736) — the consumer for IPD's admission events and OT's booking events; importing the module also
 // DEFINES the two diet task kinds (meal delivery, ward notice) for the task clock.
 import { DIET_CONSUMER, DIET_DELIVERY_TASK, DIET_WARD_NOTICE_TASK, backfillOtNpo, dietConsumer, dietManifest } from "../../modules/diet";
-import { IPD_FAMILY_STOP_CONSUMER, familyStopConsumer, ipdManifest } from "../../modules/ipd";
+import { IPD_EMAR_ALLERGY_CONSUMER, IPD_FAMILY_STOP_CONSUMER, backfillEmarAllergyFlags, emarAllergyConsumer, familyStopConsumer, ipdManifest } from "../../modules/ipd";
 import { collectResourceKinds } from "../resources/kinds";
 import { collectOrderKinds } from "../orders/kinds";
 import type { Handler } from "../events/subscriptions";
@@ -367,6 +367,9 @@ export function workerConsumers(db: Db, cfg: AppConfig | null = null): Record<st
     [OT_IMPLANT_CONFIRMED_CONSUMER]: implantConfirmedConsumer(db),
     // E3.3 (#731) — the other half of `ipdManifest`'s subscription: death and absconding revoke the family link.
     [IPD_FAMILY_STOP_CONSUMER]: familyStopConsumer(db),
+    // E4.3 (#735) — the other half of `ipdManifest`'s `allergy.recorded` subscription: an allergy recorded later re-checks
+    // every active drug order of the patient's open admission (flags, the doctor and the pharmacist told once).
+    [IPD_EMAR_ALLERGY_CONSUMER]: emarAllergyConsumer(db),
     /**
      * PLAN 17-E T7b — the EIGHTH, and the other half of the lab's first subscription. `labManifest`
      * declares `interface.down` and `interface.restored` -> `lab.interface_status` in the commit that
@@ -448,5 +451,8 @@ export function workerBackfills(db: Db): Record<string, () => Promise<number>> {
     [HOUSEKEEPING_BED_CONSUMER]: () => backfillBedCleans(db),
     // E4.4 DIET (review item 7) — every live OT case from today on gets its NPO (idempotent on the case's source_ref).
     [DIET_CONSUMER]: () => backfillOtNpo(db),
+    // E4.3 review — the eMAR's allergy re-check: every active drug order is checked once against the allergies recorded
+    // after it (idempotent on the flag's unique index).
+    [IPD_EMAR_ALLERGY_CONSUMER]: () => backfillEmarAllergyFlags(db),
   };
 }

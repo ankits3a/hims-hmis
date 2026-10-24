@@ -69,7 +69,7 @@ async function bandPayload(
   };
 }
 
-async function checkPrinter(db: Db, printerId: string | undefined, at: Date): Promise<void> {
+export async function checkPrinter(db: Db, printerId: string | undefined, at: Date): Promise<void> {
   if (printerId === undefined) return;
   const c = await getComputer(db, printerId);
   if (c === null || !computerAlive(c, at)) throw new IpdRefusal("printer_offline", undefined, { printerId });

@@ -36,3 +36,8 @@ export const IPD_EWS_RESPOND = "ipd.ews.respond";
 // E4.2 (#734) — rounds and inpatient orders (the doctor's; clinical, no money).
 export const IPD_ROUND_SIGN = "ipd.round.sign";
 export const IPD_ORDER_PLACE = "ipd.order.place";
+// E4.3 (#735) — the eMAR (clinical, no money).
+export const IPD_EMAR_VIEW = "ipd.emar.view";
+export const IPD_EMAR_GIVE = "ipd.emar.give";
+export const IPD_EMAR_VERIFY = "ipd.emar.verify";
+export const IPD_EMAR_ISSUE = "ipd.emar.issue";
