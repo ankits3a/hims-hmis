@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/tariff/`
 · Notes: [MAP.md](../../../apps/core/src/modules/tariff/MAP.md)
 
 - **Depends on modules:** —
-- **Used by modules:** `billing`, `ipd`, `lab`, `membership`, `ot`, `partners`, `pharmacy`, `radiology`
+- **Used by modules:** `billing`, `emergency`, `ipd`, `lab`, `membership`, `ot`, `partners`, `pharmacy`, `radiology`
 - **Kernel used:** `approvals`, `auth`, `db`, `events`, `modules`, `search`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file

@@ -1135,7 +1135,13 @@ const ER_PAIRS: readonly string[] = [
   // ER lane 2 (#809) — triage: the casualty nurse and doctors (ER_TRIAGE_README_PROSE).
   "er_nurse/er.triage",
   "doctor/er.triage",
+  // ER lane 3 (#810) — care: doctors and the casualty nurse (ER_CARE_README_PROSE).
+  "er_nurse/er.care",
+  "doctor/er.care",
 ];
+
+/** The README prose line authorising ER care (ER lane 3, issue #810). Quoted, not paraphrased. */
+const ER_CARE_README_PROSE = "`er.care` is held by `doctor` and `er_nurse`.";
 
 /** The README prose line authorising ER triage (ER lane 2, issue #809). Quoted, not paraphrased. */
 const ER_TRIAGE_README_PROSE = "`er.triage` is held by `er_nurse` and `doctor`.";
@@ -2642,6 +2648,7 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(readme).toContain(ER_README_PROSE);
     expect(readme).toContain(ER_WALL_README_PROSE);
     expect(readme).toContain(ER_TRIAGE_README_PROSE);
+    expect(readme).toContain(ER_CARE_README_PROSE);
     expect(readme).toContain(COPILOT_HALT_README_PROSE);
     expect(readme).toContain(IPD_BEDS_README_PROSE);
     expect(readme).toContain(IPD_ADMIT_README_PROSE);

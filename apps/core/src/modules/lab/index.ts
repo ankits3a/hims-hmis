@@ -88,6 +88,8 @@ export {
 export type { ReflexPlacement, ReflexRefusal, VerifyResultInput, VerifyResultOutcome } from "./verify";
 export {
   acknowledgeCritical, openCriticalCalls, nextRung, RUNGS, CRITICAL_CALL_TARGET_MINUTES,
+  // ER lane 3 (#810) — the open calls of named episodes, for the emergency department's own doctor-of-record ladder.
+  openCriticalsForEncounters,
   LAB_CRITICALS_CLOSE,
 } from "./criticals";
 export type {

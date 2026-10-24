@@ -726,6 +726,9 @@
     },
     "dept": "Specialty (for the take unit)",
     "depts": {
+      "ANAES": "Anaesthesia",
+      "NEURO": "Neurology",
+      "CARD": "Cardiology",
       "PAED": "Paediatrics",
       "MED": "Medicine",
       "SUR": "Surgery",

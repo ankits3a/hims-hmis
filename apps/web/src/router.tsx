@@ -46,6 +46,7 @@ import { IpdBeds } from "./screens/ipd-beds";
 import { ErBoardScreen } from "./screens/er-board";
 import { ErDesk } from "./screens/er-desk";
 import { ErTriage } from "./screens/er-triage";
+import { ErPatient } from "./screens/er-patient";
 import { IpdAdmit } from "./screens/ipd-admit";
 import { IpdPasses } from "./screens/ipd-passes";
 import { PassesScan } from "./screens/passes-scan";
@@ -423,6 +424,8 @@ const NAV: readonly NavEntry[] = [
   { to: "/er/board", label: "nav.erBoard", permission: "er.board.view", group: "wards" },
   // ER lane 2 (#809) — the triage screen (`emergencyManifest.menu`).
   { to: "/er/triage", label: "nav.erTriage", permission: "er.triage", group: "wards" },
+  // ER lane 3 (#810) — the ER patient: care in one place (`emergencyManifest.menu`).
+  { to: "/er/patient", label: "nav.erPatient", permission: "er.care", group: "wards" },
   { to: "/ipd/beds", label: "nav.ipdBeds", permission: "ipd.beds.view", group: "wards" },
   // E1.2 (#719) — the Admit sheet; path and permission match `ipdManifest.menu`.
   { to: "/ipd/admit", label: "nav.ipdAdmit", permission: "ipd.admit", group: "wards" },
@@ -936,6 +939,17 @@ const erTriageRoute = createRoute({
     episode: typeof search.episode === "string" && search.episode !== "" ? search.episode : undefined,
   }),
   component: ErTriage,
+});
+
+/** ER lane 3 (#810) — the ER patient (spec §5 D): one patient's care, `?episode=<id>`. Phone or tablet. */
+const erPatientRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/er/patient",
+  staticData: { fullViewport: true },
+  validateSearch: (search: Record<string, unknown>): { episode?: string } => ({
+    episode: typeof search.episode === "string" && search.episode !== "" ? search.episode : undefined,
+  }),
+  component: ErPatient,
 });
 
 /** ER lane 1 (#808) — the tracking board (spec §5 A): 16:9, no page scroll; `?wall=1` is the wall screen (no names). */
@@ -2336,7 +2350,7 @@ export const router = createRouter({
     familyRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, erDeskRoute, erBoardRoute, erTriageRoute, ipdBedsRoute, ipdAdmitRoute, ipdBillRoute, ipdBillDeskRoute, ipdTpaRoute, ipdFamilyCallbacksRoute, ipdRoundsRoute, ipdRoundPatientRoute, ipdMarRoute, ipdPharmacyRoute, ipdNarcoticsRoute, ipdHandoversRoute, ipdWardRoute, ipdMyShiftRoute, ipdDischargeRoute, ipdPassesRoute, passesScanRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, erDeskRoute, erBoardRoute, erTriageRoute, erPatientRoute, ipdBedsRoute, ipdAdmitRoute, ipdBillRoute, ipdBillDeskRoute, ipdTpaRoute, ipdFamilyCallbacksRoute, ipdRoundsRoute, ipdRoundPatientRoute, ipdMarRoute, ipdPharmacyRoute, ipdNarcoticsRoute, ipdHandoversRoute, ipdWardRoute, ipdMyShiftRoute, ipdDischargeRoute, ipdPassesRoute, passesScanRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute, attendanceLinksRoute,
       // GO-LIVE SCREENS — +1, `/admin/workflows`. `caddyfile-parity.test.ts` pins the count.

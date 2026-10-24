@@ -7,7 +7,7 @@
 // Importing this module DEFINES the re-triage task kind and its skill (the API and the worker both need them).
 import "./task-kinds";
 export { emergencyManifest } from "./manifest";
-export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_IDENTITY_LINK, ER_TRIAGE } from "./names";
+export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_CARE, ER_IDENTITY_LINK, ER_TRIAGE } from "./names";
 export { EmergencyModule } from "./emergency.module";
 export { ErError, ErRefusal, erRefusalStatus } from "./errors";
 export type { ErErrorCode } from "./errors";
@@ -29,3 +29,13 @@ export {
 } from "./triage";
 export { ER_RETRIAGE_TASK, ER_TRIAGE_DUE_TASK, ER_TRIAGE_SKILL } from "./task-kinds";
 export { listErBays, readErEpisode } from "./board";
+// Lane 3 (#810) — care, the `ER` encounter resolver and charge sink, the care clocks, the care reads.
+export {
+  ER_CALL_CLIMB_MIN, ER_CARE_ACTOR, ER_CRITICAL_CLIMB_MIN, ER_SATELLITE_STORE_CODE, ER_VERBAL_SIGN_MIN, answerCall, callSpecialty,
+  cosignErNote, declareStabilised, giveErDose, issueErMed, returnErMed, placeErOrder, recordConsent, recordErNote, recordProcedure,
+  signErVerbalOrder, sweepErCareClocks,
+} from "./care";
+export {
+  ER_EPISODE_NO_RE, ER_EPISODE_PREFIX, erChargeLinesOf, erChargeSink, postErChargeIn, registerErChargeSink, registerErEncounterResolver,
+} from "./charge-sink";
+export { listErItems, readErCare } from "./care-read";

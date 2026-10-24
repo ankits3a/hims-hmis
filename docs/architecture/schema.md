@@ -117,7 +117,7 @@ flowchart LR
 | `diet.ts` | module diet | `diet_consults`, `diet_meal_lines`, `diet_meal_lists`, `diet_meal_rounds`, `diet_npo`, `diet_orders` |
 | `doctor-desk.ts` | module doctor-desk | `doctor_desk_acts`, `doctor_desk_agent_runs`, `doctor_desk_briefs`, `doctor_desk_moves`, `doctor_desk_nudges`, `doctor_desk_ratings`, `doctor_desk_reads` |
 | `documents.ts` | kernel | `patient_documents` |
-| `emergency.ts` | module emergency | `er_bands`, `er_episodes`, `er_pre_alerts`, `er_triage_entries` |
+| `emergency.ts` | module emergency | `er_bands`, `er_charge_lines`, `er_consents`, `er_critical_alerts`, `er_doses`, `er_episodes`, `er_med_issues`, `er_med_returns`, `er_notes`, `er_pre_alerts`, `er_procedures`, `er_specialty_calls`, `er_triage_entries` |
 | `episodes.ts` | kernel | `episode_series` |
 | `eventCursors.ts` | kernel | `event_cursors` |
 | `eventIdempotency.ts` | kernel | `event_idempotency` |

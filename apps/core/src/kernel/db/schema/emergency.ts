@@ -90,6 +90,9 @@ export const erEpisodes = pgTable(
     retriageTaskId: text("retriage_task_id"),
     retriageTaskDueAt: timestamp("retriage_task_due_at", { withTimezone: true }),
     retriageClimbedDueAt: timestamp("retriage_climbed_due_at", { withTimezone: true }),
+    /* ═══ ER lane 3 (#810) — "stabilised", a clinical word only (lane 6 reads it; lane 5 copies it to the admission) ═══ */
+    stabilisedAt: timestamp("stabilised_at", { withTimezone: true }),
+    stabilisedBy: text("stabilised_by"),
   },
   (t) => [
     uniqueIndex("er_episodes_no_ux").on(t.episodeNo),
@@ -204,4 +207,226 @@ export const erTriageEntries = pgTable(
     check("er_triage_entries_kind_ck", sql`${t.kind} in ('triage', 're_triage', 'vitals')`),
     check("er_triage_entries_level_ck", sql`(${t.kind} = 'vitals') = (${t.level} is null)`),
   ],
+);
+
+/* ═══════════════════════════════ ER lane 3 (#810) — care ═══════════════════════════════ */
+
+/** Notes. A resident's note is a `draft` until a senior co-signs it; a signed note is never edited (an addendum is). */
+export const erNotes = pgTable(
+  "er_notes",
+  {
+    id: text("id").primaryKey(),
+    episodeId: text("episode_id").notNull().references(() => erEpisodes.id),
+    kind: text("kind").notNull(),
+    text: text("text").notNull(),
+    authorId: text("author_id").notNull(),
+    status: text("status").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+    cosignedBy: text("cosigned_by"),
+    cosignedAt: timestamp("cosigned_at", { withTimezone: true }),
+    addendum: text("addendum"),
+    provenance: text("provenance").notNull(),
+  },
+  (t) => [
+    index("er_notes_episode_idx").on(t.episodeId, t.recordedAt),
+    check("er_notes_status_ck", sql`${t.status} in ('signed', 'draft')`),
+    check("er_notes_cosign_ck", sql`(${t.cosignedBy} is null) = (${t.cosignedAt} is null)`),
+  ],
+);
+
+/**
+ * The ER satellite issue (crash cart, emergency drugs) to one patient, and the medication record's order half. A verbal
+ * order (resus) is read back at issue and signed by the ordering doctor within 2 hours.
+ */
+export const erMedIssues = pgTable(
+  "er_med_issues",
+  {
+    id: text("id").primaryKey(),
+    episodeId: text("episode_id").notNull().references(() => erEpisodes.id),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    itemId: text("item_id"),
+    ownMedicine: text("own_medicine"),
+    name: text("name").notNull(),
+    doseWords: text("dose_words").notNull(),
+    route: text("route").notNull(),
+    units: integer("units").notNull(),
+    highAlert: boolean("high_alert").notNull(),
+    storeId: text("store_id"),
+    batches: jsonb("batches").$type<Record<string, unknown>[]>().notNull(),
+    orderedBy: text("ordered_by").notNull(),
+    verbal: boolean("verbal").notNull(),
+    verbalSignedAt: timestamp("verbal_signed_at", { withTimezone: true }),
+    verbalNoticeAt: timestamp("verbal_notice_at", { withTimezone: true }),
+    allergyOverride: text("allergy_override"),
+    issuedBy: text("issued_by").notNull(),
+    issuedAt: timestamp("issued_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("er_med_issues_episode_idx").on(t.episodeId, t.issuedAt),
+    index("er_med_issues_verbal_idx").on(t.issuedAt).where(sql`${t.verbal} and ${t.verbalSignedAt} is null`),
+    check("er_med_issues_source_ck", sql`(${t.itemId} is null) <> (${t.ownMedicine} is null)`),
+  ],
+);
+
+/** One dose record per issue: given, held or refused; a high-alert drug given names the second checker. */
+export const erDoses = pgTable(
+  "er_doses",
+  {
+    id: text("id").primaryKey(),
+    issueId: text("issue_id").notNull().references(() => erMedIssues.id),
+    outcome: text("outcome").notNull(),
+    reason: text("reason"),
+    secondCheckBy: text("second_check_by"),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("er_doses_issue_ux").on(t.issueId),
+    check("er_doses_outcome_ck", sql`${t.outcome} in ('given', 'held', 'refused')`),
+  ],
+);
+
+/**
+ * ER review 2 (2026-10-15, DECIDED) — `return_er_med`: one per issue. `returned` = an UNOPENED unit back to ER-SAT and
+ * its charge reversed; `wasted` = an OPENED unit, no stock movement (the issue took it), the charge stands unless the
+ * bill desk waives it; a high-alert or controlled drug's wastage names a PIN-confirmed witness.
+ */
+export const erMedReturns = pgTable(
+  "er_med_returns",
+  {
+    id: text("id").primaryKey(),
+    issueId: text("issue_id").notNull().references(() => erMedIssues.id),
+    episodeId: text("episode_id").notNull().references(() => erEpisodes.id),
+    kind: text("kind").notNull(),
+    units: integer("units").notNull(),
+    reason: text("reason").notNull(),
+    witnessedBy: text("witnessed_by"),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("er_med_returns_issue_ux").on(t.issueId),
+    check("er_med_returns_kind_ck", sql`${t.kind} in ('returned', 'wasted')`),
+    check("er_med_returns_units_ck", sql`${t.units} > 0`),
+  ],
+);
+
+export const erProcedures = pgTable(
+  "er_procedures",
+  {
+    id: text("id").primaryKey(),
+    episodeId: text("episode_id").notNull().references(() => erEpisodes.id),
+    name: text("name").notNull(),
+    serviceId: text("service_id"),
+    performedBy: text("performed_by").notNull(),
+    performedAt: timestamp("performed_at", { withTimezone: true }).notNull(),
+    consentId: text("consent_id"),
+    notes: text("notes"),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [index("er_procedures_episode_idx").on(t.episodeId, t.performedAt)],
+);
+
+export const erConsents = pgTable(
+  "er_consents",
+  {
+    id: text("id").primaryKey(),
+    episodeId: text("episode_id").notNull().references(() => erEpisodes.id),
+    kind: text("kind").notNull(),
+    about: text("about").notNull(),
+    signedBy: text("signed_by").notNull(),
+    signerName: text("signer_name"),
+    relation: text("relation"),
+    method: text("method").notNull(),
+    witnessName: text("witness_name"),
+    secondDoctorId: text("second_doctor_id"),
+    language: text("language"),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("er_consents_episode_idx").on(t.episodeId),
+    check("er_consents_emergency_ck", sql`(${t.signedBy} = 'emergency') = (${t.secondDoctorId} is not null)`),
+  ],
+);
+
+/** A specialty call: who was called (the roster's rungs for the unit on take at the gate), answered, seen. */
+export const erSpecialtyCalls = pgTable(
+  "er_specialty_calls",
+  {
+    id: text("id").primaryKey(),
+    episodeId: text("episode_id").notNull().references(() => erEpisodes.id),
+    departmentId: text("department_id").notNull(),
+    departmentCode: text("department_code").notNull(),
+    urgency: text("urgency").notNull(),
+    reason: text("reason").notNull(),
+    takeTeamId: text("take_team_id"),
+    takeSource: text("take_source").notNull(),
+    callees: jsonb("callees").$type<{ userId: string; name: string }[]>().notNull(),
+    calledBy: text("called_by").notNull(),
+    calledAt: timestamp("called_at", { withTimezone: true }).notNull(),
+    answeredBy: text("answered_by"),
+    answeredAt: timestamp("answered_at", { withTimezone: true }),
+    /** ER review 2 (2026-10-15): what the called doctor said when answering ("coming in 10 min"). */
+    answerNote: text("answer_note"),
+    seenBy: text("seen_by"),
+    seenAt: timestamp("seen_at", { withTimezone: true }),
+    climbedAt: timestamp("climbed_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("er_specialty_calls_open_ux").on(t.episodeId, t.departmentId).where(sql`${t.seenAt} is null`),
+    index("er_specialty_calls_unanswered_idx").on(t.calledAt).where(sql`${t.answeredAt} is null and ${t.climbedAt} is null`),
+    check("er_specialty_calls_urgency_ck", sql`${t.urgency} in ('immediate', 'urgent', 'routine')`),
+  ],
+);
+
+/**
+ * The `ER` episode's charge lines — what the ordering door, the ER satellite issue and the procedures post to the ER
+ * episode's charge sink (billing `registerEpisodeChargeSink`, prefix `ER`). Priced from the active tariff where a
+ * service is priced; a missing rate or an un-priced item is recorded (`rate_missing`, `rate_pending`) for lane 6's bill
+ * desk. No clinical screen reads this table (decision 0058).
+ */
+export const erChargeLines = pgTable(
+  "er_charge_lines",
+  {
+    id: text("id").primaryKey(),
+    episodeId: text("episode_id").notNull().references(() => erEpisodes.id),
+    source: text("source").notNull(),
+    department: text("department"),
+    orderId: text("order_id"),
+    orderItemId: text("order_item_id"),
+    issueId: text("issue_id"),
+    procedureId: text("procedure_id"),
+    serviceId: text("service_id"),
+    itemId: text("item_id"),
+    qty: integer("qty").notNull(),
+    amountPaise: integer("amount_paise"),
+    status: text("status").notNull(),
+    postedBy: text("posted_by").notNull(),
+    postedAt: timestamp("posted_at", { withTimezone: true }).notNull(),
+    reversedAt: timestamp("reversed_at", { withTimezone: true }),
+    reverseReason: text("reverse_reason"),
+  },
+  (t) => [
+    uniqueIndex("er_charge_lines_order_item_ux").on(t.orderItemId).where(sql`${t.orderItemId} is not null`),
+    index("er_charge_lines_episode_idx").on(t.episodeId),
+    check("er_charge_lines_source_ck", sql`${t.source} in ('er.order', 'er.issue', 'er.procedure')`),
+    check("er_charge_lines_status_ck", sql`${t.status} in ('posted', 'rate_missing', 'rate_pending', 'reversed')`),
+    check("er_charge_lines_amount_ck", sql`(${t.status} = 'posted') = (${t.amountPaise} is not null)`),
+  ],
+);
+
+/** A critical result on an ER episode, told to the ER doctor of record once, and climbed once while unacknowledged. */
+export const erCriticalAlerts = pgTable(
+  "er_critical_alerts",
+  {
+    id: text("id").primaryKey(),
+    callId: text("call_id").notNull(),
+    episodeId: text("episode_id").notNull().references(() => erEpisodes.id),
+    notifiedAt: timestamp("notified_at", { withTimezone: true }).notNull(),
+    notifiedUserIds: jsonb("notified_user_ids").$type<string[]>().notNull(),
+    climbedAt: timestamp("climbed_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("er_critical_alerts_call_ux").on(t.callId)],
 );

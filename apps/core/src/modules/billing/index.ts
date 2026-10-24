@@ -14,7 +14,7 @@ export { BillingModule } from "./billing.module";
  * idempotency store with two writers and one table is one mechanism, and a second copy of the
  * claim/replay protocol is the kind of thing that works until two of them race (§2.54).
  */
-export { withIdempotency } from "./idempotency";
+export { requestHashOf, withIdempotency } from "./idempotency";
 export { BillingError, billingHttpStatus } from "./errors";
 export type { BillingErrorCode } from "./errors";
 export {

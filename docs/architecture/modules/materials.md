@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/materials/`
 
 - **Depends on modules:** `formulary`
-- **Used by modules:** `ipd`, `opd`, `ot`, `pharmacy`
+- **Used by modules:** `emergency`, `ipd`, `opd`, `ot`, `pharmacy`
 - **Kernel used:** `approvals`, `auth`, `db`, `episodes`, `events`, `modules`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `consignmentDeployed`
 

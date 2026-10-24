@@ -259,6 +259,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "er.board.view", "er.board.wall",
       // ER lane 2 (#809) — triage by ESI, vitals, bays and the ER doctor of record. README "Emergency triage" prose.
       "er.triage",
+      // ER lane 3 (#810) — ER care: notes, STAT orders, the ER issue and doses, procedures, consent, calls, stabilised.
+      // README "Emergency care" prose. No money behind it (0058).
+      "er.care",
       // DIET E4.4 (#736) — the doctor orders the diet, sets or lifts NPO, and reads the ward diet sheet and kitchen board.
       "diet.view", "diet.order", "diet.npo", "diet.clinical.view",
       // IPD ADMISSION E1.2 (#719) — a doctor advises admission (raises the request); answers carry no money (0058).
@@ -2264,7 +2267,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * when no clerk is at the ER desk. Triage (`er.triage`) arrives with lane 2. NOBODY is assigned by any seed.
    */
   // ER lane 2 (#809) — `er.triage`: the casualty nurse triages by ESI, re-triages, records vitals, places in bays.
-  { roleKey: "er_nurse", permissions: ["er.board.view", "er.board.wall", "er.arrival.register", "er.triage"] },
+  // ER lane 3 (#810) — `er.care`: notes, the ER issue and the doses (a high-alert dose with a second person), consent.
+  { roleKey: "er_nurse", permissions: ["er.board.view", "er.board.wall", "er.arrival.register", "er.triage", "er.care"] },
 ];
 
 /**

@@ -825,6 +825,8 @@ export const ROSTER_ESCALATION_KINDS = [
   // ER lane 2 (#809) — an overdue ER re-triage climbs past the triage nurse to whoever is on as this target's position
   // (the ER charge nurse when the roster names one; the nursing supervisor's holders otherwise).
   "er_retriage",
+  // ER lane 3 (#810) — a specialty call unanswered 15 min, and a critical result unacknowledged by the ER doctor of record.
+  "er_call", "er_critical",
 ] as const;
 export type RosterEscalationKind = (typeof ROSTER_ESCALATION_KINDS)[number];
 
