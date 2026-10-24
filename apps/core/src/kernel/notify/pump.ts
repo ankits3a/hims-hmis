@@ -501,6 +501,13 @@ async function prepareRow(tx: Tx, row: NotificationRow, now: Date, adapters: Ada
     seamTo = found;
   }
 
+  // ── 3b. HELD TEMPLATE (IPD E2.3, #727). A template no provider may carry yet is recorded, never sent: after the
+  // patient's own stops (so a deceased or opted-out row says so), before quiet hours (a held row never waits).
+  if (template.heldReason !== undefined) {
+    await markSuppressed(tx, row, template.heldReason, now);
+    return { kind: "done" };
+  }
+
   // ── 4. QUIET HOURS (D7, + T4's staff leg). Not a suppression: back to `queued`, no attempt
   // counted. The exemption is read per person, and only for the audience that can carry one.
   const quietExempt = row.audience === "staff" && row.userId !== null

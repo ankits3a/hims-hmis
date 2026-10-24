@@ -1,3 +1,4 @@
+import { depositLowCard } from "./bill-desk";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
 /**
@@ -35,6 +36,12 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
  *   ipd.transfer.start  start a transfer with its SBAR handover, cancel it, swap two patients' beds
  *   ipd.transfer.accept accept a handover as the receiving nurse (the only act that moves the patient), or decline it
  *
+ * E2.3 (#727) adds one. NO DOCTOR ROLE HOLDS IT (decision 0058):
+ *
+ *   ipd.billdesk.view   the bill desk (exceptions only: deposit ladder, posting exceptions, unchecked downtime deposits,
+ *                       cash consent, waiting authorisations, discharges with a balance) and its `deposit_low` Now card —
+ *                       cashier, billing manager, front-office supervisor, duty manager, owner
+ *
  * Who holds them is `scripts/seed-roles.ts` (README "IPD beds" and "IPD admission" prose). No subscriptions: the 2-hour reservation
  * lapse is a scheduler job (`kernel/worker/jobs.ts` `lapseBedReservations`), so the worker does not install this
  * manifest.
@@ -52,6 +59,7 @@ export const IPD_CHARGES_REVERSE = "ipd.charges.reverse";
 export const IPD_PAYER_TERMS = "ipd.payer.terms";
 export const IPD_TRANSFER_START = "ipd.transfer.start";
 export const IPD_TRANSFER_ACCEPT = "ipd.transfer.accept";
+export const IPD_BILLDESK_VIEW = "ipd.billdesk.view";
 
 export const ipdManifest: ModuleManifest = {
   key: "ipd",
@@ -61,12 +69,16 @@ export const ipdManifest: ModuleManifest = {
     { label: "Admit", path: "/ipd/admit", permission: IPD_ADMIT },
     // E3.1 (#729) — the receiving ward's "Waiting for you" handover list.
     { label: "Handovers", path: "/ipd/handovers", permission: IPD_TRANSFER_ACCEPT },
+    { label: "Bill desk", path: "/ipd/bill-desk", permission: IPD_BILLDESK_VIEW },
   ],
   permissions: [
     IPD_BEDS_VIEW, IPD_BEDS_MANAGE, IPD_BEDS_CLEAN, IPD_BEDS_OVERFLOW, IPD_ADMIT_REQUEST, IPD_ADMIT, IPD_PAYER_MANAGE, IPD_BAND_PRINT,
-    IPD_BILL_VIEW, IPD_CHARGES_REVERSE, IPD_PAYER_TERMS,
+    IPD_BILL_VIEW, IPD_CHARGES_REVERSE, IPD_PAYER_TERMS, IPD_BILLDESK_VIEW,
     // E3.1 (#729)
     IPD_TRANSFER_START, IPD_TRANSFER_ACCEPT,
   ],
   subscriptions: [],
+  // E2.3 (#727) — the bill desk's `deposit_low` Now card.
+  // Declared here (not in bill-desk.ts) because that file imports this one: the card is called lazily.
+  desk: [{ key: "ipd.billdesk", permission: IPD_BILLDESK_VIEW, load: async (ctx) => depositLowCard(ctx.db) }],
 };

@@ -1,4 +1,53 @@
 {
+  "ipdBillDesk": {
+    "title": "बिल डेस्क",
+    "subtitle": "केवल अपवाद",
+    "asOf": "{{at}} तक",
+    "loading": "बिल डेस्क लोड हो रहा है…",
+    "loadFailed": "बिल डेस्क लोड नहीं हुआ — फिर कोशिश करें",
+    "forbidden": "बिल डेस्क केवल बिलिंग स्टाफ़ के लिए है",
+    "refresh": "रीफ़्रेश",
+    "countsLabel": "प्रकार के अनुसार अपवाद",
+    "listLabel": "जिन भर्तियों पर ध्यान चाहिए",
+    "all": "सभी",
+    "empty": "कुछ भी लंबित नहीं। सामान्य चालू बिल यहाँ नहीं दिखते।",
+    "reason": {
+      "deposit_90": "जमा 90 % उपयोग",
+      "deposit_75": "जमा 75 % उपयोग",
+      "icu_low_days": "ICU: एक दिन की जमा शेष",
+      "posting_failed": "पोस्टिंग विफल",
+      "rate_missing": "दर नहीं है",
+      "tariff_missing": "टैरिफ नहीं है",
+      "deposit_check_pending": "डाउनटाइम जमा जाँचें",
+      "cash_consent_missing": "नकद सहमति नहीं",
+      "auth_pending_24h": "स्वीकृति 24 घंटे से लंबित",
+      "discharge_balance": "डिस्चार्ज, बकाया शेष"
+    },
+    "col": {
+      "patient": "मरीज़",
+      "bed": "बेड · भुगतानकर्ता",
+      "why": "कारण",
+      "used": "जमा उपयोग",
+      "payable": "मरीज़ देय",
+      "deposit": "जमा राशि",
+      "balance": "शेष",
+      "icu": "ICU ख़र्च",
+      "since": "कब से",
+      "actions": "कार्य"
+    },
+    "usedPct": "{{pct}} %",
+    "noDeposit": "कोई जमा नहीं",
+    "due": "देय {{amount}}",
+    "perDay": "{{amount}}/दिन",
+    "daysLeft_one": "{{count}} दिन शेष",
+    "daysLeft_other": "{{count}} दिन शेष",
+    "openBill": "बिल खोलें",
+    "retry": "फिर से",
+    "retried_one": "फिर से किया — {{count}} पंक्ति पोस्ट",
+    "retried_other": "फिर से किया — {{count}} पंक्तियाँ पोस्ट",
+    "retryFailed": "फिर से करना विफल — दोबारा कोशिश करें",
+    "careNote": "पैसे के लिए इलाज कभी नहीं रुकता: जमा चेतावनी केवल डेस्क और प्रबंधन को बताती है।"
+  },
   "ipdTransfer": {
     "panel": {
       "loading": "स्थानांतरण विकल्प लोड हो रहे हैं…",
@@ -694,6 +743,7 @@
     "menu": "मेनू"
   },
   "nav": {
+    "ipdBillDesk": "बिल डेस्क",
     "ipdHandovers": "हैंडओवर",
     "transportRequest": "पोर्टर माँगें",
     "transport": "ट्रांसपोर्ट",
@@ -4499,6 +4549,12 @@
     "nextStep": "कृपया अगले वाइटल्स डेस्क पर जाएँ।"
   },
   "desk": {
+    "ipdDepositLow": {
+      "title": "जमा राशि कम",
+      "over75": "75 % उपयोग",
+      "over90": "90 % उपयोग",
+      "exceptions": "पोस्टिंग अपवाद"
+    },
     "pharmacy": {
       "authorise": "फ़ार्मेसी आपकी राह देख रही है"
     },

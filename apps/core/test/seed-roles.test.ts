@@ -1147,6 +1147,16 @@ const IPD_TRANSFER_README_PROSE =
  */
 const IPD_TRANSFER_PAIRS: readonly string[] = ["duty_manager/ipd.transfer.start", "duty_manager/ipd.transfer.accept"];
 
+/** The README prose line authorising the IPD bill desk (E2.3, decision 0072). Quoted, not paraphrased. */
+const IPD_BILLDESK_README_PROSE =
+  "`ipd.billdesk.view` is held by `cashier`,\n`billing_manager`, `front_office_supervisor`, `duty_manager` and `owner`";
+
+/** IPD BILL DESK E2.3 (#727, decision 0072, awaiting owner review) — the exceptions-only bill desk; no doctor role (0058). */
+const IPD_BILLDESK_PAIRS: readonly string[] = [
+  "cashier/ipd.billdesk.view", "billing_manager/ipd.billdesk.view", "front_office_supervisor/ipd.billdesk.view",
+  "duty_manager/ipd.billdesk.view", "owner/ipd.billdesk.view",
+];
+
 /** The README prose line authorising the 2026-09-20 approvals-spine ruling R1. Quoted, not paraphrased. */
 const APPROVALS_SPINE_README_PROSE =
   "The approvals spine (owner ruling R1,\n2026-09-20)";
@@ -1282,6 +1292,7 @@ const NON_TABLE_PAIRS: readonly string[] = [
   ...IPD_CHARGES_PAIRS,
   ...IPD_PAYER_PAIRS,
   ...IPD_TRANSFER_PAIRS,
+  ...IPD_BILLDESK_PAIRS,
   ...APPROVALS_SPINE_PAIRS,
   ...PHARMACY_REPORTS_PAIRS,
   ...PHARMACY_TALLY_PAIRS,
@@ -1739,7 +1750,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // FD-25 / owner ruling 2026-09-04 — 11 -> 13: `tariff.read` (a live 403 on the deployed
       // counter) and `patients.read` (the DPDP ruling on reading patient identity). Close pass 1
       // removed the two `opd.visits.*` strings this comment used to list; see `CASHIER_SEAT_PAIRS`.
-      cashier: 15, // IPD CHARGES E2.1 (2026-10-13), read off the failing run: +1, ipd.bill.view
+      cashier: 16, // IPD BILL DESK E2.3 (2026-10-13), read off the failing run: +1, ipd.billdesk.view; IPD CHARGES E2.1 (2026-10-13), read off the failing run: +1, ipd.bill.view
       // PLAN 07b O-1, OWNER RULING 2026-08-29 — 11 -> 18. Seven strings that let this role WORK A
       // COUNTER while a cashier's drawer is locked pending its variance approval. Under R-4's
       // one-staffer counter that lockout closes the hospital's front door, and a cover that first
@@ -1749,7 +1760,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // patient who is asking.
       // PLAN 18a T2 — 19 -> 20: the imaging bill-decision queue (T7). A repeat film and a
       // contrast escalation are questions answered in money, which is this office's call.
-      billing_manager: 26, // IPD PAYER E2.2 (2026-10-13), read off the failing run: +1, ipd.payer.terms; IPD CHARGES E2.1 (2026-10-13), read off the failing run: +2, ipd.bill.view and ipd.charges.reverse; IPD ADMISSION E1.2: +1, ipd.payer.manage; parity P5 (Tally): +1, pharmacy.tally.export; parity P5: +1, pharmacy.reports.read (not the margin)
+      billing_manager: 27, // IPD BILL DESK E2.3 (2026-10-13), read off the failing run: +1, ipd.billdesk.view; IPD PAYER E2.2 (2026-10-13), read off the failing run: +1, ipd.payer.terms; IPD CHARGES E2.1 (2026-10-13), read off the failing run: +2, ipd.bill.view and ipd.charges.reverse; IPD ADMISSION E1.2: +1, ipd.payer.manage; parity P5 (Tally): +1, pharmacy.tally.export; parity P5: +1, pharmacy.reports.read (not the margin)
       // Group A, 2026-08-26: +4 — tariff.read, the activator key, tariff config, and approval-type
       // governance. `owner` is now the activator for BOTH ceremonies, workflow and price list.
       // Group B then added +3: the invoice, the daybook and the cashier sessions. NOT patients.read.
@@ -2475,6 +2486,7 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(readme).toContain(IPD_CHARGES_README_PROSE);
     expect(readme).toContain(IPD_PAYER_README_PROSE);
     expect(readme).toContain(IPD_TRANSFER_README_PROSE);
+    expect(readme).toContain(IPD_BILLDESK_README_PROSE);
     expect(readme).toContain(APPROVALS_SPINE_README_PROSE);
     // Parity P5's two sentences: who reads the office's reports, and who reads the margin.
     expect(readme).toContain(PHARMACY_REPORTS_README_PROSE);

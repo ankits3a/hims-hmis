@@ -35,7 +35,7 @@ import {
 import { sweepOverdueQa } from "../../modules/aerb";
 import { routingChooserFor, runAliasJob, runDeskRoutingLearning, runFlowLearning } from "../../modules/opd";
 import { syncAttendance } from "../../modules/attendance";
-import { lapseBedReservations, postNightlyIpdCharges } from "../../modules/ipd";
+import { lapseBedReservations, postNightlyIpdCharges, runIpdBillDeskNightly } from "../../modules/ipd";
 import { sweepTasks } from "../../modules/tasks";
 import { sweepBmwStorage } from "../../modules/bmw";
 import { collectResourceKinds } from "../resources/kinds";
@@ -803,7 +803,10 @@ export function registerAllJobs(
   scheduler.register({
     name: "postNightlyIpdCharges",
     dailyIst: IPD_NIGHTLY_CHARGES_IST,
-    run: async (now) => { await runIfModuleOn("postNightlyIpdCharges", "ipd", () => postNightlyIpdCharges(db, now)); },
+    // E2.3 (#727): the deposit ladder and the daily totals ride this job, after the posting — no job of their own.
+    run: async (now) => {
+      await runIfModuleOn("postNightlyIpdCharges", "ipd", async () => { await postNightlyIpdCharges(db, now); await runIpdBillDeskNightly(db, now); });
+    },
   });
   /**
    * DOCTOR DESK DD-report v0 — THE UNIT REPORT AT 08:00 IST, the take boundary (plan D-G): one report

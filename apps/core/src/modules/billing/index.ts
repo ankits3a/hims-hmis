@@ -47,7 +47,8 @@ export { issueCreditNote, listCreditNotes } from "./credit-notes";
 /** PHARMACY P12 — the leakage triangle's billed leg (read-only). */
 export { creditedInvoiceLineIdsBetween, invoiceLineCredits } from "./credit-notes";
 export type { IssueCreditNoteInput, IssueCreditNoteResult, CreditNoteKind } from "./credit-notes";
-export { requestRefund, issueRefundVoucher, payRefundVoucher } from "./refunds";
+export { requestRefund, issueRefundVoucher, payRefundVoucher, registerAdvanceRefundListener } from "./refunds";
+export type { AdvanceRefundListener } from "./refunds";
 export type { RefundKind, RefundMethod, RefundVoucherRow } from "./refunds";
 /**
  * PLAN 09 / DD19 — the ONE new export this phase opens, and the only way the accrual consumer

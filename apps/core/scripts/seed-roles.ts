@@ -149,6 +149,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "passes.issue", "passes.manage",
       // IPD CHARGES E2.1 (#725, decision 0072) — the interim bill; README "IPD running bill" prose. Never a doctor (0058).
       "ipd.bill.view",
+      // IPD BILL DESK E2.3 (#727, decision 0072) — the exceptions-only bill desk and its deposit_low card; README "IPD bill desk" prose. Never a doctor (0058).
+      "ipd.billdesk.view",
       "opd.masters.read",
       // RC-1 T2 / D5 — the counter-flow lock pill. DECIDED (2026-08-31): no `counter_supervisor`
       // role is minted; this role already carries the desk's SLA escalation and queue-transfer
@@ -643,6 +645,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     permissions: [
       // IPD CHARGES E2.1 (#725, decision 0072) — the interim bill; README "IPD running bill" prose. Never a doctor (0058).
       "ipd.bill.view",
+      // IPD BILL DESK E2.3 (#727, decision 0072) — the exceptions-only bill desk and its deposit_low card; README "IPD bill desk" prose. Never a doctor (0058).
+      "ipd.billdesk.view",
       "billing.invoice.issue",
       "billing.invoice.read",
       "billing.credit.extend",
@@ -731,6 +735,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "ipd.payer.manage",
       // IPD CHARGES E2.1 (#725) — the interim bill, and the reversal line against a wrong charge (never an edit).
       "ipd.bill.view", "ipd.charges.reverse",
+      // IPD BILL DESK E2.3 (#727, decision 0072) — the exceptions-only bill desk and its deposit_low card; README "IPD bill desk" prose. Never a doctor (0058).
+      "ipd.billdesk.view",
       // IPD PAYER E2.2 (#726, review 11) — the letter's money terms (room-rent cap, co-pay) and the non-payables list.
       "ipd.payer.terms",
       /**
@@ -853,6 +859,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "ipd.beds.view",
       // IPD CHARGES E2.1 (#725, decision 0072) — the interim bill; README "IPD running bill" prose. Never a doctor (0058).
       "ipd.bill.view",
+      // IPD BILL DESK E2.3 (#727, decision 0072) — the exceptions-only bill desk and its deposit_low card; README "IPD bill desk" prose. Never a doctor (0058).
+      "ipd.billdesk.view",
       "workflow.definitions.approve",
       // The ACTIVATOR half of the two-key ceremony. `opd_admin` drafts; whoever holds `owner`
       // activates; `sod.ts`'s `workflow_drafter_activator` pair means they cannot be one person.
@@ -1171,6 +1179,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // IPD TRANSFER E3.1 (#729) — starts and accepts transfers (and swaps beds) until the ipd-nursing lane seeds
       // ward_nurse / nursing_supervisor; README "IPD transfer" prose. The sender may never accept their own handover.
       "ipd.transfer.start", "ipd.transfer.accept",
+      // IPD BILL DESK E2.3 (#727, decision 0072) — the exceptions-only bill desk and its deposit_low card; README "IPD bill desk" prose. Never a doctor (0058).
+      "ipd.billdesk.view",
     ],
   },
   /**
