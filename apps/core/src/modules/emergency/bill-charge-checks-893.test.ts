@@ -47,7 +47,10 @@ describe("#893 — the IPD charge CHECKs accept every value the contracts declar
     serviceId: "svc-893", serviceCode: "SVC893", serviceName: "Synthetic check", tariffVersionId: "tv-893",
     qty: 1, unitPaise: 0, grossPaise: 0, discountPaise: 0, taxablePaise: 0, cgstPaise: 0, sgstPaise: 0, netPaise: 0,
     gstRateBps: 0, gstExempt: true, source,
-    orderId: source === "ipd.order" ? randomUUID() : null,
+    orderId: source === "ipd.order" || source === "ipd.pharmacy" ? randomUUID() : null,
+    // ipd-stage integration: ipd-drugbill's ipd_charge_lines_pharmacy_ck — a pharmacy line names its issue, batch,
+    // dose sequence and order (stage only; the ER lanes do not carry ipd-drugbill).
+    ...(source === "ipd.pharmacy" ? { issueId: randomUUID(), batchId: randomUUID(), drugSeq: 0 } : {}),
     orderItemId: source === "ipd.order" ? randomUUID() : null,
     visitSeq: source === "ipd.visit" ? 0 : null,
     consultantUserId: source === "ipd.visit" ? postedBy : null,

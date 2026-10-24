@@ -153,7 +153,7 @@ CREATE INDEX "er_notes_episode_idx" ON "er_notes" USING btree ("episode_id","rec
 CREATE INDEX "er_procedures_episode_idx" ON "er_procedures" USING btree ("episode_id","performed_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "er_specialty_calls_open_ux" ON "er_specialty_calls" USING btree ("episode_id","department_id") WHERE "er_specialty_calls"."seen_at" is null;--> statement-breakpoint
 CREATE INDEX "er_specialty_calls_unanswered_idx" ON "er_specialty_calls" USING btree ("called_at") WHERE "er_specialty_calls"."answered_at" is null and "er_specialty_calls"."climbed_at" is null;--> statement-breakpoint
-ALTER TABLE "roster_escalation_targets" ADD CONSTRAINT "roster_escalation_targets_kind_ck" CHECK ("roster_escalation_targets"."alert_kind" in ('escalation.triggered', 'notification.failed', 'ops.mode_changed', 'imaging.critical_overdue', 'imaging.report_unread', 'workflow.timer_rung', 'er_retriage', 'er_call', 'er_critical'));--> statement-breakpoint
+ALTER TABLE "roster_escalation_targets" ADD CONSTRAINT "roster_escalation_targets_kind_ck" CHECK ("roster_escalation_targets"."alert_kind" in ('escalation.triggered', 'notification.failed', 'ops.mode_changed', 'imaging.critical_overdue', 'imaging.report_unread', 'workflow.timer_rung', 'er_retriage', 'er_call', 'er_critical', 'lab.critical_overdue'));--> statement-breakpoint
 CREATE TABLE "er_med_returns" (
 	"id" text PRIMARY KEY NOT NULL,
 	"issue_id" text NOT NULL,

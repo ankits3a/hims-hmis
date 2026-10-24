@@ -343,7 +343,7 @@ export async function returnErMed(db: Db, actor: Actor, raw: unknown, opts: Opts
     const item = (await db.select().from(items).where(eq(items.id, issue0.itemId)))[0];
     const witnessNeeded = input.condition === "opened" && (issue0.highAlert || item?.storageClass === "narcotic");
     if (witnessNeeded && input.witness === undefined) throw new ErRefusal("wastage_needs_witness");
-    const witness = input.witness === undefined ? null : await secondPerson(db, actor, input.witness.username, input.witness.pin, at);
+    const witness = input.witness === undefined ? null : await verifySecondPerson(db, actor, input.witness.username, input.witness.pin, at);
     return withTx(db, async (tx) => {
       const e = await openEpisode(tx, issue0.episodeId);
       const issue = (await tx.select().from(erMedIssues).where(eq(erMedIssues.id, issue0.id)).for("update"))[0]!;
@@ -439,10 +439,10 @@ export async function recordConsent(db: Db, actor: Actor, raw: unknown, opts: Op
     let secondDoctorId: string | null = null;
     if (input.signedBy === "emergency") {
       try {
-        secondDoctorId = await secondPerson(db, actor, input.secondDoctor!.username, input.secondDoctor!.pin, at);
+        secondDoctorId = await verifySecondPerson(db, actor, input.secondDoctor!.username, input.secondDoctor!.pin, at);
       } catch (err) {
         if (err instanceof ErRefusal && err.code === "second_checker_same") throw new ErRefusal("emergency_needs_second_doctor", { same: true });
-        if (err instanceof ErRefusal && err.code === "second_check_failed" && (err.detail as { role?: string } | undefined)?.role === "not_clinical") {
+        if (err instanceof ErRefusal && err.code === "second_check_failed" && (err.detail as { role?: string } | undefined)?.role !== undefined) {
           throw new ErRefusal("not_a_doctor");
         }
         throw err;

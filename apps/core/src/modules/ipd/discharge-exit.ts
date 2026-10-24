@@ -392,8 +392,8 @@ async function toEntries(db: Db, actor: Actor, rows: MortuaryRow[]): Promise<Ipd
   return rows.map((r) => {
     const p = people.get(r.patientId);
     return {
-      id: r.id, admissionId: r.admissionId, admissionNo: adm.get(r.admissionId) ?? null,
-      erEpisodeId: null, erEpisodeNo: null, // IPD/ER train B2 — a death in the ER arrives with the ER lanes (B4)
+      id: r.id, admissionId: r.admissionId, admissionNo: r.admissionId === null ? null : adm.get(r.admissionId) ?? null,
+      erEpisodeId: r.erEpisodeId, erEpisodeNo: r.erEpisodeId === null ? null : er.get(r.erEpisodeId) ?? null,
       patientName: p === undefined ? null : p.restricted ? p.alias : p.name, uhid: p?.uhid ?? "", status: r.status as IpdMortuaryEntry["status"],
       diedAt: r.diedAt.toISOString(), mlc: r.mlc, receivedAt: r.receivedAt?.toISOString() ?? null, policeClearance: r.policeClearance,
       releasedTo: r.releasedTo ?? null, releasedAt: r.releasedAt?.toISOString() ?? null,

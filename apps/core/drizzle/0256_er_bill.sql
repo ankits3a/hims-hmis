@@ -65,9 +65,9 @@ CREATE INDEX "er_advances_episode_idx" ON "er_advances" USING btree ("episode_id
 CREATE UNIQUE INDEX "er_bills_episode_ux" ON "er_bills" USING btree ("episode_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "er_payer_claims_episode_ux" ON "er_payer_claims" USING btree ("episode_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "ipd_charge_lines_er_line_ux" ON "ipd_charge_lines" USING btree ("er_charge_line_id") WHERE "ipd_charge_lines"."source" = 'ipd.er';--> statement-breakpoint
-ALTER TABLE "ipd_charge_exceptions" ADD CONSTRAINT "ipd_charge_exceptions_component_ck" CHECK ("ipd_charge_exceptions"."component" is null or "ipd_charge_exceptions"."component" in ('room', 'nursing', 'rmo', 'visit', 'cross_visit', 'lab', 'imaging', 'er'));--> statement-breakpoint
-ALTER TABLE "ipd_charge_lines" ADD CONSTRAINT "ipd_charge_lines_component_ck" CHECK ("ipd_charge_lines"."component" in ('room', 'nursing', 'rmo', 'visit', 'cross_visit', 'lab', 'imaging', 'er'));--> statement-breakpoint
-ALTER TABLE "ipd_charge_lines" ADD CONSTRAINT "ipd_charge_lines_source_ck" CHECK ("ipd_charge_lines"."source" in ('ipd.nightly', 'ipd.visit', 'ipd.reversal', 'ipd.order', 'ipd.er'));--> statement-breakpoint
+ALTER TABLE "ipd_charge_exceptions" ADD CONSTRAINT "ipd_charge_exceptions_component_ck" CHECK ("ipd_charge_exceptions"."component" is null or "ipd_charge_exceptions"."component" in ('room', 'nursing', 'rmo', 'visit', 'cross_visit', 'lab', 'imaging', 'pharmacy', 'er'));--> statement-breakpoint
+ALTER TABLE "ipd_charge_lines" ADD CONSTRAINT "ipd_charge_lines_component_ck" CHECK ("ipd_charge_lines"."component" in ('room', 'nursing', 'rmo', 'visit', 'cross_visit', 'lab', 'imaging', 'pharmacy', 'er'));--> statement-breakpoint
+ALTER TABLE "ipd_charge_lines" ADD CONSTRAINT "ipd_charge_lines_source_ck" CHECK ("ipd_charge_lines"."source" in ('ipd.nightly', 'ipd.visit', 'ipd.reversal', 'ipd.order', 'ipd.pharmacy', 'ipd.er'));--> statement-breakpoint
 ALTER TABLE "er_episodes" ADD CONSTRAINT "er_episodes_payer_ck" CHECK ("er_episodes"."payer" in ('self', 'pmjay', 'road_accident', 'bnss_free', 'mci_event'));--> statement-breakpoint
 ALTER TABLE "er_episodes" ADD COLUMN "accident_ref" text;--> statement-breakpoint
 ALTER TABLE "er_episodes" ADD COLUMN "accident_at" timestamp with time zone;

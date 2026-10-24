@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/lab/`
 
 - **Depends on modules:** `billing`, `opd`, `patients`, `roster`, `tariff`
-- **Used by modules:** `abdm`, `doctor-desk`, `ipd`, `ordering`, `radiology`
+- **Used by modules:** `abdm`, `doctor-desk`, `emergency`, `ipd`, `ordering`, `radiology`
 - **Kernel used:** `alerts`, `approvals`, `auth`, `config`, `copilot`, `db`, `desk`, `documents`, `episodes`, `events`, `inference`, `modules`, `notify`, `ops`, `orders`, `phi`, `printing`, `realtime`, `report`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `interfaceDown`, `interfaceRestored`
 
@@ -81,7 +81,8 @@ Source: `apps/core/src/modules/lab/`
   - `acknowledgeCritical(tx: Tx, actor: Actor, input: AcknowledgeCriticalInput, now: Date = new Date()): Promise<AcknowledgeCriticalOutcome>`
   - `nextRung(attempts: readonly CriticalAttempt[]): CriticalRung | null`
   - `openCriticalCalls(db: Db, actor: Actor, now: Date = new Date()): Promise<OpenCriticalCall[]>`
-  - types: `AcknowledgeCriticalInput`, `AcknowledgeCriticalOutcome`, `CriticalAttempt`, `OpenCriticalCall`
+  - `openCriticalsForEncounters(db: Db | Tx, encounterNos: readonly string[], viewer: Actor | { system: true }): Promise<OpenCritical[]>`
+  - types: `AcknowledgeCriticalInput`, `AcknowledgeCriticalOutcome`, `CriticalAttempt`, `OpenCritical`, `OpenCriticalCall`
 - `definitions.ts`
   - `LAB_DEFINITIONS`
   - `LAB_DEF_KEYS`

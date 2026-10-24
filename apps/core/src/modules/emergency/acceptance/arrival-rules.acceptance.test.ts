@@ -102,7 +102,11 @@ describe("ER lane 1 er-arrival — the arrival rules", () => {
   });
 
   it("brought dead is terminal at once: no band, never open, examined after arrival; a casualty nurse may record it", async () => {
-    const now = new Date();
+    // #931 — the clock is injected so the arrival 20 minutes back is always on today's IST day: between 00:00 and 00:20
+    // IST the real "now − 20 min" fell on yesterday and broughtDeadToday read 0. Behaviour under test is unchanged.
+    const real = new Date();
+    const istMidnight = new Date(`${real.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" })}T00:00:00+05:30`);
+    const now = new Date(Math.max(real.getTime(), istMidnight.getTime() + 30 * MIN));
     const gate = new Date(now.getTime() - 20 * MIN);
     await expect(recordBroughtDead(db, w.erNurse, {
       idempotencyKey: key(), unidentified: { sex: "male", ageBand: "adult" }, arrivalMode: "police", arrivedAt: gate.toISOString(),

@@ -151,7 +151,7 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   custody + mortuary entry). Screen `apps/web/src/screens/er-mlc.tsx` (`/er/mlc?mlc=<id>`); the ER patient's bar has "MLC".
 - Care is never gated: (c-2) in `acceptance/mlc.acceptance.test.ts` runs lane 3's clinical intents on an MLC patient
   with the intimation overdue and the countersign breached. No care file reads `er_mlc*`.
-- `scripts/stage-er-setup.ts` (UAT only): drafts `er_episode`, creates an EMPTY `ER-SAT` store, grants `er_nurse` to the
+- Staging setup (UAT only, kept off main): drafts `er_episode`, creates an EMPTY `ER-SAT` store, grants `er_nurse` to the
   all-roles account. Production: the materials head creates and stocks ER-SAT; MS + owner activate the workflow.
 
 - ER review 2 (2026-10-15, DECIDED as standard practice):
@@ -218,7 +218,7 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
 - Roll-over at admission: `rollErLinesIn` (called first in lane 5's `leaveForBedIn`) carries the visit lines and the stored
   issue/procedure lines through IPD's `carryErLineIn` (`ipd.er` lines, component `er`, one per ER line via
   `ipd_charge_lines_er_line_ux`; a missing rate is the IP bill desk's exception); order lines go through lane 5's order seam.
-- `stage-er-setup` step d drafts the sample ER tariff (services inactive, a draft version).
+- The staging setup drafts the sample ER tariff (services inactive, a draft version); production prices ER from the owner's tariff.
 - ER review 3 (2026-10-15): a drug is priced at its batch MRP for the PACK the MRP names, spread over the base units
   taken (materials' `packPriceOf` + `saleAmountPaise`), never MRP × base units. At roll-over every ER advance becomes a
   deposit of the admission (IPD `carryErAdvanceIn`, once per receipt) and an issue still without a price rolls over on

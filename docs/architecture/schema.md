@@ -37,6 +37,7 @@ flowchart LR
   ipd_rounds[ipd-rounds] --> ipd[ipd]
   ipd_rounds[ipd-rounds] --> patients[patients]
   ipd_tpa[ipd-tpa] --> ipd[ipd]
+  ipd[ipd] --> emergency[emergency]
   ipd[ipd] --> patients[patients]
   ipd[ipd] --> resources[resources]
   lab[lab] --> billing[billing]
@@ -117,7 +118,7 @@ flowchart LR
 | `diet.ts` | module diet | `diet_consults`, `diet_meal_lines`, `diet_meal_lists`, `diet_meal_rounds`, `diet_npo`, `diet_orders` |
 | `doctor-desk.ts` | module doctor-desk | `doctor_desk_acts`, `doctor_desk_agent_runs`, `doctor_desk_briefs`, `doctor_desk_moves`, `doctor_desk_nudges`, `doctor_desk_ratings`, `doctor_desk_reads` |
 | `documents.ts` | kernel | `patient_documents` |
-| `emergency.ts` | module emergency | `er_bands`, `er_charge_lines`, `er_consents`, `er_critical_alerts`, `er_doses`, `er_episodes`, `er_med_issues`, `er_med_returns`, `er_notes`, `er_pre_alerts`, `er_procedures`, `er_specialty_calls`, `er_triage_entries` |
+| `emergency.ts` | module emergency | `er_admission_disputes`, `er_advances`, `er_bands`, `er_bills`, `er_charge_lines`, `er_code_events`, `er_codes`, `er_consents`, `er_critical_alerts`, `er_departure_records`, `er_doses`, `er_episodes`, `er_event_accounts`, `er_mci_events`, `er_mci_packs`, `er_mci_surge_beds`, `er_mci_tags`, `er_med_issues`, `er_med_returns`, `er_mlc_addenda`, `er_mlc_custody`, `er_mlc_intimations`, `er_mlc_obligations`, `er_mlcs`, `er_notes`, `er_payer_claims`, `er_pre_alerts`, `er_procedures`, `er_specialty_calls`, `er_triage_entries` |
 | `episodes.ts` | kernel | `episode_series` |
 | `eventCursors.ts` | kernel | `event_cursors` |
 | `eventIdempotency.ts` | kernel | `event_idempotency` |
