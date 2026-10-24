@@ -1118,6 +1118,10 @@ const ER_README_PROSE =
 const ER_WALL_README_PROSE =
   "`er.board.wall` (the wall screen only: initials or the alias, no UHID, no complaint, no police mark) is held by the same six and the kiosk `display` role.";
 
+/** ER lane 9 review (#894) — the README prose line authorising the waiting-area TV's string. Quoted, not paraphrased. */
+const ER_WAITING_README_PROSE =
+  "`er.board.waiting` (the waiting-area TV only: a token and a stage word, no name, no clinical text) is held by the new `waiting_display` role and nothing else.";
+
 /**
  * ER lane 1 (#808, decision 0076; built 2026-10-15, awaiting owner review) — the ER desk (front office, its supervisor,
  * the duty manager at night, and the new casualty nurse role) and the tracking board (the same four, doctors, the MS).
@@ -1138,6 +1142,8 @@ const ER_PAIRS: readonly string[] = [
   // ER lane 3 (#810) — care: doctors and the casualty nurse (ER_CARE_README_PROSE).
   "er_nurse/er.care",
   "doctor/er.care",
+  // ER lane 9 review (#894, DECIDED) — the waiting-area TV's own string, its own seat and nothing else (ER_WAITING_README_PROSE).
+  "waiting_display/er.board.waiting",
   // ER lane 4 (#811) — the MLC: doctors, the casualty nurse, the ER desk, its supervisor, the duty manager, the MS
   // (ER_MLC_README_PROSE).
   "doctor/er.mlc", "er_nurse/er.mlc", "front_office/er.mlc", "front_office_supervisor/er.mlc", "duty_manager/er.mlc",
@@ -1883,6 +1889,8 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // IPD NURSING E4.1 (#733) — the three ward nursing roles, appended. Grants and no holders.
       "ward_nurse", "nursing_supervisor", "nursing_superintendent",
       "er_nurse",
+      // ER lane 9 review (#894) — the ER waiting-area TV, appended. Grants and no holders.
+      "waiting_display",
     ]);
     expect(Object.fromEntries(ROLE_MODEL.map((r) => [r.roleKey, r.permissions.length]))).toEqual({
       // Plan 09 / DD18 moved four of these: +3 each to the two desk roles and the cashier (read,
@@ -2029,6 +2037,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       nursing_supervisor: 23, // IPD NURSING E4.1 (#733) — the ward nurse's thirteen, ipd.ews.respond and ipd.family.issue
       nursing_superintendent: 8, // IPD NURSING E4.1 (#733) — nursing view, ews respond, beds view, discharge view, family callbacks
       er_nurse: 2, // ER lane 1 (#808) — er.board.view, er.arrival.register
+      waiting_display: 1, // ER lane 9 review (#894) — er.board.waiting and nothing else
       antimicrobial_steward: 3, // PHARMACY STAGE D5 — approvals.requests.read and .decide (it is the approverRole) and pharmacy.antimicrobial.approve
     });
     // PLAN 07c T9 — 156 → 158: `staff.reports.read` to `front_office_supervisor` and to
@@ -2390,6 +2399,8 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // IPD NURSING E4.1 appends the three ward nursing roles.
       "ward_nurse", "nursing_supervisor", "nursing_superintendent",
       "er_nurse",
+      // ER lane 9 review (#894) appends the ER waiting-area TV.
+      "waiting_display",
     ]);
     // `nurse` is now the ONLY constant entry with no permission column anywhere — `duty_manager`
     // left this list on 2026-08-26 when Group C gave it one.
@@ -2416,6 +2427,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       "radiology_resident", // 18-S RS8b — signs for a consultant's co-sign
       "dietician", "kitchen_staff", // DIET E4.4 (#736); `.sort()` places them
       "er_nurse", // ER lane 1 (#808); `.sort()` places it
+      "waiting_display", // ER lane 9 review (#894) — the ER waiting-area TV; `.sort()` places it
       "attendance_committee", // STAFF ATTENDANCE (owner 2026-10-09) — reads everyone's attendance; `.sort()` places it
       "opd_scribe", // FD-30 — the OPD-door transcription seat; `.sort()` places it, not this line
       "opd_slip_desk", // CONSULTED ON PAPER — the slip desk (owner ruling 2026-10-06, B)
@@ -2683,6 +2695,7 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(readme).toContain(ER_WALL_README_PROSE);
     expect(readme).toContain(ER_TRIAGE_README_PROSE);
     expect(readme).toContain(ER_CARE_README_PROSE);
+    expect(readme).toContain(ER_WAITING_README_PROSE);
     expect(readme).toContain(ER_MLC_README_PROSE);
     expect(readme).toContain(ER_DISPO_README_PROSE);
     expect(readme).toContain(ER_BILL_README_PROSE);

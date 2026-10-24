@@ -7739,6 +7739,43 @@
     "nextStep": "कृपया अगले वाइटल्स डेस्क पर जाएँ।"
   },
   "desk": {
+    "erLwbsRisk": {
+      "title": "लंबी प्रतीक्षा: बिना दिखाए जा सकते हैं"
+    },
+    "erPreAlert": {
+      "title": "ईआर में आने वाले"
+    },
+    "erMlcCountersignDue": {
+      "title": "एमएलसी: काउंटरसाइन बाकी"
+    },
+    "erMlcIntimationDue": {
+      "title": "एमएलसी: पुलिस सूचना बाकी"
+    },
+    "erBoardingLong": {
+      "title": "ईआर में भर्ती की प्रतीक्षा"
+    },
+    "erCriticalResult": {
+      "title": "क्रिटिकल रिपोर्ट"
+    },
+    "erResultReady": {
+      "title": "रिपोर्ट तैयार"
+    },
+    "erCallUnanswered": {
+      "title": "विशेषज्ञ कॉल का जवाब नहीं"
+    },
+    "erDoctorOverdue": {
+      "title": "ईआर डॉक्टर की प्रतीक्षा"
+    },
+    "erRetriageDue": {
+      "title": "दोबारा ट्राइएज बाकी"
+    },
+    "erCasualtyNow": {
+      "title": "कैजुअल्टी अभी",
+      "inDepartment": "विभाग में",
+      "waitingTriage": "ट्राइएज की प्रतीक्षा",
+      "boarding": "भर्ती की प्रतीक्षा",
+      "expected": "आने वाले"
+    },
     "ipdTpaDue": {
       "title": "टीपीए डेस्क देय",
       "preauth": "प्री-ऑथ और प्रश्न",

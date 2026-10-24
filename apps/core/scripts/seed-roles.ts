@@ -2313,6 +2313,12 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // ER lane 5 (#812) — `er.disposition`: LWBS and abscond (the doctor's acts check the doctor role).
   // ER lane 8 (#815) — `er.mci`: START / JumpSTART tags and the MCI board during a Code Yellow.
   { roleKey: "er_nurse", permissions: ["er.mci", "er.codes", "er.board.view", "er.board.wall", "er.arrival.register", "er.triage", "er.care", "er.mlc", "er.disposition"] },
+  /**
+   * ER lane 9 review (#894, DECIDED) — the ER WAITING-AREA TV. A public screen shows tokens and stage words
+   * (`er.board.waiting`) and nothing else; it is a seat of its own so that its sign-in cannot open the staff wall board
+   * (`er.board.wall`, which the `display` seat keeps). NOBODY is assigned to it by any seed. README "Emergency arrival" prose.
+   */
+  { roleKey: "waiting_display", permissions: ["er.board.waiting"] },
 ];
 
 /**
@@ -2582,6 +2588,7 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   dietician: "Dietician (diet orders, NPO, consults, meal rounds and the kitchen lists)",
   kitchen_staff: "Kitchen Staff (builds, prints and dispatches the meal lists)",
   er_nurse: "Casualty Nurse (registers ER arrivals, prints the ER band, triages by ESI; the tracking board)",
+  waiting_display: "ER Waiting-Area Display (tokens and stage words only; no names, no clinical text)",
   maintenance_staff: "Maintenance Staff (engineering technicians: electrical, plumbing, AC, carpentry repairs)",
   // IPD NURSING E4.1 (#733) — the ward nursing ladder.
   ward_nurse: "Ward Nurse (staff nurse: vitals, assessment, intake/output, notes, shift handover, transfers)",

@@ -16,6 +16,8 @@ import { ErRefusal } from "./errors";
 import { erDoctorAssigned, erMoved, erPlaced, erRetriaged, erTriaged, erVitalsRecorded } from "./events";
 import { isSurgeBay } from "./mci-bays";
 import { ER_TRIAGE } from "./names";
+import { bayProposalOf } from "./copilot-bay";
+import { esiProposalOf } from "./copilot-esi";
 import { ER_RETRIAGE_TASK, ER_TRIAGE_DUE_TASK } from "./task-kinds";
 import type { Actor, ErEsiDecision, ErEsiLevel, ErEws, ErIntentName, ErVitals } from "@hmis/contracts";
 import type { z } from "zod";
@@ -90,12 +92,12 @@ async function takeFor(tx: Tx, departmentCode: string | undefined, gate: Date): 
   return { departmentCode: dept.code, departmentId: dept.id, teamId: take.teamId, source: take.source };
 }
 
-type Common = { level: ErEsiLevel; decision?: ErEsiDecision; reason?: string; vitals?: ErVitals; obstetric?: boolean };
+type Common = { level: ErEsiLevel; decision?: ErEsiDecision; reason?: string; vitals?: ErVitals; obstetric?: boolean; copilotLevel?: ErEsiLevel };
 
 /** The shared triage / re-triage write: the entry row, the episode mirror, the clock and the task. */
 async function writeTriage(
   db: Db, tx: Tx, actor: Actor, e: EpisodeRow, kind: "triage" | "re_triage", input: Common, at: Date, ews: ErEws | null,
-): Promise<{ algorithm: ErEsiLevel | null; down: boolean; retriageAt: Date | null }> {
+): Promise<{ algorithm: ErEsiLevel | null; down: boolean; retriageAt: Date | null; copilotLevel: ErEsiLevel | null; override: boolean }> {
   const algorithm = input.decision === undefined ? null : esiAlgorithm(input.decision).level;
   const down = downTriageCheck(input.level, algorithm, (e.esi ?? null) as ErEsiLevel | null, input.reason);
   // Until a doctor has seen the patient the clock runs; after, the doctor watches them (lane 3's clocks).
@@ -105,9 +107,13 @@ async function writeTriage(
     decision: input.decision ?? null, reason: input.reason ?? null, vitals: input.vitals ?? null,
     ewsKind: ews?.kind ?? null, ewsValue: ews?.value ?? null, ewsBand: ews?.band ?? null,
     recordedBy: actor.id, recordedAt: at, takenAt: at, provenance: provenanceOf(actor),
+    // Lane 9 (#816, review #894): the copilot's proposal RECOMPUTED BY THE SERVER at the tap (never a client's value); a
+    // different level is the override the entry logs (spec §6 edge 2) — never a reason asked for by itself.
+    copilotLevel: input.copilotLevel ?? null,
   });
   await closeRetriageTask(tx, e, kind === "triage" ? "triaged" : "re-triaged", at);
-  return { algorithm, down, retriageAt };
+  const copilotLevel = input.copilotLevel ?? null;
+  return { algorithm, down, retriageAt, copilotLevel, override: copilotLevel !== null && copilotLevel !== input.level };
 }
 
 // ═══════════════════════════════════════════ triage ═══════════════════════════════════════════
@@ -119,11 +125,12 @@ export async function triage(db: Db, actor: Actor, raw: unknown, opts: Opts = {}
   return onceEr(db, actor, "triage", input.idempotencyKey, input, async () => {
     const pre = await lockFree(db, input.episodeId);
     const ews = await scoreFor(db, actor, pre, input.vitals, input.obstetric, at);
+    const copilotLevel = (await esiProposalOf(db, actor, pre, at)).level;
     return withTx(db, async (tx) => {
       const e = await lockEpisode(tx, input.episodeId);
       if (e.state !== "arrived") throw new ErRefusal("episode_wrong_state", { state: e.state });
       const take = await takeFor(tx, input.departmentCode, e.arrivedAt);
-      const w = await writeTriage(db, tx, actor, e, "triage", input, at, ews);
+      const w = await writeTriage(db, tx, actor, e, "triage", { ...input, copilotLevel }, at, ews);
       await moveEpisode(tx, actor, e, "triaged", at, {
         esi: input.level, triagedAt: at, lastTriageAt: at, retriageDueAt: w.retriageAt,
         ...(ews === null ? {} : { ewsKind: ews.kind, ewsValue: ews.value, ewsBand: ews.band }),
@@ -132,7 +139,7 @@ export async function triage(db: Db, actor: Actor, raw: unknown, opts: Opts = {}
       await appendEvent(tx, erTriaged.make({
         payload: {
           episodeId: e.id, level: input.level, algorithmLevel: w.algorithm, downTriage: w.down, triagedAt: at.toISOString(),
-          takeTeamId: take?.teamId ?? null, provenance: provenanceOf(actor),
+          takeTeamId: take?.teamId ?? null, provenance: provenanceOf(actor), copilotLevel: w.copilotLevel, override: w.override,
         },
         actor, correlationId: e.id, patientId: e.patientId, occurredAt: at,
       }));
@@ -159,10 +166,12 @@ export async function reTriage(db: Db, actor: Actor, raw: unknown, opts: Opts = 
   return onceEr(db, actor, "re_triage", input.idempotencyKey, input, async () => {
     const pre = await lockFree(db, input.episodeId);
     const ews = await scoreFor(db, actor, pre, input.vitals, input.obstetric, at);
+    // Review #894: the re-triage screen shows no copilot card, so a re-triage logs no proposal and no override.
+    const copilotLevel = undefined;
     return withTx(db, async (tx) => {
       const e = await lockEpisode(tx, input.episodeId);
       if (e.state !== "triaged" && e.state !== "in_treatment") throw new ErRefusal("episode_wrong_state", { state: e.state });
-      const w = await writeTriage(db, tx, actor, e, "re_triage", input, at, ews);
+      const w = await writeTriage(db, tx, actor, e, "re_triage", { ...input, copilotLevel }, at, ews);
       await tx.update(erEpisodes).set({
         esi: input.level, lastTriageAt: at, retriageDueAt: w.retriageAt, updatedAt: at,
         ...(ews === null ? {} : { ewsKind: ews.kind, ewsValue: ews.value, ewsBand: ews.band }),
@@ -170,7 +179,7 @@ export async function reTriage(db: Db, actor: Actor, raw: unknown, opts: Opts = 
       await appendEvent(tx, erRetriaged.make({
         payload: {
           episodeId: e.id, level: input.level, fromLevel: e.esi, algorithmLevel: w.algorithm, downTriage: w.down,
-          provenance: provenanceOf(actor),
+          provenance: provenanceOf(actor), copilotLevel: w.copilotLevel, override: w.override,
         },
         actor, correlationId: e.id, patientId: e.patientId, occurredAt: at,
       }));
@@ -243,20 +252,29 @@ export async function placeInBay(db: Db, actor: Actor, raw: unknown, opts: Opts 
   const input: Input<"place_in_bay"> = ER_INTENTS.place_in_bay.input.parse(raw);
   await requireErPermission(db, actor, ER_TRIAGE);
   const at = opts.now ?? new Date();
-  return onceEr(db, actor, "place_in_bay", input.idempotencyKey, input, () => withTx(db, async (tx) => {
-    const e = await lockEpisode(tx, input.episodeId);
-    if (!OPEN_STATES.includes(e.state)) throw new ErRefusal("episode_wrong_state", { state: e.state });
-    if (e.bayId !== null) throw new ErRefusal("already_in_bay", { bedId: e.bayId, bayCode: await bayCode(tx, e.bayId) });
-    let placed: { bedId: string; bedCode: string };
-    const surge = await isSurgeBay(tx, input.bedId);
-    try { placed = await placeErEpisodeIn(tx, actor, { bedId: input.bedId, episodeId: e.id }, at, { surge }); } catch (err) { throw bayRefusal(err); }
-    await tx.update(erEpisodes).set({ bayId: placed.bedId, updatedAt: at }).where(eq(erEpisodes.id, e.id));
-    await appendEvent(tx, erPlaced.make({
-      payload: { episodeId: e.id, bedId: placed.bedId, bayCode: placed.bedCode, provenance: provenanceOf(actor) },
-      actor, correlationId: e.id, patientId: e.patientId, occurredAt: at,
-    }));
-    return { episodeId: e.id, bedId: placed.bedId, bayCode: placed.bedCode };
-  }), at);
+  return onceEr(db, actor, "place_in_bay", input.idempotencyKey, input, async () => {
+    // #898: the copilot's bay proposal as it stands, recomputed here (never sent by a client) BEFORE the locks, so the
+    // event says whether the person took it. A proposal that cannot be read never blocks placing a patient.
+    const pre = (await db.select().from(erEpisodes).where(eq(erEpisodes.id, input.episodeId)))[0];
+    const proposed = pre === undefined ? null : await bayProposalOf(db, actor, pre, at).then((p) => p.bay?.bedId ?? null, () => null);
+    return withTx(db, async (tx) => {
+      const e = await lockEpisode(tx, input.episodeId);
+      if (!OPEN_STATES.includes(e.state)) throw new ErRefusal("episode_wrong_state", { state: e.state });
+      if (e.bayId !== null) throw new ErRefusal("already_in_bay", { bedId: e.bayId, bayCode: await bayCode(tx, e.bayId) });
+      let placed: { bedId: string; bedCode: string };
+      const surge = await isSurgeBay(tx, input.bedId);
+      try { placed = await placeErEpisodeIn(tx, actor, { bedId: input.bedId, episodeId: e.id }, at, { surge }); } catch (err) { throw bayRefusal(err); }
+      await tx.update(erEpisodes).set({ bayId: placed.bedId, updatedAt: at }).where(eq(erEpisodes.id, e.id));
+      await appendEvent(tx, erPlaced.make({
+        payload: {
+          episodeId: e.id, bedId: placed.bedId, bayCode: placed.bedCode, provenance: provenanceOf(actor),
+          copilotBedId: proposed, override: proposed !== null && proposed !== placed.bedId,
+        },
+        actor, correlationId: e.id, patientId: e.patientId, occurredAt: at,
+      }));
+      return { episodeId: e.id, bedId: placed.bedId, bayCode: placed.bedCode };
+    });
+  }, at);
 }
 
 /** A move within the ER: the new bay is taken first, then the old one goes to cleaning — never a moment in no bay. */

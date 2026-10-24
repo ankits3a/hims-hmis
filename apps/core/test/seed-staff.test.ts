@@ -258,6 +258,7 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       // so it grew on its own; what is pinned here is that somebody noticed.
       "tariff_editor",
       "vitals_desk",
+      "waiting_display", // ER lane 9 review (#894) — the ER waiting-area TV, by derivation from ROLE_MODEL
       "ward_nurse", // IPD NURSING E4.1 (#733) — the staff nurse on a ward, by derivation from ROLE_MODEL
     ]);
     // Derived from the three shipped constants rather than re-listed: a fourth copy of "the role

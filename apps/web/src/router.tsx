@@ -1006,8 +1006,10 @@ const erBoardRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/er/board",
   staticData: { fullViewport: true },
-  validateSearch: (search: Record<string, unknown>): { wall?: string } => ({
+  // ER lane 9 (#816): `?waiting=1` is the waiting-area display (its own permission, `er.board.waiting`).
+  validateSearch: (search: Record<string, unknown>): { wall?: string; waiting?: string } => ({
     wall: search.wall === "1" || search.wall === 1 || search.wall === true ? "1" : undefined,
+    waiting: search.waiting === "1" || search.waiting === 1 || search.waiting === true ? "1" : undefined,
   }),
   component: ErBoardScreen,
 });

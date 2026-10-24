@@ -12,6 +12,7 @@ import {
 } from "../lib/er-api";
 import type { EsiDecision, EsiLevel } from "../lib/er-api";
 import { EsiBadge, ageSexWords, aliasFirst, doctorClock } from "./er-board";
+import { BayCopilotCard, EsiCopilotCard } from "./er-copilot";
 import "../styles/paper-pine.css";
 import "./er.css";
 
@@ -179,6 +180,7 @@ export function ErTriage(): React.ReactElement {
             </header>
           )}
 
+          {tile !== null && first ? <EsiCopilotCard episodeId={tile.episodeId} onUse={(x) => setD(x)} /> : null}
           {tile !== null && first ? (
             <div className="ert-qs">
               <YesNo t={t} testid="er-triage-q-a" label={t("erTriage.q.lifeSaving")} hint={t("erTriage.q.lifeSavingHint")} value={d.lifeSaving} onPick={yes("lifeSaving")} />
@@ -265,6 +267,10 @@ export function ErTriage(): React.ReactElement {
           <aside className="ert-side">
             <section aria-label={t("erTriage.bay")}>
               <h2>{t("erTriage.bay")}{tile.bayCode !== null ? <span className="erb-badge">{tile.bayCode}</span> : null}</h2>
+              {tile.bayCode === null && tile.esi !== null ? (
+                <BayCopilotCard episodeId={tile.episodeId} busy={busy}
+                  onPlace={(bedId) => void act(async () => { const r = await placeInBayApi(tile.episodeId, bedId); setNote(t("erTriage.placed", { bay: r.bayCode })); })} />
+              ) : null}
               {free.length === 0 ? <div className="erb-empty">{t("erTriage.noBay")}</div> : (
                 <div className="ert-bays" data-testid="er-triage-bays">
                   {free.map((b) => (

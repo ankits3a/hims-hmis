@@ -7739,6 +7739,43 @@
     "nextStep": "Please go to the vitals desk next."
   },
   "desk": {
+    "erLwbsRisk": {
+      "title": "Long wait: may leave unseen"
+    },
+    "erPreAlert": {
+      "title": "Expected in the ER"
+    },
+    "erMlcCountersignDue": {
+      "title": "MLC: countersign due"
+    },
+    "erMlcIntimationDue": {
+      "title": "MLC: police intimation due"
+    },
+    "erBoardingLong": {
+      "title": "Boarding in the ER"
+    },
+    "erCriticalResult": {
+      "title": "Critical results"
+    },
+    "erResultReady": {
+      "title": "Results ready"
+    },
+    "erCallUnanswered": {
+      "title": "Specialty calls unanswered"
+    },
+    "erDoctorOverdue": {
+      "title": "Waiting for the ER doctor"
+    },
+    "erRetriageDue": {
+      "title": "Re-triage due"
+    },
+    "erCasualtyNow": {
+      "title": "Casualty now",
+      "inDepartment": "In the department",
+      "waitingTriage": "Waiting for triage",
+      "boarding": "Boarding",
+      "expected": "Expected"
+    },
     "ipdTpaDue": {
       "title": "TPA desk due",
       "preauth": "Pre-auths and queries",

@@ -580,7 +580,8 @@ export async function sweepErCareClocks(db: Db, now: Date): Promise<{ criticals:
   const open = await db.select({ id: erEpisodes.id, episodeNo: erEpisodes.episodeNo }).from(erEpisodes)
     .where(inArray(erEpisodes.state, [...ER_OPEN_STATE_VALUES]));
   const byNo = new Map(open.map((e) => [e.episodeNo, e.id] as const));
-  const crits = await openCriticalsForEncounters(db, [...byNo.keys()]);
+  // A system sweep: no reader — the restricted rows are masked below, in the bell's body.
+  const crits = await openCriticalsForEncounters(db, [...byNo.keys()], { system: true });
   // ER review (2026-10-15): read the alert rows first and lock only where there is something to do (a first notice, or a
   // climb that is due) — an alert already climbed, or not yet due, costs no transaction and no episode lock.
   const seen = new Map(crits.length === 0 ? [] : (await db.select().from(erCriticalAlerts)
@@ -593,7 +594,9 @@ export async function sweepErCareClocks(db: Db, now: Date): Promise<{ criticals:
     await withTx(db, async (tx) => {
       const e = await lockEpisode(tx, episodeId);
       const row = (await tx.select().from(erCriticalAlerts).where(eq(erCriticalAlerts.callId, c.callId)).for("update"))[0];
-      const body = `${c.analyteCode} ${c.value}${c.unit === null ? "" : ` ${c.unit}`}`;
+      // Review #894: a system sweep has no reader to judge, so a RESTRICTED test's bell never names its analyte or value —
+      // the urgency rings the same; the content is for its orderer to open (the lab's restricted-test rule).
+      const body = c.restricted ? "Critical result (restricted test)" : `${c.analyteCode} ${c.value}${c.unit === null ? "" : ` ${c.unit}`}`;
       if (row === undefined) {
         // ER review 2 (2026-10-15, DECIDED, spec §4.3): the doctor of record AND the ER charge doctor — the `er_critical`
         // roster target's people when one is configured — at the FIRST notice; with neither, the ladder's fallback.
