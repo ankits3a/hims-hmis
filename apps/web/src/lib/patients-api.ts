@@ -47,6 +47,12 @@ export type WirePatientHit = {
    */
   district: string | null;
   registeredOn: string;
+  /**
+   * Owner 2026-10-23 — the guardian, the counter's next tell-apart (`guardiansOfHits` on the
+   * server says which link). `relation` is null for the registration's father / husband name.
+   * Optional: only `GET /patients/search` sends it, not the duplicate-check candidates.
+   */
+  guardian?: { name: string; relation: string | null } | null;
   /** RC-1 T4 / D6 — WHY this row matched. Rendered as reasons; see `matchReasonKeys`. */
   matchedOn: WireMatchLane[];
 };
@@ -97,6 +103,19 @@ export function matchReasonsDiscriminate(hits: readonly { matchedOn: WireMatchLa
   const signature = (h: { matchedOn: WireMatchLane[] }): string => matchReasonKeys(h.matchedOn).join("|");
   const first = signature(hits[0]!);
   return hits.some((h) => signature(h) !== first);
+}
+
+/**
+ * Owner 2026-10-23 — the word in front of the guardian's name on a counter hit. A woman's spouse
+ * reads "Husband", as on her prescription (#942), and a man's "Wife". The registration's father /
+ * husband box records no relation, so it reads "Father/Husband" rather than guessing.
+ */
+export function guardianRelationKey(relation: string | null, administrativeGender: string): string {
+  const base = "registrationCounter.find.guardian";
+  if (relation === null) return `${base}.fatherHusband`;
+  if (relation !== "spouse") return `${base}.${relation}`;
+  const g = administrativeGender.toLowerCase();
+  return `${base}.${g.startsWith("f") ? "husband" : g.startsWith("m") ? "wife" : "spouse"}`;
 }
 
 /**
