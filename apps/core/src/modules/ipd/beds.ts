@@ -975,9 +975,12 @@ export const OCCUPANT_ER_EPISODE = "er_episode";
  */
 export async function placeErEpisodeIn(
   tx: Tx, actor: Actor, input: { bedId: string; episodeId: string }, at: Date,
+  /** ER lane 8 (#815): a surge bay — an overflow-class bed the duty manager opened to the ER for a Code Yellow. */
+  opts: { surge?: boolean } = {},
 ): Promise<{ bedId: string; bedCode: string }> {
   const { row, attrs } = await lockBed(tx, input.bedId);
-  if (attrs.class !== "emergency") throw new IpdRefusal("bed_class_mismatch", "Not an ER bay");
+  const surgeOk = opts.surge === true && attrs.class === "overflow";
+  if (attrs.class !== "emergency" && !surgeOk) throw new IpdRefusal("bed_class_mismatch", "Not an ER bay");
   if (row.status === "retired") throw new IpdRefusal("bed_retired", "Retired bed");
   if (await currentHold(tx, row, at) !== undefined) throw new IpdRefusal("bed_not_available", "Bed is reserved");
   if (row.occupantRef !== null || row.status !== "available") throw new IpdRefusal("bed_not_available", notAvailableRule(row));

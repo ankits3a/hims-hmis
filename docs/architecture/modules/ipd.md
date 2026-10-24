@@ -125,7 +125,7 @@ Source: `apps/core/src/modules/ipd/`
   - `markBedCleanIn(tx: Tx, actor: Actor, bedId: string, cleanedAt: Date): Promise<Output<"mark_bed_clean">>`
   - `markIncumbentBeds(db: Db, actor: Actor, lines: readonly IncumbentBedLine[], opts: { apply?: boolean; now?: Date } = {}): Promise<IncumbentB…`
   - `nextRuleValidBeds(db: Db, actor: Actor, args: { bedId: string; patientId: string; need: IpdBedNeed; classChange?: "upgrade" | "downgrade"; …`
-  - `placeErEpisodeIn(tx: Tx, actor: Actor, input: { bedId: string; episodeId: string }, at: Date): Promise<{ bedId: string; bedCode: string }>`
+  - `placeErEpisodeIn(tx: Tx, actor: Actor, input: { bedId: string; episodeId: string }, at: Date, opts: { surge?: boolean } = {}): Promise<{ be…`
   - `placementContext(db: Db, actor: Actor, patientId: string, at: Date): Promise<PlacementContext>`
   - `proposeBeds(db: Db, actor: Actor, args: { patientId: string; need: IpdBedNeed; at: Date; heldBedId?: string | null; limit?: number }): Prom…`
   - `readBedFacts(db: Db | Tx, bedId: string): Promise<{ id: string; code: string; class: IpdBedClass; icu: boolean }>`

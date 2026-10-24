@@ -1150,7 +1150,14 @@ const ER_PAIRS: readonly string[] = [
   // ER lane 7 (#814) — codes (ER_CODES_README_PROSE).
   "doctor/er.codes", "er_nurse/er.codes", "ward_nurse/er.codes", "nursing_supervisor/er.codes", "front_office/er.codes",
   "front_office_supervisor/er.codes", "duty_manager/er.codes", "security_guard/er.codes", "medical_superintendent/er.codes",
+  // ER lane 8 (#815) — mass casualty, Code Yellow (ER_MCI_README_PROSE).
+  "doctor/er.mci", "er_nurse/er.mci", "front_office/er.mci", "front_office_supervisor/er.mci", "duty_manager/er.mci",
+  "medical_superintendent/er.mci",
 ];
+
+/** The README prose line authorising mass casualty (ER lane 8, issue #815). Quoted, not paraphrased. */
+const ER_MCI_README_PROSE =
+  "`er.mci` is held by `doctor`, `er_nurse`, `front_office`, `front_office_supervisor`, `duty_manager` and `medical_superintendent`.";
 
 /** The README prose line authorising codes (ER lane 7, issue #814). Quoted, not paraphrased. */
 const ER_CODES_README_PROSE =
@@ -2680,6 +2687,7 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(readme).toContain(ER_DISPO_README_PROSE);
     expect(readme).toContain(ER_BILL_README_PROSE);
     expect(readme).toContain(ER_CODES_README_PROSE);
+    expect(readme).toContain(ER_MCI_README_PROSE);
     expect(readme).toContain(COPILOT_HALT_README_PROSE);
     expect(readme).toContain(IPD_BEDS_README_PROSE);
     expect(readme).toContain(IPD_ADMIT_README_PROSE);

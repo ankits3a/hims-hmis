@@ -129,7 +129,7 @@ type ArrivalCommon = {
 };
 
 /** The gate instant: refuses a future time and, without a paper serial, one more than a day back (spec §4.1 downtime). */
-function gateInstant(input: { arrivedAt?: string; paperSerial?: string }, at: Date): Date {
+export function gateInstant(input: { arrivedAt?: string; paperSerial?: string }, at: Date): Date {
   if (input.arrivedAt === undefined) return at;
   if (erIsInFuture(input.arrivedAt, at)) throw new ErRefusal("time_in_future");
   const gate = new Date(input.arrivedAt);
@@ -148,11 +148,12 @@ async function registerHere(tx: Tx, actor: Actor, input: Parameters<typeof regis
   }
 }
 
-type ArriveArgs = {
+export type ArriveArgs = {
   patientId: string;
   /** The person's records (canonical + merged); a just-registered patient has only their own. */
   personIds: readonly string[];
-  unidentified: { year: number; serial: number; alias: string } | null;
+  /** Lane 8 (#815): a pack's alias carries no per-year serial (`Unknown-MCI26-007`): year and serial null. */
+  unidentified: { year: number | null; serial: number | null; alias: string } | null;
   ageBand: ErAgeBand | null;
   marks: string | null;
   common: ArrivalCommon;
@@ -161,7 +162,7 @@ type ArriveArgs = {
 };
 
 /** Every arrival's rules and writes, in the caller's transaction. Returns the episode row (state `arrived`). */
-async function arriveIn(tx: Tx, actor: Actor, args: ArriveArgs, at: Date): Promise<EpisodeRow> {
+export async function arriveIn(tx: Tx, actor: Actor, args: ArriveArgs, at: Date): Promise<EpisodeRow> {
   await erPatientLock(tx, args.patientId);
   const placed = await placedAdmissionOf(tx, args.personIds);
   if (placed !== null) {
@@ -212,7 +213,7 @@ async function arriveIn(tx: Tx, actor: Actor, args: ArriveArgs, at: Date): Promi
   return (await tx.select().from(erEpisodes).where(eq(erEpisodes.id, id)))[0]!;
 }
 
-async function arrivedEvent(tx: Tx, actor: Actor, e: EpisodeRow, at: Date): Promise<void> {
+export async function arrivedEvent(tx: Tx, actor: Actor, e: EpisodeRow, at: Date): Promise<void> {
   await appendEvent(tx, erArrived.make({
     payload: {
       episodeId: e.id, episodeNo: e.episodeNo, patientId: e.patientId, arrivalMode: e.arrivalMode,
