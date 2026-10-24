@@ -25,6 +25,8 @@ import { PatientStrip } from "./components/patient-strip";
 import { Desk } from "./screens/desk";
 import { MyDay } from "./screens/my-day";
 import { MyLeave } from "./screens/my-leave";
+import { MyTasks } from "./screens/my-tasks";
+import { TasksBoard } from "./screens/tasks-board";
 import { StaffReports } from "./screens/staff-reports";
 import { CopilotHealthScreen } from "./screens/copilot-health";
 import { CrkFormularyScreen } from "./screens/crk-formulary";
@@ -141,9 +143,9 @@ import type { NumbersTab } from "./screens/hospital-numbers";
  * of them. Each is its own group now, in the order a patient meets them. `stores` is gone with it:
  * its one remaining place, the pharmacy office, belongs beside the pharmacy desk.
  */
-type NavGroup = "desk" | "patients" | "opd" | "wards" | "imaging" | "lab" | "theatre" | "pharmacy" | "billing" | "admin";
+type NavGroup = "desk" | "patients" | "opd" | "wards" | "imaging" | "lab" | "theatre" | "pharmacy" | "services" | "billing" | "admin";
 /** Reading order is the order a desk WORKS in — the counter first, administration last. */
-const NAV_GROUPS: readonly NavGroup[] = ["desk", "patients", "opd", "wards", "imaging", "lab", "theatre", "pharmacy", "billing", "admin"];
+const NAV_GROUPS: readonly NavGroup[] = ["desk", "patients", "opd", "wards", "imaging", "lab", "theatre", "pharmacy", "services", "billing", "admin"];
 /**
  * GAP-CLOSURE B3 — `anyOf`: a row that ALSO shows for a holder of any of these. `permission` stays the
  * manifest's own pairing (`nav-parity.test.ts` compares it); `anyOf` is only for a screen that gathers
@@ -309,6 +311,10 @@ const NAV: readonly NavEntry[] = [
   { to: "/copilot-health", label: "nav.copilotHealth", permission: "copilot.health.read", group: "admin" },
   // #882 / decision 0053 — the CRK formulary: Pharmacology signs; the pharmacy may correct a draft.
   { to: "/crk-formulary", label: "nav.crkFormulary", permission: "formulary.crk.sign", group: "pharmacy", anyOf: ["formulary.manage"] },
+  // E0.1 TASK ENGINE (issue #713) — a worker's own tasks and the supervisor's board; paths and permissions match
+  // `tasksManifest.menu`. Their own group: service work (cleaning, waste, porters) is neither a desk nor a ward.
+  { to: "/tasks", label: "nav.myTasks", permission: "tasks.work", group: "services" },
+  { to: "/tasks/board", label: "nav.taskBoard", permission: "tasks.view", group: "services", anyOf: ["tasks.supervise"] },
   // The OPD day report (owner, 2026-09-19): the hospital's day by department, PDF and CSV.
   { to: "/reports/opd-day", label: "nav.opdDayReport", permission: "opd.reports.read", group: "opd" },
   // 20-U U5a — who is on now, the hospital's unit board. `roster.read` matches `rosterManifest.menu`.
@@ -1177,6 +1183,20 @@ const myLeaveRoute = createRoute({
   component: MyLeave,
 });
 
+/** E0.1 TASK ENGINE (issue #713) — My tasks: a worker's one list, built for a phone (390 px). */
+const myTasksRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/tasks",
+  component: MyTasks,
+});
+
+/** E0.1 TASK ENGINE — the supervisor's task board: 16:9, open work by floor, late first, worker load. */
+const tasksBoardRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/tasks/board",
+  component: TasksBoard,
+});
+
 const myReachRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/me/reach",
@@ -2033,6 +2053,8 @@ export const router = createRouter({
       rosterMyDutiesRoute,
       // E2.2 — +1, `/roster/leave` (my leave). `caddyfile-parity.test.ts` pins the count.
       myLeaveRoute,
+      // E0.1 TASK ENGINE — +2, `/tasks` and `/tasks/board`. `caddyfile-parity.test.ts` pins the count.
+      myTasksRoute, tasksBoardRoute,
       rosterEvidenceRoute,
       rosterAebasRoute,
       // DD-0 (#626) — +2, `/doctor-desk` and `/doctor-desk/briefs`. `caddyfile-parity.test.ts` pins the count.

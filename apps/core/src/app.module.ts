@@ -38,6 +38,7 @@ import { AttendanceModule } from "./modules/attendance";
 import { OrderingModule } from "./modules/ordering";
 import { IpdModule } from "./modules/ipd";
 import { DoctorDeskModule } from "./modules/doctor-desk";
+import { TasksModule } from "./modules/tasks";
 import { AerbModule } from "./modules/aerb/aerb.module";
 import { PrintingModule } from "./kernel/printing/printing.module";
 import { RosterModule } from "./modules/roster/roster.module";
@@ -59,6 +60,7 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
  * stay in `ALL_MANIFESTS` (permissions exist either way); every collector reads `registry.live()`.
  */
 const DARK_MODULES: readonly (readonly [DarkModuleKey, Type<unknown>])[] = [
+  ["tasks", TasksModule], // E0.1 task engine (#713) — the task doors: raise, accept, start, done, verify, cancel, my list, the board
   ["ipd", IpdModule], // E1.1 (#718) — the bed routes and the bed board's live topic
 ];
 

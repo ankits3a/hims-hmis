@@ -926,6 +926,23 @@ const HOSPITAL_NUMBERS_PAIRS: readonly string[] = [
   "admin/pharmacy.metrics.read",
 ];
 
+/** The README prose line authorising the task engine's grants (issue #713, decision 0072). Quoted, not paraphrased. */
+const TASKS_README_PROSE =
+  "`tasks.work` is held by the new role `support_staff` and nothing else; `services_supervisor` holds\n`tasks.view`, `tasks.work` and `tasks.supervise`; `duty_manager` holds `tasks.view` and `tasks.supervise`\nfor the hours no supervisor is on.";
+
+/**
+ * E0.1 TASK ENGINE (issue #713) — three permissions, three holders. The two roles are new (no housekeeping or
+ * nursing-supervisor role existed); the duty manager covers the hours no services supervisor is on.
+ */
+const TASKS_PAIRS: readonly string[] = [
+  "duty_manager/tasks.view",
+  "duty_manager/tasks.supervise",
+  "support_staff/tasks.work",
+  "services_supervisor/tasks.view",
+  "services_supervisor/tasks.work",
+  "services_supervisor/tasks.supervise",
+];
+
 /** The README prose line authorising the copilot health read (decision 0064, E0.1). Quoted, not paraphrased. */
 const COPILOT_HEALTH_README_PROSE =
   "`copilot.health.read` is held by `owner`, `admin`, `duty_manager`, `medical_superintendent` and the new role\n`quality_manager` (the copilot steward), and the steward role holds nothing else but the halt switch.";
@@ -1097,6 +1114,7 @@ const NON_TABLE_PAIRS: readonly string[] = [
   ...ROSTER_BOARD_PAIRS,
   ...ROSTER_FLAGS_PAIRS,
   ...ATTENDANCE_PAIRS,
+  ...TASKS_PAIRS,
   ...COPILOT_HEALTH_PAIRS,
   ...COPILOT_HALT_PAIRS,
   ...LAB_METRICS_PAIRS,
@@ -1400,6 +1418,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       aerb: 4, // 18-S RS11: +`aerb.incidents.read`
       pharmacy: 29, // HOSPITAL NUMBERS (#777, 2026-10-13), read off the failing run: +1, pharmacy.metrics.read; ITEM DISCOUNT (owner 2026-10-02): +1, pharmacy.sale_items.discount; STAGE D4: +2, pharmacy.trays.check and .manage; STAGE D5: +1, pharmacy.antimicrobial.approve; STAGE D3: +2, pharmacy.coldchain.record and .manage; STAGE D2: +2, pharmacy.incidents.record and .review; STAGE D1: +2, pharmacy.adr.record and .manage; PHARMACY P6 (patient messages): +2, pharmacy.messages.consent and .manage; PHARMACY P6: +3, pharmacy.ndps.custody, .witness and pharmacy.licences.manage; parity P5 (Tally): +1, pharmacy.tally.export; parity P5: +2, pharmacy.reports.read and .margin; P20: +1, pharmacy.downtime.enter; P19: +2, pharmacy.retail.*; PLAN 16c T1; P2: +1, pharmacy.pharmacists.manage; P9: +1, pharmacy.register.read; P17: +1, read_sealed
       roster: 3, // PHASE R (R1) — manage, publish, read; the seam ships inert (no menu, no route)
+      tasks: 3, // E0.1 TASK ENGINE (issue #713) — tasks.view, tasks.work, tasks.supervise
       attendance: 1, // STAFF ATTENDANCE (owner 2026-10-09) — attendance.all.read; a team and oneself are computed, not granted
       ipd: 4, // IPD BEDS E1.1 (2026-10-12), read off the failing run: ipd.beds.view, .manage, .clean, .overflow
       ordering: 0, // DECISION 0067 — no permission of its own: rides tariff.read, tariff.services.manage and orders.place
@@ -1495,6 +1514,9 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       "admin",
       // #618 / DECISION 0053 — the Pharmacology reviewer, appended. Grants and no holders.
       "pharmacology_reviewer",
+      // E0.1 TASK ENGINE (issue #713) — the two service roles, appended. Grants and no holders.
+      "support_staff",
+      "services_supervisor",
     ]);
     expect(Object.fromEntries(ROLE_MODEL.map((r) => [r.roleKey, r.permissions.length]))).toEqual({
       // Plan 09 / DD18 moved four of these: +3 each to the two desk roles and the cashier (read,
@@ -1631,6 +1653,8 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       quality_manager: 3, // OWNER RULING 2026-10-15 (#581), read off the failing run: halt.set kept, +1 copilot.halt.clear; COPILOT LEDGER E0.1 — copilot.health.read; COPILOT HALT E0.3: +1, copilot.halt.set (the halt drill); #581: +1, copilot.halt.clear
       admin: 4, // OWNER RULING 2026-10-15 (#581), read off the failing run: -1, copilot.halt.set removed; HOSPITAL NUMBERS (#777, 2026-10-13), read off the failing run: +2, radiology.metrics.read and pharmacy.metrics.read; LAB NUMBERS (#768, 2026-10-13), read off the failing run: +1, lab.metrics.read; COPILOT LEDGER E0.1 — copilot.health.read; COPILOT HALT E0.3: +1, copilot.halt.set; its auth.* set stays seed:admin's
       pharmacology_reviewer: 2, // #618 / DECISION 0053 — formulary.read and formulary.crk.sign, nothing else
+      support_staff: 1, // E0.1 TASK ENGINE — tasks.work and nothing else
+      services_supervisor: 3, // E0.1 TASK ENGINE — tasks.view, tasks.work, tasks.supervise
       antimicrobial_steward: 3, // PHARMACY STAGE D5 — approvals.requests.read and .decide (it is the approverRole) and pharmacy.antimicrobial.approve
     });
     // PLAN 07c T9 — 156 → 158: `staff.reports.read` to `front_office_supervisor` and to
@@ -1980,6 +2004,9 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       "admin",
       // #618 / DECISION 0053 — the Pharmacology reviewer, appended. Grants and no holders.
       "pharmacology_reviewer",
+      // E0.1 TASK ENGINE appends the two service roles.
+      "support_staff",
+      "services_supervisor",
     ]);
     // `nurse` is now the ONLY constant entry with no permission column anywhere — `duty_manager`
     // left this list on 2026-08-26 when Group C gave it one.
@@ -2009,6 +2036,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       "opd_slip_desk", // CONSULTED ON PAPER — the slip desk (owner ruling 2026-10-06, B)
       "quality_manager", "admin", // COPILOT LEDGER E0.1 (decision 0064)
       "pharmacology_reviewer", // #618 / decision 0053 — signs the CRK formulary
+      "support_staff", "services_supervisor", // E0.1 TASK ENGINE (issue #713)
     ].sort());
     expect(Object.keys(LOCAL_ROLE_TITLES).filter((k) => opdKeys.includes(k))).toEqual([]);
     for (const key of modelKeys) expect(roleTitle(key).length).toBeGreaterThan(0);
@@ -2257,6 +2285,7 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(readme).toContain(COPILOT_HEALTH_README_PROSE);
     expect(readme).toContain(LAB_METRICS_README_PROSE);
     for (const line of HOSPITAL_NUMBERS_README_PROSE) expect(readme).toContain(line);
+    expect(readme).toContain(TASKS_README_PROSE);
     expect(readme).toContain(COPILOT_HALT_README_PROSE);
     expect(readme).toContain(IPD_BEDS_README_PROSE);
     expect(readme).toContain(APPROVALS_SPINE_README_PROSE);

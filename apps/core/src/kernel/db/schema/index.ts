@@ -121,3 +121,6 @@ export * from "./reminders";
 export * from "./doctor-desk"; // DOCTOR DESK DD-0 (#626) — briefs, nudges, agent runs, reads; references auth.users only
 // E1.1 (#718) — IPD bed reservations and blocks. References `resources` (the bed) and nothing of any module's.
 export * from "./ipd";
+// E0.1 TASK ENGINE (issue #713, decision 0072) — service work at a place and its append-only history.
+// References `resources` (the place) and `patients` (optional); nothing reads it but `modules/tasks`.
+export * from "./tasks";

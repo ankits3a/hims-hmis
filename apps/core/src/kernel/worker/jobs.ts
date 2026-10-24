@@ -35,6 +35,7 @@ import { sweepOverdueQa } from "../../modules/aerb";
 import { routingChooserFor, runAliasJob, runDeskRoutingLearning, runFlowLearning } from "../../modules/opd";
 import { syncAttendance } from "../../modules/attendance";
 import { lapseBedReservations } from "../../modules/ipd";
+import { sweepTasks } from "../../modules/tasks";
 import { collectResourceKinds } from "../resources/kinds";
 import { runIfModuleOn } from "../modules/switch";
 import type { AppConfig } from "../config";
@@ -755,11 +756,16 @@ export function registerAllJobs(
    * clocks ride it), sweepIpdNursing (ipd; the eMAR sweep rides it), postNightlyIpdCharges (ipd; the bill desk's
    * nightly rides it).
    */
-  /** E0.1 TASK ENGINE (#713) — the task clock, every minute: shift end, re-dispatch, the pool, the ladder. */
+  /**
+   * E0.1 TASK ENGINE (issue #713) — THE TASK CLOCK, every minute: a worker whose shift ended hands
+   * their tasks back to the pool, an assignment not accepted in its window goes to the next worker,
+   * the pool is offered again, and a late task climbs its ladder ONCE per rung. Small batches; each
+   * act re-checks its precondition under the row lock, so a second tick changes nothing.
+   */
   scheduler.register({
     name: "sweepTasks",
     every: 60_000,
-    run: async () => { await runIfModuleOn("sweepTasks", "tasks", async () => {}); },
+    run: async (now) => { await runIfModuleOn("sweepTasks", "tasks", () => sweepTasks(db, now)); },
   });
   /*
    * IPD BEDS E1.1 (#718) — a bed held for a patient lapses back after two hours (spec §4.1). Every minute,

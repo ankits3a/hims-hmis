@@ -200,17 +200,20 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       // TEST ORDERING (decision 0067, 2026-10-10) — appended. It reaches into lab, radiology, opd and
       // billing through their indexes; nothing imports it.
       "ordering",
+      // E0.1 TASK ENGINE (issue #713) — appended. It reaches into the roster through its index; owning
+      // modules (housekeeping, bmw …) will import it, never the other way.
+      "tasks",
       "ipd", // IPD BEDS E1.1 (#718): the bed board
       // DOCTOR DESK DD-0 (#626) — appended. A leaf: it reads lab, radiology, opd, patients and roster
       // through their indexes; nothing imports it.
       "doctor-desk",
     ]);
-    expect(ALL_MANIFESTS).toHaveLength(27); // IPD BEDS E1.1: 27, ipd; DOCTOR DESK DD-0: 26; TEST ORDERING: 25; STAFF ATTENDANCE: 24; PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
+    expect(ALL_MANIFESTS).toHaveLength(28); // E0.1 TASK ENGINE: 28, tasks; IPD BEDS E1.1: 27, ipd; DOCTOR DESK DD-0: 26; TEST ORDERING: 25; STAFF ATTENDANCE: 24; PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
     // Installable as a set: `ModuleRegistry.install` throws on a duplicate key, so this also
     // pins that no manifest appears twice.
     const registry = new ModuleRegistry();
     for (const manifest of ALL_MANIFESTS) registry.install(manifest);
-    expect(registry.all()).toHaveLength(27); // IPD BEDS E1.1
+    expect(registry.all()).toHaveLength(28); // IPD BEDS E1.1, E0.1 TASK ENGINE
   });
 
   it("V4: app.module.ts installs ALL_MANIFESTS and nothing else", () => {
@@ -347,9 +350,11 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     //      and needs no permission to, so installing it there would catalog nothing and subscribe to nothing.
     // (1l) DOCTOR DESK DD-0 — the TWENTY-SIXTH, `doctor-desk`, APP-ONLY on the same terms: no
     //      permission, no subscription, no job; the worker has nothing to run for it.
-    // (1m) IPD BEDS E1.1 — the TWENTY-SEVENTH, `ipd`, APP-ONLY on the same terms: four permissions, no subscription;
+    // (1m) E0.1 TASK ENGINE — `tasks`, APP-ONLY on the same terms: three permissions, no subscription;
+    //      the worker runs `sweepTasks` and needs no permission to.
+    // (1n) IPD BEDS E1.1 — `ipd`, APP-ONLY on the same terms: four permissions, no subscription;
     //      the worker runs its job (`lapseBedReservations`) without the manifest.
-    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance", "ipd", "doctor-desk"]);
+    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance", "tasks", "ipd", "doctor-desk"]);
 
     /**
      * ═══ THE COUNT IS THE FRICTION, AND UNTIL NOW NOTHING ENFORCED IT ═══

@@ -1704,6 +1704,13 @@ totals: `copilot.health.read` is held by `owner`, `admin`, `duty_manager`, `medi
 timings, model calls and estimated AI spend for a day and never a per-person list; nobody is assigned to
 `quality_manager` by any seed.
 
+**Task engine (issue #713, decision 0072, 2026-10-12).** One engine runs every service request — a bed to
+clean, a bag to collect, a patient to move: raised, offered to the least-loaded worker on duty, accepted
+by exactly one, started, done, and checked where its kind says. Three permissions guard it.
+`tasks.work` is held by the new role `support_staff` and nothing else; `services_supervisor` holds
+`tasks.view`, `tasks.work` and `tasks.supervise`; `duty_manager` holds `tasks.view` and `tasks.supervise`
+for the hours no supervisor is on. Nobody is assigned to either new role by any seed.
+
 **Copilot halt switch and spend cap (plan E0.3/E0.5, decision 0064, built 2026-10-11, awaiting owner review).**
 `copilot.halt.set` (owner, medical_superintendent, quality_manager) pauses the copilot by scope — read, act,
 draft or global;
