@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/billing/`
 · Notes: [MAP.md](../../../apps/core/src/modules/billing/MAP.md)
 
 - **Depends on modules:** `membership`, `opd`, `patients`, `tariff`
-- **Used by modules:** `lab`, `opd`, `ordering`, `ot`, `partners`, `pharmacy`, `radiology`
+- **Used by modules:** `ipd`, `lab`, `opd`, `ordering`, `ot`, `partners`, `pharmacy`, `radiology`
 - **Kernel used:** `approvals`, `auth`, `config`, `copilot`, `crypto`, `db`, `desk`, `episodes`, `events`, `modules`, `phi`, `printing`, `report`, `search`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
@@ -55,6 +55,14 @@ Source: `apps/core/src/modules/billing/`
 - `desk-provider.ts`
   - `cashierDay(exec: Db | Tx, userId: string, day: string): Promise<CashierDay>`
   - types: `CashierDay`
+- `episode-charges.ts`
+  - `RUNNING_BILL_EPISODE_RES: readonly RegExp[]`
+  - `episodeChargeSinkFor(encounterNo: string): EpisodeChargeSink | null`
+  - `episodeChargeStanding(exec: Db | Tx, encounterNo: string, opts: { lock?: boolean } = {}): Promise<{ sink: EpisodeChargeSink; standing: "liv…`
+  - `isRunningBillEpisode(encounterNo: string | undefined | null): boolean`
+  - `refuseRunningBillTender(encounterNo: string): never`
+  - `registerEpisodeChargeSink(prefix: string, sink: EpisodeChargeSink): () => void`
+  - types: `EpisodeChargeItem`, `EpisodeChargeSink`, `EpisodeReverseOutcome`, `EpisodeStanding`
 - `errors.ts`
   - `class BillingError`
   - `billingHttpStatus(code: BillingErrorCode): number`

@@ -20,7 +20,8 @@ export const DESK_PROVIDER_BUDGET_MS = 250;
  * ever reach, and it would sit in the tree looking implemented forever.
  */
 export function collectDeskProviders(registry: ModuleRegistry): DeskProvider[] {
-  const providers = registry.all().flatMap((m) => m.desk ?? []);
+  // Decision 0085 — a module switched off (`HMIS_MODULES_ON`) adds no Now card.
+  const providers = registry.live().flatMap((m) => m.desk ?? []);
   const seen = new Set<string>();
   const declared = new Set(registry.allPermissions());
   for (const p of providers) {

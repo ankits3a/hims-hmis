@@ -2,6 +2,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseEnv } from "node:util";
 import { z } from "zod";
+import { DARK_MODULE_KEYS, modulesOnSchema } from "./modules/switch";
+import type { DarkModuleKey } from "./modules/switch";
 
 let envLoaded = false;
 
@@ -624,6 +626,18 @@ const configSchema = z.object({
   /** Issuing NEW coupon codes (campaign creation). Redeeming an already-issued coupon is ON and
    *  unflagged. Lifted by the owner on CA/counsel register item 5 and the advertising rules (O-8). */
   COUPON_ISSUANCE_ENABLED: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+  /**
+   * Decision 0085 — the dark modules switched on (`kernel/modules/switch.ts`): a comma list of the ten keys, empty on
+   * production. Parsed here so a typo fails the boot; the switch itself reads the same variable.
+   */
+  HMIS_MODULES_ON: z.string().default("").transform((raw, ctx) => {
+    const r = modulesOnSchema.safeParse(raw);
+    if (!r.success) {
+      ctx.addIssue({ code: "custom", message: `HMIS_MODULES_ON names a module the switch does not know: "${raw}" (keys: ${DARK_MODULE_KEYS.join(",")})` });
+      return z.NEVER;
+    }
+    return r.data;
+  }),
 });
 
 export type AppConfig = {
@@ -669,6 +683,8 @@ export type AppConfig = {
   notifySms: SmsGatewayConfig | Msg91Config | null;
   /** PHARMACY P6 — WhatsApp Cloud API, or NULL on the sink. The access token is non-enumerable. */
   notifyWhatsapp: { phoneNumberId: string; apiVersion: string; baseUrl: string; accessToken: string } | null;
+  /** Decision 0085 — the dark modules this deployment switched on (empty on production). Optional for test fixtures. */
+  modulesOn?: ReadonlySet<DarkModuleKey>;
   /** 11i T3 — "UAT", "TRAINING", …; `null` on production, where the key is never set. */
   environmentLabel: string | null;
   /** WASA M-05 — `TRUSTED_PROXY_CIDRS` split; `null` ⇒ `DEFAULT_TRUSTED_PROXY_CIDRS`. */
@@ -979,6 +995,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     tempRoleMaxTtlMinutes: parsed.TEMP_ROLE_MAX_TTL_MINUTES,
     workerStaleAfterMs: parsed.WORKER_STALE_AFTER_MS,
     documentStorePath: parsed.DOCUMENT_STORE_PATH,
+    modulesOn: parsed.HMIS_MODULES_ON,
     environmentLabel: parsed.HMIS_ENVIRONMENT_LABEL === "" ? null : parsed.HMIS_ENVIRONMENT_LABEL,
     trustedProxyCidrs: parsed.TRUSTED_PROXY_CIDRS === ""
       ? null

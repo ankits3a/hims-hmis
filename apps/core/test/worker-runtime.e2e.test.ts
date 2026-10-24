@@ -209,6 +209,14 @@ const THE_EIGHTEEN = [
   "openDueTeleVisits",
   /** STAFF ATTENDANCE (owner 2026-10-09) — `every(120_000)`: the copy of the attendance machine's records. Makes no call until configured and switched on. */
   "syncAttendance",
+  /** E0.1 TASK ENGINE (issue #713, #833) — `every(60_000)`: the task clock. Registered dark: a no-op while `tasks` is off. */
+  "sweepTasks",
+  /** IPD BEDS E1.1 (#718, #833) — `every(60_000)`: a two-hour bed hold lapses back. A no-op while `ipd` is off. */
+  "lapseBedReservations",
+  /** IPD NURSING E4.1 (#733, #833) — `every(60_000)`: assessment overdue; an unacknowledged early warning. A no-op while off. */
+  "sweepIpdNursing",
+  /** IPD CHARGES E2.1 (#725, #833) — `dailyIst("00:05")`: the running bill's nightly posting. A no-op while `ipd` is off. */
+  "postNightlyIpdCharges",
   /** DOCTOR DESK DD-report v0 — `dailyIst("08:00")`: the unit report, counts only, to the unit head. */
   "sendUnitReports",
 ];
@@ -433,6 +441,8 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
         // silence beside the lateness. Sorted, it lands last.
         // 20-U infra (owner 2026-10-04): `roster.flag_raised` is the EIGHTH — a "this is wrong"
         // flag pages the duty manager on duty. Read off the red run; sorted, it lands last.
+        // E1.4 HOUSEKEEPING (issue #721) — the bed's kernel events drive its cleaning task. Sorted, after `abdm.`.
+        ["housekeeping.bed_turnover", ["resource.assigned", "resource.released", "resource.status_changed"]],
         ["kernel.alerts", [
           "approval.requested",
           "escalation.triggered", "imaging.critical_overdue", "imaging.report_unread",

@@ -32,7 +32,8 @@ const ENTITY_ORDER: readonly string[] = [
  * the whole of §2.54's lesson applied before the drift instead of after it.
  */
 export function collectProviders(registry: ModuleRegistry): SearchProvider[] {
-  const providers = registry.all().flatMap((m) => m.search ?? []);
+  // Decision 0085 — a module switched off answers no search.
+  const providers = registry.live().flatMap((m) => m.search ?? []);
   const seen = new Set<string>();
   const declared = new Set(registry.allPermissions());
   for (const p of providers) {

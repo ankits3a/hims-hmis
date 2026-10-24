@@ -119,3 +119,18 @@ export * from "./copilot";
 // E1.2 — personal reminders (decision 0064): a person's own reminders, raised on their own bell and phone.
 export * from "./reminders";
 export * from "./doctor-desk"; // DOCTOR DESK DD-0 (#626) — briefs, nudges, agent runs, reads; references auth.users only
+// E1.1 (#718) — IPD bed reservations and blocks. References `resources` (the bed) and nothing of any module's.
+export * from "./ipd";
+// E0.1 TASK ENGINE (issue #713, decision 0072) — service work at a place and its append-only history.
+// References `resources` (the place) and `patients` (optional); nothing reads it but `modules/tasks`.
+export * from "./tasks";
+// E1.7 BIO-MEDICAL WASTE (issue #724, decision 0072) — bags, manifests, disputes and the bags' append-only history.
+// References `resources` (the place a bag is generated at); nothing reads it but `modules/bmw`.
+export * from "./bmw";
+// E2.4 LINEN (issue #728, decision 0072) — the linen catalogue, par levels, the append-only movement ledger, laundry
+// batches and their short deliveries, condemn requests and ward counts. References `resources` (wards); nothing reads
+// it but `modules/linen`.
+export * from "./linen";
+// E1.5 MAINTENANCE (issue #722, decision 0072) — repair tickets and their append-only history. References
+// `resources` (the place), `ipd_bed_blocks` (the bed's block) and `tasks` (the repair task).
+export * from "./maintenance";

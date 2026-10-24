@@ -35,6 +35,12 @@ type AuthState = {
   permissions: EffectivePermissions;
   /** Hospital-scope check for a menu entry or a palette command. Presentation only. */
   can: (permission: string) => boolean;
+  /**
+   * Decision 0085 — is this module switched on on the server (`HMIS_MODULES_ON`)? Only the ten modules shipped dark can
+   * be off; every other key answers true. For a section of a shared screen that belongs to a dark module (the IPD rate
+   * card in the billing office): its own screens are already hidden by `can`, because `/auth/me` drops their permissions.
+   */
+  moduleOn: (key: string) => boolean;
   ready: boolean;
   /** The name typed at login, for a screen that must show WHO is at the counter. Null before login. */
   username: string | null;
@@ -79,6 +85,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
   const queryClient = useQueryClient();
   const [actor, setActor] = useState<Actor | null>(null);
   const [permissions, setPermissions] = useState<EffectivePermissions>(NO_PERMISSIONS);
+  const [modulesOn, setModulesOn] = useState<readonly string[]>([]);
+  const [darkModules, setDarkModules] = useState<readonly string[] | null>(null);
   const [ready, setReady] = useState(false);
   const [username, setUsername] = useState<string | null>(() => localStorage.getItem(USERNAME_KEY));
 
@@ -87,13 +95,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     (async () => {
       if (getToken() !== null) {
         try {
-          const me = await api<{ actor: Actor; permissions?: EffectivePermissions }>("GET", "/auth/me");
+          const me = await api<{ actor: Actor; permissions?: EffectivePermissions; modules?: { dark: string[]; on: string[] } }>("GET", "/auth/me");
           if (!cancelled) {
             setActor(me.actor);
             // `?? NO_PERMISSIONS` is not defensive clutter: a browser tab left open across a
             // deploy can hold a session older than this field, and an undefined list must read as
             // "nothing extra", never as a crash on the first render after login.
             setPermissions(me.permissions ?? NO_PERMISSIONS);
+            // Decision 0085 — an older server sends no `modules`: every switchable module then reads as off.
+            setDarkModules(me.modules?.dark ?? null);
+            setModulesOn(me.modules?.on ?? []);
           }
         } catch (e) {
           /**
@@ -174,9 +185,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
   }, [actor, logout]);
 
   const can = useCallback((permission: string) => permissions.hospital.includes(permission), [permissions]);
+  const moduleOn = useCallback(
+    (key: string) => modulesOn.includes(key) || (darkModules !== null && !darkModules.includes(key)),
+    [modulesOn, darkModules],
+  );
 
   return (
-    <AuthContext.Provider value={{ actor, permissions, can, ready, username, login, logout }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ actor, permissions, can, moduleOn, ready, username, login, logout }}>{children}</AuthContext.Provider>
   );
 }
 

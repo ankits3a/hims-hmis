@@ -25,9 +25,19 @@ import { PatientStrip } from "./components/patient-strip";
 import { Desk } from "./screens/desk";
 import { MyDay } from "./screens/my-day";
 import { MyLeave } from "./screens/my-leave";
+import { MyTasks } from "./screens/my-tasks";
+import { TasksBoard } from "./screens/tasks-board";
+import { BmwBoard } from "./screens/bmw-board";
+import { BmwHandle } from "./screens/bmw-handle";
+import { BmwReports } from "./screens/bmw-reports";
+import { LinenBoard } from "./screens/linen-board";
+import { LinenHandle } from "./screens/linen-handle";
+import { HousekeepingBoard } from "./screens/housekeeping-board";
+import { MaintenanceBoard } from "./screens/maintenance-board";
 import { StaffReports } from "./screens/staff-reports";
 import { CopilotHealthScreen } from "./screens/copilot-health";
 import { CrkFormularyScreen } from "./screens/crk-formulary";
+import { IpdBeds } from "./screens/ipd-beds";
 import { CopilotNoticeHost } from "./components/copilot-notice";
 import { OpdReportScreen } from "./screens/opd-report";
 import { DeskOne } from "./screens/desk-one/desk-one";
@@ -140,9 +150,9 @@ import type { NumbersTab } from "./screens/hospital-numbers";
  * of them. Each is its own group now, in the order a patient meets them. `stores` is gone with it:
  * its one remaining place, the pharmacy office, belongs beside the pharmacy desk.
  */
-type NavGroup = "desk" | "patients" | "opd" | "imaging" | "lab" | "theatre" | "pharmacy" | "billing" | "admin";
+type NavGroup = "desk" | "patients" | "opd" | "wards" | "imaging" | "lab" | "theatre" | "pharmacy" | "services" | "billing" | "admin";
 /** Reading order is the order a desk WORKS in — the counter first, administration last. */
-const NAV_GROUPS: readonly NavGroup[] = ["desk", "patients", "opd", "imaging", "lab", "theatre", "pharmacy", "billing", "admin"];
+const NAV_GROUPS: readonly NavGroup[] = ["desk", "patients", "opd", "wards", "imaging", "lab", "theatre", "pharmacy", "services", "billing", "admin"];
 /**
  * GAP-CLOSURE B3 — `anyOf`: a row that ALSO shows for a holder of any of these. `permission` stays the
  * manifest's own pairing (`nav-parity.test.ts` compares it); `anyOf` is only for a screen that gathers
@@ -308,6 +318,20 @@ const NAV: readonly NavEntry[] = [
   { to: "/copilot-health", label: "nav.copilotHealth", permission: "copilot.health.read", group: "admin" },
   // #882 / decision 0053 — the CRK formulary: Pharmacology signs; the pharmacy may correct a draft.
   { to: "/crk-formulary", label: "nav.crkFormulary", permission: "formulary.crk.sign", group: "pharmacy", anyOf: ["formulary.manage"] },
+  // E0.1 TASK ENGINE (issue #713) — a worker's own tasks and the supervisor's board; paths and permissions match
+  // `tasksManifest.menu`. Their own group: service work (cleaning, waste, porters) is neither a desk nor a ward.
+  { to: "/tasks", label: "nav.myTasks", permission: "tasks.work", group: "services" },
+  { to: "/tasks/board", label: "nav.taskBoard", permission: "tasks.view", group: "services", anyOf: ["tasks.supervise"] },
+  // E1.7 BIO-MEDICAL WASTE (issue #724) — the handler's phone, the supervisor's board and the two legal reports; paths
+  // and permissions match `bmwManifest.menu`.
+  { to: "/bmw/handle", label: "nav.bmwHandle", permission: "bmw.handle", group: "services" },
+  { to: "/bmw", label: "nav.bmwBoard", permission: "bmw.view", group: "services", anyOf: ["bmw.manage"] },
+  { to: "/bmw/reports", label: "nav.bmwReports", permission: "bmw.manage", group: "services" },
+  // E2.4 LINEN (issue #728) — the handler's phone and the supervisor's board; paths and permissions match `linenManifest.menu`.
+  { to: "/linen/handle", label: "nav.linenHandle", permission: "linen.handle", group: "services" },
+  { to: "/linen", label: "nav.linenBoard", permission: "linen.view", group: "services", anyOf: ["linen.manage"] },
+  { to: "/housekeeping", label: "nav.housekeeping", permission: "housekeeping.view", group: "services" },
+  { to: "/maintenance", label: "nav.maintenance", permission: "maintenance.view", group: "services" },
   // The OPD day report (owner, 2026-09-19): the hospital's day by department, PDF and CSV.
   { to: "/reports/opd-day", label: "nav.opdDayReport", permission: "opd.reports.read", group: "opd" },
   // 20-U U5a — who is on now, the hospital's unit board. `roster.read` matches `rosterManifest.menu`.
@@ -358,6 +382,8 @@ const NAV: readonly NavEntry[] = [
    * open it on. It is reached from the list, which is where a nurse actually is when they need it.
    * `otManifest.menu` declares the same three, so the two tables agree.
    */
+  // E1.1 (#718) — the Beds capacity board; path and permission match `ipdManifest.menu`.
+  { to: "/ipd/beds", label: "nav.ipdBeds", permission: "ipd.beds.view", group: "wards" },
   { to: "/ot/list", label: "nav.otList", permission: "ot.cases.read", group: "theatre" },
   { to: "/ot/book", label: "nav.otBook", permission: "ot.cases.book", group: "theatre" },
   { to: "/ot/recovery", label: "nav.otRecovery", permission: "ot.recovery.operate", group: "theatre" },
@@ -812,6 +838,20 @@ const staffReportsRoute = createRoute({
   component: StaffReports,
 });
 
+/**
+ * E1.1 (#718) — the Beds capacity board (spec §4.9 A). A command board: it owns the viewport (16:9, no page
+ * scroll) and draws its own header. `?wall=1` is the wall display — the server sends initials, never names.
+ */
+const ipdBedsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/beds",
+  staticData: { fullViewport: true },
+  validateSearch: (search: Record<string, unknown>): { wall?: string } => ({
+    wall: search.wall === "1" || search.wall === 1 || search.wall === true ? "1" : undefined,
+  }),
+  component: IpdBeds,
+});
+
 /** E0.1 (decision 0064) — one day's copilot totals; aggregate only, it names nobody. */
 const copilotHealthRoute = createRoute({
   getParentRoute: () => authedRoute,
@@ -1158,6 +1198,69 @@ const myLeaveRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/roster/leave",
   component: MyLeave,
+});
+
+/** E0.1 TASK ENGINE (issue #713) — My tasks: a worker's one list, built for a phone (390 px). */
+const myTasksRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/tasks",
+  component: MyTasks,
+});
+
+/** E1.7 BIO-MEDICAL WASTE (issue #724) — the BMW supervisor's board: 16:9, bags on site with their 48-hour clocks. */
+const bmwBoardRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/bmw",
+  component: BmwBoard,
+});
+
+/** E1.7 — the waste handler's phone (390 px): new bag with its label, scan → weigh → done. */
+const bmwHandleRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/bmw/handle",
+  component: BmwHandle,
+});
+
+/** E1.7 — the monthly report and the annual Form IV figures, read off the bags, with CSV. */
+const bmwReportsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/bmw/reports",
+  component: BmwReports,
+});
+
+/** E2.4 LINEN (issue #728) — the linen supervisor's board: 16:9, wards below par first, laundry out and in, weekly loss. */
+const linenBoardRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/linen",
+  component: LinenBoard,
+});
+
+/** E2.4 — the linen handler's phone (390 px, Hindi first): pick a ward, count with big steppers, save. */
+const linenHandleRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/linen/handle",
+  component: LinenHandle,
+});
+
+/** E0.1 TASK ENGINE — the supervisor's task board: 16:9, open work by floor, late first, worker load. */
+const tasksBoardRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/tasks/board",
+  component: TasksBoard,
+});
+
+/** E1.4 HOUSEKEEPING (issue #721) — the housekeeping supervisor's board: 16:9, open cleans by floor, late first. */
+const housekeepingBoardRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/housekeeping",
+  component: HousekeepingBoard,
+});
+
+/** E1.5 MAINTENANCE (issue #722) — the maintenance supervisor's board: 16:9, open repairs by floor, critical first. */
+const maintenanceBoardRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/maintenance",
+  component: MaintenanceBoard,
 });
 
 const myReachRoute = createRoute({
@@ -1951,7 +2054,7 @@ export const router = createRouter({
     loginRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, ipdBedsRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute, attendanceLinksRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
@@ -2016,6 +2119,16 @@ export const router = createRouter({
       rosterMyDutiesRoute,
       // E2.2 — +1, `/roster/leave` (my leave). `caddyfile-parity.test.ts` pins the count.
       myLeaveRoute,
+      // E0.1 TASK ENGINE — +2, `/tasks` and `/tasks/board`. `caddyfile-parity.test.ts` pins the count.
+      myTasksRoute, tasksBoardRoute,
+      // E1.7 BIO-MEDICAL WASTE — +3, `/bmw`, `/bmw/handle`, `/bmw/reports`. `caddyfile-parity.test.ts` pins the count.
+      bmwBoardRoute, bmwHandleRoute, bmwReportsRoute,
+      // E2.4 LINEN — +2, `/linen` and `/linen/handle`. `caddyfile-parity.test.ts` pins the count.
+      linenBoardRoute, linenHandleRoute,
+      // E1.4 HOUSEKEEPING — +1, `/housekeeping`. `caddyfile-parity.test.ts` pins the count.
+      housekeepingBoardRoute,
+      // E1.5 MAINTENANCE — +1, `/maintenance`. `caddyfile-parity.test.ts` pins the count.
+      maintenanceBoardRoute,
       rosterEvidenceRoute,
       rosterAebasRoute,
       // DD-0 (#626) — +2, `/doctor-desk` and `/doctor-desk/briefs`. `caddyfile-parity.test.ts` pins the count.

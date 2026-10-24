@@ -38,6 +38,27 @@ export type NotificationTemplate = {
    * that is ready is. Absent = the desk task, as every template before this one.
    */
   deskFlagOnFailure?: false;
+  /**
+   * IPD E2.3 (#727) — the pump SUPPRESSES every row of this template with this reason instead of sending it. For a
+   * template that no provider may carry yet: business-initiated WhatsApp needs a Meta-approved template, a live DLT SMS
+   * needs a registered id, and the daily-totals message goes to the ATTENDANT, whom the pump cannot address (it sends a
+   * patient row to the patient's own phone). The row is still the record that the message was due (goal G10 reads
+   * it); removing this field is the act that starts sending, after approval and a recipient seam.
+   */
+  heldReason?: "template_pending";
+  /**
+   * #761 — WHO a patient-audience row is addressed to. Absent = the patient, on their own phone (every template before
+   * this one). `"attendant"` = the patient's registered attendant, resolved AT SEND TIME by the pump's recipient seam
+   * (`NotifyPumpOptions.recipientResolvers.attendant`) from the references in `params` — never a phone in params. With
+   * no seam installed the row is undeliverable `no_phone`: it never falls back to the patient's phone.
+   */
+  recipient?: "attendant";
+  /**
+   * #761 — SENT ONLY AS AN APPROVED TEMPLATE. A rung whose provider id is not configured (WhatsApp: the approved template
+   * name; SMS: the DLT content-template id), or whose adapter is a console sink, leaves the ladder; with no rung left the
+   * row is suppressed `template_pending` before any adapter is called. Free text never leaves for such a template.
+   */
+  requiresApprovedTemplate?: true;
 };
 
 const HOUR_MS = 60 * 60 * 1000;

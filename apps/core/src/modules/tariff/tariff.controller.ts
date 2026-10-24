@@ -1,6 +1,6 @@
 import {
   BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject,
-  NotFoundException, Param, Patch, Post, Put,
+  NotFoundException, Param, Patch, Post, Put, Query,
 } from "@nestjs/common";
 import { z } from "zod";
 import type { Actor } from "@hmis/contracts";
@@ -16,6 +16,9 @@ import {
   activateVersion, createDraftVersion, getVersion, listVersions, setTariffItem, submitVersion,
 } from "./versions";
 import { simulateRevision } from "./simulation";
+import { ipdRateCardGaps } from "./ipd-rate-card";
+import { isModuleOn } from "../../kernel/modules/switch";
+import type { IpdRateCard } from "./ipd-rate-card";
 import { loadPricingContext } from "./context";
 import { listAdjustmentRules, upsertAdjustmentRule } from "./rules";
 import { getGstSettings, listGstCategories, upsertGstCategory, upsertGstSettings } from "./gst-config";
@@ -201,6 +204,21 @@ export class TariffController {
   @Get("price-list")
   async priceListRoute(): Promise<{ items: PriceListRow[] }> {
     return { items: await listPriceList(this.db) };
+  }
+
+  /**
+   * E0.4 — the IPD rate card: every rated bed class × component in a version (default: the one in
+   * force), with the classes still missing a room, nursing or visit rate. The owner reviews an
+   * imported draft here before approving it. Read-only, on `tariff.read`.
+   */
+  @RequirePermission("tariff.read", "hospital")
+  @Get("ipd-rate-card")
+  async ipdRateCardRoute(@Query("versionId") versionId?: string): Promise<IpdRateCard> {
+    // Decision 0085 — the IPD rate card is the inpatient module's: no answer while `ipd` is switched off.
+    if (!isModuleOn("ipd")) throw new NotFoundException();
+    const id = typeof versionId === "string" && versionId !== "" ? versionId : undefined;
+    if (id !== undefined && (await getVersion(this.db, id)) === null) throw new NotFoundException(`unknown tariff version ${id}`);
+    return ipdRateCardGaps(this.db, { at: new Date(), ...(id === undefined ? {} : { tariffVersionId: id }) });
   }
 
   @RequirePermission("tariff.read", "hospital")

@@ -1,3 +1,4 @@
+import { Logger } from "@nestjs/common";
 import type { Db } from "../db/client";
 import type { ModuleRegistry } from "../modules/loader";
 import type { Handler } from "../events/subscriptions";
@@ -34,7 +35,12 @@ import {
 import { sweepOverdueQa } from "../../modules/aerb";
 import { routingChooserFor, runAliasJob, runDeskRoutingLearning, runFlowLearning } from "../../modules/opd";
 import { syncAttendance } from "../../modules/attendance";
+import { lapseBedReservations } from "../../modules/ipd";
+import { sweepTasks } from "../../modules/tasks";
+import { sweepBmwStorage } from "../../modules/bmw";
 import { collectResourceKinds } from "../resources/kinds";
+import { isModuleOn, runIfModuleOn } from "../modules/switch";
+import type { DarkModuleKey } from "../modules/switch";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
 import { printBoardIfDue, runMonthlyProposals, sweepDutyReminders, sweepRosterWindows } from "../../modules/roster";
@@ -87,6 +93,12 @@ const COPILOT_ASK_PRUNE_IST = "01:20";
  * which is A5, and it is the reason this is a sweep rather than an incremental append.
  */
 const USER_DAY_ROLLUP_IST = "02:00";
+/**
+ * E2.1 (#725) — the IPD nightly charges: five past IST midnight, once the day being billed is over. It posts every
+ * unposted chargeable day up to YESTERDAY, so a night the worker missed is posted on the next run with its own dates;
+ * a failed run retries on the next tick (the scheduler keys daily memory on `last_ok_at`).
+ */
+const IPD_NIGHTLY_CHARGES_IST = "00:05";
 
 /**
  * Amendment 6 (the plan's own resolution to the T2/T4 wave-order contradiction; spike
@@ -108,7 +120,9 @@ export function buildSubscriptionBus(
   consumers: Record<string, Handler>,
 ): SubscriptionBus {
   const bus = new SubscriptionBus();
-  for (const manifest of registry.all()) {
+  // Decision 0085 — a module switched off consumes nothing: its subscriptions are not put on the bus, so its consumers
+  // are never called (and a missing handler for an off module is not a boot error either).
+  for (const manifest of registry.live()) {
     for (const sub of manifest.subscriptions) {
       const handler = consumers[sub.consumer];
       if (!handler) {
@@ -737,6 +751,56 @@ export function registerAllJobs(
     every: 120_000,
     run: async (now) => { await syncAttendance(db, aliasConfig?.attendance, now); },
   });
+  /*
+   * ═══ #833 / DECISION 0085 — THE FOUR IPD JOBS, REGISTERED DARK ═══
+   * Each registers whatever `HMIS_MODULES_ON` says, so `alerts.yml` and the censuses carry it from the day the seams
+   * land; while its module is off, `runIfModuleOn` never calls the body and the tick only heartbeats. The bodies arrive
+   * with their modules: sweepTasks (tasks; the waste and meal clocks ride it), lapseBedReservations (ipd; the ER
+   * clocks ride it), sweepIpdNursing (ipd; the eMAR sweep rides it), postNightlyIpdCharges (ipd; the bill desk's
+   * nightly rides it).
+   */
+  /**
+   * E0.1 TASK ENGINE (issue #713) — THE TASK CLOCK, every minute: a worker whose shift ended hands
+   * their tasks back to the pool, an assignment not accepted in its window goes to the next worker,
+   * the pool is offered again, and a late task climbs its ladder ONCE per rung. Small batches; each
+   * act re-checks its precondition under the row lock, so a second tick changes nothing.
+   */
+  scheduler.register({
+    name: "sweepTasks",
+    every: 60_000,
+    /*
+     * E1.7 BIO-MEDICAL WASTE (issue #724) — the waste STORAGE CLOCK rides this tick rather than holding a pool client
+     * of its own (the `runDueTimers` + `runDueReminders` shape): bags still on the premises warn at 36 h and alert at
+     * 48 h from generation. `runTaskAndWasteClocks` runs each in its own try/catch, so a failure in either never stops
+     * or masks the other. Importing the bmw
+     * index here is ALSO what defines the `bmw_collection` task kind in the worker (tasks MAP §4).
+     * Decision 0085: the tick does nothing while `tasks` is off, and each riding clock runs only while its own module is on.
+     */
+    run: async (now) => { await runIfModuleOn("sweepTasks", "tasks", () => runTaskAndWasteClocks(db, now)); },
+  });
+  /*
+   * IPD BEDS E1.1 (#718) — a bed held for a patient lapses back after two hours (spec §4.1). Every minute,
+   * the `sweepExpiredPharmacyPicks` cadence: a hold is a promise to a desk, and a coarser sweep would keep a
+   * bed off the board past its time. Idempotent (each lapse re-checks under the bed's lock); a tick with
+   * nothing due runs one indexed read (`ipd_bed_reservations_due_idx`) and writes nothing.
+   */
+  scheduler.register({
+    name: "lapseBedReservations",
+    every: 60_000,
+    run: async (now) => { await runIfModuleOn("lapseBedReservations", "ipd", () => lapseBedReservations(db, now)); },
+  });
+  /** IPD NURSING E4.1 (#733) — assessment overdue after an hour; an early warning unacknowledged for 10 minutes. */
+  scheduler.register({
+    name: "sweepIpdNursing",
+    every: 60_000,
+    run: async () => { await runIfModuleOn("sweepIpdNursing", "ipd", async () => {}); },
+  });
+  /** IPD CHARGES E2.1 (#725) — `dailyIst` 00:05: the running bill's nightly rent, nursing and RMO lines. */
+  scheduler.register({
+    name: "postNightlyIpdCharges",
+    dailyIst: IPD_NIGHTLY_CHARGES_IST,
+    run: async () => { await runIfModuleOn("postNightlyIpdCharges", "ipd", async () => {}); },
+  });
   /**
    * DOCTOR DESK DD-report v0 — THE UNIT REPORT AT 08:00 IST, the take boundary (plan D-G): one report
    * per counting unit for the 24 h that ended, counts only, a bell to the unit head. A `dailyIst` job,
@@ -748,4 +812,39 @@ export function registerAllJobs(
     dailyIst: DOCTOR_DESK_UNIT_REPORT_IST,
     run: async (now) => { await sendUnitReports(db, now); },
   });
+}
+
+const clockLog = new Logger("worker.sweepTasks");
+
+/**
+ * Decision 0085 — a clock that rides another module's tick (the waste clock on the task clock's) runs only while its own
+ * module is on; off, it is a no-op and the tick carries on with the others.
+ */
+function whenModuleOn<F extends (db: Db, now: Date) => Promise<unknown>>(key: DarkModuleKey, fn: F): F {
+  return (async (db: Db, now: Date) => (isModuleOn(key) ? fn(db, now) : undefined)) as F;
+}
+
+/**
+ * E1.7 (PR #749 review) — the task clock and the waste storage clock share one tick. Each runs in its own try/catch
+ * and logs its own failure, so a failure in either never stops the other (the 48-hour alarm still rings when the
+ * task sweep throws) and never masks it: the first failure is rethrown after both have run, so the scheduler still
+ * records the tick as failed. `sweeps` is injectable for `task-clock.test.ts`.
+ */
+export async function runTaskAndWasteClocks(
+  db: Db, now: Date, sweeps: { sweepTasks: typeof sweepTasks; sweepBmwStorage: typeof sweepBmwStorage } = { sweepTasks, sweepBmwStorage: whenModuleOn("bmw", sweepBmwStorage) },
+): Promise<void> {
+  let first: unknown = undefined;
+  try {
+    await sweeps.sweepTasks(db, now);
+  } catch (e) {
+    clockLog.error(`sweepTasks failed: ${e instanceof Error ? e.message : String(e)}`);
+    first = e;
+  }
+  try {
+    await sweeps.sweepBmwStorage(db, now);
+  } catch (e) {
+    clockLog.error(`sweepBmwStorage failed: ${e instanceof Error ? e.message : String(e)}`);
+    first ??= e;
+  }
+  if (first !== undefined) throw first;
 }

@@ -36,6 +36,12 @@ export type { EncounterResolver, IssueInvoiceInput, IssueInvoiceResult, InvoiceR
  */
 export { recordReceipt, allocateReceipt, reverseAllocation, patientBalance, listDues, markEnteredInError, advanceOf, receiptUnallocatedPaise, releaseInvoiceSurplusOnTx } from "./receipts";
 export type { PatientBalance, DueRow, ReceiptRow, AllocationRow } from "./receipts";
+/** #785 — the episode charge sink: an inpatient admission bills its lab / imaging orders on its running bill. */
+export {
+  RUNNING_BILL_EPISODE_RES, episodeChargeSinkFor, episodeChargeStanding, isRunningBillEpisode, refuseRunningBillTender,
+  registerEpisodeChargeSink,
+} from "./episode-charges";
+export type { EpisodeChargeItem, EpisodeChargeSink, EpisodeReverseOutcome, EpisodeStanding } from "./episode-charges";
 export { issueCreditNote, listCreditNotes } from "./credit-notes";
 /** PHARMACY P12 — the leakage triangle's billed leg (read-only). */
 export { creditedInvoiceLineIdsBetween, invoiceLineCredits } from "./credit-notes";

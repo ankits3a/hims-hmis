@@ -24,6 +24,12 @@ import { pharmacyManifest } from "../../modules/pharmacy";
 import { rosterManifest } from "../../modules/roster";
 import { attendanceManifest } from "../../modules/attendance";
 import { orderingManifest } from "../../modules/ordering";
+import { tasksManifest } from "../../modules/tasks";
+import { ipdManifest } from "../../modules/ipd";
+import { bmwManifest } from "../../modules/bmw";
+import { linenManifest } from "../../modules/linen";
+import { housekeepingManifest } from "../../modules/housekeeping";
+import { maintenanceManifest } from "../../modules/maintenance";
 import { doctorDeskManifest } from "../../modules/doctor-desk";
 
 /**
@@ -190,6 +196,22 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   // TEST ORDERING (owner 2026-10-10, decision 0067) — appended. No permission of its own; the outside-test
   // menu entry and the free-test consumer.
   orderingManifest,
+  // E0.1 TASK ENGINE (issue #713) — appended. Three permissions, two menu entries, no subscription. API only, the
+  // `roster` shape: the worker runs `sweepTasks` and needs no permission to.
+  tasksManifest,
+  ipdManifest,
+  // E1.7 BIO-MEDICAL WASTE (issue #724) — appended. Three permissions, two menu entries, no subscription. API only, the
+  // `tasks` shape: the storage clock rides the task clock's job and needs no permission to.
+  bmwManifest,
+  // E2.4 LINEN (issue #728) — appended. Three permissions, two menu entries, no subscription, no worker job. API only, the
+  // `tasks` shape: the weekly variance is computed on read.
+  linenManifest,
+  // E1.4 HOUSEKEEPING (issue #721) — appended. Two permissions, one menu entry, and the bed's kernel events
+  // (released, status changed, assigned) -> `housekeeping.bed_turnover`. Installed in BOTH processes.
+  housekeepingManifest,
+  // E1.5 MAINTENANCE (issue #722) — appended. Five permissions and one menu entry; no subscription, no job. The API
+  // mounts its routes; the worker imports the module only to define the two repair kinds for the task clock.
+  maintenanceManifest,
   // DOCTOR DESK DD-0 (#626) — appended. A leaf: no permission of its own (its routes open on opd's
   // `opd.consult`), one menu entry, no subscription, no job — app-only, the `attendance` shape.
   doctorDeskManifest,
