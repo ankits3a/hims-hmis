@@ -147,13 +147,6 @@ export const erMciSurgeOpened = defineEvent("er.mci_surge_opened", MODULE, z.obj
 /** #877 — the MS's answer to the OPD / elective OT stop proposed with a Code Yellow. */
 export const erMciStopsDecided = defineEvent("er.mci_stops_decided", MODULE, z.object({ mciId: id, decision: z.enum(["confirm", "decline"]), provenance: ErProvenanceSchema }));
 
-/* ═══ lane 6 (#813) — the ER bill (the bill desk's events; amounts only where the desk needs them) ═══ */
-export const erPayerSet = defineEvent("er.payer_set", MODULE, z.object({ episodeId: id, payer: z.string(), provenance: ErProvenanceSchema }));
-export const erAdvanceTaken = defineEvent("er.advance_taken", MODULE, z.object({ episodeId: id, receiptId: id, amountPaise: z.number().int(), provenance: ErProvenanceSchema }));
-export const erLinesPriced = defineEvent("er.lines_priced", MODULE, z.object({ episodeId: id, priced: z.number().int(), stillMissing: z.number().int(), provenance: ErProvenanceSchema }));
-export const erBillSettled = defineEvent("er.bill_settled", MODULE, z.object({ episodeId: id, settlement: z.string(), duesPaise: z.number().int(), provenance: ErProvenanceSchema }));
-export const erEventAccountOpened = defineEvent("er.event_account_opened", MODULE, z.object({ eventAccountId: id, provenance: ErProvenanceSchema }));
-
 /** Every event the tracking board refetches on. */
 export const ER_BOARD_EVENT_NAMES: readonly string[] = [
   erPreAlerted.name, erPreAlertCancelled.name, erArrived.name, erBroughtDead.name, erBandPrinted.name, erBandVoided.name,

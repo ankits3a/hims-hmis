@@ -1147,7 +1147,14 @@ const ER_PAIRS: readonly string[] = [
   "medical_superintendent/er.disposition",
   // ER lane 6 (#813) — the ER bill desk (ER_BILL_README_PROSE). Never a doctor or nurse (0058).
   "front_office/er.bill", "front_office_supervisor/er.bill", "cashier/er.bill", "billing_manager/er.bill", "duty_manager/er.bill",
+  // ER lane 7 (#814) — codes (ER_CODES_README_PROSE).
+  "doctor/er.codes", "er_nurse/er.codes", "ward_nurse/er.codes", "nursing_supervisor/er.codes", "front_office/er.codes",
+  "front_office_supervisor/er.codes", "duty_manager/er.codes", "security_guard/er.codes", "medical_superintendent/er.codes",
 ];
+
+/** The README prose line authorising codes (ER lane 7, issue #814). Quoted, not paraphrased. */
+const ER_CODES_README_PROSE =
+  "`er.codes` is held by `doctor`, `er_nurse`, `ward_nurse`, `nursing_supervisor`, `front_office`, `front_office_supervisor`, `duty_manager`, `security_guard` and `medical_superintendent`.";
 
 /** The README prose line authorising the ER bill desk (ER lane 6, issue #813). Quoted, not paraphrased. */
 const ER_BILL_README_PROSE =
@@ -1943,7 +1950,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       medical_superintendent: 32, // COPILOT HALT #581 (DECIDED 2026-10-14): +3, copilot.health.read, copilot.halt.set and .clear; STAFF ATTENDANCE (owner 2026-10-09): +1, attendance.all.read; MONOGRAPH REVIEW (owner 2026-10-02): +1, formulary.monograph.review; BREAK-GLASS (owner ruling 2026-09-28): +1, auth.break_glass.use; STAGE D2: +1, pharmacy.incidents.review; STAGE D1: +1, pharmacy.adr.manage; PHARMACY P6: +2, pharmacy.licences.manage and pharmacy.ndps.witness; PHASE R (R1): +3, roster manage/publish/read; OPD day report: +1, opd.reports.read; P19: +1, pharmacy.retail.manage; P17: +2, pharmacy.register.read and .read_sealed; staff-reports T0: +1, staff.reports.history.full
       duty_manager: 36, // OWNER RULING 2026-10-15 (#581), read off the failing run: -2, copilot.halt.set and .clear removed; COPILOT HALT E0.3 (2026-10-11), read off the failing run: +3, copilot.health.read, copilot.halt.set and .clear; 20-U U6, read off the failing run: +1, roster.read (the "this is wrong" flags are theirs to read)
       // OWNER RULING 2026-08-29 — two strings, one role, one holder: the figures and the rows.
-      security_guard: 1, // PASSES E1.3: passes.scan
+      security_guard: 2, // ER lane 7 (#814): +1, er.codes; PASSES E1.3: passes.scan
       staff_auditor: 3, // staff-reports T0: +1, staff.reports.history.full
       tariff_editor: 3,
       // RC-2 T4 — 2 -> 3 with `membership.instrument.enrol`: the role that works the holder book
@@ -2672,6 +2679,7 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(readme).toContain(ER_MLC_README_PROSE);
     expect(readme).toContain(ER_DISPO_README_PROSE);
     expect(readme).toContain(ER_BILL_README_PROSE);
+    expect(readme).toContain(ER_CODES_README_PROSE);
     expect(readme).toContain(COPILOT_HALT_README_PROSE);
     expect(readme).toContain(IPD_BEDS_README_PROSE);
     expect(readme).toContain(IPD_ADMIT_README_PROSE);

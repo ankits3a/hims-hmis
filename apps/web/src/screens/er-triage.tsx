@@ -3,10 +3,11 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import type React from "react";
 import type { ErBay, ErBoard, ErDoctorOption, ErEpisodeView, ErRefusalBody, ErTile } from "@hmis/contracts";
+import { useAuth } from "../lib/auth";
 import { fmtIst } from "../lib/format";
 import { useRealtime } from "../lib/realtime";
 import {
-  ER_BOARD_TOPIC, assignDoctorApi, erRefusalOf, esiProposal, fetchErBays, fetchErBoard, fetchErEpisode, fetchTriageDoctors,
+  ER_BOARD_TOPIC, assignDoctorApi, callCodeApi, erRefusalOf, esiProposal, fetchErBays, fetchErBoard, fetchErEpisode, fetchTriageDoctors,
   minutesSince, moveBayApi, newKey, placeInBayApi, reTriageApi, triageApi, vitalsApi,
 } from "../lib/er-api";
 import type { EsiDecision, EsiLevel } from "../lib/er-api";
@@ -318,10 +319,40 @@ function Header({ t }: { t: T }): React.ReactElement {
     <header className="erb-head">
       <div className="erb-title"><h1>{t("erTriage.title")}</h1><span>{fmtIst(new Date().toISOString())}</span></div>
       <div className="erb-tools">
+        <CodeGreyButton t={t} />
         <Link to="/er/triage" className="erx-btn">{t("erTriage.queue")}</Link>
         <Link to="/er/board" className="erx-btn">{t("erDesk.board")}</Link>
       </div>
     </header>
+  );
+}
+
+/**
+ * Lane 7 (#814, spec §4.2: "violent or intoxicated patient → Code Grey available from the triage screen"). Two taps: the
+ * button, then "Send" — security is paged to the triage desk; the confirmation says how many were paged.
+ */
+function CodeGreyButton({ t }: { t: T }): React.ReactElement | null {
+  const { can } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [said, setSaid] = useState<string | null>(null);
+  if (!can("er.codes")) return null;
+  const status = said !== null ? <span role="status">{said}</span> : null;
+  if (!open) {
+    return (
+      <>
+        <button type="button" className="erx-btn erc-grey" data-testid="er-triage-code-grey" onClick={() => { setOpen(true); setSaid(null); }}>{t("erCodes.kind.code_grey")}</button>
+        {status}
+      </>
+    );
+  }
+  return (
+    <span className="erd-row" role="group">
+      <button type="button" className="erx-btn danger" data-testid="er-triage-code-grey-send"
+        onClick={() => void callCodeApi({ kind: "code_grey", place: t("erCodes.triageDesk") }).then((r) => { setSaid(t("erCodes.paged", { n: r.paged })); setOpen(false); }, () => setSaid(t("erDesk.failed")))}>
+        {t("erCodes.sendGrey")}</button>
+      <button type="button" className="erx-btn" onClick={() => setOpen(false)}>{t("erCodes.cancel")}</button>
+      {status}
+    </span>
   );
 }
 

@@ -835,6 +835,8 @@ export const ROSTER_ESCALATION_KINDS = [
   "er_boarding",
   // Review #7 — an MLC patient absconded: the duty manager (for the police) on a ladder of its own, apart from security.
   "er_abscond_mlc",
+  // ER lane 7 (#814) — a code's own ladder when no department is on take: Code Blue (the anaesthetist), Code Grey (security).
+  "code_blue", "code_grey",
 ] as const;
 export type RosterEscalationKind = (typeof ROSTER_ESCALATION_KINDS)[number];
 
