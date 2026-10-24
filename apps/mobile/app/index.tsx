@@ -1,7 +1,7 @@
 import { useEffect, useReducer } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { useRouter } from "expo-router";
-import { scanIsOwed, takeScanOwed } from "../src/return-to";
+import { returnIsOwed, takeReturn } from "../src/return-to";
 import { ChangePasswordScreen } from "../src/screens/change-password";
 import { LoginScreen } from "../src/screens/login";
 import { SeatHome } from "../src/screens/seat-home";
@@ -14,10 +14,11 @@ export default function Index() {
   const { state } = useSession();
   const router = useRouter();
   const [, redraw] = useReducer((n: number) => n + 1, 0);
-  // The scan widget reached "/scan" before sign-in (src/return-to.ts): once signed in, open it, not home.
-  const owed = state.status === "signedIn" && scanIsOwed();
+  // A widget's link reached its route before sign-in (src/return-to.ts): once signed in, open it, not home.
+  const owed = state.status === "signedIn" && returnIsOwed();
   useEffect(() => {
-    if (owed && takeScanOwed()) { router.push("/scan"); redraw(); }
+    const to = owed ? takeReturn() : null;
+    if (to !== null) { router.push(to); redraw(); }
   }, [owed, router]);
   if (owed) return <Spinner />;
   switch (state.status) {
