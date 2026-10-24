@@ -212,13 +212,14 @@ export async function liftOtNpo(db: Db, caseId: string, now: Date = new Date()):
 }
 
 /**
- * THE OT SYNC. OT moves a case's date without an event of its own (`postponeCase` writes the new `list_date` and emits
- * nothing; `list.resequenced` only re-orders a day). So diet re-reads the CASES: on `list.published` for that day, and
- * at deploy (`workerBackfills`) for every case from today on. A live case gets its NPO for its CURRENT date (the
+ * THE OT SYNC. Diet re-reads the CASES: one case on `case.postponed` (2026-10-14 — before it, `postponeCase` wrote the
+ * new `list_date` and emitted nothing), that day's cases on `list.published`, and at deploy (`workerBackfills`) every
+ * case from today on (`list.resequenced` only re-orders a day). A live case gets its NPO for its CURRENT date (the
  * row moves if the date moved); a cancelled one has its NPO lifted. Idempotent.
  */
-export async function syncOtNpo(db: Db, q: { listDate?: string; fromDate?: string }, now: Date = new Date()): Promise<number> {
-  const where = q.listDate !== undefined ? eq(otCases.listDate, q.listDate) : gte(otCases.listDate, q.fromDate ?? istDayString(now));
+export async function syncOtNpo(db: Db, q: { listDate?: string; fromDate?: string; caseId?: string }, now: Date = new Date()): Promise<number> {
+  const where = q.caseId !== undefined ? eq(otCases.id, q.caseId)
+    : q.listDate !== undefined ? eq(otCases.listDate, q.listDate) : gte(otCases.listDate, q.fromDate ?? istDayString(now));
   const cases = await db.select({ id: otCases.id, patientId: otCases.patientId, listDate: otCases.listDate }).from(otCases).where(where);
   let n = 0;
   for (const c of cases) {

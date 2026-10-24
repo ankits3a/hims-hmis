@@ -1,4 +1,59 @@
 {
+  "ipdNarcotic": {
+    "title": "नारकोटिक रजिस्टर",
+    "print": "प्रिंट",
+    "noWard": "अभी कोई वार्ड नहीं",
+    "empty": "इस वार्ड में कोई नियंत्रित दवा नहीं",
+    "countDue": "इस शिफ्ट की गिनती बाकी",
+    "balance": "दवा अनुसार बैलेंस",
+    "lines": "रजिस्टर प्रविष्टियाँ",
+    "noLines": "अभी कोई प्रविष्टि नहीं",
+    "exceptions": "गिनती में अंतर",
+    "noExceptions": "गिनती में कोई अंतर नहीं",
+    "open": "खुला",
+    "resolved": "सुलझाया",
+    "resolve": "सुलझाएँ",
+    "findings": "क्या मिला",
+    "resolvedBy": "{{name}} ने सुलझाया",
+    "expectedCounted": "रजिस्टर {{expected}}, गिना {{counted}} {{unit}}",
+    "by": "{{name}} द्वारा",
+    "witness": "गवाह {{name}}",
+    "neverCounted": "अभी गिना नहीं",
+    "countOk": "गिनती रजिस्टर से मेल खाती है",
+    "countBad_one": "{{count}} अंतर — सुपरवाइज़र और फ़ार्मेसी को सूचना",
+    "countBad_other": "{{count}} अंतर — सुपरवाइज़र और फ़ार्मेसी को सूचना",
+    "shift": {
+      "morning": "सुबह की शिफ्ट",
+      "evening": "शाम की शिफ्ट",
+      "night": "रात की शिफ्ट"
+    },
+    "col": {
+      "drug": "दवा",
+      "opening": "शुरुआती",
+      "received": "मिली",
+      "given": "दी गई",
+      "wasted": "बर्बाद",
+      "returned": "लौटाई",
+      "moved": "आई / गई",
+      "expected": "होनी चाहिए",
+      "lastCount": "पिछली गिनती"
+    },
+    "count": {
+      "title": "शिफ्ट गिनती (दो नर्स)",
+      "hint": "साथ में गिनें। दूसरी नर्स: अपना यूज़रनेम और PIN।",
+      "counted": "गिना: {{name}}",
+      "save": "गिनती सहेजें"
+    },
+    "kind": {
+      "received": "मिली",
+      "given": "दी गई",
+      "wasted": "बर्बाद",
+      "returned": "लौटाई",
+      "reversal": "गलती से दर्ज — वापस",
+      "transfer_out": "बाहर गई",
+      "transfer_in": "अंदर आई"
+    }
+  },
   "ipdCopilot": {
     "list": {
       "orders": "ऑर्डर",
@@ -2218,6 +2273,7 @@
     "menu": "मेनू"
   },
   "nav": {
+    "ipdNarcotics": "नारकोटिक्स",
     "ipdPharmacy": "IP फ़ार्मेसी",
     "ipdMar": "MAR",
     "ipdRounds": "राउंड",

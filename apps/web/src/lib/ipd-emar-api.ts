@@ -1,7 +1,7 @@
 import { api, newIdempotencyKey } from "./api";
 import { serverNow } from "./ipd-nursing-api";
 import type {
-  IpdEmarDueList, IpdEmarLabelSheet, IpdEmarOverrideCounts, IpdEmarPatient, IpdEmarPharmacyQueue, IpdEmarScan, IpdEmarWardChart,
+  IpdEmarDueList, IpdEmarLabelSheet, IpdEmarOverrideCounts, IpdEmarPatient, IpdEmarPharmacyQueue, IpdEmarScan, IpdEmarWardChart, IpdNarcoticWard,
 } from "@hmis/contracts";
 
 /**
@@ -34,6 +34,9 @@ export const EMAR = {
   reoffer: "/ipd/emar/reoffer",
   secondCheck: "/ipd/emar/second-check",
   overrides: "/ipd/emar/overrides",
+  narcotics: "/ipd/emar/narcotics",
+  narcoticCount: "/ipd/emar/narcotics/count",
+  narcoticResolve: "/ipd/emar/narcotics/resolve",
 } as const;
 
 function post<T>(path: string, body: Record<string, unknown>): Promise<T> {
@@ -91,3 +94,11 @@ export const reoffer = (admissionId: string, reason: "back_on_ward" | "npo_lifte
 /** The proof is bound to its purpose, the order and (a scheduled dose) the slot — made for this give only. */
 export const secondCheck = (purpose: "high_alert_dose" | "infusion" | "narcotic_wastage", target: { orderId: string; doseDueAt?: string }, username: string, pin: string):
   Promise<{ pinProof: string; userId: string; name: string; expiresAt: string }> => post(EMAR.secondCheck, { purpose, ...target, username, pin });
+
+/** 2026-10-14 — the ward narcotic register (NDPS / NABH): balances, exceptions, the shift-change count by two nurses. */
+export const getNarcoticWard = (wardId?: string | null): Promise<IpdNarcoticWard> => api("GET", q(EMAR.narcotics, { wardId }));
+export type NarcoticCountResult = { roundId: string; mismatches: number; lines: { countId: string; medicineId: string; unit: string; expected: number; counted: number; variance: number }[] };
+export const recordNarcoticCount = (wardId: string, lines: { medicineId: string; unit: string; counted: number }[], secondNurse: { username: string; pin: string }): Promise<NarcoticCountResult> =>
+  post(EMAR.narcoticCount, { wardId, lines, secondNurse });
+export const resolveNarcoticException = (countId: string, note: string): Promise<{ countId: string; resolvedAt: string }> =>
+  post(EMAR.narcoticResolve, { countId, note });

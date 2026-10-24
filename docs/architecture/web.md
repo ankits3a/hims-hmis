@@ -55,6 +55,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/ipd/family-callbacks` | `apps/web/src/screens/ipd-family-callbacks` |
 | `/ipd/handovers` | `apps/web/src/screens/ipd-handovers` |
 | `/ipd/my-shift` | `apps/web/src/screens/ipd-my-shift` |
+| `/ipd/narcotics` | `apps/web/src/screens/ipd-narcotics` |
 | `/ipd/passes` | `apps/web/src/screens/ipd-passes` |
 | `/ipd/ward` | `apps/web/src/screens/ipd-ward` |
 | `/lab/bench` | `apps/web/src/screens/lab-bench` |

@@ -10,10 +10,11 @@ import {
   resolveAllergyFlag, returnMed, secondCheck, signVerbalOrder, verifyOrder,
 } from "./emar";
 import { readAdmissionAllergyFlags, readEmarDue, readEmarPatient, readLabelSheet, readOverrideCounts, readPharmacyQueue, readWardChart, scanAtBedside } from "./emar-read";
+import { readNarcoticWard, recordNarcoticCount, resolveNarcoticException } from "./narcotic";
 import { placeIpOrder } from "./orders";
 import { IPD_EMAR_GIVE, IPD_EMAR_ISSUE, IPD_EMAR_VERIFY, IPD_EMAR_VIEW, IPD_ORDER_PLACE } from "./permissions";
 import type {
-  Actor, IpdEmarDueList, IpdEmarLabelSheet, IpdEmarOverrideCounts, IpdEmarPatient, IpdEmarPharmacyQueue, IpdEmarScan, IpdEmarWardChart, IpdRefusalBody,
+  Actor, IpdEmarDueList, IpdEmarLabelSheet, IpdEmarOverrideCounts, IpdEmarPatient, IpdEmarPharmacyQueue, IpdEmarScan, IpdEmarWardChart, IpdNarcoticWard, IpdRefusalBody,
 } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -172,6 +173,30 @@ export class IpdEmarController {
   @RequirePermission(IPD_EMAR_GIVE, "hospital")
   async infusion(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
     try { return await recordInfusionEvent(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  /** 2026-10-14 — the ward narcotic register: balances, exceptions and the newest lines of one ward. */
+  @Get("narcotics")
+  @RequirePermission(IPD_EMAR_VIEW, "hospital")
+  async narcotics(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<IpdNarcoticWard> {
+    try {
+      const q = wardQuery.parse(query);
+      return await readNarcoticWard(this.db, actor, q.wardId === undefined ? {} : { wardId: q.wardId });
+    } catch (e) { toHttp(e); }
+  }
+
+  /** The shift-change count by two nurses (the second nurse's PIN in the body). */
+  @Post("narcotics/count")
+  @RequirePermission(IPD_EMAR_GIVE, "hospital")
+  async narcoticCount(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await recordNarcoticCount(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  /** A count exception closed by a nursing supervisor or a pharmacist (the act checks which). */
+  @Post("narcotics/resolve")
+  @RequirePermission(IPD_EMAR_VIEW, "hospital")
+  async narcoticResolve(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await resolveNarcoticException(this.db, actor, body); } catch (e) { toHttp(e); }
   }
 
   @Post("narcotic-wastage")

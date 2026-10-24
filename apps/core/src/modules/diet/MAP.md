@@ -86,11 +86,12 @@ A leaf: it imports `ipd`, `tasks`, `patients` (types) only through their `index.
   highlighted. The screen marks a list printed only after "Printed OK?". After dispatch a change says "do not serve" or
   "tray missing"; an added or changed tray leaves the load (`on_load` false) and gets its OWN `diet_delivery` task.
 - Bells carry ward, bed and meal — never a patient (GC6, `kernel/alerts/notices.ts`); the task note names the patient.
-- **OT dates.** OT moves a case's date with NO event (`postponeCase`; `list.resequenced` only re-orders a day; there is no
-  other date-change path). So diet re-reads the cases: on `list.published` for that day and at deploy
-  (`workerBackfills` → `backfillOtNpo`, every case from today on). One NPO row per case (`source_ref`): a new date or a
-  rebooking after a lift moves the same row; a cancelled case's NPO is lifted. A postponed case's NPO therefore moves
-  when its new day's list is published (or at the next deploy), not at the postponement itself.
+- **OT dates.** `postponeCase` (the only date-change path; `list.resequenced` only re-orders a day) appends
+  `case.postponed` since 2026-10-14, and diet re-reads THAT case at once (`syncOtNpo({ caseId })`: cancelled → lifted,
+  else NPO on its current date — a late redelivery after a cancel cannot bring the NPO back). Belt and braces: diet also
+  re-reads the cases on `list.published` for that day and at deploy (`workerBackfills` → `backfillOtNpo`, every case from
+  today on). One NPO row per case (`source_ref`): a new date or a rebooking after a lift moves the same row; a cancelled
+  case's NPO is lifted. The eMAR's NPO (`ipd` `npoAt`) reads the same row, so it follows. Pinned by `ot-postpone.test.ts`.
 - A stay end lifts the admission's NPOs AND the patient's NPOs written before the admission (admission id null).
 - Without `diet.clinical.view` (the kitchen) the ward sheet carries no order note, NPO reason ("NPO") or provenance ids.
 - A consumer payload diet cannot read is logged and THROWN (the dispatcher retries); unrelated events are ignored.

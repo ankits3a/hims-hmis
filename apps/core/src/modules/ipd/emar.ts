@@ -20,6 +20,7 @@ import { OPD_PHARMACY_STORE_CODE, recordIncident } from "../pharmacy";
 import { matchAllergiesSaltAware } from "../opd";
 import { holdsPermission, lockAdmission, onceIpd, provenanceOf, requireIpdPermission } from "./admission-core";
 import { admissionPlace } from "./admission-place";
+import { insertNarcoticRows } from "./narcotic-ledger";
 import { checkPrinter } from "./bands";
 import { ageInYears } from "./bed-rules";
 import { IPD_SYSTEM_ACTOR } from "./beds";
@@ -296,8 +297,9 @@ export async function issueMed(db: Db, actor: Actor, raw: unknown, opts: EmarOpt
       await postDrugIssueChargesIn(tx, actor, a, { orderId: o.id, issueId, itemId, batches, reissueReason: input.reissue?.reason ?? null, at });
     }
     if (drug?.narcotic === true) {
-      await tx.insert(ipdEmarNarcoticRegister).values({
+      await insertNarcoticRows(tx, {
         id: newId(), orderId: o.id, admissionId: a.id, kind: "received", qty: input.units, unit: drug.shelf?.item.baseUom ?? "unit", issueId, actorId: actor.id, at,
+        wardId: await wardOf(tx, a.id), recordedAt: at,
       });
     }
     await appendEvent(tx, medIssued.make({
@@ -360,8 +362,9 @@ export async function returnMed(db: Db, actor: Actor, raw: unknown, opts: EmarOp
     if (o.status !== "active" && o.returnOwed) await tx.update(ipdOrders).set({ returnOwed: false }).where(eq(ipdOrders.id, o.id));
     const drug = (await emarDrugsOf(tx, [o])).get(o.id);
     if (drug?.narcotic === true) {
-      await tx.insert(ipdEmarNarcoticRegister).values({
+      await insertNarcoticRows(tx, {
         id: newId(), orderId: o.id, admissionId: a.id, kind: "returned", qty: input.units, unit: drug.shelf?.item.baseUom ?? "unit", issueId: first.id, actorId: actor.id, at,
+        wardId: await wardOf(tx, a.id), recordedAt: at,
       });
     }
     await appendEvent(tx, medReturned.make({
@@ -427,25 +430,7 @@ export async function secondCheck(db: Db, actor: Actor, raw: unknown, opts: Emar
   const input: Input<"second_check"> = IPD_INTENTS.second_check.input.parse(raw);
   await requireIpdPermission(db, actor, IPD_EMAR_GIVE);
   const at = opts.now ?? new Date();
-  const username = input.username.trim();
-  // Everything on the lock's own connection (a waiter holds one connection, never two), and the failure is COMMITTED
-  // before the refusal is thrown (a throw inside would roll the count back).
-  const outcome = await withTx(db, async (lockTx) => {
-    const ldb = lockTx as unknown as Db;
-    await lockTx.execute(sql`select pg_advisory_xact_lock(hashtext(${`ipd.emar.pin:${username.toLowerCase()}`}))`);
-    if (await throttleRetryAt(ldb, "pin", username, at) !== null) return { kind: "throttled" as const };
-    const v = await verifyPinByUsername(ldb, username, input.pin);
-    if (v === null) {
-      await recordThrottleFailure(ldb, "pin", username, at);
-      return { kind: "wrong" as const };
-    }
-    await clearThrottle(ldb, "pin", username);
-    return { kind: "ok" as const, userId: v.userId };
-  });
-  if (outcome.kind === "throttled") throw new IpdRefusal("second_nurse_not_confirmed", undefined, { throttled: true });
-  if (outcome.kind === "wrong") throw new IpdRefusal("second_nurse_not_confirmed");
-  const verified = { userId: outcome.userId };
-  if (verified.userId === actor.id) throw new IpdRefusal("second_nurse_same_person");
+  const verified = { userId: await confirmSecondNursePin(db, actor, input.username, input.pin, at) };
   return withTx(db, async (tx) => {
     if (!(await actorHoldsAnyRole(tx, verified.userId, IPD_EMAR_NURSE_ROLES))) throw new IpdRefusal("second_nurse_not_nurse");
     const o = (await tx.select().from(ipdOrders).where(and(eq(ipdOrders.id, input.orderId), eq(ipdOrders.kind, "drug"))))[0];
@@ -465,6 +450,33 @@ export async function secondCheck(db: Db, actor: Actor, raw: unknown, opts: Emar
     await appendEvent(tx, secondCheckPassed.make({ payload: { checkId: id, purpose: input.purpose, provenance: provenanceOf(actor) }, actor, occurredAt: at }));
     return { pinProof: id, userId: verified.userId, name: user?.name ?? "", expiresAt: expiresAt.toISOString() };
   });
+}
+
+/**
+ * The second nurse's username + PIN, typed at the first nurse's phone: answers the second nurse's user id. E4.3 review:
+ * the throttle is ATOMIC — a transaction-scoped advisory lock on the username is taken BEFORE the throttle is read and held
+ * until the failure is counted. Never the same person. (Shared by `secondCheck` and the ward narcotic count.)
+ */
+export async function confirmSecondNursePin(db: Db, actor: Actor, rawUsername: string, pin: string, at: Date): Promise<string> {
+  const username = rawUsername.trim();
+  // Everything on the lock's own connection (a waiter holds one connection, never two), and the failure is COMMITTED
+  // before the refusal is thrown (a throw inside would roll the count back).
+  const outcome = await withTx(db, async (lockTx) => {
+    const ldb = lockTx as unknown as Db;
+    await lockTx.execute(sql`select pg_advisory_xact_lock(hashtext(${`ipd.emar.pin:${username.toLowerCase()}`}))`);
+    if (await throttleRetryAt(ldb, "pin", username, at) !== null) return { kind: "throttled" as const };
+    const v = await verifyPinByUsername(ldb, username, pin);
+    if (v === null) {
+      await recordThrottleFailure(ldb, "pin", username, at);
+      return { kind: "wrong" as const };
+    }
+    await clearThrottle(ldb, "pin", username);
+    return { kind: "ok" as const, userId: v.userId };
+  });
+  if (outcome.kind === "throttled") throw new IpdRefusal("second_nurse_not_confirmed", undefined, { throttled: true });
+  if (outcome.kind === "wrong") throw new IpdRefusal("second_nurse_not_confirmed");
+  if (outcome.userId === actor.id) throw new IpdRefusal("second_nurse_same_person");
+  return outcome.userId;
 }
 
 export type SecondCheckTarget = { purpose: "high_alert_dose" | "infusion" | "narcotic_wastage"; orderId: string; doseId: string | null; medicineId: string | null };
@@ -694,8 +706,9 @@ async function giveIn(tx: Tx, db: Db, actor: Actor, input: Input<"administer_dos
   if (units !== null) await tx.insert(ipdEmarLabelUses).values({ id: newId(), labelId: label.id, actId: administrationId, units, at: givenAt });
   if (drug?.narcotic === true) {
     // E4.3 review: the register keeps ONE unit — the issue's base unit — on every row; the dose is converted here.
-    await tx.insert(ipdEmarNarcoticRegister).values({
+    await insertNarcoticRows(tx, {
       id: newId(), orderId: o.id, admissionId: a.id, kind: "given", qty: units ?? 1, unit: drug.baseUom ?? "unit", actId: administrationId, actorId: actor.id, at: givenAt,
+      wardId, recordedAt: at,
     });
   }
   if (overrideCounted) await alertOverrideExcess(tx, actor, at);
@@ -903,9 +916,9 @@ export async function markDoseInError(db: Db, actor: Actor, raw: unknown, opts: 
         if (used !== undefined) await tx.insert(ipdEmarLabelUses).values({ id: newId(), labelId: used.labelId, actId: correctionId, units: -used.units, at });
         const reg = (await tx.select().from(ipdEmarNarcoticRegister).where(and(eq(ipdEmarNarcoticRegister.actId, act.id), eq(ipdEmarNarcoticRegister.kind, "given"))))[0];
         if (reg !== undefined) {
-          await tx.insert(ipdEmarNarcoticRegister).values({
+          await insertNarcoticRows(tx, {
             id: newId(), orderId: reg.orderId, admissionId: reg.admissionId, kind: "reversal", qty: reg.qty, unit: reg.unit, actId: correctionId,
-            reason: input.reason, actorId: actor.id, at,
+            reason: input.reason, actorId: actor.id, at, wardId: await wardOf(tx, reg.admissionId), recordedAt: at,
           });
         }
       }
@@ -989,8 +1002,9 @@ export async function recordNarcoticWastage(db: Db, actor: Actor, raw: unknown, 
     const witnessId = await spendSecondCheck(tx, actor, input.witness, at, { purpose: "narcotic_wastage", orderId: o.id, doseId: null, medicineId: o.medicineId });
     const entryId = newId();
     // The register's one unit: the issue's base unit (`qty` is typed in it).
-    await tx.insert(ipdEmarNarcoticRegister).values({
+    await insertNarcoticRows(tx, {
       id: entryId, orderId: o.id, admissionId: a.id, kind: "wasted", qty: input.qty, unit: drug.baseUom ?? "unit", reason: input.reason, actorId: actor.id, witnessId, at,
+      wardId: await wardOf(tx, a.id), recordedAt: at,
     });
     await appendEvent(tx, narcoticWasted.make({
       payload: { entryId, orderId: o.id, admissionId: a.id, provenance: provenanceOf(actor) },
