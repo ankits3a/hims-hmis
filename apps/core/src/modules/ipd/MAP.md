@@ -1,9 +1,9 @@
 ---
 type: module-notes
 title: "ipd — module notes"
-description: "Why and traps of the inpatient module: validated bed and ward attributes and the bed-layout loader (E0.3), the bed intents and the Beds board (E1.1), admission — request, plan and deposit from the tariff, admit onto a bed in one transaction, the payer record, the band, the emergency lane and the downtime back-fill (E1.2) — and the running bill: tariff lock, day rule, nightly posting, visit seam, reversals, interim bill (E2.1) — and the payer split: payer- or patient-payable per line, room-rent cap with proportional deduction, co-pay, approved amount, denial to cash, scheme ₹0 (E2.2) — and the deposit ladder, the daily totals to the attendant and the exceptions-only bill desk (E2.3)."
+description: "Why and traps of the inpatient module: validated bed and ward attributes and the bed-layout loader (E0.3), the bed intents and the Beds board (E1.1), admission — request, plan and deposit from the tariff, admit onto a bed in one transaction, the payer record, the band, the emergency lane and the downtime back-fill (E1.2) — and the running bill: tariff lock, day rule, nightly posting, visit seam, reversals, interim bill (E2.1) — and the payer split: payer- or patient-payable per line, room-rent cap with proportional deduction, co-pay, approved amount, denial to cash, scheme ₹0 (E2.2) — and transfers: start with an SBAR handover, accept by the receiving nurse, cancel, the atomic swap and the class change in place at the next noon (E3.1) — and the deposit ladder, the daily totals to the attendant and the exceptions-only bill desk (E2.3) — and discharge: fit, departments confirm, structured summary, final bill with payer claim and dues, gate pass, LAMA / abscond / death, mortuary register (E3.2) — and nursing: the admission assessment, vitals scored by NEWS2 / MEOWS / PEWS with one alert per breach, intake/output, notes, the shift handover, the nurse station and the phone (E4.1) — and rounds: the doctor's list, S/O/A/P round sign with resident co-sign, fit from the round, inpatient orders (drugs; lab and imaging through the ordering door) and the order event contract for the eMAR, cross-consults, the 08:00 cover and 14:00 nudge clock (E4.2) — and lab / imaging orders on the running bill through billing's episode charge sink, reversed when cancelled before the work (#785) — and the eMAR: pharmacist verify, ward issue with patient labels, the dose schedule, the bedside acts with both scans, the second nurse's PIN, PRN limits, infusions, the narcotic register, verbal orders, the allergy re-check and the missed-dose sweep (E4.3) — and medicines issued to the ward on the running bill at the pharmacy counter's batch price, returns credited at the issue price (#787) — and the TPA desk: pre-auth clock, payer queries, documents, scheme packages and their importer, the claim tracker with its reconciliation (#604)."
 resource: apps/core/src/modules/ipd
-tags: [ipd, beds, resources, admission, billing, transfer, discharge, now-cards, bed-flow, nursing, ews]
+tags: [ipd, tpa, insurance, beds, resources, admission, billing, transfer, discharge, now-cards, bed-flow, nursing, ews, rounds, orders, order-billing, emar, drug-billing, copilot, drafts]
 generated: { by: agent:claude, at: 2026-10-12 }
 verified: []
 stale_after: 2027-01-12
@@ -599,15 +599,34 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   negative). NO line, diagnosis, ward, bed or doctor. Attendant (DECIDED): active guardian with a phone and bill authority,
   else the latest deposit payer recorded as a relative with a phone; travels as a reference (`attendant`, `attendantRef`),
   never a number. None → `ipd.daily_totals.skipped` `no_attendant_phone`; sealed (`sensitive_context`) → `sealed`, no row.
-  HELD: no approved WhatsApp template, no DLT id, and the pump addresses a patient row to the patient's phone — the pump
-  records every row `suppressed` / `template_pending`. G10 therefore measures nothing until the template is released.
-  DECIDED (review 10): keep held — RELEASE NEEDS AN ATTENDANT-RECIPIENT SEAM in kernel/notify (issue #761).
+  #761 (supersedes "held"): the row is queued for 09:00 IST (`scheduledFor`, `dailyTotalsSendAt`) and addressed through the
+  pump's attendant seam — `attendantRef` resolved to a phone at send time, never the patient's phone. It leaves ONLY as an
+  approved template named in config; otherwise `suppressed` / `template_pending` with no adapter call, and the bill desk shows
+  "Not sent: template not configured". See "Attendant seam" below.
 - BILL DESK: candidates from the facts (live ladder rows, open charge exceptions, unchecked downtime deposits, denial
   entries, the latest authorisation `requested` > 24 h, ICU-class stays, `fit_declared`/`discharging`); only those are
   computed. "Expected discharge today" = `fit_declared` or `discharging` with the patient owing (DECIDED, no date field yet).
   `ipd.billdesk.view` (cashier, billing manager, front-office supervisor, duty manager, owner); Retry needs
   `ipd.charges.reverse`. Deposit reasons are the LIVE ladder rows only (a re-armed level leaves the desk, review 7). A sealed
   patient (`sensitive_context`) shows by alias or "Sealed patient" — no name, UHID or bed (review 2).
+
+### Attendant seam and the send switch (#761)
+- ⚖ RECIPIENT = the registered attendant (`attendantOf`'s rule) — the reference in params must still BE `attendantOf` at
+  send time (a row queued for an attendant since replaced, or whose phone was cleared, is undeliverable `no_phone`), and the
+  phone is the one `attendantOf` reads then. No input anywhere chooses a number.
+- At send time, in this order: stay ended or `familyBlockOf` (sealed, MLC, team switch) → `recipient_blocked`; a desk STOP →
+  `opted_out` (beats every consent); not the current attendant → `no_phone`; no desk consent AND no live family link for the
+  SAME phone → `no_consent`. ⚖ DECIDED (DPDP practice): consent is for a number — desk consent keeps the phone's HMAC in its
+  `consent` jsonb (`phoneHash`, `familyPhoneDigest` under `SECRET_KEY`; never sent to the web), a family link its
+  `phone_hash`; a number changed since → no consent until recorded again (card state `number_changed`, "Consent needed
+  again (number changed)"). No key = no consent (fail closed).
+  Re-consenting clears a stop. Consent and stop are `ipd.family.issue`; the card is read under `ipd.bill.view`.
+- SWITCH (DECIDED): ON only when config names an approved WhatsApp template name and/or DLT id AND `IPD_BILL_DESK_PHONE`;
+  `ipdTemplateRegistrations` then gives the pump those ids, else explicit nulls (no table row can turn it on). The pump drops
+  rungs with no id and console-sink rungs for this template; none left → `template_pending`. The message carries only the
+  template variables: first name, total, deposit balance (signed), desk phone (`renderParams`, never stored on the row).
+- AUDIT: `ipd.daily_totals.skipped`, `notification.sent|suppressed|failed|expired`, `ipd.attendant_messages.consented|stopped`.
+  A retry inside a rung updates the row's `last_error` only (the pump appends events on terminal states).
 
 ### Discharge (E3.2, #730)
 - THE GATE PASS IS THE SINGLE GATE (E0.2): `issue_gate_pass` refuses `charges_unconfirmed` (detail.pending names the
@@ -709,28 +728,6 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - MONEY OFF DOCTORS (0058): declare_fit / cancel_fit / sign_summary / record_death answers carry no money keys (acceptance
   vii; the fit event's id is `declarationId`, never `dischargeId` — "charge" is a money word to the scanner). The tracker's
   `bill` is filled only for `ipd.bill.view` / `ipd.discharge.bill` holders.
-
-  #761 (supersedes "held"): the row is queued for 09:00 IST (`scheduledFor`, `dailyTotalsSendAt`) and addressed through the
-  pump's attendant seam — `attendantRef` resolved to a phone at send time, never the patient's phone. It leaves ONLY as an
-  approved template named in config; otherwise `suppressed` / `template_pending` with no adapter call, and the bill desk shows
-  "Not sent: template not configured". See "Attendant seam" below.
-### Attendant seam and the send switch (#761)
-- ⚖ RECIPIENT = the registered attendant (`attendantOf`'s rule) — the reference in params must still BE `attendantOf` at
-  send time (a row queued for an attendant since replaced, or whose phone was cleared, is undeliverable `no_phone`), and the
-  phone is the one `attendantOf` reads then. No input anywhere chooses a number.
-- At send time, in this order: stay ended or `familyBlockOf` (sealed, MLC, team switch) → `recipient_blocked`; a desk STOP →
-  `opted_out` (beats every consent); not the current attendant → `no_phone`; no desk consent AND no live family link for the
-  SAME phone → `no_consent`. ⚖ DECIDED (DPDP practice): consent is for a number — desk consent keeps the phone's HMAC in its
-  `consent` jsonb (`phoneHash`, `familyPhoneDigest` under `SECRET_KEY`; never sent to the web), a family link its
-  `phone_hash`; a number changed since → no consent until recorded again (card state `number_changed`, "Consent needed
-  again (number changed)"). No key = no consent (fail closed).
-  Re-consenting clears a stop. Consent and stop are `ipd.family.issue`; the card is read under `ipd.bill.view`.
-- SWITCH (DECIDED): ON only when config names an approved WhatsApp template name and/or DLT id AND `IPD_BILL_DESK_PHONE`;
-  `ipdTemplateRegistrations` then gives the pump those ids, else explicit nulls (no table row can turn it on). The pump drops
-  rungs with no id and console-sink rungs for this template; none left → `template_pending`. The message carries only the
-  template variables: first name, total, deposit balance (signed), desk phone (`renderParams`, never stored on the row).
-- AUDIT: `ipd.daily_totals.skipped`, `notification.sent|suppressed|failed|expired`, `ipd.attendant_messages.consented|stopped`.
-  A retry inside a rung updates the row's `last_error` only (the pump appends events on terminal states).
 
 ### Family link (E3.3, #731)
 - ⚖ ONLY THE REGISTERED ATTENDANT: the recipient is `attendantOf` (the daily totals' rule); the desk cannot type a number. The
@@ -977,19 +974,6 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `ipd_emar_second_check_guard`). `test/helpers/db.ts` `truncateAll` turns the TRUNCATE triggers off for its one statement.
   More than five wristband overrides by one nurse in 24 h tell the ward in-charge once a day.
 
-### Charge to IP at the OPD counter (#787 IP counter)
-- DECIDED (standard Indian corporate-hospital "IP credit" sale; money from decisions 0073 / 0074): store PHARM-OPD; the ward
-  issue's price (batch MRP at the sale instant, tax-inclusive, NO member benefit), one `ipd.pharmacy` line per batch; no
-  invoice, no tender, no counter discount. Who: `ipd.emar.issue` (the pharmacist who issues to the ward).
-- REFUSED: `not_admitted` (requested / reserved / cancelled, or a UHID with no open stay), `ip_discharged` (the stay ended),
-  `ip_bill_settled` (a live final bill: the supplementary bill through the ward, or a cash sale), `controlled_at_counter`
-  (Schedule X / NDPS only against a ward order), `price_missing` (never ₹0, and nothing waits on the bill desk). The lookup
-  gives the same refusals as the charge. A sealed patient's UHID answers `not_admitted` (only the IP number finds the
-  stay) and the answer carries no admission number, bed or ward. A named batch must be sellable today (FEFO's own list:
-  not expired, not recalled) or `batch_mismatch`. The same medicine twice in one sale is one line per batch.
-- The charge runs under the admission lock with the stock movement: refused or failed, nothing moves. A return is the ward
-  return's credit (`postDrugReturnCreditsIn`), including `return_after_bill`; returns are allowed after discharge as on the ward.
-
 ### Copilot: since yesterday, SBAR draft, discharge drafter (E5.3 #740, E5.4 #741)
 - THE DETERMINISTIC LAYER CARRIES THE SAFETY. A fact is rows: it holds their ids, the numbers and IST clock times counted or
   read from them, and the drug / test names they carry (a strength inside a name is one of its numbers — `mkFact`). A line is
@@ -1072,6 +1056,19 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   (`ADULT_RANGE`); a child's or a mother's deterioration is the band's to say. Temperatures print in °C as recorded.
 - NO MONEY: nothing here reads a charge line; `MONEY_RE` refuses a model's money word. No permission was added:
   `ipd.round.sign` + the treating team (since yesterday), `ipd.handover.shift` (SBAR), `ipd.discharge.declare` (discharge).
+
+### Charge to IP at the OPD counter (#787 IP counter)
+- DECIDED (standard Indian corporate-hospital "IP credit" sale; money from decisions 0073 / 0074): store PHARM-OPD; the ward
+  issue's price (batch MRP at the sale instant, tax-inclusive, NO member benefit), one `ipd.pharmacy` line per batch; no
+  invoice, no tender, no counter discount. Who: `ipd.emar.issue` (the pharmacist who issues to the ward).
+- REFUSED: `not_admitted` (requested / reserved / cancelled, or a UHID with no open stay), `ip_discharged` (the stay ended),
+  `ip_bill_settled` (a live final bill: the supplementary bill through the ward, or a cash sale), `controlled_at_counter`
+  (Schedule X / NDPS only against a ward order), `price_missing` (never ₹0, and nothing waits on the bill desk). The lookup
+  gives the same refusals as the charge. A sealed patient's UHID answers `not_admitted` (only the IP number finds the
+  stay) and the answer carries no admission number, bed or ward. A named batch must be sellable today (FEFO's own list:
+  not expired, not recalled) or `batch_mismatch`. The same medicine twice in one sale is one line per batch.
+- The charge runs under the admission lock with the stock movement: refused or failed, nothing moves. A return is the ward
+  return's credit (`postDrugReturnCreditsIn`), including `return_after_bill`; returns are allowed after discharge as on the ward.
 
 ### TPA desk (#604, decision 0075 — SPEC-tpa-desk-2026-10-15)
 - FILES: `tpa.ts` (the eight acts), `tpa-read.ts` (`readTpaBoard`, `readTpaPanel`, `tpaDueCard`, `authStateOf`), `tpa-packages.ts`
@@ -1174,8 +1171,12 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - (E2.3) `.ipdb` is ALSO the Beds board's root class (`ipd-beds.css`: `height: 100vh; overflow: hidden`), and vite loads
   every screen's CSS globally: the bill desk overrides it with `.ipdb.ipdbd`. The interim bill (`apps/web/src/screens/ipd-bill.tsx`) still
   inherits the collision (owed).
-- (E2.3) Releasing the daily totals (issue #761): approve the WhatsApp template / DLT id, give the pump a recipient seam that
-  resolves `attendantRef` at send time, then remove `heldReason` from `ipd.daily_totals`. Until then nothing is sent.
+- (#761) Switching the daily totals on is CONFIG ONLY, on the API and the worker: `IPD_DAILY_TOTALS_WHATSAPP_TEMPLATE` (Meta-
+  approved name, body variables {{1}} name, {{2}} total, {{3}} deposit balance, {{4}} desk phone) and/or
+  `IPD_DAILY_TOTALS_DLT_TEMPLATE_ID` (+ the MSG91 mapping), plus `IPD_BILL_DESK_PHONE`, with `NOTIFY_PROVIDER=live` and the
+  channel's gateway keys. The approved text must match `kernel/notify/templates.ts` `ipd.daily_totals` v2's render.
+- (#761) The billdesk acceptance test (iii) pins the params keys (`dayOfStay` included) and `template_pending` for a pump run
+  with no config: the seam keeps both (the gate reuses `template_pending`; `dayOfStay` stays in params, unused by the text).
 - (E2.3) Migration 0209 was regenerated in place (unmerged) to add `ipd_daily_totals`: a lane test DB that applied the old
   0209 dies `relation already exists` — drop `hmis_lane_<lane>_test_1/_2`.
 
@@ -1199,12 +1200,6 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - (E3.2) Print isolation: other screens hide `body *` with `!important` in print (all CSS is global), so the discharge
   prints answer with `!important` and a named page (`@page ipdd-a4`).
 
-- (#761) Switching the daily totals on is CONFIG ONLY, on the API and the worker: `IPD_DAILY_TOTALS_WHATSAPP_TEMPLATE` (Meta-
-  approved name, body variables {{1}} name, {{2}} total, {{3}} deposit balance, {{4}} desk phone) and/or
-  `IPD_DAILY_TOTALS_DLT_TEMPLATE_ID` (+ the MSG91 mapping), plus `IPD_BILL_DESK_PHONE`, with `NOTIFY_PROVIDER=live` and the
-  channel's gateway keys. The approved text must match `kernel/notify/templates.ts` `ipd.daily_totals` v2's render.
-- (#761) The billdesk acceptance test (iii) pins the params keys (`dayOfStay` included) and `template_pending` for a pump run
-  with no config: the seam keeps both (the gate reuses `template_pending`; `dayOfStay` stays in params, unused by the text).
 - (E3.3) HELD: the OTP SMS needs a DLT template id (`IPD_FAMILY_OTP_DLT_TEMPLATE_ID`); without it every send answers
   `family_otp_unavailable` (503). The link itself is handed over at the desk (QR / copy) — no SMS/WhatsApp of the link yet.
 - (E3.3) `ipdManifest` now has a subscription, so the WORKER installs it (`kernel/modules/manifests.test.ts`, `kernel/worker/seed-cursors.test.ts`,
@@ -1306,12 +1301,11 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - (E3.1) `transfers.controller.ts` (the Beds drawer's Transfer panel, the `/ipd/handovers` list); the passes lane consumes
   `ipd.transfer.accepted`; `charges.ts` reads `ipd_class_changes` through `classChangesOf`.
 - (E2.3) `kernel/worker/jobs.ts` (`postNightlyIpdCharges` job → `runIpdBillDeskNightly`); `takeDeposit` → `evaluateDepositLadder`;
-  `kernel/desk` collects the `ipd.billdesk` provider from `ipdManifest.desk`; the notify pump renders `ipd.daily_totals`.
+  `kernel/desk` collects the `ipd.deposit_low` provider (key renamed from `ipd.billdesk` in E5.1) from `ipdManifest.desk`; the notify pump renders `ipd.daily_totals`.
 - (E3.2) `discharge.controller.ts` (the Discharge desk); the passes lane consumes `ipd.admission.discharged|lama|absconded|
   deceased`; the goal queries read `ipd.discharge.fit_declared` and `ipd.gate_pass.scanned` (G4); `prepareFinalBill` calls
   `postAdmissionCharges` (with `presumedDischargeAt`); `endStay` calls `endHoldIn` / `releaseBedOccupant`; billing's
   `issueInvoice`, `previewInvoice`, `requestRefund`, `receiptUnallocatedPaise` are called inside the settle transaction.
-  `kernel/desk` collects the `ipd.deposit_low` provider (key renamed from `ipd.billdesk` in E5.1) from `ipdManifest.desk`; the notify pump renders `ipd.daily_totals`.
 - (E5.1/E5.2) `kernel/desk` collects the five IPD providers from `ipdManifest.desk`; `readBedBoard` calls `readBedFlow`;
   `reserveBed` / `assignBedIn` call `settleBedProposalIn`; `cancelAdmission` calls `withdrawBedProposalIn`.
 - (E4.1) `kernel/worker/jobs.ts` (`sweepIpdNursing`, every 60 s); `kernel/desk` collects the four nursing providers from

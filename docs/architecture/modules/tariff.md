@@ -49,7 +49,7 @@ Source: `apps/core/src/modules/tariff/`
   - `IPD_IMPORT_NOTE`
   - `IPD_RATED_CLASSES: readonly IpdBedClass[]`
   - `IPD_TARIFF_CSV_COLUMNS`
-  - `importIpdTariff(db: Db, actor: Actor, csvText: string, opts: { apply: boolean; at?: Date }): Promise<IpdImportReport>`
+  - `importIpdTariff(db: Db, actor: Actor, csvText: string, opts: { apply: boolean; at?: Date; notes?: string }): Promise<IpdImportReport>`
   - `ipdRateCardGaps(db: Db, opts: { at: Date; tariffVersionId?: string }): Promise<IpdRateCard>`
   - `ipdRateCardWarnings(db: Db, at: Date): Promise<ConfigError[]>`
   - `ipdServiceCategory(cls: IpdBedClass, component: IpdRateComponent): string`
@@ -104,6 +104,7 @@ Source: `apps/core/src/modules/tariff/`
   - `createDraftVersion(tx: Tx, actor: Actor, input?: { notes?: string; copyFromVersionId?: string }): Promise<{ versionId: string; versionNo: n…`
   - `getVersion(db: Db, versionId: string): Promise<{ version: TariffVersionRow; items: TariffItemRow[] } | null>`
   - `resolveActiveTariffVersion(db: Db, at: Date): Promise<{ versionId: string; versionNo: number } | null>`
+  - `setDraftVersionNotes(tx: Tx, actor: Actor, versionId: string, notes: string): Promise<void>`
   - `setTariffItem(tx: Tx, actor: Actor, versionId: string, serviceId: string, pricePaise: number): Promise<void>`
   - `submitVersion(tx: Tx, actor: Actor, versionId: string, requestNote?: string): Promise<{ approvalId: string; instanceId: string }>`
 
