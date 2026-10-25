@@ -123,7 +123,7 @@ describe("the triage cache — the same question is not paid for twice", () => {
   it("expires an entry once it is older than the TTL", () => {
     let clock = 1_000;
     const cache = createTriageCache({ ttlMs: 100, now: () => clock });
-    const value: TriageResult = { suggestions: [{ departmentId: "d-gm", reason: "r" }], source: "model" };
+    const value: TriageResult = { suggestions: [{ departmentId: "d-gm", reason: "r", reasonKey: "opdTriage.reason.model" }], source: "model" };
     cache.set("k", value);
     expect(cache.get("k")).toEqual(value);
     clock += 101;
@@ -133,7 +133,7 @@ describe("the triage cache — the same question is not paid for twice", () => {
 
   it("evicts the least recently used once it is full, and a read counts as use", () => {
     const cache = createTriageCache({ max: 2 });
-    const v = (id: string): TriageResult => ({ suggestions: [{ departmentId: id, reason: "r" }], source: "model" });
+    const v = (id: string): TriageResult => ({ suggestions: [{ departmentId: id, reason: "r", reasonKey: "opdTriage.reason.model" }], source: "model" });
     cache.set("a", v("a"));
     cache.set("b", v("b"));
     cache.get("a");            // "a" is now the young one, so "b" is next out

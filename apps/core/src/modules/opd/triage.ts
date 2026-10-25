@@ -28,6 +28,7 @@ import { chooseDepartments, departmentOptions } from "./triage-choice";
 import type { RoutingFeed } from "./triage-choice";
 import { createHash } from "node:crypto";
 import type { ChoiceClient } from "../../kernel/inference/types";
+import { openAiCompatibleClient } from "../../kernel/inference/openai-compatible";
 import { defaultTriageCache, triageCacheKey } from "./triage-cache";
 import type { TriageCache } from "./triage-cache";
 
@@ -40,9 +41,26 @@ export type TriageDepartment = { id: string; name: string };
 
 export type TriageSuggestion = {
   departmentId: string;
-  /** Why this department, in words a clerk can read out. Never a score. */
+  /**
+   * Why this department, in words a clerk can read out. Never a score, and never a model's own
+   * words (#622): the keyword table's label, TypeSafe's fixed description, or for a chat-model row
+   * the fixed `MODEL_REASON`.
+   */
   reason: string;
+  /** #622 — the same reason as a fixed code the screen translates (`opdTriage.reason.*`). */
+  reasonKey: TriageReasonKey;
 };
+
+/** #622 — the fixed reason codes a suggestion can carry; each is a key in the web's `opdTriage.reason`. */
+export type TriageReasonKey = "opdTriage.reason.model" | "opdTriage.reason.keywords" | "opdTriage.reason.prior" | "opdTriage.reason.child";
+
+/**
+ * #622 — WHAT A CHAT-MODEL ROW SAYS, AND IT IS OURS. The model's free-text `reason` used to reach the
+ * clerk (trimmed to 60 characters), against the copilot rule that no generated text reaches a clerk.
+ * It is no longer asked for and, if sent anyway, is never read. The English here equals the `en`
+ * translation of `opdTriage.reason.model`.
+ */
+export const MODEL_REASON = "Suggested by the triage model";
 
 export type TriageResult = {
   suggestions: TriageSuggestion[];
@@ -200,6 +218,7 @@ export function keywordRank(text: string, departments: TriageDepartment[]): Tria
     out.push({
       departmentId: dept.id,
       reason: book.because.length > 0 ? `${book.label} — from "${book.because[0] ?? ""}"` : book.label,
+      reasonKey: "opdTriage.reason.keywords",
     });
   }
   return out;
@@ -217,7 +236,7 @@ function tableRank(text: string, departments: TriageDepartment[]): TriageSuggest
       const dept = departments.find((d) => d.name.toLowerCase() === name.toLowerCase());
       if (dept === undefined || seen.has(dept.id)) continue;
       seen.add(dept.id);
-      out.push({ departmentId: dept.id, reason: row.label });
+      out.push({ departmentId: dept.id, reason: row.label, reasonKey: "opdTriage.reason.keywords" });
     }
   }
   return out;
@@ -240,24 +259,35 @@ export type TriageConfig = {
 /**
  * The prompt is deliberately small and closed. It names the list, demands indexes, and forbids
  * prose — a model that returns anything else simply fails the parse and the desk falls back.
+ *
+ * #622 — split the way `complete()` takes it: everything WE write (the task, the department list,
+ * the reply shape) is the system prompt; the user message is the masked complaint and nothing else.
+ * No `reason` is asked for any more: the clerk never sees one (see `MODEL_REASON`), and every token a
+ * reasoning model does not have to write is latency the desk does not wait for.
  */
-function buildPrompt(text: string, departments: TriageDepartment[]): string {
+function buildPrompt(text: string, departments: TriageDepartment[]): { system: string; user: string } {
   const list = departments.map((d, i) => `${String(i)}: ${d.name}`).join("\n");
-  return [
+  const system = [
     "You are helping a hospital front desk in India route a walk-in patient to the right OUT-PATIENT department.",
     "The clerk has typed the patient's complaint in the patient's own words. It may be Hindi, English, or Hinglish.",
     "",
     "These are the ONLY departments this hospital has:",
     list,
     "",
-    `Complaint: ${text}`,
-    "",
     "Reply with STRICT JSON and nothing else, in this exact shape:",
-    '{"suggestions":[{"index":<number>,"reason":"<max 6 words, plain English>"}]}',
+    '{"suggestions":[{"index":<number>}]}',
     "Rules: use ONLY indexes from the list above; at most 3 suggestions, best first;",
     "if nothing clearly fits, reply {\"suggestions\":[]}. Never invent a department. Never add commentary.",
   ].join("\n");
+  return { system, user: `Complaint: ${text}` };
 }
+
+/**
+ * #622 — the reply ceiling. The routing answer is a few tokens, but `gpt-oss-120b` (the configured
+ * fallback) spends 62-74 tokens reasoning first, and below that ceiling it returns an EMPTY reply
+ * (measured 2026-09-19). 512 is `complete()`'s own default, named here so nobody lowers it by eye.
+ */
+const TRIAGE_MAX_TOKENS = 512;
 
 /** Pulls the first JSON object out of a reply, so a model that wraps it in prose or fences still parses. */
 export function parseSuggestions(raw: string, departments: TriageDepartment[]): TriageSuggestion[] {
@@ -276,16 +306,14 @@ export function parseSuggestions(raw: string, departments: TriageDepartment[]): 
   const seen = new Set<string>();
   for (const row of rows.slice(0, 3)) {
     if (row === null || typeof row !== "object") continue;
-    const { index, reason } = row as { index?: unknown; reason?: unknown };
+    // #622 — a `reason` the model sends anyway is NEVER read: the clerk sees ours.
+    const { index } = row as { index?: unknown };
     if (typeof index !== "number" || !Number.isInteger(index)) continue;
     // THE GUARD THAT MAKES A HALLUCINATION IMPOSSIBLE: an index we did not send is not a department.
     const dept = departments[index];
     if (dept === undefined || seen.has(dept.id)) continue;
     seen.add(dept.id);
-    out.push({
-      departmentId: dept.id,
-      reason: typeof reason === "string" && reason.trim() !== "" ? reason.trim().slice(0, 60) : "suggested",
-    });
+    out.push({ departmentId: dept.id, reason: MODEL_REASON, reasonKey: "opdTriage.reason.model" });
   }
   return out;
 }
@@ -469,52 +497,33 @@ async function askModel(
 ): Promise<TriageResult> {
   const prompt = buildPrompt(text, departments);
   /*
-    THE LAST GATE, on the exact string that goes on the wire — the whole prompt, department list
-    included, because `mask.ts` is right that a masker cannot be its own witness. A refusal costs
+    THE LAST GATE, on the exact strings that go on the wire — both halves of the prompt, department
+    list included, because `mask.ts` is right that a masker cannot be its own witness. A refusal costs
     the model call and nothing else: the clerk gets the keyword table, which is what every other
     failure here already gives them. `IdentifierLeak` carries only a length, never the text.
   */
   try {
-    assertNoIdentifiers(prompt);
+    assertNoIdentifiers(`${prompt.system}\n${prompt.user}`);
   } catch {
     return { suggestions: keywords, source: "keywords" };
   }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), config.timeoutMs);
+  /*
+    #622 — THROUGH THE ONE INFERENCE MODULE. The call used to be this file's own `fetch` to
+    `/chat/completions`; it is now `complete()` on the kernel's OpenAI-compatible client, which owns
+    `stream: false` (the Omniroute gateway streamed without it — measured here first), temperature
+    0, the timeout and the ceiling. Triage keeps its own provider settings (`TRIAGE_*`), so the model
+    and key are unchanged; only the call site moved. Every failure — not configured, a timeout, a
+    non-200, an empty reply — is `InferenceUnavailable`, and every one is the keyword table.
+  */
+  const client = openAiCompatibleClient(config, fetchImpl);
+  if (client === null) return { suggestions: keywords, source: "keywords" };
   try {
-    const res = await fetchImpl(`${config.baseUrl.replace(/\/$/, "")}/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
-      body: JSON.stringify({
-        model: config.model,
-        /*
-         * `stream: false` IS LOAD-BEARING, and it was measured rather than assumed. The Omniroute
-         * gateway answered `text/event-stream` — `data: {...}` chunks — even when streaming was not
-         * requested, so `res.json()` threw and EVERY call silently fell back to the keyword table.
-         * The desk looked like it worked and the model was never once used.
-         *
-         * FD-11 — Groq HONOURS it and returns `application/json`, verified against the live gateway
-         * on all four candidate models. The flag stays explicit anyway: it costs nothing, and the
-         * failure it prevents is invisible from the desk. A provider that ignores it is exactly the
-         * provider nobody would suspect.
-         */
-        stream: false,
-        temperature: 0,
-        messages: [{ role: "user", content: prompt }],
-      }),
-      signal: controller.signal,
-    });
-    if (!res.ok) return { suggestions: keywords, source: "keywords" };
-    const body = (await res.json()) as { choices?: { message?: { content?: unknown } }[] };
-    const content = body.choices?.[0]?.message?.content;
-    if (typeof content !== "string") return { suggestions: keywords, source: "keywords" };
+    const { text: content } = await client.complete({ system: prompt.system, user: prompt.user, maxTokens: TRIAGE_MAX_TOKENS });
     const parsed = parseSuggestions(content, departments);
     // An empty model answer is not better than the table we already have.
     return parsed.length > 0 ? { suggestions: parsed, source: "model" } : { suggestions: keywords, source: "keywords" };
   } catch {
     return { suggestions: keywords, source: "keywords" };
-  } finally {
-    clearTimeout(timer);
   }
 }

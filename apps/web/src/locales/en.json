@@ -15114,6 +15114,12 @@
     "cancelled": "{{no}} cancelled."
   },
   "opdTriage": {
+    "reason": {
+      "model": "Suggested by the triage model",
+      "keywords": "Matched by the keyword table",
+      "prior": "Ranked by this hospital's past visits",
+      "child": "Child: Paediatrics first"
+    },
     "redFlag": {
       "chestPain": "Chest pain — this may be a cardiac emergency.",
       "breathless": "Breathlessness — this may be an emergency.",

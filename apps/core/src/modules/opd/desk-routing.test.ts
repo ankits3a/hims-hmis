@@ -165,7 +165,7 @@ describe("desk routing — link, child rule, prior", () => {
 
 describe("applyRouting — the rules without a database", () => {
   const depts = [{ id: "A", name: "General Medicine" }, { id: "B", name: "ENT" }, { id: "P", name: "Paediatrics" }];
-  const ranked: TriageResult = { suggestions: [{ departmentId: "B", reason: "x" }, { departmentId: "A", reason: "y" }], source: "keywords" };
+  const ranked: TriageResult = { suggestions: [{ departmentId: "B", reason: "x", reasonKey: "opdTriage.reason.keywords" }, { departmentId: "A", reason: "y", reasonKey: "opdTriage.reason.keywords" }], source: "keywords" };
 
   it("n 10–19 only swaps the top two when the prior's department is second", () => {
     const out = applyRouting(ranked, { departments: depts, ageYears: 40, prior: { departmentId: "A", n: 12, share: 0.9 } });
@@ -184,6 +184,9 @@ describe("applyRouting — the rules without a database", () => {
   it("never empties a list it was given, and a child keeps the specialty in slot two", () => {
     const child = applyRouting(ranked, { departments: depts, ageYears: 5, prior: { departmentId: "A", n: 50, share: 1 } });
     expect(child.suggestions.map((s) => s.departmentId)).toEqual(["P", "B", "A"]);
+    expect(child.suggestions[0]!.reasonKey).toBe("opdTriage.reason.child");
+    const led = applyRouting(ranked, { departments: depts, ageYears: 40, prior: { departmentId: "P", n: 50, share: 1 } });
+    expect(led.suggestions[0]).toMatchObject({ departmentId: "P", reasonKey: "opdTriage.reason.prior" });
     const noPaeds = applyRouting(ranked, { departments: depts.slice(0, 2), ageYears: 5, prior: null });
     expect(noPaeds.suggestions).toHaveLength(2);
   });
