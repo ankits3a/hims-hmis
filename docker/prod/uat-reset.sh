@@ -90,16 +90,35 @@ compose run --rm api node dist/scripts/seed-roles.js || note "seed:roles reporte
 compose run --rm api node dist/scripts/check-config-present.js
 
 step "4/5 the synthetic data, behind the door (11i T5 / D5)"
-# LAB_CATALOGUE=standard (#643): the image ships no test fixtures, so the default (golden) catalogue
-# died ENOENT on every reset and left staging's lab empty. The standard catalogue is a TS module in
-# dist/ — 331 tests, the same book production runs — and it holds every golden code seed:lab-demo uses.
-compose run --rm -e LAB_CATALOGUE=standard api node dist/scripts/seed-lab-catalogue.js
-# ALLOW_DEMO_DATA is seed:lab-demo's OWN opt-in — a word an operator types — and this script IS
-# that operator: running it is the deliberate act. The synthetic-data door (HMIS_SYNTHETIC_DATA_OK)
-# comes from the deploy directory's .env through the compose env_file, and both are required.
-compose run --rm -e ALLOW_DEMO_DATA=yes api node dist/scripts/seed-lab-demo.js
-compose run --rm api node dist/scripts/seed-aerb-demo.js || note "seed:aerb-demo skipped — no device or no RSO yet"
-note "the standard catalogue, a lab day and the DEMO certificates are loaded"
+# THE THREE SEEDS BELOW ACT AS A PERSON, AND A FRESH DATABASE HAS NO PEOPLE (#776). Nothing in this
+# script creates a user (deploy.sh says why: a deploy that minted an administrator would be minting a
+# credential nobody asked for), so on a reset the catalogue seed has nobody holding
+# lab.catalogue.manage and died `permission_denied`, taking the whole reset down with it. The
+# permission check stays exactly where it is: this step looks for an ACTIVE user who holds that
+# permission at hospital scope (a read, nothing written) and, when there is none, says so and moves
+# on. `node tools/stage-standup.mjs` creates the people and re-runs these seeds after the reset.
+LAB_ACTOR="$(compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -c "
+  select u.id from users u
+    join role_assignments ra on ra.user_id = u.id and ra.scope_type = 'hospital'
+    join role_permissions rp on rp.role_key = ra.role_key and rp.permission = 'lab.catalogue.manage'
+   where u.active order by u.username limit 1" 2>/dev/null || true)"
+if [ -n "$LAB_ACTOR" ]; then
+  # LAB_CATALOGUE=standard (#643): the image ships no test fixtures, so the default (golden) catalogue
+  # died ENOENT on every reset and left staging's lab empty. The standard catalogue is a TS module in
+  # dist/ — the same book production runs — and it holds every golden code seed:lab-demo uses.
+  compose run --rm -e SEED_ACTOR_ID="$LAB_ACTOR" -e LAB_CATALOGUE=standard api node dist/scripts/seed-lab-catalogue.js \
+    || note "seed:lab-catalogue failed — run node tools/stage-standup.mjs once the people exist"
+  # ALLOW_DEMO_DATA is seed:lab-demo's OWN opt-in — a word an operator types — and this script IS
+  # that operator: running it is the deliberate act. The synthetic-data door (HMIS_SYNTHETIC_DATA_OK)
+  # comes from the deploy directory's .env through the compose env_file, and both are required.
+  compose run --rm -e SEED_ACTOR_ID="$LAB_ACTOR" -e ALLOW_DEMO_DATA=yes api node dist/scripts/seed-lab-demo.js \
+    || note "seed:lab-demo skipped — it needs the LAB department and its people; node tools/stage-standup.mjs makes them"
+else
+  note "no active user holds lab.catalogue.manage yet (a fresh database has no people):"
+  note "the lab catalogue and the lab demo day are skipped — run node tools/stage-standup.mjs after the reset"
+fi
+compose run --rm api node dist/scripts/seed-aerb-demo.js \
+  || note "seed:aerb-demo skipped — no device or no RSO yet; node tools/stage-standup.mjs appoints one"
 
 step "5/5 api and worker back up, and the census"
 compose up -d api worker
