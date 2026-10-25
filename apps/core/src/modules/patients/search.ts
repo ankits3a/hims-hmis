@@ -1,8 +1,8 @@
-import { and, asc, eq, inArray, like, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, like, or, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
-import { patientPhotos, patients } from "../../kernel/db/schema";
+import { patientGuardians, patientPhotos, patients } from "../../kernel/db/schema";
 import { escapeLike } from "../../kernel/search/text";
 import { normalizeForSearch } from "../../kernel/search/normalize";
 import { PatientError } from "./uhid";
@@ -356,4 +356,56 @@ export async function searchPatients(
       matchedOn,
     };
   });
+}
+
+/**
+ * ═══ THE GUARDIAN UNDER A COUNTER HIT — owner, 2026-10-23 ═══
+ *
+ * *"In the suggested list of patients in the /counter screen, show guardian info as well."* After
+ * age, mobile and area, the guardian is what tells two Mohan Kumars apart, and the Lab desk's
+ * suggestion card already carries it (owner 2026-10-11, `lab/desk.ts`) in this same shape.
+ *
+ * WHICH LINK is the prescription's choice (`kernel/printing/render.ts`, Guardian Name, #942), so
+ * the clerk reads the same person the sheet will print: a woman's standing spouse first, else the
+ * newest standing link (`active` or `majority_ended`, not past `valid_to`), else the registration's
+ * father / husband name, whose relation the form does not record (`relation: null`).
+ *
+ * It is NOT in `searchPatients`: a dozen callers (billing, the palette, copilot) use that for ids
+ * and would each pay the extra query for a field they drop. Only the desk route asks for it. Every
+ * id passed here already came back from `searchPatients`, so the caller may see the record.
+ */
+export type HitGuardian = { name: string; relation: string | null };
+
+export async function guardiansOfHits(
+  db: Db,
+  hits: readonly { id: string; administrativeGender: string }[],
+  now: Date = new Date(),
+): Promise<Map<string, HitGuardian | null>> {
+  const out = new Map<string, HitGuardian | null>();
+  if (hits.length === 0) return out;
+  const rows = await db
+    .select({
+      patientId: patients.id,
+      fatherHusbandName: patients.fatherHusbandName,
+      name: patientGuardians.name,
+      relationship: patientGuardians.relationship,
+      validTo: patientGuardians.validTo,
+    })
+    .from(patients)
+    .leftJoin(patientGuardians, and(
+      eq(patientGuardians.patientId, patients.id),
+      inArray(patientGuardians.status, ["active", "majority_ended"]),
+    ))
+    .where(inArray(patients.id, hits.map((h) => h.id)))
+    .orderBy(desc(patientGuardians.createdAt));
+  for (const hit of hits) {
+    const mine = rows.filter((r) => r.patientId === hit.id);
+    const standing = mine.filter((r) => (r.name?.trim() ?? "") !== "" && (r.validTo === null || r.validTo.getTime() > now.getTime()));
+    const female = hit.administrativeGender.toLowerCase().startsWith("f");
+    const link = (female ? standing.find((r) => r.relationship === "spouse") : undefined) ?? standing[0];
+    const registered = mine[0]?.fatherHusbandName?.trim() ?? "";
+    out.set(hit.id, link !== undefined ? { name: link.name!.trim(), relation: link.relationship }
+      : registered !== "" ? { name: registered, relation: null } : null);
+  }
+  return out;
 }
