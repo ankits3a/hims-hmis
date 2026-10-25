@@ -370,7 +370,15 @@ export function ruleCheck(input: RuleInput): { result: "pass" | AliasRuleCode; l
   const line = lookalikeDistance(words);
   if (!exact) {
     /* A misspelt or shortened name that sits as near another medicine as its target is not an alias of either. */
-    if (others.some((r) => callNames(r).some((n) => { const d = editDistance(words, n); return d <= line && d <= mine; }))) return { result: "lookalike_conflict", lasaGuard: false };
+    /*
+      A combination that CONTAINS every one of the target's moieties is not a look-alike through those
+      moieties' own names: "levothyroxin" is no nearer levothyroxine + liothyronine than it is to
+      levothyroxine, exactly as the correctly spelt word is not (the exact path above skips this check).
+      One direction only: a single-moiety row still conflicts with a combination target.
+    */
+    const rivalNames = (r: AliasCandidateRow): string[] =>
+      target.salts.length > 0 && target.salts.every((s) => r.salts.includes(s)) ? callNames(r).filter((n) => !target.salts.includes(n)) : callNames(r);
+    if (others.some((r) => rivalNames(r).some((n) => { const d = editDistance(words, n); return d <= line && d <= mine; }))) return { result: "lookalike_conflict", lasaGuard: false };
     if (lasaPartner(input.lasa, callNames(target)) !== null) return { result: "lookalike_conflict", lasaGuard: false };
   }
   if (input.rivalShares.some((s) => s > SECOND_TARGET_SHARE)) return { result: "multiple_targets", lasaGuard: false };
@@ -389,6 +397,63 @@ export function ruleCheck(input: RuleInput): { result: "pass" | AliasRuleCode; l
   */
   const lasaGuard = lasaPartner(input.lasa, callNames(target)) !== null;
   return { result: "pass", lasaGuard };
+}
+
+// ─────────────────────────────────────────── correcting the word (#613 item 4) ───────────────────────────────────────────
+
+/** The names near a word, from the catalogue: every moiety name, and the brands whose name is near (with their moieties). */
+export type SpellingNeighbours = { moieties: readonly string[]; brands: readonly { name: string; salts: readonly string[] }[] };
+/** One row of the pharmacist's abbreviation list (`opd_medicine_abbreviations`). `signed`: a person reviewed it. */
+export type MedicineAbbreviation = { abbreviation: string; moiety: string; active: boolean; signed: boolean };
+export type TermCorrection = { kind: "spelling" | "abbreviation"; from: string; to: string };
+
+/** A correction never changes how the word begins: "amlodarone" is not corrected to amiodarone (spec #613 D2). */
+const KEPT_PREFIX = 3;
+
+/**
+ * SPEC #613 — A MISSPELT GENERIC, CORRECTED BY RULE BEFORE ANY MODEL SEES IT. The moiety `word` is
+ * corrected to, or null. All of these must hold, and each one is a refusal when it does not:
+ *   - `word` is one word of letters, and is not itself a moiety, nor the called name of a brand of a
+ *     DIFFERENT moiety ("amoxycillin" is a brand of amoxicillin, so it is still corrected);
+ *   - exactly ONE moiety is within the look-alike distance (`lookalikeDistance`);
+ *   - nothing else — no other moiety, no brand of another moiety — is within `d + 1` edits, `d` being
+ *     the word's distance to that moiety;
+ *   - the moiety is not on the look-alike list: a list that warns is never the target of an answer;
+ *   - the first three letters are kept.
+ * Pure. Stricter than the draft's wording in one place, recorded in the spec: the rival radius is
+ * `d + 1`, and the kept beginning is what refuses "amlodarone".
+ */
+export function spellingCorrection(word: string, near: SpellingNeighbours, lasa: readonly LasaPair[]): string | null {
+  if (!/^[a-z]+$/.test(word)) return null;
+  const line = lookalikeDistance(word);
+  if (line === 0) return null;
+  const moieties = [...new Set(near.moieties.map((m) => m.toLowerCase()))];
+  if (moieties.some((m) => m === word || m.split(" ")[0] === word)) return null;
+  const within = moieties.filter((m) => editDistance(word, m) <= line);
+  const target = within[0];
+  if (within.length !== 1 || target === undefined) return null;
+  if (target.slice(0, KEPT_PREFIX) !== word.slice(0, KEPT_PREFIX)) return null;
+  if (lasaPartner(lasa, [target]) !== null) return null;
+  const d = editDistance(word, target);
+  if (moieties.some((m) => m !== target && editDistance(word, m) <= d + 1)) return null;
+  for (const b of near.brands) {
+    if (b.salts.map((s) => s.toLowerCase()).includes(target)) continue; // a brand of the same moiety is not a rival
+    const head = headOf(b.name);
+    if (head === word || head.split(" ")[0] === word || editDistance(word, head) <= d + 1) return null;
+  }
+  return target;
+}
+
+/** SPEC #613 — the moiety a SIGNED, active row of the pharmacist's list maps `word` to, or null. An unsigned row answers nothing. */
+export function abbreviationExpansion(word: string, rows: readonly MedicineAbbreviation[]): string | null {
+  const hits = [...new Set(rows.filter((r) => r.active && r.signed && r.abbreviation.toLowerCase() === word).map((r) => r.moiety.toLowerCase()))];
+  return hits.length === 1 ? (hits[0] as string) : null;
+}
+
+/** The reading with its one name word replaced: what the models are shown. */
+function correctedReading(reading: TermReading, c: TermCorrection): TermReading {
+  const swap = (s: string): string => s.split(" ").map((t) => (t === c.from ? c.to : t)).join(" ");
+  return { ...reading, words: swap(reading.words), digits: swap(reading.digits) };
 }
 
 // ─────────────────────────────────────────── trust by use ───────────────────────────────────────────
@@ -439,6 +504,11 @@ export type AliasDeps = {
   chooserLine: number;
   /** `ALIAS_REVIEWER_MIN_PROBABILITY`, default 0.9: yes at or above it, no at or below 1 − it, else unsure. */
   reviewerLine: number;
+  /**
+   * SPEC #613 — what corrects a misspelt or abbreviated word before the models: the catalogue's names
+   * near it and the pharmacist's abbreviation list. Absent: the word is shown as typed.
+   */
+  spelling?: { neighbours: (word: string) => Promise<SpellingNeighbours>; abbreviations: () => Promise<readonly MedicineAbbreviation[]> };
 };
 
 export type AliasProposal =
@@ -456,6 +526,8 @@ export type AliasProposal =
     reviewer: { model: string; answer: ReviewerAnswer; probability: number; reasonCode: AliasReasonCode } | null;
     /** What the chooser was shown, in order — catalogue rows, for the log and the evaluation. */
     shown: AliasCandidateRow[];
+    /** SPEC #613 — the word the models were shown in place of the typed one, or null. */
+    correction: TermCorrection | null;
   };
 
 /** The few a chooser sees: a strength that agrees first, then exact names, a form that agrees, nearness; one row per product. */
@@ -506,8 +578,9 @@ const REASONS: Record<AliasReasonCode, string> = {
 export async function proposeAlias(deps: AliasDeps, rawTerm: string): Promise<AliasProposal> {
   if (!deps.enabled) return { outcome: "off" };
   const term = normaliseTerm(rawTerm);
+  let correction: TermCorrection | null = null;
   const refused = (refusal: AliasRefusal, over: Partial<Extract<AliasProposal, { outcome: "ran" }>> = {}): AliasProposal => ({
-    outcome: "ran", term, state: "proposed", medicineId: null, refusal, ruleResult: "not_run", lasaGuard: false, chooser: null, reviewer: null, shown: [], ...over,
+    outcome: "ran", term, state: "proposed", medicineId: null, refusal, ruleResult: "not_run", lasaGuard: false, chooser: null, reviewer: null, shown: [], correction, ...over,
   });
 
   /*
@@ -519,7 +592,28 @@ export async function proposeAlias(deps: AliasDeps, rawTerm: string): Promise<Al
   try { assertNoIdentifiers(term); } catch (e) { if (e instanceof IdentifierLeak) return refused("identifier_in_term"); throw e; }
 
   const reading = readTerm(term);
-  const pool = reading.words.length < 2 ? [] : await deps.candidates(reading.words, reading.numbers.map((n) => trimNumber(n.value)));
+  const numbers = reading.numbers.map((n) => trimNumber(n.value));
+  const typedPool = reading.words.length < 2 ? [] : await deps.candidates(reading.words, numbers);
+  /*
+    SPEC #613 — A MISSPELT OR ABBREVIATED WORD IS CORRECTED BY RULE, BEFORE EITHER MODEL. A signed row of
+    the pharmacist's list first, then the spelling rule. The models are shown the corrected term and the
+    candidates for the corrected word join the pool; every rule below still runs on the term AS TYPED
+    (`reading`), over the wider pool, and the proposal is still keyed on the typed term.
+  */
+  const lasa = await deps.lasa();
+  if (deps.spelling !== undefined && reading.words !== "" && !reading.words.includes(" ")) {
+    const word = reading.words;
+    const expanded = abbreviationExpansion(word, await deps.spelling.abbreviations());
+    const respelt = expanded === null ? spellingCorrection(word, await deps.spelling.neighbours(word), lasa) : null;
+    if (expanded !== null) correction = { kind: "abbreviation", from: word, to: expanded };
+    else if (respelt !== null) correction = { kind: "spelling", from: word, to: respelt };
+  }
+  const shownReading = correction === null ? reading : correctedReading(reading, correction);
+  const pool = [...typedPool];
+  if (correction !== null) {
+    const have = new Set(pool.map((r) => r.id));
+    for (const r of await deps.candidates(shownReading.words, numbers)) if (!have.has(r.id)) { have.add(r.id); pool.push(r); }
+  }
   /*
     #613 — NEVER A CONTROLLED MEDICINE, DECIDED BEFORE EITHER MODEL IS ASKED. A controlled row is never
     offered to the chooser. A term that names a controlled product outright, or whose only candidates are
@@ -528,14 +622,14 @@ export async function proposeAlias(deps: AliasDeps, rawTerm: string): Promise<Al
   */
   const controlled = pool.filter(isControlled);
   const plain = pool.filter((r) => !isControlled(r));
-  if (controlled.some((r) => namesOutright(reading.words, r)) || (plain.length === 0 && controlled.length > 0)) {
+  if (controlled.some((r) => namesOutright(reading.words, r) || namesOutright(shownReading.words, r)) || (plain.length === 0 && controlled.length > 0)) {
     return refused("controlled_drug", { ruleResult: "controlled_drug" });
   }
-  const shown = shownCandidates(reading, plain);
+  const shown = shownCandidates(shownReading, plain);
   if (shown.length === 0) return refused("no_candidates");
   if (deps.chooser === null) return refused("chooser_unavailable", { shown });
 
-  const state: Record<string, string> = { term, read_as: reading.digits };
+  const state: Record<string, string> = correction === null ? { term, read_as: reading.digits } : { term: term.split(" ").map((t) => (t === correction?.from ? correction.to : t)).join(" "), read_as: shownReading.digits };
   const keyOf = (i: number): string => `c${String(i + 1)}`;
   const options: Record<string, unknown> = Object.fromEntries(shown.map((r, i) => [keyOf(i), r.name]));
   options.none = "none of these, not a medicine, or more than one of these";
@@ -576,7 +670,7 @@ export async function proposeAlias(deps: AliasDeps, rawTerm: string): Promise<Al
     return refused("reviewer_unavailable", base);
   }
 
-  const rules = ruleCheck({ reading, target, pool, lasa: await deps.lasa(), rivalShares, chooserModel: chooser.model, reviewerModel: reviewer.model });
+  const rules = ruleCheck({ reading, target, pool, lasa, rivalShares, chooserModel: chooser.model, reviewerModel: reviewer.model });
   const refusal: AliasRefusal | null =
     chooser.confidence < deps.chooserLine ? "chooser_below_line"
       : reviewer.answer === "no" ? "reviewer_no"
@@ -585,6 +679,6 @@ export async function proposeAlias(deps: AliasDeps, rawTerm: string): Promise<Al
             : null;
   return {
     outcome: "ran", term, state: refusal === null ? "suggestion" : "proposed", medicineId: target.id, refusal,
-    ruleResult: rules.result, lasaGuard: rules.result === "pass" && rules.lasaGuard, chooser, reviewer, shown,
+    ruleResult: rules.result, lasaGuard: rules.result === "pass" && rules.lasaGuard, chooser, reviewer, shown, correction,
   };
 }
