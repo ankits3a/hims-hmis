@@ -140,12 +140,12 @@ describe("the desk complaint travels with the walk-in", () => {
   it("#614 — the triageId the ranking answered with goes back on the walk-in, and a prior says so", async () => {
     const assigned: Record<string, unknown>[] = [];
     mount([doctor("doc-verma", "Dr. Verma", 0)], null, assigned as never, {
-      suggestions: [{ departmentId: "d-1", reason: "where these visits ended" }], source: "prior", triageId: "tr-9",
+      suggestions: [{ departmentId: "d-1", reason: "where these visits ended", reasonKey: "opdTriage.reason.prior" }], source: "prior", triageId: "tr-9",
     });
     await holdPatient();
     const user = userEvent.setup({ delay: null });
     await user.type(screen.getByTestId("complaint"), "seene mein dard");
-    await waitFor(() => expect(screen.getByText(/ranked by this hospital's past visits/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Ranked by this hospital.s past visits/)).toBeInTheDocument());
     await user.click(screen.getByTestId("propose-assign"));
     await waitFor(() => expect(assigned).toHaveLength(1));
     expect(assigned[0]!.triageId).toBe("tr-9");

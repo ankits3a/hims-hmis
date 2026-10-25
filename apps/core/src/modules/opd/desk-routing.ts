@@ -141,7 +141,7 @@ export function applyRouting(
   if (bandForAge(input.ageYears) === "pediatric") {
     const paeds = input.departments.find((d) => PAEDIATRICS.test(d.name));
     if (paeds === undefined) return { ...result, suggestions: ranked };
-    const lead: TriageSuggestion = { departmentId: paeds.id, reason: "child — Paediatrics first" };
+    const lead: TriageSuggestion = { departmentId: paeds.id, reason: "child — Paediatrics first", reasonKey: "opdTriage.reason.child" };
     return { ...result, suggestions: [lead, ...ranked.filter((s) => s.departmentId !== paeds.id)] };
   }
 
@@ -150,7 +150,7 @@ export function applyRouting(
   if (bandForAge(input.ageYears) !== "adult" || prior === null) return { ...result, suggestions: ranked };
   if (!active.has(prior.departmentId) || prior.share < PRIOR_MIN_SHARE) return { ...result, suggestions: ranked };
 
-  const lead: TriageSuggestion = { departmentId: prior.departmentId, reason: "where these visits ended" };
+  const lead: TriageSuggestion = { departmentId: prior.departmentId, reason: "where these visits ended", reasonKey: "opdTriage.reason.prior" };
   if (prior.n >= PRIOR_LEAD_N) {
     return { ...result, source: "prior", suggestions: [lead, ...ranked.filter((s) => s.departmentId !== prior.departmentId)] };
   }
