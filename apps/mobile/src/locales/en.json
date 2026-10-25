@@ -295,7 +295,7 @@
         "sex_female": "Female",
         "sex_other": "Other",
         "age": "Age or date of birth",
-        "ageHint": "34  or  14/03/1986",
+        "ageHint": "34  or  3m  or  14/03/1986",
         "phone": "Mobile (optional)",
         "address": "Address (optional)",
         "guardianTitle": "Guardian — needed for a patient under 18",

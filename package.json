@@ -24,7 +24,9 @@
       "js-yaml@^4": "^4.3.2",
       "proxy-addr": "^2.0.8",
       "seroval": "^1.6.3",
-      "shell-quote": "^1.11.0"
+      "shell-quote": "^1.11.0",
+      "body-parser": "^2.4.0",
+      "multer": "^2.5.0"
     },
     "patchedDependencies": {
       "drizzle-orm@0.40.1": "patches/drizzle-orm@0.40.1.patch"
