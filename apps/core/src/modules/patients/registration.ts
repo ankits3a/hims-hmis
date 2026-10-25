@@ -68,6 +68,13 @@ export type RegisterPatientInput = {
   altPhone?: string;
   dob?: Date;
   ageYears?: number;
+  /**
+   * AN INFANT'S AGE IS MONTHS OR DAYS, NOT YEARS. With only `ageYears` a three-month-old could be
+   * registered as 0 or 1 and nothing between. Either travels with or without `ageYears` (absent
+   * reads as 0), and all three are subtracted from today to make the estimated date of birth.
+   */
+  ageMonths?: number;
+  ageDays?: number;
   sex: Sex;
   /**
    * PLAN 22c-A DD4 — the LEGAL identity marker, optional at the counter and defaulting to `sex`.
@@ -144,14 +151,19 @@ export async function registerPatient(
   if (actor.type !== "user") {
     throw new PatientError("user_actor_required", "only user actors register patients");
   }
-  if (input.dob !== undefined && input.ageYears !== undefined) {
-    throw new PatientError("dob_or_age", "provide dob OR ageYears, not both");
+  const ageGiven = input.ageYears !== undefined || input.ageMonths !== undefined || input.ageDays !== undefined;
+  if (input.dob !== undefined && ageGiven) {
+    throw new PatientError("dob_or_age", "provide dob OR an age, not both");
   }
   let dob = input.dob ?? null;
   let dobEstimated = false;
-  if (input.ageYears !== undefined) {
+  if (ageGiven) {
     const now = new Date();
-    dob = new Date(Date.UTC(now.getUTCFullYear() - input.ageYears, now.getUTCMonth(), now.getUTCDate()));
+    dob = new Date(Date.UTC(
+      now.getUTCFullYear() - (input.ageYears ?? 0),
+      now.getUTCMonth() - (input.ageMonths ?? 0),
+      now.getUTCDate() - (input.ageDays ?? 0),
+    ));
     dobEstimated = true;
   }
   const isConfidential = input.isConfidential ?? false;
