@@ -127,6 +127,7 @@ const SURFACE = [
   "searchMedicines",
   "searchMedicinesForPrescribing", // decisions 0051/0055 — the catalogue's answer plus a learned nickname's row
   "searchStaging",
+  "spellingNeighbours", // spec #613 — the moiety names and the near brands a misspelt word could mean; bounded brands
   "suggestDrugs",
   "suggestMoieties",
   "tidyCatalogueName", // pure: the SNOMED sentence in a label's words

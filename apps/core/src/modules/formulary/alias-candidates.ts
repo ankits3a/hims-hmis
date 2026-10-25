@@ -108,3 +108,37 @@ export async function aliasCandidatePool(db: Db, words: string, numbers: readonl
     };
   });
 }
+
+/** Below the candidate line on purpose: a brand two or three edits from a short word scores about 0.3. */
+export const SPELLING_WORD_SIMILARITY = 0.3;
+export const SPELLING_BRANDS_MAX = 2000;
+
+/**
+ * SPEC #613 — THE NAMES NEAR ONE WORD, for the alias pipeline's spelling rule (`spellingCorrection` in
+ * `modules/opd/alias-pipeline.ts`): EVERY moiety name in the catalogue (a few thousand, all of them, so a
+ * near moiety can never be missed), and the active brands whose name is near the word, each with its
+ * moieties. The rule corrects only to a moiety; brands only stop a correction. Reads names only.
+ */
+export async function spellingNeighbours(db: Db, word: string): Promise<{ moieties: string[]; brands: { name: string; salts: string[] }[] }> {
+  const w = word.trim().toLowerCase();
+  if (w.length < 2) return { moieties: [], brands: [] };
+  const salts = await db.execute(sql`select distinct lower(name) as name from formulary_salts`);
+  const brands = await db.transaction(async (tx) => {
+    await tx.execute(sql`select set_config('pg_trgm.word_similarity_threshold', ${String(SPELLING_WORD_SIMILARITY)}, true)`);
+    return tx.execute(sql`
+      select m.brand_name, (
+        select coalesce(json_agg(distinct lower(s.name)), '[]'::json)
+        from formulary_medicine_salts ms join formulary_salts s on s.id = ms.salt_id
+        where ms.medicine_id = m.id
+      ) as salts
+      from formulary_medicines m
+      where m.active and ${w} <% lower(m.brand_name)
+      order by word_similarity(${w}, lower(m.brand_name)) desc, m.id asc
+      limit ${SPELLING_BRANDS_MAX}
+    `);
+  });
+  return {
+    moieties: (salts.rows as { name: string }[]).map((r) => r.name),
+    brands: (brands.rows as { brand_name: string; salts: string[] }[]).map((r) => ({ name: r.brand_name, salts: r.salts })),
+  };
+}

@@ -7,7 +7,7 @@ import type { Actor } from "@hmis/contracts";
 import { CONFIG, DB } from "../../kernel/tokens";
 import { withTx } from "../../kernel/db/client";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
-import { opdLasaPairs } from "../../kernel/db/schema";
+import { opdLasaPairs, opdMedicineAbbreviations } from "../../kernel/db/schema";
 import { OPENAI_SPEECH_MODELS } from "../../kernel/inference/openai-speech";
 import { listRxSets, retireRxSet, saveRxSet, signRxSet, updateRxSet } from "./rx-sets";
 import {
@@ -355,6 +355,32 @@ export class OpdPhoneConsultController {
       const now = new Date();
       const done = await this.db.update(opdLasaPairs).set({ active: b.active, reviewedBy: actor.id, reviewedAt: now }).where(eq(opdLasaPairs.id, id)).returning({ id: opdLasaPairs.id });
       if (done.length === 0) throw new OpdError("invalid_config", "unknown pair");
+      return { ok: true };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  // ——— the pharmacist's abbreviation list (spec #613): a row answers only once a person signs it ———
+
+  @RequirePermission("opd.masters.read", "hospital")
+  @Get("consult/abbreviations")
+  async abbreviations(): Promise<{ items: { id: string; abbreviation: string; moiety: string; active: boolean; signed: boolean; signedAt: string | null }[] }> {
+    const rows = await this.db.select().from(opdMedicineAbbreviations).orderBy(opdMedicineAbbreviations.abbreviation);
+    return { items: rows.map((r) => ({ id: r.id, abbreviation: r.abbreviation, moiety: r.moiety, active: r.active, signed: r.reviewedBy !== null, signedAt: r.reviewedAt?.toISOString() ?? null })) };
+  }
+
+  /** Sign a row (the shipped list arrives unsigned), or switch one off. Either is a person's act, and either records who. */
+  @RequirePermission("opd.masters.manage", "hospital")
+  @Put("consult/abbreviations/:id")
+  async abbreviationSet(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<{ ok: true }> {
+    const b = parsed(z.object({ active: z.boolean() }), body);
+    try {
+      if (actor.type !== "user") throw new OpdError("user_actor_required", "an abbreviation is signed by a person");
+      const now = new Date();
+      const done = await this.db.update(opdMedicineAbbreviations).set({ active: b.active, reviewedBy: actor.id, reviewedAt: now })
+        .where(eq(opdMedicineAbbreviations.id, id)).returning({ id: opdMedicineAbbreviations.id });
+      if (done.length === 0) throw new OpdError("invalid_config", "unknown abbreviation");
       return { ok: true };
     } catch (e) {
       toHttp(e);

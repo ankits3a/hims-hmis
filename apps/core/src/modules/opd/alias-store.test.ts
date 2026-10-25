@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { loadConfig } from "../../kernel/config";
 import { cdsAliases, formularyMedicineSalts, formularyMedicines, formularySalts, opdLasaPairs } from "../../kernel/db/schema";
-import { aliasCandidatePool, normalizeDrugName } from "../formulary";
+import { aliasCandidatePool, normalizeDrugName, spellingNeighbours } from "../formulary";
 import type { Db } from "../../kernel/db/client";
 import type { AliasProposal } from "./alias-pipeline";
 import { aliasDepsFrom, saveAliasProposal } from "./alias-store";
@@ -43,6 +43,21 @@ describe("the alias pipeline's database edges", () => {
     await medicine("m_old", "Pan (pantoprazole sodium) 80 mg oral tablet", "Oral tablet", ["s_panto"], { active: false });
     await medicine("m_tram", "Tramazac (tramadol hydrochloride) 50 mg oral capsule", "Oral capsule", ["s_tram"], { scheduleFlag: "H1" });
   }
+
+  describe("spellingNeighbours (formulary, spec #613)", () => {
+    it("reads every moiety name and the near active brands with their moieties, and the pipeline's dependencies bind it", async () => {
+      await catalogue();
+      const near = await spellingNeighbours(db, "pantaprazole");
+      expect([...near.moieties].sort()).toEqual(["domperidone", "pantoprazole", "tramadol"]);
+      const gen = near.brands.find((b) => b.name.startsWith("Pantoprazole (as"));
+      expect(gen?.salts).toEqual(["pantoprazole"]);
+      expect(near.brands.some((b) => b.name === "Pan (pantoprazole sodium) 80 mg oral tablet")).toBe(false);
+      expect(await spellingNeighbours(db, "p")).toEqual({ moieties: [], brands: [] });
+      const deps = aliasDepsFrom(db, cfg());
+      expect(await deps.spelling?.neighbours("pantaprazole")).toEqual(near);
+      expect(await deps.spelling?.abbreviations()).toEqual([]);
+    });
+  });
 
   describe("aliasCandidatePool (formulary)", () => {
     it("puts a row that prints the term's strength first, the one NAMED so before the merely near, and never an inactive row", async () => {
@@ -97,7 +112,7 @@ describe("the alias pipeline's database edges", () => {
   });
 
   describe("saveAliasProposal", () => {
-    const base = { outcome: "ran" as const, term: "pan forty", lasaGuard: false, shown: [] };
+    const base = { outcome: "ran" as const, term: "pan forty", lasaGuard: false, shown: [], correction: null };
     const suggestion: AliasProposal = {
       ...base, state: "suggestion", medicineId: "m_pan40", refusal: null, ruleResult: "pass",
       chooser: { model: "jev-1.13.0", confidence: 0.91 }, reviewer: { model: "gpt-6-luna", answer: "yes", probability: 0.97, reasonCode: "brand_nickname" },

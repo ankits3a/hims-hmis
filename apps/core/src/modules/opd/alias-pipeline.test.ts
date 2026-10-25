@@ -2,7 +2,7 @@ import { InferenceUnavailable } from "../../kernel/inference/types";
 import type { ChoiceClient, ChooseInput, PredicateClient, PredicateInput } from "../../kernel/inference/types";
 import type { AliasCandidateRow } from "../formulary";
 import {
-  compositionKey, controlledBy, editDistance, formClassOf, headOf, isControlled, proposeAlias, readTerm, shownCandidates, spokenNumber, strengthAgrees, strengthsInName, trustByUse,
+  abbreviationExpansion, compositionKey, controlledBy, editDistance, spellingCorrection, formClassOf, headOf, isControlled, proposeAlias, readTerm, shownCandidates, spokenNumber, strengthAgrees, strengthsInName, trustByUse,
 } from "./alias-pipeline";
 import type { AliasDeps, AliasProposal, AliasReasonCode } from "./alias-pipeline";
 import type { LasaPair } from "./consult-guards";
@@ -299,6 +299,15 @@ describe("the medicine-alias pipeline (decision 0051)", () => {
       expect(p).toMatchObject({ state: "proposed", medicineId: "m_celin", refusal: "lookalike_conflict" });
     });
 
+    it("a misspelling of the target's own moiety is not a look-alike of a combination that CONTAINS it; the other way round it still is", async () => {
+      const LEVO50 = row("m_levo50", "Levothyroxine sodium 50 mcg oral tablet", { salts: ["levothyroxine"], generic: true });
+      const LEVO_T3 = row("m_levot3", "Thyrocomb (levothyroxine sodium and liothyronine sodium) 50 mcg + 12.5 mcg oral tablet", { salts: ["levothyroxine", "liothyronine"] });
+      const single = ran(await proposeAlias(fakes([LEVO50, LEVO_T3], { pick: "c1" }).deps, "levothyroxin 50 mcg"));
+      expect(single).toMatchObject({ state: "suggestion", medicineId: "m_levo50", ruleResult: "pass" });
+      const combo = ran(await proposeAlias(fakes([LEVO50, LEVO_T3], { pick: "c2" }).deps, "levothyroxin 50 mcg"));
+      expect(combo).toMatchObject({ state: "proposed", medicineId: "m_levot3", refusal: "lookalike_conflict" });
+    });
+
     it("a look-alike PAIR: a misspelling is refused, an exact name passes flagged for the second tap", async () => {
       const lasa: LasaPair[] = [{ a: "metformin", b: "metronidazole", reviewed: false }];
       const wrong = ran(await proposeAlias(fakes([METFORMIN, METRONIDAZOLE], { lasa }).deps, "metformn 500"));
@@ -320,6 +329,27 @@ describe("the medicine-alias pipeline (decision 0051)", () => {
       expect(ran(await proposeAlias({ ...noReviewer.deps, reviewer: null }, "pan 40"))).toMatchObject({ state: "proposed", refusal: "reviewer_unavailable" });
       expect(ran(await proposeAlias({ ...noReviewer.deps, chooser: null }, "pan 40"))).toMatchObject({ state: "proposed", refusal: "chooser_unavailable" });
       expect(ran(await proposeAlias(fakes([]).deps, "zzzz"))).toMatchObject({ state: "proposed", refusal: "no_candidates" });
+    });
+  });
+
+  describe("correcting the word (spec #613)", () => {
+    const moieties = ["pantoprazole", "lansoprazole", "rabeprazole"];
+    it("a brand of ANOTHER moiety near the word stops the correction; a brand of the same moiety does not", () => {
+      expect(spellingCorrection("pantaprazole", { moieties, brands: [] }, [])).toBe("pantoprazole");
+      expect(spellingCorrection("pantaprazole", { moieties, brands: [{ name: "Pantaprazol (rabeprazole sodium) 20 mg oral tablet", salts: ["rabeprazole"] }] }, [])).toBeNull();
+      expect(spellingCorrection("pantaprazole", { moieties, brands: [{ name: "Pantaprazole (pantoprazole) 40 mg oral tablet", salts: ["pantoprazole"] }] }, [])).toBe("pantoprazole");
+      expect(spellingCorrection("pantaprazole", { moieties, brands: [{ name: "Pantaprazole (rabeprazole) 20 mg oral tablet", salts: ["rabeprazole"] }] }, [])).toBeNull();
+    });
+    it("a second moiety within d + 1 stops it; an exact moiety, a short word or a word with digits is never corrected", () => {
+      expect(spellingCorrection("pantaprazole", { moieties: [...moieties, "pantaprazale"], brands: [] }, [])).toBeNull();
+      expect(spellingCorrection("pantoprazole", { moieties, brands: [] }, [])).toBeNull();
+      expect(spellingCorrection("pan", { moieties: ["pam"], brands: [] }, [])).toBeNull();
+      expect(spellingCorrection("pantaprazole2", { moieties, brands: [] }, [])).toBeNull();
+    });
+    it("an abbreviation answers only from a signed, active row, and never when two rows disagree", () => {
+      expect(abbreviationExpansion("amox", [{ abbreviation: "amox", moiety: "amoxicillin", active: true, signed: true }])).toBe("amoxicillin");
+      expect(abbreviationExpansion("amox", [{ abbreviation: "amox", moiety: "amoxicillin", active: true, signed: false }])).toBeNull();
+      expect(abbreviationExpansion("amox", [{ abbreviation: "amox", moiety: "amoxicillin", active: true, signed: true }, { abbreviation: "amox", moiety: "amoxapine", active: true, signed: true }])).toBeNull();
     });
   });
 
