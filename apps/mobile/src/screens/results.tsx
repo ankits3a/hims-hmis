@@ -15,7 +15,8 @@ import {
 /**
  * #681 — LAB AND IMAGING REPORTS ON THE PHONE, read-only (see `src/results/api.ts`). A list, newest or
  * most urgent first as the server orders it; one tap opens the report in place; Back returns to the
- * list and reads it again, so an imaging report just opened shows as read. Nothing is acknowledged,
+ * list and reads it again, so an imaging report just opened shows as read and a lab report just opened
+ * has left "Lab reports back" (the open is the doctor's read, #930). Nothing is acknowledged,
  * acted on or printed from here — a critical says it is acknowledged on the computer.
  */
 type Opened =
