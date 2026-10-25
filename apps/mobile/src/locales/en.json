@@ -3288,7 +3288,7 @@
     "attached": "{{test}} draft · {{n}} rows need your eyes",
     "attachedClean": "{{test}} draft · every row placed",
     "open": "Open in Quick Bench",
-    "hint": "Next time, type the sample no. in Patient ID",
+    "hint": "Next time, type the UHID in Patient ID",
     "differs": "This slip says {{says}}.",
     "differsAsk": "Is it this patient's slip?",
     "pick": "Pick the patient",
