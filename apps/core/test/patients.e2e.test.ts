@@ -217,6 +217,17 @@ describe("patients e2e", () => {
       .send({ name: "Kamla Bai Joshi", sex: "female", phone: "8123400079", dob: "1990-01-02" }).expect(201);
   });
 
+  it("an infant registers on an age in months alone; a twelfth month is a year, and the age never reaches a PATCH", async () => {
+    const mother = { name: "Sunita Devi", relationship: "mother" };
+    const res = await request(app.getHttpServer()).post("/patients").set(...auth(clerkToken))
+      .send({ name: "Baby of Sunita", sex: "female", phone: "9812300081", ageMonths: 3, guardian: mother }).expect(201);
+    expect(res.body.patient.dobEstimated).toBe(true);
+    await request(app.getHttpServer()).post("/patients").set(...auth(clerkToken))
+      .send({ name: "Baby of Rekha", sex: "male", phone: "9812300082", ageMonths: 12, guardian: mother }).expect(400);
+    await request(app.getHttpServer()).patch(`/patients/${String(res.body.patient.id)}`).set(...auth(clerkToken))
+      .send({ ageMonths: 4 }).expect(400);
+  });
+
   /*
     DESK-FIXES F (2026-09-28 walk) — every patient without a photo logged a red 404 in the console
     (18 on one walk). "No photo" is an ordinary answer, so it is 204 No Content. A patient the reader

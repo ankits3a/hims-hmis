@@ -404,35 +404,37 @@ export function tokenLabel(departmentCode: string | null, tokenNo: number): stri
   return departmentCode === null || departmentCode === "" ? `T-${String(tokenNo)}` : `${departmentCode}-${String(tokenNo)}`;
 }
 
-export function ageYearsOf(dob: string | null): number | null {
+/**
+ * AN INFANT IS MONTHS AND DAYS OLD, NOT "0". The age as completed years, months and days in the IST
+ * calendar — the one derivation `ageYearsOf` and `ageOf` both read, so a record cannot say 3 months
+ * on one screen and 2 on another. Null for an unreadable or future date.
+ */
+export function agePartsOf(dob: string | null, at: Date = new Date()): { years: number; months: number; days: number } | null {
   if (dob === null || dob === "") return null;
   const born = new Date(`${dob.slice(0, 10)}T00:00:00Z`);
   if (Number.isNaN(born.getTime())) return null;
-  const today = istYmdToday();
-  let years = today.y - born.getUTCFullYear();
-  const bornMonth = born.getUTCMonth() + 1;
-  const beforeBirthday = today.m < bornMonth
-    || (today.m === bornMonth && today.d < born.getUTCDate());
-  if (beforeBirthday) years -= 1;
-  return years < 0 ? null : years;
+  const today = istYmdToday(at);
+  const b = { y: born.getUTCFullYear(), m: born.getUTCMonth(), d: born.getUTCDate() };
+  let months = (today.y - b.y) * 12 + (today.m - 1 - b.m);
+  if (today.d < b.d) months -= 1;
+  if (months < 0) return null;
+  // days since the last monthly birthday; one on the 31st falls on a shorter month's last day
+  const lastDay = new Date(Date.UTC(b.y, b.m + months + 1, 0)).getUTCDate();
+  const since = Date.UTC(b.y, b.m + months, Math.min(b.d, lastDay));
+  const days = Math.round((Date.UTC(today.y, today.m - 1, today.d) - since) / 86_400_000);
+  return { years: Math.floor(months / 12), months: months % 12, days };
 }
 
+export function ageYearsOf(dob: string | null): number | null {
+  return agePartsOf(dob)?.years ?? null;
+}
+
+/** "41" from a year old, "3m" under a year, "12d" under a month. */
 export function ageOf(dob: string | null): string {
-  if (dob === null || dob === "") return "";
-  const born = new Date(`${dob.slice(0, 10)}T00:00:00Z`);
-  if (Number.isNaN(born.getTime())) return "";
-  const now = new Date();
-  const today = istYmdToday(now);
-  let years = today.y - born.getUTCFullYear();
-  const bornMonth = born.getUTCMonth() + 1;
-  const beforeBirthday = today.m < bornMonth
-    || (today.m === bornMonth && today.d < born.getUTCDate());
-  if (beforeBirthday) years -= 1;
-  if (years < 1) {
-    const months = Math.max(0, Math.round((now.getTime() - born.getTime()) / (30.44 * 86_400_000)));
-    return `${String(months)}m`;
-  }
-  return String(years);
+  const age = agePartsOf(dob);
+  if (age === null) return "";
+  if (age.years >= 1) return String(age.years);
+  return age.months >= 1 ? `${String(age.months)}m` : `${String(age.days)}d`;
 }
 
 /** `M` / `F` / `O` from the server's `administrativeGender`, for the dossier's `38F` line. */
@@ -466,13 +468,36 @@ export function initialsOf(name: string): string {
  * that does not exist, lies in the future, or is more than 130 years back is NOT a date of birth,
  * and anything half-typed is nothing yet — null, so nothing travels until the box is readable.
  */
-export type AgeOrDob = { kind: "age"; years: number } | { kind: "dob"; iso: string };
+export type AgeOrDob = { kind: "age"; years: number; months?: number; days?: number } | { kind: "dob"; iso: string };
+/**
+ * A BABY'S AGE IN THE SAME BOX: `3m`, `45d`, `6w`, `1y 6m`, `2 months 10 days`. A three-month-old
+ * could only be typed as 0 or 1 before. With a year beside them months stop at 11 and days at 30;
+ * alone, months roll into years (`18m` is 1 y 6 m) and days or weeks go up to a year.
+ */
+const AGE_UNITS = /^(?:(\d{1,3})\s*(?:years?|yrs?|y))?[\s,]*(?:(\d{1,3})\s*(?:months?|mons?|mo|m))?[\s,]*(?:(\d{1,2})\s*(?:weeks?|wks?|w))?[\s,]*(?:(\d{1,3})\s*(?:days?|d))?$/i;
+function parseAgeUnits(text: string): AgeOrDob | null {
+  const hit = AGE_UNITS.exec(text);
+  if (hit === null || (hit[1] ?? hit[2] ?? hit[3] ?? hit[4]) === undefined) return null;
+  const n = (v: string | undefined): number => (v === undefined ? 0 : Number.parseInt(v, 10));
+  let years = n(hit[1]);
+  let months = n(hit[2]);
+  const days = n(hit[3]) * 7 + n(hit[4]);
+  if (hit[1] !== undefined && months > 11) return null;
+  if ((hit[1] !== undefined || hit[2] !== undefined) && days > 30) return null;
+  if (days > 365) return null;
+  years += Math.floor(months / 12);
+  months %= 12;
+  if (years > 130) return null;
+  return { kind: "age", years, ...(months > 0 ? { months } : {}), ...(days > 0 ? { days } : {}) };
+}
+
 export function parseAgeOrDob(raw: string, today: Date = new Date()): AgeOrDob | null {
   const text = raw.trim();
   if (/^\d{1,3}$/.test(text)) {
     const years = Number.parseInt(text, 10);
     return years <= 130 ? { kind: "age", years } : null;
   }
+  if (/[a-z]/i.test(text)) return parseAgeUnits(text);
   let parts: [string, string, string] | null = null; // day, month, year
   const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(text);
   const dmy = /^(\d{1,2})[/\-. ](\d{1,2})[/\-. ](\d{2}|\d{4})$/.exec(text);
@@ -492,6 +517,25 @@ export function parseAgeOrDob(raw: string, today: Date = new Date()): AgeOrDob |
   if (date.getTime() > todayUtc || year < thisYear - 130) return null;
   const pad = (n: number): string => String(n).padStart(2, "0");
   return { kind: "dob", iso: `${String(year)}-${pad(month)}-${pad(day)}` };
+}
+
+/** An age the box read, written back the way it reads again: `34`, `3m`, `1y 6m`, `45d`. */
+export function ageReadingText(a: { years: number; months?: number; days?: number }): string {
+  if ((a.months ?? 0) === 0 && (a.days ?? 0) === 0) return String(a.years);
+  return [
+    a.years > 0 ? `${String(a.years)}y` : "",
+    (a.months ?? 0) > 0 ? `${String(a.months)}m` : "",
+    (a.days ?? 0) > 0 ? `${String(a.days)}d` : "",
+  ].filter((p) => p !== "").join(" ");
+}
+
+/** What `POST /patients` receives for a typed age: `ageMonths` / `ageDays` only when there are any. */
+export function ageBodyOf(a: { years: number; months?: number; days?: number }): { ageYears: number; ageMonths?: number; ageDays?: number } {
+  return {
+    ageYears: a.years,
+    ...((a.months ?? 0) > 0 ? { ageMonths: a.months } : {}),
+    ...((a.days ?? 0) > 0 ? { ageDays: a.days } : {}),
+  };
 }
 
 /** MAJORITY_AGE_YEARS on the server (`patients/types.ts`): a KNOWN minor's registration must name a guardian. */
@@ -555,7 +599,7 @@ export function shortRegisterBody(f: ShortRegistration, opts: { acknowledgeDupli
     name: t(f.name),
     sex: f.sex,
     ...(digits(f.phone) === "" ? {} : { phone: digits(f.phone) }),
-    ...(born === null ? {} : born.kind === "dob" ? { dob: born.iso } : { ageYears: born.years }),
+    ...(born === null ? {} : born.kind === "dob" ? { dob: born.iso } : ageBodyOf(born)),
     ...(t(f.address) === "" ? {} : { addressLine: t(f.address) }),
     ...(t(f.guardianName) === "" || f.guardianRelationship === ""
       ? {}
