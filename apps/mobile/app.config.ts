@@ -52,6 +52,13 @@ const IOS_CAMERA = "HMIS uses the camera to photograph prescription slips and sc
 const IOS_MICROPHONE = "HMIS uses the microphone to record a doctor's spoken note. The recording is sent through the hospital's server to a speech-to-text service to be typed, and is not stored.";
 const IOS_FACE_ID = "HMIS uses Face ID to unlock the app.";
 
+/**
+ * #590 (plan E1.7) — SPEAKING A QUESTION TO THE COPILOT waits for ruling R-2 (staff voice to the cloud
+ * speech service, decision 0064). While this is false no microphone is drawn: not on the "HMIS Ask"
+ * widget, not on the copilot screen. Turning it on is a new APK (the widget is native).
+ */
+const VOICE_ASK = false;
+
 const config: ExpoConfig = {
   name: ENV === "production" ? "HMIS" : "HMIS Staging",
   // `slug` must match the EAS project the owner created (projectId below); the stray app.json
@@ -124,11 +131,15 @@ const config: ExpoConfig = {
     // Decision 0064 (E1.1) — the "HMIS Scan" home-screen widget, Android only: one tap opens hmis://scan.
     // It draws a fixed icon and runs no JavaScript, so it never shows a patient (plugins/with-scan-widget.js).
     ["./plugins/with-scan-widget", { label: ENV === "production" ? "HMIS Scan" : "HMIS Scan (staging)" }],
+    // #590 (E1.7) — the "HMIS Ask" widget, Android only: one tap opens the copilot with the keyboard up.
+    // Fixed words, no JavaScript, never a patient or an answer on it (plugins/with-ask-widget.js).
+    ["./plugins/with-ask-widget", { label: ENV === "production" ? "HMIS Ask" : "HMIS Ask (staging)", mic: VOICE_ASK }],
   ],
   extra: {
     apiBase: API_BASE[ENV],
     appEnv: ENV,
     updateFeed: UPDATE_FEED[ENV],
+    voiceAsk: VOICE_ASK,
     version: VERSION,
     versionCode: VERSION_CODE,
     pushInBuild: PUSH_IN_BUILD,
