@@ -25,7 +25,7 @@
     "react-hook-form": "^7.54.0",
     "react-i18next": "^15.4.0",
     "tailwind-merge": "^3.6.0",
-    "zod": "^4.0.0"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@hmis/contracts": "workspace:*",

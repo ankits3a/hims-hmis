@@ -172,3 +172,16 @@ describe("registerBodyOf — the rules the extraction had to carry across unchan
     expect(body.guardian?.idNumberMasked).toBe("0123");
   });
 });
+
+describe("registerBodyOf — a baby's age", () => {
+  it("a three-month-old travels as 0 years and 3 months; an adult's age is unchanged", () => {
+    const baby = registerBodyOf(form({ ageMode: "age", age: "3m" }));
+    expect(baby).toMatchObject({ ageYears: 0, ageMonths: 3 });
+    expect(baby).not.toHaveProperty("ageDays");
+    expect(baby).not.toHaveProperty("dob");
+    expect(registerBodyOf(form({ ageMode: "age", age: "45d" }))).toMatchObject({ ageYears: 0, ageDays: 45 });
+    const adult = registerBodyOf(form({ ageMode: "age", age: "34" }));
+    expect(adult.ageYears).toBe(34);
+    expect(adult).not.toHaveProperty("ageMonths");
+  });
+});

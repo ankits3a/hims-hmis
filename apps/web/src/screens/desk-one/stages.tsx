@@ -32,7 +32,7 @@ import { Field, Fold, Picker, TogglePills, GRID3, GRID4 } from "../../components
 import { AbdmVerifyPanel } from "../../components/abdm-verify";
 import { ScanSharePanel } from "../../components/abdm-scan-share";
 import type { WireAbhaFlow, WireShare } from "../../lib/abdm-api";
-import { EMPTY_COVERAGE, EMPTY_FORM, ageOrDobText, formAgeYears, formNeedsGuardian, parseAgeOrDob, useDesk } from "./session";
+import { EMPTY_COVERAGE, EMPTY_FORM, agePartsOf, ageOrDobText, ageReadingText, formAgeYears, formNeedsGuardian, parseAgeOrDob, useDesk } from "./session";
 import { RebookingRail } from "./rebooking-rail";
 import { MoveDepartmentForm } from "./move-department";
 import { RegAllergies } from "./reg-allergies";
@@ -334,6 +334,12 @@ function StageRegister(): React.ReactElement {
   const { s } = d;
   const f = s.form;
   const set = (next: Partial<typeof f>): void => d.patch({ form: { ...f, ...next }, duplicates: null });
+  /* "1 y 6 m", "3 m 9 d", "0 d" — a baby is never read back as "0 y". */
+  const ageWords = (a: { years: number; months: number; days: number }): string => {
+    const parts = ([["y", a.years], ["m", a.months], ["d", a.days]] as const).filter(([, n]) => n > 0);
+    return (parts.length === 0 ? [["d", 0] as const] : parts)
+      .map(([unit, n]) => t(`registrationCounter.register.ageUnit.${unit}`, { n })).join(" ");
+  };
   const canRecordAllergy = useAuth().can("patients.update");
 
   const [open, setOpen] = useState<Record<string, boolean>>({});
@@ -406,9 +412,10 @@ function StageRegister(): React.ReactElement {
     });
     setAbdmPanel(null);
   };
+  const typedYears = f.ageMode === "age" ? formAgeYears(f) : null;
   const againstForm = {
     name: f.name.trim() === "" ? null : f.name,
-    dob: f.ageMode === "dob" ? (f.dob === "" ? null : f.dob) : (/^\d+$/.test(f.age) ? String(new Date().getFullYear() - Number(f.age)) : null),
+    dob: f.ageMode === "dob" ? (f.dob === "" ? null : f.dob) : (typedYears === null ? null : String(new Date().getFullYear() - typedYears)),
     gender: f.sex === "" ? null : f.sex,
     phone: f.phone.trim() === "" ? null : f.phone,
   };
@@ -420,10 +427,11 @@ function StageRegister(): React.ReactElement {
   */
   const [ageText, setAgeText] = useState(() => ageOrDobText(f));
   const ageRead = parseAgeOrDob(ageText);
+  const bornAge = ageRead?.kind === "dob" ? agePartsOf(ageRead.iso) : null;
   const formText = ageOrDobText(f);
   useEffect(() => {
     const read = parseAgeOrDob(ageText);
-    const same = read === null ? formText === "" : read.kind === "age" ? f.ageMode === "age" && f.age === String(read.years) : f.ageMode === "dob" && f.dob.slice(0, 10) === read.iso;
+    const same = read === null ? formText === "" : read.kind === "age" ? f.ageMode === "age" && f.age === ageReadingText(read) : f.ageMode === "dob" && f.dob.slice(0, 10) === read.iso;
     if (!same) setAgeText(formText);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- follows the FORM; the text changing is not a reason to run
   }, [formText, f.ageMode]);
@@ -471,7 +479,7 @@ function StageRegister(): React.ReactElement {
               setAgeText(raw);
               const read = parseAgeOrDob(raw);
               set(read === null ? { ageMode: "age", age: "", dob: "" }
-                : read.kind === "age" ? { ageMode: "age", age: String(read.years), dob: "" }
+                : read.kind === "age" ? { ageMode: "age", age: ageReadingText(read), dob: "" }
                 : { ageMode: "dob", age: "", dob: read.iso });
             }}
           />
@@ -483,7 +491,13 @@ function StageRegister(): React.ReactElement {
             <div data-testid="reg-age-read" style={{ fontSize: 11, color: "var(--green)", marginTop: 4 }}>
               {t("registrationCounter.register.ageOrDobBorn", {
                 date: new Date(`${ageRead.iso}T00:00:00Z`).toLocaleDateString(dateLocale(), { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" }),
-                years: formAgeYears(f) ?? 0,
+                age: ageWords(bornAge !== null && bornAge.years >= 1 ? { ...bornAge, months: 0, days: 0 } : bornAge ?? { years: 0, months: 0, days: 0 }),
+              })}
+            </div>
+          ) : ageRead.months !== undefined || ageRead.days !== undefined ? (
+            <div data-testid="reg-age-read" style={{ fontSize: 11, color: "var(--green)", marginTop: 4 }}>
+              {t("registrationCounter.register.ageOrDobAge", {
+                age: ageWords({ years: ageRead.years, months: ageRead.months ?? 0, days: ageRead.days ?? 0 }),
               })}
             </div>
           ) : null}
