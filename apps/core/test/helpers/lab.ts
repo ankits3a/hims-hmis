@@ -483,7 +483,7 @@ export async function runLabOrder(
   return {
     orderId: placed.orderId, orderNo: placed.orderNo, orderGroupId: placed.orderGroupId,
     itemIds: placed.itemIds, specimenNos: specimens.map((s) => s.specimenNo),
-    invoiceId: placed.invoice.invoiceId, netPayablePaise: placed.invoice.netPayablePaise,
+    invoiceId: placed.invoice?.invoiceId ?? "", netPayablePaise: placed.invoice?.netPayablePaise ?? 0,
     resultIds,
   };
 }

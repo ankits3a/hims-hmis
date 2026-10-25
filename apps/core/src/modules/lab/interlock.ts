@@ -45,7 +45,13 @@ export const EXEMPT_PAYERS: readonly string[] = ["tpa", "pmjay", "corporate"];
  * whole episode. Holding its lab report at the counter would hold it against a bill nobody has
  * composed yet, so the `D` prefix delivers like an exempt payer and for the same reason.
  */
-export const EXEMPT_ENCOUNTER_PREFIXES: readonly string[] = ["D"];
+/*
+ * E4.2 (#734) — the INPATIENT (`IP`, the admission number `IP26-000123`, read here as its leading letters `IP`): an inpatient's
+ * report is never held for payment. The IPD bill settles at discharge and nobody is detained for dues (decision 0072, the
+ * discharge no-detention rule); billing these orders onto the IPD running bill is issue #785. Equality on the whole
+ * prefix (F13 below), so only `IP` widens — every other encounter keeps the guard exactly as it was.
+ */
+export const EXEMPT_ENCOUNTER_PREFIXES: readonly string[] = ["D", "IP"];
 
 export type DeliveryVerdict = {
   allowed: boolean;

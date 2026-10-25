@@ -1,0 +1,86 @@
+/*
+ * E3.1 (#729) — the Transfer panel (inside the Beds drawer, on `.ipdb`'s tokens) and the "Waiting for you" handover
+ * list (`.ipdh`, its own tokens — the paper-pine set). Colour never carries meaning alone: every state is a word, the
+ * escalation also an icon. Targets are 48 px on the phone list (gloves).
+ */
+.ipdt-panel { border-top: 1px dashed var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.ipdt-panel .row { display: flex; flex-wrap: wrap; gap: 8px; }
+.ipdt-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.ipdt-head b { font-size: 14px; }
+.ipdt-line { font-size: 12px; color: var(--dim); }
+.ipdt-waiting { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-left: 4px solid var(--ink); border-radius: 6px; background: var(--card); }
+.ipdt-form { display: flex; flex-direction: column; gap: 8px; }
+.ipdt-form label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--dim); }
+.ipdt-form input:not([type="checkbox"]):not([type="radio"]), .ipdt-form select, .ipdt-form textarea {
+  min-height: 40px; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 14px; color: var(--ink); background: #fff;
+  width: 100%; box-sizing: border-box;
+}
+.ipdt-form textarea { resize: vertical; min-height: 52px; }
+.ipdt-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ipdt-check { flex-direction: row !important; align-items: flex-start; gap: 8px !important; color: var(--ink) !important; font-size: 13px !important; }
+.ipdt-check input { margin-top: 3px; width: 18px; height: 18px; flex-shrink: 0; }
+.ipdt-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.ipdt-targets { border: 1px solid var(--line); border-radius: 6px; margin: 0; padding: 6px; max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.ipdt-targets legend { font-size: 12px; color: var(--dim); padding: 0 4px; }
+.ipdt-target { display: grid !important; grid-template-columns: auto auto 1fr; grid-template-rows: auto auto; column-gap: 8px; row-gap: 0 !important;
+  align-items: center; padding: 6px 8px; border: 1px solid transparent; border-radius: 6px; color: var(--ink) !important; font-size: 13px !important; cursor: pointer; }
+.ipdt-target.on { border-color: var(--ink); background: var(--card); }
+.ipdt-target input { grid-row: 1 / span 2; }
+.ipdt-target .mono { font-family: "IBM Plex Mono", monospace; font-weight: 600; }
+.ipdt-target .dim { grid-column: 2 / -1; font-size: 12px; color: var(--dim); }
+.ipdt-mark { display: block; font-style: normal; font-size: 11px; font-weight: 600; margin-top: 2px; }
+.ipdt-mark.origin { color: var(--ink); }
+.ipdt-mark.target { color: var(--green); }
+
+/* ═══ /ipd/handovers ═══ */
+.ipdh {
+  --paper: #f4f7f4; --card: #ffffff; --ink: #132420; --line: #dfe7e1; --dim: #5c6f66; --wash: #eef3ef;
+  --green: #0e6b4e; --green-soft: rgba(14, 107, 78, .08); --gold: #8a5a0e; --gold-soft: rgba(221, 143, 28, .14);
+  --red: #b23a30; --red-soft: rgba(178, 58, 48, .08); --red-line: rgba(178, 58, 48, .4); --blue: #1f5f8b;
+  min-height: 100vh; box-sizing: border-box; background: var(--paper); color: var(--ink);
+  font-family: "IBM Plex Sans", "Noto Sans Devanagari", system-ui, sans-serif;
+  padding: 20px 24px 32px; display: flex; flex-direction: column; gap: 14px;
+}
+.ipdh * { box-sizing: border-box; }
+.ipdh .dim { color: var(--dim); }
+.ipdh .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+.ipdh button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.ipdh-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+.ipdh-head h1 { margin: 0; font-size: 26px; font-weight: 600; }
+.ipdh-head .count { font-size: 15px; color: var(--dim); }
+.ipdh-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.ipdh-chip { min-height: 40px; padding: 0 14px; border-radius: 20px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font: inherit; font-size: 14px; cursor: pointer; }
+.ipdh-chip[aria-pressed="true"] { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); font-weight: 600; }
+.ipdh-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(560px, 1fr)); gap: 14px; align-items: start; }
+.ipdh-card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.ipdh-card.late { border-color: var(--red-line); box-shadow: inset 4px 0 0 var(--red); }
+.ipdh-who { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.ipdh-who b { font-size: 18px; }
+.ipdh-who span { font-size: 14px; color: var(--dim); }
+.ipdh-move { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 15px; }
+.ipdh-move .bed { font-family: "IBM Plex Mono", monospace; font-weight: 600; }
+.ipdh-move .arrow { font-size: 18px; color: var(--dim); }
+.ipdh-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--dim); }
+.ipdh-clock { font-weight: 600; color: var(--ink); }
+.ipdh-clock.late { color: var(--red); }
+.ipdh-sbar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0; }
+.ipdh-sbar div { background: var(--wash); border-radius: 6px; padding: 8px 10px; min-width: 0; }
+.ipdh-sbar dt { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--dim); }
+.ipdh-sbar dd { margin: 2px 0 0; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ipdh-acts { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.ipdh-btn { min-height: 48px; padding: 0 20px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font: inherit; font-size: 15px; font-weight: 500; cursor: pointer; }
+.ipdh-btn.pri { background: var(--green); border-color: var(--green); color: #fff; font-weight: 600; }
+.ipdh-btn:disabled { opacity: .5; cursor: not-allowed; }
+.ipdh-refusal { border: 1px solid var(--red-line); background: var(--red-soft); border-radius: 8px; padding: 8px 12px; font-size: 14px; }
+.ipdh-ok { color: var(--green); font-weight: 600; }
+.ipdh-empty { background: var(--card); border: 1px dashed var(--line); border-radius: 10px; padding: 28px; text-align: center; color: var(--dim); font-size: 15px; }
+@media (max-width: 1200px) { .ipdh-list { grid-template-columns: 1fr; } }
+@media (max-width: 600px) {
+  .ipdh { padding: 12px 12px 24px; gap: 10px; }
+  .ipdh-head h1 { font-size: 22px; }
+  .ipdh-chips { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
+  .ipdh-chip { flex-shrink: 0; min-height: 48px; }
+  .ipdh-card { padding: 12px; }
+  .ipdh-sbar { grid-template-columns: 1fr; }
+  .ipdh-acts .ipdh-btn { flex: 1 1 0; }
+}

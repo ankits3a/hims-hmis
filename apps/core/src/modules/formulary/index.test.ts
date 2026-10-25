@@ -86,6 +86,7 @@ const SURFACE = [
   "getMonograph", // the drug monograph (owner 2026-10-02): reviewed text only, unless the curation door asks
   "getStagingRow",
   "importReferenceLabels", // #616 — the FDA label importer (a script's door); dry run unless applied
+  "interactionRulesPresent", // IPD E4.3 (#735) — the verify queue says "no interaction data" when no pair is adopted
   "isEquivalentMedicine",
   "linkMedicinesToGenerics", // owner 2026-10-02: fills a product's empty generic link from the bundle's pairs
   "listDrugDiseaseFor", // P24 — the rules that reach these moieties and these diagnosis codes

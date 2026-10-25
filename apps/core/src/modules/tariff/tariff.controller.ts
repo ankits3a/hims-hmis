@@ -1,6 +1,6 @@
 import {
   BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject,
-  NotFoundException, Param, Patch, Post, Put,
+  NotFoundException, Param, Patch, Post, Put, Query,
 } from "@nestjs/common";
 import { z } from "zod";
 import type { Actor } from "@hmis/contracts";
@@ -9,13 +9,19 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { ApprovalError } from "../../kernel/approvals/types";
 import { WorkflowError } from "../../kernel/workflow/instances";
 import { withTx } from "../../kernel/db/client";
+import { hasPermission } from "../../kernel/auth/permissions";
 import { TariffError } from "./errors";
 import { DISCOUNT_CATEGORIES } from "./types";
 import { appendRegulatedPrice, createService, listRegulatedPrices, listServices, updateService, listPriceList } from "./services";
 import {
-  activateVersion, createDraftVersion, getVersion, listVersions, setTariffItem, submitVersion,
+  activateVersion, createDraftVersion, getVersion, setTariffItem, submitVersion,
 } from "./versions";
 import { simulateRevision } from "./simulation";
+import { SWITCH_ON_MAX, listVersionsForOffice, switchOnServices } from "./switch-on";
+import type { SwitchOnResult } from "./switch-on";
+import { ipdRateCardGaps } from "./ipd-rate-card";
+import { isModuleOn } from "../../kernel/modules/switch";
+import type { IpdRateCard } from "./ipd-rate-card";
 import { loadPricingContext } from "./context";
 import { listAdjustmentRules, upsertAdjustmentRule } from "./rules";
 import { getGstSettings, listGstCategories, upsertGstCategory, upsertGstSettings } from "./gst-config";
@@ -158,6 +164,24 @@ export class TariffController {
     }
   }
 
+  /**
+   * GO-LIVE SCREENS — switch on many services at once (the IPD rate card's "Switch on N services"). Same permission as
+   * the single PATCH; refuses every unpriced service (see `switchOnServices`), one event per service turned on.
+   */
+  @RequirePermission("tariff.services.manage", "hospital")
+  @Post("services/switch-on")
+  @HttpCode(200) // an action, not a creation
+  async switchOnRoute(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<SwitchOnResult> {
+    // Decision 0085 invariant 1 — switching on IPD services is the inpatient go-live's act: no answer while `ipd` is off.
+    if (!isModuleOn("ipd")) throw new NotFoundException();
+    const b = parsed(z.object({ serviceIds: z.array(z.string().min(1)).min(1).max(SWITCH_ON_MAX) }), body);
+    try {
+      return await switchOnServices(this.db, actor, b.serviceIds);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
   @RequirePermission("tariff.services.manage", "hospital")
   @Patch("services/:id")
   async updateServiceRoute(
@@ -203,6 +227,21 @@ export class TariffController {
     return { items: await listPriceList(this.db) };
   }
 
+  /**
+   * E0.4 — the IPD rate card: every rated bed class × component in a version (default: the one in
+   * force), with the classes still missing a room, nursing or visit rate. The owner reviews an
+   * imported draft here before approving it. Read-only, on `tariff.read`.
+   */
+  @RequirePermission("tariff.read", "hospital")
+  @Get("ipd-rate-card")
+  async ipdRateCardRoute(@Query("versionId") versionId?: string): Promise<IpdRateCard> {
+    // Decision 0085 — the IPD rate card is the inpatient module's: no answer while `ipd` is switched off.
+    if (!isModuleOn("ipd")) throw new NotFoundException();
+    const id = typeof versionId === "string" && versionId !== "" ? versionId : undefined;
+    if (id !== undefined && (await getVersion(this.db, id)) === null) throw new NotFoundException(`unknown tariff version ${id}`);
+    return ipdRateCardGaps(this.db, { at: new Date(), ...(id === undefined ? {} : { tariffVersionId: id }) });
+  }
+
   @RequirePermission("tariff.read", "hospital")
   @Get("services/:id/regulated-prices")
   async listRegulatedPricesRoute(@Param("id") id: string): Promise<{ items: unknown[] }> {
@@ -213,8 +252,13 @@ export class TariffController {
 
   @RequirePermission("tariff.read", "hospital")
   @Get("versions")
-  async listVersionsRoute(): Promise<{ items: unknown[] }> {
-    return { items: await listVersions(this.db) };
+  async listVersionsRoute(@CurrentActor() actor: Actor): Promise<{ items: unknown[] }> {
+    // GO-LIVE SCREENS — the rows plus the approval's state; drafter / submitter / activator (ids and names) only to a
+    // holder of `tariff.versions.draft` or `tariff.versions.activate` (DECIDED: the doctor's `tariff.read` sees none).
+    const withNames = actor.type === "user" && (
+      await hasPermission(this.db, actor.id, "tariff.versions.draft", "hospital")
+      || await hasPermission(this.db, actor.id, "tariff.versions.activate", "hospital"));
+    return { items: await listVersionsForOffice(this.db, { withNames }) };
   }
 
   @RequirePermission("tariff.versions.draft", "hospital")

@@ -107,6 +107,17 @@ export const caseCancelled = defineEvent("case.cancelled", MODULE, z.object({
   atState: z.string().min(1),
 }));
 
+/**
+ * A case moved to a new list date (postponed and re-listed in one act, `postponeCase`). Until 2026-10-14 the move wrote
+ * the new `list_date` and emitted nothing, so the ward's NPO (diet's consumer) followed only when that day's list was
+ * published. `fromListDate` and `newListDate` travel so a consumer need not re-read; diet re-reads the case anyway
+ * (a late redelivery after a cancel must not bring an NPO back). Ids and codes only, never a name.
+ */
+export const casePostponed = defineEvent("case.postponed", MODULE, z.object({
+  caseId: id, encounterId: id, patientId: id, reason: z.string().min(1),
+  fromListDate: z.string().min(1), newListDate: z.string().min(1), atState: z.string().min(1),
+}));
+
 /** DD12's last row — the deposit recomputes, and the audit shows BOTH classes. */
 export const payerClassChanged = defineEvent("payer.class_changed", MODULE, z.object({
   encounterId: id, from: z.string().min(1), to: z.string().min(1), reason: z.string().min(1),
@@ -236,6 +247,8 @@ export const materialCeilingDiverged = defineEvent("material.ceiling_diverged", 
 export const OT_EVENTS = [
   daycareBooked, daycareCheckedIn, escortVerified, daycareDischargeReady, daycareDischarged,
   daycareConvertedToAdmission, daycareAbsconded, caseCancelled, payerClassChanged,
+  // 2026-10-14 (IPD NPO): a postponement re-dates the case; the ward's NPO moves on it.
+  casePostponed,
   listPublished, listResequenced, surgeonLateFlagged, anaesthetistSubstituted,
   timeoutHalted, countMismatch, gateOverridden, incidentReported, deathOnTableRecorded,
   lateEntryFlagged,

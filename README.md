@@ -1704,6 +1704,131 @@ totals: `copilot.health.read` is held by `owner`, `admin`, `duty_manager`, `medi
 timings, model calls and estimated AI spend for a day and never a per-person list; nobody is assigned to
 `quality_manager` by any seed.
 
+**Task engine (issue #713, decision 0072, 2026-10-12).** One engine runs every service request — a bed to
+clean, a bag to collect, a patient to move: raised, offered to the least-loaded worker on duty, accepted
+by exactly one, started, done, and checked where its kind says. Three permissions guard it.
+`tasks.work` is held by the new role `support_staff` and nothing else; `services_supervisor` holds
+`tasks.view`, `tasks.work` and `tasks.supervise`; `duty_manager` holds `tasks.view` and `tasks.supervise`
+for the hours no supervisor is on. Nobody is assigned to either new role by any seed.
+
+**Bio-medical waste (issue #724, decision 0072, 2026-10-12).** Every waste bag is tracked from the ward to the
+common treatment facility, and the monthly report and the annual Form IV figures are read off the bag records.
+Three permissions guard it. `support_staff` holds `bmw.handle` (generate a bag and its label, weigh, collect,
+store); `services_supervisor` holds `bmw.view`, `bmw.handle` and `bmw.manage`; `admin` holds `bmw.view` and
+`bmw.manage` for the annual report and never handles a bag.
+
+**Linen (issue #728, decision 0072, 2026-10-12).** Par stock per ward from its beds and their class, soiled and
+infected linen counted apart, laundry out and in with short deliveries recorded, and a weekly loss per ward and item.
+Three permissions guard it. `support_staff` holds `linen.handle` (top up, soiled and infected returns, ward counts,
+laundry out and in, borrowing, a condemn request); `services_supervisor` holds `linen.view`, `linen.handle` and
+`linen.manage`; `admin` holds `linen.view` and `linen.manage` for par levels and condemn approvals and never
+handles linen.
+
+**Housekeeping (E1.4, issue #721, decision 0072, built 2026-10-12, awaiting owner review).** Every bed released
+into cleaning raises exactly one cleaning task on the task engine; the bed is free only when the clean is checked.
+`housekeeping.view` (services_supervisor, duty_manager) opens the housekeeping board at `/housekeeping`;
+`housekeeping.verify_terminal` is held by `services_supervisor` alone — a terminal clean (isolation bed, infection,
+death) is checked by the housekeeping supervisor. A routine clean may also be checked by a holder of `ipd.beds.clean`.
+
+**Maintenance (E1.5, issue #722, decision 0072, built 2026-10-13, awaiting owner review).** Repair tickets for beds,
+rooms, oxygen points and fixtures, worked on the task engine. A bed with a repair ticket stays blocked until the ticket
+is closed, and only a nurse's confirmation closes it; a third fault on one item in 30 days flags it for replacement.
+`maintenance.confirm` is held by `duty_manager` and the nurses (`ot_nurse`, `recovery_nurse`, `radiology_nurse`), and a
+holder of `ipd.beds.clean` may confirm too; the new role `maintenance_staff` (engineering technicians) and
+`biomedical_engineer` take the repairs. `maintenance.raise` is held by the front office, its supervisor, the duty manager,
+the services supervisor, the nurses and the technicians; `maintenance.view` and `maintenance.manage` by the duty manager
+and the services supervisor (the board at `/maintenance`); `maintenance.work` by the two technician roles.
+
+**Transport (E1.6, issue #723, decision 0072, built 2026-10-13, awaiting owner review).** Porter and patient-movement
+tasks on the task engine: a critical patient's move cannot start without a nurse or doctor escort recorded, an oxygen
+move cannot start before the cylinder check, and the move is done only when the patient's wristband scanned at the
+destination is the same admission's.
+`transport.work` is held by `support_staff` (porters); `transport.manage` by `services_supervisor` and
+`duty_manager`; `transport.request` by `front_office`, `duty_manager` and the nursing roles `ot_nurse`,
+`recovery_nurse` and `radiology_nurse`. Ward nurses get `transport.request` when the nursing lane seeds their role.
+
+**Diet and kitchen (E4.4, decision 0072, built 2026-10-13, awaiting owner review).** The ward diet sheet at `/diet/ward`,
+the kitchen board at `/diet/kitchen` and the dietician's consult queue at `/diet/consults`. Two new roles: `dietician`
+and `kitchen_staff`. `diet.order` (doctor, dietician) orders a diet; `diet.npo` (doctor, dietician) sets or lifts NPO —
+a ward nurse may do that and nothing else once the nursing lane seeds her role; `diet.view` (doctor, dietician,
+kitchen_staff) reads the sheet and the board; `diet.serve` (support_staff, dietician) taps a tray delivered or refused;
+`diet.kitchen` (kitchen_staff, dietician) builds, prints and dispatches the meal lists; and `diet.manage` (dietician)
+sets the meal rounds' cut-offs and works the consult queue. `diet.clinical.view` (doctor, dietician) shows the order
+note, the NPO reason and who set them; without it (the kitchen) a reader sees the tray only. No diet screen shows money.
+
+**Emergency arrival (ER lane 1, issue #808, decision 0076, built 2026-10-15, awaiting owner review).** The ER desk at
+`/er/desk` and the tracking board at `/er/board` (`?wall=1` for the wall screen). One new role: `er_nurse`, the
+casualty nurse.
+`er.arrival.register` is held by `front_office`, `front_office_supervisor`, `duty_manager` and `er_nurse`;
+`er.board.view` by the same four and `doctor` and `medical_superintendent`.
+`er.board.wall` (the wall screen only: initials or the alias, no UHID, no complaint, no police mark) is held by the same six and the kiosk `display` role.
+`er.board.waiting` (the waiting-area TV only: a token and a stage word, no name, no clinical text) is held by the new `waiting_display` role and nothing else.
+The first records an arrival (a known patient, a new named patient, or an unidentified patient with a real UHID and an
+alias), a pre-alert, a brought-dead marker, and prints or reprints the ER band; the second reads the board. Linking an
+unidentified patient to the true record files a `patient_merge` request and asks `patients.merge`, as the merge screen
+does. No ER screen shows money.
+
+**Emergency triage (ER lane 2, issue #809, decision 0076, built 2026-10-15, awaiting owner review).** The triage
+screen at `/er/triage`: ESI v4 by its four questions, the level the person's choice, a reason for any down-triage,
+vitals scored by NEWS2 / MEOWS / PEWS beside the level, the re-triage clock (a task when overdue, climbing after 15
+minutes), ER bays from the bed registry and the ER doctor of record.
+`er.triage` is held by `er_nurse` and `doctor`.
+
+**Emergency care (ER lane 3, issue #810, decision 0076, built 2026-10-15, awaiting owner review).** The ER patient screen
+at `/er/patient`: notes (a resident's note is a draft until a senior co-signs), STAT tests through the ordering door,
+the ER store issue with patient labels and the dose record (a high-alert dose with a second person's PIN), procedures,
+consent (emergency treatment without consent needs a second doctor), specialty calls to the unit on take, critical
+results to the ER doctor of record, and "stabilised". No ER clinical screen shows money.
+`er.care` is held by `doctor` and `er_nurse`.
+
+**Emergency MLC (ER lane 4, issue #811, decision 0076, built 2026-10-15, awaiting owner review).** The MLC desk at
+`/er/mlc`: the medico-legal case register (serial `MLC26-000123`), opened by the ER doctor or by rule at arrival (an
+unidentified patient, a body brought dead, a patient the police bring); the police intimation due within 1 hour (a
+task, then a climb) and the faculty countersign due within 24 hours (an obligation, still owed after a death); the
+belongings list and the evidence chain of custody, each signed by two staff; corrections only as addenda (the record is
+never edited or deleted). A body brought dead is marked deceased with the `brought_dead` death kind (no MCCD) and goes to
+the mortuary register, released only on police clearance. The MLC never delays treatment.
+`er.mlc` is held by `doctor`, `er_nurse`, `front_office`, `front_office_supervisor`, `duty_manager` and `medical_superintendent`.
+
+**Emergency disposition (ER lane 5, issue #812, decision 0076, built 2026-10-15, awaiting owner review).** Every way out of
+the ER: one disposition per episode decided by a doctor with a reason; discharge with the signed ER summary (diagnosis,
+treatment, medicines, return-if signs in Hindi and English, follow-up); hand to a unit (the IPD admission with the ER gate
+time and "stabilised" copied — the patient boards on the ER board until the bed is placed, and the ER test lines move to
+the IP running bill); refer out with the referral note (never because the patient cannot pay); LAMA with the risks and a
+signature or a witnessed refusal; left without being seen; absconded (security told, the police for an MLC); death with
+the MCCD number, or an MLC already intimated to the police, the body to the mortuary register. Every exit frees the bay.
+A patient waiting for a bed past 2 hours is a task for the bed manager and reaches the MS at 4 hours; a specialty refusing
+the admission is recorded and the MS arbitrates.
+`er.disposition` is held by `doctor`, `er_nurse`, `front_office`, `duty_manager` and `medical_superintendent`.
+
+**Emergency bill (ER lane 6, issue #813, decision 0076, built 2026-10-15, awaiting owner review).** The ER bill desk at
+`/er/bill`: the ER tariff's own lines (registration and physician fee once per visit; observation per started 6 hours
+after the first 6), drugs at the batch MRP and every other line at the hospital tariff; no money asked or taken before the
+ER doctor records "stabilised"; settle at departure, or dues against a signed undertaking with the invoice held (never
+credit, 0013); ₹0 for PM-JAY, road-accident cashless (up to ₹1.5 lakh for 7 days), BNSS s.397 (sexual assault, acid
+attack: nothing patient-payable, ever) and a mass-casualty event account, each leaving a claim for the TPA desk; at
+admission every ER line rolls into the IP running bill. No ER clinical screen shows money.
+`er.bill` is held by `front_office`, `front_office_supervisor`, `cashier`, `billing_manager` and `duty_manager`.
+
+**Emergency codes (ER lane 7, issue #814, decision 0076, built 2026-10-15, awaiting owner review).** Code Blue and Code
+Grey from any staff phone (anywhere in the hospital), the clinical activations (STEMI, stroke, trauma, sepsis, snakebite,
+obstetric) on an ER patient: the roster's team is paged at once (the page names the code and the bay, never the patient),
+the resus scribe taps the timeline (CPR, rhythm, shock, drug, airway, ROSC, death; a paper sheet back-filled and
+flagged), the activation clocks run from the door (door-to-ECG 10 minutes, door-to-CT 25, door-to-needle 60, …), the team
+leader ends the code with an outcome and records the debrief. Code Grey pages security with the place and drafts the
+incident report.
+`er.codes` is held by `doctor`, `er_nurse`, `ward_nurse`, `nursing_supervisor`, `front_office`, `front_office_supervisor`, `duty_manager`, `security_guard` and `medical_superintendent`.
+
+**Emergency mass casualty (ER lane 8, issue #815, decision 0076, built 2026-10-15, awaiting owner review).** The medical
+superintendent or the duty manager declares a Code Yellow, and the event's account opens with it: every patient tagged
+to the event pays nothing at the point of care, and the charges post to the account at full tariff. Pre-made
+unidentified packs (a real UHID each, alias `Unknown-MCI26-007`, the band printed ahead) let the desk register an arrival
+by the pack number alone. Nurses and doctors tag each patient START (adult) or JumpSTART (child) — Red Immediate, Yellow
+Delayed, Green Minor, Black Expectant — and a Black re-tag needs its reason. The duty manager opens overflow beds as
+surge bays. The MCI board shows the counts by tag, packs ready, bays and surge bays left and hospital beds free; the head
+count for the district authority carries counts only, never names. The stand-down returns every patient to the ESI flow.
+`er.mci` is held by `doctor`, `er_nurse`, `front_office`, `front_office_supervisor`, `duty_manager` and `medical_superintendent`.
+
 **Copilot halt switch and spend cap (plan E0.3/E0.5, decision 0064, built 2026-10-11, awaiting owner review).**
 `copilot.halt.set` (owner, medical_superintendent, quality_manager) pauses the copilot by scope — read, act,
 draft or global;
@@ -1713,6 +1838,85 @@ draft or global;
 When the day's estimated AI spend reaches ₹5,000 (`COPILOT_DAILY_CAP_INR`), the copilot answers from its
 phrasebook only until midnight IST and the health page says so. At 80 % of the cap every `owner` gets one bell
 notice for that IST day (#583).
+
+**IPD beds (E1.1, decision 0072, built 2026-10-12, awaiting owner review).** The capacity board at
+`/ipd/beds` and the bed acts behind it. `ipd.beds.view` (front_office, front_office_supervisor,
+duty_manager, medical_superintendent, owner, admin) reads the board; `ipd.beds.manage` (front_office,
+front_office_supervisor, duty_manager) reserves, assigns, blocks, unblocks and releases incumbent beds;
+`ipd.beds.clean` (front_office_supervisor, duty_manager) marks a cleaned bed ready until housekeeping
+lands; and `ipd.beds.overflow` is held by `duty_manager` alone — an overflow bed needs the duty manager.
+
+**IPD admission (E1.2, decision 0072, built 2026-10-12, awaiting owner review).** The Admit sheet at
+`/ipd/admit` and the admission acts behind it. `ipd.admit.request` (front_office, front_office_supervisor,
+duty_manager, doctor) raises an admission request and marks an emergency patient stabilised — a doctor's answer
+carries no money; `ipd.admit` (front_office, front_office_supervisor, duty_manager) plans payer and deposit, takes
+the deposit, admits, cancels, runs the emergency lane and the downtime back-fill; `ipd.payer.manage`
+(front_office, front_office_supervisor, duty_manager, billing_manager) keeps the manual authorisation record; and
+`ipd.band.print` (front_office, front_office_supervisor, duty_manager) prints and reprints the wristband.
+
+**Attendant and visitor passes (E1.3, decision 0072, built 2026-10-12, awaiting owner review).** The Passes panel at
+`/ipd/passes` and the scan screen at `/passes/scan`. `passes.issue` (front_office, front_office_supervisor,
+duty_manager) issues the passes a bed class allows, visitor passes in visiting hours and reissues a lost pass;
+`passes.scan` (security_guard, duty_manager) scans a pass at a ward door; `passes.pause` (doctor, medical_superintendent,
+duty_manager) stops visitors for a patient and lifts the ban; and `passes.manage` (front_office_supervisor,
+medical_superintendent, duty_manager) pauses every pass and records police custody.
+
+**IPD running bill (E2.1, decision 0072, built 2026-10-13, awaiting owner review).** The interim bill at
+`/ipd/admissions/:id/bill` and the nightly rent, nursing and RMO posting behind it. `ipd.bill.view` (front_office,
+front_office_supervisor, duty_manager, cashier, billing_manager, owner) reads an admission's interim bill — no doctor
+role holds it, a doctor's screen shows no money; and `ipd.charges.reverse` is held by `billing_manager` alone — a wrong
+charge is answered by a reversal line, never an edit.
+
+**IPD payer split (E2.2, decision 0072, built 2026-10-13, awaiting owner review).** Each line of the interim bill is
+payer- or patient-payable from the manual authorisation record. `ipd.payer.terms` is held by `billing_manager` alone —
+the letter's money terms (room-rent cap, co-pay) and the non-payables list are the TPA desk's in billing; the status and
+pre-auth number stay with `ipd.payer.manage`.
+
+**IPD transfer (E3.1, decision 0072, built 2026-10-13, awaiting owner review).** The Transfer panel in the Beds board
+drawer and the receiving ward's handover list at `/ipd/handovers`. `ipd.transfer.start` and `ipd.transfer.accept` are
+held by `duty_manager`, `ward_nurse` and `nursing_supervisor` — the sender starts a transfer with its SBAR handover,
+the receiving nurse accepts it, and the sender may never accept their own. A class change in place rides `ipd.admit`.
+
+**IPD bill desk (E2.3, decision 0072, built 2026-10-13, awaiting owner review).** `ipd.billdesk.view` is held by `cashier`,
+`billing_manager`, `front_office_supervisor`, `duty_manager` and `owner` — the exceptions-only bill desk and its deposit
+card; no doctor role holds it. The deposit ladder tells the desk at 75 % and management at 90 % and never refuses care.
+
+**IPD discharge (E3.2, decision 0072, built 2026-10-13, awaiting owner review).** The Discharge desk at `/ipd/discharge`:
+fit declared → every department confirms → summary signed → final bill settled → gate pass → scan at the exit.
+`ipd.discharge.declare` is the doctor's (fit, summary, death) and never touches money; `ipd.discharge.bill` is held by
+the cashier and the billing manager alone; `ipd.gate.scan` by the front office and the duty manager until a security
+role is seeded. Nobody is detained for dues: an unpaid balance goes to the billing manager's approval and the dues list.
+
+**IPD family link (E3.3, decision 0072, built 2026-10-13, awaiting owner review).** `ipd.family.issue` is held by
+`front_office`, `front_office_supervisor` and `duty_manager` — the ward desk issues the attendant's link (an OTP to the
+registered phone only) and works the family's callback requests; `ipd.condition.set` is held by `doctor` — the condition
+word the family sees is set by the treating team, never by a model. Off for sealed and medico-legal admissions.
+
+**IPD nursing (E4.1, decision 0072, built 2026-10-13, awaiting owner review).** Three ward nursing roles are seeded:
+`ward_nurse`, `nursing_supervisor` and `nursing_superintendent`. `ipd.nursing.view` (the nurse station at `/ipd/ward`,
+my shift at `/ipd/my-shift`, the nursing chart) is held by the three nursing roles, `doctor` and `duty_manager`;
+`ipd.vitals.record` (vitals, intake/output, notes) by `ward_nurse`, `nursing_supervisor` and `doctor`;
+`ipd.assessment.record` and `ipd.handover.shift` by `ward_nurse` and `nursing_supervisor`; `ipd.ews.respond` (acknowledge
+an early-warning alert) by `doctor`, `nursing_supervisor` and `nursing_superintendent`. The ward nurse and the supervisor
+also mark beds clean, start and accept transfers, confirm the ward at discharge, raise and confirm repairs and ask for a
+porter; the supervisor and the superintendent work the family's callback requests (`ipd.family.issue`). No nursing role
+holds `ipd.condition.set` — the condition word is the doctor's. NEWS2 5+ or any single 3 (MEOWS and PEWS by their own
+charts) tells the duty doctor once per breach, and again only when the score gets a band worse.
+
+**IPD rounds (E4.2, decision 0072, built 2026-10-13, awaiting owner review).** `ipd.round.sign` and `ipd.order.place` are
+held by `doctor` — the Rounds list at `/ipd/rounds` (own, unit and consulted patients, boarded ones marked with their
+ward), the round page (sign a S/O/A/P round; a resident's round waits for the consultant's co-sign), cross-consults, and
+inpatient orders: drugs from the formulary (an antibiotic needs a stop date), lab and imaging through the ordering door.
+A consultant's bedside round is the day's visit; a remote review is not. No money on any of it.
+
+**IPD eMAR (E4.3, decision 0072, built 2026-10-13, awaiting owner review).** `ipd.emar.view` is held by `doctor`,
+`ward_nurse`, `nursing_supervisor`, `nursing_superintendent`, `pharmacy` and `pharmacy_incharge`; `ipd.emar.give` by
+`ward_nurse` and `nursing_supervisor`; `ipd.emar.verify` and `ipd.emar.issue` by `pharmacy` and `pharmacy_incharge`. The
+pharmacist verifies each inpatient drug order (allergy, interaction, dose, duplicate) at `/ipd/pharmacy` and issues it to
+the ward with a patient label per unit or strip; the nurse gives at the bedside on `/ipd/my-shift` only after scanning the
+wristband (or a reasoned override, counted per nurse and ward) and the label; a high-alert drug needs a second nurse's PIN;
+the ward MAR chart is `/ipd/mar`. The ward nurses and supervisors also hold `ipd.band.print` (reprint an unreadable
+wristband) and `pharmacy.incidents.record` (a dose given in error is a medication incident). No money on any of it.
 
 **My duties, covers and swaps (20-U U5c/U6).** `/roster/my-duties` is a resident's phone: today, the
 rest of the week, and on every duty still ahead *"I can't do this"* — which lists who could take it

@@ -1,6 +1,6 @@
 import {
   BadRequestException, Body, Controller, ConflictException, ForbiddenException, Get, Inject,
-  Param, Post, Query,
+  NotFoundException, Param, Post, Query,
 } from "@nestjs/common";
 import { z } from "zod";
 import type { Actor } from "@hmis/contracts";
@@ -12,6 +12,9 @@ import {
   createDraft, approveDefinition, activateDefinition, listDefinitions, GovernanceError,
 } from "./definitions";
 import { WorkflowError } from "./instances";
+import { readWorkflowBoard } from "./board";
+import { isModuleOn } from "../modules/switch";
+import type { WorkflowBoard } from "./board";
 import type { DefinitionRow } from "./definitions";
 import type { Db } from "../db/client";
 import { and, eq, isNull } from "drizzle-orm";
@@ -76,6 +79,18 @@ export class WorkflowController {
     } catch (e) {
       toHttp(e);
     }
+  }
+
+  /**
+   * GO-LIVE SCREENS — every definition with its state, approvals and step summary for `/admin/workflows`. Read-only;
+   * the approve and activate routes above stay the only writers and keep every check.
+   */
+  @RequirePermission("workflow.definitions.read", "hospital")
+  @Get("definitions/board")
+  async board(@CurrentActor() actor: Actor): Promise<WorkflowBoard> {
+    // Decision 0085 invariant 1 — the board is an IPD go-live screen: no answer while `ipd` is switched off.
+    if (!isModuleOn("ipd")) throw new NotFoundException();
+    return readWorkflowBoard(this.db, actor.id);
   }
 
   @RequirePermission("workflow.definitions.read", "hospital")

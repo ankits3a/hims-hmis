@@ -54,8 +54,11 @@ const DEFAULT_POOL_MAX = 20;
  *
  * 25 -> 26 (2026-10-12, E3.2 #595): the lab critical ladder `sweepLabCriticalLadder` (60 s), the
  * EIGHTEENTH interval job: 18 + 8 = 26. 20 (API) + 26 (worker) still fits `max_connections = 100`.
+ * 26 -> 29 (#833, decision 0085): the three IPD minute jobs registered dark — `sweepTasks`, `lapseBedReservations`,
+ * `sweepIpdNursing` (60 s each; a no-op tick while their module is off still holds a client) — TWENTY-ONE interval
+ * jobs: 21 + 8 = 29. 20 (API) + 29 (worker) still fits `max_connections = 100` with the exporter and pgBackRest.
  */
-export const DEFAULT_WORKER_POOL_MAX = 26;
+export const DEFAULT_WORKER_POOL_MAX = 29;
 const DEFAULT_CONNECT_TIMEOUT_MS = 10_000;
 
 function readPositiveInt(key: string, fallback: number): number {

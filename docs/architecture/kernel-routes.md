@@ -176,6 +176,7 @@ generated: { by: tools/arch/gen.mjs }
 |---|---|---|
 | POST | `/workflow/definitions/:id/activate` | `workflow/workflow.controller.ts` |
 | POST | `/workflow/definitions/:id/approve` | `workflow/workflow.controller.ts` |
+| GET | `/workflow/definitions/board` | `workflow/workflow.controller.ts` |
 | GET | `/workflow/definitions` | `workflow/workflow.controller.ts` |
 | POST | `/workflow/definitions` | `workflow/workflow.controller.ts` |
 | POST | `/workflow/instances/:id/abort` | `workflow/workflow.controller.ts` |

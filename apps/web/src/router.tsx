@@ -25,9 +25,48 @@ import { PatientStrip } from "./components/patient-strip";
 import { Desk } from "./screens/desk";
 import { MyDay } from "./screens/my-day";
 import { MyLeave } from "./screens/my-leave";
+import { MyTasks } from "./screens/my-tasks";
+import { TasksBoard } from "./screens/tasks-board";
+import { BmwBoard } from "./screens/bmw-board";
+import { BmwHandle } from "./screens/bmw-handle";
+import { BmwReports } from "./screens/bmw-reports";
+import { LinenBoard } from "./screens/linen-board";
+import { LinenHandle } from "./screens/linen-handle";
+import { DietConsults } from "./screens/diet-consults";
+import { DietKitchen } from "./screens/diet-kitchen";
+import { DietWard } from "./screens/diet-ward";
+import { HousekeepingBoard } from "./screens/housekeeping-board";
+import { MaintenanceBoard } from "./screens/maintenance-board";
+import { TransportBoard } from "./screens/transport-board";
+import { TransportRequest } from "./screens/transport-request";
 import { StaffReports } from "./screens/staff-reports";
 import { CopilotHealthScreen } from "./screens/copilot-health";
 import { CrkFormularyScreen } from "./screens/crk-formulary";
+import { IpdBeds } from "./screens/ipd-beds";
+import { ErBoardScreen } from "./screens/er-board";
+import { ErDesk } from "./screens/er-desk";
+import { ErTriage } from "./screens/er-triage";
+import { ErPatient } from "./screens/er-patient";
+import { ErMlc } from "./screens/er-mlc";
+import { ErBillScreen } from "./screens/er-bill";
+import { ErCodesScreen } from "./screens/er-codes";
+import { ErMciScreen } from "./screens/er-mci";
+import { IpdAdmit } from "./screens/ipd-admit";
+import { IpdPasses } from "./screens/ipd-passes";
+import { PassesScan } from "./screens/passes-scan";
+import { IpdBill } from "./screens/ipd-bill";
+import { IpdHandovers } from "./screens/ipd-handovers";
+import { IpdWard } from "./screens/ipd-ward";
+import { IpdMyShift } from "./screens/ipd-my-shift";
+import { IpdBillDesk } from "./screens/ipd-bill-desk";
+import { IpdTpa } from "./screens/ipd-tpa";
+import { IpdDischarge } from "./screens/ipd-discharge";
+import { FamilyPage } from "./screens/ipd-family";
+import { IpdFamilyCallbacks } from "./screens/ipd-family-callbacks";
+import { IpdRoundPatientRoute, IpdRounds } from "./screens/ipd-rounds";
+import { IpdMar } from "./screens/ipd-mar";
+import { IpdNarcotics } from "./screens/ipd-narcotics";
+import { IpdPharmacy } from "./screens/ipd-pharmacy";
 import { CopilotNoticeHost } from "./components/copilot-notice";
 import { OpdReportScreen } from "./screens/opd-report";
 import { DeskOne } from "./screens/desk-one/desk-one";
@@ -65,6 +104,7 @@ import { BillingCounter } from "./screens/billing-counter";
 import { BillingDues } from "./screens/billing-dues";
 import { BillingSession } from "./screens/billing-session";
 import { BillingOffice } from "./screens/billing-office";
+import { AdminWorkflows } from "./screens/admin-workflows";
 import { OpsMode } from "./screens/ops-mode";
 import { AdminUsers } from "./screens/admin-users";
 import { AttendanceLinks } from "./screens/attendance-links";
@@ -140,16 +180,17 @@ import type { NumbersTab } from "./screens/hospital-numbers";
  * of them. Each is its own group now, in the order a patient meets them. `stores` is gone with it:
  * its one remaining place, the pharmacy office, belongs beside the pharmacy desk.
  */
-type NavGroup = "desk" | "patients" | "opd" | "imaging" | "lab" | "theatre" | "pharmacy" | "billing" | "admin";
+type NavGroup = "desk" | "patients" | "opd" | "wards" | "imaging" | "lab" | "theatre" | "pharmacy" | "services" | "billing" | "admin";
 /** Reading order is the order a desk WORKS in — the counter first, administration last. */
-const NAV_GROUPS: readonly NavGroup[] = ["desk", "patients", "opd", "imaging", "lab", "theatre", "pharmacy", "billing", "admin"];
+const NAV_GROUPS: readonly NavGroup[] = ["desk", "patients", "opd", "wards", "imaging", "lab", "theatre", "pharmacy", "services", "billing", "admin"];
 /**
  * GAP-CLOSURE B3 — `anyOf`: a row that ALSO shows for a holder of any of these. `permission` stays the
  * manifest's own pairing (`nav-parity.test.ts` compares it); `anyOf` is only for a screen that gathers
  * several — the pharmacy office, whose menu entries each keep their old row's permission.
  */
 /** Owner 2026-10-12 — `labMode`: a lab menu shown only while the lab runs that mode (`lib/lab-mode.ts`). */
-type NavEntry = { to: string; label: string; permission: string; group: NavGroup; anyOf?: readonly string[]; labMode?: LabMode | "never" };
+/** `module` — decision 0085: an entry drawn only while that switchable module is on (`useAuth().moduleOn`). */
+type NavEntry = { to: string; label: string; permission: string; group: NavGroup; anyOf?: readonly string[]; labMode?: LabMode | "never"; module?: string };
 const navVisible = (e: NavEntry, can: (p: string) => boolean): boolean => can(e.permission) || (e.anyOf ?? []).some((p) => can(p));
 /**
  * Past this many places the bar stops being a row and becomes a wall: an owner-shaped grant drew
@@ -269,6 +310,9 @@ const NAV: readonly NavEntry[] = [
   // #634 — who on the attendance machine's list is which login: the count and the unlinked list for the
   // owner and the Attendance Committee, the suggestions and the hand link for the Users administrator.
   { to: "/attendance/links", label: "nav.attendanceLinks", permission: "attendance.all.read", anyOf: ["auth.users.manage"], group: "admin" },
+  // GO-LIVE SCREENS — the workflow definitions board: approve (owner, MS) and activate (owner). Matches `workflowManifest.menu`.
+  // Decision 0085 invariant 1 — an IPD go-live screen: drawn only while `ipd` is on.
+  { to: "/admin/workflows", label: "nav.adminWorkflows", permission: "workflow.definitions.read", group: "admin", module: "ipd" },
   // Decision 0067 — the outside-test list (ECG, echo …), `orderingManifest.menu`'s entry.
   { to: "/ordering/outside-tests", label: "nav.outsideTests", permission: "tariff.services.manage", group: "admin" },
   // PLAN 18a T9 — the entries `radiologyManifest.menu` declares (three since 18-S RS2b), path and permission matching
@@ -308,6 +352,28 @@ const NAV: readonly NavEntry[] = [
   { to: "/copilot-health", label: "nav.copilotHealth", permission: "copilot.health.read", group: "admin" },
   // #882 / decision 0053 — the CRK formulary: Pharmacology signs; the pharmacy may correct a draft.
   { to: "/crk-formulary", label: "nav.crkFormulary", permission: "formulary.crk.sign", group: "pharmacy", anyOf: ["formulary.manage"] },
+  // E0.1 TASK ENGINE (issue #713) — a worker's own tasks and the supervisor's board; paths and permissions match
+  // `tasksManifest.menu`. Their own group: service work (cleaning, waste, porters) is neither a desk nor a ward.
+  { to: "/tasks", label: "nav.myTasks", permission: "tasks.work", group: "services" },
+  { to: "/tasks/board", label: "nav.taskBoard", permission: "tasks.view", group: "services", anyOf: ["tasks.supervise"] },
+  // E1.7 BIO-MEDICAL WASTE (issue #724) — the handler's phone, the supervisor's board and the two legal reports; paths
+  // and permissions match `bmwManifest.menu`.
+  { to: "/bmw/handle", label: "nav.bmwHandle", permission: "bmw.handle", group: "services" },
+  { to: "/bmw", label: "nav.bmwBoard", permission: "bmw.view", group: "services", anyOf: ["bmw.manage"] },
+  { to: "/bmw/reports", label: "nav.bmwReports", permission: "bmw.manage", group: "services" },
+  // E2.4 LINEN (issue #728) — the handler's phone and the supervisor's board; paths and permissions match `linenManifest.menu`.
+  { to: "/linen/handle", label: "nav.linenHandle", permission: "linen.handle", group: "services" },
+  { to: "/linen", label: "nav.linenBoard", permission: "linen.view", group: "services", anyOf: ["linen.manage"] },
+  { to: "/housekeeping", label: "nav.housekeeping", permission: "housekeeping.view", group: "services" },
+  { to: "/maintenance", label: "nav.maintenance", permission: "maintenance.view", group: "services" },
+  // E1.6 TRANSPORT (issue #723) — the supervisor's board (`transportManifest.menu`) and the request sheet.
+  { to: "/transport", label: "nav.transport", permission: "transport.manage", group: "services" },
+  { to: "/transport/request", label: "nav.transportRequest", permission: "transport.request", group: "services", anyOf: ["transport.manage"] },
+  // E4.4 DIET (issue #736) — the ward diet sheet, the kitchen board and the dietician's consults; paths and permissions
+  // match `dietManifest.menu`.
+  { to: "/diet/ward", label: "nav.dietWard", permission: "diet.view", group: "services" },
+  { to: "/diet/kitchen", label: "nav.dietKitchen", permission: "diet.kitchen", group: "services" },
+  { to: "/diet/consults", label: "nav.dietConsults", permission: "diet.manage", group: "services" },
   // The OPD day report (owner, 2026-09-19): the hospital's day by department, PDF and CSV.
   { to: "/reports/opd-day", label: "nav.opdDayReport", permission: "opd.reports.read", group: "opd" },
   // 20-U U5a — who is on now, the hospital's unit board. `roster.read` matches `rosterManifest.menu`.
@@ -358,6 +424,45 @@ const NAV: readonly NavEntry[] = [
    * open it on. It is reached from the list, which is where a nurse actually is when they need it.
    * `otManifest.menu` declares the same three, so the two tables agree.
    */
+  // E1.1 (#718) — the Beds capacity board; path and permission match `ipdManifest.menu`.
+  // ER lane 1 (#808) — the ER desk (`emergencyManifest.menu`) and the tracking board.
+  { to: "/er/desk", label: "nav.erDesk", permission: "er.arrival.register", group: "desk" },
+  { to: "/er/board", label: "nav.erBoard", permission: "er.board.view", group: "wards" },
+  // ER lane 2 (#809) — the triage screen (`emergencyManifest.menu`).
+  { to: "/er/triage", label: "nav.erTriage", permission: "er.triage", group: "wards" },
+  // ER lane 3 (#810) — the ER patient: care in one place (`emergencyManifest.menu`).
+  { to: "/er/patient", label: "nav.erPatient", permission: "er.care", group: "wards" },
+  { to: "/er/mlc", label: "nav.erMlc", permission: "er.mlc", group: "wards" },
+  { to: "/er/bill", label: "nav.erBill", permission: "er.bill", group: "wards" },
+  { to: "/er/codes", label: "nav.erCodes", permission: "er.codes", group: "wards" },
+  { to: "/er/mci", label: "nav.erMci", permission: "er.mci", group: "wards" },
+  { to: "/ipd/beds", label: "nav.ipdBeds", permission: "ipd.beds.view", group: "wards" },
+  // E1.2 (#719) — the Admit sheet; path and permission match `ipdManifest.menu`.
+  { to: "/ipd/admit", label: "nav.ipdAdmit", permission: "ipd.admit", group: "wards" },
+  // E1.3 (#720) — attendant and visitor passes and the guard's scan; paths and permissions match `passesManifest.menu`.
+  { to: "/ipd/passes", label: "nav.ipdPasses", permission: "passes.issue", group: "wards" },
+  { to: "/passes/scan", label: "nav.passScan", permission: "passes.scan", group: "wards" },
+  // E3.1 (#729) — the receiving ward's handover list; path and permission match `ipdManifest.menu`.
+  { to: "/ipd/handovers", label: "nav.ipdHandovers", permission: "ipd.transfer.accept", group: "wards" },
+  // E2.3 (#727) — the bill desk (exceptions only); path and permission match `ipdManifest.menu`.
+  { to: "/ipd/bill-desk", label: "nav.ipdBillDesk", permission: "ipd.billdesk.view", group: "wards" },
+  // #604 (decision 0075) — the TPA desk board; path and permission match `ipdManifest.menu`.
+  { to: "/ipd/tpa", label: "nav.ipdTpa", permission: "ipd.payer.manage", group: "wards" },
+  // E3.2 (#730) — the discharge desk; path and permission match `ipdManifest.menu`.
+  { to: "/ipd/discharge", label: "nav.ipdDischarge", permission: "ipd.discharge.view", group: "wards" },
+  // E3.3 (#731) — the ward desk's family callback requests; path and permission match `ipdManifest.menu`.
+  { to: "/ipd/family-callbacks", label: "nav.ipdFamilyCalls", permission: "ipd.family.issue", group: "wards" },
+  // E4.1 (#733) — the ward nurse station (board C) and my shift on the phone (board D1); paths and permissions match
+  // `ipdManifest.menu`.
+  { to: "/ipd/ward", label: "nav.ipdWard", permission: "ipd.nursing.view", group: "wards" },
+  { to: "/ipd/my-shift", label: "nav.ipdMyShift", permission: "ipd.vitals.record", group: "wards" },
+  // E4.2 (#734) — the doctor's inpatient rounds; path and permission match `ipdManifest.menu`.
+  { to: "/ipd/rounds", label: "nav.ipdRounds", permission: "ipd.round.sign", group: "wards" },
+  // E4.3 (#735) — the ward MAR chart and the inpatient pharmacy desk; paths and permissions match `ipdManifest.menu`.
+  { to: "/ipd/mar", label: "nav.ipdMar", permission: "ipd.emar.view", group: "wards" },
+  { to: "/ipd/pharmacy", label: "nav.ipdPharmacy", permission: "ipd.emar.verify", group: "wards" },
+  // 2026-10-14 — the ward narcotic register (NDPS / NABH): balance, the shift count, exceptions; matches `ipdManifest.menu`.
+  { to: "/ipd/narcotics", label: "nav.ipdNarcotics", permission: "ipd.emar.view", group: "wards" },
   { to: "/ot/list", label: "nav.otList", permission: "ot.cases.read", group: "theatre" },
   { to: "/ot/book", label: "nav.otBook", permission: "ot.cases.book", group: "theatre" },
   { to: "/ot/recovery", label: "nav.otRecovery", permission: "ot.recovery.operate", group: "theatre" },
@@ -444,7 +549,7 @@ declare module "@tanstack/react-router" {
  */
 function ShellChrome(): React.ReactElement {
   const { t, i18n } = useTranslation();
-  const { username, can, logout } = useAuth();
+  const { username, can, logout, moduleOn } = useAuth();
   const navigate = useNavigate();
   const palette = usePalette();
   const pathname = useRouterState({ select: (st) => st.location.pathname });
@@ -475,7 +580,8 @@ function ShellChrome(): React.ReactElement {
     return () => { document.removeEventListener("mousedown", close); };
   }, [openGroup]);
   const labModeNow = useLabMode();
-  const show = (e: NavEntry): boolean => navVisible(e, can) && shownInMode(e.labMode, labModeNow);
+  const show = (e: NavEntry): boolean =>
+    navVisible(e, can) && shownInMode(e.labMode, labModeNow) && (e.module === undefined || moduleOn(e.module));
   const folded = NAV.filter(show).length > NAV_FOLD_AT;
   /* The clock ticks in IST — a hospital clock in the browser's zone is a clock nobody can act on. */
   const [, setTick] = useState(0);
@@ -671,7 +777,7 @@ function Shell(): React.ReactElement {
         <div className="flex-1">
           <Outlet />
         </div>
-        <ShortcutLegend can={can} />
+        <ShortcutLegend can={can} path={pathname} />
       </div>
   );
 
@@ -696,6 +802,14 @@ function Shell(): React.ReactElement {
 const rootRoute = createRootRoute({ component: () => <><Outlet /><PrintingPanelHost /><CopilotNoticeHost /></> });
 
 const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login", component: LoginScreen });
+
+/**
+ * E3.3 (#731) — THE FAMILY PAGE, A SIBLING OF `/login` AND NOT A CHILD OF THE SHELL: the registered attendant opens it on
+ * their own phone with no staff session (`authedRoute` would bounce them to /login). The token in the FRAGMENT (`#…`, never
+ * sent to a server, review #764) and the OTP
+ * session cookie are its only credentials; the API checks both on every call.
+ */
+const familyRoute = createRoute({ getParentRoute: () => rootRoute, path: "/family", component: () => <FamilyPage /> });
 
 /**
  * PLAN 11e T6 / D6 — `/change-password` IS A SIBLING OF `/login`, NOT A CHILD OF THE SHELL.
@@ -810,6 +924,239 @@ const staffReportsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/staff",
   component: StaffReports,
+});
+
+/**
+ * E1.1 (#718) — the Beds capacity board (spec §4.9 A). A command board: it owns the viewport (16:9, no page
+ * scroll) and draws its own header. `?wall=1` is the wall display — the server sends initials, never names.
+ */
+/**
+ * ER lane 1 (#808) — the ER desk (spec SPEC-emergency §5 C): arrival in three taps, the band, pre-alerts, brought dead,
+ * identity. It owns the viewport (desk and phone).
+ */
+const erDeskRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/er/desk",
+  staticData: { fullViewport: true },
+  component: ErDesk,
+});
+
+/** ER lane 2 (#809) — triage (spec §5 B): the queue, or one patient with `?episode=<id>`. Tablet or phone. */
+const erTriageRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/er/triage",
+  staticData: { fullViewport: true },
+  validateSearch: (search: Record<string, unknown>): { episode?: string } => ({
+    episode: typeof search.episode === "string" && search.episode !== "" ? search.episode : undefined,
+  }),
+  component: ErTriage,
+});
+
+/** ER lane 3 (#810) — the ER patient (spec §5 D): one patient's care, `?episode=<id>`. Phone or tablet. */
+const erPatientRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/er/patient",
+  staticData: { fullViewport: true },
+  validateSearch: (search: Record<string, unknown>): { episode?: string } => ({
+    episode: typeof search.episode === "string" && search.episode !== "" ? search.episode : undefined,
+  }),
+  component: ErPatient,
+});
+
+/** ER lane 4 (#811) — the MLC desk (spec §5 E): owed intimations and countersigns with clocks; `?mlc=<id>` opens a case. */
+const erMlcRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/er/mlc",
+  staticData: { fullViewport: true },
+  validateSearch: (search: Record<string, unknown>): { mlc?: string } => ({
+    mlc: typeof search.mlc === "string" && search.mlc !== "" ? search.mlc : undefined,
+  }),
+  component: ErMlc,
+});
+
+/** ER lane 6 (#813) — the ER bill desk (money: desk and billing roles only); `?episode=<id>` opens a bill. */
+const erBillRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/er/bill",
+  staticData: { fullViewport: true },
+  validateSearch: (search: Record<string, unknown>): { episode?: string } => ({
+    episode: typeof search.episode === "string" && search.episode !== "" ? search.episode : undefined,
+  }),
+  component: ErBillScreen,
+});
+
+/** ER lane 7 (#814) — the resus scribe (spec §5 F, tablet landscape); `?code=<id>` opens a code. */
+const erCodesRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/er/codes",
+  staticData: { fullViewport: true },
+  validateSearch: (search: Record<string, unknown>): { code?: string } => ({
+    code: typeof search.code === "string" && search.code !== "" ? search.code : undefined,
+  }),
+  component: ErCodesScreen,
+});
+
+/** ER lane 8 (#815) — the MCI board (Code Yellow, spec §5 G): counts by tag, packs, surge bays, the head count. */
+const erMciRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/er/mci",
+  staticData: { fullViewport: true },
+  component: ErMciScreen,
+});
+
+/** ER lane 1 (#808) — the tracking board (spec §5 A): 16:9, no page scroll; `?wall=1` is the wall screen (no names). */
+const erBoardRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/er/board",
+  staticData: { fullViewport: true },
+  // ER lane 9 (#816): `?waiting=1` is the waiting-area display (its own permission, `er.board.waiting`).
+  validateSearch: (search: Record<string, unknown>): { wall?: string; waiting?: string } => ({
+    wall: search.wall === "1" || search.wall === 1 || search.wall === true ? "1" : undefined,
+    waiting: search.waiting === "1" || search.waiting === 1 || search.waiting === true ? "1" : undefined,
+  }),
+  component: ErBoardScreen,
+});
+
+const ipdBedsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/beds",
+  staticData: { fullViewport: true },
+  validateSearch: (search: Record<string, unknown>): { wall?: string } => ({
+    wall: search.wall === "1" || search.wall === 1 || search.wall === true ? "1" : undefined,
+  }),
+  component: IpdBeds,
+});
+
+/** E1.2 (#719) — Admit, one flowing sheet (spec §4.9 B). `?admission=<id>` opens a request (the Beds board links it). */
+const ipdAdmitRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/admit",
+  validateSearch: (search: Record<string, unknown>): { admission?: string } => ({
+    admission: typeof search.admission === "string" && /^[0-9A-HJKMNP-TV-Z]{26}$/.test(search.admission) ? search.admission : undefined,
+  }),
+  component: IpdAdmit,
+});
+
+/** E1.3 (#720) — passes at the admission desk; `?admission=<id>` opens one admission (the Admit sheet links it). */
+const ipdPassesRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/passes",
+  validateSearch: (search: Record<string, unknown>): { admission?: string } => ({
+    admission: typeof search.admission === "string" && /^[0-9A-HJKMNP-TV-Z]{26}$/.test(search.admission) ? search.admission : undefined,
+  }),
+  component: IpdPasses,
+});
+
+/** E1.3 (#720) — the guard's scan at a ward door (390 px first). */
+const passesScanRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/passes/scan",
+  component: PassesScan,
+});
+
+/**
+ * E2.1 (#725) — the interim bill of one admission (spec §4.3, §4.9 H). No nav entry: it opens from an admission. The
+ * server serves it under `ipd.bill.view` only (billing and front office; never a doctor, decision 0058).
+ */
+const ipdBillRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/admissions/$admissionId/bill",
+  component: IpdBill,
+});
+
+/** E3.1 (#729) — "Waiting for you": handovers the receiving nurse accepts (spec §4.4). Phone-usable at 390 px. */
+const ipdHandoversRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/handovers",
+  component: IpdHandovers,
+});
+
+/**
+ * E4.1 (#733) — the ward nurse station (spec §4.9 C). A 16:9 command board: it owns the viewport and draws its own
+ * header. `?ward=<id>` picks the ward, `?admission=<id>` opens a patient's nursing chart.
+ */
+const ipdWardRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/ward",
+  staticData: { fullViewport: true },
+  validateSearch: (search: Record<string, unknown>): { ward?: string; admission?: string } => ({
+    ward: typeof search.ward === "string" && /^[0-9A-HJKMNP-TV-Z]{26}$/.test(search.ward) ? search.ward : undefined,
+    admission: typeof search.admission === "string" && /^[0-9A-HJKMNP-TV-Z]{26}$/.test(search.admission) ? search.admission : undefined,
+  }),
+  component: IpdWard,
+});
+
+/** E4.1 (#733) — my shift on the nurse's phone (spec §4.9 D1), 390 px first. */
+const ipdMyShiftRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/my-shift",
+  component: IpdMyShift,
+});
+
+/**
+ * E2.3 (#727) — the bill desk (spec §4.3 deposit ladder, §4.9 H): exceptions only, each row opens the interim bill.
+ * Served under `ipd.billdesk.view` (billing, front-office supervisor, duty manager, owner; never a doctor, decision 0058).
+ */
+const ipdBillDeskRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/bill-desk",
+  component: IpdBillDesk,
+});
+// #604 (decision 0075) — the TPA desk board; path and permission match `ipdManifest.menu`.
+const ipdTpaRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/tpa",
+  component: IpdTpa,
+});
+
+/**
+ * E3.2 (#730) — the discharge desk (spec §4.7, §4.9 F): the cascade's admissions, one admission's steps with clocks and
+ * blockers, the final bill and the gate pass prints. `?admission=<id>` opens one admission.
+ */
+const ipdDischargeRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/discharge",
+  validateSearch: (search: Record<string, unknown>): { admission?: string } => ({
+    admission: typeof search.admission === "string" && /^[0-9A-HJKMNP-TV-Z]{26}$/.test(search.admission) ? search.admission : undefined,
+  }),
+  component: IpdDischarge,
+});
+
+/** E3.3 (#731) — the ward desk's family callbacks (`ipd.family.issue`). Phone-usable at 390 px. */
+const ipdFamilyCallbacksRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/family-callbacks",
+  component: IpdFamilyCallbacks,
+});
+
+/** E4.2 (#734) — the doctor's rounds list and a patient's round page (`ipd.round.sign`). 16:9 desktop and 390 px. */
+const ipdRoundsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/rounds",
+  component: IpdRounds,
+});
+const ipdRoundPatientRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/rounds/$admissionId",
+  component: IpdRoundPatientRoute,
+});
+
+/** E4.3 (#735) — the ward MAR chart (`ipd.emar.view`, 16:9) and the inpatient pharmacy desk (`ipd.emar.verify`, desktop). */
+const ipdMarRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/mar",
+  component: IpdMar,
+});
+const ipdPharmacyRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/pharmacy",
+  component: IpdPharmacy,
+});
+/** 2026-10-14 — the ward narcotic register (`ipd.emar.view`; the count needs `ipd.emar.give`, the act re-checks). */
+const ipdNarcoticsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/narcotics",
+  component: IpdNarcotics,
 });
 
 /** E0.1 (decision 0064) — one day's copilot totals; aggregate only, it names nobody. */
@@ -1158,6 +1505,104 @@ const myLeaveRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/roster/leave",
   component: MyLeave,
+});
+
+/** E0.1 TASK ENGINE (issue #713) — My tasks: a worker's one list, built for a phone (390 px). */
+const myTasksRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/tasks",
+  component: MyTasks,
+});
+
+/** E1.7 BIO-MEDICAL WASTE (issue #724) — the BMW supervisor's board: 16:9, bags on site with their 48-hour clocks. */
+const bmwBoardRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/bmw",
+  component: BmwBoard,
+});
+
+/** E1.7 — the waste handler's phone (390 px): new bag with its label, scan → weigh → done. */
+const bmwHandleRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/bmw/handle",
+  component: BmwHandle,
+});
+
+/** E1.7 — the monthly report and the annual Form IV figures, read off the bags, with CSV. */
+const bmwReportsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/bmw/reports",
+  component: BmwReports,
+});
+
+/** E2.4 LINEN (issue #728) — the linen supervisor's board: 16:9, wards below par first, laundry out and in, weekly loss. */
+const linenBoardRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/linen",
+  component: LinenBoard,
+});
+
+/** E2.4 — the linen handler's phone (390 px, Hindi first): pick a ward, count with big steppers, save. */
+const linenHandleRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/linen/handle",
+  component: LinenHandle,
+});
+
+/** E0.1 TASK ENGINE — the supervisor's task board: 16:9, open work by floor, late first, worker load. */
+const tasksBoardRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/tasks/board",
+  component: TasksBoard,
+});
+
+/** E1.4 HOUSEKEEPING (issue #721) — the housekeeping supervisor's board: 16:9, open cleans by floor, late first. */
+const housekeepingBoardRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/housekeeping",
+  component: HousekeepingBoard,
+});
+
+/** E1.5 MAINTENANCE (issue #722) — the maintenance supervisor's board: 16:9, open repairs by floor, critical first. */
+const maintenanceBoardRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/maintenance",
+  component: MaintenanceBoard,
+});
+
+/** E1.6 TRANSPORT (issue #723) — the transport supervisor's board: 16:9, open moves, late first, escort in words. */
+const transportBoardRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/transport",
+  component: TransportBoard,
+});
+
+/** E1.6 TRANSPORT — the request sheet: a patient move, a sample run or a document run (phone and desk). */
+const transportRequestRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/transport/request",
+  component: TransportRequest,
+});
+
+/** E4.4 DIET (issue #736) — the ward diet sheet (390 px first): diet, NPO, allergies and the next tray per bed. */
+const dietWardRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/diet/ward",
+  component: DietWard,
+});
+
+/** E4.4 DIET — the kitchen board (16:9): every ward's list for one meal, print (A4 + labels), dispatch. */
+const dietKitchenRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/diet/kitchen",
+  component: DietKitchen,
+});
+
+/** E4.4 DIET — the dietician's consult queue and the meal rounds' cut-offs. */
+const dietConsultsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/diet/consults",
+  component: DietConsults,
 });
 
 const myReachRoute = createRoute({
@@ -1849,6 +2294,13 @@ const attendanceLinksRoute = createRoute({
   component: AttendanceLinks,
 });
 
+/** GO-LIVE SCREENS — every workflow definition, its approvals and the approve / activate buttons. */
+const adminWorkflowsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/admin/workflows",
+  component: AdminWorkflows,
+});
+
 /**
  * PLAN 09 T3 / DD8 — card recognition. It is under `/counter/…` rather than `/billing/…` because
  * recognition DEPLOYS BEFORE the billing integration is armed: the counter has to be able to look a
@@ -1949,11 +2401,14 @@ const legacyVitalsBayRoute = createRoute({
 export const router = createRouter({
   routeTree: rootRoute.addChildren([
     loginRoute,
+    familyRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, erDeskRoute, erBoardRoute, erTriageRoute, erPatientRoute, erMlcRoute, erBillRoute, erCodesRoute, erMciRoute, ipdBedsRoute, ipdAdmitRoute, ipdBillRoute, ipdBillDeskRoute, ipdTpaRoute, ipdFamilyCallbacksRoute, ipdRoundsRoute, ipdRoundPatientRoute, ipdMarRoute, ipdPharmacyRoute, ipdNarcoticsRoute, ipdHandoversRoute, ipdWardRoute, ipdMyShiftRoute, ipdDischargeRoute, ipdPassesRoute, passesScanRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute, attendanceLinksRoute,
+      // GO-LIVE SCREENS — +1, `/admin/workflows`. `caddyfile-parity.test.ts` pins the count.
+      adminWorkflowsRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
       // FD-2 — 47 -> 46. `/counter/seat` is GONE, the seat serves `counterDeskRoute` above, and
       // `/counter/seat/figures` follows it to `/counter/figures`. `caddyfile-parity.test.ts` pins
@@ -2016,6 +2471,20 @@ export const router = createRouter({
       rosterMyDutiesRoute,
       // E2.2 — +1, `/roster/leave` (my leave). `caddyfile-parity.test.ts` pins the count.
       myLeaveRoute,
+      // E0.1 TASK ENGINE — +2, `/tasks` and `/tasks/board`. `caddyfile-parity.test.ts` pins the count.
+      myTasksRoute, tasksBoardRoute,
+      // E1.7 BIO-MEDICAL WASTE — +3, `/bmw`, `/bmw/handle`, `/bmw/reports`. `caddyfile-parity.test.ts` pins the count.
+      bmwBoardRoute, bmwHandleRoute, bmwReportsRoute,
+      // E2.4 LINEN — +2, `/linen` and `/linen/handle`. `caddyfile-parity.test.ts` pins the count.
+      linenBoardRoute, linenHandleRoute,
+      // E1.4 HOUSEKEEPING — +1, `/housekeeping`. `caddyfile-parity.test.ts` pins the count.
+      housekeepingBoardRoute,
+      // E1.5 MAINTENANCE — +1, `/maintenance`. `caddyfile-parity.test.ts` pins the count.
+      maintenanceBoardRoute,
+      // E1.6 TRANSPORT — +2, `/transport` and `/transport/request`.
+      transportBoardRoute, transportRequestRoute,
+      // E4.4 DIET — +3, `/diet/ward`, `/diet/kitchen`, `/diet/consults`. `caddyfile-parity.test.ts` pins the count.
+      dietWardRoute, dietKitchenRoute, dietConsultsRoute,
       rosterEvidenceRoute,
       rosterAebasRoute,
       // DD-0 (#626) — +2, `/doctor-desk` and `/doctor-desk/briefs`. `caddyfile-parity.test.ts` pins the count.

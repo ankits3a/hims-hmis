@@ -43,6 +43,9 @@ import {
 import { istDayString } from "../src/kernel/approvals/cumulative";
 import { catalogueCensus } from "../src/modules/formulary";
 import { SEED_CENSUS } from "./seed-formulary-interactions";
+import { IPD_GOLIVE_ITEMS, runIpdGoLiveCheck } from "./ipd-golive-check";
+import { envModuleSwitch } from "../src/kernel/modules/switch";
+import type { ModuleSwitch } from "../src/kernel/modules/switch";
 import type { Db } from "../src/kernel/db/client";
 
 /**
@@ -195,6 +198,19 @@ async function activeHoldersAtHospitalScope(db: Db, roleKey: string): Promise<st
  */
 const heldAtHospitalScope = (roleKey: string) => async (db: Db): Promise<boolean> =>
   (await activeHoldersAtHospitalScope(db, roleKey)).length > 0;
+
+/**
+ * E3.4 (#732) — IPD's rows ask `ipd-golive-check`'s own items, so the census and the go-live check cannot disagree:
+ * a row is ok exactly when that item PASSes (read-only, one transaction). The fix is the item's own sentence.
+ */
+function ipdRow(gate: Gate, code: string, item: string): CheckRow {
+  const found = IPD_GOLIVE_ITEMS.find((i) => i.code === item);
+  if (found === undefined) throw new Error(`standup-check: ipd-golive-check has no item "${item}"`);
+  return {
+    gate, code, fix: `ipd-go-live.md — ${found.fix}`,
+    check: async (db) => (await runIpdGoLiveCheck(db, process.env, [found]))[0]?.verdict === "PASS",
+  };
+}
 
 export const STANDUP_ROWS: Record<string, Row[]> = {
   /** Not a department: the rows every department's opening rests on. */
@@ -1115,6 +1131,31 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
   ],
 
   /**
+   * E3.4 (#732) — RULED A DEPARTMENT at the IPD cutover lane: beds, wards and admissions are commissioned on a go-live
+   * day (`ipd-go-live.md`). Nothing here is a deploy fact — no seed in `deploy.sh` touches IPD — so every row is G3 or
+   * G4 and every one is RED until the owner's and the wards' acts. The full list, with the approvers and the
+   * warnings, is `scripts/ipd-golive-check.ts`; these rows are the subset the hospital-wide census carries.
+   */
+  ipd: [
+    ipdRow("G3", "ipd_admission_workflow_active", "admission_workflow_active"),
+    ipdRow("G3", "ipd_approval_types_registered", "approval_types_registered"),
+    ipdRow("G3", "ipd_rate_card_complete", "rate_card_complete"),
+    ipdRow("G3", "ipd_services_on", "ipd_services_on"),
+    ipdRow("G3", "ipd_beds_loaded", "beds_loaded"),
+    ipdRow("G3", "ipd_beds_consistent", "beds_consistent"),
+    {
+      gate: "G3", code: "ipd_incumbent_beds_marked",
+      runbook: { file: "docs/runbooks/ipd-go-live.md", section: "Mark the incumbent beds" },
+      fix: "on cutover night the ward in-charges list every bed still holding an old-system patient and IT marks them with scripts/mark-incumbent-beds.ts; zero incumbents is a valid answer, so no row can tell a skipped step from an empty hospital",
+    },
+    ipdRow("G4", "ipd_approvers_held", "approvers_held"),
+    ipdRow("G4", "ipd_role_held_ward_nurse", "role_held:ward_nurse"),
+    ipdRow("G4", "ipd_role_held_nursing_supervisor", "role_held:nursing_supervisor"),
+    ipdRow("G4", "ipd_role_held_dietician", "role_held:dietician"),
+    ipdRow("G4", "ipd_role_held_kitchen_staff", "role_held:kitchen_staff"),
+  ],
+
+  /**
    * ═══ THE PCPNDT REGISTER — a department by every test that made the other five (2026-09-07) ═══
    *
    * Master data no deploy can supply (`pcpndt_registrations` and its machines and persons), human
@@ -1291,8 +1332,17 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
 
 export type RowResult = { module: string; gate: Gate; code: string; verdict: Verdict; fix: string; detail?: string };
 
-export async function runCensus(db: Db, moduleName: string): Promise<RowResult[]> {
-  const names = moduleName === "all" ? Object.keys(STANDUP_ROWS) : [moduleName];
+/**
+ * Decision 0085 invariant 1 — the census modules `moduleName` names. `all` leaves out a department whose module is
+ * switched off (`ipd` while `HMIS_MODULES_ON` does not name it), so production's deploy census prints none of its rows;
+ * a department asked for by name answers whatever the switch says (the go-live rehearsal on staging).
+ */
+export function censusModuleNames(moduleName: string, isOn: ModuleSwitch = envModuleSwitch): string[] {
+  return moduleName === "all" ? Object.keys(STANDUP_ROWS).filter((name) => isOn(name)) : [moduleName];
+}
+
+export async function runCensus(db: Db, moduleName: string, isOn: ModuleSwitch = envModuleSwitch): Promise<RowResult[]> {
+  const names = censusModuleNames(moduleName, isOn);
   const out: RowResult[] = [];
   for (const name of names) {
     const rows = STANDUP_ROWS[name];

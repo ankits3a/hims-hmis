@@ -523,3 +523,53 @@ export async function canonicalNames(
   }
   return out;
 }
+
+/**
+ * ER lane 3 (#810) — THE OPEN CRITICAL CALLS OF SOME EPISODES, for a module that must tell its own doctor (the emergency
+ * department tells the ER doctor of record and climbs while the call stays open). Ids, the analyte, the value as entered
+ * and when the call opened. The call still closes ONLY by a read-back (`acknowledgeCritical`); this reader changes nothing
+ * about the ladder.
+ *
+ * ER lane 9 review (#894) — THE RESTRICTED-TEST RULE (DD11, as `patient-results.ts`). `viewer` is REQUIRED: the person
+ * the answer is shown to, or an explicit `{ system: true }` for a caller with no reader (a sweep), which then decides
+ * itself what a restricted row may say (`restricted` marks them). For a person, a critical on a restricted item
+ * (consent-required or sensitive) keeps its urgency but loses its content — `masked: true`, no analyte, no value, no
+ * unit — unless the viewer ordered it or holds `orders.read.restricted`.
+ */
+export type OpenCritical = {
+  callId: string; encounterNo: string; openedAt: Date; analyteCode: string; value: string; unit: string | null;
+  restricted: boolean; masked: boolean;
+};
+
+export async function openCriticalsForEncounters(
+  db: Db | Tx, encounterNos: readonly string[], viewer: Actor | { system: true },
+): Promise<OpenCritical[]> {
+  // A JS caller (or a cast) can still omit it: refuse rather than answer unmasked.
+  if (viewer === undefined || viewer === null) throw new Error("openCriticalsForEncounters: a viewer is required (the reading actor, or { system: true })");
+  if (encounterNos.length === 0) return [];
+  const rows = await (db as Db)
+    .select({
+      call: labCriticalCalls, result: labResults, analyteCode: labAnalytes.code, encounterNo: orders.encounterNo,
+      restricted: orderItems.restricted, orderingClinicianId: orders.orderingClinicianId,
+    })
+    .from(labCriticalCalls)
+    .innerJoin(labResults, eq(labResults.id, labCriticalCalls.resultId))
+    .innerJoin(labAnalytes, eq(labAnalytes.id, labResults.analyteId))
+    .innerJoin(orderItems, eq(orderItems.id, labResults.orderItemId))
+    .innerJoin(orders, eq(orders.id, orderItems.orderId))
+    .where(and(isNull(labCriticalCalls.closedAt), inArray(orders.encounterNo, [...encounterNos])))
+    .orderBy(labCriticalCalls.openedAt);
+  const anyRestricted = rows.some((r) => r.restricted);
+  const person = "system" in viewer ? null : viewer;
+  const seesAll = person === null || !anyRestricted ? true
+    : person.type === "user" && await hasPermission(db as Db, person.id, "orders.read.restricted", "hospital");
+  return rows.map((r) => {
+    const masked = r.restricted && !seesAll && !(person?.type === "user" && r.orderingClinicianId === person.id);
+    return {
+      callId: r.call.id, encounterNo: r.encounterNo ?? "", openedAt: r.call.openedAt, restricted: r.restricted, masked,
+      analyteCode: masked ? "" : r.analyteCode,
+      value: masked ? "" : r.result.valueNumeric ?? r.result.valueText ?? r.result.valueCoded ?? "",
+      unit: masked ? null : r.result.unit,
+    };
+  });
+}

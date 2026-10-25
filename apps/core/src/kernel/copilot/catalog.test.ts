@@ -32,6 +32,7 @@ const manifest = (key: string, tools: CopilotToolDecl[], permissions: string[]):
 
 const registryOf = (manifests: ModuleManifest[]): ModuleRegistry => ({
   all: () => manifests,
+  live: () => manifests, // decision 0085 — the collectors read the live set; these fakes have no switch
   allPermissions: () => [...new Set(manifests.flatMap((m) => m.permissions))],
 } as unknown as ModuleRegistry);
 

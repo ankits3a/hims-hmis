@@ -1,0 +1,3 @@
+-- ER copilot (#816): the copilot's proposed ESI level on a triage entry, so a different pick is logged as an override. Additive.
+ALTER TABLE "er_triage_entries" ADD COLUMN "copilot_level" integer;--> statement-breakpoint
+ALTER TABLE "er_triage_entries" ADD CONSTRAINT "er_triage_entries_copilot_level_ck" CHECK ("er_triage_entries"."copilot_level" is null or "er_triage_entries"."copilot_level" between 1 and 5);

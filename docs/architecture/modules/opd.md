@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/opd/`
 
 - **Depends on modules:** `billing`, `cds`, `formulary`, `materials`, `patients`, `roster`
-- **Used by modules:** `abdm`, `billing`, `doctor-desk`, `lab`, `ordering`, `pharmacy`, `radiology`
+- **Used by modules:** `abdm`, `billing`, `doctor-desk`, `ipd`, `lab`, `ordering`, `pharmacy`, `radiology`
 - **Kernel used:** `alerts`, `auth`, `config`, `copilot`, `crypto`, `db`, `desk`, `episodes`, `events`, `inference`, `modules`, `phi`, `printing`, `realtime`, `report`, `resources`, `search`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
@@ -193,7 +193,8 @@ Source: `apps/core/src/modules/opd/`
   - types: `QueueNudge`
 - `rx-checks.ts`
   - `isCurrent(durationDays: number | null, issuedAt: Date, now: Date): { current: boolean; assumedCurrent: boolean }`
-  - types: `KidneyReading`, `RenalHit`
+  - `matchAllergiesSaltAware(lines: RxCheckLine[], allergies: { substance: string; resolution: ResolvedDrug | null; allergenClass?: string | nul…`
+  - types: `KidneyReading`, `RenalHit`, `RxCheckLine`
 - `skip-reasons.ts`
   - `SKIP_REASONS`
   - types: `SkipReason`

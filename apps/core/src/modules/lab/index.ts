@@ -39,7 +39,7 @@ export type { DuplicateWarning } from "./duplicates";
 // ── PLAN 17a T4 — the desk, the two definitions, and the add-on ──
 // DD22: 17a mounts NO route, so these are transaction-shaped services. 17b's controllers wrap
 // `deskOrder` in `withIdempotency` (imported from `../billing`) and add no second placement path.
-export { addOnOrder, advisedTestItems, deskOrder, LAB_DESK_OPERATE, placeLabOrder } from "./desk";
+export { addOnOrder, advisedTestItems, deskOrder, LAB_DESK_OPERATE, placeLabOrder, previewDeskOrder } from "./desk";
 export type {
   AddOnOrderInput, DeskItemInput, DeskOrderInput, DeskOrderResult, LabCollectionSite, LabPriority,
 } from "./desk";
@@ -88,10 +88,12 @@ export {
 export type { ReflexPlacement, ReflexRefusal, VerifyResultInput, VerifyResultOutcome } from "./verify";
 export {
   acknowledgeCritical, openCriticalCalls, nextRung, RUNGS, CRITICAL_CALL_TARGET_MINUTES,
+  // ER lane 3 (#810) — the open calls of named episodes, for the emergency department's own doctor-of-record ladder.
+  openCriticalsForEncounters,
   LAB_CRITICALS_CLOSE,
 } from "./criticals";
 export type {
-  AcknowledgeCriticalInput, AcknowledgeCriticalOutcome, CriticalAttempt, OpenCriticalCall,
+  AcknowledgeCriticalInput, AcknowledgeCriticalOutcome, CriticalAttempt, OpenCritical, OpenCriticalCall,
 } from "./criticals";
 // ── E3.2 (#595) — the critical chase ladder and the G5 read-back report ──
 export {
@@ -150,3 +152,6 @@ export type { ClinicianLabRow, PatientResultSince } from "./clinician-reads";
 // #934 — the photographed analyser slip: its controller, and the sweep the worker runs with the SLA sweep.
 export { LabSlipsController } from "./lab-slips.controller";
 export { LAB_SLIP_ACTOR, sweepLabSlips } from "./slips";
+// ── IPD E5.3 (#740) — the inpatient copilot's "since yesterday" reads an admission's signed values through here ──
+export { RESULTED_VALUES_LIMIT, printedNumber, resultedValuesForOrders } from "./stay-values";
+export type { ResultedValue } from "./stay-values";

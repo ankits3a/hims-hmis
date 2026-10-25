@@ -133,7 +133,7 @@ function row(
 }
 
 describe("seed:staff — the census, stated before anything is compared (§2.49)", () => {
-  it("KNOWN_ROLE_KEYS is the forty-eight keys some seed script in this tree can create", () => {
+  it("KNOWN_ROLE_KEYS is the fifty-nine keys some seed script in this tree can create", () => {
     expect(KNOWN_ROLE_KEYS).toEqual([
       "admin",
       // PLAN 15 / DD14, 2026-08-28 — the six OT roles arrive for FREE by the same derivation, and
@@ -153,9 +153,11 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       "biomedical_engineer",
       "cashier",
       "daycare_coordinator",
+      "dietician", // DIET E4.4 (#736) — by derivation from ROLE_MODEL
       "display",
       "doctor",
       "duty_manager",
+      "er_nurse", // ER lane 1 (#808) — the casualty nurse, by derivation from ROLE_MODEL
       "front_office",
       "front_office_supervisor",
       // PLAN 17 T2 / DD16, 2026-08-29 — the LAB's four, arriving by the same DERIVATION as the six
@@ -175,6 +177,7 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       // This file is not in 17-E T2's Files list either, and it is the TENTH census site the task
       // moved — found by CI on the shard that runs it, not locally, because the phase ran
       // `seed-roles.test.ts` and this is `seed-staff`'s own separate census.
+      "kitchen_staff", // DIET E4.4 (#736) — by derivation from ROLE_MODEL
       "lab_bridge",
       "lab_reception",
       "lab_technician",
@@ -184,12 +187,15 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       // The consequence is real and not bookkeeping: `seed:staff` refuses a roster naming a key
       // outside this list, so until it carried these two, a roster hiring the hospital's first
       // storekeeper would have been rejected as a typo.
+      "maintenance_staff", // E1.5 MAINTENANCE (issue #722) — the engineering technicians, by derivation from ROLE_MODEL
       "materials_head",
       "medical_superintendent",
       "membership_admin",
       "modality_bridge", // PLAN 18b T1 — the machine account that pulls the modality worklist
       "mrd_officer",
       "nurse",
+      "nursing_superintendent", // IPD NURSING E4.1 (#733) — the head of nursing, by derivation from ROLE_MODEL
+      "nursing_supervisor", // IPD NURSING E4.1 (#733) — the shift in-charge, by derivation from ROLE_MODEL
       "opd_admin",
       "opd_scribe", // FD-30 — the OPD-door transcription seat (owner ruling 2026-09-12)
       "opd_slip_desk", // CONSULTED ON PAPER — the slip desk (owner ruling 2026-10-06, B)
@@ -237,25 +243,30 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       // 18-S RS8b — the resident, by the same derivation (ROLE_MODEL).
       "radiology_resident",
       "recovery_nurse",
+      "security_guard", // PASSES E1.3 (#720) — by derivation from ROLE_MODEL
+      "services_supervisor", // E0.1 TASK ENGINE (issue #713) — the task board: assigns, cancels, verifies
       // OWNER RULING 2026-08-29 (Plan 07c T9 / DD14) — `staff_auditor` joins by DERIVATION: this
       // list is `ROLE_MODEL ∪ GRANTED_BY_OTHER_SEEDS ∪ OPD_ROLE_KEYS`, sorted, so a new model role
       // arrives here for free and this census is where it announces itself. It is the FIFTH place a
       // role registration has to be admitted, and the one a file-scoped grep missed.
       "staff_auditor",
       "storekeeper",
+      "support_staff", // E0.1 TASK ENGINE (issue #713) — ward attendants, housekeeping, porters: take and do tasks
       "surgeon",
       // Group A, 2026-08-26 — three roles for permissions that had guarded live routes with no
       // holder at all. This list is DERIVED (ROLE_MODEL ∪ GRANTED_BY_OTHER_SEEDS ∪ OPD_ROLE_KEYS),
       // so it grew on its own; what is pinned here is that somebody noticed.
       "tariff_editor",
       "vitals_desk",
+      "waiting_display", // ER lane 9 review (#894) — the ER waiting-area TV, by derivation from ROLE_MODEL
+      "ward_nurse", // IPD NURSING E4.1 (#733) — the staff nurse on a ward, by derivation from ROLE_MODEL
     ]);
     // Derived from the three shipped constants rather than re-listed: a fourth copy of "the role
     // keys" is exactly the drift D2 exists to close (§2.54).
     for (const r of ROLE_MODEL) expect(KNOWN_ROLE_KEYS).toContain(r.roleKey);
     for (const g of GRANTED_BY_OTHER_SEEDS) expect(KNOWN_ROLE_KEYS).toContain(g.roleKey);
     for (const o of OPD_ROLE_KEYS) expect(KNOWN_ROLE_KEYS).toContain(o.key);
-    expect(KNOWN_ROLE_KEYS).toHaveLength(48); // CRK FORMULARY (#618, decision 0053): 47 -> 48 with `pharmacology_reviewer`; COPILOT LEDGER E0.1: 46 -> 47 with `quality_manager`; STAFF ATTENDANCE (owner 2026-10-09): 45 -> 46 with `attendance_committee`; CONSULTED ON PAPER (owner 2026-10-06): 44 -> 45 with `opd_slip_desk`; MERGE RS8b+RS5 2026-09-29: 43 -> 44 — 18-S RS8b `radiology_resident` joins 18-S RS5 `radiology_nurse`; 18-S RS5 — 42 -> 43 with `radiology_nurse`; D5 — 41 -> 42 with `antimicrobial_steward`; P17 — 40 -> 41 with `pharmacy_incharge`; FD-30 — 39 -> 40 with `opd_scribe` (owner ruling 2026-09-12); 17-E T2 — 38 -> 39 with `lab_bridge`; 18c T1 — 37 -> 38 with `radiation_safety_officer`; 16c T1 — 36 -> 37 with `pharmacy_assistant`; 18b T1 — 35 -> 36 with `modality_bridge`; PLAN 18a T2 — 31 -> 35 with radiology's four
+    expect(KNOWN_ROLE_KEYS).toHaveLength(59); // IPD/ER train B4: 57 -> 59 (er_nurse, waiting_display); IPD/ER train B3: 52 -> 57 (the nursing, diet and porter roles); PASSES E1.3 (#720): 51 -> 52 with `security_guard`; E1.5 MAINTENANCE (issue #722): 50 -> 51 with `maintenance_staff`; E0.1 TASK ENGINE (issue #713): 48 -> 50 with `support_staff` and `services_supervisor`; COPILOT LEDGER E0.1: 46 -> 47 with `quality_manager`; STAFF ATTENDANCE (owner 2026-10-09): 45 -> 46 with `attendance_committee`; CONSULTED ON PAPER (owner 2026-10-06): 44 -> 45 with `opd_slip_desk`; MERGE RS8b+RS5 2026-09-29: 43 -> 44 — 18-S RS8b `radiology_resident` joins 18-S RS5 `radiology_nurse`; 18-S RS5 — 42 -> 43 with `radiology_nurse`; D5 — 41 -> 42 with `antimicrobial_steward`; P17 — 40 -> 41 with `pharmacy_incharge`; FD-30 — 39 -> 40 with `opd_scribe` (owner ruling 2026-09-12); 17-E T2 — 38 -> 39 with `lab_bridge`; 18c T1 — 37 -> 38 with `radiation_safety_officer`; 16c T1 — 36 -> 37 with `pharmacy_assistant`; 18b T1 — 35 -> 36 with `modality_bridge`; PLAN 18a T2 — 31 -> 35 with radiology's four
   });
 
   it("the vocabulary is WIDER than what seed:roles creates, which is what makes two refusals distinct", () => {

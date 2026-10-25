@@ -1,4 +1,3879 @@
 {
+  "erCopilot": {
+    "suggestion": "सुझाव",
+    "esi": {
+      "title": "कोपायलट ट्राइएज सुझाव",
+      "says": "सुझाव: ESI {{n}} {{word}}",
+      "yours": "शिकायत, उम्र और आखिरी दर्ज वाइटल्स से। स्तर आप चुनें।",
+      "use": "ये जवाब लें",
+      "withdrawn": "सुझाव वापस लिया गया",
+      "fresh": "नया सुझाव देखें",
+      "why": {
+        "triaged": "{{time}} पर ESI {{level}} ट्राइएज हुआ",
+        "re_triaged": "{{time}} पर ESI {{level}} दोबारा ट्राइएज",
+        "moved": "{{bay}} में भेजा गया",
+        "departed": "{{time}} पर ER से गए",
+        "new_vitals": "{{time}} पर नए वाइटल्स",
+        "details_changed": "शिकायत या उम्र बदली",
+        "out_of_date": "सुझाव पुराना है"
+      }
+    },
+    "since": {
+      "title": "आने के बाद से"
+    },
+    "source": {
+      "arrival": "आगमन",
+      "triage": "ट्राइएज",
+      "vitals": "वाइटल्स",
+      "doctor": "डॉक्टर",
+      "call": "कॉल",
+      "critical": "क्रिटिकल",
+      "results": "जाँच",
+      "meds": "दवाएँ",
+      "procedure": "प्रक्रिया",
+      "note": "नोट",
+      "mlc": "एमएलसी",
+      "disposition": "निर्णय"
+    },
+    "draft": {
+      "summary": "सारांश का ड्राफ्ट",
+      "referral": "रेफ़रल पत्र का ड्राफ्ट",
+      "mlc_narrative": "एमएलसी विवरण का ड्राफ्ट",
+      "label": "ड्राफ्ट",
+      "fromModel": "कोर्स वाक्य कोपायलट का है — साइन से पहले जाँचें।",
+      "unverified": "ये शब्द जाँचें: {{words}}",
+      "why": {
+        "barred": "केवल रिकॉर्ड से (इस मरीज़ के लिए कोई मॉडल नहीं)।",
+        "model_off": "केवल रिकॉर्ड से (मॉडल सेट नहीं)।",
+        "halted": "केवल रिकॉर्ड से (कोपायलट रुका है)।",
+        "capped": "केवल रिकॉर्ड से (आज की सीमा पूरी)।",
+        "identifier_leak": "केवल रिकॉर्ड से।",
+        "model_down": "केवल रिकॉर्ड से (कोपायलट उपलब्ध नहीं)।",
+        "over_budget": "केवल रिकॉर्ड से (कोपायलट धीमा)।",
+        "rejected": "केवल रिकॉर्ड से (कोपायलट का वाक्य नोट्स से मेल नहीं खाया)।",
+        "no_text": "केवल रिकॉर्ड से।",
+        "template_only": "केवल रिकॉर्ड से।"
+      }
+    },
+    "waiting": {
+      "title": "Emergency — waiting area",
+      "titleHi": "आपातकालीन — प्रतीक्षा क्षेत्र",
+      "offline": "ऑफ़लाइन · आखिरी अपडेट {{time}}",
+      "empty": "कोई प्रतीक्षा में नहीं।",
+      "foot": "आपका टोकन मरीज़ के बैंड या पर्ची के आखिरी चार अंक हैं। और जानकारी ईआर डेस्क पर पूछें।"
+    },
+    "stage": {
+      "Waiting": "प्रतीक्षा में",
+      "Being seen": "डॉक्टर देख रहे हैं",
+      "Waiting for test": "जाँच की प्रतीक्षा",
+      "Admitting": "भर्ती हो रहे हैं",
+      "Going home soon": "जल्द घर",
+      "Transfer arranged": "स्थानांतरण तय"
+    },
+    "bay": {
+      "title": "कोपायलट बे सुझाव",
+      "says": "सुझाव: {{bay}} · {{zone}}",
+      "place": "{{bay}} में रखें",
+      "zone": {
+        "paeds": "बाल",
+        "red": "रेड ज़ोन",
+        "yellow": "येलो ज़ोन",
+        "green": "ग्रीन ज़ोन"
+      }
+    }
+  },
+  "erMci": {
+    "title": "सामूहिक हताहत",
+    "running": "कोड येलो · {{name}}",
+    "since": "{{time}} से",
+    "declare": "कोड येलो घोषित करें",
+    "name": "घटना",
+    "nameHint": "NH-30 बस टक्कर",
+    "place": "स्थान",
+    "declareGo": "कोड येलो घोषित करें",
+    "declareWho": "केवल MS या ड्यूटी मैनेजर।",
+    "declared": "कोड येलो घोषित · फ़ोन पर सूचना: {{n}}",
+    "recent": "पिछली घटनाएँ",
+    "packs": "तैयार पैक",
+    "packsHint": "UHID + बैंड, डेस्क पर तैयार।",
+    "howMany": "कितने",
+    "mint": "पैक बनाएँ",
+    "minted": "{{n}} पैक बने",
+    "printPacks": "पैक प्रिंट करें",
+    "untagged": "टैग नहीं",
+    "tag": {
+      "red": "लाल · तुरंत",
+      "yellow": "पीला · देर से",
+      "green": "हरा · मामूली",
+      "black": "काला · अपेक्षित"
+    },
+    "total": "{{n}} मरीज़",
+    "out": {
+      "inDepartment": "{{n}} ER में",
+      "admitted": "{{n}} भर्ती",
+      "discharged": "{{n}} छुट्टी",
+      "referredOut": "{{n}} रेफ़र",
+      "died": "{{n}} मृत",
+      "left": "{{n}} चले गए"
+    },
+    "asOf": "{{time}} तक",
+    "bays": "ER बे {{free}}/{{total}} खाली",
+    "surge": "सर्ज बे {{free}}/{{total}} खाली",
+    "beds": "{{n}} वार्ड बेड खाली",
+    "packsLeft": "{{n}} पैक बचे",
+    "patients": "मरीज़",
+    "packNo": "पैक नंबर",
+    "register": "पैक दर्ज करें",
+    "registered": "{{alias}} · {{no}}",
+    "noPatients": "अभी कोई मरीज़ नहीं",
+    "retagWhy": "दोबारा टैग क्यों (काला)",
+    "tagged": "{{label}}: {{tag}}",
+    "command": "कमान",
+    "surgeTitle": "सर्ज बे",
+    "surgePick": "ओवरफ़्लो बेड चुनें",
+    "noOverflow": "कोई ओवरफ़्लो बेड नहीं",
+    "surgeGo": "{{n}} सर्ज बे खोलें",
+    "surgeOpened": "{{n}} सर्ज बे खुले",
+    "headCount": "गिनती",
+    "headCountHint": "ज़िले के लिए। सिर्फ़ गिनती, नाम नहीं।",
+    "printCount": "गिनती प्रिंट करें",
+    "standDown": "समाप्त करें",
+    "standDownSure": "हाँ, समाप्त करें",
+    "stoodDown": "समाप्त · {{n}} फिर ट्राइएज में",
+    "cancel": "रद्द",
+    "stopsTitle": "ओपीडी और नियोजित ओटी",
+    "stopsProposed": "एमएस को प्रस्ताव: नए ओपीडी पंजीकरण और नियोजित ओटी सूची रोकें",
+    "stopsWho": "केवल एमएस उत्तर देते हैं। अपने आप कुछ नहीं रुकता।",
+    "stopsNote": "टिप्पणी",
+    "stopsConfirm": "रोक की पुष्टि करें",
+    "stopsDecline": "अस्वीकार करें",
+    "stopsConfirmed": "एमएस ने {{time}} पर रोक की पुष्टि की",
+    "stopsDeclined": "एमएस ने {{time}} पर रोक अस्वीकार की",
+    "stopsDone": "उत्तर दर्ज हुआ",
+    "familyTitle": "परिजन सूचना डेस्क",
+    "familyOpen": "परिजन सूची खोलें",
+    "familyHint": "केवल नाम, स्थिति और स्थान। हालत कभी न बताएं।",
+    "familyNone": "अभी सूची में कोई नहीं",
+    "familyWithheld": "यहाँ सूचीबद्ध नहीं: {{n}} · इन परिजनों को ईआर डेस्क भेजें",
+    "familyScript": "प्रेस और वीआईपी के लिए वक्तव्य",
+    "teamsTitle": "टीमें",
+    "teamsOnDuty": "अभी ड्यूटी पर",
+    "teamsNone": "इस क्षेत्र के लिए रोस्टर में कोई टीम नहीं"
+  },
+  "erCodes": {
+    "title": "कोड — रिससिटेशन लेखक",
+    "running": "चालू",
+    "recent": "पिछले 24 घंटे",
+    "none": "कोई कोड नहीं",
+    "pick": "एक कोड चुनें।",
+    "noPatient": "कोई मरीज़ नहीं",
+    "where": "कहाँ",
+    "whereHint": "OPD 2 प्रतीक्षा, वार्ड 4 गलियारा …",
+    "paged": "{{n}} को सूचना भेजी",
+    "calledFor": "{{what}} बुलाया · {{n}} को सूचना",
+    "openScribe": "लेखक खोलें",
+    "min": "मिनट",
+    "dueAt": "{{time}} तक",
+    "metAt": "हो गया {{time}}",
+    "shock": "शॉक {{j}} J",
+    "drug": "दवा",
+    "dose": "खुराक",
+    "addDrug": "दवा जोड़ें",
+    "end": "समाप्त — {{outcome}}",
+    "ended": "कोड समाप्त",
+    "wentWell": "क्या अच्छा रहा",
+    "improve": "क्या सुधारें",
+    "saveDebrief": "डीब्रीफ़ सहेजें",
+    "debriefed": "डीब्रीफ़ सहेजा",
+    "debriefDone": "डीब्रीफ़ दर्ज",
+    "timeline": "समय-रेखा",
+    "paper": "काग़ज़ से",
+    "boardDue": "{{what}} {{minutes}} मिनट में",
+    "boardLate": "{{what}} {{minutes}} मिनट देर",
+    "triageDesk": "ट्राइएज डेस्क",
+    "sendGrey": "कोड ग्रे भेजें",
+    "cancel": "रद्द",
+    "kind": {
+      "code_blue": "कोड ब्लू",
+      "code_grey": "कोड ग्रे",
+      "stemi": "STEMI",
+      "stroke": "स्ट्रोक",
+      "trauma": "ट्रॉमा",
+      "sepsis": "सेप्सिस",
+      "snakebite": "साँप का काटना",
+      "obstetric": "प्रसूति आपातकाल"
+    },
+    "milestone": {
+      "ecg": "ECG",
+      "balloon": "बैलून",
+      "ct": "CT",
+      "needle": "सुई (थ्रोम्बोलिसिस)",
+      "primary_survey": "प्राथमिक जाँच",
+      "antibiotics": "एंटीबायोटिक",
+      "asv": "ASV",
+      "lr_handover": "लेबर रूम को सौंपना"
+    },
+    "event": {
+      "cpr_start": "CPR शुरू",
+      "cpr_pause": "CPR रुका",
+      "rhythm": "लय",
+      "shock": "शॉक",
+      "drug": "दवा",
+      "airway": "वायुमार्ग",
+      "rosc": "ROSC",
+      "death": "मृत्यु",
+      "milestone": "पड़ाव",
+      "location": "जगह",
+      "note": "नोट"
+    },
+    "rhythm": {
+      "vf": "VF",
+      "pulseless_vt": "नाड़ी रहित VT",
+      "pea": "PEA",
+      "asystole": "एसिस्टोली",
+      "sinus": "साइनस",
+      "brady": "ब्रैडी",
+      "svt": "SVT",
+      "af": "AF"
+    },
+    "outcome": {
+      "rosc": "ROSC",
+      "died": "मृत्यु",
+      "stood_down": "रोका गया",
+      "transferred": "स्थानांतरित",
+      "resolved": "सुलझा"
+    },
+    "from": {
+      "door": "दरवाज़े से",
+      "activation": "बुलावे से"
+    }
+  },
+  "erBill": {
+    "title": "ER बिल डेस्क",
+    "toSettle": "ER से गए — निपटाना है",
+    "noneToSettle": "कुछ बाकी नहीं",
+    "inDepartment": "विभाग में",
+    "pick": "एक मरीज़ चुनें।",
+    "stabilised": "स्थिर",
+    "notStabilised": "अभी स्थिर नहीं — पैसे नहीं माँगे जाते",
+    "unpriced": "दाम नहीं",
+    "total": "कुल",
+    "payerShare": "भुगतानकर्ता",
+    "patientShare": "मरीज़",
+    "advance": "अग्रिम",
+    "balance": "बकाया",
+    "price": "लाइनों का दाम लगाएँ",
+    "priced": "{{n}} लाइनों का दाम लगा",
+    "payerLabel": "भुगतानकर्ता",
+    "schemeRef": "योजना / संदर्भ संख्या",
+    "setPayer": "भुगतानकर्ता दर्ज करें",
+    "payerSet": "भुगतानकर्ता दर्ज",
+    "amount": "राशि (₹)",
+    "tender": "भुगतान तरीका",
+    "takeAdvance": "अग्रिम लें",
+    "advanceTaken": "अग्रिम लिया · रसीद {{no}}",
+    "settleZero": "निपटाएँ — कुछ देय नहीं",
+    "settlePaid": "निपटाएँ — भुगतान हुआ",
+    "dues": "मरीज़ अभी नहीं दे सकते — बकाया",
+    "signer": "वचन-पत्र पर हस्ताक्षर",
+    "relation": "रिश्ता",
+    "undertakingRef": "वचन-पत्र संख्या",
+    "recordDues": "बकाया दर्ज करें (बिल रोका)",
+    "settled": "निपटा · बिल {{no}}",
+    "settledDues": "बकाया दर्ज: {{dues}} (बिल रोका)",
+    "payer": {
+      "self": "स्वयं",
+      "pmjay": "PM-JAY",
+      "road_accident": "सड़क दुर्घटना (कैशलेस)",
+      "bnss_free": "कानूनन मुफ़्त (BNSS धारा 397)",
+      "mci_event": "सामूहिक दुर्घटना"
+    },
+    "tenderOf": {
+      "cash": "नकद",
+      "upi": "UPI",
+      "card": "कार्ड"
+    },
+    "settlement": {
+      "paid": "भुगतान",
+      "dues": "वचन-पत्र पर बकाया",
+      "nothing_payable": "कुछ देय नहीं"
+    },
+    "outcome": {
+      "discharged": "छुट्टी",
+      "referred_out": "रेफ़र",
+      "lama": "LAMA",
+      "absconded": "भाग गए",
+      "lwbs": "बिना दिखाए गए",
+      "died": "मृत्यु",
+      "admitted": "भर्ती"
+    },
+    "source": {
+      "er.registration": "ER पंजीकरण",
+      "er.physician": "ER चिकित्सक शुल्क",
+      "er.observation": "ER निगरानी (6 घंटे के खंड)",
+      "er.order": "जाँच",
+      "er.issue": "दवा / सामग्री",
+      "er.procedure": "प्रक्रिया"
+    }
+  },
+  "erMlc": {
+    "title": "MLC डेस्क",
+    "owed": "बाकी",
+    "recent": "पिछले 7 दिन",
+    "noneOwed": "कुछ बाकी नहीं",
+    "case": "केस",
+    "pick": "एक केस चुनें।",
+    "print": "MLC प्रति छापें",
+    "late": "देर से खुला",
+    "byRule": "नियम से",
+    "openedAs": "{{cat}} के रूप में खुला",
+    "openedBy": "{{name}} ने खोला · {{time}}",
+    "mortuary": "शव मुर्दाघर रजिस्टर में — पुलिस अनुमति पर ही सौंपा जाएगा।",
+    "original": "जैसा खोला",
+    "noInformant": "सूचक दर्ज नहीं",
+    "addenda": "परिशिष्ट",
+    "refusedExam": "जाँच से इनकार",
+    "intimation": "पुलिस सूचना",
+    "countersign": "प्रति-हस्ताक्षर",
+    "recordedBy": "{{name}} ने दर्ज किया",
+    "intimated": "सूचना दर्ज",
+    "intimatedLate": "सूचना दर्ज (देर से)",
+    "countersignedBy": "{{name}} ने प्रति-हस्ताक्षर किए",
+    "countersigned": "प्रति-हस्ताक्षर हो गए",
+    "countersignNow": "प्रति-हस्ताक्षर करें",
+    "custody": "सामान और साक्ष्य",
+    "noCustody": "कुछ दर्ज नहीं",
+    "belongings": "सामान",
+    "signedBy": "{{a}} · गवाह {{b}}",
+    "station": "थाना",
+    "receiver": "अधिकारी",
+    "rank": "पद",
+    "gd": "GD संख्या",
+    "intimate": "सूचना दर्ज करें",
+    "items": "सामान (हर पंक्ति में एक)",
+    "itemsHint": "मोबाइल फ़ोन\nबटुआ",
+    "keptInLabel": "किसके पास",
+    "keptRef": "लॉकर संख्या या नाम",
+    "evidenceKind": "साक्ष्य",
+    "seal": "सील संख्या",
+    "description": "विवरण",
+    "saveBelongings": "सामान सहेजें",
+    "belongingsSaved": "सामान दर्ज",
+    "saveEvidence": "कड़ी सहेजें",
+    "linkSaved": "कड़ी #{{link}} दर्ज",
+    "addAddendum": "परिशिष्ट जोड़ें",
+    "addendumText": "परिशिष्ट",
+    "changeCategory": "श्रेणी",
+    "keepCategory": "श्रेणी वही रखें",
+    "saveAddendum": "परिशिष्ट सहेजें",
+    "addendumSaved": "परिशिष्ट सहेजा",
+    "informant": "सूचक",
+    "relation": "रिश्ता",
+    "words": "क्या हुआ (उनके शब्द)",
+    "injurySite": "चोट का स्थान",
+    "injuryKind": "प्रकार",
+    "addInjury": "चोट जोड़ें",
+    "clock": {
+      "done": "हो गया {{time}}",
+      "doneLate": "देर से हुआ {{time}}",
+      "dueIn": "{{minutes}} मिनट में",
+      "dueHours": "{{hours}} घंटे में",
+      "overdue": "{{minutes}} मिनट देर",
+      "overdueHours": "{{hours}} घंटे देर"
+    },
+    "mode": {
+      "written": "लिखित",
+      "phone_then_written": "फ़ोन, फिर लिखित",
+      "police_present": "पुलिस उपस्थित"
+    },
+    "keptIn": {
+      "locker": "लॉकर",
+      "relative": "परिजन",
+      "police": "पुलिस"
+    },
+    "action": {
+      "listed": "सूचीबद्ध",
+      "collected": "एकत्र",
+      "stored": "रखा गया",
+      "handed_over": "सौंपा गया"
+    },
+    "evidence": {
+      "clothes": "कपड़े",
+      "swab": "स्वाब",
+      "blood_sample": "रक्त नमूना",
+      "projectile": "गोली / छर्रा",
+      "weapon": "हथियार",
+      "viscera": "विसरा",
+      "other": "अन्य"
+    },
+    "injury": {
+      "abrasion": "खरोंच",
+      "laceration": "फटा घाव",
+      "contusion": "नील",
+      "incised": "कटा घाव",
+      "stab": "चाकू का घाव",
+      "burn": "जलन",
+      "fracture": "हड्डी टूटी",
+      "firearm": "गोली का घाव",
+      "bite": "काटने का घाव",
+      "ligature_mark": "फंदे का निशान",
+      "other": "अन्य"
+    },
+    "category": {
+      "assault": "मारपीट",
+      "road_accident": "सड़क दुर्घटना",
+      "burns": "जलना",
+      "acid_attack": "तेज़ाब हमला",
+      "poisoning": "ज़हर",
+      "hanging": "फाँसी",
+      "drowning": "डूबना",
+      "fall_from_height": "ऊँचाई से गिरना",
+      "bite_dispute": "काटना (विवाद)",
+      "unknown_unconscious": "अज्ञात / बेहोश",
+      "sexual_assault": "यौन हमला",
+      "brought_dead": "मृत लाया गया",
+      "death_within_24h_injury": "चोट के 24 घंटे में मृत्यु",
+      "police_brought": "पुलिस लाई",
+      "other": "अन्य"
+    },
+    "evidenceTab": "साक्ष्य"
+  },
+  "erPatient": {
+    "title": "ER मरीज़",
+    "pick": "ER बोर्ड से मरीज़ खोलें।",
+    "actions": "काम",
+    "none": "अभी कुछ नहीं",
+    "stabilisedAt": "स्थिर {{time}}",
+    "stabilisedDone": "दर्ज: स्थिर",
+    "critical": "गंभीर रिपोर्ट —",
+    "criticalHint": "लैब फ़ोन कर रही है; बंद करने के लिए मान दोहराएँ।",
+    "bar": {
+      "order": "जाँच भेजें",
+      "med": "दवा",
+      "note": "नोट",
+      "call": "विशेषज्ञ बुलाएँ",
+      "procedure": "प्रक्रिया",
+      "consent": "सहमति",
+      "stabilised": "स्थिर",
+      "mlc": "MLC",
+      "dispo": "निर्णय",
+      "code": "कोड"
+    },
+    "meds": "दवाएँ",
+    "calls": "विशेषज्ञ कॉल",
+    "orders": "जाँचें",
+    "notes": "नोट",
+    "procedures": "प्रक्रिया और सहमति",
+    "order": {
+      "find": "जाँच",
+      "findHint": "CBC, ट्रोपोनिन, CT सिर…",
+      "why": "क्यों (संकेत)",
+      "send": "भेजें — STAT",
+      "sent": "STAT भेजी",
+      "duplicates": "{{n}} पहले से भेजी (चेतावनी)"
+    },
+    "med": {
+      "find": "ER स्टोर",
+      "findHint": "दवा का नाम",
+      "ownLabel": "या मरीज़ की अपनी दवा",
+      "dose": "खुराक",
+      "units": "इकाई",
+      "orderedBy": "आदेश: {{name}}",
+      "verbal": "मौखिक आदेश (दोहराया)",
+      "override": "एलर्जी ओवरराइड कारण",
+      "overrideHint": "सिर्फ़ एलर्जी मेल खाए तो",
+      "issue": "इशू · लेबल छापें",
+      "issued": "इशू हुई",
+      "highAlert": "हाई अलर्ट",
+      "own": "अपनी दवा",
+      "verbalPending": "मौखिक — हस्ताक्षर बाकी",
+      "secondUser": "दूसरा व्यक्ति (यूज़रनेम)",
+      "secondPin": "उनका PIN",
+      "returnPrompt": "नहीं दिया — वापस करें",
+      "returnUnopened": "बिना खोले वापस",
+      "returnOpened": "खुला — बर्बादी",
+      "witnessHint": "हाई-अलर्ट या नियंत्रित: गवाह का यूज़रनेम और PIN",
+      "returned": "स्टॉक में वापस",
+      "wasted": "बर्बादी दर्ज",
+      "whyNot": "रोकी या मना क्यों",
+      "give": "दी गई",
+      "given": "खुराक दर्ज",
+      "hold": "रोकी",
+      "refused": "मना की",
+      "signVerbal": "मौखिक आदेश पर हस्ताक्षर",
+      "signed": "मौखिक आदेश हस्ताक्षरित",
+      "outcome": {
+        "given": "दी गई",
+        "held": "रोकी",
+        "refused": "मना की"
+      }
+    },
+    "note": {
+      "text": "नोट",
+      "save": "नोट सेव करें",
+      "saved": "नोट सेव",
+      "draftSaved": "ड्राफ़्ट सेव — सीनियर सह-हस्ताक्षर करेंगे",
+      "draft": "ड्राफ़्ट",
+      "cosign": "सह-हस्ताक्षर",
+      "cosigned": "सह-हस्ताक्षरित",
+      "kind": {
+        "assessment": "आकलन",
+        "progress": "प्रगति",
+        "nursing": "नर्सिंग",
+        "procedure": "प्रक्रिया नोट",
+        "handover": "हैंडओवर"
+      }
+    },
+    "procedure": {
+      "name": "प्रक्रिया",
+      "hint": "चेस्ट ड्रेन, टाँके, CPR…",
+      "by": "किसने की",
+      "save": "प्रक्रिया दर्ज करें",
+      "saved": "प्रक्रिया दर्ज"
+    },
+    "consent": {
+      "about": "किसकी सहमति",
+      "signerName": "नाम",
+      "relation": "रिश्ता",
+      "witness": "गवाह",
+      "secondDoctor": "दूसरे डॉक्टर (सहमत)",
+      "save": "सहमति दर्ज करें",
+      "saved": "सहमति दर्ज",
+      "word": "सहमति",
+      "hint": "बिना सहमति आपात: होश नहीं, कोई रिश्तेदार नहीं, जान को ख़तरा — दो डॉक्टर।",
+      "kind": {
+        "general": "सामान्य",
+        "procedure": "प्रक्रिया",
+        "blood": "खून",
+        "high_risk": "उच्च जोखिम",
+        "refusal_of_treatment": "इनकार"
+      },
+      "signer": {
+        "patient": "मरीज़",
+        "guardian": "अभिभावक",
+        "representative": "प्रतिनिधि",
+        "emergency": "आपात (2 डॉक्टर)"
+      }
+    },
+    "call": {
+      "reason": "क्यों",
+      "send": "बुलाएँ",
+      "sent": "बुलाया: {{who}}",
+      "noRoster": "रोस्टर में नाम नहीं — यूनिट को फ़ोन करें",
+      "waiting": "{{minutes}} मिनट से प्रतीक्षा",
+      "answeredAt": "जवाब {{time}}",
+      "seenAt": "देखा {{time}}",
+      "answered": "जवाब मिला",
+      "seen": "देख लिया",
+      "urgency": {
+        "immediate": "तुरंत",
+        "urgent": "जल्दी",
+        "routine": "सामान्य"
+      }
+    },
+    "mlc": {
+      "open": "MLC खोलें",
+      "opened": "MLC {{no}} खुला",
+      "openedLate": "MLC {{no}} खुला (देर से)"
+    },
+    "dispo": {
+      "tab": {
+        "discharge": "छुट्टी",
+        "admit": "भर्ती",
+        "refer": "रेफ़र",
+        "lama": "LAMA",
+        "death": "मृत्यु",
+        "left": "चले गए"
+      },
+      "reason": "क्यों (निर्णय)",
+      "diagnosis": "निदान",
+      "treatment": "दिया गया इलाज",
+      "medicines": "दवाएँ (हर पंक्ति में एक)",
+      "medicinesHint": "पैरासिटामोल · 500 mg · दिन में तीन बार",
+      "returnIf": "तुरंत वापस आएँ अगर",
+      "followDept": "फ़ॉलो-अप OPD (विभाग)",
+      "followOn": "फ़ॉलो-अप तारीख",
+      "dischargeNow": "सारांश पर हस्ताक्षर · छुट्टी",
+      "discharged": "छुट्टी — बे सफ़ाई में",
+      "consultant": "भर्ती करने वाले कंसल्टेंट",
+      "class": "वार्ड श्रेणी",
+      "provisional": "अस्थायी निदान",
+      "admitNow": "यूनिट को सौंपें",
+      "boarding": "भर्ती अनुरोध — बिस्तर तक यहीं",
+      "admitted": "भर्ती — बे सफ़ाई में",
+      "facility": "कहाँ रेफ़र",
+      "referralNote": "रेफ़रल नोट",
+      "escort": "साथ में",
+      "transport": "वाहन",
+      "referNow": "रेफ़र करें",
+      "referred": "रेफ़र — बे सफ़ाई में",
+      "risks": "बताए गए जोखिम",
+      "signerName": "हस्ताक्षर करने वाले का नाम",
+      "relation": "रिश्ता",
+      "witness": "गवाह (स्टाफ़)",
+      "lamaNow": "LAMA दर्ज करें",
+      "lamaDone": "LAMA दर्ज — बे सफ़ाई में",
+      "diedAt": "मृत्यु का समय",
+      "mccd": "MCCD संख्या",
+      "mccdHint": "MCCD संख्या के बिना केवल पुलिस को सूचित MLC में।",
+      "deathNow": "मृत्यु दर्ज करें",
+      "deathDone": "मृत्यु दर्ज — शव मुर्दाघर रजिस्टर में",
+      "lastSeen": "आख़िरी बार देखा",
+      "lwbsNow": "बिना दिखाए चले गए",
+      "lwbsDone": "दर्ज: बिना दिखाए चले गए",
+      "abscondNow": "भाग गए",
+      "abscondDone": "भाग गए — सुरक्षा को बताया",
+      "abscondPolice": "भाग गए — सुरक्षा को बताया; पुलिस को सूचित करें (MLC)",
+      "sign": {
+        "chest_pain": "सीने में दर्द",
+        "breathlessness": "साँस फूलना",
+        "bleeding": "ख़ून आना",
+        "high_fever": "तेज़ बुख़ार",
+        "repeated_vomiting": "बार-बार उल्टी",
+        "fits": "दौरे",
+        "drowsiness": "बहुत नींद / बेहोशी",
+        "worsening_pain": "दर्द बढ़ना",
+        "wound_redness": "घाव लाल या सूजा",
+        "less_urine": "पेशाब कम",
+        "weakness_one_side": "एक तरफ़ कमज़ोरी",
+        "severe_headache": "तेज़ सिरदर्द"
+      },
+      "cls": {
+        "general": "जनरल",
+        "semi_private": "सेमी-प्राइवेट",
+        "private": "प्राइवेट",
+        "icu": "ICU"
+      },
+      "referReason": {
+        "higher_centre_care": "बड़े केंद्र की ज़रूरत",
+        "specialty_not_available": "विशेषज्ञ नहीं",
+        "bed_not_available": "बिस्तर नहीं",
+        "equipment_not_available": "उपकरण नहीं",
+        "patient_choice": "मरीज़ की इच्छा"
+      },
+      "escortOf": {
+        "doctor": "डॉक्टर",
+        "nurse": "नर्स",
+        "paramedic": "पैरामेडिक",
+        "family": "परिवार"
+      },
+      "transportOf": {
+        "own_ambulance": "अस्पताल एम्बुलेंस",
+        "ambulance_108": "108 एम्बुलेंस",
+        "private_vehicle": "निजी वाहन",
+        "other": "अन्य"
+      },
+      "signer": {
+        "patient": "मरीज़ हस्ताक्षर",
+        "representative": "प्रतिनिधि हस्ताक्षर",
+        "refused_to_sign": "हस्ताक्षर से इनकार"
+      },
+      "searched": "परिसर में खोजा?",
+      "searchedYes": "हाँ, खोजा",
+      "searchedNo": "नहीं खोजा"
+    }
+  },
+  "erTriage": {
+    "title": "ER ट्राइएज",
+    "queue": "ट्राइएज सूची",
+    "loading": "लोड हो रहा है…",
+    "notTriaged": "ट्राइएज नहीं",
+    "yes": "हाँ",
+    "no": "नहीं",
+    "q": {
+      "lifeSaving": "अभी जान बचाने वाला क़दम चाहिए?",
+      "lifeSavingHint": "वायुमार्ग, CPR, शॉक, आपात दवा",
+      "highRisk": "उच्च जोखिम, भ्रम, या तेज़ दर्द?",
+      "highRiskHint": "सीने में दर्द, स्ट्रोक, नया भ्रम, दर्द 7/10 या ज़्यादा",
+      "resources": "कितने संसाधन लगेंगे?",
+      "resourcesHint": "जाँच, इमेजिंग, IV, परामर्श, प्रक्रिया",
+      "danger": "ख़तरनाक वाइटल्स?",
+      "dangerHint": "उम्र के हिसाब से: नब्ज़, साँस, SpO₂ 92% से कम"
+    },
+    "resources": {
+      "none": "कोई नहीं",
+      "one": "एक",
+      "many": "दो या ज़्यादा"
+    },
+    "proposal": "प्रस्ताव:",
+    "why": {
+      "lifeSaving": "जान बचाने वाला क़दम",
+      "highRisk": "उच्च जोखिम",
+      "manyDanger": "कई संसाधन, ख़तरनाक वाइटल्स",
+      "many": "कई संसाधन",
+      "one": "एक संसाधन",
+      "none": "कोई संसाधन नहीं"
+    },
+    "level": "ESI स्तर — आपका चुनाव",
+    "relevel": "नया ESI स्तर",
+    "reason": "कम तत्काल क्यों?",
+    "reasonHint": "जो देखा, कुछ शब्दों में",
+    "vitals": "वाइटल्स (वैकल्पिक)",
+    "v": {
+      "respRate": "साँस दर",
+      "spo2": "SpO₂ %",
+      "systolic": "BP ऊपरी",
+      "pulse": "नब्ज़",
+      "temperatureC": "तापमान °C",
+      "onOxygen": "ऑक्सीजन पर"
+    },
+    "avpu": {
+      "alert": "सचेत",
+      "confused": "भ्रमित",
+      "voice": "आवाज़ पर",
+      "pain": "दर्द पर",
+      "unresponsive": "बेहोश"
+    },
+    "dept": "विशेषता (टेक यूनिट के लिए)",
+    "depts": {
+      "ANAES": "एनेस्थीसिया",
+      "NEURO": "न्यूरोलॉजी",
+      "CARD": "हृदय रोग",
+      "PAED": "बाल रोग",
+      "MED": "मेडिसिन",
+      "SUR": "सर्जरी",
+      "ORT": "हड्डी",
+      "OBG": "स्त्री रोग",
+      "PED": "बाल रोग",
+      "ENT": "ENT",
+      "OPH": "आँख",
+      "CAR": "हृदय रोग",
+      "ANAE": "एनेस्थीसिया"
+    },
+    "save": "ट्राइएज सेव करें",
+    "saveAgain": "दोबारा ट्राइएज सेव करें",
+    "saveVitals": "सिर्फ़ वाइटल्स सेव करें",
+    "saved": "ESI {{n}} सेव · दोबारा ट्राइएज {{time}}",
+    "savedNoClock": "ESI {{n}} सेव",
+    "vitalsWorse": "हालत बिगड़ी — अभी दोबारा ट्राइएज",
+    "vitalsSaved": "वाइटल्स सेव",
+    "inBay": "बेड {{bay}}",
+    "bay": "बेड",
+    "noBay": "कोई ख़ाली ER बेड नहीं",
+    "placed": "बेड {{bay}} पर",
+    "doctor": "ER डॉक्टर",
+    "pickDoctor": "देखने वाले डॉक्टर",
+    "setDoctor": "डॉक्टर तय करें",
+    "doctorSet": "डॉक्टर तय — घड़ियाँ रुकीं",
+    "history": "अब तक का ट्राइएज",
+    "vitalsOnly": "वाइटल्स"
+  },
+  "erDesk": {
+    "title": "ER डेस्क",
+    "board": "ER बोर्ड",
+    "newArrival": "नया मरीज़",
+    "list": "ER में",
+    "tab": {
+      "unknown": "अज्ञात",
+      "known": "जाना-पहचाना",
+      "expected": "आने वाले",
+      "dead": "मृत लाए गए"
+    },
+    "fromPreAlert": "किसके लिए: {{mode}}, {{time}} पर अपेक्षित",
+    "clear": "हटाएँ",
+    "sex": "लिंग",
+    "age": "उम्र (लगभग)",
+    "mode": "कैसे आए",
+    "sexOptional": "लिंग (अगर बताया)",
+    "ageOptional": "उम्र (अगर बताई)",
+    "more": "और जानकारी (वैकल्पिक)",
+    "less": "कम जानकारी",
+    "marks": "पहचान के निशान",
+    "marksHint": "टैटू, निशान, कपड़े",
+    "complaint": "तकलीफ़, जैसी सुनी",
+    "bringer": "कौन लाया (नाम)",
+    "bringerPhone": "उनका मोबाइल",
+    "samaritan": "मदद करने वाले से नाम, पैसा या रुकने को कभी नहीं कहा जाता।",
+    "cameAt": "आने का समय (देर से दर्ज हो तो)",
+    "paper": "कागज़ी शीट सीरियल (डाउनटाइम)",
+    "registerUnknown": "दर्ज करें · बैंड छापें",
+    "registerKnown": "दर्ज करें · बैंड छापें",
+    "known": {
+      "find": "मरीज़ खोजें",
+      "findHint": "कार्ड स्कैन करें, या UHID, मोबाइल या नाम लिखें",
+      "none": "कोई मेल नहीं — नीचे नया जोड़ें",
+      "newPatient": "नया मरीज़ (नाम पता है)",
+      "name": "नाम"
+    },
+    "change": "बदलें",
+    "expected": {
+      "title": "आने वाले",
+      "mode": "कैसे आ रहे",
+      "eta": "कितनी देर में",
+      "minutes": "{{n}} मिनट",
+      "count": "मरीज़",
+      "fewer": "एक कम",
+      "more": "एक और",
+      "complaintHint": "कॉल करने वाले ने क्या कहा",
+      "send": "बोर्ड पर लगाएँ",
+      "sent": "बोर्ड पर आने वाले में",
+      "arrived": "आ गए",
+      "notComing": "नहीं आ रहे"
+    },
+    "dead": {
+      "unknown": "अज्ञात शव",
+      "known": "जाना-पहचाना मरीज़",
+      "examinedBy": "जाँच करने वाले",
+      "pickDoctor": "डॉक्टर चुनें",
+      "ecg": "ECG स्ट्रिप दर्ज",
+      "hint": "कोई बैंड नहीं, कोई शुल्क नहीं। MLC और शवगृह के क़दम आगे।",
+      "record": "मृत लाए गए दर्ज करें",
+      "done": "दर्ज: {{no}}"
+    },
+    "failed": "सेव नहीं हुआ — फिर कोशिश करें",
+    "today": "कल से अब तक",
+    "noneToday": "पिछले 24 घंटे में कोई नहीं आया",
+    "came": "आए {{time}}",
+    "entered": "दर्ज {{time}}",
+    "identity": {
+      "waiting": "मर्ज MS की प्रतीक्षा में → {{uhid}}",
+      "granted": "मर्ज मंज़ूर → {{uhid}}",
+      "merged": "पहचान हुई → {{uhid}}",
+      "refused": "मर्ज अस्वीकार"
+    },
+    "bandStale": "बैंड पर पुराना नाम",
+    "printBand": "बैंड छापें",
+    "reprintBand": "बैंड दोबारा छापें",
+    "bandPrinted": "बैंड {{serial}} छपा",
+    "identify": "पहचान करें",
+    "identifyFind": "असली रिकॉर्ड (UHID, मोबाइल या नाम)",
+    "how": {
+      "family": "परिवार",
+      "id_document": "पहचान पत्र",
+      "police": "पुलिस",
+      "abha": "ABHA",
+      "other": "अन्य"
+    },
+    "identifyNote": "किसने पहचाना, और कैसे",
+    "identifySend": "MS से मर्ज मंज़ूरी माँगें",
+    "identifyHint": "MS मंज़ूरी देते हैं; MRD मर्ज करता है। सब कुछ असली रिकॉर्ड के साथ जाता है।",
+    "band": {
+      "title": "बैंड",
+      "barcode": "बैंड सीरियल",
+      "print": "बैंड छापें",
+      "next": "अगला मरीज़"
+    },
+    "casualty": {
+      "send": "कैजुअल्टी भेजें",
+      "sent": "ER बोर्ड पर आने वाले में"
+    },
+    "lwbs": "बिना दिखाए गए",
+    "lwbsSeen": "आख़िरी बार देखा (IST, ख़ाली = अभी)",
+    "lwbsSave": "दर्ज करें: बिना दिखाए चले गए"
+  },
+  "erBoard": {
+    "title": "ER बोर्ड",
+    "showNames": "नाम दिखाएँ",
+    "wallMode": "दीवार स्क्रीन",
+    "desk": "ER डेस्क",
+    "home": "होम",
+    "totals": "ER कुल",
+    "stat": {
+      "inDept": "विभाग में",
+      "waiting": "ट्राइएज की प्रतीक्षा",
+      "noneWaiting": "कोई प्रतीक्षा में नहीं",
+      "longest": "सबसे लंबी {{minutes}} मिनट",
+      "expected": "आने वाले",
+      "bays": "खाली बेड",
+      "baysOf": "{{total}} में से",
+      "arrivals": "आज आए",
+      "broughtDead": "आज मृत लाए गए",
+      "boarding": "{{n}} बिस्तर प्रतीक्षा में",
+      "lwbs": "{{n}} बिना दिखाए गए"
+    },
+    "col": {
+      "expected": "आने वाले",
+      "waiting": "ट्राइएज की प्रतीक्षा",
+      "inTreatment": "इलाज में"
+    },
+    "empty": {
+      "expected": "कोई एम्बुलेंस रास्ते में नहीं",
+      "waiting": "ट्राइएज के लिए कोई नहीं",
+      "inTreatment": "ट्राइएज के बाद मरीज़ यहाँ दिखेंगे"
+    },
+    "eta": {
+      "in": "{{minutes}} मिनट में",
+      "now": "अभी आने वाले",
+      "late": "{{minutes}} मिनट देर"
+    },
+    "count": "{{total}} में से {{arrived}} आए",
+    "since": "{{minutes}} मिनट",
+    "triageDue": "ट्राइएज {{minutes}} मिनट में",
+    "triageLate": "ट्राइएज {{minutes}} मिनट देर",
+    "live": "लाइव · {{time}}",
+    "offline": "ऑफ़लाइन · पिछला अपडेट {{time}}",
+    "offlineNever": "ऑफ़लाइन",
+    "legend": "आने से अब तक का समय · ट्राइएज गेट से 5 मिनट में",
+    "triageNow": "ट्राइएज अभी",
+    "doctorDue": "डॉक्टर {{minutes}} मिनट में",
+    "doctorNow": "डॉक्टर अभी",
+    "doctorLate": "डॉक्टर {{minutes}} मिनट देर",
+    "retriageDue": "दोबारा ट्राइएज {{minutes}} मिनट में",
+    "retriageNow": "दोबारा ट्राइएज अभी",
+    "retriageLate": "दोबारा ट्राइएज {{minutes}} मिनट देर",
+    "doctor": "डॉक्टर · {{name}}"
+  },
+  "er": {
+    "mode": {
+      "walk_in": "पैदल",
+      "private_vehicle": "निजी वाहन",
+      "ambulance_108": "108 / 102 एम्बुलेंस",
+      "own_ambulance": "अस्पताल की एम्बुलेंस",
+      "police": "पुलिस",
+      "referred_in": "रेफ़र होकर",
+      "inter_facility": "दूसरे अस्पताल से",
+      "opd_red_flag": "OPD से (रेड फ़्लैग)"
+    },
+    "sex": {
+      "male": "पुरुष",
+      "female": "महिला",
+      "other": "अन्य",
+      "unknown": "पता नहीं"
+    },
+    "sexShort": {
+      "male": "पु",
+      "female": "म",
+      "other": "अ",
+      "unknown": "?"
+    },
+    "band": {
+      "infant": "शिशु <1",
+      "child": "बच्चा ~6",
+      "teen": "किशोर ~15",
+      "young_adult": "वयस्क ~30",
+      "adult": "वयस्क ~50",
+      "elderly": "बुज़ुर्ग ~70"
+    },
+    "bandShort": {
+      "infant": "<1 वर्ष",
+      "child": "~6 वर्ष",
+      "teen": "~15 वर्ष",
+      "young_adult": "~30 वर्ष",
+      "adult": "~50 वर्ष",
+      "elderly": "~70 वर्ष"
+    },
+    "ageYears": "{{n}} वर्ष",
+    "chip": {
+      "unidentified": "अज्ञात",
+      "returned_24h": "24 घंटे में दोबारा",
+      "name_alert": "नाम सावधानी",
+      "police": "पुलिस",
+      "ambulance": "एम्बुलेंस",
+      "paper": "कागज़ी शीट",
+      "critical": "गंभीर रिपोर्ट",
+      "call_waiting": "कॉल प्रतीक्षा में",
+      "stabilised": "स्थिर",
+      "boarding": "बिस्तर प्रतीक्षा"
+    },
+    "state": {
+      "arrived": "ट्राइएज की प्रतीक्षा",
+      "triaged": "ट्राइएज हुआ",
+      "in_treatment": "इलाज जारी",
+      "disposition_decided": "निर्णय हुआ",
+      "departed": "चले गए",
+      "brought_dead": "मृत लाए गए"
+    },
+    "refusal": {
+      "patient_not_found": {
+        "rule": "इस आईडी का कोई मरीज़ नहीं।",
+        "fix": "मरीज़ खोजें"
+      },
+      "patient_deceased": {
+        "rule": "मरीज़ मृत दर्ज है।",
+        "fix": "मरीज़ रिकॉर्ड खोलें"
+      },
+      "patient_admitted": {
+        "rule": "वार्ड में भर्ती — वार्ड टीम का मरीज़।",
+        "fix": "वार्ड टीम को बुलाएँ"
+      },
+      "episode_not_found": {
+        "rule": "इस आईडी का कोई आपातकालीन एपिसोड नहीं।",
+        "fix": "ER डेस्क खोलें"
+      },
+      "episode_wrong_state": {
+        "rule": "यह एपिसोड अभी यह काम नहीं होने देता।",
+        "fix": "एपिसोड खोलें"
+      },
+      "episode_already_open": {
+        "rule": "पहले से ER में — एक मरीज़ का एक ही खुला एपिसोड।",
+        "fix": "चालू एपिसोड खोलें"
+      },
+      "state_changed": {
+        "rule": "किसी ने अभी बदलाव किया; कुछ सेव नहीं हुआ।",
+        "fix": "फिर से लोड करें"
+      },
+      "registration_not_ready": {
+        "rule": "पंजीकरण सेट नहीं है, UHID नहीं बन सकता।",
+        "fix": "एडमिन से पूछें"
+      },
+      "time_in_future": {
+        "rule": "समय अभी से आगे नहीं हो सकता।",
+        "fix": "समय ठीक करें"
+      },
+      "arrival_too_old": {
+        "rule": "एक दिन से पुराना — कागज़ी ER शीट से दर्ज करें।",
+        "fix": "शीट का सीरियल डालें"
+      },
+      "paper_serial_used": {
+        "rule": "यह कागज़ी शीट पहले ही दर्ज है।",
+        "fix": "वह एपिसोड खोलें"
+      },
+      "pre_alert_not_found": {
+        "rule": "ऐसा कोई आने वाला मरीज़ नहीं।",
+        "fix": "ER डेस्क खोलें"
+      },
+      "pre_alert_closed": {
+        "rule": "वह आने वाला कार्ड बंद हो चुका है।",
+        "fix": "उसके बिना दर्ज करें"
+      },
+      "examined_before_arrival": {
+        "rule": "जाँच आने से पहले नहीं हो सकती।",
+        "fix": "समय ठीक करें"
+      },
+      "printer_offline": {
+        "rule": "बैंड प्रिंटर जवाब नहीं दे रहा।",
+        "fix": "पास का प्रिंटर चुनें"
+      },
+      "band_already_printed": {
+        "rule": "बैंड पहले से छपा है।",
+        "fix": "बैंड दोबारा छापें"
+      },
+      "no_band_to_reprint": {
+        "rule": "दोबारा छापने को कोई बैंड नहीं।",
+        "fix": "बैंड छापें"
+      },
+      "not_unidentified": {
+        "rule": "सिर्फ़ अज्ञात रिकॉर्ड जोड़ा जाता है।",
+        "fix": "मरीज़ रिकॉर्ड खोलें"
+      },
+      "same_patient": {
+        "rule": "दूसरा, असली रिकॉर्ड चुनें।",
+        "fix": "असली रिकॉर्ड चुनें"
+      },
+      "true_record_unidentified": {
+        "rule": "वह रिकॉर्ड ख़ुद अज्ञात है।",
+        "fix": "असली रिकॉर्ड चुनें"
+      },
+      "merge_already_requested": {
+        "rule": "एक मर्ज पहले से मंज़ूरी की प्रतीक्षा में है।",
+        "fix": "मर्ज अनुरोध खोलें"
+      },
+      "down_triage_needs_reason": {
+        "rule": "प्रस्ताव या पिछले स्तर से कम तत्काल — कारण लिखें।",
+        "fix": "कारण जोड़ें"
+      },
+      "department_not_found": {
+        "rule": "इस कोड का कोई विभाग नहीं।",
+        "fix": "विभाग चुनें"
+      },
+      "already_in_bay": {
+        "rule": "पहले से बेड पर।",
+        "fix": "बेड बदलें"
+      },
+      "not_in_bay": {
+        "rule": "अभी बेड पर नहीं।",
+        "fix": "बेड दें"
+      },
+      "same_bay": {
+        "rule": "पहले से इसी बेड पर।",
+        "fix": "दूसरा बेड चुनें"
+      },
+      "bay_not_found": {
+        "rule": "ऐसा कोई बेड नहीं।",
+        "fix": "ER बोर्ड खोलें"
+      },
+      "bay_not_emergency": {
+        "rule": "सिर्फ़ ER बेड ही ER बे है।",
+        "fix": "ER बेड चुनें"
+      },
+      "bay_not_available": {
+        "rule": "वह बेड अभी लिया गया या खाली नहीं।",
+        "fix": "दूसरा बेड चुनें"
+      },
+      "not_a_doctor": {
+        "rule": "सिर्फ़ डॉक्टर ही ER डॉक्टर हो सकते हैं।",
+        "fix": "डॉक्टर चुनें"
+      },
+      "note_not_found": {
+        "rule": "ऐसा कोई ER नोट नहीं।",
+        "fix": "एपिसोड खोलें"
+      },
+      "note_signed": {
+        "rule": "नोट पहले से हस्ताक्षरित है।",
+        "fix": "परिशिष्ट जोड़ें"
+      },
+      "cosign_own_note": {
+        "rule": "नोट पर सह-हस्ताक्षर कोई और करे।",
+        "fix": "सीनियर से कहें"
+      },
+      "cosigner_not_senior": {
+        "rule": "रेज़िडेंट के नोट पर सीनियर डॉक्टर सह-हस्ताक्षर करें।",
+        "fix": "सीनियर से कहें"
+      },
+      "item_not_stocked": {
+        "rule": "ER स्टोर में उपलब्ध नहीं।",
+        "fix": "दूसरा चुनें"
+      },
+      "stock_short": {
+        "rule": "ER स्टोर में पर्याप्त नहीं।",
+        "fix": "फ़ार्मेसी से कहें"
+      },
+      "allergy_override_needed": {
+        "rule": "दर्ज एलर्जी मेल खाती है — कारण लिखें।",
+        "fix": "कारण दें"
+      },
+      "issue_not_found": {
+        "rule": "ऐसा कोई दवा इशू नहीं।",
+        "fix": "एपिसोड खोलें"
+      },
+      "dose_given": {
+        "rule": "इस इश्यू से खुराक दी जा चुकी है।",
+        "fix": "दवा रिकॉर्ड खोलें"
+      },
+      "already_returned": {
+        "rule": "पहले ही वापस या बर्बाद दर्ज।",
+        "fix": "दवा रिकॉर्ड खोलें"
+      },
+      "nothing_to_return": {
+        "rule": "अपनी दवा स्टॉक से नहीं थी।",
+        "fix": "दवा रिकॉर्ड खोलें"
+      },
+      "wastage_needs_witness": {
+        "rule": "इस दवा की बर्बादी के लिए गवाह चाहिए।",
+        "fix": "सहकर्मी से कहें"
+      },
+      "issue_returned": {
+        "rule": "यह इश्यू वापस या बर्बाद हो चुका।",
+        "fix": "फिर से इश्यू करें"
+      },
+      "dose_already_recorded": {
+        "rule": "यह खुराक पहले से दर्ज है।",
+        "fix": "दवा रिकॉर्ड खोलें"
+      },
+      "second_check_needed": {
+        "rule": "हाई-अलर्ट दवा: पहले दूसरा व्यक्ति जाँचे।",
+        "fix": "दूसरी जाँच"
+      },
+      "second_check_failed": {
+        "rule": "दूसरे व्यक्ति का यूज़रनेम या PIN मेल नहीं खाया।",
+        "fix": "फिर कोशिश करें"
+      },
+      "second_checker_same": {
+        "rule": "दूसरी जाँच किसी और से।",
+        "fix": "सहकर्मी से कहें"
+      },
+      "verbal_not_pending": {
+        "rule": "यहाँ कोई बिना हस्ताक्षर मौखिक आदेश नहीं।",
+        "fix": "दवा रिकॉर्ड खोलें"
+      },
+      "not_ordering_doctor": {
+        "rule": "सिर्फ़ आदेश देने वाले डॉक्टर हस्ताक्षर करें।",
+        "fix": "उन डॉक्टर से कहें"
+      },
+      "consent_not_found": {
+        "rule": "इस मरीज़ की ऐसी कोई सहमति नहीं।",
+        "fix": "सहमति दर्ज करें"
+      },
+      "consent_witness_needed": {
+        "rule": "गवाह का नाम, और अभिभावक का रिश्ता लिखें।",
+        "fix": "गवाह जोड़ें"
+      },
+      "emergency_needs_second_doctor": {
+        "rule": "बिना सहमति आपात इलाज में दूसरे डॉक्टर ज़रूरी।",
+        "fix": "दूसरे डॉक्टर चुनें"
+      },
+      "call_not_found": {
+        "rule": "ऐसी कोई विशेषज्ञ कॉल नहीं।",
+        "fix": "एपिसोड खोलें"
+      },
+      "call_closed": {
+        "rule": "कॉल का जवाब और देखना हो चुका।",
+        "fix": "एपिसोड खोलें"
+      },
+      "call_already_open": {
+        "rule": "इस विभाग को कॉल पहले से प्रतीक्षा में।",
+        "fix": "कॉल खोलें"
+      },
+      "already_stabilised": {
+        "rule": "पहले से स्थिर दर्ज।",
+        "fix": "एपिसोड खोलें"
+      },
+      "mlc_not_found": {
+        "rule": "इस id का कोई MLC नहीं।",
+        "fix": "MLC डेस्क खोलें"
+      },
+      "mlc_already_open": {
+        "rule": "इस एपिसोड का MLC पहले से है।",
+        "fix": "परिशिष्ट जोड़ें"
+      },
+      "intimation_recorded": {
+        "rule": "पुलिस सूचना पहले से दर्ज।",
+        "fix": "परिशिष्ट जोड़ें"
+      },
+      "mlc_countersigned": {
+        "rule": "प्रति-हस्ताक्षर पहले से।",
+        "fix": "MLC डेस्क खोलें"
+      },
+      "countersign_own_mlc": {
+        "rule": "दूसरे डॉक्टर प्रति-हस्ताक्षर करें।",
+        "fix": "वरिष्ठ से कहें"
+      },
+      "intimation_before_arrival": {
+        "rule": "पुलिस सूचना आगमन से पहले की नहीं हो सकती।",
+        "fix": "सही समय दर्ज करें"
+      },
+      "seal_already_collected": {
+        "rule": "यह सील पहले ही एकत्र है।",
+        "fix": "अगला चरण चुनें"
+      },
+      "seal_not_collected": {
+        "rule": "पहले इस सील से एकत्र करें।",
+        "fix": "एकत्र दर्ज करें"
+      },
+      "seal_already_handed_over": {
+        "rule": "यह सील पहले ही सौंपी गई।",
+        "fix": "MLC डेस्क खोलें"
+      },
+      "disposition_already_decided": {
+        "rule": "निर्णय पहले से हो चुका।",
+        "fix": "एपिसोड खोलें"
+      },
+      "disposition_mismatch": {
+        "rule": "तय निर्णय से मेल नहीं।",
+        "fix": "एपिसोड खोलें"
+      },
+      "disposition_reason_needed": {
+        "rule": "निर्णय का कारण दें।",
+        "fix": "कारण जोड़ें"
+      },
+      "admission_refused": {
+        "rule": "भर्ती अनुरोध नहीं बन सका।",
+        "fix": "भर्ती डेस्क को कॉल करें"
+      },
+      "already_boarding": {
+        "rule": "पहले से बिस्तर की प्रतीक्षा में।",
+        "fix": "एपिसोड खोलें"
+      },
+      "referral_not_for_money": {
+        "rule": "पैसे के लिए कभी रेफ़र नहीं।",
+        "fix": "चिकित्सीय कारण चुनें"
+      },
+      "lama_witness_needed": {
+        "rule": "इनकार का गवाह दूसरा स्टाफ़।",
+        "fix": "गवाह चुनें"
+      },
+      "last_seen_before_arrival": {
+        "rule": "आगमन से पहले का समय नहीं।",
+        "fix": "समय ठीक करें"
+      },
+      "died_before_arrival": {
+        "rule": "मृत्यु का समय आगमन से पहले।",
+        "fix": "समय ठीक करें"
+      },
+      "mccd_required": {
+        "rule": "MCCD संख्या दर्ज करें।",
+        "fix": "MCCD संख्या दर्ज करें"
+      },
+      "payer_ref_needed": {
+        "rule": "योजना संदर्भ जोड़ें।",
+        "fix": "संदर्भ जोड़ें"
+      },
+      "bnss_needs_mlc": {
+        "rule": "कानूनन मुफ़्त के लिए MLC चाहिए।",
+        "fix": "MLC खोलें"
+      },
+      "event_account_not_found": {
+        "rule": "ऐसा खाता नहीं।",
+        "fix": "खाता खोलें"
+      },
+      "bill_settled": {
+        "rule": "पहले से निपटा।",
+        "fix": "बिल खोलें"
+      },
+      "not_stabilised": {
+        "rule": "स्थिर होने से पहले पैसे नहीं।",
+        "fix": "स्थिर होने तक रुकें"
+      },
+      "payer_pays_nothing": {
+        "rule": "इस मरीज़ को कुछ नहीं देना।",
+        "fix": "भुगतानकर्ता देखें"
+      },
+      "lines_unpriced": {
+        "rule": "कुछ लाइनों का दाम नहीं।",
+        "fix": "दाम लगाएँ"
+      },
+      "tender_short": {
+        "rule": "कम लिया; बकाया दर्ज करें।",
+        "fix": "बकाया दर्ज करें"
+      },
+      "undertaking_invalid": {
+        "rule": "वचनपत्र इसी मरीज़ का सक्रिय दस्तावेज़ होना चाहिए।",
+        "fix": "वचनपत्र दर्ज करें"
+      },
+      "undertaking_needed": {
+        "rule": "बकाया के लिए वचन-पत्र चाहिए।",
+        "fix": "वचन-पत्र जोड़ें"
+      },
+      "patient_payable_forbidden": {
+        "rule": "कानूनन मुफ़्त: कुछ देय नहीं।",
+        "fix": "कुछ देय नहीं से निपटाएँ"
+      },
+      "rolled_to_ip": {
+        "rule": "भर्ती बिल में चला गया।",
+        "fix": "IP बिल खोलें"
+      },
+      "code_needs_patient": {
+        "rule": "सक्रियण ER मरीज़ पर बुलाया जाता है।",
+        "fix": "मरीज़ चुनें"
+      },
+      "code_open": {
+        "rule": "यह कोड पहले से चालू है।",
+        "fix": "कोड खोलें"
+      },
+      "code_not_found": {
+        "rule": "ऐसा कोड नहीं।",
+        "fix": "कोड खोलें"
+      },
+      "event_before_arrival": {
+        "rule": "रिकॉर्ड में कुछ भी आगमन से पहले का नहीं हो सकता।",
+        "fix": "सही समय दर्ज करें"
+      },
+      "code_ended": {
+        "rule": "कोड समाप्त हो चुका।",
+        "fix": "कोड खोलें"
+      },
+      "code_not_ended": {
+        "rule": "पहले कोड समाप्त करें।",
+        "fix": "कोड समाप्त करें"
+      },
+      "milestone_unknown": {
+        "rule": "ऐसा पड़ाव नहीं।",
+        "fix": "पड़ाव चुनें"
+      },
+      "debrief_recorded": {
+        "rule": "डीब्रीफ़ पहले से दर्ज।",
+        "fix": "कोड खोलें"
+      },
+      "not_code_leader": {
+        "rule": "टीम लीडर डीब्रीफ़ दर्ज करते हैं।",
+        "fix": "टीम लीडर से कहें"
+      },
+      "mci_role_needed": {
+        "rule": "केवल MS या ड्यूटी मैनेजर।",
+        "fix": "ड्यूटी मैनेजर बुलाएँ"
+      },
+      "mci_active": {
+        "rule": "कोड येलो पहले से चालू।",
+        "fix": "MCI बोर्ड खोलें"
+      },
+      "mci_not_found": {
+        "rule": "ऐसी घटना नहीं।",
+        "fix": "MCI बोर्ड खोलें"
+      },
+      "mci_stood_down": {
+        "rule": "घटना समाप्त हो चुकी।",
+        "fix": "MCI बोर्ड खोलें"
+      },
+      "mci_not_active": {
+        "rule": "कोड येलो चालू नहीं।",
+        "fix": "सामान्य तरह दर्ज करें"
+      },
+      "pack_not_found": {
+        "rule": "ऐसा पैक नहीं।",
+        "fix": "पैक नंबर जाँचें"
+      },
+      "pack_used": {
+        "rule": "पैक पहले ही उपयोग में।",
+        "fix": "वह मरीज़ खोलें"
+      },
+      "retag_needs_reason": {
+        "rule": "काले का दोबारा टैग कारण माँगता है।",
+        "fix": "कारण जोड़ें"
+      },
+      "surge_bed_not_overflow": {
+        "rule": "केवल ओवरफ़्लो बेड।",
+        "fix": "ओवरफ़्लो बेड चुनें"
+      }
+    },
+    "esi": {
+      "short": "ESI {{n}}",
+      "word": {
+        "1": "पुनर्जीवन",
+        "2": "आपात",
+        "3": "तत्काल",
+        "4": "कम तत्काल",
+        "5": "सामान्य"
+      }
+    },
+    "ews": {
+      "news2": "NEWS2",
+      "meows": "MEOWS",
+      "pews": "PEWS"
+    },
+    "ewsBand": {
+      "low": "कम",
+      "low_medium": "कम–मध्यम",
+      "medium": "मध्यम",
+      "high": "उच्च"
+    }
+  },
+  "ipdTpa": {
+    "title": "टीपीए डेस्क",
+    "subtitle": "प्री-ऑथ, बीमा प्रश्न, बढ़ोतरी और क्लेम",
+    "asOf": "{{at}} तक",
+    "billDesk": "बिल डेस्क",
+    "refresh": "ताज़ा करें",
+    "countsLabel": "प्रकार से छाँटें",
+    "all": "सभी",
+    "listLabel": "काम की सूची",
+    "empty": "टीपीए डेस्क पर कुछ बाकी नहीं।",
+    "portalNote": "बीमा या योजना पोर्टल पर भेजें, फिर यहाँ दर्ज करें।",
+    "loading": "लोड हो रहा है…",
+    "loadFailed": "टीपीए डेस्क लोड नहीं हुआ। फिर कोशिश करें।",
+    "forbidden": "आपको टीपीए डेस्क की अनुमति नहीं है।",
+    "open": "खोलें",
+    "since": "{{at}} से",
+    "failed": "सेव नहीं हुआ। फिर कोशिश करें।",
+    "waiting": "{{clock}} से इंतज़ार",
+    "withUs": "हमारे पास {{clock}}",
+    "enhancementDue": "बढ़ोतरी माँगें",
+    "claimableOf": "{{approved}} स्वीकृत में से {{claimable}}",
+    "approved": "स्वीकृत {{amount}}",
+    "preAuth": "प्री-ऑथ {{no}}",
+    "stageLabel": "चरण",
+    "clock": {
+      "days_one": "{{count}} दिन",
+      "days_other": "{{count}} दिन",
+      "hm": "{{h}} घं {{m}} मि",
+      "m": "{{m}} मि"
+    },
+    "sev": {
+      "ok": "समय पर",
+      "warn": "देय",
+      "hot": "देर"
+    },
+    "kind": {
+      "query_open": "प्रश्न हमारे पास",
+      "preauth_waiting": "प्री-ऑथ इंतज़ार",
+      "enhancement_due": "बढ़ोतरी देय",
+      "claim_to_submit": "क्लेम भेजना है",
+      "claim_with_payer": "क्लेम बीमा के पास"
+    },
+    "stage": {
+      "preauth": "प्री-ऑथ",
+      "enhancement": "बढ़ोतरी",
+      "final": "अंतिम स्वीकृति",
+      "claim": "क्लेम"
+    },
+    "col": {
+      "patient": "मरीज़",
+      "payer": "भुगतानकर्ता",
+      "what": "किसका इंतज़ार",
+      "clock": "समय",
+      "state": "स्थिति",
+      "amount": "राशि"
+    },
+    "panel": {
+      "title": "टीपीए डेस्क"
+    },
+    "auths": {
+      "title": "स्वीकृति रिकॉर्ड ({{count}})"
+    },
+    "entry": {
+      "initial": "प्रारंभिक",
+      "enhancement": "बढ़ोतरी",
+      "final": "अंतिम",
+      "denial": "अस्वीकार",
+      "payer_change": "भुगतानकर्ता बदला"
+    },
+    "status": {
+      "requested": "माँगा",
+      "approved": "स्वीकृत",
+      "partially_approved": "आंशिक स्वीकृत",
+      "denied": "अस्वीकृत",
+      "final_approved": "अंतिम स्वीकृत"
+    },
+    "queries": {
+      "title": "बीमा प्रश्न",
+      "open_one": "{{count}} खुला",
+      "open_other": "{{count}} खुले",
+      "answer": "हमारा उत्तर",
+      "answered": "उत्तर दर्ज",
+      "send": "उत्तर दर्ज करें",
+      "history_one": "{{count}} उत्तरित",
+      "history_other": "{{count}} उत्तरित",
+      "raisedAt": "पूछा गया",
+      "text": "प्रश्न",
+      "add": "प्रश्न जोड़ें",
+      "recorded": "प्रश्न दर्ज"
+    },
+    "docs": {
+      "title": "भेजे गए दस्तावेज़",
+      "none": "अभी कोई दस्तावेज़ नहीं।",
+      "attached": "दस्तावेज़ जुड़ा",
+      "kind": "दस्तावेज़",
+      "file": "मरीज़ की फ़ाइल",
+      "noFiles": "मरीज़ की कोई फ़ाइल नहीं",
+      "pick": "फ़ाइल चुनें",
+      "attach": "जोड़ें"
+    },
+    "docKind": {
+      "preauth_form": "प्री-ऑथ फ़ॉर्म",
+      "id_proof": "पहचान पत्र",
+      "policy_card": "पॉलिसी कार्ड",
+      "doctor_notes": "डॉक्टर के नोट",
+      "investigations": "जाँचें",
+      "estimate": "अनुमान",
+      "approval_letter": "स्वीकृति पत्र",
+      "discharge_summary": "डिस्चार्ज सारांश",
+      "final_bill": "अंतिम बिल",
+      "pharmacy_bills": "फ़ार्मेसी बिल",
+      "consent": "सहमति",
+      "other": "अन्य"
+    },
+    "pkg": {
+      "title": "योजना पैकेज",
+      "none": "कोई पैकेज नहीं चुना।",
+      "share": "{{pct}} %",
+      "reason": "हटाने का कारण",
+      "remove": "हटाएँ",
+      "removed": "पैकेज हटा",
+      "payerAmount": "भुगतानकर्ता राशि",
+      "rule": "सबसे बड़ा पैकेज 100 %, दूसरा 50 %, बाकी 25 %। पैकेज की चीज़ों का मरीज़ कुछ नहीं देता।",
+      "search": "पैकेज खोजें",
+      "searchHint": "कोड या नाम",
+      "select": "चुनें",
+      "selected": "पैकेज चुना"
+    },
+    "claim": {
+      "title": "क्लेम",
+      "state": {
+        "to_submit": "भेजना है",
+        "with_payer": "बीमा के पास",
+        "settled": "निपटा",
+        "short_paid": "कम भुगतान",
+        "rejected": "अस्वीकृत",
+        "withdrawn": "वापस"
+      },
+      "age_one": "{{count}} दिन बीमा के पास",
+      "age_other": "{{count}} दिन बीमा के पास",
+      "billPayer": "बिल, बीमा भाग",
+      "claimed": "क्लेम राशि",
+      "variance": "पैकेज से ऊपर (अस्पताल)",
+      "net": "शुद्ध भुगतान",
+      "tds": "टीडीएस",
+      "deductions": "कटौती",
+      "unexplained": "बिना कारण",
+      "utr": "यूटीआर",
+      "rejectedWhy": "अस्वीकृत: {{reason}}",
+      "missing": "पहले जोड़ें: {{docs}}",
+      "submittedAt": "भेजा गया",
+      "ref": "क्लेम नं.",
+      "amount": "क्लेम राशि (₹)",
+      "resubmit": "फिर भेजें",
+      "submit": "भेजा दर्ज करें",
+      "submitted": "क्लेम भेजा",
+      "settledOn": "निपटान तिथि",
+      "dedReason": "कटौती का कारण",
+      "dedAmount": "कटौती राशि",
+      "dedNote": "नोट",
+      "dedRemove": "कटौती हटाएँ",
+      "dedAdd": "कटौती जोड़ें",
+      "addsUp": "क्लेम से मेल खाता है",
+      "gap": "{{amount}} का अंतर",
+      "settle": "निपटान दर्ज करें",
+      "settled": "निपटान दर्ज",
+      "rejectReason": "अस्वीकृति का कारण",
+      "reject": "अस्वीकृत दर्ज करें",
+      "rejected": "अस्वीकृति दर्ज"
+    },
+    "deduction": {
+      "non_payable_items": "गैर-देय चीज़ें",
+      "room_rent_cap": "कमरा किराया सीमा",
+      "proportionate": "आनुपातिक कटौती",
+      "co_pay": "सह-भुगतान",
+      "tariff_difference": "दर अंतर",
+      "over_package": "पैकेज से ऊपर",
+      "documents_missing": "दस्तावेज़ कम",
+      "policy_exclusion": "पॉलिसी अपवाद",
+      "other": "अन्य"
+    },
+    "refused": {
+      "package_claim_filed": "क्लेम दाखिल है — पैकेज तय हैं।",
+      "claim_exceeds_claimable": "इस बिल पर इतना क्लेम नहीं हो सकता।",
+      "claim_documents_missing": "पहले डिस्चार्ज सारांश और अंतिम बिल जोड़ें।",
+      "settlement_does_not_add_up": "शुद्ध भुगतान, टीडीएस और कटौती का जोड़ क्लेम के बराबर हो।",
+      "claim_wrong_state": "क्लेम इस काम की स्थिति में नहीं है।",
+      "query_already_answered": "उत्तर पहले ही दर्ज है।",
+      "tpa_document_invalid": "यह फ़ाइल इस मरीज़ की नहीं है।",
+      "package_needs_scheme": "पैकेज केवल पीएम-जय या राज्य योजना के लिए।",
+      "package_not_found": "इस योजना में यह पैकेज नहीं।",
+      "package_already_selected": "पहले से चुना है।",
+      "time_in_future": "समय अभी से बाद का नहीं हो सकता।",
+      "invalid_request": "फ़ील्ड जाँचें और फिर कोशिश करें।"
+    }
+  },
+  "ipdNarcotic": {
+    "title": "नारकोटिक रजिस्टर",
+    "print": "प्रिंट",
+    "noWard": "अभी कोई वार्ड नहीं",
+    "empty": "इस वार्ड में कोई नियंत्रित दवा नहीं",
+    "countDue": "इस शिफ्ट की गिनती बाकी",
+    "balance": "दवा अनुसार बैलेंस",
+    "lines": "रजिस्टर प्रविष्टियाँ",
+    "noLines": "अभी कोई प्रविष्टि नहीं",
+    "exceptions": "गिनती में अंतर",
+    "noExceptions": "गिनती में कोई अंतर नहीं",
+    "open": "खुला",
+    "resolved": "सुलझाया",
+    "resolve": "सुलझाएँ",
+    "findings": "क्या मिला",
+    "resolvedBy": "{{name}} ने सुलझाया",
+    "expectedCounted": "रजिस्टर {{expected}}, गिना {{counted}} {{unit}}",
+    "by": "{{name}} द्वारा",
+    "witness": "गवाह {{name}}",
+    "neverCounted": "अभी गिना नहीं",
+    "countOk": "गिनती रजिस्टर से मेल खाती है",
+    "countBad_one": "{{count}} अंतर — सुपरवाइज़र और फ़ार्मेसी को सूचना",
+    "countBad_other": "{{count}} अंतर — सुपरवाइज़र और फ़ार्मेसी को सूचना",
+    "shift": {
+      "morning": "सुबह की शिफ्ट",
+      "evening": "शाम की शिफ्ट",
+      "night": "रात की शिफ्ट"
+    },
+    "col": {
+      "drug": "दवा",
+      "opening": "शुरुआती",
+      "received": "मिली",
+      "given": "दी गई",
+      "wasted": "बर्बाद",
+      "returned": "लौटाई",
+      "moved": "आई / गई",
+      "expected": "होनी चाहिए",
+      "lastCount": "पिछली गिनती"
+    },
+    "count": {
+      "title": "शिफ्ट गिनती (दो नर्स)",
+      "hint": "साथ में गिनें। दूसरी नर्स: अपना यूज़रनेम और PIN।",
+      "counted": "गिना: {{name}}",
+      "save": "गिनती सहेजें"
+    },
+    "kind": {
+      "received": "मिली",
+      "given": "दी गई",
+      "wasted": "बर्बाद",
+      "returned": "लौटाई",
+      "reversal": "गलती से दर्ज — वापस",
+      "transfer_out": "बाहर गई",
+      "transfer_in": "अंदर आई"
+    }
+  },
+  "ipdCopilot": {
+    "list": {
+      "orders": "ऑर्डर",
+      "vitals": "वाइटल्स",
+      "doses": "खुराक",
+      "results": "रिपोर्ट",
+      "notes": "नोट",
+      "io": "I/O",
+      "consults": "कंसल्ट",
+      "rounds": "राउंड"
+    },
+    "truncated": "सूची अधूरी है — {{lists}} देखें",
+    "draft": "ड्राफ़्ट",
+    "template": "टेम्पलेट",
+    "builtAt": "{{time}} पर बना",
+    "source": {
+      "ot": "ओटी",
+      "vitals": "वाइटल्स",
+      "ews": "चेतावनी स्कोर",
+      "lab": "लैब",
+      "imaging": "इमेजिंग",
+      "emar": "eMAR",
+      "note": "नोट",
+      "io": "I/O",
+      "consult": "कंसल्ट",
+      "diet": "आहार",
+      "order": "ऑर्डर",
+      "round": "राउंड",
+      "admission": "भर्ती",
+      "assessment": "आकलन"
+    },
+    "since": {
+      "label": "कल से अब तक",
+      "title": "कल से अब तक {{time}}",
+      "titleToday": "आज {{time}} से अब तक",
+      "titleOlder": "{{day}} से अब तक",
+      "modeTimeline": "सादी टाइमलाइन",
+      "modeModel": "AI शब्द · {{model}} · {{version}}",
+      "ai": "AI शब्द",
+      "aiHint": "मॉडल ने शब्द बदले हैं। अंक रिकॉर्ड से जाँचे गए हैं।",
+      "attention": "ध्यान दें:",
+      "records": "रिकॉर्ड",
+      "loading": "लोड हो रहा है…",
+      "failed": "टाइमलाइन नहीं खुली"
+    },
+    "sbar": {
+      "building": "बन रहा है…",
+      "rebuild": "फिर बनाएँ",
+      "build": "ड्राफ़्ट बनाएँ",
+      "stale": "रिकॉर्ड बदल गए। फिर बनाएँ।",
+      "unedited": "बिना बदलाव",
+      "edited": "बदला गया",
+      "builtBy": "{{name}} ने बनाया",
+      "youSign": "आप सुधारें और साइन करें",
+      "signedFrom": "कोपायलट ड्राफ़्ट से · {{model}} · {{version}}"
+    },
+    "discharge": {
+      "print": "सारांश प्रिंट करें",
+      "ackBy": "बिना ऑर्डर की दवा — कारण: {{reason}} ({{name}})",
+      "ackLabel": "बिना चालू ऑर्डर की दवा का कारण",
+      "notSigned": "साइन नहीं हुआ",
+      "draftBtn": "रिकॉर्ड से ड्राफ़्ट",
+      "youSign": "जाँचें, सुधारें और साइन करें",
+      "startedFrom": "कोपायलट ड्राफ़्ट से शुरू · {{model}} · {{version}}",
+      "flag": {
+        "unverified": "नोट या ऑर्डर में नहीं — जाँचें",
+        "no_active_order": "कोई चालू ऑर्डर नहीं",
+        "order_stopped": "ऑर्डर बंद है",
+        "model_invented": "किसी ऑर्डर में नहीं — मॉडल का पाठ हटाया"
+      }
+    }
+  },
+  "ipdEmar": {
+    "wastage": {
+      "open": "बर्बादी दर्ज करें",
+      "title": "नारकोटिक बर्बादी",
+      "qty": "बर्बाद मात्रा (इश्यू यूनिट, जैसे 0.5)",
+      "witness": "गवाह: {{name}}",
+      "done": "बर्बादी दर्ज"
+    },
+    "infusion": {
+      "title": "इन्फ़्यूज़न",
+      "rate": "दर (ml/घंटा)",
+      "stopped": "इन्फ़्यूज़न बंद",
+      "scanToChange": "दर बदलने के लिए लेबल स्कैन करें",
+      "state": {
+        "none": "शुरू नहीं",
+        "running": "चालू",
+        "paused": "रुका",
+        "stopped": "बंद"
+      },
+      "act": {
+        "start": "इन्फ़्यूज़न शुरू करें",
+        "rate_change": "दर बदलें",
+        "resume": "फिर चालू करें",
+        "pause": "रोकें",
+        "stop": "बंद करें"
+      },
+      "did": {
+        "start": "इन्फ़्यूज़न शुरू",
+        "rate_change": "दर बदली",
+        "resume": "इन्फ़्यूज़न फिर चालू",
+        "pause": "इन्फ़्यूज़न रुका",
+        "stop": "इन्फ़्यूज़न बंद"
+      }
+    },
+    "flags": {
+      "title": "चालू आदेश के ख़िलाफ़ एलर्जी",
+      "allergy": "एलर्जी: {{what}}",
+      "noDose": "आपके निर्णय तक कोई खुराक नहीं",
+      "stop": "आदेश रोकें",
+      "continue": "इस कारण से जारी रखें",
+      "withPharmacy": "फ़ार्मेसी की प्रतीक्षा"
+    },
+    "npo": {
+      "sips": "डॉक्टर ने घूँट से दवा की अनुमति दी",
+      "doctor": "सर्जरी से पहले: डॉक्टर की हाँ",
+      "doctorId": "हाँ कहने वाले डॉक्टर (यूज़र आईडी)"
+    },
+    "weight": "अभी वज़न (kg)",
+    "scan": "स्कैन",
+    "highAlert": "हाई अलर्ट",
+    "narcotic": "नारकोटिक",
+    "verbal": "मौखिक आदेश",
+    "note": "नोट",
+    "reason": "कारण",
+    "save": "सहेजें",
+    "asOf": "{{time}} तक",
+    "from": "{{time}} से",
+    "dueAt": "समय {{time}}",
+    "orderedBy": "{{name}} का आदेश · {{time}}",
+    "offline": "नेटवर्क नहीं — काग़ज़ी MAR लें",
+    "offlineShort": "ऑफ़लाइन — काग़ज़ी MAR",
+    "expired": "नहीं दी — फिर स्कैन करें",
+    "lasaConfirm": "पुष्टि करें: {{name}}",
+    "lateReason": "देरी क्यों?",
+    "heldCount_one": "{{count}} खुराक वापसी तक रोकी",
+    "heldCount_other": "{{count}} खुराकें वापसी तक रोकीं",
+    "reoffered_one": "{{count}} खुराक फिर से",
+    "reoffered_other": "{{count}} खुराकें फिर से",
+    "due": {
+      "title": "बकाया खुराकें",
+      "none": "कोई खुराक बकाया नहीं",
+      "late": "देर"
+    },
+    "bedside": {
+      "loadFailed": "इस मरीज़ की खुराकें लोड नहीं हुईं।",
+      "title": "बेडसाइड",
+      "due": "अभी बकाया",
+      "scanBand": "रिस्टबैंड स्कैन करें",
+      "scanLabel": "दवा लेबल स्कैन करें",
+      "bandScanned": "बैंड स्कैन हुआ",
+      "bandNotScanned": "बैंड स्कैन नहीं"
+    },
+    "give": {
+      "btn": "दें",
+      "hold": "दबाकर रखें — दें"
+    },
+    "given": {
+      "ok": "खुराक दी",
+      "late": "देर से दी"
+    },
+    "check": {
+      "patient": "मरीज़",
+      "drug": "दवा",
+      "dose": "खुराक",
+      "time": "समय",
+      "route": "मार्ग"
+    },
+    "status": {
+      "scheduled": "बकाया",
+      "given": "दी",
+      "held": "रोकी",
+      "missed": "छूटी",
+      "refused": "मना",
+      "cancelled": "रद्द",
+      "corrected": "सुधारी"
+    },
+    "orderStatus": {
+      "active": "चालू",
+      "stopped": "बंद",
+      "cancelled": "रद्द"
+    },
+    "act": {
+      "hold": "रोकें",
+      "refuse": "मना किया",
+      "miss": "छूटी"
+    },
+    "done": {
+      "hold": "खुराक रोकी",
+      "refuse": "मना दर्ज",
+      "miss": "छूटी खुराक दर्ज"
+    },
+    "reasons": {
+      "npo": "NPO",
+      "off_ward": "वार्ड से बाहर",
+      "parameter_out_of_range": "रीडिंग सीमा से बाहर",
+      "clinical_hold": "क्लिनिकल रोक",
+      "doctor_instruction": "डॉक्टर का निर्देश",
+      "patient_refused": "मरीज़ ने मना किया",
+      "vomited": "उल्टी हुई",
+      "other": "अन्य",
+      "no_stock": "वार्ड में स्टॉक नहीं",
+      "patient_away": "मरीज़ बाहर",
+      "omitted": "छूट गई"
+    },
+    "override": {
+      "open": "बैंड स्कैन नहीं हो रहा",
+      "counted": "ओवरराइड गिना जाएगा",
+      "use": "ओवरराइड लें",
+      "band_unreadable": "बैंड पढ़ा नहीं जा रहा",
+      "band_refused": "मरीज़ ने बैंड मना किया",
+      "no_band_burns": "बैंड नहीं (जलन)",
+      "scanner_down": "स्कैनर ख़राब"
+    },
+    "second": {
+      "title": "दूसरी नर्स",
+      "username": "यूज़रनेम",
+      "pin": "पिन",
+      "check": "जाँचें",
+      "done": "{{name}} ने जाँचा"
+    },
+    "reoffer": {
+      "back": "वार्ड पर लौटे",
+      "npo": "NPO हटा"
+    },
+    "prn": {
+      "now": "PRN · अभी दे सकते हैं",
+      "next": "PRN · {{time}} से पहले नहीं",
+      "in24h": "24 घंटे में {{n}}/{{max}}"
+    },
+    "pharmacy": {
+      "reissueReasons": {
+        "extra_supply": "अतिरिक्त आपूर्ति",
+        "lost": "खो गई",
+        "damaged": "ख़राब हुई"
+      },
+      "reissueVoids": "पुराने लेबल काम नहीं करेंगे",
+      "reissueReason": "फिर क्यों",
+      "reissue": "फिर से दें",
+      "issuedTitle": "दिए जा चुके",
+      "decided": {
+        "stop": "डॉक्टर ने आदेश रोका: {{reason}}",
+        "continue": "डॉक्टर जारी रखेंगे: {{reason}}"
+      },
+      "awaitDoctor": "डॉक्टर के निर्णय की प्रतीक्षा",
+      "overrides": {
+        "tolerated_before": "पहले सहन हुई",
+        "desensitised": "डिसेंसिटाइज़ किया",
+        "no_safe_alternative": "कोई सुरक्षित विकल्प नहीं",
+        "benefit_outweighs_risk": "लाभ जोखिम से अधिक"
+      },
+      "overrideText": "क्यों (लिखें)",
+      "overrideReason": "एलर्जी ओवरराइड",
+      "title": "इनपेशेंट फ़ार्मेसी",
+      "toVerify": "जाँच बाक़ी",
+      "toIssue": "देना बाक़ी",
+      "flags": "एलर्जी फ़्लैग",
+      "returns": "वापसी बाक़ी",
+      "none": "कुछ नहीं",
+      "noInteractionData": "फ़ॉर्मुलरी में इंटरैक्शन डेटा नहीं",
+      "override": "डॉक्टर ने एलर्जी ओवरराइड की: {{reason}}",
+      "noteNeeded": "नोट (ज़रूरी)",
+      "query": "प्रश्न",
+      "reject": "अस्वीकार",
+      "verify": "सत्यापित करें",
+      "units": "यूनिट",
+      "perLabel": "प्रति लेबल यूनिट",
+      "own": "मरीज़ की अपनी दवा",
+      "batch": "बैच",
+      "expiry": "समाप्ति",
+      "issue": "दें और लेबल छापें",
+      "labelsCount_one": "{{count}} लेबल",
+      "labelsCount_other": "{{count}} लेबल",
+      "decision": "डॉक्टर का निर्णय",
+      "close": "फ़्लैग बंद करें",
+      "flagClosed": "फ़्लैग बंद",
+      "orderStopped": "आदेश बंद",
+      "issued": "{{units}} दिए · {{back}} वापस",
+      "unitsBack": "वापस यूनिट",
+      "takeBack": "वापस लें",
+      "credited_one": "{{count}} यूनिट क्रेडिट",
+      "credited_other": "{{count}} यूनिट क्रेडिट",
+      "tick": {
+        "allergy": "एलर्जी",
+        "interaction": "इंटरैक्शन",
+        "dose": "खुराक",
+        "duplicate": "दोहरी दवा"
+      },
+      "did": {
+        "verified": "सत्यापित",
+        "rejected": "अस्वीकृत",
+        "query": "प्रश्न भेजा"
+      }
+    },
+    "labels": {
+      "title_one": "{{count}} लेबल",
+      "title_other": "{{count}} लेबल",
+      "a4": "A4 शीट",
+      "slip": "स्लिप",
+      "print": "छापें",
+      "highAlert": "हाई अलर्ट",
+      "own": "अपनी"
+    },
+    "mar": {
+      "title": "वार्ड MAR",
+      "day": "{{day}}",
+      "patient": "मरीज़",
+      "drug": "दवा",
+      "print": "MAR छापें",
+      "empty": "इस वार्ड में कोई मरीज़ नहीं",
+      "noOrders": "कोई दवा आदेश नहीं",
+      "withPharmacy": "फ़ार्मेसी के पास"
+    },
+    "needs": "ज़रूरी: {{what}}"
+  },
+  "ipdRounds": {
+    "overrideReason": "एलर्जी के बावजूद देने का कारण",
+    "allergyHit": "एलर्जी: {{substances}}",
+    "longCourse": "14 दिन से लंबे कोर्स का कारण",
+    "prnMax": "24 घंटे में अधिकतम खुराक",
+    "prnGap": "कम से कम घंटे का अंतर",
+    "weight": "वज़न (किग्रा)",
+    "title": "राउंड",
+    "counts": "{{total}} मरीज़ · आज {{pending}} देखने हैं",
+    "loading": "लोड हो रहा है…",
+    "failed": "लोड नहीं हुआ — फिर से कोशिश करें",
+    "forbidden": "राउंड इलाज करने वाली टीम के डॉक्टरों के लिए है",
+    "empty": "आज आपकी सूची में कोई भर्ती मरीज़ नहीं",
+    "sealed": "गोपनीय मरीज़",
+    "boardedOn": "{{ward}} पर",
+    "boardedHint": "दूसरे विभाग के वार्ड पर भर्ती",
+    "day": "दिन {{n}}",
+    "activeOrders_one": "{{count}} चालू ऑर्डर",
+    "activeOrders_other": "{{count}} चालू ऑर्डर",
+    "today": {
+      "none": "आज नहीं देखा",
+      "draft": "ड्राफ़्ट राउंड",
+      "remote": "दूर से समीक्षा",
+      "signed": "आज देखा"
+    },
+    "why": {
+      "own": "मेरा मरीज़",
+      "covering": "कवर · {{name}}",
+      "unit": "यूनिट · {{name}}",
+      "consult": "परामर्श · {{name}}"
+    },
+    "fit": {
+      "today": "आज छुट्टी योग्य",
+      "tomorrow": "कल छुट्टी योग्य"
+    },
+    "cosignQueue": "आपके सह-हस्ताक्षर की प्रतीक्षा",
+    "draftBy": "{{name}} का ड्राफ़्ट · {{time}}",
+    "cosign": "सह-हस्ताक्षर करें",
+    "cosignedBy": "{{name}} ने सह-हस्ताक्षर किए",
+    "draft": "ड्राफ़्ट",
+    "under": "{{name}} के अधीन",
+    "coveredBy": "{{name}} कवर कर रहे हैं",
+    "dx": "निदान",
+    "notOnTeam": "आप इस मरीज़ की इलाज टीम में नहीं हैं",
+    "history": "राउंड",
+    "noRounds": "अभी कोई हस्ताक्षरित राउंड नहीं",
+    "vitals": "ताज़ा वाइटल्स",
+    "vitalsPending": "वार्ड नर्सिंग रिकॉर्ड चालू होने पर वाइटल्स यहाँ दिखेंगे",
+    "signTitle": "आज का राउंड",
+    "modeLabel": "कहाँ से",
+    "mode": {
+      "bedside": "बेड के पास",
+      "remote_review": "दूर से समीक्षा"
+    },
+    "remoteHint": "फ़ोन या वीडियो से समीक्षा — दूर से समीक्षा के रूप में दर्ज",
+    "soap": {
+      "subjective": "लक्षण · S",
+      "objective": "जाँच · O",
+      "assessment": "आकलन · A",
+      "plan": "योजना · P"
+    },
+    "fitLabel": "छुट्टी योग्य",
+    "fitButton": {
+      "today": "आज",
+      "tomorrow": "कल"
+    },
+    "sign": "राउंड पर हस्ताक्षर",
+    "signAndFit": "हस्ताक्षर · छुट्टी शुरू करें",
+    "kind": {
+      "consultant": "कंसल्टेंट",
+      "resident": "रेज़िडेंट"
+    },
+    "source": {
+      "typed": "टाइप किया",
+      "voice": "आवाज़",
+      "copilot_draft": "कोपायलट ड्राफ़्ट"
+    },
+    "sourceHint": "शब्द कहाँ से आए",
+    "orders": "ऑर्डर",
+    "addDrug": "+ दवा",
+    "addTests": "+ जाँच",
+    "noOrders": "कोई चालू ऑर्डर नहीं",
+    "endedOrders_one": "{{count}} बंद ऑर्डर",
+    "endedOrders_other": "{{count}} बंद ऑर्डर",
+    "orderKind": {
+      "drug": "दवा",
+      "lab": "लैब",
+      "imaging": "इमेजिंग"
+    },
+    "orderStatus": {
+      "active": "चालू",
+      "stopped": "रोका गया",
+      "cancelled": "रद्द"
+    },
+    "verification": {
+      "pending": "फ़ार्मासिस्ट की प्रतीक्षा",
+      "verified": "सत्यापित",
+      "rejected": "फ़ार्मासिस्ट ने अस्वीकार किया",
+      "query": "फ़ार्मासिस्ट का प्रश्न"
+    },
+    "antibiotic": "एंटीबायोटिक",
+    "until": "{{time}} तक",
+    "forDays_one": "{{count}} दिन",
+    "forDays_other": "{{count}} दिन",
+    "returnOwed": "फ़ार्मेसी को वापसी बाकी",
+    "stop": "रोकें",
+    "cancelOrder": "ऑर्डर रद्द करें",
+    "reason": "कारण",
+    "back": "वापस",
+    "drugSearch": "दवा खोजें — 2 अक्षर",
+    "change": "बदलें",
+    "dose": "खुराक",
+    "unit": "इकाई",
+    "route": "मार्ग",
+    "frequency": "कितनी बार",
+    "days": "दिन",
+    "stopDate": "बंद करने की तारीख़",
+    "placeOrder": "ऑर्डर दें",
+    "routes": {
+      "oral": "मुँह से",
+      "iv": "IV",
+      "im": "IM",
+      "sc": "SC",
+      "inhaled": "साँस से",
+      "topical": "त्वचा पर",
+      "rectal": "गुदा से",
+      "sublingual": "जीभ के नीचे",
+      "ng": "NG ट्यूब",
+      "other": "अन्य"
+    },
+    "indication": "क्यों — क्लिनिकल कारण",
+    "outside": "बाहर होती है — यहाँ ऑर्डर नहीं",
+    "remove": "हटाएँ",
+    "consults": "परामर्श",
+    "askColleague": "सहकर्मी से पूछें",
+    "consultant": "कंसल्टेंट",
+    "question": "कंसल्टेंट के लिए प्रश्न",
+    "urgent": "तुरंत",
+    "sendConsult": "अनुरोध भेजें",
+    "closeConsult": "परामर्श बंद करें",
+    "askedBy": "{{name}} ने पूछा · {{time}}",
+    "refused": {
+      "round_not_found": "राउंड नहीं मिला",
+      "route_mismatch": "यह मार्ग इस दवा पर नहीं बैठता",
+      "dose_unit_mismatch": "यह इकाई इस दवा पर नहीं बैठती",
+      "dose_out_of_range": "खुराक जाँचें",
+      "prn_mismatch": "SOS के लिए सीमा चाहिए; सीमा केवल SOS में",
+      "course_too_long": "14 दिन से लंबे एंटीबायोटिक कोर्स का कारण चाहिए",
+      "stop_date_past": "बंद करने का समय अभी के बाद हो",
+      "allergy_conflict": "दर्ज एलर्जी से टकराव — ओवरराइड का कारण दें",
+      "weight_required": "पहले मरीज़ का वज़न दर्ज करें",
+      "failed": "सेव नहीं हुआ — फिर से कोशिश करें",
+      "admission_wrong_state": "मरीज़ अभी बेड पर नहीं है",
+      "not_treating_team": "केवल इलाज या परामर्श टीम यह कर सकती है",
+      "not_treating_consultant": "केवल इलाज करने वाले कंसल्टेंट यह कर सकते हैं",
+      "consultant_cosign_required": "रेज़िडेंट के राउंड पर कंसल्टेंट का सह-हस्ताक्षर चाहिए",
+      "time_in_future": "समय अभी से आगे है",
+      "antibiotic_stop_date_required": "एंटीबायोटिक के लिए बंद करने की तारीख़ चाहिए",
+      "duration_required": "अवधि या बंद करने की तारीख़ डालें",
+      "medicine_not_found": "दवा फ़ॉर्मुलरी में नहीं है",
+      "duplicate_order": "यह दवा इसी मार्ग से पहले से ऑर्डर है",
+      "order_kind_not_here": "यह ऑर्डर उसकी अपनी स्क्रीन पर दें",
+      "test_not_orderable": "विभाग यह जाँच नहीं ले सका",
+      "order_not_active": "ऑर्डर पहले से रोका या रद्द है",
+      "order_already_issued": "दवा जारी हो चुकी — रद्द नहीं, रोकें",
+      "round_not_awaiting_cosign": "पहले से सह-हस्ताक्षरित",
+      "consultant_not_found": "कोई सक्रिय कंसल्टेंट चुनें",
+      "consult_already_open": "इन कंसल्टेंट से पहले से पूछा गया है",
+      "consult_closed": "परामर्श पहले से बंद है"
+    }
+  },
+  "ipdSwitchOn": {
+    "title": "IPD सेवाएँ चालू करें",
+    "lead": "नई IPD सेवाएँ बंद रहती हैं। लागू संस्करण ({{no}}) में मूल्य वाली सेवाएँ चुनें और चालू करें।",
+    "none": "कोई बंद IPD सेवा नहीं।",
+    "pickPriced_one": "सभी मूल्य वाली चुनें ({{count}})",
+    "pickPriced_other": "सभी मूल्य वाली चुनें ({{count}})",
+    "go_one": "{{count}} सेवा चालू करें",
+    "go_other": "{{count}} सेवाएँ चालू करें",
+    "noPrice": "लागू मूल्य नहीं",
+    "done_one": "{{count}} सेवा चालू हुई।",
+    "done_other": "{{count}} सेवाएँ चालू हुईं।"
+  },
+  "tariffVersions": {
+    "title": "मूल्य सूची संस्करण",
+    "lead": "ड्राफ़्ट मालिक की स्वीकृति के लिए भेजें, फिर तारीख से चालू करें।",
+    "none": "कोई ड्राफ़्ट या भेजा गया संस्करण नहीं।",
+    "version": "संस्करण {{no}}",
+    "state": {
+      "draft": "ड्राफ़्ट",
+      "approval_pending": "भेजा गया · मालिक की प्रतीक्षा",
+      "approval_granted": "स्वीकृत · चालू करने को तैयार",
+      "approval_rejected": "अस्वीकृत"
+    },
+    "draftedBy": "ड्राफ़्ट: {{who}}",
+    "submittedBy": "भेजा: {{who}}",
+    "notePlaceholder": "मालिक के लिए टिप्पणी (वैकल्पिक)",
+    "submit": "स्वीकृति के लिए भेजें",
+    "waitingOwner": "अनुमोदन में मालिक के निर्णय की प्रतीक्षा।",
+    "rejected": "मालिक ने यह संस्करण अस्वीकार किया।",
+    "effectiveFrom": "लागू होने का समय",
+    "activate": "चालू करें",
+    "blockedDrafter": "ड्राफ़्ट आपका है: कोई दूसरा चालू करेगा।",
+    "blockedSubmitter": "आपने भेजा है: कोई दूसरा चालू करेगा।"
+  },
+  "workflows": {
+    "drafterCannotApprove": "ड्राफ़्ट आपका है: दो अन्य व्यक्ति स्वीकृत करेंगे।",
+    "off": "अभी चालू नहीं है।",
+    "title": "वर्कफ़्लो",
+    "lead": "अस्पताल के वर्कफ़्लो स्वीकृत करें और चालू करें। क्लास A के लिए चिकित्सा अधीक्षक और मालिक, दो अलग व्यक्ति; फिर मालिक चालू करते हैं।",
+    "loading": "लोड हो रहा है…",
+    "awaiting_one": "स्वीकृति बाकी ({{count}})",
+    "awaiting_other": "स्वीकृति बाकी ({{count}})",
+    "noDrafts": "कुछ बाकी नहीं।",
+    "inForce": "लागू और पुराने संस्करण",
+    "class": "क्लास {{c}}",
+    "state": {
+      "draft": "ड्राफ़्ट",
+      "active": "चालू",
+      "retired": "बंद"
+    },
+    "drafted": "ड्राफ़्ट: {{who}}, {{at}}",
+    "activated": "चालू किया: {{who}}, {{at}}",
+    "noApprovalsNeeded": "स्वीकृति की ज़रूरत नहीं।",
+    "waiting": "बाकी",
+    "approvedBy": "स्वीकृत: {{who}}, {{at}}",
+    "diffTitle": "चालू संस्करण से बदलाव:",
+    "diffNone": "चरणों में बदलाव नहीं।",
+    "state1": "स्थिति {{s}}",
+    "steps": "चरण: {{states}} स्थितियाँ, {{transitions}} बदलाव",
+    "note": "टिप्पणी",
+    "defaultNote": "देखा और स्वीकृत",
+    "approveAs": "{{role}} के रूप में स्वीकृत करें",
+    "activate": "चालू करें",
+    "youApproved": "आप स्वीकृत कर चुके हैं।",
+    "youDrafted": "ड्राफ़्ट आपका है: कोई दूसरा चालू करेगा।",
+    "waitingFor": "इनकी प्रतीक्षा: {{roles}}",
+    "role": {
+      "owner": "मालिक",
+      "medical_superintendent": "चिकित्सा अधीक्षक",
+      "department_head": "विभागाध्यक्ष",
+      "duty_manager": "ड्यूटी मैनेजर"
+    }
+  },
+  "ipdNursing": {
+    "wardPicker": {
+      "label": "वार्ड",
+      "choose": "अपना वार्ड चुनें",
+      "ground": "भूतल",
+      "floor": "मंज़िल {{n}}",
+      "otherFloor": "अन्य",
+      "pickFirst": "शुरू करने के लिए अपना वार्ड चुनें।"
+    },
+    "dropped": {
+      "title": "नहीं भेजा गया",
+      "patient": "मरीज़",
+      "expired": "30 मिनट से पुराना",
+      "refused": "सर्वर ने अस्वीकार किया",
+      "paper": "इन्हें काग़ज़ पर दर्ज करें।",
+      "done": "ठीक है"
+    },
+    "seenNoDoctor": "देखा · डॉक्टर अभी नहीं",
+    "noDoctorReached": "डॉक्टर तक नहीं पहुँचा — फ़ोन करें",
+    "live": "लाइव",
+    "offline": "ऑफ़लाइन · अंतिम अपडेट {{time}}",
+    "offlineNever": "ऑफ़लाइन · अभी लोड नहीं हुआ",
+    "queued_one": "{{count}} सेट कतार में",
+    "queued_other": "{{count}} सेट कतार में",
+    "offlineActs": "नेटवर्क नहीं — केवल वाइटल्स",
+    "night": "रात",
+    "day": "दिन",
+    "loading": "लोड हो रहा है…",
+    "loadFailed": "लोड नहीं हुआ। फिर कोशिश हो रही है।",
+    "forbidden": "इस वार्ड स्क्रीन की अनुमति आपके पास नहीं है।",
+    "actFailed": "सेव नहीं हुआ। फिर कोशिश करें।",
+    "cancel": "रद्द करें",
+    "close": "बंद करें",
+    "back": "वापस",
+    "incomplete": "अधूरा सेट",
+    "noScoreYet": "{{kind}} · अभी कोई सेट नहीं",
+    "ack": "स्वीकार करें",
+    "acked": "स्वीकार किया",
+    "alert": "अलर्ट · {{band}}",
+    "lateEntry": "देर से दर्ज, {{time}} पर टाइप",
+    "transferring": "ट्रांसफ़र स्वीकृति की प्रतीक्षा में",
+    "dueIn": "{{span}} में",
+    "overdueBy": "{{span}} से बकाया",
+    "dur": {
+      "justNow": "अभी",
+      "min": "{{n}} मिनट",
+      "hourMin": "{{h}} घं {{m}} मिनट"
+    },
+    "due": {
+      "vitals": "वाइटल्स",
+      "assessment": "आकलन",
+      "ews": "स्कोर अलर्ट",
+      "handover": "हैंडओवर"
+    },
+    "kind": {
+      "news2": "NEWS2",
+      "meows": "MEOWS",
+      "pews": "PEWS"
+    },
+    "band": {
+      "low": "कम",
+      "low_medium": "एक लाल",
+      "medium": "तुरंत",
+      "high": "आपात"
+    },
+    "trend": {
+      "up": "बढ़ रहा",
+      "down": "घट रहा",
+      "flat": "स्थिर"
+    },
+    "chip": {
+      "allergy": "एलर्जी",
+      "fall_risk": "गिरने का जोखिम",
+      "pressure_risk": "दबाव घाव जोखिम",
+      "isolation": "आइसोलेशन",
+      "name_alert": "नाम अलर्ट",
+      "obstetric": "प्रसूति"
+    },
+    "shift": {
+      "morning": "सुबह की शिफ्ट",
+      "evening": "शाम की शिफ्ट",
+      "night": "रात की शिफ्ट"
+    },
+    "discharge": {
+      "fit_declared": "डिस्चार्ज योग्य",
+      "discharging": "डिस्चार्ज हो रहा"
+    },
+    "source": {
+      "person": "टाइप किया",
+      "device": "उपकरण",
+      "copilot_draft": "कोपायलट ड्राफ्ट",
+      "agent": "एजेंट",
+      "import": "आयात",
+      "system": "सिस्टम"
+    },
+    "bed": {
+      "free": "खाली",
+      "freeSince": "खाली · {{time}} से",
+      "cleaning": "सफ़ाई",
+      "cleaningFor": "सफ़ाई · {{span}}",
+      "available": "खाली",
+      "reserved": "आरक्षित",
+      "blocked": "बंद",
+      "incumbent": "पुराना सिस्टम",
+      "occupied": "भरा",
+      "day": "दिन {{n}}"
+    },
+    "top": {
+      "census": "{{n}} / {{total}} बेड",
+      "free": "{{n}} खाली",
+      "expected": "{{n}} आने वाले",
+      "discharges": "आज {{n}} डिस्चार्ज",
+      "overdue": "{{n}} बकाया",
+      "alerts": "{{n}} स्कोर अलर्ट",
+      "handovers": "{{n}} हैंडओवर बाकी"
+    },
+    "ward": {
+      "title": "नर्स स्टेशन",
+      "wards": "वार्ड",
+      "beds": "बेड",
+      "noWard": "दिखाने को कोई वार्ड नहीं।",
+      "needsMeOn": "ज़रूरी पहले",
+      "bedOrder": "बेड क्रम",
+      "openChart": "बेड {{bed}} का नर्सिंग चार्ट खोलें"
+    },
+    "chart": {
+      "title": "नर्सिंग चार्ट",
+      "addVitals": "वाइटल्स जोड़ें",
+      "noVitals": "अभी कोई वाइटल्स नहीं।",
+      "trend": "स्कोर रुझान",
+      "trendCaption": "{{kind}} · पिछले {{n}} सेट",
+      "time": "समय",
+      "score": "स्कोर",
+      "by": "किसने",
+      "refused": "मरीज़ ने जाँच से मना किया",
+      "tab": {
+        "vitals": "वाइटल्स",
+        "assessment": "आकलन",
+        "io": "इनटेक / आउटपुट",
+        "notes": "नोट्स"
+      }
+    },
+    "v": {
+      "title": "वाइटल्स",
+      "temperatureC": "तापमान",
+      "pulse": "नब्ज़",
+      "respRate": "साँस दर",
+      "systolic": "बीपी ऊपर",
+      "diastolic": "बीपी नीचे",
+      "spo2": "SpO₂",
+      "painScore": "दर्द",
+      "capRefillSec": "कैप रिफ़िल",
+      "onOxygen": "ऑक्सीजन",
+      "consciousness": "होश",
+      "air": "हवा",
+      "oxygen": "ऑक्सीजन",
+      "typeToScore": "स्कोर देखने के लिए मान लिखें",
+      "check": "जाँचें",
+      "edit": "बदलें",
+      "save": "सेव करें",
+      "confirmSave": "पुष्टि कर सेव करें",
+      "confirmAsk": "असामान्य मान — जाँच लें",
+      "unusual": "असामान्य",
+      "refused": "मरीज़ ने मना किया",
+      "queued": "कतार में — भेजा जाएगा",
+      "refusedSaved": "मना करना दर्ज",
+      "saved": "सेव हुआ",
+      "savedScore": "सेव · {{kind}} {{value}}"
+    },
+    "avpu": {
+      "alert": "सजग",
+      "confused": "भ्रमित",
+      "voice": "आवाज़",
+      "pain": "दर्द",
+      "unresponsive": "बेहोश"
+    },
+    "assess": {
+      "morse": "मोर्स गिरने का स्कोर",
+      "braden": "ब्रैडन स्कोर",
+      "pain": "दर्द स्कोर",
+      "nutrition": "पोषण जाँच",
+      "allergies": "एलर्जी",
+      "allergiesHint": "कॉमा से अलग; न हो तो खाली",
+      "allergiesConfirmed": "एलर्जी मरीज़ या परिजन से पूछी",
+      "noAllergies": "कोई ज्ञात एलर्जी नहीं",
+      "lines": "लाइन और उपकरण",
+      "obstetric": "गर्भवती या प्रसव के बाद",
+      "recorded": "दर्ज",
+      "save": "आकलन सेव करें",
+      "saved": "आकलन सेव हुआ",
+      "pressurePhotos": "दबाव घावों की फ़ोटो दस्तावेज़ों में लें।",
+      "morseRisk": {
+        "low": "कम जोखिम",
+        "moderate": "मध्यम जोखिम",
+        "high": "अधिक जोखिम"
+      },
+      "bradenRisk": {
+        "none": "जोखिम नहीं",
+        "mild": "हल्का जोखिम",
+        "moderate": "मध्यम जोखिम",
+        "high": "अधिक जोखिम",
+        "very_high": "बहुत अधिक जोखिम"
+      },
+      "nutritionOpt": {
+        "no_risk": "जोखिम नहीं",
+        "at_risk": "जोखिम में",
+        "malnourished": "कुपोषित"
+      },
+      "obstetricOpt": {
+        "unanswered": "नहीं पूछा",
+        "none": "नहीं",
+        "pregnant": "गर्भवती",
+        "postpartum": "प्रसव के 42 दिन के भीतर"
+      }
+    },
+    "line": {
+      "peripheral_iv": "आईवी कैनुला",
+      "central_line": "सेंट्रल लाइन",
+      "urinary_catheter": "पेशाब कैथेटर",
+      "ng_tube": "एनजी ट्यूब",
+      "drain": "ड्रेन",
+      "tracheostomy": "ट्रेकियोस्टोमी",
+      "oxygen": "ऑक्सीजन",
+      "other": "अन्य"
+    },
+    "io": {
+      "in": "अंदर",
+      "out": "बाहर",
+      "kind": "प्रकार",
+      "ml": "मात्रा मि.ली. में",
+      "add": "जोड़ें",
+      "saved": "प्रविष्टि सेव हुई",
+      "totals": "{{since}} से: अंदर {{inMl}} मि.ली. · बाहर {{outMl}} मि.ली. · संतुलन {{balance}} मि.ली.",
+      "k": {
+        "oral": "मुँह से",
+        "iv": "आईवी",
+        "ng_feed": "एनजी फ़ीड",
+        "blood": "रक्त",
+        "urine": "पेशाब",
+        "drain": "ड्रेन",
+        "vomit": "उल्टी",
+        "stool": "मल",
+        "ng_aspirate": "एनजी एस्पिरेट"
+      }
+    },
+    "notes": {
+      "category": "श्रेणी",
+      "text": "नोट",
+      "add": "नोट जोड़ें",
+      "saved": "नोट सेव हुआ",
+      "cat": {
+        "general": "सामान्य",
+        "fall": "गिरना",
+        "pain": "दर्द",
+        "wound": "घाव",
+        "behaviour": "व्यवहार",
+        "escalation": "सूचना ऊपर",
+        "refused_care": "देखभाल से मना"
+      }
+    },
+    "shiftPage": {
+      "title": "मेरी शिफ्ट",
+      "now": "अभी",
+      "nothingDue": "अभी कुछ बाकी नहीं",
+      "patientsTitle": "मेरे मरीज़",
+      "patients_one": "{{count}} मरीज़",
+      "patients_other": "{{count}} मरीज़"
+    },
+    "handover": {
+      "title": "हैंडओवर",
+      "ready_one": "हैंडओवर · {{count}}",
+      "ready_other": "हैंडओवर · {{count}}",
+      "toAccept_one": "{{count}} स्वीकार करने हैं",
+      "toAccept_other": "{{count}} स्वीकार करने हैं",
+      "waiting": "आपकी प्रतीक्षा में",
+      "give": "हैंडओवर दें",
+      "giveBtn": "दें",
+      "draft": "SBAR ड्राफ्ट",
+      "done": "दिया",
+      "given": "हैंडओवर दिया",
+      "accept": "स्वीकार करें",
+      "accepted": "हैंडओवर स्वीकार",
+      "from": "{{name}} से · {{time}}",
+      "shiftTitle": "शिफ्ट हैंडओवर",
+      "noneWaiting": "कोई शिफ्ट हैंडओवर बाकी नहीं।",
+      "youGave": "यह हैंडओवर आपने दिया"
+    },
+    "sbar": {
+      "situation": "स्थिति",
+      "background": "पृष्ठभूमि",
+      "assessment": "आकलन",
+      "recommendation": "सुझाव"
+    },
+    "sbarSource": {
+      "round": "राउंड",
+      "order": "ऑर्डर",
+      "diet": "आहार",
+      "consult": "कंसल्ट",
+      "emar": "eMAR",
+      "imaging": "इमेजिंग",
+      "lab": "लैब",
+      "ews": "चेतावनी स्कोर",
+      "vitals": "वाइटल्स",
+      "assessment": "आकलन",
+      "io": "I/O",
+      "note": "नोट",
+      "admission": "भर्ती"
+    }
+  },
+  "diet": {
+    "title": "आहार",
+    "offline": "लाइव नहीं",
+    "meal": {
+      "breakfast": "नाश्ता",
+      "lunch": "दोपहर का भोजन",
+      "evening": "शाम की चाय",
+      "dinner": "रात का भोजन"
+    },
+    "code": {
+      "normal": "सामान्य",
+      "soft": "नरम",
+      "liquid_clear": "साफ़ तरल",
+      "liquid_full": "पूर्ण तरल",
+      "diabetic": "मधुमेह",
+      "renal": "गुर्दा (रीनल)",
+      "cardiac": "हृदय / कम नमक",
+      "high_protein": "उच्च प्रोटीन",
+      "ryles_feed": "राइल्स ट्यूब फ़ीड",
+      "paediatric": "बाल आहार",
+      "npo": "NPO (मुँह से कुछ नहीं)"
+    },
+    "pref": {
+      "veg": "शाकाहारी",
+      "non_veg": "मांसाहारी",
+      "jain": "जैन"
+    },
+    "listState": {
+      "preview": "पूर्वावलोकन",
+      "built": "बनी",
+      "printed": "छपी",
+      "dispatched": "भेजी",
+      "delivered": "पहुँची"
+    },
+    "withdrawn": {
+      "npo": "NPO",
+      "transferred": "वार्ड बदला",
+      "discharged": "छुट्टी",
+      "deceased": "मृत्यु",
+      "lama": "सलाह के विरुद्ध गए",
+      "absconded": "फ़रार",
+      "transferred_out": "रेफ़र"
+    },
+    "kitchen": {
+      "printedNo": "नहीं",
+      "printedYes": "हाँ, छप गया",
+      "printedOk": "छप गया? {{ward}}",
+      "reprint": "बदलाव छापें",
+      "changed": "बदला — फिर छापें",
+      "title": "रसोई",
+      "trays": "ट्रे",
+      "npo": "NPO",
+      "late": "देर से",
+      "withdrawn": "हटाई",
+      "cutoff": "अंतिम समय {{at}}",
+      "serve": "परोसना {{at}}",
+      "mealSwitch": "भोजन",
+      "noWards": "बिस्तर पर कोई मरीज़ नहीं",
+      "more": "+{{count}} और वार्ड",
+      "noTrays": "कोई ट्रे नहीं",
+      "build": "अभी बनाएँ",
+      "print": "छापें",
+      "dispatch": "भेजें"
+    },
+    "print": {
+      "changesOnly": "केवल बदलाव",
+      "title": "{{ward}} — {{meal}}, {{date}}",
+      "serve": "परोसना {{at}} · ट्रे: {{count}}",
+      "bed": "बिस्तर",
+      "patient": "मरीज़",
+      "uhid": "UHID",
+      "diet": "आहार",
+      "pref": "पसंद",
+      "tube": "ट्यूब फ़ीड",
+      "allergies": "एलर्जी",
+      "npoNoTray": "NPO — ट्रे नहीं"
+    },
+    "ward": {
+      "title": "आहार पत्रक",
+      "pickWard": "वार्ड",
+      "next": "अगला: {{meal}} · {{state}}",
+      "empty": "इस वार्ड में कोई मरीज़ नहीं",
+      "npo": "NPO",
+      "npoSince": "{{at}} से",
+      "npoWindow": "{{from}} से {{to}} तक",
+      "noOrder": "आदेश नहीं — सामान्य ट्रे",
+      "tube": "{{ml}} ml हर {{h}} घंटे",
+      "consultOpen": "डाइटीशियन को बुलाया",
+      "trayOff": "ट्रे नहीं: {{why}}",
+      "trayOn": "ट्रे: {{diet}}",
+      "served": {
+        "delivered": "ट्रे पहुँची",
+        "refused": "ट्रे लौटाई"
+      },
+      "delivered": "पहुँचा",
+      "refused": "मना किया",
+      "orderDiet": "आहार लिखें",
+      "setNpo": "NPO करें",
+      "liftNpo": "NPO हटाएँ",
+      "askDietician": "डाइटीशियन बुलाएँ",
+      "diet": "आहार",
+      "preference": "पसंद",
+      "ml": "ml",
+      "everyHours": "हर (घंटे)",
+      "save": "सहेजें",
+      "npoReason": "कारण",
+      "npoUntil": "कब तक (वैकल्पिक)",
+      "consultReason": "क्यों",
+      "saved": {
+        "ordered": "आहार सहेजा",
+        "npo": "NPO लगा",
+        "lifted": "NPO हटा",
+        "served": "ट्रे दर्ज",
+        "consult": "डाइटीशियन को बुलाया"
+      }
+    },
+    "consults": {
+      "title": "आहार परामर्श",
+      "empty": "कोई परामर्श बाकी नहीं",
+      "wait": "{{h}} घंटे",
+      "note": "सलाह",
+      "complete": "पूरा करें",
+      "rounds": "भोजन समय (IST)",
+      "cutoff": "अंतिम समय",
+      "serveAt": "परोसना",
+      "saveRound": "सहेजें"
+    },
+    "refusal": {
+      "list_changed_since_print": "छपने के बाद सूची बदली — पहले बदलाव छापें।",
+      "rounds_overlap": "भोजन के समय क्रम में हों, आपस में न टकराएँ।",
+      "failed": "सहेजा नहीं गया। फिर से करें।",
+      "bad_input": "सभी खाने भरें।",
+      "forbidden": "आपको अनुमति नहीं।",
+      "admission_not_found": "भर्ती नहीं मिली।",
+      "admission_not_placed": "मरीज़ बिस्तर पर नहीं।",
+      "nurse_npo_only": "नर्स: केवल NPO। डॉक्टर से कहें।",
+      "tube_feed_needs_volume": "ml और घंटे भरें।",
+      "npo_end_before_start": "अंत शुरुआत के बाद हो।",
+      "npo_not_found": "NPO नहीं मिला।",
+      "npo_not_live": "NPO पहले ही खत्म।",
+      "consult_not_found": "परामर्श नहीं मिला।",
+      "consult_open": "डाइटीशियन पहले से बुलाया।",
+      "list_not_found": "सूची नहीं मिली।",
+      "list_not_printed": "पहले सूची छापें।",
+      "list_already_dispatched": "पहले ही भेजी।",
+      "line_not_found": "ट्रे नहीं मिली।",
+      "line_withdrawn": "ट्रे हटाई गई — न परोसें।",
+      "list_not_dispatched": "ट्रॉली अभी नहीं भेजी।",
+      "cutoff_after_serve": "अंतिम समय परोसने से पहले हो।"
+    }
+  },
+  "ipdAttendant": {
+    "label": "रोज़ का बिल संदेश",
+    "title": "रोज़ का बिल संदेश",
+    "to": "किसे",
+    "consent": "सहमति",
+    "viaFamilyLink": "परिवार लिंक के साथ दी गई",
+    "last": "पिछला ({{date}})",
+    "consentedBy": "सहमति देने वाले",
+    "relation": "रिश्ता",
+    "method": "कैसे",
+    "verbal": "मौखिक",
+    "paper": "लिखित",
+    "record": "सहमति दर्ज करें",
+    "stop": "संदेश बंद करें",
+    "actFailed": "सहेजा नहीं जा सका — फिर कोशिश करें",
+    "kind": {
+      "guardian": "अभिभावक",
+      "deposit_payer": "जमा करने वाले"
+    },
+    "rel": {
+      "spouse": "पति/पत्नी",
+      "parent": "माता/पिता",
+      "child": "संतान",
+      "sibling": "भाई/बहन",
+      "relative": "रिश्तेदार",
+      "guardian": "अभिभावक",
+      "self": "मरीज़",
+      "other": "अन्य"
+    }
+  },
+  "ipdFamilyCalls": {
+    "sealed": "सील्ड मरीज़",
+    "title": "परिवार के कॉल बैक अनुरोध",
+    "show": "दिखाएँ",
+    "open": "प्रतीक्षा में",
+    "done": "पूरे",
+    "note": "परिवार यहाँ परिवार पेज से पूछते हैं। उन्हें वापस फ़ोन करें, या सेहत के सवाल इंचार्ज नर्स या डॉक्टर को दें। अपने-आप कोई जवाब नहीं दिया जाता।",
+    "forbidden": "आपको परिवार कॉल बैक देखने की अनुमति नहीं है।",
+    "failed": "लोड नहीं हुआ — फिर कोशिश करें",
+    "loading": "लोड हो रहा है…",
+    "emptyOpen": "कोई परिवार कॉल का इंतज़ार नहीं कर रहा।",
+    "emptyDone": "अभी कोई कॉल बैक बंद नहीं हुआ।",
+    "openAdmission": "भर्ती खोलें",
+    "notePlaceholder": "आपने क्या बताया",
+    "calledBack": "कॉल कर दिया",
+    "closedBy": "{{name}}, {{time}}"
+  },
+  "ipdFamilyDesk": {
+    "title": "परिवार लिंक",
+    "condition": "परिवार के लिए हालत",
+    "notSet": "तय नहीं (परिवार को “वार्ड से पूछें” दिखेगा)",
+    "setBy": "{{name}} · {{time}}",
+    "setCondition": "हालत का शब्द चुनें",
+    "word": {
+      "stable": "स्थिर",
+      "improving": "सुधार",
+      "serious": "गंभीर",
+      "critical": "बहुत गंभीर"
+    },
+    "familyOff": "परिवार लिंक चालू या बंद",
+    "linkOn": "परिवार लिंक चालू",
+    "offFor": "बंद — {{reason}}",
+    "off": {
+      "psychiatric": "मानसिक रोग",
+      "hiv": "HIV",
+      "mtp": "MTP",
+      "pocso": "POCSO",
+      "patient_request": "मरीज़ का अनुरोध",
+      "other": "अन्य"
+    },
+    "link": "लिंक",
+    "active": "चालू · OTP {{phone}} पर जाता है · {{time}} पर बना",
+    "blocked": {
+      "sealed": "बंद: सील्ड मरीज़",
+      "mlc": "बंद: मेडिको-लीगल केस",
+      "family_off": "बंद: इलाज करने वाली टीम ने बंद किया",
+      "no_attendant_phone": "रजिस्टर्ड परिजन का फ़ोन नहीं — बिल अधिकार वाले अभिभावक या जमा करने वाले का फ़ोन जोड़ें",
+      "stay_ended": "भर्ती समाप्त"
+    },
+    "none": "अभी लिंक नहीं · {{phone}} पर जाएगा",
+    "revoke": "रद्द करें",
+    "handOver": "सौंपें: परिजन {{phone}} वाले फ़ोन से इसे स्कैन करें।",
+    "copy": "लिंक कॉपी करें",
+    "consent": "परिवार लिंक की सहमति",
+    "consentedBy": "किसने सहमति दी (नाम)",
+    "relation": "रिश्ता",
+    "rel": {
+      "self": "मरीज़",
+      "spouse": "पति/पत्नी",
+      "parent": "माता/पिता",
+      "child": "संतान",
+      "sibling": "भाई/बहन",
+      "relative": "रिश्तेदार",
+      "guardian": "अभिभावक",
+      "other": "अन्य"
+    },
+    "method": "कैसे",
+    "verbal": "मौखिक",
+    "paper": "कागज़ी फ़ॉर्म",
+    "issue": "लिंक बनाएँ",
+    "reissue": "नया लिंक बनाएँ",
+    "purpose": "परिवार को बताया गया उद्देश्य: भर्ती की जानकारी (हालत, कुल बिल, छुट्टी)। बिल का विवरण केवल दूसरे, दर्ज किए गए कदम के बाद।",
+    "calls": "कॉल बैक अनुरोध",
+    "callNote": "आपने क्या बताया",
+    "calledBack": "कॉल कर दिया",
+    "closedBy": "{{name}}: {{note}}"
+  },
+  "ipdFamily": {
+    "brand": "मरीज़ की जानकारी",
+    "subtitle": "अस्पताल की ओर से",
+    "day": "दिन {{n}}",
+    "loading": "लोड हो रहा है…",
+    "loadFailed": "लोड नहीं हुआ। इंटरनेट देखें और लिंक फिर से खोलें।",
+    "footer": "यह लिंक केवल आपके रजिस्टर्ड फ़ोन पर चलता है।",
+    "closed": {
+      "title": "यह लिंक बंद है",
+      "body": "मरीज़ की जानकारी के लिए वार्ड डेस्क पर फ़ोन करें या आएँ।"
+    },
+    "purpose": {
+      "title": "यह पेज क्यों",
+      "body": "अस्पताल आपको, रजिस्टर्ड परिजन को, मरीज़ की हालत, बिल का कुल और छुट्टी की प्रगति बताता है। इसके अलावा कुछ नहीं दिखाया जाता।"
+    },
+    "otp": {
+      "title": "पुष्टि करें कि यह आप हैं",
+      "to": "हम {{phone}} पर 6 अंकों का कोड भेजेंगे।",
+      "send": "कोड भेजें",
+      "label": "SMS में आया कोड",
+      "verify": "जानकारी देखें",
+      "resend": "नया कोड भेजें"
+    },
+    "err": {
+      "failed": "कुछ गड़बड़ हुई। फिर से कोशिश करें।",
+      "family_otp_limit": "बहुत बार कोशिश हुई। एक घंटे बाद फिर करें।",
+      "family_otp_invalid": "कोड सही नहीं है। SMS देखें या नया कोड मँगाएँ।",
+      "family_otp_unavailable": "अभी कोड नहीं भेजा जा सकता। वार्ड डेस्क से पूछें।",
+      "family_phone_changed": "रजिस्टर्ड फ़ोन बदल गया है। वार्ड डेस्क से नया लिंक लें।",
+      "family_link_closed": "यह लिंक बंद है। वार्ड डेस्क से संपर्क करें।",
+      "family_otp_format": "SMS के 6 अंक लिखें।",
+      "family_callback_limit": "वार्ड को आपके अनुरोध मिल चुके हैं। वे आपको फ़ोन करेंगे।",
+      "family_session_required": "कृपया कोड से फिर पुष्टि करें।"
+    },
+    "discharged": {
+      "label": "आपके मरीज़",
+      "big": "छुट्टी हो गई",
+      "sub": "छुट्टी के 24 घंटे बाद यह पेज बंद हो जाएगा।"
+    },
+    "eta": {
+      "label": "घर जाने का अनुमानित समय"
+    },
+    "condition": {
+      "label": "हालत",
+      "ask": "वार्ड से पूछें",
+      "notSet": "इलाज करने वाली टीम ने अभी नहीं बताया है।",
+      "setAt": "इलाज करने वाली टीम द्वारा, {{time}}",
+      "line": "हालत: {{word}} · इलाज करने वाली टीम द्वारा, {{time}}",
+      "lineAsk": "हालत: वार्ड से पूछें",
+      "stable": "स्थिर",
+      "improving": "सुधार हो रहा है",
+      "serious": "गंभीर",
+      "critical": "बहुत गंभीर"
+    },
+    "steps": {
+      "title": "छुट्टी की प्रगति"
+    },
+    "step": {
+      "fit": "डॉक्टर ने छुट्टी की मंज़ूरी दी",
+      "departments": "विभाग बिल की जाँच कर रहे हैं",
+      "summary": "डिस्चार्ज सारांश पर डॉक्टर के हस्ताक्षर",
+      "bill": "अंतिम बिल तैयार",
+      "gate_pass": "गेट पास",
+      "exit": "अस्पताल से रवाना"
+    },
+    "stepState": {
+      "done": "पूरा",
+      "now": "चल रहा है",
+      "waiting": "बाकी",
+      "skipped": "ज़रूरी नहीं"
+    },
+    "todo": {
+      "title": "आपको क्या करना है",
+      "nothing": "अभी कुछ नहीं। बिल तैयार होते ही हम बताएँगे।",
+      "pay_bill": "कृपया बिलिंग काउंटर पर बाकी राशि जमा करें।",
+      "collect_gate_pass": "वार्ड डेस्क से गेट पास लें।",
+      "wait_summary": "कृपया प्रतीक्षा करें। डॉक्टर डिस्चार्ज सारांश पर हस्ताक्षर कर रहे हैं।",
+      "go_home": "बस इतना ही। डिस्चार्ज सारांश और दवाइयाँ साथ ले जाएँ।"
+    },
+    "totals": {
+      "title": "बिल का कुल",
+      "bill": "अब तक का बिल",
+      "deposit": "जमा राशि",
+      "due": "बाकी देना है",
+      "left": "जमा में बचा",
+      "asOf": "आज {{time}} तक"
+    },
+    "details": {
+      "show": "बिल का विवरण देखें",
+      "confirm": "बिल के विवरण से पता चल सकता है कि कौन सी जाँच और दवाइयाँ दी गईं। इसे खोलना दर्ज किया जाता है।",
+      "yes": "बिल का विवरण खोलें",
+      "no": "अभी नहीं",
+      "title": "बिल का विवरण",
+      "none": "अभी कोई शुल्क नहीं।"
+    },
+    "callback": {
+      "ask": "कॉल बैक का अनुरोध करें",
+      "title": "वार्ड के लिए आपका सवाल",
+      "placeholder": "अपना सवाल लिखें। वार्ड आपको फ़ोन करेगा।",
+      "send": "वार्ड को भेजें",
+      "done": "भेज दिया। वार्ड आपको {{phone}} पर फ़ोन करेगा।",
+      "note": "सेहत से जुड़े सवाल वार्ड की इंचार्ज नर्स तक जाएँगे, जो आपको फ़ोन करेंगी। यहाँ अपने-आप कोई जवाब नहीं देता।"
+    }
+  },
+  "ipdDischarge": {
+    "title": "डिस्चार्ज डेस्क",
+    "inCascade": "{{count}} डिस्चार्ज में",
+    "listLabel": "डिस्चार्ज",
+    "loading": "लोड हो रहा है…",
+    "loadFailed": "लोड नहीं हुआ — फिर कोशिश करें",
+    "forbidden": "डिस्चार्ज डेस्क की अनुमति नहीं है।",
+    "empty": "कोई डिस्चार्ज चल नहीं रहा।",
+    "pick": "मरीज़ चुनें।",
+    "actFailed": "दर्ज नहीं हुआ — फिर कोशिश करें",
+    "cancel": "रद्द करें",
+    "dur": {
+      "justNow": "अभी",
+      "min": "{{n}} मिनट",
+      "hourMin": "{{h}} घं {{m}} मि"
+    },
+    "leftIn": "{{span}} बाकी",
+    "overBy": "लक्ष्य से {{span}} ज़्यादा",
+    "next": "अगला: {{step}}",
+    "consultant": "डॉ {{name}}",
+    "referOut": "रेफ़र",
+    "fitAt": "फ़िट {{time}}",
+    "targetAt": "लक्ष्य {{time}}",
+    "stepsTitle": "डिस्चार्ज के चरण",
+    "doneAt": "पूरा {{time}}",
+    "skipped": "ज़रूरी नहीं",
+    "waitingFor": "इंतज़ार: {{who}}",
+    "stepState": {
+      "done": "पूरा",
+      "now": "अभी",
+      "waiting": "बाद में",
+      "skipped": "ज़रूरी नहीं"
+    },
+    "step": {
+      "fit": "छुट्टी के लिए फ़िट",
+      "departments": "विभाग बिल की पुष्टि करें",
+      "summary": "सारांश पर हस्ताक्षर",
+      "bill": "अंतिम बिल चुकता",
+      "gate_pass": "गेट पास",
+      "exit": "अस्पताल से गए"
+    },
+    "state": {
+      "requested": "अनुरोध",
+      "reserved": "आरक्षित",
+      "admitted": "भर्ती",
+      "transferring": "स्थानांतरण में",
+      "fit_declared": "फ़िट घोषित",
+      "discharging": "गेट पास जारी",
+      "discharged": "डिस्चार्ज",
+      "lama": "लामा",
+      "absconded": "भाग गए",
+      "deceased": "मृत्यु",
+      "transferred_out": "रेफ़र किया",
+      "cancelled": "रद्द"
+    },
+    "fit": {
+      "title": "छुट्टी के लिए फ़िट",
+      "disposition": "कहाँ",
+      "home": "घर",
+      "transferOut": "दूसरे अस्पताल",
+      "declare": "फ़िट घोषित करें",
+      "cancelReason": "कारण (हालत बिगड़ी…)",
+      "cancel": "फ़िट रद्द करें"
+    },
+    "depts": {
+      "title": "विभाग",
+      "confirm": "कोई बकाया शुल्क नहीं — पुष्टि",
+      "confirmedBy": "{{name}} · {{time}}",
+      "basis": {
+        "lines": "बिल पर शुल्क हैं",
+        "open_orders": "खुले ऑर्डर हैं",
+        "always": "हमेशा पुष्टि"
+      }
+    },
+    "dept": {
+      "pharmacy": "फ़ार्मेसी",
+      "lab": "लैब",
+      "radiology": "रेडियोलॉजी",
+      "ot": "ओटी",
+      "ward": "वार्ड नर्सिंग",
+      "dietary": "आहार",
+      "cssd": "सीएसएसडी",
+      "blood_bank": "ब्लड बैंक",
+      "billing": "बिलिंग"
+    },
+    "summary": {
+      "title": "डिस्चार्ज सारांश",
+      "status": {
+        "none": "शुरू नहीं",
+        "draft": "ड्राफ़्ट",
+        "awaiting_cosign": "सह-हस्ताक्षर बाकी",
+        "signed": "हस्ताक्षरित"
+      },
+      "f": {
+        "diagnosis": "निदान",
+        "icd10": "ICD-10 कोड",
+        "course": "अस्पताल में इलाज",
+        "procedures": "प्रक्रियाएँ",
+        "conditionAtDischarge": "छुट्टी के समय हालत",
+        "medicines": "छुट्टी की दवाइयाँ",
+        "followUp": "फ़ॉलो-अप",
+        "advice": "सलाह",
+        "warningSigns": "तुरंत लौटें अगर",
+        "pendingResults": "बाकी रिपोर्ट"
+      },
+      "medsHint": "हर पंक्ति में एक: नाम — खुराक — कब — कितने दिन",
+      "write": "सारांश लिखें",
+      "edit": "बदलें",
+      "save": "ड्राफ़्ट सहेजें",
+      "sign": "हस्ताक्षर करें",
+      "signedBy": "डॉ {{name}} के हस्ताक्षर · {{time}}",
+      "residentSigned": "{{name}} के हस्ताक्षर — कंसल्टेंट का सह-हस्ताक्षर चाहिए",
+      "draftBy": "ड्राफ़्ट: {{name}}"
+    },
+    "bill": {
+      "title": "अंतिम बिल",
+      "total": "कुल बिल",
+      "payer": "बीमा / भुगतानकर्ता",
+      "patient": "मरीज़ देगा",
+      "deposit": "जमा राशि",
+      "toPay": "देना बाकी",
+      "refund": "वापसी",
+      "dues": "बकाया दर्ज",
+      "prepare": "अंतिम बिल खोलें",
+      "tender": "भुगतान",
+      "cash": "नकद",
+      "card": "कार्ड",
+      "amount": "राशि (₹)",
+      "ref": "UPI / कार्ड संदर्भ",
+      "settle": "बिल चुकता करें",
+      "duesLine": "{{amount}} बाकी — मरीज़ फिर भी घर जाएगा; बकाया दर्ज करें",
+      "askDues": "बकाया की मंज़ूरी माँगें",
+      "duesAsked": "मंज़ूरी माँगी — बिलिंग मैनेजर तय करेंगे",
+      "undertaking": "हस्ताक्षरित वचन-पत्र (फ़ाइल किया दस्तावेज़)",
+      "pickUndertaking": "फ़ाइल किया वचन-पत्र चुनें",
+      "refundPending": "वापसी बाकी",
+      "duesNote": "छुट्टी पर बकाया; वचन-पत्र लिया",
+      "billNo": "बिल {{no}} · {{time}}",
+      "print": "अंतिम बिल छापें",
+      "settlement": {
+        "paid": "चुकता",
+        "refund_due": "वापसी बाकी",
+        "dues_recorded": "बकाया दर्ज",
+        "insurer_pending_undertaking": "बीमा मंज़ूरी बाकी"
+      }
+    },
+    "pass": {
+      "suppDues": "अंतिम बिल के बाद के शुल्क — हस्ताक्षरित वचन-पत्र पर बकाया दर्ज करें",
+      "title": "गेट पास",
+      "issue": "गेट पास जारी करें",
+      "print": "गेट पास छापें",
+      "hospital": "दूसरा अस्पताल",
+      "confirmedBy": "किसने पुष्टि की (नाम, कैसे)",
+      "notYet": "विभाग, सारांश और बिल पूरे होने पर जारी होगा।",
+      "dues": "बकाया दर्ज",
+      "status": {
+        "issued": "अभी स्कैन नहीं",
+        "used": "गेट पर स्कैन",
+        "void": "रद्द"
+      }
+    },
+    "scan": {
+      "label": "गेट पास स्कैन",
+      "placeholder": "GP-…",
+      "go": "स्कैन",
+      "ok": "{{code}} — मरीज़ चले गए"
+    },
+    "print": {
+      "patient": "मरीज़",
+      "ipNo": "आईपी नं.",
+      "bed": "बेड",
+      "consultant": "कंसल्टेंट",
+      "billTitle": "अंतिम बिल",
+      "billNo": "बिल नं. {{no}}",
+      "date": "तारीख़",
+      "item": "विवरण",
+      "qty": "मात्रा",
+      "amount": "राशि",
+      "paid": "अभी भुगतान",
+      "billFoot": "राशि रुपये में। कुल पर एक बार राउंड। यह कंप्यूटर से छपा बिल है।",
+      "passTitle": "गेट पास — डिस्चार्ज",
+      "passReferTitle": "गेट पास — रेफ़र",
+      "issuedAt": "जारी {{time}}",
+      "to": "को: {{hospital}}",
+      "duesRecorded": "बकाया दर्ज — मरीज़ को जाने दें।",
+      "passFoot": "सुरक्षा: बाहर निकलते समय यह कोड स्कैन करें। केवल एक बार।"
+    }
+  },
+  "ipdBillDesk": {
+    "backdated": {
+      "what": "{{date}} का राउंड, {{name}} — देर से दर्ज",
+      "reason": "कारण (ज़रूरी)",
+      "charge": "विज़िट चार्ज करें",
+      "waive": "माफ़ करें",
+      "done": "पुरानी तारीख़ की विज़िट निपटाई गई",
+      "failed": "सेव नहीं हुआ — फिर से कोशिश करें"
+    },
+    "orderCancel": {
+      "reverse_reissue_lost_damaged": "शुल्क माफ़ करें",
+      "reverse_return_after_bill": "वॉइड के बाद वापसी घटाएँ",
+      "reissue_lost_damaged": "{{name}} · {{date}} — खोई या खराब, दोबारा दी गई",
+      "return_after_bill": "{{name}} · {{date}} — बिल के बाद वापस",
+      "order_cancelled_after_bill": "{{name}} · {{date}} — बिल के बाद रद्द",
+      "order_cancelled_after_work": "{{name}} · {{date}} — सैंपल के बाद रद्द",
+      "reason": "कारण (ज़रूरी)",
+      "keep": "शुल्क रखें",
+      "reverse": "बिल रद्द होने के बाद वापस करें",
+      "done": "रद्द ऑर्डर निपटाया गया",
+      "failed": "सहेजा नहीं जा सका — फिर कोशिश करें"
+    },
+    "settled": {
+      "title": "निपटाए गए बिल",
+      "empty": "किसी निपटाए बिल पर काम बाकी नहीं।",
+      "finalBill": "अंतिम बिल",
+      "supplementaryBill": "पूरक बिल {{n}}",
+      "supplementary": "पूरक बिल",
+      "askVoid": "रद्द करने की अनुमति माँगें",
+      "voidBill": "बिल रद्द करें",
+      "voidWaiting": "रद्द करना अनुमति की प्रतीक्षा में",
+      "reason": "कारण",
+      "reasonNeeded": "कारण लिखें",
+      "voidAsked": "अनुमति माँगी गई — बिलिंग मैनेजर की प्रतीक्षा",
+      "voided": "बिल रद्द — क्रेडिट नोट जारी",
+      "failed": "नहीं हो सका — फिर कोशिश करें",
+      "suppLines_one": "{{count}} शुल्क",
+      "suppLines_other": "{{count}} शुल्क",
+      "suppPatient": "मरीज़ {{amount}}",
+      "suppBalance": "लेना है {{amount}}",
+      "cash": "नकद प्राप्त ₹",
+      "undertaking": "वचन-पत्र दस्तावेज़",
+      "undertakingNeeded": "बकाया के लिए हस्ताक्षरित वचन-पत्र चाहिए",
+      "settle": "निपटाएँ",
+      "cancel": "रद्द",
+      "suppSettled": "पूरक बिल {{billNo}} निपटाया गया",
+      "exception": {
+        "settled_not_exited": "निपटा, पर गए नहीं",
+        "ended_after_bill": "बिल के बाद समाप्त",
+        "dues_awaiting_approval": "बकाया: अनुमति बाकी",
+        "refund_pending": "रिफंड बाकी",
+        "supplementary_owed": "पूरक बिल बाकी"
+      },
+      "refusal": {
+        "payer_claim_filed": "दावा भुगतानकर्ता के पास है — रद्द नहीं",
+        "refund_issued": "रिफंड दिया जा चुका — रद्द नहीं हो सकता",
+        "void_needs_approval": "दूसरे व्यक्ति की अनुमति चाहिए",
+        "void_newer_bill_first": "पहले नया बिल रद्द करें",
+        "bill_already_voided": "पहले ही रद्द",
+        "gate_pass_live": "गेट पास जारी — निकास के बाद रद्द करें",
+        "payer_claim_settled": "भुगतानकर्ता ने दावा निपटा दिया — रद्द नहीं",
+        "nothing_to_bill": "पूरक बिल के लिए कोई शुल्क नहीं"
+      }
+    },
+    "dailyTotals": {
+      "label": "परिजन को रोज़ का बिल संदेश",
+      "title": "परिजन को रोज़ का बिल संदेश · {{date}}",
+      "on": "{{hour}}:00 बजे भेजा जाता है",
+      "off": "भेजना बंद है: टेम्पलेट सेट नहीं है",
+      "counts": "भेजे {{sent}} · प्रतीक्षा {{waiting}} · नहीं भेजे {{notSent}}"
+    },
+    "title": "बिल डेस्क",
+    "subtitle": "केवल अपवाद",
+    "asOf": "{{at}} तक",
+    "loading": "बिल डेस्क लोड हो रहा है…",
+    "loadFailed": "बिल डेस्क लोड नहीं हुआ — फिर कोशिश करें",
+    "forbidden": "बिल डेस्क केवल बिलिंग स्टाफ़ के लिए है",
+    "refresh": "रीफ़्रेश",
+    "countsLabel": "प्रकार के अनुसार अपवाद",
+    "listLabel": "जिन भर्तियों पर ध्यान चाहिए",
+    "all": "सभी",
+    "empty": "कुछ भी लंबित नहीं। सामान्य चालू बिल यहाँ नहीं दिखते।",
+    "reason": {
+      "reissue_lost_damaged": "खोई / खराब दवा दोबारा",
+      "return_after_bill": "बिल के बाद वापस",
+      "order_cancelled_after_work": "सैंपल के बाद रद्द",
+      "order_cancelled_after_bill": "बिल के बाद रद्द",
+      "visit_backdated": "पुरानी तारीख़ की विज़िट",
+      "deposit_90": "जमा 90 % उपयोग",
+      "deposit_75": "जमा 75 % उपयोग",
+      "icu_low_days": "ICU: एक दिन की जमा शेष",
+      "posting_failed": "पोस्टिंग विफल",
+      "rate_missing": "दर नहीं है",
+      "tariff_missing": "टैरिफ नहीं है",
+      "deposit_check_pending": "डाउनटाइम जमा जाँचें",
+      "cash_consent_missing": "नकद सहमति नहीं",
+      "auth_pending_24h": "स्वीकृति 24 घंटे से लंबित",
+      "discharge_balance": "डिस्चार्ज, बकाया शेष"
+    },
+    "col": {
+      "patient": "मरीज़",
+      "bed": "बेड · भुगतानकर्ता",
+      "why": "कारण",
+      "used": "जमा उपयोग",
+      "payable": "मरीज़ देय",
+      "deposit": "जमा राशि",
+      "balance": "शेष",
+      "icu": "ICU ख़र्च",
+      "since": "कब से",
+      "actions": "कार्य"
+    },
+    "usedPct": "{{pct}} %",
+    "noDeposit": "कोई जमा नहीं",
+    "due": "देय {{amount}}",
+    "perDay": "{{amount}}/दिन",
+    "daysLeft_one": "{{count}} दिन शेष",
+    "daysLeft_other": "{{count}} दिन शेष",
+    "openBill": "बिल खोलें",
+    "retry": "फिर से",
+    "retried_one": "फिर से किया — {{count}} पंक्ति पोस्ट",
+    "retried_other": "फिर से किया — {{count}} पंक्तियाँ पोस्ट",
+    "retryFailed": "फिर से करना विफल — दोबारा कोशिश करें",
+    "careNote": "पैसे के लिए इलाज कभी नहीं रुकता: जमा चेतावनी केवल डेस्क और प्रबंधन को बताती है।"
+  },
+  "ipdTransfer": {
+    "panel": {
+      "loading": "स्थानांतरण विकल्प लोड हो रहे हैं…",
+      "loadFailed": "स्थानांतरण विकल्प लोड नहीं हो सके।",
+      "billsAs": "बिल {{cls}} के रूप में",
+      "pendingClass": "{{time}} से {{cls}}",
+      "waitingAt": "{{bed}} पर स्वीकृति की प्रतीक्षा · भेजा {{time}}",
+      "cancelTransfer": "स्थानांतरण रद्द करें",
+      "transfer": "स्थानांतरण",
+      "swap": "बेड अदला-बदली",
+      "changeClass": "श्रेणी बदलें",
+      "targetsLabel": "यहाँ भेजें (उपयुक्त बेड)",
+      "reasonLabel": "कारण",
+      "start": "हैंडओवर भेजें",
+      "noTargets": "अभी इस मरीज़ के लिए कोई खाली उपयुक्त बेड नहीं है।",
+      "noSwap": "अदला-बदली के लिए कोई अन्य भर्ती मरीज़ नहीं है।",
+      "swapWith": "इनसे अदला-बदली",
+      "pick": "चुनें…",
+      "swapNote": "दोनों मरीज़ एक साथ बदलेंगे; हर एक का बिल नए बेड की श्रेणी से।",
+      "doSwap": "अभी बदलें",
+      "toClass": "नई श्रेणी",
+      "upgradeNote": "उच्च श्रेणी · अगले दोपहर 12 बजे से लागू",
+      "downgradeNote": "निम्न श्रेणी · अगले दोपहर 12 बजे से लागू",
+      "signedBy": "सहमति पर हस्ताक्षर",
+      "signerName": "हस्ताक्षरकर्ता का नाम",
+      "relation": "संबंध",
+      "representativeReason": "मरीज़ हस्ताक्षर क्यों नहीं कर सकते",
+      "method": "सहमति कैसे ली",
+      "methodPaper": "काग़ज़ पर, गवाह के साथ",
+      "methodDocument": "दर्ज दस्तावेज़",
+      "witnessName": "गवाह का नाम",
+      "documentId": "दस्तावेज़ आईडी",
+      "capAck": "कमरे के किराए की सीमा समझाई गई: बीमा कंपनी केवल अपनी कमरा सीमा तक भुगतान कर सकती है, और कमरे से जुड़े शुल्क अनुपात में कट सकते हैं।",
+      "applyClass": "श्रेणी परिवर्तन दर्ज करें",
+      "effectiveToday": "श्रेणी परिवर्तन दर्ज · आज दोपहर 12:00 से लागू",
+      "effectiveTomorrow": "श्रेणी परिवर्तन दर्ज · कल दोपहर 12:00 से लागू",
+      "effectiveOn": "श्रेणी परिवर्तन दर्ज · {{time}} से लागू",
+      "nextBeds": "उपयुक्त खाली बेड:",
+      "actFailed": "यह नहीं हो पाया। फिर कोशिश करें।"
+    },
+    "done": {
+      "started": "हैंडओवर भेजा · प्राप्तकर्ता नर्स की प्रतीक्षा",
+      "swapped": "बेड बदल दिए गए",
+      "cancelled": "स्थानांतरण रद्द · मरीज़ इसी बेड पर रहेंगे"
+    },
+    "mark": {
+      "origin": "बाहर स्थानांतरण",
+      "target": "अंदर स्थानांतरण"
+    },
+    "reason": {
+      "clinical_step_up": "उच्च देखभाल हेतु",
+      "clinical_step_down": "कम देखभाल हेतु",
+      "post_op": "ऑपरेशन के बाद",
+      "isolation": "आइसोलेशन",
+      "gender_fix": "लिंग वार्ड सुधार",
+      "patient_request": "मरीज़ का अनुरोध",
+      "bed_management": "बेड प्रबंधन"
+    },
+    "swapReason": {
+      "gender_fix": "लिंग वार्ड सुधार",
+      "isolation_fix": "आइसोलेशन सुधार",
+      "clinical": "चिकित्सकीय",
+      "patient_request": "मरीज़ का अनुरोध"
+    },
+    "cancelReason": {
+      "patient_deteriorated": "मरीज़ की हालत बिगड़ी",
+      "receiving_ward_declined": "प्राप्तकर्ता वार्ड ने मना किया",
+      "bed_unsuitable": "बेड उपयुक्त नहीं",
+      "plan_changed": "योजना बदली",
+      "other": "अन्य"
+    },
+    "signer": {
+      "patient": "मरीज़",
+      "guardian": "अभिभावक",
+      "representative": "प्रतिनिधि"
+    },
+    "sbar": {
+      "situation": "स्थिति",
+      "background": "पृष्ठभूमि",
+      "assessment": "आकलन",
+      "recommendation": "सुझाव"
+    },
+    "dur": {
+      "justNow": "अभी",
+      "min": "{{n}} मिनट",
+      "hourMin": "{{h}} घंटे {{m}} मिनट"
+    },
+    "handovers": {
+      "title": "आपकी प्रतीक्षा में",
+      "count": "{{count}} प्रतीक्षा में",
+      "wards": "प्राप्तकर्ता वार्ड",
+      "allWards": "सभी वार्ड · {{count}}",
+      "loading": "हैंडओवर लोड हो रहे हैं…",
+      "loadFailed": "हैंडओवर लोड नहीं हो सके। फिर कोशिश हो रही है।",
+      "forbidden": "आप हैंडओवर स्वीकार नहीं करते।",
+      "empty": "कोई हैंडओवर प्रतीक्षा में नहीं है।",
+      "uhid": "UHID {{uhid}}",
+      "to": "तक",
+      "sent": "{{span}} पहले {{name}} ने भेजा",
+      "escalatesIn": "{{span}} में एस्केलेशन",
+      "escalated": "{{span}} पहले एस्केलेट हुआ",
+      "youSent": "यह आपने भेजा",
+      "accept": "मरीज़ स्वीकार करें",
+      "decline": "अस्वीकार करें",
+      "accepted": "स्वीकार · मरीज़ अब {{bed}} पर",
+      "declined": "स्थानांतरण रद्द"
+    }
+  },
+  "transport": {
+    "board": {
+      "title": "ट्रांसपोर्ट",
+      "waitingEscort": "एस्कॉर्ट का इंतज़ार",
+      "waitingPorter": "पोर्टर का इंतज़ार",
+      "request": "माँगें",
+      "none": "कोई खुली शिफ्टिंग नहीं",
+      "colClock": "समय",
+      "colWhat": "क्या",
+      "colRoute": "कहाँ से → कहाँ",
+      "colHow": "कैसे",
+      "colEscort": "एस्कॉर्ट",
+      "colPorter": "पोर्टर",
+      "noPorter": "अभी पोर्टर नहीं",
+      "porters": "पोर्टर"
+    },
+    "mode": {
+      "wheelchair": "व्हीलचेयर",
+      "stretcher": "स्ट्रेचर",
+      "bed": "बेड",
+      "walking": "पैदल"
+    },
+    "isolation": {
+      "none": "कोई नहीं",
+      "contact": "संपर्क आइसोलेशन",
+      "droplet": "ड्रॉपलेट आइसोलेशन",
+      "airborne": "एयरबोर्न आइसोलेशन"
+    },
+    "reason": {
+      "admit": "भर्ती",
+      "transfer": "ट्रांसफ़र",
+      "imaging": "जाँच (इमेजिंग)",
+      "ot": "ओटी",
+      "discharge": "छुट्टी",
+      "other": "अन्य"
+    },
+    "priority": {
+      "routine": "सामान्य",
+      "urgent": "जल्दी",
+      "stat": "तुरंत"
+    },
+    "monitor": "मॉनिटर",
+    "o2": {
+      "needed": "ऑक्सीजन · सिलेंडर जाँचें",
+      "checked": "ऑक्सीजन · सिलेंडर जाँचा",
+      "check": "सिलेंडर जाँच लिया",
+      "short": "ऑक्सीजन"
+    },
+    "escort": {
+      "waiting": "एस्कॉर्ट का इंतज़ार",
+      "with": "एस्कॉर्ट: {{name}}",
+      "withShort": "एस्कॉर्ट साथ",
+      "add": "एस्कॉर्ट जोड़ें",
+      "none": "कोई नर्स या डॉक्टर नहीं मिला"
+    },
+    "scan": {
+      "label": "रिस्टबैंड स्कैन करें",
+      "placeholder": "बैंड स्कैन करें या कोड लिखें",
+      "handover": "सौंप दें"
+    },
+    "req": {
+      "title": "पोर्टर माँगें",
+      "patient": "मरीज़",
+      "findPatient": "नाम, UHID, IP नं. या बेड",
+      "noPatient": "कोई भर्ती मरीज़ नहीं मिला",
+      "change": "बदलें",
+      "critical": "ICU",
+      "escortForced": "क्रिटिकल केयर बेड: एस्कॉर्ट ज़रूरी",
+      "from": "कहाँ से",
+      "to": "कहाँ",
+      "pick": "जगह चुनें",
+      "toNote": "या लिखें कहाँ (जैसे CT, गेट)",
+      "reason": "क्यों",
+      "how": "कैसे",
+      "oxygen": "ऑक्सीजन",
+      "isolation": "आइसोलेशन",
+      "escort": "एस्कॉर्ट",
+      "escortNeeded": "नर्स या डॉक्टर साथ",
+      "highRisk": "हाई रिस्क",
+      "priority": "प्राथमिकता",
+      "note": "पोर्टर के लिए नोट (वैकल्पिक)",
+      "send": "पोर्टर माँगें",
+      "sent": "पोर्टर माँगा गया",
+      "sentEscort": "पोर्टर माँगा · एस्कॉर्ट ज़रूरी",
+      "merged": "पहली माँग में जुड़ा"
+    },
+    "refusal": {
+      "bad_input": "माँग अधूरी",
+      "admission_required": "मरीज़ चुनें",
+      "admission_not_open": "मरीज़ भर्ती नहीं",
+      "no_destination": "कहाँ ले जाना है?",
+      "no_origin": "कहाँ से?",
+      "unknown_place": "जगह नहीं मिली",
+      "not_transport": "ट्रांसपोर्ट का काम नहीं",
+      "escort_required": "एस्कॉर्ट ज़रूरी · एस्कॉर्ट जोड़ें",
+      "escort_not_clinical": "एस्कॉर्ट नर्स या डॉक्टर हो",
+      "escort_is_porter": "पोर्टर एस्कॉर्ट नहीं",
+      "oxygen_not_checked": "पहले सिलेंडर जाँचें",
+      "already_started": "शिफ्टिंग शुरू हो चुकी",
+      "scan_required": "रिस्टबैंड स्कैन करें",
+      "band_unknown": "बैंड नहीं पहचाना",
+      "band_void": "पुराना बैंड · नया स्कैन करें",
+      "wrong_patient": "गलत मरीज़ · रुकें",
+      "band_mismatch": "बैंड कोड मरीज़ से मेल नहीं · रुकें"
+    }
+  },
+  "passes": {
+    "listFailed": "भर्ती मरीज़ लोड नहीं हुए।",
+    "listForbidden": "आपका खाता भर्ती मरीज़ नहीं देख सकता।",
+    "title": "पास",
+    "subtitle": "अटेंडेंट और विज़िटर पास",
+    "toScan": "पास स्कैन",
+    "admitted": "भर्ती मरीज़",
+    "noneAdmitted": "इस सूची में कोई भर्ती मरीज़ नहीं।",
+    "pick": "पास देखने के लिए भर्ती मरीज़ चुनें।",
+    "issuedOf": "{{max}} में से {{live}} जारी",
+    "entitled": "हक़",
+    "custodyOn": "पुलिस हिरासत: केवल पुलिस गार्ड पास",
+    "banOn": "डॉक्टर ने विज़िटर रोके: {{reason}}",
+    "issueTitle": "अटेंडेंट पास",
+    "kindLabel": "पास",
+    "babyAdmission": "शिशु की भर्ती आईडी (NICU)",
+    "issue": "पास जारी करें",
+    "visitorTitle": "विज़िटर पास",
+    "visitorHours": "मिलने का समय {{hours}} · {{max}} में से {{live}} चालू",
+    "visitorClosed": "अभी बंद",
+    "issueVisitor": "विज़िटर पास जारी करें",
+    "live": "चालू पास",
+    "noneLive": "कोई चालू पास नहीं।",
+    "endedCount": "{{n}} समाप्त (रद्द या ख़त्म)",
+    "print": "प्रिंट",
+    "lost": "खोया — नया दें",
+    "manageTitle": "डॉक्टर की रोक और हिरासत",
+    "reason": "कारण",
+    "stopVisitors": "विज़िटर रोकें",
+    "resume": "फिर से अनुमति",
+    "custodySet": "पुलिस हिरासत",
+    "custodyClear": "पुलिस हिरासत समाप्त",
+    "fix": "उपाय",
+    "holder": {
+      "name": "नाम",
+      "phone": "मोबाइल (वैकल्पिक)",
+      "relation": "रिश्ता"
+    },
+    "col": {
+      "kind": "पास",
+      "holder": "धारक",
+      "state": "स्थिति",
+      "until": "कब तक मान्य"
+    },
+    "state": {
+      "active": "चालू",
+      "paused": "रुका",
+      "revoked": "रद्द",
+      "expired": "ख़त्म"
+    },
+    "kind": {
+      "attendant": "अटेंडेंट",
+      "visitor": "विज़िटर",
+      "parent_stay": "अभिभावक",
+      "nicu_mother": "NICU माँ",
+      "police_guard": "पुलिस गार्ड",
+      "lounge": "ICU लाउंज"
+    },
+    "card": {
+      "patient": "मरीज़",
+      "untilDischarge": "छुट्टी तक",
+      "until": "तक",
+      "hours": "मिलने का समय {{hours}}",
+      "foot": "वार्ड के दरवाज़े पर दिखाएँ। खो गया? तुरंत डेस्क को बताएँ — पुराना पास बंद हो जाएगा।"
+    },
+    "scan": {
+      "title": "पास स्कैन",
+      "door": "दरवाज़ा",
+      "mainGate": "मुख्य गेट (वार्ड जाँच नहीं)",
+      "ready": "पास स्कैन करें",
+      "token": "पास कोड स्कैन करें या लिखें",
+      "check": "जाँचें",
+      "recent": "हाल के स्कैन",
+      "result": {
+        "valid": "मान्य",
+        "wrong_ward": "ग़लत वार्ड",
+        "outside_hours": "मिलने के समय के बाहर",
+        "expired": "ख़त्म",
+        "revoked": "रद्द",
+        "paused": "रुका",
+        "unknown": "पास नहीं"
+      }
+    }
+  },
+  "ipdAdmit": {
+    "erArrival": "ER आगमन",
+    "findShort": "नाम, यूएचआईडी या मोबाइल",
+    "retry": "फिर से कोशिश करें",
+    "listFailed": "भर्ती अनुरोध लोड नहीं हुए।",
+    "listForbidden": "आपका खाता भर्ती अनुरोध नहीं देख सकता।",
+    "capWarning": "कमरा किराया सीमा",
+    "findPatient": "यूएचआईडी कार्ड स्कैन करें, या नाम, यूएचआईडी, मोबाइल लिखें",
+    "title": "भर्ती",
+    "subtitle": "भर्ती डेस्क · एक ही शीट",
+    "openRequests": "खुले अनुरोध",
+    "pickRequest": "खुले अनुरोध ({{n}})",
+    "newRequest": "नया अनुरोध",
+    "toBeds": "बेड बोर्ड",
+    "incomplete": "अधूरा",
+    "patient": "मरीज़",
+    "uhid": "UHID",
+    "ipNo": "IP",
+    "noAllergy": "कोई एलर्जी दर्ज नहीं",
+    "isolation": "आइसोलेशन",
+    "emptyTitle": "खुला अनुरोध चुनें या नया बनाएँ",
+    "emptySub": "ओपीडी सलाह, इमरजेंसी और डाउनटाइम कागज़ — सब ऊपर की सूची में आते हैं।",
+    "adviceFrom": "{{name}} से · {{time}}",
+    "diagnosis": "निदान",
+    "consultant": "कंसल्टेंट",
+    "department": "विभाग",
+    "validUntil": "सलाह मान्य",
+    "payer": "भुगतानकर्ता",
+    "payerAside": "सक्रिय टैरिफ़ से दरें",
+    "plan": "योजना",
+    "planMedical": "मेडिकल",
+    "planSurgical": "नियोजित सर्जरी",
+    "procedureEstimate": "प्रक्रिया अनुमान ₹",
+    "schemeZero": "योजना मरीज़: ₹0 देना है",
+    "roomClass": "कमरे की श्रेणी",
+    "freeBeds": "{{n}} खाली",
+    "rateMissing": "दर तय नहीं ({{what}}) · बिलिंग से दर तय करवाएँ",
+    "roomPerDay": "कमरा",
+    "stayEst": "3 दिन अनुमान",
+    "depositLabel": "जमा",
+    "heldUntil": "{{time}} तक आपके लिए रोका गया",
+    "flowHead": "बेड फ़्लो · {{cls}} के लिए हर नियम पर खरे {{n}} बेड",
+    "noBeds": "अभी कोई खाली बेड हर नियम पर खरा नहीं",
+    "chosen": "चुना · रोका गया",
+    "readyNow": "अभी तैयार",
+    "consentLang": "सहमति की भाषा",
+    "signedBy": "हस्ताक्षर",
+    "signerName": "नाम",
+    "relation": "रिश्ता",
+    "repReason": "मरीज़ हस्ताक्षर क्यों नहीं कर सकते",
+    "paperSigned": "कागज़ी सहमति पर हस्ताक्षर हुए",
+    "witness": "गवाह",
+    "consentLater": "टैबलेट हस्ताक्षर और ओटीपी बाद में आएँगे; आज कागज़ ही रिकॉर्ड है।",
+    "admitAndPrint": "भर्ती करें और बैंड छापें",
+    "fix": "उपाय",
+    "checklist": "भर्ती से पहले",
+    "done": "हो गया",
+    "todoWord": "बाकी",
+    "fromAdvice": "ओपीडी सलाह से",
+    "noAdvice": "पिछले 48 घंटे में भर्ती की कोई ओपीडी सलाह नहीं — मरीज़ और सलाह देने वाले डॉक्टर चुनें।",
+    "change": "बदलें",
+    "raise": "भर्ती अनुरोध बनाएँ",
+    "bed": "बेड",
+    "step": {
+      "advice": "भर्ती सलाह",
+      "payer": "भुगतानकर्ता और श्रेणी",
+      "bed": "बेड",
+      "consent": "सहमति",
+      "deposit": "जमा"
+    },
+    "check": {
+      "advice": "सलाह",
+      "payer": "भुगतानकर्ता और श्रेणी",
+      "bed": "बेड रोका",
+      "consent": "सहमति",
+      "deposit": "जमा या छूट",
+      "icu": "इंटेंसिविस्ट की मंज़ूरी"
+    },
+    "payerKind": {
+      "cash": "नकद",
+      "insurance_cashless": "कैशलेस",
+      "insurance_reimbursement": "प्रतिपूर्ति",
+      "pmjay": "पीएम-जय",
+      "state_scheme": "राज्य योजना",
+      "corporate": "कॉर्पोरेट"
+    },
+    "payerRel": {
+      "self": "स्वयं",
+      "relative": "रिश्तेदार",
+      "employer": "नियोक्ता",
+      "other": "अन्य"
+    },
+    "signer": {
+      "patient": "मरीज़",
+      "guardian": "अभिभावक",
+      "representative": "प्रतिनिधि"
+    },
+    "tender": {
+      "cash": "नकद",
+      "upi": "यूपीआई",
+      "card": "कार्ड"
+    },
+    "iso": {
+      "none": "कोई नहीं",
+      "contact": "संपर्क",
+      "droplet": "ड्रॉपलेट",
+      "airborne": "हवा से"
+    },
+    "source": {
+      "opd_advice": "ओपीडी सलाह",
+      "ot_daycare_conversion": "डे-केयर से",
+      "er": "इमरजेंसी",
+      "direct": "सीधे",
+      "transfer_in": "बाहर से ट्रांसफ़र",
+      "downtime": "डाउनटाइम कागज़"
+    },
+    "state": {
+      "requested": "अनुरोध",
+      "reserved": "बेड रोका",
+      "admitted": "भर्ती",
+      "transferring": "ट्रांसफ़र",
+      "fit_declared": "छुट्टी योग्य",
+      "discharging": "छुट्टी जारी",
+      "discharged": "छुट्टी",
+      "lama": "लामा",
+      "absconded": "फ़रार",
+      "deceased": "मृत",
+      "transferred_out": "बाहर भेजा",
+      "cancelled": "रद्द"
+    },
+    "basis": {
+      "medical_class_days": "श्रेणी के 3 दिन का शुल्क",
+      "icu_class_days": "आईसीयू के 3 दिन",
+      "surgery_estimate_share": "प्रक्रिया अनुमान का 50 %",
+      "scheme_zero": "योजना: कुछ नहीं देना",
+      "cashless_non_payables": "बीमा जो नहीं देता उसके लिए",
+      "downtime_backfill": "डाउनटाइम: कागज़ी जमा जाँचनी है",
+      "emergency_exempt": "स्थिर होने से पहले कोई जमा नहीं"
+    },
+    "exempt": {
+      "scheme": "छूट: योजना मरीज़",
+      "emergency_not_stabilised": "छूट: इमरजेंसी, अभी स्थिर नहीं",
+      "cashless_no_non_payables": "छूट: इस श्रेणी में कोई जमा नहीं"
+    },
+    "deposit": {
+      "required": "जमा",
+      "paid": "जमा हुआ",
+      "receipt": "रसीद",
+      "tender": "भुगतान",
+      "ref": "संदर्भ",
+      "payer": "भुगतान किया",
+      "take": "{{amount}} लें",
+      "planFirst": "पहले भुगतानकर्ता और श्रेणी चुनें",
+      "takeFirst": "पहले जमा लें"
+    },
+    "icu": {
+      "needed": "आईसीयू के लिए इंटेंसिविस्ट की मंज़ूरी चाहिए",
+      "waiting": "मंज़ूरी माँगी · इंतज़ार",
+      "granted": "इंटेंसिविस्ट ने मंज़ूरी दी",
+      "request": "मंज़ूरी माँगें",
+      "note": "भर्ती डेस्क से आईसीयू भर्ती का अनुरोध"
+    },
+    "after": {
+      "title": "भर्ती के बाद",
+      "admitted": "{{time}} पर भर्ती · {{bed}}",
+      "ipNo": "आईपी नंबर {{no}}",
+      "bed": "बेड {{bed}} पर",
+      "band": "बैंड छपा · एलर्जी बैंड पर लिखी",
+      "deposit": "जमा {{amount}} खाते में",
+      "later": "वार्ड नर्स, पोर्टर और परिवार संदेश अपने लेन के साथ आएँगे"
+    },
+    "todo": {
+      "consent": "सहमति लेनी है",
+      "payer": "भुगतानकर्ता दर्ज करना है",
+      "band": "बैंड छापना है",
+      "stabilised": "स्थिर दर्ज करना है (फिर जमा)",
+      "diagnosis": "निदान जोड़ना है"
+    },
+    "band": {
+      "title": "रिस्टबैंड",
+      "print": "बैंड छापें"
+    },
+    "estimate": {
+      "title": "अनुमान",
+      "head": "अनुमान · {{cls}} · {{days}} दिन",
+      "room": "कमरा किराया · 3 दिन",
+      "nursing": "नर्सिंग · 3 दिन",
+      "visit": "कंसल्टेंट विज़िट · 3 दिन",
+      "total": "कुल",
+      "none": "अनुमान देखने के लिए श्रेणी चुनें",
+      "foot": "सक्रिय टैरिफ़ से। दवाइयाँ, जाँचें और प्रक्रियाएँ होने पर बिल होती हैं।"
+    },
+    "emergency": {
+      "open": "इमरजेंसी भर्ती",
+      "title": "इमरजेंसी भर्ती — एक टैप",
+      "sub": "सिर्फ़ मरीज़ और बेड। स्थिर होने से पहले कोई जमा नहीं; सहमति, भुगतानकर्ता, बैंड बाद में।",
+      "admit": "अभी भर्ती करें"
+    },
+    "downtime": {
+      "open": "डाउनटाइम कागज़",
+      "title": "डाउनटाइम भर्ती दर्ज करें",
+      "sub": "कागज़ का सीरियल और उसका अपना समय। एक सीरियल एक बार।",
+      "serial": "कागज़ सीरियल",
+      "requestedAt": "अनुरोध समय (कागज़)",
+      "admittedAt": "भर्ती समय (कागज़)",
+      "save": "भर्ती दर्ज करें"
+    }
+  },
+  "maintenance": {
+    "title": "मेंटेनेंस",
+    "report": "ख़राबी बताएँ",
+    "close": "बंद करें",
+    "done": "हो गया",
+    "failed": "सेव नहीं हुआ। फिर कोशिश करें।",
+    "offline": "ऑफ़लाइन",
+    "none": "कोई खुली मरम्मत नहीं",
+    "noFloor": "मंज़िल नहीं",
+    "someone": "कोई",
+    "floorOpen": "{{count}} खुले",
+    "floorCritical": "{{count}} गंभीर · {{open}} खुले",
+    "late": "देर",
+    "blocked": "बेड बंद",
+    "onRelease": "ख़ाली होने पर बंद",
+    "dispatch": "भेजें",
+    "dispatched": "भेज दिया",
+    "confirm": "पुष्टि",
+    "confirmRepair": "मरम्मत की पुष्टि",
+    "confirmed": "मरम्मत की पुष्टि हुई",
+    "count": {
+      "open": "खुले",
+      "critical": "गंभीर",
+      "late": "देर",
+      "toConfirm": "नर्स की प्रतीक्षा",
+      "blockedBeds": "बेड बंद",
+      "notShown": "नहीं दिखाए"
+    },
+    "side": {
+      "toConfirm": "ठीक · नर्स की प्रतीक्षा ({{count}})",
+      "noneToConfirm": "कुछ बाकी नहीं",
+      "blockedBeds": "मरम्मत से बंद बेड ({{count}})",
+      "noBeds": "कोई बेड बंद नहीं",
+      "replace": "बदलें? ({{count}})",
+      "noReplace": "कुछ चिह्नित नहीं"
+    },
+    "replace": {
+      "short": "बदलें?",
+      "why": "30 दिन में 3 ख़राबी",
+      "flagged": "30 दिन में तीसरी ख़राबी — बदलने के लिए चिह्नित"
+    },
+    "state": {
+      "open": "तकनीशियन की प्रतीक्षा",
+      "undispatched": "भेजा नहीं गया",
+      "assigned": "{{who}} के पास",
+      "in_progress": "{{who}} काम पर",
+      "fixed": "ठीक, नर्स की प्रतीक्षा",
+      "closed": "बंद",
+      "cancelled": "रद्द"
+    },
+    "bedState": {
+      "open": "तकनीशियन की प्रतीक्षा",
+      "assigned": "तकनीशियन तय",
+      "in_progress": "मरम्मत जारी",
+      "fixed": "ठीक, नर्स की प्रतीक्षा",
+      "closed": "बंद",
+      "cancelled": "रद्द"
+    },
+    "bedLine": "{{head}} · मरम्मत #{{n}} · {{state}}",
+    "bedShort": "मरम्मत #{{n}} · {{state}}",
+    "age": {
+      "min": "{{m}} मिनट",
+      "hmin": "{{h}} घं {{m}} मिनट",
+      "dh": "{{d}} दिन {{h}} घं"
+    },
+    "item": {
+      "bed": "बेड",
+      "oxygen_point": "ऑक्सीजन पॉइंट",
+      "suction": "सक्शन",
+      "monitor": "मॉनिटर",
+      "fixture": "फ़िटिंग",
+      "electrical": "बिजली",
+      "plumbing": "पानी/नल",
+      "ac": "एसी",
+      "other": "अन्य"
+    },
+    "urgency": {
+      "routine": "सामान्य",
+      "urgent": "जल्दी",
+      "critical": "गंभीर"
+    },
+    "urgencyBack": {
+      "routine": "3 दिन में",
+      "urgent": "24 घं में",
+      "critical": "4 घं में"
+    },
+    "placeKind": {
+      "bed": "बेड",
+      "room": "कमरा",
+      "ward": "वार्ड",
+      "hall": "हॉल",
+      "floor": "मंज़िल"
+    },
+    "bedEffect": {
+      "blocked": "पुष्टि तक बेड बंद",
+      "block_on_release": "मरीज़ जाने पर बेड बंद होगा",
+      "joined_block": "बेड की मरम्मत में जोड़ा",
+      "already_blocked": "बेड पहले से किसी और कारण बंद",
+      "not_blocked_status": "बेड बंद नहीं हुआ (अनपेक्षित स्थिति) — मरम्मत दर्ज",
+      "not_blocked_reserved": "बेड आरक्षित है — बंद नहीं",
+      "not_a_bed": "मरम्मत भेजी गई"
+    },
+    "raise": {
+      "title": "ख़राबी बताएँ",
+      "place": "कहाँ",
+      "placeHint": "बेड, कमरा या वार्ड कोड",
+      "change": "बदलें",
+      "item": "क्या ख़राब है",
+      "urgency": "कितना ज़रूरी",
+      "note": "क्या दिक्कत है",
+      "noteHint": "कुछ शब्द",
+      "tag": "एसेट टैग (अगर हो)",
+      "tagHint": "जैसे OX-12",
+      "send": "भेजें",
+      "sending": "भेज रहे हैं…",
+      "raised": "मरम्मत #{{n}} दर्ज",
+      "merged": "पहले से दर्ज · मरम्मत #{{n}}",
+      "failed": "दर्ज नहीं हुआ। फिर कोशिश करें।"
+    },
+    "refusal": {
+      "forbidden": "आपको अनुमति नहीं।",
+      "unknown_place": "जगह नहीं मिली।",
+      "place_retired": "यह जगह बंद है।",
+      "ticket_not_found": "मरम्मत नहीं मिली।",
+      "ticket_closed": "मरम्मत पहले से बंद।",
+      "already_fixed": "पहले से ठीक।",
+      "not_fixed_yet": "अभी ठीक नहीं हुआ।",
+      "task_still_open": "काम जारी है।",
+      "verifier_is_doer": "तकनीशियन अपनी मरम्मत की पुष्टि नहीं कर सकता।",
+      "not_permitted": "आप इस मरम्मत की पुष्टि नहीं कर सकते।",
+      "repair_ticket_open": "पहले मरम्मत टिकट बंद करें।"
+    }
+  },
+  "housekeeping": {
+    "title": "हाउसकीपिंग",
+    "terminal": "सुपरवाइज़र जाँचेगा",
+    "check": "जाँचें",
+    "checked": "जाँचा गया",
+    "clean": {
+      "line": "सफ़ाई · {{minutes}} मिनट",
+      "minutes": "{{minutes}} मिनट",
+      "by": "{{who}} को सौंपा",
+      "pool": "सफ़ाईकर्मी की प्रतीक्षा",
+      "done": "साफ़ · जाँच बाकी",
+      "late": "देर",
+      "terminal": "टर्मिनल सफ़ाई",
+      "verify": "सफ़ाई जाँचें",
+      "verified": "सफ़ाई जाँची · बेड ख़ाली",
+      "nudge": "हाउसकीपिंग को याद दिलाएँ",
+      "nudged": "याद दिलाया"
+    },
+    "refusal": {
+      "terminal_needs_supervisor": "टर्मिनल सफ़ाई सुपरवाइज़र जाँचता है",
+      "not_a_clean": "हाउसकीपिंग का काम नहीं",
+      "bad_input": "अनुरोध अधूरा"
+    }
+  },
   "testPicker": {
     "placeholder": "जाँच खोजें — 2 अक्षर",
     "none": "कोई जाँच नहीं मिली।",
@@ -38,6 +3913,36 @@
     "menu": "मेनू"
   },
   "nav": {
+    "erMci": "MCI बोर्ड",
+    "erCodes": "ER कोड",
+    "erBill": "ER बिल डेस्क",
+    "erMlc": "MLC डेस्क",
+    "erPatient": "ER मरीज़",
+    "erTriage": "ER ट्राइएज",
+    "erBoard": "ER बोर्ड",
+    "erDesk": "ER डेस्क",
+    "ipdTpa": "टीपीए डेस्क",
+    "ipdNarcotics": "नारकोटिक्स",
+    "ipdPharmacy": "IP फ़ार्मेसी",
+    "ipdMar": "MAR",
+    "ipdRounds": "राउंड",
+    "adminWorkflows": "वर्कफ़्लो",
+    "ipdMyShift": "मेरी शिफ्ट",
+    "ipdWard": "नर्स स्टेशन",
+    "dietConsults": "आहार परामर्श",
+    "dietKitchen": "रसोई",
+    "dietWard": "आहार पत्रक",
+    "ipdFamilyCalls": "परिवार के कॉल",
+    "ipdDischarge": "डिस्चार्ज",
+    "ipdBillDesk": "बिल डेस्क",
+    "ipdHandovers": "हैंडओवर",
+    "transportRequest": "पोर्टर माँगें",
+    "transport": "ट्रांसपोर्ट",
+    "passScan": "पास स्कैन",
+    "ipdPasses": "पास",
+    "ipdAdmit": "भर्ती",
+    "maintenance": "मेंटेनेंस",
+    "housekeeping": "हाउसकीपिंग",
     "formularyAdmin": "फ़ॉर्मुलरी",
     "merge": "मर्ज समीक्षा",
     "approvals": "अनुमोदन",
@@ -66,23 +3971,33 @@
     "otList": "ऑपरेशन थिएटर सूची",
     "otBook": "डे-केयर केस बुक करें",
     "otRecovery": "रिकवरी",
+    "ipdBeds": "बेड",
     "counterDesk": "डेस्क वन",
     "group": {
       "desk": "डेस्क",
       "patients": "मरीज़",
       "opd": "ओपीडी",
+      "wards": "वार्ड",
       "imaging": "इमेजिंग",
       "lab": "लैब",
       "theatre": "ओटी",
       "pharmacy": "फार्मेसी",
       "billing": "बिलिंग",
       "stores": "स्टोर",
+      "services": "सेवाएँ",
       "admin": "प्रशासन"
     },
     "staffReports": "स्टाफ़ रिपोर्ट",
     "outsideTests": "बाहर की जाँचें",
     "copilotHealth": "कोपायलट हेल्थ",
     "crkFormulary": "CRK फ़ॉर्मुलरी",
+    "myTasks": "मेरे काम",
+    "taskBoard": "काम बोर्ड",
+    "bmwHandle": "कचरा थैले",
+    "bmwBoard": "कचरा बोर्ड",
+    "bmwReports": "कचरा रिपोर्ट",
+    "linenHandle": "लिनन गिनती",
+    "linenBoard": "लिनन बोर्ड",
     "labDesk": "लैब डेस्क",
     "labCollection": "नमूना संग्रह",
     "labBench": "बेंच",
@@ -3374,6 +7289,22 @@
       "law": "फार्मेसी अधिनियम (धारा 42) के अनुसार पर्चे की दवा पंजीकृत फार्मासिस्ट दे, और शेड्यूल H1 बिक्री में डॉक्टर का नाम रजिस्टर में हो। यह चालू होने पर सिस्टम पहली शर्त लागू नहीं करता — ज़िम्मेदारी अस्पताल की है।"
     }
   },
+  "ipdRateCard": {
+    "title": "आईपीडी दर सूची",
+    "lead": "बेड श्रेणी अनुसार दैनिक भर्ती दरें। शुरू करने के लिए हर श्रेणी में कमरे का किराया, नर्सिंग शुल्क और डॉक्टर विज़िट शुल्क ज़रूरी है।",
+    "noAccess": "आपको मूल्य सूची देखने की अनुमति नहीं है।",
+    "versionLabel": "संस्करण",
+    "versionInForce": "लागू",
+    "versionPending": "संस्करण {{no}} ({{status}})",
+    "status": { "draft": "मसौदा", "submitted": "स्वीकृति बाकी" },
+    "count": "{{ready}} श्रेणियाँ तैयार, {{missing}} में कमी",
+    "noVersion": "अभी कोई दर संस्करण लागू नहीं है।",
+    "colClass": "बेड श्रेणी",
+    "component": { "room": "कमरे का किराया", "nursing": "नर्सिंग", "visit": "डॉक्टर विज़िट", "rmo": "आरएमओ", "cross_visit": "अन्य डॉक्टर परामर्श" },
+    "optional": "वैकल्पिक",
+    "missing": "नहीं है",
+    "notSet": "तय नहीं"
+  },
   "consultPrices": {
     "lead": "लागू ओपीडी परामर्श शुल्क।",
     "colNow": "लागू",
@@ -3809,6 +7740,92 @@
     "nextStep": "कृपया अगले वाइटल्स डेस्क पर जाएँ।"
   },
   "desk": {
+    "erLwbsRisk": {
+      "title": "लंबी प्रतीक्षा: बिना दिखाए जा सकते हैं"
+    },
+    "erPreAlert": {
+      "title": "ईआर में आने वाले"
+    },
+    "erMlcCountersignDue": {
+      "title": "एमएलसी: काउंटरसाइन बाकी"
+    },
+    "erMlcIntimationDue": {
+      "title": "एमएलसी: पुलिस सूचना बाकी"
+    },
+    "erBoardingLong": {
+      "title": "ईआर में भर्ती की प्रतीक्षा"
+    },
+    "erCriticalResult": {
+      "title": "क्रिटिकल रिपोर्ट"
+    },
+    "erResultReady": {
+      "title": "रिपोर्ट तैयार"
+    },
+    "erCallUnanswered": {
+      "title": "विशेषज्ञ कॉल का जवाब नहीं"
+    },
+    "erDoctorOverdue": {
+      "title": "ईआर डॉक्टर की प्रतीक्षा"
+    },
+    "erRetriageDue": {
+      "title": "दोबारा ट्राइएज बाकी"
+    },
+    "erCasualtyNow": {
+      "title": "कैजुअल्टी अभी",
+      "inDepartment": "विभाग में",
+      "waitingTriage": "ट्राइएज की प्रतीक्षा",
+      "boarding": "भर्ती की प्रतीक्षा",
+      "expected": "आने वाले"
+    },
+    "ipdTpaDue": {
+      "title": "टीपीए डेस्क देय",
+      "preauth": "प्री-ऑथ और प्रश्न",
+      "enhancement": "बढ़ोतरी देय",
+      "claims": "क्लेम 30+ दिन"
+    },
+    "ipdAllergyFlags": {
+      "title": "जाँचने योग्य एलर्जी"
+    },
+    "ipdNewOrder": {
+      "title": "नए आदेश"
+    },
+    "ipdDueDose": {
+      "title": "बकाया खुराकें"
+    },
+    "ipdHandoverPending": {
+      "title": "शिफ्ट हैंडओवर स्वीकार करने हैं"
+    },
+    "ipdAssessmentDue": {
+      "title": "नर्सिंग आकलन बाकी"
+    },
+    "ipdEwsRising": {
+      "title": "चेतावनी स्कोर बढ़ रहा"
+    },
+    "ipdOverdueVitals": {
+      "title": "वाइटल्स बकाया"
+    },
+    "dietConsults": {
+      "title": "आहार परामर्श बाकी"
+    },
+    "ipdCleaningOverdue": {
+      "title": "सफ़ाई 60 मिनट से ज़्यादा"
+    },
+    "ipdDischargeBlocked": {
+      "title": "अटकी छुट्टियाँ"
+    },
+    "ipdBedProposal": {
+      "title": "पक्का करने को बेड प्रस्ताव"
+    },
+    "ipdFamilyCallbacks": {
+      "title": "परिवार ने कॉल माँगा",
+      "open": "कॉल की प्रतीक्षा"
+    },
+    "ipdDepositLow": {
+      "title": "जमा राशि कम",
+      "over75": "75 % उपयोग",
+      "over90": "90 % उपयोग",
+      "exceptions": "पोस्टिंग अपवाद"
+    },
     "pharmacy": {
       "authorise": "फ़ार्मेसी आपकी राह देख रही है"
     },
@@ -4381,6 +8398,7 @@
       "flag_N": "सामान्य"
     },
     "desk": {
+      "runningBill": "आईपीडी चालू बिल में जुड़ा",
       "title": "लैब रिसेप्शन",
       "place": "काउंटर L-01",
       "arrivedToday": "आज पोर्टल से आए",
@@ -7496,7 +11514,8 @@
     }
   },
   "common": {
-    "loading": "लोड हो रहा है…"
+    "loading": "लोड हो रहा है…",
+    "noAccess": "आपको इस स्क्रीन की अनुमति नहीं है।"
   },
   "registrationCounter": {
     "title": "पंजीकरण काउंटर",
@@ -11215,6 +15234,10 @@
       "reminderTooLong": "80 अक्षरों से कम रखें।",
       "reminderLimit": "आपके 20 रिमाइंडर हैं। पहले एक हटाएँ।",
       "reminderSet": "रिमाइंडर लग गया, {{when}}।",
+      "erCasualtyNow": "कैजुअल्टी अभी: विभाग में {{inDepartment}}, ट्राइएज की प्रतीक्षा में {{waitingTriage}} (सबसे लंबी {{longestWait}} मिनट), भर्ती की प्रतीक्षा में {{boarding}}, आने वाले {{expected}}।",
+      "erCasualtyQuiet": "कैजुअल्टी अभी खाली है, और कोई एम्बुलेंस आने वाली नहीं है।",
+      "erMlcDue": "एमएलसी बाकी: {{intimations}} पुलिस सूचना और {{countersigns}} काउंटरसाइन — {{overdue}} समय से बाहर। एमएलसी डेस्क खोलें।",
+      "erMlcNoneDue": "कोई एमएलसी सूचना या काउंटरसाइन बाकी नहीं है।",
       "ddWaitingOnMe": "आपके लिए बाकी: {{critical}} क्रिटिकल, {{unread}} बिना पढ़ी रिपोर्ट, {{deltas}} बदले नतीजे, {{openVisits}} खुली विज़िट।",
       "ddWaitingOnMeNone": "आपके लिए कुछ बाकी नहीं है।",
       "ddUnitOwes": "{{unit}} के {{open}} काम बाकी; {{overdue}} समय से बाहर। डॉक्टर डेस्क खोलें।",
@@ -16419,6 +20442,14 @@
       "reminders": {
         "today": "फ़ोन पर"
       }
+    },
+    "backdated": {
+      "what": "{{date}} का राउंड, {{name}} — देर से दर्ज",
+      "reason": "कारण (ज़रूरी)",
+      "charge": "विज़िट चार्ज करें",
+      "waive": "माफ़ करें",
+      "done": "पुरानी तारीख़ की विज़िट निपटाई गई",
+      "failed": "सेव नहीं हुआ — फिर से कोशिश करें"
     }
   },
   "myLeave": {
@@ -16726,5 +20757,727 @@
     "close": "बंद करें",
     "liveStays": "हस्ताक्षर तक v{{n}} दिखता रहेगा।",
     "saveNewVersion": "नया संस्करण सहेजेगा; पुराना दिखता रहेगा।"
+  },
+  "ipdBeds": {
+    "floorOutside": "जनगणना में नहीं {{occupied}} / {{total}}",
+    "floorCensus": "जनगणना में {{occupied}} / {{total}}",
+    "flow": {
+      "tag": "बेड फ़्लो",
+      "why": "यह बेड क्यों",
+      "none": "कोई ख़ाली बेड सभी नियमों पर खरा नहीं",
+      "confirm": "{{bed}} पक्का करें",
+      "failed": "बेड नहीं रुका — फिर कोशिश करें",
+      "free": "{{minutes}} मिनट से ख़ाली",
+      "reason": {
+        "class_requested": "माँगी गई श्रेणी",
+        "gender_male_bay": "पुरुष बे",
+        "gender_female_bay": "महिला बे",
+        "gender_any": "कोई भी लिंग",
+        "gender_paediatric": "बाल बेड",
+        "room_shared_male": "साझा कमरा पुरुष",
+        "room_shared_female": "साझा कमरा महिला",
+        "isolation_contact": "संपर्क आइसोलेशन",
+        "isolation_droplet": "ड्रॉपलेट आइसोलेशन",
+        "isolation_airborne": "हवाई आइसोलेशन, नेगेटिव प्रेशर",
+        "icu_bed": "आईसीयू बेड",
+        "own_department": "{{dept}} वार्ड"
+      },
+      "refused": {
+        "bed_not_available": "बेड अभी लिया गया — दूसरा चुनें",
+        "bed_gender_mismatch": "बेड का लिंग नियम मेल नहीं खाता",
+        "bed_isolation_mismatch": "बेड का आइसोलेशन मेल नहीं खाता",
+        "bed_age_mismatch": "बेड का आयु नियम मेल नहीं खाता",
+        "bed_class_mismatch": "बेड की श्रेणी मेल नहीं खाती",
+        "room_gender_unknown": "कमरे का लिंग दर्ज नहीं",
+        "bed_retired": "बेड हटाया गया",
+        "bed_not_found": "बेड नहीं मिला",
+        "overflow_needs_duty_manager": "ओवरफ़्लो बेड पर ड्यूटी मैनेजर चाहिए",
+        "admission_wrong_state": "अनुरोध आगे बढ़ चुका",
+        "admission_not_found": "अनुरोध नहीं मिला",
+        "state_changed": "अनुरोध बदला — रीफ़्रेश करें",
+        "advice_expired": "सलाह की अवधि ख़त्म"
+      }
+    },
+    "title": "बेड",
+    "allFloors": "सभी मंज़िलें",
+    "find": "मरीज़, UHID या बेड खोजें",
+    "notFound": "कुछ नहीं मिला",
+    "wallMode": "वॉल मोड · नाम छिपाएँ",
+    "showNames": "नाम दिखाएँ",
+    "home": "होम",
+    "totals": "अस्पताल का योग",
+    "stat": {
+      "tomorrow": "कल {{n}} छुट्टी योग्य",
+      "occupied": "भरे",
+      "occupiedSub": "{{pct}} % · {{reserved}} आरक्षित",
+      "overflow": "अतिरिक्त {{occupied}} / {{total}} · क्षमता नहीं",
+      "free": "अभी ख़ाली",
+      "noneFree": "कोई बेड ख़ाली नहीं",
+      "cleaning": "सफ़ाई",
+      "cleaningSub": "{{n}} 60 मिनट से ज़्यादा",
+      "blocked": "बंद",
+      "blockedSub": "{{n}} वापसी की तारीख़ पार",
+      "discharges": "आज की छुट्टियाँ",
+      "dischargesSub": "अनुमान बाद में",
+      "waiting": "बेड की प्रतीक्षा",
+      "waitingSub": "भर्ती के साथ आएगा",
+      "longest": "सबसे लंबी {{minutes}} मिनट"
+    },
+    "classShort": {
+      "general": "जनरल",
+      "semi_private": "सेमी-प्राइवेट",
+      "private": "प्राइवेट",
+      "deluxe": "डीलक्स",
+      "suite": "सुइट",
+      "hdu": "HDU",
+      "icu": "ICU",
+      "nicu": "NICU",
+      "picu": "PICU",
+      "ldr": "LDR",
+      "daycare": "डे केयर",
+      "emergency": "ER",
+      "overflow": "अतिरिक्त"
+    },
+    "class": {
+      "general": "जनरल वार्ड",
+      "semi_private": "सेमी-प्राइवेट",
+      "private": "प्राइवेट कमरा",
+      "deluxe": "डीलक्स कमरा",
+      "suite": "सुइट",
+      "hdu": "HDU",
+      "icu": "ICU",
+      "nicu": "NICU",
+      "picu": "PICU",
+      "ldr": "LDR",
+      "daycare": "डे केयर",
+      "emergency": "इमरजेंसी",
+      "overflow": "अतिरिक्त बेड"
+    },
+    "waiting": {
+      "icu": "आईसीयू",
+      "wait": "{{minutes}} मिनट",
+      "held": "रोका · {{bed}}",
+      "open": "भर्ती में खोलें",
+      "title": "बेड की प्रतीक्षा",
+      "empty": "कोई प्रतीक्षा में नहीं",
+      "emptySub": "भर्ती के अनुरोध यहाँ दिखेंगे"
+    },
+    "floors": "मंज़िलें",
+    "floorsHint": "{{total}} में से {{shown}} दिख रही · मंज़िल चुनें",
+    "pickFloor": "मंज़िल चुनें",
+    "floorCount": "{{occupied}} / {{total}} बेड",
+    "loading": "बेड लोड हो रहे हैं…",
+    "loadFailed": "बेड लोड नहीं हो सके",
+    "noBeds": "कोई बेड दर्ज नहीं",
+    "status": {
+      "occupied": "भरा",
+      "incumbent": "पुराना सिस्टम",
+      "available": "ख़ाली",
+      "reserved": "आरक्षित",
+      "cleaning": "सफ़ाई",
+      "blocked": "बंद"
+    },
+    "full": "भरा हुआ",
+    "notInCensus": "जनगणना में नहीं",
+    "next": {
+      "title": "अगले 24 घंटे",
+      "discharges": "आज छुट्टी",
+      "forecast": "अनुमान बाद में आएगा"
+    },
+    "blockers": {
+      "nudged": "याद दिलाया",
+      "nudge": "हाउसकीपिंग को याद दिलाएँ",
+      "title": "रुकावटें",
+      "none": "अभी कोई नहीं",
+      "cleaning": "60 मिनट से ज़्यादा सफ़ाई",
+      "cleaningItem": "{{bed}} · {{minutes}} मिनट",
+      "blocked": "वापसी की तारीख़ पार, अब भी बंद"
+    },
+    "live": "लाइव · अपडेट",
+    "offline": "ऑफ़लाइन · आख़िरी अपडेट {{time}}",
+    "offlineNever": "ऑफ़लाइन · अभी अपडेट नहीं",
+    "outsideCensus": "डे केयर और ER {{occupied}} / {{total}} · जनगणना में नहीं",
+    "print": "बेड बोर्ड प्रिंट करें",
+    "close": "बंद करें",
+    "pickBed": "बेड चुनें",
+    "cancel": "रद्द करें",
+    "actFailed": "सेव नहीं हुआ — फिर कोशिश करें",
+    "until": "{{time}} तक",
+    "since": "{{time}} से",
+    "back": "वापसी {{time}}",
+    "blockReason": {
+      "maintenance": "मरम्मत",
+      "infection_control": "संक्रमण नियंत्रण",
+      "deep_clean": "गहरी सफ़ाई",
+      "staff_shortage": "स्टाफ़ की कमी",
+      "other": "अन्य"
+    },
+    "releaseReason": {
+      "plan_changed": "योजना बदली",
+      "bed_unsuitable": "बेड उपयुक्त नहीं",
+      "other": "अन्य"
+    },
+    "gender": {
+      "male": "केवल पुरुष",
+      "female": "केवल महिला",
+      "any": "कोई भी",
+      "paediatric": "बच्चे"
+    },
+    "isolation": {
+      "none": "आइसोलेशन नहीं",
+      "contact": "संपर्क आइसोलेशन",
+      "droplet": "ड्रॉपलेट आइसोलेशन",
+      "airborne": "हवा से फैलने वाला आइसोलेशन"
+    },
+    "icu": "ICU बेड",
+    "overflowBed": "अतिरिक्त · ड्यूटी मैनेजर की मंज़ूरी",
+    "blockedLine": "बंद",
+    "blockOnReleaseLine": "ख़ाली होने पर बंद",
+    "reservedLine": "{{time}} तक आरक्षित",
+    "act": {
+      "reserve": "2 घंटे आरक्षित करें",
+      "assign": "बेड दें",
+      "releaseReservation": "आरक्षण हटाएँ",
+      "clean": "साफ़ हुआ",
+      "releaseIncumbent": "ख़ाली करें",
+      "unblock": "खोलें",
+      "block": "बंद करें",
+      "blockOnRelease": "ख़ाली होने पर बंद"
+    },
+    "done": {
+      "clean": "साफ़ दर्ज हुआ",
+      "released": "सफ़ाई के लिए ख़ाली",
+      "unblocked": "खुल गया",
+      "reserved": "2 घंटे के लिए आरक्षित",
+      "assigned": "बेड दिया गया",
+      "blocked": "बंद हुआ",
+      "reservationReleased": "आरक्षण हटा"
+    },
+    "form": {
+      "patientId": "मरीज़ ID",
+      "admissionId": "भर्ती संदर्भ",
+      "class": "माँगी गई श्रेणी",
+      "isolation": "आइसोलेशन",
+      "classChange": "श्रेणी बदलाव",
+      "noChange": "वही श्रेणी",
+      "upgrade": "ऊपर",
+      "downgrade": "नीचे",
+      "icu": "ICU चाहिए",
+      "reason": "कारण",
+      "expectedBack": "वापसी कब",
+      "note": "टिप्पणी"
+    }
+  },
+  "bmw": {
+    "offline": "नेटवर्क नहीं",
+    "cytotoxic": "साइटोटॉक्सिक",
+    "category": {
+      "yellow": "पीला",
+      "red": "लाल",
+      "white_translucent": "सफ़ेद · नुकीला",
+      "blue": "नीला · कांच"
+    },
+    "state": {
+      "generated": "वार्ड में",
+      "collected": "रास्ते में",
+      "stored": "स्टोर में",
+      "handed_over": "सौंपा गया",
+      "treated": "निपटाया गया",
+      "disputed": "वज़न विवाद"
+    },
+    "clock": {
+      "ok": "{{count}} घं",
+      "warning": "{{count}} घं · चेतावनी",
+      "alert": "{{count}} घं · {{limit}} घं से ज़्यादा"
+    },
+    "board": {
+      "title": "कचरा बोर्ड",
+      "onSite": "परिसर में",
+      "warning": "36 घं+",
+      "alert": "{{limit}} घं से ज़्यादा",
+      "todayBags": "थैले आज · {{kg}}",
+      "onSiteTitle": "परिसर में — 48 घंटे की घड़ी",
+      "oldestFirst": "सबसे पुराने पहले",
+      "none": "परिसर में कोई थैला नहीं",
+      "more": "+{{count}} और",
+      "todayTitle": "आज वार्ड अनुसार",
+      "noneToday": "आज कोई थैला नहीं",
+      "bags": "{{count}} थैले",
+      "nextPickup": "अगला उठान",
+      "noManifest": "अभी कोई सौंपना नहीं",
+      "lastManifest": "पिछला: {{no}} · {{at}} · {{bags}} थैले",
+      "disputes": "वज़न विवाद",
+      "noDisputes": "कोई खुला विवाद नहीं",
+      "gapHeavy": "+{{pct}} %",
+      "gapLight": "−{{pct}} %",
+      "weights": "हमारा {{ours}} · उनका {{theirs}}",
+      "weightGap": "वज़न अंतर"
+    },
+    "handle": {
+      "title": "कचरा थैले",
+      "scanTitle": "थैला स्कैन करें",
+      "scanPlaceholder": "बार कोड",
+      "find": "खोजें",
+      "newTitle": "नया थैला",
+      "place": "जगह",
+      "pickPlace": "वार्ड या कमरा चुनें",
+      "cytoYellow": "साइटोटॉक्सिक (केवल पीला)",
+      "labelSent": "लेबल भेजा · {{code}}",
+      "labelHere": "लेबल छप रहा · {{code}}",
+      "collect": "तौलें · ले जाएँ",
+      "store": "तौलें · स्टोर करें",
+      "collected": "ले लिया ✓",
+      "stored": "स्टोर में ✓",
+      "wardWeight": "वार्ड पर वज़न",
+      "centralWeight": "स्टोर पर वज़न",
+      "nothingToDo": "यहाँ कुछ नहीं करना",
+      "recent": "आज"
+    },
+    "reports": {
+      "monthly": "मासिक रिपोर्ट",
+      "formIv": "फ़ॉर्म IV — श्रेणी अनुसार मात्रा (kg)",
+      "month": "महीना",
+      "year": "वर्ष",
+      "csv": "CSV डाउनलोड",
+      "category": "श्रेणी",
+      "categoryKg": "श्रेणी (kg)",
+      "genBags": "बने थैले",
+      "genKg": "बना kg",
+      "outBags": "सौंपे थैले",
+      "outKg": "सौंपा kg",
+      "treatedBags": "निपटाए थैले",
+      "treatedKg": "निपटाया kg",
+      "disputedBags": "इनमें विवादित",
+      "total": "कुल",
+      "footnote": "{{unweighed}} थैले बिना तौले · {{disputes}} खुले विवाद",
+      "perDay": "{{days}} दिनों में औसत {{kg}} kg प्रतिदिन",
+      "line": {
+        "yellow": "पीला",
+        "yellow_cytotoxic": "इनमें साइटोटॉक्सिक",
+        "red": "लाल",
+        "white_translucent": "सफ़ेद (पारभासी)",
+        "blue": "नीला"
+      },
+      "mon": {
+        "01": "जन",
+        "02": "फ़र",
+        "03": "मार्च",
+        "04": "अप्रै",
+        "05": "मई",
+        "06": "जून",
+        "07": "जुला",
+        "08": "अग",
+        "09": "सित",
+        "10": "अक्टू",
+        "11": "नव",
+        "12": "दिस"
+      }
+    },
+    "refusal": {
+      "failed": "नहीं हुआ",
+      "bad_input": "अधूरा अनुरोध",
+      "unknown_place": "जगह नहीं मिली",
+      "unknown_bag": "ऐसा थैला नहीं",
+      "cytotoxic_not_yellow": "साइटोटॉक्सिक: केवल पीला",
+      "already_weighed": "पहले से तौला",
+      "weight_needed": "पहले तौलें",
+      "wrong_state": "गलत क़दम — फिर स्कैन करें",
+      "already_handed_over": "पहले ही सौंपा",
+      "not_stored": "अभी स्टोर में नहीं",
+      "duplicate_bag": "थैला दो बार",
+      "unknown_manifest": "मैनिफ़ेस्ट नहीं मिला",
+      "not_on_manifest": "इस मैनिफ़ेस्ट पर नहीं",
+      "category_not_on_manifest": "यह रंग मैनिफ़ेस्ट पर नहीं",
+      "weight_given_twice": "वज़न दो बार दिया",
+      "slip_too_light": "पर्ची बहुत हल्की",
+      "already_recorded": "पहले से दर्ज",
+      "unknown_dispute": "विवाद नहीं मिला",
+      "dispute_closed": "विवाद बंद",
+      "bad_period": "गलत महीना या वर्ष"
+    }
+  },
+  "tasks": {
+    "loading": "लोड हो रहा है…",
+    "offline": "नेटवर्क नहीं",
+    "noPlace": "जगह नहीं बताई",
+    "askedAgain": "{{count}}× माँगा",
+    "kind": {
+      "diet_ward_notice": "वार्ड पर आहार बदलाव",
+      "diet_delivery": "भोजन पहुँचाना",
+      "document_run": "काग़ज़ ले जाना (Document run)",
+      "sample_run": "सैंपल ले जाना (Sample run)",
+      "patient_move": "मरीज़ शिफ्टिंग (Patient move)",
+      "repair_biomedical": "उपकरण मरम्मत (Equipment repair)",
+      "repair_general": "मरम्मत (Repair)",
+      "room_inspection": "कमरा जाँच (Room inspection)",
+      "spill": "फैलाव सफ़ाई (Spill clean)",
+      "bed_clean_terminal": "टर्मिनल सफ़ाई (Terminal clean)",
+      "bed_clean_routine": "बेड सफ़ाई (Bed clean)",
+      "general": "सामान्य काम"
+    },
+    "priority": {
+      "urgent": "जल्दी",
+      "stat": "तुरंत"
+    },
+    "state": {
+      "created": "इंतज़ार में",
+      "assigned": "सौंपा गया",
+      "accepted": "लिया गया",
+      "in_progress": "चल रहा है",
+      "done": "हो गया",
+      "verified": "जाँचा गया",
+      "cancelled": "रद्द"
+    },
+    "act": {
+      "accept": "लें",
+      "start": "शुरू करें",
+      "done": "हो गया"
+    },
+    "clock": {
+      "late": "{{count}} मिनट देर",
+      "dueIn": "{{count}} मिनट में",
+      "dueAt": "{{at}} तक"
+    },
+    "mine": {
+      "title": "मेरे काम",
+      "none": "अभी कोई काम नहीं",
+      "pool": "लेने के लिए खुले"
+    },
+    "board": {
+      "title": "काम बोर्ड",
+      "open": "खुले",
+      "late": "देर से",
+      "pool": "इंतज़ार में",
+      "none": "कोई खुला काम नहीं",
+      "noFloor": "मंज़िल नहीं",
+      "floorOpen": "{{count}} खुले",
+      "floorLate": "{{count}} देर · {{open}} खुले",
+      "notShown": "स्क्रीन पर नहीं", "more": "+{{count}} और",
+     
+      "unassigned": "अभी किसी को नहीं",
+      "workers": "कर्मचारी",
+      "noWorkers": "ड्यूटी पर कोई नहीं",
+      "load": "{{count}} खुले",
+      "onDuty": "ड्यूटी पर",
+      "offDuty": "ड्यूटी से बाहर",
+      "busy": "{{count}} चल रहे",
+      "toVerify": "जाँचने को ({{count}})"
+    },
+    "refusal": {
+      "nudged_recently": "कुछ मिनट पहले याद दिलाया",
+      "failed": "नहीं हुआ",
+      "bad_input": "अनुरोध अधूरा",
+      "unknown_kind": "अनजान काम",
+      "unknown_place": "जगह नहीं मिली",
+      "unknown_worker": "काम नहीं ले सकते",
+      "not_found": "काम नहीं मिला",
+      "already_taken": "किसी और ने ले लिया",
+      "not_on_duty": "अभी ड्यूटी पर नहीं", "wrong_skill": "यह काम आपके हिस्से का नहीं", "not_yours": "आपका काम नहीं",
+      "wrong_state": "रीफ़्रेश करें",
+      "not_open": "काम बंद हो चुका",
+      "stale": "बदल गया — रीफ़्रेश करें",
+      "proof_missing": "सबूत चाहिए",
+      "no_verify_step": "जाँच का चरण नहीं",
+      "verifier_is_doer": "करने वाला नहीं जाँच सकता",
+      "not_permitted": "अनुमति नहीं",
+      "reason_required": "कारण लिखें"
+    }
+  },
+  "linen": {
+    "offline": "ऑफ़लाइन",
+    "store": "लिनन स्टोर",
+    "item": {
+      "bedsheet": "चादर",
+      "draw_sheet": "ड्रॉ शीट",
+      "pillow_cover": "तकिया कवर",
+      "blanket": "कंबल",
+      "patient_gown": "मरीज़ गाउन",
+      "towel": "तौलिया",
+      "ot_gown": "ओटी गाउन",
+      "ot_drape": "ओटी ड्रेप"
+    },
+    "board": {
+      "title": "लिनन बोर्ड",
+      "belowParOf_one": "/ {{count}} वार्ड पार से कम",
+      "belowParOf_other": "/ {{count}} वार्ड पार से कम",
+      "outToday": "आज लॉन्ड्री गए",
+      "inToday": "आज वापस",
+      "infectedToday": "आज संक्रमित गए",
+      "wardsTitle": "वार्ड",
+      "belowFirst": "पार से कम पहले",
+      "noWards": "रजिस्टर में कोई वार्ड नहीं",
+      "more_one": "+{{count}} और",
+      "more_other": "+{{count}} और",
+      "beds_one": "{{count}} बेड",
+      "beds_other": "{{count}} बेड",
+      "allAtPar": "हर आइटम पार पर",
+      "atPar": "पार पर",
+      "short_one": "पार से कम · {{count}} कम",
+      "short_other": "पार से कम · {{count}} कम",
+      "laundryTitle": "लॉन्ड्री में",
+      "batches_one": "{{count}} बैच",
+      "batches_other": "{{count}} बैच",
+      "noneAtLaundry": "लॉन्ड्री में कुछ नहीं",
+      "infectedBatch": "संक्रमित बैच",
+      "pieces_one": "{{count}} पीस",
+      "pieces_other": "{{count}} पीस",
+      "sentAt": "भेजा {{at}}",
+      "shortsTitle": "कम वापसी",
+      "shortBy_one": "{{count}} कम ({{sent}} में {{got}})",
+      "shortBy_other": "{{count}} कम ({{sent}} में {{got}})",
+      "lossTitle": "इस हफ़्ते का नुकसान · शीर्ष 5",
+      "lastSevenDays": "पिछले 7 दिन",
+      "noLoss": "कोई नुकसान नहीं गिना",
+      "missing_one": "{{count}} गायब",
+      "missing_other": "{{count}} गायब",
+      "lossSum": "शुरू {{opening}} + दिए {{issued}} − लौटे {{returned}} − गिने {{counted}}",
+      "condemnTitle": "कंडेम · प्रतीक्षा",
+      "noCondemn": "कुछ प्रतीक्षा में नहीं",
+      "askedBy": "{{name}} ने माँगा",
+      "approve": "मंज़ूर",
+      "reject": "नामंज़ूर",
+      "needsOther": "दूसरा व्यक्ति मंज़ूर करे"
+    },
+    "handle": {
+      "title": "लिनन",
+      "ward": "वार्ड",
+      "pickWard": "वार्ड चुनें",
+      "fromWard": "किस वार्ड से उधार",
+      "batch": "बैच",
+      "pickBatch": "बैच चुनें",
+      "infectedBatch": "संक्रमित बैच",
+      "reasonLabel": "कारण",
+      "nothing": "यहाँ गिनने को कुछ नहीं",
+      "less": "कम",
+      "more": "ज़्यादा",
+      "save_one": "सेव · {{count}}",
+      "save_other": "सेव · {{count}}",
+      "mode": {
+        "topUp": "भरें",
+        "soiled": "गंदा",
+        "infected": "संक्रमित",
+        "count": "गिनती",
+        "borrow": "उधार",
+        "laundryOut": "लॉन्ड्री भेजें",
+        "laundryIn": "लॉन्ड्री से",
+        "condemn": "कंडेम"
+      },
+      "hint": {
+        "topUp": "मौजूद/पार {{v}}",
+        "soiled": "मौजूद/पार {{v}}",
+        "infected": "मौजूद/पार {{v}}",
+        "count": "खाता/पार {{v}}",
+        "borrow": "मौजूद/पार {{v}}",
+        "laundryOut": "रखा {{v}}",
+        "laundryIn": "भेजा {{v}}",
+        "condemn": "मौजूद/पार {{v}}"
+      },
+      "reason": {
+        "torn": "फटा",
+        "stained": "दाग़",
+        "burnt": "जला",
+        "worn": "घिसा"
+      },
+      "saved": {
+        "topUp": "भर दिया",
+        "soiled": "गंदा सेव",
+        "infected": "संक्रमित सेव",
+        "count": "गिनती सेव",
+        "borrow": "उधार सेव",
+        "laundryOut": "बैच भेजा",
+        "laundryIn": "बैच मिला",
+        "condemn": "मंज़ूरी को भेजा"
+      }
+    },
+    "refusal": {
+      "failed": "सेव नहीं · फिर करें",
+      "bad_input": "गिनती जाँचें",
+      "unknown_ward": "वार्ड चुनें",
+      "unknown_item": "अनजान आइटम",
+      "duplicate_item": "आइटम दो बार",
+      "above_par": "पार से ज़्यादा",
+      "at_par": "पहले से पार पर",
+      "exceeds_on_hand": "वार्ड में जितना है उससे ज़्यादा",
+      "key_reused": "गिनती दोबारा · नई गिनती करें",
+      "exceeds_soiled": "रखे से ज़्यादा",
+      "same_ward": "दूसरा वार्ड चुनें",
+      "unknown_batch": "अनजान बैच",
+      "already_received": "पहले ही मिला",
+      "not_in_batch": "इस बैच में नहीं",
+      "more_than_sent": "भेजे से ज़्यादा",
+      "unknown_request": "अनुरोध नहीं मिला",
+      "request_closed": "पहले ही तय",
+      "approver_is_requester": "दूसरा व्यक्ति मंज़ूर करे"
+    }
+  },
+  "ipdBill": {
+    "split": {
+      "printFailed": "दर्ज नहीं हुआ — फिर से कोशिश करें",
+      "title": "भुगतानकर्ता विभाजन",
+      "label": "भुगतानकर्ता विभाजन",
+      "payer": "भुगतानकर्ता देगा",
+      "patient": "मरीज़ देगा",
+      "patientDue": "मरीज़ का बकाया",
+      "patientLeft": "जमा शेष (मरीज़ का हिस्सा)",
+      "preAuth": "प्री-ऑथ {{no}}",
+      "approved": "स्वीकृत {{amount}}",
+      "nonCovered": "स्वीकृत गैर-कवर",
+      "colPayer": "भुगतानकर्ता",
+      "colPatient": "मरीज़",
+      "state": {
+        "none": "कोई स्वीकृति नहीं",
+        "pending": "स्वीकृति प्रतीक्षित",
+        "approved": "स्वीकृत",
+        "denied": "अस्वीकृत"
+      },
+      "mode": {
+        "cash": "नकद",
+        "reimbursement": "प्रतिपूर्ति",
+        "insured": "कैशलेस",
+        "scheme": "योजना"
+      },
+      "why": {
+        "non_payable": "अदेय",
+        "room_rent_over_cap": "कमरा सीमा से ऊपर",
+        "room_rent_cap_proportional": "सीमा अनुपात",
+        "co_pay": "को-पे",
+        "over_approved_amount": "स्वीकृति से ऊपर",
+        "denied": "अस्वीकृत",
+        "cash": "नकद",
+        "auth_pending": "स्वीकृति प्रतीक्षित",
+        "scheme": "योजना",
+        "reversed": "रद्द",
+        "non_covered": "गैर-कवर"
+      },
+      "exception": {
+        "cash_consent_missing": "नकद सहमति नहीं",
+        "room_rent_cap_unresolved": "सीमा % के लिए बीमा राशि चाहिए"
+      }
+    },
+    "postingFailed": "रात की पोस्टिंग विफल ({{count}} प्रयास) — बिल डेस्क दोबारा चलाएगा",
+    "title": "अंतरिम बिल",
+    "loading": "बिल लोड हो रहा है…",
+    "loadFailed": "बिल लोड नहीं हुआ। फिर से कोशिश करें।",
+    "forbidden": "आपको भर्ती मरीज़ों के बिल देखने की अनुमति नहीं है।",
+    "notFound": "ऐसी कोई भर्ती नहीं मिली।",
+    "backToBeds": "बेड",
+    "print": "प्रिंट",
+    "factsLabel": "भर्ती",
+    "admitted": "भर्ती",
+    "discharged": "छुट्टी",
+    "inBed": "बेड पर",
+    "payer": "भुगतानकर्ता",
+    "tariff": "टैरिफ़",
+    "tariffVersion": "संस्करण {{no}} (भर्ती पर तय)",
+    "postedThrough": "यहाँ तक दर्ज",
+    "linesLabel": "दिन के अनुसार शुल्क",
+    "noLines": "अभी कोई शुल्क दर्ज नहीं।",
+    "todayNote": "कमरा, नर्सिंग और आरएमओ शुल्क दिन खत्म होने पर आधी रात के बाद दर्ज होते हैं; आज का शुल्क अभी बिल में नहीं है।",
+    "col": {
+      "item": "मद",
+      "code": "कोड",
+      "qty": "मात्रा",
+      "rate": "दर",
+      "gst": "जीएसटी",
+      "amount": "राशि"
+    },
+    "reversal": "वापसी",
+    "reversed": "वापस लिया",
+    "exempt": "छूट",
+    "totalsLabel": "कुल",
+    "gross": "शुल्क",
+    "discount": "छूट",
+    "gst": "जीएसटी",
+    "total": "कुल (पूर्णांकित)",
+    "deposit": "जमा राशि",
+    "due": "बकाया",
+    "depositLeft": "बची जमा",
+    "exceptionsLabel": "दर्ज नहीं",
+    "exceptionsTitle": "दर्ज नहीं ({{count}})",
+    "exceptionsFix": "गायब दर का अनुमान कभी नहीं लगाया जाता। बिलिंग टैरिफ़ में दर जोड़ती है; बिल डेस्क दिन को हल करता है।",
+    "movesLabel": "बेड और बदलाव",
+    "movesTitle": "बेड और बदलाव",
+    "billsAs": "बिल दर",
+    "now": "अभी",
+    "reason": {
+      "reissue_lost_damaged": "खोई या खराब दवा दोबारा दी गई",
+      "return_after_bill": "बिल के बाद दवा वापस",
+      "order_cancelled_after_work": "सैंपल के बाद ऑर्डर रद्द",
+      "order_cancelled_after_bill": "बिल के बाद ऑर्डर रद्द",
+      "visit_backdated": "पुरानी तारीख़ का राउंड",
+      "rate_missing": "दर नहीं",
+      "tariff_missing": "टैरिफ़ नहीं",
+      "posting_failed": "पोस्टिंग विफल"
+    },
+    "component": {
+      "er": "आपातकाल",
+      "pharmacy": "दवाइयाँ",
+      "imaging": "इमेजिंग",
+      "lab": "लैब जाँच",
+      "room": "कमरा किराया",
+      "nursing": "नर्सिंग",
+      "rmo": "आरएमओ",
+      "visit": "कंसल्टेंट विज़िट",
+      "cross_visit": "क्रॉस-कंसल्टेशन"
+    },
+    "class": {
+      "general": "जनरल वार्ड",
+      "semi_private": "सेमी-प्राइवेट",
+      "private": "प्राइवेट कमरा",
+      "deluxe": "डीलक्स कमरा",
+      "suite": "सुइट",
+      "hdu": "एचडीयू",
+      "icu": "आईसीयू",
+      "nicu": "एनआईसीयू",
+      "picu": "पीआईसीयू",
+      "ldr": "एलडीआर",
+      "daycare": "डे केयर",
+      "emergency": "इमरजेंसी",
+      "overflow": "अतिरिक्त बेड"
+    },
+    "payerKind": {
+      "cash": "नकद",
+      "insurance_cashless": "बीमा (कैशलेस)",
+      "insurance_reimbursement": "बीमा (प्रतिपूर्ति)",
+      "pmjay": "पीएम-जय",
+      "state_scheme": "राज्य योजना",
+      "corporate": "कॉरपोरेट"
+    }
+  },
+  "ipCharge": {
+    "open": "IP खाते में डालें",
+    "title": "IP भर्ती के बिल में डालें",
+    "sub": "बिक्री मरीज़ के IPD चालू बिल में जाती है, बैच MRP पर। नकद नहीं लिया जाता।",
+    "findPlaceholder": "IP नंबर या UHID",
+    "find": "खोजें",
+    "bed": "बेड",
+    "ward": "वार्ड",
+    "medicine": "दवा",
+    "search": "OPD शेल्फ़ खोजें — ब्रांड या साल्ट",
+    "available": "शेल्फ़ पर {{count}}",
+    "qty": "मात्रा",
+    "remove": "हटाएँ",
+    "charge": "IP बिल में डालें",
+    "charging": "डाला जा रहा है…",
+    "cancel": "बंद करें",
+    "charged": "{{amount}} IP बिल {{ip}} में जोड़ा गया।",
+    "returns": "काउंटर पर वापसी",
+    "out": "मरीज़ के पास {{count}}",
+    "returnQty": "वापस इकाइयाँ",
+    "returnButton": "वापस लें",
+    "returnReason": "OPD फ़ार्मेसी काउंटर पर वापस",
+    "failed": "सर्वर ने इसे मना किया। फिर से करें या फ़ार्मेसी इंचार्ज से पूछें।",
+    "offline": "सर्वर से जवाब नहीं आया। नेटवर्क देखें और फिर से करें।",
+    "refusal": {
+      "not_admitted": "यह मरीज़ भर्ती नहीं है। नकद में बेचें।",
+      "ip_discharged": "यह मरीज़ डिस्चार्ज हो चुका है। नकद में बेचें।",
+      "ip_bill_settled": "फ़ाइनल बिल चुकता हो चुका है। अब दवाएँ वार्ड के ज़रिए पूरक बिल में जाएँगी, या नकद में बेचें।",
+      "admission_not_found": "इस IP नंबर की कोई भर्ती नहीं है।",
+      "controlled_at_counter": "नियंत्रित दवा भर्ती मरीज़ को केवल वार्ड ऑर्डर पर ही जाती है।",
+      "price_missing": "इस दवा का काउंटर दाम नहीं है। बिलिंग से दाम डलवाएँ।",
+      "stock_short": "इस मात्रा के लिए शेल्फ़ पर पूरा स्टॉक नहीं है।",
+      "medicine_not_stocked": "OPD फ़ार्मेसी में यह दवा नहीं रखी जाती।",
+      "return_exceeds_issue": "मरीज़ के पास जितनी हैं उससे ज़्यादा वापस नहीं आ सकतीं।"
+    }
   }
 }

@@ -18,7 +18,7 @@ export type { InteractionRow, MedicineWithSalts, MedicineRow, RouteClass, SaltRo
  * these four are what the prescription pipeline calls at issue time. DD2 lives in
  * `resolveDrugTexts`: exact resolution only, `null` for anything else.
  */
-export { listInteractionsAmong, normalizeDrugName, resolveDrugTexts, resolveMedicines } from "./resolve";
+export { interactionRulesPresent, listInteractionsAmong, normalizeDrugName, resolveDrugTexts, resolveMedicines } from "./resolve";
 export type { InteractionPair, ResolvedDrug, SaltRef } from "./resolve";
 /**
  * THE BOUNDED READS, AND THEY ARE THE ONLY READS.

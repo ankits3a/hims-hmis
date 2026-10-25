@@ -92,7 +92,10 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      # IPD/ER train (decision 0085): the stack roughly doubles the program tsc holds; the default heap ran out on it.
       - run: pnpm typecheck
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
       - run: pnpm lint
       # WASA M-08 — A NEW HIGH IN WHAT SHIPS FAILS THE BUILD. `--prod` because the image installs
       # production dependencies only (Dockerfile `prod-deps`); dev-only advisories (esbuild under

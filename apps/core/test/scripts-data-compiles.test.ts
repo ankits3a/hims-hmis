@@ -15,6 +15,9 @@ import { join } from "node:path";
  */
 const TAKEN_BY_ARGUMENT: Record<string, string> = {
   "pharmacy-starter-list.csv": "load-pharmacy-shelf.ts --list",
+  "ipd-bed-layout.planning.csv": "load-bed-layout.ts --file",
+  // #604 — eight SYNTHETIC rows in NHA HBP's column names, for tests and a rehearsal; never the scheme's list.
+  "nha-hbp-sample.csv": "import-scheme-packages.ts --file",
 };
 
 describe("scripts/data ships inside the server image", () => {

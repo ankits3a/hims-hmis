@@ -1,0 +1,29 @@
+/*
+ * 2026-10-14 — the ward narcotic register (`.ipdk`, on top of the eMAR's `.ipde` tokens). Desktop at the station and the
+ * phone at 390 px: the balance table scrolls inside its own box, everything else wraps. Every state is a symbol and a word.
+ */
+.ipdk-sec { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+.ipdk-sec h2 { font-size: 1rem; margin: 0 0 8px; }
+.ipdk-table { border-collapse: collapse; width: 100%; min-width: 760px; font-size: 0.875rem; }
+.ipdk-table th, .ipdk-table td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: right; vertical-align: top; }
+.ipdk-table thead th { background: var(--soft); font-weight: 600; }
+.ipdk-table .l { text-align: left; }
+.ipdk-exp { background: var(--soft); }
+.ipdk-bad, .ipdk-refusal { color: var(--red); }
+.ipdk-refusal { margin: 8px 0; }
+.ipdk-said { color: var(--green); font-weight: 600; }
+.ipdk-count-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 12px; margin-bottom: 10px; }
+.ipdk-field { display: flex; flex-direction: column; gap: 4px; font-size: 0.875rem; }
+.ipdk-second { display: flex; flex-wrap: wrap; gap: 8px 12px; border: 1px dashed var(--line); border-radius: 8px; margin: 0 0 10px; padding: 8px 10px; }
+.ipdk-second label { display: flex; flex-direction: column; gap: 4px; font-size: 0.875rem; flex: 1 1 140px; }
+.ipdk-exc, .ipdk-lines { list-style: none; margin: 0; padding: 0; }
+.ipdk-exc li { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.ipdk-exc li.open > div:first-child b { color: var(--red); }
+.ipdk-exc li.closed > div:first-child b { color: var(--green); }
+.ipdk-resolve { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.ipdk-resolve input { flex: 1 1 200px; }
+.ipdk-lines li { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 0.875rem; }
+.ipdk-kind { min-width: 7em; }
+.ipdk-kind.k-given, .ipdk-kind.k-wasted, .ipdk-kind.k-returned, .ipdk-kind.k-transfer_out { color: var(--ink); }
+.ipdk-kind.k-received, .ipdk-kind.k-transfer_in, .ipdk-kind.k-reversal { color: var(--green); }
+@media print { .ipdk .noprint { display: none !important; } .ipdk-sec { border: 0; padding: 0; } }

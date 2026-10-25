@@ -1,4 +1,5 @@
 import { Module, Global, Inject, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import type { Type } from "@nestjs/common";
 import type { Pool } from "pg";
 import { createDb, Db } from "./kernel/db/client";
 import { loadConfig, AppConfig } from "./kernel/config";
@@ -35,7 +36,17 @@ import { RadiologyModule } from "./modules/radiology/radiology.module";
 import { PcpndtModule } from "./modules/pcpndt/pcpndt.module";
 import { AttendanceModule } from "./modules/attendance";
 import { OrderingModule } from "./modules/ordering";
+import { IpdModule } from "./modules/ipd";
 import { DoctorDeskModule } from "./modules/doctor-desk";
+import { TasksModule } from "./modules/tasks";
+import { BmwModule } from "./modules/bmw";
+import { LinenModule } from "./modules/linen";
+import { HousekeepingModule } from "./modules/housekeeping";
+import { MaintenanceModule } from "./modules/maintenance";
+import { PassesModule } from "./modules/passes";
+import { TransportModule } from "./modules/transport";
+import { DietModule } from "./modules/diet";
+import { EmergencyModule } from "./modules/emergency"; // ER lane 1 (#808) — the ER desk, the tracking board and the arrival intents
 import { AerbModule } from "./modules/aerb/aerb.module";
 import { PrintingModule } from "./kernel/printing/printing.module";
 import { RosterModule } from "./modules/roster/roster.module";
@@ -43,15 +54,35 @@ import { PharmacyModule } from "./modules/pharmacy/pharmacy.module";
 import { AbdmModule } from "./modules/abdm"; // ABDM S0 — the connector's callback routes (a leaf module, off until configured)
 import { collectResourceKinds } from "./kernel/resources/kinds";
 import { collectOrderKinds } from "./kernel/orders/kinds";
+import { liveModules } from "./kernel/modules/switch";
+import type { DarkModuleKey } from "./kernel/modules/switch";
 
 export { DB, DB_POOL, CONFIG, MODULE_REGISTRY } from "./kernel/tokens";
 
 type DbBundle = { db: Db; pool: Pool };
 const DB_BUNDLE = Symbol("DB_BUNDLE");
 
+/**
+ * Decision 0085 — the Nest modules of the ten dark modules (`kernel/modules/switch.ts`), each beside its switch key. One
+ * that `HMIS_MODULES_ON` does not name is left out of `imports` below: none of its routes is mounted. Their manifests
+ * stay in `ALL_MANIFESTS` (permissions exist either way); every collector reads `registry.live()`.
+ */
+const DARK_MODULES: readonly (readonly [DarkModuleKey, Type<unknown>])[] = [
+  ["tasks", TasksModule], // E0.1 task engine (#713) — the task doors: raise, accept, start, done, verify, cancel, my list, the board
+  ["ipd", IpdModule], // E1.1 (#718) — the bed routes and the bed board's live topic
+  ["bmw", BmwModule], // E1.7 bio-medical waste (#724) — the bag doors, the board and the two legal reports
+  ["linen", LinenModule], // E2.4 linen (#728) — top up, returns, counts, laundry, borrow, condemn, par, the board, the handler phone
+  ["housekeeping", HousekeepingModule], // E1.4 (#721) — the Beds board's cleaning clocks, the housekeeping board, verify and nudge
+  ["maintenance", MaintenanceModule], // E1.5 (#722) — repair tickets: raise, confirm, cancel, dispatch, the board, the Beds board's repair line
+  ["passes", PassesModule], // E1.3 (#720) — attendant and visitor passes, the scan at a ward door
+  ["transport", TransportModule], // E1.6 (#723) — the transport request, the porter's details, escort and oxygen check, the supervisor board
+  ["diet", DietModule], // E4.4 (#736) — diet orders, NPO, the kitchen board and meal lists, the ward diet sheet, dietician consults
+  ["emergency", EmergencyModule], // ER lane 1 (#808) — the ER desk, the tracking board and the arrival intents
+];
+
 @Global()
 @Module({
-  imports: [AuthModule, WorkflowModule, ApprovalsModule, PatientsModule, TariffModule, RealtimeModule, OpdModule, BillingModule, AlertsModule, ReachModule, OpsModule, SearchModule, DeskModule, InferenceModule, CopilotModule, MembershipModule, PartnersModule, FormularyModule, ResourcesModule, MaterialsModule, OtModule, LabModule, RadiologyModule, PcpndtModule, AerbModule, PharmacyModule, PrintingModule, RosterModule, AbdmModule, AttendanceModule, OrderingModule, DoctorDeskModule], // ← DoctorDeskModule (DD-0 #626 — the Tower, nudges and AI briefs; a leaf) // ← OrderingModule (decision 0067 — the ordering door, the outside-test catalogue) // ← AttendanceModule (STAFF ATTENDANCE, owner 2026-10-09 — the read routes, the Users screen's mobile/Aadhaar routes and bioattend's signed webhook) // ← AbdmModule (ABDM S0 — ABDM's callback routes, `@Public()` to user auth and guarded by ABDM's RS256 JWT; no manifest until S1's first permissioned route) // ← RosterModule (PHASE R R1 — no controller yet: the screens are the S-series, gated on the owner's sign-off of the four design boards (plan §8); the MaterialsModule/PharmacyModule precedent) // ← CopilotModule (FD-COPILOT — the desk copilot's one door, `POST /copilot/ask`. A KERNEL module like `search` and `desk`: every seat's F2 bar asks through it, and no module owns the desk agent) // ← PrintingModule (FD-24 T2 — the print relay's claim/report routes. A KERNEL module like `notify`: the counter, the cashier and the vitals bay all print, and none of them owns printing) // ← AerbModule (Plan 18c T1 — the AERB registers' routes. Its OWN module rather than part of radiology (D1) so the cath lab (63) and radiation oncology (64) file a licence and write a dose row without installing a department; the `pcpndt` precedent, one statute over); ← PharmacyModule (Plan 16c T1 — no controller yet: T2 mounts the first, the MaterialsModule/LabModule precedent); ← PcpndtModule (Plan 18a T6 — the statutory register's routes; its manifest shipped inert at T2 and this is the commit that mounts its controller. It is its OWN module rather than part of radiology (DD1) so 15b and 62 can install the register without installing a department); ← RadiologyModule (Plan 18a T3 — the placement route; the module seam shipped inert at T2 and this is the commit that mounts its first controller, the LabModule precedent); ← LabModule (Plan 17b T8 — the five lab controllers; the module seam shipped inert at Plan 17 T2 and this is the commit that mounts them); ← OtModule (Plan 15 T2 — no controller yet: T8 mounts the four, the MaterialsModule precedent); ← MaterialsModule (Plan 14 T2 — no controller yet: T8 mounts it, the ResourcesModule/MembershipModule precedent); ← ResourcesModule (Plan 13 T2 — no controller yet: T5 mounts it, the MembershipModule/PartnersModule precedent); ← MembershipModule/PartnersModule (Plan 09 T1 — no controllers yet: T3/T5 and T7/T8 mount them); InferenceModule (Plan 11h T9, inert); SearchModule (Plan 11h T1); PatientsModule added; AlertsModule (Plan 08.5 D6); OpsModule (Plan 11c T2)
+  imports: [AuthModule, WorkflowModule, ApprovalsModule, PatientsModule, TariffModule, RealtimeModule, OpdModule, BillingModule, AlertsModule, ReachModule, OpsModule, SearchModule, DeskModule, InferenceModule, CopilotModule, MembershipModule, PartnersModule, FormularyModule, ResourcesModule, MaterialsModule, OtModule, LabModule, RadiologyModule, PcpndtModule, AerbModule, PharmacyModule, PrintingModule, RosterModule, AbdmModule, AttendanceModule, OrderingModule, ...liveModules(DARK_MODULES), DoctorDeskModule], // ← DoctorDeskModule (DD-0 #626 — the Tower, nudges and AI briefs; a leaf) // ← OrderingModule (decision 0067 — the ordering door, the outside-test catalogue) // ← AttendanceModule (STAFF ATTENDANCE, owner 2026-10-09 — the read routes, the Users screen's mobile/Aadhaar routes and bioattend's signed webhook) // ← AbdmModule (ABDM S0 — ABDM's callback routes, `@Public()` to user auth and guarded by ABDM's RS256 JWT; no manifest until S1's first permissioned route) // ← RosterModule (PHASE R R1 — no controller yet: the screens are the S-series, gated on the owner's sign-off of the four design boards (plan §8); the MaterialsModule/PharmacyModule precedent) // ← CopilotModule (FD-COPILOT — the desk copilot's one door, `POST /copilot/ask`. A KERNEL module like `search` and `desk`: every seat's F2 bar asks through it, and no module owns the desk agent) // ← PrintingModule (FD-24 T2 — the print relay's claim/report routes. A KERNEL module like `notify`: the counter, the cashier and the vitals bay all print, and none of them owns printing) // ← AerbModule (Plan 18c T1 — the AERB registers' routes. Its OWN module rather than part of radiology (D1) so the cath lab (63) and radiation oncology (64) file a licence and write a dose row without installing a department; the `pcpndt` precedent, one statute over); ← PharmacyModule (Plan 16c T1 — no controller yet: T2 mounts the first, the MaterialsModule/LabModule precedent); ← PcpndtModule (Plan 18a T6 — the statutory register's routes; its manifest shipped inert at T2 and this is the commit that mounts its controller. It is its OWN module rather than part of radiology (DD1) so 15b and 62 can install the register without installing a department); ← RadiologyModule (Plan 18a T3 — the placement route; the module seam shipped inert at T2 and this is the commit that mounts its first controller, the LabModule precedent); ← LabModule (Plan 17b T8 — the five lab controllers; the module seam shipped inert at Plan 17 T2 and this is the commit that mounts them); ← OtModule (Plan 15 T2 — no controller yet: T8 mounts the four, the MaterialsModule precedent); ← MaterialsModule (Plan 14 T2 — no controller yet: T8 mounts it, the ResourcesModule/MembershipModule precedent); ← ResourcesModule (Plan 13 T2 — no controller yet: T5 mounts it, the MembershipModule/PartnersModule precedent); ← MembershipModule/PartnersModule (Plan 09 T1 — no controllers yet: T3/T5 and T7/T8 mount them); InferenceModule (Plan 11h T9, inert); SearchModule (Plan 11h T1); PatientsModule added; AlertsModule (Plan 08.5 D6); OpsModule (Plan 11c T2)
   controllers: [HealthController],
   providers: [
     { provide: CONFIG, useFactory: (): AppConfig => loadConfig() },

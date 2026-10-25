@@ -77,10 +77,10 @@ describe("lab cancellation money and the counter's cash lane (17b T7)", () => {
     expect([out.cancelledFrom, out.refund.workDone]).toEqual(["placed", false]);
     const notes = await notesFor();
     expect(notes).toHaveLength(1);
-    expect(notes[0]!.invoiceId).toBe(placed.invoice.invoiceId);
+    expect(notes[0]!.invoiceId).toBe(placed.invoice!.invoiceId);
     /** EXACTLY that line's money — the whole invoice here, because the order carried one test. */
-    expect(out.refund.creditedPaise).toBe(placed.invoice.netPayablePaise);
-    expect(notes[0]!.netPaise).toBe(placed.invoice.netPayablePaise);
+    expect(out.refund.creditedPaise).toBe(placed.invoice!.netPayablePaise);
+    expect(notes[0]!.netPaise).toBe(placed.invoice!.netPayablePaise);
   });
 
   it("A5 leg 2: cancelled from `in_progress` WITH a result ⇒ NO credit note — the charge stands", async () => {

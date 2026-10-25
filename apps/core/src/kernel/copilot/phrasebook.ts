@@ -1,4 +1,5 @@
 import { ALL_MANIFESTS } from "../modules/manifests";
+import { isModuleOn } from "../modules/switch";
 import { installedCopilotIntents, strongCue, weakCue } from "./intents";
 import type { CollectedCopilotIntent, CopilotIntentMenu, Cue, ModuleCopilotIntent } from "./intents";
 
@@ -404,7 +405,8 @@ let fromManifests: readonly CollectedCopilotIntent[] | null = null;
 export function moduleCopilotIntents(): readonly CollectedCopilotIntent[] {
   const live = installedCopilotIntents();
   if (live !== null) return live;
-  fromManifests ??= ALL_MANIFESTS.flatMap((m) =>
+  // Decision 0085 — the same live set the API installs: a module switched off routes no words.
+  fromManifests ??= ALL_MANIFESTS.filter((m) => isModuleOn(m.key)).flatMap((m) =>
     Object.entries(m.copilotIntents ?? {}).map(([intent, decl]) => ({ intent: intent as ModuleCopilotIntent, module: m.key, decl })),
   );
   return fromManifests;

@@ -17,9 +17,9 @@ import i18next from "./lib/i18n";
  * projection, not a guard: every route still carries its server-side `@RequirePermission`, and
  * these assertions are about what a person is OFFERED.
  */
-function renderShell(hospital: string[]): void {
+function renderShell(hospital: string[], modules?: { dark: string[]; on: string[] }): void {
   stubFetch({
-    "GET /api/auth/me": { actor: { type: "user", id: "u1" }, permissions: { hospital, scoped: { department: {}, floor: {} } } },
+    "GET /api/auth/me": { actor: { type: "user", id: "u1" }, permissions: { hospital, scoped: { department: {}, floor: {} } }, ...(modules === undefined ? {} : { modules }) },
     "GET /api/ops/mode": { mode: "commissioning" },
     "GET /api/alerts": { items: [] },
     "GET /api/patients/search": { items: [] },
@@ -520,6 +520,21 @@ it("SHELL-UX: the key legend drops F4/F7 for a person who cannot open them, and 
   expect(legend).not.toHaveTextContent("Esc");
 });
 
+/**
+ * IPD walk 2026-10-14 — the OPD desk's legend ("/ Search · F4 · F7 · Ctrl+⏎") sat under every IPD and diet screen.
+ * It belongs to the desk: the shell gives it the path, and an inpatient or diet screen draws none.
+ */
+it("IPD walk: no OPD key legend under an inpatient screen, and it comes back on the desk", async () => {
+  renderShell(["patients.register", "opd.appointments.read", "ipd.beds.view"]);
+  await act(async () => { await router.navigate({ to: "/ipd/beds" }); });
+  await screen.findByTestId("ipd-beds");
+  // The beds board has its own <footer> (its live line); the desk's legend is the one that must be gone.
+  expect(screen.queryByTestId("shortcut-legend")).not.toBeInTheDocument();
+  expect(screen.queryByText("F4 New patient")).not.toBeInTheDocument();
+  await act(async () => { await router.navigate({ to: "/merge" }); });
+  expect(await screen.findByTestId("shortcut-legend")).toHaveTextContent("F4 New patient");
+});
+
 it("SHELL-UX: the registration clerk who holds the book still sees F4 and F7", async () => {
   renderShell(["patients.register", "opd.appointments.read"]);
   await act(async () => { await router.navigate({ to: "/merge" }); }); // the router is a singleton: a prior test left it on Desk One
@@ -622,4 +637,18 @@ it("the shell clock's date follows the language", async () => {
   } finally {
     await act(async () => { await i18next.changeLanguage("en"); });
   }
+});
+
+/**
+ * Decision 0085 invariant 1, dark by default — the workflow definitions board is an IPD go-live screen. With `ipd` off
+ * (production) its link is not drawn even for a holder of `workflow.definitions.read`; with `ipd` on it is.
+ */
+it("decision 0085: the Workflows link is absent while ipd is off, and drawn once it is on", async () => {
+  const dark = ["tasks", "ipd", "bmw", "linen", "housekeeping", "maintenance", "passes", "transport", "diet", "emergency"];
+  renderShell(["auth.users.manage", "workflow.definitions.read"], { dark, on: [] });
+  await waitFor(() => expect(screen.getAllByRole("link").map((a) => a.getAttribute("href"))).toContain("/admin/users"));
+  expect(screen.getAllByRole("link").map((a) => a.getAttribute("href"))).not.toContain("/admin/workflows");
+  cleanup();
+  renderShell(["auth.users.manage", "workflow.definitions.read"], { dark, on: ["ipd"] });
+  await waitFor(() => expect(screen.getAllByRole("link").map((a) => a.getAttribute("href"))).toContain("/admin/workflows"));
 });

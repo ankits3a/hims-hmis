@@ -1,0 +1,82 @@
+/*
+ * #604 — THE TPA DESK (board `/ipd/tpa`) and the TPA panel on the bill page, on the interim bill's tokens (`.ipdb`).
+ * 16:9 first: the board's list scrolls inside its card. At 390 px each board row is a card with labelled cells.
+ * Severity is always a word ("On time", "Due", "Overdue") — colour only repeats it.
+ */
+.ipdb.tpa-board { min-height: 0; height: auto; overflow: visible; }
+.tpa-sev { display: inline-block; margin-left: 6px; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; }
+.tpa-sev.ok { color: var(--green); }
+.tpa-sev.warn { color: var(--gold); background: var(--gold-soft); border-color: transparent; }
+.tpa-sev.hot { color: var(--red); background: var(--red-soft); border-color: transparent; }
+.tpa-chip { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 4px; background: var(--wash); color: var(--ink); }
+
+.tpa-list-card { max-height: calc(100vh - 330px); min-height: 240px; overflow: auto; padding: 0; }
+.tpa-board-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tpa-board-table thead th {
+  position: sticky; top: 0; z-index: 1; background: var(--card); text-align: left; font-size: 12px; font-weight: 500;
+  color: var(--dim); padding: 10px 10px 8px; border-bottom: 1px solid var(--line);
+}
+.tpa-board-table td { padding: 8px 10px; border-bottom: 1px solid var(--wash); vertical-align: top; }
+.tpa-board-table tr.hot td:first-child { box-shadow: inset 3px 0 0 var(--red); }
+.tpa-board-table tr.warn td:first-child { box-shadow: inset 3px 0 0 var(--gold); }
+.tpa-act { text-align: right; white-space: nowrap; }
+.tpa-act .ipdb-btn { min-height: 36px; padding: 0 12px; font-size: 13px; }
+
+/* The panel (a card in the bill page's side column). */
+.tpa-panel { display: flex; flex-direction: column; gap: 10px; }
+.tpa-panel h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; display: inline; }
+.tpa-sec { border-top: 1px solid var(--line); padding-top: 8px; }
+.tpa-sec > h3 { display: block; }
+.tpa-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 14px; }
+.tpa-row.total { justify-content: space-between; font-weight: 600; padding-top: 6px; }
+.tpa-clock { margin: 0; padding: 8px 10px; border-radius: 8px; font-size: 14px; background: var(--wash); }
+.tpa-clock.warn { background: var(--gold-soft); }
+.tpa-clock.hot { background: var(--red-soft); }
+.tpa-ok { margin: 0; color: var(--green); font-weight: 600; font-size: 14px; }
+.tpa-list { margin: 0; padding-left: 18px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+.tpa-query { background: var(--wash); border-radius: 8px; padding: 8px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 6px; }
+.tpa-query p { margin: 0; font-size: 14px; }
+.tpa-panel textarea, .tpa-panel input, .tpa-panel select {
+  font: inherit; font-size: 14px; min-height: 40px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink);
+  width: 100%; box-sizing: border-box;
+}
+.tpa-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-items: end; margin-top: 8px; }
+.tpa-form label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--dim); }
+.tpa-form .wide { grid-column: 1 / -1; }
+.tpa-form .ipdb-btn { justify-content: center; }
+.ipdb-btn.primary { background: var(--green); border-color: var(--green); color: #fff; }
+.ipdb-btn:disabled { opacity: .5; cursor: default; }
+.tpa-ded { display: grid; grid-template-columns: 1.4fr 1fr 1.4fr 44px; gap: 6px; }
+.tpa-gap { color: var(--red); font-weight: 600; }
+.tpa-claim { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
+.tpa-state { font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: var(--wash); }
+.tpa-state.settled { color: var(--green); background: var(--green-soft); }
+.tpa-state.short_paid, .tpa-state.rejected { color: var(--gold); background: var(--gold-soft); }
+.tpa-recon { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; margin: 8px 0; font-size: 13px; }
+.tpa-recon dt { color: var(--dim); }
+.tpa-recon dd { margin: 0; }
+.tpa-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tpa-table td { padding: 4px 4px; border-bottom: 1px solid var(--wash); vertical-align: top; }
+.tpa-inline { display: flex; gap: 4px; }
+.tpa-search { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--dim); margin-top: 6px; }
+.tpa-hits { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.tpa-hits li { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; }
+.tpa-hits .ipdb-btn { min-height: 36px; padding: 0 10px; font-size: 13px; }
+.tpa-panel details > summary { cursor: pointer; list-style-position: inside; }
+
+@media (max-width: 900px) {
+  .tpa-list-card { max-height: none; overflow: visible; }
+  .tpa-board-table thead { display: none; }
+  .tpa-board-table, .tpa-board-table tbody, .tpa-board-table tr, .tpa-board-table td { display: block; width: 100%; }
+  .tpa-board-table tr { border-bottom: 1px solid var(--line); padding: 8px 4px; }
+  .tpa-board-table td { border: 0; padding: 3px 6px; text-align: left; }
+  .tpa-board-table td[data-label]::before { content: attr(data-label); display: block; font-size: 11px; color: var(--dim); }
+  .tpa-board-table td.num { text-align: left; }
+  .tpa-act { text-align: left; }
+  .tpa-form { grid-template-columns: minmax(0, 1fr); }
+  .tpa-ded { grid-template-columns: 1fr 1fr; }
+  /* The package rows wrap: code and name on their own line, then rate, amount and Remove (the table pushed 390 px wide). */
+  .tpa-table tr { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 6px 0; border-bottom: 1px solid var(--wash); }
+  .tpa-table td { border: 0; padding: 0; }
+  .tpa-table td:first-child { flex-basis: 100%; }
+}

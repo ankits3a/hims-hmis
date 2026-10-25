@@ -55,6 +55,9 @@ export { pickDispense } from "./pick";
 export type { PickInput, PickLineInput } from "./pick";
 export { billDispense, previewDispenseBill } from "./bill";
 export type { BillInput } from "./bill";
+// #787 — the counter's batch price, for the IPD running bill's ward-issue lines (one price function, two doors).
+export { gstCategoryMap, invoiceInputsOf, priceBatchLine } from "./bill";
+export type { GstCategoryMap, PricedBatchLine } from "./bill";
 export { handOverDispense } from "./handover";
 /** STAGE D5 — the restricted-antimicrobial approval type (registered by `seed:pharmacy`) and the steward's gate. */
 export { ANTIMICROBIAL_STEWARD_ROLE, PHARMACY_APPROVAL_TYPES, RESTRICTED_ANTIMICROBIAL_APPROVAL_TYPE, registerPharmacyApprovalTypes } from "./approval-types";
@@ -118,6 +121,12 @@ export type {
 export { acceptRetailReturn, findRetailSaleByInvoiceNo } from "./retail-returns";
 export type { RetailReturnInput, RetailReturnResult } from "./retail-returns";
 export { setShelfLocation, shelfLocationsFor } from "./shelf-locations";
+/** IPD E4.3 (#735) — the ward issue reads the stocked item for a medicine; the incident register takes an administration-stage error. */
+export { shelfByMedicine, shelfItemForMedicine } from "./shelf";
+/** #787 (IP counter) — the one shelf search at a store named by id; the IPD counter charge asks its own permission. */
+export { searchShelfAt } from "./retail";
+export type { ShelfEntry } from "./shelf";
+export { recordIncident } from "./incidents";
 /** Consult v2 — the doctor's read of the shelf: sellable count per medicine, and alternatives at zero. */
 export { stockForDoctor } from "./doctor-stock";
 export type { DoctorStock, DoctorStockAlternative } from "./doctor-stock";

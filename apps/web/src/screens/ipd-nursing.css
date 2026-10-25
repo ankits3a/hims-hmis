@@ -1,0 +1,180 @@
+/*
+ * E4.1 (#733) — the nurse station (board C, 16:9) and my shift (board D1, 390 px). The palette is Paper & Pine's
+ * values, scoped to `.ipdn`; `.ipdn.night` is the low-glare night palette (22:00–06:00, spec §0A principle 10) and is
+ * never printed. Every colour that means something comes with a word or a symbol (⚠, ↑, the band word).
+ */
+.ipdn {
+  --paper: #f4f6f1; --card: #ffffff; --ink: #14302a; --dim: #55675f; --line: #d5ddd5; --green: #1f7a4d; --gold: #b7791f;
+  --red: #b42318; --blue: #1d4ed8; --soft: #eef2ec;
+  --b-low: #e7f1ea; --b-low-medium: #fdf3d8; --b-medium: #fde2c5; --b-high: #f9d3cf;
+  background: var(--paper); color: var(--ink);
+  font-family: "IBM Plex Sans", "IBM Plex Sans Devanagari", system-ui, sans-serif;
+  box-sizing: border-box;
+}
+.ipdn.night {
+  --paper: #0d1412; --card: #16201d; --ink: #d8e2dc; --dim: #93a39b; --line: #2b3934; --green: #3fa274; --gold: #d6a24a;
+  --red: #f0837a; --blue: #8fb1ff; --soft: #1b2723;
+  --b-low: #1b2a23; --b-low-medium: #3a321a; --b-medium: #45301c; --b-high: #4a2220;
+}
+@media print { .ipdn.night { --paper: #fff; --card: #fff; --ink: #000; --dim: #333; --line: #999; --b-low: #fff; --b-low-medium: #fff; --b-medium: #fff; --b-high: #fff; } }
+.ipdn * { box-sizing: border-box; }
+.ipdn .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+.ipdn .dim { color: var(--dim); }
+.ipdn .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.ipdn button { font-family: inherit; cursor: pointer; color: inherit; }
+.ipdn button:focus-visible, .ipdn input:focus-visible, .ipdn select:focus-visible, .ipdn textarea:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.ipdn input, .ipdn select, .ipdn textarea { font: inherit; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 8px; min-height: 44px; padding: 6px 10px; min-width: 0; }
+
+.ipdn-btn { min-height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 0.875rem; font-weight: 500; }
+.ipdn-btn.sm { min-height: 36px; padding: 0 10px; font-size: 0.8125rem; }
+.ipdn-btn.pri { background: var(--green); border-color: var(--green); color: #fff; font-weight: 600; }
+.ipdn-btn.wide { width: 100%; min-height: 52px; font-size: 1rem; }
+.ipdn-btn:disabled { opacity: .5; cursor: not-allowed; }
+.ipdn-btn[aria-pressed="true"] { border-color: var(--ink); }
+
+.ipdn-live { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8125rem; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.ipdn-live i { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex: none; }
+.ipdn-live.off { color: var(--red); font-weight: 600; }
+.ipdn-live.off i { background: var(--red); border-radius: 0; }
+
+.ipdn-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ipdn-chip { min-height: 36px; padding: 0 12px; border-radius: 18px; border: 1px solid var(--line); background: var(--card); font-size: 0.8125rem; }
+.ipdn-chip[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.ipdn-chiprow { display: flex; flex-wrap: wrap; gap: 4px; }
+.ipdn-tag { font-size: 0.75rem; padding: 1px 7px; border-radius: 4px; border: 1px solid var(--line); background: var(--soft); white-space: nowrap; }
+.ipdn-tag.c-allergy { border-color: var(--red); color: var(--red); }
+.ipdn-tag.c-fall_risk, .ipdn-tag.c-pressure_risk { border-color: var(--gold); }
+.ipdn-src { font-size: 0.75rem; color: var(--dim); border: 1px dashed var(--line); border-radius: 4px; padding: 0 6px; white-space: nowrap; }
+
+.ipdn-score { display: inline-flex; align-items: baseline; gap: 6px; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--line); font-size: 0.8125rem; flex-wrap: wrap; }
+.ipdn-score .k { font-weight: 600; font-size: 0.6875rem; letter-spacing: .03em; }
+.ipdn-score .v { font-size: 1.125rem; }
+.ipdn-score.big .v { font-size: 2.125rem; }
+.ipdn-score.big { padding: 6px 12px; font-size: 1rem; }
+.ipdn-score.b-low { background: var(--b-low); }
+.ipdn-score.b-low_medium { background: var(--b-low-medium); border-color: var(--gold); }
+.ipdn-score.b-medium { background: var(--b-medium); border-color: var(--gold); }
+.ipdn-score.b-high { background: var(--b-high); border-color: var(--red); border-width: 2px; }
+.ipdn-score .inc { font-size: 0.6875rem; color: var(--dim); }
+
+.ipdn-empty { padding: 20px; color: var(--dim); text-align: center; }
+.ipdn-refusal { color: var(--red); font-size: 0.8125rem; padding: 6px 0; }
+.ipdn-ok { color: var(--green); font-weight: 600; padding: 8px 12px; }
+.ipdn-warn { color: var(--gold); font-weight: 600; margin: 6px 0; }
+.ipdn-acts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; margin-top: 10px; }
+
+/* ═══ board C — the nurse station, 16:9; the page never scrolls ═══ */
+.ipdn-ward { height: 100vh; overflow: hidden; display: flex; flex-direction: column; gap: 10px; padding: 16px 20px 10px; position: relative; }
+.ipdn-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; flex: none; }
+.ipdn-title { display: flex; align-items: baseline; gap: 6px 12px; flex-wrap: wrap; }
+.ipdn-title h1 { margin: 0; font-size: 1.5rem; font-weight: 600; }
+.ipdn-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ipdn-top { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; flex: none; }
+.ipdn-top li { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; font-size: 0.875rem; }
+.ipdn-top li.hot { border-color: var(--red); color: var(--red); font-weight: 600; }
+.ipdn-grid { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 8px; align-content: start; padding-bottom: 6px; }
+@media (min-width: 1800px) { .ipdn-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); } }
+.ipdn-bed { background: var(--card); border: 1px solid var(--line); border-radius: 10px; display: flex; flex-direction: column; min-width: 0; }
+.ipdn-bed.alert { border-color: var(--red); border-width: 2px; }
+.ipdn-bed.overdue { box-shadow: inset 4px 0 0 var(--gold); }
+.ipdn-bed.empty { padding: 10px 12px; background: var(--soft); border-style: dashed; justify-content: center; min-height: 64px; }
+.ipdn-bedopen { all: unset; font-size: 0.875rem; display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; cursor: pointer; min-width: 0; }
+.ipdn-bedopen:focus-visible { outline: 2px solid var(--blue); border-radius: 10px; }
+.ipdn-bedrow { display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ipdn-bedcode { font-weight: 600; font-size: 0.875rem; }
+.ipdn-bedrow .dim { font-size: 0.8125rem; }
+.ipdn-who { font-size: 0.9375rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ipdn-sub { font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ipdn-due { font-size: 0.8125rem; }
+.ipdn-due.late { color: var(--red); font-weight: 600; }
+.ipdn-emptyline { font-size: 0.8125rem; color: var(--dim); }
+.ipdn-alertrow { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 6px 12px 8px; border-top: 1px solid var(--line); font-size: 0.8125rem; color: var(--red); font-weight: 600; flex-wrap: wrap; }
+
+.ipdn-drawer { position: absolute; top: 0; right: 0; bottom: 0; width: min(640px, 100%); background: var(--card); border-left: 1px solid var(--line); box-shadow: -8px 0 24px rgba(0,0,0,.18); display: flex; flex-direction: column; z-index: 5; }
+.ipdn-drawerhead { display: flex; justify-content: space-between; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.ipdn-tabs { display: flex; border-bottom: 1px solid var(--line); }
+.ipdn-tabs button { flex: 1; min-height: 44px; border: 0; background: none; font-size: 0.875rem; border-bottom: 3px solid transparent; }
+.ipdn-tabs button[aria-selected="true"] { border-bottom-color: var(--green); font-weight: 600; }
+.ipdn-drawerbody { flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; }
+.ipdn-trend { margin: 0; color: var(--ink); }
+.ipdn-trend figcaption { font-size: 0.75rem; }
+.ipdn-tablewrap { overflow-x: auto; }
+.ipdn-table { border-collapse: collapse; width: 100%; font-size: 0.8125rem; }
+.ipdn-table th, .ipdn-table td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.ipdn-table em.late, .ipdn em.late { color: var(--gold); font-style: normal; font-size: 0.6875rem; }
+.ipdn-facts { display: grid; grid-template-columns: 1fr; gap: 6px; margin: 0; }
+.ipdn-facts div { display: flex; gap: 10px; }
+.ipdn-facts dt { color: var(--dim); min-width: 150px; }
+.ipdn-facts dd { margin: 0; }
+.ipdn-form { display: flex; flex-direction: column; gap: 8px; }
+.ipdn-form.row { flex-direction: row; flex-wrap: wrap; align-items: center; }
+.ipdn-form label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8125rem; }
+.ipdn-form label i { color: var(--dim); font-style: normal; font-size: 0.75rem; }
+.ipdn-form .ipdn-check { flex-direction: row; align-items: center; gap: 8px; min-height: 44px; }
+.ipdn-form .ipdn-check input { min-height: 22px; width: 22px; }
+.ipdn-form fieldset { border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+.ipdn-iototal { font-size: 0.9375rem; font-weight: 600; }
+.ipdn-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; font-size: 0.875rem; }
+.ipdn-list li { border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+.ipdn-list p { margin: 4px 0; }
+
+.ipdn-seg { display: flex; gap: 6px; flex-wrap: wrap; }
+.ipdn-seg button { flex: 1; min-height: 48px; min-width: 48px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); font-size: 0.9375rem; }
+.ipdn-seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); font-weight: 600; }
+.ipdn-vitals { display: flex; flex-direction: column; gap: 10px; }
+.ipdn-vgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.ipdn-vfield { display: flex; flex-direction: column; gap: 2px; font-size: 0.8125rem; min-width: 0; }
+.ipdn-vfield i { font-style: normal; color: var(--dim); }
+.ipdn-vfield input { min-height: 52px; font-size: 1.5rem; text-align: center; }
+.ipdn-vfield.odd input { border-color: var(--gold); border-width: 2px; }
+.ipdn-preview { min-height: 52px; display: flex; align-items: center; }
+.ipdn-phone .ipdn-preview { position: sticky; top: 0; z-index: 2; background: var(--paper); padding: 4px 0; }
+.ipdn-readback { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.ipdn-readback li { background: var(--soft); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; }
+.ipdn-readback li b { font-size: 1.875rem; }
+.ipdn-readback li.odd { outline: 2px solid var(--gold); }
+.ipdn-readback em { font-style: normal; color: var(--gold); font-size: 0.8125rem; }
+
+/* ═══ board D1 — my shift on the phone; one column, thumb zone at the bottom ═══ */
+.ipdn-phone { min-height: 100vh; padding: 12px 16px 96px; display: flex; flex-direction: column; gap: 10px; max-width: 640px; margin: 0 auto; overflow-x: hidden; }
+.ipdn-phead { display: flex; flex-direction: column; gap: 4px; }
+.ipdn-prow { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 0.875rem; min-width: 0; }
+.ipdn-prow > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ipdn-wardname { font-size: 1.25rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ipdn-h2 { font-size: 0.9375rem; margin: 8px 0 6px; color: var(--dim); font-weight: 600; }
+.ipdn-now { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ipdn-nowbtn { width: 100%; min-height: 56px; display: grid; grid-template-columns: auto 1fr; grid-template-areas: "bed nm" "what what"; gap: 2px 10px; align-items: center; text-align: left; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; font-size: 0.9375rem; }
+.ipdn-nowbtn .bed { grid-area: bed; font-weight: 600; }
+.ipdn-nowbtn .nm { grid-area: nm; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ipdn-nowbtn .what, .ipdn-nowbtn .dim { grid-area: what; font-size: 0.875rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ipdn-now li.late .ipdn-nowbtn { border-color: var(--red); }
+.ipdn-now li.late .what { color: var(--red); font-weight: 600; }
+.ipdn-now li.k-ews .ipdn-nowbtn { border-width: 2px; border-color: var(--red); }
+.ipdn-thumb { position: fixed; left: 0; right: 0; bottom: 0; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); background: var(--paper); border-top: 1px solid var(--line); z-index: 4; }
+.ipdn-pane { display: flex; flex-direction: column; gap: 10px; }
+.ipdn-idhead { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 1rem; overflow-wrap: break-word; }
+.ipdn-phone .ipdn-vgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ipdn-phone .ipdn-readback { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ipdn-phone .ipdn-seg.avpu button { flex: 1 1 30%; }
+.ipdn-phone .ipdn-acts { position: sticky; bottom: 0; background: var(--paper); padding: 8px 0; }
+.ipdn-phone .ipdn-acts .ipdn-btn { flex: 1 1 40%; min-height: 52px; }
+.ipdn-cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.ipdn-card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; overflow-wrap: anywhere; }
+.ipdn-sbar { margin: 0; display: flex; flex-direction: column; gap: 4px; font-size: 0.875rem; }
+.ipdn-sbar dt { font-weight: 600; font-size: 0.75rem; color: var(--dim); }
+.ipdn-sbar dd { margin: 0; white-space: pre-wrap; }
+
+/* the shift-handover section on /ipd/handovers */
+.ipdh-shift { margin-top: 18px; }
+.ipdh-shift h2 { font-size: 1.125rem; margin: 0 0 8px; }
+
+/* E4.1 review — dropped offline sets are named; "No doctor reached — call" is a word, never colour alone. */
+.ipdn-dropped { display: flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; align-items: center; margin: 0.5rem 0; padding: 0.5rem 0.75rem;
+  border: 2px solid var(--ipdn-alert, #b42318); border-radius: 0.5rem; font-size: 0.95rem; }
+.ipdn-dropped ul { margin: 0; padding-left: 1.1rem; flex-basis: 100%; }
+.ipdn-nodoc { color: var(--ipdn-alert, #b42318); }
+
+/* E5.4 (#741) — the SBAR draft's stamp ("Draft · model · prompt version · built at") and a signed handover's provenance. */
+.ipdn-stamp { margin: 0; padding: 6px 10px; border: 1px dashed var(--line); border-radius: 6px; font-size: 0.8125rem; overflow-wrap: anywhere; }
+.ipdn-src.ai { border-style: solid; }
+.ipdn-prov { font-size: 0.75rem; overflow-wrap: anywhere; }

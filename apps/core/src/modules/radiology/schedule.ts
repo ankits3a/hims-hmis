@@ -13,6 +13,8 @@ import { imagingBookingChanged, imagingStudyScheduled } from "./events";
 import { appendEvent } from "../../kernel/events/append";
 import { requireStudyType } from "./study-types";
 import { raiseBillDecision } from "./money";
+import { episodeChargeSinkFor } from "../billing";
+import type { EpisodeReverseOutcome } from "../billing";
 import { releaseResource } from "../../kernel/resources/registry";
 import { enqueueNotification, expireByRef } from "../../kernel/notify/enqueue";
 import { prepFor } from "./prep";
@@ -615,7 +617,7 @@ export async function cancelStudy(
   actor: Actor,
   decls: readonly OrderKindDecl[],
   input: { studyId: string; reason?: string | null },
-): Promise<{ studyId: string; billDecisionId: string | null }> {
+): Promise<{ studyId: string; billDecisionId: string | null; runningBill?: EpisodeReverseOutcome }> {
   const study = await loadStudy(tx, input.studyId);
 
   if (["acquired", "reported", "published"].includes(study.status)) {
@@ -652,7 +654,14 @@ export async function cancelStudy(
    * money rules run — a module that flipped its own status column and left the item `placed` would
    * leave a charge nobody cancels.
    */
-  await advanceOrderItem(tx, actor, decls, study.orderItemId, "cancelled", { reason });
+  const moved = await advanceOrderItem(tx, actor, decls, study.orderItemId, "cancelled", { reason });
+  /**
+   * #785 — an inpatient's scan is a line of the running bill: the episode's sink answers the cancel (not started — the
+   * item was still `placed` — a reversal line; on the machine, nothing: the bill decision below is billing's).
+   */
+  const sink = episodeChargeSinkFor(study.encounterNo);
+  const runningBill = sink === null ? undefined
+    : await sink.reverse(tx, actor, { orderItemId: study.orderItemId, workStarted: moved.from !== "placed", reason, at: new Date() });
   await transition(tx, study.workflowInstanceId, "cancelled", actor, { note: reason });
   await tx.update(imagingStudies).set({ status: "cancelled" }).where(eq(imagingStudies.id, input.studyId));
   await recordBookingChange(tx, actor, study, "cancelled", reason);
@@ -705,7 +714,7 @@ export async function cancelStudy(
     }
   }
 
-  return { studyId: input.studyId, billDecisionId };
+  return { studyId: input.studyId, billDecisionId, ...(runningBill === undefined ? {} : { runningBill }) };
 }
 
 /**

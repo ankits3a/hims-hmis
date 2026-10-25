@@ -30,7 +30,7 @@ groups:
       - alert: HmisSchedulerJobStaleInterval
         expr: |
           hmis_scheduler_heartbeat_staleness_seconds{
-            job=~"runDispatchCycle|runDueTimers|sweepExpiredTempRoles|runNotifyPump|runReachLadder|sweepInterfaceHeartbeats|flagLateSurgeons|sweepLabSla|sweepExpiredPharmacyPicks|sweepCriticalChaser|sweepImagingEscalations|printRosterBoard|sweepStaffNotices|openDueTeleVisits|syncAttendance|sweepLabCriticalLadder"
+            job=~"runDispatchCycle|runDueTimers|sweepExpiredTempRoles|runNotifyPump|runReachLadder|sweepInterfaceHeartbeats|flagLateSurgeons|sweepLabSla|sweepExpiredPharmacyPicks|sweepCriticalChaser|sweepImagingEscalations|printRosterBoard|sweepStaffNotices|openDueTeleVisits|syncAttendance|sweepLabCriticalLadder|sweepTasks|lapseBedReservations|sweepIpdNursing"
           } > 300
         for: 2m
         labels:
@@ -49,7 +49,7 @@ groups:
       - alert: HmisSchedulerJobStaleDaily
         expr: |
           hmis_scheduler_heartbeat_staleness_seconds{
-            job=~"sweepGuardianMajority|sweepAppointmentNoShows|sweepBatchExpiry|runDailyClose|createEventPartitions|retentionSweep|rollupUserDayFacts|sweepLabNonReturn|sweepUnreadWatchman|sweepRosterWindows|runMonthlyProposals|runRefillReminders|sweepOverdueQa|proposeMedicineNicknames|pruneCopilotAsks|sendUnitReports"
+            job=~"sweepGuardianMajority|sweepAppointmentNoShows|sweepBatchExpiry|runDailyClose|createEventPartitions|retentionSweep|rollupUserDayFacts|sweepLabNonReturn|sweepUnreadWatchman|sweepRosterWindows|runMonthlyProposals|runRefillReminders|sweepOverdueQa|proposeMedicineNicknames|pruneCopilotAsks|sendUnitReports|postNightlyIpdCharges"
           } > 93600
         for: 5m
         labels:
@@ -158,6 +158,14 @@ groups:
           # DOCTOR DESK DD-report v0 — the thirty-first, a DAILY job (08:00 IST), joining leg 1b. A
           # report job that never started looks exactly like a unit with nothing to report.
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sendUnitReports"})
+          # IPD/ER (#833, decision 0085) — the four IPD jobs: sweepTasks, lapseBedReservations and
+          # sweepIpdNursing every 60s (leg 1a), postNightlyIpdCharges daily at 00:05 IST (leg 1b). They
+          # register whatever HMIS_MODULES_ON says and run a no-op body while their module is off, so the
+          # scheduler still heartbeats them: a missing one is a worker that never started it, on or off.
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepTasks"})
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="lapseBedReservations"})
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepIpdNursing"})
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="postNightlyIpdCharges"})
         for: 5m
         labels:
           severity: critical
