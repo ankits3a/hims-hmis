@@ -6,7 +6,8 @@ import type { WaitingKind } from "../../../../packages/contracts/src/waiting";
  * Imaging reads the doctor's results inbox the web consult draws (`GET /radiology/results`) and opens
  * a report with `GET /radiology/reports/:id` — the same read the web makes, which stamps the first read
  * and so closes "Imaging unread". Lab reads `GET /lab/results/mine` (the set "Lab reports back" counts)
- * and opens one with `GET /lab/results/mine/:id`. The server applies the restricted-test rule and the
+ * and opens one with `GET /lab/results/mine/:id`, which stamps the treating doctor's read under the web's
+ * rule (#930), so the report leaves that set. The server applies the restricted-test rule and the
  * alias rule; neither route carries money, and this file declares no money field, so none is drawn.
  */
 export type ResultsKind = "lab" | "imaging";
