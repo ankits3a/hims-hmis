@@ -5,6 +5,7 @@ import { NetworkError } from "../api";
 import {
   ALL_READ, attendanceApi, type MarkView, type QueueRequest, type RequestTab, type SyncState, type TeamToday, type TodayList,
 } from "../attendance/api";
+import { LinkCount } from "../attendance/links";
 import { managerDay, reasonKey, sortToday, todayCounts, todayPlace, type TodayPerson } from "../attendance/rules";
 import { BackBand, Chips, Counts, ToneTag, dayLabel, type T } from "../attendance/views";
 import { useI18n } from "../i18n";
@@ -57,7 +58,8 @@ function Row({ name, sub, right, onPress, testID }: { name: string; sub: string;
  * with neither is never shown this screen and it asks nothing for them.
  *
  * Managers see times and "Late" (the owner's ruling: the words-only rule is for a person's own
- * screens). "Not in" leads the list.
+ * screens). "Not in" leads the list. Today opens with the link count (#928): how many of the machine's
+ * people can see their attendance in the app.
  */
 export function AttendanceManage({ lead = false, tab: startTab }: { lead?: boolean; tab?: ManageTab }) {
   const { t } = useI18n();
@@ -108,6 +110,7 @@ function TodayTab({ t, call, onPerson }: { t: T; call: Call; onPerson: (pin: str
     <View style={{ gap: space.md }}>
       {failed !== null && <Note tone="warn" testID="att-failed">{t(failed === "offline" ? "attendance.offline" : "attendance.cannotRead")}</Note>}
       {!connected && <Note tone="warn" testID="att-not-connected">{t("attendance.manage.notConnected")}</Note>}
+      <LinkCount call={call} />
       {connected && asOf !== null && <Text testID="att-as-of" numberOfLines={1} style={{ fontFamily: MONO, fontSize: 11.5, color: color.faint }}>{t("attendance.manage.asOf", { time: hhmmIst(asOf) })}</Text>}
       {list !== null && (
         <>

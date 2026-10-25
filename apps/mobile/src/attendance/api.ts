@@ -34,6 +34,8 @@ export type TeamToday = { date: string; members: TeamMember[]; summary: { total:
 export type SyncState = { configured: boolean; enabled: boolean; onDutyAsOf: string | null; lastErrorClass: string | null; stages: Record<string, { lastOkAt: string | null; lastOutcome: string | null }> };
 export type QueueRequest = MyRequest & { name: string; dept: string | null; post: string | null; ageHours: number; seenAt: string | null };
 export type RequestTab = "open" | "seen" | "closed";
+/** `/attendance/links`' count (#634): the machine's active people linked to a login, and the logins that are somebody's record. */
+export type LinkCounts = { active: number; linked: number; unlinked: number; needsAttention: number; loginsActive: number; loginsLinked: number };
 
 export const ALL_READ = "attendance.all.read";
 /** The home card reads this many days back in its ONE request: enough for the "Confirm" warning the server keeps (31 days). */
@@ -56,6 +58,8 @@ export function attendanceApi(call: Call) {
     requests: (status: RequestTab) => call<{ status: RequestTab; requests: QueueRequest[] }>("GET", `/attendance/requests?status=${status}`),
     markSeen: (id: string) => call<{ request: MyRequest }>("POST", `/attendance/requests/${enc(id)}/seen`),
     close: (id: string, note: string) => call<{ request: MyRequest }>("POST", `/attendance/requests/${enc(id)}/close`, note.trim() === "" ? {} : { note: note.trim() }),
+    /** #928 — the count only: the reply's first page of unlinked names is dropped here, never handed to a screen. */
+    linkCounts: async () => (await call<{ counts: LinkCounts }>("GET", "/attendance/links")).counts,
   };
 }
 
