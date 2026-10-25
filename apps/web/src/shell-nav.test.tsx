@@ -17,9 +17,9 @@ import i18next from "./lib/i18n";
  * projection, not a guard: every route still carries its server-side `@RequirePermission`, and
  * these assertions are about what a person is OFFERED.
  */
-function renderShell(hospital: string[]): void {
+function renderShell(hospital: string[], modules?: { dark: string[]; on: string[] }): void {
   stubFetch({
-    "GET /api/auth/me": { actor: { type: "user", id: "u1" }, permissions: { hospital, scoped: { department: {}, floor: {} } } },
+    "GET /api/auth/me": { actor: { type: "user", id: "u1" }, permissions: { hospital, scoped: { department: {}, floor: {} } }, ...(modules === undefined ? {} : { modules }) },
     "GET /api/ops/mode": { mode: "commissioning" },
     "GET /api/alerts": { items: [] },
     "GET /api/patients/search": { items: [] },
@@ -637,4 +637,18 @@ it("the shell clock's date follows the language", async () => {
   } finally {
     await act(async () => { await i18next.changeLanguage("en"); });
   }
+});
+
+/**
+ * Decision 0085 invariant 1, dark by default — the workflow definitions board is an IPD go-live screen. With `ipd` off
+ * (production) its link is not drawn even for a holder of `workflow.definitions.read`; with `ipd` on it is.
+ */
+it("decision 0085: the Workflows link is absent while ipd is off, and drawn once it is on", async () => {
+  const dark = ["tasks", "ipd", "bmw", "linen", "housekeeping", "maintenance", "passes", "transport", "diet", "emergency"];
+  renderShell(["auth.users.manage", "workflow.definitions.read"], { dark, on: [] });
+  await waitFor(() => expect(screen.getAllByRole("link").map((a) => a.getAttribute("href"))).toContain("/admin/users"));
+  expect(screen.getAllByRole("link").map((a) => a.getAttribute("href"))).not.toContain("/admin/workflows");
+  cleanup();
+  renderShell(["auth.users.manage", "workflow.definitions.read"], { dark, on: ["ipd"] });
+  await waitFor(() => expect(screen.getAllByRole("link").map((a) => a.getAttribute("href"))).toContain("/admin/workflows"));
 });

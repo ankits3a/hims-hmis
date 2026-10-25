@@ -1395,7 +1395,7 @@ export function BillingOffice(): React.ReactElement {
             {page !== null && (page.key === "fees"
               ? <><FeeSwitches /><UpiPayee /></>
               : page.key === "prices"
-              ? <><ConsultPrices />{moduleOn("ipd") && <IpdRateCard />}<TariffVersionActions />{moduleOn("ipd") && <IpdSwitchOn />}</>
+              ? <><ConsultPrices />{moduleOn("ipd") && <IpdRateCard />}{moduleOn("ipd") && <TariffVersionActions />}{moduleOn("ipd") && <IpdSwitchOn />}</>
               : page.key === "tele"
               ? <TeleBills />
               : <OfficePages key={page.key} page={page.key} onHand={(id) => go("today", undefined, id)} onGo={(v, pg) => go(v, pg)} />)}

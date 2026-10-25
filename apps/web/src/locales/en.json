@@ -2191,6 +2191,7 @@
   },
   "workflows": {
     "drafterCannotApprove": "You drafted it: two other people approve.",
+    "off": "Not switched on yet.",
     "title": "Workflows",
     "lead": "Approve and switch on the hospital's workflows. Class A needs the medical superintendent and the owner, two different people; then the owner activates.",
     "loading": "Loading…",

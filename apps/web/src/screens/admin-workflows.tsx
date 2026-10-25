@@ -159,7 +159,21 @@ function DefinitionCard({ d, myRoles }: { d: WireBoardDefinition; myRoles: strin
 
 export function AdminWorkflows(): React.ReactElement {
   const { t } = useTranslation();
-  const q = useQuery({ queryKey: ["workflow", "board"], queryFn: () => api<WireWorkflowBoard>("GET", "/workflow/definitions/board") });
+  // Decision 0085 invariant 1 — an IPD go-live screen: while `ipd` is off it asks for nothing and draws no board.
+  const { moduleOn, ready } = useAuth();
+  const on = ready && moduleOn("ipd");
+  const q = useQuery({
+    queryKey: ["workflow", "board"], enabled: on,
+    queryFn: () => api<WireWorkflowBoard>("GET", "/workflow/definitions/board"),
+  });
+  if (ready && !on) {
+    return (
+      <PaperScreen testId="admin-workflows-off" style={{ padding: "18px 22px", gap: 14 }}>
+        <ScreenTitle title={t("workflows.title")} route="/admin/workflows" />
+        <p style={{ margin: 0, fontSize: 13, color: "var(--dim)" }}>{t("workflows.off")}</p>
+      </PaperScreen>
+    );
+  }
   const defs = q.data?.definitions ?? [];
   const drafts = defs.filter((d) => d.status === "draft");
   const rest = defs.filter((d) => d.status !== "draft");

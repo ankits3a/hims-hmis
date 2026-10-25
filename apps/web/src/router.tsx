@@ -189,7 +189,8 @@ const NAV_GROUPS: readonly NavGroup[] = ["desk", "patients", "opd", "wards", "im
  * several — the pharmacy office, whose menu entries each keep their old row's permission.
  */
 /** Owner 2026-10-12 — `labMode`: a lab menu shown only while the lab runs that mode (`lib/lab-mode.ts`). */
-type NavEntry = { to: string; label: string; permission: string; group: NavGroup; anyOf?: readonly string[]; labMode?: LabMode | "never" };
+/** `module` — decision 0085: an entry drawn only while that switchable module is on (`useAuth().moduleOn`). */
+type NavEntry = { to: string; label: string; permission: string; group: NavGroup; anyOf?: readonly string[]; labMode?: LabMode | "never"; module?: string };
 const navVisible = (e: NavEntry, can: (p: string) => boolean): boolean => can(e.permission) || (e.anyOf ?? []).some((p) => can(p));
 /**
  * Past this many places the bar stops being a row and becomes a wall: an owner-shaped grant drew
@@ -310,7 +311,8 @@ const NAV: readonly NavEntry[] = [
   // owner and the Attendance Committee, the suggestions and the hand link for the Users administrator.
   { to: "/attendance/links", label: "nav.attendanceLinks", permission: "attendance.all.read", anyOf: ["auth.users.manage"], group: "admin" },
   // GO-LIVE SCREENS — the workflow definitions board: approve (owner, MS) and activate (owner). Matches `workflowManifest.menu`.
-  { to: "/admin/workflows", label: "nav.adminWorkflows", permission: "workflow.definitions.read", group: "admin" },
+  // Decision 0085 invariant 1 — an IPD go-live screen: drawn only while `ipd` is on.
+  { to: "/admin/workflows", label: "nav.adminWorkflows", permission: "workflow.definitions.read", group: "admin", module: "ipd" },
   // Decision 0067 — the outside-test list (ECG, echo …), `orderingManifest.menu`'s entry.
   { to: "/ordering/outside-tests", label: "nav.outsideTests", permission: "tariff.services.manage", group: "admin" },
   // PLAN 18a T9 — the entries `radiologyManifest.menu` declares (three since 18-S RS2b), path and permission matching
@@ -547,7 +549,7 @@ declare module "@tanstack/react-router" {
  */
 function ShellChrome(): React.ReactElement {
   const { t, i18n } = useTranslation();
-  const { username, can, logout } = useAuth();
+  const { username, can, logout, moduleOn } = useAuth();
   const navigate = useNavigate();
   const palette = usePalette();
   const pathname = useRouterState({ select: (st) => st.location.pathname });
@@ -578,7 +580,8 @@ function ShellChrome(): React.ReactElement {
     return () => { document.removeEventListener("mousedown", close); };
   }, [openGroup]);
   const labModeNow = useLabMode();
-  const show = (e: NavEntry): boolean => navVisible(e, can) && shownInMode(e.labMode, labModeNow);
+  const show = (e: NavEntry): boolean =>
+    navVisible(e, can) && shownInMode(e.labMode, labModeNow) && (e.module === undefined || moduleOn(e.module));
   const folded = NAV.filter(show).length > NAV_FOLD_AT;
   /* The clock ticks in IST — a hospital clock in the browser's zone is a clock nobody can act on. */
   const [, setTick] = useState(0);
