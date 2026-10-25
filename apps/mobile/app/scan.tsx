@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { useRouter } from "expo-router";
-import { holdScan } from "../src/return-to";
+import { holdReturn } from "../src/return-to";
 import { ScanScreen } from "../src/screens/scan";
 import { useSession } from "../src/session";
 import { color } from "../src/theme";
@@ -19,7 +19,7 @@ export default function Page() {
   const gate = state.status !== "signedIn" && state.status !== "loading";
   useEffect(() => {
     if (!gate) return;
-    holdScan();
+    holdReturn("/scan");
     // "/" is anchored under this route (app/_layout.tsx), so this returns to it rather than stacking a second one.
     if (router.canGoBack()) router.back();
     else router.replace("/");

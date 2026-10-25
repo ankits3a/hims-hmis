@@ -1,25 +1,27 @@
 /**
- * HOME-SCREEN SCAN WIDGET (owner 2026-10-10, decision 0064 E1.1) — the ONE "return to" in the app.
- * The widget opens `hmis://scan`. When the phone is not yet signed in (locked behind the fingerprint,
- * signed out, or owing a new password) the scan route hands the person to "/" — the one gate — and
- * leaves this mark; the gate, once signed in, opens the scan screen instead of staying on home.
- * Deliberately not a general redirect system: one route, one flag, held only in memory.
+ * HOME-SCREEN WIDGETS (owner 2026-10-10, decision 0064 E1.1 and E1.7) — the ONE "return to" in the app.
+ * The scan widget opens `hmis://scan`; the Ask widget opens `hmis://copilot?keyboard=1` (or `?mic=1`).
+ * When the phone is not yet signed in (locked behind the fingerprint, signed out, or owing a new
+ * password) the route hands the person to "/" — the one gate — and leaves this mark; the gate, once
+ * signed in, opens that route instead of staying on home.
+ * Deliberately not a general redirect system: the widgets' links only, one mark, held only in memory.
  */
-let scanOwed = false;
+export type WidgetRoute = "/scan" | "/copilot?keyboard=1" | "/copilot?mic=1";
+let owed: WidgetRoute | null = null;
 
-/** The scan route was reached before sign-in: open it once sign-in is done. */
-export function holdScan(): void {
-  scanOwed = true;
+/** A widget's route was reached before sign-in: open it once sign-in is done. */
+export function holdReturn(to: WidgetRoute): void {
+  owed = to;
 }
 
 /** Whether a mark is waiting (a read; nothing is cleared). */
-export function scanIsOwed(): boolean {
-  return scanOwed;
+export function returnIsOwed(): boolean {
+  return owed !== null;
 }
 
-/** True once, then cleared: the gate opens the scan screen at most once per mark. */
-export function takeScanOwed(): boolean {
-  const owed = scanOwed;
-  scanOwed = false;
-  return owed;
+/** The route once, then cleared: the gate opens it at most once per mark. */
+export function takeReturn(): WidgetRoute | null {
+  const to = owed;
+  owed = null;
+  return to;
 }
