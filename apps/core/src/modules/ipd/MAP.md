@@ -1274,9 +1274,9 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   second connection would wait for ever. Any new caller that holds the admission lock and orders imaging must pass `tx`.
 - (#785) STAGING DATA: orders placed on an `IP` number BEFORE this change carry a held lab invoice and no line, and their
   scans have no line — left as they are (staging only; IPD is not live). Such a scan still raises `acquired_unbilled`.
-- (#785) MIGRATION 0225 LOCK WINDOW: the ALTERs on `ipd_charge_lines` / `ipd_charge_exceptions` take an ACCESS EXCLUSIVE
+- (#785) MIGRATION `0245_ipd_orderbill` LOCK WINDOW: the ALTERs on `ipd_charge_lines` / `ipd_charge_exceptions` take an ACCESS EXCLUSIVE
   lock and re-validate the widened CHECKs over every row — a few ms on staging; at go-live run it outside OPD hours.
-  Regenerated in place before merge: a lane test DB that applied the first 0225 must be dropped.
+  Regenerated in place before merge: a lane test DB that applied the first version must be dropped.
 - (E4.2) `charges.ts` `postConsultantVisit` treats `covering_for` as the treating consultant: the 08:00 clock writes it, so a
   covering head's visit is `visit`, not `cross_visit`.
 

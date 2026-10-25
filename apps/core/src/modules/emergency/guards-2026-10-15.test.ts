@@ -11,7 +11,7 @@ import type { Db } from "../../kernel/db/client";
 import type { ErWorld } from "../../../test/helpers/emergency";
 
 /**
- * ER guards (#881, migration 0236): the database holds the ER's own rules. Seven tables are append-only; notes, codes and
+ * ER guards (#881, migration 0260_er_guards): the database holds the ER's own rules. Seven tables are append-only; notes, codes and
  * charge lines change only in the steps the intents take (each step below is the exact UPDATE the code issues), and
  * every other change is refused. Rows are written directly so each guard is tested alone.
  */

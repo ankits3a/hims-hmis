@@ -349,7 +349,7 @@ disposition, bill, codes, MCI, copilot) hang off the same episode.
   statement-level TRUNCATE trigger would also stop the test suites' `truncateAll`; DECIDED to leave it (TRUNCATE needs the
   table owner, which only migrations and the test reset hold).
 
-- #881 (migration 0236): append-only triggers on er_triage_entries, er_doses, er_med_returns, er_procedures,
+- #881 (migration `0260_er_guards`): append-only triggers on er_triage_entries, er_doses, er_med_returns, er_procedures,
   er_consents, er_advances, er_bills; write-once step guards on er_notes (draft -> signed once), er_codes (call, scribe,
   end, debrief once each; `place` free) and er_charge_lines (priced once; reversed or moved once; then final). A new
   UPDATE on these tables must be a step the guard allows — extend the trigger in a new migration, never bypass it.
