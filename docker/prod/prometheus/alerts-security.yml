@@ -1,0 +1,52 @@
+# Security-relevant events, from the exporter's `hmis_security_events` query (postgres-exporter/queries.yml):
+# a count per event name over the last ten minutes. A FOURTH rule file on purpose, beside alerts.yml (the
+# scheduler-parity surface), alerts-backup.yml and alerts-meta.yml. Pinned by
+# apps/core/test/security-alerts.test.ts (names) and apps/core/test/deploy-parity.test.ts (loaded = installed).
+#
+# The first three page on ANY occurrence: each is rare, deliberate and reviewed by a person. The last two page on
+# a burst. Because the series is a 10-minute count, a single occurrence keeps the alert firing for ten minutes
+# and then it resolves by itself.
+groups:
+  - name: hmis-security
+    rules:
+      - alert: HmisEmergencyElevationUsed
+        expr: hmis_security_events_recent{name="emergency_elevation.used"} > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "A staff member took a temporary role by emergency self-elevation"
+          description: "Review it in the elevation review queue the same day."
+
+      - alert: HmisBreakGlassUsed
+        expr: hmis_security_events_recent{name="break_glass.used"} > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "A sealed patient record was opened by break-glass"
+          description: "Check the reason recorded with the access."
+
+      - alert: HmisSodViolationBlocked
+        expr: hmis_security_events_recent{name="sod.violation_blocked"} > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "A segregation-of-duty rule refused an act"
+          description: "Someone tried to approve or complete their own request; see the audit trail."
+
+      - alert: HmisLoginFailuresBurst
+        expr: hmis_security_events_recent{name="auth.login_failed"} > 50
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "More than 50 failed sign-ins in ten minutes"
+          description: "Possible password guessing. Check the edge log for the source addresses."
+
+      - alert: HmisSecondFactorFailuresBurst
+        expr: hmis_security_events_recent{name="auth.totp_failed"} > 10
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "More than 10 failed second-factor codes in ten minutes"
+          description: "Possible code guessing against a signed-in session."

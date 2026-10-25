@@ -1,0 +1,1 @@
+ALTER TABLE "refund_vouchers" ADD COLUMN "payee_relation" text;

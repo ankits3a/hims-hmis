@@ -11,7 +11,8 @@ import { sweepAppointmentNoShows } from "../../modules/opd/appointments";
 import { openDueTeleVisits } from "../../modules/opd/tele";
 import { sweepQueueNudges } from "../../modules/opd/queue-nudges";
 import { sweepBatchExpiry } from "../../modules/materials";
-import { sweepLabNonReturn, sweepLabSla } from "../../modules/lab";
+import { sweepLabCriticalLadder, sweepLabNonReturn, sweepLabSla, sweepLabSlips } from "../../modules/lab";
+import { DiskDocumentStore } from "../documents/disk";
 import { collectOrderKinds } from "../orders/kinds";
 import { flagLateSurgeons } from "../../modules/ot";
 import { runDailyClose } from "../../modules/billing/daily-close";
@@ -31,12 +32,13 @@ import {
   sweepCriticalChaser, sweepImagingEscalations, sweepOverdueFollowups, sweepPeerSample, sweepUnreadWatchman,
 } from "../../modules/radiology";
 import { sweepOverdueQa } from "../../modules/aerb";
-import { runAliasJob, runFlowLearning } from "../../modules/opd";
+import { routingChooserFor, runAliasJob, runDeskRoutingLearning, runFlowLearning } from "../../modules/opd";
 import { syncAttendance } from "../../modules/attendance";
 import { collectResourceKinds } from "../resources/kinds";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
 import { printBoardIfDue, runMonthlyProposals, sweepDutyReminders, sweepRosterWindows } from "../../modules/roster";
+import { sendUnitReports } from "../../modules/doctor-desk";
 
 // D9/step 2: the daily jobs' clock instants are CODE CONSTANTS beside their registration, not
 // deployment knobs — design decisions from the roadmap (2026-08-12 owner decision Q4), not
@@ -65,6 +67,8 @@ const LAB_NON_RETURN_IST = "07:00";
  * window it measures is a working day, so the hour it runs at is about who is awake to act on it.
  */
 const RADIOLOGY_UNREAD_WATCHMAN_IST = "08:00";
+/** DD-report v0 — the unit report, at the take boundary (plan D-G); equals contracts `UNIT_REPORT_IST`. */
+const DOCTOR_DESK_UNIT_REPORT_IST = "08:00";
 // Plan 11a D6: an hour after the new month's partitions exist and well inside the quiet window —
 // a partition DROP takes ACCESS EXCLUSIVE on `events`, which is not a lock to take during a
 // clinic. Like its neighbours it is a code constant, not a deployment knob: WHAT retention does
@@ -286,6 +290,21 @@ export function registerAllJobs(
       } catch (err) {
         throw new Error(`flow learning: ${err instanceof Error ? err.message : String(err)}`);
       }
+      /*
+        #614 (plan P3, channels 2 and 3) — the desk's routing learning rides here too, last: the day's
+        visits are done. Unlike the two above it may ask the desk's own chooser about MASKED sentences
+        (the evaluation), and only when something was learned. No config — every test that does not
+        pass one — is off. `DESK_ROUTING_LEARNING_ENABLED` (default false, decision 0051) switches it.
+      */
+      try {
+        await runDeskRoutingLearning(db, {
+          enabled: aliasConfig?.deskRouting.learningEnabled ?? false,
+          chooser: aliasConfig === undefined ? null : routingChooserFor(aliasConfig),
+          now,
+        });
+      } catch (err) {
+        throw new Error(`desk routing learning: ${err instanceof Error ? err.message : String(err)}`);
+      }
     },
   });
   // PLAN 14 T8 / DD14 — the ELEVENTH job. It emits `batch.expiring` at the 90/60/30-day thresholds,
@@ -494,10 +513,31 @@ export function registerAllJobs(
     dailyIst: LAB_NON_RETURN_IST,
     run: async (now) => { await sweepLabNonReturn(db, now, orderKinds); },
   });
+  /**
+   * #934 — the lab slip sweep rides the SLA sweep's job (no new job, so the worker pool and the job
+   * censuses do not move): a slip read left `reading` past two minutes is failed, and a discarded or
+   * never-attached slip's image leaves the document store at 90 days. It needs the store, which only
+   * a worker given its config has; without one (every census test) it does not run.
+   */
+  const slipStore = aliasConfig === undefined ? null : new DiskDocumentStore(aliasConfig.documentStorePath);
   scheduler.register({
     name: "sweepLabSla",
     every: intervals.workerLabSweepIntervalMs,
-    run: async (now) => { await sweepLabSla(db, now); },
+    run: async (now) => {
+      await sweepLabSla(db, now);
+      if (slipStore !== null) await sweepLabSlips(db, slipStore, now);
+    },
+  });
+  /**
+   * E3.2 (#595) — THE LAB CRITICAL LADDER. Every minute, for `sweepCriticalChaser`'s reason: its
+   * rungs are 15 minutes apart, and a sweep coarser than the window it enforces cannot enforce it.
+   * A literal cadence, not a `JobIntervals` key (16c's reason). It writes a rung and one event; the
+   * alerts consumer turns that into a row in front of the rung's people.
+   */
+  scheduler.register({
+    name: "sweepLabCriticalLadder",
+    every: 60_000,
+    run: async (now) => { await sweepLabCriticalLadder(db, now); },
   });
   /**
    * PLAN 16c CLOSE / F11 — THE SIXTEENTH JOB, and it exists because a constant lied.
@@ -696,5 +736,16 @@ export function registerAllJobs(
     name: "syncAttendance",
     every: 120_000,
     run: async (now) => { await syncAttendance(db, aliasConfig?.attendance, now); },
+  });
+  /**
+   * DOCTOR DESK DD-report v0 — THE UNIT REPORT AT 08:00 IST, the take boundary (plan D-G): one report
+   * per counting unit for the 24 h that ended, counts only, a bell to the unit head. A `dailyIst` job,
+   * so it adds nothing to the interval pool arithmetic (`client.test.ts`). Idempotent per unit per day
+   * (advisory lock + the run row), so a restart at 08:00 sends nothing twice.
+   */
+  scheduler.register({
+    name: "sendUnitReports",
+    dailyIst: DOCTOR_DESK_UNIT_REPORT_IST,
+    run: async (now) => { await sendUnitReports(db, now); },
   });
 }

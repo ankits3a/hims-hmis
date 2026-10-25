@@ -25,7 +25,7 @@ export type TopicSpace = {
 };
 export const REALTIME_PATH = "/ws";
 
-type ClientState = { userId: string | null; topics: Set<string>; authTimer: NodeJS.Timeout | null };
+type ClientState = { userId: string | null; token: string | null; topics: Set<string>; authTimer: NodeJS.Timeout | null };
 type Inbound =
   | { type: "auth"; token: string } | { type: "subscribe"; topics: string[] } | { type: "unsubscribe"; topics: string[] } | { type: "ping" };
 
@@ -68,6 +68,9 @@ export class RealtimeGateway implements OnApplicationBootstrap, OnModuleDestroy,
   private wss: WebSocketServer | null = null;
   private tail: EventTail | null = null;
   private authTimeoutMs = 5000;
+  /** How often an authenticated socket's session and topics are checked again (`revalidate`). */
+  private revalidateMs = 60_000;
+  private revalidateTimer: NodeJS.Timeout | null = null;
 
   constructor(@Inject(DB) private readonly db: Db, private readonly adapterHost: HttpAdapterHost) {}
 
@@ -94,6 +97,8 @@ export class RealtimeGateway implements OnApplicationBootstrap, OnModuleDestroy,
       if (url.pathname !== REALTIME_PATH) { socket.destroy(); return; }
       this.wss!.handleUpgrade(req, socket, head, (ws) => this.accept(ws));
     });
+    this.revalidateTimer = setInterval(() => { void this.revalidate().catch(() => undefined); }, this.revalidateMs);
+    this.revalidateTimer.unref();
     this.tail = new EventTail(this.db, () => this.names());
     this.tail.on((e) => this.fanOut(e));
     await this.tail.start();
@@ -107,10 +112,12 @@ export class RealtimeGateway implements OnApplicationBootstrap, OnModuleDestroy,
    * the pool". RealtimeModule is a child of AppModule, so this hook runs first and closes the window.
    */
   onModuleDestroy(): void {
+    if (this.revalidateTimer) { clearInterval(this.revalidateTimer); this.revalidateTimer = null; }
     this.tail?.stop();
   }
 
   onApplicationShutdown(): void {
+    if (this.revalidateTimer) { clearInterval(this.revalidateTimer); this.revalidateTimer = null; }
     this.tail?.stop();
     for (const ws of this.clients.keys()) ws.terminate();
     this.clients.clear();
@@ -122,7 +129,7 @@ export class RealtimeGateway implements OnApplicationBootstrap, OnModuleDestroy,
   }
 
   private accept(ws: WebSocket): void {
-    const st: ClientState = { userId: null, topics: new Set(), authTimer: null };
+    const st: ClientState = { userId: null, token: null, topics: new Set(), authTimer: null };
     st.authTimer = setTimeout(() => {
       if (st.userId !== null) return;
       this.send(ws, { type: "error", code: "auth_timeout" });
@@ -182,7 +189,39 @@ export class RealtimeGateway implements OnApplicationBootstrap, OnModuleDestroy,
     }
     if (st.authTimer) { clearTimeout(st.authTimer); st.authTimer = null; }
     st.userId = session.userId;
+    st.token = token;
     this.send(ws, { type: "authed", userId: session.userId });
+  }
+
+  /**
+   * A socket is authenticated once, at its first frame, so a logout, a revoked session, a deactivated user or a removed
+   * grant would otherwise leave it streaming. Every authenticated socket's session is read again (closed 4001 when it is
+   * no longer live), and each subscribed topic is re-checked against the same rule `subscribe` applies (dropped, and
+   * the client told, when no longer allowed). Runs on an interval; exposed for tests.
+   */
+  async revalidate(): Promise<void> {
+    for (const [ws, st] of [...this.clients]) {
+      if (st.userId === null || st.token === null || ws.readyState !== WebSocket.OPEN) continue;
+      const session = await findLiveSession(this.db, st.token);
+      if (session === null || session.mustChangePassword || session.userId !== st.userId) {
+        this.send(ws, { type: "error", code: "unauthorized" });
+        ws.close(4001, "unauthorized");
+        continue;
+      }
+      const dropped: string[] = [];
+      for (const topic of st.topics) if (!(await this.allowed(st.userId, topic))) dropped.push(topic);
+      if (dropped.length > 0) {
+        for (const t of dropped) st.topics.delete(t);
+        this.send(ws, { type: "error", code: "forbidden_topic", topics: dropped });
+      }
+    }
+  }
+
+  private async allowed(userId: string, topic: string): Promise<boolean> {
+    const space = this.spaces.get(topic.split(":")[0] ?? "");
+    return space === undefined ? false
+      : space.authorize !== undefined ? space.authorize(userId, topic)
+        : hasPermission(this.db, userId, space.permission!, "hospital");
   }
 
   private async subscribe(ws: WebSocket, st: ClientState, topics: string[]): Promise<void> {
@@ -190,13 +229,9 @@ export class RealtimeGateway implements OnApplicationBootstrap, OnModuleDestroy,
     const accepted: string[] = [];
     const rejected: string[] = [];
     for (const topic of topics) {
-      const space = this.spaces.get(topic.split(":")[0] ?? "");
-      // ONE BRANCH. The permission path is unchanged for every space that declares one; an
-      // `authorize` space never reaches hasPermission, because there is no permission to check.
-      const allowed =
-        space === undefined ? false
-          : space.authorize !== undefined ? space.authorize(st.userId, topic)
-            : await hasPermission(this.db, st.userId, space.permission!, "hospital");
+      // ONE BRANCH (`allowed`), shared with `revalidate`. The permission path is unchanged for every space that
+      // declares one; an `authorize` space never reaches hasPermission, because there is no permission to check.
+      const allowed = await this.allowed(st.userId, topic);
       if (!allowed) {
         rejected.push(topic);
         continue;

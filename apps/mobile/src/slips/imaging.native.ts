@@ -1,6 +1,6 @@
 import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
 import {
-  QUALITIES, detectDocument, fitToMaxEdge, fitsBudget, flatSize, frameQuad, homography, pageAspect,
+  QUALITIES, TARGET_BYTES, base64Bytes, detectDocument, flatSize, frameQuad, homography, pageAspect,
 } from "./rules";
 import type { Detection, Pixels, Quad } from "./rules";
 
@@ -94,23 +94,29 @@ export async function findPage(photo: Photo): Promise<Detection> {
   }
 }
 
-function encodeWithin(image: import("@shopify/react-native-skia").SkImage): string | null {
+/** The long edge brought down to `maxEdge` (never up). The slip desk's pages use 1600; an analyser slip 2400 (#934). */
+function fitTo(width: number, height: number, maxEdge: number): { width: number; height: number } {
+  const scale = Math.min(1, maxEdge / Math.max(width, height, 1));
+  return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
+}
+
+function encodeWithin(image: import("@shopify/react-native-skia").SkImage, budget: number): string | null {
   const { ImageFormat } = skia();
   for (const q of QUALITIES) {
     const b64 = image.encodeToBase64(ImageFormat.JPEG, Math.round(q * 100));
-    if (b64 !== "" && fitsBudget(b64)) return b64;
+    if (b64 !== "" && base64Bytes(b64) <= budget) return b64;
   }
   return null;
 }
 
-async function flattenWithSkia(photo: Photo, quad: Quad | null, maxEdge: number): Promise<Flat | null> {
+async function flattenWithSkia(photo: Photo, quad: Quad | null, maxEdge: number, budget: number): Promise<Flat | null> {
   const { Skia, FilterMode, MipmapMode } = skia();
   const image = await decode(photo.uri);
   const iw = image.width(); const ih = image.height();
   // The quad is in the photo's pixels; Skia may have decoded at another size.
   const kx = iw / photo.width; const ky = ih / photo.height;
   const q = quad === null ? null : quad.map((p) => ({ x: p.x * kx, y: p.y * ky })) as Quad;
-  const size = q === null ? fitToMaxEdge(iw, ih) : flatSize(q, maxEdge, pageAspect(q, iw / 2, ih / 2));
+  const size = q === null ? fitTo(iw, ih, maxEdge) : flatSize(q, maxEdge, pageAspect(q, iw / 2, ih / 2));
   const surface = Skia.Surface.Make(size.width, size.height);
   if (surface === null) throw new Error("no surface");
   const canvas = surface.getCanvas();
@@ -125,12 +131,12 @@ async function flattenWithSkia(photo: Photo, quad: Quad | null, maxEdge: number)
   }
   canvas.drawImageOptions(image, 0, 0, FilterMode.Linear, MipmapMode.None);
   surface.flush();
-  const b64 = encodeWithin(surface.makeImageSnapshot());
+  const b64 = encodeWithin(surface.makeImageSnapshot(), budget);
   return b64 === null ? null : { base64: b64, width: size.width, height: size.height, straightened: q !== null };
 }
 
 /** The fallback: cut to the rectangle the corners sit in, downscale, encode. No perspective. */
-async function flattenPlain(photo: Photo, quad: Quad | null): Promise<Flat | null> {
+async function flattenPlain(photo: Photo, quad: Quad | null, maxEdge: number, budget: number): Promise<Flat | null> {
   const actions: Parameters<typeof manipulateAsync>[1] = [];
   let w = photo.width; let h = photo.height;
   if (quad !== null) {
@@ -138,22 +144,23 @@ async function flattenPlain(photo: Photo, quad: Quad | null): Promise<Flat | nul
     actions.push({ crop });
     w = crop.width; h = crop.height;
   }
-  const fit = fitToMaxEdge(w, h);
+  const fit = fitTo(w, h, maxEdge);
   if (fit.width !== w) actions.push({ resize: { width: fit.width } });
   for (const q of QUALITIES) {
     const out = await manipulateAsync(photo.uri, actions, { compress: q, format: SaveFormat.JPEG, base64: true });
-    if (out.base64 !== undefined && out.base64 !== "" && fitsBudget(out.base64)) {
+    if (out.base64 !== undefined && out.base64 !== "" && base64Bytes(out.base64) <= budget) {
       return { base64: out.base64, width: out.width, height: out.height, straightened: false };
     }
   }
   return null;
 }
 
-export async function flatten(photo: Photo, quad: Quad | null, maxEdge: number): Promise<Flat | null> {
+/** `budget` is the encoded JPEG's ceiling in bytes: the desk's TARGET_BYTES unless a caller needs less (#934's slip upload). */
+export async function flatten(photo: Photo, quad: Quad | null, maxEdge: number, budget: number = TARGET_BYTES): Promise<Flat | null> {
   try {
-    return await flattenWithSkia(photo, quad, maxEdge);
+    return await flattenWithSkia(photo, quad, maxEdge, budget);
   } catch {
-    return flattenPlain(photo, quad);
+    return flattenPlain(photo, quad, maxEdge, budget);
   }
 }
 

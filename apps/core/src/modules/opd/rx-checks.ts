@@ -3,6 +3,7 @@ import type {
   DrugDiseaseAlternative, DrugDiseaseRow, InteractionPair, ResolvedDrug, SaltRef,
 } from "../formulary";
 import type { CodedDiagnosis } from "./diagnosis-history";
+import type { RenalDose } from "../formulary";
 import type { RxLine } from "./fhir";
 import type { AllergyMatch } from "./prescriptions";
 
@@ -472,4 +473,81 @@ export function checkDrugDisease(
     }
   }
   return hits;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// #621 — THE RENAL DOSE CHECK: a reviewed monograph's renal bands against the latest eGFR
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * DECIDED 2026-10-15 (standard practice, not money/procurement/law): the latest eGFR counts when it
+ * was sampled within 90 days, and every hit says how old it is. The bands are written as creatinine
+ * clearance (mL/min); the eGFR (CKD-EPI 2021, mL/min/1.73 m²) is read against them as its surrogate,
+ * which is ordinary practice for adult dosing outside extremes of body size — the hit carries the
+ * eGFR it used so the doctor can judge an edge.
+ */
+export const EGFR_FRESH_DAYS = 90;
+
+/** A drug's REVIEWED renal bands (`formulary.renalRulesByMedicine`); a drug with no reviewed rule has none. */
+export type RenalRule = { genericId: string; genericName: string; bands: RenalDose[] };
+
+/** What the lab could say about the kidneys (`lab.latestEgfr`, without the creatinine row). `null`: no signed creatinine. */
+export type KidneyReading =
+  | { computed: true; egfr: number; sampledAt: Date; ageDays: number }
+  | { computed: false; reason: "no_dob" | "sex_not_binary" | "under_18"; sampledAt: Date; ageDays: number }
+  | null;
+
+export type RenalHit = {
+  lineIndex: number;
+  /** The reviewed monograph's generic: the hit's identity, and what an override must name. */
+  genericId: string;
+  genericName: string;
+  /** `band`: the eGFR reads a reduce/avoid band. `no_recent_kidney_function`: no eGFR within 90 days. */
+  kind: "band" | "no_recent_kidney_function";
+  severity: "reduce" | "avoid" | null;
+  /** The band's dose text, exactly as the reviewed monograph says it. */
+  dose: string | null;
+  egfr: number | null;
+  /** When the eGFR's creatinine was drawn (ISO), and how many days ago — null when there is none. */
+  sampledAt: string | null;
+  ageDays: number | null;
+  /** Why there is no usable eGFR: none signed, older than 90 days, or not computable for this patient. */
+  reason: "no_result" | "stale" | "no_dob" | "sex_not_binary" | "under_18" | null;
+};
+
+/**
+ * Pure. One hit per line whose drug has a reviewed renal rule:
+ *   - a recent eGFR in a `reduce` or `avoid` band → that band;
+ *   - a recent eGFR in a `normal` band, or in no band at all → nothing ("nothing reviewed says");
+ *   - no recent eGFR → `no_recent_kidney_function`, with the reason and the last sample's age.
+ * A line with no reviewed rule is never asked about: the check speaks only where a second pair of
+ * eyes has signed the bands (`formulary/monographs.ts`, the review gate).
+ */
+export function checkRenal(
+  lines: RxCheckLine[], rules: ReadonlyMap<string, RenalRule>, kidney: KidneyReading,
+): RenalHit[] {
+  const fresh = kidney !== null && kidney.ageDays <= EGFR_FRESH_DAYS ? kidney : null;
+  const out: RenalHit[] = [];
+  for (const l of lines) {
+    const medicineId = l.resolution?.medicineId ?? null;
+    const rule = medicineId === null ? undefined : rules.get(medicineId);
+    if (rule === undefined) continue;
+    const base = { lineIndex: l.lineIndex, genericId: rule.genericId, genericName: rule.genericName };
+    if (fresh !== null && fresh.computed) {
+      const band = rule.bands.find((b) => (b.crclMin === null || fresh.egfr >= b.crclMin) && (b.crclMax === null || fresh.egfr < b.crclMax));
+      if (band === undefined || band.severity === "normal") continue;
+      out.push({
+        ...base, kind: "band", severity: band.severity, dose: band.dose,
+        egfr: fresh.egfr, sampledAt: fresh.sampledAt.toISOString(), ageDays: fresh.ageDays, reason: null,
+      });
+      continue;
+    }
+    out.push({
+      ...base, kind: "no_recent_kidney_function", severity: null, dose: null, egfr: null,
+      sampledAt: kidney === null ? null : kidney.sampledAt.toISOString(),
+      ageDays: kidney === null ? null : kidney.ageDays,
+      reason: kidney === null ? "no_result" : fresh === null || fresh.computed ? "stale" : fresh.reason,
+    });
+  }
+  return out;
 }

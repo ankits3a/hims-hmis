@@ -37,6 +37,7 @@ import { labOrdersForPatient, quickReportsForPatient } from "../lib/lab-quick-ap
 import { LabVisitDialog } from "./profile-lab-visit";
 import { PatientHistory } from "./patient-history-views";
 import { fmtPaise } from "../lib/format";
+import { fetchPatientCards } from "../lib/membership-api";
 import { CREDIT_READERS, CreditTile } from "../components/patient-credit";
 import { AllBillsTile } from "../components/patient-all-bills";
 import {
@@ -122,6 +123,38 @@ type LinkedWire = { numbers: string[]; items: LinkedRow[]; total: number };
 
 type EffectiveAuthority = { messages: boolean; consents: boolean; dsr: boolean; bills: boolean };
 type GuardianItem = { guardian: GuardianRow; effectiveAuthority: EffectiveAuthority };
+
+/**
+ * #657 — `GET /patients/:id/profile` (modules/patients/profile.ts). A readable record answers the
+ * same row as `GET /patients/:id` plus the visit count; `view` and `visits` are optional so an older
+ * server's (or a test's) plain `{ patient, resolvedFrom }` still reads as the full view. A SEALED
+ * record this seat may not open answers the alias-only shape instead of a 404.
+ */
+type FullProfileWire = {
+  view?: "full";
+  patient: PatientRow;
+  resolvedFrom: string | null;
+  breakGlass?: { id: string; reason: string } | null;
+  visits?: { count: number; lastVisitOn: string | null };
+};
+type RestrictedProfileWire = {
+  view: "restricted";
+  resolvedFrom: string | null;
+  patient: {
+    id: string; uhid: string; alias: string | null; isConfidential: true; administrativeGender: string;
+    ageYears: number | null; ageMonths: number | null; sensitiveContext: boolean; status: string;
+  };
+  allergies: { id: string; substance: string; reaction: string | null; severity: "mild" | "moderate" | "severe" | null }[];
+  /** #849 — date and department per visit; optional so an older server's shape still reads. */
+  history?: { serviceDate: string; departmentName: string | null }[];
+};
+type ProfileWire = FullProfileWire | RestrictedProfileWire;
+
+/** #657 — `GET /opd/patients/:id/queue-today` (modules/opd/queue-place.ts): counts only. */
+type QueuePlaceWire = {
+  encounterId: string; token: string; tokenNo: number; doctorName: string; departmentName: string | null;
+  state: "waiting_vitals" | "waiting" | "called" | "in_consult"; position: number | null; ahead: number | null;
+};
 
 const phonePattern = /^[6-9]\d{9}$/;
 
@@ -834,7 +867,7 @@ function AuthorityBadge({ label, on }: { label: string; on: boolean }): React.Re
   );
 }
 
-const RELATIONSHIPS = ["father", "mother", "legal_guardian", "other"] as const;
+const RELATIONSHIPS = ["father", "mother", "spouse", "sibling", "legal_guardian", "other"] as const;
 
 const addGuardianSchema = z.object({
   name: z.string().min(1),
@@ -1091,13 +1124,18 @@ function LinkedPatients({ patient }: { patient: PatientRow }): React.ReactElemen
 
 /* ——— The hospital card: print + reissue (D-23: every previously printed card dies at that moment) ——— */
 
-function PrintCardDialog({ patient, open, onOpenChange, reissued }: {
-  patient: PatientRow; open: boolean; onOpenChange: (o: boolean) => void; reissued: { qrVersion: number; payload: string } | null;
+/**
+ * The patient card. `alias` (#849, board §4 "Print card (alias)") asks the alias variant of the same
+ * read (`GET /patients/:id/qr/alias`: the alias in the name's place, no DOB) and prints it through
+ * the same `QrCard` — one renderer, two sources.
+ */
+function PrintCardDialog({ patientId, alias = false, open, onOpenChange, reissued }: {
+  patientId: string; alias?: boolean; open: boolean; onOpenChange: (o: boolean) => void; reissued: { qrVersion: number; payload: string } | null;
 }): React.ReactElement {
   const { t } = useTranslation();
   const qr = useQuery({
-    queryKey: ["qr-card", patient.id],
-    queryFn: () => api<QrCardData>("GET", `/patients/${patient.id}/qr`),
+    queryKey: ["qr-card", patientId, alias ? "alias" : "card"],
+    queryFn: () => api<QrCardData>("GET", alias ? `/patients/${patientId}/qr/alias` : `/patients/${patientId}/qr`),
     enabled: open,
   });
   // UX-AUDIT 2026-09-29 · BOARD — the QR payload carries the internal patient id; it is encoded in the
@@ -1107,7 +1145,7 @@ function PrintCardDialog({ patient, open, onOpenChange, reissued }: {
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* Not `.pp`: its button reset strips QrCard's own Print button (board finding 10). */}
       <DialogContent>
-        <DialogHeader><DialogTitle>{t("card.print")}</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{alias ? t("profile.restricted.printAlias") : t("card.print")}</DialogTitle></DialogHeader>
         {data === null ? <p>{t("app.loading")}</p> : (
           <div data-testid="qr-card-print" data-payload={data.payload}><QrCard data={data} /></div>
         )}
@@ -1157,6 +1195,153 @@ function DocumentDialog({ documentId, onClose }: { documentId: string | null; on
   );
 }
 
+/**
+ * ═══ #657 — A RESTRICTED (SEALED) RECORD THIS SEAT MAY NOT OPEN ═══
+ *
+ * Board §4 (owner ruling 28-Sep-2026): the alias is the name; staff see the UHID, age and allergies;
+ * mobile and address read "hidden"; the name, contact and address open only through break-glass by
+ * the Medical Superintendent. The server sends nothing more than that (`profile.ts`), so this view
+ * cannot draw more. "Break glass" is the EXISTING act (`POST /auth/break-glass`, held by the MS
+ * alone) — drawn only for a seat holding `auth.break_glass.use`; after it the read answers the full
+ * record with the grant, and the page draws it with the reason on a banner.
+ */
+function RestrictedProfileView({ data, canOpenVisit, onOpenVisit }: {
+  data: RestrictedProfileWire; canOpenVisit: boolean; onOpenVisit: () => void;
+}): React.ReactElement {
+  const { t } = useTranslation();
+  const { can } = useAuth();
+  const queryClient = useQueryClient();
+  const genderWord = useGenderWord();
+  const [glassOpen, setGlassOpen] = useState(false);
+  const [printing, setPrinting] = useState(false);
+  /* #852 — billing's alias read: date · bill number · status, never an amount; asked only by a seat holding a bill read. */
+  const bills = useQuery({
+    queryKey: ["pf-bills-alias", data.patient.id],
+    queryFn: () => api<{ items: { date: string; invoiceNo: string; status: "unpaid" | "partial" | "settled" }[] }>("GET", `/billing/patients/${data.patient.id}/bills-alias`),
+    enabled: can("billing.invoice.read") || can("billing.dues.patient.read"),
+    retry: false,
+  });
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const p = data.patient;
+  const ageWord = p.ageYears === null ? null : p.ageYears === 0 && p.ageMonths !== null
+    ? t("profile.ageMonths", { n: String(p.ageMonths) })
+    : t("profile.ageYears", { n: String(p.ageYears) });
+  const shown = data.allergies.slice(0, 1);
+  const breakGlass = async (): Promise<void> => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api("POST", "/auth/break-glass", { patientId: p.id, reason: reason.trim() });
+      await queryClient.invalidateQueries({ queryKey: ["patient", p.id] });
+      setGlassOpen(false);
+    } catch (e) {
+      setError(refusal(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <PaperScreen>
+      <div className="pf" style={{ flexGrow: 1, display: "flex", flexDirection: "column" }} data-testid="restricted-profile">
+        <div className="pf-grid">
+          <aside className="pf-lane" data-testid="profile-lane">
+            <div className="pf-who">
+              <div className="pf-ph hidden">{t("profile.hidden")}</div>
+              <div style={{ minWidth: 0 }}>
+                <span className="pill rd" data-testid="restricted-pill">{t("profile.restricted.pill")}</span>
+                <h1 style={{ marginTop: 6 }}>{p.alias ?? t("profile.restricted.pill")}</h1>
+                <div className="mo" style={{ fontSize: 13, marginTop: 2 }}>{p.uhid}</div>
+                <div style={{ fontSize: 12, color: "var(--dim)" }}>{[ageWord, genderWord(p.administrativeGender)].filter((x) => x !== null && x !== "").join(" · ")}</div>
+              </div>
+            </div>
+            <div className="pf-body">
+              <div className="safety" data-testid="allergy-band">
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <span className="tag" style={{ color: "var(--red)" }}>
+                    {data.allergies.length === 0 ? t("profile.allergies.none") : t("profile.allergies.active", { count: data.allergies.length })}
+                  </span>
+                </div>
+                {shown.map((a) => (
+                  <div className="al" key={a.id}>
+                    <b>{a.substance}</b>
+                    <span style={{ flex: 1, color: a.reaction === null ? "var(--dim)" : undefined }}>{a.reaction ?? t("profile.allergies.noReaction")}</span>
+                    {a.severity !== null && <span className={a.severity === "severe" ? "sev s" : "sev"}>{t(`patient.${a.severity}`)}</span>}
+                  </div>
+                ))}
+                {data.allergies.length > 1 && <div style={{ fontSize: 11, color: "var(--dim)" }}>{t("profile.allergies.more", { count: data.allergies.length - 1 })}</div>}
+              </div>
+              <div className="fact" style={{ marginTop: 10 }}><span>{t("profile.mobile")}</span><span>{t("profile.hiddenWord")}</span></div>
+              <div className="fact"><span>{t("register.address")}</span><span>{t("profile.hiddenWord")}</span></div>
+              <div className="fact"><span>{t("profile.sameMobile")}</span><span>{t("profile.restricted.noFamily")}</span></div>
+              {p.sensitiveContext && <div className="fact"><span>{t("profile.familyMessages")}</span><span style={{ color: "var(--red)" }}>{t("profile.sealed")}</span></div>}
+            </div>
+          </aside>
+          <main className="pf-main">
+            <div className="refuse" style={{ marginBottom: 12 }} data-testid="restricted-banner">
+              <b style={{ color: "var(--red)" }}>{t("profile.restricted.title")}</b> {t("profile.restricted.body")}
+            </div>
+            {/* #849 — board §4: each visit as its date and department; the rest is the treating doctor's. */}
+            {(data.history ?? []).length > 0 && (
+              <section data-testid="restricted-history">
+                <div className="tag" style={{ marginBottom: 6 }}>{t("profile.restricted.history")}</div>
+                {(data.history ?? []).map((h, i) => (
+                  <div className="ev" key={`${h.serviceDate}-${String(i)}`} data-testid="restricted-history-row">
+                    <span className="src">OPD</span>
+                    <div>
+                      <div className="t">{[dmy(h.serviceDate), h.departmentName].filter((x) => x !== null && x !== "").join(" · ")}</div>
+                      <div className="s">{t("profile.restricted.doctorOnly")}</div>
+                    </div>
+                  </div>
+                ))}
+              </section>
+            )}
+            {(bills.data?.items ?? []).length > 0 && (
+              <section data-testid="restricted-bills" style={{ marginTop: 10 }}>
+                {(bills.data?.items ?? []).map((b) => (
+                  <div className="ev" key={b.invoiceNo} data-testid="restricted-bill-row">
+                    <span className="src">BILL</span>
+                    <div>
+                      <div className="t">{dmy(b.date)} · <span className="mo">{b.invoiceNo}</span></div>
+                      <div className="s">{t(`profile.restricted.billStatus.${b.status}`)}</div>
+                    </div>
+                  </div>
+                ))}
+              </section>
+            )}
+            {glassOpen && (
+              <div className="box" style={{ padding: 14 }} data-testid="break-glass-form">
+                <label style={{ display: "block", fontSize: 12.5, fontWeight: 600, marginBottom: 6 }} htmlFor="pf-glass-reason">{t("profile.breakGlass.reason")}</label>
+                <input id="pf-glass-reason" value={reason} onChange={(e) => setReason(e.target.value)} style={{ width: "100%" }} />
+                <p style={{ fontSize: 11.5, color: "var(--dim)", margin: "6px 0 10px" }}>{t("profile.breakGlass.note")}</p>
+                {error !== null && <p className="banner rd" role="alert">{error}</p>}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button type="button" className="pri rd" data-testid="break-glass-confirm" disabled={reason.trim().length < 3 || busy} onClick={() => void breakGlass()}>{t("profile.breakGlass.confirm")}</button>
+                  <button type="button" className="sec" onClick={() => setGlassOpen(false)}>{t("profile.close")}</button>
+                </div>
+              </div>
+            )}
+          </main>
+          <aside className="pf-side" data-testid="onward-actions">
+            <section className="box" style={{ padding: 14 }}>
+              <div className="tag" style={{ marginBottom: 10 }}>{t("profile.nextAct")}</div>
+              {canOpenVisit && <button className="pri" style={{ width: "100%" }} data-testid="onward-open-visit" onClick={onOpenVisit}>{t("profile.openAtDeskOne")}</button>}
+              <div className="acts2">
+                <button type="button" className="sec" data-testid="print-card-alias" onClick={() => setPrinting(true)}>{t("profile.restricted.printAlias")}</button>
+                {can("auth.break_glass.use") && !glassOpen && (
+                  <button type="button" className="sec rd" data-testid="break-glass" onClick={() => setGlassOpen(true)}>{t("profile.breakGlass.act")}</button>
+                )}
+              </div>
+            </section>
+          </aside>
+        </div>
+      </div>
+      <PrintCardDialog patientId={p.id} alias open={printing} onOpenChange={setPrinting} reissued={null} />
+    </PaperScreen>
+  );
+}
+
 // ——— Screen ———
 
 /**
@@ -1192,16 +1377,32 @@ export function PatientDetail(): React.ReactElement {
   const [recordingDeath, setRecordingDeath] = useState(false);
   const [addingRep, setAddingRep] = useState(false);
   const [reissued, setReissued] = useState<{ qrVersion: number; payload: string } | null>(null);
+  /* #657 — the numbers the logged "Show" returned; null until it succeeds (the page masks them until then). */
+  const [shownMobiles, setShownMobiles] = useState<{ phone: string | null; altPhone: string | null } | null>(null);
+  const [showBusy, setShowBusy] = useState(false);
+  const [showError, setShowError] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [openDoc, setOpenDoc] = useState<string | null>(null);
   const [openVisit, setOpenVisit] = useState<WireTimelineItem | null>(null);
 
+  /*
+    #657 — the profile's own read (`GET /patients/:id/profile`). The key sits UNDER ["patient", id] so
+    every act on this page that invalidates the patient refreshes it, and it does not share a cache
+    entry with the screens that read the plain `GET /patients/:id`.
+  */
   const patientQuery = useQuery({
-    queryKey: ["patient", patientId],
-    queryFn: () => api<{ patient: PatientRow; resolvedFrom: string | null }>("GET", `/patients/${patientId}`),
+    queryKey: ["patient", patientId, "profile"],
+    queryFn: () => api<ProfileWire>("GET", `/patients/${patientId}/profile`),
   });
-  const pid = patientQuery.data?.patient.id ?? null;
-  const restricted = patientQuery.data?.patient.isConfidential ?? false;
+  const fullData = patientQuery.data !== undefined && patientQuery.data.view !== "restricted" ? patientQuery.data : undefined;
+  const pid = fullData?.patient.id ?? null;
+  /*
+    The alias is the name on a sealed record (board §4) — unless the MS has broken the glass on it:
+    then the server sent the record WITH the grant, and the name, contact and address are what the
+    grant was for. A banner says so, with the stated reason.
+  */
+  const glass = fullData?.breakGlass ?? null;
+  const restricted = (fullData?.patient.isConfidential ?? false) && glass === null;
 
   /*
    * THE TIMELINE'S SOURCES — each one asked only by a seat that holds its permission, so a seat
@@ -1236,6 +1437,18 @@ export function PatientDetail(): React.ReactElement {
   const dispenses = useQuery({ queryKey: ["pf-dispenses", pid], queryFn: () => fetchPatientDispenses(pid!), enabled: on("opd.consult"), retry: false });
   const documents = useQuery({ queryKey: ["pf-documents", pid], queryFn: () => listPatientDocuments(pid!), enabled: on("patients.read"), retry: false });
   const guardians = useGuardians(pid ?? "", pid !== null && !restricted);
+  /* #657 — where in line today (`opd.queue.read`, counts only) and the membership card(s) linked to
+     this patient: the counter's existing recognition read, on its own grant (`membership.instrument.recognise`). */
+  const queueToday = useQuery({
+    queryKey: ["pf-queue-today", pid],
+    queryFn: () => api<{ items: QueuePlaceWire[] }>("GET", `/opd/patients/${pid!}/queue-today`),
+    enabled: on("opd.queue.read"), retry: false,
+  });
+  const cards = useQuery({
+    queryKey: ["pf-cards", pid],
+    queryFn: () => fetchPatientCards(pid!),
+    enabled: on("membership.instrument.recognise") && !restricted, retry: false,
+  });
 
   /**
    * ═══ FD-COPILOT — THIS RECORD'S OWN FACTS, NOW THE FALLBACK RATHER THAN THE WHOLE ═══
@@ -1247,7 +1460,7 @@ export function PatientDetail(): React.ReactElement {
   const localAnswer = (question: string): string | null => {
     const q = question.trim().toLowerCase();
     if (q === "") return null;
-    const row = patientQuery.data?.patient;
+    const row = fullData?.patient;
     if (row === undefined) return null;
     if (q.includes("age") || q.includes("dob") || q.includes("born")) {
       return row.dob === null
@@ -1255,7 +1468,7 @@ export function PatientDetail(): React.ReactElement {
         : `Date of birth ${dmy(row.dob)}${row.dobEstimated ? " (estimated from an age given at the counter)" : ""}. — from the patient row.`;
     }
     if (q.includes("phone") || q.includes("mobile")) {
-      if (row.isConfidential) return "Contact details are not shown on a restricted record. — from the patient row.";
+      if (row.isConfidential && glass === null) return "Contact details are not shown on a restricted record. — from the patient row.";
       return `${row.phone === null ? "No mobile" : `Mobile ${maskMobile(row.phone)}`}${row.altPhone === null ? "" : ` · alternate ${maskMobile(row.altPhone)}`}. — from the patient row.`;
     }
     if (q.includes("abha")) {
@@ -1275,7 +1488,7 @@ export function PatientDetail(): React.ReactElement {
     masked to a placeholder before the question could reach a router. The alias is passed too.
   */
   const copilotTerms = (): string[] => {
-    const row = patientQuery.data?.patient;
+    const row = fullData?.patient;
     if (row === undefined) return [];
     return [row.name, row.alias, row.uhid, row.phone, row.altPhone].filter((x): x is string => typeof x === "string" && x !== "");
   };
@@ -1313,9 +1526,17 @@ export function PatientDetail(): React.ReactElement {
   }, [editing, canEdit, canOpenVisit, pid]);
 
   if (!patientQuery.data) return <div className="p-6">{t("app.loading")}</div>;
+  if (patientQuery.data.view === "restricted") {
+    const sealedId = patientQuery.data.patient.id;
+    return (
+      <RestrictedProfileView data={patientQuery.data} canOpenVisit={canOpenVisit}
+        onOpenVisit={() => { takePatient(sealedId); void navigate({ to: "/counter" }); }} />
+    );
+  }
 
   const { patient, resolvedFrom } = patientQuery.data;
-  const name = shownName(patient, t("profile.restricted.pill"));
+  // #657 — the MS's break-glass opens the name (board §4); otherwise the alias is the name on a sealed record.
+  const name = glass !== null ? patient.name : shownName(patient, t("profile.restricted.pill"));
   const age = ageOf(patient.dob);
   const ageWord = age === "" ? null : /m$/.test(age) ? t("profile.ageMonths", { n: age.slice(0, -1) }) : t("profile.ageYears", { n: age });
   const today = istDay(new Date().toISOString());
@@ -1393,11 +1614,42 @@ export function PatientDetail(): React.ReactElement {
     void navigate({ to: "/opd/appointments", search: { patientId: pid, departmentId: a.departmentId, doctorId: a.doctorId, date: a.serviceDate.slice(0, 10) } as never });
   };
   const pending = labReports.data?.pending ?? [];
-  const visitCount = visits.data?.items.length;
+  // #657 — the server's count (non-abandoned visits, merge chain); the timeline's length only as a fallback for an older server.
+  const visitCount = fullData?.visits?.count ?? visits.data?.items.length;
+  /* #657 — the full mobile is masked; "Show" (front desk, cashier: the seats whose job is to call —
+     board §3 table) posts the logged act first and reveals only what it returned. */
+  const canShowMobile = can("patients.register") || can("billing.receipt.record");
+  const showMobiles = async (): Promise<void> => {
+    setShowBusy(true);
+    setShowError(null);
+    try {
+      setShownMobiles(await api<{ phone: string | null; altPhone: string | null }>("POST", `/patients/${patient.id}/mobile-shown`));
+    } catch (e) {
+      setShowError(refusal(e));
+    } finally {
+      setShowBusy(false);
+    }
+  };
+  const queueOf = (encounterId: string): QueuePlaceWire | undefined => queueToday.data?.items.find((q) => q.encounterId === encounterId);
+  const queueLine = (q: QueuePlaceWire): string => q.state === "waiting" && q.ahead !== null
+    ? (q.ahead === 0 ? t("profile.queue.next", { doctor: q.doctorName }) : t("profile.queue.ahead", { count: q.ahead, doctor: q.doctorName }))
+    : t(`profile.queue.state.${q.state}`, { doctor: q.doctorName });
+  const strayQueue = (queueToday.data?.items ?? []).filter((q) => !openToday.some((v) => v.encounterId === q.encounterId));
   const rep = (guardians ?? []).find((g) => g.guardian.status === "active");
 
-  const phoneFact = (label: string, phone: string | null): React.ReactElement | null => phone === null ? null : (
-    <div className="fact"><span>{label}</span><span className="mo">{maskMobile(phone)}</span></div>
+  const phoneFact = (label: string, phone: string | null, shown: string | null | undefined, withShow: boolean, testId: string): React.ReactElement | null => phone === null ? null : (
+    <div className="fact">
+      <span>{label}</span>
+      <span className="mo" data-testid={testId}>
+        {shown !== undefined && shown !== null ? shown : maskMobile(phone)}
+        {withShow && shownMobiles === null && (
+          <button type="button" className="pf-show" data-testid="show-mobile" disabled={showBusy} onClick={() => void showMobiles()}
+            style={{ marginLeft: 6, background: "none", border: 0, padding: 0, cursor: "pointer", fontFamily: "'IBM Plex Sans'", color: "var(--green)", fontWeight: 600, fontSize: 11.5 }}>
+            {t("profile.showMobile")}
+          </button>
+        )}
+      </span>
+    </div>
   );
 
   const abhaPill = patient.abhaVerificationStatus === "verified"
@@ -1451,8 +1703,9 @@ export function PatientDetail(): React.ReactElement {
                   {patient.dob !== null && (
                     <div className="fact"><span>{t("profile.born")}</span><span>{dmy(patient.dob)}{patient.dobEstimated ? ` · ${t("profile.estimated")}` : ""}</span></div>
                   )}
-                  {phoneFact(t("profile.mobile"), patient.phone)}
-                  {phoneFact(t("profile.alternate"), patient.altPhone)}
+                  {phoneFact(t("profile.mobile"), patient.phone, shownMobiles?.phone, canShowMobile, "mobile-fact")}
+                  {phoneFact(t("profile.alternate"), patient.altPhone, shownMobiles?.altPhone, canShowMobile && patient.phone === null, "alt-mobile-fact")}
+                  {showError !== null && <p className="banner rd" role="alert" style={{ fontSize: 12 }}>{showError}</p>}
                   {address !== "" && <div className="fact"><span>{t("register.address")}</span><span>{address}</span></div>}
                   <div className="fact"><span>{t("profile.language")}</span><span>{patient.language === "hi" ? t("register.hindi") : t("register.english")}</span></div>
                   {abhaText !== null && <div className="fact"><span>{t("patient.abha")}</span><span>{abhaText} {abhaPill}</span></div>}
@@ -1463,6 +1716,20 @@ export function PatientDetail(): React.ReactElement {
                       {dmyIst(patient.createdAt)}{visitCount !== undefined ? ` · ${t("profile.visits", { count: visitCount })}` : ""}
                     </span></div>
                   )}
+                  {(cards.data?.memberships ?? []).map((m) => (
+                    <div className="fact" key={m.instanceId} data-testid="membership-card">
+                      <span>{t("profile.card.label")}</span>
+                      <span>
+                        {m.planTitle}
+                        <span style={{ display: "block", fontSize: 11, color: m.standing === "usable" ? "var(--green)" : "var(--dim)" }}>
+                          {[
+                            t(`counterInstruments.standing.${m.standing}`, { date: dmyIst(m.standing === "not_yet_valid" ? m.validFrom : m.validTo) }),
+                            m.standing === "usable" ? t("profile.card.until", { date: dmyIst(m.validTo) }) : null,
+                          ].filter(Boolean).join(" · ")}
+                        </span>
+                      </span>
+                    </div>
+                  ))}
                   <div className="tag" style={{ margin: "14px 0 2px" }}>{t("profile.people")}</div>
                   <div className="fact">
                     <span>{t("profile.representative")}</span>
@@ -1507,12 +1774,17 @@ export function PatientDetail(): React.ReactElement {
           <main className="pf-main">
             {resolvedFrom !== null && <p className="banner gd">{t("patient.merged")}</p>}
             <DeceasedBanner patient={patient} canClear={canDeath} />
+            {glass !== null && (
+              <div className="refuse" style={{ marginBottom: 12 }} data-testid="break-glass-banner">
+                <b style={{ color: "var(--red)" }}>{t("profile.breakGlass.open")}</b> {t("profile.breakGlass.openBody", { reason: glass.reason })}
+              </div>
+            )}
             {restricted && (
               <div className="refuse" style={{ marginBottom: 12 }} data-testid="restricted-banner">
                 <b style={{ color: "var(--red)" }}>{t("profile.restricted.title")}</b> {t("profile.restricted.body")}
               </div>
             )}
-            {(openToday.length > 0 || pending.length > 0 || owed.totalPaise > 0) && (
+            {(openToday.length > 0 || strayQueue.length > 0 || pending.length > 0 || owed.totalPaise > 0) && (
               <>
                 <div className="tag" style={{ marginBottom: 6 }}>{t("profile.today", { date: dmy(today) })}</div>
                 <div className="today" data-testid="today-band">
@@ -1526,10 +1798,17 @@ export function PatientDetail(): React.ReactElement {
                       onClick={() => { setOpenVisit(visitOf(v.encounterId)); }}
                       style={{ display: "block", textAlign: "left", background: "none", border: 0, padding: 0, cursor: "pointer", font: "inherit", color: "inherit" }}
                     >
-                      <b>{t("profile.todayVisit", { dept: v.departmentName ?? "OPD" })}</b>
+                      <b>{t("profile.todayVisit", { dept: v.departmentName ?? "OPD" })}{queueOf(v.encounterId) !== undefined ? ` · ${t("profile.queue.token", { token: queueOf(v.encounterId)!.token })}` : ""}</b>
+                      {queueOf(v.encounterId) !== undefined && <div className="s" data-testid="queue-place">{queueLine(queueOf(v.encounterId)!)}</div>}
                       <div className="s">{[t(`profile.visitStatus.${v.status}`, v.status), v.doctorName, v.visitNo !== undefined ? t("profile.tl.visit", { n: v.visitNo }) : null].filter(Boolean).join(" · ")}</div>
                       <div className="s" style={{ color: "var(--green)", fontWeight: 600 }}>{t("visitCard.open")} ›</div>
                     </button>
+                  ))}
+                  {strayQueue.map((q) => (
+                    <div key={q.encounterId} data-testid="today-queue">
+                      <b>{t("profile.todayVisit", { dept: q.departmentName ?? "OPD" })} · {t("profile.queue.token", { token: q.token })}</b>
+                      <div className="s" data-testid="queue-place">{queueLine(q)}</div>
+                    </div>
                   ))}
                   {pending.length > 0 && (
                     <div>
@@ -1538,7 +1817,7 @@ export function PatientDetail(): React.ReactElement {
                     </div>
                   )}
                   {owed.totalPaise > 0 && (
-                    <div className={openToday.length + pending.length > 0 ? "money" : undefined} data-testid="today-dues">
+                    <div className={openToday.length + strayQueue.length + pending.length > 0 ? "money" : undefined} data-testid="today-dues">
                       <b style={{ color: "var(--gold)" }}>{t("profile.due", { amount: fmtPaise(owed.totalPaise) })}</b>
                       {owed.oldest !== null && (
                         <div className="s">{t("profile.dueFrom", { date: dmy(owed.oldest.serviceDay), bill: owed.oldest.invoiceNo, count: owed.count })}</div>
@@ -1682,7 +1961,7 @@ export function PatientDetail(): React.ReactElement {
       </div>
 
       {editing && <EditDrawer key={JSON.stringify(patient)} patient={patient} displayName={name} onClose={() => setEditing(false)} />}
-      <PrintCardDialog patient={patient} open={printing} onOpenChange={setPrinting} reissued={reissued} />
+      <PrintCardDialog patientId={patient.id} open={printing} onOpenChange={setPrinting} reissued={reissued} />
       <ReissueDialog patient={patient} open={reissuing} onOpenChange={setReissuing} onReissued={setReissued} />
       <RecordDeathDialog patient={patient} open={recordingDeath} onOpenChange={setRecordingDeath} />
       {!restricted && <AddGuardianDialog patientId={patient.id} open={addingRep} onOpenChange={setAddingRep} />}

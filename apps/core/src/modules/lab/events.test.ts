@@ -11,7 +11,7 @@ import { labManifest } from "./manifest";
  */
 describe("the lab's event catalogue (Plan 17 T2)", () => {
   it("declares thirty-four events, every one `lab.*`, in the lab's module namespace", () => {
-    expect(LAB_EVENTS).toHaveLength(36); // owner 2026-10-12: `quick_report_shared` (Share PDF on the phone). owner 2026-10-12: `mode_changed`. owner 2026-10-11 quick chain: `quick_handed_over`, `quick_sent_back`. 0061: `quick_started`, `quick_reported`. owner 2026-10-11: `booking_made`, `booking_closed`, `booking_hours_changed`. 17d: `tube_swap_suspected`, `specimen_relabelled`. 17-E T7: `result_chosen`. DD11: `night_release_reviewed`. F44: `reflex_refused`
+    expect(LAB_EVENTS).toHaveLength(43); // #934: the six `slip_*` (the photographed analyser slip). E3.2 (#595): `critical_overdue`. owner 2026-10-12: `quick_report_shared` (Share PDF on the phone). owner 2026-10-12: `mode_changed`. owner 2026-10-11 quick chain: `quick_handed_over`, `quick_sent_back`. 0061: `quick_started`, `quick_reported`. owner 2026-10-11: `booking_made`, `booking_closed`, `booking_hours_changed`. 17d: `tube_swap_suspected`, `specimen_relabelled`. 17-E T7: `result_chosen`. DD11: `night_release_reviewed`. F44: `reflex_refused`
     for (const event of LAB_EVENTS) {
       expect([event.name, event.module]).toEqual([event.name, "lab"]);
       expect(event.name.startsWith("lab.")).toBe(true);
@@ -33,6 +33,7 @@ describe("the lab's event catalogue (Plan 17 T2)", () => {
       "lab.booking_hours_changed",
       "lab.booking_made",
       "lab.critical_acknowledged",
+      "lab.critical_overdue",
       "lab.label_printed",
       /** Owner 2026-10-12 — quick or full lab, switched by the lab's administrator (`mode.ts`). */
       "lab.mode_changed",
@@ -71,6 +72,13 @@ describe("the lab's event catalogue (Plan 17 T2)", () => {
       "lab.result_entered",
       "lab.result_verified",
       "lab.sla_breached",
+      /** #934 — the photographed analyser slip: read, attached, detached, a row resolved, discarded. Ids and counts only. */
+      "lab.slip_attached",
+      "lab.slip_detached",
+      "lab.slip_discarded",
+      "lab.slip_read_failed",
+      "lab.slip_row_resolved",
+      "lab.slip_scanned",
       "lab.sod_violation_blocked",
       "lab.specimen_collected",
       "lab.specimen_received",

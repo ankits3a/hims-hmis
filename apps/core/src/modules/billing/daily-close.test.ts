@@ -207,6 +207,7 @@ describe("the daily close: claim, day book, orphan scan and GSTR-1 (D9, §11.11)
       invoices: { count: 1, netPayablePaise: 56_000 },
       creditNotes: { count: 0, netPaise: 0 },
       vouchersPaid: { count: 0, amountPaise: 0 },
+      bankCharges: { count: 0, amountPaise: 0 }, // #655 — no settlement decided that day
     });
   });
 
@@ -248,6 +249,7 @@ describe("the daily close: claim, day book, orphan scan and GSTR-1 (D9, §11.11)
       invoices: { count: 1, netPayablePaise: 56_000 },
       creditNotes: { count: 1, netPaise: 56_000 },
       vouchersPaid: { count: 1, amountPaise: 56_000 },
+      bankCharges: { count: 0, amountPaise: 0 },
     });
   });
 

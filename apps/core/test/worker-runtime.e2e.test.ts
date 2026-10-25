@@ -18,6 +18,7 @@ import { OBLIGATIONS_CONSUMER, obligationsConsumer } from "../src/kernel/obligat
 import { PHONE_PUSH_CONSUMER, phonePushConsumer } from "../src/kernel/push/consumer";
 import { fixedPhonePushSource } from "../src/kernel/push/sender";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
+import { PATIENTS_APPROVAL_REJECTED_CONSUMER, approvalRejectedConsumer } from "../src/modules/patients";
 import { runDueTimers } from "../src/kernel/workflow/timers";
 import { runDispatchCycle } from "../src/kernel/events/dispatcher";
 import { startInstance } from "../src/kernel/workflow/instances";
@@ -147,6 +148,8 @@ const THE_EIGHTEEN = [
    */
   "sweepLabNonReturn",
   "sweepLabSla",
+  /** E3.2 (#595) — the lab critical ladder, `every(60_000)`, registered right after `sweepLabSla`. */
+  "sweepLabCriticalLadder",
   /**
    * PLAN 16c CLOSE / F11 — the SIXTEENTH, an `every(60_000)` job registered LAST, which is where
    * `jobs.ts` puts it. It releases a pharmacy pick whose 30-minute reservation ran out: `pick.ts`
@@ -206,6 +209,8 @@ const THE_EIGHTEEN = [
   "openDueTeleVisits",
   /** STAFF ATTENDANCE (owner 2026-10-09) — `every(120_000)`: the copy of the attendance machine's records. Makes no call until configured and switched on. */
   "syncAttendance",
+  /** DOCTOR DESK DD-report v0 — `dailyIst("08:00")`: the unit report, counts only, to the unit head. */
+  "sendUnitReports",
 ];
 
 type Frame = { type: string } & Record<string, unknown>;
@@ -437,6 +442,8 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
           "roster.cover_requested", "roster.cover_answered", "roster.cover_decided", "roster.duty_changed",
           // E2.2 (decision 0069): a leave waiting reaches its deciders; the answer reaches the person.
           "roster.absence_requested", "roster.absence_approved", "roster.absence_refused",
+          // E3.2 (#595): a lab critical nobody has read back. Read off the red run.
+          "lab.critical_overdue",
         ].sort()],
         [
           "kernel.notify",
@@ -539,6 +546,8 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
           "partners.accrual",
           ["allocation.reversed", "credit_note.issued", "payment.received", "payment.refunded"],
         ],
+        // #653 — a refused merge closes its request at refusal time. `partners.` < `patients.` < `pharmacy.`.
+        ["patients.approval_rejected", ["approval.rejected"]],
         // PLAN 16c T3 / D10 — the counter's queue: `prescription.issued` → a queued dispense. Sorts before `radiology.*`.
         // PHARMACY P6 (patient messages) — the bill's message, once per invoice. Sorts after `pharmacy.`
         // `patient_messages` < `rx_issued`.
@@ -556,18 +565,23 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
       // why each install and its consumers-map entry are one edit that must never be split:
       // ship the install alone and the worker throws at startup, behind a suite that would
       // otherwise still be green. Both directions, so DELETING EITHER ENTRY fails here (N12).
-      expect(() => buildSubscriptionBus(registry, {})).toThrow(/kernel\.alerts/);
+      const PATIENT = { [PATIENTS_APPROVAL_REJECTED_CONSUMER]: approvalRejectedConsumer(workerDb) };
+      expect(() => buildSubscriptionBus(registry, {})).toThrow(/patients\.approval_rejected/);
+      // #653 — `patients` is installed ahead of the kernel's own wires, so it is the first one a bare
+      // map misses. Every leg below passes its handler (`PATIENT`) so each still names the wire it pins.
+      expect(() => buildSubscriptionBus(registry, { ...PATIENT })).toThrow(/kernel\.alerts/);
       expect(() =>
-        buildSubscriptionBus(registry, { [ALERTS_CONSUMER]: alertsConsumer(workerDb) }),
+        buildSubscriptionBus(registry, { ...PATIENT, [ALERTS_CONSUMER]: alertsConsumer(workerDb) }),
       ).toThrow(/kernel\.notify/);
       expect(() =>
-        buildSubscriptionBus(registry, { [NOTIFY_CONSUMER]: notifyConsumer(workerDb) }),
+        buildSubscriptionBus(registry, { ...PATIENT, [NOTIFY_CONSUMER]: notifyConsumer(workerDb) }),
       ).toThrow(/kernel\.alerts/);
       // PHASE O T1: the same both-directions proof for the obligation spine's wire. Pass the two
       // shipped kernel handlers, omit `kernel.obligations`, and the worker refuses to boot — the
       // mechanism that stops "an ack stops the respond clock" being shipped as a dead consumer.
       expect(() =>
         buildSubscriptionBus(registry, {
+          ...PATIENT,
           [ALERTS_CONSUMER]: alertsConsumer(workerDb),
           [NOTIFY_CONSUMER]: notifyConsumer(workerDb),
         }),
@@ -576,6 +590,7 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
       // `kernel.phone_push`, and the worker refuses to boot.
       expect(() =>
         buildSubscriptionBus(registry, {
+          ...PATIENT,
           [ALERTS_CONSUMER]: alertsConsumer(workerDb),
           [NOTIFY_CONSUMER]: notifyConsumer(workerDb),
           [OBLIGATIONS_CONSUMER]: obligationsConsumer(workerDb),
@@ -586,6 +601,7 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
       // "declare the subscriptions and the handler in ONE commit" a mechanism rather than a habit.
       expect(() =>
         buildSubscriptionBus(registry, {
+          ...PATIENT,
           [ALERTS_CONSUMER]: alertsConsumer(workerDb),
           [NOTIFY_CONSUMER]: notifyConsumer(workerDb),
           [OBLIGATIONS_CONSUMER]: obligationsConsumer(workerDb),

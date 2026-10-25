@@ -186,7 +186,14 @@ export async function issueDraft(
      "the pending draft is not there" is exactly a missing resource — the doctor's list moved on. */
   if (draft === null) throw new OpdError("unknown_draft", `no pending transcription for encounter ${encounterId}`);
 
-  const issued = await issuePrescription(db, actor, cfg, encounterId, { ...overrides, lines: draft.lines }, now, authority);
+  /*
+    #620 — EVERY LINE OF A SLIP WAS TYPED FROM PAPER, whoever taps it through. The doctor's tap
+    issues in the doctor's name with no transcriber, so nothing downstream would otherwise know the
+    words came off a pen-written slip: the line said nothing, and the countable copy recorded it as
+    the doctor's own typing. It carries `paper`, the source the desk scribe's own issue records.
+  */
+  const lines = draft.lines.map((l) => ({ ...l, source: "paper" as const }));
+  const issued = await issuePrescription(db, actor, cfg, encounterId, { ...overrides, lines }, now, authority);
 
   await db
     .update(opdPrescriptionDrafts)

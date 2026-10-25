@@ -1,4 +1,5 @@
 import { api, ApiError } from "./api";
+import type { AstDraftRow, AstRow } from "../../../../packages/contracts/src/lab-ast";
 
 /**
  * PLAN 17b T8 — the laboratory's wire contract, transcribed from the five `lab-*.controller.ts`
@@ -25,6 +26,8 @@ export type WireAnalyteRow = {
   refLow: string | null; refHigh: string | null; refText: string | null;
   verificationStatus: string | null; enteredById: string | null;
   pathologistReviewPending: boolean;
+  /** #703 — a culture's antibiotic sensitivity table on its MIC_AST line; null or absent elsewhere (older server). */
+  ast?: AstRow[] | null;
   /** 17c T4 / D11 — the last VERIFIED value of this analyte on the canonical patient, or null. */
   previous: { resultId: string; value: string; flag: string | null; at: string } | null;
   /**
@@ -185,6 +188,8 @@ export type WireReportLine = {
   unit: string | null; flag: string | null;
   refLow: string | null; refHigh: string | null; refText: string | null; refNote: string | null;
   deltaFlag: boolean; verifiedAt: string | null; pathologistReviewPending: boolean;
+  /** #703 — the culture's antibiotic table on the MIC_AST line; absent on a snapshot published before #703. */
+  ast?: AstRow[] | null;
 };
 
 export type WireReportPanel = {
@@ -342,6 +347,8 @@ export const rejectSpecimen = (
 
 export type EnterResultRequest = {
   orderItemId: string; analyteId: string; value: string;
+  /** #703 — a culture's MIC_AST table; the server stores the rows and makes `value` their summary. */
+  ast?: AstDraftRow[];
   entryMode: "manual" | "manual_from_printout";
   /**
    * 02 H1 — a NAMED second holder of `lab.results.enter`, never a boolean the same person ticks.

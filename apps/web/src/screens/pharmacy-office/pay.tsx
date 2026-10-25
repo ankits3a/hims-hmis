@@ -225,7 +225,31 @@ function BillRow({ b, due, onOpen }: { b: WireBillSummary | WirePayableRow; due?
 
 // ═══════════════════════════════════ the bill ═══════════════════════════════════
 
-type EditLine = { grnId: string; itemId: string; code: string; name: string; uom: string; multiplier: number; expectedBase: number; expectedRate: number; expectedGst: number; qty: string; rate: string; gst: string };
+type EditLine = {
+  grnId: string; itemId: string; code: string; name: string; uom: string; multiplier: number; expectedBase: number; expectedRate: number; expectedGst: number;
+  qty: string; rate: string; gst: string;
+  /** #637 — the vendor's list rate (₹ per pack) and its discount: "10%" (a percent) or "12.34" (₹ off per pack). Empty list = none. */
+  list: string; disc: string;
+};
+
+/**
+ * #637 — a line's discount as typed: none without a list rate; "x%" a percent (net rate half up to the paisa, as the
+ * server and the PO line, #450); a plain number rupees off per pack. Null when unreadable.
+ */
+function lineDiscount(l: Pick<EditLine, "list" | "disc" | "rate">): { listRatePaise: number; discountBps: number; discountPaise: number; ratePaise: number } | null {
+  if (l.list.trim() === "") return null;
+  const list = toPaise(l.list);
+  const d = l.disc.trim();
+  if (d.endsWith("%")) {
+    const bps = Math.round(Number(d.slice(0, -1).trim() || "0") * 100);
+    const net = Math.floor((list * (10_000 - bps) + 5_000) / 10_000);
+    return { listRatePaise: list, discountBps: bps, discountPaise: list - net, ratePaise: net };
+  }
+  const amt = toPaise(d);
+  return { listRatePaise: list, discountBps: 0, discountPaise: amt, ratePaise: list - amt };
+}
+const netRateOf = (l: EditLine): number => lineDiscount(l)?.ratePaise ?? toPaise(l.rate);
+const pctText = (bps: number): string => `${String(bps / 100)}%`;
 
 /**
  * A NEW BILL from the agent's prefill of a GRN: bill number and date first (⏎ on either saves and
@@ -250,6 +274,8 @@ function NewBillSheet({ grnId, onClose, onSaved }: { grnId: string; onClose: () 
     setLines(dd.lines.map((l) => ({
       grnId: l.grnId, itemId: l.itemId, code: l.itemCode, name: l.itemName, uom: l.uom, multiplier: l.multiplier, expectedBase: l.expectedBase,
       expectedRate: l.ratePaise, expectedGst: l.gstRateBps, qty: String(l.qtyPacks), rate: toRupeeText(l.ratePaise), gst: String(l.gstRateBps / 100),
+      list: l.listRatePaise == null ? "" : toRupeeText(l.listRatePaise),
+      disc: l.listRatePaise == null ? "" : (l.discountBps ?? 0) > 0 ? pctText(l.discountBps ?? 0) : (l.discountPaise ?? 0) > 0 ? toRupeeText(l.discountPaise ?? 0) : "",
     })));
     setTimeout(() => { noRef.current?.focus(); noRef.current?.select(); }, 0);
   }, [dd, lines]);
@@ -261,7 +287,13 @@ function NewBillSheet({ grnId, onClose, onSaved }: { grnId: string; onClose: () 
     try {
       const created = await createBill({
         vendorId: dd.vendorId, vendorBillNo: (no ?? "").trim(), billDate: date, interState, roundOffPaise: toPaise(roundOff),
-        lines: lines.map((l) => ({ grnId: l.grnId, itemId: l.itemId, uom: l.uom, qtyPacks: Number(l.qty || "0"), ratePaise: toPaise(l.rate), gstRateBps: Math.round(Number(l.gst || "0") * 100) })),
+        lines: lines.map((l) => {
+          const d = lineDiscount(l);
+          const gstRateBps = Math.round(Number(l.gst || "0") * 100);
+          const base = { grnId: l.grnId, itemId: l.itemId, uom: l.uom, qtyPacks: Number(l.qty || "0") };
+          if (d === null) return { ...base, ratePaise: toPaise(l.rate), gstRateBps };
+          return { ...base, listRatePaise: d.listRatePaise, ...(d.discountBps > 0 ? { discountBps: d.discountBps } : { discountPaise: d.discountPaise }), gstRateBps };
+        }),
       });
       const matched = await matchBill(created.id);
       await qc.invalidateQueries({ queryKey: ["pharmacy", "office", "pay"] });
@@ -298,13 +330,16 @@ function NewBillSheet({ grnId, onClose, onSaved }: { grnId: string; onClose: () 
             <table className="w-full text-sm" data-testid="bill-new-lines">
               <thead><tr className="text-left text-xs text-muted-foreground">
                 <th className="py-1 pr-2">{t("pharmacyOffice.sheet.item")}</th><th className="py-1 pr-2">{t("pharmacyOffice.pay.bill.received")}</th>
-                <th className="py-1 pr-2 text-right">{t("pharmacyOffice.sheet.qty")}</th><th className="py-1 pr-2 text-right">{t("pharmacyOffice.sheet.rate")}</th>
+                <th className="py-1 pr-2 text-right">{t("pharmacyOffice.sheet.qty")}</th>
+                <th className="py-1 pr-2 text-right">{t("pharmacyOffice.pay.bill.listRate")}</th><th className="py-1 pr-2 text-right">{t("pharmacyOffice.pay.bill.discount")}</th>
+                <th className="py-1 pr-2 text-right">{t("pharmacyOffice.sheet.rate")}</th>
                 <th className="py-1 pr-2 text-right">{t("pharmacyOffice.sheet.gst")}</th><th className="py-1 pr-2 text-right">{t("pharmacyOffice.sheet.taxable")}</th>
                 <th className="py-1 pr-2 text-right">{t("pharmacyOffice.pay.bill.difference")}</th>
               </tr></thead>
               <tbody>
                 {lines.map((l, i) => {
-                  const taxable = Number(l.qty || "0") * toPaise(l.rate);
+                  const net = netRateOf(l);
+                  const taxable = Number(l.qty || "0") * net;
                   const expected = Math.round((l.expectedBase / l.multiplier) * l.expectedRate);
                   const diff = taxable - expected;
                   return (
@@ -312,7 +347,11 @@ function NewBillSheet({ grnId, onClose, onSaved }: { grnId: string; onClose: () 
                       <td className="py-1 pr-2">{l.name} <span className="text-xs text-muted-foreground">{l.code}</span></td>
                       <td className="py-1 pr-2 text-xs">{l.expectedBase / l.multiplier} {l.uom} @ {rupees(l.expectedRate)}</td>
                       <td className="py-1 pr-2 text-right"><input aria-label={`${t("pharmacyOffice.sheet.qty")} ${l.code}`} className="w-14 rounded border px-1 text-right" inputMode="numeric" value={l.qty} onChange={(e) => set(i, { qty: e.target.value })} /></td>
-                      <td className="py-1 pr-2 text-right"><input aria-label={`${t("pharmacyOffice.sheet.rate")} ${l.code}`} className="w-20 rounded border px-1 text-right" inputMode="decimal" value={l.rate} onChange={(e) => set(i, { rate: e.target.value })} /></td>
+                      <td className="py-1 pr-2 text-right"><input aria-label={`${t("pharmacyOffice.pay.bill.listRate")} ${l.code}`} className="w-20 rounded border px-1 text-right" inputMode="decimal" value={l.list} onChange={(e) => set(i, { list: e.target.value })} /></td>
+                      <td className="py-1 pr-2 text-right"><input aria-label={`${t("pharmacyOffice.pay.bill.discount")} ${l.code}`} title={t("pharmacyOffice.pay.bill.discountHint")} placeholder={t("pharmacyOffice.pay.bill.discountHint")} className="w-20 rounded border px-1 text-right" value={l.disc} onChange={(e) => set(i, { disc: e.target.value })} /></td>
+                      <td className="py-1 pr-2 text-right">{l.list.trim() === ""
+                        ? <input aria-label={`${t("pharmacyOffice.sheet.rate")} ${l.code}`} className="w-20 rounded border px-1 text-right" inputMode="decimal" value={l.rate} onChange={(e) => set(i, { rate: e.target.value })} />
+                        : <span className="tabular-nums" data-testid={`bill-new-net-${l.code}`}>{rupees(net)}</span>}</td>
                       <td className="py-1 pr-2 text-right"><input aria-label={`${t("pharmacyOffice.sheet.gst")} ${l.code}`} className="w-12 rounded border px-1 text-right" inputMode="decimal" value={l.gst} onChange={(e) => set(i, { gst: e.target.value })} /></td>
                       <td className="py-1 pr-2 text-right tabular-nums">{rupees(taxable)}</td>
                       <td className={`py-1 pr-2 text-right tabular-nums ${diff === 0 ? "text-muted-foreground" : "text-amber-800"}`}>{diff === 0 ? "—" : `${diff > 0 ? "+" : "−"}${rupees(Math.abs(diff))}`}</td>
@@ -390,7 +429,10 @@ function BillSheet({ id, onClose, onDone }: { id: string; onClose: () => void; o
                   <tr key={l.id} className="border-t" data-testid={`bill-line-${l.itemCode}`}>
                     <td className="py-1 pr-2">{l.itemName} <span className="text-xs text-muted-foreground">{l.itemCode}</span></td>
                     <td className="py-1 pr-2 font-mono text-xs">{l.grnNo}</td>
-                    <td className="py-1 pr-2 text-right text-xs">{l.qtyPacks} {l.uom} × {rupees(l.ratePaise)} @ {l.gstRateBps / 100}% = <b className="tabular-nums">{rupees(l.taxablePaise)}</b></td>
+                    <td className="py-1 pr-2 text-right text-xs">
+                      {l.listRatePaise != null && <div className="text-muted-foreground">{t("pharmacyOffice.pay.bill.listLess", { list: rupees(l.listRatePaise), disc: (l.discountBps ?? 0) > 0 ? pctText(l.discountBps ?? 0) : rupees(l.discountPaise ?? 0) })}</div>}
+                      {l.qtyPacks} {l.uom} × {rupees(l.ratePaise)} @ {l.gstRateBps / 100}% = <b className="tabular-nums">{rupees(l.taxablePaise)}</b>
+                    </td>
                     <td className="py-1 pr-2 text-right text-xs">{l.expectedPacks} × {rupees(l.expectedRatePaise)} @ {l.expectedGstRateBps / 100}% = <span className="tabular-nums">{rupees(l.expectedTaxablePaise)}</span></td>
                     <td className="py-1 pr-2 text-right tabular-nums">{l.differencePaise === 0 ? "—" : `${l.differencePaise > 0 ? "+" : "−"}${rupees(Math.abs(l.differencePaise))}`}</td>
                     <td className="py-1 pr-2">

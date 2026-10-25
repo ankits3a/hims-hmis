@@ -820,6 +820,8 @@ export const staffCredentials = pgTable(
 export const ROSTER_ESCALATION_KINDS = [
   "escalation.triggered", "notification.failed", "ops.mode_changed",
   "imaging.critical_overdue", "imaging.report_unread", "workflow.timer_rung",
+  // E3.2 (#595) — a lab critical with no read-back; the fallback when a rung names nobody.
+  "lab.critical_overdue",
 ] as const;
 export type RosterEscalationKind = (typeof ROSTER_ESCALATION_KINDS)[number];
 
@@ -845,7 +847,7 @@ export const rosterEscalationTargets = pgTable(
     /** One answer per (kind, department). Two rows for one question is two answers at 02:14. */
     uniqueIndex("roster_escalation_targets_kind_dept_ux")
       .on(t.siteId, t.alertKind, sql`coalesce(${t.departmentId}, '')`),
-    check("roster_escalation_targets_kind_ck", sql`${t.alertKind} in ('escalation.triggered', 'notification.failed', 'ops.mode_changed', 'imaging.critical_overdue', 'imaging.report_unread', 'workflow.timer_rung')`),
+    check("roster_escalation_targets_kind_ck", sql`${t.alertKind} in ('escalation.triggered', 'notification.failed', 'ops.mode_changed', 'imaging.critical_overdue', 'imaging.report_unread', 'workflow.timer_rung', 'lab.critical_overdue')`),
   ],
 );
 

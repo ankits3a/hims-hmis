@@ -11,8 +11,9 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/patients/`
 
 - **Depends on modules:** —
-- **Used by modules:** `abdm`, `aerb`, `billing`, `lab`, `membership`, `opd`, `ot`, `partners`, `pharmacy`, `radiology`
+- **Used by modules:** `abdm`, `aerb`, `billing`, `doctor-desk`, `lab`, `membership`, `opd`, `ot`, `partners`, `pharmacy`, `radiology`
 - **Kernel used:** `approvals`, `auth`, `config`, `crypto`, `db`, `desk`, `documents`, `events`, `modules`, `phi`, `search`, `tokens`, `workflow`
+- **Subscribes to events:** `approvalRejected`
 
 ## Public API (`index.ts`), by declaring file
 
@@ -30,6 +31,9 @@ Source: `apps/core/src/modules/patients/`
   - `addAllergy(tx: Tx, actor: Actor, patientId: string, input: { substance: string; reaction?: string; severity?: "mild" | "moderate" | "severe…`
   - `listAllergies(db: Db, patientId: string): Promise<AllergyRow[]>`
   - types: `AllergyRow`
+- `approval-consumer.ts`
+  - `PATIENTS_APPROVAL_REJECTED_CONSUMER`
+  - `approvalRejectedConsumer(db: Db): Handler`
 - `coverages.ts`
   - `listPatientCoverages(db: Db, actor: Actor, patientId: string, opts: { reason?: string } = {}): Promise<CoverageRow[]>`
   - types: `CoverageRow`
@@ -101,8 +105,8 @@ Source: `apps/core/src/modules/patients/`
 
 Foreign keys into: —
 
-## HTTP routes (31)
+## HTTP routes
 
-- `patients.controller.ts` — 31: `/patients`, `/patients/:id`, `/patients/abha`, `/patients/documents`, `/patients/merge-requests`, `/patients/merge-visits`, `/patients/qr`, `/patients/search`
+- `patients.controller.ts` — `/patients`, `/patients/:id`, `/patients/abha`, `/patients/documents`, `/patients/merge-mobile-shown`, `/patients/merge-requests`, `/patients/merge-visits`, `/patients/qr`, `/patients/search`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/patients`

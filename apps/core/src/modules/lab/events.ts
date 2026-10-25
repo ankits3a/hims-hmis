@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineEvent } from "@hmis/contracts";
+import { LAB_CHASE_RUNGS } from "../../kernel/db/schema/lab";
 
 /**
  * PLAN 17 T2 / DD18 — the lab's event surface. `entity.verb_past`, module carried separately (the
@@ -206,6 +207,21 @@ export const labCriticalAcknowledged = defineEvent("lab.critical_acknowledged", 
   callId: id, resultId: id, closedBy: id, attempts: z.number().int().nonnegative(), at: iso,
 }));
 
+/**
+ * E3.2 (#595) — a critical with no read-back reached a rung of the chase ladder: rung 0 (the
+ * ordering doctor) at open, then one rung every 15 minutes up to the HOD. `recipientIds` are the
+ * rung's people as the lab resolved them (empty = nobody named; the alerts consumer falls back).
+ *
+ * **No value, no patient, no analyte** — the alerts consumer fans this to a bell and a phone. The
+ * envelope's `patientId` is the audit path; nothing renders it.
+ */
+export const labCriticalOverdue = defineEvent("lab.critical_overdue", MODULE, z.object({
+  callId: id, resultId: id,
+  rung: z.enum(LAB_CHASE_RUNGS),
+  minutesOpen: z.number().int().nonnegative(),
+  recipientIds: z.array(id),
+}));
+
 export const labResultDeltaFlagged = defineEvent("lab.result_delta_flagged", MODULE, z.object({
   resultId: id, priorResultId: id, analyteId: id, patientId: id,
   priorValue: z.string().min(1), value: z.string().min(1),
@@ -340,12 +356,38 @@ export const labModeChanged = defineEvent("lab.mode_changed", MODULE, z.object({
   from: z.enum(["quick", "full"]), to: z.enum(["quick", "full"]),
 }));
 
+/**
+ * SPEC #934 — THE PHOTOGRAPHED ANALYSER SLIP. Ids and counts only, never a name or a value (the
+ * `lab.quick_reported` rule): the slip image and the model's reply hold those, on their own tables.
+ * A row resolution carries the person's reason, which is a sentence about the ROW ("QC channel").
+ */
+export const labSlipScanned = defineEvent("lab.slip_scanned", MODULE, z.object({
+  scanId: id, source: z.enum(["camera", "gallery"]), instrumentId: id, provider: z.string(), model: z.string(),
+  promptVersion: z.string(), rowCount: z.number().int().min(0), mappedCount: z.number().int().min(0),
+  checkCount: z.number().int().min(0), ms: z.number().int().min(0),
+}));
+
+export const labSlipReadFailed = defineEvent("lab.slip_read_failed", MODULE, z.object({ scanId: id, reason: z.string() }));
+
+export const labSlipAttached = defineEvent("lab.slip_attached", MODULE, z.object({
+  scanId: id, quickId: id, matchKind: z.enum(["sample_no", "uhid", "staff_pick", "from_report"]),
+}));
+
+export const labSlipDetached = defineEvent("lab.slip_detached", MODULE, z.object({ scanId: id, quickId: id }));
+
+export const labSlipRowResolved = defineEvent("lab.slip_row_resolved", MODULE, z.object({
+  scanId: id, row: z.number().int().min(0), action: z.enum(["place", "map", "ignore", "ignore_always", "checked"]),
+  reason: z.string().nullable(),
+}));
+
+export const labSlipDiscarded = defineEvent("lab.slip_discarded", MODULE, z.object({ scanId: id, reason: z.string() }));
+
 export const LAB_EVENTS = [
   labOrderDesked, labAttributionUnverifiedFlagged,
   labLabelPrinted, labTubeMismatchFlagged, labSpecimenCollected, labSpecimenReceived,
   labSpecimenRejected, labSpecimenRelabelled, labRecollectionRequested,
   labResultEntered, labResultVerified, labResultChosen, labNightReleaseReviewed,
-  labTubeSwapSuspected, labResultCriticalFlagged, labCriticalAcknowledged,
+  labTubeSwapSuspected, labResultCriticalFlagged, labCriticalAcknowledged, labCriticalOverdue,
   labResultDeltaFlagged, labReflexAdded, labReflexRefused, labSodViolationBlocked,
   labReportPublished, labReportPrintBlocked, labReportReleasedUnpaid, labReportPrinted,
   labReportAmended,
@@ -353,4 +395,5 @@ export const LAB_EVENTS = [
   labBookingMade, labBookingClosed, labBookingHoursChanged,
   labQuickStarted, labQuickReported, labQuickHandedOver, labQuickSentBack, labReportShared,
   labModeChanged,
+  labSlipScanned, labSlipReadFailed, labSlipAttached, labSlipDetached, labSlipRowResolved, labSlipDiscarded,
 ] as const;

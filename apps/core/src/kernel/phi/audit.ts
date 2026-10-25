@@ -15,6 +15,25 @@ import type { Db } from "../db/client";
 /** The surfaces that read a patient's record. Extended by each module that adds one. */
 export type PhiSurface =
   | "patient.detail" | "patient.allergies"
+  /** A bills read (list or one bill in full) of a restricted record by a reader without the restricted-records grant. */
+  | "billing.sealed_bill_read"
+  /**
+   * #657 — the patient profile's two own reads. `patient.profile_mobile` is the logged "Show" of the
+   * full mobile (the screen masks it to the last four by default); `patient.profile_alias` is the
+   * alias-only view of a restricted record a reader may not open (alias, UHID, age, allergies).
+   * Their own names, so the access log tells the profile apart from the merge review's Show.
+   */
+  | "patient.profile_mobile" | "patient.profile_alias"
+  /** #849 — the alias variant of the patient card (`GET /patients/:id/qr/alias`): alias, UHID, gender, the signed QR. */
+  | "patient.card_alias"
+  /** #852 — billing's alias read of a sealed record's bills (`billing/bills-alias.ts`): date, number, status only. */
+  | "billing.bills_alias"
+  /**
+   * #653 — the merge review's "Show": the masked mobiles, and on a merge request the masked phone,
+   * DOB, address and ABHA. Its own name: the comparison masks them by default, and revealing them is
+   * the act a records-access enquiry asks about. One row per ORIGINAL record id.
+   */
+  | "patient.merge_reveal"
   /**
    * The desk's photograph of a paper slip, and they are TWO surfaces rather than one.
    *
@@ -24,6 +43,8 @@ export type PhiSurface =
    */
   | "patient.documents" | "patient.document.image"
   | "opd.timeline" | "opd.vitals" | "opd.prescriptions" | "opd.visit"
+  /** DD-0.8 (#626) — the Doctor Desk OPD desk's NEXT card: complaint, vitals, allergies, last prescription, labs since. */
+  | "doctor_desk.next"
   /** PLAN 16c T3 — the dispensing counter's read of a dispense (its Rx lines): its own name, so the pharmacy's reads count apart from the consult's. */
   | "pharmacy.dispense"
   /**

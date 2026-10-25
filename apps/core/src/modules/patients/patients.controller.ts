@@ -38,6 +38,10 @@ import {
 } from "./merge";
 import type { MergeRequestListItem, VisitSummary } from "./merge";
 import { displayNameFor } from "./display-name";
+import { aliasCard, patientProfile } from "./profile";
+import type { PatientProfile } from "./profile";
+import { maskMergeSnapshotRow, mergeSnapshotDiffers, revealMergeSnapshot } from "./merge-reveal";
+import type { SnapshotRow } from "./merge-reveal";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
 
@@ -159,6 +163,9 @@ const registerBody = z.object({
   altPhone: phoneField.optional(),
   dob: z.coerce.date().optional(),
   ageYears: z.number().int().min(0).max(130).optional(),
+  /** An infant's age: "3 months" is `ageMonths: 3`, "45 days" is `ageDays: 45` (`registration.ts`). */
+  ageMonths: z.number().int().min(0).max(11).optional(),
+  ageDays: z.number().int().min(0).max(365).optional(),
   sex: sexEnum,
   addressLine: z.string().max(500).optional(),
   district: z.string().max(100).optional(),
@@ -214,7 +221,7 @@ const patchBody = registerBody
   // `.partial()` would give it replace-the-whole-set semantics on a route whose every other field
   // means "change just this one". Editing an entitlement is add/amend/end, not overwrite, and it
   // gets its own surface rather than a silently destructive corner of this one.
-  .omit({ ageYears: true, guardian: true, acknowledgedDuplicates: true, coverages: true })
+  .omit({ ageYears: true, ageMonths: true, ageDays: true, guardian: true, acknowledgedDuplicates: true, coverages: true })
   .partial()
   .extend({
     phone: phoneField.nullable().optional(),
@@ -339,6 +346,7 @@ const guardianPatchBody = z.object({
 const qrVerifyBody = z.object({ payload: z.string().min(1).max(500) });
 const mergeBody = z.object({ winnerId: z.string().min(1), loserId: z.string().min(1), note: z.string().min(1) });
 const unmergeBody = z.object({ note: z.string().min(1), actFirst: z.boolean().optional() });
+const mobileShownBody = z.object({ patientIds: z.array(z.string().min(1)).min(1).max(2) });
 
 function parsed<T>(schema: z.ZodType<T>, body: unknown): T {
   const r = schema.safeParse(body);
@@ -432,6 +440,47 @@ export class PatientsController {
     return { items: await visitSummaries(this.db, list) };
   }
 
+  /**
+   * #653 — THE MERGE REVIEW MASKS BOTH MOBILES; "SHOW" IS A LOGGED ACT. The comparison draws each
+   * mobile as `•••••• 1236` (the "job needs the number" rule: the officer compares records, and most
+   * of the time the last four answer "same phone?"). Pressing Show posts here first; each record is
+   * resolved through the same sealed-record gate as `GET /patients/:id` (an unreadable one is a 404)
+   * and gets one `patient.merge_reveal` access row. `patients.read`, like the merge reads above, so
+   * the MRD officer who asks and the MS who decides can both use it.
+   */
+  @RequirePermission("patients.read", "hospital")
+  @Post("merge-mobile-shown")
+  async mergeMobileShown(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ ok: true }> {
+    const { patientIds } = parsed(mobileShownBody, body);
+    const found = [];
+    for (const id of patientIds) {
+      const f = await getPatient(this.db, actor, id);
+      if (!f) throw new NotFoundException(`unknown patient ${id}`);
+      found.push(f);
+    }
+    // One row per record AS ASKED: a merged record's id is logged as itself, not as its survivor.
+    for (const [i, f] of found.entries()) {
+      await recordPhiAccess(this.db, {
+        actor, patientId: patientIds[i]!, surface: "patient.merge_reveal",
+        sealed: f.patient.isConfidential, reason: f.breakGlass?.reason ?? null,
+      });
+    }
+    return { ok: true };
+  }
+
+  /**
+   * #653 (S1) — the logged Show on a merge request. The detail below masks phone, DOB, address and
+   * ABHA for every reader; this returns the frozen full values, after the sealed-record gate on both
+   * records, and logs one `patient.merge_reveal` row per original record id (`merge-reveal.ts`).
+   */
+  @RequirePermission("patients.read", "hospital")
+  @Post("merge-requests/:id/show")
+  async mergeReveal(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<unknown> {
+    const out = await revealMergeSnapshot(this.db, actor, id);
+    if (!out) throw new NotFoundException(`unknown merge request ${id}`);
+    return out;
+  }
+
   @RequirePermission("patients.read", "hospital")
   @Get("merge-requests/:id")
   async mergeDetail(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<unknown> {
@@ -446,9 +495,22 @@ export class PatientsController {
     const snap = view.request.snapshot as { winnerBefore: SnapRow; loserBefore: SnapRow };
     const mask = async (row: SnapRow): Promise<SnapRow> =>
       row.isConfidential ? { ...row, name: await displayNameFor(this.db, actor, row) } : row;
+    /*
+      #653 (S1) — and phone, DOB, address and ABHA are masked for EVERY reader (`merge-reveal.ts`);
+      `differs` is computed on the full values. The full values come only from the logged Show.
+    */
+    const full = view.request.snapshot as { winnerBefore: SnapshotRow; loserBefore: SnapshotRow };
     return {
       ...view,
-      request: { ...view.request, snapshot: { ...snap, winnerBefore: await mask(snap.winnerBefore), loserBefore: await mask(snap.loserBefore) } },
+      request: {
+        ...view.request,
+        snapshot: {
+          ...snap,
+          winnerBefore: maskMergeSnapshotRow(await mask(snap.winnerBefore) as unknown as SnapshotRow),
+          loserBefore: maskMergeSnapshotRow(await mask(snap.loserBefore) as unknown as SnapshotRow),
+        },
+      },
+      differs: mergeSnapshotDiffers(full.winnerBefore, full.loserBefore),
     };
   }
 
@@ -517,7 +579,7 @@ export class PatientsController {
         walk-in customer and other in-module callers of the function keep their own rules. It runs
         before the duplicate probe so an incomplete form is told what is missing first.
       */
-      if (b.dob === undefined && b.ageYears === undefined) {
+      if (b.dob === undefined && b.ageYears === undefined && b.ageMonths === undefined && b.ageDays === undefined) {
         throw new PatientError("age_or_dob_required", "an age (an estimate is fine) or a date of birth is required to register");
       }
       if (b.acknowledgedDuplicates !== true) {
@@ -556,6 +618,42 @@ export class PatientsController {
       sealed: found.patient.isConfidential, reason: found.breakGlass?.reason ?? null,
     });
     return found;
+  }
+
+  /**
+   * #657 — THE PROFILE SCREEN'S READ (`profile.ts`). A readable record answers what `:id` answers
+   * plus "patient since · N visits", logged as the same `patient.detail` disclosure. A SEALED record
+   * the reader may not open answers the alias-only shape (alias, UHID, age, allergies — the board's
+   * restricted card) instead of a 404, logged as `patient.profile_alias` with `sealed: true`.
+   */
+  @RequirePermission("patients.read", "hospital")
+  @Get(":id/profile")
+  async profile(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<PatientProfile> {
+    const view = await patientProfile(this.db, actor, id);
+    if (!view) throw new NotFoundException(`unknown patient ${id}`);
+    await recordPhiAccess(this.db, view.view === "full"
+      ? { actor, patientId: view.patient.id, surface: "patient.detail", sealed: view.patient.isConfidential, reason: view.breakGlass?.reason ?? null }
+      : { actor, patientId: view.patient.id, surface: "patient.profile_alias", sealed: true, reason: null });
+    return view;
+  }
+
+  /**
+   * #657 — THE PROFILE'S LOGGED "SHOW" OF THE FULL MOBILE. The screen masks both numbers to the
+   * last four ("job needs the number"); Show posts here first. The record is resolved through the
+   * same sealed-record gate as `GET /patients/:id` (an unreadable one is a 404, nothing logged), one
+   * `patient.profile_mobile` access row is written, and the numbers come back for the screen to draw.
+   */
+  @RequirePermission("patients.read", "hospital")
+  @Post(":id/mobile-shown")
+  @HttpCode(200)
+  async mobileShown(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ phone: string | null; altPhone: string | null }> {
+    const found = await getPatient(this.db, actor, id);
+    if (!found) throw new NotFoundException(`unknown patient ${id}`);
+    await recordPhiAccess(this.db, {
+      actor, patientId: found.patient.id, surface: "patient.profile_mobile",
+      sealed: found.patient.isConfidential, reason: found.breakGlass?.reason ?? null,
+    });
+    return { phone: found.patient.phone, altPhone: found.patient.altPhone };
   }
 
   @RequirePermission("patients.update", "hospital")
@@ -688,6 +786,20 @@ export class PatientsController {
     return { payload: buildQrPayload(this.cfg, p), uhid: p.uhid, name: p.name, administrativeGender: p.administrativeGender, dob: p.dob };
   }
 
+  /**
+   * #849 — the alias variant of the card above, for a SEALED record (board §4 "Print card (alias)").
+   * The alias in the name's place, no DOB, the record's own signed QR (`profile.ts`). Logged as
+   * `patient.card_alias` (sealed) — the ordinary card read above writes no access row today.
+   */
+  @RequirePermission("patients.read", "hospital")
+  @Get(":id/qr/alias")
+  async qrCardAlias(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<unknown> {
+    const card = await aliasCard(this.db, this.cfg, actor, id);
+    if (!card) throw new NotFoundException(`unknown patient ${id}`);
+    await recordPhiAccess(this.db, { actor, patientId: card.patientId, surface: "patient.card_alias", sealed: true, reason: null });
+    return { payload: card.payload, uhid: card.uhid, name: card.name, administrativeGender: card.administrativeGender, dob: card.dob };
+  }
+
   @RequirePermission("patients.update", "hospital")
   @Post(":id/qr/reissue")
   async qrReissue(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<unknown> {
@@ -775,8 +887,10 @@ export class PatientsController {
   @Post(":id/allergies")
   async postAllergy(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<unknown> {
     const b = parsed(allergyBody, body);
+    /* Resolved like the other allergy routes: the merge chain and the sealed-record gate, then the canonical id. */
+    const patientId = await this.parentPatientId(actor, id);
     try {
-      return await withTx(this.db, (tx) => addAllergy(tx, actor, id, b));
+      return await withTx(this.db, (tx) => addAllergy(tx, actor, patientId, b));
     } catch (e) {
       toHttp(e);
     }

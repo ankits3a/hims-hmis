@@ -31,6 +31,9 @@ module.exports = {
   // timeouts, ZERO assertion diffs, 117 min vs 57). The cap is the durable fix for both; three
   // lanes independently recommended it. Raising it re-opens that class of failure.
   maxWorkers: 2,
+  // 2026-09-30: migrate every worker DB once, before the first suite, outside the 15 s hook budget
+  // (main 4b300060, CI run 36750365736: a cold migrate timed out inside `beforeAll`). See the file.
+  globalSetup: "<rootDir>/test/helpers/global-setup.ts",
   setupFiles: ["<rootDir>/test/helpers/env.ts"],
   moduleNameMapper: { "^@hmis/contracts$": "<rootDir>/../../packages/contracts/src/index.ts" },
 };

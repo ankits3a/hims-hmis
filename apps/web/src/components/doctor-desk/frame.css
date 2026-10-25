@@ -113,6 +113,9 @@
 .ddf-item:hover { background: #eaf0eb; }
 .ddf-item[aria-current="page"] { background: var(--dd-sel); font-weight: 600; }
 .ddf-item svg { flex-shrink: 0; }
+/* DD-0 — the board's count beside a menu entry, and its footer brand (Tower.dc.html). */
+.ddf-item-n { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 4px; background: #dfe7e1; color: var(--dd-ink); font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
+.ddf-menu-brand { margin-top: auto; padding: 12px 4px 0; font-size: 10px; font-weight: 600; letter-spacing: .06em; line-height: 14px; color: var(--dd-dim); }
 
 .ddf-main {
   grid-area: main; min-width: 0; min-height: calc(100vh - 48px);

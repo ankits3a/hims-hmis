@@ -17,7 +17,7 @@ import { obligationsManifest } from "../obligations/manifest";
 import { authManifest } from "../auth/manifest";
 import { workflowManifest } from "../workflow/manifest";
 import { approvalsManifest } from "../approvals/manifest";
-import { patientsManifest } from "../../modules/patients";
+import { PATIENTS_APPROVAL_REJECTED_CONSUMER, approvalRejectedConsumer, patientsManifest } from "../../modules/patients";
 import { tariffManifest } from "../../modules/tariff";
 import { opdManifest } from "../../modules/opd";
 import { billingManifest } from "../../modules/billing";
@@ -306,6 +306,10 @@ export function workerConsumers(db: Db, cfg: AppConfig | null = null): Record<st
     // gate-override grant from the kernel inbox runs the existing override (idempotent; a refusal is
     // final and swallowed). One without the other is a boot error.
     [RADIOLOGY_APPROVAL_GRANTED_CONSUMER]: approvalGrantedConsumer(db),
+    // #653 — the other half of `patientsManifest`'s `approval.rejected` declaration: a refused merge
+    // closes its request at refusal time (the lazy close on read stays as the backstop). One without
+    // the other is a boot error.
+    [PATIENTS_APPROVAL_REJECTED_CONSUMER]: approvalRejectedConsumer(db),
     // 18-S RS9b T2 — the other half of `radiologyManifest`'s `payment.received` /
     // `credit_note.issued` -> `radiology.report_ready_on_payment`: the "report ready" message for a
     // bill paid after release, once per report version. One without the other is a boot error.

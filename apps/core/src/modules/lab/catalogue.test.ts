@@ -92,7 +92,8 @@ describe("the lab catalogue (17a T3)", () => {
   describe("the standard catalogue, seeded", () => {
     it("lands whole through every catalogue guard, keeps the golden codes and their confidentiality, and its calculations are right", async () => {
       const report = await seedLabCatalogue(db, curator, LAB_CATALOGUE_STANDARD_DATA);
-      expect([report.orderables, report.analytes, report.activeReflexRules]).toEqual([340, 585, 0]);
+      // #934 adds the 3-part differential's GRAN, GRAN_ABS, MID and MID_ABS (+4 analytes).
+      expect([report.orderables, report.analytes, report.activeReflexRules]).toEqual([709, 1010, 0]);
       const cbc = await analytesFor(db, serviceIdForLabCode("CBC"));
       expect(cbc.map((a) => a.code)).toEqual(expect.arrayContaining(["RDW_SD", "LYMPH_ABS", "NLR", "PDW", "PLTCRIT"]));
       for (const code of ["HIV", "HIV_VL", "HBV_DNA", "HCV_RNA", "TPHA"]) {

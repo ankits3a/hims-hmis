@@ -62,7 +62,7 @@ export function quickHttp(e: unknown): never {
   if (e instanceof QuickEntryError) {
     const status = e.code === "patient_not_found" || e.code === "report_not_found" || e.code === "order_not_found" ? 404
       : e.code === "not_permitted" ? 403
-      : e.code === "already_collected" || e.code === "already_handed_over" || e.code === "not_completed" ? 409
+      : e.code === "already_collected" || e.code === "already_handed_over" || e.code === "not_completed" || e.code === "slip_checks_open" ? 409
       : e.code === "ast_invalid" ? 400
       : 422;
     throw httpError(status, e.message, e.code, e.detail);

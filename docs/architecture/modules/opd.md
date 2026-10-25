@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/opd/`
 
 - **Depends on modules:** `billing`, `cds`, `formulary`, `materials`, `patients`, `roster`
-- **Used by modules:** `abdm`, `billing`, `lab`, `ordering`, `pharmacy`, `radiology`
+- **Used by modules:** `abdm`, `billing`, `doctor-desk`, `lab`, `ordering`, `pharmacy`, `radiology`
 - **Kernel used:** `alerts`, `auth`, `config`, `copilot`, `crypto`, `db`, `desk`, `episodes`, `events`, `inference`, `modules`, `phi`, `printing`, `realtime`, `report`, `resources`, `search`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
@@ -38,6 +38,20 @@ Source: `apps/core/src/modules/opd/`
   - `resumeConsultation(db: Db, actor: Actor, encounterId: string, now: Date = new Date()): Promise<{ encounter: EncounterRow; queueEntry: Queue…`
   - `vitalsGateVerdict(db: Db | Tx, encounter: EncounterRow): Promise<{ ok: true } | { ok: false; code: string; detail?: unknown }>`
   - types: `AdvisedTest`, `ConsultStartGuard`, `VitalsStartGuard`
+- `desk-routing-feed.ts`
+  - `routingChooserFor(config: AppConfig): TriageChoice | null`
+  - `runDeskRoutingLearning(db: Db, opts: { enabled: boolean; chooser: TriageChoice | null; now: Date }): Promise<LearningReport>`
+- `doctor-day.ts`
+  - `closedVisitNos(exec: Db | Tx, visitNos: readonly string[]): Promise<Set<string>>`
+  - `completedVisitById(exec: Db | Tx, encounterId: string): Promise<CompletedVisitRow | null>`
+  - `completedVisitsOf(exec: Db | Tx, userIds: readonly string[], serviceDates: readonly string[]): Promise<CompletedVisitRow[]>`
+  - `doctorDayLines(exec: Db | Tx, userIds: readonly string[], serviceDate: string, now: Date): Promise<DoctorDayLine[]>`
+  - `doctorPaceToday(exec: Db | Tx, userId: string, serviceDate: string): Promise<DoctorPaceToday>`
+  - `earlierVisits(exec: Db | Tx, patientIds: readonly string[], serviceDate: string): Promise<{ serviceDate: string; doctorUserId: string | nul…`
+  - `lastPrescriptionBy(exec: Db | Tx, userId: string, patientIds: readonly string[], serviceDate: string): Promise<null | { issuedAt: Date; lin…`
+  - `openVisitsForDoctor(exec: Db | Tx, userId: string, beforeDate: string): Promise<OpenVisitRow[]>`
+  - `visitOfDoctor(exec: Db | Tx, userId: string, encounterId: string): Promise<null | { id: string; patientId: string; visitNo: string; service…`
+  - types: `CompletedVisitRow`, `DoctorDayLine`, `DoctorPaceToday`, `OpenVisitRow`
 - `encounters.ts`
   - `LAB_DEPARTMENT_CODE`
   - `LAB_VISIT_TYPE`
@@ -86,11 +100,15 @@ Source: `apps/core/src/modules/opd/`
   - `consultationParked`
   - `consultationResumed`
   - `consultationStarted`
+  - `copilotDraftProseSet`
   - `dangerFlagSchema`
   - `dayReportPatientsListed`
   - `doctorLeaveScheduled`
+  - `doctorSecondaryDepartmentEnded`
+  - `doctorSecondaryDepartmentSet`
   - `flowFindingDismissed`
   - `flowFindingTried`
+  - `learningReset`
   - `paperPrescriptionTranscribed`
   - `patientCheckedIn`
   - `prescriptionIssued`
@@ -126,12 +144,15 @@ Source: `apps/core/src/modules/opd/`
   - types: `Eye`, `RxLine`, `TaperStep`
 - `flow-learning.ts`
   - `runFlowLearning(db: Db, enabled: boolean, now: Date = new Date()): Promise<FlowLearningReport>`
+- `kidney-function.ts`
+  - `registerKidneyFunctionReader(fn: KidneyFunctionReader): () => void`
+  - types: `KidneyFunctionReader`
 - `manifest.ts`
   - `opdManifest: ModuleManifest`
 - `masters.ts`
   - `getDoctor(db: Db, id: string): Promise<DoctorRow | null>`
   - `listDepartments(db: Db, opts: { activeOnly?: boolean } = {}): Promise<DepartmentRow[]>`
-  - `listDoctors(db: Db, opts: { departmentId?: string; activeOnly?: boolean } = {}): Promise<DoctorRow[]>`
+  - `listDoctors(db: Db, opts: { departmentId?: string; activeOnly?: boolean } = {}, now: Date = new Date()): Promise<DoctorListRow[]>`
   - types: `DoctorRow`
 - `modules/patients/duplicates.ts`
   - types: `DuplicateCandidate`
@@ -172,6 +193,7 @@ Source: `apps/core/src/modules/opd/`
   - types: `QueueNudge`
 - `rx-checks.ts`
   - `isCurrent(durationDays: number | null, issuedAt: Date, now: Date): { current: boolean; assumedCurrent: boolean }`
+  - types: `KidneyReading`, `RenalHit`
 - `skip-reasons.ts`
   - `SKIP_REASONS`
   - types: `SkipReason`
@@ -192,21 +214,21 @@ Source: `apps/core/src/modules/opd/`
 
 ## Tables (`kernel/db/schema/opd.ts`)
 
-`cds_aliases`, `cds_doctor_prefs`, `cds_rx_lines`, `opd_advice_templates`, `opd_appointments`, `opd_complaint_concepts`, `opd_complaint_term_usage`, `opd_complaint_terms`, `opd_config`, `opd_consult_layouts`, `opd_department_tokens`, `opd_departments`, `opd_doctor_leaves`, `opd_doctor_schedules`, `opd_doctors`, `opd_encounter_diagnoses`, `opd_encounters`, `opd_flow_baselines`, `opd_flow_findings`, `opd_lasa_pairs`, `opd_patient_reminders`, `opd_prescription_drafts`, `opd_prescriptions`, `opd_queue_entries`, `opd_queue_sessions`, `opd_rx_sets`, `opd_section_records`, `opd_suggestion_events`, `opd_term_misses`, `opd_vitals`, `opd_voice_settings`, `opd_voice_usage`
+`cds_aliases`, `cds_desk_routing_feeds`, `cds_desk_routing_outcomes`, `cds_doctor_learning_resets`, `cds_doctor_prefs`, `cds_rx_lines`, `opd_advice_templates`, `opd_appointments`, `opd_complaint_concepts`, `opd_complaint_term_usage`, `opd_complaint_terms`, `opd_config`, `opd_consult_layouts`, `opd_department_tokens`, `opd_departments`, `opd_doctor_leaves`, `opd_doctor_schedules`, `opd_doctor_secondary_departments`, `opd_doctors`, `opd_encounter_diagnoses`, `opd_encounters`, `opd_flow_baselines`, `opd_flow_findings`, `opd_lasa_pairs`, `opd_patient_reminders`, `opd_prescription_drafts`, `opd_prescriptions`, `opd_queue_entries`, `opd_queue_sessions`, `opd_rx_sets`, `opd_section_records`, `opd_suggestion_events`, `opd_term_misses`, `opd_vitals`, `opd_voice_settings`, `opd_voice_usage`
 
 Foreign keys into: `billing`, `patients`, `resources`
 
-## HTTP routes (165)
+## HTTP routes
 
-- `opd-advice.controller.ts` — 3: `/opd/advice-templates`
-- `opd-cds.controller.ts` — 8: `/opd/cds`
-- `opd-masters.controller.ts` — 24: `/opd/config`, `/opd/definition`, `/opd/departments`, `/opd/doctors`, `/opd/layouts`, `/opd/leaves`, `/opd/me`, `/opd/rooms`
-- `opd-pace.controller.ts` — 1: `/me/performance`
-- `opd-paper.controller.ts` — 11: `/opd/paper`
-- `opd-phone-consult.controller.ts` — 20: `/opd/consult`, `/opd/rx-sets`, `/opd/visits`
-- `opd-queue.controller.ts` — 37: `/opd/patients`, `/opd/prescriptions`, `/opd/queues`, `/opd/visits`
-- `opd-reports.controller.ts` — 12: `/opd/reports`
-- `opd-visits.controller.ts` — 44: `/opd/appointments`, `/opd/bench`, `/opd/continuity`, `/opd/patients`, `/opd/scan`, `/opd/slips`, `/opd/slots`, `/opd/triage`, `/opd/visits`, `/opd/vitals`, `/opd/walk-in`
-- `opd-vocabulary.controller.ts` — 5: `/opd/vocabulary`
+- `opd-advice.controller.ts` — `/opd/advice-templates`
+- `opd-cds.controller.ts` — `/opd/cds`
+- `opd-masters.controller.ts` — `/opd/config`, `/opd/definition`, `/opd/departments`, `/opd/doctors`, `/opd/layouts`, `/opd/leaves`, `/opd/me`, `/opd/rooms`
+- `opd-pace.controller.ts` — `/me/performance`
+- `opd-paper.controller.ts` — `/opd/paper`
+- `opd-phone-consult.controller.ts` — `/opd/consult`, `/opd/rx-sets`, `/opd/visits`
+- `opd-queue.controller.ts` — `/opd/departments`, `/opd/patients`, `/opd/prescriptions`, `/opd/queues`, `/opd/visits`
+- `opd-reports.controller.ts` — `/opd/reports`
+- `opd-visits.controller.ts` — `/opd/appointments`, `/opd/bench`, `/opd/continuity`, `/opd/patients`, `/opd/scan`, `/opd/slips`, `/opd/slots`, `/opd/tele`, `/opd/triage`, `/opd/visits`, `/opd/vitals`, `/opd/walk-in`
+- `opd-vocabulary.controller.ts` — `/opd/vocabulary`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/opd`

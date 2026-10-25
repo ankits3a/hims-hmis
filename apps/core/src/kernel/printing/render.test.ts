@@ -520,7 +520,7 @@ describe("FD-24 T3: rendering the counter's documents", () => {
     /**
      * OWNER, 2026-10-07: *"Add 'Guardian Name' label & field in the prescription slip print along
      * with name, age and other fields."* The row sits under Name. The value is the ACTIVE guardian
-     * with the relation written the way an Indian record writes it (S/o, D/o, W/o, C/o); with no
+     * with the relation written the way an Indian record writes it (S/o, D/o, C/o; a woman's husband: #942); with no
      * guardian linked it falls back to the registered father's / husband's name; with neither the
      * label still prints and the value is blank — the Dept. Regn rule. A sealed patient's is blank.
      */
@@ -548,9 +548,9 @@ describe("FD-24 T3: rendering the counter's documents", () => {
       expect(doc!.html).toContain(field("Guardian Name:", "C/o Suresh Arora"));
 
       // An active guardian outranks the registration field, and the relation is spelled out.
-      await guardian({ name: "Rakesh Arora", relationship: "spouse" });
+      await guardian({ name: "Rakesh Arora", relationship: "legal_guardian" });
       doc = await renderPrescriptionSheet(db, { encounterId }, MON);
-      expect(doc!.html).toContain(field("Guardian Name:", "W/o Rakesh Arora"));
+      expect(doc!.html).toContain(field("Guardian Name:", "C/o Rakesh Arora"));
       expect(doc!.html).not.toContain("Old Guardian");
       expect(doc!.html).not.toContain("Lapsed Order");
       const at = NEW_ORDER.filter((l) => l !== "Address:").map((label) => doc!.html.indexOf(`<span class="lb">${label}</span>`));
@@ -574,6 +574,32 @@ describe("FD-24 T3: rendering the counter's documents", () => {
       await db.update(patientGuardians).set({ relationship: "sibling" }).where(eq(patientGuardians.patientId, row!.patientId));
       doc = await renderPrescriptionSheet(db, { encounterId }, MON);
       expect(doc!.html).toContain(field("Guardian Name:", "C/o Mahesh &lt;Arora&gt;"));
+    });
+
+    /**
+     * OWNER, 2026-10-15: guardians the front desk added or changed were missing from the printed
+     * slip. Two causes. The nightly majority sweep flips an adult's guardian to `majority_ended`,
+     * which ends their AUTHORITY but not who came with the patient, so the name still prints. And a
+     * changed guardian is a new link beside the old one: *"print newest guardian"*.
+     */
+    it("2026-10-15: the newest guardian prints, and the majority sweep does not take the name off the slip", async () => {
+      const [row] = await db.select({ patientId: opdEncounters.patientId }).from(opdEncounters).where(eq(opdEncounters.id, encounterId));
+      const pid = row!.patientId;
+      const guardian = (name: string, status: string, createdAt: string): Promise<unknown> =>
+        db.insert(patientGuardians).values({ id: newId(), patientId: pid, name, relationship: "other", status, createdAt: new Date(createdAt), createdBy: "test-clerk" });
+
+      await guardian("Swept Guardian", "majority_ended", "2026-01-01T00:00:00.000Z");
+      let doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(field("Guardian Name:", "C/o Swept Guardian"));
+
+      await guardian("Second Guardian", "active", "2026-02-01T00:00:00.000Z");
+      doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(field("Guardian Name:", "C/o Second Guardian"));
+
+      // A guardian the desk ended on purpose stays off the slip, however new.
+      await guardian("Ended Guardian", "ended", "2026-03-01T00:00:00.000Z");
+      doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(field("Guardian Name:", "C/o Second Guardian"));
     });
 
     /**

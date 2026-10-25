@@ -239,6 +239,46 @@ describe("FD-12: the registration counter's full record", () => {
     expect(body["ageYears"]).toBeUndefined();
   });
 
+  /* A three-month-old could only be typed as 0 or 1, and a baby's exact date of birth read back "0 y". */
+  it("a baby's age types as 3m, reads back in months, asks for a guardian and travels as months", async () => {
+    const posted: { body: unknown }[] = [];
+    mountDesk(posted);
+    await openEnrolment();
+    const user = userEvent.setup({ delay: null });
+
+    await user.type(screen.getByTestId("reg-name"), "Baby of Sunita");
+    await user.click(screen.getByTestId("reg-sex-female"));
+    await user.type(screen.getByTestId("reg-age"), "3 months");
+    expect(screen.getByTestId("reg-age-read")).toHaveTextContent("age 3 m · date of birth estimated");
+    expect(screen.queryByTestId("reg-age-unread")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("guardian-why")).toBeInTheDocument());
+    await user.type(screen.getByTestId("guardian-name"), "Sunita Devi");
+    await user.selectOptions(screen.getByTestId("guardian-relationship"), "mother");
+    await user.click(screen.getByTestId("reg-submit"));
+
+    await waitFor(() => expect(posted).toHaveLength(1));
+    const body = posted[0]!.body as Record<string, unknown>;
+    expect(body["ageYears"]).toBe(0);
+    expect(body["ageMonths"]).toBe(3);
+    expect(body["dob"]).toBeUndefined();
+  });
+
+  it("a baby's exact date of birth reads back in months and days, never 0 y", async () => {
+    vi.setSystemTime(new Date("2026-10-23T06:30:00Z")); // 12:00 IST
+    try {
+      mountDesk([]);
+      await openEnrolment();
+      const user = userEvent.setup({ delay: null });
+      await user.type(screen.getByTestId("reg-age"), "14/07/2026");
+      expect(screen.getByTestId("reg-age-read")).toHaveTextContent("born 14 Jul 2026 · 3 m 9 d");
+      await user.clear(screen.getByTestId("reg-age"));
+      await user.type(screen.getByTestId("reg-age"), "14/03/1986");
+      expect(screen.getByTestId("reg-age-read")).toHaveTextContent("born 14 Mar 1986 · 40 y");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("carries the whole record — demographics, address, ID, referral and consent — and omits every blank", async () => {
     const posted: { body: unknown }[] = [];
     mountDesk(posted);

@@ -1054,6 +1054,46 @@ export const LAB_CATALOGUE_STANDARD_DATA: LabCatalogueFixture = {
       "formulaGuard": null
     },
     {
+      "code": "GRAN",
+      "nameEn": "Granulocytes %",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 1
+    },
+    {
+      "code": "MID",
+      "nameEn": "Mid cells %",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 1
+    },
+    {
+      "code": "GRAN_ABS",
+      "nameEn": "Granulocytes, absolute",
+      "resultType": "formula",
+      "unit": "10^3/uL",
+      "decimals": 2,
+      "absurdLow": null,
+      "absurdHigh": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "formula": "WBC * GRAN / 100",
+      "formulaGuard": null
+    },
+    {
+      "code": "MID_ABS",
+      "nameEn": "Mid cells, absolute",
+      "resultType": "formula",
+      "unit": "10^3/uL",
+      "decimals": 2,
+      "absurdLow": null,
+      "absurdHigh": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "formula": "WBC * MID / 100",
+      "formulaGuard": null
+    },
+    {
       "code": "EOS_ABS",
       "nameEn": "Absolute eosinophil count (calculated)",
       "resultType": "formula",
@@ -6708,6 +6748,2988 @@ export const LAB_CATALOGUE_STANDARD_DATA: LabCatalogueFixture = {
       "criticalHigh": null,
       "formula": null,
       "formulaGuard": null
+    },
+    {
+      "code": "ADA_S",
+      "nameEn": "Adenosine deaminase (ADA), serum",
+      "resultType": "numeric",
+      "unit": "U/L",
+      "decimals": 1
+    },
+    {
+      "code": "NUCL5",
+      "nameEn": "5'-nucleotidase",
+      "resultType": "numeric",
+      "unit": "U/L",
+      "decimals": 1
+    },
+    {
+      "code": "BILE_ACID",
+      "nameEn": "Bile acids, total (fasting)",
+      "resultType": "numeric",
+      "unit": "µmol/L",
+      "decimals": 1
+    },
+    {
+      "code": "ACE",
+      "nameEn": "Angiotensin converting enzyme (ACE)",
+      "resultType": "numeric",
+      "unit": "U/L",
+      "decimals": 0
+    },
+    {
+      "code": "HAPTO",
+      "nameEn": "Haptoglobin",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 0
+    },
+    {
+      "code": "PREALB",
+      "nameEn": "Prealbumin (transthyretin)",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 1
+    },
+    {
+      "code": "A1AT",
+      "nameEn": "Alpha-1 antitrypsin",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 0
+    },
+    {
+      "code": "GTT_30M",
+      "nameEn": "GTT — glucose 30 min after 75 g",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 0
+    },
+    {
+      "code": "GTT_90M",
+      "nameEn": "GTT — glucose 90 min after 75 g",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 0
+    },
+    {
+      "code": "INS_0H",
+      "nameEn": "Insulin — fasting (0 h, GTT)",
+      "resultType": "numeric",
+      "unit": "µIU/mL",
+      "decimals": 1
+    },
+    {
+      "code": "INS_1H",
+      "nameEn": "Insulin — 1 h after 75 g glucose",
+      "resultType": "numeric",
+      "unit": "µIU/mL",
+      "decimals": 1
+    },
+    {
+      "code": "INS_2H",
+      "nameEn": "Insulin — 2 h after 75 g glucose",
+      "resultType": "numeric",
+      "unit": "µIU/mL",
+      "decimals": 1
+    },
+    {
+      "code": "INS_R",
+      "nameEn": "Insulin, random",
+      "resultType": "numeric",
+      "unit": "µIU/mL",
+      "decimals": 1
+    },
+    {
+      "code": "CPEP_PP",
+      "nameEn": "C-peptide, post-prandial (2 h)",
+      "resultType": "numeric",
+      "unit": "ng/mL",
+      "decimals": 2
+    },
+    {
+      "code": "COHB",
+      "nameEn": "Carboxyhaemoglobin (COHb)",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 1,
+      "criticalHigh": "20"
+    },
+    {
+      "code": "METHB",
+      "nameEn": "Methaemoglobin (MetHb)",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 1,
+      "criticalHigh": "20"
+    },
+    {
+      "code": "BCTX",
+      "nameEn": "Beta-CrossLaps (CTx, bone resorption)",
+      "resultType": "numeric",
+      "unit": "ng/mL",
+      "decimals": 3
+    },
+    {
+      "code": "P1NP",
+      "nameEn": "Total P1NP (bone formation)",
+      "resultType": "numeric",
+      "unit": "ng/mL",
+      "decimals": 1
+    },
+    {
+      "code": "OSTEOC",
+      "nameEn": "Osteocalcin (N-MID)",
+      "resultType": "numeric",
+      "unit": "ng/mL",
+      "decimals": 1
+    },
+    {
+      "code": "TROP_HSI",
+      "nameEn": "Troponin I, high-sensitivity",
+      "resultType": "numeric",
+      "unit": "ng/L",
+      "decimals": 1
+    },
+    {
+      "code": "TROP_HST",
+      "nameEn": "Troponin T, high-sensitivity",
+      "resultType": "numeric",
+      "unit": "ng/L",
+      "decimals": 1
+    },
+    {
+      "code": "CKMB_MASS",
+      "nameEn": "CK-MB mass",
+      "resultType": "numeric",
+      "unit": "ng/mL",
+      "decimals": 2
+    },
+    {
+      "code": "CORT_R",
+      "nameEn": "Cortisol, random",
+      "resultType": "numeric",
+      "unit": "µg/dL",
+      "decimals": 1
+    },
+    {
+      "code": "CORT_DST",
+      "nameEn": "Cortisol, after 1 mg overnight dexamethasone",
+      "resultType": "numeric",
+      "unit": "µg/dL",
+      "decimals": 1
+    },
+    {
+      "code": "CORT_MN",
+      "nameEn": "Cortisol, late-night (11 PM - midnight)",
+      "resultType": "numeric",
+      "unit": "µg/dL",
+      "decimals": 1
+    },
+    {
+      "code": "CORT_ST0",
+      "nameEn": "Cortisol — baseline (0 min, synacthen)",
+      "resultType": "numeric",
+      "unit": "µg/dL",
+      "decimals": 1
+    },
+    {
+      "code": "CORT_ST30",
+      "nameEn": "Cortisol — 30 min after synacthen",
+      "resultType": "numeric",
+      "unit": "µg/dL",
+      "decimals": 1
+    },
+    {
+      "code": "CORT_ST60",
+      "nameEn": "Cortisol — 60 min after synacthen",
+      "resultType": "numeric",
+      "unit": "µg/dL",
+      "decimals": 1
+    },
+    {
+      "code": "PRL_PEG",
+      "nameEn": "Prolactin, after PEG precipitation (monomeric)",
+      "resultType": "numeric",
+      "unit": "ng/mL",
+      "decimals": 1
+    },
+    {
+      "code": "PRL_RECOV",
+      "nameEn": "Prolactin recovery after PEG",
+      "resultType": "formula",
+      "unit": "%",
+      "decimals": 0,
+      "formula": "PRL_PEG * 100 / PRL",
+      "formulaGuard": "PRL > 0"
+    },
+    {
+      "code": "GH_T0",
+      "nameEn": "Growth hormone — 0 min",
+      "resultType": "numeric",
+      "unit": "ng/mL",
+      "decimals": 2
+    },
+    {
+      "code": "GH_T30",
+      "nameEn": "Growth hormone — 30 min",
+      "resultType": "numeric",
+      "unit": "ng/mL",
+      "decimals": 2
+    },
+    {
+      "code": "GH_T60",
+      "nameEn": "Growth hormone — 60 min",
+      "resultType": "numeric",
+      "unit": "ng/mL",
+      "decimals": 2
+    },
+    {
+      "code": "GH_T90",
+      "nameEn": "Growth hormone — 90 min",
+      "resultType": "numeric",
+      "unit": "ng/mL",
+      "decimals": 2
+    },
+    {
+      "code": "GH_T120",
+      "nameEn": "Growth hormone — 120 min",
+      "resultType": "numeric",
+      "unit": "ng/mL",
+      "decimals": 2
+    },
+    {
+      "code": "LH_T0",
+      "nameEn": "LH — 0 min after GnRH analogue",
+      "resultType": "numeric",
+      "unit": "mIU/mL",
+      "decimals": 2
+    },
+    {
+      "code": "LH_T30",
+      "nameEn": "LH — 30 min after GnRH analogue",
+      "resultType": "numeric",
+      "unit": "mIU/mL",
+      "decimals": 2
+    },
+    {
+      "code": "LH_T60",
+      "nameEn": "LH — 60 min after GnRH analogue",
+      "resultType": "numeric",
+      "unit": "mIU/mL",
+      "decimals": 2
+    },
+    {
+      "code": "PAPPA",
+      "nameEn": "PAPP-A (pregnancy-associated plasma protein A)",
+      "resultType": "numeric",
+      "unit": "mIU/mL",
+      "decimals": 3
+    },
+    {
+      "code": "FBHCG",
+      "nameEn": "Free beta-hCG",
+      "resultType": "numeric",
+      "unit": "ng/mL",
+      "decimals": 2
+    },
+    {
+      "code": "UE3",
+      "nameEn": "Unconjugated estriol (uE3)",
+      "resultType": "numeric",
+      "unit": "ng/mL",
+      "decimals": 2
+    },
+    {
+      "code": "INHA",
+      "nameEn": "Inhibin A, dimeric",
+      "resultType": "numeric",
+      "unit": "pg/mL",
+      "decimals": 1
+    },
+    {
+      "code": "PNS_RISK",
+      "nameEn": "Prenatal screen — risk assessment (trisomy 21, 18, NTD)",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "CA724",
+      "nameEn": "CA 72-4",
+      "resultType": "numeric",
+      "unit": "U/mL",
+      "decimals": 2
+    },
+    {
+      "code": "CYFRA",
+      "nameEn": "CYFRA 21-1",
+      "resultType": "numeric",
+      "unit": "ng/mL",
+      "decimals": 2
+    },
+    {
+      "code": "HE4",
+      "nameEn": "Human epididymis protein 4 (HE4)",
+      "resultType": "numeric",
+      "unit": "pmol/L",
+      "decimals": 1
+    },
+    {
+      "code": "ROMA_IDX",
+      "nameEn": "ROMA index (ovarian malignancy risk)",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 1
+    },
+    {
+      "code": "SCC_AG",
+      "nameEn": "Squamous cell carcinoma antigen (SCC)",
+      "resultType": "numeric",
+      "unit": "ng/mL",
+      "decimals": 2
+    },
+    {
+      "code": "CSA",
+      "nameEn": "Cyclosporine (trough, C0)",
+      "resultType": "numeric",
+      "unit": "ng/mL",
+      "decimals": 0
+    },
+    {
+      "code": "SIRO",
+      "nameEn": "Sirolimus (trough)",
+      "resultType": "numeric",
+      "unit": "ng/mL",
+      "decimals": 1
+    },
+    {
+      "code": "MTX",
+      "nameEn": "Methotrexate",
+      "resultType": "numeric",
+      "unit": "µmol/L",
+      "decimals": 2
+    },
+    {
+      "code": "VANCO",
+      "nameEn": "Vancomycin (trough)",
+      "resultType": "numeric",
+      "unit": "µg/mL",
+      "decimals": 1
+    },
+    {
+      "code": "GENTA",
+      "nameEn": "Gentamicin",
+      "resultType": "numeric",
+      "unit": "µg/mL",
+      "decimals": 1
+    },
+    {
+      "code": "AMIK",
+      "nameEn": "Amikacin",
+      "resultType": "numeric",
+      "unit": "µg/mL",
+      "decimals": 1
+    },
+    {
+      "code": "THEO",
+      "nameEn": "Theophylline",
+      "resultType": "numeric",
+      "unit": "µg/mL",
+      "decimals": 1,
+      "criticalHigh": "25"
+    },
+    {
+      "code": "PARACET",
+      "nameEn": "Paracetamol (acetaminophen)",
+      "resultType": "numeric",
+      "unit": "µg/mL",
+      "decimals": 1,
+      "criticalHigh": "150"
+    },
+    {
+      "code": "SALIC",
+      "nameEn": "Salicylate",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 1,
+      "criticalHigh": "40"
+    },
+    {
+      "code": "ETOH",
+      "nameEn": "Ethanol, serum",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 0,
+      "criticalHigh": "300"
+    },
+    {
+      "code": "LEV",
+      "nameEn": "Levetiracetam (trough)",
+      "resultType": "numeric",
+      "unit": "µg/mL",
+      "decimals": 1
+    },
+    {
+      "code": "DOA_AMP",
+      "nameEn": "Urine drug screen — Amphetamine",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "DOA_COC",
+      "nameEn": "Urine drug screen — Cocaine (benzoylecgonine)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "DOA_THC",
+      "nameEn": "Urine drug screen — Cannabinoids (THC)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "DOA_OPI",
+      "nameEn": "Urine drug screen — Opiates (morphine)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "DOA_BZO",
+      "nameEn": "Urine drug screen — Benzodiazepines",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "DOA_BAR",
+      "nameEn": "Urine drug screen — Barbiturates",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "DOA_MET",
+      "nameEn": "Urine drug screen — Methamphetamine",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "DOA_MTD",
+      "nameEn": "Urine drug screen — Methadone",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "DOA_TCA",
+      "nameEn": "Urine drug screen — Tricyclic antidepressants",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "DOA_BUP",
+      "nameEn": "Urine drug screen — Buprenorphine",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "CYTO_MPO",
+      "nameEn": "Cytochemistry — myeloperoxidase (MPO)",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "CYTO_SBB",
+      "nameEn": "Cytochemistry — Sudan black B",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "CYTO_PAS",
+      "nameEn": "Cytochemistry — periodic acid-Schiff (PAS)",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "CYTO_NSE",
+      "nameEn": "Cytochemistry — non-specific esterase (alpha-naphthyl acetate)",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "LAP",
+      "nameEn": "Leucocyte alkaline phosphatase (LAP / NAP) score",
+      "resultType": "numeric",
+      "unit": "score",
+      "decimals": 0
+    },
+    {
+      "code": "PERLS",
+      "nameEn": "Perls (Prussian blue) stain — iron stores and sideroblasts",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "BMT_GROSS",
+      "nameEn": "Trephine — gross (core length, number of cores)",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "BMT_MICRO",
+      "nameEn": "Trephine — microscopy (cellularity, lineages, fibrosis, infiltrate)",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "BMT_IMP",
+      "nameEn": "Trephine — impression",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "HBH_INCL",
+      "nameEn": "HbH inclusion bodies (supravital stain)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "HEINZ",
+      "nameEn": "Heinz bodies (supravital stain)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "NESTROF",
+      "nameEn": "NESTROF test (thalassaemia screen)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "PLASMA_HB",
+      "nameEn": "Plasma free haemoglobin",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 1
+    },
+    {
+      "code": "HIT_AB",
+      "nameEn": "Heparin-induced thrombocytopenia (PF4-heparin) antibody",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "COLD_AGG",
+      "nameEn": "Cold agglutinin titre",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "F2",
+      "nameEn": "Factor II activity",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 0
+    },
+    {
+      "code": "F5",
+      "nameEn": "Factor V activity",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 0
+    },
+    {
+      "code": "F7",
+      "nameEn": "Factor VII activity",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 0
+    },
+    {
+      "code": "F10",
+      "nameEn": "Factor X activity",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 0
+    },
+    {
+      "code": "F11",
+      "nameEn": "Factor XI activity",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 0
+    },
+    {
+      "code": "F12",
+      "nameEn": "Factor XII activity",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 0
+    },
+    {
+      "code": "F13_SCR",
+      "nameEn": "Factor XIII screen (clot solubility in 5 M urea)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "F9_INH",
+      "nameEn": "Factor IX inhibitor (Bethesda)",
+      "resultType": "numeric",
+      "unit": "BU/mL",
+      "decimals": 1
+    },
+    {
+      "code": "VWF_ACT",
+      "nameEn": "von Willebrand factor activity (VWF:RCo / GPIbM)",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 0
+    },
+    {
+      "code": "VWF_RATIO",
+      "nameEn": "VWF activity : antigen ratio",
+      "resultType": "formula",
+      "unit": null,
+      "decimals": 2,
+      "formula": "VWF_ACT / VWF_AG",
+      "formulaGuard": "VWF_AG > 0"
+    },
+    {
+      "code": "MIX_APTT_IMM",
+      "nameEn": "APTT mixing study — 1:1 mix, immediate",
+      "resultType": "numeric",
+      "unit": "sec",
+      "decimals": 1
+    },
+    {
+      "code": "MIX_APTT_2H",
+      "nameEn": "APTT mixing study — 1:1 mix, 2 h at 37 °C",
+      "resultType": "numeric",
+      "unit": "sec",
+      "decimals": 1
+    },
+    {
+      "code": "MIX_PT_IMM",
+      "nameEn": "PT mixing study — 1:1 mix, immediate",
+      "resultType": "numeric",
+      "unit": "sec",
+      "decimals": 1
+    },
+    {
+      "code": "MIX_IMP",
+      "nameEn": "Mixing study — interpretation",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "ANTI_XA",
+      "nameEn": "Anti-Xa activity (heparin level)",
+      "resultType": "numeric",
+      "unit": "IU/mL",
+      "decimals": 2
+    },
+    {
+      "code": "APCR",
+      "nameEn": "Activated protein C resistance (APC-R ratio)",
+      "resultType": "numeric",
+      "unit": "ratio",
+      "decimals": 2
+    },
+    {
+      "code": "REPT",
+      "nameEn": "Reptilase time",
+      "resultType": "numeric",
+      "unit": "sec",
+      "decimals": 1
+    },
+    {
+      "code": "AGG_ADP",
+      "nameEn": "Platelet aggregation — ADP (maximum)",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 0
+    },
+    {
+      "code": "AGG_COL",
+      "nameEn": "Platelet aggregation — collagen (maximum)",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 0
+    },
+    {
+      "code": "AGG_EPI",
+      "nameEn": "Platelet aggregation — epinephrine (maximum)",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 0
+    },
+    {
+      "code": "AGG_RIS",
+      "nameEn": "Platelet aggregation — ristocetin (maximum)",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 0
+    },
+    {
+      "code": "AGG_AA",
+      "nameEn": "Platelet aggregation — arachidonic acid (maximum)",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 0
+    },
+    {
+      "code": "AGG_IMP",
+      "nameEn": "Platelet aggregation — interpretation",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "CLOT_RET",
+      "nameEn": "Clot retraction",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "PROTS_TOT",
+      "nameEn": "Protein S, total (antigen)",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 0
+    },
+    {
+      "code": "DEN_RNA",
+      "nameEn": "Dengue virus RNA (real-time RT-PCR)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "CHIK_RNA",
+      "nameEn": "Chikungunya virus RNA (real-time RT-PCR)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "SCRUB_DNA",
+      "nameEn": "Orientia tsutsugamushi DNA (47-kDa real-time PCR)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "STYPHI_IGM",
+      "nameEn": "Salmonella Typhi IgM (ELISA)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "HAV_IGG",
+      "nameEn": "Hepatitis A virus IgG (anti-HAV total)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "HEV_IGG",
+      "nameEn": "Hepatitis E virus IgG",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "HDV_AB",
+      "nameEn": "Hepatitis D (delta) virus antibody, total",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "HBSAG_QNT",
+      "nameEn": "HBsAg, quantitative",
+      "resultType": "numeric",
+      "unit": "IU/mL",
+      "decimals": 2
+    },
+    {
+      "code": "HCV_RNA_QL",
+      "nameEn": "HCV RNA, qualitative (real-time PCR)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "HIV_AGAB",
+      "nameEn": "HIV 1/2 antigen (p24) and antibody, 4th generation",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "HSV1_IGG",
+      "nameEn": "Herpes simplex virus type 1 IgG",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "HSV2_IGG",
+      "nameEn": "Herpes simplex virus type 2 IgG",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "HSV1_IGM",
+      "nameEn": "Herpes simplex virus type 1 IgM",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "HSV2_IGM",
+      "nameEn": "Herpes simplex virus type 2 IgM",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "HSV1_DNA",
+      "nameEn": "HSV-1 DNA (real-time PCR)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "HSV2_DNA",
+      "nameEn": "HSV-2 DNA (real-time PCR)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "CMV_AVIDITY",
+      "nameEn": "CMV IgG avidity index",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 0
+    },
+    {
+      "code": "CMV_DNA",
+      "nameEn": "CMV DNA viral load (quantitative PCR)",
+      "resultType": "numeric",
+      "unit": "IU/mL",
+      "decimals": 0
+    },
+    {
+      "code": "EBV_VCAG",
+      "nameEn": "Epstein-Barr virus VCA IgG",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "EBV_EBNA",
+      "nameEn": "Epstein-Barr virus EBNA-1 IgG",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "EBV_DNA",
+      "nameEn": "EBV DNA viral load (quantitative PCR)",
+      "resultType": "numeric",
+      "unit": "IU/mL",
+      "decimals": 0
+    },
+    {
+      "code": "TOXO_AVIDITY",
+      "nameEn": "Toxoplasma IgG avidity index",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 0
+    },
+    {
+      "code": "MEAS_IGM",
+      "nameEn": "Measles IgM",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MUMPS_IGG",
+      "nameEn": "Mumps IgG",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MUMPS_IGM",
+      "nameEn": "Mumps IgM",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "VZV_IGM",
+      "nameEn": "Varicella-zoster virus IgM",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "PARVO_IGM",
+      "nameEn": "Parvovirus B19 IgM",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MYCO_IGG",
+      "nameEn": "Mycoplasma pneumoniae IgG",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "CHLAM_IGG",
+      "nameEn": "Chlamydia trachomatis IgG",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "CHLAM_IGM",
+      "nameEn": "Chlamydia trachomatis IgM",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "HYDATID_IGG",
+      "nameEn": "Echinococcus (hydatid) IgG",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "AMOEBA_IGG",
+      "nameEn": "Entamoeba histolytica IgG",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "CYSTI_IGG",
+      "nameEn": "Taenia solium (cysticercus) IgG",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "CRAG",
+      "nameEn": "Cryptococcal antigen (lateral flow)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "GM_INDEX",
+      "nameEn": "Aspergillus galactomannan, serum",
+      "resultType": "numeric",
+      "unit": "index",
+      "decimals": 2
+    },
+    {
+      "code": "GM_BAL_INDEX",
+      "nameEn": "Aspergillus galactomannan, BAL",
+      "resultType": "numeric",
+      "unit": "index",
+      "decimals": 2
+    },
+    {
+      "code": "ASP_IGG",
+      "nameEn": "Aspergillus fumigatus IgG",
+      "resultType": "numeric",
+      "unit": "mgA/L",
+      "decimals": 1
+    },
+    {
+      "code": "ASP_IGE",
+      "nameEn": "Aspergillus fumigatus specific IgE (m3)",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "TP_AB",
+      "nameEn": "Treponema pallidum antibody, total (CLIA)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "VDRL_TITRE",
+      "nameEn": "VDRL titre",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "HPY_IGA",
+      "nameEn": "H. pylori IgA",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "HPY_IGM",
+      "nameEn": "H. pylori IgM",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "COV_AB",
+      "nameEn": "SARS-CoV-2 anti-spike antibody",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "FLU_A_PCR",
+      "nameEn": "Influenza A RNA (real-time PCR)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "FLU_B_PCR",
+      "nameEn": "Influenza B RNA (real-time PCR)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "H1N1_PCR",
+      "nameEn": "Influenza A(H1N1)pdm09 RNA (real-time PCR)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "RSV_PCR",
+      "nameEn": "RSV RNA (real-time PCR)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "RSV_AG",
+      "nameEn": "RSV antigen (rapid)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "HPV16",
+      "nameEn": "HPV type 16 DNA",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "HPV18",
+      "nameEn": "HPV type 18 DNA",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "HPV_OHR",
+      "nameEn": "HPV other high-risk types DNA (pooled)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "CT_PCR",
+      "nameEn": "Chlamydia trachomatis DNA (PCR)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "NG_PCR",
+      "nameEn": "Neisseria gonorrhoeae DNA (PCR)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "TET_IGG",
+      "nameEn": "Tetanus toxoid IgG",
+      "resultType": "numeric",
+      "unit": "IU/mL",
+      "decimals": 2
+    },
+    {
+      "code": "ASSA",
+      "nameEn": "Anti-SS-A/Ro antibody (ELISA)",
+      "resultType": "numeric",
+      "unit": "RU/mL",
+      "decimals": 1
+    },
+    {
+      "code": "ASSB",
+      "nameEn": "Anti-SS-B/La antibody (ELISA)",
+      "resultType": "numeric",
+      "unit": "RU/mL",
+      "decimals": 1
+    },
+    {
+      "code": "ASM",
+      "nameEn": "Anti-Sm antibody (ELISA)",
+      "resultType": "numeric",
+      "unit": "RU/mL",
+      "decimals": 1
+    },
+    {
+      "code": "ARNP",
+      "nameEn": "Anti-U1-RNP antibody (ELISA)",
+      "resultType": "numeric",
+      "unit": "RU/mL",
+      "decimals": 1
+    },
+    {
+      "code": "ASCL70",
+      "nameEn": "Anti-Scl-70 antibody (ELISA)",
+      "resultType": "numeric",
+      "unit": "RU/mL",
+      "decimals": 1
+    },
+    {
+      "code": "AJO1",
+      "nameEn": "Anti-Jo-1 antibody (ELISA)",
+      "resultType": "numeric",
+      "unit": "RU/mL",
+      "decimals": 1
+    },
+    {
+      "code": "AHISTONE",
+      "nameEn": "Anti-histone antibody (ELISA)",
+      "resultType": "numeric",
+      "unit": "RU/mL",
+      "decimals": 1
+    },
+    {
+      "code": "ANUCLEO",
+      "nameEn": "Anti-nucleosome antibody (ELISA)",
+      "resultType": "numeric",
+      "unit": "RU/mL",
+      "decimals": 1
+    },
+    {
+      "code": "ACENP",
+      "nameEn": "Anti-centromere B antibody (ELISA)",
+      "resultType": "numeric",
+      "unit": "RU/mL",
+      "decimals": 1
+    },
+    {
+      "code": "DSDNA_CLIFT",
+      "nameEn": "Anti-dsDNA by IFA (Crithidia luciliae)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "AGBM",
+      "nameEn": "Anti-GBM antibody (ELISA)",
+      "resultType": "numeric",
+      "unit": "RU/mL",
+      "decimals": 1
+    },
+    {
+      "code": "APS_IGG",
+      "nameEn": "Anti-phosphatidylserine IgG",
+      "resultType": "numeric",
+      "unit": "U/mL",
+      "decimals": 1
+    },
+    {
+      "code": "APS_IGM",
+      "nameEn": "Anti-phosphatidylserine IgM",
+      "resultType": "numeric",
+      "unit": "U/mL",
+      "decimals": 1
+    },
+    {
+      "code": "TTG_IGG",
+      "nameEn": "Anti-tTG IgG",
+      "resultType": "numeric",
+      "unit": "U/mL",
+      "decimals": 1
+    },
+    {
+      "code": "DGP_IGG",
+      "nameEn": "Anti-deamidated gliadin peptide IgG",
+      "resultType": "numeric",
+      "unit": "U/mL",
+      "decimals": 1
+    },
+    {
+      "code": "DGP_IGA",
+      "nameEn": "Anti-deamidated gliadin peptide IgA",
+      "resultType": "numeric",
+      "unit": "U/mL",
+      "decimals": 1
+    },
+    {
+      "code": "EMA_IGA",
+      "nameEn": "Anti-endomysial antibody IgA (IFA)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IGG4",
+      "nameEn": "Immunoglobulin G4 (IgG4)",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 1
+    },
+    {
+      "code": "AMAM2",
+      "nameEn": "Anti-mitochondrial M2 antibody (ELISA)",
+      "resultType": "numeric",
+      "unit": "RU/mL",
+      "decimals": 1
+    },
+    {
+      "code": "ASLA",
+      "nameEn": "Anti-SLA/LP antibody (ELISA)",
+      "resultType": "numeric",
+      "unit": "RU/mL",
+      "decimals": 1
+    },
+    {
+      "code": "LB_AMAM2",
+      "nameEn": "Liver immunoblot: AMA-M2",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "LB_M2E3",
+      "nameEn": "Liver immunoblot: M2-3E (BPO)",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "LB_SP100",
+      "nameEn": "Liver immunoblot: Sp100",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "LB_PML",
+      "nameEn": "Liver immunoblot: PML",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "LB_GP210",
+      "nameEn": "Liver immunoblot: gp210",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "LB_LKM1",
+      "nameEn": "Liver immunoblot: LKM-1",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "LB_LC1",
+      "nameEn": "Liver immunoblot: LC-1",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "LB_SLA",
+      "nameEn": "Liver immunoblot: SLA/LP",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "LB_RO52",
+      "nameEn": "Liver immunoblot: Ro-52",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MB_MI2A",
+      "nameEn": "Myositis immunoblot: Mi-2 alpha",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MB_MI2B",
+      "nameEn": "Myositis immunoblot: Mi-2 beta",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MB_TIF1G",
+      "nameEn": "Myositis immunoblot: TIF1-gamma",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MB_MDA5",
+      "nameEn": "Myositis immunoblot: MDA5",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MB_NXP2",
+      "nameEn": "Myositis immunoblot: NXP2",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MB_SAE1",
+      "nameEn": "Myositis immunoblot: SAE1",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MB_KU",
+      "nameEn": "Myositis immunoblot: Ku",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MB_PMS100",
+      "nameEn": "Myositis immunoblot: PM-Scl100",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MB_PMS75",
+      "nameEn": "Myositis immunoblot: PM-Scl75",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MB_JO1",
+      "nameEn": "Myositis immunoblot: Jo-1",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MB_SRP",
+      "nameEn": "Myositis immunoblot: SRP",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MB_PL7",
+      "nameEn": "Myositis immunoblot: PL-7",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MB_PL12",
+      "nameEn": "Myositis immunoblot: PL-12",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MB_EJ",
+      "nameEn": "Myositis immunoblot: EJ",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MB_OJ",
+      "nameEn": "Myositis immunoblot: OJ",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MB_RO52",
+      "nameEn": "Myositis immunoblot: Ro-52",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "SB_SCL70",
+      "nameEn": "Systemic sclerosis immunoblot: Scl-70",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "SB_CENPA",
+      "nameEn": "Systemic sclerosis immunoblot: CENP A",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "SB_CENPB",
+      "nameEn": "Systemic sclerosis immunoblot: CENP B",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "SB_RP11",
+      "nameEn": "Systemic sclerosis immunoblot: RP11",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "SB_RP155",
+      "nameEn": "Systemic sclerosis immunoblot: RP155",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "SB_FIB",
+      "nameEn": "Systemic sclerosis immunoblot: Fibrillarin",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "SB_NOR90",
+      "nameEn": "Systemic sclerosis immunoblot: NOR90",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "SB_THTO",
+      "nameEn": "Systemic sclerosis immunoblot: Th/To",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "SB_PMS100",
+      "nameEn": "Systemic sclerosis immunoblot: PM-Scl100",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "SB_PMS75",
+      "nameEn": "Systemic sclerosis immunoblot: PM-Scl75",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "SB_KU",
+      "nameEn": "Systemic sclerosis immunoblot: Ku",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "SB_PDGFR",
+      "nameEn": "Systemic sclerosis immunoblot: PDGFR",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "SB_RO52",
+      "nameEn": "Systemic sclerosis immunoblot: Ro-52",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "AMCV",
+      "nameEn": "Anti-MCV (mutated citrullinated vimentin)",
+      "resultType": "numeric",
+      "unit": "U/mL",
+      "decimals": 1
+    },
+    {
+      "code": "CH50",
+      "nameEn": "Total haemolytic complement (CH50)",
+      "resultType": "numeric",
+      "unit": "U/mL",
+      "decimals": 0
+    },
+    {
+      "code": "C1INH",
+      "nameEn": "C1 esterase inhibitor, quantitative",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 1
+    },
+    {
+      "code": "FLC_K",
+      "nameEn": "Free kappa light chain, serum",
+      "resultType": "numeric",
+      "unit": "mg/L",
+      "decimals": 2
+    },
+    {
+      "code": "FLC_L",
+      "nameEn": "Free lambda light chain, serum",
+      "resultType": "numeric",
+      "unit": "mg/L",
+      "decimals": 2
+    },
+    {
+      "code": "FLC_KLR",
+      "nameEn": "Free kappa : lambda ratio",
+      "resultType": "formula",
+      "unit": null,
+      "decimals": 2,
+      "formula": "FLC_K / FLC_L",
+      "formulaGuard": "FLC_L > 0"
+    },
+    {
+      "code": "UPE_PATTERN",
+      "nameEn": "Urine protein electrophoresis — pattern",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "UPE_MBAND",
+      "nameEn": "Urine protein electrophoresis — M-band",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "UIFE",
+      "nameEn": "Urine immunofixation",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "CRYOGLOB",
+      "nameEn": "Cryoglobulins (qualitative)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "APCA",
+      "nameEn": "Anti-parietal cell antibody",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "AIFA",
+      "nameEn": "Anti-intrinsic factor antibody",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "GAD65",
+      "nameEn": "Anti-GAD65 antibody",
+      "resultType": "numeric",
+      "unit": "IU/mL",
+      "decimals": 1
+    },
+    {
+      "code": "IAA",
+      "nameEn": "Anti-insulin antibody",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "PLA2R",
+      "nameEn": "Anti-PLA2R antibody (ELISA)",
+      "resultType": "numeric",
+      "unit": "RU/mL",
+      "decimals": 1
+    },
+    {
+      "code": "FA_EGG",
+      "nameEn": "Specific IgE: Egg white",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "FA_MILK",
+      "nameEn": "Specific IgE: Cow's milk",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "FA_PEANUT",
+      "nameEn": "Specific IgE: Peanut",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "FA_WHEAT",
+      "nameEn": "Specific IgE: Wheat",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "FA_SOY",
+      "nameEn": "Specific IgE: Soybean",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "FA_FISH",
+      "nameEn": "Specific IgE: Codfish",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "FA_SHRIMP",
+      "nameEn": "Specific IgE: Shrimp",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "FA_RICE",
+      "nameEn": "Specific IgE: Rice",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "FA_CHICKPEA",
+      "nameEn": "Specific IgE: Chickpea",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "FA_SESAME",
+      "nameEn": "Specific IgE: Sesame",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "FA_CASHEW",
+      "nameEn": "Specific IgE: Cashew nut",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "FA_MUSTARD",
+      "nameEn": "Specific IgE: Mustard",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "IA_DPTER",
+      "nameEn": "Specific IgE: D. pteronyssinus (house dust mite)",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "IA_DFAR",
+      "nameEn": "Specific IgE: D. farinae (house dust mite)",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "IA_CAT",
+      "nameEn": "Specific IgE: Cat dander",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "IA_DOG",
+      "nameEn": "Specific IgE: Dog dander",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "IA_ROACH",
+      "nameEn": "Specific IgE: Cockroach",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "IA_ALTERN",
+      "nameEn": "Specific IgE: Alternaria alternata",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "IA_CLADO",
+      "nameEn": "Specific IgE: Cladosporium",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "IA_BERMUDA",
+      "nameEn": "Specific IgE: Bermuda grass",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "IA_PARTHEN",
+      "nameEn": "Specific IgE: Parthenium",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "IA_PROSOPIS",
+      "nameEn": "Specific IgE: Prosopis juliflora",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "IA_AMARANTH",
+      "nameEn": "Specific IgE: Amaranthus spinosus",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "DA_PENG",
+      "nameEn": "Specific IgE: Penicillin G",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "DA_PENV",
+      "nameEn": "Specific IgE: Penicillin V",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "DA_AMOX",
+      "nameEn": "Specific IgE: Amoxicillin",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "DA_AMPI",
+      "nameEn": "Specific IgE: Ampicillin",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "DA_CEFACLOR",
+      "nameEn": "Specific IgE: Cefaclor",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "SIGE_ALLERGEN",
+      "nameEn": "Specific IgE — allergen tested",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "SIGE_VALUE",
+      "nameEn": "Specific IgE — result",
+      "resultType": "numeric",
+      "unit": "kU/L",
+      "decimals": 2
+    },
+    {
+      "code": "CD3_ABS",
+      "nameEn": "CD3+ T cells, absolute",
+      "resultType": "numeric",
+      "unit": "cells/uL",
+      "decimals": 0
+    },
+    {
+      "code": "CD3_PCT",
+      "nameEn": "CD3+ T cells",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 1
+    },
+    {
+      "code": "CD4_ABS",
+      "nameEn": "CD4+ T cells, absolute",
+      "resultType": "numeric",
+      "unit": "cells/uL",
+      "decimals": 0,
+      "criticalLow": "200"
+    },
+    {
+      "code": "CD4_PCT",
+      "nameEn": "CD4+ T cells",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 1
+    },
+    {
+      "code": "CD8_ABS",
+      "nameEn": "CD8+ T cells, absolute",
+      "resultType": "numeric",
+      "unit": "cells/uL",
+      "decimals": 0
+    },
+    {
+      "code": "CD8_PCT",
+      "nameEn": "CD8+ T cells",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 1
+    },
+    {
+      "code": "CD19_ABS",
+      "nameEn": "CD19+ B cells, absolute",
+      "resultType": "numeric",
+      "unit": "cells/uL",
+      "decimals": 0
+    },
+    {
+      "code": "CD19_PCT",
+      "nameEn": "CD19+ B cells",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 1
+    },
+    {
+      "code": "CD56_ABS",
+      "nameEn": "CD16+56+ NK cells, absolute",
+      "resultType": "numeric",
+      "unit": "cells/uL",
+      "decimals": 0
+    },
+    {
+      "code": "CD56_PCT",
+      "nameEn": "CD16+56+ NK cells",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 1
+    },
+    {
+      "code": "CD4CD8_R",
+      "nameEn": "CD4 : CD8 ratio",
+      "resultType": "formula",
+      "unit": null,
+      "decimals": 2,
+      "formula": "CD4_ABS / CD8_ABS",
+      "formulaGuard": "CD8_ABS > 0"
+    },
+    {
+      "code": "IL6",
+      "nameEn": "Interleukin-6 (IL-6)",
+      "resultType": "numeric",
+      "unit": "pg/mL",
+      "decimals": 1
+    },
+    {
+      "code": "UR_EOS",
+      "nameEn": "Urine — Eosinophils (Hansel stain)",
+      "resultType": "numeric",
+      "unit": "% of WBC",
+      "decimals": 0
+    },
+    {
+      "code": "UR_DYSRBC",
+      "nameEn": "Urine — RBC morphology (dysmorphic RBCs, acanthocytes)",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "UR_PBG",
+      "nameEn": "Urine — Porphobilinogen (Watson-Schwartz)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "UR_FECL3",
+      "nameEn": "Urine — Ferric chloride test",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "UR_DNPH",
+      "nameEn": "Urine — DNPH test (keto acids)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "UR_CNP",
+      "nameEn": "Urine — Cyanide-nitroprusside test",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "UR_MYO",
+      "nameEn": "Urine — Myoglobin (qualitative)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "U_URIC",
+      "nameEn": "Urine uric acid",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 1
+    },
+    {
+      "code": "U24_URIC",
+      "nameEn": "Uric acid, 24-hour urine",
+      "resultType": "formula",
+      "unit": "mg/24 h",
+      "decimals": 0,
+      "formula": "U_URIC * U24_VOL / 100",
+      "formulaGuard": "U24_VOL > 0"
+    },
+    {
+      "code": "U_PHOS",
+      "nameEn": "Urine phosphorus",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 1
+    },
+    {
+      "code": "U24_PHOS",
+      "nameEn": "Phosphorus, 24-hour urine",
+      "resultType": "formula",
+      "unit": "mg/24 h",
+      "decimals": 0,
+      "formula": "U_PHOS * U24_VOL / 100",
+      "formulaGuard": "U24_VOL > 0"
+    },
+    {
+      "code": "U_MG",
+      "nameEn": "Urine magnesium",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 1
+    },
+    {
+      "code": "U24_MG",
+      "nameEn": "Magnesium, 24-hour urine",
+      "resultType": "formula",
+      "unit": "mg/24 h",
+      "decimals": 0,
+      "formula": "U_MG * U24_VOL / 100",
+      "formulaGuard": "U24_VOL > 0"
+    },
+    {
+      "code": "U24_NA",
+      "nameEn": "Sodium, 24-hour urine",
+      "resultType": "formula",
+      "unit": "mmol/24 h",
+      "decimals": 0,
+      "formula": "U_NA * U24_VOL / 1000",
+      "formulaGuard": "U24_VOL > 0"
+    },
+    {
+      "code": "U24_K",
+      "nameEn": "Potassium, 24-hour urine",
+      "resultType": "formula",
+      "unit": "mmol/24 h",
+      "decimals": 0,
+      "formula": "U_K * U24_VOL / 1000",
+      "formulaGuard": "U24_VOL > 0"
+    },
+    {
+      "code": "U24_CL",
+      "nameEn": "Chloride, 24-hour urine",
+      "resultType": "formula",
+      "unit": "mmol/24 h",
+      "decimals": 0,
+      "formula": "U_CL * U24_VOL / 1000",
+      "formulaGuard": "U24_VOL > 0"
+    },
+    {
+      "code": "U_UREA",
+      "nameEn": "Urine urea",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 0
+    },
+    {
+      "code": "U24_UREA",
+      "nameEn": "Urea, 24-hour urine",
+      "resultType": "formula",
+      "unit": "g/24 h",
+      "decimals": 1,
+      "formula": "U_UREA * U24_VOL / 100000",
+      "formulaGuard": "U24_VOL > 0"
+    },
+    {
+      "code": "U24_UUN",
+      "nameEn": "Urine urea nitrogen, 24-hour (nitrogen balance)",
+      "resultType": "formula",
+      "unit": "g/24 h",
+      "decimals": 1,
+      "formula": "U_UREA * U24_VOL * 0.467 / 100000",
+      "formulaGuard": "U24_VOL > 0"
+    },
+    {
+      "code": "U24_MALB",
+      "nameEn": "Microalbumin, 24-hour urine",
+      "resultType": "formula",
+      "unit": "mg/24 h",
+      "decimals": 0,
+      "formula": "ALB_UR * U24_VOL / 1000",
+      "formulaGuard": "U24_VOL > 0"
+    },
+    {
+      "code": "U_AMY",
+      "nameEn": "Urine amylase",
+      "resultType": "numeric",
+      "unit": "U/L",
+      "decimals": 0
+    },
+    {
+      "code": "FEUREA",
+      "nameEn": "Fractional excretion of urea (FEUrea)",
+      "resultType": "formula",
+      "unit": "%",
+      "decimals": 1,
+      "formula": "U_UREA * CREA * 100 / (UREA * UCREA)",
+      "formulaGuard": "UCREA > 0"
+    },
+    {
+      "code": "ST_FIT",
+      "nameEn": "Stool — Occult blood, immunochemical (FIT)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "ST_CALPRO",
+      "nameEn": "Faecal calprotectin",
+      "resultType": "numeric",
+      "unit": "µg/g",
+      "decimals": 0
+    },
+    {
+      "code": "ST_APT",
+      "nameEn": "Apt test — haemoglobin type in blood",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "ST_ROTA",
+      "nameEn": "Rotavirus antigen, stool",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "ST_ADENO",
+      "nameEn": "Enteric adenovirus (40/41) antigen, stool",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "ST_CDGDH",
+      "nameEn": "C. difficile GDH antigen",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "ST_CDTOX",
+      "nameEn": "C. difficile toxin A/B",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "ST_GIARD",
+      "nameEn": "Giardia lamblia antigen, stool",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "ST_CRYPT",
+      "nameEn": "Cryptosporidium antigen, stool",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MIC_MZN",
+      "nameEn": "Modified ZN stain (1% H2SO4)",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "PW_EGG",
+      "nameEn": "Enterobius vermicularis eggs (tape test)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "SEM_MAR",
+      "nameEn": "Semen — MAR test, motile sperm with bound particles (IgG)",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 0
+    },
+    {
+      "code": "SEM_HOS",
+      "nameEn": "Semen — Hypo-osmotic swelling (HOS), swollen tails",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 0
+    },
+    {
+      "code": "SEM_PERX",
+      "nameEn": "Semen — Peroxidase-positive leucocytes (Endtz)",
+      "resultType": "numeric",
+      "unit": "10^6/mL",
+      "decimals": 1
+    },
+    {
+      "code": "PEU_SPERM",
+      "nameEn": "Post-ejaculatory urine — spermatozoa",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "PC_VOL",
+      "nameEn": "Pericardial fluid — Volume received",
+      "resultType": "text",
+      "unit": "mL",
+      "decimals": 0
+    },
+    {
+      "code": "PC_APP",
+      "nameEn": "Pericardial fluid — Appearance",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "PC_COL",
+      "nameEn": "Pericardial fluid — Colour",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "PC_COAG",
+      "nameEn": "Pericardial fluid — Coagulum",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "PC_TC",
+      "nameEn": "Pericardial fluid — Total cell count",
+      "resultType": "numeric",
+      "unit": "cells/µL",
+      "decimals": 0
+    },
+    {
+      "code": "PC_POLY",
+      "nameEn": "Pericardial fluid — Polymorphs",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 0
+    },
+    {
+      "code": "PC_LYMPH",
+      "nameEn": "Pericardial fluid — Lymphocytes / mononuclear cells",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 0
+    },
+    {
+      "code": "PC_RBC",
+      "nameEn": "Pericardial fluid — RBC",
+      "resultType": "numeric",
+      "unit": "cells/µL",
+      "decimals": 0
+    },
+    {
+      "code": "PC_GLU",
+      "nameEn": "Pericardial fluid glucose",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 0
+    },
+    {
+      "code": "PC_PROT",
+      "nameEn": "Pericardial fluid protein",
+      "resultType": "numeric",
+      "unit": "g/dL",
+      "decimals": 1
+    },
+    {
+      "code": "PC_LDH",
+      "nameEn": "Pericardial fluid LDH",
+      "resultType": "numeric",
+      "unit": "U/L",
+      "decimals": 0
+    },
+    {
+      "code": "PC_ADA",
+      "nameEn": "Pericardial fluid ADA",
+      "resultType": "numeric",
+      "unit": "U/L",
+      "decimals": 0
+    },
+    {
+      "code": "BAL_TC",
+      "nameEn": "BAL — Total cell count",
+      "resultType": "numeric",
+      "unit": "cells/µL",
+      "decimals": 0
+    },
+    {
+      "code": "BAL_MAC",
+      "nameEn": "BAL — Alveolar macrophages",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 0
+    },
+    {
+      "code": "BAL_LYMPH",
+      "nameEn": "BAL — Lymphocytes",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 0
+    },
+    {
+      "code": "BAL_NEUT",
+      "nameEn": "BAL — Neutrophils",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 0
+    },
+    {
+      "code": "BAL_EOS",
+      "nameEn": "BAL — Eosinophils",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 0
+    },
+    {
+      "code": "PD_TC",
+      "nameEn": "PD effluent — Total leucocyte count",
+      "resultType": "numeric",
+      "unit": "cells/µL",
+      "decimals": 0
+    },
+    {
+      "code": "PD_POLY",
+      "nameEn": "PD effluent — Polymorphs",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 0
+    },
+    {
+      "code": "PF_PH",
+      "nameEn": "Pleural fluid pH",
+      "resultType": "numeric",
+      "unit": null,
+      "decimals": 2
+    },
+    {
+      "code": "PF_TG",
+      "nameEn": "Pleural fluid triglycerides",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 0
+    },
+    {
+      "code": "PF_CHOL",
+      "nameEn": "Pleural fluid cholesterol",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 0
+    },
+    {
+      "code": "PF_AMY",
+      "nameEn": "Pleural fluid amylase",
+      "resultType": "numeric",
+      "unit": "U/L",
+      "decimals": 0
+    },
+    {
+      "code": "AF_TG",
+      "nameEn": "Ascitic fluid triglycerides",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 0
+    },
+    {
+      "code": "FL_CREA",
+      "nameEn": "Drain / body fluid creatinine",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 2
+    },
+    {
+      "code": "FL_AMY",
+      "nameEn": "Drain / body fluid amylase",
+      "resultType": "numeric",
+      "unit": "U/L",
+      "decimals": 0
+    },
+    {
+      "code": "CSF_LACT",
+      "nameEn": "CSF lactate",
+      "resultType": "numeric",
+      "unit": "mmol/L",
+      "decimals": 1
+    },
+    {
+      "code": "MIC_ANORG",
+      "nameEn": "Anaerobic culture — Organism isolated",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MIC_GONO",
+      "nameEn": "Neisseria gonorrhoeae (Gram stain and culture)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MIC_DIPH",
+      "nameEn": "C. diphtheriae culture (Loeffler / tellurite)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MIC_GBS",
+      "nameEn": "Group B Streptococcus (S. agalactiae)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MIC_CFW",
+      "nameEn": "Calcofluor white stain",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MIC_PCP",
+      "nameEn": "Pneumocystis jirovecii (GMS / Giemsa)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MIC_AURA",
+      "nameEn": "Auramine-O fluorescent stain for AFB",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MIC_NUGENT",
+      "nameEn": "Nugent score (bacterial vaginosis)",
+      "resultType": "numeric",
+      "unit": "score",
+      "decimals": 0
+    },
+    {
+      "code": "MIC_LD",
+      "nameEn": "Leishman-Donovan (LD) bodies",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MIC_QBC",
+      "nameEn": "Malaria parasite (QBC fluorescence)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "RUT",
+      "nameEn": "Rapid urease test (H. pylori)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "STREPA",
+      "nameEn": "Group A streptococcus antigen",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MIC_COL",
+      "nameEn": "Colistin MIC (broth microdilution)",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "MIC_MCIM",
+      "nameEn": "Carbapenemase (mCIM / eCIM)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "HP_LVI",
+      "nameEn": "Lymphovascular invasion",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "HP_PNI",
+      "nameEn": "Perineural invasion",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "HP_SYN",
+      "nameEn": "Synoptic summary (CAP protocol)",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "BMB_LEN",
+      "nameEn": "Trephine — Core length",
+      "resultType": "numeric",
+      "unit": "mm",
+      "decimals": 0
+    },
+    {
+      "code": "BMB_CELL",
+      "nameEn": "Trephine — Cellularity",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "BMB_ARCH",
+      "nameEn": "Trephine — Architecture and lineages",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "BMB_RETIC",
+      "nameEn": "Trephine — Reticulin grade (MF 0-3)",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "BMB_INF",
+      "nameEn": "Trephine — Infiltrate / granuloma",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "BMB_IMP",
+      "nameEn": "Trephine — Impression",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "HP_DECAL",
+      "nameEn": "Decalcification",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "RB_GLOM",
+      "nameEn": "Renal biopsy — Number of glomeruli",
+      "resultType": "numeric",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "RB_LM",
+      "nameEn": "Renal biopsy — Light microscopy (H&E, PAS, silver, trichrome)",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "RB_IF",
+      "nameEn": "Renal biopsy — Immunofluorescence (IgG, IgA, IgM, C3, C1q, kappa, lambda)",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "LB_STAINS",
+      "nameEn": "Liver biopsy — Special stains (reticulin, Masson trichrome, PAS-D, Perls)",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "LB_GRADE",
+      "nameEn": "Liver biopsy — Grade and stage (METAVIR / Ishak)",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "HP_GLEASON",
+      "nameEn": "Gleason score / ISUP grade group, cores involved",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "DIF_IGG",
+      "nameEn": "DIF — IgG",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "DIF_IGA",
+      "nameEn": "DIF — IgA",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "DIF_IGM",
+      "nameEn": "DIF — IgM",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "DIF_C3",
+      "nameEn": "DIF — C3",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "DIF_FIB",
+      "nameEn": "DIF — Fibrinogen",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "FNA_BETH",
+      "nameEn": "Thyroid FNA — Bethesda category (I–VI)",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "CY_TZANCK",
+      "nameEn": "Tzanck smear — multinucleated giant cells / acantholytic cells",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_LCA",
+      "nameEn": "IHC — LCA (CD45)",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_CD20",
+      "nameEn": "IHC — CD20",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_CD3",
+      "nameEn": "IHC — CD3",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_CD5",
+      "nameEn": "IHC — CD5",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_CD10",
+      "nameEn": "IHC — CD10",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_BCL2",
+      "nameEn": "IHC — BCL2",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_BCL6",
+      "nameEn": "IHC — BCL6",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_MUM1",
+      "nameEn": "IHC — MUM1",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_CYCD1",
+      "nameEn": "IHC — Cyclin D1",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_CD30",
+      "nameEn": "IHC — CD30",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_PANCK",
+      "nameEn": "IHC — Pan-cytokeratin (AE1/AE3)",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_CK7",
+      "nameEn": "IHC — CK7",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_CK20",
+      "nameEn": "IHC — CK20",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_TTF1",
+      "nameEn": "IHC — TTF-1",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_CDX2",
+      "nameEn": "IHC — CDX2",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_PAX8",
+      "nameEn": "IHC — PAX8",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_GATA3",
+      "nameEn": "IHC — GATA3",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_NAPSIN",
+      "nameEn": "IHC — Napsin A",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_P40",
+      "nameEn": "IHC — p40",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_AMACR",
+      "nameEn": "IHC — AMACR (P504S)",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_P63",
+      "nameEn": "IHC — p63",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_HMWCK",
+      "nameEn": "IHC — HMWCK (34βE12)",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_CD117",
+      "nameEn": "IHC — CD117 (c-KIT)",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_DOG1",
+      "nameEn": "IHC — DOG1",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_CD34",
+      "nameEn": "IHC — CD34",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_MLH1",
+      "nameEn": "IHC — MLH1",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_PMS2",
+      "nameEn": "IHC — PMS2",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_MSH2",
+      "nameEn": "IHC — MSH2",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_MSH6",
+      "nameEn": "IHC — MSH6",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_CD99",
+      "nameEn": "IHC — CD99",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_DESMIN",
+      "nameEn": "IHC — Desmin",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_MYOG",
+      "nameEn": "IHC — Myogenin",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_SYN",
+      "nameEn": "IHC — Synaptophysin",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_CHROMO",
+      "nameEn": "IHC — Chromogranin A",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_CALRET",
+      "nameEn": "IHC — Calretinin",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_WT1",
+      "nameEn": "IHC — WT1",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_D240",
+      "nameEn": "IHC — D2-40 (podoplanin)",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_BEREP4",
+      "nameEn": "IHC — Ber-EP4",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_S100",
+      "nameEn": "IHC — S100",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_HMB45",
+      "nameEn": "IHC — HMB-45",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_MELANA",
+      "nameEn": "IHC — Melan-A",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
+    },
+    {
+      "code": "IHC_SOX10",
+      "nameEn": "IHC — SOX10",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 0
     }
   ],
   "orderables": [
@@ -6734,11 +9756,15 @@ export const LAB_CATALOGUE_STANDARD_DATA: LabCatalogueFixture = {
         "MONO",
         "EOS",
         "BASO",
+        "GRAN",
+        "MID",
         "ANC",
         "LYMPH_ABS",
         "MONO_ABS",
         "EOS_ABS",
         "BASO_ABS",
+        "GRAN_ABS",
+        "MID_ABS",
         "NLR",
         "NRBC",
         "PLT",
@@ -12170,6 +15196,6651 @@ export const LAB_CATALOGUE_STANDARD_DATA: LabCatalogueFixture = {
         "IHC_HER2",
         "IHC_KI67",
         "HP_COMM"
+      ]
+    },
+    {
+      "code": "CHOL_TOTAL",
+      "nameEn": "Cholesterol, total",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 240,
+      "tatMinutesStat": 60,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "TC"
+      ]
+    },
+    {
+      "code": "TRIGLYCERIDES",
+      "nameEn": "Triglycerides",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 240,
+      "benchKey": "BIOCHEM-1",
+      "requiresFasting": true,
+      "analyteCodes": [
+        "TG"
+      ]
+    },
+    {
+      "code": "HDL_CHOL",
+      "nameEn": "HDL cholesterol",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 240,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "HDL"
+      ]
+    },
+    {
+      "code": "BILI_TOTAL",
+      "nameEn": "Bilirubin, total",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 240,
+      "tatMinutesStat": 60,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "TBIL"
+      ]
+    },
+    {
+      "code": "BILI_DIRECT",
+      "nameEn": "Bilirubin, direct",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 240,
+      "tatMinutesStat": 60,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "DBIL"
+      ]
+    },
+    {
+      "code": "TPROT_ONLY",
+      "nameEn": "Protein, total, serum",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 240,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "TPROT"
+      ]
+    },
+    {
+      "code": "IRON_SERUM",
+      "nameEn": "Iron, serum",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 240,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "FE"
+      ]
+    },
+    {
+      "code": "IRON_BASIC",
+      "nameEn": "Iron, TIBC and transferrin saturation",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 240,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "FE",
+        "TIBC",
+        "UIBC",
+        "TSAT"
+      ]
+    },
+    {
+      "code": "ADA_SERUM",
+      "nameEn": "Adenosine deaminase (ADA), serum",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "benchKey": "BIOCHEM-2",
+      "analyteCodes": [
+        "ADA_S"
+      ]
+    },
+    {
+      "code": "NUCLEOTIDASE5",
+      "nameEn": "5'-nucleotidase",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "BIOCHEM-2",
+      "analyteCodes": [
+        "NUCL5"
+      ]
+    },
+    {
+      "code": "BILE_ACIDS",
+      "nameEn": "Bile acids, total",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "BIOCHEM-2",
+      "requiresFasting": true,
+      "analyteCodes": [
+        "BILE_ACID"
+      ]
+    },
+    {
+      "code": "ACE_SERUM",
+      "nameEn": "Angiotensin converting enzyme (ACE)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "BIOCHEM-2",
+      "analyteCodes": [
+        "ACE"
+      ]
+    },
+    {
+      "code": "HAPTOGLOBIN",
+      "nameEn": "Haptoglobin",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "BIOCHEM-2",
+      "analyteCodes": [
+        "HAPTO"
+      ]
+    },
+    {
+      "code": "PREALBUMIN",
+      "nameEn": "Prealbumin",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "BIOCHEM-2",
+      "analyteCodes": [
+        "PREALB"
+      ]
+    },
+    {
+      "code": "A1AT_SERUM",
+      "nameEn": "Alpha-1 antitrypsin, serum",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "BIOCHEM-2",
+      "analyteCodes": [
+        "A1AT"
+      ]
+    },
+    {
+      "code": "PANCREATIC",
+      "nameEn": "Pancreatic enzymes (amylase, lipase)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 240,
+      "tatMinutesStat": 60,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "AMY",
+        "LIP"
+      ]
+    },
+    {
+      "code": "GLU_FPP",
+      "nameEn": "Glucose — fasting and post-prandial",
+      "discipline": "biochemistry",
+      "specimenType": "plasma",
+      "container": "fluoride",
+      "tatMinutesRoutine": 240,
+      "benchKey": "BIOCHEM-1",
+      "requiresFasting": true,
+      "analyteCodes": [
+        "GLUF",
+        "GLUPP"
+      ]
+    },
+    {
+      "code": "UREA_CREA",
+      "nameEn": "Urea and creatinine",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 240,
+      "tatMinutesStat": 60,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "UREA",
+        "CREA",
+        "BUN",
+        "BUNCR",
+        "UCR"
+      ]
+    },
+    {
+      "code": "RFT_MINI",
+      "nameEn": "Urea, creatinine and electrolytes (U&E)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 240,
+      "tatMinutesStat": 60,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "UREA",
+        "CREA",
+        "BUN",
+        "BUNCR",
+        "NA",
+        "K",
+        "CL"
+      ]
+    },
+    {
+      "code": "CA_PHOS_MG",
+      "nameEn": "Calcium, phosphorus and magnesium",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 240,
+      "tatMinutesStat": 60,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "CA",
+        "PHOS",
+        "MG"
+      ]
+    },
+    {
+      "code": "RFT_EXT",
+      "nameEn": "Renal function test, extended",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 240,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "UREA",
+        "BUN",
+        "CREA",
+        "BUNCR",
+        "UCR",
+        "URIC",
+        "NA",
+        "K",
+        "CL",
+        "HCO3",
+        "ANIONGAP",
+        "CA",
+        "PHOS",
+        "MG",
+        "ALB"
+      ]
+    },
+    {
+      "code": "LIPID_DLDL",
+      "nameEn": "Lipid profile with direct LDL",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 240,
+      "benchKey": "BIOCHEM-1",
+      "requiresFasting": true,
+      "analyteCodes": [
+        "TC",
+        "TG",
+        "HDL",
+        "LDL_D",
+        "VLDL",
+        "NONHDL",
+        "TCHDL"
+      ]
+    },
+    {
+      "code": "APOA1_ONLY",
+      "nameEn": "Apolipoprotein A1",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "APOA1"
+      ]
+    },
+    {
+      "code": "APOB_ONLY",
+      "nameEn": "Apolipoprotein B",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "APOB"
+      ]
+    },
+    {
+      "code": "NA_K",
+      "nameEn": "Sodium and potassium",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 120,
+      "tatMinutesStat": 45,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "NA",
+        "K"
+      ]
+    },
+    {
+      "code": "OGTT_5PT",
+      "nameEn": "Glucose tolerance test, extended (75 g, 0/30/60/90/120 min)",
+      "discipline": "biochemistry",
+      "specimenType": "plasma",
+      "container": "fluoride",
+      "tatMinutesRoutine": 240,
+      "benchKey": "BIOCHEM-1",
+      "requiresFasting": true,
+      "analyteCodes": [
+        "GTT_0",
+        "GTT_30M",
+        "GTT_1H",
+        "GTT_90M",
+        "GTT_2H"
+      ]
+    },
+    {
+      "code": "OGTT_INS",
+      "nameEn": "Glucose tolerance test with insulin (75 g, 0/1/2 h)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "benchKey": "IMMUNO-1",
+      "requiresFasting": true,
+      "analyteCodes": [
+        "GTT_0",
+        "GTT_1H",
+        "GTT_2H",
+        "INS_0H",
+        "INS_1H",
+        "INS_2H"
+      ]
+    },
+    {
+      "code": "INS_FPP",
+      "nameEn": "Insulin, fasting and post-prandial",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "benchKey": "IMMUNO-1",
+      "requiresFasting": true,
+      "analyteCodes": [
+        "INS_F",
+        "INS_PP"
+      ]
+    },
+    {
+      "code": "INS_RANDOM",
+      "nameEn": "Insulin, random",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "INS_R"
+      ]
+    },
+    {
+      "code": "CPEP_PPD",
+      "nameEn": "C-peptide, post-prandial",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "CPEP_PP"
+      ]
+    },
+    {
+      "code": "COOX",
+      "nameEn": "Co-oximetry (carboxyhaemoglobin, methaemoglobin)",
+      "discipline": "biochemistry",
+      "specimenType": "whole_blood",
+      "container": "heparin",
+      "tatMinutesRoutine": 60,
+      "tatMinutesStat": 15,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "COHB",
+        "METHB"
+      ]
+    },
+    {
+      "code": "TLS_PANEL",
+      "nameEn": "Tumour lysis panel",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 240,
+      "tatMinutesStat": 60,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "URIC",
+        "K",
+        "PHOS",
+        "CA",
+        "CREA",
+        "LDH"
+      ]
+    },
+    {
+      "code": "DKA_PANEL",
+      "nameEn": "Diabetic ketoacidosis panel",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 120,
+      "tatMinutesStat": 60,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "GLUR",
+        "BHB",
+        "NA",
+        "K",
+        "CL",
+        "HCO3",
+        "ANIONGAP",
+        "UREA",
+        "CREA"
+      ]
+    },
+    {
+      "code": "MYOPATHY",
+      "nameEn": "Muscle enzyme panel (CPK, aldolase, LDH, AST, myoglobin)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "BIOCHEM-2",
+      "analyteCodes": [
+        "CPK",
+        "ALDOLASE",
+        "LDH",
+        "SGOT",
+        "MYO"
+      ]
+    },
+    {
+      "code": "HAEMOLYSIS_BIO",
+      "nameEn": "Haemolysis biochemistry (LDH, haptoglobin, bilirubin)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "BIOCHEM-2",
+      "analyteCodes": [
+        "LDH",
+        "HAPTO",
+        "TBIL",
+        "DBIL",
+        "IBIL"
+      ]
+    },
+    {
+      "code": "NUTRITION",
+      "nameEn": "Nutritional protein panel (protein, albumin, prealbumin, transferrin)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "BIOCHEM-2",
+      "analyteCodes": [
+        "TPROT",
+        "ALB",
+        "GLOB",
+        "AGR",
+        "PREALB",
+        "TRANSF"
+      ]
+    },
+    {
+      "code": "BONE_PROF",
+      "nameEn": "Bone profile (calcium, phosphorus, ALP, magnesium, vitamin D, PTH)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "CA",
+        "ALB",
+        "CACORR",
+        "PHOS",
+        "ALP",
+        "MG",
+        "VITD",
+        "PTH"
+      ]
+    },
+    {
+      "code": "BCTX_SERUM",
+      "nameEn": "Beta-CrossLaps (CTx), serum",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "requiresFasting": true,
+      "analyteCodes": [
+        "BCTX"
+      ]
+    },
+    {
+      "code": "P1NP_SERUM",
+      "nameEn": "Total P1NP",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "P1NP"
+      ]
+    },
+    {
+      "code": "OSTEOCALCIN",
+      "nameEn": "Osteocalcin",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "OSTEOC"
+      ]
+    },
+    {
+      "code": "HSTROP_I",
+      "nameEn": "Troponin I, high-sensitivity",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 120,
+      "tatMinutesStat": 60,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "TROP_HSI"
+      ]
+    },
+    {
+      "code": "HSTROP_T",
+      "nameEn": "Troponin T, high-sensitivity",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 120,
+      "tatMinutesStat": 60,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "TROP_HST"
+      ]
+    },
+    {
+      "code": "CKMB_MASS_T",
+      "nameEn": "CK-MB mass",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 120,
+      "tatMinutesStat": 60,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "CKMB_MASS"
+      ]
+    },
+    {
+      "code": "ACS_PANEL",
+      "nameEn": "Acute coronary panel (hs-troponin I, CK-MB mass, myoglobin)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 120,
+      "tatMinutesStat": 60,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "TROP_HSI",
+        "CKMB_MASS",
+        "MYO"
+      ]
+    },
+    {
+      "code": "CORT_RANDOM",
+      "nameEn": "Cortisol, random",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "tatMinutesStat": 120,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "CORT_R"
+      ]
+    },
+    {
+      "code": "CORT_ONDST",
+      "nameEn": "Overnight dexamethasone suppression test (1 mg)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "CORT_DST"
+      ]
+    },
+    {
+      "code": "CORT_MIDNIGHT",
+      "nameEn": "Cortisol, late-night (midnight)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "CORT_MN"
+      ]
+    },
+    {
+      "code": "SYNACTHEN",
+      "nameEn": "Short synacthen test (cortisol 0/30/60 min)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "CORT_ST0",
+        "CORT_ST30",
+        "CORT_ST60"
+      ]
+    },
+    {
+      "code": "PRL_MACRO",
+      "nameEn": "Prolactin with macroprolactin (PEG precipitation)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "PRL",
+        "PRL_PEG",
+        "PRL_RECOV"
+      ]
+    },
+    {
+      "code": "GH_SUPP",
+      "nameEn": "Growth hormone suppression test (75 g glucose, 0-120 min)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "requiresFasting": true,
+      "analyteCodes": [
+        "GH_T0",
+        "GH_T30",
+        "GH_T60",
+        "GH_T90",
+        "GH_T120"
+      ]
+    },
+    {
+      "code": "GH_STIM",
+      "nameEn": "Growth hormone stimulation test (0-120 min)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "requiresFasting": true,
+      "analyteCodes": [
+        "GH_T0",
+        "GH_T30",
+        "GH_T60",
+        "GH_T90",
+        "GH_T120"
+      ]
+    },
+    {
+      "code": "LH_STIM",
+      "nameEn": "GnRH analogue stimulation test (LH 0/30/60 min)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "LH_T0",
+        "LH_T30",
+        "LH_T60"
+      ]
+    },
+    {
+      "code": "TSH_FT4",
+      "nameEn": "TSH with free T4",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "TSH",
+        "FT4"
+      ]
+    },
+    {
+      "code": "THYROID_COMP",
+      "nameEn": "Thyroid profile, comprehensive (TSH, FT3, FT4, anti-TPO, anti-TG)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "TSH",
+        "FT3",
+        "FT4",
+        "ATPO",
+        "ATG"
+      ]
+    },
+    {
+      "code": "LH_FSH",
+      "nameEn": "LH and FSH",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "LH",
+        "FSH"
+      ]
+    },
+    {
+      "code": "LH_FSH_PRL",
+      "nameEn": "LH, FSH and prolactin",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "LH",
+        "FSH",
+        "PRL"
+      ]
+    },
+    {
+      "code": "FERT_DAY3",
+      "nameEn": "Day-3 hormone panel (FSH, LH, estradiol)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "FSH",
+        "LH",
+        "E2"
+      ]
+    },
+    {
+      "code": "PIT_PANEL",
+      "nameEn": "Pituitary hormone panel",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "TSH",
+        "FT4",
+        "PRL",
+        "LH",
+        "FSH",
+        "GH",
+        "IGF1",
+        "CORT_AM",
+        "ACTH"
+      ]
+    },
+    {
+      "code": "DOUBLE_MARKER",
+      "nameEn": "First-trimester screen — double marker (PAPP-A, free beta-hCG) with risk",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "IMMUNO-1",
+      "sensitive": true,
+      "analyteCodes": [
+        "PAPPA",
+        "FBHCG",
+        "PNS_RISK"
+      ]
+    },
+    {
+      "code": "TRIPLE_MARKER",
+      "nameEn": "Second-trimester screen — triple marker (AFP, hCG, uE3) with risk",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "IMMUNO-1",
+      "sensitive": true,
+      "analyteCodes": [
+        "AFP",
+        "BHCG",
+        "UE3",
+        "PNS_RISK"
+      ]
+    },
+    {
+      "code": "QUAD_MARKER",
+      "nameEn": "Second-trimester screen — quadruple marker (AFP, hCG, uE3, inhibin A) with risk",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "IMMUNO-1",
+      "sensitive": true,
+      "analyteCodes": [
+        "AFP",
+        "BHCG",
+        "UE3",
+        "INHA",
+        "PNS_RISK"
+      ]
+    },
+    {
+      "code": "CA724_T",
+      "nameEn": "CA 72-4",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "CA724"
+      ]
+    },
+    {
+      "code": "CYFRA211",
+      "nameEn": "CYFRA 21-1",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "CYFRA"
+      ]
+    },
+    {
+      "code": "HE4_T",
+      "nameEn": "HE4 (human epididymis protein 4)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "HE4"
+      ]
+    },
+    {
+      "code": "ROMA",
+      "nameEn": "ROMA (CA-125, HE4 with ovarian malignancy risk)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "CA125",
+        "HE4",
+        "ROMA_IDX"
+      ]
+    },
+    {
+      "code": "SCC_T",
+      "nameEn": "SCC antigen (squamous cell carcinoma)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "SCC_AG"
+      ]
+    },
+    {
+      "code": "TM_GI",
+      "nameEn": "Tumour markers — gastrointestinal (CEA, CA 19-9, CA 72-4)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "CEA",
+        "CA199",
+        "CA724"
+      ]
+    },
+    {
+      "code": "TM_LUNG",
+      "nameEn": "Tumour markers — lung (CEA, CYFRA 21-1, NSE)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "CEA",
+        "CYFRA",
+        "NSE"
+      ]
+    },
+    {
+      "code": "TM_GERM",
+      "nameEn": "Tumour markers — germ cell (AFP, beta-hCG, LDH)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "AFP",
+        "BHCG",
+        "LDH"
+      ]
+    },
+    {
+      "code": "TM_BREAST",
+      "nameEn": "Tumour markers — breast (CEA, CA 15-3)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "CEA",
+        "CA153"
+      ]
+    },
+    {
+      "code": "B12_FOL",
+      "nameEn": "Vitamin B12 and folate",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "B12",
+        "FOL"
+      ]
+    },
+    {
+      "code": "VITD_B12",
+      "nameEn": "Vitamin D (25-OH) and vitamin B12",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "VITD",
+        "B12"
+      ]
+    },
+    {
+      "code": "ANAEMIA_NUTR",
+      "nameEn": "Nutritional anaemia panel (ferritin, B12, folate)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "FERR",
+        "B12",
+        "FOL"
+      ]
+    },
+    {
+      "code": "CYCLOSPORINE",
+      "nameEn": "Cyclosporine level (trough)",
+      "discipline": "biochemistry",
+      "specimenType": "whole_blood",
+      "container": "edta",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "BIOCHEM-2",
+      "analyteCodes": [
+        "CSA"
+      ]
+    },
+    {
+      "code": "SIROLIMUS",
+      "nameEn": "Sirolimus level (trough)",
+      "discipline": "biochemistry",
+      "specimenType": "whole_blood",
+      "container": "edta",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "BIOCHEM-2",
+      "analyteCodes": [
+        "SIRO"
+      ]
+    },
+    {
+      "code": "METHOTREXATE",
+      "nameEn": "Methotrexate level",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 360,
+      "tatMinutesStat": 120,
+      "benchKey": "BIOCHEM-2",
+      "analyteCodes": [
+        "MTX"
+      ]
+    },
+    {
+      "code": "VANCOMYCIN",
+      "nameEn": "Vancomycin level (trough)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 360,
+      "tatMinutesStat": 120,
+      "benchKey": "BIOCHEM-2",
+      "analyteCodes": [
+        "VANCO"
+      ]
+    },
+    {
+      "code": "GENTAMICIN",
+      "nameEn": "Gentamicin level",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 360,
+      "tatMinutesStat": 120,
+      "benchKey": "BIOCHEM-2",
+      "analyteCodes": [
+        "GENTA"
+      ]
+    },
+    {
+      "code": "AMIKACIN",
+      "nameEn": "Amikacin level",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 360,
+      "tatMinutesStat": 120,
+      "benchKey": "BIOCHEM-2",
+      "analyteCodes": [
+        "AMIK"
+      ]
+    },
+    {
+      "code": "THEOPHYLLINE",
+      "nameEn": "Theophylline level",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 360,
+      "tatMinutesStat": 120,
+      "benchKey": "BIOCHEM-2",
+      "analyteCodes": [
+        "THEO"
+      ]
+    },
+    {
+      "code": "LEVETIRACETAM",
+      "nameEn": "Levetiracetam level",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "BIOCHEM-2",
+      "analyteCodes": [
+        "LEV"
+      ]
+    },
+    {
+      "code": "AED_PANEL",
+      "nameEn": "Antiepileptic drug levels (phenytoin, valproate, carbamazepine, phenobarbitone)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "benchKey": "BIOCHEM-2",
+      "analyteCodes": [
+        "PHENYTOIN",
+        "VALPROATE",
+        "CBZ",
+        "PHENOBARB"
+      ]
+    },
+    {
+      "code": "PARACETAMOL",
+      "nameEn": "Paracetamol level",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 120,
+      "tatMinutesStat": 60,
+      "benchKey": "BIOCHEM-2",
+      "analyteCodes": [
+        "PARACET"
+      ]
+    },
+    {
+      "code": "SALICYLATE",
+      "nameEn": "Salicylate level",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 120,
+      "tatMinutesStat": 60,
+      "benchKey": "BIOCHEM-2",
+      "analyteCodes": [
+        "SALIC"
+      ]
+    },
+    {
+      "code": "ETHANOL",
+      "nameEn": "Ethanol (alcohol), serum",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 120,
+      "tatMinutesStat": 60,
+      "benchKey": "BIOCHEM-2",
+      "sensitive": true,
+      "analyteCodes": [
+        "ETOH"
+      ]
+    },
+    {
+      "code": "TOX_SCREEN",
+      "nameEn": "Toxicology screen, serum (paracetamol, salicylate, ethanol)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 120,
+      "tatMinutesStat": 60,
+      "benchKey": "BIOCHEM-2",
+      "sensitive": true,
+      "analyteCodes": [
+        "PARACET",
+        "SALIC",
+        "ETOH"
+      ]
+    },
+    {
+      "code": "DOA_5",
+      "nameEn": "Urine drugs of abuse screen — 5 drugs",
+      "discipline": "biochemistry",
+      "specimenType": "urine",
+      "container": "urine_container",
+      "tatMinutesRoutine": 120,
+      "tatMinutesStat": 60,
+      "benchKey": "BIOCHEM-2",
+      "sensitive": true,
+      "analyteCodes": [
+        "DOA_AMP",
+        "DOA_COC",
+        "DOA_THC",
+        "DOA_OPI",
+        "DOA_BZO"
+      ]
+    },
+    {
+      "code": "DOA_10",
+      "nameEn": "Urine drugs of abuse screen — 10 drugs",
+      "discipline": "biochemistry",
+      "specimenType": "urine",
+      "container": "urine_container",
+      "tatMinutesRoutine": 120,
+      "tatMinutesStat": 60,
+      "benchKey": "BIOCHEM-2",
+      "sensitive": true,
+      "analyteCodes": [
+        "DOA_AMP",
+        "DOA_COC",
+        "DOA_THC",
+        "DOA_OPI",
+        "DOA_BZO",
+        "DOA_BAR",
+        "DOA_MET",
+        "DOA_MTD",
+        "DOA_TCA",
+        "DOA_BUP"
+      ]
+    },
+    {
+      "code": "MPO_STAIN",
+      "nameEn": "Cytochemistry — myeloperoxidase (MPO) stain",
+      "discipline": "haematology",
+      "specimenType": "bone_marrow",
+      "container": "slide",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "HAEM-1",
+      "analyteCodes": [
+        "CYTO_MPO"
+      ]
+    },
+    {
+      "code": "SBB_STAIN",
+      "nameEn": "Cytochemistry — Sudan black B stain",
+      "discipline": "haematology",
+      "specimenType": "bone_marrow",
+      "container": "slide",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "HAEM-1",
+      "analyteCodes": [
+        "CYTO_SBB"
+      ]
+    },
+    {
+      "code": "PAS_HAEM",
+      "nameEn": "Cytochemistry — PAS stain (blood / marrow)",
+      "discipline": "haematology",
+      "specimenType": "bone_marrow",
+      "container": "slide",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "HAEM-1",
+      "analyteCodes": [
+        "CYTO_PAS"
+      ]
+    },
+    {
+      "code": "ESTERASE_STAIN",
+      "nameEn": "Cytochemistry — non-specific esterase stain",
+      "discipline": "haematology",
+      "specimenType": "bone_marrow",
+      "container": "slide",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "HAEM-1",
+      "analyteCodes": [
+        "CYTO_NSE"
+      ]
+    },
+    {
+      "code": "CYTOCHEM",
+      "nameEn": "Acute leukaemia cytochemistry panel (MPO, SBB, PAS, NSE)",
+      "discipline": "haematology",
+      "specimenType": "bone_marrow",
+      "container": "slide",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "HAEM-1",
+      "analyteCodes": [
+        "CYTO_MPO",
+        "CYTO_SBB",
+        "CYTO_PAS",
+        "CYTO_NSE"
+      ]
+    },
+    {
+      "code": "PERLS_STAIN",
+      "nameEn": "Perls stain for marrow iron (Prussian blue)",
+      "discipline": "haematology",
+      "specimenType": "bone_marrow",
+      "container": "slide",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "HAEM-1",
+      "analyteCodes": [
+        "PERLS"
+      ]
+    },
+    {
+      "code": "LAP_SCORE",
+      "nameEn": "Leucocyte alkaline phosphatase (LAP / NAP) score",
+      "discipline": "haematology",
+      "specimenType": "whole_blood",
+      "container": "slide",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "HAEM-1",
+      "analyteCodes": [
+        "LAP"
+      ]
+    },
+    {
+      "code": "BM_TREPHINE",
+      "nameEn": "Bone marrow trephine biopsy",
+      "discipline": "haematology",
+      "specimenType": "tissue",
+      "container": "formalin",
+      "tatMinutesRoutine": 7200,
+      "benchKey": "HAEM-1",
+      "analyteCodes": [
+        "BMT_GROSS",
+        "BMT_MICRO",
+        "BMT_IMP"
+      ]
+    },
+    {
+      "code": "HBH_INCL_T",
+      "nameEn": "HbH inclusion bodies",
+      "discipline": "haematology",
+      "specimenType": "whole_blood",
+      "container": "edta",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "HAEM-1",
+      "analyteCodes": [
+        "HBH_INCL"
+      ]
+    },
+    {
+      "code": "HEINZ_BODY",
+      "nameEn": "Heinz body preparation",
+      "discipline": "haematology",
+      "specimenType": "whole_blood",
+      "container": "edta",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "HAEM-1",
+      "analyteCodes": [
+        "HEINZ"
+      ]
+    },
+    {
+      "code": "NESTROF_T",
+      "nameEn": "NESTROF test (thalassaemia screen)",
+      "discipline": "haematology",
+      "specimenType": "whole_blood",
+      "container": "edta",
+      "tatMinutesRoutine": 480,
+      "benchKey": "HAEM-1",
+      "analyteCodes": [
+        "NESTROF"
+      ]
+    },
+    {
+      "code": "PLASMA_HB_T",
+      "nameEn": "Plasma free haemoglobin",
+      "discipline": "haematology",
+      "specimenType": "plasma",
+      "container": "heparin",
+      "tatMinutesRoutine": 480,
+      "tatMinutesStat": 120,
+      "benchKey": "HAEM-1",
+      "analyteCodes": [
+        "PLASMA_HB"
+      ]
+    },
+    {
+      "code": "PLT_CITRATE",
+      "nameEn": "Platelet count — citrate sample (pseudothrombocytopenia check)",
+      "discipline": "haematology",
+      "specimenType": "whole_blood",
+      "container": "citrate",
+      "tatMinutesRoutine": 240,
+      "tatMinutesStat": 60,
+      "benchKey": "HAEM-1",
+      "analyteCodes": [
+        "PLT"
+      ]
+    },
+    {
+      "code": "HIT_SCREEN",
+      "nameEn": "HIT antibody (PF4-heparin, rapid)",
+      "discipline": "haematology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 240,
+      "tatMinutesStat": 120,
+      "benchKey": "COAG-1",
+      "analyteCodes": [
+        "HIT_AB"
+      ]
+    },
+    {
+      "code": "COLD_AGG_T",
+      "nameEn": "Cold agglutinin titre",
+      "discipline": "haematology",
+      "specimenType": "serum",
+      "container": "plain",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "HAEM-1",
+      "analyteCodes": [
+        "COLD_AGG"
+      ]
+    },
+    {
+      "code": "F2_ASSAY",
+      "nameEn": "Factor II assay",
+      "discipline": "haematology",
+      "specimenType": "plasma",
+      "container": "citrate",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "COAG-1",
+      "analyteCodes": [
+        "F2"
+      ]
+    },
+    {
+      "code": "F5_ASSAY",
+      "nameEn": "Factor V assay",
+      "discipline": "haematology",
+      "specimenType": "plasma",
+      "container": "citrate",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "COAG-1",
+      "analyteCodes": [
+        "F5"
+      ]
+    },
+    {
+      "code": "F7_ASSAY",
+      "nameEn": "Factor VII assay",
+      "discipline": "haematology",
+      "specimenType": "plasma",
+      "container": "citrate",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "COAG-1",
+      "analyteCodes": [
+        "F7"
+      ]
+    },
+    {
+      "code": "F10_ASSAY",
+      "nameEn": "Factor X assay",
+      "discipline": "haematology",
+      "specimenType": "plasma",
+      "container": "citrate",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "COAG-1",
+      "analyteCodes": [
+        "F10"
+      ]
+    },
+    {
+      "code": "F11_ASSAY",
+      "nameEn": "Factor XI assay",
+      "discipline": "haematology",
+      "specimenType": "plasma",
+      "container": "citrate",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "COAG-1",
+      "analyteCodes": [
+        "F11"
+      ]
+    },
+    {
+      "code": "F12_ASSAY",
+      "nameEn": "Factor XII assay",
+      "discipline": "haematology",
+      "specimenType": "plasma",
+      "container": "citrate",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "COAG-1",
+      "analyteCodes": [
+        "F12"
+      ]
+    },
+    {
+      "code": "F13_SCREEN",
+      "nameEn": "Factor XIII screen (urea clot solubility)",
+      "discipline": "haematology",
+      "specimenType": "plasma",
+      "container": "citrate",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "COAG-1",
+      "analyteCodes": [
+        "F13_SCR"
+      ]
+    },
+    {
+      "code": "F9_INHIB",
+      "nameEn": "Factor IX inhibitor (Bethesda assay)",
+      "discipline": "haematology",
+      "specimenType": "plasma",
+      "container": "citrate",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "COAG-1",
+      "analyteCodes": [
+        "F9_INH"
+      ]
+    },
+    {
+      "code": "VWF_ACTIVITY",
+      "nameEn": "von Willebrand factor activity",
+      "discipline": "haematology",
+      "specimenType": "plasma",
+      "container": "citrate",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "COAG-1",
+      "analyteCodes": [
+        "VWF_ACT"
+      ]
+    },
+    {
+      "code": "VWD_PANEL",
+      "nameEn": "von Willebrand panel (VWF antigen, activity, factor VIII)",
+      "discipline": "haematology",
+      "specimenType": "plasma",
+      "container": "citrate",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "COAG-1",
+      "analyteCodes": [
+        "VWF_AG",
+        "VWF_ACT",
+        "VWF_RATIO",
+        "F8"
+      ]
+    },
+    {
+      "code": "HAEMOPHILIA_SCR",
+      "nameEn": "Haemophilia screen (factor VIII and IX)",
+      "discipline": "haematology",
+      "specimenType": "plasma",
+      "container": "citrate",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "COAG-1",
+      "analyteCodes": [
+        "F8",
+        "F9"
+      ]
+    },
+    {
+      "code": "MIX_APTT",
+      "nameEn": "APTT mixing study (correction test)",
+      "discipline": "haematology",
+      "specimenType": "plasma",
+      "container": "citrate",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "COAG-1",
+      "analyteCodes": [
+        "APTT",
+        "APTT_CTRL",
+        "APTT_RAT",
+        "MIX_APTT_IMM",
+        "MIX_APTT_2H",
+        "MIX_IMP"
+      ]
+    },
+    {
+      "code": "MIX_PT",
+      "nameEn": "PT mixing study (correction test)",
+      "discipline": "haematology",
+      "specimenType": "plasma",
+      "container": "citrate",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "COAG-1",
+      "analyteCodes": [
+        "PT",
+        "PT_CTRL",
+        "PT_RATIO",
+        "ISI",
+        "INR",
+        "MIX_PT_IMM",
+        "MIX_IMP"
+      ]
+    },
+    {
+      "code": "ANTI_XA_T",
+      "nameEn": "Anti-Xa assay (heparin monitoring)",
+      "discipline": "haematology",
+      "specimenType": "plasma",
+      "container": "citrate",
+      "tatMinutesRoutine": 240,
+      "tatMinutesStat": 120,
+      "benchKey": "COAG-1",
+      "analyteCodes": [
+        "ANTI_XA"
+      ]
+    },
+    {
+      "code": "APCR_T",
+      "nameEn": "Activated protein C resistance (APC-R)",
+      "discipline": "haematology",
+      "specimenType": "plasma",
+      "container": "citrate",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "COAG-1",
+      "analyteCodes": [
+        "APCR"
+      ]
+    },
+    {
+      "code": "REPTILASE",
+      "nameEn": "Reptilase time",
+      "discipline": "haematology",
+      "specimenType": "plasma",
+      "container": "citrate",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "COAG-1",
+      "analyteCodes": [
+        "REPT"
+      ]
+    },
+    {
+      "code": "PT_APTT",
+      "nameEn": "PT with INR and APTT",
+      "discipline": "haematology",
+      "specimenType": "plasma",
+      "container": "citrate",
+      "tatMinutesRoutine": 240,
+      "tatMinutesStat": 60,
+      "benchKey": "COAG-1",
+      "analyteCodes": [
+        "PT",
+        "PT_CTRL",
+        "PT_RATIO",
+        "ISI",
+        "INR",
+        "APTT",
+        "APTT_CTRL",
+        "APTT_RAT"
+      ]
+    },
+    {
+      "code": "BLEED_SCREEN",
+      "nameEn": "Bleeding disorder screen (PT, APTT, thrombin time, fibrinogen)",
+      "discipline": "haematology",
+      "specimenType": "plasma",
+      "container": "citrate",
+      "tatMinutesRoutine": 480,
+      "tatMinutesStat": 120,
+      "benchKey": "COAG-1",
+      "analyteCodes": [
+        "PT",
+        "PT_CTRL",
+        "PT_RATIO",
+        "ISI",
+        "INR",
+        "APTT",
+        "APTT_CTRL",
+        "APTT_RAT",
+        "TT",
+        "TT_CTRL",
+        "FIB"
+      ]
+    },
+    {
+      "code": "THROMBO_EXT",
+      "nameEn": "Thrombophilia profile, extended (with APC resistance, total protein S)",
+      "discipline": "haematology",
+      "specimenType": "plasma",
+      "container": "citrate",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "COAG-1",
+      "analyteCodes": [
+        "PROTC",
+        "PROTS",
+        "PROTS_TOT",
+        "AT3",
+        "LA_SCR",
+        "LA_CNF",
+        "LA_RATIO",
+        "LA_IMP",
+        "APCR"
+      ]
+    },
+    {
+      "code": "PROTS_TOTAL",
+      "nameEn": "Protein S, total (antigen)",
+      "discipline": "haematology",
+      "specimenType": "plasma",
+      "container": "citrate",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "COAG-1",
+      "analyteCodes": [
+        "PROTS_TOT"
+      ]
+    },
+    {
+      "code": "PLT_AGG",
+      "nameEn": "Platelet aggregation studies (ADP, collagen, epinephrine, ristocetin, arachidonic acid)",
+      "discipline": "haematology",
+      "specimenType": "plasma",
+      "container": "citrate",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "COAG-1",
+      "analyteCodes": [
+        "AGG_ADP",
+        "AGG_COL",
+        "AGG_EPI",
+        "AGG_RIS",
+        "AGG_AA",
+        "AGG_IMP"
+      ]
+    },
+    {
+      "code": "CLOT_RETR",
+      "nameEn": "Clot retraction test",
+      "discipline": "haematology",
+      "specimenType": "whole_blood",
+      "container": "plain",
+      "tatMinutesRoutine": 240,
+      "benchKey": "COAG-1",
+      "analyteCodes": [
+        "CLOT_RET"
+      ]
+    },
+    {
+      "code": "DEN_NS1_AG",
+      "nameEn": "Dengue NS1 antigen (ELISA)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "tatMinutesStat": 240,
+      "benchKey": "SERO-1",
+      "notifiable": true,
+      "analyteCodes": [
+        "DEN_NS1"
+      ]
+    },
+    {
+      "code": "DEN_AB",
+      "nameEn": "Dengue IgM and IgG antibodies (ELISA)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "notifiable": true,
+      "analyteCodes": [
+        "DEN_IGM",
+        "DEN_IGG"
+      ]
+    },
+    {
+      "code": "DEN_IGM_EIA",
+      "nameEn": "Dengue IgM (MAC-ELISA)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "notifiable": true,
+      "analyteCodes": [
+        "DEN_IGM"
+      ]
+    },
+    {
+      "code": "DEN_PCR",
+      "nameEn": "Dengue virus RT-PCR (real-time, qualitative)",
+      "discipline": "microbiology",
+      "specimenType": "plasma",
+      "container": "edta",
+      "tatMinutesRoutine": 1440,
+      "notifiable": true,
+      "analyteCodes": [
+        "DEN_RNA"
+      ]
+    },
+    {
+      "code": "CHIK_PCR",
+      "nameEn": "Chikungunya virus RT-PCR (real-time, qualitative)",
+      "discipline": "microbiology",
+      "specimenType": "plasma",
+      "container": "edta",
+      "tatMinutesRoutine": 1440,
+      "notifiable": true,
+      "analyteCodes": [
+        "CHIK_RNA"
+      ]
+    },
+    {
+      "code": "DEN_CHIK",
+      "nameEn": "Dengue (NS1, IgM, IgG) and chikungunya IgM",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "notifiable": true,
+      "analyteCodes": [
+        "DEN_NS1",
+        "DEN_IGM",
+        "DEN_IGG",
+        "CHIK_IGM"
+      ]
+    },
+    {
+      "code": "SCRUB_PCR",
+      "nameEn": "Scrub typhus real-time PCR (47-kDa gene)",
+      "discipline": "microbiology",
+      "specimenType": "whole_blood",
+      "container": "edta",
+      "tatMinutesRoutine": 1440,
+      "notifiable": true,
+      "analyteCodes": [
+        "SCRUB_DNA"
+      ]
+    },
+    {
+      "code": "STYPHI_IGM_EIA",
+      "nameEn": "Salmonella Typhi IgM (ELISA)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "notifiable": true,
+      "analyteCodes": [
+        "STYPHI_IGM"
+      ]
+    },
+    {
+      "code": "AFI_PANEL",
+      "nameEn": "Acute febrile illness panel (dengue NS1/IgM, malaria Ag, scrub, lepto, typhoid IgM)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "notifiable": true,
+      "analyteCodes": [
+        "DEN_NS1",
+        "DEN_IGM",
+        "MP_AG",
+        "SCRUB_IGM",
+        "LEPTO_IGM",
+        "TYPHI_IGM"
+      ]
+    },
+    {
+      "code": "HAV_IGG_AB",
+      "nameEn": "Hepatitis A IgG (anti-HAV total, immunity)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "HAV_IGG"
+      ]
+    },
+    {
+      "code": "HEV_IGG_AB",
+      "nameEn": "Hepatitis E IgG",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "HEV_IGG"
+      ]
+    },
+    {
+      "code": "HDV_TOTAL",
+      "nameEn": "Hepatitis D (delta) antibody, total",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "sensitive": true,
+      "notifiable": true,
+      "analyteCodes": [
+        "HDV_AB"
+      ]
+    },
+    {
+      "code": "AHBC_TOTAL",
+      "nameEn": "Anti-HBc antibody, total",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "sensitive": true,
+      "notifiable": true,
+      "analyteCodes": [
+        "AHBC_T"
+      ]
+    },
+    {
+      "code": "AHBE_AB",
+      "nameEn": "Anti-HBe antibody",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "sensitive": true,
+      "notifiable": true,
+      "analyteCodes": [
+        "AHBE"
+      ]
+    },
+    {
+      "code": "HBSAG_QUANT",
+      "nameEn": "HBsAg quantitative (CLIA)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "sensitive": true,
+      "notifiable": true,
+      "analyteCodes": [
+        "HBSAG_QNT"
+      ]
+    },
+    {
+      "code": "HCV_RNA_QUAL",
+      "nameEn": "HCV RNA qualitative (real-time PCR)",
+      "discipline": "microbiology",
+      "specimenType": "plasma",
+      "container": "edta",
+      "tatMinutesRoutine": 1440,
+      "sensitive": true,
+      "notifiable": true,
+      "analyteCodes": [
+        "HCV_RNA_QL"
+      ]
+    },
+    {
+      "code": "HIV_COMBO",
+      "nameEn": "HIV 1/2 antigen and antibody (4th generation, CLIA)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "sensitive": true,
+      "notifiable": true,
+      "analyteCodes": [
+        "HIV_AGAB"
+      ]
+    },
+    {
+      "code": "VIRAL_MARKERS",
+      "nameEn": "Viral markers (HIV 1/2, HBsAg, anti-HCV)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "sensitive": true,
+      "notifiable": true,
+      "analyteCodes": [
+        "HIV",
+        "HBSAG",
+        "HCV"
+      ]
+    },
+    {
+      "code": "HSV1_IGG_AB",
+      "nameEn": "HSV type 1 IgG",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "HSV1_IGG"
+      ]
+    },
+    {
+      "code": "HSV2_IGG_AB",
+      "nameEn": "HSV type 2 IgG",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "HSV2_IGG"
+      ]
+    },
+    {
+      "code": "HSV1_IGM_AB",
+      "nameEn": "HSV type 1 IgM",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "HSV1_IGM"
+      ]
+    },
+    {
+      "code": "HSV2_IGM_AB",
+      "nameEn": "HSV type 2 IgM",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "HSV2_IGM"
+      ]
+    },
+    {
+      "code": "HSV_IGG_IGM",
+      "nameEn": "HSV 1+2 IgG and IgM",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "HSV_IGG",
+        "HSV_IGM"
+      ]
+    },
+    {
+      "code": "HSV_PCR",
+      "nameEn": "HSV-1/2 DNA real-time PCR (CSF)",
+      "discipline": "microbiology",
+      "specimenType": "csf",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 1440,
+      "analyteCodes": [
+        "HSV1_DNA",
+        "HSV2_DNA"
+      ]
+    },
+    {
+      "code": "CMV_IGG_AB",
+      "nameEn": "CMV IgG",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "CMV_IGG"
+      ]
+    },
+    {
+      "code": "CMV_IGM_AB",
+      "nameEn": "CMV IgM",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "CMV_IGM"
+      ]
+    },
+    {
+      "code": "CMV_AVID",
+      "nameEn": "CMV IgG avidity",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "CMV_AVIDITY"
+      ]
+    },
+    {
+      "code": "CMV_VL",
+      "nameEn": "CMV DNA viral load (quantitative real-time PCR)",
+      "discipline": "microbiology",
+      "specimenType": "plasma",
+      "container": "edta",
+      "tatMinutesRoutine": 1440,
+      "analyteCodes": [
+        "CMV_DNA"
+      ]
+    },
+    {
+      "code": "EBV_VCAG_AB",
+      "nameEn": "EBV VCA IgG",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "EBV_VCAG"
+      ]
+    },
+    {
+      "code": "EBV_EBNA_AB",
+      "nameEn": "EBV EBNA-1 IgG",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "EBV_EBNA"
+      ]
+    },
+    {
+      "code": "EBV_PANEL",
+      "nameEn": "EBV antibody panel (VCA IgM, VCA IgG, EBNA IgG)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "EBV_VCAM",
+        "EBV_VCAG",
+        "EBV_EBNA"
+      ]
+    },
+    {
+      "code": "EBV_VL",
+      "nameEn": "EBV DNA viral load (quantitative real-time PCR)",
+      "discipline": "microbiology",
+      "specimenType": "plasma",
+      "container": "edta",
+      "tatMinutesRoutine": 1440,
+      "analyteCodes": [
+        "EBV_DNA"
+      ]
+    },
+    {
+      "code": "TOXO_IGG_AB",
+      "nameEn": "Toxoplasma IgG",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "TOXO_IGG"
+      ]
+    },
+    {
+      "code": "TOXO_IGM_AB",
+      "nameEn": "Toxoplasma IgM",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "TOXO_IGM"
+      ]
+    },
+    {
+      "code": "TOXO_AVID",
+      "nameEn": "Toxoplasma IgG avidity",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "TOXO_AVIDITY"
+      ]
+    },
+    {
+      "code": "RUB_IGG_AB",
+      "nameEn": "Rubella IgG",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "RUB_IGG"
+      ]
+    },
+    {
+      "code": "RUB_IGM_AB",
+      "nameEn": "Rubella IgM",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "RUB_IGM"
+      ]
+    },
+    {
+      "code": "TORCH_G",
+      "nameEn": "TORCH IgG panel",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "TOXO_IGG",
+        "RUB_IGG",
+        "CMV_IGG",
+        "HSV_IGG"
+      ]
+    },
+    {
+      "code": "MEAS_IGM_AB",
+      "nameEn": "Measles IgM",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "notifiable": true,
+      "analyteCodes": [
+        "MEAS_IGM"
+      ]
+    },
+    {
+      "code": "MUMPS_IGG_AB",
+      "nameEn": "Mumps IgG",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "MUMPS_IGG"
+      ]
+    },
+    {
+      "code": "MUMPS_IGM_AB",
+      "nameEn": "Mumps IgM",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "MUMPS_IGM"
+      ]
+    },
+    {
+      "code": "MMR_IGG",
+      "nameEn": "MMR immunity (measles, mumps, rubella IgG)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "MEAS_IGG",
+        "MUMPS_IGG",
+        "RUB_IGG"
+      ]
+    },
+    {
+      "code": "VZV_IGM_AB",
+      "nameEn": "Varicella-zoster IgM",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "VZV_IGM"
+      ]
+    },
+    {
+      "code": "PARVO_IGM_AB",
+      "nameEn": "Parvovirus B19 IgM",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "PARVO_IGM"
+      ]
+    },
+    {
+      "code": "MYCO_IGG_AB",
+      "nameEn": "Mycoplasma pneumoniae IgG",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "MYCO_IGG"
+      ]
+    },
+    {
+      "code": "CHLAM_IGG_AB",
+      "nameEn": "Chlamydia trachomatis IgG",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "CHLAM_IGG"
+      ]
+    },
+    {
+      "code": "CHLAM_IGM_AB",
+      "nameEn": "Chlamydia trachomatis IgM",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "CHLAM_IGM"
+      ]
+    },
+    {
+      "code": "HYDATID",
+      "nameEn": "Hydatid serology (Echinococcus IgG)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "HYDATID_IGG"
+      ]
+    },
+    {
+      "code": "AMOEBA_SERO",
+      "nameEn": "Amoebic serology (E. histolytica IgG)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "AMOEBA_IGG"
+      ]
+    },
+    {
+      "code": "CYSTI_SERUM",
+      "nameEn": "Cysticercosis IgG, serum",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "CYSTI_IGG"
+      ]
+    },
+    {
+      "code": "CYSTI_CSF",
+      "nameEn": "Cysticercosis IgG, CSF",
+      "discipline": "serology",
+      "specimenType": "csf",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "CYSTI_IGG"
+      ]
+    },
+    {
+      "code": "CRAG_SERUM",
+      "nameEn": "Cryptococcal antigen, serum",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 240,
+      "tatMinutesStat": 90,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "CRAG"
+      ]
+    },
+    {
+      "code": "CRAG_CSF",
+      "nameEn": "Cryptococcal antigen, CSF",
+      "discipline": "serology",
+      "specimenType": "csf",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 240,
+      "tatMinutesStat": 90,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "CRAG"
+      ]
+    },
+    {
+      "code": "GALACTOMANNAN",
+      "nameEn": "Aspergillus galactomannan, serum",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "GM_INDEX"
+      ]
+    },
+    {
+      "code": "GALACTO_BAL",
+      "nameEn": "Aspergillus galactomannan, BAL fluid",
+      "discipline": "serology",
+      "specimenType": "other",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "GM_BAL_INDEX"
+      ]
+    },
+    {
+      "code": "ASP_IGG_AB",
+      "nameEn": "Aspergillus fumigatus IgG",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "ASP_IGG"
+      ]
+    },
+    {
+      "code": "TP_TOTAL",
+      "nameEn": "Treponema pallidum antibody, total (CLIA)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "sensitive": true,
+      "analyteCodes": [
+        "TP_AB"
+      ]
+    },
+    {
+      "code": "VDRL_QUANT",
+      "nameEn": "VDRL with titre (quantitative)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "sensitive": true,
+      "analyteCodes": [
+        "VDRL",
+        "VDRL_TITRE"
+      ]
+    },
+    {
+      "code": "VDRL_CSF",
+      "nameEn": "VDRL, CSF",
+      "discipline": "serology",
+      "specimenType": "csf",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "sensitive": true,
+      "analyteCodes": [
+        "VDRL"
+      ]
+    },
+    {
+      "code": "HPY_IGA_AB",
+      "nameEn": "H. pylori IgA",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "HPY_IGA"
+      ]
+    },
+    {
+      "code": "HPY_IGM_AB",
+      "nameEn": "H. pylori IgM",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "HPY_IGM"
+      ]
+    },
+    {
+      "code": "HPY_PANEL",
+      "nameEn": "H. pylori antibodies (IgG, IgA, IgM)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "HPY_AB",
+        "HPY_IGA",
+        "HPY_IGM"
+      ]
+    },
+    {
+      "code": "COV_ANTIBODY",
+      "nameEn": "SARS-CoV-2 anti-spike antibody",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "COV_AB"
+      ]
+    },
+    {
+      "code": "RESP_PCR",
+      "nameEn": "Respiratory viral real-time PCR (SARS-CoV-2, influenza A/B, RSV)",
+      "discipline": "microbiology",
+      "specimenType": "swab",
+      "container": "swab_tube",
+      "tatMinutesRoutine": 1440,
+      "notifiable": true,
+      "analyteCodes": [
+        "COV_PCR",
+        "FLU_A_PCR",
+        "FLU_B_PCR",
+        "RSV_PCR"
+      ]
+    },
+    {
+      "code": "FLU_PCR",
+      "nameEn": "Influenza A/B with H1N1 real-time PCR",
+      "discipline": "microbiology",
+      "specimenType": "swab",
+      "container": "swab_tube",
+      "tatMinutesRoutine": 1440,
+      "notifiable": true,
+      "analyteCodes": [
+        "FLU_A_PCR",
+        "FLU_B_PCR",
+        "H1N1_PCR"
+      ]
+    },
+    {
+      "code": "RSV_RAPID",
+      "nameEn": "RSV antigen (rapid, nasopharyngeal swab)",
+      "discipline": "serology",
+      "specimenType": "swab",
+      "container": "swab_tube",
+      "tatMinutesRoutine": 120,
+      "tatMinutesStat": 60,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "RSV_AG"
+      ]
+    },
+    {
+      "code": "HPV_HR_PCR",
+      "nameEn": "HPV high-risk DNA real-time PCR (16, 18, other high-risk)",
+      "discipline": "microbiology",
+      "specimenType": "swab",
+      "container": "swab_tube",
+      "tatMinutesRoutine": 2880,
+      "sensitive": true,
+      "analyteCodes": [
+        "HPV16",
+        "HPV18",
+        "HPV_OHR"
+      ]
+    },
+    {
+      "code": "CTNG_PCR",
+      "nameEn": "Chlamydia trachomatis and N. gonorrhoeae PCR",
+      "discipline": "microbiology",
+      "specimenType": "swab",
+      "container": "swab_tube",
+      "tatMinutesRoutine": 2880,
+      "sensitive": true,
+      "analyteCodes": [
+        "CT_PCR",
+        "NG_PCR"
+      ]
+    },
+    {
+      "code": "TETANUS_IGG",
+      "nameEn": "Tetanus antibody IgG (immunity)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "SERO-1",
+      "analyteCodes": [
+        "TET_IGG"
+      ]
+    },
+    {
+      "code": "SSA_EIA",
+      "nameEn": "Anti-SS-A/Ro antibody (ELISA)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "ASSA"
+      ]
+    },
+    {
+      "code": "SSB_EIA",
+      "nameEn": "Anti-SS-B/La antibody (ELISA)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "ASSB"
+      ]
+    },
+    {
+      "code": "SM_EIA",
+      "nameEn": "Anti-Sm antibody (ELISA)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "ASM"
+      ]
+    },
+    {
+      "code": "RNP_EIA",
+      "nameEn": "Anti-U1-RNP antibody (ELISA)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "ARNP"
+      ]
+    },
+    {
+      "code": "SCL70_EIA",
+      "nameEn": "Anti-Scl-70 antibody (ELISA)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "ASCL70"
+      ]
+    },
+    {
+      "code": "JO1_EIA",
+      "nameEn": "Anti-Jo-1 antibody (ELISA)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "AJO1"
+      ]
+    },
+    {
+      "code": "HISTONE_EIA",
+      "nameEn": "Anti-histone antibody (ELISA)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "AHISTONE"
+      ]
+    },
+    {
+      "code": "NUCLEOSOME_EIA",
+      "nameEn": "Anti-nucleosome antibody (ELISA)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "ANUCLEO"
+      ]
+    },
+    {
+      "code": "CENTROMERE_EIA",
+      "nameEn": "Anti-centromere B antibody (ELISA)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "ACENP"
+      ]
+    },
+    {
+      "code": "DSDNA_IFA",
+      "nameEn": "Anti-dsDNA by IFA (Crithidia)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "DSDNA_CLIFT"
+      ]
+    },
+    {
+      "code": "SLE_PANEL",
+      "nameEn": "Lupus panel (ANA IFA, anti-dsDNA, C3, C4)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "ANA_IFA",
+        "ANA_TITRE",
+        "ANA_PAT",
+        "ADSDNA",
+        "C3",
+        "C4"
+      ]
+    },
+    {
+      "code": "GBM_AB",
+      "nameEn": "Anti-GBM antibody",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "AGBM"
+      ]
+    },
+    {
+      "code": "VASC_PANEL",
+      "nameEn": "Vasculitis panel (ANCA IFA, MPO, PR3, anti-GBM)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "PANCA",
+        "CANCA",
+        "MPO",
+        "PR3",
+        "AGBM"
+      ]
+    },
+    {
+      "code": "ACL_AB",
+      "nameEn": "Anti-cardiolipin antibodies IgG and IgM",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "ACL_IGG",
+        "ACL_IGM"
+      ]
+    },
+    {
+      "code": "B2GP_AB",
+      "nameEn": "Anti-beta-2 glycoprotein I IgG and IgM",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "B2GP_IGG",
+        "B2GP_IGM"
+      ]
+    },
+    {
+      "code": "APS_AB",
+      "nameEn": "Anti-phosphatidylserine IgG and IgM",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "APS_IGG",
+        "APS_IGM"
+      ]
+    },
+    {
+      "code": "TTG_IGG_AB",
+      "nameEn": "Anti-tTG IgG",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "TTG_IGG"
+      ]
+    },
+    {
+      "code": "DGP_IGG_AB",
+      "nameEn": "Anti-DGP IgG",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "DGP_IGG"
+      ]
+    },
+    {
+      "code": "DGP_IGA_AB",
+      "nameEn": "Anti-DGP IgA",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "DGP_IGA"
+      ]
+    },
+    {
+      "code": "EMA_AB",
+      "nameEn": "Anti-endomysial antibody IgA (IFA)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "EMA_IGA"
+      ]
+    },
+    {
+      "code": "CELIAC_FULL",
+      "nameEn": "Celiac panel, comprehensive (tTG IgA/IgG, DGP IgA/IgG, EMA, total IgA)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "TTG_IGA",
+        "TTG_IGG",
+        "DGP_IGA",
+        "DGP_IGG",
+        "EMA_IGA",
+        "IGA"
+      ]
+    },
+    {
+      "code": "IGA_TOTAL",
+      "nameEn": "Immunoglobulin A (IgA), total",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "IGA"
+      ]
+    },
+    {
+      "code": "IGG_TOTAL",
+      "nameEn": "Immunoglobulin G (IgG), total",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "IGG"
+      ]
+    },
+    {
+      "code": "IGM_TOTAL",
+      "nameEn": "Immunoglobulin M (IgM), total",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "IGM"
+      ]
+    },
+    {
+      "code": "IGG4_SUB",
+      "nameEn": "IgG4 subclass",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "IGG4"
+      ]
+    },
+    {
+      "code": "ASMA_IFA",
+      "nameEn": "Anti-smooth muscle antibody (IFA)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "ASMA"
+      ]
+    },
+    {
+      "code": "AMA_IFA",
+      "nameEn": "Anti-mitochondrial antibody (IFA)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "AMA"
+      ]
+    },
+    {
+      "code": "LKM1_AB",
+      "nameEn": "Anti-LKM-1 antibody",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "LKM1"
+      ]
+    },
+    {
+      "code": "AMAM2_EIA",
+      "nameEn": "Anti-mitochondrial M2 antibody (ELISA)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "AMAM2"
+      ]
+    },
+    {
+      "code": "SLA_LP",
+      "nameEn": "Anti-SLA/LP antibody",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "ASLA"
+      ]
+    },
+    {
+      "code": "LIVER_BLOT",
+      "nameEn": "Autoimmune liver disease immunoblot (9 antigens)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 4320,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "LB_AMAM2",
+        "LB_M2E3",
+        "LB_SP100",
+        "LB_PML",
+        "LB_GP210",
+        "LB_LKM1",
+        "LB_LC1",
+        "LB_SLA",
+        "LB_RO52"
+      ]
+    },
+    {
+      "code": "MYOSITIS_BLOT",
+      "nameEn": "Myositis immunoblot (16 antigens)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 4320,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "MB_MI2A",
+        "MB_MI2B",
+        "MB_TIF1G",
+        "MB_MDA5",
+        "MB_NXP2",
+        "MB_SAE1",
+        "MB_KU",
+        "MB_PMS100",
+        "MB_PMS75",
+        "MB_JO1",
+        "MB_SRP",
+        "MB_PL7",
+        "MB_PL12",
+        "MB_EJ",
+        "MB_OJ",
+        "MB_RO52"
+      ]
+    },
+    {
+      "code": "SSC_BLOT",
+      "nameEn": "Systemic sclerosis immunoblot (13 antigens)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 4320,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "SB_SCL70",
+        "SB_CENPA",
+        "SB_CENPB",
+        "SB_RP11",
+        "SB_RP155",
+        "SB_FIB",
+        "SB_NOR90",
+        "SB_THTO",
+        "SB_PMS100",
+        "SB_PMS75",
+        "SB_KU",
+        "SB_PDGFR",
+        "SB_RO52"
+      ]
+    },
+    {
+      "code": "MCV_AB",
+      "nameEn": "Anti-MCV antibody",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "AMCV"
+      ]
+    },
+    {
+      "code": "C3_ONLY",
+      "nameEn": "Complement C3",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "C3"
+      ]
+    },
+    {
+      "code": "C4_ONLY",
+      "nameEn": "Complement C4",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "C4"
+      ]
+    },
+    {
+      "code": "CH50_TOTAL",
+      "nameEn": "Total haemolytic complement (CH50)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "CH50"
+      ]
+    },
+    {
+      "code": "C1_INH",
+      "nameEn": "C1 esterase inhibitor, quantitative",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "C1INH"
+      ]
+    },
+    {
+      "code": "FLC_SERUM",
+      "nameEn": "Serum free light chains (kappa, lambda, ratio)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "FLC_K",
+        "FLC_L",
+        "FLC_KLR"
+      ]
+    },
+    {
+      "code": "UPEP",
+      "nameEn": "Urine protein electrophoresis",
+      "discipline": "serology",
+      "specimenType": "urine",
+      "container": "urine_container",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "UPE_PATTERN",
+        "UPE_MBAND"
+      ]
+    },
+    {
+      "code": "UIFE_URINE",
+      "nameEn": "Urine immunofixation electrophoresis",
+      "discipline": "serology",
+      "specimenType": "urine",
+      "container": "urine_container",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "UIFE"
+      ]
+    },
+    {
+      "code": "CRYOGLOBULIN",
+      "nameEn": "Cryoglobulins (qualitative)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "plain",
+      "tatMinutesRoutine": 4320,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "CRYOGLOB"
+      ]
+    },
+    {
+      "code": "APCA_AB",
+      "nameEn": "Anti-parietal cell antibody",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "APCA"
+      ]
+    },
+    {
+      "code": "AIFA_AB",
+      "nameEn": "Anti-intrinsic factor antibody",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "AIFA"
+      ]
+    },
+    {
+      "code": "GAD65_AB",
+      "nameEn": "Anti-GAD65 antibody",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "GAD65"
+      ]
+    },
+    {
+      "code": "IAA_AB",
+      "nameEn": "Anti-insulin antibody",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "IAA"
+      ]
+    },
+    {
+      "code": "PLA2R_AB",
+      "nameEn": "Anti-PLA2R antibody (membranous nephropathy)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "PLA2R"
+      ]
+    },
+    {
+      "code": "IGE_FOOD",
+      "nameEn": "Allergy panel — food (specific IgE, 12 allergens)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "FA_EGG",
+        "FA_MILK",
+        "FA_PEANUT",
+        "FA_WHEAT",
+        "FA_SOY",
+        "FA_FISH",
+        "FA_SHRIMP",
+        "FA_RICE",
+        "FA_CHICKPEA",
+        "FA_SESAME",
+        "FA_CASHEW",
+        "FA_MUSTARD"
+      ]
+    },
+    {
+      "code": "IGE_INHALANT",
+      "nameEn": "Allergy panel — inhalant (specific IgE, 12 allergens)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "IA_DPTER",
+        "IA_DFAR",
+        "IA_CAT",
+        "IA_DOG",
+        "IA_ROACH",
+        "IA_ALTERN",
+        "IA_CLADO",
+        "IA_BERMUDA",
+        "IA_PARTHEN",
+        "IA_PROSOPIS",
+        "IA_AMARANTH",
+        "ASP_IGE"
+      ]
+    },
+    {
+      "code": "IGE_DRUG",
+      "nameEn": "Allergy panel — drugs (penicillins, cefaclor)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "DA_PENG",
+        "DA_PENV",
+        "DA_AMOX",
+        "DA_AMPI",
+        "DA_CEFACLOR"
+      ]
+    },
+    {
+      "code": "IGE_COMPREHENSIVE",
+      "nameEn": "Allergy panel — comprehensive (food + inhalant, with total IgE)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "IGE",
+        "FA_EGG",
+        "FA_MILK",
+        "FA_PEANUT",
+        "FA_WHEAT",
+        "FA_SOY",
+        "FA_FISH",
+        "FA_SHRIMP",
+        "FA_RICE",
+        "FA_CHICKPEA",
+        "FA_SESAME",
+        "FA_CASHEW",
+        "FA_MUSTARD",
+        "IA_DPTER",
+        "IA_DFAR",
+        "IA_CAT",
+        "IA_DOG",
+        "IA_ROACH",
+        "IA_ALTERN",
+        "IA_CLADO",
+        "IA_BERMUDA",
+        "IA_PARTHEN",
+        "IA_PROSOPIS",
+        "IA_AMARANTH",
+        "ASP_IGE"
+      ]
+    },
+    {
+      "code": "IGE_DUST_MITE",
+      "nameEn": "Dust mite specific IgE (D. pteronyssinus, D. farinae)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "IA_DPTER",
+        "IA_DFAR"
+      ]
+    },
+    {
+      "code": "ASP_IGE_AB",
+      "nameEn": "Aspergillus fumigatus specific IgE",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "ASP_IGE"
+      ]
+    },
+    {
+      "code": "ABPA_PANEL",
+      "nameEn": "ABPA panel (total IgE, Aspergillus IgE and IgG)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "IGE",
+        "ASP_IGE",
+        "ASP_IGG"
+      ]
+    },
+    {
+      "code": "SIGE_SINGLE",
+      "nameEn": "Specific IgE — single allergen",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 2880,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "SIGE_ALLERGEN",
+        "SIGE_VALUE"
+      ]
+    },
+    {
+      "code": "CD4_COUNT",
+      "nameEn": "CD4 count (absolute and %)",
+      "discipline": "haematology",
+      "specimenType": "whole_blood",
+      "container": "edta",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "HAEM-1",
+      "sensitive": true,
+      "analyteCodes": [
+        "CD4_ABS",
+        "CD4_PCT"
+      ]
+    },
+    {
+      "code": "CD4_CD8",
+      "nameEn": "CD3/CD4/CD8 counts with CD4:CD8 ratio",
+      "discipline": "haematology",
+      "specimenType": "whole_blood",
+      "container": "edta",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "HAEM-1",
+      "sensitive": true,
+      "analyteCodes": [
+        "CD3_ABS",
+        "CD3_PCT",
+        "CD4_ABS",
+        "CD4_PCT",
+        "CD8_ABS",
+        "CD8_PCT",
+        "CD4CD8_R"
+      ]
+    },
+    {
+      "code": "TBNK",
+      "nameEn": "Lymphocyte subsets (T, B, NK) by flow cytometry",
+      "discipline": "haematology",
+      "specimenType": "whole_blood",
+      "container": "edta",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "HAEM-1",
+      "analyteCodes": [
+        "CD3_ABS",
+        "CD3_PCT",
+        "CD4_ABS",
+        "CD4_PCT",
+        "CD8_ABS",
+        "CD8_PCT",
+        "CD19_ABS",
+        "CD19_PCT",
+        "CD56_ABS",
+        "CD56_PCT",
+        "CD4CD8_R"
+      ]
+    },
+    {
+      "code": "IL6_LEVEL",
+      "nameEn": "Interleukin-6 (IL-6)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 360,
+      "tatMinutesStat": 120,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "IL6"
+      ]
+    },
+    {
+      "code": "URINE_EOS",
+      "nameEn": "Urine eosinophils (Hansel stain)",
+      "discipline": "clinical_pathology",
+      "specimenType": "urine",
+      "container": "urine_container",
+      "tatMinutesRoutine": 240,
+      "benchKey": "CP-1",
+      "analyteCodes": [
+        "UR_EOS"
+      ]
+    },
+    {
+      "code": "URINE_DYSRBC",
+      "nameEn": "Urine RBC morphology — dysmorphic RBCs (phase contrast)",
+      "discipline": "clinical_pathology",
+      "specimenType": "urine",
+      "container": "urine_container",
+      "tatMinutesRoutine": 240,
+      "benchKey": "CP-1",
+      "analyteCodes": [
+        "UR_RBC",
+        "UR_DYSRBC"
+      ]
+    },
+    {
+      "code": "URINE_PBG",
+      "nameEn": "Urine porphobilinogen (Watson-Schwartz), qualitative",
+      "discipline": "clinical_pathology",
+      "specimenType": "urine",
+      "container": "urine_container",
+      "tatMinutesRoutine": 240,
+      "benchKey": "CP-1",
+      "analyteCodes": [
+        "UR_PBG"
+      ]
+    },
+    {
+      "code": "URINE_FECL3",
+      "nameEn": "Urine ferric chloride test (phenylketones, salicylate)",
+      "discipline": "clinical_pathology",
+      "specimenType": "urine",
+      "container": "urine_container",
+      "tatMinutesRoutine": 240,
+      "benchKey": "CP-1",
+      "analyteCodes": [
+        "UR_FECL3"
+      ]
+    },
+    {
+      "code": "URINE_CNP",
+      "nameEn": "Urine cyanide-nitroprusside test (cystine, homocystine)",
+      "discipline": "clinical_pathology",
+      "specimenType": "urine",
+      "container": "urine_container",
+      "tatMinutesRoutine": 240,
+      "benchKey": "CP-1",
+      "analyteCodes": [
+        "UR_CNP"
+      ]
+    },
+    {
+      "code": "URINE_MYO",
+      "nameEn": "Urine myoglobin, qualitative",
+      "discipline": "clinical_pathology",
+      "specimenType": "urine",
+      "container": "urine_container",
+      "tatMinutesRoutine": 240,
+      "tatMinutesStat": 60,
+      "benchKey": "CP-1",
+      "analyteCodes": [
+        "UR_BLD",
+        "UR_RBC",
+        "UR_MYO"
+      ]
+    },
+    {
+      "code": "URINE_METAB",
+      "nameEn": "Urine metabolic screen (FeCl3, DNPH, nitroprusside, reducing sugar, ketones)",
+      "discipline": "clinical_pathology",
+      "specimenType": "urine",
+      "container": "urine_container",
+      "tatMinutesRoutine": 480,
+      "benchKey": "CP-1",
+      "analyteCodes": [
+        "UR_PH",
+        "UR_FECL3",
+        "UR_DNPH",
+        "UR_CNP",
+        "UR_SUGB",
+        "UR_KETR"
+      ]
+    },
+    {
+      "code": "U24URIC",
+      "nameEn": "Uric acid, 24-hour urine",
+      "discipline": "biochemistry",
+      "specimenType": "urine",
+      "container": "urine_container",
+      "tatMinutesRoutine": 480,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "U24_VOL",
+        "U_URIC",
+        "U24_URIC"
+      ]
+    },
+    {
+      "code": "U24PHOS",
+      "nameEn": "Phosphorus, 24-hour urine",
+      "discipline": "biochemistry",
+      "specimenType": "urine",
+      "container": "urine_container",
+      "tatMinutesRoutine": 480,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "U24_VOL",
+        "U_PHOS",
+        "U24_PHOS"
+      ]
+    },
+    {
+      "code": "U24MG",
+      "nameEn": "Magnesium, 24-hour urine",
+      "discipline": "biochemistry",
+      "specimenType": "urine",
+      "container": "urine_container",
+      "tatMinutesRoutine": 480,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "U24_VOL",
+        "U_MG",
+        "U24_MG"
+      ]
+    },
+    {
+      "code": "U24ELECT",
+      "nameEn": "Electrolytes, 24-hour urine (Na, K, Cl)",
+      "discipline": "biochemistry",
+      "specimenType": "urine",
+      "container": "urine_container",
+      "tatMinutesRoutine": 480,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "U24_VOL",
+        "U_NA",
+        "U_K",
+        "U_CL",
+        "U24_NA",
+        "U24_K",
+        "U24_CL"
+      ]
+    },
+    {
+      "code": "U24UREA",
+      "nameEn": "Urea and urea nitrogen, 24-hour urine (nitrogen balance)",
+      "discipline": "biochemistry",
+      "specimenType": "urine",
+      "container": "urine_container",
+      "tatMinutesRoutine": 480,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "U24_VOL",
+        "U_UREA",
+        "U24_UREA",
+        "U24_UUN"
+      ]
+    },
+    {
+      "code": "U24MALB",
+      "nameEn": "Microalbumin, 24-hour urine",
+      "discipline": "biochemistry",
+      "specimenType": "urine",
+      "container": "urine_container",
+      "tatMinutesRoutine": 480,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "U24_VOL",
+        "ALB_UR",
+        "U24_MALB"
+      ]
+    },
+    {
+      "code": "U_AMYLASE",
+      "nameEn": "Amylase, urine (spot)",
+      "discipline": "biochemistry",
+      "specimenType": "urine",
+      "container": "urine_container",
+      "tatMinutesRoutine": 240,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "U_AMY"
+      ]
+    },
+    {
+      "code": "FEUREA",
+      "nameEn": "Fractional excretion of urea (spot urine + serum)",
+      "discipline": "biochemistry",
+      "specimenType": "urine",
+      "container": "urine_container",
+      "tatMinutesRoutine": 240,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "U_UREA",
+        "UCREA",
+        "UREA",
+        "CREA",
+        "FEUREA"
+      ]
+    },
+    {
+      "code": "U24STONE",
+      "nameEn": "Kidney stone risk, 24-hour urine (Ca, uric acid, phosphorus, Mg, Na, creatinine)",
+      "discipline": "biochemistry",
+      "specimenType": "urine",
+      "container": "urine_container",
+      "tatMinutesRoutine": 720,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "U24_VOL",
+        "U_CA",
+        "U24_CA",
+        "U_URIC",
+        "U24_URIC",
+        "U_PHOS",
+        "U24_PHOS",
+        "U_MG",
+        "U24_MG",
+        "U_NA",
+        "U24_NA",
+        "UCREA",
+        "U24_CREA"
+      ]
+    },
+    {
+      "code": "STOOL_OBT",
+      "nameEn": "Stool occult blood (guaiac)",
+      "discipline": "clinical_pathology",
+      "specimenType": "stool",
+      "container": "stool_container",
+      "tatMinutesRoutine": 240,
+      "benchKey": "CP-1",
+      "analyteCodes": [
+        "ST_OCB"
+      ]
+    },
+    {
+      "code": "STOOL_FIT",
+      "nameEn": "Stool occult blood, immunochemical (FIT)",
+      "discipline": "clinical_pathology",
+      "specimenType": "stool",
+      "container": "stool_container",
+      "tatMinutesRoutine": 240,
+      "benchKey": "CP-1",
+      "analyteCodes": [
+        "ST_FIT"
+      ]
+    },
+    {
+      "code": "STOOL_CALPRO",
+      "nameEn": "Faecal calprotectin (quantitative)",
+      "discipline": "clinical_pathology",
+      "specimenType": "stool",
+      "container": "stool_container",
+      "tatMinutesRoutine": 1440,
+      "benchKey": "IMMUNO-1",
+      "analyteCodes": [
+        "ST_CALPRO"
+      ]
+    },
+    {
+      "code": "STOOL_APT",
+      "nameEn": "Apt test — swallowed maternal vs neonatal blood (stool / vomitus)",
+      "discipline": "clinical_pathology",
+      "specimenType": "stool",
+      "container": "stool_container",
+      "tatMinutesRoutine": 120,
+      "benchKey": "CP-1",
+      "analyteCodes": [
+        "ST_APT"
+      ]
+    },
+    {
+      "code": "STOOL_RVAV",
+      "nameEn": "Rotavirus and adenovirus antigen, stool (rapid)",
+      "discipline": "microbiology",
+      "specimenType": "stool",
+      "container": "stool_container",
+      "tatMinutesRoutine": 240,
+      "analyteCodes": [
+        "ST_ROTA",
+        "ST_ADENO"
+      ]
+    },
+    {
+      "code": "STOOL_CDIFF",
+      "nameEn": "Clostridioides difficile GDH antigen and toxin A/B (rapid)",
+      "discipline": "microbiology",
+      "specimenType": "stool",
+      "container": "stool_container",
+      "tatMinutesRoutine": 240,
+      "analyteCodes": [
+        "ST_CDGDH",
+        "ST_CDTOX"
+      ]
+    },
+    {
+      "code": "STOOL_GIACRY",
+      "nameEn": "Giardia and Cryptosporidium antigen, stool (rapid)",
+      "discipline": "microbiology",
+      "specimenType": "stool",
+      "container": "stool_container",
+      "tatMinutesRoutine": 240,
+      "analyteCodes": [
+        "ST_GIARD",
+        "ST_CRYPT"
+      ]
+    },
+    {
+      "code": "STOOL_MZN",
+      "nameEn": "Stool modified ZN stain (Cryptosporidium, Cyclospora, Cystoisospora)",
+      "discipline": "microbiology",
+      "specimenType": "stool",
+      "container": "stool_container",
+      "tatMinutesRoutine": 240,
+      "analyteCodes": [
+        "MIC_MZN"
+      ]
+    },
+    {
+      "code": "PINWORM",
+      "nameEn": "Perianal cellophane tape test for pinworm (Enterobius)",
+      "discipline": "microbiology",
+      "specimenType": "other",
+      "container": "slide",
+      "tatMinutesRoutine": 240,
+      "analyteCodes": [
+        "PW_EGG"
+      ]
+    },
+    {
+      "code": "SEMEN_MAR",
+      "nameEn": "MAR test — anti-sperm antibody, IgG (semen)",
+      "discipline": "clinical_pathology",
+      "specimenType": "semen",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 240,
+      "benchKey": "CP-1",
+      "analyteCodes": [
+        "SEM_MOT",
+        "SEM_MAR"
+      ]
+    },
+    {
+      "code": "SEMEN_HOS",
+      "nameEn": "Hypo-osmotic swelling test (HOS), semen",
+      "discipline": "clinical_pathology",
+      "specimenType": "semen",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 240,
+      "benchKey": "CP-1",
+      "analyteCodes": [
+        "SEM_HOS"
+      ]
+    },
+    {
+      "code": "SEMEN_PERX",
+      "nameEn": "Semen leucocyte peroxidase (Endtz) test",
+      "discipline": "clinical_pathology",
+      "specimenType": "semen",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 240,
+      "benchKey": "CP-1",
+      "analyteCodes": [
+        "SEM_RND",
+        "SEM_PERX"
+      ]
+    },
+    {
+      "code": "SEMEN_RETRO",
+      "nameEn": "Post-ejaculatory urine for spermatozoa (retrograde ejaculation)",
+      "discipline": "clinical_pathology",
+      "specimenType": "urine",
+      "container": "urine_container",
+      "tatMinutesRoutine": 240,
+      "benchKey": "CP-1",
+      "analyteCodes": [
+        "PEU_SPERM"
+      ]
+    },
+    {
+      "code": "CS_SEMEN",
+      "nameEn": "Semen culture and sensitivity",
+      "discipline": "microbiology",
+      "specimenType": "semen",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 4320,
+      "analyteCodes": [
+        "MIC_ORG",
+        "MIC_CC",
+        "MIC_AST",
+        "MIC_RESMK"
+      ]
+    },
+    {
+      "code": "PC_CELL",
+      "nameEn": "Pericardial fluid cell count and differential",
+      "discipline": "clinical_pathology",
+      "specimenType": "other",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 240,
+      "tatMinutesStat": 60,
+      "benchKey": "CP-1",
+      "analyteCodes": [
+        "PC_VOL",
+        "PC_APP",
+        "PC_COL",
+        "PC_COAG",
+        "PC_TC",
+        "PC_POLY",
+        "PC_LYMPH",
+        "PC_RBC"
+      ]
+    },
+    {
+      "code": "PC_BIO",
+      "nameEn": "Pericardial fluid biochemistry (glucose, protein, LDH)",
+      "discipline": "biochemistry",
+      "specimenType": "other",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 240,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "PC_GLU",
+        "PC_PROT",
+        "PC_LDH"
+      ]
+    },
+    {
+      "code": "PC_ADA",
+      "nameEn": "Pericardial fluid ADA",
+      "discipline": "biochemistry",
+      "specimenType": "other",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 480,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "PC_ADA"
+      ]
+    },
+    {
+      "code": "CSF_ROUTINE",
+      "nameEn": "CSF routine analysis (cells, glucose, protein, Gram stain)",
+      "discipline": "clinical_pathology",
+      "specimenType": "csf",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 240,
+      "tatMinutesStat": 90,
+      "benchKey": "CP-1",
+      "analyteCodes": [
+        "CSF_VOL",
+        "CSF_APP",
+        "CSF_COL",
+        "CSF_COAG",
+        "CSF_TC",
+        "CSF_POLY",
+        "CSF_LYMPH",
+        "CSF_RBC",
+        "CSF_GLU",
+        "CSF_PROT",
+        "MIC_GRAM",
+        "GLUR"
+      ]
+    },
+    {
+      "code": "PL_ROUTINE",
+      "nameEn": "Pleural fluid routine analysis (cells, biochemistry, ADA)",
+      "discipline": "clinical_pathology",
+      "specimenType": "pleural_fluid",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 480,
+      "benchKey": "CP-1",
+      "analyteCodes": [
+        "PL_VOL",
+        "PL_APP",
+        "PL_COL",
+        "PL_COAG",
+        "PL_TC",
+        "PL_POLY",
+        "PL_LYMPH",
+        "PL_RBC",
+        "PL_MESO",
+        "PF_GLU",
+        "PF_PROT",
+        "PF_ALB",
+        "PF_LDH",
+        "PF_ADA"
+      ]
+    },
+    {
+      "code": "AS_ROUTINE",
+      "nameEn": "Ascitic fluid routine analysis (cells, biochemistry, SAAG)",
+      "discipline": "clinical_pathology",
+      "specimenType": "ascitic_fluid",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 480,
+      "benchKey": "CP-1",
+      "analyteCodes": [
+        "AS_VOL",
+        "AS_APP",
+        "AS_COL",
+        "AS_COAG",
+        "AS_TC",
+        "AS_POLY",
+        "AS_LYMPH",
+        "AS_RBC",
+        "AS_PMN",
+        "AF_GLU",
+        "AF_PROT",
+        "AF_ALB",
+        "AF_LDH",
+        "AF_AMY",
+        "ALB",
+        "SAAG"
+      ]
+    },
+    {
+      "code": "SY_ROUTINE",
+      "nameEn": "Synovial fluid routine analysis (cells, crystals, biochemistry, Gram stain)",
+      "discipline": "clinical_pathology",
+      "specimenType": "synovial_fluid",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 480,
+      "benchKey": "CP-1",
+      "analyteCodes": [
+        "SY_VOL",
+        "SY_APP",
+        "SY_COL",
+        "SY_COAG",
+        "SY_TC",
+        "SY_POLY",
+        "SY_LYMPH",
+        "SY_RBC",
+        "SY_VISC",
+        "SY_CRYS",
+        "SF_GLU",
+        "SF_PROT",
+        "SF_LDH",
+        "SF_URIC",
+        "MIC_GRAM"
+      ]
+    },
+    {
+      "code": "PC_ROUTINE",
+      "nameEn": "Pericardial fluid routine analysis (cells, biochemistry, ADA)",
+      "discipline": "clinical_pathology",
+      "specimenType": "other",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 480,
+      "benchKey": "CP-1",
+      "analyteCodes": [
+        "PC_VOL",
+        "PC_APP",
+        "PC_COL",
+        "PC_COAG",
+        "PC_TC",
+        "PC_POLY",
+        "PC_LYMPH",
+        "PC_RBC",
+        "PC_GLU",
+        "PC_PROT",
+        "PC_LDH",
+        "PC_ADA"
+      ]
+    },
+    {
+      "code": "BAL_CELL",
+      "nameEn": "BAL fluid cell count and differential",
+      "discipline": "clinical_pathology",
+      "specimenType": "other",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 480,
+      "benchKey": "CP-1",
+      "analyteCodes": [
+        "BAL_TC",
+        "BAL_MAC",
+        "BAL_LYMPH",
+        "BAL_NEUT",
+        "BAL_EOS"
+      ]
+    },
+    {
+      "code": "PD_CELL",
+      "nameEn": "Peritoneal dialysis effluent cell count and differential",
+      "discipline": "clinical_pathology",
+      "specimenType": "other",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 240,
+      "tatMinutesStat": 90,
+      "benchKey": "CP-1",
+      "analyteCodes": [
+        "PD_TC",
+        "PD_POLY"
+      ]
+    },
+    {
+      "code": "PF_PH",
+      "nameEn": "Pleural fluid pH (blood gas analyser, anaerobic syringe)",
+      "discipline": "biochemistry",
+      "specimenType": "pleural_fluid",
+      "container": "heparin",
+      "tatMinutesRoutine": 60,
+      "tatMinutesStat": 30,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "PF_PH"
+      ]
+    },
+    {
+      "code": "PF_LIPIDS",
+      "nameEn": "Pleural fluid triglycerides and cholesterol (chylothorax)",
+      "discipline": "biochemistry",
+      "specimenType": "pleural_fluid",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 240,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "PF_TG",
+        "PF_CHOL"
+      ]
+    },
+    {
+      "code": "PF_AMY",
+      "nameEn": "Pleural fluid amylase",
+      "discipline": "biochemistry",
+      "specimenType": "pleural_fluid",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 240,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "PF_AMY"
+      ]
+    },
+    {
+      "code": "AF_TG",
+      "nameEn": "Ascitic fluid triglycerides (chylous ascites)",
+      "discipline": "biochemistry",
+      "specimenType": "ascitic_fluid",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 240,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "AF_TG"
+      ]
+    },
+    {
+      "code": "FLUID_CREA",
+      "nameEn": "Drain / body fluid creatinine (urine leak)",
+      "discipline": "biochemistry",
+      "specimenType": "other",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 240,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "FL_CREA",
+        "CREA"
+      ]
+    },
+    {
+      "code": "FLUID_AMY",
+      "nameEn": "Drain fluid amylase (pancreatic leak)",
+      "discipline": "biochemistry",
+      "specimenType": "other",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 240,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "FL_AMY"
+      ]
+    },
+    {
+      "code": "CSF_LACT",
+      "nameEn": "CSF lactate",
+      "discipline": "biochemistry",
+      "specimenType": "csf",
+      "container": "fluoride",
+      "tatMinutesRoutine": 120,
+      "tatMinutesStat": 60,
+      "benchKey": "BIOCHEM-1",
+      "analyteCodes": [
+        "CSF_LACT"
+      ]
+    },
+    {
+      "code": "CS_BILE",
+      "nameEn": "Bile culture and sensitivity",
+      "discipline": "microbiology",
+      "specimenType": "other",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 4320,
+      "analyteCodes": [
+        "MIC_GRAM",
+        "MIC_ORG",
+        "MIC_AST",
+        "MIC_RESMK"
+      ]
+    },
+    {
+      "code": "CS_BM",
+      "nameEn": "Bone marrow culture (enteric fever, PUO)",
+      "discipline": "microbiology",
+      "specimenType": "bone_marrow",
+      "container": "blood_culture_bottle",
+      "tatMinutesRoutine": 7200,
+      "notifiable": true,
+      "analyteCodes": [
+        "MIC_ORG",
+        "MIC_AST",
+        "MIC_RESMK"
+      ]
+    },
+    {
+      "code": "CS_CORNEA",
+      "nameEn": "Corneal scraping — Gram stain, KOH and culture",
+      "discipline": "microbiology",
+      "specimenType": "other",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 4320,
+      "analyteCodes": [
+        "MIC_GRAM",
+        "MIC_KOH",
+        "MIC_ORG",
+        "MIC_FUNG",
+        "MIC_AST"
+      ]
+    },
+    {
+      "code": "CS_ANAER",
+      "nameEn": "Anaerobic culture (pus, tissue, fluid)",
+      "discipline": "microbiology",
+      "specimenType": "pus",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 7200,
+      "analyteCodes": [
+        "MIC_GRAM",
+        "MIC_ANORG",
+        "MIC_AST"
+      ]
+    },
+    {
+      "code": "CS_BLDFUNG",
+      "nameEn": "Blood culture for fungus (automated, mycosis bottle)",
+      "discipline": "microbiology",
+      "specimenType": "whole_blood",
+      "container": "blood_culture_bottle",
+      "tatMinutesRoutine": 10080,
+      "analyteCodes": [
+        "MIC_FUNG",
+        "MIC_AFST"
+      ]
+    },
+    {
+      "code": "CS_GONO",
+      "nameEn": "Urethral / endocervical swab — Gram stain and culture for N. gonorrhoeae",
+      "discipline": "microbiology",
+      "specimenType": "swab",
+      "container": "swab_tube",
+      "tatMinutesRoutine": 4320,
+      "sensitive": true,
+      "analyteCodes": [
+        "MIC_GRAM",
+        "MIC_GONO",
+        "MIC_AST"
+      ]
+    },
+    {
+      "code": "CS_DIPH",
+      "nameEn": "Throat swab — Albert stain and culture for C. diphtheriae",
+      "discipline": "microbiology",
+      "specimenType": "swab",
+      "container": "swab_tube",
+      "tatMinutesRoutine": 4320,
+      "notifiable": true,
+      "analyteCodes": [
+        "MIC_ALBERT",
+        "MIC_DIPH"
+      ]
+    },
+    {
+      "code": "GBS_SCR",
+      "nameEn": "Group B Streptococcus screen (vagino-rectal swab, enrichment culture)",
+      "discipline": "microbiology",
+      "specimenType": "swab",
+      "container": "swab_tube",
+      "tatMinutesRoutine": 4320,
+      "analyteCodes": [
+        "MIC_GBS"
+      ]
+    },
+    {
+      "code": "CRE_SCR",
+      "nameEn": "Rectal swab — CRE / VRE surveillance culture",
+      "discipline": "microbiology",
+      "specimenType": "swab",
+      "container": "swab_tube",
+      "tatMinutesRoutine": 4320,
+      "analyteCodes": [
+        "MIC_ORG",
+        "MIC_RESMK"
+      ]
+    },
+    {
+      "code": "CALCOFLUOR",
+      "nameEn": "Calcofluor white stain for fungi (skin, nail, tissue, BAL)",
+      "discipline": "microbiology",
+      "specimenType": "other",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 240,
+      "analyteCodes": [
+        "MIC_CFW"
+      ]
+    },
+    {
+      "code": "PCP_STAIN",
+      "nameEn": "Pneumocystis jirovecii stain (BAL / induced sputum)",
+      "discipline": "microbiology",
+      "specimenType": "other",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 480,
+      "analyteCodes": [
+        "MIC_PCP"
+      ]
+    },
+    {
+      "code": "AFB_FLUOR",
+      "nameEn": "AFB fluorescent stain (auramine, LED-FM)",
+      "discipline": "microbiology",
+      "specimenType": "sputum",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 240,
+      "notifiable": true,
+      "analyteCodes": [
+        "MIC_AURA",
+        "MIC_AFBGR"
+      ]
+    },
+    {
+      "code": "AFB_URINE",
+      "nameEn": "Urine for AFB (early-morning, ZN stain)",
+      "discipline": "microbiology",
+      "specimenType": "urine",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 1440,
+      "notifiable": true,
+      "analyteCodes": [
+        "MIC_ZN",
+        "MIC_AFBGR"
+      ]
+    },
+    {
+      "code": "BV_NUGENT",
+      "nameEn": "Gram stain for bacterial vaginosis (Nugent score)",
+      "discipline": "microbiology",
+      "specimenType": "swab",
+      "container": "slide",
+      "tatMinutesRoutine": 240,
+      "analyteCodes": [
+        "MIC_NUGENT",
+        "MIC_GRAM"
+      ]
+    },
+    {
+      "code": "LD_BODY",
+      "nameEn": "Smear for LD bodies (bone marrow / splenic aspirate)",
+      "discipline": "microbiology",
+      "specimenType": "bone_marrow",
+      "container": "slide",
+      "tatMinutesRoutine": 480,
+      "notifiable": true,
+      "analyteCodes": [
+        "MIC_LD"
+      ]
+    },
+    {
+      "code": "QBC_MP",
+      "nameEn": "Malaria parasite — QBC (quantitative buffy coat)",
+      "discipline": "microbiology",
+      "specimenType": "whole_blood",
+      "container": "edta",
+      "tatMinutesRoutine": 120,
+      "tatMinutesStat": 60,
+      "notifiable": true,
+      "analyteCodes": [
+        "MIC_QBC",
+        "MPS_SPEC"
+      ]
+    },
+    {
+      "code": "RUT",
+      "nameEn": "Rapid urease test — H. pylori (gastric biopsy)",
+      "discipline": "microbiology",
+      "specimenType": "tissue",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 1440,
+      "analyteCodes": [
+        "RUT"
+      ]
+    },
+    {
+      "code": "STREPA_AG",
+      "nameEn": "Group A streptococcus rapid antigen (throat swab)",
+      "discipline": "microbiology",
+      "specimenType": "swab",
+      "container": "swab_tube",
+      "tatMinutesRoutine": 60,
+      "analyteCodes": [
+        "STREPA"
+      ]
+    },
+    {
+      "code": "TB_LJ",
+      "nameEn": "TB culture, solid medium (LJ) with identification",
+      "discipline": "microbiology",
+      "specimenType": "sputum",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 80640,
+      "notifiable": true,
+      "analyteCodes": [
+        "MIC_ZN",
+        "MTB_CUL"
+      ]
+    },
+    {
+      "code": "COLISTIN_BMD",
+      "nameEn": "Colistin MIC by broth microdilution (on isolate)",
+      "discipline": "microbiology",
+      "specimenType": "other",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 1440,
+      "analyteCodes": [
+        "MIC_ORG",
+        "MIC_COL"
+      ]
+    },
+    {
+      "code": "CARBA_MCIM",
+      "nameEn": "Carbapenemase detection — mCIM / eCIM (on isolate)",
+      "discipline": "microbiology",
+      "specimenType": "other",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 1440,
+      "analyteCodes": [
+        "MIC_ORG",
+        "MIC_MCIM"
+      ]
+    },
+    {
+      "code": "YEAST_ID",
+      "nameEn": "Yeast identification and antifungal susceptibility (on isolate)",
+      "discipline": "microbiology",
+      "specimenType": "other",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 4320,
+      "analyteCodes": [
+        "MIC_FUNG",
+        "MIC_AFST"
+      ]
+    },
+    {
+      "code": "HP_MEDIUM",
+      "nameEn": "Histopathology — medium specimen (appendix, gall bladder, benign uterus, ovary)",
+      "discipline": "histopathology",
+      "specimenType": "tissue",
+      "container": "formalin",
+      "tatMinutesRoutine": 7200,
+      "analyteCodes": [
+        "HP_SPEC",
+        "HP_CLIN",
+        "HP_GROSS",
+        "HP_MICRO",
+        "HP_IMP",
+        "HP_COMM"
+      ]
+    },
+    {
+      "code": "HP_RADICAL",
+      "nameEn": "Histopathology — complex oncological resection with nodal dissection (synoptic report)",
+      "discipline": "histopathology",
+      "specimenType": "tissue",
+      "container": "formalin",
+      "tatMinutesRoutine": 10080,
+      "analyteCodes": [
+        "HP_SPEC",
+        "HP_CLIN",
+        "HP_GROSS",
+        "HP_MICRO",
+        "HP_MARG",
+        "HP_LN",
+        "HP_LVI",
+        "HP_PNI",
+        "HP_STAGE",
+        "HP_SYN",
+        "HP_IMP",
+        "HP_COMM"
+      ]
+    },
+    {
+      "code": "HP_BMB",
+      "nameEn": "Bone marrow trephine biopsy (decalcification, H&E, reticulin)",
+      "discipline": "histopathology",
+      "specimenType": "bone_marrow",
+      "container": "formalin",
+      "tatMinutesRoutine": 7200,
+      "analyteCodes": [
+        "HP_CLIN",
+        "BMB_LEN",
+        "BMB_CELL",
+        "BMB_ARCH",
+        "BMB_RETIC",
+        "BMB_INF",
+        "BMB_IMP",
+        "HP_COMM"
+      ]
+    },
+    {
+      "code": "BM_COMBO",
+      "nameEn": "Bone marrow aspiration and trephine biopsy",
+      "discipline": "histopathology",
+      "specimenType": "bone_marrow",
+      "container": "formalin",
+      "tatMinutesRoutine": 7200,
+      "analyteCodes": [
+        "BM_SITE",
+        "BM_CELL",
+        "BM_ME",
+        "BM_ERY",
+        "BM_MYE",
+        "BM_MEGA",
+        "BM_LYPL",
+        "BM_BLAST",
+        "BM_ABN",
+        "BM_IRON",
+        "BM_IMP",
+        "HP_CLIN",
+        "BMB_LEN",
+        "BMB_CELL",
+        "BMB_ARCH",
+        "BMB_RETIC",
+        "BMB_INF",
+        "BMB_IMP",
+        "HP_COMM"
+      ]
+    },
+    {
+      "code": "HP_BONE",
+      "nameEn": "Histopathology — bone specimen (with decalcification)",
+      "discipline": "histopathology",
+      "specimenType": "tissue",
+      "container": "formalin",
+      "tatMinutesRoutine": 10080,
+      "analyteCodes": [
+        "HP_SPEC",
+        "HP_CLIN",
+        "HP_GROSS",
+        "HP_MICRO",
+        "HP_DECAL",
+        "HP_IMP",
+        "HP_COMM"
+      ]
+    },
+    {
+      "code": "HP_RENAL",
+      "nameEn": "Renal biopsy — light microscopy with special stains and immunofluorescence",
+      "discipline": "histopathology",
+      "specimenType": "tissue",
+      "container": "formalin",
+      "tatMinutesRoutine": 7200,
+      "analyteCodes": [
+        "HP_SPEC",
+        "HP_CLIN",
+        "RB_GLOM",
+        "RB_LM",
+        "RB_IF",
+        "HP_IMP",
+        "HP_COMM"
+      ]
+    },
+    {
+      "code": "HP_LIVERBX",
+      "nameEn": "Liver biopsy with special stains (reticulin, trichrome, PAS-D, Perls)",
+      "discipline": "histopathology",
+      "specimenType": "tissue",
+      "container": "formalin",
+      "tatMinutesRoutine": 7200,
+      "analyteCodes": [
+        "HP_SPEC",
+        "HP_CLIN",
+        "HP_GROSS",
+        "HP_MICRO",
+        "LB_STAINS",
+        "LB_GRADE",
+        "HP_IMP",
+        "HP_COMM"
+      ]
+    },
+    {
+      "code": "HP_PROSTATE",
+      "nameEn": "Prostate needle core biopsies (up to 12 cores) with Gleason grading",
+      "discipline": "histopathology",
+      "specimenType": "tissue",
+      "container": "formalin",
+      "tatMinutesRoutine": 7200,
+      "analyteCodes": [
+        "HP_SPEC",
+        "HP_CLIN",
+        "HP_GROSS",
+        "HP_MICRO",
+        "HP_GLEASON",
+        "HP_PNI",
+        "HP_IMP",
+        "HP_COMM"
+      ]
+    },
+    {
+      "code": "HP_POC",
+      "nameEn": "Histopathology — products of conception",
+      "discipline": "histopathology",
+      "specimenType": "tissue",
+      "container": "formalin",
+      "tatMinutesRoutine": 7200,
+      "analyteCodes": [
+        "HP_SPEC",
+        "HP_CLIN",
+        "HP_GROSS",
+        "HP_MICRO",
+        "HP_IMP",
+        "HP_COMM"
+      ]
+    },
+    {
+      "code": "HP_PLACENTA",
+      "nameEn": "Histopathology — placenta",
+      "discipline": "histopathology",
+      "specimenType": "tissue",
+      "container": "formalin",
+      "tatMinutesRoutine": 7200,
+      "analyteCodes": [
+        "HP_SPEC",
+        "HP_CLIN",
+        "HP_GROSS",
+        "HP_MICRO",
+        "HP_IMP",
+        "HP_COMM"
+      ]
+    },
+    {
+      "code": "HP_DIF",
+      "nameEn": "Direct immunofluorescence — skin / mucosal biopsy (IgG, IgA, IgM, C3, fibrinogen)",
+      "discipline": "histopathology",
+      "specimenType": "tissue",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 4320,
+      "analyteCodes": [
+        "HP_SPEC",
+        "HP_CLIN",
+        "DIF_IGG",
+        "DIF_IGA",
+        "DIF_IGM",
+        "DIF_C3",
+        "DIF_FIB",
+        "HP_IMP",
+        "HP_COMM"
+      ]
+    },
+    {
+      "code": "FNAC_GUIDED",
+      "nameEn": "FNAC — image-guided (USG / CT)",
+      "discipline": "histopathology",
+      "specimenType": "tissue",
+      "container": "slide",
+      "tatMinutesRoutine": 2880,
+      "analyteCodes": [
+        "HP_SPEC",
+        "HP_CLIN",
+        "HP_GROSS",
+        "HP_MICRO",
+        "HP_IMP",
+        "HP_COMM"
+      ]
+    },
+    {
+      "code": "FNAC_THYROID",
+      "nameEn": "FNAC thyroid with Bethesda reporting",
+      "discipline": "histopathology",
+      "specimenType": "tissue",
+      "container": "slide",
+      "tatMinutesRoutine": 2880,
+      "analyteCodes": [
+        "HP_SPEC",
+        "HP_CLIN",
+        "HP_GROSS",
+        "HP_MICRO",
+        "FNA_BETH",
+        "HP_COMM"
+      ]
+    },
+    {
+      "code": "CY_CELLBLOCK",
+      "nameEn": "Cell block preparation (fluid / FNA residue)",
+      "discipline": "histopathology",
+      "specimenType": "other",
+      "container": "formalin",
+      "tatMinutesRoutine": 4320,
+      "analyteCodes": [
+        "HP_SPEC",
+        "HP_GROSS",
+        "HP_MICRO",
+        "HP_IMP",
+        "HP_COMM"
+      ]
+    },
+    {
+      "code": "CY_BAL",
+      "nameEn": "Bronchial wash / brush / BAL cytology for malignant cells",
+      "discipline": "histopathology",
+      "specimenType": "other",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 2880,
+      "analyteCodes": [
+        "HP_CLIN",
+        "HP_GROSS",
+        "HP_MICRO",
+        "CY_MAL",
+        "HP_COMM"
+      ]
+    },
+    {
+      "code": "TZANCK",
+      "nameEn": "Tzanck smear (Giemsa)",
+      "discipline": "histopathology",
+      "specimenType": "other",
+      "container": "slide",
+      "tatMinutesRoutine": 480,
+      "analyteCodes": [
+        "CY_TZANCK"
+      ]
+    },
+    {
+      "code": "IHC_ERPR",
+      "nameEn": "Immunohistochemistry — ER and PR",
+      "discipline": "histopathology",
+      "specimenType": "tissue",
+      "container": "formalin",
+      "tatMinutesRoutine": 7200,
+      "analyteCodes": [
+        "HP_SPEC",
+        "IHC_ER",
+        "IHC_PR",
+        "IHC_INT",
+        "HP_IMP",
+        "HP_COMM"
+      ]
+    },
+    {
+      "code": "IHC_LYMPH",
+      "nameEn": "Immunohistochemistry — lymphoma panel (LCA, CD20, CD3, CD5, CD10, BCL2, BCL6, MUM1, cyclin D1, CD30, Ki-67)",
+      "discipline": "histopathology",
+      "specimenType": "tissue",
+      "container": "formalin",
+      "tatMinutesRoutine": 7200,
+      "analyteCodes": [
+        "HP_SPEC",
+        "IHC_LCA",
+        "IHC_CD20",
+        "IHC_CD3",
+        "IHC_CD5",
+        "IHC_CD10",
+        "IHC_BCL2",
+        "IHC_BCL6",
+        "IHC_MUM1",
+        "IHC_CYCD1",
+        "IHC_CD30",
+        "IHC_KI67",
+        "IHC_INT",
+        "HP_IMP",
+        "HP_COMM"
+      ]
+    },
+    {
+      "code": "IHC_CUP",
+      "nameEn": "Immunohistochemistry — carcinoma of unknown primary (pan-CK, CK7, CK20, TTF-1, CDX2, PAX8, GATA3)",
+      "discipline": "histopathology",
+      "specimenType": "tissue",
+      "container": "formalin",
+      "tatMinutesRoutine": 7200,
+      "analyteCodes": [
+        "HP_SPEC",
+        "IHC_PANCK",
+        "IHC_CK7",
+        "IHC_CK20",
+        "IHC_TTF1",
+        "IHC_CDX2",
+        "IHC_PAX8",
+        "IHC_GATA3",
+        "IHC_INT",
+        "HP_IMP",
+        "HP_COMM"
+      ]
+    },
+    {
+      "code": "IHC_LUNG",
+      "nameEn": "Immunohistochemistry — lung carcinoma subtyping (TTF-1, Napsin A, p40)",
+      "discipline": "histopathology",
+      "specimenType": "tissue",
+      "container": "formalin",
+      "tatMinutesRoutine": 7200,
+      "analyteCodes": [
+        "HP_SPEC",
+        "IHC_TTF1",
+        "IHC_NAPSIN",
+        "IHC_P40",
+        "IHC_INT",
+        "HP_IMP",
+        "HP_COMM"
+      ]
+    },
+    {
+      "code": "IHC_PROST",
+      "nameEn": "Immunohistochemistry — prostate (AMACR, p63, HMWCK)",
+      "discipline": "histopathology",
+      "specimenType": "tissue",
+      "container": "formalin",
+      "tatMinutesRoutine": 7200,
+      "analyteCodes": [
+        "HP_SPEC",
+        "IHC_AMACR",
+        "IHC_P63",
+        "IHC_HMWCK",
+        "IHC_INT",
+        "HP_IMP",
+        "HP_COMM"
+      ]
+    },
+    {
+      "code": "IHC_GIST",
+      "nameEn": "Immunohistochemistry — GIST panel (CD117, DOG1, CD34, Ki-67)",
+      "discipline": "histopathology",
+      "specimenType": "tissue",
+      "container": "formalin",
+      "tatMinutesRoutine": 7200,
+      "analyteCodes": [
+        "HP_SPEC",
+        "IHC_CD117",
+        "IHC_DOG1",
+        "IHC_CD34",
+        "IHC_KI67",
+        "IHC_INT",
+        "HP_IMP",
+        "HP_COMM"
+      ]
+    },
+    {
+      "code": "IHC_MMR",
+      "nameEn": "Immunohistochemistry — mismatch repair proteins (MLH1, PMS2, MSH2, MSH6)",
+      "discipline": "histopathology",
+      "specimenType": "tissue",
+      "container": "formalin",
+      "tatMinutesRoutine": 7200,
+      "analyteCodes": [
+        "HP_SPEC",
+        "IHC_MLH1",
+        "IHC_PMS2",
+        "IHC_MSH2",
+        "IHC_MSH6",
+        "IHC_INT",
+        "HP_IMP",
+        "HP_COMM"
+      ]
+    },
+    {
+      "code": "IHC_SRBCT",
+      "nameEn": "Immunohistochemistry — small round cell tumour panel (LCA, CD99, desmin, myogenin, synaptophysin, pan-CK)",
+      "discipline": "histopathology",
+      "specimenType": "tissue",
+      "container": "formalin",
+      "tatMinutesRoutine": 7200,
+      "analyteCodes": [
+        "HP_SPEC",
+        "IHC_LCA",
+        "IHC_CD99",
+        "IHC_DESMIN",
+        "IHC_MYOG",
+        "IHC_SYN",
+        "IHC_PANCK",
+        "IHC_INT",
+        "HP_IMP",
+        "HP_COMM"
+      ]
+    },
+    {
+      "code": "IHC_NET",
+      "nameEn": "Immunohistochemistry — neuroendocrine panel (synaptophysin, chromogranin, Ki-67 grade)",
+      "discipline": "histopathology",
+      "specimenType": "tissue",
+      "container": "formalin",
+      "tatMinutesRoutine": 7200,
+      "analyteCodes": [
+        "HP_SPEC",
+        "IHC_SYN",
+        "IHC_CHROMO",
+        "IHC_KI67",
+        "IHC_INT",
+        "HP_IMP",
+        "HP_COMM"
+      ]
+    },
+    {
+      "code": "IHC_MESO",
+      "nameEn": "Immunohistochemistry — mesothelioma vs adenocarcinoma (calretinin, WT1, D2-40, Ber-EP4)",
+      "discipline": "histopathology",
+      "specimenType": "tissue",
+      "container": "formalin",
+      "tatMinutesRoutine": 7200,
+      "analyteCodes": [
+        "HP_SPEC",
+        "IHC_CALRET",
+        "IHC_WT1",
+        "IHC_D240",
+        "IHC_BEREP4",
+        "IHC_INT",
+        "HP_IMP",
+        "HP_COMM"
+      ]
+    },
+    {
+      "code": "IHC_MELAN",
+      "nameEn": "Immunohistochemistry — melanoma panel (S100, HMB-45, Melan-A, SOX10)",
+      "discipline": "histopathology",
+      "specimenType": "tissue",
+      "container": "formalin",
+      "tatMinutesRoutine": 7200,
+      "analyteCodes": [
+        "HP_SPEC",
+        "IHC_S100",
+        "IHC_HMB45",
+        "IHC_MELANA",
+        "IHC_SOX10",
+        "IHC_INT",
+        "HP_IMP",
+        "HP_COMM"
+      ]
+    },
+    {
+      "code": "PKG_EXEC",
+      "nameEn": "Executive health check",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "requiresFasting": true,
+      "analyteCodes": [
+        "HB",
+        "RBC",
+        "HCT",
+        "MCV",
+        "MCH",
+        "MCHC",
+        "RDW",
+        "RDW_SD",
+        "MENTZER",
+        "WBC",
+        "NEUT",
+        "LYMPH",
+        "MONO",
+        "EOS",
+        "BASO",
+        "ANC",
+        "LYMPH_ABS",
+        "MONO_ABS",
+        "EOS_ABS",
+        "BASO_ABS",
+        "NLR",
+        "NRBC",
+        "PLT",
+        "MPV",
+        "PDW",
+        "PLTCRIT",
+        "P_LCR",
+        "ESR",
+        "TBIL",
+        "DBIL",
+        "IBIL",
+        "SGOT",
+        "SGPT",
+        "ASTALT",
+        "ALP",
+        "GGT",
+        "TPROT",
+        "ALB",
+        "GLOB",
+        "AGR",
+        "UREA",
+        "BUN",
+        "CREA",
+        "BUNCR",
+        "UCR",
+        "URIC",
+        "NA",
+        "K",
+        "CL",
+        "CA",
+        "PHOS",
+        "TC",
+        "TG",
+        "HDL",
+        "LDL",
+        "VLDL",
+        "NONHDL",
+        "TCHDL",
+        "LDLHDL",
+        "TGHDL",
+        "GLUF",
+        "GLUPP",
+        "HBA1C",
+        "EAG",
+        "TSH",
+        "FT3",
+        "FT4",
+        "VITD",
+        "B12",
+        "HSCRP",
+        "UR_COL",
+        "UR_APP",
+        "UR_TURB",
+        "UR_PH",
+        "UR_SG",
+        "UR_PROT",
+        "UR_GLU",
+        "UR_KET",
+        "UR_BLD",
+        "UR_BIL",
+        "UR_URO",
+        "UR_NIT",
+        "UR_LEU",
+        "UR_RBC",
+        "UR_WBC",
+        "UR_EPI",
+        "UR_CAST",
+        "UR_CRYS",
+        "UR_DEP",
+        "UR_HYCAST",
+        "UR_GRCAST",
+        "UR_RBCCAST",
+        "UR_WBCCAST",
+        "UR_EPCAST",
+        "UR_WXCAST",
+        "UR_CAOX",
+        "UR_URICX",
+        "UR_TRIPHOS",
+        "UR_CYSTX",
+        "UR_AMORPH",
+        "UR_BACT",
+        "UR_YEAST",
+        "UR_TRICH",
+        "UR_SPERM",
+        "UR_MUCUS",
+        "ST_COL",
+        "ST_CONS",
+        "ST_OCB",
+        "ST_RBC",
+        "ST_WBC",
+        "ST_OVA",
+        "ST_REACT",
+        "ST_MUCUS",
+        "ST_BLOOD",
+        "ST_EPI",
+        "ST_MACRO",
+        "ST_FAT",
+        "ST_STARCH",
+        "ST_MUSCLE",
+        "ST_UNDIG",
+        "ST_CYST",
+        "ST_TROPH",
+        "ST_LARVA",
+        "ST_YEAST",
+        "ST_CLC"
+      ]
+    },
+    {
+      "code": "PKG_MHC_ADV",
+      "nameEn": "Master health check — advanced",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "requiresFasting": true,
+      "analyteCodes": [
+        "HB",
+        "RBC",
+        "HCT",
+        "MCV",
+        "MCH",
+        "MCHC",
+        "RDW",
+        "RDW_SD",
+        "MENTZER",
+        "WBC",
+        "NEUT",
+        "LYMPH",
+        "MONO",
+        "EOS",
+        "BASO",
+        "ANC",
+        "LYMPH_ABS",
+        "MONO_ABS",
+        "EOS_ABS",
+        "BASO_ABS",
+        "NLR",
+        "NRBC",
+        "PLT",
+        "MPV",
+        "PDW",
+        "PLTCRIT",
+        "P_LCR",
+        "ESR",
+        "TBIL",
+        "DBIL",
+        "IBIL",
+        "SGOT",
+        "SGPT",
+        "ASTALT",
+        "ALP",
+        "GGT",
+        "TPROT",
+        "ALB",
+        "GLOB",
+        "AGR",
+        "UREA",
+        "BUN",
+        "CREA",
+        "BUNCR",
+        "UCR",
+        "URIC",
+        "NA",
+        "K",
+        "CL",
+        "CA",
+        "PHOS",
+        "HCO3",
+        "ANIONGAP",
+        "TC",
+        "TG",
+        "HDL",
+        "LDL",
+        "VLDL",
+        "NONHDL",
+        "TCHDL",
+        "LDLHDL",
+        "TGHDL",
+        "APOA1",
+        "APOB",
+        "APOBA1",
+        "LPA",
+        "HSCRP",
+        "HCY",
+        "GLUF",
+        "HBA1C",
+        "EAG",
+        "TSH",
+        "FT3",
+        "FT4",
+        "VITD",
+        "B12",
+        "FE",
+        "TIBC",
+        "UIBC",
+        "TSAT",
+        "FERR",
+        "TRANSF",
+        "CACORR",
+        "MG",
+        "ALB_UR",
+        "UCREA",
+        "ACR",
+        "HBSAG",
+        "UR_COL",
+        "UR_APP",
+        "UR_TURB",
+        "UR_PH",
+        "UR_SG",
+        "UR_PROT",
+        "UR_GLU",
+        "UR_KET",
+        "UR_BLD",
+        "UR_BIL",
+        "UR_URO",
+        "UR_NIT",
+        "UR_LEU",
+        "UR_RBC",
+        "UR_WBC",
+        "UR_EPI",
+        "UR_CAST",
+        "UR_CRYS",
+        "UR_DEP",
+        "UR_HYCAST",
+        "UR_GRCAST",
+        "UR_RBCCAST",
+        "UR_WBCCAST",
+        "UR_EPCAST",
+        "UR_WXCAST",
+        "UR_CAOX",
+        "UR_URICX",
+        "UR_TRIPHOS",
+        "UR_CYSTX",
+        "UR_AMORPH",
+        "UR_BACT",
+        "UR_YEAST",
+        "UR_TRICH",
+        "UR_SPERM",
+        "UR_MUCUS",
+        "ST_COL",
+        "ST_CONS",
+        "ST_OCB",
+        "ST_RBC",
+        "ST_WBC",
+        "ST_OVA",
+        "ST_REACT",
+        "ST_MUCUS",
+        "ST_BLOOD",
+        "ST_EPI",
+        "ST_MACRO",
+        "ST_FAT",
+        "ST_STARCH",
+        "ST_MUSCLE",
+        "ST_UNDIG",
+        "ST_CYST",
+        "ST_TROPH",
+        "ST_LARVA",
+        "ST_YEAST",
+        "ST_CLC"
+      ]
+    },
+    {
+      "code": "PKG_DIAB_ADV",
+      "nameEn": "Diabetes care — comprehensive",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "requiresFasting": true,
+      "analyteCodes": [
+        "GLUF",
+        "GLUPP",
+        "HBA1C",
+        "EAG",
+        "UREA",
+        "BUN",
+        "CREA",
+        "BUNCR",
+        "UCR",
+        "URIC",
+        "NA",
+        "K",
+        "CL",
+        "CA",
+        "PHOS",
+        "TBIL",
+        "DBIL",
+        "IBIL",
+        "SGOT",
+        "SGPT",
+        "ASTALT",
+        "ALP",
+        "GGT",
+        "TPROT",
+        "ALB",
+        "GLOB",
+        "AGR",
+        "TC",
+        "TG",
+        "HDL",
+        "LDL",
+        "VLDL",
+        "NONHDL",
+        "TCHDL",
+        "LDLHDL",
+        "TGHDL",
+        "ALB_UR",
+        "UCREA",
+        "ACR",
+        "UR_COL",
+        "UR_APP",
+        "UR_TURB",
+        "UR_PH",
+        "UR_SG",
+        "UR_PROT",
+        "UR_GLU",
+        "UR_KET",
+        "UR_BLD",
+        "UR_BIL",
+        "UR_URO",
+        "UR_NIT",
+        "UR_LEU",
+        "UR_RBC",
+        "UR_WBC",
+        "UR_EPI",
+        "UR_CAST",
+        "UR_CRYS",
+        "UR_DEP",
+        "UR_HYCAST",
+        "UR_GRCAST",
+        "UR_RBCCAST",
+        "UR_WBCCAST",
+        "UR_EPCAST",
+        "UR_WXCAST",
+        "UR_CAOX",
+        "UR_URICX",
+        "UR_TRIPHOS",
+        "UR_CYSTX",
+        "UR_AMORPH",
+        "UR_BACT",
+        "UR_YEAST",
+        "UR_TRICH",
+        "UR_SPERM",
+        "UR_MUCUS",
+        "TSH",
+        "B12",
+        "HB",
+        "RBC",
+        "HCT",
+        "MCV",
+        "MCH",
+        "MCHC",
+        "RDW",
+        "RDW_SD",
+        "MENTZER",
+        "WBC",
+        "NEUT",
+        "LYMPH",
+        "MONO",
+        "EOS",
+        "BASO",
+        "ANC",
+        "LYMPH_ABS",
+        "MONO_ABS",
+        "EOS_ABS",
+        "BASO_ABS",
+        "NLR",
+        "NRBC",
+        "PLT",
+        "MPV",
+        "PDW",
+        "PLTCRIT",
+        "P_LCR"
+      ]
+    },
+    {
+      "code": "PKG_HEART",
+      "nameEn": "Heart health check",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "requiresFasting": true,
+      "analyteCodes": [
+        "HB",
+        "RBC",
+        "HCT",
+        "MCV",
+        "MCH",
+        "MCHC",
+        "RDW",
+        "RDW_SD",
+        "MENTZER",
+        "WBC",
+        "NEUT",
+        "LYMPH",
+        "MONO",
+        "EOS",
+        "BASO",
+        "ANC",
+        "LYMPH_ABS",
+        "MONO_ABS",
+        "EOS_ABS",
+        "BASO_ABS",
+        "NLR",
+        "NRBC",
+        "PLT",
+        "MPV",
+        "PDW",
+        "PLTCRIT",
+        "P_LCR",
+        "TC",
+        "TG",
+        "HDL",
+        "LDL",
+        "VLDL",
+        "NONHDL",
+        "TCHDL",
+        "LDLHDL",
+        "TGHDL",
+        "APOA1",
+        "APOB",
+        "APOBA1",
+        "LPA",
+        "HSCRP",
+        "HCY",
+        "GLUF",
+        "HBA1C",
+        "EAG",
+        "UREA",
+        "BUN",
+        "CREA",
+        "BUNCR",
+        "UCR",
+        "URIC",
+        "NA",
+        "K",
+        "CL",
+        "CA",
+        "PHOS",
+        "TBIL",
+        "DBIL",
+        "IBIL",
+        "SGOT",
+        "SGPT",
+        "ASTALT",
+        "ALP",
+        "GGT",
+        "TPROT",
+        "ALB",
+        "GLOB",
+        "AGR",
+        "TSH",
+        "CPK"
+      ]
+    },
+    {
+      "code": "PKG_ANC_ADV",
+      "nameEn": "Antenatal profile — comprehensive (first visit)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "requiresFasting": true,
+      "sensitive": true,
+      "notifiable": true,
+      "analyteCodes": [
+        "HB",
+        "RBC",
+        "HCT",
+        "MCV",
+        "MCH",
+        "MCHC",
+        "RDW",
+        "RDW_SD",
+        "MENTZER",
+        "WBC",
+        "NEUT",
+        "LYMPH",
+        "MONO",
+        "EOS",
+        "BASO",
+        "ANC",
+        "LYMPH_ABS",
+        "MONO_ABS",
+        "EOS_ABS",
+        "BASO_ABS",
+        "NLR",
+        "NRBC",
+        "PLT",
+        "MPV",
+        "PDW",
+        "PLTCRIT",
+        "P_LCR",
+        "ABO",
+        "RH",
+        "HIV",
+        "HBSAG",
+        "VDRL",
+        "GLUF",
+        "TSH",
+        "UR_COL",
+        "UR_APP",
+        "UR_PH",
+        "UR_SG",
+        "UR_PROT",
+        "UR_GLU",
+        "UR_KET",
+        "UR_BLD",
+        "UR_BIL",
+        "UR_URO",
+        "UR_NIT",
+        "UR_LEU",
+        "UR_RBC",
+        "UR_WBC",
+        "UR_EPI",
+        "UR_CAST",
+        "UR_CRYS",
+        "HCV",
+        "TPHA",
+        "HBA_PCT",
+        "HBA2",
+        "HBF",
+        "HBS",
+        "HB_VAR",
+        "HB_IMP",
+        "GTT_0",
+        "GTT_1H",
+        "GTT_2H",
+        "MIC_ORG",
+        "MIC_CC",
+        "MIC_AST",
+        "MIC_RESMK"
+      ]
+    },
+    {
+      "code": "PKG_PREOP_ADV",
+      "nameEn": "Pre-operative profile — major surgery / over 40",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "sensitive": true,
+      "notifiable": true,
+      "analyteCodes": [
+        "HB",
+        "RBC",
+        "HCT",
+        "MCV",
+        "MCH",
+        "MCHC",
+        "RDW",
+        "RDW_SD",
+        "MENTZER",
+        "WBC",
+        "NEUT",
+        "LYMPH",
+        "MONO",
+        "EOS",
+        "BASO",
+        "ANC",
+        "LYMPH_ABS",
+        "MONO_ABS",
+        "EOS_ABS",
+        "BASO_ABS",
+        "NLR",
+        "NRBC",
+        "PLT",
+        "MPV",
+        "PDW",
+        "PLTCRIT",
+        "P_LCR",
+        "PT",
+        "INR",
+        "APTT",
+        "GLUR",
+        "UREA",
+        "CREA",
+        "NA",
+        "K",
+        "HIV",
+        "HBSAG",
+        "ABO",
+        "RH",
+        "TBIL",
+        "DBIL",
+        "IBIL",
+        "SGOT",
+        "SGPT",
+        "ASTALT",
+        "ALP",
+        "GGT",
+        "TPROT",
+        "ALB",
+        "GLOB",
+        "AGR",
+        "CL",
+        "HCO3",
+        "ANIONGAP",
+        "HBA1C",
+        "EAG",
+        "HCV",
+        "UR_COL",
+        "UR_APP",
+        "UR_TURB",
+        "UR_PH",
+        "UR_SG",
+        "UR_PROT",
+        "UR_GLU",
+        "UR_KET",
+        "UR_BLD",
+        "UR_BIL",
+        "UR_URO",
+        "UR_NIT",
+        "UR_LEU",
+        "UR_RBC",
+        "UR_WBC",
+        "UR_EPI",
+        "UR_CAST",
+        "UR_CRYS",
+        "UR_DEP",
+        "UR_HYCAST",
+        "UR_GRCAST",
+        "UR_RBCCAST",
+        "UR_WBCCAST",
+        "UR_EPCAST",
+        "UR_WXCAST",
+        "UR_CAOX",
+        "UR_URICX",
+        "UR_TRIPHOS",
+        "UR_CYSTX",
+        "UR_AMORPH",
+        "UR_BACT",
+        "UR_YEAST",
+        "UR_TRICH",
+        "UR_SPERM",
+        "UR_MUCUS",
+        "ABO_FWD",
+        "ABO_REV",
+        "RH_DU"
+      ]
+    },
+    {
+      "code": "PKG_FEVER_ADV",
+      "nameEn": "Fever profile — advanced (tropical fevers)",
+      "discipline": "biochemistry",
+      "specimenType": "whole_blood",
+      "container": "edta",
+      "tatMinutesRoutine": 1440,
+      "notifiable": true,
+      "analyteCodes": [
+        "HB",
+        "RBC",
+        "HCT",
+        "MCV",
+        "MCH",
+        "MCHC",
+        "RDW",
+        "RDW_SD",
+        "MENTZER",
+        "WBC",
+        "NEUT",
+        "LYMPH",
+        "MONO",
+        "EOS",
+        "BASO",
+        "ANC",
+        "LYMPH_ABS",
+        "MONO_ABS",
+        "EOS_ABS",
+        "BASO_ABS",
+        "NLR",
+        "NRBC",
+        "PLT",
+        "MPV",
+        "PDW",
+        "PLTCRIT",
+        "P_LCR",
+        "ESR",
+        "CRP",
+        "MPS",
+        "MPS_SPEC",
+        "MPS_STAGE",
+        "MPS_DENS",
+        "MP_AG",
+        "DEN_NS1",
+        "DEN_IGM",
+        "DEN_IGG",
+        "TYPHI_IGM",
+        "TYPHI_IGG",
+        "SCRUB_IGM",
+        "LEPTO_IGM",
+        "CHIK_IGM",
+        "TBIL",
+        "DBIL",
+        "IBIL",
+        "SGOT",
+        "SGPT",
+        "ASTALT",
+        "ALP",
+        "GGT",
+        "TPROT",
+        "ALB",
+        "GLOB",
+        "AGR",
+        "UREA",
+        "BUN",
+        "CREA",
+        "BUNCR",
+        "UCR",
+        "URIC",
+        "NA",
+        "K",
+        "CL",
+        "CA",
+        "PHOS",
+        "UR_COL",
+        "UR_APP",
+        "UR_TURB",
+        "UR_PH",
+        "UR_SG",
+        "UR_PROT",
+        "UR_GLU",
+        "UR_KET",
+        "UR_BLD",
+        "UR_BIL",
+        "UR_URO",
+        "UR_NIT",
+        "UR_LEU",
+        "UR_RBC",
+        "UR_WBC",
+        "UR_EPI",
+        "UR_CAST",
+        "UR_CRYS",
+        "UR_DEP",
+        "UR_HYCAST",
+        "UR_GRCAST",
+        "UR_RBCCAST",
+        "UR_WBCCAST",
+        "UR_EPCAST",
+        "UR_WXCAST",
+        "UR_CAOX",
+        "UR_URICX",
+        "UR_TRIPHOS",
+        "UR_CYSTX",
+        "UR_AMORPH",
+        "UR_BACT",
+        "UR_YEAST",
+        "UR_TRICH",
+        "UR_SPERM",
+        "UR_MUCUS"
+      ]
+    },
+    {
+      "code": "PKG_ARTH_ADV",
+      "nameEn": "Arthritis profile — advanced",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "analyteCodes": [
+        "HB",
+        "RBC",
+        "HCT",
+        "MCV",
+        "MCH",
+        "MCHC",
+        "RDW",
+        "RDW_SD",
+        "MENTZER",
+        "WBC",
+        "NEUT",
+        "LYMPH",
+        "MONO",
+        "EOS",
+        "BASO",
+        "ANC",
+        "LYMPH_ABS",
+        "MONO_ABS",
+        "EOS_ABS",
+        "BASO_ABS",
+        "NLR",
+        "NRBC",
+        "PLT",
+        "MPV",
+        "PDW",
+        "PLTCRIT",
+        "P_LCR",
+        "ESR",
+        "CRP",
+        "RAF",
+        "ACCP",
+        "ANA_IFA",
+        "ANA_TITRE",
+        "ANA_PAT",
+        "HLAB27",
+        "URIC",
+        "CA",
+        "ALB",
+        "CACORR",
+        "VITD"
+      ]
+    },
+    {
+      "code": "PKG_THYROID",
+      "nameEn": "Thyroid profile — comprehensive (T3, T4, TSH, FT3, FT4, anti-TPO, anti-TG)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "analyteCodes": [
+        "T3",
+        "T4",
+        "TSH",
+        "FT3",
+        "FT4",
+        "ATPO",
+        "ATG"
+      ]
+    },
+    {
+      "code": "PKG_WOMEN",
+      "nameEn": "Women's health check",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "requiresFasting": true,
+      "analyteCodes": [
+        "HB",
+        "RBC",
+        "HCT",
+        "MCV",
+        "MCH",
+        "MCHC",
+        "RDW",
+        "RDW_SD",
+        "MENTZER",
+        "WBC",
+        "NEUT",
+        "LYMPH",
+        "MONO",
+        "EOS",
+        "BASO",
+        "ANC",
+        "LYMPH_ABS",
+        "MONO_ABS",
+        "EOS_ABS",
+        "BASO_ABS",
+        "NLR",
+        "NRBC",
+        "PLT",
+        "MPV",
+        "PDW",
+        "PLTCRIT",
+        "P_LCR",
+        "ESR",
+        "FE",
+        "TIBC",
+        "UIBC",
+        "TSAT",
+        "FERR",
+        "TRANSF",
+        "VITD",
+        "B12",
+        "CA",
+        "ALB",
+        "CACORR",
+        "TSH",
+        "FT3",
+        "FT4",
+        "GLUF",
+        "HBA1C",
+        "EAG",
+        "TC",
+        "TG",
+        "HDL",
+        "LDL",
+        "VLDL",
+        "NONHDL",
+        "TCHDL",
+        "LDLHDL",
+        "TGHDL",
+        "TBIL",
+        "DBIL",
+        "IBIL",
+        "SGOT",
+        "SGPT",
+        "ASTALT",
+        "ALP",
+        "GGT",
+        "TPROT",
+        "GLOB",
+        "AGR",
+        "UREA",
+        "BUN",
+        "CREA",
+        "BUNCR",
+        "UCR",
+        "URIC",
+        "NA",
+        "K",
+        "CL",
+        "PHOS",
+        "UR_COL",
+        "UR_APP",
+        "UR_TURB",
+        "UR_PH",
+        "UR_SG",
+        "UR_PROT",
+        "UR_GLU",
+        "UR_KET",
+        "UR_BLD",
+        "UR_BIL",
+        "UR_URO",
+        "UR_NIT",
+        "UR_LEU",
+        "UR_RBC",
+        "UR_WBC",
+        "UR_EPI",
+        "UR_CAST",
+        "UR_CRYS",
+        "UR_DEP",
+        "UR_HYCAST",
+        "UR_GRCAST",
+        "UR_RBCCAST",
+        "UR_WBCCAST",
+        "UR_EPCAST",
+        "UR_WXCAST",
+        "UR_CAOX",
+        "UR_URICX",
+        "UR_TRIPHOS",
+        "UR_CYSTX",
+        "UR_AMORPH",
+        "UR_BACT",
+        "UR_YEAST",
+        "UR_TRICH",
+        "UR_SPERM",
+        "UR_MUCUS",
+        "PAP_TYPE",
+        "HP_CLIN",
+        "PAP_ADEQ",
+        "PAP_INT",
+        "PAP_ORG",
+        "PAP_NN",
+        "PAP_REC"
+      ]
+    },
+    {
+      "code": "PKG_MEN",
+      "nameEn": "Men's health check",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "requiresFasting": true,
+      "analyteCodes": [
+        "HB",
+        "RBC",
+        "HCT",
+        "MCV",
+        "MCH",
+        "MCHC",
+        "RDW",
+        "RDW_SD",
+        "MENTZER",
+        "WBC",
+        "NEUT",
+        "LYMPH",
+        "MONO",
+        "EOS",
+        "BASO",
+        "ANC",
+        "LYMPH_ABS",
+        "MONO_ABS",
+        "EOS_ABS",
+        "BASO_ABS",
+        "NLR",
+        "NRBC",
+        "PLT",
+        "MPV",
+        "PDW",
+        "PLTCRIT",
+        "P_LCR",
+        "ESR",
+        "TBIL",
+        "DBIL",
+        "IBIL",
+        "SGOT",
+        "SGPT",
+        "ASTALT",
+        "ALP",
+        "GGT",
+        "TPROT",
+        "ALB",
+        "GLOB",
+        "AGR",
+        "UREA",
+        "BUN",
+        "CREA",
+        "BUNCR",
+        "UCR",
+        "URIC",
+        "NA",
+        "K",
+        "CL",
+        "CA",
+        "PHOS",
+        "TC",
+        "TG",
+        "HDL",
+        "LDL",
+        "VLDL",
+        "NONHDL",
+        "TCHDL",
+        "LDLHDL",
+        "TGHDL",
+        "GLUF",
+        "HBA1C",
+        "EAG",
+        "TSH",
+        "VITD",
+        "B12",
+        "PSA",
+        "TESTO",
+        "UR_COL",
+        "UR_APP",
+        "UR_TURB",
+        "UR_PH",
+        "UR_SG",
+        "UR_PROT",
+        "UR_GLU",
+        "UR_KET",
+        "UR_BLD",
+        "UR_BIL",
+        "UR_URO",
+        "UR_NIT",
+        "UR_LEU",
+        "UR_RBC",
+        "UR_WBC",
+        "UR_EPI",
+        "UR_CAST",
+        "UR_CRYS",
+        "UR_DEP",
+        "UR_HYCAST",
+        "UR_GRCAST",
+        "UR_RBCCAST",
+        "UR_WBCCAST",
+        "UR_EPCAST",
+        "UR_WXCAST",
+        "UR_CAOX",
+        "UR_URICX",
+        "UR_TRIPHOS",
+        "UR_CYSTX",
+        "UR_AMORPH",
+        "UR_BACT",
+        "UR_YEAST",
+        "UR_TRICH",
+        "UR_SPERM",
+        "UR_MUCUS"
+      ]
+    },
+    {
+      "code": "PKG_SENIOR",
+      "nameEn": "Senior citizen health check (60+)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "requiresFasting": true,
+      "analyteCodes": [
+        "HB",
+        "RBC",
+        "HCT",
+        "MCV",
+        "MCH",
+        "MCHC",
+        "RDW",
+        "RDW_SD",
+        "MENTZER",
+        "WBC",
+        "NEUT",
+        "LYMPH",
+        "MONO",
+        "EOS",
+        "BASO",
+        "ANC",
+        "LYMPH_ABS",
+        "MONO_ABS",
+        "EOS_ABS",
+        "BASO_ABS",
+        "NLR",
+        "NRBC",
+        "PLT",
+        "MPV",
+        "PDW",
+        "PLTCRIT",
+        "P_LCR",
+        "ESR",
+        "UREA",
+        "BUN",
+        "CREA",
+        "BUNCR",
+        "UCR",
+        "URIC",
+        "NA",
+        "K",
+        "CL",
+        "CA",
+        "PHOS",
+        "HCO3",
+        "ANIONGAP",
+        "TBIL",
+        "DBIL",
+        "IBIL",
+        "SGOT",
+        "SGPT",
+        "ASTALT",
+        "ALP",
+        "GGT",
+        "TPROT",
+        "ALB",
+        "GLOB",
+        "AGR",
+        "TC",
+        "TG",
+        "HDL",
+        "LDL",
+        "VLDL",
+        "NONHDL",
+        "TCHDL",
+        "LDLHDL",
+        "TGHDL",
+        "GLUF",
+        "HBA1C",
+        "EAG",
+        "TSH",
+        "VITD",
+        "B12",
+        "CACORR",
+        "ALB_UR",
+        "UCREA",
+        "ACR",
+        "UR_COL",
+        "UR_APP",
+        "UR_TURB",
+        "UR_PH",
+        "UR_SG",
+        "UR_PROT",
+        "UR_GLU",
+        "UR_KET",
+        "UR_BLD",
+        "UR_BIL",
+        "UR_URO",
+        "UR_NIT",
+        "UR_LEU",
+        "UR_RBC",
+        "UR_WBC",
+        "UR_EPI",
+        "UR_CAST",
+        "UR_CRYS",
+        "UR_DEP",
+        "UR_HYCAST",
+        "UR_GRCAST",
+        "UR_RBCCAST",
+        "UR_WBCCAST",
+        "UR_EPCAST",
+        "UR_WXCAST",
+        "UR_CAOX",
+        "UR_URICX",
+        "UR_TRIPHOS",
+        "UR_CYSTX",
+        "UR_AMORPH",
+        "UR_BACT",
+        "UR_YEAST",
+        "UR_TRICH",
+        "UR_SPERM",
+        "UR_MUCUS"
+      ]
+    },
+    {
+      "code": "PKG_LIVER",
+      "nameEn": "Liver health profile",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "sensitive": true,
+      "notifiable": true,
+      "analyteCodes": [
+        "TBIL",
+        "DBIL",
+        "IBIL",
+        "SGOT",
+        "SGPT",
+        "ASTALT",
+        "ALP",
+        "GGT",
+        "TPROT",
+        "ALB",
+        "GLOB",
+        "AGR",
+        "PT",
+        "PT_CTRL",
+        "PT_RATIO",
+        "ISI",
+        "INR",
+        "HBSAG",
+        "HCV",
+        "HB",
+        "RBC",
+        "HCT",
+        "MCV",
+        "MCH",
+        "MCHC",
+        "RDW",
+        "RDW_SD",
+        "MENTZER",
+        "WBC",
+        "NEUT",
+        "LYMPH",
+        "MONO",
+        "EOS",
+        "BASO",
+        "ANC",
+        "LYMPH_ABS",
+        "MONO_ABS",
+        "EOS_ABS",
+        "BASO_ABS",
+        "NLR",
+        "NRBC",
+        "PLT",
+        "MPV",
+        "PDW",
+        "PLTCRIT",
+        "P_LCR"
+      ]
+    },
+    {
+      "code": "PKG_KIDNEY",
+      "nameEn": "Kidney health profile",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "analyteCodes": [
+        "UREA",
+        "BUN",
+        "CREA",
+        "BUNCR",
+        "UCR",
+        "URIC",
+        "NA",
+        "K",
+        "CL",
+        "CA",
+        "PHOS",
+        "HCO3",
+        "ANIONGAP",
+        "CYSC",
+        "ALB_UR",
+        "UCREA",
+        "ACR",
+        "U_PROT",
+        "UPCR",
+        "UR_COL",
+        "UR_APP",
+        "UR_TURB",
+        "UR_PH",
+        "UR_SG",
+        "UR_PROT",
+        "UR_GLU",
+        "UR_KET",
+        "UR_BLD",
+        "UR_BIL",
+        "UR_URO",
+        "UR_NIT",
+        "UR_LEU",
+        "UR_RBC",
+        "UR_WBC",
+        "UR_EPI",
+        "UR_CAST",
+        "UR_CRYS",
+        "UR_DEP",
+        "UR_HYCAST",
+        "UR_GRCAST",
+        "UR_RBCCAST",
+        "UR_WBCCAST",
+        "UR_EPCAST",
+        "UR_WXCAST",
+        "UR_CAOX",
+        "UR_URICX",
+        "UR_TRIPHOS",
+        "UR_CYSTX",
+        "UR_AMORPH",
+        "UR_BACT",
+        "UR_YEAST",
+        "UR_TRICH",
+        "UR_SPERM",
+        "UR_MUCUS",
+        "HB",
+        "RBC",
+        "HCT",
+        "MCV",
+        "MCH",
+        "MCHC",
+        "RDW",
+        "RDW_SD",
+        "MENTZER",
+        "WBC",
+        "NEUT",
+        "LYMPH",
+        "MONO",
+        "EOS",
+        "BASO",
+        "ANC",
+        "LYMPH_ABS",
+        "MONO_ABS",
+        "EOS_ABS",
+        "BASO_ABS",
+        "NLR",
+        "NRBC",
+        "PLT",
+        "MPV",
+        "PDW",
+        "PLTCRIT",
+        "P_LCR"
+      ]
+    },
+    {
+      "code": "PKG_HTN",
+      "nameEn": "Hypertension profile",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "requiresFasting": true,
+      "analyteCodes": [
+        "UREA",
+        "BUN",
+        "CREA",
+        "BUNCR",
+        "UCR",
+        "URIC",
+        "NA",
+        "K",
+        "CL",
+        "CA",
+        "PHOS",
+        "HCO3",
+        "ANIONGAP",
+        "TC",
+        "TG",
+        "HDL",
+        "LDL",
+        "VLDL",
+        "NONHDL",
+        "TCHDL",
+        "LDLHDL",
+        "TGHDL",
+        "GLUF",
+        "ALB_UR",
+        "UCREA",
+        "ACR",
+        "TSH",
+        "UR_COL",
+        "UR_APP",
+        "UR_TURB",
+        "UR_PH",
+        "UR_SG",
+        "UR_PROT",
+        "UR_GLU",
+        "UR_KET",
+        "UR_BLD",
+        "UR_BIL",
+        "UR_URO",
+        "UR_NIT",
+        "UR_LEU",
+        "UR_RBC",
+        "UR_WBC",
+        "UR_EPI",
+        "UR_CAST",
+        "UR_CRYS",
+        "UR_DEP",
+        "UR_HYCAST",
+        "UR_GRCAST",
+        "UR_RBCCAST",
+        "UR_WBCCAST",
+        "UR_EPCAST",
+        "UR_WXCAST",
+        "UR_CAOX",
+        "UR_URICX",
+        "UR_TRIPHOS",
+        "UR_CYSTX",
+        "UR_AMORPH",
+        "UR_BACT",
+        "UR_YEAST",
+        "UR_TRICH",
+        "UR_SPERM",
+        "UR_MUCUS"
+      ]
+    },
+    {
+      "code": "PKG_CHILD",
+      "nameEn": "Child wellness profile",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "analyteCodes": [
+        "HB",
+        "RBC",
+        "HCT",
+        "MCV",
+        "MCH",
+        "MCHC",
+        "RDW",
+        "RDW_SD",
+        "MENTZER",
+        "WBC",
+        "NEUT",
+        "LYMPH",
+        "MONO",
+        "EOS",
+        "BASO",
+        "ANC",
+        "LYMPH_ABS",
+        "MONO_ABS",
+        "EOS_ABS",
+        "BASO_ABS",
+        "NLR",
+        "NRBC",
+        "PLT",
+        "MPV",
+        "PDW",
+        "PLTCRIT",
+        "P_LCR",
+        "FE",
+        "TIBC",
+        "UIBC",
+        "TSAT",
+        "FERR",
+        "TRANSF",
+        "VITD",
+        "CA",
+        "ALB",
+        "CACORR",
+        "TSH",
+        "UR_COL",
+        "UR_APP",
+        "UR_TURB",
+        "UR_PH",
+        "UR_SG",
+        "UR_PROT",
+        "UR_GLU",
+        "UR_KET",
+        "UR_BLD",
+        "UR_BIL",
+        "UR_URO",
+        "UR_NIT",
+        "UR_LEU",
+        "UR_RBC",
+        "UR_WBC",
+        "UR_EPI",
+        "UR_CAST",
+        "UR_CRYS",
+        "UR_DEP",
+        "UR_HYCAST",
+        "UR_GRCAST",
+        "UR_RBCCAST",
+        "UR_WBCCAST",
+        "UR_EPCAST",
+        "UR_WXCAST",
+        "UR_CAOX",
+        "UR_URICX",
+        "UR_TRIPHOS",
+        "UR_CYSTX",
+        "UR_AMORPH",
+        "UR_BACT",
+        "UR_YEAST",
+        "UR_TRICH",
+        "UR_SPERM",
+        "UR_MUCUS",
+        "ST_COL",
+        "ST_CONS",
+        "ST_OCB",
+        "ST_RBC",
+        "ST_WBC",
+        "ST_OVA",
+        "ST_REACT",
+        "ST_MUCUS",
+        "ST_BLOOD",
+        "ST_EPI",
+        "ST_MACRO",
+        "ST_FAT",
+        "ST_STARCH",
+        "ST_MUSCLE",
+        "ST_UNDIG",
+        "ST_CYST",
+        "ST_TROPH",
+        "ST_LARVA",
+        "ST_YEAST",
+        "ST_CLC"
+      ]
+    },
+    {
+      "code": "PKG_STD",
+      "nameEn": "Sexual health screen (HIV, HBsAg, HCV, VDRL, TPHA)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "sensitive": true,
+      "notifiable": true,
+      "analyteCodes": [
+        "HIV",
+        "HBSAG",
+        "HCV",
+        "VDRL",
+        "TPHA"
+      ]
+    },
+    {
+      "code": "PKG_PREMARITAL",
+      "nameEn": "Pre-marital screen",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "sensitive": true,
+      "notifiable": true,
+      "analyteCodes": [
+        "HB",
+        "RBC",
+        "HCT",
+        "MCV",
+        "MCH",
+        "MCHC",
+        "RDW",
+        "RDW_SD",
+        "MENTZER",
+        "WBC",
+        "NEUT",
+        "LYMPH",
+        "MONO",
+        "EOS",
+        "BASO",
+        "ANC",
+        "LYMPH_ABS",
+        "MONO_ABS",
+        "EOS_ABS",
+        "BASO_ABS",
+        "NLR",
+        "NRBC",
+        "PLT",
+        "MPV",
+        "PDW",
+        "PLTCRIT",
+        "P_LCR",
+        "ABO_FWD",
+        "ABO_REV",
+        "ABO",
+        "RH",
+        "RH_DU",
+        "HBA_PCT",
+        "HBA2",
+        "HBF",
+        "HBS",
+        "HB_VAR",
+        "HB_IMP",
+        "HIV",
+        "HBSAG",
+        "HCV",
+        "VDRL",
+        "GLUF"
+      ]
+    },
+    {
+      "code": "PKG_PREEMPLOY",
+      "nameEn": "Pre-employment health check",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "requiresFasting": true,
+      "sensitive": true,
+      "notifiable": true,
+      "analyteCodes": [
+        "HB",
+        "RBC",
+        "HCT",
+        "MCV",
+        "MCH",
+        "MCHC",
+        "RDW",
+        "RDW_SD",
+        "MENTZER",
+        "WBC",
+        "NEUT",
+        "LYMPH",
+        "MONO",
+        "EOS",
+        "BASO",
+        "ANC",
+        "LYMPH_ABS",
+        "MONO_ABS",
+        "EOS_ABS",
+        "BASO_ABS",
+        "NLR",
+        "NRBC",
+        "PLT",
+        "MPV",
+        "PDW",
+        "PLTCRIT",
+        "P_LCR",
+        "ABO",
+        "RH",
+        "GLUF",
+        "UREA",
+        "BUN",
+        "CREA",
+        "BUNCR",
+        "UCR",
+        "URIC",
+        "NA",
+        "K",
+        "CL",
+        "CA",
+        "PHOS",
+        "SGOT",
+        "SGPT",
+        "ASTALT",
+        "UR_COL",
+        "UR_APP",
+        "UR_TURB",
+        "UR_PH",
+        "UR_SG",
+        "UR_PROT",
+        "UR_GLU",
+        "UR_KET",
+        "UR_BLD",
+        "UR_BIL",
+        "UR_URO",
+        "UR_NIT",
+        "UR_LEU",
+        "UR_RBC",
+        "UR_WBC",
+        "UR_EPI",
+        "UR_CAST",
+        "UR_CRYS",
+        "UR_DEP",
+        "UR_HYCAST",
+        "UR_GRCAST",
+        "UR_RBCCAST",
+        "UR_WBCCAST",
+        "UR_EPCAST",
+        "UR_WXCAST",
+        "UR_CAOX",
+        "UR_URICX",
+        "UR_TRIPHOS",
+        "UR_CYSTX",
+        "UR_AMORPH",
+        "UR_BACT",
+        "UR_YEAST",
+        "UR_TRICH",
+        "UR_SPERM",
+        "UR_MUCUS",
+        "HBSAG"
+      ]
+    },
+    {
+      "code": "PKG_BONE",
+      "nameEn": "Bone health profile",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "analyteCodes": [
+        "CA",
+        "ALB",
+        "CACORR",
+        "PHOS",
+        "ALP",
+        "VITD",
+        "PTH",
+        "MG"
       ]
     }
   ],
@@ -19566,6 +29237,5622 @@ export const LAB_CATALOGUE_STANDARD_DATA: LabCatalogueFixture = {
       "low": null,
       "high": null,
       "text": "None seen",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ADA_S",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "30",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "NUCL5",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "2",
+      "high": "17",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "BILE_ACID",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "10",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ACE",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "8",
+      "high": "52",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HAPTO",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "30",
+      "high": "200",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PREALB",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "20",
+      "high": "40",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "A1AT",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "90",
+      "high": "200",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "GTT_30M",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Interpret with fasting and 2 h values",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "GTT_90M",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Interpret with fasting and 2 h values",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "INS_0H",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "2.6",
+      "high": "24.9",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "INS_1H",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Interpret with paired glucose",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "INS_2H",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Interpret with paired glucose",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "INS_R",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Interpret with paired glucose",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CPEP_PP",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "1.5",
+      "high": "9.0",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "COHB",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "3.0",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "METHB",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "1.5",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "BCTX",
+      "sex": "male",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "0.016",
+      "high": "0.584",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "BCTX",
+      "sex": "female",
+      "ageMinDays": 6570,
+      "ageMaxDays": 18249,
+      "low": "0.025",
+      "high": "0.573",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "BCTX",
+      "sex": "female",
+      "ageMinDays": 18250,
+      "ageMaxDays": 36500,
+      "low": "0.104",
+      "high": "1.008",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "P1NP",
+      "sex": "male",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "15",
+      "high": "80",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "P1NP",
+      "sex": "female",
+      "ageMinDays": 6570,
+      "ageMaxDays": 18249,
+      "low": "15.1",
+      "high": "58.6",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "P1NP",
+      "sex": "female",
+      "ageMinDays": 18250,
+      "ageMaxDays": 36500,
+      "low": "16.3",
+      "high": "73.9",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "OSTEOC",
+      "sex": "male",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "14",
+      "high": "46",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "OSTEOC",
+      "sex": "female",
+      "ageMinDays": 6570,
+      "ageMaxDays": 18249,
+      "low": "11",
+      "high": "43",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "OSTEOC",
+      "sex": "female",
+      "ageMinDays": 18250,
+      "ageMaxDays": 36500,
+      "low": "15",
+      "high": "46",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "TROP_HSI",
+      "sex": "male",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "34.2",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "TROP_HSI",
+      "sex": "female",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "15.6",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "TROP_HST",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "14",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CKMB_MASS",
+      "sex": "male",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "6.6",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CKMB_MASS",
+      "sex": "female",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "4.9",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CORT_R",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Interpret against time of collection",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CORT_DST",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "1.8",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CORT_MN",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "7.5",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CORT_ST0",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "3.7",
+      "high": "19.4",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CORT_ST30",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "14.5",
+      "high": null,
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CORT_ST60",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "14.5",
+      "high": null,
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PRL_PEG",
+      "sex": "male",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "2.5",
+      "high": "14.8",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PRL_PEG",
+      "sex": "female",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "3.4",
+      "high": "18.5",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PRL_RECOV",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "60",
+      "high": null,
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "GH_T0",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Interpret against protocol: suppression nadir < 1 ng/mL; stimulation peak > 7 ng/mL",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "GH_T30",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Interpret against protocol: suppression nadir < 1 ng/mL; stimulation peak > 7 ng/mL",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "GH_T60",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Interpret against protocol: suppression nadir < 1 ng/mL; stimulation peak > 7 ng/mL",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "GH_T90",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Interpret against protocol: suppression nadir < 1 ng/mL; stimulation peak > 7 ng/mL",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "GH_T120",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Interpret against protocol: suppression nadir < 1 ng/mL; stimulation peak > 7 ng/mL",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "LH_T0",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Interpret against protocol: pubertal response peak LH > 5 mIU/mL",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "LH_T30",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Interpret against protocol: pubertal response peak LH > 5 mIU/mL",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "LH_T60",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Interpret against protocol: pubertal response peak LH > 5 mIU/mL",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PAPPA",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Gestation-dependent; reported as MoM within the risk report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "FBHCG",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Gestation-dependent; reported as MoM within the risk report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "UE3",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Gestation-dependent; reported as MoM within the risk report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "INHA",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Gestation-dependent; reported as MoM within the risk report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PNS_RISK",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Screen negative (low risk)",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CA724",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "6.9",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CYFRA",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "3.3",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HE4",
+      "sex": "male",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "140",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HE4",
+      "sex": "female",
+      "ageMinDays": 6570,
+      "ageMaxDays": 18249,
+      "low": null,
+      "high": "70",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HE4",
+      "sex": "female",
+      "ageMinDays": 18250,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "140",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ROMA_IDX",
+      "sex": "female",
+      "ageMinDays": 6570,
+      "ageMaxDays": 18249,
+      "low": null,
+      "high": "7.4",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ROMA_IDX",
+      "sex": "female",
+      "ageMinDays": 18250,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "25.3",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "SCC_AG",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "1.5",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CSA",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "100",
+      "high": "400",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "SIRO",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "5",
+      "high": "15",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MTX",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Time-dependent: < 10 at 24 h, < 1 at 48 h, < 0.1 µmol/L at 72 h",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "VANCO",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "10",
+      "high": "20",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "GENTA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Trough < 1 µg/mL; peak 5-10 µg/mL (conventional dosing)",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "AMIK",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Trough < 5 µg/mL; peak 20-30 µg/mL (conventional dosing)",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "THEO",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "10",
+      "high": "20",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PARACET",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "10",
+      "high": "30",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "SALIC",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "30",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ETOH",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "10",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "LEV",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "12",
+      "high": "46",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "DOA_AMP",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "DOA_COC",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "DOA_THC",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "DOA_OPI",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "DOA_BZO",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "DOA_BAR",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "DOA_MET",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "DOA_MTD",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "DOA_TCA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "DOA_BUP",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CYTO_MPO",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CYTO_SBB",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CYTO_PAS",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CYTO_NSE",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "LAP",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "20",
+      "high": "100",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PERLS",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "BMT_GROSS",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "BMT_MICRO",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "BMT_IMP",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HBH_INCL",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not seen",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HEINZ",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not seen",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "NESTROF",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PLASMA_HB",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "5",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HIT_AB",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "COLD_AGG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Titre < 1:64",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "F2",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "50",
+      "high": "150",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "F5",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "50",
+      "high": "150",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "F7",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "50",
+      "high": "150",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "F10",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "50",
+      "high": "150",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "F11",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "50",
+      "high": "150",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "F12",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "50",
+      "high": "150",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "F13_SCR",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Normal (clot stable at 24 h)",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "F9_INH",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.6",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "VWF_ACT",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "50",
+      "high": "150",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "VWF_RATIO",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "0.7",
+      "high": null,
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MIX_APTT_IMM",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Corrects into normal range = factor deficiency; no correction = inhibitor",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MIX_APTT_2H",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Corrects into normal range = factor deficiency; no correction = inhibitor",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MIX_PT_IMM",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Corrects into normal range = factor deficiency; no correction = inhibitor",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MIX_IMP",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See interpretation",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ANTI_XA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Therapeutic: UFH 0.3-0.7 IU/mL; LMWH 4 h post-dose 0.5-1.0 IU/mL",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "APCR",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "2.0",
+      "high": null,
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "REPT",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "15",
+      "high": "20",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "AGG_ADP",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "60",
+      "high": "100",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "AGG_COL",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "60",
+      "high": "100",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "AGG_EPI",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "60",
+      "high": "100",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "AGG_RIS",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "60",
+      "high": "100",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "AGG_AA",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "60",
+      "high": "100",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "AGG_IMP",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Normal aggregation pattern",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CLOT_RET",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Normal (complete retraction within 1 h)",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PROTS_TOT",
+      "sex": "any",
+      "ageMinDays": 6570,
+      "ageMaxDays": 36500,
+      "low": "60",
+      "high": "150",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "DEN_RNA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CHIK_RNA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "SCRUB_DNA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "STYPHI_IGM",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HAV_IGG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HEV_IGG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HDV_AB",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Non-reactive",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HBSAG_QNT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.05",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HCV_RNA_QL",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HIV_AGAB",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Non-reactive",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HSV1_IGG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HSV2_IGG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HSV1_IGM",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HSV2_IGM",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HSV1_DNA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HSV2_DNA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CMV_AVIDITY",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "60",
+      "high": null,
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CMV_DNA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "EBV_VCAG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "EBV_EBNA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "EBV_DNA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "TOXO_AVIDITY",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "40",
+      "high": null,
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MEAS_IGM",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MUMPS_IGG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MUMPS_IGM",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "VZV_IGM",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PARVO_IGM",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MYCO_IGG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CHLAM_IGG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CHLAM_IGM",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HYDATID_IGG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "AMOEBA_IGG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CYSTI_IGG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CRAG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "GM_INDEX",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.50",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "GM_BAL_INDEX",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "1.00",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ASP_IGG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "27",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ASP_IGE",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "TP_AB",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Non-reactive",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "VDRL_TITRE",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Non-reactive",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HPY_IGA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HPY_IGM",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "COV_AB",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Non-reactive",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "FLU_A_PCR",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "FLU_B_PCR",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "H1N1_PCR",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "RSV_PCR",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "RSV_AG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HPV16",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HPV18",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HPV_OHR",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CT_PCR",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "NG_PCR",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "TET_IGG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0.10",
+      "high": null,
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ASSA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "20",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ASSB",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "20",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ASM",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "20",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ARNP",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "20",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ASCL70",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "20",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "AJO1",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "20",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "AHISTONE",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "20",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ANUCLEO",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "20",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ACENP",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "20",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "DSDNA_CLIFT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "AGBM",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "20",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "APS_IGG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "10",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "APS_IGM",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "10",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "TTG_IGG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "20",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "DGP_IGG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "20",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "DGP_IGA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "20",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "EMA_IGA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IGG4",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "3.9",
+      "high": "86.4",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "AMAM2",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "20",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ASLA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "20",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "LB_AMAM2",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "LB_M2E3",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "LB_SP100",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "LB_PML",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "LB_GP210",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "LB_LKM1",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "LB_LC1",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "LB_SLA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "LB_RO52",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MB_MI2A",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MB_MI2B",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MB_TIF1G",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MB_MDA5",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MB_NXP2",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MB_SAE1",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MB_KU",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MB_PMS100",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MB_PMS75",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MB_JO1",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MB_SRP",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MB_PL7",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MB_PL12",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MB_EJ",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MB_OJ",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MB_RO52",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "SB_SCL70",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "SB_CENPA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "SB_CENPB",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "SB_RP11",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "SB_RP155",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "SB_FIB",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "SB_NOR90",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "SB_THTO",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "SB_PMS100",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "SB_PMS75",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "SB_KU",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "SB_PDGFR",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "SB_RO52",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "AMCV",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "20",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CH50",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "41",
+      "high": "95",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "C1INH",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "21",
+      "high": "39",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "FLC_K",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "3.30",
+      "high": "19.40",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "FLC_L",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "5.71",
+      "high": "26.30",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "FLC_KLR",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0.26",
+      "high": "1.65",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "UPE_PATTERN",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "No monoclonal band",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "UPE_MBAND",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "UIFE",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "No monoclonal protein detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CRYOGLOB",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "APCA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "AIFA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "GAD65",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "10",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IAA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PLA2R",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "14",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "FA_EGG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "FA_MILK",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "FA_PEANUT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "FA_WHEAT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "FA_SOY",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "FA_FISH",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "FA_SHRIMP",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "FA_RICE",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "FA_CHICKPEA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "FA_SESAME",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "FA_CASHEW",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "FA_MUSTARD",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IA_DPTER",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IA_DFAR",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IA_CAT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IA_DOG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IA_ROACH",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IA_ALTERN",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IA_CLADO",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IA_BERMUDA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IA_PARTHEN",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IA_PROSOPIS",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IA_AMARANTH",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "DA_PENG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "DA_PENV",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "DA_AMOX",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "DA_AMPI",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "DA_CEFACLOR",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "SIGE_ALLERGEN",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "As requested",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "SIGE_VALUE",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "0.35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CD3_ABS",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "700",
+      "high": "2100",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CD3_PCT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "55",
+      "high": "84",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CD4_ABS",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "500",
+      "high": "1500",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CD4_PCT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "31",
+      "high": "60",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CD8_ABS",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "200",
+      "high": "900",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CD8_PCT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "13",
+      "high": "41",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CD19_ABS",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "100",
+      "high": "500",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CD19_PCT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "6",
+      "high": "25",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CD56_ABS",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "90",
+      "high": "600",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CD56_PCT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "5",
+      "high": "27",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CD4CD8_R",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "1.0",
+      "high": "3.6",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IL6",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "7.0",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "UR_EOS",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "1",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "UR_DYSRBC",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "No dysmorphic RBCs seen",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "UR_PBG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "UR_FECL3",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "UR_DNPH",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "UR_CNP",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "UR_MYO",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "U_URIC",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "No fixed normal for a random sample",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "U24_URIC",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "250",
+      "high": "750",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "U_PHOS",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "No fixed normal for a random sample",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "U24_PHOS",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "400",
+      "high": "1300",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "U_MG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "No fixed normal for a random sample",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "U24_MG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "73",
+      "high": "122",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "U24_NA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "40",
+      "high": "220",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "U24_K",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "25",
+      "high": "125",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "U24_CL",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "110",
+      "high": "250",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "U_UREA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "No fixed normal for a random sample",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "U24_UREA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "12",
+      "high": "20",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "U24_MALB",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "30",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "U_AMY",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "32",
+      "high": "641",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "FEUREA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "35",
+      "high": "50",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ST_FIT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ST_CALPRO",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "50",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ST_APT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ST_ROTA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ST_ADENO",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ST_CDGDH",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ST_CDTOX",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ST_GIARD",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ST_CRYPT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MIC_MZN",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "No acid-fast oocysts / organisms seen",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PW_EGG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not seen",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "SEM_MAR",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "50",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "SEM_HOS",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "58",
+      "high": null,
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "SEM_PERX",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "1.0",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PEU_SPERM",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "No spermatozoa seen",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PC_VOL",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PC_APP",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Clear",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PC_COL",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Pale yellow",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PC_COAG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Absent",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PC_TC",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "No fixed normal; < 1000 cells/µL is usual in transudates",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PC_POLY",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PC_LYMPH",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PC_RBC",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PC_GLU",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Compare with blood glucose; < 60 mg/dL suggests exudate",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PC_PROT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "> 3.0 g/dL suggests exudate",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PC_LDH",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "> 200 U/L suggests exudate",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PC_ADA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "40",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "BAL_TC",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "BAL_MAC",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "80",
+      "high": null,
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "BAL_LYMPH",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "15",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "BAL_NEUT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "3",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "BAL_EOS",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "1",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PD_TC",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "100",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PD_POLY",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "50",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PF_PH",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "7.30",
+      "high": null,
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PF_TG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "110",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PF_CHOL",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "45",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PF_AMY",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Compare with serum amylase; fluid > serum ULN is raised",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "AF_TG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "200",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "FL_CREA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Compare with serum creatinine; fluid >> serum suggests urine leak",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "FL_AMY",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Compare with serum amylase; > 3 × serum ULN suggests pancreatic leak",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CSF_LACT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "1.1",
+      "high": "2.4",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MIC_ANORG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "No anaerobes isolated",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MIC_GONO",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MIC_DIPH",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not isolated",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MIC_GBS",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not isolated",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MIC_CFW",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "No fungal elements seen",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MIC_PCP",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not seen",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MIC_AURA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "No acid-fast bacilli seen",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MIC_NUGENT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": "3",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MIC_LD",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not seen",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MIC_QBC",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "RUT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "STREPA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MIC_COL",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Intermediate breakpoint ≤ 2 µg/mL (CLSI); see report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MIC_MCIM",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not detected",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HP_LVI",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not identified",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HP_PNI",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not identified",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HP_SYN",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "BMB_LEN",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "15",
+      "high": null,
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "BMB_CELL",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Age-appropriate cellularity",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "BMB_ARCH",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Normal trilineage haematopoiesis",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "BMB_RETIC",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "MF-0",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "BMB_INF",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not seen",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "BMB_IMP",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HP_DECAL",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "RB_GLOM",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "10",
+      "high": null,
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "RB_LM",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "RB_IF",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "LB_STAINS",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "LB_GRADE",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HP_GLEASON",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "DIF_IGG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "DIF_IGA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "DIF_IGM",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "DIF_C3",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "DIF_FIB",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "FNA_BETH",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CY_TZANCK",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Not seen",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_LCA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_CD20",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_CD3",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_CD5",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_CD10",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_BCL2",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_BCL6",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_MUM1",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_CYCD1",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_CD30",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_PANCK",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_CK7",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_CK20",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_TTF1",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_CDX2",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_PAX8",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_GATA3",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_NAPSIN",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_P40",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_AMACR",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_P63",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_HMWCK",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_CD117",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_DOG1",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_CD34",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_MLH1",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_PMS2",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_MSH2",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_MSH6",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_CD99",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_DESMIN",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_MYOG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_SYN",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_CHROMO",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_CALRET",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_WT1",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_D240",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_BEREP4",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_S100",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_HMB45",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_MELANA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IHC_SOX10",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "See report",
       "criticalLow": null,
       "criticalHigh": null,
       "source": "Literature default — verify against kit insert before clinical use",

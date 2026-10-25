@@ -9,14 +9,14 @@ status: stable
 ruling: ruled
 tags: [copilot, ai, goals, money, staff, mobile]
 supersedes: []
-superseded_by: []
+superseded_by: ["0082"]
 sources:
   - { id: copilot-plan, resource: "docs/superpowers/plans/2026-10-10-copilot-PLAN.md", title: "Staff copilot plan v2: goals, milestones, epics" }
   - { id: copilot-roadmap, resource: "docs/superpowers/2026-10-10-ROADMAP-copilot.md", title: "Staff copilot roadmap C0–C8" }
 ---
 # 0064 — Staff copilot goals and the AI spend cap
 
-- **Date:** 2026-10-10   **Status:** Ruled
+- **Date:** 2026-10-10   **Status:** Ruled; lab analyser slip images are excepted from "no patient identifier goes to a model" by 0082
 - **Area:** copilot (kernel/copilot, staff app, web ask boxes)
 
 ## What is ruled (owner, 2026-10-10)

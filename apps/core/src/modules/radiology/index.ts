@@ -104,9 +104,9 @@ export { outsideStudyFor, registerOutsideStudy } from "./outside";
 export type { OutsideStudyRow, RegisterOutsideStudyInput } from "./outside";
 /** 18a-iii T5 — the worker's two chasers. `jobs.ts` imports them through this barrel, as it does the lab's. */
 export {
-  CHASER_ACTOR, UNREAD_REPORT_HOURS, sweepCriticalChaser, sweepUnreadWatchman,
+  CHASER_ACTOR, UNREAD_ESCALATE_HOURS, UNREAD_REPORT_HOURS, sweepCriticalChaser, sweepUnreadWatchman,
 } from "./chasers";
-export type { CriticalChaseResult, UnreadChaseResult } from "./chasers";
+export type { CriticalChaseResult, UnreadChaseResult, UnreadRung } from "./chasers";
 export {
   authorisationOf, encounterPayer, hasBillDecision, imagingFreeAt, linkInvoiceLine, openBillDecisions,
   raiseBillDecision, resolveBillDecision,
@@ -214,3 +214,6 @@ export { assertNotTeleReader, teleBoard, teleReaderOf } from "./tele";
 export type { TeleBoard, TeleQueueRow, TeleReader } from "./tele";
 export { overReadNightPrelim } from "./reports";
 export type { TeleradiologyBody } from "./definitions";
+// DOCTOR DESK DD-0.2 (#626) — the treating doctor's imaging rows: unread released reports and open criticals.
+export { unreadReportsForClinician } from "./clinician-reads";
+export type { ClinicianImagingRow } from "./clinician-reads";

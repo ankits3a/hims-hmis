@@ -260,18 +260,52 @@ compose() {
   fi
 }
 
-# 11i T8 — keep the last $SHA_TAGS_KEPT SHA-tagged images per repository. `docker images` lists
-# newest first, so "everything after the first N" is the tail. `:latest` is never in the list and
-# an image still referenced by a running container refuses to be removed, which is correct.
+# 11i T8 / #913: keep the SHA-tagged images a rollback can need, per repository.
+#
+# WHY NOT "THE FIRST N LINES OF `docker images`" (the old rule, wrong): docker lists by the
+# image's CREATED time, not by when a tag was added. The db image is a fully cached build
+# (postgres + pgbackrest), so every SHA's db image has the same CreatedAt. On that tie the order
+# is arbitrary, and on 2026-10-16 the prune printed "pruned hmis-prod/db:<sha>" for the SHA it had
+# just deployed (five times).
+#
+# So the order comes from a record this script writes, not from docker:
+#   $DEPLOY_DIR/log/sha-tags.history  every SHA this script has tagged, oldest first (appended here)
+#   $DEPLOY_DIR/log/deployed.sha      the SHA the last GREEN deploy left serving (written at the end)
+# KEPT = this deploy's $GIT_SHA + the previous good SHA + the last $SHA_TAGS_KEPT distinct SHAs in
+# the history. A tag the history never recorded predates it. It is kept until the history is
+# $SHA_TAGS_KEPT deep (the first runs after this change), then pruned. `:latest` is never listed,
+# and an image still referenced by a container refuses to be removed, which is correct.
+# apps/core/test/deploy-prune-tags.test.ts runs this function against a stub docker.
 prune_sha_tags() {
-  local repo tag
+  local history="$DEPLOY_DIR/log/sha-tags.history" deployed="$DEPLOY_DIR/log/deployed.sha"
+  local keep depth repo tag sha
+  mkdir -p "$DEPLOY_DIR/log"
+  if [ -n "$GIT_SHA" ] && [ "$GIT_SHA" != "unknown" ]; then
+    printf '%s\n' "$GIT_SHA" >>"$history"
+    # bounded: only the tail is ever read
+    tail -n 200 "$history" >"$history.tmp" && mv "$history.tmp" "$history"
+  fi
+  # newest first, each SHA once
+  keep="$( { [ -f "$history" ] && tac "$history" | awk 'NF && !seen[$1]++ { print $1 }' | head -n "$SHA_TAGS_KEPT"; } || true)"
+  depth="$(printf '%s\n' "$keep" | grep -c . || true)"
+  keep="$keep
+$GIT_SHA"
+  if [ -s "$deployed" ]; then
+    keep="$keep
+$(head -n 1 "$deployed")"
+  fi
   for repo in $IMAGE_REPOS; do
-    docker images --format '{{.Repository}}:{{.Tag}}' "$repo" 2>/dev/null \
-      | grep -v ':latest$' | tail -n "+$((SHA_TAGS_KEPT + 1))" \
-      | while read -r tag; do
-          [ -n "$tag" ] || continue
-          docker rmi "$tag" >/dev/null 2>&1 && note "pruned $tag" || true
-        done
+    while read -r tag; do
+      [ -n "$tag" ] || continue
+      sha="${tag##*:}"
+      [ "$sha" != "latest" ] || continue
+      printf '%s\n' "$keep" | grep -qxF -- "$sha" && continue
+      # not recorded: older than the history, but only provably so once the history is full
+      if [ "$depth" -lt "$SHA_TAGS_KEPT" ] && ! grep -qxF -- "$sha" "$history" 2>/dev/null; then
+        continue
+      fi
+      docker rmi "$tag" >/dev/null 2>&1 && note "pruned $tag" || true
+    done < <(docker images --format '{{.Repository}}:{{.Tag}}' "$repo" 2>/dev/null || true)
   done
 }
 
@@ -594,6 +628,8 @@ install -D -m 0644 "$SRC_DIR/prometheus/alerts-backup.yml" "$DEPLOY_DIR/promethe
 # written down: apps/core/test/deploy-parity.test.ts fails the build if prometheus.yml loads a
 # rule file this block does not install, or if this block installs one nothing loads.
 install -D -m 0644 "$SRC_DIR/prometheus/alerts-meta.yml" "$DEPLOY_DIR/prometheus/alerts-meta.yml"
+# The FOURTH rule file: security-relevant events (see alerts-security.yml). deploy-parity.test.ts pins it.
+install -D -m 0644 "$SRC_DIR/prometheus/alerts-security.yml" "$DEPLOY_DIR/prometheus/alerts-security.yml"
 install -D -m 0644 "$SRC_DIR/postgres-exporter/queries.yml" "$DEPLOY_DIR/postgres-exporter/queries.yml"
 install -D -m 0644 "$SRC_DIR/grafana/provisioning/datasources/prometheus.yml" \
   "$DEPLOY_DIR/grafana/provisioning/datasources/prometheus.yml"
@@ -1318,6 +1354,9 @@ note "screen through the edge: /admin/users serves the SPA document"
 fi
 
 printf '\n==> %s is up: %s\n' "$PROJECT" "$SITE_BASE"
+# #913: what is serving now, read by the next deploy's prune_sha_tags as "the previous good SHA".
+# Written only here, after every gate passed, so a failed deploy never moves it.
+printf '%s\n' "${ROLLBACK_TO:-$GIT_SHA}" >"$DEPLOY_DIR/log/deployed.sha"
 # PLAN 11g / DD1 — SAY THIS EVERY TIME, because the one deploy where it mattered is the one where
 # nobody was told. The API moved under /api/*; any browser still holding a pre-11g bundle requests
 # the bare paths, gets the SPA's index.html where it expects JSON, and fails with an unrecognised

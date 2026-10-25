@@ -118,3 +118,4 @@ export * from "./ordering";
 export * from "./copilot";
 // E1.2 — personal reminders (decision 0064): a person's own reminders, raised on their own bell and phone.
 export * from "./reminders";
+export * from "./doctor-desk"; // DOCTOR DESK DD-0 (#626) — briefs, nudges, agent runs, reads; references auth.users only
