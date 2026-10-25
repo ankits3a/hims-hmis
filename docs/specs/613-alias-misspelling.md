@@ -90,3 +90,7 @@ first see them.
   conflict because the wider pool shows a levothyroxine + liothyronine combination. So the misspelling was
   not the main reason for the refusals: the correctly spelt generics answer 2 of 26 as well. Cost: the
   reviewer used 140,456 input tokens, $0.014 at OpenAI's published price; the chooser used 139,998 input tokens.
+- **Fixed after the evaluation, DECIDED (2026-10-25):** the look-alike rule no longer counts a combination that
+  contains every moiety of the target as a rival through those moieties' own names, so "levothyroxin 50 mcg" is
+  no longer refused because levothyroxine + liothyronine is in the pool (the correctly spelt word never was).
+  One direction only: a single-moiety row still refuses a misspelt term whose target is the combination.

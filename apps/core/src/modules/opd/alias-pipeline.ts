@@ -370,7 +370,15 @@ export function ruleCheck(input: RuleInput): { result: "pass" | AliasRuleCode; l
   const line = lookalikeDistance(words);
   if (!exact) {
     /* A misspelt or shortened name that sits as near another medicine as its target is not an alias of either. */
-    if (others.some((r) => callNames(r).some((n) => { const d = editDistance(words, n); return d <= line && d <= mine; }))) return { result: "lookalike_conflict", lasaGuard: false };
+    /*
+      A combination that CONTAINS every one of the target's moieties is not a look-alike through those
+      moieties' own names: "levothyroxin" is no nearer levothyroxine + liothyronine than it is to
+      levothyroxine, exactly as the correctly spelt word is not (the exact path above skips this check).
+      One direction only: a single-moiety row still conflicts with a combination target.
+    */
+    const rivalNames = (r: AliasCandidateRow): string[] =>
+      target.salts.length > 0 && target.salts.every((s) => r.salts.includes(s)) ? callNames(r).filter((n) => !target.salts.includes(n)) : callNames(r);
+    if (others.some((r) => rivalNames(r).some((n) => { const d = editDistance(words, n); return d <= line && d <= mine; }))) return { result: "lookalike_conflict", lasaGuard: false };
     if (lasaPartner(input.lasa, callNames(target)) !== null) return { result: "lookalike_conflict", lasaGuard: false };
   }
   if (input.rivalShares.some((s) => s > SECOND_TARGET_SHARE)) return { result: "multiple_targets", lasaGuard: false };

@@ -299,6 +299,15 @@ describe("the medicine-alias pipeline (decision 0051)", () => {
       expect(p).toMatchObject({ state: "proposed", medicineId: "m_celin", refusal: "lookalike_conflict" });
     });
 
+    it("a misspelling of the target's own moiety is not a look-alike of a combination that CONTAINS it; the other way round it still is", async () => {
+      const LEVO50 = row("m_levo50", "Levothyroxine sodium 50 mcg oral tablet", { salts: ["levothyroxine"], generic: true });
+      const LEVO_T3 = row("m_levot3", "Thyrocomb (levothyroxine sodium and liothyronine sodium) 50 mcg + 12.5 mcg oral tablet", { salts: ["levothyroxine", "liothyronine"] });
+      const single = ran(await proposeAlias(fakes([LEVO50, LEVO_T3], { pick: "c1" }).deps, "levothyroxin 50 mcg"));
+      expect(single).toMatchObject({ state: "suggestion", medicineId: "m_levo50", ruleResult: "pass" });
+      const combo = ran(await proposeAlias(fakes([LEVO50, LEVO_T3], { pick: "c2" }).deps, "levothyroxin 50 mcg"));
+      expect(combo).toMatchObject({ state: "proposed", medicineId: "m_levot3", refusal: "lookalike_conflict" });
+    });
+
     it("a look-alike PAIR: a misspelling is refused, an exact name passes flagged for the second tap", async () => {
       const lasa: LasaPair[] = [{ a: "metformin", b: "metronidazole", reviewed: false }];
       const wrong = ran(await proposeAlias(fakes([METFORMIN, METRONIDAZOLE], { lasa }).deps, "metformn 500"));
