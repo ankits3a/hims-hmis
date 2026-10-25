@@ -48,6 +48,8 @@ const SURFACE = [
   "ALIAS_WORD_SIMILARITY", // decision 0051 — the trigram line a candidate must reach
   "ALLERGY_CLASSES", // P22 — the allergy class vocabulary the prescribing check reads
   "AWARE_LIST", // PHARMACY STAGE D5 — the cited WHO AWaRe 2023 list, by moiety set and route
+  "DDINTER_LICENCE", // #617 (decision 0052) — the share-alike notice that travels with the DDInter rows
+  "DDINTER_SOURCE", // #617 — the source every DDInter reference row and alert names
   "FORMULARY_EVENTS",
   "FormularyError",
   "MAX_IDS",
@@ -56,6 +58,7 @@ const SURFACE = [
   "MIN_QUERY_CHARS",
   "NDPS_CLASSES", // PHARMACY P6 — the NDPS Act's two classes
   "NDPS_LIST", // PHARMACY P6 — the cited list of controlled moieties
+  "REFERENCE_INTERACTION_LABEL", // #617 — "Reference interaction (DDInter)", the first words of every reference alert
   "REFERENCE_SECTIONS", // #616 (decision 0051) — the FDA label reference sections, in reading order
   "THERAPEUTIC_DUPLICATE_CLASSES", // P23 — the classes the duplicate-therapy notice knows
   "addInteraction",
@@ -79,17 +82,22 @@ const SURFACE = [
   "compositionTwins", // owner 2026-10-04 — a vendor brand the catalogue lacks → the medicine of its composition, one spec at a time
   "counsellingByMedicine", // the counter's reader: what to tell the patient, from reviewed monographs only
   "counsellingOf",
+  "countReferenceInteractions", // #617 — live DDInter reference pairs, for the replay script
   "countSalts",
+  "ddinterReferenceEnabled", // #617 — the kill switch DDINTER_REFERENCE_ENABLED; ships OFF, only "true" turns it on
   "equivalentMedicines",
   "formularyHttpStatus",
   "formularyManifest",
   "getMonograph", // the drug monograph (owner 2026-10-02): reviewed text only, unless the curation door asks
   "getStagingRow",
+  "importDdinterInteractions", // #617 — the DDInter importer (a script's door): Major only, dry run unless applied
   "importReferenceLabels", // #616 — the FDA label importer (a script's door); dry run unless applied
   "isEquivalentMedicine",
   "linkMedicinesToGenerics", // owner 2026-10-02: fills a product's empty generic link from the bundle's pairs
   "listDrugDiseaseFor", // P24 — the rules that reach these moieties and these diagnosis codes
   "listInteractionsAmong",
+  "listInteractionsForCheck", // #617 — what the prescription check reads: curated, plus reference pairs only when switched on
+  "listReferenceInteractionsAmong", // #617 — live reference pairs the curated book does not hold (the replay reads it OFF)
   "matchProducts", // the CDS regimen fill: a composition to one stocked-or-generic product, exact
   "medicineExists",
   "medicineHitById", // decisions 0051/0055 — one catalogue row in the search's own shape, for a learned nickname's medicine
@@ -105,7 +113,8 @@ const SURFACE = [
   "pageMappingWorklist",
   "pageMedicines",
   "pageSalts",
-  "parseComposition", // pure: a vendor's composition column into moieties and strengths
+  "parseComposition",
+  "parseDdinterCsv", // #617 — pure: a DDInter export → its Major pairs and the counts of the rest // pure: a vendor's composition column into moieties and strengths
   "planReferenceImport", // #616 — pure: the coverage choices + label lines → rows, names, missing
   "projectSubstances",
   "referenceForGeneric", // #616 — the US FDA label reference for a generic; reference only, never a dose or a check
@@ -115,6 +124,7 @@ const SURFACE = [
   "rejectStaging",
   "renalDoseFor",
   "renalRulesByMedicine", // #621 — each product's REVIEWED renal bands, for the opd renal dose check
+  "replayReferenceInteractions", // #617 — stored prescriptions replayed with and without the reference layer; reads only
   "resolveDrugTexts",
   "resolveMedicines",
   "restrictedAntimicrobialExists", // PHARMACY STAGE D5 — the office's "no steward appointed" row asks it

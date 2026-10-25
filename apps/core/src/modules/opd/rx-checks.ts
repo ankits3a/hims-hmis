@@ -49,6 +49,8 @@ export type InteractionHit = {
   saltPair: [string, string];
   note: string;
   against: HitAgainst;
+  /** #617 — "ddinter" on a reference-layer hit (its note starts "Reference interaction (DDInter)"); absent when curated. */
+  reference?: "ddinter";
 };
 
 export type DuplicateHit = {
@@ -227,6 +229,7 @@ export function checkInteractions(
             severity: pair.severity, lineIndex: line.lineIndex,
             saltPair: [pair.saltAId, pair.saltBId], note: pair.note,
             against: { scope: "in_rx", lineIndex: other.lineIndex },
+            ...(pair.reference === undefined ? {} : { reference: pair.reference }),
           });
         }
       }
@@ -252,6 +255,7 @@ export function checkInteractions(
                 scope: "prior", prescriptionId: prior.prescriptionId,
                 issuedAt: prior.issuedAt, assumedCurrent: currency.assumedCurrent,
               },
+              ...(pair.reference === undefined ? {} : { reference: pair.reference }),
             });
           }
         }
