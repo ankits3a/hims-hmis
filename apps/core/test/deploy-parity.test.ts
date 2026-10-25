@@ -1287,6 +1287,19 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
       expect(sh).toMatch(/-e LAB_CATALOGUE=standard api node dist\/scripts\/seed-lab-catalogue\.js/);
     });
 
+    it("uat-reset.sh step 4 notes and continues when nobody may seed the lab yet (#776)", () => {
+      const sh = readFileSync(UAT_RESET_SH, "utf8");
+      const step4 = sh.slice(sh.indexOf('step "4/5'), sh.indexOf('step "5/5'));
+      // the catalogue seed acts as a REAL holder of lab.catalogue.manage — the check is not weakened…
+      expect(step4).toMatch(/rp\.permission = 'lab\.catalogue\.manage'/);
+      expect(step4).toMatch(/-e SEED_ACTOR_ID="\$LAB_ACTOR" -e LAB_CATALOGUE=standard api node dist\/scripts\/seed-lab-catalogue\.js/);
+      // …and on a fresh database with no such person the reset says so instead of dying under set -e
+      expect(step4).toMatch(/if \[ -n "\$LAB_ACTOR" \]; then[\s\S]*else[\s\S]*tools\/stage-standup\.mjs[\s\S]*fi/);
+      for (const seed of ["seed-lab-catalogue.js", "seed-lab-demo.js", "seed-aerb-demo.js"]) {
+        expect(step4).toMatch(new RegExp(`${seed.replace(".", "\\.")}[^\\n]*\\\\?\\n?\\s*\\|\\| note`));
+      }
+    });
+
     it("uat-reset.sh runs the DEPLOY'S seed list, in the deploy's order", () => {
       const source = readFileSync(UAT_RESET_SH, "utf8");
       const match = /for seed in ([\s\S]*?); do/.exec(source);
