@@ -110,24 +110,24 @@ describe("spec #974 D6 — housekeeping on the staff app", () => {
       "POST /housekeeping/tasks/t1/work": () => { state = "done"; return { status: 200, body: { id: "t1", state, version: 4 } }; },
     });
     const one = await mount(a.fetcher, <HkTasks />);
-    fireEvent.press(await screen.findByTestId("hk-task-t1"));
-    fireEvent.press(await screen.findByTestId("hk-start"));
+    await fireEvent.press(await screen.findByTestId("hk-task-t1"));
+    await fireEvent.press(await screen.findByTestId("hk-start"));
     await waitFor(() => expect(a.of("POST /tasks/t1/start")).toHaveLength(1));
     expect(a.of("POST /tasks/t1/accept")).toHaveLength(1);
     // Done waits for the scan, every item and the photo.
     const doneButton = await screen.findByTestId("hk-done");
-    fireEvent.press(doneButton);
+    await fireEvent.press(doneButton);
     expect(a.of("POST /housekeeping/tasks/t1/work")).toHaveLength(0);
-    fireEvent.press(screen.getByTestId("hk-scan"));
-    fireEvent.press(await screen.findByTestId("fake-camera"));
+    await fireEvent.press(screen.getByTestId("hk-scan"));
+    await fireEvent.press(await screen.findByTestId("fake-camera"));
     expect(await screen.findByTestId("hk-scanned")).toBeTruthy();
-    fireEvent.press(screen.getByTestId("hk-yes-i1"));
-    fireEvent.press(screen.getByTestId("hk-no-i2"));
-    fireEvent.press(screen.getByTestId("hk-photo"));
+    await fireEvent.press(screen.getByTestId("hk-yes-i1"));
+    await fireEvent.press(screen.getByTestId("hk-no-i2"));
+    await fireEvent.press(screen.getByTestId("hk-photo"));
     await waitFor(() => expect(a.of("POST /housekeeping/tasks/t1/photo")).toHaveLength(1));
     expect(a.of("POST /housekeeping/tasks/t1/photo")[0]!.body).toEqual({ mimeType: "image/jpeg", imageBase64: "UExBQ0U=" });
     expect(await screen.findByTestId("hk-photo-taken")).toBeTruthy();
-    fireEvent.press(screen.getByTestId("hk-done"));
+    await fireEvent.press(screen.getByTestId("hk-done"));
     await waitFor(() => expect(a.of("POST /housekeeping/tasks/t1/work")).toHaveLength(1));
     expect(a.of("POST /housekeeping/tasks/t1/work")[0]!.body).toEqual({
       scan: "a1.area-1.1.sig", answers: [{ itemId: "i1", ok: true }, { itemId: "i2", ok: false }], photoKey: "housekeeping/t1/p1.jpg",
@@ -145,13 +145,13 @@ describe("spec #974 D6 — housekeeping on the staff app", () => {
       "POST /housekeeping/tasks/t9/confirm": () => ({ status: 200, body: { id: "t9", state: "verified", version: 6 } }),
     });
     await mount(n.fetcher, <HkCheck />);
-    fireEvent.press(await screen.findByTestId("hk-check-t9"));
+    await fireEvent.press(await screen.findByTestId("hk-check-t9"));
     expect(await screen.findByTestId("hk-proof-photo")).toBeTruthy();
     // A fail needs a reason: nothing is sent without one.
-    fireEvent.press(screen.getByTestId("hk-fail"));
+    await fireEvent.press(screen.getByTestId("hk-fail"));
     expect(await screen.findByTestId("hk-need-reason")).toBeTruthy();
     expect(n.of("POST /housekeeping/tasks/t9/confirm")).toHaveLength(0);
-    fireEvent.press(screen.getByTestId("hk-pass"));
+    await fireEvent.press(screen.getByTestId("hk-pass"));
     await waitFor(() => expect(n.of("POST /housekeeping/tasks/t9/confirm")).toHaveLength(1));
     expect(n.of("POST /housekeeping/tasks/t9/confirm")[0]!.body).toEqual({ result: "pass" });
     expect(await screen.findByTestId("hk-confirmed")).toBeTruthy();
