@@ -55,7 +55,8 @@ describe("HK-1 housekeeping — rounds, rota, proof, confirm, door requests (#97
 
   /** The worker's road with full proof: accept, start, scan, every item answered, a photo when asked. */
   async function work(task: TaskRow, by: Actor, token: string, itemIds: string[], withPhoto = true): Promise<TaskRow> {
-    if (task.state !== "accepted" && task.state !== "in_progress") await acceptTask(db, by, { taskId: task.id }, now);
+    const state = (await getTask(db, task.id))!.state;
+    if (state !== "accepted" && state !== "in_progress") await acceptTask(db, by, { taskId: task.id }, now);
     if ((await getTask(db, task.id))!.state === "accepted") await startTask(db, by, { taskId: task.id }, now);
     return finishWork(db, w.key, by, {
       taskId: task.id, scan: token, answers: itemIds.map((itemId) => ({ itemId, ok: true })),

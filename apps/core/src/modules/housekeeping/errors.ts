@@ -14,7 +14,16 @@ export class HousekeepingRefusal extends Error {
 export function housekeepingHttpStatus(code: HousekeepingRefusalCode): number {
   switch (code) {
     case "terminal_needs_supervisor": return 403;
-    case "not_a_clean": return 404;
+    case "not_a_clean":
+    case "unknown_area":
+    case "unknown_checklist":
+    case "unknown_contractor":
+    case "unknown_rota": return 404;
+    case "bad_qr": return 401;
+    case "too_many_requests": return 429;
+    case "contractor_exists":
+    case "rota_published":
+    case "work_missing": return 409;
     default: return 400;
   }
 }

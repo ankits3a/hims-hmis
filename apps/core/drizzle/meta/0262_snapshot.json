@@ -1,5 +1,5 @@
 {
-  "id": "86292a57-b107-4255-b556-9152b188c4fc",
+  "id": "2425268b-21f3-46a1-8ab5-814eaf89d26e",
   "prevId": "2c2bc5ee-ab24-46c6-b8ed-0918a1b1c300",
   "version": "7",
   "dialect": "postgresql",
@@ -70067,6 +70067,13 @@
         },
         "bed_ids": {
           "name": "bed_ids",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "floor_ids": {
+          "name": "floor_ids",
           "type": "text[]",
           "primaryKey": false,
           "notNull": true,

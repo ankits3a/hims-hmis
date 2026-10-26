@@ -20,4 +20,4 @@ export { dutyCovering, eligibilityOf, onDutyForSkill, openLoad, pickWorker, pool
 export type { OnDutyWorker } from "./dispatch";
 export { SWEEP_ACTOR, SWEEP_BATCH, nudgeTask, sweepTasks } from "./sweep";
 export type { SweepResult } from "./sweep";
-export { findTasks, getTask, myTasks, taskBoard } from "./reads";
+export { findTasks, getTask, myTasks, rejectionsOf, taskBoard } from "./reads";

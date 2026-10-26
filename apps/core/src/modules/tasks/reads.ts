@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
-import { tasks, users } from "../../kernel/db/schema";
+import { taskEvents, tasks, users } from "../../kernel/db/schema";
 import { usersHoldingRole } from "../../kernel/workflow/roles";
 import { allSkills, skillRoles, taskKind } from "./kinds";
 import { eligibilityOf, onDutyForSkill, openLoad } from "./dispatch";
@@ -181,4 +181,21 @@ export async function findTasks(
 
 export async function getTask(exec: Db | Tx, taskId: string): Promise<TaskRow | null> {
   return (await (exec as Db).select().from(tasks).where(eq(tasks.id, taskId)))[0] ?? null;
+}
+
+/**
+ * HK-1 (#973) — failed checks per task: how many (`rejected` events) and the newest reason. Tasks never rejected are
+ * absent from the map.
+ */
+export async function rejectionsOf(exec: Db | Tx, taskIds: readonly string[]): Promise<Map<string, { count: number; lastReason: string | null }>> {
+  const out = new Map<string, { count: number; lastReason: string | null }>();
+  if (taskIds.length === 0) return out;
+  const rows = await (exec as Db).select({ taskId: taskEvents.taskId, seq: taskEvents.seq, detail: taskEvents.detail }).from(taskEvents)
+    .where(and(inArray(taskEvents.taskId, [...taskIds]), eq(taskEvents.act, "rejected"))).orderBy(asc(taskEvents.seq));
+  for (const r of rows) {
+    const reason = typeof r.detail.reason === "string" ? r.detail.reason : null;
+    const cur = out.get(r.taskId);
+    out.set(r.taskId, { count: (cur?.count ?? 0) + 1, lastReason: reason });
+  }
+  return out;
 }

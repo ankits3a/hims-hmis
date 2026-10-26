@@ -111,6 +111,8 @@ export const hkRotaPlaces = pgTable(
     floorId: text("floor_id").references(() => resources.id),
     areaIds: text("area_ids").array().notNull().default(sql`'{}'::text[]`),
     bedIds: text("bed_ids").array().notNull().default(sql`'{}'::text[]`),
+    /** The floors this place touches, resolved when the rota is saved: the floor team of a discharge clean. */
+    floorIds: text("floor_ids").array().notNull().default(sql`'{}'::text[]`),
   },
   (t) => [
     primaryKey({ columns: [t.rotaId, t.userId] }),

@@ -50,6 +50,7 @@ CREATE TABLE "hk_rota_places" (
 	"floor_id" text,
 	"area_ids" text[] DEFAULT '{}'::text[] NOT NULL,
 	"bed_ids" text[] DEFAULT '{}'::text[] NOT NULL,
+	"floor_ids" text[] DEFAULT '{}'::text[] NOT NULL,
 	CONSTRAINT "hk_rota_places_rota_id_user_id_pk" PRIMARY KEY("rota_id","user_id"),
 	CONSTRAINT "hk_rota_places_mode_ck" CHECK ("hk_rota_places"."mode" in ('floor', 'route', 'beds')),
 	CONSTRAINT "hk_rota_places_shape_ck" CHECK (("hk_rota_places"."mode" = 'floor') = ("hk_rota_places"."floor_id" is not null))
