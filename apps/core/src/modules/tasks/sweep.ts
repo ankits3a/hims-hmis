@@ -1,10 +1,10 @@
-import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lte, notInArray, or, sql } from "drizzle-orm";
 import { absentUserIds } from "../roster";
 import { raiseNotice } from "../../kernel/alerts/notices";
 import { resources, taskEvents, tasks } from "../../kernel/db/schema";
 import { usersHoldingRole } from "../../kernel/workflow/roles";
 import { DEFAULT_LADDER_MIN, allSkills, taskKind, taskKinds } from "./kinds";
-import { dutyCovering, onDutyForSkill, pickWorker } from "./dispatch";
+import { dutyCovering, eligibilityOf, onDutyForSkill, pickWorker } from "./dispatch";
 import { appendTaskEvent, dispatchInto, eventSource, lockTask, updateTaskRow } from "./engine";
 import { TaskError } from "./errors";
 import { TASK_NUDGE_WINDOW_MIN, taskRefInput } from "@hmis/contracts";
@@ -128,7 +128,7 @@ async function passNotAccepted(db: Db, now: Date, out: SweepResult): Promise<voi
       const moved = await tx(db, async (t) => {
         const row = await lockTask(t, seen.id);
         if (row.state !== "assigned" || row.assignedAt === null || row.assignedAt.getTime() + windowMs > now.getTime()) return false;
-        const next = await pickWorker(t, row.skill, now, row.assigneeId === null ? [] : [row.assigneeId]);
+        const next = await pickWorker(t, row.skill, now, row.assigneeId === null ? [] : [row.assigneeId], await eligibilityOf(t, row, now));
         if (next === null) {
           await t.update(tasks).set({ assignedAt: now }).where(eq(tasks.id, row.id));
           return false;
@@ -149,7 +149,13 @@ async function passPool(db: Db, now: Date, out: SweepResult): Promise<void> {
   const staffed: string[] = [];
   for (const skill of allSkills()) if ((await onDutyForSkill(db, skill, now)).length > 0) staffed.push(skill);
   if (staffed.length === 0) return;
-  const pool = await db.select().from(tasks).where(and(eq(tasks.state, "created"), isNull(tasks.assigneeId), inArray(tasks.skill, staffed)))
+  // HK-1 (#973): a kind holding its new tasks in the pool for a group is skipped, so the batch is never filled by them.
+  const held: string[] = [];
+  for (const k of taskKinds()) if (k.poolOnly !== undefined && await k.poolOnly(db, now)) held.push(k.kind);
+  const pool = await db.select().from(tasks).where(and(
+    eq(tasks.state, "created"), isNull(tasks.assigneeId), inArray(tasks.skill, staffed),
+    ...(held.length === 0 ? [] : [notInArray(tasks.kind, held)]),
+  ))
     .orderBy(asc(tasks.dueAt)).limit(SWEEP_BATCH);
   for (const seen of pool) {
     try {

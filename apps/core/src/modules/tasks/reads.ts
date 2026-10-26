@@ -2,7 +2,7 @@ import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { tasks, users } from "../../kernel/db/schema";
 import { usersHoldingRole } from "../../kernel/workflow/roles";
 import { allSkills, skillRoles, taskKind } from "./kinds";
-import { onDutyForSkill, openLoad } from "./dispatch";
+import { eligibilityOf, onDutyForSkill, openLoad } from "./dispatch";
 import type { BoardFloor, BoardWorker, MyTasksView, TaskBoardView, TaskCard, TaskPriority, TaskProofKind, TaskState } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { TaskRow } from "./engine";
@@ -69,6 +69,10 @@ async function cards(exec: Db | Tx, rows: readonly TaskRow[], opts: { withNote: 
 const urgentFirst = (a: TaskRow, b: TaskRow): number =>
   (PRIORITY_RANK[a.priority]! - PRIORITY_RANK[b.priority]!) || (a.dueAt.getTime() - b.dueAt.getTime());
 
+/** The pool rows a worker's list shows, and how many are read to find them once eligibility narrows the pool. */
+const POOL_SHOWN = 20;
+const POOL_SCAN = 200;
+
 /** My held tasks, then the pool tasks of the skills my roles carry (Accept takes one from the pool). */
 export async function myTasks(db: Db, userId: string, now: Date = new Date()): Promise<MyTasksView> {
   const mine = (await db.select().from(tasks).where(and(
@@ -83,9 +87,16 @@ export async function myTasks(db: Db, userId: string, now: Date = new Date()): P
   }
   // Ordered by priority THEN due time in the database, before the limit: a STAT task is never cut off
   // behind twenty earlier routine ones.
-  const pool = mySkills.length === 0 ? [] : await db.select().from(tasks).where(and(
+  const candidates = mySkills.length === 0 ? [] : await db.select().from(tasks).where(and(
     eq(tasks.state, "created"), isNull(tasks.assigneeId), inArray(tasks.skill, mySkills),
-  )).orderBy(PRIORITY_SQL, asc(tasks.dueAt)).limit(20);
+  )).orderBy(PRIORITY_SQL, asc(tasks.dueAt)).limit(POOL_SCAN);
+  // HK-1 (#973): a kind with an eligibility shows its pool task only to the people who may take it.
+  const pool: TaskRow[] = [];
+  for (const r of candidates) {
+    if (pool.length >= POOL_SHOWN) break;
+    const eligible = await eligibilityOf(db, r, now);
+    if (eligible === null || eligible.userIds.includes(userId)) pool.push(r);
+  }
 
   return { serverNow: now.toISOString(), mine: await cards(db, mine, { withNote: true }), pool: await cards(db, pool, { withNote: true }) };
 }
