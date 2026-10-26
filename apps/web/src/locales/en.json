@@ -4084,7 +4084,7 @@
       "onTime": "On time",
       "late": "Late",
       "missed": "Missed",
-      "tat": "Turnaround min, median / 90th",
+      "tat": "Clean time, min (median / 90th)",
       "firstPass": "First-time pass",
       "inspectionScore": "Inspection score"
     },

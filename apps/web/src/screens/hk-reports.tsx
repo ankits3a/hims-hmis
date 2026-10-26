@@ -54,7 +54,7 @@ function Daily(): React.ReactElement {
   );
   return (
     <section aria-label={t("housekeeping.reports.tab.daily")}>
-      <label>{t("housekeeping.reports.floor")}{" "}
+      <label className="hk-pick" style={{ display: "flex", flexDirection: "column", gap: 4 }}>{t("housekeeping.reports.floor")}
         <select value={chosen} onChange={(e) => setFloor(e.target.value)}>
           {(floors.data?.floors ?? []).map((f) => <option key={f.floorId} value={f.floorId}>{f.floorName}</option>)}
         </select>
@@ -145,13 +145,13 @@ export function InspectSheet({ inspection, onClose }: { inspection: HkInspection
     );
   };
   return (
-    <div className="hk-sheet" data-testid="hk-inspect">
+    <div className="hk-sheet hk-inspect" data-testid="hk-inspect">
       <b>{inspection.areaName}</b>
-      <label className={scan === "" ? "hk-btn pri" : "hk-btn"}>
+      <label className={scan === "" ? "tk-act" : "hk-ghost"} style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
         {scan === "" ? t("housekeeping.work.scan") : t("housekeeping.work.scanned")}
         <input type="file" accept="image/*" capture="environment" hidden onChange={(e) => void readQr(e.target.files?.[0])} />
       </label>
-      <input aria-label={t("housekeeping.work.code")} value={scan} onChange={(e) => setScan(e.target.value)} autoComplete="off" placeholder={t("housekeeping.work.codePlaceholder")} />
+      <div className="hk-scan"><input aria-label={t("housekeeping.work.code")} value={scan} onChange={(e) => setScan(e.target.value)} autoComplete="off" placeholder={t("housekeeping.work.codePlaceholder")} /></div>
       <div className="hk-list">
         {HK_INSPECTION_ITEM_IDS.map((id) => (
           <div key={id} className="hk-ck">
@@ -164,7 +164,7 @@ export function InspectSheet({ inspection, onClose }: { inspection: HkInspection
         ))}
       </div>
       <div className="sub">{t("housekeeping.inspect.passMark", { pct: HK_INSPECT_PASS_PCT, yes, total: HK_INSPECTION_ITEM_IDS.length })}</div>
-      <label className="hk-btn">
+      <label className="hk-ghost" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
         {photoKey === null ? t("housekeeping.work.photo") : t("housekeeping.work.photoTaken")}
         <input type="file" accept="image/*" capture="environment" hidden onChange={(e) => void takePhoto(e.target.files?.[0])} data-testid="hk-inspect-photo" />
       </label>
@@ -181,7 +181,7 @@ export function InspectSheet({ inspection, onClose }: { inspection: HkInspection
 function MonthPick({ month, onChange }: { month: string; onChange: (m: string) => void }): React.ReactElement {
   const { t } = useTranslation();
   return (
-    <label>{t("housekeeping.reports.month")}{" "}
+    <label className="hk-pick" style={{ display: "flex", flexDirection: "column", gap: 4 }}>{t("housekeeping.reports.month")}
       <input type="month" value={month} onChange={(e) => { if (/^\d{4}-\d{2}$/.test(e.target.value)) onChange(e.target.value); }} />
     </label>
   );
@@ -223,7 +223,7 @@ function Contractors(): React.ReactElement {
     <section aria-label={t("housekeeping.reports.tab.contractors")}>
       <MonthPick month={month} onChange={setMonth} />
       <p className="sub">{t("housekeeping.reports.reportOnly")}</p>
-      <table className="hk-table" data-testid="hk-sla">
+      <table className="hk-table hk-sla-wide" data-testid="hk-sla">
         <thead>
           <tr>
             <th>{t("housekeeping.reports.company")}</th><th>{t("housekeeping.reports.onTime")}</th><th>{t("housekeeping.reports.late")}</th>
@@ -243,6 +243,21 @@ function Contractors(): React.ReactElement {
           ))}
         </tbody>
       </table>
+      <div className="hk-sla-cards" data-testid="hk-sla-cards">
+        {(q.data?.rows ?? []).map((r) => (
+          <div key={r.contractorId ?? "in-house"} className="hk-sla-card">
+            <b>{r.inHouse ? t("housekeeping.setup.inHouse") : r.company}</b>
+            <dl>
+              <dt>{t("housekeeping.reports.onTime")}</dt><dd>{r.rounds.onTime}</dd>
+              <dt>{t("housekeeping.reports.late")}</dt><dd>{r.rounds.late}</dd>
+              <dt>{t("housekeeping.reports.missed")}</dt><dd>{r.rounds.missed}</dd>
+              <dt>{t("housekeeping.reports.tat")}</dt><dd>{dash(r.turnaround.medianMin)} / {dash(r.turnaround.p90Min)}</dd>
+              <dt>{t("housekeeping.reports.firstPass")}</dt><dd>{dash(r.firstPass.ratePct, " %")}</dd>
+              <dt>{t("housekeeping.reports.inspectionScore")}</dt><dd>{dash(r.inspections.avgScorePct, " %")}</dd>
+            </dl>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
