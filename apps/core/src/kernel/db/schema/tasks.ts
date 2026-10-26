@@ -89,7 +89,7 @@ export const taskEvents = pgTable(
   (t) => [
     primaryKey({ columns: [t.taskId, t.seq] }),
     index("task_events_at_idx").on(t.at),
-    check("task_events_act_ck", sql`${t.act} in ('raised', 'merged', 'assigned', 'redispatched', 'accepted', 'started', 'done', 'verified', 'cancelled', 'returned', 'escalated')`),
+    check("task_events_act_ck", sql`${t.act} in ('raised', 'merged', 'assigned', 'redispatched', 'accepted', 'started', 'done', 'verified', 'cancelled', 'returned', 'escalated', 'rejected')`),
     check("task_events_source_ck", sql`${t.source} in ('person', 'device', 'copilot_draft', 'agent', 'import', 'system')`),
   ],
 );

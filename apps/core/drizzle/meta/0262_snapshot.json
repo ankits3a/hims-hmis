@@ -1,6 +1,6 @@
 {
-  "id": "2c2bc5ee-ab24-46c6-b8ed-0918a1b1c300",
-  "prevId": "3f70264f-5f83-4522-ae49-158aa3e2fae2",
+  "id": "86292a57-b107-4255-b556-9152b188c4fc",
+  "prevId": "2c2bc5ee-ab24-46c6-b8ed-0918a1b1c300",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -63083,7 +63083,7 @@
       "checkConstraints": {
         "task_events_act_ck": {
           "name": "task_events_act_ck",
-          "value": "\"task_events\".\"act\" in ('raised', 'merged', 'assigned', 'redispatched', 'accepted', 'started', 'done', 'verified', 'cancelled', 'returned', 'escalated')"
+          "value": "\"task_events\".\"act\" in ('raised', 'merged', 'assigned', 'redispatched', 'accepted', 'started', 'done', 'verified', 'cancelled', 'returned', 'escalated', 'rejected')"
         },
         "task_events_source_ck": {
           "name": "task_events_source_ck",
@@ -69625,6 +69625,993 @@
         "maintenance_tickets_cancel_ck": {
           "name": "maintenance_tickets_cancel_ck",
           "value": "\"maintenance_tickets\".\"state\" <> 'cancelled' or char_length(\"maintenance_tickets\".\"cancel_reason\") > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.hk_areas": {
+      "name": "hk_areas",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "resource_id": {
+          "name": "resource_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "area_class": {
+          "name": "area_class",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "floor_id": {
+          "name": "floor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "checklist_id": {
+          "name": "checklist_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "photo_needed": {
+          "name": "photo_needed",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "qr_version": {
+          "name": "qr_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "hk_areas_resource_ux": {
+          "name": "hk_areas_resource_ux",
+          "columns": [
+            {
+              "expression": "resource_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "hk_areas_floor_idx": {
+          "name": "hk_areas_floor_idx",
+          "columns": [
+            {
+              "expression": "floor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "hk_areas_resource_id_resources_id_fk": {
+          "name": "hk_areas_resource_id_resources_id_fk",
+          "tableFrom": "hk_areas",
+          "tableTo": "resources",
+          "columnsFrom": [
+            "resource_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "hk_areas_floor_id_resources_id_fk": {
+          "name": "hk_areas_floor_id_resources_id_fk",
+          "tableFrom": "hk_areas",
+          "tableTo": "resources",
+          "columnsFrom": [
+            "floor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "hk_areas_checklist_id_hk_checklists_id_fk": {
+          "name": "hk_areas_checklist_id_hk_checklists_id_fk",
+          "tableFrom": "hk_areas",
+          "tableTo": "hk_checklists",
+          "columnsFrom": [
+            "checklist_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "hk_areas_class_ck": {
+          "name": "hk_areas_class_ck",
+          "value": "\"hk_areas\".\"area_class\" in ('A', 'B', 'C_toilet', 'C_public', 'D')"
+        },
+        "hk_areas_qr_version_ck": {
+          "name": "hk_areas_qr_version_ck",
+          "value": "\"hk_areas\".\"qr_version\" >= 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.hk_checklists": {
+      "name": "hk_checklists",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "lineage_id": {
+          "name": "lineage_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "items": {
+          "name": "items",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "hk_checklists_lineage_version_ux": {
+          "name": "hk_checklists_lineage_version_ux",
+          "columns": [
+            {
+              "expression": "lineage_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "version",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "hk_checklists_version_ck": {
+          "name": "hk_checklists_version_ck",
+          "value": "\"hk_checklists\".\"version\" >= 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.hk_contractors": {
+      "name": "hk_contractors",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "hk_contractors_name_ux": {
+          "name": "hk_contractors_name_ux",
+          "columns": [
+            {
+              "expression": "lower(\"name\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.hk_door_requests": {
+      "name": "hk_door_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "area_id": {
+          "name": "area_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "need": {
+          "name": "need",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "task_id": {
+          "name": "task_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "address_hash": {
+          "name": "address_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "hk_door_requests_area_idx": {
+          "name": "hk_door_requests_area_idx",
+          "columns": [
+            {
+              "expression": "area_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "hk_door_requests_area_id_hk_areas_id_fk": {
+          "name": "hk_door_requests_area_id_hk_areas_id_fk",
+          "tableFrom": "hk_door_requests",
+          "tableTo": "hk_areas",
+          "columnsFrom": [
+            "area_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "hk_door_requests_task_id_tasks_id_fk": {
+          "name": "hk_door_requests_task_id_tasks_id_fk",
+          "tableFrom": "hk_door_requests",
+          "tableTo": "tasks",
+          "columnsFrom": [
+            "task_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "hk_door_requests_need_ck": {
+          "name": "hk_door_requests_need_ck",
+          "value": "\"hk_door_requests\".\"need\" in ('clean', 'toilet', 'spill', 'bin')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.hk_rota_places": {
+      "name": "hk_rota_places",
+      "schema": "",
+      "columns": {
+        "rota_id": {
+          "name": "rota_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mode": {
+          "name": "mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "floor_id": {
+          "name": "floor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "area_ids": {
+          "name": "area_ids",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "bed_ids": {
+          "name": "bed_ids",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "hk_rota_places_rota_id_hk_rotas_id_fk": {
+          "name": "hk_rota_places_rota_id_hk_rotas_id_fk",
+          "tableFrom": "hk_rota_places",
+          "tableTo": "hk_rotas",
+          "columnsFrom": [
+            "rota_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "hk_rota_places_user_id_users_id_fk": {
+          "name": "hk_rota_places_user_id_users_id_fk",
+          "tableFrom": "hk_rota_places",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "hk_rota_places_floor_id_resources_id_fk": {
+          "name": "hk_rota_places_floor_id_resources_id_fk",
+          "tableFrom": "hk_rota_places",
+          "tableTo": "resources",
+          "columnsFrom": [
+            "floor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "hk_rota_places_rota_id_user_id_pk": {
+          "name": "hk_rota_places_rota_id_user_id_pk",
+          "columns": [
+            "rota_id",
+            "user_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "hk_rota_places_mode_ck": {
+          "name": "hk_rota_places_mode_ck",
+          "value": "\"hk_rota_places\".\"mode\" in ('floor', 'route', 'beds')"
+        },
+        "hk_rota_places_shape_ck": {
+          "name": "hk_rota_places_shape_ck",
+          "value": "(\"hk_rota_places\".\"mode\" = 'floor') = (\"hk_rota_places\".\"floor_id\" is not null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.hk_rotas": {
+      "name": "hk_rotas",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "shift_starts_at": {
+          "name": "shift_starts_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "shift_ends_at": {
+          "name": "shift_ends_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "published_by": {
+          "name": "published_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "published_at": {
+          "name": "published_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "hk_rotas_shift_idx": {
+          "name": "hk_rotas_shift_idx",
+          "columns": [
+            {
+              "expression": "shift_starts_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "hk_rotas_status_ck": {
+          "name": "hk_rotas_status_ck",
+          "value": "\"hk_rotas\".\"status\" in ('draft', 'published', 'superseded')"
+        },
+        "hk_rotas_window_ck": {
+          "name": "hk_rotas_window_ck",
+          "value": "\"hk_rotas\".\"shift_ends_at\" > \"hk_rotas\".\"shift_starts_at\""
+        },
+        "hk_rotas_published_ck": {
+          "name": "hk_rotas_published_ck",
+          "value": "\"hk_rotas\".\"status\" = 'draft' or \"hk_rotas\".\"published_at\" is not null"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.hk_rounds": {
+      "name": "hk_rounds",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "area_id": {
+          "name": "area_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slot_start": {
+          "name": "slot_start",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "due_at": {
+          "name": "due_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "task_id": {
+          "name": "task_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'due'"
+        },
+        "missed_at": {
+          "name": "missed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "hk_rounds_area_slot_ux": {
+          "name": "hk_rounds_area_slot_ux",
+          "columns": [
+            {
+              "expression": "area_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "slot_start",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "hk_rounds_task_ux": {
+          "name": "hk_rounds_task_ux",
+          "columns": [
+            {
+              "expression": "task_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "hk_rounds_due_idx": {
+          "name": "hk_rounds_due_idx",
+          "columns": [
+            {
+              "expression": "due_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"hk_rounds\".\"status\" = 'due'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "hk_rounds_missed_idx": {
+          "name": "hk_rounds_missed_idx",
+          "columns": [
+            {
+              "expression": "missed_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"hk_rounds\".\"status\" = 'missed'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "hk_rounds_area_id_hk_areas_id_fk": {
+          "name": "hk_rounds_area_id_hk_areas_id_fk",
+          "tableFrom": "hk_rounds",
+          "tableTo": "hk_areas",
+          "columnsFrom": [
+            "area_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "hk_rounds_task_id_tasks_id_fk": {
+          "name": "hk_rounds_task_id_tasks_id_fk",
+          "tableFrom": "hk_rounds",
+          "tableTo": "tasks",
+          "columnsFrom": [
+            "task_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "hk_rounds_status_ck": {
+          "name": "hk_rounds_status_ck",
+          "value": "\"hk_rounds\".\"status\" in ('due', 'done', 'missed')"
+        },
+        "hk_rounds_missed_ck": {
+          "name": "hk_rounds_missed_ck",
+          "value": "\"hk_rounds\".\"status\" = 'done' or ((\"hk_rounds\".\"status\" = 'missed') = (\"hk_rounds\".\"missed_at\" is not null))"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.hk_staff": {
+      "name": "hk_staff",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "contractor_id": {
+          "name": "contractor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "skills": {
+          "name": "skills",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "hk_staff_user_id_users_id_fk": {
+          "name": "hk_staff_user_id_users_id_fk",
+          "tableFrom": "hk_staff",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "hk_staff_contractor_id_hk_contractors_id_fk": {
+          "name": "hk_staff_contractor_id_hk_contractors_id_fk",
+          "tableFrom": "hk_staff",
+          "tableTo": "hk_contractors",
+          "columnsFrom": [
+            "contractor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "hk_staff_skills_ck": {
+          "name": "hk_staff_skills_ck",
+          "value": "\"hk_staff\".\"skills\" <@ array['critical', 'spill', 'terminal']::text[]"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.hk_work": {
+      "name": "hk_work",
+      "schema": "",
+      "columns": {
+        "task_id": {
+          "name": "task_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attempt": {
+          "name": "attempt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "done_by": {
+          "name": "done_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "company": {
+          "name": "company",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "contractor_id": {
+          "name": "contractor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scan_area_id": {
+          "name": "scan_area_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "qr_version": {
+          "name": "qr_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scanned_at": {
+          "name": "scanned_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "checklist_id": {
+          "name": "checklist_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "answers": {
+          "name": "answers",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "photo_key": {
+          "name": "photo_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "hk_work_task_id_tasks_id_fk": {
+          "name": "hk_work_task_id_tasks_id_fk",
+          "tableFrom": "hk_work",
+          "tableTo": "tasks",
+          "columnsFrom": [
+            "task_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "hk_work_contractor_id_hk_contractors_id_fk": {
+          "name": "hk_work_contractor_id_hk_contractors_id_fk",
+          "tableFrom": "hk_work",
+          "tableTo": "hk_contractors",
+          "columnsFrom": [
+            "contractor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "hk_work_scan_area_id_hk_areas_id_fk": {
+          "name": "hk_work_scan_area_id_hk_areas_id_fk",
+          "tableFrom": "hk_work",
+          "tableTo": "hk_areas",
+          "columnsFrom": [
+            "scan_area_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "hk_work_checklist_id_hk_checklists_id_fk": {
+          "name": "hk_work_checklist_id_hk_checklists_id_fk",
+          "tableFrom": "hk_work",
+          "tableTo": "hk_checklists",
+          "columnsFrom": [
+            "checklist_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "hk_work_task_id_attempt_pk": {
+          "name": "hk_work_task_id_attempt_pk",
+          "columns": [
+            "task_id",
+            "attempt"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "hk_work_attempt_ck": {
+          "name": "hk_work_attempt_ck",
+          "value": "\"hk_work\".\"attempt\" >= 1"
         }
       },
       "isRLSEnabled": false

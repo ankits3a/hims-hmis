@@ -143,6 +143,10 @@ export * from "./linen";
 // E1.5 MAINTENANCE (issue #722, decision 0072) — repair tickets and their append-only history. References
 // `resources` (the place), `ipd_bed_blocks` (the bed's block) and `tasks` (the repair task).
 export * from "./maintenance";
+// HK-1 HOUSEKEEPING (issue #973, decision 0086) — areas and their door QR, checklists, contractors and staff, the shift
+// rota, rounds, work proof and door requests. References `resources`, `tasks` and `users`; nothing reads it but
+// `modules/housekeeping`.
+export * from "./housekeeping";
 // E1.3 (#720) — attendant and visitor passes. References `ipd_admissions` and `resources` (the ward).
 export * from "./passes";
 // E1.6 TRANSPORT (issue #723, decision 0072) — a transport task's extra facts (mode, oxygen, escort, handover).
