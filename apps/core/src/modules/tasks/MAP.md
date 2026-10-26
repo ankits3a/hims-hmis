@@ -95,6 +95,17 @@ row has its own try/catch, so one failure stops nothing else.
   code + sentence + fix of the owning module) refuses the act, and the tasks controller answers it like a `TaskError`.
   Transport puts its escort, oxygen and wristband rules there, so the generic `/tasks` doors enforce them too.
   A refusal may carry `afterRefusal(db)`: run in its own transaction after the act rolls back (a record that must survive).
+- **HK-1 (#973) — a failed check.** `rejectTask` (reason required) shares `requireChecker` with `verifyTask`: done,
+  a check step, the kind's permission, and the checker did NO round of the work — `verifier_is_doer` reads every `done`
+  event, not only `done_by`, because a rejection clears the done record and reopens the task. The task goes back to the
+  doer while they are on duty (`assigned`), else to the pool and `dispatchInto` skipping them. Event act `rejected`
+  (`detail.reason`, `from`, `to`); its count is the number of failed checks.
+- **HK-1 (#973) — a kind's eligibility.** `eligible(exec, task, now)` → `{ userIds, preferred? }` or null (anyone with
+  the skill). It narrows `pickWorker` (preferred group first), the pool a worker sees in `myTasks` (scans
+  `POOL_SCAN` rows to show `POOL_SHOWN`) and `acceptTask` from the pool (`not_your_area`); a task assigned to you is
+  yours, and a supervisor's `assignTask` is never narrowed. `poolOnly(exec, now)` true → `dispatchInto` leaves a new
+  task in the pool for its group, and `sweepTasks`' pool pass skips that kind in SQL (a batch is never filled by rows
+  it would skip). Housekeeping supplies both from its published rota.
 - `nudgeTask` (sweep.ts): a person escalates an open task now — an `escalated` event with `detail.nudge`, a
   `task.nudge` bell to the kind's escalation role and the holder; the ladder's rung is not moved; a second nudge
   within `TASK_NUDGE_WINDOW_MIN` (5) is refused `nudged_recently`.
@@ -115,4 +126,5 @@ row has its own try/catch, so one failure stops nothing else.
 - housekeeping (E1.4): four kinds, `raiseTask`, `cancelTask`, `verifyTask`, `nudgeTask`, `findTasks`, `taskBoard`.
 - maintenance (E1.5): two kinds (`repair_general`, `repair_biomedical`) with `onDone` + `onVerified`, `raiseTask` with
   `sourceRef` (one task per ticket), `verifyTask`, `cancelTask`, `getTask`.
+- housekeeping (HK-1, #973): `rejectTask`, `eligible` and `poolOnly` on its kinds.
 - transport (E1.6): three kinds with `beforeStart` / `beforeDone`, `raiseTask`, `getTask`, `taskBoard`, `TaskKindRefusal`.

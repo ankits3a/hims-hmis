@@ -36,6 +36,9 @@ import { DietConsults } from "./screens/diet-consults";
 import { DietKitchen } from "./screens/diet-kitchen";
 import { DietWard } from "./screens/diet-ward";
 import { HousekeepingBoard } from "./screens/housekeeping-board";
+import { HkRota } from "./screens/hk-rota";
+import { HkSetup } from "./screens/hk-setup";
+import { DoorRequest } from "./screens/door-request";
 import { MaintenanceBoard } from "./screens/maintenance-board";
 import { TransportBoard } from "./screens/transport-board";
 import { TransportRequest } from "./screens/transport-request";
@@ -365,6 +368,9 @@ const NAV: readonly NavEntry[] = [
   { to: "/linen/handle", label: "nav.linenHandle", permission: "linen.handle", group: "services" },
   { to: "/linen", label: "nav.linenBoard", permission: "linen.view", group: "services", anyOf: ["linen.manage"] },
   { to: "/housekeeping", label: "nav.housekeeping", permission: "housekeeping.view", group: "services" },
+  // HK-1 (#973) — the rota and setup pages; paths and permissions match `housekeepingManifest.menu`.
+  { to: "/housekeeping/rota", label: "nav.housekeepingRota", permission: "housekeeping.rota.manage", group: "services" },
+  { to: "/housekeeping/setup", label: "nav.housekeepingSetup", permission: "housekeeping.setup.manage", group: "services" },
   { to: "/maintenance", label: "nav.maintenance", permission: "maintenance.view", group: "services" },
   // E1.6 TRANSPORT (issue #723) — the supervisor's board (`transportManifest.menu`) and the request sheet.
   { to: "/transport", label: "nav.transport", permission: "transport.manage", group: "services" },
@@ -810,6 +816,12 @@ const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login"
  * session cookie are its only credentials; the API checks both on every call.
  */
 const familyRoute = createRoute({ getParentRoute: () => rootRoute, path: "/family", component: () => <FamilyPage /> });
+
+/**
+ * HK-1 (#973) — THE DOOR PAGE, a sibling of `/family`: anyone who scans a door QR opens it on their own phone with no
+ * session. The token rides the fragment (never sent to a server or kept in a log); the request carries it in its body.
+ */
+const doorRoute = createRoute({ getParentRoute: () => rootRoute, path: "/door", component: () => <DoorRequest /> });
 
 /**
  * PLAN 11e T6 / D6 — `/change-password` IS A SIBLING OF `/login`, NOT A CHILD OF THE SHELL.
@@ -1562,6 +1574,10 @@ const housekeepingBoardRoute = createRoute({
   path: "/housekeeping",
   component: HousekeepingBoard,
 });
+
+/** HK-1 (#973) — the shift rota (floor-wise, area-wise, bed-wise) and the housekeeping setup (areas, QR, checklists, staff). */
+const housekeepingRotaRoute = createRoute({ getParentRoute: () => authedRoute, path: "/housekeeping/rota", component: HkRota });
+const housekeepingSetupRoute = createRoute({ getParentRoute: () => authedRoute, path: "/housekeeping/setup", component: HkSetup });
 
 /** E1.5 MAINTENANCE (issue #722) — the maintenance supervisor's board: 16:9, open repairs by floor, critical first. */
 const maintenanceBoardRoute = createRoute({
@@ -2402,6 +2418,7 @@ export const router = createRouter({
   routeTree: rootRoute.addChildren([
     loginRoute,
     familyRoute,
+    doorRoute,
     changePasswordRoute,
     authedRoute.addChildren([
       indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, erDeskRoute, erBoardRoute, erTriageRoute, erPatientRoute, erMlcRoute, erBillRoute, erCodesRoute, erMciRoute, ipdBedsRoute, ipdAdmitRoute, ipdBillRoute, ipdBillDeskRoute, ipdTpaRoute, ipdFamilyCallbacksRoute, ipdRoundsRoute, ipdRoundPatientRoute, ipdMarRoute, ipdPharmacyRoute, ipdNarcoticsRoute, ipdHandoversRoute, ipdWardRoute, ipdMyShiftRoute, ipdDischargeRoute, ipdPassesRoute, passesScanRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
@@ -2479,6 +2496,8 @@ export const router = createRouter({
       linenBoardRoute, linenHandleRoute,
       // E1.4 HOUSEKEEPING — +1, `/housekeeping`. `caddyfile-parity.test.ts` pins the count.
       housekeepingBoardRoute,
+      // HK-1 (#973) — +2, `/housekeeping/rota` and `/housekeeping/setup`. `caddyfile-parity.test.ts` pins the count.
+      housekeepingRotaRoute, housekeepingSetupRoute,
       // E1.5 MAINTENANCE — +1, `/maintenance`. `caddyfile-parity.test.ts` pins the count.
       maintenanceBoardRoute,
       // E1.6 TRANSPORT — +2, `/transport` and `/transport/request`.

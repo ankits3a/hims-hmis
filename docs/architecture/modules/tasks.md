@@ -19,9 +19,11 @@ Source: `apps/core/src/modules/tasks/`
 
 - `dispatch.ts`
   - `dutyCovering(exec: Db | Tx, userId: string, at: Date): Promise<{ startsAt: Date; endsAt: Date } | null>`
+  - `eligibilityOf(exec: Db | Tx, row: TaskRow, now: Date): Promise<TaskEligibility | null>`
   - `onDutyForSkill(exec: Db | Tx, skill: string, at: Date): Promise<OnDutyWorker[]>`
   - `openLoad(exec: Db | Tx, userIds: readonly string[]): Promise<Map<string, number>>`
-  - `pickWorker(exec: Db | Tx, skill: string, at: Date, exclude: readonly string[] = []): Promise<OnDutyWorker | null>`
+  - `pickWorker(exec: Db | Tx, skill: string, at: Date, exclude: readonly string[] = [], eligibility: TaskEligibility | null = null): Promise<On…`
+  - `poolOnly(exec: Db | Tx, kind: string, now: Date): Promise<boolean>`
   - types: `OnDutyWorker`
 - `engine.ts`
   - `DISPATCH_ACTOR: Actor`
@@ -32,6 +34,7 @@ Source: `apps/core/src/modules/tasks/`
   - `cancelTasksForPlace(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<string[]>`
   - `completeTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date(), opts: HookOptions = {}): Promise<TaskRow>`
   - `raiseTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<RaiseResult>`
+  - `rejectTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow>`
   - `returnToPool(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date(), opts: ActOptions = {}): Promise<TaskRow>`
   - `startTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date(), opts: HookOptions = {}): Promise<TaskRow>`
   - `verifyTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow>`
@@ -53,7 +56,7 @@ Source: `apps/core/src/modules/tasks/`
   - `taskKind(kind: string): TaskKindDecl | undefined`
   - `taskKinds(): TaskKindDecl[]`
   - `verifierPermissionsOf(decl: TaskKindDecl | undefined): readonly string[]`
-  - types: `TaskKindDecl`
+  - types: `TaskEligibility`, `TaskKindDecl`
 - `manifest.ts`
   - `TASKS_SUPERVISE`
   - `TASKS_VIEW`
@@ -63,6 +66,7 @@ Source: `apps/core/src/modules/tasks/`
   - `findTasks(exec: Db | Tx, q: { kinds: readonly string[]; placeResourceId?: string; states?: readonly string[]; createdSince?: Date; raisedUn…`
   - `getTask(exec: Db | Tx, taskId: string): Promise<TaskRow | null>`
   - `myTasks(db: Db, userId: string, now: Date = new Date()): Promise<MyTasksView>`
+  - `rejectionsOf(exec: Db | Tx, taskIds: readonly string[]): Promise<Map<string, { count: number; lastReason: string | null }>>`
   - `taskBoard(db: Db, now: Date = new Date(), opts: { kinds?: readonly string[] } = {}): Promise<TaskBoardView>`
 - `sweep.ts`
   - `SWEEP_ACTOR: Actor`

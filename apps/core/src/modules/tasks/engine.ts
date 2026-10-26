@@ -1,14 +1,14 @@
 import { and, desc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
 import {
-  assignTaskInput, cancelPlaceInput, cancelTaskInput, completeTaskInput, newId, raiseTaskInput, returnTaskInput,
-  taskRefInput,
+  assignTaskInput, cancelPlaceInput, cancelTaskInput, completeTaskInput, newId, raiseTaskInput, rejectTaskInput,
+  returnTaskInput, taskRefInput,
 } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { resources, taskEvents, tasks, users } from "../../kernel/db/schema";
 import { TaskError, TaskKindRefusal } from "./errors";
 import { requireTaskKind, skillRoles, taskKind, verifierPermissionsOf } from "./kinds";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
-import { dutyCovering, pickWorker } from "./dispatch";
+import { dutyCovering, eligibilityOf, pickWorker, poolOnly } from "./dispatch";
 import type { Actor, TaskAct, TaskEventSource, TaskSource } from "@hmis/contracts";
 import type { z } from "zod";
 import { PgTransaction } from "drizzle-orm/pg-core";
@@ -172,7 +172,9 @@ export async function raiseTask(exec: Exec, actor: Actor, raw: unknown, now: Dat
 
 /** Offer a pool task to the least-loaded on-duty worker. Null when nobody is on (it stays in the pool). */
 export async function dispatchInto(t: Exec, row: TaskRow, now: Date, exclude: readonly string[]): Promise<TaskRow | null> {
-  const worker = await pickWorker(t, row.skill, now, exclude);
+  // HK-1 (#973): a pool-only kind waits for its group; an eligible kind goes only to its eligible people.
+  if (await poolOnly(t, row.kind, now)) return null;
+  const worker = await pickWorker(t, row.skill, now, exclude, await eligibilityOf(t, row, now));
   if (worker === null) return null;
   const assigned = (await (t as Db).update(tasks).set({
     state: "assigned", assigneeKind: "person", assigneeId: worker.userId, assignedAt: now,
@@ -224,6 +226,11 @@ export async function acceptTask(exec: Exec, actor: Actor, raw: unknown, now: Da
     if (seen !== undefined && ["created", "assigned"].includes(seen.state) && (seen.assigneeId === null || seen.assigneeId === actor.id)) {
       await requireSkill(t, actor.id, seen.skill, seen.id);
       if (duty === null) throw new TaskError("not_on_duty", { taskId: seen.id });
+      // HK-1 (#973): taking from the pool is narrowed by the kind's eligibility (one assigned to you is yours).
+      if (seen.assigneeId === null) {
+        const eligible = await eligibilityOf(t, seen, now);
+        if (eligible !== null && !eligible.userIds.includes(actor.id)) throw new TaskError("not_your_area", { taskId: seen.id });
+      }
     }
     const won = (await t.update(tasks).set({
       state: "accepted", assigneeKind: "person", assigneeId: actor.id, assignedAt: sql`coalesce(${tasks.assignedAt}, ${now.toISOString()}::timestamptz)`,
@@ -301,28 +308,63 @@ export async function completeTask(exec: Exec, actor: Actor, raw: unknown, now: 
 
 /* ═══════════════════════════════ verify ═══════════════════════════════ */
 
+/**
+ * The checks a verdict on done work shares, Pass (`verifyTask`) or Fail (`rejectTask`): the task is done and has a check
+ * step; the checker did none of its work, in ANY round (HK-1: a failed check reopens the task, and whoever did an earlier
+ * round is still a doer of it); the checker holds the kind's permission (default `tasks.supervise`).
+ */
+async function requireChecker(t: Tx, row: TaskRow, actor: Actor): Promise<void> {
+  if (!row.verifyRequired) throw new TaskError("no_verify_step", { taskId: row.id });
+  if (row.state !== "done") throw new TaskError(row.state === "verified" || row.state === "cancelled" ? "not_open" : "wrong_state", { taskId: row.id, state: row.state });
+  if (row.doneBy === actor.id) throw new TaskError("verifier_is_doer", { taskId: row.id });
+  const did = await t.select({ seq: taskEvents.seq }).from(taskEvents)
+    .where(and(eq(taskEvents.taskId, row.id), eq(taskEvents.act, "done"), eq(taskEvents.actorId, actor.id))).limit(1);
+  if (did.length > 0) throw new TaskError("verifier_is_doer", { taskId: row.id });
+  const permissions = verifierPermissionsOf(taskKind(row.kind));
+  if (actor.type !== "system") {
+    let admitted = false;
+    for (const p of permissions) {
+      if (await hasPermission(t as unknown as Db, actor.id, p, "hospital")) { admitted = true; break; }
+    }
+    if (!admitted) throw new TaskError("not_permitted", { taskId: row.id, permission: permissions.join(" or ") });
+  }
+}
+
 /** The doer never verifies their own task; the verifier holds the kind's permission (default `tasks.supervise`). */
 export async function verifyTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow> {
   const input = parse(taskRefInput, raw);
   return tx(exec, async (t) => {
     const row = await lockTask(t, input.taskId);
     checkVersion(row, input.version);
-    if (!row.verifyRequired) throw new TaskError("no_verify_step", { taskId: row.id });
-    if (row.state !== "done") throw new TaskError(row.state === "verified" || row.state === "cancelled" ? "not_open" : "wrong_state", { taskId: row.id, state: row.state });
-    if (row.doneBy === actor.id) throw new TaskError("verifier_is_doer", { taskId: row.id });
+    await requireChecker(t, row, actor);
     const decl = taskKind(row.kind);
-    const permissions = verifierPermissionsOf(decl);
-    if (actor.type !== "system") {
-      let admitted = false;
-      for (const p of permissions) {
-        if (await hasPermission(t as unknown as Db, actor.id, p, "hospital")) { admitted = true; break; }
-      }
-      if (!admitted) throw new TaskError("not_permitted", { taskId: row.id, permission: permissions.join(" or ") });
-    }
     const next = await update(t, row.id, { state: "verified", verifiedBy: actor.id, verifiedAt: now }, now);
     await logEvent(t, next, "verified", actor, eventSource(actor), now, {});
     // The owning module's consequence of a passed check, in the SAME transaction (housekeeping: the bed is free).
     if (decl?.onVerified !== undefined) await decl.onVerified(t, next, actor, now);
+    return next;
+  });
+}
+
+/**
+ * HK-1 (#973) — a failed check. The reason is required. The task goes back to work: to the person who did it while they
+ * are still on duty, otherwise to the pool (and dispatch offers it again, skipping them). The done record is cleared; the
+ * history keeps every round, and every doer stays barred from checking it.
+ */
+export async function rejectTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow> {
+  const input = parse(rejectTaskInput, raw);
+  return tx(exec, async (t) => {
+    const row = await lockTask(t, input.taskId);
+    checkVersion(row, input.version);
+    await requireChecker(t, row, actor);
+    const doer = row.doneBy;
+    const duty = doer === null ? null : await dutyCovering(t, doer, now);
+    const cleared = { doneBy: null, doneAt: null, proof: null };
+    let next = duty !== null && doer !== null
+      ? await update(t, row.id, { ...cleared, state: "assigned", assigneeKind: "person", assigneeId: doer, assignedAt: now, shiftEndsAt: duty.endsAt }, now)
+      : await update(t, row.id, { ...cleared, state: "created", assigneeKind: null, assigneeId: null, assignedAt: null, shiftEndsAt: null }, now);
+    await logEvent(t, next, "rejected", actor, eventSource(actor), now, { reason: input.reason, from: doer, to: next.assigneeId });
+    if (next.state === "created") next = (await dispatchInto(t, next, now, doer === null ? [] : [doer])) ?? next;
     return next;
   });
 }

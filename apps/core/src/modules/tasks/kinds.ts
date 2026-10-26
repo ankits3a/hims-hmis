@@ -1,6 +1,6 @@
 import type { Actor, TaskProof, TaskProofKind } from "@hmis/contracts";
 import { TaskError } from "./errors";
-import type { Tx } from "../../kernel/db/client";
+import type { Db, Tx } from "../../kernel/db/client";
 import type { TaskRow } from "./engine";
 
 /**
@@ -46,9 +46,25 @@ export type TaskKindDecl = {
    * refuses the completion and rolls those writes back.
    */
   beforeDone?: (tx: Tx, task: TaskRow, proof: TaskProof | undefined, actor: Actor, now: Date) => Promise<void>;
+  /**
+   * HK-1 (#973) — who may hold this task, decided by the owning module (housekeeping: the published rota's placement
+   * and trained skills). Null: anyone with the skill, as before. `preferred`, when not empty, is the narrower group
+   * dispatch picks from first (a person placed on the area itself before the floor's team). Narrows dispatch, the pool a
+   * worker sees, and accepting from the pool; a supervisor's assign is not narrowed (their judgement).
+   */
+  eligible?: (exec: Db | Tx, task: TaskRow, now: Date) => Promise<TaskEligibility | null>;
+  /**
+   * HK-1 (#973) — while this answers true, a new task of this kind is not dispatched to one person: it waits in the pool
+   * for its eligible group to take (housekeeping: a discharge clean goes to the floor team). The clock's pool pass skips
+   * the kind for the same reason, so a batch is never filled by rows it would skip.
+   */
+  poolOnly?: (exec: Db | Tx, now: Date) => Promise<boolean>;
   /** Minutes past due at which each rung fires. Absent: `DEFAULT_LADDER_MIN`. */
   ladderMin?: readonly number[];
 };
+
+/** HK-1 (#973) — the people who may hold one task; `preferred` (non-empty) is dispatch's first choice among them. */
+export type TaskEligibility = { userIds: readonly string[]; preferred?: readonly string[] };
 
 /** Rung 1 at the due time, rung 2 half an hour later. DECIDED: two rungs, both to the kind's `escalateTo`. */
 export const DEFAULT_LADDER_MIN: readonly number[] = [0, 30];

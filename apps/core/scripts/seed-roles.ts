@@ -2228,6 +2228,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     permissions: [
       "tasks.view", "tasks.work", "tasks.supervise", "bmw.view", "bmw.handle", "bmw.manage", "linen.view", "linen.handle", "linen.manage",
       "housekeeping.view", "housekeeping.verify_terminal",
+      // HK-1 (#973, decision 0086) — the housekeeping supervisor sets up areas and staff, publishes the rota and
+      // confirms cleans and rounds.
+      "housekeeping.setup.manage", "housekeeping.rota.manage", "housekeeping.confirm",
       // E1.5 MAINTENANCE (issue #722) — the maintenance board; raise; cancel a ticket raised in error or re-dispatch
       // one whose task was cancelled. Told when an item is flagged for replacement. NOT the confirmation: that is
       // the nurse's (`ipd.beds.clean` or `maintenance.confirm`).
@@ -2235,6 +2238,14 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // E1.6 TRANSPORT (#723) — the services supervisor runs the transport board too.
       "transport.manage",
     ],
+  },
+  /**
+   * HK-1 (#973, decision 0086) — no infection-control role existed, so one is minted, by the standard NABH split: the
+   * infection control nurse/officer checks terminal cleans beside the housekeeping supervisor and reads the boards.
+   */
+  {
+    roleKey: "infection_control",
+    permissions: ["tasks.view", "housekeeping.view", "housekeeping.verify_terminal", "housekeeping.confirm"],
   },
   /**
    * E1.5 MAINTENANCE (issue #722, decision 0072) — no engineering role existed, so one is minted, by the standard
@@ -2584,6 +2595,8 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   attendance_committee: "Attendance Committee (reads everyone's attendance from the attendance machine; handles meeting requests)",
   support_staff: "Support Staff (ward attendants, housekeeping, porters: takes and does tasks)",
   services_supervisor: "Services Supervisor (task board: assigns, cancels and verifies service tasks)",
+  // HK-1 (#973).
+  infection_control: "Infection Control (checks terminal cleans; reads the housekeeping boards)",
   // E4.4 DIET (#736).
   dietician: "Dietician (diet orders, NPO, consults, meal rounds and the kitchen lists)",
   kitchen_staff: "Kitchen Staff (builds, prints and dispatches the meal lists)",
