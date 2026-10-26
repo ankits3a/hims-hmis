@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/maintenance/`
 · Notes: [MAP.md](../../../apps/core/src/modules/maintenance/MAP.md)
 
 - **Depends on modules:** `ipd`, `tasks`
-- **Used by modules:** —
+- **Used by modules:** `linen`
 - **Kernel used:** `alerts`, `auth`, `db`, `modules`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file

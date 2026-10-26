@@ -1,7 +1,8 @@
 ---
 issue: 978
-status: approved
+status: built
 approved: 2026-10-26
+built: 2026-10-26
 ---
 # SPEC — Laundry LD-1: laundry floor, rounds, bed-ready link, holds (#978)
 
@@ -46,3 +47,18 @@ turnover, terminal clean, spill, collection, mops and shortage. This spec builds
 - **D6** Every movement, including a quality-check rewash, mend or condemn, lands in the existing ledger. Weekly loss
   stays one sum.
 - **D7** Theatre sets go from laundry to CSSD with a CSSD signature. Baby linen never shares a batch with adult linen.
+
+## Build notes (2026-10-26)
+
+- Acceptance: `apps/core/src/modules/linen/acceptance/laundry-floor-978.acceptance.test.ts`, one test per D1..D7.
+- The ward signs a pickup or delivery with a PIN, by user id or by the name it signs in with; never the runner.
+- A sealed bag's pieces are declared by the ward when sealed; nobody counts it after that. Held linen is bagged at its bed.
+- The bed gate acts only on wards live on linen (counted or moved linen), never while linen is dark, and not on a bed
+  marked clean by hand at the Beds board.
+- A delivery to a ward at par is recorded as skipped. A machine with a place raises a maintenance ticket when down.
+- Rush demand is computed on read: today's planned discharges per ward against the shelf, and today's theatre cases.
+- An MLC hold placed after its bag was picked up keeps that bag blocked in the soiled room until the hold ends.
+- Permissions: `linen.plant`, `linen.qc`, `linen.cssd_receive`, `linen.hold.release` (README "Laundry floor").
+- Screens: `/linen/plant`, `/linen/store`, `/linen/rounds` (phone), "Waiting for linen" on the Beds board.
+- Not built here (LD-2, #979): vendor per-piece money and recovery, challans, uniforms, chemicals, licences.
+

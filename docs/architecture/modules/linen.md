@@ -11,19 +11,45 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/linen/`
 · Notes: [MAP.md](../../../apps/core/src/modules/linen/MAP.md)
 
-- **Depends on modules:** `tasks`
-- **Used by modules:** —
+- **Depends on modules:** `aerb`, `ipd`, `maintenance`, `ot`, `tasks`
+- **Used by modules:** `housekeeping`
 - **Kernel used:** `approvals`, `auth`, `db`, `modules`, `resources`, `tokens`
 
 ## Public API (`index.ts`), by declaring file
 
+- `clock.ts`
+  - `dueSlots(now: Date): { kind: LinenRoundKind; at: Date }[]`
+  - `runLinenClock(db: Db, now: Date = new Date()): Promise<{ holdsReleased: number; roundsRaised: number }>`
 - `errors.ts`
   - `class LinenError`
   - `linenHttpStatus(code: LinenRefusalCode): number`
+- `floor.ts`
+  - `openRound(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<LinenRoundCard>`
+  - `recentRounds(exec: Exec, limit = 30): Promise<LinenRoundCard[]>`
+  - `sealBag(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<{ id: string; tag: string }>`
+  - `sealedBags(exec: Exec): Promise<LinenSealedBag[]>`
+  - `signDelivery(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<LinenRoundCard>`
+  - `signPickup(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<LinenRoundCard>`
+  - `signerOf(exec: Exec, sig: Signature): Promise<string>`
+  - `soiledRoomView(exec: Exec): Promise<LinenSoiledRoomView>`
+  - `wardBeds(exec: Exec): Promise<{ bedId: string; bedName: string; wardId: string }[]>`
+  - `weighBag(exec: Exec, _actor: Actor, raw: unknown): Promise<LinenBagCard>`
+- `gate.ts`
+  - `bedReadyGate(t: Tx, actor: Actor, bedId: string, now: Date): Promise<{ ready: boolean; short: Record<string, number> }>`
+  - `bedsWaitingForLinen(exec: Exec): Promise<LinenBedWait[]>`
+  - `releaseLinenWaits(t: Tx, actor: Actor, wardId: string, now: Date): Promise<number>`
+  - `rushDemand(exec: Exec, now: Date): Promise<LinenRushDemand>`
+  - `shelfShort(t: Exec, wardId: string, now: Date, waiting: number): Promise<Record<string, number>>`
+- `holds.ts`
+  - `activeHolds(exec: Exec): Promise<LinenHoldCard[]>`
+  - `placeHold(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<HoldRow>`
+  - `releaseHold(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<HoldRow>`
+  - `wardOfBed(exec: Exec, bedId: string): Promise<{ bedId: string; bedName: string; wardId: string } | null>`
 - `intents.ts`
   - `approveCondemn(exec: Exec, actor: Actor, raw: unknown, now?: Date): Promise<CondemnRow>`
   - `borrowBetweenWards(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<LinenActResult>`
   - `formatBatchNo(now: Date, serial: number): string`
+  - `issueToWardIn(t: Tx, actor: Actor, wardId: string, lines: readonly Line[], now: Date, extra: Partial<MovementInsert> = {}): Promise<void>`
   - `receiveFromLaundry(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<LinenActResult>`
   - `recordInfected(exec: Exec, actor: Actor, raw: unknown, now?: Date): Promise<LinenActResult>`
   - `recordSoiled(exec: Exec, actor: Actor, raw: unknown, now?: Date): Promise<LinenActResult>`
@@ -34,6 +60,7 @@ Source: `apps/core/src/modules/linen/`
   - `sendToLaundry(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<LinenActResult>`
   - `setParLevel(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<{ wardId: string; itemCode: string; par: number | null }>`
   - `topUpWard(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<LinenActResult>`
+  - `upToPar(t: Tx, wardId: string, given: readonly Line[] | undefined, now: Date): Promise<Line[]>`
   - types: `BatchRow`, `CondemnRow`, `MovementRow`
 - `kinds.ts`
   - `LINEN_CHANGE_TASK`
@@ -43,10 +70,27 @@ Source: `apps/core/src/modules/linen/`
 - `linen.module.ts`
   - `class LinenModule`
 - `manifest.ts`
+  - `LINEN_CSSD_RECEIVE`
   - `LINEN_HANDLE`
+  - `LINEN_HOLD_RELEASE`
   - `LINEN_MANAGE`
+  - `LINEN_PLANT`
+  - `LINEN_QC`
   - `LINEN_VIEW`
   - `linenManifest: ModuleManifest`
+- `plant.ts`
+  - `addMachine(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<MachineRow>`
+  - `finishCycle(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<CycleRow>`
+  - `handToCssd(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<{ batchId: string; movements: number }>`
+  - `markMachineDown(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<MachineRow>`
+  - `markMachineUp(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<MachineRow>`
+  - `mendReturn(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<{ movements: number }>`
+  - `mendingPool(exec: Exec): Promise<Record<string, number>>`
+  - `plantView(exec: Exec, now: Date): Promise<LinenPlantView>`
+  - `recordQc(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<{ batchId: string; movements: number; condemnRequests: number }>`
+  - `releaseBatch(exec: Exec, _actor: Actor, raw: unknown, nowIn?: Date): Promise<BatchRow>`
+  - `routeToVendor(exec: Exec, _actor: Actor, raw: unknown): Promise<BatchRow>`
+  - `startCycle(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<CycleRow>`
 - `reads.ts`
   - `bookBalances(exec: Exec, at: Date, wardId?: string): Promise<Map<string, Map<string, { onHand: number; countedAt: Date | null }>>>`
   - `condemnPending(exec: Exec, limit = 20): Promise<LinenCondemnCard[]>`
@@ -56,7 +100,7 @@ Source: `apps/core/src/modules/linen/`
   - `linenItemList(exec: Exec): Promise<LinenItem[]>`
   - `rollingWeek(now: Date): { from: Date; to: Date }`
   - `seedLinenItems(exec: Exec): Promise<void>`
-  - `soiledPool(exec: Exec): Promise<{ general: Record<string, number>; infected: Record<string, number> }>`
+  - `soiledPool(exec: Exec, opts: { loose?: boolean } = {}): Promise<{ general: Record<string, number>; infected: Record<string, number> }>`
   - `wardShapes(exec: Exec, wardId?: string): Promise<WardShape[]>`
   - `wardStates(exec: Exec, now: Date, wardId?: string): Promise<LinenWardState[]>`
   - `weeklyVariance(exec: Exec, from: Date, to: Date): Promise<LinenVarianceRow[]>`
@@ -64,12 +108,12 @@ Source: `apps/core/src/modules/linen/`
 
 ## Tables (`kernel/db/schema/linen.ts`)
 
-`linen_condemn_requests`, `linen_items`, `linen_laundry_batches`, `linen_movements`, `linen_par_levels`, `linen_variances`, `linen_ward_counts`
+`linen_bags`, `linen_bed_waits`, `linen_condemn_requests`, `linen_cycle_batches`, `linen_holds`, `linen_items`, `linen_laundry_batches`, `linen_machines`, `linen_movements`, `linen_par_levels`, `linen_pieces`, `linen_qc_results`, `linen_rounds`, `linen_variances`, `linen_ward_counts`, `linen_wash_cycles`
 
 Foreign keys into: `resources`
 
 ## HTTP routes
 
-- `linen.controller.ts` — `/linen/board`, `/linen/borrow`, `/linen/condemn`, `/linen/handler`, `/linen/laundry`, `/linen/variance`, `/linen/wards`
+- `linen.controller.ts` — `/linen/bags`, `/linen/beds-waiting`, `/linen/board`, `/linen/borrow`, `/linen/condemn`, `/linen/cycles`, `/linen/floor`, `/linen/handler`, `/linen/holds`, `/linen/laundry`, `/linen/machines`, `/linen/mending`, `/linen/plant`, `/linen/rounds`, `/linen/variance`, `/linen/wards`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/linen`

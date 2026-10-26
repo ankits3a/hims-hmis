@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/aerb/`
 
 - **Depends on modules:** `patients`
-- **Used by modules:** `radiology`
+- **Used by modules:** `linen`, `radiology`
 - **Kernel used:** `approvals`, `auth`, `db`, `events`, `modules`, `phi`, `resources`, `tokens`
 
 ## Public API (`index.ts`), by declaring file

@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/ipd/`
 · Notes: [MAP.md](../../../apps/core/src/modules/ipd/MAP.md)
 
 - **Depends on modules:** `billing`, `formulary`, `lab`, `materials`, `opd`, `ordering`, `ot`, `patients`, `pharmacy`, `roster`, `tariff`
-- **Used by modules:** `diet`, `emergency`, `housekeeping`, `maintenance`, `passes`, `transport`
+- **Used by modules:** `diet`, `emergency`, `housekeeping`, `linen`, `maintenance`, `passes`, `transport`
 - **Kernel used:** `alerts`, `approvals`, `auth`, `config`, `copilot`, `crypto`, `db`, `desk`, `episodes`, `events`, `inference`, `modules`, `notify`, `orders`, `printing`, `realtime`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `admissionAbsconded`, `admissionDeceased`
 
@@ -429,6 +429,9 @@ Source: `apps/core/src/modules/ipd/`
   - `readInterimBill(db: Db, actor: Actor, admissionId: string): Promise<IpdInterimBill>`
 - `ipd.module.ts`
   - `class IpdModule`
+- `linen-seam.ts`
+  - `mlcOccupiedBeds(exec: Db | Tx): Promise<string[]>`
+  - `plannedDischargeBeds(exec: Db | Tx, from: Date, to: Date): Promise<string[]>`
 - `manifest.ts`
   - `ipdManifest: ModuleManifest`
 - `narcotic-ledger.ts`
