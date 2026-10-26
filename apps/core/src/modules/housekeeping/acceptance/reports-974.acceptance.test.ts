@@ -254,7 +254,7 @@ describe("HK-2 housekeeping — floor stores, inspections, contractor SLA, daily
     const storeRound = await roundOf(store.areaId);
     const missAt = new Date(Math.max(storeRound.dueAt!.getTime(), lateAt.getTime()) + (HK_ROUND_GRACE_MIN + 1) * MIN);
     await runRoundsClock(db, missAt);
-    // In-house: floor 2's round on time.
+    // In-house: floor 2's round, done now.
     const room2Round = await roundOf(room2.areaId);
     await work(room2Round, w.hk1, room2.token, room2.itemIds, now, false);
 
@@ -294,7 +294,9 @@ describe("HK-2 housekeeping — floor stores, inspections, contractor SLA, daily
     expect((await sla(toiletRound.dueAt!)).shine.rounds.onTime).toBe(1);
     expect((await sla(hallRound.dueAt!)).shine.rounds.late).toBe(1);
     expect((await sla(storeRound.dueAt!)).shine.rounds.missed).toBe(1);
-    expect((await sla(room2Round.dueAt!)).house.rounds.onTime).toBe(1);
+    // A class B round is due two hours into its slot: done now, it is on time or late by the hour the suite runs.
+    const house = (await sla(room2Round.dueAt!)).house.rounds;
+    expect(now <= room2Round.dueAt! ? house.onTime : house.late).toBe(1);
 
     const { shine: s, house: h, json } = await sla(bed1.task.raisedAt ?? now);
     expect(s).toMatchObject({ company: "Shine Facility Services", inHouse: false });
