@@ -190,7 +190,7 @@ describe("Wrong department — move patient (owner 2026-10-05)", () => {
     expect(screen.queryByTestId("visit-card")).toBeNull();
     expect(screen.queryByTestId("visit-card-move")).toBeNull();
     expect(screen.queryByTestId("papers-no-jobs")).toBeNull(); // no OPD slips section
-    expect(sheet).not.toHaveTextContent(/guardian with reports/i);
+    expect(sheet).not.toHaveTextContent(/reports only/i);
   });
 
   it("names the move, previews the fee in the new department, asks why, and then holds the NEW visit", async () => {
