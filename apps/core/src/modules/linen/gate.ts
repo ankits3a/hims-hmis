@@ -1,6 +1,7 @@
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { linenBedWaits, linenItems, resources } from "../../kernel/db/schema";
+import { isModuleOn } from "../../kernel/modules/switch";
 import { markBedCleanIn } from "../ipd";
 import { wardOfBed } from "./holds";
 import { lock } from "./intents";
@@ -16,6 +17,7 @@ import type { Exec } from "./intents";
  * with a wait row ("waiting for linen") and the wait is a rush top-up for the linen room. The top-up that fills the shelf
  * clears the waits in the order they were raised and frees those beds (`releaseLinenWaits`, called by `topUpWard`).
  *
+ * While `linen` is dark (decision 0085) the gate lets every bed through.
  * DECIDED: a ward that has never been counted and has never moved linen is not live on linen, and the gate lets its beds
  * through — the gate never blocks a hospital that has not started using the module. A bed marked clean by hand at the
  * Beds board is the duty manager's call and is not gated.
@@ -64,6 +66,7 @@ async function shelfShort(t: Tx, wardId: string, now: Date, waiting: number): Pr
  * linen (a wait row, rush) and stays in cleaning.
  */
 export async function bedReadyGate(t: Tx, actor: Actor, bedId: string, now: Date): Promise<{ ready: boolean; short: Record<string, number> }> {
+  if (!isModuleOn("linen")) return { ready: true, short: {} };
   const bed = await wardOfBed(t, bedId);
   if (bed === null || !(await wardIsLive(t, bed.wardId))) return { ready: true, short: {} };
   await lock(t, `ward:${bed.wardId}`);
