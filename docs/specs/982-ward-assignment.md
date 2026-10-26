@@ -67,4 +67,4 @@ Default ratio table, configurable per ward:
   The latest acuity record counts until a new one; a patient with none counts as self-care.
 - A ward that has never published a map shows no red and keeps the whole-ward list ("No assignment yet").
 - Not built here: narrowing transfer acceptance to the receiving ward's nurses; the copilot's float suggestion on the
-  cockpit. Both are tracked as issues.
+  cockpit. Tracked as #995 and #996.
