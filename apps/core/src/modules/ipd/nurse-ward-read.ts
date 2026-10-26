@@ -1,6 +1,6 @@
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { IPD_OVERLOAD_FACTOR } from "@hmis/contracts";
-import { resources, users } from "../../kernel/db/schema";
+import { ipdWardRatioBreaches, patients, resources, users } from "../../kernel/db/schema";
 import { usersHoldingRole } from "../../kernel/workflow/roles";
 import { whoIsAt } from "../roster";
 import { requireIpdPermission } from "./admission-core";
@@ -9,12 +9,15 @@ import { IpdBedAttributesSchema } from "./bed-attributes";
 import {
   RN_ROLES, STUDENT_ROLES, acuityOf, liveMapsAt, liveRowsOf, mapFor, nextSlot, occupantsOf, ratioFor, shiftSlot, shiftSlotOf, staffOf,
 } from "./nurse-ward";
+import { rankNowRows } from "./now-cards";
 import { readNurseStation, wardsWithBeds } from "./nursing-read";
 import { IPD_NURSING_ASSIGN, IPD_NURSING_FLOAT } from "./permissions";
 import type {
   Actor, IpdFloatPool, IpdNurseRef, IpdNurseShift, IpdShiftMapView, IpdWardCockpit,
 } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
+import type { DeskCard, DeskProviderCtx } from "../../kernel/desk/types";
+import type { NowRow } from "./now-cards";
 
 /**
  * WM-1 (#982) — THE WARD'S NURSES, READ: the in-charge cockpit (built on the nurse station's read, so identities,
@@ -200,4 +203,56 @@ export async function readShiftMap(
     staff: staff.filter((s) => s.endedAt === null).map((s) => ({ userId: s.userId, kind: s.kind as "rn", pairedWithId: s.pairedWithId })),
     beds: rows.map((r) => ({ bedId: r.bedId, nurseId: r.nurseId, studentId: r.studentId })),
   };
+}
+
+// ═══════════════════════════════════════════ the "Ward needs you" Now card ═══════════════════════════════════════════
+
+/**
+ * `ipd.ward_needs_you` (`ipd.nursing.assign`): per ward, an occupied bed with no nurse on the live map (hot, one row per
+ * bed: the bed is the only words — a sealed patient's bed reads "Bed" alone), a ratio breach this shift (hot), and the
+ * next shift's map not published 30 minutes before it (warn). Hospital-wide, top five; an empty card is not sent.
+ */
+export async function wardNeedsYouCard(ctx: DeskProviderCtx): Promise<DeskCard[]> {
+  const { db, now } = ctx;
+  const slot = shiftSlotOf(now);
+  const maps = await liveMapsAt(db, now);
+  if (maps.size === 0) return [];
+  const { wards, beds } = await wardsWithBeds(db);
+  const wardName = new Map(wards.map((w) => [w.id, w.name] as const));
+  const rows = await liveRowsOf(db, [...maps.values()].map((m) => m.id));
+  const held = new Set(rows.map((r) => r.bedId));
+  const mapBeds = beds.filter((b) => maps.has(b.wardId));
+  const occupants = await occupantsOf(db, mapBeds.map((b) => b.id));
+  const sealed = new Set((occupants.size === 0 ? [] : await db.select({ id: patients.id }).from(patients)
+    .where(and(inArray(patients.id, [...new Set([...occupants.values()].map((o) => o.patientId))]), eq(patients.sensitiveContext, true)))).map((p) => p.id));
+  const out: NowRow[] = [];
+  for (const b of mapBeds) {
+    const o = occupants.get(b.id);
+    if (o === undefined || held.has(b.id)) continue;
+    out.push({
+      id: `unassigned:${b.id}`, badge: "!", title: sealed.has(o.patientId) ? "Bed — no nurse" : `Bed ${b.code} — no nurse`,
+      subtitle: wardName.get(b.wardId) ?? "", action: "Assign", href: `/ipd/ward/cockpit?ward=${b.wardId}`, severity: "hot", waitMinutes: 0,
+    });
+  }
+  const breaches = await db.select().from(ipdWardRatioBreaches).where(and(eq(ipdWardRatioBreaches.shiftDate, slot.date), eq(ipdWardRatioBreaches.shift, slot.key)));
+  for (const r of breaches) {
+    out.push({
+      id: `ratio:${r.wardId}`, badge: "!", title: `${wardName.get(r.wardId) ?? "Ward"} — nurses short`,
+      subtitle: `${String(r.rnsOnDuty)} of ${String(r.rnsNeeded)} nurses`, action: "Open", href: `/ipd/ward/cockpit?ward=${r.wardId}`,
+      severity: "hot", waitMinutes: Math.max(0, Math.floor((now.getTime() - r.raisedAt.getTime()) / 60_000)),
+    });
+  }
+  const upcoming = nextSlot(slot);
+  if (upcoming.startsAt.getTime() - now.getTime() <= 30 * 60_000) {
+    for (const wardId of maps.keys()) {
+      const next = await mapFor(db, wardId, upcoming);
+      if (next !== undefined && next.status !== "draft") continue;
+      out.push({
+        id: `publish:${wardId}`, badge: "!", title: `${wardName.get(wardId) ?? "Ward"} — next shift not published`,
+        subtitle: upcoming.key, action: "Assign", href: `/ipd/ward/assign?ward=${wardId}`, severity: "warn", waitMinutes: 0,
+      });
+    }
+  }
+  if (out.length === 0) return [];
+  return [{ key: "ipd.ward_needs_you", band: "now", titleKey: "desk.ipdWardNeedsYou.title", rows: rankNowRows(out).slice(0, 5) }];
 }

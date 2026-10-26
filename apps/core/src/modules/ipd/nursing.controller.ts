@@ -10,10 +10,16 @@ import {
 import { readHandoverDraft } from "./copilot";
 import { listShiftHandovers, readMyShift, readNurseStation, readNursingChart } from "./nursing-read";
 import {
-  IPD_ASSESSMENT_RECORD, IPD_EWS_RESPOND, IPD_NURSING_VIEW, IPD_SHIFT_HANDOVER, IPD_VITALS_RECORD,
+  assignNurse, copyLastShiftMap, endMyDuty, moveFloatNurse, publishShiftMap, saveShiftMap, setAcuity,
+} from "./nurse-ward";
+import { readFloatPool, readShiftMap, readWardCockpit } from "./nurse-ward-read";
+import {
+  IPD_ASSESSMENT_RECORD, IPD_EWS_RESPOND, IPD_NURSING_ASSIGN, IPD_NURSING_FLOAT, IPD_NURSING_VIEW, IPD_SHIFT_HANDOVER, IPD_VITALS_RECORD,
 } from "./permissions";
+import { IPD_NURSE_SHIFTS, IpdShiftDateSchema } from "@hmis/contracts";
 import type {
-  Actor, IpdHandoverDraft, IpdMyShift, IpdNurseStation, IpdNursingChart, IpdRefusalBody, IpdShiftHandoverList,
+  Actor, IpdFloatPool, IpdHandoverDraft, IpdMyShift, IpdNurseStation, IpdNursingChart, IpdRefusalBody, IpdShiftHandoverList,
+  IpdShiftMapView, IpdWardCockpit,
 } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -24,6 +30,10 @@ import type { Db } from "../../kernel/db/client";
  */
 const NURSING_ERROR_STATUS: Partial<Record<string, number>> = {
   shift_handover_not_found: 404, shift_handover_draft_not_found: 404, shift_handover_draft_stale: 409, ews_alert_not_found: 404, shift_handover_not_open: 409, shift_handover_own: 409, ews_alert_closed: 409,
+  // WM-1 (#982)
+  ward_not_found: 404, shift_map_not_found: 404, shift_map_not_draft: 409, bed_not_on_ward: 422, staff_not_eligible: 422, bed_unassigned: 409,
+  student_alone: 409, reassign_reason_required: 422, no_live_shift_map: 409, beds_still_assigned: 409, not_on_shift: 409,
+  acuity_admission_not_on_ward: 409,
 };
 
 function toHttp(e: unknown): never {
@@ -49,6 +59,8 @@ function toHttp(e: unknown): never {
 }
 
 const wardQuery = z.object({ wardId: z.ulid().optional() });
+const mapQuery = z.object({ wardId: z.ulid(), shiftDate: IpdShiftDateSchema, shift: z.enum(IPD_NURSE_SHIFTS) });
+const floorQuery = z.object({ floorId: z.ulid().optional() });
 const idParam = z.ulid();
 const wardOpts = (q: unknown): { wardId?: string } => {
   const p = wardQuery.parse(q);
@@ -123,6 +135,72 @@ export class IpdNursingController {
   @RequirePermission(IPD_SHIFT_HANDOVER, "hospital")
   async accept(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
     try { return await acceptShiftHandover(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  // ═══ WM-1 (#982, decision 0089) — the ward's nurses (`IPD_WARD_ROUTES`) ═══
+
+  @Get("ward/cockpit")
+  @RequirePermission(IPD_NURSING_ASSIGN, "hospital")
+  async cockpit(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<IpdWardCockpit> {
+    try { return await readWardCockpit(this.db, actor, wardOpts(query)); } catch (e) { toHttp(e); }
+  }
+
+  @Get("ward/map")
+  @RequirePermission(IPD_NURSING_ASSIGN, "hospital")
+  async shiftMap(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<IpdShiftMapView> {
+    try { return await readShiftMap(this.db, actor, mapQuery.parse(query)); } catch (e) { toHttp(e); }
+  }
+
+  @Post("ward/map/save")
+  @RequirePermission(IPD_NURSING_ASSIGN, "hospital")
+  async saveMap(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await saveShiftMap(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("ward/map/copy")
+  @RequirePermission(IPD_NURSING_ASSIGN, "hospital")
+  async copyMap(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await copyLastShiftMap(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("ward/map/publish")
+  @RequirePermission(IPD_NURSING_ASSIGN, "hospital")
+  async publishMap(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await publishShiftMap(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  /** The in-charge assigns any bed; a nurse hands over her own (the act decides which), so the door asks only the view. */
+  @Post("ward/assign-nurse")
+  @RequirePermission(IPD_NURSING_VIEW, "hospital")
+  async assignNurse(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await assignNurse(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("ward/end-duty")
+  @RequirePermission(IPD_NURSING_VIEW, "hospital")
+  async endDuty(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await endMyDuty(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Get("ward/float-pool")
+  @RequirePermission(IPD_NURSING_FLOAT, "hospital")
+  async floatPool(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<IpdFloatPool> {
+    try {
+      const q = floorQuery.parse(query);
+      return await readFloatPool(this.db, actor, q.floorId === undefined ? {} : { floorId: q.floorId });
+    } catch (e) { toHttp(e); }
+  }
+
+  @Post("ward/float")
+  @RequirePermission(IPD_NURSING_FLOAT, "hospital")
+  async moveFloat(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await moveFloatNurse(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("acuity")
+  @RequirePermission(IPD_ASSESSMENT_RECORD, "hospital")
+  async acuity(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await setAcuity(this.db, actor, body); } catch (e) { toHttp(e); }
   }
 
   @Post("ews/acknowledge")

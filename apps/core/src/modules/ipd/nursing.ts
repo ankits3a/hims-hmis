@@ -21,6 +21,7 @@ import { IPD_ACTOR_ROLE_KEYS } from "./admission-workflow";
 import { ageInYears } from "./bed-rules";
 import { bedWithWard } from "./beds";
 import { checkSbarDraftForGive } from "./copilot-drafts";
+import { assignedNurseOf } from "./nurse-ward";
 import { IpdError, IpdRefusal } from "./errors";
 import { EWS_ACK_KINDS } from "./goals/goal-events";
 import {
@@ -720,14 +721,17 @@ export async function sweepIpdNursing(db: Db, now: Date, hooks: { beforeRow?: (a
       if (r.clearedAt !== null || r.acknowledgedAt !== null || r.supervisorToldAt !== null) return;
       const where = await whereWords(tx, a);
       let notified = 0;
-      for (const userId of await nursingFallback(tx)) {
+      // WM-1 (#982, decision 0089): the bed's assigned nurse is told too, beside the fallback chain.
+      const nurse = await assignedNurseOf(tx, a.id, now);
+      const chain = await nursingFallback(tx);
+      for (const userId of nurse === null || chain.includes(nurse) ? chain : [...chain, nurse]) {
         if (await raiseNoticeIn(tx, {
           userId, kind: "ipd.ews_unacknowledged", title: `${KIND_WORD[r.scoreKind as IpdEwsKind]} ${String(r.scoreValue)} — no doctor yet`,
           body: [...where.words, "10 min, no doctor"].join(" · "),
           refType: "ipd_admission", refId: a.id, sourceKey: `ipd.ews_unacked:${r.id}:${(r.escalatedAt ?? r.raisedAt).toISOString()}`, at: now,
-        })) notified += 1;
+        }) && chain.includes(userId)) notified += 1;
       }
-      if (notified === 0) return; // nobody reached: retried next tick
+      if (notified === 0) return; // nobody of the chain reached: retried next tick (the nurse's notice is not raised twice)
       await tx.update(ipdNursingAlerts).set({ supervisorToldAt: now }).where(eq(ipdNursingAlerts.id, r.id));
       out.ewsUnacked += 1;
     });

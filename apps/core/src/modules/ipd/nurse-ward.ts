@@ -188,6 +188,21 @@ export async function ratioFor(
   return { unit, night, patientsPerRn, patients, ventilated, rnsOnDuty, rnsNeeded, breach: rnsOnDuty < rnsNeeded };
 }
 
+/** The nurse the live map gives the admission's bed now, if any (the early-warning step tells her too). */
+export async function assignedNurseOf(db: Db | Tx, admissionId: string, at: Date): Promise<string | null> {
+  const stay = (await db.select({ bedId: ipdBedStays.bedId }).from(ipdBedStays)
+    .where(and(eq(ipdBedStays.admissionId, admissionId), isNull(ipdBedStays.endedAt))))[0];
+  if (stay === undefined) return null;
+  const s = shiftSlotOf(at);
+  const row = (await db.select({ nurseId: ipdNurseAssignments.nurseId }).from(ipdNurseAssignments)
+    .innerJoin(ipdWardShiftMaps, eq(ipdWardShiftMaps.id, ipdNurseAssignments.mapId))
+    .where(and(
+      eq(ipdNurseAssignments.bedId, stay.bedId), isNull(ipdNurseAssignments.validTo), eq(ipdWardShiftMaps.shiftDate, s.date),
+      eq(ipdWardShiftMaps.shift, s.key), ne(ipdWardShiftMaps.status, "draft"),
+    )))[0];
+  return row?.nurseId ?? null;
+}
+
 // ═══════════════════════════════════════════ guards ═══════════════════════════════════════════
 
 function once<T>(db: Db, actor: Actor, act: string, key: string, body: unknown, work: () => Promise<T>, now: Date): Promise<T> {
