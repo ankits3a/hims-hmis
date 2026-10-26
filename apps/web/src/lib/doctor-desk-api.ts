@@ -1,5 +1,6 @@
 import { api, ApiError } from "./api";
 import type {
+  WireWardBeds, WireWardRound,
   ActChoice, WireBriefs, WireMyRatings, WireNextCard, WireNow, WireOpdDesk, WireProfessor, WireTower, WireUnitBoard, WireUnitReports, WorkRating,
 } from "../../../../packages/contracts/src/doctor-desk";
 
@@ -12,6 +13,7 @@ export type {
   WireNextCard, WireOpdDesk, WireOwedRow, WireScheduleRow, WireTeamMember, WireTower,
   ActChoice, DeskLevel, WireDeskScope, WireHandledRow, WireMyRatings, WireNow, WirePersonWeek, WireProfessor, WireRateItem,
   WireUnitBoard, WireUnitOwedRow, WireUnitSummary, WorkRating, WireUnitReport, WireUnitReports, WireDepartmentReport, WireHospitalReport,
+  WardFlag, WireEws, WireSinceLine, WireTowerWard, WireUnitCensus, WireWardBed, WireWardBeds, WireWardRound,
 } from "../../../../packages/contracts/src/doctor-desk";
 
 export const fetchTower = () => api<WireTower>("GET", "/doctor-desk/tower");
@@ -40,6 +42,9 @@ export type CopilotToggles = { proactive: boolean; draftProse: boolean };
 export const fetchCopilotToggles = async (): Promise<CopilotToggles | null> => {
   try { return await api<CopilotToggles>("GET", "/opd/consult/copilot-settings"); } catch { return null; }
 };
+/* #962 — the ward, part 1 (dark while IPD is off: 404 `ward_closed`). The note itself is IPD's `POST /ipd/rounds/sign`. */
+export const fetchWardBeds = () => api<WireWardBeds>("GET", "/doctor-desk/ward/beds");
+export const fetchWardRound = (admissionId: string) => api<WireWardRound>("GET", `/doctor-desk/ward/round/${encodeURIComponent(admissionId)}`);
 export const markBriefSeen = (briefId: string) => api<void>("POST", `/doctor-desk/briefs/${encodeURIComponent(briefId)}/seen`);
 
 type T = (k: string, o?: Record<string, unknown>) => string;

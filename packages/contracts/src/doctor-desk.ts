@@ -158,6 +158,98 @@ export type WireTower = {
   /** Briefs that have moved to the AI Briefs page and not been opened there — the menu's count. */
   briefsWaiting: number;
   agentRuns: WireAgentRun[];
+  /**
+   * #962 — the Tower's inpatient mode: tiles, Unit Overview and the bed-dot map from IPD's unit reads. Null when IPD is
+   * switched off (decision 0085) or the doctor has no unit: the inpatient parts are then ABSENT, never zeros.
+   */
+  ward: WireTowerWard | null;
+};
+
+/* ═══ #962 — the ward, part 1 (spec docs/specs/962-doctor-desk-ward.md) ═══ */
+
+/** red critical (an open early-warning breach) · amber owed (assessment or vitals overdue) · green could go home (fit declared). */
+export const WARD_FLAGS = ["critical", "owed", "could_go_home", "none"] as const;
+export type WardFlag = (typeof WARD_FLAGS)[number];
+
+/** IPD's take-day census of the unit (08:00 → 08:00 IST). `bedsAtMidnight` is null until that midnight has come. */
+export type WireUnitCensus = {
+  takeDay: string; from: string; to: string;
+  admitted: number; discharged: number; lama: number; absconded: number; deaths: number;
+  transfersIn: number; transfersOut: number; occupied: number; bedsAtMidnight: number | null;
+};
+
+export type WireTowerWard = {
+  takeDay: string;
+  census: WireUnitCensus;
+  /** Beds the roster allots the unit; null when it allots none (the "of 24" is then absent). */
+  totalBeds: number | null;
+  /** Beds flagged critical — "Need review". */
+  critical: number;
+  /** Beds flagged could-go-home — "Discharge candidates". */
+  dischargeCandidates: number;
+  /** The bed-dot map, in walk order: the unit's own ward only (outliers are on Beds). */
+  beds: { bedId: string; bedCode: string; status: "occupied" | "free"; flag: WardFlag; outlier: boolean }[];
+};
+
+export type WireEws = { kind: string; value: number; band: string };
+
+export type WireWardBed = {
+  bedId: string; bedCode: string; wardCode: string; wardName: string;
+  status: "occupied" | "free";
+  flag: WardFlag;
+  outlier: boolean;
+  /** Something was recorded since the ASKER's last round on this patient (per doctor); null on a free bed. */
+  changed: boolean | null;
+  occupant: null | {
+    admissionId: string;
+    patient: { id: string; uhid: string | null; name: string | null; restricted: boolean };
+    /** "64 M"; null for a sealed patient. */
+    ageSex: string | null;
+    dx: string | null;
+    dayOfStay: number;
+    ews: WireEws | null;
+    tags: ("new" | "mlc")[];
+  };
+};
+
+/** Beds (phone, `Beds.dc.html`): the unit's beds in walk order; the unit's patients lodged elsewhere apart. */
+export type WireWardBeds = {
+  at: string; istDate: string;
+  unit: WireTower["unit"];
+  beds: WireWardBed[];
+  outliers: WireWardBed[];
+  free: number;
+};
+
+/** One "since you last saw" line: a fact and the records it came from (every line a row somebody entered). */
+export type WireSinceLine = {
+  key: string; text: string; source: string; abnormal: boolean; at: string | null;
+  records: { id: string; at: string | null; label: string }[];
+};
+
+/** Round (phone, `Round.dc.html`): one bed. Notes are signed through IPD's `signRound`; the Desk writes nothing. */
+export type WireWardRound = {
+  at: string;
+  admissionId: string;
+  patient: { id: string; uhid: string | null; name: string | null; restricted: boolean };
+  ageSex: string | null;
+  bedCode: string | null;
+  dx: string | null;
+  dayOfStay: number;
+  unitName: string | null;
+  consultantName: string | null;
+  allergies: string[];
+  /** My last round on this patient; null = never (the lines then run from admission). */
+  since: string | null;
+  changes: WireSinceLine[];
+  vitals: null | {
+    observedAt: string; bp: string | null; pulse: number | null; temperatureC: number | null; spo2: number | null; ews: WireEws | null;
+  };
+  /** My notes on this patient, newest first: when I signed (on the phone) and when the server received them. */
+  mine: { roundId: string; signedAt: string; syncedAt: string; status: "signed" | "awaiting_cosign" }[];
+  position: { index: number; of: number };
+  prev: null | { admissionId: string; bedCode: string; name: string | null };
+  next: null | { admissionId: string; bedCode: string; name: string | null };
 };
 
 export type WireBriefs = { briefs: WireBrief[] };

@@ -242,7 +242,7 @@ export async function handToUnit(db: Db, actor: Actor, raw: unknown, opts: Opts 
         const r = await emergencyAdmit(db, actor, {
           idempotencyKey: ipdKey, patientId: pre.patientId, bedId: input.bedId, consultantId: input.consultantId,
           isolation: input.isolation, provisionalDiagnosis: input.provisionalDiagnosis, mlc,
-        }, { now: at });
+        }, { now: at, erArrivedAt: pre.arrivedAt }); // #962: the unit on take at the ER DOOR, not at the bed
         admissionId = r.admissionId;
         admissionNo = r.admissionNo;
       } else {

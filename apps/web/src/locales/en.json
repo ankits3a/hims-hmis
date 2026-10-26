@@ -19309,6 +19309,103 @@
     }
   },
   "doctorDesk": {
+    "ward": {
+      "tileInpatients": "Inpatients in {{unit}}",
+      "tileReview": "Need review · early warning",
+      "tileNewOnTake": "New admissions on your take",
+      "openBeds": "Beds →",
+      "ofBeds": "{{n}} / {{total}}",
+      "ovOccupied": "Occupied beds ({{unit}})",
+      "ovAdmitted": "Admissions this take",
+      "ovCandidates": "Discharge candidates",
+      "ovMidnight": "At midnight",
+      "mapLabel": "Bed map of the unit's ward",
+      "legend": "red critical · amber owed · green could go home · grey stable · hollow free",
+      "flag": {
+        "critical": "EWS alert open",
+        "owed": "Obs overdue",
+        "could_go_home": "Could go home",
+        "none": "Stable",
+        "free": "Free"
+      },
+      "noUnitTitle": "Beds",
+      "bedsTitle_one": "{{unit}} · {{count}} bed",
+      "bedsTitle_other": "{{unit}} · {{count}} beds",
+      "marksSince": "Marks show what changed since your last round, not since midnight.",
+      "noUnit": "You are in no unit today: no ward to show.",
+      "sortLabel": "Order of beds",
+      "sort": {
+        "walk": "Bed order — the walk",
+        "sick": "Sickest first"
+      },
+      "allQuiet": "No patient on the unit's beds.",
+      "quietMore_one": "{{count}} more bed · free or another unit's",
+      "quietMore_other": "{{count}} more beds · free or another unit's",
+      "showFewer": "Show fewer",
+      "showAll": "Show all {{n}}",
+      "notInWard": "Not in your ward",
+      "lodgedIn": "{{unit}} patient lodged in {{ward}}",
+      "startAt": "Start round at {{bed}}",
+      "savedFirst": "Round notes save on the phone first. Ward wifi can drop; nothing you write is lost.",
+      "waitingToSend_one": "{{count}} note waiting to send",
+      "waitingToSend_other": "{{count}} notes waiting to send",
+      "free": "Free",
+      "otherUnit": "Another unit's patient",
+      "day": "day {{n}}",
+      "changed": "New since your round",
+      "noChange": "No change",
+      "ewsShort": "{{kind}} {{v}}",
+      "tag": {
+        "new": "NEW",
+        "mlc": "MLC"
+      },
+      "back": "‹ Beds",
+      "roundWord": "Round",
+      "roundOf": "Round · bed {{i}} of {{n}}",
+      "savedOnPhone": "saved on phone",
+      "under": "under {{unit}}, {{who}}",
+      "allergy": "allergy: {{list}}",
+      "sinceSaw": "Since you last saw · {{at}}",
+      "sinceAdmission": "Since admission",
+      "nothingSince": "Nothing recorded since.",
+      "everyLine": "Every line is a row somebody entered. The copilot wrote none of them.",
+      "source": {
+        "vitals": "Nursing vitals",
+        "ews": "Early-warning score",
+        "lab": "Lab",
+        "imaging": "Radiology",
+        "emar": "Medicines given",
+        "note": "Nursing notes",
+        "io": "Intake-output chart",
+        "consult": "Consults",
+        "diet": "Diet",
+        "order": "Orders",
+        "round": "Rounds",
+        "admission": "Admission",
+        "assessment": "Nursing assessment",
+        "ot": "Theatre"
+      },
+      "v": {
+        "bp": "BP",
+        "pulse": "PULSE",
+        "temp": "TEMP °C",
+        "spo2": "SpO₂",
+        "ews": "EWS"
+      },
+      "vitalsAt": "Vitals at {{at}}",
+      "noteLabel": "Round note",
+      "youWrite": "Drafting is off · you write",
+      "notePlaceholder": "Speak or type. Hindi, English or both.",
+      "sign": "Sign note",
+      "myNotes": "My notes",
+      "signedAt": "Signed {{at}}",
+      "syncedAt": "reached the server {{at}}",
+      "waiting": "waiting to send · kept on this phone",
+      "conflict": "not accepted ({{code}}) · kept on this phone",
+      "walkLabel": "Previous and next bed",
+      "prev": "‹ PREVIOUS",
+      "next": "NEXT ›"
+    },
     "opd": {
       "visitType": {
         "new": "New",
@@ -19577,7 +19674,9 @@
       "not_a_senior": "Only a senior of this resident's unit rates this work.",
       "self_rating": "Your own work is rated by your seniors.",
       "already_rated": "You have already rated this work.",
-      "unknown_work": "That work is not one you can rate here."
+      "unknown_work": "That work is not one you can rate here.",
+      "ward_closed": "The ward is not switched on here.",
+      "unknown_admission": "That patient is not on your unit or team."
     },
     "briefs": {
       "context": "Doctor Desk · AI Briefs",
@@ -19613,6 +19712,7 @@
       "office": "OFFICE"
     },
     "item": {
+      "beds": "My Patients (phone)",
       "dashboard": "Dashboard",
       "aiBriefs": "AI Briefs",
       "myOpd": "My OPD",
@@ -19657,6 +19757,7 @@
       "tabs": "Doctor Desk sections",
       "tab": {
         "now": "Now",
+        "beds": "Beds",
         "opd": "OPD",
         "unit": "Unit"
       }

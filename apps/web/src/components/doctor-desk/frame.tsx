@@ -49,8 +49,11 @@ export type DeskMenuKey =
   // DD-1 — the Unit board, the two phone boards, my work ratings.
   | "unitBoard" | "now" | "professor" | "myRatings"
   // DD-report v0 — the unit report.
-  | "unitReport";
-type MenuItem = { key: DeskMenuKey; to: string; label: string; permission: string; icon: IconKey };
+  | "unitReport"
+  // #962 — the ward: Beds (phone).
+  | "beds";
+/** `module`: shown only while that switchable module is on (decision 0085) — absent, not empty, otherwise. */
+type MenuItem = { key: DeskMenuKey; to: string; label: string; permission: string; icon: IconKey; module?: "ipd" };
 type MenuGroup = { key: string; label: string; items: MenuItem[] };
 
 /** The board's groups, in the board's order, with only the destinations that are built. */
@@ -58,6 +61,8 @@ export const MENU: readonly MenuGroup[] = [
   { key: "desk", label: "doctorDesk.group.desk", items: [
     // DD-0 (#626) — the board's first entry: the Tower.
     { key: "dashboard", to: "/doctor-desk", label: "doctorDesk.item.dashboard", permission: "opd.consult", icon: "grid" },
+    // #962 — the board's "My Patients": Beds (Beds.dc.html), a phone web view; only while IPD is on.
+    { key: "beds", to: "/doctor-desk/beds", label: "doctorDesk.item.beds", permission: "opd.consult", icon: "phone", module: "ipd" },
     // DD-0.8 (#890) — the board's "My OPD" is the OPD desk (OpdDesk.dc.html); it opens the consult screen.
     { key: "myOpd", to: "/doctor-desk/opd", label: "doctorDesk.item.myOpd", permission: "opd.consult", icon: "doc" },
     // 20-U U5c — the board's "My Duties", under DOCTOR DESK after My OPD (Main.dc.html's menu).
@@ -149,7 +154,7 @@ export function DoctorDeskFrame({
   children: React.ReactNode;
 }): React.ReactElement {
   const { t } = useTranslation();
-  const { can } = useAuth();
+  const { can, moduleOn } = useAuth();
   const router = useRouter({ warn: false });
   const clock = useDeskClock();
   const drawerMode = useNarrow("(max-width: 1099px)");
@@ -169,7 +174,7 @@ export function DoctorDeskFrame({
     e.preventDefault();
     void router.navigate({ to });
   };
-  const groups = MENU.map((g) => ({ ...g, items: g.items.filter((i) => i.key === active || can(i.permission)) }))
+  const groups = MENU.map((g) => ({ ...g, items: g.items.filter((i) => (i.module === undefined || moduleOn(i.module)) && (i.key === active || can(i.permission))) }))
     .filter((g) => g.items.length > 0);
   const shownOpen = drawerMode ? drawer : menuOpen;
 

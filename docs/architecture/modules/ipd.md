@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/ipd/`
 · Notes: [MAP.md](../../../apps/core/src/modules/ipd/MAP.md)
 
 - **Depends on modules:** `billing`, `formulary`, `lab`, `materials`, `opd`, `ordering`, `ot`, `patients`, `pharmacy`, `roster`, `tariff`
-- **Used by modules:** `diet`, `emergency`, `housekeeping`, `maintenance`, `passes`, `transport`
+- **Used by modules:** `diet`, `doctor-desk`, `emergency`, `housekeeping`, `maintenance`, `passes`, `transport`
 - **Kernel used:** `alerts`, `approvals`, `auth`, `config`, `copilot`, `crypto`, `db`, `desk`, `episodes`, `events`, `inference`, `modules`, `notify`, `orders`, `printing`, `realtime`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `admissionAbsconded`, `admissionDeceased`
 
@@ -618,12 +618,35 @@ Source: `apps/core/src/modules/ipd/`
   - `movableAdmissions(exec: Db | Tx, limit = 2000): Promise<TransportAdmissionFacts[]>`
   - `resolveBandScan(exec: Db | Tx, code: string): Promise<BandScan | null>`
   - types: `BandScan`, `TransportAdmissionFacts`
+- `unit-events.ts`
+  - `IPD_UNIT_EVENT_NAMES`
+  - `admissionUnitTransferred`
+- `unit-reads.ts`
+  - `admissionFacts(db: Db, admissionIds: readonly string[]): Promise<Map<string, AdmissionRow>>`
+  - `admissionsUnder(db: Db | Tx, teamId: string, from: Date, to: Date, now: Date = new Date()): Promise<UnitAdmission[]>`
+  - `bedsOf(db: Db, teamId: string, at: Date): Promise<UnitBed[]>`
+  - `changesSince(db: Db, a: Pick<AdmissionRow, "id" | "patientId">, since: Date, until: Date, opts: { actorId?: string } = {}): Promise<Sourced…`
+  - `lastSeenBy(db: Db | Tx, admissionId: string, userId: string, at: Date = new Date()): Promise<Date | null>`
+  - `lastSeenByMany(db: Db | Tx, admissionIds: readonly string[], userId: string, at: Date): Promise<Map<string, Date>>`
+  - `latestVitalsOf(db: Db, admissionIds: readonly string[], at: Date): Promise<Map<string, LatestVitals>>`
+  - `onTreatingTeam(db: Db, admissionId: string, userId: string, at: Date): Promise<boolean>`
+  - `roundsBy(db: Db, admissionId: string, userId: string): Promise<{ roundId: string; seenAt: Date; createdAt: Date; status: string }[]>`
+  - `takeDayOf(at: Date): string`
+  - `takeWindow(takeDay: string): { from: Date; to: Date }`
+  - `unitCensus(db: Db | Tx, teamId: string, takeDay: string, now: Date = new Date()): Promise<UnitCensus>`
+  - types: `LatestVitals`, `SourcedChange`, `UnitAdmission`, `UnitBed`, `UnitBedFlag`, `UnitCensus`, `UnitEws`
+- `unit-stamp.ts`
+  - `stampUnitIn(tx: Tx, admissionId: string, at: Date, erArrivedAt: Date | null = null): Promise<string | null>`
+  - `transferUnit(db: Db, actor: Actor, raw: unknown, opts: { now?: Date } = {}): Promise<{ transferId: string; fromTeamId: string | null; toTea…`
+  - `unitOfAt(exec: Db | Tx, a: UnitFacts, at: Date): Promise<string | null>`
+  - `unitOnAdmission(exec: Db | Tx, a: AdmissionRow, at: Date, erArrivedAt: Date | null): Promise<string | null>`
+  - `unitsOfAt(exec: Db | Tx, admissions: readonly UnitFacts[], at: Date, units?: Map<string, string>): Promise<Map<string, string | null>>`
 
 ## Tables (`kernel/db/schema/ipd.ts`)
 
-`ipd_admission_conditions`, `ipd_admission_deposits`, `ipd_admissions`, `ipd_attendant_message_consents`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_proposals`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_charge_exceptions`, `ipd_charge_lines`, `ipd_class_changes`, `ipd_daily_totals`, `ipd_deposit_alerts`, `ipd_discharge_confirmations`, `ipd_discharge_summaries`, `ipd_discharges`, `ipd_family_callbacks`, `ipd_family_links`, `ipd_family_otps`, `ipd_family_sessions`, `ipd_final_bills`, `ipd_gate_passes`, `ipd_intake_output`, `ipd_mortuary_register`, `ipd_nursing_alerts`, `ipd_nursing_assessments`, `ipd_nursing_notes`, `ipd_payer_auths`, `ipd_payer_claims`, `ipd_payer_non_payables`, `ipd_payer_split_snapshots`, `ipd_shift_handovers`, `ipd_stay_exits`, `ipd_transfers`, `ipd_vitals`
+`ipd_admission_conditions`, `ipd_admission_deposits`, `ipd_admissions`, `ipd_attendant_message_consents`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_proposals`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_charge_exceptions`, `ipd_charge_lines`, `ipd_class_changes`, `ipd_daily_totals`, `ipd_deposit_alerts`, `ipd_discharge_confirmations`, `ipd_discharge_summaries`, `ipd_discharges`, `ipd_family_callbacks`, `ipd_family_links`, `ipd_family_otps`, `ipd_family_sessions`, `ipd_final_bills`, `ipd_gate_passes`, `ipd_intake_output`, `ipd_mortuary_register`, `ipd_nursing_alerts`, `ipd_nursing_assessments`, `ipd_nursing_notes`, `ipd_payer_auths`, `ipd_payer_claims`, `ipd_payer_non_payables`, `ipd_payer_split_snapshots`, `ipd_shift_handovers`, `ipd_stay_exits`, `ipd_transfers`, `ipd_unit_transfers`, `ipd_vitals`
 
-Foreign keys into: `emergency`, `patients`, `resources`
+Foreign keys into: `emergency`, `patients`, `resources`, `roster`
 
 ## HTTP routes
 

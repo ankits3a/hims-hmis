@@ -1,6 +1,6 @@
 ---
 issue: 962
-status: approved
+status: built
 approved: 2026-10-26
 ---
 # SPEC — Doctor Desk: the ward, part 1 (unit stamp, tower inpatient mode, Beds, Round) (#962)
@@ -41,3 +41,23 @@ unit. Part 1 therefore adds the unit seams first. Part 2 is a separate spec: cou
 - **D5** The change mark on Beds is per doctor: a round signed by one doctor clears the mark for that doctor only.
 - **D6** Five round notes signed with the phone offline land exactly once after reconnecting, each with its signing
   time and sync time.
+
+## Build notes (2026-10-26, lane dd-ward-962)
+
+- **Stamp:** `ipd_admissions.admitted_under_team_id` (migration 0262, renumbered at merge), written once in every admit
+  path (`ipd/unit-stamp.ts stampUnitIn`). ER: `unitOnTake` of the admission's department (else the consultant's unit's)
+  at the ER arrival — the emergency module hands `erArrivedAt` to `emergencyAdmit`; no take window → consultant's
+  unit; neither → null (absent). Unit change: `ipd_unit_transfers` row + `ipd.admission.unit_transferred`
+  (`transferUnit`, a consultant of the old or new unit; no screen).
+- **Reads (`ipd/unit-reads.ts`):** `unitCensus`, `admissionsUnder`, `bedsOf`, `changesSince`, `lastSeenBy`, plus
+  `latestVitalsOf`, `roundsBy`. Take day 08:00 → 08:00 IST. "In your ward" = a bed the roster allots the unit, else a
+  ward of the unit's department; otherwise an outlier. Flags: open EWS breach → critical; assessment or vitals overdue
+  → owed; active fit declaration → could go home. LAMA counts the `lama` end state.
+- **Desk:** `doctor-desk/ward.ts` — Tower `ward` (null when IPD is off or no unit), `GET /doctor-desk/ward/beds`,
+  `GET /doctor-desk/ward/round/:admissionId` (404 `ward_closed` while IPD is off). Web: Tower inpatient tiles + bed
+  map, `/doctor-desk/beds`, `/doctor-desk/round/$admissionId`, Beds phone tab and menu entry only while IPD is on.
+  Notes: `lib/round-queue.ts` (IndexedDB, client id = `signRound` idempotency key; signed-at = `seenAt`, synced-at =
+  the row's `created_at`).
+- **Absent in part 1:** owed-on-this-bed and tasks to a named resident, unaccepted inpatient referrals, "waiting in
+  casualty", "Pull today's vitals + labs in" — part 2 or later modules.
+

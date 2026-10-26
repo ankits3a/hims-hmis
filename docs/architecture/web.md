@@ -38,12 +38,14 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/diet/kitchen` | `apps/web/src/screens/diet-kitchen` |
 | `/diet/ward` | `apps/web/src/screens/diet-ward` |
 | `/doctor-desk` | `apps/web/src/screens/doctor-desk-tower` |
+| `/doctor-desk/beds` | `apps/web/src/screens/doctor-desk-beds` |
 | `/doctor-desk/briefs` | `apps/web/src/screens/doctor-desk-briefs` |
 | `/doctor-desk/now` | `apps/web/src/screens/doctor-desk-now` |
 | `/doctor-desk/opd` | `apps/web/src/screens/doctor-desk-opd` |
 | `/doctor-desk/professor` | `apps/web/src/screens/doctor-desk-professor` |
 | `/doctor-desk/ratings` | `apps/web/src/screens/doctor-desk-ratings` |
 | `/doctor-desk/report` | `apps/web/src/screens/doctor-desk-report` |
+| `/doctor-desk/round/$admissionId` | `apps/web/src/screens/doctor-desk-round` |
 | `/doctor-desk/unit` | `apps/web/src/screens/doctor-desk-unit` |
 | `/er/bill` | `apps/web/src/screens/er-bill` |
 | `/er/board` | `apps/web/src/screens/er-board` |
