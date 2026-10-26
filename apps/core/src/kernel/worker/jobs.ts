@@ -43,6 +43,7 @@ import { sweepTasks } from "../../modules/tasks";
 import { lapseErPreAlerts, sweepErBoarding, sweepErCareClocks, sweepErMlcClocks, sweepErTriageClocks } from "../../modules/emergency";
 import { sweepBmwStorage } from "../../modules/bmw";
 import { buildDueLists } from "../../modules/diet";
+import { runRoundsClock } from "../../modules/housekeeping";
 import { collectResourceKinds } from "../resources/kinds";
 import { isModuleOn, runIfModuleOn } from "../modules/switch";
 import type { DarkModuleKey } from "../modules/switch";
@@ -894,10 +895,19 @@ function whenModuleOn<F extends (db: Db, now: Date) => Promise<unknown>>(key: Da
  *
  * E4.4 DIET (#736) — the MEAL CLOCK rides the same tick (no pool client of its own, the bmw precedent): every meal
  * past its cut-off and not yet served gets its lists built (`buildDueLists`, idempotent). Same try/catch rule.
+ *
+ * HK-1 (#973) — the housekeeping ROUNDS CLOCK rides it too (`runRoundsClock`: each area's round of the slot now, and
+ * rounds missed past their grace), while `housekeeping` is on. Same try/catch rule.
  */
 export async function runTaskAndWasteClocks(
   db: Db, now: Date,
-  sweeps: { sweepTasks: typeof sweepTasks; sweepBmwStorage: typeof sweepBmwStorage; buildDueLists?: typeof buildDueLists } = { sweepTasks, sweepBmwStorage: whenModuleOn("bmw", sweepBmwStorage), buildDueLists: whenModuleOn("diet", buildDueLists) },
+  sweeps: {
+    sweepTasks: typeof sweepTasks; sweepBmwStorage: typeof sweepBmwStorage; buildDueLists?: typeof buildDueLists;
+    runRoundsClock?: typeof runRoundsClock;
+  } = {
+    sweepTasks, sweepBmwStorage: whenModuleOn("bmw", sweepBmwStorage), buildDueLists: whenModuleOn("diet", buildDueLists),
+    runRoundsClock: whenModuleOn("housekeeping", runRoundsClock),
+  },
 ): Promise<void> {
   let first: unknown = undefined;
   try {
@@ -917,6 +927,14 @@ export async function runTaskAndWasteClocks(
       await sweeps.buildDueLists(db, now);
     } catch (e) {
       clockLog.error(`buildDueLists failed: ${e instanceof Error ? e.message : String(e)}`);
+      first ??= e;
+    }
+  }
+  if (sweeps.runRoundsClock !== undefined) {
+    try {
+      await sweeps.runRoundsClock(db, now);
+    } catch (e) {
+      clockLog.error(`runRoundsClock failed: ${e instanceof Error ? e.message : String(e)}`);
       first ??= e;
     }
   }

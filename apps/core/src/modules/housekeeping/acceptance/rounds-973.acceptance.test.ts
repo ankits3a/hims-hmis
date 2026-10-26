@@ -51,7 +51,7 @@ describe("HK-1 housekeeping — rounds, rota, proof, confirm, door requests (#97
   }
 
   const photo = async (taskId: string, by: Actor) =>
-    (await storeWorkPhoto(db, w.store, by, { taskId, mime: "image/jpeg", bytes: Buffer.from("not-a-patient") }, now)).photoKey;
+    (await storeWorkPhoto(db, w.store, by, { taskId, mime: "image/jpeg", bytes: Buffer.from("not-a-patient") })).photoKey;
 
   /** The worker's road with full proof: accept, start, scan, every item answered, a photo when asked. */
   async function work(task: TaskRow, by: Actor, token: string, itemIds: string[], withPhoto = true): Promise<TaskRow> {

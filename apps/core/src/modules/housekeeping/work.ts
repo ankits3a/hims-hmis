@@ -38,7 +38,7 @@ async function hkTask(exec: Exec, taskId: string): Promise<TaskRow> {
 
 /** Store the photo of a cleaned place (never a patient) for the attendant holding the task. Returns its key. */
 export async function storeWorkPhoto(
-  db: Db, store: DocumentStore, actor: Actor, input: { taskId: string; mime: string; bytes: Buffer }, _now: Date = new Date(),
+  db: Db, store: DocumentStore, actor: Actor, input: { taskId: string; mime: string; bytes: Buffer },
 ): Promise<{ photoKey: string }> {
   const task = await hkTask(db, input.taskId);
   if (task.assigneeId !== actor.id) throw new TaskError("not_yours", { taskId: task.id });
