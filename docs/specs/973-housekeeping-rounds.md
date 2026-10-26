@@ -1,7 +1,8 @@
 ---
 issue: 973
-status: approved
+status: built
 approved: 2026-10-26
+built: 2026-10-26
 ---
 # SPEC — Housekeeping HK-1: teams, rounds, checklists, confirmation, door-QR requests (#973)
 
@@ -49,3 +50,17 @@ place with a QR scan, a checklist and a photo where needed. A nurse or the super
 - **D6** A round not scanned by its due time shows as missed on the supervisor board.
 - **D7** A request from a door QR, with no login, reaches the floor team and can be closed.
 - **D8** Contractor staff do the same tasks with the same proof, and every task records the company the person works for.
+
+## Build notes (2026-10-26)
+
+Built on lane `hk-rounds-973`. Acceptance checks: `apps/core/src/modules/housekeeping/acceptance/rounds-973.acceptance.test.ts`
+(D1–D8) and `apps/web/src/screens/acceptance/housekeeping-rounds-973.test.tsx` (D6, D7). Choices made by standard
+practice or from the design board, none of them money or law:
+
+- Shifts are 07–15, 15–23 and 23–07 IST, as on the design board. A class B round is raised at each shift start.
+- Placement applies only while a rota is published for the shift. With no rota, tasks go out as before.
+- A task needs the scan, checklist and photo only when its place is, or lies inside, a set-up area. A bed clean in a
+  ward that is not set up yet keeps the old tap.
+- The door page offers the four needs from the spec, with no free-text note: a note could carry patient details.
+  "Linen change" and "Pests" from the board belong to other modules and come later.
+- Infection control is a new role. It confirms terminal cleans beside the supervisor.
