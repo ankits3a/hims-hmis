@@ -69,9 +69,11 @@ export function canteenRefusal(e: unknown): string | null {
   return typeof code === "string" ? code : `http_${String(e.status)}`;
 }
 
-/** "₹84" / "₹84.50" from paise. */
+/** "₹84", "₹84.50", "₹25,800" (Indian grouping), "−₹10" from paise. */
 export function rupees(paise: number): string {
-  return paise % 100 === 0 ? `₹${String(paise / 100)}` : `₹${(paise / 100).toFixed(2)}`;
+  const abs = Math.abs(paise);
+  const text = (abs / 100).toLocaleString("en-IN", { minimumFractionDigits: abs % 100 === 0 ? 0 : 2, maximumFractionDigits: 2 });
+  return `${paise < 0 ? "−" : ""}₹${text}`;
 }
 
 /** Rupees typed at a till ("84", "84.5") → paise, or null. */

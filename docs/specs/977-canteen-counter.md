@@ -1,6 +1,6 @@
 ---
 issue: 977
-status: approved
+status: built
 approved: 2026-10-26
 ---
 # SPEC — Canteen CN-1: counter, menu, staff meal card, attendant meals, charity (#977)
@@ -45,3 +45,17 @@ log, meeting catering and delivery round are CN-2 (#981).
 - **D6** Each sale carries its GST treatment: in-patient diet exempt, canteen sale 5%, staff recovery as finance sets
   it. A caterer outlet's monthly rent invoice carries 18%.
 - **D7** A caterer outlet's sales never post to the hospital's till totals. Only its rent does.
+
+## As built (2026-10-26)
+
+- Built on lane `canteen-977`: module `apps/core/src/modules/canteen` (notes in its `MAP.md`), migration 0262 (renumbered
+  at merge), screens `/canteen/till`, `/canteen/close`, `/canteen/setup`, `/canteen/finance`, the public `/canteen/bed`
+  page, and the staff meal card in the app. Dark until `HMIS_MODULES_ON` names `canteen`.
+- D1–D7 are the acceptance tests `apps/core/src/modules/canteen/acceptance/canteen-counter.acceptance.test.ts`.
+- DECIDED while building: a caterer outlet takes cash or UPI only until the owner rules on collecting for the caterer;
+  an IPD-bill meal needs `CANTEEN_MEAL` and `CANTEEN_DIET` on the tariff (a go-live tariff revision); the bed page puts a
+  meal on the hospital bill only with the family's verified OTP link on that phone; an unconfirmed UPI bed order is
+  cancelled after 30 minutes.
+- Owed to the owner (money): settling caterer meals sold on the IPD bill or a staff card; charity limits and any higher
+  approver.
+

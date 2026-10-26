@@ -47,7 +47,7 @@
 .pp .cn-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 0; border-bottom: 1px solid var(--line2, var(--line)); font-size: 14px; color: var(--ink); margin: 0; }
 .pp .cn-line > span:first-child { flex: 1 1 140px; min-width: 0; }
 .pp .cn-line .r { margin-left: auto; font-weight: 600; }
-.pp .cn-pm, .cn-bed .cn-pm { width: 44px; height: 44px; border-radius: 8px; border: 1px solid var(--line, #dfe7e1); background: var(--card, #fff); font-size: 20px; color: var(--ink, #132420); cursor: pointer; }
+.pp .cn-pm, .cn-bed .cn-pm { display: inline-flex; align-items: center; justify-content: center; padding: 0; flex: none; width: 44px; height: 44px; border-radius: 8px; border: 1px solid var(--line, #dfe7e1); background: var(--card, #fff); font-size: 20px; color: var(--ink, #132420); cursor: pointer; }
 .pp .cn-total, .cn-bed .cn-total { display: flex; justify-content: space-between; align-items: baseline; font-size: 15px; }
 .pp .cn-total b, .cn-bed .cn-total b { font-size: 22px; }
 .pp .cn-modes, .cn-bed .cn-modes { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -106,8 +106,9 @@
 .cn-bed-dish .nm .cn-food { margin-right: 6px; }
 .cn-bed-dish .pr { grid-area: pr; font-weight: 700; font-size: 15px; }
 .cn-bed-dish .cn-step { grid-area: st; display: flex; align-items: center; gap: 12px; justify-content: flex-end; }
-.cn-bed-pay { display: flex; flex-direction: column; gap: 10px; padding: 12px; background: #fff; border: 1px solid var(--line); border-radius: 10px; position: sticky; bottom: 8px; }
+.cn-bed-pay { display: flex; flex-direction: column; gap: 10px; padding: 12px; background: #fff; border: 1px solid var(--line); border-radius: 10px; }
 
 @media print {
   .pp .cn-menu, .pp .cn-order, .pp .cn-head, .pp .cn-notice { display: none; }
 }
+.pp .cn-head select { max-width: 360px; }

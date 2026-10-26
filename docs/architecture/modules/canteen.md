@@ -13,7 +13,7 @@ Source: `apps/core/src/modules/canteen/`
 
 - **Depends on modules:** `diet`, `ipd`, `patients`, `roster`, `tariff`
 - **Used by modules:** —
-- **Kernel used:** `approvals`, `auth`, `config`, `crypto`, `db`, `modules`, `tokens`, `workflow`
+- **Kernel used:** `approvals`, `auth`, `config`, `crypto`, `db`, `modules`, `printing`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
 
@@ -75,7 +75,7 @@ Source: `apps/core/src/modules/canteen/`
   - `setStaffRule(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ ruleId: string }>`
   - types: `DishView`
 - `staff-card.ts`
-  - `staffCardQr(db: Db, actor: Actor, opts: { now?: Date } = {}): Promise<{ token: string; expiresAt: string; staffCode: string }>`
+  - `staffCardQr(db: Db, actor: Actor, opts: { now?: Date } = {}): Promise<StaffCardQr>`
 
 ## Tables (`kernel/db/schema/canteen.ts`)
 
@@ -85,6 +85,6 @@ Foreign keys into: `resources`
 
 ## HTTP routes
 
-- `canteen.controller.ts` — `/canteen/bed-class-meals`, `/canteen/bed-orders`, `/canteen/bed-qrs`, `/canteen/canteen`, `/canteen/charity`, `/canteen/cost-centres`, `/canteen/day`, `/canteen/deductions`, `/canteen/deductions.csv`, `/canteen/dishes`, `/canteen/free-rules`, `/canteen/ipd`, `/canteen/month`, `/canteen/my-card`, `/canteen/my-session`, `/canteen/outlets`, `/canteen/prices`, `/canteen/rent-invoices`, `/canteen/sales`, `/canteen/sessions`, `/canteen/setup`, `/canteen/staff-cards`, `/canteen/staff-categories`, `/canteen/staff-rules`, `/canteen/tills`
+- `canteen.controller.ts` — `/canteen/admission`, `/canteen/bed-class-meals`, `/canteen/bed-orders`, `/canteen/bed-qrs`, `/canteen/canteen`, `/canteen/charity`, `/canteen/cost-centres`, `/canteen/day`, `/canteen/deductions`, `/canteen/deductions.csv`, `/canteen/dishes`, `/canteen/free-rules`, `/canteen/ipd`, `/canteen/month`, `/canteen/my-card`, `/canteen/my-session`, `/canteen/outlets`, `/canteen/prices`, `/canteen/rent-invoices`, `/canteen/sales`, `/canteen/sessions`, `/canteen/setup`, `/canteen/staff-cards`, `/canteen/staff-categories`, `/canteen/staff-rules`, `/canteen/tills`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/canteen`

@@ -150,6 +150,7 @@ Source: `apps/core/src/modules/ipd/`
   - types: `VoidBillResult`
 - `canteen-charges.ts`
   - `CANTEEN_DIET_SERVICE_CODE`
+  - `canteenAdmissionByNo(exec: Db | Tx, q: string): Promise<(CanteenAdmissionFacts & { admissionNo: string; bedCode: string | null; wardName: s…`
   - `canteenAdmissionFacts(exec: Db | Tx, admissionId: string): Promise<CanteenAdmissionFacts | null>`
   - `openAdmissionAtBed(exec: Db | Tx, bedId: string): Promise<string | null>`
   - `postCanteenChargeIn(tx: Tx, actor: Actor, admissionId: string, input: CanteenChargeInput, at: Date): Promise<CanteenChargeResult>`

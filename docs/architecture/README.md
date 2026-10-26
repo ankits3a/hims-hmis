@@ -223,7 +223,7 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 | `ops` | lab, pharmacy | auth, config, crypto, db, events, modules, tokens | yes |
 | `orders` | emergency, ipd, lab, ordering, pharmacy, radiology | auth, db, episodes, events, modules, phi | — |
 | `phi` | abdm, aerb, billing, doctor-desk, lab, opd, patients, pcpndt, pharmacy, radiology | db | — |
-| `printing` | billing, bmw, emergency, ipd, lab, opd, pharmacy, roster | auth, crypto, db, events, phi, tokens | yes |
+| `printing` | billing, bmw, canteen, emergency, ipd, lab, opd, pharmacy, roster | auth, crypto, db, events, phi, tokens | yes |
 | `push` | — | alerts, db, events, modules | — |
 | `ratelimit` | — | — | — |
 | `realtime` | emergency, ipd, lab, opd | auth, db, tokens | — |
