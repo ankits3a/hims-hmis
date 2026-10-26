@@ -1,7 +1,8 @@
 ---
 issue: 974
-status: approved
+status: built
 approved: 2026-10-26
+built: 2026-10-26
 ---
 # SPEC — Housekeeping HK-2: floor consumables, inspections, contractor SLA report, daily and monthly reports (#974)
 
@@ -45,3 +46,27 @@ Status: APPROVED 2026-10-26 by the owner ("go with your logical recommendation")
 - **D5** The daily report for a floor and shift counts rounds due, done and missed, turnarounds, requests, fails and
   inspections, and matches the tasks behind each count.
 - **D6** An attendant completes a task (scan, checklist, photo) on the staff app, and a nurse passes it there.
+
+## Build notes (2026-10-26)
+
+Built on lane `hk-reports-974`, stacked on `hk-rounds-973`. Acceptance checks:
+`apps/core/src/modules/housekeeping/acceptance/reports-974.acceptance.test.ts` (D1–D5) and
+`apps/mobile/__tests__/acceptance/housekeeping-974.test.tsx` (D6). Choices made by standard practice, none of them money
+or law:
+
+- A floor is linked to one materials store; indents, issues and receipts stay in materials. The month is the IST month,
+  and a receipt counts on the day it is received. The value is the batch's landed cost on the transfer.
+- Occupied bed-days use the midnight census (00:00 IST). A floor with no IPD bed shows the total only.
+- The two inspections per floor are drawn by a hash of the floor and the shift. A floor that already has its draw is
+  skipped, so a rerun draws nothing new. The supervisor scans the area's own QR, answers eight NABH items and takes one
+  photo.
+- A failed inspection raises a new task, "Rework after inspection". It goes to the floor team's pool, is proved like any
+  other clean, and is checked by the supervisor through HK-1's Pass/Fail.
+- The contractor report credits work to the company recorded with the attempt. A round nobody finished goes to its
+  holder's company. Rounds are counted by due time, turnaround by release time, first-time pass by the first attempt,
+  and inspections by the company that last worked the area.
+- The floor supervisor (`services_supervisor`) now holds `materials.stock.read` and `materials.stock.receive`, so it can
+  raise and receive the floor store's indents.
+- On the staff app, the attendant's list is behind `tasks.work`. The check list is behind `ipd.beds.clean`, and also
+  opens for `housekeeping.confirm` or `housekeeping.verify_terminal`.
+

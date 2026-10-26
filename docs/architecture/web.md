@@ -57,6 +57,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/family` | `apps/web/src/screens/ipd-family` |
 | `/formulary/admin` | `(redirect)` |
 | `/housekeeping` | `apps/web/src/screens/housekeeping-board` |
+| `/housekeeping/reports` | `apps/web/src/screens/hk-reports` |
 | `/housekeeping/rota` | `apps/web/src/screens/hk-rota` |
 | `/housekeeping/setup` | `apps/web/src/screens/hk-setup` |
 | `/ipd/admissions/$admissionId/bill` | `apps/web/src/screens/ipd-bill` |

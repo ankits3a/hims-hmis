@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/housekeeping/`
 · Notes: [MAP.md](../../../apps/core/src/modules/housekeeping/MAP.md)
 
-- **Depends on modules:** `ipd`, `roster`, `tasks`
+- **Depends on modules:** `ipd`, `materials`, `roster`, `tasks`
 - **Used by modules:** —
 - **Kernel used:** `alerts`, `auth`, `config`, `crypto`, `db`, `documents`, `events`, `modules`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `resourceAssigned`, `resourceReleased`, `resourceStatusChanged`
@@ -30,10 +30,20 @@ Source: `apps/core/src/modules/housekeeping/`
 - `errors.ts`
   - `class HousekeepingRefusal`
   - `housekeepingHttpStatus(code: HousekeepingRefusalCode): number`
+- `floor-stores.ts`
+  - `floorConsumables(db: Db, month: string, now: Date = new Date()): Promise<HkConsumablesView>`
+  - `floorStoresView(db: Db): Promise<{ floors: HkFloorStoreView[]; stores: { id: string; code: string; name: string }[] }>`
+  - `linkFloorStore(db: Db, actor: Actor, raw: unknown, now: Date = new Date()): Promise<HkFloorStoreView>`
 - `housekeeping.module.ts`
   - `class HousekeepingModule`
+- `inspections.ts`
+  - `drawInspections(db: Db, now: Date = new Date()): Promise<{ drawn: number }>`
+  - `inspectionsOf(db: Db, now: Date = new Date()): Promise<HkInspectionsView>`
+  - `recordInspection(db: Db, key: Buffer, actor: Actor, raw: unknown, now: Date = new Date()): Promise<HkInspectionView>`
+  - `storeInspectionPhoto(db: Db, store: DocumentStore, _actor: Actor, input: { inspectionId: string; mime: string; bytes: Buffer }): Promise<{ …`
 - `kinds.ts`
   - `AREA_REQUEST`
+  - `AREA_REWORK`
   - `AREA_ROUND`
   - `AREA_ROUND_CHECKED`
   - `BED_CLEAN_ROUTINE`
@@ -55,6 +65,10 @@ Source: `apps/core/src/modules/housekeeping/`
 - `reads.ts`
   - `bedCleans(db: Db, now: Date = new Date()): Promise<BedCleansView>`
   - `housekeepingBoard(db: Db, now: Date = new Date()): Promise<HousekeepingBoardView>`
+- `reports.ts`
+  - `contractorSla(db: Db, month: string, now: Date = new Date()): Promise<HkSlaView>`
+  - `dailyReport(db: Db, floorId: string, at: Date = new Date()): Promise<HkDailyView>`
+  - `toCheck(db: Db, limit = 200): Promise<HkToCheck[]>`
 - `rota.ts`
   - `publishRota(db: Db, actor: Actor, raw: unknown, now: Date = new Date()): Promise<HkRotaView>`
   - `rotaView(db: Db, now: Date = new Date(), shiftStartsAt?: Date, rotaId?: string): Promise<HkRotaView>`
@@ -88,12 +102,12 @@ Source: `apps/core/src/modules/housekeeping/`
 
 ## Tables (`kernel/db/schema/housekeeping.ts`)
 
-`hk_areas`, `hk_checklists`, `hk_contractors`, `hk_door_requests`, `hk_rota_places`, `hk_rotas`, `hk_rounds`, `hk_staff`, `hk_work`
+`hk_areas`, `hk_checklists`, `hk_contractors`, `hk_door_requests`, `hk_floor_stores`, `hk_inspections`, `hk_rota_places`, `hk_rotas`, `hk_rounds`, `hk_staff`, `hk_work`
 
 Foreign keys into: `auth`, `resources`, `tasks`
 
 ## HTTP routes
 
-- `housekeeping.controller.ts` — `/housekeeping/areas`, `/housekeeping/bed-cleans`, `/housekeeping/board`, `/housekeeping/checklists`, `/housekeeping/cleans`, `/housekeeping/contractors`, `/housekeeping/door`, `/housekeeping/rotas`, `/housekeeping/setup`, `/housekeeping/staff`, `/housekeeping/supervisor`, `/housekeeping/tasks`
+- `housekeeping.controller.ts` — `/housekeeping/areas`, `/housekeeping/bed-cleans`, `/housekeeping/board`, `/housekeeping/checklists`, `/housekeeping/cleans`, `/housekeeping/contractors`, `/housekeeping/door`, `/housekeeping/floor-stores`, `/housekeeping/inspections`, `/housekeeping/reports`, `/housekeeping/rotas`, `/housekeeping/setup`, `/housekeeping/staff`, `/housekeeping/supervisor`, `/housekeeping/tasks`, `/housekeeping/to-check`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/housekeeping`
