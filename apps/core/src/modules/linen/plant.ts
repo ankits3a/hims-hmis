@@ -3,7 +3,6 @@ import {
   addMachineInput, batchRefInput, finishCycleInput, handToCssdInput, linenDisinfected, machineDownInput, machineUpInput,
   mendReturnInput, newId, recordQcInput, startCycleInput,
 } from "@hmis/contracts";
-import { verifyPin } from "../../kernel/auth/identity";
 import { hasPermission } from "../../kernel/auth/permissions";
 import {
   linenCondemnRequests, linenCycleBatches, linenLaundryBatches, linenMachines, linenMovements, linenQcResults, linenWashCycles,
@@ -12,6 +11,7 @@ import {
 import { isModuleOn } from "../../kernel/modules/switch";
 import { raiseTicket } from "../maintenance";
 import { LinenError } from "./errors";
+import { signerOf } from "./floor";
 import { LINEN_SYSTEM } from "./kinds";
 import { lock, movement, parse, requireItems, stamp, tx } from "./intents";
 import { LINEN_CSSD_RECEIVE } from "./manifest";
@@ -245,8 +245,8 @@ export async function recordQc(exec: Exec, actor: Actor, raw: unknown, nowIn?: D
 /** Theatre sets that passed quality check go to CSSD on the CSSD nurse's signature (PIN and the CSSD permission) (D7). */
 export async function handToCssd(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<{ batchId: string; movements: number }> {
   const input = parse(handToCssdInput, raw);
-  if (!(await verifyPin(exec as Db, input.cssdSign.userId, input.cssdSign.pin))) throw new LinenError("bad_pin");
-  if (!(await hasPermission(exec as Db, input.cssdSign.userId, LINEN_CSSD_RECEIVE, "hospital"))) throw new LinenError("not_cssd");
+  const signer = await signerOf(exec, input.cssdSign);
+  if (!(await hasPermission(exec as Db, signer, LINEN_CSSD_RECEIVE, "hospital"))) throw new LinenError("not_cssd");
   return tx(exec, async (t) => {
     const b = await batchFor(t, input.batchId);
     if ((b.stream as LinenStream) !== "theatre") throw new LinenError("not_theatre", { batchId: b.id });
@@ -257,7 +257,7 @@ export async function handToCssd(exec: Exec, actor: Actor, raw: unknown, nowIn?:
     const rows = qc.filter((q) => q.pass > 0).map((q) => movement("issue_to_cssd", { itemCode: q.itemCode, qty: q.pass }, actor, now, { batchId: b.id }));
     if (rows.length > 0) await t.insert(linenMovements).values(rows);
     await t.update(linenLaundryBatches).set({
-      state: "received", receivedAt: now, receivedBy: input.cssdSign.userId, piecesReceived: qc.reduce((n, q) => n + q.pass, 0),
+      state: "received", receivedAt: now, receivedBy: signer, piecesReceived: qc.reduce((n, q) => n + q.pass, 0),
     }).where(eq(linenLaundryBatches.id, b.id));
     return { batchId: b.id, movements: rows.length };
   });

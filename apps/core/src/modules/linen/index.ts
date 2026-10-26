@@ -20,7 +20,7 @@ export {
 } from "./reads";
 export type { WardShape } from "./reads";
 // LD-1 (#978, decision 0087) — the laundry floor.
-export { openRound, recentRounds, sealBag, signDelivery, signPickup, soiledRoomView, weighBag } from "./floor";
+export { openRound, recentRounds, sealBag, sealedBags, signDelivery, signPickup, signerOf, soiledRoomView, wardBeds, weighBag } from "./floor";
 export { activeHolds, placeHold, releaseHold, wardOfBed } from "./holds";
 export {
   addMachine, finishCycle, handToCssd, markMachineDown, markMachineUp, mendReturn, mendingPool, plantView, recordQc, releaseBatch,

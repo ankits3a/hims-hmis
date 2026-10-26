@@ -6,8 +6,8 @@ import { withTx } from "../../kernel/db/client";
 import { KERNEL_RESOURCE_KINDS, createResource } from "../../kernel/resources";
 import {
   addMachine, dueSlots, finishCycle, markMachineDown, mendReturn, mendingPool, openRound, placeHold, receiveFromLaundry,
-  recordQc, recordSoiled, releaseBatch, routeToVendor, runLinenClock, rushDemand, sealBag, sendToLaundry, signDelivery,
-  signPickup, soiledRoomView, startCycle, topUpWard, wardStates, weighBag,
+  recordQc, recordSoiled, releaseBatch, routeToVendor, runLinenClock, rushDemand, sealBag, sealedBags, sendToLaundry, signDelivery,
+  signPickup, soiledRoomView, startCycle, topUpWard, wardBeds, wardStates, weighBag,
 } from "./index";
 import type { Db } from "../../kernel/db/client";
 import type { LinenHospital, LinenStaff } from "../../../test/helpers/linen";
@@ -91,6 +91,21 @@ describe("LD-1 laundry floor — rounds, clock, plant and mending", () => {
     expect((await soiledRoomView(db)).infectedBags).toEqual([]);
     await expect(sealBag(db, s.nurse, { wardId: h.generalWard, tag: "T-1", infected: false, lines: [{ itemCode: "bedsheet", qty: 1 }] }, now))
       .resolves.toMatchObject({ tag: "T-1" });
+  });
+
+  it("the ward signs on the runner's phone by the name it signs in with and its PIN; the floor lists sealed bags and beds", async () => {
+    await topUpWard(db, actorOf(H1), { wardId: h.generalWard, lines: [{ itemCode: "bedsheet", qty: 3 }] }, now);
+    await sealBag(db, s.nurse, { wardId: h.generalWard, bedId: h.aGeneralBed, tag: "B-9", infected: false, lines: [{ itemCode: "bedsheet", qty: 1 }] }, now);
+    await placeHold(db, s.nurse, { kind: "radioactive", bedId: h.aGeneralBed }, now);
+    expect(await sealedBags(db)).toEqual([{ tag: "B-9", wardId: h.generalWard, bedId: h.aGeneralBed, bedName: "General bed 1", infected: false, held: true }]);
+    expect((await wardBeds(db)).filter((b) => b.wardId === h.generalWard)).toHaveLength(10);
+    const r = await openRound(db, s.runner, { wardId: h.generalWard, kind: "pickup" }, now);
+    const lines = [{ itemCode: "bedsheet", qty: 1 }];
+    await expect(signPickup(db, s.runner, { roundId: r.id, lines, wardSign: { username: "ln.nurse", pin: "0000" } }, now)).rejects.toMatchObject({ code: "bad_pin" });
+    await expect(signPickup(db, s.runner, { roundId: r.id, lines, wardSign: { username: "nobody.here", pin: s.nursePin } }, now)).rejects.toMatchObject({ code: "bad_pin" });
+    await expect(signPickup(db, s.runner, { roundId: r.id, lines, wardSign: { username: "ln.runner", pin: "9753" } }, now)).rejects.toMatchObject({ code: "signer_is_runner" });
+    await expect(signPickup(db, s.runner, { roundId: r.id, lines, wardSign: { username: "ln.nurse", pin: s.nursePin } }, now))
+      .resolves.toMatchObject({ state: "signed", wardSignedBy: s.nurse.id });
   });
 
   it("a hold names a bed under a ward, and a chemotherapy hold needs its dose time", async () => {

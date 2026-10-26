@@ -9,7 +9,7 @@ import {
 } from "./intents";
 import { LINEN_CSSD_RECEIVE, LINEN_HANDLE, LINEN_HOLD_RELEASE, LINEN_MANAGE, LINEN_PLANT, LINEN_QC, LINEN_VIEW } from "./manifest";
 import { linenBoard, linenHandlerView, weeklyVariance } from "./reads";
-import { openRound, recentRounds, sealBag, signDelivery, signPickup, soiledRoomView, weighBag } from "./floor";
+import { openRound, recentRounds, sealBag, sealedBags, signDelivery, signPickup, soiledRoomView, wardBeds, weighBag } from "./floor";
 import { activeHolds, placeHold, releaseHold } from "./holds";
 import {
   addMachine, finishCycle, handToCssd, markMachineDown, markMachineUp, mendReturn, plantView, recordQc, releaseBatch, routeToVendor,
@@ -141,6 +141,7 @@ export class LinenController {
     return {
       rounds: await recentRounds(this.db), holds: await activeHolds(this.db), soiledRoom: await soiledRoomView(this.db),
       bedsWaiting: await bedsWaitingForLinen(this.db), mlcBeds: await mlcOccupiedBeds(this.db),
+      sealedBags: await sealedBags(this.db), beds: await wardBeds(this.db),
     };
   }
 

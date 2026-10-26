@@ -161,8 +161,11 @@ export const linenVarianceQuery = z.object({
 /* ═══ LD-1 (#978, decision 0087) — the laundry floor ═══ */
 
 const pin = z.string().regex(/^\d{4,6}$/);
-/** A signature on the spot: the signer's user id and PIN, checked against the user record. */
-const signature = z.object({ userId: id, pin }).strict();
+/**
+ * A signature on the spot: the signer's PIN, with their user id (a desk that knows it) or the name they sign in with
+ * (typed on the runner's phone), checked against the user record.
+ */
+const signature = z.union([z.object({ userId: id, pin }).strict(), z.object({ username: z.string().trim().min(2).max(80), pin }).strict()]);
 const reason = z.string().trim().min(3).max(200);
 
 /**
@@ -452,4 +455,9 @@ export type LinenFloorView = {
   bedsWaiting: LinenBedWait[];
   /** Occupied beds whose admission is an MLC: the round sheet suggests a hold there. */
   mlcBeds: string[];
+  /** Bags sealed on the wards, not yet picked up (held ones say so). */
+  sealedBags: LinenSealedBag[];
+  /** Every bed under a ward, for sealing a bag at a bed or placing a hold. */
+  beds: { bedId: string; bedName: string; wardId: string }[];
 };
+export type LinenSealedBag = { tag: string; wardId: string; bedId: string | null; bedName: string | null; infected: boolean; held: boolean };

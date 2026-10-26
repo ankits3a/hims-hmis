@@ -1,12 +1,12 @@
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { newId, openRoundInput, sealBagInput, signDeliveryInput, signPickupInput, weighBagInput } from "@hmis/contracts";
-import { verifyPin } from "../../kernel/auth/identity";
+import { verifyPin, verifyPinByUsername } from "../../kernel/auth/identity";
 import { linenBags, linenMovements, linenRounds } from "../../kernel/db/schema";
 import { LinenError } from "./errors";
 import { requireNotHeld, wardOfBed } from "./holds";
 import { issueToWardIn, lock, movement, parse, requireItems, requireOnHand, requireWard, stamp, tx, upToPar } from "./intents";
 import { soiledPool } from "./reads";
-import type { Actor, LinenBagCard, LinenRoundCard, LinenRoundKind, LinenSoiledRoomView } from "@hmis/contracts";
+import type { Actor, LinenBagCard, LinenRoundCard, LinenRoundKind, LinenSealedBag, LinenSoiledRoomView } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Exec, Line } from "./intents";
 
@@ -89,7 +89,7 @@ export async function signPickup(exec: Exec, actor: Actor, raw: unknown, nowIn?:
   const tags = (input.bags ?? []).map((b) => b.tag);
   if (loose.length === 0 && tags.length === 0) throw new LinenError("bad_input", { issues: ["lines or bags"] });
   if (new Set(tags).size !== tags.length) throw new LinenError("duplicate_item", { tags });
-  await requireSignature(exec, actor, input);
+  const wardSigner = await requireSignature(exec, actor, input);
   return tx(exec, async (t) => {
     const round = await openRoundFor(t, input.roundId, "pickup");
     const wardId = round.wardResourceId;
@@ -111,21 +111,35 @@ export async function signPickup(exec: Exec, actor: Actor, raw: unknown, nowIn?:
     await t.insert(linenMovements).values(rows);
     if (bags.length > 0) await t.update(linenBags).set({ state: "picked", roundId: round.id }).where(inArray(linenBags.id, bags.map((b) => b.id)));
     const signed = (await t.update(linenRounds).set({
-      state: "signed", runnerId: actor.id, wardSignedBy: input.wardSign?.userId ?? null,
+      state: "signed", runnerId: actor.id, wardSignedBy: wardSigner,
       runnerOnlyReason: input.runnerOnlyReason ?? null, pieces: loose.reduce((n, l) => n + l.qty, 0), bags: bags.length, signedAt: now,
     }).where(eq(linenRounds.id, round.id)).returning())[0]!;
     return roundCard(signed);
   });
 }
 
-/** The ward's signature (a PIN, never the runner's) XOR runner-only with a reason. */
-async function requireSignature(exec: Exec, actor: Actor, input: { wardSign?: { userId: string; pin: string }; runnerOnlyReason?: string }): Promise<void> {
+export type Signature = { userId: string; pin: string } | { username: string; pin: string };
+
+/** The signer of an on-the-spot signature, by PIN (`bad_pin` for a wrong PIN or an unknown name). → their user id. */
+export async function signerOf(exec: Exec, sig: Signature): Promise<string> {
+  if ("userId" in sig) {
+    if (!(await verifyPin(exec as Db, sig.userId, sig.pin))) throw new LinenError("bad_pin");
+    return sig.userId;
+  }
+  const hit = await verifyPinByUsername(exec as Db, sig.username, sig.pin);
+  if (hit === null) throw new LinenError("bad_pin");
+  return hit.userId;
+}
+
+/** The ward's signature (a PIN, never the runner's) XOR runner-only with a reason. → the ward signer, or null. */
+async function requireSignature(exec: Exec, actor: Actor, input: { wardSign?: Signature; runnerOnlyReason?: string }): Promise<string | null> {
   if (input.wardSign !== undefined && input.runnerOnlyReason !== undefined) throw new LinenError("bad_input", { issues: ["wardSign or runnerOnlyReason, not both"] });
   if (input.wardSign === undefined && input.runnerOnlyReason === undefined) throw new LinenError("ward_signature_missing");
-  if (input.wardSign !== undefined) {
-    if (input.wardSign.userId === actor.id) throw new LinenError("signer_is_runner");
-    if (!(await verifyPin(exec as Db, input.wardSign.userId, input.wardSign.pin))) throw new LinenError("bad_pin");
-  }
+  if (input.wardSign === undefined) return null;
+  if ("userId" in input.wardSign && input.wardSign.userId === actor.id) throw new LinenError("signer_is_runner");
+  const signer = await signerOf(exec, input.wardSign);
+  if (signer === actor.id) throw new LinenError("signer_is_runner");
+  return signer;
 }
 
 async function openRoundFor(t: Tx, roundId: string, kind: LinenRoundKind): Promise<RoundRow> {
@@ -154,10 +168,10 @@ export async function signDelivery(exec: Exec, actor: Actor, raw: unknown, nowIn
         .where(eq(linenRounds.id, round.id)).returning())[0]!;
       return roundCard(skipped);
     }
-    await requireSignature(t, actor, input);
+    const wardSigner = await requireSignature(t, actor, input);
     await issueToWardIn(t, actor, wardId, lines, now, { roundId: round.id });
     const signed = (await t.update(linenRounds).set({
-      state: "signed", runnerId: actor.id, wardSignedBy: input.wardSign?.userId ?? null,
+      state: "signed", runnerId: actor.id, wardSignedBy: wardSigner,
       runnerOnlyReason: input.runnerOnlyReason ?? null, pieces: lines.reduce((n, l) => n + l.qty, 0), signedAt: now,
     }).where(eq(linenRounds.id, round.id)).returning())[0]!;
     return roundCard(signed);
@@ -187,4 +201,25 @@ export async function soiledRoomView(exec: Exec): Promise<LinenSoiledRoomView> {
 export async function recentRounds(exec: Exec, limit = 30): Promise<LinenRoundCard[]> {
   const rows = await exec.select().from(linenRounds).orderBy(desc(linenRounds.createdAt)).limit(limit);
   return rows.map(roundCard);
+}
+
+/** Bags sealed on the wards and not yet picked up, oldest first; a bag whose bed is under an active hold says so. */
+export async function sealedBags(exec: Exec): Promise<LinenSealedBag[]> {
+  const r = await exec.execute<{ tag: string; ward: string; bed: string | null; bed_name: string | null; infected: boolean; held: boolean }>(sql`
+    select b.tag, b.ward_resource_id as ward, b.bed_resource_id as bed, r.name as bed_name, b.infected,
+           exists (select 1 from linen_holds h where h.bed_resource_id = b.bed_resource_id and h.state = 'active') as held
+      from linen_bags b left join resources r on r.id = b.bed_resource_id
+     where b.state = 'sealed' order by b.sealed_at, b.tag`);
+  return r.rows.map((x) => ({ tag: x.tag, wardId: x.ward, bedId: x.bed, bedName: x.bed_name, infected: x.infected, held: x.held }));
+}
+
+/** Every non-retired bed under a ward (bed → room → ward), by name. */
+export async function wardBeds(exec: Exec): Promise<{ bedId: string; bedName: string; wardId: string }[]> {
+  const r = await exec.execute<{ bed: string; name: string; ward: string }>(sql`
+    with recursive up as (
+      select id as bed, name, parent_id as at, 1 as depth from resources where kind = 'bed' and status <> 'retired'
+      union all
+      select u.bed, u.name, p.parent_id, u.depth + 1 from up u join resources p on p.id = u.at where p.kind <> 'ward' and u.depth < 8
+    ) select u.bed, u.name, w.id as ward from up u join resources w on w.id = u.at and w.kind = 'ward' order by w.id, u.name`);
+  return r.rows.map((x) => ({ bedId: x.bed, bedName: x.name, wardId: x.ward }));
 }
