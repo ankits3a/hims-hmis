@@ -1,6 +1,6 @@
 ---
 issue: 982
-status: approved
+status: built
 approved: 2026-10-26
 ---
 # SPEC — Ward WM-1: shift assignment, ratio and acuity, in-charge cockpit (#982)
@@ -58,3 +58,13 @@ Default ratio table, configurable per ward:
 - **D6** The supervisor can move a float nurse to another ward for a shift. The move is recorded, and her beds count on
   that ward.
 - **D7** My shift and the nurse station list exactly the beds assigned to that nurse.
+
+## Built (2026-10-26, lane ward-982)
+
+- D1–D7 are `spec #982 Dk` in `apps/core/src/modules/ipd/acceptance/ward-assignment-982.acceptance.test.ts`.
+- The ratio counts registered nurses on duty against patients: one nurse per ventilated patient, the rest at the
+  table's value. Acuity points set each nurse's load, the cockpit's "overloaded" flag and the lowest-load suggestion.
+  The latest acuity record counts until a new one; a patient with none counts as self-care.
+- A ward that has never published a map shows no red and keeps the whole-ward list ("No assignment yet").
+- Not built here: narrowing transfer acceptance to the receiving ward's nurses; the copilot's float suggestion on the
+  cockpit. Both are tracked as issues.

@@ -262,8 +262,9 @@ export async function readNurseStation(db: Db, actor: Actor, opts: { wardId?: st
 // ═══════════════════════════════════════════ board D1 — my shift ═══════════════════════════════════════════
 
 /**
- * The phone's Now list for one ward (DECIDED: no nurse-to-patient assignment exists yet, so "my patients" are the ward's
- * patients; a roster assignment narrows it later). Time order: overdue first by how late, then due soonest.
+ * The phone's Now list for one ward. WM-1 (#982): with a live shift map, exactly the beds it gives the reader (as nurse
+ * or student); before the ward's first publish, the ward's patients (`assignment: "ward"`). Time order: overdue first
+ * by how late, then due soonest.
  */
 export async function readMyShift(db: Db, actor: Actor, opts: { wardId?: string; now?: Date } = {}): Promise<IpdMyShift> {
   const now = opts.now ?? new Date();
