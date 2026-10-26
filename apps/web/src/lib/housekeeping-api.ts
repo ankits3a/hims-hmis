@@ -1,6 +1,6 @@
 import { ApiError, api } from "./api";
 import type {
-  BedCleansView, HkChecklistView, HkProofView, HkContractorView, HkDoorAck, HkDoorNeed, HkRotaView, HkSetupView, HkSupervisorView, HkWorkForm,
+  BedCleansView, HkChecklistView, HkConsumablesView, HkDailyView, HkFloorStoreView, HkInspectionView, HkInspectionsView, HkSlaView, HkProofView, HkContractorView, HkDoorAck, HkDoorNeed, HkRotaView, HkSetupView, HkSupervisorView, HkWorkForm,
   HousekeepingBoardView, RotaPlaceInput,
 } from "@hmis/contracts";
 
@@ -28,11 +28,22 @@ const HOUSEKEEPING_ROUTES = {
   rotas: "/housekeeping/rotas",
   rotaPublish: (rotaId: string) => `/housekeeping/rotas/${encodeURIComponent(rotaId)}/publish`,
   door: "/housekeeping/door",
+  // HK-2 (#974)
+  floorStores: "/housekeeping/floor-stores",
+  inspections: "/housekeeping/inspections",
+  inspection: (id: string) => `/housekeeping/inspections/${encodeURIComponent(id)}`,
+  inspectionPhoto: (id: string) => `/housekeeping/inspections/${encodeURIComponent(id)}/photo`,
+  consumables: "/housekeeping/reports/consumables",
+  sla: "/housekeeping/reports/sla",
+  daily: "/housekeeping/reports/daily",
 } as const;
 /** The contract's housekeeping kinds the attendant works with a checklist, copied (types-only import rule). */
 export const HK_WORKED_KINDS: ReadonlySet<string> = new Set([
-  "bed_clean_routine", "bed_clean_terminal", "spill", "area_request", "area_round_checked", "area_round",
+  "bed_clean_routine", "bed_clean_terminal", "spill", "area_request", "area_round_checked", "area_round", "area_rework",
 ]);
+/** The contract's `HK_INSPECTION_ITEMS` ids and `HK_INSPECT_PASS_PCT`, copied (types-only import rule); words are in the locales. */
+export const HK_INSPECTION_ITEM_IDS = ["floor", "surfaces", "bins", "fixtures", "supplies", "dust", "signage", "clutter"] as const;
+export const HK_INSPECT_PASS_PCT = 80;
 /** The contract's `HK_FAIL_REASONS`, copied. */
 export const HK_FAIL_REASONS = ["Floor wet", "Bin full", "Linen missing", "Stain", "Smell", "Toilet dirty"] as const;
 /** The contract's `HOUSEKEEPING_KINDS.terminal`, copied for the same reason. */
@@ -83,3 +94,25 @@ export const publishRotaApi = (rotaId: string) => api<HkRotaView>("POST", HOUSEK
 export const raiseDoorRequestApi = (token: string, need: HkDoorNeed) => api<HkDoorAck>("POST", HOUSEKEEPING_ROUTES.door, { token, need });
 /** The door page's address for an area's token (printed as the door QR). */
 export const doorUrl = (token: string, origin: string = window.location.origin): string => `${origin}/door#${token}`;
+
+/* ═══ HK-2 (#974) ═══ */
+export type HkFloorStores = { floors: HkFloorStoreView[]; stores: { id: string; code: string; name: string }[] };
+export const fetchFloorStores = () => api<HkFloorStores>("GET", HOUSEKEEPING_ROUTES.floorStores);
+export const linkFloorStoreApi = (floorId: string, storeId: string) => api<HkFloorStoreView>("POST", HOUSEKEEPING_ROUTES.floorStores, { floorId, storeId });
+export const fetchInspections = () => api<HkInspectionsView>("GET", HOUSEKEEPING_ROUTES.inspections);
+export const uploadInspectionPhoto = (id: string, mimeType: string, imageBase64: string) =>
+  api<{ photoKey: string }>("POST", HOUSEKEEPING_ROUTES.inspectionPhoto(id), { mimeType, imageBase64 });
+export const recordInspectionApi = (id: string, scan: string, answers: { itemId: string; ok: boolean }[], photoKey: string) =>
+  api<HkInspectionView>("POST", HOUSEKEEPING_ROUTES.inspection(id), { scan, answers, photoKey });
+export const fetchConsumables = (month: string) => api<HkConsumablesView>("GET", `${HOUSEKEEPING_ROUTES.consumables}?month=${encodeURIComponent(month)}`);
+export const fetchSla = (month: string) => api<HkSlaView>("GET", `${HOUSEKEEPING_ROUTES.sla}?month=${encodeURIComponent(month)}`);
+export const fetchDaily = (floorId: string, at?: string) =>
+  api<HkDailyView>("GET", `${HOUSEKEEPING_ROUTES.daily}?floor=${encodeURIComponent(floorId)}${at === undefined ? "" : `&at=${encodeURIComponent(at)}`}`);
+/** "2026-10" for an instant, in IST (the contract's `hkMonthOf`, copied). */
+export function istMonthOf(at: Date): string {
+  const ist = new Date(at.getTime() + 330 * 60_000);
+  return `${String(ist.getUTCFullYear())}-${String(ist.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+/** Paise as rupees for a report (two decimals, Indian grouping). */
+export const rupees = (paise: number): string =>
+  `₹${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

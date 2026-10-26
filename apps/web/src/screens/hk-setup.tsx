@@ -4,7 +4,8 @@ import { useTranslation } from "react-i18next";
 import { QRCodeSVG } from "qrcode.react";
 import { PaperScreen } from "../components/paper-screen";
 import {
-  addContractorApi, cleanRefusal, defineAreaApi, doorUrl, fetchAreaQr, fetchHkSetup, revokeAreaQrApi, saveChecklistApi, setHkStaffApi,
+  addContractorApi, cleanRefusal, defineAreaApi, doorUrl, fetchAreaQr, fetchFloorStores, fetchHkSetup, linkFloorStoreApi, revokeAreaQrApi,
+  saveChecklistApi, setHkStaffApi,
 } from "../lib/housekeeping-api";
 import type { HkAreaView, HkSetupView } from "@hmis/contracts";
 import "./housekeeping.css";
@@ -21,12 +22,16 @@ export function HkSetup(): React.ReactElement {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["housekeeping", "setup"], queryFn: fetchHkSetup });
+  // HK-2 (#974) — each floor's housekeeping store (a materials sub-store; indents and receipts stay in materials).
+  const fs = useQuery({ queryKey: ["housekeeping", "floor-stores"], queryFn: fetchFloorStores });
+  const [fsFloor, setFsFloor] = useState("");
+  const [fsStore, setFsStore] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [qr, setQr] = useState<{ area: HkAreaView; token: string } | null>(null);
   const s: HkSetupView | undefined = q.data;
   const act = async (fn: () => Promise<unknown>, ok: string): Promise<boolean> => {
     setNotice(null);
-    try { await fn(); setNotice(ok); void qc.invalidateQueries({ queryKey: ["housekeeping", "setup"] }); return true; } catch (e) {
+    try { await fn(); setNotice(ok); void qc.invalidateQueries({ queryKey: ["housekeeping"] }); return true; } catch (e) {
       const r = cleanRefusal(e); setNotice(r === null ? t("tasks.refusal.failed") : `${r.message} ${r.fix}`.trim()); return false;
     }
   };
@@ -128,6 +133,31 @@ export function HkSetup(): React.ReactElement {
               </li>
             ))}
           </ul>
+        </section>
+
+        <section aria-label={t("housekeeping.setup.floorStores")}>
+          <h2>{t("housekeeping.setup.floorStores")}</h2>
+          <p className="sub">{t("housekeeping.setup.floorStoresHint")}</p>
+          <form className="hk-form" onSubmit={(e) => { e.preventDefault(); void act(() => linkFloorStoreApi(fsFloor, fsStore), t("housekeeping.setup.storeLinked")); }}>
+            <label>{t("housekeeping.setup.floor")}
+              <select value={fsFloor} onChange={(e) => setFsFloor(e.target.value)} required>
+                <option value="">—</option>
+                {(fs.data?.floors ?? []).map((f) => <option key={f.floorId} value={f.floorId}>{f.floorName}</option>)}
+              </select>
+            </label>
+            <label>{t("housekeeping.setup.store")}
+              <select value={fsStore} onChange={(e) => setFsStore(e.target.value)} required>
+                <option value="">—</option>
+                {(fs.data?.stores ?? []).map((st) => <option key={st.id} value={st.id}>{st.name} · {st.code}</option>)}
+              </select>
+            </label>
+            <button type="submit" className="hk-btn pri" disabled={fsFloor === "" || fsStore === ""}>{t("housekeeping.setup.linkStore")}</button>
+          </form>
+          <table className="hk-table" style={{ marginTop: 8 }}>
+            <tbody>
+              {(fs.data?.floors ?? []).map((f) => <tr key={f.floorId}><td>{f.floorName}</td><td>{f.storeName ?? t("housekeeping.setup.noStore")}</td></tr>)}
+            </tbody>
+          </table>
         </section>
 
         <section aria-label={t("housekeeping.setup.contractors")}>
