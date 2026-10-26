@@ -264,3 +264,5 @@ export {
 } from "./tpa";
 export { importSchemePackages, packageShares, parseSchemePackagesCsv, searchSchemePackages } from "./tpa-packages";
 export { authStateOf, readTpaBoard, readTpaPanel, tpaDueCard } from "./tpa-read";
+// LD-1 (#978) — what the laundry needs from IPD, by bed: planned discharges (rush demand) and MLC beds (hold suggestion).
+export { mlcOccupiedBeds, plannedDischargeBeds } from "./linen-seam";

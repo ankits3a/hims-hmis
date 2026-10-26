@@ -122,26 +122,34 @@ export async function topUpWard(exec: Exec, actor: Actor, raw: unknown, nowIn?: 
     const now = await stamp(t, nowIn);
     const seen = await seenKey(t, "issue_to_ward", ward.id, input.idempotencyKey);
     if (seen !== null) return { movements: seen, wardId: ward.id };
-    const state = (await wardStates(t, now, ward.id))[0];
-    const byItem = new Map((state?.items ?? []).map((i) => [i.itemCode, i]));
-    let lines: Line[];
-    if (input.lines === undefined) {
-      lines = (state?.items ?? []).filter((i) => i.short > 0).map((i) => ({ itemCode: i.itemCode, qty: i.short }));
-      if (lines.length === 0) throw new LinenError("at_par", { wardId: ward.id });
-    } else {
-      for (const l of input.lines) {
-        const max = byItem.get(l.itemCode)?.short ?? 0;
-        if (l.qty > max) throw new LinenError("above_par", { itemCode: l.itemCode, max });
-      }
-      lines = input.lines;
-    }
-    await t.insert(linenMovements).values(lines.map((l) => movement("issue_to_ward", l, actor, now, {
-      wardResourceId: ward.id, idempotencyKey: input.idempotencyKey ?? null,
-    })));
-    // LD-1 (D3): the linen that reached the ward makes the beds waiting for it, oldest first.
-    await releaseLinenWaits(t, actor, ward.id, now);
+    const lines = await upToPar(t, ward.id, input.lines, now);
+    if (lines.length === 0) throw new LinenError("at_par", { wardId: ward.id });
+    await issueToWardIn(t, actor, ward.id, lines, now, { idempotencyKey: input.idempotencyKey ?? null });
     return { movements: lines.length, wardId: ward.id };
   });
+}
+
+/**
+ * What a top-up issues: without lines, each item's shortfall (empty = the ward is at par); with lines, those pieces,
+ * each refused above its shortfall (`above_par`). Call under the ward's lock.
+ */
+export async function upToPar(t: Tx, wardId: string, given: readonly Line[] | undefined, now: Date): Promise<Line[]> {
+  const state = (await wardStates(t, now, wardId))[0];
+  if (given === undefined) return (state?.items ?? []).filter((i) => i.short > 0).map((i) => ({ itemCode: i.itemCode, qty: i.short }));
+  const byItem = new Map((state?.items ?? []).map((i) => [i.itemCode, i]));
+  for (const l of given) {
+    const max = byItem.get(l.itemCode)?.short ?? 0;
+    if (l.qty > max) throw new LinenError("above_par", { itemCode: l.itemCode, max });
+  }
+  return [...given];
+}
+
+/** Store → ward: the movements, then (LD-1, D3) the beds waiting for this linen are made, oldest first. */
+export async function issueToWardIn(
+  t: Tx, actor: Actor, wardId: string, lines: readonly Line[], now: Date, extra: Partial<MovementInsert> = {},
+): Promise<void> {
+  await t.insert(linenMovements).values(lines.map((l) => movement("issue_to_ward", l, actor, now, { wardResourceId: wardId, ...extra })));
+  await releaseLinenWaits(t, actor, wardId, now);
 }
 
 /* ═══════════════════════════════ ward → soiled room ═══════════════════════════════ */

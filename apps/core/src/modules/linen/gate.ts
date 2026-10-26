@@ -2,11 +2,13 @@ import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { linenBedWaits, linenItems, resources } from "../../kernel/db/schema";
 import { isModuleOn } from "../../kernel/modules/switch";
-import { markBedCleanIn } from "../ipd";
+import { istDayString, istDayWindow } from "../../kernel/approvals/cumulative";
+import { markBedCleanIn, plannedDischargeBeds } from "../ipd";
+import { theatreCasesOn } from "../ot";
 import { wardOfBed } from "./holds";
 import { lock } from "./intents";
-import { bookBalances } from "./reads";
-import type { Actor, LinenBedWait } from "@hmis/contracts";
+import { bookBalances, wardShapes } from "./reads";
+import type { Actor, LinenBedWait, LinenRushDemand } from "@hmis/contracts";
 import type { Tx } from "../../kernel/db/client";
 import type { Exec } from "./intents";
 
@@ -49,7 +51,7 @@ async function occupiedBeds(t: Exec, wardId: string): Promise<number> {
 }
 
 /** What one more set would lack on the ward's shelf, given `waiting` beds ahead of it: { itemCode: pieces }. */
-async function shelfShort(t: Tx, wardId: string, now: Date, waiting: number): Promise<Record<string, number>> {
+export async function shelfShort(t: Exec, wardId: string, now: Date, waiting: number): Promise<Record<string, number>> {
   const set = await setShape(t);
   const book = (await bookBalances(t, now, wardId)).get(wardId);
   const reserved = (await occupiedBeds(t, wardId)) + waiting;
@@ -108,4 +110,28 @@ export async function bedsWaitingForLinen(exec: Exec): Promise<LinenBedWait[]> {
   return rows.map(({ w, bedName }) => ({
     bedId: w.bedResourceId, bedName, wardId: w.wardResourceId, short: w.short, rush: w.rush, raisedAt: w.raisedAt.toISOString(),
   }));
+}
+
+/**
+ * The day's rush demand: each ward's beds with a discharge planned today (IST) will each need a set, and the shelf's
+ * shortfall for that many sets, beyond the beds already waiting; plus the number of theatre cases on today's lists. The
+ * linen room acts on it at 09:00 (DECIDED: computed on read, so the board shows the morning's demand as it stands).
+ */
+export async function rushDemand(exec: Exec, now: Date): Promise<LinenRushDemand> {
+  const { start, end } = istDayWindow(now);
+  const beds = await plannedDischargeBeds(exec, start, end);
+  const byWard = new Map<string, number>();
+  for (const bedId of beds) {
+    const w = await wardOfBed(exec, bedId);
+    if (w !== null) byWard.set(w.wardId, (byWard.get(w.wardId) ?? 0) + 1);
+  }
+  const wards = [];
+  for (const [wardId, discharges] of byWard) {
+    const shape = (await wardShapes(exec, wardId))[0];
+    const waiting = (await exec.select({ id: linenBedWaits.id }).from(linenBedWaits)
+      .where(and(eq(linenBedWaits.wardResourceId, wardId), isNull(linenBedWaits.clearedAt)))).length;
+    wards.push({ wardId, wardName: shape?.wardName ?? wardId, discharges, short: await shelfShort(exec, wardId, now, waiting + discharges - 1) });
+  }
+  wards.sort((a, b) => a.wardName.localeCompare(b.wardName));
+  return { day: istDayString(now), wards, theatreCases: await theatreCasesOn(exec, istDayString(now)) };
 }

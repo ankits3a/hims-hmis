@@ -165,6 +165,18 @@ const pin = z.string().regex(/^\d{4,6}$/);
 const signature = z.object({ userId: id, pin }).strict();
 const reason = z.string().trim().min(3).max(200);
 
+/**
+ * A delivery, signed like a pickup. No lines: every item to par. A ward already at par is recorded as skipped and
+ * needs no signature.
+ */
+export const signDeliveryInput = z.object({
+  roundId: id,
+  lines: lines.optional(),
+  wardSign: signature.optional(),
+  runnerOnlyReason: reason.optional(),
+}).strict();
+export type SignDeliveryInput = z.infer<typeof signDeliveryInput>;
+
 export const openRoundInput = z.object({ wardId: id, kind: z.enum(LINEN_ROUND_KINDS) }).strict();
 export type OpenRoundInput = z.infer<typeof openRoundInput>;
 
@@ -207,6 +219,8 @@ export type ReleaseHoldInput = z.infer<typeof releaseHoldInput>;
 
 export const addMachineInput = z.object({
   code: z.string().trim().min(1).max(20), kind: z.enum(LINEN_MACHINE_KINDS), name: z.string().trim().min(2).max(80),
+  /** The laundry room it stands in: a breakdown raises a maintenance ticket there. */
+  placeId: id.optional(),
 }).strict();
 export const machineDownInput = z.object({ machineId: id, reason }).strict();
 export const machineUpInput = z.object({ machineId: id }).strict();
@@ -274,6 +288,9 @@ export const LINEN_REFUSALS = {
   not_rso: { sentence: "Only the radiation safety officer releases this hold.", fix: "Ask the RSO to release it." },
   // LD-1 — the plant
   code_taken: { sentence: "Another machine has this code.", fix: "Use another code." },
+  unknown_place: { sentence: "This place is not in the register.", fix: "Pick the laundry room from the list." },
+  not_a_delivery: { sentence: "This round is not a delivery.", fix: "Pick a delivery round." },
+  not_a_pickup: { sentence: "This round is not a pickup.", fix: "Pick a pickup round." },
   unknown_machine: { sentence: "This machine is not in the plant list.", fix: "Pick the machine from the list." },
   machine_down: { sentence: "This machine is marked down.", fix: "Use another machine, or send the work to the vendor." },
   machine_busy: { sentence: "This machine is running a cycle.", fix: "Finish the running cycle first." },
@@ -413,3 +430,26 @@ export type LinenPlantView = {
 };
 export type LinenBedWait = { bedId: string; bedName: string; wardId: string; short: Record<string, number>; rush: boolean; raisedAt: string };
 export type LinenSoiledRoomView = { general: Record<string, number>; infectedBags: LinenBagCard[] };
+
+/** The day's rush demand (spec #978): sets the planned discharges will need, and the shelf's shortfall for them. */
+export type LinenRushWard = { wardId: string; wardName: string; discharges: number; short: Record<string, number> };
+export type LinenRushDemand = { day: string; wards: LinenRushWard[]; theatreCases: number };
+
+/** The supervisor's laundry tab: beds waiting for linen, holds, rush demand, machines down and the vendor queue. */
+export type LinenLaundryView = {
+  serverNow: string;
+  bedsWaiting: LinenBedWait[];
+  holds: LinenHoldCard[];
+  rush: LinenRushDemand;
+  plant: LinenPlantView;
+};
+
+/** The phone's floor tab: rounds, active holds, the soiled room, beds waiting for linen, and MLC beds (hold suggested). */
+export type LinenFloorView = {
+  rounds: LinenRoundCard[];
+  holds: LinenHoldCard[];
+  soiledRoom: LinenSoiledRoomView;
+  bedsWaiting: LinenBedWait[];
+  /** Occupied beds whose admission is an MLC: the round sheet suggests a hold there. */
+  mlcBeds: string[];
+};

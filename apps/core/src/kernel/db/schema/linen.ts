@@ -332,6 +332,8 @@ export const linenMachines = pgTable(
     code: text("code").notNull(),
     kind: text("kind").notNull(),
     name: text("name").notNull(),
+    /** Where it stands (the laundry room): a breakdown raises a maintenance ticket at this place. */
+    placeResourceId: text("place_resource_id").references(() => resources.id),
     state: text("state").notNull().default("up"),
     downReason: text("down_reason"),
     ticketId: text("ticket_id"),

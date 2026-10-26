@@ -67,6 +67,7 @@ CREATE TABLE "linen_machines" (
 	"code" text NOT NULL,
 	"kind" text NOT NULL,
 	"name" text NOT NULL,
+	"place_resource_id" text,
 	"state" text DEFAULT 'up' NOT NULL,
 	"down_reason" text,
 	"ticket_id" text,
@@ -166,6 +167,7 @@ ALTER TABLE "linen_cycle_batches" ADD CONSTRAINT "linen_cycle_batches_cycle_fk" 
 ALTER TABLE "linen_cycle_batches" ADD CONSTRAINT "linen_cycle_batches_batch_fk" FOREIGN KEY ("batch_id","infected","stream") REFERENCES "public"."linen_laundry_batches"("id","infected","stream") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "linen_holds" ADD CONSTRAINT "linen_holds_bed_resource_id_resources_id_fk" FOREIGN KEY ("bed_resource_id") REFERENCES "public"."resources"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "linen_holds" ADD CONSTRAINT "linen_holds_ward_resource_id_resources_id_fk" FOREIGN KEY ("ward_resource_id") REFERENCES "public"."resources"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "linen_machines" ADD CONSTRAINT "linen_machines_place_resource_id_resources_id_fk" FOREIGN KEY ("place_resource_id") REFERENCES "public"."resources"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "linen_pieces" ADD CONSTRAINT "linen_pieces_item_code_linen_items_code_fk" FOREIGN KEY ("item_code") REFERENCES "public"."linen_items"("code") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "linen_qc_results" ADD CONSTRAINT "linen_qc_results_batch_id_linen_laundry_batches_id_fk" FOREIGN KEY ("batch_id") REFERENCES "public"."linen_laundry_batches"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "linen_qc_results" ADD CONSTRAINT "linen_qc_results_item_code_linen_items_code_fk" FOREIGN KEY ("item_code") REFERENCES "public"."linen_items"("code") ON DELETE no action ON UPDATE no action;--> statement-breakpoint

@@ -22,7 +22,8 @@ export function linenHttpStatus(code: LinenRefusalCode): number {
     case "unknown_bed":
     case "unknown_hold":
     case "unknown_machine":
-    case "unknown_cycle": return 404;
+    case "unknown_cycle":
+    case "unknown_place": return 404;
     case "already_received":
     case "request_closed":
     case "at_par":
@@ -38,6 +39,8 @@ export function linenHttpStatus(code: LinenRefusalCode): number {
     case "cycle_finished":
     case "not_in_plant":
     case "not_at_qc":
+    case "not_a_delivery":
+    case "not_a_pickup":
     case "disinfection_missed": return 409;
     case "approver_is_requester":
     case "signer_is_runner":

@@ -1,10 +1,10 @@
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
-import { newId, openRoundInput, sealBagInput, signPickupInput, weighBagInput } from "@hmis/contracts";
+import { newId, openRoundInput, sealBagInput, signDeliveryInput, signPickupInput, weighBagInput } from "@hmis/contracts";
 import { verifyPin } from "../../kernel/auth/identity";
 import { linenBags, linenMovements, linenRounds } from "../../kernel/db/schema";
 import { LinenError } from "./errors";
 import { requireNotHeld, wardOfBed } from "./holds";
-import { lock, movement, parse, requireItems, requireOnHand, requireWard, stamp, tx } from "./intents";
+import { issueToWardIn, lock, movement, parse, requireItems, requireOnHand, requireWard, stamp, tx, upToPar } from "./intents";
 import { soiledPool } from "./reads";
 import type { Actor, LinenBagCard, LinenRoundCard, LinenRoundKind, LinenSoiledRoomView } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -89,17 +89,9 @@ export async function signPickup(exec: Exec, actor: Actor, raw: unknown, nowIn?:
   const tags = (input.bags ?? []).map((b) => b.tag);
   if (loose.length === 0 && tags.length === 0) throw new LinenError("bad_input", { issues: ["lines or bags"] });
   if (new Set(tags).size !== tags.length) throw new LinenError("duplicate_item", { tags });
-  if (input.wardSign !== undefined && input.runnerOnlyReason !== undefined) throw new LinenError("bad_input", { issues: ["wardSign or runnerOnlyReason, not both"] });
-  if (input.wardSign === undefined && input.runnerOnlyReason === undefined) throw new LinenError("ward_signature_missing");
-  if (input.wardSign !== undefined) {
-    if (input.wardSign.userId === actor.id) throw new LinenError("signer_is_runner");
-    if (!(await verifyPin(exec as Db, input.wardSign.userId, input.wardSign.pin))) throw new LinenError("bad_pin");
-  }
+  await requireSignature(exec, actor, input);
   return tx(exec, async (t) => {
-    const round = (await t.select().from(linenRounds).where(eq(linenRounds.id, input.roundId)).for("update"))[0];
-    if (round === undefined) throw new LinenError("unknown_round", { roundId: input.roundId });
-    if (round.state !== "open") throw new LinenError("round_closed", { roundId: round.id });
-    if (round.kind !== "pickup") throw new LinenError("bad_input", { issues: ["not a pickup round"] });
+    const round = await openRoundFor(t, input.roundId, "pickup");
     const wardId = round.wardResourceId;
     if (loose.length > 0) await requireItems(t, loose);
     await lock(t, `ward:${wardId}`);
@@ -121,6 +113,52 @@ export async function signPickup(exec: Exec, actor: Actor, raw: unknown, nowIn?:
     const signed = (await t.update(linenRounds).set({
       state: "signed", runnerId: actor.id, wardSignedBy: input.wardSign?.userId ?? null,
       runnerOnlyReason: input.runnerOnlyReason ?? null, pieces: loose.reduce((n, l) => n + l.qty, 0), bags: bags.length, signedAt: now,
+    }).where(eq(linenRounds.id, round.id)).returning())[0]!;
+    return roundCard(signed);
+  });
+}
+
+/** The ward's signature (a PIN, never the runner's) XOR runner-only with a reason. */
+async function requireSignature(exec: Exec, actor: Actor, input: { wardSign?: { userId: string; pin: string }; runnerOnlyReason?: string }): Promise<void> {
+  if (input.wardSign !== undefined && input.runnerOnlyReason !== undefined) throw new LinenError("bad_input", { issues: ["wardSign or runnerOnlyReason, not both"] });
+  if (input.wardSign === undefined && input.runnerOnlyReason === undefined) throw new LinenError("ward_signature_missing");
+  if (input.wardSign !== undefined) {
+    if (input.wardSign.userId === actor.id) throw new LinenError("signer_is_runner");
+    if (!(await verifyPin(exec as Db, input.wardSign.userId, input.wardSign.pin))) throw new LinenError("bad_pin");
+  }
+}
+
+async function openRoundFor(t: Tx, roundId: string, kind: LinenRoundKind): Promise<RoundRow> {
+  const round = (await t.select().from(linenRounds).where(eq(linenRounds.id, roundId)).for("update"))[0];
+  if (round === undefined) throw new LinenError("unknown_round", { roundId });
+  if (round.state !== "open") throw new LinenError("round_closed", { roundId: round.id });
+  if (round.kind !== kind) throw new LinenError(kind === "pickup" ? "not_a_pickup" : "not_a_delivery", { roundId: round.id });
+  return round;
+}
+
+/**
+ * Sign a delivery: the linen store's pieces reach the ward (no lines = up to par), signed like a pickup. A ward already
+ * at par is recorded as skipped, with no signature to ask for. The delivery makes the beds waiting for linen (D3).
+ */
+export async function signDelivery(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<LinenRoundCard> {
+  const input = parse(signDeliveryInput, raw);
+  return tx(exec, async (t) => {
+    const round = await openRoundFor(t, input.roundId, "delivery");
+    const wardId = round.wardResourceId;
+    if (input.lines !== undefined) await requireItems(t, input.lines);
+    await lock(t, `ward:${wardId}`);
+    const now = await stamp(t, nowIn);
+    const lines = await upToPar(t, wardId, input.lines, now);
+    if (lines.length === 0) {
+      const skipped = (await t.update(linenRounds).set({ state: "skipped", runnerId: actor.id })
+        .where(eq(linenRounds.id, round.id)).returning())[0]!;
+      return roundCard(skipped);
+    }
+    await requireSignature(t, actor, input);
+    await issueToWardIn(t, actor, wardId, lines, now, { roundId: round.id });
+    const signed = (await t.update(linenRounds).set({
+      state: "signed", runnerId: actor.id, wardSignedBy: input.wardSign?.userId ?? null,
+      runnerOnlyReason: input.runnerOnlyReason ?? null, pieces: lines.reduce((n, l) => n + l.qty, 0), signedAt: now,
     }).where(eq(linenRounds.id, round.id)).returning())[0]!;
     return roundCard(signed);
   });

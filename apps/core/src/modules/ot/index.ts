@@ -109,3 +109,5 @@ export type { TheatreTime } from "./duty-evidence";
 // ── IPD E5.4 (#741) — the inpatient discharge drafter reads the procedures done through here, and nothing about money ──
 export { PROCEDURES_DONE_LIMIT, proceduresDone } from "./procedures-done";
 export type { ProcedureDone } from "./procedures-done";
+// LD-1 (#978) — the laundry reads the day's case count for theatre-set demand.
+export { theatreCasesOn } from "./linen-seam";

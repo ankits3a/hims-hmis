@@ -10,7 +10,7 @@ export { LINEN_CHANGE_TASK, LINEN_SYSTEM, raiseLinenChange } from "./kinds";
 export type { RaiseLinenChangeInput } from "./kinds";
 export { LinenError, linenHttpStatus } from "./errors";
 export {
-  approveCondemn, borrowBetweenWards, formatBatchNo, receiveFromLaundry, recordInfected, recordSoiled, recordWardCount,
+  approveCondemn, borrowBetweenWards, formatBatchNo, issueToWardIn, upToPar, receiveFromLaundry, recordInfected, recordSoiled, recordWardCount,
   rejectCondemn, requestCondemn, requireWard, sendToLaundry, setParLevel, topUpWard,
 } from "./intents";
 export type { BatchRow, CondemnRow, MovementRow } from "./intents";
@@ -20,11 +20,11 @@ export {
 } from "./reads";
 export type { WardShape } from "./reads";
 // LD-1 (#978, decision 0087) — the laundry floor.
-export { openRound, recentRounds, sealBag, signPickup, soiledRoomView, weighBag } from "./floor";
+export { openRound, recentRounds, sealBag, signDelivery, signPickup, soiledRoomView, weighBag } from "./floor";
 export { activeHolds, placeHold, releaseHold, wardOfBed } from "./holds";
 export {
   addMachine, finishCycle, handToCssd, markMachineDown, markMachineUp, mendReturn, mendingPool, plantView, recordQc, releaseBatch,
   routeToVendor, startCycle,
 } from "./plant";
-export { bedReadyGate, bedsWaitingForLinen, releaseLinenWaits } from "./gate";
+export { bedReadyGate, bedsWaitingForLinen, releaseLinenWaits, rushDemand, shelfShort } from "./gate";
 export { dueSlots, runLinenClock } from "./clock";

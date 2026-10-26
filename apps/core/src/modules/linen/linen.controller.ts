@@ -9,16 +9,17 @@ import {
 } from "./intents";
 import { LINEN_CSSD_RECEIVE, LINEN_HANDLE, LINEN_HOLD_RELEASE, LINEN_MANAGE, LINEN_PLANT, LINEN_QC, LINEN_VIEW } from "./manifest";
 import { linenBoard, linenHandlerView, weeklyVariance } from "./reads";
-import { openRound, recentRounds, sealBag, signPickup, soiledRoomView, weighBag } from "./floor";
+import { openRound, recentRounds, sealBag, signDelivery, signPickup, soiledRoomView, weighBag } from "./floor";
 import { activeHolds, placeHold, releaseHold } from "./holds";
 import {
   addMachine, finishCycle, handToCssd, markMachineDown, markMachineUp, mendReturn, plantView, recordQc, releaseBatch, routeToVendor,
   startCycle,
 } from "./plant";
-import { bedsWaitingForLinen } from "./gate";
+import { bedsWaitingForLinen, rushDemand } from "./gate";
+import { mlcOccupiedBeds } from "../ipd";
 import type {
-  Actor, LinenActResult, LinenBagCard, LinenBedWait, LinenBoardView, LinenHandlerView, LinenHoldCard, LinenPlantView,
-  LinenRoundCard, LinenSoiledRoomView, LinenVarianceRow,
+  Actor, LinenActResult, LinenBagCard, LinenBedWait, LinenBoardView, LinenFloorView, LinenHandlerView, LinenLaundryView,
+  LinenPlantView, LinenRoundCard, LinenVarianceRow,
 } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -41,9 +42,6 @@ async function refusing<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 type Decided = { id: string; state: string };
-
-/** LD-1 — what the phone's floor tab shows: rounds, holds, the soiled room's bags, and beds waiting for linen. */
-export type LinenFloorView = { rounds: LinenRoundCard[]; holds: LinenHoldCard[]; soiledRoom: LinenSoiledRoomView; bedsWaiting: LinenBedWait[] };
 
 @Controller("linen")
 export class LinenController {
@@ -142,7 +140,17 @@ export class LinenController {
   async floor(): Promise<LinenFloorView> {
     return {
       rounds: await recentRounds(this.db), holds: await activeHolds(this.db), soiledRoom: await soiledRoomView(this.db),
-      bedsWaiting: await bedsWaitingForLinen(this.db),
+      bedsWaiting: await bedsWaitingForLinen(this.db), mlcBeds: await mlcOccupiedBeds(this.db),
+    };
+  }
+
+  @Get("laundry")
+  @RequirePermission(LINEN_VIEW, "hospital", { alsoAdmits: [LINEN_MANAGE, LINEN_PLANT] })
+  async laundry(): Promise<LinenLaundryView> {
+    const now = new Date();
+    return {
+      serverNow: now.toISOString(), bedsWaiting: await bedsWaitingForLinen(this.db), holds: await activeHolds(this.db),
+      rush: await rushDemand(this.db, now), plant: await plantView(this.db, now),
     };
   }
 
@@ -163,6 +171,12 @@ export class LinenController {
   @RequirePermission(LINEN_HANDLE, "hospital")
   async pickup(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() b: unknown): Promise<LinenRoundCard> {
     return refusing(() => signPickup(this.db, actor, { ...body(b), roundId: id }));
+  }
+
+  @Post("rounds/:id/delivery")
+  @RequirePermission(LINEN_HANDLE, "hospital")
+  async delivery(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() b: unknown): Promise<LinenRoundCard> {
+    return refusing(() => signDelivery(this.db, actor, { ...body(b), roundId: id }));
   }
 
   @Post("bags")

@@ -7,8 +7,12 @@ import { verifyPin } from "../../kernel/auth/identity";
 import { hasPermission } from "../../kernel/auth/permissions";
 import {
   linenCondemnRequests, linenCycleBatches, linenLaundryBatches, linenMachines, linenMovements, linenQcResults, linenWashCycles,
+  resources,
 } from "../../kernel/db/schema";
+import { isModuleOn } from "../../kernel/modules/switch";
+import { raiseTicket } from "../maintenance";
 import { LinenError } from "./errors";
+import { LINEN_SYSTEM } from "./kinds";
 import { lock, movement, parse, requireItems, stamp, tx } from "./intents";
 import { LINEN_CSSD_RECEIVE } from "./manifest";
 import type { Actor, LinenMachineCard, LinenMachineKind, LinenPlantBatch, LinenPlantView, LinenStream, LinenBatchState } from "@hmis/contracts";
@@ -48,21 +52,38 @@ export async function addMachine(exec: Exec, actor: Actor, raw: unknown, nowIn?:
     if ((await t.select({ id: linenMachines.id }).from(linenMachines).where(eq(linenMachines.code, input.code))).length > 0) {
       throw new LinenError("code_taken", { code: input.code });
     }
+    if (input.placeId !== undefined) {
+      const place = (await t.select({ status: resources.status }).from(resources).where(eq(resources.id, input.placeId)))[0];
+      if (place === undefined || place.status === "retired") throw new LinenError("unknown_place", { placeId: input.placeId });
+    }
     return (await t.insert(linenMachines).values({
-      id: newId(), code: input.code, kind: input.kind, name: input.name, state: "up", updatedBy: actor.id, updatedAt: now,
+      id: newId(), code: input.code, kind: input.kind, name: input.name, placeResourceId: input.placeId ?? null, state: "up",
+      updatedBy: actor.id, updatedAt: now,
     }).returning())[0]!;
   });
 }
 
-/** A breakdown: the machine takes no new cycle; its waiting work shows as "send to vendor" while no washer is up (D5). */
+/**
+ * A breakdown: the machine takes no new cycle; its waiting work shows as "send to vendor" while no washer is up (D5).
+ * A machine with a place raises a repair ticket there (the machine's code is the item tag; a second report of the same
+ * open fault joins it — maintenance's own rule), after the machine is marked down: a refused ticket never keeps a
+ * broken machine in use. The ticket is raised by the linen system actor; the machine row names who marked it down.
+ */
 export async function markMachineDown(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<MachineRow> {
   const input = parse(machineDownInput, raw);
-  return tx(exec, async (t) => {
+  const down = await tx(exec, async (t) => {
     const m = await machineFor(t, input.machineId);
     const now = await stamp(t, nowIn);
     return (await t.update(linenMachines).set({ state: "down", downReason: input.reason, updatedBy: actor.id, updatedAt: now })
       .where(eq(linenMachines.id, m.id)).returning())[0]!;
   });
+  if (down.placeResourceId === null || !isModuleOn("maintenance")) return down;
+  const ticket = await raiseTicket(exec as Db, LINEN_SYSTEM, {
+    placeResourceId: down.placeResourceId, itemKind: "other", itemTag: down.code, category: "general", urgency: "urgent",
+    description: `Laundry ${down.kind} ${down.name} is down: ${input.reason}`, source: "device",
+  }, nowIn === undefined ? {} : { now: nowIn });
+  return (await (exec as Db).update(linenMachines).set({ ticketId: ticket.ticketId })
+    .where(and(eq(linenMachines.id, down.id), eq(linenMachines.state, "down"))).returning())[0] ?? down;
 }
 
 export async function markMachineUp(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<MachineRow> {
