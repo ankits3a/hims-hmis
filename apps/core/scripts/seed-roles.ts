@@ -2288,6 +2288,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "ipd.nursing.view", "ipd.vitals.record", "ipd.assessment.record", "ipd.handover.shift", "ipd.ews.respond",
       "ipd.beds.view", "ipd.beds.clean", "ipd.transfer.start", "ipd.transfer.accept", "ipd.discharge.view", "ipd.discharge.confirm",
       "ipd.family.issue",
+      // WM-1 (#982, decision 0089) — the supervisor assigns as the in-charge does, and floats nurses between wards.
+      // README "Ward nurses" prose.
+      "ipd.nursing.assign", "ipd.nursing.float",
       "maintenance.raise", "maintenance.confirm", "transport.request",
       // INTEGRATION (ipd-stage, DECIDED — owed by diet's MAP §5): as the ward nurse.
       "diet.view", "diet.npo", "diet.serve", "diet.clinical.view",
@@ -2299,8 +2302,25 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     roleKey: "nursing_superintendent",
     // INTEGRATION (ipd-stage, DECIDED): the nursing superintendent reads the diet (`diet.view`, `diet.clinical.view`).
     // IPD eMAR E4.3 (#735): reads the MAR and the override counts (`ipd.emar.view`); README "IPD eMAR" prose.
-    permissions: ["ipd.nursing.view", "ipd.ews.respond", "ipd.beds.view", "ipd.discharge.view", "ipd.family.issue", "diet.view", "diet.clinical.view", "ipd.emar.view"],
+    // WM-1 (#982): reads every ward's cockpit and floats nurses across the hospital; README "Ward nurses" prose.
+    permissions: [
+      "ipd.nursing.view", "ipd.ews.respond", "ipd.beds.view", "ipd.discharge.view", "ipd.family.issue", "diet.view", "diet.clinical.view", "ipd.emar.view",
+      "ipd.nursing.assign", "ipd.nursing.float",
+    ],
   },
+  /**
+   * WM-1 (#982, decision 0089) — THE WARD IN-CHARGE: the shift's charge nurse, who publishes the ward's assignment (every
+   * occupied bed to one registered nurse), reassigns with a reason and watches the cockpit. Held BESIDE `ward_nurse` (she
+   * is a registered nurse; the bedside strings come from that role). NOBODY is assigned by any seed. README "Ward nurses"
+   * prose.
+   */
+  { roleKey: "ward_incharge", permissions: ["ipd.nursing.view", "ipd.nursing.assign", "ipd.beds.view"] },
+  /**
+   * WM-1 (#982, decision 0089) — THE STUDENT NURSE: paired with a registered nurse on the shift map, never a bed's only
+   * nurse. Reads the ward and records vitals; medicines and every signature stay with the registered nurse (student
+   * medicine limits are WM-2, #983). NOBODY is assigned by any seed. README "Ward nurses" prose.
+   */
+  { roleKey: "student_nurse", permissions: ["ipd.nursing.view", "ipd.vitals.record", "ipd.beds.view"] },
   /**
    * ER lane 1 (#808, decision 0076) — the CASUALTY NURSE. No role existed for the emergency department's nurses; the
    * standard Indian corporate-hospital split keeps them apart from the ward nurse (different clocks, different acts).
@@ -2594,6 +2614,9 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   ward_nurse: "Ward Nurse (staff nurse: vitals, assessment, intake/output, notes, shift handover, transfers)",
   nursing_supervisor: "Nursing Supervisor (shift in-charge: the ward's nurses, early-warning escalations, family callbacks)",
   nursing_superintendent: "Nursing Superintendent (head of nursing: every ward's station and escalations)",
+  // WM-1 (#982).
+  ward_incharge: "Ward In-charge (charge nurse, beside Ward Nurse: publishes the shift's bed-to-nurse assignment, the ward cockpit)",
+  student_nurse: "Student Nurse (paired with a registered nurse; reads the ward, records vitals)",
   radiology_resident: "Radiology Resident (drafts, issues prelims, calls criticals; signs for a consultant's co-sign — publishes nothing alone)",
 };
 

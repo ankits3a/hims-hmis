@@ -188,6 +188,13 @@ export type { NursingSweepResult } from "./nursing";
 export { listShiftHandovers, nextDueOf, readMyShift, readNurseStation, readNursingChart } from "./nursing-read";
 export { assessmentDueCard, ewsRisingCard, handoverPendingCard, overdueVitalsCard } from "./nursing-cards";
 export { IPD_NURSING_EVENT_NAMES } from "./nursing-events";
+// WM-1 (#982, decision 0089) — the ward's nurses: shift maps (draft, copy, publish, carry-over), bed assignment, end of
+// duty, acuity, the ratio and its breach, float moves, the in-charge cockpit and the float pool; the minute sweep step.
+export {
+  assignNurse, copyLastShiftMap, endMyDuty, moveFloatNurse, publishShiftMap, saveShiftMap, setAcuity, sweepWardShifts,
+} from "./nurse-ward";
+export type { WardSweepResult } from "./nurse-ward";
+export { readFloatPool, readShiftMap, readWardCockpit } from "./nurse-ward-read";
 // E4.2 (#734) — rounds: sign (S/O/A/P, bedside or remote; resident drafts co-signed), fit from the round, inpatient
 // orders (drugs; lab and imaging through the ordering door), cross-consults, the 08:00 cover and 14:00 nudge clock,
 // and the eMAR's seams on the order contract (`ipd.order.placed|stopped|cancelled`, `readIpdOrder`,

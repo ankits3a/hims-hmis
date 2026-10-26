@@ -65,9 +65,50 @@ export const shiftHandoverAccepted = defineEvent("ipd.shift_handover.accepted", 
   handoverId: id, admissionId: id, provenance: IpdProvenanceSchema,
 }));
 
+// ═══ WM-1 (#982, decision 0089) — the ward's nurses. Ids, codes and counts only; a reason is staff text about staffing. ═══
+const shiftKey = z.enum(["morning", "evening", "night"]);
+
+export const acuitySet = defineEvent("ipd.nursing.acuity_set", MODULE, z.object({
+  acuityId: id, admissionId: id, shiftDate: z.string(), shift: shiftKey, level: z.enum(["self_care", "partial_care", "full_care"]),
+  ventilated: z.boolean(), provenance: IpdProvenanceSchema,
+}));
+
+export const shiftMapPublished = defineEvent("ipd.nursing.shift_map_published", MODULE, z.object({
+  mapId: id, wardId: id, shiftDate: z.string(), shift: shiftKey, beds: z.number().int().nonnegative(), late: z.boolean(),
+  provenance: IpdProvenanceSchema,
+}));
+
+/** Nothing published by shift start: the previous map carries over (and the supervisor is told). */
+export const shiftMapCarriedOver = defineEvent("ipd.nursing.shift_map_carried_over", MODULE, z.object({
+  mapId: id, wardId: id, shiftDate: z.string(), shift: shiftKey, fromMapId: id, notified: z.number().int().nonnegative(),
+  provenance: IpdProvenanceSchema,
+}));
+
+/** A bed given to a nurse on the live map; `fromNurseId` null for a first assignment, else `reason` is set. */
+export const bedReassigned = defineEvent("ipd.nursing.bed_reassigned", MODULE, z.object({
+  mapId: id, bedId: id, admissionId: id.nullable(), fromNurseId: id.nullable(), toNurseId: id, studentId: id.nullable(),
+  reason: z.string().nullable(), provenance: IpdProvenanceSchema,
+}));
+
+export const dutyEnded = defineEvent("ipd.nursing.duty_ended", MODULE, z.object({
+  mapId: id, wardId: id, userId: id, provenance: IpdProvenanceSchema,
+}));
+
+export const ratioBreached = defineEvent("ipd.nursing.ratio_breached", MODULE, z.object({
+  breachId: id, wardId: id, shiftDate: z.string(), shift: shiftKey, unit: z.string(), patients: z.number().int(),
+  ventilated: z.number().int(), rnsOnDuty: z.number().int(), rnsNeeded: z.number().int(), provenance: IpdProvenanceSchema,
+}));
+
+export const floatMoved = defineEvent("ipd.nursing.float_moved", MODULE, z.object({
+  userId: id, fromWardId: id.nullable(), toWardId: id, shiftDate: z.string(), shift: shiftKey, reason: z.string(),
+  provenance: IpdProvenanceSchema,
+}));
+
 /** Every nursing event: the nurse station and my-shift refetch on any of them. */
 export const IPD_NURSING_EVENT_NAMES: readonly string[] = [
   // Not `ewsAcknowledged` (it carries note text); the station's 15-second poll picks an acknowledgement up.
   nursingAssessed.name, vitalsRecorded.name, ewsBreached.name, ewsCleared.name, assessmentOverdue.name,
   intakeOutputRecorded.name, nursingNoteAdded.name, shiftHandoverGiven.name, shiftHandoverAccepted.name,
+  // WM-1 (#982)
+  acuitySet.name, shiftMapPublished.name, shiftMapCarriedOver.name, bedReassigned.name, dutyEnded.name, ratioBreached.name, floatMoved.name,
 ];

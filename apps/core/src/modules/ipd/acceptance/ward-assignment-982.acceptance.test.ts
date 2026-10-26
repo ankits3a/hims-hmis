@@ -4,7 +4,7 @@ import { alerts, events } from "../../../kernel/db/schema";
 import { setupTestDb, truncateAll } from "../../../../test/helpers/db";
 import { mkWardWorld } from "../../../../test/helpers/ipd";
 import {
-  acceptHandover, assignBed, endMyDuty, moveFloatNurse, publishShiftMap, readBedBoard, readFloatPool, readMyShift,
+  acceptHandover, assignNurse, endMyDuty, moveFloatNurse, publishShiftMap, readBedBoard, readFloatPool, readMyShift,
   readNurseStation, readWardCockpit, saveShiftMap, setAcuity, startTransfer, sweepWardShifts,
 } from "../index";
 import { IpdError, IpdRefusal } from "../errors";
@@ -68,7 +68,7 @@ describe("spec #982 WM-1 ward assignment — acceptance", () => {
   const eventsNamed = async (name: string) => db.select().from(events).where(eq(events.name, name));
   const cockpit = (now: Date, wardId = w.wardId, actor = w.incharge) => readWardCockpit(db, actor, { wardId, now });
   const assign = (actor: Actor, bedId: string, nurseId: string, now: Date, reason?: string) =>
-    assignBed(db, actor, { idempotencyKey: key(), bedId, nurseId, ...(reason === undefined ? {} : { reason }) }, { now });
+    assignNurse(db, actor, { idempotencyKey: key(), bedId, nurseId, ...(reason === undefined ? {} : { reason }) }, { now });
 
   describe("spec #982 D1 — a published shift gives every occupied bed exactly one registered nurse", () => {
     it("publish refuses an occupied bed with no nurse and a student as a bed's only nurse; a paired student publishes", async () => {

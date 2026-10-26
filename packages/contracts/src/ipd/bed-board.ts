@@ -49,6 +49,10 @@ export const IpdBoardBedSchema = z.object({
   /** E3.1 (#729): a transfer waiting for acceptance — this bed is its origin (patient still here) or its target. */
   transfer: z.object({ transferId: IpdIdSchema, role: z.enum(["origin", "target"]) }).nullable().optional(),
   reservation: z.object({ id: IpdIdSchema, admissionId: IpdIdSchema, expiresAt: IpdInstantSchema }).nullable(),
+  /** WM-1 (#982): the bed's nurse on the live shift map (initials only), null when none. */
+  nurse: z.object({ initials: z.string() }).nullable().optional(),
+  /** WM-1 (#982): occupied and nobody on the live map holds it — the tile shows red until assigned. */
+  nurseMissing: z.boolean().optional(),
   block: z.object({
     id: IpdIdSchema,
     reason: z.string(),

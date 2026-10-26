@@ -14,6 +14,7 @@ import { holdIsLive } from "./beds";
 import { IPD_NURSING_STATES, ioDayStart, istDayIndex, isNightIst, lastSetAt, latestScores, scoreContextOf, scoreContextsOf, shiftOf } from "./nursing";
 import { draftProvenances } from "./copilot-drafts";
 import { SEALED_LABEL } from "./now-cards";
+import { liveNursesAt } from "./nurse-ward-read";
 import { IPD_NURSING_VIEW, IPD_SHIFT_HANDOVER } from "./permissions";
 import type {
   Actor, IpdEwsKind, IpdMyShift, IpdNurseStation, IpdNursingChart, IpdNursingChip, IpdNursingIdentity,
@@ -157,13 +158,25 @@ export function pickWard(wards: WardRow[], wardId: string | undefined): WardRow 
 
 // ═══════════════════════════════════════════ board C — the nurse station ═══════════════════════════════════════════
 
-export async function readNurseStation(db: Db, actor: Actor, opts: { wardId?: string; now?: Date } = {}): Promise<IpdNurseStation> {
+/**
+ * WM-1 (#982): each bed carries its nurse on the live shift map (`nurse`, null when none). `mine` keeps only the beds
+ * the live map gives the reader (as nurse or student); with no live map it keeps the whole ward.
+ */
+export async function readNurseStation(db: Db, actor: Actor, opts: { wardId?: string; now?: Date; mine?: boolean } = {}): Promise<IpdNurseStation> {
   await requireIpdPermission(db, actor, IPD_NURSING_VIEW);
   const now = opts.now ?? new Date();
   const shift = shiftOf(now);
   const { wards, beds: allBeds } = await wardsWithBeds(db);
   const ward = pickWard(wards, opts.wardId);
-  const beds = ward === null ? [] : allBeds.filter((b) => b.wardId === ward.id);
+  const live = await liveNursesAt(db, now);
+  const hasMap = ward !== null && live.wardsWithMap.has(ward.id);
+  const mineOnly = opts.mine === true && hasMap;
+  const isMine = (bedId: string): boolean => {
+    const n = live.byBed.get(bedId);
+    return n !== undefined && (n.nurse.userId === actor.id || n.student?.userId === actor.id);
+  };
+  const beds = ward === null ? [] : allBeds.filter((b) => b.wardId === ward.id && (!mineOnly || isMine(b.id)));
+  const nurseOf = (bedId: string) => (hasMap ? live.byBed.get(bedId)?.nurse ?? null : undefined);
   const f = await factsForBeds(db, beds.map((b) => b.id));
   const byBed = new Map(f.admissions.map((a) => [f.stayByAdmission.get(a.id)!.bedId, a] as const));
   const ids = await identitiesOf(db, actor, f.admissions, now);
@@ -190,6 +203,7 @@ export async function readNurseStation(db: Db, actor: Actor, opts: { wardId?: st
       out.push({
         bedId: b.id, code: b.code, status, since: b.since?.toISOString() ?? null, patient: null, consultant: null, dayOfStay: null, chips: [],
         score: null, scoreKind: null, next: null, alert: null, discharge: null, transferring: false, needs: 0,
+        ...(hasMap ? { nurse: null } : {}),
       });
       continue;
     }
@@ -223,6 +237,7 @@ export async function readNurseStation(db: Db, actor: Actor, opts: { wardId?: st
       alert: alertView(alert),
       discharge: a.state === "fit_declared" || a.state === "discharging" ? a.state : null,
       transferring: a.state === "transferring", needs,
+      ...(hasMap ? { nurse: nurseOf(b.id) ?? null } : {}),
     });
   }
   const handoversWaiting = ward === null ? 0 : (await db.select({ id: ipdShiftHandovers.id }).from(ipdShiftHandovers)
@@ -251,8 +266,12 @@ export async function readNurseStation(db: Db, actor: Actor, opts: { wardId?: st
  * patients; a roster assignment narrows it later). Time order: overdue first by how late, then due soonest.
  */
 export async function readMyShift(db: Db, actor: Actor, opts: { wardId?: string; now?: Date } = {}): Promise<IpdMyShift> {
-  const station = await readNurseStation(db, actor, opts);
   const now = opts.now ?? new Date();
+  // WM-1 (#982): with a live shift map, exactly the reader's own beds; before the ward's first publish, the ward.
+  const station = await readNurseStation(db, actor, { ...opts, now, mine: true });
+  const assigned = station.beds.some((b) => b.nurse !== undefined);
+  const live = station.ward === null ? false : (await liveNursesAt(db, now)).wardsWithMap.has(station.ward.id);
+  const assignment: NonNullable<IpdMyShift["assignment"]> = !live ? "ward" : assigned ? "mine" : "none";
   const items: IpdShiftItem[] = [];
   const patients: IpdMyShift["patients"] = [];
   for (const b of station.beds) {
@@ -275,7 +294,7 @@ export async function readMyShift(db: Db, actor: Actor, opts: { wardId?: string;
   }
   const rank = (i: IpdShiftItem): number => (i.kind === "ews" ? 0 : i.overdue ? 1 : 2);
   items.sort((x, y) => rank(x) - rank(y) || new Date(x.dueAt).getTime() - new Date(y.dueAt).getTime() || x.admissionId.localeCompare(y.admissionId));
-  return { asOf: station.asOf, night: station.night, ward: station.ward, wards: station.wards, shift: station.shift, patients, now: items };
+  return { asOf: station.asOf, night: station.night, ward: station.ward, wards: station.wards, shift: station.shift, patients, now: items, assignment };
 }
 
 // ═══════════════════════════════════════════ the chart ═══════════════════════════════════════════
