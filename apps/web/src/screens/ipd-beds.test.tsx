@@ -226,6 +226,25 @@ describe("Beds capacity board (E1.1)", () => {
     expect(within(drawer).queryByRole("button", { name: "Mark clean" })).toBeNull();
   });
 
+  it("WM-1 (#982): on a ward with a live shift map a tile shows its nurse's initials, and red words when nobody holds it", async () => {
+    const user = userEvent.setup();
+    api.getBedBoard.mockReset().mockImplementation(async (wall: boolean) => {
+      const b = boardOf(wall);
+      const beds = b.floors[0]!.wards[0]!.beds;
+      beds[0] = { ...beds[0]!, nurse: null, nurseMissing: true };
+      beds[3] = { ...beds[3]!, nurse: { initials: "A. K." }, nurseMissing: false };
+      return b;
+    });
+    renderWithRouter(<IpdBedsUnderTest />, "/ipd/beds");
+    await user.click(await screen.findByTestId("ipd-ward-F05-MED-F"));
+    const drawer = await screen.findByTestId("ipd-ward-drawer");
+    const red = await within(drawer).findByTestId("ipd-bed-F05-MED-F-B01");
+    expect(red).toHaveClass("no-nurse");
+    expect(within(red).getByTestId("ipd-bed-nonurse-F05-MED-F-B01")).toHaveTextContent("No nurse");
+    expect(within(drawer).getByTestId("ipd-bed-F05-MED-F-B04")).toHaveTextContent("A. K.");
+    expect(within(drawer).getByTestId("ipd-bed-F05-MED-F-B03")).not.toHaveClass("no-nurse");
+  });
+
   it("off the wall the tile carries the name the server sent", async () => {
     const user = userEvent.setup();
     renderWithRouter(<IpdBedsUnderTest />, "/ipd/beds");

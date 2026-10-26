@@ -9,6 +9,8 @@ import { fmtIst } from "../lib/format";
 import { refusalOf } from "../lib/ipd-beds-api";
 import { acknowledgeEws, addNote, getChart, getStation, recordAssessment, recordIntakeOutput } from "../lib/ipd-nursing-api";
 import type { AssessmentInput } from "../lib/ipd-nursing-api";
+import { ACUITY_POINTS, setAcuity } from "../lib/ipd-ward-api";
+import type { AcuityLevel } from "../lib/ipd-ward-api";
 import { PickWardPrompt, WardPicker, useWardChoice } from "../components/ward-picker";
 import { LiveLine, ScoreBadge, VitalsForm, ageFromAgeSex, dueWords, savedWords, spanWords, useLiveLoad, useNight } from "./ipd-nursing-shared";
 import type { T } from "./ipd-nursing-shared";
@@ -148,6 +150,10 @@ function BedCard({ b, now, onOpen, onDone }: { b: IpdStationBed; now: number; on
         <div className="ipdn-bedrow">
           <span className="ipdn-bedcode mono">{b.code ?? "—"}</span>
           {b.dayOfStay !== null ? <span className="dim">{t("ipdNursing.bed.day", { n: b.dayOfStay })}</span> : null}
+          {/* WM-1 (#982): the bed's nurse on the live shift map; red words when the ward has a map and nobody holds it. */}
+          {b.nurse === undefined ? null : b.nurse === null
+            ? <span className="ipdn-nonurse" data-testid="ipdn-bed-nonurse">{t("ipdWard.board.noNurse")}</span>
+            : <span className="mono" title={b.nurse.name}>{b.nurse.initials}</span>}
         </div>
         <div className="ipdn-who"><b>{p.name}</b> <span className="dim">{p.ageSex}</span></div>
         <div className="ipdn-sub dim">{[p.uhid ? `UHID ${p.uhid}` : null, b.consultant].filter(Boolean).join(" · ")}</div>
@@ -302,6 +308,7 @@ function Assessment({ chart, canRecord, onSaved }: { chart: IpdNursingChart; can
   const [refusal, setRefusal] = useState<IpdRefusalBody | null>(null);
   if (a !== null) {
     return (
+      <>
       <dl className="ipdn-facts" data-testid="ipdn-assessment">
         <div><dt>{t("ipdNursing.assess.morse")}</dt><dd>{a.morse} · {t(`ipdNursing.assess.morseRisk.${a.morseRisk}`)}</dd></div>
         <div><dt>{t("ipdNursing.assess.braden")}</dt><dd>{a.braden} · {t(`ipdNursing.assess.bradenRisk.${a.bradenRisk}`)}</dd></div>
@@ -311,6 +318,8 @@ function Assessment({ chart, canRecord, onSaved }: { chart: IpdNursingChart; can
         <div><dt>{t("ipdNursing.assess.lines")}</dt><dd>{a.linesDevices.length === 0 ? "—" : a.linesDevices.map((l) => t(`ipdNursing.line.${l.kind}`)).join(", ")}</dd></div>
         <div><dt>{t("ipdNursing.assess.recorded")}</dt><dd>{a.recordedBy} · {fmtIst(a.happenedAt)}{a.lateEntry ? ` · ${t("ipdNursing.lateEntry", { time: fmtIst(a.recordedAt) })}` : ""}</dd></div>
       </dl>
+      {canRecord ? <AcuityStep admissionId={chart.identity.admissionId} /> : null}
+      </>
     );
   }
   const num = (s: string): number | null => (s.trim() === "" || !Number.isFinite(Number(s)) ? null : Number(s));
@@ -441,5 +450,35 @@ function Notes({ chart, canRecord, onSaved }: { chart: IpdNursingChart; canRecor
         ))}
       </ul>
     </div>
+  );
+}
+
+/**
+ * WM-1 (#982) — the acuity step after the admission assessment: self-care 1, partial care 1.5, full care 2 points, and
+ * "ventilated" (a nurse of her own). The latest record counts toward the nurse's load and the ward's ratio until a new one.
+ */
+function AcuityStep({ admissionId }: { admissionId: string }): React.ReactElement {
+  const { t } = useTranslation();
+  const [vent, setVent] = useState(false);
+  const [saved, setSaved] = useState<AcuityLevel | null>(null);
+  const [failed, setFailed] = useState(false);
+  const set = (level: AcuityLevel): void => {
+    setFailed(false);
+    setAcuity(admissionId, level, vent).then(() => setSaved(level), () => setFailed(true));
+  };
+  return (
+    <fieldset className="ipdn-form" data-testid="ipdn-acuity">
+      <legend>{t("ipdWard.acuity.title")}</legend>
+      <div className="ipdn-chiprow">
+        {(["self_care", "partial_care", "full_care"] as const).map((l) => (
+          <button key={l} type="button" className="ipdn-chip" aria-pressed={saved === l} onClick={() => set(l)}>
+            {t(`ipdWard.acuity.${l}`)} · {ACUITY_POINTS[l]}
+          </button>
+        ))}
+      </div>
+      <label className="ipdn-check"><input type="checkbox" checked={vent} onChange={(e) => setVent(e.target.checked)} /> {t("ipdWard.acuity.ventilated")}</label>
+      {saved !== null ? <p className="ipdn-ok" role="status">✓ {t("ipdWard.acuity.saved")}</p> : null}
+      {failed ? <div className="ipdn-refusal" role="alert">{t("ipdNursing.actFailed")}</div> : null}
+    </fieldset>
   );
 }

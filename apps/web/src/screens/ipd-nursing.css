@@ -178,3 +178,6 @@
 .ipdn-stamp { margin: 0; padding: 6px 10px; border: 1px dashed var(--line); border-radius: 6px; font-size: 0.8125rem; overflow-wrap: anywhere; }
 .ipdn-src.ai { border-style: solid; }
 .ipdn-prov { font-size: 0.75rem; overflow-wrap: anywhere; }
+
+/* WM-1 (#982) — a bed nobody holds on the live shift map. */
+.ipdn-nonurse { color: var(--red); font-weight: 700; font-size: 0.75rem; }
