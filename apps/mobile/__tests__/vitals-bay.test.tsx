@@ -280,7 +280,7 @@ describe("the vitals bay on a phone", () => {
     // Owner 2026-10-09 — off the main view: nothing until "Details" is opened, then a text link.
     expect(screen.queryByTestId("patient-absent-open")).toBeNull();
     await fireEvent.press(screen.getByTestId("who-toggle"));
-    expect(screen.getByTestId("patient-absent-open")).toHaveTextContent(/^Guardian with reports ?›$/);
+    expect(screen.getByTestId("patient-absent-open")).toHaveTextContent(/^Reports only — Skip vitals ?›$/);
     await fireEvent.press(screen.getByTestId("patient-absent-open"));
     expect(screen.getByTestId("patient-absent-dialog")).toHaveTextContent(/Who came\?/);
     expect(screen.getByTestId("patient-absent-dialog")).toHaveTextContent(/No vitals\. Fee unchanged\./);
@@ -289,7 +289,7 @@ describe("the vitals bay on a phone", () => {
     await fireEvent.press(screen.getByTestId("patient-absent-relation-father"));
     await fireEvent.changeText(screen.getByTestId("patient-absent-name"), "  Ramesh ");
     await fireEvent.press(screen.getByTestId("patient-absent-confirm"));
-    expect(await screen.findByTestId("guardian-banner")).toHaveTextContent(/Geeta Devi — Sent to the doctor — guardian with reports, vitals not taken\./);
+    expect(await screen.findByTestId("guardian-banner")).toHaveTextContent(/Geeta Devi — Sent to the doctor — vitals skipped\./);
     expect(s.of("POST /opd/visits/e4/patient-absent")[0]!.body).toEqual({ relation: "father", name: "Ramesh" });
     expect(s.of("POST /opd/visits/e4/vitals")).toHaveLength(0);
     expect(await screen.findByTestId("identify")).toBeTruthy(); // the desk is clear
@@ -303,9 +303,9 @@ describe("the vitals bay on a phone", () => {
     }));
     await mount(s.fetcher);
     const revisit = await screen.findByTestId("bench-swipe-4");
-    expect(revisit.props.accessibilityActions).toEqual([{ name: "swipe", label: "Open form" }, { name: "swipeLeft", label: "Guardian with reports" }]);
+    expect(revisit.props.accessibilityActions).toEqual([{ name: "swipe", label: "Open form" }, { name: "swipeLeft", label: "Reports only — Skip vitals" }]);
     // Owner 2026-10-09 — a NEW visit's row carries it too.
-    expect(screen.getByTestId("bench-swipe-7").props.accessibilityActions).toEqual([{ name: "swipe", label: "Open form" }, { name: "swipeLeft", label: "Guardian with reports" }]);
+    expect(screen.getByTestId("bench-swipe-7").props.accessibilityActions).toEqual([{ name: "swipe", label: "Open form" }, { name: "swipeLeft", label: "Reports only — Skip vitals" }]);
     // A row past the bay (vitals done): right-swipe only, and a left-swipe that somehow arrives does nothing.
     const done = screen.getByTestId("bench-swipe-3");
     expect(done.props.accessibilityActions).toEqual([{ name: "swipe", label: "Open form" }]);
@@ -325,7 +325,7 @@ describe("the vitals bay on a phone", () => {
     await fireEvent(revisit, "accessibilityAction", { nativeEvent: { actionName: "swipeLeft" } });
     await fireEvent.press(await screen.findByTestId("patient-absent-relation-son"));
     await fireEvent.press(screen.getByTestId("patient-absent-confirm"));
-    expect(await screen.findByTestId("guardian-banner")).toHaveTextContent(/Geeta Devi — Sent to the doctor — guardian with reports, vitals not taken\./);
+    expect(await screen.findByTestId("guardian-banner")).toHaveTextContent(/Geeta Devi — Sent to the doctor — vitals skipped\./);
     expect(s.of("POST /opd/visits/e4/patient-absent")[0]!.body).toEqual({ relation: "son", name: null });
     expect(screen.queryByTestId("patient-absent-dialog")).toBeNull();
   });
@@ -361,7 +361,7 @@ describe("the vitals bay on a phone", () => {
 
     offer = true;
     await fireEvent(screen.getByTestId("bench-row-4"), "longPress");
-    expect(await screen.findByTestId("card-guardian")).toHaveTextContent(/^Guardian with reports ?›$/);
+    expect(await screen.findByTestId("card-guardian")).toHaveTextContent(/^Reports only — Skip vitals ?›$/);
     await fireEvent.press(screen.getByTestId("card-guardian"));
     expect(await screen.findByTestId("patient-absent-dialog")).toHaveTextContent(/Who came\?/);
     expect(screen.queryByTestId("action-card")).toBeNull();

@@ -2394,7 +2394,7 @@
   "patientAbsent": {
     "undo": "Undo — patient is here",
     "undone": "Back on the bench",
-    "action": "Patient not present — guardian with reports",
+    "action": "Reports only — Skip vitals",
     "title": "Who came?",
     "hint": "No vitals. Fee unchanged.",
     "relationLabel": "Who came",
@@ -2402,10 +2402,10 @@
     "confirm": "Send to doctor",
     "cancel": "Cancel",
     "sending": "Sending…",
-    "done": "Sent to the doctor — guardian with reports, vitals not taken.",
+    "done": "Sent to the doctor — vitals skipped.",
     "notice": "Patient absent — guardian ({{who}}) brought reports. Vitals not taken.",
     "tag": "Guardian ({{who}})",
-    "short": "Guardian with reports",
+    "short": "Reports only — Skip vitals",
     "cardTitle": "Guardian only",
     "cardTail": " · reports · no vitals",
     "cardTailNew": " · new · no vitals",
@@ -2415,7 +2415,15 @@
       "other_relative": "Relative"
     },
     "who": "{{relation}}: {{name}}",
+    "self": {
+      "cardTitle": "Reports only",
+      "cardTail": " · vitals skipped",
+      "compact": "Reports only · vitals skipped",
+      "chip": "Reports only",
+      "notice": "Reports only — the patient came. Vitals skipped."
+    },
     "relation": {
+      "self": "Self",
       "father": "Father",
       "mother": "Mother",
       "spouse": "Spouse",

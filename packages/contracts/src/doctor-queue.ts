@@ -314,6 +314,12 @@ export function guardianBrief(t: BriefT, absent: { relation: string; name: strin
   // The desk's own word for who came — or, where that word is too long for one line of a phone
   // ("Other relative"), the shorter one the doctor's screens use. A relation this build has no word for is shown as sent.
   const word = (key: string): string | null => { const said = t(key); return said === key ? null : said; };
+  // #971 (owner 2026-10-26) — "self": the patient came, only to show reports. Nothing here says
+  // "guardian" or "absent"; the words are the Reports-only set.
+  if (absent.relation === "self") {
+    const self = t("patientAbsent.self.cardTitle");
+    return { title: self, who: t("patientAbsent.relation.self"), tail: t("patientAbsent.self.cardTail"), compact: t("patientAbsent.self.compact"), chip: t("patientAbsent.self.chip") };
+  }
   const relation = word(`patientAbsent.cardRelation.${absent.relation}`) ?? word(`patientAbsent.relation.${absent.relation}`) ?? absent.relation;
   const name = (absent.name ?? "").trim();
   const who = name === "" ? relation : t("patientAbsent.who", { relation, name });

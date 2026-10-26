@@ -1,11 +1,11 @@
 ---
 issue: 971
-status: approved
+status: built
 approved: 2026-10-26
 ---
 # SPEC — "Reports only — Skip vitals", with Self in "Who came?" (#971)
 
-Status: APPROVED 2026-10-26 by the owner, with the defaults below.
+Status: APPROVED 2026-10-26 by the owner, with the defaults below. BUILT 2026-10-26 as specified. D4 pins behaviour that already held, so it passed before the build; D1–D3 and D5 were red.
 
 ## What
 

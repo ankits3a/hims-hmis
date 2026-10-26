@@ -11,30 +11,30 @@ import { guardianBrief } from "../../src/doctor/rules";
  * line, queue chip) never say "absent" or "guardian" for a Self visit, and keep their words otherwise.
  */
 const METRICS = { frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } };
-function wrap(node: React.ReactElement) {
-  return render(<SafeAreaProvider initialMetrics={METRICS}><I18nProvider>{node}</I18nProvider></SafeAreaProvider>);
+async function wrap(node: React.ReactElement) {
+  return await render(<SafeAreaProvider initialMetrics={METRICS}><I18nProvider>{node}</I18nProvider></SafeAreaProvider>);
 }
 const tEn = (k: string, v?: Record<string, string | number>) => translate("en", k, v);
 const tHi = (k: string, v?: Record<string, string | number>) => translate("hi", k, v);
 const api = { markPatientAbsent: jest.fn() };
 
 describe("#971 — Reports only, Skip vitals (phone)", () => {
-  it("spec #971 D1: the phone's way in reads \"Reports only — Skip vitals\", in en and hi", () => {
-    wrap(<GuardianLink onPress={() => undefined} />);
+  it("spec #971 D1: the phone's way in reads \"Reports only — Skip vitals\", in en and hi", async () => {
+    await wrap(<GuardianLink onPress={() => undefined} />);
     expect(screen.getByText("Reports only — Skip vitals ›")).toBeTruthy();
     expect(tEn("patientAbsent.short")).toBe("Reports only — Skip vitals");
     expect(tEn("patientAbsent.action")).toBe("Reports only — Skip vitals");
     expect(tHi("patientAbsent.short")).not.toBe("अभिभावक रिपोर्ट के साथ");
   });
 
-  it("spec #971 D2: Self is the first chip, and choosing it hides the name box", () => {
+  it("spec #971 D2: Self is the first chip, and choosing it hides the name box", async () => {
     expect(GUARDIAN_RELATIONS[0]).toBe("self");
-    wrap(<GuardianSheet api={api} encounterId="e1" onDone={() => undefined} onClose={() => undefined} />);
+    await wrap(<GuardianSheet api={api} encounterId="e1" onDone={() => undefined} onClose={() => undefined} />);
     expect(screen.getByTestId("patient-absent-relation-self")).toBeTruthy();
     expect(screen.getByText("Self")).toBeTruthy();
     expect(tHi("patientAbsent.relation.self")).not.toBe("patientAbsent.relation.self");
     expect(screen.getByTestId("patient-absent-name")).toBeTruthy();
-    fireEvent.press(screen.getByTestId("patient-absent-relation-self"));
+    await fireEvent.press(screen.getByTestId("patient-absent-relation-self"));
     expect(screen.queryByTestId("patient-absent-name")).toBeNull();
   });
 
