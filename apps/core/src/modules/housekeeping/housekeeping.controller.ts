@@ -14,9 +14,9 @@ import {
 import { bedCleans, housekeepingBoard } from "./reads";
 import { publishRota, rotaView, saveRota } from "./rota";
 import { addContractor, areaQrToken, defineArea, revokeAreaQr, saveChecklist, setHkStaff, setupView } from "./setup";
-import { finishWork, storeWorkPhoto, workForm } from "./work";
+import { finishWork, proofOf, storeWorkPhoto, workForm } from "./work";
 import type {
-  Actor, BedCleansView, HkChecklistView, HkContractorView, HkDoorAck, HkRotaView, HkSetupView, HkSupervisorView, HkWorkForm,
+  Actor, BedCleansView, HkChecklistView, HkContractorView, HkDoorAck, HkProofView, HkRotaView, HkSetupView, HkSupervisorView, HkWorkForm,
   HousekeepingBoardView,
 } from "@hmis/contracts";
 import type { AppConfig } from "../../kernel/config";
@@ -103,6 +103,13 @@ export class HousekeepingController {
     return refusing(async () => ack(await confirmClean(this.db, actor, { ...body(b), taskId: id })));
   }
 
+  /** What the checker sees before Pass or Fail: the newest attempt's proof, the photo inline (null: no proof recorded). */
+  @Get("tasks/:id/proof")
+  @RequirePermission(IPD_BEDS_CLEAN, "hospital", { alsoAdmits: [HOUSEKEEPING_CONFIRM, HOUSEKEEPING_VERIFY_TERMINAL, HOUSEKEEPING_VIEW] })
+  async proof(@Param("id") id: string): Promise<{ proof: HkProofView | null }> {
+    return refusing(async () => ({ proof: await proofOf(this.db, this.store, id) }));
+  }
+
   /** The attendant's checklist for a task, and whether it needs a photo. */
   @Get("tasks/:id/work-form")
   @RequirePermission(TASKS_WORK, "hospital")
@@ -129,8 +136,9 @@ export class HousekeepingController {
     return refusing(async () => ack(await finishWork(this.db, this.config.secretKey, actor, { ...body(b), taskId: id })));
   }
 
+  /** The setup page, and the rota page's lists (floors, areas, beds, people). */
   @Get("setup")
-  @RequirePermission(HOUSEKEEPING_SETUP_MANAGE, "hospital")
+  @RequirePermission(HOUSEKEEPING_SETUP_MANAGE, "hospital", { alsoAdmits: [HOUSEKEEPING_ROTA_MANAGE] })
   async setup(): Promise<HkSetupView> {
     return setupView(this.db);
   }

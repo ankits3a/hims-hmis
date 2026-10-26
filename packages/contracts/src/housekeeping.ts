@@ -70,6 +70,7 @@ export const HOUSEKEEPING_ROUTES = {
   work: (taskId: string) => `/housekeeping/tasks/${encodeURIComponent(taskId)}/work`,
   photo: (taskId: string) => `/housekeeping/tasks/${encodeURIComponent(taskId)}/photo`,
   workForm: (taskId: string) => `/housekeeping/tasks/${encodeURIComponent(taskId)}/work-form`,
+  proof: (taskId: string) => `/housekeeping/tasks/${encodeURIComponent(taskId)}/proof`,
   setup: "/housekeeping/setup",
   areas: "/housekeeping/areas",
   areaQr: (areaId: string) => `/housekeeping/areas/${encodeURIComponent(areaId)}/qr`,
@@ -103,7 +104,7 @@ export const HOUSEKEEPING_REFUSALS = {
   unknown_checklist: { sentence: "This checklist does not exist.", fix: "Pick a checklist from the list." },
   unknown_contractor: { sentence: "This contractor is not on the list.", fix: "Add the contractor first." },
   contractor_exists: { sentence: "A contractor with this name is already on the list.", fix: "Use the existing one." },
-  not_a_shift_start: { sentence: "A rota starts at a shift start (07:00, 14:00 or 21:00).", fix: "Pick the shift from the list." },
+  not_a_shift_start: { sentence: "A rota starts at a shift start (07:00, 15:00 or 23:00).", fix: "Pick the shift from the list." },
   unknown_rota: { sentence: "This rota does not exist.", fix: "Refresh the rota page." },
   rota_published: { sentence: "This rota is already published.", fix: "Make a new draft for changes." },
   unknown_person: { sentence: "This person cannot be placed on the rota.", fix: "Pick an active member of staff." },
@@ -146,22 +147,22 @@ function hospitalDayStart(now: Date): number {
   return Math.floor(ist / (24 * HOUR)) * 24 * HOUR - IST_MS + 7 * HOUR;
 }
 
-/** DECIDED (standard three-shift pattern): morning 07:00–14:00, evening 14:00–21:00, night 21:00–07:00 IST. */
+/** DECIDED (the design board, the standard three eight-hour shifts): morning 07–15, evening 15–23, night 23–07 IST. */
 export function hkShiftAt(now: Date): HkShift {
   const day = hospitalDayStart(now);
   const h = (now.getTime() - day) / HOUR;
-  if (h < 7) return { key: "morning", startsAt: new Date(day), endsAt: new Date(day + 7 * HOUR) };
-  if (h < 14) return { key: "evening", startsAt: new Date(day + 7 * HOUR), endsAt: new Date(day + 14 * HOUR) };
-  return { key: "night", startsAt: new Date(day + 14 * HOUR), endsAt: new Date(day + 24 * HOUR) };
+  if (h < 8) return { key: "morning", startsAt: new Date(day), endsAt: new Date(day + 8 * HOUR) };
+  if (h < 16) return { key: "evening", startsAt: new Date(day + 8 * HOUR), endsAt: new Date(day + 16 * HOUR) };
+  return { key: "night", startsAt: new Date(day + 16 * HOUR), endsAt: new Date(day + 24 * HOUR) };
 }
 
 /**
- * Round slots per class, as hours after 07:00 IST (DECIDED by standard NABH housekeeping practice): A every 3–4 h,
+ * Round slots per class, as hours after 07:00 IST (DECIDED by standard NABH housekeeping practice): A every 4 h,
  * B once a shift, toilets hourly 07:00–22:00 and two-hourly at night, public areas two-hourly, D once a day.
  */
 const SLOTS: Readonly<Record<HkAreaClass, readonly number[]>> = {
-  A: [0, 4, 7, 11, 14, 18, 22],
-  B: [0, 7, 14],
+  A: [0, 4, 8, 12, 16, 20],
+  B: [0, 8, 16],
   C_toilet: [...Array.from({ length: 15 }, (_, i) => i), 15, 17, 19, 21, 23],
   C_public: Array.from({ length: 12 }, (_, i) => i * 2),
   D: [0],
@@ -235,7 +236,7 @@ export const doorRequestInput = z.object({ token: z.string().trim().min(1).max(2
 export type DoorRequestInput = z.infer<typeof doorRequestInput>;
 
 /** DECIDED: the reasons a checker picks from (a typed reason is also accepted). */
-export const HK_FAIL_REASONS = ["Floor not mopped", "Bin not emptied", "Linen not changed", "Surfaces dusty", "Washroom not cleaned", "Smell remains"] as const;
+export const HK_FAIL_REASONS = ["Floor wet", "Bin full", "Linen missing", "Stain", "Smell", "Toilet dirty"] as const;
 
 export type HkChecklistItem = { id: string; text: string };
 export type HkChecklistView = { id: string; lineageId: string; version: number; name: string; items: HkChecklistItem[] };
@@ -249,6 +250,10 @@ export type HkSetupView = {
   areas: HkAreaView[]; checklists: HkChecklistView[]; contractors: HkContractorView[]; staff: HkStaffView[];
   /** Places that may become areas: floors, wards, rooms and halls. */
   places: { id: string; name: string; code: string; kind: string; floorName: string | null }[];
+  /** IPD beds, for a bed-wise rota section. */
+  beds: { id: string; code: string; floorId: string | null; floorName: string | null }[];
+  /** Everyone who may be placed on the rota: the cleaning skill's role holders, active. */
+  people: { userId: string; name: string; company: string; skills: HkSkill[] }[];
 };
 export type HkRotaPlaceView = { userId: string; name: string; company: string; mode: HkRotaMode; floorId: string | null; areaIds: string[]; bedIds: string[]; load: number };
 export type HkRotaView = {
@@ -261,6 +266,13 @@ export type HkRoundView = { id: string; areaId: string; taskId: string; slotStar
 export type HkWorkView = {
   taskId: string; attempt: number; doneBy: string; company: string; scannedAt: string; scanAreaId: string;
   answers: { itemId: string; ok: boolean }[]; photoKey: string | null;
+};
+/** What a checker sees before Pass or Fail: the newest attempt's proof (photo bytes inline), or null without one. */
+export type HkProofView = {
+  taskId: string; attempt: number; doneByName: string; company: string; scannedAt: string; scanAreaName: string | null;
+  answers: { text: string; ok: boolean }[]; photo: { mimeType: string; imageBase64: string } | null;
+  /** Failed checks so far, and the newest reason. */
+  fails: number; lastReason: string | null;
 };
 /** What the phone shows before the attendant finishes a task: the checklist and whether a photo is needed. */
 export type HkWorkForm = { taskId: string; needsWork: boolean; areaName: string | null; items: HkChecklistItem[]; photoNeeded: boolean; lastReason: string | null };

@@ -53,6 +53,8 @@ export type TasksBoardProps = {
   rowFlag?: (c: TaskCard) => string | null;
   /** Resolves with null when checked, or with the refusal's words. Absent: the to-check list is read-only. */
   onVerify?: (c: TaskCard) => Promise<string | null>;
+  /** HK-1 (#973): an owning module's own panel above the workers (housekeeping: Needs you, missed rounds). */
+  side?: React.ReactNode;
 };
 
 export function TasksBoard(p: TasksBoardProps = {}): React.ReactElement {
@@ -104,6 +106,7 @@ export function TasksBoard(p: TasksBoardProps = {}): React.ReactElement {
             {(board?.floors ?? []).map((f) => <Floor key={f.floorName ?? "-"} f={f} now={now} lang={lang} rows={rows} flag={p.rowFlag} />)}
           </div>
           <div className="tk-side">
+            {p.side}
             <Workers workers={board?.workers ?? []} />
             {(board?.toVerify.length ?? 0) > 0 && (
               <section className="box tk-verify" data-testid="board-verify">

@@ -3,7 +3,7 @@ import { HK_ROUND_GRACE_MIN, HOUSEKEEPING_KINDS, HOUSEKEEPING_TARGET_MIN } from 
 import { resources } from "../../kernel/db/schema";
 import { IPD_BEDS_CLEAN, markBedCleanIn } from "../ipd";
 import { SERVICES_SUPERVISOR_ROLE, SUPPORT_STAFF_ROLE, defineSkill, defineTaskKind } from "../tasks";
-import { HOUSEKEEPING_CONFIRM, HOUSEKEEPING_VERIFY_TERMINAL } from "./names";
+import { HOUSEKEEPING_CONFIRM, HOUSEKEEPING_SKILL, HOUSEKEEPING_VERIFY_TERMINAL } from "./names";
 import { hkEligible, hkPoolOnly } from "./rota";
 import { hkBeforeDone } from "./work";
 import type { Actor } from "@hmis/contracts";
@@ -24,7 +24,7 @@ import type { TaskRow } from "../tasks";
  * clean's checkers. Three kinds are added: an area's round (checked for classes A and B), and a request at an area.
  */
 const WORKED = { eligible: hkEligible, beforeDone: hkBeforeDone } as const;
-export const HOUSEKEEPING_SKILL = "housekeeping";
+export { HOUSEKEEPING_SKILL };
 export const HOUSEKEEPING_ROUND_SKILL = "housekeeping_round";
 defineSkill(HOUSEKEEPING_SKILL, [SUPPORT_STAFF_ROLE]);
 defineSkill(HOUSEKEEPING_ROUND_SKILL, [SERVICES_SUPERVISOR_ROLE]);

@@ -5,6 +5,8 @@ import { PaperScreen } from "../components/paper-screen";
 import { acceptTask, doneTask, fetchMyTasks, lateMinutes, startTask, taskRefusal } from "../lib/tasks-api";
 import { PATIENT_MOVE_KIND, TRANSPORT_KIND_SET, fetchTransportDetails } from "../lib/transport-api";
 import { BandScanForm, TransportPanel, refusalText } from "./transport-card";
+import { HK_WORKED_KINDS } from "../lib/housekeeping-api";
+import { WorkSheet } from "./hk-work-sheet";
 import type { TaskCard, TaskProof, TransportDetail } from "@hmis/contracts";
 import "./tasks.css";
 
@@ -16,6 +18,8 @@ import "./tasks.css";
  * alone. Notices are a few words on one line (owner rule). No photo button: no kind needs one yet.
  * E1.6 TRANSPORT (#723): a transport task's card carries its details (from → to, mode, oxygen, escort) and, for a
  * patient move, the escort and cylinder steps before Start and the wristband scan at Done (`transport-card.tsx`).
+ * HK-1 (#973): a housekeeping task in progress finishes through its checklist sheet — the door QR, every item, a photo
+ * for a bed or a toilet (`hk-work-sheet.tsx`); one at a place with no area keeps the plain Done tap.
  */
 type T = (k: string, o?: Record<string, unknown>) => string;
 
@@ -92,6 +96,7 @@ export function MyTasks(): React.ReactElement {
           <Card
             key={c.id} c={c} now={now} lang={lang} busy={run.isPending} detail={detailOf.get(c.id)} onNotice={setNotice}
             onAct={(verb, proof) => run.mutate({ c, verb, proof })}
+            onWorked={() => { void qc.invalidateQueries({ queryKey: ["tasks"] }); }}
           />
         ))}
         {pool.length > 0 && <h2 className="tk-h2">{t("tasks.mine.pool")}</h2>}
@@ -106,9 +111,10 @@ export function MyTasks(): React.ReactElement {
   );
 }
 
-function Card({ c, now, lang, busy, pool = false, detail, onAct, onNotice }: {
+function Card({ c, now, lang, busy, pool = false, detail, onAct, onNotice, onWorked }: {
   c: TaskCard; now: number; lang: string; busy: boolean; pool?: boolean; detail?: TransportDetail;
   onAct: (verb: "accept" | "start" | "done", proof?: TaskProof) => void; onNotice: (text: string | null) => void;
+  onWorked?: () => void;
 }): React.ReactElement {
   const { t } = useTranslation();
   const clock = clockOf(c.dueAt, now, t, lang);
@@ -126,6 +132,8 @@ function Card({ c, now, lang, busy, pool = false, detail, onAct, onNotice }: {
       {c.note !== null && c.note !== "" && <div className="note">{c.note}</div>}
       {detail !== undefined ? (
         <TransportPanel c={c} d={detail} verb={verb} pool={pool} busy={busy} onAct={onAct} onNotice={onNotice} />
+      ) : HK_WORKED_KINDS.has(c.kind) && c.state === "in_progress" && !pool ? (
+        <WorkSheet card={c} busy={busy} onTap={() => onAct("done")} onDone={() => onWorked?.()} onNotice={onNotice} />
       ) : c.kind === PATIENT_MOVE_KIND && c.state === "in_progress" && !pool ? (
         <BandScanForm taskId={c.id} busy={busy} onScan={(code) => onAct("done", { kind: "scan", code })} />
       ) : (

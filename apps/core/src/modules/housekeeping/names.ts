@@ -17,3 +17,5 @@ export const HOUSEKEEPING_ROUNDS_ACTOR: Actor = { type: "system", id: "housekeep
 export const HOUSEKEEPING_BED_CONSUMER = "housekeeping.bed_turnover";
 /** Who raises and cancels a clean on the bed's behalf. */
 export const HOUSEKEEPING_ACTOR: Actor = { type: "system", id: "housekeeping-turnover" };
+/** The cleaning skill (`support_staff`), defined in `kinds.ts`; named here so setup can read its holders without a cycle. */
+export const HOUSEKEEPING_SKILL = "housekeeping";

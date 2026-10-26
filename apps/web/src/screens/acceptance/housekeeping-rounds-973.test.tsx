@@ -18,7 +18,7 @@ const BOARD: TaskBoardView = {
 };
 const SUPERVISOR: HkSupervisorView = {
   serverNow: iso(0),
-  missed: [{ areaId: "a1", areaName: "Floor 2 toilet (gents)", floorName: "Floor 2", taskId: "t1", slotStart: iso(-80), dueAt: iso(-20), assigneeInitials: "R. K." }],
+  missed: [{ areaId: "a1", areaName: "Floor 2 toilet (gents)", floorName: "Floor 2", taskId: "t1", slotStart: iso(-80), dueAt: iso(-20.5), assigneeInitials: "R. K." }],
   needsYou: [],
   people: [],
 };
@@ -35,7 +35,7 @@ describe("#973 — housekeeping rounds on screen", () => {
     });
     renderWithProviders(<HousekeepingBoard />);
     const missed = await screen.findByRole("region", { name: /missed rounds/i });
-    expect(within(missed).getByText("Floor 2 toilet (gents)")).toBeInTheDocument();
+    expect(await within(missed).findByText("Floor 2 toilet (gents)")).toBeInTheDocument();
     expect(within(missed).getByText(/20 min late/i)).toBeInTheDocument();
   });
 
@@ -43,8 +43,9 @@ describe("#973 — housekeeping rounds on screen", () => {
     window.location.hash = "#a1.area-1.1.sig";
     stubFetch({ "POST /api/housekeeping/door": { requestId: "r1", taskId: "t1" } });
     renderWithProviders(<DoorRequest />);
-    for (const need of ["Clean", "Toilet", "Spill", "Bin"]) expect(await screen.findByRole("button", { name: need })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Bin" }));
+    // The board's four needs ("Anyone · Raise a request").
+    for (const need of [/^Clean room/, /^Toilet dirty/, /^Spill/, /^Bin full/]) expect(await screen.findByRole("button", { name: need })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^Bin full/ }));
     await waitFor(() => {
       const post = vi.mocked(fetch).mock.calls.find(([, init]) => init?.method === "POST");
       expect(JSON.parse(String(post?.[1]?.body))).toEqual({ token: "a1.area-1.1.sig", need: "bin" });

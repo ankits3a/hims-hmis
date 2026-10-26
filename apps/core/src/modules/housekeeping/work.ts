@@ -1,12 +1,12 @@
 import { and, desc, eq } from "drizzle-orm";
 import { BED_CLEAN_KINDS, HK_IN_HOUSE, HOUSEKEEPING_KIND_LIST, HOUSEKEEPING_REFUSALS, finishWorkInput, newId } from "@hmis/contracts";
 import { withTx } from "../../kernel/db/client";
-import { hkChecklists, hkWork } from "../../kernel/db/schema";
+import { hkAreas, hkChecklists, hkWork, resources, users } from "../../kernel/db/schema";
 import { TaskError, TaskKindRefusal, completeTask, getTask, rejectionsOf } from "../tasks";
 import { HousekeepingRefusal } from "./errors";
 import { ancestry, areaOfPlace } from "./places";
 import { parse, readQrToken, staffFacts } from "./setup";
-import type { Actor, HkWorkForm, HkWorkView, HousekeepingKind, TaskProof } from "@hmis/contracts";
+import type { Actor, HkProofView, HkWorkForm, HkWorkView, HousekeepingKind, TaskProof } from "@hmis/contracts";
 import type { DocumentStore } from "../../kernel/documents/store";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { TaskRow } from "../tasks";
@@ -119,3 +119,28 @@ export async function workOf(db: Db, taskId: string): Promise<HkWorkView | null>
   };
 }
 
+
+/** The checker's view of the newest attempt: who, which company, the scan, each answer in words, and the photo. */
+export async function proofOf(db: Db, store: DocumentStore, taskId: string): Promise<HkProofView | null> {
+  await hkTask(db, taskId);
+  const r = (await db.select().from(hkWork).where(eq(hkWork.taskId, taskId)).orderBy(desc(hkWork.attempt)).limit(1))[0];
+  if (r === undefined) return null;
+  const who = (await db.select({ name: users.fullName }).from(users).where(eq(users.id, r.doneBy)))[0]?.name ?? "";
+  const place = (await db.select({ name: resources.name }).from(hkAreas).innerJoin(resources, eq(resources.id, hkAreas.resourceId))
+    .where(eq(hkAreas.id, r.scanAreaId)))[0]?.name ?? null;
+  const items = r.checklistId === null ? [] : (await db.select({ items: hkChecklists.items }).from(hkChecklists).where(eq(hkChecklists.id, r.checklistId)))[0]?.items ?? [];
+  const okOf = new Map(r.answers.map((a) => [a.itemId, a.ok]));
+  let photo: HkProofView["photo"] = null;
+  if (r.photoKey !== null) {
+    try {
+      const bytes = await store.get(r.photoKey);
+      const mimeType = r.photoKey.endsWith(".png") ? "image/png" : r.photoKey.endsWith(".webp") ? "image/webp" : "image/jpeg";
+      photo = { mimeType, imageBase64: bytes.toString("base64") };
+    } catch { /* the bytes are missing: the checker sees the record without the picture */ }
+  }
+  const rej = (await rejectionsOf(db, [taskId])).get(taskId);
+  return {
+    taskId, attempt: r.attempt, doneByName: who, company: r.company, scannedAt: r.scannedAt.toISOString(), scanAreaName: place,
+    answers: items.map((i) => ({ text: i.text, ok: okOf.get(i.id) ?? false })), photo, fails: rej?.count ?? 0, lastReason: rej?.lastReason ?? null,
+  };
+}

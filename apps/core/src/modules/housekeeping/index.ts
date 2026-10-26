@@ -22,7 +22,7 @@ export { addContractor, areaQrToken, defineArea, readQrToken, revokeAreaQr, save
 export { publishRota, rotaView, saveRota } from "./rota";
 export { roundsOf, runRoundsClock } from "./rounds";
 export type { RoundsResult } from "./rounds";
-export { finishWork, storeWorkPhoto, workForm, workOf } from "./work";
+export { finishWork, proofOf, storeWorkPhoto, workForm, workOf } from "./work";
 export { doorRequestOf, raiseDoorRequest } from "./door";
 export { supervisorBoard } from "./board";
 export { bedCleans, housekeepingBoard } from "./reads";

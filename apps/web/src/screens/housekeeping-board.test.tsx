@@ -46,6 +46,8 @@ describe("HousekeepingBoard (E1.4)", () => {
         return new Response(JSON.stringify({ id: "chk", state: "verified", version: 4 }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
       const body = raw.endsWith("/housekeeping/board") ? view
+        : raw.endsWith("/housekeeping/supervisor") ? { serverNow: new Date(NOW).toISOString(), missed: [], needsYou: [], people: [] }
+          : raw.endsWith("/proof") ? { proof: null }
         : raw.endsWith("/auth/me") ? { actor: { type: "user", id: "me" }, permissions: { hospital: ["housekeeping.view"], scoped: { department: {}, floor: {} } } }
           : {};
       return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -64,16 +66,22 @@ describe("HousekeepingBoard (E1.4)", () => {
     expect(within(rows[1]!).queryByTestId("row-flag")).toBeNull();
   });
 
-  it("Check posts the verification; a refusal shows the server's rule and fix", async () => {
+  it("Check opens the confirm sheet; Pass posts it, and a refusal shows the server's rule and fix (HK-1, #973)", async () => {
     const user = userEvent.setup();
     renderWithProviders(<HousekeepingBoard />);
     const item = await screen.findByTestId("verify-chk");
     expect(item).toHaveTextContent("F05-ISO-01 · Terminal clean");
     refuse = true;
     await user.click(within(item).getByRole("button", { name: "Check" }));
-    expect(await within(item).findByRole("status")).toHaveTextContent(
+    const sheet = within(await screen.findByTestId("hk-confirm"));
+    await user.click(sheet.getByRole("button", { name: "Pass · bed ready" }));
+    expect(await sheet.findByRole("alert")).toHaveTextContent(
       "A terminal clean is checked by the housekeeping supervisor (infection control). Ask the housekeeping supervisor to check this bed.",
     );
-    expect(posted).toEqual(["/api/housekeeping/cleans/chk/verify"]);
+    expect(posted).toEqual(["/api/housekeeping/tasks/chk/confirm"]);
+    // Fail needs a reason before anything is sent.
+    await user.click(sheet.getByRole("button", { name: "Fail" }));
+    expect(await sheet.findByRole("alert")).toHaveTextContent("Pick a reason for Fail.");
+    expect(posted).toHaveLength(1);
   });
 });

@@ -6,7 +6,10 @@ import { hmacSign, hmacVerify } from "../../kernel/crypto";
 import { withTx } from "../../kernel/db/client";
 import { hkAreas, hkChecklists, hkContractors, hkStaff, resources, users } from "../../kernel/db/schema";
 import { HousekeepingRefusal } from "./errors";
+import { HOUSEKEEPING_SKILL } from "./names";
 import { ancestry, floorIn } from "./places";
+import { usersHoldingRole } from "../../kernel/workflow/roles";
+import { skillRoles } from "../tasks";
 import type { Actor, HkAreaClass, HkAreaView, HkChecklistView, HkContractorView, HkSetupView, HkSkill, HkStaffView } from "@hmis/contracts";
 import type { z } from "zod";
 import type { Db } from "../../kernel/db/client";
@@ -148,6 +151,8 @@ export async function setupView(db: Db): Promise<HkSetupView> {
     .from(hkAreas).innerJoin(resources, eq(resources.id, hkAreas.resourceId)).where(eq(hkAreas.active, true)).orderBy(asc(resources.code));
   const placeRows = await db.select({ id: resources.id, name: resources.name, code: resources.code, kind: resources.kind, parentId: resources.parentId })
     .from(resources).where(inArray(resources.kind, ["floor", "ward", "room", "hall"])).orderBy(asc(resources.code)).limit(2000);
+  const bedRows = await db.select({ id: resources.id, code: resources.code, parentId: resources.parentId })
+    .from(resources).where(eq(resources.kind, "bed")).orderBy(asc(resources.code)).limit(2000);
   const floorNames = new Map(placeRows.filter((p) => p.kind === "floor").map((p) => [p.id, p.name]));
   const parentOf = new Map(placeRows.map((p) => [p.id, p.parentId]));
   const floorOf = (id: string): string | null => {
@@ -155,6 +160,11 @@ export async function setupView(db: Db): Promise<HkSetupView> {
     for (let i = 0; i < 8 && cur; i += 1) { if (floorNames.has(cur)) return cur; cur = parentOf.get(cur); }
     return null;
   };
+  const roleHolders = new Set<string>();
+  for (const role of skillRoles(HOUSEKEEPING_SKILL)) for (const u of await db.transaction((t) => usersHoldingRole(t, role))) roleHolders.add(u);
+  const peopleRows = roleHolders.size === 0 ? [] : await db.select({ userId: users.id, name: users.fullName }).from(users)
+    .where(and(inArray(users.id, [...roleHolders]), eq(users.active, true)));
+  const peopleFacts = await staffFacts(db, peopleRows.map((p) => p.userId));
   const areas: HkAreaView[] = areaRows.map(({ a, name, code, kind }) => ({
     id: a.id, resourceId: a.resourceId, name, code, kind, areaClass: a.areaClass as HkAreaClass, floorId: a.floorId,
     floorName: a.floorId === null ? null : floorNames.get(a.floorId) ?? null, checklistId: a.checklistId,
@@ -177,5 +187,13 @@ export async function setupView(db: Db): Promise<HkSetupView> {
       const f = floorOf(p.id);
       return { id: p.id, name: p.name, code: p.code, kind: p.kind, floorName: f === null ? null : floorNames.get(f) ?? null };
     }),
+    beds: bedRows.map((b) => {
+      const f = b.parentId === null ? null : floorOf(b.parentId);
+      return { id: b.id, code: b.code, floorId: f, floorName: f === null ? null : floorNames.get(f) ?? null };
+    }),
+    people: peopleRows.map((p) => {
+      const f = peopleFacts.get(p.userId);
+      return { userId: p.userId, name: p.name, company: f?.company ?? HK_IN_HOUSE, skills: f?.skills ?? [] };
+    }).sort((a, b) => a.name.localeCompare(b.name)),
   };
 }
