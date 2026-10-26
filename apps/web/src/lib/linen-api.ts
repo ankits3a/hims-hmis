@@ -1,5 +1,7 @@
 import { ApiError, api } from "./api";
-import type { LinenActResult, LinenBoardView, LinenHandlerView } from "@hmis/contracts";
+import type {
+  LinenActResult, LinenBedWait, LinenBoardView, LinenFloorView, LinenHandlerView, LinenLaundryView, LinenPlantView, LinenRoundCard,
+} from "@hmis/contracts";
 
 /* ═══ E2.4 LINEN (issue #728) — `apps/core/src/modules/linen/linen.controller.ts`'s `/linen…`. The web imports only
  * TYPES from `@hmis/contracts`; refusals come back as `{ code }` and the screen shows `linen.refusal.<code>`. ═══ */
@@ -36,3 +38,46 @@ export function linenRefusal(e: unknown): string | null {
   const body = e.body as { code?: unknown } | null;
   return typeof body?.code === "string" ? body.code : null;
 }
+
+/* ═══ LD-1 (#978, decision 0087) — the laundry floor: plant, store, rounds, bags, holds. ═══ */
+
+export type LinenSignature = { username: string; pin: string };
+export type LinenRoundSign = { wardSign: LinenSignature } | { runnerOnlyReason: string };
+
+export const fetchLinenPlant = () => api<LinenPlantView>("GET", "/linen/plant");
+export const fetchLinenLaundry = () => api<LinenLaundryView>("GET", "/linen/laundry");
+export const fetchLinenFloor = () => api<LinenFloorView>("GET", "/linen/floor");
+export const fetchLinenBedsWaiting = () => api<LinenBedWait[]>("GET", "/linen/beds-waiting");
+
+const id = encodeURIComponent;
+type Decided = { id: string; state: string };
+
+export const openRoundApi = (wardId: string, kind: "pickup" | "delivery") => api<LinenRoundCard>("POST", "/linen/rounds", { wardId, kind });
+export const signPickupApi = (roundId: string, lines: LinenLine[], bags: string[], sign: LinenRoundSign) =>
+  api<LinenRoundCard>("POST", `/linen/rounds/${id(roundId)}/pickup`, {
+    ...(lines.length > 0 ? { lines } : {}), ...(bags.length > 0 ? { bags: bags.map((tag) => ({ tag })) } : {}), ...sign,
+  });
+export const signDeliveryApi = (roundId: string, lines: LinenLine[], sign: LinenRoundSign) =>
+  api<LinenRoundCard>("POST", `/linen/rounds/${id(roundId)}/delivery`, { ...(lines.length > 0 ? { lines } : {}), ...sign });
+export const sealBagApi = (b: { wardId: string; bedId?: string; tag: string; infected: boolean; lines: LinenLine[] }) =>
+  api<{ id: string; tag: string }>("POST", "/linen/bags", b);
+export const placeHoldApi = (h: { kind: "mlc" | "chemo" | "radioactive"; bedId: string; doseAt?: string; note?: string }) =>
+  api<Decided>("POST", "/linen/holds", h);
+export const releaseHoldApi = (holdId: string, police?: { name: string; rank: string; station: string }) =>
+  api<Decided>("POST", `/linen/holds/${id(holdId)}/release`, police === undefined ? {} : { police });
+
+export const machineDownApi = (machineId: string, reason: string) => api<Decided>("POST", `/linen/machines/${id(machineId)}/down`, { reason });
+export const machineUpApi = (machineId: string) => api<Decided>("POST", `/linen/machines/${id(machineId)}/up`, {});
+export const startCycleApi = (machineId: string, batchIds: string[], program: string) =>
+  api<{ id: string }>("POST", "/linen/cycles", { machineId, batchIds, program });
+export const finishCycleApi = (cycleId: string, tempC: number, holdMin: number, chemical: string) =>
+  api<{ id: string; disinfected: boolean | null }>("POST", `/linen/cycles/${id(cycleId)}/finish`, { tempC, holdMin, chemical });
+export const releaseBatchApi = (batchId: string) => api<Decided>("POST", `/linen/laundry/batches/${id(batchId)}/release`, {});
+export const vendorBatchApi = (batchId: string) => api<Decided>("POST", `/linen/laundry/batches/${id(batchId)}/vendor`, {});
+export type LinenQcLine = { itemCode: string; pass: number; rewash: number; mend: number; condemn: number };
+export const recordQcApi = (batchId: string, lines: LinenQcLine[]) =>
+  api<{ batchId: string; movements: number; condemnRequests: number }>("POST", `/linen/laundry/batches/${id(batchId)}/qc`, { lines });
+export const cssdApi = (batchId: string, cssdSign: LinenSignature) =>
+  api<{ batchId: string; movements: number }>("POST", `/linen/laundry/batches/${id(batchId)}/cssd`, { cssdSign });
+/** A top-up with no lines issues every item to par. */
+export const topUpToParApi = (wardId: string, key: string) => api<LinenActResult>("POST", `/linen/wards/${id(wardId)}/top-up`, { idempotencyKey: key });
