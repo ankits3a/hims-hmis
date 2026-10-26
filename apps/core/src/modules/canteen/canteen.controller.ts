@@ -6,7 +6,7 @@ import { bedMenu, confirmBedOrder, issueBedQr, placeBedOrder, waitingBedOrders }
 import { charityGrant, requestCharity } from "./charity";
 import { CanteenRefusal, canteenHttpStatus } from "./errors";
 import { CANTEEN_FINANCE, CANTEEN_MANAGE, CANTEEN_SELL, CANTEEN_VIEW } from "./names";
-import { canteenDay, canteenMonthIncome, canteenSetup, deductionsCsv, myOpenSession, staffDeductions } from "./reads";
+import { canteenDay, canteenMonthIncome, canteenSetup, deductionsCsv, findAdmission, myOpenSession, staffDeductions } from "./reads";
 import { issueRentInvoice } from "./rent";
 import { approveVariance, closeTill, getSale, openTill, sell } from "./sales";
 import {
@@ -14,8 +14,9 @@ import {
   setDishPrice, setStaffRule,
 } from "./setup";
 import { staffCardQr } from "./staff-card";
+import type { StaffCardQr } from "./staff-card";
 import type {
-  Actor, CanteenBedMenu, CanteenCharityGrant, CanteenDay, CanteenDeductionRow, CanteenMonthIncome, CanteenRentInvoice, CanteenSale,
+  Actor, CanteenAdmissionLookup, CanteenBedMenu, CanteenCharityGrant, CanteenDay, CanteenDeductionRow, CanteenMonthIncome, CanteenRentInvoice, CanteenSale,
   CanteenSetupView, CanteenTillClose,
 } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -104,7 +105,7 @@ export class CanteenController {
 
   /** The holder's own meal card QR (any logged-in person with a card; no permission). */
   @Get("my-card")
-  async myCard(@CurrentActor() actor: Actor): Promise<{ token: string; expiresAt: string; staffCode: string }> { return refusing(() => staffCardQr(this.db, actor)); }
+  async myCard(@CurrentActor() actor: Actor): Promise<StaffCardQr> { return refusing(() => staffCardQr(this.db, actor)); }
 
   // ═══ the till (canteen.sell) ═══
   @Get("my-session")
@@ -136,6 +137,10 @@ export class CanteenController {
   async approve(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() b: unknown): Promise<CanteenTillClose> {
     return refusing(() => approveVariance(this.db, actor, { ...(b as object), sessionId: id }));
   }
+
+  @Get("admission")
+  @RequirePermission(CANTEEN_SELL, "hospital")
+  async admission(@CurrentActor() actor: Actor, @Query("q") q: string): Promise<CanteenAdmissionLookup> { return refusing(() => findAdmission(this.db, actor, q ?? "")); }
 
   @Get("bed-orders")
   @RequirePermission(CANTEEN_SELL, "hospital")

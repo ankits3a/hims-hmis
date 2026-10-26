@@ -233,7 +233,7 @@ export type { DrugIssueCharge, DrugReturnOutcome } from "./drug-charges";
 // #787 (IP counter) — the OPD pharmacy counter charges a sale to the admission (and takes its returns) on the running bill.
 export { counterCharge, counterReturn, lookupCounterAdmission, readCounterSales, searchCounterShelfForIp } from "./counter-charge";
 // CN-1 (#977) — the canteen's admission facts, the bed QR's admission, and its one door onto the running bill.
-export { CANTEEN_DIET_SERVICE_CODE, canteenAdmissionFacts, openAdmissionAtBed, postCanteenChargeIn } from "./canteen-charges";
+export { CANTEEN_DIET_SERVICE_CODE, canteenAdmissionByNo, canteenAdmissionFacts, openAdmissionAtBed, postCanteenChargeIn } from "./canteen-charges";
 export type { CanteenAdmissionFacts, CanteenChargeInput, CanteenChargeResult } from "./canteen-charges";
 // …and the per-address cap the family page's public routes use, for the bed QR's.
 export { FamilyAddressThrottle } from "./family-throttle";

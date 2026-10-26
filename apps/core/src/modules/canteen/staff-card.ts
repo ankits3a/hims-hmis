@@ -2,7 +2,8 @@ import { eq } from "drizzle-orm";
 import { CANTEEN_STAFF_QR_SECONDS } from "@hmis/contracts";
 import { loadConfig } from "../../kernel/config";
 import { hmacSign, hmacVerify } from "../../kernel/crypto";
-import { canteenStaffCards } from "../../kernel/db/schema";
+import { canteenStaffCards, canteenStaffCategories } from "../../kernel/db/schema";
+import { encodeQr } from "../../kernel/printing/qr";
 import { CanteenRefusal } from "./errors";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -22,14 +23,25 @@ function key(): Buffer {
 
 export type StaffCardRow = typeof canteenStaffCards.$inferSelect;
 
+export type StaffCardQr = {
+  token: string; expiresAt: string; staffCode: string; category: string;
+  /** The token's QR as rows ('1' dark), so the phone draws it with no QR library (`QrRows`). */
+  qr: string[];
+};
+
 /** The holder's own QR (any logged-in person with a card). */
-export async function staffCardQr(db: Db, actor: Actor, opts: { now?: Date } = {}): Promise<{ token: string; expiresAt: string; staffCode: string }> {
+export async function staffCardQr(db: Db, actor: Actor, opts: { now?: Date } = {}): Promise<StaffCardQr> {
   const card = (await db.select().from(canteenStaffCards).where(eq(canteenStaffCards.userId, actor.id)))[0];
   if (card === undefined || !card.active) throw new CanteenRefusal("staff_card_invalid", { reason: "no_card" });
   const now = opts.now ?? new Date();
   const exp = Math.floor(now.getTime() / 1000) + CANTEEN_STAFF_QR_SECONDS;
   const payload = `${PREFIX}.${card.id}.${String(card.version)}.${String(exp)}`;
-  return { token: `${payload}.${hmacSign(key(), payload)}`, expiresAt: new Date(exp * 1000).toISOString(), staffCode: card.staffCode };
+  const token = `${payload}.${hmacSign(key(), payload)}`;
+  const category = (await db.select({ name: canteenStaffCategories.name }).from(canteenStaffCategories).where(eq(canteenStaffCategories.id, card.categoryId)))[0]?.name ?? "";
+  return {
+    token, expiresAt: new Date(exp * 1000).toISOString(), staffCode: card.staffCode, category,
+    qr: encodeQr(token).map((row) => row.map((dark) => (dark ? "1" : "0")).join("")),
+  };
 }
 
 /** The card a scanned QR names, or the refusal (forged, expired, or for an older card version). */

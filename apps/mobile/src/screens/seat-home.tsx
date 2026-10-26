@@ -28,6 +28,7 @@ import { ALL_READ } from "../attendance/api";
 import { AttendanceCard, attendanceCache, useAttendanceHome } from "../attendance/home-card";
 import { AadhaarCard, AadhaarSheet, useSelfIdentity } from "../attendance/aadhaar-card";
 import { WaitingCard, useWaiting } from "../waiting/card";
+import { MealCardLine, useMealCardHome } from "../canteen/meal-card";
 import { clockWords, type NeedKind, type Tone } from "../home/rules";
 
 /** Refreshed while the app is in front: every 30 s, and whenever it comes back to the front. */
@@ -95,6 +96,8 @@ export function SeatHome() {
   /* E1.4 / E1.5 — what is waiting for me: one read (`GET /me/waiting`), the card at the top of the home. */
   const waiting = useWaiting(call, signedIn);
   const reloadWaiting = waiting.reload;
+  /* CN-1 (#977) — the staff meal card: a line under attendance for a person finance gave a card. */
+  const mealCard = useMealCardHome(call, signedIn);
   /* "Add your Aadhaar" (owner 2026-10-09): the card at the top, while the server says this person owes one. */
   const identity = useSelfIdentity(call, signedIn ? user : "");
   const reloadIdentity = identity.reload;
@@ -305,6 +308,7 @@ export function SeatHome() {
         <WaitingCard t={t} lines={waiting.lines} push={router.push} />
         <AttendanceCard t={t} home={attendance} onOpen={() => router.push("/attendance")}
           onConfirm={(date) => router.push({ pathname: "/attendance", params: { confirm: date } })} />
+        <MealCardLine t={t} has={mealCard.has} onOpen={() => router.push("/meal-card")} />
         {/* PHONE SETTINGS (owner 2026-10-11) — Reminders open from Settings; their notifications and the Waiting line stay. */}
         {/* E2.2 — My leave: every person has it, so it is a line on every home, not a seat. */}
         <Pressable testID="home-my-leave" accessibilityRole="button" onPress={() => router.push("/my-leave")}

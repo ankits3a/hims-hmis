@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { ist, mkCanteenWorld } from "../../../test/helpers/canteen";
-import { canteenSales } from "../../kernel/db/schema";
+import { canteenSales, ipdAdmissions } from "../../kernel/db/schema";
+import { findAdmission } from "./reads";
 import {
   approveVariance, cancelStaleBedOrders, closeTill, createCostCentre, createFreeRule, issueBedQr, issueStaffCard, placeBedOrder, sell, staffCardQr,
 } from "./index";
@@ -106,5 +107,15 @@ describe("canteen — till, cards, rules and the bed QR", () => {
     expect(await cancelStaleBedOrders(db, at(40))).toBe(6);
     await issueBedQr(db, w.manager, { bedId, outletId: house.outletId });
     await expect(order(70)).rejects.toMatchObject({ code: "bed_qr_invalid" });
+  });
+
+  it("the counter finds an admission by IP number: bed, ward and class, never a name", async () => {
+    const { admissionId, patientId } = await w.admitAt("general", ist("2026-11-03T10:00"));
+    const no = (await db.select({ no: ipdAdmissions.admissionNo }).from(ipdAdmissions).where(eq(ipdAdmissions.id, admissionId)))[0]!.no!;
+    const found = await findAdmission(db, w.cashier, no.replace("-0", "-"), { now: AT });
+    expect(found).toMatchObject({ admissionId, admissionNo: no, closed: null, billedClass: "general" });
+    expect(JSON.stringify(found)).not.toContain(patientId);
+    await expect(findAdmission(db, w.cashier, "IP99-999999")).rejects.toMatchObject({ code: "not_found" });
+    await expect(findAdmission(db, w.finance, no)).rejects.toMatchObject({ code: "not_permitted" });
   });
 });

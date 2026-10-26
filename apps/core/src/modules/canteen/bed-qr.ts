@@ -36,8 +36,9 @@ export async function issueBedQr(db: Db, actor: Actor, raw: unknown, opts: Opts 
   await requireAny(db, actor, CANTEEN_MANAGE);
   const input = parse(issueBedQrInput, raw);
   const at = opts.now ?? new Date();
-  const bed = (await db.select({ id: resources.id, kind: resources.kind }).from(resources).where(eq(resources.id, input.bedId)))[0];
-  if (bed === undefined || bed.kind !== "bed") throw new CanteenRefusal("not_found", { bedId: input.bedId });
+  const bed = (await db.select({ id: resources.id, kind: resources.kind }).from(resources)
+    .where(input.bedId !== undefined ? eq(resources.id, input.bedId) : and(eq(resources.code, input.bedCode!), eq(resources.kind, "bed"))))[0];
+  if (bed === undefined || bed.kind !== "bed") throw new CanteenRefusal("not_found", { bedId: input.bedId ?? null, bedCode: input.bedCode ?? null });
   const outlet = await outletOf(db, input.outletId);
   if (outlet.kind !== "in_house") throw new CanteenRefusal("mode_not_at_caterer", { outletId: outlet.id });
   const token = randomToken();
@@ -64,7 +65,7 @@ async function admissionAtQr(exec: Db | Tx, qr: QrRow) {
   return a;
 }
 
-async function bedClassLeft(exec: Db | Tx, admissionId: string, billedClass: string | null, at: Date): Promise<number> {
+export async function bedClassLeft(exec: Db | Tx, admissionId: string, billedClass: string | null, at: Date): Promise<number> {
   const perDay = await bedClassMealsPerDay(exec, billedClass);
   const start = new Date(`${istDate(at)}T00:00:00+05:30`);
   const used = (await (exec as Db).select({ n: sql<number>`count(*)::int` }).from(canteenSales).where(and(

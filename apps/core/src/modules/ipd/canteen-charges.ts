@@ -6,6 +6,7 @@ import { lockAdmission, readAdmission } from "./admission-core";
 import { liveBills } from "./bill-cover";
 import { insertLine, lockedVersion, pricingFor } from "./charges";
 import { IPD_NURSING_STATES } from "./nursing";
+import { placesOf } from "./rounds-read";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { AdmissionRow } from "./admission-core";
@@ -50,6 +51,22 @@ export async function canteenAdmissionFacts(exec: Db | Tx, admissionId: string):
     admissionId: a.id, patientId: a.patientId, state: a.state, closed: await closedReason(exec, a),
     bedId: stay?.bedId ?? null, billedClass: stay?.billedClass ?? null,
   };
+}
+
+/**
+ * The canteen counter's lookup by IP number (`IP26-000123` or `IP26-123`): the open admission, its bed and ward and its
+ * billed class — never the patient's name or anything clinical (the attendant gives the number; the bed confirms it).
+ * Null when no admission has that number; `closed` says why the canteen may not charge it.
+ */
+export async function canteenAdmissionByNo(exec: Db | Tx, q: string): Promise<(CanteenAdmissionFacts & { admissionNo: string; bedCode: string | null; wardName: string | null }) | null> {
+  const m = /^IP(\d{2})-?(\d{1,6})$/.exec(q.trim().toUpperCase());
+  if (m === null) return null;
+  const no = `IP${m[1]!}-${m[2]!.padStart(6, "0")}`;
+  const a = (await (exec as Db).select({ id: ipdAdmissions.id }).from(ipdAdmissions).where(eq(ipdAdmissions.admissionNo, no)))[0];
+  if (a === undefined) return null;
+  const facts = (await canteenAdmissionFacts(exec, a.id))!;
+  const place = (await placesOf(exec as Db, [a.id])).get(a.id);
+  return { ...facts, admissionNo: no, bedCode: place?.bedCode ?? null, wardName: place?.wardName ?? null };
 }
 
 /** The admission whose open stay is on `bedId`, or null. */

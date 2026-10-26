@@ -160,9 +160,11 @@ export const setStaffRuleInput = z.object({
 }).strict();
 export type SetStaffRuleInput = z.infer<typeof setStaffRuleInput>;
 
+/** The person by id, or by their login name (finance types what the staff list shows). */
 export const issueStaffCardInput = z.object({
-  userId: id, categoryId: id, staffCode: z.string().trim().min(1).max(24), photoDocumentId: id.optional(),
-}).strict();
+  userId: id.optional(), username: z.string().trim().min(2).max(64).optional(),
+  categoryId: id, staffCode: z.string().trim().min(1).max(24), photoDocumentId: id.optional(),
+}).strict().refine((v) => (v.userId === undefined) !== (v.username === undefined), { message: "name the person by userId or by username" });
 export type IssueStaffCardInput = z.infer<typeof issueStaffCardInput>;
 
 /* ═══ till (canteen.sell) ═══ */
@@ -209,7 +211,8 @@ export const canteenMonthQuery = z.object({ month }).strict();
 /* ═══ bed QR (public, no login) ═══ */
 
 /** One QR per bed, ordering from one outlet (the in-house canteen that delivers to the wards). */
-export const issueBedQrInput = z.object({ bedId: id, outletId: id }).strict();
+export const issueBedQrInput = z.object({ bedId: id.optional(), bedCode: z.string().trim().min(1).max(40).optional(), outletId: id }).strict()
+  .refine((v) => (v.bedId === undefined) !== (v.bedCode === undefined), { message: "name the bed by bedId or by bedCode" });
 export type IssueBedQrInput = z.infer<typeof issueBedQrInput>;
 
 export const bedOrderInput = z.object({
@@ -361,4 +364,10 @@ export type CanteenSetupView = {
   bedClassMeals: { bedClass: string; mealsPerDay: number }[];
   staffCategories: { categoryId: string; code: string; name: string;
     rule: { ruleId: string; priceBasis: CanteenStaffPriceBasis; dailyCap: number; nightMeal: boolean; salaryDeduction: boolean; gst: CanteenStaffGst; effectiveFrom: string } | null }[];
+};
+
+/** The counter's admission lookup by IP number: the bed and ward, never a name or anything clinical. */
+export type CanteenAdmissionLookup = {
+  admissionId: string; admissionNo: string; bedCode: string | null; wardName: string | null; billedClass: string | null;
+  closed: "admission_closed" | "ipd_bill_settled" | null; bedClassMealsLeft: number;
 };

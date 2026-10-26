@@ -4,13 +4,16 @@ import {
   canteenBedClassMeals, canteenCostCentres, canteenFreeRules, canteenOutlets, canteenRentInvoices, canteenSaleLines, canteenSales, canteenStaffCards,
   canteenStaffCategories, canteenTillSessions, canteenTills,
 } from "../../kernel/db/schema";
+import { canteenAdmissionByNo } from "../ipd";
+import { bedClassLeft } from "./bed-qr";
+import { CanteenRefusal } from "./errors";
 import { requireAny } from "./guard";
 import { istDayBounds, istMonthBounds } from "./money";
 import { CANTEEN_FINANCE, CANTEEN_MANAGE, CANTEEN_SELL, CANTEEN_VIEW } from "./names";
 import { cashSalesOf, closeView } from "./sales";
 import { parse, staffRuleAt } from "./setup";
 import type {
-  Actor, CanteenDay, CanteenDeductionRow, CanteenMonthIncome, CanteenOutletKind, CanteenPayMode, CanteenSetupView, CanteenStaffGst, CanteenStaffPriceBasis,
+  Actor, CanteenAdmissionLookup, CanteenDay, CanteenDeductionRow, CanteenMonthIncome, CanteenOutletKind, CanteenPayMode, CanteenSetupView, CanteenStaffGst, CanteenStaffPriceBasis,
   CanteenTillClose, CanteenTillDay,
 } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -138,4 +141,15 @@ export async function myOpenSession(db: Db, actor: Actor): Promise<CanteenTillCl
   await requireAny(db, actor, CANTEEN_SELL);
   const s = (await db.select().from(canteenTillSessions).where(and(eq(canteenTillSessions.cashierId, actor.id), eq(canteenTillSessions.state, "open"))))[0];
   return s === undefined ? null : closeView(s, await cashSalesOf(db, s.id));
+}
+
+/** The counter's lookup of an admission by IP number (D3, D4): bed, ward, billed class and the bed-class meals left today. */
+export async function findAdmission(db: Db, actor: Actor, q: string, opts: { now?: Date } = {}): Promise<CanteenAdmissionLookup> {
+  await requireAny(db, actor, CANTEEN_SELL);
+  const a = await canteenAdmissionByNo(db, q);
+  if (a === null) throw new CanteenRefusal("not_found", { q });
+  return {
+    admissionId: a.admissionId, admissionNo: a.admissionNo, bedCode: a.bedCode, wardName: a.wardName, billedClass: a.billedClass, closed: a.closed,
+    bedClassMealsLeft: a.closed === null ? await bedClassLeft(db, a.admissionId, a.billedClass, opts.now ?? new Date()) : 0,
+  };
 }

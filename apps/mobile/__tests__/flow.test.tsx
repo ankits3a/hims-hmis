@@ -178,7 +178,8 @@ describe("sign-in flow", () => {
       // E1.2 personal reminders (2026-10-11): `/reminders` was +1; PHONE SETTINGS (owner 2026-10-11) moved Reminders into Settings, so the home no longer reads it.
       // PHONE SETTINGS (owner 2026-10-11): +1, `/copilot/setting` — whether the band shows the copilot. ONE read per sign-in.
       // E1.4 / E1.5 waiting for me (2026-10-11): +1, `/me/waiting` — the card at the top of the home. ONE read, whatever the role.
-      "GET /alerts", "GET /attendance/me", "GET /copilot/setting", "GET /me/brief", "GET /me/brief", "GET /me/brief", "GET /me/desk", "GET /me/identity", "GET /me/team", "GET /me/waiting", "GET /opd/bench", "GET /opd/reports/recording", "GET /roster/my-duties",
+      // CN-1 CANTEEN (#977): +1, `/canteen/my-card` — whether the home draws the meal card line. ONE read, whatever the role.
+      "GET /alerts", "GET /attendance/me", "GET /canteen/my-card", "GET /copilot/setting", "GET /me/brief", "GET /me/brief", "GET /me/brief", "GET /me/desk", "GET /me/identity", "GET /me/team", "GET /me/waiting", "GET /opd/bench", "GET /opd/reports/recording", "GET /roster/my-duties",
     ]);
   });
 

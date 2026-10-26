@@ -5,7 +5,7 @@ import {
 } from "@hmis/contracts";
 import {
   canteenBedClassMeals, canteenCostCentres, canteenDishes, canteenDishPrices, canteenFreeRules, canteenOutlets, canteenStaffCards,
-  canteenStaffCategories, canteenStaffRules, canteenTills,
+  canteenStaffCategories, canteenStaffRules, canteenTills, users,
 } from "../../kernel/db/schema";
 import { CanteenRefusal } from "./errors";
 import { requireAny } from "./guard";
@@ -179,7 +179,9 @@ export async function issueStaffCard(db: Db, actor: Actor, raw: unknown, opts: O
   const cat = (await db.select({ id: canteenStaffCategories.id }).from(canteenStaffCategories).where(eq(canteenStaffCategories.id, input.categoryId)))[0];
   if (cat === undefined) throw new CanteenRefusal("not_found", { categoryId: input.categoryId });
   const at = opts.now ?? new Date();
-  const existing = (await db.select().from(canteenStaffCards).where(eq(canteenStaffCards.userId, input.userId)))[0];
+  const userId = input.userId ?? (await db.select({ id: users.id }).from(users).where(eq(users.username, input.username!)))[0]?.id;
+  if (userId === undefined) throw new CanteenRefusal("not_found", { username: input.username });
+  const existing = (await db.select().from(canteenStaffCards).where(eq(canteenStaffCards.userId, userId)))[0];
   if (existing !== undefined) {
     const version = existing.version + 1;
     await unique(() => db.update(canteenStaffCards).set({
@@ -190,7 +192,7 @@ export async function issueStaffCard(db: Db, actor: Actor, raw: unknown, opts: O
   }
   const cardId = newId();
   await unique(() => db.insert(canteenStaffCards).values({
-    id: cardId, userId: input.userId, categoryId: input.categoryId, staffCode: input.staffCode, photoDocumentId: input.photoDocumentId ?? null,
+    id: cardId, userId, categoryId: input.categoryId, staffCode: input.staffCode, photoDocumentId: input.photoDocumentId ?? null,
     issuedBy: actor.id, issuedAt: at,
   }));
   return { cardId, version: 1 };
