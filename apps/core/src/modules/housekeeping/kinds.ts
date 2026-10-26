@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { HK_ROUND_GRACE_MIN, HOUSEKEEPING_KINDS, HOUSEKEEPING_TARGET_MIN } from "@hmis/contracts";
 import { resources } from "../../kernel/db/schema";
 import { IPD_BEDS_CLEAN, markBedCleanIn } from "../ipd";
+import { bedReadyGate } from "../linen";
 import { SERVICES_SUPERVISOR_ROLE, SUPPORT_STAFF_ROLE, defineSkill, defineTaskKind } from "../tasks";
 import { HOUSEKEEPING_CONFIRM, HOUSEKEEPING_SKILL, HOUSEKEEPING_VERIFY_TERMINAL } from "./names";
 import { hkEligible, hkPoolOnly } from "./rota";
@@ -33,11 +34,14 @@ defineSkill(HOUSEKEEPING_ROUND_SKILL, [SERVICES_SUPERVISOR_ROLE]);
  * A passed check frees the bed, in the verification's own transaction (ipd's housekeeping seam). A bed that is no
  * longer in cleaning (marked clean by hand at the board, blocked, re-occupied) is left alone: the check still
  * closes the task, and the bed's later state is not overwritten.
+ * LD-1 (#978, D3): a bed is ready when it is cleaned AND made. Linen's gate keeps it in cleaning, "waiting for linen",
+ * when its ward's shelf is short of a set; the top-up that fills the shelf frees it.
  */
 async function bedCleanVerified(tx: Tx, task: TaskRow, actor: Actor, now: Date): Promise<void> {
   if (task.placeResourceId === null) return;
   const bed = (await tx.select({ status: resources.status }).from(resources).where(eq(resources.id, task.placeResourceId)))[0];
   if (bed?.status !== "cleaning") return;
+  if (!(await bedReadyGate(tx, actor, task.placeResourceId, now)).ready) return;
   await markBedCleanIn(tx, actor, task.placeResourceId, now);
 }
 

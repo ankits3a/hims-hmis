@@ -2,7 +2,9 @@
  * E2.4 LINEN (issue #728, decision 0072) — other modules import this one only through here (lint-enforced). Importing
  * it also defines the `linen_change` task kind (`kinds.ts`). IPD admission and discharge call `raiseLinenChange`.
  */
-export { linenManifest, LINEN_HANDLE, LINEN_MANAGE, LINEN_VIEW } from "./manifest";
+export {
+  linenManifest, LINEN_CSSD_RECEIVE, LINEN_HANDLE, LINEN_HOLD_RELEASE, LINEN_MANAGE, LINEN_PLANT, LINEN_QC, LINEN_VIEW,
+} from "./manifest";
 export { LinenModule } from "./linen.module";
 export { LINEN_CHANGE_TASK, LINEN_SYSTEM, raiseLinenChange } from "./kinds";
 export type { RaiseLinenChangeInput } from "./kinds";
@@ -17,3 +19,12 @@ export {
   wardShapes, wardStates, weeklyVariance,
 } from "./reads";
 export type { WardShape } from "./reads";
+// LD-1 (#978, decision 0087) — the laundry floor.
+export { openRound, recentRounds, sealBag, signPickup, soiledRoomView, weighBag } from "./floor";
+export { activeHolds, placeHold, releaseHold, wardOfBed } from "./holds";
+export {
+  addMachine, finishCycle, handToCssd, markMachineDown, markMachineUp, mendReturn, mendingPool, plantView, recordQc, releaseBatch,
+  routeToVendor, startCycle,
+} from "./plant";
+export { bedReadyGate, bedsWaitingForLinen, releaseLinenWaits } from "./gate";
+export { dueSlots, runLinenClock } from "./clock";
