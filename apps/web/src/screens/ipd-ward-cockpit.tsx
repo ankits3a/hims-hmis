@@ -95,8 +95,9 @@ export function IpdWardCockpit({ ward }: { ward?: string } = {}): React.ReactEle
           <div className="ipdw-bar"><h1>{t("ipdWard.cockpit.title")}</h1><span className="dim">{t("ipdWard.cockpit.legend")}</span></div>
           {err !== null ? <div className="ipdn-refusal" role="alert">{t(`ipdWard.err.${err.code}`, { defaultValue: t("ipdWard.err.other") })}</div> : null}
           <div className="ipdw-beds">
-            {c.beds.map((b) => (
-              <div key={b.bedId} className={`ipdw-bed${b.unassigned ? " red" : ""}${b.admissionId === null ? " empty" : ""}`} data-testid={`ipdw-bed-${b.bedId}`}>
+            {c.beds.map((b) => {
+              const body = (
+                <>
                 <b>{b.code ?? t("ipdWard.bed")}</b>
                 {b.admissionId === null ? <span className="dim">{t("ipdWard.cockpit.free")}</span> : (
                   <>
@@ -108,13 +109,19 @@ export function IpdWardCockpit({ ward }: { ward?: string } = {}): React.ReactEle
                     {b.next === null ? null : <span className={b.next.overdue ? "hot" : "dim"}>{t(`ipdWard.next.${b.next.kind}`)} {fmtIst(b.next.dueAt)}</span>}
                     {b.unassigned && b.suggestedNurseId !== null ? (
                       <button type="button" className="ipdn-btn sm pri" onClick={() => void give(b, b.suggestedNurseId!)} data-testid={`ipdw-give-${b.bedId}`}>{t("ipdWard.cockpit.give", { who: initials(b.suggestedNurseId) })}</button>
-                    ) : b.nurse !== null ? (
-                      <button type="button" className="ipdn-btn sm" onClick={() => setMoving(b)}>{t("ipdWard.cockpit.reassign")}</button>
                     ) : null}
                   </>
                 )}
-              </div>
-            ))}
+                </>
+              );
+              const cls = `ipdw-bed${b.unassigned ? " red" : ""}${b.admissionId === null ? " empty" : ""}`;
+              // A bed with a nurse is itself the button that opens "Move" (a reason, both nurses told); no button in a button.
+              return b.nurse !== null ? (
+                <button key={b.bedId} type="button" className={`${cls} tap`} onClick={() => setMoving(b)} aria-label={t("ipdWard.cockpit.reassignTitle", { bed: b.code ?? t("ipdWard.bed") })} data-testid={`ipdw-bed-${b.bedId}`}>{body}</button>
+              ) : (
+                <div key={b.bedId} className={cls} data-testid={`ipdw-bed-${b.bedId}`}>{body}</div>
+              );
+            })}
           </div>
           <div className="ipdw-box ipdw-loads" data-testid="ipdw-loads">
             <b>{t("ipdWard.cockpit.loads")}</b>
@@ -126,9 +133,15 @@ export function IpdWardCockpit({ ward }: { ward?: string } = {}): React.ReactEle
         <aside className="ipdw-right">
           <div className="ipdw-box" data-testid="ipdw-needs">
             <b>{t("ipdWard.cockpit.needsYou")} <span className="mono hot">{c.needsYou.length}</span></b>
-            {c.needsYou.length === 0 ? <span className="dim">{t("ipdWard.cockpit.nothing")}</span> : c.needsYou.map((n, i) => (
-              <div key={`${n.kind}:${n.bedId ?? n.userId ?? String(i)}`} className="ipdw-need">{n.text}</div>
-            ))}
+            {c.needsYou.length === 0 ? <span className="dim">{t("ipdWard.cockpit.nothing")}</span> : c.needsYou.map((n, i) => {
+              const red = n.kind === "unassigned_bed" ? c.beds.find((b) => b.bedId === n.bedId) : undefined;
+              return (
+                <div key={`${n.kind}:${n.bedId ?? n.userId ?? String(i)}`} className="ipdw-need">
+                  <span>{n.text}</span>
+                  {red?.suggestedNurseId != null ? <button type="button" className="ipdn-btn sm pri" onClick={() => void give(red, red.suggestedNurseId!)}>{t("ipdWard.cockpit.give", { who: initials(red.suggestedNurseId) })}</button> : null}
+                </div>
+              );
+            })}
           </div>
         </aside>
       </div>

@@ -87,8 +87,7 @@ describe("ward cockpit (WM-1)", () => {
     api.getCockpit.mockResolvedValue(cockpitOf());
     api.assignNurse.mockResolvedValue({ ratioBreach: false });
     renderWithRouter(<Cockpit />, "/ipd/ward/cockpit");
-    const b1 = await screen.findByTestId(`ipdw-bed-${fid(1)}`);
-    await userEvent.click(within(b1).getByRole("button", { name: "Reassign" }));
+    await userEvent.click(await screen.findByTestId(`ipdw-bed-${fid(1)}`));
     const form = screen.getByTestId("ipdw-reassign");
     await userEvent.selectOptions(within(form).getByRole("combobox"), NURSE2);
     const send = within(form).getByRole("button", { name: "Reassign" });
