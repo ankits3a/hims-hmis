@@ -28,6 +28,10 @@ export const linenManifest: ModuleManifest = {
   menu: [
     { label: "Linen counts", path: "/linen/handle", permission: LINEN_HANDLE },
     { label: "Linen board", path: "/linen", permission: LINEN_VIEW },
+    // LD-1 (#978) — the runner's ward hand-over, the laundry floor and the linen store (paths match the web router's nav).
+    { label: "Linen rounds", path: "/linen/rounds", permission: LINEN_HANDLE },
+    { label: "Laundry floor", path: "/linen/plant", permission: LINEN_PLANT },
+    { label: "Linen store", path: "/linen/store", permission: LINEN_VIEW },
   ],
   permissions: [LINEN_VIEW, LINEN_HANDLE, LINEN_MANAGE, LINEN_PLANT, LINEN_QC, LINEN_CSSD_RECEIVE, LINEN_HOLD_RELEASE],
   subscriptions: [],
