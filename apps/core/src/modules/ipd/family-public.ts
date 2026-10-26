@@ -183,6 +183,18 @@ async function liveSession(db: Db | Tx, linkId: string, sessionToken: string, de
   )))[0];
 }
 
+/**
+ * CN-1 (#977) — the admission a family link's VERIFIED session speaks for, or null (closed link, no session, wrong
+ * device). The canteen's bed QR charges the IPD bill only through this: a photographed QR alone never can.
+ */
+export async function familyVerifiedAdmission(
+  db: Db | Tx, token: string, cookies: { device?: string; session?: string }, at: Date = new Date(),
+): Promise<string | null> {
+  const o = await openLink(db, token, at);
+  if (o === null || o.discharged || cookies.session === undefined || cookies.device === undefined) return null;
+  return (await liveSession(db, o.link.id, cookies.session, cookies.device, at)) === undefined ? null : o.admission.id;
+}
+
 async function requireSession(db: Db | Tx, token: string, cookies: { device?: string; session?: string }, at: Date) {
   const o = await openLink(db, token, at);
   if (o === null) throw new IpdError("family_link_closed", "This link is closed. Please contact the ward desk.");

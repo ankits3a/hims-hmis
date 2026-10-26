@@ -22,6 +22,7 @@ flowchart LR
   attendance[attendance] --> auth[auth]
   billing[billing] --> patients[patients]
   bmw[bmw] --> resources[resources]
+  canteen[canteen] --> resources[resources]
   diet[diet] --> ipd[ipd]
   diet[diet] --> resources[resources]
   doctor_desk[doctor-desk] --> auth[auth]
@@ -112,6 +113,7 @@ flowchart LR
 | `auth.ts` | kernel | `agents`, `auth_devices`, `auth_sessions`, `auth_throttle`, `break_glass_grants`, `permissions`, `phone_push_sends`, `role_assignments`, `role_permissions`, `roles`, `sod_pairs`, `temp_role_grants`, `user_totp`, `users` |
 | `billing.ts` | module billing | `allocations`, `billing_config`, `cashier_sessions`, `credit_note_lines`, `credit_notes`, `daily_closes`, `document_series`, `entered_in_error_marks`, `idempotency_keys`, `invoice_lines`, `invoices`, `receipt_tenders`, `receipts`, `recon_batches`, `recon_resolutions`, `refund_cancellations`, `refund_vouchers` |
 | `bmw.ts` | module bmw | `bmw_bag_events`, `bmw_bags`, `bmw_disputes`, `bmw_manifests` |
+| `canteen.ts` | module canteen | `canteen_bed_class_meals`, `canteen_bed_qrs`, `canteen_charity_grants`, `canteen_cost_centres`, `canteen_dish_prices`, `canteen_dishes`, `canteen_free_rules`, `canteen_outlets`, `canteen_rent_invoices`, `canteen_sale_lines`, `canteen_sales`, `canteen_series`, `canteen_staff_cards`, `canteen_staff_categories`, `canteen_staff_rules`, `canteen_till_sessions`, `canteen_tills` |
 | `clinical-coding.ts` | kernel | `icd10_codes`, `icd11_map_loads`, `icd11_map_rows` |
 | `copilot.ts` | kernel | `copilot_acts`, `copilot_ask_feedback`, `copilot_asks`, `copilot_halts`, `copilot_notice_acks`, `copilot_user_settings` |
 | `desk.ts` | kernel | `user_day_facts` |

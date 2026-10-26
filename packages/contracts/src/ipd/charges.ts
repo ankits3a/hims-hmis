@@ -13,8 +13,9 @@ import { IpdPayerSplitSchema } from "./payer";
  * #785: `ipd.order` — a lab or imaging order on a live admission, posted by the ordering door (one line per order item).
  * #787: `ipd.pharmacy` — a medicine issued to the ward for the patient (one line per issued batch).
  * ER lane 6 (#813): `ipd.er` — an ER line (registration, physician, observation, procedure, drug) rolled in at admission.
+ * CN-1 (#977): `ipd.canteen` — a canteen meal charged to the IPD bill (one line per canteen sale line).
  */
-export const IPD_CHARGE_SOURCES = ["ipd.nightly", "ipd.visit", "ipd.reversal", "ipd.order", "ipd.pharmacy", "ipd.er"] as const;
+export const IPD_CHARGE_SOURCES = ["ipd.nightly", "ipd.visit", "ipd.reversal", "ipd.order", "ipd.pharmacy", "ipd.er", "ipd.canteen"] as const;
 export const IpdChargeSourceSchema = z.enum(IPD_CHARGE_SOURCES);
 export type IpdChargeSource = z.infer<typeof IpdChargeSourceSchema>;
 
@@ -27,7 +28,9 @@ export const IPD_ORDER_COMPONENTS = ["lab", "imaging"] as const;
 export const IPD_DRUG_COMPONENT = "pharmacy" as const;
 /** ER lane 6 (#813): `er` — the emergency department's own lines, carried onto the running bill at admission. */
 export const IPD_ER_COMPONENTS = ["er"] as const;
-export const IPD_CHARGE_COMPONENTS = [...IPD_RATE_COMPONENTS, ...IPD_ORDER_COMPONENTS, IPD_DRUG_COMPONENT, ...IPD_ER_COMPONENTS] as const;
+/** CN-1 (#977): `canteen` — an attendant's (or the patient's) canteen meal, priced and taxed by the canteen; never TPA-payable. */
+export const IPD_CANTEEN_COMPONENT = "canteen" as const;
+export const IPD_CHARGE_COMPONENTS = [...IPD_RATE_COMPONENTS, ...IPD_ORDER_COMPONENTS, IPD_DRUG_COMPONENT, ...IPD_ER_COMPONENTS, IPD_CANTEEN_COMPONENT] as const;
 export const IpdChargeComponentSchema = z.enum(IPD_CHARGE_COMPONENTS);
 export type IpdChargeComponent = z.infer<typeof IpdChargeComponentSchema>;
 

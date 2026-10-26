@@ -43,6 +43,7 @@ import { sweepTasks } from "../../modules/tasks";
 import { lapseErPreAlerts, sweepErBoarding, sweepErCareClocks, sweepErMlcClocks, sweepErTriageClocks } from "../../modules/emergency";
 import { sweepBmwStorage } from "../../modules/bmw";
 import { buildDueLists } from "../../modules/diet";
+import { cancelStaleBedOrders } from "../../modules/canteen";
 import { collectResourceKinds } from "../resources/kinds";
 import { isModuleOn, runIfModuleOn } from "../modules/switch";
 import type { DarkModuleKey } from "../modules/switch";
@@ -894,10 +895,19 @@ function whenModuleOn<F extends (db: Db, now: Date) => Promise<unknown>>(key: Da
  *
  * E4.4 DIET (#736) — the MEAL CLOCK rides the same tick (no pool client of its own, the bmw precedent): every meal
  * past its cut-off and not yet served gets its lists built (`buildDueLists`, idempotent). Same try/catch rule.
+ *
+ * CN-1 CANTEEN (#977) — and a bed's UPI order nobody confirmed at the counter within 30 minutes is cancelled, never
+ * served (`cancelStaleBedOrders`). Same try/catch rule.
  */
 export async function runTaskAndWasteClocks(
   db: Db, now: Date,
-  sweeps: { sweepTasks: typeof sweepTasks; sweepBmwStorage: typeof sweepBmwStorage; buildDueLists?: typeof buildDueLists } = { sweepTasks, sweepBmwStorage: whenModuleOn("bmw", sweepBmwStorage), buildDueLists: whenModuleOn("diet", buildDueLists) },
+  sweeps: {
+    sweepTasks: typeof sweepTasks; sweepBmwStorage: typeof sweepBmwStorage; buildDueLists?: typeof buildDueLists;
+    cancelStaleBedOrders?: (db: Db, now: Date) => Promise<number>;
+  } = {
+    sweepTasks, sweepBmwStorage: whenModuleOn("bmw", sweepBmwStorage), buildDueLists: whenModuleOn("diet", buildDueLists),
+    cancelStaleBedOrders: whenModuleOn("canteen", (d: Db, n: Date) => cancelStaleBedOrders(d, n)),
+  },
 ): Promise<void> {
   let first: unknown = undefined;
   try {
@@ -917,6 +927,14 @@ export async function runTaskAndWasteClocks(
       await sweeps.buildDueLists(db, now);
     } catch (e) {
       clockLog.error(`buildDueLists failed: ${e instanceof Error ? e.message : String(e)}`);
+      first ??= e;
+    }
+  }
+  if (sweeps.cancelStaleBedOrders !== undefined) {
+    try {
+      await sweeps.cancelStaleBedOrders(db, now);
+    } catch (e) {
+      clockLog.error(`cancelStaleBedOrders failed: ${e instanceof Error ? e.message : String(e)}`);
       first ??= e;
     }
   }

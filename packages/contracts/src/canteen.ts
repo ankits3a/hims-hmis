@@ -265,6 +265,7 @@ export const CANTEEN_REFUSALS = {
   staff_rule_missing: { sentence: "Finance has not set the meal rule for this staff category.", fix: "Ask finance to set the rule." },
   staff_cap_reached: { sentence: "Today's meals on this card are used up.", fix: "Pay by cash or UPI." },
   admission_closed: { sentence: "This admission is not open.", fix: "Pay by cash or UPI." },
+  ipd_bill_not_ready: { sentence: "Canteen meals are not on the hospital tariff yet.", fix: "Ask billing to add CANTEEN_MEAL and CANTEEN_DIET to the tariff; pay by cash or UPI today." },
   ipd_bill_settled: { sentence: "This admission's final bill is settled.", fix: "Pay by cash or UPI." },
   not_covered_by_bed_class: { sentence: "This bed class includes no more meals today.", fix: "Pay by UPI or put it on the IPD bill." },
   patient_npo: { sentence: "The patient is nil by mouth.", fix: "Do not serve the patient; ask the ward nurse." },
@@ -349,4 +350,15 @@ export type CanteenBedMenu = {
 export type CanteenCharityGrant = {
   grantId: string; approvalId: string; admissionId: string; kind: CanteenCharityKind; meals: number; mealsUsed: number;
   mealLimitPaise: number; validUntil: string; status: "pending" | "granted" | "rejected";
+};
+
+/** Everything the setup and finance screens list. */
+export type CanteenSetupView = {
+  outlets: { outletId: string; code: string; name: string; kind: CanteenOutletKind; active: boolean; catererName: string | null; monthlyRentPaise: number | null;
+    tills: { tillId: string; code: string; name: string; active: boolean }[] }[];
+  costCentres: { costCentreId: string; code: string; name: string }[];
+  freeRules: { freeRuleId: string; code: string; name: string; perDay: number }[];
+  bedClassMeals: { bedClass: string; mealsPerDay: number }[];
+  staffCategories: { categoryId: string; code: string; name: string;
+    rule: { ruleId: string; priceBasis: CanteenStaffPriceBasis; dailyCap: number; nightMeal: boolean; salaryDeduction: boolean; gst: CanteenStaffGst; effectiveFrom: string } | null }[];
 };

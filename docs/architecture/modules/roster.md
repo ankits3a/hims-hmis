@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/roster/`
 · Notes: [MAP.md](../../../apps/core/src/modules/roster/MAP.md)
 
 - **Depends on modules:** —
-- **Used by modules:** `doctor-desk`, `emergency`, `ipd`, `lab`, `opd`, `ot`, `radiology`, `tasks`
+- **Used by modules:** `canteen`, `doctor-desk`, `emergency`, `ipd`, `lab`, `opd`, `ot`, `radiology`, `tasks`
 - **Kernel used:** `alerts`, `approvals`, `auth`, `copilot`, `db`, `desk`, `events`, `modules`, `printing`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file

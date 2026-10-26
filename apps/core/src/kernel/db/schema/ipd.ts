@@ -308,8 +308,8 @@ export const ipdBands = pgTable(
  * `modules/ipd/charge-lists-parity.test.ts`. Every migration that rebuilds these CHECKs lists the whole of each
  * (`charge-checks-893.test.ts`, and its twin in the ER bill suite).
  */
-export const IPD_CHARGE_COMPONENT_VALUES = ["room", "nursing", "rmo", "visit", "cross_visit", "lab", "imaging", "pharmacy", "er"] as const;
-export const IPD_CHARGE_SOURCE_VALUES = ["ipd.nightly", "ipd.visit", "ipd.reversal", "ipd.order", "ipd.pharmacy", "ipd.er"] as const;
+export const IPD_CHARGE_COMPONENT_VALUES = ["room", "nursing", "rmo", "visit", "cross_visit", "lab", "imaging", "pharmacy", "er", "canteen"] as const;
+export const IPD_CHARGE_SOURCE_VALUES = ["ipd.nightly", "ipd.visit", "ipd.reversal", "ipd.order", "ipd.pharmacy", "ipd.er", "ipd.canteen"] as const;
 const CHARGE_COMPONENTS_SQL = sql.raw(IPD_CHARGE_COMPONENT_VALUES.map((c) => `'${c}'`).join(", "));
 const CHARGE_SOURCES_SQL = sql.raw(IPD_CHARGE_SOURCE_VALUES.map((c) => `'${c}'`).join(", "));
 
@@ -372,6 +372,8 @@ export const ipdChargeLines = pgTable(
     reversalOf: text("reversal_of"),
     /** ER lane 6 (#813): the ER charge line an `ipd.er` line carries (and its reversal copies). */
     erChargeLineId: text("er_charge_line_id"),
+    /** CN-1 (#977): the canteen sale line an `ipd.canteen` line charges (copied onto its reversal). */
+    canteenSaleLineId: text("canteen_sale_line_id"),
     reason: text("reason"),
     postedBy: text("posted_by").notNull(),
     postedAt: timestamp("posted_at", { withTimezone: true }).notNull(),
@@ -393,6 +395,8 @@ export const ipdChargeLines = pgTable(
     ),
     // ER lane 6 (#813): one IP line per ER line, ever.
     uniqueIndex("ipd_charge_lines_er_line_ux").on(t.erChargeLineId).where(sql`${t.source} = 'ipd.er'`),
+    // CN-1 (#977): one IP line per canteen sale line, ever.
+    uniqueIndex("ipd_charge_lines_canteen_ux").on(t.canteenSaleLineId).where(sql`${t.source} = 'ipd.canteen'`),
     check("ipd_charge_lines_order_ck", sql`${t.source} = 'ipd.reversal' or (${t.source} = 'ipd.order') = (${t.orderItemId} is not null and ${t.orderId} is not null)`),
     check("ipd_charge_lines_qty_ck", sql`${t.qty} > 0`),
     check("ipd_charge_lines_reversal_ck", sql`(${t.source} = 'ipd.reversal') = (${t.reversalOf} is not null)`),

@@ -29,6 +29,7 @@ import { ipdManifest } from "../../modules/ipd";
 import { bmwManifest } from "../../modules/bmw";
 import { linenManifest } from "../../modules/linen";
 import { housekeepingManifest } from "../../modules/housekeeping";
+import { canteenManifest } from "../../modules/canteen";
 import { maintenanceManifest } from "../../modules/maintenance";
 import { passesManifest } from "../../modules/passes";
 import { transportManifest } from "../../modules/transport";
@@ -230,4 +231,7 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   // DOCTOR DESK DD-0 (#626) — appended. A leaf: no permission of its own (its routes open on opd's
   // `opd.consult`), one menu entry, no subscription, no job — app-only, the `attendance` shape.
   doctorDeskManifest,
+  // CN-1 CANTEEN (issue #977, decision 0088) — appended. Four permissions, three menu entries, no subscription: API only
+  // (the worker's minute job cancels unconfirmed bed orders and installs nothing).
+  canteenManifest,
 ];

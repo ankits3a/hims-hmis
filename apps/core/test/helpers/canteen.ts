@@ -1,5 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { newId } from "@hmis/contracts";
+import { CANTEEN_MEAL_SERVICE_CODE, newId } from "@hmis/contracts";
 import { grantPermissionToRole, syncPermissions } from "../../src/kernel/auth/permissions";
 import { authManifest } from "../../src/kernel/auth/manifest";
 import { gstConfig, ipdBedStays, orgDepartments, rosterAssignments, rosterPeriods } from "../../src/kernel/db/schema";
@@ -8,7 +8,10 @@ import {
   CANTEEN_FINANCE, CANTEEN_MANAGE, CANTEEN_SELL, CANTEEN_VIEW, canteenManifest, createDish, createOutlet, createStaffCategory, createTill,
   issueStaffCard, openTill, registerCanteenApprovalTypes, seedCanteenBasics, setDishPrice, setStaffRule,
 } from "../../src/modules/canteen";
-import { ipdManifest } from "../../src/modules/ipd";
+import { approveRequest } from "../../src/kernel/approvals/decisions";
+import { withTx } from "../../src/kernel/db/client";
+import { CANTEEN_DIET_SERVICE_CODE, ipdManifest } from "../../src/modules/ipd";
+import { activateVersion, createDraftVersion, listServices, resolveActiveTariffVersion, setTariffItem, submitVersion } from "../../src/modules/tariff";
 import { patientsManifest } from "../../src/modules/patients";
 import { seedOrgDepartments, seedRosterPositions } from "../../src/modules/roster";
 import { ensureRole, mkUser } from "./opd";
@@ -64,6 +67,18 @@ export async function mkCanteenWorld(db: Db): Promise<CanteenWorld> {
     for (const p of perms) await grantPermissionToRole(db, registry, role, p);
   }
   await seedCanteenBasics(db);
+  // The go-live tariff revision: CANTEEN_MEAL and CANTEEN_DIET on the tariff (the canteen's own price is always the
+  // prepaid quote; the item only lets the engine price the line). Activated before any admission the suites make.
+  const known = new Map((await listServices(db)).map((s) => [s.code, s.id] as const));
+  const current = await resolveActiveTariffVersion(db, new Date("2026-01-03T12:00:00Z"));
+  const version = await withTx(db, async (tx) => {
+    const d = await createDraftVersion(tx, w.tariffDrafter, { copyFromVersionId: current!.versionId });
+    for (const code of [CANTEEN_MEAL_SERVICE_CODE, CANTEEN_DIET_SERVICE_CODE]) await setTariffItem(tx, w.tariffDrafter, d.versionId, known.get(code)!, 0);
+    return d;
+  });
+  const submitted = await withTx(db, (tx) => submitVersion(tx, w.tariffDrafter, version.versionId));
+  await approveRequest(db, w.owner, { approvalId: submitted.approvalId, note: "canteen fixture tariff" });
+  await activateVersion(db, w.tariffActivator, version.versionId, new Date("2026-01-04T00:00:00Z"));
   await registerCanteenApprovalTypes(db, w.tariffActivator);
   const cashier = (await mkUser(db, "cnt.cashier", ["canteen_cashier"])).actor;
   const cashier2 = (await mkUser(db, "cnt.cashier2", ["canteen_cashier"])).actor;
@@ -102,6 +117,8 @@ export async function mkCanteenWorld(db: Db): Promise<CanteenWorld> {
     },
     rosterSlot: async (userId, from, to) => {
       if (deptId === null) {
+        // The roster's positions name these roles (seed-roles makes them in a real database).
+        for (const role of ["radiologist", "pathologist", "anaesthetist", "pharmacy"]) await ensureRole(db, role);
         await seedOrgDepartments(db);
         await seedRosterPositions(db);
         deptId = (await db.select({ id: orgDepartments.id }).from(orgDepartments).limit(1))[0]!.id;

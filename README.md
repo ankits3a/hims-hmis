@@ -1756,6 +1756,16 @@ kitchen_staff) reads the sheet and the board; `diet.serve` (support_staff, dieti
 sets the meal rounds' cut-offs and works the consult queue. `diet.clinical.view` (doctor, dietician) shows the order
 note, the NPO reason and who set them; without it (the kitchen) a reader sees the tray only. No diet screen shows money.
 
+**Canteen (CN-1, issue #977, decision 0088, built 2026-10-26, awaiting owner review).** The counter till at
+`/canteen/till`, the day close at `/canteen/close`, the setup at `/canteen/setup`, finance at `/canteen/finance`, and the
+bed's QR page at `/canteen/bed` (no login). Two new roles: `canteen_cashier` and `canteen_manager`.
+`canteen.sell` (canteen_cashier, canteen_manager) opens a till, sells, closes the day, confirms a bed's UPI order and asks
+finance for a family meal; `canteen.manage` (canteen_manager) keeps the outlets, tills, menu, prices, cost centres,
+free-meal rules, bed-class meals and bed QRs; `canteen.finance` (billing_manager) sets each staff category's meal rule,
+issues meal cards, approves a till's variance, issues the caterer's rent invoice and reads the month and the payroll
+deduction list (it also decides family meals on the approvals engine); `canteen.view` (all three) reads the day and the
+menu. A staff member's own meal card QR needs no permission. No canteen screen shows a diagnosis.
+
 **Emergency arrival (ER lane 1, issue #808, decision 0076, built 2026-10-15, awaiting owner review).** The ER desk at
 `/er/desk` and the tracking board at `/er/board` (`?wall=1` for the wall screen). One new role: `er_nurse`, the
 casualty nurse.

@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/ipd/`
 · Notes: [MAP.md](../../../apps/core/src/modules/ipd/MAP.md)
 
 - **Depends on modules:** `billing`, `formulary`, `lab`, `materials`, `opd`, `ordering`, `ot`, `patients`, `pharmacy`, `roster`, `tariff`
-- **Used by modules:** `diet`, `emergency`, `housekeeping`, `maintenance`, `passes`, `transport`
+- **Used by modules:** `canteen`, `diet`, `emergency`, `housekeeping`, `maintenance`, `passes`, `transport`
 - **Kernel used:** `alerts`, `approvals`, `auth`, `config`, `copilot`, `crypto`, `db`, `desk`, `episodes`, `events`, `inference`, `modules`, `notify`, `orders`, `printing`, `realtime`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `admissionAbsconded`, `admissionDeceased`
 
@@ -148,6 +148,12 @@ Source: `apps/core/src/modules/ipd/`
   - `askBillVoid(db: Db, actor: Actor, raw: unknown): Promise<{ approvalId: string }>`
   - `voidBill(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<VoidBillResult>`
   - types: `VoidBillResult`
+- `canteen-charges.ts`
+  - `CANTEEN_DIET_SERVICE_CODE`
+  - `canteenAdmissionFacts(exec: Db | Tx, admissionId: string): Promise<CanteenAdmissionFacts | null>`
+  - `openAdmissionAtBed(exec: Db | Tx, bedId: string): Promise<string | null>`
+  - `postCanteenChargeIn(tx: Tx, actor: Actor, admissionId: string, input: CanteenChargeInput, at: Date): Promise<CanteenChargeResult>`
+  - types: `CanteenAdmissionFacts`, `CanteenChargeInput`, `CanteenChargeResult`
 - `charge-days.ts`
   - `DISCHARGE_FREE_UNTIL_MS`
   - `TRANSIT_UNDER_MS`
@@ -390,11 +396,14 @@ Source: `apps/core/src/modules/ipd/`
   - types: `FamilyOtpSender`
 - `family-public.ts`
   - `familyGate(db: Db, token: string, cookies: { device?: string; session?: string }, at: Date = new Date()): Promise<IpdFamilyGate>`
+  - `familyVerifiedAdmission(db: Db | Tx, token: string, cookies: { device?: string; session?: string }, at: Date = new Date()): Promise<string …`
   - `readFamilyBillDetails(db: Db, token: string, cookies: { device?: string; session?: string }, at: Date = new Date()): Promise<IpdFamilyBillD…`
   - `readFamilyView(db: Db, token: string, cookies: { device?: string; session?: string }, at: Date = new Date()): Promise<IpdFamilyView>`
   - `requestFamilyCallback(db: Db, token: string, cookies: { device?: string; session?: string }, text: string, at: Date = new Date()): Promise<…`
   - `sendFamilyOtp(db: Db, token: string, deviceId: string, sender: FamilyOtpSender, opts: { at?: Date; secretKey: Buffer }): Promise<{ phoneMas…`
   - `verifyFamilyOtp(db: Db, token: string, deviceId: string, code: string, at: Date = new Date()): Promise<{ sessionToken: string; expiresAt: D…`
+- `family-throttle.ts`
+  - `class FamilyAddressThrottle`
 - `family.ts`
   - `closeFamilyCallback(db: Db, actor: Actor, callbackId: string, note: string, opts: { now?: Date } = {}): Promise<{ closed: boolean }>`
   - `familyBlockOf(db: Db | Tx, a: AdmissionRow): Promise<Exclude<Blocked, "no_attendant_phone" | "stay_ended"> | null>`

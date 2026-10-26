@@ -132,7 +132,7 @@ describe("spec #977 — canteen counter", () => {
 
   it("spec #977 D3 — a bed QR orders only while the admission is open: UPI, IPD bill or bed class; an IPD-bill meal shows on the final bill", async () => {
     await setBedClassMeals(db, w.manager, { bedClass: "private", mealsPerDay: 1 });
-    const { admissionId } = await w.admitAt("private", ist("2026-11-01T10:00"));
+    const { admissionId, patientId } = await w.admitAt("private", ist("2026-11-01T10:00"));
     const bedId = await w.bedOf(admissionId);
     const { token } = await issueBedQr(db, w.manager, { bedId, outletId: house.outletId });
     const s = await w.open(w.cashier, house.tillId, 0, AT);
@@ -140,8 +140,10 @@ describe("spec #977 — canteen counter", () => {
     const menu = await bedMenu(db, token, { now: AT });
     expect(menu.dishes.map((d) => d.name)).toContain("Veg thali");
     expect(menu.bedClassMealsLeft).toBe(1);
-    // The public page never shows a patient's name or allergy.
-    expect(JSON.stringify(menu)).not.toMatch(/patient|allerg/i);
+    // The public page names no patient and no admission: only the bed and the menu.
+    expect(Object.keys(menu).sort()).toEqual(["bedClassMealsLeft", "bedLabel", "dishes", "outletId"]);
+    expect(JSON.stringify(menu)).not.toContain(patientId);
+    expect(JSON.stringify(menu)).not.toContain(admissionId);
 
     // Bed class: the first meal of the day is covered; the second is not.
     const covered = await placeBedOrder(db, token, { idempotencyKey: randomUUID(), lines: [line(house.dish.THALI!)], pay: "bed_class" }, { now: LATER(1) });

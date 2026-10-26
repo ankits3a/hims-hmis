@@ -154,3 +154,7 @@ export * from "./diet";
 // ER lane 1 (#808, decision 0076) — the emergency department: the ER episode, the pre-alert and the ER band register.
 // References `patients`; nothing reads it but `modules/emergency`.
 export * from "./emergency";
+// CN-1 CANTEEN (issue #977, decision 0088) — outlets, tills and sessions, the menu and price lists, staff meal rules and
+// cards, bed QRs, sales and their lines, charity grants and caterer rent invoices. Nothing reads or writes them but
+// `modules/canteen`.
+export * from "./canteen";
