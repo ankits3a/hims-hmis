@@ -1,6 +1,6 @@
 {
-  "id": "2425268b-21f3-46a1-8ab5-814eaf89d26e",
-  "prevId": "2c2bc5ee-ab24-46c6-b8ed-0918a1b1c300",
+  "id": "e4470d09-760a-4fcc-8918-470b6c2b56cd",
+  "prevId": "3f70264f-5f83-4522-ae49-158aa3e2fae2",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -70026,6 +70026,314 @@
         "hk_door_requests_need_ck": {
           "name": "hk_door_requests_need_ck",
           "value": "\"hk_door_requests\".\"need\" in ('clean', 'toilet', 'spill', 'bin')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.hk_floor_stores": {
+      "name": "hk_floor_stores",
+      "schema": "",
+      "columns": {
+        "floor_id": {
+          "name": "floor_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "store_id": {
+          "name": "store_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "hk_floor_stores_store_ux": {
+          "name": "hk_floor_stores_store_ux",
+          "columns": [
+            {
+              "expression": "store_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "hk_floor_stores_floor_id_resources_id_fk": {
+          "name": "hk_floor_stores_floor_id_resources_id_fk",
+          "tableFrom": "hk_floor_stores",
+          "tableTo": "resources",
+          "columnsFrom": [
+            "floor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "hk_floor_stores_store_id_resources_id_fk": {
+          "name": "hk_floor_stores_store_id_resources_id_fk",
+          "tableFrom": "hk_floor_stores",
+          "tableTo": "resources",
+          "columnsFrom": [
+            "store_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.hk_inspections": {
+      "name": "hk_inspections",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "area_id": {
+          "name": "area_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "floor_id": {
+          "name": "floor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "shift_starts_at": {
+          "name": "shift_starts_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'due'"
+        },
+        "answers": {
+          "name": "answers",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "score_pct": {
+          "name": "score_pct",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "photo_key": {
+          "name": "photo_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "qr_version": {
+          "name": "qr_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "inspected_by": {
+          "name": "inspected_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "inspected_at": {
+          "name": "inspected_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "company": {
+          "name": "company",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "contractor_id": {
+          "name": "contractor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rework_task_id": {
+          "name": "rework_task_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "hk_inspections_area_shift_ux": {
+          "name": "hk_inspections_area_shift_ux",
+          "columns": [
+            {
+              "expression": "area_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "shift_starts_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "hk_inspections_floor_shift_idx": {
+          "name": "hk_inspections_floor_shift_idx",
+          "columns": [
+            {
+              "expression": "floor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "shift_starts_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "hk_inspections_inspected_idx": {
+          "name": "hk_inspections_inspected_idx",
+          "columns": [
+            {
+              "expression": "inspected_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "hk_inspections_area_id_hk_areas_id_fk": {
+          "name": "hk_inspections_area_id_hk_areas_id_fk",
+          "tableFrom": "hk_inspections",
+          "tableTo": "hk_areas",
+          "columnsFrom": [
+            "area_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "hk_inspections_floor_id_resources_id_fk": {
+          "name": "hk_inspections_floor_id_resources_id_fk",
+          "tableFrom": "hk_inspections",
+          "tableTo": "resources",
+          "columnsFrom": [
+            "floor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "hk_inspections_contractor_id_hk_contractors_id_fk": {
+          "name": "hk_inspections_contractor_id_hk_contractors_id_fk",
+          "tableFrom": "hk_inspections",
+          "tableTo": "hk_contractors",
+          "columnsFrom": [
+            "contractor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "hk_inspections_rework_task_id_tasks_id_fk": {
+          "name": "hk_inspections_rework_task_id_tasks_id_fk",
+          "tableFrom": "hk_inspections",
+          "tableTo": "tasks",
+          "columnsFrom": [
+            "rework_task_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "hk_inspections_status_ck": {
+          "name": "hk_inspections_status_ck",
+          "value": "\"hk_inspections\".\"status\" in ('due', 'passed', 'failed')"
+        },
+        "hk_inspections_scored_ck": {
+          "name": "hk_inspections_scored_ck",
+          "value": "(\"hk_inspections\".\"status\" = 'due') = (\"hk_inspections\".\"inspected_at\" is null) and (\"hk_inspections\".\"status\" = 'due') = (\"hk_inspections\".\"score_pct\" is null)"
+        },
+        "hk_inspections_score_ck": {
+          "name": "hk_inspections_score_ck",
+          "value": "\"hk_inspections\".\"score_pct\" is null or (\"hk_inspections\".\"score_pct\" >= 0 and \"hk_inspections\".\"score_pct\" <= 100)"
         }
       },
       "isRLSEnabled": false
