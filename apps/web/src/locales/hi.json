@@ -21356,6 +21356,7 @@
     }
   },
   "linen": {
+    "holds": {"title": "इस वार्ड की रोक", "endsAt": "{{at}} पर अपने आप खत्म", "release": "रोक हटाएँ", "toPolice": "पुलिस को सौंपें", "handOver": "सौंपें", "police": {"name": "अधिकारी का नाम", "rank": "पद", "station": "थाना"}},
     "stream": {"ward": "वार्ड", "theatre": "थिएटर", "baby": "शिशु", "mop": "पोछे", "kitchen": "रसोई", "uniform": "वर्दी"},
     "hold": {"mlc": "MLC", "chemo": "कीमो, 48 घंटे", "radioactive": "रेडियोधर्मी"},
     "sign": {"name": "साइन-इन नाम", "pin": "पिन", "sign": "साइन"},

@@ -153,3 +153,13 @@
 .pp .lr-seg .ln-two { align-items: center; }
 /* The runner's Sign stays readable while it waits for a signature: solid, not see-through. */
 .pp .lr-save:disabled { opacity: 1; background: var(--line2); border-color: var(--line); color: var(--dim); }
+.pp .lp-crow.col { flex-direction: column; align-items: stretch; gap: 6px; }
+.pp .lp-crow.col > button { align-self: flex-start; margin-left: 0; }
+.pp .ln-card .lp-crow { padding: 10px 0; }
+.pp .ln-card .lp-form input { max-width: none; height: 44px; font-size: 16px; }
+.pp .ln-card .lp-form label { flex: 1 1 100%; font-size: 13px; }
+.pp .ln-card .lp-crow .ln-mini { min-height: 44px; font-size: 15px; padding: 0 14px; }
+/* The sticky Sign bar floats over the sheet's bottom ~90 px: a bag row or a stepper scrolled (or tabbed) into view
+   stops above it, never under it. The empty tail lets the last bag row clear the bar. */
+.pp .lr-bags .ln-check, .pp [data-testid="rounds-sheet"] .ln-step, .pp .lr-sign input { scroll-margin-bottom: 96px; }
+.pp [data-testid="rounds-sheet"] { padding-bottom: 24px; }

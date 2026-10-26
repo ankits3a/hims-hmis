@@ -3,8 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { PaperScreen } from "../components/paper-screen";
 import { useAuth } from "../lib/auth";
-import { fetchLinenBoard, fetchLinenLaundry, linenRefusal, newTapKey, topUpToParApi } from "../lib/linen-api";
-import type { LinenWardState } from "@hmis/contracts";
+import { fetchLinenBoard, fetchLinenLaundry, linenRefusal, newTapKey, releaseHoldApi, topUpToParApi } from "../lib/linen-api";
+import type { LinenHoldCard, LinenWardState } from "@hmis/contracts";
 import "./linen.css";
 
 /**
@@ -112,14 +112,60 @@ export function LinenStore(): React.ReactElement {
             </section>
             <section className="box" data-testid="store-holds">
               <header className="lp-h"><b>{t("linen.storeDesk.holds")}</b><span className="mono">{laundry.data?.holds.length ?? 0}</span></header>
-              {(laundry.data?.holds ?? []).map((h) => (
-                <div key={h.id} className="lp-crow"><div><b>{t("linen.plant.holdRow", { bed: h.bedName, kind: t(`linen.hold.${h.kind}`) })}</b><small>{t("linen.plant.notLaundry")}</small></div></div>
-              ))}
+              {(laundry.data?.holds ?? []).map((h) => <HoldRow key={h.id} h={h} />)}
               {laundry.data !== undefined && laundry.data.holds.length === 0 && <div className="ln-empty">{t("linen.storeDesk.noHolds")}</div>}
             </section>
           </aside>
         </div>
       </div>
     </PaperScreen>
+  );
+}
+
+/**
+ * A hold with its release, by its owner (the server checks again): MLC to the police receiver (name, rank, station);
+ * radioactive by the RSO (anyone else is refused `not_rso`, shown as words); chemotherapy has no button — it ends by itself.
+ * Release is offered only to holders of `linen.hold.release`.
+ */
+export function HoldRow({ h }: { h: LinenHoldCard }): React.ReactElement {
+  const { t } = useTranslation();
+  const { can } = useAuth();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [police, setPolice] = useState({ name: "", rank: "", station: "" });
+  const [err, setErr] = useState<string | null>(null);
+  const release = useMutation({
+    mutationFn: () => releaseHoldApi(h.id, h.kind === "mlc" ? { name: police.name.trim(), rank: police.rank.trim(), station: police.station.trim() } : undefined),
+    onSuccess: () => { setErr(null); setOpen(false); void qc.invalidateQueries({ queryKey: ["linen"] }); },
+    onError: (e) => setErr(t(`linen.refusal.${linenRefusal(e) ?? "failed"}`, { defaultValue: t("linen.refusal.failed") })),
+  });
+  const mayRelease = can("linen.hold.release") && h.kind !== "chemo";
+  const ends = h.releaseAfter === null ? "" : new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false,
+  }).format(new Date(h.releaseAfter));
+  const filled = police.name.trim().length >= 2 && police.rank.trim().length >= 2 && police.station.trim().length >= 2;
+  return (
+    <div className="lp-crow col" data-testid={`hold-${h.id}`}>
+      <div>
+        <b>{t("linen.plant.holdRow", { bed: h.bedName, kind: t(`linen.hold.${h.kind}`) })}</b>
+        <small>{h.kind === "chemo" ? t("linen.holds.endsAt", { at: ends }) : t("linen.plant.notLaundry")}</small>
+        {err !== null && <small className="ln-err" role="alert">{err}</small>}
+      </div>
+      {mayRelease && h.kind === "radioactive" && (
+        <button type="button" className="ln-mini" disabled={release.isPending} onClick={() => release.mutate()} data-testid={`release-${h.id}`}>{t("linen.holds.release")}</button>
+      )}
+      {mayRelease && h.kind === "mlc" && !open && (
+        <button type="button" className="ln-mini" onClick={() => setOpen(true)} data-testid={`release-${h.id}`}>{t("linen.holds.toPolice")}</button>
+      )}
+      {mayRelease && h.kind === "mlc" && open && (
+        <span className="lp-form" data-testid={`police-${h.id}`}>
+          {(["name", "rank", "station"] as const).map((k) => (
+            <label key={k}>{t(`linen.holds.police.${k}`)}<input value={police[k]} onChange={(e) => setPolice((p) => ({ ...p, [k]: e.target.value }))} data-testid={`police-${k}`} /></label>
+          ))}
+          <button type="button" className="ln-mini ok" disabled={!filled || release.isPending} onClick={() => release.mutate()} data-testid="police-go">{t("linen.holds.handOver")}</button>
+          <button type="button" className="ln-mini" onClick={() => setOpen(false)}>{t("linen.plant.cancel")}</button>
+        </span>
+      )}
+    </div>
   );
 }

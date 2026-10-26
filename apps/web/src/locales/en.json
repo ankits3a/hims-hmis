@@ -21356,6 +21356,7 @@
     }
   },
   "linen": {
+    "holds": {"title": "Holds on this ward", "endsAt": "Ends by itself at {{at}}", "release": "Release", "toPolice": "Hand to police", "handOver": "Hand over", "police": {"name": "Officer's name", "rank": "Rank", "station": "Police station"}},
     "stream": {"ward": "Ward", "theatre": "Theatre", "baby": "Baby", "mop": "Mops", "kitchen": "Kitchen", "uniform": "Uniforms"},
     "hold": {"mlc": "MLC", "chemo": "Chemo, 48 h", "radioactive": "Radioactive"},
     "sign": {"name": "Sign-in name", "pin": "PIN", "sign": "Sign"},

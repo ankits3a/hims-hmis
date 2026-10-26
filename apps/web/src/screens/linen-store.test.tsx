@@ -23,7 +23,10 @@ const board: LinenBoardView = {
 const laundry: LinenLaundryView = {
   serverNow: now,
   bedsWaiting: [{ bedId: "x", bedName: "4B-12", wardId: "b", short: { bedsheet: 1 }, rush: true, raisedAt: now }],
-  holds: [{ id: "h", kind: "chemo", bedId: "y", bedName: "4A-03", wardId: "a", state: "active", placedAt: now, releaseAfter: now }],
+  holds: [
+    { id: "h", kind: "chemo", bedId: "y", bedName: "4A-03", wardId: "a", state: "active", placedAt: now, releaseAfter: now },
+    { id: "m", kind: "mlc", bedId: "z", bedName: "ER bay 6", wardId: "b", state: "active", placedAt: now, releaseAfter: null },
+  ],
   rush: { day: "2026-10-26", wards: [{ wardId: "b", wardName: "4B Medicine", discharges: 6, short: {} }], theatreCases: 4 },
   plant: { serverNow: now, machines: [], vendorQueue: [], queue: [{ batchId: "p1", batchNo: "LN-2", infected: false, stream: "ward", state: "washing", pieces: 8, sentAt: now }] },
 };
@@ -37,7 +40,7 @@ describe("LinenStore (LD-1)", () => {
       const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
       if (init?.method === "POST") posts.push({ url: raw, body: JSON.parse(String(init.body)) });
       const body = raw.endsWith("/linen/board") ? board : raw.endsWith("/linen/laundry") ? laundry
-        : raw.endsWith("/auth/me") ? { actor: { type: "user", id: "me" }, permissions: { hospital: ["linen.view"], scoped: { department: {}, floor: {} } } }
+        : raw.endsWith("/auth/me") ? { actor: { type: "user", id: "me" }, permissions: { hospital: ["linen.view", "linen.hold.release"], scoped: { department: {}, floor: {} } } }
           : { movements: 1 };
       return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
     }));
@@ -65,5 +68,24 @@ describe("LinenStore (LD-1)", () => {
     expect(vendor).not.toHaveTextContent("LN-2");
     expect(vendor).toHaveTextContent("Infected batch");
     expect(screen.getByTestId("store-holds")).toHaveTextContent("Hold · 4A-03 (Chemo, 48 h)");
+  });
+
+  it("an MLC hold is released only with the officer's name, rank and station; a chemo hold has no button", async () => {
+    renderWithProviders(<LinenStore />);
+    const chemo = await screen.findByTestId("hold-h");
+    expect(chemo).toHaveTextContent("Ends by itself at");
+    expect(screen.queryByTestId("release-h")).toBeNull();
+    fireEvent.click(await screen.findByTestId("release-m"));
+    const go = screen.getByTestId("police-go");
+    expect(go).toBeDisabled();
+    fireEvent.change(screen.getByTestId("police-name"), { target: { value: "R. Kumar" } });
+    fireEvent.change(screen.getByTestId("police-rank"), { target: { value: "Sub-Inspector" } });
+    expect(go).toBeDisabled();
+    fireEvent.change(screen.getByTestId("police-station"), { target: { value: "Kotwali" } });
+    expect(go).toBeEnabled();
+    fireEvent.click(go);
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0]!.url).toMatch(/\/linen\/holds\/m\/release$/);
+    expect(posts[0]!.body).toEqual({ police: { name: "R. Kumar", rank: "Sub-Inspector", station: "Kotwali" } });
   });
 });

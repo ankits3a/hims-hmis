@@ -92,4 +92,22 @@ describe("LinenRounds (LD-1)", () => {
     await waitFor(() => expect(posts).toHaveLength(1));
     expect(posts[0]!.body).toEqual({ kind: "mlc", bedId: "bed2" });
   });
+
+  it("the ward's holds are listed; a chemo hold ends by itself and has no Release; a radioactive refusal shows in words", async () => {
+    floor.holds.push({ id: "r1h", kind: "radioactive", bedId: "bed1", bedName: "G-1", wardId: "g", state: "active", placedAt: now, releaseAfter: null });
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (init?.method === "POST") return new Response(JSON.stringify({ code: "not_rso" }), { status: 403, headers: { "Content-Type": "application/json" } });
+      const body = raw.endsWith("/linen/handler") ? handler : raw.endsWith("/linen/floor") ? floor
+        : raw.endsWith("/auth/me") ? { actor: { type: "user", id: "me" }, permissions: { hospital: ["linen.handle", "linen.hold.release"], scoped: { department: {}, floor: {} } } } : {};
+      return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
+    renderWithProviders(<LinenRounds />);
+    fireEvent.click(await screen.findByTestId("rounds-tab-bag"));
+    expect(await screen.findByTestId("hold-h1")).toHaveTextContent("Ends by itself at");
+    expect(screen.queryByTestId("release-h1")).toBeNull();
+    fireEvent.click(await screen.findByTestId("release-r1h"));
+    expect(await screen.findByText("Only the RSO releases this")).toBeInTheDocument();
+    floor.holds.pop();
+  });
 });

@@ -7,6 +7,7 @@ import {
 } from "../lib/linen-api";
 import type { LinenLine, LinenRoundSign } from "../lib/linen-api";
 import type { LinenHoldKind, LinenItem } from "@hmis/contracts";
+import { HoldRow } from "./linen-store";
 import "./linen.css";
 
 /**
@@ -68,6 +69,7 @@ export function LinenRounds(): React.ReactElement {
   const wardBags = (floor.data?.sealedBags ?? []).filter((b) => b.wardId === wardId);
   const wardBeds = (floor.data?.beds ?? []).filter((b) => b.wardId === wardId);
   const mlc = new Set(floor.data?.mlcBeds ?? []);
+  const wardHolds = (floor.data?.holds ?? []).filter((h) => h.wardId === wardId);
   const name = (code: string, lng: string): string => t(`linen.item.${code}`, { defaultValue: items.find((i) => i.code === code)?.name ?? code, lng });
 
   const signed = runnerOnly ? reason.trim().length >= 3 : username.trim().length >= 2 && pin.length >= 4;
@@ -177,6 +179,11 @@ export function LinenRounds(): React.ReactElement {
               <button type="button" className="ln-btn big" disabled={tag.trim().length < 2 || total === 0 || save.isPending} onClick={() => save.mutate("bag")} data-testid="seal-save">
                 <Two k="linen.rounds.seal" />
               </button>
+            </section>
+            <section className="box ln-card" data-testid="rounds-holds">
+              <h2><Two k="linen.holds.title" /></h2>
+              {wardHolds.length === 0 && <div className="ln-empty">{t("linen.storeDesk.noHolds")}</div>}
+              {wardHolds.map((h) => <HoldRow key={h.id} h={h} />)}
             </section>
             <section className="box ln-card" data-testid="rounds-hold">
               <h2><Two k="linen.rounds.placeHold" /></h2>
