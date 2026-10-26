@@ -59,11 +59,11 @@ export function WorkSheet({ card, busy, onTap, onDone, onNotice }: {
   return (
     <div className="hk-sheet" data-testid="hk-work">
       {f.lastReason !== null && <div className="hk-warn">{t("housekeeping.work.rework", { reason: f.lastReason })}</div>}
+      <label className={scan === "" ? "tk-act" : "hk-ghost"} style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {scan === "" ? t("housekeeping.work.scan") : t("housekeeping.work.scanned")}
+        <input type="file" accept="image/*" capture="environment" hidden onChange={(e) => void readQr(e.target.files?.[0])} data-testid="hk-scan-photo" />
+      </label>
       <div className="hk-scan">
-        <label className="hk-ghost" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-          {scan === "" ? t("housekeeping.work.scan") : t("housekeeping.work.scanned")}
-          <input type="file" accept="image/*" capture="environment" hidden onChange={(e) => void readQr(e.target.files?.[0])} data-testid="hk-scan-photo" />
-        </label>
         <input
           aria-label={t("housekeeping.work.code")} value={scan} onChange={(e) => setScan(e.target.value)} autoComplete="off"
           placeholder={t("housekeeping.work.codePlaceholder")} data-testid="hk-scan-code"

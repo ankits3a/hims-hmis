@@ -28,6 +28,7 @@
   width: 100%; min-height: 52px; border-radius: 10px; border: 0; background: var(--green); color: #f2faf6; font: inherit;
   font-size: 16px; font-weight: 700;
 }
+.pp .hk-primary, .pp .hk-fail { display: flex; align-items: center; justify-content: center; }
 .pp .hk-primary:disabled { background: var(--line); color: var(--dim); }
 
 /* ── sheets (checklist, confirm) ── */

@@ -3885,6 +3885,7 @@
       },
       "within": "{{count}} min",
       "goes": "Goes to this floor's housekeeping team.",
+      "send": "Send",
       "sent": "Sent. The floor team is told.",
       "failed": "Not sent. Please tell the nursing station.",
       "noCode": "This page opens from a door QR. Scan the code on the door.",

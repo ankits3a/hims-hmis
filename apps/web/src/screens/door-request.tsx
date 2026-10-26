@@ -7,7 +7,7 @@ import "./housekeeping.css";
 
 /*
  * HK-1 (#973) — THE DOOR PAGE at `/door#<token>` (design board "Anyone · Raise a request"). Opened by scanning the QR
- * on a room, toilet or hall door with any phone camera; no login. Four needs, one tap, Send. Nothing about the person
+ * on a room, toilet or hall door with any phone camera; no login. Pick one of four needs, then Send. Nothing about the person
  * is asked: no name, no phone, no free text (a note could carry a patient's details, spec #973 "no patient data"). The
  * token rides the URL's fragment, which never leaves the browser, so no server or edge log keeps it (the family page's
  * rule); the request carries it in the body. DECIDED: "Linen change" and "Pests" on the board belong to other modules
@@ -28,8 +28,8 @@ export function DoorRequest({ token: given }: { token?: string } = {}): React.Re
   const [state, setState] = useState<"idle" | "sending" | "sent" | "failed">("idle");
   const [problem, setProblem] = useState<string | null>(null);
 
-  const send = (n: HkDoorNeed): void => {
-    setNeed(n);
+  const send = (n: HkDoorNeed | null): void => {
+    if (n === null) return;
     setState("sending");
     setProblem(null);
     raiseDoorRequestApi(token, n).then(() => setState("sent"), (e: unknown) => {
@@ -57,7 +57,7 @@ export function DoorRequest({ token: given }: { token?: string } = {}): React.Re
               {NEEDS.map((n) => (
                 <button
                   key={n.need} type="button" className={`hk-need${n.need === "spill" ? " spill" : ""}${need === n.need ? " on" : ""}`}
-                  disabled={state === "sending"} onClick={() => send(n.need)} data-testid={`door-${n.need}`}
+                  aria-pressed={need === n.need} disabled={state === "sending"} onClick={() => setNeed(n.need)} data-testid={`door-${n.need}`}
                 >
                   <b>{t(`housekeeping.door.need.${n.need}`)}</b>
                   <small>{t("housekeeping.door.within", { count: n.minutes })}</small>
@@ -69,6 +69,13 @@ export function DoorRequest({ token: given }: { token?: string } = {}): React.Re
           </>
         )}
       </main>
+      {token !== "" && state !== "sent" && (
+        <div className="hk-foot">
+          <button type="button" className="hk-primary" disabled={need === null || state === "sending"} onClick={() => send(need)} data-testid="door-send">
+            {t("housekeeping.door.send")}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

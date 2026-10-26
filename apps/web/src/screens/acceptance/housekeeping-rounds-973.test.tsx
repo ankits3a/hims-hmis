@@ -46,6 +46,7 @@ describe("#973 — housekeeping rounds on screen", () => {
     // The board's four needs ("Anyone · Raise a request").
     for (const need of [/^Clean room/, /^Toilet dirty/, /^Spill/, /^Bin full/]) expect(await screen.findByRole("button", { name: need })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /^Bin full/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => {
       const post = vi.mocked(fetch).mock.calls.find(([, init]) => init?.method === "POST");
       expect(JSON.parse(String(post?.[1]?.body))).toEqual({ token: "a1.area-1.1.sig", need: "bin" });

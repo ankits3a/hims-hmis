@@ -1,7 +1,7 @@
 ---
 type: module-notes
 title: "housekeeping — module notes"
-description: "Why and traps of bed turnover on the task engine: one cleaning task per bed release from the bed's kernel events, terminal vs routine, verification that frees the bed in the same transaction, cancellation when the bed leaves cleaning, the Beds board's cleaning clocks and the supervisor board."
+description: "Why and traps of bed turnover on the task engine (one clean per release, check frees the bed) and of HK-1 rounds: areas and door QR, the shift rota and its eligibility, the rounds clock, proof of work, Pass/Fail, door requests and the supervisor board."
 resource: apps/core/src/modules/housekeeping
 tags: [housekeeping, tasks, ipd, beds]
 generated: { by: agent:claude, at: 2026-10-12 }
@@ -78,10 +78,44 @@ A leaf: it imports `tasks` and `ipd` only through their `index.ts`; nothing impo
   the engine's `not_permitted`.
 - The web imports `@hmis/contracts` for TYPES only: routes and the terminal kind key are copied in
   `apps/web/src/lib/housekeeping-api.ts`.
-- Owed (later lanes): photo proof, "verification failed → reopen with reason", scheduled area cleaning by area class,
-  chemical log, vendor TAT report, Bed Flow ordering of the queue at night.
+- Owed (later lanes): chemical log, vendor TAT report, Bed Flow ordering of the queue at night. (Photo proof, fail →
+  reopen with reason and scheduled area rounds arrived with HK-1, §4A.)
+
+## 4A. HK-1 — rounds, rota, proof, confirm, door (issue #973, decision 0086, spec `docs/specs/973-housekeeping-rounds.md`)
+- **Files.** `places.ts` (a place's chain up the register, its floor, its nearest area), `setup.ts` (checklists, areas,
+  door QR, contractors, staff; `setupView`), `rota.ts` (draft/publish; `hkEligible`, `hkPoolOnly`), `rounds.ts`
+  (`runRoundsClock`, `roundsOf`), `work.ts` (`finishWork`, `hkBeforeDone`, photo, `workForm`, `proofOf`), `cleans.ts`
+  (`confirmClean`), `door.ts` (`raiseDoorRequest`), `door-throttle.ts`, `board.ts` (`supervisorBoard`). Tables
+  `kernel/db/schema/housekeeping.ts` (`hk_*`). Web (`apps/web/src/screens/`): `apps/web/src/screens/housekeeping-board.tsx` (side
+  panel), `apps/web/src/screens/hk-work-sheet.tsx` (inside My tasks), `apps/web/src/screens/hk-confirm-sheet.tsx`,
+  `apps/web/src/screens/hk-rota.tsx`, `apps/web/src/screens/hk-setup.tsx`, `apps/web/src/screens/door-request.tsx`
+  (public `/door#<token>`).
+- **Door QR** = `a1.<areaId>.<qrVersion>.<hmac(SECRET_KEY)>`; the printed QR is the door page's address with the token
+  in the FRAGMENT (never logged). Revoke = bump `qr_version`. A QR alone is weak proof (a photo of it passes): the photo
+  and the signed-in person are the evidence.
+- **Proof of work.** A housekeeping task whose place is, or lies inside, an active area finishes ONLY through
+  `finishWork`: a genuine current QR of the task's place or an ancestor, every item of the NEAREST area's checklist, a
+  photo when that area says so or the task is a bed clean. The attempt row (`hk_work`, attempt = rejections + 1, company
+  snapshot) and `completeTask` commit together; every worked kind's `beforeDone` (`hkBeforeDone`) refuses any other
+  completion (`work_missing`). A place with no area keeps the old tap — this is what keeps the E1.4 locked checks valid.
+- **Rota → eligibility.** Only while a rota covering `now` is PUBLISHED: placed on the area/bed itself (preferred) →
+  the floor's floor-mode people → anyone whose `floor_ids` include the floor; narrowed by trained skill (A `critical`,
+  terminal `terminal`, spill `spill`). Bed cleans are pool-only for the floor team then (the clock's pool pass skips
+  them). No published rota = the engine's old dispatch. A supervisor's assign is never narrowed. `room_inspection` has no
+  eligibility (it is the supervisor's own round).
+- **Rounds clock** rides `runTaskAndWasteClocks` while `housekeeping` is on: per area, the slot holding now (unique
+  `(area, slot)` + `sourceRef hk-round:<area>:<slot>`); never back-fills; `due` → `done` when its task is done, →
+  `missed` after `HK_ROUND_GRACE_MIN`. Shifts 07–15, 15–23, 23–07 IST (design board); slots per class in contracts
+  (`hkSlotAt`). Classes A/B raise `area_round_checked` (unit side confirms); C/D `area_round` (no per-round confirm).
+- **Confirm.** Pass = `verifyTask`; Fail = reason + engine `rejectTask` (back to the doer on duty, else the pool). The
+  second fail rings `services_supervisor` (`housekeeping.needs_you`) and lists the task in "Needs you". Terminal: only
+  `housekeeping.verify_terminal` (supervisor, `infection_control`).
+- **Door.** `@Public()` POST, token in the body, per-address cap in memory (20 / 10 min) plus 4 an hour per area in the
+  database under an advisory lock. No patient field, no free text; the address only as an HMAC.
+- Owed (HK-2, #974): contractor SLA report, consumables per floor, department reports, random inspections of C/D areas,
+  Expo app screens.
 
 ## 5. Who calls housekeeping
-- kernel: `kernel/worker/worker.module.ts` (install + `bedTurnoverConsumer`), `kernel/modules/manifests.ts`,
+- kernel: `kernel/worker/worker.module.ts` (install + `bedTurnoverConsumer`), `kernel/worker/jobs.ts` (`runRoundsClock`), `kernel/modules/manifests.ts`,
   `app.module.ts` (`HousekeepingModule`).
 - web: the Beds board (clocks, verify, nudge) and the housekeeping board.

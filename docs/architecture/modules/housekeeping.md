@@ -11,26 +11,34 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/housekeeping/`
 · Notes: [MAP.md](../../../apps/core/src/modules/housekeeping/MAP.md)
 
-- **Depends on modules:** `ipd`, `tasks`
+- **Depends on modules:** `ipd`, `roster`, `tasks`
 - **Used by modules:** —
-- **Kernel used:** `auth`, `db`, `events`, `modules`, `resources`, `tokens`
+- **Kernel used:** `alerts`, `auth`, `config`, `crypto`, `db`, `documents`, `events`, `modules`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `resourceAssigned`, `resourceReleased`, `resourceStatusChanged`
 
 ## Public API (`index.ts`), by declaring file
 
+- `board.ts`
+  - `supervisorBoard(db: Db, now: Date = new Date()): Promise<HkSupervisorView>`
 - `cleans.ts`
+  - `confirmClean(db: Db, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow>`
   - `nudgeClean(db: Db, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow>`
   - `verifyClean(db: Db, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow>`
+- `door.ts`
+  - `doorRequestOf(db: Db, requestId: string): Promise<{ id: string; areaId: string; need: HkDoorNeed; taskId: string; closed: boolean } | null>`
+  - `raiseDoorRequest(db: Db, key: Buffer, raw: unknown, meta: { address: string }, now: Date = new Date()): Promise<HkDoorAck>`
 - `errors.ts`
   - `class HousekeepingRefusal`
   - `housekeepingHttpStatus(code: HousekeepingRefusalCode): number`
 - `housekeeping.module.ts`
   - `class HousekeepingModule`
 - `kinds.ts`
+  - `AREA_REQUEST`
+  - `AREA_ROUND`
+  - `AREA_ROUND_CHECKED`
   - `BED_CLEAN_ROUTINE`
   - `BED_CLEAN_TERMINAL`
   - `HOUSEKEEPING_ROUND_SKILL`
-  - `HOUSEKEEPING_SKILL`
   - `ROOM_INSPECTION`
   - `SPILL`
 - `manifest.ts`
@@ -38,11 +46,32 @@ Source: `apps/core/src/modules/housekeeping/`
 - `names.ts`
   - `HOUSEKEEPING_ACTOR: Actor`
   - `HOUSEKEEPING_BED_CONSUMER`
+  - `HOUSEKEEPING_CONFIRM`
+  - `HOUSEKEEPING_ROTA_MANAGE`
+  - `HOUSEKEEPING_SETUP_MANAGE`
+  - `HOUSEKEEPING_SKILL`
   - `HOUSEKEEPING_VERIFY_TERMINAL`
   - `HOUSEKEEPING_VIEW`
 - `reads.ts`
   - `bedCleans(db: Db, now: Date = new Date()): Promise<BedCleansView>`
   - `housekeepingBoard(db: Db, now: Date = new Date()): Promise<HousekeepingBoardView>`
+- `rota.ts`
+  - `publishRota(db: Db, actor: Actor, raw: unknown, now: Date = new Date()): Promise<HkRotaView>`
+  - `rotaView(db: Db, now: Date = new Date(), shiftStartsAt?: Date, rotaId?: string): Promise<HkRotaView>`
+  - `saveRota(db: Db, actor: Actor, raw: unknown, now: Date = new Date()): Promise<HkRotaView>`
+- `rounds.ts`
+  - `roundsOf(db: Db, areaId: string, limit = 200): Promise<HkRoundView[]>`
+  - `runRoundsClock(db: Db, now: Date = new Date()): Promise<RoundsResult>`
+  - types: `RoundsResult`
+- `setup.ts`
+  - `addContractor(db: Db, actor: Actor, raw: unknown, now: Date = new Date()): Promise<HkContractorView>`
+  - `areaQrToken(exec: Exec, key: Buffer, areaId: string): Promise<string>`
+  - `defineArea(db: Db, actor: Actor, raw: unknown, now: Date = new Date()): Promise<AreaRow>`
+  - `readQrToken(exec: Exec, key: Buffer, token: string): Promise<AreaRow>`
+  - `revokeAreaQr(db: Db, actor: Actor, raw: unknown, now: Date = new Date()): Promise<AreaRow>`
+  - `saveChecklist(db: Db, actor: Actor, raw: unknown, now: Date = new Date()): Promise<HkChecklistView>`
+  - `setHkStaff(db: Db, actor: Actor, raw: unknown, now: Date = new Date()): Promise<void>`
+  - `setupView(db: Db): Promise<HkSetupView>`
 - `turnover.ts`
   - `backfillBedCleans(db: Db, now: Date = new Date()): Promise<number>`
   - `bedTurnoverConsumer(db: Db): Handler`
@@ -50,13 +79,21 @@ Source: `apps/core/src/modules/housekeeping/`
   - `handleBedEvent(db: Db, e: DispatchedEvent, now: Date = new Date()): Promise<TurnoverResult>`
   - `raiseBedClean(db: Db, bedId: string, source: { sourceRef: string; at: Date; reason: string | null }, now: Date = new Date()): Promise<TaskR…`
   - types: `TurnoverResult`
+- `work.ts`
+  - `finishWork(db: Db, key: Buffer, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow>`
+  - `proofOf(db: Db, store: DocumentStore, taskId: string): Promise<HkProofView | null>`
+  - `storeWorkPhoto(db: Db, store: DocumentStore, actor: Actor, input: { taskId: string; mime: string; bytes: Buffer }): Promise<{ photoKey: str…`
+  - `workForm(db: Db, taskId: string): Promise<HkWorkForm>`
+  - `workOf(db: Db, taskId: string): Promise<HkWorkView | null>`
 
 ## Tables (`kernel/db/schema/housekeeping.ts`)
 
-None under this name.
+`hk_areas`, `hk_checklists`, `hk_contractors`, `hk_door_requests`, `hk_rota_places`, `hk_rotas`, `hk_rounds`, `hk_staff`, `hk_work`
+
+Foreign keys into: `auth`, `resources`, `tasks`
 
 ## HTTP routes
 
-- `housekeeping.controller.ts` — `/housekeeping/bed-cleans`, `/housekeeping/board`, `/housekeeping/cleans`
+- `housekeeping.controller.ts` — `/housekeeping/areas`, `/housekeeping/bed-cleans`, `/housekeeping/board`, `/housekeeping/checklists`, `/housekeeping/cleans`, `/housekeeping/contractors`, `/housekeeping/door`, `/housekeeping/rotas`, `/housekeeping/setup`, `/housekeeping/staff`, `/housekeeping/supervisor`, `/housekeeping/tasks`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/housekeeping`
