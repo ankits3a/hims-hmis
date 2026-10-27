@@ -1,9 +1,9 @@
 ---
 type: module-notes
 title: "ipd — module notes"
-description: "Why and traps of the inpatient module: validated bed and ward attributes and the bed-layout loader (E0.3), the bed intents and the Beds board (E1.1), admission — request, plan and deposit from the tariff, admit onto a bed in one transaction, the payer record, the band, the emergency lane and the downtime back-fill (E1.2) — and the running bill: tariff lock, day rule, nightly posting, visit seam, reversals, interim bill (E2.1) — and the payer split: payer- or patient-payable per line, room-rent cap with proportional deduction, co-pay, approved amount, denial to cash, scheme ₹0 (E2.2) — and transfers: start with an SBAR handover, accept by the receiving nurse, cancel, the atomic swap and the class change in place at the next noon (E3.1) — and the deposit ladder, the daily totals to the attendant and the exceptions-only bill desk (E2.3) — and discharge: fit, departments confirm, structured summary, final bill with payer claim and dues, gate pass, LAMA / abscond / death, mortuary register (E3.2) — and nursing: the admission assessment, vitals scored by NEWS2 / MEOWS / PEWS with one alert per breach, intake/output, notes, the shift handover, the nurse station and the phone (E4.1) — and rounds: the doctor's list, S/O/A/P round sign with resident co-sign, fit from the round, inpatient orders (drugs; lab and imaging through the ordering door) and the order event contract for the eMAR, cross-consults, the 08:00 cover and 14:00 nudge clock (E4.2) — and lab / imaging orders on the running bill through billing's episode charge sink, reversed when cancelled before the work (#785) — and the eMAR: pharmacist verify, ward issue with patient labels, the dose schedule, the bedside acts with both scans, the second nurse's PIN, PRN limits, infusions, the narcotic register, verbal orders, the allergy re-check and the missed-dose sweep (E4.3) — and medicines issued to the ward on the running bill at the pharmacy counter's batch price, returns credited at the issue price (#787) — and the TPA desk: pre-auth clock, payer queries, documents, scheme packages and their importer, the claim tracker with its reconciliation (#604) — and the ward's nurses: per-shift bed-to-nurse maps with carry-over, reassignment with a reason, end of duty, acuity, the nurse-to-patient ratio and its breach, float moves, the in-charge cockpit (WM-1 #982)."
+description: "Why and traps of the inpatient module: validated bed and ward attributes and the bed-layout loader (E0.3), the bed intents and the Beds board (E1.1), admission — request, plan and deposit from the tariff, admit onto a bed in one transaction, the payer record, the band, the emergency lane and the downtime back-fill (E1.2) — and the running bill: tariff lock, day rule, nightly posting, visit seam, reversals, interim bill (E2.1) — and the payer split: payer- or patient-payable per line, room-rent cap with proportional deduction, co-pay, approved amount, denial to cash, scheme ₹0 (E2.2) — and transfers: start with an SBAR handover, accept by the receiving nurse, cancel, the atomic swap and the class change in place at the next noon (E3.1) — and the deposit ladder, the daily totals to the attendant and the exceptions-only bill desk (E2.3) — and discharge: fit, departments confirm, structured summary, final bill with payer claim and dues, gate pass, LAMA / abscond / death, mortuary register (E3.2) — and nursing: the admission assessment, vitals scored by NEWS2 / MEOWS / PEWS with one alert per breach, intake/output, notes, the shift handover, the nurse station and the phone (E4.1) — and rounds: the doctor's list, S/O/A/P round sign with resident co-sign, fit from the round, inpatient orders (drugs; lab and imaging through the ordering door) and the order event contract for the eMAR, cross-consults, the 08:00 cover and 14:00 nudge clock (E4.2) — and lab / imaging orders on the running bill through billing's episode charge sink, reversed when cancelled before the work (#785) — and the eMAR: pharmacist verify, ward issue with patient labels, the dose schedule, the bedside acts with both scans, the second nurse's PIN, PRN limits, infusions, the narcotic register, verbal orders, the allergy re-check and the missed-dose sweep (E4.3) — and medicines issued to the ward on the running bill at the pharmacy counter's batch price, returns credited at the issue price (#787) — and the TPA desk: pre-auth clock, payer queries, documents, scheme packages and their importer, the claim tracker with its reconciliation (#604) — and the ward's nurses: per-shift bed-to-nurse maps with carry-over, reassignment with a reason, end of duty, acuity, the nurse-to-patient ratio and its breach, float moves, the in-charge cockpit (WM-1 #982) — and ward safety, stock and quality: the daily Morse / Braden round and its care plans with timed checks, restraints on a doctor's order with 2-hourly checks and the 24-hour lapse, lines and line-days, the crash cart and its seal, the narcotic keys, ward stock against par with one indent and charging per 0089 / 0091, the student and agency limits, the monthly quality read (WM-2 #983)."
 resource: apps/core/src/modules/ipd
-tags: [ipd, tpa, ward-nurses, ratio, insurance, beds, resources, admission, billing, transfer, discharge, now-cards, bed-flow, nursing, ews, rounds, orders, order-billing, emar, drug-billing, copilot, drafts]
+tags: [ipd, tpa, ward-nurses, ratio, ward-safety, restraint, ward-stock, quality, insurance, beds, resources, admission, billing, transfer, discharge, now-cards, bed-flow, nursing, ews, rounds, orders, order-billing, emar, drug-billing, copilot, drafts]
 generated: { by: agent:claude, at: 2026-10-12 }
 verified: []
 stale_after: 2027-01-12
@@ -179,6 +179,20 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `packages/contracts/src/ipd/nurse-ward.ts` (acuity points, the ratio table and its pure functions, inputs, reads, routes).
   Tables `kernel/db/schema/ipd-ward.ts` (migration `ipd_ward`). Web: `apps/web/src/screens/ipd-ward-assign.tsx`
   (`/ipd/ward/assign`), `apps/web/src/screens/ipd-ward-cockpit.tsx` (`/ipd/ward/cockpit`), `apps/web/src/lib/ipd-ward-api.ts`.
+- (WM-2 #983, decisions 0089 / 0091) `ward-safety.ts` — the safety round and restraint: `recordRiskScore` +
+  `syncCarePlansIn` (also called by `recordNursingAssessment`), `carePlansOf`, `recordCareCheck`; `orderRestraint`,
+  `applyRestraint`, `recordRestraintCheck`, `reviewRestraint`, `recordRestraintFamilyTold`, `endRestraint`, `restraintViews`,
+  `readRestraintRegister`; `recordSafetyEvent`; the minute step `sweepWardSafety` (rides the nursing job). `ward-lines.ts` —
+  `insertIpdLine`, `reviewIpdLine`, `removeIpdLine`, `linesOf` (the round page's "still needed?"), `wardLineDays`,
+  `istDaysTouched`. `ward-cart.ts` — `registerCrashCart`, `checkCrashCart`, `useCrashCart`, `crashCartsOf`,
+  `raiseWardIncidentIn`, `takeNarcoticKeys`, `narcoticKeysOf`, `isAgencyNurse`, `isStudentNurse`. `ward-stock.ts` —
+  `setWardPar`, `wardStockOf` / `readWardStock`, `raiseWardIndent`, `recordWardStockUse`, `notChargedWhy`. `ward-quality.ts` —
+  `readWardQuality`, `readWardSafety`. `ward-safety-events.ts` (`IPD_WARD_SAFETY_EVENT_NAMES`, on the nursing topic),
+  `ward-safety.controller.ts` (`IPD_WARD_SAFETY_ROUTES`, `/ipd/ward-safety/*`). Contracts `packages/contracts/src/ipd/ward-safety.ts`.
+  Tables `kernel/db/schema/ipd-ward-safety.ts` (migration `ipd_ward_safety`). Web: `apps/web/src/screens/ipd-ward-safety.tsx`
+  (`/ipd/ward/safety`), the safety-check pane in `apps/web/src/screens/ipd-my-shift.tsx`, the Lines panel in
+  `apps/web/src/screens/ipd-rounds.tsx`,
+  `apps/web/src/lib/ipd-ward-safety-api.ts`.
 
 - (E4.2 #734) `rounds.ts` — `signRound` (S/O/A/P, bedside or remote; fit from the round via `declareFitIn`), `cosignRound`,
   `requestConsult`, `closeConsult`, `assertInBed`. `orders.ts` — `placeIpOrder` (drug; lab / imaging via `ordering`
@@ -894,6 +908,48 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - EWS: the 10-minute unacknowledged step also tells the bed's assigned nurse; the chain's stamp still waits for a CHAIN
   notice (a nurse alone does not stop the retry).
 - SEALED: the card's bed text is "Bed" alone; the cockpit takes names and bed codes from the station read (one rule).
+
+### Ward safety, stock and quality (WM-2, #983, decisions 0089 / 0091)
+- CARE PLANS: the admission assessment is the first Morse / Braden score (it now starts plans; `tasksRaised` counts them);
+  `recordRiskScore` is the daily one (append-only `ipd_risk_scores`). Morse ≥ the ward's threshold (45) → a FALL plan,
+  Braden ≤ its threshold (12) → a PRESSURE plan; thresholds from the ward attribute `safetyThresholds {morse, braden}`
+  (`safetyThresholdsOf`). A later score on the safe side ENDS the plan. One live plan per kind (partial unique).
+- TIMED CHECKS (DECIDED): fall bundle every 4 h, turns every 2 h. Next due = the later of the plan's start and its last
+  check + the interval; nothing is materialised. Past it the check is OVERDUE: My shift lists it (`care_check`, due within
+  the hour or overdue) and the cockpit's Needs you lists it (overdue only) until a check is recorded.
+- RESTRAINT: only `ipd.restraint.order` (doctors) orders and reviews; the episode is `ordered` until a nurse applies it —
+  there is no other way to start one. Checks (circulation, skin, fluids, toilet) every 2 h from the start or the last check.
+  The sweep raises ONE alert row per missed check (`ipd_restraint_alerts` unique on restraint, kind, due) and tells the bed's
+  assigned nurse + the nursing fallback chain. The order LAPSES 24 h after the doctor's last sign (order or "continue"
+  review): the acts refuse `restraint_lapsed` from that instant even before the sweep marks it; a lapsed order is never
+  renewed (a new order is). Ending is always allowed. Psychiatric ward = ward department `PSY`: only an active doctor-master
+  row in department PSY orders or reviews (MHCA s.97); the register flags the nominated representative not told in 24 h.
+  The register is by the ORDER's month, with the MHCA summary.
+- LINES: due-removal = insertion + 72 h (cannula) or + 24 h (catheter, central line), moved on 24 h by each doctor's "keep".
+  "Still needed?" is asked once per IST day per line (`ipd_line_reviews` unique per line and day); "remove" takes it out now.
+  LINE-DAYS: one per IST calendar day the line was in at any moment, counted at the ward of insertion (DECIDED).
+- CRASH CART: a seal different from the last check needs a FULL recount (every content line) and writes ONE ward incident
+  (`ipd_ward_incidents`, told to the nursing superintendent(s)); a cart used in a code is `needs_restock` until a recount and
+  a new seal — that reseal raises no incident. Contents default to `IPD_CRASH_CART_STANDARD`.
+- NARCOTIC KEYS: one holder per ward (partial unique); taking them releases the last holder. Never an agency nurse
+  (`agency_nurse` role, held beside `ward_nurse`) or a student. An agency nurse neither counts nor signs as second nurse
+  on a narcotic count (`narcotic.ts`). A STUDENT giving a high-alert or narcotic dose without a registered nurse's PIN proof
+  is refused `second_nurse_required` with `detail.student` (`emar.ts`, explicit beside the high-alert rule; the second
+  check already refuses a student as checker).
+- WARD STOCK: the ward is a materials STORE `WARD-<ward code>` made on the first par (`ipd_ward_stores` keeps it and the
+  supply store); par per item (`ipd_ward_stock_par`). The indent is materials' own `raiseIndent` from the ward store to the
+  supply store (needs `materials.stock.receive` — NOT seeded for `ward_incharge`, owed to the materials table). Lots
+  expiring within 30 days (or expired) list for return; the return is the ordinary materials transfer (0091 rule 4).
+- CHARGING (0089 rule 2, 0091 rules 1–2): `used` / `issued` charged; `wasted` needs a reason, charged unless staff error or
+  the in-charge's waiver (`ipd.nursing.assign`; logged on the use row); `refused` not charged and never leaves the shelf;
+  `inPackage` recorded, not charged; an EXPIRED lot refused outright (`ward_stock_lot_expired`). The line is the #787 ward-
+  issue line (`postDrugIssueChargesIn`, `ipd.pharmacy`, `order_id` = `issue_id` = the use id, the counter's precedent),
+  priced by the pharmacy counter's rule at the instant of use; a consumable is priced through its sale item. No price →
+  `rate_missing` on the bill desk (`not_charged_why = price_missing`), never ₹0.
+- QUALITY (`readWardQuality`, NABH KPIs, DECIDED definitions): bed-days = exact overlap of stays on the ward's beds with the
+  month (to `now`); falls, new pressure injuries, medication errors per 1,000 bed-days and line infections per 1,000
+  line-days from `ipd_safety_events` NOT present on admission; EWS alerts acknowledged (or seen) within 10 min; shift
+  handovers accepted within 30 min; live shift maps with no ratio-breach row. Each indicator carries the ids it counts.
 
 ### Rounds and inpatient orders (E4.2, #734)
 - ONE TEST FOR "CONSULTANT": an active `opd_doctors` row. It decides both whether a round is a draft (`awaiting_cosign`)

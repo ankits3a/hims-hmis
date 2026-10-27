@@ -1,6 +1,6 @@
 ---
 issue: 983
-status: approved
+status: built
 approved: 2026-10-27
 ---
 # SPEC — Ward WM-2: safety round, restraints, lines, crash cart, ward stock, ward quality (#983)
@@ -84,3 +84,20 @@ The ward keeps every patient safe between rounds, and the bill shows what the pa
 
 - An incident-reporting module (root cause, CAPA); infection-control surveillance beyond line-days; ICU-specific bundles
   (ICU milestone #984–#993); device integration; the bed list and pilot rollout (#737).
+
+## Built (2026-10-27, lane ward-wm2-983)
+
+- D1–D8 are `spec #983 Dk` in `apps/core/src/modules/ipd/acceptance/ward-safety-983.acceptance.test.ts`.
+- Migration `ipd_ward_safety` (numbered at merge). Notes in `apps/core/src/modules/ipd/MAP.md` ("Ward safety, stock and
+  quality").
+- DECIDED in the build: the fall bundle is checked every 4 hours, turns every 2; a check is overdue past its time and lists
+  until done. A restraint starts only from a doctor's order (a nurse applies it); a lapsed order is never renewed. A
+  psychiatric ward is a ward whose department is `PSY`, and a psychiatrist is a doctor-master doctor in that department.
+  A line counts one line-day for each IST day it was in, at the ward where it was inserted. The ward's stock is a
+  materials store; a ward-stock charge is the ward-issue medicine line, priced by the pharmacy counter's rule. An expired
+  lot is refused outright. An agency nurse is the role `agency_nurse`, held beside `ward_nurse`. Quality: EWS answered
+  within 10 minutes, a handover accepted within 30 minutes, bed-days as the exact overlap of stays with the month.
+- Not built here: the forms that start a restraint, a line, the daily score, a safety event, a crash cart and ward par
+  (#1007); the in-charge's seeded `materials.stock.receive` (#1008); the agency witness rule (#1009); one-tap return of
+  expiring lots and automatic package detection (#1010).
+

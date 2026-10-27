@@ -37,6 +37,9 @@ flowchart LR
   ipd_rounds[ipd-rounds] --> ipd[ipd]
   ipd_rounds[ipd-rounds] --> patients[patients]
   ipd_tpa[ipd-tpa] --> ipd[ipd]
+  ipd_ward_safety[ipd-ward-safety] --> ipd[ipd]
+  ipd_ward_safety[ipd-ward-safety] --> patients[patients]
+  ipd_ward_safety[ipd-ward-safety] --> resources[resources]
   ipd_ward[ipd-ward] --> ipd[ipd]
   ipd_ward[ipd-ward] --> patients[patients]
   ipd_ward[ipd-ward] --> resources[resources]
@@ -131,6 +134,7 @@ flowchart LR
 | `ipd-emar.ts` | kernel | `ipd_emar_acts`, `ipd_emar_allergy_flags`, `ipd_emar_doses`, `ipd_emar_infusion_events`, `ipd_emar_issues`, `ipd_emar_label_uses`, `ipd_emar_labels`, `ipd_emar_narcotic_register`, `ipd_emar_returns`, `ipd_emar_second_checks`, `ipd_emar_verbal_orders`, `ipd_emar_verifications`, `ipd_narcotic_count_resolutions`, `ipd_narcotic_counts` |
 | `ipd-rounds.ts` | kernel | `ipd_consults`, `ipd_orders`, `ipd_rounds` |
 | `ipd-tpa.ts` | kernel | `ipd_admission_packages`, `ipd_claim_deductions`, `ipd_claim_events`, `ipd_scheme_packages`, `ipd_tpa_documents`, `ipd_tpa_queries` |
+| `ipd-ward-safety.ts` | kernel | `ipd_care_checks`, `ipd_care_plans`, `ipd_crash_cart_checks`, `ipd_crash_carts`, `ipd_line_reviews`, `ipd_lines`, `ipd_narcotic_key_holds`, `ipd_restraint_alerts`, `ipd_restraint_checks`, `ipd_restraints`, `ipd_risk_scores`, `ipd_safety_events`, `ipd_ward_incidents`, `ipd_ward_stock_par`, `ipd_ward_stock_uses`, `ipd_ward_stores` |
 | `ipd-ward.ts` | kernel | `ipd_nurse_assignments`, `ipd_patient_acuity`, `ipd_ward_ratio_breaches`, `ipd_ward_shift_maps`, `ipd_ward_shift_staff` |
 | `ipd.ts` | module ipd | `ipd_admission_conditions`, `ipd_admission_deposits`, `ipd_admissions`, `ipd_attendant_message_consents`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_proposals`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_charge_exceptions`, `ipd_charge_lines`, `ipd_class_changes`, `ipd_daily_totals`, `ipd_deposit_alerts`, `ipd_discharge_confirmations`, `ipd_discharge_summaries`, `ipd_discharges`, `ipd_family_callbacks`, `ipd_family_links`, `ipd_family_otps`, `ipd_family_sessions`, `ipd_final_bills`, `ipd_gate_passes`, `ipd_intake_output`, `ipd_mortuary_register`, `ipd_nursing_alerts`, `ipd_nursing_assessments`, `ipd_nursing_notes`, `ipd_payer_auths`, `ipd_payer_claims`, `ipd_payer_non_payables`, `ipd_payer_split_snapshots`, `ipd_shift_handovers`, `ipd_stay_exits`, `ipd_transfers`, `ipd_vitals` |
 | `lab.ts` | module lab | `lab_analytes`, `lab_booking_settings`, `lab_bookings`, `lab_catalogue_imports`, `lab_critical_calls`, `lab_instrument_codes`, `lab_instruments`, `lab_items`, `lab_orderable_analytes`, `lab_orderables`, `lab_parked_results`, `lab_plate_maps`, `lab_plate_wells`, `lab_quick_reports`, `lab_reference_ranges`, `lab_reflex_rules`, `lab_report_deliveries`, `lab_reports`, `lab_results`, `lab_run_sheet_positions`, `lab_run_sheets`, `lab_sla_breaches`, `lab_slip_ignored_codes`, `lab_slip_scans`, `lab_specimen_items`, `lab_specimens`, `lab_transmissions` |
