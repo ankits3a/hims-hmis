@@ -163,6 +163,15 @@ function Verified({ token, v, t, phone }: { token: string; v: IpdFamilyView; t: 
         )}
       </section>
 
+      {/* ICU IC-1 (#984, D9) — the doctor's word for today, in words; never a live number. */}
+      {v.todayUpdate != null ? (
+        <section className="fam-card" aria-label={t("ipdFamily.todayUpdate")} data-testid="family-today-update">
+          <span className="h">{t("ipdFamily.todayUpdate")}</span>
+          <p style={{ margin: 0 }}>{v.todayUpdate.summary}</p>
+          <span className="sub">{fmtIst(v.todayUpdate.at)}</span>
+        </section>
+      ) : null}
+
       {steps.length > 0 ? (
         <section className="fam-card" aria-label={t("ipdFamily.steps.title")}>
           <span className="h">{t("ipdFamily.steps.title")}</span>

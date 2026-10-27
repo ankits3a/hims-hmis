@@ -30,7 +30,7 @@ groups:
       - alert: HmisSchedulerJobStaleInterval
         expr: |
           hmis_scheduler_heartbeat_staleness_seconds{
-            job=~"runDispatchCycle|runDueTimers|sweepExpiredTempRoles|runNotifyPump|runReachLadder|sweepInterfaceHeartbeats|flagLateSurgeons|sweepLabSla|sweepExpiredPharmacyPicks|sweepCriticalChaser|sweepImagingEscalations|printRosterBoard|sweepStaffNotices|openDueTeleVisits|syncAttendance|sweepLabCriticalLadder|sweepTasks|lapseBedReservations|sweepIpdNursing"
+            job=~"runDispatchCycle|runDueTimers|sweepExpiredTempRoles|runNotifyPump|runReachLadder|sweepInterfaceHeartbeats|flagLateSurgeons|sweepLabSla|sweepExpiredPharmacyPicks|sweepCriticalChaser|sweepImagingEscalations|printRosterBoard|sweepStaffNotices|openDueTeleVisits|syncAttendance|sweepLabCriticalLadder|sweepTasks|lapseBedReservations|sweepIpdNursing|sweepIcuAlarms"
           } > 300
         for: 2m
         labels:
@@ -166,6 +166,9 @@ groups:
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="lapseBedReservations"})
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepIpdNursing"})
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="postNightlyIpdCharges"})
+          # ICU IC-1 (#984) — the ICU clock every 10s (leg 1a), registered dark like the IPD jobs: a missing one is a
+          # worker that never started the alarm ladder.
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepIcuAlarms"})
         for: 5m
         labels:
           severity: critical

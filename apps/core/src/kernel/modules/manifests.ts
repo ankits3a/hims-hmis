@@ -34,6 +34,7 @@ import { passesManifest } from "../../modules/passes";
 import { transportManifest } from "../../modules/transport";
 import { dietManifest } from "../../modules/diet";
 import { emergencyManifest } from "../../modules/emergency";
+import { icuManifest } from "../../modules/icu";
 import { doctorDeskManifest } from "../../modules/doctor-desk";
 
 /**
@@ -230,4 +231,7 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   // DOCTOR DESK DD-0 (#626) — appended. A leaf: no permission of its own (its routes open on opd's
   // `opd.consult`), one menu entry, no subscription, no job — app-only, the `attendance` shape.
   doctorDeskManifest,
+  // ICU IC-1 (#984, decision 0090) — appended. Five permissions, five menu entries, no subscription: API only (the ICU
+  // clock `sweepIcuAlarms` is registered in `kernel/worker/jobs.ts` and needs no manifest in the worker; the bmw shape).
+  icuManifest,
 ];

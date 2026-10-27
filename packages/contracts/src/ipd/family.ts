@@ -145,6 +145,11 @@ export const IpdFamilyViewSchema = z.object({
   }).nullable(),
   sessionExpiresAt: IpdInstantSchema,
   purpose: z.literal(IPD_FAMILY_PURPOSE),
+  /**
+   * ICU IC-1 (#984, D9) — the doctor's word to the family for TODAY (IST), latest first: words only, never a live number.
+   * Absent or null when no update was logged today (or the patient is not in an ICU).
+   */
+  todayUpdate: z.object({ summary: z.string(), at: IpdInstantSchema, mode: z.string() }).nullable().optional(),
 });
 export type IpdFamilyView = z.infer<typeof IpdFamilyViewSchema>;
 

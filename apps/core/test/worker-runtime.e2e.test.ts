@@ -215,6 +215,8 @@ const THE_EIGHTEEN = [
   "lapseBedReservations",
   /** IPD NURSING E4.1 (#733, #833) — `every(60_000)`: assessment overdue; an unacknowledged early warning. A no-op while off. */
   "sweepIpdNursing",
+  /** ICU IC-1 (#984) — `every(10_000)`: the alarm ladder, feed gaps, links whose stay ended, bundles, partitions. A no-op while off. */
+  "sweepIcuAlarms",
   /** IPD CHARGES E2.1 (#725, #833) — `dailyIst("00:05")`: the running bill's nightly posting. A no-op while `ipd` is off. */
   "postNightlyIpdCharges",
   /** DOCTOR DESK DD-report v0 — `dailyIst("08:00")`: the unit report, counts only, to the unit head. */

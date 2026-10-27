@@ -56,6 +56,14 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/family` | `apps/web/src/screens/ipd-family` |
 | `/formulary/admin` | `(redirect)` |
 | `/housekeeping` | `apps/web/src/screens/housekeeping-board` |
+| `/icu` | `apps/web/src/screens/icu-station` |
+| `/icu/bed/$admissionId` | `apps/web/src/screens/icu-bed` |
+| `/icu/chart/$admissionId` | `apps/web/src/screens/icu-chart` |
+| `/icu/incharge` | `apps/web/src/screens/icu-desk` |
+| `/icu/my-beds` | `apps/web/src/screens/icu-phone` |
+| `/icu/night` | `apps/web/src/screens/icu-phone` |
+| `/icu/requests` | `apps/web/src/screens/icu-desk` |
+| `/icu/station/$hallId` | `apps/web/src/screens/icu-station` |
 | `/ipd/admissions/$admissionId/bill` | `apps/web/src/screens/ipd-bill` |
 | `/ipd/admit` | `apps/web/src/screens/ipd-admit` |
 | `/ipd/beds` | `apps/web/src/screens/ipd-beds` |

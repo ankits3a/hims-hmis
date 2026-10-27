@@ -154,3 +154,6 @@ export * from "./diet";
 // ER lane 1 (#808, decision 0076) — the emergency department: the ER episode, the pre-alert and the ER band register.
 // References `patients`; nothing reads it but `modules/emergency`.
 export * from "./emergency";
+// ICU IC-1 (#984, decision 0090) — ICU requests, device links, the gateway feed (numbers partitioned daily, 72 h), the
+// hourly chart, alarms and limits, bundles, visits and the family's daily update. Nothing reads it but `modules/icu`.
+export * from "./icu";

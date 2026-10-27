@@ -104,7 +104,7 @@ describe("createDb — the pool's two limits", () => {
     // module here would drag in the queue. The deploy-parity shape applies: read the seam's text.
     const source = readFileSync(join(__dirname, "../worker/worker.module.ts"), "utf8");
     expect(source).toMatch(/createDb\(cfg\.databaseUrl, \{ defaultMax: DEFAULT_WORKER_POOL_MAX \}\)/);
-    expect(DEFAULT_WORKER_POOL_MAX).toBe(29); // 21 interval jobs + 8 (#833: the three IPD minute jobs registered dark, 2026-10-24); 18 interval jobs + 8 (E3.2 lab critical ladder, 2026-10-12; read off the red run)
+    expect(DEFAULT_WORKER_POOL_MAX).toBe(30); // 22 interval jobs + 8 (ICU IC-1 #984: sweepIcuAlarms, 10 s, registered dark); // 21 interval jobs + 8 (#833: the three IPD minute jobs registered dark, 2026-10-24); 18 interval jobs + 8 (E3.2 lab critical ladder, 2026-10-12; read off the red run)
   });
 
   /**

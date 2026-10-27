@@ -1829,6 +1829,19 @@ surge bays. The MCI board shows the counts by tag, packs ready, bays and surge b
 count for the district authority carries counts only, never names. The stand-down returns every patient to the ESI flow.
 `er.mci` is held by `doctor`, `er_nurse`, `front_office`, `front_office_supervisor`, `duty_manager` and `medical_superintendent`.
 
+**ICU core (IC-1, issue #984, decision 0090, built 2026-10-27, awaiting owner review).** An ICU request from the ER, a
+ward or OT carries a priority class (1–4) and triage scores (NEWS2 and qSOFA filled from the latest vitals); it asks the
+`ipd_icu_admission` approval at once, and only the intensivist's "approve" grants it — a refusal or a hold with
+monitoring needs a reason and is logged with the name. Monitors, ventilators and pumps (radiology's `device` resources)
+are linked to the patient by scanning the device and the wristband; one of a kind per bed; device-days and line-days
+are counted (no charge lines until the owner rules the money). One gateway per hall sends the central station's numbers
+every 5 s (kept 72 h in daily partitions, one per minute with the record); the station greys and charting turns manual
+after 5 minutes of silence. The hourly chart is pre-filled from the devices and is the record only when a nurse signs it;
+corrections keep the original. A life-threatening alarm climbs bed nurse → station → duty doctor → intensivist until
+someone acknowledges it; HMIS never silences a device. Doctor-set limits last 24 hours. Bundles fall due per bed; a
+missed one shows to the in-charge. The family page shows the day's update in words, never a number.
+`icu.view` is held by `doctor`, `ward_nurse`, `nursing_supervisor` and the new roles `intensivist` and `icu_incharge`; `icu.request` by `doctor` and `intensivist`; `icu.care` by `ward_nurse`, `nursing_supervisor`, `intensivist` and `icu_incharge`; `icu.decide` by `intensivist` alone; `icu.manage` by `icu_incharge` alone.
+
 **Copilot halt switch and spend cap (plan E0.3/E0.5, decision 0064, built 2026-10-11, awaiting owner review).**
 `copilot.halt.set` (owner, medical_superintendent, quality_manager) pauses the copilot by scope — read, act,
 draft or global;
