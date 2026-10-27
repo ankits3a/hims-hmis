@@ -2543,7 +2543,9 @@
       "vitals": "Vitals",
       "assessment": "Assessment",
       "ews": "Score alert",
-      "handover": "Handover"
+      "handover": "Handover",
+      "care_check": "Care check",
+      "restraint_check": "Restraint check"
     },
     "kind": {
       "news2": "NEWS2",
@@ -2800,6 +2802,236 @@
       "admission": "admission"
     }
   },
+  "ipdSafety": {
+    "forms": {
+      "choose": "Choose",
+      "recordTitle": "Record for a patient",
+      "noPatients": "No patient on this ward",
+      "patient": "Patient",
+      "safetyBtn": "Safety",
+      "tab": {
+        "score": "Daily score",
+        "line": "Line in",
+        "event": "Safety event"
+      },
+      "morse": "Morse (0–125)",
+      "braden": "Braden (6–23)",
+      "scoreHint": "Morse 45+ or Braden 12- starts a care plan",
+      "save": "Save",
+      "scoreSaved": "Score saved",
+      "lineKind": "Line",
+      "site": "Site",
+      "timeIn": "Time in",
+      "lineSaved": "Line recorded",
+      "removeTitle": "Take out {{kind}} · {{site}}",
+      "reason": "Reason",
+      "takeOut": "Take out",
+      "lineOut": "Line taken out",
+      "insertLine": "Put in a line",
+      "eventKind": "What happened",
+      "event": {
+        "fall": "Fall",
+        "pressure_injury": "Pressure injury",
+        "medication_error": "Medication error",
+        "line_infection": "Line infection"
+      },
+      "whichLine": "Which line",
+      "note": "Note",
+      "poa": "Found on admission",
+      "eventSaved": "Event recorded",
+      "restraintKind": "Restraint",
+      "orderHint": "Lapses 24 h after your sign",
+      "signOrder": "Sign order",
+      "ordered": "Restraint ordered",
+      "orderRestraint": "Order a restraint",
+      "apply": "Apply",
+      "applied": "Restraint applied",
+      "continue": "Continue 24 h",
+      "continued": "Restraint continued",
+      "removeRestraint": "Remove",
+      "addCart": "Add a cart",
+      "cartCode": "Cart code",
+      "cartHint": "Contents: the hospital's standard list",
+      "cartAdded": "Cart added",
+      "setPar": "Set par",
+      "supplyStore": "Indent on store",
+      "findItem": "Find item",
+      "savePar_one": "Save par · {{count}} item",
+      "savePar_other": "Save par · {{count}} items",
+      "parSaved_one": "Par saved · {{count}} item",
+      "parSaved_other": "Par saved · {{count}} items"
+    },
+    "title": "Ward safety",
+    "allOnTime": "All checks on time",
+    "overdueCount_one": "{{count}} check overdue",
+    "overdueCount_other": "{{count}} checks overdue",
+    "overdueSince": "Overdue since {{time}}",
+    "dueAt": "Due {{time}}",
+    "incident": "Incident",
+    "incidents": "Incidents",
+    "pane": {
+      "safety": "Safety",
+      "stock": "Cart & stock",
+      "quality": "Quality"
+    },
+    "plan": {
+      "fall": "Fall bundle",
+      "pressure": "Turn 2-hourly"
+    },
+    "plans": {
+      "title": "Care plans",
+      "none": "No patient at fall or pressure risk",
+      "done": "Done",
+      "saved": "Check saved"
+    },
+    "restraint": {
+      "title": "Restraints",
+      "none": "No restraint on this ward",
+      "kind": {
+        "physical": "Physical",
+        "chemical": "Chemical",
+        "seclusion": "Seclusion"
+      },
+      "status": {
+        "ordered": "Ordered",
+        "active": "On",
+        "ended": "Off",
+        "lapsed": "Lapsed — new order"
+      },
+      "tick": {
+        "circulation": "Circulation",
+        "skin": "Skin",
+        "hydration": "Fluids",
+        "toileting": "Toilet"
+      },
+      "mhca": "MHCA",
+      "check": "Check",
+      "checkOverdue": "Check overdue since {{time}}",
+      "nextCheck": "Next check {{time}}",
+      "review": "Doctor review by {{time}}",
+      "familyNotTold": "Family not told",
+      "familyTold": "Family told: {{name}}",
+      "formTitle": "Restraint · {{bed}}",
+      "saveCheck": "Save check",
+      "checkSaved": "Restraint check saved",
+      "toldName": "Told to",
+      "relation": "Relation",
+      "representative": "Nominated representative",
+      "saveFamily": "Save family told",
+      "familySaved": "Family told saved",
+      "endReason": "Reason to take off",
+      "end": "Take off",
+      "ended": "Restraint taken off"
+    },
+    "lines": {
+      "title": "Lines",
+      "none": "No line in",
+      "kind": {
+        "urinary_catheter": "Catheter",
+        "central_line": "Central line",
+        "cannula": "Cannula"
+      },
+      "day": "Day {{n}}",
+      "dueOut": "Due out {{time}}",
+      "overdue": "Past due-out",
+      "stillNeeded": "Still needed?",
+      "keep": "Keep",
+      "remove": "Remove now",
+      "reviewedToday": "Reviewed today"
+    },
+    "cart": {
+      "title": "Crash carts",
+      "none": "No crash cart on this ward",
+      "seal": "Seal {{seal}}",
+      "restock": "Restock and reseal",
+      "checked": "Checked this shift",
+      "due": "Check due",
+      "check": "Check",
+      "used": "Used in code",
+      "usedSaved": "Cart marked used",
+      "sealNo": "Seal number",
+      "restockHint": "Count every item, then the new seal",
+      "changedHint": "Seal changed: count every item",
+      "save": "Save check",
+      "saved": "Cart check saved"
+    },
+    "keys": {
+      "title": "Narcotic keys",
+      "nobody": "Nobody holds the keys",
+      "held": "{{name}} since {{time}}",
+      "take": "Take the keys",
+      "taken": "Keys taken"
+    },
+    "stock": {
+      "title": "Ward stock",
+      "noStore": "Par not set for this ward",
+      "indent_one": "Raise indent · {{count}} item",
+      "indent_other": "Raise indent · {{count}} items",
+      "raised_one": "Indent sent · {{count}} item",
+      "raised_other": "Indent sent · {{count}} items",
+      "item": "Item",
+      "par": "Par",
+      "onHand": "On hand",
+      "short": "Short",
+      "returnTitle": "Send back to stores",
+      "expired": "Expired",
+      "expiresIn_one": "{{count}} day left",
+      "expiresIn_other": "{{count}} days left"
+    },
+    "quality": {
+      "month": "Month",
+      "denoms": "{{bedDays}} bed-days · {{lineDays}} line-days",
+      "ind": {
+        "falls": "Falls",
+        "pressureInjuries": "New pressure injuries",
+        "medicationErrors": "Medication errors",
+        "lineInfections": "Line infections",
+        "ewsAnsweredInTime": "Alerts answered in 10 min",
+        "handoversOnTime": "Handovers on time",
+        "shiftsRatioKept": "Shifts with ratio kept"
+      },
+      "unit": {
+        "per_1000_bed_days": "per 1,000 bed-days",
+        "per_1000_line_days": "per 1,000 line-days"
+      },
+      "countIn_one": "{{count}} in {{over}}",
+      "countIn_other": "{{count}} in {{over}}",
+      "ofOver_one": "{{count}} of {{over}}",
+      "ofOver_other": "{{count}} of {{over}}",
+      "poa_one": "{{count}} found on admission, not counted",
+      "poa_other": "{{count}} found on admission, not counted"
+    },
+    "register": {
+      "title": "Restraint register",
+      "kind": "Restraint · ordered by",
+      "none": "No restraint this month",
+      "ordered": "Ordered",
+      "status": "Status",
+      "checks": "Checks",
+      "family": "Family told",
+      "missed_one": "{{count}} missed",
+      "missed_other": "{{count}} missed",
+      "mhca_one": "MHCA: {{count}} episode · {{late}} told late",
+      "mhca_other": "MHCA: {{count}} episodes · {{late}} told late"
+    },
+    "myShift": {
+      "done": "Done",
+      "careHint": "Bed low, rails, call bell, turn and skin",
+      "saved": "Check saved · {{bed}}"
+    },
+    "err": {
+      "crash_cart_recount_required": "Seal changed: count every item",
+      "crash_cart_restock_required": "Used cart: count every item and reseal",
+      "restraint_lapsed": "Order lapsed: a doctor must order again",
+      "restraint_not_active": "This restraint is not on",
+      "care_plan_ended": "This care plan has ended",
+      "agency_no_narcotic_keys": "Agency nurses do not hold narcotic keys",
+      "student_no_narcotic_keys": "Students do not hold narcotic keys",
+      "nothing_to_indent": "Nothing is short of par",
+      "ward_store_not_set": "Set the ward's par first",
+      "ipd_forbidden": "Not allowed for you"
+    }
+  },
   "ipdWard": {
     "title": "Ward",
     "loading": "Loading the ward…",
@@ -2809,7 +3041,8 @@
     "beds_other": "{{count}} beds",
     "tab": {
       "cockpit": "Cockpit",
-      "assign": "Assignment"
+      "assign": "Assignment",
+      "safety": "Safety"
     },
     "status": {
       "draft": "Draft",
@@ -4566,6 +4799,7 @@
     "icuRequests": "ICU requests",
     "icuNight": "ICU night view",
     "icuIncharge": "ICU in-charge",
+    "ipdWardSafety": "Ward safety",
     "erMci": "MCI board",
     "erCodes": "ER codes",
     "erBill": "ER bill desk",

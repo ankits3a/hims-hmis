@@ -9,10 +9,11 @@ import { holdsPermission, onceIpd, provenanceOf, requireIpdPermission } from "./
 import { userNames } from "./admissions";
 import { IPD_EMAR_NURSE_ROLES, confirmSecondNursePin } from "./emar";
 import { narcoticCountMismatch, narcoticCountResolved, narcoticCounted } from "./emar-events";
-import { IpdRefusal } from "./errors";
+import { IpdError, IpdRefusal } from "./errors";
 import { balanceKey, lockNarcoticWard, r3, wardNarcoticBalances } from "./narcotic-ledger";
 import { activeHolders, nursingFallback, shiftOf } from "./nursing";
 import { pickWard, wardsWithBeds } from "./nursing-read";
+import { isAgencyNurse } from "./ward-cart";
 import { IPD_EMAR_GIVE, IPD_EMAR_ISSUE, IPD_EMAR_VIEW } from "./permissions";
 import { identitiesOf, placesOf } from "./rounds-read";
 import type { Actor, IpdIntentName, IpdNarcoticException, IpdNarcoticLine, IpdNarcoticWard } from "@hmis/contracts";
@@ -72,7 +73,10 @@ export async function recordNarcoticCount(db: Db, actor: Actor, raw: unknown, op
   return onceIpd(db, actor, "record_narcotic_count", input.idempotencyKey, hashed, async () => {
     const ward = await wardRow(db, input.wardId);
     if (ward === null) throw new IpdRefusal("ward_not_found");
+    // WM-2 (#983, decision 0089 rule 5): an agency nurse neither counts nor signs as the second nurse.
+    if (await isAgencyNurse(db, actor.id)) throw new IpdError("agency_no_narcotic_count", "an agency nurse does not count the narcotics (decision 0089)");
     const witnessId = await confirmSecondNursePin(db, actor, input.secondNurse.username, input.secondNurse.pin, at);
+    if (await isAgencyNurse(db, witnessId)) throw new IpdError("agency_no_narcotic_count", "an agency nurse does not sign a narcotic count (decision 0089)");
     return withTx(db, async (tx) => {
       if (!(await actorHoldsAnyRole(tx, witnessId, IPD_EMAR_NURSE_ROLES))) throw new IpdRefusal("second_nurse_not_nurse");
       await lockNarcoticWard(tx, ward.id, "exclusive");

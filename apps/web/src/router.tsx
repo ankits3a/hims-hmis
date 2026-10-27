@@ -77,6 +77,7 @@ import { IpdWard } from "./screens/ipd-ward";
 import { IpdMyShift } from "./screens/ipd-my-shift";
 import { IpdWardAssign } from "./screens/ipd-ward-assign";
 import { IpdWardCockpit } from "./screens/ipd-ward-cockpit";
+import { IpdWardSafetyScreen } from "./screens/ipd-ward-safety";
 import { IpdBillDesk } from "./screens/ipd-bill-desk";
 import { IpdTpa } from "./screens/ipd-tpa";
 import { IpdDischarge } from "./screens/ipd-discharge";
@@ -501,6 +502,7 @@ const NAV: readonly NavEntry[] = [
   // WM-1 (#982) — the in-charge's shift assignment and cockpit; paths and permissions match `ipdManifest.menu`.
   { to: "/ipd/ward/assign", label: "nav.ipdWardAssign", permission: "ipd.nursing.assign", group: "wards" },
   { to: "/ipd/ward/cockpit", label: "nav.ipdWardCockpit", permission: "ipd.nursing.assign", group: "wards" },
+  { to: "/ipd/ward/safety", label: "nav.ipdWardSafety", permission: "ipd.nursing.assign", group: "wards" },
   // E4.2 (#734) — the doctor's inpatient rounds; path and permission match `ipdManifest.menu`.
   { to: "/ipd/rounds", label: "nav.ipdRounds", permission: "ipd.round.sign", group: "wards" },
   // E4.3 (#735) — the ward MAR chart and the inpatient pharmacy desk; paths and permissions match `ipdManifest.menu`.
@@ -1172,6 +1174,13 @@ const ipdWardCockpitRoute = createRoute({
   path: "/ipd/ward/cockpit",
   validateSearch: wardSearch,
   component: function IpdWardCockpitPage() { const { ward } = ipdWardCockpitRoute.useSearch(); return <IpdWardCockpit key={ward ?? "none"} {...(ward === undefined ? {} : { ward })} />; },
+});
+/** WM-2 (#983) — the in-charge's ward safety, crash cart, stock and quality screen (1440). */
+const ipdWardSafetyRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/ward/safety",
+  validateSearch: wardSearch,
+  component: function IpdWardSafetyPage() { const { ward } = ipdWardSafetyRoute.useSearch(); return <IpdWardSafetyScreen key={ward ?? "none"} {...(ward === undefined ? {} : { ward })} />; },
 });
 
 /** E4.1 (#733) — my shift on the nurse's phone (spec §4.9 D1), 390 px first. */
@@ -2513,7 +2522,7 @@ export const router = createRouter({
     canteenBedRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, erDeskRoute, erBoardRoute, erTriageRoute, erPatientRoute, erMlcRoute, erBillRoute, erCodesRoute, erMciRoute, icuHallsRoute, icuStationRoute, icuBedRoute, icuChartRoute, icuMyBedsRoute, icuNightRoute, icuRequestsRoute, icuInchargeRoute, ipdBedsRoute, ipdAdmitRoute, ipdBillRoute, ipdBillDeskRoute, ipdTpaRoute, ipdFamilyCallbacksRoute, ipdRoundsRoute, ipdRoundPatientRoute, ipdMarRoute, ipdPharmacyRoute, ipdNarcoticsRoute, ipdHandoversRoute, ipdWardRoute, ipdWardAssignRoute, ipdWardCockpitRoute, ipdMyShiftRoute, ipdDischargeRoute, ipdPassesRoute, passesScanRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, erDeskRoute, erBoardRoute, erTriageRoute, erPatientRoute, erMlcRoute, erBillRoute, erCodesRoute, erMciRoute, icuHallsRoute, icuStationRoute, icuBedRoute, icuChartRoute, icuMyBedsRoute, icuNightRoute, icuRequestsRoute, icuInchargeRoute, ipdBedsRoute, ipdAdmitRoute, ipdBillRoute, ipdBillDeskRoute, ipdTpaRoute, ipdFamilyCallbacksRoute, ipdRoundsRoute, ipdRoundPatientRoute, ipdMarRoute, ipdPharmacyRoute, ipdNarcoticsRoute, ipdHandoversRoute, ipdWardRoute, ipdWardAssignRoute, ipdWardCockpitRoute, ipdWardSafetyRoute, ipdMyShiftRoute, ipdDischargeRoute, ipdPassesRoute, passesScanRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute, attendanceLinksRoute,
       // GO-LIVE SCREENS — +1, `/admin/workflows`. `caddyfile-parity.test.ts` pins the count.

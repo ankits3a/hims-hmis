@@ -20,6 +20,7 @@ import { IpdCounterController } from "./counter.controller";
 import { IpdEmarController } from "./emar.controller";
 import { IpdCopilotController } from "./copilot.controller";
 import { IpdTpaController } from "./tpa.controller";
+import { IpdWardSafetyController } from "./ward-safety.controller";
 
 /**
  * E1.1 (#718) — the inpatient module. Mounts the bed routes and registers the bed board's live topic. Guards are
@@ -45,7 +46,7 @@ class IpdRealtimeRegistrar implements OnModuleInit {
 
 @Module({
   imports: [RealtimeModule],
-  controllers: [IpdBedsController, IpdAdmissionsController, IpdChargesController, IpdPayerController, IpdTransfersController, IpdBillDeskController, IpdDischargeController, IpdFamilyController, IpdNursingController, IpdRoundsController, IpdEmarController, IpdCopilotController, IpdCounterController, IpdTpaController],
+  controllers: [IpdBedsController, IpdAdmissionsController, IpdChargesController, IpdPayerController, IpdTransfersController, IpdBillDeskController, IpdDischargeController, IpdFamilyController, IpdNursingController, IpdRoundsController, IpdEmarController, IpdCopilotController, IpdCounterController, IpdTpaController, IpdWardSafetyController],
   providers: [IpdRealtimeRegistrar],
 })
 export class IpdModule {}

@@ -1891,6 +1891,13 @@
       "when": 1792594030586,
       "tag": "0270_icu_core",
       "breakpoints": true
+    },
+    {
+      "idx": 270,
+      "version": "7",
+      "when": 1792594090586,
+      "tag": "0271_ipd_ward_safety",
+      "breakpoints": true
     }
   ]
 }

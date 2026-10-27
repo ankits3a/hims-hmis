@@ -21,7 +21,7 @@ import { withTx } from "../../src/kernel/db/client";
 import { pharmacyManifest } from "../../src/modules/pharmacy";
 import { setPin } from "../../src/kernel/auth/identity";
 import { addMedicine, addSalt } from "../../src/modules/formulary";
-import { createStore, postMovement, registerItem } from "../../src/modules/materials";
+import { createStore, materialsManifest, postMovement, registerItem } from "../../src/modules/materials";
 import { printBand } from "../../src/modules/ipd";
 import * as schema from "../../src/kernel/db/schema";
 import type { Actor } from "@hmis/contracts";
@@ -633,6 +633,100 @@ export async function mkWardWorld(db: Db): Promise<WardWorld> {
         idempotencyKey: randomUUID(), patientId, bedId, consultantId: w.doctor.id, isolation: "none", mlc: false,
       }, { now: at });
       return { admissionId: done.admissionId, patientId };
+    },
+  };
+}
+
+// ═══ WM-2 (#983) — ward safety, stock and quality: the eMAR world plus the ward's in-charge, a student and an agency nurse
+// with PINs, the nursing superintendent, the central store, and ward-stock items priced like the pharmacy counter's ═══
+
+export type WardSafetyWorld = EmarWorld & {
+  /** ward_nurse + ward_incharge: par, indent, waivers, crash-cart register, the cockpit, the quality read. */
+  incharge: Actor;
+  /** student_nurse with `ipd.emar.give` (a hospital may grant it): never the only signer of a high-alert dose. */
+  student: Actor;
+  /** ward_nurse + agency_nurse: no narcotic keys, no narcotic count. */
+  agency: Actor;
+  /** nursing_superintendent: sees ward incidents and the quality read. */
+  superintendent: Actor;
+  /** nursing_supervisor: the nursing fallback chain (told of missed restraint checks). */
+  supervisor: Actor;
+  studentPin: { username: string; pin: string };
+  agencyPin: { username: string; pin: string };
+  /** The central store the ward indents on. */
+  centralStoreId: string;
+  /** A materials item with a pharmacy sale item (priced by the counter's rule); no stock anywhere. */
+  wardItem(name: string, opts?: { cls?: "drug" | "consumable" }): Promise<{ itemId: string }>;
+  /** A batch of `itemId` with `qty` units at `storeId`, expiring on `expiry` (YYYY-MM-DD). */
+  lot(itemId: string, storeId: string, qty: number, expiry: string): Promise<string>;
+};
+
+export async function mkWardSafetyWorld(db: Db): Promise<WardSafetyWorld> {
+  const w = await mkEmarWorld(db);
+  const registry = new ModuleRegistry();
+  registry.install(authManifest);
+  registry.install(patientsManifest);
+  registry.install(ipdManifest);
+  registry.install(pharmacyManifest);
+  registry.install(materialsManifest);
+  await syncPermissions(db, registry);
+  const nurseStrings = [
+    "ipd.nursing.view", "ipd.vitals.record", "ipd.assessment.record", "ipd.handover.shift", "ipd.beds.view", "ipd.emar.view", "ipd.emar.give",
+    "ipd.ward_stock.use",
+  ];
+  const grants: Record<string, string[]> = {
+    ward_nurse: nurseStrings,
+    ward_incharge: [...nurseStrings, "ipd.nursing.assign", "ipd.ward.quality", "materials.stock.receive"],
+    student_nurse: ["ipd.nursing.view", "ipd.vitals.record", "ipd.beds.view", "ipd.emar.view", "ipd.emar.give"],
+    agency_nurse: ["ipd.nursing.view"],
+    nursing_supervisor: [...nurseStrings, "ipd.ews.respond", "ipd.nursing.assign"],
+    nursing_superintendent: ["ipd.nursing.view", "ipd.nursing.assign", "ipd.ward.quality"],
+    doctor: ["ipd.restraint.order", "ipd.round.sign", "ipd.nursing.view", "ipd.ews.respond"],
+  };
+  for (const [role, perms] of Object.entries(grants)) {
+    await ensureRole(db, role);
+    for (const p of perms) await grantPermissionToRole(db, registry, role, p);
+  }
+  const person = async (username: string, fullName: string, roleKeys: string[], pin?: string): Promise<Actor> => {
+    const u = await mkUser(db, username, roleKeys);
+    await db.update(schema.users).set({ fullName }).where(eq(schema.users.id, u.id));
+    if (pin !== undefined) await setPin(db, u.id, pin);
+    return u.actor;
+  };
+  const HEAD: Actor = { type: "user", id: "01HMATERIALSHEAD00000000001" };
+  const { resourceId: centralStoreId } = await withTx(db, (tx) => createStore(tx, HEAD, { code: "CENTRAL", name: "Central store" }));
+  let n = 0;
+  return {
+    ...w,
+    incharge: await person("ws.incharge", "Esther Lal", ["ward_nurse", "ward_incharge"]),
+    student: await person("ws.student", "Divya Rani", ["student_nurse"], "2468"),
+    agency: await person("ws.agency", "Kavita Joshi", ["ward_nurse", "agency_nurse"], "1122"),
+    superintendent: await person("ws.super", "Mary Thomas", ["nursing_superintendent"]),
+    supervisor: await person("ws.supervisor", "Farida Khan", ["nursing_supervisor"]),
+    studentPin: { username: "ws.student", pin: "2468" },
+    agencyPin: { username: "ws.agency", pin: "1122" },
+    centralStoreId,
+    wardItem: async (name, opts = {}) => {
+      n += 1;
+      const itemId = await withTx(db, async (tx) => (await registerItem(tx, HEAD, {
+        code: `WS-${String(n)}`, name, class: opts.cls ?? "consumable", baseUom: "unit", batchTracked: true, gstRateBps: 1200,
+        uoms: [{ uom: "box", toBaseMultiplier: 10, isPurchaseUom: true, isIssueUom: true }],
+      } as never)).itemId);
+      const serviceId = newId();
+      await db.insert(schema.services).values({ id: serviceId, code: `PH-WS-${String(n)}`, name, category: "pharmacy", createdBy: HEAD.id, updatedBy: HEAD.id } as never);
+      await db.insert(schema.pharmacySaleItems).values({ itemId, serviceId, createdBy: HEAD.id, updatedBy: HEAD.id });
+      return { itemId };
+    },
+    lot: async (itemId, storeId, qty, expiry) => {
+      n += 1;
+      const batchId = newId();
+      await db.insert(schema.stockBatches).values({
+        id: batchId, itemId, batchNo: `WL-${String(n)}`, expiryDate: expiry, mrpPaise: 500, mrpUom: "unit", landedCostPaise: 200, ownership: "owned", createdBy: HEAD.id,
+      } as never);
+      await withTx(db, (tx) => postMovement(tx, HEAD, {
+        resourceId: storeId, batchId, qtyDelta: qty, reason: "grn", refType: "test", refId: batchId, occurredAt: new Date("2026-01-01T00:00:00Z"),
+      }));
+      return batchId;
     },
   };
 }

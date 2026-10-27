@@ -20,7 +20,9 @@ import "./ipd-ward-desk.css";
  * reassigned with a reason (both nurses are told). Sealed patients show no bed text (the server's identity rule).
  */
 
-export function WardDeskHeader({ cockpit, active, onPick }: { cockpit: IpdWardCockpit; active: "cockpit" | "assign"; onPick: (id: string) => void }): React.ReactElement {
+export function WardDeskHeader({ cockpit, active, onPick }: {
+  cockpit: Pick<IpdWardCockpit, "ward" | "wards"> & { shift?: IpdWardCockpit["shift"] }; active: "cockpit" | "assign" | "safety"; onPick: (id: string) => void;
+}): React.ReactElement {
   const { t } = useTranslation();
   const wardId = cockpit.ward?.id;
   return (
@@ -29,10 +31,11 @@ export function WardDeskHeader({ cockpit, active, onPick }: { cockpit: IpdWardCo
       <nav className="ipdw-nav" aria-label={t("ipdWard.title")}>
         <Link to="/ipd/ward/cockpit" search={wardId === undefined ? {} : { ward: wardId }} className="ipdw-tab" aria-current={active === "cockpit" ? "page" : undefined}>{t("ipdWard.tab.cockpit")}</Link>
         <Link to="/ipd/ward/assign" search={wardId === undefined ? {} : { ward: wardId }} className="ipdw-tab" aria-current={active === "assign" ? "page" : undefined}>{t("ipdWard.tab.assign")}</Link>
+        <Link to="/ipd/ward/safety" search={wardId === undefined ? {} : { ward: wardId }} className="ipdw-tab" aria-current={active === "safety" ? "page" : undefined}>{t("ipdWard.tab.safety")}</Link>
       </nav>
       <span className="grow" />
       {cockpit.wards.length > 1 ? <WardPicker wards={cockpit.wards} value={cockpit.ward?.id ?? null} onChange={onPick} /> : null}
-      <span className="mono dim">{t(`ipdNursing.shift.${cockpit.shift.key}`)} · {fmtIst(cockpit.shift.startsAt)}–{fmtIst(cockpit.shift.endsAt)}</span>
+      {cockpit.shift === undefined ? null : <span className="mono dim">{t(`ipdNursing.shift.${cockpit.shift.key}`)} · {fmtIst(cockpit.shift.startsAt)}–{fmtIst(cockpit.shift.endsAt)}</span>}
     </header>
   );
 }

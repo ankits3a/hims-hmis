@@ -1,6 +1,9 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { IPD_OVERLOAD_FACTOR } from "@hmis/contracts";
-import { ipdWardRatioBreaches, patients, resources, users } from "../../kernel/db/schema";
+import { ipdRestraints, ipdWardRatioBreaches, patients, resources, users } from "../../kernel/db/schema";
+import { crashCartsOf } from "./ward-cart";
+import { linesOf } from "./ward-lines";
+import { carePlansOf, restraintViews } from "./ward-safety";
 import { usersHoldingRole } from "../../kernel/workflow/roles";
 import { whoIsAt } from "../roster";
 import { requireIpdPermission } from "./admission-core";
@@ -119,6 +122,33 @@ export async function readWardCockpit(db: Db, actor: Actor, opts: { wardId?: str
   for (const l of loads.filter((x) => x.overloaded)) needsYou.push({ kind: "overloaded", bedId: null, userId: l.userId, text: `${l.initials}: ${String(l.points)} points` });
   for (const b of station.beds.filter((x) => x.next?.overdue === true)) {
     needsYou.push({ kind: "overdue", bedId: b.bedId, userId: null, text: `${b.code ?? "Bed"}: ${b.next!.kind} overdue` });
+  }
+
+  // WM-2 (#983) — the safety items: an overdue care check or restraint check, a restraint due its doctor's review within
+  // two hours (or lapsed), a crash cart not checked this shift or needing a restock, a line past its due-removal.
+  const codeOf = new Map(beds.filter((b) => b.admissionId !== null).map((b) => [b.admissionId!, { bedId: b.bedId, code: b.code }] as const));
+  const where = (admissionId: string) => codeOf.get(admissionId) ?? { bedId: null, code: null };
+  const admitted = [...codeOf.keys()];
+  for (const p of (await carePlansOf(db, admitted, now)).filter((x) => x.overdue)) {
+    const b = where(p.admissionId);
+    needsYou.push({ kind: "care_check", bedId: b.bedId, userId: null, text: `${b.code ?? "Bed"}: ${p.kind === "fall" ? "fall" : "turn"} check overdue` });
+  }
+  const restraintRows = admitted.length === 0 ? [] : await db.select().from(ipdRestraints)
+    .where(and(inArray(ipdRestraints.admissionId, admitted), inArray(ipdRestraints.status, ["ordered", "active", "lapsed"])));
+  for (const r of await restraintViews(db, restraintRows, now, new Map())) {
+    const b = where(r.admissionId);
+    if (r.checkOverdue) needsYou.push({ kind: "restraint_check", bedId: b.bedId, userId: null, text: `${b.code ?? "Bed"}: restraint check overdue` });
+    if (r.status === "lapsed" || new Date(r.reviewDueAt).getTime() - now.getTime() <= 2 * 3_600_000) {
+      needsYou.push({ kind: "restraint_review", bedId: b.bedId, userId: null, text: `${b.code ?? "Bed"}: restraint ${r.status === "lapsed" ? "lapsed" : "review due"}` });
+    }
+  }
+  for (const c of await crashCartsOf(db, wardId, now)) {
+    if (c.status === "needs_restock") needsYou.push({ kind: "crash_cart", bedId: null, userId: null, text: `Crash cart ${c.code}: restock and reseal` });
+    else if (!c.checkedThisShift) needsYou.push({ kind: "crash_cart", bedId: null, userId: null, text: `Crash cart ${c.code}: check due` });
+  }
+  for (const l of (await linesOf(db, admitted, now)).filter((x) => x.overdue)) {
+    const b = where(l.admissionId);
+    needsYou.push({ kind: "line_due", bedId: b.bedId, userId: null, text: `${b.code ?? "Bed"}: ${l.kind.replace("_", " ")} due out` });
   }
 
   const cands = await candidatesFor(db, wardId, now);

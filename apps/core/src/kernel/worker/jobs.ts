@@ -36,7 +36,7 @@ import { sweepOverdueQa } from "../../modules/aerb";
 import { routingChooserFor, runAliasJob, runDeskRoutingLearning, runFlowLearning } from "../../modules/opd";
 import { syncAttendance } from "../../modules/attendance";
 import {
-  ipdAttendantRecipient, ipdTemplateRegistrations, lapseBedReservations, postNightlyIpdCharges, runIpdBillDeskNightly, sweepIpdNursing, sweepWardShifts,
+  ipdAttendantRecipient, ipdTemplateRegistrations, lapseBedReservations, postNightlyIpdCharges, runIpdBillDeskNightly, sweepIpdNursing, sweepWardSafety, sweepWardShifts,
   sweepIpdEmar, sweepIpdRoundsClock,
 } from "../../modules/ipd";
 import { sweepTasks } from "../../modules/tasks";
@@ -854,12 +854,14 @@ export function registerAllJobs(
     // E4.3 (#735): the eMAR's minute sweep rides this job (no job, no pool client of its own): it tops up the dose
     // schedule, marks a dose past its window MISSED with one notice per dose, and nudges unsigned verbal orders. Its own
     // try: a failing eMAR sweep never stops the nursing clock. WM-1 (#982): the ward's shift maps ride it too (carry-over
-    // at shift start, unassigned beds, the ratio), one transaction per ward, in its own try.
+    // at shift start, unassigned beds, the ratio), one transaction per ward, in its own try. WM-2 (#983): the restraint
+    // step (a missed 2-hourly check alerts once; an order 24 hours without review lapses), one transaction per episode.
     run: async (now) => {
       await runIfModuleOn("sweepIpdNursing", "ipd", async () => {
         await sweepIpdNursing(db, now);
         try { await sweepIpdEmar(db, now); } catch (e) { emarLog.error(`sweepIpdEmar failed: ${e instanceof Error ? e.message : String(e)}`); }
         try { await sweepWardShifts(db, now); } catch (e) { wardLog.error(`sweepWardShifts failed: ${e instanceof Error ? e.message : String(e)}`); }
+        try { await sweepWardSafety(db, now); } catch (e) { wardLog.error(`sweepWardSafety failed: ${e instanceof Error ? e.message : String(e)}`); }
       });
     },
   });

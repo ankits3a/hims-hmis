@@ -3,6 +3,7 @@ import { IpdIdSchema, IpdInstantSchema, IpdNoteSchema, IpdProvenanceSchema, ipdI
 import { IpdCopilotBySchema, IpdCopilotRecordSchema, IpdCopilotSourceSchema, IpdDraftProvenanceSchema, IpdDraftStampSchema } from "./copilot";
 import { IPD_CONSCIOUSNESS, IPD_EWS_BANDS, IPD_EWS_KINDS } from "./ews";
 import { IpdNurseRefSchema } from "./nurse-ward";
+import { IpdLineViewSchema } from "./ward-safety";
 
 export * from "./ews";
 export { IPD_LINE_DEVICE_KINDS } from "./intents-ward";
@@ -110,13 +111,14 @@ export type IpdNurseStation = z.infer<typeof IpdNurseStationSchema>;
 
 /** One line of "my shift" (board D1), in time order. */
 export const IpdShiftItemSchema = z.object({
-  kind: z.enum(["ews", "vitals", "assessment", "handover"]),
+  /** WM-2 (#983): `care_check` (a fall / pressure care plan's timed check; refId = the plan) and `restraint_check` (refId = the restraint). */
+  kind: z.enum(["ews", "vitals", "assessment", "handover", "care_check", "restraint_check"]),
   admissionId: IpdIdSchema,
   bedCode: z.string().nullable(),
   name: z.string(),
   dueAt: IpdInstantSchema,
   overdue: z.boolean(),
-  /** ews: the alert; handover: the handover id. */
+  /** ews: the alert; handover: the handover id; care_check: the care plan; restraint_check: the restraint. */
   refId: IpdIdSchema.nullable(),
   band: z.enum(IPD_EWS_BANDS).nullable(),
 });
@@ -135,6 +137,8 @@ export const IpdMyShiftSchema = z.object({
    * the live map gives this nurse (or her student); `none` = a live map gives her no bed.
    */
   assignment: z.enum(["ward", "mine", "none"]).optional(),
+  /** #1007 (WM-2): the lines in for these patients (take one out; name it in a line infection). */
+  lines: z.array(IpdLineViewSchema).optional(),
 });
 export type IpdMyShift = z.infer<typeof IpdMyShiftSchema>;
 

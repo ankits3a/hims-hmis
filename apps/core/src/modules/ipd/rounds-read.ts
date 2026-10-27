@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, inArray, lt, or } from "drizzle-orm";
 import { istDayString, istDayWindow } from "../../kernel/approvals/cumulative";
-import { ipdAdmissions, ipdConsults, ipdDischarges, ipdOrders, ipdRounds, resources, services } from "../../kernel/db/schema";
+import { ipdAdmissions, ipdConsults, ipdDischarges, ipdOrders, ipdRestraints, ipdRounds, resources, services } from "../../kernel/db/schema";
 import { getPatientSummaries, listAllergies } from "../patients";
 import { holdsPermission, readAdmission, requireIpdPermission } from "./admission-core";
 import { IPD_PLACED_STATES, admissionPlace } from "./admission-place";
@@ -16,6 +16,8 @@ import { IpdRefusal } from "./errors";
 import { drugFactsOf } from "./orders";
 import { IPD_DISCHARGE_DECLARE, IPD_ORDER_PLACE, IPD_ROUND_SIGN } from "./permissions";
 import { consultantIdsAmong, mayCosign, onTeam, treatingTeamOf, unitsOn } from "./rounds-team";
+import { linesOf } from "./ward-lines";
+import { restraintViews } from "./ward-safety";
 import type {
   Actor, IpdAdmissionState, IpdConsultView, IpdCosignItem, IpdOrderView, IpdRoundIdentity, IpdRoundPatient, IpdRoundView, IpdRoundsList,
   IpdRoundsRow, IpdRoundsWhy,
@@ -249,6 +251,11 @@ export async function readRoundPatient(db: Db, actor: Actor, admissionId: string
     vitals: null,
     rounds: rounds.map((r) => roundView(r, names)),
     orders: [...orders].sort((x, y) => active(x) - active(y)).map((o) => orderView(o, names, testNames)),
+    // WM-2 (#983): every line in, with today's "still needed?" (a sealed patient keeps the safety facts).
+    lines: await linesOf(db, [a.id], now),
+    restraints: await restraintViews(db, await db.select().from(ipdRestraints)
+      .where(and(eq(ipdRestraints.admissionId, a.id), inArray(ipdRestraints.status, ["ordered", "active", "lapsed"]))), now,
+    new Map([[a.id, { bedCode: identity.sealed ? null : (place?.bedCode ?? null), name: identity.name }]])),
     consults: consults.map((c): IpdConsultView => ({
       consultId: c.id, consultantId: c.consultantId, consultantName: names.get(c.consultantId) ?? c.consultantId, question: c.question,
       urgency: c.urgency as "routine" | "urgent", status: c.status as "open" | "closed",

@@ -93,6 +93,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/ipd/ward` | `apps/web/src/screens/ipd-ward` |
 | `/ipd/ward/assign` | `apps/web/src/screens/ipd-ward-assign` |
 | `/ipd/ward/cockpit` | `apps/web/src/screens/ipd-ward-cockpit` |
+| `/ipd/ward/safety` | `apps/web/src/screens/ipd-ward-safety` |
 | `/lab/bench` | `apps/web/src/screens/lab-bench` |
 | `/lab/collection` | `apps/web/src/screens/lab-collection` |
 | `/lab/counter` | `apps/web/src/screens/lab-desk` |

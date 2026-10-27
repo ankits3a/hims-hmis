@@ -1956,6 +1956,18 @@ occupied bed has one registered nurse on the published map; a nurse hands her ow
 The ratio (patients per nurse, by unit, day and night; a ventilated patient needs her own nurse) is checked against a
 configurable table and a breach tells the supervisor once a shift. It never blocks an admission.
 
+**Ward safety, stock and quality (WM-2 #983, decisions 0089 and 0091, built 2026-10-27, awaiting owner review).**
+`ipd.restraint.order` (order a restraint and review it; the order lapses 24 hours after the doctor's last sign) is held by
+`doctor`. `ipd.ward_stock.use` (record a ward-stock item on a patient: used, issued for the patient, wasted with a
+reason, or refused unopened; the charge follows 0089 and 0091) is held by `ward_nurse` and `nursing_supervisor`.
+`ipd.ward.quality` (the ward's monthly quality read and the restraint register) is held by `ward_incharge`,
+`nursing_supervisor` and `nursing_superintendent`. The ward's par top-up is a materials indent and needs
+`materials.stock.receive`, which the materials table grants (not seeded for the in-charge yet). One role is seeded: `agency_nurse` (held beside `ward_nurse`, with
+`ipd.nursing.view`), who never takes the narcotic keys and never counts or signs a narcotic count. The safety round,
+care checks, restraint checks, lines and the crash-cart check ride `ipd.assessment.record`; the crash-cart register and
+wastage waivers ride `ipd.nursing.assign`. A student never gives a high-alert or narcotic dose without a registered
+nurse's PIN.
+
 **IPD rounds (E4.2, decision 0072, built 2026-10-13, awaiting owner review).** `ipd.round.sign` and `ipd.order.place` are
 held by `doctor` — the Rounds list at `/ipd/rounds` (own, unit and consulted patients, boarded ones marked with their
 ward), the round page (sign a S/O/A/P round; a resident's round waits for the consultant's co-sign), cross-consults, and

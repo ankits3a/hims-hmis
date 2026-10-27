@@ -22,6 +22,7 @@ import { ageInYears } from "./bed-rules";
 import { bedWithWard } from "./beds";
 import { checkSbarDraftForGive } from "./copilot-drafts";
 import { assignedNurseOf } from "./nurse-ward";
+import { syncCarePlansIn } from "./ward-safety";
 import { IpdError, IpdRefusal } from "./errors";
 import { EWS_ACK_KINDS } from "./goals/goal-events";
 import {
@@ -201,8 +202,10 @@ export async function recordNursingAssessment(db: Db, actor: Actor, raw: unknown
       },
       actor, correlationId: a.id, patientId: a.patientId, occurredAt: at,
     }));
-    // SEAM (task engine): Morse ≥ 45 / Braden ≤ 12 reassessment tasks wait for a nursing task kind (owed, MAP.md).
-    return { assessmentId, lateEntry, tasksRaised: 0 };
+    // WM-2 (#983): Morse at or over the ward's threshold (45) / Braden at or under it (12) starts a care plan with timed
+    // checks (`ward-safety.ts`); `tasksRaised` counts the plans started.
+    const plans = await syncCarePlansIn(tx, actor, a, input.morse, input.braden, at);
+    return { assessmentId, lateEntry, tasksRaised: plans.filter((p) => p.change === "started").length };
   }), at);
 }
 
