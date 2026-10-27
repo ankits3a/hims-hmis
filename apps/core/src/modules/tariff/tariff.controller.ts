@@ -172,6 +172,8 @@ export class TariffController {
   @Post("services/switch-on")
   @HttpCode(200) // an action, not a creation
   async switchOnRoute(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<SwitchOnResult> {
+    // Decision 0085 invariant 1 — switching on IPD services is the inpatient go-live's act: no answer while `ipd` is off.
+    if (!isModuleOn("ipd")) throw new NotFoundException();
     const b = parsed(z.object({ serviceIds: z.array(z.string().min(1)).min(1).max(SWITCH_ON_MAX) }), body);
     try {
       return await switchOnServices(this.db, actor, b.serviceIds);

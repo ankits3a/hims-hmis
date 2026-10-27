@@ -2,7 +2,9 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { absentUserIds, dutiesOf } from "../roster";
 import { tasks, users } from "../../kernel/db/schema";
 import { usersHoldingRole } from "../../kernel/workflow/roles";
-import { skillRoles } from "./kinds";
+import { skillRoles, taskKind } from "./kinds";
+import type { TaskEligibility } from "./kinds";
+import type { TaskRow } from "./engine";
 import type { Db, Tx } from "../../kernel/db/client";
 
 /**
@@ -65,11 +67,33 @@ export async function openLoad(exec: Db | Tx, userIds: readonly string[]): Promi
   return load;
 }
 
-/** The worker the next task of this skill goes to, or null (the task stays in the pool). */
+/** HK-1 (#973) — the owning kind's answer to who may hold this task, or null (anyone with the skill). */
+export async function eligibilityOf(exec: Db | Tx, row: TaskRow, now: Date): Promise<TaskEligibility | null> {
+  const decl = taskKind(row.kind);
+  return decl?.eligible === undefined ? null : decl.eligible(exec, row, now);
+}
+
+/** HK-1 (#973) — true while new tasks of this kind wait in the pool for their group instead of going to one person. */
+export async function poolOnly(exec: Db | Tx, kind: string, now: Date): Promise<boolean> {
+  const decl = taskKind(kind);
+  return decl?.poolOnly === undefined ? false : decl.poolOnly(exec, now);
+}
+
+/**
+ * The worker the next task of this skill goes to, or null (the task stays in the pool). With an eligibility (HK-1), only
+ * those people, and among them the preferred group first.
+ */
 export async function pickWorker(
-  exec: Db | Tx, skill: string, at: Date, exclude: readonly string[] = [],
+  exec: Db | Tx, skill: string, at: Date, exclude: readonly string[] = [], eligibility: TaskEligibility | null = null,
 ): Promise<OnDutyWorker | null> {
-  const onDuty = (await onDutyForSkill(exec, skill, at)).filter((w) => !exclude.includes(w.userId));
+  let onDuty = (await onDutyForSkill(exec, skill, at)).filter((w) => !exclude.includes(w.userId));
+  if (eligibility !== null) {
+    const allowed = new Set(eligibility.userIds);
+    onDuty = onDuty.filter((w) => allowed.has(w.userId));
+    const preferred = new Set(eligibility.preferred ?? []);
+    const first = onDuty.filter((w) => preferred.has(w.userId));
+    if (first.length > 0) onDuty = first;
+  }
   if (onDuty.length === 0) return null;
   const load = await openLoad(exec, onDuty.map((w) => w.userId));
   onDuty.sort((a, b) =>

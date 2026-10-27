@@ -272,64 +272,44 @@ Read from the goal ledger (`node dist/scripts/ipd-goal-ledger.js --days 14`), pe
 
 ## 11. Merging the IPD code to production: migration numbers
 
-The IPD work sits in about 30 pull requests, each built on the ones before it. Each adds at most one database
-migration, and migration numbers must be unique and in order on `main`. **The numbers in each PR today are
-provisional**: each PR takes the next free number at the moment it merges.
+The IPD/ER work no longer merges as about 30 separate pull requests. It is rebuilt as **one train on main's tip,
+dark behind `HMIS_MODULES_ON`** (decision 0085), in two PRs. The per-lane PRs (#745–#797 and the ER lanes) are
+superseded by the train and are not merged one by one. `lane/ipd-stage` (#776) is the staging integration and is
+**never** merged.
 
 Rules:
 
-- Merge **one PR at a time, in the order below**. Never two at once.
-- `lane/ipd-stage` (#776) is the staging integration and is **never** merged.
+- Merge **one PR at a time, in the order below**. Never two at once, and never during a deploy.
 - Every merge is a production deploy. The owner says yes to each, outside OPD hours.
+- Production stays dark after both merges: `HMIS_MODULES_ON` is empty there until cutover day (§5).
 
-For each PR, in its own lane (`/opt/hmis-lanes/<lane>/hmis`):
-
-```bash
-git fetch origin && git merge origin/main
-python3 tools/renumber-lane-migrations.py            # report: what it would rename
-python3 tools/renumber-lane-migrations.py --apply    # rename the files and rewrite the journal
-git diff --diff-filter=A --name-only origin/main HEAD -- apps/core/drizzle/   # must list only this PR's own migration
-```
-
-Then drop the lane's test databases (the script prints how), typecheck, commit, push, wait for CI to go green,
-stage it, and merge only on the owner's yes. The next PR in the list starts only after this one is on `main`.
-
-| Order | PR | Lane | Its own migration |
+| Order | PR | Lane | Its migrations |
 |---|---|---|---|
-| 1 | #745 | ipd-intents | none |
-| 2 | #746 | ipd-goals | none |
-| 3 | #747 | ipd-tasks | `tasks_engine` |
-| 4 | #748 | ipd-beds | `ipd_beds` |
-| 5 | #750 | ipd-housekeeping | `task_source_ref` |
-| 6 | #749 | ipd-bmw | `bmw` |
-| 7 | #752 | ipd-linen | `linen` |
-| 8 | #754 | ipd-maintenance | `maintenance_tickets` |
-| 9 | #751 | ipd-admit | `ipd_admit` |
-| 10 | #755 | ipd-passes | `passes` |
-| 11 | #757 | ipd-transport | `transport_requests` |
-| 12 | #756 | ipd-charges | `ipd_charges` |
-| 13 | #758 | ipd-payer | `ipd_payer` |
-| 14 | #759 | ipd-transfer | `ipd_transfer` |
-| 15 | #762 | ipd-discharge | `ipd_discharge` |
-| 16 | #760 | ipd-billdesk | `ipd_billdesk` |
-| 17 | #764 | ipd-family | `ipd_family` |
-| 18 | #767 | ipd-flow | `ipd_bed_flow` |
-| 19 | #775 | ipd-suppbill | `ipd_suppbill` |
-| 20 | #782 | ipd-nursing | `ipd_nursing` |
-| 21 | #783 | ipd-diet | `diet` |
-| 22 | #786 | ipd-rounds | `ipd_rounds` |
-| 23 | #788 | ipd-orderbill | `ipd_orderbill` |
-| 24 | #790 | ipd-emar | `ipd_emar` |
-| 25 | #791 | ipd-drugbill | `ipd_drugbill` |
-| 26 | #793 | ipd-copilot | `ipd_copilot` |
-| 27 | #795 | ipd-allergycard | none |
-| 28 | #796 | ipd-ipcounter | none |
-| 29 | #797 | ipd-narcotic | `ipd_narcotic_register` |
-| 30 | this runbook's PR | ipd-cutover | none |
+| 1 | #966 (B0) | ipd-seams | none: the module switch, contracts and seams |
+| 2 | #967 (B1–B6) | ipd-train | 37 migrations, `0225_tasks_engine` … `0261_er_copilot` (journal idx 224–260), one head snapshot `meta/0261_snapshot.json` |
 
-The order is the one `lane/ipd-stage` already runs on staging (its migrations 0205 to 0229), so production gets the
-same sequence staging has tested. A PR opened after this list was written joins it at the end, in the order it was
-staged. After the last merge, the check (§1) is run on production; the data items FAIL until cutover day, and that is
+After #966 squash-merges, `origin/main` is merged into `lane/ipd-train` (merge, never rebase), CI runs green, the
+train is staged, and #967 merges only on the owner's yes.
+
+**Any other PR that adds a migration merges after the train and renumbers after `0261`.** Its file takes the next free
+number at the moment it merges (main's file numbers run one ahead of the journal idx, because there is no `0205`),
+and its journal `when` must be above the train's last (`1792593490586`, `0261_er_copilot`). drizzle applies a
+migration only when its `when` is above the last one applied, so a lower `when` is skipped on production in silence.
+
+Two open PRs already carry a migration numbered `0225`:
+
+| PR | Its migration today | Its `when` | If it merges after the train |
+|---|---|---|---|
+| #945 | `0225_formulary_reference_interactions` | 1792732783212 | renumber to the next free number after `0261`; its `when` is already above the train's |
+| #947 | `0225_opd_medicine_abbreviations` | 1792733004171 | the same, after `0261` (or after #945's, whichever merged first) |
+
+If either merges **before** the train, the train is the one that moves: merge `origin/main` into `lane/ipd-train`,
+shift the train's 37 files up by one, **raise every train `when` above that PR's**, regenerate the head snapshot
+(`drizzle-kit generate` with a dummy `DATABASE_URL`, keep only the snapshot, drop the probe `.sql` and its journal
+entry), drop the lane test databases and re-run CI. Do not apply `tools/renumber-lane-migrations.py` to the train: it
+names files by idx and would clash with main's numbers.
+
+After the train merges, the check (§1) is run on production; the data items FAIL until cutover day, and that is
 expected.
 
 ## 12. Executed — rehearsal and cutover log

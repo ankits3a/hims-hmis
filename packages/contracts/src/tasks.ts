@@ -35,6 +35,8 @@ export type TaskEventSource = (typeof TASK_EVENT_SOURCES)[number];
 export const TASK_ACTS = [
   "raised", "merged", "assigned", "redispatched", "accepted", "started", "done", "verified",
   "cancelled", "returned", "escalated",
+  // HK-1 (#973) — a check failed: the task goes back to work with the reason.
+  "rejected",
 ] as const;
 export type TaskAct = (typeof TASK_ACTS)[number];
 
@@ -75,6 +77,9 @@ export const completeTaskInput = z.object({ ...taskRef, proof: taskProofSchema.o
 export type CompleteTaskInput = z.infer<typeof completeTaskInput>;
 export const cancelTaskInput = z.object({ ...taskRef, reason }).strict();
 export type CancelTaskInput = z.infer<typeof cancelTaskInput>;
+/** HK-1 (#973) — a failed check: the reason is required, and the task goes back to work. */
+export const rejectTaskInput = z.object({ ...taskRef, reason }).strict();
+export type RejectTaskInput = z.infer<typeof rejectTaskInput>;
 export const returnTaskInput = z.object({ ...taskRef, reason: reason.optional() }).strict();
 export type ReturnTaskInput = z.infer<typeof returnTaskInput>;
 export const cancelPlaceInput = z.object({ placeResourceId: id, reason }).strict();
@@ -102,6 +107,7 @@ export const TASK_REFUSALS = {
   verifier_is_doer: { sentence: "The person who did a task cannot check it.", fix: "Ask another supervisor to check it." },
   not_permitted: { sentence: "You may not check this kind of task.", fix: "Ask a supervisor who may." },
   reason_required: { sentence: "Say why.", fix: "Type a short reason." },
+  not_your_area: { sentence: "This task is for the team placed on another area.", fix: "Leave it for that team, or ask the supervisor to assign it to you." },
   nudged_recently: { sentence: "This task was nudged a few minutes ago.", fix: "Wait five minutes, or call the supervisor." },
 } as const satisfies Record<string, { sentence: string; fix: string }>;
 export type TaskRefusalCode = keyof typeof TASK_REFUSALS;

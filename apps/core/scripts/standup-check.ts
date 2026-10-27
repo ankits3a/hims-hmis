@@ -44,6 +44,8 @@ import { istDayString } from "../src/kernel/approvals/cumulative";
 import { catalogueCensus } from "../src/modules/formulary";
 import { SEED_CENSUS } from "./seed-formulary-interactions";
 import { IPD_GOLIVE_ITEMS, runIpdGoLiveCheck } from "./ipd-golive-check";
+import { envModuleSwitch } from "../src/kernel/modules/switch";
+import type { ModuleSwitch } from "../src/kernel/modules/switch";
 import type { Db } from "../src/kernel/db/client";
 
 /**
@@ -1330,8 +1332,17 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
 
 export type RowResult = { module: string; gate: Gate; code: string; verdict: Verdict; fix: string; detail?: string };
 
-export async function runCensus(db: Db, moduleName: string): Promise<RowResult[]> {
-  const names = moduleName === "all" ? Object.keys(STANDUP_ROWS) : [moduleName];
+/**
+ * Decision 0085 invariant 1 — the census modules `moduleName` names. `all` leaves out a department whose module is
+ * switched off (`ipd` while `HMIS_MODULES_ON` does not name it), so production's deploy census prints none of its rows;
+ * a department asked for by name answers whatever the switch says (the go-live rehearsal on staging).
+ */
+export function censusModuleNames(moduleName: string, isOn: ModuleSwitch = envModuleSwitch): string[] {
+  return moduleName === "all" ? Object.keys(STANDUP_ROWS).filter((name) => isOn(name)) : [moduleName];
+}
+
+export async function runCensus(db: Db, moduleName: string, isOn: ModuleSwitch = envModuleSwitch): Promise<RowResult[]> {
+  const names = censusModuleNames(moduleName, isOn);
   const out: RowResult[] = [];
   for (const name of names) {
     const rows = STANDUP_ROWS[name];

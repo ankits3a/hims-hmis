@@ -45,6 +45,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/doctor-desk/ratings` | `apps/web/src/screens/doctor-desk-ratings` |
 | `/doctor-desk/report` | `apps/web/src/screens/doctor-desk-report` |
 | `/doctor-desk/unit` | `apps/web/src/screens/doctor-desk-unit` |
+| `/door` | `apps/web/src/screens/door-request` |
 | `/er/bill` | `apps/web/src/screens/er-bill` |
 | `/er/board` | `apps/web/src/screens/er-board` |
 | `/er/codes` | `apps/web/src/screens/er-codes` |
@@ -56,6 +57,8 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/family` | `apps/web/src/screens/ipd-family` |
 | `/formulary/admin` | `(redirect)` |
 | `/housekeeping` | `apps/web/src/screens/housekeeping-board` |
+| `/housekeeping/rota` | `apps/web/src/screens/hk-rota` |
+| `/housekeeping/setup` | `apps/web/src/screens/hk-setup` |
 | `/ipd/admissions/$admissionId/bill` | `apps/web/src/screens/ipd-bill` |
 | `/ipd/admit` | `apps/web/src/screens/ipd-admit` |
 | `/ipd/beds` | `apps/web/src/screens/ipd-beds` |

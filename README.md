@@ -1727,8 +1727,15 @@ handles linen.
 **Housekeeping (E1.4, issue #721, decision 0072, built 2026-10-12, awaiting owner review).** Every bed released
 into cleaning raises exactly one cleaning task on the task engine; the bed is free only when the clean is checked.
 `housekeeping.view` (services_supervisor, duty_manager) opens the housekeeping board at `/housekeeping`;
-`housekeeping.verify_terminal` is held by `services_supervisor` alone — a terminal clean (isolation bed, infection,
-death) is checked by the housekeeping supervisor. A routine clean may also be checked by a holder of `ipd.beds.clean`.
+`housekeeping.verify_terminal` is held by `services_supervisor` and `infection_control` — a terminal clean (isolation
+bed, infection, death) is checked by the housekeeping supervisor or infection control. A routine clean may also be
+checked by a holder of `ipd.beds.clean`.
+
+**Housekeeping rounds (HK-1, issue #973, decision 0086).** Areas with a class and a door QR, scheduled rounds, a shift
+rota, checklists with a scan and a photo as proof, Pass or Fail with a reason, and requests from the door QR without a
+login. `services_supervisor` holds `housekeeping.setup.manage`, `housekeeping.rota.manage` and `housekeeping.confirm`;
+the new role `infection_control` holds `housekeeping.confirm`, `housekeeping.verify_terminal`, `housekeeping.view` and
+`tasks.view`.
 
 **Maintenance (E1.5, issue #722, decision 0072, built 2026-10-13, awaiting owner review).** Repair tickets for beds,
 rooms, oxygen points and fixtures, worked on the task engine. A bed with a repair ticket stays blocked until the ticket

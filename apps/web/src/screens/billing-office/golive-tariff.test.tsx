@@ -1,7 +1,8 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../../lib/api";
-import { renderWithProviders } from "../../test-utils";
+import { renderWithProviders, renderWithRouter } from "../../test-utils";
+import { BillingOffice } from "../billing-office";
 import { TariffVersionActions } from "./tariff-version-actions";
 import { IpdSwitchOn } from "./ipd-switch-on";
 import type { WireOfficeVersion } from "./tariff-version-actions";
@@ -99,5 +100,56 @@ describe("switch on IPD services", () => {
     mock(["tariff.read"], []);
     const { container } = renderWithProviders(<IpdSwitchOn />);
     await waitFor(() => expect(container.querySelector("[data-testid=ipd-switch-on]")).toBeNull());
+  });
+});
+
+/**
+ * Decision 0085 invariant 1, dark by default — the tariff version actions and the IPD switch-on are IPD go-live
+ * screens. With `ipd` off (production) neither is on the back office's Prices page and neither asks for anything.
+ */
+describe("decision 0085 — the go-live tariff screens on the Prices page", () => {
+  beforeEach(() => { setToken("t"); });
+  afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
+
+  function office(on: string[]): { calls: string[] } {
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      const path = raw.replace(/^.*\/api/, "");
+      calls.push(path);
+      const json = (body: unknown): Response => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+      const perms = ["billing.reports.read", "tariff.read", "tariff.versions.draft", "tariff.versions.activate", "tariff.services.manage"];
+      if (path === "/auth/me") return json({ actor: { type: "user", id: "u-owner" }, permissions: { hospital: perms, scoped: { department: {}, floor: {} } }, modules: { dark: ["ipd"], on } });
+      if (path === "/billing/office/needs") return json({ rows: [], money: { toPayCount: 0, toPayPaise: 0, shortPaise: 0 } });
+      if (path === "/billing/consult-prices") return json({
+        rows: [
+          { branch: "new", serviceId: "s-new", code: "OPD-CONSULT-NEW", activePaise: 10000 },
+          { branch: "renewal", serviceId: "s-ren", code: "OPD-CONSULT-RENEWAL", activePaise: 10000 },
+          { branch: "revisit", serviceId: "s-rev", code: "OPD-CONSULT-REVISIT", activePaise: null },
+        ],
+        activeVersionNo: 6, pending: null,
+      });
+      if (path === "/tariff/versions") return json({ items: [v({})] });
+      if (path === "/tariff/services") return json({ items: [] });
+      return new Response("{}", { status: 404 });
+    }));
+    return { calls };
+  }
+
+  it("ipd off: no version actions, no switch-on, and neither asks for anything", async () => {
+    const { calls } = office([]);
+    renderWithRouter(<BillingOffice />, "/billing/office?view=prices");
+    expect(await screen.findByTestId("office-page-prices")).toBeInTheDocument();
+    await waitFor(() => expect(calls).toContain("/billing/consult-prices"));
+    // Absence is waited for, not glanced at: the section would draw a tick after the page does.
+    await expect(screen.findByTestId("tariff-version-actions", {}, { timeout: 600 })).rejects.toThrow();
+    expect(screen.queryByTestId("ipd-switch-on")).not.toBeInTheDocument();
+    expect(calls.filter((c) => c.startsWith("/tariff/"))).toEqual([]);
+  });
+
+  it("ipd on: the version actions are on the page", async () => {
+    office(["ipd"]);
+    renderWithRouter(<BillingOffice />, "/billing/office?view=prices");
+    expect(await screen.findByTestId("tariff-version-actions")).toBeInTheDocument();
   });
 });

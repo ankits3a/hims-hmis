@@ -15,14 +15,19 @@ const draft = (over: Partial<WireBoardDefinition> = {}): WireBoardDefinition => 
   steps, diff: null, ...over,
 });
 
-function mock(board: WireWorkflowBoard, perms: string[], me = "u-owner"): { posts: { path: string; body: unknown }[] } {
+const DARK = ["tasks", "ipd", "bmw", "linen", "housekeeping", "maintenance", "passes", "transport", "diet", "emergency"];
+let reads: string[] = [];
+
+/** `ipdOn` — decision 0085: the board is an IPD go-live screen, so every case below runs with `ipd` on unless it says not. */
+function mock(board: WireWorkflowBoard, perms: string[], me = "u-owner", ipdOn = true): { posts: { path: string; body: unknown }[] } {
   const posts: { path: string; body: unknown }[] = [];
+  reads = [];
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     const path = raw.replace(/^.*\/api/, "");
     const json = (body: unknown): Response => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
-    if (path === "/auth/me") return json({ actor: { type: "user", id: me }, permissions: { hospital: perms, scoped: { department: {}, floor: {} } } });
-    if (path === "/workflow/definitions/board") return json(board);
+    if (path === "/auth/me") return json({ actor: { type: "user", id: me }, permissions: { hospital: perms, scoped: { department: {}, floor: {} } }, modules: { dark: DARK, on: ipdOn ? ["ipd"] : [] } });
+    if (path === "/workflow/definitions/board") { reads.push(path); return json(board); }
     if (init?.method === "POST") { posts.push({ path, body: init.body === undefined ? undefined : JSON.parse(String(init.body)) }); return json({ ok: true }); }
     return new Response("{}", { status: 404 });
   }));
@@ -86,7 +91,7 @@ describe("/admin/workflows — refused", () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
       const path = raw.replace(/^.*\/api/, "");
-      if (path === "/auth/me") return new Response(JSON.stringify({ actor: { type: "user", id: "u1" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } }), { status: 200 });
+      if (path === "/auth/me") return new Response(JSON.stringify({ actor: { type: "user", id: "u1" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } }, modules: { dark: DARK, on: ["ipd"] } }), { status: 200 });
       return new Response(JSON.stringify({ statusCode: 403, message: "missing permission workflow.definitions.read", error: "Forbidden" }), { status: 403, headers: { "Content-Type": "application/json" } });
     }));
   });
@@ -99,5 +104,20 @@ describe("/admin/workflows — refused", () => {
     expect(alert).not.toHaveTextContent("workflow.definitions.read");
     await act(async () => { await i18next.changeLanguage("hi"); });
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("आपको इस स्क्रीन की अनुमति नहीं है।"));
+  });
+});
+
+/** Decision 0085 invariant 1, dark by default — with `ipd` off (production) the board draws nothing and asks for nothing. */
+describe("/admin/workflows — dark while ipd is off", () => {
+  beforeEach(() => { setToken("t"); });
+  afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
+
+  it("ipd off: no board, no definitions read, even for the owner", async () => {
+    mock({ definitions: [draft()], viewer: { policyRoles: ["owner"] } },
+      ["workflow.definitions.read", "workflow.definitions.approve", "workflow.definitions.activate"], "u-owner", false);
+    renderWithProviders(<AdminWorkflows />);
+    expect(await screen.findByTestId("admin-workflows-off")).toBeInTheDocument();
+    expect(screen.queryByTestId("wf-ipd_admission-v1-state")).toBeNull();
+    expect(reads).toEqual([]);
   });
 });

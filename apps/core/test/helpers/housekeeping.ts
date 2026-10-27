@@ -5,6 +5,7 @@ import { authManifest } from "../../src/kernel/auth/manifest";
 import { withTx } from "../../src/kernel/db/client";
 import { events, orgDepartments, rosterAssignments, rosterPeriods } from "../../src/kernel/db/schema";
 import { ModuleRegistry } from "../../src/kernel/modules/loader";
+import { KERNEL_RESOURCE_KINDS, createResource } from "../../src/kernel/resources";
 import { handleBedEvent, housekeepingManifest } from "../../src/modules/housekeeping";
 import { ipdManifest, releaseBedOccupant } from "../../src/modules/ipd";
 import { patientsManifest } from "../../src/modules/patients";
@@ -15,6 +16,7 @@ import { mkBedWorld } from "./ipd";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../src/kernel/db/client";
 import type { DispatchedEvent } from "../../src/kernel/events/subscriptions";
+import type { DocumentStore } from "../../src/kernel/documents/store";
 import type { BedWorld } from "./ipd";
 
 /**
@@ -90,3 +92,61 @@ export async function deliverBedEvents(db: Db, bedId: string): Promise<void> {
   }
 }
 
+
+/**
+ * HK-1 (#973, decision 0086) — the housekeeping world plus what rounds, rotas and door requests need: a contractor
+ * attendant (`hkC`, `support_staff`, on duty), an infection-control officer, a toilet and a hall on the bed world's floor,
+ * a second floor with one room, the server key QR tokens are signed with, and an in-memory photo store.
+ * No instant here is a pinned date.
+ */
+export type HkWorld = HousekeepingWorld & {
+  hkC: Actor; infection: Actor;
+  toiletId: string; hallId: string; floor2Id: string; room2Id: string;
+  key: Buffer; store: DocumentStore;
+};
+
+export const HK_TEST_KEY = Buffer.alloc(32, 7);
+
+export class MemoryStore implements DocumentStore {
+  readonly blobs = new Map<string, Buffer>();
+  async put(key: string, bytes: Buffer): Promise<void> { this.blobs.set(key, bytes); }
+  async get(key: string): Promise<Buffer> {
+    const b = this.blobs.get(key);
+    if (b === undefined) throw new Error(`no blob ${key}`);
+    return b;
+  }
+  async remove(key: string): Promise<void> { this.blobs.delete(key); }
+}
+
+export async function mkHkWorld(db: Db): Promise<HkWorld> {
+  const w = await mkHousekeepingWorld(db);
+  const registry = new ModuleRegistry();
+  for (const m of [authManifest, patientsManifest, ipdManifest, tasksManifest, housekeepingManifest]) registry.install(m);
+  const grants: Record<string, string[]> = {
+    services_supervisor: ["housekeeping.setup.manage", "housekeeping.rota.manage", "housekeeping.confirm"],
+    infection_control: ["tasks.view", "housekeeping.view", "housekeeping.verify_terminal", "housekeeping.confirm"],
+  };
+  for (const [role, perms] of Object.entries(grants)) {
+    await ensureRole(db, role);
+    for (const p of perms) await grantPermissionToRole(db, registry, role, p);
+  }
+  const hkC = (await mkUser(db, "hk.contract", ["support_staff"])).actor;
+  const infection = (await mkUser(db, "hk.ic", ["infection_control"])).actor;
+  const period = (await db.select().from(rosterPeriods).where(eq(rosterPeriods.title, "Housekeeping")))[0]!;
+  const now = Date.now();
+  const dutyId = newId();
+  await db.insert(rosterAssignments).values({
+    id: dutyId, periodId: period.id, userId: hkC.id, positionKey: "staff_nurse", startsAt: new Date(now - 3_600_000),
+    endsAt: new Date(now + 8 * 3_600_000), mode: "presence", kind: "duty", departmentId: period.departmentId!,
+    coverScope: "department", effective: true, lineageId: dutyId, proposedByActorId: w.supervisor.id,
+    createdBy: w.supervisor.id, updatedBy: w.supervisor.id,
+  });
+  const SETUP: Actor = { type: "system", id: "test-hk-world" };
+  const place = (kind: string, code: string, parentId: string | null) =>
+    withTx(db, (tx) => createResource(tx, SETUP, KERNEL_RESOURCE_KINDS, { kind, code, name: code, parentId })).then((r) => r.resourceId);
+  const toiletId = await place("room", "F-T-WC", w.floorId);
+  const hallId = await place("hall", "F-T-LOBBY", w.floorId);
+  const floor2Id = await place("floor", "F-2", null);
+  const room2Id = await place("room", "F-2-R", floor2Id);
+  return { ...w, hkC, infection, toiletId, hallId, floor2Id, room2Id, key: HK_TEST_KEY, store: new MemoryStore() };
+}

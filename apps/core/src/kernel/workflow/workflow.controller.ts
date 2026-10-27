@@ -1,6 +1,6 @@
 import {
   BadRequestException, Body, Controller, ConflictException, ForbiddenException, Get, Inject,
-  Param, Post, Query,
+  NotFoundException, Param, Post, Query,
 } from "@nestjs/common";
 import { z } from "zod";
 import type { Actor } from "@hmis/contracts";
@@ -13,6 +13,7 @@ import {
 } from "./definitions";
 import { WorkflowError } from "./instances";
 import { readWorkflowBoard } from "./board";
+import { isModuleOn } from "../modules/switch";
 import type { WorkflowBoard } from "./board";
 import type { DefinitionRow } from "./definitions";
 import type { Db } from "../db/client";
@@ -87,6 +88,8 @@ export class WorkflowController {
   @RequirePermission("workflow.definitions.read", "hospital")
   @Get("definitions/board")
   async board(@CurrentActor() actor: Actor): Promise<WorkflowBoard> {
+    // Decision 0085 invariant 1 — the board is an IPD go-live screen: no answer while `ipd` is switched off.
+    if (!isModuleOn("ipd")) throw new NotFoundException();
     return readWorkflowBoard(this.db, actor.id);
   }
 
