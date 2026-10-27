@@ -1,5 +1,5 @@
 import { and, desc, eq } from "drizzle-orm";
-import { GUARDIAN_NAME_MAX, GUARDIAN_RELATIONS, guardianMayStandIn } from "@hmis/contracts";
+import { GUARDIAN_NAME_MAX, GUARDIAN_RELATIONS, SELF_RELATION, guardianMayStandIn } from "@hmis/contracts";
 import type { Actor, GuardianRelation } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { withTx } from "../../kernel/db/client";
@@ -74,6 +74,8 @@ function cleanInput(input: PatientAbsentInput): { relation: GuardianRelation; na
   if (!(GUARDIAN_RELATIONS as readonly string[]).includes(input.relation)) {
     throw new OpdError("invalid_patient_absent", `relation must be one of: ${GUARDIAN_RELATIONS.join(", ")}`);
   }
+  // #971 — Self is the patient, whose name the visit already carries: a typed one is not kept.
+  if (input.relation === SELF_RELATION) return { relation: SELF_RELATION, name: null };
   const name = (input.name ?? "").trim();
   if (name.length > GUARDIAN_NAME_MAX) {
     throw new OpdError("invalid_patient_absent", `the guardian's name is at most ${GUARDIAN_NAME_MAX} characters`);

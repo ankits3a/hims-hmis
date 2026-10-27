@@ -75,7 +75,7 @@ describe("the vitals bay — guardian with reports, on any visit still waiting f
     /* Owner 2026-10-09 — a NEW visit in hand is offered it too. */
     await user.type(screen.getByTestId("identify"), "32{Enter}");
     await waitFor(() => expect(screen.getByTestId("session").getAttribute("data-encounter")).toBe("E-N"));
-    expect((await screen.findByTestId("patient-absent-open")).textContent).toBe("Guardian with reports");
+    expect((await screen.findByTestId("patient-absent-open")).textContent).toBe("Reports only — Skip vitals");
 
     /* The revisit: the button, the small form, the post. */
     await user.clear(screen.getByTestId("identify"));
@@ -83,7 +83,7 @@ describe("the vitals bay — guardian with reports, on any visit still waiting f
     await waitFor(() => expect(screen.getByTestId("session").getAttribute("data-encounter")).toBe("E-R"));
     /* Owner 2026-10-09 — off the form's main view: a short line in the patient's details column, one click away. */
     const open = await screen.findByTestId("patient-absent-open");
-    expect(open.textContent).toBe("Guardian with reports");
+    expect(open.textContent).toBe("Reports only — Skip vitals");
     expect(open.closest('[data-testid="session"]')).not.toBeNull();
     await user.click(open);
     expect(screen.getByTestId("patient-absent-dialog").textContent).toContain("Who came?");
