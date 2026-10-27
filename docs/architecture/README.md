@@ -42,6 +42,7 @@ flowchart LR
   emergency[emergency]
   formulary[formulary]
   housekeeping[housekeeping]
+  icu[icu]
   ipd[ipd]
   lab[lab]
   linen[linen]
@@ -101,6 +102,8 @@ flowchart LR
   housekeeping --> materials
   housekeeping --> roster
   housekeeping --> tasks
+  icu --> ipd
+  icu --> radiology
   ipd --> billing
   ipd --> formulary
   ipd --> lab
@@ -187,7 +190,8 @@ flowchart LR
 | [emergency](modules/emergency.md) | billing, formulary, ipd, lab, materials, ordering, patients, roster, tariff, tasks | — |
 | [formulary](modules/formulary.md) | — | cds, emergency, ipd, materials, opd, pharmacy |
 | [housekeeping](modules/housekeeping.md) | ipd, linen, materials, roster, tasks | — |
-| [ipd](modules/ipd.md) | billing, formulary, lab, materials, opd, ordering, ot, patients, pharmacy, roster, tariff | canteen, diet, doctor-desk, emergency, housekeeping, linen, maintenance, passes, transport |
+| [icu](modules/icu.md) | ipd, radiology | — |
+| [ipd](modules/ipd.md) | billing, formulary, lab, materials, opd, ordering, ot, patients, pharmacy, roster, tariff | canteen, diet, doctor-desk, emergency, housekeeping, icu, linen, maintenance, passes, transport |
 | [lab](modules/lab.md) | billing, opd, patients, roster, tariff | abdm, doctor-desk, emergency, ipd, ordering, radiology |
 | [linen](modules/linen.md) | aerb, ipd, maintenance, ot, tasks | housekeeping |
 | [maintenance](modules/maintenance.md) | ipd, tasks | linen |
@@ -201,7 +205,7 @@ flowchart LR
 | [patients](modules/patients.md) | — | abdm, aerb, billing, canteen, doctor-desk, emergency, ipd, lab, membership, opd, ot, partners, passes, pharmacy, radiology, transport |
 | [pcpndt](modules/pcpndt.md) | — | radiology |
 | [pharmacy](modules/pharmacy.md) | billing, formulary, materials, membership, opd, patients, tariff | ipd |
-| [radiology](modules/radiology.md) | aerb, billing, lab, opd, ot, patients, pcpndt, roster, tariff | abdm, doctor-desk, ordering |
+| [radiology](modules/radiology.md) | aerb, billing, lab, opd, ot, patients, pcpndt, roster, tariff | abdm, doctor-desk, icu, ordering |
 | [roster](modules/roster.md) | — | canteen, doctor-desk, emergency, housekeeping, ipd, lab, opd, ot, radiology, tasks |
 | [tariff](modules/tariff.md) | — | billing, canteen, emergency, ipd, lab, membership, ot, partners, pharmacy, radiology |
 | [tasks](modules/tasks.md) | roster | bmw, diet, emergency, housekeeping, linen, maintenance, transport |
@@ -213,22 +217,22 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 
 | subsystem | used by modules | depends on kernel | serves HTTP |
 |---|---|---|---|
-| `alerts` | attendance, bmw, diet, doctor-desk, emergency, housekeeping, ipd, lab, maintenance, opd, roster, tasks, transport | approvals, auth, db, events, modules, notify, ops, realtime, reminders, tokens, workflow | yes |
-| `approvals` | abdm, aerb, attendance, billing, bmw, canteen, diet, doctor-desk, emergency, formulary, ipd, lab, linen, materials, membership, ot, partners, passes, patients, pcpndt, pharmacy, radiology, roster, tariff | alerts, auth, db, events, modules, phi, tokens, workflow | yes |
-| `auth` | abdm, aerb, attendance, billing, bmw, canteen, diet, doctor-desk, emergency, formulary, housekeeping, ipd, lab, linen, maintenance, materials, membership, opd, ordering, ot, partners, passes, patients, pcpndt, pharmacy, radiology, roster, tariff, tasks, transport | config, crypto, db, events, modules, printing, push, ratelimit, tokens | yes |
+| `alerts` | attendance, bmw, diet, doctor-desk, emergency, housekeeping, icu, ipd, lab, maintenance, opd, roster, tasks, transport | approvals, auth, db, events, modules, notify, ops, realtime, reminders, tokens, workflow | yes |
+| `approvals` | abdm, aerb, attendance, billing, bmw, canteen, diet, doctor-desk, emergency, formulary, icu, ipd, lab, linen, materials, membership, ot, partners, passes, patients, pcpndt, pharmacy, radiology, roster, tariff | alerts, auth, db, events, modules, phi, tokens, workflow | yes |
+| `auth` | abdm, aerb, attendance, billing, bmw, canteen, diet, doctor-desk, emergency, formulary, housekeeping, icu, ipd, lab, linen, maintenance, materials, membership, opd, ordering, ot, partners, passes, patients, pcpndt, pharmacy, radiology, roster, tariff, tasks, transport | config, crypto, db, events, modules, printing, push, ratelimit, tokens | yes |
 | `config` | abdm, attendance, billing, canteen, emergency, formulary, housekeeping, ipd, lab, membership, opd, ot, partners, patients, pharmacy, radiology | modules | — |
 | `copilot` | billing, doctor-desk, emergency, formulary, ipd, lab, opd, pharmacy, roster | alerts, approvals, auth, config, db, desk, events, inference, modules, ratelimit, reminders, search, tokens, workflow | yes |
 | `crypto` | abdm, billing, canteen, housekeeping, ipd, opd, patients | — | — |
-| `db` | abdm, aerb, attendance, billing, bmw, canteen, cds, diet, doctor-desk, emergency, formulary, housekeeping, ipd, lab, linen, maintenance, materials, membership, opd, ordering, ot, partners, passes, patients, pcpndt, pharmacy, radiology, roster, tariff, tasks, transport | — | — |
+| `db` | abdm, aerb, attendance, billing, bmw, canteen, cds, diet, doctor-desk, emergency, formulary, housekeeping, icu, ipd, lab, linen, maintenance, materials, membership, opd, ordering, ot, partners, passes, patients, pcpndt, pharmacy, radiology, roster, tariff, tasks, transport | — | — |
 | `desk` | attendance, billing, diet, doctor-desk, emergency, ipd, lab, membership, opd, partners, patients, pharmacy, radiology, roster | approvals, auth, db, events, modules, reminders, report, tokens, workflow | yes |
 | `documents` | housekeeping, lab, patients, pharmacy | — | — |
 | `episodes` | billing, emergency, ipd, lab, materials, opd, ot, pharmacy, radiology | db | — |
-| `events` | abdm, aerb, attendance, billing, diet, doctor-desk, emergency, formulary, housekeeping, ipd, lab, materials, membership, opd, ordering, ot, partners, passes, patients, pcpndt, pharmacy, radiology, roster, tariff | db, worker | — |
+| `events` | abdm, aerb, attendance, billing, diet, doctor-desk, emergency, formulary, housekeeping, icu, ipd, lab, materials, membership, opd, ordering, ot, partners, passes, patients, pcpndt, pharmacy, radiology, roster, tariff | db, worker | — |
 | `inference` | formulary, ipd, lab, opd | auth, config, db, ratelimit, search, tokens | yes |
-| `modules` | abdm, aerb, attendance, billing, bmw, canteen, diet, doctor-desk, emergency, formulary, housekeeping, ipd, lab, linen, maintenance, materials, membership, opd, ordering, ot, partners, passes, patients, pcpndt, pharmacy, radiology, roster, tariff, tasks, transport | alerts, approvals, auth, config, copilot, desk, ops, orders, resources, search, workflow | — |
+| `modules` | abdm, aerb, attendance, billing, bmw, canteen, diet, doctor-desk, emergency, formulary, housekeeping, icu, ipd, lab, linen, maintenance, materials, membership, opd, ordering, ot, partners, passes, patients, pcpndt, pharmacy, radiology, roster, tariff, tasks, transport | alerts, approvals, auth, config, copilot, desk, ops, orders, resources, search, workflow | — |
 | `notify` | abdm, ipd, lab, pharmacy, radiology | auth, config, db, events, modules, tokens, workflow | yes |
 | `obligations` | — | alerts, db, events, modules, workflow | — |
-| `ops` | lab, pharmacy | auth, config, crypto, db, events, modules, tokens | yes |
+| `ops` | icu, lab, pharmacy | auth, config, crypto, db, events, modules, tokens | yes |
 | `orders` | emergency, ipd, lab, ordering, pharmacy, radiology | auth, db, episodes, events, modules, phi | — |
 | `phi` | abdm, aerb, billing, doctor-desk, lab, opd, patients, pcpndt, pharmacy, radiology | db | — |
 | `printing` | billing, bmw, canteen, emergency, ipd, lab, opd, pharmacy, roster | auth, crypto, db, events, phi, tokens | yes |
@@ -237,10 +241,10 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 | `realtime` | emergency, ipd, lab, opd | auth, db, tokens | — |
 | `reminders` | — | alerts, auth, copilot, db, tokens | yes |
 | `report` | billing, bmw, lab, opd, pharmacy, radiology | db | — |
-| `resources` | aerb, housekeeping, ipd, lab, linen, materials, opd, ot, pharmacy, radiology | auth, db, events, modules, tokens | yes |
+| `resources` | aerb, housekeeping, icu, ipd, lab, linen, materials, opd, ot, pharmacy, radiology | auth, db, events, modules, tokens | yes |
 | `retention` | — | db, events, phi, search, worker | — |
 | `search` | billing, formulary, membership, opd, patients, tariff | auth, config, db, events, modules, tokens | yes |
-| `tokens` | abdm, aerb, attendance, billing, bmw, canteen, diet, doctor-desk, emergency, formulary, housekeeping, ipd, lab, linen, maintenance, materials, membership, opd, ordering, ot, partners, passes, patients, pcpndt, pharmacy, radiology, roster, tariff, tasks, transport | — | — |
+| `tokens` | abdm, aerb, attendance, billing, bmw, canteen, diet, doctor-desk, emergency, formulary, housekeeping, icu, ipd, lab, linen, maintenance, materials, membership, opd, ordering, ot, partners, passes, patients, pcpndt, pharmacy, radiology, roster, tariff, tasks, transport | — | — |
 | `worker` | — | alerts, approvals, auth, config, copilot, db, desk, documents, events, modules, notify, obligations, ops, orders, push, reminders, resources, retention, tokens, workflow | — |
 | `workflow` | attendance, billing, bmw, canteen, emergency, housekeeping, ipd, lab, maintenance, materials, membership, opd, ot, patients, pharmacy, radiology, roster, tariff, tasks, transport | auth, db, events, modules, tokens | yes |
 

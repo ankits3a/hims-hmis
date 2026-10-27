@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/ipd/`
 · Notes: [MAP.md](../../../apps/core/src/modules/ipd/MAP.md)
 
 - **Depends on modules:** `billing`, `formulary`, `lab`, `materials`, `opd`, `ordering`, `ot`, `patients`, `pharmacy`, `roster`, `tariff`
-- **Used by modules:** `canteen`, `diet`, `doctor-desk`, `emergency`, `housekeeping`, `linen`, `maintenance`, `passes`, `transport`
+- **Used by modules:** `canteen`, `diet`, `doctor-desk`, `emergency`, `housekeeping`, `icu`, `linen`, `maintenance`, `passes`, `transport`
 - **Kernel used:** `alerts`, `approvals`, `auth`, `config`, `copilot`, `crypto`, `db`, `desk`, `episodes`, `events`, `inference`, `modules`, `notify`, `orders`, `printing`, `realtime`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `admissionAbsconded`, `admissionDeceased`
 
@@ -60,6 +60,7 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_APPROVAL_TYPE_KEYS: Record<IpdApprovalKind, string>`
   - `ipdApprovalDefinition(spec: IpdApprovalTypeSpec)`
   - `registerIpdApprovalTypes(db: Db, activator: Actor): Promise<{ registered: string[] }>`
+  - `requestIpdApproval(tx: Tx, actor: Actor, args: { kind: IpdApprovalKind; subjectId: string; patientId: string; note: string; amountPaise?: n…`
 - `attendant-messages.ts`
   - `dailyTotalsSendingOf(cfg: AppConfig["ipdDailyTotals"] | undefined): IpdDailyTotalsSending`
   - `dailyTotalsWords(outcome: string, n: { status: string; lastError: string | null } | null, sending: IpdDailyTotalsSending): { status: IpdDai…`
@@ -403,9 +404,11 @@ Source: `apps/core/src/modules/ipd/`
   - `familyVerifiedAdmission(db: Db | Tx, token: string, cookies: { device?: string; session?: string }, at: Date = new Date()): Promise<string …`
   - `readFamilyBillDetails(db: Db, token: string, cookies: { device?: string; session?: string }, at: Date = new Date()): Promise<IpdFamilyBillD…`
   - `readFamilyView(db: Db, token: string, cookies: { device?: string; session?: string }, at: Date = new Date()): Promise<IpdFamilyView>`
+  - `registerFamilyTodayProvider(fn: FamilyTodayProvider): () => void`
   - `requestFamilyCallback(db: Db, token: string, cookies: { device?: string; session?: string }, text: string, at: Date = new Date()): Promise<…`
   - `sendFamilyOtp(db: Db, token: string, deviceId: string, sender: FamilyOtpSender, opts: { at?: Date; secretKey: Buffer }): Promise<{ phoneMas…`
   - `verifyFamilyOtp(db: Db, token: string, deviceId: string, code: string, at: Date = new Date()): Promise<{ sessionToken: string; expiresAt: D…`
+  - types: `FamilyTodayProvider`
 - `family-throttle.ts`
   - `class FamilyAddressThrottle`
 - `family.ts`
@@ -502,6 +505,7 @@ Source: `apps/core/src/modules/ipd/`
   - `giveShiftHandover(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ handoverId: string; supersedes: string | null }>`
   - `ioDayStart(at: Date): Date`
   - `isNightIst(at: Date): boolean`
+  - `recordIcuChartVitals(tx: Tx, actor: Actor, input: { admissionId: string; hourId: string; observedAt: Date; values: Pick<VitalsValues, "temp…`
   - `recordIntakeOutput(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ entryId: string; lateEntry: boolean }>`
   - `recordNursingAssessment(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_nursing_assessment">>`
   - `recordVitals(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_vitals">>`
