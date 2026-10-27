@@ -131,7 +131,8 @@ export const IcuFeedSampleSchema = z.strictObject({
   /** The raw OBX code (identifier^text^system as the station sent it). */
   code: z.string().min(1).max(120),
   value: z.number().finite().nullable(),
-  unit: z.string().max(20).optional(),
+  /** The raw unit as the station sent it (an MDC dimension name can run long). */
+  unit: z.string().max(60).optional(),
   /** The device's own clock (stored, not trusted). */
   at: instant,
   /** A technical reading (probe off, artefact, lead off): kept, marked, never charted as real. */

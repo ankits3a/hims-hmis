@@ -150,6 +150,8 @@ jobs:
       - run: node --test tools/print-relay/spool.test.mjs tools/print-relay/platform.test.mjs tools/print-relay/program.test.mjs
         env:
           RELAY_CHROMIUM: /nonexistent-chromium-ci-forces-the-skip
+      # ICU IC-1 (#984) — the hall gateway's HL7 parser, ACK, spool and batch post, against a recorded ORU^R01 and an ORU^R40.
+      - run: node --test tools/icu-gateway/gateway.test.mjs
 
   core:
     # 60: 1.9x the slowest SUCCESSFUL shard observed under SATURATION (32.0 min), 5.6x the median.
