@@ -1,7 +1,8 @@
 ---
 issue: 984
-status: approved
+status: built
 approved: 2026-10-26
+built: 2026-10-27
 ---
 # SPEC — ICU IC-1: core — admission, device links, numbers and trends, hourly chart, alarm ladder, bundles (#984)
 
@@ -57,3 +58,24 @@ Every ICU bed is watched every second and charted every hour. Every alarm reache
   are counted.
 - **D9** Visiting slots and a daily family update are logged. The family link shows the day's summary, never live
   numbers.
+
+## Build notes (2026-10-27, lane icu-984)
+
+Built as `modules/icu` behind `HMIS_MODULES_ON` (`icu`). Acceptance: `apps/core/src/modules/icu/acceptance/icu-core-984.acceptance.test.ts`
+(`spec #984 D1`..`D9`). DECIDED in the build (none is money):
+- An ICU request asks the `ipd_icu_admission` approval when it is raised; the intensivist's "approve" grants it, and the
+  admit desk passes that approval to the existing gate. A hold reviews again after 60 minutes unless a time is named.
+  NEWS2 and qSOFA fill from the ward's latest vitals; lab scores (SOFA, lactate) are typed until a lab read seam exists.
+- A device is an ICU device when radiology's `device` resource carries `icuType`; the link takes the device scan and
+  the wristband scan, and the bed is where that admission lies (an ICU bed, or refused).
+- A number reaches a chart only if a link was open on the slot's bed at the observed instant and the station's device
+  serial (when sent) is the linked device's. Rows are never re-attributed afterwards.
+- A chart hour is an IST hour mark. The signed hour writes one `ipd_vitals` row (source `icu_chart`, no NEWS2 alert).
+  A correction after signing is shown on the chart (the legal record) and does not rewrite that row.
+- The ladder: the bed nurse sees the alarm on the station and the phone; the station rung tells `icu_incharge` (else
+  `nursing_supervisor`); the duty-doctor rung the admission's duty doctors; the last rung every `intensivist`. Only
+  life-threatening device alarms climb. No nurse-to-bed assignment exists yet, so "my beds" is every ICU bed.
+- Feed gaps open on the kernel's interface `down` verdict and close on the next batch; the station greys from the
+  heartbeat itself after 5 minutes. The `/icu/feed/*` IP allowlist is a go-live step (the hall addresses are not known).
+- Bundle clocks: ventilator 8 h, central line and catheter 24 h, DVT 24 h, pressure care 2 h, sepsis hour-1 once.
+

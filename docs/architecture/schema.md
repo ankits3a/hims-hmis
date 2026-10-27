@@ -29,6 +29,11 @@ flowchart LR
   documents[documents] --> patients[patients]
   emergency[emergency] --> patients[patients]
   emergency[emergency] --> resources[resources]
+  icu[icu] --> auth[auth]
+  icu[icu] --> ipd[ipd]
+  icu[icu] --> ops[ops]
+  icu[icu] --> patients[patients]
+  icu[icu] --> resources[resources]
   ipd_copilot[ipd-copilot] --> ipd[ipd]
   ipd_copilot[ipd-copilot] --> patients[patients]
   ipd_emar[ipd-emar] --> ipd_rounds[ipd-rounds]
@@ -124,6 +129,7 @@ flowchart LR
 | `eventIdempotency.ts` | kernel | `event_idempotency` |
 | `events.ts` | kernel | `events` |
 | `formulary.ts` | module formulary | `formulary_crk_entries`, `formulary_crk_signatures`, `formulary_drug_disease`, `formulary_generic_substances`, `formulary_generics`, `formulary_interactions`, `formulary_mapping_proposals`, `formulary_medicine_salts`, `formulary_medicines`, `formulary_monographs`, `formulary_reference_labels`, `formulary_reference_names`, `formulary_renal_doses`, `formulary_salts`, `formulary_staging`, `formulary_substances` |
+| `icu.ts` | module icu | `icu_alarm_events`, `icu_alarm_limits`, `icu_alarms`, `icu_bundles`, `icu_chart_hours`, `icu_chart_values`, `icu_device_links`, `icu_family_updates`, `icu_feed_batches`, `icu_feed_gaps`, `icu_gateway_codes`, `icu_gateways`, `icu_lines`, `icu_numerics`, `icu_numerics_minute`, `icu_request_events`, `icu_requests`, `icu_slots`, `icu_visit_slots` |
 | `ipd-copilot.ts` | kernel | `ipd_copilot_drafts` |
 | `ipd-emar.ts` | kernel | `ipd_emar_acts`, `ipd_emar_allergy_flags`, `ipd_emar_doses`, `ipd_emar_infusion_events`, `ipd_emar_issues`, `ipd_emar_label_uses`, `ipd_emar_labels`, `ipd_emar_narcotic_register`, `ipd_emar_returns`, `ipd_emar_second_checks`, `ipd_emar_verbal_orders`, `ipd_emar_verifications`, `ipd_narcotic_count_resolutions`, `ipd_narcotic_counts` |
 | `ipd-rounds.ts` | kernel | `ipd_consults`, `ipd_orders`, `ipd_rounds` |
