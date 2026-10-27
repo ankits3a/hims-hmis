@@ -8,7 +8,7 @@ if %errorlevel% neq 0 (
   powershell.exe -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
   exit /b
 )
-set PORT=5100
+set PORT=10001
 if not "%~1"=="" set PORT=%~1
 netsh advfirewall firewall delete rule name="HMIS Lab Bridge capture" >nul 2>&1
 netsh advfirewall firewall add rule name="HMIS Lab Bridge capture" dir=in action=allow protocol=TCP localport=%PORT% >nul

@@ -20,7 +20,7 @@
  * It posts NOTHING to HMIS and needs no account. A message is written to disk BEFORE it is
  * acknowledged — an analyser that has been told "received" does not send again.
  *
- * Dependency-free: Node 22 alone (`node capture.mjs [--port 5100] [--dir captures]`).
+ * Dependency-free: Node 22 alone (`node capture.mjs [--port 10001] [--dir captures]`).
  */
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
@@ -28,7 +28,8 @@ import { networkInterfaces } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-export const DEFAULT_PORT = 5100;
+// The port already set on the hospital's Z3 (LIS settings photographed 2026-10-24), so it needs no change.
+export const DEFAULT_PORT = 10001;
 
 const VT = 0x0b, FS = 0x1c, CR = 0x0d;
 const ENQ = 0x05, ACK = 0x06, STX = 0x02, ETX = 0x03, ETB = 0x17, EOT = 0x04, LF = 0x0a;
