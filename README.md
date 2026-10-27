@@ -1724,6 +1724,14 @@ laundry out and in, borrowing, a condemn request); `services_supervisor` holds `
 `linen.manage`; `admin` holds `linen.view` and `linen.manage` for par levels and condemn approvals and never
 handles linen.
 
+**Laundry floor (LD-1, issue #978, decision 0087, built 2026-10-26, awaiting owner review).** Pickups signed by the
+runner and the ward, infected linen in sealed bags counted by tag, the in-house plant's machines and wash cycles, quality
+check, theatre sets to CSSD, linen holds, and a bed that is ready only when it is made. Four permissions join linen.
+`support_staff` holds `linen.plant` (the washermen run the machines); `services_supervisor` holds `linen.plant` and
+`linen.qc`; `ot_incharge` holds `linen.cssd_receive` (signs for theatre sets at CSSD); `ward_nurse` and
+`nursing_supervisor` hold `linen.handle` (seal bags, place holds), and `nursing_supervisor` and
+`radiation_safety_officer` hold `linen.hold.release` (an MLC hold to the police; a radioactive hold, by the appointed RSO).
+
 **Housekeeping (E1.4, issue #721, decision 0072, built 2026-10-12, awaiting owner review).** Every bed released
 into cleaning raises exactly one cleaning task on the task engine; the bed is free only when the clean is checked.
 `housekeeping.view` (services_supervisor, duty_manager) opens the housekeeping board at `/housekeeping`;

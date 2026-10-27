@@ -16,6 +16,7 @@ import {
 import type { BedActInput, BlockReason, ReleaseReason } from "../lib/ipd-beds-api";
 import { cleanRefusal, fetchBedCleans, nudgeCleanApi, verifyCleanApi } from "../lib/housekeeping-api";
 import { confirmTicketApi, fetchBedTickets, maintenanceRefusal } from "../lib/maintenance-api";
+import { fetchLinenBedsWaiting } from "../lib/linen-api";
 import { RaiseTicketSheet } from "./maintenance-raise";
 import { TransferPanel } from "./ipd-transfer-panel";
 import "../styles/paper-pine.css";
@@ -105,6 +106,9 @@ export function IpdBeds(): React.ReactElement {
   const [cleans, setCleans] = useState<Map<string, BedCleanView> | null>(null);
   // E1.5 — maintenance's open repair ticket by bed; null until (or unless) it loads: the board still works.
   const [tickets, setTickets] = useState<Map<string, BedTicketView> | null>(null);
+  // LD-1 (#978) — beds clean but not made: their ward's shelf is short of a set. Empty until (or unless) it loads.
+  const [linenWaits, setLinenWaits] = useState<ReadonlySet<string>>(() => new Set());
+  const mayLinen = can("linen.view") || can("ipd.beds.view");
   const [fetchFailed, setFetchFailed] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [floorId, setFloorId] = useState<string | null>(null);
@@ -128,7 +132,9 @@ export function IpdBeds(): React.ReactElement {
       (v) => setTickets(new Map((v.tickets ?? []).map((r) => [r.bedId, r]))),
       () => setTickets(null),
     );
-  }, [wall]);
+    // A dark linen module or a missing permission answers 403/404: the board simply shows no linen line.
+    if (mayLinen) fetchLinenBedsWaiting().then((v) => setLinenWaits(new Set(Array.isArray(v) ? v.map((w) => w.bedId) : [])), () => setLinenWaits(new Set()));
+  }, [wall, mayLinen]);
   useEffect(() => { load(); }, [load]);
   // A minute's tick keeps "cleaning for N min" honest between events; it is a refetch, not arithmetic.
   useEffect(() => { const id = setInterval(load, 60_000); return () => clearInterval(id); }, [load]);
@@ -445,7 +451,7 @@ export function IpdBeds(): React.ReactElement {
         <WardDrawer
           ward={ward} wall={wall} selected={bedId} onSelect={setBedId} onClose={() => { setWardId(null); setBedId(null); }}
           mayManage={!wall && can("ipd.beds.manage")} mayClean={!wall && can("ipd.beds.clean")} onDone={load}
-          cleans={cleans} mayVerify={!wall && (can("ipd.beds.clean") || can("housekeeping.verify_terminal"))} mayNudge={mayNudge}
+          cleans={cleans} mayVerify={!wall && (can("ipd.beds.clean") || can("housekeeping.verify_terminal"))} mayNudge={mayNudge} linenWaits={linenWaits}
           tickets={tickets} mayRaise={!wall && can("maintenance.raise")} mayConfirmRepair={!wall && (can("ipd.beds.clean") || can("maintenance.confirm"))}
           mayTransfer={!wall && can("ipd.transfer.start")} mayClass={!wall && can("ipd.admit")}
         />
@@ -535,7 +541,7 @@ function WardDrawer(p: {
   ward: IpdBoardWard; wall: boolean; selected: string | null; onSelect: (id: string | null) => void; onClose: () => void;
   mayManage: boolean; mayClean: boolean; onDone: () => void; mayTransfer: boolean; mayClass: boolean;
   cleans: Map<string, BedCleanView> | null; mayVerify: boolean; mayNudge: boolean;
-  tickets: Map<string, BedTicketView> | null; mayRaise: boolean; mayConfirmRepair: boolean;
+  tickets: Map<string, BedTicketView> | null; mayRaise: boolean; mayConfirmRepair: boolean; linenWaits: ReadonlySet<string>;
 }): React.ReactElement {
   const { t } = useTranslation();
   const bed = p.ward.beds.find((b) => b.id === p.selected) ?? null;
@@ -572,7 +578,9 @@ function WardDrawer(p: {
                 <span className="word">{t(`ipdBeds.status.${b.status}`)}{b.transfer ? (
                   <em className={`ipdt-mark ${b.transfer.role}`}>{b.transfer.role === "origin" ? `⇢ ${t("ipdTransfer.mark.origin")}` : `⇠ ${t("ipdTransfer.mark.target")}`}</em>
                 ) : null}</span>
-                <span className="who">{tileLine(b, p.wall, t, b.status === "cleaning" ? p.cleans?.get(b.id) : undefined, p.tickets?.get(b.id))}</span>
+                <span className="who">{b.status === "cleaning" && p.linenWaits.has(b.id)
+                  ? <span data-testid={`linen-wait-${b.code}`}>{t("ipdBeds.waitingLinen")}</span>
+                  : tileLine(b, p.wall, t, b.status === "cleaning" ? p.cleans?.get(b.id) : undefined, p.tickets?.get(b.id))}</span>
               </button>
             ))}
           </div>

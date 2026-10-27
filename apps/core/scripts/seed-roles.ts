@@ -1568,6 +1568,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "orders.read",
       // IPD DISCHARGE E3.2 (#730) — sees the discharge desk and confirms its own department's charges; README "IPD discharge" prose.
       "ipd.discharge.view", "ipd.discharge.confirm",
+      // LD-1 (#978, decision 0087) — the OT nurse in-charge signs for washed theatre sets at CSSD; README "Laundry" prose.
+      "linen.cssd_receive",
     ],
   },
   {
@@ -1994,6 +1996,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "aerb.doses.read",
       // 18-S RS11 — the incident register, read (writing it is `aerb.registers.manage`).
       "aerb.incidents.read",
+      // LD-1 (#978) — releases a radioactive patient's linen hold (also checked against the AERB appointment).
+      "linen.hold.release",
     ],
   },
   {
@@ -2217,7 +2221,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // board, par levels and condemn approvals. DECIDED by the standard Indian corporate-hospital split.
   // E1.6 TRANSPORT (#723) — porters are support staff (one cadre with ward attendants): their transport card details.
   // E4.4 DIET (#736) — the ward's food-service attendant takes the meal-delivery task and taps a tray delivered or refused.
-  { roleKey: "support_staff", permissions: ["tasks.work", "bmw.handle", "linen.handle", "transport.work", "diet.serve"] },
+  // LD-1 (#978, decision 0087) — the laundry's washermen are support staff: they run the machines (`linen.plant`).
+  { roleKey: "support_staff", permissions: ["tasks.work", "bmw.handle", "linen.handle", "linen.plant", "transport.work", "diet.serve"] },
   /**
    * E1.4 HOUSEKEEPING (issue #721, decision 0072) — the services supervisor IS the housekeeping supervisor: the
    * housekeeping board, and the check of a TERMINAL clean (isolation, infection, death), which NABH infection
@@ -2227,6 +2232,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     roleKey: "services_supervisor",
     permissions: [
       "tasks.view", "tasks.work", "tasks.supervise", "bmw.view", "bmw.handle", "bmw.manage", "linen.view", "linen.handle", "linen.manage",
+      // LD-1 (#978, decision 0087) — the linen supervisor runs the plant and its quality check.
+      "linen.plant", "linen.qc",
       "housekeeping.view", "housekeeping.verify_terminal",
       // HK-1 (#973, decision 0086) — the housekeeping supervisor sets up areas and staff, publishes the rota and
       // confirms cleans and rounds.
@@ -2289,6 +2296,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // read-back verbal order; reprints an unreadable wristband; a dose given in error goes to the medication-incident log.
       // README "IPD eMAR" prose.
       "ipd.emar.view", "ipd.emar.give", "ipd.band.print", "pharmacy.incidents.record",
+      // LD-1 (#978) — seals linen bags at the bed and places linen holds; README "Laundry" prose.
+      "linen.handle",
     ],
   },
   {
@@ -2304,6 +2313,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "diet.view", "diet.npo", "diet.serve", "diet.clinical.view",
       // IPD eMAR E4.3 (#735) — as the ward nurse, and reads the override counts; README "IPD eMAR" prose.
       "ipd.emar.view", "ipd.emar.give", "ipd.band.print", "pharmacy.incidents.record",
+      // LD-1 (#978) — as the ward nurse, and as the nurse in-charge releases an MLC linen hold to the police.
+      "linen.handle", "linen.hold.release",
     ],
   },
   {

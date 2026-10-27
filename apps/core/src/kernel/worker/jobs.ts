@@ -44,6 +44,7 @@ import { lapseErPreAlerts, sweepErBoarding, sweepErCareClocks, sweepErMlcClocks,
 import { sweepBmwStorage } from "../../modules/bmw";
 import { buildDueLists } from "../../modules/diet";
 import { runRoundsClock } from "../../modules/housekeeping";
+import { runLinenClock } from "../../modules/linen";
 import { collectResourceKinds } from "../resources/kinds";
 import { isModuleOn, runIfModuleOn } from "../modules/switch";
 import type { DarkModuleKey } from "../modules/switch";
@@ -898,15 +899,18 @@ function whenModuleOn<F extends (db: Db, now: Date) => Promise<unknown>>(key: Da
  *
  * HK-1 (#973) — the housekeeping ROUNDS CLOCK rides it too (`runRoundsClock`: each area's round of the slot now, and
  * rounds missed past their grace), while `housekeeping` is on. Same try/catch rule.
+ *
+ * LD-1 (#978) — the LINEN CLOCK rides it too (`runLinenClock`: chemotherapy holds past their 48 hours are released,
+ * and each live ward's pickup and delivery rounds of the slot now are raised), while `linen` is on. Same try/catch rule.
  */
 export async function runTaskAndWasteClocks(
   db: Db, now: Date,
   sweeps: {
     sweepTasks: typeof sweepTasks; sweepBmwStorage: typeof sweepBmwStorage; buildDueLists?: typeof buildDueLists;
-    runRoundsClock?: typeof runRoundsClock;
+    runRoundsClock?: typeof runRoundsClock; runLinenClock?: typeof runLinenClock;
   } = {
     sweepTasks, sweepBmwStorage: whenModuleOn("bmw", sweepBmwStorage), buildDueLists: whenModuleOn("diet", buildDueLists),
-    runRoundsClock: whenModuleOn("housekeeping", runRoundsClock),
+    runRoundsClock: whenModuleOn("housekeeping", runRoundsClock), runLinenClock: whenModuleOn("linen", runLinenClock),
   },
 ): Promise<void> {
   let first: unknown = undefined;
@@ -935,6 +939,14 @@ export async function runTaskAndWasteClocks(
       await sweeps.runRoundsClock(db, now);
     } catch (e) {
       clockLog.error(`runRoundsClock failed: ${e instanceof Error ? e.message : String(e)}`);
+      first ??= e;
+    }
+  }
+  if (sweeps.runLinenClock !== undefined) {
+    try {
+      await sweeps.runLinenClock(db, now);
+    } catch (e) {
+      clockLog.error(`runLinenClock failed: ${e instanceof Error ? e.message : String(e)}`);
       first ??= e;
     }
   }

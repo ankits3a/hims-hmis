@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/ot/`
 
 - **Depends on modules:** `billing`, `materials`, `patients`, `roster`, `tariff`
-- **Used by modules:** `diet`, `ipd`, `radiology`
+- **Used by modules:** `diet`, `ipd`, `linen`, `radiology`
 - **Kernel used:** `approvals`, `auth`, `config`, `db`, `episodes`, `events`, `modules`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `materialConsumed`, `patientMerged`
 
@@ -144,6 +144,8 @@ Source: `apps/core/src/modules/ot/`
   - `OT_RECOVERY_BAY_CODES`
   - `OT_RESOURCE_KINDS: readonly ResourceKindDecl[]`
   - `OT_THEATRE_CODE`
+- `linen-seam.ts`
+  - `theatreCasesOn(exec: Db | Tx, listDate: string): Promise<number>`
 - `lists.ts`
   - `SURGEON_LATE_RUNGS_MINUTES`
   - `flagLateSurgeons(db: Db, now: Date = new Date()): Promise<number>`

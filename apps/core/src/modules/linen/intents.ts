@@ -5,12 +5,14 @@ import {
 } from "@hmis/contracts";
 import { istDayString } from "../../kernel/approvals/cumulative";
 import {
-  linenCondemnRequests, linenItems, linenLaundryBatches, linenMovements, linenParLevels, linenVariances, linenWardCounts,
+  linenBags, linenCondemnRequests, linenItems, linenLaundryBatches, linenMovements, linenParLevels, linenVariances, linenWardCounts,
   resources,
 } from "../../kernel/db/schema";
 import { LinenError } from "./errors";
+import { releaseLinenWaits } from "./gate";
+import { requireNotHeld } from "./holds";
 import { bookBalances, soiledPool, wardStates } from "./reads";
-import type { Actor, LinenActResult, LinenMovementKind, LinenSource } from "@hmis/contracts";
+import type { Actor, LinenActResult, LinenMovementKind, LinenSource, LinenStream } from "@hmis/contracts";
 import type { z } from "zod";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -27,24 +29,24 @@ import type { Db, Tx } from "../../kernel/db/client";
 export type MovementRow = typeof linenMovements.$inferSelect;
 export type BatchRow = typeof linenLaundryBatches.$inferSelect;
 export type CondemnRow = typeof linenCondemnRequests.$inferSelect;
-type Exec = Db | Tx;
-type Line = { itemCode: string; qty: number };
+export type Exec = Db | Tx;
+export type Line = { itemCode: string; qty: number };
 
-function parse<S extends z.ZodType>(schema: S, raw: unknown): z.infer<S> {
+export function parse<S extends z.ZodType>(schema: S, raw: unknown): z.infer<S> {
   const r = schema.safeParse(raw);
   if (!r.success) throw new LinenError("bad_input", { issues: r.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) });
   return r.data;
 }
 
-function sourceOf(actor: Actor): LinenSource {
+export function sourceOf(actor: Actor): LinenSource {
   if (actor.type === "system") return "system";
   return actor.type === "agent" ? "agent" : "person";
 }
 
-const tx = <T>(exec: Exec, fn: (t: Tx) => Promise<T>): Promise<T> => (exec as Db).transaction(fn);
+export const tx = <T>(exec: Exec, fn: (t: Tx) => Promise<T>): Promise<T> => (exec as Db).transaction(fn);
 
 /** One act at a time per ward (and one for the soiled room): the balance an act reads is the balance it writes on. */
-async function lock(t: Tx, key: string): Promise<void> {
+export async function lock(t: Tx, key: string): Promise<void> {
   await t.execute(sql`select pg_advisory_xact_lock(hashtext(${`linen:${key}`}))`);
 }
 
@@ -53,14 +55,14 @@ async function lock(t: Tx, key: string): Promise<void> {
  * `clock_timestamp()` read AFTER the act's lock — never the controller's clock read before it, so two acts queued on one
  * ward are stamped in the order they wrote. (`now()` would be the transaction's start, which is before the lock too.)
  */
-async function stamp(t: Tx, given: Date | undefined): Promise<Date> {
+export async function stamp(t: Tx, given: Date | undefined): Promise<Date> {
   if (given !== undefined) return given;
   const r = await t.execute<{ n: Date | string }>(sql`select clock_timestamp() as n`);
   return new Date(r.rows[0]!.n);
 }
 
 /** Refuse any line above the ward's book balance of that item (`exceeds_on_hand`). Call under the ward lock. */
-async function requireOnHand(t: Tx, wardId: string, lines: readonly Line[], now: Date): Promise<void> {
+export async function requireOnHand(t: Tx, wardId: string, lines: readonly Line[], now: Date): Promise<void> {
   const book = (await bookBalances(t, now, wardId)).get(wardId);
   for (const l of lines) {
     const onHand = book?.get(l.itemCode)?.onHand ?? 0;
@@ -76,7 +78,7 @@ export async function requireWard(exec: Exec, wardId: string): Promise<{ id: str
 }
 
 /** Every line's item exists and is active, and no item is listed twice. */
-async function requireItems(exec: Exec, lines: readonly Line[]): Promise<void> {
+export async function requireItems(exec: Exec, lines: readonly Line[]): Promise<void> {
   const codes = lines.map((l) => l.itemCode);
   const dup = codes.find((c, i) => codes.indexOf(c) !== i);
   if (dup !== undefined) throw new LinenError("duplicate_item", { itemCode: dup });
@@ -86,8 +88,8 @@ async function requireItems(exec: Exec, lines: readonly Line[]): Promise<void> {
   if (unknown !== undefined) throw new LinenError("unknown_item", { itemCode: unknown });
 }
 
-type MovementInsert = typeof linenMovements.$inferInsert;
-function movement(
+export type MovementInsert = typeof linenMovements.$inferInsert;
+export function movement(
   kind: LinenMovementKind, line: Line, actor: Actor, now: Date, extra: Partial<MovementInsert> = {},
 ): MovementInsert {
   return {
@@ -120,24 +122,34 @@ export async function topUpWard(exec: Exec, actor: Actor, raw: unknown, nowIn?: 
     const now = await stamp(t, nowIn);
     const seen = await seenKey(t, "issue_to_ward", ward.id, input.idempotencyKey);
     if (seen !== null) return { movements: seen, wardId: ward.id };
-    const state = (await wardStates(t, now, ward.id))[0];
-    const byItem = new Map((state?.items ?? []).map((i) => [i.itemCode, i]));
-    let lines: Line[];
-    if (input.lines === undefined) {
-      lines = (state?.items ?? []).filter((i) => i.short > 0).map((i) => ({ itemCode: i.itemCode, qty: i.short }));
-      if (lines.length === 0) throw new LinenError("at_par", { wardId: ward.id });
-    } else {
-      for (const l of input.lines) {
-        const max = byItem.get(l.itemCode)?.short ?? 0;
-        if (l.qty > max) throw new LinenError("above_par", { itemCode: l.itemCode, max });
-      }
-      lines = input.lines;
-    }
-    await t.insert(linenMovements).values(lines.map((l) => movement("issue_to_ward", l, actor, now, {
-      wardResourceId: ward.id, idempotencyKey: input.idempotencyKey ?? null,
-    })));
+    const lines = await upToPar(t, ward.id, input.lines, now);
+    if (lines.length === 0) throw new LinenError("at_par", { wardId: ward.id });
+    await issueToWardIn(t, actor, ward.id, lines, now, { idempotencyKey: input.idempotencyKey ?? null });
     return { movements: lines.length, wardId: ward.id };
   });
+}
+
+/**
+ * What a top-up issues: without lines, each item's shortfall (empty = the ward is at par); with lines, those pieces,
+ * each refused above its shortfall (`above_par`). Call under the ward's lock.
+ */
+export async function upToPar(t: Tx, wardId: string, given: readonly Line[] | undefined, now: Date): Promise<Line[]> {
+  const state = (await wardStates(t, now, wardId))[0];
+  if (given === undefined) return (state?.items ?? []).filter((i) => i.short > 0).map((i) => ({ itemCode: i.itemCode, qty: i.short }));
+  const byItem = new Map((state?.items ?? []).map((i) => [i.itemCode, i]));
+  for (const l of given) {
+    const max = byItem.get(l.itemCode)?.short ?? 0;
+    if (l.qty > max) throw new LinenError("above_par", { itemCode: l.itemCode, max });
+  }
+  return [...given];
+}
+
+/** Store → ward: the movements, then (LD-1, D3) the beds waiting for this linen are made, oldest first. */
+export async function issueToWardIn(
+  t: Tx, actor: Actor, wardId: string, lines: readonly Line[], now: Date, extra: Partial<MovementInsert> = {},
+): Promise<void> {
+  await t.insert(linenMovements).values(lines.map((l) => movement("issue_to_ward", l, actor, now, { wardResourceId: wardId, ...extra })));
+  await releaseLinenWaits(t, actor, wardId, now);
 }
 
 /* ═══════════════════════════════ ward → soiled room ═══════════════════════════════ */
@@ -180,31 +192,67 @@ export function formatBatchNo(now: Date, serial: number): string {
  * One batch to the laundry: ordinary OR infected, never both. Each item is refused when more pieces are sent than wait
  * in that pool of the soiled room (`exceeds_soiled`) — so an infected batch cannot be made up from ordinary linen, and
  * ordinary linen cannot hide in an infected batch.
+ *
+ * LD-1 (#978): a batch is of ONE stream (`mixed_stream`: baby linen never with adult, theatre sets apart), goes to the
+ * hospital's plant or the vendor (`mode`), and may carry sealed bags by tag — each bag's declared pieces travel with it
+ * unopened, a held bag is refused (`on_hold`, D4), and loose lines are checked against the loose pool only.
  */
 export async function sendToLaundry(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<LinenActResult> {
   const input = parse(sendToLaundryInput, raw);
+  const loose = input.lines ?? [];
   return tx(exec, async (t) => {
-    await requireItems(t, input.lines);
+    if (loose.length > 0) await requireItems(t, loose);
     await lock(t, "soiled-room");
     const now = await stamp(t, nowIn);
     if (input.idempotencyKey !== undefined) {
       const seen = (await t.select().from(linenLaundryBatches).where(eq(linenLaundryBatches.idempotencyKey, input.idempotencyKey)))[0];
-      if (seen !== undefined) return { movements: input.lines.length, batchId: seen.id, batchNo: seen.batchNo };
+      if (seen !== undefined) return { movements: loose.length, batchId: seen.id, batchNo: seen.batchNo };
     }
-    const pool = (await soiledPool(t))[input.infected ? "infected" : "general"];
-    for (const l of input.lines) {
+    const bags = await bagsForBatch(t, input.bagTags ?? [], input.infected);
+    const pool = (await soiledPool(t, { loose: true }))[input.infected ? "infected" : "general"];
+    for (const l of loose) {
       const waiting = pool[l.itemCode] ?? 0;
       if (l.qty > waiting) throw new LinenError("exceeds_soiled", { itemCode: l.itemCode, waiting, infected: input.infected });
     }
+    const outLines = [...loose.map((l) => ({ ...l, bagId: null as string | null })), ...bags.flatMap((b) => b.lines.map((l) => ({ ...l, bagId: b.id })))];
+    const stream = await streamOf(t, outLines.map((l) => l.itemCode));
     const serial = Number((await t.execute<{ n: string }>(sql`select nextval('linen_batch_serial') as n`)).rows[0]!.n);
     const batch = (await t.insert(linenLaundryBatches).values({
-      id: newId(), batchNo: formatBatchNo(now, serial), infected: input.infected, vendorName: input.vendorName ?? null,
-      state: "sent", sentAt: now, sentBy: actor.id, piecesSent: input.lines.reduce((n, l) => n + l.qty, 0),
-      idempotencyKey: input.idempotencyKey ?? null,
+      id: newId(), batchNo: formatBatchNo(now, serial), infected: input.infected, stream, mode: input.mode,
+      vendorName: input.vendorName ?? null, state: "sent", sentAt: now, sentBy: actor.id,
+      piecesSent: outLines.reduce((n, l) => n + l.qty, 0), idempotencyKey: input.idempotencyKey ?? null,
     }).returning())[0]!;
-    await t.insert(linenMovements).values(input.lines.map((l) => movement("laundry_out", l, actor, now, { batchId: batch.id })));
-    return { movements: input.lines.length, batchId: batch.id, batchNo: batch.batchNo };
+    await t.insert(linenMovements).values(outLines.map((l) => movement("laundry_out", l, actor, now, { batchId: batch.id, bagId: l.bagId })));
+    if (bags.length > 0) {
+      await t.update(linenBags).set({ state: "sent", batchId: batch.id }).where(inArray(linenBags.id, bags.map((b) => b.id)));
+    }
+    return { movements: outLines.length, batchId: batch.id, batchNo: batch.batchNo };
   });
+}
+
+/** The one stream of a set of items; two streams in one batch are refused (`mixed_stream`). */
+export async function streamOf(t: Exec, itemCodes: readonly string[]): Promise<LinenStream> {
+  const rows = await t.selectDistinct({ stream: linenItems.stream }).from(linenItems).where(inArray(linenItems.code, [...new Set(itemCodes)]));
+  if (rows.length !== 1) throw new LinenError("mixed_stream", { streams: rows.map((r) => r.stream) });
+  return rows[0]!.stream as LinenStream;
+}
+
+/**
+ * The sealed bags a batch takes, by tag: each must be waiting in the soiled room (`bag_not_here`), of the batch's kind
+ * (`bag_wrong_batch`), and not on hold (`on_hold`, checked first: held linen is refused wherever it is).
+ */
+async function bagsForBatch(t: Tx, tags: readonly string[], infected: boolean): Promise<{ id: string; lines: Line[] }[]> {
+  if (tags.length === 0) return [];
+  if (new Set(tags).size !== tags.length) throw new LinenError("duplicate_item", { tags });
+  const rows = await t.select().from(linenBags).where(and(inArray(linenBags.tag, [...tags]), inArray(linenBags.state, ["sealed", "picked"])));
+  for (const tag of tags) {
+    const bag = rows.find((r) => r.tag === tag);
+    if (bag === undefined) throw new LinenError("unknown_bag", { tag });
+    await requireNotHeld(t, bag);
+    if (bag.state !== "picked") throw new LinenError("bag_not_here", { tag });
+    if (bag.infected !== infected) throw new LinenError("bag_wrong_batch", { tag });
+  }
+  return rows.map((r) => ({ id: r.id, lines: r.lines }));
 }
 
 /**
@@ -269,6 +317,7 @@ export async function borrowBetweenWards(exec: Exec, actor: Actor, raw: unknown,
     await t.insert(linenMovements).values(input.lines.map((l) => movement("transfer_between_wards", l, actor, now, {
       wardResourceId: from.id, toWardResourceId: to.id, idempotencyKey: input.idempotencyKey ?? null,
     })));
+    await releaseLinenWaits(t, actor, to.id, now);
     return { movements: input.lines.length, wardId: to.id };
   });
 }

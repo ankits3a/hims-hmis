@@ -90,6 +90,7 @@ flowchart LR
   emergency --> tariff
   emergency --> tasks
   housekeeping --> ipd
+  housekeeping --> linen
   housekeeping --> roster
   housekeeping --> tasks
   ipd --> billing
@@ -108,6 +109,10 @@ flowchart LR
   lab --> patients
   lab --> roster
   lab --> tariff
+  linen --> aerb
+  linen --> ipd
+  linen --> maintenance
+  linen --> ot
   linen --> tasks
   maintenance --> ipd
   maintenance --> tasks
@@ -163,7 +168,7 @@ flowchart LR
 | module | depends on | used by |
 |---|---|---|
 | [abdm](modules/abdm.md) | lab, opd, patients, radiology | — |
-| [aerb](modules/aerb.md) | patients | radiology |
+| [aerb](modules/aerb.md) | patients | linen, radiology |
 | [attendance](modules/attendance.md) | — | — |
 | [billing](modules/billing.md) | membership, opd, patients, tariff | emergency, ipd, lab, opd, ordering, ot, partners, passes, pharmacy, radiology |
 | [bmw](modules/bmw.md) | tasks | — |
@@ -172,16 +177,16 @@ flowchart LR
 | [doctor-desk](modules/doctor-desk.md) | lab, opd, patients, radiology, roster | — |
 | [emergency](modules/emergency.md) | billing, formulary, ipd, lab, materials, ordering, patients, roster, tariff, tasks | — |
 | [formulary](modules/formulary.md) | — | cds, emergency, ipd, materials, opd, pharmacy |
-| [housekeeping](modules/housekeeping.md) | ipd, roster, tasks | — |
-| [ipd](modules/ipd.md) | billing, formulary, lab, materials, opd, ordering, ot, patients, pharmacy, roster, tariff | diet, emergency, housekeeping, maintenance, passes, transport |
+| [housekeeping](modules/housekeeping.md) | ipd, linen, roster, tasks | — |
+| [ipd](modules/ipd.md) | billing, formulary, lab, materials, opd, ordering, ot, patients, pharmacy, roster, tariff | diet, emergency, housekeeping, linen, maintenance, passes, transport |
 | [lab](modules/lab.md) | billing, opd, patients, roster, tariff | abdm, doctor-desk, emergency, ipd, ordering, radiology |
-| [linen](modules/linen.md) | tasks | — |
-| [maintenance](modules/maintenance.md) | ipd, tasks | — |
+| [linen](modules/linen.md) | aerb, ipd, maintenance, ot, tasks | housekeeping |
+| [maintenance](modules/maintenance.md) | ipd, tasks | linen |
 | [materials](modules/materials.md) | formulary | emergency, ipd, opd, ot, pharmacy |
 | [membership](modules/membership.md) | patients, tariff | billing, partners, pharmacy |
 | [opd](modules/opd.md) | billing, cds, formulary, materials, patients, roster | abdm, billing, doctor-desk, ipd, lab, ordering, pharmacy, radiology |
 | [ordering](modules/ordering.md) | billing, lab, opd, radiology | emergency, ipd |
-| [ot](modules/ot.md) | billing, materials, patients, roster, tariff | diet, ipd, radiology |
+| [ot](modules/ot.md) | billing, materials, patients, roster, tariff | diet, ipd, linen, radiology |
 | [partners](modules/partners.md) | billing, membership, patients, tariff | — |
 | [passes](modules/passes.md) | billing, ipd, patients | — |
 | [patients](modules/patients.md) | — | abdm, aerb, billing, doctor-desk, emergency, ipd, lab, membership, opd, ot, partners, passes, pharmacy, radiology, transport |

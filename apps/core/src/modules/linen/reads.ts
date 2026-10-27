@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lt, ne, sql } from "drizzle-orm";
 import { LINEN_STANDARD_ITEMS, linenSetsPerBed } from "@hmis/contracts";
 import { istDayWindow } from "../../kernel/approvals/cumulative";
 import {
@@ -19,14 +19,14 @@ import type { Db, Tx } from "../../kernel/db/client";
  *   · Computed par per item = Σ over the ward's beds of sets-per-bed(bed class) × the item's units per set. The bed's
  *     class is `attributes.class` on the bed, else on the ward, else general. A par in `linen_par_levels` overrides.
  *   · On hand (book balance) = the last ward count at or before `now` + what moved since: issued and borrowed in, less
- *     soiled, infected, borrowed out and condemned.
+ *     soiled, infected, borrowed out, condemned and (LD-1) an MLC patient's linen handed to the police.
  *   · Weekly loss variance — see `weeklyVariance`.
  */
 type Exec = Db | Tx;
 
 /** Seed the standard catalogue (the migration does the same for a live database; tests truncate it). Idempotent. */
 export async function seedLinenItems(exec: Exec): Promise<void> {
-  await exec.insert(linenItems).values(LINEN_STANDARD_ITEMS.map((i) => ({ code: i.code, name: i.name, unitsPerSet: i.unitsPerSet, sort: i.sort })))
+  await exec.insert(linenItems).values(LINEN_STANDARD_ITEMS.map((i) => ({ code: i.code, name: i.name, unitsPerSet: i.unitsPerSet, sort: i.sort, stream: i.stream })))
     .onConflictDoNothing();
 }
 
@@ -97,7 +97,7 @@ export async function bookBalances(exec: Exec, at: Date, wardId?: string): Promi
       select ward_resource_id as w, item_code as i, at, case when kind = 'issue_to_ward' then qty else -qty end as d
         from linen_movements
        where ward_resource_id is not null and at <= ${atIso}::timestamptz
-         and kind in ('issue_to_ward', 'return_soiled', 'return_infected', 'condemn', 'transfer_between_wards')
+         and kind in ('issue_to_ward', 'return_soiled', 'return_infected', 'condemn', 'transfer_between_wards', 'hold_handed_over')
          and (${ward}::text is null or ward_resource_id = ${ward}::text)
       union all
       select to_ward_resource_id, item_code, at, qty
@@ -146,15 +146,20 @@ export async function wardStates(exec: Exec, now: Date, wardId?: string): Promis
   return states.sort((a, b) => Number(b.belowPar) - Number(a.belowPar) || b.shortPieces - a.shortPieces || a.wardName.localeCompare(b.wardName));
 }
 
-/** What waits in the soiled room per item, ordinary and infected apart: returned to it, less sent to the laundry. */
-export async function soiledPool(exec: Exec): Promise<{ general: Record<string, number>; infected: Record<string, number> }> {
+/**
+ * What waits in the soiled room per item, ordinary and infected apart: returned to it (and, LD-1, sent back by quality
+ * check for rewash), less sent to the laundry. `loose` leaves out the pieces inside sealed bags, which travel by tag.
+ */
+export async function soiledPool(exec: Exec, opts: { loose?: boolean } = {}): Promise<{ general: Record<string, number>; infected: Record<string, number> }> {
+  const loose = opts.loose === true;
   const r = await exec.execute<{ pool: "general" | "infected"; i: string; n: string }>(sql`
     select pool, i, sum(d) as n from (
       select case when kind = 'return_infected' then 'infected' else 'general' end as pool, item_code as i, qty as d
-        from linen_movements where kind in ('return_soiled', 'return_infected')
+        from linen_movements where kind in ('return_soiled', 'return_infected') and (not ${loose}::boolean or bag_id is null)
       union all
-      select case when b.infected then 'infected' else 'general' end, m.item_code, -m.qty
-        from linen_movements m join linen_laundry_batches b on b.id = m.batch_id where m.kind = 'laundry_out'
+      select case when b.infected then 'infected' else 'general' end, m.item_code, case when m.kind = 'qc_rewash' then m.qty else -m.qty end
+        from linen_movements m join linen_laundry_batches b on b.id = m.batch_id
+       where m.kind in ('laundry_out', 'qc_rewash') and (not ${loose}::boolean or m.bag_id is null)
     ) x group by pool, i`);
   const out = { general: {} as Record<string, number>, infected: {} as Record<string, number> };
   for (const row of r.rows) {
@@ -171,9 +176,9 @@ async function batchCards(exec: Exec, batches: (typeof linenLaundryBatches.$infe
   return batches.map((b) => {
     const lines = new Map<string, { itemCode: string; sent: number; received: number | null }>();
     for (const m of mv.filter((x) => x.batchId === b.id)) {
-      const l = lines.get(m.itemCode) ?? { itemCode: m.itemCode, sent: 0, received: b.state === "sent" ? null : 0 };
+      const l = lines.get(m.itemCode) ?? { itemCode: m.itemCode, sent: 0, received: b.receivedAt === null ? null : 0 };
       if (m.kind === "laundry_out") l.sent += m.qty;
-      else l.received = (l.received ?? 0) + m.qty;
+      else if (m.kind === "laundry_in" || m.kind === "issue_to_cssd") l.received = (l.received ?? 0) + m.qty;
       lines.set(m.itemCode, l);
     }
     return {
@@ -186,7 +191,7 @@ async function batchCards(exec: Exec, batches: (typeof linenLaundryBatches.$infe
 
 /** Batches at the laundry (sent, not yet received), oldest first. Infected batches carry `infected: true`. */
 export async function inTransit(exec: Exec, limit = 30): Promise<LinenBatchCard[]> {
-  const rows = await exec.select().from(linenLaundryBatches).where(eq(linenLaundryBatches.state, "sent"))
+  const rows = await exec.select().from(linenLaundryBatches).where(isNull(linenLaundryBatches.receivedAt))
     .orderBy(asc(linenLaundryBatches.sentAt)).limit(limit);
   return batchCards(exec, rows);
 }
@@ -198,7 +203,7 @@ export async function inTransit(exec: Exec, limit = 30): Promise<LinenBatchCard[
  *
  * where `counted` is the ward's LAST count inside the window, `opening` is its last count BEFORE the window (0 when it
  * was never counted before), `issued` = issued from the store + borrowed in, and `returned` = soiled + infected
- * returns + borrowed out + condemned — all between the opening count and the closing count. With no earlier count this
+ * returns + borrowed out + condemned + handed to the police (LD-1) — all between the opening count and the closing count. With no earlier count this
  * is exactly the spec's "issued − (returned soiled + infected + on hand by last count)". A ward-item with no count in
  * the window has no variance (it is listed by the board as "not counted", not guessed). Positive = pieces lost.
  *
@@ -224,7 +229,7 @@ export async function weeklyVariance(exec: Exec, from: Date, to: Date): Promise<
              case when kind = 'issue_to_ward' then 0 else qty end as returned
         from linen_movements
        where ward_resource_id is not null
-         and kind in ('issue_to_ward', 'return_soiled', 'return_infected', 'condemn', 'transfer_between_wards')
+         and kind in ('issue_to_ward', 'return_soiled', 'return_infected', 'condemn', 'transfer_between_wards', 'hold_handed_over')
       union all
       select to_ward_resource_id, item_code, at, qty, 0 from linen_movements where kind = 'transfer_between_wards'
     )

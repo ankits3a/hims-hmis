@@ -113,6 +113,25 @@ describe("Beds capacity board (E1.1)", () => {
     expect(await screen.findByTestId("ipd-beds-live")).toBeInTheDocument();
   });
 
+  it("LD-1 (#978) — a cleaned bed whose ward is short of a set says Waiting for linen in words", async () => {
+    let b02 = "";
+    api.getBedBoard.mockImplementation(async (wall: boolean) => { const b = boardOf(wall); b02 = b.floors[0]!.wards[0]!.beds[1]!.id; return b; });
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (raw.startsWith("/api/auth/me")) {
+        return new Response(JSON.stringify({ actor: { type: "user", id: "u1" }, permissions: { hospital: ["ipd.beds.view"], scoped: { department: {}, floor: {} } } }), { status: 200 });
+      }
+      if (raw.startsWith("/api/linen/beds-waiting")) {
+        return new Response(JSON.stringify([{ bedId: b02, bedName: "F05-MED-F-B02", wardId: id(2), short: { bedsheet: 1 }, rush: true, raisedAt: "2026-01-01T04:00:00.000Z" }]), { status: 200 });
+      }
+      return new Response("{}", { status: 200 });
+    }));
+    const user = userEvent.setup();
+    renderWithRouter(<IpdBedsUnderTest />, "/ipd/beds");
+    await user.click(await screen.findByTestId("ipd-ward-F05-MED-F"));
+    expect(await screen.findByTestId("linen-wait-F05-MED-F-B02")).toHaveTextContent("Waiting for linen");
+  });
+
   it("the waiting column is the shell with an empty state until admissions arrive", async () => {
     renderWithRouter(<IpdBedsUnderTest />, "/ipd/beds");
     expect(await screen.findByTestId("ipd-beds-waiting-empty")).toHaveTextContent("No one waiting");
