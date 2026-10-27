@@ -111,9 +111,9 @@ describe("WM-1 early warning and the Now card", () => {
       (await loadDesk(ipdManifest.desk!, { db, actor, reader: actor, date: "", now })).cards.find((c) => c.key === "ipd.ward_needs_you");
 
     const at10 = await card(w.incharge, ist("2026-03-10T10:00:00"));
-    expect(at10?.rows.map((r) => r.title)).toEqual(["Bed NY-B02 — no nurse"]);
+    expect(at10?.rows?.map((r) => r.title)).toEqual(["Bed NY-B02 — no nurse"]);
     expect(await card(w.nurse, ist("2026-03-10T10:00:00"))).toBeUndefined();
     const at1340 = await card(w.incharge, ist("2026-03-10T13:40:00"));
-    expect(at1340?.rows.map((r) => r.id)).toEqual([`unassigned:${fresh}`, `publish:${w.wardId}`]);
+    expect(at1340?.rows?.map((r) => r.id)).toEqual([`unassigned:${fresh}`, `publish:${w.wardId}`]);
   });
 });
