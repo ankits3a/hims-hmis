@@ -1732,6 +1732,15 @@ check, theatre sets to CSSD, linen holds, and a bed that is ready only when it i
 `nursing_supervisor` hold `linen.handle` (seal bags, place holds), and `nursing_supervisor` and
 `radiation_safety_officer` hold `linen.hold.release` (an MLC hold to the police; a radioactive hold, by the appointed RSO).
 
+**Vendor laundry (LD-2, issue #979, decisions 0087 and 0092, built 2026-10-27, awaiting owner review).** Vendor
+batches leave on an outward challan and come back against it piece by piece; a monthly vendor report, a recovery at
+replacement cost only when the vendor is below par, the vendor bill checked against accepted pieces, staff uniforms and
+the leavers' no-dues list, piece tags, chemical per kg washed, and the plant's licences. Four permissions join linen.
+`services_supervisor` holds `linen.vendor` (the vendor desk: challans, dock returns, the monthly report, raising a
+recovery, the bill check, piece tags, plant licences) and `linen.uniform`; `support_staff` holds `linen.uniform`; `owner`
+and `billing_manager` hold `linen.recovery.approve` (never their own recovery); `materials_head` holds
+`linen.bill.approve` (a bill's excess over the accepted pieces).
+
 **Housekeeping (E1.4, issue #721, decision 0072, built 2026-10-12, awaiting owner review).** Every bed released
 into cleaning raises exactly one cleaning task on the task engine; the bed is free only when the clean is checked.
 `housekeeping.view` (services_supervisor, duty_manager) opens the housekeeping board at `/housekeeping`;

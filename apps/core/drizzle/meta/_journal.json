@@ -1898,6 +1898,13 @@
       "when": 1792594090586,
       "tag": "0271_ipd_ward_safety",
       "breakpoints": true
+    },
+    {
+      "idx": 271,
+      "version": "7",
+      "when": 1792594150586,
+      "tag": "0272_laundry_vendor",
+      "breakpoints": true
     }
   ]
 }

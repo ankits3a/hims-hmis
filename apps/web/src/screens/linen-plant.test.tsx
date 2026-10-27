@@ -89,4 +89,22 @@ describe("LinenPlant (LD-1)", () => {
     await waitFor(() => expect(posts).toHaveLength(1));
     expect(posts[0]!.body).toEqual({ lines: [{ itemCode: "ot_gown", pass: 3, rewash: 0, mend: 1, condemn: 0 }] });
   });
+
+  it("LD-2 (#979): with a vendor set up, To vendor asks for the vendor and the weight — the challan", async () => {
+    laundry.plant.vendors = [{ id: "v1", name: "Clean Wash" }];
+    try {
+      renderWithProviders(<LinenPlant />);
+      fireEvent.click(await screen.findByTestId("vendor-LN-2"));
+      expect(posts).toHaveLength(0);
+      const go = screen.getByTestId("vendor-go");
+      expect(go).toBeDisabled();
+      fireEvent.change(screen.getByTestId("vendor-kg"), { target: { value: "3.2" } });
+      fireEvent.click(go);
+      await waitFor(() => expect(posts).toHaveLength(1));
+      expect(posts[0]!.url).toMatch(/\/linen\/laundry\/batches\/b2\/vendor$/);
+      expect(posts[0]!.body).toEqual({ linenVendorId: "v1", weightGrams: 3200 });
+    } finally {
+      delete laundry.plant.vendors;
+    }
+  });
 });

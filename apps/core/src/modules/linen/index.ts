@@ -3,7 +3,8 @@
  * it also defines the `linen_change` task kind (`kinds.ts`). IPD admission and discharge call `raiseLinenChange`.
  */
 export {
-  linenManifest, LINEN_CSSD_RECEIVE, LINEN_HANDLE, LINEN_HOLD_RELEASE, LINEN_MANAGE, LINEN_PLANT, LINEN_QC, LINEN_VIEW,
+  linenManifest, LINEN_BILL_APPROVE, LINEN_CSSD_RECEIVE, LINEN_HANDLE, LINEN_HOLD_RELEASE, LINEN_MANAGE, LINEN_PLANT, LINEN_QC,
+  LINEN_RECOVERY_APPROVE, LINEN_UNIFORM, LINEN_VENDOR, LINEN_VIEW,
 } from "./manifest";
 export { LinenModule } from "./linen.module";
 export { LINEN_CHANGE_TASK, LINEN_SYSTEM, raiseLinenChange } from "./kinds";
@@ -28,3 +29,13 @@ export {
 } from "./plant";
 export { bedReadyGate, bedsWaitingForLinen, releaseLinenWaits, rushDemand, shelfShort } from "./gate";
 export { dueSlots, runLinenClock } from "./clock";
+// LD-2 (#979, decisions 0087 and 0092) — vendor laundry, uniforms, piece tags, chemicals, licences.
+export {
+  addLinenVendor, approveBillExcess, approveRecovery, challanCards, challanFor, checkVendorBill, istDayOf, istMonthOf, istMonthStart,
+  istMonthWindow, raiseRecovery, recentBills, recentRecoveries, recordChallanReturn, refuseBillExcess, rejectRecovery,
+  replacementCosts, setLinenItemCost, setVendorRate, updateLinenVendor, vendorCards, vendorLaundryLive, vendorMonthReport,
+} from "./vendor";
+export { linenSetupView } from "./setup";
+export { exchangeUniform, issueUniform, returnUniform, setUniformRole, uniformDues, uniformHoldings, uniformRoles } from "./uniforms";
+export { pieceList, registerPiece } from "./pieces";
+export { chemicalUse, fileLicence, licenceCalendar } from "./plantcost";

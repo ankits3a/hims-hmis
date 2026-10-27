@@ -804,6 +804,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // CN-1 CANTEEN (#977, decision 0088) — finance's canteen acts: staff meal rules and cards, the till variance, the
       // caterer's rent, the deduction list, and deciding family meals. README "Canteen" prose.
       "canteen.finance", "canteen.view",
+      // LD-2 (#979, decision 0092) — finance approves, edits or rejects a laundry vendor's recovery (never its own); README "Vendor laundry" prose.
+      "linen.recovery.approve",
       // ER lane 6 (#813) — the ER bill desk. README "Emergency bill" prose.
       "er.bill",
       // IPD ADMISSION E1.2 (#719) — the TPA desk sits in billing: the manual authorisation record.
@@ -932,6 +934,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "owner",
     permissions: [
+      // LD-2 (#979, decision 0092) — the owner approves, edits or rejects a laundry vendor's recovery; README "Vendor laundry" prose.
+      "linen.recovery.approve",
       // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
       "ipd.beds.view",
       // IPD CHARGES E2.1 (#725, decision 0072) — the interim bill; README "IPD running bill" prose. Never a doctor (0058).
@@ -1441,6 +1445,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "materials_head",
     permissions: [
+      // LD-2 (#979, decision 0092) — stores approves a laundry vendor bill's excess over the accepted pieces; README "Vendor laundry" prose.
+      "linen.bill.approve",
       // All eleven. The person accountable for what the hospital owns holds every string the module
       // declares — including `materials.recall.manage`, which is the narrowest grant in the phase:
       // DD14's freeze is one action that stops every location's stock of a batch at once, and the
@@ -2229,7 +2235,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // E1.6 TRANSPORT (#723) — porters are support staff (one cadre with ward attendants): their transport card details.
   // E4.4 DIET (#736) — the ward's food-service attendant takes the meal-delivery task and taps a tray delivered or refused.
   // LD-1 (#978, decision 0087) — the laundry's washermen are support staff: they run the machines (`linen.plant`).
-  { roleKey: "support_staff", permissions: ["tasks.work", "bmw.handle", "linen.handle", "linen.plant", "transport.work", "diet.serve"] },
+  // LD-2 (#979) — and they exchange staff uniforms at the laundry counter (`linen.uniform`).
+  { roleKey: "support_staff", permissions: ["tasks.work", "bmw.handle", "linen.handle", "linen.plant", "linen.uniform", "transport.work", "diet.serve"] },
   /**
    * E1.4 HOUSEKEEPING (issue #721, decision 0072) — the services supervisor IS the housekeeping supervisor: the
    * housekeeping board, and the check of a TERMINAL clean (isolation, infection, death), which NABH infection
@@ -2241,6 +2248,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "tasks.view", "tasks.work", "tasks.supervise", "bmw.view", "bmw.handle", "bmw.manage", "linen.view", "linen.handle", "linen.manage",
       // LD-1 (#978, decision 0087) — the linen supervisor runs the plant and its quality check.
       "linen.plant", "linen.qc",
+      // LD-2 (#979, decisions 0087 and 0092) — and the vendor desk (challans, returns, reports, bills, tags, licences) and uniforms.
+      "linen.vendor", "linen.uniform",
       "housekeeping.view", "housekeeping.verify_terminal",
       // HK-1 (#973, decision 0086) — the housekeeping supervisor sets up areas and staff, publishes the rota and
       // confirms cleans and rounds.

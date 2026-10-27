@@ -13,7 +13,11 @@ import "./linen.css";
  * "Wards against par": par, on the shelf, due out today (planned discharges), beds waiting for linen, and Send — a
  * top-up to par. Wards with beds waiting come first, then the most short. Right: batches at the vendor and the holds.
  */
-const TABS = [["plant", "/linen/plant", "linen.plant"], ["store", "/linen/store", "linen.view"], ["rounds", "/linen/rounds", "linen.handle"], ["board", "/linen", "linen.view"]] as const;
+const TABS = [
+  ["plant", "/linen/plant", "linen.plant"], ["store", "/linen/store", "linen.view"], ["rounds", "/linen/rounds", "linen.handle"], ["board", "/linen", "linen.view"],
+  // LD-2 (#979) — the vendor desk and the uniform counter.
+  ["vendor", "/linen/vendor", "linen.vendor"], ["uniforms", "/linen/uniforms", "linen.uniform"], ["setup", "/linen/setup", "linen.vendor"],
+] as const;
 
 /** The laundry desks' tab strip (plain links: each tab is its own route). */
 export function LinenTabs({ on }: { on: (typeof TABS)[number][0] }): React.ReactElement {

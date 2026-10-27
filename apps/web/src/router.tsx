@@ -35,6 +35,9 @@ import { LinenHandle } from "./screens/linen-handle";
 import { LinenPlant } from "./screens/linen-plant";
 import { LinenRounds } from "./screens/linen-rounds";
 import { LinenStore } from "./screens/linen-store";
+import { LinenSetup } from "./screens/linen-setup";
+import { LinenUniforms } from "./screens/linen-uniforms";
+import { LinenVendor } from "./screens/linen-vendor";
 import { DietConsults } from "./screens/diet-consults";
 import { DietKitchen } from "./screens/diet-kitchen";
 import { DietWard } from "./screens/diet-ward";
@@ -390,6 +393,9 @@ const NAV: readonly NavEntry[] = [
   { to: "/linen/rounds", label: "nav.linenRounds", permission: "linen.handle", group: "services" },
   { to: "/linen/plant", label: "nav.linenPlant", permission: "linen.plant", group: "services", anyOf: ["linen.view", "linen.qc"] },
   { to: "/linen/store", label: "nav.linenStore", permission: "linen.view", group: "services", anyOf: ["linen.manage"] },
+  // LD-2 (#979, decisions 0087 and 0092) — the vendor laundry desk (the owner, finance and stores decide there too) and uniforms.
+  { to: "/linen/vendor", label: "nav.linenVendor", permission: "linen.vendor", group: "services", anyOf: ["linen.recovery.approve", "linen.bill.approve"] },
+  { to: "/linen/uniforms", label: "nav.linenUniforms", permission: "linen.uniform", group: "services" },
   { to: "/housekeeping", label: "nav.housekeeping", permission: "housekeeping.view", group: "services" },
   // HK-1 (#973) — the rota and setup pages; paths and permissions match `housekeepingManifest.menu`.
   { to: "/housekeeping/rota", label: "nav.housekeepingRota", permission: "housekeeping.rota.manage", group: "services" },
@@ -1652,6 +1658,12 @@ const linenPlantRoute = createRoute({ getParentRoute: () => authedRoute, path: "
 const linenStoreRoute = createRoute({ getParentRoute: () => authedRoute, path: "/linen/store", component: LinenStore });
 /** LD-1 — the runner's phone (390 px, Hindi first): soiled out, clean in, both signed; seal a bag; place a hold. */
 const linenRoundsRoute = createRoute({ getParentRoute: () => authedRoute, path: "/linen/rounds", component: LinenRounds });
+/** LD-2 (#979) — the vendor laundry desk (16:9): challans and dock returns, the month's report and recovery, bills, licences. */
+const linenVendorRoute = createRoute({ getParentRoute: () => authedRoute, path: "/linen/vendor", component: LinenVendor });
+/** LD-2 — the uniform counter (16:9): one dirty for one clean, issue up to three, the leavers' no-dues list. */
+/** LD-2 setup (#1014) — vendors with rates and turnaround, item replacement cost, plant licences, uniform roles. Reached from the laundry tabs. */
+const linenSetupRoute = createRoute({ getParentRoute: () => authedRoute, path: "/linen/setup", component: LinenSetup });
+const linenUniformsRoute = createRoute({ getParentRoute: () => authedRoute, path: "/linen/uniforms", component: LinenUniforms });
 
 /** E0.1 TASK ENGINE — the supervisor's task board: 16:9, open work by floor, late first, worker load. */
 const tasksBoardRoute = createRoute({
@@ -2596,7 +2608,7 @@ export const router = createRouter({
       // E2.4 LINEN — +2, `/linen` and `/linen/handle`. `caddyfile-parity.test.ts` pins the count.
       linenBoardRoute, linenHandleRoute,
       // LD-1 (#978) — +3, `/linen/plant`, `/linen/store`, `/linen/rounds`.
-      linenPlantRoute, linenStoreRoute, linenRoundsRoute,
+      linenPlantRoute, linenStoreRoute, linenRoundsRoute, linenVendorRoute, linenUniformsRoute, linenSetupRoute,
       // E1.4 HOUSEKEEPING — +1, `/housekeeping`. `caddyfile-parity.test.ts` pins the count.
       housekeepingBoardRoute,
       // HK-1 (#973) — +2, `/housekeeping/rota` and `/housekeeping/setup`. `caddyfile-parity.test.ts` pins the count.

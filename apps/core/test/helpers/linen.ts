@@ -108,3 +108,33 @@ export async function mkLinenStaff(db: Db, h: LinenHospital): Promise<LinenStaff
   });
   return { runner, nurse, nurseInCharge, operator, qc, supervisor, cssd, rso, nursePin, cssdPin, theatre, babyWard };
 }
+
+/**
+ * LD-2 (#979, decisions 0087 and 0092) — the vendor dock and the money: the laundry desk (challans, returns, rate cards,
+ * bills, uniforms, tags, licences), the owner and finance (approve a recovery; never their own), and stores (approve a
+ * bill's excess over the accepted pieces).
+ */
+export type VendorDesk = { desk: Actor; owner: Actor; finance: Actor; stores: Actor };
+
+export async function mkVendorDesk(db: Db): Promise<VendorDesk> {
+  const registry = new ModuleRegistry();
+  for (const m of [authManifest, linenManifest]) registry.install(m);
+  await syncPermissions(db, registry);
+  const grants: Record<string, string[]> = {
+    t_linen_desk: ["linen.view", "linen.handle", "linen.plant", "linen.vendor", "linen.uniform"],
+    t_linen_owner: ["linen.view", "linen.vendor", "linen.recovery.approve"],
+    t_linen_finance: ["linen.view", "linen.recovery.approve"],
+    t_linen_stores: ["linen.view", "linen.bill.approve"],
+  };
+  for (const [role, perms] of Object.entries(grants)) {
+    await ensureRole(db, role);
+    for (const p of perms) await grantPermissionToRole(db, registry, role, p);
+  }
+  const user = async (name: string, role: string): Promise<Actor> => (await mkUser(db, name, [role])).actor;
+  return {
+    desk: await user("ln.desk", "t_linen_desk"),
+    owner: await user("ln.owner", "t_linen_owner"),
+    finance: await user("ln.finance", "t_linen_finance"),
+    stores: await user("ln.stores", "t_linen_stores"),
+  };
+}
