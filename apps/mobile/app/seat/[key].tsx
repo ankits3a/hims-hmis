@@ -12,6 +12,8 @@ import { QuickBench } from "../../src/screens/lab-qbench";
 import { QuickCollect } from "../../src/screens/lab-qcollect";
 import { QuickCounter } from "../../src/screens/lab-qcounter";
 import { QuickReports } from "../../src/screens/lab-qreports";
+import { HkCheck } from "../../src/screens/hk-check";
+import { HkTasks } from "../../src/screens/hk-tasks";
 import { useLabMode } from "../../src/lab/mode";
 import { scannedFrom } from "../../src/scan/card";
 import { SEATS, seatsFor } from "../../src/seats";
@@ -42,6 +44,8 @@ export default function SeatScreen() {
   if (seat.key === "qcollect") return <QuickCollect />;
   if (seat.key === "qbench") return <QuickBench />;
   if (seat.key === "qreports") return <QuickReports />;
+  if (seat.key === "hkWork") return <HkTasks />;
+  if (seat.key === "hkCheck") return <HkCheck />;
   return (
     <View style={{ flex: 1, backgroundColor: color.paper }}>
       <Band />

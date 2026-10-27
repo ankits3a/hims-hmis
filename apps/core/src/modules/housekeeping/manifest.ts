@@ -31,6 +31,8 @@ export const housekeepingManifest: ModuleManifest = {
     { label: "Housekeeping", path: "/housekeeping", permission: HOUSEKEEPING_VIEW },
     { label: "Housekeeping rota", path: "/housekeeping/rota", permission: HOUSEKEEPING_ROTA_MANAGE },
     { label: "Housekeeping setup", path: "/housekeeping/setup", permission: HOUSEKEEPING_SETUP_MANAGE },
+    // HK-2 (#974) — the department's reports and this shift's random inspections.
+    { label: "Housekeeping reports", path: "/housekeeping/reports", permission: HOUSEKEEPING_VIEW },
   ],
   permissions: [HOUSEKEEPING_VIEW, HOUSEKEEPING_VERIFY_TERMINAL, HOUSEKEEPING_SETUP_MANAGE, HOUSEKEEPING_ROTA_MANAGE, HOUSEKEEPING_CONFIRM],
   subscriptions: [

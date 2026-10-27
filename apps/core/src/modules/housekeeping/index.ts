@@ -9,7 +9,7 @@ export {
   HOUSEKEEPING_VERIFY_TERMINAL, HOUSEKEEPING_VIEW,
 } from "./names";
 export {
-  AREA_REQUEST, AREA_ROUND, AREA_ROUND_CHECKED, BED_CLEAN_ROUTINE, BED_CLEAN_TERMINAL, HOUSEKEEPING_ROUND_SKILL,
+  AREA_REQUEST, AREA_REWORK, AREA_ROUND, AREA_ROUND_CHECKED, BED_CLEAN_ROUTINE, BED_CLEAN_TERMINAL, HOUSEKEEPING_ROUND_SKILL,
   HOUSEKEEPING_SKILL, ROOM_INSPECTION, SPILL,
 } from "./kinds";
 export { HousekeepingModule } from "./housekeeping.module";
@@ -26,3 +26,7 @@ export { finishWork, proofOf, storeWorkPhoto, workForm, workOf } from "./work";
 export { doorRequestOf, raiseDoorRequest } from "./door";
 export { supervisorBoard } from "./board";
 export { bedCleans, housekeepingBoard } from "./reads";
+// HK-2 (#974, decision 0086) — floor stores and monthly consumables, random inspections, the contractor SLA and daily reports.
+export { floorConsumables, floorStoresView, linkFloorStore } from "./floor-stores";
+export { drawInspections, inspectionsOf, recordInspection, storeInspectionPhoto } from "./inspections";
+export { contractorSla, dailyReport, toCheck } from "./reports";

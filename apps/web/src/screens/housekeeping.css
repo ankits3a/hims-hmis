@@ -92,3 +92,16 @@
 @media print {
   .pp .hk-page > :not(.hk-print) { display: none; }
 }
+
+/* HK-2 (#974) — reports: a narrow picker, even Yes/No columns in the inspection sheet, and the contractor report as one
+   card per company on a phone (a seven-column table hides its last columns at 390 px). */
+.pp .hk-pick { max-width: 320px; }
+.pp .hk-inspect .hk-ck span { flex: 1 1 0; min-width: 0; }
+.pp .hk-sla-cards { display: none; }
+.pp .hk-sla-card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-top: 8px; }
+.pp .hk-sla-card dl { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin: 6px 0 0; font-size: 13px; }
+.pp .hk-sla-card dd { margin: 0; text-align: right; font-weight: 600; }
+@media (max-width: 700px) {
+  .pp .hk-sla-wide { display: none; }
+  .pp .hk-sla-cards { display: block; }
+}

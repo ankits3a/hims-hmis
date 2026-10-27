@@ -3,6 +3,7 @@ import { HK_ROUND_GRACE_MIN, HOUSEKEEPING_KINDS, hkSlotAt, newId } from "@hmis/c
 import { withTx } from "../../kernel/db/client";
 import { hkAreas, hkRounds } from "../../kernel/db/schema";
 import { getTask, raiseTask } from "../tasks";
+import { drawInspections } from "./inspections";
 import { HOUSEKEEPING_ROUNDS_ACTOR } from "./names";
 import type { HkAreaClass, HkRoundStatus, HkRoundView } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -17,7 +18,7 @@ import type { Db } from "../../kernel/db/client";
  * DECIDED: classes A and B are checked by the unit side (a `area_round_checked` task); toilets, public areas and support
  * areas are not checked per round (the supervisor's random inspection scores them, HK-2).
  */
-export type RoundsResult = { raised: number; missed: number; done: number; failed: number };
+export type RoundsResult = { raised: number; missed: number; done: number; failed: number; drawn: number };
 
 export const roundKindFor = (areaClass: HkAreaClass): string =>
   areaClass === "A" || areaClass === "B" ? HOUSEKEEPING_KINDS.roundChecked : HOUSEKEEPING_KINDS.round;
@@ -25,7 +26,7 @@ export const roundKindFor = (areaClass: HkAreaClass): string =>
 const DONE_STATES = ["done", "verified"];
 
 export async function runRoundsClock(db: Db, now: Date = new Date()): Promise<RoundsResult> {
-  const out: RoundsResult = { raised: 0, missed: 0, done: 0, failed: 0 };
+  const out: RoundsResult = { raised: 0, missed: 0, done: 0, failed: 0, drawn: 0 };
   const areas = await db.select().from(hkAreas).where(eq(hkAreas.active, true));
   for (const area of areas) {
     try {
@@ -65,6 +66,13 @@ export async function runRoundsClock(db: Db, now: Date = new Date()): Promise<Ro
       out.failed += 1;
       console.error(`runRoundsClock: round ${r.id} failed: ${e instanceof Error ? e.message : String(e)}`);
     }
+  }
+  // HK-2 (#974): this shift's random inspections, once per floor (a rerun draws nothing new).
+  try {
+    out.drawn = (await drawInspections(db, now)).drawn;
+  } catch (e) {
+    out.failed += 1;
+    console.error(`runRoundsClock: inspection draw failed: ${e instanceof Error ? e.message : String(e)}`);
   }
   return out;
 }

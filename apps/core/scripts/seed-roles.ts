@@ -2231,6 +2231,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // HK-1 (#973, decision 0086) — the housekeeping supervisor sets up areas and staff, publishes the rota and
       // confirms cleans and rounds.
       "housekeeping.setup.manage", "housekeeping.rota.manage", "housekeeping.confirm",
+      // HK-2 (#974, decision 0086) — the floor supervisor keeps each floor's housekeeping store: raises its indents on the
+      // central store and receives what is issued (the existing materials flow; the store names this role its custodian).
+      "materials.stock.read", "materials.stock.receive",
       // E1.5 MAINTENANCE (issue #722) — the maintenance board; raise; cancel a ticket raised in error or re-dispatch
       // one whose task was cancelled. Told when an item is flagged for replacement. NOT the confirmation: that is
       // the nurse's (`ipd.beds.clean` or `maintenance.confirm`).

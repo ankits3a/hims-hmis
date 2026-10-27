@@ -185,3 +185,52 @@ export const hkDoorRequests = pgTable(
     check("hk_door_requests_need_ck", sql`${t.need} in ('clean', 'toilet', 'spill', 'bin')`),
   ],
 );
+
+/**
+ * HK-2 (#974, decision 0086) — a floor's housekeeping cupboard: the materials sub-store the floor receives its
+ * consumables into (indent → transfer → receipt, the existing flow). One store per floor, one floor per store.
+ */
+export const hkFloorStores = pgTable(
+  "hk_floor_stores",
+  {
+    floorId: text("floor_id").primaryKey().references(() => resources.id),
+    storeId: text("store_id").notNull().references(() => resources.id),
+    updatedBy: text("updated_by").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [uniqueIndex("hk_floor_stores_store_ux").on(t.storeId)],
+);
+
+/**
+ * HK-2 (#974) — a random inspection of a C or D area, drawn for one shift (two per floor, DECIDED). Scored once with the
+ * NABH audit items; a fail raises a rework task on the floor team. `company` is the company whose attendant last worked
+ * the area before the inspection (a snapshot, for the contractor report); never a person.
+ */
+export const hkInspections = pgTable(
+  "hk_inspections",
+  {
+    id: text("id").primaryKey(),
+    areaId: text("area_id").notNull().references(() => hkAreas.id),
+    floorId: text("floor_id").notNull().references(() => resources.id),
+    shiftStartsAt: timestamp("shift_starts_at", { withTimezone: true }).notNull(),
+    status: text("status").notNull().default("due"),
+    answers: jsonb("answers").$type<{ itemId: string; ok: boolean }[]>(),
+    scorePct: integer("score_pct"),
+    photoKey: text("photo_key"),
+    qrVersion: integer("qr_version"),
+    inspectedBy: text("inspected_by"),
+    inspectedAt: timestamp("inspected_at", { withTimezone: true }),
+    company: text("company"),
+    contractorId: text("contractor_id").references(() => hkContractors.id),
+    reworkTaskId: text("rework_task_id").references(() => tasks.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("hk_inspections_area_shift_ux").on(t.areaId, t.shiftStartsAt),
+    index("hk_inspections_floor_shift_idx").on(t.floorId, t.shiftStartsAt),
+    index("hk_inspections_inspected_idx").on(t.inspectedAt),
+    check("hk_inspections_status_ck", sql`${t.status} in ('due', 'passed', 'failed')`),
+    check("hk_inspections_scored_ck", sql`(${t.status} = 'due') = (${t.inspectedAt} is null) and (${t.status} = 'due') = (${t.scorePct} is null)`),
+    check("hk_inspections_score_ck", sql`${t.scorePct} is null or (${t.scorePct} >= 0 and ${t.scorePct} <= 100)`),
+  ],
+);

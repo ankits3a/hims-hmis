@@ -1088,6 +1088,14 @@
     }
   },
   "screen": {
+    "hkWork": {
+      "title": "Housekeeping tasks",
+      "hint": "Your cleaning list: scan, checklist, photo, done."
+    },
+    "hkCheck": {
+      "title": "Housekeeping checks",
+      "hint": "Pass or fail cleaned beds and rounds."
+    },
     "vitals": {
       "title": "Vitals bay",
       "hint": "Record BP, pulse, SpO₂, temperature and weight at the bench."
@@ -3369,6 +3377,48 @@
       "time": {
         "before_print": "Collected before print"
       }
+    }
+  },
+  "hkPhone": {
+    "failed": "Could not reach the server. Try again.",
+    "finished": "Done: {{place}}",
+    "empty": "No housekeeping task for you now.",
+    "start": "Start",
+    "scan": "Scan the door QR",
+    "scanned": "QR scanned",
+    "progress": "{{done}} of {{total}} answered",
+    "yes": "Yes: {{item}}",
+    "no": "No: {{item}}",
+    "photo": "Take one photo",
+    "photoTaken": "Photo taken",
+    "noPatient": "Photo of the place only, never a patient.",
+    "itemsLeft": "Items left: {{n}}",
+    "photoLeft": "Photo needed",
+    "scanLeft": "Scan needed",
+    "done": "Done",
+    "rework": "Rework: {{reason}}",
+    "cameraDenied": "Camera not allowed. Allow it in Settings.",
+    "terminal": "Terminal",
+    "failedTimes": "Failed: {{n}}",
+    "nothingToCheck": "Nothing waits for a check.",
+    "by": "{{who}} · {{company}} · {{at}}",
+    "photoAlt": "Photo of the cleaned place",
+    "checklist": "Checklist {{ok}} of {{total}}",
+    "noProof": "No checklist was recorded for this task.",
+    "failedBefore": "Failed before: {{n}}. {{reason}}",
+    "why": "If it fails, why?",
+    "needReason": "Pick a reason to fail it.",
+    "fail": "Fail",
+    "pass": "Pass",
+    "passed": "Passed",
+    "failedSent": "Failed. Sent back for rework.",
+    "reason": {
+      "floor_wet": "Floor wet",
+      "bin_full": "Bin full",
+      "linen_missing": "Linen missing",
+      "stain": "Stain",
+      "smell": "Smell",
+      "toilet_dirty": "Toilet dirty"
     }
   }
 }

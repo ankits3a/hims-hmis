@@ -38,6 +38,7 @@ import { DietWard } from "./screens/diet-ward";
 import { HousekeepingBoard } from "./screens/housekeeping-board";
 import { HkRota } from "./screens/hk-rota";
 import { HkSetup } from "./screens/hk-setup";
+import { HkReports } from "./screens/hk-reports";
 import { DoorRequest } from "./screens/door-request";
 import { MaintenanceBoard } from "./screens/maintenance-board";
 import { TransportBoard } from "./screens/transport-board";
@@ -371,6 +372,8 @@ const NAV: readonly NavEntry[] = [
   // HK-1 (#973) — the rota and setup pages; paths and permissions match `housekeepingManifest.menu`.
   { to: "/housekeeping/rota", label: "nav.housekeepingRota", permission: "housekeeping.rota.manage", group: "services" },
   { to: "/housekeeping/setup", label: "nav.housekeepingSetup", permission: "housekeeping.setup.manage", group: "services" },
+  // HK-2 (#974) — the department's reports and this shift's inspections; path and permission match the manifest's menu.
+  { to: "/housekeeping/reports", label: "nav.housekeepingReports", permission: "housekeeping.view", group: "services" },
   { to: "/maintenance", label: "nav.maintenance", permission: "maintenance.view", group: "services" },
   // E1.6 TRANSPORT (issue #723) — the supervisor's board (`transportManifest.menu`) and the request sheet.
   { to: "/transport", label: "nav.transport", permission: "transport.manage", group: "services" },
@@ -1578,6 +1581,8 @@ const housekeepingBoardRoute = createRoute({
 /** HK-1 (#973) — the shift rota (floor-wise, area-wise, bed-wise) and the housekeeping setup (areas, QR, checklists, staff). */
 const housekeepingRotaRoute = createRoute({ getParentRoute: () => authedRoute, path: "/housekeeping/rota", component: HkRota });
 const housekeepingSetupRoute = createRoute({ getParentRoute: () => authedRoute, path: "/housekeeping/setup", component: HkSetup });
+/** HK-2 (#974) — reports: a floor's shift, inspections, monthly consumables, the contractor report. */
+const housekeepingReportsRoute = createRoute({ getParentRoute: () => authedRoute, path: "/housekeeping/reports", component: HkReports });
 
 /** E1.5 MAINTENANCE (issue #722) — the maintenance supervisor's board: 16:9, open repairs by floor, critical first. */
 const maintenanceBoardRoute = createRoute({
@@ -2497,7 +2502,7 @@ export const router = createRouter({
       // E1.4 HOUSEKEEPING — +1, `/housekeeping`. `caddyfile-parity.test.ts` pins the count.
       housekeepingBoardRoute,
       // HK-1 (#973) — +2, `/housekeeping/rota` and `/housekeeping/setup`. `caddyfile-parity.test.ts` pins the count.
-      housekeepingRotaRoute, housekeepingSetupRoute,
+      housekeepingRotaRoute, housekeepingSetupRoute, housekeepingReportsRoute,
       // E1.5 MAINTENANCE — +1, `/maintenance`. `caddyfile-parity.test.ts` pins the count.
       maintenanceBoardRoute,
       // E1.6 TRANSPORT — +2, `/transport` and `/transport/request`.

@@ -61,6 +61,8 @@ export const SEAT_CHIPS: Record<Seat["key"], ChipKey[]> = {
   qcollect: ["myDuty", "myNight", "myDay"],
   qbench: ["myDuty", "myNight", "myDay"],
   qreports: ["myDuty", "myNight", "myDay"],
+  hkWork: ["myDuty", "myNight", "myDay"],
+  hkCheck: ["myDuty", "myNight", "myDay"],
 };
 
 function holds(p: EffectivePermissions, permission: string | null): boolean {

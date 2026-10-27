@@ -173,6 +173,8 @@ export type { NowRow, StuckStep } from "./now-cards";
 // (name, alias for a sealed or confidential patient) for the kitchen's labels and the ward diet sheet.
 export { placedCensus } from "./diet-seam";
 export type { PlacedPatient } from "./diet-seam";
+// HK-2 (#974) — occupied bed-days under a floor or ward by the midnight census (housekeeping's cost per bed-day).
+export { istMidnights, occupiedBedDays } from "./bed-days";
 export { nowIdentities } from "./now-cards";
 export type { Identity as NowIdentity } from "./now-cards";
 // E4.1 (#733) — nursing: the assessment, vitals scored by NEWS2 / MEOWS / PEWS, one alert per breach, I/O, notes, the
