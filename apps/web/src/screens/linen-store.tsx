@@ -16,7 +16,7 @@ import "./linen.css";
 const TABS = [
   ["plant", "/linen/plant", "linen.plant"], ["store", "/linen/store", "linen.view"], ["rounds", "/linen/rounds", "linen.handle"], ["board", "/linen", "linen.view"],
   // LD-2 (#979) — the vendor desk and the uniform counter.
-  ["vendor", "/linen/vendor", "linen.vendor"], ["uniforms", "/linen/uniforms", "linen.uniform"],
+  ["vendor", "/linen/vendor", "linen.vendor"], ["uniforms", "/linen/uniforms", "linen.uniform"], ["setup", "/linen/setup", "linen.vendor"],
 ] as const;
 
 /** The laundry desks' tab strip (plain links: each tab is its own route). */

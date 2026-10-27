@@ -545,6 +545,13 @@ export const addLinenVendorInput = z.object({
   rushTurnaroundHours: z.number().int().min(1).max(240).optional(),
   gstRateBps: z.number().int().min(0).max(2800).optional(),
 }).strict();
+/** Turnaround and GST changed after the vendor was added (spec #979: editable per vendor). Rush never above routine. */
+export const updateLinenVendorInput = z.object({
+  linenVendorId: id,
+  turnaroundHours: z.number().int().min(1).max(240).optional(),
+  rushTurnaroundHours: z.number().int().min(1).max(240).optional(),
+  gstRateBps: z.number().int().min(0).max(2800).optional(),
+}).strict();
 export const setVendorRateInput = z.object({ linenVendorId: id, itemCode, ratePaise: paise, effectiveFrom: isoDay }).strict();
 /** The item master for linen: its stores item (last goods-receipt price) and its own price per piece. */
 export const setLinenItemCostInput = z.object({
@@ -621,3 +628,12 @@ export type LinenVendorDeskView = {
   licences: LinenLicenceRow[]; chemicals: LinenChemicalUse;
 };
 export type LinenUniformView = { serverNow: string; roles: string[]; holdings: LinenUniformHolding[]; dues: LinenUniformDue[] };
+
+/** The laundry setup screen (#1014): vendors with rates and turnaround, item costs, the plant licences, uniform roles. */
+export type LinenSetupView = {
+  serverNow: string;
+  vendors: (LinenVendorCard & { rates: { itemCode: string; ratePaise: number; effectiveFrom: string }[] })[];
+  items: { code: string; name: string; stream: LinenStream; pricePaise: number | null; materialsItemId: string | null }[];
+  licences: LinenLicenceRow[];
+  uniformRoles: string[];
+};

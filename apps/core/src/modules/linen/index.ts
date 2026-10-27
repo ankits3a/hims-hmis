@@ -33,8 +33,9 @@ export { dueSlots, runLinenClock } from "./clock";
 export {
   addLinenVendor, approveBillExcess, approveRecovery, challanCards, challanFor, checkVendorBill, istDayOf, istMonthOf, istMonthStart,
   istMonthWindow, raiseRecovery, recentBills, recentRecoveries, recordChallanReturn, refuseBillExcess, rejectRecovery,
-  replacementCosts, setLinenItemCost, setVendorRate, vendorCards, vendorLaundryLive, vendorMonthReport,
+  replacementCosts, setLinenItemCost, setVendorRate, updateLinenVendor, vendorCards, vendorLaundryLive, vendorMonthReport,
 } from "./vendor";
+export { linenSetupView } from "./setup";
 export { exchangeUniform, issueUniform, returnUniform, setUniformRole, uniformDues, uniformHoldings, uniformRoles } from "./uniforms";
 export { pieceList, registerPiece } from "./pieces";
 export { chemicalUse, fileLicence, licenceCalendar } from "./plantcost";

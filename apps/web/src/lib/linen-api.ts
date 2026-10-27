@@ -1,6 +1,6 @@
 import { ApiError, api } from "./api";
 import type {
-  LinenBillCard, LinenUniformView, LinenVendorDeskView, LinenActResult, LinenBedWait, LinenBoardView, LinenFloorView, LinenHandlerView, LinenLaundryView, LinenPlantView, LinenRoundCard,
+  LinenBillCard, LinenSetupView, LinenUniformView, LinenVendorDeskView, LinenActResult, LinenBedWait, LinenBoardView, LinenFloorView, LinenHandlerView, LinenLaundryView, LinenPlantView, LinenRoundCard,
 } from "@hmis/contracts";
 
 /* ═══ E2.4 LINEN (issue #728) — `apps/core/src/modules/linen/linen.controller.ts`'s `/linen…`. The web imports only
@@ -112,3 +112,16 @@ export const uniformApi = (verb: "issue" | "exchange" | "return", body: { userna
 /** Paise as rupees for the desk (no paise shown below a rupee's worth of rounding). */
 export const rupees = (paise: number): string =>
   `₹${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: paise % 100 === 0 ? 0 : 2, maximumFractionDigits: 2 })}`;
+
+/* ═══ LD-2 setup (#1014) — vendors and rates, item cost, plant licences, uniform roles. ═══ */
+export const fetchLinenSetup = () => api<LinenSetupView>("GET", "/linen/setup");
+export const addVendorFullApi = (b: { name: string; turnaroundHours: number; rushTurnaroundHours: number; gstRateBps: number }) =>
+  api<{ id: string }>("POST", "/linen/vendors", b);
+export const updateVendorApi = (vendorId: string, b: { turnaroundHours: number; rushTurnaroundHours: number; gstRateBps: number }) =>
+  api<{ id: string }>("POST", `/linen/vendors/${id(vendorId)}`, b);
+export const itemCostApi = (itemCode: string, pricePaise: number | null) =>
+  api<{ itemCode: string }>("POST", `/linen/items/${id(itemCode)}/cost`, { pricePaise });
+export const fileLicenceApi = (b: { kind: "etp_consent" | "boiler"; licenceNo: string; authority: string; validFrom: string; validTo: string }) =>
+  api<{ id: string }>("POST", "/linen/licences", b);
+export const uniformRoleApi = (roleKey: string, entitled: boolean) =>
+  api<{ roleKey: string; entitled: boolean }>("POST", "/linen/uniforms/roles", { roleKey, entitled });

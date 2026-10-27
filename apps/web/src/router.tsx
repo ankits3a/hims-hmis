@@ -35,6 +35,7 @@ import { LinenHandle } from "./screens/linen-handle";
 import { LinenPlant } from "./screens/linen-plant";
 import { LinenRounds } from "./screens/linen-rounds";
 import { LinenStore } from "./screens/linen-store";
+import { LinenSetup } from "./screens/linen-setup";
 import { LinenUniforms } from "./screens/linen-uniforms";
 import { LinenVendor } from "./screens/linen-vendor";
 import { DietConsults } from "./screens/diet-consults";
@@ -1582,6 +1583,8 @@ const linenRoundsRoute = createRoute({ getParentRoute: () => authedRoute, path: 
 /** LD-2 (#979) — the vendor laundry desk (16:9): challans and dock returns, the month's report and recovery, bills, licences. */
 const linenVendorRoute = createRoute({ getParentRoute: () => authedRoute, path: "/linen/vendor", component: LinenVendor });
 /** LD-2 — the uniform counter (16:9): one dirty for one clean, issue up to three, the leavers' no-dues list. */
+/** LD-2 setup (#1014) — vendors with rates and turnaround, item replacement cost, plant licences, uniform roles. Reached from the laundry tabs. */
+const linenSetupRoute = createRoute({ getParentRoute: () => authedRoute, path: "/linen/setup", component: LinenSetup });
 const linenUniformsRoute = createRoute({ getParentRoute: () => authedRoute, path: "/linen/uniforms", component: LinenUniforms });
 
 /** E0.1 TASK ENGINE — the supervisor's task board: 16:9, open work by floor, late first, worker load. */
@@ -2518,7 +2521,7 @@ export const router = createRouter({
       // E2.4 LINEN — +2, `/linen` and `/linen/handle`. `caddyfile-parity.test.ts` pins the count.
       linenBoardRoute, linenHandleRoute,
       // LD-1 (#978) — +3, `/linen/plant`, `/linen/store`, `/linen/rounds`.
-      linenPlantRoute, linenStoreRoute, linenRoundsRoute, linenVendorRoute, linenUniformsRoute,
+      linenPlantRoute, linenStoreRoute, linenRoundsRoute, linenVendorRoute, linenUniformsRoute, linenSetupRoute,
       // E1.4 HOUSEKEEPING — +1, `/housekeeping`. `caddyfile-parity.test.ts` pins the count.
       housekeepingBoardRoute,
       // HK-1 (#973) — +2, `/housekeeping/rota` and `/housekeeping/setup`. `caddyfile-parity.test.ts` pins the count.

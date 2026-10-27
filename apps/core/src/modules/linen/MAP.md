@@ -61,6 +61,8 @@ the leavers' no-dues list, tagged pieces, chemical per kg washed and the plant's
   `chemicalUse` (materials `stock_ledger.cost_center = 'laundry'`), `fileLicence`, `licenceCalendar`. Migration
   `0264_laundry_vendor.sql` (renumber at merge). Web `apps/web/src/screens/linen-vendor.tsx` (`/linen/vendor`),
   `apps/web/src/screens/linen-uniforms.tsx` (`/linen/uniforms`); the plant's To vendor asks for vendor + weight once vendors exist.
+  Setup (#1014): `setup.ts` `linenSetupView` + `vendor.ts` `updateLinenVendor` (turnaround, GST); web `linen-setup.tsx`
+  (`/linen/setup`, a LAUNDRY tab, no menu row); uniform roles there need `linen.manage` (the door's permission).
 
 ## 3. Main flows
 ### 3.1 Par

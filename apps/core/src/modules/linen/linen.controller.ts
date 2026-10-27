@@ -18,17 +18,18 @@ import {
 import { bedsWaitingForLinen, rushDemand } from "./gate";
 import {
   addLinenVendor, approveBillExcess, approveRecovery, challanCards, checkVendorBill, istMonthOf, istMonthStart, raiseRecovery, recentBills,
-  recentRecoveries, recordChallanReturn, refuseBillExcess, rejectRecovery, setLinenItemCost, setVendorRate, vendorCards,
+  recentRecoveries, recordChallanReturn, refuseBillExcess, rejectRecovery, setLinenItemCost, setVendorRate, updateLinenVendor, vendorCards,
   vendorMonthReport,
 } from "./vendor";
 import { exchangeUniform, issueUniform, returnUniform, setUniformRole, uniformDues, uniformHoldings, uniformRoles } from "./uniforms";
 import { registerPiece } from "./pieces";
+import { linenSetupView } from "./setup";
 import { chemicalUse, fileLicence, licenceCalendar } from "./plantcost";
 import { LINEN_BILL_APPROVE, LINEN_RECOVERY_APPROVE, LINEN_UNIFORM, LINEN_VENDOR } from "./manifest";
 import { mlcOccupiedBeds } from "../ipd";
 import type {
   Actor, LinenActResult, LinenBagCard, LinenBedWait, LinenBoardView, LinenFloorView, LinenHandlerView, LinenLaundryView,
-  LinenPlantView, LinenRoundCard, LinenVarianceRow, LinenBillCard, LinenUniformView, LinenVendorDeskView, LinenVendorMonthReport,
+  LinenPlantView, LinenRoundCard, LinenVarianceRow, LinenBillCard, LinenSetupView, LinenUniformView, LinenVendorDeskView, LinenVendorMonthReport,
 } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -304,6 +305,19 @@ export class LinenController {
   @RequirePermission(LINEN_VENDOR, "hospital")
   async addVendor(@CurrentActor() actor: Actor, @Body() b: unknown): Promise<{ id: string }> {
     return refusing(async () => ({ id: (await addLinenVendor(this.db, actor, b)).id }));
+  }
+
+  /** The setup screen (#1014): vendors, rates, item costs, licences, uniform roles. */
+  @Get("setup")
+  @RequirePermission(LINEN_VENDOR, "hospital", { alsoAdmits: [LINEN_MANAGE] })
+  async setup(): Promise<LinenSetupView> {
+    return linenSetupView(this.db, new Date());
+  }
+
+  @Post("vendors/:id")
+  @RequirePermission(LINEN_VENDOR, "hospital")
+  async updateVendor(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() b: unknown): Promise<{ id: string }> {
+    return refusing(async () => ({ id: (await updateLinenVendor(this.db, actor, { ...body(b), linenVendorId: id })).id }));
   }
 
   @Post("vendors/:id/rates")

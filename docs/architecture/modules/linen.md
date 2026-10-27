@@ -116,6 +116,8 @@ Source: `apps/core/src/modules/linen/`
   - `wardStates(exec: Exec, now: Date, wardId?: string): Promise<LinenWardState[]>`
   - `weeklyVariance(exec: Exec, from: Date, to: Date): Promise<LinenVarianceRow[]>`
   - types: `WardShape`
+- `setup.ts`
+  - `linenSetupView(exec: Exec, now: Date): Promise<LinenSetupView>`
 - `uniforms.ts`
   - `exchangeUniform(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<{ holding: number }>`
   - `issueUniform(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<{ holding: number }>`
@@ -144,6 +146,7 @@ Source: `apps/core/src/modules/linen/`
   - `replacementCosts(exec: Exec, codes: readonly string[]): Promise<Map<string, { unitPaise: number; priced: boolean; source: "grn" | "item_mas…`
   - `setLinenItemCost(exec: Exec, _actor: Actor, raw: unknown): Promise<{ itemCode: string }>`
   - `setVendorRate(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<{ id: string }>`
+  - `updateLinenVendor(exec: Exec, _actor: Actor, raw: unknown): Promise<VendorRow>`
   - `vendorCards(exec: Exec): Promise<LinenVendorCard[]>`
   - `vendorLaundryLive(exec: Exec): Promise<boolean>`
   - `vendorMonthReport(exec: Exec, vendorId: string, month: string, now: Date): Promise<LinenVendorMonthReport>`
@@ -156,6 +159,6 @@ Foreign keys into: `materials`, `resources`
 
 ## HTTP routes
 
-- `linen.controller.ts` — `/linen/bags`, `/linen/beds-waiting`, `/linen/bills`, `/linen/board`, `/linen/borrow`, `/linen/challans`, `/linen/condemn`, `/linen/cycles`, `/linen/floor`, `/linen/handler`, `/linen/holds`, `/linen/items`, `/linen/laundry`, `/linen/licences`, `/linen/machines`, `/linen/mending`, `/linen/pieces`, `/linen/plant`, `/linen/recoveries`, `/linen/rounds`, `/linen/uniforms`, `/linen/variance`, `/linen/vendor-desk`, `/linen/vendors`, `/linen/wards`
+- `linen.controller.ts` — `/linen/bags`, `/linen/beds-waiting`, `/linen/bills`, `/linen/board`, `/linen/borrow`, `/linen/challans`, `/linen/condemn`, `/linen/cycles`, `/linen/floor`, `/linen/handler`, `/linen/holds`, `/linen/items`, `/linen/laundry`, `/linen/licences`, `/linen/machines`, `/linen/mending`, `/linen/pieces`, `/linen/plant`, `/linen/recoveries`, `/linen/rounds`, `/linen/setup`, `/linen/uniforms`, `/linen/variance`, `/linen/vendor-desk`, `/linen/vendors`, `/linen/wards`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/linen`

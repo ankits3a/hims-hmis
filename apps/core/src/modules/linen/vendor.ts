@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, ne, sql } from "drizzle-orm";
 import {
   addLinenVendorInput, checkVendorBillInput, decideBillInput, decideRecoveryInput, LINEN_LOST_AFTER_DAYS, linenBelowPar, newId,
-  raiseRecoveryInput, recordChallanReturnInput, setLinenItemCostInput, setVendorRateInput,
+  raiseRecoveryInput, recordChallanReturnInput, setLinenItemCostInput, setVendorRateInput, updateLinenVendorInput,
 } from "@hmis/contracts";
 import { istDayString, istDayWindow } from "../../kernel/approvals/cumulative";
 import { hasPermission } from "../../kernel/auth/permissions";
@@ -89,6 +89,19 @@ export async function addLinenVendor(exec: Exec, actor: Actor, raw: unknown, now
       rushTurnaroundHours: Math.min(input.rushTurnaroundHours ?? 12, routine), gstRateBps: input.gstRateBps ?? 1800,
       createdBy: actor.id, createdAt: now,
     }).returning())[0]!;
+  });
+}
+
+/** Turnaround (routine, rush) and GST changed later; the rush turnaround never exceeds the routine one (`bad_input`). */
+export async function updateLinenVendor(exec: Exec, _actor: Actor, raw: unknown): Promise<VendorRow> {
+  const input = parse(updateLinenVendorInput, raw);
+  return tx(exec, async (t) => {
+    const v = await vendorFor(t, input.linenVendorId);
+    const routine = input.turnaroundHours ?? v.turnaroundHours;
+    const rush = input.rushTurnaroundHours ?? v.rushTurnaroundHours;
+    if (rush > routine) throw new LinenError("bad_input", { issues: ["rushTurnaroundHours: above the routine turnaround"] });
+    return (await t.update(linenVendors).set({ turnaroundHours: routine, rushTurnaroundHours: rush, gstRateBps: input.gstRateBps ?? v.gstRateBps })
+      .where(eq(linenVendors.id, v.id)).returning())[0]!;
   });
 }
 

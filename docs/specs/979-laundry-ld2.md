@@ -96,8 +96,10 @@ The vendor is paid for exactly the pieces it washed and returned, and the hospit
   proposer. Reversals ride the next recovery as a credit. An item's replacement cost: last goods receipt of its stores
   item, else the linen item master price (`price_paise`); neither → shown unpriced at ₹0.
 - The bill's payable stays in linen until materials takes service bills (#1012). Uniform deduction into the final
-  settlement waits for HR (#1011). One hospital-wide compliance calendar is #1013. Setup screens, the handler phone on a
-  challan and tags at more counts are #1014.
+  settlement waits for HR (#1011). One hospital-wide compliance calendar is #1013. The handler phone on a challan and tags at
+  more counts are #1014.
 - Permissions: `linen.vendor`, `linen.uniform`, `linen.recovery.approve`, `linen.bill.approve` (README "Vendor laundry").
 - Screens: `/linen/vendor`, `/linen/uniforms`; the plant's To vendor asks for vendor and weight once a vendor exists.
+- Setup without the API (#1014): `/linen/setup` — vendors with turnaround, GST and rates; item replacement cost; the two
+  licences with expiry; uniform roles. One new act, `updateLinenVendor`; no new permission.
 - Migration `0264_laundry_vendor` (renumber at merge); it also seeds the uniform item and the uniformed roles.
