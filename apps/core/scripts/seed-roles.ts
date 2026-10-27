@@ -797,6 +797,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "billing_manager",
     permissions: [
+      // CN-1 CANTEEN (#977, decision 0088) — finance's canteen acts: staff meal rules and cards, the till variance, the
+      // caterer's rent, the deduction list, and deciding family meals. README "Canteen" prose.
+      "canteen.finance", "canteen.view",
       // ER lane 6 (#813) — the ER bill desk. README "Emergency bill" prose.
       "er.bill",
       // IPD ADMISSION E1.2 (#719) — the TPA desk sits in billing: the manual authorisation record.
@@ -2256,6 +2259,13 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   { roleKey: "dietician", permissions: ["diet.view", "diet.order", "diet.npo", "diet.serve", "diet.kitchen", "diet.manage", "diet.clinical.view", "tasks.view"] },
   { roleKey: "kitchen_staff", permissions: ["diet.view", "diet.kitchen"] },
   /**
+   * CN-1 CANTEEN (#977, decision 0088) — the canteen's two roles. The cashier sells at a till, closes the day and asks
+   * finance for a family meal; the canteen manager keeps the outlets, tills, menu, prices, cost centres, free-meal rules,
+   * bed-class meals and bed QRs, and may sell. Finance (`billing_manager`) holds the money rules. NOBODY is assigned.
+   */
+  { roleKey: "canteen_cashier", permissions: ["canteen.sell", "canteen.view"] },
+  { roleKey: "canteen_manager", permissions: ["canteen.manage", "canteen.sell", "canteen.view"] },
+  /**
    * IPD NURSING E4.1 (#733, decision 0072) — THE WARD NURSING ROLES, which no seed had: the admission workflow, the
    * transfer and the discharge cascade already NAME `ward_nurse` and `nursing_supervisor` (`admission-workflow.ts`
    * `IPD_ACTOR_ROLE_KEYS`, `discharge.ts` `IPD_DEPARTMENT_ROLES.ward`). DECIDED by the standard Indian corporate-hospital
@@ -2587,6 +2597,9 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   // E4.4 DIET (#736).
   dietician: "Dietician (diet orders, NPO, consults, meal rounds and the kitchen lists)",
   kitchen_staff: "Kitchen Staff (builds, prints and dispatches the meal lists)",
+  // CN-1 CANTEEN (#977).
+  canteen_cashier: "Canteen Cashier (sells at a canteen till, closes the day, confirms bed orders; asks finance for family meals)",
+  canteen_manager: "Canteen Manager (outlets, tills, menu, prices, cost centres, free-meal rules, bed QRs; may sell)",
   er_nurse: "Casualty Nurse (registers ER arrivals, prints the ER band, triages by ESI; the tracking board)",
   waiting_display: "ER Waiting-Area Display (tokens and stage words only; no names, no clinical text)",
   maintenance_staff: "Maintenance Staff (engineering technicians: electrical, plumbing, AC, carpentry repairs)",

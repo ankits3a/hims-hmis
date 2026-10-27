@@ -111,7 +111,7 @@ Sources: `README.md`; `docs/superpowers/specs/2026-08-10-hmis-architecture-desig
 **The hospital's profile and targets (spec §1).**
 - Today: **~100 OPD visits/day, 10 beds, ~20 concurrent users; a licensed blood bank already operating; NABH accreditation underway.**
 - 1-year target (~Aug 2027): **610 beds, 2,000+ OPD/day, ~300 concurrent users, 24×7 ED, 10 operation theatres, full diagnostics + pathology.**
-- Real floor list reconciled 2026-08-11 (§11.19-A): reception · emergency (3 ED theatres, emergency radiology, trauma) · OPD · diagnostics & imaging · blood bank · central lab · physiotherapy · OT floor · mother & child · cancer floor with radiation oncology (LINAC + brachytherapy) · heart floor + cath lab · dialysis · endoscopy · ICU floor (3 halls × 15 beds) · private ward · general ward · pharmacy shop · waste storage · laundry · medical gas control · materials. Canteen, parking and staff housing are out of scope by decision.
+- Real floor list reconciled 2026-08-11 (§11.19-A): reception · emergency (3 ED theatres, emergency radiology, trauma) · OPD · diagnostics & imaging · blood bank · central lab · physiotherapy · OT floor · mother & child · cancer floor with radiation oncology (LINAC + brachytherapy) · heart floor + cath lab · dialysis · endoscopy · ICU floor (3 halls × 15 beds) · private ward · general ward · pharmacy shop · waste storage · laundry · medical gas control · materials. Parking and staff housing are out of scope by decision; the canteen came into scope on 2026-10-26 (decision 0088, #977).
 
 **Priorities, in the owner's order (spec §1):** user experience · information sync between modules · medical-device integration · data portability · fast recovery from server failure · cheap addition of new modules.
 

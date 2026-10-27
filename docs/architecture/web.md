@@ -25,6 +25,11 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/bmw` | `apps/web/src/screens/bmw-board` |
 | `/bmw/handle` | `apps/web/src/screens/bmw-handle` |
 | `/bmw/reports` | `apps/web/src/screens/bmw-reports` |
+| `/canteen/bed` | `apps/web/src/screens/canteen-bed` |
+| `/canteen/close` | `apps/web/src/screens/canteen-close` |
+| `/canteen/finance` | `apps/web/src/screens/canteen-finance` |
+| `/canteen/setup` | `apps/web/src/screens/canteen-setup` |
+| `/canteen/till` | `apps/web/src/screens/canteen-till` |
 | `/change-password` | `apps/web/src/screens/change-password` |
 | `/copilot-health` | `apps/web/src/screens/copilot-health` |
 | `/counter` | `apps/web/src/screens/desk-one/desk-one` |

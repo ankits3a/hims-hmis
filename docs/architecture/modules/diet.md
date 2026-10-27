@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/diet/`
 · Notes: [MAP.md](../../../apps/core/src/modules/diet/MAP.md)
 
 - **Depends on modules:** `ipd`, `ot`, `tasks`
-- **Used by modules:** —
+- **Used by modules:** `canteen`
 - **Kernel used:** `alerts`, `approvals`, `auth`, `db`, `desk`, `events`, `modules`, `tokens`
 - **Subscribes to events:** `IPD_ADMITTED_EVENT`, `IPD_BED_SWAPPED_EVENT`, `IPD_TRANSFER_ACCEPTED_EVENT_NAME`, `OT_BOOKED_EVENT`, `OT_CANCELLED_EVENT`, `OT_LIST_PUBLISHED_EVENT`, `OT_POSTPONED_EVENT`
 

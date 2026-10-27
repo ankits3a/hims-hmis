@@ -135,6 +135,7 @@ const NOT_DEPARTMENTS: Record<string, string> = {
   linen: "E2.4 LINEN (issue #728) — DECIDED not a department: a ledger over every ward's linen, run by the services supervisor's existing staff. It owns no seats and no master data a go-live must commission (the item catalogue ships seeded and par is computed from the beds)",
   ordering: "DECISION 0067 — not a department: the door every doctor screen orders tests through and the outside-test list. The lab and imaging it routes to are the departments; it has nothing of its own to commission",
   diet: "E4.4 DIET (issue #736) — not a department to commission here: the kitchen and dietetics companion to IPD. It goes live with the IPD admissions it feeds; its meal rounds are seeded by its migration and its people are `dietician` and `kitchen_staff`",
+  canteen: "CN-1 CANTEEN (issue #977) — DECIDED not a department: a counter, menu and meal-card ledger beside diet, run by the in-house kitchen or a rent-paying caterer. It owns no clinical day and no seats a go-live commissions; its tariff codes go live with a revision, not a stand-up",
   passes: "E1.3 (#720) — not a department: attendant and visitor passes ride the IPD admission desk and the security desk; nothing of its own to commission (visiting hours are a contract constant)",
   "doctor-desk": "DD-0 #626 — not a department: the doctor's Tower and briefs over lab, radiology and opd rows; nothing to commission",
   resources: "kernel — the registry the departments' theatres and benches live in",

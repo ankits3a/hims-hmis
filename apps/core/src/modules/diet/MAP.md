@@ -19,8 +19,8 @@ Spec: SPEC-ipd-companions §7, §10, §11 (kept outside the repository); issue #
 The doctor's diet order to the kitchen's meal list. A diet order per admission (catalogue in
 `packages/contracts/src/diet.ts` `DIET_CATALOGUE`), NPO with a start and an optional end, four meal rounds with a
 cut-off and a serve time, one meal list per ward per meal built at the cut-off, printed (A4 + tray labels), dispatched
-by the kitchen and delivered on the task engine. NPO ALWAYS WINS. No money anywhere (decision 0058): diet is inside the
-room-rent package and IPD's rate components have no diet line, so nothing is charged here (DECIDED; no price invented).
+by the kitchen and delivered on the task engine. NPO ALWAYS WINS. No money anywhere (DECIDED; decision 0058 is only the
+doctor-screen rule, not this one; decision 0088 keeps patient diet money-free): diet is inside the room-rent package and IPD's rate components have no diet line, so nothing is charged here (DECIDED; no price invented).
 A leaf: it imports `ipd`, `tasks`, `patients` (types) only through their `index.ts`; OT is heard through its events.
 
 ## 2. Key files (owner of what)

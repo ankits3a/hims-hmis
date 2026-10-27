@@ -148,7 +148,7 @@ export {
   readFamilyPanel, revokeFamilyLink, setCondition,
 } from "./family";
 export {
-  familyGate, readFamilyBillDetails, readFamilyView, requestFamilyCallback, sendFamilyOtp, verifyFamilyOtp,
+  familyGate, familyVerifiedAdmission, readFamilyBillDetails, readFamilyView, requestFamilyCallback, sendFamilyOtp, verifyFamilyOtp,
 } from "./family-public";
 export { FamilyOtpUnavailable, LoggingFamilyOtpSender, SmsFamilyOtpSender, familyOtpSender } from "./family-otp";
 export type { FamilyOtpSender } from "./family-otp";
@@ -232,6 +232,11 @@ export { postDrugIssueChargesIn, postDrugReturnCreditsIn, retryDrugExceptionsIn,
 export type { DrugIssueCharge, DrugReturnOutcome } from "./drug-charges";
 // #787 (IP counter) — the OPD pharmacy counter charges a sale to the admission (and takes its returns) on the running bill.
 export { counterCharge, counterReturn, lookupCounterAdmission, readCounterSales, searchCounterShelfForIp } from "./counter-charge";
+// CN-1 (#977) — the canteen's admission facts, the bed QR's admission, and its one door onto the running bill.
+export { CANTEEN_DIET_SERVICE_CODE, canteenAdmissionByNo, canteenAdmissionFacts, openAdmissionAtBed, postCanteenChargeIn } from "./canteen-charges";
+export type { CanteenAdmissionFacts, CanteenChargeInput, CanteenChargeResult } from "./canteen-charges";
+// …and the per-address cap the family page's public routes use, for the bed QR's.
+export { FamilyAddressThrottle } from "./family-throttle";
 // 2026-10-14 — the ward narcotic register (NDPS / NABH): per-ward running balance, the shift-change count by two nurses,
 // exceptions to the nursing supervisor and the pharmacy, resolved with a note; the patient's units follow a ward move.
 export { IPD_NARCOTIC_RESOLVER_ROLES, readNarcoticWard, recordNarcoticCount, resolveNarcoticException } from "./narcotic";

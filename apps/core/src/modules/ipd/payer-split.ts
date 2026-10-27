@@ -11,7 +11,7 @@ import type { IpdBedClass, IpdChargeComponent, IpdPayerSplit, IpdSplitException,
  *      payer (`scheme`) less the approved non-covered amounts (step 7); insured with the pre-auth denied → all patient
  *      (`denied`), still pending → all patient (`auth_pending`) until the insurer approves, and an approval covers the
  *      stay FROM ADMISSION (day-1 lines too);
- *   3. non-payables (service code or tariff category on the list) → all patient (`non_payable`);
+ *   3. non-payables (service code or tariff category on the list; a canteen line always) → all patient (`non_payable`);
  *   4. the room-rent cap (review $8): on a day whose room line's TAXABLE value (ex-GST) exceeds the cap and whose
  *      class is not critical care, the room line and that day's nursing, RMO and visits are paid in the ratio
  *      cap / taxable rent — applied to the taxable value, the line's GST following its taxable split, i.e. net ×
@@ -138,7 +138,11 @@ export function splitBill(lines: readonly SplitLineInput[], terms: SplitTerms, n
   const groups = new Map<string, SplitLineInput[]>();
   for (const l of sorted) {
     if (dead(l)) result.set(l.id, { lineId: l.id, payerPaise: 0, patientPaise: 0, reasons: ["reversed"] });
-    else if (terms.mode === "scheme") result.set(l.id, whole(l, "scheme", true));
+    // CN-1 (#977, decision 0088): a canteen meal is never a scheme's or an insurer's — whatever their lists say.
+    else if (l.component === "canteen" && (terms.mode === "scheme" || terms.mode === "insured")) {
+      result.set(l.id, whole(l, "non_payable", false));
+      totals.nonPayablePaise += l.netPaise;
+    } else if (terms.mode === "scheme") result.set(l.id, whole(l, "scheme", true));
     else if (terms.mode !== "insured") result.set(l.id, whole(l, terms.deniedEver ? "denied" : "cash", false));
     else if (terms.authState === "denied") result.set(l.id, whole(l, "denied", false));
     else if (terms.authState !== "approved") result.set(l.id, whole(l, "auth_pending", false));

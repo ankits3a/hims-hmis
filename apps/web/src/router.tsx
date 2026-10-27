@@ -36,6 +36,11 @@ import { DietConsults } from "./screens/diet-consults";
 import { DietKitchen } from "./screens/diet-kitchen";
 import { DietWard } from "./screens/diet-ward";
 import { HousekeepingBoard } from "./screens/housekeeping-board";
+import { CanteenBed } from "./screens/canteen-bed";
+import { CanteenClose } from "./screens/canteen-close";
+import { CanteenFinance } from "./screens/canteen-finance";
+import { CanteenSetup } from "./screens/canteen-setup";
+import { CanteenTill } from "./screens/canteen-till";
 import { MaintenanceBoard } from "./screens/maintenance-board";
 import { TransportBoard } from "./screens/transport-board";
 import { TransportRequest } from "./screens/transport-request";
@@ -374,6 +379,12 @@ const NAV: readonly NavEntry[] = [
   { to: "/diet/ward", label: "nav.dietWard", permission: "diet.view", group: "services" },
   { to: "/diet/kitchen", label: "nav.dietKitchen", permission: "diet.kitchen", group: "services" },
   { to: "/diet/consults", label: "nav.dietConsults", permission: "diet.manage", group: "services" },
+  // CN-1 CANTEEN (issue #977) — the till, the day close, setup and finance; paths and permissions match `canteenManifest.menu`
+  // (the day close rides the till's string).
+  { to: "/canteen/till", label: "nav.canteenTill", permission: "canteen.sell", group: "services" },
+  { to: "/canteen/close", label: "nav.canteenClose", permission: "canteen.sell", group: "services" },
+  { to: "/canteen/setup", label: "nav.canteenSetup", permission: "canteen.manage", group: "services" },
+  { to: "/canteen/finance", label: "nav.canteenFinance", permission: "canteen.finance", group: "services" },
   // The OPD day report (owner, 2026-09-19): the hospital's day by department, PDF and CSV.
   { to: "/reports/opd-day", label: "nav.opdDayReport", permission: "opd.reports.read", group: "opd" },
   // 20-U U5a — who is on now, the hospital's unit board. `roster.read` matches `rosterManifest.menu`.
@@ -810,6 +821,9 @@ const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login"
  * session cookie are its only credentials; the API checks both on every call.
  */
 const familyRoute = createRoute({ getParentRoute: () => rootRoute, path: "/family", component: () => <FamilyPage /> });
+
+/** CN-1 (#977) — the bed's canteen QR page, public like the family page: the bed token in the fragment is its credential. */
+const canteenBedRoute = createRoute({ getParentRoute: () => rootRoute, path: "/canteen/bed", component: () => <CanteenBed /> });
 
 /**
  * PLAN 11e T6 / D6 — `/change-password` IS A SIBLING OF `/login`, NOT A CHILD OF THE SHELL.
@@ -1583,6 +1597,12 @@ const transportRequestRoute = createRoute({
   path: "/transport/request",
   component: TransportRequest,
 });
+
+/** CN-1 CANTEEN (issue #977) — the counter till, the day close, setup and finance. */
+const canteenTillRoute = createRoute({ getParentRoute: () => authedRoute, path: "/canteen/till", component: CanteenTill });
+const canteenCloseRoute = createRoute({ getParentRoute: () => authedRoute, path: "/canteen/close", component: CanteenClose });
+const canteenSetupRoute = createRoute({ getParentRoute: () => authedRoute, path: "/canteen/setup", component: CanteenSetup });
+const canteenFinanceRoute = createRoute({ getParentRoute: () => authedRoute, path: "/canteen/finance", component: CanteenFinance });
 
 /** E4.4 DIET (issue #736) — the ward diet sheet (390 px first): diet, NPO, allergies and the next tray per bed. */
 const dietWardRoute = createRoute({
@@ -2402,6 +2422,7 @@ export const router = createRouter({
   routeTree: rootRoute.addChildren([
     loginRoute,
     familyRoute,
+    canteenBedRoute,
     changePasswordRoute,
     authedRoute.addChildren([
       indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, erDeskRoute, erBoardRoute, erTriageRoute, erPatientRoute, erMlcRoute, erBillRoute, erCodesRoute, erMciRoute, ipdBedsRoute, ipdAdmitRoute, ipdBillRoute, ipdBillDeskRoute, ipdTpaRoute, ipdFamilyCallbacksRoute, ipdRoundsRoute, ipdRoundPatientRoute, ipdMarRoute, ipdPharmacyRoute, ipdNarcoticsRoute, ipdHandoversRoute, ipdWardRoute, ipdMyShiftRoute, ipdDischargeRoute, ipdPassesRoute, passesScanRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
@@ -2485,6 +2506,7 @@ export const router = createRouter({
       transportBoardRoute, transportRequestRoute,
       // E4.4 DIET — +3, `/diet/ward`, `/diet/kitchen`, `/diet/consults`. `caddyfile-parity.test.ts` pins the count.
       dietWardRoute, dietKitchenRoute, dietConsultsRoute,
+      canteenTillRoute, canteenCloseRoute, canteenSetupRoute, canteenFinanceRoute,
       rosterEvidenceRoute,
       rosterAebasRoute,
       // DD-0 (#626) — +2, `/doctor-desk` and `/doctor-desk/briefs`. `caddyfile-parity.test.ts` pins the count.
