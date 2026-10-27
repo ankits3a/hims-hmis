@@ -10,6 +10,7 @@ import { acceptShiftHandover, getHandoverDraft, getMyShift, getShiftHandovers, g
 import { buildSbarDraft } from "../lib/ipd-copilot-api";
 import type { SbarText } from "../lib/ipd-nursing-api";
 import { getDue, scan } from "../lib/ipd-emar-api";
+import { endMyDuty, wardErrorOf } from "../lib/ipd-ward-api";
 import { PickWardPrompt, WardPicker, useWardChoice } from "../components/ward-picker";
 import { Bedside, DueDoses, ScanBox } from "./ipd-emar-bedside";
 import { LiveLine, VitalsForm, ageFromAgeSex, dueWords, savedWords, useLiveLoad, useNight } from "./ipd-nursing-shared";
@@ -101,6 +102,9 @@ export function IpdMyShift(): React.ReactElement {
           </section>
           <section aria-label={t("ipdNursing.shiftPage.patientsTitle")}>
             <h2 className="ipdn-h2">{t("ipdNursing.shiftPage.patientsTitle")}</h2>
+            {/* WM-1 (#982): before the ward's first published map the list is the ward's, and says so. */}
+            {shift.assignment === "ward" ? <p className="ipdn-warn" data-testid="ipdn-no-assignment">{t("ipdWard.myShift.noAssignment")}</p> : null}
+            {shift.assignment === "none" ? <p className="dim" data-testid="ipdn-no-beds">{t("ipdWard.myShift.noBeds")}</p> : null}
             <ul className="ipdn-now">
               {shift.patients.map((p) => (
                 <li key={p.identity.admissionId}>
@@ -113,6 +117,9 @@ export function IpdMyShift(): React.ReactElement {
               ))}
             </ul>
           </section>
+          {shift.assignment !== undefined && shift.assignment !== "ward" && shift.ward !== null ? (
+            <EndDuty wardId={shift.ward.id} beds={shift.patients.length} onEnded={(w) => { setNotice(w); void load().catch(() => undefined); }} />
+          ) : null}
         </>
       ) : null}
 
@@ -321,6 +328,33 @@ function HandoverPane({ shift, toAccept, online, onBack, onDone }: {
       )}
       {refusal !== null ? <div className="ipdn-refusal" role="alert">{refusal.rule}</div> : null}
       <footer className="ipdn-thumb"><button type="button" className="ipdn-btn wide" onClick={onBack}>{t("ipdNursing.back")}</button></footer>
+    </section>
+  );
+}
+
+/**
+ * WM-1 (#982) — "End my duty": refused while the nurse still holds a bed on the live map (the in-charge or she hands
+ * each to a named registered nurse first). Two taps: the first asks, the second ends.
+ */
+function EndDuty({ wardId, beds, onEnded }: { wardId: string; beds: number; onEnded: (words: string) => void }): React.ReactElement {
+  const { t } = useTranslation();
+  const [asking, setAsking] = useState(false);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const end = (): void => {
+    setRefusal(null);
+    endMyDuty(wardId).then(() => { setAsking(false); onEnded(t("ipdWard.myShift.ended")); }, (e: unknown) => {
+      const w = wardErrorOf(e);
+      setRefusal(w === null ? t("ipdNursing.actFailed") : t(`ipdWard.err.${w.code}`, { defaultValue: t("ipdWard.err.other") }));
+      setAsking(false);
+    });
+  };
+  return (
+    <section className="ipdn-thumb" aria-label={t("ipdWard.myShift.endDuty")}>
+      {beds > 0 ? <p className="dim">{t("ipdWard.myShift.handFirst")}</p> : null}
+      <button type="button" className={`ipdn-btn wide${asking ? " pri" : ""}`} onClick={() => (asking ? end() : setAsking(true))} data-testid="ipdn-end-duty">
+        {asking ? t("ipdWard.myShift.confirmEnd") : t("ipdWard.myShift.endDuty")}
+      </button>
+      {refusal !== null ? <div className="ipdn-refusal" role="alert">{refusal}</div> : null}
     </section>
   );
 }

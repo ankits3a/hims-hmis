@@ -21,7 +21,7 @@ import type { NowRow } from "./now-cards";
  *
  * A stable patient makes no row and an empty card is not sent. Rows use the shared identity rule (`nowIdentities`): a
  * sealed patient shows no UHID and no bed. No money (decision 0058). Hospital-wide, top five by the shared ranking
- * (no nurse-to-ward assignment exists yet; the station and the phone filter by ward).
+ * (they stay hospital-wide; WM-1's shift map narrows my shift and the station, not these cards).
  */
 
 const minutesSince = (from: Date, now: Date): number => Math.max(0, Math.floor((now.getTime() - from.getTime()) / 60_000));

@@ -2537,6 +2537,148 @@
       "admission": "admission"
     }
   },
+  "ipdWard": {
+    "title": "Ward",
+    "loading": "Loading the ward…",
+    "forbidden": "You cannot open this screen.",
+    "bed": "Bed",
+    "beds_one": "{{count}} bed",
+    "beds_other": "{{count}} beds",
+    "tab": {
+      "cockpit": "Cockpit",
+      "assign": "Assignment"
+    },
+    "status": {
+      "draft": "Draft",
+      "published": "Published",
+      "carried_over": "Carried over"
+    },
+    "kind": {
+      "rn": "Staff nurse",
+      "student": "Student",
+      "incharge": "In-charge",
+      "float": "Float nurse"
+    },
+    "unit": {
+      "general": "General ward",
+      "private": "Private ward",
+      "hdu_icu": "HDU / ICU",
+      "labour_nicu": "Labour / NICU"
+    },
+    "chipLetter": {
+      "allergy": "A",
+      "fall_risk": "F",
+      "pressure_risk": "P",
+      "isolation": "I",
+      "name_alert": "N",
+      "obstetric": "O"
+    },
+    "next": {
+      "vitals": "Vitals",
+      "assessment": "Assessment"
+    },
+    "err": {
+      "other": "Not saved. Try again.",
+      "bed_unassigned": "An occupied bed has no nurse",
+      "student_alone": "A student cannot hold a bed alone",
+      "reassign_reason_required": "Give a reason to move this bed",
+      "beds_still_assigned": "Hand over your beds first",
+      "staff_not_eligible": "This person cannot be on the map like this",
+      "shift_map_not_draft": "This shift is live. Change it bed by bed.",
+      "no_live_shift_map": "No published map for this shift",
+      "not_on_shift": "You are not on this shift's map",
+      "bed_not_on_ward": "A bed is not on this ward",
+      "ward_not_found": "Ward not found",
+      "shift_map_not_found": "Map not found",
+      "acuity_admission_not_on_ward": "Patient is not on a ward bed",
+      "ipd_forbidden": "Not allowed for you"
+    },
+    "assign": {
+      "title": "Who has each bed this shift",
+      "which": "Shift",
+      "thisShift": "This shift",
+      "nextShift": "Next shift",
+      "noMap": "Not started",
+      "noSelection": "No bed selected",
+      "selected": "Selected {{bed}}",
+      "same": "Same as last shift",
+      "save": "Save draft",
+      "publish": "Publish",
+      "saved": "Draft saved",
+      "published": "Published",
+      "publishedLate": "Published late",
+      "copied": "Copied last shift",
+      "nothingToCopy": "No earlier shift to copy",
+      "liveNote": "This shift is live. Change a bed on the cockpit, with a reason.",
+      "unassigned": "No nurse yet",
+      "load_one": "Load {{points}} · {{count}} bed",
+      "load_other": "Load {{points}} · {{count}} beds",
+      "take": "Take selected bed",
+      "remove": "Remove",
+      "checks": "Checks before publish",
+      "checkUnassigned": "No nurse: {{beds}}",
+      "checkAllNamed": "Every bed has a named nurse",
+      "checkUnpaired": "A student has no nurse",
+      "checkPaired": "Every student paired",
+      "checkRatio": "{{have}} nurses, {{need}} needed",
+      "checkRatioOk": "Nurses within the ratio",
+      "staff": "Staff this shift",
+      "rosterFallback": "No roster for this ward: every ward nurse is listed",
+      "addNurse": "Add a nurse",
+      "add": "Add",
+      "pairWith": "Pair with…",
+      "help": "Publishing puts each nurse's beds on her phone and her initials on the Beds board. A change mid-shift needs a reason and tells both nurses."
+    },
+    "cockpit": {
+      "title": "Every bed, now",
+      "legend": "Initials, score, risks, next due",
+      "census": "Census",
+      "occupied": "Occupied",
+      "ofBeds": "{{n}} of {{of}}",
+      "staffNow": "Staff now",
+      "nursesOnDuty": "Nurses on duty",
+      "ratio": "Ratio",
+      "ratioValue": "{{have}} of {{need}} · 1:{{per}}",
+      "unit": "Unit",
+      "ventilated": "Ventilated",
+      "map": "Map",
+      "late": "late",
+      "ended": "off {{time}}",
+      "free": "Free",
+      "noNurse": "No nurse",
+      "give": "Give {{who}}",
+      "reassign": "Reassign",
+      "loads": "Load per nurse",
+      "load": "{{beds}} beds · {{points}} pts",
+      "needsYou": "Needs you",
+      "nothing": "Nothing now",
+      "reassignTitle": "Move {{bed}}",
+      "to": "To",
+      "choose": "Choose a nurse",
+      "reason": "Reason",
+      "cancel": "Cancel"
+    },
+    "board": {
+      "noNurse": "No nurse",
+      "nurse": "Nurse"
+    },
+    "myShift": {
+      "noAssignment": "No assignment yet: whole ward",
+      "noBeds": "No beds for you on this shift",
+      "endDuty": "End my duty",
+      "confirmEnd": "Tap again to end duty",
+      "ended": "Duty ended",
+      "handFirst": "Hand each bed to a nurse first"
+    },
+    "acuity": {
+      "title": "Acuity this shift",
+      "self_care": "Self-care",
+      "partial_care": "Partial care",
+      "full_care": "Full care",
+      "ventilated": "Ventilated (own nurse)",
+      "saved": "Acuity saved"
+    }
+  },
   "diet": {
     "title": "Diet",
     "offline": "Not live",
@@ -3913,6 +4055,8 @@
     "menu": "Menu"
   },
   "nav": {
+    "ipdWardAssign": "Assign nurses",
+    "ipdWardCockpit": "Ward cockpit",
     "erMci": "MCI board",
     "erCodes": "ER codes",
     "erBill": "ER bill desk",
@@ -7740,6 +7884,9 @@
     "nextStep": "Please go to the vitals desk next."
   },
   "desk": {
+    "ipdWardNeedsYou": {
+      "title": "Ward needs you"
+    },
     "erLwbsRisk": {
       "title": "Long wait: may leave unseen"
     },

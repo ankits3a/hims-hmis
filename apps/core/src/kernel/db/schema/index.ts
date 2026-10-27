@@ -133,6 +133,9 @@ export * from "./ipd-copilot";
 // #604 (decision 0075) — the TPA desk: insurer queries, documents, scheme packages, claim events and deductions.
 // References `ipd_admissions` and `ipd_payer_claims`.
 export * from "./ipd-tpa";
+// WM-1 (#982, decision 0089) — the ward's nurses: shift maps, their staff, bed-to-nurse assignments, acuity, ratio
+// breaches. References `resources` (ward, bed), `ipd_admissions` and `patients`.
+export * from "./ipd-ward";
 // E1.7 BIO-MEDICAL WASTE (issue #724, decision 0072) — bags, manifests, disputes and the bags' append-only history.
 // References `resources` (the place a bag is generated at); nothing reads it but `modules/bmw`.
 export * from "./bmw";

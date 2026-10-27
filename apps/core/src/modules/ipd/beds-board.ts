@@ -6,6 +6,7 @@ import { readBedFlow } from "./bed-flow";
 import { nowIdentities } from "./now-cards";
 import { getPatientSummaries } from "../patients";
 import { IpdBedAttributesSchema, IpdWardAttributesSchema } from "./bed-attributes";
+import { liveNursesAt } from "./nurse-ward-read";
 import type {
   IpdBedClass, IpdWaitingCard,
   Actor, IpdBedBoard, IpdBoardBed, IpdBoardBedStatus, IpdBoardCounts, IpdBoardFloor, IpdBoardWard,
@@ -96,6 +97,8 @@ export async function readBedBoard(db: Db, actor: Actor, opts: { wall?: boolean;
     outsideCensus: { occupied: 0, total: 0 }, dischargesToday: released?.n ?? 0, waiting: { count: 0, longestMinutes: null },
   };
   const next24h: IpdBedBoard["next24h"] = { cleaningOver60: [], blockedPastReturn: [] };
+  // WM-1 (#982): on a ward with a live shift map, an occupied bed shows its nurse's initials, or red when it has none.
+  const nurses = await liveNursesAt(db, now);
 
   for (const bed of beds) {
     const attrs = IpdBedAttributesSchema.parse(bed.attributes);
@@ -145,6 +148,10 @@ export async function readBedBoard(db: Db, actor: Actor, opts: { wall?: boolean;
         expectedReturnAt: block.expectedReturnAt.toISOString(), onRelease: block.status === "pending_release",
       },
       ...(transfer === undefined ? {} : { transfer }),
+      ...(nurses.wardsWithMap.has(ward.id) ? (() => {
+        const n = nurses.byBed.get(bed.id);
+        return { nurse: n === undefined ? null : { initials: n.nurse.initials }, nurseMissing: status === "occupied" && n === undefined };
+      })() : {}),
     };
 
     let f = floors.get(floor.id);

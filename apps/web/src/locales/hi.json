@@ -2537,6 +2537,148 @@
       "admission": "भर्ती"
     }
   },
+  "ipdWard": {
+    "title": "वार्ड",
+    "loading": "वार्ड खुल रहा है…",
+    "forbidden": "आप यह स्क्रीन नहीं खोल सकते।",
+    "bed": "बेड",
+    "beds_one": "{{count}} बेड",
+    "beds_other": "{{count}} बेड",
+    "tab": {
+      "cockpit": "कॉकपिट",
+      "assign": "ड्यूटी बँटवारा"
+    },
+    "status": {
+      "draft": "ड्राफ़्ट",
+      "published": "जारी",
+      "carried_over": "पिछली शिफ़्ट से जारी"
+    },
+    "kind": {
+      "rn": "स्टाफ़ नर्स",
+      "student": "छात्रा",
+      "incharge": "इंचार्ज",
+      "float": "फ़्लोट नर्स"
+    },
+    "unit": {
+      "general": "जनरल वार्ड",
+      "private": "प्राइवेट वार्ड",
+      "hdu_icu": "HDU / ICU",
+      "labour_nicu": "लेबर / NICU"
+    },
+    "chipLetter": {
+      "allergy": "A",
+      "fall_risk": "F",
+      "pressure_risk": "P",
+      "isolation": "I",
+      "name_alert": "N",
+      "obstetric": "O"
+    },
+    "next": {
+      "vitals": "वाइटल्स",
+      "assessment": "आकलन"
+    },
+    "err": {
+      "other": "सेव नहीं हुआ। फिर कोशिश करें।",
+      "bed_unassigned": "एक भरे बेड पर नर्स नहीं है",
+      "student_alone": "छात्रा अकेले बेड नहीं ले सकती",
+      "reassign_reason_required": "बेड बदलने का कारण लिखें",
+      "beds_still_assigned": "पहले अपने बेड सौंपें",
+      "staff_not_eligible": "यह व्यक्ति इस तरह सूची में नहीं हो सकता",
+      "shift_map_not_draft": "यह शिफ़्ट चालू है। बेड एक-एक कर बदलें।",
+      "no_live_shift_map": "इस शिफ़्ट की सूची जारी नहीं हुई",
+      "not_on_shift": "आप इस शिफ़्ट की सूची में नहीं हैं",
+      "bed_not_on_ward": "एक बेड इस वार्ड का नहीं है",
+      "ward_not_found": "वार्ड नहीं मिला",
+      "shift_map_not_found": "सूची नहीं मिली",
+      "acuity_admission_not_on_ward": "मरीज़ वार्ड बेड पर नहीं है",
+      "ipd_forbidden": "आपको अनुमति नहीं है"
+    },
+    "assign": {
+      "title": "इस शिफ़्ट में कौन सा बेड किसका",
+      "which": "शिफ़्ट",
+      "thisShift": "यह शिफ़्ट",
+      "nextShift": "अगली शिफ़्ट",
+      "noMap": "शुरू नहीं",
+      "noSelection": "कोई बेड नहीं चुना",
+      "selected": "चुना {{bed}}",
+      "same": "पिछली शिफ़्ट जैसा",
+      "save": "ड्राफ़्ट सेव",
+      "publish": "जारी करें",
+      "saved": "ड्राफ़्ट सेव हुआ",
+      "published": "जारी हुआ",
+      "publishedLate": "देर से जारी",
+      "copied": "पिछली शिफ़्ट कॉपी हुई",
+      "nothingToCopy": "कॉपी के लिए पिछली शिफ़्ट नहीं",
+      "liveNote": "यह शिफ़्ट चालू है। कॉकपिट पर कारण के साथ बेड बदलें।",
+      "unassigned": "अभी नर्स नहीं",
+      "load_one": "लोड {{points}} · {{count}} बेड",
+      "load_other": "लोड {{points}} · {{count}} बेड",
+      "take": "चुना बेड लें",
+      "remove": "हटाएँ",
+      "checks": "जारी करने से पहले जाँच",
+      "checkUnassigned": "नर्स नहीं: {{beds}}",
+      "checkAllNamed": "हर बेड पर नर्स तय",
+      "checkUnpaired": "एक छात्रा के साथ नर्स नहीं",
+      "checkPaired": "हर छात्रा के साथ नर्स",
+      "checkRatio": "{{have}} नर्स, {{need}} चाहिए",
+      "checkRatioOk": "नर्स अनुपात ठीक",
+      "staff": "इस शिफ़्ट का स्टाफ़",
+      "rosterFallback": "इस वार्ड का रोस्टर नहीं: सभी वार्ड नर्स दिख रही हैं",
+      "addNurse": "नर्स जोड़ें",
+      "add": "जोड़ें",
+      "pairWith": "किसके साथ…",
+      "help": "जारी करने पर हर नर्स के बेड उसके फ़ोन पर और उसके अक्षर बेड बोर्ड पर दिखते हैं। शिफ़्ट के बीच बदलाव के लिए कारण चाहिए और दोनों नर्सों को सूचना जाती है।"
+    },
+    "cockpit": {
+      "title": "हर बेड, अभी",
+      "legend": "अक्षर, स्कोर, जोखिम, अगला काम",
+      "census": "मरीज़",
+      "occupied": "भरे बेड",
+      "ofBeds": "{{of}} में {{n}}",
+      "staffNow": "अभी स्टाफ़",
+      "nursesOnDuty": "ड्यूटी पर नर्स",
+      "ratio": "अनुपात",
+      "ratioValue": "{{need}} में {{have}} · 1:{{per}}",
+      "unit": "यूनिट",
+      "ventilated": "वेंटिलेटर",
+      "map": "सूची",
+      "late": "देर से",
+      "ended": "{{time}} से छुट्टी",
+      "free": "खाली",
+      "noNurse": "नर्स नहीं",
+      "give": "{{who}} को दें",
+      "reassign": "बदलें",
+      "loads": "हर नर्स का लोड",
+      "load": "{{beds}} बेड · {{points}} अंक",
+      "needsYou": "आपका ध्यान चाहिए",
+      "nothing": "अभी कुछ नहीं",
+      "reassignTitle": "{{bed}} बदलें",
+      "to": "किसे",
+      "choose": "नर्स चुनें",
+      "reason": "कारण",
+      "cancel": "रद्द"
+    },
+    "board": {
+      "noNurse": "नर्स नहीं",
+      "nurse": "नर्स"
+    },
+    "myShift": {
+      "noAssignment": "अभी बँटवारा नहीं: पूरा वार्ड",
+      "noBeds": "इस शिफ़्ट में आपका कोई बेड नहीं",
+      "endDuty": "मेरी ड्यूटी ख़त्म",
+      "confirmEnd": "ड्यूटी ख़त्म करने के लिए फिर दबाएँ",
+      "ended": "ड्यूटी ख़त्म",
+      "handFirst": "पहले हर बेड किसी नर्स को सौंपें"
+    },
+    "acuity": {
+      "title": "इस शिफ़्ट की देखभाल",
+      "self_care": "ख़ुद",
+      "partial_care": "आंशिक मदद",
+      "full_care": "पूरी देखभाल",
+      "ventilated": "वेंटिलेटर (अपनी नर्स)",
+      "saved": "सेव हुआ"
+    }
+  },
   "diet": {
     "title": "आहार",
     "offline": "लाइव नहीं",
@@ -3913,6 +4055,8 @@
     "menu": "मेनू"
   },
   "nav": {
+    "ipdWardAssign": "नर्स बँटवारा",
+    "ipdWardCockpit": "वार्ड कॉकपिट",
     "erMci": "MCI बोर्ड",
     "erCodes": "ER कोड",
     "erBill": "ER बिल डेस्क",
@@ -7740,6 +7884,9 @@
     "nextStep": "कृपया अगले वाइटल्स डेस्क पर जाएँ।"
   },
   "desk": {
+    "ipdWardNeedsYou": {
+      "title": "वार्ड को आपकी ज़रूरत"
+    },
     "erLwbsRisk": {
       "title": "लंबी प्रतीक्षा: बिना दिखाए जा सकते हैं"
     },

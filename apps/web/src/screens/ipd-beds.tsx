@@ -567,12 +567,15 @@ function WardDrawer(p: {
           )}
           <div className="ipdb-tiles">
             {orderedBeds(p.ward).map((b) => (
-              <button key={b.id} type="button" className="ipdb-tile" aria-pressed={b.id === p.selected} onClick={() => p.onSelect(b.id)} data-testid={`ipd-bed-${b.code}`}>
+              <button key={b.id} type="button" className={`ipdb-tile${b.nurseMissing === true ? " no-nurse" : ""}`} aria-pressed={b.id === p.selected} onClick={() => p.onSelect(b.id)} data-testid={`ipd-bed-${b.code}`}>
                 <span className="code"><i className={`ipdb-dot s-${b.status}`} aria-hidden="true" />{b.code}</span>
                 <span className="word">{t(`ipdBeds.status.${b.status}`)}{b.transfer ? (
                   <em className={`ipdt-mark ${b.transfer.role}`}>{b.transfer.role === "origin" ? `⇢ ${t("ipdTransfer.mark.origin")}` : `⇠ ${t("ipdTransfer.mark.target")}`}</em>
                 ) : null}</span>
                 <span className="who">{tileLine(b, p.wall, t, b.status === "cleaning" ? p.cleans?.get(b.id) : undefined, p.tickets?.get(b.id))}</span>
+                {/* WM-1 (#982): the bed's nurse on the live shift map, or red words when it has none. */}
+                {b.nurseMissing === true ? <span className="nurse none" data-testid={`ipd-bed-nonurse-${b.code}`}>{t("ipdWard.board.noNurse")}</span>
+                  : b.nurse != null ? <span className="nurse mono" title={t("ipdWard.board.nurse")}>{b.nurse.initials}</span> : null}
               </button>
             ))}
           </div>

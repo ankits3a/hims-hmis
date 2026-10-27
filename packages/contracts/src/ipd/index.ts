@@ -28,6 +28,8 @@ export * from "./discharge";
 export * from "./family";
 // E4.1 (#733) — nursing: the early-warning scores, the nurse station, my shift, the chart, I/O, notes, shift handover.
 export * from "./nursing";
+// WM-1 (#982) — the ward's nurses: shift assignment, acuity, ratio, float, the in-charge cockpit.
+export * from "./nurse-ward";
 // E4.2 (#734) — rounds: the doctor's list, the patient's round page, the order event contract eMAR consumes.
 export * from "./rounds";
 // E4.3 (#735) — the eMAR: verify queue, the MAR, the bedside, labels, override counts.
