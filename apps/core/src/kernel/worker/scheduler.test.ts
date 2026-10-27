@@ -562,6 +562,8 @@ const THE_EIGHTEEN = [
   "sweepTasks",
   "lapseBedReservations",
   "sweepIpdNursing",
+  // ICU IC-1 (#984) — the ICU clock, `every(10_000)`, registered dark.
+  "sweepIcuAlarms",
   "postNightlyIpdCharges",
   // DOCTOR DESK DD-report v0 — the THIRTY-FIRST, `dailyIst("08:00")`: the unit report at the take boundary.
   "sendUnitReports",
