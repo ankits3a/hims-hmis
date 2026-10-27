@@ -23,6 +23,8 @@ export const DARK_MODULE_KEYS = [
   "tasks", "ipd", "bmw", "linen", "housekeeping", "maintenance", "passes", "transport", "diet", "emergency",
   // CN-1 (#977, decision 0088) — the canteen ships dark too: it charges the IPD bill and reads the diet's NPO.
   "canteen",
+  // ICU IC-1 (#984) — the ICU core rides the IPD train dark (decision 0090 builds on 0085).
+  "icu",
 ] as const;
 export type DarkModuleKey = (typeof DARK_MODULE_KEYS)[number];
 

@@ -41,6 +41,7 @@ import {
 } from "../../modules/ipd";
 import { sweepTasks } from "../../modules/tasks";
 import { lapseErPreAlerts, sweepErBoarding, sweepErCareClocks, sweepErMlcClocks, sweepErTriageClocks } from "../../modules/emergency";
+import { sweepIcuAlarms } from "../../modules/icu";
 import { sweepBmwStorage } from "../../modules/bmw";
 import { buildDueLists } from "../../modules/diet";
 import { runRoundsClock } from "../../modules/housekeeping";
@@ -203,7 +204,17 @@ export type JobIntervals = Pick<
   // The FOURTEENTH job — the non-return sweep — is `dailyIst` and widened nothing, which is the
   // eighth job's shape: the two land in one commit and only one of them is a type event.
   | "workerLabSweepIntervalMs"
->;
+> & {
+  /**
+   * ICU IC-1 (#984) — the ICU clock's cadence, default 10 000 (`ICU_ALARM_SWEEP_MS`). OPTIONAL and not an `AppConfig` key:
+   * the ladder's clocks are clinical constants, and the only caller that moves it is a scheduler test that must keep the
+   * 10-second tick out of a window it is measuring for another job.
+   */
+  icuAlarmSweepIntervalMs?: number;
+};
+
+/** ICU IC-1 (#984) — the ICU clock ticks every 10 s: the ladder's first rung is a minute. */
+export const ICU_ALARM_SWEEP_MS = 10_000;
 
 /**
  * The TEN jobs on the clock (D2/D9/step 2 + Plan 10 D3 + Plan 11a D5/D6 + Plan 11c D6),
@@ -851,6 +862,18 @@ export function registerAllJobs(
         try { await sweepWardShifts(db, now); } catch (e) { wardLog.error(`sweepWardShifts failed: ${e instanceof Error ? e.message : String(e)}`); }
       });
     },
+  });
+  /*
+   * ICU IC-1 (#984, decision 0090) — THE ICU CLOCK, every 10 s: the alarm ladder (bed nurse 60 s → station 60 s → duty
+   * doctor 120 s → intensivist), feed gaps from the gateway's heartbeat verdict, device links whose stay ended, the next
+   * bundle of every standing trigger, and hourly the raw numerics partitions past 72 hours. Its own job because the ladder's
+   * first rung is a minute: a 60-second tick could hold a life-threatening alarm on one rung for two. Idempotent and
+   * multi-process-safe (each climb under the alarm's row lock). A no-op while `icu` is off.
+   */
+  scheduler.register({
+    name: "sweepIcuAlarms",
+    every: intervals.icuAlarmSweepIntervalMs ?? ICU_ALARM_SWEEP_MS,
+    run: async (now) => { await runIfModuleOn("sweepIcuAlarms", "icu", async () => { await sweepIcuAlarms(db, now); }); },
   });
   /**
    * E2.1 (#725) — THE THIRTY-SECOND JOB, `dailyIst` 00:05: rent, nursing and RMO lines for every admission, one per

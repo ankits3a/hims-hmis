@@ -165,3 +165,6 @@ export * from "./emergency";
 // cards, bed QRs, sales and their lines, charity grants and caterer rent invoices. Nothing reads or writes them but
 // `modules/canteen`.
 export * from "./canteen";
+// ICU IC-1 (#984, decision 0090) — ICU requests, device links, the gateway feed (numbers partitioned daily, 72 h), the
+// hourly chart, alarms and limits, bundles, visits and the family's daily update. Nothing reads it but `modules/icu`.
+export * from "./icu";

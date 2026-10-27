@@ -1884,6 +1884,13 @@
       "when": 1792593970586,
       "tag": "0269_canteen",
       "breakpoints": true
+    },
+    {
+      "idx": 269,
+      "version": "7",
+      "when": 1792594030586,
+      "tag": "0270_icu_core",
+      "breakpoints": true
     }
   ]
 }

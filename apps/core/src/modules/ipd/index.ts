@@ -60,6 +60,8 @@ export {
   askApproval, askEmergencyIcuApproval, bedProposalsFor, pendingDepositChecks, consultantChoices, listDeskAdmissions, quotesFor, recentAdvice, viewAdmission,
 } from "./admission-read";
 export { IPD_APPROVAL_TYPES, IPD_APPROVAL_TYPE_KEYS, ipdApprovalDefinition, registerIpdApprovalTypes } from "./approval-types";
+// ICU IC-1 (#984) — the ICU request asks the `ipd_icu_admission` approval the admit gate already checks.
+export { requestIpdApproval } from "./approval-types";
 export { IPD_ADMISSION_BOARD_EVENT_NAMES } from "./admission-events";
 export { assignBedIn, endAdmissionHolds, placementContext, proposeBeds, readBedFacts } from "./beds";
 // ER lane 2 (#809) — ER bays are emergency-class beds placed and emptied under the same bed lock.
@@ -148,8 +150,9 @@ export {
   readFamilyPanel, revokeFamilyLink, setCondition,
 } from "./family";
 export {
-  familyGate, familyVerifiedAdmission, readFamilyBillDetails, readFamilyView, requestFamilyCallback, sendFamilyOtp, verifyFamilyOtp,
+  familyGate, familyVerifiedAdmission, readFamilyBillDetails, readFamilyView, registerFamilyTodayProvider, requestFamilyCallback, sendFamilyOtp, verifyFamilyOtp,
 } from "./family-public";
+export type { FamilyTodayProvider } from "./family-public";
 export { FamilyOtpUnavailable, LoggingFamilyOtpSender, SmsFamilyOtpSender, familyOtpSender } from "./family-otp";
 export type { FamilyOtpSender } from "./family-otp";
 export { IPD_FAMILY_STOP_CONSUMER } from "./family-events";
@@ -184,7 +187,7 @@ export {
 } from "./manifest";
 export {
   IPD_NURSING_STATES, acceptShiftHandover, acknowledgeEwsAlert, addNursingNote, dutyDoctorsFor, giveShiftHandover, ioDayStart,
-  isNightIst, recordIntakeOutput, recordNursingAssessment, recordVitals, scoreContextOf, shiftOf, sweepIpdNursing,
+  isNightIst, recordIcuChartVitals, recordIntakeOutput, recordNursingAssessment, recordVitals, scoreContextOf, shiftOf, sweepIpdNursing,
 } from "./nursing";
 export type { NursingSweepResult } from "./nursing";
 export { listShiftHandovers, nextDueOf, readMyShift, readNurseStation, readNursingChart } from "./nursing-read";

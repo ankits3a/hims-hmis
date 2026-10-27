@@ -237,7 +237,20 @@ export async function readFamilyView(db: Db, token: string, cookies: { device?: 
     tracker: tr === null ? null : { steps: tr.steps, expectedAt: tr.expectedAt, todo },
     sessionExpiresAt: session.expiresAt.toISOString(),
     purpose: IPD_FAMILY_PURPOSE,
+    todayUpdate: familyTodayProvider === null ? null : await familyTodayProvider(db, a.id, at),
   };
+}
+
+/**
+ * ICU IC-1 (#984, D9) — THE "TODAY'S UPDATE" SEAM. The ICU module logs the doctor's daily word to the family; ipd cannot
+ * import icu (icu imports ipd), so icu installs its reader here when it is loaded. Words only: the provider's type has no
+ * room for a number from a monitor.
+ */
+export type FamilyTodayProvider = (db: Db, admissionId: string, at: Date) => Promise<{ summary: string; at: string; mode: string } | null>;
+let familyTodayProvider: FamilyTodayProvider | null = null;
+export function registerFamilyTodayProvider(fn: FamilyTodayProvider): () => void {
+  familyTodayProvider = fn;
+  return () => { if (familyTodayProvider === fn) familyTodayProvider = null; };
 }
 
 /** ⚖ The second, explicit step: the bill's lines (non-reversed), logged as an event every time. */

@@ -63,6 +63,11 @@ import { ErMlc } from "./screens/er-mlc";
 import { ErBillScreen } from "./screens/er-bill";
 import { ErCodesScreen } from "./screens/er-codes";
 import { ErMciScreen } from "./screens/er-mci";
+import { IcuHalls, IcuStation } from "./screens/icu-station";
+import { IcuBed } from "./screens/icu-bed";
+import { IcuChart } from "./screens/icu-chart";
+import { IcuMyBeds, IcuNight } from "./screens/icu-phone";
+import { IcuIncharge, IcuRequests } from "./screens/icu-desk";
 import { IpdAdmit } from "./screens/ipd-admit";
 import { IpdPasses } from "./screens/ipd-passes";
 import { PassesScan } from "./screens/passes-scan";
@@ -467,6 +472,12 @@ const NAV: readonly NavEntry[] = [
   { to: "/er/bill", label: "nav.erBill", permission: "er.bill", group: "wards" },
   { to: "/er/codes", label: "nav.erCodes", permission: "er.codes", group: "wards" },
   { to: "/er/mci", label: "nav.erMci", permission: "er.mci", group: "wards" },
+  // ICU IC-1 (#984) — the ICU's five menu entries; paths and permissions match `icuManifest.menu`.
+  { to: "/icu", label: "nav.icuStation", permission: "icu.view", group: "wards" },
+  { to: "/icu/my-beds", label: "nav.icuMyBeds", permission: "icu.care", group: "wards" },
+  { to: "/icu/requests", label: "nav.icuRequests", permission: "icu.view", group: "wards" },
+  { to: "/icu/night", label: "nav.icuNight", permission: "icu.decide", group: "wards" },
+  { to: "/icu/incharge", label: "nav.icuIncharge", permission: "icu.manage", group: "wards" },
   { to: "/ipd/beds", label: "nav.ipdBeds", permission: "ipd.beds.view", group: "wards" },
   // E1.2 (#719) — the Admit sheet; path and permission match `ipdManifest.menu`.
   { to: "/ipd/admit", label: "nav.ipdAdmit", permission: "ipd.admit", group: "wards" },
@@ -1047,6 +1058,16 @@ const erCodesRoute = createRoute({
 });
 
 /** ER lane 8 (#815) — the MCI board (Code Yellow, spec §5 G): counts by tag, packs, surge bays, the head count. */
+/** ICU IC-1 (#984) — the halls, each hall's central station (dark), one bed, its hourly chart, the phones and the desks. */
+const icuHallsRoute = createRoute({ getParentRoute: () => authedRoute, path: "/icu", component: IcuHalls });
+const icuStationRoute = createRoute({ getParentRoute: () => authedRoute, path: "/icu/station/$hallId", staticData: { fullViewport: true }, component: IcuStation });
+const icuBedRoute = createRoute({ getParentRoute: () => authedRoute, path: "/icu/bed/$admissionId", staticData: { fullViewport: true }, component: IcuBed });
+const icuChartRoute = createRoute({ getParentRoute: () => authedRoute, path: "/icu/chart/$admissionId", component: IcuChart });
+const icuMyBedsRoute = createRoute({ getParentRoute: () => authedRoute, path: "/icu/my-beds", component: IcuMyBeds });
+const icuNightRoute = createRoute({ getParentRoute: () => authedRoute, path: "/icu/night", component: IcuNight });
+const icuRequestsRoute = createRoute({ getParentRoute: () => authedRoute, path: "/icu/requests", component: IcuRequests });
+const icuInchargeRoute = createRoute({ getParentRoute: () => authedRoute, path: "/icu/incharge", component: IcuIncharge });
+
 const erMciRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/er/mci",
@@ -2492,7 +2513,7 @@ export const router = createRouter({
     canteenBedRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, erDeskRoute, erBoardRoute, erTriageRoute, erPatientRoute, erMlcRoute, erBillRoute, erCodesRoute, erMciRoute, ipdBedsRoute, ipdAdmitRoute, ipdBillRoute, ipdBillDeskRoute, ipdTpaRoute, ipdFamilyCallbacksRoute, ipdRoundsRoute, ipdRoundPatientRoute, ipdMarRoute, ipdPharmacyRoute, ipdNarcoticsRoute, ipdHandoversRoute, ipdWardRoute, ipdWardAssignRoute, ipdWardCockpitRoute, ipdMyShiftRoute, ipdDischargeRoute, ipdPassesRoute, passesScanRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, erDeskRoute, erBoardRoute, erTriageRoute, erPatientRoute, erMlcRoute, erBillRoute, erCodesRoute, erMciRoute, icuHallsRoute, icuStationRoute, icuBedRoute, icuChartRoute, icuMyBedsRoute, icuNightRoute, icuRequestsRoute, icuInchargeRoute, ipdBedsRoute, ipdAdmitRoute, ipdBillRoute, ipdBillDeskRoute, ipdTpaRoute, ipdFamilyCallbacksRoute, ipdRoundsRoute, ipdRoundPatientRoute, ipdMarRoute, ipdPharmacyRoute, ipdNarcoticsRoute, ipdHandoversRoute, ipdWardRoute, ipdWardAssignRoute, ipdWardCockpitRoute, ipdMyShiftRoute, ipdDischargeRoute, ipdPassesRoute, passesScanRoute, crkFormularyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute, attendanceLinksRoute,
       // GO-LIVE SCREENS — +1, `/admin/workflows`. `caddyfile-parity.test.ts` pins the count.

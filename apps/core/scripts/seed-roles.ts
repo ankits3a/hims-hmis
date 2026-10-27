@@ -287,6 +287,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "diet.view", "diet.order", "diet.npo", "diet.clinical.view",
       // IPD ADMISSION E1.2 (#719) — a doctor advises admission (raises the request); answers carry no money (0058).
       "ipd.admit.request",
+      // ICU IC-1 (#984) — a doctor raises an ICU request (ER, ward, OT) and reads the ICU station. README "ICU core" prose.
+      "icu.view", "icu.request",
       // PASSES E1.3 (#720) — a doctor's visitor ban: pause visitor passes with a reason, and lift it.
       "passes.pause",
       "opd.masters.read",
@@ -2311,6 +2313,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "ipd.emar.view", "ipd.emar.give", "ipd.band.print", "pharmacy.incidents.record",
       // LD-1 (#978) — seals linen bags at the bed and places linen holds; README "Laundry" prose.
       "linen.handle",
+      // ICU IC-1 (#984) — the ICU bedside: link devices, chart and sign hours, acknowledge alarms, bundles, the family log.
+      // README "ICU core" prose.
+      "icu.view", "icu.care",
     ],
   },
   {
@@ -2331,6 +2336,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "ipd.emar.view", "ipd.emar.give", "ipd.band.print", "pharmacy.incidents.record",
       // LD-1 (#978) — as the ward nurse, and as the nurse in-charge releases an MLC linen hold to the police.
       "linen.handle", "linen.hold.release",
+      // ICU IC-1 (#984) — as the ward nurse (the station rung falls back to the supervisor). README "ICU core" prose.
+      "icu.view", "icu.care",
     ],
   },
   {
@@ -2374,6 +2381,22 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * (`er.board.wall`, which the `display` seat keeps). NOBODY is assigned to it by any seed. README "Emergency arrival" prose.
    */
   { roleKey: "waiting_display", permissions: ["er.board.waiting"] },
+  /**
+   * ICU IC-1 (#984, decision 0090) — THE TWO ICU ROLES no seed had. DECIDED by the standard Indian corporate-hospital
+   * ICU: the INTENSIVIST (the ICU consultant: decides ICU requests — the `ipd_icu_admission` approval's second decider,
+   * `approval-types.ts` — sets alarm limits, is the ladder's last rung, gives the family's daily update) and the ICU
+   * IN-CHARGE (the hall's senior nurse: the station rung, the gateway and its maps, missed bundles, alarm storms, the
+   * "set on the monitor" tasks). Both read the ward nursing chart and record vitals. NOBODY is assigned by any seed.
+   * README "ICU core" prose.
+   */
+  {
+    roleKey: "intensivist",
+    permissions: ["icu.view", "icu.request", "icu.decide", "icu.care", "ipd.nursing.view", "ipd.vitals.record", "ipd.beds.view"],
+  },
+  {
+    roleKey: "icu_incharge",
+    permissions: ["icu.view", "icu.care", "icu.manage", "ipd.nursing.view", "ipd.vitals.record", "ipd.beds.view"],
+  },
 ];
 
 /**
@@ -2658,6 +2681,9 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   ward_incharge: "Ward In-charge (charge nurse, beside Ward Nurse: publishes the shift's bed-to-nurse assignment, the ward cockpit)",
   student_nurse: "Student Nurse (paired with a registered nurse; reads the ward, records vitals)",
   radiology_resident: "Radiology Resident (drafts, issues prelims, calls criticals; signs for a consultant's co-sign — publishes nothing alone)",
+  // ICU IC-1 (#984).
+  intensivist: "Intensivist (ICU consultant: decides ICU requests, sets alarm limits, the alarm ladder's last rung, the family's daily update)",
+  icu_incharge: "ICU In-charge (the hall's senior nurse: the station rung, the gateway, missed bundles, alarm storms)",
 };
 
 /** The title for a model role key. Throws rather than inventing one — an unresolved role is a defect. */

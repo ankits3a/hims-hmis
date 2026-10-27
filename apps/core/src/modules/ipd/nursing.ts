@@ -320,6 +320,45 @@ export async function recordVitals(db: Db, actor: Actor, raw: unknown, opts: Opt
   });
 }
 
+/**
+ * ICU IC-1 (#984, D4) — THE SIGNED ICU HOUR INTO THE VITALS RECORD. `recordVitals` refuses device rows and anything older
+ * than 24 hours; a signed ICU chart hour is neither a device row (a named nurse checked and signed it) nor bound by that
+ * limit (a back-filled hour is signed when the feed comes back). So this INTERNAL writer, called only by `modules/icu`
+ * inside its own transaction at the signature: source `icu_chart`, one row per chart hour (`client_key = icu_chart:<hour>`,
+ * a re-sign writes nothing), the early-warning score computed and kept, and NO early-warning alert raised — on an ICU bed
+ * the ICU alarms and bundles replace NEWS2 alerts (plan, DECIDED). The 24-hour limit is bypassed for this source only.
+ */
+export async function recordIcuChartVitals(
+  tx: Tx, actor: Actor,
+  input: { admissionId: string; hourId: string; observedAt: Date; values: Pick<VitalsValues, "temperatureC" | "pulse" | "respRate" | "systolic" | "diastolic" | "spo2"> },
+  at: Date,
+): Promise<{ vitalsId: string }> {
+  const clientKey = `icu_chart:${input.hourId}`;
+  const replay = (await tx.select({ id: ipdVitals.id }).from(ipdVitals).where(eq(ipdVitals.clientKey, clientKey)))[0];
+  if (replay !== undefined) return { vitalsId: replay.id };
+  const a = (await tx.select().from(ipdAdmissions).where(eq(ipdAdmissions.id, input.admissionId)))[0];
+  if (a === undefined) throw new IpdRefusal("admission_not_found");
+  const v = input.values;
+  const ctx = await scoreContextOf(tx, a, input.observedAt);
+  const score = scoreEws(ctx.kind, ewsValuesOf(v), ctx.ageYears);
+  const vitalsId = newId();
+  await tx.insert(ipdVitals).values({
+    id: vitalsId, admissionId: a.id, patientId: a.patientId, observedAt: input.observedAt, recordedAt: at, recordedBy: actor.id,
+    source: "icu_chart", deviceId: null, clientKey, lateEntry: false, lateReason: null, refused: false, confirmedOutOfRange: true,
+    temperatureC: v.temperatureC ?? null, pulse: v.pulse ?? null, respRate: v.respRate ?? null, systolic: v.systolic ?? null,
+    diastolic: v.diastolic ?? null, spo2: v.spo2 ?? null,
+    scoreKind: score.kind, scoreValue: score.value, scoreBand: score.band, scoreComplete: score.complete,
+  });
+  await appendEvent(tx, vitalsRecorded.make({
+    payload: {
+      vitalsId, admissionId: a.id, observedAt: input.observedAt.toISOString(), lateEntry: false, lateReason: null, refused: false,
+      score: { kind: score.kind, value: score.value, band: score.band }, provenance: provenanceOf(actor),
+    },
+    actor, correlationId: a.id, patientId: a.patientId, occurredAt: at,
+  }));
+  return { vitalsId };
+}
+
 function onceIpdVitals<T>(db: Db, actor: Actor, input: Input<"record_vitals">, at: Date, work: () => Promise<T>): Promise<T> {
   return withIdempotency(db, { actorId: actor.id, route: "ipd:record_vitals", key: input.idempotencyKey.toLowerCase() }, input, work, at);
 }

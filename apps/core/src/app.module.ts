@@ -47,6 +47,7 @@ import { MaintenanceModule } from "./modules/maintenance";
 import { PassesModule } from "./modules/passes";
 import { TransportModule } from "./modules/transport";
 import { DietModule } from "./modules/diet";
+import { IcuModule } from "./modules/icu"; // ICU IC-1 (#984)
 import { EmergencyModule } from "./modules/emergency"; // ER lane 1 (#808) — the ER desk, the tracking board and the arrival intents
 import { AerbModule } from "./modules/aerb/aerb.module";
 import { PrintingModule } from "./kernel/printing/printing.module";
@@ -80,6 +81,7 @@ const DARK_MODULES: readonly (readonly [DarkModuleKey, Type<unknown>])[] = [
   ["diet", DietModule], // E4.4 (#736) — diet orders, NPO, the kitchen board and meal lists, the ward diet sheet, dietician consults
   ["emergency", EmergencyModule], // ER lane 1 (#808) — the ER desk, the tracking board and the arrival intents
   ["canteen", CanteenModule], // CN-1 (#977) — the till, the menu and price lists, staff meal cards, the bed QR page, family meals, caterer rent
+  ["icu", IcuModule], // ICU IC-1 (#984) — requests, device links, the gateway feed, the station, the hourly chart, alarms, bundles
 ];
 
 @Global()

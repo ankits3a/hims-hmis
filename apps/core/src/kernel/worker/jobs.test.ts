@@ -360,6 +360,8 @@ describe("registerAllJobs threads WORKER_INTERFACE_SWEEP_INTERVAL_MS to the tent
     notifyRetainDays: 180,
     workerInterfaceSweepIntervalMs: INTERFACE_SWEEP_EVERY_MS,
     workerLabSweepIntervalMs: 60_000,
+    // ICU IC-1 (#984) — the 10-second ICU clock would tick inside this 28-second window; pushed out like the others.
+    icuAlarmSweepIntervalMs: NINE_HOURS_MS,
   };
 
   let db: Db;
@@ -409,7 +411,7 @@ describe("registerAllJobs threads WORKER_INTERFACE_SWEEP_INTERVAL_MS to the tent
     // nothing. T5 did not read it, and found this file, that file and `alerts.yml`'s three places by
     // going red instead. The tax is identical either way; the difference is whether it is paid once
     // or discovered three times.
-    expect(specs).toHaveLength(36); // #833 (decision 0085): +4, the IPD jobs registered dark — sweepTasks, lapseBedReservations, sweepIpdNursing (every 60 000), postNightlyIpdCharges (dailyIst 00:05) // E3.2 (#595): +1, sweepLabCriticalLadder (every 60 000), read off the red run // DOCTOR DESK DD-report v0: +1, sendUnitReports (dailyIst 08:00) // COPILOT LEDGER E0.1: +1, pruneCopilotAsks (daily 01:20 IST, always on); ATTENDANCE (owner 2026-10-09): +1, syncAttendance (every 120 000), read off the red run // TELE-CALL (owner 2026-10-09): +1, openDueTeleVisits (every 60 000) // NICKNAMES (0051): +1, proposeMedicineNicknames (every 3 600 000), read off the red run // MOBILE §3i: +1, sweepStaffNotices (every 60 000), read off the red run // 20-U infra: +1, printRosterBoard (every 60 000), read off the red run // 18-S RS10: +1, sweepImagingEscalations (every 60 000) // 18-S RS11: +1, sweepOverdueQa (every 3 600 000), read off the red run // PHARMACY P6 (patient messages): +1, runRefillReminders (dailyIst 10:00), read off the red run // PHASE O T4: +1, runReachLadder, read off the red run // PHASE R (R7): +1, sweepRosterWindows // PHASE R (R9): +1, runMonthlyProposals
+    expect(specs).toHaveLength(37); // ICU IC-1 (#984): +1, sweepIcuAlarms (every 10 000) // #833 (decision 0085): +4, the IPD jobs registered dark — sweepTasks, lapseBedReservations, sweepIpdNursing (every 60 000), postNightlyIpdCharges (dailyIst 00:05) // E3.2 (#595): +1, sweepLabCriticalLadder (every 60 000), read off the red run // DOCTOR DESK DD-report v0: +1, sendUnitReports (dailyIst 08:00) // COPILOT LEDGER E0.1: +1, pruneCopilotAsks (daily 01:20 IST, always on); ATTENDANCE (owner 2026-10-09): +1, syncAttendance (every 120 000), read off the red run // TELE-CALL (owner 2026-10-09): +1, openDueTeleVisits (every 60 000) // NICKNAMES (0051): +1, proposeMedicineNicknames (every 3 600 000), read off the red run // MOBILE §3i: +1, sweepStaffNotices (every 60 000), read off the red run // 20-U infra: +1, printRosterBoard (every 60 000), read off the red run // 18-S RS10: +1, sweepImagingEscalations (every 60 000) // 18-S RS11: +1, sweepOverdueQa (every 3 600 000), read off the red run // PHARMACY P6 (patient messages): +1, runRefillReminders (dailyIst 10:00), read off the red run // PHASE O T4: +1, runReachLadder, read off the red run // PHASE R (R7): +1, sweepRosterWindows // PHASE R (R9): +1, runMonthlyProposals
     expect(specs).toContainEqual(
       expect.objectContaining({ name: "flagLateSurgeons", every: 60_000 }),
     );

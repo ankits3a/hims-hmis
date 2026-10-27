@@ -35,6 +35,7 @@ import { passesManifest } from "../../modules/passes";
 import { transportManifest } from "../../modules/transport";
 import { dietManifest } from "../../modules/diet";
 import { emergencyManifest } from "../../modules/emergency";
+import { icuManifest } from "../../modules/icu";
 import { doctorDeskManifest } from "../../modules/doctor-desk";
 
 /**
@@ -234,4 +235,7 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   // CN-1 CANTEEN (issue #977, decision 0088) — appended. Four permissions, three menu entries, no subscription: API only
   // (the worker's minute job cancels unconfirmed bed orders and installs nothing).
   canteenManifest,
+  // ICU IC-1 (#984, decision 0090) — appended. Five permissions, five menu entries, no subscription: API only (the ICU
+  // clock `sweepIcuAlarms` is registered in `kernel/worker/jobs.ts` and needs no manifest in the worker; the bmw shape).
+  icuManifest,
 ];

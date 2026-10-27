@@ -234,13 +234,15 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "doctor-desk",
       // CN-1 CANTEEN (#977) — appended. A leaf: it reaches into ipd, diet, patients, roster and tariff through their indexes.
       "canteen",
+      // ICU IC-1 (#984) — appended. A leaf: it reaches into ipd, radiology (the `device` kind) and the kernel.
+      "icu",
     ]);
-    expect(ALL_MANIFESTS).toHaveLength(37); // CN-1 CANTEEN (#977): canteen; IPD/ER train B4: emergency; // IPD/ER train B3: diet; // IPD/ER train B2: passes, transport; // IPD/ER train B1: tasks, ipd, bmw, linen, housekeeping, maintenance; // E0.1 TASK ENGINE: 28, tasks; IPD BEDS E1.1: 27, ipd; DOCTOR DESK DD-0: 26; TEST ORDERING: 25; STAFF ATTENDANCE: 24; PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
+    expect(ALL_MANIFESTS).toHaveLength(38); // ICU IC-1 (#984): icu; CN-1 CANTEEN (#977): canteen; IPD/ER train B4: emergency; // IPD/ER train B3: diet; // IPD/ER train B2: passes, transport; // IPD/ER train B1: tasks, ipd, bmw, linen, housekeeping, maintenance; // E0.1 TASK ENGINE: 28, tasks; IPD BEDS E1.1: 27, ipd; DOCTOR DESK DD-0: 26; TEST ORDERING: 25; STAFF ATTENDANCE: 24; PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
     // Installable as a set: `ModuleRegistry.install` throws on a duplicate key, so this also
     // pins that no manifest appears twice.
     const registry = new ModuleRegistry();
     for (const manifest of ALL_MANIFESTS) registry.install(manifest);
-    expect(registry.all()).toHaveLength(37); // CN-1 CANTEEN (#977); IPD BEDS E1.1, E0.1 TASK ENGINE
+    expect(registry.all()).toHaveLength(38); // ICU IC-1 (#984): icu; CN-1 CANTEEN (#977); IPD BEDS E1.1, E0.1 TASK ENGINE
   });
 
   it("V4: app.module.ts installs ALL_MANIFESTS and nothing else", () => {
@@ -388,7 +390,8 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     //      E3.3 (#731): `ipd` is no longer app-only — its family-link stop is a subscription, so the worker installs it.
     // (1o) ER lane 1 (#808) — `emergency`, APP-ONLY: no subscription; its clocks ride the worker's `lapseBedReservations` job.
     // (1p) CN-1 CANTEEN (#977) — `canteen`, APP-ONLY: no subscription; its stale bed-order sweep rides the task-clock tick.
-    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance", "tasks", "bmw", "linen", "maintenance", "transport", "emergency", "doctor-desk", "canteen"]);
+    // (1p) ICU IC-1 (#984) — `icu`, APP-ONLY: no subscription; its clock `sweepIcuAlarms` is registered in jobs.ts directly.
+    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance", "tasks", "bmw", "linen", "maintenance", "transport", "emergency", "doctor-desk", "canteen", "icu"]);
 
     /**
      * ═══ THE COUNT IS THE FRICTION, AND UNTIL NOW NOTHING ENFORCED IT ═══

@@ -57,8 +57,10 @@ const DEFAULT_POOL_MAX = 20;
  * 26 -> 29 (#833, decision 0085): the three IPD minute jobs registered dark — `sweepTasks`, `lapseBedReservations`,
  * `sweepIpdNursing` (60 s each; a no-op tick while their module is off still holds a client) — TWENTY-ONE interval
  * jobs: 21 + 8 = 29. 20 (API) + 29 (worker) still fits `max_connections = 100` with the exporter and pgBackRest.
+ * 29 -> 30 (ICU IC-1 #984): the ICU clock `sweepIcuAlarms` (10 s, registered dark) — TWENTY-TWO interval jobs: 22 + 8 = 30.
+ * 20 (API) + 30 (worker) still fits `max_connections = 100` with the exporter and pgBackRest.
  */
-export const DEFAULT_WORKER_POOL_MAX = 29;
+export const DEFAULT_WORKER_POOL_MAX = 30;
 const DEFAULT_CONNECT_TIMEOUT_MS = 10_000;
 
 function readPositiveInt(key: string, fallback: number): number {
