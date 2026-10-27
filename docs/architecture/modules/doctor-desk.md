@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/doctor-desk/`
 · Notes: [MAP.md](../../../apps/core/src/modules/doctor-desk/MAP.md)
 
-- **Depends on modules:** `lab`, `opd`, `patients`, `radiology`, `roster`
+- **Depends on modules:** `ipd`, `lab`, `opd`, `patients`, `radiology`, `roster`
 - **Used by modules:** —
 - **Kernel used:** `alerts`, `approvals`, `auth`, `copilot`, `db`, `desk`, `events`, `modules`, `phi`, `tokens`
 
@@ -39,6 +39,10 @@ Source: `apps/core/src/modules/doctor-desk/`
   - `unitBoard(db: Db, actor: Actor, at: Date): Promise<WireUnitBoard>`
 - `waiting-on.ts`
   - `waitingOn(db: Db, actor: Actor, at: Date, istDate: string, members: readonly { userId: string }[]): Promise<WireAttentionRow[]>`
+- `ward.ts`
+  - `towerWard(db: Db, scope: DeskScope, at: Date): Promise<WireTowerWard | null>`
+  - `wardBeds(db: Db, actor: Actor, at: Date): Promise<WireWardBeds>`
+  - `wardRound(db: Db, actor: Actor, admissionId: string, at: Date): Promise<WireWardRound>`
 
 ## Tables (`kernel/db/schema/doctor-desk.ts`)
 
@@ -48,6 +52,6 @@ Foreign keys into: `auth`
 
 ## HTTP routes
 
-- `doctor-desk.controller.ts` — `/doctor-desk/acts`, `/doctor-desk/briefs`, `/doctor-desk/clocks`, `/doctor-desk/landing`, `/doctor-desk/now`, `/doctor-desk/opd`, `/doctor-desk/professor`, `/doctor-desk/ratings`, `/doctor-desk/reports`, `/doctor-desk/tower`, `/doctor-desk/unit`
+- `doctor-desk.controller.ts` — `/doctor-desk/acts`, `/doctor-desk/briefs`, `/doctor-desk/clocks`, `/doctor-desk/landing`, `/doctor-desk/now`, `/doctor-desk/opd`, `/doctor-desk/professor`, `/doctor-desk/ratings`, `/doctor-desk/reports`, `/doctor-desk/tower`, `/doctor-desk/unit`, `/doctor-desk/ward`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/doctor-desk`

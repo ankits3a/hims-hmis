@@ -3,6 +3,7 @@ import { bigint, boolean, check, date, doublePrecision, index, integer, jsonb, p
 import { erEpisodes } from "./emergency";
 import { patients } from "./patients";
 import { resources } from "./resources";
+import { rosterTeams } from "./roster";
 
 /**
  * `IPD_BED_CLASSES` (packages/contracts/src/ipd-bed-classes.ts), retyped because drizzle-kit loads this file without
@@ -169,6 +170,14 @@ export const ipdAdmissions = pgTable(
     stabilisedAt: timestamp("stabilised_at", { withTimezone: true }),
     /** ER lane 5 (#812): an admission from the ER keeps the ER gate instant (spec §3.10: IPD copies `arrived_at`). */
     erArrivedAt: timestamp("er_arrived_at", { withTimezone: true }),
+    /**
+     * #962 — THE UNIT STAMP: the clinical unit (roster team) the admission belongs to, written ONCE in the admit
+     * transaction and never updated: an ER admission → the unit on take at the ER arrival instant (`unitOnTake`); any
+     * other → the admitting consultant's unit on the day. A change of unit is an `ipd_unit_transfers` row and an event.
+     * Null = admitted before #962 (nothing is back-filled; reads fall back to the consultant's unit) or no unit could be
+     * named (no take window and a consultant in no unit) — absent, never guessed.
+     */
+    admittedUnderTeamId: text("admitted_under_team_id").references(() => rosterTeams.id),
     downtimeSerial: text("downtime_serial"),
     /** Downtime: the paper deposit receipt's number, when the paper form carried one. */
     paperReceiptNo: text("paper_receipt_no"),
@@ -199,9 +208,36 @@ export const ipdAdmissions = pgTable(
     uniqueIndex("ipd_admissions_instance_ux").on(t.workflowInstanceId),
     index("ipd_admissions_state_idx").on(t.state),
     index("ipd_admissions_patient_idx").on(t.patientId),
+    index("ipd_admissions_team_admitted_idx").on(t.admittedUnderTeamId, t.admittedAt),
     check("ipd_admissions_source_ck", sql`${t.source} in ('opd_advice', 'ot_daycare_conversion', 'er', 'direct', 'transfer_in', 'downtime')`),
     check("ipd_admissions_payer_ck", sql`${t.payerKind} is null or ${t.payerKind} in ('cash', 'insurance_cashless', 'insurance_reimbursement', 'pmjay', 'state_scheme', 'corporate')`),
     check("ipd_admissions_money_ck", sql`coalesce(${t.estimatePaise}, 0) >= 0 and coalesce(${t.depositRequiredPaise}, 0) >= 0 and coalesce(${t.procedureEstimatePaise}, 0) >= 0`),
+  ],
+);
+
+/**
+ * #962 — A CHANGE OF UNIT (spec 962 "a change of unit is a transfer row and an event, never an edit"). Append-only: the
+ * admission's unit at an instant is the newest row at or before it, else `ipd_admissions.admitted_under_team_id`.
+ * `from_team_id` is the unit as it stood when the row was written (null when the admission had none).
+ */
+export const ipdUnitTransfers = pgTable(
+  "ipd_unit_transfers",
+  {
+    id: text("id").primaryKey(),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    fromTeamId: text("from_team_id").references(() => rosterTeams.id),
+    toTeamId: text("to_team_id").notNull().references(() => rosterTeams.id),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+    reason: text("reason").notNull(),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("ipd_unit_transfers_admission_idx").on(t.admissionId, t.at),
+    index("ipd_unit_transfers_to_idx").on(t.toTeamId, t.at),
+    index("ipd_unit_transfers_from_idx").on(t.fromTeamId, t.at),
+    check("ipd_unit_transfers_teams_ck", sql`${t.fromTeamId} is null or ${t.fromTeamId} <> ${t.toTeamId}`),
+    check("ipd_unit_transfers_reason_ck", sql`length(btrim(${t.reason})) between 1 and 500`),
   ],
 );
 

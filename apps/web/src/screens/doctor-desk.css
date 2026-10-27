@@ -85,6 +85,14 @@
 .dd-ov > div { display: flex; flex-direction: column; }
 .dd-ov-v { font-size: 19px; line-height: 24px; font-weight: 600; }
 .dd-ov-k { font-size: 11.5px; line-height: 15px; color: var(--dd-dim); }
+/* #962 — the bed-dot map (Tower.dc.html): red critical · amber owed · green could go home · grey stable · hollow free. */
+.dd-bedmap { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; }
+.dd-dot { flex: 1 0 6px; max-width: 28px; height: 12px; border-radius: 2px; box-sizing: border-box; }
+.dd-dot-none { background: #cfdcd3; }
+.dd-dot-owed { background: #dd8f1c; }
+.dd-dot-critical { background: var(--dd-red); }
+.dd-dot-could_go_home { background: var(--dd-acc); }
+.dd-dot-free { background: #ffffff; border: 1px dashed #9fb3a8; }
 .dd-ov-lines { display: flex; flex-direction: column; }
 .dd-ov-line { display: grid; grid-template-columns: minmax(0, 1fr) 64px; grid-template-areas: "name st" "fig fig"; gap: 0 10px; align-items: center; padding: 5px 0; border-top: 1px solid var(--dd-line2); font-size: 12.5px; }
 .dd-ov-name { grid-area: name; }

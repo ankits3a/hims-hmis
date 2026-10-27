@@ -33,12 +33,16 @@ export type DoctorDeskErrorCode =
   /** DD-1.7 — this rater already rated this work. */
   | "already_rated"
   /** DD-1.7 — no finished work by that id that the asker may rate. */
-  | "unknown_work";
+  | "unknown_work"
+  /** #962 — the ward is not on this server (IPD switched off, decision 0085). */
+  | "ward_closed"
+  /** #962 — no admission by that id on the asker's unit or treating team (never says which). */
+  | "unknown_admission";
 
 const STATUS: Record<DoctorDeskErrorCode, number> = {
   not_unit_member: 403, already_nudged: 409, own_row: 400, unknown_row: 404, unknown_brief: 404, unknown_visit: 404,
   not_allowed_to_move: 403, same_holder: 400, move_target_cannot_view: 403, already_acted: 409, not_actable: 400, note_required: 400,
-  not_a_senior: 403, self_rating: 400, already_rated: 409, unknown_work: 404,
+  not_a_senior: 403, self_rating: 400, already_rated: 409, unknown_work: 404, ward_closed: 404, unknown_admission: 404,
 };
 
 export class DoctorDeskError extends Error {

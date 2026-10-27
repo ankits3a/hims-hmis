@@ -74,6 +74,7 @@ flowchart LR
   diet --> ipd
   diet --> ot
   diet --> tasks
+  doctor_desk --> ipd
   doctor_desk --> lab
   doctor_desk --> opd
   doctor_desk --> patients
@@ -168,11 +169,11 @@ flowchart LR
 | [bmw](modules/bmw.md) | tasks | — |
 | [cds](modules/cds.md) | formulary | opd |
 | [diet](modules/diet.md) | ipd, ot, tasks | — |
-| [doctor-desk](modules/doctor-desk.md) | lab, opd, patients, radiology, roster | — |
+| [doctor-desk](modules/doctor-desk.md) | ipd, lab, opd, patients, radiology, roster | — |
 | [emergency](modules/emergency.md) | billing, formulary, ipd, lab, materials, ordering, patients, roster, tariff, tasks | — |
 | [formulary](modules/formulary.md) | — | cds, emergency, ipd, materials, opd, pharmacy |
 | [housekeeping](modules/housekeeping.md) | ipd, tasks | — |
-| [ipd](modules/ipd.md) | billing, formulary, lab, materials, opd, ordering, ot, patients, pharmacy, roster, tariff | diet, emergency, housekeeping, maintenance, passes, transport |
+| [ipd](modules/ipd.md) | billing, formulary, lab, materials, opd, ordering, ot, patients, pharmacy, roster, tariff | diet, doctor-desk, emergency, housekeeping, maintenance, passes, transport |
 | [lab](modules/lab.md) | billing, opd, patients, roster, tariff | abdm, doctor-desk, emergency, ipd, ordering, radiology |
 | [linen](modules/linen.md) | tasks | — |
 | [maintenance](modules/maintenance.md) | ipd, tasks | — |

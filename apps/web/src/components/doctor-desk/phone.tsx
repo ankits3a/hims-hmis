@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useRouter } from "@tanstack/react-router";
 import { AskBar } from "./frame";
+import { useAuth } from "../../lib/auth";
 import { ACT_CHOICES, ACT_NOTE_MAX } from "../../../../../packages/contracts/src/doctor-desk";
 import type { ActChoice } from "../../../../../packages/contracts/src/doctor-desk";
 import { deskErrorText, fetchCopilotToggles, recordAct } from "../../lib/doctor-desk-api";
@@ -19,10 +20,14 @@ import "./phone.css";
  */
 type T = (k: string, o?: Record<string, unknown>) => string;
 
-export type PhoneTab = "now" | "opd" | "unit";
-/** Bottom tabs Now · OPD · Unit. Beds is ABSENT until DD-IPD (plan DD-1.5: "Beds tab absent, not empty"). */
-const TABS: readonly { key: PhoneTab; to: string }[] = [
+export type PhoneTab = "now" | "beds" | "opd" | "unit";
+/**
+ * Bottom tabs Now · Beds · OPD · Unit (`Beds.dc.html`). #962: Beds is there only while IPD is switched on (decision
+ * 0085) — absent, not empty, otherwise (plan DD-1.5).
+ */
+const TABS: readonly { key: PhoneTab; to: string; ipd?: true }[] = [
   { key: "now", to: "/doctor-desk/now" },
+  { key: "beds", to: "/doctor-desk/beds", ipd: true },
   { key: "opd", to: "/doctor-desk/opd" },
   { key: "unit", to: "/doctor-desk/unit" },
 ];
@@ -36,6 +41,8 @@ export function PhoneShell({ testId, title, sub, clock, tab, dock, children }: {
 }): React.ReactElement {
   const { t } = useTranslation();
   const router = useRouter({ warn: false });
+  const { moduleOn } = useAuth();
+  const tabs = TABS.filter((x) => x.ipd !== true || moduleOn("ipd"));
   return (
     <div className="ddp" data-testid={testId}>
       <div className="ddp-col">
@@ -54,7 +61,7 @@ export function PhoneShell({ testId, title, sub, clock, tab, dock, children }: {
         <div className="ddp-dock">{dock}</div>
         {tab !== undefined && (
           <nav className="ddp-tabs" aria-label={t("doctorDesk.phone.tabs")}>
-            {TABS.map((x) => (
+            {tabs.map((x) => (
               <a
                 key={x.key} href={x.to} className={`ddp-tab${x.key === tab ? " ddp-tab-on" : ""}`} data-testid={`ddp-tab-${x.key}`}
                 aria-current={x.key === tab ? "page" : undefined}
