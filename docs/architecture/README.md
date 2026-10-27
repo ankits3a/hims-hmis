@@ -112,6 +112,7 @@ flowchart LR
   linen --> aerb
   linen --> ipd
   linen --> maintenance
+  linen --> materials
   linen --> ot
   linen --> tasks
   maintenance --> ipd
@@ -180,9 +181,9 @@ flowchart LR
 | [housekeeping](modules/housekeeping.md) | ipd, linen, roster, tasks | — |
 | [ipd](modules/ipd.md) | billing, formulary, lab, materials, opd, ordering, ot, patients, pharmacy, roster, tariff | diet, emergency, housekeeping, linen, maintenance, passes, transport |
 | [lab](modules/lab.md) | billing, opd, patients, roster, tariff | abdm, doctor-desk, emergency, ipd, ordering, radiology |
-| [linen](modules/linen.md) | aerb, ipd, maintenance, ot, tasks | housekeeping |
+| [linen](modules/linen.md) | aerb, ipd, maintenance, materials, ot, tasks | housekeeping |
 | [maintenance](modules/maintenance.md) | ipd, tasks | linen |
-| [materials](modules/materials.md) | formulary | emergency, ipd, opd, ot, pharmacy |
+| [materials](modules/materials.md) | formulary | emergency, ipd, linen, opd, ot, pharmacy |
 | [membership](modules/membership.md) | patients, tariff | billing, partners, pharmacy |
 | [opd](modules/opd.md) | billing, cds, formulary, materials, patients, roster | abdm, billing, doctor-desk, ipd, lab, ordering, pharmacy, radiology |
 | [ordering](modules/ordering.md) | billing, lab, opd, radiology | emergency, ipd |

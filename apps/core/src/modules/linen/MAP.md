@@ -16,6 +16,7 @@ start with a module name, `kernel/`, `scripts/` or `apps/`. Citations name a fil
 Update this file in the same PR when you change a flow, an invariant or a trap below.
 Spec: SPEC-ipd-companions §5, §10, §11 (kept outside the repository); issue #728, decision 0072.
 LD-1 laundry floor: `docs/specs/978-laundry-floor.md` (#978), decision 0087; acceptance `acceptance/laundry-floor-978.acceptance.test.ts`.
+LD-2 vendor laundry: `docs/specs/979-laundry-ld2.md` (#979), decisions 0087 and 0092; acceptance `acceptance/laundry-vendor-979.acceptance.test.ts`.
 
 ## 1. Purpose
 Linen for every ward: par stock from the ward's beds and their class, daily top-up from the linen store, soiled and
@@ -24,7 +25,8 @@ ward counts, and the weekly loss per ward and item. No money (vendor billing is 
 LD-1 (#978) adds the laundry floor: signed pickup and delivery rounds, sealed bags, MLC/chemotherapy/radioactive holds,
 the in-house plant (machines, cycles, the disinfection rule), quality check, theatre sets to CSSD, mending, and a bed
 that is ready only when it is made. Piece identity (`linen_pieces`, `piece_id`) exists and is empty until tags arrive;
-the vendor's per-piece money, recovery, uniforms, chemicals and licences are LD-2 (#979).
+LD-2 (#979) adds the vendor's money (challans, the monthly report and recovery, the bill check), staff uniforms and
+the leavers' no-dues list, tagged pieces, chemical per kg washed and the plant's licences. Money is paise; still no patient.
 
 ## 2. Key files (owner of what)
 - `packages/contracts/src/linen.ts` — the catalogue (`LINEN_STANDARD_ITEMS`), sets per bed by class
@@ -50,6 +52,15 @@ the vendor's per-piece money, recovery, uniforms, chemicals and licences are LD-
   `bedsWaitingForLinen`, `shelfShort`, `rushDemand`; `clock.ts` — `runLinenClock`, `dueSlots`. Seams it reads:
   `ipd/linen-seam.ts` (`plannedDischargeBeds`, `mlcOccupiedBeds`), `ot/linen-seam.ts` (`theatreCasesOn`), aerb
   `appointedPerson`, maintenance `raiseTicket`. Migration `0263_laundry_floor.sql` (renumbered at merge).
+- LD-2 (#979): `vendor.ts` — IST months (`istMonthOf`, `istMonthStart`, `istMonthWindow`, `istDayOf`), `addLinenVendor`,
+  `setVendorRate`, `setLinenItemCost`, `replacementCosts` (materials `lastPurchaseByItem`), `writeChallan` (called by
+  `sendToLaundry` and `routeToVendor`), `challanFor`, `recordChallanReturn`, `vendorMonthReport`, `raiseRecovery`,
+  `approveRecovery`/`rejectRecovery`, `checkVendorBill`, `approveBillExcess`/`refuseBillExcess`, desk reads;
+  `uniforms.ts` — `setUniformRole`, `issueUniform`, `exchangeUniform`, `returnUniform`, `uniformHoldings`, `uniformDues`;
+  `pieces.ts` — `registerPiece`, `pieceLines` (scanned tags → lines of one), `condemnPieceOf`; `plantcost.ts` —
+  `chemicalUse` (materials `stock_ledger.cost_center = 'laundry'`), `fileLicence`, `licenceCalendar`. Migration
+  `0264_laundry_vendor.sql` (renumber at merge). Web `apps/web/src/screens/linen-vendor.tsx` (`/linen/vendor`),
+  `apps/web/src/screens/linen-uniforms.tsx` (`/linen/uniforms`); the plant's To vendor asks for vendor + weight once vendors exist.
 
 ## 3. Main flows
 ### 3.1 Par
@@ -120,6 +131,31 @@ row (rush) and the bed stays `cleaning`. `issueToWardIn` (top-up, delivery) and 
 `linen` is dark the gate lets every bed through; a bed marked clean by hand at the Beds board is not gated.
 `rushDemand` is today's planned discharges per ward against the shelf plus today's theatre cases, computed on read.
 
+### 3.10 LD-2 — vendor laundry (D1–D4, decisions 0087 and 0092)
+Vendor laundry is LIVE once an active `linen_vendors` row exists (DECIDED: before that the LD-1 hand receipt stands, so
+the locked LD-1 acceptance flows keep working). Live: a vendor batch (`sendToLaundry` mode vendor, `routeToVendor`) is
+refused without `linenVendorId` + `weightGrams` (`challan_required`); the act writes `linen_challans` (lines snapshot,
+due = sent + turnaround, rush or theatre → rush turnaround). `receiveFromLaundry` refuses a challan batch (`use_challan`);
+the dock uses `recordChallanReturn`: accepted → `laundry_in`; damaged → `laundry_in` + a store condemn request (four
+eyes); stained → back to the vendor, still out. Out = sent − accepted − damaged; when nothing is out the challan closes
+and the batch is `received`. Late = any return after due (DECIDED: literal spec wording; pieces never back are lost, not
+late). Lost = still out 7 days after due. Below par = `linenBelowPar` (contracts): loss > 0.5% (> 5 pieces under 1,000
+sent) or late batches > 10%. `raiseRecovery` (month over, none open) freezes the lines; `approveRecovery` needs
+`linen.recovery.approve` checked IN the intent and never the proposer (CHECK too). Reversals: pieces of an approved
+recovery's lost lines returned after it was raised appear on a later month's report and ride its next recovery
+(negative; a credit-only recovery is allowed). `checkVendorBill`: accepted pieces per item by return date in the month ×
+rate in force that IST day (`no_rate`) + GST − approved recoveries not yet on a bill; billed above that holds the excess
+(`held`) for `linen.bill.approve`, never the checker. The payable stays in linen (#1012).
+### 3.11 LD-2 — uniforms, tags, chemicals, licences (D5–D8)
+Uniforms: holding = issued − returned (an exchange is n in, n out); issue only to an entitled role
+(`linen_uniform_roles`, seeded by the migration — truncateAll empties it, tests call `setUniformRole`), max 3;
+exchange `one_for_one`. Leavers = `users.active = false` holding sets → `uniformDues` with the 1/12-per-month deduction
+(HR wiring #1011). Tags: unique for good; a condemned piece (`approveCondemn` of a request made with `tag`) is inactive
+and its tag refused everywhere (`piece_condemned`). Scans are wired at the pickup round and the soiled room only (#1014).
+Chemicals: outbound stock-ledger rows with cost centre `laundry` ÷ kg loaded at each cycle's finish (`loadGrams`); the
+vendor's per-kg cost = accepted value of the month ÷ challan kg sent. Licences: one live per kind; red ≤ 60 days, shown on
+the vendor desk (one hospital calendar is #1013).
+
 ## 4. Invariants and traps
 - **The ledger is append-only** (trigger `linen_movements_append_only`). A wrong entry is corrected by a further one.
 - Counts and movements at the SAME instant: the movement is AFTER the count — in `bookBalances` (`m.at >= counted_at`)
@@ -140,6 +176,9 @@ row (rush) and the bed stays `cleaning`. `issueToWardIn` (top-up, delivery) and 
   defines it by importing `LINEN_CHANGE_TASK` into `kernel/worker/worker.module.ts` (`WORKER_TASK_KINDS`, pinned by
   `kernel/worker/task-kinds.test.ts`). The linen manifest itself stays API-only.
 - No patient and no money on either screen; `raiseLinenChange` passes a patient id through to the task only.
+- LD-2: `drizzle-kit` had no LD-1 snapshot (0262 was HK-1's): the LD-2 commit adds `meta/0263_snapshot.json` (LD-1)
+  and `0264_snapshot.json` chained on it; generating without it re-emits all of LD-1. Never hand-write the IST offset:
+  months come from `istDayString`/`istDayWindow` (`istMonthWindow`).
 - LD-1: `intents.ts` and `holds.ts`/`floor.ts`/`plant.ts`/`gate.ts` import each other (helpers one way, `requireNotHeld`
   and `releaseLinenWaits` the other): a cycle that only works because every use is inside a function body. Keep it so.
 - LD-1: a tag is unique only among LIVE bags (sealed, picked); it is reused once its bag is sent or handed over.
@@ -157,3 +196,5 @@ row (rush) and the bed stays `cleaning`. `issueToWardIn` (top-up, delivery) and 
   own transaction. This branch has no IPD admission yet, so linen subscribes to nothing. Daily linen change per policy
   is ward routine and is not raised as tasks (no worker job in this lane).
 - tasks: `defineTaskKind`, `raiseTask` through `modules/tasks/index.ts`.
+- LD-2: linen reads materials (`lastPurchaseByItem` through its index; `stock_ledger`/`items`/`stock_batches` by SQL for
+  chemical use) and `users`/`role_assignments` (uniform entitlement, leavers). Nothing calls LD-2 from outside yet.

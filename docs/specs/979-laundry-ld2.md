@@ -1,7 +1,8 @@
 ---
 issue: 979
-status: approved
+status: built
 approved: 2026-10-27
+built: 2026-10-27
 ---
 # SPEC — Laundry LD-2: vendor per piece, recovery when below par, uniforms, piece tags, chemicals, licences (#979)
 
@@ -82,3 +83,21 @@ The vendor is paid for exactly the pieces it washed and returned, and the hospit
 
 - Buying the tags and readers; vendor tendering; ETP plant operation logs and effluent testing; boiler operating logs;
   staff payroll itself (only the no-dues line).
+
+## Build notes (2026-10-27)
+
+- Acceptance: `apps/core/src/modules/linen/acceptance/laundry-vendor-979.acceptance.test.ts`, one test per D1..D8 (D2 has
+  a second for the within-par, 1,000-piece and late-batch cases).
+- Vendor laundry is live once a vendor is set up; before that a vendor batch leaves as in LD-1 (no challan). Live, a
+  vendor batch needs the vendor and the dock weight; the challan's items and counts are the batch's own lines.
+- At the dock: accepted goes to the store; damaged goes to the store and a condemn request (two people); stained goes
+  back to the vendor and stays out on the challan. A batch is late when any of it came back after its turnaround.
+- A recovery is raised after the month ends; approval needs the owner or finance (`billing_manager`) and never the
+  proposer. Reversals ride the next recovery as a credit. An item's replacement cost: last goods receipt of its stores
+  item, else the linen item master price (`price_paise`); neither → shown unpriced at ₹0.
+- The bill's payable stays in linen until materials takes service bills (#1012). Uniform deduction into the final
+  settlement waits for HR (#1011). One hospital-wide compliance calendar is #1013. Setup screens, the handler phone on a
+  challan and tags at more counts are #1014.
+- Permissions: `linen.vendor`, `linen.uniform`, `linen.recovery.approve`, `linen.bill.approve` (README "Vendor laundry").
+- Screens: `/linen/vendor`, `/linen/uniforms`; the plant's To vendor asks for vendor and weight once a vendor exists.
+- Migration `0264_laundry_vendor` (renumber at merge); it also seeds the uniform item and the uniformed roles.
