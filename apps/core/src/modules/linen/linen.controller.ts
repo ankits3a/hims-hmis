@@ -1,5 +1,5 @@
 import { Body, Controller, Get, HttpException, Inject, Param, Post, Query } from "@nestjs/common";
-import { linenVarianceQuery } from "@hmis/contracts";
+import { linenMonthQuery, linenVarianceQuery } from "@hmis/contracts";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { LinenError, linenHttpStatus } from "./errors";
@@ -16,10 +16,20 @@ import {
   startCycle,
 } from "./plant";
 import { bedsWaitingForLinen, rushDemand } from "./gate";
+import {
+  addLinenVendor, approveBillExcess, approveRecovery, challanCards, checkVendorBill, istMonthOf, istMonthStart, raiseRecovery, recentBills,
+  recentRecoveries, recordChallanReturn, refuseBillExcess, rejectRecovery, setLinenItemCost, setVendorRate, updateLinenVendor, vendorCards,
+  vendorMonthReport,
+} from "./vendor";
+import { exchangeUniform, issueUniform, returnUniform, setUniformRole, uniformDues, uniformHoldings, uniformRoles } from "./uniforms";
+import { registerPiece } from "./pieces";
+import { linenSetupView } from "./setup";
+import { chemicalUse, fileLicence, licenceCalendar } from "./plantcost";
+import { LINEN_BILL_APPROVE, LINEN_RECOVERY_APPROVE, LINEN_UNIFORM, LINEN_VENDOR } from "./manifest";
 import { mlcOccupiedBeds } from "../ipd";
 import type {
   Actor, LinenActResult, LinenBagCard, LinenBedWait, LinenBoardView, LinenFloorView, LinenHandlerView, LinenLaundryView,
-  LinenPlantView, LinenRoundCard, LinenVarianceRow,
+  LinenPlantView, LinenRoundCard, LinenVarianceRow, LinenBillCard, LinenSetupView, LinenUniformView, LinenVendorDeskView, LinenVendorMonthReport,
 } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -270,4 +280,153 @@ export class LinenController {
   async mended(@CurrentActor() actor: Actor, @Body() b: unknown): Promise<{ movements: number }> {
     return refusing(() => mendReturn(this.db, actor, b));
   }
+
+  /* ═══ LD-2 (#979, decisions 0087 and 0092) — vendor laundry, uniforms, tags, licences ═══ */
+
+  /** The laundry desk: vendors, open challans, the month's reports, bills, recoveries, licences and chemical use. */
+  @Get("vendor-desk")
+  @RequirePermission(LINEN_VENDOR, "hospital", { alsoAdmits: [LINEN_RECOVERY_APPROVE, LINEN_BILL_APPROVE] })
+  async vendorDesk(@Query() q: unknown): Promise<LinenVendorDeskView> {
+    const now = new Date();
+    const asked = linenMonthQuery.safeParse(q);
+    // The default month is the last one ended: the one whose report and bill are due now.
+    const month = asked.success ? asked.data.month : istMonthOf(new Date(istMonthStart(now).getTime() - 1));
+    const vendors = await vendorCards(this.db);
+    const reports: LinenVendorMonthReport[] = [];
+    for (const v of vendors) reports.push(await vendorMonthReport(this.db, v.id, month, now));
+    return {
+      serverNow: now.toISOString(), month, vendors, openChallans: await challanCards(this.db, now, { open: true }), reports,
+      bills: await recentBills(this.db), recoveries: await recentRecoveries(this.db), licences: await licenceCalendar(this.db, now),
+      chemicals: await chemicalUse(this.db, month),
+    };
+  }
+
+  @Post("vendors")
+  @RequirePermission(LINEN_VENDOR, "hospital")
+  async addVendor(@CurrentActor() actor: Actor, @Body() b: unknown): Promise<{ id: string }> {
+    return refusing(async () => ({ id: (await addLinenVendor(this.db, actor, b)).id }));
+  }
+
+  /** The setup screen (#1014): vendors, rates, item costs, licences, uniform roles. */
+  @Get("setup")
+  @RequirePermission(LINEN_VENDOR, "hospital", { alsoAdmits: [LINEN_MANAGE] })
+  async setup(): Promise<LinenSetupView> {
+    return linenSetupView(this.db, new Date());
+  }
+
+  @Post("vendors/:id")
+  @RequirePermission(LINEN_VENDOR, "hospital")
+  async updateVendor(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() b: unknown): Promise<{ id: string }> {
+    return refusing(async () => ({ id: (await updateLinenVendor(this.db, actor, { ...body(b), linenVendorId: id })).id }));
+  }
+
+  @Post("vendors/:id/rates")
+  @RequirePermission(LINEN_VENDOR, "hospital")
+  async rate(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() b: unknown): Promise<{ id: string }> {
+    return refusing(() => setVendorRate(this.db, actor, { ...body(b), linenVendorId: id }));
+  }
+
+  @Get("vendors/:id/report")
+  @RequirePermission(LINEN_VENDOR, "hospital", { alsoAdmits: [LINEN_RECOVERY_APPROVE] })
+  async report(@Param("id") id: string, @Query() q: unknown): Promise<LinenVendorMonthReport> {
+    const r = linenMonthQuery.safeParse(q);
+    if (!r.success) throw new HttpException({ statusCode: 400, code: "bad_input", message: "The request is not complete.", fix: "Pick a month." }, 400);
+    return refusing(() => vendorMonthReport(this.db, id, r.data.month, new Date()));
+  }
+
+  @Post("items/:code/cost")
+  @RequirePermission(LINEN_VENDOR, "hospital")
+  async itemCost(@CurrentActor() actor: Actor, @Param("code") code: string, @Body() b: unknown): Promise<{ itemCode: string }> {
+    return refusing(() => setLinenItemCost(this.db, actor, { ...body(b), itemCode: code }));
+  }
+
+  @Post("challans/:id/return")
+  @RequirePermission(LINEN_VENDOR, "hospital")
+  async challanReturn(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() b: unknown): Promise<{ challanId: string; closed: boolean; condemnRequests: number }> {
+    return refusing(async () => {
+      const r = await recordChallanReturn(this.db, actor, { ...body(b), challanId: id });
+      return { challanId: r.challanId, closed: r.closed, condemnRequests: r.condemnRequests };
+    });
+  }
+
+  @Post("recoveries")
+  @RequirePermission(LINEN_VENDOR, "hospital")
+  async raise(@CurrentActor() actor: Actor, @Body() b: unknown): Promise<Decided> {
+    return refusing(async () => { const r = await raiseRecovery(this.db, actor, b); return { id: r.id, state: r.state }; });
+  }
+
+  @Post("recoveries/:id/approve")
+  @RequirePermission(LINEN_RECOVERY_APPROVE, "hospital")
+  async approveRec(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() b: unknown): Promise<Decided> {
+    return refusing(async () => { const r = await approveRecovery(this.db, actor, { ...body(b), recoveryId: id }); return { id: r.id, state: r.state }; });
+  }
+
+  @Post("recoveries/:id/reject")
+  @RequirePermission(LINEN_RECOVERY_APPROVE, "hospital")
+  async rejectRec(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() b: unknown): Promise<Decided> {
+    return refusing(async () => { const r = await rejectRecovery(this.db, actor, { ...body(b), recoveryId: id }); return { id: r.id, state: r.state }; });
+  }
+
+  @Post("bills")
+  @RequirePermission(LINEN_VENDOR, "hospital")
+  async bill(@CurrentActor() actor: Actor, @Body() b: unknown): Promise<LinenBillCard> {
+    return refusing(() => checkVendorBill(this.db, actor, b));
+  }
+
+  @Post("bills/:id/approve")
+  @RequirePermission(LINEN_BILL_APPROVE, "hospital")
+  async approveBill(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() b: unknown): Promise<LinenBillCard> {
+    return refusing(() => approveBillExcess(this.db, actor, { ...body(b), billId: id }));
+  }
+
+  @Post("bills/:id/refuse")
+  @RequirePermission(LINEN_BILL_APPROVE, "hospital")
+  async refuseBill(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() b: unknown): Promise<LinenBillCard> {
+    return refusing(() => refuseBillExcess(this.db, actor, { ...body(b), billId: id }));
+  }
+
+  @Post("pieces")
+  @RequirePermission(LINEN_VENDOR, "hospital", { alsoAdmits: [LINEN_PLANT] })
+  async piece(@CurrentActor() actor: Actor, @Body() b: unknown): Promise<{ id: string }> {
+    return refusing(async () => ({ id: (await registerPiece(this.db, actor, b)).id }));
+  }
+
+  @Post("licences")
+  @RequirePermission(LINEN_VENDOR, "hospital", { alsoAdmits: [LINEN_MANAGE] })
+  async licence(@CurrentActor() actor: Actor, @Body() b: unknown): Promise<{ id: string }> {
+    return refusing(() => fileLicence(this.db, actor, b));
+  }
+
+  /** Uniforms: holdings, the roles issued uniforms, and the no-dues list of leavers. */
+  @Get("uniforms")
+  @RequirePermission(LINEN_UNIFORM, "hospital", { alsoAdmits: [LINEN_VIEW] })
+  async uniforms(): Promise<LinenUniformView> {
+    const now = new Date();
+    return { serverNow: now.toISOString(), roles: await uniformRoles(this.db), holdings: await uniformHoldings(this.db), dues: await uniformDues(this.db, now) };
+  }
+
+  @Post("uniforms/issue")
+  @RequirePermission(LINEN_UNIFORM, "hospital")
+  async issueU(@CurrentActor() actor: Actor, @Body() b: unknown): Promise<{ holding: number }> {
+    return refusing(() => issueUniform(this.db, actor, b));
+  }
+
+  @Post("uniforms/exchange")
+  @RequirePermission(LINEN_UNIFORM, "hospital")
+  async exchangeU(@CurrentActor() actor: Actor, @Body() b: unknown): Promise<{ holding: number }> {
+    return refusing(() => exchangeUniform(this.db, actor, b));
+  }
+
+  @Post("uniforms/return")
+  @RequirePermission(LINEN_UNIFORM, "hospital")
+  async returnU(@CurrentActor() actor: Actor, @Body() b: unknown): Promise<{ holding: number }> {
+    return refusing(() => returnUniform(this.db, actor, b));
+  }
+
+  @Post("uniforms/roles")
+  @RequirePermission(LINEN_MANAGE, "hospital")
+  async uniformRole(@CurrentActor() actor: Actor, @Body() b: unknown): Promise<{ roleKey: string; entitled: boolean }> {
+    return refusing(() => setUniformRole(this.db, actor, b));
+  }
 }
+

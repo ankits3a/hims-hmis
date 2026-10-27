@@ -52,6 +52,8 @@ export function LinenPlant(): React.ReactElement {
   const kg = bags.reduce((n, b) => n + (b.weightGrams ?? 0), 0) / 1000;
   const down = machines.filter((m) => m.state === "down");
   const rush = laundry.data?.rush;
+  // LD-2 (#979, D1): with a vendor set up, work leaves for the vendor on a challan — pick the vendor and weigh it.
+  const vendors = plant?.vendors ?? [];
 
   const act = useMutation({
     mutationFn: async (fn: () => Promise<unknown>) => fn(),
@@ -59,6 +61,8 @@ export function LinenPlant(): React.ReactElement {
     onError: (e) => setNotice({ ok: false, text: t(`linen.refusal.${linenRefusal(e) ?? "failed"}`, { defaultValue: t("linen.refusal.failed") }) }),
   });
   const run = (fn: () => Promise<unknown>): void => { setNotice(null); act.mutate(fn); };
+  /** No vendor set up: straight to the vendor, as in LD-1. With one: the challan form (vendor + weight). */
+  const toVendor = (batchId: string): void => { if (vendors.length === 0) run(() => vendorBatchApi(batchId)); else setOpen(`vendor-${batchId}`); };
   const start = (machineId: string, batchId: string, program: string): void => run(async () => {
     const c = await startCycleApi(machineId, [batchId], program);
     setCycles((m) => ({ ...m, [machineId]: c.id }));
@@ -101,9 +105,10 @@ export function LinenPlant(): React.ReactElement {
                     ) : (
                       <span className="lp-acts">
                         <button type="button" className="ln-mini ok" onClick={() => setOpen(`start-${b.batchId}`)} data-testid={`start-${b.batchNo}`}>{t("linen.plant.start")}</button>
-                        <button type="button" className="ln-mini" onClick={() => run(() => vendorBatchApi(b.batchId))} data-testid={`vendor-${b.batchNo}`}>{t("linen.plant.toVendor")}</button>
+                        <button type="button" className="ln-mini" onClick={() => toVendor(b.batchId)} data-testid={`vendor-${b.batchNo}`}>{t("linen.plant.toVendor")}</button>
                       </span>
                     )}
+                    {open === `vendor-${b.batchId}` && <VendorChallanForm vendors={vendors} onGo={(c) => run(() => vendorBatchApi(b.batchId, c))} onCancel={() => setOpen(null)} t={t} />}
                   </BatchTile>
                 ))}
               </Lane>
@@ -156,7 +161,8 @@ export function LinenPlant(): React.ReactElement {
               {(plant?.vendorQueue ?? []).map((b) => (
                 <div key={b.batchId} className="lp-crow" data-testid={`vq-${b.batchNo}`}>
                   <div><b>{t("linen.plant.vendorRow", { no: b.batchNo, n: b.pieces })}</b><small>{t("linen.plant.noWasher")}</small></div>
-                  <button type="button" className="ln-mini" onClick={() => run(() => vendorBatchApi(b.batchId))}>{t("linen.plant.toVendor")}</button>
+                  <button type="button" className="ln-mini" onClick={() => toVendor(b.batchId)}>{t("linen.plant.toVendor")}</button>
+                  {open === `vendor-${b.batchId}` && <VendorChallanForm vendors={vendors} onGo={(c) => run(() => vendorBatchApi(b.batchId, c))} onCancel={() => setOpen(null)} t={t} />}
                 </div>
               ))}
               {(laundry.data?.holds ?? []).map((h) => (
@@ -238,6 +244,23 @@ function MachineTile({ m, cycleId, open, setOpen, run, t }: {
         </span>
       )}
     </div>
+  );
+}
+
+/** LD-2 (#979, D1): the outward challan of plant work sent to the vendor — the vendor and the dock weight. */
+function VendorChallanForm({ vendors, onGo, onCancel, t }: {
+  vendors: { id: string; name: string }[]; onGo: (c: { linenVendorId: string; weightGrams: number }) => void; onCancel: () => void; t: T;
+}): React.ReactElement {
+  const [vendorId, setVendorId] = useState(vendors[0]?.id ?? "");
+  const [kg, setKg] = useState("");
+  const grams = Math.round(Number(kg) * 1000);
+  return (
+    <span className="lp-form" data-testid="vendor-challan">
+      <label>{t("linen.vendor.col.vendor")}<select value={vendorId} onChange={(e) => setVendorId(e.target.value)}>{vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select></label>
+      <label>{t("linen.vendor.weight")}<input inputMode="decimal" value={kg} onChange={(e) => setKg(e.target.value)} data-testid="vendor-kg" /></label>
+      <button type="button" className="ln-mini ok" disabled={!(grams > 0) || vendorId === ""} onClick={() => onGo({ linenVendorId: vendorId, weightGrams: grams })} data-testid="vendor-go">{t("linen.vendor.sendGo")}</button>
+      <button type="button" className="ln-mini" onClick={onCancel}>{t("linen.plant.cancel")}</button>
+    </span>
   );
 }
 

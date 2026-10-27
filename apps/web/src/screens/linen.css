@@ -163,3 +163,28 @@
    stops above it, never under it. The empty tail lets the last bag row clear the bar. */
 .pp .lr-bags .ln-check, .pp [data-testid="rounds-sheet"] .ln-step, .pp .lr-sign input { scroll-margin-bottom: 96px; }
 .pp [data-testid="rounds-sheet"] { padding-bottom: 24px; }
+
+/* ── LD-2 (#979): the vendor desk and the uniform counter — 16:9 on the desk; one column, scrolling, on a phone ── */
+.pp .lp-grid.vendor .lp-side .box { flex: 0 1 auto; }
+@media (max-width: 900px) {
+  .pp .lp-grid.vendor { grid-template-columns: minmax(0, 1fr); overflow-y: auto; }
+  .pp .lp-grid.vendor .lp-centre, .pp .lp-grid.vendor .lp-side { overflow: visible; }
+  .pp .lp-grid.vendor .lp-side { border-left: 0; border-top: 1px solid var(--line); }
+  .pp .lp-grid.vendor .lp-table-box { overflow-x: auto; }
+  .pp .lp-top { overflow-x: auto; }
+  .pp .lp-top nav { flex-wrap: nowrap; }
+  .pp .lp-title { flex-direction: column; align-items: flex-start; }
+  .pp .lp-title .ln-notice { max-width: 100%; }
+}
+.pp .lp-grid.vendor .lp-side .box, .pp .lp-grid.vendor .lp-centre > .box { flex: none; overflow: visible; }
+.pp .lp-grid.vendor .lp-centre > .lp-table-box { overflow-x: auto; }
+.pp .lp-grid.vendor .ln-tag { white-space: nowrap; }
+@media (min-width: 901px) {
+  .pp .lp-grid.vendor .lp-side, .pp .lp-grid.vendor .lp-centre { overflow-y: auto; }
+}
+@media (max-width: 900px) {
+  .pp .lp-grid.vendor .lp-narrow-hide { display: none; }
+  .pp .lp-grid.vendor { grid-auto-rows: max-content; }
+  .pp .lp-grid.vendor > * { min-height: auto; }
+  .pp .lp-grid.vendor .lp-table th, .pp .lp-grid.vendor .lp-table td { padding: 8px 8px; }
+}

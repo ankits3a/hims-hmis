@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/linen/`
 · Notes: [MAP.md](../../../apps/core/src/modules/linen/MAP.md)
 
-- **Depends on modules:** `aerb`, `ipd`, `maintenance`, `ot`, `tasks`
+- **Depends on modules:** `aerb`, `ipd`, `maintenance`, `materials`, `ot`, `tasks`
 - **Used by modules:** `housekeeping`
 - **Kernel used:** `approvals`, `auth`, `db`, `modules`, `resources`, `tokens`
 
@@ -70,14 +70,21 @@ Source: `apps/core/src/modules/linen/`
 - `linen.module.ts`
   - `class LinenModule`
 - `manifest.ts`
+  - `LINEN_BILL_APPROVE`
   - `LINEN_CSSD_RECEIVE`
   - `LINEN_HANDLE`
   - `LINEN_HOLD_RELEASE`
   - `LINEN_MANAGE`
   - `LINEN_PLANT`
   - `LINEN_QC`
+  - `LINEN_RECOVERY_APPROVE`
+  - `LINEN_UNIFORM`
+  - `LINEN_VENDOR`
   - `LINEN_VIEW`
   - `linenManifest: ModuleManifest`
+- `pieces.ts`
+  - `pieceList(exec: Exec, limit = 200): Promise<{ tag: string; itemCode: string; active: boolean; condemnedAt: string | null }[]>`
+  - `registerPiece(exec: Exec, actor: Actor, raw: unknown): Promise<PieceRow>`
 - `plant.ts`
   - `addMachine(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<MachineRow>`
   - `finishCycle(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<CycleRow>`
@@ -89,8 +96,12 @@ Source: `apps/core/src/modules/linen/`
   - `plantView(exec: Exec, now: Date): Promise<LinenPlantView>`
   - `recordQc(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<{ batchId: string; movements: number; condemnRequests: number }>`
   - `releaseBatch(exec: Exec, _actor: Actor, raw: unknown, nowIn?: Date): Promise<BatchRow>`
-  - `routeToVendor(exec: Exec, _actor: Actor, raw: unknown): Promise<BatchRow>`
+  - `routeToVendor(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<BatchRow>`
   - `startCycle(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<CycleRow>`
+- `plantcost.ts`
+  - `chemicalUse(exec: Exec, month: string): Promise<LinenChemicalUse>`
+  - `fileLicence(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<{ id: string }>`
+  - `licenceCalendar(exec: Exec, now: Date): Promise<LinenLicenceRow[]>`
 - `reads.ts`
   - `bookBalances(exec: Exec, at: Date, wardId?: string): Promise<Map<string, Map<string, { onHand: number; countedAt: Date | null }>>>`
   - `condemnPending(exec: Exec, limit = 20): Promise<LinenCondemnCard[]>`
@@ -105,15 +116,49 @@ Source: `apps/core/src/modules/linen/`
   - `wardStates(exec: Exec, now: Date, wardId?: string): Promise<LinenWardState[]>`
   - `weeklyVariance(exec: Exec, from: Date, to: Date): Promise<LinenVarianceRow[]>`
   - types: `WardShape`
+- `setup.ts`
+  - `linenSetupView(exec: Exec, now: Date): Promise<LinenSetupView>`
+- `uniforms.ts`
+  - `exchangeUniform(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<{ holding: number }>`
+  - `issueUniform(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<{ holding: number }>`
+  - `returnUniform(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<{ holding: number }>`
+  - `setUniformRole(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<{ roleKey: string; entitled: boolean }>`
+  - `uniformDues(exec: Exec, now: Date): Promise<LinenUniformDue[]>`
+  - `uniformHoldings(exec: Exec): Promise<LinenUniformHolding[]>`
+  - `uniformRoles(exec: Exec): Promise<string[]>`
+- `vendor.ts`
+  - `addLinenVendor(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<VendorRow>`
+  - `approveBillExcess(exec: Exec, actor: Actor, raw: unknown, now?: Date): Promise<LinenBillCard>`
+  - `approveRecovery(exec: Exec, actor: Actor, raw: unknown, now?: Date): Promise<RecoveryRow>`
+  - `challanCards(exec: Exec, now: Date, where: { open?: boolean; vendorId?: string; limit?: number } = {}): Promise<LinenChallanCard[]>`
+  - `challanFor(exec: Exec, batchId: string): Promise<ChallanRow | null>`
+  - `checkVendorBill(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<LinenBillCard>`
+  - `istDayOf(at: Date): string`
+  - `istMonthOf(at: Date): string`
+  - `istMonthStart(at: Date): Date`
+  - `istMonthWindow(month: string): { start: Date; end: Date }`
+  - `raiseRecovery(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<RecoveryRow>`
+  - `recentBills(exec: Exec, limit = 20): Promise<LinenBillCard[]>`
+  - `recentRecoveries(exec: Exec, limit = 20): Promise<{ id: string; vendorName: string; month: string; state: string; proposedPaise: number; ap…`
+  - `recordChallanReturn(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<{ challanId: string; lines: LinenChallanLine[]; condemnR…`
+  - `refuseBillExcess(exec: Exec, actor: Actor, raw: unknown, now?: Date): Promise<LinenBillCard>`
+  - `rejectRecovery(exec: Exec, actor: Actor, raw: unknown, now?: Date): Promise<RecoveryRow>`
+  - `replacementCosts(exec: Exec, codes: readonly string[]): Promise<Map<string, { unitPaise: number; priced: boolean; source: "grn" | "item_mas…`
+  - `setLinenItemCost(exec: Exec, _actor: Actor, raw: unknown): Promise<{ itemCode: string }>`
+  - `setVendorRate(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<{ id: string }>`
+  - `updateLinenVendor(exec: Exec, _actor: Actor, raw: unknown): Promise<VendorRow>`
+  - `vendorCards(exec: Exec): Promise<LinenVendorCard[]>`
+  - `vendorLaundryLive(exec: Exec): Promise<boolean>`
+  - `vendorMonthReport(exec: Exec, vendorId: string, month: string, now: Date): Promise<LinenVendorMonthReport>`
 
 ## Tables (`kernel/db/schema/linen.ts`)
 
-`linen_bags`, `linen_bed_waits`, `linen_condemn_requests`, `linen_cycle_batches`, `linen_holds`, `linen_items`, `linen_laundry_batches`, `linen_machines`, `linen_movements`, `linen_par_levels`, `linen_pieces`, `linen_qc_results`, `linen_rounds`, `linen_variances`, `linen_ward_counts`, `linen_wash_cycles`
+`linen_bags`, `linen_bed_waits`, `linen_challan_returns`, `linen_challans`, `linen_condemn_requests`, `linen_cycle_batches`, `linen_holds`, `linen_items`, `linen_laundry_batches`, `linen_licences`, `linen_machines`, `linen_movements`, `linen_par_levels`, `linen_pieces`, `linen_qc_results`, `linen_recoveries`, `linen_rounds`, `linen_uniform_moves`, `linen_uniform_roles`, `linen_variances`, `linen_vendor_bills`, `linen_vendor_rates`, `linen_vendors`, `linen_ward_counts`, `linen_wash_cycles`
 
-Foreign keys into: `resources`
+Foreign keys into: `materials`, `resources`
 
 ## HTTP routes
 
-- `linen.controller.ts` — `/linen/bags`, `/linen/beds-waiting`, `/linen/board`, `/linen/borrow`, `/linen/condemn`, `/linen/cycles`, `/linen/floor`, `/linen/handler`, `/linen/holds`, `/linen/laundry`, `/linen/machines`, `/linen/mending`, `/linen/plant`, `/linen/rounds`, `/linen/variance`, `/linen/wards`
+- `linen.controller.ts` — `/linen/bags`, `/linen/beds-waiting`, `/linen/bills`, `/linen/board`, `/linen/borrow`, `/linen/challans`, `/linen/condemn`, `/linen/cycles`, `/linen/floor`, `/linen/handler`, `/linen/holds`, `/linen/items`, `/linen/laundry`, `/linen/licences`, `/linen/machines`, `/linen/mending`, `/linen/pieces`, `/linen/plant`, `/linen/recoveries`, `/linen/rounds`, `/linen/setup`, `/linen/uniforms`, `/linen/variance`, `/linen/vendor-desk`, `/linen/vendors`, `/linen/wards`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/linen`

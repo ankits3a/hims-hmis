@@ -5,13 +5,15 @@ import {
 } from "@hmis/contracts";
 import { istDayString } from "../../kernel/approvals/cumulative";
 import {
-  linenBags, linenCondemnRequests, linenItems, linenLaundryBatches, linenMovements, linenParLevels, linenVariances, linenWardCounts,
-  resources,
+  linenBags, linenCondemnRequests, linenItems, linenLaundryBatches, linenMovements, linenParLevels, linenPieces, linenVariances,
+  linenWardCounts, resources,
 } from "../../kernel/db/schema";
 import { LinenError } from "./errors";
 import { releaseLinenWaits } from "./gate";
 import { requireNotHeld } from "./holds";
 import { bookBalances, soiledPool, wardStates } from "./reads";
+import { condemnPieceOf, pieceLines } from "./pieces";
+import { challanFor, writeChallan } from "./vendor";
 import type { Actor, LinenActResult, LinenMovementKind, LinenSource, LinenStream } from "@hmis/contracts";
 import type { z } from "zod";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -202,6 +204,8 @@ export async function sendToLaundry(exec: Exec, actor: Actor, raw: unknown, nowI
   const loose = input.lines ?? [];
   return tx(exec, async (t) => {
     if (loose.length > 0) await requireItems(t, loose);
+    // LD-2: tagged pieces scanned in the soiled room move as themselves (a condemned piece's tag is refused).
+    const tagged = await pieceLines(t, input.pieceTags ?? []);
     await lock(t, "soiled-room");
     const now = await stamp(t, nowIn);
     if (input.idempotencyKey !== undefined) {
@@ -210,11 +214,17 @@ export async function sendToLaundry(exec: Exec, actor: Actor, raw: unknown, nowI
     }
     const bags = await bagsForBatch(t, input.bagTags ?? [], input.infected);
     const pool = (await soiledPool(t, { loose: true }))[input.infected ? "infected" : "general"];
-    for (const l of loose) {
-      const waiting = pool[l.itemCode] ?? 0;
-      if (l.qty > waiting) throw new LinenError("exceeds_soiled", { itemCode: l.itemCode, waiting, infected: input.infected });
+    const looseTotals = new Map<string, number>();
+    for (const l of [...loose, ...tagged]) looseTotals.set(l.itemCode, (looseTotals.get(l.itemCode) ?? 0) + l.qty);
+    for (const [itemCode, qty] of looseTotals) {
+      const waiting = pool[itemCode] ?? 0;
+      if (qty > waiting) throw new LinenError("exceeds_soiled", { itemCode, waiting, infected: input.infected });
     }
-    const outLines = [...loose.map((l) => ({ ...l, bagId: null as string | null })), ...bags.flatMap((b) => b.lines.map((l) => ({ ...l, bagId: b.id })))];
+    const outLines = [
+      ...loose.map((l) => ({ ...l, bagId: null as string | null, pieceId: null as string | null })),
+      ...tagged.map((l) => ({ itemCode: l.itemCode, qty: 1, bagId: null as string | null, pieceId: l.pieceId as string | null })),
+      ...bags.flatMap((b) => b.lines.map((l) => ({ ...l, bagId: b.id, pieceId: null as string | null }))),
+    ];
     const stream = await streamOf(t, outLines.map((l) => l.itemCode));
     const serial = Number((await t.execute<{ n: string }>(sql`select nextval('linen_batch_serial') as n`)).rows[0]!.n);
     const batch = (await t.insert(linenLaundryBatches).values({
@@ -222,10 +232,12 @@ export async function sendToLaundry(exec: Exec, actor: Actor, raw: unknown, nowI
       vendorName: input.vendorName ?? null, state: "sent", sentAt: now, sentBy: actor.id,
       piecesSent: outLines.reduce((n, l) => n + l.qty, 0), idempotencyKey: input.idempotencyKey ?? null,
     }).returning())[0]!;
-    await t.insert(linenMovements).values(outLines.map((l) => movement("laundry_out", l, actor, now, { batchId: batch.id, bagId: l.bagId })));
+    await t.insert(linenMovements).values(outLines.map((l) => movement("laundry_out", { itemCode: l.itemCode, qty: l.qty }, actor, now, { batchId: batch.id, bagId: l.bagId, pieceId: l.pieceId })));
     if (bags.length > 0) {
       await t.update(linenBags).set({ state: "sent", batchId: batch.id }).where(inArray(linenBags.id, bags.map((b) => b.id)));
     }
+    // LD-2 (D1): a vendor batch leaves on its outward challan, written in this same act.
+    if (input.mode === "vendor") await writeChallan(t, actor, batch, input, outLines, now);
     return { movements: outLines.length, batchId: batch.id, batchNo: batch.batchNo };
   });
 }
@@ -265,6 +277,8 @@ export async function receiveFromLaundry(exec: Exec, actor: Actor, raw: unknown,
     const batch = (await t.select().from(linenLaundryBatches).where(eq(linenLaundryBatches.id, input.batchId)).for("update"))[0];
     if (batch === undefined) throw new LinenError("unknown_batch", { batchId: input.batchId });
     if (batch.state !== "sent") throw new LinenError("already_received", { batchId: batch.id });
+    // LD-2 (D1): a batch on a challan comes back against the challan, piece by piece.
+    if ((await challanFor(t, batch.id)) !== null) throw new LinenError("use_challan", { batchId: batch.id });
     const now = await stamp(t, nowIn);
     const sentRows = await t.select({ itemCode: linenMovements.itemCode, qty: linenMovements.qty }).from(linenMovements)
       .where(and(eq(linenMovements.batchId, batch.id), eq(linenMovements.kind, "laundry_out")));
@@ -330,10 +344,11 @@ export async function requestCondemn(exec: Exec, actor: Actor, raw: unknown, now
     const wardId = input.wardId ?? null;
     if (wardId !== null) await requireWard(t, wardId);
     await requireItems(t, [{ itemCode: input.itemCode, qty: input.qty }]);
+    const pieceId = input.tag === undefined ? null : await condemnPieceOf(t, input.tag, input.itemCode);
     const now = await stamp(t, nowIn);
     return (await t.insert(linenCondemnRequests).values({
       id: newId(), wardResourceId: wardId, itemCode: input.itemCode, qty: input.qty, reason: input.reason,
-      state: "requested", requestedBy: actor.id, requestedAt: now,
+      state: "requested", requestedBy: actor.id, requestedAt: now, pieceId,
     }).returning())[0]!;
   });
 }
@@ -356,8 +371,10 @@ async function decide(exec: Exec, actor: Actor, raw: unknown, nowIn: Date | unde
     }).where(eq(linenCondemnRequests.id, req.id)).returning())[0]!;
     if (approve) {
       await t.insert(linenMovements).values(movement("condemn", { itemCode: req.itemCode, qty: req.qty }, actor, now, {
-        wardResourceId: req.wardResourceId, condemnRequestId: req.id,
+        wardResourceId: req.wardResourceId, condemnRequestId: req.id, pieceId: req.pieceId,
       }));
+      // LD-2 (D6): a tagged piece condemned is out for good; its tag is refused at every count after this.
+      if (req.pieceId !== null) await t.update(linenPieces).set({ active: false, condemnedAt: now }).where(eq(linenPieces.id, req.pieceId));
     }
     return row;
   });
