@@ -2670,11 +2670,11 @@
         "shiftsRatioKept": "Shifts with ratio kept"
       },
       "unit": {
-        "per_1000_bed_days_one": "{{count}} · per 1,000 bed-days",
-        "per_1000_bed_days_other": "{{count}} · per 1,000 bed-days",
-        "per_1000_line_days_one": "{{count}} · per 1,000 line-days",
-        "per_1000_line_days_other": "{{count}} · per 1,000 line-days"
+        "per_1000_bed_days": "per 1,000 bed-days",
+        "per_1000_line_days": "per 1,000 line-days"
       },
+      "countIn_one": "{{count}} in {{over}}",
+      "countIn_other": "{{count}} in {{over}}",
       "ofOver_one": "{{count}} of {{over}}",
       "ofOver_other": "{{count}} of {{over}}",
       "poa_one": "{{count}} found on admission, not counted",
@@ -2682,6 +2682,7 @@
     },
     "register": {
       "title": "Restraint register",
+      "kind": "Restraint · ordered by",
       "none": "No restraint this month",
       "ordered": "Ordered",
       "status": "Status",

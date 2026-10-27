@@ -65,12 +65,16 @@
 /* WM-2 (#983) — the ward safety screen: care plans, restraints, lines; crash cart, keys, stock; quality. */
 .ipds-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 10px; align-items: start; }
 .ipds-wide { grid-column: 1 / -1; }
-.ipds-row { display: grid; grid-template-columns: 64px minmax(90px, 1fr) minmax(120px, 1.2fr) minmax(120px, 1.3fr) auto auto; gap: 8px; align-items: center; border-top: 1px solid var(--line); padding: 7px 0 1px; min-height: 40px; }
-.ipds-row .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ipds-row.red { box-shadow: inset 3px 0 0 var(--red); padding-left: 8px; }
+.ipds-stack { display: flex; flex-direction: column; gap: 10px; }
+.ipds-row { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; border-top: 1px solid var(--line); padding: 7px 0 5px 8px; min-height: 44px; }
+.ipds-row > .mono:first-child { min-width: 56px; }
+.ipds-row .nm { flex: 0 1 200px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.ipds-row > button, .ipds-row > .ipds-acts { margin-left: auto; }
+.ipds-acts { display: inline-flex; gap: 6px; }
+.ipds-row.red { box-shadow: inset 3px 0 0 var(--red); }
 .ipds-form { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; background: var(--soft); }
 .ipds-form label { display: flex; flex-direction: column; gap: 4px; }
-.ipds-ticks { border: 0; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.ipds-ticks { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 28px; }
 .ipds-ticks legend { font-weight: 600; margin-bottom: 4px; }
 .ipds-ticks label, .ipds-family label:has(input[type="checkbox"]) { flex-direction: row; align-items: center; gap: 6px; min-height: 36px; }
 .ipds-family { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; border-top: 1px solid var(--line); padding-top: 8px; }
@@ -88,8 +92,7 @@
 .ipds-tile b { font-size: 1.375rem; }
 @media (max-width: 900px) {
   .ipds-grid { grid-template-columns: 1fr; }
-  .ipds-row { grid-template-columns: 56px minmax(0, 1fr) auto; }
-  .ipds-row > span:nth-child(3), .ipds-row > span:nth-child(4), .ipds-row > span:nth-child(5) { grid-column: 2 / -1; }
+  .ipds-row .nm { flex-basis: calc(100% - 140px); }
   .ipds-ticks { grid-template-columns: 1fr; }
   .ipds-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ipds-table { display: block; overflow-x: auto; }

@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type React from "react";
 import type { IpdCrashCartView, IpdRestraintRegister, IpdRestraintView, IpdWardQuality, IpdWardSafety, IpdWardStock } from "@hmis/contracts";
 import { ApiError } from "../lib/api";
-import { fmtIst } from "../lib/format";
+import { dayMonthIst, fmtIst } from "../lib/format";
 import { useLiveLoad } from "./ipd-nursing-shared";
 import { wardErrorOf } from "../lib/ipd-ward-api";
 import type { WardError } from "../lib/ipd-ward-api";
@@ -90,7 +90,7 @@ function SafetyPane({ s, act }: { s: IpdWardSafety; act: Act }): React.ReactElem
   const [checking, setChecking] = useState<IpdRestraintView | null>(null);
   const bed = (code: string | null): string => code ?? t("ipdWard.bed");
   return (
-    <div className="ipds-grid">
+    <div className="ipds-stack">
       <section className="ipdw-box" data-testid="ipds-plans">
         <b>{t("ipdSafety.plans.title")} <span className="mono dim">{s.carePlans.length}</span></b>
         {s.carePlans.length === 0 ? <span className="dim">{t("ipdSafety.plans.none")}</span> : s.carePlans.map((p) => (
@@ -113,10 +113,12 @@ function SafetyPane({ s, act }: { s: IpdWardSafety; act: Act }): React.ReactElem
               <span className="mono">{bed(r.bedCode)}</span>
               <span className="nm">{r.name}</span>
               <span>{t(`ipdSafety.restraint.kind.${r.kind}`)} · <span className={r.status === "lapsed" ? "hot" : ""}>{t(`ipdSafety.restraint.status.${r.status}`)}</span>{r.psychiatric ? ` · ${t("ipdSafety.restraint.mhca")}` : ""}</span>
-              <span className={r.checkOverdue ? "hot" : "dim"}>
-                {r.nextCheckAt === null ? "" : r.checkOverdue ? t("ipdSafety.restraint.checkOverdue", { time: fmtIst(r.nextCheckAt) }) : t("ipdSafety.restraint.nextCheck", { time: fmtIst(r.nextCheckAt) })}
-                {" · "}{t("ipdSafety.restraint.review", { time: fmtIst(r.reviewDueAt) })}
-              </span>
+              {r.nextCheckAt === null ? null : (
+                <span className={r.checkOverdue ? "hot" : "dim"}>
+                  {r.checkOverdue ? t("ipdSafety.restraint.checkOverdue", { time: fmtIst(r.nextCheckAt) }) : t("ipdSafety.restraint.nextCheck", { time: fmtIst(r.nextCheckAt) })}
+                </span>
+              )}
+              <span className="dim">{t("ipdSafety.restraint.review", { time: fmtIst(r.reviewDueAt) })}</span>
               <span className={r.familyTold === null ? "warn" : "dim"}>{r.familyTold === null ? t("ipdSafety.restraint.familyNotTold") : t("ipdSafety.restraint.familyTold", { name: r.familyTold.name })}</span>
               {r.status === "active" ? <button type="button" className="ipdn-btn sm pri" onClick={() => setChecking(r)} data-testid={`ipds-rcheck-${r.restraintId}`}>{t("ipdSafety.restraint.check")}</button> : null}
             </div>
@@ -199,8 +201,10 @@ function StockPane({ s, wardId, act }: { s: IpdWardSafety; wardId: string; act: 
               <span className={c.status === "needs_restock" ? "hot" : c.checkedThisShift ? "ok" : "warn"}>
                 {c.status === "needs_restock" ? t("ipdSafety.cart.restock") : c.checkedThisShift ? t("ipdSafety.cart.checked") : t("ipdSafety.cart.due")}
               </span>
-              <button type="button" className="ipdn-btn sm pri" onClick={() => setCart(c)} data-testid={`ipds-cart-${c.cartId}`}>{t("ipdSafety.cart.check")}</button>
-              <button type="button" className="ipdn-btn sm" onClick={() => void act(() => markCartUsed(c.cartId), t("ipdSafety.cart.usedSaved"))}>{t("ipdSafety.cart.used")}</button>
+              <span className="ipds-acts">
+                {c.status === "ready" ? <button type="button" className="ipdn-btn sm" onClick={() => void act(() => markCartUsed(c.cartId), t("ipdSafety.cart.usedSaved"))}>{t("ipdSafety.cart.used")}</button> : null}
+                <button type="button" className="ipdn-btn sm pri" onClick={() => setCart(c)} data-testid={`ipds-cart-${c.cartId}`}>{t("ipdSafety.cart.check")}</button>
+              </span>
             </div>
           );
         })}
@@ -313,7 +317,8 @@ function QualityPane({ wardId }: { wardId: string }): React.ReactElement {
               <div key={k} className="ipds-tile" data-testid={`ipds-ind-${k}`}>
                 <span className="dim">{t(`ipdSafety.quality.ind.${k}`)}</span>
                 <b className="mono">{i.value === null ? "—" : i.unit === "percent" ? `${String(i.value)}%` : String(i.value)}</b>
-                <span className="dim mono">{i.unit === "percent" ? t("ipdSafety.quality.ofOver", { count: i.count, over: i.over }) : t(`ipdSafety.quality.unit.${i.unit}`, { count: i.count })}</span>
+                {i.unit === "percent" ? null : <span className="dim">{t(`ipdSafety.quality.unit.${i.unit}`)}</span>}
+                <span className="dim mono">{t(i.unit === "percent" ? "ipdSafety.quality.ofOver" : "ipdSafety.quality.countIn", { count: i.count, over: i.over })}</span>
               </div>
             );
           })}
@@ -324,11 +329,11 @@ function QualityPane({ wardId }: { wardId: string }): React.ReactElement {
         <b>{t("ipdSafety.register.title")} <span className="mono dim">{reg?.episodes.length ?? 0}</span></b>
         {reg === null || reg.episodes.length === 0 ? <span className="dim">{t("ipdSafety.register.none")}</span> : (
           <table className="ipds-table">
-            <thead><tr><th>{t("ipdSafety.register.ordered")}</th><th>{t("ipdSafety.stock.item")}</th><th>{t("ipdSafety.register.status")}</th><th>{t("ipdSafety.register.checks")}</th><th>{t("ipdSafety.register.family")}</th></tr></thead>
+            <thead><tr><th>{t("ipdSafety.register.ordered")}</th><th>{t("ipdSafety.register.kind")}</th><th>{t("ipdSafety.register.status")}</th><th>{t("ipdSafety.register.checks")}</th><th>{t("ipdSafety.register.family")}</th></tr></thead>
             <tbody>
               {reg.episodes.map((e) => (
                 <tr key={e.restraintId}>
-                  <td className="mono">{fmtIst(e.orderedAt)}</td>
+                  <td className="mono">{dayMonthIst(new Date(new Date(e.orderedAt).getTime() + 330 * 60_000).toISOString())} {fmtIst(e.orderedAt)}</td>
                   <td>{t(`ipdSafety.restraint.kind.${e.kind}`)} · {e.orderedBy}</td>
                   <td className={e.status === "lapsed" ? "hot" : ""}>{t(`ipdSafety.restraint.status.${e.status}`)}</td>
                   <td className="mono">{e.checks}{e.missedChecks > 0 ? <span className="hot"> · {t("ipdSafety.register.missed", { count: e.missedChecks })}</span> : null}</td>

@@ -2670,11 +2670,11 @@
         "shiftsRatioKept": "अनुपात वाली शिफ्टें"
       },
       "unit": {
-        "per_1000_bed_days_one": "{{count}} · प्रति 1,000 बेड-दिन",
-        "per_1000_bed_days_other": "{{count}} · प्रति 1,000 बेड-दिन",
-        "per_1000_line_days_one": "{{count}} · प्रति 1,000 लाइन-दिन",
-        "per_1000_line_days_other": "{{count}} · प्रति 1,000 लाइन-दिन"
+        "per_1000_bed_days": "प्रति 1,000 बेड-दिन",
+        "per_1000_line_days": "प्रति 1,000 लाइन-दिन"
       },
+      "countIn_one": "{{over}} में {{count}}",
+      "countIn_other": "{{over}} में {{count}}",
       "ofOver_one": "{{over}} में {{count}}",
       "ofOver_other": "{{over}} में {{count}}",
       "poa_one": "{{count}} भर्ती पर पहले से, गिना नहीं",
@@ -2682,6 +2682,7 @@
     },
     "register": {
       "title": "बंधन रजिस्टर",
+      "kind": "बंधन · आदेश दिया",
       "none": "इस महीने कोई बंधन नहीं",
       "ordered": "आदेश",
       "status": "स्थिति",
