@@ -89,6 +89,9 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/lab/verify` | `apps/web/src/screens/lab-verify` |
 | `/linen` | `apps/web/src/screens/linen-board` |
 | `/linen/handle` | `apps/web/src/screens/linen-handle` |
+| `/linen/plant` | `apps/web/src/screens/linen-plant` |
+| `/linen/rounds` | `apps/web/src/screens/linen-rounds` |
+| `/linen/store` | `apps/web/src/screens/linen-store` |
 | `/login` | `apps/web/src/screens/login` |
 | `/maintenance` | `apps/web/src/screens/maintenance-board` |
 | `/materials/counts` | `(redirect)` |

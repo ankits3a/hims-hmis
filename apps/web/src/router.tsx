@@ -32,6 +32,9 @@ import { BmwHandle } from "./screens/bmw-handle";
 import { BmwReports } from "./screens/bmw-reports";
 import { LinenBoard } from "./screens/linen-board";
 import { LinenHandle } from "./screens/linen-handle";
+import { LinenPlant } from "./screens/linen-plant";
+import { LinenRounds } from "./screens/linen-rounds";
+import { LinenStore } from "./screens/linen-store";
 import { DietConsults } from "./screens/diet-consults";
 import { DietKitchen } from "./screens/diet-kitchen";
 import { DietWard } from "./screens/diet-ward";
@@ -368,6 +371,10 @@ const NAV: readonly NavEntry[] = [
   // E2.4 LINEN (issue #728) — the handler's phone and the supervisor's board; paths and permissions match `linenManifest.menu`.
   { to: "/linen/handle", label: "nav.linenHandle", permission: "linen.handle", group: "services" },
   { to: "/linen", label: "nav.linenBoard", permission: "linen.view", group: "services", anyOf: ["linen.manage"] },
+  // LD-1 (#978, decision 0087) — the runner's ward hand-over, the laundry floor and the linen store.
+  { to: "/linen/rounds", label: "nav.linenRounds", permission: "linen.handle", group: "services" },
+  { to: "/linen/plant", label: "nav.linenPlant", permission: "linen.plant", group: "services", anyOf: ["linen.view", "linen.qc"] },
+  { to: "/linen/store", label: "nav.linenStore", permission: "linen.view", group: "services", anyOf: ["linen.manage"] },
   { to: "/housekeeping", label: "nav.housekeeping", permission: "housekeeping.view", group: "services" },
   // HK-1 (#973) — the rota and setup pages; paths and permissions match `housekeepingManifest.menu`.
   { to: "/housekeeping/rota", label: "nav.housekeepingRota", permission: "housekeeping.rota.manage", group: "services" },
@@ -1564,6 +1571,13 @@ const linenHandleRoute = createRoute({
   component: LinenHandle,
 });
 
+/** LD-1 (#978) — the laundry floor (16:9): soiled room, batches through the machines, what needs the supervisor. */
+const linenPlantRoute = createRoute({ getParentRoute: () => authedRoute, path: "/linen/plant", component: LinenPlant });
+/** LD-1 — the linen store (16:9): wards against par, due out today, beds waiting for linen, batches at the vendor. */
+const linenStoreRoute = createRoute({ getParentRoute: () => authedRoute, path: "/linen/store", component: LinenStore });
+/** LD-1 — the runner's phone (390 px, Hindi first): soiled out, clean in, both signed; seal a bag; place a hold. */
+const linenRoundsRoute = createRoute({ getParentRoute: () => authedRoute, path: "/linen/rounds", component: LinenRounds });
+
 /** E0.1 TASK ENGINE — the supervisor's task board: 16:9, open work by floor, late first, worker load. */
 const tasksBoardRoute = createRoute({
   getParentRoute: () => authedRoute,
@@ -2499,6 +2513,8 @@ export const router = createRouter({
       bmwBoardRoute, bmwHandleRoute, bmwReportsRoute,
       // E2.4 LINEN — +2, `/linen` and `/linen/handle`. `caddyfile-parity.test.ts` pins the count.
       linenBoardRoute, linenHandleRoute,
+      // LD-1 (#978) — +3, `/linen/plant`, `/linen/store`, `/linen/rounds`.
+      linenPlantRoute, linenStoreRoute, linenRoundsRoute,
       // E1.4 HOUSEKEEPING — +1, `/housekeeping`. `caddyfile-parity.test.ts` pins the count.
       housekeepingBoardRoute,
       // HK-1 (#973) — +2, `/housekeeping/rota` and `/housekeeping/setup`. `caddyfile-parity.test.ts` pins the count.

@@ -81,3 +81,85 @@
 .pp .ln-save { position: sticky; bottom: 8px; z-index: 2; box-shadow: 0 6px 18px rgba(0,0,0,.18); }
 .pp .ln-phone h2 .ln-two .hi { font-size: 1.15em; font-weight: 700; }
 .pp .ln-pm { display: flex; align-items: center; justify-content: center; padding: 0; }
+
+/* ── LD-1 (#978): the laundry desks (plant, store) — 16:9, no page scroll; infected always in words ── */
+.pp .lp-desk { display: grid; grid-template-rows: 46px minmax(0, 1fr); flex: 1 1 auto; min-height: 0; }
+.pp .lp-top { display: flex; align-items: center; gap: 12px; padding: 0 16px; background: var(--card); border-bottom: 1px solid var(--line); }
+.pp .lp-mark { width: 10px; height: 10px; border-radius: 2px; background: var(--blue, #2d5f8a); transform: rotate(45deg); }
+.pp .lp-brand { font-size: 12.5px; letter-spacing: .08em; color: var(--ink); }
+.pp .lp-top nav { display: flex; gap: 2px; margin-left: 8px; }
+.pp .lp-top nav a { height: 30px; padding: 0 10px; border-radius: 6px; font-size: 13px; color: var(--dim); display: inline-flex; align-items: center; text-decoration: none; }
+.pp .lp-top nav a.on { background: var(--line2); color: var(--ink); font-weight: 600; box-shadow: inset 0 -2px 0 var(--blue, #2d5f8a); }
+.pp .lp-grid { display: grid; grid-template-columns: 260px minmax(0, 1fr) 330px; min-height: 0; }
+.pp .lp-grid.store { grid-template-columns: minmax(0, 1fr) 330px; }
+.pp .lp-aside { border-radius: 0; border-width: 0 1px 0 0; padding: 18px; overflow: hidden; display: flex; flex-direction: column; }
+.pp .lp-tag { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 10.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+.pp .lp-kv { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; margin-top: 7px; }
+.pp .lp-kv span { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.pp .lp-kv b { white-space: nowrap; }
+.pp .lp-kv b { color: var(--ink); }
+.pp .lp-kv.inf span, .pp .lp-kv.inf b { color: var(--red); }
+.pp .lp-centre { padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; overflow: hidden; }
+.pp .lp-title { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.pp .lp-title h1 { margin: 0; font-size: 20px; font-weight: 600; color: var(--ink); }
+.pp .lp-title p { margin: 3px 0 0; font-size: 13px; color: var(--dim); }
+.pp .lp-title .ln-notice { max-width: 45%; }
+.pp .lp-lanes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; flex: 1 1 auto; min-height: 0; }
+.pp .lp-lane { background: var(--card); border: 1px solid var(--line); border-radius: 8px; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.pp .lp-lane > header { padding: 9px 11px; border-bottom: 1px solid var(--line2); display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.pp .lp-lane > header b { font-size: 13.5px; color: var(--ink); }
+.pp .lp-lane > header span { font-size: 11.5px; color: var(--dim); white-space: nowrap; }
+.pp .lp-lane-body { overflow-y: auto; min-height: 0; }
+.pp .lp-bt { margin: 8px; padding: 8px 9px; border-radius: 6px; border: 1px solid var(--line); font-size: 12.5px; line-height: 17px; display: flex; flex-direction: column; gap: 3px; color: var(--ink); }
+.pp .lp-bt b { font-size: 13px; }
+.pp .lp-bt.inf { border-color: var(--red-line); background: var(--red-soft); box-shadow: inset 3px 0 0 var(--red); }
+.pp .lp-bt.off { background: var(--line2); }
+.pp .lp-acts { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+.pp .lp-acts .ln-mini { margin-left: 0; }
+.pp .lp-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-end; margin-top: 4px; }
+.pp .lp-form.col { flex-direction: column; align-items: stretch; }
+.pp .lp-form label { display: flex; flex-direction: column; gap: 2px; font-size: 11.5px; color: var(--dim); }
+.pp .lp-form input, .pp .lp-form select { height: 30px; min-width: 0; width: 100%; max-width: 140px; padding: 0 6px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; background: var(--card); color: var(--ink); box-sizing: border-box; }
+.pp .lp-form .ln-mini { margin-left: 0; }
+.pp .lp-qc { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+.pp .lp-qc b { grid-column: 1 / -1; font-size: 12.5px; }
+.pp .lp-qc input { max-width: none; }
+.pp .lp-side { border-left: 1px solid var(--line); padding: 14px; display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow: hidden; }
+.pp .lp-side .box { display: flex; flex-direction: column; min-height: 0; overflow: auto; }
+.pp .lp-h { display: flex; align-items: center; justify-content: space-between; padding: 11px 12px; border-bottom: 1px solid var(--line2); }
+.pp .lp-h b { font-size: 13.5px; color: var(--ink); }
+.pp .lp-crow { display: flex; gap: 10px; padding: 10px 12px; border-top: 1px solid var(--line2); align-items: flex-start; justify-content: space-between; }
+.pp .lp-crow b { font-size: 13px; display: block; color: var(--ink); }
+.pp .lp-crow small { font-size: 12px; color: var(--dim); display: block; }
+.pp .lp-crow > .mono { font-size: 11.5px; white-space: nowrap; }
+.pp .lp-table-box { overflow: auto; min-height: 0; }
+.pp .lp-table { border-collapse: collapse; width: 100%; }
+.pp .lp-table th, .pp .lp-table td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line2); font-size: 13px; vertical-align: middle; color: var(--ink); }
+.pp .lp-table th { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); background: var(--line2); font-weight: 600; }
+.pp .lp-table tr.hot td { background: var(--red-soft); }
+
+/* ── LD-1: the runner's phone ── */
+.pp .lr-seg { display: flex; gap: 3px; padding: 3px; border-radius: 10px; background: var(--line2); }
+.pp .lr-seg button { flex: 1; min-height: 52px; border: 0; border-radius: 8px; background: none; font: inherit; font-size: 16px; font-weight: 700; color: var(--dim); }
+.pp .lr-seg button.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px rgba(19,36,32,.12); }
+.pp .lr-bags { margin-top: 14px; }
+.pp .lr-bags .ln-check { color: var(--ink); flex-wrap: wrap; }
+.pp .lr-bags .ln-check.held { opacity: .8; }
+.pp .lr-sign { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.pp .ln-check.plain { color: var(--ink); margin-bottom: 0; }
+.pp .lr-in { text-align: left; font-size: 17px; font-weight: 500; padding: 0 12px; margin-bottom: 8px; }
+.pp .lp-table td.ln-err { color: var(--red); font-weight: 600; }
+.pp .lr-seg button { display: flex; align-items: center; justify-content: center; }
+.pp .lr-seg .ln-two { align-items: center; }
+/* The runner's Sign stays readable while it waits for a signature: solid, not see-through. */
+.pp .lr-save:disabled { opacity: 1; background: var(--line2); border-color: var(--line); color: var(--dim); }
+.pp .lp-crow.col { flex-direction: column; align-items: stretch; gap: 6px; }
+.pp .lp-crow.col > button { align-self: flex-start; margin-left: 0; }
+.pp .ln-card .lp-crow { padding: 10px 0; }
+.pp .ln-card .lp-form input { max-width: none; height: 44px; font-size: 16px; }
+.pp .ln-card .lp-form label { flex: 1 1 100%; font-size: 13px; }
+.pp .ln-card .lp-crow .ln-mini { min-height: 44px; font-size: 15px; padding: 0 14px; }
+/* The sticky Sign bar floats over the sheet's bottom ~90 px: a bag row or a stepper scrolled (or tabbed) into view
+   stops above it, never under it. The empty tail lets the last bag row clear the bar. */
+.pp .lr-bags .ln-check, .pp [data-testid="rounds-sheet"] .ln-step, .pp .lr-sign input { scroll-margin-bottom: 96px; }
+.pp [data-testid="rounds-sheet"] { padding-bottom: 24px; }
