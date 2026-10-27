@@ -41,6 +41,9 @@ flowchart LR
   ipd_rounds[ipd-rounds] --> ipd[ipd]
   ipd_rounds[ipd-rounds] --> patients[patients]
   ipd_tpa[ipd-tpa] --> ipd[ipd]
+  ipd_ward[ipd-ward] --> ipd[ipd]
+  ipd_ward[ipd-ward] --> patients[patients]
+  ipd_ward[ipd-ward] --> resources[resources]
   ipd[ipd] --> emergency[emergency]
   ipd[ipd] --> patients[patients]
   ipd[ipd] --> resources[resources]
@@ -129,12 +132,13 @@ flowchart LR
 | `eventCursors.ts` | kernel | `event_cursors` |
 | `eventIdempotency.ts` | kernel | `event_idempotency` |
 | `events.ts` | kernel | `events` |
-| `formulary.ts` | module formulary | `formulary_crk_entries`, `formulary_crk_signatures`, `formulary_drug_disease`, `formulary_generic_substances`, `formulary_generics`, `formulary_interactions`, `formulary_mapping_proposals`, `formulary_medicine_salts`, `formulary_medicines`, `formulary_monographs`, `formulary_reference_labels`, `formulary_reference_names`, `formulary_renal_doses`, `formulary_salts`, `formulary_staging`, `formulary_substances` |
+| `formulary.ts` | module formulary | `formulary_crk_entries`, `formulary_crk_signatures`, `formulary_drug_disease`, `formulary_generic_substances`, `formulary_generics`, `formulary_interactions`, `formulary_mapping_proposals`, `formulary_medicine_salts`, `formulary_medicines`, `formulary_monographs`, `formulary_reference_interactions`, `formulary_reference_labels`, `formulary_reference_names`, `formulary_renal_doses`, `formulary_salts`, `formulary_staging`, `formulary_substances` |
 | `housekeeping.ts` | module housekeeping | `hk_areas`, `hk_checklists`, `hk_contractors`, `hk_door_requests`, `hk_floor_stores`, `hk_inspections`, `hk_rota_places`, `hk_rotas`, `hk_rounds`, `hk_staff`, `hk_work` |
 | `ipd-copilot.ts` | kernel | `ipd_copilot_drafts` |
 | `ipd-emar.ts` | kernel | `ipd_emar_acts`, `ipd_emar_allergy_flags`, `ipd_emar_doses`, `ipd_emar_infusion_events`, `ipd_emar_issues`, `ipd_emar_label_uses`, `ipd_emar_labels`, `ipd_emar_narcotic_register`, `ipd_emar_returns`, `ipd_emar_second_checks`, `ipd_emar_verbal_orders`, `ipd_emar_verifications`, `ipd_narcotic_count_resolutions`, `ipd_narcotic_counts` |
 | `ipd-rounds.ts` | kernel | `ipd_consults`, `ipd_orders`, `ipd_rounds` |
 | `ipd-tpa.ts` | kernel | `ipd_admission_packages`, `ipd_claim_deductions`, `ipd_claim_events`, `ipd_scheme_packages`, `ipd_tpa_documents`, `ipd_tpa_queries` |
+| `ipd-ward.ts` | kernel | `ipd_nurse_assignments`, `ipd_patient_acuity`, `ipd_ward_ratio_breaches`, `ipd_ward_shift_maps`, `ipd_ward_shift_staff` |
 | `ipd.ts` | module ipd | `ipd_admission_conditions`, `ipd_admission_deposits`, `ipd_admissions`, `ipd_attendant_message_consents`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_proposals`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_charge_exceptions`, `ipd_charge_lines`, `ipd_class_changes`, `ipd_daily_totals`, `ipd_deposit_alerts`, `ipd_discharge_confirmations`, `ipd_discharge_summaries`, `ipd_discharges`, `ipd_family_callbacks`, `ipd_family_links`, `ipd_family_otps`, `ipd_family_sessions`, `ipd_final_bills`, `ipd_gate_passes`, `ipd_intake_output`, `ipd_mortuary_register`, `ipd_nursing_alerts`, `ipd_nursing_assessments`, `ipd_nursing_notes`, `ipd_payer_auths`, `ipd_payer_claims`, `ipd_payer_non_payables`, `ipd_payer_split_snapshots`, `ipd_shift_handovers`, `ipd_stay_exits`, `ipd_transfers`, `ipd_unit_transfers`, `ipd_vitals` |
 | `lab.ts` | module lab | `lab_analytes`, `lab_booking_settings`, `lab_bookings`, `lab_catalogue_imports`, `lab_critical_calls`, `lab_instrument_codes`, `lab_instruments`, `lab_items`, `lab_orderable_analytes`, `lab_orderables`, `lab_parked_results`, `lab_plate_maps`, `lab_plate_wells`, `lab_quick_reports`, `lab_reference_ranges`, `lab_reflex_rules`, `lab_report_deliveries`, `lab_reports`, `lab_results`, `lab_run_sheet_positions`, `lab_run_sheets`, `lab_sla_breaches`, `lab_slip_ignored_codes`, `lab_slip_scans`, `lab_specimen_items`, `lab_specimens`, `lab_transmissions` |
 | `linen.ts` | module linen | `linen_bags`, `linen_bed_waits`, `linen_condemn_requests`, `linen_cycle_batches`, `linen_holds`, `linen_items`, `linen_laundry_batches`, `linen_machines`, `linen_movements`, `linen_par_levels`, `linen_pieces`, `linen_qc_results`, `linen_rounds`, `linen_variances`, `linen_ward_counts`, `linen_wash_cycles` |

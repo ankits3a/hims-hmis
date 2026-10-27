@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/housekeeping/`
 · Notes: [MAP.md](../../../apps/core/src/modules/housekeeping/MAP.md)
 
-- **Depends on modules:** `ipd`, `materials`, `roster`, `tasks`
+- **Depends on modules:** `ipd`, `linen`, `materials`, `roster`, `tasks`
 - **Used by modules:** —
 - **Kernel used:** `alerts`, `auth`, `config`, `crypto`, `db`, `documents`, `events`, `modules`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `resourceAssigned`, `resourceReleased`, `resourceStatusChanged`
