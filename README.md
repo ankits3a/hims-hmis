@@ -1923,6 +1923,16 @@ porter; the supervisor and the superintendent work the family's callback request
 holds `ipd.condition.set` — the condition word is the doctor's. NEWS2 5+ or any single 3 (MEOWS and PEWS by their own
 charts) tells the duty doctor once per breach, and again only when the score gets a band worse.
 
+**Ward nurses (WM-1 #982, decision 0089, built 2026-10-26, awaiting owner review).** Two roles are seeded:
+`ward_incharge` (the shift's charge nurse, held beside `ward_nurse`) and `student_nurse`. `ipd.nursing.assign` (publish the shift's
+bed-to-nurse assignment, reassign a bed, the ward cockpit) is held by `ward_incharge`, `nursing_supervisor` and
+`nursing_superintendent`; `ipd.nursing.float` (the float pool and moving a nurse to another ward for a shift) by
+`nursing_supervisor` and `nursing_superintendent`. `ward_incharge` also holds `ipd.nursing.view` and `ipd.beds.view`;
+`student_nurse` holds `ipd.nursing.view`, `ipd.vitals.record` and `ipd.beds.view` and is never a bed's only nurse. Every
+occupied bed has one registered nurse on the published map; a nurse hands her own beds over before she ends her duty.
+The ratio (patients per nurse, by unit, day and night; a ventilated patient needs her own nurse) is checked against a
+configurable table and a breach tells the supervisor once a shift. It never blocks an admission.
+
 **IPD rounds (E4.2, decision 0072, built 2026-10-13, awaiting owner review).** `ipd.round.sign` and `ipd.order.place` are
 held by `doctor` — the Rounds list at `/ipd/rounds` (own, unit and consulted patients, boarded ones marked with their
 ward), the round page (sign a S/O/A/P round; a resident's round waits for the consultant's co-sign), cross-consults, and

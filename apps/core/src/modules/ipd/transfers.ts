@@ -58,8 +58,9 @@ import type { AdmissionRow } from "./admission-core";
  * - A transfer derives the patient's need from the TARGET bed's class and ICU flag (a clinical move needs no class
  *   consent, §4.4) and keeps the admission's isolation and gender facts; the admission's requested class is the
  *   request's record and is not rewritten.
- * - `not_receiving_ward`: there is no nurse-to-ward roster yet, so any holder of `ipd.transfer.accept` may accept for
- *   any ward (seam: the ipd-nursing lane's ward assignment narrows it). The sender may never accept their own.
+ * - `not_receiving_ward`: WM-1's shift map names a ward's nurses, but accept is not narrowed to them yet, so any
+ *   holder of `ipd.transfer.accept` may accept for any ward (seam: the receiving ward's live map narrows it). The sender
+ *   may never accept their own.
  * - The receiving ward = the target bed's ward (the room's parent when it hangs from a room).
  * - A swap moves both patients to each other's beds and bills each at the new bed's class by the day rule; a bed with a
  *   block waiting for release cannot take a swap.

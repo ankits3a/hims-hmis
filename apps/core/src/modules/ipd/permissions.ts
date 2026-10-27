@@ -33,6 +33,9 @@ export const IPD_VITALS_RECORD = "ipd.vitals.record";
 export const IPD_ASSESSMENT_RECORD = "ipd.assessment.record";
 export const IPD_SHIFT_HANDOVER = "ipd.handover.shift";
 export const IPD_EWS_RESPOND = "ipd.ews.respond";
+// WM-1 (#982, decision 0089) — the ward's nurses: the in-charge's assignment and the supervisor's float move.
+export const IPD_NURSING_ASSIGN = "ipd.nursing.assign";
+export const IPD_NURSING_FLOAT = "ipd.nursing.float";
 // E4.2 (#734) — rounds and inpatient orders (the doctor's; clinical, no money).
 export const IPD_ROUND_SIGN = "ipd.round.sign";
 export const IPD_ORDER_PLACE = "ipd.order.place";

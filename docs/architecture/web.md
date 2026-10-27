@@ -78,6 +78,8 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/ipd/rounds/$admissionId` | `apps/web/src/screens/ipd-rounds` |
 | `/ipd/tpa` | `apps/web/src/screens/ipd-tpa` |
 | `/ipd/ward` | `apps/web/src/screens/ipd-ward` |
+| `/ipd/ward/assign` | `apps/web/src/screens/ipd-ward-assign` |
+| `/ipd/ward/cockpit` | `apps/web/src/screens/ipd-ward-cockpit` |
 | `/lab/bench` | `apps/web/src/screens/lab-bench` |
 | `/lab/collection` | `apps/web/src/screens/lab-collection` |
 | `/lab/counter` | `apps/web/src/screens/lab-desk` |

@@ -456,6 +456,20 @@ Source: `apps/core/src/modules/ipd/`
   - `rankNowRows(rows: readonly NowRow[]): DeskRow[]`
   - `stuckStepOf(args: { state: string; declaredAt: Date; confirmations: Parameters<typeof pendingDepartments>[0]; summarySignedAt: Date | null;…`
   - types: `Identity`, `NowRow`, `StuckStep`
+- `nurse-ward-read.ts`
+  - `readFloatPool(db: Db, actor: Actor, opts: { floorId?: string; now?: Date } = {}): Promise<IpdFloatPool>`
+  - `readShiftMap(db: Db, actor: Actor, q: { wardId: string; shiftDate: string; shift: IpdNurseShift }): Promise<IpdShiftMapView>`
+  - `readWardCockpit(db: Db, actor: Actor, opts: { wardId?: string; now?: Date } = {}): Promise<IpdWardCockpit>`
+- `nurse-ward.ts`
+  - `assignNurse(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ assignmentId: string; mapId: string; fromNurseId: string | null…`
+  - `copyLastShiftMap(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ mapId: string; copiedFrom: string | null }>`
+  - `endMyDuty(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ mapId: string; endedAt: string }>`
+  - `moveFloatNurse(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ mapId: string; fromWardId: string | null }>`
+  - `publishShiftMap(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ mapId: string; status: "published"; late: boolean; ratioBre…`
+  - `saveShiftMap(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ mapId: string; status: "draft" }>`
+  - `setAcuity(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ acuityId: string; points: number }>`
+  - `sweepWardShifts(db: Db, now: Date): Promise<WardSweepResult>`
+  - types: `WardSweepResult`
 - `nursing-cards.ts`
   - `assessmentDueCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
   - `ewsRisingCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
@@ -467,7 +481,7 @@ Source: `apps/core/src/modules/ipd/`
   - `listShiftHandovers(db: Db, actor: Actor, opts: { wardId?: string; now?: Date } = {}): Promise<IpdShiftHandoverList>`
   - `nextDueOf(f: DueFacts, now: Date): { kind: "vitals" | "assessment"; dueAt: Date; overdue: boolean } | null`
   - `readMyShift(db: Db, actor: Actor, opts: { wardId?: string; now?: Date } = {}): Promise<IpdMyShift>`
-  - `readNurseStation(db: Db, actor: Actor, opts: { wardId?: string; now?: Date } = {}): Promise<IpdNurseStation>`
+  - `readNurseStation(db: Db, actor: Actor, opts: { wardId?: string; now?: Date; mine?: boolean } = {}): Promise<IpdNurseStation>`
   - `readNursingChart(db: Db, actor: Actor, admissionId: string, opts: { now?: Date } = {}): Promise<IpdNursingChart>`
 - `nursing.ts`
   - `IPD_NURSING_STATES`

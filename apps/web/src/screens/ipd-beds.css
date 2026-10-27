@@ -193,3 +193,8 @@
   .ipdb-find { min-width: 0; flex: 1 1 100%; }
   .ipdb-wards { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* WM-1 (#982) — the bed's nurse on the live shift map; an occupied bed nobody holds is red, with words. */
+.ipdb-tile .nurse { font-size: 11px; color: var(--dim, #55675f); }
+.ipdb-tile .nurse.none { color: #b42318; font-weight: 700; }
+.ipdb-tile.no-nurse { outline: 1.5px dashed #b42318; outline-offset: -2px; }

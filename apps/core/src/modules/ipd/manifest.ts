@@ -5,10 +5,11 @@ import { assessmentDueCard, ewsRisingCard, handoverPendingCard, overdueVitalsCar
 import { dueDoseCard, newOrderCard } from "./emar-cards";
 import { allergyFlagsCard } from "./rounds-cards";
 import { tpaDueCard } from "./tpa-read";
+import { wardNeedsYouCard } from "./nurse-ward-read";
 import { IPD_EMAR_ALLERGY_CONSUMER } from "./emar-events";
 import {
   IPD_BEDS_VIEW, IPD_BEDS_MANAGE, IPD_BEDS_CLEAN, IPD_BEDS_OVERFLOW, IPD_ADMIT_REQUEST, IPD_ADMIT, IPD_PAYER_MANAGE, IPD_BAND_PRINT, IPD_BILL_VIEW, IPD_CHARGES_REVERSE, IPD_PAYER_TERMS, IPD_TRANSFER_START, IPD_TRANSFER_ACCEPT, IPD_DISCHARGE_VIEW, IPD_DISCHARGE_DECLARE, IPD_DISCHARGE_CONFIRM, IPD_DISCHARGE_BILL, IPD_GATE_PASS, IPD_GATE_SCAN, IPD_DISCHARGE_EXIT, IPD_MORTUARY_MANAGE, IPD_BILLDESK_VIEW, IPD_FAMILY_ISSUE, IPD_CONDITION_SET, IPD_ROUND_SIGN, IPD_ORDER_PLACE,
-  IPD_NURSING_VIEW, IPD_VITALS_RECORD, IPD_ASSESSMENT_RECORD, IPD_SHIFT_HANDOVER, IPD_EWS_RESPOND,
+  IPD_NURSING_VIEW, IPD_VITALS_RECORD, IPD_ASSESSMENT_RECORD, IPD_SHIFT_HANDOVER, IPD_EWS_RESPOND, IPD_NURSING_ASSIGN, IPD_NURSING_FLOAT,
   IPD_EMAR_VIEW, IPD_EMAR_GIVE, IPD_EMAR_VERIFY, IPD_EMAR_ISSUE,
 } from "./permissions";
 import { IPD_FAMILY_STOP_CONSUMER } from "./family-events";
@@ -17,7 +18,7 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
 
 export {
   IPD_BEDS_VIEW, IPD_BEDS_MANAGE, IPD_BEDS_CLEAN, IPD_BEDS_OVERFLOW, IPD_ADMIT_REQUEST, IPD_ADMIT, IPD_PAYER_MANAGE, IPD_BAND_PRINT, IPD_BILL_VIEW, IPD_CHARGES_REVERSE, IPD_PAYER_TERMS, IPD_TRANSFER_START, IPD_TRANSFER_ACCEPT, IPD_DISCHARGE_VIEW, IPD_DISCHARGE_DECLARE, IPD_DISCHARGE_CONFIRM, IPD_DISCHARGE_BILL, IPD_GATE_PASS, IPD_GATE_SCAN, IPD_DISCHARGE_EXIT, IPD_MORTUARY_MANAGE, IPD_BILLDESK_VIEW, IPD_FAMILY_ISSUE, IPD_CONDITION_SET, IPD_ROUND_SIGN, IPD_ORDER_PLACE,
-  IPD_NURSING_VIEW, IPD_VITALS_RECORD, IPD_ASSESSMENT_RECORD, IPD_SHIFT_HANDOVER, IPD_EWS_RESPOND,
+  IPD_NURSING_VIEW, IPD_VITALS_RECORD, IPD_ASSESSMENT_RECORD, IPD_SHIFT_HANDOVER, IPD_EWS_RESPOND, IPD_NURSING_ASSIGN, IPD_NURSING_FLOAT,
   IPD_EMAR_VIEW, IPD_EMAR_GIVE, IPD_EMAR_VERIFY, IPD_EMAR_ISSUE,
 } from "./permissions";
 
@@ -93,6 +94,14 @@ export {
  *                          `handover_pending` card
  *   ipd.ews.respond        acknowledge an early-warning alert (G7: a doctor's acknowledgement counts); the `ews_rising` card
  *
+ * WM-1 (#982, decision 0089) adds the ward's two. Clinical; no money:
+ *
+ *   ipd.nursing.assign     draft, copy and publish a ward's shift map (every occupied bed to one registered nurse), assign
+ *                          and reassign a bed with a reason, read the in-charge cockpit; the `ward_needs_you` card — the
+ *                          ward in-charge and the nursing supervisor
+ *   ipd.nursing.float      read the float pool by floor and move a nurse to another ward for a shift — the nursing
+ *                          supervisor and the nursing superintendent
+ *
  * E4.2 (#734) adds the rounds' two (spec §4.5A, §4.9 E). Clinical; no money on either (decision 0058):
  *
  *   ipd.round.sign      read the doctor's rounds list and a patient's round page, sign a round (a resident's is a draft
@@ -131,6 +140,9 @@ export const ipdManifest: ModuleManifest = {
     // E4.1 (#733) — board C, the ward nurse station (16:9), and board D1, my shift on the phone (390 px).
     { label: "Ward", path: "/ipd/ward", permission: IPD_NURSING_VIEW },
     { label: "My shift", path: "/ipd/my-shift", permission: IPD_VITALS_RECORD },
+    // WM-1 (#982) — the in-charge's shift assignment and cockpit (1440).
+    { label: "Assign nurses", path: "/ipd/ward/assign", permission: IPD_NURSING_ASSIGN },
+    { label: "Ward cockpit", path: "/ipd/ward/cockpit", permission: IPD_NURSING_ASSIGN },
     // E4.2 (#734) — the doctor's inpatient rounds list.
     { label: "Rounds", path: "/ipd/rounds", permission: IPD_ROUND_SIGN },
     // E4.3 (#735) — the ward MAR chart (16:9) and the pharmacist's verify queue (desktop).
@@ -153,6 +165,8 @@ export const ipdManifest: ModuleManifest = {
     IPD_FAMILY_ISSUE, IPD_CONDITION_SET,
     // E4.1 (#733)
     IPD_NURSING_VIEW, IPD_VITALS_RECORD, IPD_ASSESSMENT_RECORD, IPD_SHIFT_HANDOVER, IPD_EWS_RESPOND,
+    // WM-1 (#982)
+    IPD_NURSING_ASSIGN, IPD_NURSING_FLOAT,
     // E4.2 (#734)
     IPD_ROUND_SIGN, IPD_ORDER_PLACE,
     // E4.3 (#735)
@@ -187,6 +201,8 @@ export const ipdManifest: ModuleManifest = {
     { key: "ipd.assessment_due", permission: IPD_ASSESSMENT_RECORD, load: async (ctx) => assessmentDueCard(ctx) },
     { key: "ipd.ews_rising", permission: IPD_EWS_RESPOND, load: async (ctx) => ewsRisingCard(ctx) },
     { key: "ipd.handover_pending", permission: IPD_SHIFT_HANDOVER, load: async (ctx) => handoverPendingCard(ctx) },
+    // WM-1 (#982) — the in-charge's card: a bed with no nurse, a ratio breach, the next shift's map not published.
+    { key: "ipd.ward_needs_you", permission: IPD_NURSING_ASSIGN, load: async (ctx) => wardNeedsYouCard(ctx) },
     // E4.3 (#735) — the eMAR's two nurse cards, each with its own permission.
     { key: "ipd.due_dose", permission: IPD_EMAR_GIVE, load: async (ctx) => dueDoseCard(ctx) },
     { key: "ipd.new_order", permission: IPD_EMAR_VIEW, load: async (ctx) => newOrderCard(ctx) },

@@ -577,3 +577,62 @@ export async function mkEmarWorld(db: Db): Promise<EmarWorld> {
     band: async (admissionId) => (await printBand(db, w.admitDesk, { idempotencyKey: randomUUID(), admissionId, size: "adult", site: "wrist" })).bandSerial,
   };
 }
+
+// ═══ WM-1 (#982) — the ward's nurses: two wards on one floor, registered nurses, a student, an in-charge, a float ═══
+
+export type WardWorld = TransferWorld & {
+  /** Registered nurses (role ward_nurse) for ward 1 (`wardId`). Named so their initials read on a tile. */
+  nurse: Actor; nurse2: Actor; nurse3: Actor;
+  /** A student nurse (role student_nurse): never a bed's only nurse. */
+  student: Actor;
+  /** Ward 1's in-charge (role ward_incharge): drafts, publishes and changes the assignment. */
+  incharge: Actor;
+  /** The nursing supervisor: told about carry-overs and ratio breaches; moves float nurses. */
+  supervisor: Actor;
+  /** A registered nurse on ward 2's map who can be floated to ward 1. */
+  floater: Actor;
+  /** Admit a fresh patient onto `bedId` at `at` (the emergency lane: no deposit). */
+  admitOn(bedId: string, at: Date): Promise<{ admissionId: string; patientId: string }>;
+};
+
+export async function mkWardWorld(db: Db): Promise<WardWorld> {
+  const w = await mkTransferWorld(db);
+  const registry = new ModuleRegistry();
+  registry.install(authManifest);
+  registry.install(patientsManifest);
+  registry.install(ipdManifest);
+  await syncPermissions(db, registry);
+  const nurseStrings = ["ipd.nursing.view", "ipd.vitals.record", "ipd.assessment.record", "ipd.handover.shift", "ipd.beds.view"];
+  const grants: Record<string, string[]> = {
+    ward_nurse: nurseStrings,
+    student_nurse: ["ipd.nursing.view", "ipd.vitals.record", "ipd.beds.view"],
+    ward_incharge: [...nurseStrings, "ipd.nursing.assign"],
+    nursing_supervisor: [...nurseStrings, "ipd.ews.respond", "ipd.nursing.assign", "ipd.nursing.float"],
+  };
+  for (const [role, perms] of Object.entries(grants)) {
+    await ensureRole(db, role);
+    for (const p of perms) await grantPermissionToRole(db, registry, role, p);
+  }
+  const person = async (username: string, fullName: string, role: string): Promise<Actor> => {
+    const u = await mkUser(db, username, [role]);
+    await db.update(schema.users).set({ fullName }).where(eq(schema.users.id, u.id));
+    return u.actor;
+  };
+  return {
+    ...w,
+    nurse: await person("wrd.nurse", "Asha Kumari", "ward_nurse"),
+    nurse2: await person("wrd.nurse2", "Bina Devi", "ward_nurse"),
+    nurse3: await person("wrd.nurse3", "Chitra Singh", "ward_nurse"),
+    student: await person("wrd.student", "Divya Rani", "student_nurse"),
+    incharge: await person("wrd.incharge", "Esther Lal", "ward_incharge"),
+    supervisor: await person("wrd.supervisor", "Farida Khan", "nursing_supervisor"),
+    floater: await person("wrd.floater", "Gita Sharma", "ward_nurse"),
+    admitOn: async (bedId, at) => {
+      const patientId = await w.patient("male", 45);
+      const done = await emergencyAdmit(db, w.admitDesk, {
+        idempotencyKey: randomUUID(), patientId, bedId, consultantId: w.doctor.id, isolation: "none", mlc: false,
+      }, { now: at });
+      return { admissionId: done.admissionId, patientId };
+    },
+  };
+}

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { IpdIdSchema, IpdInstantSchema, IpdNoteSchema, IpdProvenanceSchema, ipdInput } from "./common";
 import { IpdCopilotBySchema, IpdCopilotRecordSchema, IpdCopilotSourceSchema, IpdDraftProvenanceSchema, IpdDraftStampSchema } from "./copilot";
 import { IPD_CONSCIOUSNESS, IPD_EWS_BANDS, IPD_EWS_KINDS } from "./ews";
+import { IpdNurseRefSchema } from "./nurse-ward";
 
 export * from "./ews";
 export { IPD_LINE_DEVICE_KINDS } from "./intents-ward";
@@ -81,6 +82,8 @@ export const IpdStationBedSchema = z.object({
   transferring: z.boolean(),
   /** Sort key for "Needs me" order: higher first (score rising, alert, overdue). */
   needs: z.number().int().nonnegative(),
+  /** WM-1 (#982): the bed's nurse on the live shift map; null when none (red on an occupied bed). */
+  nurse: IpdNurseRefSchema.nullable().optional(),
 });
 export type IpdStationBed = z.infer<typeof IpdStationBedSchema>;
 
@@ -127,6 +130,11 @@ export const IpdMyShiftSchema = z.object({
   shift: z.object({ key: z.enum(["morning", "evening", "night"]), startsAt: IpdInstantSchema, endsAt: IpdInstantSchema }),
   patients: z.array(z.object({ identity: IpdNursingIdentitySchema, bedCode: z.string().nullable(), scoreKind: z.enum(IPD_EWS_KINDS) })),
   now: z.array(IpdShiftItemSchema),
+  /**
+   * WM-1 (#982): `ward` = no live shift map yet, so the list is the whole ward ("no assignment yet"); `mine` = the beds
+   * the live map gives this nurse (or her student); `none` = a live map gives her no bed.
+   */
+  assignment: z.enum(["ward", "mine", "none"]).optional(),
 });
 export type IpdMyShift = z.infer<typeof IpdMyShiftSchema>;
 

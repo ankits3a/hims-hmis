@@ -1,0 +1,63 @@
+/*
+ * WM-1 (#982) — the in-charge's desk screens (cockpit and shift assignment, 1440). The `.ipdn` palette (ipd-nursing.css);
+ * red always comes with a word ("No nurse", ✕). Below 900 px the columns stack.
+ */
+.ipdw { min-height: 100vh; display: flex; flex-direction: column; }
+.ipdw .grow { flex-grow: 1; }
+.ipdw .hot { color: var(--red); font-weight: 600; }
+.ipdw .ok { color: var(--green); }
+.ipdw .warn { color: var(--gold); font-weight: 600; }
+.ipdw-empty { padding: 24px; }
+.ipdw-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 6px 16px; background: var(--card); border-bottom: 1px solid var(--line); min-height: 48px; }
+.ipdw-ward { font-size: 0.8125rem; letter-spacing: .06em; text-transform: uppercase; }
+.ipdw-head .mono, .ipdw-bar .mono { font-size: 0.8125rem; }
+.ipdw-nav { display: flex; gap: 2px; }
+.ipdw-tab { min-height: 36px; padding: 0 12px; display: inline-flex; align-items: center; border-radius: 6px; color: var(--dim); text-decoration: none; font-size: 0.8125rem; }
+.ipdw-tab[aria-current="page"] { background: var(--soft); color: var(--ink); font-weight: 600; box-shadow: inset 0 -2px 0 var(--blue); }
+.ipdw-body { padding: 14px 20px; display: flex; flex-direction: column; gap: 10px; }
+.ipdw-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ipdw-bar h1 { margin: 0; font-size: 1.25rem; font-weight: 600; }
+.ipdw-seg { display: inline-flex; gap: 4px; }
+.ipdw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)) ; gap: 10px; align-items: start; }
+.ipdw-grid > .ipdw-side { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+.ipdw-col { background: var(--card); border: 1px solid var(--line); border-radius: 8px; display: flex; flex-direction: column; padding-bottom: 8px; min-width: 0; }
+.ipdw-col.red { border-color: var(--red); border-style: dashed; }
+.ipdw-col header { padding: 10px 12px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; font-size: 0.8125rem; }
+.ipdw-chip { display: flex; justify-content: space-between; gap: 6px; margin: 6px 8px 0; min-height: 40px; padding: 6px 9px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); font-size: 0.8125rem; text-align: left; }
+.ipdw-chip.sel { border: 2px solid var(--ink); background: var(--soft); }
+.ipdw-take { margin: 8px 8px 0; min-height: 40px; border-radius: 6px; border: 1.5px dashed var(--blue); background: transparent; color: var(--blue); font-weight: 600; font-size: 0.8125rem; }
+.ipdw-take:disabled { opacity: .45; cursor: not-allowed; }
+.ipdw-remove { margin: 6px 8px 0; }
+.ipdw-box { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; font-size: 0.8125rem; }
+.ipdw-add select, .ipdw-pair select { width: 100%; }
+.ipdw-pair { display: flex; flex-direction: column; gap: 4px; }
+.ipdw-cock { display: grid; grid-template-columns: 260px minmax(0, 1fr) 320px; flex-grow: 1; min-height: 0; }
+.ipdw-left { background: var(--card); border-right: 1px solid var(--line); padding: 16px; display: flex; flex-direction: column; gap: 4px; font-size: 0.8125rem; }
+.ipdw-tag { font-family: "IBM Plex Mono", monospace; font-size: 0.625rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); margin-top: 10px; }
+.ipdw-kv { display: flex; justify-content: space-between; gap: 8px; }
+.ipdw-kv span { color: var(--dim); }
+.ipdw-staff { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.ipdw-centre { padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.ipdw-beds { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.ipdw-bed { border: 1px solid var(--line); border-radius: 7px; padding: 7px 8px; background: var(--card); display: flex; flex-direction: column; gap: 3px; font-size: 0.75rem; line-height: 1.25; }
+.ipdw-bed b { font-size: 0.8125rem; }
+.ipdw-bed.tap { text-align: left; font: inherit; font-size: 0.75rem; min-height: 72px; }
+.ipdw-bed.tap:hover { border-color: var(--ink); }
+.ipdw-bed.red { border: 1.5px dashed var(--red); }
+.ipdw-bed.empty { background: var(--soft); }
+.ipdw-bed .ews.high, .ipdw-bed .ews.medium { color: var(--red); font-weight: 700; }
+.ipdw-ic { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 3px; margin-right: 2px; border-radius: 3px; background: var(--soft); font-style: normal; font-family: "IBM Plex Mono", monospace; font-size: 0.625rem; font-weight: 700; }
+.ipdw-loads { flex-direction: row; flex-wrap: wrap; gap: 14px; align-items: center; }
+.ipdw-reassign label { display: flex; flex-direction: column; gap: 4px; }
+.ipdw-row { display: flex; gap: 8px; }
+.ipdw-right { border-left: 1px solid var(--line); padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.ipdw-need { border-top: 1px solid var(--line); padding-top: 6px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+@media (max-width: 900px) {
+  .ipdw-cock { grid-template-columns: 1fr; }
+  .ipdw-left, .ipdw-right { border: 0; }
+  /* On a phone the beds come first; the census and staff follow. */
+  .ipdw-centre { order: 1; }
+  .ipdw-right { order: 2; }
+  .ipdw-left { order: 3; }
+  .ipdw-body, .ipdw-centre { padding: 12px 16px; }
+}

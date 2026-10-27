@@ -1,9 +1,9 @@
 ---
 type: module-notes
 title: "ipd — module notes"
-description: "Why and traps of the inpatient module: validated bed and ward attributes and the bed-layout loader (E0.3), the bed intents and the Beds board (E1.1), admission — request, plan and deposit from the tariff, admit onto a bed in one transaction, the payer record, the band, the emergency lane and the downtime back-fill (E1.2) — and the running bill: tariff lock, day rule, nightly posting, visit seam, reversals, interim bill (E2.1) — and the payer split: payer- or patient-payable per line, room-rent cap with proportional deduction, co-pay, approved amount, denial to cash, scheme ₹0 (E2.2) — and transfers: start with an SBAR handover, accept by the receiving nurse, cancel, the atomic swap and the class change in place at the next noon (E3.1) — and the deposit ladder, the daily totals to the attendant and the exceptions-only bill desk (E2.3) — and discharge: fit, departments confirm, structured summary, final bill with payer claim and dues, gate pass, LAMA / abscond / death, mortuary register (E3.2) — and nursing: the admission assessment, vitals scored by NEWS2 / MEOWS / PEWS with one alert per breach, intake/output, notes, the shift handover, the nurse station and the phone (E4.1) — and rounds: the doctor's list, S/O/A/P round sign with resident co-sign, fit from the round, inpatient orders (drugs; lab and imaging through the ordering door) and the order event contract for the eMAR, cross-consults, the 08:00 cover and 14:00 nudge clock (E4.2) — and lab / imaging orders on the running bill through billing's episode charge sink, reversed when cancelled before the work (#785) — and the eMAR: pharmacist verify, ward issue with patient labels, the dose schedule, the bedside acts with both scans, the second nurse's PIN, PRN limits, infusions, the narcotic register, verbal orders, the allergy re-check and the missed-dose sweep (E4.3) — and medicines issued to the ward on the running bill at the pharmacy counter's batch price, returns credited at the issue price (#787) — and the TPA desk: pre-auth clock, payer queries, documents, scheme packages and their importer, the claim tracker with its reconciliation (#604)."
+description: "Why and traps of the inpatient module: validated bed and ward attributes and the bed-layout loader (E0.3), the bed intents and the Beds board (E1.1), admission — request, plan and deposit from the tariff, admit onto a bed in one transaction, the payer record, the band, the emergency lane and the downtime back-fill (E1.2) — and the running bill: tariff lock, day rule, nightly posting, visit seam, reversals, interim bill (E2.1) — and the payer split: payer- or patient-payable per line, room-rent cap with proportional deduction, co-pay, approved amount, denial to cash, scheme ₹0 (E2.2) — and transfers: start with an SBAR handover, accept by the receiving nurse, cancel, the atomic swap and the class change in place at the next noon (E3.1) — and the deposit ladder, the daily totals to the attendant and the exceptions-only bill desk (E2.3) — and discharge: fit, departments confirm, structured summary, final bill with payer claim and dues, gate pass, LAMA / abscond / death, mortuary register (E3.2) — and nursing: the admission assessment, vitals scored by NEWS2 / MEOWS / PEWS with one alert per breach, intake/output, notes, the shift handover, the nurse station and the phone (E4.1) — and rounds: the doctor's list, S/O/A/P round sign with resident co-sign, fit from the round, inpatient orders (drugs; lab and imaging through the ordering door) and the order event contract for the eMAR, cross-consults, the 08:00 cover and 14:00 nudge clock (E4.2) — and lab / imaging orders on the running bill through billing's episode charge sink, reversed when cancelled before the work (#785) — and the eMAR: pharmacist verify, ward issue with patient labels, the dose schedule, the bedside acts with both scans, the second nurse's PIN, PRN limits, infusions, the narcotic register, verbal orders, the allergy re-check and the missed-dose sweep (E4.3) — and medicines issued to the ward on the running bill at the pharmacy counter's batch price, returns credited at the issue price (#787) — and the TPA desk: pre-auth clock, payer queries, documents, scheme packages and their importer, the claim tracker with its reconciliation (#604) — and the ward's nurses: per-shift bed-to-nurse maps with carry-over, reassignment with a reason, end of duty, acuity, the nurse-to-patient ratio and its breach, float moves, the in-charge cockpit (WM-1 #982)."
 resource: apps/core/src/modules/ipd
-tags: [ipd, tpa, insurance, beds, resources, admission, billing, transfer, discharge, now-cards, bed-flow, nursing, ews, rounds, orders, order-billing, emar, drug-billing, copilot, drafts]
+tags: [ipd, tpa, ward-nurses, ratio, insurance, beds, resources, admission, billing, transfer, discharge, now-cards, bed-flow, nursing, ews, rounds, orders, order-billing, emar, drug-billing, copilot, drafts]
 generated: { by: agent:claude, at: 2026-10-12 }
 verified: []
 stale_after: 2027-01-12
@@ -170,6 +170,15 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `ipd_nursing`). Web: `apps/web/src/screens/ipd-ward.tsx` (`/ipd/ward`, board C), `apps/web/src/screens/ipd-my-shift.tsx`
   (`/ipd/my-shift`, board D1), the shift handover section of `apps/web/src/screens/ipd-handovers.tsx`,
   `apps/web/src/lib/ipd-nursing-api.ts` (with the offline vitals queue).
+- (WM-1 #982, decision 0089) `nurse-ward.ts` — the ward's nurses: `setAcuity`, `saveShiftMap`, `copyLastShiftMap`,
+  `publishShiftMap`, `assignNurse` (a bed to a nurse on the live map; reason on a reassignment), `endMyDuty`,
+  `moveFloatNurse`, the ratio breach (`checkRatio`) and the minute step `sweepWardShifts` (rides the nursing job); shared
+  reads `shiftSlotOf` / `liveMapOf` / `liveRowsOf` / `ratioFor` / `assignedNurseOf`. `nurse-ward-read.ts` —
+  `readWardCockpit` (built on `readNurseStation`), `readFloatPool`, `readShiftMap`, `liveNursesAt` (the station, my shift
+  and the Beds board read the nurse through it) and the `ipd.ward_needs_you` card. Contracts
+  `packages/contracts/src/ipd/nurse-ward.ts` (acuity points, the ratio table and its pure functions, inputs, reads, routes).
+  Tables `kernel/db/schema/ipd-ward.ts` (migration `ipd_ward`). Web: `apps/web/src/screens/ipd-ward-assign.tsx`
+  (`/ipd/ward/assign`), `apps/web/src/screens/ipd-ward-cockpit.tsx` (`/ipd/ward/cockpit`), `apps/web/src/lib/ipd-ward-api.ts`.
 
 - (E4.2 #734) `rounds.ts` — `signRound` (S/O/A/P, bedside or remote; fit from the round via `declareFitIn`), `cosignRound`,
   `requestConsult`, `closeConsult`, `assertInBed`. `orders.ts` — `placeIpOrder` (drug; lab / imaging via `ordering`
@@ -851,11 +860,40 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   newer one supersedes one not accepted. Transfers keep their own SBAR on `ipd_transfers` (`/ipd/handovers` shows both).
 - NOW CARDS, one permission each, the permission of the act that answers it: `ipd.overdue_vitals` → `ipd.vitals.record`,
   `ipd.assessment_due` → `ipd.assessment.record`, `ipd.ews_rising` → `ipd.ews.respond`, `ipd.handover_pending` →
-  `ipd.handover.shift`. Hospital-wide top five (no nurse-to-ward assignment yet; the station and the phone filter by ward).
+  `ipd.handover.shift`. Hospital-wide top five (they stay hospital-wide; WM-1's shift map narrows my shift and the
+  station, not the cards).
 - ROLES (DECIDED): `ward_nurse`, `nursing_supervisor`, `nursing_superintendent` (seed-roles; nobody assigned). NONE holds
   `ipd.condition.set`. The supervisor and the superintendent hold `ipd.family.issue` (the family's callbacks go to the nurse
   in charge); all three are on `IPD_CLINICAL_ROLES` (never a money notice). Ward nurse and supervisor now also start and
   accept transfers and confirm the ward at discharge.
+
+### Ward nurses (WM-1, #982, decision 0089)
+- ONE NAMED NURSE PER OCCUPIED BED: a map per (ward, IST date the shift starts on, nursing shift). Publish refuses
+  `bed_unassigned` (an occupied bed with no row) and `student_alone` (a row whose nurse is a student); a student rides
+  on a row (`student_id`) beside her registered nurse. Beds empty at publish need no row.
+- THE LIVE MAP is the published or carried-over map of the shift NOW falls in; a draft is never live. Before a ward's
+  first live map nothing is red and my shift lists the whole ward with `assignment: "ward"` (DECIDED: a ward that has
+  not adopted assignment is not flooded with red).
+- ROWS ARE NEVER EDITED IN PLACE once live: `assignNurse` closes the live row (`valid_to`) and adds one with its reason
+  and `changed_by`; a partial unique index keeps one live row per (map, bed). A draft's rows are replaced whole.
+- REASSIGN needs a reason (`reassign_reason_required`) and tells BOTH nurses (`ipd.bed_reassigned`). The in-charge
+  (`ipd.nursing.assign`) assigns any bed; a nurse may hand over only a bed she holds — so the route asks
+  `ipd.nursing.view` and the act decides.
+- END OF DUTY is a sign-off on the map (`ended_at`), never a roster change; refused `beds_still_assigned` while she holds
+  a live row. A 12-hour roster duty spans two maps: it acts on the current one only.
+- CARRY-OVER: at shift start with no live map and a live map for the shift before, the sweep copies its on-duty staff and
+  live rows (status `carried_over`, `late`), tells the nursing fallback chain once (`supervisor_told_at`). An
+  unpublished draft for that shift is overwritten.
+- THE RATIO (decision 0089): needed = one per ventilated patient + the rest at the ward's patients-per-nurse, rounded up;
+  on duty = rn and float staff not ended + an in-charge holding beds. Unit from the ward's `ratioUnit` attribute, else
+  `unitType`, else the majority bed class; `nurseRatio {day, night}` overrides the table. A breach is ONE row per (ward,
+  date, shift) — one event, one notice; never refuses anything; checked on publish, assign, float and in the sweep.
+  Admission and transfer code never call it. Acuity: the LATEST record at or before now counts (self-care when none).
+- FLOAT: ends her place on her own ward's map for that shift (refused while she holds beds there), adds her as `float`
+  on the receiving map with `home_ward_id`; she counts in that ward's ratio.
+- EWS: the 10-minute unacknowledged step also tells the bed's assigned nurse; the chain's stamp still waits for a CHAIN
+  notice (a nurse alone does not stop the retry).
+- SEALED: the card's bed text is "Bed" alone; the cockpit takes names and bed codes from the station read (one rule).
 
 ### Rounds and inpatient orders (E4.2, #734)
 - ONE TEST FOR "CONSULTANT": an active `opd_doctors` row. It decides both whether a round is a draft (`awaiting_cosign`)
@@ -1161,7 +1199,7 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - (E2.2) Scheme non-covered money is per approval, not per line: no charge line is marked non-covered (approvals carry
   an amount). A line-level mark is owed if the scheme desk needs it.
 
-- (E3.1) SEAMS LEFT OPEN: `not_receiving_ward` is not enforced (no nurse-to-ward assignment yet — ipd-nursing); the porter
+- (E3.1) SEAMS LEFT OPEN: `not_receiving_ward` is not enforced (WM-1's shift map now names a ward's nurses; accept is not narrowed to them yet); the porter
   task is the transport lane's `requestPatientMove` (comment in `startTransfer`); the room-rent cap warning TEXT on an
   upgrade is the payer lane's (E2.2) — the intent only checks the acknowledgement; death mid-transfer
   (`transferring → deceased`, ipd-discharge) must cancel the open `ipd_transfers` row and its hold.

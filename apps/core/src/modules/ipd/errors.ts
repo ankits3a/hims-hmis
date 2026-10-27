@@ -98,6 +98,25 @@ export type IpdErrorCode =
   | "shift_handover_own"
   | "ews_alert_not_found"
   | "ews_alert_closed"
+  /**
+   * WM-1 (#982) — the ward's nurses: no such ward or map; the map is already live (change it bed by bed); a bed not on
+   * the ward; a person who may not be on the map as that kind; an occupied bed with no nurse at publish (`detail.bedIds`);
+   * a student as a bed's only nurse (`detail.bedIds`); a reassignment without a reason; no live map for the shift; end
+   * of duty (or a float move) while holding beds (`detail.bedIds`); end of duty by someone not on the map; acuity for a
+   * patient not on a ward bed.
+   */
+  | "ward_not_found"
+  | "shift_map_not_found"
+  | "shift_map_not_draft"
+  | "bed_not_on_ward"
+  | "staff_not_eligible"
+  | "bed_unassigned"
+  | "student_alone"
+  | "reassign_reason_required"
+  | "no_live_shift_map"
+  | "beds_still_assigned"
+  | "not_on_shift"
+  | "acuity_admission_not_on_ward"
   /** #604 (decision 0075) — the scheme package file failed validation (`detail.problems`, line by line); nothing was written. */
   | "package_import_invalid";
 
