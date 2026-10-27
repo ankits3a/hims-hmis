@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique, uniqueIndex } from "drizzle-orm/pg-core";
+import { bigint, boolean, check, date, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique, uniqueIndex } from "drizzle-orm/pg-core";
+import { items, vendors } from "./materials";
 import { resources } from "./resources";
 
 /**
@@ -13,6 +14,10 @@ import { resources } from "./resources";
  * LD-1 (#978, decision 0087) adds the laundry floor: a stream per item, rounds signed by the runner and the ward, sealed
  * bags, holds, the plant's machines and wash cycles, quality check, beds waiting for linen, and piece identity (empty
  * until the tags arrive). Still no money and no patient: a hold names a bed, never a person.
+ *
+ * LD-2 (#979, decisions 0087 and 0092) brings the vendor's money: challans out and returns in per piece, rate cards,
+ * monthly recoveries (four eyes), the vendor bill check, uniforms held by staff, tagged pieces, the plant's licences,
+ * and the cost of a linen item (for a lost piece). Money is in paise. Still no patient anywhere.
  */
 /** The wash streams: each travels and washes apart (theatre sets go to CSSD; baby linen never with adult linen). */
 export const LINEN_STREAM_SQL = sql.raw("'ward', 'theatre', 'baby', 'mop', 'kitchen', 'uniform'");
@@ -27,11 +32,16 @@ export const linenItems = pgTable(
     active: boolean("active").notNull().default(true),
     /** LD-1: the stream it is washed in. */
     stream: text("stream").notNull().default("ward"),
+    /** LD-2: the stores item it is bought as (its last goods-receipt price is the replacement cost, decision 0092). */
+    materialsItemId: text("materials_item_id").references(() => items.id),
+    /** LD-2: the item master's price of one piece, used when stores never received the item. */
+    pricePaise: bigint("price_paise", { mode: "number" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     check("linen_items_units_ck", sql`${t.unitsPerSet} >= 0`),
     check("linen_items_stream_ck", sql`${t.stream} in (${LINEN_STREAM_SQL})`),
+    check("linen_items_price_ck", sql`${t.pricePaise} is null or ${t.pricePaise} >= 0`),
   ],
 );
 
@@ -104,6 +114,8 @@ export const linenCondemnRequests = pgTable(
     decidedBy: text("decided_by"),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     decisionNote: text("decision_note"),
+    /** LD-2: a tagged piece condemned by its tag (qty 1). */
+    pieceId: text("piece_id").references(() => linenPieces.id),
   },
   (t) => [
     index("linen_condemn_requests_open_idx").on(t.state).where(sql`${t.state} = 'requested'`),
@@ -112,6 +124,7 @@ export const linenCondemnRequests = pgTable(
     check("linen_condemn_requests_decided_ck", sql`(${t.state} = 'requested') = (${t.decidedAt} is null)`),
     // The four-eyes rule in the table too: a request is never decided by the person who raised it.
     check("linen_condemn_requests_four_eyes_ck", sql`${t.decidedBy} is null or ${t.decidedBy} <> ${t.requestedBy}`),
+    check("linen_condemn_requests_piece_ck", sql`${t.pieceId} is null or ${t.qty} = 1`),
   ],
 );
 
@@ -218,9 +231,15 @@ export const linenPieces = pgTable(
     itemCode: text("item_code").notNull().references(() => linenItems.code),
     tagUid: text("tag_uid").notNull(),
     active: boolean("active").notNull().default(true),
+    /** LD-2: condemned (four eyes); its tag is refused at every count after that. */
+    condemnedAt: timestamp("condemned_at", { withTimezone: true }),
+    registeredBy: text("registered_by"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("linen_pieces_tag_uq").on(t.tagUid)],
+  (t) => [
+    uniqueIndex("linen_pieces_tag_uq").on(t.tagUid),
+    check("linen_pieces_condemned_ck", sql`${t.condemnedAt} is null or not ${t.active}`),
+  ],
 );
 
 /**
@@ -368,6 +387,8 @@ export const linenWashCycles = pgTable(
     tempC: integer("temp_c"),
     holdMin: integer("hold_min"),
     chemical: text("chemical"),
+    /** LD-2: the dry weight loaded, read at the finish; the plant's kg washed (D7). */
+    loadGrams: integer("load_grams"),
     /** Null for an ordinary cycle; for an infected one, whether it met the disinfection rule. */
     disinfected: boolean("disinfected"),
   },
@@ -437,5 +458,227 @@ export const linenBedWaits = pgTable(
     uniqueIndex("linen_bed_waits_open_uq").on(t.bedResourceId).where(sql`${t.clearedAt} is null`),
     index("linen_bed_waits_ward_idx").on(t.wardResourceId).where(sql`${t.clearedAt} is null`),
     check("linen_bed_waits_cleared_ck", sql`(${t.clearedAt} is null) = (${t.clearedBy} is null)`),
+  ],
+);
+
+/* ═══════════════════════════════ LD-2 — vendor laundry, uniforms, tags, licences (#979) ═══════════════════════════════ */
+
+/**
+ * A laundry vendor. Vendor laundry is live once one active row exists: from then on a vendor batch leaves only on a
+ * challan (D1). Turnaround: routine and rush (theatre linen counts as rush), editable per vendor. GST on its bill.
+ */
+export const linenVendors = pgTable(
+  "linen_vendors",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    /** The stores vendor it is paid as, when registered there. */
+    vendorId: text("vendor_id").references(() => vendors.id),
+    turnaroundHours: integer("turnaround_hours").notNull().default(24),
+    rushTurnaroundHours: integer("rush_turnaround_hours").notNull().default(12),
+    gstRateBps: integer("gst_rate_bps").notNull().default(1800),
+    active: boolean("active").notNull().default(true),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("linen_vendors_name_uq").on(t.name),
+    check("linen_vendors_turnaround_ck", sql`${t.turnaroundHours} between 1 and 240 and ${t.rushTurnaroundHours} between 1 and ${t.turnaroundHours}`),
+    check("linen_vendors_gst_ck", sql`${t.gstRateBps} between 0 and 2800`),
+  ],
+);
+
+/** The rate card: paise per piece per item, from a date. The rate in force on a day is the newest row on or before it. */
+export const linenVendorRates = pgTable(
+  "linen_vendor_rates",
+  {
+    id: text("id").primaryKey(),
+    linenVendorId: text("linen_vendor_id").notNull().references(() => linenVendors.id),
+    itemCode: text("item_code").notNull().references(() => linenItems.code),
+    ratePaise: bigint("rate_paise", { mode: "number" }).notNull(),
+    effectiveFrom: date("effective_from", { mode: "string" }).notNull(),
+    setBy: text("set_by").notNull(),
+    setAt: timestamp("set_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("linen_vendor_rates_uq").on(t.linenVendorId, t.itemCode, t.effectiveFrom),
+    check("linen_vendor_rates_rate_ck", sql`${t.ratePaise} >= 0`),
+  ],
+);
+
+/**
+ * The outward challan of one vendor batch: items and counts (a snapshot of what left), weight, and when it is due back.
+ * No patient or staff name. Returns are recorded against it (`linen_challan_returns`).
+ */
+export const linenChallans = pgTable(
+  "linen_challans",
+  {
+    id: text("id").primaryKey(),
+    challanNo: text("challan_no").notNull(),
+    batchId: text("batch_id").notNull().references(() => linenLaundryBatches.id),
+    linenVendorId: text("linen_vendor_id").notNull().references(() => linenVendors.id),
+    lines: jsonb("lines").$type<{ itemCode: string; qty: number }[]>().notNull(),
+    pieces: integer("pieces").notNull(),
+    weightGrams: integer("weight_grams").notNull(),
+    rush: boolean("rush").notNull().default(false),
+    sentAt: timestamp("sent_at", { withTimezone: true }).notNull(),
+    dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
+    sentBy: text("sent_by").notNull(),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("linen_challans_no_uq").on(t.challanNo),
+    uniqueIndex("linen_challans_batch_uq").on(t.batchId),
+    index("linen_challans_vendor_idx").on(t.linenVendorId, t.sentAt),
+    check("linen_challans_pieces_ck", sql`${t.pieces} > 0 and ${t.weightGrams} > 0`),
+    check("linen_challans_due_ck", sql`${t.dueAt} > ${t.sentAt}`),
+  ],
+);
+
+/** What came back at the dock against a challan, per item: accepted, refused damaged, refused stained (back for rewash). */
+export const linenChallanReturns = pgTable(
+  "linen_challan_returns",
+  {
+    id: text("id").primaryKey(),
+    challanId: text("challan_id").notNull().references(() => linenChallans.id),
+    itemCode: text("item_code").notNull().references(() => linenItems.code),
+    accepted: integer("accepted").notNull(),
+    damaged: integer("damaged").notNull(),
+    stained: integer("stained").notNull(),
+    condemnRequestId: text("condemn_request_id").references(() => linenCondemnRequests.id),
+    returnedAt: timestamp("returned_at", { withTimezone: true }).notNull(),
+    recordedBy: text("recorded_by").notNull(),
+  },
+  (t) => [
+    index("linen_challan_returns_challan_idx").on(t.challanId),
+    index("linen_challan_returns_at_idx").on(t.returnedAt),
+    check("linen_challan_returns_counts_ck", sql`${t.accepted} >= 0 and ${t.damaged} >= 0 and ${t.stained} >= 0 and ${t.accepted} + ${t.damaged} + ${t.stained} > 0`),
+    check("linen_challan_returns_condemn_ck", sql`(${t.damaged} > 0) = (${t.condemnRequestId} is not null)`),
+  ],
+);
+
+/**
+ * A month's recovery from a vendor below par (D2, D3): proposed by one person, approved (possibly edited) or rejected by
+ * the owner or finance — never the proposer (the CHECK says so too). Lines are frozen at the proposal: lost and damaged
+ * pieces at replacement cost, and reversals (negative) for pieces of an earlier approved recovery that came back.
+ */
+export type LinenRecoveryLine = {
+  kind: "lost" | "damaged" | "reversal"; challanId: string; itemCode: string; qty: number; unitPaise: number;
+  amountPaise: number; priced: boolean; reversesRecoveryId?: string;
+};
+export const linenRecoveries = pgTable(
+  "linen_recoveries",
+  {
+    id: text("id").primaryKey(),
+    linenVendorId: text("linen_vendor_id").notNull().references(() => linenVendors.id),
+    month: text("month").notNull(),
+    state: text("state").notNull().default("proposed"),
+    lines: jsonb("lines").$type<LinenRecoveryLine[]>().notNull(),
+    proposedPaise: bigint("proposed_paise", { mode: "number" }).notNull(),
+    approvedPaise: bigint("approved_paise", { mode: "number" }),
+    proposedBy: text("proposed_by").notNull(),
+    proposedAt: timestamp("proposed_at", { withTimezone: true }).notNull(),
+    decidedBy: text("decided_by"),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    note: text("note"),
+    /** The bill it was deducted from. */
+    billId: text("bill_id"),
+  },
+  (t) => [
+    uniqueIndex("linen_recoveries_month_uq").on(t.linenVendorId, t.month).where(sql`${t.state} <> 'rejected'`),
+    check("linen_recoveries_month_ck", sql`${t.month} ~ '^[0-9]{4}-[0-9]{2}$'`),
+    check("linen_recoveries_state_ck", sql`${t.state} in ('proposed', 'approved', 'rejected')`),
+    check("linen_recoveries_decided_ck", sql`(${t.state} = 'proposed') = (${t.decidedAt} is null)`),
+    check("linen_recoveries_approved_ck", sql`(${t.state} = 'approved') = (${t.approvedPaise} is not null)`),
+    check("linen_recoveries_four_eyes_ck", sql`${t.decidedBy} is null or ${t.decidedBy} <> ${t.proposedBy}`),
+  ],
+);
+
+/**
+ * The vendor's monthly bill, checked against the pieces accepted that month (D4). The payable is accepted × the rate in
+ * force on each return date + GST − approved recoveries; a bill above that holds the excess until stores approves it
+ * (decision 0092), never the person who checked the bill.
+ */
+export type LinenBillLine = { itemCode: string; billed: number; accepted: number; flagged: boolean; billedPaise: number; acceptedPaise: number };
+export const linenVendorBills = pgTable(
+  "linen_vendor_bills",
+  {
+    id: text("id").primaryKey(),
+    linenVendorId: text("linen_vendor_id").notNull().references(() => linenVendors.id),
+    month: text("month").notNull(),
+    vendorBillNo: text("vendor_bill_no").notNull(),
+    lines: jsonb("lines").$type<LinenBillLine[]>().notNull(),
+    billedPaise: bigint("billed_paise", { mode: "number" }).notNull(),
+    acceptedValuePaise: bigint("accepted_value_paise", { mode: "number" }).notNull(),
+    gstPaise: bigint("gst_paise", { mode: "number" }).notNull(),
+    recoveryPaise: bigint("recovery_paise", { mode: "number" }).notNull(),
+    payablePaise: bigint("payable_paise", { mode: "number" }).notNull(),
+    heldPaise: bigint("held_paise", { mode: "number" }).notNull(),
+    state: text("state").notNull(),
+    checkedBy: text("checked_by").notNull(),
+    checkedAt: timestamp("checked_at", { withTimezone: true }).notNull(),
+    decidedBy: text("decided_by"),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    note: text("note"),
+  },
+  (t) => [
+    uniqueIndex("linen_vendor_bills_no_uq").on(t.linenVendorId, t.vendorBillNo),
+    check("linen_vendor_bills_month_ck", sql`${t.month} ~ '^[0-9]{4}-[0-9]{2}$'`),
+    check("linen_vendor_bills_state_ck", sql`${t.state} in ('checked', 'held', 'approved', 'refused')`),
+    check("linen_vendor_bills_held_ck", sql`${t.heldPaise} >= 0 and (${t.state} = 'held') <= (${t.heldPaise} > 0)`),
+    check("linen_vendor_bills_four_eyes_ck", sql`${t.decidedBy} is null or ${t.decidedBy} <> ${t.checkedBy}`),
+  ],
+);
+
+/** The roles whose staff are issued uniforms (nurses, lab technicians, OT, housekeeping; more in setup). */
+export const linenUniformRoles = pgTable("linen_uniform_roles", {
+  roleKey: text("role_key").primaryKey(),
+  setBy: text("set_by").notNull(),
+  setAt: timestamp("set_at", { withTimezone: true }).notNull(),
+});
+
+/**
+ * Uniform sets against a staff member's name (staff id only, never on a challan): issue, one-for-one exchange, return.
+ * Holding = issued − returned; an exchange moves one dirty in and one clean out and leaves it unchanged (D5).
+ */
+export const linenUniformMoves = pgTable(
+  "linen_uniform_moves",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    itemCode: text("item_code").notNull().references(() => linenItems.code),
+    kind: text("kind").notNull(),
+    setsOut: integer("sets_out").notNull().default(0),
+    setsIn: integer("sets_in").notNull().default(0),
+    size: text("size"),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+    by: text("by").notNull(),
+  },
+  (t) => [
+    index("linen_uniform_moves_user_idx").on(t.userId, t.at),
+    check("linen_uniform_moves_kind_ck", sql`${t.kind} in ('issue', 'exchange', 'return')`),
+    check("linen_uniform_moves_sets_ck", sql`${t.setsOut} >= 0 and ${t.setsIn} >= 0 and ${t.setsOut} + ${t.setsIn} > 0`),
+    check("linen_uniform_moves_shape_ck", sql`(${t.kind} = 'issue' and ${t.setsIn} = 0) or (${t.kind} = 'return' and ${t.setsOut} = 0) or (${t.kind} = 'exchange' and ${t.setsIn} = ${t.setsOut})`),
+  ],
+);
+
+/** The plant's licences: the wastewater (ETP) consent and the boiler licence, with expiry (D8). One live per kind. */
+export const linenLicences = pgTable(
+  "linen_licences",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull(),
+    licenceNo: text("licence_no").notNull(),
+    authority: text("authority").notNull(),
+    validFrom: date("valid_from", { mode: "string" }).notNull(),
+    validTo: date("valid_to", { mode: "string" }).notNull(),
+    active: boolean("active").notNull().default(true),
+    filedBy: text("filed_by").notNull(),
+    filedAt: timestamp("filed_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("linen_licences_live_uq").on(t.kind).where(sql`${t.active}`),
+    check("linen_licences_kind_ck", sql`${t.kind} in ('etp_consent', 'boiler')`),
+    check("linen_licences_dates_ck", sql`${t.validTo} >= ${t.validFrom}`),
   ],
 );

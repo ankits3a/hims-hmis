@@ -1842,6 +1842,13 @@
       "when": 1793028205309,
       "tag": "0263_laundry_floor",
       "breakpoints": true
+    },
+    {
+      "idx": 263,
+      "version": "7",
+      "when": 1793122091936,
+      "tag": "0264_laundry_vendor",
+      "breakpoints": true
     }
   ]
 }

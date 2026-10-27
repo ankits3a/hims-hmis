@@ -23,6 +23,8 @@ export const LINEN_STANDARD_ITEMS = [
   { code: "ot_drape", name: "OT drape", unitsPerSet: 0, sort: 8, stream: "theatre" },
   // LD-1: baby linen washes in its own stream, never with adult linen (D7).
   { code: "baby_wrap", name: "Baby wrap", unitsPerSet: 0, sort: 9, stream: "baby" },
+  // LD-2 (#979): a staff uniform set; held against a staff id, never on a ward's par.
+  { code: "uniform_set", name: "Uniform set", unitsPerSet: 0, sort: 10, stream: "uniform" },
 ] as const;
 
 /** LD-1 (#978) — the wash streams: each travels, batches and washes apart. */
@@ -121,7 +123,14 @@ export const sendToLaundryInput = z.object({
   /** The laundry's own name as on its challan — free text, not a staff record. */
   vendorName: z.string().trim().max(80).optional(),
   idempotencyKey: key.optional(),
-}).strict().refine((v) => v.lines !== undefined || v.bagTags !== undefined, { message: "lines or bagTags" });
+  /** LD-2: the vendor and the dock weight — the outward challan (required once vendor laundry is live). */
+  linenVendorId: z.string().min(1).max(64).optional(),
+  weightGrams: z.number().int().positive().max(2_000_000).optional(),
+  /** LD-2: a rush batch is due back within the vendor's rush turnaround. */
+  rush: z.boolean().optional(),
+  /** LD-2: tagged pieces scanned at the soiled room; each moves as itself. */
+  pieceTags: z.array(z.string().trim().min(3).max(64)).min(1).max(500).optional(),
+}).strict().refine((v) => v.lines !== undefined || v.bagTags !== undefined || v.pieceTags !== undefined, { message: "lines, bagTags or pieceTags" });
 export type SendToLaundryInput = z.infer<typeof sendToLaundryInput>;
 
 /** What came back for a batch, per item. An item of the batch left out came back as 0. */
@@ -139,7 +148,9 @@ export const requestCondemnInput = z.object({
   itemCode,
   qty: pieces,
   reason: z.string().trim().min(3).max(200),
-}).strict();
+  /** LD-2: a tagged piece condemned by its tag (qty 1). */
+  tag: z.string().trim().min(3).max(64).optional(),
+}).strict().refine((v) => v.tag === undefined || v.qty === 1, { message: "a tag is one piece" });
 export type RequestCondemnInput = z.infer<typeof requestCondemnInput>;
 
 export const decideCondemnInput = z.object({ requestId: id, note: z.string().trim().max(200).optional() }).strict();
@@ -197,6 +208,8 @@ export const signPickupInput = z.object({
   roundId: id,
   lines: lines.optional(),
   bags: z.array(z.object({ tag: bagTag }).strict()).max(40).optional(),
+  /** LD-2: tagged pieces scanned at the ward; each moves as itself (D6). */
+  pieceTags: z.array(z.string().trim().min(3).max(64)).min(1).max(500).optional(),
   wardSign: signature.optional(),
   runnerOnlyReason: reason.optional(),
 }).strict();
@@ -236,8 +249,14 @@ export const finishCycleInput = z.object({
   tempC: z.number().int().min(0).max(120),
   holdMin: z.number().int().min(0).max(180),
   chemical: z.string().trim().min(2).max(120),
+  /** LD-2: the dry weight loaded, in grams — the plant's kg washed (D7). */
+  loadGrams: z.number().int().positive().max(1_000_000).optional(),
 }).strict();
 export const batchRefInput = z.object({ batchId: id }).strict();
+/** LD-2: plant work sent to the vendor leaves on a challan too. */
+export const routeToVendorInput = z.object({
+  batchId: id, linenVendorId: id.optional(), weightGrams: z.number().int().positive().max(2_000_000).optional(), rush: z.boolean().optional(),
+}).strict();
 
 /** Quality check of one batch, per item: the four outcomes add up to the pieces washed. */
 export const recordQcInput = z.object({
@@ -280,7 +299,7 @@ export const LINEN_REFUSALS = {
   bag_gone: { sentence: "This bag has already left the ward.", fix: "Check the tag against the round sheet." },
   bag_not_here: { sentence: "This bag is not waiting in the soiled room.", fix: "Pick the bag up on a round first." },
   bag_wrong_batch: { sentence: "An infected bag goes only in an infected batch, and an ordinary bag only in an ordinary one.", fix: "Send it in the other batch." },
-  tag_in_use: { sentence: "A bag with this tag is still on the floor.", fix: "Use another tag." },
+  tag_in_use: { sentence: "This tag is already in use (a bag still on the floor, or a registered piece).", fix: "Use another tag." },
   unknown_bed: { sentence: "This bed is not in the register.", fix: "Pick the bed from the list." },
   // LD-1 — holds
   on_hold: { sentence: "This linen is on hold and cannot go to the laundry.", fix: "Wait for the hold's owner to release it." },
@@ -309,6 +328,32 @@ export const LINEN_REFUSALS = {
   qc_missing: { sentence: "This batch has not been through quality check.", fix: "Record the quality check first." },
   not_cssd: { sentence: "The signer is not a CSSD receiver.", fix: "Ask the CSSD nurse to sign." },
   exceeds_mending: { sentence: "More pieces than are at mending.", fix: "Check the count." },
+  // LD-2 (#979)
+  challan_required: { sentence: "A vendor batch leaves only on a challan with the vendor and the weight.", fix: "Pick the vendor and weigh the batch." },
+  unknown_vendor: { sentence: "This laundry vendor is not set up.", fix: "Pick the vendor from the list." },
+  vendor_taken: { sentence: "A vendor of this name exists.", fix: "Use the existing vendor." },
+  use_challan: { sentence: "This batch went on a challan.", fix: "Record the return against its challan." },
+  unknown_challan: { sentence: "This challan does not exist.", fix: "Pick the challan from the list." },
+  challan_closed: { sentence: "Everything on this challan is back.", fix: "Pick an open challan." },
+  month_open: { sentence: "The month is not over yet.", fix: "Raise the recovery after the month ends." },
+  within_par: { sentence: "The vendor is within par this month: nothing to recover.", fix: "Read the report; no recovery is due." },
+  recovery_exists: { sentence: "A recovery for this vendor and month is already raised.", fix: "Decide the one that is open." },
+  unknown_recovery: { sentence: "This recovery does not exist.", fix: "Pick it from the list." },
+  not_approver: { sentence: "You cannot approve this.", fix: "Ask the owner, finance or stores, as the case needs." },
+  no_rate: { sentence: "No rate card for this item on that date.", fix: "Set the vendor's rate for the item." },
+  bill_exists: { sentence: "This bill number is already checked.", fix: "Open the checked bill." },
+  unknown_bill: { sentence: "This bill does not exist.", fix: "Pick it from the list." },
+  bill_closed: { sentence: "This bill holds nothing for approval.", fix: "Refresh the list." },
+  not_entitled: { sentence: "This person's role is not issued uniforms.", fix: "Add the role in uniform setup, if it should be." },
+  above_entitlement: { sentence: "This would give more than three uniform sets.", fix: "Exchange a dirty set instead." },
+  one_for_one: { sentence: "A clean set is given only for a dirty set.", fix: "Take the same number of dirty sets." },
+  exchange_unmatched: { sentence: "This person holds fewer sets than are being exchanged.", fix: "Issue sets first, or count again." },
+  exceeds_held: { sentence: "More sets than this person holds.", fix: "Check the count." },
+  unknown_user: { sentence: "This staff member is not in the register.", fix: "Pick the staff member from the list." },
+  piece_condemned: { sentence: "This tag is on a condemned piece.", fix: "Take the piece out; do not count it." },
+  unknown_piece: { sentence: "This tag is not registered.", fix: "Register the tag on its piece first." },
+  piece_wrong_item: { sentence: "This tag is on another item.", fix: "Check the piece." },
+  licence_dates: { sentence: "The licence ends before it starts.", fix: "Check the dates." },
 } as const satisfies Record<string, { sentence: string; fix: string }>;
 export type LinenRefusalCode = keyof typeof LINEN_REFUSALS;
 
@@ -461,3 +506,110 @@ export type LinenFloorView = {
   beds: { bedId: string; bedName: string; wardId: string }[];
 };
 export type LinenSealedBag = { tag: string; wardId: string; bedId: string | null; bedName: string | null; infected: boolean; held: boolean };
+
+/* ═══ LD-2 (#979, decisions 0087 and 0092) — vendor laundry, uniforms, piece tags, chemicals, licences ═══ */
+
+const paise = z.number().int().min(0).max(1_000_000_000);
+const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
+
+/** The standard turnaround (DECIDED): 24 hours routine, 12 hours theatre and rush; editable per vendor. */
+export const LINEN_TURNAROUND_HOURS = { routine: 24, rush: 12 } as const;
+/** A piece still out this many days after its batch was due is lost (DECIDED). */
+export const LINEN_LOST_AFTER_DAYS = 7;
+/** Below par (decision 0087, small-month floor decision 0092). */
+export const LINEN_PAR = { lossRate: 0.005, lateRate: 0.1, smallMonthPieces: 1000, smallMonthMaxLoss: 5 } as const;
+/** Uniform sets per person: one worn, one in the wash, one spare (DECIDED). */
+export const LINEN_UNIFORM_ENTITLEMENT = 3;
+/** A licence is red this many days before it expires (spec #979 D8). */
+export const LINEN_LICENCE_RED_DAYS = 60;
+export const LINEN_LICENCE_KINDS = ["etp_consent", "boiler"] as const;
+export type LinenLicenceKind = (typeof LINEN_LICENCE_KINDS)[number];
+/** The stores cost centre a laundry issue is charged to (stock_ledger.cost_center). */
+export const LAUNDRY_COST_CENTRE = "laundry";
+
+/** Below par this month? Pure: the report and the screen use the same rule. */
+export function linenBelowPar(m: { piecesSent: number; lost: number; damaged: number; batches: number; lateBatches: number }): { belowPar: boolean; loss: boolean; late: boolean } {
+  const bad = m.lost + m.damaged;
+  const loss = m.piecesSent < LINEN_PAR.smallMonthPieces ? bad > LINEN_PAR.smallMonthMaxLoss : bad > m.piecesSent * LINEN_PAR.lossRate;
+  const late = m.batches > 0 && m.lateBatches > m.batches * LINEN_PAR.lateRate;
+  return { belowPar: loss || late, loss, late };
+}
+
+export const addLinenVendorInput = z.object({
+  name: z.string().trim().min(2).max(80),
+  vendorId: id.optional(),
+  turnaroundHours: z.number().int().min(1).max(240).optional(),
+  rushTurnaroundHours: z.number().int().min(1).max(240).optional(),
+  gstRateBps: z.number().int().min(0).max(2800).optional(),
+}).strict();
+export const setVendorRateInput = z.object({ linenVendorId: id, itemCode, ratePaise: paise, effectiveFrom: isoDay }).strict();
+/** The item master for linen: its stores item (last goods-receipt price) and its own price per piece. */
+export const setLinenItemCostInput = z.object({
+  itemCode, materialsItemId: id.nullable().optional(), pricePaise: paise.nullable().optional(),
+}).strict();
+/** At the dock, per item: accepted, refused damaged, refused stained (back to the vendor for a free rewash). */
+export const recordChallanReturnInput = z.object({
+  challanId: id,
+  lines: z.array(z.object({ itemCode, accepted: count, damaged: count, stained: count }).strict()).min(1).max(20),
+}).strict();
+export const raiseRecoveryInput = z.object({ linenVendorId: id, month }).strict();
+export const decideRecoveryInput = z.object({ recoveryId: id, amountPaise: z.number().int().min(-1_000_000_000).max(1_000_000_000).optional(), note: z.string().trim().max(200).optional() }).strict();
+export const checkVendorBillInput = z.object({
+  linenVendorId: id,
+  month,
+  vendorBillNo: z.string().trim().min(1).max(40),
+  lines: z.array(z.object({ itemCode, pieces: count, amountPaise: paise }).strict()).min(1).max(20),
+  /** The bill's total as the vendor wrote it, GST included. */
+  billedPaise: paise,
+}).strict();
+export const decideBillInput = z.object({ billId: id, note: z.string().trim().max(200).optional() }).strict();
+export const setUniformRoleInput = z.object({ roleKey: z.string().trim().min(2).max(60), entitled: z.boolean() }).strict();
+export const issueUniformInput = z.object({ userId: id, sets: z.number().int().min(1).max(3), size: z.string().trim().min(1).max(10).optional(), itemCode: itemCode.optional() }).strict();
+export const exchangeUniformInput = z.object({ userId: id, dirty: z.number().int().min(1).max(3), clean: z.number().int().min(1).max(3), itemCode: itemCode.optional() }).strict();
+export const returnUniformInput = z.object({ userId: id, sets: z.number().int().min(1).max(3), itemCode: itemCode.optional() }).strict();
+export const registerPieceInput = z.object({ itemCode, tagUid: z.string().trim().min(3).max(64) }).strict();
+export const fileLicenceInput = z.object({
+  kind: z.enum(LINEN_LICENCE_KINDS), licenceNo: z.string().trim().min(2).max(60), authority: z.string().trim().min(2).max(120),
+  validFrom: isoDay, validTo: isoDay,
+}).strict();
+export const linenMonthQuery = z.object({ month }).strict();
+
+export type LinenVendorCard = { id: string; name: string; turnaroundHours: number; rushTurnaroundHours: number; gstRateBps: number };
+export type LinenChallanLine = { itemCode: string; sent: number; accepted: number; damaged: number; stained: number; missing: number };
+export type LinenChallanCard = {
+  id: string; challanNo: string; batchId: string; linenVendorId: string; vendorName: string; pieces: number; weightGrams: number;
+  rush: boolean; sentAt: string; dueAt: string; late: boolean; open: boolean; lines: LinenChallanLine[];
+};
+export type LinenRecoveryLineView = {
+  kind: "lost" | "damaged" | "reversal"; challanId: string; itemCode: string; qty: number; unitPaise: number; amountPaise: number;
+  priced: boolean; reversesRecoveryId?: string;
+};
+export type LinenReversal = { recoveryId: string; challanId: string; itemCode: string; qty: number; amountPaise: number };
+export type LinenVendorMonthReport = {
+  linenVendorId: string; vendorName: string; month: string; piecesSent: number; lost: number; damaged: number; batches: number;
+  lateBatches: number; belowPar: boolean; lossBelowPar: boolean; lateBelowPar: boolean; monthOver: boolean;
+  proposed: { lines: LinenRecoveryLineView[]; totalPaise: number } | null;
+  reversals: LinenReversal[];
+  recovery: { id: string; state: string; proposedPaise: number; approvedPaise: number | null; proposedBy: string } | null;
+};
+export type LinenBillCard = {
+  id: string; linenVendorId: string; month: string; vendorBillNo: string;
+  lines: { itemCode: string; billed: number; accepted: number; flagged: boolean; billedPaise: number; acceptedPaise: number }[];
+  billedPaise: number; acceptedValuePaise: number; gstPaise: number; recoveryPaise: number; payablePaise: number; heldPaise: number;
+  state: "checked" | "held" | "approved" | "refused"; checkedBy: string;
+};
+export type LinenUniformHolding = { userId: string; name: string; staffCode: string; sets: number; size: string | null };
+export type LinenUniformDue = LinenUniformHolding & { firstIssuedAt: string; monthsUsed: number; replacementPaise: number; deductionPaise: number };
+export type LinenChemicalLine = { itemId: string; name: string; uom: string; qty: number; costPaise: number; perKg: number; costPerKgPaise: number };
+export type LinenChemicalUse = {
+  month: string; kgWashed: number; items: LinenChemicalLine[]; inHouseCostPerKgPaise: number | null;
+  vendorKgSent: number; vendorCostPerKgPaise: number | null;
+};
+export type LinenLicenceRow = { id: string; kind: LinenLicenceKind; licenceNo: string; authority: string; validTo: string; daysLeft: number; state: "ok" | "red" | "expired" };
+export type LinenVendorDeskView = {
+  serverNow: string; month: string; vendors: LinenVendorCard[]; openChallans: LinenChallanCard[]; reports: LinenVendorMonthReport[];
+  bills: LinenBillCard[]; recoveries: { id: string; vendorName: string; month: string; state: string; proposedPaise: number; approvedPaise: number | null; proposedBy: string }[];
+  licences: LinenLicenceRow[]; chemicals: LinenChemicalUse;
+};
+export type LinenUniformView = { serverNow: string; roles: string[]; holdings: LinenUniformHolding[]; dues: LinenUniformDue[] };

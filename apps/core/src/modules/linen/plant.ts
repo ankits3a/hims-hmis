@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   addMachineInput, batchRefInput, finishCycleInput, handToCssdInput, linenDisinfected, machineDownInput, machineUpInput,
-  mendReturnInput, newId, recordQcInput, startCycleInput,
+  mendReturnInput, newId, recordQcInput, routeToVendorInput, startCycleInput,
 } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import {
@@ -13,6 +13,7 @@ import { raiseTicket } from "../maintenance";
 import { LinenError } from "./errors";
 import { signerOf } from "./floor";
 import { LINEN_SYSTEM } from "./kinds";
+import { writeChallan } from "./vendor";
 import { lock, movement, parse, requireItems, stamp, tx } from "./intents";
 import { LINEN_CSSD_RECEIVE } from "./manifest";
 import type { Actor, LinenMachineCard, LinenMachineKind, LinenPlantBatch, LinenPlantView, LinenStream, LinenBatchState } from "@hmis/contracts";
@@ -139,6 +140,7 @@ export async function finishCycle(exec: Exec, actor: Actor, raw: unknown, nowIn?
     const disinfected = c.infected ? linenDisinfected(input.tempC, input.holdMin) : null;
     const row = (await t.update(linenWashCycles).set({
       finishedBy: actor.id, finishedAt: now, tempC: input.tempC, holdMin: input.holdMin, chemical: input.chemical, disinfected,
+      loadGrams: input.loadGrams ?? null,
     }).where(eq(linenWashCycles.id, c.id)).returning())[0]!;
     if (disinfected === false) {
       const ids = (await t.select({ id: linenCycleBatches.batchId }).from(linenCycleBatches).where(eq(linenCycleBatches.cycleId, c.id))).map((r) => r.id);
@@ -167,13 +169,21 @@ export async function releaseBatch(exec: Exec, _actor: Actor, raw: unknown, nowI
   });
 }
 
-/** Waiting in-house work goes to the vendor instead (the "send to vendor" button of D5). */
-export async function routeToVendor(exec: Exec, _actor: Actor, raw: unknown): Promise<BatchRow> {
-  const input = parse(batchRefInput, raw);
+/**
+ * Waiting in-house work goes to the vendor instead (the "send to vendor" button of D5). LD-2 (D1): it leaves on an
+ * outward challan (vendor + weight) once vendor laundry is live.
+ */
+export async function routeToVendor(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<BatchRow> {
+  const input = parse(routeToVendorInput, raw);
   return tx(exec, async (t) => {
     const b = await batchFor(t, input.batchId);
     if (b.mode !== "in_house" || (b.state !== "sent" && b.state !== "rewash")) throw new LinenError("not_in_plant", { batchId: b.id, state: b.state });
-    return (await t.update(linenLaundryBatches).set({ mode: "vendor", state: "sent" }).where(eq(linenLaundryBatches.id, b.id)).returning())[0]!;
+    const row = (await t.update(linenLaundryBatches).set({ mode: "vendor", state: "sent" }).where(eq(linenLaundryBatches.id, b.id)).returning())[0]!;
+    const now = await stamp(t, nowIn);
+    const lines = await t.select({ itemCode: linenMovements.itemCode, qty: linenMovements.qty }).from(linenMovements)
+      .where(and(eq(linenMovements.batchId, b.id), eq(linenMovements.kind, "laundry_out")));
+    await writeChallan(t, actor, row, input, lines, now);
+    return row;
   });
 }
 

@@ -5,6 +5,7 @@ import { linenBags, linenMovements, linenRounds } from "../../kernel/db/schema";
 import { LinenError } from "./errors";
 import { requireNotHeld, wardOfBed } from "./holds";
 import { issueToWardIn, lock, movement, parse, requireItems, requireOnHand, requireWard, stamp, tx, upToPar } from "./intents";
+import { pieceLines } from "./pieces";
 import { soiledPool } from "./reads";
 import type { Actor, LinenBagCard, LinenRoundCard, LinenRoundKind, LinenSealedBag, LinenSoiledRoomView } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -87,23 +88,28 @@ export async function signPickup(exec: Exec, actor: Actor, raw: unknown, nowIn?:
   const input = parse(signPickupInput, raw);
   const loose = input.lines ?? [];
   const tags = (input.bags ?? []).map((b) => b.tag);
-  if (loose.length === 0 && tags.length === 0) throw new LinenError("bad_input", { issues: ["lines or bags"] });
+  const pieceTags = input.pieceTags ?? [];
+  if (loose.length === 0 && tags.length === 0 && pieceTags.length === 0) throw new LinenError("bad_input", { issues: ["lines, bags or pieceTags"] });
   if (new Set(tags).size !== tags.length) throw new LinenError("duplicate_item", { tags });
   const wardSigner = await requireSignature(exec, actor, input);
   return tx(exec, async (t) => {
     const round = await openRoundFor(t, input.roundId, "pickup");
     const wardId = round.wardResourceId;
     if (loose.length > 0) await requireItems(t, loose);
+    // LD-2 (D6): each scanned piece moves as itself; a hand count moves the same totals.
+    const tagged = await pieceLines(t, pieceTags);
     await lock(t, `ward:${wardId}`);
     const now = await stamp(t, nowIn);
     const bags: BagRow[] = [];
     for (const tag of tags) bags.push(await bagForPickup(t, tag, wardId));
     const taken = new Map<string, number>();
     addLines(taken, loose);
+    addLines(taken, tagged);
     for (const b of bags) addLines(taken, b.lines);
     await requireOnHand(t, wardId, [...taken].map(([itemCode, qty]) => ({ itemCode, qty })), now);
     const rows = [
       ...loose.map((l) => movement("return_soiled", l, actor, now, { wardResourceId: wardId, roundId: round.id })),
+      ...tagged.map((l) => movement("return_soiled", { itemCode: l.itemCode, qty: 1 }, actor, now, { wardResourceId: wardId, roundId: round.id, pieceId: l.pieceId })),
       ...bags.flatMap((b) => b.lines.map((l) => movement(b.infected ? "return_infected" : "return_soiled", l, actor, now, {
         wardResourceId: wardId, roundId: round.id, bagId: b.id,
       }))),
@@ -112,7 +118,7 @@ export async function signPickup(exec: Exec, actor: Actor, raw: unknown, nowIn?:
     if (bags.length > 0) await t.update(linenBags).set({ state: "picked", roundId: round.id }).where(inArray(linenBags.id, bags.map((b) => b.id)));
     const signed = (await t.update(linenRounds).set({
       state: "signed", runnerId: actor.id, wardSignedBy: wardSigner,
-      runnerOnlyReason: input.runnerOnlyReason ?? null, pieces: loose.reduce((n, l) => n + l.qty, 0), bags: bags.length, signedAt: now,
+      runnerOnlyReason: input.runnerOnlyReason ?? null, pieces: loose.reduce((n, l) => n + l.qty, 0) + tagged.length, bags: bags.length, signedAt: now,
     }).where(eq(linenRounds.id, round.id)).returning())[0]!;
     return roundCard(signed);
   });
