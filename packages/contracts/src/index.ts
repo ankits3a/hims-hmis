@@ -30,6 +30,7 @@ export * from "./tasks";
 export * from "./bmw";
 export * from "./linen";
 export * from "./housekeeping";
+export * from "./canteen";
 export * from "./maintenance";
 export * from "./passes";
 export * from "./transport";

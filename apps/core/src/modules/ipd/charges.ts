@@ -97,9 +97,11 @@ export type LineFacts = {
   priced: PricedLine;
   code: string;
   versionId: string;
-  source: "ipd.nightly" | "ipd.visit" | "ipd.order" | "ipd.er";
+  source: "ipd.nightly" | "ipd.visit" | "ipd.order" | "ipd.er" | "ipd.canteen";
   /** ER lane 6 (#813): the ER line an `ipd.er` line carries. */
   erChargeLineId?: string;
+  /** CN-1 (#977): the canteen sale line an `ipd.canteen` line charges. */
+  canteenSaleLineId?: string;
   consultantUserId?: string;
   visitSeq?: number;
   /** #785 — order lines: the department order and the order item; the item is also the exception key's last part. */
@@ -120,7 +122,7 @@ export async function insertLine(tx: Tx, f: LineFacts): Promise<string | null> {
     taxablePaise: p.taxableBasePaise, cgstPaise: p.gst.cgstPaise, sgstPaise: p.gst.sgstPaise, netPaise: p.netPaise,
     gstRateBps: p.gst.rateBps, gstExempt: p.gst.exempt, source: f.source, consultantUserId: f.consultantUserId ?? null, visitSeq: f.visitSeq ?? null,
     orderId: f.orderId ?? null, orderItemId: f.orderItemId ?? null, erChargeLineId: f.erChargeLineId ?? null,
-    postedBy: f.actor.id, postedAt: f.at,
+    canteenSaleLineId: f.canteenSaleLineId ?? null, postedBy: f.actor.id, postedAt: f.at,
   }).onConflictDoNothing().returning({ id: ipdChargeLines.id });
   if (inserted.length === 0) return null;
   await tx.update(ipdChargeExceptions).set({ resolvedAt: f.at, resolvedLineId: id })

@@ -1877,6 +1877,13 @@
       "when": 1792593910586,
       "tag": "0268_ipd_ward",
       "breakpoints": true
+    },
+    {
+      "idx": 268,
+      "version": "7",
+      "when": 1792593970586,
+      "tag": "0269_canteen",
+      "breakpoints": true
     }
   ]
 }

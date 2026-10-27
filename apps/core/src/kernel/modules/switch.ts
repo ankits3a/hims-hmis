@@ -21,6 +21,8 @@ import { loadEnv } from "../config";
  */
 export const DARK_MODULE_KEYS = [
   "tasks", "ipd", "bmw", "linen", "housekeeping", "maintenance", "passes", "transport", "diet", "emergency",
+  // CN-1 (#977, decision 0088) — the canteen ships dark too: it charges the IPD bill and reads the diet's NPO.
+  "canteen",
 ] as const;
 export type DarkModuleKey = (typeof DARK_MODULE_KEYS)[number];
 

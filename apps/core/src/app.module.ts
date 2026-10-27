@@ -42,6 +42,7 @@ import { TasksModule } from "./modules/tasks";
 import { BmwModule } from "./modules/bmw";
 import { LinenModule } from "./modules/linen";
 import { HousekeepingModule } from "./modules/housekeeping";
+import { CanteenModule } from "./modules/canteen";
 import { MaintenanceModule } from "./modules/maintenance";
 import { PassesModule } from "./modules/passes";
 import { TransportModule } from "./modules/transport";
@@ -78,6 +79,7 @@ const DARK_MODULES: readonly (readonly [DarkModuleKey, Type<unknown>])[] = [
   ["transport", TransportModule], // E1.6 (#723) — the transport request, the porter's details, escort and oxygen check, the supervisor board
   ["diet", DietModule], // E4.4 (#736) — diet orders, NPO, the kitchen board and meal lists, the ward diet sheet, dietician consults
   ["emergency", EmergencyModule], // ER lane 1 (#808) — the ER desk, the tracking board and the arrival intents
+  ["canteen", CanteenModule], // CN-1 (#977) — the till, the menu and price lists, staff meal cards, the bed QR page, family meals, caterer rent
 ];
 
 @Global()

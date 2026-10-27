@@ -7,6 +7,7 @@ import { fmtIst, fmtRupees } from "../lib/format";
 import {
   getFamilyBillDetails, getFamilyGate, getFamilyView, requestFamilyCallback, sendFamilyOtp, verifyFamilyOtp,
 } from "../lib/ipd-family-api";
+import { FAMILY_TOKEN_KEY } from "../lib/canteen-api";
 import "./ipd-family.css";
 
 /*
@@ -46,7 +47,11 @@ export function FamilyPage({ token: given }: { token?: string } = {}): React.Rea
   const [failed, setFailed] = useState(false);
 
   const loadView = useCallback(() => {
-    getFamilyView(token).then((v) => { setView(v); }, (e: unknown) => {
+    getFamilyView(token).then((v) => {
+      setView(v);
+      // CN-1 (#977): the bed's canteen page may put meals on the hospital bill only with this verified link.
+      try { localStorage.setItem(FAMILY_TOKEN_KEY, token); } catch { /* private window: the bed page offers UPI only */ }
+    }, (e: unknown) => {
       const c = codeOf(e);
       if (c === "family_link_closed") setGate({ status: "closed", phoneMasked: null, purpose: "inpatient_updates" });
       else if (c === "family_session_required") { setView(null); setGate((g) => (g === null ? g : { ...g, status: "needs_otp" })); }

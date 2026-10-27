@@ -2715,6 +2715,14 @@
       }
     }
   },
+  "canteen": {
+    "mealCard": "Meal card",
+    "back": "Back",
+    "offline": "No connection. Showing nothing.",
+    "noCard": "No meal card. Ask finance.",
+    "qrLabel": "Meal card QR",
+    "showAtTill": "Show at the canteen till."
+  },
   "pace": {
     "title": "My pace",
     "sub": "Avg time per consultation",
