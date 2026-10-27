@@ -5,8 +5,8 @@ import {
 } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import {
-  linenCondemnRequests, linenCycleBatches, linenLaundryBatches, linenMachines, linenMovements, linenQcResults, linenWashCycles,
-  resources,
+  linenCondemnRequests, linenCycleBatches, linenLaundryBatches, linenMachines, linenMovements, linenQcResults, linenVendors,
+  linenWashCycles, resources,
 } from "../../kernel/db/schema";
 import { isModuleOn } from "../../kernel/modules/switch";
 import { raiseTicket } from "../maintenance";
@@ -314,8 +314,10 @@ export async function plantView(exec: Exec, now: Date): Promise<LinenPlantView> 
     id: m.id, code: m.code, kind: m.kind as LinenMachineKind, name: m.name, state: m.state as "up" | "down", downReason: m.downReason,
     running: running.has(m.id),
   }));
+  const vendors = (await exec.select({ id: linenVendors.id, name: linenVendors.name }).from(linenVendors)
+    .where(eq(linenVendors.active, true)).orderBy(asc(linenVendors.name)));
   return {
     serverNow: now.toISOString(), machines: cards, queue,
-    vendorQueue: washersUp > 0 ? [] : queue.filter((q) => q.state === "sent" || q.state === "rewash"),
+    vendorQueue: washersUp > 0 ? [] : queue.filter((q) => q.state === "sent" || q.state === "rewash"), vendors,
   };
 }

@@ -45,9 +45,10 @@ async function holdingOf(t: Exec, userId: string, itemCode: string): Promise<num
   return Number(r[0]?.n ?? 0);
 }
 
-async function staff(t: Tx, userId: string): Promise<{ id: string; active: boolean }> {
-  const u = (await t.select({ id: users.id, active: users.active }).from(users).where(eq(users.id, userId)))[0];
-  if (u === undefined) throw new LinenError("unknown_user", { userId });
+async function staff(t: Tx, ref: { userId?: string | undefined; username?: string | undefined }): Promise<{ id: string; active: boolean }> {
+  const where = ref.userId !== undefined ? eq(users.id, ref.userId) : eq(users.username, ref.username ?? "");
+  const u = (await t.select({ id: users.id, active: users.active }).from(users).where(where))[0];
+  if (u === undefined) throw new LinenError("unknown_user", { ...ref });
   return u;
 }
 
@@ -61,7 +62,7 @@ async function begin(t: Tx, userId: string, itemCode: string | undefined): Promi
 export async function issueUniform(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<{ holding: number }> {
   const input = parse(issueUniformInput, raw);
   return tx(exec, async (t) => {
-    const u = await staff(t, input.userId);
+    const u = await staff(t, input);
     if (!u.active) throw new LinenError("unknown_user", { userId: u.id });
     const item = await begin(t, u.id, input.itemCode);
     const entitled = await t.select({ k: roleAssignments.roleKey }).from(roleAssignments)
@@ -80,7 +81,7 @@ export async function exchangeUniform(exec: Exec, actor: Actor, raw: unknown, no
   const input = parse(exchangeUniformInput, raw);
   if (input.clean !== input.dirty) throw new LinenError("one_for_one", { dirty: input.dirty, clean: input.clean });
   return tx(exec, async (t) => {
-    const u = await staff(t, input.userId);
+    const u = await staff(t, input);
     const item = await begin(t, u.id, input.itemCode);
     const held = await holdingOf(t, u.id, item);
     if (held < input.dirty) throw new LinenError("exchange_unmatched", { holding: held });
@@ -93,7 +94,7 @@ export async function exchangeUniform(exec: Exec, actor: Actor, raw: unknown, no
 export async function returnUniform(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<{ holding: number }> {
   const input = parse(returnUniformInput, raw);
   return tx(exec, async (t) => {
-    const u = await staff(t, input.userId);
+    const u = await staff(t, input);
     const item = await begin(t, u.id, input.itemCode);
     const held = await holdingOf(t, u.id, item);
     if (input.sets > held) throw new LinenError("exceeds_held", { holding: held });

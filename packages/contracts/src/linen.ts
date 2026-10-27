@@ -475,6 +475,8 @@ export type LinenPlantView = {
   queue: LinenPlantBatch[];
   /** Waiting work no machine can take while every washer is down: send it to the vendor (D5). */
   vendorQueue: LinenPlantBatch[];
+  /** LD-2: the laundry vendors set up; with any, work sent to a vendor leaves on a challan (vendor + weight). */
+  vendors?: { id: string; name: string }[];
 };
 export type LinenBedWait = { bedId: string; bedName: string; wardId: string; short: Record<string, number>; rush: boolean; raisedAt: string };
 export type LinenSoiledRoomView = { general: Record<string, number>; infectedBags: LinenBagCard[] };
@@ -565,9 +567,15 @@ export const checkVendorBillInput = z.object({
 }).strict();
 export const decideBillInput = z.object({ billId: id, note: z.string().trim().max(200).optional() }).strict();
 export const setUniformRoleInput = z.object({ roleKey: z.string().trim().min(2).max(60), entitled: z.boolean() }).strict();
-export const issueUniformInput = z.object({ userId: id, sets: z.number().int().min(1).max(3), size: z.string().trim().min(1).max(10).optional(), itemCode: itemCode.optional() }).strict();
-export const exchangeUniformInput = z.object({ userId: id, dirty: z.number().int().min(1).max(3), clean: z.number().int().min(1).max(3), itemCode: itemCode.optional() }).strict();
-export const returnUniformInput = z.object({ userId: id, sets: z.number().int().min(1).max(3), itemCode: itemCode.optional() }).strict();
+/** The staff member by user id (a desk that knows it) or by the name they sign in with (typed at the counter). */
+const staffRef = { userId: id.optional(), username: z.string().trim().min(2).max(80).optional() };
+const oneStaff = (v: { userId?: string | undefined; username?: string | undefined }): boolean => (v.userId === undefined) !== (v.username === undefined);
+export const issueUniformInput = z.object({ ...staffRef, sets: z.number().int().min(1).max(3), size: z.string().trim().min(1).max(10).optional(), itemCode: itemCode.optional() }).strict()
+  .refine(oneStaff, { message: "userId or username" });
+export const exchangeUniformInput = z.object({ ...staffRef, dirty: z.number().int().min(1).max(3), clean: z.number().int().min(1).max(3), itemCode: itemCode.optional() }).strict()
+  .refine(oneStaff, { message: "userId or username" });
+export const returnUniformInput = z.object({ ...staffRef, sets: z.number().int().min(1).max(3), itemCode: itemCode.optional() }).strict()
+  .refine(oneStaff, { message: "userId or username" });
 export const registerPieceInput = z.object({ itemCode, tagUid: z.string().trim().min(3).max(64) }).strict();
 export const fileLicenceInput = z.object({
   kind: z.enum(LINEN_LICENCE_KINDS), licenceNo: z.string().trim().min(2).max(60), authority: z.string().trim().min(2).max(120),
