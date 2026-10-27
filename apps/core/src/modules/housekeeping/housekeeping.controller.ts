@@ -1,3 +1,4 @@
+import { hkMonthOf } from "@hmis/contracts";
 import { Body, Controller, Get, HttpCode, HttpException, Inject, Param, Post, Query, Req } from "@nestjs/common";
 import { CONFIG, DB, DOCUMENT_STORE } from "../../kernel/tokens";
 import { CurrentActor, Public, RequirePermission } from "../../kernel/auth/decorators";
@@ -15,8 +16,12 @@ import { bedCleans, housekeepingBoard } from "./reads";
 import { publishRota, rotaView, saveRota } from "./rota";
 import { addContractor, areaQrToken, defineArea, revokeAreaQr, saveChecklist, setHkStaff, setupView } from "./setup";
 import { finishWork, proofOf, storeWorkPhoto, workForm } from "./work";
+import { floorConsumables, floorStoresView, linkFloorStore } from "./floor-stores";
+import { inspectionsOf, recordInspection, storeInspectionPhoto } from "./inspections";
+import { contractorSla, dailyReport, toCheck } from "./reports";
 import type {
-  Actor, BedCleansView, HkChecklistView, HkContractorView, HkDoorAck, HkProofView, HkRotaView, HkSetupView, HkSupervisorView, HkWorkForm,
+  Actor, BedCleansView, HkChecklistView, HkConsumablesView, HkDailyView, HkFloorStoreView, HkInspectionView, HkInspectionsView, HkSlaView,
+  HkToCheck, HkContractorView, HkDoorAck, HkProofView, HkRotaView, HkSetupView, HkSupervisorView, HkWorkForm,
   HousekeepingBoardView,
 } from "@hmis/contracts";
 import type { AppConfig } from "../../kernel/config";
@@ -202,6 +207,79 @@ export class HousekeepingController {
   @RequirePermission(HOUSEKEEPING_ROTA_MANAGE, "hospital")
   async publish(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<HkRotaView> {
     return refusing(() => publishRota(this.db, actor, { rotaId: id }));
+  }
+
+  /* ═══ HK-2 (#974, decision 0086) ═══ */
+
+  /** Floors and their housekeeping stores, and the stores that may be linked (the setup page). */
+  @Get("floor-stores")
+  @RequirePermission(HOUSEKEEPING_SETUP_MANAGE, "hospital", { alsoAdmits: [HOUSEKEEPING_VIEW] })
+  async floorStores(): Promise<{ floors: HkFloorStoreView[]; stores: { id: string; code: string; name: string }[] }> {
+    return floorStoresView(this.db);
+  }
+
+  @Post("floor-stores")
+  @RequirePermission(HOUSEKEEPING_SETUP_MANAGE, "hospital")
+  async linkStore(@CurrentActor() actor: Actor, @Body() b: unknown): Promise<HkFloorStoreView> {
+    return refusing(() => linkFloorStore(this.db, actor, b));
+  }
+
+  /** What waits for a Pass or Fail (the staff app's check list): the ward nurse side, the supervisor, infection control. */
+  @Get("to-check")
+  @RequirePermission(IPD_BEDS_CLEAN, "hospital", { alsoAdmits: [HOUSEKEEPING_CONFIRM, HOUSEKEEPING_VERIFY_TERMINAL] })
+  async toCheck(): Promise<HkToCheck[]> {
+    return toCheck(this.db);
+  }
+
+  /** This shift's random inspections. */
+  @Get("inspections")
+  @RequirePermission(HOUSEKEEPING_VIEW, "hospital", { alsoAdmits: [HOUSEKEEPING_CONFIRM] })
+  async inspections(): Promise<HkInspectionsView> {
+    return inspectionsOf(this.db);
+  }
+
+  /** One photo of the inspected area, base64 in JSON. */
+  @Post("inspections/:id/photo")
+  @RequirePermission(HOUSEKEEPING_CONFIRM, "hospital")
+  async inspectionPhoto(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() b: unknown): Promise<{ photoKey: string }> {
+    const x = body(b);
+    if (typeof x.mimeType !== "string" || typeof x.imageBase64 !== "string") {
+      throw new HttpException({ statusCode: 400, code: "bad_input", message: "A photo is needed.", fix: "Take the photo again." }, 400);
+    }
+    const bytes = Buffer.from(x.imageBase64, "base64");
+    return refusing(() => storeInspectionPhoto(this.db, this.store, actor, { inspectionId: id, mime: x.mimeType as string, bytes }));
+  }
+
+  /** Score an inspection: the area's QR, every audit item, the photo key. A fail raises the floor team's rework. */
+  @Post("inspections/:id")
+  @RequirePermission(HOUSEKEEPING_CONFIRM, "hospital")
+  async inspect(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() b: unknown): Promise<HkInspectionView> {
+    return refusing(() => recordInspection(this.db, this.config.secretKey, actor, { ...body(b), inspectionId: id }));
+  }
+
+  /** A month's consumables per floor (`?month=YYYY-MM`, default this month). */
+  @Get("reports/consumables")
+  @RequirePermission(HOUSEKEEPING_VIEW, "hospital")
+  async consumables(@Query("month") month?: string): Promise<HkConsumablesView> {
+    return refusing(() => floorConsumables(this.db, month ?? hkMonthOf(new Date())));
+  }
+
+  /** The contractor SLA report (`?month=YYYY-MM`): a report only, no money. */
+  @Get("reports/sla")
+  @RequirePermission(HOUSEKEEPING_VIEW, "hospital")
+  async sla(@Query("month") month?: string): Promise<HkSlaView> {
+    return refusing(() => contractorSla(this.db, month ?? hkMonthOf(new Date())));
+  }
+
+  /** A floor's shift report (`?floor=<id>&at=<ISO instant in the shift>`, default the shift now). */
+  @Get("reports/daily")
+  @RequirePermission(HOUSEKEEPING_VIEW, "hospital")
+  async daily(@Query("floor") floor?: string, @Query("at") at?: string): Promise<HkDailyView> {
+    if (floor === undefined || floor === "") {
+      throw new HttpException({ statusCode: 400, code: "bad_input", message: "A floor is needed.", fix: "Pick a floor." }, 400);
+    }
+    const when = at !== undefined && !Number.isNaN(Date.parse(at)) ? new Date(at) : new Date();
+    return refusing(() => dailyReport(this.db, floor, when));
   }
 
   /**

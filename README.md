@@ -1048,30 +1048,30 @@ and `postGrn` refuse the capturer with `grn_same_person` — on the screen, the 
 controlled-cabinet receipt alike. Each change appends `store_settings.changed` (from, to, who). The screen
 recommends turning it on once a second trained person is on every shift.
 
-| Permission | materials_head | storekeeper | pharmacy |
-|---|---|---|---|
-| `materials.items.read` | ✓ | ✓ | ✓ |
-| `materials.items.manage` | ✓ | | |
-| `materials.vendors.read` | ✓ | ✓ | |
-| `materials.vendors.manage` | ✓ | | |
-| `materials.stores.manage` | ✓ | | |
-| `materials.stock.read` | ✓ | ✓ | ✓ |
-| `materials.grn.capture` | ✓ | ✓ | |
-| `materials.grn.qc` | ✓ | | ✓ |
-| `materials.stock.issue` | ✓ | ✓ | |
-| `materials.stock.receive` | ✓ | ✓ | ✓ |
-| `materials.recall.manage` | ✓ | | |
-| `materials.counts.manage` | ✓ | | |
-| `materials.counts.perform` | ✓ | ✓ | ✓ |
-| `materials.po.raise` | ✓ | | ✓ |
-| `materials.bills.manage` | ✓ | | ✓ |
-| `materials.bills.accept_difference` | ✓ | | |
-| `materials.payments.prepare` | ✓ | | |
-| `materials.payments.record` | ✓ | | |
-| `materials.returns.manage` | ✓ | | ✓ |
-| `materials.returns.approve` | ✓ | | |
-| `materials.writeoffs.manage` | ✓ | | |
-| `materials.items.merge` | ✓ | | |
+| Permission | materials_head | storekeeper | pharmacy | services_supervisor |
+|---|---|---|---|---|
+| `materials.items.read` | ✓ | ✓ | ✓ | |
+| `materials.items.manage` | ✓ | | | |
+| `materials.vendors.read` | ✓ | ✓ | | |
+| `materials.vendors.manage` | ✓ | | | |
+| `materials.stores.manage` | ✓ | | | |
+| `materials.stock.read` | ✓ | ✓ | ✓ | ✓ |
+| `materials.grn.capture` | ✓ | ✓ | | |
+| `materials.grn.qc` | ✓ | | ✓ | |
+| `materials.stock.issue` | ✓ | ✓ | | |
+| `materials.stock.receive` | ✓ | ✓ | ✓ | ✓ |
+| `materials.recall.manage` | ✓ | | | |
+| `materials.counts.manage` | ✓ | | | |
+| `materials.counts.perform` | ✓ | ✓ | ✓ | |
+| `materials.po.raise` | ✓ | | ✓ | |
+| `materials.bills.manage` | ✓ | | ✓ | |
+| `materials.bills.accept_difference` | ✓ | | | |
+| `materials.payments.prepare` | ✓ | | | |
+| `materials.payments.record` | ✓ | | | |
+| `materials.returns.manage` | ✓ | | ✓ | |
+| `materials.returns.approve` | ✓ | | | |
+| `materials.writeoffs.manage` | ✓ | | | |
+| `materials.items.merge` | ✓ | | | |
 
 `owner` gains nothing new: the vendor bank-change approval reaches the owner through `approvals.*`,
 which that role already holds, and a `materials.*` string for it would be a second door to one
@@ -1736,6 +1736,11 @@ rota, checklists with a scan and a photo as proof, Pass or Fail with a reason, a
 login. `services_supervisor` holds `housekeeping.setup.manage`, `housekeeping.rota.manage` and `housekeeping.confirm`;
 the new role `infection_control` holds `housekeeping.confirm`, `housekeeping.verify_terminal`, `housekeeping.view` and
 `tasks.view`.
+
+**Housekeeping reports (HK-2, issue #974, decision 0086).** Floor stores and monthly consumables per floor, random
+inspections of C and D areas, the contractor report (company names only, no money) and the daily shift report.
+The floor supervisor (`services_supervisor`) keeps the floor's housekeeping store, so it holds `materials.stock.read`
+and `materials.stock.receive` (the materials table above).
 
 **Maintenance (E1.5, issue #722, decision 0072, built 2026-10-13, awaiting owner review).** Repair tickets for beds,
 rooms, oxygen points and fixtures, worked on the task engine. A bed with a repair ticket stays blocked until the ticket

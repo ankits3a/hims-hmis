@@ -84,6 +84,9 @@ Source: `apps/core/src/modules/ipd/`
   - `IpdWardAttributesSchema`
   - `canonicalEquipment(list: readonly IpdBedEquipment[]): IpdBedEquipment[]`
   - types: `IpdBedAttributes`, `IpdBedEquipment`, `IpdGenderRule`, `IpdIsolationType`, `IpdUnitType`, `IpdWardAttributes`, `IpdWardType`
+- `bed-days.ts`
+  - `istMidnights(from: Date, to: Date, now: Date): Date[]`
+  - `occupiedBedDays(exec: Db | Tx, placeId: string, from: Date, to: Date, now: Date = new Date()): Promise<{ beds: number; occupiedBedDays: num…`
 - `bed-events.ts`
   - `IPD_BED_EVENT_NAMES`
 - `bed-flow-log.ts`

@@ -19,12 +19,14 @@ export const HOUSEKEEPING_KINDS = {
   round: "area_round",
   roundChecked: "area_round_checked",
   request: "area_request",
+  // HK-2 (#974) — the rework a failed random inspection raises on the floor team (checked by the supervisor).
+  rework: "area_rework",
 } as const;
 export type HousekeepingKind = (typeof HOUSEKEEPING_KINDS)[keyof typeof HOUSEKEEPING_KINDS];
 /** Every kind housekeeping owns, in board order. */
 export const HOUSEKEEPING_KIND_LIST: readonly HousekeepingKind[] = [
   HOUSEKEEPING_KINDS.terminal, HOUSEKEEPING_KINDS.routine, HOUSEKEEPING_KINDS.spill, HOUSEKEEPING_KINDS.request,
-  HOUSEKEEPING_KINDS.roundChecked, HOUSEKEEPING_KINDS.round, HOUSEKEEPING_KINDS.inspection,
+  HOUSEKEEPING_KINDS.roundChecked, HOUSEKEEPING_KINDS.round, HOUSEKEEPING_KINDS.rework, HOUSEKEEPING_KINDS.inspection,
 ];
 /** The two kinds that turn a bed over: their verification makes the bed available. */
 export const BED_CLEAN_KINDS: readonly HousekeepingKind[] = [HOUSEKEEPING_KINDS.routine, HOUSEKEEPING_KINDS.terminal];
@@ -81,6 +83,15 @@ export const HOUSEKEEPING_ROUTES = {
   rotas: "/housekeeping/rotas",
   rotaPublish: (rotaId: string) => `/housekeeping/rotas/${encodeURIComponent(rotaId)}/publish`,
   door: "/housekeeping/door",
+  // HK-2 (#974)
+  floorStores: "/housekeeping/floor-stores",
+  toCheck: "/housekeeping/to-check",
+  inspections: "/housekeeping/inspections",
+  inspection: (id: string) => `/housekeeping/inspections/${encodeURIComponent(id)}`,
+  inspectionPhoto: (id: string) => `/housekeeping/inspections/${encodeURIComponent(id)}/photo`,
+  consumables: "/housekeeping/reports/consumables",
+  sla: "/housekeeping/reports/sla",
+  daily: "/housekeeping/reports/daily",
 } as const;
 
 /** Housekeeping's own refusals (the engine's `TASK_REFUSALS` cover the rest): the rule and the fix. */
@@ -108,6 +119,13 @@ export const HOUSEKEEPING_REFUSALS = {
   unknown_rota: { sentence: "This rota does not exist.", fix: "Refresh the rota page." },
   rota_published: { sentence: "This rota is already published.", fix: "Make a new draft for changes." },
   unknown_person: { sentence: "This person cannot be placed on the rota.", fix: "Pick an active member of staff." },
+  // HK-2 (#974)
+  not_a_floor: { sentence: "Only a floor has a housekeeping store.", fix: "Pick a floor from the list." },
+  not_a_store: { sentence: "This is not a store.", fix: "Pick a store from the materials list." },
+  store_taken: { sentence: "This store already serves another floor.", fix: "Pick the floor's own store, or create one." },
+  unknown_inspection: { sentence: "This inspection does not exist.", fix: "Refresh the inspection list." },
+  inspection_done: { sentence: "This inspection is already scored.", fix: "Open the next one on the list." },
+  bad_month: { sentence: "A month is written as YYYY-MM.", fix: "Pick the month from the list." },
 } as const satisfies Record<string, { sentence: string; fix: string }>;
 export type HousekeepingRefusalCode = keyof typeof HOUSEKEEPING_REFUSALS;
 
@@ -285,3 +303,109 @@ export type HkNeedsYou = { taskId: string; kind: string; placeName: string | nul
 export type HkPerson = { userId: string; name: string; company: string; placement: string; load: number };
 export type HkSupervisorView = { serverNow: string; missed: HkMissedRound[]; needsYou: HkNeedsYou[]; people: HkPerson[] };
 export type HkDoorAck = { requestId: string; taskId: string };
+
+
+/* ═══ HK-2 (#974, decision 0086): floor stores, random inspections, contractor SLA, daily and monthly reports ═══ */
+
+/** DECIDED (spec #974): two random C or D areas per floor per shift. */
+export const HK_INSPECT_PER_FLOOR = 2;
+/** DECIDED (spec #974, NABH housekeeping audit): an inspection passes at 80 % or more. */
+export const HK_INSPECT_PASS_PCT = 80;
+/** The classes a random inspection draws from: toilets, public areas, support areas (no per-round check of their own). */
+export const HK_INSPECT_CLASSES: readonly HkAreaClass[] = ["C_toilet", "C_public", "D"];
+/**
+ * DECIDED: the short NABH housekeeping audit (HIC chapter: environment cleaning, BMW segregation, washroom upkeep).
+ * Ids are stable (answers store them); the words are translated on screen (`housekeeping.inspect.item.<id>`).
+ */
+export const HK_INSPECTION_ITEMS = [
+  { id: "floor", text: "Floor clean and dry, no stains" },
+  { id: "surfaces", text: "High-touch surfaces wiped (handles, switches, rails)" },
+  { id: "bins", text: "Bins emptied, lined and colour-coded" },
+  { id: "fixtures", text: "Basins, toilets and fixtures clean, no smell" },
+  { id: "supplies", text: "Soap, tissue and hand rub stocked" },
+  { id: "dust", text: "No dust, cobwebs or pests on high surfaces" },
+  { id: "signage", text: "Wet-floor sign used and cleaning log signed" },
+  { id: "clutter", text: "No clutter, linen or waste left lying" },
+] as const;
+export type HkInspectionItemId = (typeof HK_INSPECTION_ITEMS)[number]["id"];
+
+/** The score of an inspection: the share of items answered Yes, whole per cent. */
+export function hkInspectionScore(answers: readonly { ok: boolean }[]): number {
+  if (answers.length === 0) return 0;
+  return Math.round((answers.filter((a) => a.ok).length * 100) / answers.length);
+}
+
+/** A month is `YYYY-MM`, in IST. */
+export const hkMonth = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
+/** The IST month holding `at`, as `YYYY-MM`. */
+export function hkMonthOf(at: Date): string {
+  const ist = new Date(at.getTime() + IST_MS);
+  return `${String(ist.getUTCFullYear())}-${String(ist.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+/** The instants an IST month runs between: 00:00 IST on its first day to 00:00 IST on the next month's first. */
+export function hkMonthWindow(month: string): { start: Date; end: Date } {
+  const [y, m] = month.split("-").map(Number) as [number, number];
+  return { start: new Date(Date.UTC(y, m - 1, 1) - IST_MS), end: new Date(Date.UTC(y, m, 1) - IST_MS) };
+}
+
+export const linkFloorStoreInput = z.object({ floorId: id, storeId: id }).strict();
+export type LinkFloorStoreInput = z.infer<typeof linkFloorStoreInput>;
+export const recordInspectionInput = z.object({
+  inspectionId: id,
+  scan: z.string().trim().min(1).max(256),
+  answers: z.array(z.object({ itemId: id, ok: z.boolean() }).strict()).max(30),
+  photoKey: z.string().min(1).max(256).optional(),
+}).strict();
+export type RecordInspectionInput = z.infer<typeof recordInspectionInput>;
+
+export type HkFloorStoreView = { floorId: string; floorName: string; storeId: string | null; storeName: string | null };
+export type HkInspectionStatus = "due" | "passed" | "failed";
+export type HkInspectionView = {
+  id: string; areaId: string; areaName: string; areaClass: HkAreaClass; floorId: string; floorName: string | null;
+  shiftStartsAt: string; status: HkInspectionStatus; scorePct: number | null; inspectedAt: string | null;
+  /** The company whose attendant last worked the area before the inspection (null: nobody had). Never a person. */
+  company: string | null;
+  reworkTaskId: string | null;
+};
+export type HkInspectionsView = { serverNow: string; shiftStartsAt: string; inspections: HkInspectionView[] };
+
+/** One floor's month of consumables: what its store received, valued at the store's landed cost on the transfer. */
+export type HkConsumableLine = { itemId: string; itemCode: string; itemName: string; baseUom: string; qty: number; valuePaise: number };
+export type HkFloorConsumables = {
+  floorId: string; floorName: string; storeId: string; storeName: string;
+  items: HkConsumableLine[]; totalPaise: number;
+  /** IPD beds on the floor (0: not a ward floor, total only). */
+  beds: number;
+  /** Occupied bed-days by the midnight census (null when the floor has no IPD beds). */
+  occupiedBedDays: number | null;
+  /** Total ÷ occupied bed-days, whole paise (null without beds or bed-days). */
+  costPerBedDayPaise: number | null;
+};
+export type HkConsumablesView = { month: string; floors: HkFloorConsumables[]; totalPaise: number };
+
+/**
+ * One company's month (a contractor, or In-house for comparison). Report only: no money, no deduction (decision 0086),
+ * and no person — company names only.
+ */
+export type HkSlaRow = {
+  company: string; contractorId: string | null; inHouse: boolean;
+  rounds: { onTime: number; late: number; missed: number };
+  turnaround: { count: number; medianMin: number | null; p90Min: number | null };
+  firstPass: { checked: number; passedFirstTime: number; ratePct: number | null };
+  inspections: { count: number; avgScorePct: number | null };
+};
+export type HkSlaView = { month: string; rows: HkSlaRow[] };
+
+/** A count and the records behind it (task ids; inspection ids for inspections), so the count can be checked. */
+export type HkBucket = { count: number; ids: string[] };
+export type HkDailyView = {
+  floorId: string; floorName: string; shift: HkShiftKey; shiftStartsAt: string; shiftEndsAt: string;
+  rounds: { due: HkBucket; done: HkBucket; missed: HkBucket };
+  turnarounds: HkBucket & { medianMin: number | null };
+  requests: { raised: HkBucket; closed: HkBucket };
+  fails: HkBucket;
+  rework: HkBucket;
+  inspections: { drawn: HkBucket; passed: HkBucket; failed: HkBucket };
+};
+/** What a nurse or the supervisor may Pass or Fail now (the phone's check list). No patient. */
+export type HkToCheck = { taskId: string; kind: string; kindLabel: string; placeName: string | null; doneAt: string | null; terminal: boolean; fails: number };

@@ -1,6 +1,7 @@
 import { and, asc, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
 import {
   approvals, itemStockLevels, itemUoms, items, resources, stockAdjustments, stockBatches, stockLedger, stockWriteOffLines, stockWriteOffs,
+  transferLines, transfers,
 } from "../../kernel/db/schema";
 import { istDayWindow } from "../../kernel/approvals/cumulative";
 import { istDay } from "./grn";
@@ -227,4 +228,36 @@ export async function itemCatalogue(db: Db | Tx, opts: { storeResourceId?: strin
     rows: shown.map((i) => ({ ...i, packs: packs.get(i.id) ?? [], levels: levels.get(i.id) ?? [] })),
     truncated: all.length > ROW_LIMIT,
   };
+}
+
+// ═══════════════════════════════════ what a store received ═══════════════════════════════════
+
+export type StoreReceiptRow = { storeId: string; itemId: string; itemCode: string; itemName: string; baseUom: string; qty: number; valuePaise: number };
+
+/**
+ * HK-2 (#974) — what each of these stores RECEIVED by transfer between two instants (the receipt's own time), per item:
+ * the quantity received and its value at the batch's landed cost (the store's cost on the transfer). Read-only, no
+ * actor: the gate is the caller's. Housekeeping books a floor's consumption as what its cupboard receives (decision 0086).
+ */
+export async function storeReceipts(db: Db | Tx, storeIds: readonly string[], from: Date, to: Date): Promise<StoreReceiptRow[]> {
+  if (storeIds.length === 0) return [];
+  const rows = await db.select({
+    storeId: transfers.toResourceId, itemId: stockBatches.itemId,
+    qty: sql<string>`sum(${transferLines.qtyReceived})`,
+    value: sql<string>`sum(${transferLines.qtyReceived}::bigint * ${stockBatches.landedCostPaise})`,
+  }).from(transferLines)
+    .innerJoin(transfers, eq(transfers.id, transferLines.transferId))
+    .innerJoin(stockBatches, eq(stockBatches.id, transferLines.batchId))
+    .where(and(
+      inArray(transfers.toResourceId, [...storeIds]), gte(transfers.receivedAt, from), lt(transfers.receivedAt, to),
+      sql`${transferLines.qtyReceived} > 0`,
+    ))
+    .groupBy(transfers.toResourceId, stockBatches.itemId);
+  const facts = rows.length === 0 ? new Map<string, { code: string; name: string; baseUom: string }>()
+    : new Map((await db.select({ id: items.id, code: items.code, name: items.name, baseUom: items.baseUom }).from(items)
+      .where(inArray(items.id, [...new Set(rows.map((r) => r.itemId))]))).map((i) => [i.id, i]));
+  return rows.map((r) => {
+    const f = facts.get(r.itemId);
+    return { storeId: r.storeId, itemId: r.itemId, itemCode: f?.code ?? "—", itemName: f?.name ?? r.itemId, baseUom: f?.baseUom ?? "", qty: Number(r.qty), valuePaise: Number(r.value) };
+  }).sort((a, b) => a.itemName.localeCompare(b.itemName));
 }

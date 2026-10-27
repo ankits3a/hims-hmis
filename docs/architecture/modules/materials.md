@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/materials/`
 
 - **Depends on modules:** `formulary`
-- **Used by modules:** `emergency`, `ipd`, `opd`, `ot`, `pharmacy`
+- **Used by modules:** `emergency`, `housekeeping`, `ipd`, `opd`, `ot`, `pharmacy`
 - **Kernel used:** `approvals`, `auth`, `db`, `episodes`, `events`, `modules`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `consignmentDeployed`
 
@@ -258,7 +258,8 @@ Source: `apps/core/src/modules/materials/`
   - `itemCatalogue(db: Db | Tx, opts: { storeResourceId?: string | null } = {}): Promise<{ rows: CatalogueItem[]; truncated: boolean }>`
   - `lossBookings(db: Db | Tx, from: string, to: string, opts: { storeResourceId?: string | null } = {}): Promise<{ rows: LossBooking[]; truncat…`
   - `stockMovementSummary(db: Db | Tx, from: string, to: string, opts: { storeResourceId?: string | null } = {}): Promise<StockMovementSummary>`
-  - types: `CatalogueItem`, `LossBooking`, `StockInKind`, `StockMovementRow`, `StockMovementSummary`, `StockOutKind`
+  - `storeReceipts(db: Db | Tx, storeIds: readonly string[], from: Date, to: Date): Promise<StoreReceiptRow[]>`
+  - types: `CatalogueItem`, `LossBooking`, `StockInKind`, `StockMovementRow`, `StockMovementSummary`, `StockOutKind`, `StoreReceiptRow`
 - `stores.ts`
   - `createStore(tx: Tx, actor: Actor, input: { code: string; name: string; parentId?: string | null; siteId?: string; attributes?: Record<strin…`
   - `ensureTransitStore(tx: Tx, siteId = "main"): Promise<string>`

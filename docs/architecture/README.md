@@ -90,6 +90,7 @@ flowchart LR
   emergency --> tariff
   emergency --> tasks
   housekeeping --> ipd
+  housekeeping --> materials
   housekeeping --> roster
   housekeeping --> tasks
   ipd --> billing
@@ -172,12 +173,12 @@ flowchart LR
 | [doctor-desk](modules/doctor-desk.md) | lab, opd, patients, radiology, roster | — |
 | [emergency](modules/emergency.md) | billing, formulary, ipd, lab, materials, ordering, patients, roster, tariff, tasks | — |
 | [formulary](modules/formulary.md) | — | cds, emergency, ipd, materials, opd, pharmacy |
-| [housekeeping](modules/housekeeping.md) | ipd, roster, tasks | — |
+| [housekeeping](modules/housekeeping.md) | ipd, materials, roster, tasks | — |
 | [ipd](modules/ipd.md) | billing, formulary, lab, materials, opd, ordering, ot, patients, pharmacy, roster, tariff | diet, emergency, housekeeping, maintenance, passes, transport |
 | [lab](modules/lab.md) | billing, opd, patients, roster, tariff | abdm, doctor-desk, emergency, ipd, ordering, radiology |
 | [linen](modules/linen.md) | tasks | — |
 | [maintenance](modules/maintenance.md) | ipd, tasks | — |
-| [materials](modules/materials.md) | formulary | emergency, ipd, opd, ot, pharmacy |
+| [materials](modules/materials.md) | formulary | emergency, housekeeping, ipd, opd, ot, pharmacy |
 | [membership](modules/membership.md) | patients, tariff | billing, partners, pharmacy |
 | [opd](modules/opd.md) | billing, cds, formulary, materials, patients, roster | abdm, billing, doctor-desk, ipd, lab, ordering, pharmacy, radiology |
 | [ordering](modules/ordering.md) | billing, lab, opd, radiology | emergency, ipd |

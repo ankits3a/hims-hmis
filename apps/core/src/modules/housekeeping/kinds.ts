@@ -140,3 +140,23 @@ export const AREA_REQUEST = defineTaskKind({
   ladderMin: [0, 15],
   ...WORKED,
 });
+
+/**
+ * HK-2 (#974) — the rework a failed random inspection raises at the area: the floor team's pool while a rota is
+ * published, proved like any worked task (scan, checklist, photo), then checked by the supervisor — HK-1's fail path, so
+ * a failed check reopens it and a second fail puts it in "Needs you".
+ */
+export const AREA_REWORK = defineTaskKind({
+  kind: HOUSEKEEPING_KINDS.rework,
+  label: "Rework after inspection",
+  skill: HOUSEKEEPING_SKILL,
+  acceptWithinMin: 10,
+  doneWithinMin: 60,
+  escalateTo: SERVICES_SUPERVISOR_ROLE,
+  proofNeeded: "scan",
+  verifyRequired: true,
+  verifierPermission: [HOUSEKEEPING_CONFIRM, HOUSEKEEPING_VERIFY_TERMINAL],
+  ladderMin: [0, 30],
+  ...WORKED,
+  poolOnly: hkPoolOnly,
+});
