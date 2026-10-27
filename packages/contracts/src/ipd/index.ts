@@ -30,6 +30,8 @@ export * from "./family";
 export * from "./nursing";
 // WM-1 (#982) — the ward's nurses: shift assignment, acuity, ratio, float, the in-charge cockpit.
 export * from "./nurse-ward";
+// WM-2 (#983, decisions 0089 / 0091) — ward safety, stock and quality.
+export * from "./ward-safety";
 // E4.2 (#734) — rounds: the doctor's list, the patient's round page, the order event contract eMAR consumes.
 export * from "./rounds";
 // E4.3 (#735) — the eMAR: verify queue, the MAR, the bedside, labels, override counts.

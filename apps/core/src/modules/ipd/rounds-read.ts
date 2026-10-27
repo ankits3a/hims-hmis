@@ -16,6 +16,7 @@ import { IpdRefusal } from "./errors";
 import { drugFactsOf } from "./orders";
 import { IPD_DISCHARGE_DECLARE, IPD_ORDER_PLACE, IPD_ROUND_SIGN } from "./permissions";
 import { consultantIdsAmong, mayCosign, onTeam, treatingTeamOf, unitsOn } from "./rounds-team";
+import { linesOf } from "./ward-lines";
 import type {
   Actor, IpdAdmissionState, IpdConsultView, IpdCosignItem, IpdOrderView, IpdRoundIdentity, IpdRoundPatient, IpdRoundView, IpdRoundsList,
   IpdRoundsRow, IpdRoundsWhy,
@@ -249,6 +250,8 @@ export async function readRoundPatient(db: Db, actor: Actor, admissionId: string
     vitals: null,
     rounds: rounds.map((r) => roundView(r, names)),
     orders: [...orders].sort((x, y) => active(x) - active(y)).map((o) => orderView(o, names, testNames)),
+    // WM-2 (#983): every line in, with today's "still needed?" (a sealed patient keeps the safety facts).
+    lines: await linesOf(db, [a.id], now),
     consults: consults.map((c): IpdConsultView => ({
       consultId: c.id, consultantId: c.consultantId, consultantName: names.get(c.consultantId) ?? c.consultantId, question: c.question,
       urgency: c.urgency as "routine" | "urgent", status: c.status as "open" | "closed",

@@ -110,13 +110,14 @@ export type IpdNurseStation = z.infer<typeof IpdNurseStationSchema>;
 
 /** One line of "my shift" (board D1), in time order. */
 export const IpdShiftItemSchema = z.object({
-  kind: z.enum(["ews", "vitals", "assessment", "handover"]),
+  /** WM-2 (#983): `care_check` (a fall / pressure care plan's timed check; refId = the plan) and `restraint_check` (refId = the restraint). */
+  kind: z.enum(["ews", "vitals", "assessment", "handover", "care_check", "restraint_check"]),
   admissionId: IpdIdSchema,
   bedCode: z.string().nullable(),
   name: z.string(),
   dueAt: IpdInstantSchema,
   overdue: z.boolean(),
-  /** ews: the alert; handover: the handover id. */
+  /** ews: the alert; handover: the handover id; care_check: the care plan; restraint_check: the restraint. */
   refId: IpdIdSchema.nullable(),
   band: z.enum(IPD_EWS_BANDS).nullable(),
 });

@@ -21,7 +21,7 @@ import { withTx } from "../../src/kernel/db/client";
 import { pharmacyManifest } from "../../src/modules/pharmacy";
 import { setPin } from "../../src/kernel/auth/identity";
 import { addMedicine, addSalt } from "../../src/modules/formulary";
-import { createStore, postMovement, registerItem } from "../../src/modules/materials";
+import { createStore, materialsManifest, postMovement, registerItem } from "../../src/modules/materials";
 import { printBand } from "../../src/modules/ipd";
 import * as schema from "../../src/kernel/db/schema";
 import type { Actor } from "@hmis/contracts";
@@ -663,7 +663,6 @@ export type WardSafetyWorld = EmarWorld & {
 
 export async function mkWardSafetyWorld(db: Db): Promise<WardSafetyWorld> {
   const w = await mkEmarWorld(db);
-  const { materialsManifest } = await import("../../src/modules/materials");
   const registry = new ModuleRegistry();
   registry.install(authManifest);
   registry.install(patientsManifest);
@@ -711,7 +710,7 @@ export async function mkWardSafetyWorld(db: Db): Promise<WardSafetyWorld> {
       n += 1;
       const itemId = await withTx(db, async (tx) => (await registerItem(tx, HEAD, {
         code: `WS-${String(n)}`, name, class: opts.cls ?? "consumable", baseUom: "unit", batchTracked: true, gstRateBps: 1200,
-        uoms: [{ uom: "unit", toBaseMultiplier: 1, isPurchaseUom: true, isIssueUom: true }],
+        uoms: [{ uom: "box", toBaseMultiplier: 10, isPurchaseUom: true, isIssueUom: true }],
       } as never)).itemId);
       const serviceId = newId();
       await db.insert(schema.services).values({ id: serviceId, code: `PH-WS-${String(n)}`, name, category: "pharmacy", createdBy: HEAD.id, updatedBy: HEAD.id } as never);

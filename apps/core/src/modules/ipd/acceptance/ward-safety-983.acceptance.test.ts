@@ -13,6 +13,7 @@ import {
   takeNarcoticKeys, useCrashCart, verifyOrder,
 } from "../index";
 import { IpdError, IpdRefusal } from "../errors";
+import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../../kernel/db/client";
 import type { WardSafetyWorld } from "../../../../test/helpers/ipd";
@@ -95,8 +96,7 @@ describe("spec #983 WM-2 ward safety, stock and quality — acceptance", () => {
       const { admissionId } = await w.admitMed(on(10, "08:00"));
       const wardId = await wardOf(admissionId);
       expect(await codeOf(orderRestraint(db, w.nurse, { idempotencyKey: key(), admissionId, kind: "physical", reason: "Pulling lines" }, { now: on(10, "09:55") }))).toBe("ipd_forbidden");
-      expect(await codeOf(applyRestraint(db, w.nurse, { idempotencyKey: key(), restraintId: randomUUID().replace(/-/g, "").slice(0, 26).toUpperCase() }, { now: on(10, "09:56") })))
-        .toMatch(/^(restraint_not_found|invalid_request)$/);
+      expect(await codeOf(applyRestraint(db, w.nurse, { idempotencyKey: key(), restraintId: newId() }, { now: on(10, "09:56") }))).toBe("restraint_not_found");
 
       const o = await orderRestraint(db, w.consultant, { idempotencyKey: key(), admissionId, kind: "physical", reason: "Pulling lines, delirium" }, { now: on(10, "10:00") });
       expect(o.reviewDueAt).toBe(on(11, "10:00").toISOString());

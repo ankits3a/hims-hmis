@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { IpdLineViewSchema } from "./ward-safety";
 import { IpdAdmissionStateSchema, IpdIdSchema, IpdInstantSchema, IpdProvenanceSchema, IpdUserRefSchema } from "./common";
 import { IPD_DRUG_ROUTES } from "./intents-meds";
 import { IPD_ROUND_SOURCES } from "./intents-ward";
@@ -230,6 +231,8 @@ export const IpdRoundPatientSchema = z.object({
   rounds: z.array(IpdRoundViewSchema),
   orders: z.array(IpdOrderViewSchema),
   consults: z.array(IpdConsultViewSchema),
+  /** WM-2 (#983): the lines in (catheter, central line, cannula), each asking "still needed?" once a day. */
+  lines: z.array(IpdLineViewSchema).optional(),
   /** What this viewer may do here. */
   can: z.object({ sign: z.boolean(), order: z.boolean(), cosign: z.boolean(), declareFit: z.boolean() }),
 });
