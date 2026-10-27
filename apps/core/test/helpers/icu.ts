@@ -77,13 +77,13 @@ export async function mkIcuWorld(db: Db, setupAt: Date): Promise<IcuWorld> {
   const agentRow = await createAgent(db, "icu-gateway-h1");
   const agent: Actor = { type: "agent", id: agentRow.id };
   const gw = await registerGateway(db, incharge, { hallId, name: "MICU Hall 1 gateway", agentId: agentRow.id }, setupAt);
-  for (const [code, param] of Object.entries(FIXTURE_CODES)) await mapCode(db, incharge, { gatewayId: gw.gatewayId, code, param }, setupAt);
+  for (const [code, param] of Object.entries(FIXTURE_CODES)) await mapCode(db, incharge, { gatewayId: gw.gatewayId, code, param });
 
   const icuBed = async (code: string, slot = code): Promise<string> => {
     const bedId = (await withTx(db, (tx) => createResource(tx, SETUP, KERNEL_RESOURCE_KINDS, {
       kind: "bed", code, name: code, parentId: hallId, attributes: ICU_BED,
     }))).resourceId;
-    await mapSlot(db, incharge, { gatewayId: gw.gatewayId, slot, bedId }, setupAt);
+    await mapSlot(db, incharge, { gatewayId: gw.gatewayId, slot, bedId });
     return bedId;
   };
   const device = async (type: IcuDeviceType, code: string, serial = code): Promise<string> =>
@@ -112,9 +112,9 @@ export async function mkIcuWorld(db: Db, setupAt: Date): Promise<IcuWorld> {
   return { ...w, intensivist, intensivist2, incharge, icuNurse, hallId, gatewayId: gw.gatewayId, agent, interfaceId: gw.interfaceId, icuBed, device, admitIcu };
 }
 
-/** An hour mark three days back from the real clock (UTC hours are IST half-hours; only the hour mark matters). */
+/** An IST hour mark (UTC :30) three days back from the real clock: chart hours start on IST hour marks. */
 export function icuBase(): Date {
-  return new Date(Math.floor(Date.now() / 3_600_000) * 3_600_000 - 3 * 86_400_000);
+  return new Date(Math.floor(Date.now() / 3_600_000) * 3_600_000 - 3 * 86_400_000 + 30 * 60_000);
 }
 export const plus = (t: Date, ms: number): Date => new Date(t.getTime() + ms);
 export const SEC = 1000;

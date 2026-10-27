@@ -21,6 +21,8 @@ import { loadEnv } from "../config";
  */
 export const DARK_MODULE_KEYS = [
   "tasks", "ipd", "bmw", "linen", "housekeeping", "maintenance", "passes", "transport", "diet", "emergency",
+  // ICU IC-1 (#984) — the ICU core rides the IPD train dark (decision 0090 builds on 0085).
+  "icu",
 ] as const;
 export type DarkModuleKey = (typeof DARK_MODULE_KEYS)[number];
 
