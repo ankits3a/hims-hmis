@@ -11,6 +11,8 @@ import { buildSbarDraft } from "../lib/ipd-copilot-api";
 import type { SbarText } from "../lib/ipd-nursing-api";
 import { getDue, scan } from "../lib/ipd-emar-api";
 import { endMyDuty, wardErrorOf } from "../lib/ipd-ward-api";
+import { recordCareCheck, recordRestraintCheck } from "../lib/ipd-ward-safety-api";
+import type { RestraintTicks } from "../lib/ipd-ward-safety-api";
 import { PickWardPrompt, WardPicker, useWardChoice } from "../components/ward-picker";
 import { Bedside, DueDoses, ScanBox } from "./ipd-emar-bedside";
 import { LiveLine, VitalsForm, ageFromAgeSex, dueWords, savedWords, useLiveLoad, useNight } from "./ipd-nursing-shared";
@@ -33,7 +35,9 @@ import "./ipd-nursing.css";
 const TICK_MS = 30_000;
 type Mode = { kind: "list" } | { kind: "vitals"; admissionId: string } | { kind: "handover" }
   // E4.3 (#735) — board D2: the bedside (doses) and the wristband scan that pivots to a patient.
-  | { kind: "bedside"; admissionId: string; band: string | null } | { kind: "scan" };
+  | { kind: "bedside"; admissionId: string; band: string | null } | { kind: "scan" }
+  // WM-2 (#983) — a care-plan check (fall bundle / turn) or a restraint check, from the Now list.
+  | { kind: "safety"; item: IpdShiftItem };
 
 export function IpdMyShift(): React.ReactElement {
   const { t } = useTranslation();
@@ -97,7 +101,10 @@ export function IpdMyShift(): React.ReactElement {
             {shift.now.length === 0 ? <div className="ipdn-empty">{t("ipdNursing.shiftPage.nothingDue")}</div> : null}
             <ul className="ipdn-now" data-testid="ipdn-now">
               {shift.now.map((i) => <NowItem key={`${i.kind}-${i.refId ?? i.admissionId}`} i={i} now={now}
-                onOpen={() => { setNotice(null); setMode(i.kind === "handover" ? { kind: "handover" } : { kind: "vitals", admissionId: i.admissionId }); }} />)}
+                onOpen={() => {
+                  setNotice(null);
+                  setMode(i.kind === "handover" ? { kind: "handover" } : i.kind === "care_check" || i.kind === "restraint_check" ? { kind: "safety", item: i } : { kind: "vitals", admissionId: i.admissionId });
+                }} />)}
             </ul>
           </section>
           <section aria-label={t("ipdNursing.shiftPage.patientsTitle")}>
@@ -154,6 +161,11 @@ export function IpdMyShift(): React.ReactElement {
           onDone={(w) => { setNotice(w); void load().catch(() => undefined); }} />
       ) : null}
 
+      {mode.kind === "safety" ? (
+        <SafetyCheckPane item={mode.item} online={live.online} onBack={() => setMode({ kind: "list" })}
+          onDone={(w) => { setNotice(w); setMode({ kind: "list" }); void load().catch(() => undefined); }} />
+      ) : null}
+
       {mode.kind === "handover" && shift !== null ? (
         <HandoverPane shift={shift} toAccept={toAccept} online={live.online} onBack={() => setMode({ kind: "list" })}
           onDone={(w) => { setNotice(w); void load().catch(() => undefined); }} />
@@ -188,6 +200,44 @@ function NowItem({ i, now, onOpen }: { i: IpdShiftItem; now: number; onOpen: () 
           : dueWords(i.kind, i.dueAt, now, t as T)}</span>
       </button>
     </li>
+  );
+}
+
+const RESTRAINT_TICKS = ["circulation", "skin", "hydration", "toileting"] as const;
+
+/** WM-2 (#983) — record a care-plan check, or a restraint check with its four ticks, for one patient. */
+function SafetyCheckPane({ item, online, onBack, onDone }: { item: IpdShiftItem; online: boolean; onBack: () => void; onDone: (words: string) => void }): React.ReactElement {
+  const { t } = useTranslation();
+  const [ticks, setTicks] = useState<RestraintTicks>({ circulation: false, skin: false, hydration: false, toileting: false });
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const restraint = item.kind === "restraint_check";
+  const save = async (): Promise<void> => {
+    if (item.refId === null) return;
+    setBusy(true); setFailed(false);
+    try {
+      if (restraint) await recordRestraintCheck(item.refId, ticks); else await recordCareCheck(item.refId);
+      onDone(t("ipdSafety.myShift.saved", { bed: item.bedCode ?? t("ipdWard.bed") }));
+    } catch { setFailed(true); } finally { setBusy(false); }
+  };
+  return (
+    <section className="ipdn-pane" aria-label={t(`ipdNursing.due.${item.kind}`)} data-testid="ipdn-safety-pane">
+      <div className="ipdn-idhead"><b>{item.name}</b> <span className="dim">{item.bedCode ?? "—"}</span></div>
+      <h2 className="ipdn-h2">{t(`ipdNursing.due.${item.kind}`)}</h2>
+      {restraint ? (
+        <fieldset className="ipdn-ticks">
+          {RESTRAINT_TICKS.map((k) => (
+            <label key={k}><input type="checkbox" checked={ticks[k]} onChange={(e) => setTicks({ ...ticks, [k]: e.target.checked })} /> {t(`ipdSafety.restraint.tick.${k}`)}</label>
+          ))}
+        </fieldset>
+      ) : <p className="dim">{t("ipdSafety.myShift.careHint")}</p>}
+      {failed ? <div className="ipdn-refusal" role="alert">{t("ipdNursing.actFailed")}</div> : null}
+      {!online ? <div className="ipdn-warn">{t("ipdNursing.offlineActs")}</div> : null}
+      <footer className="ipdn-thumb">
+        <button type="button" className="ipdn-btn pri wide" disabled={busy || !online} onClick={() => void save()} data-testid="ipdn-safety-save">{t("ipdSafety.myShift.done")}</button>
+        <button type="button" className="ipdn-btn wide" onClick={onBack}>{t("ipdNursing.back")}</button>
+      </footer>
+    </section>
   );
 }
 

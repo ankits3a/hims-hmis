@@ -11,6 +11,7 @@ import {
   placeTestOrder, refusalCode, refusalDetail, requestConsult, searchMedicines, signRound, stopOrder,
 } from "../lib/ipd-rounds-api";
 import type { DrugRoute, WireMedicineHit } from "../lib/ipd-rounds-api";
+import { reviewLine } from "../lib/ipd-ward-safety-api";
 import { TestPicker } from "../components/test-picker";
 import type { WireOrderableTest } from "../lib/ordering-api";
 import { AllergyFlags } from "./ipd-emar-flags";
@@ -179,6 +180,7 @@ export function IpdRoundPatientScreen({ admissionId }: { admissionId: string }):
           </section>
           <Orders p={p} busy={busy} act={act} />
           <Consults p={p} busy={busy} act={act} />
+          <Lines p={p} busy={busy} act={act} />
         </div>
       </div>
     </main>
@@ -426,6 +428,32 @@ function TestsForm({ admissionId, busy, act, done }: { admissionId: string; busy
       <input value={why} onChange={(e) => setWhy(e.target.value)} placeholder={t("ipdRounds.indication")} aria-label={t("ipdRounds.indication")} />
       <button type="button" className="primary" disabled={busy || orderable.length === 0 || why.trim() === ""} onClick={send}>{t("ipdRounds.placeOrder")}</button>
     </div>
+  );
+}
+
+/** WM-2 (#983) — the lines in, each asking "still needed?" once a day (keep, or take out now). */
+function Lines({ p, busy, act }: { p: IpdRoundPatient; busy: boolean; act: Act }): React.ReactElement | null {
+  const { t } = useTranslation();
+  const lines = p.lines ?? [];
+  if (lines.length === 0) return null;
+  const asked = lines.filter((l) => l.stillNeededAsked).length;
+  return (
+    <section className="ipdr-panel" aria-label={t("ipdSafety.lines.title")} data-testid="ipdr-lines">
+      <h2>{t("ipdSafety.lines.title")} <span className="count">{asked}</span></h2>
+      {lines.map((l) => (
+        <div key={l.lineId} className="ipdr-consult">
+          <b>{t(`ipdSafety.lines.kind.${l.kind}`)}</b> <span className="dim">{l.site} · {t("ipdSafety.lines.day", { n: l.days })}</span>
+          {l.overdue ? <span className="chip alert">{t("ipdSafety.lines.overdue")}</span> : null}
+          {l.stillNeededAsked && p.can.sign ? (
+            <span className="acts">
+              <span>{t("ipdSafety.lines.stillNeeded")}</span>
+              <button type="button" disabled={busy} onClick={() => act(() => reviewLine(l.lineId, "keep"))} data-testid={`ipdr-line-keep-${l.lineId}`}>{t("ipdSafety.lines.keep")}</button>
+              <button type="button" disabled={busy} onClick={() => act(() => reviewLine(l.lineId, "remove"))}>{t("ipdSafety.lines.remove")}</button>
+            </span>
+          ) : <span className="dim small">{l.stillNeededAsked ? t("ipdSafety.lines.stillNeeded") : t("ipdSafety.lines.reviewedToday")}</span>}
+        </div>
+      ))}
+    </section>
   );
 }
 
