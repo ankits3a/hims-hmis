@@ -304,6 +304,8 @@ export const IpdWardSafetySchema = z.object({
   asOf: IpdInstantSchema,
   wards: z.array(WardRef),
   ward: WardRef.nullable(),
+  /** #1007 — the ward's patients now (whom a score, a line or an event is recorded for); sealed patients without a bed. */
+  patients: z.array(z.object({ admissionId: IpdIdSchema, bedCode: z.string().nullable(), name: z.string() })),
   carePlans: z.array(IpdCarePlanViewSchema.extend({ bedCode: z.string().nullable(), name: z.string() })),
   restraints: z.array(IpdRestraintViewSchema),
   lines: z.array(IpdLineViewSchema.extend({ bedCode: z.string().nullable(), name: z.string() })),
@@ -312,6 +314,13 @@ export const IpdWardSafetySchema = z.object({
   incidents: z.array(z.object({ incidentId: IpdIdSchema, kind: z.string(), text: z.string(), raisedAt: IpdInstantSchema })),
 });
 export type IpdWardSafety = z.infer<typeof IpdWardSafetySchema>;
+
+/** #1007 — what the in-charge sets par from: active stores items and the stores (no materials read permission needed). */
+export const IpdWardStockCatalogueSchema = z.object({
+  items: z.array(z.object({ itemId: IpdIdSchema, code: z.string(), name: z.string(), baseUom: z.string() })),
+  stores: z.array(z.object({ id: IpdIdSchema, code: z.string(), name: z.string() })),
+});
+export type IpdWardStockCatalogue = z.infer<typeof IpdWardStockCatalogueSchema>;
 
 export const IPD_WARD_SAFETY_ROUTES = {
   safety: "/ipd/ward-safety",
@@ -335,6 +344,7 @@ export const IPD_WARD_SAFETY_ROUTES = {
   stockPar: "/ipd/ward-safety/stock/par",
   stockIndent: "/ipd/ward-safety/stock/indent",
   stockUse: "/ipd/ward-safety/stock/use",
+  stockCatalogue: "/ipd/ward-safety/stock/catalogue",
   safetyEvent: "/ipd/ward-safety/event",
   quality: "/ipd/ward-safety/quality",
 } as const;

@@ -97,3 +97,20 @@
   .ipds-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ipds-table { display: block; overflow-x: auto; }
 }
+
+/* #1007 — the entry forms (ward safety, My shift, round page). */
+.ipds-embed { background: transparent; display: block; }
+.ipds-fields { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; }
+.ipds-fields label { display: flex; flex-direction: column; gap: 4px; min-width: 140px; flex: 1 1 160px; }
+.ipds-who { display: flex; flex-direction: column; gap: 4px; flex: 0 0 auto; max-width: 480px; }
+.ipds-fields input, .ipds-fields select, .ipds-who select, .ipds-parrow input { min-height: 40px; }
+.ipds-check { display: flex; flex-direction: row !important; align-items: center; gap: 8px; min-height: 40px; }
+.ipds-patient { display: flex; flex-direction: column; gap: 8px; max-width: 720px; }
+.ipds-picks { display: flex; flex-wrap: wrap; gap: 6px; }
+.ipds-parrow { display: flex; justify-content: space-between; align-items: center; gap: 8px; border-top: 1px solid var(--line); padding-top: 6px; }
+.ipds-parrow input { width: 96px; }
+.ipdn-prow { display: flex; gap: 6px; align-items: stretch; }
+.ipdn-prow > .ipdn-nowbtn { flex: 1 1 auto; min-width: 0; }
+.ipdn-safetybtn { min-height: 48px; flex: 0 0 auto; }
+.ipdn-lrow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.ipdn-lrow .hot { color: var(--red); font-weight: 600; }

@@ -16,8 +16,8 @@ import {
   applyRestraint, endRestraint, orderRestraint, readRestraintRegister, recordCareCheck, recordRestraintCheck, recordRestraintFamilyTold,
   recordRiskScore, recordSafetyEvent, reviewRestraint,
 } from "./ward-safety";
-import { raiseWardIndent, readWardStock, recordWardStockUse, setWardPar } from "./ward-stock";
-import type { Actor, IpdRefusalBody, IpdRestraintRegister, IpdWardQuality, IpdWardSafety, IpdWardStock } from "@hmis/contracts";
+import { raiseWardIndent, readWardStock, readWardStockCatalogue, recordWardStockUse, setWardPar } from "./ward-stock";
+import type { Actor, IpdRefusalBody, IpdRestraintRegister, IpdWardQuality, IpdWardSafety, IpdWardStock, IpdWardStockCatalogue } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -176,6 +176,15 @@ export class IpdWardSafetyController {
   @RequirePermission(IPD_NURSING_ASSIGN, "hospital")
   async stock(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<IpdWardStock> {
     try { return await readWardStock(this.db, actor, wardRequired.parse(query)); } catch (e) { toHttp(e); }
+  }
+
+  @Get("stock/catalogue")
+  @RequirePermission(IPD_NURSING_ASSIGN, "hospital")
+  async stockCatalogue(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<IpdWardStockCatalogue> {
+    try {
+      const q = z.object({ search: z.string().max(80).optional() }).parse(query);
+      return await readWardStockCatalogue(this.db, actor, q.search === undefined ? {} : { search: q.search });
+    } catch (e) { toHttp(e); }
   }
 
   @Post("stock/par")

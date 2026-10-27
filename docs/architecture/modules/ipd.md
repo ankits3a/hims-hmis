@@ -662,6 +662,7 @@ Source: `apps/core/src/modules/ipd/`
 - `ward-stock.ts`
   - `raiseWardIndent(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ indentId: string; indentNo: string; lines: number }>`
   - `readWardStock(db: Db, actor: Actor, q: { wardId: string; now?: Date }): Promise<IpdWardStock>`
+  - `readWardStockCatalogue(db: Db, actor: Actor, q: { search?: string }): Promise<IpdWardStockCatalogue>`
   - `recordWardStockUse(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ useId: string; charged: boolean; notChargedWhy: string |…`
   - `setWardPar(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ wardId: string; storeId: string; supplyStoreId: string }>`
 

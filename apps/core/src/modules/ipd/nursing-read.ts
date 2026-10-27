@@ -15,6 +15,7 @@ import { IPD_NURSING_STATES, ioDayStart, istDayIndex, isNightIst, lastSetAt, lat
 import { draftProvenances } from "./copilot-drafts";
 import { SEALED_LABEL } from "./now-cards";
 import { liveNursesAt } from "./nurse-ward-read";
+import { linesOf } from "./ward-lines";
 import { carePlansOf, restraintViews } from "./ward-safety";
 import { IPD_NURSING_VIEW, IPD_SHIFT_HANDOVER } from "./permissions";
 import type {
@@ -311,7 +312,8 @@ export async function readMyShift(db: Db, actor: Actor, opts: { wardId?: string;
   }
   const rank = (i: IpdShiftItem): number => (i.kind === "ews" ? 0 : i.overdue ? 1 : 2);
   items.sort((x, y) => rank(x) - rank(y) || new Date(x.dueAt).getTime() - new Date(y.dueAt).getTime() || x.admissionId.localeCompare(y.admissionId));
-  return { asOf: station.asOf, night: station.night, ward: station.ward, wards: station.wards, shift: station.shift, patients, now: items, assignment };
+  const lines = await linesOf(db, [...byAdmission.keys()], now);
+  return { asOf: station.asOf, night: station.night, ward: station.ward, wards: station.wards, shift: station.shift, patients, now: items, assignment, lines };
 }
 
 // ═══════════════════════════════════════════ the chart ═══════════════════════════════════════════

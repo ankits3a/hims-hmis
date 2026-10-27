@@ -12,6 +12,7 @@ import {
 } from "../lib/ipd-rounds-api";
 import type { DrugRoute, WireMedicineHit } from "../lib/ipd-rounds-api";
 import { reviewLine } from "../lib/ipd-ward-safety-api";
+import { LineInsertForm, RestraintActions, RestraintOrderForm } from "./ipd-safety-forms";
 import { TestPicker } from "../components/test-picker";
 import type { WireOrderableTest } from "../lib/ordering-api";
 import { AllergyFlags } from "./ipd-emar-flags";
@@ -181,6 +182,7 @@ export function IpdRoundPatientScreen({ admissionId }: { admissionId: string }):
           <Orders p={p} busy={busy} act={act} />
           <Consults p={p} busy={busy} act={act} />
           <Lines p={p} busy={busy} act={act} />
+          <Restraints p={p} onSaved={() => act(async () => undefined)} />
         </div>
       </div>
     </main>
@@ -431,11 +433,35 @@ function TestsForm({ admissionId, busy, act, done }: { admissionId: string; busy
   );
 }
 
-/** WM-2 (#983) — the lines in, each asking "still needed?" once a day (keep, or take out now). */
+/** #1007 — restraints: the doctor's order (kind, reason) and the review (continue signs 24 h more, or remove). */
+function Restraints({ p, onSaved }: { p: IpdRoundPatient; onSaved: () => void }): React.ReactElement | null {
+  const { t } = useTranslation();
+  const [ordering, setOrdering] = useState(false);
+  const rs = p.restraints ?? [];
+  if (!p.can.sign && rs.length === 0) return null;
+  return (
+    <section className="ipdr-panel" aria-label={t("ipdSafety.restraint.title")} data-testid="ipdr-restraints">
+      <h2>{t("ipdSafety.restraint.title")} <span className="count">{rs.length}</span></h2>
+      {rs.map((r) => (
+        <div key={r.restraintId} className="ipdr-consult">
+          <b>{t(`ipdSafety.restraint.kind.${r.kind}`)}</b> <span className={r.status === "lapsed" ? "chip alert" : "dim"}>{t(`ipdSafety.restraint.status.${r.status}`)}</span>
+          <q>{r.reason}</q>
+          <span className="dim small">{t("ipdSafety.restraint.review", { time: when(r.reviewDueAt) })}</span>
+          {p.can.sign ? <span className="ipdn ipds-embed"><RestraintActions r={r} role="doctor" onSaved={onSaved} /></span> : null}
+        </div>
+      ))}
+      {p.can.sign && !ordering ? <button type="button" onClick={() => setOrdering(true)} data-testid="ipdr-restraint-new">{t("ipdSafety.forms.orderRestraint")}</button> : null}
+      {ordering ? <div className="ipdn ipds-embed"><RestraintOrderForm admissionId={p.admissionId} onSaved={() => { setOrdering(false); onSaved(); }} /></div> : null}
+    </section>
+  );
+}
+
+/** WM-2 (#983) — the lines in, each asking "still needed?" once a day (keep, or take out now); #1007 a line put in. */
 function Lines({ p, busy, act }: { p: IpdRoundPatient; busy: boolean; act: Act }): React.ReactElement | null {
   const { t } = useTranslation();
+  const [inserting, setInserting] = useState(false);
   const lines = p.lines ?? [];
-  if (lines.length === 0) return null;
+  if (lines.length === 0 && !p.can.sign) return null;
   const asked = lines.filter((l) => l.stillNeededAsked).length;
   return (
     <section className="ipdr-panel" aria-label={t("ipdSafety.lines.title")} data-testid="ipdr-lines">
@@ -453,6 +479,8 @@ function Lines({ p, busy, act }: { p: IpdRoundPatient; busy: boolean; act: Act }
           ) : <span className="dim small">{l.stillNeededAsked ? t("ipdSafety.lines.stillNeeded") : t("ipdSafety.lines.reviewedToday")}</span>}
         </div>
       ))}
+      {p.can.sign && !inserting ? <button type="button" onClick={() => setInserting(true)} data-testid="ipdr-line-new">{t("ipdSafety.forms.insertLine")}</button> : null}
+      {inserting ? <div className="ipdn ipds-embed"><LineInsertForm admissionId={p.admissionId} onSaved={() => { setInserting(false); act(async () => undefined); }} /></div> : null}
     </section>
   );
 }

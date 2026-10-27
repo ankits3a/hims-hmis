@@ -14,7 +14,8 @@ import { fid } from "./ipd-nursing.fixture";
 const api = vi.hoisted(() => ({
   getWardSafety: vi.fn(), getWardStock: vi.fn(), getWardQuality: vi.fn(), getRestraintRegister: vi.fn(), recordCareCheck: vi.fn(),
   recordRestraintCheck: vi.fn(), recordFamilyTold: vi.fn(), endRestraint: vi.fn(), checkCart: vi.fn(), markCartUsed: vi.fn(), takeKeys: vi.fn(),
-  raiseWardIndent: vi.fn(),
+  raiseWardIndent: vi.fn(), recordRiskScore: vi.fn(), applyRestraint: vi.fn(), registerCart: vi.fn(), setWardPar: vi.fn(), getStockCatalogue: vi.fn(),
+  removeLine: vi.fn(), recordSafetyEvent: vi.fn(),
 }));
 vi.mock("../lib/ipd-ward-safety-api", async (orig) => {
   const real = await orig<typeof import("../lib/ipd-ward-safety-api")>();
@@ -32,6 +33,7 @@ const iso = (minutes: number): string => new Date(Date.now() + minutes * 60_000)
 function safetyOf(over: Partial<IpdWardSafety> = {}): IpdWardSafety {
   return {
     asOf: iso(0), wards: [WARD], ward: WARD,
+    patients: [{ admissionId: fid(101), bedCode: "B1", name: "Sunita Devi" }, { admissionId: fid(103), bedCode: "B3", name: "Meena Sharma" }],
     carePlans: [
       { planId: fid(1), admissionId: fid(101), kind: "fall", score: 55, startedAt: iso(-300), nextDueAt: iso(-20), overdue: true, lastCheckAt: null, bedCode: "B1", name: "Sunita Devi" },
       { planId: fid(2), admissionId: fid(102), kind: "pressure", score: 10, startedAt: iso(-60), nextDueAt: iso(60), overdue: false, lastCheckAt: null, bedCode: "B2", name: "Rekha Kumari" },
@@ -150,5 +152,56 @@ describe("ward safety (WM-2)", () => {
     expect(screen.getAllByTestId(/^ipds-ind-/)).toHaveLength(7);
     expect(screen.getByTestId("ipds-quality")).toHaveTextContent("1 found on admission, not counted");
     expect(screen.getByTestId("ipds-register")).toHaveTextContent("No restraint this month");
+  });
+});
+
+describe("ward safety entry forms (#1007)", () => {
+  it("records a daily score, a line infection naming its line, and applies an ordered restraint", async () => {
+    const base = safetyOf();
+    api.getWardSafety.mockResolvedValue(safetyOf({ restraints: [{ ...base.restraints[0]!, status: "ordered", startedAt: null, nextCheckAt: null, checkOverdue: false }] }));
+    api.recordRiskScore.mockResolvedValue({ plans: [] });
+    api.recordSafetyEvent.mockResolvedValue({});
+    api.applyRestraint.mockResolvedValue({});
+    renderWithRouter(<IpdWardSafetyScreen />, "/ipd/ward/safety");
+    await userEvent.selectOptions(await screen.findByTestId("ipds-who"), fid(101));
+    const save = screen.getByTestId("ipds-score-save");
+    expect(save).toBeDisabled();
+    await userEvent.type(screen.getByTestId("ipds-morse"), "50");
+    await userEvent.type(screen.getByTestId("ipds-braden"), "18");
+    await userEvent.click(save);
+    expect(api.recordRiskScore).toHaveBeenCalledWith(fid(101), 50, 18);
+
+    await userEvent.click(screen.getByTestId("ipds-ptab-event"));
+    await userEvent.selectOptions(screen.getByTestId("ipds-event-kind"), "line_infection");
+    const ev = screen.getByTestId("ipds-event-save");
+    expect(ev).toBeDisabled();
+    await userEvent.selectOptions(within(screen.getByTestId("ipds-event-form")).getAllByRole("combobox")[1]!, fid(4));
+    await userEvent.click(ev);
+    expect(api.recordSafetyEvent).toHaveBeenCalledWith(expect.objectContaining({ admissionId: fid(101), kind: "line_infection", lineId: fid(4) }));
+
+    await userEvent.click(screen.getByTestId(`ipds-apply-${fid(3)}`));
+    expect(api.applyRestraint).toHaveBeenCalledWith(fid(3));
+  });
+
+  it("registers a crash cart and sets par from the catalogue", async () => {
+    api.getWardSafety.mockResolvedValue(safetyOf());
+    api.getWardStock.mockResolvedValue({ wardId: WARD.id, storeId: null, supplyStoreId: null, items: [], expiring: [] } satisfies IpdWardStock);
+    api.getStockCatalogue.mockResolvedValue({ items: [{ itemId: fid(710), code: "G1", name: "Gloves pair", baseUom: "pair" }], stores: [{ id: fid(701), code: "CENTRAL", name: "Central store" }] });
+    api.registerCart.mockResolvedValue({ cartId: fid(9) });
+    api.setWardPar.mockResolvedValue({});
+    renderWithRouter(<IpdWardSafetyScreen />, "/ipd/ward/safety");
+    await userEvent.click(await screen.findByTestId("ipds-pane-stock"));
+    await userEvent.click(await screen.findByTestId("ipds-cart-new"));
+    await userEvent.type(screen.getByTestId("ipds-cart-code"), "CC-3");
+    await userEvent.type(screen.getByTestId("ipds-cart-seal"), "S-500");
+    await userEvent.click(screen.getByTestId("ipds-cart-add"));
+    expect(api.registerCart).toHaveBeenCalledWith(WARD.id, "CC-3", "S-500");
+
+    await userEvent.click(screen.getByTestId("ipds-par-open"));
+    await userEvent.click(await screen.findByTestId(`ipds-par-pick-${fid(710)}`));
+    await userEvent.selectOptions(screen.getByTestId("ipds-par-store"), fid(701));
+    await userEvent.type(screen.getByTestId(`ipds-par-${fid(710)}`), "50");
+    await userEvent.click(screen.getByTestId("ipds-par-save"));
+    expect(api.setWardPar).toHaveBeenCalledWith(WARD.id, fid(701), [{ itemId: fid(710), par: 50 }]);
   });
 });

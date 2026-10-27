@@ -14,6 +14,8 @@ import {
 import type { CartLine, RestraintTicks } from "../lib/ipd-ward-safety-api";
 import { PickWardPrompt, WardPicker, useWardChoice } from "../components/ward-picker";
 import { WardDeskHeader } from "./ipd-ward-cockpit";
+import { CartRegisterForm, LineRemoveForm, ParForm, PatientSafetyForms, RestraintActions } from "./ipd-safety-forms";
+import type { Saved } from "./ipd-safety-forms";
 import "./ipd-nursing.css";
 import "./ipd-ward-desk.css";
 
@@ -58,6 +60,7 @@ export function IpdWardSafetyScreen({ ward }: { ward?: string } = {}): React.Rea
     setErr(null); setDone(null);
     try { await fn(); setDone(words); await load(); return true; } catch (e) { const w = wardErrorOf(e); if (w === null) throw e; setErr(w); return false; }
   };
+  const saved: Saved = (words) => { setErr(null); setDone(words); void load(); };
   const overdue = s.carePlans.filter((p) => p.overdue).length + s.restraints.filter((r) => r.checkOverdue || r.status === "lapsed").length;
   return (
     <main className="ipdn ipdw" data-testid="ipd-ward-safety">
@@ -75,8 +78,8 @@ export function IpdWardSafetyScreen({ ward }: { ward?: string } = {}): React.Rea
         </div>
         {err !== null ? <div className="ipdn-refusal" role="alert">{t(`ipdSafety.err.${err.code}`, { defaultValue: t("ipdWard.err.other") })}</div> : null}
         {done !== null ? <div className="ipdn-ok" role="status">{done}</div> : null}
-        {pane === "safety" ? <SafetyPane s={s} act={act} /> : null}
-        {pane === "stock" && s.ward !== null ? <StockPane s={s} wardId={s.ward.id} act={act} /> : null}
+        {pane === "safety" ? <SafetyPane s={s} act={act} saved={saved} /> : null}
+        {pane === "stock" && s.ward !== null ? <StockPane s={s} wardId={s.ward.id} act={act} saved={saved} /> : null}
         {pane === "quality" && s.ward !== null ? <QualityPane wardId={s.ward.id} /> : null}
       </div>
     </main>
@@ -85,12 +88,27 @@ export function IpdWardSafetyScreen({ ward }: { ward?: string } = {}): React.Rea
 
 type Act = (fn: () => Promise<unknown>, words: string) => Promise<boolean>;
 
-function SafetyPane({ s, act }: { s: IpdWardSafety; act: Act }): React.ReactElement {
+function SafetyPane({ s, act, saved }: { s: IpdWardSafety; act: Act; saved: Saved }): React.ReactElement {
   const { t } = useTranslation();
   const [checking, setChecking] = useState<IpdRestraintView | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
+  const [who, setWho] = useState("");
   const bed = (code: string | null): string => code ?? t("ipdWard.bed");
   return (
     <div className="ipds-stack">
+      <section className="ipdw-box" data-testid="ipds-record">
+        <b>{t("ipdSafety.forms.recordTitle")}</b>
+        {s.patients.length === 0 ? <span className="dim">{t("ipdSafety.forms.noPatients")}</span> : (
+          <label className="ipds-who">{t("ipdSafety.forms.patient")}
+            <select value={who} onChange={(e) => setWho(e.target.value)} data-testid="ipds-who">
+              <option value="">{t("ipdSafety.forms.choose")}</option>
+              {s.patients.map((p) => <option key={p.admissionId} value={p.admissionId}>{bed(p.bedCode)} · {p.name}</option>)}
+            </select>
+          </label>
+        )}
+        {who === "" ? null : <PatientSafetyForms key={who} admissionId={who} lines={s.lines} onSaved={saved} />}
+      </section>
+
       <section className="ipdw-box" data-testid="ipds-plans">
         <b>{t("ipdSafety.plans.title")} <span className="mono dim">{s.carePlans.length}</span></b>
         {s.carePlans.length === 0 ? <span className="dim">{t("ipdSafety.plans.none")}</span> : s.carePlans.map((p) => (
@@ -121,6 +139,7 @@ function SafetyPane({ s, act }: { s: IpdWardSafety; act: Act }): React.ReactElem
               <span className="dim">{t("ipdSafety.restraint.review", { time: fmtIst(r.reviewDueAt) })}</span>
               <span className={r.familyTold === null ? "warn" : "dim"}>{r.familyTold === null ? t("ipdSafety.restraint.familyNotTold") : t("ipdSafety.restraint.familyTold", { name: r.familyTold.name })}</span>
               {r.status === "active" ? <button type="button" className="ipdn-btn sm pri" onClick={() => setChecking(r)} data-testid={`ipds-rcheck-${r.restraintId}`}>{t("ipdSafety.restraint.check")}</button> : null}
+              <RestraintActions r={r} role="nurse" onSaved={saved} />
             </div>
           );
         })}
@@ -136,6 +155,8 @@ function SafetyPane({ s, act }: { s: IpdWardSafety; act: Act }): React.ReactElem
             <span>{t(`ipdSafety.lines.kind.${l.kind}`)} · <span className="dim">{l.site}</span></span>
             <span className="mono">{t("ipdSafety.lines.day", { n: l.days })}</span>
             <span className={l.overdue ? "hot" : "dim"}>{l.overdue ? t("ipdSafety.lines.overdue") : t("ipdSafety.lines.dueOut", { time: fmtIst(l.dueRemovalAt) })}</span>
+            <button type="button" className="ipdn-btn sm" onClick={() => setRemoving(l.lineId)} data-testid={`ipds-out-${l.lineId}`}>{t("ipdSafety.forms.takeOut")}</button>
+            {removing === l.lineId ? <LineRemoveForm line={l} onCancel={() => setRemoving(null)} onSaved={(w) => { setRemoving(null); saved(w); }} /> : null}
           </div>
         ))}
       </section>
@@ -181,17 +202,24 @@ function RestraintForm({ r, act, onClose }: { r: IpdRestraintView; act: Act; onC
   );
 }
 
-function StockPane({ s, wardId, act }: { s: IpdWardSafety; wardId: string; act: Act }): React.ReactElement {
+function StockPane({ s, wardId, act, saved }: { s: IpdWardSafety; wardId: string; act: Act; saved: Saved }): React.ReactElement {
   const { t } = useTranslation();
   const [stock, setStock] = useState<IpdWardStock | null>(null);
   const [cart, setCart] = useState<IpdCrashCartView | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [parOpen, setParOpen] = useState(false);
   const loadStock = useCallback(() => getWardStock(wardId).then(setStock), [wardId]);
   useEffect(() => { void loadStock(); }, [loadStock]);
   const short = stock?.items.filter((i) => i.shortfall > 0) ?? [];
   return (
     <div className="ipds-grid">
       <section className="ipdw-box" data-testid="ipds-carts">
-        <b>{t("ipdSafety.cart.title")}</b>
+        <div className="ipdw-bar">
+          <b>{t("ipdSafety.cart.title")}</b>
+          <span className="grow" />
+          <button type="button" className="ipdn-btn sm" onClick={() => setAdding(!adding)} aria-expanded={adding} data-testid="ipds-cart-new">{t("ipdSafety.forms.addCart")}</button>
+        </div>
+        {adding ? <CartRegisterForm wardId={wardId} onSaved={(w) => { setAdding(false); saved(w); }} /> : null}
         {s.carts.length === 0 ? <span className="dim">{t("ipdSafety.cart.none")}</span> : s.carts.map((c) => {
           const red = c.status === "needs_restock" || !c.checkedThisShift;
           return (
@@ -227,11 +255,13 @@ function StockPane({ s, wardId, act }: { s: IpdWardSafety; wardId: string; act: 
         <div className="ipdw-bar">
           <b>{t("ipdSafety.stock.title")}</b>
           <span className="grow" />
+          <button type="button" className="ipdn-btn sm" onClick={() => setParOpen(!parOpen)} aria-expanded={parOpen} data-testid="ipds-par-open">{t("ipdSafety.forms.setPar")}</button>
           <button type="button" className="ipdn-btn sm pri" disabled={short.length === 0}
             onClick={() => void act(() => raiseWardIndent(wardId), t("ipdSafety.stock.raised", { count: short.length })).then(() => loadStock())} data-testid="ipds-indent">
             {t("ipdSafety.stock.indent", { count: short.length })}
           </button>
         </div>
+        {parOpen ? <ParForm wardId={wardId} stock={stock} onSaved={(w) => { setParOpen(false); saved(w); void loadStock(); }} /> : null}
         {stock === null ? <span className="dim">{t("ipdWard.loading")}</span> : stock.storeId === null ? <span className="dim">{t("ipdSafety.stock.noStore")}</span> : (
           <table className="ipds-table">
             <thead><tr><th>{t("ipdSafety.stock.item")}</th><th>{t("ipdSafety.stock.par")}</th><th>{t("ipdSafety.stock.onHand")}</th><th>{t("ipdSafety.stock.short")}</th></tr></thead>

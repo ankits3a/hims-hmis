@@ -7,7 +7,7 @@ import { withTx } from "../../kernel/db/client";
 import { ipdWardStockPar, ipdWardStockUses, ipdWardStores, items, resources, stockBalances, stockBatches } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { withIdempotency } from "../billing";
-import { MaterialsError, createStore, postMovements, raiseIndent, requireStore } from "../materials";
+import { MaterialsError, createStore, listStores, postMovements, raiseIndent, requireStore } from "../materials";
 import { holdsPermission, lockAdmission, provenanceOf, requireIpdPermission } from "./admission-core";
 import { admissionPlace } from "./admission-place";
 import { postDrugIssueChargesIn } from "./drug-charges";
@@ -15,7 +15,7 @@ import { IpdError } from "./errors";
 import { IPD_NURSING_STATES } from "./nursing";
 import { IPD_NURSING_ASSIGN, IPD_WARD_STOCK_USE } from "./permissions";
 import { wardIndentRaised, wardParSet, wardStockUsed } from "./ward-safety-events";
-import type { Actor, IpdWardStock, IpdWardStockOutcome } from "@hmis/contracts";
+import type { Actor, IpdWardStock, IpdWardStockCatalogue, IpdWardStockOutcome } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
 /**
@@ -120,6 +120,17 @@ export async function readWardStock(db: Db, actor: Actor, q: { wardId: string; n
   await requireIpdPermission(db, actor, IPD_NURSING_ASSIGN);
   await wardOrThrow(db, q.wardId);
   return wardStockOf(db, q.wardId, q.now ?? new Date());
+}
+
+/** #1007 — active stores items (by name or code) and the stores, for the in-charge's par form. */
+export async function readWardStockCatalogue(db: Db, actor: Actor, q: { search?: string }): Promise<IpdWardStockCatalogue> {
+  await requireIpdPermission(db, actor, IPD_NURSING_ASSIGN);
+  const term = (q.search ?? "").trim().toLowerCase();
+  const rows = await db.select({ itemId: items.id, code: items.code, name: items.name, baseUom: items.baseUom }).from(items)
+    .where(and(eq(items.active, true), ...(term === "" ? [] : [sql`(lower(${items.name}) like ${`%${term}%`} or lower(${items.code}) like ${`%${term}%`})`])))
+    .orderBy(items.name).limit(30);
+  const stores = (await listStores(db)).map((s) => ({ id: s.id, code: s.code, name: s.name }));
+  return { items: rows, stores };
 }
 
 /** One materials indent on the supply store for every item short of par. */

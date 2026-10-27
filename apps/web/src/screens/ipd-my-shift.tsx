@@ -13,6 +13,7 @@ import { getDue, scan } from "../lib/ipd-emar-api";
 import { endMyDuty, wardErrorOf } from "../lib/ipd-ward-api";
 import { recordCareCheck, recordRestraintCheck } from "../lib/ipd-ward-safety-api";
 import type { RestraintTicks } from "../lib/ipd-ward-safety-api";
+import { LineRemoveForm, PatientSafetyForms } from "./ipd-safety-forms";
 import { PickWardPrompt, WardPicker, useWardChoice } from "../components/ward-picker";
 import { Bedside, DueDoses, ScanBox } from "./ipd-emar-bedside";
 import { LiveLine, VitalsForm, ageFromAgeSex, dueWords, savedWords, useLiveLoad, useNight } from "./ipd-nursing-shared";
@@ -37,7 +38,9 @@ type Mode = { kind: "list" } | { kind: "vitals"; admissionId: string } | { kind:
   // E4.3 (#735) — board D2: the bedside (doses) and the wristband scan that pivots to a patient.
   | { kind: "bedside"; admissionId: string; band: string | null } | { kind: "scan" }
   // WM-2 (#983) — a care-plan check (fall bundle / turn) or a restraint check, from the Now list.
-  | { kind: "safety"; item: IpdShiftItem };
+  | { kind: "safety"; item: IpdShiftItem }
+  // #1007 — one patient's safety entries: the daily score, a line in or out, a safety event.
+  | { kind: "patientSafety"; admissionId: string };
 
 export function IpdMyShift(): React.ReactElement {
   const { t } = useTranslation();
@@ -114,12 +117,16 @@ export function IpdMyShift(): React.ReactElement {
             {shift.assignment === "none" ? <p className="dim" data-testid="ipdn-no-beds">{t("ipdWard.myShift.noBeds")}</p> : null}
             <ul className="ipdn-now">
               {shift.patients.map((p) => (
-                <li key={p.identity.admissionId}>
+                <li key={p.identity.admissionId} className="ipdn-prow">
                   <button type="button" className="ipdn-nowbtn" onClick={() => { setNotice(null); setMode({ kind: "vitals", admissionId: p.identity.admissionId }); }}>
                     <span className="bed mono">{p.bedCode ?? "—"}</span>
                     <span className="nm">{p.identity.name}</span>
                     <span className="dim">{t(`ipdNursing.kind.${p.scoreKind}`)}</span>
                   </button>
+                  {can("ipd.assessment.record") ? (
+                    <button type="button" className="ipdn-btn ipdn-safetybtn" onClick={() => { setNotice(null); setMode({ kind: "patientSafety", admissionId: p.identity.admissionId }); }}
+                      data-testid={`ipdn-psafety-${p.identity.admissionId}`}>{t("ipdSafety.forms.safetyBtn")}</button>
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -158,6 +165,11 @@ export function IpdMyShift(): React.ReactElement {
         <Bedside key={`${mode.admissionId}-${mode.band ?? ""}`} admissionId={mode.admissionId} bandCode={mode.band} online={live.online}
           onBack={() => setMode({ kind: "list" })}
           onPivot={(id, band) => setMode({ kind: "bedside", admissionId: id, band: band === "" ? null : band })}
+          onDone={(w) => { setNotice(w); void load().catch(() => undefined); }} />
+      ) : null}
+
+      {mode.kind === "patientSafety" && shift !== null ? (
+        <PatientSafetyPane shift={shift} admissionId={mode.admissionId} onBack={() => setMode({ kind: "list" })}
           onDone={(w) => { setNotice(w); void load().catch(() => undefined); }} />
       ) : null}
 
@@ -200,6 +212,35 @@ function NowItem({ i, now, onOpen }: { i: IpdShiftItem; now: number; onOpen: () 
           : dueWords(i.kind, i.dueAt, now, t as T)}</span>
       </button>
     </li>
+  );
+}
+
+/** #1007 — one patient's safety entries on the phone, and the lines in with "Take out". */
+function PatientSafetyPane({ shift, admissionId, onBack, onDone }: { shift: IpdMyShift; admissionId: string; onBack: () => void; onDone: (words: string) => void }): React.ReactElement {
+  const { t } = useTranslation();
+  const [removing, setRemoving] = useState<string | null>(null);
+  const p = shift.patients.find((x) => x.identity.admissionId === admissionId);
+  const lines = (shift.lines ?? []).filter((l) => l.admissionId === admissionId);
+  return (
+    <section className="ipdn-pane" aria-label={t("ipdSafety.forms.safetyBtn")} data-testid="ipdn-patient-safety">
+      <div className="ipdn-idhead"><b>{p?.identity.name ?? ""}</b> <span className="dim">{p?.bedCode ?? "—"}</span></div>
+      <PatientSafetyForms admissionId={admissionId} lines={lines} onSaved={onDone} />
+      {lines.length === 0 ? null : (
+        <>
+          <h2 className="ipdn-h2">{t("ipdSafety.lines.title")}</h2>
+          <ul className="ipdn-now">
+            {lines.map((l) => (
+              <li key={l.lineId} className="ipdn-lrow">
+                <span>{t(`ipdSafety.lines.kind.${l.kind}`)} · <span className="dim">{l.site} · {t("ipdSafety.lines.day", { n: l.days })}</span>{l.overdue ? <span className="hot"> · {t("ipdSafety.lines.overdue")}</span> : null}</span>
+                <button type="button" className="ipdn-btn sm" onClick={() => setRemoving(l.lineId)} data-testid={`ipdn-out-${l.lineId}`}>{t("ipdSafety.forms.takeOut")}</button>
+                {removing === l.lineId ? <LineRemoveForm line={l} onCancel={() => setRemoving(null)} onSaved={(w) => { setRemoving(null); onDone(w); }} /> : null}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      <footer className="ipdn-thumb"><button type="button" className="ipdn-btn wide" onClick={onBack}>{t("ipdNursing.back")}</button></footer>
+    </section>
   );
 }
 

@@ -3,6 +3,7 @@ import { IpdIdSchema, IpdInstantSchema, IpdNoteSchema, IpdProvenanceSchema, ipdI
 import { IpdCopilotBySchema, IpdCopilotRecordSchema, IpdCopilotSourceSchema, IpdDraftProvenanceSchema, IpdDraftStampSchema } from "./copilot";
 import { IPD_CONSCIOUSNESS, IPD_EWS_BANDS, IPD_EWS_KINDS } from "./ews";
 import { IpdNurseRefSchema } from "./nurse-ward";
+import { IpdLineViewSchema } from "./ward-safety";
 
 export * from "./ews";
 export { IPD_LINE_DEVICE_KINDS } from "./intents-ward";
@@ -136,6 +137,8 @@ export const IpdMyShiftSchema = z.object({
    * the live map gives this nurse (or her student); `none` = a live map gives her no bed.
    */
   assignment: z.enum(["ward", "mine", "none"]).optional(),
+  /** #1007 (WM-2): the lines in for these patients (take one out; name it in a line infection). */
+  lines: z.array(IpdLineViewSchema).optional(),
 });
 export type IpdMyShift = z.infer<typeof IpdMyShiftSchema>;
 

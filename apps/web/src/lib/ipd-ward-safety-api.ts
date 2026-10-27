@@ -1,5 +1,5 @@
 import { api, newIdempotencyKey } from "./api";
-import type { IpdRestraintRegister, IpdWardQuality, IpdWardSafety, IpdWardStock } from "@hmis/contracts";
+import type { IpdRestraintRegister, IpdWardQuality, IpdWardSafety, IpdWardStock, IpdWardStockCatalogue } from "@hmis/contracts";
 
 /**
  * WM-2 (#983, decisions 0089 / 0091) — ward safety, stock and quality on the wire. Shapes are the contract's
@@ -20,6 +20,16 @@ export const WS = {
   stockIndent: "/ipd/ward-safety/stock/indent",
   quality: "/ipd/ward-safety/quality",
   lineReview: "/ipd/ward-safety/line/review",
+  riskScore: "/ipd/ward-safety/risk-score",
+  restraintOrder: "/ipd/ward-safety/restraint/order",
+  restraintApply: "/ipd/ward-safety/restraint/apply",
+  restraintReview: "/ipd/ward-safety/restraint/review",
+  lineInsert: "/ipd/ward-safety/line/insert",
+  lineRemove: "/ipd/ward-safety/line/remove",
+  event: "/ipd/ward-safety/event",
+  cartRegister: "/ipd/ward-safety/cart/register",
+  stockPar: "/ipd/ward-safety/stock/par",
+  stockCatalogue: "/ipd/ward-safety/stock/catalogue",
 } as const;
 
 function post<T>(path: string, body: Record<string, unknown>): Promise<T> {
@@ -51,6 +61,40 @@ export const raiseWardIndent = (wardId: string): Promise<{ indentNo: string; lin
 
 /** The doctor's daily "still needed?" on a line: keep it, or take it out now. */
 export const reviewLine = (lineId: string, decision: "keep" | "remove"): Promise<unknown> => post(WS.lineReview, { lineId, decision });
+
+// #1007 — the entry acts.
+export const recordRiskScore = (admissionId: string, morse: number, braden: number): Promise<{ plans: { kind: string; change: string }[] }> =>
+  post(WS.riskScore, { admissionId, morse, braden });
+export type RestraintKind = "physical" | "chemical" | "seclusion";
+export const orderRestraint = (admissionId: string, kind: RestraintKind, reason: string): Promise<{ restraintId: string }> =>
+  post(WS.restraintOrder, { admissionId, kind, reason });
+export const applyRestraint = (restraintId: string): Promise<unknown> => post(WS.restraintApply, { restraintId });
+export const reviewRestraint = (restraintId: string, decision: "continue" | "remove"): Promise<unknown> => post(WS.restraintReview, { restraintId, decision });
+export type LineKind = "urinary_catheter" | "central_line" | "cannula";
+export const insertLine = (admissionId: string, kind: LineKind, site: string, insertedAt: string): Promise<{ dueRemovalAt: string }> =>
+  post(WS.lineInsert, { admissionId, kind, site, insertedAt });
+export const removeLine = (lineId: string, reason: string): Promise<unknown> => post(WS.lineRemove, { lineId, removedAt: new Date().toISOString(), reason });
+export type SafetyEventKind = "fall" | "pressure_injury" | "medication_error" | "line_infection";
+export const recordSafetyEvent = (b: { admissionId: string; kind: SafetyEventKind; presentOnAdmission: boolean; lineId?: string; note?: string }): Promise<unknown> =>
+  post(WS.event, {
+    admissionId: b.admissionId, kind: b.kind, occurredAt: new Date().toISOString(), ...(b.presentOnAdmission ? { presentOnAdmission: true } : {}),
+    ...(b.lineId === undefined ? {} : { lineId: b.lineId }), ...(b.note === undefined || b.note.trim() === "" ? {} : { note: b.note.trim() }),
+  });
+export const registerCart = (wardId: string, code: string, sealNo: string): Promise<{ cartId: string }> => post(WS.cartRegister, { wardId, code, sealNo });
+export const setWardPar = (wardId: string, supplyStoreId: string, items: { itemId: string; par: number }[]): Promise<unknown> =>
+  post(WS.stockPar, { wardId, supplyStoreId, items });
+export const getStockCatalogue = (search: string): Promise<IpdWardStockCatalogue> =>
+  api("GET", search.trim() === "" ? WS.stockCatalogue : `${WS.stockCatalogue}?search=${encodeURIComponent(search.trim())}`);
+
+/** HH:MM today in IST → an ISO instant (an insertion time typed on the ward). */
+export function istTodayAt(hhmm: string, now: Date = new Date()): string {
+  const day = new Date(now.getTime() + 330 * 60_000).toISOString().slice(0, 10);
+  return new Date(`${day}T${hhmm}:00+05:30`).toISOString();
+}
+/** Now in IST as HH:MM. */
+export function istNowHhmm(now: Date = new Date()): string {
+  return new Date(now.getTime() + 330 * 60_000).toISOString().slice(11, 16);
+}
 
 /** The IST month `YYYY-MM` an instant falls in. */
 export function istMonth(at: Date): string {

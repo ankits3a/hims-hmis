@@ -191,7 +191,9 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `ward-safety.controller.ts` (`IPD_WARD_SAFETY_ROUTES`, `/ipd/ward-safety/*`). Contracts `packages/contracts/src/ipd/ward-safety.ts`.
   Tables `kernel/db/schema/ipd-ward-safety.ts` (migration `ipd_ward_safety`). Web: `apps/web/src/screens/ipd-ward-safety.tsx`
   (`/ipd/ward/safety`), the safety-check pane in `apps/web/src/screens/ipd-my-shift.tsx`, the Lines panel in
-  `apps/web/src/screens/ipd-rounds.tsx`,
+  `apps/web/src/screens/ipd-rounds.tsx`, the entry forms in `apps/web/src/screens/ipd-safety-forms.tsx` (#1007: daily score,
+  line in / out, safety event, restraint order / apply / review, crash-cart register, par), with the reads they need —
+  `patients` on `readWardSafety`, `restraints` on `readRoundPatient`, `lines` on `readMyShift`, `readWardStockCatalogue`,
   `apps/web/src/lib/ipd-ward-safety-api.ts`.
 
 - (E4.2 #734) `rounds.ts` — `signRound` (S/O/A/P, bedside or remote; fit from the round via `declareFitIn`), `cosignRound`,

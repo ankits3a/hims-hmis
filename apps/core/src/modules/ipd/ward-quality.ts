@@ -114,7 +114,9 @@ export async function readWardSafety(db: Db, actor: Actor, opts: { wardId?: stri
     const r = (await db.select().from(resources).where(eq(resources.id, opts.wardId)))[0];
     if (r !== undefined && (r.kind === "ward" || r.kind === "hall")) ward = { id: r.id, code: r.code, name: r.name };
   }
-  const base: IpdWardSafety = { asOf: now.toISOString(), wards: station.wards, ward, carePlans: [], restraints: [], lines: [], carts: [], keys: null, incidents: [] };
+  const patients = station.beds.filter((b) => b.patient !== null)
+    .map((b) => ({ admissionId: b.patient!.admissionId, bedCode: b.patient!.sealed ? null : b.code, name: b.patient!.name }));
+  const base: IpdWardSafety = { asOf: now.toISOString(), wards: station.wards, ward, patients, carePlans: [], restraints: [], lines: [], carts: [], keys: null, incidents: [] };
   if (ward === null) return base;
   const wardId = ward.id;
   const who = new Map(station.beds.filter((b) => b.patient !== null).map((b) => [b.patient!.admissionId, {
