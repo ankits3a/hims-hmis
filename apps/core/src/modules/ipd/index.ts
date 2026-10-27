@@ -268,3 +268,13 @@ export { importSchemePackages, packageShares, parseSchemePackagesCsv, searchSche
 export { authStateOf, readTpaBoard, readTpaPanel, tpaDueCard } from "./tpa-read";
 // LD-1 (#978) — what the laundry needs from IPD, by bed: planned discharges (rush demand) and MLC beds (hold suggestion).
 export { mlcOccupiedBeds, plannedDischargeBeds } from "./linen-seam";
+// #962 (spec docs/specs/962-doctor-desk-ward.md) — the unit stamp (once, at admission), a change of unit as a row and an
+// event, and the reads keyed by unit for the Doctor Desk: take-day census, the unit's admissions and beds, what changed
+// since a time, and the last time a doctor saw the patient.
+export { stampUnitIn, transferUnit, unitOfAt, unitOnAdmission, unitsOfAt } from "./unit-stamp";
+export { IPD_UNIT_EVENT_NAMES, admissionUnitTransferred } from "./unit-events";
+export {
+  admissionFacts, admissionsUnder, bedsOf, changesSince, lastSeenBy, lastSeenByMany, latestVitalsOf, onTreatingTeam, roundsBy, takeDayOf, takeWindow,
+  unitCensus,
+} from "./unit-reads";
+export type { LatestVitals, SourcedChange, UnitAdmission, UnitBed, UnitBedFlag, UnitCensus, UnitEws } from "./unit-reads";

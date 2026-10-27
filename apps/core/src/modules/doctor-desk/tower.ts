@@ -7,6 +7,7 @@ import { waitingOn } from "./waiting-on";
 import { owedByUnit, withNudgedBy } from "./owed";
 import { briefsWaiting, loginFacts, maybeBuildLoginBrief, towerBrief } from "./briefs";
 import { runsFor } from "./agent-runs";
+import { towerWard } from "./ward";
 import type { DoctorDayLine } from "../opd";
 import type { Db } from "../../kernel/db/client";
 
@@ -14,8 +15,9 @@ import type { Db } from "../../kernel/db/client";
  * DD-0.1 / 0.4 / 0.5 — THE TOWER, OPD-DAY MODE: one aggregated read (plan §6 "speed: Tower is one
  * aggregated read; no LLM on a tap").
  *
- * What the board draws and DD-0 cannot source is ABSENT, never a zero (plan §3.0): inpatient tiles,
- * bed dots, "Last 7 Days", teaching and OT rows in the schedule. The OPD tiles appear only on a day
+ * What the board draws and DD-0 cannot source is ABSENT, never a zero (plan §3.0): "Last 7 Days",
+ * teaching and OT rows in the schedule. #962: the inpatient tiles, Unit Overview and the bed dots come
+ * from IPD's unit reads (`ward.ts towerWard`) and are absent while IPD is switched off or there is no unit. The OPD tiles appear only on a day
  * the doctor has an OPD session (`mode: "opd_day"`); a zero booked on a ward day would be a wrong
  * number that looks right.
  *
@@ -100,5 +102,6 @@ export async function towerView(db: Db, actor: Actor, at: Date): Promise<WireTow
     brief: await towerBrief(db, actor, at),
     briefsWaiting: await briefsWaiting(db, actor, at),
     agentRuns: await runsFor(db, scope.unit?.teamId ?? null, actor.id, at),
+    ward: await towerWard(db, scope, at),
   };
 }

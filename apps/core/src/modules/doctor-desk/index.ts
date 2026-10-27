@@ -13,3 +13,4 @@ export { owedByUnit } from "./owed";
 export { unitBoard } from "./unit-board";
 export { DOCTOR_DESK_EVENTS, doctorDeskRowMoved } from "./events";
 export { REPORT_AGENT, reportDateAt, sendUnitReports } from "./report";
+export { towerWard, wardBeds, wardRound } from "./ward";

@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, Inject, Param, Post, Res } from "@nest
 import type { Response } from "express";
 import { z } from "zod";
 import { ACT_CHOICES, ACT_NOTE_MAX, RATING_REASON_MAX, WORK_RATINGS } from "@hmis/contracts";
-import type { Actor, WireBriefs, WireMyRatings, WireUnitReports, WireNextCard, WireNow, WireOpdDesk, WireProfessor, WireTower, WireUnitBoard } from "@hmis/contracts";
+import type { Actor, WireWardBeds, WireWardRound, WireBriefs, WireMyRatings, WireUnitReports, WireNextCard, WireNow, WireOpdDesk, WireProfessor, WireTower, WireUnitBoard } from "@hmis/contracts";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { parsed } from "../../kernel/desk/http";
@@ -18,6 +18,7 @@ import { recordAct } from "./acts";
 import { nowView, professorView } from "./phone";
 import { logbookCsv, myRatings, rateWork } from "./ratings";
 import { reportsFor } from "./report";
+import { wardBeds, wardRound } from "./ward";
 import { istDateOfInstant } from "../roster";
 import type { Db } from "../../kernel/db/client";
 
@@ -35,6 +36,7 @@ const rateBody = z.object({
   rating: z.enum(WORK_RATINGS), reason: z.string().max(RATING_REASON_MAX).nullable().optional(),
 }).strict();
 const briefId = z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/);
+const admissionId = z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/);
 
 @Controller("doctor-desk")
 export class DoctorDeskController {
@@ -154,6 +156,23 @@ export class DoctorDeskController {
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", 'attachment; filename="pg-logbook.csv"');
     return logbookCsv(this.db, actor);
+  }
+
+  /* ═══ #962 — the ward, part 1: Beds and Round (phone). Dark while IPD is off (404 `ward_closed`). ═══ */
+
+  /** Beds: the unit's beds in walk order, outliers apart, a change mark per asking doctor. */
+  @Get("ward/beds")
+  @RequirePermission("opd.consult", "hospital")
+  async wardBeds(@CurrentActor() actor: Actor): Promise<WireWardBeds> {
+    try { return await wardBeds(this.db, actor, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  /** Round: one bed — since you last saw, vitals with the early-warning score, my notes. The note itself is IPD's `POST /ipd/rounds/sign`. */
+  @Get("ward/round/:admissionId")
+  @RequirePermission("opd.consult", "hospital")
+  async wardRound(@CurrentActor() actor: Actor, @Param("admissionId") id: string): Promise<WireWardRound> {
+    const admission = parsed(admissionId, id);
+    try { return await wardRound(this.db, actor, admission, new Date()); } catch (e) { toHttp(e); }
   }
 
   /** DD-report v0 — the 08:00 unit reports the asker may read (head: unit; HOD: department; MS: all), last 14 days. */

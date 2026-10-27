@@ -1,0 +1,60 @@
+/*
+ * ═══ #962 — Beds and Round, the phone boards (`Beds.dc.html`, `Round.dc.html`), ported 1:1 inside the phone shell ═══
+ *
+ * The board's sizes, IBM Plex and greens; 44–52 px touch targets. The Round board's dark header bar is re-skinned
+ * LIGHT with an ink edge (owner R13: no dark slabs). Variables come from `components/doctor-desk/phone.css` (`.ddp`).
+ */
+.ddw-sorts { display: flex; gap: 8px; flex-wrap: wrap; }
+.ddw-sort { height: 44px; padding: 0 14px; border-radius: 6px; font-size: 13px; font-weight: 600; background: #ffffff; color: var(--dd-ink); border: 1px solid var(--dd-line); }
+.ddw-sort-on { background: var(--dd-ink); color: #f2faf6; border-color: var(--dd-ink); }
+
+.ddw-bed { display: flex; align-items: center; gap: 10px; min-height: 60px; padding: 8px 12px; border-bottom: 1px solid var(--dd-line2); color: var(--dd-ink) !important; box-sizing: border-box; }
+.ddw-bed-quiet { color: var(--dd-dim) !important; }
+.ddw-bar { width: 4px; align-self: stretch; border-radius: 2px; flex-shrink: 0; background: var(--dd-line2); }
+.ddw-bar-critical { background: var(--dd-red); }
+.ddw-bar-owed { background: #dd8f1c; }
+.ddw-bar-could_go_home { background: var(--dd-acc); }
+.ddw-bar-none { background: var(--dd-line2); }
+.ddw-bed-code { width: 46px; flex-shrink: 0; font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.ddw-bed-main { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.ddw-bed-t { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.ddw-bed-age { font-weight: 400; color: var(--dd-dim); }
+.ddw-bed-s { font-size: 12px; color: var(--dd-dim); }
+.ddw-mark { font-size: 12px; font-weight: 500; }
+.ddw-mark-red { color: var(--dd-red); }
+.ddw-mark-amber { color: var(--dd-amber); }
+.ddw-mark-green { color: var(--dd-acc); }
+.ddw-mark-dim { color: var(--dd-dim); }
+.ddw-tags { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0; }
+.ddw-tag { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 10px; font-weight: 600; letter-spacing: .08em; color: var(--dd-dim); }
+.ddw-more { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; font-size: 12.5px; color: var(--dd-dim); }
+
+.ddw-out { display: flex; flex-direction: column; gap: 4px; padding: 12px; background: #ffffff; border: 1px dashed #b9c9bf; border-radius: 8px; }
+.ddw-out .ddp-eyebrow, .ddw-label { text-transform: uppercase; }
+.ddw-out-line { font-size: 13px; color: var(--dd-ink) !important; }
+.ddw-mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-weight: 600; }
+.ddw-start { display: flex; align-items: center; justify-content: center; height: 50px; border-radius: 6px; background: var(--dd-acc); color: #f2faf6 !important; font-size: 15px; font-weight: 600; }
+.ddw-foot { font-size: 12px; color: var(--dd-dim); text-align: center; }
+
+/* Round */
+.ddw-bar-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 16px; background: #ffffff; border-bottom: 2px solid var(--dd-ink); position: sticky; top: 0; z-index: 2; }
+.ddw-back { display: inline-flex; align-items: center; min-height: 44px; font-size: 13px; font-weight: 500; color: var(--dd-ink) !important; }
+.ddw-bar-mid { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+.ddw-bar-r { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 11px; color: var(--dd-dim); }
+.ddw-h1-age { font-size: 14px; font-weight: 400; color: var(--dd-dim); }
+.ddw-bed-big { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 14px; font-weight: 700; flex-shrink: 0; }
+.ddw-eyebrow-row { padding: 10px 12px; border-bottom: 1px solid var(--dd-line2); text-transform: uppercase; }
+.ddw-line { display: flex; flex-direction: column; gap: 1px; padding: 10px 12px; border-bottom: 1px solid var(--dd-line2); }
+.ddw-line-t { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.ddw-vitals { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.ddw-vital { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 2px; background: #ffffff; border: 1px solid var(--dd-line); border-radius: 6px; min-width: 0; }
+.ddw-vital-k { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 9.5px; letter-spacing: .08em; color: var(--dd-dim); }
+.ddw-vital-v { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 14px; font-weight: 700; }
+.ddw-text { box-sizing: border-box; width: 100%; border: 1px solid var(--dd-line); border-radius: 6px; padding: 10px; font: inherit; font-size: 14px; color: var(--dd-ink); background: #f9fbf9; resize: none; }
+.ddw-note-btns { display: flex; justify-content: flex-end; gap: 8px; }
+.ddw-walk { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 10px 12px 12px; background: #ffffff; border-top: 1px solid var(--dd-line); position: sticky; bottom: 0; }
+.ddw-walk-a { display: flex; flex-direction: column; justify-content: center; min-height: 52px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--dd-line); color: var(--dd-ink) !important; min-width: 0; }
+.ddw-walk-next { align-items: flex-end; background: var(--dd-acc); border-color: var(--dd-acc); color: #f2faf6 !important; }
+.ddw-walk-k { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 10px; color: var(--dd-dim); }
+.ddw-walk-next .ddw-walk-k { color: #cfe9dd; }
+.ddw-walk-t { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }

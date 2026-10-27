@@ -52,6 +52,7 @@ const TOWER: WireTower = {
   brief: BRIEF,
   briefsWaiting: 2,
   agentRuns: [{ id: "run1", agent: "login_brief", outcome: "ok", summaryKey: "briefBuilt", params: { lines: 1 }, ranAt: AT }],
+  ward: null,
 };
 
 describe("Doctor Desk Tower (DD-0)", () => {

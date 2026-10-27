@@ -1863,6 +1863,13 @@
       "when": 1792593790586,
       "tag": "0266_laundry_floor",
       "breakpoints": true
+    },
+    {
+      "idx": 266,
+      "version": "7",
+      "when": 1792593850586,
+      "tag": "0267_dd_ward_unit_stamp",
+      "breakpoints": true
     }
   ]
 }

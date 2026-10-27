@@ -7,7 +7,7 @@ import { useAuth } from "../lib/auth";
 import { fmtIst } from "../lib/format";
 import { deskErrorText, fetchTower, markBriefSeen, nudgeRow } from "../lib/doctor-desk-api";
 import type {
-  AttentionTab, WireAttentionRow, WireBrief, WireBriefFact, WireOwedRow, WireScheduleRow, WireTeamMember, WireTower,
+  AttentionTab, WireAttentionRow, WireBrief, WireBriefFact, WireOwedRow, WireScheduleRow, WireTeamMember, WireTower, WireTowerWard,
 } from "../lib/doctor-desk-api";
 import { owedClock } from "../../../../packages/contracts/src/doctor-desk";
 import { dutyWhatKey, greetingKey } from "../../../../packages/contracts/src/roster-board";
@@ -90,7 +90,9 @@ export function DoctorDeskTower(): React.ReactElement {
 
 function Centre({ tower, lang }: { tower: WireTower; lang: string }): React.ReactElement {
   const { t } = useTranslation();
-  const { can } = useAuth();
+  const { can, moduleOn } = useAuth();
+  // #962 — the inpatient parts need BOTH the server's ward read and IPD switched on here (decision 0085): absent otherwise.
+  const ward = moduleOn("ipd") ? (tower.ward ?? null) : null;
   const sub = [gradeText(tower.you.grade, t), tower.unit?.departmentName, tower.unit?.short].filter((x): x is string => x !== null && x !== undefined && x !== "");
   return (
     <>
@@ -108,10 +110,11 @@ function Centre({ tower, lang }: { tower: WireTower; lang: string }): React.Reac
         </div>
       </div>
       {tower.brief !== null && <LoginBrief brief={tower.brief} istDate={tower.istDate} lang={lang} />}
-      <Summary tower={tower} />
+      <Summary tower={tower} ward={ward} />
       <Attention tower={tower} lang={lang} />
       <div className="dd-two">
-        {tower.unit !== null && <UnitOverview tower={tower} />}
+        {ward !== null && <WardOverview ward={ward} unitShort={tower.unit?.short ?? ""} />}
+        {ward === null && tower.unit !== null && <UnitOverview tower={tower} />}
         <section className="dd-card" data-testid="dd-quick">
           <h2 className="dd-h2">{t("doctorDesk.tower.quick")}</h2>
           <div className="dd-quick">
@@ -121,6 +124,7 @@ function Centre({ tower, lang }: { tower: WireTower; lang: string }): React.Reac
           </div>
         </section>
       </div>
+      {ward !== null && tower.unit !== null && tower.unitOverview.length > 0 && <UnitOverview tower={tower} />}
     </>
   );
 }
@@ -200,6 +204,9 @@ function BriefsLink(): React.ReactElement {
 /* ═══ Today's Clinical Summary ═══ */
 
 const TILE_ICON = {
+  inpatients: "M1.5 12.5v-8M1.5 9.5h13v3M14.5 12.5V9.5a2 2 0 00-2-2H7.5v2M4.5 8.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3z",
+  review: "M8 1.8l6.5 11.4h-13zM8 6.3v3.2M8 11.4v.1",
+  newOnTake: "M6.5 7.5a3 3 0 100-6 3 3 0 000 6zM1.5 14c.5-2.6 2.4-3.8 5-3.8 1 0 1.9.2 2.6.5M12.5 9.5v4M10.5 11.5h4",
   booked: "M8 8a3 3 0 100-6 3 3 0 000 6zM2.5 14c.6-2.8 2.8-4 5.5-4s4.9 1.2 5.5 4",
   seen: "M2.5 2.5h11v11h-11zM5 8l2 2 4-4.5",
   waiting: "M8 14A6 6 0 108 2a6 6 0 000 12zM8 4.5V8l2.5 1.5",
@@ -207,10 +214,16 @@ const TILE_ICON = {
   papers: "M8 1.5l5.5 2V8c0 3.2-2.3 5.6-5.5 6.5C4.8 13.6 2.5 11.2 2.5 8V3.5zM5.5 8l1.8 1.8 3.2-3.6",
 };
 
-function Summary({ tower }: { tower: WireTower }): React.ReactElement {
+function Summary({ tower, ward }: { tower: WireTower; ward: WireTowerWard | null }): React.ReactElement {
   const { t } = useTranslation();
   const tl = tower.tiles;
   const tiles: { key: keyof typeof TILE_ICON; v: number; k: string; sub?: string; hot?: boolean }[] = [];
+  if (ward !== null) {
+    // #962 — the census's own figures (IPD `unitCensus`), never a recount here.
+    tiles.push({ key: "inpatients", v: ward.census.occupied, k: t("doctorDesk.ward.tileInpatients", { unit: tower.unit?.short ?? "" }) });
+    tiles.push({ key: "review", v: ward.critical, k: t("doctorDesk.ward.tileReview"), hot: ward.critical > 0 });
+    tiles.push({ key: "newOnTake", v: ward.census.admitted, k: t("doctorDesk.ward.tileNewOnTake") });
+  }
   if (tower.mode === "opd_day" && tl.booked !== null && tl.seen !== null && tl.waiting !== null) {
     tiles.push({ key: "booked", v: tl.booked, k: t("doctorDesk.tile.booked") });
     tiles.push({ key: "seen", v: tl.seen, k: t("doctorDesk.tile.seen") });
@@ -238,7 +251,7 @@ function Summary({ tower }: { tower: WireTower }): React.ReactElement {
           </div>
         ))}
       </div>
-      {tower.mode !== "opd_day" && <div className="dd-note">{t("doctorDesk.tower.noOpdToday")}</div>}
+      {tower.mode !== "opd_day" && ward === null && <div className="dd-note">{t("doctorDesk.tower.noOpdToday")}</div>}
     </section>
   );
 }
@@ -330,6 +343,46 @@ function UnitOverview({ tower }: { tower: WireTower }): React.ReactElement {
           </div>
         </>
       )}
+    </section>
+  );
+}
+
+/* ═══ #962 — Unit Overview, inpatient mode: the take-day figures and the bed-dot map (Tower.dc.html) ═══ */
+
+function WardOverview({ ward, unitShort }: { ward: WireTowerWard; unitShort: string }): React.ReactElement {
+  const { t } = useTranslation();
+  const router = useRouter({ warn: false });
+  const c = ward.census;
+  const first = ward.beds[0]?.bedCode;
+  const last = ward.beds[ward.beds.length - 1]?.bedCode;
+  return (
+    <section className="dd-card" data-testid="dd-ward-overview">
+      <div className="dd-card-head">
+        <h2 className="dd-h2">{t("doctorDesk.tower.overview")}</h2>
+        <a href="/doctor-desk/beds" className="dd-link" data-testid="dd-ward-beds-link" onClick={(e) => { if (router === undefined) return; e.preventDefault(); void router.navigate({ to: "/doctor-desk/beds" }); }}>{t("doctorDesk.ward.openBeds")}</a>
+      </div>
+      <div className="dd-ov">
+        <div data-testid="dd-ov-occupied">
+          <span className="dd-ov-v">{ward.totalBeds === null ? String(c.occupied) : t("doctorDesk.ward.ofBeds", { n: c.occupied, total: ward.totalBeds })}</span>
+          <span className="dd-ov-k">{t("doctorDesk.ward.ovOccupied", { unit: unitShort })}</span>
+        </div>
+        <div data-testid="dd-ov-admitted"><span className="dd-ov-v">{c.admitted}</span><span className="dd-ov-k">{t("doctorDesk.ward.ovAdmitted")}</span></div>
+        <div data-testid="dd-ov-candidates"><span className="dd-ov-v">{ward.dischargeCandidates}</span><span className="dd-ov-k">{t("doctorDesk.ward.ovCandidates")}</span></div>
+        {c.bedsAtMidnight !== null && (
+          <div data-testid="dd-ov-midnight"><span className="dd-ov-v">{c.bedsAtMidnight}</span><span className="dd-ov-k">{t("doctorDesk.ward.ovMidnight")}</span></div>
+        )}
+      </div>
+      {ward.beds.length > 0 && (
+        <div className="dd-bedmap" data-testid="dd-bedmap" role="img" aria-label={t("doctorDesk.ward.mapLabel")}>
+          {ward.beds.map((b) => {
+            const flag = b.status === "free" ? "free" : b.flag;
+            return <span key={b.bedId} className={`dd-dot dd-dot-${flag}`} data-testid={`dd-bed-dot-${b.bedId}`} data-flag={flag} title={`${b.bedCode} · ${t(`doctorDesk.ward.flag.${flag}`)}`} />;
+          })}
+        </div>
+      )}
+      <div className="dd-note">
+        {first !== undefined && last !== undefined ? `${first} → ${last} · ` : ""}{t("doctorDesk.ward.legend")}
+      </div>
     </section>
   );
 }

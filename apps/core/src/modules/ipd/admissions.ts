@@ -22,6 +22,7 @@ import {
 import { grantedApproval } from "./approval-types";
 import { assignBedIn, endAdmissionHolds, placementContext, readBedFacts, withNextRuleValidBeds } from "./beds";
 import { depositPaidPaise } from "./deposit";
+import { stampUnitIn } from "./unit-stamp";
 import { IpdError, IpdRefusal } from "./errors";
 import { IPD_ADMIT, IPD_ADMIT_REQUEST } from "./manifest";
 import type { Actor, IpdAdmissionIncomplete, IpdBedClass, IpdBedNeed, IpdConsent, IpdIntentName } from "@hmis/contracts";
@@ -43,7 +44,11 @@ import type { AdmissionRow } from "./admission-core";
 
 type Input<N extends IpdIntentName> = z.infer<(typeof IPD_INTENTS)[N]["input"]>;
 type Output<N extends IpdIntentName> = z.infer<(typeof IPD_INTENTS)[N]["output"]>;
-type Opts = { now?: Date };
+/**
+ * `erArrivedAt` (#962): the ER gate instant, handed in by the emergency module's hand-off so the emergency lane stamps
+ * the unit on take at ARRIVAL (`unit-stamp.ts`) — the row's own `er_arrived_at` is copied later, in the ER's transaction.
+ */
+type Opts = { now?: Date; erArrivedAt?: Date };
 
 const DAY_MS = 86_400_000;
 const SCHEME: ReadonlySet<string> = new Set(["pmjay", "state_scheme"]);
@@ -273,6 +278,7 @@ export async function admit(db: Db, actor: Actor, raw: unknown, opts: Opts = {})
         consent: consentRecord(input.consent, actor), consentAt: at, icuApprovalId,
         depositExemption: dep.exemption, depositExemptionApprovalId: dep.approvalId, tariffVersionId,
       });
+      await stampUnitIn(tx, locked.id, at);
       await appendEvent(tx, admissionAdmitted.make({
         payload: {
           admissionId: a.id, patientId: a.patientId, bedId: input.bedId, admissionNo: no.admissionNo,
@@ -350,6 +356,7 @@ export async function emergencyAdmit(db: Db, actor: Actor, raw: unknown, opts: O
         admissionYear: no.year, admissionSerial: no.serial, admissionNo: no.admissionNo, admittedAt: at, admittedBy: actor.id,
         depositExemption: "emergency_not_stabilised", tariffVersionId,
       });
+      await stampUnitIn(tx, admissionId, at, opts.erArrivedAt ?? null);
       await appendEvent(tx, admissionAdmitted.make({
         payload: { admissionId, patientId, bedId: input.bedId, admissionNo: no.admissionNo, source: "er", provenance },
         actor, correlationId: admissionId, patientId, encounterId: admissionId, occurredAt: at,
@@ -426,6 +433,7 @@ export async function backfillDowntime(db: Db, actor: Actor, raw: unknown, opts:
           admissionYear: no.year, admissionSerial: no.serial, admissionNo: no.admissionNo, admittedAt, admittedBy: actor.id,
           consent: consentRecord(input.consent, actor), consentAt: admittedAt, tariffVersionId,
         }, `downtime paper ${serial}`);
+        await stampUnitIn(tx, admissionId, admittedAt);
         await appendEvent(tx, admissionAdmitted.make({
           payload: { admissionId, patientId, bedId: input.bedId, admissionNo: no.admissionNo, source: "downtime", provenance },
           actor, correlationId: admissionId, patientId, encounterId: admissionId, occurredAt: admittedAt,

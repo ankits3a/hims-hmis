@@ -95,6 +95,8 @@ import { DoctorDeskNow } from "./screens/doctor-desk-now";
 import { DoctorDeskProfessor } from "./screens/doctor-desk-professor";
 import { DoctorDeskRatings } from "./screens/doctor-desk-ratings";
 import { DoctorDeskReport } from "./screens/doctor-desk-report";
+import { DoctorDeskBeds } from "./screens/doctor-desk-beds";
+import { DoctorDeskRound } from "./screens/doctor-desk-round";
 import { RosterEvidence } from "./screens/roster-evidence";
 import { RosterAebas } from "./screens/roster-aebas";
 import { OpdAdmin } from "./screens/opd-admin";
@@ -917,6 +919,13 @@ const doctorDeskRatingsRoute = createRoute({
 /** DD-report v0 — the 08:00 unit report. */
 const doctorDeskReportRoute = createRoute({
   getParentRoute: () => authedRoute, path: "/doctor-desk/report", staticData: { fullViewport: true }, component: DoctorDeskReport,
+});
+/** #962 — the ward, part 1: Beds (`Beds.dc.html`) and Round (`Round.dc.html`), phone web views; dark while IPD is off. */
+const doctorDeskBedsRoute = createRoute({
+  getParentRoute: () => authedRoute, path: "/doctor-desk/beds", staticData: { fullViewport: true }, component: DoctorDeskBeds,
+});
+const doctorDeskRoundRoute = createRoute({
+  getParentRoute: () => authedRoute, path: "/doctor-desk/round/$admissionId", staticData: { fullViewport: true }, component: DoctorDeskRound,
 });
 const doctorDeskBriefsRoute = createRoute({
   getParentRoute: () => authedRoute,
@@ -2539,6 +2548,9 @@ export const router = createRouter({
       doctorDeskRatingsRoute,
       // DD-report v0 — +1, `/doctor-desk/report`.
       doctorDeskReportRoute,
+      // #962 — +2, `/doctor-desk/beds` and `/doctor-desk/round/$admissionId`. `caddyfile-parity.test.ts` pins the count.
+      doctorDeskBedsRoute,
+      doctorDeskRoundRoute,
     ]),
   ]),
 });
