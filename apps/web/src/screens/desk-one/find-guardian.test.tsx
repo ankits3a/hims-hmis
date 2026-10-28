@@ -10,8 +10,8 @@ import "../../lib/i18n";
 
 /**
  * Owner 2026-10-23 — *"In the suggested list of patients in the /counter screen, show guardian info
- * as well along with age, area, mobile number and UHID."* Each row carries the guardian under the
- * age and mobile; a woman's spouse reads Husband (#942), the registration's father / husband box
+ * as well along with age, area, mobile number and UHID."* Each row carries the guardian on the age ·
+ * gender · mobile row (owner 2026-10-28); a woman's spouse reads Husband (#942), the registration's father / husband box
  * reads Father/Husband, and a row with nobody on file says so.
  */
 const BASE = {
@@ -53,7 +53,7 @@ function mountDesk(): void {
 
 afterEach(() => { setToken(null); });
 
-it("each counter hit shows its guardian under the age and mobile, and a row with none says so", async () => {
+it("each counter hit shows its guardian on the age · gender · mobile row, and a row with none says so", async () => {
   mountDesk();
   await act(async () => { await router.navigate({ to: "/counter" }); });
   await waitFor(() => expect(screen.getByTestId("desk-one")).toBeInTheDocument());
@@ -71,10 +71,16 @@ it("each counter hit shows its guardian under the age and mobile, and a row with
   ]);
   expect(lines[0]).toHaveAttribute("title", "Father: Ramesh Kumar");
 
-  // Placed between the age · mobile line and the area line, inside the same column.
-  const column = lines[0]!.parentElement!;
+  // Owner 2026-10-28: on the SAME row as age, gender and mobile — not a line of its own.
+  const row = lines[0]!.closest("[data-testid='hit-who']") as HTMLElement;
+  expect(row).not.toBeNull();
+  expect(row.textContent).toContain("9100000001");
+  expect(row.textContent).toMatch(/9100000001 · Father: Ramesh Kumar$/);
+  // The column is name, that row, then the area line.
+  const column = row.parentElement!;
   expect(within(column).getByText("Mohan Kumar")).toBeInTheDocument();
   const order = Array.from(column.children).map((c) => c.getAttribute("data-testid") ?? c.textContent);
-  expect(order.indexOf("hit-guardian")).toBe(2);
-  expect(order.indexOf("hit-tell-apart")).toBe(3);
+  expect(order.indexOf("hit-who")).toBe(1);
+  expect(order.indexOf("hit-tell-apart")).toBe(2);
+  expect(order).not.toContain("hit-guardian");
 });

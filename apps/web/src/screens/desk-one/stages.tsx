@@ -88,30 +88,27 @@ export function Stage(): React.ReactElement {
    ══════════════════════════════════════════════════════════════════════════════════════════════ */
 
 /**
- * Owner 2026-10-23 — the guardian under a counter hit, the next thing a desk asks ("pita ka naam?").
- * One line, cut with an ellipsis rather than wrapped, so every row keeps one height and the UHID and
- * the button stay in line down the list; the title holds the whole name. A row with none says so,
- * as the area line does.
+ * Owner 2026-10-23 — the guardian on a counter hit, the next thing a desk asks ("pita ka naam?").
+ * Owner 2026-10-28 — on the SAME row as age, gender and mobile ("35 M · 9041463343 · Father: Sunil
+ * Kumar"), not a line of its own. That row is one line, cut with an ellipsis rather than wrapped, so
+ * every hit keeps one height and the UHID and the button stay in line down the list; the title holds
+ * the whole name. A hit with none says so, as the area line does.
  */
 function HitGuardian({ hit }: { hit: WirePatientHit }): React.ReactElement {
   const { t } = useTranslation();
   if (hit.guardian == null) {
     return (
-      <div style={{ fontSize: 11.5, color: "var(--faint)", marginTop: 1 }} data-testid="hit-guardian">
+      <span style={{ color: "var(--faint)" }} data-testid="hit-guardian">
         {t("registrationCounter.find.noGuardian")}
-      </div>
+      </span>
     );
   }
   const relation = t(guardianRelationKey(hit.guardian.relation, hit.administrativeGender), { defaultValue: hit.guardian.relation ?? "" });
   return (
-    <div
-      style={{ fontSize: 11.5, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
-      title={`${relation}: ${hit.guardian.name}`}
-      data-testid="hit-guardian"
-    >
+    <span title={`${relation}: ${hit.guardian.name}`} data-testid="hit-guardian">
       <span style={{ color: "var(--dim)" }}>{relation}:</span>{" "}
       <span style={{ color: "var(--ink)", fontWeight: 500 }}>{hit.guardian.name}</span>
-    </div>
+    </span>
   );
 }
 
@@ -256,16 +253,22 @@ function StageFind(): React.ReactElement {
             }}>
               {initialsOf(hit.name)}
             </div>
-            {/* 250, not 210: the guardian line needs the room, and the reasons column gives it up. */}
-            <div style={{ width: 250, minWidth: 0 }}>
+            {/* 300, not 210: the age · mobile · guardian row needs the room, and the reasons column gives it up. */}
+            <div style={{ width: 300, minWidth: 0 }}>
               <div style={{ fontSize: 14, fontWeight: 600 }}>
                 {hit.name}
                 {hit.isConfidential ? <span className="pill rd" style={{ height: 19, marginLeft: 6 }}>restricted</span> : null}
               </div>
-              <div className="mo" style={{ fontSize: 11, color: "var(--dim)" }}>
-                {ageOf(hit.dob) === "" ? "" : `${ageOf(hit.dob)} `}{sexLetter(hit.administrativeGender)} · {hit.phone ?? "no mobile"}
+              <div
+                style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                data-testid="hit-who"
+              >
+                <span className="mo" style={{ fontSize: 11 }}>
+                  {ageOf(hit.dob) === "" ? "" : `${ageOf(hit.dob)} `}{sexLetter(hit.administrativeGender)} · {hit.phone ?? "no mobile"}
+                </span>
+                {" \u00b7 "}
+                <HitGuardian hit={hit} />
               </div>
-              <HitGuardian hit={hit} />
               {/*
                 FD-11 — THE LINE THAT TELLS TWO RAMESH KUMARS APART.
 
