@@ -1,5 +1,6 @@
 import { and, desc, eq, gte, inArray, isNull, lt, ne, or } from "drizzle-orm";
 import { IPD_EWS_ANSWER_MINUTES, IPD_HANDOVER_ON_TIME_MINUTES } from "@hmis/contracts";
+import { istDayString } from "../../kernel/approvals/cumulative";
 import {
   ipdBedStays, ipdNursingAlerts, ipdRestraints, ipdSafetyEvents, ipdShiftHandovers, ipdWardIncidents, ipdWardRatioBreaches, ipdWardShiftMaps, resources, users,
 } from "../../kernel/db/schema";
@@ -76,7 +77,7 @@ export async function readWardQuality(db: Db, actor: Actor, q: { wardId: string;
   const onTime = handovers.filter((h) => h.acceptedAt !== null && h.acceptedAt.getTime() - h.givenAt.getTime() <= IPD_HANDOVER_ON_TIME_MINUTES * 60_000).map((h) => h.id).sort();
 
   const dayFrom = q.month + "-01";
-  const dayTo = new Date(to.getTime() + 330 * 60_000).toISOString().slice(0, 10);
+  const dayTo = istDayString(to);
   const maps = await db.select().from(ipdWardShiftMaps).where(and(
     eq(ipdWardShiftMaps.wardId, ward.id), ne(ipdWardShiftMaps.status, "draft"), gte(ipdWardShiftMaps.shiftDate, dayFrom), lt(ipdWardShiftMaps.shiftDate, dayTo),
   ));
