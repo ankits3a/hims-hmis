@@ -632,6 +632,43 @@ Source: `apps/core/src/modules/ipd/`
   - `movableAdmissions(exec: Db | Tx, limit = 2000): Promise<TransportAdmissionFacts[]>`
   - `resolveBandScan(exec: Db | Tx, code: string): Promise<BandScan | null>`
   - types: `BandScan`, `TransportAdmissionFacts`
+- `ward-cart.ts`
+  - `checkCrashCart(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ checkId: string; status: "ready" | "needs_restock"; sealChan…`
+  - `readAgencyNurses(db: Db, actor: Actor, opts: { now?: Date } = {}): Promise<IpdAgencyNurses>`
+  - `registerCrashCart(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ cartId: string }>`
+  - `takeNarcoticKeys(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ holdId: string; wardId: string; fromUserId: string | null …`
+  - `useCrashCart(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ cartId: string; status: "needs_restock" }>`
+  - `verifyNurseRegistration(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ userId: string; validUntil: string }>`
+- `ward-lines.ts`
+  - `insertIpdLine(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ lineId: string; dueRemovalAt: string }>`
+  - `removeIpdLine(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ lineId: string; days: number }>`
+  - `reviewIpdLine(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ lineId: string; dueRemovalAt: string | null }>`
+- `ward-quality.ts`
+  - `readWardQuality(db: Db, actor: Actor, q: { wardId: string; month: string; now?: Date }): Promise<IpdWardQuality>`
+  - `readWardSafety(db: Db, actor: Actor, opts: { wardId?: string; now?: Date } = {}): Promise<IpdWardSafety>`
+- `ward-safety-events.ts`
+  - `IPD_WARD_SAFETY_EVENT_NAMES: readonly string[]`
+- `ward-safety.ts`
+  - `applyRestraint(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ restraintId: string; nextCheckAt: string }>`
+  - `endRestraint(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ restraintId: string; endedAt: string }>`
+  - `orderRestraint(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ restraintId: string; reviewDueAt: string; psychiatric: boole…`
+  - `readRestraintRegister(db: Db, actor: Actor, q: { month: string; wardId?: string; now?: Date }): Promise<IpdRestraintRegister>`
+  - `recordCareCheck(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ checkId: string; nextDueAt: string; late: boolean }>`
+  - `recordRestraintCheck(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ checkId: string; nextCheckAt: string }>`
+  - `recordRestraintFamilyTold(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ restraintId: string }>`
+  - `recordRiskScore(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ scoreId: string; plans: PlanChange[] }>`
+  - `recordSafetyEvent(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ eventId: string }>`
+  - `reviewRestraint(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ restraintId: string; status: string; reviewDueAt: string }>`
+  - `sweepWardSafety(db: Db, now: Date): Promise<WardSafetySweepResult>`
+  - types: `WardSafetySweepResult`
+- `ward-stock.ts`
+  - `raiseWardIndent(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ indentId: string; indentNo: string; lines: number }>`
+  - `readWardLots(db: Db, actor: Actor, q: { admissionId: string; now?: Date }): Promise<IpdWardLots>`
+  - `readWardStock(db: Db, actor: Actor, q: { wardId: string; now?: Date }): Promise<IpdWardStock>`
+  - `readWardStockCatalogue(db: Db, actor: Actor, q: { search?: string }): Promise<IpdWardStockCatalogue>`
+  - `recordWardStockUse(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ useId: string; charged: boolean; notChargedWhy: string |…`
+  - `returnWardLots(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ transferId: string; lines: number }>`
+  - `setWardPar(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ wardId: string; storeId: string; supplyStoreId: string }>`
 
 ## Tables (`kernel/db/schema/ipd.ts`)
 
@@ -655,5 +692,6 @@ Foreign keys into: `emergency`, `patients`, `resources`
 - `rounds.controller.ts` — `/ipd/charge-exceptions`, `/ipd/consults`, `/ipd/orders`, `/ipd/rounds`
 - `tpa.controller.ts` — `/ipd/admissions`, `/ipd/tpa`
 - `transfers.controller.ts` — `/ipd/transfers`
+- `ward-safety.controller.ts` — `/ipd/ward-safety`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/ipd`

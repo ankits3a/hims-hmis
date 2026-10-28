@@ -197,7 +197,12 @@ export const IpdWardCockpitSchema = z.object({
   beds: z.array(IpdCockpitBedSchema),
   /** What needs the in-charge now, most urgent first. */
   needsYou: z.array(z.object({
-    kind: z.enum(["unassigned_bed", "ews", "overdue", "ratio_breach", "overloaded", "not_published"]),
+    /** WM-2 (#983) adds the safety items: a care check or restraint check overdue, a restraint due its doctor's review
+     * (or lapsed), a crash cart not checked this shift or needing a restock, a line past its due-removal. */
+    kind: z.enum([
+      "unassigned_bed", "ews", "overdue", "ratio_breach", "overloaded", "not_published",
+      "care_check", "restraint_check", "restraint_review", "crash_cart", "line_due",
+    ]),
     bedId: IpdIdSchema.nullable(),
     userId: IpdIdSchema.nullable(),
     text: z.string(),

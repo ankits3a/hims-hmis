@@ -107,7 +107,7 @@ export function spanWords(ms: number, t: T): string {
 }
 
 /** "Vitals · in 20 min" / "Vitals · overdue 12 min". */
-export function dueWords(kind: "vitals" | "assessment" | "ews" | "handover", dueAt: string, now: number, t: T): string {
+export function dueWords(kind: "vitals" | "assessment" | "ews" | "handover" | "care_check" | "restraint_check", dueAt: string, now: number, t: T): string {
   const ms = new Date(dueAt).getTime() - now;
   const what = t(`ipdNursing.due.${kind}`);
   return ms < 0 ? `${what} · ${t("ipdNursing.overdueBy", { span: spanWords(ms, t) })}` : `${what} · ${t("ipdNursing.dueIn", { span: spanWords(ms, t) })}`;

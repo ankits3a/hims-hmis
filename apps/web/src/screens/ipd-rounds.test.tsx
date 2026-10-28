@@ -16,6 +16,13 @@ vi.mock("../lib/ipd-rounds-api", async (orig) => {
   return { ...real, ...api };
 });
 
+// #1007 — the restraint and line forms on the round page.
+const safety = vi.hoisted(() => ({ orderRestraint: vi.fn(), reviewRestraint: vi.fn(), insertLine: vi.fn(), reviewLine: vi.fn() }));
+vi.mock("../lib/ipd-ward-safety-api", async (orig) => {
+  const real = await orig<typeof import("../lib/ipd-ward-safety-api")>();
+  return { ...real, ...safety };
+});
+
 // E5.3 — "Since yesterday" is its own test's (`ipd-copilot.test.tsx`); here the block has nothing to load.
 vi.mock("../lib/ipd-copilot-api", () => ({ getSince: vi.fn(async () => { throw new Error("not in this test"); }), polishSince: vi.fn() }));
 
@@ -120,5 +127,36 @@ describe("Round page (E4.2)", () => {
     await user.type(screen.getByLabelText("Plan"), "Continue");
     await user.click(screen.getByTestId("ipd-round-sign"));
     expect(await screen.findByRole("alert")).toHaveTextContent("A resident's round needs the consultant's co-sign");
+  });
+});
+
+describe("Round page restraints and lines (#1007)", () => {
+  it("orders a restraint with a reason, continues one already on, and puts in a line", async () => {
+    const user = userEvent.setup();
+    for (const f of Object.values(safety)) f.mockReset().mockResolvedValue({});
+    api.getRoundPatient.mockResolvedValue({
+      ...patient,
+      restraints: [{
+        restraintId: id(80), admissionId: id(1), bedCode: "F05-MED-B01", name: "Test Patient 1", wardId: id(81), kind: "physical", reason: "Pulling lines",
+        status: "active", psychiatric: false, orderedBy: "Dr Fake", orderedAt: NOW, startedAt: NOW, endedAt: null, reviewDueAt: NOW, nextCheckAt: NOW,
+        checkOverdue: false, checks: 0, missedChecks: 0, familyTold: null, representativeLate: false,
+      }],
+      lines: [],
+    } satisfies IpdRoundPatient);
+    renderWithRouter(<IpdRoundPatientScreen admissionId={id(1)} />, "/ipd/rounds/x");
+    await screen.findByTestId("ipdr-restraints");
+    await user.click(screen.getByTestId(`ipds-continue-${id(80)}`));
+    expect(safety.reviewRestraint).toHaveBeenCalledWith(id(80), "continue");
+    await user.click(screen.getByTestId("ipdr-restraint-new"));
+    const sign = screen.getByTestId("ipds-restraint-sign");
+    expect(sign).toBeDisabled();
+    await user.type(screen.getByTestId("ipds-restraint-reason"), "Delirium, pulling lines");
+    await user.click(sign);
+    expect(safety.orderRestraint).toHaveBeenCalledWith(id(1), "physical", "Delirium, pulling lines");
+    await user.click(screen.getByTestId("ipdr-line-new"));
+    await user.selectOptions(screen.getByTestId("ipds-line-kind"), "central_line");
+    await user.type(screen.getByTestId("ipds-line-site"), "Right IJ");
+    await user.click(screen.getByTestId("ipds-line-save"));
+    expect(safety.insertLine.mock.calls[0]!.slice(0, 3)).toEqual([id(1), "central_line", "Right IJ"]);
   });
 });

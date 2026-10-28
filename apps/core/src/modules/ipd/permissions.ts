@@ -36,6 +36,13 @@ export const IPD_EWS_RESPOND = "ipd.ews.respond";
 // WM-1 (#982, decision 0089) — the ward's nurses: the in-charge's assignment and the supervisor's float move.
 export const IPD_NURSING_ASSIGN = "ipd.nursing.assign";
 export const IPD_NURSING_FLOAT = "ipd.nursing.float";
+// WM-2 (#983, decisions 0089 / 0091) — a restraint is a doctor's order; ward stock on a patient touches the bill; the
+// ward's monthly quality read.
+export const IPD_RESTRAINT_ORDER = "ipd.restraint.order";
+export const IPD_WARD_STOCK_USE = "ipd.ward_stock.use";
+export const IPD_WARD_QUALITY = "ipd.ward.quality";
+// #1009 (decision 0089 rule 5) — verify a nurse's council registration (an agency nurse witnesses only when verified).
+export const IPD_NURSE_REGISTRATION_VERIFY = "ipd.nursing.registration.verify";
 // E4.2 (#734) — rounds and inpatient orders (the doctor's; clinical, no money).
 export const IPD_ROUND_SIGN = "ipd.round.sign";
 export const IPD_ORDER_PLACE = "ipd.order.place";

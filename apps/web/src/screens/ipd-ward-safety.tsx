@@ -1,0 +1,436 @@
+import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import type React from "react";
+import type { IpdAgencyNurses, IpdCrashCartView, IpdRestraintRegister, IpdRestraintView, IpdWardQuality, IpdWardSafety, IpdWardStock } from "@hmis/contracts";
+import { ApiError } from "../lib/api";
+import { useAuth } from "../lib/auth";
+import { dayMonthIst, fmtIst } from "../lib/format";
+import { useLiveLoad } from "./ipd-nursing-shared";
+import { wardErrorOf } from "../lib/ipd-ward-api";
+import type { WardError } from "../lib/ipd-ward-api";
+import {
+  checkCart, endRestraint, getRestraintRegister, getWardQuality, getWardSafety, getWardStock, istMonth, raiseWardIndent, recordCareCheck,
+  recordFamilyTold, recordRestraintCheck, returnWardLots, takeKeys, markCartUsed, getAgencyNurses, verifyRegistration,
+} from "../lib/ipd-ward-safety-api";
+import type { CartLine, RestraintTicks } from "../lib/ipd-ward-safety-api";
+import { PickWardPrompt, WardPicker, useWardChoice } from "../components/ward-picker";
+import { WardDeskHeader } from "./ipd-ward-cockpit";
+import { CartRegisterForm, LineRemoveForm, ParForm, PatientSafetyForms, RestraintActions } from "./ipd-safety-forms";
+import type { Saved } from "./ipd-safety-forms";
+import "./ipd-nursing.css";
+import "./ipd-ward-desk.css";
+
+/**
+ * WM-2 (#983, decisions 0089 / 0091) — THE WARD SAFETY SCREEN (1440; in the in-charge's cockpit family). Three panes:
+ * - SAFETY: care plans with their next timed check (red and "overdue" until done), restraints (status, next check, the
+ *   doctor's review due, family told; check / family / take off), lines in with their day count and due-out.
+ * - CART & STOCK: each crash cart against its seal (a changed seal or a used cart asks for a full recount), who holds the
+ *   narcotic keys, ward stock against par with one "Raise indent", and lots to send back (expiring within 30 days).
+ * - QUALITY: the month's seven indicators and the restraint register.
+ * Red always comes with a word. Sealed patients show no bed text (the server's identity rule).
+ */
+
+type Pane = "safety" | "stock" | "quality" | "staff";
+
+export function IpdWardSafetyScreen({ ward }: { ward?: string } = {}): React.ReactElement {
+  const { t } = useTranslation();
+  const pick = useWardChoice(ward ?? null);
+  const { can } = useAuth();
+  const [s, setS] = useState<IpdWardSafety | null>(null);
+  const [forbidden, setForbidden] = useState(false);
+  const [pane, setPane] = useState<Pane>("safety");
+  const [err, setErr] = useState<WardError | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  const load = useCallback(() => getWardSafety(pick.wardId).then(setS, (e: unknown) => {
+    if (e instanceof ApiError && e.status === 403) { setForbidden(true); return; }
+    throw e;
+  }), [pick.wardId]);
+  useLiveLoad(load);
+
+  if (forbidden) return <main className="ipdn ipdw" role="alert">{t("ipdWard.forbidden")}</main>;
+  if (s !== null && pick.needsPick(s.wards)) {
+    return (
+      <main className="ipdn ipdw" data-testid="ipd-ward-safety">
+        <WardPicker wards={s.wards} value={null} onChange={pick.choose} />
+        <PickWardPrompt className="ipdw-empty" />
+      </main>
+    );
+  }
+  if (s === null) return <main className="ipdn ipdw" aria-busy="true" data-testid="ipd-ward-safety">{t("ipdWard.loading")}</main>;
+
+  const act = async (fn: () => Promise<unknown>, words: string): Promise<boolean> => {
+    setErr(null); setDone(null);
+    try { await fn(); setDone(words); await load(); return true; } catch (e) { const w = wardErrorOf(e); if (w === null) throw e; setErr(w); return false; }
+  };
+  const saved: Saved = (words) => { setErr(null); setDone(words); void load(); };
+  const panes: Pane[] = can("ipd.nursing.registration.verify") ? ["safety", "stock", "quality", "staff"] : ["safety", "stock", "quality"];
+  const overdue = s.carePlans.filter((p) => p.overdue).length + s.restraints.filter((r) => r.checkOverdue || r.status === "lapsed").length;
+  return (
+    <main className="ipdn ipdw" data-testid="ipd-ward-safety">
+      <WardDeskHeader cockpit={s} active="safety" onPick={pick.choose} />
+      <div className="ipdw-body">
+        <div className="ipdw-bar">
+          <h1>{t("ipdSafety.title")}</h1>
+          {overdue > 0 ? <span className="hot" data-testid="ipds-overdue">{t("ipdSafety.overdueCount", { count: overdue })}</span> : <span className="ok">{t("ipdSafety.allOnTime")}</span>}
+          <span className="grow" />
+          <nav className="ipdw-seg" aria-label={t("ipdSafety.title")}>
+            {panes.map((p) => (
+              <button key={p} type="button" className={`ipdn-btn sm${pane === p ? " pri" : ""}`} aria-pressed={pane === p} onClick={() => setPane(p)} data-testid={`ipds-pane-${p}`}>{t(`ipdSafety.pane.${p}`)}</button>
+            ))}
+          </nav>
+        </div>
+        {err !== null ? <div className="ipdn-refusal" role="alert">{t(`ipdSafety.err.${err.code}`, { defaultValue: t("ipdWard.err.other") })}</div> : null}
+        {done !== null ? <div className="ipdn-ok" role="status">{done}</div> : null}
+        {pane === "safety" ? <SafetyPane s={s} act={act} saved={saved} /> : null}
+        {pane === "stock" && s.ward !== null ? <StockPane s={s} wardId={s.ward.id} act={act} saved={saved} /> : null}
+        {pane === "quality" && s.ward !== null ? <QualityPane wardId={s.ward.id} /> : null}
+        {pane === "staff" ? <StaffPane saved={saved} /> : null}
+      </div>
+    </main>
+  );
+}
+
+type Act = (fn: () => Promise<unknown>, words: string) => Promise<boolean>;
+
+function SafetyPane({ s, act, saved }: { s: IpdWardSafety; act: Act; saved: Saved }): React.ReactElement {
+  const { t } = useTranslation();
+  const [checking, setChecking] = useState<IpdRestraintView | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
+  const [who, setWho] = useState("");
+  const bed = (code: string | null): string => code ?? t("ipdWard.bed");
+  return (
+    <div className="ipds-stack">
+      <section className="ipdw-box" data-testid="ipds-record">
+        <b>{t("ipdSafety.forms.recordTitle")}</b>
+        {s.patients.length === 0 ? <span className="dim">{t("ipdSafety.forms.noPatients")}</span> : (
+          <label className="ipds-who">{t("ipdSafety.forms.patient")}
+            <select value={who} onChange={(e) => setWho(e.target.value)} data-testid="ipds-who">
+              <option value="">{t("ipdSafety.forms.choose")}</option>
+              {s.patients.map((p) => <option key={p.admissionId} value={p.admissionId}>{bed(p.bedCode)} · {p.name}</option>)}
+            </select>
+          </label>
+        )}
+        {who === "" ? null : <PatientSafetyForms key={who} admissionId={who} lines={s.lines} onSaved={saved} />}
+      </section>
+
+      <section className="ipdw-box" data-testid="ipds-plans">
+        <b>{t("ipdSafety.plans.title")} <span className="mono dim">{s.carePlans.length}</span></b>
+        {s.carePlans.length === 0 ? <span className="dim">{t("ipdSafety.plans.none")}</span> : s.carePlans.map((p) => (
+          <div key={p.planId} className={`ipds-row${p.overdue ? " red" : ""}`}>
+            <span className="mono">{bed(p.bedCode)}</span>
+            <span className="nm">{p.name}</span>
+            <span>{t(`ipdSafety.plan.${p.kind}`)} <span className="dim mono">{p.kind === "fall" ? `Morse ${String(p.score)}` : `Braden ${String(p.score)}`}</span></span>
+            <span className={p.overdue ? "hot" : "dim"}>{p.overdue ? t("ipdSafety.overdueSince", { time: fmtIst(p.nextDueAt) }) : t("ipdSafety.dueAt", { time: fmtIst(p.nextDueAt) })}</span>
+            <button type="button" className="ipdn-btn sm pri" onClick={() => void act(() => recordCareCheck(p.planId), t("ipdSafety.plans.saved"))} data-testid={`ipds-check-${p.planId}`}>{t("ipdSafety.plans.done")}</button>
+          </div>
+        ))}
+      </section>
+
+      <section className="ipdw-box" data-testid="ipds-restraints">
+        <b>{t("ipdSafety.restraint.title")} <span className="mono dim">{s.restraints.length}</span></b>
+        {s.restraints.length === 0 ? <span className="dim">{t("ipdSafety.restraint.none")}</span> : s.restraints.map((r) => {
+          const red = r.checkOverdue || r.status === "lapsed";
+          return (
+            <div key={r.restraintId} className={`ipds-row${red ? " red" : ""}`}>
+              <span className="mono">{bed(r.bedCode)}</span>
+              <span className="nm">{r.name}</span>
+              <span>{t(`ipdSafety.restraint.kind.${r.kind}`)} · <span className={r.status === "lapsed" ? "hot" : ""}>{t(`ipdSafety.restraint.status.${r.status}`)}</span>{r.psychiatric ? ` · ${t("ipdSafety.restraint.mhca")}` : ""}</span>
+              {r.nextCheckAt === null ? null : (
+                <span className={r.checkOverdue ? "hot" : "dim"}>
+                  {r.checkOverdue ? t("ipdSafety.restraint.checkOverdue", { time: fmtIst(r.nextCheckAt) }) : t("ipdSafety.restraint.nextCheck", { time: fmtIst(r.nextCheckAt) })}
+                </span>
+              )}
+              <span className="dim">{t("ipdSafety.restraint.review", { time: fmtIst(r.reviewDueAt) })}</span>
+              <span className={r.familyTold === null ? "warn" : "dim"}>{r.familyTold === null ? t("ipdSafety.restraint.familyNotTold") : t("ipdSafety.restraint.familyTold", { name: r.familyTold.name })}</span>
+              {r.status === "active" ? <button type="button" className="ipdn-btn sm pri" onClick={() => setChecking(r)} data-testid={`ipds-rcheck-${r.restraintId}`}>{t("ipdSafety.restraint.check")}</button> : null}
+              <RestraintActions r={r} role="nurse" onSaved={saved} />
+            </div>
+          );
+        })}
+        {checking !== null ? <RestraintForm r={checking} act={act} onClose={() => setChecking(null)} /> : null}
+      </section>
+
+      <section className="ipdw-box" data-testid="ipds-lines">
+        <b>{t("ipdSafety.lines.title")} <span className="mono dim">{s.lines.length}</span></b>
+        {s.lines.length === 0 ? <span className="dim">{t("ipdSafety.lines.none")}</span> : s.lines.map((l) => (
+          <div key={l.lineId} className={`ipds-row${l.overdue ? " red" : ""}`}>
+            <span className="mono">{bed(l.bedCode)}</span>
+            <span className="nm">{l.name}</span>
+            <span>{t(`ipdSafety.lines.kind.${l.kind}`)} · <span className="dim">{l.site}</span></span>
+            <span className="mono">{t("ipdSafety.lines.day", { n: l.days })}</span>
+            <span className={l.overdue ? "hot" : "dim"}>{l.overdue ? t("ipdSafety.lines.overdue") : t("ipdSafety.lines.dueOut", { time: fmtIst(l.dueRemovalAt) })}</span>
+            <button type="button" className="ipdn-btn sm" onClick={() => setRemoving(l.lineId)} data-testid={`ipds-out-${l.lineId}`}>{t("ipdSafety.forms.takeOut")}</button>
+            {removing === l.lineId ? <LineRemoveForm line={l} onCancel={() => setRemoving(null)} onSaved={(w) => { setRemoving(null); saved(w); }} /> : null}
+          </div>
+        ))}
+      </section>
+    </div>
+  );
+}
+
+const TICKS = ["circulation", "skin", "hydration", "toileting"] as const;
+
+function RestraintForm({ r, act, onClose }: { r: IpdRestraintView; act: Act; onClose: () => void }): React.ReactElement {
+  const { t } = useTranslation();
+  const [ticks, setTicks] = useState<RestraintTicks>({ circulation: false, skin: false, hydration: false, toileting: false });
+  const [who, setWho] = useState("");
+  const [relation, setRelation] = useState("");
+  const [rep, setRep] = useState(false);
+  const [why, setWhy] = useState("");
+  return (
+    <div className="ipds-form" data-testid="ipds-rform">
+      <b>{t("ipdSafety.restraint.formTitle", { bed: r.bedCode ?? t("ipdWard.bed") })}</b>
+      <fieldset className="ipds-ticks">
+        <legend>{t("ipdSafety.restraint.check")}</legend>
+        {TICKS.map((k) => (
+          <label key={k}><input type="checkbox" checked={ticks[k]} onChange={(e) => setTicks({ ...ticks, [k]: e.target.checked })} /> {t(`ipdSafety.restraint.tick.${k}`)}</label>
+        ))}
+      </fieldset>
+      <div className="ipdw-row">
+        <button type="button" className="ipdn-btn pri" onClick={() => void act(() => recordRestraintCheck(r.restraintId, ticks), t("ipdSafety.restraint.checkSaved")).then((ok) => { if (ok) onClose(); })} data-testid="ipds-rcheck-save">{t("ipdSafety.restraint.saveCheck")}</button>
+        <button type="button" className="ipdn-btn" onClick={onClose}>{t("ipdWard.cockpit.cancel")}</button>
+      </div>
+      {r.familyTold === null ? (
+        <div className="ipds-family">
+          <label>{t("ipdSafety.restraint.toldName")}<input value={who} onChange={(e) => setWho(e.target.value)} /></label>
+          <label>{t("ipdSafety.restraint.relation")}<input value={relation} onChange={(e) => setRelation(e.target.value)} /></label>
+          {r.psychiatric ? <label><input type="checkbox" checked={rep} onChange={(e) => setRep(e.target.checked)} /> {t("ipdSafety.restraint.representative")}</label> : null}
+          <button type="button" className="ipdn-btn" disabled={who.trim() === "" || relation.trim() === ""} onClick={() => void act(() => recordFamilyTold(r.restraintId, who.trim(), relation.trim(), rep), t("ipdSafety.restraint.familySaved"))}>{t("ipdSafety.restraint.saveFamily")}</button>
+        </div>
+      ) : null}
+      <div className="ipds-family">
+        <label>{t("ipdSafety.restraint.endReason")}<input value={why} onChange={(e) => setWhy(e.target.value)} /></label>
+        <button type="button" className="ipdn-btn" disabled={why.trim().length < 3} onClick={() => void act(() => endRestraint(r.restraintId, why.trim()), t("ipdSafety.restraint.ended")).then((ok) => { if (ok) onClose(); })}>{t("ipdSafety.restraint.end")}</button>
+      </div>
+    </div>
+  );
+}
+
+function StockPane({ s, wardId, act, saved }: { s: IpdWardSafety; wardId: string; act: Act; saved: Saved }): React.ReactElement {
+  const { t } = useTranslation();
+  const [stock, setStock] = useState<IpdWardStock | null>(null);
+  const [cart, setCart] = useState<IpdCrashCartView | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [parOpen, setParOpen] = useState(false);
+  const loadStock = useCallback(() => getWardStock(wardId).then(setStock), [wardId]);
+  useEffect(() => { void loadStock(); }, [loadStock]);
+  const short = stock?.items.filter((i) => i.shortfall > 0) ?? [];
+  return (
+    <div className="ipds-grid">
+      <section className="ipdw-box" data-testid="ipds-carts">
+        <div className="ipdw-bar">
+          <b>{t("ipdSafety.cart.title")}</b>
+          <span className="grow" />
+          <button type="button" className="ipdn-btn sm" onClick={() => setAdding(!adding)} aria-expanded={adding} data-testid="ipds-cart-new">{t("ipdSafety.forms.addCart")}</button>
+        </div>
+        {adding ? <CartRegisterForm wardId={wardId} onSaved={(w) => { setAdding(false); saved(w); }} /> : null}
+        {s.carts.length === 0 ? <span className="dim">{t("ipdSafety.cart.none")}</span> : s.carts.map((c) => {
+          const red = c.status === "needs_restock" || !c.checkedThisShift;
+          return (
+            <div key={c.cartId} className={`ipds-row${red ? " red" : ""}`}>
+              <span className="mono">{c.code}</span>
+              <span>{t("ipdSafety.cart.seal", { seal: c.sealNo })}</span>
+              <span className={c.status === "needs_restock" ? "hot" : c.checkedThisShift ? "ok" : "warn"}>
+                {c.status === "needs_restock" ? t("ipdSafety.cart.restock") : c.checkedThisShift ? t("ipdSafety.cart.checked") : t("ipdSafety.cart.due")}
+              </span>
+              <span className="ipds-acts">
+                {c.status === "ready" ? <button type="button" className="ipdn-btn sm" onClick={() => void act(() => markCartUsed(c.cartId), t("ipdSafety.cart.usedSaved"))}>{t("ipdSafety.cart.used")}</button> : null}
+                <button type="button" className="ipdn-btn sm pri" onClick={() => setCart(c)} data-testid={`ipds-cart-${c.cartId}`}>{t("ipdSafety.cart.check")}</button>
+              </span>
+            </div>
+          );
+        })}
+        {cart !== null ? <CartForm c={cart} act={act} onClose={() => setCart(null)} /> : null}
+      </section>
+
+      <section className="ipdw-box" data-testid="ipds-keys">
+        <b>{t("ipdSafety.keys.title")}</b>
+        <span>{s.keys === null ? <span className="warn">{t("ipdSafety.keys.nobody")}</span> : t("ipdSafety.keys.held", { name: s.keys.name, time: fmtIst(s.keys.takenAt) })}</span>
+        <div className="ipdw-row"><button type="button" className="ipdn-btn sm" onClick={() => void act(() => takeKeys(wardId), t("ipdSafety.keys.taken"))}>{t("ipdSafety.keys.take")}</button></div>
+        {s.incidents.length > 0 ? (
+          <>
+            <b>{t("ipdSafety.incidents")}</b>
+            {s.incidents.map((i) => <span key={i.incidentId} className="ipds-inc"><span className="hot">{t("ipdSafety.incident")}</span> {i.text} <span className="dim mono">{fmtIst(i.raisedAt)}</span></span>)}
+          </>
+        ) : null}
+      </section>
+
+      <section className="ipdw-box ipds-wide" data-testid="ipds-stock">
+        <div className="ipdw-bar">
+          <b>{t("ipdSafety.stock.title")}</b>
+          <span className="grow" />
+          <button type="button" className="ipdn-btn sm" onClick={() => setParOpen(!parOpen)} aria-expanded={parOpen} data-testid="ipds-par-open">{t("ipdSafety.forms.setPar")}</button>
+          <button type="button" className="ipdn-btn sm pri" disabled={short.length === 0}
+            onClick={() => void act(() => raiseWardIndent(wardId), t("ipdSafety.stock.raised", { count: short.length })).then(() => loadStock())} data-testid="ipds-indent">
+            {t("ipdSafety.stock.indent", { count: short.length })}
+          </button>
+        </div>
+        {parOpen ? <ParForm wardId={wardId} stock={stock} onSaved={(w) => { setParOpen(false); saved(w); void loadStock(); }} /> : null}
+        {stock === null ? <span className="dim">{t("ipdWard.loading")}</span> : stock.storeId === null ? <span className="dim">{t("ipdSafety.stock.noStore")}</span> : (
+          <table className="ipds-table">
+            <thead><tr><th>{t("ipdSafety.stock.item")}</th><th>{t("ipdSafety.stock.par")}</th><th>{t("ipdSafety.stock.onHand")}</th><th>{t("ipdSafety.stock.short")}</th></tr></thead>
+            <tbody>
+              {stock.items.map((i) => (
+                <tr key={i.itemId} className={i.shortfall > 0 ? "short" : ""}>
+                  <td>{i.name}</td><td className="mono">{i.par}</td><td className="mono">{i.onHand}</td>
+                  <td className={`mono${i.shortfall > 0 ? " warn" : ""}`}>{i.shortfall > 0 ? i.shortfall : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {stock !== null && stock.expiring.length > 0 ? (
+          <>
+            <div className="ipdw-bar">
+              <b>{t("ipdSafety.stock.returnTitle")}</b>
+              <span className="grow" />
+              <button type="button" className="ipdn-btn sm" onClick={() => void act(() => returnWardLots(wardId), t("ipdSafety.stock.returned", { count: stock.expiring.length })).then(() => loadStock())}
+                data-testid="ipds-return">{t("ipdSafety.stock.returnAll", { count: stock.expiring.length })}</button>
+            </div>
+            {stock.expiring.map((l) => (
+              <span key={l.batchId} className="ipds-inc">
+                {l.name} <span className="mono dim">{l.batchNo}</span> · <span className={l.daysRemaining < 0 ? "hot" : "warn"}>{l.daysRemaining < 0 ? t("ipdSafety.stock.expired") : t("ipdSafety.stock.expiresIn", { count: l.daysRemaining })}</span> · <span className="mono">{l.onHand}</span>
+              </span>
+            ))}
+          </>
+        ) : null}
+      </section>
+    </div>
+  );
+}
+
+function CartForm({ c, act, onClose }: { c: IpdCrashCartView; act: Act; onClose: () => void }): React.ReactElement {
+  const { t } = useTranslation();
+  const [seal, setSeal] = useState(c.status === "needs_restock" ? "" : c.sealNo);
+  const [counts, setCounts] = useState<Record<string, string>>({});
+  const needsCount = c.status === "needs_restock" || (seal.trim() !== "" && seal.trim() !== c.sealNo);
+  const recount: CartLine[] | undefined = needsCount ? c.contents.map((l) => ({ item: l.item, qty: Number(counts[l.item] ?? "") })) : undefined;
+  const complete = !needsCount || c.contents.every((l) => (counts[l.item] ?? "").trim() !== "" && Number.isInteger(Number(counts[l.item])));
+  return (
+    <div className="ipds-form" data-testid="ipds-cartform">
+      <label>{t("ipdSafety.cart.sealNo")}<input value={seal} onChange={(e) => setSeal(e.target.value)} data-testid="ipds-seal" /></label>
+      {needsCount ? (
+        <>
+          <span className="warn">{c.status === "needs_restock" ? t("ipdSafety.cart.restockHint") : t("ipdSafety.cart.changedHint")}</span>
+          <div className="ipds-count">
+            {c.contents.map((l) => (
+              <label key={l.item}><span>{l.item} <span className="dim mono">/ {l.qty}</span></span>
+                <input inputMode="numeric" value={counts[l.item] ?? ""} onChange={(e) => setCounts({ ...counts, [l.item]: e.target.value })} />
+              </label>
+            ))}
+          </div>
+        </>
+      ) : null}
+      <div className="ipdw-row">
+        <button type="button" className="ipdn-btn pri" disabled={seal.trim() === "" || !complete}
+          onClick={() => void act(() => checkCart(c.cartId, seal.trim(), recount), t("ipdSafety.cart.saved")).then((ok) => { if (ok) onClose(); })} data-testid="ipds-cart-save">{t("ipdSafety.cart.save")}</button>
+        <button type="button" className="ipdn-btn" onClick={onClose}>{t("ipdWard.cockpit.cancel")}</button>
+      </div>
+    </div>
+  );
+}
+
+/** #1009 — the superintendent's agency nurses: whether each may witness now, and verifying a council registration. */
+function StaffPane({ saved }: { saved: Saved }): React.ReactElement {
+  const { t } = useTranslation();
+  const [list, setList] = useState<IpdAgencyNurses | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  const [council, setCouncil] = useState("");
+  const [regNo, setRegNo] = useState("");
+  const [until, setUntil] = useState("");
+  const [failed, setFailed] = useState(false);
+  const reload = useCallback(() => getAgencyNurses().then(setList), []);
+  useEffect(() => { void reload(); }, [reload]);
+  const ok = council.trim().length >= 2 && regNo.trim().length >= 2 && /^\d{4}-\d{2}-\d{2}$/.test(until);
+  const save = async (userId: string): Promise<void> => {
+    setFailed(false);
+    try { await verifyRegistration(userId, council.trim(), regNo.trim(), until); setOpen(null); saved(t("ipdSafety.staff.saved")); await reload(); } catch { setFailed(true); }
+  };
+  return (
+    <section className="ipdw-box" data-testid="ipds-staff">
+      <b>{t("ipdSafety.staff.title")} <span className="mono dim">{list?.nurses.length ?? 0}</span></b>
+      <span className="dim">{t("ipdSafety.staff.hint")}</span>
+      {list === null ? <span className="dim">{t("ipdWard.loading")}</span> : list.nurses.length === 0 ? <span className="dim">{t("ipdSafety.staff.none")}</span> : list.nurses.map((n) => (
+        <div key={n.userId} className={`ipds-row${n.canWitness ? "" : " red"}`}>
+          <span className="nm">{n.name}</span>
+          <span className={n.canWitness ? "ok" : "hot"}>{n.canWitness ? t("ipdSafety.staff.canWitness") : t("ipdSafety.staff.cannotWitness")}</span>
+          <span className="dim">{n.registration === null ? t("ipdSafety.staff.noRecord") : t("ipdSafety.staff.record", { council: n.registration.council, no: n.registration.registrationNo, until: n.registration.validUntil })}</span>
+          <button type="button" className="ipdn-btn sm pri" onClick={() => { setOpen(n.userId); setCouncil(n.registration?.council ?? ""); setRegNo(n.registration?.registrationNo ?? ""); setUntil(""); }}
+            data-testid={`ipds-verify-${n.userId}`}>{t("ipdSafety.staff.verify")}</button>
+          {open === n.userId ? (
+            <div className="ipds-form" data-testid="ipds-verify-form">
+              <div className="ipds-fields">
+                <label>{t("ipdSafety.staff.council")}<input value={council} onChange={(e) => setCouncil(e.target.value)} data-testid="ipds-reg-council" /></label>
+                <label>{t("ipdSafety.staff.regNo")}<input value={regNo} onChange={(e) => setRegNo(e.target.value)} data-testid="ipds-reg-no" /></label>
+                <label>{t("ipdSafety.staff.validUntil")}<input type="date" value={until} onChange={(e) => setUntil(e.target.value)} data-testid="ipds-reg-until" /></label>
+              </div>
+              {failed ? <div className="ipdn-refusal" role="alert">{t("ipdWard.err.other")}</div> : null}
+              <div className="ipdw-row">
+                <button type="button" className="ipdn-btn pri" disabled={!ok} onClick={() => void save(n.userId)} data-testid="ipds-reg-save">{t("ipdSafety.staff.saveVerify")}</button>
+                <button type="button" className="ipdn-btn" onClick={() => setOpen(null)}>{t("ipdWard.cockpit.cancel")}</button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ))}
+    </section>
+  );
+}
+
+const INDICATORS = ["falls", "pressureInjuries", "medicationErrors", "lineInfections", "ewsAnsweredInTime", "handoversOnTime", "shiftsRatioKept"] as const;
+
+function QualityPane({ wardId }: { wardId: string }): React.ReactElement {
+  const { t } = useTranslation();
+  const [month, setMonth] = useState(() => istMonth(new Date()));
+  const [q, setQ] = useState<IpdWardQuality | null>(null);
+  const [reg, setReg] = useState<IpdRestraintRegister | null>(null);
+  useEffect(() => {
+    let live = true;
+    void Promise.all([getWardQuality(wardId, month), getRestraintRegister(wardId, month)]).then(([a, b]) => { if (live) { setQ(a); setReg(b); } });
+    return () => { live = false; };
+  }, [wardId, month]);
+  return (
+    <div className="ipds-quality" data-testid="ipds-quality">
+      <div className="ipdw-bar">
+        <label>{t("ipdSafety.quality.month")} <input type="month" value={month} onChange={(e) => { if (/^\d{4}-\d{2}$/.test(e.target.value)) setMonth(e.target.value); }} /></label>
+        {q !== null ? <span className="dim mono">{t("ipdSafety.quality.denoms", { bedDays: q.bedDays, lineDays: q.lineDays })}</span> : null}
+      </div>
+      {q === null ? <span className="dim">{t("ipdWard.loading")}</span> : (
+        <div className="ipds-tiles">
+          {INDICATORS.map((k) => {
+            const i = q.indicators[k];
+            return (
+              <div key={k} className="ipds-tile" data-testid={`ipds-ind-${k}`}>
+                <span className="dim">{t(`ipdSafety.quality.ind.${k}`)}</span>
+                <b className="mono">{i.value === null ? "—" : i.unit === "percent" ? `${String(i.value)}%` : String(i.value)}</b>
+                {i.unit === "percent" ? null : <span className="dim">{t(`ipdSafety.quality.unit.${i.unit}`)}</span>}
+                <span className="dim mono">{t(i.unit === "percent" ? "ipdSafety.quality.ofOver" : "ipdSafety.quality.countIn", { count: i.count, over: i.over })}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {q !== null && q.presentOnAdmission.length > 0 ? <span className="dim">{t("ipdSafety.quality.poa", { count: q.presentOnAdmission.length })}</span> : null}
+      <section className="ipdw-box" data-testid="ipds-register">
+        <b>{t("ipdSafety.register.title")} <span className="mono dim">{reg?.episodes.length ?? 0}</span></b>
+        {reg === null || reg.episodes.length === 0 ? <span className="dim">{t("ipdSafety.register.none")}</span> : (
+          <table className="ipds-table">
+            <thead><tr><th>{t("ipdSafety.register.ordered")}</th><th>{t("ipdSafety.register.kind")}</th><th>{t("ipdSafety.register.status")}</th><th>{t("ipdSafety.register.checks")}</th><th>{t("ipdSafety.register.family")}</th></tr></thead>
+            <tbody>
+              {reg.episodes.map((e) => (
+                <tr key={e.restraintId}>
+                  <td className="mono">{dayMonthIst(new Date(new Date(e.orderedAt).getTime() + 330 * 60_000).toISOString())} {fmtIst(e.orderedAt)}</td>
+                  <td>{t(`ipdSafety.restraint.kind.${e.kind}`)} · {e.orderedBy}</td>
+                  <td className={e.status === "lapsed" ? "hot" : ""}>{t(`ipdSafety.restraint.status.${e.status}`)}</td>
+                  <td className="mono">{e.checks}{e.missedChecks > 0 ? <span className="hot"> · {t("ipdSafety.register.missed", { count: e.missedChecks })}</span> : null}</td>
+                  <td>{e.familyTold === null ? <span className="warn">{t("ipdSafety.restraint.familyNotTold")}</span> : `${e.familyTold.name} (${e.familyTold.relation})`}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {reg !== null && reg.mhca.episodes > 0 ? <span className="dim">{t("ipdSafety.register.mhca", { count: reg.mhca.episodes, late: reg.mhca.representativeLate })}</span> : null}
+      </section>
+    </div>
+  );
+}

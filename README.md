@@ -1048,30 +1048,30 @@ and `postGrn` refuse the capturer with `grn_same_person` — on the screen, the 
 controlled-cabinet receipt alike. Each change appends `store_settings.changed` (from, to, who). The screen
 recommends turning it on once a second trained person is on every shift.
 
-| Permission | materials_head | storekeeper | pharmacy |
-|---|---|---|---|
-| `materials.items.read` | ✓ | ✓ | ✓ |
-| `materials.items.manage` | ✓ | | |
-| `materials.vendors.read` | ✓ | ✓ | |
-| `materials.vendors.manage` | ✓ | | |
-| `materials.stores.manage` | ✓ | | |
-| `materials.stock.read` | ✓ | ✓ | ✓ |
-| `materials.grn.capture` | ✓ | ✓ | |
-| `materials.grn.qc` | ✓ | | ✓ |
-| `materials.stock.issue` | ✓ | ✓ | |
-| `materials.stock.receive` | ✓ | ✓ | ✓ |
-| `materials.recall.manage` | ✓ | | |
-| `materials.counts.manage` | ✓ | | |
-| `materials.counts.perform` | ✓ | ✓ | ✓ |
-| `materials.po.raise` | ✓ | | ✓ |
-| `materials.bills.manage` | ✓ | | ✓ |
-| `materials.bills.accept_difference` | ✓ | | |
-| `materials.payments.prepare` | ✓ | | |
-| `materials.payments.record` | ✓ | | |
-| `materials.returns.manage` | ✓ | | ✓ |
-| `materials.returns.approve` | ✓ | | |
-| `materials.writeoffs.manage` | ✓ | | |
-| `materials.items.merge` | ✓ | | |
+| Permission | materials_head | storekeeper | pharmacy | ward_incharge |
+|---|---|---|---|---|
+| `materials.items.read` | ✓ | ✓ | ✓ | |
+| `materials.items.manage` | ✓ | | | |
+| `materials.vendors.read` | ✓ | ✓ | | |
+| `materials.vendors.manage` | ✓ | | | |
+| `materials.stores.manage` | ✓ | | | |
+| `materials.stock.read` | ✓ | ✓ | ✓ | |
+| `materials.grn.capture` | ✓ | ✓ | | |
+| `materials.grn.qc` | ✓ | | ✓ | |
+| `materials.stock.issue` | ✓ | ✓ | | |
+| `materials.stock.receive` | ✓ | ✓ | ✓ | ✓ |
+| `materials.recall.manage` | ✓ | | | |
+| `materials.counts.manage` | ✓ | | | |
+| `materials.counts.perform` | ✓ | ✓ | ✓ | |
+| `materials.po.raise` | ✓ | | ✓ | |
+| `materials.bills.manage` | ✓ | | ✓ | |
+| `materials.bills.accept_difference` | ✓ | | | |
+| `materials.payments.prepare` | ✓ | | | |
+| `materials.payments.record` | ✓ | | | |
+| `materials.returns.manage` | ✓ | | ✓ | |
+| `materials.returns.approve` | ✓ | | | |
+| `materials.writeoffs.manage` | ✓ | | | |
+| `materials.items.merge` | ✓ | | | |
 
 `owner` gains nothing new: the vendor bank-change approval reaches the owner through `approvals.*`,
 which that role already holds, and a `materials.*` string for it would be a second door to one
@@ -1084,6 +1084,10 @@ precedent — so this table mints live authority to nobody until a storekeeper a
 the person who scheduled the count, or anyone who moved stock at that store in the last 30 days, so
 a storekeeper counts the pharmacy and a pharmacist counts the main store. No count posts an
 adjustment: writing a variance off needs a second key, and runbook O1 is open.
+
+**Ward par (WM-2 #983, #1008, 2026-10-28) gives `ward_incharge` `materials.stock.receive`** and nothing else: the
+ward's par top-up is a materials indent raised from the ward's own store (`WARD-<ward code>`), and the in-charge is
+that store's receiving side. Stores issue the indent; the in-charge receives it at the ward.
 
 **The transfer screen (2026-09-17) gives `pharmacy` `materials.stock.receive`**: the stores issue and
 the dispensary acknowledges what reached its shelf, the two signatures of an indent voucher. The act
@@ -1912,6 +1916,19 @@ bed-to-nurse assignment, reassign a bed, the ward cockpit) is held by `ward_inch
 occupied bed has one registered nurse on the published map; a nurse hands her own beds over before she ends her duty.
 The ratio (patients per nurse, by unit, day and night; a ventilated patient needs her own nurse) is checked against a
 configurable table and a breach tells the supervisor once a shift. It never blocks an admission.
+
+**Ward safety, stock and quality (WM-2 #983, decisions 0089 and 0091, built 2026-10-27, awaiting owner review).**
+`ipd.restraint.order` (order a restraint and review it; the order lapses 24 hours after the doctor's last sign) is held by
+`doctor`. `ipd.ward_stock.use` (record a ward-stock item on a patient: used, issued for the patient, wasted with a
+reason, or refused unopened; the charge follows 0089 and 0091) is held by `ward_nurse` and `nursing_supervisor`.
+`ipd.ward.quality` (the ward's monthly quality read and the restraint register) is held by `ward_incharge`,
+`nursing_supervisor` and `nursing_superintendent`. The ward's par top-up is a materials indent and needs
+`materials.stock.receive`, which the materials table grants to `ward_incharge`. One role is seeded: `agency_nurse` (held beside `ward_nurse`, with
+`ipd.nursing.view`), who never takes the narcotic keys and never counts or signs a narcotic count. The safety round,
+care checks, restraint checks, lines and the crash-cart check ride `ipd.assessment.record`; the crash-cart register and
+wastage waivers ride `ipd.nursing.assign`. A student never gives a high-alert or narcotic dose without a registered
+nurse's PIN. `ipd.nursing.registration.verify` (record a nurse's council registration as verified, valid to a date) is
+held by `nursing_superintendent`: an agency nurse witnesses a second check only while hers is in date.
 
 **IPD rounds (E4.2, decision 0072, built 2026-10-13, awaiting owner review).** `ipd.round.sign` and `ipd.order.place` are
 held by `doctor` — the Rounds list at `/ipd/rounds` (own, unit and consulted patients, boarded ones marked with their

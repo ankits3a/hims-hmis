@@ -1,7 +1,7 @@
 import { eq, inArray } from "drizzle-orm";
 import { IPD_RATE_COMPONENTS } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "./helpers/db";
-import { events, roleAssignments, services, tariffItems, tariffVersions } from "../src/kernel/db/schema";
+import { events, roleAssignments, services, tariffItems, tariffVersions, users } from "../src/kernel/db/schema";
 import { createUser } from "../src/kernel/auth/identity";
 import { assignRole, createRole } from "../src/kernel/auth/permissions";
 import { roleAssigned } from "../src/kernel/auth/events";
@@ -10,7 +10,7 @@ import { listDefinitions } from "../src/kernel/workflow/definitions";
 import { getApprovalType } from "../src/kernel/approvals/types";
 import { ADMISSION_WORKFLOW_DEF_KEY, IPD_APPROVAL_TYPE_KEYS } from "../src/modules/ipd";
 import { IPD_RATED_CLASSES, importIpdTariff, parseIpdTariffCsv, setDraftVersionNotes, upsertGstCategory } from "../src/modules/tariff";
-import { TESTING_ROLES, assertStagingOnly, ensureRateCardDraft, grantTestingRoles, stageIpdSetup } from "../scripts/stage-ipd-setup";
+import { TESTING_ROLES, WARD_TEST_USERS, assertStagingOnly, ensureRateCardDraft, ensureWardTestUsers, grantTestingRoles, stageIpdSetup } from "../scripts/stage-ipd-setup";
 import { UAT_SAMPLE_MARKER, uatSampleTariffCsv } from "../scripts/fixtures/ipd-uat-sample-tariff";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../src/kernel/db/client";
@@ -146,5 +146,27 @@ describe("stageIpdSetup against a database", () => {
     const before = (await db.select().from(roleAssignments)).length;
     expect(await grantTestingRoles(db)).toMatchObject({ action: "refused" });
     expect((await db.select().from(roleAssignments)).length).toBe(before);
+  });
+
+  it("(e) refuses an account whose roles seed:roles has not made, and writes nothing", async () => {
+    const r = await ensureWardTestUsers(db);
+    expect(r.every((u) => u.action === "refused" && (u.missingRoles?.length ?? 0) > 0)).toBe(true);
+    expect(await db.select().from(users)).toHaveLength(0);
+  });
+
+  it("(e) WM-2 (#1009): makes the synthetic agency and student nurses once, with their roles, a random password never reported, a change at first login", async () => {
+    for (const k of ["ward_nurse", "agency_nurse", "student_nurse"]) await createRole(db, k, k);
+    const first = await ensureWardTestUsers(db);
+    expect(first.map((u) => [u.username, u.action]).sort()).toEqual(WARD_TEST_USERS.map((u) => [u.username, "created"]).sort());
+    expect(JSON.stringify(first)).not.toMatch(/password/i);
+    for (const u of WARD_TEST_USERS) {
+      const row = (await db.select().from(users).where(eq(users.username, u.username)))[0]!;
+      expect(row.mustChangePassword).toBe(true);
+      const held = (await db.select().from(roleAssignments).where(eq(roleAssignments.userId, row.id))).map((r) => r.roleKey).sort();
+      expect(held).toEqual([...u.roles].sort());
+    }
+    const again = await ensureWardTestUsers(db);
+    expect(again.every((u) => u.action === "already")).toBe(true);
+    expect((await db.select().from(events)).filter((e) => e.name === roleAssigned.name)).toHaveLength(WARD_TEST_USERS.reduce((n, u) => n + u.roles.length, 0));
   });
 });

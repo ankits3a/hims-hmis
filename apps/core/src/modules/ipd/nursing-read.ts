@@ -5,7 +5,7 @@ import {
 import { getPatientSummaries } from "../patients";
 import {
   ipdAdmissions, ipdBedReservations, ipdBedStays, ipdIntakeOutput, ipdNursingAlerts, ipdNursingAssessments, ipdNursingNotes,
-  ipdShiftHandovers, ipdVitals, patientAllergies, patients, resources, users,
+  ipdRestraints, ipdShiftHandovers, ipdVitals, patientAllergies, patients, resources, users,
 } from "../../kernel/db/schema";
 import { readAdmission, requireIpdPermission } from "./admission-core";
 import { IpdBedAttributesSchema } from "./bed-attributes";
@@ -15,6 +15,8 @@ import { IPD_NURSING_STATES, ioDayStart, istDayIndex, isNightIst, lastSetAt, lat
 import { draftProvenances } from "./copilot-drafts";
 import { SEALED_LABEL } from "./now-cards";
 import { liveNursesAt } from "./nurse-ward-read";
+import { linesOf } from "./ward-lines";
+import { carePlansOf, restraintViews } from "./ward-safety";
 import { IPD_NURSING_VIEW, IPD_SHIFT_HANDOVER } from "./permissions";
 import type {
   Actor, IpdEwsKind, IpdMyShift, IpdNurseStation, IpdNursingChart, IpdNursingChip, IpdNursingIdentity,
@@ -286,6 +288,21 @@ export async function readMyShift(db: Db, actor: Actor, opts: { wardId?: string;
       items.push({ kind: b.next.kind, admissionId: b.patient.admissionId, bedCode, name: b.patient.name, dueAt: b.next.dueAt, overdue: b.next.overdue, refId: null, band: b.score?.band ?? null });
     }
   }
+  // WM-2 (#983): care-plan checks and restraint checks due within the hour or overdue, like the next vitals.
+  const byAdmission = new Map(station.beds.filter((b) => b.patient !== null).map((b) => [b.patient!.admissionId, b] as const));
+  const soon = now.getTime() + 60 * 60_000;
+  for (const p of await carePlansOf(db, [...byAdmission.keys()], now)) {
+    if (new Date(p.nextDueAt).getTime() > soon) continue;
+    const b = byAdmission.get(p.admissionId)!;
+    items.push({ kind: "care_check", admissionId: p.admissionId, bedCode: b.patient!.sealed ? null : b.code, name: b.patient!.name, dueAt: p.nextDueAt, overdue: p.overdue, refId: p.planId, band: null });
+  }
+  const restraints = byAdmission.size === 0 ? [] : await db.select().from(ipdRestraints)
+    .where(and(inArray(ipdRestraints.admissionId, [...byAdmission.keys()]), eq(ipdRestraints.status, "active")));
+  for (const r of await restraintViews(db, restraints, now, new Map())) {
+    if (r.nextCheckAt === null || new Date(r.nextCheckAt).getTime() > soon) continue;
+    const b = byAdmission.get(r.admissionId)!;
+    items.push({ kind: "restraint_check", admissionId: r.admissionId, bedCode: b.patient!.sealed ? null : b.code, name: b.patient!.name, dueAt: r.nextCheckAt, overdue: r.checkOverdue, refId: r.restraintId, band: null });
+  }
   const handovers = station.ward === null ? [] : await db.select().from(ipdShiftHandovers)
     .where(and(eq(ipdShiftHandovers.status, "given"), eq(ipdShiftHandovers.wardId, station.ward.id), ne(ipdShiftHandovers.givenBy, actor.id)));
   for (const h of handovers) {
@@ -295,7 +312,8 @@ export async function readMyShift(db: Db, actor: Actor, opts: { wardId?: string;
   }
   const rank = (i: IpdShiftItem): number => (i.kind === "ews" ? 0 : i.overdue ? 1 : 2);
   items.sort((x, y) => rank(x) - rank(y) || new Date(x.dueAt).getTime() - new Date(y.dueAt).getTime() || x.admissionId.localeCompare(y.admissionId));
-  return { asOf: station.asOf, night: station.night, ward: station.ward, wards: station.wards, shift: station.shift, patients, now: items, assignment };
+  const lines = await linesOf(db, [...byAdmission.keys()], now);
+  return { asOf: station.asOf, night: station.night, ward: station.ward, wards: station.wards, shift: station.shift, patients, now: items, assignment, lines };
 }
 
 // ═══════════════════════════════════════════ the chart ═══════════════════════════════════════════

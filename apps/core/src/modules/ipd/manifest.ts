@@ -10,6 +10,7 @@ import { IPD_EMAR_ALLERGY_CONSUMER } from "./emar-events";
 import {
   IPD_BEDS_VIEW, IPD_BEDS_MANAGE, IPD_BEDS_CLEAN, IPD_BEDS_OVERFLOW, IPD_ADMIT_REQUEST, IPD_ADMIT, IPD_PAYER_MANAGE, IPD_BAND_PRINT, IPD_BILL_VIEW, IPD_CHARGES_REVERSE, IPD_PAYER_TERMS, IPD_TRANSFER_START, IPD_TRANSFER_ACCEPT, IPD_DISCHARGE_VIEW, IPD_DISCHARGE_DECLARE, IPD_DISCHARGE_CONFIRM, IPD_DISCHARGE_BILL, IPD_GATE_PASS, IPD_GATE_SCAN, IPD_DISCHARGE_EXIT, IPD_MORTUARY_MANAGE, IPD_BILLDESK_VIEW, IPD_FAMILY_ISSUE, IPD_CONDITION_SET, IPD_ROUND_SIGN, IPD_ORDER_PLACE,
   IPD_NURSING_VIEW, IPD_VITALS_RECORD, IPD_ASSESSMENT_RECORD, IPD_SHIFT_HANDOVER, IPD_EWS_RESPOND, IPD_NURSING_ASSIGN, IPD_NURSING_FLOAT,
+  IPD_RESTRAINT_ORDER, IPD_WARD_STOCK_USE, IPD_WARD_QUALITY, IPD_NURSE_REGISTRATION_VERIFY,
   IPD_EMAR_VIEW, IPD_EMAR_GIVE, IPD_EMAR_VERIFY, IPD_EMAR_ISSUE,
 } from "./permissions";
 import { IPD_FAMILY_STOP_CONSUMER } from "./family-events";
@@ -19,6 +20,7 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
 export {
   IPD_BEDS_VIEW, IPD_BEDS_MANAGE, IPD_BEDS_CLEAN, IPD_BEDS_OVERFLOW, IPD_ADMIT_REQUEST, IPD_ADMIT, IPD_PAYER_MANAGE, IPD_BAND_PRINT, IPD_BILL_VIEW, IPD_CHARGES_REVERSE, IPD_PAYER_TERMS, IPD_TRANSFER_START, IPD_TRANSFER_ACCEPT, IPD_DISCHARGE_VIEW, IPD_DISCHARGE_DECLARE, IPD_DISCHARGE_CONFIRM, IPD_DISCHARGE_BILL, IPD_GATE_PASS, IPD_GATE_SCAN, IPD_DISCHARGE_EXIT, IPD_MORTUARY_MANAGE, IPD_BILLDESK_VIEW, IPD_FAMILY_ISSUE, IPD_CONDITION_SET, IPD_ROUND_SIGN, IPD_ORDER_PLACE,
   IPD_NURSING_VIEW, IPD_VITALS_RECORD, IPD_ASSESSMENT_RECORD, IPD_SHIFT_HANDOVER, IPD_EWS_RESPOND, IPD_NURSING_ASSIGN, IPD_NURSING_FLOAT,
+  IPD_RESTRAINT_ORDER, IPD_WARD_STOCK_USE, IPD_WARD_QUALITY, IPD_NURSE_REGISTRATION_VERIFY,
   IPD_EMAR_VIEW, IPD_EMAR_GIVE, IPD_EMAR_VERIFY, IPD_EMAR_ISSUE,
 } from "./permissions";
 
@@ -102,6 +104,18 @@ export {
  *   ipd.nursing.float      read the float pool by floor and move a nurse to another ward for a shift — the nursing
  *                          supervisor and the nursing superintendent
  *
+ * WM-2 (#983, decisions 0089 / 0091) adds three. The safety round, care checks, restraint checks, lines, the crash-cart
+ * check and safety events ride `ipd.assessment.record`; the crash-cart register and waivers ride `ipd.nursing.assign`:
+ *
+ *   ipd.restraint.order    order a restraint and review it (a doctor's sign; the order lapses 24 hours after the last
+ *                          sign) — doctors
+ *   ipd.ward_stock.use     record a ward-stock item on a patient — used, issued for the patient, wasted with a reason,
+ *                          or refused unopened; the charge follows 0089 / 0091 (money) — ward nurses and the in-charge
+ *   ipd.ward.quality       the ward's monthly quality read and the restraint register — the in-charge, the nursing
+ *                          supervisor and the nursing superintendent
+ *   ipd.nursing.registration.verify  record a nurse's council registration as verified (#1009); an agency nurse
+ *                          witnesses a second check only while hers is in date — the nursing superintendent
+ *
  * E4.2 (#734) adds the rounds' two (spec §4.5A, §4.9 E). Clinical; no money on either (decision 0058):
  *
  *   ipd.round.sign      read the doctor's rounds list and a patient's round page, sign a round (a resident's is a draft
@@ -143,6 +157,8 @@ export const ipdManifest: ModuleManifest = {
     // WM-1 (#982) — the in-charge's shift assignment and cockpit (1440).
     { label: "Assign nurses", path: "/ipd/ward/assign", permission: IPD_NURSING_ASSIGN },
     { label: "Ward cockpit", path: "/ipd/ward/cockpit", permission: IPD_NURSING_ASSIGN },
+    // WM-2 (#983) — the in-charge's safety, crash cart, ward stock and quality screen (1440).
+    { label: "Ward safety", path: "/ipd/ward/safety", permission: IPD_NURSING_ASSIGN },
     // E4.2 (#734) — the doctor's inpatient rounds list.
     { label: "Rounds", path: "/ipd/rounds", permission: IPD_ROUND_SIGN },
     // E4.3 (#735) — the ward MAR chart (16:9) and the pharmacist's verify queue (desktop).
@@ -167,6 +183,8 @@ export const ipdManifest: ModuleManifest = {
     IPD_NURSING_VIEW, IPD_VITALS_RECORD, IPD_ASSESSMENT_RECORD, IPD_SHIFT_HANDOVER, IPD_EWS_RESPOND,
     // WM-1 (#982)
     IPD_NURSING_ASSIGN, IPD_NURSING_FLOAT,
+    // WM-2 (#983)
+    IPD_RESTRAINT_ORDER, IPD_WARD_STOCK_USE, IPD_WARD_QUALITY, IPD_NURSE_REGISTRATION_VERIFY,
     // E4.2 (#734)
     IPD_ROUND_SIGN, IPD_ORDER_PLACE,
     // E4.3 (#735)

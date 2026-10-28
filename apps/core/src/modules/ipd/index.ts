@@ -195,6 +195,19 @@ export {
 } from "./nurse-ward";
 export type { WardSweepResult } from "./nurse-ward";
 export { readFloatPool, readShiftMap, readWardCockpit } from "./nurse-ward-read";
+// WM-2 (#983, decisions 0089 / 0091) — ward safety, stock and quality: the daily risk score and care plans with timed checks,
+// restraints (a doctor's order, 2-hourly checks, the 24-hour lapse, the register), lines and line-days, the crash cart and
+// its seal, the narcotic keys, ward stock (par, one indent, expiring lots, charging), safety events, the quality read.
+export {
+  applyRestraint, endRestraint, orderRestraint, readRestraintRegister, recordCareCheck, recordRestraintCheck, recordRestraintFamilyTold,
+  recordRiskScore, recordSafetyEvent, reviewRestraint, sweepWardSafety,
+} from "./ward-safety";
+export type { WardSafetySweepResult } from "./ward-safety";
+export { insertIpdLine, removeIpdLine, reviewIpdLine } from "./ward-lines";
+export { checkCrashCart, readAgencyNurses, registerCrashCart, takeNarcoticKeys, useCrashCart, verifyNurseRegistration } from "./ward-cart";
+export { raiseWardIndent, readWardLots, readWardStock, readWardStockCatalogue, recordWardStockUse, returnWardLots, setWardPar } from "./ward-stock";
+export { readWardQuality, readWardSafety } from "./ward-quality";
+export { IPD_WARD_SAFETY_EVENT_NAMES } from "./ward-safety-events";
 // E4.2 (#734) — rounds: sign (S/O/A/P, bedside or remote; resident drafts co-signed), fit from the round, inpatient
 // orders (drugs; lab and imaging through the ordering door), cross-consults, the 08:00 cover and 14:00 nudge clock,
 // and the eMAR's seams on the order contract (`ipd.order.placed|stopped|cancelled`, `readIpdOrder`,

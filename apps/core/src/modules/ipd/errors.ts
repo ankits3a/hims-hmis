@@ -117,6 +117,44 @@ export type IpdErrorCode =
   | "beds_still_assigned"
   | "not_on_shift"
   | "acuity_admission_not_on_ward"
+  /**
+   * WM-2 (#983, decisions 0089 / 0091) — ward safety and stock: the patient is not on a ward bed; a care plan, restraint,
+   * line or crash cart that does not exist, or is over; a restraint whose 24 hours ran out without a doctor's review
+   * (a new order is needed); a psychiatric ward's restraint not ordered by a psychiatrist (MHCA s.97); a crash cart
+   * whose seal changed (or that was used in a code) checked without a full recount (`detail.missing`); a cart code taken;
+   * an agency or student nurse taking the narcotic keys, or an agency nurse counting or witnessing a narcotic count; ward
+   * stock with no ward store set, a lot not at the ward or past its expiry, wastage without a reason, a waiver by
+   * someone who is not the in-charge, and an indent with nothing short of par; a line infection without its line.
+   */
+  | "patient_not_on_ward"
+  | "care_plan_not_found"
+  | "care_plan_ended"
+  | "restraint_not_found"
+  | "restraint_not_active"
+  | "restraint_lapsed"
+  | "restraint_psychiatrist_required"
+  | "line_not_found"
+  | "line_removed"
+  | "line_time_invalid"
+  | "crash_cart_not_found"
+  | "crash_cart_code_taken"
+  | "crash_cart_recount_required"
+  | "crash_cart_restock_required"
+  | "agency_no_narcotic_keys"
+  | "student_no_narcotic_keys"
+  | "agency_no_narcotic_count"
+  | "ward_store_not_set"
+  | "ward_stock_not_at_ward"
+  | "ward_stock_lot_expired"
+  | "waste_reason_required"
+  | "waive_needs_incharge"
+  | "nothing_to_indent"
+  /** #1010 — no lot at the ward is expiring within 30 days (or the named ones are not). */
+  | "nothing_to_return"
+  /** #1009 — an agency nurse as second-check witness with no verified, in-date council registration; a verify for a non-nurse. */
+  | "agency_witness_unverified"
+  | "not_a_nurse"
+  | "safety_event_line_required"
   /** #604 (decision 0075) — the scheme package file failed validation (`detail.problems`, line by line); nothing was written. */
   | "package_import_invalid";
 

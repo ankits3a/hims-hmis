@@ -136,6 +136,9 @@ export * from "./ipd-tpa";
 // WM-1 (#982, decision 0089) — the ward's nurses: shift maps, their staff, bed-to-nurse assignments, acuity, ratio
 // breaches. References `resources` (ward, bed), `ipd_admissions` and `patients`.
 export * from "./ipd-ward";
+// WM-2 (#983, decisions 0089 / 0091) — ward safety, stock and quality: risk scores, care plans, restraints, lines, crash
+// carts, narcotic keys, ward stores and par, ward-stock uses, safety events. References `resources`, `ipd_admissions`, `patients`.
+export * from "./ipd-ward-safety";
 // E1.7 BIO-MEDICAL WASTE (issue #724, decision 0072) — bags, manifests, disputes and the bags' append-only history.
 // References `resources` (the place a bag is generated at); nothing reads it but `modules/bmw`.
 export * from "./bmw";

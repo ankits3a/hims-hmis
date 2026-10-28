@@ -413,6 +413,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // IPD ROUNDS E4.2 (#734) — the rounds list and round page, sign / co-sign a round, cross-consults; inpatient orders
       // (drugs; lab and imaging through the ordering door). Clinical, no money (0058); README "IPD rounds" prose.
       "ipd.round.sign", "ipd.order.place",
+      // WM-2 (#983, decisions 0089 / 0091) — a restraint is a doctor's order and review. README "Ward safety" prose.
+      "ipd.restraint.order",
       // IPD eMAR E4.3 (#735) — reads the MAR (what was given, held, refused) and holds a dose by instruction; signs verbal
       // orders with `ipd.order.place`. README "IPD eMAR" prose.
       "ipd.emar.view",
@@ -2278,6 +2280,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // read-back verbal order; reprints an unreadable wristband; a dose given in error goes to the medication-incident log.
       // README "IPD eMAR" prose.
       "ipd.emar.view", "ipd.emar.give", "ipd.band.print", "pharmacy.incidents.record",
+      // WM-2 (#983, decisions 0089 / 0091) — ward stock used on a patient goes on the bill. README "Ward safety" prose.
+      "ipd.ward_stock.use",
     ],
   },
   {
@@ -2296,6 +2300,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "diet.view", "diet.npo", "diet.serve", "diet.clinical.view",
       // IPD eMAR E4.3 (#735) — as the ward nurse, and reads the override counts; README "IPD eMAR" prose.
       "ipd.emar.view", "ipd.emar.give", "ipd.band.print", "pharmacy.incidents.record",
+      // WM-2 (#983) — as the ward nurse, and reads the ward's quality and the restraint register; README "Ward safety" prose.
+      "ipd.ward_stock.use", "ipd.ward.quality",
     ],
   },
   {
@@ -2306,6 +2312,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     permissions: [
       "ipd.nursing.view", "ipd.ews.respond", "ipd.beds.view", "ipd.discharge.view", "ipd.family.issue", "diet.view", "diet.clinical.view", "ipd.emar.view",
       "ipd.nursing.assign", "ipd.nursing.float",
+      // WM-2 (#983): every ward's quality read and the restraint register (the MHCA monthly report); README "Ward safety" prose.
+      "ipd.ward.quality",
+      // #1009 (decision 0089 rule 5): verifies a nurse's council registration (an agency nurse witnesses only then).
+      "ipd.nursing.registration.verify",
     ],
   },
   /**
@@ -2314,13 +2324,22 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * is a registered nurse; the bedside strings come from that role). NOBODY is assigned by any seed. README "Ward nurses"
    * prose.
    */
-  { roleKey: "ward_incharge", permissions: ["ipd.nursing.view", "ipd.nursing.assign", "ipd.beds.view"] },
+  // WM-2 (#983, decisions 0089 / 0091): the ward's quality read and restraint register. #1008: the par top-up is a
+  // materials indent raised from the ward's store, so the in-charge receives there (`materials.stock.receive`, the
+  // README materials table's `ward_incharge` column). README "Ward safety" prose.
+  { roleKey: "ward_incharge", permissions: ["ipd.nursing.view", "ipd.nursing.assign", "ipd.beds.view", "ipd.ward.quality", "materials.stock.receive"] },
   /**
    * WM-1 (#982, decision 0089) — THE STUDENT NURSE: paired with a registered nurse on the shift map, never a bed's only
    * nurse. Reads the ward and records vitals; medicines and every signature stay with the registered nurse (student
    * medicine limits are WM-2, #983). NOBODY is assigned by any seed. README "Ward nurses" prose.
    */
   { roleKey: "student_nurse", permissions: ["ipd.nursing.view", "ipd.vitals.record", "ipd.beds.view"] },
+  /**
+   * WM-2 (#983, decision 0089 rule 5) — THE AGENCY NURSE: a registered nurse from an agency, held BESIDE `ward_nurse` (the
+   * bedside strings come from that role). The role is a marker the acts read: an agency nurse never takes the ward's
+   * narcotic keys and never counts or signs a narcotic count. NOBODY is assigned by any seed. README "Ward safety" prose.
+   */
+  { roleKey: "agency_nurse", permissions: ["ipd.nursing.view"] },
   /**
    * ER lane 1 (#808, decision 0076) — the CASUALTY NURSE. No role existed for the emergency department's nurses; the
    * standard Indian corporate-hospital split keeps them apart from the ward nurse (different clocks, different acts).
@@ -2617,6 +2636,8 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   // WM-1 (#982).
   ward_incharge: "Ward In-charge (charge nurse, beside Ward Nurse: publishes the shift's bed-to-nurse assignment, the ward cockpit)",
   student_nurse: "Student Nurse (paired with a registered nurse; reads the ward, records vitals)",
+  // WM-2 (#983).
+  agency_nurse: "Agency Nurse (beside Ward Nurse: no narcotic keys, no narcotic count)",
   radiology_resident: "Radiology Resident (drafts, issues prelims, calls criticals; signs for a consultant's co-sign — publishes nothing alone)",
 };
 

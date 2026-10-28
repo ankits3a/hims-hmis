@@ -2280,7 +2280,9 @@
       "vitals": "वाइटल्स",
       "assessment": "आकलन",
       "ews": "स्कोर अलर्ट",
-      "handover": "हैंडओवर"
+      "handover": "हैंडओवर",
+      "care_check": "देखभाल जाँच",
+      "restraint_check": "बंधन जाँच"
     },
     "kind": {
       "news2": "NEWS2",
@@ -2537,6 +2539,288 @@
       "admission": "भर्ती"
     }
   },
+  "ipdSafety": {
+    "staff": {
+      "title": "एजेंसी नर्सें",
+      "hint": "एजेंसी नर्स हाई-अलर्ट खुराक की गवाह तभी, जब परिषद पंजीकरण सत्यापित और वैध हो",
+      "none": "कोई एजेंसी नर्स नहीं",
+      "canWitness": "गवाह बन सकती है",
+      "cannotWitness": "गवाह नहीं बन सकती",
+      "noRecord": "पंजीकरण दर्ज नहीं",
+      "record": "{{council}} · {{no}} · {{until}} तक वैध",
+      "verify": "सत्यापित करें",
+      "council": "परिषद",
+      "regNo": "पंजीकरण संख्या",
+      "validUntil": "कब तक वैध",
+      "saveVerify": "सत्यापित के रूप में सहेजें",
+      "saved": "पंजीकरण सत्यापित"
+    },
+    "forms": {
+      "stock": "वार्ड स्टॉक",
+      "noLots": "इस वार्ड की शेल्फ पर कोई स्टॉक नहीं",
+      "lot": "सामान और लॉट",
+      "lotExpired": "एक्सपायर — स्टोर को लौटाएँ",
+      "lotLeft": "शेल्फ पर {{n}}",
+      "qty": "कितने",
+      "outcome": "क्या हुआ",
+      "out": {
+        "used": "मरीज़ पर उपयोग",
+        "issued": "इस मरीज़ के लिए इंडेंट",
+        "wasted": "खोला और बर्बाद",
+        "refused": "मना किया, खोला नहीं"
+      },
+      "outHint": {
+        "used": "मरीज़ के बिल में",
+        "issued": "मरीज़ के बिल में",
+        "wasted": "कारण सहित बिल में, स्टाफ़ की गलती या छूट पर नहीं",
+        "refused": "बिल नहीं; शेल्फ पर रहेगा"
+      },
+      "waive": "इंचार्ज की छूट का कारण",
+      "staffError": "स्टाफ़ की गलती से बर्बाद (बिल नहीं)",
+      "inPackage": "मरीज़ के पैकेज में (बिल नहीं)",
+      "charged": "दर्ज · मरीज़ के बिल में",
+      "notCharged": "दर्ज · बिल नहीं ({{why}})",
+      "why": {
+        "refused": "मना किया",
+        "in_package": "पैकेज में",
+        "staff_error": "स्टाफ़ की गलती",
+        "waived": "छूट",
+        "price_missing": "दाम नहीं, बिल डेस्क को भेजा"
+      },
+      "choose": "चुनें",
+      "recordTitle": "मरीज़ के लिए दर्ज करें",
+      "noPatients": "इस वार्ड में कोई मरीज़ नहीं",
+      "patient": "मरीज़",
+      "safetyBtn": "सुरक्षा",
+      "tab": {
+        "score": "दैनिक स्कोर",
+        "line": "लाइन लगाई",
+        "event": "सुरक्षा घटना",
+          "stock": "वार्ड स्टॉक"
+      },
+      "morse": "मोर्स (0–125)",
+      "braden": "ब्रेडन (6–23)",
+      "scoreHint": "मोर्स 45+ या ब्रेडन 12- पर देखभाल योजना शुरू",
+      "save": "सहेजें",
+      "scoreSaved": "स्कोर सहेजा",
+      "lineKind": "लाइन",
+      "site": "जगह",
+      "timeIn": "लगाने का समय",
+      "lineSaved": "लाइन दर्ज",
+      "removeTitle": "{{kind}} निकालें · {{site}}",
+      "reason": "कारण",
+      "takeOut": "निकालें",
+      "lineOut": "लाइन निकाली",
+      "insertLine": "लाइन लगाएँ",
+      "eventKind": "क्या हुआ",
+      "event": {
+        "fall": "गिरना",
+        "pressure_injury": "बेडसोर",
+        "medication_error": "दवा की गलती",
+        "line_infection": "लाइन संक्रमण"
+      },
+      "whichLine": "कौन सी लाइन",
+      "note": "टिप्पणी",
+      "poa": "भर्ती पर पहले से",
+      "eventSaved": "घटना दर्ज",
+      "restraintKind": "बंधन",
+      "orderHint": "आपके हस्ताक्षर के 24 घंटे बाद समाप्त",
+      "signOrder": "आदेश पर हस्ताक्षर",
+      "ordered": "बंधन का आदेश दिया",
+      "orderRestraint": "बंधन का आदेश",
+      "apply": "लगाएँ",
+      "applied": "बंधन लगाया",
+      "continue": "24 घंटे और",
+      "continued": "बंधन जारी",
+      "removeRestraint": "हटाएँ",
+      "addCart": "कार्ट जोड़ें",
+      "cartCode": "कार्ट कोड",
+      "cartHint": "सामान: अस्पताल की मानक सूची",
+      "cartAdded": "कार्ट जोड़ा",
+      "setPar": "पार तय करें",
+      "supplyStore": "किस स्टोर से इंडेंट",
+      "findItem": "सामान खोजें",
+      "savePar_one": "पार सहेजें · {{count}} सामान",
+      "savePar_other": "पार सहेजें · {{count}} सामान",
+      "parSaved_one": "पार सहेजा · {{count}} सामान",
+      "parSaved_other": "पार सहेजा · {{count}} सामान"
+    },
+    "title": "वार्ड सुरक्षा",
+    "allOnTime": "सभी जाँच समय पर",
+    "overdueCount_one": "{{count}} जाँच देर से",
+    "overdueCount_other": "{{count}} जाँच देर से",
+    "overdueSince": "{{time}} से देर",
+    "dueAt": "{{time}} तक",
+    "incident": "घटना",
+    "incidents": "घटनाएँ",
+    "pane": {
+      "safety": "सुरक्षा",
+      "stock": "कार्ट और स्टॉक",
+      "quality": "गुणवत्ता",
+      "staff": "स्टाफ़"
+    },
+    "plan": {
+      "fall": "गिरने से बचाव",
+      "pressure": "हर 2 घंटे करवट"
+    },
+    "plans": {
+      "title": "देखभाल योजना",
+      "none": "गिरने या बेडसोर के जोखिम वाला कोई मरीज़ नहीं",
+      "done": "हो गया",
+      "saved": "जाँच सहेजी"
+    },
+    "restraint": {
+      "title": "बंधन (रेस्ट्रेंट)",
+      "none": "इस वार्ड में कोई बंधन नहीं",
+      "kind": {
+        "physical": "शारीरिक",
+        "chemical": "दवा से",
+        "seclusion": "अलगाव"
+      },
+      "status": {
+        "ordered": "आदेशित",
+        "active": "लगा है",
+        "ended": "हटाया",
+        "lapsed": "समाप्त — नया आदेश"
+      },
+      "tick": {
+        "circulation": "रक्त संचार",
+        "skin": "त्वचा",
+        "hydration": "पानी",
+        "toileting": "शौच"
+      },
+      "mhca": "MHCA",
+      "check": "जाँच",
+      "checkOverdue": "{{time}} से जाँच बाकी",
+      "nextCheck": "अगली जाँच {{time}}",
+      "review": "डॉक्टर समीक्षा {{time}} तक",
+      "familyNotTold": "परिवार को नहीं बताया",
+      "familyTold": "परिवार को बताया: {{name}}",
+      "formTitle": "बंधन · {{bed}}",
+      "saveCheck": "जाँच सहेजें",
+      "checkSaved": "बंधन जाँच सहेजी",
+      "toldName": "किसे बताया",
+      "relation": "रिश्ता",
+      "representative": "नामित प्रतिनिधि",
+      "saveFamily": "सूचना सहेजें",
+      "familySaved": "परिवार की सूचना सहेजी",
+      "endReason": "हटाने का कारण",
+      "end": "हटाएँ",
+      "ended": "बंधन हटाया"
+    },
+    "lines": {
+      "title": "लाइनें",
+      "none": "कोई लाइन नहीं",
+      "kind": {
+        "urinary_catheter": "कैथेटर",
+        "central_line": "सेंट्रल लाइन",
+        "cannula": "कैनुला"
+      },
+      "day": "दिन {{n}}",
+      "dueOut": "{{time}} तक निकालें",
+      "overdue": "निकालने का समय बीता",
+      "stillNeeded": "अभी भी ज़रूरी?",
+      "keep": "रखें",
+      "remove": "अभी निकालें",
+      "reviewedToday": "आज देखा"
+    },
+    "cart": {
+      "title": "क्रैश कार्ट",
+      "none": "इस वार्ड में कोई क्रैश कार्ट नहीं",
+      "seal": "सील {{seal}}",
+      "restock": "भरें और सील करें",
+      "checked": "इस शिफ्ट में जाँचा",
+      "due": "जाँच बाकी",
+      "check": "जाँच",
+      "used": "कोड में उपयोग",
+      "usedSaved": "कार्ट उपयोग दर्ज",
+      "sealNo": "सील नंबर",
+      "restockHint": "हर सामान गिनें, फिर नई सील",
+      "changedHint": "सील बदली: हर सामान गिनें",
+      "save": "जाँच सहेजें",
+      "saved": "कार्ट जाँच सहेजी"
+    },
+    "keys": {
+      "title": "नारकोटिक चाबियाँ",
+      "nobody": "चाबियाँ किसी के पास नहीं",
+      "held": "{{name}}, {{time}} से",
+      "take": "चाबियाँ लें",
+      "taken": "चाबियाँ लीं"
+    },
+    "stock": {
+      "title": "वार्ड स्टॉक",
+      "noStore": "इस वार्ड का पार तय नहीं",
+      "indent_one": "इंडेंट भेजें · {{count}} सामान",
+      "indent_other": "इंडेंट भेजें · {{count}} सामान",
+      "raised_one": "इंडेंट भेजा · {{count}} सामान",
+      "raised_other": "इंडेंट भेजा · {{count}} सामान",
+      "item": "सामान",
+      "par": "पार",
+      "onHand": "मौजूद",
+      "short": "कमी",
+      "returnAll_one": "{{count}} लॉट स्टोर को लौटाएँ",
+      "returnAll_other": "{{count}} लॉट स्टोर को लौटाएँ",
+      "returned_one": "{{count}} लॉट स्टोर को भेजा",
+      "returned_other": "{{count}} लॉट स्टोर को भेजे",
+      "returnTitle": "स्टोर को लौटाएँ",
+      "expired": "एक्सपायर",
+      "expiresIn_one": "{{count}} दिन बाकी",
+      "expiresIn_other": "{{count}} दिन बाकी"
+    },
+    "quality": {
+      "month": "महीना",
+      "denoms": "{{bedDays}} बेड-दिन · {{lineDays}} लाइन-दिन",
+      "ind": {
+        "falls": "गिरना",
+        "pressureInjuries": "नए बेडसोर",
+        "medicationErrors": "दवा की गलतियाँ",
+        "lineInfections": "लाइन संक्रमण",
+        "ewsAnsweredInTime": "10 मिनट में अलर्ट का जवाब",
+        "handoversOnTime": "समय पर हैंडओवर",
+        "shiftsRatioKept": "अनुपात वाली शिफ्टें"
+      },
+      "unit": {
+        "per_1000_bed_days": "प्रति 1,000 बेड-दिन",
+        "per_1000_line_days": "प्रति 1,000 लाइन-दिन"
+      },
+      "countIn_one": "{{over}} में {{count}}",
+      "countIn_other": "{{over}} में {{count}}",
+      "ofOver_one": "{{over}} में {{count}}",
+      "ofOver_other": "{{over}} में {{count}}",
+      "poa_one": "{{count}} भर्ती पर पहले से, गिना नहीं",
+      "poa_other": "{{count}} भर्ती पर पहले से, गिने नहीं"
+    },
+    "register": {
+      "title": "बंधन रजिस्टर",
+      "kind": "बंधन · आदेश दिया",
+      "none": "इस महीने कोई बंधन नहीं",
+      "ordered": "आदेश",
+      "status": "स्थिति",
+      "checks": "जाँचें",
+      "family": "परिवार को सूचना",
+      "missed_one": "{{count}} छूटी",
+      "missed_other": "{{count}} छूटीं",
+      "mhca_one": "MHCA: {{count}} घटना · {{late}} देर से सूचना",
+      "mhca_other": "MHCA: {{count}} घटनाएँ · {{late}} देर से सूचना"
+    },
+    "myShift": {
+      "done": "हो गया",
+      "careHint": "बेड नीचा, रेलिंग, घंटी, करवट और त्वचा",
+      "saved": "जाँच सहेजी · {{bed}}"
+    },
+    "err": {
+      "crash_cart_recount_required": "सील बदली: हर सामान गिनें",
+      "crash_cart_restock_required": "उपयोग हुआ कार्ट: गिनें और सील करें",
+      "restraint_lapsed": "आदेश समाप्त: डॉक्टर नया आदेश दें",
+      "restraint_not_active": "यह बंधन लगा नहीं है",
+      "care_plan_ended": "यह देखभाल योजना समाप्त है",
+      "agency_no_narcotic_keys": "एजेंसी नर्स नारकोटिक चाबियाँ नहीं रखतीं",
+      "student_no_narcotic_keys": "छात्राएँ नारकोटिक चाबियाँ नहीं रखतीं",
+      "nothing_to_indent": "कुछ भी पार से कम नहीं",
+      "ward_store_not_set": "पहले वार्ड का पार तय करें",
+      "ipd_forbidden": "आपके लिए अनुमति नहीं"
+    }
+  },
   "ipdWard": {
     "title": "वार्ड",
     "loading": "वार्ड खुल रहा है…",
@@ -2546,7 +2830,8 @@
     "beds_other": "{{count}} बेड",
     "tab": {
       "cockpit": "कॉकपिट",
-      "assign": "ड्यूटी बँटवारा"
+      "assign": "ड्यूटी बँटवारा",
+      "safety": "सुरक्षा"
     },
     "status": {
       "draft": "ड्राफ़्ट",
@@ -4057,6 +4342,7 @@
   "nav": {
     "ipdWardAssign": "नर्स बँटवारा",
     "ipdWardCockpit": "वार्ड कॉकपिट",
+    "ipdWardSafety": "वार्ड सुरक्षा",
     "erMci": "MCI बोर्ड",
     "erCodes": "ER कोड",
     "erBill": "ER बिल डेस्क",
