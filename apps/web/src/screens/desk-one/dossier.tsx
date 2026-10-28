@@ -10,6 +10,8 @@ import { slotClock, upcomingOf } from "../../lib/appointment-view";
 import { dayMonthIst } from "../../lib/format";
 import { ageOf, initialsOf, rs, SEAT_STEPS, seatStepIndex, sexLetter, tokenLabel, tokenStateOf } from "./model";
 import { useDesk } from "./session";
+import type { Person } from "./session";
+import { guardianRelationKey } from "../../lib/patients-api";
 import { PhotoPanel } from "./photo";
 import { CreditChip } from "../../components/patient-credit";
 import { dateLocale } from "../../lib/date-locale";
@@ -195,6 +197,22 @@ function History({ patientId }: { patientId: string }): React.ReactElement | nul
   );
 }
 
+/** The relative beside the phone on the rail ("· Father: Sunil Kumar"); nothing when unknown on this path. */
+function PersonGuardian({ person }: { person: Person }): React.ReactElement | null {
+  const { t } = useTranslation();
+  if (person.guardian === undefined) return null;
+  if (person.guardian === null) {
+    return <span style={{ color: "var(--faint)" }}>{" \u00b7 "}{t("registrationCounter.find.noGuardian")}</span>;
+  }
+  const relation = t(guardianRelationKey(person.guardian.relation, person.gender), { defaultValue: person.guardian.relation ?? "" });
+  return (
+    <span title={`${relation}: ${person.guardian.name}`} data-testid="d1-person-guardian">
+      {" \u00b7 "}<span>{relation}:</span>{" "}
+      <span style={{ color: "var(--ink)", fontWeight: 500 }}>{person.guardian.name}</span>
+    </span>
+  );
+}
+
 export function Dossier(): React.ReactElement {
   const d = useDesk();
   const { s } = d;
@@ -331,17 +349,24 @@ export function Dossier(): React.ReactElement {
               <div className="mo" style={{ fontSize: 11, color: "var(--dim)" }}>
                 {ageOf(p.dob) === "" ? "" : `${ageOf(p.dob)} `}{sexLetter(p.gender)} · {p.uhid}
               </div>
-              <div style={{ marginTop: 4 }}><CreditChip patientId={p.id} testId="desk-one-credit" /></div>
             </div>
           </div>
-          <div className="mo" style={{ fontSize: 11, color: "var(--dim)", marginTop: 9 }}>
-            {p.phone ?? "no mobile"}
+          {/*
+            Owner 2026-10-28 — the phone ABOVE the credit row, with the relative on the same line ("9041463343 ·
+            Father: Sunil Kumar"); Credit and "edit record — audited" share the next row.
+          */}
+          <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 9, lineHeight: "16px" }} data-testid="d1-person-contact">
+            <span className="mo" style={{ fontSize: 11 }}>{p.phone ?? "no mobile"}</span>
             {p.hasAddress ? null : <span style={{ color: "var(--gold)" }}> · no address</span>}
             {p.justRegistered ? <span style={{ color: "var(--green)" }}> · first visit</span> : null}
+            <PersonGuardian person={p} />
           </div>
-          <button className="pill" style={{ marginTop: 9 }} onClick={() => d.patch({ overlay: "edit" })}>
-            edit record — audited
-          </button>
+          <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 7, marginTop: 8 }} data-testid="d1-person-actions">
+            <CreditChip patientId={p.id} testId="desk-one-credit" />
+            <button className="pill" onClick={() => d.patch({ overlay: "edit" })}>
+              edit record — audited
+            </button>
+          </div>
         </>
       )}
 

@@ -577,6 +577,10 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
           dob: res.patient.dob,
           hasAddress: (res.patient.addressLine ?? "").trim() !== "",
           justRegistered: true,
+          // The relative the clerk just typed (the form sends it only with both name and relation).
+          guardian: f.guardianName.trim() !== "" && f.guardianRelationship !== ""
+            ? { name: f.guardianName.trim(), relation: f.guardianRelationship }
+            : null,
         },
         log: logged(prev.log, `registered — ${res.patient.uhid} allocated to ${res.patient.name}`, "ok"),
       }));
