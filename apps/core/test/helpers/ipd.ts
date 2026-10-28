@@ -680,7 +680,7 @@ export async function mkWardSafetyWorld(db: Db): Promise<WardSafetyWorld> {
     student_nurse: ["ipd.nursing.view", "ipd.vitals.record", "ipd.beds.view", "ipd.emar.view", "ipd.emar.give"],
     agency_nurse: ["ipd.nursing.view"],
     nursing_supervisor: [...nurseStrings, "ipd.ews.respond", "ipd.nursing.assign"],
-    nursing_superintendent: ["ipd.nursing.view", "ipd.nursing.assign", "ipd.ward.quality"],
+    nursing_superintendent: ["ipd.nursing.view", "ipd.nursing.assign", "ipd.ward.quality", "ipd.nursing.registration.verify"],
     doctor: ["ipd.restraint.order", "ipd.round.sign", "ipd.nursing.view", "ipd.ews.respond"],
   };
   for (const [role, perms] of Object.entries(grants)) {

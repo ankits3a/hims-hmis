@@ -15,7 +15,7 @@ const api = vi.hoisted(() => ({
   getWardSafety: vi.fn(), getWardStock: vi.fn(), getWardQuality: vi.fn(), getRestraintRegister: vi.fn(), recordCareCheck: vi.fn(),
   recordRestraintCheck: vi.fn(), recordFamilyTold: vi.fn(), endRestraint: vi.fn(), checkCart: vi.fn(), markCartUsed: vi.fn(), takeKeys: vi.fn(),
   raiseWardIndent: vi.fn(), recordRiskScore: vi.fn(), applyRestraint: vi.fn(), registerCart: vi.fn(), setWardPar: vi.fn(), getStockCatalogue: vi.fn(),
-  removeLine: vi.fn(), recordSafetyEvent: vi.fn(), getWardLots: vi.fn(), recordStockUse: vi.fn(),
+  removeLine: vi.fn(), recordSafetyEvent: vi.fn(), getWardLots: vi.fn(), recordStockUse: vi.fn(), returnWardLots: vi.fn(), getAgencyNurses: vi.fn(), verifyRegistration: vi.fn(),
 }));
 vi.mock("../lib/ipd-ward-safety-api", async (orig) => {
   const real = await orig<typeof import("../lib/ipd-ward-safety-api")>();
@@ -54,7 +54,7 @@ beforeEach(() => {
   keepLastWard(null, WARD.id);
   setToken("stub-token");
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
-    actor: { type: "user", id: "u1" }, permissions: { hospital: ["ipd.nursing.view", "ipd.nursing.assign", "ipd.ward.quality", "ipd.ward_stock.use"], scoped: { department: {}, floor: {} } },
+    actor: { type: "user", id: "u1" }, permissions: { hospital: ["ipd.nursing.view", "ipd.nursing.assign", "ipd.ward.quality", "ipd.ward_stock.use", "ipd.nursing.registration.verify"], scoped: { department: {}, floor: {} } },
   }), { status: 200 })));
   for (const f of Object.values(api)) f.mockReset();
 });
@@ -234,5 +234,39 @@ describe("bedside ward stock (#1019)", () => {
       admissionId: fid(101), itemId: fid(710), batchId: fid(721), qty: 1, outcome: "wasted", reason: "Wrong size opened", staffError: true,
     }));
     expect(await screen.findByRole("status")).toHaveTextContent("not charged (staff error)");
+  });
+});
+
+describe("expiry return and agency registrations (#1010, #1009)", () => {
+  it("sends the expiring lots back to stores in one tap", async () => {
+    api.getWardSafety.mockResolvedValue(safetyOf());
+    api.getWardStock.mockResolvedValue({
+      wardId: WARD.id, storeId: fid(700), supplyStoreId: fid(701), items: [],
+      expiring: [{ itemId: fid(710), name: "Gloves pair", batchId: fid(720), batchNo: "GL-9", expiryDate: "2026-04-01", daysRemaining: 12, onHand: 3 }],
+    } satisfies IpdWardStock);
+    api.returnWardLots.mockResolvedValue({ lines: 1 });
+    renderWithRouter(<IpdWardSafetyScreen />, "/ipd/ward/safety");
+    await userEvent.click(await screen.findByTestId("ipds-pane-stock"));
+    await userEvent.click(await screen.findByTestId("ipds-return"));
+    expect(api.returnWardLots).toHaveBeenCalledWith(WARD.id);
+    expect(await screen.findByRole("status")).toHaveTextContent("1 lot sent back to stores");
+  });
+
+  it("shows who may witness and verifies a registration", async () => {
+    api.getWardSafety.mockResolvedValue(safetyOf());
+    api.getAgencyNurses.mockResolvedValue({ asOf: iso(0), nurses: [{ userId: fid(560), name: "Kavita Joshi", canWitness: false, registration: null }] });
+    api.verifyRegistration.mockResolvedValue({});
+    renderWithRouter(<IpdWardSafetyScreen />, "/ipd/ward/safety");
+    await userEvent.click(await screen.findByTestId("ipds-pane-staff"));
+    const staff = await screen.findByTestId("ipds-staff");
+    await waitFor(() => expect(staff).toHaveTextContent("Cannot witness"));
+    await userEvent.click(within(staff).getByTestId(`ipds-verify-${fid(560)}`));
+    const save = screen.getByTestId("ipds-reg-save");
+    expect(save).toBeDisabled();
+    await userEvent.type(screen.getByTestId("ipds-reg-council"), "State Nurses Council");
+    await userEvent.type(screen.getByTestId("ipds-reg-no"), "SNC-1");
+    await userEvent.type(screen.getByTestId("ipds-reg-until"), "2027-12-31");
+    await userEvent.click(save);
+    expect(api.verifyRegistration).toHaveBeenCalledWith(fid(560), "State Nurses Council", "SNC-1", "2027-12-31");
   });
 });

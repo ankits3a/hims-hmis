@@ -156,6 +156,9 @@ export const IpdSetWardParInputSchema = ipdInput({
   supplyStoreId: IpdIdSchema,
   items: z.array(z.strictObject({ itemId: IpdIdSchema, par: z.number().int().nonnegative() })).min(1).max(300),
 });
+/** #1010 — send the ward's expiring (≤ 30 days) or expired lots back to its supply store; all of them, or the ones named. */
+export const IpdReturnWardLotsInputSchema = ipdInput({ wardId: IpdIdSchema, batchIds: z.array(IpdIdSchema).min(1).max(100).optional() });
+
 export const IpdRaiseWardIndentInputSchema = ipdInput({ wardId: IpdIdSchema, note: IpdNoteSchema.optional() });
 
 /**
@@ -332,6 +335,24 @@ export const IpdWardLotsSchema = z.object({
 });
 export type IpdWardLots = z.infer<typeof IpdWardLotsSchema>;
 
+/** #1009 — the nursing superintendent records a nurse's council registration as verified, valid until an IST date. */
+export const IpdVerifyNurseRegistrationInputSchema = ipdInput({
+  userId: IpdIdSchema,
+  council: z.string().trim().min(2).max(120),
+  registrationNo: z.string().trim().min(2).max(60),
+  validUntil: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "a date YYYY-MM-DD"),
+});
+
+/** #1009 — agency nurses and whether each may witness a second check now. */
+export const IpdAgencyNursesSchema = z.object({
+  asOf: IpdInstantSchema,
+  nurses: z.array(z.object({
+    userId: IpdIdSchema, name: z.string(), canWitness: z.boolean(),
+    registration: z.object({ council: z.string(), registrationNo: z.string(), validUntil: z.string(), verifiedAt: IpdInstantSchema }).nullable(),
+  })),
+});
+export type IpdAgencyNurses = z.infer<typeof IpdAgencyNursesSchema>;
+
 export const IPD_WARD_SAFETY_ROUTES = {
   safety: "/ipd/ward-safety",
   riskScore: "/ipd/ward-safety/risk-score",
@@ -356,6 +377,9 @@ export const IPD_WARD_SAFETY_ROUTES = {
   stockUse: "/ipd/ward-safety/stock/use",
   stockCatalogue: "/ipd/ward-safety/stock/catalogue",
   stockLots: "/ipd/ward-safety/stock/lots",
+  stockReturn: "/ipd/ward-safety/stock/return",
+  agencyNurses: "/ipd/ward-safety/agency-nurses",
+  verifyRegistration: "/ipd/ward-safety/agency-nurses/verify",
   safetyEvent: "/ipd/ward-safety/event",
   quality: "/ipd/ward-safety/quality",
 } as const;

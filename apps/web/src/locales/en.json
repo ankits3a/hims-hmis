@@ -2803,6 +2803,21 @@
     }
   },
   "ipdSafety": {
+    "staff": {
+      "title": "Agency nurses",
+      "hint": "An agency nurse witnesses a high-alert dose only with a verified, in-date council registration",
+      "none": "No agency nurse",
+      "canWitness": "May witness",
+      "cannotWitness": "Cannot witness",
+      "noRecord": "No registration on record",
+      "record": "{{council}} · {{no}} · valid to {{until}}",
+      "verify": "Verify",
+      "council": "Council",
+      "regNo": "Registration number",
+      "validUntil": "Valid until",
+      "saveVerify": "Save as verified",
+      "saved": "Registration verified"
+    },
     "forms": {
       "stock": "Ward stock",
       "noLots": "No ward stock on this ward's shelf",
@@ -2904,7 +2919,8 @@
     "pane": {
       "safety": "Safety",
       "stock": "Cart & stock",
-      "quality": "Quality"
+      "quality": "Quality",
+      "staff": "Staff"
     },
     "plan": {
       "fall": "Fall bundle",
@@ -3005,6 +3021,10 @@
       "par": "Par",
       "onHand": "On hand",
       "short": "Short",
+      "returnAll_one": "Return {{count}} lot to stores",
+      "returnAll_other": "Return {{count}} lots to stores",
+      "returned_one": "{{count}} lot sent back to stores",
+      "returned_other": "{{count}} lots sent back to stores",
       "returnTitle": "Send back to stores",
       "expired": "Expired",
       "expiresIn_one": "{{count}} day left",

@@ -7,17 +7,17 @@ import { BillingError, billingHttpStatus } from "../billing";
 import { MaterialsError } from "../materials";
 import { IpdError, IpdRefusal, ipdRefusalStatus } from "./errors";
 import {
-  IPD_ASSESSMENT_RECORD, IPD_EMAR_GIVE, IPD_NURSING_ASSIGN, IPD_NURSING_VIEW, IPD_RESTRAINT_ORDER, IPD_ROUND_SIGN, IPD_WARD_QUALITY, IPD_WARD_STOCK_USE,
+  IPD_ASSESSMENT_RECORD, IPD_EMAR_GIVE, IPD_NURSE_REGISTRATION_VERIFY, IPD_NURSING_ASSIGN, IPD_NURSING_VIEW, IPD_RESTRAINT_ORDER, IPD_ROUND_SIGN, IPD_WARD_QUALITY, IPD_WARD_STOCK_USE,
 } from "./permissions";
-import { checkCrashCart, registerCrashCart, takeNarcoticKeys, useCrashCart } from "./ward-cart";
+import { checkCrashCart, readAgencyNurses, registerCrashCart, takeNarcoticKeys, useCrashCart, verifyNurseRegistration } from "./ward-cart";
 import { insertIpdLine, removeIpdLine, reviewIpdLine } from "./ward-lines";
 import { readWardQuality, readWardSafety } from "./ward-quality";
 import {
   applyRestraint, endRestraint, orderRestraint, readRestraintRegister, recordCareCheck, recordRestraintCheck, recordRestraintFamilyTold,
   recordRiskScore, recordSafetyEvent, reviewRestraint,
 } from "./ward-safety";
-import { raiseWardIndent, readWardLots, readWardStock, readWardStockCatalogue, recordWardStockUse, setWardPar } from "./ward-stock";
-import type { Actor, IpdRefusalBody, IpdRestraintRegister, IpdWardQuality, IpdWardSafety, IpdWardLots, IpdWardStock, IpdWardStockCatalogue } from "@hmis/contracts";
+import { raiseWardIndent, readWardLots, returnWardLots, readWardStock, readWardStockCatalogue, recordWardStockUse, setWardPar } from "./ward-stock";
+import type { Actor, IpdAgencyNurses, IpdRefusalBody, IpdRestraintRegister, IpdWardQuality, IpdWardSafety, IpdWardLots, IpdWardStock, IpdWardStockCatalogue } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -28,8 +28,8 @@ import type { Db } from "../../kernel/db/client";
 const STATUS: Partial<Record<string, number>> = {
   ward_not_found: 404, care_plan_not_found: 404, restraint_not_found: 404, line_not_found: 404, crash_cart_not_found: 404,
   patient_not_on_ward: 409, care_plan_ended: 409, restraint_not_active: 409, restraint_lapsed: 409, line_removed: 409, crash_cart_code_taken: 409,
-  crash_cart_recount_required: 409, crash_cart_restock_required: 409, ward_stock_lot_expired: 409, nothing_to_indent: 409, ward_store_not_set: 409,
-  restraint_psychiatrist_required: 403, agency_no_narcotic_keys: 403, student_no_narcotic_keys: 403, waive_needs_incharge: 403,
+  crash_cart_recount_required: 409, crash_cart_restock_required: 409, ward_stock_lot_expired: 409, nothing_to_indent: 409, nothing_to_return: 409, ward_store_not_set: 409,
+  restraint_psychiatrist_required: 403, agency_witness_unverified: 403, agency_no_narcotic_keys: 403, student_no_narcotic_keys: 403, waive_needs_incharge: 403,
 };
 
 function toHttp(e: unknown): never {
@@ -206,6 +206,12 @@ export class IpdWardSafetyController {
     try { return await raiseWardIndent(this.db, actor, body); } catch (e) { toHttp(e); }
   }
 
+  @Post("stock/return")
+  @RequirePermission(IPD_NURSING_ASSIGN, "hospital")
+  async stockReturn(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await returnWardLots(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
   @Post("stock/use")
   @RequirePermission(IPD_WARD_STOCK_USE, "hospital")
   async stockUse(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
@@ -216,6 +222,19 @@ export class IpdWardSafetyController {
   @RequirePermission(IPD_ASSESSMENT_RECORD, "hospital")
   async safetyEvent(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
     try { return await recordSafetyEvent(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  /** #1009 — the agency nurses and their council registrations; the superintendent verifies one. */
+  @Get("agency-nurses")
+  @RequirePermission(IPD_NURSE_REGISTRATION_VERIFY, "hospital")
+  async agencyNurses(@CurrentActor() actor: Actor): Promise<IpdAgencyNurses> {
+    try { return await readAgencyNurses(this.db, actor); } catch (e) { toHttp(e); }
+  }
+
+  @Post("agency-nurses/verify")
+  @RequirePermission(IPD_NURSE_REGISTRATION_VERIFY, "hospital")
+  async verifyRegistration(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await verifyNurseRegistration(this.db, actor, body); } catch (e) { toHttp(e); }
   }
 
   @Get("quality")

@@ -41,6 +41,8 @@ export const IPD_NURSING_FLOAT = "ipd.nursing.float";
 export const IPD_RESTRAINT_ORDER = "ipd.restraint.order";
 export const IPD_WARD_STOCK_USE = "ipd.ward_stock.use";
 export const IPD_WARD_QUALITY = "ipd.ward.quality";
+// #1009 (decision 0089 rule 5) — verify a nurse's council registration (an agency nurse witnesses only when verified).
+export const IPD_NURSE_REGISTRATION_VERIFY = "ipd.nursing.registration.verify";
 // E4.2 (#734) — rounds and inpatient orders (the doctor's; clinical, no money).
 export const IPD_ROUND_SIGN = "ipd.round.sign";
 export const IPD_ORDER_PLACE = "ipd.order.place";

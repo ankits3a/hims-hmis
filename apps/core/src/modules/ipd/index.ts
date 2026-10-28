@@ -209,8 +209,8 @@ export {
 } from "./ward-safety";
 export type { WardSafetySweepResult } from "./ward-safety";
 export { insertIpdLine, removeIpdLine, reviewIpdLine } from "./ward-lines";
-export { checkCrashCart, registerCrashCart, takeNarcoticKeys, useCrashCart } from "./ward-cart";
-export { raiseWardIndent, readWardLots, readWardStock, readWardStockCatalogue, recordWardStockUse, setWardPar } from "./ward-stock";
+export { checkCrashCart, readAgencyNurses, registerCrashCart, takeNarcoticKeys, useCrashCart, verifyNurseRegistration } from "./ward-cart";
+export { raiseWardIndent, readWardLots, readWardStock, readWardStockCatalogue, recordWardStockUse, returnWardLots, setWardPar } from "./ward-stock";
 export { readWardQuality, readWardSafety } from "./ward-quality";
 export { IPD_WARD_SAFETY_EVENT_NAMES } from "./ward-safety-events";
 // E4.2 (#734) — rounds: sign (S/O/A/P, bedside or remote; resident drafts co-signed), fit from the round, inpatient

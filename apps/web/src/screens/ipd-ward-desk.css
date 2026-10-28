@@ -115,3 +115,4 @@
 .ipdn-lrow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .ipdn-lrow .hot { color: var(--red); font-weight: 600; }
 .ipds-fields label.ipds-wide-field { flex-basis: 100%; }
+.ipds-row > .ipds-form { flex-basis: 100%; }

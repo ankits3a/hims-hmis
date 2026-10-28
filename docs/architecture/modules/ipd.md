@@ -677,9 +677,11 @@ Source: `apps/core/src/modules/ipd/`
   - `unitsOfAt(exec: Db | Tx, admissions: readonly UnitFacts[], at: Date, units?: Map<string, string>): Promise<Map<string, string | null>>`
 - `ward-cart.ts`
   - `checkCrashCart(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ checkId: string; status: "ready" | "needs_restock"; sealChan…`
+  - `readAgencyNurses(db: Db, actor: Actor, opts: { now?: Date } = {}): Promise<IpdAgencyNurses>`
   - `registerCrashCart(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ cartId: string }>`
   - `takeNarcoticKeys(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ holdId: string; wardId: string; fromUserId: string | null …`
   - `useCrashCart(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ cartId: string; status: "needs_restock" }>`
+  - `verifyNurseRegistration(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ userId: string; validUntil: string }>`
 - `ward-lines.ts`
   - `insertIpdLine(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ lineId: string; dueRemovalAt: string }>`
   - `removeIpdLine(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ lineId: string; days: number }>`
@@ -708,6 +710,7 @@ Source: `apps/core/src/modules/ipd/`
   - `readWardStock(db: Db, actor: Actor, q: { wardId: string; now?: Date }): Promise<IpdWardStock>`
   - `readWardStockCatalogue(db: Db, actor: Actor, q: { search?: string }): Promise<IpdWardStockCatalogue>`
   - `recordWardStockUse(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ useId: string; charged: boolean; notChargedWhy: string |…`
+  - `returnWardLots(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ transferId: string; lines: number }>`
   - `setWardPar(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ wardId: string; storeId: string; supplyStoreId: string }>`
 
 ## Tables (`kernel/db/schema/ipd.ts`)

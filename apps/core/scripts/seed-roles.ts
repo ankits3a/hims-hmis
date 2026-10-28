@@ -2365,6 +2365,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "ipd.nursing.assign", "ipd.nursing.float",
       // WM-2 (#983): every ward's quality read and the restraint register (the MHCA monthly report); README "Ward safety" prose.
       "ipd.ward.quality",
+      // #1009 (decision 0089 rule 5): verifies a nurse's council registration (an agency nurse witnesses only then).
+      "ipd.nursing.registration.verify",
     ],
   },
   /**
@@ -2373,10 +2375,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * is a registered nurse; the bedside strings come from that role). NOBODY is assigned by any seed. README "Ward nurses"
    * prose.
    */
-  // WM-2 (#983, decisions 0089 / 0091): the ward's quality read and restraint register. The par top-up is a materials
-  // indent, which needs `materials.stock.receive`: a materials grant lives in the README's materials table, so it is NOT
-  // seeded here (owed: a ward column in that table). README "Ward safety" prose.
-  { roleKey: "ward_incharge", permissions: ["ipd.nursing.view", "ipd.nursing.assign", "ipd.beds.view", "ipd.ward.quality"] },
+  // WM-2 (#983, decisions 0089 / 0091): the ward's quality read and restraint register. #1008: the par top-up is a
+  // materials indent raised from the ward's store, so the in-charge receives there (`materials.stock.receive`, the
+  // README materials table's `ward_incharge` column). README "Ward safety" prose.
+  { roleKey: "ward_incharge", permissions: ["ipd.nursing.view", "ipd.nursing.assign", "ipd.beds.view", "ipd.ward.quality", "materials.stock.receive"] },
   /**
    * WM-1 (#982, decision 0089) — THE STUDENT NURSE: paired with a registered nurse on the shift map, never a bed's only
    * nurse. Reads the ward and records vitals; medicines and every signature stay with the registered nurse (student

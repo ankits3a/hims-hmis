@@ -1,5 +1,5 @@
 import { api, newIdempotencyKey } from "./api";
-import type { IpdRestraintRegister, IpdWardLots, IpdWardQuality, IpdWardSafety, IpdWardStock, IpdWardStockCatalogue } from "@hmis/contracts";
+import type { IpdAgencyNurses, IpdRestraintRegister, IpdWardLots, IpdWardQuality, IpdWardSafety, IpdWardStock, IpdWardStockCatalogue } from "@hmis/contracts";
 
 /**
  * WM-2 (#983, decisions 0089 / 0091) — ward safety, stock and quality on the wire. Shapes are the contract's
@@ -32,6 +32,9 @@ export const WS = {
   stockCatalogue: "/ipd/ward-safety/stock/catalogue",
   stockLots: "/ipd/ward-safety/stock/lots",
   stockUse: "/ipd/ward-safety/stock/use",
+  stockReturn: "/ipd/ward-safety/stock/return",
+  agencyNurses: "/ipd/ward-safety/agency-nurses",
+  verifyRegistration: "/ipd/ward-safety/agency-nurses/verify",
 } as const;
 
 function post<T>(path: string, body: Record<string, unknown>): Promise<T> {
@@ -101,6 +104,12 @@ export const recordStockUse = (u: StockUse): Promise<{ charged: boolean; notChar
   ...(u.staffError === true ? { staffError: true } : {}), ...(u.inPackage === true ? { inPackage: true } : {}),
   ...(u.waiveReason === undefined || u.waiveReason.trim() === "" ? {} : { waive: { reason: u.waiveReason.trim() } }),
 });
+
+// #1010 / #1009.
+export const returnWardLots = (wardId: string): Promise<{ lines: number }> => post(WS.stockReturn, { wardId });
+export const getAgencyNurses = (): Promise<IpdAgencyNurses> => api("GET", WS.agencyNurses);
+export const verifyRegistration = (userId: string, council: string, registrationNo: string, validUntil: string): Promise<unknown> =>
+  post(WS.verifyRegistration, { userId, council, registrationNo, validUntil });
 
 /** HH:MM today in IST → an ISO instant (an insertion time typed on the ward). */
 export function istTodayAt(hhmm: string, now: Date = new Date()): string {

@@ -149,6 +149,11 @@ export type IpdErrorCode =
   | "waste_reason_required"
   | "waive_needs_incharge"
   | "nothing_to_indent"
+  /** #1010 — no lot at the ward is expiring within 30 days (or the named ones are not). */
+  | "nothing_to_return"
+  /** #1009 — an agency nurse as second-check witness with no verified, in-date council registration; a verify for a non-nurse. */
+  | "agency_witness_unverified"
+  | "not_a_nurse"
   | "safety_event_line_required"
   /** #604 (decision 0075) — the scheme package file failed validation (`detail.problems`, line by line); nothing was written. */
   | "package_import_invalid";
