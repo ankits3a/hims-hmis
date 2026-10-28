@@ -15,7 +15,7 @@ const api = vi.hoisted(() => ({
   getWardSafety: vi.fn(), getWardStock: vi.fn(), getWardQuality: vi.fn(), getRestraintRegister: vi.fn(), recordCareCheck: vi.fn(),
   recordRestraintCheck: vi.fn(), recordFamilyTold: vi.fn(), endRestraint: vi.fn(), checkCart: vi.fn(), markCartUsed: vi.fn(), takeKeys: vi.fn(),
   raiseWardIndent: vi.fn(), recordRiskScore: vi.fn(), applyRestraint: vi.fn(), registerCart: vi.fn(), setWardPar: vi.fn(), getStockCatalogue: vi.fn(),
-  removeLine: vi.fn(), recordSafetyEvent: vi.fn(),
+  removeLine: vi.fn(), recordSafetyEvent: vi.fn(), getWardLots: vi.fn(), recordStockUse: vi.fn(),
 }));
 vi.mock("../lib/ipd-ward-safety-api", async (orig) => {
   const real = await orig<typeof import("../lib/ipd-ward-safety-api")>();
@@ -54,7 +54,7 @@ beforeEach(() => {
   keepLastWard(null, WARD.id);
   setToken("stub-token");
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
-    actor: { type: "user", id: "u1" }, permissions: { hospital: ["ipd.nursing.view", "ipd.nursing.assign", "ipd.ward.quality"], scoped: { department: {}, floor: {} } },
+    actor: { type: "user", id: "u1" }, permissions: { hospital: ["ipd.nursing.view", "ipd.nursing.assign", "ipd.ward.quality", "ipd.ward_stock.use"], scoped: { department: {}, floor: {} } },
   }), { status: 200 })));
   for (const f of Object.values(api)) f.mockReset();
 });
@@ -203,5 +203,36 @@ describe("ward safety entry forms (#1007)", () => {
     await userEvent.type(screen.getByTestId(`ipds-par-${fid(710)}`), "50");
     await userEvent.click(screen.getByTestId("ipds-par-save"));
     expect(api.setWardPar).toHaveBeenCalledWith(WARD.id, fid(701), [{ itemId: fid(710), par: 50 }]);
+  });
+});
+
+describe("bedside ward stock (#1019)", () => {
+  it("records a wastage with its reason, cannot pick an expired lot, and says whether it was charged", async () => {
+    api.getWardSafety.mockResolvedValue(safetyOf());
+    api.getWardLots.mockResolvedValue({
+      wardId: WARD.id,
+      lots: [
+        { itemId: fid(710), name: "Dressing pad", baseUom: "unit", batchId: fid(720), batchNo: "DP-1", expiryDate: "2026-02-28", onHand: 2, expired: true },
+        { itemId: fid(710), name: "Dressing pad", baseUom: "unit", batchId: fid(721), batchNo: "DP-2", expiryDate: "2027-06-30", onHand: 6, expired: false },
+      ],
+    });
+    api.recordStockUse.mockResolvedValue({ charged: false, notChargedWhy: "staff_error" });
+    renderWithRouter(<IpdWardSafetyScreen />, "/ipd/ward/safety");
+    await userEvent.selectOptions(await screen.findByTestId("ipds-who"), fid(101));
+    await userEvent.click(screen.getByTestId("ipds-ptab-stock"));
+    const lot = await screen.findByTestId("ipds-stock-lot");
+    await waitFor(() => expect(within(lot).getAllByRole("option")).toHaveLength(3));
+    expect(within(lot).getByRole("option", { name: /DP-1/ })).toBeDisabled();
+    await userEvent.selectOptions(lot, fid(721));
+    await userEvent.selectOptions(screen.getByTestId("ipds-stock-outcome"), "wasted");
+    const save = screen.getByTestId("ipds-stock-save");
+    expect(save).toBeDisabled();
+    await userEvent.type(screen.getByTestId("ipds-stock-reason"), "Wrong size opened");
+    await userEvent.click(screen.getByLabelText(/staff error/i));
+    await userEvent.click(save);
+    expect(api.recordStockUse).toHaveBeenCalledWith(expect.objectContaining({
+      admissionId: fid(101), itemId: fid(710), batchId: fid(721), qty: 1, outcome: "wasted", reason: "Wrong size opened", staffError: true,
+    }));
+    expect(await screen.findByRole("status")).toHaveTextContent("not charged (staff error)");
   });
 });

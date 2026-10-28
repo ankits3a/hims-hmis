@@ -661,6 +661,7 @@ Source: `apps/core/src/modules/ipd/`
   - types: `WardSafetySweepResult`
 - `ward-stock.ts`
   - `raiseWardIndent(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ indentId: string; indentNo: string; lines: number }>`
+  - `readWardLots(db: Db, actor: Actor, q: { admissionId: string; now?: Date }): Promise<IpdWardLots>`
   - `readWardStock(db: Db, actor: Actor, q: { wardId: string; now?: Date }): Promise<IpdWardStock>`
   - `readWardStockCatalogue(db: Db, actor: Actor, q: { search?: string }): Promise<IpdWardStockCatalogue>`
   - `recordWardStockUse(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ useId: string; charged: boolean; notChargedWhy: string |…`

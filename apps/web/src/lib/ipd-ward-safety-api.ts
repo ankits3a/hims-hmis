@@ -1,5 +1,5 @@
 import { api, newIdempotencyKey } from "./api";
-import type { IpdRestraintRegister, IpdWardQuality, IpdWardSafety, IpdWardStock, IpdWardStockCatalogue } from "@hmis/contracts";
+import type { IpdRestraintRegister, IpdWardLots, IpdWardQuality, IpdWardSafety, IpdWardStock, IpdWardStockCatalogue } from "@hmis/contracts";
 
 /**
  * WM-2 (#983, decisions 0089 / 0091) — ward safety, stock and quality on the wire. Shapes are the contract's
@@ -30,6 +30,8 @@ export const WS = {
   cartRegister: "/ipd/ward-safety/cart/register",
   stockPar: "/ipd/ward-safety/stock/par",
   stockCatalogue: "/ipd/ward-safety/stock/catalogue",
+  stockLots: "/ipd/ward-safety/stock/lots",
+  stockUse: "/ipd/ward-safety/stock/use",
 } as const;
 
 function post<T>(path: string, body: Record<string, unknown>): Promise<T> {
@@ -85,6 +87,20 @@ export const setWardPar = (wardId: string, supplyStoreId: string, items: { itemI
   post(WS.stockPar, { wardId, supplyStoreId, items });
 export const getStockCatalogue = (search: string): Promise<IpdWardStockCatalogue> =>
   api("GET", search.trim() === "" ? WS.stockCatalogue : `${WS.stockCatalogue}?search=${encodeURIComponent(search.trim())}`);
+
+// #1019 — ward stock on a patient at the bedside.
+export const getWardLots = (admissionId: string): Promise<IpdWardLots> => api("GET", `${WS.stockLots}?admissionId=${encodeURIComponent(admissionId)}`);
+export type StockOutcome = "used" | "issued" | "wasted" | "refused";
+export type StockUse = {
+  admissionId: string; itemId: string; batchId: string; qty: number; outcome: StockOutcome;
+  reason?: string; staffError?: boolean; inPackage?: boolean; waiveReason?: string;
+};
+export const recordStockUse = (u: StockUse): Promise<{ charged: boolean; notChargedWhy: string | null }> => post(WS.stockUse, {
+  admissionId: u.admissionId, itemId: u.itemId, batchId: u.batchId, qty: u.qty, outcome: u.outcome,
+  ...(u.reason === undefined || u.reason.trim() === "" ? {} : { reason: u.reason.trim() }),
+  ...(u.staffError === true ? { staffError: true } : {}), ...(u.inPackage === true ? { inPackage: true } : {}),
+  ...(u.waiveReason === undefined || u.waiveReason.trim() === "" ? {} : { waive: { reason: u.waiveReason.trim() } }),
+});
 
 /** HH:MM today in IST → an ISO instant (an insertion time typed on the ward). */
 export function istTodayAt(hhmm: string, now: Date = new Date()): string {

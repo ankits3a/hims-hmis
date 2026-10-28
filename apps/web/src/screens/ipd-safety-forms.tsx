@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type React from "react";
-import type { IpdLineView, IpdRestraintView, IpdWardStock, IpdWardStockCatalogue } from "@hmis/contracts";
+import type { IpdLineView, IpdRestraintView, IpdWardLots, IpdWardStock, IpdWardStockCatalogue } from "@hmis/contracts";
 import { wardErrorOf } from "../lib/ipd-ward-api";
 import {
   applyRestraint, getStockCatalogue, insertLine, istNowHhmm, istTodayAt, orderRestraint, recordRiskScore, recordSafetyEvent, registerCart,
   removeLine, reviewRestraint, setWardPar,
 } from "../lib/ipd-ward-safety-api";
-import type { LineKind, RestraintKind, SafetyEventKind } from "../lib/ipd-ward-safety-api";
+import type { LineKind, RestraintKind, SafetyEventKind, StockOutcome } from "../lib/ipd-ward-safety-api";
+import { getWardLots, recordStockUse } from "../lib/ipd-ward-safety-api";
+import { useAuth } from "../lib/auth";
 import "./ipd-nursing.css";
 import "./ipd-ward-desk.css";
 
@@ -26,7 +28,7 @@ function useAct(onSaved: Saved): { busy: boolean; error: string | null; run: (fn
   const [error, setError] = useState<string | null>(null);
   const run = async (fn: () => Promise<unknown>, words: string): Promise<boolean> => {
     setBusy(true); setError(null);
-    try { await fn(); onSaved(words); return true; } catch (e) {
+    try { await fn(); if (words !== "") onSaved(words); return true; } catch (e) {
       const w = wardErrorOf(e);
       setError(w === null ? t("ipdWard.err.other") : t(`ipdSafety.err.${w.code}`, { defaultValue: t("ipdWard.err.other") }));
       return false;
@@ -149,21 +151,91 @@ export function SafetyEventForm({ admissionId, lines, onSaved }: { admissionId: 
   );
 }
 
-type PatientTab = "score" | "line" | "event";
+const OUTCOMES: StockOutcome[] = ["used", "issued", "wasted", "refused"];
+
+/**
+ * #1019 — one ward-stock item on a patient (decisions 0089 / 0091): a lot on the ward's shelf, how many, and what happened.
+ * Wasted needs a reason; staff error and the in-charge's waiver are not charged; refused (unopened) stays on the shelf. An
+ * expired lot is shown but cannot be picked (return it to stores). The answer says whether it went on the bill.
+ */
+export function StockUseForm({ admissionId, onSaved }: { admissionId: string; onSaved: Saved }): React.ReactElement {
+  const { t } = useTranslation();
+  const { can } = useAuth();
+  const [lots, setLots] = useState<IpdWardLots | null>(null);
+  const [batchId, setBatchId] = useState("");
+  const [qty, setQty] = useState("1");
+  const [outcome, setOutcome] = useState<StockOutcome>("used");
+  const [reason, setReason] = useState("");
+  const [staffError, setStaffError] = useState(false);
+  const [inPackage, setInPackage] = useState(false);
+  const [waive, setWaive] = useState("");
+  const { busy, error, run } = useAct(onSaved);
+  useEffect(() => { let live = true; void getWardLots(admissionId).then((l) => { if (live) setLots(l); }); return () => { live = false; }; }, [admissionId]);
+  const lot = lots?.lots.find((l) => l.batchId === batchId);
+  const wasted = outcome === "wasted";
+  const ok = lot !== undefined && !lot.expired && intIn(qty, 1, Math.max(1, Math.floor(lot.onHand))) && (!wasted || reason.trim().length >= 3);
+  if (lots !== null && lots.lots.length === 0) return <div className="ipds-form" data-testid="ipds-stock-form"><span className="dim">{t("ipdSafety.forms.noLots")}</span></div>;
+  return (
+    <div className="ipds-form" data-testid="ipds-stock-form">
+      <div className="ipds-fields">
+        <label className="ipds-wide-field">{t("ipdSafety.forms.lot")}
+          <select value={batchId} onChange={(e) => setBatchId(e.target.value)} data-testid="ipds-stock-lot">
+            <option value="">{t("ipdSafety.forms.choose")}</option>
+            {(lots?.lots ?? []).map((l) => (
+              <option key={l.batchId} value={l.batchId} disabled={l.expired}>
+                {l.name} · {l.batchNo} · {l.expired ? t("ipdSafety.forms.lotExpired") : t("ipdSafety.forms.lotLeft", { n: l.onHand })}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>{t("ipdSafety.forms.qty")}<input inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value)} data-testid="ipds-stock-qty" /></label>
+        <label className="ipds-wide-field">{t("ipdSafety.forms.outcome")}
+          <select value={outcome} onChange={(e) => setOutcome(e.target.value as StockOutcome)} data-testid="ipds-stock-outcome">
+            {OUTCOMES.map((o) => <option key={o} value={o}>{t(`ipdSafety.forms.out.${o}`)}</option>)}
+          </select>
+        </label>
+      </div>
+      <span className="dim">{t(`ipdSafety.forms.outHint.${outcome}`)}</span>
+      {wasted ? (
+        <div className="ipds-fields">
+          <label>{t("ipdSafety.forms.reason")}<input value={reason} onChange={(e) => setReason(e.target.value)} data-testid="ipds-stock-reason" /></label>
+          {can("ipd.nursing.assign") ? <label>{t("ipdSafety.forms.waive")}<input value={waive} onChange={(e) => setWaive(e.target.value)} data-testid="ipds-stock-waive" /></label> : null}
+        </div>
+      ) : null}
+      {wasted ? <label className="ipds-check"><input type="checkbox" checked={staffError} onChange={(e) => setStaffError(e.target.checked)} /> {t("ipdSafety.forms.staffError")}</label> : null}
+      {outcome !== "refused" ? <label className="ipds-check"><input type="checkbox" checked={inPackage} onChange={(e) => setInPackage(e.target.checked)} /> {t("ipdSafety.forms.inPackage")}</label> : null}
+      <Refusal error={error} />
+      <button type="button" className="ipdn-btn pri" disabled={!ok || busy} data-testid="ipds-stock-save"
+        onClick={() => void run(async () => {
+          const r = await recordStockUse({
+            admissionId, itemId: lot!.itemId, batchId, qty: Number(qty), outcome, reason, staffError: wasted && staffError, inPackage, ...(wasted ? { waiveReason: waive } : {}),
+          });
+          onSaved(r.charged ? t("ipdSafety.forms.charged") : t("ipdSafety.forms.notCharged", { why: t(`ipdSafety.forms.why.${r.notChargedWhy ?? "refused"}`) }));
+          setBatchId(""); setQty("1"); setReason(""); setWaive(""); setStaffError(false); setInPackage(false);
+          void getWardLots(admissionId).then(setLots);
+        }, "")}>{t("ipdSafety.forms.save")}</button>
+    </div>
+  );
+}
+
+type PatientTab = "score" | "line" | "event" | "stock";
 
 /** One patient's three nurse entries, as tabs: the daily score, a line in, a safety event. */
 export function PatientSafetyForms({ admissionId, lines, onSaved }: { admissionId: string; lines: readonly IpdLineView[]; onSaved: Saved }): React.ReactElement {
   const { t } = useTranslation();
+  const { can } = useAuth();
   const [tab, setTab] = useState<PatientTab>("score");
+  const tabs: PatientTab[] = can("ipd.ward_stock.use") ? ["score", "line", "event", "stock"] : ["score", "line", "event"];
   return (
     <div className="ipds-patient" data-testid="ipds-patient-forms">
       <div className="ipdw-seg">
-        {(["score", "line", "event"] as const).map((k) => (
+        {tabs.map((k) => (
           <button key={k} type="button" className={`ipdn-btn sm${tab === k ? " pri" : ""}`} aria-pressed={tab === k} onClick={() => setTab(k)} data-testid={`ipds-ptab-${k}`}>{t(`ipdSafety.forms.tab.${k}`)}</button>
         ))}
       </div>
       {tab === "score" ? <RiskScoreForm key={admissionId} admissionId={admissionId} onSaved={onSaved} /> : null}
       {tab === "line" ? <LineInsertForm key={admissionId} admissionId={admissionId} onSaved={onSaved} /> : null}
+      {tab === "stock" ? <StockUseForm key={admissionId} admissionId={admissionId} onSaved={onSaved} /> : null}
       {tab === "event" ? <SafetyEventForm key={admissionId} admissionId={admissionId} lines={lines.filter((l) => l.admissionId === admissionId)} onSaved={onSaved} /> : null}
     </div>
   );
