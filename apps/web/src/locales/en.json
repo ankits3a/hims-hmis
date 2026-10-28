@@ -2804,6 +2804,37 @@
   },
   "ipdSafety": {
     "forms": {
+      "stock": "Ward stock",
+      "noLots": "No ward stock on this ward's shelf",
+      "lot": "Item and lot",
+      "lotExpired": "expired — return to stores",
+      "lotLeft": "{{n}} on shelf",
+      "qty": "How many",
+      "outcome": "What happened",
+      "out": {
+        "used": "Used on patient",
+        "issued": "Indented for this patient",
+        "wasted": "Opened and wasted",
+        "refused": "Refused, unopened"
+      },
+      "outHint": {
+        "used": "Charged to the patient",
+        "issued": "Charged to the patient",
+        "wasted": "Charged with a reason, unless staff error or waived",
+        "refused": "Not charged; stays on the shelf"
+      },
+      "waive": "In-charge waiver reason",
+      "staffError": "Wasted by staff error (not charged)",
+      "inPackage": "Inside the patient's package (not charged)",
+      "charged": "Recorded · charged to the patient",
+      "notCharged": "Recorded · not charged ({{why}})",
+      "why": {
+        "refused": "refused",
+        "in_package": "in package",
+        "staff_error": "staff error",
+        "waived": "waived",
+        "price_missing": "price missing, sent to the bill desk"
+      },
       "choose": "Choose",
       "recordTitle": "Record for a patient",
       "noPatients": "No patient on this ward",
@@ -2812,7 +2843,8 @@
       "tab": {
         "score": "Daily score",
         "line": "Line in",
-        "event": "Safety event"
+        "event": "Safety event",
+          "stock": "Ward stock"
       },
       "morse": "Morse (0–125)",
       "braden": "Braden (6–23)",

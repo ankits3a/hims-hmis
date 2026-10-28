@@ -322,6 +322,16 @@ export const IpdWardStockCatalogueSchema = z.object({
 });
 export type IpdWardStockCatalogue = z.infer<typeof IpdWardStockCatalogueSchema>;
 
+/** #1019 — the lots held at the patient's ward, for the bedside ward-stock form; an expired lot is marked (never used). */
+export const IpdWardLotsSchema = z.object({
+  wardId: IpdIdSchema.nullable(),
+  lots: z.array(z.object({
+    itemId: IpdIdSchema, name: z.string(), baseUom: z.string(), batchId: IpdIdSchema, batchNo: z.string(),
+    expiryDate: z.string().nullable(), onHand: z.number(), expired: z.boolean(),
+  })),
+});
+export type IpdWardLots = z.infer<typeof IpdWardLotsSchema>;
+
 export const IPD_WARD_SAFETY_ROUTES = {
   safety: "/ipd/ward-safety",
   riskScore: "/ipd/ward-safety/risk-score",
@@ -345,6 +355,7 @@ export const IPD_WARD_SAFETY_ROUTES = {
   stockIndent: "/ipd/ward-safety/stock/indent",
   stockUse: "/ipd/ward-safety/stock/use",
   stockCatalogue: "/ipd/ward-safety/stock/catalogue",
+  stockLots: "/ipd/ward-safety/stock/lots",
   safetyEvent: "/ipd/ward-safety/event",
   quality: "/ipd/ward-safety/quality",
 } as const;

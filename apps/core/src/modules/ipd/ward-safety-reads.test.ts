@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { mkWardSafetyWorld } from "../../../test/helpers/ipd";
 import { admissionPlace } from "./admission-place";
-import { orderRestraint, readRoundPatient, readWardSafety, readWardStockCatalogue } from "./index";
+import { orderRestraint, readRoundPatient, readWardLots, readWardSafety, readWardStockCatalogue, setWardPar } from "./index";
 import type { Db } from "../../kernel/db/client";
 import type { WardSafetyWorld } from "../../../test/helpers/ipd";
 
@@ -43,5 +43,18 @@ describe("ward safety entry reads (#1007)", () => {
     expect(c.items.map((i) => i.itemId)).toEqual([gloves.itemId]);
     expect(c.stores.map((s) => s.id)).toContain(w.centralStoreId);
     await expect(readWardStockCatalogue(db, w.nurse, {})).rejects.toMatchObject({ code: "ipd_forbidden" });
+  });
+
+  it("lists the lots held at the patient's ward for the bedside stock form, expired ones marked", async () => {
+    const { admissionId } = await w.admitMed(at("08:00"));
+    const wardId = (await admissionPlace(db, admissionId))!.wardId!;
+    const pad = await w.wardItem("Dressing pad");
+    const par = await setWardPar(db, w.incharge, { idempotencyKey: randomUUID(), wardId, supplyStoreId: w.centralStoreId, items: [{ itemId: pad.itemId, par: 10 }] }, { now: at("08:30") });
+    const good = await w.lot(pad.itemId, par.storeId, 6, "2027-06-30");
+    const old = await w.lot(pad.itemId, par.storeId, 2, "2026-02-28");
+    const lots = await readWardLots(db, w.nurse, { admissionId, now: at("09:00") });
+    expect(lots.lots.map((l) => [l.batchId, l.onHand, l.expired])).toEqual([[old, 2, true], [good, 6, false]]);
+    expect(lots.lots[0]).toMatchObject({ itemId: pad.itemId, name: "Dressing pad" });
+    await expect(readWardLots(db, w.student, { admissionId })).rejects.toMatchObject({ code: "ipd_forbidden" });
   });
 });

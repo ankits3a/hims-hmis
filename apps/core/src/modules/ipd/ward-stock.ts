@@ -15,7 +15,7 @@ import { IpdError } from "./errors";
 import { IPD_NURSING_STATES } from "./nursing";
 import { IPD_NURSING_ASSIGN, IPD_WARD_STOCK_USE } from "./permissions";
 import { wardIndentRaised, wardParSet, wardStockUsed } from "./ward-safety-events";
-import type { Actor, IpdWardStock, IpdWardStockCatalogue, IpdWardStockOutcome } from "@hmis/contracts";
+import type { Actor, IpdWardLots, IpdWardStock, IpdWardStockCatalogue, IpdWardStockOutcome } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
 /**
@@ -131,6 +131,28 @@ export async function readWardStockCatalogue(db: Db, actor: Actor, q: { search?:
     .orderBy(items.name).limit(30);
   const stores = (await listStores(db)).map((s) => ({ id: s.id, code: s.code, name: s.name }));
   return { items: rows, stores };
+}
+
+/** #1019 — the lots on the shelf at the patient's ward now (ward-stock use), by item then expiry; expired ones marked. */
+export async function readWardLots(db: Db, actor: Actor, q: { admissionId: string; now?: Date }): Promise<IpdWardLots> {
+  await requireIpdPermission(db, actor, IPD_WARD_STOCK_USE);
+  const now = q.now ?? new Date();
+  const wardId = (await admissionPlace(db, q.admissionId))?.wardId ?? null;
+  const store = wardId === null ? null : await wardStoreOf(db, wardId);
+  if (store === null) return { wardId, lots: [] };
+  const today = istDayString(now);
+  const rows = await db.select({
+    itemId: stockBalances.itemId, name: items.name, baseUom: items.baseUom, batchId: stockBalances.batchId, batchNo: stockBatches.batchNo,
+    expiryDate: stockBatches.expiryDate, onHand: stockBalances.qtyOnHand,
+  }).from(stockBalances).innerJoin(stockBatches, eq(stockBatches.id, stockBalances.batchId)).innerJoin(items, eq(items.id, stockBalances.itemId))
+    .where(and(eq(stockBalances.resourceId, store.storeId), sql`${stockBalances.qtyOnHand} > 0`));
+  return {
+    wardId,
+    lots: rows.map((r) => ({
+      ...r, expiryDate: r.expiryDate === null ? null : String(r.expiryDate), onHand: Number(r.onHand),
+      expired: r.expiryDate !== null && String(r.expiryDate) < today,
+    })).sort((x, y) => x.name.localeCompare(y.name) || (x.expiryDate ?? "9999").localeCompare(y.expiryDate ?? "9999")),
+  };
 }
 
 /** One materials indent on the supply store for every item short of par. */
