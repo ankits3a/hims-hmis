@@ -332,3 +332,23 @@ export const ipdSafetyEvents = pgTable(
     check("ipd_safety_events_line_ck", sql`(${t.kind} = 'line_infection') = (${t.lineId} is not null)`),
   ],
 );
+
+/**
+ * #1009 (decision 0089 rule 5) — a nurse's council registration, verified by the nursing superintendent. An agency nurse
+ * witnesses a second check only while hers is verified, not revoked and in date (`valid_until`, IST date). One live row
+ * per nurse; a re-verification replaces the row's facts (who and when are kept on it and in the event).
+ */
+export const ipdNurseRegistrations = pgTable(
+  "ipd_nurse_registrations",
+  {
+    userId: text("user_id").primaryKey(),
+    council: text("council").notNull(),
+    registrationNo: text("registration_no").notNull(),
+    validUntil: date("valid_until", { mode: "string" }).notNull(),
+    verifiedBy: text("verified_by").notNull(),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }).notNull(),
+    revokedBy: text("revoked_by"),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => [check("ipd_nurse_registrations_revoked_ck", sql`(${t.revokedAt} is null) = (${t.revokedBy} is null)`)],
+);

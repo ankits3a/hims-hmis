@@ -2314,6 +2314,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "ipd.nursing.assign", "ipd.nursing.float",
       // WM-2 (#983): every ward's quality read and the restraint register (the MHCA monthly report); README "Ward safety" prose.
       "ipd.ward.quality",
+      // #1009 (decision 0089 rule 5): verifies a nurse's council registration (an agency nurse witnesses only then).
+      "ipd.nursing.registration.verify",
     ],
   },
   /**

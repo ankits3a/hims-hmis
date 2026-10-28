@@ -48,6 +48,8 @@ export const narcoticKeysTaken = defineEvent("ipd.narcotic.keys_taken", MODULE, 
 
 export const wardParSet = defineEvent("ipd.ward_stock.par_set", MODULE, z.object({ wardId: id, storeId: id, supplyStoreId: id, items: z.number().int(), provenance: p }));
 export const wardIndentRaised = defineEvent("ipd.ward_stock.indent_raised", MODULE, z.object({ wardId: id, indentId: id, lines: z.number().int(), provenance: p }));
+export const nurseRegistrationVerified = defineEvent("ipd.nursing.registration_verified", MODULE, z.object({ userId: id, validUntil: z.string(), provenance: p }));
+export const wardLotsReturned = defineEvent("ipd.ward_stock.lots_returned", MODULE, z.object({ wardId: id, transferId: id, lines: z.number().int(), provenance: p }));
 export const wardStockUsed = defineEvent("ipd.ward_stock.used", MODULE, z.object({
   useId: id, admissionId: id, wardId: id, itemId: id, batchId: id, qty: z.number().int(), outcome: z.string(), charged: z.boolean(),
   notChargedWhy: z.string().nullable(), waived: z.boolean(), provenance: p,
@@ -62,5 +64,5 @@ export const IPD_WARD_SAFETY_EVENT_NAMES: readonly string[] = [
   riskScored.name, carePlanStarted.name, carePlanEnded.name, careChecked.name, restraintOrdered.name, restraintApplied.name,
   restraintChecked.name, restraintReviewed.name, restraintFamilyTold.name, restraintEnded.name, restraintCheckMissed.name,
   restraintLapsed.name, lineInserted.name, lineReviewed.name, lineRemoved.name, crashCartChecked.name, crashCartUsed.name,
-  wardIncidentRaised.name, narcoticKeysTaken.name, wardParSet.name, wardIndentRaised.name, wardStockUsed.name, safetyEventRecorded.name,
+  wardIncidentRaised.name, narcoticKeysTaken.name, wardParSet.name, wardIndentRaised.name, wardLotsReturned.name, wardStockUsed.name, nurseRegistrationVerified.name, safetyEventRecorded.name,
 ];

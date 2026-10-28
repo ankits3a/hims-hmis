@@ -21,7 +21,7 @@ import { matchAllergiesSaltAware } from "../opd";
 import { holdsPermission, lockAdmission, onceIpd, provenanceOf, requireIpdPermission } from "./admission-core";
 import { admissionPlace } from "./admission-place";
 import { insertNarcoticRows } from "./narcotic-ledger";
-import { isStudentNurse } from "./ward-cart";
+import { isStudentNurse, requireWitnessAllowed } from "./ward-cart";
 import { checkPrinter } from "./bands";
 import { ageInYears } from "./bed-rules";
 import { IPD_SYSTEM_ACTOR } from "./beds";
@@ -434,6 +434,8 @@ export async function secondCheck(db: Db, actor: Actor, raw: unknown, opts: Emar
   const verified = { userId: await confirmSecondNursePin(db, actor, input.username, input.pin, at) };
   return withTx(db, async (tx) => {
     if (!(await actorHoldsAnyRole(tx, verified.userId, IPD_EMAR_NURSE_ROLES))) throw new IpdRefusal("second_nurse_not_nurse");
+    // #1009 (decision 0089 rule 5): an agency nurse witnesses only with a verified, in-date council registration.
+    await requireWitnessAllowed(tx, verified.userId, at);
     const o = (await tx.select().from(ipdOrders).where(and(eq(ipdOrders.id, input.orderId), eq(ipdOrders.kind, "drug"))))[0];
     if (o === undefined) throw new IpdRefusal("order_not_found");
     let doseId: string | null = null;

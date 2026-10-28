@@ -4,6 +4,8 @@ import { roleAssignments, roles, tariffVersions, users } from "../src/kernel/db/
 import { appendEvent } from "../src/kernel/events/append";
 import { roleAssigned } from "../src/kernel/auth/events";
 import { assignRole } from "../src/kernel/auth/permissions";
+import { createUser } from "../src/kernel/auth/identity";
+import { randomBytes } from "node:crypto";
 import { ADMISSION_WORKFLOW_DEF_KEY } from "../src/modules/ipd";
 import { draftAdmissionWorkflowStep, registerIpdApprovalTypesStep } from "./ipd-setup-steps";
 import type { AdmissionWorkflowReport, ApprovalTypesReport } from "./ipd-setup-steps";
@@ -38,6 +40,10 @@ import type { Db } from "../src/kernel/db/client";
  *     grant is `assignRole` + a `role.assigned` event in one transaction, exactly what `POST /admin/users/:id/roles`
  *     writes. It creates no user and refuses when the account is not unique.
  *
+ *  e. (#1009, owner 2026-10-28) Makes two SYNTHETIC accounts the all-roles account must not stand in for — an agency
+ *     nurse and a student nurse — with a random, never-printed password that must be changed; the admin sets one on the
+ *     Users screen. Made once; a rerun adds only a missing role.
+ *
  * REFUSES unless all three hold: the synthetic-data door is open (`HMIS_SYNTHETIC_DATA_OK=1`, which only
  * /opt/hmis-uat/.env carries and production's deploy refuses); the environment label starts with "UAT"; and the
  * database is not production's port (:5434).
@@ -63,10 +69,54 @@ export type StageIpdReport = {
   workflow: AdmissionWorkflowReport;
   tariff: { action: "drafted" | "updated" | "already" | "refused"; lines: string[] };
   testingRoles: { action: "granted" | "already" | "refused"; granted: string[]; already: string[]; missingRoles: string[]; why?: string };
+  wardTestUsers: WardTestUserReport[];
 };
 
 /** The roles the IPD nursing and diet screens need; no seed assigns them to anyone. */
-export const TESTING_ROLES = ["ward_nurse", "nursing_supervisor", "nursing_superintendent", "dietician", "kitchen_staff"] as const;
+// WM-1 / WM-2 (#982, #983): the ward in-charge's cockpit, assignment and ward safety screens. Never the agency or student
+// nurse role on this account: those roles RESTRICT whoever holds them (no narcotic keys, no count) — step e's users carry them.
+export const TESTING_ROLES = ["ward_nurse", "nursing_supervisor", "nursing_superintendent", "dietician", "kitchen_staff", "ward_incharge"] as const;
+
+/**
+ * Step e (#1009, owner 2026-10-28 "create a synthetic user"). Two SYNTHETIC staging accounts for the limits the all-roles
+ * account must not carry: an agency nurse (beside ward nurse) and a student nurse. Made once; a rerun only adds a missing
+ * role. The password is random, never printed or returned, and must be changed at first login: the admin sets one on the
+ * Users screen before anyone signs in as them.
+ */
+export const WARD_TEST_USERS: readonly { username: string; fullName: string; roles: readonly string[] }[] = [
+  { username: "uat.agency.nurse", fullName: "UAT Agency Nurse (synthetic)", roles: ["ward_nurse", "agency_nurse"] },
+  { username: "uat.student.nurse", fullName: "UAT Student Nurse (synthetic)", roles: ["student_nurse"] },
+];
+
+export type WardTestUserReport = { username: string; action: "created" | "already" | "roles_added" | "refused"; roles: string[]; missingRoles?: string[] };
+
+export async function ensureWardTestUsers(db: Db): Promise<WardTestUserReport[]> {
+  const out: WardTestUserReport[] = [];
+  const seeded = new Set((await db.select({ key: roles.key }).from(roles)).map((r) => r.key));
+  for (const u of WARD_TEST_USERS) {
+    // Like step d: a role seed:roles has not made yet is reported, and nothing is written for that account.
+    const missingRoles = u.roles.filter((r) => !seeded.has(r));
+    if (missingRoles.length > 0) { out.push({ username: u.username, action: "refused", roles: [...u.roles], missingRoles }); continue; }
+    let row = (await db.select({ id: users.id }).from(users).where(eq(users.username, u.username)))[0];
+    let created = false;
+    if (row === undefined) {
+      row = await createUser(db, { username: u.username, fullName: u.fullName, password: randomBytes(24).toString("base64url"), mustChangePassword: true });
+      created = true;
+    }
+    const held = new Set((await db.select({ roleKey: roleAssignments.roleKey }).from(roleAssignments).where(eq(roleAssignments.userId, row.id))).map((r) => r.roleKey));
+    const added: string[] = [];
+    await withTx(db, async (tx) => {
+      for (const roleKey of u.roles) {
+        if (held.has(roleKey)) continue;
+        const { id: assignmentId } = await assignRole(tx, { userId: row!.id, roleKey, scopeType: "hospital" });
+        await appendEvent(tx, roleAssigned.make({ actor: SETUP_ACTOR, payload: { assignmentId, userId: row!.id, roleKey, scopeType: "hospital", scopeId: null } }));
+        added.push(roleKey);
+      }
+    });
+    out.push({ username: u.username, action: created ? "created" : added.length > 0 ? "roles_added" : "already", roles: [...u.roles] });
+  }
+  return out;
+}
 
 /**
  * Step d. The all-roles account = the ONE active account holding `owner` and `admin` at hospital scope with strictly
@@ -115,7 +165,9 @@ export async function stageIpdSetup(db: Db): Promise<StageIpdReport> {
   const tariff = await ensureRateCardDraft(db);
   // d. the testing roles for the one all-roles account
   const testingRoles = await grantTestingRoles(db);
-  return { approvalTypes, workflow, tariff, testingRoles };
+  // e. the synthetic agency and student nurses (#1009)
+  const wardTestUsers = await ensureWardTestUsers(db);
+  return { approvalTypes, workflow, tariff, testingRoles, wardTestUsers };
 }
 
 /**
@@ -181,6 +233,9 @@ async function main(): Promise<void> {
     for (const l of r.tariff.lines) console.log(`   ${l}`);
     const tr = r.testingRoles;
     console.log(`d. testing roles for the all-roles account: ${tr.action}${tr.why === undefined ? "" : ` — ${tr.why}`}; granted: [${tr.granted.join(", ") || "none"}]; already: [${tr.already.join(", ") || "none"}]; roles not seeded: [${tr.missingRoles.join(", ") || "none"}]`);
+    for (const u of r.wardTestUsers) {
+      console.log(`e. ${u.username}: ${u.action} [${u.roles.join(", ")}]${u.action === "created" ? " — set a password on the Users screen before first use" : ""}${u.missingRoles === undefined ? "" : ` — roles not seeded: [${u.missingRoles.join(", ")}]; run seed:roles first`}`);
+    }
     if (r.tariff.action === "refused" || tr.action === "refused") process.exitCode = 1;
   } finally {
     await pool.end();

@@ -949,6 +949,16 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   issue line (`postDrugIssueChargesIn`, `ipd.pharmacy`, `order_id` = `issue_id` = the use id, the counter's precedent),
   priced by the pharmacy counter's rule at the instant of use; a consumable is priced through its sale item. No price →
   `rate_missing` on the bill desk (`not_charged_why = price_missing`), never ₹0.
+- FOLLOW-UPS (2026-10-28): #1008 — `ward_incharge` holds `materials.stock.receive` through the README materials table's
+  own column (the par indent). #1010 — a live `ipd_admission_packages` row makes every ward-stock use `in_package`, never
+  charged (0091 rule 1); `returnWardLots` (in-charge) sends the ward's lots expiring within 30 days, or expired, back to
+  the supply store as ONE ordinary materials transfer (`issueStock`, batch named with the override reason "Expiry
+  return"; stores receive it). #1009 — `ipd_nurse_registrations` (one row per nurse; `verifyNurseRegistration`,
+  `ipd.nursing.registration.verify`, the nursing superintendent): `secondCheck` refuses an agency nurse as witness
+  (`agency_witness_unverified`) unless hers is verified, not revoked and valid through today (IST); `readAgencyNurses`
+  for the Staff pane. Staging: `scripts/stage-ipd-setup.ts` step e makes the synthetic `uat.agency.nurse` and
+  `uat.student.nurse` (random unprinted password, change at first login) and step d gives the all-roles account
+  `ward_incharge`.
 - QUALITY (`readWardQuality`, NABH KPIs, DECIDED definitions): bed-days = exact overlap of stays on the ward's beds with the
   month (to `now`); falls, new pressure injuries, medication errors per 1,000 bed-days and line infections per 1,000
   line-days from `ipd_safety_events` NOT present on admission; EWS alerts acknowledged (or seen) within 10 min; shift

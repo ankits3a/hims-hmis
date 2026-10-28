@@ -1,20 +1,22 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import {
-  IPD_CRASH_CART_STANDARD, IpdCheckCrashCartInputSchema, IpdNarcoticKeysInputSchema, IpdRegisterCrashCartInputSchema, IpdUseCrashCartInputSchema, newId,
+  IPD_CRASH_CART_STANDARD, IpdCheckCrashCartInputSchema, IpdNarcoticKeysInputSchema, IpdRegisterCrashCartInputSchema, IpdUseCrashCartInputSchema,
+  IpdVerifyNurseRegistrationInputSchema, newId,
 } from "@hmis/contracts";
 import { raiseNoticeIn } from "../../kernel/alerts/notices";
 import { withTx } from "../../kernel/db/client";
-import { ipdCrashCartChecks, ipdCrashCarts, ipdNarcoticKeyHolds, ipdWardIncidents, resources } from "../../kernel/db/schema";
+import { istDayString } from "../../kernel/approvals/cumulative";
+import { ipdCrashCartChecks, ipdCrashCarts, ipdNarcoticKeyHolds, ipdNurseRegistrations, ipdWardIncidents, resources, users } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
 import { withIdempotency } from "../billing";
 import { provenanceOf, requireIpdPermission } from "./admission-core";
 import { IpdError } from "./errors";
 import { RN_ROLES, STUDENT_ROLES, shiftSlotOf } from "./nurse-ward";
-import { IPD_ASSESSMENT_RECORD, IPD_EMAR_GIVE, IPD_NURSING_ASSIGN } from "./permissions";
-import { crashCartChecked, crashCartUsed, narcoticKeysTaken, wardIncidentRaised } from "./ward-safety-events";
+import { IPD_ASSESSMENT_RECORD, IPD_EMAR_GIVE, IPD_NURSE_REGISTRATION_VERIFY, IPD_NURSING_ASSIGN } from "./permissions";
+import { crashCartChecked, crashCartUsed, narcoticKeysTaken, nurseRegistrationVerified, wardIncidentRaised } from "./ward-safety-events";
 import { activeRoleHolders } from "./ward-safety";
-import type { Actor, IpdCrashCartView } from "@hmis/contracts";
+import type { Actor, IpdAgencyNurses, IpdCrashCartView } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
 /**
@@ -187,4 +189,59 @@ export async function takeNarcoticKeys(db: Db, actor: Actor, raw: unknown, opts:
 export async function narcoticKeysOf(exec: Db | Tx, wardId: string): Promise<{ userId: string; takenAt: Date } | null> {
   const h = (await exec.select().from(ipdNarcoticKeyHolds).where(and(eq(ipdNarcoticKeyHolds.wardId, wardId), isNull(ipdNarcoticKeyHolds.releasedAt))))[0];
   return h === undefined ? null : { userId: h.userId, takenAt: h.takenAt };
+}
+
+// ═══════════════════════════════════════════ #1009 — council registration and the agency witness ═══════════════════════════════════════════
+
+/** The nurse's registration lets her witness at `at`: verified, not revoked, valid through that IST date. */
+export async function registrationValid(exec: Db | Tx, userId: string, at: Date): Promise<boolean> {
+  const r = (await exec.select().from(ipdNurseRegistrations).where(eq(ipdNurseRegistrations.userId, userId)))[0];
+  return r !== undefined && r.revokedAt === null && String(r.validUntil) >= istDayString(at);
+}
+
+/**
+ * Decision 0089 rule 5: an agency nurse witnesses (the second nurse on a high-alert dose, an infusion or a narcotic
+ * wastage) only while her council registration is verified and in date. Staff nurses need no record.
+ */
+export async function requireWitnessAllowed(exec: Db | Tx, userId: string, at: Date): Promise<void> {
+  if (!(await isAgencyNurse(exec, userId))) return;
+  if (!(await registrationValid(exec, userId, at))) {
+    throw new IpdError("agency_witness_unverified", "an agency nurse witnesses only with a verified, in-date council registration (decision 0089)");
+  }
+}
+
+export async function verifyNurseRegistration(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ userId: string; validUntil: string }> {
+  const input = IpdVerifyNurseRegistrationInputSchema.parse(raw);
+  await requireIpdPermission(db, actor, IPD_NURSE_REGISTRATION_VERIFY);
+  const at = opts.now ?? new Date();
+  return once(db, actor, "verify_nurse_registration", input.idempotencyKey, input, () => withTx(db, async (tx) => {
+    if (!(await actorHoldsAnyRole(tx, input.userId, [...RN_ROLES, ...AGENCY_ROLES]))) throw new IpdError("not_a_nurse", "this person holds no nursing role", { userId: input.userId });
+    const row = {
+      council: input.council, registrationNo: input.registrationNo, validUntil: input.validUntil, verifiedBy: actor.id, verifiedAt: at, revokedBy: null, revokedAt: null,
+    };
+    await tx.insert(ipdNurseRegistrations).values({ userId: input.userId, ...row }).onConflictDoUpdate({ target: ipdNurseRegistrations.userId, set: row });
+    await appendEvent(tx, nurseRegistrationVerified.make({
+      payload: { userId: input.userId, validUntil: input.validUntil, provenance: provenanceOf(actor) }, actor, correlationId: input.userId, occurredAt: at,
+    }));
+    return { userId: input.userId, validUntil: input.validUntil };
+  }), at);
+}
+
+export async function readAgencyNurses(db: Db, actor: Actor, opts: { now?: Date } = {}): Promise<IpdAgencyNurses> {
+  await requireIpdPermission(db, actor, IPD_NURSE_REGISTRATION_VERIFY);
+  const now = opts.now ?? new Date();
+  const ids = await activeRoleHolders(db, "agency_nurse");
+  const people = ids.length === 0 ? [] : await db.select({ id: users.id, name: users.fullName }).from(users).where(inArray(users.id, ids));
+  const regs = new Map((ids.length === 0 ? [] : await db.select().from(ipdNurseRegistrations).where(inArray(ipdNurseRegistrations.userId, ids))).map((r) => [r.userId, r] as const));
+  const today = istDayString(now);
+  return {
+    asOf: now.toISOString(),
+    nurses: people.sort((x, y) => x.name.localeCompare(y.name)).map((p) => {
+      const r = regs.get(p.id);
+      return {
+        userId: p.id, name: p.name, canWitness: r !== undefined && r.revokedAt === null && String(r.validUntil) >= today,
+        registration: r === undefined ? null : { council: r.council, registrationNo: r.registrationNo, validUntil: String(r.validUntil), verifiedAt: r.verifiedAt.toISOString() },
+      };
+    }),
+  };
 }

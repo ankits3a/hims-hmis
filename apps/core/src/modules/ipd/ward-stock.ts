@@ -1,20 +1,20 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
-  IPD_WARD_STOCK_RETURN_DAYS, IpdRaiseWardIndentInputSchema, IpdRecordWardStockUseInputSchema, IpdSetWardParInputSchema, newId,
+  IPD_WARD_STOCK_RETURN_DAYS, IpdRaiseWardIndentInputSchema, IpdReturnWardLotsInputSchema, IpdRecordWardStockUseInputSchema, IpdSetWardParInputSchema, newId,
 } from "@hmis/contracts";
 import { istDayString } from "../../kernel/approvals/cumulative";
 import { withTx } from "../../kernel/db/client";
-import { ipdWardStockPar, ipdWardStockUses, ipdWardStores, items, resources, stockBalances, stockBatches } from "../../kernel/db/schema";
+import { ipdAdmissionPackages, ipdWardStockPar, ipdWardStockUses, ipdWardStores, items, resources, stockBalances, stockBatches } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { withIdempotency } from "../billing";
-import { MaterialsError, createStore, listStores, postMovements, raiseIndent, requireStore } from "../materials";
+import { MaterialsError, createStore, issueStock, listStores, postMovements, raiseIndent, requireStore } from "../materials";
 import { holdsPermission, lockAdmission, provenanceOf, requireIpdPermission } from "./admission-core";
 import { admissionPlace } from "./admission-place";
 import { postDrugIssueChargesIn } from "./drug-charges";
 import { IpdError } from "./errors";
 import { IPD_NURSING_STATES } from "./nursing";
 import { IPD_NURSING_ASSIGN, IPD_WARD_STOCK_USE } from "./permissions";
-import { wardIndentRaised, wardParSet, wardStockUsed } from "./ward-safety-events";
+import { wardIndentRaised, wardLotsReturned, wardParSet, wardStockUsed } from "./ward-safety-events";
 import type { Actor, IpdWardLots, IpdWardStock, IpdWardStockCatalogue, IpdWardStockOutcome } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -176,6 +176,32 @@ export async function raiseWardIndent(db: Db, actor: Actor, raw: unknown, opts: 
   }, at);
 }
 
+/**
+ * #1010 (decision 0091 rule 4) — the ward's lots expiring within 30 days, or expired, go back to its supply store as ONE
+ * ordinary materials transfer (into transit; stores receive it and handle the vendor return or write-off). No cost to the
+ * ward. The ward's act, scoped to its own store and supply store: the in-charge (`ipd.nursing.assign`).
+ */
+export async function returnWardLots(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ transferId: string; lines: number }> {
+  const input = IpdReturnWardLotsInputSchema.parse(raw);
+  await requireIpdPermission(db, actor, IPD_NURSING_ASSIGN);
+  const at = opts.now ?? new Date();
+  return once(db, actor, "return_ward_lots", input.idempotencyKey, input, async () => {
+    await wardOrThrow(db, input.wardId);
+    const stock = await wardStockOf(db, input.wardId, at);
+    if (stock.storeId === null || stock.supplyStoreId === null) throw new IpdError("ward_store_not_set", "set the ward's par first");
+    const pick = stock.expiring.filter((l) => input.batchIds === undefined || input.batchIds.includes(l.batchId)).filter((l) => l.onHand > 0);
+    if (pick.length === 0) throw new IpdError("nothing_to_return", "no lot on this ward is expiring within 30 days");
+    const moved = await withTx(db, (tx) => issueStock(tx, actor, {
+      fromResourceId: stock.storeId!, toResourceId: stock.supplyStoreId!, occurredAt: at, note: "Ward expiry return (decision 0091)",
+      lines: pick.map((l) => ({ itemId: l.itemId, qtyBase: Math.floor(l.onHand), batchId: l.batchId, overrideReason: "Expiry return to stores (decision 0091)" })),
+    }));
+    await withTx(db, (tx) => appendEvent(tx, wardLotsReturned.make({
+      payload: { wardId: input.wardId, transferId: moved.transferId, lines: pick.length, provenance: provenanceOf(actor) }, actor, correlationId: input.wardId, occurredAt: at,
+    })));
+    return { transferId: moved.transferId, lines: pick.length };
+  }, at);
+}
+
 /** Why a use is not charged, or null when it is. */
 export function notChargedWhy(u: { outcome: IpdWardStockOutcome; staffError: boolean; waived: boolean; inPackage: boolean }): string | null {
   if (u.outcome === "refused") return "refused";
@@ -207,7 +233,11 @@ export async function recordWardStockUse(
       throw new IpdError("ward_stock_lot_expired", "this lot is past its expiry: return it to stores; it is never charged", { batchId: batch.id, expiryDate: batch.expiryDate });
     }
     const useId = newId();
-    const why = notChargedWhy({ outcome: input.outcome, staffError: input.staffError === true, waived: input.waive !== undefined, inPackage: input.inPackage === true });
+    // #1010 (0091 rule 1): a live scheme package on the admission covers ward stock — never charged separately.
+    const onPackage = (await tx.select({ id: ipdAdmissionPackages.id }).from(ipdAdmissionPackages)
+      .where(and(eq(ipdAdmissionPackages.admissionId, a.id), isNull(ipdAdmissionPackages.removedAt)))).length > 0;
+    const inPackage = input.inPackage === true || onPackage;
+    const why = notChargedWhy({ outcome: input.outcome, staffError: input.staffError === true, waived: input.waive !== undefined, inPackage });
     if (input.outcome !== "refused") {
       try {
         await postMovements(tx, actor, [{
@@ -232,7 +262,7 @@ export async function recordWardStockUse(
     const finalWhy = why ?? (missing ? "price_missing" : null);
     await tx.insert(ipdWardStockUses).values({
       id: useId, admissionId: a.id, patientId: a.patientId, wardId, itemId: input.itemId, batchId: batch.id, qty: input.qty, outcome: input.outcome,
-      reason: input.reason ?? null, staffError: input.staffError === true, inPackage: input.inPackage === true,
+      reason: input.reason ?? null, staffError: input.staffError === true, inPackage,
       waivedBy: input.waive === undefined ? null : actor.id, waivedReason: input.waive?.reason ?? null, charged, notChargedWhy: finalWhy,
       recordedBy: actor.id, at,
     });

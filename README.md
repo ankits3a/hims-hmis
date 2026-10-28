@@ -1927,7 +1927,8 @@ reason, or refused unopened; the charge follows 0089 and 0091) is held by `ward_
 `ipd.nursing.view`), who never takes the narcotic keys and never counts or signs a narcotic count. The safety round,
 care checks, restraint checks, lines and the crash-cart check ride `ipd.assessment.record`; the crash-cart register and
 wastage waivers ride `ipd.nursing.assign`. A student never gives a high-alert or narcotic dose without a registered
-nurse's PIN.
+nurse's PIN. `ipd.nursing.registration.verify` (record a nurse's council registration as verified, valid to a date) is
+held by `nursing_superintendent`: an agency nurse witnesses a second check only while hers is in date.
 
 **IPD rounds (E4.2, decision 0072, built 2026-10-13, awaiting owner review).** `ipd.round.sign` and `ipd.order.place` are
 held by `doctor` — the Rounds list at `/ipd/rounds` (own, unit and consulted patients, boarded ones marked with their

@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type React from "react";
-import type { IpdCrashCartView, IpdRestraintRegister, IpdRestraintView, IpdWardQuality, IpdWardSafety, IpdWardStock } from "@hmis/contracts";
+import type { IpdAgencyNurses, IpdCrashCartView, IpdRestraintRegister, IpdRestraintView, IpdWardQuality, IpdWardSafety, IpdWardStock } from "@hmis/contracts";
 import { ApiError } from "../lib/api";
+import { useAuth } from "../lib/auth";
 import { dayMonthIst, fmtIst } from "../lib/format";
 import { useLiveLoad } from "./ipd-nursing-shared";
 import { wardErrorOf } from "../lib/ipd-ward-api";
 import type { WardError } from "../lib/ipd-ward-api";
 import {
   checkCart, endRestraint, getRestraintRegister, getWardQuality, getWardSafety, getWardStock, istMonth, raiseWardIndent, recordCareCheck,
-  recordFamilyTold, recordRestraintCheck, takeKeys, markCartUsed,
+  recordFamilyTold, recordRestraintCheck, returnWardLots, takeKeys, markCartUsed, getAgencyNurses, verifyRegistration,
 } from "../lib/ipd-ward-safety-api";
 import type { CartLine, RestraintTicks } from "../lib/ipd-ward-safety-api";
 import { PickWardPrompt, WardPicker, useWardChoice } from "../components/ward-picker";
@@ -29,11 +30,12 @@ import "./ipd-ward-desk.css";
  * Red always comes with a word. Sealed patients show no bed text (the server's identity rule).
  */
 
-type Pane = "safety" | "stock" | "quality";
+type Pane = "safety" | "stock" | "quality" | "staff";
 
 export function IpdWardSafetyScreen({ ward }: { ward?: string } = {}): React.ReactElement {
   const { t } = useTranslation();
   const pick = useWardChoice(ward ?? null);
+  const { can } = useAuth();
   const [s, setS] = useState<IpdWardSafety | null>(null);
   const [forbidden, setForbidden] = useState(false);
   const [pane, setPane] = useState<Pane>("safety");
@@ -61,6 +63,7 @@ export function IpdWardSafetyScreen({ ward }: { ward?: string } = {}): React.Rea
     try { await fn(); setDone(words); await load(); return true; } catch (e) { const w = wardErrorOf(e); if (w === null) throw e; setErr(w); return false; }
   };
   const saved: Saved = (words) => { setErr(null); setDone(words); void load(); };
+  const panes: Pane[] = can("ipd.nursing.registration.verify") ? ["safety", "stock", "quality", "staff"] : ["safety", "stock", "quality"];
   const overdue = s.carePlans.filter((p) => p.overdue).length + s.restraints.filter((r) => r.checkOverdue || r.status === "lapsed").length;
   return (
     <main className="ipdn ipdw" data-testid="ipd-ward-safety">
@@ -71,7 +74,7 @@ export function IpdWardSafetyScreen({ ward }: { ward?: string } = {}): React.Rea
           {overdue > 0 ? <span className="hot" data-testid="ipds-overdue">{t("ipdSafety.overdueCount", { count: overdue })}</span> : <span className="ok">{t("ipdSafety.allOnTime")}</span>}
           <span className="grow" />
           <nav className="ipdw-seg" aria-label={t("ipdSafety.title")}>
-            {(["safety", "stock", "quality"] as const).map((p) => (
+            {panes.map((p) => (
               <button key={p} type="button" className={`ipdn-btn sm${pane === p ? " pri" : ""}`} aria-pressed={pane === p} onClick={() => setPane(p)} data-testid={`ipds-pane-${p}`}>{t(`ipdSafety.pane.${p}`)}</button>
             ))}
           </nav>
@@ -81,6 +84,7 @@ export function IpdWardSafetyScreen({ ward }: { ward?: string } = {}): React.Rea
         {pane === "safety" ? <SafetyPane s={s} act={act} saved={saved} /> : null}
         {pane === "stock" && s.ward !== null ? <StockPane s={s} wardId={s.ward.id} act={act} saved={saved} /> : null}
         {pane === "quality" && s.ward !== null ? <QualityPane wardId={s.ward.id} /> : null}
+        {pane === "staff" ? <StaffPane saved={saved} /> : null}
       </div>
     </main>
   );
@@ -277,7 +281,12 @@ function StockPane({ s, wardId, act, saved }: { s: IpdWardSafety; wardId: string
         )}
         {stock !== null && stock.expiring.length > 0 ? (
           <>
-            <b>{t("ipdSafety.stock.returnTitle")}</b>
+            <div className="ipdw-bar">
+              <b>{t("ipdSafety.stock.returnTitle")}</b>
+              <span className="grow" />
+              <button type="button" className="ipdn-btn sm" onClick={() => void act(() => returnWardLots(wardId), t("ipdSafety.stock.returned", { count: stock.expiring.length })).then(() => loadStock())}
+                data-testid="ipds-return">{t("ipdSafety.stock.returnAll", { count: stock.expiring.length })}</button>
+            </div>
             {stock.expiring.map((l) => (
               <span key={l.batchId} className="ipds-inc">
                 {l.name} <span className="mono dim">{l.batchNo}</span> · <span className={l.daysRemaining < 0 ? "hot" : "warn"}>{l.daysRemaining < 0 ? t("ipdSafety.stock.expired") : t("ipdSafety.stock.expiresIn", { count: l.daysRemaining })}</span> · <span className="mono">{l.onHand}</span>
@@ -318,6 +327,53 @@ function CartForm({ c, act, onClose }: { c: IpdCrashCartView; act: Act; onClose:
         <button type="button" className="ipdn-btn" onClick={onClose}>{t("ipdWard.cockpit.cancel")}</button>
       </div>
     </div>
+  );
+}
+
+/** #1009 — the superintendent's agency nurses: whether each may witness now, and verifying a council registration. */
+function StaffPane({ saved }: { saved: Saved }): React.ReactElement {
+  const { t } = useTranslation();
+  const [list, setList] = useState<IpdAgencyNurses | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  const [council, setCouncil] = useState("");
+  const [regNo, setRegNo] = useState("");
+  const [until, setUntil] = useState("");
+  const [failed, setFailed] = useState(false);
+  const reload = useCallback(() => getAgencyNurses().then(setList), []);
+  useEffect(() => { void reload(); }, [reload]);
+  const ok = council.trim().length >= 2 && regNo.trim().length >= 2 && /^\d{4}-\d{2}-\d{2}$/.test(until);
+  const save = async (userId: string): Promise<void> => {
+    setFailed(false);
+    try { await verifyRegistration(userId, council.trim(), regNo.trim(), until); setOpen(null); saved(t("ipdSafety.staff.saved")); await reload(); } catch { setFailed(true); }
+  };
+  return (
+    <section className="ipdw-box" data-testid="ipds-staff">
+      <b>{t("ipdSafety.staff.title")} <span className="mono dim">{list?.nurses.length ?? 0}</span></b>
+      <span className="dim">{t("ipdSafety.staff.hint")}</span>
+      {list === null ? <span className="dim">{t("ipdWard.loading")}</span> : list.nurses.length === 0 ? <span className="dim">{t("ipdSafety.staff.none")}</span> : list.nurses.map((n) => (
+        <div key={n.userId} className={`ipds-row${n.canWitness ? "" : " red"}`}>
+          <span className="nm">{n.name}</span>
+          <span className={n.canWitness ? "ok" : "hot"}>{n.canWitness ? t("ipdSafety.staff.canWitness") : t("ipdSafety.staff.cannotWitness")}</span>
+          <span className="dim">{n.registration === null ? t("ipdSafety.staff.noRecord") : t("ipdSafety.staff.record", { council: n.registration.council, no: n.registration.registrationNo, until: n.registration.validUntil })}</span>
+          <button type="button" className="ipdn-btn sm pri" onClick={() => { setOpen(n.userId); setCouncil(n.registration?.council ?? ""); setRegNo(n.registration?.registrationNo ?? ""); setUntil(""); }}
+            data-testid={`ipds-verify-${n.userId}`}>{t("ipdSafety.staff.verify")}</button>
+          {open === n.userId ? (
+            <div className="ipds-form" data-testid="ipds-verify-form">
+              <div className="ipds-fields">
+                <label>{t("ipdSafety.staff.council")}<input value={council} onChange={(e) => setCouncil(e.target.value)} data-testid="ipds-reg-council" /></label>
+                <label>{t("ipdSafety.staff.regNo")}<input value={regNo} onChange={(e) => setRegNo(e.target.value)} data-testid="ipds-reg-no" /></label>
+                <label>{t("ipdSafety.staff.validUntil")}<input type="date" value={until} onChange={(e) => setUntil(e.target.value)} data-testid="ipds-reg-until" /></label>
+              </div>
+              {failed ? <div className="ipdn-refusal" role="alert">{t("ipdWard.err.other")}</div> : null}
+              <div className="ipdw-row">
+                <button type="button" className="ipdn-btn pri" disabled={!ok} onClick={() => void save(n.userId)} data-testid="ipds-reg-save">{t("ipdSafety.staff.saveVerify")}</button>
+                <button type="button" className="ipdn-btn" onClick={() => setOpen(null)}>{t("ipdWard.cockpit.cancel")}</button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ))}
+    </section>
   );
 }
 
