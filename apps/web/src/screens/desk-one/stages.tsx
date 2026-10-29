@@ -122,6 +122,7 @@ function personOf(hit: WirePatientHit): Person {
     dob: hit.dob,
     hasAddress: true, // unknown from a search row; the detail read in `hold` settles it
     justRegistered: false,
+    ...(hit.guardian === undefined ? {} : { guardian: hit.guardian }),
   };
 }
 
