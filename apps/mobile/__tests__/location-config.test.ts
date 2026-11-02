@@ -27,10 +27,11 @@ describe.each(["production", "preview"])("the %s build's location permissions", 
   let c: Introspected;
   beforeAll(() => { c = introspect(env); }, 120_000);
 
-  it("iPhone: ONLY 'when in use', in the owner's sentence — no Always, no background mode, no motion", () => {
+  it("iPhone: ONLY 'when in use', in the owner's sentence — no Always, no background mode, and Apple's required motion sentence saying it is not used", () => {
     const plist = c._internal.modResults.ios.infoPlist;
     const keys = Object.keys(plist).filter((k) => /Location|Motion/.test(k));
-    expect(keys).toEqual(["NSLocationWhenInUseUsageDescription"]);
+    expect(keys.sort()).toEqual(["NSLocationWhenInUseUsageDescription", "NSMotionUsageDescription"]);
+    expect(plist.NSMotionUsageDescription).toMatch(/^HMIS does not read motion/);
     expect(plist.NSLocationWhenInUseUsageDescription).toBe(SENTENCE);
     expect(JSON.stringify(plist.UIBackgroundModes ?? [])).not.toContain("location");
   });

@@ -100,6 +100,19 @@ describe("what the phones fetch — a signed manifest and files named by their o
     expect(readFileSync(join(out, "files", done.launchAsset.url.split("/").pop()), "utf8")).toBe("BUNDLE-BYTES");
   });
 
+  it("an iPhone bundle is built from the iPhone half of the export, and an export without one is refused", () => {
+    const iosDir = mkdtempSync(join(tmpdir(), "ota-ios-"));
+    mkdirSync(join(iosDir, "_expo/static/js/ios"), { recursive: true });
+    writeFileSync(join(iosDir, "_expo/static/js/ios/entry-ios.hbc"), "IOS-BYTES");
+    writeFileSync(join(iosDir, "metadata.json"), JSON.stringify({ version: 0, bundler: "metro", fileMetadata: { ios: { bundle: "_expo/static/js/ios/entry-ios.hbc", assets: [] } } }));
+    const args = { runtimeVersion: RUNTIME, filesUrl: FILES, expoClient: {} };
+    const { manifest, files } = buildManifest({ exportDir: iosDir, platform: "ios", ...args });
+    expect(files).toHaveLength(1);
+    expect(files[0].body.toString()).toBe("IOS-BYTES");
+    expect(manifest.launchAsset.url).toContain(FILES);
+    expect(() => buildManifest({ exportDir: iosDir, ...args })).toThrow(/no android bundle/);
+  });
+
   it("a manifest altered after signing, or signed by another key, verifies as NOTHING", () => {
     const out = join(dir, "out2");
     publish({ outDir: out, ...built(), ...ours });

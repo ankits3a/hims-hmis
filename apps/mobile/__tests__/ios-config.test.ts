@@ -70,7 +70,8 @@ describe("app.config.ts — the iPhone half", () => {
     // Decision 0062: location once, at "Mark attendance", while the app is open — never Always, never background.
     expect(of("expo-location")).toMatchObject({
       locationWhenInUsePermission: "HMIS checks your location once when you mark attendance, to confirm you are on hospital premises.",
-      locationAlwaysAndWhenInUsePermission: false, locationAlwaysPermission: false, motionUsagePermission: false,
+      locationAlwaysAndWhenInUsePermission: false, locationAlwaysPermission: false,
+      motionUsagePermission: "HMIS does not read motion or fitness data. This sentence is here because a location component in the app can.",
       isIosBackgroundLocationEnabled: false, isAndroidBackgroundLocationEnabled: false,
     });
     const all = JSON.stringify(configFor({ APP_ENV: "production" }));

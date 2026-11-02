@@ -204,6 +204,20 @@ from this host directly.
 and the certificate. Every phone needs that one APK, through the ordinary update prompt; after it,
 a JavaScript change needs only `publish-ota.sh`.
 
+### Over-the-air updates on iPhone
+
+An iPhone takes bundles the same way, from a build made after #830. Android and iPhone are separate
+bundles, because each has its own native fingerprint.
+
+1. Build and submit as under "iPhone (EAS)". Open the build on expo.dev and copy its **Runtime version**.
+2. Record it on this server, once per iPhone build:
+   `echo '{"runtimeVersion":"<40 hex>","versionCode":0}' > /opt/hmis-context/mobile-apk-prod/hmis-staff-production-ios-runtime.json`
+3. Publish: `apps/mobile/scripts/publish-ota.sh production ios`. It refuses when this checkout's iPhone
+   fingerprint is not the recorded one, as it does for an APK.
+
+An update may change screens, words and rules. It may not change what the app is for: that goes through
+Apple's review.
+
 ## Notifications (plan M6b)
 
 Notifications go through Firebase Cloud Messaging. Two files, both the owner's, both on this server only:
@@ -295,7 +309,7 @@ same server. What differs in this first version:
 | | Android | iPhone |
 |---|---|---|
 | Notifications | on, when the build carries Firebase | **off** — the Notifications screen says "Not set up in this app yet" and nothing is asked |
-| Updates | the app offers a new APK itself | the App Store updates the app; the app has no "Check for update" |
+| Updates | the app offers a new APK itself | the App Store updates native changes; JavaScript arrives over the air, as on Android |
 | Screenshots (production) | blocked | not blocked; the app is hidden in the app switcher |
 | The lock | fingerprint | Face ID or Touch ID |
 
