@@ -3,7 +3,7 @@ import { newId } from "@hmis/contracts";
 import { printJobs } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { enqueuePrintJob } from "../../kernel/printing/enqueue";
-import { billPage, esc, thermalPage } from "../../kernel/printing/render";
+import { SAMAJ_SEVA_AMOUNT, billPage, esc, thermalPage } from "../../kernel/printing/render";
 import { relayServes } from "../../kernel/printing/served";
 import { getInvoice } from "../billing";
 import { saleDiscountReason } from "./discount";
@@ -166,7 +166,7 @@ async function billPart(db: Db, requester: Actor | null, dispenseId: string, lab
       <div class="row"><span class="k">CGST</span><span class="v">${esc(rupees(invoice.cgstPaise))}</span></div>
       <div class="row"><span class="k">SGST</span><span class="v">${esc(rupees(invoice.sgstPaise))}</span></div>
       ${invoice.roundingPaise === 0 ? "" : `<div class="row"><span class="k">Rounding</span><span class="v">${esc(rupees(invoice.roundingPaise))}</span></div>`}
-      <div class="row net"><span class="k">Net payable</span><span class="v">${esc(rupees(invoice.netPayablePaise))}</span></div>
+      <div class="row net"><span class="k">Net payable</span><span class="v">${esc(invoice.netPayablePaise === 0 ? SAMAJ_SEVA_AMOUNT : rupees(invoice.netPayablePaise))}</span></div>
     </div>
     <div class="sec"><table>
       <thead><tr><th>GST</th><th class="r">Taxable</th><th class="r">CGST</th><th class="r">SGST</th></tr></thead>

@@ -19,7 +19,7 @@ import {
 } from "../materials";
 import { isCurrentDose, runRxChecks } from "../opd";
 import { captureDocument, getPatient, getPatientSummaries, listAllergies, nearMatches, registerPatient, resolvePatientId } from "../patients";
-import { assertIssuedDiscount, displayDraft, gstCategoryMap, invoiceInputsOf, mainRowsOf, priceBatchLine, roundingRuleForTender, tenderPayables, winnerOf } from "./bill";
+import { assertFreeTakesNoMoney, assertIssuedDiscount, displayDraft, gstCategoryMap, invoiceInputsOf, mainRowsOf, pharmacyFreeAt, priceBatchLine, roundingRuleForTender, tenderPayables, winnerOf } from "./bill";
 import type { TenderKind, TenderPayables } from "./bill";
 import { assertDiscountCovered, pharmacyRoundingRule, quoteDiscount, requestDiscountApproval, saleDiscountPaise, saleDiscountReason } from "./discount";
 import type { DiscountAsk, DiscountQuote } from "./discount";
@@ -449,6 +449,8 @@ function refuseOnChecks(outcome: RxCheckOutcome): void {
 }
 
 export type RetailPreview = {
+  /** Spec #1023 — the pharmacy fee switch makes this sale free: it takes no money. */
+  free: boolean;
   licence: RetailLicenceState;
   prescriptionRequired: boolean;
   lines: {
@@ -516,8 +518,9 @@ async function previewAt(
   const licence = await retailLicenceState(db, now);
   const plan = await planLines(db, store.id, input.lines, at);
   const gst = await gstCategoryMap(db);
+  const free = await pharmacyFreeAt(db, at);
   const priced: Awaited<ReturnType<typeof priceBatchLine>>[] = [];
-  for (const p of plan) priced.push(await priceBatchLine(db, gst, p, at));
+  for (const p of plan) priced.push(await priceBatchLine(db, gst, p, at, free));
   const patientId = input.patientId === undefined ? undefined : (await resolvePatientId(db, input.patientId)) ?? undefined;
   if (input.patientId !== undefined && patientId === undefined) throw new PharmacyError("not_found", `patient ${input.patientId} not found`);
   const draft = await previewInvoice(db, {
@@ -539,6 +542,7 @@ async function previewAt(
   for (const p of plan) batches.set(p.batchId, await getBatch(db, p.batchId));
   const rows = displayDraft(draft, plan.map((p, i) => ({ ...priced[i]!, itemId: p.itemId })), await counterPacks(db, plan.map((p) => p.itemId))).lines;
   return {
+    free,
     licence,
     prescriptionRequired: plan.some((p) => isScheduled(p.scheduleFlag)),
     lines: plan.map((p, i) => ({
@@ -711,8 +715,10 @@ async function recordSale(
     }
 
     const gst = await gstCategoryMap(db);
+    const free = await pharmacyFreeAt(db, ctx.at);
+    if (free) assertFreeTakesNoMoney(input);
     const priced: Awaited<ReturnType<typeof priceBatchLine>>[] = [];
-    for (const p of plan) priced.push(await priceBatchLine(db, gst, p, ctx.at));
+    for (const p of plan) priced.push(await priceBatchLine(db, gst, p, ctx.at, free));
     const medicineNames = new Map(plan.map((p) => [p.lineIdx, drugNameOf(p.medicine)!]));
     const itemRows = await itemsByIds(db, plan.map((p) => p.itemId));
 
@@ -768,13 +774,13 @@ async function recordSale(
           // OWNER RULING 2026-09-30 (as amended) — any cash rounds to the nearest rupee; UPI/card alone to the paisa.
           roundingRule: pharmacyRoundingRule(input.tenders),
           ...(judged === null ? {} : { saleDiscount: judged.ask }),
-          receipt: {
+          ...(free ? {} : { receipt: {
             tenders: input.tenders,
             ...(input.panNumber === undefined ? {} : { panNumber: input.panNumber }),
             ...(input.form60 === undefined ? {} : { form60: input.form60 }),
             ...(input.changeGivenPaise === undefined ? {} : { changeGivenPaise: input.changeGivenPaise }),
             ...(ctx.sheet === null ? {} : { note: `paper dispense, downtime sheet ${ctx.sheet.desk} #${String(ctx.sheet.serial)}` }),
-          },
+          } }),
         }, now);
         const stored = await getInvoice(tx, result.invoiceId);
         if (stored === null) throw new PharmacyError("not_found", `invoice ${result.invoiceId} vanished inside its own transaction`);

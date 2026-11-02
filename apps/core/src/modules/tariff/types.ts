@@ -97,6 +97,8 @@ export type InvoiceLineInput = {
    * candidate in the line's contest, so the largest benefit still wins and nothing stacks. Pharmacy lines only.
    */
   standingDiscountBps?: number;
+  /** What the bill prints for that discount, when it is not the medicine's own (the pharmacy fee switch). */
+  standingDiscountReason?: string;
 };
 
 export type AdjustmentCandidate = {

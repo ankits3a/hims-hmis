@@ -4,7 +4,7 @@ import type { WireContinuityAnchor } from "./walk-in-routing";
 import type { Eye, TaperStep } from "./eye-line";
 import type { RxLineSource } from "../../../../packages/contracts/src/rx-line";
 import type { GuardianRelation, WirePatientAbsent } from "../../../../packages/contracts/src/patient-absent";
-export { GUARDIAN_NAME_MAX, GUARDIAN_RELATIONS, guardianMayStandIn } from "../../../../packages/contracts/src/patient-absent";
+export { GUARDIAN_NAME_MAX, GUARDIAN_RELATIONS, SELF_RELATION, guardianMayStandIn } from "../../../../packages/contracts/src/patient-absent";
 export type { GuardianRelation, WirePatientAbsent } from "../../../../packages/contracts/src/patient-absent";
 
 /**
@@ -944,6 +944,13 @@ export function getDepartmentQueue(departmentId: string, serviceDate: string): P
  * appends `visit.abandoned` with the reason — the change becomes a thing that happened rather than
  * a row nobody cleaned up.
  */
+/** Spec #1025 — the department's doctors sitting today, and the one-patient change from the bay. */
+export function fetchChangeDoctorOptions(encounterId: string): Promise<{ items: { id: string; displayName: string }[] }> {
+  return api("GET", `/opd/visits/${encodeURIComponent(encounterId)}/change-doctor`);
+}
+export function changeVisitDoctor(encounterId: string, body: { toDoctorId: string; consented: boolean; reason: string }): Promise<{ toSessionId: string }> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/change-doctor`, body);
+}
 export function abandonVisit(encounterId: string, reason: string): Promise<{ encounter: WireEncounter }> {
   return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/abandon`, { reason });
 }

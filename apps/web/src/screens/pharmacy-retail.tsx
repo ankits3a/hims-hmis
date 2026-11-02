@@ -504,6 +504,8 @@ export function PharmacyRetail(): React.ReactElement {
     : preview.byTender === undefined ? { netPayablePaise: preview.totals.netPayablePaise, roundingPaise: preview.totals.roundingPaise ?? 0 }
       : mode === "cash" ? preview.byTender.cash : preview.byTender.digital;
   const payable = due?.netPayablePaise ?? 0;
+  /* Spec #1023 — the pharmacy fee switch: a free sale takes no money. */
+  const free = preview?.free === true;
   const cashParse = parseRupees(tendered);
   const cashPaise = cashParse.ok ? cashParse.paise : undefined;
   /* A UPI or card payment is the bill's amount exactly; only cash is counted, and its change given. */
@@ -522,8 +524,8 @@ export function PharmacyRetail(): React.ReactElement {
     try {
       const sale = await sellRetail({
         customer: who, lines: cartLines(), ...(prescription === undefined ? {} : { prescription }),
-        tenders: [{ mode, amountPaise, ...(ref.trim() === "" ? {} : { refText: ref.trim() }) }],
-        ...(mode === "cash" && amountPaise > payable ? { changeGivenPaise: amountPaise - payable } : {}),
+        tenders: free ? [] : [{ mode, amountPaise, ...(ref.trim() === "" ? {} : { refText: ref.trim() }) }],
+        ...(!free && mode === "cash" && amountPaise > payable ? { changeGivenPaise: amountPaise - payable } : {}),
         ...(discount === null ? {} : {
           discount: { kind: discount.kind, value: discount.value, reason: discount.reason, ...(discount.approvalId === null ? {} : { approvalId: discount.approvalId }) },
           ...(discount.approvalId === null ? {} : { draftId: cartId }),
@@ -604,7 +606,7 @@ export function PharmacyRetail(): React.ReactElement {
   const newValid = newDraft.name.trim() !== "" && (newDraft.phone === "" || /^[6-9]\d{9}$/.test(newDraft.phone)) && (newDraft.age === "" || /^\d{1,3}$/.test(newDraft.age));
   const blocked = preview?.checks !== null && preview?.checks !== undefined
     && (preview.checks.allergies.length > 0 || preview.checks.interactions.some((i) => i.severity === "severe"));
-  const moneyOk = preview !== null && (mode === "cash" ? cashPaise !== undefined && cashPaise >= payable : ref.trim() !== "");
+  const moneyOk = preview !== null && (free || (mode === "cash" ? cashPaise !== undefined && cashPaise >= payable : ref.trim() !== ""));
   const discountReady = discount === null || approval.status === "none" || approval.status === "granted";
   const canSell = !shut && !busy && customer !== null && preview !== null && (!preview.prescriptionRequired || rxComplete) && moneyOk && !blocked && discountReady;
   const byIdx = new Map((preview?.lines ?? []).map((l) => [l.lineIdx, l] as const));
@@ -867,7 +869,7 @@ export function PharmacyRetail(): React.ReactElement {
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <h2 id="rt-s3" className="rt-h2" style={{ flexGrow: 1 }}><span className="rt-dot">3</span>{t("pharmacyRetail.step.bill")}</h2>
                         {/* OWNER RULING 2026-09-30 — the discount lives behind ⋯, never in the line rows. */}
-                        {sold === null ? (
+                        {sold === null && !free ? (
                           <span style={{ position: "relative" }}>
                             <button
                               type="button" aria-label={t("pharmacyDiscount.menu")} aria-expanded={billMenu} aria-haspopup="true" data-testid="retail-bill-menu"
@@ -890,6 +892,7 @@ export function PharmacyRetail(): React.ReactElement {
                         ) : null}
                       </div>
                       <DiscountWait discount={discount} />
+                      {free ? <p role="status" className="rt-strong" data-testid="retail-free">{t("pharmacyRetail.free")}</p> : <>
                       <div className="rt-seg" role="radiogroup" aria-label={t("pharmacyRetail.mode")}>
                         {(["cash", "upi", "card"] as const).map((m) => (
                           <button key={m} type="button" role="radio" aria-checked={mode === m} className={mode === m ? "rt-segb on" : "rt-segb"} onClick={() => setMode(m)}>
@@ -917,6 +920,7 @@ export function PharmacyRetail(): React.ReactElement {
                       {mode === "cash" && cashPaise !== undefined && cashPaise > payable && (
                         <p className="rt-strong" data-testid="retail-change">{t("pharmacyRetail.change_due", { amount: rupees(cashPaise - payable) })}</p>
                       )}
+                      </>}
                     </section>
                   )}
                 </>
@@ -948,7 +952,7 @@ export function PharmacyRetail(): React.ReactElement {
                 <button type="button" className="pri" disabled={!cartValid || busy} onClick={() => { void runPreview(); }}>{t("pharmacyRetail.price")}</button>
               ) : (
                 <button type="button" className="pri" aria-label={t("pharmacyRetail.sell")} disabled={!canSell} onClick={() => { void sell(); }}>
-                  {t("pharmacyRetail.sell")} · {rupees(payable)}
+                  {free ? t("pharmacyRetail.freeSell") : <>{t("pharmacyRetail.sell")} · {rupees(payable)}</>}
                 </button>
               )}
             </div>

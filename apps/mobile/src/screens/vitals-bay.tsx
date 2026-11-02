@@ -10,6 +10,7 @@ import { color, radius, space, TOUCH, type } from "../theme";
 import { Band, Button, MONO, Note, Tag, KeyboardModal, KeyboardScrollView } from "../ui";
 import { AllergyStep } from "../vitals/allergy";
 import { AmendPanel } from "../vitals/amend";
+import { ChangeDoctorLink, ChangeDoctorSheet } from "../vitals/change-doctor";
 import { GuardianLink, GuardianSheet, GuardianUndoButton, guardianMayStandIn } from "../vitals/guardian";
 import { refusalText, vitalsApi, type VitalsApi, type WireVitalsSaveResult } from "../vitals/api";
 import { CaptureCore } from "../vitals/capture";
@@ -110,7 +111,7 @@ function BenchRows({ rows, inHand, onTake, onHold, onGuardian, t }: {
         return (
           // Swipe right = "Open form" (what a tap does); press and hold = the action card a scan opens (owner 2026-10-08).
           <SwipeRow key={row.entryId} testID={`bench-swipe-${row.tokenNo}`} label={t("mobile.scan.swipe.form")} onSwipe={() => onTake(row)}
-            {...(mayStandIn(row) ? { leftLabel: t("patientAbsent.short"), onSwipeLeft: () => onGuardian(row) } : {})}>
+            {...(mayStandIn(row) ? { leftLabel: t("patientAbsent.swipe"), onSwipeLeft: () => onGuardian(row) } : {})}>
           <Pressable
             testID={`bench-row-${row.tokenNo}`} accessibilityRole="button" accessibilityState={{ selected: row.encounterId === inHand }}
             onPress={() => onTake(row)} onLongPress={() => onHold(row)}
@@ -169,11 +170,12 @@ function ProtocolPanel({ p, doctorName, rerun, t }: { p: Protocol; doctorName: s
   );
 }
 
-function Details({ api, row, pre, failed, onGuardian, t }: { api: VitalsApi; row: WireBenchRow; pre: WirePreStage | null; failed: boolean; onGuardian: (row: WireBenchRow) => void; t: T }) {
+function Details({ api, row, pre, failed, onGuardian, onChangeDoctor, t }: { api: VitalsApi; row: WireBenchRow; pre: WirePreStage | null; failed: boolean; onChangeDoctor: (() => void) | null; onGuardian: (row: WireBenchRow) => void; t: T }) {
   return (
     <View testID="session" style={s.details}>
       {/* Owner 2026-10-09 — off the form's main view: the visible, non-gesture way to "Who came?". */}
       {mayStandIn(row) && <GuardianLink onPress={() => onGuardian(row)} />}
+      {onChangeDoctor !== null && <ChangeDoctorLink onPress={onChangeDoctor} />}
       <Text testID="who-ids" style={s.small}>
         {[row.patient !== null && !row.patient.restricted ? row.patient.uhid : null, row.visitNo ?? null].filter((x) => x !== null).join(" · ")}
       </Text>
@@ -207,7 +209,9 @@ function Details({ api, row, pre, failed, onGuardian, t }: { api: VitalsApi; row
 export function VitalsBay({ scanned = null }: { scanned?: Scanned | null } = {}) {
   const { t } = useI18n();
   const router = useRouter();
-  const { call } = useSession();
+  const { call, state } = useSession();
+  /* Spec #1025 — only the bay's narrow grant sees "Change doctor". */
+  const mayChangeDoctor = state.status === "signedIn" && state.me.permissions.hospital.includes("opd.vitals.change_doctor");
   const api = useMemo(() => vitalsApi(call), [call]);
   const today = todayIst();
   const { rows: allRows, asOf, failed: benchFailed, callable, refresh } = useBench(api, today);
@@ -241,6 +245,7 @@ export function VitalsBay({ scanned = null }: { scanned?: Scanned | null } = {})
   const hold = useCallback((row: WireBenchRow) => { heldRow.current = row; setHeld1(row); }, []);
   /** "Who came?" is up for this bench row (Details link, or a left swipe). Nothing is written until it is sent. */
   const [guardianRow, setGuardianRow] = useState<WireBenchRow | null>(null);
+  const [changeDoctorRow, setChangeDoctorRow] = useState<WireBenchRow | null>(null);
   const [scanSaid, setScanSaid] = useState<string | null>(scanned?.banner ?? null);
   const arrived = useRef(false);
 
@@ -476,7 +481,7 @@ export function VitalsBay({ scanned = null }: { scanned?: Scanned | null } = {})
           </Text>
         </View>
       )}
-      {whoOpen && <Details api={api} row={rowInHand} pre={preStage} failed={pre?.failed === true} onGuardian={setGuardianRow} t={t} />}
+      {whoOpen && <Details api={api} row={rowInHand} pre={preStage} failed={pre?.failed === true} onGuardian={setGuardianRow} onChangeDoctor={mayChangeDoctor && !rowInHand.vitalsDone ? () => setChangeDoctorRow(rowInHand) : null} t={t} />}
     </View>
   );
 
@@ -628,6 +633,12 @@ export function VitalsBay({ scanned = null }: { scanned?: Scanned | null } = {})
       <Scanner open={scanOpen} onClose={() => setScanOpen(false)} onRead={(data) => { setScanOpen(false); setRaw(/^(q1|rx1)\./.test(data) ? "" : data); void identify(data); }} />
       {guardianRow !== null && (
         <GuardianSheet api={api} encounterId={guardianRow.encounterId} onDone={() => onGuardian(guardianRow)} onClose={() => setGuardianRow(null)} />
+      )}
+      {changeDoctorRow !== null && (
+        <ChangeDoctorSheet
+          api={api} encounterId={changeDoctorRow.encounterId} onClose={() => setChangeDoctorRow(null)}
+          onDone={(doctorName) => { setBanner({ who: patientLabel(changeDoctorRow, t), doctorName, flags: [] }); void refresh(); }}
+        />
       )}
       <HeldCard source={held1 === null ? null : { encounterId: held1.encounterId }} onClose={() => setHeld1(null)}
         onGuardianDone={(visit) => { const r = heldRow.current; if (r !== null && r.encounterId === visit.encounterId) onGuardian(r); }}

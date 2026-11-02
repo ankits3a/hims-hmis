@@ -40,6 +40,8 @@ export const opdManifest: ModuleManifest = {
     "opd.counter.flow.manage",
     "opd.appointments.read", "opd.appointments.manage",
     "opd.visits.read", "opd.visits.open", "opd.vitals.record",
+    /** Spec #1025 — one patient's doctor changed from the bay. Not `opd.queue.transfer`, which also moves a whole queue and reopens consults. */
+    "opd.vitals.change_doctor",
     /**
      * VD-1 T4 — the vitals bay's pre-stage read, and deliberately NARROWER than both of the
      * easier answers. `opd.consult` is the whole consultation surface and would buy one number at

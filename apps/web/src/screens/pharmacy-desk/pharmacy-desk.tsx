@@ -347,7 +347,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
     if (inHandId === null) return;
     setBusy(true); setBillError(null);
     try {
-      const d = await billDispense(inHandId, { tenders, ...(changePaise > 0 ? { changeGivenPaise: changePaise } : {}), ...(creditPaise > 0 ? { useCreditPaise: creditPaise } : {}), ...discountBody(discount) }, keyFor("bill", inHandId));
+      const d = await billDispense(inHandId, { tenders, ...(tenders.length === 0 && creditPaise === 0 ? { free: true as const } : {}), ...(changePaise > 0 ? { changeGivenPaise: changePaise } : {}), ...(creditPaise > 0 ? { useCreditPaise: creditPaise } : {}), ...discountBody(discount) }, keyFor("bill", inHandId));
       moneyKeys.current.delete(`bill:${inHandId}`);
       settle(d);
       /* what was BILLED: a cash tender is the note handed over, so the change comes off it */

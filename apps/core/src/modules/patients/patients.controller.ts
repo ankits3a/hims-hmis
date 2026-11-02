@@ -22,7 +22,7 @@ import { abhaCapabilityFrom } from "./abdm";
 import type { AbhaCapability } from "./abdm";
 import { AMENDMENT_REASONS, IDENTITY_ASSURANCE, touchesIdentity, upgradeAssurance } from "./identity";
 import { recordPhiAccess } from "../../kernel/phi/audit";
-import { searchPatients } from "./search";
+import { guardiansOfHits, searchPatients } from "./search";
 import { readPatientPhoto, storePatientPhoto } from "./photos";
 import {
   captureDocument, listDocuments, markDocumentEnteredInError, readDocument,
@@ -386,7 +386,10 @@ export class PatientsController {
   async search(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ items: unknown[] }> {
     const q = parsed(searchQuery, query);
     try {
-      return { items: await searchPatients(this.db, actor, q.q, q.limit) };
+      const items = await searchPatients(this.db, actor, q.q, q.limit);
+      // Owner 2026-10-23 — the counter's suggestion rows show the guardian (`guardiansOfHits`).
+      const guardians = await guardiansOfHits(this.db, items);
+      return { items: items.map((hit) => ({ ...hit, guardian: guardians.get(hit.id) ?? null })) };
     } catch (e) {
       toHttp(e);
     }

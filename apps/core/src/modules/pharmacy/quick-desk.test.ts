@@ -103,7 +103,7 @@ describe("quick desk mode (owner ruling 2026-10-02)", () => {
     await turn(true, MON3);
     const out = await cancelBilledDispense(db, fx.incharge.actor, fx.decls, d.id, { reason: "patient bought it outside", reasonClass: "genuine" }, MON3);
     expect(out.dispense.status).toBe("cancelled");
-    const [ask] = await db.select().from(approvals).where(eq(approvals.id, out.refundApprovalId));
+    const [ask] = await db.select().from(approvals).where(eq(approvals.id, out.refundApprovalId!));
     expect(ask).toMatchObject({ typeKey: "billing_refund", status: "pending" }); // requested, not paid: the approval is still to come
   });
 

@@ -133,8 +133,8 @@ describe("the doctor's line — one rules file for the web and the phone", () =>
         const longest = Math.max(...relations.map((r) => { const g = guardianBrief(t, { relation: r, name: null }); return Math.max(g.title.length, g.compact.length, g.chip.length, t(k, { date: "24 Aug" }).length); }));
         expect([name, k, longest <= BUDGET]).toEqual([name, k, true]);
       }
-      // "Guardian with reports" is also a row of the action card and a swipe strip: 24 at most.
-      expect([name, t("patientAbsent.short").length <= 24]).toEqual([name, true]);
+      // The swipe strip is narrow: 24 at most. #971's full wording stays on the buttons and the card's row.
+      expect([name, t("patientAbsent.swipe").length <= 24]).toEqual([name, true]);
       // The hint under the bench is the one longer line: small type, one line at 360 px (looked at), 44 at most.
       expect([name, t("mobile.scan.benchHint").length <= 44]).toEqual([name, true]);
       // The card's detail line is composed: test it with every relation and no name.

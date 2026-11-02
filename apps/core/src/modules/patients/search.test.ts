@@ -1,12 +1,14 @@
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
-import { patientPhotos, registrationConfig } from "../../kernel/db/schema";
+import { eq } from "drizzle-orm";
+import { patientGuardians, patientPhotos, registrationConfig } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { createUser } from "../../kernel/auth/identity";
 import { assignRole, createRole, grantPermissionToRole, syncPermissions } from "../../kernel/auth/permissions";
 import { ModuleRegistry } from "../../kernel/modules/loader";
 import { patientsManifest } from "./manifest";
+import { endGuardian, linkGuardian } from "./guardians";
 import { registerPatient } from "./registration";
-import { searchPatients } from "./search";
+import { guardiansOfHits, searchPatients } from "./search";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -296,6 +298,46 @@ describe("searchPatients", () => {
     expect(await searchPatients(db, clerk, " 9 ")).toEqual([]); // trimmed length < 2
     await expect(searchPatients(db, { type: "agent", id: "a1" }, "asha")).rejects.toMatchObject({
       code: "user_actor_required",
+    });
+  });
+
+  /*
+    Owner 2026-10-23 — the counter's suggestion rows show the guardian. The pick is the
+    prescription's (#942), so the desk and the sheet name the same person.
+  */
+  describe("guardiansOfHits — the guardian under a counter hit", () => {
+    async function person(name: string, sex: "male" | "female", extra: { fatherHusbandName?: string } = {}): Promise<{ id: string; administrativeGender: string }> {
+      const r = await withTx(db, (tx) => registerPatient(tx, clerk, { name, sex, ...extra }));
+      return { id: r.patient.id, administrativeGender: sex };
+    }
+    const link = (patientId: string, name: string, relationship: "father" | "mother" | "spouse" | "other") =>
+      withTx(db, (tx) => linkGuardian(tx, clerk, patientId, { name, relationship }));
+
+    it("a man's newest standing link; a woman's spouse wins over a newer link", async () => {
+      const mohan = await person("Mohan Kumar", "male");
+      await link(mohan.id, "Ramesh Kumar", "father");
+      await link(mohan.id, "Suresh Kumar", "other");
+      const sunita = await person("Sunita Devi", "female");
+      await link(sunita.id, "Manoj Sah", "spouse");
+      await link(sunita.id, "Ram Prasad", "father");
+
+      const got = await guardiansOfHits(db, [mohan, sunita]);
+      expect(got.get(mohan.id)).toEqual({ name: "Suresh Kumar", relation: "other" });
+      expect(got.get(sunita.id)).toEqual({ name: "Manoj Sah", relation: "spouse" });
+    });
+
+    it("an ended or expired link is skipped; then the registered father / husband name, with no relation", async () => {
+      const mohan = await person("Mohan Kumar", "male", { fatherHusbandName: " Ramesh Kumar " });
+      const older = await link(mohan.id, "Old Father", "father");
+      const expired = await link(mohan.id, "Expired Mother", "mother");
+      await withTx(db, (tx) => endGuardian(tx, clerk, older.guardianId, mohan.id));
+      await db.update(patientGuardians).set({ validTo: new Date(Date.now() - 86_400_000) }).where(eq(patientGuardians.id, expired.guardianId));
+      const bare = await person("Mohan Singh", "male");
+
+      const got = await guardiansOfHits(db, [mohan, bare]);
+      expect(got.get(mohan.id)).toEqual({ name: "Ramesh Kumar", relation: null });
+      expect(got.get(bare.id)).toBeNull();
+      expect((await guardiansOfHits(db, [])).size).toBe(0);
     });
   });
 });

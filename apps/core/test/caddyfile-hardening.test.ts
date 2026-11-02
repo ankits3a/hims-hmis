@@ -340,7 +340,7 @@ describe("the site isolates its origin", () => {
 
 /**
  * OWNER 2026-09-30 — THE STAGING SITE. https://stagehmis.crkmch.com is served by PRODUCTION'S caddy
- * (80 and 443 are production's) and proxied to UAT's caddy on docker0, where basic auth, the
+ * (80 and 443 are production's) and proxied to UAT's caddy on docker0, where the
  * headers and the /api split are applied. Each assertion below is a way the hop breaks quietly:
  * the block moved ahead of production's (deploy.sh's edge gate reads the FIRST hostname site as
  * production's), the upstream re-pointed at a port UAT does not publish, or the hosts entry that

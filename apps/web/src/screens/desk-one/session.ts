@@ -25,6 +25,11 @@ export type Person = {
   hasAddress: boolean;
   /** True the moment this desk allocated the UHID — the dossier says "first visit" rather than a date. */
   justRegistered: boolean;
+  /**
+   * Owner 2026-10-28 — the relative the rail shows beside the phone ("Father: Sunil Kumar"): from the search hit, or
+   * from the registration form. `null` = none on file; absent = not known on this path (the rail shows nothing).
+   */
+  guardian?: { name: string; relation: string | null } | null;
 };
 
 /** The visit this desk opened. `tokenNo === null` is the held/deferred lane, never an error. */

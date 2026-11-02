@@ -127,7 +127,7 @@ describe("pharmacy money rulings 2026-09-30", () => {
       const cancelled = await cancelBilledDispense(db, fx.pharmacist.actor, fx.decls, id, { reason: "patient bought it outside", reasonClass: "genuine" }, MON3);
       const [note] = await db.select().from(creditNotes).where(eq(creditNotes.id, cancelled.creditNoteId));
       expect(note).toMatchObject({ invoiceId: billed.invoiceId, netPaise: 3400, roundingPaise: 40 });
-      const [ask] = await db.select().from(approvals).where(eq(approvals.id, cancelled.refundApprovalId));
+      const [ask] = await db.select().from(approvals).where(eq(approvals.id, cancelled.refundApprovalId!));
       expect(ask!.amountPaise).toBe(3400);
     });
 

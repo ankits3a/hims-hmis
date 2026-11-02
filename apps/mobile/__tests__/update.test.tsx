@@ -64,11 +64,11 @@ describe("is there a newer build? — no app store, so the app asks the hospital
   });
 
   /**
-   * The feed is the ONE thing under /app/ that staging serves without its password — an installed app
-   * cannot answer a browser's prompt. The APK and the folder listing must stay behind it. Read off
-   * the shipped Caddyfile, and the build script, as text.
+   * Staging has no edge password (owner 2026-11-02): an installed app could not answer one. The feed
+   * is matched by exact name and is never a folder listing. Read off the shipped Caddyfile, and the
+   * build script, as text.
    */
-  it("staging serves only the feed file without the password; the APK and the listing stay behind it", () => {
+  it("staging serves the feed file by name, never as a listing", () => {
     const caddy = readFileSync(join(__dirname, "../../../docker/prod/Caddyfile.uat"), "utf8").split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
     const open = /@app_latest path_regexp (\S+)\n\s*handle @app_latest \{([\s\S]*?)\n\t\}/.exec(caddy);
     expect(open).not.toBeNull();
@@ -79,9 +79,7 @@ describe("is there a newer build? — no app store, so the app asks the hospital
     expect(re.test("/app/")).toBe(false);
     expect(re.test("/app/../etc/hmis-staff-x-latest.json")).toBe(false);
     expect(open![2]).not.toMatch(/browse/);
-    expect(open![2]).not.toMatch(/basic_auth/);
-    const rest = /handle_path \/app\/\* \{([\s\S]*?)\n\t\}/.exec(caddy);
-    expect(rest?.[1]).toMatch(/basic_auth/);
+    expect(caddy).not.toMatch(/basic_auth/);
     // …and the feed's file name is the one the build script writes and the staging app asks for.
     const build = readFileSync(join(__dirname, "../scripts/build-apk.sh"), "utf8");
     expect(build).toContain('"$OUT_DIR/hmis-staff-$ENV_NAME-latest.json"');
