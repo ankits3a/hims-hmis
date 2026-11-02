@@ -1232,14 +1232,12 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
     });
 
     /**
-     * `Caddyfile.uat` reads `{$HMIS_UAT_SITE}` and `{$HMIS_UAT_BASIC_AUTH_HASH}` from caddy's OWN
-     * process environment. Neither the base file nor the overlay gave the caddy service any, so
-     * both expanded to empty: an edge with no site address and — the part that matters — no
-     * basic-auth hash. The `:?` form makes compose refuse by name rather than serve UAT open.
+     * `Caddyfile.uat` reads `{$HMIS_UAT_SITE}` from caddy's OWN process environment. Neither the
+     * base file nor the overlay gave the caddy service any, so it expanded to empty: an edge with
+     * no site address. The `:?` form makes compose refuse by name.
      */
-    it("UAT's caddy is handed the two variables its Caddyfile expands, and refuses without them", () => {
+    it("UAT's caddy is handed the variable its Caddyfile expands, and refuses without it", () => {
       expect(uatCompose).toMatch(/HMIS_UAT_SITE: \$\{HMIS_UAT_SITE:\?/);
-      expect(uatCompose).toMatch(/HMIS_UAT_BASIC_AUTH_HASH: \$\{HMIS_UAT_BASIC_AUTH_HASH:\?/);
       // And the Caddyfile must keep its admin endpoint: `deploy.sh` step 6 reloads caddy on BOTH
       // targets and `caddy reload` is a client of that API. `admin off` made the deploy unable to
       // finish, after migrating and seeding.

@@ -246,6 +246,7 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     permissions: [
       "opd.visits.read",
       "opd.vitals.record",
+      "opd.vitals.change_doctor",
       "opd.queue.read",
       /**
        * VD-1 T4 — the pre-stage read, and it closes a gap the bay could not cross. Staging the

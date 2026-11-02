@@ -63,7 +63,7 @@ const saleBase = z.object({
     mode: z.enum(["cash", "upi", "card"]),
     amountPaise: z.number().int().nonnegative(),
     refText: z.string().max(120).optional(),
-  })).min(1).max(5),
+  })).max(5), // none only on a free sale (spec #1023): billing refuses any other unpaid bill
   panNumber: z.string().max(10).optional(),
   form60: z.boolean().optional(),
   changeGivenPaise: z.number().int().nonnegative().optional(),

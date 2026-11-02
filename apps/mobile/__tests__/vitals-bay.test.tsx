@@ -303,9 +303,9 @@ describe("the vitals bay on a phone", () => {
     }));
     await mount(s.fetcher);
     const revisit = await screen.findByTestId("bench-swipe-4");
-    expect(revisit.props.accessibilityActions).toEqual([{ name: "swipe", label: "Open form" }, { name: "swipeLeft", label: "Reports only — Skip vitals" }]);
+    expect(revisit.props.accessibilityActions).toEqual([{ name: "swipe", label: "Open form" }, { name: "swipeLeft", label: "Skip vitals" }]);
     // Owner 2026-10-09 — a NEW visit's row carries it too.
-    expect(screen.getByTestId("bench-swipe-7").props.accessibilityActions).toEqual([{ name: "swipe", label: "Open form" }, { name: "swipeLeft", label: "Reports only — Skip vitals" }]);
+    expect(screen.getByTestId("bench-swipe-7").props.accessibilityActions).toEqual([{ name: "swipe", label: "Open form" }, { name: "swipeLeft", label: "Skip vitals" }]);
     // A row past the bay (vitals done): right-swipe only, and a left-swipe that somehow arrives does nothing.
     const done = screen.getByTestId("bench-swipe-3");
     expect(done.props.accessibilityActions).toEqual([{ name: "swipe", label: "Open form" }]);

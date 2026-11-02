@@ -375,9 +375,6 @@ if [ "$TARGET" = "uat" ]; then
   UAT_SITE="$(sed -n 's/^HMIS_UAT_SITE=//p' "$ENV_FILE" | head -n 1)"
   [ -n "$UAT_SITE" ] || die "$ENV_FILE carries no HMIS_UAT_SITE. It is the address UAT answers on
     (this box's IP, or a name that resolves to it) and the Caddyfile reads it as {\$HMIS_UAT_SITE}."
-  grep -q '^HMIS_UAT_BASIC_AUTH_HASH=' "$ENV_FILE" \
-    || die "$ENV_FILE carries no HMIS_UAT_BASIC_AUTH_HASH. Mint one and keep the password out of
-    git:  docker run --rm caddy:2-alpine caddy hash-password --plaintext '<password>'"
   # The port docker-compose.uat.yml publishes on docker0 and production's staging block proxies to.
   if port_in_use 8444; then
     our_caddy_running || die "port 8444 is in use and it is not this project's caddy.
@@ -518,8 +515,7 @@ install -m 0644 "$SRC_DIR/docker-compose.prod.yml" "$DEPLOY_DIR/docker-compose.p
 # edge would keep serving the previous config for as long as the container lived. See the
 # comment on the volume in docker-compose.prod.yml; it was measured, not predicted.
 if [ "$TARGET" = "uat" ]; then
-  # 11i T3 — UAT's own edge: this box's IP over `tls internal`, basic auth on the STATIC handle
-  # only (never on /api*, for the measured reason written into the file), and no ACME. Installed
+  # 11i T3 — UAT's own edge: this box's IP over `tls internal`, and no ACME. Installed
   # to the same path so nothing downstream branches on the target again.
   install -D -m 0644 "$SRC_DIR/Caddyfile.uat" "$DEPLOY_DIR/caddy/Caddyfile"
   install -m 0644 "$SRC_DIR/docker-compose.uat.yml" "$DEPLOY_DIR/docker-compose.uat.yml"
@@ -1325,24 +1321,6 @@ note "api through the edge: HTTP 200 $body"
 # 2026-08-24 smoke test's D1: fifteen screens answered the API's JSON to a browser for a whole
 # plan cycle while every test and every deploy gate was green. `/admin/users` is chosen because it
 # is the exact URL the owner opened when the outage was found.
-if [ "$TARGET" = "uat" ]; then
-  # THE APPLICATION HALF, ASSERTED WITHOUT A CREDENTIAL. UAT's static handle is behind basic auth
-  # and this script holds the bcrypt HASH, never the password — so it cannot fetch the document,
-  # and inventing an environment variable to hold a plaintext password so a gate could pass would
-  # be putting a credential on the box to prove a credential works.
-  #
-  # What it asserts instead is exactly as strong for the failure this leg exists to catch: the
-  # SPA handler answers, with its auth gate on. A `401` carrying `WWW-Authenticate: Basic` can
-  # only come from the `handle` block that serves /srv — the API half answers JSON without
-  # challenge, and a misdirected @api matcher would produce that JSON here instead.
-  code="$(curl -s $CURL_TLS -o /dev/null -w '%{http_code}' --max-time 10 -H 'Accept: text/html' "$SITE_BASE/admin/users" 2>/dev/null || true)"
-  challenge="$(curl -sI $CURL_TLS --max-time 10 "$SITE_BASE/admin/users" 2>/dev/null | tr -d '\r' | grep -i '^www-authenticate:' || true)"
-  [ "$code" = "401" ] || die "$SITE_BASE/admin/users answered $code, expected 401 behind basic auth.
-    A 200 here means the auth gate is off; a JSON body means the @api matcher is wrong."
-  [ -n "$challenge" ] || die "$SITE_BASE/admin/users answered 401 with no WWW-Authenticate header —
-    that is not the basic-auth gate answering."
-  note "screen through the edge: /admin/users is 401 behind basic auth ($challenge)"
-else
 screen="$(curl -fsS --max-time 10 -H 'Accept: text/html' "$SITE_BASE/admin/users" 2>/dev/null)" \
   || die "$SITE_BASE/admin/users did not answer at all"
 case "$screen" in
@@ -1351,7 +1329,6 @@ case "$screen" in
     being handed something else (smoke-test D1). First 200 bytes: $(printf '%.200s' "$screen")" ;;
 esac
 note "screen through the edge: /admin/users serves the SPA document"
-fi
 
 printf '\n==> %s is up: %s\n' "$PROJECT" "$SITE_BASE"
 # #913: what is serving now, read by the next deploy's prune_sha_tags as "the previous good SHA".

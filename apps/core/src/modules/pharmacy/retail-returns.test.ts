@@ -99,7 +99,7 @@ describe("returns at the walk-in counter (P19b)", () => {
     expect(row).toMatchObject({ reason: "return", qtyDelta: 10, resourceId: retailId, batchId: batch, refId: saleLine!.id, patientId: fx.patient.id });
     const notes = await listCreditNotes(db);
     expect(notes.map((n) => [n.id, n.kind, n.netPaise])).toEqual([[first.creditNoteId, "refund", 12000]]);
-    const [approval] = await db.select().from(approvals).where(eq(approvals.id, first.refundApprovalId));
+    const [approval] = await db.select().from(approvals).where(eq(approvals.id, first.refundApprovalId!));
     expect(approval).toMatchObject({ typeKey: "billing_refund", amountPaise: 12000 });
     const returned = await db.select().from(events).where(eq(events.name, "retail.line_returned"));
     expect(returned).toHaveLength(1);

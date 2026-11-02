@@ -116,6 +116,9 @@ export function buildFixture(today: string, aadhaarKey: string = STUB_AADHAAR_KE
       // Before the weekly-off and holiday rules: the e2e reads pin 330's YESTERDAY, which on a Monday
       // (IST) is a Sunday — weekly_off won and the test failed every Monday (CI 2026-10-12 00:16 IST).
       else if (s.pin === "330" && date === addDays(today, -1)) status = "comp_off"; // a value the guide of 2026-10-09 does not list
+      // Same reason, for the e2e's forgotten-punch days: pin 304's cycle can leave none before today
+      // (CI 2026-11-02, a Monday, the 2nd of the month).
+      else if (s.pin === "304" && date === addDays(today, -2)) status = "single_punch";
       else if (holiday !== undefined) status = n % 9 === 0 ? "worked_on_holiday" : "holiday";
       else if (wd === 6) status = n % 11 === 0 ? "worked_on_off_day" : "weekly_off";
       else if (s.pin === "329" && n % 13 === 0) status = "no_shift";

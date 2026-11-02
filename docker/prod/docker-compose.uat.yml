@@ -103,14 +103,11 @@ services:
     # Read-only, and a host directory outside every compose project — no volume is shared.
     volumes:
       - /opt/hmis-context/mobile-apk:/downloads:ro
-    # WITHOUT THIS, `Caddyfile.uat`'s `{$HMIS_UAT_SITE}` AND `{$HMIS_UAT_BASIC_AUTH_HASH}` EXPAND TO
-    # EMPTY — caddy reads them from its own process environment and neither the base file nor this
-    # one gave it any. The `:?` form makes compose refuse with the variable's name rather than
-    # starting an edge with no site address and no basic-auth hash, which is the failure that would
-    # have served UAT unauthenticated.
+    # WITHOUT THIS, `Caddyfile.uat`'s `{$HMIS_UAT_SITE}` EXPANDS TO EMPTY — caddy reads it from its
+    # own process environment and neither the base file nor this one gave it. The `:?` form makes
+    # compose refuse with the variable's name rather than starting an edge with no site address.
     environment:
       HMIS_UAT_SITE: ${HMIS_UAT_SITE:?set HMIS_UAT_SITE in the UAT .env — the address UAT answers on}
-      HMIS_UAT_BASIC_AUTH_HASH: ${HMIS_UAT_BASIC_AUTH_HASH:?set HMIS_UAT_BASIC_AUTH_HASH in the UAT .env — mint with `docker run --rm caddy:2-alpine caddy hash-password --plaintext '<pw>'`}
     deploy:
       resources:
         limits:

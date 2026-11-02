@@ -358,6 +358,8 @@ export type DiscountTier = "pharmacist" | "pharmacy_incharge" | "owner";
 export type DiscountAsk = { kind: DiscountKind; value: number; reason: string };
 export type WireDiscountQuote = { kind: DiscountKind; value: number; amountPaise: number; tier: DiscountTier; approverRole: "pharmacy_incharge" | "owner" | null };
 export type WirePricedDraft = {
+  /** Spec #1023 — the pharmacy fee switch makes this bill free. Absent from an older server. */
+  free?: boolean;
   lines: WirePricedLine[];
   totals: { grossPaise: number; discountPaise: number; cgstPaise: number; sgstPaise: number; rawTotalPaise: number; netPayablePaise: number; roundingPaise: number };
   byTender?: { cash: TenderPayable; digital: TenderPayable };
@@ -373,7 +375,7 @@ export type Tender = { mode: "cash" | "upi" | "card"; amountPaise: number; refTe
 /** A sale discount on the bill; above 10% with the granted approval for THIS bill and discount. */
 export type BillDiscount = DiscountAsk & { approvalId?: string };
 /** GAP A3b — `credit`: the whole bill on the OWNER's granted `billing_credit_owner` approval (tenders empty). */
-export async function billDispense(id: string, input: { tenders: Tender[]; changeGivenPaise?: number; credit?: { reason: string; approvalId: string }; discount?: BillDiscount; /** Owner ruling 2026-10-02 — pharmacy credit kept at a return, spent first. */ useCreditPaise?: number }, idempotencyKey: string): Promise<WireDispense> {
+export async function billDispense(id: string, input: { tenders: Tender[]; free?: true; changeGivenPaise?: number; credit?: { reason: string; approvalId: string }; discount?: BillDiscount; /** Owner ruling 2026-10-02 — pharmacy credit kept at a return, spent first. */ useCreditPaise?: number }, idempotencyKey: string): Promise<WireDispense> {
   return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/bill`, input, idempotencyKey);
 }
 export type DiscountAskResult = { approvalId: string; tier: DiscountTier; amountPaise: number };
@@ -545,6 +547,8 @@ export type WireRetailShelfEntry = {
 };
 export type RetailLine = { medicineId: string; qtyBase: number; batchId?: string };
 export type WireRetailPreview = {
+  /** Spec #1023 — as on the desk's preview. */
+  free?: boolean;
   licence: WireRetailState;
   prescriptionRequired: boolean;
   lines: {

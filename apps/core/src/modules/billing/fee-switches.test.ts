@@ -68,6 +68,7 @@ describe("the fee switches: consultation and laboratory fees, off and on", () =>
       { kind: "opdConsult", off: false, changedAt: null, changedBy: null },
       { kind: "lab", off: false, changedAt: null, changedBy: null },
       { kind: "imaging", off: false, changedAt: null, changedBy: null },
+      { kind: "pharmacy", off: false, changedAt: null, changedBy: null },
     ]);
     expect(view.consultPaise).toEqual({ new: 50000, renewal: 50000 });
   });
@@ -135,7 +136,7 @@ describe("the fee switches: consultation and laboratory fees, off and on", () =>
     expect(feeOffAt(await rules(), "imaging", T0)).toBe(false);
     expect(feeOffAt(await rules(), "imaging", T2)).toBe(true);
     expect(feeOffAt(await rules(), "imaging", new Date(T3.getTime() + 1))).toBe(false);
-    expect((await feeSwitchesView(db, T3)).switches.map((s) => s.kind)).toEqual(["opdConsult", "lab", "imaging"]);
+    expect((await feeSwitchesView(db, T3)).switches.map((s) => s.kind)).toEqual(["opdConsult", "lab", "imaging", "pharmacy"]);
     /** The lab switch is its own: imaging off does not make tests free. */
     expect((await rules()).feeSwitches?.lab).toBeUndefined();
   });

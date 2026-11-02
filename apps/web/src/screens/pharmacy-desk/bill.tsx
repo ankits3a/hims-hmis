@@ -147,6 +147,8 @@ export function BillRail({
   const status = dispense.status;
   const collected = status === "picked";
   const paid = status === "billed" || status === "handed_over";
+  /* Spec #1023 — the pharmacy fee switch: a free bill takes no money, so it needs no drawer and no tender. */
+  const free = preview?.free === true;
   const due = preview === null ? null : payableFor(mode, preview);
   const payable = due?.netPayablePaise ?? null;
   /* The owner's credit carries no tender: it is billed on the cash rule (the nearest rupee). */
@@ -160,13 +162,13 @@ export function BillRail({
   const [useCredit, setUseCredit] = useState(true);
   const exactPayable = preview === null ? null : payableFor("upi", preview).netPayablePaise;
   const coveredByCredit = useCredit && exactPayable !== null && creditHeld >= exactPayable && exactPayable > 0;
-  const creditUse = !useCredit || payable === null ? 0 : coveredByCredit ? exactPayable : Math.min(creditHeld, payable);
+  const creditUse = free || !useCredit || payable === null ? 0 : coveredByCredit ? exactPayable : Math.min(creditHeld, payable);
   const rest = payable === null ? null : coveredByCredit ? 0 : payable - creditUse;
-  const plan = rest === null ? null : coveredByCredit ? { tenders: [] as Tender[], changePaise: 0 } : rest <= 0 ? null : tendersFor(mode, rest, cash, upi, ref);
+  const plan = free ? { tenders: [] as Tender[], changePaise: 0 } : rest === null ? null : coveredByCredit ? { tenders: [] as Tender[], changePaise: 0 } : rest <= 0 ? null : tendersFor(mode, rest, cash, upi, ref);
   /* A discount above the pharmacist's 10% waits for its approval; the money keys wait with it. */
   const approval = useDiscountApproval(discount);
   const discountReady = discount === null || approval.status === "none" || approval.status === "granted";
-  const canTake = collected && drawerOpen === true && plan !== null && !busy && discountReady;
+  const canTake = collected && (free || drawerOpen === true) && plan !== null && !busy && discountReady;
   const [menuOpen, setMenuOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -186,7 +188,7 @@ export function BillRail({
   /* PD-D6 — `1-4` choose the tender, `Ctrl+⏎` takes it; guarded exactly as the buttons are. */
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (!collected || drawerOpen !== true) return;
+      if (!collected || (!free && drawerOpen !== true)) return;
       if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         if (canTake) onTake(plan.tenders, plan.changePaise, creditUse);
@@ -198,7 +200,7 @@ export function BillRail({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [canTake, collected, creditUse, drawerOpen, onTake, plan]);
+  }, [canTake, collected, creditUse, drawerOpen, free, onTake, plan]);
 
   /* The same read the left rail made — one query key, so this costs no second request. */
   const rail = useQuery({
@@ -240,7 +242,7 @@ export function BillRail({
         <span className="tag" style={{ flexGrow: 1 }}>{t("pharmacyDesk.bill.title")}</span>
         <span className={paid ? "stamp pd" : "stamp un"}>{paid ? t("pharmacyDesk.bill.paid") : t("pharmacyDesk.bill.unpaid")}</span>
         {/* OWNER RULING 2026-09-30 — the bill's exceptions live behind ⋯, as the line's do: the discount first. */}
-        {collected && onDiscount !== null && preview !== null ? (
+        {collected && !free && onDiscount !== null && preview !== null ? (
           <span style={{ position: "relative" }}>
             <button
               type="button" aria-label={t("pharmacyDiscount.menu")} aria-expanded={menuOpen} aria-haspopup="true" data-testid="desk-bill-menu"
@@ -322,7 +324,7 @@ export function BillRail({
               <span className="mo" data-testid="desk-payable" style={{ fontSize: 21, fontWeight: 600, letterSpacing: "-.02em" }}>{rupees(taken?.netPayablePaise ?? payable ?? preview.totals.netPayablePaise)}</span>
             </div>
             <p style={{ margin: "7px 0 0 0", fontSize: 10.5, color: "var(--dim)", lineHeight: "15px" }}>{t("pharmacyDesk.bill.inside")}</p>
-            {paid || !collected || creditHeld <= 0 ? null : (
+            {paid || !collected || free || creditHeld <= 0 ? null : (
               <div data-testid="desk-store-credit" style={{ marginTop: 9, padding: "8px 10px", borderRadius: 6, border: "1px solid var(--green-line)", background: "var(--green-soft)" }}>
                 <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
                   <input type="checkbox" data-testid="desk-store-credit-use" checked={useCredit} onChange={(e) => setUseCredit(e.target.checked)} style={{ accentColor: "#0e6b4e" }} />
@@ -350,7 +352,14 @@ export function BillRail({
 
       {collected ? (
         <div style={{ padding: "12px 15px", borderTop: "1px solid var(--line)" }}>
-          {drawerOpen === false ? (
+          {free ? (
+            <>
+              <p role="status" data-testid="desk-free" style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "var(--green)" }}>{t("pharmacyDesk.bill.free")}</p>
+              <button className="pri" data-testid="desk-take" style={{ width: "100%", marginTop: 10, height: 46 }} disabled={!canTake} onClick={() => { onTake([], 0, 0); }}>
+                {t("pharmacyDesk.bill.freeTake")}
+              </button>
+            </>
+          ) : drawerOpen === false ? (
             <div role="status" style={{ fontSize: 11.5, color: "var(--gold)", lineHeight: "16px" }}>
               {t("pharmacyDesk.bill.noDrawer")}{" "}
               <button className="sec" style={{ height: 28, marginTop: 6 }} onClick={onOpenDrawer}>{t("pharmacyDesk.bill.openDrawer")}</button>
