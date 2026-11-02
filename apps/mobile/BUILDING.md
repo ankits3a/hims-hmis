@@ -153,6 +153,9 @@ and carries `277de723…`, which no clean checkout computes; `ota/runtime-aliase
 the clean `da9b26a5…` so that one APK can still be updated. The record stops matching by itself when
 the native side changes; delete the entry once a newer staging APK is out.
 
+Production versionCode 26 has one too: Apple's motion sentence (`app.config.ts`) is an iPhone-only line, but
+its plugin setting moves Android's fingerprint from `3e5f6f90…` to `a3e9dd59…` with no Android native change.
+
 **What is served** (no expo.dev cloud; the same folder and the same caddy as the APKs):
 
 ```
