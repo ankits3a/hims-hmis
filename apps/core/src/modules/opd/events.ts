@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { defineEvent } from "@hmis/contracts";
+import { GUARDIAN_RELATIONS, defineEvent } from "@hmis/contracts";
 import { SKIP_REASONS } from "./skip-reasons";
 
 /**
@@ -275,7 +275,7 @@ export const vitalsRecorded = defineEvent("vitals.recorded", MODULE, z.object({
  */
 export const visitPatientAbsent = defineEvent("visit.patient_absent", MODULE, z.object({
   encounterId: id, patientId: id, ...where,
-  relation: z.enum(["father", "mother", "spouse", "son", "daughter", "brother", "sister", "other_relative", "attendant"]),
+  relation: z.enum(GUARDIAN_RELATIONS), // #971: "self" joined the list — the patient came, reports only
   named: z.boolean(),
 }));
 
@@ -286,7 +286,7 @@ export const visitPatientAbsent = defineEvent("visit.patient_absent", MODULE, z.
  */
 export const visitPatientAbsentUndone = defineEvent("visit.patient_absent_undone", MODULE, z.object({
   encounterId: id, patientId: id, ...where,
-  relation: z.enum(["father", "mother", "spouse", "son", "daughter", "brother", "sister", "other_relative", "attendant"]),
+  relation: z.enum(GUARDIAN_RELATIONS), // #971: "self" joined the list — the patient came, reports only
   named: z.boolean(),
   markedBy: id,
 }));

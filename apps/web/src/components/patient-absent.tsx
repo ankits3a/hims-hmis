@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../lib/api";
 import { guardianBrief } from "../lib/brief-history";
-import { GUARDIAN_NAME_MAX, GUARDIAN_RELATIONS, markPatientAbsent, opdErrorMessage, undoPatientAbsent } from "../lib/opd-api";
+import { GUARDIAN_NAME_MAX, GUARDIAN_RELATIONS, SELF_RELATION, markPatientAbsent, opdErrorMessage, undoPatientAbsent } from "../lib/opd-api";
 import type { TFunction } from "i18next";
 import type { GuardianRelation, WirePatientAbsent } from "../lib/opd-api";
 
@@ -40,7 +40,7 @@ export function PatientAbsentNotice({ absent, testId = "patient-absent-notice" }
         border: "1px solid var(--gold)", color: "var(--gold)", background: "var(--card)",
       }}
     >
-      {t("patientAbsent.notice", { who: guardianWho(t, absent) })}
+      {absent.relation === SELF_RELATION ? t("patientAbsent.self.notice") : t("patientAbsent.notice", { who: guardianWho(t, absent) })}
     </p>
   );
 }
@@ -144,7 +144,7 @@ export function GuardianAbsentAction({ encounterId, onDone, testId = "patient-ab
     setBusy(true);
     setError(null);
     try {
-      const out = await markPatientAbsent(encounterId, { relation, name: name.trim() === "" ? null : name.trim() });
+      const out = await markPatientAbsent(encounterId, { relation, name: relation === SELF_RELATION || name.trim() === "" ? null : name.trim() });
       close();
       onDone(out.patientAbsent);
     } catch (e) {
@@ -183,13 +183,14 @@ export function GuardianAbsentAction({ encounterId, onDone, testId = "patient-ab
           {GUARDIAN_RELATIONS.map((r) => <option key={r} value={r}>{t(`patientAbsent.relation.${r}`)}</option>)}
         </select>
       </label>
-      <label style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: 11 }}>
+      {/* #971 — Self is the patient: their name is on the visit already. */}
+      {relation !== SELF_RELATION && <label style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: 11 }}>
         {t("patientAbsent.nameLabel")}
         <input
           data-testid={`${testId}-name`} value={name} maxLength={GUARDIAN_NAME_MAX} autoComplete="off"
           onChange={(e) => { setName(e.target.value); }}
         />
-      </label>
+      </label>}
       {error !== null && (
         <p role="alert" data-testid={`${testId}-error`} style={{ margin: 0, fontSize: 11.5, color: "var(--bad)" }}>{error}</p>
       )}
