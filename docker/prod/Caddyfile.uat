@@ -9,12 +9,11 @@
 # with production. It was `https://{$HMIS_UAT_SITE}:8443` over `tls internal`; the owner closed
 # 8443 on 2026-09-27, so that address could not be reached anyway.
 #
-# The site stays behind basic auth — UAT is the owner's bench and a trainee's, not a public site.
+# No edge password (owner 2026-11-02): the app's own staff login is the only sign-in here.
 #
-# `{$HMIS_UAT_SITE}` and `{$HMIS_UAT_BASIC_AUTH_HASH}` are expanded by Caddy from the container's
-# environment at load time, so **no credential and no address is committed to git**. Both come out
-# of `/opt/hmis-uat/.env`, which deploy.sh's pre-flight refuses to continue without. Mint a hash
-# with:  docker run --rm caddy:2-alpine caddy hash-password --plaintext '<password>'
+# `{$HMIS_UAT_SITE}` is expanded by Caddy from the container's environment at load time, so no
+# address is committed to git. It comes out of `/opt/hmis-uat/.env`, which deploy.sh's pre-flight
+# refuses to continue without.
 {
 	# `admin off` WAS HERE, AND IT MADE THE DEPLOY IMPOSSIBLE TO FINISH.
 	#
@@ -61,17 +60,6 @@ http://{$HMIS_UAT_SITE}:8080 {
 	# prefix and why `caddyfile-parity.test.ts` pins it.
 	@api path /api*
 
-	# ═══ BASIC AUTH COVERS THE SITE AND NEVER THE API — MEASURED ON THE PREVIEW STACK ═══
-	#
-	# When the preview wrapped `/api*` too, signing in was IMPOSSIBLE: the app sends
-	# `Authorization: Bearer <token>` and Caddy demanded `Authorization: Basic <creds>` on the same
-	# request. There is one Authorization header, so whichever arrived lost — the browser answered
-	# the challenge with Basic, the Bearer token was dropped, and `/api/auth/me` came back 401 for
-	# ever. Found with a real browser, not reasoned about.
-	#
-	# The API is not left open by this: every route behind it carries its own @RequirePermission,
-	# and `/auth/login` wants real credentials. Basic auth keeps casual traffic off the static
-	# site, which is exactly where it now sits.
 	handle @api {
 		uri strip_prefix /api
 		reverse_proxy api:3000
@@ -79,13 +67,11 @@ http://{$HMIS_UAT_SITE}:8080 {
 
 	# The staff Android app (owner 2026-10-05: no Play Store, ever). APKs that
 	# apps/mobile/scripts/build-apk.sh writes to /opt/hmis-context/mobile-apk on the host are
-	# mounted read-only at /downloads (docker-compose.uat.yml) and listed here, behind the same
-	# basic auth as the screens: https://stagehmis.crkmch.com/app/
+	# mounted read-only at /downloads (docker-compose.uat.yml) and listed here:
+	# https://stagehmis.crkmch.com/app/
 	#
-	# `*-latest.json` is served WITHOUT basic auth, and only that: the installed app reads it on
-	# start-up to learn whether a newer build exists (apps/mobile/src/update.ts), and an app cannot
-	# answer a browser's password prompt. It carries a version number, a file name and a checksum —
-	# nothing about a patient, nothing that installs. The APK itself stays behind the prompt.
+	# `*-latest.json` is what the installed app reads on start-up to learn whether a newer build
+	# exists (apps/mobile/src/update.ts), and is no-store so it never answers stale.
 	@app_latest path_regexp ^/app/hmis-staff-[a-z]+-latest\.json$
 	handle @app_latest {
 		uri strip_prefix /app
@@ -94,9 +80,7 @@ http://{$HMIS_UAT_SITE}:8080 {
 		file_server
 	}
 	# HMIS PRINT FOR WINDOWS (decision 0047). The feed and the app bundle an installed program
-	# updates from are served WITHOUT basic auth — a program cannot answer a prompt, and they carry
-	# a version, a checksum and the program's own source. The installer zip stays behind the prompt
-	# with everything else under /app/ (it is downloaded by a person in a browser).
+	# updates from, no-store for the same reason.
 	@print_feed path_regexp ^/app/hmis-print-(windows-latest|app-[0-9.]+)\.json$
 	handle @print_feed {
 		uri strip_prefix /app
@@ -113,8 +97,7 @@ http://{$HMIS_UAT_SITE}:8080 {
 	# header is matched as exactly 40 hex digits before it is ever part of a path. The manifest is a
 	# file the publish script wrote whole — one multipart body carrying the manifest and its
 	# signature — and this boundary is the one it was written with (scripts/ota-manifest.js).
-	# WITHOUT basic auth, like the feed above: an app cannot answer a password prompt, and the
-	# phone runs nothing the certificate in its APK did not sign.
+	# The phone runs nothing the certificate in its APK did not sign.
 	@ota_manifest {
 		path /app/ota/staging/manifest
 		header_regexp ota_runtime Expo-Runtime-Version ^[a-f0-9]{40}$
@@ -138,18 +121,12 @@ http://{$HMIS_UAT_SITE}:8080 {
 		file_server
 	}
 	handle_path /app/* {
-		basic_auth {
-			uat {$HMIS_UAT_BASIC_AUTH_HASH}
-		}
 		@apk path *.apk
 		header @apk Content-Type application/vnd.android.package-archive
 		root * /downloads
 		file_server browse
 	}
 	handle {
-		basic_auth {
-			uat {$HMIS_UAT_BASIC_AUTH_HASH}
-		}
 		root * /srv
 		try_files {path} /index.html
 		file_server
