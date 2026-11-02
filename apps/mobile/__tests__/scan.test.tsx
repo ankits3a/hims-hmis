@@ -348,13 +348,13 @@ describe("a patient row, held or swiped", () => {
     await typeCode("med-9");
     // Amber and secondary: never the one large button.
     expect(await screen.findByTestId("card-next")).not.toHaveTextContent(/Guardian/);
-    expect(screen.getByTestId("card-guardian")).toHaveTextContent(/^Guardian with reports ?›$/);
+    expect(screen.getByTestId("card-guardian")).toHaveTextContent(/^Reports only — Skip vitals ?›$/);
     await fireEvent.press(screen.getByTestId("card-guardian"));
     expect(await screen.findByTestId("patient-absent-dialog")).toHaveTextContent(/Who came\?/);
     expect(s.of("POST /opd/visits/e9/patient-absent")).toHaveLength(0);
     await fireEvent.press(screen.getByTestId("patient-absent-relation-son"));
     await fireEvent.press(screen.getByTestId("patient-absent-confirm"));
-    expect(await screen.findByTestId("patient-absent-sent")).toHaveTextContent(/Sent to the doctor — guardian with reports, vitals not taken\./);
+    expect(await screen.findByTestId("patient-absent-sent")).toHaveTextContent(/Sent to the doctor — vitals skipped\./);
     expect(s.of("POST /opd/visits/e9/patient-absent")).toHaveLength(1);
     expect(mockRouter.replace).not.toHaveBeenCalled();
   });
