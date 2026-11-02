@@ -103,7 +103,7 @@ export function itemDiscountSource(): AdjustmentSource {
       if (amount <= 0) return [];
       return [{
         sourceKey: ITEM_DISCOUNT_SOURCE_KEY, ruleKey: null, kind: "percent_bps", discountCategory: null,
-        amountPaise: amount, reason: "Standing discount on this medicine", requiresApproval: false, rejected: null,
+        amountPaise: amount, reason: line.standingDiscountReason ?? "Standing discount on this medicine", requiresApproval: false, rejected: null,
       }];
     },
   };

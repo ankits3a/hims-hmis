@@ -4,7 +4,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { opdPrescriptions, pharmacyDispenseLines, pharmacyDispenses } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { transition } from "../../kernel/workflow/instances";
-import { getInvoice, issueInvoice, previewInvoice, roundTotalBy } from "../billing";
+import { BillingError, feeOffAt, getInvoice, issueInvoice, loadBillingConfig, previewInvoice, roundTotalBy } from "../billing";
 import { listGstCategories, serviceCategoriesByIds } from "../tariff";
 import { effectiveRegulation, getBatch, itemUomRows } from "../materials";
 import { getEncounter } from "../opd";
@@ -58,7 +58,7 @@ type PricedLinePlan = { lineId: string; lineIdx: number; itemId: string } & Pric
  * tariff engine takes the `min` with the version's contracted price itself; which term won is read
  * back off the invoice line, never re-derived (F5: the bill is the freeze).
  */
-async function priceLines(db: Db, dispenseId: string, now: Date): Promise<PricedLinePlan[]> {
+async function priceLines(db: Db, dispenseId: string, now: Date, free: boolean): Promise<PricedLinePlan[]> {
   const lines = await linesOf(db, dispenseId);
   const plan: PricedLinePlan[] = [];
   const gstByCategory = await gstCategoryMap(db);
@@ -67,11 +67,35 @@ async function priceLines(db: Db, dispenseId: string, now: Date): Promise<Priced
     if (line.itemId === null || line.batchId === null || line.qtyBase === null) {
       throw new PharmacyError("dispense_not_in_state", `line ${String(line.lineIdx + 1)} has not been picked`, { lineIdx: line.lineIdx });
     }
-    const priced = await priceBatchLine(db, gstByCategory, { itemId: line.itemId, batchId: line.batchId, qtyBase: line.qtyBase }, now);
+    const priced = await priceBatchLine(db, gstByCategory, { itemId: line.itemId, batchId: line.batchId, qtyBase: line.qtyBase }, now, free);
     plan.push({ lineId: line.id, lineIdx: line.lineIdx, itemId: line.itemId, ...priced });
   }
   if (plan.length === 0) throw new PharmacyError("nothing_to_dispense", "no open line to bill");
   return plan;
+}
+
+/** Spec #1023 — the discount's reason on a free medicine, as the bill prints it. */
+export const FREE_MEDICINE_REASON = "समाज सेवा छूट";
+
+/**
+ * THE PHARMACY FEE SWITCH (owner 2026-11-02, spec #1023) — was pharmacy free at `at`? A dispense reads it
+ * at its creation, like imaging at its order, so a flip never re-prices a ticket already waiting. A
+ * deployment with no billing config has no switches, so pharmacy is charged.
+ */
+export async function pharmacyFreeAt(db: Db, at: Date): Promise<boolean> {
+  try {
+    return feeOffAt((await loadBillingConfig(db)).chargeRules, "pharmacy", at);
+  } catch (e) {
+    if (e instanceof BillingError) return false;
+    throw e;
+  }
+}
+
+/** A ₹0 bill has nothing to pay: money handed to it is a desk mistake, refused rather than kept. */
+export function assertFreeTakesNoMoney(input: { tenders: unknown[]; discount?: unknown; credit?: unknown; useCreditPaise?: number }): void {
+  if (input.tenders.length > 0 || input.discount !== undefined || input.credit !== undefined || (input.useCreditPaise ?? 0) > 0) {
+    throw new PharmacyError("free_bill_takes_no_money", "this bill is free — take no money, discount or credit on it");
+  }
 }
 
 export type GstCategoryMap = Map<string, Awaited<ReturnType<typeof listGstCategories>>[number]>;
@@ -103,7 +127,7 @@ export type PricedBatchLine = {
 };
 
 export async function priceBatchLine(
-  db: Db, gstByCategory: GstCategoryMap, line: { itemId: string; batchId: string; qtyBase: number }, now: Date,
+  db: Db, gstByCategory: GstCategoryMap, line: { itemId: string; batchId: string; qtyBase: number }, now: Date, free = false,
 ): Promise<PricedBatchLine> {
   const sale = await requireActiveSaleItem(db, line.itemId);
   const batch = await getBatch(db, line.batchId);
@@ -121,7 +145,10 @@ export async function priceBatchLine(
   }, line.qtyBase);
   // OWNER 2026-10-02 — the sale item's standing discount rides on both invoice lines of the pick (the whole
   // packs and the loose-tablet residue), so the preview, the judged discount and the issued bill all see it.
-  const standing = sale.discountBps > 0 ? { standingDiscountBps: sale.discountBps } : {};
+  // Spec #1023 — while pharmacy is free, the MRP stays on the line and a 100% discount takes it to ₹0.
+  const standing = free
+    ? { standingDiscountBps: 10000, standingDiscountReason: FREE_MEDICINE_REASON }
+    : sale.discountBps > 0 ? { standingDiscountBps: sale.discountBps } : {};
   return {
     winner: price.saleWinner,
     amountPaise: price.amountPaise,
@@ -233,6 +260,8 @@ export function tenderPayables(rawTotalPaise: number): TenderPayables {
 
 export type BillPreview = DisplayDraft & {
   byTender: TenderPayables; discount: DiscountQuote | null;
+  /** Spec #1023 — the pharmacy fee switch makes this bill free: it takes no money. */
+  free: boolean;
   /** Owner ruling 2026-10-02 — the pharmacy credit this patient holds, to spend on this bill first. */
   creditAvailablePaise: number;
 };
@@ -254,7 +283,8 @@ export async function previewDispenseBill(
   if (d.status !== "picked" && d.status !== "billed") throw new PharmacyError("dispense_not_in_state", `dispense ${d.id} is ${d.status}, not picked`, { status: d.status });
   const encounter = await getEncounter(db, d.encounterId);
   if (encounter === null) throw new PharmacyError("not_found", `encounter ${d.encounterId} not found`);
-  const plan = await priceLines(db, dispenseId, now);
+  const free = await pharmacyFreeAt(db, d.createdAt);
+  const plan = await priceLines(db, dispenseId, now, free);
   void actor;
   const draft = await previewInvoice(db, {
     patientId: d.patientId, encounterId: encounter.id, lines: plan.flatMap(invoiceInputsOf),
@@ -263,6 +293,7 @@ export async function previewDispenseBill(
   }, now);
   return {
     ...displayDraft(draft, plan, await counterPacks(db, plan.map((p) => p.itemId))),
+    free,
     byTender: tenderPayables(draft.totals.rawTotalPaise),
     discount: opts.discount === undefined ? null : quoteDiscount(opts.discount, draft.totals.grossPaise, saleDiscountPaise(draft.lines)),
     creditAvailablePaise: (await pharmacyCreditOf(db, d.patientId)).availablePaise,
@@ -343,7 +374,9 @@ export async function billDispense(db: Db, actor: Actor, dispenseId: string, inp
   await requireSlipConfirmed(db, d);
   const encounter = await getEncounter(db, d.encounterId);
   if (encounter === null) throw new PharmacyError("not_found", `encounter ${d.encounterId} not found`);
-  const plan = await priceLines(db, dispenseId, now);
+  const free = await pharmacyFreeAt(db, d.createdAt);
+  if (free) assertFreeTakesNoMoney(input);
+  const plan = await priceLines(db, dispenseId, now, free);
   const lines = plan.flatMap(invoiceInputsOf);
   const judged = input.discount === undefined ? null : await judgeDispenseDiscount(db, d, encounter.id, lines, input.discount, now);
 

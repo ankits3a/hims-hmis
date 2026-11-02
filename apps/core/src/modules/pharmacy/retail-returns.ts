@@ -34,7 +34,7 @@ import type { ReturnInput } from "./returns";
  *   return is this event and the credit note.
  */
 export type RetailReturnInput = ReturnInput;
-export type RetailReturnResult = { sale: RetailSaleView; creditNoteId: string; creditNoteNo: string; refundApprovalId: string };
+export type RetailReturnResult = { sale: RetailSaleView; creditNoteId: string; creditNoteNo: string; refundApprovalId: string | null };
 
 const SELL = "pharmacy.retail.sell";
 

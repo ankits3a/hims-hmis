@@ -17,6 +17,7 @@ function mock(perms: string[]): { puts: unknown[] } {
       { kind: "opdConsult", off: false, changedAt: null, changedBy: null },
       { kind: "lab", off: true, changedAt: "2026-10-01T05:00:00.000Z", changedBy: "u-owner" },
       { kind: "imaging", off: false, changedAt: null, changedBy: null },
+      { kind: "pharmacy", off: false, changedAt: null, changedBy: null },
     ],
     consultPaise: { new: 10000, renewal: null },
   };
