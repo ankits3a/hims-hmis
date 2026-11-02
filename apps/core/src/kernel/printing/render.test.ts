@@ -893,6 +893,22 @@ describe("FD-24 T3: rendering the counter's documents", () => {
       expect(doc!.html).toContain(`<span class="lb">Age:</span><span class="vl"><span class="num">41 years</span></span>`);
     });
 
+    it("a baby's age prints in days or months, never 0 years: on the prescription sheet", async () => {
+      const clerk = await mkUser(db, "rx-baby-clerk", ["front_office"]);
+      const doctor = await mkDoctor(db, { username: "dr-rx-baby", departmentId: deptId, roomId, displayName: "Dr Baby" });
+      const at = async (dob: string, name: string, phone: string): Promise<string> => {
+        const patient = await mkPatient(db, clerk.actor, { name, sex: "male", phone });
+        await db.update(patients).set({ dob: new Date(`${dob}T00:00:00.000Z`) }).where(eq(patients.id, patient.id));
+        const visit = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: doctor.doctorId }, MON);
+        return (await renderPrescriptionSheet(db, { encounterId: visit.encounter.id }, MON, clerk.actor))!.html;
+      };
+      const cell = (text: string): string => `<span class="lb">Age:</span><span class="vl"><span class="num">${text}</span></span>`;
+      const days = new Date(MON.getTime() - 29 * 86_400_000).toISOString().slice(0, 10);
+      expect(await at(days, "Baby Days", "9876540001")).toContain(cell("29 days"));
+      const months = new Date(MON.getTime() - 100 * 86_400_000).toISOString().slice(0, 10);
+      expect(await at(months, "Baby Months", "9876540002")).toContain(cell("3 months"));
+    });
+
     /** `unknown` is one of the four values `administrative_gender` holds, and it is not `other`.
      *  Printing `O` for it would put a clinical fact on paper that the record does not hold. */
     it("prints a dash for an unrecorded gender rather than folding it into `O`", async () => {
