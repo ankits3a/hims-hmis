@@ -2406,6 +2406,7 @@
     "notice": "Patient absent — guardian ({{who}}) brought reports. Vitals not taken.",
     "tag": "Guardian ({{who}})",
     "short": "Reports only — Skip vitals",
+    "swipe": "Skip vitals",
     "cardTitle": "Guardian only",
     "cardTail": " · reports · no vitals",
     "cardTailNew": " · new · no vitals",

@@ -110,7 +110,7 @@ function BenchRows({ rows, inHand, onTake, onHold, onGuardian, t }: {
         return (
           // Swipe right = "Open form" (what a tap does); press and hold = the action card a scan opens (owner 2026-10-08).
           <SwipeRow key={row.entryId} testID={`bench-swipe-${row.tokenNo}`} label={t("mobile.scan.swipe.form")} onSwipe={() => onTake(row)}
-            {...(mayStandIn(row) ? { leftLabel: t("patientAbsent.short"), onSwipeLeft: () => onGuardian(row) } : {})}>
+            {...(mayStandIn(row) ? { leftLabel: t("patientAbsent.swipe"), onSwipeLeft: () => onGuardian(row) } : {})}>
           <Pressable
             testID={`bench-row-${row.tokenNo}`} accessibilityRole="button" accessibilityState={{ selected: row.encounterId === inHand }}
             onPress={() => onTake(row)} onLongPress={() => onHold(row)}
