@@ -51,6 +51,11 @@ const VERSION = "0.23.0";
  * "MARK ATTENDANCE" (decision 0061) — the ONE location sentence, iPhone and Android. The app reads the
  * position once, in the foreground, when a person taps the button; never in the background.
  */
+/**
+ * ITMS-90683 (Apple, 2026-11-02): expo-location's code can reach Core Motion, so Apple refuses a build with
+ * no NSMotionUsageDescription even though the app never asks. The app reads no motion data (decision 0062).
+ */
+export const MOTION_SENTENCE = "HMIS does not read motion or fitness data. This sentence is here because a location component in the app can.";
 export const LOCATION_SENTENCE = "HMIS checks your location once when you mark attendance, to confirm you are on hospital premises.";
 
 /**
@@ -144,9 +149,9 @@ const config: ExpoConfig = {
     // to the hospital's server and on to the speech service; nothing is recorded in the background.
     ["expo-audio", { microphonePermission: IOS_MICROPHONE, enableBackgroundRecording: false, enableBackgroundPlayback: false }],
     // Decision 0062 — "Mark attendance" reads the position once, while the app is open. ONLY "when in use":
-    // `false` REMOVES the plugin's default Always / motion keys from the iPhone build; nothing in the background.
+    // `false` REMOVES the plugin's default Always keys from the iPhone build; nothing in the background.
     ["expo-location", {
-      locationWhenInUsePermission: LOCATION_SENTENCE, locationAlwaysAndWhenInUsePermission: false, locationAlwaysPermission: false, motionUsagePermission: false,
+      locationWhenInUsePermission: LOCATION_SENTENCE, locationAlwaysAndWhenInUsePermission: false, locationAlwaysPermission: false, motionUsagePermission: MOTION_SENTENCE,
       isIosBackgroundLocationEnabled: false, isAndroidBackgroundLocationEnabled: false, isAndroidForegroundServiceEnabled: false, isAndroidMotionActivityEnabled: false,
     }],
     // M6b — the small icon in the tray is the HMIS diamond (alpha only), tinted pine. Android only in

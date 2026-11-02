@@ -4,7 +4,12 @@
 #
 #   apps/mobile/scripts/publish-ota.sh staging      # phones running the staging app
 #   apps/mobile/scripts/publish-ota.sh production   # phones running the hospital's app
+#   apps/mobile/scripts/publish-ota.sh production ios   # the same, for iPhones
 #
+# The second argument is the platform, Android when left out. Android and iPhone are two bundles, each
+# for its own native fingerprint. An iPhone is built on EAS, so its fingerprint has no feed to come from:
+# after each iPhone build, record the "Runtime version" the EAS build page shows, in
+# <apk folder>/hmis-staff-<env>-ios-runtime.json (BUILDING.md, "Over-the-air updates on iPhone").
 # It REFUSES when the native side of this checkout is not the native side of the newest APK (a new
 # native module, a permission, an Expo upgrade): that change needs scripts/build-apk.sh, and a
 # bundle sent to an APK it was not built against is a crash on every phone at once.
@@ -14,17 +19,20 @@ ENV_NAME="${1:-}"
 case "$ENV_NAME" in
   staging) APP_ENV=preview; APP_ID=com.crkmch.hmis.staging; OUT_DIR="${HMIS_OTA_OUT_DIR:-/opt/hmis-context/mobile-apk}" ;;
   production) APP_ENV=production; APP_ID=com.crkmch.hmis; OUT_DIR="${HMIS_OTA_OUT_DIR:-/opt/hmis-context/mobile-apk-prod}" ;;
-  *) echo "usage: $0 <staging|production>" >&2; exit 2 ;;
+  *) echo "usage: $0 <staging|production> [android|ios]" >&2; exit 2 ;;
 esac
+PLATFORM="${2:-android}"
+case "$PLATFORM" in android|ios) ;; *) echo "usage: $0 <staging|production> [android|ios]" >&2; exit 2 ;; esac
 
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 KEY="${HMIS_OTA_KEY:-/root/.config/hmis/android/ota-$ENV_NAME-private-key.pem}"
 CERT="$APP_DIR/ota/certificate-$ENV_NAME.pem"
 FEED="$OUT_DIR/hmis-staff-$ENV_NAME-latest.json"
+[ "$PLATFORM" = android ] || FEED="$OUT_DIR/hmis-staff-$ENV_NAME-ios-runtime.json"
 LOCK=/opt/hmis-lanes/.orchestrator/bin/test-lock.sh
 [ -r "$KEY" ] || { echo "no over-the-air signing key for $ENV_NAME at $KEY — see BUILDING.md" >&2; exit 1; }
 [ -r "$CERT" ] || { echo "no certificate at $CERT — see BUILDING.md" >&2; exit 1; }
-[ -r "$FEED" ] || { echo "no build has been published for $ENV_NAME yet ($FEED)" >&2; exit 1; }
+[ -r "$FEED" ] || { echo "no $PLATFORM build has been recorded for $ENV_NAME yet ($FEED)" >&2; exit 1; }
 [ -z "$(git -C "$APP_DIR" status --porcelain -- . ../../packages/contracts)" ] \
   || { echo "REFUSED: uncommitted changes — what reaches the phones must be a commit" >&2; exit 1; }
 
@@ -32,7 +40,7 @@ LOCK=/opt/hmis-lanes/.orchestrator/bin/test-lock.sh
 GOOGLE_SERVICES="${HMIS_GOOGLE_SERVICES:-/root/.config/hmis/firebase/google-services.json}"
 HMIS_PUSH_IN_BUILD=0
 rm -f "$APP_DIR/google-services.json"
-if [ -r "$GOOGLE_SERVICES" ] && grep -q "\"$APP_ID\"" "$GOOGLE_SERVICES"; then
+if [ "$PLATFORM" = android ] && [ -r "$GOOGLE_SERVICES" ] && grep -q "\"$APP_ID\"" "$GOOGLE_SERVICES"; then
   install -m 0600 "$GOOGLE_SERVICES" "$APP_DIR/google-services.json"
   HMIS_PUSH_IN_BUILD=1
 fi
@@ -50,7 +58,7 @@ cd "$APP_DIR"
 export APP_ENV HMIS_PUSH_IN_BUILD HMIS_VERSION_CODE="$VC"
 # The fingerprint reads node_modules, so node_modules is exactly the lockfile's — as it is in a build.
 npm ci --no-audit --no-fund >/dev/null 2>&1
-RESOLVED="$(npx expo-updates runtimeversion:resolve --platform android 2>/dev/null)"
+RESOLVED="$(npx expo-updates runtimeversion:resolve --platform "$PLATFORM" 2>/dev/null)"
 RUNTIME="$(node -e 'console.log(JSON.parse(process.argv[1]).runtimeVersion)' "$RESOLVED")"
 # ONE recorded exception per APK that was fingerprinted on a tree that was not the lockfile's
 # (ota/runtime-aliases.json; BUILDING.md): "the APK that calls itself X is natively the commit whose
@@ -69,8 +77,8 @@ fi
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"; rm -f "$APP_DIR/google-services.json"' EXIT
 # Metro is a memory pool like jest's: it waits its turn (CLAUDE.md, "Verify").
-"$LOCK" run mobile-ota nice -n 19 npx expo export --platform android --output-dir "$WORK/export" >/dev/null
+"$LOCK" run mobile-ota nice -n 19 npx expo export --platform "$PLATFORM" --output-dir "$WORK/export" >/dev/null
 npx expo config --type public --json > "$WORK/config.json"
 URL="$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).updates.url.replace(/\/manifest$/,""))' "$WORK/config.json")"
-node scripts/ota-manifest.js "$WORK/export" "$OUT_DIR/ota/$ENV_NAME/$RUNTIME" "$RUNTIME" "$URL/$RUNTIME/files" "$WORK/config.json" "$KEY" "$CERT"
-echo "every $ENV_NAME phone whose APK has runtime $RUNTIME takes it the next time the app is opened"
+node scripts/ota-manifest.js "$WORK/export" "$OUT_DIR/ota/$ENV_NAME/$RUNTIME" "$RUNTIME" "$URL/$RUNTIME/files" "$WORK/config.json" "$KEY" "$CERT" "$PLATFORM"
+echo "every $ENV_NAME $PLATFORM phone whose build has runtime $RUNTIME takes it the next time the app is opened"

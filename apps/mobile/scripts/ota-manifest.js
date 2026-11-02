@@ -43,15 +43,15 @@ function describe(file, ext, filesUrl) {
 }
 
 /**
- * @param {{ exportDir: string, runtimeVersion: string, filesUrl: string, expoClient: object, id?: string, createdAt?: string }} input
+ * @param {{ exportDir: string, platform?: "android" | "ios", runtimeVersion: string, filesUrl: string, expoClient: object, id?: string, createdAt?: string }} input
  * @returns {{ manifest: object, files: { name: string, body: Buffer }[] }}
  */
-function buildManifest({ exportDir, runtimeVersion, filesUrl, expoClient, id, createdAt }) {
+function buildManifest({ exportDir, platform = "android", runtimeVersion, filesUrl, expoClient, id, createdAt }) {
   const metadata = JSON.parse(fs.readFileSync(path.join(exportDir, "metadata.json"), "utf8"));
-  const android = metadata.fileMetadata && metadata.fileMetadata.android;
-  if (!android || typeof android.bundle !== "string") throw new Error("the export holds no android bundle (metadata.json)");
-  const bundle = describe(path.join(exportDir, android.bundle), "bundle", filesUrl);
-  const assets = (android.assets ?? []).map((a) => {
+  const half = metadata.fileMetadata && metadata.fileMetadata[platform];
+  if (!half || typeof half.bundle !== "string") throw new Error(`the export holds no ${platform} bundle (metadata.json)`);
+  const bundle = describe(path.join(exportDir, half.bundle), "bundle", filesUrl);
+  const assets = (half.assets ?? []).map((a) => {
     if (!/^[A-Za-z0-9]+$/.test(a.ext)) throw new Error(`an asset has an extension no file name may carry: ${JSON.stringify(a.ext)}`);
     return describe(path.join(exportDir, a.path), a.ext, filesUrl);
   });
@@ -129,9 +129,9 @@ function publish({ outDir, manifest, files, privateKeyPem, certificatePem }) {
 module.exports = { BOUNDARY, buildManifest, multipart, readMultipart, verify, publish };
 
 if (require.main === module) {
-  const [exportDir, outDir, runtimeVersion, filesUrl, configFile, keyFile, certFile] = process.argv.slice(2);
+  const [exportDir, outDir, runtimeVersion, filesUrl, configFile, keyFile, certFile, platform] = process.argv.slice(2);
   const expoClient = JSON.parse(fs.readFileSync(configFile, "utf8"));
-  const built = buildManifest({ exportDir, runtimeVersion, filesUrl, expoClient });
+  const built = buildManifest({ exportDir, platform, runtimeVersion, filesUrl, expoClient });
   const done = publish({ outDir, ...built, privateKeyPem: fs.readFileSync(keyFile, "utf8"), certificatePem: fs.readFileSync(certFile, "utf8") });
   console.log(`published update ${done.id} (${done.createdAt}) — 1 bundle, ${done.assets.length} assets`);
 }

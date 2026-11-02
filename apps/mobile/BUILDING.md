@@ -153,6 +153,9 @@ and carries `277de723…`, which no clean checkout computes; `ota/runtime-aliase
 the clean `da9b26a5…` so that one APK can still be updated. The record stops matching by itself when
 the native side changes; delete the entry once a newer staging APK is out.
 
+Production versionCode 26 has one too: Apple's motion sentence (`app.config.ts`) is an iPhone-only line, but
+its plugin setting moves Android's fingerprint from `3e5f6f90…` to `a3e9dd59…` with no Android native change.
+
 **What is served** (no expo.dev cloud; the same folder and the same caddy as the APKs):
 
 ```
@@ -203,6 +206,20 @@ from this host directly.
 **The first time.** A phone takes bundles only once it runs an APK that carries the update client
 and the certificate. Every phone needs that one APK, through the ordinary update prompt; after it,
 a JavaScript change needs only `publish-ota.sh`.
+
+### Over-the-air updates on iPhone
+
+An iPhone takes bundles the same way, from a build made after #830. Android and iPhone are separate
+bundles, because each has its own native fingerprint.
+
+1. Build and submit as under "iPhone (EAS)". Open the build on expo.dev and copy its **Runtime version**.
+2. Record it on this server, once per iPhone build:
+   `echo '{"runtimeVersion":"<40 hex>","versionCode":0}' > /opt/hmis-context/mobile-apk-prod/hmis-staff-production-ios-runtime.json`
+3. Publish: `apps/mobile/scripts/publish-ota.sh production ios`. It refuses when this checkout's iPhone
+   fingerprint is not the recorded one, as it does for an APK.
+
+An update may change screens, words and rules. It may not change what the app is for: that goes through
+Apple's review.
 
 ## Notifications (plan M6b)
 
@@ -295,7 +312,7 @@ same server. What differs in this first version:
 | | Android | iPhone |
 |---|---|---|
 | Notifications | on, when the build carries Firebase | **off** — the Notifications screen says "Not set up in this app yet" and nothing is asked |
-| Updates | the app offers a new APK itself | the App Store updates the app; the app has no "Check for update" |
+| Updates | the app offers a new APK itself | the App Store updates native changes; JavaScript arrives over the air, as on Android |
 | Screenshots (production) | blocked | not blocked; the app is hidden in the app switcher |
 | The lock | fingerprint | Face ID or Touch ID |
 
