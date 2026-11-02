@@ -898,7 +898,7 @@ describe("FD-24 T3: rendering the counter's documents", () => {
       const doctor = await mkDoctor(db, { username: "dr-rx-baby", departmentId: deptId, roomId, displayName: "Dr Baby" });
       const at = async (dob: string, name: string, phone: string): Promise<string> => {
         const patient = await mkPatient(db, clerk.actor, { name, sex: "male", phone });
-        await db.update(patients).set({ dob: new Date(`${dob}T00:00:00.000Z`) }).where(eq(patients.id, patient.id));
+        await db.update(patients).set({ dob: new Date(`${dob}T00:00:00.000Z`), dobEstimated: false }).where(eq(patients.id, patient.id));
         const visit = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: doctor.doctorId }, MON);
         return (await renderPrescriptionSheet(db, { encounterId: visit.encounter.id }, MON, clerk.actor))!.html;
       };
