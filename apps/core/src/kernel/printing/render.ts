@@ -273,6 +273,8 @@ export type SlipSubject = {
   dobEstimated: boolean;
   gender: string;
   ageYears: number | null;
+  /** The age as paper says it: "41 years", "3 months", "29 days". A baby is never "0 years". */
+  ageLabel: string | null;
   /** `opd_doctors.specialty` — nullable free text; the sheet falls back to the department. */
   doctorSpecialty: string | null;
   /**
@@ -312,11 +314,26 @@ function ageYearsIST(dob: string | Date | null, on: Date): number | null {
   return Math.max(0, years);
 }
 
+/** The age paper prints, on the same IST day `ageYearsIST` reads: a baby is days or months old, never "0 years". */
+function agePrinted(dob: string | Date | null, on: Date): { label: string; compact: string } | null {
+  const years = ageYearsIST(dob, on);
+  if (years === null) return null;
+  const iso = dob instanceof Date ? dob.toISOString() : String(dob);
+  const born = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
+  const p = IST_DAY.format(on).split("-").map(Number);
+  let months = (p[0]! - born.getUTCFullYear()) * 12 + p[1]! - 1 - born.getUTCMonth();
+  if (p[2]! < born.getUTCDate()) months -= 1;
+  const days = Math.round((Date.UTC(p[0]!, p[1]! - 1, p[2]!) - born.getTime()) / 86_400_000);
+  if (days < 0) return null;
+  const [n, unit, short] = years >= 1 ? [years, "year", "y"] : months >= 1 ? [months, "month", "mo"] : [days, "day", "d"];
+  return { label: `${String(n)} ${unit}${n === 1 ? "" : "s"}`, compact: `${String(n)} ${short}` };
+}
+
 function ageSexOf(dob: string | Date | null, gender: string | null, on: Date): string {
   const letter = (gender ?? "").toLowerCase().startsWith("f") ? "F"
     : (gender ?? "").toLowerCase().startsWith("m") ? "M" : "O";
-  const years = ageYearsIST(dob, on);
-  return years === null ? letter : `${String(years)} y / ${letter}`;
+  const age = agePrinted(dob, on);
+  return age === null ? letter : `${age.compact} / ${letter}`;
 }
 
 /**
@@ -533,6 +550,7 @@ export async function subjectOf(
     dobEstimated: person.dobEstimated,
     gender: person.gender,
     ageYears: ageYearsIST(person.dob, now),
+    ageLabel: agePrinted(person.dob, now)?.label ?? null,
   };
 }
 
@@ -969,7 +987,7 @@ export async function renderPrescriptionSheet(
     const registered = home.fatherHusbandName?.trim() ?? "";
     return { label: "Guardian Name:", text: registered === "" ? "" : `${male ? "S/o" : "C/o"} ${registered}` };
   })();
-  const ageCell = s.ageYears === null ? "—" : `${s.dobEstimated ? "≈" : ""}${String(s.ageYears)} years`;
+  const ageCell = s.ageLabel === null ? "—" : `${s.dobEstimated ? "≈" : ""}${s.ageLabel}`;
   const signatureCaption = "Signature of the treating physician";
   /** Past this many characters the header's address steps down to 10px (two lines at 10.5px hold about 190). */
   const ADDRESS_LONG_CHARS = 170;
