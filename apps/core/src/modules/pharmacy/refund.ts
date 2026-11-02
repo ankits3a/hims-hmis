@@ -39,7 +39,7 @@ import type { DispenseView } from "./queue";
  * authority this consequential does not rest on a decorator nobody re-reads.
  */
 export type CancelBilledInput = { reason: string; reasonClass: "mistake" | "genuine" };
-export type CancelBilledResult = { dispense: DispenseView; creditNoteId: string; creditNoteNo: string; refundApprovalId: string };
+export type CancelBilledResult = { dispense: DispenseView; creditNoteId: string; creditNoteNo: string; refundApprovalId: string | null };
 
 const BILLING_STRINGS = ["billing.credit_note.issue", "billing.refund.request"] as const;
 
@@ -86,7 +86,8 @@ export async function cancelBilledDispense(
       kind: "refund", invoiceId, reason: `pharmacy: ${reason}`,
       lines: invoice.lines.map((l) => ({ invoiceLineId: l.id, qty: l.qty })),
     }, now);
-    const refund = await requestRefund(tx as unknown as Db, actor, {
+    // Spec #1023 — a free bill was paid for by nobody: there is nothing to ask back.
+    const refund = credit.netPaise === 0 ? null : await requestRefund(tx as unknown as Db, actor, {
       kind: "invoice_refund", creditNoteId: credit.creditNoteId, amountPaise: credit.netPaise,
       reasonClass: input.reasonClass, reason: `pharmacy: ${reason}`,
     });
@@ -95,10 +96,10 @@ export async function cancelBilledDispense(
       occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
       payload: {
         dispenseId: d.id, patientId: d.patientId, fromStatus: d.status, reason, reservationsReleased: released,
-        creditNoteId: credit.creditNoteId, refundApprovalId: refund.approvalId,
+        creditNoteId: credit.creditNoteId, refundApprovalId: refund?.approvalId ?? null,
       },
     }));
-    return { creditNoteId: credit.creditNoteId, creditNoteNo: credit.creditNoteNo, refundApprovalId: refund.approvalId };
+    return { creditNoteId: credit.creditNoteId, creditNoteNo: credit.creditNoteNo, refundApprovalId: refund?.approvalId ?? null };
   });
   return { dispense: await getDispense(db, actor, d.id, now), ...result };
 }

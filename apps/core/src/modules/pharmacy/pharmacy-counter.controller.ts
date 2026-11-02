@@ -134,7 +134,9 @@ const billBody = z.object({
   discount: discountOnBillSchema.optional(),
   /** Owner ruling 2026-10-02 — pharmacy credit kept at a return, spent on this bill first. */
   useCreditPaise: z.number().int().positive().optional(),
-}).refine((b) => b.tenders.length > 0 || b.credit !== undefined || b.useCreditPaise !== undefined, { message: "a bill is paid by a tender, by pharmacy credit, or on the owner's credit", path: ["tenders"] });
+  /** Spec #1023 — the preview said this bill is free. The server decides; this only lets it arrive with no tender. */
+  free: z.literal(true).optional(),
+}).refine((b) => b.tenders.length > 0 || b.credit !== undefined || b.useCreditPaise !== undefined || b.free === true, { message: "a bill is paid by a tender, by pharmacy credit, or on the owner's credit", path: ["tenders"] });
 /** P1 — the short book. `itemId` when the counter knows the drug; the name as said otherwise. */
 const shortBookBody = z.object({
   itemId: idSchema.optional(),

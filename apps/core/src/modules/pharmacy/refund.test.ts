@@ -71,7 +71,7 @@ describe("cancelling a billed dispense with a refund (pharmacy P5)", () => {
     const notes = await listCreditNotes(db, { invoiceId });
     expect(notes.map((n) => [n.id, n.kind, n.netPaise])).toEqual([[out.creditNoteId, "refund", paid]]);
     expect((await invoiceSettlement(db, invoiceId)).outstandingPaise).toBe(0);
-    const [approval] = await db.select().from(approvals).where(eq(approvals.id, out.refundApprovalId));
+    const [approval] = await db.select().from(approvals).where(eq(approvals.id, out.refundApprovalId!));
     expect(approval).toMatchObject({ typeKey: "billing_refund", amountPaise: paid, patientId: fx.patient.id });
 
     const [ev] = await db.select().from(events).where(eq(events.name, "dispense.cancelled"));

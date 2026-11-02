@@ -219,7 +219,7 @@ export const retailLineReturned = defineEvent("retail.line_returned", MODULE, z.
   saleId: id, patientId: id, storeResourceId: id, channel: z.enum(["walk_in", "downtime"]),
   lines: z.array(z.object({ lineIdx: z.number().int().nonnegative(), qtyBase: z.number().int().positive(), batchId: id, ledgerEntryId: id, looseQty: z.number().int().positive().optional(), looseTo: z.enum(["loose", "damage"]).optional() })).min(1),
   sealedIntact: z.literal(true), reason: z.string().min(1), reasonClass: z.enum(["mistake", "genuine"]),
-  creditNoteId: id, refundApprovalId: id,
+  creditNoteId: id, refundApprovalId: id.nullable(),
 }));
 
 /** P19 — a Form 20/21 retail licence was recorded for a store. */

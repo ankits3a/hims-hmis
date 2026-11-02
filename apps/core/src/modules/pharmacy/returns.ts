@@ -229,13 +229,14 @@ export async function restockAndRefund(
     storeId: string; refType: string; patientId: string; encounterId: string | null; invoiceId: string;
     plan: readonly ReturnPlanLine[]; reason: string; reasonClass: ReturnInput["reasonClass"]; now: Date;
   },
-): Promise<{ returned: ReturnedLine[]; creditNoteId: string; creditNoteNo: string; refundApprovalId: string }> {
+): Promise<{ returned: ReturnedLine[]; creditNoteId: string; creditNoteNo: string; refundApprovalId: string | null }> {
   const done = await restockAndCredit(tx, actor, args);
-  const refund = await requestRefund(tx as unknown as Db, actor, {
+  // Spec #1023 — a free medicine was paid for by nobody: there is nothing to ask back.
+  const refund = done.creditNotePaise === 0 ? null : await requestRefund(tx as unknown as Db, actor, {
     kind: "invoice_refund", creditNoteId: done.creditNoteId, amountPaise: done.creditNotePaise,
     reasonClass: args.reasonClass, reason: `pharmacy return: ${args.reason}`,
   });
-  return { returned: done.returned, creditNoteId: done.creditNoteId, creditNoteNo: done.creditNoteNo, refundApprovalId: refund.approvalId };
+  return { returned: done.returned, creditNoteId: done.creditNoteId, creditNoteNo: done.creditNoteNo, refundApprovalId: refund?.approvalId ?? null };
 }
 
 /** The half both endings share: the packs back on their batches, and the credit note. No money decision yet. */
@@ -307,7 +308,7 @@ export async function acceptReturn(
         patientId: d.patientId, invoiceId, creditNoteId: done.creditNoteId, amountPaise: done.creditNotePaise,
         dispenseId: d.id, reason: `pharmacy credit kept: ${done.creditNoteNo}`, now,
       });
-    } else {
+    } else if (done.creditNotePaise > 0) {
       refundApprovalId = (await requestRefund(tx as unknown as Db, actor, {
         kind: "invoice_refund", creditNoteId: done.creditNoteId, amountPaise: done.creditNotePaise,
         reasonClass: input.reasonClass, reason: `pharmacy return: ${reason}`,

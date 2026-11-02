@@ -41,13 +41,14 @@ describe("the pharmacy fee switch (spec #1023)", () => {
     await truncateAll(db);
     fx = await seedPharmacyBase(db);
     await openSessionFor(db, { id: fx.pharmacist.id }, 0);
+    await stockIn(db, fx, { itemId: fx.item.crocin, batchNo: "CR-1", qtyBase: 100, expiryDate: "2027-12-31", mrpPaise: 12000, at: MON });
   });
   afterEach(() => { fx.unregister(); });
 
-  /** Twenty Crocin tablets, created at MON2 and picked: the dispense is ready to bill. */
-  async function picked(): Promise<string> {
-    const { issued } = await issueRx(db, fx, [line({ drug: "Crocin 500", medicineId: fx.med.crocin })]);
-    const r = await findAtCounter(db, testCfg, fx.pharmacist.actor, issued.qrPayload, MON2);
+  /** Twenty Crocin tablets, prescribed at `at` and picked at MON2: the dispense is ready to bill. */
+  async function picked(at: Date = MON): Promise<string> {
+    const { issued } = await issueRx(db, fx, [line({ drug: "Crocin 500", medicineId: fx.med.crocin })], { at });
+    const r = await findAtCounter(db, testCfg, fx.pharmacist.actor, issued.qrPayload, at > MON2 ? at : MON2);
     if (r.kind !== "dispense") throw new Error("no dispense");
     const id = r.dispense.id;
     await claimDispense(db, fx.pharmacist.actor, { dispenseId: id, door: "rx_qr" }, MON2);
@@ -96,8 +97,8 @@ describe("the pharmacy fee switch (spec #1023)", () => {
     await handOverDispense(db, fx.pharmacist.actor, fx.decls, paid, {}, MON3);
     const afterPaid = await onHand();
     await setFeeSwitch(db, fx.pharmacist.actor, "pharmacy", true, MON3);
-    const free = await picked();
     const later = new Date(MON3.getTime() + 60_000);
+    const free = await picked(later);
     await billDispense(db, fx.pharmacist.actor, free, { tenders: [] }, later);
     await handOverDispense(db, fx.pharmacist.actor, fx.decls, free, {}, later);
     expect(start - afterPaid).toBe(20);
@@ -121,13 +122,13 @@ describe("the pharmacy fee switch (spec #1023)", () => {
     await billDispense(db, fx.pharmacist.actor, id, { tenders: [] }, MON2);
     await handOverDispense(db, fx.pharmacist.actor, fx.decls, id, {}, MON3);
     const before = await onHand();
-    const done = await acceptReturn(db, fx.pharmacist.actor, id, {
-      lines: [{ lineIdx: 0, qtyBase: 10 }], reason: "not needed", reasonClass: "patient_changed_mind", sealedIntact: true,
-    } as Parameters<typeof acceptReturn>[3], new Date(MON3.getTime() + 60_000));
+    const done = await acceptReturn(db, fx.pharmacist.actor, fx.decls, id, {
+      lines: [{ lineIdx: 0, qtyBase: 10 }], sealedIntact: true, reason: "the doctor changed the medicine", reasonClass: "genuine",
+    }, new Date(MON3.getTime() + 60_000));
     expect(done.refundApprovalId).toBeNull();
     expect(done.creditNotePaise).toBe(0);
     expect(await onHand()).toBe(before + 10);
-    expect((await pharmacyCreditOf(db, (await getDispense(db, fx.pharmacist.actor, id, MON3)).patientId)).availablePaise).toBe(0);
+    expect((await pharmacyCreditOf(db, (await getDispense(db, fx.pharmacist.actor, id, MON3)).patient.id)).availablePaise).toBe(0);
   });
 
   it("spec #1023 D6: flipping the switch does not change a dispense already created", async () => {
@@ -137,8 +138,8 @@ describe("the pharmacy fee switch (spec #1023)", () => {
     const after = new Date(MON3.getTime() + 60_000);
     expect((await previewDispenseBill(db, fx.pharmacist.actor, free, after)).totals.netPayablePaise).toBe(0);
 
-    const charged = await picked();
-    await setFeeSwitch(db, fx.pharmacist.actor, "pharmacy", true, after);
+    const charged = await picked(after);
+    await setFeeSwitch(db, fx.pharmacist.actor, "pharmacy", true, new Date(after.getTime() + 30_000));
     expect((await previewDispenseBill(db, fx.pharmacist.actor, charged, new Date(after.getTime() + 60_000))).totals.netPayablePaise).toBeGreaterThan(0);
   });
 

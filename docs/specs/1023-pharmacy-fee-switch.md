@@ -1,6 +1,6 @@
 ---
 issue: 1023
-status: approved
+status: built
 approved: 2026-11-02
 ---
 # SPEC — Pharmacy fee switch (#1023)
