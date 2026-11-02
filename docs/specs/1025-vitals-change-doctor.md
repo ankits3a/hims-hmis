@@ -1,6 +1,6 @@
 ---
 issue: 1025
-status: approved
+status: built
 approved: 2026-11-02
 ---
 # SPEC — Change a patient's doctor from the vitals screen (#1025)

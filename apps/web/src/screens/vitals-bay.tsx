@@ -12,6 +12,8 @@ import { AmendPanel, AmendTrail } from "./vitals-bay-amend";
 import type { Amended } from "./vitals-bay-amend";
 import { activeAllergies, addAllergy, listAllergies, verifyQrScan } from "../lib/patients-api";
 import { UnpaidMark } from "../components/unpaid-mark";
+import { ChangeDoctorAction } from "../components/change-doctor";
+import { useAuth } from "../lib/auth";
 import { GuardianAbsentAction, GuardianUndoAction } from "../components/patient-absent";
 import { api } from "../lib/api";
 import { usePatientInHand } from "../lib/patient-in-hand";
@@ -548,6 +550,7 @@ export function VitalsBay(): React.ReactElement {
   const note = useCallback((text: string, kind: AgentLine["kind"] = "did"): void => {
     setLog((prev) => logged(prev, text, kind));
   }, []);
+  const { can } = useAuth();
   const qc = useQueryClient();
   const [saving, setSaving] = useState(false);
   const inHandRef = useRef(inHand);
@@ -889,6 +892,19 @@ export function VitalsBay(): React.ReactElement {
       />
     </div>
   ) : null;
+  /* Spec #1025 — the patient stays in hand: only whose line they wait in has changed. */
+  const changeDoctorAction = rowInHand !== null && !rowInHand.vitalsDone && can("opd.vitals.change_doctor") ? (
+    <div style={{ marginTop: 12 }}>
+      <ChangeDoctorAction
+        key={`${deskGen}:${rowInHand.encounterId}:doctor`} encounterId={rowInHand.encounterId}
+        onDone={(doctorName) => {
+          note(t("changeDoctor.done", { doctor: doctorName }), "ok");
+          void qc.invalidateQueries({ queryKey: ["vitals-bay", "bench"] });
+          void qc.invalidateQueries({ queryKey: ["vitals-bay", "summary"] });
+        }}
+      />
+    </div>
+  ) : null;
   const banners = (
     <>
       {banner !== null && <SavedBannerView banner={banner} onDismiss={() => { setBanner(null); setTrail(null); }} />}
@@ -1047,7 +1063,7 @@ export function VitalsBay(): React.ReactElement {
                   {t("vitalsBay.clearDesk")}
                 </button>
                 <div className="vb-who-body" hidden={!whoOpen}>
-                  <SessionColumn row={rowInHand} preStage={preStage} failed={preFailed} pending={pending}>{guardianAction}</SessionColumn>
+                  <SessionColumn row={rowInHand} preStage={preStage} failed={preFailed} pending={pending}>{guardianAction}{changeDoctorAction}</SessionColumn>
                 </div>
               </section>
             )}
@@ -1057,7 +1073,7 @@ export function VitalsBay(): React.ReactElement {
         ) : (
         <div style={{ flexGrow: 1, minHeight: 0, display: "flex", gap: 16, padding: "18px 22px", alignItems: "stretch", flexWrap: "nowrap", minWidth: 0, overflowX: "auto" }}>
           <aside className="box" style={{ width: 294, flexShrink: 0, padding: 14, overflowY: "auto" }}>
-            <SessionColumn row={rowInHand} preStage={preStage} failed={preFailed} pending={pending}>{guardianAction}</SessionColumn>
+            <SessionColumn row={rowInHand} preStage={preStage} failed={preFailed} pending={pending}>{guardianAction}{changeDoctorAction}</SessionColumn>
           </aside>
 
           <main style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 14, overflowY: "auto" }}>

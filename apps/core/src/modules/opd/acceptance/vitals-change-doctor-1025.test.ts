@@ -68,7 +68,7 @@ describe("change a patient's doctor from vitals (spec #1025)", () => {
 
   it("spec #1025 D3: vitals already saved stay on the visit", async () => {
     const r = await open();
-    await db.insert(opdVitals).values({ id: "V1", encounterId: r.encounter.id, patientId: patient.id, tempC: 37, weightKg: 60, recordedBy: vd.id });
+    await db.insert(opdVitals).values({ id: "V1", encounterId: r.encounter.id, patientId: patient.id, tempC: 37, weightKg: 60, dangerFlags: [], band: "child_1_5", recordedBy: vd.id });
     await change(r.encounter.id);
     expect(await db.select().from(opdVitals).where(eq(opdVitals.encounterId, r.encounter.id))).toHaveLength(1);
   });

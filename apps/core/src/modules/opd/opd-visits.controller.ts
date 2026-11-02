@@ -1,3 +1,5 @@
+import { changeVisitDoctor, doctorsForChange } from "./change-doctor";
+import type { ChangeDoctorOption } from "./change-doctor";
 import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Inject, Logger, NotFoundException, Param, Post, Query } from "@nestjs/common";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
@@ -196,6 +198,7 @@ const walkInBody = z.object({
   join: z.enum(["queue", "defer"]).optional(),
   triageId: triageIdField,
 });
+const changeDoctorBody = z.object({ toDoctorId: z.string().min(1), consented: z.boolean(), reason: z.string().max(400) }).strict();
 /* Owner 2026-10-05 — a blank reason is the SERVICE's `reason_required`, as for abandon. */
 const moveDepartmentBody = z.object({
   departmentId: z.string().min(1), doctorId: z.string().min(1), reason: z.string().max(400),
@@ -861,6 +864,28 @@ export class OpdVisitsController {
   }
 
   // ——— vitals ———
+
+  /** Spec #1025 — who this patient may be moved to from the bay: the department's doctors sitting today. */
+  @RequirePermission("opd.vitals.change_doctor", "hospital")
+  @Get("visits/:id/change-doctor")
+  async changeDoctorOptions(@Param("id") id: string): Promise<{ items: ChangeDoctorOption[] }> {
+    try {
+      return { items: await doctorsForChange(this.db, id) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("opd.vitals.change_doctor", "hospital")
+  @Post("visits/:id/change-doctor")
+  @HttpCode(200)
+  async changeDoctor(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<{ toSessionId: string }> {
+    try {
+      return await changeVisitDoctor(this.db, actor, id, parsed(changeDoctorBody, body));
+    } catch (e) {
+      toHttp(e);
+    }
+  }
 
   @RequirePermission("opd.vitals.record", "hospital")
   @Post("visits/:id/vitals")

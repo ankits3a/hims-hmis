@@ -16027,6 +16027,24 @@
     "title": "Reports",
     "ready": "ready"
   },
+  "changeDoctor": {
+    "action": "Change doctor",
+    "title": "Change doctor",
+    "hint": "Same department. The token and queue place stay as they are.",
+    "doctor": "Choose doctor",
+    "none": "No other doctor in this department is sitting today.",
+    "reasonLabel": "Reason",
+    "reason": {
+      "patientAsked": "Patient asked",
+      "doctorUnavailable": "Doctor unavailable",
+      "wrongDoctor": "Wrong doctor picked",
+      "other": "Other"
+    },
+    "consent": "Patient agreed",
+    "confirm": "Change doctor",
+    "cancel": "Cancel",
+    "done": "Moved to {{doctor}}."
+  },
   "patientAbsent": {
     "undo": "Undo — patient is here",
     "undone": "Back on the bench",
