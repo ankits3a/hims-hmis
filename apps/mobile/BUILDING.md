@@ -27,7 +27,7 @@ The two app ids install side by side on one phone.
 
 | build | link | who can open it |
 |---|---|---|
-| staging | `https://stagehmis.crkmch.com/app/hmis-staff-staging-latest.apk` | behind the staging password |
+| staging | `https://stagehmis.crkmch.com/app/hmis-staff-staging-latest.apk` | anyone who has the link (owner 2026-11-02) |
 | production | `https://hmis.crkmch.com/app/hmis-staff-latest.apk` | anyone who has the link (owner 2026-10-06) |
 
 Production has **no password, deliberately**: an APK holds no secret (only the site's address),
@@ -124,8 +124,7 @@ The installed app reads it when the home screen opens, and from "Check for updat
 Android installs it over the old build because the signing key is the same. Give the prompt its one line with
 `HMIS_RELEASE_NOTES="Doctor's OPD line; new icon" apps/mobile/scripts/build-apk.sh staging`.
 
-On staging, Caddy serves exactly `/app/hmis-staff-*-latest.json` without the basic-auth prompt (an app cannot answer
-one); the APK and the folder listing stay behind it. Production serves its feed at
+Production serves its feed at
 `https://hmis.crkmch.com/app/hmis-staff-production-latest.json`, with `Cache-Control: no-store`.
 
 ## Notifications (plan M6b)

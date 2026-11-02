@@ -314,7 +314,7 @@ hmis.crkmch.com {
 # ═══ STAGING — https://stagehmis.crkmch.com (owner 2026-09-30) ═══
 #
 # The UAT stack (`HMIS_TARGET=uat deploy.sh`) cannot take 80 or 443, so THIS caddy terminates TLS
-# for the staging hostname and hands every request to UAT's own caddy, which applies basic auth,
+# for the staging hostname and hands every request to UAT's own caddy, which applies
 # the security headers and the /api split exactly as it would stand alone. The upstream is UAT's
 # port on docker0 (172.17.0.1:8444, see docker-compose.uat.yml), reached through the
 # `host.docker.internal:host-gateway` entry in docker-compose.prod.yml. Production and UAT share no
