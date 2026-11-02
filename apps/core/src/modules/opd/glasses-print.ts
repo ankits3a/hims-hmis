@@ -176,7 +176,7 @@ export async function renderGlassesRx(
     return `<tr><td class="eye">${esc(name)}<span class="sub">${esc(sub)}</span></td>`
       + `${cell(eye, "sph", fmtPower(e.sph))}${cell(eye, "cyl", fmtPower(e.cyl))}${cell(eye, "axis", fmtAxis(e.axis))}${cell(eye, "add", fmtPower(e.add))}</tr>`;
   };
-  const age = s.ageYears === null ? "—" : `${s.dobEstimated ? "≈" : ""}${String(s.ageYears)} y`;
+  const age = s.ageYears === null ? "—" : `${s.dobEstimated ? "≈" : ""}${s.ageYears === 0 ? s.ageLabel ?? "" : `${String(s.ageYears)} y`}`;
 
   const body = `
     <div class="sheet">
