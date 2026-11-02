@@ -2,6 +2,7 @@ import { useEffect, useReducer } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { useRouter } from "expo-router";
 import { scanIsOwed, takeScanOwed } from "../src/return-to";
+import { useOtaAtRest } from "../src/ota";
 import { ChangePasswordScreen } from "../src/screens/change-password";
 import { LoginScreen } from "../src/screens/login";
 import { SeatHome } from "../src/screens/seat-home";
@@ -19,6 +20,8 @@ export default function Index() {
   useEffect(() => {
     if (owed && takeScanOwed()) { router.push("/scan"); redraw(); }
   }, [owed, router]);
+  // A bundle that arrived over the air is taken HERE and only here: the home screen holds nothing half-typed.
+  useOtaAtRest(state.status === "signedIn");
   if (owed) return <Spinner />;
   switch (state.status) {
     case "loading":

@@ -29,6 +29,8 @@ yarn-error.*
 # macOS
 .DS_Store
 *.pem
+# …except the PUBLIC certificates the APK checks an over-the-air bundle against (BUILDING.md).
+!/ota/certificate-*.pem
 
 # local env files
 .env*.local
