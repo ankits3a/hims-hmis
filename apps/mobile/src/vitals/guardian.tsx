@@ -15,7 +15,7 @@ import { refusalText, type VitalsApi } from "./api";
  * `__tests__/vitals-rules.test.ts` fails the day they differ from the contract's.
  */
 export const GUARDIAN_RELATIONS = [
-  "father", "mother", "spouse", "son", "daughter", "brother", "sister", "other_relative", "attendant",
+  "self", "father", "mother", "spouse", "son", "daughter", "brother", "sister", "other_relative", "attendant",
 ] as const;
 export type GuardianRelation = (typeof GUARDIAN_RELATIONS)[number];
 export const GUARDIAN_NAME_MAX = 80;
@@ -67,7 +67,7 @@ export function GuardianSheet({ api, encounterId, onDone, onClose, confirmHere =
     setBusy(true);
     setError(null);
     try {
-      const out = await api.markPatientAbsent(encounterId, { relation, name: name.trim() === "" ? null : name.trim() });
+      const out = await api.markPatientAbsent(encounterId, { relation, name: relation === "self" || name.trim() === "" ? null : name.trim() });
       onDone(out.patientAbsent);
       if (confirmHere) setSent(true); else onClose();
     } catch (e) {
@@ -105,11 +105,16 @@ export function GuardianSheet({ api, encounterId, onDone, onClose, confirmHere =
                   </Pressable>
                 ))}
               </View>
-              <Text style={s.label}>{t("patientAbsent.nameLabel")}</Text>
-              <TextInput
-                testID="patient-absent-name" value={name} onChangeText={setName} maxLength={GUARDIAN_NAME_MAX}
-                autoCorrect={false} autoComplete="off" accessibilityLabel={t("patientAbsent.nameLabel")} style={s.input}
-              />
+              {/* #971 — Self is the patient: their name is on the visit already. */}
+              {relation !== "self" && (
+                <>
+                  <Text style={s.label}>{t("patientAbsent.nameLabel")}</Text>
+                  <TextInput
+                    testID="patient-absent-name" value={name} onChangeText={setName} maxLength={GUARDIAN_NAME_MAX}
+                    autoCorrect={false} autoComplete="off" accessibilityLabel={t("patientAbsent.nameLabel")} style={s.input}
+                  />
+                </>
+              )}
               {error !== null && <Note tone="bad" testID="patient-absent-error">{error}</Note>}
               <Button testID="patient-absent-confirm" label={busy ? t("patientAbsent.sending") : t("patientAbsent.confirm")} busy={busy} disabled={relation === null} onPress={() => { void confirm(); }} />
               <Button testID="patient-absent-cancel" kind="secondary" label={t("patientAbsent.cancel")} disabled={busy} onPress={onClose} />

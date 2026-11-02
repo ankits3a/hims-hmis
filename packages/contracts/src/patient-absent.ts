@@ -15,9 +15,15 @@ import { z } from "zod";
  * The web bay, Desk One and the doctor's screens read the same list and the same wire shape.
  */
 export const GUARDIAN_RELATIONS = [
-  "father", "mother", "spouse", "son", "daughter", "brother", "sister", "other_relative", "attendant",
+  "self", "father", "mother", "spouse", "son", "daughter", "brother", "sister", "other_relative", "attendant",
 ] as const;
 export type GuardianRelation = (typeof GUARDIAN_RELATIONS)[number];
+
+/**
+ * #971 (owner 2026-10-26) — "Reports only — Skip vitals": SELF is the patient, here only to show reports.
+ * The same mark and the same route, but nothing says "absent" or "guardian", and no name is kept.
+ */
+export const SELF_RELATION = "self";
 
 /** The visit rule lives in a dependency-free file the phone app can import (see its header). */
 export { guardianMayStandIn } from "./patient-absent-rule";
