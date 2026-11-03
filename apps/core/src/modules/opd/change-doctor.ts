@@ -13,14 +13,15 @@ import type { Db } from "../../kernel/db/client";
  */
 export type ChangeDoctorOption = { id: string; displayName: string };
 
-export async function doctorsForChange(db: Db, encounterId: string): Promise<ChangeDoctorOption[]> {
+/** `departmentId` — spec #1031: the doctors of ANOTHER department sitting today, for the vitals seat's department move. */
+export async function doctorsForChange(db: Db, encounterId: string, departmentId?: string): Promise<ChangeDoctorOption[]> {
   const encounter = await getEncounter(db, encounterId);
   if (encounter === null) throw new OpdError("invalid_transfer", `visit ${encounterId} not found`);
   const [from] = encounter.doctorId === null ? [] : await db.select().from(opdDoctors).where(eq(opdDoctors.id, encounter.doctorId));
   if (from === undefined) throw new OpdError("invalid_transfer", "unknown doctor");
   const date = encounter.serviceDate;
   const peers = (await db.select().from(opdDoctors)
-    .where(and(eq(opdDoctors.departmentId, from.departmentId), eq(opdDoctors.active, true))).orderBy(opdDoctors.displayName))
+    .where(and(eq(opdDoctors.departmentId, departmentId ?? from.departmentId), eq(opdDoctors.active, true))).orderBy(opdDoctors.displayName))
     .filter((d) => d.id !== from.id);
   if (peers.length === 0) return [];
   const ids = peers.map((d) => d.id);

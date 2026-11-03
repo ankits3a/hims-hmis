@@ -951,6 +951,25 @@ export function fetchChangeDoctorOptions(encounterId: string): Promise<{ items: 
 export function changeVisitDoctor(encounterId: string, body: { toDoctorId: string; consented: boolean; reason: string }): Promise<{ toSessionId: string }> {
   return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/change-doctor`, body);
 }
+/** Spec #1031 — the bay's Department picker: the departments, and the doctors of one of them sitting today. */
+export type ChangeDepartmentOptions = {
+  currentDepartmentId: string | null;
+  departments: { id: string; name: string }[];
+  doctors: { id: string; displayName: string }[];
+};
+export function fetchChangeDepartmentOptions(encounterId: string, departmentId?: string): Promise<ChangeDepartmentOptions> {
+  const q = departmentId === undefined ? "" : `?departmentId=${encodeURIComponent(departmentId)}`;
+  return api("GET", `/opd/visits/${encodeURIComponent(encounterId)}/change-department${q}`);
+}
+export type VitalsDepartmentMove = { encounterId: string; tokenNo: number | null; departmentName: string; doctorName: string; printSlip: boolean };
+export function moveDepartmentFromVitals(
+  encounterId: string, body: { departmentId: string; doctorId: string; consented: boolean; reason: string },
+): Promise<VitalsDepartmentMove> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/change-department`, body);
+}
+export function printMovedTokenSlip(encounterId: string): Promise<{ queued: boolean }> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/print-moved-token`, {});
+}
 export function abandonVisit(encounterId: string, reason: string): Promise<{ encounter: WireEncounter }> {
   return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/abandon`, { reason });
 }

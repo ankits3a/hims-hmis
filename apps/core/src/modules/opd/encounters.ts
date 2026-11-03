@@ -78,6 +78,11 @@ export type OpenVisitInput = {
    * `type = 'opd'`, the way the pharmacy's own visit (`type = 'pharmacy'`) is kept out of them.
    */
   encounterType?: "opd" | "lab";
+  /**
+   * Spec #1031 (owner 2026-11-03) — set ONLY by the vitals seat's department move: the new token's
+   * slips are not queued to the front desk's printer. No route body declares it, so zod strips it.
+   */
+  noPaper?: boolean;
 };
 export type OpenVisitResult = {
   encounter: EncounterRow; queueEntry: QueueEntryRow; tokenNo: number; sessionId: string; roomId: string | null;
@@ -244,7 +249,7 @@ async function openVisitCore(
     return { encounter: encounter!, queueEntry: null, tokenNo: null, sessionId: null, roomId, visitType, doctorScheduledToday: roomId !== null };
   }
 
-  const joined = await joinSessionInTx(tx, { id: encounterId, doctorId: doctor.id, serviceDate, departmentId: dept.id, patientId: input.patientId, visitType }, input.appointment ?? null, actor, tele ? { tele: true, now } : undefined);
+  const joined = await joinSessionInTx(tx, { id: encounterId, doctorId: doctor.id, serviceDate, departmentId: dept.id, patientId: input.patientId, visitType }, input.appointment ?? null, actor, tele ? { tele: true, now } : undefined, input.noPaper === true);
   await appendEvent(tx, visitOpened.make({ ...env, payload: {
     ...openedPayload, sessionId: joined.sessionId, roomId: joined.roomId, tokenNo: joined.tokenNo,
   } }));
@@ -290,6 +295,8 @@ async function joinSessionInTx(
   actor: Actor,
   /** A tele-call: born `waiting` (no bay), and no paper is queued. See `openTeleVisitInTx`. */
   tele?: { tele: true; now: Date },
+  /** Spec #1031 — the vitals seat's department move: no slip is queued (`OpenVisitInput.noPaper`). */
+  noPaper = false,
 ): Promise<{ queueEntry: QueueEntryRow; tokenNo: number; sessionId: string; roomId: string | null }> {
   const roomId = await roomForDoctorDay(tx, encounter.doctorId, encounter.serviceDate);
   const session = await getOrCreateSession(tx, encounter.doctorId, encounter.serviceDate, roomId);
@@ -344,7 +351,7 @@ async function joinSessionInTx(
    */
   const [deptRow] = encounter.departmentId === null ? [undefined]
     : await tx.select({ code: opdDepartments.code }).from(opdDepartments).where(eq(opdDepartments.id, encounter.departmentId));
-  if (deptRow?.code === LAB_DEPARTMENT_CODE) {
+  if (deptRow?.code === LAB_DEPARTMENT_CODE || noPaper) {
     return { queueEntry: queueEntry!, tokenNo, sessionId: session.id, roomId: session.roomId };
   }
   await enqueuePrintJob(tx, {

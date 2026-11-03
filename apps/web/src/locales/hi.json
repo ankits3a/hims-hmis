@@ -16058,7 +16058,19 @@
     "consent": "मरीज़ सहमत है",
     "confirm": "डॉक्टर बदलें",
     "cancel": "रद्द करें",
-    "done": "{{doctor}} के पास भेजा गया।"
+    "done": "{{doctor}} के पास भेजा गया।",
+    "actionDept": "डॉक्टर / विभाग बदलें",
+    "titleDept": "डॉक्टर या विभाग बदलें",
+    "department": "विभाग",
+    "hintDept": "वहाँ नई विज़िट और टोकन। फ़ीस वही।",
+    "noneDept": "वहाँ आज कोई डॉक्टर नहीं।",
+    "confirmDept": "विभाग बदलें",
+    "newToken": "नया टोकन",
+    "writeOnSlip": "पुरानी पर्ची पर लिखें।",
+    "print": "नई टोकन पर्ची छापें",
+    "printed": "प्रिंटर को भेजा",
+    "finish": "हो गया",
+    "movedDept": "{{department}} · {{doctor}} में भेजा · टोकन {{token}}।"
   },
   "patientAbsent": {
     "undo": "वापस लें — मरीज़ आए हैं",

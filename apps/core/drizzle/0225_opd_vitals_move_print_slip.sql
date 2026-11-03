@@ -1,0 +1,1 @@
+ALTER TABLE "opd_config" ADD COLUMN "vitals_move_print_slip" boolean DEFAULT false NOT NULL;

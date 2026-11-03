@@ -590,6 +590,14 @@ export function VitalsBay(): React.ReactElement {
     takeEncounter(row.encounterId);
   }, [t, takePatient, takeEncounter, saving]);
 
+  /* Spec #1031 — after a department move the patient stays in hand on the NEW visit, once the bench has it. */
+  const [pendingTake, setPendingTake] = useState<string | null>(null);
+  useEffect(() => {
+    if (pendingTake === null) return;
+    const row = allRows.find((r) => r.encounterId === pendingTake);
+    if (row !== undefined) { setPendingTake(null); take(row); }
+  }, [pendingTake, allRows, take]);
+
   /**
    * CLOSE pass 1 CRITICAL — EVERYTHING THE LAST PATIENT LEFT IS CLEARED HERE. `restOffer` survived
    * this function: patient A's elevated first BP was offered as patient B's rest and then held under
@@ -892,13 +900,20 @@ export function VitalsBay(): React.ReactElement {
       />
     </div>
   ) : null;
-  /* Spec #1025 — the patient stays in hand: only whose line they wait in has changed. */
-  const changeDoctorAction = rowInHand !== null && !rowInHand.vitalsDone && can("opd.vitals.change_doctor") ? (
+  /*
+    Spec #1025 — the patient stays in hand: only whose line they wait in has changed.
+    Spec #1031 — a holder of the department move gets the Department picker on the same sheet.
+  */
+  const canMoveDepartment = can("opd.vitals.change_department");
+  const changeDoctorAction = rowInHand !== null && !rowInHand.vitalsDone && (can("opd.vitals.change_doctor") || canMoveDepartment) ? (
     <div style={{ marginTop: 12 }}>
       <ChangeDoctorAction
-        key={`${deskGen}:${rowInHand.encounterId}:doctor`} encounterId={rowInHand.encounterId}
-        onDone={(doctorName) => {
-          note(t("changeDoctor.done", { doctor: doctorName }), "ok");
+        key={`${deskGen}:${rowInHand.encounterId}:doctor`} encounterId={rowInHand.encounterId} canMoveDepartment={canMoveDepartment}
+        onDone={(doctorName, moved) => {
+          note(moved === undefined
+            ? t("changeDoctor.done", { doctor: doctorName })
+            : t("changeDoctor.movedDept", { department: moved.departmentName, doctor: doctorName, token: moved.tokenNo ?? "—" }), "ok");
+          if (moved !== undefined) setPendingTake(moved.encounterId);
           void qc.invalidateQueries({ queryKey: ["vitals-bay", "bench"] });
           void qc.invalidateQueries({ queryKey: ["vitals-bay", "summary"] });
         }}

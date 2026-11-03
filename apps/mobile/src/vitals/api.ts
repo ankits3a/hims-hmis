@@ -35,6 +35,14 @@ export type WireAllergenHit = { term: string; kind: "class" | "moiety"; allergen
 
 const enc = encodeURIComponent;
 
+/** Spec #1031 — the bay's department move. */
+export type WireChangeDepartmentOptions = {
+  currentDepartmentId: string | null;
+  departments: { id: string; name: string }[];
+  doctors: { id: string; displayName: string }[];
+};
+export type WireDepartmentMove = { encounterId: string; tokenNo: number | null; departmentName: string; doctorName: string; printSlip: boolean };
+
 export function vitalsApi(call: Call) {
   return {
     bench: (serviceDate: string, doctorId?: string) =>
@@ -68,6 +76,14 @@ export function vitalsApi(call: Call) {
     changeDoctorOptions: (encounterId: string) => call<{ items: { id: string; displayName: string }[] }>("GET", `/opd/visits/${enc(encounterId)}/change-doctor`),
     changeDoctor: (encounterId: string, body: { toDoctorId: string; consented: boolean; reason: string }) =>
       call<{ toSessionId: string }>("POST", `/opd/visits/${enc(encounterId)}/change-doctor`, body),
+    /** Spec #1031 — the Department picker: departments, and the doctors of one of them sitting today. */
+    changeDepartmentOptions: (encounterId: string, departmentId?: string) =>
+      call<WireChangeDepartmentOptions>("GET", `/opd/visits/${enc(encounterId)}/change-department${departmentId === undefined ? "" : `?departmentId=${enc(departmentId)}`}`),
+    /** Spec #1031 — move this patient to another department: a new visit and token, no money, no paper. */
+    moveDepartment: (encounterId: string, body: { departmentId: string; doctorId: string; consented: boolean; reason: string }) =>
+      call<WireDepartmentMove>("POST", `/opd/visits/${enc(encounterId)}/change-department`, body),
+    /** Spec #1031 D9 — the new token slip, only while the hospital's setting is on. */
+    printMovedToken: (encounterId: string) => call<{ queued: boolean }>("POST", `/opd/visits/${enc(encounterId)}/print-moved-token`, {}),
     /** #771 — undo the guardian mark: the patient is here after all; the token goes back to the bay. */
     undoPatientAbsent: (encounterId: string) =>
       call<{ alreadyCleared: boolean }>("POST", `/opd/visits/${enc(encounterId)}/patient-absent/undo`),

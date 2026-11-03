@@ -126,6 +126,8 @@ export type OpdConfig = {
   letterhead: Letterhead;
   counterSequence: CounterSequence;
   tokenLane: TokenLane;
+  /** Spec #1031 — the vitals seat may print a new token slip after a department move. Off by default. */
+  vitalsMovePrintSlip: boolean;
 };
 
 /** India-standard first values (owner decision 2026-08-15: clinical staff revise at UAT — data, not code). */
@@ -216,13 +218,14 @@ export async function loadOpdConfig(db: Db | Tx): Promise<OpdConfig> {
     letterhead: letterhead.data,
     counterSequence: seq.data,
     tokenLane: lane.data,
+    vitalsMovePrintSlip: row.vitalsMovePrintSlip,
   };
 }
 
 export type OpdConfigPatch = Partial<Pick<OpdConfig,
   "slotMinutes" | "followUpDefaultDays" | "followUpExtensionDays" | "extensionCapPerDoctorPerMonth"
   | "maxSkipsBeforeLeft" | "perkEveryNth" | "dangerRanges" | "letterhead"
-  | "counterSequence" | "tokenLane">>;
+  | "counterSequence" | "tokenLane" | "vitalsMovePrintSlip">>;
 
 /**
  * RC-1 T2 / D5 — the two keys `PUT /opd/config/counter-flow` may move, and nothing else. The
@@ -244,6 +247,7 @@ const configPatchSchema = z
     letterhead: letterheadSchema,
     counterSequence: z.enum(COUNTER_SEQUENCES),
     tokenLane: z.enum(TOKEN_LANES),
+    vitalsMovePrintSlip: z.boolean(),
   })
   .partial();
 

@@ -1569,6 +1569,13 @@
       "when": 1792593453586,
       "tag": "0224_lab_slip_scans",
       "breakpoints": true
+    },
+    {
+      "idx": 224,
+      "version": "7",
+      "when": 1793701481065,
+      "tag": "0225_opd_vitals_move_print_slip",
+      "breakpoints": true
     }
   ]
 }
