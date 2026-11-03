@@ -17,6 +17,7 @@ import { CREST_PNG_DATA_URI } from "./crest";
 // 2026-10-04 (owner) — the prescriber line. Imported from the file, not the roster index: the index
 // reaches the board printer, which reaches this renderer, and a load cycle resolves to `undefined`.
 import { prescriberPrint } from "../../modules/roster/doctor-units";
+import { code128Svg } from "./code128";
 import { qrSvg } from "./qr";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../db/client";
@@ -108,29 +109,21 @@ const THERMAL_CSS = `
   .mo { font-family: "IBM Plex Mono", "Noto Sans Mono", monospace; }
   .code { text-align: center; margin-top: 2mm; }
   .code .digits { font-size: 9pt; letter-spacing: .18em; margin-top: .8mm; }
+  .code .bars svg { display: block; margin: 0 auto; }
 `;
 
 /**
- * A Code-128-looking bar field drawn with divs.
+ * #1029 — THE TOKEN'S MACHINE-READABLE VISIT NUMBER: ONE REAL CODE 128.
  *
- * HONESTLY LABELLED: this is a VISUAL bar field, deterministic from the payload, and it is NOT a
- * scannable Code 128 — that needs a real encoder with its own check digit, and shipping a
- * bar-shaped picture that a scanner refuses is worse than shipping none. The human-readable digits
- * beneath it are what the counter actually keys today, and they are printed at full size for that
- * reason. Replacing this with a real encoder is a contained change: same box, same payload.
+ * This box used to hold a Code-128-LOOKING picture that no scanner read. Owner 2026-11-03 first
+ * asked for a Code 128 plus a QR; after scanning both on staging the same day: *"I would like to
+ * keep only barcode on token slip."* The Code 128 (`code128.ts`) is read by the counter's USB guns
+ * AND by the staff app's camera (`barcodeTypes` includes `code128`), so the QR was dropped. The
+ * digits beneath stay at full size for anyone keying by hand. Every reader resolves the bare visit
+ * number through one door (`doorsOf` in packages/contracts/src/vitals-entry.ts).
  */
-function barField(payload: string): string {
-  let seed = 0;
-  for (const ch of payload) seed = (seed * 31 + ch.charCodeAt(0)) % 100_000;
-  const bars: string[] = [];
-  for (let i = 0; i < 44; i += 1) {
-    seed = (seed * 1103515245 + 12345) % 2147483648;
-    const w = 1 + (seed % 3);
-    const gap = 1 + ((seed >> 8) % 2);
-    bars.push(`<span style="display:inline-block;width:${String(w)}px;height:11mm;background:#000"></span>`);
-    bars.push(`<span style="display:inline-block;width:${String(gap)}px;height:11mm"></span>`);
-  }
-  return `<div class="code"><div>${bars.join("")}</div><div class="digits mo">${esc(payload)}</div></div>`;
+function tokenCodes(payload: string): string {
+  return `<div class="code"><div class="bars">${code128Svg(payload)}</div><div class="digits mo">${esc(payload)}</div></div>`;
 }
 
 
@@ -710,7 +703,7 @@ export async function renderTokenSlip(
       <div class="nm">${HOSPITAL.name}</div>
       <div class="ad">${HOSPITAL.address}<br>${HOSPITAL.contact}</div>
     </div>
-    ${barField(s.visitNo)}
+    ${tokenCodes(s.visitNo)}
     <div class="tok">
       <div class="lbl">Token</div>
       <div class="no mo">${esc(tokenLabel(s.departmentCode, s.tokenNo))}</div>
@@ -838,7 +831,8 @@ export async function renderPaymentReceipt(
  *      and a code on paper that either unlocks nothing or unlocks something is a decision, not a
  *      footer line. The QR itself is REAL (`qr.ts`, pinned against an independent encoder and read
  *      back by an independent decoder); the artboard's hand-drawn 9 × 9 grid of `<div>`s is a
- *      picture of a QR and `barField`'s comment already rules against shipping one of those.
+ *      picture of a QR, and a picture of a code is worse than no code (the token slip's own bar picture
+ *      scanned for nobody until #1029 replaced it with a real Code 128).
  *
  * ═══ AND ONE THING THAT IS NOT A DEPARTURE, BUT IS A DECISION ═══
  *
