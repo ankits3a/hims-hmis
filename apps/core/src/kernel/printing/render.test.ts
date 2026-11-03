@@ -14,6 +14,7 @@ import { renderDocument, renderPaymentReceipt, renderPrescriptionSheet, renderTo
 import { addAllergy, markAllergyEnteredInError } from "../../modules/patients/allergies";
 import { CREST_PNG_DATA_URI } from "./crest";
 import { qrSvg } from "./qr";
+import { code128Svg } from "./code128";
 import { eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { agents, breakGlassGrants, opdDepartments, opdDoctors, opdEncounters, opdSectionRecords, opdVitals, patientAllergies, patientGuardians, patients, phiAccessLog, printJobs, rosterDutyWindows, rosterOfficiating, rosterTeamMemberships, users } from "../db/schema";
@@ -158,7 +159,7 @@ describe("FD-24 T3: rendering the counter's documents", () => {
       const doc = await renderTokenSlip(db, { encounterId }, MON, clerk.actor);
       expect(doc!.html).toContain("Printed by render-clerk");
       /* The DUPLICATION is gone — asserted on the footer's own markup, because the visit number and
-         the date both legitimately appear elsewhere (the identity rows, the bar field, the caption). */
+         the date both legitimately appear elsewhere (the identity rows, the barcode caption). */
       expect(doc!.html).not.toMatch(/<div class="ft">2026-08-17 \u00b7 /);
     });
 
@@ -167,6 +168,19 @@ describe("FD-24 T3: rendering the counter's documents", () => {
       const doc = await renderTokenSlip(db, { encounterId }, MON);
       expect(doc!.html).toContain("Printed 17-Aug-2026");
       expect(doc!.html).not.toContain("Printed by");
+    });
+
+    /**
+     * #1029 — owner 2026-11-03: *"both, phones and USB guns; go with QR plus Code 128"*. The slip
+     * used to draw random-width bars that NO scanner read. Both codes must carry the visit number
+     * the slip prints, which every reader resolves (`doorsOf`).
+     */
+    it("carries the visit number as a real Code 128 for the guns and a QR for the phones", async () => {
+      const doc = await renderTokenSlip(db, { encounterId }, MON);
+      const visitNo = /Visit<\/span><span class="v mo">(V\d+)</.exec(doc!.html)?.[1];
+      expect(visitNo).toMatch(/^V\d{10}$/);
+      expect(doc!.html).toContain(code128Svg(visitNo!));
+      expect(doc!.html).toContain(qrSvg(visitNo!, 76));
     });
 
     it("carries the token in the grammar the screen says out loud", async () => {

@@ -14,8 +14,8 @@
  *      no external fetch, no font CDN. The relay may be offline." So the code cannot be an
  *      `<img src>` to anywhere, and it cannot be drawn by client-side JS: the relay prints the HTML
  *      it is handed. `qrSvg` emits `<rect>` elements — no script, no fetch, no font.
- *   3. **`barField` above is the precedent for what NOT to do.** That helper is honestly labelled a
- *      *visual* bar field and says why: "shipping a bar-shaped picture that a scanner refuses is
+ *   3. **The token slip's old `barField` was the precedent for what NOT to do** (replaced by a real
+ *      Code 128 in #1029). It was honestly labelled a *visual* bar field and said why: "shipping a bar-shaped picture that a scanner refuses is
  *      worse than shipping none." The artboard's own QR is exactly such a picture — a hand-drawn
  *      9 × 9 grid of `<div>`s. This file is the other answer to the same problem: a real encoder.
  *
