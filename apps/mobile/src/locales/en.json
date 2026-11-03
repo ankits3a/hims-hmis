@@ -2408,7 +2408,19 @@
     "consent": "Patient agreed",
     "confirm": "Change doctor",
     "cancel": "Cancel",
-    "done": "Moved to {{doctor}}."
+    "done": "Moved to {{doctor}}.",
+    "actionDept": "Change doctor / dept",
+    "titleDept": "Change doctor or department",
+    "department": "Department",
+    "hintDept": "New visit and token there. Same fee only.",
+    "noneDept": "No doctor sitting there today.",
+    "confirmDept": "Move department",
+    "newToken": "New token",
+    "writeOnSlip": "Write it on the old slip.",
+    "print": "Print new token slip",
+    "printed": "Sent to printer",
+    "finish": "Done",
+    "movedDept": "Moved to {{department}} · {{doctor}} · token {{token}}."
   },
   "patientAbsent": {
     "undo": "Undo — patient is here",

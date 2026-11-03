@@ -36,6 +36,9 @@ export const opdConfig = pgTable("opd_config", {
   // Text + zod like every enum here: the same schemas guard read and write, no CHECK.
   counterSequence: text("counter_sequence").notNull().default("queue_first"),
   tokenLane: text("token_lane").notNull().default("token_first"),
+  // Spec #1031 (owner 2026-11-03) — may the vitals seat print a new token slip after it moves a patient
+  // to another department? OFF: staff write the new token on the old slip by hand.
+  vitalsMovePrintSlip: boolean("vitals_move_print_slip").notNull().default(false),
   updatedBy: text("updated_by").notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

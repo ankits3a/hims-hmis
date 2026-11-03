@@ -170,12 +170,12 @@ function ProtocolPanel({ p, doctorName, rerun, t }: { p: Protocol; doctorName: s
   );
 }
 
-function Details({ api, row, pre, failed, onGuardian, onChangeDoctor, t }: { api: VitalsApi; row: WireBenchRow; pre: WirePreStage | null; failed: boolean; onChangeDoctor: (() => void) | null; onGuardian: (row: WireBenchRow) => void; t: T }) {
+function Details({ api, row, pre, failed, onGuardian, onChangeDoctor, department = false, t }: { api: VitalsApi; row: WireBenchRow; pre: WirePreStage | null; failed: boolean; onChangeDoctor: (() => void) | null; department?: boolean; onGuardian: (row: WireBenchRow) => void; t: T }) {
   return (
     <View testID="session" style={s.details}>
       {/* Owner 2026-10-09 — off the form's main view: the visible, non-gesture way to "Who came?". */}
       {mayStandIn(row) && <GuardianLink onPress={() => onGuardian(row)} />}
-      {onChangeDoctor !== null && <ChangeDoctorLink onPress={onChangeDoctor} />}
+      {onChangeDoctor !== null && <ChangeDoctorLink onPress={onChangeDoctor} department={department} />}
       <Text testID="who-ids" style={s.small}>
         {[row.patient !== null && !row.patient.restricted ? row.patient.uhid : null, row.visitNo ?? null].filter((x) => x !== null).join(" · ")}
       </Text>
@@ -212,6 +212,8 @@ export function VitalsBay({ scanned = null }: { scanned?: Scanned | null } = {})
   const { call, state } = useSession();
   /* Spec #1025 — only the bay's narrow grant sees "Change doctor". */
   const mayChangeDoctor = state.status === "signedIn" && state.me.permissions.hospital.includes("opd.vitals.change_doctor");
+  /* Spec #1031 — the department move rides the same sheet, for its own narrow grant. */
+  const mayMoveDepartment = state.status === "signedIn" && state.me.permissions.hospital.includes("opd.vitals.change_department");
   const api = useMemo(() => vitalsApi(call), [call]);
   const today = todayIst();
   const { rows: allRows, asOf, failed: benchFailed, callable, refresh } = useBench(api, today);
@@ -281,6 +283,14 @@ export function VitalsBay({ scanned = null }: { scanned?: Scanned | null } = {})
     setError(null); setRestOffer(null); setRerun(null); setWhoOpen(false); setRaw("");
     setTaken(row);
   }, [t, saving]);
+
+  /* Spec #1031 — after a department move the patient stays in hand on the NEW visit, once the bench has it. */
+  const [pendingTake, setPendingTake] = useState<string | null>(null);
+  useEffect(() => {
+    if (pendingTake === null) return;
+    const row = allRows.find((r) => r.encounterId === pendingTake);
+    if (row !== undefined) { setPendingTake(null); take(row); }
+  }, [pendingTake, allRows, take]);
 
   // Arrived from a scan: the patient is taken off the bench as soon as it has been read — the form opens, nothing is saved.
   useEffect(() => {
@@ -481,7 +491,7 @@ export function VitalsBay({ scanned = null }: { scanned?: Scanned | null } = {})
           </Text>
         </View>
       )}
-      {whoOpen && <Details api={api} row={rowInHand} pre={preStage} failed={pre?.failed === true} onGuardian={setGuardianRow} onChangeDoctor={mayChangeDoctor && !rowInHand.vitalsDone ? () => setChangeDoctorRow(rowInHand) : null} t={t} />}
+      {whoOpen && <Details api={api} row={rowInHand} pre={preStage} failed={pre?.failed === true} onGuardian={setGuardianRow} onChangeDoctor={(mayChangeDoctor || mayMoveDepartment) && !rowInHand.vitalsDone ? () => setChangeDoctorRow(rowInHand) : null} department={mayMoveDepartment} t={t} />}
     </View>
   );
 
@@ -637,7 +647,13 @@ export function VitalsBay({ scanned = null }: { scanned?: Scanned | null } = {})
       {changeDoctorRow !== null && (
         <ChangeDoctorSheet
           api={api} encounterId={changeDoctorRow.encounterId} onClose={() => setChangeDoctorRow(null)}
+          canMoveDepartment={mayMoveDepartment}
           onDone={(doctorName) => { setBanner({ who: patientLabel(changeDoctorRow, t), doctorName, flags: [] }); void refresh(); }}
+          onMoved={(moved) => {
+            setScanSaid(t("changeDoctor.movedDept", { department: moved.departmentName, doctor: moved.doctorName, token: String(moved.tokenNo ?? "—") }));
+            setPendingTake(moved.encounterId);
+            void refresh();
+          }}
         />
       )}
       <HeldCard source={held1 === null ? null : { encounterId: held1.encounterId }} onClose={() => setHeld1(null)}

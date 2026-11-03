@@ -119,7 +119,11 @@ export type OpdErrorCode =
   | "unknown_rx_set" | "invalid_rx_set" | "rx_set_controlled" | "rx_set_not_permitted"
   // The spoken note (`consult-voice.ts`). Voice being off, unconfigured or over the day's cap is a
   // STATE (409, `detail.why`), a clip too long or empty is a malformed request (400).
-  | "voice_unavailable_state_conflict" | "invalid_voice_clip" | "unknown_voice_note" | "voice_provider_failed";
+  | "voice_unavailable_state_conflict" | "invalid_voice_clip" | "unknown_voice_note" | "voice_provider_failed"
+  // Spec #1031 — the vitals seat's department move. The seat takes no money, so a fee difference or a
+  // bill with more than the consultation sends the patient to the billing counter (409); printing the
+  // new token slip while the hospital's setting is off is a state, not a fault (409).
+  | "send_to_billing" | "print_off";
 
 export class OpdError extends Error {
   constructor(

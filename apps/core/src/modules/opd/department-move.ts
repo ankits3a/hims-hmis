@@ -47,6 +47,16 @@ import type { VisitType } from "./visit-type";
  * that opened the visit corrects it, and the event carries the whole control.
  */
 
+/**
+ * Spec #1031 D5 — the vitals seat takes no money: a move goes ahead from there only when nothing is
+ * collected or refunded — a ₹0 bill, the same fee carried over, or no bill and a free consultation.
+ */
+export function collectsNothing(plan: MoveMoneyPlan): boolean {
+  return plan.kind === "zero_bill" || plan.kind === "transfer" || (plan.kind === "none" && plan.newFeePaise === 0);
+}
+
+const VITALS_MOVE_ACTOR: Actor = { type: "system", id: "opd-vitals-department-move" };
+
 /** Only these move. `awaiting_results` has been seen by a doctor, so a move there is a referral. */
 const MOVABLE: readonly string[] = ["registered", "waiting"];
 
@@ -119,7 +129,14 @@ export async function moveVisitDepartment(
   db: Db,
   actor: Actor,
   encounterId: string,
-  input: { departmentId: string; doctorId: string; reason: string; tenders?: TenderInput[] },
+  input: {
+    departmentId: string; doctorId: string; reason: string; tenders?: TenderInput[];
+    /**
+     * Spec #1031 — the vitals seat's move (`vitals-department-move.ts`): no slip is queued, and the move
+     * is refused unless the money needs no collection, read inside this transaction.
+     */
+    fromVitals?: true;
+  },
   now: Date = new Date(),
 ): Promise<DepartmentMoveResult> {
   if (actor.type !== "user") throw new OpdError("user_actor_required");
@@ -139,7 +156,11 @@ export async function moveVisitDepartment(
     const liveRoomId = live === undefined
       ? null
       : (await tx.select({ roomId: opdQueueSessions.roomId }).from(opdQueueSessions).where(eq(opdQueueSessions.id, live.sessionId)))[0]?.roomId ?? null;
-    const abandoned = await moveEncounter(tx, actor, current, "abandoned", { abandonedAt: now, abandonReason: `wrong department — ${reason}` }, now);
+    // Spec #1031 — the opd_visit workflow lets only the front office abandon a visit. The vitals seat's
+    // move is authorised by its own narrow permission at the route, so a named system actor drives
+    // this one transition (as `patient-absent.ts` and `vitals-carry.ts` do); every event still names
+    // the person whose act it was.
+    const abandoned = await moveEncounter(tx, input.fromVitals === true ? VITALS_MOVE_ACTOR : actor, current, "abandoned", { abandonedAt: now, abandonReason: `wrong department — ${reason}` }, now);
     await tx
       .update(opdQueueEntries)
       .set({ status: "cancelled" })
@@ -170,7 +191,16 @@ export async function moveVisitDepartment(
       ...(current.deskComplaint === null ? {} : { deskComplaint: current.deskComplaint }),
       ...(appointment !== null && live !== undefined ? { appointment: { id: appointment.id, slotStart: appointment.slotStart } } : {}),
       join: live === undefined ? "defer" : "queue",
+      ...(input.fromVitals === true ? { noPaper: true } : {}),
     }, now);
+
+    // Spec #1031 D2 (owner 2026-11-03) — the patient joins the new line by ORIGINAL arrival, not at its
+    // end: the new token takes the old one's eligibility, as a queue transfer does. After the vitals
+    // carry above, which stamps `now`, so the carried patient is not sent to the back either.
+    if (live !== undefined && opened.queueEntry !== null) {
+      await tx.update(opdQueueEntries).set({ eligibleAt: live.eligibleAt ?? live.createdAt })
+        .where(and(eq(opdQueueEntries.encounterId, opened.encounter.id), inArray(opdQueueEntries.status, [...LIVE_ENTRY_STATUSES])));
+    }
 
     let appointmentId: string | null = null;
     if (appointment !== null) {
@@ -194,6 +224,12 @@ export async function moveVisitDepartment(
 
     // ── 4. the money moves with the visit (billing's four rules), in this same transaction ──
     // Read inside the transaction, so a bill issued a moment ago at another seat is seen.
+    if (input.fromVitals === true) {
+      const plan = await moveMoneyPlan(tx, encounterId, await newConsultFeePaise(tx, current, opened.visitType, now));
+      if (!collectsNothing(plan)) {
+        throw new OpdError("send_to_billing", "the fee changes or the bill holds more than the consultation — send the patient to the billing counter");
+      }
+    }
     const money = await carryMoneyToMovedVisit(tx, actor, {
       from: current, to: opened.encounter, reason,
       ...(input.tenders === undefined ? {} : { tenders: input.tenders }),

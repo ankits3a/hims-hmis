@@ -1,6 +1,6 @@
 ---
 issue: 1031
-status: approved
+status: built
 approved: 2026-11-03
 ---
 # SPEC — Change a patient's department (and doctor) from the vitals screen (#1031)
@@ -41,3 +41,19 @@ back to the front desk. Owner 2026-11-03: yes to all recommendations below.
 - D8: After the move, the screen shows the new token number.
 - D9: With the print setting off, no print action is offered and no print job is queued; with it on, a user holding the
   permission can print the new token slip.
+
+## Built (2026-11-03)
+
+- Server: `apps/core/src/modules/opd/vitals-department-move.ts`, on top of the front desk's `moveVisitDepartment`.
+  Routes `GET|POST /opd/visits/:id/change-department` and `POST /opd/visits/:id/print-moved-token`, all on
+  `opd.vitals.change_department`.
+- DECIDED: queue place by original arrival (D2) applies to the front desk move as well, through the one server path.
+- DECIDED: the `opd_visit` workflow lets only the front office abandon a visit, so the vitals move's abandon step runs
+  as a named system actor (as `patient-absent.ts` does); every event still names the person.
+- DECIDED: no bill and a free consultation also counts as "no collection". No bill and a fee to pay is refused.
+- DECIDED: with the print setting off, the vitals move queues neither the token slip nor the A4 sheet. The setting is
+  `opd_config.vitals_move_print_slip` (migration, default off), changed through `PUT /opd/config`. No admin-screen
+  toggle yet.
+- Web and phone: the "Change doctor" sheet shows the Department picker to holders of the permission, only while vitals
+  are not yet saved (as #1025). After a move the patient stays in hand on the new visit.
+

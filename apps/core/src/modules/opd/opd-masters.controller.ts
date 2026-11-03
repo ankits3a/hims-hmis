@@ -42,6 +42,8 @@ const OPD_CONFLICT_CODES = new Set<OpdErrorCode>([
   "slot_taken", "call_conflict", "doctor_out", "session_closed", "doctor_on_leave", "appointment_not_today", "tele_call_opens_at_slot", "tele_amount_mismatch", "tele_outcome_required", "tele_save_failed", "tele_bill_retry_failed",
   "extension_cap_reached", "allergy_conflict", "user_already_doctor", "opd_not_configured", "opd_config_invalid",
   "not_your_patient", "consult_gate_refused",
+  // Spec #1031 — the vitals seat's department move: the billing counter's work, or printing switched off.
+  "send_to_billing", "print_off",
   // PLAN 16a T5 — the two new hard warnings answer 409 exactly as `allergy_conflict` does, and this
   // line is functional rather than cosmetic: without it `opdStatus` falls through to its 400
   // default, and a clinical refusal the client must render with an override dialog would arrive
@@ -210,6 +212,7 @@ const configPatchBody = z.object({
   letterhead: z.unknown().optional(),
   counterSequence: z.enum(COUNTER_SEQUENCES).optional(),
   tokenLane: z.enum(TOKEN_LANES).optional(),
+  vitalsMovePrintSlip: z.boolean().optional(), // spec #1031 — off: no new token slip from the vitals seat
 });
 // RC-1 T2 / D5 — the flow pill's own body: EXACTLY the two flow keys. zod strips anything else,
 // so a holder of the narrow permission cannot reach danger ranges or the letterhead through this

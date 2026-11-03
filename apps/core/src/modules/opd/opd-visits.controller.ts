@@ -1,4 +1,6 @@
 import { changeVisitDoctor, doctorsForChange } from "./change-doctor";
+import { changeDepartmentOptions, moveDepartmentFromVitals, printMovedTokenSlip } from "./vitals-department-move";
+import type { ChangeDepartmentOptions, VitalsDepartmentMoveResult } from "./vitals-department-move";
 import type { ChangeDoctorOption } from "./change-doctor";
 import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Inject, Logger, NotFoundException, Param, Post, Query } from "@nestjs/common";
 import { and, asc, eq, inArray } from "drizzle-orm";
@@ -199,6 +201,10 @@ const walkInBody = z.object({
   triageId: triageIdField,
 });
 const changeDoctorBody = z.object({ toDoctorId: z.string().min(1), consented: z.boolean(), reason: z.string().max(400) }).strict();
+const changeDepartmentQuery = z.object({ departmentId: z.string().min(1).optional() });
+const changeDepartmentBody = z.object({
+  departmentId: z.string().min(1), doctorId: z.string().min(1), consented: z.boolean(), reason: z.string().max(400),
+}).strict();
 /* Owner 2026-10-05 — a blank reason is the SERVICE's `reason_required`, as for abandon. */
 const moveDepartmentBody = z.object({
   departmentId: z.string().min(1), doctorId: z.string().min(1), reason: z.string().max(400),
@@ -882,6 +888,44 @@ export class OpdVisitsController {
   async changeDoctor(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<{ toSessionId: string }> {
     try {
       return await changeVisitDoctor(this.db, actor, id, parsed(changeDoctorBody, body));
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * Spec #1031 — the bay's department move. The options: the departments, and the doctors of the one
+   * asked (or the visit's own) sitting today. The move is the front desk's, with no money and no paper.
+   */
+  @RequirePermission("opd.vitals.change_department", "hospital")
+  @Get("visits/:id/change-department")
+  async changeDepartmentOptions(@Param("id") id: string, @Query() query: unknown): Promise<ChangeDepartmentOptions> {
+    const q = parsed(changeDepartmentQuery, query);
+    try {
+      return await changeDepartmentOptions(this.db, id, q.departmentId);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("opd.vitals.change_department", "hospital")
+  @Post("visits/:id/change-department")
+  @HttpCode(200)
+  async changeDepartment(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<VitalsDepartmentMoveResult> {
+    try {
+      return await moveDepartmentFromVitals(this.db, actor, id, parsed(changeDepartmentBody, body));
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** Spec #1031 D9 — the new token slip, on demand, only while the hospital's setting is on. */
+  @RequirePermission("opd.vitals.change_department", "hospital")
+  @Post("visits/:id/print-moved-token")
+  @HttpCode(200)
+  async printMovedToken(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ queued: boolean }> {
+    try {
+      return await printMovedTokenSlip(this.db, actor, id);
     } catch (e) {
       toHttp(e);
     }

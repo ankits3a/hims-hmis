@@ -6,7 +6,7 @@ import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, s
 import { withTx } from "../../../kernel/db/client";
 import { events, opdConfig, opdQueueEntries, opdVitals, printJobs } from "../../../kernel/db/schema";
 import { ROLE_MODEL } from "../../../../scripts/seed-roles";
-import { issueInvoice } from "../../billing";
+import { issueInvoice, previewInvoice } from "../../billing";
 import { moveVisitDepartment } from "../department-move";
 import { getEncounter, moveEncounter, openVisit } from "../encounters";
 import { recordVitals } from "../vitals";
@@ -123,9 +123,11 @@ describe("change a patient's department from vitals (spec #1031)", () => {
     // Anything else on the bill.
     const p2 = await mkPatient(db, cashier.actor, { phone: "9876530004" });
     const mixed = await openVisit(db, cashier.actor, { patientId: p2.id, departmentId: deptId, doctorId: ortho.doctorId }, MON);
+    const lines = [{ lineId: "fee", serviceId: base.consultNewServiceId, qty: 1 }, { lineId: "x", serviceId: base.genericServiceId, qty: 1 }];
+    const total = (await previewInvoice(db, { encounterId: mixed.encounter.id, lines }, MON)).totals.netPayablePaise;
     await issueInvoice(db, cashier.actor, {
-      draftId: newId(), patientId: p2.id, encounterId: mixed.encounter.id,
-      lines: [{ lineId: "fee", serviceId: base.consultNewServiceId, qty: 1 }, { lineId: "x", serviceId: base.genericServiceId, qty: 1 }],
+      draftId: newId(), patientId: p2.id, encounterId: mixed.encounter.id, lines,
+      receipt: { tenders: [{ mode: "cash", amountPaise: total }] },
     }, MON);
     await expect(moveFromVitals(mixed.encounter.id)).rejects.toMatchObject({ code: "send_to_billing" });
     expect((await getEncounter(db, mixed.encounter.id))!.status).not.toBe("abandoned");
