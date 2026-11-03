@@ -151,7 +151,7 @@ export function todayIst(at: Date = new Date()): string {
  *
  * WHAT THE PAPER ACTUALLY CARRIES (measured in the renderers, not assumed):
  *   - prescription sheet (kernel/printing/render.ts)  QR = the bare visit number, `V2610060001`
- *   - thermal token slip (same file)                  Code 128 AND QR = the bare visit number (#1029);
+ *   - thermal token slip (same file)                  Code 128 = the bare visit number (#1029);       
  *                                                     text: the token as `<dept code>-<n>`, the visit number
  *   - token slip drawn by the web, and the patient card   QR = `q1.<patientId>.<uhid>.<ver>.<sig>`
  *   - printed e-prescription (opd/prescriptions.ts)   QR = `rx1.<rxId>.<encounterId>.<ver>.<sig>`

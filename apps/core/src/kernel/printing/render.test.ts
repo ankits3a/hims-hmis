@@ -171,16 +171,17 @@ describe("FD-24 T3: rendering the counter's documents", () => {
     });
 
     /**
-     * #1029 — owner 2026-11-03: *"both, phones and USB guns; go with QR plus Code 128"*. The slip
-     * used to draw random-width bars that NO scanner read. Both codes must carry the visit number
-     * the slip prints, which every reader resolves (`doorsOf`).
+     * #1029 — the slip used to draw random-width bars that NO scanner read. Owner 2026-11-03, after
+     * scanning a Code 128 + QR slip on staging: *"I would like to keep only barcode on token slip."*
+     * The Code 128 must carry the visit number the slip prints (every reader resolves it through
+     * `doorsOf`), and the slip carries no QR.
      */
-    it("carries the visit number as a real Code 128 for the guns and a QR for the phones", async () => {
+    it("carries the visit number as a real Code 128 and no QR", async () => {
       const doc = await renderTokenSlip(db, { encounterId }, MON);
       const visitNo = /Visit<\/span><span class="v mo">(V\d+)</.exec(doc!.html)?.[1];
       expect(visitNo).toMatch(/^V\d{10}$/);
       expect(doc!.html).toContain(code128Svg(visitNo!));
-      expect(doc!.html).toContain(qrSvg(visitNo!, 76));
+      expect(doc!.html).not.toContain('aria-label="visit number"');
     });
 
     it("carries the token in the grammar the screen says out loud", async () => {

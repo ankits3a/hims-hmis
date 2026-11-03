@@ -109,22 +109,21 @@ const THERMAL_CSS = `
   .mo { font-family: "IBM Plex Mono", "Noto Sans Mono", monospace; }
   .code { text-align: center; margin-top: 2mm; }
   .code .digits { font-size: 9pt; letter-spacing: .18em; margin-top: .8mm; }
-  .code .bars svg, .code .qr svg { display: block; margin: 0 auto; }
-  .code .qr { margin-top: 1.5mm; }
+  .code .bars svg { display: block; margin: 0 auto; }
 `;
 
 /**
- * #1029 — THE TOKEN'S MACHINE-READABLE VISIT NUMBER, TWICE.
+ * #1029 — THE TOKEN'S MACHINE-READABLE VISIT NUMBER: ONE REAL CODE 128.
  *
- * Owner 2026-11-03: *"both, phones and USB guns; go with QR plus Code 128"*. This box used to hold a
- * Code-128-LOOKING picture that no scanner read. Now it holds two real codes of the same payload:
- * a Code 128 (`code128.ts`) for the counter's 1D laser guns, which cannot read a QR, and a QR
- * (`qr.ts`) for the staff app's camera, which reads a QR at any angle on a creased roll. The digits
- * beneath stay at full size for anyone keying by hand. Every reader resolves the bare visit number
- * through one door (`doorsOf` in packages/contracts/src/vitals-entry.ts).
+ * This box used to hold a Code-128-LOOKING picture that no scanner read. Owner 2026-11-03 first
+ * asked for a Code 128 plus a QR; after scanning both on staging the same day: *"I would like to
+ * keep only barcode on token slip."* The Code 128 (`code128.ts`) is read by the counter's USB guns
+ * AND by the staff app's camera (`barcodeTypes` includes `code128`), so the QR was dropped. The
+ * digits beneath stay at full size for anyone keying by hand. Every reader resolves the bare visit
+ * number through one door (`doorsOf` in packages/contracts/src/vitals-entry.ts).
  */
 function tokenCodes(payload: string): string {
-  return `<div class="code"><div class="bars">${code128Svg(payload)}</div><div class="digits mo">${esc(payload)}</div><div class="qr">${qrSvg(payload, 76)}</div></div>`;
+  return `<div class="code"><div class="bars">${code128Svg(payload)}</div><div class="digits mo">${esc(payload)}</div></div>`;
 }
 
 

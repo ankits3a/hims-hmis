@@ -5,8 +5,8 @@
  *
  * The OPD token slip used to carry `barField`, a bar-shaped picture seeded from the visit number
  * that no scanner could read. Owner 2026-11-03: *"both, phones and USB guns; go with QR plus Code
- * 128"*. The QR comes from `qr.ts`; this file is the 1D half, for the counter's laser guns, which
- * cannot read a QR at all.
+ * 128"*; after scanning both, the same day: *"keep only barcode on token slip"*. This is that
+ * barcode: the counter's 1D guns read it, and so does the staff app's camera.
  *
  * Same constraints as `qr.ts`: no runtime dependency in the server image, and the output is a
  * self-contained SVG of `<rect>`s (the relay prints the HTML it is handed, with no script and no
