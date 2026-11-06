@@ -1,6 +1,6 @@
 ---
 issue: 1033
-status: approved
+status: built
 approved: 2026-11-06
 ---
 # SPEC — Opening stock: count whole boxes as well as loose strips (#1033)

@@ -8303,7 +8303,22 @@
       "cost": "Cost / margin",
       "gst": "GST",
       "rack": "Rack",
-      "supplier": "Supplier"
+      "supplier": "Supplier",
+      "boxes": "Boxes",
+      "perBox": "Per box"
+    },
+    "total": "= {{packs}} · {{units}}",
+    "n": {
+      "strip_one": "{{count}} strip",
+      "strip_other": "{{count}} strips",
+      "tablet_one": "{{count}} tablet",
+      "tablet_other": "{{count}} tablets",
+      "capsule_one": "{{count}} capsule",
+      "capsule_other": "{{count}} capsules",
+      "pack_one": "{{count}} pack",
+      "pack_other": "{{count}} packs",
+      "unit_one": "{{count}} unit",
+      "unit_other": "{{count}} units"
     },
     "pack": {
       "tablet_strip": "Tablet strip",

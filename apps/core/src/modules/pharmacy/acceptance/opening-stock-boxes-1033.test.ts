@@ -50,7 +50,7 @@ describe("opening stock counts whole boxes (spec #1033)", () => {
     for (const per of ["", "0"]) {
       const p = await plan(`${NEW}\nCrocin 500,BX2,08/${year()},35.50,15,4,3,${per}\n`);
       expect(p.refusals).toBe(1);
-      expect(p.rows[0]!.line).toBe(1);
+      expect(p.rows[0]!.line).toBe(2); // the sheet's own line: the header is line 1
       expect(p.rows[0]!.reasons.join(" ")).toContain("packs_per_box");
     }
   });

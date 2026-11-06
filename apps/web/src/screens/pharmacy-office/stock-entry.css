@@ -33,6 +33,7 @@
 .se .se-meta { display: block; margin-top: 3px; font-size: 11px; line-height: 1.35; color: var(--dim, #5c6f66); }
 .se .se-meta button { color: var(--green, #0e6b4e); font-size: 11px; }
 .se .se-cost { font-size: 12px; line-height: 1.25; }
+.se .se-total { display: block; margin-top: 2px; font-size: 11px; line-height: 1.25; color: var(--dim, #5c6f66); white-space: nowrap; }
 .se .se-cost b { display: block; font-weight: 600; }
 .se .se-cost span { display: block; font-size: 11px; }
 .se .se-gst { font-size: 12px; padding-top: 12px !important; color: var(--dim, #5c6f66); }
