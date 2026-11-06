@@ -9,12 +9,12 @@ import type { QuickLine } from "../../lib/lab-quick-api";
  * ACCEPTANCE — issue #1036, spec docs/specs/1036-widal-titre.md (owner APPROVED 2026-11-06): the web half.
  * A positive Widal titre is named in the summary, and the quick bench has a titre grid for manual slide testing.
  */
-const RANGE = { low: null, high: null, text: "Up to 1:80", criticalLow: null, criticalHigh: null };
+const RANGE = { analyteId: "WIDAL_TO", low: null, high: null, text: "Up to 1:80", criticalLow: null, criticalHigh: null, note: null };
 const line = (code: string, nameEn: string, value: string, flag: QuickLine["flag"]): QuickLine => ({
   analyteId: code, code, nameEn, unit: null, value, low: null, high: null, refText: "Up to 1:80", flag,
 });
 
-function Harness(): JSX.Element {
+function Harness(): React.ReactElement {
   const [values, setValues] = useState<Record<string, string>>({ WIDAL_TO: "", WIDAL_TH: "" });
   return (
     <>

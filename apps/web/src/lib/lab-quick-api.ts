@@ -1,5 +1,6 @@
 import { api } from "./api";
 import type { WireRecentLabOrder } from "./lab-api";
+import { titreFlag } from "../../../../packages/contracts/src/lab-titre";
 import type { AstBlock, AstDraftRow } from "../../../../packages/contracts/src/lab-ast";
 
 /**
@@ -20,7 +21,8 @@ export type QuickRange = {
   analyteId: string; low: string | null; high: string | null; text: string | null;
   criticalLow: string | null; criticalHigh: string | null; note: string | null;
 };
-export type QuickFlag = "L" | "H" | "LL" | "HH" | "N" | null;
+/** `A` (#1036) — abnormal without a direction: a Widal titre above its "Up to 1:80". */
+export type QuickFlag = "L" | "H" | "LL" | "HH" | "N" | "A" | null;
 export type QuickLine = {
   analyteId: string; code: string; nameEn: string; unit: string | null;
   value: string; low: string | null; high: string | null; refText: string | null; flag: QuickFlag;
@@ -77,6 +79,8 @@ const num = (s: string | null): number | null => (s === null ? null : Number(s))
 
 export function previewFlag(value: string, r: QuickRange | undefined): QuickFlag {
   if (r === undefined || value.trim() === "") return null;
+  const titre = titreFlag(value, r.text);
+  if (titre !== null) return titre;
   const v = Number(value);
   if (!Number.isFinite(v)) return null;
   const cl = num(r.criticalLow), ch = num(r.criticalHigh);
@@ -103,7 +107,7 @@ export function refText(r: { low: string | null; high: string | null; text: stri
   return r.text ?? "";
 }
 
-const FLAG_WORD: Record<string, string> = { L: "low", H: "high", LL: "CRITICALLY LOW", HH: "CRITICALLY HIGH" };
+const FLAG_WORD: Record<string, string> = { L: "low", H: "high", LL: "CRITICALLY LOW", HH: "CRITICALLY HIGH", A: "abnormal" };
 
 /**
  * The summary the screen proposes. Plain rules, no AI (DECIDED): each abnormal value in one line,

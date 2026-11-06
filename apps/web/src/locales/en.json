@@ -4378,6 +4378,8 @@
       "savedButton": "Saved reports",
       "addParam": "Add a parameter",
       "addParamHint": "Add another parameter (optional)",
+      "widalGrid": "Widal titre grid",
+      "widalGridHint": "Tick each dilution that shows agglutination. The highest ticked dilution is the titre; no tick is Negative.",
       "summary": "Report summary (edit freely)",
       "regenerate": "Rewrite from values",
       "save": "Save report",
@@ -4388,6 +4390,7 @@
       "flag_H": "High",
       "flag_LL": "Critically low",
       "flag_HH": "Critically high",
+      "flag_A": "Abnormal",
       "flag_N": "Normal"
     },
     "desk": {

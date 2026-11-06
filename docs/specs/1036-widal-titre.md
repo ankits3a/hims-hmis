@@ -1,11 +1,12 @@
 ---
 issue: 1036
-status: approved
+status: built
 approved: 2026-11-06
 ---
 # SPEC — Widal: one titre range, a flag for a positive titre, and a titre grid (#1036)
 
-Status: APPROVED 2026-11-06 by the owner, written after the owner asked for the fix and the grid ("do the needful … we hardly use
+Status: APPROVED 2026-11-06 by the owner and BUILT 2026-11-06 as specified (web bench; the phone bench shows the
+flag but has no grid yet). Written after the owner asked for the fix and the grid ("do the needful … we hardly use
 1:640 … the titre grid would help us in case of manual testing").
 
 ## What
@@ -19,7 +20,8 @@ result. Nothing ticked saves "Negative".
 
 ## Decisions
 
-- DECIDED: the cut-off is the common Indian one, significant at 1:160 or more; the range row holds it as `high = 80`.
+- DECIDED: the cut-off is the common Indian one, significant at 1:160 or more. The range row holds it as the text
+  "Up to 1:80" (low and high stay empty), and the flag reads its limit from that text, so the two cannot drift apart.
 - The fix reaches production through a data migration that corrects the four existing range rows and restamps their
   source. Reports already handed over keep the range they were reported against.
 - The titre box stays typeable. Accepted: `1:<number>`, `Negative`, case-insensitive, and `1;80` is read as `1:80`.
