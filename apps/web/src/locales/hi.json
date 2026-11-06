@@ -8303,7 +8303,22 @@
       "cost": "लागत / मार्जिन",
       "gst": "GST",
       "rack": "रैक",
-      "supplier": "सप्लायर"
+      "supplier": "सप्लायर",
+      "boxes": "डिब्बे",
+      "perBox": "प्रति डिब्बा"
+    },
+    "total": "= {{packs}} · {{units}}",
+    "n": {
+      "strip_one": "{{count}} स्ट्रिप",
+      "strip_other": "{{count}} स्ट्रिप",
+      "tablet_one": "{{count}} टैबलेट",
+      "tablet_other": "{{count}} टैबलेट",
+      "capsule_one": "{{count}} कैप्सूल",
+      "capsule_other": "{{count}} कैप्सूल",
+      "pack_one": "{{count}} पैक",
+      "pack_other": "{{count}} पैक",
+      "unit_one": "{{count}} इकाई",
+      "unit_other": "{{count}} इकाई"
     },
     "pack": {
       "tablet_strip": "टैबलेट स्ट्रिप",

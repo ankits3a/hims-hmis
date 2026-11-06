@@ -20,7 +20,7 @@ import "./stock-entry.css";
  * ═══ STOCK ENTRY ON SCREEN (2026-09-29) — THE OFFICE'S STOCK → OPENING STOCK SHEET ═══
  *
  * The owner enters the real shelf here, one row per batch, the way a pharmacist copies it off the carton:
- * brand · pack · batch · expiry · packs · free · MRP · rate · discount · rack · supplier. The CSV upload is
+ * brand · pack · batch · expiry · boxes · per box · packs · free · MRP · rate · discount · rack · supplier. The CSV upload is
  * still here, folded under "Upload a sheet instead".
  *
  * ═══ ONE JUDGEMENT — THE SERVER'S ═══
@@ -47,17 +47,19 @@ const GRN_WORKLIST = { view: "stock", page: "grn" } as const;
 export type GridRow = {
   key: string; item: WireStockItem | null; query: string;
   packType: PackType; packSize: string; batch: string; expiry: string; packs: string; freePacks: string;
+  /** #1033: sealed boxes and packs in one box; `packs` is then the loose ones. */
+  boxes: string; perBox: string;
   mrp: string; rate: string; discount: string; rack: string; supplier: string;
 };
 
 let seq = 0;
 const newKey = (): string => { seq += 1; return `r${String(Date.now())}-${String(seq)}`; };
 export const blankRow = (): GridRow => ({
-  key: newKey(), item: null, query: "", packType: "tablet_strip", packSize: "", batch: "", expiry: "", packs: "", freePacks: "",
+  key: newKey(), item: null, query: "", packType: "tablet_strip", packSize: "", batch: "", expiry: "", packs: "", freePacks: "", boxes: "", perBox: "",
   mrp: "", rate: "", discount: "", rack: "", supplier: "",
 });
 const isBlank = (r: GridRow): boolean =>
-  r.item === null && [r.query, r.packSize, r.batch, r.expiry, r.packs, r.freePacks, r.mrp, r.rate, r.discount, r.rack, r.supplier].every((v) => v.trim() === "");
+  r.item === null && [r.query, r.packSize, r.batch, r.expiry, r.boxes, r.perBox, r.packs, r.freePacks, r.mrp, r.rate, r.discount, r.rack, r.supplier].every((v) => v.trim() === "");
 /** Always exactly one blank row at the end — the next batch is typed into it. */
 function withTail(rows: GridRow[]): GridRow[] {
   const body = [...rows];
@@ -109,7 +111,26 @@ function toWire(r: GridRow): WireGridRow {
   return {
     itemId: r.item!.itemId, batch: r.batch.trim(), expiry: r.expiry.trim(), mrpPerPack: r.mrp.trim(), packSize: r.packSize.trim(), packs: r.packs.trim(),
     freePacks: r.freePacks.trim(), ratePerPack: r.rate.trim(), discountPct: r.discount.trim(), packType: r.packType, rack: r.rack.trim(), supplier: r.supplier.trim(),
+    boxes: r.boxes.trim(), packsPerBox: r.perBox.trim(),
   };
+}
+
+/** What a pack and a unit are called on the row's total, by pack type. */
+const PACK_WORDS = { pack: "pack", unit: "unit" };
+const UNIT_WORDS: Partial<Record<PackType, { pack: string; unit: string }>> = {
+  tablet_strip: { pack: "strip", unit: "tablet" }, capsule_strip: { pack: "strip", unit: "capsule" },
+};
+const wholeCell = (v: string): number | null => (v.trim() === "" ? 0 : /^\d+$/.test(v.trim()) ? Number(v.trim()) : null);
+/**
+ * #1033 — the row's total before the server sees it: boxes × per box + loose packs, and the units in them.
+ * Null until there is something to count or while a cell is not a whole number; the server judges the rest.
+ */
+export function rowCount(r: Pick<GridRow, "boxes" | "perBox" | "packs" | "packSize">): { packs: number; units: number } | null {
+  const boxes = wholeCell(r.boxes), perBox = wholeCell(r.perBox), loose = wholeCell(r.packs), size = wholeCell(r.packSize);
+  if (boxes === null || perBox === null || loose === null || size === null || size < 1) return null;
+  if (boxes > 0 && perBox < 1) return null;
+  const packs = boxes * perBox + loose;
+  return packs > 0 ? { packs, units: packs * size } : null;
 }
 
 const rupees = (paise: number): string => `₹${(paise / 100).toFixed(2)}`;
@@ -285,13 +306,13 @@ export function StockEntryView(): React.ReactElement {
         <table>
           <colgroup>
             <col className="c-brand" /><col className="c-pack" /><col className="c-n" /><col className="c-batch" /><col className="c-exp" />
-            <col className="c-n" /><col className="c-n" /><col className="c-money" /><col className="c-money" /><col className="c-n" />
+            <col className="c-n" /><col className="c-n" /><col className="c-n" /><col className="c-n" /><col className="c-money" /><col className="c-money" /><col className="c-n" />
             <col className="c-cost" /><col className="c-gst" /><col className="c-rack" /><col className="c-sup" /><col className="c-x" />
           </colgroup>
           <thead>
             <tr>
               <th>{t("stockEntry.col.brand")}</th><th>{t("stockEntry.col.packType")}</th><th>{t("stockEntry.col.packSize")}</th>
-              <th>{t("stockEntry.col.batch")}</th><th>{t("stockEntry.col.expiry")}</th><th>{t("stockEntry.col.packs")}</th>
+              <th>{t("stockEntry.col.batch")}</th><th>{t("stockEntry.col.expiry")}</th><th>{t("stockEntry.col.boxes")}</th><th>{t("stockEntry.col.perBox")}</th><th>{t("stockEntry.col.packs")}</th>
               <th>{t("stockEntry.col.free")}</th><th>{t("stockEntry.col.mrp")}</th><th>{t("stockEntry.col.rate")}</th>
               <th>{t("stockEntry.col.discount")}</th><th>{t("stockEntry.col.cost")}</th><th>{t("stockEntry.col.gst")}</th>
               <th>{t("stockEntry.col.rack")}</th><th>{t("stockEntry.col.supplier")}</th><th><span className="sr-only">{t("stockEntry.remove")}</span></th>
@@ -372,6 +393,11 @@ function RowView({ row, index, last, reasons, near, mayCreate, mayPutOnSale, onC
 }): React.ReactElement {
   const { t } = useTranslation();
   const econ = rowEconomics(row);
+  const count = rowCount(row);
+  const words = UNIT_WORDS[row.packType] ?? PACK_WORDS;
+  const total = count === null ? null : t("stockEntry.total", {
+    packs: t(`stockEntry.n.${words.pack}`, { count: count.packs }), units: t(`stockEntry.n.${words.unit}`, { count: count.units }),
+  });
   const cell = (col: string): { "data-cell": string; "data-col": string } => ({ "data-cell": `${String(index)}:${col}`, "data-col": col });
   const input = (col: keyof GridRow, label: string, extra: React.InputHTMLAttributes<HTMLInputElement> = {}): React.ReactElement => (
     <input
@@ -405,7 +431,12 @@ function RowView({ row, index, last, reasons, near, mayCreate, mayPutOnSale, onC
         <td data-label={t("stockEntry.col.packSize")}>{input("packSize", t("stockEntry.col.packSize"), { inputMode: "numeric", placeholder: "10" })}</td>
         <td data-label={t("stockEntry.col.batch")}>{input("batch", t("stockEntry.col.batch"), { autoCapitalize: "characters" })}</td>
         <td data-label={t("stockEntry.col.expiry")}>{input("expiry", t("stockEntry.col.expiry"), { placeholder: "MM/YY", inputMode: "numeric" })}</td>
-        <td data-label={t("stockEntry.col.packs")}>{input("packs", t("stockEntry.col.packs"), { inputMode: "numeric" })}</td>
+        <td data-label={t("stockEntry.col.boxes")}>{input("boxes", t("stockEntry.col.boxes"), { inputMode: "numeric", placeholder: "0" })}</td>
+        <td data-label={t("stockEntry.col.perBox")}>{input("perBox", t("stockEntry.col.perBox"), { inputMode: "numeric" })}</td>
+        <td data-label={t("stockEntry.col.packs")}>
+          {input("packs", t("stockEntry.col.packs"), { inputMode: "numeric" })}
+          {total !== null && <span className="se-total" data-testid={`se-total-${String(index)}`}>{total}</span>}
+        </td>
         <td data-label={t("stockEntry.col.free")}>{input("freePacks", t("stockEntry.col.free"), { inputMode: "numeric", placeholder: "0" })}</td>
         <td data-label={t("stockEntry.col.mrp")}>{input("mrp", t("stockEntry.col.mrp"), { inputMode: "decimal", placeholder: "0.00" })}</td>
         <td data-label={t("stockEntry.col.rate")}>{input("rate", t("stockEntry.col.rate"), { inputMode: "decimal", placeholder: "0.00" })}</td>

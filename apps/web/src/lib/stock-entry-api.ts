@@ -27,6 +27,7 @@ export type WireStockItem = {
 export type WireGridRow = {
   itemId: string; batch: string; expiry: string; mrpPerPack: string; packSize: string; packs: string;
   freePacks?: string; ratePerPack?: string; discountPct?: string; packType?: string; rack?: string; supplier?: string;
+  boxes?: string; packsPerBox?: string;
 };
 
 export type WireStockCheck = WireOpeningCheck & {

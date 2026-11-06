@@ -30,6 +30,7 @@ import type { Db, Tx } from "../../kernel/db/client";
  *   mrp_per_pack           rupees, as printed, e.g. 35.50.
  *   pack_size              tablets in a strip, or 1 for a bottle/tube.
  *   packs                  whole packs on the shelf (open a loose strip as its tablets with pack_size 1).
+ *                          With `boxes`, these are the LOOSE packs beside the sealed boxes.
  *   rack                   where it sits; replaces the starter list's suggestion.
  *   supplier_name          optional: an ACTIVE vendor's name or code. Blank → the "OPENING STOCK" vendor.
  *   purchase_rate_per_pack optional: rupees paid per pack. Blank → cost 0 (counted and reported).
@@ -66,6 +67,10 @@ import type { Db, Tx } from "../../kernel/db/client";
  *   pack_type              optional: tablet_strip, capsule_strip, bottle, vial, ampoule, tube, pouch,
  *                          sachet, box, other. Names a NEW pack unit (`box10`); blank is a strip.
  *   free_packs             optional: packs the supplier gave free. Received as a FREE-GOODS line at cost 0.
+ *   boxes                  optional (#1033): sealed boxes on the shelf. Needs `packs_per_box`.
+ *   packs_per_box          optional (#1033): strips (or bottles, tubes) in one box.
+ *                          Total packs = boxes × packs_per_box + packs, received as ONE line like a `packs` value.
+ *                          MRP, rate and free goods stay per pack; no "box" unit is added to the item master.
  *   trade_discount_pct     optional: lowers the COST only — cost/unit = rate × (1 − d/100) ÷ pack size,
  *                          rounded down to the paisa. The sale price stays the MRP.
  *
@@ -83,7 +88,7 @@ import type { Db, Tx } from "../../kernel/db/client";
 export const OPENING_VENDOR_CODE = "OPENING-STOCK";
 const COLUMNS = [
   "brand", "batch", "expiry", "mrp_per_pack", "pack_size", "packs", "rack", "supplier_name", "purchase_rate_per_pack",
-  "pack_type", "free_packs", "trade_discount_pct",
+  "pack_type", "free_packs", "trade_discount_pct", "boxes", "packs_per_box",
 ] as const;
 const REQUIRED = ["brand", "batch", "expiry", "mrp_per_pack", "pack_size", "packs"] as const;
 /** A hospital shelf is ~350 items × a few batches. Past this, split the sheet — the GRN takes 200 lines. */
@@ -247,6 +252,8 @@ export async function planOpeningStock(db: Db, file: CsvFile, fileText: string, 
 export type OpeningGridRow = {
   itemId: string; batch: string; expiry: string; mrpPerPack: string; packSize: string; packs: string;
   freePacks?: string; ratePerPack?: string; discountPct?: string; packType?: string; rack?: string; supplier?: string;
+  /** #1033: sealed boxes, and packs in one box; `packs` is then the loose ones. */
+  boxes?: string; packsPerBox?: string;
 };
 
 /** THE GRID DOOR — the picked item and the typed cells, turned into the sheet's row and judged the same way. */
@@ -261,6 +268,7 @@ export async function planOpeningGrid(db: Db, rows: readonly OpeningGridRow[], n
       brand: "", batch: r.batch, expiry: r.expiry, mrp_per_pack: r.mrpPerPack, pack_size: r.packSize, packs: r.packs,
       free_packs: r.freePacks ?? "", purchase_rate_per_pack: r.ratePerPack ?? "", trade_discount_pct: r.discountPct ?? "",
       pack_type: r.packType ?? "", rack: r.rack ?? "", supplier_name: r.supplier ?? "",
+      boxes: r.boxes ?? "", packs_per_box: r.packsPerBox ?? "",
     },
   }));
   // The same grid sent twice is the same challan, so it captures once — the sheet's promise, kept by the grid.
@@ -341,10 +349,20 @@ export async function planOpeningRows(db: Db, input: readonly OpeningInputRow[],
     const free = wholeOf(c.free_packs, 0, 0);
     if (free === null) row.reasons.push(`free_packs must be a whole number, got "${c.free_packs ?? ""}"`);
     else row.freePacks = free;
-    // A row may be all free goods; otherwise at least one pack was counted.
-    const packs = wholeOf(c.packs, row.freePacks > 0 ? 0 : 1, row.freePacks > 0 ? 0 : null);
+    // #1033: sealed boxes count as boxes × packs_per_box; `packs` is then the loose ones beside them.
+    const boxes = wholeOf(c.boxes, 0, 0);
+    if (boxes === null) row.reasons.push(`boxes must be a whole number, got "${c.boxes ?? ""}"`);
+    let boxed = 0;
+    if (boxes !== null && boxes > 0) {
+      const perBox = wholeOf(c.packs_per_box, 1, null);
+      if (perBox === null) row.reasons.push(`packs_per_box must be a whole number ≥ 1 when boxes is filled, got "${c.packs_per_box ?? ""}"`);
+      else boxed = boxes * perBox;
+    }
+    // A row may be all free goods or all boxes; otherwise at least one pack was counted.
+    const loose = row.freePacks > 0 || (boxes ?? 0) > 0;
+    const packs = wholeOf(c.packs, loose ? 0 : 1, loose ? 0 : null);
     if (packs === null) row.reasons.push(`packs must be a whole number ≥ 1, got "${c.packs ?? ""}"`);
-    else row.packs = packs;
+    else row.packs = packs + boxed;
     const packType = packTypeOf(c.pack_type ?? "");
     if (packType === undefined) row.reasons.push(`pack_type must be one of ${PACK_TYPES.join(", ")}, got "${c.pack_type ?? ""}"`);
     const discount = discountToBps(c.trade_discount_pct ?? "");

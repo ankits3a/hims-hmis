@@ -15,7 +15,9 @@ Whoever captures deliveries (`materials.grn.capture`) types the shelf in, one ro
 | Per pack | units in one pack — 15 tablets in a strip, `1` for a bottle | `15` |
 | Batch | as printed | `DOBS4521` |
 | Expiry | month/year as printed | `08/27` |
-| Packs | whole packs counted | `12` |
+| Boxes | optional — sealed boxes on the shelf; needs **Per box** | `1` |
+| Per box | optional — packs in one box (strips, bottles, tubes) | `10` |
+| Packs | whole packs counted — the **loose** ones when Boxes is filled | `2` |
 | Free | optional — packs the supplier gave free; received as a free-goods line at cost ₹0 | `1` |
 | MRP ₹/pack | as printed on the pack | `33.60` |
 | Rate ₹/pack | optional — what the hospital paid per pack; blank is valued at ₹0 | `24.00` |
@@ -71,7 +73,10 @@ it on sale (`pharmacy.sale_items.manage`).
 Under the grid, **Upload a sheet (CSV) instead**. Start from `docs/runbooks/pharmacy-opening-stock-template.csv`
 (open it in Excel or LibreOffice and save it as CSV again). Columns: `brand`, `batch`, `expiry`,
 `mrp_per_pack`, `pack_size`, `packs`, `rack`, `supplier_name`, `purchase_rate_per_pack`, and optionally
-`pack_type`, `free_packs`, `trade_discount_pct` — the same cells as the grid. **Check** judges every row by §2
+`pack_type`, `free_packs`, `trade_discount_pct`, `boxes`, `packs_per_box` — the same cells as the grid.
+With `boxes` filled, the row receives `boxes` × `packs_per_box` + `packs` packs as one line (example: 1 box of
+10 strips and 2 loose strips of 15 = 12 strips = 180 tablets). MRP and rate stay per pack. A row with `boxes` but
+no `packs_per_box` refuses the sheet. **Check** judges every row by §2
 and writes nothing; **Capture as GRNs** books one GRN per supplier for the pharmacist's QC, exactly as the grid.
 
 ## 3. From the command line (order of the day)

@@ -23,6 +23,7 @@ const gridBody = z.object({
   rows: z.array(z.object({
     itemId: idSchema, batch: cell, expiry: cell, mrpPerPack: cell, packSize: cell, packs: cell,
     freePacks: cell.optional(), ratePerPack: cell.optional(), discountPct: cell.optional(), packType: cell.optional(),
+    boxes: cell.optional(), packsPerBox: cell.optional(),
     rack: z.string().max(200).optional(), supplier: z.string().max(200).optional(),
   })).min(1).max(2000),
 });
