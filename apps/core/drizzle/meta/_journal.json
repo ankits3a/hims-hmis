@@ -1576,6 +1576,13 @@
       "when": 1793701481065,
       "tag": "0225_opd_vitals_move_print_slip",
       "breakpoints": true
+    },
+    {
+      "idx": 225,
+      "version": "7",
+      "when": 1793961713879,
+      "tag": "0226_lab_widal_titre_range",
+      "breakpoints": true
     }
   ]
 }

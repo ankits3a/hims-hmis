@@ -91,8 +91,8 @@ function refRange(low: string | null, high: string | null, text: string | null):
 }
 
 /** The flag WORD a clinician reads — never a bare letter (`lab-report-print.tsx`'s rule). */
-const FLAG_WORD: Record<string, string> = { L: "Low", H: "High", LL: "Critically low", HH: "Critically high", N: "Normal" };
-const FLAG_CLASS: Record<string, string> = { L: "ab", H: "ab", LL: "cr", HH: "cr", N: "ok" };
+const FLAG_WORD: Record<string, string> = { L: "Low", H: "High", LL: "Critically low", HH: "Critically high", N: "Normal", A: "Abnormal" };
+const FLAG_CLASS: Record<string, string> = { L: "ab", H: "ab", LL: "cr", HH: "cr", N: "ok", A: "ab" };
 
 /**
  * The PRINTED antibiotic table: Antibiotic | Result | MIC (µg/mL), the result as a word with its

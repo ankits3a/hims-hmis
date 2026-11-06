@@ -22,7 +22,7 @@ export type QuickRange = {
   analyteId: string; low: string | null; high: string | null; text: string | null;
   criticalLow: string | null; criticalHigh: string | null; note: string | null;
 };
-export type QuickFlag = "L" | "H" | "LL" | "HH" | "N" | null;
+export type QuickFlag = "L" | "H" | "LL" | "HH" | "N" | "A" | null;
 export type QuickLine = {
   analyteId: string; code: string; nameEn: string; unit: string | null;
   value: string; low: string | null; high: string | null; refText: string | null; flag: QuickFlag;
@@ -114,7 +114,7 @@ export function refText(r: { low: string | null; high: string | null; text: stri
   return r.text ?? "";
 }
 
-const FLAG_WORD: Record<string, string> = { L: "low", H: "high", LL: "CRITICALLY LOW", HH: "CRITICALLY HIGH" };
+const FLAG_WORD: Record<string, string> = { L: "low", H: "high", LL: "CRITICALLY LOW", HH: "CRITICALLY HIGH", A: "abnormal" };
 
 /** The web's proposed summary, word for word (it prints in English): abnormal values first, then one line for the rest. */
 export function draftSummary(lines: readonly QuickLine[]): string {
