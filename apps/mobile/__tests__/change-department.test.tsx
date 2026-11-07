@@ -27,7 +27,8 @@ describe("phone bay — change department (spec #1031)", () => {
     const api = stubApi(false);
     const onMoved = jest.fn();
     await wrap(<ChangeDoctorSheet api={api} encounterId="e1" canMoveDepartment onDone={jest.fn()} onMoved={onMoved} onClose={jest.fn()} />);
-    await fireEvent.press(await screen.findByTestId("change-doctor-department-med"));
+    await fireEvent.press(await screen.findByTestId("change-doctor-department-change"));
+    await fireEvent.press(screen.getByTestId("change-doctor-department-med"));
     await fireEvent.press(await screen.findByTestId("change-doctor-doctor-dm"));
     await fireEvent.press(screen.getByTestId("change-doctor-reason-patientAsked"));
     await fireEvent.press(screen.getByTestId("change-doctor-consent"));
@@ -50,5 +51,27 @@ describe("phone bay — change department (spec #1031)", () => {
     await fireEvent.press(screen.getByTestId("change-doctor-confirm"));
     await waitFor(() => { expect(onDone).toHaveBeenCalledWith("Dr Two"); });
     expect(api.moveDepartment).not.toHaveBeenCalled();
+  });
+
+  it("numbered steps tick as they are done, and the sheet names the next missing step", async () => {
+    const api = stubApi(false);
+    await wrap(<ChangeDoctorSheet api={api} encounterId="e1" canMoveDepartment onDone={jest.fn()} onClose={jest.fn()} />);
+    await fireEvent.press(await screen.findByTestId("change-doctor-department-change"));
+    await fireEvent.press(screen.getByTestId("change-doctor-department-med"));
+    expect(await screen.findByTestId("change-doctor-step-doctor")).toHaveTextContent(/^2Doctor · General Medicine$/);
+    expect(screen.getByTestId("change-doctor-department-chosen")).toHaveTextContent("General Medicine");
+    expect(screen.queryByTestId("change-doctor-department-ortho")).toBeNull();
+    expect(screen.getByTestId("change-doctor-next")).toHaveTextContent("Next: pick a doctor");
+    await fireEvent.press(await screen.findByTestId("change-doctor-doctor-dm"));
+    expect(screen.getByTestId("change-doctor-step-doctor")).toHaveTextContent(/^✓Doctor/);
+    expect(screen.getByTestId("change-doctor-next")).toHaveTextContent("Next: pick a reason");
+    await fireEvent.press(screen.getByTestId("change-doctor-reason-other"));
+    expect(screen.getByTestId("change-doctor-next")).toHaveTextContent("Next: tick Patient agreed");
+    expect(screen.getByTestId("change-doctor-consent")).toHaveTextContent(/Patient agreed to this change/);
+    expect(screen.getByTestId("change-doctor-consent").props.accessibilityState).toEqual({ checked: false });
+    await fireEvent.press(screen.getByTestId("change-doctor-consent"));
+    expect(screen.getByTestId("change-doctor-consent").props.accessibilityState).toEqual({ checked: true });
+    expect(screen.queryByTestId("change-doctor-next")).toBeNull();
+    expect(screen.getByTestId("change-doctor-confirm")).toBeEnabled();
   });
 });

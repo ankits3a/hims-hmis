@@ -37,7 +37,14 @@ export function ChangeDoctorSheet({ api, encounterId, onDone, onMoved, onClose, 
   const [departmentId, setDepartmentId] = useState<string | null>(null);
   const [moved, setMoved] = useState<WireDepartmentMove | null>(null);
   const [printed, setPrinted] = useState(false);
+  const [deptOpen, setDeptOpen] = useState(false);
   const otherDept = canMoveDepartment && departmentId !== null && current !== null && departmentId !== current;
+  const chosenDept = departmentId ?? current;
+  const chosenName = departments.find((d) => d.id === chosenDept)?.name ?? null;
+  // Numbered steps: Department (when the seat may move one), Doctor, Reason, Patient agreed.
+  const first = canMoveDepartment && departments.length > 0 ? 1 : 0;
+  const step = { dept: first, doctor: first + 1, reason: first + 2, consent: first + 3 };
+  const missing = doctorId === null ? "doctor" : reason === null ? "reason" : !consented ? "consent" : null;
   const failed = (e: unknown): string => (e instanceof ApiError ? refusalText(e.body, e.code) : t("home.cover.failed"));
 
   useEffect(() => {
@@ -119,53 +126,61 @@ export function ChangeDoctorSheet({ api, encounterId, onDone, onMoved, onClose, 
             <Text style={s.title} numberOfLines={1}>{t(canMoveDepartment ? "changeDoctor.titleDept" : "changeDoctor.title")}</Text>
             <Text style={s.hint}>{t(otherDept ? "changeDoctor.hintDept" : "changeDoctor.hint")}</Text>
             {canMoveDepartment && departments.length > 0 && (
-              <>
-                <Text style={s.label}>{t("changeDoctor.department")}</Text>
-                <View style={s.chips}>
-                  {departments.map((d) => {
-                    const on = (departmentId ?? current) === d.id;
-                    return (
-                      <Pressable
-                        key={d.id} testID={`change-doctor-department-${d.id}`} accessibilityRole="button" accessibilityState={{ selected: on }}
-                        onPress={() => setDepartmentId(d.id)} style={[s.chip, on && s.chipOn]}
-                      >
-                        <Text style={[s.chipText, on && { color: "#ffffff" }]}>{d.name}</Text>
-                      </Pressable>
-                    );
-                  })}
+              <View style={s.section}>
+                <StepHead n={step.dept} done label={t("changeDoctor.department")} />
+                {deptOpen ? (
+                  <View style={s.chips}>
+                    {departments.map((d) => (
+                      <Chip key={d.id} testID={`change-doctor-department-${d.id}`} on={chosenDept === d.id} label={d.name} onPress={() => { setDepartmentId(d.id); setDeptOpen(false); }} />
+                    ))}
+                  </View>
+                ) : (
+                  <View style={s.deptRow}>
+                    <Text testID="change-doctor-department-chosen" style={s.deptName} numberOfLines={1}>{chosenName ?? ""}</Text>
+                    <Pressable testID="change-doctor-department-change" accessibilityRole="button" onPress={() => setDeptOpen(true)} style={s.deptChange}>
+                      <Text style={s.deptChangeText} numberOfLines={1}>{t("changeDoctor.changeDept")}</Text>
+                    </Pressable>
+                  </View>
+                )}
+              </View>
+            )}
+            <View style={[s.section, step.dept === 0 && s.sectionFirst]}>
+              <StepHead
+                n={step.doctor} done={doctorId !== null} testID="change-doctor-step-doctor"
+                label={canMoveDepartment && chosenName !== null ? `${t("changeDoctor.doctorLabel")} · ${chosenName}` : t("changeDoctor.doctorLabel")}
+              />
+              {doctors !== null && doctors.length === 0 && error === null && (
+                <Note tone="warn" testID="change-doctor-none">{t(otherDept ? "changeDoctor.noneDept" : "changeDoctor.none")}</Note>
+              )}
+              <View style={s.chips}>
+                {(doctors ?? []).map((d) => (
+                  <Chip key={d.id} testID={`change-doctor-doctor-${d.id}`} on={doctorId === d.id} label={d.displayName} onPress={() => setDoctorId(d.id)} />
+                ))}
+              </View>
+            </View>
+            <View style={s.section}>
+              <StepHead n={step.reason} done={reason !== null} testID="change-doctor-step-reason" label={t("changeDoctor.reasonLabel")} />
+              <View style={s.chips}>
+                {REASONS.map((r) => (
+                  <Chip key={r} testID={`change-doctor-reason-${r}`} on={reason === r} label={t(`changeDoctor.reason.${r}`)} onPress={() => setReason(r)} />
+                ))}
+              </View>
+            </View>
+            <View style={s.section}>
+              <StepHead n={step.consent} done={consented} testID="change-doctor-step-consent" label={t("changeDoctor.consent")} />
+              <Pressable
+                testID="change-doctor-consent" accessibilityRole="checkbox" accessibilityState={{ checked: consented }}
+                onPress={() => setConsented((c) => !c)} style={[s.consent, consented && s.consentOn]}
+              >
+                <View style={[s.box, consented && s.boxOn]}>
+                  {consented && <Text style={s.boxTick}>✓</Text>}
                 </View>
-              </>
-            )}
-            {doctors !== null && doctors.length === 0 && error === null && (
-              <Note tone="warn" testID="change-doctor-none">{t(otherDept ? "changeDoctor.noneDept" : "changeDoctor.none")}</Note>
-            )}
-            <View style={s.chips}>
-              {(doctors ?? []).map((d) => (
-                <Pressable
-                  key={d.id} testID={`change-doctor-doctor-${d.id}`} accessibilityRole="button" accessibilityState={{ selected: doctorId === d.id }}
-                  onPress={() => setDoctorId(d.id)} style={[s.chip, doctorId === d.id && s.chipOn]}
-                >
-                  <Text style={[s.chipText, doctorId === d.id && { color: "#ffffff" }]}>{d.displayName}</Text>
-                </Pressable>
-              ))}
+                <Text style={s.consentText}>{t("changeDoctor.consentBox")}</Text>
+              </Pressable>
             </View>
-            <Text style={s.label}>{t("changeDoctor.reasonLabel")}</Text>
-            <View style={s.chips}>
-              {REASONS.map((r) => (
-                <Pressable
-                  key={r} testID={`change-doctor-reason-${r}`} accessibilityRole="button" accessibilityState={{ selected: reason === r }}
-                  onPress={() => setReason(r)} style={[s.chip, reason === r && s.chipOn]}
-                >
-                  <Text style={[s.chipText, reason === r && { color: "#ffffff" }]}>{t(`changeDoctor.reason.${r}`)}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <Pressable
-              testID="change-doctor-consent" accessibilityRole="checkbox" accessibilityState={{ checked: consented }}
-              onPress={() => setConsented((c) => !c)} style={[s.chip, s.consent, consented && s.chipOn]}
-            >
-              <Text style={[s.chipText, consented && { color: "#ffffff" }]}>{consented ? "✓ " : ""}{t("changeDoctor.consent")}</Text>
-            </Pressable>
+            {missing !== null && (
+              <Text testID="change-doctor-next" style={s.next} numberOfLines={1}>{t(`changeDoctor.next.${missing}`)}</Text>
+            )}
             {error !== null && <Note tone="bad" testID="change-doctor-error">{error}</Note>}
             <Button testID="change-doctor-confirm" label={t(otherDept ? "changeDoctor.confirmDept" : "changeDoctor.confirm")} busy={busy} disabled={doctorId === null || reason === null || !consented || busy} onPress={() => { void confirm(); }} />
             <Button testID="change-doctor-cancel" kind="secondary" label={t("changeDoctor.cancel")} disabled={busy} onPress={onClose} />
@@ -173,6 +188,26 @@ export function ChangeDoctorSheet({ api, encounterId, onDone, onMoved, onClose, 
         </ScrollView>
       </View>
     </KeyboardModal>
+  );
+}
+
+/** A step heading: a numbered dot that turns into a green tick once the step is done. */
+function StepHead({ n, label, done, testID }: { n: number; label: string; done: boolean; testID?: string }) {
+  return (
+    <View style={s.stepHead} testID={testID} accessibilityState={{ checked: done }}>
+      <View style={[s.dot, done && s.dotOn]}>
+        <Text style={[s.dotText, done && { color: "#ffffff" }]}>{done ? "✓" : String(n)}</Text>
+      </View>
+      <Text style={s.stepLabel} numberOfLines={1}>{label}</Text>
+    </View>
+  );
+}
+
+function Chip({ on, label, onPress, testID }: { on: boolean; label: string; onPress: () => void; testID: string }) {
+  return (
+    <Pressable testID={testID} accessibilityRole="button" accessibilityState={{ selected: on }} onPress={onPress} style={[s.chip, on && s.chipOn]}>
+      <Text style={[s.chipText, on && { color: "#ffffff" }]}>{on ? "✓ " : ""}{label}</Text>
+    </Pressable>
   );
 }
 
@@ -197,6 +232,23 @@ const s = StyleSheet.create({
   chip: { minHeight: TOUCH, justifyContent: "center", paddingHorizontal: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: color.line, backgroundColor: color.card },
   chipOn: { backgroundColor: color.green, borderColor: color.green },
   chipText: { fontSize: 14, fontWeight: "600", color: color.ink },
-  consent: { alignSelf: "stretch" },
+  section: { gap: space.sm, paddingTop: space.md, borderTopWidth: 1, borderTopColor: color.line },
+  sectionFirst: { marginTop: space.xs },
+  deptRow: { minHeight: TOUCH, flexDirection: "row", alignItems: "center", gap: space.sm, paddingLeft: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: color.line, backgroundColor: color.wash },
+  deptName: { flex: 1, fontSize: 15, fontWeight: "700", color: color.ink },
+  deptChange: { minHeight: TOUCH, justifyContent: "center", paddingHorizontal: space.md },
+  deptChangeText: { fontSize: 14.5, fontWeight: "700", color: color.green },
+  stepHead: { flexDirection: "row", alignItems: "center", gap: space.sm },
+  dot: { width: 24, height: 24, borderRadius: 12, alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: color.dim, backgroundColor: color.card },
+  dotOn: { backgroundColor: color.green, borderColor: color.green },
+  dotText: { fontSize: 13, fontWeight: "700", color: color.ink },
+  stepLabel: { flexShrink: 1, fontSize: 15, fontWeight: "700", color: color.ink },
+  consent: { minHeight: TOUCH + 4, flexDirection: "row", alignItems: "center", gap: space.md, paddingHorizontal: space.md, borderRadius: radius.md, borderWidth: 1.5, borderColor: color.goldLine, backgroundColor: color.goldSoft },
+  consentOn: { borderColor: color.green, backgroundColor: color.greenSoft },
+  box: { width: 26, height: 26, borderRadius: 6, borderWidth: 2, borderColor: color.dim, backgroundColor: color.card, alignItems: "center", justifyContent: "center" },
+  boxOn: { backgroundColor: color.green, borderColor: color.green },
+  boxTick: { fontSize: 16, lineHeight: 18, fontWeight: "800", color: "#ffffff" },
+  consentText: { flexShrink: 1, fontSize: 15, fontWeight: "600", color: color.ink },
+  next: { marginTop: space.sm, fontSize: 14, fontWeight: "700", color: color.gold, textAlign: "center" },
   token: { fontSize: 56, lineHeight: 64, fontWeight: "800", color: color.ink },
 });

@@ -2405,12 +2405,20 @@
       "wrongDoctor": "Wrong doctor picked",
       "other": "Other"
     },
+    "doctorLabel": "Doctor",
     "consent": "Patient agreed",
+    "consentBox": "Patient agreed to this change",
+    "next": {
+      "doctor": "Next: pick a doctor",
+      "reason": "Next: pick a reason",
+      "consent": "Next: tick Patient agreed"
+    },
     "confirm": "Change doctor",
     "cancel": "Cancel",
     "done": "Moved to {{doctor}}.",
     "actionDept": "Change doctor / dept",
     "titleDept": "Change doctor or department",
+    "changeDept": "Change",
     "department": "Department",
     "hintDept": "New visit and token there. Same fee only.",
     "noneDept": "No doctor sitting there today.",
