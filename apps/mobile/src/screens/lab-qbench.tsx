@@ -79,7 +79,7 @@ export function QuickBench() {
   );
 }
 
-const FLAG_FG: Record<string, string> = { L: "#8a5a10", H: "#8a5a10", LL: color.red, HH: color.red };
+const FLAG_FG: Record<string, string> = { L: "#8a5a10", H: "#8a5a10", LL: color.red, HH: color.red, A: "#8a5a10" };
 const AMBER = "#8a5a10";
 
 /** #934 — "Slips waiting (n)": scans that still need a patient, newest first. */

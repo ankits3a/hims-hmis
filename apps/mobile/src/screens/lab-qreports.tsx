@@ -71,7 +71,7 @@ export function QuickReports() {
   );
 }
 
-const FLAG_FG: Record<string, string> = { L: "#8a5a10", H: "#8a5a10", LL: color.red, HH: color.red };
+const FLAG_FG: Record<string, string> = { L: "#8a5a10", H: "#8a5a10", LL: color.red, HH: color.red, A: "#8a5a10" };
 
 function ReportView({ id, api, t, mayEnter, mayPrint, printedBy, onDone }: {
   id: string; api: QuickLabApi; t: T; mayEnter: boolean; mayPrint: boolean; printedBy: string | null; onDone: (said: string) => void;

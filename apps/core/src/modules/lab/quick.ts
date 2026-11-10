@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
-import { cleanAstRows, astProblemText, isCultureCode, isNoGrowth, newId } from "@hmis/contracts";
+import { cleanAstRows, astProblemText, isCultureCode, isNoGrowth, isWidalAnalyte, newId, parseTitre, titreFlag } from "@hmis/contracts";
 import {
   labAnalytes, labOrderableAnalytes, labOrderables, labQuickReports, labReferenceRanges, orderItems, orders, patients, users,
 } from "../../kernel/db/schema";
@@ -54,7 +54,8 @@ export type QuickRange = {
   criticalLow: string | null; criticalHigh: string | null; note: string | null;
 };
 
-export type QuickFlag = "L" | "H" | "LL" | "HH" | "N" | null;
+/** `A` (#1036) — abnormal without a direction: a Widal titre above its "Up to 1:80". */
+export type QuickFlag = "L" | "H" | "LL" | "HH" | "N" | "A" | null;
 
 /** One line as stored: what was typed, and the range and flag the server resolved at save. */
 export type QuickLine = {
@@ -129,7 +130,7 @@ export type QuickEntryErrorCode =
   | "patient_not_found" | "test_not_found" | "no_tests" | "blood_not_collected"
   | "analyte_not_found" | "value_not_numeric" | "value_absurd" | "report_not_found"
   | "order_not_found" | "already_collected" | "not_completed" | "already_handed_over" | "not_permitted"
-  | "ast_invalid" | "slip_checks_open";
+  | "ast_invalid" | "slip_checks_open" | "value_not_titre";
 
 export class QuickEntryError extends Error {
   constructor(readonly code: QuickEntryErrorCode, message: string, readonly detail?: unknown) {
@@ -384,10 +385,22 @@ export async function saveQuickResults(
     const a = analyteById.get(l.analyteId);
     if (!a) throw new QuickEntryError("analyte_not_found", `no analyte ${l.analyteId}`);
     if (a.resultType === "formula") continue;
-    const value = l.value.trim();
+    let value = l.value.trim();
     if (value === "") continue;
+    /**
+     * #1036 — a Widal antigen takes a titre or "Negative", normalised (`1;80` → `1:80`), and anything else is
+     * refused: "positive" on a Widal line is the ambiguity that let a 1:160 read as negative.
+     */
+    if (isWidalAnalyte(a.code)) {
+      const t = parseTitre(value);
+      if (!t.ok) {
+        throw new QuickEntryError("value_not_titre",
+          `${a.nameEn}: “${value}” is not a titre — type it as 1:80, 1:160 … or Negative`, { analyteId: a.id });
+      }
+      value = t.value;
+    }
     const range = resolveRange(a, rangeRows.filter((r) => r.analyteId === a.id), subject, now);
-    let flag: QuickFlag = null;
+    let flag: QuickFlag = titreFlag(value, range.text);
     if (a.resultType === "numeric" || a.resultType === "formula") {
       const n = Number(value);
       if (!Number.isFinite(n)) throw new QuickEntryError("value_not_numeric", `${a.nameEn}: “${value}” is not a number`, { analyteId: a.id });
