@@ -23295,7 +23295,7 @@ export const LAB_CATALOGUE_STANDARD_DATA: LabCatalogueFixture = {
       "ageMaxDays": 36500,
       "low": null,
       "high": null,
-      "text": "Negative",
+      "text": "Not applicable",
       "criticalLow": null,
       "criticalHigh": null,
       "source": "kit insert",
