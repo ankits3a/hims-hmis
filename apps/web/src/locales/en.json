@@ -4379,7 +4379,7 @@
       "addParam": "Add a parameter",
       "addParamHint": "Add another parameter (optional)",
       "widalGrid": "Widal titre grid",
-      "widalGridHint": "Tick each dilution that shows agglutination. The highest ticked dilution is the titre; no tick is Negative.",
+      "widalGridHint": "Tick each dilution that shows agglutination. The highest ticked dilution is the titre; no tick is Non-Reactive.",
       "summary": "Report summary (edit freely)",
       "regenerate": "Rewrite from values",
       "save": "Save report",

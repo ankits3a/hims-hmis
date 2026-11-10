@@ -6,9 +6,9 @@ import { parseTitre, WIDAL_DILUTIONS } from "../../../../../packages/contracts/s
  * the way the lab's old software laid it out (1:640 is left out: "we hardly use 1:640").
  *
  * The technologist ticks each dilution that shows agglutination; the HIGHEST ticked dilution is the antigen's
- * titre, and no tick is "Negative". The grid keeps no state of its own: agglutination is monotonic, so the titre
+ * titre, and no tick is "Non-Reactive". The grid keeps no state of its own: agglutination is monotonic, so the titre
  * IS the grid — a saved report reopens with every dilution up to its titre ticked. Ticking a dilution sets the
- * titre there; unticking one sets it to the dilution below (or Negative). The titre box above stays typeable.
+ * titre there; unticking one sets it to the dilution below (or Non-Reactive). The titre box above stays typeable.
  */
 export type WidalGridRow = { code: string; nameEn: string; value: string };
 
@@ -20,7 +20,7 @@ export function WidalGrid({ rows, onChange }: {
   const toggle = (row: WidalGridRow, dilution: number, ticked: boolean): void => {
     if (!ticked) { onChange(row.code, `1:${dilution}`); return; }
     const below = WIDAL_DILUTIONS.filter((d) => d < dilution);
-    onChange(row.code, below.length === 0 ? "Negative" : `1:${below[below.length - 1]!}`);
+    onChange(row.code, below.length === 0 ? "Non-Reactive" : `1:${below[below.length - 1]!}`);
   };
   return (
     <section className="rounded border p-3" aria-label={t("lab.quick.widalGrid")} data-testid="widal-grid">

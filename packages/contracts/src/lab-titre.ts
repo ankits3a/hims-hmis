@@ -4,7 +4,11 @@
  * A positive Widal read as negative: S. typhi O and H carried the range "Negative", and a titre was never flagged
  * because only numbers are. A titre is an agglutination endpoint written `1:<dilution>`; the range book holds the
  * cut-off as text, "Up to 1:80", so the curator's sentence and the flag cannot drift apart. Above the limit is `A`
- * (abnormal), at or below it, and "Negative", is `N`.
+ * (abnormal), at or below it, and "Non-Reactive", is `N`.
+ *
+ * Owner 2026-11-10 (reference report): the cut-off differs by antigen. S. typhi O and S. Paratyphi AH and BH are
+ * significant at 1:80 or more ("Up to 1:40"), S. typhi H at 1:160 or more ("Up to 1:80"). No agglutination is
+ * written "Non-Reactive".
  *
  * No zod and no imports: the phone app reads this file too and installs only its own packages.
  */
@@ -20,12 +24,12 @@ export const isWidalAnalyte = (code: string): boolean => (WIDAL_ANALYTE_CODES as
 export type ParsedTitre = { ok: true; value: string; dilution: number } | { ok: false };
 
 /**
- * `1:160`, `1 : 160`, `1;160` (the typo prod already holds) → `1:160`; `negative`, `NEG`, `nil` → `Negative`
- * (dilution 0). Anything else is not a titre.
+ * `1:160`, `1 : 160`, `1;160` (the typo prod already holds) → `1:160`; `non-reactive`, `NR`, `negative`, `NEG`,
+ * `nil` → `Non-Reactive` (dilution 0). Anything else is not a titre.
  */
 export function parseTitre(raw: string): ParsedTitre {
   const s = raw.trim();
-  if (/^(negative|neg|nil)$/i.test(s)) return { ok: true, value: "Negative", dilution: 0 };
+  if (/^(non[\s-]?reactive|nr|negative|neg|nil)$/i.test(s)) return { ok: true, value: "Non-Reactive", dilution: 0 };
   const m = /^1\s*[:;]\s*(\d{1,5})$/.exec(s);
   if (m === null) return { ok: false };
   const dilution = Number(m[1]);
@@ -47,3 +51,8 @@ export function titreFlag(value: string, rangeText: string | null | undefined): 
   if (!t.ok) return null;
   return t.dilution > limit ? "A" : "N";
 }
+
+/** The note printed under a Widal table (owner 2026-11-10: the short form of the reference report's notes). */
+export const WIDAL_REPORT_NOTE = "Significant titres: S. typhi O 1:80 or more, S. typhi H 1:160 or more, S. Paratyphi AH and BH "
+  + "1:80 or more. Rising titres in paired samples taken 7–10 days apart are more significant than a single test. "
+  + "Confirm by blood culture before starting antibiotics.";

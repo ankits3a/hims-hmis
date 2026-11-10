@@ -20,6 +20,10 @@ const PATIENT = "01PATIENT0000000000000001";
 const WIDAL = "01SERVICE0000000000000001";
 const NOW = new Date("2026-11-06T06:00:00Z");
 const CODES = ["WIDAL_TO", "WIDAL_TH", "WIDAL_AH", "WIDAL_BH"] as const;
+/** Owner 2026-11-10 (reference report): O, AH and BH significant at 1:80 or more, H at 1:160 or more. */
+const LIMIT: Record<(typeof CODES)[number], string> = {
+  WIDAL_TO: "Up to 1:40", WIDAL_TH: "Up to 1:80", WIDAL_AH: "Up to 1:40", WIDAL_BH: "Up to 1:40",
+};
 
 describe("#1036 — Widal titres (server)", () => {
   let db: Db;
@@ -50,7 +54,7 @@ describe("#1036 — Widal titres (server)", () => {
     })));
     await db.insert(labOrderableAnalytes).values(CODES.map((code, i) => ({ serviceId: WIDAL, analyteId: ids[code]!, position: i + 1 })));
     await db.insert(labReferenceRanges).values(CODES.map((code) => ({
-      id: newId(), analyteId: ids[code]!, sex: "any" as const, ageMinDays: 0, ageMaxDays: 36500, text: "Up to 1:80",
+      id: newId(), analyteId: ids[code]!, sex: "any" as const, ageMinDays: 0, ageMaxDays: 36500, text: LIMIT[code],
       source: "test", effectiveFrom: "2026-01-01", createdBy: ACTOR.id,
     })));
   });
@@ -64,33 +68,33 @@ describe("#1036 — Widal titres (server)", () => {
     }, NOW));
   };
 
-  it("spec #1036 D1: the standard catalogue and the production correction give every Widal antigen 'Up to 1:80'", () => {
+  it("spec #1036 D1: the standard catalogue and the production correction give each Widal antigen its reference cut-off", () => {
     const ranges = LAB_CATALOGUE_STANDARD_DATA.referenceRanges.filter((r) => (CODES as readonly string[]).includes(r.analyteCode));
     expect(ranges.map((r) => [r.analyteCode, r.text, r.low, r.high]).sort()).toEqual(
-      [...CODES].sort().map((c) => [c, "Up to 1:80", null, null]),
+      [...CODES].sort().map((c) => [c, LIMIT[c], null, null]),
     );
     const dir = join(__dirname, "../../../../drizzle");
     const sql = readdirSync(dir).filter((f) => f.endsWith(".sql")).map((f) => readFileSync(join(dir, f), "utf8"))
-      .find((s) => s.includes("Up to 1:80"));
+      .find((s) => s.includes("Up to 1:40"));
     expect(sql).toBeDefined();
     for (const c of CODES) expect(sql).toContain(`'${c}'`);
   });
 
-  it("spec #1036 D2: 1:160 and 1:320 are flagged A; 1:20 to 1:80 and Negative are flagged N", async () => {
-    const high = await save({ WIDAL_TO: "1:160", WIDAL_TH: "1:320", WIDAL_AH: "1:80", WIDAL_BH: "Negative" });
+  it("spec #1036 D2: O, AH and BH are flagged A from 1:80, H from 1:160; lower titres and Non-Reactive are N", async () => {
+    const high = await save({ WIDAL_TO: "1:80", WIDAL_TH: "1:160", WIDAL_AH: "1:80", WIDAL_BH: "Non-Reactive" });
     expect(high.lines.map((l) => [l.code, l.value, l.flag, l.refText])).toEqual([
-      ["WIDAL_TO", "1:160", "A", "Up to 1:80"],
-      ["WIDAL_TH", "1:320", "A", "Up to 1:80"],
-      ["WIDAL_AH", "1:80", "N", "Up to 1:80"],
-      ["WIDAL_BH", "Negative", "N", "Up to 1:80"],
+      ["WIDAL_TO", "1:80", "A", "Up to 1:40"],
+      ["WIDAL_TH", "1:160", "A", "Up to 1:80"],
+      ["WIDAL_AH", "1:80", "A", "Up to 1:40"],
+      ["WIDAL_BH", "Non-Reactive", "N", "Up to 1:40"],
     ]);
-    const low = await save({ WIDAL_TO: "1:20", WIDAL_TH: "1:40" });
-    expect(low.lines.map((l) => l.flag)).toEqual(["N", "N"]);
+    const low = await save({ WIDAL_TO: "1:40", WIDAL_TH: "1:80", WIDAL_BH: "1:20" });
+    expect(low.lines.map((l) => l.flag)).toEqual(["N", "N", "N"]);
   });
 
-  it("spec #1036 D5: a Widal value that is not a titre or Negative is refused; '1;80' and 'NEGATIVE' are normalised", async () => {
-    const ok = await save({ WIDAL_TO: "1;80", WIDAL_TH: "NEGATIVE" });
-    expect(ok.lines.map((l) => [l.value, l.flag])).toEqual([["1:80", "N"], ["Negative", "N"]]);
+  it("spec #1036 D5: a Widal value that is not a titre or Non-Reactive is refused; '1;80', 'NEGATIVE' and 'nr' are normalised", async () => {
+    const ok = await save({ WIDAL_TO: "1;80", WIDAL_TH: "NEGATIVE", WIDAL_AH: "nr" });
+    expect(ok.lines.map((l) => [l.value, l.flag])).toEqual([["1:80", "A"], ["Non-Reactive", "N"], ["Non-Reactive", "N"]]);
     const refused = await save({ WIDAL_TO: "positive" }).catch((e: unknown) => e);
     expect(refused).toBeInstanceOf(QuickEntryError);
     expect((refused as QuickEntryError).code).toBe("value_not_titre");

@@ -9,6 +9,16 @@ Status: APPROVED 2026-11-06 by the owner and BUILT 2026-11-06 as specified (web 
 flag but has no grid yet). Written after the owner asked for the fix and the grid ("do the needful … we hardly use
 1:640 … the titre grid would help us in case of manual testing").
 
+## Change 2026-11-10 (owner, from a reference Widal report)
+
+- Cut-offs per antigen: S. typhi O, S. Paratyphi AH and BH are significant at **1:80 or more** (range "Up to 1:40");
+  S. typhi H at **1:160 or more** (range "Up to 1:80"). Data migration 0227 corrects the live rows.
+- No agglutination is written **"Non-Reactive"** (typed `negative`, `neg`, `nil`, `nr` and `non-reactive` all save as it).
+- The printed report carries a short note under a Widal table: the cut-offs, paired samples 7–10 days apart, and
+  confirm by blood culture before antibiotics.
+
+The sections below describe the first version (2026-11-06).
+
 ## What
 
 A positive Widal read as negative because S. typhi O and H carried the normal range "Negative" and a titre is never

@@ -1,5 +1,6 @@
 import { AST_RESULT_WORD, astName } from "./lab-ast";
 import type { AstBlock } from "./lab-ast";
+import { isWidalAnalyte, WIDAL_REPORT_NOTE } from "./lab-titre";
 
 /**
  * OWNER 2026-10-12 — THE PRINTED QUICK LAB REPORT, ONE TEMPLATE FOR THE DESK AND THE PHONE
@@ -8,7 +9,7 @@ import type { AstBlock } from "./lab-ast";
  * expo-print and shares the PDF (`apps/mobile/src/lab/report-pdf.ts`). Moved here so the two cannot
  * drift: a test proves the desk's page and the phone's are byte for byte the same.
  *
- * **IMPORTS NOTHING BUT `lab-ast.ts`.** The web and the phone app import this file by relative path,
+ * **IMPORTS NOTHING BUT `lab-ast.ts` AND `lab-titre.ts`.** The web and the phone app import this file by relative path,
  * and the phone's CI installs only its own packages: no zod, no DOM, no React, no i18n library. The
  * report prints in English on both (the desk never translated it).
  *
@@ -18,7 +19,7 @@ import type { AstBlock } from "./lab-ast";
  */
 
 export type ReportHtmlLine = {
-  analyteId: string; nameEn: string; unit: string | null;
+  analyteId: string; code?: string; nameEn: string; unit: string | null;
   value: string; low: string | null; high: string | null; refText: string | null; flag: string | null;
 };
 /** What the template reads of a quick report — the server's `GET /lab/quick/ready/:id`, on both clients. */
@@ -163,7 +164,7 @@ export function quickReportHtml(report: ReportHtmlInput, o: ReportHtmlOptions): 
     return `<section class="test">
       <div class="testhead"><h2>${e(g.title ?? "Other parameters")}</h2>${i === 0 ? `<div class="legend">Colours indicate: <span class="lg ab">Abnormal</span><span class="lg cr">Critical</span><span class="lg ok">Normal</span></div>` : ""}</div>
       <table class="res"><thead><tr><th class="name">Test name</th><th>${e(istDateOnly(reportedIso))}</th><th>Unit</th><th>Flag</th><th>Biological ref. interval</th></tr></thead>
-      <tbody>${rows}</tbody></table></section>${astOf(g.title)}`;
+      <tbody>${rows}</tbody></table>${filled.some((l) => isWidalAnalyte(l.code ?? "")) ? `<p class="tnote">${e(WIDAL_REPORT_NOTE)}</p>` : ""}</section>${astOf(g.title)}`;
   }).filter((x) => x !== "");
   sections.push(...(report.ast ?? []).filter((b) => !astPrinted.has(b.serviceId))
     .map((b) => astPrintHtml(b, testName(b.serviceId))).filter((x) => x !== ""));
@@ -249,6 +250,7 @@ table.res td.c { text-align: center; }
 table.res td.val { text-align: center; font-weight: 700; width: 16%; }
 td.val.ok { background: #e3f4ea; } td.val.ab { background: #fbe1e4; } td.val.cr { background: #f3b6be; }
 td.flag.ok { color: #1a7f4b; font-weight: 700; } td.flag.ab { color: #c8102e; font-weight: 700; } td.flag.cr { color: #7a0016; font-weight: 800; text-transform: uppercase; font-size: 11px; }
+.tnote { margin: 3px 0 0; font-size: 10.5px; line-height: 1.3; }
 .remarks { border: 1px solid #bbb; padding: 4px 8px; margin: 6px 0; white-space: pre-wrap; break-inside: avoid; }
 .remarks b { display: block; margin-bottom: 2px; }
 .notes { margin: 6px 0 0; break-inside: avoid; font-size: 10.5px; line-height: 1.3; } .notes b { font-size: 11.5px; } .notes ol { margin: 2px 0 0; padding-left: 20px; }

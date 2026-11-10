@@ -1583,6 +1583,13 @@
       "when": 1793961713879,
       "tag": "0226_lab_widal_titre_range",
       "breakpoints": true
+    },
+    {
+      "idx": 226,
+      "version": "7",
+      "when": 1794300100000,
+      "tag": "0227_lab_widal_reference_cutoffs",
+      "breakpoints": true
     }
   ]
 }
