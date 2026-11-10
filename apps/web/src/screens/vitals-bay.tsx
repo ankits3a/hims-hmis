@@ -905,7 +905,8 @@ export function VitalsBay(): React.ReactElement {
     Spec #1031 — a holder of the department move gets the Department picker on the same sheet.
   */
   const canMoveDepartment = can("opd.vitals.change_department");
-  const changeDoctorAction = rowInHand !== null && !rowInHand.vitalsDone && (can("opd.vitals.change_doctor") || canMoveDepartment) ? (
+  /** Owner 2026-11-10: offered after vitals too; the server still refuses once the consultation has begun. */
+  const changeDoctorAction = rowInHand !== null && (can("opd.vitals.change_doctor") || canMoveDepartment) ? (
     <div style={{ marginTop: 12 }}>
       <ChangeDoctorAction
         key={`${deskGen}:${rowInHand.encounterId}:doctor`} encounterId={rowInHand.encounterId} canMoveDepartment={canMoveDepartment}
