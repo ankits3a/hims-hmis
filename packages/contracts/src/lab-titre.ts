@@ -6,9 +6,10 @@
  * cut-off as text, "Up to 1:80", so the curator's sentence and the flag cannot drift apart. Above the limit is `A`
  * (abnormal), at or below it, and "Non-Reactive", is `N`.
  *
- * Owner 2026-11-10 (reference report): the cut-off differs by antigen. S. typhi O and S. Paratyphi AH and BH are
- * significant at 1:80 or more ("Up to 1:40"), S. typhi H at 1:160 or more ("Up to 1:80"). No agglutination is
- * written "Non-Reactive".
+ * Owner 2026-11-10 (two reference reports, tube and slide): the cut-off differs by antigen, so it lives here
+ * (`WIDAL_SIGNIFICANT_FROM`) and no longer in the range text. S. typhi O and S. Paratyphi AH and BH are significant
+ * at 1:80 or more, S. typhi H at 1:160 or more. Every antigen's range reads "Non-Reactive", no agglutination is
+ * written "Non-Reactive", and the printed report writes a titre as "Reactive up to titre 1:320".
  *
  * No zod and no imports: the phone app reads this file too and installs only its own packages.
  */
@@ -37,19 +38,23 @@ export function parseTitre(raw: string): ParsedTitre {
   return { ok: true, value: `1:${dilution}`, dilution };
 }
 
-/** "Up to 1:80" → 80. A range written any other way is not a titre range, and nothing is flagged by it. */
-export function titreLimit(rangeText: string | null | undefined): number | null {
-  const m = /^up to 1:(\d+)$/i.exec((rangeText ?? "").trim());
-  return m === null ? null : Number(m[1]);
-}
+/** The lowest significant titre of each antigen (owner 2026-11-10, from the reference reports). */
+export const WIDAL_SIGNIFICANT_FROM: Record<(typeof WIDAL_ANALYTE_CODES)[number], number> = {
+  WIDAL_TO: 80, WIDAL_TH: 160, WIDAL_AH: 80, WIDAL_BH: 80,
+};
 
-/** The flag for a titre against a titre range; null when either is not one. */
-export function titreFlag(value: string, rangeText: string | null | undefined): "A" | "N" | null {
-  const limit = titreLimit(rangeText);
-  if (limit === null) return null;
+/** `A` at or above the antigen's significant titre, `N` below it and for Non-Reactive; null when not a Widal titre. */
+export function widalFlag(code: string, value: string): "A" | "N" | null {
+  const from = (WIDAL_SIGNIFICANT_FROM as Record<string, number | undefined>)[code];
+  if (from === undefined) return null;
   const t = parseTitre(value);
   if (!t.ok) return null;
-  return t.dilution > limit ? "A" : "N";
+  return t.dilution >= from ? "A" : "N";
+}
+
+/** How the printed report writes a Widal value: `1:320` → "Reactive up to titre 1:320"; anything else as saved. */
+export function widalPrintValue(value: string): string {
+  return /^1:\d+$/.test(value) ? `Reactive up to titre ${value}` : value;
 }
 
 /** The note printed under a Widal table (owner 2026-11-10: the short form of the reference report's notes). */

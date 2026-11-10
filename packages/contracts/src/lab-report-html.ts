@@ -1,6 +1,6 @@
 import { AST_RESULT_WORD, astName } from "./lab-ast";
 import type { AstBlock } from "./lab-ast";
-import { isWidalAnalyte, WIDAL_REPORT_NOTE } from "./lab-titre";
+import { isWidalAnalyte, WIDAL_REPORT_NOTE, widalPrintValue } from "./lab-titre";
 
 /**
  * OWNER 2026-10-12 — THE PRINTED QUICK LAB REPORT, ONE TEMPLATE FOR THE DESK AND THE PHONE
@@ -158,7 +158,7 @@ export function quickReportHtml(report: ReportHtmlInput, o: ReportHtmlOptions): 
     const rows = filled.map((l) => {
       const cls = l.flag === null ? "" : FLAG_CLASS[l.flag] ?? "";
       const word = l.flag === null ? "—" : FLAG_WORD[l.flag] ?? "—";
-      return `<tr><td class="name">${e(l.nameEn)}</td><td class="val ${cls}">${e(l.value)}</td><td class="c">${e(l.unit ?? "—")}</td>`
+      return `<tr><td class="name">${e(l.nameEn)}</td><td class="val ${cls}">${e(isWidalAnalyte(l.code ?? "") ? widalPrintValue(l.value) : l.value)}</td><td class="c">${e(l.unit ?? "—")}</td>`
         + `<td class="c flag ${cls}">${e(word)}</td><td class="c">${e(refRange(l.low, l.high, l.refText) || "—")}</td></tr>`;
     }).join("");
     return `<section class="test">
