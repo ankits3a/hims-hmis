@@ -9,6 +9,21 @@ Status: APPROVED 2026-11-06 by the owner and BUILT 2026-11-06 as specified (web 
 flag but has no grid yet). Written after the owner asked for the fix and the grid ("do the needful … we hardly use
 1:640 … the titre grid would help us in case of manual testing").
 
+## Change 2026-11-10 (owner, from two reference Widal reports: tube and slide agglutination)
+
+- Cut-offs per antigen: S. typhi O, S. Paratyphi AH and BH are significant at **1:80 or more**; S. typhi H at
+  **1:160 or more**. The cut-offs live in `packages/contracts/src/lab-titre.ts` (`WIDAL_SIGNIFICANT_FROM`), and
+  every antigen's reference interval reads **"Non-Reactive"**. Data migration 0227 corrects the live rows.
+- The printed report writes a titre as **"Reactive up to titre 1:320"**; the bench and the saved value stay `1:320`.
+- **The titre grid is removed** (owner: "skip titre and let it use the way sample documents shows"). The technologist
+  types "Non-Reactive" or the titre; "Reactive up to titre 1:320" is also accepted. A bare "Reactive" is refused,
+  because the report must name the titre. D4 below no longer applies.
+- No agglutination is written **"Non-Reactive"** (typed `negative`, `neg`, `nil`, `nr` and `non-reactive` all save as it).
+- The printed report carries a short note under a Widal table: the cut-offs, paired samples 7–10 days apart, and
+  confirm by blood culture before antibiotics.
+
+The sections below describe the first version (2026-11-06).
+
 ## What
 
 A positive Widal read as negative because S. typhi O and H carried the normal range "Negative" and a titre is never

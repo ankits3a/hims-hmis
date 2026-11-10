@@ -1,6 +1,5 @@
 import { api } from "./api";
 import type { WireRecentLabOrder } from "./lab-api";
-import { titreFlag } from "../../../../packages/contracts/src/lab-titre";
 import type { AstBlock, AstDraftRow } from "../../../../packages/contracts/src/lab-ast";
 
 /**
@@ -21,7 +20,7 @@ export type QuickRange = {
   analyteId: string; low: string | null; high: string | null; text: string | null;
   criticalLow: string | null; criticalHigh: string | null; note: string | null;
 };
-/** `A` (#1036) — abnormal without a direction: a Widal titre above its "Up to 1:80". */
+/** `A` (#1036) — abnormal without a direction: a Widal titre at or above its significant titre. */
 export type QuickFlag = "L" | "H" | "LL" | "HH" | "N" | "A" | null;
 export type QuickLine = {
   analyteId: string; code: string; nameEn: string; unit: string | null;
@@ -79,8 +78,6 @@ const num = (s: string | null): number | null => (s === null ? null : Number(s))
 
 export function previewFlag(value: string, r: QuickRange | undefined): QuickFlag {
   if (r === undefined || value.trim() === "") return null;
-  const titre = titreFlag(value, r.text);
-  if (titre !== null) return titre;
   const v = Number(value);
   if (!Number.isFinite(v)) return null;
   const cl = num(r.criticalLow), ch = num(r.criticalHigh);

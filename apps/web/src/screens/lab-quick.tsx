@@ -12,7 +12,6 @@ import { evaluateFormula, formulaInputCodes } from "../../../../packages/contrac
 import { astForSave, astProblemText, cleanAstRows, isCultureCode, isNoGrowth } from "../../../../packages/contracts/src/lab-ast";
 import type { AstDraftRow } from "../../../../packages/contracts/src/lab-ast";
 import { AstEditor } from "./lab-ast";
-import { WidalGrid } from "../components/lab/widal-grid";
 import { isWidalAnalyte } from "../../../../packages/contracts/src/lab-titre";
 import { Button } from "@/components/ui/button";
 import { LabStation, sexAge } from "./lab-seat";
@@ -369,11 +368,6 @@ export function ResultsPanel({ id, catalogue, onBack, mode = "quick", onComplete
    * line hides them and saves none; blank rows never leave the screen; the server applies the same rule.
    */
   const cultureTests = (report.data?.tests ?? []).filter((x) => isCultureCode(x.code));
-  /** #1036 — the Widal antigens on this report, in form order, for the titre grid. */
-  const widalRows = list.flatMap((r) => {
-    const a = analyteById.get(r.analyteId);
-    return a !== undefined && isWidalAnalyte(a.code) ? [{ code: a.code, nameEn: a.nameEn, value: r.value, analyteId: r.analyteId }] : [];
-  });
   const organism = list.find((x) => analyteById.get(x.analyteId)?.code === "MIC_ORG")?.value ?? "";
   const sterile = isNoGrowth(organism);
   const astPayload = astForSave(cultureTests, ast, organism);
@@ -474,6 +468,7 @@ export function ResultsPanel({ id, catalogue, onBack, mode = "quick", onComplete
                         aria-label={a?.nameEn ?? row.analyteId}
                         data-flag={flag ?? ""}
                         inputMode={a?.resultType === "numeric" ? "decimal" : "text"}
+                        {...(a !== undefined && isWidalAnalyte(a.code) ? { placeholder: t("lab.quick.widalHint") } : {})}
                         {...(isCalc(row.analyteId) ? {
                           readOnly: true, tabIndex: -1, title: t("lab.quick.calculated"), "data-calculated": "true",
                         } : {})}
@@ -484,7 +479,7 @@ export function ResultsPanel({ id, catalogue, onBack, mode = "quick", onComplete
                           setSaved(null);
                         }}
                         onKeyDown={(e) => onValueKey(e, i)}
-                        className={`${isCalc(row.analyteId) && !Number.isFinite(Number(valueOf(row))) ? "w-56 text-xs" : "w-24 text-base"} rounded border px-2 py-1 ${isCalc(row.analyteId) ? "bg-muted" : "bg-background"} ${flag ? FLAG_CLASS[flag] ?? "" : ""}`}
+                        className={`${isCalc(row.analyteId) && !Number.isFinite(Number(valueOf(row))) ? "w-56 text-xs" : a !== undefined && isWidalAnalyte(a.code) ? "w-40 text-base" : "w-24 text-base"} rounded border px-2 py-1 ${isCalc(row.analyteId) ? "bg-muted" : "bg-background"} ${flag ? FLAG_CLASS[flag] ?? "" : ""}`}
                       />
                       {isCalc(row.analyteId) && <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{t("lab.quick.calcTag")}</span>}
                       {flag !== null && flag !== "N" && (
@@ -501,14 +496,6 @@ export function ResultsPanel({ id, catalogue, onBack, mode = "quick", onComplete
           ))}
         </table>
       </section>
-
-      {widalRows.length > 0 && (
-        <WidalGrid rows={widalRows} onChange={(code, value) => {
-          const id = widalRows.find((w) => w.code === code)?.analyteId;
-          setRows((prev) => (prev ?? []).map((x) => (x.analyteId === id ? { ...x, value } : x)));
-          setSaved(null);
-        }} />
-      )}
 
       {cultureTests.map((x) => (sterile ? (
         <p key={x.serviceId} className="text-sm text-muted-foreground" data-testid={`ast-nogrowth-${x.code}`}>{t("lab.ast.noGrowth")}</p>
