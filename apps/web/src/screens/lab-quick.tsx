@@ -12,6 +12,7 @@ import { evaluateFormula, formulaInputCodes } from "../../../../packages/contrac
 import { astForSave, astProblemText, cleanAstRows, isCultureCode, isNoGrowth } from "../../../../packages/contracts/src/lab-ast";
 import type { AstDraftRow } from "../../../../packages/contracts/src/lab-ast";
 import { AstEditor } from "./lab-ast";
+import { WidalGrid } from "../components/lab/widal-grid";
 import { isWidalAnalyte } from "../../../../packages/contracts/src/lab-titre";
 import { wrongSex } from "../../../../packages/contracts/src/lab-sex";
 import { Button } from "@/components/ui/button";
@@ -371,6 +372,11 @@ export function ResultsPanel({ id, catalogue, onBack, mode = "quick", onComplete
    * line hides them and saves none; blank rows never leave the screen; the server applies the same rule.
    */
   const cultureTests = (report.data?.tests ?? []).filter((x) => isCultureCode(x.code));
+  /** #1036 — the Widal antigens on this report, in form order, for the titre grid. */
+  const widalRows = list.flatMap((r) => {
+    const a = analyteById.get(r.analyteId);
+    return a !== undefined && isWidalAnalyte(a.code) ? [{ code: a.code, nameEn: a.nameEn, value: r.value, analyteId: r.analyteId }] : [];
+  });
   const organism = list.find((x) => analyteById.get(x.analyteId)?.code === "MIC_ORG")?.value ?? "";
   const sterile = isNoGrowth(organism);
   const astPayload = astForSave(cultureTests, ast, organism);
@@ -499,6 +505,14 @@ export function ResultsPanel({ id, catalogue, onBack, mode = "quick", onComplete
           ))}
         </table>
       </section>
+
+      {widalRows.length > 0 && (
+        <WidalGrid rows={widalRows} onChange={(code, value) => {
+          const id = widalRows.find((w) => w.code === code)?.analyteId;
+          setRows((prev) => (prev ?? []).map((x) => (x.analyteId === id ? { ...x, value } : x)));
+          setSaved(null);
+        }} />
+      )}
 
       {cultureTests.map((x) => (sterile ? (
         <p key={x.serviceId} className="text-sm text-muted-foreground" data-testid={`ast-nogrowth-${x.code}`}>{t("lab.ast.noGrowth")}</p>

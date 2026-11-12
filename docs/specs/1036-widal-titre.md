@@ -17,7 +17,9 @@ flag but has no grid yet). Written after the owner asked for the fix and the gri
 - The printed report writes a titre as **"Reactive up to titre 1:320"**; the bench and the saved value stay `1:320`.
 - **The titre grid is removed** (owner: "skip titre and let it use the way sample documents shows"). The technologist
   types "Non-Reactive" or the titre; "Reactive up to titre 1:320" is also accepted. A bare "Reactive" is refused,
-  because the report must name the titre. D4 below no longer applies.
+  because the report must name the titre.
+- **The titre grid is restored** (owner, after the technician preferred it). It ticks to "Non-Reactive" or a titre as
+  in D4; the result box above it stays typeable. Cut-offs, wording and the report are as above.
 - No agglutination is written **"Non-Reactive"** (typed `negative`, `neg`, `nil`, `nr` and `non-reactive` all save as it).
 - The printed report carries a short note under a Widal table: the cut-offs, paired samples 7–10 days apart, and
   confirm by blood culture before antibiotics.

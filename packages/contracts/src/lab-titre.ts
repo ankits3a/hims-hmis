@@ -9,14 +9,17 @@
  * Owner 2026-11-10 (two reference reports, tube and slide): the cut-off differs by antigen, so it lives here
  * (`WIDAL_SIGNIFICANT_FROM`) and no longer in the range text. S. typhi O and S. Paratyphi AH and BH are significant
  * at 1:80 or more, S. typhi H at 1:160 or more. Every antigen's range reads "Non-Reactive", no agglutination is
- * written "Non-Reactive", and the printed report writes a titre as "Reactive up to titre 1:320". The titre grid is
- * gone (owner: "skip titre and let it use the way sample documents shows"); the technologist types the result.
+ * written "Non-Reactive", and the printed report writes a titre as "Reactive up to titre 1:320". The titre grid was
+ * removed on 2026-11-10 and restored the same week at the owner's request; the result box stays typeable.
  *
  * No zod and no imports: the phone app reads this file too and installs only its own packages.
  */
 
 /** The four antigens of the slide and tube Widal tests. Only these refuse a value that is not a titre. */
 export const WIDAL_ANALYTE_CODES = ["WIDAL_TO", "WIDAL_TH", "WIDAL_AH", "WIDAL_BH"] as const;
+
+/** The grid's dilutions. 1:640 is left out (owner: "we hardly use 1:640"); it can still be typed. */
+export const WIDAL_DILUTIONS = [20, 40, 80, 160, 320] as const;
 
 export const isWidalAnalyte = (code: string): boolean => (WIDAL_ANALYTE_CODES as readonly string[]).includes(code);
 
