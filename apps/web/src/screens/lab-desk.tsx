@@ -737,6 +737,7 @@ export function LabDesk({ mode = "desk" }: { mode?: "desk" | "counter" } = {}): 
             {/* ── which tests? — owner 2026-10-11: common tests as chips, then one search ── */}
             <TestChooser
               chosen={lines.map((l) => l.orderable.serviceId)}
+              patientSex={selected.patient.administrativeGender}
               autoFocus={selected.visit === null || lines.length === 0}
               onAdd={(o) => touchLines((prev) => (prev.some((x) => x.orderable.serviceId === o.serviceId)
                 ? prev
@@ -833,6 +834,7 @@ export function LabDesk({ mode = "desk" }: { mode?: "desk" | "counter" } = {}): 
             {/* ── which tests? — owner 2026-10-11: common tests as chips, then one search ── */}
             <TestChooser
               chosen={lines.map((l) => l.orderable.serviceId)}
+              patientSex={selected.patient.administrativeGender}
               autoFocus={selected.visit === null || lines.length === 0}
               onAdd={(o) => touchLines((prev) => (prev.some((x) => x.orderable.serviceId === o.serviceId)
                 ? prev

@@ -69,7 +69,8 @@ import { completeComplaint, fetchRegimen, recogniseComplaint, suggestSyndromes }
 import type { WireCard, WireIcd11, WireRegimen, WireSyndromeHit } from "../lib/cds-api";
 import { TabStrip } from "../components/desk-fields";
 import { CreditChip } from "../components/patient-credit";
-import { advisableTests } from "../lib/ordering-api";
+import { advisableTests, sexSpecificTests } from "../lib/ordering-api";
+import { wrongSex } from "../../../../packages/contracts/src/lab-sex";
 import { newSuggestionId, suggestedLineKey, tellIssuedLines } from "../lib/suggest-signals";
 import { DocumentRetake } from "../components/document-retake";
 
@@ -813,11 +814,14 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     queryFn: advisableTests,
     enabled: active !== null,
   });
+  /** Owner 2026-11-12 — a test for one sex only is not offered for a patient recorded as the other. */
+  const sexOnly = useQuery({ queryKey: ["ordering", "sex-specific-tests"], queryFn: sexSpecificTests, enabled: active !== null, retry: false });
   const serviceMatches = (services.data?.items ?? [])
     .filter((sv) => testQuery.trim().length >= 2
       && (sv.name.toLowerCase().includes(testQuery.trim().toLowerCase())
         || sv.code.toLowerCase().includes(testQuery.trim().toLowerCase())))
     .filter((sv) => !advisedTests.some((a) => a.serviceId === sv.serviceId))
+    .filter((sv) => !wrongSex(sexOnly.data?.find((x) => x.serviceId === sv.serviceId)?.forSex, patient.data?.patient.administrativeGender))
     .slice(0, 8);
 
   const encounter = visit.data?.encounter ?? null;

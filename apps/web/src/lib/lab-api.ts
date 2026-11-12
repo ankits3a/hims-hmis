@@ -57,6 +57,8 @@ export type WireOrderable = {
   serviceId: string; code: string; nameEn: string; nameHi: string | null;
   discipline: string; specimenType: string; container: string;
   consentRequired: boolean; sensitive: boolean; active: boolean;
+  /** Owner 2026-11-12 — set when the test is for one sex only. */
+  forSex?: "male" | "female";
 };
 
 export type WireDuplicateWarning = {
@@ -592,7 +594,7 @@ export function labErrorText(e: unknown): string {
 export type WireWalkInReadiness = { ready: boolean; problem: "no_lab_department" | "lab_department_inactive" | "no_pathologist" | null };
 export const labFeeState = (): Promise<{ labFree: boolean; walkIn?: WireWalkInReadiness }> => api("GET", "/lab/desk/fee-state");
 
-export type WireCommonOrderable = { serviceId: string; code: string; nameEn: string; container: string; specimenType: string };
+export type WireCommonOrderable = { serviceId: string; code: string; nameEn: string; container: string; specimenType: string; forSex?: "male" | "female" };
 export const commonOrderables = (): Promise<WireCommonOrderable[]> => api("GET", "/lab/desk/common");
 
 export type WireOrderableDetail = {

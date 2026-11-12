@@ -10,6 +10,8 @@ export type WireOrderable = {
   serviceId: string; code: string; nameEn: string; nameHi: string | null;
   discipline: string; specimenType: string; container: string;
   consentRequired: boolean; sensitive: boolean; active: boolean;
+  /** Owner 2026-11-12 — set when the test is for one sex only. */
+  forSex?: "male" | "female";
 };
 export type WireAdvisedLine = {
   serviceId: string; code: string; name: string;

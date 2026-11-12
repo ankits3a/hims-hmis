@@ -6,6 +6,7 @@ import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { listOutsideTests, OutsideTestError, saveOutsideTest } from "./outside";
 import { searchOrderableTests } from "./route";
 import { orderTests } from "./seam";
+import { sexSpecificTests } from "../lab";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { ModuleRegistry } from "../../kernel/modules/loader";
@@ -72,6 +73,13 @@ export class OrderingController {
   @RequirePermission("tariff.read", "hospital")
   async tests(@Query("q") q?: string): Promise<unknown> {
     return { items: await searchOrderableTests(this.db, (q ?? "").slice(0, 80)) };
+  }
+
+  /** Owner 2026-11-12 — the tests for one sex only, so every picker can hide them for the other (`lab-sex.ts`). */
+  @Get("sex-specific-tests")
+  @RequirePermission("tariff.read", "hospital")
+  async sexSpecific(): Promise<unknown> {
+    return { items: await sexSpecificTests(this.db) };
   }
 
   /** The seam for the IPD and Emergency screens: each test goes to its department; refusals come back under `skipped`. */

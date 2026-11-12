@@ -17,6 +17,7 @@ import { color, radius, space, TOUCH } from "../theme";
 import { Button, KeyboardScrollView, MONO, Note, ScanMark } from "../ui";
 import { refusalText } from "../vitals/api";
 import { Scanner } from "../vitals/scanner";
+import { wrongSex } from "../../../../packages/contracts/src/lab-sex";
 
 /**
  * THE QUICK COUNTER ON THE PHONE (owner 2026-10-12; the web's /lab/counter, `lab-desk.tsx` with
@@ -202,7 +203,7 @@ export function QuickCounter() {
           <>
             <TextInput testID="qn-test-search" value={testQ} onChangeText={setTestQ} placeholder={t("quickCounter.searchTests")} placeholderTextColor={color.faint}
               autoCapitalize="characters" autoCorrect={false} style={cs.input} />
-            {found.filter((o) => !lines.some((l) => l.serviceId === o.serviceId)).slice(0, 8).map((o) => (
+            {found.filter((o) => !lines.some((l) => l.serviceId === o.serviceId) && !wrongSex(o.forSex, selected?.patient.administrativeGender)).slice(0, 8).map((o) => (
               <Pressable key={o.serviceId} testID={`qn-add-${o.code}`} accessibilityRole="button" onPress={() => addLine(o)} style={({ pressed }) => [cs.found, pressed && { backgroundColor: color.wash }]}>
                 <Text style={{ fontSize: 14.5, color: color.ink }} numberOfLines={1}><Text style={{ fontFamily: MONO, fontWeight: "700", color: color.green }}>{o.code}</Text>  {o.nameEn}</Text>
               </Pressable>

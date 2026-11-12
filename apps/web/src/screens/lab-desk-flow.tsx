@@ -14,6 +14,7 @@ import { ReportPreview } from "./lab-qchain";
 import { printQuickReport } from "./lab-quick-reports";
 import { quickReadyReport } from "../lib/lab-quick-api";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { wrongSex } from "../../../../packages/contracts/src/lab-sex";
 import type { WireBookingHours, WireDeskFindHit, WireLabBooking, WireOrderable, WireWalkInReadiness } from "../lib/lab-api";
 
 /**
@@ -72,8 +73,10 @@ const asOrderable = (c: { serviceId: string; code: string; nameEn: string; conta
  * basket is drawn pressed and a second tap takes it out again, so the chips are the basket's
  * fastest editor.
  */
-export function TestChooser({ chosen, onAdd, onRemove, autoFocus }: {
+export function TestChooser({ chosen, onAdd, onRemove, autoFocus, patientSex = null }: {
   chosen: readonly string[];
+  /** Owner 2026-11-12 — a test for one sex only is hidden for a patient recorded as the other. */
+  patientSex?: string | null;
   onAdd: (o: WireOrderable) => void;
   onRemove: (serviceId: string) => void;
   autoFocus?: boolean;
@@ -85,14 +88,16 @@ export function TestChooser({ chosen, onAdd, onRemove, autoFocus }: {
   const common = useQuery({ queryKey: ["lab", "desk", "common"], queryFn: commonOrderables, staleTime: 5 * 60_000, retry: false });
   const found = useQuery({ queryKey: ["lab", "catalogue", debounced], queryFn: () => searchOrderables(debounced), enabled: debounced.length >= 2 });
   const isChosen = (id: string): boolean => chosen.includes(id);
+  const commonShown = (common.data ?? []).filter((c) => !wrongSex(c.forSex, patientSex));
+  const foundShown = found.data?.filter((o) => !wrongSex(o.forSex, patientSex));
 
   return (
     <div className="pp" style={{ ...PP_FONT, display: "flex", flexDirection: "column", gap: 10 }} data-testid="test-chooser">
-      {(common.data ?? []).length > 0 && (
+      {commonShown.length > 0 && (
         <div>
           <div className="tag" style={{ marginBottom: 6 }}>{t("lab.desk.flow.common")}</div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {(common.data ?? []).map((c) => (
+            {commonShown.map((c) => (
               <button key={c.serviceId} type="button"
                 className={isChosen(c.serviceId) ? "pill on" : "pill"}
                 style={{ height: 30, fontSize: 12, padding: "0 11px" }}
@@ -110,10 +115,10 @@ export function TestChooser({ chosen, onAdd, onRemove, autoFocus }: {
       <input className="in" style={{ height: 44 }} autoFocus={autoFocus}
         placeholder={t("lab.desk.flow.searchTests")} aria-label={t("lab.desk.search")}
         value={q} onChange={(e) => setQ(e.target.value)} />
-      {debounced.length >= 2 && found.data !== undefined && (
+      {debounced.length >= 2 && foundShown !== undefined && (
         <ul style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 260, overflowY: "auto" }}>
-          {found.data.length === 0 && <li style={{ fontSize: 12.5, color: "var(--dim)" }}>{t("lab.desk.flow.noTestFound", { q: debounced })}</li>}
-          {found.data.slice(0, 12).map((o) => (
+          {foundShown.length === 0 && <li style={{ fontSize: 12.5, color: "var(--dim)" }}>{t("lab.desk.flow.noTestFound", { q: debounced })}</li>}
+          {foundShown.slice(0, 12).map((o) => (
             <li key={o.serviceId} className="box" style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px" }}>
               <TubeDot container={o.container} />
               <span style={{ flex: 1, minWidth: 0 }}>
@@ -584,6 +589,7 @@ export function BookingPanel({ hit, serviceDate, onBooked, onClose }: {
         <div className="tag" style={{ marginBottom: 6 }}>3 · {t("lab.desk.flow.pickTests")}</div>
         <TestChooser
           chosen={tests.map((x) => x.serviceId)}
+          patientSex={hit.patient.administrativeGender}
           onAdd={(o) => setTests((p) => (p.some((x) => x.serviceId === o.serviceId) ? p : [...p, { serviceId: o.serviceId, code: o.code, nameEn: o.nameEn, container: o.container }]))}
           onRemove={(id) => setTests((p) => p.filter((x) => x.serviceId !== id))}
         />

@@ -16,7 +16,7 @@ export type QuickAnalyte = {
   decimals: number; absurdLow: string | null; absurdHigh: string | null;
   formula?: string | null; formulaGuard?: string | null;
 };
-export type QuickTest = { serviceId: string; code: string; nameEn: string; analyteIds: string[] };
+export type QuickTest = { serviceId: string; code: string; nameEn: string; analyteIds: string[]; forSex?: "male" | "female" };
 export type QuickCatalogue = { tests: QuickTest[]; analytes: QuickAnalyte[] };
 export type QuickRange = {
   analyteId: string; low: string | null; high: string | null; text: string | null;

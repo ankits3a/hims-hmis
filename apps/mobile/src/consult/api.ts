@@ -1,6 +1,7 @@
 import type { Call } from "../doctor/api";
 import type { ConsultTest, WireLastLine, WirePrecheck, WireSetBody } from "./rules";
 import type { HiddenItem } from "./signals";
+import type { SexSpecificTest } from "../../../../packages/contracts/src/lab-sex";
 
 /**
  * The routes the doctor's phone consultation uses. Everything that writes a note, checks a line,
@@ -69,6 +70,8 @@ export function consultApi(call: Call) {
     priceList: async () => (await call<{ items: WirePriceRow[] }>("GET", "/tariff/price-list")).items,
     /** Issue #609 — the test box searches the hospital's test list by code or name, from two letters (the server says nothing below two). */
     testSearch: async (q: string) => (await call<{ items: WireOrderableTest[] }>("GET", `/ordering/tests?q=${enc(q)}`)).items,
+    /** Owner 2026-11-12 — the tests for one sex only, hidden for a patient recorded as the other. */
+    sexSpecific: async () => (await call<{ items: SexSpecificTest[] }>("GET", "/ordering/sex-specific-tests")).items,
     advice: async () => (await call<{ items: WireAdviceTemplate[] }>("GET", "/opd/advice-templates")).items,
     lastPrescriptions: async (patientId: string) => (await call<{ items: { prescriptionId: string; encounterId: string; serviceDate: string; issuedAt: string; status: string; lines: WireLastLine[] }[] }>("GET", `/opd/patients/${enc(patientId)}/prescriptions`)).items,
 

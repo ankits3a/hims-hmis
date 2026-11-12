@@ -14,6 +14,7 @@ import type { AstDraftRow } from "../../../../packages/contracts/src/lab-ast";
 import { AstEditor } from "./lab-ast";
 import { WidalGrid } from "../components/lab/widal-grid";
 import { isWidalAnalyte } from "../../../../packages/contracts/src/lab-titre";
+import { wrongSex } from "../../../../packages/contracts/src/lab-sex";
 import { Button } from "@/components/ui/button";
 import { LabStation, sexAge } from "./lab-seat";
 import { printQuickReport, QuickLabReports } from "./lab-quick-reports";
@@ -187,8 +188,10 @@ function StartPanel({ catalogue, onStarted }: { catalogue: QuickCatalogue | unde
     const chosen = new Set(tests.map((x) => x.serviceId));
     return catalogue.tests
       .filter((x) => !chosen.has(x.serviceId) && (x.code.toLowerCase().includes(tq) || x.nameEn.toLowerCase().includes(tq)))
+      /** Owner 2026-11-12 — a test for one sex only is hidden for a patient recorded as the other. */
+      .filter((x) => !wrongSex(x.forSex, hit?.patient.administrativeGender))
       .slice(0, 8);
-  }, [tq, catalogue, tests]);
+  }, [tq, catalogue, tests, hit]);
 
   function addTest(x: { serviceId: string; code: string; nameEn: string }): void {
     setTests((prev) => (prev.some((p) => p.serviceId === x.serviceId) ? prev : [...prev, x]));

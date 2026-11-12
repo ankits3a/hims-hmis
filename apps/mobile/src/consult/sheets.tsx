@@ -16,6 +16,7 @@ import type { ConsultApi, WireSignal, WireAdviceTemplate, WireIcd10Hit, WireMedi
 import type { ConsultDraft, ConsultLine, DxSource, LineWarning } from "./rules";
 import { dxKeyOf } from "./rules";
 import { SUGGEST_DEFAULT, crossOff, notOffered } from "./signals";
+import { wrongSex, type SexSpecificTest } from "../../../../packages/contracts/src/lab-sex";
 import type { SuggestState } from "./signals";
 import type { VoiceRecorder } from "./recorder";
 
@@ -562,8 +563,10 @@ export function warningBody(w: LineWarning, t: T): string {
 
 // ——— 4 · Tests ———
 
-export function TestsDrawer({ api, draft, patch, onClose, suggest = SUGGEST_DEFAULT }: {
+export function TestsDrawer({ api, draft, patch, onClose, suggest = SUGGEST_DEFAULT, patientSex = null }: {
   api: ConsultApi; draft: ConsultDraft; patch: Patch; onClose: () => void;
+  /** Owner 2026-11-12 — a test for one sex only is hidden for a patient recorded as the other. */
+  patientSex?: string | null;
   /** The hospital's switch AND this doctor's own, with the three-crosses list. Off ⇒ no "often advised with this diagnosis"; search stays. */
   suggest?: SuggestState;
 }) {
@@ -583,8 +586,11 @@ export function TestsDrawer({ api, draft, patch, onClose, suggest = SUGGEST_DEFA
   const first = draft.diagnoses[0];
   /** The diagnosis these tests were offered FOR — what a tap or a cross is counted under. */
   const context = first === undefined ? null : dxKeyOf(first.icd10Code, first.text);
+  const [sexOnly, setSexOnly] = useState<SexSpecificTest[]>([]);
+  const fits = (serviceId: string): boolean => !wrongSex(sexOnly.find((x) => x.serviceId === serviceId)?.forSex, patientSex);
   useEffect(() => {
     api.priceList().then(setList).catch(() => setList([]));
+    api.sexSpecific().then(setSexOnly).catch(() => setSexOnly([]));
     if (suggest.on && draft.diagnoses.length > 0) api.testsFor(draft.diagnoses.map((d) => ({ text: d.text, icd10: d.icd10Code }))).then((items) => {
       setBefore(items);
       const shown = items.filter((x) => !notOffered(suggest, enc, "test", context, x.serviceId)).map((x) => x.serviceId);
@@ -592,7 +598,7 @@ export function TestsDrawer({ api, draft, patch, onClose, suggest = SUGGEST_DEFA
     }).catch(() => setBefore([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api]);
-  const before = offeredAll.filter((x) => !notOffered(suggest, enc, "test", context, x.serviceId));
+  const before = offeredAll.filter((x) => !notOffered(suggest, enc, "test", context, x.serviceId) && fits(x.serviceId));
   const told = (serviceId: string, rankShown: number, outcome: "accepted" | "dismissed"): void => {
     void api.signals({ suggestions: [{ kind: "test", source: "suggested", outcome, surface: "consult_phone", encounterId: enc, ...(context === null ? {} : { contextKey: context }), itemKey: serviceId, rankShown }] }).catch(() => undefined);
   };
@@ -600,7 +606,7 @@ export function TestsDrawer({ api, draft, patch, onClose, suggest = SUGGEST_DEFA
   const toggle = (x: { serviceId: string; code: string; name: string; pricePaise: number | null }): void =>
     patch((d) => (has(x.serviceId) ? { ...d, tests: d.tests.filter((y) => y.serviceId !== x.serviceId) } : d.tests.length >= MAX_TESTS ? d : { ...d, tests: [...d.tests, { serviceId: x.serviceId, code: x.code, name: x.name, pricePaise: x.pricePaise }] }));
   const needle = q.trim().toLowerCase();
-  const hits = needle.length < 2 ? [] : found.rows.slice(0, 12);
+  const hits = needle.length < 2 ? [] : found.rows.filter((r) => fits(r.serviceId)).slice(0, 12);
   /** DECIDED 2026-10-14: the quotation snapshot is the active list price; a test the tariff has not priced carries null — the slip prints "Rate at counter", never ₹0. */
   const priceOf = (serviceId: string): number | null => list?.find((r) => r.serviceId === serviceId)?.pricePaise ?? null;
   const none = needle.length >= 2 && !found.busy && found.error === null && found.rows.length === 0;

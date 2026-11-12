@@ -150,3 +150,4 @@ export type { ClinicianLabRow, PatientResultSince } from "./clinician-reads";
 // #934 — the photographed analyser slip: its controller, and the sweep the worker runs with the SLA sweep.
 export { LabSlipsController } from "./lab-slips.controller";
 export { LAB_SLIP_ACTOR, sweepLabSlips } from "./slips";
+export { sexSpecificTests } from "./test-sex";

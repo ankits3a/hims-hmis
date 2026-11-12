@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
-import { cleanAstRows, astProblemText, isCultureCode, isNoGrowth, isWidalAnalyte, newId, parseTitre, widalFlag } from "@hmis/contracts";
+import { cleanAstRows, astProblemText, isCultureCode, isNoGrowth, isWidalAnalyte, newId, parseTitre, widalFlag, wrongSex, wrongSexText } from "@hmis/contracts";
 import {
   labAnalytes, labOrderableAnalytes, labOrderables, labQuickReports, labReferenceRanges, orderItems, orders, patients, users,
 } from "../../kernel/db/schema";
@@ -14,6 +14,7 @@ import { recordPhiAccess } from "../../kernel/phi/audit";
 import { displayNameFor, getPatient, listMergedLoserIds } from "../patients";
 import { labQuickHandedOver, labQuickReported, labQuickSentBack, labQuickStarted, labReportShared } from "./events";
 import { flagFor, resolveRange } from "./ranges";
+import { sexSpecificTests } from "./test-sex";
 import { evaluateFormula, formulaInputCodes } from "./formula";
 import { recordSlipEdits, slipBench, slipChecksOpen } from "./slip-lines";
 import type { FormulaOutcome } from "./formula";
@@ -46,7 +47,8 @@ export type QuickAnalyte = {
   /** Owner 2026-10-11 — a calculated parameter's expression, so the bench previews it. */
   formula: string | null; formulaGuard: string | null;
 };
-export type QuickTest = { serviceId: string; code: string; nameEn: string; analyteIds: string[] };
+/** `forSex` (owner 2026-11-12) — set when the test is for one sex only; the pickers hide it for the other. */
+export type QuickTest = { serviceId: string; code: string; nameEn: string; analyteIds: string[]; forSex?: "male" | "female" };
 export type QuickCatalogue = { tests: QuickTest[]; analytes: QuickAnalyte[] };
 
 export type QuickRange = {
@@ -130,7 +132,7 @@ export type QuickEntryErrorCode =
   | "patient_not_found" | "test_not_found" | "no_tests" | "blood_not_collected"
   | "analyte_not_found" | "value_not_numeric" | "value_absurd" | "report_not_found"
   | "order_not_found" | "already_collected" | "not_completed" | "already_handed_over" | "not_permitted"
-  | "ast_invalid" | "slip_checks_open" | "value_not_titre";
+  | "ast_invalid" | "slip_checks_open" | "value_not_titre" | "test_not_applicable";
 
 export class QuickEntryError extends Error {
   constructor(readonly code: QuickEntryErrorCode, message: string, readonly detail?: unknown) {
@@ -151,8 +153,12 @@ export async function quickCatalogue(exec: Db | Tx): Promise<QuickCatalogue> {
   const analyteRows = await exec.select().from(labAnalytes).orderBy(asc(labAnalytes.nameEn));
   const byService = new Map<string, string[]>();
   for (const l of links) byService.set(l.serviceId, [...(byService.get(l.serviceId) ?? []), l.analyteId]);
+  const forSex = new Map((await sexSpecificTests(exec)).map((t) => [t.serviceId, t.forSex]));
   return {
-    tests: tests.map((t) => ({ ...t, analyteIds: byService.get(t.serviceId) ?? [] })),
+    tests: tests.map((t) => {
+      const sex = forSex.get(t.serviceId);
+      return { ...t, analyteIds: byService.get(t.serviceId) ?? [], ...(sex === undefined ? {} : { forSex: sex }) };
+    }),
     analytes: analyteRows.map((a) => ({
       analyteId: a.id, code: a.code, nameEn: a.nameEn, unit: a.unit, resultType: a.resultType,
       decimals: a.decimals, absurdLow: a.absurdLow, absurdHigh: a.absurdHigh,
@@ -192,13 +198,18 @@ export async function startQuick(tx: Tx, actor: Actor, input: StartQuickInput, n
   if (!input.bloodCollected) throw new QuickEntryError("blood_not_collected", "tick “Blood collected” before Start");
   const serviceIds = [...new Set(input.serviceIds)];
   if (serviceIds.length === 0) throw new QuickEntryError("no_tests", "add at least one test");
-  await subjectOf(tx, input.patientId);
+  const subject = await subjectOf(tx, input.patientId);
   const found = await tx.select({ serviceId: labOrderables.serviceId, code: labOrderables.code, nameEn: labOrderables.nameEn })
     .from(labOrderables).where(and(inArray(labOrderables.serviceId, serviceIds), eq(labOrderables.active, true)));
   const byId = new Map(found.map((t) => [t.serviceId, t]));
   const missing = serviceIds.filter((s) => !byId.has(s));
   if (missing.length > 0) throw new QuickEntryError("test_not_found", "a chosen test is not in the lab catalogue", { serviceIds: missing });
   const tests = serviceIds.map((s) => byId.get(s)!);
+  /** Owner 2026-11-12 — a test for one sex is refused for a patient recorded as the other (`lab-sex.ts`). */
+  const wrong = (await sexSpecificTests(tx, serviceIds)).find((t) => wrongSex(t.forSex, subject.sex));
+  if (wrong !== undefined) {
+    throw new QuickEntryError("test_not_applicable", wrongSexText(wrong.code, wrong.forSex, subject.sex!), { serviceIds: [wrong.serviceId] });
+  }
 
   const id = newId();
   await tx.insert(labQuickReports).values({
@@ -387,6 +398,9 @@ export async function saveQuickResults(
     if (a.resultType === "formula") continue;
     let value = l.value.trim();
     if (value === "") continue;
+    if (wrongSex(a.appliesToSex as "male" | "female" | null, subject.sex)) {
+      throw new QuickEntryError("test_not_applicable", wrongSexText(a.code, a.appliesToSex as "male" | "female", subject.sex!), { analyteId: a.id });
+    }
     /**
      * #1036 — a Widal antigen takes a titre or "Non-Reactive", normalised (`1;80` → `1:80`), and anything else is
      * refused: "positive" on a Widal line is the ambiguity that let a 1:160 read as negative.

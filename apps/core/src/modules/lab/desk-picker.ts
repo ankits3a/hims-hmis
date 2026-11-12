@@ -3,6 +3,7 @@ import { labOrderables, labQuickReports, opdDepartments, opdDoctors, orderItems,
 import { listMergedLoserIds, resolvePatientId } from "../patients";
 import { LAB_DEPARTMENT_CODE } from "../opd";
 import { BillingError, feeOffNow, loadBillingConfig } from "../billing";
+import { sexSpecificTests } from "./test-sex";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -33,7 +34,7 @@ export async function labFeeFree(db: Db): Promise<boolean> {
 /** The catalogue's own codes (a code the catalogue does not hold simply never shows). */
 export const STARTER_COMMON_CODES = ["CBC", "GLUF", "GLUR", "HBA1C", "LFT", "RFT", "LIPID", "TFT", "TSH", "URINE", "ESR", "CRP", "WIDAL", "DENGUE", "MP"];
 
-export type CommonOrderable = { serviceId: string; code: string; nameEn: string; container: string; specimenType: string };
+export type CommonOrderable = { serviceId: string; code: string; nameEn: string; container: string; specimenType: string; forSex?: "male" | "female" };
 
 export async function commonOrderables(db: Db, now: Date = new Date(), limit = 12): Promise<CommonOrderable[]> {
   const since = new Date(now.getTime() - 90 * 86_400_000);
@@ -60,7 +61,9 @@ export async function commonOrderables(db: Db, now: Date = new Date(), limit = 1
       if (!out.some((o) => o.serviceId === s.serviceId)) out.push(s);
     }
   }
-  return out;
+  /** Owner 2026-11-12 — `forSex` on a test for one sex only, for the chips to hide it for the other. */
+  const forSex = new Map((await sexSpecificTests(db, out.map((o) => o.serviceId))).map((t) => [t.serviceId, t.forSex]));
+  return out.map((o) => (forSex.has(o.serviceId) ? { ...o, forSex: forSex.get(o.serviceId)! } : o));
 }
 
 /**

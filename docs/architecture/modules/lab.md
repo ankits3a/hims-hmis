@@ -256,6 +256,8 @@ Source: `apps/core/src/modules/lab/`
   - `sweepLabNonReturn(db: Db, now: Date, decls: readonly OrderKindDecl[], actor: Actor = LAB_NON_RETURN_ACTOR): Promise<NonReturnSweepReport>`
   - `sweepLabSla(db: Db, now: Date, actor: Actor = LAB_SLA_ACTOR): Promise<SlaSweepReport>`
   - types: `NonReturnSweepReport`, `SlaSweepReport`
+- `test-sex.ts`
+  - `sexSpecificTests(exec: Db | Tx, serviceIds?: readonly string[]): Promise<SexSpecificTest[]>`
 - `verify.ts`
   - `LAB_REFLEX_ACTOR: Actor`
   - `LAB_RESULTS_VERIFY`
