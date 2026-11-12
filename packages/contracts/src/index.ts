@@ -23,4 +23,5 @@ export * from "./waiting";
 export * from "./lab-formula";
 export * from "./lab-ast";
 export * from "./lab-titre";
+export * from "./lab-sex";
 export * from "./doctor-desk";

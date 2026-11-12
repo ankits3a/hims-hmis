@@ -13,7 +13,8 @@ import type { SlipReadback } from "../../../../packages/contracts/src/slip-desk"
 import type {
   WireAdvisedTest, WireHeldAlert, WirePaperOutcome, WirePriceListRow, WireRxLine, WireTranscription,
 } from "../lib/opd-api";
-import { advisableTests } from "../lib/ordering-api";
+import { advisableTests, sexSpecificTests } from "../lib/ordering-api";
+import { wrongSex } from "../../../../packages/contracts/src/lab-sex";
 import {
   SUGGESTION_PREFS_KEY, crossedHere, fetchSuggestionPrefs, hiddenLookup, tellOutcome, tellShown, useCrossedVersion,
 } from "../lib/suggest-signals";
@@ -195,6 +196,8 @@ export function OpdScribe(): React.ReactElement {
     enabled: encounterId !== null,
     retry: false,
   });
+  /** Owner 2026-11-12 — a test for one sex only is not offered for a patient recorded as the other. */
+  const sexOnly = useQuery({ queryKey: ["ordering", "sex-specific-tests"], queryFn: sexSpecificTests, enabled: encounterId !== null, retry: false });
 
   /* The doctor issued this visit's prescription on the screen: the desk types no medicines over it. */
   const doctorIssued = state.data?.prescription != null && state.data.prescription.transcribedByName === null;
@@ -278,8 +281,9 @@ export function OpdScribe(): React.ReactElement {
     return (services.data?.items ?? [])
       .filter((sv) => sv.name.toLowerCase().includes(q) || sv.code.toLowerCase().includes(q))
       .filter((sv) => !tests.some((x) => x.serviceId === sv.serviceId))
+      .filter((sv) => !wrongSex(sexOnly.data?.find((x) => x.serviceId === sv.serviceId)?.forSex, back?.patient?.administrativeGender))
       .slice(0, 8);
-  }, [services.data, testQuery, tests]);
+  }, [services.data, testQuery, tests, sexOnly.data, back]);
   const addTest = (sv: WirePriceListRow): void => {
     setTests((prev) => [...prev, { serviceId: sv.serviceId, code: sv.code, name: sv.name, pricePaise: sv.pricePaise }]);
     setTestQuery(""); setTestAt(0);

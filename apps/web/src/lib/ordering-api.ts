@@ -1,5 +1,6 @@
 import { api } from "./api";
 import type { WirePriceListRow } from "./opd-api";
+import type { SexSpecificTest } from "@hmis/contracts";
 
 /**
  * TEST ORDERING (owner 2026-10-10, decision 0067) — the outside-test catalogue, the ordering door's
@@ -45,4 +46,9 @@ export async function advisableTests(): Promise<{ items: AdvisableTest[] }> {
     .filter((o) => o.site === "outside" && !have.has(o.serviceId))
     .map((o) => ({ serviceId: o.serviceId, code: `OUT-${o.code}`, name: o.nameEn, category: "investigation", pricePaise: 0, outside: true }));
   return { items: [...priced.items, ...extra].sort((a, b) => (a.name < b.name ? -1 : 1)) };
+}
+
+/** Owner 2026-11-12 — the tests for one sex only (`GET /ordering/sex-specific-tests`), for the doctor's list to hide. */
+export async function sexSpecificTests(): Promise<SexSpecificTest[]> {
+  return (await api<{ items: SexSpecificTest[] }>("GET", "/ordering/sex-specific-tests")).items;
 }

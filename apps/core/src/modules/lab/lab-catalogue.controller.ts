@@ -9,6 +9,7 @@ import {
 } from "./catalogue";
 import { duplicateWarnings } from "./duplicates";
 import { idSchema, parsed, toHttp } from "./lab-http";
+import { sexSpecificTests } from "./test-sex";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -177,6 +178,9 @@ export class LabCatalogueController {
       ? rows
       : rows.filter((r) => r.code.toLowerCase().includes(needle) || r.nameEn.toLowerCase().includes(needle));
     /** ACTIVE ONLY at the counter: a withdrawn orderable is refused by the desk anyway. */
-    return matched.filter((r) => r.active).slice(0, 100);
+    const shown = matched.filter((r) => r.active).slice(0, 100);
+    /** Owner 2026-11-12 — `forSex` on a test for one sex only, for the picker to hide it for the other. */
+    const forSex = new Map((await sexSpecificTests(this.db, shown.map((r) => r.serviceId))).map((t) => [t.serviceId, t.forSex]));
+    return shown.map((r) => (forSex.has(r.serviceId) ? { ...r, forSex: forSex.get(r.serviceId)! } : r));
   }
 }

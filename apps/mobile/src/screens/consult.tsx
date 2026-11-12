@@ -508,7 +508,7 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
       {allergyOpen && <AllergySheet call={call} patientId={patientId} onClose={() => setAllergyOpen(false)} onSaved={allergySaved} />}
       {drawer === "dx" && <DiagnosisDrawer api={api} draft={draft} patch={patch} onClose={closeDrawer} suggest={suggest} />}
       {drawer === "meds" && <MedicinesDrawer api={api} draft={draft} patch={patch} warnings={warnings} checking={checking} onClose={closeDrawer} startWith={medStart} childNoDose={childDoseMissing(draft, bandNow())} />}
-      {drawer === "tests" && <TestsDrawer api={api} draft={draft} patch={patch} onClose={closeDrawer} suggest={suggest} />}
+      {drawer === "tests" && <TestsDrawer api={api} draft={draft} patch={patch} onClose={closeDrawer} suggest={suggest} patientSex={summary?.administrativeGender ?? null} />}
       {drawer === "advice" && <AdviceDrawer api={api} draft={draft} patch={patch} onClose={closeDrawer} followChoices={followUpChoices(cfg)} />}
       {editingSet !== null && <SetEditor api={api} set={editingSet} encounterId={encounterId} onDone={() => { setEditingSet(null); setDrawer("sets"); }} />}
       {drawer === "sets" && <SetsDrawer api={api} onClose={() => setDrawer(null)} onUse={useSet} onEdit={(x) => { setDrawer(null); setEditingSet(x); }} canSave={draft.lines.some(lineComplete) || draft.tests.length > 0}
