@@ -210,7 +210,12 @@ describe("roster — covers and swaps (20-U U6)", () => {
     expect(d.status).toBe("approved");
     expect(d.amendmentIds).toHaveLength(1);
     const am = (await db.select().from(rosterAmendments).where(eq(rosterAmendments.id, d.amendmentIds[0]!)))[0]!;
-    expect([am.kind, am.periodId, am.requestedBy, am.approvedBy, am.afterTheFact]).toEqual(["cover", P2, MEENA, HEAD2, false]);
+    /**
+     * `afterTheFact` reads the database clock against the duty's start (10 Nov 2026, 20:00 IST). Pinned to `false`, this
+     * line failed on every commit from that night on and stopped auto-deploy; it now asks the same clock the code does.
+     */
+    const nightBegun = Date.now() >= ist("2026-11-10T20:00").getTime();
+    expect([am.kind, am.periodId, am.requestedBy, am.approvedBy, am.afterTheFact]).toEqual(["cover", P2, MEENA, HEAD2, nightBegun]);
     // Superseded, not edited: the old slot is closed and the new one carries its lineage.
     const old = await live(meenaNight);
     expect(old.liveTo).not.toBeNull();
