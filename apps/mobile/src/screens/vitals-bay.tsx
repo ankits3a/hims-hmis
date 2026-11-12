@@ -491,7 +491,7 @@ export function VitalsBay({ scanned = null }: { scanned?: Scanned | null } = {})
           </Text>
         </View>
       )}
-      {whoOpen && <Details api={api} row={rowInHand} pre={preStage} failed={pre?.failed === true} onGuardian={setGuardianRow} onChangeDoctor={(mayChangeDoctor || mayMoveDepartment) && !rowInHand.vitalsDone ? () => setChangeDoctorRow(rowInHand) : null} department={mayMoveDepartment} t={t} />}
+      {whoOpen && <Details api={api} row={rowInHand} pre={preStage} failed={pre?.failed === true} onGuardian={setGuardianRow} onChangeDoctor={mayChangeDoctor || mayMoveDepartment ? () => setChangeDoctorRow(rowInHand) : null} department={mayMoveDepartment} t={t} />}
     </View>
   );
 

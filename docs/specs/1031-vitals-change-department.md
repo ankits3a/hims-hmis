@@ -57,3 +57,10 @@ back to the front desk. Owner 2026-11-03: yes to all recommendations below.
 - Web and phone: the "Change doctor" sheet shows the Department picker to holders of the permission, only while vitals
   are not yet saved (as #1025). After a move the patient stays in hand on the new visit.
 
+## Change 2026-11-10 (owner)
+
+Staff could not change the doctor or department once vitals were saved: the web and phone screens offered "Change
+doctor" only while vitals were not yet saved. The owner asked for it after vitals too. Both screens now offer it for a
+patient whose vitals are done. The server rules are unchanged: the change is refused once the consultation has begun,
+and a department move carries the saved vitals to the new visit (D3).
+
