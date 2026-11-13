@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../lib/auth";
-import { fetchItem, materialsErrorText, patchItem } from "../lib/materials-api";
+import { fetchItem, materialsErrorText, patchItem, replaceItemUom } from "../lib/materials-api";
 import { setMedicineSchedule } from "../lib/formulary-api";
 import { addPackSize, setGstSlab, stockErrorText } from "../lib/stock-entry-api";
 import { Button } from "@/components/ui/button";
@@ -25,8 +25,10 @@ import { Button } from "@/components/ui/button";
  * The stock-entry grid opens this panel from a row to fix a drug's GST or add a pack size. The slab is saved
  * through `PUT /pharmacy/sale-items/:id/gst-slab` (`pharmacy.sale_items.manage`), which moves the sale item's
  * GST category in the same transaction — a slab changed on the item alone would leave the bill on the old rate.
- * A pack size is a new unit (`POST /materials/items/:id/uoms`); existing units are never renamed or resized,
- * because the ledger's quantities are counted in them.
+ * A pack size is a new unit (`POST /materials/items/:id/uoms`). An existing pack is CORRECTED in place (#1047,
+ * "Correct pack": the loader's `strip10` was really a strip of 15) through `POST /materials/items/:id/uoms/replace`,
+ * which the server refuses (`pack_in_use`) while any batch, goods receipt or open order counts in it — then a
+ * new pack is added instead. Both need `materials.items.manage`.
  *
  * ═══ UNSET IS NOT SAFE ═══
  *
@@ -58,6 +60,10 @@ export function ItemEditPanel({ itemId, onClose }: { itemId: string; onClose: ()
   const [gst, setGst] = useState("");
   const [packUom, setPackUom] = useState("");
   const [packSize, setPackSize] = useState("");
+  // #1047 — the pack being corrected, and its right name and size.
+  const [fixing, setFixing] = useState<string | null>(null);
+  const [fixUom, setFixUom] = useState("");
+  const [fixSize, setFixSize] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
 
@@ -86,6 +92,21 @@ export function ItemEditPanel({ itemId, onClose }: { itemId: string; onClose: ()
       await addPackSize(d.id, packUom.trim(), n);
       setPackUom(""); setPackSize("");
       setDone(t("materialsItems.edit.packAdded", { uom: packUom.trim(), n }));
+      await qc.invalidateQueries({ queryKey: ["materials"] });
+    } catch (e) {
+      setError(stockErrorText(e, t));
+    }
+  };
+
+  const correctPack = async (): Promise<void> => {
+    if (d === undefined || fixing === null) return;
+    setError(null); setDone(null);
+    const n = Number(fixSize);
+    if (fixUom.trim() === "" || !Number.isInteger(n) || n < 2) { setError(t("materialsItems.edit.packInvalid")); return; }
+    try {
+      await replaceItemUom(d.id, { fromUom: fixing, uom: fixUom.trim(), toBaseMultiplier: n });
+      setDone(t("materialsItems.edit.packCorrected", { from: fixing, uom: fixUom.trim(), n }));
+      setFixing(null); setFixUom(""); setFixSize("");
       await qc.invalidateQueries({ queryKey: ["materials"] });
     } catch (e) {
       setError(stockErrorText(e, t));
@@ -196,6 +217,24 @@ export function ItemEditPanel({ itemId, onClose }: { itemId: string; onClose: ()
                 <span className="text-xs text-slate-600" data-testid="item-edit-packs">
                   {d.uoms.map((u) => (u.toBaseMultiplier === 1 ? u.uom : `${u.uom} × ${String(u.toBaseMultiplier)} ${d.baseUom}`)).join(" · ")}
                 </span>
+                {can("materials.items.manage") && (
+                  <div className="flex flex-wrap items-center gap-2" data-testid="item-edit-correct">
+                    {d.uoms.filter((u) => u.toBaseMultiplier > 1).map((u) => (
+                      <Button key={u.uom} type="button" variant="outline" size="sm" data-testid={`item-edit-correct-${u.uom}`} aria-pressed={fixing === u.uom}
+                        onClick={() => { setFixing(fixing === u.uom ? null : u.uom); setFixUom(u.uom); setFixSize(String(u.toBaseMultiplier)); }}>
+                        {t("materialsItems.edit.correctPack", { uom: u.uom })}
+                      </Button>
+                    ))}
+                  </div>
+                )}
+                {fixing !== null && (
+                  <div className="flex flex-wrap items-center gap-2 rounded bg-amber-50 p-2" data-testid="item-edit-correct-form">
+                    <span className="text-xs">{t("materialsItems.edit.correctHint", { uom: fixing })}</span>
+                    <input className="w-28 rounded border px-2 py-1" aria-label={t("materialsItems.edit.correctUom")} value={fixUom} onChange={(e) => setFixUom(e.target.value)} />
+                    <input className="w-20 rounded border px-2 py-1" inputMode="numeric" aria-label={t("materialsItems.edit.correctSize", { base: d.baseUom })} value={fixSize} onChange={(e) => setFixSize(e.target.value)} />
+                    <Button type="button" data-testid="item-edit-correct-save" onClick={() => void correctPack()}>{t("materialsItems.edit.correctSave")}</Button>
+                  </div>
+                )}
                 <div className="flex flex-wrap items-center gap-2">
                   <input className="w-28 rounded border px-2 py-1" placeholder="strip15" aria-label={t("materialsItems.edit.packUom")} value={packUom} onChange={(e) => setPackUom(e.target.value)} />
                   <input className="w-20 rounded border px-2 py-1" inputMode="numeric" placeholder="15" aria-label={t("materialsItems.edit.packSize", { base: d.baseUom })} value={packSize} onChange={(e) => setPackSize(e.target.value)} />

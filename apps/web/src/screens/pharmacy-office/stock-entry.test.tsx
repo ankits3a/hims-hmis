@@ -231,3 +231,78 @@ describe("stock entry on screen (2026-09-29)", () => {
     expect(screen.queryByTestId("se-new-drug-sheet")).toBeNull();
   });
 });
+
+/**
+ * #1047 — the same grid receives a SUPPLIER INVOICE: a header (supplier, invoice number and date, store, rate
+ * with or without GST) over the rows, judged and captured by the invoice routes as one GRN; rack and supplier
+ * columns are the opening count's and are gone. In opening mode a row with no rate shows the server's estimate.
+ */
+describe("#1047 — the invoice mode and the estimate", () => {
+  const invoiceCheck = (body: unknown): unknown => {
+    const b = body as { header: { vendorId: string | null; invoiceNo: string; invoiceDate: string }; rows: SentRow[] };
+    const opening = judge({ rows: b.rows }) as { rows: unknown[]; refusals: number; units: number };
+    const headerReasons = [
+      ...(b.header.vendorId === null ? ["choose the supplier"] : []),
+      ...(b.header.invoiceNo.trim() === "" ? ["the supplier's invoice number is required (at most 64 characters)"] : []),
+      ...(b.header.invoiceDate === "" ? ["the invoice date is required"] : []),
+    ];
+    return { headerReasons, rows: opening.rows, refusals: opening.refusals, units: opening.units, newUoms: 0, costPaise: 9600, duplicateOf: null, authority: [] };
+  };
+  const INVOICE_ROUTES = {
+    ...ROUTES,
+    "GET /pharmacy/opening-stock/invoice/stores": { stores: [{ id: "s1", code: "PHARM-OPD", name: "OPD pharmacy" }] },
+    "GET /materials/purchase-orders": { purchaseOrders: [{ id: "po1", poNo: "PO-0001" }] },
+    "POST /pharmacy/opening-stock/invoice/check": invoiceCheck,
+    "POST /pharmacy/opening-stock/invoice/capture": { grnId: "g9", grnNo: "GRN-0099", lines: 1, uomsAdded: 0 },
+  };
+
+  it("Supplier invoice: the header is required, rack and supplier columns go, and the capture sends the header with the rows", async () => {
+    const calls = mock(INVOICE_ROUTES, PERMS);
+    renderWithRouter(<StockEntryView />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId("se-mode-invoice"));
+    expect(screen.getByRole("heading", { name: "Supplier invoice — receive a delivery" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Rack" })).toBeNull();
+    expect(screen.queryByTestId("se-recount")).toBeNull();
+    await pickDolo(user);
+    await user.type(screen.getByLabelText("Batch · row 1"), "B1");
+    await user.type(screen.getByLabelText("Expiry · row 1"), "08/27");
+    await user.type(screen.getByLabelText("Packs · row 1"), "4");
+    await user.type(screen.getByLabelText("Rate ₹/pack · row 1"), "25.20");
+    expect(await screen.findByTestId("se-invoice-reasons", {}, { timeout: 3000 })).toHaveTextContent("choose the supplier");
+    expect(screen.getByTestId("se-capture")).toBeDisabled();
+
+    await user.selectOptions(screen.getByTestId("se-invoice-vendor"), "v1");
+    await user.type(screen.getByTestId("se-invoice-no"), "SI/26/12");
+    fireEvent.change(screen.getByTestId("se-invoice-date"), { target: { value: "2026-11-10" } });
+    await user.click(screen.getByTestId("se-rate-with-gst"));
+    // With GST in the rate, the live cost divides it out first: ₹25.20 ÷ 1.05 = ₹24.00 a strip of 15 → ₹1.60 a tablet.
+    expect(screen.getByTestId("se-cost-0")).toHaveTextContent("₹1.60/unit");
+    await waitFor(() => expect(screen.getByTestId("se-capture")).toBeEnabled(), { timeout: 3000 });
+    expect(screen.getByTestId("se-invoice-store")).toHaveValue("s1"); // the only store is picked
+    await user.click(screen.getByTestId("se-capture"));
+    expect(await screen.findByTestId("se-invoice-result")).toHaveTextContent("GRN-0099 captured from the invoice — 1 row.");
+    const sent = calls.find((c) => c.path === "/pharmacy/opening-stock/invoice/capture")!.body as { header: Record<string, unknown>; rows: Record<string, unknown>[] };
+    expect(sent.header).toEqual({ vendorId: "v1", invoiceNo: "SI/26/12", invoiceDate: "2026-11-10", purchaseOrderId: null, storeResourceId: "s1", rateIncludesGst: true });
+    expect(sent.rows[0]).toMatchObject({ itemId: "it-dolo", batch: "B1", expiry: "08/27", packs: "4", ratePerPack: "25.20" });
+    expect(sent.rows[0]).not.toHaveProperty("rack");
+    expect(calls.some((c) => c.path === "/pharmacy/opening-stock/capture")).toBe(false);
+  });
+
+  it("Opening stock: a row with no rate shows the server's estimate, and the foot says how many rows are estimated", async () => {
+    mock({
+      ...ROUTES,
+      "POST /pharmacy/opening-stock/check": (body: unknown) => {
+        const j = judge(body) as { rows: Record<string, unknown>[] };
+        return { ...j, rows: j.rows.map((r) => ({ ...r, costPerBasePaise: 128, estimatedCost: true })), estimated: 1 };
+      },
+    }, PERMS);
+    renderWithRouter(<StockEntryView />);
+    const user = userEvent.setup();
+    await pickDolo(user);
+    await user.type(screen.getByLabelText("Batch · row 1"), "B1");
+    await user.type(screen.getByLabelText("Packs · row 1"), "2");
+    expect(await screen.findByTestId("se-estimate-0", {}, { timeout: 3000 })).toHaveTextContent("est. ₹1.28/unit");
+    expect(screen.getByTestId("se-estimated")).toHaveTextContent("1 row has no rate");
+  });
+});

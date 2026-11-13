@@ -58,6 +58,37 @@ export const checkStockRows = (rows: WireGridRow[]): Promise<WireStockCheck> =>
 export const captureStockRows = (rows: WireGridRow[]): Promise<WireOpeningCapture> =>
   api<WireOpeningCapture>("POST", "/pharmacy/opening-stock/capture", { rows });
 
+/** #1047 — the grid in "Supplier invoice" mode: the invoice's header (blank while typed; the check says what is missing). */
+export type WireInvoiceHeader = {
+  vendorId: string | null; invoiceNo: string; invoiceDate: string; purchaseOrderId: string | null; storeResourceId: string | null;
+  rateIncludesGst: boolean;
+};
+export type WireInvoiceRow = Omit<WireGridRow, "rack" | "supplier">;
+export type WireInvoiceCheck = {
+  headerReasons: string[]; rows: WireStockCheck["rows"]; refusals: number; units: number; newUoms: number; costPaise: number;
+  duplicateOf: { grnId: string; grnNo: string } | null;
+  authority: WireStockCheck["authority"];
+};
+export type WireInvoiceCapture = { grnId: string; grnNo: string; lines: number; uomsAdded: number };
+
+/** Judge the invoice's header and rows. Writes nothing. */
+export const checkInvoiceRows = (header: WireInvoiceHeader, rows: WireInvoiceRow[]): Promise<WireInvoiceCheck> =>
+  api<WireInvoiceCheck>("POST", "/pharmacy/opening-stock/invoice/check", { header, rows });
+
+/** Judge it again and capture ONE GRN for the pharmacist's QC. */
+export const captureInvoiceRows = (header: WireInvoiceHeader, rows: WireInvoiceRow[]): Promise<WireInvoiceCapture> =>
+  api<WireInvoiceCapture>("POST", "/pharmacy/opening-stock/invoice/capture", { header, rows });
+
+/** The stores a supplier invoice is received into (the OPD and walk-in counters). */
+export const fetchInvoiceStores = async (): Promise<{ id: string; code: string; name: string }[]> =>
+  (await api<{ stores: { id: string; code: string; name: string }[] }>("GET", "/pharmacy/opening-stock/invoice/stores")).stores;
+
+/** The supplier's orders still open for receipt — the invoice's optional PO (needs `materials.stock.read`). */
+export const fetchReceivableOrders = async (vendorId: string): Promise<{ id: string; poNo: string }[]> =>
+  (await api<{ purchaseOrders: { id: string; poNo: string }[] }>(
+    "GET", `/materials/purchase-orders?vendorId=${encodeURIComponent(vendorId)}&status=approved,sent,part_received`,
+  )).purchaseOrders.map((p) => ({ id: p.id, poNo: p.poNo }));
+
 export const createNewDrug = (input: NewDrugInput): Promise<NewDrugResult> =>
   api<NewDrugResult>("POST", "/pharmacy/opening-stock/new-drug", input);
 

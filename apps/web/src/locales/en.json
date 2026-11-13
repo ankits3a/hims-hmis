@@ -690,6 +690,11 @@
         "label": "Hand over an unpaid imaging report",
         "ask": "Release {{patient}}'s imaging report with {{amount}} still unpaid",
         "explain": "The patient's copy leaves before the money — that is credit, and only you approve it. The amount stays owed; the doctor already has the report."
+      },
+      "materials_mrp_revision": {
+        "label": "New MRP for a batch",
+        "ask": "Approve a new MRP for a batch already on the shelf",
+        "explain": "The supplier sent more of a batch at a new printed MRP. Approving lets the delivery post and the whole batch sells at the new MRP."
       }
     },
     "openRun": "Open the run",
@@ -714,6 +719,10 @@
     "bankChange": {
       "account": "Account {{from}} → {{to}}",
       "none": "none on file"
+    },
+    "mrpRevision": {
+      "now": "MRP now",
+      "new": "New MRP"
     }
   },
   "opd": {
@@ -3199,7 +3208,13 @@
       "packSize": "{{base}} in the pack",
       "addPack": "Add pack size",
       "packAdded": "Pack {{uom}} of {{n}} added.",
-      "packInvalid": "Give the new pack a name and a size of 2 or more."
+      "packInvalid": "Give the new pack a name and a size of 2 or more.",
+      "correctPack": "Correct {{uom}}",
+      "correctHint": "Replace {{uom}} with the real pack. Refused if any batch, receipt or open order counts in it.",
+      "correctUom": "Correct pack name",
+      "correctSize": "{{base}} in the correct pack",
+      "correctSave": "Correct the pack",
+      "packCorrected": "{{from}} is now {{uom}} of {{n}}."
     }
   },
   "materialsVendors": {
@@ -3354,7 +3369,10 @@
     "unknown_indent": "That indent was not found.",
     "invalid_indent": "The indent is incomplete — ask for each item once, in whole numbers above zero, from another store; issue no more than was asked and at least one unit.",
     "indent_closed": "This indent was already issued, rejected or cancelled — refresh and look at it again.",
-    "grn_same_person": "You captured this delivery. The hospital's setting needs a different person to check and post it."
+    "grn_same_person": "You captured this delivery. The hospital's setting needs a different person to check and post it.",
+    "pack_in_use": "This pack is in use — a batch, a goods receipt or an open order counts in it. Add the right pack as a new one instead.",
+    "grn_cancelled": "This goods receipt was cancelled. Nothing more can be done on it.",
+    "mrp_revision_unapproved": "This delivery brings a batch already on the shelf at a new MRP. Ask for the MRP approval; it posts once the materials head grants it."
   },
   "deskSettings": {
     "title": "Desk mode",
@@ -3608,7 +3626,17 @@
       "captured_other": "{{count}} GRNs captured — open each, run QC and post. Nothing is on the shelf yet.",
       "capturedLine": "{{lines}} lines, awaiting QC",
       "capturedNear": "{{lines}} short-dated lines — after QC, request the near-expiry approval"
-    }
+    },
+    "invoiceLine": "Invoice {{no}} of {{date}}",
+    "cancelledWhy": "Cancelled: {{reason}}",
+    "rule_mrp_revised": "New MRP for a batch on the shelf — needs the MRP approval",
+    "requestMrpRevision": "Ask for the MRP approval",
+    "cancel": "Cancel this GRN",
+    "cancelReason": "Why is it cancelled?",
+    "cancelConfirm": "Cancel the GRN",
+    "cancelKeep": "Keep it",
+    "cancelled": "The GRN is cancelled. Nothing was put on the shelf.",
+    "status_cancelled": "Cancelled"
   },
   "otList": {
     "title": "Theatre list",
@@ -8395,6 +8423,49 @@
       "needPack": "pack size 1–1000",
       "needHsn": "HSN of 4–8 digits",
       "needMrp": "MRP in rupees"
+    },
+    "mode": {
+      "label": "What is being entered",
+      "opening": "Opening stock",
+      "invoice": "Supplier invoice"
+    },
+    "invoice": {
+      "heading": "Supplier invoice — receive a delivery",
+      "lead": "Type the invoice as printed: the header, then one row per batch. Free packs go in Free; they are received at no cost.",
+      "title": "The invoice",
+      "supplier": "Supplier",
+      "choose": "Choose…",
+      "number": "Invoice number",
+      "date": "Invoice date",
+      "store": "Received into",
+      "order": "Against order (optional)",
+      "noOrder": "No order",
+      "rateBasis": "The Rate column is",
+      "withoutGst": "without GST",
+      "withGst": "with GST",
+      "captured_one": "{{grnNo}} captured from the invoice — {{count}} row.",
+      "captured_other": "{{grnNo}} captured from the invoice — {{count}} rows.",
+      "cost": "cost {{amount}} before GST",
+      "capture": "Capture the invoice"
+    },
+    "estimated_one": "{{count}} row has no rate: it is valued at the estimate (MRP without GST, less 20%) and marked estimated.",
+    "estimated_other": "{{count}} rows have no rate: they are valued at the estimate (MRP without GST, less 20%) and marked estimated.",
+    "perUnitEstimated": "est. {{amount}}/unit",
+    "recount": {
+      "title": "Recount check",
+      "file": "Control file",
+      "clear": "Remove the control file",
+      "hint": "Optional: load a CSV with item (code or exact name) and quantity (tablets, bottles). Each medicine's entered total is compared with it here; the file stays on this computer.",
+      "badHeader": "The control file needs an item column and a quantity column.",
+      "summary_one": "{{name}}: {{count}} medicine compared, {{differ}} differ.",
+      "summary_other": "{{name}}: {{count}} medicines compared, {{differ}} differ.",
+      "skipped": "Lines not read: {{lines}}.",
+      "medicine": "Medicine",
+      "entered": "Entered",
+      "control": "Control",
+      "difference": "Difference",
+      "differs": "differs",
+      "notInControl": "not in the file"
     }
   },
   "pharmacyItems": {
@@ -8681,7 +8752,9 @@
     "unknown_tray": "This emergency tray is not on file",
     "unknown_tray_check": "This tray check is not on file",
     "tray_already_restocked": "This check was restocked already — the tray's keeper receives that restock",
-    "invalid_label": "The books cannot back this label — set the item's rack, pick a batch of that item that has an MRP, or print fewer than 500 at once"
+    "invalid_label": "The books cannot back this label — set the item's rack, pick a batch of that item that has an MRP, or print fewer than 500 at once",
+    "invoice_refused": "The invoice is not complete — fill the supplier, invoice number and date and the store, and fix the rows marked in red.",
+    "invoice_already_captured": "This supplier's invoice is already entered as a GRN. Open that GRN; cancel it first if it was typed wrong."
   },
   "pharmacyCounter": {
     "partlyChecked": "Checked only in part",
@@ -12860,6 +12933,33 @@
       "ownerView": {
         "title": "Payment run {{runNo}} — for your authorisation",
         "intro": "Prepared by {{name}} · vendors: {{vendors}} · bills: {{bills}}. Read it, then approve or reject with a reason."
+      },
+      "credits": {
+        "title": "Supplier credit notes without a return",
+        "record": "Record a credit note",
+        "lead": "A rate difference, a scheme or a breakage credit from a supplier. The next payment run sets it off against the supplier's bills.",
+        "cancelWhy": "Why is credit note {{creditNo}} cancelled?",
+        "cancelled": "Credit note {{creditNo}} is cancelled.",
+        "recorded": "Credit note {{creditNo}} is recorded; the next payment run sets it off.",
+        "cancel": "Cancel",
+        "kind": {
+          "rate_difference": "Rate difference",
+          "scheme": "Scheme",
+          "breakage": "Breakage",
+          "other": "Other"
+        },
+        "sheetTitle": "A supplier's credit note",
+        "supplier": "Supplier",
+        "kindLabel": "For",
+        "number": "Supplier's credit note number",
+        "date": "Credit note date",
+        "taxable": "Taxable value (₹)",
+        "gst": "GST (₹)",
+        "igst": "The GST is IGST (supplier in another state)",
+        "note": "Note",
+        "total": "Credit total: {{amount}}",
+        "setOff": "The next payment run sets it off against this supplier's bills.",
+        "save": "Record the credit note"
       }
     },
     "keys": {
@@ -13341,7 +13441,9 @@
         "max": "Max",
         "levels": "Levels (min/reorder/max)",
         "rack": "Rack",
-        "class": "Class"
+        "class": "Class",
+        "costBasis": "Cost basis",
+        "estimated": "estimated"
       },
       "kind": {
         "sale": "Sales invoice",
@@ -13509,7 +13611,9 @@
       "version": {
         "before": "Before",
         "after": "After"
-      }
+      },
+      "estimatedSplit_one": "Known {{known}} · estimated {{estimated}} ({{count}} batch, no rate at the count)",
+      "estimatedSplit_other": "Known {{known}} · estimated {{estimated}} ({{count}} batches, no rate at the count)"
     },
     "tally": {
       "ledgersConfirmed": "Ledger names confirmed for the Tally company.",

@@ -246,4 +246,38 @@ describe("MaterialsItems", () => {
     expect(await screen.findByText("Pack strip15 of 15 added.")).toBeInTheDocument();
     expect(bodiesOf("POST", "/materials/items/it-1/uoms")).toEqual([{ uom: "strip15", toBaseMultiplier: 15, isPurchaseUom: true, isIssueUom: true }]);
   });
+
+  /** #1047 — the loader's `strip10` was really a strip of 15: the pack is CORRECTED in place; a pack in use is refused, in words. */
+  it("corrects a pack in place, and says so in words when the pack is in use", async () => {
+    let refuse = false;
+    mockRoutes({
+      "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: "u1" }, permissions: { hospital: ["materials.items.manage"], scoped: { department: {}, floor: {} } } } },
+      "GET /api/materials/items": { status: 200, body: { items: ITEMS } },
+      "GET /api/materials/items/it-1": {
+        status: 200,
+        body: { item: { ...ITEMS[0], uoms: [{ id: "u-1", itemId: "it-1", uom: "tablet", toBaseMultiplier: 1 }, { id: "u-2", itemId: "it-1", uom: "strip10", toBaseMultiplier: 10 }], barcodes: [], manufacturer: null, leadTimeDays: null, lasa: false, highAlert: false, medicineName: "Crocin 500", scheduleFlag: "OTC" } },
+      },
+      "POST /api/materials/items/it-1/uoms/replace": () => (refuse
+        ? { status: 409, body: { statusCode: 409, code: "pack_in_use", message: "strip10 is in use (batch B1)" } }
+        : { status: 201, body: { itemUomId: "u-2", repointed: [] } }),
+    });
+    renderWithProviders(<MaterialsItems />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Edit CROC500" }));
+    await user.click(await screen.findByTestId("item-edit-correct-strip10"));
+    const name = screen.getByLabelText("Correct pack name");
+    await user.clear(name);
+    await user.type(name, "strip15");
+    const size = screen.getByLabelText("tablet in the correct pack");
+    await user.clear(size);
+    await user.type(size, "15");
+    await user.click(screen.getByTestId("item-edit-correct-save"));
+    expect(await screen.findByText("strip10 is now strip15 of 15.")).toBeInTheDocument();
+    expect(bodiesOf("POST", "/materials/items/it-1/uoms/replace")).toEqual([{ fromUom: "strip10", uom: "strip15", toBaseMultiplier: 15 }]);
+
+    refuse = true;
+    await user.click(await screen.findByTestId("item-edit-correct-strip10"));
+    await user.click(screen.getByTestId("item-edit-correct-save"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("This pack is in use");
+  });
 });

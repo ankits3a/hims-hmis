@@ -5,15 +5,21 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "../../lib/auth";
 import { registerSaleItem } from "../../lib/pharmacy-api";
 import {
-  PACK_TYPES, captureStockRows, checkStockRows, fetchStockSuppliers, paiseOf, searchStockItems, stockErrorText, unitCostPaise,
+  PACK_TYPES, captureInvoiceRows, captureStockRows, checkInvoiceRows, checkStockRows, fetchInvoiceStores, fetchReceivableOrders, fetchStockSuppliers,
+  paiseOf, searchStockItems, stockErrorText, unitCostPaise,
 } from "../../lib/stock-entry-api";
 import { Button } from "@/components/ui/button";
 import { ItemEditPanel } from "../materials-item-edit";
 import { OpeningStockSheet } from "../materials-grn-opening";
 import { NewDrugSheet } from "./new-drug-sheet";
 import { Sheet } from "./sheet";
-import type { WireOpeningCapture } from "../../lib/materials-api";
-import type { PackType, WireGridRow, WireStockCheck, WireStockItem } from "../../lib/stock-entry-api";
+import { InvoiceHeaderForm } from "./stock-entry-invoice";
+import { RecountPanel } from "./stock-entry-recount";
+import type { ControlFile } from "./stock-entry-recount";
+import type { WireOpeningCapture, WireOpeningCheck } from "../../lib/materials-api";
+import type {
+  PackType, WireGridRow, WireInvoiceCapture, WireInvoiceCheck, WireInvoiceHeader, WireInvoiceRow, WireStockCheck, WireStockItem,
+} from "../../lib/stock-entry-api";
 import "./stock-entry.css";
 
 /**
@@ -40,6 +46,16 @@ import "./stock-entry.css";
  * lowers the COST only.
  *
  * The rows are a DRAFT in this browser (localStorage) until captured, so a reload loses nothing.
+ *
+ * ═══ #1047 — TWO MODES, ONE GRID; AND THE RECOUNT'S CONTROL FILE ═══
+ *
+ * **Opening stock** is the batch-wise recount (a row with no rate is valued at the 0093 estimate, flagged).
+ * **Supplier invoice** receives a delivery off its invoice: a header (the supplier, the invoice number and date,
+ * an optional purchase order, the store, and whether the rate column includes GST) over the same rows, judged by
+ * `POST /pharmacy/opening-stock/invoice/check` and captured as ONE GRN by `…/invoice/capture`; rack and supplier
+ * are the opening count's columns and are hidden. In opening mode a control file (CSV: item, quantity in base
+ * units) can be loaded; the grid then shows, per medicine, entered against control (`stock-entry-recount.tsx`) —
+ * the file never leaves the browser.
  */
 export const DRAFT_KEY = "hmis.pharmacy.stockEntry.draft.v1";
 const GRN_WORKLIST = { view: "stock", page: "grn" } as const;
@@ -107,6 +123,19 @@ function fromItem(row: GridRow, item: WireStockItem): GridRow {
   };
 }
 
+export type EntryMode = "opening" | "invoice";
+const blankHeader = (): WireInvoiceHeader => ({
+  vendorId: null, invoiceNo: "", invoiceDate: "", purchaseOrderId: null, storeResourceId: null, rateIncludesGst: false,
+});
+/** The invoice's row: the opening row without the opening count's own columns (rack, supplier). */
+function toInvoiceWire(r: GridRow): WireInvoiceRow {
+  return {
+    itemId: r.item!.itemId, batch: r.batch.trim(), expiry: r.expiry.trim(), mrpPerPack: r.mrp.trim(), packSize: r.packSize.trim(), packs: r.packs.trim(),
+    freePacks: r.freePacks.trim(), ratePerPack: r.rate.trim(), discountPct: r.discount.trim(), packType: r.packType,
+    boxes: r.boxes.trim(), packsPerBox: r.perBox.trim(),
+  };
+}
+
 function toWire(r: GridRow): WireGridRow {
   return {
     itemId: r.item!.itemId, batch: r.batch.trim(), expiry: r.expiry.trim(), mrpPerPack: r.mrp.trim(), packSize: r.packSize.trim(), packs: r.packs.trim(),
@@ -135,10 +164,15 @@ export function rowCount(r: Pick<GridRow, "boxes" | "perBox" | "packs" | "packSi
 
 const rupees = (paise: number): string => `₹${(paise / 100).toFixed(2)}`;
 
-/** The live figure on a row: cost of one unit after the discount, and the margin against the MRP. */
-export function rowEconomics(r: Pick<GridRow, "mrp" | "rate" | "discount" | "packSize">): { cost: number; marginPct: number | null } | null {
+/**
+ * The live figure on a row: cost of one unit after the discount, and the margin against the MRP. `gstRateBps`
+ * (#1047, invoice mode with "rate with GST"): the rate is divided by 1 + the GST rate first, rounded down —
+ * `rateWithoutGstPaise` on the server; the server's figure is the one captured.
+ */
+export function rowEconomics(r: Pick<GridRow, "mrp" | "rate" | "discount" | "packSize">, gstRateBps: number | null = null): { cost: number; marginPct: number | null } | null {
   const size = Number(r.packSize);
-  const rate = r.rate.trim() === "" ? 0 : paiseOf(r.rate);
+  const typed = r.rate.trim() === "" ? 0 : paiseOf(r.rate);
+  const rate = typed === null || gstRateBps === null ? typed : Math.floor((typed * 10_000) / (10_000 + gstRateBps));
   const disc = r.discount.trim() === "" ? 0 : paiseOf(r.discount);
   if (!Number.isInteger(size) || size < 1 || rate === null || disc === null || disc >= 10_000) return null;
   const cost = unitCostPaise(rate, disc, size);
@@ -156,8 +190,24 @@ export function StockEntryView(): React.ReactElement {
   const setRows = useCallback((f: (rs: GridRow[]) => GridRow[]): void => setRowsRaw((rs) => withTail(f(rs))), []);
   useEffect(() => { saveDraft(rows); }, [rows]);
   const suppliers = useQuery({ queryKey: ["pharmacy", "stock-entry", "suppliers"], queryFn: fetchStockSuppliers });
+  const [mode, setMode] = useState<EntryMode>("opening");
+  const [header, setHeader] = useState<WireInvoiceHeader>(blankHeader);
+  const [control, setControl] = useState<ControlFile | null>(null);
+  const invoice = mode === "invoice";
+  const stores = useQuery({ queryKey: ["pharmacy", "stock-entry", "invoice-stores"], queryFn: fetchInvoiceStores, enabled: invoice });
+  const orders = useQuery({
+    queryKey: ["pharmacy", "stock-entry", "orders", header.vendorId], queryFn: () => fetchReceivableOrders(header.vendorId!),
+    enabled: invoice && header.vendorId !== null, retry: false,
+  });
+  // One store is the store: picked for the person.
+  useEffect(() => {
+    const only = stores.data?.length === 1 ? stores.data[0]!.id : null;
+    if (invoice && only !== null && header.storeResourceId === null) setHeader((h) => ({ ...h, storeResourceId: only }));
+  }, [invoice, stores.data, header.storeResourceId]);
 
   const [check, setCheck] = useState<{ sent: string; data: WireStockCheck } | null>(null);
+  const [invCheck, setInvCheck] = useState<{ sent: string; data: WireInvoiceCheck } | null>(null);
+  const [invResult, setInvResult] = useState<WireInvoiceCapture | null>(null);
   const [checkError, setCheckError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<WireOpeningCapture | null>(null);
@@ -169,7 +219,7 @@ export function StockEntryView(): React.ReactElement {
   const mayPutOnSale = can("pharmacy.sale_items.manage");
 
   const update = (key: string, patch: Partial<GridRow>): void => {
-    setResult(null);
+    setResult(null); setInvResult(null);
     setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   };
   const remove = (key: string): void => setRows((rs) => rs.filter((r) => r.key !== key));
@@ -179,10 +229,13 @@ export function StockEntryView(): React.ReactElement {
   const sendable = entered.filter((r) => r.item !== null);
   const payload = useMemo(() => sendable.map(toWire), [sendable]);
   const payloadKey = JSON.stringify(payload);
+  const invoicePayload = useMemo(() => sendable.map(toInvoiceWire), [sendable]);
+  const invoiceKey = JSON.stringify([header, invoicePayload]);
   const unpicked = entered.filter((r) => r.item === null);
 
   // The server's judgement, after a pause in typing. Stale answers are dropped by comparing what was sent.
   useEffect(() => {
+    if (invoice) return;
     if (payload.length === 0) { setCheck(null); setCheckError(null); return; }
     const sent = payloadKey;
     const id = setTimeout(() => {
@@ -192,21 +245,50 @@ export function StockEntryView(): React.ReactElement {
     }, 600);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `payloadKey` is the payload's identity
-  }, [payloadKey]);
+  }, [payloadKey, invoice]);
+  // #1047 — the invoice mode's judgement: the header and the rows together.
+  useEffect(() => {
+    if (!invoice) return;
+    if (invoicePayload.length === 0) { setInvCheck(null); setCheckError(null); return; }
+    const sent = invoiceKey;
+    const id = setTimeout(() => {
+      checkInvoiceRows(header, invoicePayload)
+        .then((data) => { setInvCheck((c) => (JSON.stringify([header, invoicePayload]) === sent ? { sent, data } : c)); setCheckError(null); })
+        .catch((e: unknown) => setCheckError(stockErrorText(e, t)));
+    }, 600);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `invoiceKey` is the header and payload's identity
+  }, [invoiceKey, invoice]);
 
-  const fresh = check !== null && check.sent === payloadKey ? check.data : null;
+  const fresh = !invoice && check !== null && check.sent === payloadKey ? check.data : null;
+  const invFresh = invoice && invCheck !== null && invCheck.sent === invoiceKey ? invCheck.data : null;
+  const judged = invoice ? invFresh : fresh;
   const reasonsFor = (key: string): string[] => {
     const i = sendable.findIndex((r) => r.key === key);
-    if (i < 0 || fresh === null) return [];
-    return fresh.rows.find((x) => x.line === i + 1)?.reasons ?? [];
+    if (i < 0 || judged === null) return [];
+    return judged.rows.find((x) => x.line === i + 1)?.reasons ?? [];
   };
-  const lacking = fresh?.authority.filter((a) => !a.held && a.why !== "racks") ?? [];
-  const canCapture = fresh !== null && fresh.refusals === 0 && lacking.length === 0 && unpicked.length === 0 && !busy
-    && fresh.grns.some((g) => g.state === "new");
+  const judgedRow = (key: string): WireOpeningCheck["rows"][number] | undefined => {
+    const i = sendable.findIndex((r) => r.key === key);
+    return i < 0 || judged === null ? undefined : judged.rows.find((x) => x.line === i + 1);
+  };
+  const lacking = judged?.authority.filter((a) => !a.held && a.why !== "racks") ?? [];
+  const canCapture = invoice
+    ? invFresh !== null && invFresh.refusals === 0 && invFresh.headerReasons.length === 0 && lacking.length === 0 && unpicked.length === 0 && !busy
+    : fresh !== null && fresh.refusals === 0 && lacking.length === 0 && unpicked.length === 0 && !busy && fresh.grns.some((g) => g.state === "new");
 
   const capture = async (): Promise<void> => {
     setBusy(true); setError(null);
     try {
+      if (invoice) {
+        setInvResult(await captureInvoiceRows(header, invoicePayload));
+        setRowsRaw([blankRow()]);
+        setInvCheck(null);
+        setHeader((h) => ({ ...blankHeader(), storeResourceId: h.storeResourceId }));
+        await qc.invalidateQueries({ queryKey: ["materials"] });
+        await qc.invalidateQueries({ queryKey: ["pharmacy", "office"] });
+        return;
+      }
       const done = await captureStockRows(payload);
       setResult(done);
       setRowsRaw([blankRow()]);
@@ -258,13 +340,13 @@ export function StockEntryView(): React.ReactElement {
     next.focus();
   };
 
-  const units = fresh?.units ?? 0;
+  const units = judged?.units ?? 0;
   return (
     <div className="space-y-4 se" data-testid="stock-entry">
       <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
-          <h1 className="text-lg font-semibold" id="opening-stock-entry-title">{t("stockEntry.title")}</h1>
-          <p className="text-sm text-muted-foreground">{t("stockEntry.lead")}</p>
+          <h1 className="text-lg font-semibold" id="opening-stock-entry-title">{t(invoice ? "stockEntry.invoice.heading" : "stockEntry.title")}</h1>
+          <p className="text-sm text-muted-foreground">{t(invoice ? "stockEntry.invoice.lead" : "stockEntry.lead")}</p>
         </div>
         {mayCreate && (
           <Button type="button" variant="outline" data-testid="se-new-drug" onClick={() => setNewDrug({ rowKey: rows[rows.length - 1]!.key, name: "" })}>
@@ -272,6 +354,23 @@ export function StockEntryView(): React.ReactElement {
           </Button>
         )}
       </div>
+
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t("stockEntry.mode.label")} data-testid="se-mode">
+        {(["opening", "invoice"] as const).map((m) => (
+          <Button key={m} type="button" variant={mode === m ? "default" : "outline"} aria-pressed={mode === m} data-testid={`se-mode-${m}`}
+            onClick={() => { setMode(m); setResult(null); setInvResult(null); setError(null); setCheckError(null); }}>
+            {t(`stockEntry.mode.${m}`)}
+          </Button>
+        ))}
+      </div>
+
+      {invoice && (
+        <InvoiceHeaderForm
+          header={header} onChange={(p) => { setInvResult(null); setHeader((h) => ({ ...h, ...p })); }}
+          suppliers={suppliers.data ?? []} stores={stores.data ?? []} orders={orders.isError ? null : orders.data ?? []}
+          reasons={invFresh?.headerReasons ?? []}
+        />
+      )}
 
       <div className="se-notes">
         <p data-testid="se-two-person">
@@ -283,6 +382,16 @@ export function StockEntryView(): React.ReactElement {
 
       {error !== null && <p role="alert" className="text-sm text-red-700">{error}</p>}
       {checkError !== null && <p role="alert" className="text-sm text-red-700">{checkError}</p>}
+
+      {invResult !== null && (
+        <div role="status" className="se-result" data-testid="se-invoice-result">
+          <p className="font-semibold">{t("stockEntry.invoice.captured", { grnNo: invResult.grnNo, count: invResult.lines })}</p>
+          <p className="mt-2 text-sm">
+            {t("stockEntry.afterCapture")}{" "}
+            <Link to="/pharmacy/office" search={GRN_WORKLIST} className="font-semibold underline">{t("stockEntry.worklistLink")}</Link>
+          </p>
+        </div>
+      )}
 
       {result !== null && (
         <div role="status" className="se-result" data-testid="se-result">
@@ -315,14 +424,17 @@ export function StockEntryView(): React.ReactElement {
               <th>{t("stockEntry.col.batch")}</th><th>{t("stockEntry.col.expiry")}</th><th>{t("stockEntry.col.boxes")}</th><th>{t("stockEntry.col.perBox")}</th><th>{t("stockEntry.col.packs")}</th>
               <th>{t("stockEntry.col.free")}</th><th>{t("stockEntry.col.mrp")}</th><th>{t("stockEntry.col.rate")}</th>
               <th>{t("stockEntry.col.discount")}</th><th>{t("stockEntry.col.cost")}</th><th>{t("stockEntry.col.gst")}</th>
-              <th>{t("stockEntry.col.rack")}</th><th>{t("stockEntry.col.supplier")}</th><th><span className="sr-only">{t("stockEntry.remove")}</span></th>
+              {!invoice && <><th>{t("stockEntry.col.rack")}</th><th>{t("stockEntry.col.supplier")}</th></>}
+              <th><span className="sr-only">{t("stockEntry.remove")}</span></th>
             </tr>
           </thead>
           {rows.map((r, i) => (
             <RowView
               key={r.key} row={r} index={i} last={i === rows.length - 1}
               reasons={r.item === null ? (isBlank({ ...r, query: "" }) ? [] : [t("stockEntry.pickBrand")]) : reasonsFor(r.key)}
-              near={fresh !== null && fresh.rows.find((x) => x.line === sendable.findIndex((s) => s.key === r.key) + 1)?.near === true && r.item !== null}
+              near={judgedRow(r.key)?.near === true && r.item !== null}
+              estimate={!invoice && judgedRow(r.key)?.estimatedCost === true ? judgedRow(r.key)!.costPerBasePaise : null}
+              mode={mode} rateIncludesGst={invoice && header.rateIncludesGst}
               mayCreate={mayCreate} mayPutOnSale={mayPutOnSale}
               onChange={(p) => update(r.key, p)} onRemove={() => remove(r.key)} onPick={(item) => pick(r.key, item)}
               onPutOnSale={(item) => void putOnSale(r.key, item)}
@@ -340,11 +452,15 @@ export function StockEntryView(): React.ReactElement {
         <p className="text-sm" role="status" data-testid="se-summary">
           {sendable.length === 0
             ? t("stockEntry.empty")
-            : fresh === null
+            : judged === null
               ? t("stockEntry.checking")
-              : t("stockEntry.summary", { rows: sendable.length, refused: fresh.refusals + unpicked.length, units })}
+              : t("stockEntry.summary", { rows: sendable.length, refused: judged.refusals + unpicked.length, units })}
+          {invFresh !== null && invFresh.costPaise > 0 && <span data-testid="se-invoice-cost">{" · "}{t("stockEntry.invoice.cost", { amount: rupees(invFresh.costPaise) })}</span>}
         </p>
         {lacking.map((a) => <p key={a.why} className="text-sm text-red-700">{t(`stockEntry.needs_${a.why}`, { permission: a.permission })}</p>)}
+        {fresh !== null && (fresh.estimated ?? 0) > 0 && (
+          <p className="text-sm text-amber-800" data-testid="se-estimated">{t("stockEntry.estimated", { count: fresh.estimated ?? 0 })}</p>
+        )}
         {fresh !== null && fresh.zeroCost > 0 && <p className="text-sm text-amber-800">{t("materialsGrn.opening.zeroCost", { count: fresh.zeroCost })}</p>}
         {fresh !== null && fresh.authority.some((a) => a.why === "racks" && !a.held) && <p className="text-sm text-amber-800">{t("materialsGrn.opening.racksLeft", { count: fresh.racks })}</p>}
         {fresh?.grns.filter((g) => g.state !== "new").map((g) => (
@@ -352,7 +468,7 @@ export function StockEntryView(): React.ReactElement {
         ))}
         <div className="flex flex-wrap items-center gap-3">
           <Button type="button" disabled={!canCapture} data-testid="se-capture" onClick={() => void capture()}>
-            {t("stockEntry.capture")}
+            {t(invoice ? "stockEntry.invoice.capture" : "stockEntry.capture")}
           </Button>
           <span className="text-xs text-muted-foreground">{t("stockEntry.captureHint")}</span>
           {entered.length > 0 && (
@@ -364,10 +480,14 @@ export function StockEntryView(): React.ReactElement {
         </div>
       </div>
 
-      <details className="se-upload" open={upload} onToggle={(e) => setUpload((e.target as HTMLDetailsElement).open)}>
+      {!invoice && (
+        <RecountPanel rows={sendable} control={control} onLoad={setControl} onClear={() => setControl(null)} />
+      )}
+
+      {!invoice && <details className="se-upload" open={upload} onToggle={(e) => setUpload((e.target as HTMLDetailsElement).open)}>
         <summary className="cursor-pointer text-sm font-medium" data-testid="se-upload">{t("stockEntry.upload")}</summary>
         {upload && <div className="mt-3"><OpeningStockSheet onOpenGrn={() => void navigate({ to: "/pharmacy/office", search: GRN_WORKLIST })} /></div>}
-      </details>
+      </details>}
 
       {newDrug !== null && (
         <Sheet title={t("stockEntry.newDrugTitle")} testId="se-new-drug-sheet" onClose={() => setNewDrug(null)}>
@@ -386,13 +506,17 @@ export function StockEntryView(): React.ReactElement {
   );
 }
 
-function RowView({ row, index, last, reasons, near, mayCreate, mayPutOnSale, onChange, onRemove, onPick, onPutOnSale, onNewDrug, onEdit }: {
+function RowView({ row, index, last, reasons, near, estimate, mode, rateIncludesGst, mayCreate, mayPutOnSale, onChange, onRemove, onPick, onPutOnSale, onNewDrug, onEdit }: {
   row: GridRow; index: number; last: boolean; reasons: string[]; near: boolean; mayCreate: boolean; mayPutOnSale: boolean;
+  /** #1047 / 0093 — the server's estimated cost per unit for a row with no rate (opening mode), or null. */
+  estimate: number | null; mode: EntryMode; rateIncludesGst: boolean;
   onChange: (p: Partial<GridRow>) => void; onRemove: () => void; onPick: (item: WireStockItem) => void;
   onPutOnSale: (item: WireStockItem) => void; onNewDrug: (name: string) => void; onEdit: (item: WireStockItem) => void;
 }): React.ReactElement {
   const { t } = useTranslation();
-  const econ = rowEconomics(row);
+  // With GST in the rate (invoice mode), the live figure divides it out first, as the server does.
+  const gstForCost = rateIncludesGst ? row.item?.gstRateBps ?? null : null;
+  const econ = rowEconomics(row, gstForCost);
   const count = rowCount(row);
   const words = UNIT_WORDS[row.packType] ?? PACK_WORDS;
   const total = count === null ? null : t("stockEntry.total", {
@@ -442,7 +566,9 @@ function RowView({ row, index, last, reasons, near, mayCreate, mayPutOnSale, onC
         <td data-label={t("stockEntry.col.rate")}>{input("rate", t("stockEntry.col.rate"), { inputMode: "decimal", placeholder: "0.00" })}</td>
         <td data-label={t("stockEntry.col.discount")}>{input("discount", t("stockEntry.col.discount"), { inputMode: "decimal", placeholder: "0" })}</td>
         <td data-label={t("stockEntry.col.cost")} className="se-cost" data-testid={`se-cost-${String(index)}`}>
-          {econ === null || row.rate.trim() === "" ? <span className="text-muted-foreground">—</span> : (
+          {estimate !== null && row.rate.trim() === "" ? (
+            <span className="text-amber-800" data-testid={`se-estimate-${String(index)}`}>{t("stockEntry.perUnitEstimated", { amount: rupees(estimate) })}</span>
+          ) : econ === null || row.rate.trim() === "" ? <span className="text-muted-foreground">—</span> : (
             <>
               <b>{t("stockEntry.perUnit", { amount: rupees(econ.cost) })}</b>
               {econ.marginPct !== null && <span className={econ.marginPct < 0 ? "text-red-700" : "text-muted-foreground"}>{t("stockEntry.margin", { pct: econ.marginPct })}</span>}
@@ -450,15 +576,19 @@ function RowView({ row, index, last, reasons, near, mayCreate, mayPutOnSale, onC
           )}
         </td>
         <td data-label={t("stockEntry.col.gst")} className="se-gst">{gst === undefined || gst === null ? "—" : gst === 0 ? t("stockEntry.nil") : `${String(gst / 100)}%`}</td>
-        <td data-label={t("stockEntry.col.rack")}>{input("rack", t("stockEntry.col.rack"))}</td>
-        <td data-label={t("stockEntry.col.supplier")} className="se-sup">{input("supplier", t("stockEntry.col.supplier"), { list: "se-suppliers", placeholder: t("stockEntry.openingStock") })}</td>
+        {mode === "opening" && (
+          <>
+            <td data-label={t("stockEntry.col.rack")}>{input("rack", t("stockEntry.col.rack"))}</td>
+            <td data-label={t("stockEntry.col.supplier")} className="se-sup">{input("supplier", t("stockEntry.col.supplier"), { list: "se-suppliers", placeholder: t("stockEntry.openingStock") })}</td>
+          </>
+        )}
         <td className="se-x">
           {!last && <button type="button" aria-label={t("stockEntry.removeRow", { n: index + 1 })} data-testid={`se-remove-${String(index)}`} onClick={onRemove}>×</button>}
         </td>
       </tr>
       {(reasons.length > 0 || near) && (
         <tr className="se-why">
-          <td colSpan={15}>
+          <td colSpan={mode === "opening" ? 15 : 13}>
             {reasons.length > 0
               ? <span className="text-red-700" data-testid={`se-reasons-${String(index)}`}>{reasons.join(" · ")}</span>
               : <span className="text-amber-800">{t("stockEntry.near")}</span>}

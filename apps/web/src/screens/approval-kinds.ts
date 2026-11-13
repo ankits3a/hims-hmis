@@ -39,6 +39,8 @@ export const APPROVAL_KINDS = {
   patient_unmerge: ["patient"],
   materials_stock_adjustment: [],
   materials_near_expiry_acceptance: [],
+  /* #1047 — the same batch arrived at a new MRP; the batches and both MRPs are on the card. */
+  materials_mrp_revision: [],
   materials_vendor_bank_change: [],
   /* PARITY P2 — a purchase order, up to the head's limit and above it. The total is in the request note. */
   materials_po_approval: ["amount"],

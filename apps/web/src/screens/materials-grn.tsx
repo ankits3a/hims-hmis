@@ -2,8 +2,8 @@ import { useState } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
-  captureGrn, fetchDiscrepancies, fetchExpiring, fetchGrn, fetchGrns, fetchItem, fetchItems, fetchMaterialsSettings, fetchStores,
-  fetchVendors, materialsErrorText, postGrn, requestNearExpiry, runGrnQc,
+  cancelGrn, captureGrn, fetchDiscrepancies, fetchExpiring, fetchGrn, fetchGrns, fetchItem, fetchItems, fetchMaterialsSettings, fetchStores,
+  fetchVendors, materialsErrorText, postGrn, requestMrpRevision, requestNearExpiry, runGrnQc,
 } from "../lib/materials-api";
 import { useAuth } from "../lib/auth";
 import { fetchPurchaseOrders, fetchReceivable } from "../lib/purchase-api";
@@ -69,7 +69,7 @@ function toPaise(rupees: string): number | null {
 /** A GRN's state as the board's pill: waiting on a person is gold, posted is pine, refused is red. */
 function grnPill(status: string): string {
   if (status === "posted") return "pill on";
-  if (status === "rejected") return "pill rd";
+  if (status === "rejected" || status === "cancelled") return "pill rd";
   return "pill gd";
 }
 
@@ -101,7 +101,8 @@ export function MaterialsGrn(): React.ReactElement {
    * the capturer, so the sheet says who must act instead of offering buttons that will be refused.
    */
   const settings = useQuery({ queryKey: ["materials", "settings"], queryFn: fetchMaterialsSettings });
-  const me = useAuth().actor?.id ?? null;
+  const auth = useAuth();
+  const me = auth.actor?.id ?? null;
   const twoPerson = settings.data?.grnQcNeedsSecondPerson === true;
   const waitingOnQc = (g: WireGrn): boolean => g.status === "gate_qc" || g.status === "draft";
   /** Checked by its capturer — already (qcBy), or about to be (the capturer has it open, the setting off). */
@@ -195,6 +196,12 @@ export function MaterialsGrn(): React.ReactElement {
 
   const grn: WireGrn | undefined = openGrn.data;
   const hasNearExpiry = grn?.lines.some((l) => l.nearExpiry) === true;
+  // #1047 — the same batch at a new MRP: the post waits for the materials head's MRP approval.
+  const hasMrpRevised = grn?.lines.some((l) => l.mrpRevised === true) === true;
+  // #1047 — a captured GRN may be cancelled with a reason until it posts.
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelWhy, setCancelWhy] = useState("");
+  const isOpen = grn !== undefined && grn.status !== "posted" && grn.status !== "cancelled";
   /** Captured and not yet through QC: every line's verdict is still to come, whatever its fields say. */
   const awaitingQc = grn?.status === "gate_qc" || grn?.status === "draft";
   const itemLabel = (itemId: string): string => {
@@ -454,13 +461,21 @@ export function MaterialsGrn(): React.ReactElement {
       )}
 
       {grn !== undefined && openGrnId !== null && !receiving && (
-        <Sheet title={grn.grnNo} testId="grn-sheet" onClose={() => { setOpenGrnId(null); }}>
+        <Sheet title={grn.grnNo} testId="grn-sheet" onClose={() => { setOpenGrnId(null); setCancelling(false); }}>
             <div className="space-y-3" data-testid="grn-open">
               {feedback}
               <p className="flex flex-wrap items-center gap-2">
                 <span className={grnPill(grn.status)}>{t(`materialsGrn.status_${grn.status}`, { defaultValue: grn.status })}</span>
                 {selfChecked(grn) && <span className="text-xs text-amber-800" data-testid="grn-open-self-checked">{t("materialsGrn.sameCapturer")}</span>}
+                {grn.invoiceNo !== null && (
+                  <span className="text-xs text-muted-foreground" data-testid="grn-open-invoice">
+                    {t("materialsGrn.invoiceLine", { no: grn.invoiceNo, date: grn.invoiceDate ?? grn.challanDate })}
+                  </span>
+                )}
               </p>
+              {grn.status === "cancelled" && (
+                <p role="note" className="text-sm text-red-700" data-testid="grn-cancelled">{t("materialsGrn.cancelledWhy", { reason: grn.cancelReason ?? "" })}</p>
+              )}
               {capturerBlocked(grn) && <p role="note" className="text-sm text-amber-800" data-testid="grn-capturer-blocked">{t("materialsGrn.capturerMayNotCheck")}</p>}
               <div className="ofp-box ofp-scroll">
               <table className="ofp-table min-w-[48rem]">
@@ -492,8 +507,11 @@ export function MaterialsGrn(): React.ReactElement {
                           ? <span className="text-neutral-600">{t("materialsGrn.status_gate_qc")}</span>
                           : l.rejectReason !== null
                           ? <span className="text-red-600">{t(`materialsGrn.rule_${l.rejectReason}`)}</span>
-                          : l.nearExpiry
-                            ? <span className="text-amber-700">{t("materialsGrn.rule_near_expiry")}</span>
+                          : l.nearExpiry || l.mrpRevised === true
+                            ? <span className="text-amber-700">{[
+                                ...(l.nearExpiry ? [t("materialsGrn.rule_near_expiry")] : []),
+                                ...(l.mrpRevised === true ? [t("materialsGrn.rule_mrp_revised")] : []),
+                              ].join(" · ")}</span>
                             : <span className="text-green-700">{t("materialsGrn.verdictPass")}</span>}
                       </td>
                     </tr>
@@ -501,6 +519,7 @@ export function MaterialsGrn(): React.ReactElement {
                 </tbody>
               </table>
               </div>
+              {isOpen && (
               <div className="flex flex-wrap gap-2">
                 <Button disabled={capturerBlocked(grn)} onClick={() => void run(
                   async () => { await runGrnQc(grn.id); }, t("materialsGrn.qcDone"),
@@ -514,12 +533,39 @@ export function MaterialsGrn(): React.ReactElement {
                     {t("materialsGrn.requestNearExpiry")}
                   </Button>
                 )}
+                {hasMrpRevised && (
+                  <Button variant="outline" data-testid="grn-request-mrp" onClick={() => void run(
+                    async () => { await requestMrpRevision(grn.id); }, t("materialsGrn.approvalRequested"),
+                  )}>
+                    {t("materialsGrn.requestMrpRevision")}
+                  </Button>
+                )}
                 <Button disabled={capturerBlocked(grn)} onClick={() => void run(
                   async () => { await postGrn(grn.id); }, t("materialsGrn.posted"),
                 )}>
                   {t("materialsGrn.post")}
                 </Button>
+                {auth.can("materials.grn.capture") && !cancelling && (
+                  <Button variant="outline" data-testid="grn-cancel" onClick={() => { setCancelling(true); setCancelWhy(""); }}>
+                    {t("materialsGrn.cancel")}
+                  </Button>
+                )}
               </div>
+              )}
+              {isOpen && cancelling && (
+                <div className="flex flex-wrap items-end gap-2 rounded bg-red-50 p-2" data-testid="grn-cancel-form">
+                  <label className="flex min-w-[16rem] flex-1 flex-col gap-1 text-sm">
+                    {t("materialsGrn.cancelReason")}
+                    <input className="rounded border px-2 py-1" value={cancelWhy} maxLength={500} onChange={(e) => setCancelWhy(e.target.value)} />
+                  </label>
+                  <Button variant="destructive" disabled={cancelWhy.trim() === ""} data-testid="grn-cancel-confirm" onClick={() => void run(
+                    async () => { await cancelGrn(grn.id, cancelWhy.trim()); setCancelling(false); }, t("materialsGrn.cancelled"),
+                  )}>
+                    {t("materialsGrn.cancelConfirm")}
+                  </Button>
+                  <Button variant="ghost" onClick={() => setCancelling(false)}>{t("materialsGrn.cancelKeep")}</Button>
+                </div>
+              )}
             </div>
         </Sheet>
       )}
