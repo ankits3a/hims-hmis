@@ -101,3 +101,4 @@ Records without ✓ were transcribed by an agent and await the owner's check.
 | 0082 | 2026-10-21 | [A photographed lab analyser slip may go to Gemini (OpenRouter as fallback) with the patient's name and UHID on it, on paid no-training terms](0082-lab-slip-image-to-model.md) | lab, mobile, ai, privacy | Ruled |  |
 | 0083 | 2026-11-02 | [Pharmacy fee switch: medicines free from the Fees page, with MRP kept on the bill](0083-pharmacy-fee-switch.md) | billing, pharmacy, printing | Ruled |  |
 | 0093 | 2026-11-13 | [Pharmacy go-live: quick desk stays on, the doctor agrees to an H/H1 brand swap, unknown-rate opening stock is an estimate](0093-pharmacy-go-live-rulings.md) | pharmacy, materials, legal, money | Ruled |  |
+| 0094 | 2026-11-13 | [Pharmacy: staff may add a medicine to a ticket by hand, any schedule except X and narcotics, with or without a prescription](0094-pharmacy-add-medicine-by-hand.md) | pharmacy, legal | Ruled |  |
