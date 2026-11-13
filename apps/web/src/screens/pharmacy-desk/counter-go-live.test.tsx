@@ -123,6 +123,66 @@ describe("the counter's exceptions at the desk (spec #1046)", () => {
     await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: "/pharmacy/desk/$ticketId", params: { ticketId: "d2" } }));
   });
 
+  /* ── WALK 2026-11-13: what a real browser found before production ── */
+
+  it("a line dropped at the bill reads only 'declined', never also 'given' from the batch it no longer holds", async () => {
+    const dropped = line(1, "Cetzine", { status: "declined", declinedReason: "patient has it at home", pickedBatch: { batchNo: "CZ-1", expiryDate: "2028-09-30" } });
+    mockRoutes(desk(() => dispense("picked", [line(0, "Crocin"), dropped])));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const row = await screen.findByTestId("desk-line-1");
+    expect(within(row).getByText("declined — patient has it at home")).toBeInTheDocument();
+    expect(within(row).queryByText(/given from/)).toBeNull();
+    expect(within(screen.getByTestId("desk-line-0")).getByText(/given from B-1/)).toBeInTheDocument();
+  });
+
+  it("the hand-over says the balance still owed, in one line, before the patient leaves", async () => {
+    const short = line(0, "Amoxicillin", { qtyBase: 10, owedQtyBase: 5, pickNote: "only this much on the shelf", item: { id: "it-a", code: "AMX", name: "Amoxicillin capsule", baseUom: "capsule", uoms: [] } });
+    mockRoutes(desk(() => dispense("billed", [short, line(1, "Crocin")])));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const box = await screen.findByTestId("desk-handover");
+    expect(within(box).getByTestId("desk-say-balance")).toHaveTextContent("Balance owed: Amoxicillin × 5 capsule — collect within 30 days");
+  });
+
+  it("no balance line when nothing is owed", async () => {
+    mockRoutes(desk(() => dispense("billed", [line(0, "Crocin")])));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const box = await screen.findByTestId("desk-handover");
+    expect(within(box).queryByTestId("desk-say-balance")).toBeNull();
+  });
+
+  it("the collected-by fields sit in a row that stacks on a narrow screen: no fixed pixel widths that overflow 390 px", async () => {
+    mockRoutes(desk(() => dispense("billed", [line(0, "Brufen", { scheduleFlag: "H" })], { scheduled: true })));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const box = await screen.findByTestId("desk-handover");
+    await userEvent.selectOptions(within(box).getByRole("combobox", { name: "who is collecting" }), "collected_by");
+    await userEvent.selectOptions(within(box).getByRole("combobox", { name: "collected by" }), "attendant");
+    const ids = within(box).getByTestId("desk-handover-ids");
+    expect(ids).toHaveClass("pd-ids");
+    for (const field of [...ids.querySelectorAll("select, input")] as HTMLElement[]) expect(field.style.width).toBe("");
+  });
+
+  it("the done screen reads the hand-over's own time, not the closing it read while the ticket was only paid", async () => {
+    let current = dispense("billed", [line(0, "Crocin")]);
+    const closing = () => ({
+      status: 200,
+      body: {
+        ticket: { dispenseNo: "P2611130004", claimedByName: "Anita Verma", claimedAt: "2026-11-13T06:10:00.000Z", handedOverAt: current.status === "handed_over" ? "2026-11-13T06:40:00.000Z" : null, lines: 1, substituted: 0, declined: 0 },
+        money: null, registers: { h1Rows: 0, batches: current.status === "handed_over" ? 1 : 0 },
+      },
+    });
+    mockRoutes(desk(() => current, {
+      "GET /api/pharmacy/dispenses/d1/closing": closing,
+      "POST /api/pharmacy/dispenses/d1/handover": () => { current = dispense("handed_over", [line(0, "Crocin")], { handedOverAt: "2026-11-13T06:40:00.000Z" }); return { status: 201, body: current }; },
+      "POST /api/pharmacy/dispenses/d1/print": { status: 201, body: { via: "relay", jobs: [] } },
+    }));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    await waitFor(() => expect(gets("/d1/closing")).toBeGreaterThan(0));
+    await userEvent.click(await screen.findByRole("button", { name: /Handed over/ }));
+    const done = await screen.findByTestId("desk-closed");
+    await waitFor(() => expect(done).toHaveTextContent("closed 12:10."));
+    expect(done).not.toHaveTextContent("closed —");
+  });
+
   it("D1 — the identity is complete only when its way is: a value, the patient, or an attendant with a name and a relation", () => {
     expect(identityOf("token", " 14 ", "", "", "")).toEqual({ via: "token", value: "14" });
     expect(identityOf("phone_last4", "  ", "", "", "")).toBeNull();
@@ -130,5 +190,45 @@ describe("the counter's exceptions at the desk (spec #1046)", () => {
     expect(identityOf("collected_by", "", "self", "", "")).toEqual({ via: "collected_by", who: "self" });
     expect(identityOf("collected_by", "", "attendant", "Ramesh", "")).toBeNull();
     expect(identityOf("collected_by", "", "attendant", " Ramesh ", "son")).toEqual({ via: "collected_by", who: "attendant", name: "Ramesh", relation: "son" });
+  });
+});
+
+/** WALK 2026-11-13 — on a phone the bill sits behind its own tab; once paid, it points back to the ticket to hand over. */
+describe("the paid bill on a phone (≤900 px)", () => {
+  const phoneViewport = (on: boolean): void => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true, writable: true,
+      value: on
+        ? (query: string) => ({
+          matches: /max-width:\s*900px/.test(query), media: query, onchange: null,
+          addEventListener: () => undefined, removeEventListener: () => undefined,
+          addListener: () => undefined, removeListener: () => undefined, dispatchEvent: () => false,
+        })
+        : undefined,
+    });
+  };
+  beforeEach(() => { setToken("t"); navigate.mockReset(); resetDeskLog(); resetPaperNotice(); phoneViewport(true); });
+  afterEach(() => { vi.unstubAllGlobals(); phoneViewport(false); });
+
+  it("after payment the Bill tab says to hand it over, with a button that opens the Ticket tab", async () => {
+    mockRoutes(desk(() => dispense("billed", [line(0, "Crocin")])));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const tabs = await screen.findByRole("tablist");
+    await userEvent.click(within(tabs).getByRole("tab", { name: "Bill" }));
+    const hint = await screen.findByTestId("desk-paid-hint");
+    expect(hint).toBeVisible();
+    expect(hint).toHaveTextContent("Paid — hand the medicine over from the ticket.");
+    await userEvent.click(within(hint).getByRole("button", { name: "Open the ticket" }));
+    expect(within(tabs).getByRole("tab", { name: "Ticket" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByTestId("desk-ticket-panel")).toBeVisible();
+  });
+
+  it("no such hint while the money is still to be taken", async () => {
+    mockRoutes(desk(() => dispense("picked", [line(0, "Crocin")])));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const tabs = await screen.findByRole("tablist");
+    await userEvent.click(within(tabs).getByRole("tab", { name: "Bill" }));
+    await within(screen.getByTestId("desk-bill")).findByTestId("desk-payable");
+    expect(screen.queryByTestId("desk-paid-hint")).toBeNull();
   });
 });

@@ -81,6 +81,11 @@ export async function closingFor(db: Db, actor: Actor, dispenseId: string): Prom
       declined: lines.filter((l) => l.status === "declined").length,
     },
     money,
-    registers: { h1Rows: h1.length, batches: new Set(lines.map((l) => l.batchId).filter((b): b is string => b !== null)).size },
+    /*
+      WALK 2026-11-13 — the batches stock LEFT: a line consumed at the hand-over carries its ledger entry. A line dropped
+      at the bill keeps the batch its pick had reserved (the reservation is released, the column is not), so counting
+      `batchId` said "3 batches" for a ticket that handed over two.
+    */
+    registers: { h1Rows: h1.length, batches: new Set(lines.filter((l) => l.ledgerEntryId !== null).map((l) => l.batchId).filter((b): b is string => b !== null)).size },
   };
 }

@@ -124,7 +124,7 @@ Source: `apps/core/src/modules/pharmacy/`
   - `handOverDispense(db: Db, actor: Actor, decls: readonly OrderKindDecl[], dispenseId: string, input: HandoverInput, now: Date): Promise<Dispe…`
   - types: `HandoverInput`
 - `label.ts`
-  - `labelFor(db: Db, actor: Actor, dispenseId: string): Promise<LabelData>`
+  - `labelFor(db: Db, actor: Actor, dispenseId: string, now: Date = new Date()): Promise<LabelData>`
   - types: `LabelData`, `LabelLine`
 - `leakage.ts`
   - `pharmacyLeakage(db: Db, day: string, storeCode: string = OPD_PHARMACY_STORE_CODE): Promise<LeakageReport>`

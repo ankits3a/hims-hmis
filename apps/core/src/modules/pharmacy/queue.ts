@@ -103,20 +103,46 @@ export type BalanceOwed = {
   until: Date;
 };
 
+/** The lines a dispense still owes: open, not a split's further batch, with owed base units. */
+function owedLinesOf(lines: readonly DispenseLineRow[]): DispenseLineRow[] {
+  return lines.filter((l) => l.status === "open" && l.splitFromLineIdx === null && (l.owedQtyBase ?? 0) > 0);
+}
+
+/** The first hand-over of a prescription (any of its dispenses), or null before there has been one. */
+async function firstHandOverOf(db: Db | Tx, prescriptionId: string): Promise<Date | null> {
+  const [first] = await db.select({ at: sql<Date>`min(${pharmacyDispenses.handedOverAt})` }).from(pharmacyDispenses)
+    .where(and(eq(pharmacyDispenses.prescriptionId, prescriptionId), eq(pharmacyDispenses.status, "handed_over")));
+  return first?.at === null || first?.at === undefined ? null : new Date(first.at);
+}
+
+const balanceUntil = (firstAt: Date): Date => new Date(firstAt.getTime() + BALANCE_WINDOW_DAYS * 24 * 60 * 60_000);
+
 /** The owed lines of a handed-over dispense, if a balance may be opened for it at `now`; else null. */
 export async function balanceOwedOf(db: Db | Tx, d: DispenseRow, lines: readonly DispenseLineRow[], now: Date): Promise<{ lines: DispenseLineRow[]; until: Date } | null> {
   if (d.status !== "handed_over") return null;
-  const owed = lines.filter((l) => l.status === "open" && l.splitFromLineIdx === null && (l.owedQtyBase ?? 0) > 0);
+  const owed = owedLinesOf(lines);
   if (owed.length === 0) return null;
   const [open] = await db.select({ id: pharmacyDispenses.id }).from(pharmacyDispenses)
     .where(and(eq(pharmacyDispenses.balanceOf, d.id), sql`${pharmacyDispenses.status} <> 'cancelled'`)).limit(1);
   if (open !== undefined) return null;
-  const [first] = await db.select({ at: sql<Date>`min(${pharmacyDispenses.handedOverAt})` }).from(pharmacyDispenses)
-    .where(and(eq(pharmacyDispenses.prescriptionId, d.prescriptionId), eq(pharmacyDispenses.status, "handed_over")));
-  const firstAt = first?.at === null || first?.at === undefined ? d.handedOverAt : new Date(first.at);
+  const firstAt = (await firstHandOverOf(db, d.prescriptionId)) ?? d.handedOverAt;
   if (firstAt === null) return null;
-  const until = new Date(firstAt.getTime() + BALANCE_WINDOW_DAYS * 24 * 60 * 60_000);
+  const until = balanceUntil(firstAt);
   return now.getTime() > until.getTime() ? null : { lines: owed, until };
+}
+
+/**
+ * WALK 2026-11-13 — what the PAPER says is still owed, so the patient does not leave with a bill or a label that is
+ * silent about it. The bill prints at payment, before the hand-over that starts the window: a paid ticket counts it
+ * from `now` (the hand-over is the next act, so the date printed is at most the wait early, never late), unless the
+ * prescription was already handed over once (a balance ticket short again). Handed over, it is `balanceOwedOf`.
+ */
+export async function balanceOnPaper(db: Db | Tx, d: DispenseRow, lines: readonly DispenseLineRow[], now: Date): Promise<{ lines: DispenseLineRow[]; until: Date } | null> {
+  if (d.status === "handed_over") return balanceOwedOf(db, d, lines, now);
+  if (d.status !== "billed") return null;
+  const owed = owedLinesOf(lines);
+  if (owed.length === 0) return null;
+  return { lines: owed, until: balanceUntil((await firstHandOverOf(db, d.prescriptionId)) ?? now) };
 }
 
 /** The balance ticket's queue row: the source's prescription and visit, a fresh P-number, `balance_of` set. */

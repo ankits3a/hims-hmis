@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { strengthShown } from "../../../../packages/contracts/src/drug-strength";
 import type { WireLabel } from "../lib/pharmacy-api";
 
 /**
@@ -31,23 +32,25 @@ export function PharmacyBillAnnex({ label }: { label: WireLabel }): React.ReactE
       <table className="w-full text-xs">
         <thead>
           <tr className="text-left">
-            <th>{t("pharmacyBill.drug")}</th>
-            <th>{t("pharmacyBill.batch")}</th>
-            <th>{t("pharmacyBill.expiry")}</th>
-            <th>{t("pharmacyBill.manufacturer")}</th>
+            <th className="pr-2">{t("pharmacyBill.drug")}</th>
+            <th className="pr-2">{t("pharmacyBill.batch")} · {t("pharmacyBill.expiry")}</th>
+            <th className="pr-2">{t("pharmacyBill.manufacturer")}</th>
             <th className="text-right">{t("pharmacyBill.qty")}</th>
           </tr>
         </thead>
         <tbody>
           {label.lines.map((l) => (
             <tr key={l.lineIdx} data-testid={`bill-batch-${String(l.lineIdx)}`}>
-              <td>
-                {[l.drug, l.strength, l.form].filter((x): x is string => x !== null && x !== "").join(" ")}
+              <td className="pr-2">
+                {[l.drug, strengthShown(l.strength), l.form].filter((x): x is string => x !== null && x !== "").join(" ")}
                 {l.substitutedFor !== null && ` ${t("pharmacyBill.substitutedFor", { brand: l.substitutedFor })}`}
               </td>
-              <td className="font-mono">{l.batchNo}</td>
-              <td>{mmyy(l.expiryDate)}</td>
-              <td>{l.manufacturer ?? ""}</td>
+              {/* Walk 2026-11-13 — two bare columns printed "PCMW131108/28": the batch and its expiry, said apart in one cell. */}
+              <td className="whitespace-nowrap pr-2" data-testid={`bill-batch-exp-${String(l.lineIdx)}`}>
+                <span className="font-mono">{l.batchNo}</span>
+                {l.expiryDate === null ? null : ` · ${t("pharmacyBill.expiry")} ${mmyy(l.expiryDate)}`}
+              </td>
+              <td className="pr-2">{l.manufacturer ?? ""}</td>
               <td className="text-right">{l.qtyBase} {l.unit}{l.packs !== null ? ` (${l.packs})` : ""}</td>
             </tr>
           ))}
