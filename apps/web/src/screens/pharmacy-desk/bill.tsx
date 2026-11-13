@@ -140,7 +140,7 @@ export function BillRail({
   onDiscount?: ((d: AppliedDiscount | null) => void) | null;
 }): React.ReactElement {
   const { t } = useTranslation();
-  const [mode, setMode] = useState<TenderMode>("upi");
+  const [mode, setMode] = useState<TenderMode>("cash");
   /*
     Spec #1046 D4 (owner 2026-11-13) — the cash field STARTS at the exact payable, after cash rounding (0019):
     `null` is "not typed yet" and reads as that amount; the person may overwrite it with the note handed over.
@@ -186,7 +186,7 @@ export function BillRail({
 
   /* A different ticket starts with an empty tender — the last patient's cash is not this one's. */
   useEffect(() => {
-    setCash(null); setUpi(""); setRef(""); setMode("upi"); setUseCredit(true);
+    setCash(null); setUpi(""); setRef(""); setMode("cash"); setUseCredit(true);
     setCreditOpen(false); setCreditReason(""); setCreditApproval(null);
     setMenuOpen(false); setSheetOpen(false);
   }, [dispense.id]);

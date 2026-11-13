@@ -100,6 +100,7 @@ describe("the counter's exceptions at the desk (spec #1046)", () => {
     renderWithProviders(<PharmacyDesk ticketId="d1" />);
     const rail = await screen.findByTestId("desk-bill");
     await within(rail).findByTestId("desk-payable");
+    await userEvent.click(within(rail).getByRole("radio", { name: /^UPI/ })); // Cash is the default (owner 2026-11-13)
     await userEvent.type(within(rail).getByRole("textbox", { name: "UPI reference (UTR)" }), "425512345678");
     await userEvent.click(within(rail).getByRole("button", { name: /Received ₹12.00/ }));
     await waitFor(() => expect(bodies("POST", "/d1/print")).toEqual([{ documents: ["pharmacy_bill"] }]));
