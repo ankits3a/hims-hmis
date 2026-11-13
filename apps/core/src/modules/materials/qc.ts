@@ -34,6 +34,8 @@ import type { PackPrice, UomRow } from "./uom";
  *   7. MRP > ceiling is a HARD BLOCK where a regulation is effective on the challan date
  *   8. the batch is not recall-frozen
  *   9. a consignment challan needs a valid `consignment_agreement` — **O-8**
+ *  10. (#1047) the batch is already on the books, same expiry, at another MRP — `mrp_revised`, a HOLD like
+ *      rule 5 (it needs the materials head's approval at post), never a rejection
  *
  * ═══ PURE, AND THE CONTEXT IS PASSED IN ═══
  *
@@ -57,9 +59,10 @@ export type RuleCode =
   | "mrp_below_cost"
   | "mrp_above_ceiling"
   | "batch_frozen"
-  | "agreement_missing";
+  | "agreement_missing"
+  | "mrp_revised";
 
-export type QcVerdict = { verdict: "pass" | "near_expiry" | "reject"; rule?: RuleCode };
+export type QcVerdict = { verdict: "pass" | "near_expiry" | "mrp_revised" | "reject"; rule?: RuleCode };
 
 export type QcContext = {
   /** The item, or `undefined` when the line names one that does not exist (rule 1). */
@@ -89,6 +92,12 @@ export type QcContext = {
   ceilingUnconvertible: boolean;
   /** Whether the batch named already exists and is recall-frozen (rule 8). */
   batchFrozen: boolean;
+  /**
+   * #1047 — the batch named already exists with the same expiry and ANOTHER printed MRP: the maker's price
+   * revision. Not a rejection — the line is held as `mrp_revised` until the materials head approves the new MRP
+   * (`postGrn`). Optional so a context built before #1047 reads as "no revision".
+   */
+  mrpRevised?: boolean;
   /** Whether a valid `consignment_agreement` is on file for the challan date (rule 9, O-8). */
   hasConsignmentAgreement: boolean;
   /** `challan` | `consignment_challan` | `donation`. */
@@ -258,6 +267,9 @@ export function qcLine(ctx: QcContext, line: QcLine): QcVerdict {
   }
 
   // ── 5's verdict, now that nothing has rejected the line: it waits for the near-expiry acceptance ──
+  // (a short-dated line at a revised MRP waits for both; `grn.ts` keeps the second hold on the line)
   if (nearExpiry) return { verdict: "near_expiry", rule: "near_expiry" };
+  // ── #1047: the batch is on the shelf at another MRP — held for the materials head, not refused ──
+  if (ctx.mrpRevised === true) return { verdict: "mrp_revised", rule: "mrp_revised" };
   return { verdict: "pass" };
 }

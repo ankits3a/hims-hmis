@@ -431,7 +431,8 @@ export const supplierCreditRecorded = defineEvent("supplier_credit.recorded", MO
 }));
 /** A credit note recorded in error, cancelled before any run spent it; the return is back to dispatched. */
 export const supplierCreditCancelled = defineEvent("supplier_credit.cancelled", MODULE, z.object({
-  creditNoteId: id, creditNo: z.string().min(1), returnId: id, vendorId: id, amountPaise: paise, reason: z.string().min(1),
+  /** Null for a credit recorded without a return (#1047). */
+  creditNoteId: id, creditNo: z.string().min(1), returnId: id.nullable(), vendorId: id, amountPaise: paise, reason: z.string().min(1),
 }));
 
 const writeOffHeader = { writeOffId: id, writeOffNo: z.string().min(1), storeResourceId: id, totalValuePaise: paise };
@@ -501,6 +502,40 @@ export const storeSettingsChanged = defineEvent("store_settings.changed", MODULE
   setting: z.enum(["grn_qc_needs_second_person"]), from: z.boolean(), to: z.boolean(),
 }));
 
+// ═══ #1047 — the pharmacy stock-in go-live ═══
+
+const packUnit = z.object({ uom: z.string().min(1), toBaseMultiplier: z.number().int().positive() });
+/**
+ * A pack unit CORRECTED in place (the loader's `strip10` was really a `strip15`), old → new. Only while
+ * nothing counts or prices in the old pack (`items.ts` `replaceItemUom`); `repointed` lists what moved with it.
+ */
+export const itemUomReplaced = defineEvent("item.uom_replaced", MODULE, z.object({
+  itemId: id, from: packUnit, to: packUnit, repointed: z.array(z.string()),
+}));
+
+/** A captured GRN cancelled before posting, with the reason. Nothing had moved; it stops holding its PO's headroom. */
+export const grnCancelled = defineEvent("grn.cancelled", MODULE, z.object({
+  grnId: id, grnNo: z.string().min(1), vendorId: id, fromStatus: z.string().min(1), reason: z.string().min(1),
+  purchaseOrderId: id.nullable(),
+}));
+
+/**
+ * A batch's MRP revised at a GRN's post, old → new, under a GRANTED `materials_mrp_revision` approval: the
+ * same batch arrived at a new printed price, and the whole pile sells at it from now.
+ */
+export const batchMrpRevised = defineEvent("batch.mrp_revised", MODULE, z.object({
+  batchId: id, itemId: id, batchNo: z.string().min(1), grnId: id, grnLineId: id, approvalId: id,
+  from: z.object({ mrpPaise: paise.nullable(), mrpUom: z.string().nullable() }),
+  to: z.object({ mrpPaise: paise.nullable(), mrpUom: z.string().nullable() }),
+}));
+
+/** A supplier's credit note recorded WITHOUT a return (rate difference, scheme, breakage, other). It sets off like any credit. */
+export const supplierCreditNoted = defineEvent("supplier_credit.noted", MODULE, z.object({
+  creditNoteId: id, creditNo: z.string().min(1), vendorId: id, kind: z.enum(["rate_difference", "scheme", "breakage", "other"]),
+  vendorCreditNoteNo: z.string().min(1), creditNoteDate: z.string(), taxablePaise: paise, gstPaise: paise, amountPaise: paise,
+  note: z.string().nullable(),
+}));
+
 export const MATERIALS_EVENTS = [
   itemRegistered, itemUpdated,
   vendorRegistered, vendorUpdated, vendorStatusChanged,
@@ -522,4 +557,5 @@ export const MATERIALS_EVENTS = [
   itemMergeRequested, itemMergeRefused, itemMerged,
   materialIndentRaised, materialIndentIssued, materialIndentRejected, materialIndentCancelled,
   storeSettingsChanged,
+  itemUomReplaced, grnCancelled, batchMrpRevised, supplierCreditNoted,
 ] as const;

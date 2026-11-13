@@ -81,7 +81,7 @@ const CENSUS: Record<string, string[]> = {
     "rate_paise", "source", "uom", "valid_from", "valid_to", "vendor_id",
   ],
   stock_batches: [
-    "batch_no", "consignment_lot_id", "created_at", "created_by", "expiry_date",
+    "batch_no", "consignment_lot_id", "created_at", "created_by", "estimated_cost", "expiry_date",
     "expiry_notified_thresholds", "grn_line_id", "id", "item_id", "landed_cost_paise", "mfg_date",
     "mrp_paise", "mrp_uom", "ownership", "recall_status", "vendor_id",
   ],
@@ -120,13 +120,13 @@ const CENSUS: Record<string, string[]> = {
   /** OWNER RULING 2026-09-30 — the stores' settings, one row; the two-person GRN rule is its first (`modules/materials/settings.ts`). */
   materials_settings: ["grn_qc_needs_second_person", "id", "updated_at", "updated_by"],
   grns: [
-    "approval_id", "captured_by", "challan_date", "challan_no", "created_at", "created_by", "grn_no",
-    "id", "invoice_no", "po_ref", "posted_at", "purchase_order_id", "qc_by", "source", "status",
-    "store_resource_id", "updated_at", "updated_by", "vendor_id",
+    "approval_id", "cancel_reason", "cancelled_at", "cancelled_by", "captured_by", "challan_date", "challan_no", "created_at",
+    "created_by", "grn_no", "id", "invoice_date", "invoice_no", "mrp_approval_id", "po_ref", "posted_at", "purchase_order_id",
+    "qc_by", "source", "status", "store_resource_id", "updated_at", "updated_by", "vendor_id",
   ],
   grn_lines: [
-    "batch_id", "batch_no", "expiry_date", "free_goods", "grn_id", "id", "item_id", "mfg_date",
-    "mrp_paise", "mrp_uom", "near_expiry", "qty_accepted_base", "qty_base", "qty_in_uom",
+    "batch_id", "batch_no", "estimated_cost", "expiry_date", "free_goods", "grn_id", "id", "item_id", "mfg_date",
+    "mrp_paise", "mrp_revised", "mrp_uom", "near_expiry", "qty_accepted_base", "qty_base", "qty_in_uom",
     "qty_rejected_base", "reject_reason", "temp_log_ref", "unit_cost_paise", "uom",
   ],
   // PHARMACY PARITY P2 — levels per item per store, the purchase order and its lines.
@@ -187,8 +187,8 @@ const CENSUS: Record<string, string[]> = {
   ],
   supplier_credit_notes: [
     "amount_paise", "cancel_reason", "cancelled_at", "cancelled_by", "credit_no", "credit_note_date", "debit_note_paise",
-    "difference_paise", "difference_reason", "id", "recorded_at", "recorded_by", "return_id", "status", "vendor_credit_note_no",
-    "vendor_id",
+    "difference_paise", "difference_reason", "gst_paise", "id", "inter_state", "kind", "note", "recorded_at", "recorded_by",
+    "return_id", "status", "taxable_paise", "vendor_credit_note_no", "vendor_id",
   ],
   stock_write_offs: [
     "approval_id", "disposal_agency", "disposal_date", "id", "manifest_no", "note", "posted_at", "posted_by", "reason",

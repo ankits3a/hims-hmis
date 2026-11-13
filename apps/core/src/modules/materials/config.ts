@@ -271,5 +271,13 @@ export const NEAR_EXPIRY_RETURN_DAYS = 90;
  */
 export const NON_SUPPLIER_VENDOR_CODES = ["OPENING-STOCK", "TRIAL-STOCK"] as const;
 
+/**
+ * #1047 — DECIDED by the spec ("opening stock is a source, not a vendor"): the GRN source of the opening count
+ * (`pharmacy/opening-stock.ts`). Whichever supplier a row names, such a GRN is the hospital's own shelf counted at
+ * go-live, so it stays out of the last purchase (and so the agent's PO drafts), the challans awaiting a bill,
+ * manual supplier billing and the "purchases received" metric. Its stock is owned and sells like any other.
+ */
+export const OPENING_STOCK_SOURCE = "opening_stock";
+
 /** DECIDED: the expiry report's presets, in days from today (plus "expired" and a custom range). */
 export const EXPIRY_REPORT_PRESET_DAYS = [30, 60, 90] as const;

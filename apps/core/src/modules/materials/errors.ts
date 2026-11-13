@@ -314,7 +314,14 @@ export type MaterialsErrorCode =
   | "indent_closed"
   // ── OWNER RULING 2026-09-30 — the two-person GRN setting (`settings.ts`, `grn.ts`) ──
   /** The setting is on and the person who captured this GRN tries to QC or post it: somebody else must. */
-  | "grn_same_person";
+  | "grn_same_person"
+  // ── #1047 — the pharmacy stock-in go-live ──
+  /** A pack unit is corrected while a stock batch, a captured GRN line or an open PO line still counts or prices in it: add a new pack instead. */
+  | "pack_in_use"
+  /** The GRN was cancelled before posting: it is QC'd, posted and cancelled no more. */
+  | "grn_cancelled"
+  /** A line held as `mrp_revised` (the batch is on the books at another MRP) and no GRANTED `materials_mrp_revision` on the GRN. */
+  | "mrp_revision_unapproved";
 
 /**
  * 404 for a thing that is not there, 409 for a state conflict the caller can act on.

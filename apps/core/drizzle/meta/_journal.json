@@ -1597,6 +1597,13 @@
       "when": 1794300001000,
       "tag": "0228_lab_widal_reference_cutoffs",
       "breakpoints": true
+    },
+    {
+      "idx": 228,
+      "version": "7",
+      "when": 1794578598731,
+      "tag": "0229_pharmacy_stock_in_go_live",
+      "breakpoints": true
     }
   ]
 }

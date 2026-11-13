@@ -9,7 +9,7 @@ import {
   supplierPaymentRunLines, supplierPaymentRuns, supplierPayments, supplierReturns, users, vendors,
 } from "../../kernel/db/schema";
 import {
-  BILL_MATCH_TOLERANCE_BPS, BILL_MATCH_TOLERANCE_MIN_PAISE, DEFAULT_SUPPLIER_TERMS_DAYS, MSME_MAX_PAYMENT_DAYS,
+  BILL_MATCH_TOLERANCE_BPS, BILL_MATCH_TOLERANCE_MIN_PAISE, DEFAULT_SUPPLIER_TERMS_DAYS, MSME_MAX_PAYMENT_DAYS, OPENING_STOCK_SOURCE,
 } from "./config";
 import { MaterialsError } from "./errors";
 import { supplierBillAccepted, supplierBillCancelled, supplierBillDrafted, supplierBillMatched, supplierBillUpdated } from "./events";
@@ -282,6 +282,10 @@ async function lockGrns(tx: Tx, vendorId: string, grnIds: readonly string[], exc
     if (g === undefined) throw new MaterialsError("unknown_document", `GRN ${id} not found`);
     if (g.vendorId !== vendorId) throw new MaterialsError("bill_invalid", `GRN ${g.grnNo} is another vendor's`, { grnNo: g.grnNo });
     if (g.status !== "posted") throw new MaterialsError("bill_invalid", `GRN ${g.grnNo} is ${g.status}; only a posted GRN is billed`, { grnNo: g.grnNo });
+    if (g.source === OPENING_STOCK_SOURCE) {
+      // #1047 — the hospital's own shelf counted at go-live, whichever supplier the row named: no bill will come.
+      throw new MaterialsError("bill_invalid", `GRN ${g.grnNo} is opening stock — the shelf counted at go-live, not a delivery; it is never billed`, { grnNo: g.grnNo, source: g.source });
+    }
     if (g.source !== "challan") {
       throw new MaterialsError("bill_invalid", `GRN ${g.grnNo} is a ${g.source}; consignment is billed on use and a donation never`, { grnNo: g.grnNo });
     }
@@ -720,13 +724,17 @@ export type BillDraft = {
 /**
  * What a bill for this GRN would say if the vendor billed exactly what the gate accepted at the PO's
  * rate: the agent's prefill. `interState` is the caller's (it knows the hospital's GSTIN state); the
- * vendor's bill number and date are the challan's invoice number and date until a person types them.
+ * vendor's bill number and date are the GRN's invoice number and date (#1047: the supplier invoice's own date
+ * when the GRN was typed from one, else the challan's) until a person types them.
  * Writes nothing.
  */
 export async function billDraftFromGrn(db: Db, actor: Actor, grnId: string, opts: { hospitalStateCode?: string | null } = {}): Promise<BillDraft> {
   await requirePerm(db, actor, BILLS_MANAGE, "drafting a supplier bill");
   const [g] = await db.select().from(grns).where(eq(grns.id, grnId));
   if (g === undefined) throw new MaterialsError("unknown_document", `GRN ${grnId} not found`);
+  if (g.source === OPENING_STOCK_SOURCE) {
+    throw new MaterialsError("bill_invalid", `GRN ${g.grnNo} is opening stock — the shelf counted at go-live, not a delivery; it is never billed`, { grnNo: g.grnNo, source: g.source });
+  }
   if (g.status !== "posted" || g.source !== "challan") {
     throw new MaterialsError("bill_invalid", `GRN ${g.grnNo} is ${g.status} (${g.source}); only a posted challan is billed`, { grnNo: g.grnNo });
   }
@@ -764,7 +772,7 @@ export async function billDraftFromGrn(db: Db, actor: Actor, grnId: string, opts
   return {
     vendorId: g.vendorId, vendorName: vendor!.tradeName ?? vendor!.legalName, vendorGstin: vendor!.gstin, msme: isMsme(vendor!),
     grnId: g.id, grnNo: g.grnNo, purchaseOrderId: g.purchaseOrderId, poNo: po?.poNo ?? null,
-    vendorBillNo: g.invoiceNo ?? "", billDate: g.challanDate, interState, lines, expectedTotalPaise: expectedTotalOf(expectations),
+    vendorBillNo: g.invoiceNo ?? "", billDate: g.invoiceDate ?? g.challanDate, interState, lines, expectedTotalPaise: expectedTotalOf(expectations),
   };
 }
 
@@ -1089,14 +1097,16 @@ export async function supplierLedger(db: Db, actor: Actor, vendorId: string, ran
   const debitNotes = await db.select().from(supplierReturns)
     .where(and(eq(supplierReturns.vendorId, vendorId), isNotNull(supplierReturns.debitNoteNo), ...(to === null ? [] : [lte(supplierReturns.debitNoteDate, to)])));
   const credits = await db.select({ c: supplierCreditNotes, returnNo: supplierReturns.returnNo, debitNoteNo: supplierReturns.debitNoteNo })
-    .from(supplierCreditNotes).innerJoin(supplierReturns, eq(supplierReturns.id, supplierCreditNotes.returnId))
+    // #1047 — a credit note without a return (rate difference, scheme, breakage) is on the ledger too.
+    .from(supplierCreditNotes).leftJoin(supplierReturns, eq(supplierReturns.id, supplierCreditNotes.returnId))
     .where(and(eq(supplierCreditNotes.vendorId, vendorId), eq(supplierCreditNotes.status, "accepted"), ...(to === null ? [] : [lte(supplierCreditNotes.creditNoteDate, to)])));
   const all: Omit<LedgerEntry, "balancePaise">[] = [
     ...bills.map((b) => ({ date: b.billDate, kind: "bill" as const, voucherNo: b.billNo, reference: b.vendorBillNo, creditPaise: b.totalPaise, debitPaise: 0, memoPaise: 0, id: b.id })),
     ...pays.map((p) => ({ date: p.paidOn, kind: "payment" as const, voucherNo: p.paymentNo, reference: `${p.mode.toUpperCase()}${p.reference === null ? "" : ` ${p.reference}`}`, creditPaise: 0, debitPaise: p.amountPaise, memoPaise: 0, id: p.id })),
     ...debitNotes.map((r) => ({ date: r.debitNoteDate!, kind: "debit_note" as const, voucherNo: r.debitNoteNo!, reference: r.returnNo, creditPaise: 0, debitPaise: 0, memoPaise: r.totalPaise, id: r.id })),
     ...credits.map(({ c, debitNoteNo }) => ({
-      date: c.creditNoteDate, kind: "credit_note" as const, voucherNo: c.creditNo, reference: `${c.vendorCreditNoteNo}${debitNoteNo === null ? "" : ` · ${debitNoteNo}`}`,
+      date: c.creditNoteDate, kind: "credit_note" as const, voucherNo: c.creditNo,
+      reference: `${c.vendorCreditNoteNo}${debitNoteNo === null || debitNoteNo === undefined ? "" : ` · ${debitNoteNo}`}${c.kind === "return" ? "" : ` · ${c.kind.replace("_", " ")}`}`,
       creditPaise: 0, debitPaise: c.amountPaise, memoPaise: 0, id: c.id,
     })),
   ].sort((a, b) => a.date.localeCompare(b.date) || LEDGER_KIND_ORDER[a.kind] - LEDGER_KIND_ORDER[b.kind] || a.voucherNo.localeCompare(b.voucherNo));

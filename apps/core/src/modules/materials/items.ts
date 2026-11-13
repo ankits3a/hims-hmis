@@ -1,12 +1,13 @@
-import { and, asc, desc, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lte, ne, notInArray, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import {
-  itemBarcodes, itemPriceRegulations, itemUoms, items, stockBatches,
+  grnLines, grns, itemBarcodes, itemPriceRegulations, itemUoms, items, purchaseOrderLines, purchaseOrders, stockBatches, vendorItemRates,
 } from "../../kernel/db/schema";
 import { medicineExists } from "../formulary";
 import { MaterialsError } from "./errors";
-import { itemRegistered, itemUpdated } from "./events";
+import { itemRegistered, itemUomReplaced, itemUpdated } from "./events";
+import type { AnyColumn, SQL } from "drizzle-orm";
 import type { UomRow } from "./uom";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -398,6 +399,108 @@ export async function addItemUom(
     }));
   }
   return { itemUomId };
+}
+
+/**
+ * #1047 — **A PACK UNIT CORRECTED, not added.** The starter list made every strip a `strip10`; the real pack
+ * is a strip of 15. `addItemUom` can only add, so the wrong pack stayed beside the right one and the desk and
+ * the bill could each pick either. This replaces it IN PLACE — the same `item_uoms` row takes the new name and
+ * multiplier, keeping its purchase/issue flags — and is on the record old → new (`item.uom_replaced`).
+ *
+ * **Only while nothing counts or prices in the old pack** (`pack_in_use`, naming what does): a stock batch whose
+ * MRP is printed on it, a GRN line (captured or posted, not cancelled) received or priced in it, or an open
+ * purchase order line ordered in it. Each of those copied the multiplier as a fact about a pack that existed; once
+ * any exists, the right act is a NEW pack (`addItemUom`). With no stock on the books this needs no approval —
+ * the precondition is the control (spec #1047; an approval per item would be 251 approvals at go-live).
+ *
+ * What only NAMES the pack moves with it: barcodes printed on it (updated), and the current price regulation and
+ * open vendor rates (re-issued under the new name, effective now, same paise — both tables keep their history as
+ * rows). The base unit is never replaced, and a multiplier of 1 is the base's alone (A3). Gated by the route
+ * on `materials.items.manage`.
+ */
+export async function replaceItemUom(
+  tx: Tx,
+  actor: Actor,
+  itemId: string,
+  input: { fromUom: string; uom: string; toBaseMultiplier: number },
+  now: Date = new Date(),
+): Promise<{ itemUomId: string; repointed: string[] }> {
+  const item = await requireItem(tx, itemId);
+  const fromKey = input.fromUom.trim().toLowerCase();
+  const uom = input.uom.trim();
+  const uoms = await tx.select().from(itemUoms).where(eq(itemUoms.itemId, itemId));
+  const old = uoms.find((u) => u.uom.trim().toLowerCase() === fromKey);
+  if (old === undefined) {
+    throw new MaterialsError("unknown_uom", `"${input.fromUom}" is not one of this item's units`, { fromUom: input.fromUom, known: uoms.map((u) => u.uom) });
+  }
+  if (old.toBaseMultiplier === 1 || fromKey === item.baseUom.trim().toLowerCase()) {
+    throw new MaterialsError("base_uom_required", `"${old.uom}" is this item's base unit; the unit the ledger counts in is never replaced`, { uom: old.uom });
+  }
+  if (uom === "" || uom.length > 32) throw new MaterialsError("unknown_uom", "a pack unit is named in 1 to 32 characters", { uom });
+  if (!Number.isSafeInteger(input.toBaseMultiplier) || input.toBaseMultiplier <= 1) {
+    throw new MaterialsError("base_uom_required", `a pack holds more than one ${item.baseUom}; got ${String(input.toBaseMultiplier)} (only the base unit is 1)`, {
+      uom, multiplier: input.toBaseMultiplier,
+    });
+  }
+  if (uom.toLowerCase() === item.baseUom.trim().toLowerCase()) {
+    throw new MaterialsError("base_uom_required", `"${uom}" IS this item's base unit, so it cannot name a pack of ${String(input.toBaseMultiplier)}`, { uom });
+  }
+  if (uoms.some((u) => u.id !== old.id && u.uom.trim().toLowerCase() === uom.toLowerCase())) {
+    throw new MaterialsError("duplicate_code", `item ${item.code} already has a unit named "${uom}"`, { uom });
+  }
+
+  // ── what still counts or prices in the old pack ──
+  const sameUom = (col: AnyColumn): SQL => sql`lower(trim(${col})) = ${fromKey}`;
+  const batches = await tx.select({ batchNo: stockBatches.batchNo }).from(stockBatches)
+    .where(and(eq(stockBatches.itemId, itemId), sameUom(stockBatches.mrpUom))).limit(5);
+  const receipts = await tx.select({ grnNo: grns.grnNo, status: grns.status }).from(grnLines).innerJoin(grns, eq(grns.id, grnLines.grnId))
+    .where(and(eq(grnLines.itemId, itemId), ne(grns.status, "cancelled"), sql`(${sameUom(grnLines.uom)} or ${sameUom(grnLines.mrpUom)})`)).limit(5);
+  const orders = await tx.select({ poNo: purchaseOrders.poNo }).from(purchaseOrderLines)
+    .innerJoin(purchaseOrders, eq(purchaseOrders.id, purchaseOrderLines.purchaseOrderId))
+    .where(and(eq(purchaseOrderLines.itemId, itemId), notInArray(purchaseOrders.status, ["received", "cancelled"]), sameUom(purchaseOrderLines.uom))).limit(5);
+  if (batches.length > 0 || receipts.length > 0 || orders.length > 0) {
+    const what = [
+      ...batches.map((b) => `batch ${b.batchNo}`), ...receipts.map((r) => `GRN ${r.grnNo} (${r.status})`), ...orders.map((o) => `order ${o.poNo}`),
+    ];
+    throw new MaterialsError(
+      "pack_in_use",
+      `${old.uom} is in use (${what.join(", ")}) — it cannot be corrected now; add ${uom} as a new pack instead`,
+      { uom: old.uom, batches: batches.map((b) => b.batchNo), grns: receipts.map((r) => r.grnNo), purchaseOrders: orders.map((o) => o.poNo) },
+    );
+  }
+
+  // ── the correction, and what only names the pack moving with it ──
+  await tx.update(itemUoms).set({ uom, toBaseMultiplier: input.toBaseMultiplier }).where(eq(itemUoms.id, old.id));
+  const repointed: string[] = [];
+  const codes = await tx.update(itemBarcodes).set({ packUom: uom })
+    .where(and(eq(itemBarcodes.itemId, itemId), sql`lower(trim(${itemBarcodes.packUom})) = ${fromKey}`)).returning({ id: itemBarcodes.id });
+  if (codes.length > 0) repointed.push("barcodes");
+  const reg = await effectiveRegulation(tx, itemId, now);
+  if (reg !== undefined && reg.mrpUom !== null && reg.mrpUom.trim().toLowerCase() === fromKey) {
+    await tx.insert(itemPriceRegulations).values({
+      id: newId(), itemId, mrpDefaultPaise: reg.mrpDefaultPaise, mrpUom: uom, ceilingPaise: reg.ceilingPaise,
+      effectiveFrom: now, gazetteRef: reg.gazetteRef, createdBy: actor.id,
+    });
+    repointed.push("price_regulation");
+  }
+  const rates = await tx.select().from(vendorItemRates)
+    .where(and(eq(vendorItemRates.itemId, itemId), isNull(vendorItemRates.endedAt), sql`lower(trim(${vendorItemRates.uom})) = ${fromKey}`));
+  for (const r of rates) {
+    await tx.update(vendorItemRates).set({ endedAt: now, endedBy: actor.id }).where(eq(vendorItemRates.id, r.id));
+    await tx.insert(vendorItemRates).values({
+      id: newId(), vendorId: r.vendorId, itemId: r.itemId, uom, multiplier: input.toBaseMultiplier, ratePaise: r.ratePaise,
+      gstRateBps: r.gstRateBps, mrpPaise: r.mrpPaise, validFrom: r.validFrom, validTo: r.validTo, source: r.source, createdBy: actor.id,
+    });
+  }
+  if (rates.length > 0) repointed.push("vendor_rates");
+
+  await appendEvent(tx, itemUomReplaced.make({
+    payload: {
+      itemId, from: { uom: old.uom, toBaseMultiplier: old.toBaseMultiplier }, to: { uom, toBaseMultiplier: input.toBaseMultiplier }, repointed,
+    },
+    actor, correlationId: itemId,
+  }));
+  return { itemUomId: old.id, repointed };
 }
 
 /**
