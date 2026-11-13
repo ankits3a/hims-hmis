@@ -58,7 +58,7 @@ describe("stock entry on screen — the grid, the brand search and the new drug"
     const sheet = await planOpeningStock(db, readOpeningSheet(csv), csv, now);
     const judged = (p: typeof grid): unknown[] => p.rows.map((r) => [r.itemId, r.reasons, r.costPerBasePaise, r.uom]);
     expect(judged(grid)).toEqual(judged(sheet));
-    expect(grid.rows[0]!.reasons.join()).toMatch(/mrp_per_pack must be rupees like 35.50, got "35.555"/);
+    expect(grid.rows[0]!.reasons.join()).toMatch(/MRP per pack must be rupees like 35.50, got "35.555"/);
     expect(grid.rows[1]!.reasons.join()).toMatch(/expired/);
     expect(grid.rows[2]).toMatchObject({ reasons: [], costPerBasePaise: 245, discountBps: 1250 });
   });
@@ -105,10 +105,11 @@ describe("stock entry on screen — the grid, the brand search and the new drug"
   it("a NEW DRUG is item + pack + MRP + sale registration in one call, and the grid can receive it at once", async () => {
     const now = new Date();
     expect(await stockEntryMedicine(db, fx.med.crocin)).toMatchObject({ form: "tablet", strength: "500 mg", schedule: "OTC" });
-    const made = await createStockDrug(db, fx.incharge.actor, { ...DOLO, medicineId: fx.med.crocin }, now);
+    const made = await createStockDrug(db, fx.incharge.actor, { ...DOLO, medicineId: fx.med.crocin, manufacturer: " Micro Labs " }, now);
     expect(made).toMatchObject({ code: "DOLO650", name: "Dolo 650 tablet", uom: "strip", packSize: 15, gstRateBps: 500 });
     const item = await getItem(db, made.itemId);
-    expect(item).toMatchObject({ class: "drug", baseUom: "tablet", formularyMedicineId: fx.med.crocin, hsnCode: "3004", gstRateBps: 500, storageClass: "ambient" });
+    // Walk 2026-11-13 — the maker is written (the bill's Mfr. column reads it); blank stays blank (the syrup below).
+    expect(item).toMatchObject({ class: "drug", baseUom: "tablet", formularyMedicineId: fx.med.crocin, hsnCode: "3004", gstRateBps: 500, storageClass: "ambient", manufacturer: "Micro Labs" });
     expect(item?.uoms.map((u) => [u.uom, u.toBaseMultiplier])).toEqual(expect.arrayContaining([["tablet", 1], ["strip", 15]]));
     expect(await effectiveRegulation(db, made.itemId, new Date(now.getTime() + 1000))).toMatchObject({ mrpDefaultPaise: 3360, mrpUom: "strip" });
     expect(await getSaleItem(db, made.itemId)).toMatchObject({ active: true });
@@ -123,6 +124,7 @@ describe("stock entry on screen — the grid, the brand search and the new drug"
     }, now);
     expect(syrup).toMatchObject({ code: "CALPOLSYRUP", uom: "bottle", packSize: 1, gstRateBps: 0 });
     expect((await getItem(db, syrup.itemId))?.baseUom).toBe("bottle");
+    expect((await getItem(db, syrup.itemId))?.manufacturer).toBeNull();
   });
 
   it("a NEW DRUG asks for the acts' own permissions, changes the schedule only with formulary.manage, and is all or nothing", async () => {

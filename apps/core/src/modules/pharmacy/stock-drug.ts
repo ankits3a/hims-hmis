@@ -120,6 +120,8 @@ export type NewStockDrug = {
   schedule: "H" | "H1" | "X" | "OTC" | null;
   mrpPerPackPaise: number;
   storage: "ambient" | "cold_2_8";
+  /** Walk 2026-11-13 — the maker as the strip prints it; the bill's Mfr. column reads `items.manufacturer`. Blank stays blank. */
+  manufacturer?: string | null;
 };
 
 /** "DOLO650" from "Dolo 650" — letters and digits, upper case, at most 24. */
@@ -171,6 +173,7 @@ export async function createStockDrug(
     const { itemId } = await registerItem(tx, actor, {
       code, name, class: "drug", baseUom, batchTracked: true, formularyMedicineId: med.id,
       hsnCode: input.hsnCode, gstRateBps: input.gstRateBps, storageClass: input.storage,
+      manufacturer: (input.manufacturer ?? "").trim() === "" ? null : input.manufacturer!.trim(),
       uoms: input.packSize > 1 ? [{ uom: packUom, toBaseMultiplier: input.packSize, isPurchaseUom: true, isIssueUom: true }] : [],
     });
     await setPriceRegulation(tx, actor, itemId, { mrpDefaultPaise: input.mrpPerPackPaise, mrpUom: packUom, effectiveFrom: now });

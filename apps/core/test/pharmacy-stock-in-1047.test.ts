@@ -247,6 +247,59 @@ describe("#1047 pharmacy stock-in — sources, the invoice header, credits and p
     expect(plan.rows[2]!.reasons).toContain(`expiry must be a month like 08/28, 0828 or 08/2028, got "13${y}"`);
   });
 
+  it("walk 2026-11-13: the invoice's cost is each line as the invoice states it — packs × rate, GST taken out once per line — not the floored unit cost", async () => {
+    const vendorId = await aSupplier();
+    const header: InvoiceHeader = { vendorId, invoiceNo: "SI/EX/1", invoiceDate: today(), storeResourceId: fx.storeId };
+    // 4 strips of 15 at Rs 85.00 are Rs 340.00, though a tablet's cost is floored to Rs 5.66 (Rs 339.60 for 60).
+    const plain = await planSupplierInvoice(db, header, [gridRow({ packSize: "15", packs: "4", ratePerPack: "85.00", mrpPerPack: "140.00" })], new Date());
+    expect(plain.rows[0]!.costPerBasePaise).toBe(566);
+    expect(plain.costPaise).toBe(34_000);
+    // With GST in the rate (Azee, 5%): 20 × Rs 14.00 = Rs 280.00 → Rs 266.67, and 15 × Rs 55.00 = Rs 825.00 → Rs 785.71.
+    const withGst = await planSupplierInvoice(db, { ...header, rateIncludesGst: true }, [
+      gridRow({ itemId: fx.item.azithro, batch: "A1", packs: "20", ratePerPack: "14.00", mrpPerPack: "25.00" }),
+      gridRow({ itemId: fx.item.azithro, batch: "A2", packs: "15", ratePerPack: "55.00", mrpPerPack: "90.00" }),
+    ], new Date());
+    expect(withGst.costPaise).toBe(26_667 + 78_571);
+    // The trade discount comes off the line too: 3 × Rs 99.99 less 12.5% = Rs 262.47 (the floored unit cost says Rs 262.20).
+    const disc = await planSupplierInvoice(db, header, [gridRow({ packs: "3", ratePerPack: "99.99", discountPct: "12.5", mrpPerPack: "150.00" })], new Date());
+    expect(disc.costPaise).toBe(26_247);
+  });
+
+  it("walk 2026-11-13: a row's refusals are said in words — never a code, a column key or an empty quote", async () => {
+    const plan = await planOpeningGrid(db, [gridRow({ batch: "", expiry: "", mrpPerPack: "", packs: "" })], new Date());
+    expect(plan.rows[0]!.reasons).toEqual([
+      "the batch number is missing", "the expiry is missing — type it as the label prints it: 08/28, 0828 or 08/2028",
+      "the MRP per pack is missing", "the number of packs is missing",
+    ]);
+    const bad = await planOpeningGrid(db, [gridRow({ mrpPerPack: "35.555", packs: "x", discountPct: "120" })], new Date());
+    expect(bad.rows[0]!.reasons).toEqual([
+      "MRP per pack must be rupees like 35.50, got \"35.555\"", "packs must be a whole number of 1 or more, got \"x\"",
+      "the discount must be a percentage from 0 to below 100, got \"120\"",
+    ]);
+    const vendorId = await aSupplier();
+    const noRate = await planSupplierInvoice(db, { vendorId, invoiceNo: "SI/W/1", invoiceDate: today(), storeResourceId: fx.storeId }, [gridRow({ ratePerPack: "" })], new Date());
+    expect(noRate.rows[0]!.reasons).toEqual(["the rate per pack is missing — the invoice prints it (a row of free packs alone needs none)"]);
+    for (const r of [...plan.rows, ...bad.rows, ...noRate.rows].flatMap((x) => x.reasons)) expect(r).not.toMatch(/[a-z]_[a-z]|got ""/);
+  });
+
+  it("walk 2026-11-13: a pack in use is refused naming each blocker once, however many of its lines a GRN has", async () => {
+    const vendorId = await aSupplier();
+    const { itemId } = await withTx(db, (tx) => registerItem(tx, fx.incharge.actor, {
+      code: "PACKD", name: "PACKD tablet", class: "drug", baseUom: "tablet", batchTracked: true, formularyMedicineId: fx.med.crocin, gstRateBps: 1200,
+      uoms: [{ uom: "strip10", toBaseMultiplier: 10, isPurchaseUom: true, isIssueUom: true }],
+    }));
+    const line = { itemId, uom: "strip10", batchNo: "D1", expiryDate: `20${yy()}-08-31`, mrpPaise: 1000, mrpUom: "strip10" };
+    const { grnNo } = await withTx(db, (tx) => captureGrn(tx, fx.incharge.actor, {
+      vendorId, source: "challan", storeResourceId: fx.storeId, challanNo: "CH/D", challanDate: today(), now: new Date(),
+      lines: [{ ...line, qtyInUom: 2, unitCostPaise: 50 }, { ...line, qtyInUom: 1, unitCostPaise: 0, freeGoods: true }],
+    }));
+    const refusal = await withTx(db, (tx) => replaceItemUom(tx, fx.incharge.actor, itemId, { fromUom: "strip10", uom: "strip15", toBaseMultiplier: 15 }))
+      .then(() => undefined, (e: unknown) => e as { code: string; message: string; detail: { grns: string[] } });
+    expect(refusal?.code).toBe("pack_in_use");
+    expect(refusal?.detail.grns).toEqual([grnNo]);
+    expect(refusal?.message.split(grnNo)).toHaveLength(2);
+  });
+
   it("walk 2026-11-13: the GRN list names each delivery's supplier and its value at cost", async () => {
     const vendorId = await aSupplier();
     const header: InvoiceHeader = { vendorId, invoiceNo: "SI/LIST/1", invoiceDate: today(), storeResourceId: fx.storeId };

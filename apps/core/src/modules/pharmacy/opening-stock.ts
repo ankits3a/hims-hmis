@@ -321,6 +321,18 @@ export function rateWithoutGstPaise(ratePaise: number, gstRateBps: number): numb
 }
 
 /**
+ * Walk 2026-11-13 — WHAT A PAID INVOICE LINE COSTS, as the invoice states it: packs × rate less the trade discount,
+ * and — when the rate includes GST — divided by 1 + the GST rate ONCE for the whole line; rounded half up to the paisa
+ * once. The grid showed Rs 339.60 for 4 strips of 15 at Rs 85.00 because it summed the floored cost per tablet
+ * (`costPerBase`, the valuation's figure); the invoice says Rs 340.00. Integers throughout (BigInt: no float, no overflow).
+ */
+export function invoiceLinePaise(packs: number, ratePaise: number, discountBps: number, gstRateBps: number): number {
+  const num = BigInt(packs) * BigInt(ratePaise) * BigInt(10_000 - discountBps) * BigInt(10_000);
+  const den = BigInt(10_000) * BigInt(10_000 + gstRateBps);
+  return Number((BigInt(2) * num + den) / (BigInt(2) * den));
+}
+
+/**
  * How a row's rate is read. The opening count: the rate is without GST and a blank one is ESTIMATED (0093).
  * A supplier invoice (#1047): the rate is without GST unless the header says it includes GST, and a paid row
  * must carry one — an invoice always prints its rate.
@@ -349,7 +361,7 @@ function judgeRow(ctx: ShelfContext, r: OpeningInputRow, rules: RowRules, seen: 
     } else row.reasons.push("not sold at the counter yet — put it on sale (+ New drug), then enter its stock");
   } else {
     const hits = index.get(norm(row.brand));
-    if (row.brand === "") row.reasons.push("brand_required");
+    if (row.brand === "") row.reasons.push("the brand is missing");
     else if (hits === undefined) {
       const near = [...index.keys()].map((k) => ({ k, s: similarity(norm(row.brand), k) })).sort((a, b) => b.s - a.s).slice(0, 3)
         .map((x) => items.get([...index.get(x.k)!][0]!)?.name ?? x.k);
@@ -362,18 +374,22 @@ function judgeRow(ctx: ShelfContext, r: OpeningInputRow, rules: RowRules, seen: 
       row.itemName = items.get(row.itemId)?.name;
     }
   }
-  if (row.batch === "") row.reasons.push("batch_required");
+  // Walk 2026-11-13 — every refusal in words a pharmacist reads off the row (and an uploader off the sheet's line):
+  // what is missing, or what was typed and why it is not read. Never a code, a column key or an empty quote.
+  const blank = (v: string | undefined): boolean => (v ?? "").trim() === "";
+  if (row.batch === "") row.reasons.push("the batch number is missing");
   const expiry = expiryOf(c.expiry ?? "");
-  if (expiry === null) row.reasons.push(`expiry must be a month like ${EXPIRY_LABEL_FORMS}, got "${c.expiry ?? ""}"`);
-  else row.expiryDate = expiry;
+  if (expiry === null) {
+    row.reasons.push(blank(c.expiry) ? `the expiry is missing — type it as the label prints it: ${EXPIRY_LABEL_FORMS}` : `expiry must be a month like ${EXPIRY_LABEL_FORMS}, got "${c.expiry ?? ""}"`);
+  } else row.expiryDate = expiry;
   const mrp = rupeesToPaise(c.mrp_per_pack ?? "");
-  if (mrp === null || mrp <= 0) row.reasons.push(`mrp_per_pack must be rupees like 35.50, got "${c.mrp_per_pack ?? ""}"`);
+  if (mrp === null || mrp <= 0) row.reasons.push(blank(c.mrp_per_pack) ? "the MRP per pack is missing" : `MRP per pack must be rupees like 35.50, got "${c.mrp_per_pack ?? ""}"`);
   else row.mrpPaise = mrp;
   const packSize = wholeOf(c.pack_size, 1, null);
-  if (packSize === null) row.reasons.push(`pack_size must be a whole number ≥ 1, got "${c.pack_size ?? ""}"`);
+  if (packSize === null) row.reasons.push(blank(c.pack_size) ? "the pack size (units in one pack) is missing" : `the pack size must be a whole number of 1 or more, got "${c.pack_size ?? ""}"`);
   else row.packSize = packSize;
   const free = wholeOf(c.free_packs, 0, 0);
-  if (free === null) row.reasons.push(`free_packs must be a whole number, got "${c.free_packs ?? ""}"`);
+  if (free === null) row.reasons.push(`free packs must be a whole number, got "${c.free_packs ?? ""}"`);
   else row.freePacks = free;
   // #1033: sealed boxes count as boxes × packs_per_box; `packs` is then the loose ones beside them.
   const boxes = wholeOf(c.boxes, 0, 0);
@@ -381,18 +397,19 @@ function judgeRow(ctx: ShelfContext, r: OpeningInputRow, rules: RowRules, seen: 
   let boxed = 0;
   if (boxes !== null && boxes > 0) {
     const perBox = wholeOf(c.packs_per_box, 1, null);
-    if (perBox === null) row.reasons.push(`packs_per_box must be a whole number ≥ 1 when boxes is filled, got "${c.packs_per_box ?? ""}"`);
+    // The sheet's column is named too (spec #1033 D2: the refusal names the line and the column).
+    if (perBox === null) row.reasons.push(blank(c.packs_per_box) ? "boxes are filled: how many packs are in one box is missing (packs per box, the sheet's packs_per_box)" : `packs per box (the sheet's packs_per_box) must be a whole number of 1 or more, got "${c.packs_per_box ?? ""}"`);
     else boxed = boxes * perBox;
   }
   // A row may be all free goods or all boxes; otherwise at least one pack was counted.
   const loose = row.freePacks > 0 || (boxes ?? 0) > 0;
   const packs = wholeOf(c.packs, loose ? 0 : 1, loose ? 0 : null);
-  if (packs === null) row.reasons.push(`packs must be a whole number ≥ 1, got "${c.packs ?? ""}"`);
+  if (packs === null) row.reasons.push(blank(c.packs) ? "the number of packs is missing" : `packs must be a whole number of 1 or more, got "${c.packs ?? ""}"`);
   else row.packs = packs + boxed;
   const packType = packTypeOf(c.pack_type ?? "");
-  if (packType === undefined) row.reasons.push(`pack_type must be one of ${PACK_TYPES.join(", ")}, got "${c.pack_type ?? ""}"`);
+  if (packType === undefined) row.reasons.push(`the pack type must be one of ${PACK_TYPES.map((p) => p.replace(/_/g, " ")).join(", ")}, got "${c.pack_type ?? ""}"`);
   const discount = discountToBps(c.trade_discount_pct ?? "");
-  if (discount === null) row.reasons.push(`trade_discount_pct must be a percentage from 0 to below 100, got "${c.trade_discount_pct ?? ""}"`);
+  if (discount === null) row.reasons.push(`the discount must be a percentage from 0 to below 100, got "${c.trade_discount_pct ?? ""}"`);
   else row.discountBps = discount;
   const gstRateBps = row.itemId === undefined ? null : items.get(row.itemId)?.gstRateBps ?? null;
   const rateText = (c.purchase_rate_per_pack ?? "").trim();
@@ -403,10 +420,10 @@ function judgeRow(ctx: ShelfContext, r: OpeningInputRow, rules: RowRules, seen: 
         row.costPerBasePaise = Math.floor(estimatedPackCostPaise(mrp, gstRateBps) / row.packSize);
         row.estimatedCost = true;
       }
-    } else if (row.packs > 0) row.reasons.push("purchase_rate_per_pack is required on a supplier invoice row (its free packs alone need none)");
+    } else if (row.packs > 0) row.reasons.push("the rate per pack is missing — the invoice prints it (a row of free packs alone needs none)");
   } else {
     const rate = rupeesToPaise(rateText);
-    if (rate === null) row.reasons.push(`purchase_rate_per_pack must be rupees, got "${c.purchase_rate_per_pack ?? ""}"`);
+    if (rate === null) row.reasons.push(`the rate per pack must be rupees like 35.50, got "${c.purchase_rate_per_pack ?? ""}"`);
     else {
       row.ratePaise = rate;
       let net: number | null = rate;
@@ -685,7 +702,10 @@ export type InvoiceHeader = {
 
 export type InvoicePlan = {
   header: InvoiceHeader; headerReasons: string[]; rows: OpeningRow[]; refusals: number; units: number; newUoms: number;
-  /** The paid lines at cost, before GST — what the GRN will value the delivery at. */
+  /**
+   * The paid lines before GST, each as the invoice states it (`invoiceLinePaise`: packs × rate less discount, GST
+   * taken out once per line). The GRN values the stock at the floored cost per unit, which may be a few paise less.
+   */
   costPaise: number;
   /** A live GRN of this supplier already carries this invoice number. */
   duplicateOf: { grnId: string; grnNo: string } | null;
@@ -747,7 +767,10 @@ export async function planSupplierInvoice(db: Db, header: InvoiceHeader, input: 
     header, headerReasons, rows, refusals: rows.length - good.length, duplicateOf,
     units: good.reduce((n, r) => n + (r.packs + r.freePacks) * r.packSize, 0),
     newUoms: new Set(good.filter((r) => r.newUom).map((r) => `${r.itemId!}|${r.uom!}`)).size,
-    costPaise: good.reduce((n, r) => n + r.packs * r.packSize * r.costPerBasePaise, 0),
+    // Each paid line as the invoice states it (`invoiceLinePaise`), not the floored cost per unit × units.
+    costPaise: good.reduce((n, r) => n + invoiceLinePaise(
+      r.packs, r.ratePaise, r.discountBps, header.rateIncludesGst === true ? ctx.items.get(r.itemId!)?.gstRateBps ?? 0 : 0,
+    ), 0),
   };
 }
 

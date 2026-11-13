@@ -451,11 +451,12 @@ export async function replaceItemUom(
 
   // ── what still counts or prices in the old pack ──
   const sameUom = (col: AnyColumn): SQL => sql`lower(trim(${col})) = ${fromKey}`;
-  const batches = await tx.select({ batchNo: stockBatches.batchNo }).from(stockBatches)
+  // Each blocker once (walk 2026-11-13: a GRN with a paid and a free line was named twice).
+  const batches = await tx.selectDistinct({ batchNo: stockBatches.batchNo }).from(stockBatches)
     .where(and(eq(stockBatches.itemId, itemId), sameUom(stockBatches.mrpUom))).limit(5);
-  const receipts = await tx.select({ grnNo: grns.grnNo, status: grns.status }).from(grnLines).innerJoin(grns, eq(grns.id, grnLines.grnId))
+  const receipts = await tx.selectDistinct({ grnNo: grns.grnNo, status: grns.status }).from(grnLines).innerJoin(grns, eq(grns.id, grnLines.grnId))
     .where(and(eq(grnLines.itemId, itemId), ne(grns.status, "cancelled"), sql`(${sameUom(grnLines.uom)} or ${sameUom(grnLines.mrpUom)})`)).limit(5);
-  const orders = await tx.select({ poNo: purchaseOrders.poNo }).from(purchaseOrderLines)
+  const orders = await tx.selectDistinct({ poNo: purchaseOrders.poNo }).from(purchaseOrderLines)
     .innerJoin(purchaseOrders, eq(purchaseOrders.id, purchaseOrderLines.purchaseOrderId))
     .where(and(eq(purchaseOrderLines.itemId, itemId), notInArray(purchaseOrders.status, ["received", "cancelled"]), sameUom(purchaseOrderLines.uom))).limit(5);
   if (batches.length > 0 || receipts.length > 0 || orders.length > 0) {

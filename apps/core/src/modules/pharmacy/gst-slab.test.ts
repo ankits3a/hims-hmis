@@ -56,12 +56,15 @@ describe("setting the slabs, and the bill that follows them (P16)", () => {
     await truncateAll(db);
     fx = await seedPharmacyBase(db);
     await openSessionFor(db, { id: fx.pharmacist.id }, 0);
-    // A nil-rated biologic with no slab yet, registered for sale (so its service says exempt).
+    // A nil-rated biologic with no slab yet, on sale (so its service says exempt) — as an item put on sale before
+    // 2026-11-13 is: `registerSaleItem` now refuses an item with no slab, so it is registered at Nil and the slab
+    // then blanked, the state legacy rows are in and this plan exists to fill.
     darz = await withTx(db, async (tx) => {
       const dara = await addSalt(tx, fx.pharmacist.actor, { name: "Daratumumab", drugClass: "monoclonal_antibody" });
       const med = await addMedicine(tx, fx.pharmacist.actor, { brandName: "Darzalex 400", form: "injection", routeClass: "systemic", strengthLabel: "400 mg", scheduleFlag: "H", salts: [{ saltId: dara.saltId, strength: "400 mg" }] });
-      const { itemId } = await registerItem(tx, HEAD, { code: "DARZ400", name: "Darzalex 400 mg vial", class: "drug", baseUom: "vial", batchTracked: true, formularyMedicineId: med.medicineId, uoms: [] });
+      const { itemId } = await registerItem(tx, HEAD, { code: "DARZ400", name: "Darzalex 400 mg vial", class: "drug", baseUom: "vial", batchTracked: true, formularyMedicineId: med.medicineId, gstRateBps: 0, uoms: [] });
       await registerSaleItem(tx, fx.pharmacist.actor, itemId);
+      await updateItem(tx, HEAD, itemId, { gstRateBps: null });
       return itemId;
     });
   });
