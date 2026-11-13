@@ -1,4 +1,4 @@
-import { strengthShown } from "@hmis/contracts";
+import { packWordOf, strengthShown } from "@hmis/contracts";
 import { medicinesByIds } from "../formulary";
 import { fromBase, getBatch, itemUomRows, itemsByIds } from "../materials";
 import { EYE_TEXT } from "../opd";
@@ -92,7 +92,7 @@ export async function labelFor(db: Db, actor: Actor, dispenseId: string, now: Da
     if (item !== undefined && l.qtyBase !== null) {
       const uoms = await itemUomRows(db, item.id);
       const pack = uoms.filter((u) => u.toBaseMultiplier > 1).sort((a, b) => b.toBaseMultiplier - a.toBaseMultiplier)[0];
-      if (pack !== undefined && l.qtyBase % pack.toBaseMultiplier === 0) packs = `${String(fromBase(uoms, pack.uom, l.qtyBase).whole)} ${pack.uom}`;
+      if (pack !== undefined && l.qtyBase % pack.toBaseMultiplier === 0) packs = `${String(fromBase(uoms, pack.uom, l.qtyBase).whole)} ${packWordOf(pack.uom)}`;
     }
     out.push({
       lineIdx: l.lineIdx,

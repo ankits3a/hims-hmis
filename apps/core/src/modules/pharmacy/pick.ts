@@ -23,6 +23,11 @@ export type PickLineInput = {
   /** D8 — short stock: the pharmacist dispenses LESS than verified, with a reason the line keeps. */
   qtyBase?: number;
   pickNote?: string;
+  /**
+   * WHY the line is short (walk 2026-11-13, #1055): `shelf` — only this much on the shelf, the rest is owed on a
+   * balance ticket; `patient` — the patient asked for less, nothing is owed. Unsaid, a short is the shelf's (as before).
+   */
+  short?: "shelf" | "patient";
   /** A later batch than FEFO offered (the patient asks for the longer-dated strip). Named, evented. */
   batchId?: string;
   /**
@@ -99,7 +104,8 @@ export async function pickDispense(
       throw new PharmacyError("qty_required", `line ${String(line.lineIdx + 1)}: a pick is a positive quantity no larger than the verified ${String(line.qtyBase)}`, { lineIdx: line.lineIdx });
     }
     const partial = qty < line.qtyBase;
-    const owed = partial ? line.qtyBase - qty : null;
+    /* Only a short the shelf caused owes the rest (spec #1046 D6); a patient who asked for less is owed nothing. */
+    const owed = partial && edit?.short !== "patient" ? line.qtyBase - qty : null;
     const note = edit?.pickNote?.trim() ?? "";
     if (partial && note === "") throw new PharmacyError("qty_required", `line ${String(line.lineIdx + 1)}: a partial dispense needs a reason`, { lineIdx: line.lineIdx });
 

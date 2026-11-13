@@ -131,6 +131,8 @@ const pickBody = z.object({
     lineIdx: z.number().int().nonnegative(),
     qtyBase: z.number().int().positive().optional(),
     pickNote: z.string().max(240).optional(),
+    /** Walk 2026-11-13 (#1055) — why the line is short: the shelf (owes a balance) or the patient's ask (owes nothing). */
+    short: z.enum(["shelf", "patient"]).optional(),
     batchId: idSchema.optional(),
     /** P13 — the code read off the pack in hand. */
     scan: z.string().min(1).max(200).optional(),

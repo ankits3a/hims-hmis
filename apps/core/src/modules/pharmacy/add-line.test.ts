@@ -63,6 +63,8 @@ describe("add a medicine by hand (spec #1055)", () => {
     expect(after.scheduled).toBe(true);
     const repriced = await previewDispenseBill(db, A, id, MON2);
     expect(repriced.totals.grossPaise).toBeGreaterThan(before.totals.grossPaise);
+    // Walk 2026-11-13 — each bill row names its dispense line, so the live bill can mark the one added at the counter.
+    expect(repriced.lines.map((l) => l.lineIdx)).toEqual([0, added.lineIdx]);
     const [ev] = await db.select().from(events).where(eq(events.name, "dispense.line_added"));
     expect(ev!.payload).toMatchObject({ dispenseId: id, reason: "not_prescribed", dispenseStatus: "picked", reserved: true, addedByName: "ph.mehta" });
   });
