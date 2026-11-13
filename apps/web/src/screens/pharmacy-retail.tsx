@@ -86,7 +86,7 @@ function maskDmy(raw: string): string {
   return [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 8)].filter((x) => x !== "").join("/");
 }
 const scheduled = (flag: string | null): flag is "H" | "H1" => flag === "H" || flag === "H1";
-const customerOf = (s: WireRetailSaleRow): string => s.customer?.name ?? s.customer?.alias ?? s.customer?.uhid ?? "—";
+const customerOf = (s: Pick<WireRetailSaleRow, "customer">): string => s.customer?.name ?? s.customer?.alias ?? s.customer?.uhid ?? "—";
 
 /**
  * P19b — a sealed pack comes back against its bill. The server judges O-7 (the 7 days, the sealed
@@ -550,7 +550,8 @@ export function PharmacyRetail(): React.ReactElement {
 
   /*
     #638 — "your day": this pharmacist's own walk-in sales as COUNTS. The blind count (owner ruling 2026-09-28) keeps
-    the money: no total, no "collected today" here or in the copilot's answer — the rows keep their amounts.
+    the money: no total, no "collected today" here or in the copilot's answer. The rows carry an amount only when the
+    server sends one (0014/0017: a drawer supervisor, or a seller whose drawer is counted).
   */
   const mine = (today.data ?? []).filter((r) => actor !== null && r.soldBy === actor.id);
   const yourDay = t("pharmacyRetail.yourDay", {
@@ -976,7 +977,7 @@ export function PharmacyRetail(): React.ReactElement {
                 <li key={s.id} data-testid={`retail-row-${s.id}`} className="rt-sale">
                   <div className="rt-saletop">
                     <span className="rt-strong rt-ellipsis">{customerOf(s)}</span>
-                    <span className="mo rt-strong">{rupees(s.netPaise)}</span>
+                    {s.netPaise !== undefined && <span className="mo rt-strong">{rupees(s.netPaise)}</span>}
                   </div>
                   <div className="rt-salebot">
                     <span className="mo rt-muted">{fmtIst(s.soldAt)}</span>

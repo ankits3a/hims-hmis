@@ -647,8 +647,13 @@ export async function askRetailDiscount(body: { draftId: string; patientId?: str
 export async function sellRetail(body: RetailSaleBody, idempotencyKey: string): Promise<WireRetailSale> {
   return api<WireRetailSale>("POST", "/pharmacy/retail/sales", body, idempotencyKey);
 }
-export async function fetchRetailSales(day?: string): Promise<WireRetailSaleRow[]> {
-  const { items } = await api<{ items: WireRetailSaleRow[] }>("GET", `/pharmacy/retail/sales${qs({ day })}`);
+/**
+ * OWNER RULINGS 0014 / 0017 — the day's walk-in list leaves `netPaise` OFF for a seller whose drawer is still uncounted
+ * (billing's `collectionsBlind`); a drawer supervisor, or the seller once counted, gets it.
+ */
+export type WireRetailSaleListRow = Omit<WireRetailSaleRow, "netPaise"> & { netPaise?: number };
+export async function fetchRetailSales(day?: string): Promise<WireRetailSaleListRow[]> {
+  const { items } = await api<{ items: WireRetailSaleListRow[] }>("GET", `/pharmacy/retail/sales${qs({ day })}`);
   return items;
 }
 export async function fetchRetailSale(id: string): Promise<WireRetailSale> {
