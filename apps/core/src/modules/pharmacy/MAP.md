@@ -101,8 +101,9 @@ here), allergy or severe interaction refuses with no override, stock via `postMo
 H1 row, `retail.sold`. Returns: sealed pack, 7 days, at least 30 days of shelf life; a cut strip goes to a tray.
 
 ### 4.3 Stock in (all writes are materials')
-- Opening stock: `opening-stock.ts` (sheet or keyboard grid, `apps/web/src/screens/pharmacy-office/stock-entry.tsx`) -> GRN capture under the
-  `OPENING-STOCK` vendor, store fixed to PHARM-OPD -> normal QC and post. Batch, MM/YY expiry, MRP per pack, pack size
+- Opening stock: `opening-stock.ts` (sheet or keyboard grid, `apps/web/src/screens/pharmacy-office/stock-entry.tsx`;
+  `judgeRow` is the one row judgement) -> GRN capture with source `opening_stock` (`OPENING_STOCK_SOURCE`, kept out of
+  purchasing whatever supplier a row names), store fixed to PHARM-OPD -> normal QC and post. Batch, MM/YY expiry, MRP per pack, pack size
   and packs are required; whole sheet or nothing; same file hash captures once.
 - GRN: `materials/grn.ts` `captureGrn` -> `runGateQc` (`materials/qc.ts` `qcLine`) -> `postGrn`, the ONLY GRN-side
   stock writer. Against a PO: `assertReceivableAgainstPo`, received qty <= ordered + 2%; the PO approver may not
@@ -112,6 +113,22 @@ H1 row, `retail.sold`. Returns: sealed pack, 7 days, at least 30 days of shelf l
 - Movement: `materials/transfers.ts` via IN-TRANSIT (receiver differs from issuer), `materials/indents.ts`, counts
   (`materials/counts.ts`, blind) -> adjustments (MS approval), returns to vendor (`materials/supplier-returns.ts`),
   destruction (`materials/write-offs.ts`, BMW manifest).
+- Supplier invoice in the grid (#1047): `opening-stock.ts` `planSupplierInvoice` / `captureSupplierInvoice` take a
+  header (vendor, invoice no. and date, optional PO, store from `invoiceStores` = PHARM-OPD or PHARM-RETAIL, rate with
+  or without GST via `rateWithoutGstPaise`); the invoice no./date become the GRN's challan and `invoice_date`, and
+  prefill the supplier bill. The same invoice number twice answers `invoice_already_captured`.
+- Corrections (#1047): `materials/items.ts` `replaceItemUom` (refused `pack_in_use` while any batch, GRN line or open
+  PO line uses the pack); `materials/grn.ts` `cancelGrn` before posting (`already_received` after). MRP revision:
+  `materials/qc.ts` verdict `mrp_revised` -> `requestMrpRevisionApproval` (type `materials_mrp_revision`, materials head) ->
+  `postGrn` refuses `mrp_revision_unapproved` until granted, then `findOrCreateBatch` reprices the batch and emits
+  `batch.mrp_revised`. `materials/supplier-returns.ts` `recordStandaloneCredit` (rate_difference, scheme, breakage,
+  other) sets off in the payment run like a return credit.
+- Estimated cost (0093): a blank opening rate costs `estimatedPackCostPaise` = MRP / (1 + GST) x 0.80, flagged
+  `estimated_cost` on the GRN line and the batch; `materials/reports.ts` `stockValuationAt` reports known and
+  estimated value apart. An explicit 0 stays zero cost.
+- The counter pack is one rule: `@hmis/contracts` `counterPackOf`, used by `bill-rows.ts` `counterPacks` and the web
+  desk's `packOf`. Drug expiry is a month (#1048): `@hmis/contracts` `expiryFromLabel`, `monthEndOf`,
+  `sameExpiryMonth`.
 
 ### 4.4 IPD and Emergency (on the IPD integration branch only, not on main)
 IPD (the ipd module's eMAR `issueMed`) consumes straight from PHARM-OPD to the patient and charges at ISSUE
@@ -148,19 +165,8 @@ module has no view of either. Decision 0012: ward issue, ward returns, IP bill a
   `authorisations.ts` `swapToAsk` (book `substitution`), refusal `substitution_needs_prescriber`. OTC keeps patient
   consent. `auto-match.ts` filling a GENERIC line with a stocked brand is not a swap and needs no agreement.
 - `enterPaperDispense` (downtime) is not linked to the queued e-Rx ticket for the same prescription: double dispense.
-- `materials/grn.ts`: no edit or cancel of a captured GRN (captured GRNs also count in PO headroom);
-  `findOrCreateBatch` throws `batch_mismatch` when the same batch arrives with a different expiry day or MRP (GRN date
-  picker vs the sheet's month-end, MRP revisions).
-- `materials/qc.ts` `qcLine`: a near-expiry verdict returns early and skips MRP-required, MRP >= cost, the DPCO
-  ceiling, recall-frozen and consignment-agreement checks.
-- Pack units can be added, never retired or corrected (`materials/items.ts` has only `addItemUom`). Server and web
-  disagree on "the pack": `bill-rows.ts` `counterPacks` takes the smallest multiplier above 1,
-  `apps/web/src/screens/pharmacy-desk/work.ts` `packOf` the largest.
 - Cost is integer paise per base unit, floored (`costPerBase`), and a batch keeps its first receipt's cost.
-  `planOpeningRows` accepts a zero cost and only counts it (`zeroCost`).
-- The fast keyboard grid (`apps/web/src/screens/pharmacy-office/stock-entry.tsx`) is wired to opening stock only;
-  a supplier delivery goes through the slow card form `apps/web/src/screens/materials-grn.tsx`.
-- The `OPENING-STOCK` vendor is not excluded from last-purchase pricing, PO drafts or `unbilledGrns`.
+  Free goods are a zero-cost line; their cost is not spread over the paid packs.
 - NDPS custody keys on `items.storage_class`: `materials/controlled.ts` `planCustody` refuses a narcotic-class item
   entering a non-cabinet store, but an item not yet classified slips into PHARM-OPD. Desk gates read the formulary
   NDPS class instead, so both must be classified before stock goes in.
