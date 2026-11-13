@@ -104,6 +104,8 @@ describe("#1046 — the OPD desk", () => {
     renderWithProviders(<PharmacyDesk ticketId="d1" />);
     const rail = await screen.findByTestId("desk-bill");
     await within(rail).findByTestId("desk-payable");
+    // Cash is the desk's default mode (owner, 2026-11-13, label owner-approved-checks on #1051); this check pays by UPI.
+    await userEvent.click(within(rail).getByRole("radio", { name: /^UPI/ }));
     await userEvent.type(within(rail).getByRole("textbox", { name: "UPI reference (UTR)" }), "425512345678");
     await userEvent.click(within(rail).getByRole("button", { name: /Received ₹33.60/ }));
     await waitFor(() => expect(bodies("POST", "/d1/print")).toEqual([{ documents: ["pharmacy_bill"] }]));
