@@ -2,9 +2,13 @@ import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { openSessionFor } from "../../../test/helpers/billing";
 import { MON2, issueRx, line, seedPharmacyBase, stockIn } from "../../../test/helpers/pharmacy";
-import { testCfg } from "../../../test/helpers/opd";
+import { ensureRole, mkUser, testCfg } from "../../../test/helpers/opd";
+import { approveRequest, rejectRequest } from "../../kernel/approvals/decisions";
+import { requestApproval } from "../../kernel/approvals/requests";
+import { withTx } from "../../kernel/db/client";
 import { stockBalances, stockReservations } from "../../kernel/db/schema";
-import { previewDispenseBill, billDispense } from "./bill";
+import { registerPharmacyApprovalTypes } from "./approval-types";
+import { askDispenseDiscount, previewDispenseBill, billDispense } from "./bill";
 import { claimDispense, findAtCounter } from "./claim";
 import { PICK_RESERVATION_MINUTES } from "./config";
 import { PHARMACY_PICK_SWEEP_ACTOR, PICK_EXPIRED_REASON, sweepExpiredPicks } from "./expiry";
@@ -12,6 +16,7 @@ import { pickDispense } from "./pick";
 import { getDispense } from "./queue";
 import { cancelDispense, verifyDispense } from "./verify";
 import type { PharmacyFixture } from "../../../test/helpers/pharmacy";
+import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -83,6 +88,69 @@ describe("the pick reservation expires (16c F11)", () => {
     expect(await reservedNow()).toBe(10); // still held FOR this patient, not released to the shelf
     const [res] = await db.select().from(stockReservations).where(eq(stockReservations.status, "held"));
     expect(res).toBeDefined();
+  });
+
+  /**
+   * ═══ A TICKET WAITING ON A DECISION IS NOT ABANDONED ═══
+   *
+   * The pharmacist picked, the patient asked for 15% off (the in-charge's tier) or for credit (the
+   * owner's), and the counter is waiting for that person's answer. Cancelling at 30 minutes threw the
+   * picked medicine back on the shelf and minted a new P-number when the answer came. While an approval
+   * bound to the dispense is PENDING the sweep holds the ticket and renews its hold; once it is decided
+   * (granted or rejected) the ordinary 30 minutes run again from the last renewal.
+   */
+  describe("while an approval bound to the ticket is pending", () => {
+    const at = (m: number): Date => new Date(AFTER.getTime() + m * 60_000);
+    const RENEWED_UNTIL = at(PICK_RESERVATION_MINUTES);
+    let approver: { id: string; actor: Actor };
+
+    beforeEach(async () => {
+      await registerPharmacyApprovalTypes(db, fx.base.activator);
+      await ensureRole(db, "pharmacy_incharge");
+      approver = await mkUser(db, "ph.ic.approver", ["pharmacy_incharge"]);
+    });
+
+    const heldUntil = async (): Promise<Date[]> =>
+      (await db.select().from(stockReservations).where(eq(stockReservations.status, "held"))).map((r) => r.expiresAt!);
+
+    it("a pending discount holds the ticket and renews its hold; once granted, the 30 minutes run again", async () => {
+      const id = await picked();
+      const asked = await askDispenseDiscount(db, fx.pharmacist.actor, id, { kind: "percent_bps", value: 1500, reason: "staff family" }, MON2);
+
+      expect(await sweepExpiredPicks(db, fx.decls, AFTER)).toEqual({ cancelled: [] });
+      expect((await getDispense(db, fx.pharmacist.actor, id)).status).toBe("picked");
+      expect(await reservedNow()).toBe(10);
+      expect(await heldUntil()).toEqual([RENEWED_UNTIL]);
+
+      await approveRequest(db, approver.actor, { approvalId: asked.approvalId, note: "agreed" });
+      // decided: the renewed hold still runs to its end, then the ordinary sweep takes it
+      expect(await sweepExpiredPicks(db, fx.decls, at(PICK_RESERVATION_MINUTES - 1))).toEqual({ cancelled: [] });
+      expect(await sweepExpiredPicks(db, fx.decls, at(PICK_RESERVATION_MINUTES + 1))).toEqual({ cancelled: [id] });
+      expect(await reservedNow()).toBe(0);
+    });
+
+    it("a pending owner credit holds the ticket; once rejected, the 30 minutes run again", async () => {
+      const id = await picked();
+      const { approvalId } = await withTx(db, (tx) => requestApproval(tx, fx.pharmacist.actor, {
+        typeKey: "billing_credit_owner", subject: { type: "billing_credit", id },
+        patientId: fx.patient.id, amountPaise: 12000, requestNote: "pays Friday",
+      }));
+
+      expect(await sweepExpiredPicks(db, fx.decls, AFTER)).toEqual({ cancelled: [] });
+      expect(await heldUntil()).toEqual([RENEWED_UNTIL]);
+
+      await rejectRequest(db, fx.base.owner, { approvalId, note: "no credit" });
+      expect(await sweepExpiredPicks(db, fx.decls, at(PICK_RESERVATION_MINUTES + 1))).toEqual({ cancelled: [id] });
+    });
+
+    it("an approval pending for ANOTHER bill does not hold this one", async () => {
+      const id = await picked();
+      await withTx(db, (tx) => requestApproval(tx, fx.pharmacist.actor, {
+        typeKey: "billing_credit_owner", subject: { type: "billing_credit", id: `${id}-other` },
+        patientId: fx.patient.id, amountPaise: 12000, requestNote: "another bill",
+      }));
+      expect(await sweepExpiredPicks(db, fx.decls, AFTER)).toEqual({ cancelled: [id] });
+    });
   });
 
   /**

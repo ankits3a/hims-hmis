@@ -57,7 +57,8 @@ type CartLine = { entry: WireRetailShelfEntry; qty: string; batchId?: string };
 type NewCustomer = { name: string; sex: "male" | "female" | "other"; age: string; phone: string; address: string };
 type Customer = { kind: "existing"; id: string; name: string; uhid: string } | { kind: "new"; draft: NewCustomer };
 type RxDraft = { prescriberName: string; prescriberRegNo: string; prescriberAddress: string; rxDate: string; photo: string | null };
-type Mode = "cash" | "upi" | "card";
+/** Spec #1046 D4 — `split` is cash plus UPI: two amounts that add up to the cash-rounded payable (any cash rounds, 0019). */
+type Mode = "cash" | "upi" | "card" | "split";
 
 const EMPTY_NEW: NewCustomer = { name: "", sex: "female", age: "", phone: "", address: "" };
 const EMPTY_RX: RxDraft = { prescriberName: "", prescriberRegNo: "", prescriberAddress: "", rxDate: "", photo: null };
@@ -86,7 +87,7 @@ function maskDmy(raw: string): string {
   return [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 8)].filter((x) => x !== "").join("/");
 }
 const scheduled = (flag: string | null): flag is "H" | "H1" => flag === "H" || flag === "H1";
-const customerOf = (s: WireRetailSaleRow): string => s.customer?.name ?? s.customer?.alias ?? s.customer?.uhid ?? "—";
+const customerOf = (s: Pick<WireRetailSaleRow, "customer">): string => s.customer?.name ?? s.customer?.alias ?? s.customer?.uhid ?? "—";
 
 /**
  * P19b — a sealed pack comes back against its bill. The server judges O-7 (the 7 days, the sealed
@@ -195,14 +196,16 @@ function RetailReturn({ onClose }: { onClose: () => void }): React.ReactElement 
   );
 }
 
-function annexOf(sale: WireRetailSale): WireLabel {
+/** The walk-in bill's annex: per line batch, expiry and maker; the licence and who sold it (spec #1046 D5). */
+export function annexOf(sale: WireRetailSale): WireLabel {
   return {
     dispenseNo: null, status: "sold", patient: { display: sale.patient.name, uhid: sale.patient.uhid }, handedOverAt: sale.soldAt,
     lines: sale.lines.map((l) => ({
       lineIdx: l.lineIdx, drug: l.drugName, strength: null, form: null, qtyBase: l.qtyBase, unit: l.baseUom, packs: null,
-      batchNo: l.batchNo, expiryDate: l.expiryDate, directions: "", substitutedFor: null,
+      batchNo: l.batchNo, expiryDate: l.expiryDate, directions: "", substitutedFor: null, manufacturer: l.manufacturer ?? null,
     })),
-    pharmacist: { name: sale.soldByName, council: null, registrationNo: sale.pharmacistRegNo },
+    pharmacist: { name: sale.pharmacist?.name ?? sale.soldByName, council: null, registrationNo: sale.pharmacist?.registrationNo ?? sale.pharmacistRegNo },
+    licence: sale.licence ?? null,
   };
 }
 
@@ -398,6 +401,8 @@ export function PharmacyRetail(): React.ReactElement {
   const [rx, setRx] = useState<RxDraft>(EMPTY_RX);
   const [mode, setMode] = useState<Mode>("cash");
   const [tendered, setTendered] = useState("");
+  const [cashPart, setCashPart] = useState("");
+  const [upiPart, setUpiPart] = useState("");
   const [ref, setRef] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [sold, setSold] = useState<WireRetailSale | null>(null);
@@ -502,7 +507,7 @@ export function PharmacyRetail(): React.ReactElement {
   /* OWNER RULING 2026-09-30 — (amended) cash rounds to the nearest rupee, UPI and card are collected to the paisa. */
   const due = preview === null ? null
     : preview.byTender === undefined ? { netPayablePaise: preview.totals.netPayablePaise, roundingPaise: preview.totals.roundingPaise ?? 0 }
-      : mode === "cash" ? preview.byTender.cash : preview.byTender.digital;
+      : mode === "cash" || mode === "split" ? preview.byTender.cash : preview.byTender.digital;
   const payable = due?.netPayablePaise ?? 0;
   /* Spec #1023 — the pharmacy fee switch: a free sale takes no money. */
   const free = preview?.free === true;
@@ -510,6 +515,14 @@ export function PharmacyRetail(): React.ReactElement {
   const cashPaise = cashParse.ok ? cashParse.paise : undefined;
   /* A UPI or card payment is the bill's amount exactly; only cash is counted, and its change given. */
   const amountPaise = mode === "cash" ? (cashPaise ?? 0) : payable;
+  /* Spec #1046 D4 — the split's two parts, each positive, adding up to the payable exactly: no change on a split. */
+  const cashPartParse = parseRupees(cashPart);
+  const upiPartParse = parseRupees(upiPart);
+  const cashPartPaise = cashPartParse.ok ? (cashPartParse.paise ?? 0) : 0;
+  const upiPartPaise = upiPartParse.ok ? (upiPartParse.paise ?? 0) : 0;
+  const splitTenders = cashPartPaise > 0 && upiPartPaise > 0 && cashPartPaise + upiPartPaise === payable && ref.trim() !== ""
+    ? [{ mode: "cash" as const, amountPaise: cashPartPaise }, { mode: "upi" as const, amountPaise: upiPartPaise, refText: ref.trim() }]
+    : null;
 
   const sell = async (acknowledged = false): Promise<void> => {
     const who = customerBody(acknowledged);
@@ -524,7 +537,7 @@ export function PharmacyRetail(): React.ReactElement {
     try {
       const sale = await sellRetail({
         customer: who, lines: cartLines(), ...(prescription === undefined ? {} : { prescription }),
-        tenders: free ? [] : [{ mode, amountPaise, ...(ref.trim() === "" ? {} : { refText: ref.trim() }) }],
+        tenders: free ? [] : mode === "split" ? (splitTenders ?? []) : [{ mode, amountPaise, ...(ref.trim() === "" ? {} : { refText: ref.trim() }) }],
         ...(!free && mode === "cash" && amountPaise > payable ? { changeGivenPaise: amountPaise - payable } : {}),
         ...(discount === null ? {} : {
           discount: { kind: discount.kind, value: discount.value, reason: discount.reason, ...(discount.approvalId === null ? {} : { approvalId: discount.approvalId }) },
@@ -544,13 +557,14 @@ export function PharmacyRetail(): React.ReactElement {
 
   const reset = (): void => {
     setCustomer(null); setNewDraft(EMPTY_NEW); setRegistering(false); setMatches(null); setCart([]); setPreview(null);
-    setRx(EMPTY_RX); setMode("cash"); setTendered(""); setRef(""); setError(null); setSold(null); setSaleKey(newIdempotencyKey());
+    setRx(EMPTY_RX); setMode("cash"); setTendered(""); setCashPart(""); setUpiPart(""); setRef(""); setError(null); setSold(null); setSaleKey(newIdempotencyKey());
     setDiscount(null); setCartId(newIdempotencyKey()); setBillMenu(false); setDiscountSheet(false);
   };
 
   /*
     #638 — "your day": this pharmacist's own walk-in sales as COUNTS. The blind count (owner ruling 2026-09-28) keeps
-    the money: no total, no "collected today" here or in the copilot's answer — the rows keep their amounts.
+    the money: no total, no "collected today" here or in the copilot's answer. The rows carry an amount only when the
+    server sends one (0014/0017: a drawer supervisor, or a seller whose drawer is counted).
   */
   const mine = (today.data ?? []).filter((r) => actor !== null && r.soldBy === actor.id);
   const yourDay = t("pharmacyRetail.yourDay", {
@@ -606,7 +620,7 @@ export function PharmacyRetail(): React.ReactElement {
   const newValid = newDraft.name.trim() !== "" && (newDraft.phone === "" || /^[6-9]\d{9}$/.test(newDraft.phone)) && (newDraft.age === "" || /^\d{1,3}$/.test(newDraft.age));
   const blocked = preview?.checks !== null && preview?.checks !== undefined
     && (preview.checks.allergies.length > 0 || preview.checks.interactions.some((i) => i.severity === "severe"));
-  const moneyOk = preview !== null && (free || (mode === "cash" ? cashPaise !== undefined && cashPaise >= payable : ref.trim() !== ""));
+  const moneyOk = preview !== null && (free || (mode === "cash" ? cashPaise !== undefined && cashPaise >= payable : mode === "split" ? splitTenders !== null : ref.trim() !== ""));
   const discountReady = discount === null || approval.status === "none" || approval.status === "granted";
   const canSell = !shut && !busy && customer !== null && preview !== null && (!preview.prescriptionRequired || rxComplete) && moneyOk && !blocked && discountReady;
   const byIdx = new Map((preview?.lines ?? []).map((l) => [l.lineIdx, l] as const));
@@ -623,7 +637,7 @@ export function PharmacyRetail(): React.ReactElement {
             : customer === null ? t("pharmacyRetail.why.customer")
               : blocked ? t("pharmacyRetail.why.blocked")
                 : preview.prescriptionRequired && !rxComplete ? t("pharmacyRetail.why.rx")
-                  : !moneyOk ? (mode === "cash" ? t("pharmacyRetail.why.cash", { amount: rupees(payable) }) : t("pharmacyRetail.why.ref"))
+                  : !moneyOk ? (mode === "cash" ? t("pharmacyRetail.why.cash", { amount: rupees(payable) }) : mode === "split" ? t("pharmacyRetail.why.split", { amount: rupees(payable) }) : t("pharmacyRetail.why.ref"))
                     : null;
 
   const stepLabel = [t("pharmacyRetail.step.medicines"), t("pharmacyRetail.step.prescription"), t("pharmacyRetail.step.bill")];
@@ -894,7 +908,7 @@ export function PharmacyRetail(): React.ReactElement {
                       <DiscountWait discount={discount} />
                       {free ? <p role="status" className="rt-strong" data-testid="retail-free">{t("pharmacyRetail.free")}</p> : <>
                       <div className="rt-seg" role="radiogroup" aria-label={t("pharmacyRetail.mode")}>
-                        {(["cash", "upi", "card"] as const).map((m) => (
+                        {(["cash", "upi", "card", "split"] as const).map((m) => (
                           <button key={m} type="button" role="radio" aria-checked={mode === m} className={mode === m ? "rt-segb on" : "rt-segb"} onClick={() => setMode(m)}>
                             {t(`pharmacyRetail.mode_${m}`)}
                           </button>
@@ -907,6 +921,18 @@ export function PharmacyRetail(): React.ReactElement {
                               value={tendered} onChange={(e) => setTendered(e.target.value)} />
                           </label>
                           <button type="button" className="sec" onClick={() => setTendered((payable / 100).toFixed(2))}>{t("pharmacyRetail.exact", { amount: rupees(payable) })}</button>
+                        </div>
+                      ) : mode === "split" ? (
+                        <div className="rt-row rt-end">
+                          <label className="rt-field"><span className="tag">{t("pharmacyRetail.cashPart")}</span>
+                            <input className="in mo rt-money" aria-label={t("pharmacyRetail.cashPart")} inputMode="decimal" value={cashPart} onChange={(e) => setCashPart(e.target.value)} />
+                          </label>
+                          <label className="rt-field"><span className="tag">{t("pharmacyRetail.upiPart")}</span>
+                            <input className="in mo rt-money" aria-label={t("pharmacyRetail.upiPart")} inputMode="decimal" value={upiPart} onChange={(e) => setUpiPart(e.target.value)} />
+                          </label>
+                          <label className="rt-field"><span className="tag">{t("pharmacyRetail.reference")}</span>
+                            <input className="in mo" aria-label={t("pharmacyRetail.reference")} value={ref} onChange={(e) => setRef(e.target.value)} />
+                          </label>
                         </div>
                       ) : (
                         <div className="rt-row rt-end">
@@ -976,7 +1002,7 @@ export function PharmacyRetail(): React.ReactElement {
                 <li key={s.id} data-testid={`retail-row-${s.id}`} className="rt-sale">
                   <div className="rt-saletop">
                     <span className="rt-strong rt-ellipsis">{customerOf(s)}</span>
-                    <span className="mo rt-strong">{rupees(s.netPaise)}</span>
+                    {s.netPaise !== undefined && <span className="mo rt-strong">{rupees(s.netPaise)}</span>}
                   </div>
                   <div className="rt-salebot">
                     <span className="mo rt-muted">{fmtIst(s.soldAt)}</span>

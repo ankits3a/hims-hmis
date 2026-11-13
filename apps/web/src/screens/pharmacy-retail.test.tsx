@@ -103,6 +103,24 @@ describe("PharmacyRetail (P19)", () => {
     expect(screen.getByRole("button", { name: "Today · 2 sales" })).toBeInTheDocument();
   });
 
+  // OWNER RULINGS 0014 / 0017 — a seller with an uncounted drawer gets the day's rows without amounts: the list says
+  // who, when, which bill and what kind of sale, and no rupee figure at all (not even a broken one).
+  it("lists the day's sales without amounts when the server keeps the blind count", async () => {
+    mockRoutes({
+      "GET /api/pharmacy/retail/state": { status: 200, body: CURRENT },
+      "GET /api/pharmacy/retail/sales": { status: 200, body: { items: [
+        { id: "s1", soldAt: "2026-09-17T09:00:00.000Z", soldBy: "u", invoiceId: "inv-1", invoiceNo: "INV-26-000123", scheduled: true, lineCount: 1, registeredHere: false,
+          customer: { uhid: "U0000123", name: "Ramesh Patil", alias: null } },
+      ] } },
+    });
+    renderWithProviders(<PharmacyRetail />);
+    const row = await screen.findByTestId("retail-row-s1");
+    expect(row).toHaveTextContent("Ramesh Patil");
+    expect(row).toHaveTextContent("14:30INV-26-000123on prescription");
+    expect(row).not.toHaveTextContent("₹");
+    expect(row).not.toHaveTextContent("NaN");
+  });
+
   it("registers a new customer, prices the cart, takes cash with change, and offers the bill", async () => {
     mockRoutes({
       "GET /api/pharmacy/retail/state": { status: 200, body: CURRENT },

@@ -1,5 +1,9 @@
-import { and, eq, isNotNull, lt } from "drizzle-orm";
-import { pharmacyDispenseLines, pharmacyDispenses, stockReservations } from "../../kernel/db/schema";
+import { and, eq, inArray, isNotNull, lt } from "drizzle-orm";
+import { approvals, pharmacyDispenseLines, pharmacyDispenses, stockReservations } from "../../kernel/db/schema";
+import { CREDIT_APPROVAL_SUBJECT } from "../billing";
+import { renewReservations } from "../materials";
+import { PICK_RESERVATION_MINUTES } from "./config";
+import { DISCOUNT_APPROVAL_SUBJECT, discountDraftOf } from "./discount";
 import { PharmacyError } from "./errors";
 import { cancelDispense } from "./verify";
 import type { Actor } from "@hmis/contracts";
@@ -49,6 +53,17 @@ import type { OrderKindDecl } from "../../kernel/orders/kinds";
  * It stays because "no fixture reaches it" is not "nothing can": the day a phase adds a re-pick, a
  * partial re-reservation or a billed→verified correction, this clause is what keeps a paid-for
  * drug on the shelf it was sold from. The enumeration above is its road map, not its epitaph.
+ *
+ * ═══ A TICKET WAITING ON A DECISION IS NOT ABANDONED (2026-11-13) ═══
+ *
+ * A picked ticket can wait on somebody else's answer: a discount above the pharmacist's 10%
+ * (`discount.ts`, the in-charge or the owner) or credit (only the owner, 0013). Both approvals are
+ * filed against the dispense as the bill's draft. Cancelling it at 30 minutes put the picked medicine
+ * back on the shelf and minted a new P-number when the answer came. So while an approval bound to
+ * the ticket — subject = this dispense, same patient — is still `pending`, the sweep does not cancel
+ * it and renews its held reservations to `now + PICK_RESERVATION_MINUTES`. Once it is decided
+ * (granted or rejected), nothing renews it and the ordinary 30 minutes run from the last renewal.
+ * A request nobody decides holds the stock until somebody does, or the pharmacist cancels.
  */
 export const PHARMACY_PICK_SWEEP_ACTOR: Actor = { type: "system", id: "pharmacy-pick-expiry-sweep" };
 
@@ -60,7 +75,7 @@ export async function sweepExpiredPicks(
   now: Date,
 ): Promise<{ cancelled: string[] }> {
   const rows = await db
-    .select({ dispenseId: pharmacyDispenses.id })
+    .select({ dispenseId: pharmacyDispenses.id, patientId: pharmacyDispenses.patientId })
     .from(pharmacyDispenses)
     .innerJoin(pharmacyDispenseLines, eq(pharmacyDispenseLines.dispenseId, pharmacyDispenses.id))
     .innerJoin(stockReservations, eq(stockReservations.id, pharmacyDispenseLines.reservationId))
@@ -71,8 +86,13 @@ export async function sweepExpiredPicks(
       lt(stockReservations.expiresAt, now),
     ));
 
+  const tickets = [...new Map(rows.map((r) => [r.dispenseId, r.patientId] as const))];
+  const waiting = await awaitingDecision(db, tickets);
+  await holdWhileWaiting(db, [...waiting], now);
+
   const cancelled: string[] = [];
-  for (const id of [...new Set(rows.map((r) => r.dispenseId))]) {
+  for (const [id] of tickets) {
+    if (waiting.has(id)) continue;
     try {
       await cancelDispense(db, PHARMACY_PICK_SWEEP_ACTOR, decls, id, PICK_EXPIRED_REASON, now);
       cancelled.push(id);
@@ -97,4 +117,39 @@ export async function sweepExpiredPicks(
     }
   }
   return { cancelled };
+}
+
+/**
+ * The tickets among `tickets` (dispense id → patient) with an approval still PENDING that binds to
+ * them: a sale discount (subject `pharmacy_sale_discount`, draft = the dispense) or owner credit
+ * (subject `billing_credit`, id = the dispense), filed for the same patient. Read straight off the
+ * approvals table, as `antimicrobial.ts` reads its steward approvals: the kernel has no read by subject.
+ */
+async function awaitingDecision(db: Db, tickets: readonly (readonly [string, string])[]): Promise<Set<string>> {
+  if (tickets.length === 0) return new Set();
+  const patientOf = new Map(tickets);
+  const pending = await db
+    .select({ subjectType: approvals.subjectType, subjectId: approvals.subjectId, patientId: approvals.patientId })
+    .from(approvals)
+    .where(and(
+      eq(approvals.status, "pending"),
+      inArray(approvals.subjectType, [DISCOUNT_APPROVAL_SUBJECT, CREDIT_APPROVAL_SUBJECT]),
+      inArray(approvals.patientId, [...new Set(patientOf.values())]),
+    ));
+  const out = new Set<string>();
+  for (const a of pending) {
+    const draftId = a.subjectType === DISCOUNT_APPROVAL_SUBJECT ? discountDraftOf(a.subjectId) : a.subjectId;
+    if (patientOf.has(draftId) && patientOf.get(draftId) === a.patientId) out.add(draftId);
+  }
+  return out;
+}
+
+/** Renews every held reservation of these tickets for another `PICK_RESERVATION_MINUTES` from `now`. */
+async function holdWhileWaiting(db: Db, dispenseIds: readonly string[], now: Date): Promise<void> {
+  if (dispenseIds.length === 0) return;
+  const lines = await db
+    .select({ reservationId: pharmacyDispenseLines.reservationId })
+    .from(pharmacyDispenseLines)
+    .where(and(inArray(pharmacyDispenseLines.dispenseId, [...dispenseIds]), isNotNull(pharmacyDispenseLines.reservationId)));
+  await renewReservations(db, lines.map((l) => l.reservationId!), new Date(now.getTime() + PICK_RESERVATION_MINUTES * 60_000));
 }

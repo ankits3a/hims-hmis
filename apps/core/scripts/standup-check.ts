@@ -17,7 +17,7 @@ import {
 } from "../src/modules/lab";
 import {
   OPD_PHARMACY_STORE_CODE, PHARMACIST_ROLE, PHARMACY_DEF_KEYS, RETAIL_PHARMACY_STORE_CODE, anyEndPrescriber, controlledLicenceStates, controlledStore,
-  currentRegistration, custodianPairHeld, gstSlabPlan, listSaleItems, renewalDaysLeft, retailLicenceState, tallyLedgersConfirmed,
+  currentRegistration, custodianPairHeld, gstSlabPlan, isTrialRegistration, listSaleItems, renewalDaysLeft, retailLicenceState, tallyLedgersConfirmed,
   pharmacyDltTemplateIdsRecorded, pharmacyMessagingProviderLive,
 } from "../src/modules/pharmacy";
 import {
@@ -804,15 +804,21 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       // rows in one module disagreeing about who holds `pharmacy` is the C2 shape
       // (`users-admin.controller.ts`) — two pieces of code answering one question, each defensible
       // alone. A leaver's council registration stays on file for ever and vouches for nobody.
+      //
+      // AND NOT THE TRIAL ONE (decision 0008). The counter first ran on a clearly marked TRIAL registration filed so it
+      // could work before the owner gave the real certificate. It is current, so it passes verify — and it kept this
+      // row green on a counter whose bill and H1 register still say TRIAL. Only a real number counts here; TRIAL is
+      // recognised by `isTrialRegistration`, the predicate the back office's needs list uses.
       check: async (db) => {
         const holders = await activeHoldersAtHospitalScope(db, PHARMACIST_ROLE);
         const today = istDayString(new Date());
         for (const userId of holders) {
-          if ((await currentRegistration(db, userId, today)) !== null) return true;
+          const reg = await currentRegistration(db, userId, today);
+          if (reg !== null && !isTrialRegistration(reg.registrationNo)) return true;
         }
         return false;
       },
-      fix: "§1.10: the pharmacist in charge files each pharmacist's state council registration at /pharmacy/pharmacists (never their own) — verify and a Schedule H/H1 hand-over refuse anyone without one",
+      fix: "§1.10: the pharmacist in charge files each pharmacist's state council registration at /pharmacy/pharmacists (never their own) — verify and a Schedule H/H1 hand-over refuse anyone without one. A TRIAL-* registration (decision 0008) does not count: file the real pharmacist's council, registration number and valid-until at /pharmacy/pharmacists, which replaces it",
     },
     {
       gate: "G4", code: "pharmacist_registration_not_lapsing",

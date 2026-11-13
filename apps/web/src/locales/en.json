@@ -8547,6 +8547,8 @@
     "scanned": "scanned {{n}}/{{of}} picks"
   },
   "pharmacyErrors": {
+    "substitution_needs_prescriber": "A Schedule H or H1 brand swap needs the prescribing doctor's agreement. Ask the doctor from the line's ⋯, or give the brand written; on an outside doctor's paper, give the brand written or have the doctor change the prescription.",
+    "no_balance_owed": "Nothing is owed on this ticket now: nothing was given short, its balance is already open, or 30 days have passed since it was first handed over.",
     "permission_denied": "You are not allowed to do that",
     "unknown_item": "No such item",
     "not_a_drug": "Only a medicine can be sold at the counter",
@@ -8817,6 +8819,11 @@
     "rejected": "{{who}} refused the discount: {{note}}. Remove it, or ask again."
   },
   "pharmacyDesk": {
+    "balance": { "owed": "Balance owed: {{what}} · until {{until}}", "open": "Open the balance ticket", "opened": "Balance ticket opened for {{who}}." },
+    "swap": { "needed": "{{doctor}} must agree to {{brand}}: a Schedule H/H1 brand swap. Ask from ⋯, or give the brand written.", "waiting": "Waiting for {{doctor}} to agree to {{brand}}.", "agreed": "{{doctor}} agreed to {{brand}}: {{reason}}", "ask": "Ask {{doctor}} to agree to the swap" },
+    "drop": { "reason": {"notWanted": "patient does not want it", "hasAtHome": "patient has it at home"} },
+    "dropTitle": "Drop {{line}} from the bill",
+    "dropIt": "Drop it",
     "wordmark": "PHARMACY DESK",
     "phone": {
       "menu": "Menu",
@@ -9152,6 +9159,15 @@
       "creditBill": "Bill {{amount}} on the owner's credit"
     },
     "handover": {
+      "collectedByWay": "collected by…",
+      "collectedBy": "collected by",
+      "choose": "choose",
+      "self": "the patient",
+      "attendant": "an attendant",
+      "attendantName": "attendant's name",
+      "relation": "relation",
+      "collectedSelf": "collected by the patient",
+      "collectedAttendant": "collected by {{name}} ({{relation}})",
       "title": "hand it over",
       "via": "who is collecting",
       "token": "token number",
@@ -9304,6 +9320,7 @@
     },
     "amount": "amount",
     "menu": {
+      "drop": "Drop this line",
       "batch": "Batch & shelf",
       "qty": "Change the quantity",
       "decline": "Decline this line",
@@ -9332,6 +9349,7 @@
       "noDrawer": "no drawer — open one to take money"
     },
     "paper": {
+      "bill": { "sending": "Sending the bill to the printer…", "withPrinter": "The bill is with the printer.", "printed": "Bill printed.", "failed": "The printer did not print the bill.", "notTaken": "The printer has not taken the bill yet.", "browser": "Bill printed from this screen.", "notYet": "Bill not printed from this desk.", "print": "Print the bill", "reprint": "Reprint the bill", "logSent": "Bill sent to the counter printer.", "logReprint": "A second copy of the bill sent to the printer." },
       "sending": "Sending the bill and labels to the printer…",
       "withPrinter": "Bill and label are with the printer.",
       "printed": "Bill and label printed.",
@@ -9557,6 +9575,7 @@
     "lead": "You wrote this prescription. The check at the pharmacy stops this line, and only you can authorise dispensing it — or decline.",
     "loading": "Reading the request…",
     "book": {
+      "substitution": "brand swap (Schedule H/H1)",
       "allergy": "recorded allergy",
       "interaction": "severe interaction",
       "duplicate": "already prescribed",
@@ -10731,6 +10750,9 @@
     "sealedNote": "A sealed patient's name and address are withheld from this login. The unredacted copy for an inspector is printed by the pharmacist in charge, the medical superintendent or the owner."
   },
   "pharmacyBill": {
+    "manufacturer": "Mfr.",
+    "licence": "D.L. No. Form 20: {{form20}} · Form 21: {{form21}}",
+    "licenceNone": "D.L. No. —",
     "title": "Batch details",
     "drug": "Drug",
     "batch": "Batch",
@@ -10850,6 +10872,9 @@
     "source_downtime": "Paper dispense"
   },
   "pharmacyRetail": {
+    "mode_split": "Cash + UPI",
+    "cashPart": "Cash part (₹)",
+    "upiPart": "UPI part (₹)",
     "shelfAt": "Shelf: {{location}}",
     "batchFor": "Batch for {{name}}",
     "batchAuto": "Earliest expiry (automatic)",
@@ -10974,6 +10999,7 @@
     },
     "stepOf": "Step {{n}} · {{label}}",
     "why": {
+      "split": "Split {{amount}}: a cash part and a UPI part that add up to it, and the UPI reference.",
       "shut": "The counter is closed: no current retail licence.",
       "empty": "Add a medicine: type its name or scan the pack.",
       "qty": "Type a quantity for every line.",

@@ -249,9 +249,9 @@ A blank slab still bills as exempt.
 >   - a batch with under 30 days to expiry, or recalled. Quarantine that one instead.
 >   - more than was dispensed, net of earlier returns.
 
-## 4. What refuses, and why — all 135 codes
+## 4. What refuses, and why — all 137 codes
 
-`errors.ts` declares 135, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
+`errors.ts` declares 137, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
 table falls behind it. The table used to name 13, and the drill above provokes several of the
 missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/en.json` under
 `pharmacyErrors.*`; that file and `errors.ts` are pinned against each other in BOTH directions by
@@ -271,6 +271,8 @@ missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/e
 | `unresolved_medicine` | the line names no medicine the formulary knows | back to the doctor |
 | `substitution_not_allowed` | the prescriber marked `noSubstitution` | dispense as written, or call the doctor |
 | `consent_required` | a generic substitution without the patient's consent ticked | ask, then tick |
+| `substitution_needs_prescriber` | a brand swap on a Schedule H/H1 line the prescriber has not agreed to (0093; quick desk does not stand it down); on an outside doctor's paper nobody can agree | ⋯ → ask the doctor to agree, or give the brand written; an outside paper: the brand written, or the doctor changes the prescription |
+| `no_balance_owed` | "rest tomorrow" asked of a ticket that owes nothing now: nothing was picked short, its balance is already open, or 30 days have passed since the first hand-over | open the existing balance ticket, or dispense from a new prescription |
 | `allergy_block` · `interaction_block` | the re-check hit something the prescriber did not override | back to the doctor |
 | `authorisation_not_needed` | the doctor was asked to authorise a refusal the check does not raise on that line | ask about the refusal the line actually shows |
 | `authorisation_not_pending` · `unknown_authorisation` | the request was already decided, or does not exist | read the decision on the ticket |
@@ -297,7 +299,7 @@ missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/e
 | `qty_required` | a line's quantity is blank — SOS/PRN and unknown frequencies do not prefill | type the quantity (§3.3) |
 | `store_missing` | `seed-pharmacy` did not run | §1.2 |
 | `scheduled_needs_pharmacist` | the aide tried to complete an H/H1 dispense | call the pharmacist |
-| `identity_confirmation_required` · `identity_mismatch` | a scheduled hand-over without, or with a wrong, token / phone last-4 | ask the person |
+| `identity_confirmation_required` · `identity_mismatch` | a scheduled hand-over without, or with a wrong, token / phone last-4, or "collected by" an attendant with no name or relation | ask the person; with no token and no phone, choose "collected by" and name who collects (spec #1046) |
 | `pharmacist_not_registered` | verify, or a Schedule H/H1 hand-over, by a login with no current state council registration on file (P2) | the pharmacist in charge files it at `/pharmacy/pharmacists`; until then a registered pharmacist does the act |
 | `self_registration` · `not_a_pharmacist_role` · `invalid_registration` · `registration_expired` · `registration_in_use` · `registration_ended` | filing or ending a registration: one's own, for someone without the `pharmacy` role, a blank or malformed field, a lapsed certificate, a number already on file for someone else, or a row already ended | a colleague files it; assign the role first; file the renewed certificate; end the wrong row first |
 | `nothing_to_dispense` | every line is declined | cancel the dispense instead |

@@ -745,6 +745,19 @@ export async function releaseReservation(tx: Tx, _actor: Actor, reservationId: s
 }
 
 /**
+ * Moves the expiry of HELD reservations to `expiresAt` — the holder is still at it (the pharmacy desk renews a picked
+ * ticket that waits on an approval). Quantities do not change, so no balance lock is taken; a reservation already
+ * released or consumed is left alone. Returns how many moved.
+ */
+export async function renewReservations(exec: Db | Tx, reservationIds: readonly string[], expiresAt: Date): Promise<number> {
+  if (reservationIds.length === 0) return 0;
+  const moved = await exec.update(stockReservations).set({ expiresAt })
+    .where(and(inArray(stockReservations.id, [...reservationIds]), eq(stockReservations.status, "held")))
+    .returning({ id: stockReservations.id });
+  return moved.length;
+}
+
+/**
  * Turns a hold into a movement: the reservation is dropped and the same quantity leaves the shelf,
  * in ONE transaction. Dropping the hold FIRST is what makes the movement's own availability check
  * pass — otherwise the reservation would be competing with the movement it exists to guarantee.

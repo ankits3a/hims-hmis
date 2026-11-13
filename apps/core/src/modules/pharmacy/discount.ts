@@ -75,6 +75,12 @@ export function discountSubjectId(draftId: string, ask: Pick<DiscountAsk, "kind"
   return `${draftId}:${ask.kind}:${String(ask.value)}`;
 }
 
+/** The draft a discount approval's subject binds to — the inverse of `discountSubjectId`. */
+export function discountDraftOf(subjectId: string): string {
+  const at = subjectId.indexOf(":");
+  return at < 0 ? subjectId : subjectId.slice(0, at);
+}
+
 export type DiscountQuote = {
   kind: DiscountAsk["kind"]; value: number; amountPaise: number; tier: DiscountTier;
   /** Who must approve it: null when the pharmacist gives it. */

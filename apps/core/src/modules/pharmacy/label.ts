@@ -7,6 +7,7 @@ import { PharmacyError } from "./errors";
 import type { BillRow } from "./bill-rows";
 import { personName, registrationAt } from "./pharmacists";
 import { getDispenseRow, linesOf } from "./queue";
+import { licenceOnBill } from "./retail";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { RxLine } from "../opd";
@@ -25,6 +26,10 @@ export type LabelLine = {
   directions: string;
   /** D6 — printed on the label: the brand the doctor wrote, when a generic was substituted. */
   substitutedFor: string | null;
+  /** Spec #1046 D5 — the maker on the pack (`items.manufacturer`), printed per line on the bill; null when none. */
+  manufacturer: string | null;
+  /** The invoice line this dispense line was billed as (null before the bill): how the bill finds its batch. */
+  invoiceLineId: string | null;
 };
 
 export type LabelData = {
@@ -43,6 +48,8 @@ export type LabelData = {
    * drug (loose-MRP ruling, `bill-rows.ts`). Null before the bill.
    */
   billRows: BillRow[] | null;
+  /** Spec #1046 D5 — the drug licence numbers the bill's header prints (the register's current Form 20/21), null when none. */
+  licence: { form20No: string; form21No: string } | null;
 };
 
 /**
@@ -84,6 +91,7 @@ export async function labelFor(db: Db, actor: Actor, dispenseId: string): Promis
       batchNo: batch?.batchNo ?? "", expiryDate: batch?.expiryDate ?? null,
       directions: labelDirections(rx),
       substitutedFor: l.substitutionType === "generic" && ordered !== undefined ? ordered.brandName : null,
+      manufacturer: item?.manufacturer ?? null, invoiceLineId: l.invoiceLineId,
     });
   }
   let pharmacist: LabelData["pharmacist"] = null;
@@ -99,5 +107,6 @@ export async function labelFor(db: Db, actor: Actor, dispenseId: string): Promis
     patient: { display: summary.alias ?? summary.name ?? summary.uhid, uhid: summary.uhid },
     handedOverAt: d.handedOverAt, lines: out, pharmacist,
     billRows: d.invoiceId === null ? null : await billRowsForInvoice(db, d.invoiceId, lines),
+    licence: await licenceOnBill(db, d.billedAt ?? new Date()),
   };
 }
