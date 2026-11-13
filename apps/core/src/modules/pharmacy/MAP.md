@@ -89,6 +89,17 @@ Every move is a compare-and-set on `pharmacy_dispenses.status` plus a workflow t
   `pharmacy_dispenses_live_balance_ux`). Route `POST /pharmacy/dispenses/:id/balance`.
 - Bill seam: `bill.ts` passes `oneInvoicePerDocument` to `billing.issueInvoice`, which skips the FD-27
   encounter + service check (`liveInvoiceCharging`); one bill per dispense is the picked→billed compare-and-set.
+- Added by hand (#1055, ruling 0094): `add-line.ts` `addDispenseLine` (`POST /pharmacy/dispenses/:id/lines`, idempotent
+  key `addLine`, event `dispense.line_added`) adds a line while the dispense is claimed, verified or picked, for reason
+  `not_prescribed` or `paper`; any schedule except X and NDPS. It runs the same four checks verify runs; after verify also
+  the steward gate and the registered-pharmacist check (stood down in quick desk); on a picked ticket it is held FEFO at
+  once (`pick.ts` `fefoParts`, `splitCopyOf`). The `added_*` columns on `pharmacy_dispense_lines` carry who, when, why
+  and (paper) the slip document and prescriber; an H1 line added as not prescribed writes `NO_PRESCRIPTION_PRESCRIBER`
+  in the H1 register. A line added after verify has no kernel order item (the kernel cannot add one to a placed order).
+- Desk layout (#1055): two columns like Desk One (`aside` 296 px + work); the queue (`QueueList`) sits under the find
+  box; the bill column `.pd-billcol` (296 px) opens only at `picked` or `billed` and closes after hand-over; on a phone
+  the line's tab becomes Bill only then. The find box uses Desk One's `.in` look (1px line border at rest, green ring on
+  focus, no Find button).
 - Printing: the desk that takes the money prints the bill (`POST …/print {documents}`); hand-over sends labels only.
   `print.ts` heads the bill with the pharmacist's registration and the D.L. No. (`retail.ts` `licenceOnBill`).
 
