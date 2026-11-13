@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { searchMedicines } from "../../lib/formulary-api";
 import { PACK_TYPES, createNewDrug, fetchStockMedicine, paiseOf, stockErrorText } from "../../lib/stock-entry-api";
 import { Button } from "@/components/ui/button";
+import { MedicinePicker } from "./medicine-picker";
 import type { WireMedicineHit } from "../../lib/formulary-api";
 import type { NewDrugInput, PackType, WireStockItem } from "../../lib/stock-entry-api";
 
@@ -30,7 +30,7 @@ export function NewDrugSheet({ initialName, onDone }: { initialName: string; onD
   const { t } = useTranslation();
   const [brand, setBrand] = useState(initialName);
   const [strength, setStrength] = useState("");
-  const [ask, setAsk] = useState("");
+  const [manufacturer, setManufacturer] = useState("");
   const [generic, setGeneric] = useState<WireMedicineHit | null>(null);
   const [form, setForm] = useState("");
   const [packType, setPackType] = useState<PackType>("tablet_strip");
@@ -43,9 +43,6 @@ export function NewDrugSheet({ initialName, onDone }: { initialName: string; onD
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const [typed, setTyped] = useState("");
-  useEffect(() => { const id = setTimeout(() => setTyped(ask.trim()), 250); return () => clearTimeout(id); }, [ask]);
-  const hits = useQuery({ queryKey: ["formulary", "stock-entry-generic", typed], queryFn: () => searchMedicines(typed, 10), enabled: generic === null && typed.length >= 2 });
   const med = useQuery({ queryKey: ["pharmacy", "stock-entry", "medicine", generic?.id], queryFn: () => fetchStockMedicine(generic!.id), enabled: generic !== null });
   // The picked medicine's form, strength and schedule are the sheet's defaults; a person may change them.
   useEffect(() => {
@@ -72,6 +69,8 @@ export function NewDrugSheet({ initialName, onDone }: { initialName: string; onD
       brandName: brand.trim(), strength: strength.trim(), medicineId: generic.id, form: form.trim() || (FORM_OF[packType] ?? ""),
       packType, packSize: size, hsnCode: hsn.trim(), gstRateBps: gst, schedule: schedule === "" ? null : schedule,
       mrpPerPackPaise: mrpPaise, storage,
+      // The maker, as the strip prints it — the bill's Mfr. column reads it (walk 2026-11-13). Blank stays blank.
+      ...(manufacturer.trim() === "" ? {} : { manufacturer: manufacturer.trim() }),
     };
     try {
       const made = await createNewDrug(input);
@@ -102,33 +101,17 @@ export function NewDrugSheet({ initialName, onDone }: { initialName: string; onD
         <label className={field}>{t("stockEntry.nd.strength")}
           <input className={box} value={strength} placeholder="650 mg" onChange={(e) => setStrength(e.target.value)} data-testid="nd-strength" />
         </label>
+        <label className={field}>{t("stockEntry.nd.manufacturer")}
+          <input className={box} value={manufacturer} placeholder={t("stockEntry.nd.manufacturerPlaceholder")} onChange={(e) => setManufacturer(e.target.value)} data-testid="nd-manufacturer" />
+        </label>
       </div>
 
       <div className={field}>
         <span>{t("stockEntry.nd.generic")}</span>
-        {generic === null ? (
-          <>
-            <input className={box} value={ask} placeholder={t("stockEntry.nd.genericPlaceholder")} onChange={(e) => setAsk(e.target.value)} data-testid="nd-generic" aria-label={t("stockEntry.nd.generic")} />
-            {typed.length >= 2 && (
-              <ul className="max-h-56 overflow-y-auto rounded-md border" data-testid="nd-generic-hits">
-                {(hits.data ?? []).map((h) => (
-                  <li key={h.id}>
-                    <button type="button" className="w-full px-2 py-1.5 text-left hover:bg-muted" onClick={() => setGeneric(h)}>
-                      <span className="font-medium">{h.name}</span>
-                      <span className="block text-xs text-muted-foreground">{[h.strength, h.form, h.salts.join(" + ")].filter((x) => x !== null && x !== "").join(" · ")}</span>
-                    </button>
-                  </li>
-                ))}
-                {hits.data !== undefined && hits.data.length === 0 && <li className="px-2 py-1.5 text-xs text-muted-foreground">{t("stockEntry.nd.noGeneric")}</li>}
-              </ul>
-            )}
-          </>
-        ) : (
-          <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-2 py-1.5" data-testid="nd-generic-picked">
-            <span className="min-w-0 flex-1 font-medium">{generic.name}</span>
-            <button type="button" className="text-xs underline" onClick={() => { setGeneric(null); setSchedule(""); }}>{t("stockEntry.nd.change")}</button>
-          </div>
-        )}
+        <MedicinePicker
+          label={t("stockEntry.nd.generic")} value={generic} testId="nd-generic"
+          onPick={(m) => { setGeneric(m); if (m === null) setSchedule(""); }}
+        />
         <span className="text-xs text-muted-foreground">{t("stockEntry.nd.genericWhy")}</span>
       </div>
 

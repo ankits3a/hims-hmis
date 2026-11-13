@@ -77,6 +77,12 @@ export const blankRow = (): GridRow => ({
   key: newKey(), item: null, query: "", packType: "tablet_strip", packSize: "", batch: "", expiry: "", packs: "", freePacks: "", boxes: "", perBox: "",
   mrp: "", rate: "", discount: "", rack: "", supplier: "",
 });
+/**
+ * Walk 2026-11-13 — a brand just picked is not yet a row anybody has typed: its refusals ("the batch number is
+ * missing", …) wait until something of the row's own is typed. Capture still waits for the server's judgement.
+ */
+const untouched = (r: GridRow): boolean =>
+  [r.batch, r.expiry, r.boxes, r.perBox, r.packs, r.freePacks, r.rate, r.discount].every((v) => v.trim() === "");
 const isBlank = (r: GridRow): boolean =>
   r.item === null && [r.query, r.packSize, r.batch, r.expiry, r.boxes, r.perBox, r.packs, r.freePacks, r.mrp, r.rate, r.discount, r.rack, r.supplier].every((v) => v.trim() === "");
 /** Always exactly one blank row at the end — the next batch is typed into it. */
@@ -457,7 +463,7 @@ export function StockEntryView(): React.ReactElement {
           {rows.map((r, i) => (
             <RowView
               key={r.key} row={r} index={i} last={i === rows.length - 1}
-              reasons={r.item === null ? (isBlank({ ...r, query: "" }) ? [] : [t("stockEntry.pickBrand")]) : reasonsFor(r.key)}
+              reasons={r.item === null ? (isBlank({ ...r, query: "" }) ? [] : [t("stockEntry.pickBrand")]) : untouched(r) ? [] : reasonsFor(r.key)}
               near={judgedRow(r.key)?.near === true && r.item !== null}
               estimate={!invoice && judgedRow(r.key)?.estimatedCost === true ? judgedRow(r.key)!.costPerBasePaise : null}
               mode={mode} rateIncludesGst={invoice && header.rateIncludesGst}

@@ -324,6 +324,13 @@ export async function fetchTransferWorklist(storeId?: string): Promise<{ awaitin
   const q = storeId === undefined || storeId === "" ? "" : `?${new URLSearchParams({ storeId }).toString()}`;
   return api<{ awaiting: WireTransferView[]; recent: WireTransferView[] }>("GET", `/materials/transfers/worklist${q}`);
 }
+/** Walk 2026-11-13 — what an item holds on hand over every store and batch (the item master's retire asks with it). */
+export async function fetchOnHand(itemId: string): Promise<number> {
+  const { balances } = await api<{ balances: { qtyOnHand: number }[] }>(
+    "GET", `/materials/stock/balances?${new URLSearchParams({ itemId }).toString()}`,
+  );
+  return balances.reduce((sum, b) => sum + b.qtyOnHand, 0);
+}
 /** What a store can give of an item now: on hand, less reserved and frozen, over every batch. */
 export async function fetchAvailableAt(resourceId: string, itemId: string): Promise<number> {
   const { balances } = await api<{ balances: { qtyOnHand: number; qtyReserved: number; qtyFrozen: number }[] }>(

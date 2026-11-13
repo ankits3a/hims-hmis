@@ -214,12 +214,14 @@ describe("stock entry on screen (2026-09-29)", () => {
     await user.clear(within(sheet).getByTestId("nd-pack-size"));
     await user.type(within(sheet).getByTestId("nd-pack-size"), "15");
     await user.type(within(sheet).getByTestId("nd-mrp"), "35.50");
+    // Walk 2026-11-13 — the maker as the strip prints it; the bill's Mfr. column reads it.
+    await user.type(within(sheet).getByTestId("nd-manufacturer"), "Micro Labs");
     await user.click(within(sheet).getByTestId("nd-save"));
 
     await waitFor(() => expect(screen.queryByTestId("se-new-drug-sheet")).toBeNull());
     expect(calls.find((c) => c.path === "/pharmacy/opening-stock/new-drug")?.body).toEqual({
       brandName: "Zolo 650", strength: "650 mg", medicineId: "m-para", form: "tablet", packType: "tablet_strip", packSize: 15,
-      hsnCode: "3004", gstRateBps: 500, schedule: "H", mrpPerPackPaise: 3550, storage: "ambient",
+      hsnCode: "3004", gstRateBps: 500, schedule: "H", mrpPerPackPaise: 3550, storage: "ambient", manufacturer: "Micro Labs",
     });
     expect(screen.getByRole("combobox", { name: "Brand · row 1" })).toHaveValue("Zolo 650 tablet");
     expect(screen.getByLabelText("Per pack · row 1")).toHaveValue("15");
@@ -258,6 +260,40 @@ describe("stock entry on screen (2026-09-29)", () => {
     expect(await screen.findByText(/Ask the materials head to add this supplier/, {}, { timeout: 3000 })).toBeInTheDocument();
     expect(screen.getByTestId("stock-entry")).not.toHaveTextContent("materials.vendors.manage");
     expect(screen.getByTestId("stock-entry")).not.toHaveTextContent("materials.items.manage");
+  });
+
+  it("walk 2026-11-13: a row just picked shows no refusals until something is typed in it", async () => {
+    const calls = mock({
+      ...ROUTES,
+      "POST /pharmacy/opening-stock/check": (body: unknown) => {
+        const j = judge(body) as { rows: { batch: string; reasons: string[] }[] };
+        return { ...j, rows: j.rows.map((r) => ({ ...r, reasons: r.batch === "" ? ["the batch number is missing"] : r.reasons })), refusals: 1 };
+      },
+    }, PERMS);
+    renderWithRouter(<StockEntryView />);
+    const user = userEvent.setup();
+    await pickDolo(user);
+    await waitFor(() => expect(calls.some((c) => c.path === "/pharmacy/opening-stock/check")).toBe(true), { timeout: 3000 });
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    expect(screen.queryByTestId("se-reasons-0")).toBeNull();
+    await user.type(screen.getByLabelText("Packs · row 1"), "2");
+    expect(await screen.findByTestId("se-reasons-0", {}, { timeout: 3000 })).toHaveTextContent("the batch number is missing");
+  });
+
+  it("walk 2026-11-13: a brand with no GST slab is not put on sale, and the refusal says to set the slab", async () => {
+    const NOSLAB: WireStockItem = { ...DOLO, itemId: "it-noslab", code: "NOSLAB", name: "Noslab 40 tablet", gstRateBps: null, onSale: false };
+    mock({
+      ...ROUTES,
+      "GET /pharmacy/opening-stock/items": { items: [NOSLAB] },
+      "POST /pharmacy/sale-items": new Response(JSON.stringify({ statusCode: 409, code: "gst_slab_unknown", message: "item NOSLAB has no GST slab" }), { status: 409, headers: { "Content-Type": "application/json" } }),
+    }, PERMS);
+    renderWithRouter(<StockEntryView />);
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("combobox", { name: "Brand · row 1" }), "noslab");
+    await within(await screen.findByTestId("se-brand-list-0")).findByText("Noslab 40 tablet");
+    await user.keyboard("{Enter}");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Set its GST slab");
+    expect(screen.getByRole("combobox", { name: "Brand · row 1" })).toHaveValue("noslab");
   });
 
   it("without the item master's permission there is no + New drug, only 'ask the materials head'", async () => {

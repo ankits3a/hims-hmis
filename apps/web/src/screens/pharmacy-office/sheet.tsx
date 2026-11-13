@@ -1,13 +1,16 @@
 import { useEffect, useRef } from "react";
 
-/** The right-hand sheet both flows use. Esc closes it; focus starts inside it. */
+/**
+ * The right-hand sheet both flows use. Esc closes it; focus starts inside it. It starts below the environment banner
+ * (`--env-banner-h`, 0 on production) — walk 2026-11-13: on staging its title sat under the banner.
+ */
 export function Sheet({ title, onClose, children, testId, onKey }: {
   title: string; onClose: () => void; children: React.ReactNode; testId: string; onKey?: (e: React.KeyboardEvent) => void;
 }): React.ReactElement {
   const ref = useRef<HTMLElement>(null);
   useEffect(() => { ref.current?.focus(); }, []);
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-black/30" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="fixed inset-0 z-40 flex justify-end bg-black/30" style={{ top: "var(--env-banner-h, 0px)" }} data-testid={`${testId}-backdrop`} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <aside
         ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} data-testid={testId}
         className="h-full w-full max-w-4xl overflow-y-auto bg-background p-4 shadow-xl focus:outline-none"

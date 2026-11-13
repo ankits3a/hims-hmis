@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { ApiError } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { fetchItem, materialsErrorText, patchItem, replaceItemUom } from "../lib/materials-api";
 import { setMedicineSchedule } from "../lib/formulary-api";
@@ -64,6 +65,10 @@ export function ItemEditPanel({ itemId, onClose }: { itemId: string; onClose: ()
   const [fixing, setFixing] = useState<string | null>(null);
   const [fixUom, setFixUom] = useState("");
   const [fixSize, setFixSize] = useState("");
+  /** Walk 2026-11-13 — the correction's own refusal, shown beside its button with what holds the pack. */
+  const [fixError, setFixError] = useState<string | null>(null);
+  const fixErrorRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => { if (fixError !== null) fixErrorRef.current?.scrollIntoView?.({ block: "nearest" }); }, [fixError]);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
 
@@ -100,16 +105,23 @@ export function ItemEditPanel({ itemId, onClose }: { itemId: string; onClose: ()
 
   const correctPack = async (): Promise<void> => {
     if (d === undefined || fixing === null) return;
-    setError(null); setDone(null);
+    setError(null); setDone(null); setFixError(null);
     const n = Number(fixSize);
-    if (fixUom.trim() === "" || !Number.isInteger(n) || n < 2) { setError(t("materialsItems.edit.packInvalid")); return; }
+    if (fixUom.trim() === "" || !Number.isInteger(n) || n < 2) { setFixError(t("materialsItems.edit.packInvalid")); return; }
     try {
       await replaceItemUom(d.id, { fromUom: fixing, uom: fixUom.trim(), toBaseMultiplier: n });
       setDone(t("materialsItems.edit.packCorrected", { from: fixing, uom: fixUom.trim(), n }));
       setFixing(null); setFixUom(""); setFixSize("");
       await qc.invalidateQueries({ queryKey: ["materials"] });
     } catch (e) {
-      setError(stockErrorText(e, t));
+      // Walk 2026-11-13 — what still counts in the pack (the server names each once), not just "in use".
+      const held = e instanceof ApiError ? (e.body as { detail?: { batches?: string[]; grns?: string[]; purchaseOrders?: string[] } } | null)?.detail : undefined;
+      const list = [
+        ...(held?.batches ?? []).map((no) => t("materialsItems.edit.blockerBatch", { no })),
+        ...(held?.grns ?? []).map((no) => t("materialsItems.edit.blockerGrn", { no })),
+        ...(held?.purchaseOrders ?? []).map((no) => t("materialsItems.edit.blockerOrder", { no })),
+      ];
+      setFixError([stockErrorText(e, t), ...(list.length > 0 ? [t("materialsItems.edit.inUse", { list: list.join(", ") })] : [])].join(" "));
     }
   };
 
@@ -137,13 +149,9 @@ export function ItemEditPanel({ itemId, onClose }: { itemId: string; onClose: ()
   };
 
   return (
-    <section className="space-y-3 rounded border p-4" aria-labelledby="item-edit-title">
-      <div className="flex items-baseline justify-between gap-2">
-        <h2 id="item-edit-title" className="font-medium">
-          {d === undefined ? t("common.loading") : t("materialsItems.edit.title", { code: d.code, name: d.name })}
-        </h2>
-        <Button variant="secondary" onClick={onClose}>{t("materialsItems.edit.close")}</Button>
-      </div>
+    // Walk 2026-11-13 — the sheet around this panel already names the item; the panel does not name it twice.
+    <section className="space-y-3 rounded border p-4" aria-label={d === undefined ? t("common.loading") : t("materialsItems.edit.title", { code: d.code, name: d.name })}>
+      {d === undefined && <p className="text-sm text-muted-foreground">{t("common.loading")}</p>}
       {error !== null && <p role="alert" className="text-sm text-red-600">{error}</p>}
       {done !== null && <p role="status" className="text-sm text-green-700">{done}</p>}
       {d !== undefined && (
@@ -227,18 +235,39 @@ export function ItemEditPanel({ itemId, onClose }: { itemId: string; onClose: ()
                     ))}
                   </div>
                 )}
+                {/* Walk 2026-11-13 — two forms that looked alike: each now has its heading and visible labels, and the
+                    correction's refusal (with what holds the pack) sits beside its button, scrolled into view. */}
                 {fixing !== null && (
-                  <div className="flex flex-wrap items-center gap-2 rounded bg-amber-50 p-2" data-testid="item-edit-correct-form">
-                    <span className="text-xs">{t("materialsItems.edit.correctHint", { uom: fixing })}</span>
-                    <input className="w-28 rounded border px-2 py-1" aria-label={t("materialsItems.edit.correctUom")} value={fixUom} onChange={(e) => setFixUom(e.target.value)} />
-                    <input className="w-20 rounded border px-2 py-1" inputMode="numeric" aria-label={t("materialsItems.edit.correctSize", { base: d.baseUom })} value={fixSize} onChange={(e) => setFixSize(e.target.value)} />
-                    <Button type="button" data-testid="item-edit-correct-save" onClick={() => void correctPack()}>{t("materialsItems.edit.correctSave")}</Button>
+                  <div className="space-y-2 rounded bg-amber-50 p-2" data-testid="item-edit-correct-form">
+                    <h3 className="text-sm font-semibold">{t("materialsItems.edit.correctPack", { uom: fixing })}</h3>
+                    <p className="text-xs">{t("materialsItems.edit.correctHint", { uom: fixing })}</p>
+                    <div className="flex flex-wrap items-end gap-2">
+                      <div className="flex flex-col gap-1 text-xs">
+                        <label htmlFor="item-fix-uom">{t("materialsItems.edit.correctUom")}</label>
+                        <input id="item-fix-uom" className="w-28 rounded border px-2 py-1" value={fixUom} onChange={(e) => setFixUom(e.target.value)} />
+                      </div>
+                      <div className="flex flex-col gap-1 text-xs">
+                        <label htmlFor="item-fix-size">{t("materialsItems.edit.correctSize", { base: d.baseUom })}</label>
+                        <input id="item-fix-size" className="w-20 rounded border px-2 py-1" inputMode="numeric" value={fixSize} onChange={(e) => setFixSize(e.target.value)} />
+                      </div>
+                      <Button type="button" data-testid="item-edit-correct-save" onClick={() => void correctPack()}>{t("materialsItems.edit.correctSave")}</Button>
+                    </div>
+                    {fixError !== null && <p ref={fixErrorRef} role="alert" className="text-sm text-red-700" data-testid="item-edit-correct-error">{fixError}</p>}
                   </div>
                 )}
-                <div className="flex flex-wrap items-center gap-2">
-                  <input className="w-28 rounded border px-2 py-1" placeholder="strip15" aria-label={t("materialsItems.edit.packUom")} value={packUom} onChange={(e) => setPackUom(e.target.value)} />
-                  <input className="w-20 rounded border px-2 py-1" inputMode="numeric" placeholder="15" aria-label={t("materialsItems.edit.packSize", { base: d.baseUom })} value={packSize} onChange={(e) => setPackSize(e.target.value)} />
-                  <Button type="button" variant="secondary" onClick={() => void addPack()}>{t("materialsItems.edit.addPack")}</Button>
+                <div className="space-y-2 rounded border border-dashed p-2" data-testid="item-edit-add-pack">
+                  <h3 className="text-sm font-semibold">{t("materialsItems.edit.addPackHeading")}</h3>
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div className="flex flex-col gap-1 text-xs">
+                      <label htmlFor="item-add-uom">{t("materialsItems.edit.packUom")}</label>
+                      <input id="item-add-uom" className="w-28 rounded border px-2 py-1" placeholder="strip15" value={packUom} onChange={(e) => setPackUom(e.target.value)} />
+                    </div>
+                    <div className="flex flex-col gap-1 text-xs">
+                      <label htmlFor="item-add-size">{t("materialsItems.edit.packSize", { base: d.baseUom })}</label>
+                      <input id="item-add-size" className="w-20 rounded border px-2 py-1" inputMode="numeric" placeholder="15" value={packSize} onChange={(e) => setPackSize(e.target.value)} />
+                    </div>
+                    <Button type="button" variant="secondary" onClick={() => void addPack()}>{t("materialsItems.edit.addPack")}</Button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -258,7 +287,10 @@ export function ItemEditPanel({ itemId, onClose }: { itemId: string; onClose: ()
             </label>
           </div>
           <p className="text-xs text-slate-500">{t("materialsItems.edit.flagsHint")}</p>
-          <Button onClick={() => void save()}>{t("materialsItems.edit.save")}</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => void save()}>{t("materialsItems.edit.save")}</Button>
+            <Button variant="secondary" onClick={onClose}>{t("materialsItems.edit.close")}</Button>
+          </div>
         </>
       )}
     </section>

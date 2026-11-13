@@ -63,7 +63,7 @@ describe("import a vendor's price list (owner 2026-10-04)", () => {
     await user.type(screen.getByTestId("price-mrp-1"), "42.10");
     await user.click(screen.getByTestId("price-create"));
     await waitFor(() => expect(posted.find((p) => p.path.endsWith("/import"))?.body).toEqual({ rows: [
-      { line: 1, medicineId: "m-bru", twin: false, variant: null, brand: "Brufen 400", packType: "tablet_strip", packSize: 15, gstRateBps: 500, hsnCode: "3004", mrpPerPackPaise: 4210, storage: "ambient" },
+      { line: 1, medicineId: "m-bru", twin: false, variant: null, brand: "Brufen 400", manufacturer: "Abbott", packType: "tablet_strip", packSize: 15, gstRateBps: 500, hsnCode: "3004", mrpPerPackPaise: 4210, storage: "ambient" },
     ] }));
     expect(await screen.findByTestId("price-result-1")).toHaveTextContent("Created · BRUFEN400");
     expect(screen.getByTestId("price-done")).toHaveTextContent("1 created, 0 not created");
@@ -148,8 +148,8 @@ describe("import a vendor's price list (owner 2026-10-04)", () => {
     await user.click(within(screen.getByTestId("price-row-2")).getByRole("checkbox", { name: "Create EMOPRED 40" }));
     await user.click(screen.getByTestId("price-create"));
     await waitFor(() => expect(posted.find((p) => p.path.endsWith("/import"))?.body).toEqual({ rows: [
-      { line: 1, medicineId: "m-telmi", twin: true, variant: null, brand: "SAZOTEL-40", packType: "tablet_strip", packSize: 15, gstRateBps: 500, hsnCode: "3004", mrpPerPackPaise: 10_600, storage: "ambient" },
-      { line: 2, medicineId: "m-succ", twin: true, variant: null, brand: "EMOPRED 40", packType: "vial", packSize: 1, gstRateBps: 500, hsnCode: "3004", mrpPerPackPaise: 4800, storage: "ambient" },
+      { line: 1, medicineId: "m-telmi", twin: true, variant: null, brand: "SAZOTEL-40", manufacturer: "Hauz", packType: "tablet_strip", packSize: 15, gstRateBps: 500, hsnCode: "3004", mrpPerPackPaise: 10_600, storage: "ambient" },
+      { line: 2, medicineId: "m-succ", twin: true, variant: null, brand: "EMOPRED 40", manufacturer: "Hauz", packType: "vial", packSize: 1, gstRateBps: 500, hsnCode: "3004", mrpPerPackPaise: 4800, storage: "ambient" },
     ] }));
   });
 

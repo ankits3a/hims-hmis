@@ -38,6 +38,8 @@ export type NewDrugInput = {
   brandName: string; strength: string; medicineId: string; form: string; packType: PackType; packSize: number;
   hsnCode: string; gstRateBps: number; schedule: "H" | "H1" | "X" | "OTC" | null; mrpPerPackPaise: number;
   storage: "ambient" | "cold_2_8";
+  /** The maker, as the strip prints it (the bill's Mfr. column); blank stays blank. */
+  manufacturer?: string | null;
 };
 export type NewDrugResult = { itemId: string; code: string; name: string; uom: string; packSize: number; gstRateBps: number };
 
