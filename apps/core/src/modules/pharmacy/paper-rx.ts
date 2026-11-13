@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { strengthShown } from "@hmis/contracts";
 import { withTx } from "../../kernel/db/client";
 import { appendEvent } from "../../kernel/events/append";
 import { pharmacyDispenseLines } from "../../kernel/db/schema";
@@ -239,7 +240,8 @@ export async function enterPaperPrescription(
   // ── the lines as the doctor wrote them ──
   const rxLines: RxLine[] = input.lines.map((l, i) => {
     const m = medicines.get(medicineIds[i]!);
-    const drug = m === undefined ? items.get(l.itemId)!.name : [m.brandName, m.strengthLabel].filter((x) => x !== null && x !== "").join(" ");
+    /* Walk 2026-11-13 — "500 mg/": the catalogue's empty denominator is not written into the prescription (`strengthShown`). */
+    const drug = m === undefined ? items.get(l.itemId)!.name : [m.brandName, strengthShown(m.strengthLabel)].filter((x) => x !== null && x !== "").join(" ");
     const said = (s: string | undefined): string | null => (s === undefined || s.trim() === "" ? null : s.trim());
     return {
       drug, medicineId: medicineIds[i]!,

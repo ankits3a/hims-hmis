@@ -27,6 +27,27 @@
 .d1 .draft-saved { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 18px; padding: 11px 14px; border-radius: 7px;
   border: 1px solid var(--green-line, #b9dccb); background: var(--green-soft); color: var(--green); font-size: 13px; line-height: 19px; font-weight: 500; }
 
+/* WALK 2026-11-13 — the hand-over's identity row. Its fixed widths made it 592 px wide on a 390 px phone (the relation
+   off-screen, the name box 75 px): it wraps, and below 600 px each field takes the full width, one under the other. */
+.d1 .pd-ids { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; align-items: flex-end; }
+.d1 .pd-ids > label { min-width: 0; }
+.d1 .pd-ids > label > select, .d1 .pd-ids > label > input { width: 100%; }
+.d1 .pd-ids .pd-id-via { flex: 0 0 170px; }
+.d1 .pd-ids .pd-id-who { flex: 0 0 150px; }
+.d1 .pd-ids .pd-id-rel { flex: 0 0 140px; }
+.d1 .pd-ids .pd-id-grow { flex: 1 1 160px; }
+@media (max-width: 600px) {
+  .d1 .pd-ids { flex-direction: column; align-items: stretch; }
+  .d1 .pd-ids > label { flex: 1 1 auto !important; width: 100%; }
+}
+/* WALK 2026-11-13 — a pill that carries a drug's name ("generic · instead of <a long catalogue name>") wraps inside its card. */
+.d1 .pill.pd-wrap { height: auto; min-height: 23px; padding: 3px 9px; line-height: 15px; white-space: normal; overflow-wrap: anywhere;
+  max-width: 100%; min-width: 0; }
+/* WALK 2026-11-13 — on a phone, a paid bill points back to the Ticket tab, where the hand-over is. */
+.d1 .pd-paid-hint { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 15px; border-bottom: 1px solid var(--line);
+  background: var(--green-soft); color: var(--green); font-size: 12.5px; font-weight: 600; }
+.d1 .pd-paid-hint > span { flex: 1 1 160px; min-width: 0; }
+
 /* ══ WALK 2026-10-14 — the desk on a phone (≤900 px): one column, after Desk One's phone desk ══
    The header and the menu reuse Desk One's `.top-compact` / `.d1-menu` rules; these are the desk's own. */
 @media (max-width: 900px) {

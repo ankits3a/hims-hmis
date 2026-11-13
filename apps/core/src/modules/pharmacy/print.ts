@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
-import { newId } from "@hmis/contracts";
+import { gstCodeKind, newId } from "@hmis/contracts";
 import { printJobs } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { enqueuePrintJob } from "../../kernel/printing/enqueue";
@@ -126,6 +126,11 @@ export function licenceText(licence: { form20No: string; form21No: string } | nu
   return licence === null ? "D.L. No. —" : `D.L. No. Form 20: ${licence.form20No} · Form 21: ${licence.form21No}`;
 }
 
+/** Spec #1046 D6 — "Balance owed: Amoxicillin × 5 capsule — collect by 13 Dec 2026", the one line the paper owes the patient. */
+function balanceText(what: string, until: Date): string {
+  return `Balance owed: ${what} — collect by ${IST_DAY.format(until)}`;
+}
+
 /** Spec #1046 D5 — the pharmacist and their council registration; "—" for what is not on record (quick desk, 0022/0093). */
 export function pharmacistText(p: { name: string; registrationNo: string | null } | null): string {
   return p === null ? "—" : `${p.name} · Reg. ${p.registrationNo ?? "—"}`;
@@ -157,10 +162,19 @@ async function billPart(db: Db, requester: Actor | null, dispenseId: string, lab
     const batch = p === undefined ? "" : [
       `Batch ${esc(p.batchNo)}`, `Exp ${esc(mmyy(p.expiryDate))}`, ...(p.manufacturer === null || p.manufacturer.trim() === "" ? [] : [esc(p.manufacturer)]),
     ].join(" · ");
+    /* Walk 2026-11-13 — the code's name follows the supply, one rule with the browser's invoice (`gstCodeKind`): goods HSN, services SAC. */
+    const kind = gstCodeKind(r.sacCode);
+    const code = [
+      ...(kind === null ? [] : [`${kind} ${esc(r.sacCode ?? "")}`]),
+      ...(r.exempt === true ? ["exempt"] : r.rateBps === null ? [] : [`GST ${String(r.rateBps / 100)}%`]),
+      ...(r.pack !== null && r.pack.packs > 0 && r.pack.packPaise !== null ? [`${esc(rupees(r.pack.packPaise))}/${esc(r.pack.uom)}`] : []),
+    ].join(" · ");
     return `
-      <tr><td>${esc(r.serviceName)}${batch === "" ? "" : `<div class="sub">${batch}</div>`}<div class="sub">HSN ${esc(r.sacCode ?? "")}${r.exempt === true ? " · exempt" : r.rateBps === null ? "" : ` · GST ${String(r.rateBps / 100)}%`}${r.pack !== null && r.pack.packs > 0 && r.pack.packPaise !== null ? ` · ${esc(rupees(r.pack.packPaise))}/${esc(r.pack.uom)}` : ""}</div></td>
+      <tr><td>${esc(r.serviceName)}${batch === "" ? "" : `<div class="sub">${batch}</div>`}${code === "" ? "" : `<div class="sub">${code}</div>`}</td>
       <td class="r">${esc(qtyText(r))}</td><td class="r">${esc(rupees(r.netPaise))}</td></tr>`;
   }).join("");
+  /* Spec #1046 D6, walk 2026-11-13 — what is still owed, in one line, so the patient's paper says so too. */
+  const owed = label.balance === null ? "" : `<div class="sec">${esc(balanceText(label.balance.lines.map((l) => `${l.drug} × ${String(l.qtyBase)} ${l.unit}`).join(", "), label.balance.until))}</div>`;
   const gst = summary.map((g) => `
       <tr><td>${g.exempt ? "Exempt" : `${String(g.rateBps / 100)}%`}</td><td class="r">${esc(rupees(g.taxableBasePaise))}</td><td class="r">${esc(rupees(g.cgstPaise))}</td><td class="r">${esc(rupees(g.sgstPaise))}</td></tr>`).join("");
   const money = closing.money;
@@ -183,6 +197,7 @@ async function billPart(db: Db, requester: Actor | null, dispenseId: string, lab
       <thead><tr><th>Medicine</th><th class="r">Qty</th><th class="r">Amount</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>
+    ${owed}
     <div class="sec">
       <div class="row"><span class="k">Gross</span><span class="v">${esc(rupees(invoice.grossPaise))}</span></div>
       ${invoice.discountPaise === 0 ? "" : `<div class="row"><span class="k">Discount${discountReason === null ? "" : ` (${esc(discountReason)})`}</span><span class="v">−${esc(rupees(invoice.discountPaise))}</span></div>`}
@@ -215,6 +230,8 @@ function labelsPart(label: LabelData, now: Date): Part | null {
   if (lines.length === 0) return null;
   const day = IST_DAY.format(label.handedOverAt ?? now);
   const who = label.pharmacist;
+  /* The label of a drug given short says what of it is still owed (spec #1046 D6, walk 2026-11-13). */
+  const owedOn = new Map((label.balance?.lines ?? []).map((l) => [l.lineIdx, `${String(l.qtyBase)} ${l.unit}`] as const));
   const body = lines.map((l, i) => `
     ${i === 0 ? "" : '<div class="cut"></div>'}
     <div class="lab">
@@ -222,6 +239,7 @@ function labelsPart(label: LabelData, now: Date): Part | null {
       <div class="drug">${esc(l.drug)}${l.strength === null ? "" : ` ${esc(l.strength)}`}</div>
       <div class="sub">${esc(l.packs ?? `${String(l.qtyBase)} ${l.unit}`)}${l.form === null ? "" : ` · ${esc(l.form)}`}${l.substitutedFor === null ? "" : ` · for ${esc(l.substitutedFor)}`}</div>
       <div class="how">${esc(l.directions === "" ? "As directed by the doctor" : l.directions)}</div>
+      ${owedOn.has(l.lineIdx) ? `<div class="sub">${esc(balanceText(owedOn.get(l.lineIdx)!, label.balance!.until))}</div>` : ""}
       <div class="row"><span class="k">Batch <span class="mo">${esc(l.batchNo)}</span></span><span class="v">Exp ${esc(l.expiryDate ?? "—")}</span></div>
       <div class="row"><span class="k">${esc(ticketLabel(label.dispenseNo))} · ${esc(day)}</span><span class="v">${who === null ? "" : esc(who.name)}</span></div>
     </div>`).join("");
@@ -234,7 +252,7 @@ export async function renderPharmacyPaper(
 ): Promise<RenderedDocument | null> {
   const dispenseId = typeof params.dispenseId === "string" ? params.dispenseId : null;
   if (dispenseId === null) return null;
-  const label = await labelFor(db, readerOf(requester), dispenseId);
+  const label = await labelFor(db, readerOf(requester), dispenseId, now);
   const part = document === "pharmacy_bill" ? await billPart(db, requester, dispenseId, label) : labelsPart(label, now);
   if (part === null) return null;
   // Owner 2026-10-02 — the BILL prints on a 4 × 6 inch sheet (dot matrix); the labels stay on the roll.
@@ -248,7 +266,7 @@ export async function renderPharmacyPaper(
 export async function dispensePaper(
   db: Db, actor: Actor, dispenseId: string, now: Date, documents: readonly PharmacyPaper[] = PHARMACY_PAPER,
 ): Promise<RenderedDocument> {
-  const label = await labelFor(db, actor, dispenseId);
+  const label = await labelFor(db, actor, dispenseId, now);
   /* Spec #1046 D3 — the bill prints at payment and the labels at hand-over, so each can be asked for alone. */
   const parts = [
     documents.includes("pharmacy_bill") ? await billPart(db, actor, dispenseId, label) : null,

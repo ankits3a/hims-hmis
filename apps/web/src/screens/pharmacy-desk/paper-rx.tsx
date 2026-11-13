@@ -5,6 +5,7 @@ import { newIdempotencyKey } from "../../lib/api";
 import { useDebounced } from "../../lib/format";
 import { enterPaperRx, fetchPaperRxContext, pharmacyErrorText, searchPaperRxShelf } from "../../lib/pharmacy-api";
 import { istToday } from "./work";
+import { strengthShown } from "../../../../../packages/contracts/src/drug-strength";
 import type { WireDispense, WireRetailShelfEntry } from "../../lib/pharmacy-api";
 import "./paper-rx.css";
 
@@ -235,7 +236,7 @@ export function PaperRxSheet({ patient, onClose, onDone, quick = false }: {
             <div className="box" style={{ marginTop: 6 }} data-testid="paper-rx-results">
               {(shelf.data ?? []).slice(0, 8).map((s) => (
                 <button key={s.itemId} type="button" className="drow" style={{ width: "100%", textAlign: "left" }} onClick={() => add(s)}>
-                  <span style={{ flexGrow: 1, fontSize: 13, fontWeight: 500 }}>{s.brandName}{s.strengthLabel === null ? "" : ` ${s.strengthLabel}`}</span>
+                  <span style={{ flexGrow: 1, fontSize: 13, fontWeight: 500 }}>{[s.brandName, strengthShown(s.strengthLabel)].filter((x) => x !== null).join(" ")}</span>
                   {s.scheduleFlag !== null && s.scheduleFlag !== "OTC" ? <span className="pill gd">{s.scheduleFlag}</span> : null}
                   <span className="mo" style={{ fontSize: 11.5, color: "var(--dim)" }}>{t("pharmacyDesk.paperRx.available", { count: s.available })}</span>
                 </button>
@@ -248,7 +249,7 @@ export function PaperRxSheet({ patient, onClose, onDone, quick = false }: {
             {lines.map((l, i) => (
               <div key={l.entry.itemId} className="paper-rx-line">
                 <div className="paper-rx-drug">
-                  <span style={{ fontSize: 13, fontWeight: 600 }}>{l.entry.brandName}{l.entry.strengthLabel === null ? "" : ` ${l.entry.strengthLabel}`}</span>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{[l.entry.brandName, strengthShown(l.entry.strengthLabel)].filter((x) => x !== null).join(" ")}</span>
                   {l.entry.scheduleFlag !== null && l.entry.scheduleFlag !== "OTC" ? <span className="pill gd" style={{ marginLeft: 6 }}>{l.entry.scheduleFlag}</span> : null}
                 </div>
                 <label className="paper-rx-cell"><span className="tag">{t("pharmacyDesk.paperRx.qty")}</span>

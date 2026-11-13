@@ -4,6 +4,7 @@ import { billingPatientLabel } from "../lib/billing-api";
 import { fmtPaise, SAMAJ_SEVA_AMOUNT } from "../lib/format";
 import { Button } from "@/components/ui/button";
 import { billQtyText } from "../lib/pharmacy-bill";
+import { gstCodeKind } from "../../../../packages/contracts/src/gst-code";
 import type { WireInvoicePrint } from "../lib/billing-api";
 import type { WireBillRow } from "../lib/pharmacy-bill";
 
@@ -76,6 +77,17 @@ export function InvoicePrint({ data, annex, rows }: { data: WireInvoicePrint; an
   const { invoice, settlement, letterhead } = data;
   const outstanding = settlement.outstandingPaise > 0;
   const supplierState = data.supplierState ?? null;
+  /*
+    WALK 2026-11-13 (spec #1046) — the walk-in bill printed "SAC 3004" under "Service". A code's name follows what was
+    supplied (`gstCodeKind`, one rule with the server's printed bill): goods HSN, services SAC; a bill of goods only
+    heads its lines "Item".
+  */
+  const codes = rows != null && rows.length > 0 ? rows.map((r) => r.sacCode) : data.lines.map((l) => l.sacCode);
+  const goodsOnly = codes.length > 0 && codes.every((c) => gstCodeKind(c) === "HSN");
+  const codeLabel = (code: string | null): string => {
+    const kind = gstCodeKind(code);
+    return kind === null ? "" : `${kind === "HSN" ? t("billing.print.hsn") : t("billing.print.sac")} ${code ?? ""}`;
+  };
 
   return (
     <div className="space-y-3">
@@ -123,7 +135,7 @@ export function InvoicePrint({ data, annex, rows }: { data: WireInvoicePrint; an
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b text-left">
-              <th>{t("billing.print.service")}</th>
+              <th>{goodsOnly ? t("billing.print.item") : t("billing.print.service")}</th>
               <th className="text-right">{t("billing.print.qty")}</th>
               <th className="text-right">{t("billing.print.gross")}</th>
               <th className="text-right">{t("billing.print.discount")}</th>
@@ -137,8 +149,8 @@ export function InvoicePrint({ data, annex, rows }: { data: WireInvoicePrint; an
                 <td>
                   {row.serviceName}
                   <span className="block font-mono text-xs text-neutral-600">
-                    {t("billing.print.sac")} {row.sacCode ?? ""}
-                    {row.exempt === true ? ` · ${t("billing.print.exempt")}` : row.rateBps === null ? "" : ` · ${String(row.rateBps / 100)}%`}
+                    {[codeLabel(row.sacCode), row.exempt === true ? t("billing.print.exempt") : row.rateBps === null ? "" : `${String(row.rateBps / 100)}%`]
+                      .filter((x) => x !== "").join(" · ")}
                   </span>
                 </td>
                 <td className="text-right tabular-nums">
@@ -157,8 +169,7 @@ export function InvoicePrint({ data, annex, rows }: { data: WireInvoicePrint; an
                 <td>
                   {line.serviceName}
                   <span className="block font-mono text-xs text-neutral-600">
-                    {t("billing.print.sac")} {line.sacCode}
-                    {line.exempt ? ` · ${t("billing.print.exempt")}` : ` · ${String(line.rateBps / 100)}%`}
+                    {[codeLabel(line.sacCode), line.exempt ? t("billing.print.exempt") : `${String(line.rateBps / 100)}%`].filter((x) => x !== "").join(" · ")}
                   </span>
                 </td>
                 <td className="text-right tabular-nums">{line.qty}</td>

@@ -378,6 +378,8 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
       const d = await handOverDispense(inHandId, identity, keyFor("handover", inHandId), controlled);
       moneyKeys.current.delete(`handover:${inHandId}`);
       settle(d);
+      /* Walk 2026-11-13 — the closing read while the ticket was only paid has no hand-over in it ("P-1 closed —."): read it again. */
+      void qc.invalidateQueries({ queryKey: ["pharmacy", "closing", d.id] });
       setJustHandedOver(d.id);
       say(t("pharmacyDesk.log.handedOver", { who: d.patient.alias ?? d.patient.name ?? d.patient.uhid }));
     } catch (e) {
@@ -392,7 +394,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
     } finally {
       setBusy(false);
     }
-  }, [inHandId, settle, t]);
+  }, [inHandId, qc, settle, t]);
 
   /*
     Spec #1046 D6 — "rest tomorrow": the balance of a handed-over ticket opens as a NEW ticket for the owed
@@ -721,7 +723,18 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
             />
           </main>
           {/* PD-D5 — the bill takes the line's place once a ticket of MINE is past "found". */}
-          {phone ? <div className="pd-pane pd-side" hidden={phoneTab !== "side"}>{sideEl}</div> : sideEl}
+          {phone ? (
+            <div className="pd-pane pd-side" hidden={phoneTab !== "side"}>
+              {/* Walk 2026-11-13 — once paid, the Bill tab says where the hand-over is, and goes there. */}
+              {inHand !== null && billing && inHand.status === "billed" ? (
+                <div className="pd-paid-hint" data-testid="desk-paid-hint" role="status">
+                  <span>{t("pharmacyDesk.phone.paidHint")}</span>
+                  <button type="button" className="pri" style={{ height: 32 }} onClick={() => setPhoneTab("work")}>{t("pharmacyDesk.phone.toTicket")}</button>
+                </div>
+              ) : null}
+              {sideEl}
+            </div>
+          ) : sideEl}
         </div>
 
         <DeskDock log={log} said={said} busy={copilot.busy} onAsk={ask} onDismiss={() => setSaid(null)} draft={shortBookDraftOf(copilot.payload)} plan={purchasePlanOf(copilot.payload)} payPlan={paymentRunPlanOf(copilot.payload)} returnPlan={returnPlanOf(copilot.payload)} duplicates={duplicateItemsOf(copilot.payload)} onDraftDone={copilot.clearPayload} />

@@ -331,6 +331,7 @@ export function HandOver({
   /* PD-7 C10 — what to say, line by line, for what is actually being handed over. */
   const given = rxLinesOf(dispense).filter((l) => l.status === "open" && l.pickedBatch != null);
   const refused = dispense.lines.filter((l) => l.status === "declined");
+  const owedNow = owedLine(dispense, t);
   return (
     <div className="box" data-testid="desk-handover" style={{ marginTop: 16, padding: "14px 16px" }}>
       <div className="tag">{t("pharmacyDesk.handover.title")}</div>
@@ -363,11 +364,15 @@ export function HandOver({
           </ul>
         </div>
       )}
+      {owedNow === null ? null : (
+        <p data-testid="desk-say-balance" style={{ margin: "7px 0 0 0", fontSize: 12.5, fontWeight: 600, color: "var(--gold)" }}>{owedNow}</p>
+      )}
       {needsId ? (
-        <div style={{ display: "flex", gap: 8, marginTop: 9, alignItems: "flex-end" }}>
-          <label>
+        /* Walk 2026-11-13 — at 390 px the fixed widths made this row 592 px wide: `.pd-ids` wraps it, and stacks it below 600 px. */
+        <div className="pd-ids" data-testid="desk-handover-ids">
+          <label className="pd-id-via">
             <span className="tag" style={{ display: "block" }}>{t("pharmacyDesk.handover.via")}</span>
-            <select className="in" value={via} onChange={(e) => setVia(e.target.value as HandoverIdentity["via"])} style={{ height: 38, marginTop: 4, width: 170 }}>
+            <select className="in" value={via} onChange={(e) => setVia(e.target.value as HandoverIdentity["via"])} style={{ height: 38, marginTop: 4 }}>
               <option value="token">{t("pharmacyDesk.handover.token")}</option>
               <option value="phone_last4">{t("pharmacyDesk.handover.phone")}</option>
               {/* A controlled line keeps the token or the phone, with its witness (P6): the server refuses this way there. */}
@@ -376,9 +381,9 @@ export function HandOver({
           </label>
           {via === "collected_by" ? (
             <>
-              <label>
+              <label className="pd-id-who">
                 <span className="tag" style={{ display: "block" }}>{t("pharmacyDesk.handover.collectedBy")}</span>
-                <select className="in" value={who} onChange={(e) => setWho(e.target.value as "" | "self" | "attendant")} style={{ height: 38, marginTop: 4, width: 150 }}>
+                <select className="in" value={who} onChange={(e) => setWho(e.target.value as "" | "self" | "attendant")} style={{ height: 38, marginTop: 4 }}>
                   <option value="">{t("pharmacyDesk.handover.choose")}</option>
                   <option value="self">{t("pharmacyDesk.handover.self")}</option>
                   <option value="attendant">{t("pharmacyDesk.handover.attendant")}</option>
@@ -386,13 +391,13 @@ export function HandOver({
               </label>
               {who === "attendant" ? (
                 <>
-                  <label style={{ flexGrow: 1 }}>
+                  <label className="pd-id-grow">
                     <span className="tag" style={{ display: "block" }}>{t("pharmacyDesk.handover.attendantName")}</span>
                     <input className="in" value={name} maxLength={GUARDIAN_NAME_MAX} onChange={(e) => setName(e.target.value)} style={{ height: 38, marginTop: 4 }} />
                   </label>
-                  <label>
+                  <label className="pd-id-rel">
                     <span className="tag" style={{ display: "block" }}>{t("pharmacyDesk.handover.relation")}</span>
-                    <select className="in" value={relation} onChange={(e) => setRelation(e.target.value)} style={{ height: 38, marginTop: 4, width: 140 }}>
+                    <select className="in" value={relation} onChange={(e) => setRelation(e.target.value)} style={{ height: 38, marginTop: 4 }}>
                       <option value="">{t("pharmacyDesk.handover.choose")}</option>
                       {ATTENDANT_RELATIONS.map((r) => <option key={r} value={r}>{t(`patientAbsent.relation.${r}`)}</option>)}
                     </select>
@@ -401,7 +406,7 @@ export function HandOver({
               ) : null}
             </>
           ) : (
-            <label style={{ flexGrow: 1 }}>
+            <label className="pd-id-grow">
               <span className="tag" style={{ display: "block" }}>{t("pharmacyDesk.handover.value")}</span>
               <input className="in mo" value={value} onChange={(e) => setValue(e.target.value)} placeholder={t("pharmacyDesk.handover.placeholder")} style={{ height: 38, marginTop: 4 }} />
             </label>
@@ -418,6 +423,20 @@ export function HandOver({
       {error !== null ? <p role="alert" style={{ margin: "10px 0 0 0", fontSize: 12, color: "var(--red)" }}>{error}</p> : null}
     </div>
   );
+}
+
+/**
+ * Spec #1046 D6, walk 2026-11-13 — the hand-over said nothing of what is still owed, so the patient left without
+ * hearing it. One line: what (picked short, `owedQtyBase`) and the window. The window runs from the prescription's
+ * FIRST hand-over (`BALANCE_WINDOW_DAYS` on the server), which this hand-over is unless the ticket is itself a balance;
+ * a balance short again says what is owed without promising days it may not have.
+ */
+const BALANCE_WINDOW_DAYS = 30;
+function owedLine(d: WireDispense, t: TFunction): string | null {
+  const owed = d.lines.filter((l) => l.status === "open" && l.splitFromLineIdx == null && (l.owedQtyBase ?? 0) > 0);
+  if (owed.length === 0) return null;
+  const what = owed.map((l) => `${l.dispensedMedicine?.brandName ?? l.rxLine.drug} × ${String(l.owedQtyBase ?? 0)}${l.item === null ? "" : ` ${l.item.baseUom}`}`).join(", ");
+  return d.balanceOf == null ? t("pharmacyDesk.balance.handover", { what, days: BALANCE_WINDOW_DAYS }) : t("pharmacyDesk.balance.handoverAgain", { what });
 }
 
 /** Spec #1046 D1 — the attendant's relation: OPD's "Who came?" list, less `self` (the patient is `who: self`). */

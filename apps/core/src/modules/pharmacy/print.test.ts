@@ -118,6 +118,37 @@ describe("the desk's paper (pharmacy P1)", () => {
     expect(paper.html).toContain("CR-1");
   });
 
+  /*
+   * WALK 2026-11-13 (spec #1046 D6) — a ticket picked short leaves a balance, and the patient walked away with paper
+   * that never said so. The bill (printed at payment) and the label of the drug given short say it in one line.
+   */
+  it("a balance still owed is printed on the bill and on the label of the drug given short", async () => {
+    const DAY = 24 * 60 * 60_000;
+    const day = (d: Date): string => new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" }).format(d);
+    const { issued } = await issueRx(db, fx, [line({ drug: "Crocin 500", medicineId: fx.med.crocin })]);
+    const r = await findAtCounter(db, testCfg, fx.pharmacist.actor, issued.qrPayload, MON2);
+    if (r.kind !== "dispense") throw new Error("no dispense");
+    const id = r.dispense.id;
+    await claimDispense(db, fx.pharmacist.actor, { dispenseId: id, door: "rx_qr" }, MON2);
+    await verifyDispense(db, fx.pharmacist.actor, fx.decls, id, { lines: [{ lineIdx: 0, qtyBase: 20 }] }, MON2);
+    await pickDispense(db, fx.pharmacist.actor, fx.decls, id, { lines: [{ lineIdx: 0, qtyBase: 10, pickNote: "one strip on the shelf, rest tomorrow" }] }, MON2);
+    const preview = await previewDispenseBill(db, fx.pharmacist.actor, id, MON2);
+    await billDispense(db, fx.pharmacist.actor, id, { tenders: [{ mode: "cash", amountPaise: preview.totals.netPayablePaise }] }, MON2);
+
+    const bill = await dispensePaper(db, fx.pharmacist.actor, id, MON2, ["pharmacy_bill"]);
+    expect(bill.html).toContain(`Balance owed: Crocin 500 × 10 tablet — collect by ${day(new Date(MON2.getTime() + 30 * DAY))}`);
+
+    await handOverDispense(db, fx.pharmacist.actor, fx.decls, id, {}, MON3);
+    const labels = await dispensePaper(db, fx.pharmacist.actor, id, MON3, ["pharmacy_labels"]);
+    expect(labels.html).toContain(`Balance owed: 10 tablet — collect by ${day(new Date(MON3.getTime() + 30 * DAY))}`);
+  });
+
+  it("nothing owed, nothing said", async () => {
+    const id = await ticket("handed_over");
+    const paper = await dispensePaper(db, fx.pharmacist.actor, id, MON3);
+    expect(paper.html).not.toContain("Balance owed");
+  });
+
   it("does not believe stale evidence: a pharmacy job claimed eight days ago, and nothing since", async () => {
     await relayClaimed("pharmacy_thermal", new Date(MON3.getTime() - 8 * 86_400_000));
     expect(await relayServes(db, "pharmacy_thermal", MON3)).toBe(false);
