@@ -1,6 +1,6 @@
 ---
 issue: 1055
-status: approved
+status: built
 approved: 2026-11-13
 ---
 # SPEC — Pharmacy desk in two columns, the bill column only at billing, and medicines added by hand (#1055)
@@ -47,3 +47,22 @@ payment until hand-over, then closes. Staff can add a medicine to the ticket by 
   (with the slip photo unless quick desk mode is on); Schedule X and narcotics are refused; each added line is marked
   "added at the counter by <name>" with its reason on the ticket and the bill.
 - **D6** On a phone the Bill tab appears only when the bill column would.
+
+## Built
+
+Built 2026-11-13 on lane `pharmacy-two-col`; checks `apps/web/src/screens/acceptance/pharmacy-two-columns-1055.test.tsx`
+(D1–D6) and `apps/core/src/modules/pharmacy/acceptance/add-medicine-1055.test.ts` (D5's server rules). What differs
+from the text above, or was added on the day:
+
+- Owner additions the same day: the find box in the main column is Desk One's — one full-width field, no Find button,
+  under it "no slip? · paper prescription (P)" and what is searched; suggestions are Desk One's hit cards — and its
+  border is Desk One's `.in` (1 px line at rest; the green border and ring only on focus).
+- "Not prescribed" allows every schedule except X and narcotics (ruling 0094); the board's "only medicines with no
+  schedule" is superseded. On a paper slip the prescriber is optional except for H1 (name and registration number).
+- A medicine added while the ticket is claimed gets an order item at the check; one added after the check has none
+  (the kernel's order takes no item once placed); every later step reads the order item as optional.
+- On a phone the tabs stay Ticket · The line · Your day (no Day tab with a ticket in hand); the line's tab becomes the
+  Bill tab only when the bill column would open.
+- Once paid, the bill's printed / print-again line sits in the bill column; a collected ticket's header says "every line
+  settled" in place of the foot.
+
