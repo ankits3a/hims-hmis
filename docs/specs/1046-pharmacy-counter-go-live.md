@@ -1,6 +1,6 @@
 ---
 issue: 1046
-status: approved
+status: built
 approved: 2026-11-13
 ---
 # SPEC — Pharmacy counter go-live (#1046)
@@ -48,3 +48,27 @@ a busy Indian counter get a way through, and the bill carries what the Drugs Rul
 - **D6** A line picked short leaves a balance; the next day the same prescription opens a balance ticket for only the
   owed quantity, and its bill is not refused as a duplicate.
 - **D7** A brand swap on a Schedule H line waits for the prescriber's agreement; a swap on an OTC line does not.
+
+## Built
+
+Built 2026-11-13 on lane `pharmacy-counter`; locked checks `apps/core/src/modules/pharmacy/acceptance/counter-go-live-1046.test.ts`
+and `apps/web/src/screens/acceptance/pharmacy-counter-1046.test.tsx`. Migration: one additive file (new nullable columns,
+widened checks, the live-prescription index re-made to leave balance tickets out). Where the build is narrower or wider
+than the text above:
+
+- **Collected by** is not offered, and is refused, on a ticket with a Schedule X or NDPS line: that hand-over keeps the
+  token or phone with its witness (P6).
+- **Drop a line** is on the ticket's line menu while the ticket is collected and unpaid, not on the bill rail's rows.
+  Dropping one batch of a split line drops the whole prescription line.
+- **Bill at payment**: the desk that took the money prints the bill at once and its hand-over sends the labels alone; a
+  ticket billed at another desk still sends both at hand-over.
+- **Bill particulars**: the licence numbers come from the walk-in counter's licence register (the current row; "—"
+  when none is current), and the desk bill names the pharmacist who verified it ("—" for a missing registration).
+- **Balance ticket**: offered on the finished ticket (prescription QR or token) and beside the paper door when the
+  patient is found by name or UHID. The 30 days run from the first hand-over of that prescription version. An
+  unclaimed balance ticket's queue row still lists the prescription's drugs.
+- **One bill per dispense**: billing takes an optional `oneInvoicePerDocument`; the pharmacy passes it on every dispense
+  bill, so the encounter + service duplicate check no longer applies to any pharmacy dispense bill (this also clears
+  the re-issued-prescription case). Billing the same dispense twice is still refused.
+- **H/H1 brand swap**: the request names the substitute; a declined request leaves the line on the brand written.
+
