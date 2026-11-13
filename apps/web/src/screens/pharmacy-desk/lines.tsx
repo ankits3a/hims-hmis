@@ -143,6 +143,12 @@ export function LineList({
     setErrors({}); setTicketError(null); setDeclining(null);
   }, [dispense.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* Spec #1055 — a line that arrives on the SAME ticket (added by hand at the counter) starts fresh; the others keep their ticks. */
+  useEffect(() => {
+    const missing = dispense.lines.filter((l) => !(l.lineIdx in ticks));
+    if (missing.length > 0) setTicks((prev) => ({ ...prev, ...Object.fromEntries(missing.filter((l) => !(l.lineIdx in prev)).map((l) => [l.lineIdx, freshTick(l)])) }));
+  }, [dispense.lines]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     onLiveQty?.(dispense.id, Object.fromEntries(Object.entries(ticks).map(([idx, tk]) => [Number(idx), qtyOf(tk)])));
   }, [ticks, onLiveQty]); // eslint-disable-line react-hooks/exhaustive-deps
