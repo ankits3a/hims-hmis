@@ -251,4 +251,27 @@ describe("InvoicePrint", () => {
     expect(screen.getByTestId("invoice-taxable")).toHaveTextContent("₹45.06");
     expect(screen.getByTestId("invoice-cgst")).toHaveTextContent("₹1.12");
   });
+
+  /**
+   * WALK 2026-11-13 (spec #1046) — the walk-in bill printed "SAC 3004" under "Service". A medicine is goods: its code
+   * is an HSN, as the desk's printed bill already says. Services (chapter 99) keep SAC. One rule, `gstCodeKind`.
+   */
+  it("names a goods code HSN and a services code SAC, and heads a bill of goods 'Item', not 'Service'", () => {
+    renderWithProviders(<InvoicePrint data={DATA} rows={[{
+      lineIds: ["d-1"], serviceName: "Dolo 650 tablet", qty: 15, unitPaise: 236, pack: null,
+      grossPaise: 3550, discountPaise: 0, cgstPaise: 85, sgstPaise: 85, netPaise: 3550, sacCode: "3004", rateBps: 500, exempt: false,
+    }]} />);
+    const doc = document.querySelector(".print-doc") as HTMLElement;
+    const row = screen.getByTestId("invoice-row-1");
+    expect(row).toHaveTextContent("HSN 3004");
+    expect(row).not.toHaveTextContent("SAC");
+    expect(within(doc).getAllByRole("columnheader")[0]).toHaveTextContent("Item");
+  });
+
+  it("a consultation's code stays SAC under 'Service'", () => {
+    renderWithProviders(<InvoicePrint data={DATA} />);
+    expect(screen.getByTestId("invoice-line-1")).toHaveTextContent("SAC 999312");
+    expect(screen.getByTestId("invoice-line-1")).not.toHaveTextContent("HSN");
+    expect(screen.getAllByRole("columnheader")[0]).toHaveTextContent("Service");
+  });
 });

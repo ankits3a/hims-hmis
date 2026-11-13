@@ -10,7 +10,7 @@ import { counsellingByMedicine, medicinesByIds, saltsByIds, unreviewedSaltIds } 
 import type { Counselling } from "../formulary";
 import { availableQty, getBatch, itemsByIds, itemUomRows, sellableBatchesByItem } from "../materials";
 import { getPatient, getPatientSummaries, listAllergies } from "../patients";
-import { istDateOf } from "./config";
+import { BALANCE_WINDOW_DAYS, istDateOf } from "./config";
 import { controlledStore, controlOf } from "./controlled";
 import { controlledChecklist } from "./controlled-dispense";
 import type { ControlledChecklist } from "./controlled-dispense";
@@ -81,10 +81,86 @@ export async function enqueueDispense(
     occurredAt: now, actor, patientId: input.patientId, encounterId: input.encounterId, correlationId: dispenseId,
     payload: {
       dispenseId, prescriptionId: input.prescriptionId, prescriptionVersion: input.prescriptionVersion,
-      patientId: input.patientId, encounterId: input.encounterId, source: input.source,
+      patientId: input.patientId, encounterId: input.encounterId, source: input.source, balanceOf: null,
     },
   }));
   return { dispenseId, created: true };
+}
+
+/**
+ * ═══ SPEC #1046 D6 — THE BALANCE TICKET ("REST TOMORROW") ═══
+ *
+ * A line picked short with a reason leaves its owed base units on the line (`owed_qty_base`, `pick.ts`). For
+ * `BALANCE_WINDOW_DAYS` from the FIRST hand-over of that prescription, the counter may open a new ticket for
+ * what is owed: same prescription and visit, `balance_of` = the dispense it completes, only the owed lines and
+ * quantities (laid out at the claim, `claim.ts`). It runs the normal pipeline and bills on its own — one bill
+ * per dispense (`bill.ts` passes `oneInvoicePerDocument`). One live balance per source
+ * (`pharmacy_dispenses_live_balance_ux`); a balance that itself was picked short owes its own balance.
+ */
+export type BalanceOwed = {
+  lines: { lineIdx: number; drug: string; qtyBase: number; unit: string | null }[];
+  /** The last moment a balance may be opened: the prescription's first hand-over + `BALANCE_WINDOW_DAYS`. */
+  until: Date;
+};
+
+/** The lines a dispense still owes: open, not a split's further batch, with owed base units. */
+function owedLinesOf(lines: readonly DispenseLineRow[]): DispenseLineRow[] {
+  return lines.filter((l) => l.status === "open" && l.splitFromLineIdx === null && (l.owedQtyBase ?? 0) > 0);
+}
+
+/** The first hand-over of a prescription (any of its dispenses), or null before there has been one. */
+async function firstHandOverOf(db: Db | Tx, prescriptionId: string): Promise<Date | null> {
+  const [first] = await db.select({ at: sql<Date>`min(${pharmacyDispenses.handedOverAt})` }).from(pharmacyDispenses)
+    .where(and(eq(pharmacyDispenses.prescriptionId, prescriptionId), eq(pharmacyDispenses.status, "handed_over")));
+  return first?.at === null || first?.at === undefined ? null : new Date(first.at);
+}
+
+const balanceUntil = (firstAt: Date): Date => new Date(firstAt.getTime() + BALANCE_WINDOW_DAYS * 24 * 60 * 60_000);
+
+/** The owed lines of a handed-over dispense, if a balance may be opened for it at `now`; else null. */
+export async function balanceOwedOf(db: Db | Tx, d: DispenseRow, lines: readonly DispenseLineRow[], now: Date): Promise<{ lines: DispenseLineRow[]; until: Date } | null> {
+  if (d.status !== "handed_over") return null;
+  const owed = owedLinesOf(lines);
+  if (owed.length === 0) return null;
+  const [open] = await db.select({ id: pharmacyDispenses.id }).from(pharmacyDispenses)
+    .where(and(eq(pharmacyDispenses.balanceOf, d.id), sql`${pharmacyDispenses.status} <> 'cancelled'`)).limit(1);
+  if (open !== undefined) return null;
+  const firstAt = (await firstHandOverOf(db, d.prescriptionId)) ?? d.handedOverAt;
+  if (firstAt === null) return null;
+  const until = balanceUntil(firstAt);
+  return now.getTime() > until.getTime() ? null : { lines: owed, until };
+}
+
+/**
+ * WALK 2026-11-13 — what the PAPER says is still owed, so the patient does not leave with a bill or a label that is
+ * silent about it. The bill prints at payment, before the hand-over that starts the window: a paid ticket counts it
+ * from `now` (the hand-over is the next act, so the date printed is at most the wait early, never late), unless the
+ * prescription was already handed over once (a balance ticket short again). Handed over, it is `balanceOwedOf`.
+ */
+export async function balanceOnPaper(db: Db | Tx, d: DispenseRow, lines: readonly DispenseLineRow[], now: Date): Promise<{ lines: DispenseLineRow[]; until: Date } | null> {
+  if (d.status === "handed_over") return balanceOwedOf(db, d, lines, now);
+  if (d.status !== "billed") return null;
+  const owed = owedLinesOf(lines);
+  if (owed.length === 0) return null;
+  return { lines: owed, until: balanceUntil((await firstHandOverOf(db, d.prescriptionId)) ?? now) };
+}
+
+/** The balance ticket's queue row: the source's prescription and visit, a fresh P-number, `balance_of` set. */
+export async function enqueueBalanceDispense(tx: Tx, actor: Actor, source: DispenseRow, now: Date): Promise<string> {
+  const dispenseId = newId();
+  const dispenseNo = await nextEpisodeNo(tx, "pharmacy_dispense", istDateOf(now));
+  await tx.insert(pharmacyDispenses).values({
+    id: dispenseId, dispenseNo, prescriptionId: source.prescriptionId, prescriptionVersion: source.prescriptionVersion,
+    patientId: source.patientId, encounterId: source.encounterId, status: "queued", balanceOf: source.id, createdBy: actor.id, createdAt: now,
+  });
+  await appendEvent(tx, dispenseQueued.make({
+    occurredAt: now, actor, patientId: source.patientId, encounterId: source.encounterId, correlationId: dispenseId,
+    payload: {
+      dispenseId, prescriptionId: source.prescriptionId, prescriptionVersion: source.prescriptionVersion,
+      patientId: source.patientId, encounterId: source.encounterId, source: "balance", balanceOf: source.id,
+    },
+  }));
+  return dispenseId;
 }
 
 export async function getDispenseRow(db: Db | Tx, dispenseId: string): Promise<DispenseRow> {
@@ -237,6 +313,8 @@ export type DispenseLineView = {
   lineIdx: number;
   /** DESK FIXES 2026-09-30 — a further batch of the prescription line at this index (the pick split it); null otherwise. */
   splitFromLineIdx: number | null;
+  /** Spec #1046 D6 — what a short pick left owed on this line, in base units; null when nothing is. */
+  owedQtyBase: number | null;
   rxLine: RxLine;
   status: string;
   declinedReason: string | null;
@@ -330,6 +408,12 @@ export type DispenseView = {
   scheduled: boolean;
   invoiceId: string | null;
   identityConfirmedVia: string | null;
+  /** Spec #1046 D1 — who collected it, when the hand-over named them (`identityConfirmedVia = collected_by`). */
+  collectedBy: { who: string; name: string | null; relation: string | null } | null;
+  /** Spec #1046 D6 — a balance ticket: the dispense whose owed quantities it gives. */
+  balanceOf: string | null;
+  /** Spec #1046 D6 — a handed-over ticket that still owes a balance the counter may open now; null otherwise. */
+  balanceOwed: BalanceOwed | null;
   claimedAt: Date | null;
   verifiedAt: Date | null;
   pickedAt: Date | null;
@@ -507,7 +591,7 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
       }
     }
     views.push({
-      lineIdx: l.lineIdx, splitFromLineIdx: l.splitFromLineIdx, rxLine: l.rxLine as RxLine, status: l.status, declinedReason: l.declinedReason,
+      lineIdx: l.lineIdx, splitFromLineIdx: l.splitFromLineIdx, owedQtyBase: l.owedQtyBase, rxLine: l.rxLine as RxLine, status: l.status, declinedReason: l.declinedReason,
       substitutionType: l.substitutionType, qtyBase: l.qtyBase, scheduleFlag: l.scheduleFlag,
       ndpsClass: l.ndpsClass, controlled: isControlled(l),
       orderedMedicine: om === undefined ? null : { id: om.id, brandName: om.brandName, strengthLabel: om.strengthLabel, form: om.form },
@@ -530,12 +614,23 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
       })),
     });
   }
+  const owed = await balanceOwedOf(db, d, lines, now);
   return {
     /* What the ticket comes to at today's shelf prices, over the quantities the check is made against. */
     quotedTotalPaise: views.reduce((n, v) => n + (v.quote === null || v.qtyBase === null ? 0 : quotedAmountPaise(v.quote, v.qtyBase)), 0),
     id: d.id, status: d.status, dispenseNo: d.dispenseNo, orderId: d.orderId, prescriptionId: d.prescriptionId,
     prescriptionVersion: d.prescriptionVersion, encounterId: d.encounterId, storeResourceId: d.storeResourceId,
     scheduled: d.scheduled, invoiceId: d.invoiceId, identityConfirmedVia: d.identityConfirmedVia,
+    collectedBy: d.collectedBy === null ? null : { who: d.collectedBy, name: d.collectorName, relation: d.collectorRelation },
+    balanceOf: d.balanceOf,
+    balanceOwed: owed === null ? null : {
+      until: owed.until,
+      lines: owed.lines.map((l) => {
+        const dm = l.dispensedMedicineId === null ? undefined : medicines.get(l.dispensedMedicineId);
+        const item = l.itemId === null ? undefined : items.get(l.itemId);
+        return { lineIdx: l.lineIdx, drug: dm?.brandName ?? (l.rxLine as RxLine).drug, qtyBase: l.owedQtyBase ?? 0, unit: item?.baseUom ?? null };
+      }),
+    },
     claimedAt: d.claimedAt, verifiedAt: d.verifiedAt, pickedAt: d.pickedAt, billedAt: d.billedAt, handedOverAt: d.handedOverAt,
     claimedBy: d.claimedBy,
     claimedByName: names.get(d.claimedBy ?? "") ?? null,

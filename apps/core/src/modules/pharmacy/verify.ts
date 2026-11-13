@@ -20,7 +20,7 @@ import { gstCategoryMap } from "./bill";
 import { lastKnownQuote, quoteItem } from "./quote";
 import type { Quote } from "./quote";
 import type { GstCategoryMap } from "./bill";
-import { refusalKey, refusalsOf, refusalsOn } from "./refusals";
+import { authorisationKey, refusalKey, refusalsOf, refusalsOn } from "./refusals";
 import type { Refusals } from "./refusals";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
 import { searchShelfAt } from "./retail";
@@ -207,6 +207,11 @@ export async function placementsFor(db: Db, dispenseId: string, lineIdx: number,
   return searchShelfAt(db, d.storeResourceId, q, now);
 }
 
+/** 0093 — a brand swap the prescriber must agree to: either side of it Schedule H or H1. */
+export function swapNeedsPrescriber(fromFlag: string | null, toFlag: string | null): boolean {
+  return [fromFlag, toFlag].some((f) => f !== null && (SCHEDULED_FLAGS as readonly string[]).includes(f));
+}
+
 export type VerifyLineInput = {
   lineIdx: number;
   qtyBase: number;
@@ -290,6 +295,8 @@ export async function verifyDispense(
   };
   const settled: Settled[] = [];
   let substitutions = 0;
+  /* PD-9 — what the prescriber has agreed to on this ticket: the four books' refusals and (0093) H/H1 brand swaps. */
+  const authorised = await authorisedKeysFor(db, d.id);
   for (const line of lines) {
     if (line.status !== "open") continue;
     const edit = byIdx.get(line.lineIdx);
@@ -363,6 +370,28 @@ export async function verifyDispense(
         { lineIdx: line.lineIdx },
       );
     }
+    /*
+      ═══ 0093 / SPEC #1046 D7 — A SCHEDULE H/H1 BRAND SWAP WAITS FOR THE PRESCRIBER ═══
+
+      The owner ruled (2026-11-13) that the doctor must agree before the pharmacist swaps a Schedule H/H1 brand
+      for another of the same salt, strength, form and route. The patient's consent stays necessary; it is no
+      longer sufficient. The swap is a `substitution` authorisation addressed to the prescriber (`authorisations.ts`,
+      the desk card `pharmacy.authorisations`), `about` = the substitute; until it is AUTHORISED this line is
+      refused. A declined request leaves the line on the brand written. OTC lines keep the patient's consent alone.
+      Quick desk mode (0022) does not stand this down — it is not one of its three checks.
+    */
+    if (substitution !== null && swapNeedsPrescriber(medicines.get(substitution.from)?.scheduleFlag ?? null, scheduleFlag)
+      && !authorised.has(authorisationKey(line.lineIdx, "substitution", substitution.to))) {
+      const fromName = medicines.get(substitution.from)?.brandName ?? rxLine.drug;
+      const toName = med?.brandName ?? substitution.to;
+      throw new PharmacyError(
+        "substitution_needs_prescriber",
+        rx.doctorId === null
+          ? `line ${String(line.lineIdx + 1)}: ${fromName} is Schedule H/H1 and this paper's doctor is not on the system to agree to ${toName} — dispense ${fromName} as written, or have the doctor change the prescription`
+          : `line ${String(line.lineIdx + 1)}: swapping ${fromName} for ${toName} (Schedule H/H1) needs the prescribing doctor's agreement — ask the doctor, or give ${fromName} as written`,
+        { lineIdx: line.lineIdx, from: substitution.from, to: substitution.to, prescriberOnRecord: rx.doctorId !== null },
+      );
+    }
     if (control.controlled && item.storageClass !== "narcotic") {
       throw new PharmacyError(
         "controlled_item_not_in_cabinet",
@@ -386,7 +415,7 @@ export async function verifyDispense(
    */
   const readHere = new Set(settled.filter((s) => s.resolvedHere).map((s) => s.line.lineIdx));
   /* PD-9 — a refusal the prescriber has authorised from the counter is not a refusal. */
-  const refused = refusalsOf(outcome, origIdx, rx, readHere, await authorisedKeysFor(db, d.id));
+  const refused = refusalsOf(outcome, origIdx, rx, readHere, authorised);
   if (refused.allergy.length > 0) {
     throw new PharmacyError(
       "allergy_block",
@@ -489,7 +518,18 @@ export async function verifyDispense(
   return getDispense(db, actor, d.id, now);
 }
 
-/** A line the counter cannot fill: declined with a reason, its order item cancelled if one was placed. */
+/**
+ * A line the counter cannot fill: declined with a reason, its order item cancelled if one was placed.
+ *
+ * ═══ SPEC #1046 D2 — DROP A LINE AT THE BILL ═══
+ *
+ * Also in `picked` (owner 2026-11-13): the patient at the till says "not this one". The line — the
+ * prescription's line with every batch the pick split it into — is declined, its reservations go back to the
+ * shelf and its order item is cancelled; the bill preview re-totals without it. Declining the LAST live line
+ * cancels the ticket exactly as `cancelDispense` does. Once `billed`, the return path is the only one.
+ * The dispense row is locked first (a no-op compare-and-set on `picked`), so a bill being taken at the same
+ * moment either lands first (this is refused) or sees the line gone (`billDispense` re-reads its lines).
+ */
 export async function declineLine(
   db: Db,
   actor: Actor,
@@ -500,21 +540,40 @@ export async function declineLine(
   now: Date,
 ): Promise<DispenseView> {
   const d = await getDispenseRow(db, dispenseId);
-  if (d.status !== "claimed" && d.status !== "verified") throw new PharmacyError("dispense_not_in_state", `dispense ${d.id} is ${d.status}`, { status: d.status });
-  const line = (await linesOf(db, dispenseId)).find((l) => l.lineIdx === lineIdx);
-  if (line === undefined) throw new PharmacyError("unknown_line", `line ${String(lineIdx)} not found`);
-  if (line.status !== "open") throw new PharmacyError("line_not_open", `line ${String(lineIdx + 1)} is already ${line.status}`);
+  if (d.status !== "claimed" && d.status !== "verified" && d.status !== "picked") {
+    throw new PharmacyError("dispense_not_in_state", d.status === "billed" || d.status === "handed_over"
+      ? `dispense ${d.id} is ${d.status} — after the bill a medicine comes back as a return`
+      : `dispense ${d.id} is ${d.status}`, { status: d.status });
+  }
+  const lines = await linesOf(db, dispenseId);
+  const asked = lines.find((l) => l.lineIdx === lineIdx);
+  if (asked === undefined) throw new PharmacyError("unknown_line", `line ${String(lineIdx)} not found`);
+  /* A further batch the pick split off is the same prescription line: dropping it drops the line. */
+  const line = asked.splitFromLineIdx === null ? asked : (lines.find((l) => l.lineIdx === asked.splitFromLineIdx) ?? asked);
+  if (line.status !== "open") throw new PharmacyError("line_not_open", `line ${String(line.lineIdx + 1)} is already ${line.status}`);
   const trimmed = reason.trim();
   if (trimmed === "") throw new PharmacyError("qty_required", "a declined line needs a reason");
+  const parts = [line, ...lines.filter((l) => l.splitFromLineIdx === line.lineIdx && l.status === "open")];
+  if (d.status === "picked" && lines.every((l) => l.status !== "open" || parts.includes(l))) {
+    return cancelDispense(db, actor, decls, d.id, trimmed, now);
+  }
   await withTx(db, async (tx) => {
-    await tx.update(pharmacyDispenseLines)
-      .set({ status: "declined", declinedReason: trimmed, declinedBy: actor.id, declinedAt: now })
-      .where(eq(pharmacyDispenseLines.id, line.id));
-    if (line.orderItemId !== null) await advanceOrderItem(tx, actor, decls, line.orderItemId, "cancelled", { reason: trimmed, at: now });
-    if (line.reservationId !== null) await releaseReservation(tx, actor, line.reservationId);
+    if (d.status === "picked") {
+      const held = await tx.update(pharmacyDispenses).set({ status: "picked" })
+        .where(and(eq(pharmacyDispenses.id, d.id), eq(pharmacyDispenses.status, "picked")))
+        .returning({ id: pharmacyDispenses.id });
+      if (held.length === 0) throw new PharmacyError("dispense_not_in_state", `dispense ${d.id} moved while declining a line`);
+    }
+    for (const part of parts) {
+      await tx.update(pharmacyDispenseLines)
+        .set({ status: "declined", declinedReason: trimmed, declinedBy: actor.id, declinedAt: now })
+        .where(eq(pharmacyDispenseLines.id, part.id));
+      if (part.orderItemId !== null) await advanceOrderItem(tx, actor, decls, part.orderItemId, "cancelled", { reason: trimmed, at: now });
+      if (part.reservationId !== null) await releaseReservation(tx, actor, part.reservationId);
+    }
     await appendEvent(tx, dispenseLineDeclined.make({
       occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
-      payload: { dispenseId: d.id, lineIdx, patientId: d.patientId, reason: trimmed },
+      payload: { dispenseId: d.id, lineIdx: line.lineIdx, patientId: d.patientId, reason: trimmed },
     }));
   });
   return getDispense(db, actor, d.id, now);

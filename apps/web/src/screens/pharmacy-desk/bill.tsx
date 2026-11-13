@@ -140,8 +140,13 @@ export function BillRail({
   onDiscount?: ((d: AppliedDiscount | null) => void) | null;
 }): React.ReactElement {
   const { t } = useTranslation();
-  const [mode, setMode] = useState<TenderMode>("upi");
-  const [cash, setCash] = useState("");
+  const [mode, setMode] = useState<TenderMode>("cash");
+  /*
+    Spec #1046 D4 (owner 2026-11-13) — the cash field STARTS at the exact payable, after cash rounding (0019):
+    `null` is "not typed yet" and reads as that amount; the person may overwrite it with the note handed over.
+    The split's cash part starts empty — its two amounts are the person's to divide.
+  */
+  const [cashTyped, setCash] = useState<string | null>(null);
   const [upi, setUpi] = useState("");
   const [ref, setRef] = useState("");
   const status = dispense.status;
@@ -164,6 +169,7 @@ export function BillRail({
   const coveredByCredit = useCredit && exactPayable !== null && creditHeld >= exactPayable && exactPayable > 0;
   const creditUse = free || !useCredit || payable === null ? 0 : coveredByCredit ? exactPayable : Math.min(creditHeld, payable);
   const rest = payable === null ? null : coveredByCredit ? 0 : payable - creditUse;
+  const cash = cashTyped ?? (mode === "cash" && rest !== null && rest > 0 ? (rest / 100).toFixed(2) : "");
   const plan = free ? { tenders: [] as Tender[], changePaise: 0 } : rest === null ? null : coveredByCredit ? { tenders: [] as Tender[], changePaise: 0 } : rest <= 0 ? null : tendersFor(mode, rest, cash, upi, ref);
   /* A discount above the pharmacist's 10% waits for its approval; the money keys wait with it. */
   const approval = useDiscountApproval(discount);
@@ -180,7 +186,7 @@ export function BillRail({
 
   /* A different ticket starts with an empty tender — the last patient's cash is not this one's. */
   useEffect(() => {
-    setCash(""); setUpi(""); setRef(""); setMode("upi"); setUseCredit(true);
+    setCash(null); setUpi(""); setRef(""); setMode("cash"); setUseCredit(true);
     setCreditOpen(false); setCreditReason(""); setCreditApproval(null);
     setMenuOpen(false); setSheetOpen(false);
   }, [dispense.id]);
@@ -390,7 +396,7 @@ export function BillRail({
                 <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                   <label style={{ flexGrow: 1 }}>
                     <span className="tag">{mode === "cash" ? t("pharmacyDesk.bill.tendered") : t("pharmacyDesk.bill.cashPart")}</span>
-                    <input className="in mo" inputMode="decimal" value={cash} onChange={(e) => setCash(e.target.value)} style={{ height: 36, marginTop: 4, textAlign: "right" }} />
+                    <input className="in mo" inputMode="decimal" value={cash} onChange={(e) => setCash(e.target.value)} onFocus={(e) => e.target.select()} style={{ height: 36, marginTop: 4, textAlign: "right" }} />
                   </label>
                   {mode === "split" ? (
                     <label style={{ flexGrow: 1 }}>

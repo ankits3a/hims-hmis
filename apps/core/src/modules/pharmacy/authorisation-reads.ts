@@ -1,7 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 import { pharmacyAuthorisations } from "../../kernel/db/schema";
 import { authorisationKey } from "./refusals";
-import type { RefusalBook } from "./refusals";
+import type { AuthorisationBook } from "./refusals";
 import type { Db, Tx } from "../../kernel/db/client";
 
 /**
@@ -15,7 +15,7 @@ export type AuthorisationRow = typeof pharmacyAuthorisations.$inferSelect;
 export async function authorisedKeysFor(db: Db | Tx, dispenseId: string): Promise<Set<string>> {
   const rows = await db.select({ lineIdx: pharmacyAuthorisations.lineIdx, book: pharmacyAuthorisations.book, about: pharmacyAuthorisations.about, status: pharmacyAuthorisations.status })
     .from(pharmacyAuthorisations).where(eq(pharmacyAuthorisations.dispenseId, dispenseId));
-  return new Set(rows.filter((r) => r.status === "authorised").map((r) => authorisationKey(r.lineIdx, r.book as RefusalBook, r.about)));
+  return new Set(rows.filter((r) => r.status === "authorised").map((r) => authorisationKey(r.lineIdx, r.book as AuthorisationBook, r.about)));
 }
 
 /** Every request on this dispense, oldest first — the ticket draws them on their lines. */

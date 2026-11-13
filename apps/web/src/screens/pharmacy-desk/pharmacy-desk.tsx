@@ -8,7 +8,7 @@ import { fetchCurrentSession } from "../../lib/billing-api";
 import { usePaletteOptional } from "../../components/command-palette";
 import { useCopilot } from "../../lib/use-copilot";
 import {
-  billDispense, claimDispense, fetchClosing, confirmDispenseSlip, declineLine, fetchCounterSummary, fetchDispense, fetchMyRegistration, fetchMyShift, fetchPharmacySettings, fetchQueue, findAtCounter, handOverDispense,
+  billDispense, claimDispense, fetchClosing, confirmDispenseSlip, declineLine, fetchCounterSummary, fetchDispense, fetchMyRegistration, fetchMyShift, fetchPharmacySettings, fetchQueue, findAtCounter, handOverDispense, openBalanceDispense,
   pharmacyErrorCode, pharmacyErrorText, pickDispense, previewBill, verifyDispense,
 } from "../../lib/pharmacy-api";
 import { istClock, istDateLabel } from "../desk-one/model";
@@ -25,7 +25,7 @@ import type { DuplicateItemsCardData, PaymentRunCardData, PurchasePlanCardData, 
 import { TicketPanel } from "./ticket";
 import type { DeskLog } from "./log";
 import type { CollectResult } from "./lines";
-import type { ControlledHandover, PickLine, Tender, VerifyLine, WireDispense, WireFindResult, WirePatientSummary } from "../../lib/pharmacy-api";
+import type { ControlledHandover, HandoverIdentity, PickLine, Tender, VerifyLine, WireDispense, WireFindResult, WirePatientSummary } from "../../lib/pharmacy-api";
 import "../../styles/paper-pine.css";
 import "../desk-one/desk-one.css";
 import "./pharmacy-desk.css";
@@ -90,9 +90,11 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
   /* 2026-09-30 (owner) — nobody found for a typed name or number: register them here, then the paper sheet. */
   const [registerFrom, setRegisterFrom] = useState<string | null>(null);
   /* 2026-09-30 — the patient found with no e-prescription today: the desk offers the paper-prescription door. */
-  const [paperFor, setPaperFor] = useState<{ id: string; uhid: string; label: string; lastDispenseId?: string } | null>(null);
+  const [paperFor, setPaperFor] = useState<{ id: string; uhid: string; label: string; lastDispenseId?: string; balanceDispenseId?: string } | null>(null);
   /* PARITY P1 — the hand-over that just happened HERE prints by itself; reopening an old ticket does not. */
   const [justHandedOver, setJustHandedOver] = useState<string | null>(null);
+  /* Spec #1046 D3 — the payment that just happened HERE prints its bill at once; its hand-over then sends the labels alone. */
+  const [justBilled, setJustBilled] = useState<string | null>(null);
   /* PARITY P1 — the line the pharmacist is on, so `N` opens the short book prefilled with its drug. */
   const [focusedDrug, setFocusedDrug] = useState<ShortDrug | null>(null);
   /* WALK FINDING 2026-09-29 — the quantities as typed on the ticket in hand, so the bill follows an edit before the tick. */
@@ -263,9 +265,10 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
         setPaperFor({
           id: r.patient.id, uhid: r.patient.uhid, label: whoLabel({ ...r.patient, restricted: false }),
           ...(r.lastDispenseId === undefined ? {} : { lastDispenseId: r.lastDispenseId }),
+          ...(r.balanceDispenseId === undefined ? {} : { balanceDispenseId: r.balanceDispenseId }),
         });
-        /* Quick desk mode: found with nothing in the system → straight to the medicines, no door to press. */
-        if (quick) { setNote(null); setOverlay("paper"); }
+        /* Quick desk mode: found with nothing in the system → straight to the medicines, no door to press — unless a balance is owed (spec #1046 D6). */
+        if (quick && r.balanceDispenseId === undefined) { setNote(null); setOverlay("paper"); }
       }
       if (r.reason === "not_found" && r.door === "uhid") setRegisterFrom(q.trim());
       return;
@@ -330,6 +333,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
     try {
       const d = await billDispense(inHandId, { tenders: [], credit, ...discountBody(discount) }, keyFor("bill", inHandId));
       moneyKeys.current.delete(`bill:${inHandId}`);
+      setJustBilled(d.id);
       settle(d);
       say(t("pharmacyDesk.log.billedOnCredit"));
     } catch (e) {
@@ -349,6 +353,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
     try {
       const d = await billDispense(inHandId, { tenders, ...(tenders.length === 0 && creditPaise === 0 ? { free: true as const } : {}), ...(changePaise > 0 ? { changeGivenPaise: changePaise } : {}), ...(creditPaise > 0 ? { useCreditPaise: creditPaise } : {}), ...discountBody(discount) }, keyFor("bill", inHandId));
       moneyKeys.current.delete(`bill:${inHandId}`);
+      setJustBilled(d.id);
       settle(d);
       /* what was BILLED: a cash tender is the note handed over, so the change comes off it */
       const total = tenders.reduce((n, x) => n + x.amountPaise, 0) - changePaise;
@@ -366,13 +371,15 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
     }
   }, [discount, inHandId, qc, settle, t]);
 
-  const handOver = useCallback(async (identity: { via: "token" | "phone_last4"; value: string } | null, controlled?: ControlledHandover): Promise<void> => {
+  const handOver = useCallback(async (identity: HandoverIdentity | null, controlled?: ControlledHandover): Promise<void> => {
     if (inHandId === null) return;
     setBusy(true); setHandOverError(null);
     try {
       const d = await handOverDispense(inHandId, identity, keyFor("handover", inHandId), controlled);
       moneyKeys.current.delete(`handover:${inHandId}`);
       settle(d);
+      /* Walk 2026-11-13 — the closing read while the ticket was only paid has no hand-over in it ("P-1 closed —."): read it again. */
+      void qc.invalidateQueries({ queryKey: ["pharmacy", "closing", d.id] });
       setJustHandedOver(d.id);
       say(t("pharmacyDesk.log.handedOver", { who: d.patient.alias ?? d.patient.name ?? d.patient.uhid }));
     } catch (e) {
@@ -387,7 +394,26 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
     } finally {
       setBusy(false);
     }
-  }, [inHandId, settle, t]);
+  }, [inHandId, qc, settle, t]);
+
+  /*
+    Spec #1046 D6 — "rest tomorrow": the balance of a handed-over ticket opens as a NEW ticket for the owed
+    quantities only, and is taken here at once (the claim lays out exactly those lines).
+  */
+  const openBalance = useCallback(async (sourceId: string): Promise<void> => {
+    setError(null);
+    try {
+      const d = await openBalanceDispense(sourceId);
+      const who = d.patient.alias ?? d.patient.name ?? d.patient.uhid;
+      say(t("pharmacyDesk.balance.opened", { who }));
+      setPaperFor(null);
+      if (await take(d.id, "uhid", who)) hold(d.id);
+    } catch (e) {
+      const text = pharmacyErrorText(e, t);
+      setError(text);
+      say(text, "err");
+    }
+  }, [hold, t, take]);
 
   /* E27 — a draft keeps the claim and whatever is held; the sentence names the deadline. */
   /*
@@ -428,6 +454,8 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
     try {
       const d = await declineLine(inHandId, lineIdx, reason);
       settle(d);
+      /* Spec #1046 D2 — a line dropped at the bill: the preview re-totals without it. */
+      if (d.status === "picked") void qc.invalidateQueries({ queryKey: ["pharmacy", "bill", inHandId] });
       say(t("pharmacyDesk.log.declined", { line: lineIdx + 1, reason }), "warn");
       return true;
     } catch (e) {
@@ -436,7 +464,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
       say(text, "err");
       return false;
     }
-  }, [inHandId, settle, t]);
+  }, [inHandId, qc, settle, t]);
 
   /* PD-D6 — the keys this desk draws, and no others. */
   useEffect(() => {
@@ -681,17 +709,32 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
               paperDoor={paperFor === null ? null : {
                 who: paperFor.label, onOpen: () => setOverlay("paper"),
                 ...(paperFor.lastDispenseId === undefined ? {} : { onSeeLast: () => hold(paperFor.lastDispenseId as string) }),
+                ...(paperFor.balanceDispenseId === undefined ? {} : { onBalance: () => void openBalance(paperFor.balanceDispenseId as string) }),
               }}
               registerDoor={registerFrom === null ? null : { onOpen: () => setOverlay("register") }}
               onTake={(id, who) => void takeHere(id, who, false)}
               onClear={clearDesk}
               autoPrint={inHand !== null && justHandedOver === inHand.id}
+              autoPrintBill={inHand !== null && justBilled === inHand.id}
+              labelsOnly={inHand !== null && justBilled === inHand.id}
+              onOpenBalance={(id) => void openBalance(id)}
               onFocusDrug={setFocusedDrug}
               onLiveQty={onLiveQty}
             />
           </main>
           {/* PD-D5 — the bill takes the line's place once a ticket of MINE is past "found". */}
-          {phone ? <div className="pd-pane pd-side" hidden={phoneTab !== "side"}>{sideEl}</div> : sideEl}
+          {phone ? (
+            <div className="pd-pane pd-side" hidden={phoneTab !== "side"}>
+              {/* Walk 2026-11-13 — once paid, the Bill tab says where the hand-over is, and goes there. */}
+              {inHand !== null && billing && inHand.status === "billed" ? (
+                <div className="pd-paid-hint" data-testid="desk-paid-hint" role="status">
+                  <span>{t("pharmacyDesk.phone.paidHint")}</span>
+                  <button type="button" className="pri" style={{ height: 32 }} onClick={() => setPhoneTab("work")}>{t("pharmacyDesk.phone.toTicket")}</button>
+                </div>
+              ) : null}
+              {sideEl}
+            </div>
+          ) : sideEl}
         </div>
 
         <DeskDock log={log} said={said} busy={copilot.busy} onAsk={ask} onDismiss={() => setSaid(null)} draft={shortBookDraftOf(copilot.payload)} plan={purchasePlanOf(copilot.payload)} payPlan={paymentRunPlanOf(copilot.payload)} returnPlan={returnPlanOf(copilot.payload)} duplicates={duplicateItemsOf(copilot.payload)} onDraftDone={copilot.clearPayload} />

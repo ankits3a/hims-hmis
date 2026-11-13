@@ -3,6 +3,7 @@ import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { pharmacyAuthorisations } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
+import { isEquivalentMedicine, medicinesByIds } from "../formulary";
 import { getDoctor, getPrescription } from "../opd";
 import { getPatientSummaries } from "../patients";
 import { PharmacyError } from "./errors";
@@ -10,9 +11,9 @@ import { authorisationDecided, authorisationRequested } from "./events";
 import { requireRegisteredPharmacist } from "./pharmacists";
 import { getDispenseRow, linesOf, userNames } from "./queue";
 import { refusalKey, refusalsOn } from "./refusals";
-import { ticketRefusals } from "./verify";
+import { swapNeedsPrescriber, ticketRefusals } from "./verify";
 import type { AuthorisationRow } from "./authorisation-reads";
-import type { RefusalBook } from "./refusals";
+import type { AuthorisationBook, RefusalBook } from "./refusals";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { RxLine } from "../opd";
@@ -35,8 +36,9 @@ import type { RxLine } from "../opd";
 export type AuthorisationInput = {
   dispenseId: string;
   lineIdx: number;
-  book: RefusalBook;
-  /** The hit's identity — `refusalKey` — as the line's refusal carried it. */
+  /** One of the four books, or (0093, spec #1046 D7) `substitution`: a Schedule H/H1 brand swap. */
+  book: AuthorisationBook;
+  /** The hit's identity — `refusalKey` — as the line's refusal carried it; for `substitution`, the substitute medicine's id. */
   about: string;
   /** What the pharmacist wants the doctor to know ("tolerated it last year"). */
   note?: string | null;
@@ -61,10 +63,17 @@ export async function requestAuthorisation(db: Db, actor: Actor, input: Authoris
   }
   /* A pharmacist-to-prescriber intervention is the pharmacist's act, as the check is (the Act, P2). */
   await requireRegisteredPharmacist(db, actor, now);
-  const instead = input.medicineId === undefined || input.medicineId === null ? null : { lineIdx: input.lineIdx, medicineId: input.medicineId };
-  const { doctorId, refused } = await ticketRefusals(db, actor, input.dispenseId, now, instead);
-  if (!keysOn(refused, input.lineIdx, input.book).includes(input.about)) {
-    throw new PharmacyError("authorisation_not_needed", `the check raises no ${input.book} refusal "${input.about}" on line ${String(input.lineIdx + 1)} — there is nothing for the doctor to authorise`, { lineIdx: input.lineIdx });
+  let doctorId: string | null;
+  if (input.book === "substitution") {
+    doctorId = await swapToAsk(db, actor, input.dispenseId, input.lineIdx, input.about);
+  } else {
+    const book: RefusalBook = input.book;
+    const instead = input.medicineId === undefined || input.medicineId === null ? null : { lineIdx: input.lineIdx, medicineId: input.medicineId };
+    const checked = await ticketRefusals(db, actor, input.dispenseId, now, instead);
+    doctorId = checked.doctorId;
+    if (!keysOn(checked.refused, input.lineIdx, book).includes(input.about)) {
+      throw new PharmacyError("authorisation_not_needed", `the check raises no ${input.book} refusal "${input.about}" on line ${String(input.lineIdx + 1)} — there is nothing for the doctor to authorise`, { lineIdx: input.lineIdx });
+    }
   }
   const open = await db.select().from(pharmacyAuthorisations).where(and(
     eq(pharmacyAuthorisations.dispenseId, input.dispenseId), eq(pharmacyAuthorisations.lineIdx, input.lineIdx),
@@ -88,6 +97,43 @@ export async function requestAuthorisation(db: Db, actor: Actor, input: Authoris
   });
   const [row] = await db.select().from(pharmacyAuthorisations).where(eq(pharmacyAuthorisations.id, id));
   return row!;
+}
+
+/**
+ * ═══ 0093 / SPEC #1046 D7 — THE SWAP THE PRESCRIBER IS ASKED TO AGREE TO ═══
+ *
+ * A real swap on an open line: the substitute is a generic equivalent of the line's medicine (the one
+ * equality `verifyDispense` holds), the prescriber did not write "no substitution", and one side of it is
+ * Schedule H/H1 (an OTC swap needs only the patient). A paper from a doctor who is not a user here cannot be
+ * agreed to by anybody: the pharmacist gives the brand written or the doctor changes the prescription.
+ * Returns the prescriber's doctor id.
+ */
+async function swapToAsk(db: Db, actor: Actor, dispenseId: string, lineIdx: number, substituteId: string): Promise<string> {
+  const d = await getDispenseRow(db, dispenseId);
+  const rx = await getPrescription(db, actor, d.prescriptionId);
+  if (rx === null) throw new PharmacyError("permission_denied", "this ticket is a sealed record — its checks are read by a pharmacist who may read it", { reason: "patient_restricted" });
+  const line = (await linesOf(db, dispenseId)).find((l) => l.lineIdx === lineIdx);
+  if (line === undefined) throw new PharmacyError("unknown_line", `line ${String(lineIdx)} not found`);
+  if (line.status !== "open" || line.dispensedMedicineId === null) throw new PharmacyError("line_not_open", `line ${String(lineIdx + 1)} has no medicine to swap`);
+  if (line.dispensedMedicineId === substituteId) throw new PharmacyError("authorisation_not_needed", `line ${String(lineIdx + 1)} already gives that brand`, { lineIdx });
+  if ((line.rxLine as RxLine).noSubstitution) throw new PharmacyError("substitution_not_allowed", `line ${String(lineIdx + 1)} is marked no-substitution by the prescriber`, { lineIdx });
+  const meds = await medicinesByIds(db, [line.dispensedMedicineId, substituteId]);
+  const from = meds.get(line.dispensedMedicineId);
+  const to = meds.get(substituteId);
+  if (from === undefined || to === undefined || !(await isEquivalentMedicine(db, from.id, to.id))) {
+    throw new PharmacyError("substitution_not_allowed", `that medicine is not a generic equivalent of line ${String(lineIdx + 1)} (same salts, strength, form and route)`, { lineIdx });
+  }
+  if (!swapNeedsPrescriber(from.scheduleFlag, to.scheduleFlag)) {
+    throw new PharmacyError("authorisation_not_needed", `${from.brandName} is not Schedule H/H1 — the patient's consent is enough for this swap`, { lineIdx });
+  }
+  if (rx.doctorId === null) {
+    throw new PharmacyError(
+      "substitution_needs_prescriber",
+      `this paper's doctor is not on the system to agree to ${to.brandName} — dispense ${from.brandName} as written, or have the doctor change the prescription`,
+      { lineIdx, from: from.id, to: to.id, prescriberOnRecord: false },
+    );
+  }
+  return rx.doctorId;
 }
 
 async function requirePrescriber(db: Db, actor: Actor, id: string): Promise<AuthorisationRow> {
@@ -142,6 +188,8 @@ export type AuthorisationDetail = {
   dispenseNo: string | null;
   patient: { name: string | null; alias: string | null; uhid: string; restricted: boolean } | null;
   line: { drug: string; dose: string; frequency: string; durationDays: number | null; instructions: string | null } | null;
+  /** 0093 — a `substitution` request: the brand on the line and the brand the pharmacist would give instead. */
+  swap: { from: string; to: string } | null;
 };
 
 export async function authorisationDetail(db: Db, actor: Actor, id: string): Promise<AuthorisationDetail> {
@@ -153,7 +201,13 @@ export async function authorisationDetail(db: Db, actor: Actor, id: string): Pro
   const dispenseLine = (await linesOf(db, d.id)).find((l) => l.lineIdx === row.lineIdx);
   const names = await userNames(db, [row.requestedBy]);
   const written = rxLine ?? (dispenseLine?.rxLine as RxLine | undefined);
+  const swapMeds = row.book !== "substitution" ? null
+    : await medicinesByIds(db, [dispenseLine?.dispensedMedicineId ?? null, row.about].filter((x): x is string => x !== null));
   return {
+    swap: swapMeds === null ? null : {
+      from: swapMeds.get(dispenseLine?.dispensedMedicineId ?? "")?.brandName ?? written?.drug ?? "",
+      to: swapMeds.get(row.about)?.brandName ?? row.about,
+    },
     authorisation: row,
     requestedByName: names.get(row.requestedBy) ?? null,
     dispenseNo: d.dispenseNo,

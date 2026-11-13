@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
+import { dateLocale } from "../../lib/date-locale";
 import { useDebounced } from "../../lib/format";
+import { GUARDIAN_NAME_MAX, GUARDIAN_RELATIONS, SELF_RELATION } from "../../lib/opd-api";
 import { suggestAtCounter } from "../../lib/pharmacy-api";
 import { Closed } from "./closed";
 import { ControlledStep } from "./controlled";
@@ -14,7 +17,7 @@ import type { ShortDrug } from "./short-book";
 import { hindiRefusal, hindiSig } from "./phrasebook";
 import { istToday, sigOf } from "./work";
 import type { CollectResult } from "./lines";
-import type { ControlledHandover, PickLine, VerifyLine, WireDispense, WirePatientSummary, WireQueueRow } from "../../lib/pharmacy-api";
+import type { ControlledHandover, HandoverIdentity, PickLine, VerifyLine, WireDispense, WirePatientSummary, WireQueueRow } from "../../lib/pharmacy-api";
 
 /**
  * THE MIDDLE COLUMN — the only one that changes with the stage (PD-D1). Idle: whose prescription is
@@ -31,7 +34,8 @@ function rxLinesOf(d: WireDispense): WireDispense["lines"] {
 
 export function TicketPanel({
   inHand, loading, loadError, me, candidates, error, note, busy, handOverError, takenLabel, onFind, onTake, onClear, onCollect, onDecline, onHandOver,
-  onOpenSlip, onConfirmSlip, queue, onShowLine, autoPrint = false, onFocusDrug, onLiveQty, paperDoor = null, registerDoor = null, quick = false,
+  onOpenSlip, onConfirmSlip, queue, onShowLine, autoPrint = false, autoPrintBill = false, labelsOnly = false, onFocusDrug, onLiveQty, paperDoor = null, registerDoor = null,
+  quick = false, onOpenBalance = null,
 }: {
   /** Owner ruling 2026-10-02 — quick desk mode: no slip to see, none to confirm (`settings.ts` on the server). */
   quick?: boolean;
@@ -51,7 +55,7 @@ export function TicketPanel({
   handOverError: string | null;
   /** What was taken, as the bill rail printed it — the done line repeats the server's figure, never a sum of its own. */
   takenLabel: string | null;
-  onHandOver: (identity: { via: "token" | "phone_last4"; value: string } | null, controlled?: ControlledHandover) => void;
+  onHandOver: (identity: HandoverIdentity | null, controlled?: ControlledHandover) => void;
   onOpenSlip: () => void;
   onConfirmSlip: () => void;
   /** The line as the rail reads it — the agent's C1 sentence is said over it while nobody is in hand. */
@@ -59,12 +63,21 @@ export function TicketPanel({
   onShowLine: () => void;
   /** PARITY P1 — the hand-over that just happened at this desk: its paper goes out by itself. */
   autoPrint?: boolean;
+  /** Spec #1046 D3 — the payment that just happened at this desk: its bill goes out by itself, before the hand-over. */
+  autoPrintBill?: boolean;
+  /** Spec #1046 D3 — this desk already sent the bill at payment: the hand-over sends the labels alone. */
+  labelsOnly?: boolean;
+  /** Spec #1046 D6 — open the balance ticket of a handed-over ticket that still owes ("rest tomorrow"). */
+  onOpenBalance?: ((dispenseId: string) => void) | null;
   /** PARITY P1 — the line the pharmacist is on, for the desk's `N`. */
   onFocusDrug?: (drug: ShortDrug | null) => void;
   /** The quantities being given as typed, for the bill rail (`LineList`). */
   onLiveQty?: (dispenseId: string, qty: Readonly<Record<number, number | null>>) => void;
   /** 2026-09-30 — a patient found with no e-prescription today: dispense from their paper prescription. */
-  paperDoor?: { who: string; onOpen: () => void; /** 2026-10-02 — today's finished ticket, when there is one. */ onSeeLast?: () => void } | null;
+  paperDoor?: {
+    who: string; onOpen: () => void; /** 2026-10-02 — today's finished ticket, when there is one. */ onSeeLast?: () => void;
+    /** Spec #1046 D6 — a ticket of this patient still owes a balance: open it. */ onBalance?: () => void;
+  } | null;
   /** 2026-09-30 (owner) — nobody found: register the person here and dispense from their paper prescription. */
   registerDoor?: { onOpen: () => void } | null;
 }): React.ReactElement {
@@ -95,6 +108,7 @@ export function TicketPanel({
           <div className="box paper-rx-door" data-testid="desk-paper-door">
             <span style={{ flexGrow: 1, minWidth: 200, fontSize: 12.5 }}>{t(paperDoor.onSeeLast === undefined ? "pharmacyDesk.paperRx.doorHint" : "pharmacyDesk.paperRx.doorHintAgain", { who: paperDoor.who })}</span>
             {paperDoor.onSeeLast === undefined ? null : <button type="button" className="sec" data-testid="desk-see-last" onClick={paperDoor.onSeeLast}>{t("pharmacyDesk.paperRx.seeLast")}</button>}
+            {paperDoor.onBalance === undefined ? null : <button type="button" className="sec" data-testid="desk-balance-door" onClick={paperDoor.onBalance}>{t("pharmacyDesk.balance.open")}</button>}
             <button type="button" className="pri" onClick={paperDoor.onOpen}>{t("pharmacyDesk.paperRx.door")}</button>
           </div>
         )}
@@ -155,9 +169,10 @@ export function TicketPanel({
           <TicketMenu dispense={inHand} />
         </div>
         <p className="mo" style={{ margin: "3px 0 0 0", fontSize: 12, color: "var(--dim)" }}>
-          {[label, takenLabel, t("pharmacyDesk.lines", { count: rxLinesOf(inHand).length })].filter((x) => x !== null).join(" · ")}
+          {[label, takenLabel, t("pharmacyDesk.lines", { count: rxLinesOf(inHand).length }), collectedLine(inHand, t)].filter((x) => x !== null).join(" · ")}
         </p>
-        <DonePaper dispenseId={inHand.id} autoPrint={autoPrint} />
+        <DonePaper dispenseId={inHand.id} autoPrint={autoPrint} documents={labelsOnly ? ["pharmacy_labels"] : undefined} />
+        <BalanceOwed dispense={inHand} onOpen={onOpenBalance} />
         <Closed dispenseId={inHand.id} />
         <button className="pri" style={{ marginTop: 16 }} onClick={onClear}>
           {t("pharmacyDesk.nextTicket")} <span className="kb" style={{ borderColor: "rgba(255,255,255,.35)", background: "rgba(255,255,255,.12)", color: "#d6ece1" }}>Esc</span>
@@ -211,6 +226,8 @@ export function TicketPanel({
         onFocusDrug={onFocusDrug}
         onLiveQty={onLiveQty}
       />
+      {/* Spec #1046 D3 — the bill prints when the money is taken; the labels wait for the hand-over. */}
+      {inHand.status === "billed" ? <DonePaper dispenseId={inHand.id} autoPrint={autoPrintBill} documents={["pharmacy_bill"]} /> : null}
       {inHand.status === "billed" ? <HandOver dispense={inHand} busy={busy} error={handOverError} onHandOver={onHandOver} /> : null}
       {error !== null || note !== null ? alerts : null}
     </div>
@@ -287,18 +304,23 @@ export function HandOver({
   dispense: WireDispense;
   busy: boolean;
   error: string | null;
-  onHandOver: (identity: { via: "token" | "phone_last4"; value: string } | null, controlled?: ControlledHandover) => void;
+  onHandOver: (identity: HandoverIdentity | null, controlled?: ControlledHandover) => void;
 }): React.ReactElement {
   const { t } = useTranslation();
-  const [via, setVia] = useState<"token" | "phone_last4">("token");
+  const [via, setVia] = useState<HandoverIdentity["via"]>("token");
   const [value, setValue] = useState("");
+  /* Spec #1046 D1 — the third way: who collected it. Starts unchosen for every ticket, as the token box starts empty (E18). */
+  const [who, setWho] = useState<"" | "self" | "attendant">("");
+  const [name, setName] = useState("");
+  const [relation, setRelation] = useState("");
   /* PHARMACY P6 — a controlled line's witness, retained prescription and collector (`controlled.tsx`). */
   const [controlled, setControlled] = useState<ControlledHandover | null>(null);
-  useEffect(() => { setVia("token"); setValue(""); setControlled(null); }, [dispense.id]);
+  useEffect(() => { setVia("token"); setValue(""); setWho(""); setName(""); setRelation(""); setControlled(null); }, [dispense.id]);
   const needsId = dispense.scheduled;
   const needsControlled = (dispense.controlled ?? null) !== null;
-  const ready = !busy && (!needsId || value.trim() !== "") && (!needsControlled || controlled !== null);
-  const go = (): void => { if (ready) onHandOver(needsId ? { via, value: value.trim() } : null, needsControlled && controlled !== null ? controlled : undefined); };
+  const identity = identityOf(via, value, who, name, relation);
+  const ready = !busy && (!needsId || identity !== null) && (!needsControlled || controlled !== null);
+  const go = (): void => { if (ready) onHandOver(needsId ? identity : null, needsControlled && controlled !== null ? controlled : undefined); };
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); go(); }
@@ -309,6 +331,7 @@ export function HandOver({
   /* PD-7 C10 — what to say, line by line, for what is actually being handed over. */
   const given = rxLinesOf(dispense).filter((l) => l.status === "open" && l.pickedBatch != null);
   const refused = dispense.lines.filter((l) => l.status === "declined");
+  const owedNow = owedLine(dispense, t);
   return (
     <div className="box" data-testid="desk-handover" style={{ marginTop: 16, padding: "14px 16px" }}>
       <div className="tag">{t("pharmacyDesk.handover.title")}</div>
@@ -341,19 +364,53 @@ export function HandOver({
           </ul>
         </div>
       )}
+      {owedNow === null ? null : (
+        <p data-testid="desk-say-balance" style={{ margin: "7px 0 0 0", fontSize: 12.5, fontWeight: 600, color: "var(--gold)" }}>{owedNow}</p>
+      )}
       {needsId ? (
-        <div style={{ display: "flex", gap: 8, marginTop: 9, alignItems: "flex-end" }}>
-          <label>
+        /* Walk 2026-11-13 — at 390 px the fixed widths made this row 592 px wide: `.pd-ids` wraps it, and stacks it below 600 px. */
+        <div className="pd-ids" data-testid="desk-handover-ids">
+          <label className="pd-id-via">
             <span className="tag" style={{ display: "block" }}>{t("pharmacyDesk.handover.via")}</span>
-            <select className="in" value={via} onChange={(e) => setVia(e.target.value as "token" | "phone_last4")} style={{ height: 38, marginTop: 4, width: 170 }}>
+            <select className="in" value={via} onChange={(e) => setVia(e.target.value as HandoverIdentity["via"])} style={{ height: 38, marginTop: 4 }}>
               <option value="token">{t("pharmacyDesk.handover.token")}</option>
               <option value="phone_last4">{t("pharmacyDesk.handover.phone")}</option>
+              {/* A controlled line keeps the token or the phone, with its witness (P6): the server refuses this way there. */}
+              {needsControlled ? null : <option value="collected_by">{t("pharmacyDesk.handover.collectedByWay")}</option>}
             </select>
           </label>
-          <label style={{ flexGrow: 1 }}>
-            <span className="tag" style={{ display: "block" }}>{t("pharmacyDesk.handover.value")}</span>
-            <input className="in mo" value={value} onChange={(e) => setValue(e.target.value)} placeholder={t("pharmacyDesk.handover.placeholder")} style={{ height: 38, marginTop: 4 }} />
-          </label>
+          {via === "collected_by" ? (
+            <>
+              <label className="pd-id-who">
+                <span className="tag" style={{ display: "block" }}>{t("pharmacyDesk.handover.collectedBy")}</span>
+                <select className="in" value={who} onChange={(e) => setWho(e.target.value as "" | "self" | "attendant")} style={{ height: 38, marginTop: 4 }}>
+                  <option value="">{t("pharmacyDesk.handover.choose")}</option>
+                  <option value="self">{t("pharmacyDesk.handover.self")}</option>
+                  <option value="attendant">{t("pharmacyDesk.handover.attendant")}</option>
+                </select>
+              </label>
+              {who === "attendant" ? (
+                <>
+                  <label className="pd-id-grow">
+                    <span className="tag" style={{ display: "block" }}>{t("pharmacyDesk.handover.attendantName")}</span>
+                    <input className="in" value={name} maxLength={GUARDIAN_NAME_MAX} onChange={(e) => setName(e.target.value)} style={{ height: 38, marginTop: 4 }} />
+                  </label>
+                  <label className="pd-id-rel">
+                    <span className="tag" style={{ display: "block" }}>{t("pharmacyDesk.handover.relation")}</span>
+                    <select className="in" value={relation} onChange={(e) => setRelation(e.target.value)} style={{ height: 38, marginTop: 4 }}>
+                      <option value="">{t("pharmacyDesk.handover.choose")}</option>
+                      {ATTENDANT_RELATIONS.map((r) => <option key={r} value={r}>{t(`patientAbsent.relation.${r}`)}</option>)}
+                    </select>
+                  </label>
+                </>
+              ) : null}
+            </>
+          ) : (
+            <label className="pd-id-grow">
+              <span className="tag" style={{ display: "block" }}>{t("pharmacyDesk.handover.value")}</span>
+              <input className="in mo" value={value} onChange={(e) => setValue(e.target.value)} placeholder={t("pharmacyDesk.handover.placeholder")} style={{ height: 38, marginTop: 4 }} />
+            </label>
+          )}
         </div>
       ) : (
         <p style={{ margin: "7px 0 0 0", fontSize: 12, color: "var(--dim)" }}>{t("pharmacyDesk.handover.noId")}</p>
@@ -364,6 +421,58 @@ export function HandOver({
         <span className="kb" style={{ borderColor: "rgba(255,255,255,.35)", background: "rgba(255,255,255,.12)", color: "#d6ece1" }}>Ctrl ⏎</span>
       </button>
       {error !== null ? <p role="alert" style={{ margin: "10px 0 0 0", fontSize: 12, color: "var(--red)" }}>{error}</p> : null}
+    </div>
+  );
+}
+
+/**
+ * Spec #1046 D6, walk 2026-11-13 — the hand-over said nothing of what is still owed, so the patient left without
+ * hearing it. One line: what (picked short, `owedQtyBase`) and the window. The window runs from the prescription's
+ * FIRST hand-over (`BALANCE_WINDOW_DAYS` on the server), which this hand-over is unless the ticket is itself a balance;
+ * a balance short again says what is owed without promising days it may not have.
+ */
+const BALANCE_WINDOW_DAYS = 30;
+function owedLine(d: WireDispense, t: TFunction): string | null {
+  const owed = d.lines.filter((l) => l.status === "open" && l.splitFromLineIdx == null && (l.owedQtyBase ?? 0) > 0);
+  if (owed.length === 0) return null;
+  const what = owed.map((l) => `${l.dispensedMedicine?.brandName ?? l.rxLine.drug} × ${String(l.owedQtyBase ?? 0)}${l.item === null ? "" : ` ${l.item.baseUom}`}`).join(", ");
+  return d.balanceOf == null ? t("pharmacyDesk.balance.handover", { what, days: BALANCE_WINDOW_DAYS }) : t("pharmacyDesk.balance.handoverAgain", { what });
+}
+
+/** Spec #1046 D1 — the attendant's relation: OPD's "Who came?" list, less `self` (the patient is `who: self`). */
+const ATTENDANT_RELATIONS = GUARDIAN_RELATIONS.filter((r) => r !== SELF_RELATION);
+
+/** What the hand-over sends as the person at the window, or null while it is not complete. */
+export function identityOf(via: HandoverIdentity["via"], value: string, who: "" | "self" | "attendant", name: string, relation: string): HandoverIdentity | null {
+  if (via !== "collected_by") return value.trim() === "" ? null : { via, value: value.trim() };
+  if (who === "self") return { via, who: "self" };
+  if (who === "attendant" && name.trim() !== "" && relation !== "") return { via, who: "attendant", name: name.trim(), relation };
+  return null;
+}
+
+/** Spec #1046 D1 — "collected by Ramesh Kumar (Son)" on the finished ticket; null when nobody was named. */
+function collectedLine(d: WireDispense, t: TFunction): string | null {
+  const c = d.collectedBy ?? null;
+  if (c === null) return null;
+  if (c.who === "self") return t("pharmacyDesk.handover.collectedSelf");
+  return t("pharmacyDesk.handover.collectedAttendant", { name: c.name ?? "", relation: c.relation === null ? "" : t(`patientAbsent.relation.${c.relation}`) });
+}
+
+/**
+ * Spec #1046 D6 — "REST TOMORROW": a finished ticket that still owes says what, and until when, and opens the
+ * balance as a new ticket for only those quantities. Nothing is shown when nothing is owed (or the window passed).
+ */
+function BalanceOwed({ dispense, onOpen }: { dispense: WireDispense; onOpen: ((dispenseId: string) => void) | null }): React.ReactElement | null {
+  const { t, i18n } = useTranslation();
+  const owed = dispense.balanceOwed ?? null;
+  if (owed === null || onOpen === null) return null;
+  const until = new Intl.DateTimeFormat(dateLocale(i18n.language), { timeZone: "Asia/Kolkata", day: "2-digit", month: "short" }).format(new Date(owed.until));
+  return (
+    <div className="box" data-testid="desk-balance" style={{ marginTop: 12, padding: "10px 14px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+      <span style={{ flexGrow: 1, fontSize: 12.5 }}>
+        {t("pharmacyDesk.balance.owed", { what: owed.lines.map((l) => `${l.drug} × ${String(l.qtyBase)}${l.unit === null ? "" : ` ${l.unit}`}`).join(", "), until })}
+      </span>
+      <button type="button" className="pri" data-testid="desk-balance-open" onClick={() => onOpen(dispense.id)}>{t("pharmacyDesk.balance.open")}</button>
     </div>
   );
 }

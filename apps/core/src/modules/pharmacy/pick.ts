@@ -82,7 +82,11 @@ export async function pickDispense(
   const cabinet = lines.some((l) => l.status === "open" && controlOf(l.scheduleFlag, l.ndpsClass).controlled) ? await requireControlledStore(db) : undefined;
 
   /** `splitFrom` — a further batch of the prescription line at that index: a NEW dispense line, inserted at the reservation. */
-  type Plan = { lineId: string; lineIdx: number; itemId: string; batchId: string; qtyBase: number; fefoOverride: boolean; pickNote: string | null; scanned: boolean; store: string; splitFrom: number | null };
+  type Plan = {
+    lineId: string; lineIdx: number; itemId: string; batchId: string; qtyBase: number; fefoOverride: boolean; pickNote: string | null; scanned: boolean; store: string; splitFrom: number | null;
+    /** Spec #1046 D6 — verified minus picked on a partial, kept on the prescription's line for a balance ticket. */
+    owed: number | null;
+  };
   const plan: Plan[] = [];
   let nextIdx = Math.max(-1, ...lines.map((l) => l.lineIdx)) + 1;
   for (const line of lines) {
@@ -95,6 +99,7 @@ export async function pickDispense(
       throw new PharmacyError("qty_required", `line ${String(line.lineIdx + 1)}: a pick is a positive quantity no larger than the verified ${String(line.qtyBase)}`, { lineIdx: line.lineIdx });
     }
     const partial = qty < line.qtyBase;
+    const owed = partial ? line.qtyBase - qty : null;
     const note = edit?.pickNote?.trim() ?? "";
     if (partial && note === "") throw new PharmacyError("qty_required", `line ${String(line.lineIdx + 1)}: a partial dispense needs a reason`, { lineIdx: line.lineIdx });
 
@@ -126,7 +131,7 @@ export async function pickDispense(
         throw new PharmacyError("fefo_override_unavailable", `line ${String(line.lineIdx + 1)}: batch ${named} cannot cover ${String(qty)} at this store`, { lineIdx: line.lineIdx, available });
       }
       const offered = await fefoPick(db, store, line.itemId, qty, now);
-      plan.push({ lineId: line.id, lineIdx: line.lineIdx, itemId: line.itemId, batchId: named, qtyBase: qty, fefoOverride: offered[0]?.batchId !== named, pickNote: partial ? note : null, scanned, store, splitFrom: null });
+      plan.push({ lineId: line.id, lineIdx: line.lineIdx, itemId: line.itemId, batchId: named, qtyBase: qty, fefoOverride: offered[0]?.batchId !== named, pickNote: partial ? note : null, scanned, store, splitFrom: null, owed });
       continue;
     }
     /*
@@ -157,8 +162,8 @@ export async function pickDispense(
     const parts = [...fromTray.map((o) => ({ ...o, store: trayId! })), ...offered.map((o) => ({ ...o, store }))];
     for (const [k, part] of parts.entries()) {
       plan.push(k === 0
-        ? { lineId: line.id, lineIdx: line.lineIdx, itemId: line.itemId, batchId: part.batchId, qtyBase: part.qty, fefoOverride: false, pickNote: partial ? note : null, scanned, store: part.store, splitFrom: null }
-        : { lineId: newId(), lineIdx: nextIdx++, itemId: line.itemId, batchId: part.batchId, qtyBase: part.qty, fefoOverride: false, pickNote: null, scanned: false, store: part.store, splitFrom: line.lineIdx });
+        ? { lineId: line.id, lineIdx: line.lineIdx, itemId: line.itemId, batchId: part.batchId, qtyBase: part.qty, fefoOverride: false, pickNote: partial ? note : null, scanned, store: part.store, splitFrom: null, owed }
+        : { lineId: newId(), lineIdx: nextIdx++, itemId: line.itemId, batchId: part.batchId, qtyBase: part.qty, fefoOverride: false, pickNote: null, scanned: false, store: part.store, splitFrom: line.lineIdx, owed: null });
     }
   }
   if (plan.length === 0) throw new PharmacyError("nothing_to_dispense", "no open line to pick");
@@ -178,7 +183,7 @@ export async function pickDispense(
       }
       const { reservationId } = await reserveStock(tx, actor, { resourceId: p.store, batchId: p.batchId, qty: p.qtyBase, refType: "pharmacy_dispense", refId: p.lineId, expiresAt });
       await tx.update(pharmacyDispenseLines)
-        .set({ batchId: p.batchId, reservationId, qtyBase: p.qtyBase, fefoOverride: p.fefoOverride, pickNote: p.pickNote })
+        .set({ batchId: p.batchId, reservationId, qtyBase: p.qtyBase, fefoOverride: p.fefoOverride, pickNote: p.pickNote, owedQtyBase: p.owed })
         .where(eq(pharmacyDispenseLines.id, p.lineId));
       if (p.splitFrom !== null) continue;
       const line = lines.find((l) => l.id === p.lineId)!;

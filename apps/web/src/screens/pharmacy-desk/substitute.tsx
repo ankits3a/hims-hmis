@@ -83,6 +83,8 @@ export function SubstituteSheet({
     if (hit !== undefined && choosable(hit)) setChosen(hit);
   }, [preselect, items, chosen]);
   const given = line.dispensedMedicine;
+  /* Walk 2026-11-13 — nothing on the list to give: no consent to tick and nothing to put on the ticket, only Cancel. */
+  const choice = !line.rxLine.noSubstitution && items.some(choosable);
   return (
     <div className="ovl" role="dialog" aria-modal="true" aria-label={t("pharmacyDesk.sub.title", { drug: line.rxLine.drug })} onClick={onClose}>
       <div className="box" style={{ width: 640, maxHeight: "80vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 70px rgba(19,36,32,.35)" }} onClick={(e) => e.stopPropagation()}>
@@ -137,22 +139,28 @@ export function SubstituteSheet({
         </div>
 
         <div style={{ padding: "13px 18px", borderTop: "1px solid var(--line2)", background: "var(--wash)" }}>
-          <label style={{ display: "flex", alignItems: "flex-start", gap: 9, cursor: "pointer" }}>
-            <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} style={{ width: 17, height: 17, accentColor: "#0e6b4e", marginTop: 1 }} />
-            <span style={{ fontSize: 12, lineHeight: "17px" }}>
-              {t("pharmacyDesk.sub.consent")} <span style={{ color: "var(--dim)" }}>{t("pharmacyDesk.sub.consentWhy")}</span>
-            </span>
-          </label>
-          <p style={{ margin: "8px 0 0 0", fontSize: 11, color: "var(--dim)", lineHeight: "16px" }}>{t("pharmacyDesk.sub.checkedAtVerify")}</p>
-          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-            <button
-              className="pri"
-              style={{ flexGrow: 1 }}
-              disabled={chosen === null || !consent}
-              onClick={() => { if (chosen !== null) onChoose({ medicineId: chosen.medicineId, brandName: chosen.brandName, available: chosen.available }); }}
-            >
-              {chosen === null ? t("pharmacyDesk.sub.put") : t("pharmacyDesk.sub.putNamed", { brand: chosen.brandName })}
-            </button>
+          {choice ? (
+            <>
+              <label style={{ display: "flex", alignItems: "flex-start", gap: 9, cursor: "pointer" }}>
+                <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} style={{ width: 17, height: 17, accentColor: "#0e6b4e", marginTop: 1 }} />
+                <span style={{ fontSize: 12, lineHeight: "17px" }}>
+                  {t("pharmacyDesk.sub.consent")} <span style={{ color: "var(--dim)" }}>{t("pharmacyDesk.sub.consentWhy")}</span>
+                </span>
+              </label>
+              <p style={{ margin: "8px 0 0 0", fontSize: 11, color: "var(--dim)", lineHeight: "16px" }}>{t("pharmacyDesk.sub.checkedAtVerify")}</p>
+            </>
+          ) : null}
+          <div style={{ display: "flex", gap: 8, marginTop: choice ? 12 : 0, justifyContent: "flex-end" }}>
+            {choice ? (
+              <button
+                className="pri"
+                style={{ flexGrow: 1 }}
+                disabled={chosen === null || !consent}
+                onClick={() => { if (chosen !== null) onChoose({ medicineId: chosen.medicineId, brandName: chosen.brandName, available: chosen.available }); }}
+              >
+                {chosen === null ? t("pharmacyDesk.sub.put") : t("pharmacyDesk.sub.putNamed", { brand: chosen.brandName })}
+              </button>
+            ) : null}
             <button className="sec" onClick={onClose}>{t("pharmacyDesk.sub.cancel")} <span className="kb">Esc</span></button>
           </div>
         </div>

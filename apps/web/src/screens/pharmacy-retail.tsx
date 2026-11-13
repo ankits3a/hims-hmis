@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { useRouter } from "@tanstack/react-router";
 import { useAuth } from "../lib/auth";
 import { ApiError, newIdempotencyKey } from "../lib/api";
 import { fmtIst, useDebounced } from "../lib/format";
@@ -25,6 +26,7 @@ import { DiscountSheet, DiscountWait, discountLabel, useDiscountApproval } from 
 import type { AppliedDiscount } from "./pharmacy-desk/discount";
 import { expiryLabel } from "./pharmacy-desk/work";
 import { downscaleToJpeg } from "./slip-capture";
+import { strengthShown } from "../../../../packages/contracts/src/drug-strength";
 import type { WirePatientHit } from "../lib/patients-api";
 import type {
   RetailCustomer, RetailPrescription, WireLabel, WireRetailPreview, WireRetailSale, WireRetailSaleRow, WireRetailShelfEntry,
@@ -54,12 +56,15 @@ import "./pharmacy-retail.css";
  */
 /** #638 — `batchId`: the batch the pharmacist chose by hand; absent = the server's earliest expiry (or the scanned pack). */
 type CartLine = { entry: WireRetailShelfEntry; qty: string; batchId?: string };
-type NewCustomer = { name: string; sex: "male" | "female" | "other"; age: string; phone: string; address: string };
-type Customer = { kind: "existing"; id: string; name: string; uhid: string } | { kind: "new"; draft: NewCustomer };
+type Sex = "male" | "female" | "other";
+/* Walk 2026-11-13 — sex starts UNCHOSEN (""): a wrong default corrupts the record, and sex-specific tests read it (#1045). */
+type NewCustomer = { name: string; sex: Sex | ""; age: string; phone: string; address: string };
+type Customer = { kind: "existing"; id: string; name: string; uhid: string } | { kind: "new"; draft: NewCustomer & { sex: Sex } };
 type RxDraft = { prescriberName: string; prescriberRegNo: string; prescriberAddress: string; rxDate: string; photo: string | null };
-type Mode = "cash" | "upi" | "card";
+/** Spec #1046 D4 — `split` is cash plus UPI: two amounts that add up to the cash-rounded payable (any cash rounds, 0019). */
+type Mode = "cash" | "upi" | "card" | "split";
 
-const EMPTY_NEW: NewCustomer = { name: "", sex: "female", age: "", phone: "", address: "" };
+const EMPTY_NEW: NewCustomer = { name: "", sex: "", age: "", phone: "", address: "" };
 const EMPTY_RX: RxDraft = { prescriberName: "", prescriberRegNo: "", prescriberAddress: "", rxDate: "", photo: null };
 /** "15/09/2026, 10:30", in the hospital's time whatever the desk machine's zone. */
 const soldOn = (iso: string): string => {
@@ -195,15 +200,34 @@ function RetailReturn({ onClose }: { onClose: () => void }): React.ReactElement 
   );
 }
 
-function annexOf(sale: WireRetailSale): WireLabel {
+/** The walk-in bill's annex: per line batch, expiry and maker; the licence and who sold it (spec #1046 D5). */
+export function annexOf(sale: WireRetailSale): WireLabel {
   return {
     dispenseNo: null, status: "sold", patient: { display: sale.patient.name, uhid: sale.patient.uhid }, handedOverAt: sale.soldAt,
     lines: sale.lines.map((l) => ({
       lineIdx: l.lineIdx, drug: l.drugName, strength: null, form: null, qtyBase: l.qtyBase, unit: l.baseUom, packs: null,
-      batchNo: l.batchNo, expiryDate: l.expiryDate, directions: "", substitutedFor: null,
+      batchNo: l.batchNo, expiryDate: l.expiryDate, directions: "", substitutedFor: null, manufacturer: l.manufacturer ?? null,
     })),
-    pharmacist: { name: sale.soldByName, council: null, registrationNo: sale.pharmacistRegNo },
+    pharmacist: { name: sale.pharmacist?.name ?? sale.soldByName, council: null, registrationNo: sale.pharmacist?.registrationNo ?? sale.pharmacistRegNo },
+    licence: sale.licence ?? null,
   };
+}
+
+/**
+ * Walk 2026-11-13 — "no drawer" was plain text: it is the way to the page that opens one (`/billing/session`, as the desk's
+ * chip). A plain link when the counter is rendered outside the router (a test harness), the router's navigation inside it.
+ */
+function DrawerLink(): React.ReactElement {
+  const { t } = useTranslation();
+  const router = useRouter({ warn: false });
+  return (
+    <a
+      href="/billing/session" className="pill gd" data-testid="retail-no-drawer"
+      onClick={(e) => { if (router === undefined) return; e.preventDefault(); void router.navigate({ to: "/billing/session" }); }}
+    >
+      {t("pharmacyDesk.header.noDrawer")}
+    </a>
+  );
 }
 
 /**
@@ -289,7 +313,7 @@ function ShelfSearch({ onAdd }: { onAdd: (entry: WireRetailShelfEntry) => void }
               onMouseEnter={() => setActive(i)}
             >
               <span className="rt-grow">
-                <span className="rt-strong">{f.brandName}</span> <span className="rt-muted">{f.strengthLabel ?? ""} {f.form}</span>
+                <span className="rt-strong">{f.brandName}</span> <span className="rt-muted">{strengthShown(f.strengthLabel) ?? ""} {f.form}</span>
               </span>
               {scheduled(f.scheduleFlag) && <span className="pill rd">{t("pharmacyRetail.schedule", { flag: f.scheduleFlag })}</span>}
               <span className={f.available === 0 ? "rt-muted mo" : "mo"}>{t("pharmacyRetail.available", { count: f.available, unit: f.baseUom })}</span>
@@ -398,6 +422,8 @@ export function PharmacyRetail(): React.ReactElement {
   const [rx, setRx] = useState<RxDraft>(EMPTY_RX);
   const [mode, setMode] = useState<Mode>("cash");
   const [tendered, setTendered] = useState("");
+  const [cashPart, setCashPart] = useState("");
+  const [upiPart, setUpiPart] = useState("");
   const [ref, setRef] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [sold, setSold] = useState<WireRetailSale | null>(null);
@@ -502,7 +528,7 @@ export function PharmacyRetail(): React.ReactElement {
   /* OWNER RULING 2026-09-30 — (amended) cash rounds to the nearest rupee, UPI and card are collected to the paisa. */
   const due = preview === null ? null
     : preview.byTender === undefined ? { netPayablePaise: preview.totals.netPayablePaise, roundingPaise: preview.totals.roundingPaise ?? 0 }
-      : mode === "cash" ? preview.byTender.cash : preview.byTender.digital;
+      : mode === "cash" || mode === "split" ? preview.byTender.cash : preview.byTender.digital;
   const payable = due?.netPayablePaise ?? 0;
   /* Spec #1023 — the pharmacy fee switch: a free sale takes no money. */
   const free = preview?.free === true;
@@ -510,6 +536,14 @@ export function PharmacyRetail(): React.ReactElement {
   const cashPaise = cashParse.ok ? cashParse.paise : undefined;
   /* A UPI or card payment is the bill's amount exactly; only cash is counted, and its change given. */
   const amountPaise = mode === "cash" ? (cashPaise ?? 0) : payable;
+  /* Spec #1046 D4 — the split's two parts, each positive, adding up to the payable exactly: no change on a split. */
+  const cashPartParse = parseRupees(cashPart);
+  const upiPartParse = parseRupees(upiPart);
+  const cashPartPaise = cashPartParse.ok ? (cashPartParse.paise ?? 0) : 0;
+  const upiPartPaise = upiPartParse.ok ? (upiPartParse.paise ?? 0) : 0;
+  const splitTenders = cashPartPaise > 0 && upiPartPaise > 0 && cashPartPaise + upiPartPaise === payable && ref.trim() !== ""
+    ? [{ mode: "cash" as const, amountPaise: cashPartPaise }, { mode: "upi" as const, amountPaise: upiPartPaise, refText: ref.trim() }]
+    : null;
 
   const sell = async (acknowledged = false): Promise<void> => {
     const who = customerBody(acknowledged);
@@ -524,7 +558,7 @@ export function PharmacyRetail(): React.ReactElement {
     try {
       const sale = await sellRetail({
         customer: who, lines: cartLines(), ...(prescription === undefined ? {} : { prescription }),
-        tenders: free ? [] : [{ mode, amountPaise, ...(ref.trim() === "" ? {} : { refText: ref.trim() }) }],
+        tenders: free ? [] : mode === "split" ? (splitTenders ?? []) : [{ mode, amountPaise, ...(ref.trim() === "" ? {} : { refText: ref.trim() }) }],
         ...(!free && mode === "cash" && amountPaise > payable ? { changeGivenPaise: amountPaise - payable } : {}),
         ...(discount === null ? {} : {
           discount: { kind: discount.kind, value: discount.value, reason: discount.reason, ...(discount.approvalId === null ? {} : { approvalId: discount.approvalId }) },
@@ -544,7 +578,7 @@ export function PharmacyRetail(): React.ReactElement {
 
   const reset = (): void => {
     setCustomer(null); setNewDraft(EMPTY_NEW); setRegistering(false); setMatches(null); setCart([]); setPreview(null);
-    setRx(EMPTY_RX); setMode("cash"); setTendered(""); setRef(""); setError(null); setSold(null); setSaleKey(newIdempotencyKey());
+    setRx(EMPTY_RX); setMode("cash"); setTendered(""); setCashPart(""); setUpiPart(""); setRef(""); setError(null); setSold(null); setSaleKey(newIdempotencyKey());
     setDiscount(null); setCartId(newIdempotencyKey()); setBillMenu(false); setDiscountSheet(false);
   };
 
@@ -604,10 +638,10 @@ export function PharmacyRetail(): React.ReactElement {
   const rxFuture = rxIso !== null && rxIso > todayIst();
   const rxComplete = rx.prescriberName.trim() !== "" && rx.prescriberRegNo.trim() !== "" && rx.prescriberAddress.trim() !== ""
     && rxIso !== null && !rxFuture && rx.photo !== null;
-  const newValid = newDraft.name.trim() !== "" && (newDraft.phone === "" || /^[6-9]\d{9}$/.test(newDraft.phone)) && (newDraft.age === "" || /^\d{1,3}$/.test(newDraft.age));
+  const newValid = newDraft.name.trim() !== "" && newDraft.sex !== "" && (newDraft.phone === "" || /^[6-9]\d{9}$/.test(newDraft.phone)) && (newDraft.age === "" || /^\d{1,3}$/.test(newDraft.age));
   const blocked = preview?.checks !== null && preview?.checks !== undefined
     && (preview.checks.allergies.length > 0 || preview.checks.interactions.some((i) => i.severity === "severe"));
-  const moneyOk = preview !== null && (free || (mode === "cash" ? cashPaise !== undefined && cashPaise >= payable : ref.trim() !== ""));
+  const moneyOk = preview !== null && (free || (mode === "cash" ? cashPaise !== undefined && cashPaise >= payable : mode === "split" ? splitTenders !== null : ref.trim() !== ""));
   const discountReady = discount === null || approval.status === "none" || approval.status === "granted";
   const canSell = !shut && !busy && customer !== null && preview !== null && (!preview.prescriptionRequired || rxComplete) && moneyOk && !blocked && discountReady;
   const byIdx = new Map((preview?.lines ?? []).map((l) => [l.lineIdx, l] as const));
@@ -624,7 +658,7 @@ export function PharmacyRetail(): React.ReactElement {
             : customer === null ? t("pharmacyRetail.why.customer")
               : blocked ? t("pharmacyRetail.why.blocked")
                 : preview.prescriptionRequired && !rxComplete ? t("pharmacyRetail.why.rx")
-                  : !moneyOk ? (mode === "cash" ? t("pharmacyRetail.why.cash", { amount: rupees(payable) }) : t("pharmacyRetail.why.ref"))
+                  : !moneyOk ? (mode === "cash" ? t("pharmacyRetail.why.cash", { amount: rupees(payable) }) : mode === "split" ? t("pharmacyRetail.why.split", { amount: rupees(payable) }) : t("pharmacyRetail.why.ref"))
                     : null;
 
   const stepLabel = [t("pharmacyRetail.step.medicines"), t("pharmacyRetail.step.prescription"), t("pharmacyRetail.step.bill")];
@@ -650,7 +684,7 @@ export function PharmacyRetail(): React.ReactElement {
           {drawer.isPending ? null : drawer.data?.session?.status === "open" ? (
             <span className="pill">{t("pharmacyDesk.header.drawerOpen", { float: rupees(drawer.data.session.openingFloatPaise) })}</span>
           ) : (
-            <span className="pill gd">{t("pharmacyDesk.header.noDrawer")}</span>
+            <DrawerLink />
           )}
           <span className="pill">PHARM-RETAIL</span>
           <div className="rt-grow" />
@@ -674,13 +708,14 @@ export function PharmacyRetail(): React.ReactElement {
               </div>
             )}
             {customer === null && registering && (
-              <form className="rt-stack" onSubmit={(e) => { e.preventDefault(); if (newValid) setCustomer({ kind: "new", draft: newDraft }); }}>
+              <form className="rt-stack" onSubmit={(e) => { e.preventDefault(); if (newValid && newDraft.sex !== "") setCustomer({ kind: "new", draft: { ...newDraft, sex: newDraft.sex } }); }}>
                 <label className="rt-field"><span className="tag">{t("pharmacyRetail.name")}</span>
                   <input className="in" aria-label={t("pharmacyRetail.name")} value={newDraft.name} onChange={(e) => setNewDraft({ ...newDraft, name: e.target.value })} autoFocus />
                 </label>
                 <div className="rt-grid2">
                   <label className="rt-field"><span className="tag">{t("pharmacyRetail.sex")}</span>
                     <select className="in" aria-label={t("pharmacyRetail.sex")} value={newDraft.sex} onChange={(e) => setNewDraft({ ...newDraft, sex: e.target.value as NewCustomer["sex"] })}>
+                      <option value="" disabled>{t("pharmacyRetail.sexChoose")}</option>
                       <option value="female">{t("pharmacyRetail.sex_female")}</option>
                       <option value="male">{t("pharmacyRetail.sex_male")}</option>
                       <option value="other">{t("pharmacyRetail.sex_other")}</option>
@@ -793,7 +828,7 @@ export function PharmacyRetail(): React.ReactElement {
                               return (
                                 <tr key={`${c.entry.itemId}-${String(i)}`} data-testid={`cart-${String(i)}`}>
                                   <td>
-                                    <span className="rt-strong">{c.entry.brandName}</span> <span className="rt-muted">{c.entry.strengthLabel ?? ""} {c.entry.form}</span>
+                                    <span className="rt-strong">{c.entry.brandName}</span> <span className="rt-muted">{strengthShown(c.entry.strengthLabel) ?? ""} {c.entry.form}</span>
                                     {scheduled(c.entry.scheduleFlag) ? <> <span className="pill rd">{t("pharmacyRetail.schedule", { flag: c.entry.scheduleFlag })}</span></> : null}
                                     <CartShelf itemId={c.entry.itemId} idx={i} />
                                   </td>
@@ -895,7 +930,7 @@ export function PharmacyRetail(): React.ReactElement {
                       <DiscountWait discount={discount} />
                       {free ? <p role="status" className="rt-strong" data-testid="retail-free">{t("pharmacyRetail.free")}</p> : <>
                       <div className="rt-seg" role="radiogroup" aria-label={t("pharmacyRetail.mode")}>
-                        {(["cash", "upi", "card"] as const).map((m) => (
+                        {(["cash", "upi", "card", "split"] as const).map((m) => (
                           <button key={m} type="button" role="radio" aria-checked={mode === m} className={mode === m ? "rt-segb on" : "rt-segb"} onClick={() => setMode(m)}>
                             {t(`pharmacyRetail.mode_${m}`)}
                           </button>
@@ -908,6 +943,18 @@ export function PharmacyRetail(): React.ReactElement {
                               value={tendered} onChange={(e) => setTendered(e.target.value)} />
                           </label>
                           <button type="button" className="sec" onClick={() => setTendered((payable / 100).toFixed(2))}>{t("pharmacyRetail.exact", { amount: rupees(payable) })}</button>
+                        </div>
+                      ) : mode === "split" ? (
+                        <div className="rt-row rt-end">
+                          <label className="rt-field"><span className="tag">{t("pharmacyRetail.cashPart")}</span>
+                            <input className="in mo rt-money" aria-label={t("pharmacyRetail.cashPart")} inputMode="decimal" value={cashPart} onChange={(e) => setCashPart(e.target.value)} />
+                          </label>
+                          <label className="rt-field"><span className="tag">{t("pharmacyRetail.upiPart")}</span>
+                            <input className="in mo rt-money" aria-label={t("pharmacyRetail.upiPart")} inputMode="decimal" value={upiPart} onChange={(e) => setUpiPart(e.target.value)} />
+                          </label>
+                          <label className="rt-field"><span className="tag">{t("pharmacyRetail.reference")}</span>
+                            <input className="in mo" aria-label={t("pharmacyRetail.reference")} value={ref} onChange={(e) => setRef(e.target.value)} />
+                          </label>
                         </div>
                       ) : (
                         <div className="rt-row rt-end">

@@ -282,6 +282,7 @@ describe("the bill rail and the hand-over (PD-6)", () => {
     renderWithProviders(<PharmacyDesk ticketId="d1" />);
     const rail = await screen.findByTestId("desk-bill");
     expect(await within(rail).findByTestId("desk-payable")).toHaveTextContent("₹45.00");
+    await userEvent.click(within(rail).getByRole("radio", { name: /^UPI/ })); // Cash is the default (owner 2026-11-13)
     expect(rail).toHaveTextContent("CGST (inside the MRP)");
     expect(within(rail).getByRole("button", { name: /Received ₹45.00/ })).toBeDisabled(); // no UTR yet
     await userEvent.type(within(rail).getByRole("textbox", { name: /UPI reference/ }), "425512345678");
@@ -358,7 +359,9 @@ describe("the bill rail and the hand-over (PD-6)", () => {
     }));
     renderWithProviders(<PharmacyDesk ticketId="d1" />);
     const rail = await screen.findByTestId("desk-bill");
-    const received = await within(rail).findByRole("button", { name: /Received ₹45.00/ });
+    await within(rail).findByRole("button", { name: /Received ₹45.00/ });
+    await userEvent.click(within(rail).getByRole("radio", { name: /^UPI/ })); // Cash is the default (owner 2026-11-13)
+    const received = within(rail).getByRole("button", { name: /Received ₹45.00/ });
     await userEvent.type(within(rail).getByRole("textbox", { name: /UPI reference/ }), "425512345678");
     await userEvent.click(received);
     expect(await within(rail).findByRole("alert")).toHaveTextContent(/cannot be charged twice/);

@@ -75,12 +75,22 @@ Every move is a compare-and-set on `pharmacy_dispenses.status` plus a workflow t
 - billed: `billDispense` calls `billing.issueInvoice` inside the same transaction (savepoint cast `tx as unknown as Db`).
 - handed_over: `handOverDispense` consumes the reservation, completes order items, writes `pharmacy_reg_h1` rows and
   the controlled register. Schedule H/H1 needs `pharmacy.dispense.scheduled`, a registered pharmacist (unless quick
-  desk) and an identity check (today's token or the phone's last four).
+  desk) and an identity check: today's token, the phone's last four, or *collected by* (self, or an attendant with
+  name and relation; `handover.ts` `HandoverIdentity`, #1046). Collected-by is refused on a ticket with a Schedule X
+  or NDPS line.
 - Entry paths: the `prescription.issued` consumer (idempotent on event id); the counter find (`rx1.`, `q1.`, `T-14`,
   UHID, name; a name never auto-selects); a paper prescription typed by the pharmacist (`paper-rx.ts`, writes a real
   `opd_prescriptions` row, opens a no-fee pharmacy visit).
-- Re-issue: one live row per (prescription, version) via `pharmacy_dispenses_live_rx_ux`; a newer version cancels only
-  older rows still `queued`; a claimed older version answers `prescription_superseded`.
+- Re-issue: one live row per (prescription, version) via `pharmacy_dispenses_live_rx_ux` (rows with `balance_of` null);
+  a newer version cancels only older rows still `queued`; a claimed older version answers `prescription_superseded`.
+- Balance ticket (#1046): `pick.ts` writes `owed_qty_base` on a line picked short; for `BALANCE_WINDOW_DAYS` (30) from
+  the prescription's first hand-over, `claim.ts` `openBalanceDispense` / `queue.ts` `enqueueBalanceDispense` create a
+  dispense with `balance_of` = the source, holding only owed lines (one live balance per source,
+  `pharmacy_dispenses_live_balance_ux`). Route `POST /pharmacy/dispenses/:id/balance`.
+- Bill seam: `bill.ts` passes `oneInvoicePerDocument` to `billing.issueInvoice`, which skips the FD-27
+  encounter + service check (`liveInvoiceCharging`); one bill per dispense is the picked→billed compare-and-set.
+- Printing: the desk that takes the money prints the bill (`POST …/print {documents}`); hand-over sends labels only.
+  `print.ts` heads the bill with the pharmacist's registration and the D.L. No. (`retail.ts` `licenceOnBill`).
 
 ### 4.2 Walk-in counter (`retail.ts`)
 Licence gate (`retail_licence_missing` / `_lapsed`, Form 20/21) -> cart (max 50 lines; Schedule X and every NDPS class
@@ -125,25 +135,18 @@ module has no view of either. Decision 0012: ward issue, ward returns, IP bill a
 - Schedule X is refused at every gate; NDPS stock lives only in PHARM-NDPS (`materials/controlled.ts`).
 
 ## 6. Traps (measured 2026-11-13; owed work is tracked as GitHub issues, not here)
-- H/H1 hand-over needs a token or the phone's last four (`handover.ts`, `identity_confirmation_required`). A paper
-  pharmacy visit has no token and a phone is optional at registration, so a paid ticket for a phone-less patient
-  cannot be handed over; the only exit is cancel + refund.
-- One dispense per prescription version, ever: `pharmacy_dispenses_live_rx_ux` excludes only `cancelled`, so a
-  `handed_over` row blocks a follow-on dispense ("rest tomorrow" balance). Partial pick with a reason works
-  (`isPartial`) but nothing records the owed balance.
-- The FD-27 duplicate-bill guard (`billing/invoices.ts` `liveInvoiceCharging`) is per encounter + service, and each
-  sale item is its own service. It bites when a re-issued prescription version on the SAME visit carries a medicine
-  already billed. A second paper prescription opens a new pharmacy visit (`paper-rx.ts`), so it escapes the guard.
+- An unclaimed balance ticket's queue row still lists every drug of the prescription, not only the owed ones.
 - `sweepExpiredPicks` spares a picked ticket while a discount or credit approval bound to it (subject = the dispense,
   same patient) is pending, and renews its hold through `materials.renewReservations` (#1048). An approval nobody
   decides holds the stock until it is decided or the pharmacist cancels. A ticket waiting only on the patient's cash
   is still cancelled at 30 minutes; redoing it mints a new P-number.
-- `declineLine` works only in claimed/verified; dropping one line at the bill means cancelling the ticket.
-- The desk prints the bill only after hand-over (`apps/web/src/screens/pharmacy-desk/paper.tsx`), so a patient who
-  has paid and waits holds no paper.
+- `declineLine` works in claimed, verified and picked (#1046); in picked it releases the line's reservations, and the
+  last line cancels the ticket. After `billed` only the return path remains.
 - The web mints a fresh idempotency key for each claim, verify and pick attempt; only bill and hand-over reuse a
   stable key (`apps/web/src/screens/pharmacy-desk/pharmacy-desk.tsx` `keyFor`).
-- Brand substitution on an H/H1 line needs only the patient's consent (`substitutable` excludes only Schedule X).
+- Brand swap on an H/H1 line needs the prescriber (0093, #1046): `verify.ts` `swapNeedsPrescriber`,
+  `authorisations.ts` `swapToAsk` (book `substitution`), refusal `substitution_needs_prescriber`. OTC keeps patient
+  consent. `auto-match.ts` filling a GENERIC line with a stocked brand is not a swap and needs no agreement.
 - `enterPaperDispense` (downtime) is not linked to the queued e-Rx ticket for the same prescription: double dispense.
 - `materials/grn.ts`: no edit or cancel of a captured GRN (captured GRNs also count in PO headroom);
   `findOrCreateBatch` throws `batch_mismatch` when the same batch arrives with a different expiry day or MRP (GRN date
@@ -163,11 +166,10 @@ module has no view of either. Decision 0012: ward issue, ward returns, IP bill a
   NDPS class instead, so both must be classified before stock goes in.
 - An item with no GST slab sells as exempt (`gstCategoryFor(null)`); only standup row `pharmacy_gst_slab_set` notices.
 - `listQueue` has no limit; untouched tickets stay `QUEUED_CARRY_DAYS` (3) and every desk polls it.
-- The walk-in screen takes one tender only; the desk's split is cash + UPI only; UPI has no pending state.
+- The desk's split is cash + UPI only; the walk-in counter takes cash + UPI (#1046); UPI has no pending state.
 - `GET /pharmacy/retail/sales` omits `netPaise` for a caller who is collections-blind (`collectionsBlind`, as
   `summary.ts` `counterSummaryFor` does; #1048). Amounts still reach a seller through the sale detail, the list's
   Print bill and the downtime list.
-- No bill prints the drug licence number; the server bill (`print.ts`) omits batch and expiry.
 - `copilot-tools.ts` `stock_on_shelf` reads PHARM-OPD only.
 - The store is a constant, not a parameter: `claimDispense` and `planOpeningRows` use `OPD_PHARMACY_STORE_CODE`
   although `pharmacy_dispenses.store_resource_id` exists.

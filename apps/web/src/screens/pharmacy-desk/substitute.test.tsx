@@ -45,6 +45,8 @@ function dispense(status: string, lines: WireDispenseLine[]): WireDispense {
     patient: { id: "p", uhid: "U003", name: "Shanti Devi", alias: null, restricted: false }, allergies: [], lines,
   };
 }
+/** 0093 — the patient's consent alone is the rule for an OTC line; a Schedule H/H1 swap also waits for the prescriber. */
+const OTC: Partial<WireDispenseLine> = { scheduleFlag: "OTC", orderedMedicine: { ...AMLONG, scheduleFlag: "OTC" }, dispensedMedicine: { ...AMLONG, scheduleFlag: "OTC" } };
 const CLEAR = { verdict: "clear", blocks: [] };
 const ALTS = [
   { medicineId: "m-amlodac", brandName: "Amlodac 5", strengthLabel: "5 mg", form: "tablet", itemId: "it-ad", itemCode: "AMLD005", available: 120, check: CLEAR },
@@ -64,8 +66,8 @@ describe("give something else for this line (PD-5)", () => {
   beforeEach(() => { setToken("t"); navigate.mockReset(); resetDeskLog(); });
   afterEach(() => { vi.unstubAllGlobals(); });
 
-  it("out of stock → an equivalent with CONSENT → the check is told the substitute and the consent", async () => {
-    let current = dispense("claimed", [amlongLine()]);
+  it("out of stock → an equivalent with CONSENT → the check is told the substitute and the consent (an OTC line)", async () => {
+    let current = dispense("claimed", [amlongLine(OTC)]);
     mockRoutes(base(() => current, {
       "POST /api/pharmacy/dispenses/d1/verify": () => { current = dispense("verified", current.lines); return { status: 201, body: current }; },
       "POST /api/pharmacy/dispenses/d1/pick": () => ({ status: 201, body: dispense("picked", current.lines) }),
@@ -102,6 +104,20 @@ describe("give something else for this line (PD-5)", () => {
     expect(sub).toHaveTextContent("Calpol 500");
     expect(sub).toHaveTextContent("instead of Crocin 500");
     expect(within(screen.getByTestId("desk-line-0")).queryByRole("button", { name: "give an equivalent" })).toBeNull();
+  });
+
+  /* WALK 2026-11-13 (k03) — "generic · consent taken · instead of <a long catalogue name>" ran past the card's edge. */
+  it("the 'generic · instead of' tag wraps inside the card: a long name never runs past its edge", async () => {
+    const LONG = { id: "m-pan", brandName: "Pantoprazole (as pantoprazole sodium) 40 mg gastro-resistant oral tablet", strengthLabel: "40 mg/", form: "tablet" };
+    const PAN = { id: "m-pan-b", brandName: "Pan (pantoprazole sodium) 40 mg gastro-resistant oral tablet", strengthLabel: "40 mg/", form: "tablet", scheduleFlag: "OTC" };
+    mockRoutes(base(() => dispense("picked", [amlongLine({
+      rxLine: { ...amlongLine().rxLine, drug: LONG.brandName }, orderedMedicine: LONG, dispensedMedicine: PAN, substitutionType: "generic",
+      batchId: "b", pickedBatch: { batchNo: "PANO1311", expiryDate: "2027-12-31" }, available: 10,
+    })])));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const sub = await screen.findByTestId("desk-line-0-sub");
+    const tag = within(sub).getByText(/instead of Pantoprazole/);
+    expect(tag).toHaveClass("pd-wrap");
   });
 
   it("E16 — a no-substitution line offers no equivalent, and says why", async () => {
@@ -145,8 +161,38 @@ describe("give something else for this line (PD-5)", () => {
     expect(within(sheet).getByRole("radio", { name: /Stamlo 5/ })).toBeEnabled();
   });
 
+  it("0093 — on a Schedule H line the swap waits for the prescriber: asked from ⋯, the tick opens once the doctor agrees", async () => {
+    let current = dispense("claimed", [amlongLine()]);
+    mockRoutes(base(() => current, {
+      "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: ME }, permissions: { hospital: ["pharmacy.dispense.place"], scoped: { department: {}, floor: {} } } } },
+      "POST /api/pharmacy/dispenses/d1/lines/0/authorisations": () => {
+        const agreed = { id: "a1", book: "substitution", about: "m-amlodac", status: "authorised" as const, requestNote: null, decisionReason: "same molecule", requestedAt: "2026-11-13T06:00:00.000Z", decidedAt: "2026-11-13T06:02:00.000Z" };
+        current = dispense("claimed", [amlongLine({ authorisations: [agreed] })]);
+        return { status: 201, body: agreed };
+      },
+      "POST /api/pharmacy/dispenses/d1/verify": () => { current = dispense("verified", current.lines); return { status: 201, body: current }; },
+      "POST /api/pharmacy/dispenses/d1/pick": () => ({ status: 201, body: dispense("picked", current.lines) }),
+    }));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const row = await screen.findByTestId("desk-line-0");
+    await userEvent.click(within(row).getByRole("button", { name: "give an equivalent" }));
+    const sheet = await screen.findByRole("dialog");
+    await userEvent.click(await within(sheet).findByRole("radio", { name: /Amlodac 5/ }));
+    await userEvent.click(within(sheet).getByRole("checkbox"));
+    await userEvent.click(within(sheet).getByRole("button", { name: /Put Amlodac 5/ }));
+    expect(within(row).getByTestId("desk-line-0-swap")).toHaveTextContent("the prescribing doctor must agree to Amlodac 5");
+    expect(within(row).getByRole("checkbox")).toBeDisabled();
+    await userEvent.click(within(row).getByRole("button", { name: /What else for Amlong 5/ }));
+    await userEvent.click(within(row).getByRole("button", { name: "Ask the prescribing doctor to agree to the swap" }));
+    await waitFor(() => expect(posted("/lines/0/authorisations")).toEqual([{ book: "substitution", about: "m-amlodac" }]));
+    expect(await within(row).findByText(/agreed to Amlodac 5/)).toBeInTheDocument();
+    await userEvent.click(within(row).getByRole("checkbox"));
+    await waitFor(() => expect(posted("/pick")).toHaveLength(1));
+    expect(posted("/verify")).toEqual([{ lines: [{ lineIdx: 0, qtyBase: 30, dispensedMedicineId: "m-amlodac", patientConsent: true }] }]);
+  });
+
   it("E14 — a substitute that trips the patient's allergy is stopped at the check, on its line", async () => {
-    const current = dispense("claimed", [amlongLine()]);
+    const current = dispense("claimed", [amlongLine(OTC)]);
     mockRoutes(base(() => current, {
       "POST /api/pharmacy/dispenses/d1/verify": {
         status: 409, body: { statusCode: 409, code: "allergy_block", message: "…", detail: { hits: [{ lineIdx: 0, substance: "amlodipine" }] } },
@@ -161,5 +207,18 @@ describe("give something else for this line (PD-5)", () => {
     await userEvent.click(within(sheet).getByRole("button", { name: /Put Amlodac 5/ }));
     await userEvent.click(within(row).getByRole("checkbox"));
     expect(await within(row).findByRole("alert")).toHaveTextContent(/allergy/i);
+  });
+
+  it("WALK 2026-11-13 — with nothing on the shelf to give instead, the sheet says so and offers no consent box and no 'Put it on the ticket'", async () => {
+    const current = dispense("claimed", [amlongLine(OTC)]);
+    mockRoutes(base(() => current, { "GET /api/pharmacy/dispenses/d1/lines/0/alternatives": { status: 200, body: { items: [] } } }));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const row = await screen.findByTestId("desk-line-0");
+    await userEvent.click(within(row).getByRole("button", { name: "give an equivalent" }));
+    const sheet = await screen.findByRole("dialog", { name: "Give something else for Amlong 5" });
+    expect(await within(sheet).findByRole("status")).toHaveTextContent("Nothing on this shelf is a generic equivalent of Amlong 5");
+    expect(within(sheet).queryByRole("checkbox")).toBeNull();
+    expect(within(sheet).queryByRole("button", { name: /Put/ })).toBeNull();
+    expect(within(sheet).getByRole("button", { name: /Cancel/ })).toBeInTheDocument();
   });
 });

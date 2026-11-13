@@ -112,7 +112,9 @@ describe("the desk's bill under the 2026-09-30 money rulings", () => {
     mockRoutes(base(() => current, { "POST /api/pharmacy/dispenses/d1/bill": () => { current = dispense("billed"); return { status: 201, body: current }; } }));
     renderWithProviders(<PharmacyDesk ticketId="d1" />);
     const rail = await screen.findByTestId("desk-bill");
-    expect(await within(rail).findByTestId("desk-payable")).toHaveTextContent("₹33.60");
+    await within(rail).findByTestId("desk-payable");
+    await userEvent.click(within(rail).getByRole("radio", { name: /^UPI/ })); // Cash is the default (owner 2026-11-13)
+    expect(within(rail).getByTestId("desk-payable")).toHaveTextContent("₹33.60");
     expect(within(rail).queryByTestId("desk-rounding")).toBeNull();
     await userEvent.click(within(rail).getByRole("radio", { name: /Cash/ }));
     expect(within(rail).getByTestId("desk-payable")).toHaveTextContent("₹34.00");
@@ -130,6 +132,7 @@ describe("the desk's bill under the 2026-09-30 money rulings", () => {
     renderWithProviders(<PharmacyDesk ticketId="d1" />);
     const rail = await screen.findByTestId("desk-bill");
     await within(rail).findByTestId("desk-payable");
+    await userEvent.click(within(rail).getByRole("radio", { name: /^UPI/ })); // Cash is the default (owner 2026-11-13)
     await userEvent.click(within(rail).getByTestId("desk-bill-menu"));
     await userEvent.click(within(rail).getByTestId("desk-discount-open"));
     const sheet = await screen.findByTestId("discount-sheet");
@@ -162,6 +165,7 @@ describe("the desk's bill under the 2026-09-30 money rulings", () => {
     renderWithProviders(<PharmacyDesk ticketId="d1" />);
     const rail = await screen.findByTestId("desk-bill");
     await within(rail).findByTestId("desk-payable");
+    await userEvent.click(within(rail).getByRole("radio", { name: /^UPI/ })); // Cash is the default (owner 2026-11-13)
     await userEvent.click(within(rail).getByTestId("desk-bill-menu"));
     await userEvent.click(within(rail).getByTestId("desk-discount-open"));
     const sheet = await screen.findByTestId("discount-sheet");

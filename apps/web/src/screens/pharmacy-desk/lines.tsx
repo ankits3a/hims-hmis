@@ -86,6 +86,16 @@ export function LineList({
       return pharmacyErrorText(e, t);
     }
   };
+  /* 0093 / spec #1046 D7 — a Schedule H/H1 brand swap is put to the prescriber; `about` is the substitute. */
+  const askSwap = async (lineIdx: number, medicineId: string): Promise<string | null> => {
+    try {
+      await askPrescriber(dispense.id, lineIdx, { book: "substitution", about: medicineId });
+      await qc.invalidateQueries({ queryKey: ["pharmacy", "dispense", dispense.id] });
+      return null;
+    } catch (e) {
+      return pharmacyErrorText(e, t);
+    }
+  };
   const place = async (itemId: string, location: string): Promise<string | null> => {
     try {
       await setShelfLocation(itemId, dispense.storeResourceId ?? "", location);
@@ -285,6 +295,8 @@ export function LineList({
             onPlace={canPlace && l.item !== null ? (location) => place(l.item!.id, location) : null}
             prescriberName={dispense.prescriberName ?? null}
             onAsk={canAsk ? (blocks, note) => askAbout(l.lineIdx, blocks, note) : null}
+            onAskSwap={canAsk ? (medicineId) => askSwap(l.lineIdx, medicineId) : null}
+            droppable={dispense.status === "picked" && l.status === "open"}
             steward={dispense.status === "claimed" ? steward.data?.find((s) => s.lineIdx === l.lineIdx) : undefined}
             onAskSteward={canAsk ? (input) => askStewardFor(l.lineIdx, input) : null}
             declining={declining === l.lineIdx}
@@ -409,7 +421,12 @@ type Note = { text: string; tone: "red" | "gold" | "green" | "dim"; testId?: str
 
 function LineRow({
   line, parts = [], tick, editable, busy, today, error, precheck, onPlace, prescriberName, onAsk, steward, onAskSteward, declining, onEdit, onToggleDecline, onDecline, onSubstitute, onResolve, onOpenBatch, onFocusLine, onNearMiss, onReaction,
+  onAskSwap = null, droppable = false,
 }: {
+  /** 0093 / spec #1046 D7 — ask the prescriber to agree to this line's Schedule H/H1 brand swap; null for a reader who may not ask. */
+  onAskSwap?: ((medicineId: string) => Promise<string | null>) | null;
+  /** Spec #1046 D2 — a collected line, not yet billed: ⋯ offers "Drop this line" with a reason. */
+  droppable?: boolean;
   line: WireDispenseLine;
   /** DESK FIXES 2026-09-30 — the further batches the pick split this line into (their own dispense lines, `splitFromLineIdx`). */
   parts?: readonly WireDispenseLine[];
@@ -452,6 +469,7 @@ function LineRow({
   const [asking, setAsking] = useState("");
   const [sheetError, setSheetError] = useState<string | null>(null);
   const [stewardAsk, setStewardAsk] = useState<{ indication: string; cultureSent: boolean; plannedDays: string }>({ indication: "", cultureSent: false, plannedDays: "" });
+  const [swapError, setSwapError] = useState<string | null>(null);
   const menuRef = useRef<HTMLSpanElement>(null);
 
   /* The menu closes on a click elsewhere, and Esc closes it without clearing the desk. */
@@ -483,7 +501,8 @@ function LineRow({
   const advice = editable && qty !== null && blocked === null && sub === null && res === null ? adviceFor(line, qty, today, tick?.batchId ?? null) : null;
   const partial = tick !== undefined && isPartial(line, tick);
   const declined = line.status === "declined";
-  const chipShown = line.pickedBatch != null || (advice !== null && advice.kind !== "none");
+  /* Walk 2026-11-13 — a line dropped at the bill keeps the batch its pick had held: it reads "declined" only, never also "given". */
+  const chipShown = !declined && (line.pickedBatch != null || (advice !== null && advice.kind !== "none"));
   const shelfBlock = blocked === "empty" || blocked === "not_stocked" || blocked === "not_saleable";
   /* The row's one control for a line the shelf cannot fill as written — the menu never draws it twice (walk finding). */
   const chooseRes = editable && blocked === "unresolved" && placeable(line);
@@ -496,6 +515,21 @@ function LineRow({
   const unasked = editable && precheck?.verdict === "blocked"
     ? precheck.blocks.filter((b) => !requests.some((a) => a.book === b.book && a.about === b.key && a.status === "pending"))
     : [];
+  /*
+    0093 / spec #1046 D7 — a brand swap on a Schedule H/H1 line waits for the prescriber; an OTC swap needs only the
+    patient. The request is about THIS substitute; a decline puts the line back on the brand written.
+  */
+  const scheduled = (f: string | null | undefined): boolean => f === "H" || f === "H1";
+  const swapNeedsDoctor = editable && sub !== null && (scheduled(line.scheduleFlag) || scheduled(given?.scheduleFlag));
+  const swapAsked = sub === null ? undefined : requests.filter((a) => a.book === "substitution" && a.about === sub.medicineId).at(-1);
+  const swapDeclined = swapNeedsDoctor && swapAsked?.status === "declined";
+  useEffect(() => {
+    if (swapDeclined) onEdit({ sub: null, ticked: false }, false);
+  }, [swapDeclined]); // eslint-disable-line react-hooks/exhaustive-deps
+  const askSwapNow = async (): Promise<void> => {
+    if (onAskSwap === null || sub === null) return;
+    setSwapError(await onAskSwap(sub.medicineId));
+  };
 
   /* The line's own money at today's shelf price: quantity × the SERVER's quote, and the rate beside it. */
   /* A split line is given as ONE prescription line: its batches' quantities together. */
@@ -510,6 +544,12 @@ function LineRow({
   /* ONE note: the most important thing there is to say about this line, and nothing when there is nothing. */
   const note: Note | null = (() => {
     if (error !== null) return { text: error, tone: "red", alert: true };
+    if (swapNeedsDoctor && sub !== null) {
+      if (swapError !== null) return { text: swapError, tone: "red", alert: true };
+      if (swapAsked?.status === "authorised") return { text: t("pharmacyDesk.swap.agreed", { doctor, brand: sub.brandName, reason: swapAsked.decisionReason ?? "" }), tone: "green", testId: "swap" };
+      if (swapAsked?.status === "pending") return { text: t("pharmacyDesk.swap.waiting", { doctor, brand: sub.brandName }), tone: "gold", testId: "swap" };
+      return { text: t("pharmacyDesk.swap.needed", { doctor, brand: sub.brandName }), tone: "gold", testId: "swap" };
+    }
     if (latest !== undefined) {
       const text = latest.status === "pending" ? t("pharmacyDesk.auth.waiting", { doctor })
         : latest.status === "authorised" ? t("pharmacyDesk.auth.authorised", { doctor, reason: latest.decisionReason ?? "" })
@@ -562,7 +602,9 @@ function LineRow({
 
   /* The ⋯ menu: every exception act that applies to this line, and only those. */
   type Item = { key: string; label: string; act: () => void; disabled?: boolean; kb?: string };
-  const items: Item[] = !editable ? [] : [
+  /* Spec #1046 D2 — at the bill a collected line has one exception: drop it, with a reason (the bill re-totals). */
+  const dropping = !editable && droppable;
+  const items: Item[] = !editable ? (dropping ? [{ key: "drop", label: t("pharmacyDesk.menu.drop"), act: () => { setWhy(""); setShortChoice(null); onToggleDecline(true); } }] : []) : [
     ...(onOpenBatch === null ? [] : [{ key: "batch", label: t("pharmacyDesk.menu.batch"), act: onOpenBatch, kb: "B" }]),
     ...(blocked === null ? [{ key: "qty", label: t("pharmacyDesk.menu.qty"), act: () => setSheet("qty") }] : []),
     ...(given !== null && !shelfBlock && sub === null && !recorded
@@ -573,6 +615,8 @@ function LineRow({
       { key: "unres", label: t("pharmacyDesk.res.undo"), act: () => onEdit({ res: null, ticked: false }, false) },
     ] : []),
     ...(onAsk !== null && unasked.length > 0 ? [{ key: "ask", label: t("pharmacyDesk.auth.ask", { doctor }), act: () => { setAsking(""); setSheetError(null); setSheet("ask"); }, disabled: busy }] : []),
+    ...(onAskSwap !== null && swapNeedsDoctor && swapAsked?.status !== "pending" && swapAsked?.status !== "authorised"
+      ? [{ key: "askSwap", label: t("pharmacyDesk.swap.ask", { doctor }), act: () => void askSwapNow(), disabled: busy }] : []),
     ...(onAskSteward !== null && steward !== undefined && steward.appointed && ["none", "rejected", "self_approved"].includes(steward.status)
       ? [{ key: "steward", label: t("pharmacyDesk.steward.ask"), act: () => { setStewardAsk({ indication: "", cultureSent: false, plannedDays: rx.durationDays == null ? "" : String(rx.durationDays) }); setSheetError(null); setSheet("steward"); }, disabled: busy }] : []),
     ...(onPlace === null ? [] : [{ key: "where", label: line.location == null ? t("pharmacyDesk.rack.ask") : t("pharmacyDesk.rack.change"), act: () => { setPlacing(line.location ?? ""); setSheetError(null); setSheet("where"); } }]),
@@ -612,7 +656,7 @@ function LineRow({
               type="checkbox"
               aria-label={t("pharmacyDesk.tickLabel", { line: label })}
               checked={tick?.ticked === true}
-              disabled={busy || blocked !== null || tick === undefined || (!tick.ticked && !canTick(line, tick))}
+              disabled={busy || blocked !== null || tick === undefined || (!tick.ticked && !canTick(line, tick)) || (swapNeedsDoctor && swapAsked?.status !== "authorised")}
               onChange={(e) => onEdit({ ticked: e.target.checked }, e.target.checked)}
               style={{ width: 21, height: 21, accentColor: "#0e6b4e", cursor: "pointer" }}
             />
@@ -646,7 +690,8 @@ function LineRow({
           ) : sub !== null || recorded ? (
             <span style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }} data-testid={`${id}-sub`}>
               <span style={{ fontSize: 13.5, fontWeight: 600 }}>{sub?.brandName ?? given.brandName}</span>
-              <span className="pill on">
+              {/* Walk 2026-11-13 — a long catalogue name ran this tag past the card's edge: `.pd-wrap` lets it wrap inside. */}
+              <span className="pill on pd-wrap">
                 {t("pharmacyDesk.generic")} · {t("pharmacyDesk.sub.insteadOf", { brand: sub !== null ? given.brandName : (line.orderedMedicine?.brandName ?? rx.drug) })}
               </span>
               {safetyPills(line, id, t)}
@@ -713,7 +758,7 @@ function LineRow({
         </span>
 
         <span ref={menuRef} style={{ width: 30, flexShrink: 0, position: "relative" }}>
-          {editable ? (
+          {editable || dropping ? (
             <button
               type="button"
               aria-label={t("pharmacyDesk.lineMenu", { line: label })}
@@ -868,8 +913,8 @@ function LineRow({
         </LineSheet>
       ) : null}
 
-      {editable && declining ? (
-        <LineSheet title={t("pharmacyDesk.declineTitle", { line: rx.drug })} onClose={() => onToggleDecline(false)}>
+      {(editable || dropping) && declining ? (
+        <LineSheet title={t(dropping ? "pharmacyDesk.dropTitle" : "pharmacyDesk.declineTitle", { line: rx.drug })} onClose={() => onToggleDecline(false)}>
           {substitutable(line) === false && rx.noSubstitution ? (
             <p style={{ margin: "0 0 10px 0", fontSize: 12, color: "var(--dim)" }}>{t("pharmacyDesk.sub.noSubstitution")}</p>
           ) : null}
@@ -882,21 +927,21 @@ function LineRow({
             onChange={(e) => setWhy(e.target.value)}
           />
           <span style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-            {(["notStocked", "outOfStock"] as const).map((k) => (
-              <button key={k} type="button" className="pill" data-testid={`${id}-why-${k}`} onClick={() => setWhy(t(`pharmacyDesk.short.reason.${k}`))}>
-                {t(`pharmacyDesk.short.reason.${k}`)}
+            {(dropping ? (["notWanted", "hasAtHome"] as const) : (["notStocked", "outOfStock"] as const)).map((k) => (
+              <button key={k} type="button" className="pill" data-testid={`${id}-why-${k}`} onClick={() => setWhy(t(`pharmacyDesk.${dropping ? "drop" : "short"}.reason.${k}`))}>
+                {t(`pharmacyDesk.${dropping ? "drop" : "short"}.reason.${k}`)}
               </button>
             ))}
           </span>
-          {(shortChoice ?? readsAsShortage(why)) || shortChoice === false ? (
+          {!dropping && ((shortChoice ?? readsAsShortage(why)) || shortChoice === false) ? (
             <label data-testid={`${id}-also-short`} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, fontSize: 12.5 }}>
               <input type="checkbox" checked={shortChoice ?? readsAsShortage(why)} onChange={(e) => setShortChoice(e.target.checked)} />
               {t("pharmacyDesk.short.alsoNote", { name: given?.brandName ?? rx.drug })}
             </label>
           ) : null}
           <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-            <button type="button" className="pri" style={{ flexGrow: 1 }} disabled={busy || why.trim() === ""} onClick={() => onDecline(why.trim(), shortChoice ?? readsAsShortage(why))}>
-              {t("pharmacyDesk.declineIt")}
+            <button type="button" className="pri" style={{ flexGrow: 1 }} disabled={busy || why.trim() === ""} onClick={() => onDecline(why.trim(), !dropping && (shortChoice ?? readsAsShortage(why)))}>
+              {t(dropping ? "pharmacyDesk.dropIt" : "pharmacyDesk.declineIt")}
             </button>
             <button type="button" className="sec" onClick={() => onToggleDecline(false)}>{t("pharmacyDesk.rack.cancel")}</button>
           </div>
