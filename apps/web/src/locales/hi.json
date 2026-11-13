@@ -3526,6 +3526,7 @@
     "qtyBase": "आधार मात्रा",
     "batchNo": "बैच",
     "expiry": "समाप्ति",
+    "expiryMonthUnreadable": "दवा की समाप्ति लेबल की तरह MM/YY में लिखें — \"{{typed}}\" कोई महीना नहीं है",
     "mrp": "MRP (₹)",
     "mrpUom": "MRP प्रति",
     "packPrice": "बिल पर एक {{pack}} का मूल्य (₹)",

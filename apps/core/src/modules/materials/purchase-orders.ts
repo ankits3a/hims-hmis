@@ -19,7 +19,7 @@ import {
   purchaseOrderSent, purchaseOrderSubmitted, purchaseOrderUpdated, stockLevelSet,
 } from "./events";
 import { assertNotMerged, withMergedAliases } from "./items";
-import { assertVendorPurchasable } from "./vendors";
+import { assertVendorPurchasable, supplierVendorsOnly } from "./vendors";
 import { contractRatesFor } from "./vendor-rates";
 import { requireStore } from "./stores";
 import type { Actor } from "@hmis/contracts";
@@ -876,6 +876,11 @@ export type LastPurchase = {
 /**
  * Each item's most recent PAID receipt (posted GRN, accepted, not free goods): who supplied it, in
  * what pack, at what rate. The agent's drafts are priced from it and addressed to that vendor.
+ *
+ * **From a SUPPLIER (2026-11-13).** The opening count and the rehearsal stock are GRNs too, under the
+ * `NON_SUPPLIER_VENDOR_CODES` vendors, and they usually land AFTER the last real purchase — so they
+ * became "the last purchase", and the next order went to the hospital's own shelf at the shelf's
+ * cost. They are not purchases; an item only ever counted on the shelf has none.
  */
 export async function lastPurchaseByItem(db: Db | Tx, itemIds: readonly string[]): Promise<Map<string, LastPurchase>> {
   const out = new Map<string, LastPurchase>();
@@ -890,6 +895,7 @@ export async function lastPurchaseByItem(db: Db | Tx, itemIds: readonly string[]
     .from(grnLines).innerJoin(grns, eq(grns.id, grnLines.grnId)).innerJoin(vendors, eq(vendors.id, grns.vendorId))
     .where(and(
       inArray(grnLines.itemId, readIds), eq(grns.status, "posted"), eq(grnLines.freeGoods, false), sql`${grnLines.qtyAcceptedBase} > 0`,
+      supplierVendorsOnly(),
     ))
     .orderBy(desc(grns.postedAt), desc(grns.grnNo));
   const packs = await db.select().from(itemUoms).where(inArray(itemUoms.itemId, readIds));
@@ -912,10 +918,13 @@ export async function lastPurchaseByItem(db: Db | Tx, itemIds: readonly string[]
   return out;
 }
 
-/** Active vendors as a picker needs them — for assigning an item with no history. Never the bank. */
+/**
+ * Active vendors as a picker needs them — for assigning an item with no history. Never the bank. Never the
+ * hospital's own opening or trial stock either (2026-11-13): nobody can be ordered from or quoted a rate there.
+ */
 export async function purchasableVendors(db: Db, actor: Actor): Promise<{ id: string; code: string; name: string }[]> {
   await requireRaiser(db, actor, "choosing a vendor");
   const rows = await db.select({ id: vendors.id, code: vendors.code, legal: vendors.legalName, trade: vendors.tradeName })
-    .from(vendors).where(eq(vendors.status, "active")).orderBy(asc(vendors.legalName)).limit(500);
+    .from(vendors).where(and(eq(vendors.status, "active"), supplierVendorsOnly())).orderBy(asc(vendors.legalName)).limit(500);
   return rows.map((r) => ({ id: r.id, code: r.code, name: r.trade ?? r.legal }));
 }

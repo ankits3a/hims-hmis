@@ -3526,6 +3526,7 @@
     "qtyBase": "Base qty",
     "batchNo": "Batch",
     "expiry": "Expiry",
+    "expiryMonthUnreadable": "Type a medicine's expiry as its label prints it, MM/YY — \"{{typed}}\" is not a month",
     "mrp": "MRP (₹)",
     "mrpUom": "MRP per",
     "packPrice": "Price of one {{pack}} on the bill (₹)",

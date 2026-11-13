@@ -329,6 +329,37 @@ describe("the GRN gate's rules (Plan 14 T6 / DD8)", () => {
     })).toEqual({ verdict: "reject", rule: "batch_frozen" });
   });
 
+  /**
+   * 2026-11-13 — near-expiry ROUTES a line; it does not end the gate. It used to return at rule 5, so
+   * a short-dated line was never asked for its MRP, its cost, its ceiling, its recall freeze or its
+   * consignment agreement — and a real shelf is mostly short-dated. Every rule runs, a hard reject
+   * wins, and `near_expiry` is the verdict only when nothing rejects the line.
+   */
+  it("near-expiry hides no hard rule: every rule after it runs, and a hard reject wins", () => {
+    // 126 days after the challan: inside the 183-day bound of a three-year drug.
+    const short = { expiryDate: "2026-12-31" };
+    expect(daysBetween(CHALLAN, short.expiryDate)).toBe(126);
+    expect(qcLine(ctx(), line(short))).toEqual({ verdict: "near_expiry", rule: "near_expiry" });
+    // rule 6
+    expect(qcLine(ctx(), line({ ...short, mrpPaise: null, mrpUom: null }))).toEqual({ verdict: "reject", rule: "mrp_required" });
+    expect(qcLine(ctx(), line({ ...short, mrpUom: "vial" }))).toEqual({ verdict: "reject", rule: "mrp_unconvertible" });
+    expect(qcLine(ctx(), line({ ...short, unitCostPaise: 851 }))).toEqual({ verdict: "reject", rule: "mrp_below_cost" });
+    // rule 7
+    expect(qcLine(ctx({ ceilingUnconvertible: true }), line(short))).toEqual({ verdict: "reject", rule: "mrp_unconvertible" });
+    expect(qcLine(ctx({ ceiling: { paise: 800, baseUnits: 1 } }), line(short))).toEqual({ verdict: "reject", rule: "mrp_above_ceiling" });
+    // rule 8
+    expect(qcLine(ctx({ batchFrozen: true }), line(short))).toEqual({ verdict: "reject", rule: "batch_frozen" });
+    // rule 9
+    expect(qcLine(ctx({ source: "consignment_challan", hasConsignmentAgreement: false }), line(short)))
+      .toEqual({ verdict: "reject", rule: "agreement_missing" });
+    // Every hard rule satisfied (a ceiling met exactly, an agreement on file): still routed for approval, never passed.
+    expect(qcLine(ctx({ source: "consignment_challan", ceiling: { paise: 850, baseUnits: 1 } }), line(short)))
+      .toEqual({ verdict: "near_expiry", rule: "near_expiry" });
+    // Rule 4 still comes first: an expired line is `expired`, whatever else is wrong with it.
+    expect(qcLine(ctx({ batchFrozen: true }), line({ expiryDate: CHALLAN, unitCostPaise: 851 })))
+      .toEqual({ verdict: "reject", rule: "expired" });
+  });
+
   it("daysBetween counts whole calendar days, across a month boundary and a leap day", () => {
     expect(daysBetween("2026-08-27", "2026-08-28")).toBe(1);
     expect(daysBetween("2026-08-31", "2026-09-01")).toBe(1);

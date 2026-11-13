@@ -15,6 +15,7 @@ import { MaterialsError } from "./errors";
 import { supplierBillAccepted, supplierBillCancelled, supplierBillDrafted, supplierBillMatched, supplierBillUpdated } from "./events";
 import { istDay } from "./grn";
 import { lineGstPaise, netRatePaise } from "./purchase-orders";
+import { supplierVendorsOnly } from "./vendors";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -769,7 +770,10 @@ export async function billDraftFromGrn(db: Db, actor: Actor, grnId: string, opts
 
 export type UnbilledGrn = { grnId: string; grnNo: string; vendorId: string; vendorName: string; postedAt: string; invoiceNo: string | null; poNo: string | null };
 
-/** Posted challans no live bill names yet — the office's "bills to match" card. Oldest first. */
+/**
+ * Posted challans no live bill names yet — the office's "bills to match" card. Oldest first. A GRN under the
+ * hospital's own opening or trial stock was never sold to it by anybody, so no bill will ever come (2026-11-13).
+ */
 export async function unbilledGrns(db: Db, actor: Actor, limit = 200): Promise<UnbilledGrn[]> {
   await requirePayablesReader(db, actor);
   const billed = db.select({ grnId: supplierBillLines.grnId }).from(supplierBillLines)
@@ -777,7 +781,7 @@ export async function unbilledGrns(db: Db, actor: Actor, limit = 200): Promise<U
   const rows = await db.select({ g: grns, vendorName: sql<string>`coalesce(${vendors.tradeName}, ${vendors.legalName})`, poNo: purchaseOrders.poNo })
     .from(grns).innerJoin(vendors, eq(vendors.id, grns.vendorId))
     .leftJoin(purchaseOrders, eq(purchaseOrders.id, grns.purchaseOrderId))
-    .where(and(eq(grns.status, "posted"), eq(grns.source, "challan"), notInArray(grns.id, billed)))
+    .where(and(eq(grns.status, "posted"), eq(grns.source, "challan"), notInArray(grns.id, billed), supplierVendorsOnly()))
     .orderBy(asc(grns.postedAt), asc(grns.grnNo)).limit(Math.min(limit, 500));
   return rows.map((r) => ({
     grnId: r.g.id, grnNo: r.g.grnNo, vendorId: r.g.vendorId, vendorName: r.vendorName, postedAt: r.g.postedAt?.toISOString() ?? "",

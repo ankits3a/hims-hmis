@@ -5,7 +5,7 @@ import { MON, seedPharmacyBase, stockIn } from "../../../test/helpers/pharmacy";
 import { permissionCheckFor, runTool } from "../../kernel/copilot/catalog";
 import { grantPermissionToRole } from "../../kernel/auth/permissions";
 import { withTx } from "../../kernel/db/client";
-import { grnLines, grns, purchaseOrders } from "../../kernel/db/schema";
+import { grnLines, grns, purchaseOrders, vendorItemRates } from "../../kernel/db/schema";
 import { activateVendor, addVendorDocument, registerVendor, setStockLevel, suspendVendor } from "../materials";
 import { pharmacyCopilotTools } from "./copilot-tools";
 import { officeToday } from "./office";
@@ -140,6 +140,33 @@ describe("purchase drafts (parity P2)", () => {
     const today = await officeToday(db, fx.pharmacist.actor, now);
     expect([today.drafts.length, today.awaitingYou.length, today.shortages.length, today.plan.orders]).toEqual([2, 0, 3, 0]);
     expect(await db.select().from(purchaseOrders).where(eq(purchaseOrders.status, "draft"))).toHaveLength(2);
+  });
+
+  /**
+   * 2026-11-13 — the opening count goes in AFTER the real purchases, under the OPENING-STOCK vendor, so it became
+   * every item's "last supplier": the agent addressed orders to the hospital's own shelf at the shelf's cost.
+   */
+  it("never drafts an order to the hospital's own shelf: opening stock is no supplier, by history, by rate or by hand", async () => {
+    await scenario();
+    const opening = await aVendor("OPENING-STOCK");
+    await bought(opening, fx.item.crocin, 999, new Date("2026-08-10T05:00:00Z"));
+    await bought(opening, fx.item.azithro, 999, new Date("2026-08-10T05:00:00Z"));
+    // A rate somebody recorded against it, cheaper than anybody's, is not a contract to order on either.
+    await db.insert(vendorItemRates).values({
+      id: newId(), vendorId: opening, itemId: fx.item.calpol, uom: "strip", multiplier: 10, ratePaise: 100, gstRateBps: 500,
+      validFrom: "2026-08-01", createdBy: HEAD.id,
+    });
+    const plan = await planPurchaseDrafts(db, now);
+    expect(plan.groups.map((g) => [g.vendorCode, g.lines.map((l) => [l.code, l.ratePaise, l.rateSource])])).toEqual([
+      ["BETA", [["CROC500", 2_600, "last"]]],
+      ["ACME", [["CALP500", 1_500, "last"]]],
+    ]);
+    // Azithro was only ever counted on the shelf: nobody to order it from yet.
+    expect(plan.unassigned.map((u) => [u.code, u.why, u.ratePaise, u.lastGrnNo])).toEqual([["AZEE500", "no_history", 0, null]]);
+    // …and a person cannot hand it to the shelf.
+    await expect(draftPurchaseOrders(db, fx.pharmacist.actor, now, [{ itemId: fx.item.azithro, vendorId: opening, ratePaise: 30_000 }]))
+      .rejects.toMatchObject({ code: "po_invalid" });
+    expect(await db.select().from(purchaseOrders)).toHaveLength(0);
   });
 
   it("only a person who may raise an order may press it", async () => {

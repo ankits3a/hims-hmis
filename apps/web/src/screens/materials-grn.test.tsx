@@ -296,7 +296,8 @@ describe("MaterialsGrn", () => {
     const user = userEvent.setup();
     await fillHeaderAndLine(user);
     expect(screen.getByLabelText(/^Challan date/)).toHaveAttribute("type", "date");
-    expect(screen.getByLabelText("Expiry")).toHaveAttribute("type", "date");
+    // 2026-11-13 — a medicine's expiry is its label's month (MM/YY), not a day; see the test below.
+    expect(screen.getByLabelText("Expiry")).not.toHaveAttribute("type", "date");
     expect(screen.getByLabelText("Unit").tagName).toBe("SELECT");
     expect(screen.getByLabelText("MRP per").tagName).toBe("SELECT");
 
@@ -311,6 +312,54 @@ describe("MaterialsGrn", () => {
     expect(sent.challanDate).toBe("2026-08-27");
     expect(sent.lines[0]).toMatchObject({ uom: "strip", unitCostPaise: 260 });
     expect(sent.lines[0]).not.toHaveProperty("packRupees");
+  });
+
+  /**
+   * 2026-11-13 — an Indian drug label prints MM/YYYY and means the month's last day, which is what the opening
+   * sheet stores. A date picker here sent whatever day was picked, so the same batch arrived as two expiries and
+   * the second delivery was refused as a batch mismatch. A medicine's expiry is typed as the label prints it;
+   * a reagent or a consumable keeps its date picker and its day.
+   */
+  it("a medicine's expiry is typed MM/YY and sent as the month's last day; another class keeps its date picker", async () => {
+    const GAUZE = { ...ITEMS[0], id: "it-2", code: "GAUZE", name: "Gauze roll", class: "consumable", formularyMedicineId: null };
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/materials/items": { status: 200, body: { items: [...ITEMS, GAUZE] } },
+      "GET /api/materials/items/it-2": { status: 200, body: { item: { ...GAUZE, uoms: [{ id: "u-roll", itemId: "it-2", uom: "box", toBaseMultiplier: 100 }], barcodes: [] } } },
+      "POST /api/materials/grns": { status: 201, body: { grnId: "g-1", grnNo: "GRN2608270001" } },
+      "GET /api/materials/grns/g-1": { status: 200, body: { grn: grnWith(null) } },
+    });
+    renderWithProviders(<MaterialsGrn />);
+    const user = userEvent.setup();
+    await fillHeaderAndLine(user);
+    const expiry = screen.getByLabelText("Expiry");
+    expect(expiry).toHaveAttribute("placeholder", "MM/YY");
+    expect(expiry).not.toHaveAttribute("type", "date");
+
+    // Unreadable: said in words, and nothing is sent.
+    await user.type(expiry, "13/28");
+    await user.click(screen.getByRole("button", { name: "Capture" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("13/28");
+    expect(bodiesOf("POST", "/materials/grns")).toHaveLength(0);
+
+    await user.clear(expiry);
+    await user.type(expiry, "06/28");
+    // A second line, a consumable: a date, kept to the day.
+    await user.click(screen.getByRole("button", { name: "Add line" }));
+    const second = (): HTMLElement => screen.getAllByLabelText("Item")[1]!;
+    await within(second()).findByRole("option", { name: "GAUZE · Gauze roll" });
+    await user.selectOptions(second(), "it-2");
+    await within(screen.getAllByLabelText("Unit")[1]!).findByRole("option", { name: "box (100 tablet)" });
+    await user.selectOptions(screen.getAllByLabelText("Unit")[1]!, "box");
+    await user.type(screen.getAllByLabelText("Quantity")[1]!, "2");
+    const gauzeExpiry = screen.getAllByLabelText("Expiry")[1]!;
+    expect(gauzeExpiry).toHaveAttribute("type", "date");
+    await user.type(gauzeExpiry, "2027-03-15");
+    await user.click(screen.getByRole("button", { name: "Capture" }));
+
+    await waitFor(() => { expect(bodiesOf("POST", "/materials/grns")).toHaveLength(1); });
+    const sent = bodiesOf("POST", "/materials/grns")[0] as { lines: { itemId: string; expiryDate?: string }[] };
+    expect(sent.lines.map((l) => [l.itemId, l.expiryDate])).toEqual([["it-1", "2028-06-30"], ["it-2", "2027-03-15"]]);
   });
 
   /** DD16's two worklists — once a second tab, now groups of the one page under the deliveries (B5: no tabs). */

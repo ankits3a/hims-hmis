@@ -186,6 +186,13 @@ describe("supplier bills, payables and payment runs (parity P3)", () => {
     expect(await unbilledGrns(db, pharmacist.actor)).toEqual([]);
   });
 
+  /** 2026-11-13 — the hospital's own opening (or trial) stock was never bought from anybody: no bill will ever come for it. */
+  it("an opening-stock or trial-stock GRN is never a challan awaiting a supplier's bill", async () => {
+    const real = await received(vendor, zero, 2, 10_000);
+    for (const code of ["OPENING-STOCK", "TRIAL-STOCK"]) await received(await aVendor(code), zero, 3, 10_000);
+    expect((await unbilledGrns(db, pharmacist.actor)).map((g) => g.grnId)).toEqual([real]);
+  });
+
   it("a line exactly 1% over or under matches; one paisa past 1% holds the bill, with the reason", async () => {
     // 10 strips at ₹250, GST nil: expected ₹2,500, tolerance ₹25 = 2,500 paise = ₹2.50 a strip.
     const up = await billed(await received(vendor, zero, 10, 25_000, { withPo: true }), "UP-1", { ratePaise: 25_250 });

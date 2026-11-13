@@ -126,6 +126,14 @@ export const BATCH_MANDATORY_CLASSES = ["drug", "consumable_dated", "reagent", "
  */
 export const MRP_MANDATORY_CLASSES = ["drug", "implant"] as const;
 
+/**
+ * DECIDED 2026-11-13 (not a ruling) — the classes whose expiry is a MONTH. An Indian drug label prints
+ * MM/YYYY and means the month's last day (`@hmis/contracts` `drug-expiry.ts`), so `grn.ts` stores a
+ * drug's expiry as month-end and treats two expiries in one month as the same batch. Reagents,
+ * consumables and implants keep the exact day their label prints. Read by `grn.ts`.
+ */
+export const EXPIRY_IS_A_MONTH_CLASSES = ["drug"] as const;
+
 /*
  * `MRP_MANDATORY_CLASSES` above and `TRANSIT_STORE_CODE` below are NOT in T2's enumerated Produces
  * list. They are here because DD8 rule 6 and DD9 each name a value that would otherwise be a
@@ -257,7 +265,9 @@ export const NEAR_EXPIRY_RETURN_DAYS = 90;
  * DECIDED (not a ruling): the vendor codes that are not suppliers — the hospital's own shelf at
  * go-live (`scripts/import-opening-stock.ts`) and the rehearsal stock (`scripts/load-trial-stock.ts`).
  * Their batches are shown as such on the expiry report and are never drafted onto a return: there is
- * nobody to send them back to. Read by `supplier-returns.ts`.
+ * nobody to send them back to. Read by `supplier-returns.ts`, and (2026-11-13) by `vendors.ts`
+ * `supplierVendorsOnly`, which keeps them out of the last purchase, the rate contracts, the vendors to
+ * buy from and the challans awaiting a bill.
  */
 export const NON_SUPPLIER_VENDOR_CODES = ["OPENING-STOCK", "TRIAL-STOCK"] as const;
 

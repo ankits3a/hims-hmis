@@ -1,14 +1,15 @@
-import { and, asc, eq, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, notInArray, or, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { requestApproval } from "../../kernel/approvals/requests";
 import { getApproval } from "../../kernel/approvals/worklist";
 import { vendorBankChanges, vendorDocuments, vendors } from "../../kernel/db/schema";
-import { BANK_CHANGE_COOLING_OFF_DAYS, BLACKLIST_REASONS, BLACKLIST_YEARS } from "./config";
+import { BANK_CHANGE_COOLING_OFF_DAYS, BLACKLIST_REASONS, BLACKLIST_YEARS, NON_SUPPLIER_VENDOR_CODES } from "./config";
 import { VENDOR_BANK_CHANGE_APPROVAL_TYPE } from "./approval-types";
 import { MaterialsError } from "./errors";
 import { vendorRegistered, vendorStatusChanged, vendorUpdated } from "./events";
 import type { BlacklistReason } from "./config";
+import type { SQL } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -552,6 +553,17 @@ export async function getBankChange(
 ): Promise<VendorBankChangeRow | undefined> {
   const rows = await db.select().from(vendorBankChanges).where(eq(vendorBankChanges.id, changeId));
   return rows[0];
+}
+
+/**
+ * 2026-11-13 — the WHERE clause that keeps only real suppliers: a `vendors` row whose code is NOT one of
+ * `NON_SUPPLIER_VENDOR_CODES` (the hospital's own shelf at go-live, the rehearsal stock). Purchasing reads —
+ * the last purchase, a vendor's rates, the challans awaiting a bill, the vendors to buy from — use it, so
+ * opening stock is never priced, ordered from or billed as if somebody had sold it to the hospital.
+ * Case-blind, as `supplierKindOf` is. The query must join `vendors`.
+ */
+export function supplierVendorsOnly(): SQL {
+  return notInArray(sql`upper(${vendors.code})`, [...NON_SUPPLIER_VENDOR_CODES]);
 }
 
 /**

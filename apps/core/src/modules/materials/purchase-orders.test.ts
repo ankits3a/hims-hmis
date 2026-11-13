@@ -14,7 +14,7 @@ import { captureGrn, postGrn, runGateQc } from "./grn";
 import { registerItem } from "./items";
 import {
   allowedReceiptBase, approvalTierFor, assertNotPoApprover, cancelPurchaseOrder, createPurchaseOrder, decidePurchaseOrder,
-  getPurchaseOrder, lastPurchaseByItem, lineGstPaise, onOrderAt, receivableLines, sendPurchaseOrder, setStockLevel,
+  getPurchaseOrder, lastPurchaseByItem, lineGstPaise, onOrderAt, purchasableVendors, receivableLines, sendPurchaseOrder, setStockLevel,
   submitPurchaseOrder, updatePurchaseOrder,
 } from "./purchase-orders";
 import { createStore } from "./stores";
@@ -362,5 +362,28 @@ describe("purchase orders (parity P2)", () => {
     await receive(keeper.actor, po2.id, [grnLine(crocin, 5, { batchNo: "B-BETA", unitCostPaise: 2_600 }), grnLine(crocin, 1, { batchNo: "B-FREE", unitCostPaise: 0, freeGoods: true })], otherVendor);
     const last = (await lastPurchaseByItem(db, [crocin])).get(crocin);
     expect(last).toMatchObject({ vendorId: otherVendor, vendorActive: true, uom: "strip", multiplier: 10, ratePaise: 26_000 });
+  });
+
+  /**
+   * 2026-11-13 — the hospital's own shelf is not a supplier. The opening count is booked as a GRN under the
+   * OPENING-STOCK vendor (rehearsal stock under TRIAL-STOCK), usually AFTER the last real purchase — so it
+   * became "the last purchase", and the next order was priced at the shelf's cost and addressed to the shelf.
+   */
+  it("the last purchase skips the hospital's own opening and trial stock, and they are not vendors to buy from", async () => {
+    const first = await approvedOrder([line(crocin, { qtyPacks: 10 })]);
+    await receive(keeper.actor, first, [grnLine(crocin, 10, { unitCostPaise: 2_400 })]);
+    for (const code of ["OPENING-STOCK", "TRIAL-STOCK"]) {
+      const own = await aVendor(code);
+      for (const itemId of [crocin, gauze]) {
+        const { grnId } = await capture(keeper.actor, null, [grnLine(itemId, 3, { batchNo: `B-${code}`, unitCostPaise: 900 })], own);
+        await withTx(db, (tx) => runGateQc(tx, pharmacist.actor, grnId));
+        await withTx(db, (tx) => postGrn(tx, pharmacist.actor, grnId, at(40)));
+      }
+    }
+    const last = await lastPurchaseByItem(db, [crocin, gauze]);
+    expect(last.get(crocin)).toMatchObject({ vendorId: vendor, ratePaise: 24_000 });
+    // Gauze was only ever counted on the shelf: it has no purchase at all.
+    expect(last.has(gauze)).toBe(false);
+    expect((await purchasableVendors(db, pharmacist.actor)).map((v) => v.code).sort()).toEqual(["ACME", "BETA"]);
   });
 });

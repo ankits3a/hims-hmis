@@ -1,5 +1,6 @@
 import {
-  contractRatesFor, createPurchaseOrder, findStoreByCode, getVendor, itemsByIds, lastPurchaseByItem, lineGstPaise, uomsByItems, vendorRates,
+  MaterialsError, contractRatesFor, createPurchaseOrder, findStoreByCode, getVendor, itemsByIds, lastPurchaseByItem, lineGstPaise,
+  supplierKindOf, uomsByItems, vendorRates,
 } from "../materials";
 import { OPD_PHARMACY_STORE_CODE, PURCHASE_DEFAULT_LEAD_DAYS, istDateOf } from "./config";
 import { PharmacyError } from "./errors";
@@ -169,11 +170,21 @@ export async function planPurchaseDrafts(db: Db, now: Date = new Date()): Promis
  * The person's "make the drafts". `assign` gives an unassigned item a vendor (and, since it has no
  * last rate, optionally a rate per pack); an unassigned item left out stays off every draft.
  * Returns the drafts written — none when the plan is empty.
+ *
+ * Never to the hospital's own opening or trial stock (2026-11-13): the plan never addresses a line
+ * there (materials' purchasing reads skip those vendors), and a person handing an item to one is
+ * refused before any draft is written.
  */
 export async function draftPurchaseOrders(
   db: Db, actor: Actor, now: Date = new Date(),
   assign: readonly { itemId: string; vendorId: string; ratePaise?: number }[] = [],
 ): Promise<PoView[]> {
+  for (const vendorId of new Set(assign.map((a) => a.vendorId))) {
+    const v = await getVendor(db, vendorId);
+    if (v !== undefined && supplierKindOf(v) !== "supplier") {
+      throw new MaterialsError("po_invalid", `${v.tradeName ?? v.legalName} is the hospital's own stock, not a supplier — choose the supplier to order from`, { vendorId });
+    }
+  }
   const plan = await planPurchaseDrafts(db, now);
   const byVendor = new Map<string, DraftLine[]>(plan.groups.map((g) => [g.vendorId, [...g.lines]]));
   for (const a of assign) {

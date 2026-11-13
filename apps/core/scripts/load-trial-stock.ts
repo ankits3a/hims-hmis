@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { monthEndOf } from "@hmis/contracts";
 import { createDb, withTx } from "../src/kernel/db/client";
 import { requireEnv } from "../src/kernel/config";
 import {
@@ -34,6 +35,8 @@ import type { Db, Tx } from "../src/kernel/db/client";
  * Every active sale item at PHARM-OPD gets two or three batches:
  *   A  expires 60–90 days out, so FEFO has something to pick first and the near-expiry colour shows;
  *   B  6–15 months out;   C  15–24 months out (two items in three).
+ * Every expiry is a month's last day, as a drug label means it and as the GRN keeps a drug's (2026-11-13);
+ * A is the month-end on or after day 60, which is never past day 90.
  * Every seventh item is deliberately SHORT (one pack in A and B, no C), so a short-stock line is walked.
  *
  * Batch A comes in on a challan dated 150 days ago. QC rule 5 (O-2) sends a line whose expiry is under
@@ -127,10 +130,10 @@ export async function planTrialStock(db: Db, now: Date, dpco: readonly DpcoRow[]
       if (short) shortItems += 1;
       const packs = (lo: number, hi: number, salt: string): number => (short ? 1 : lo + h(`${item.code}${salt}`, hi - lo + 1));
       const line = (suffix: string, expiry: Date, qty: number): TrialLine => ({
-        itemId: item.id, code: item.code, name: item.name, batchNo: `${TRIAL_BATCH_PREFIX}${item.code}-${suffix}`, expiryDate: istDay(expiry),
+        itemId: item.id, code: item.code, name: item.name, batchNo: `${TRIAL_BATCH_PREFIX}${item.code}-${suffix}`, expiryDate: monthEndOf(istDay(expiry))!,
         uom, qtyInUom: qty, mrpPaise: mrp, mrpUom: uom, unitCostPaise: cost,
       });
-      aged.push(line("A", addDays(now, 60 + h(`${item.code}A`, 31)), packs(2, 5, "A")));
+      aged.push(line("A", addDays(now, 60), packs(2, 5, "A")));
       fresh.push(line("B", addDays(now, 183 + h(`${item.code}B`, 275)), packs(5, 15, "B")));
       if (!short && h(`${item.code}C`, 3) !== 0) fresh.push(line("C", addDays(now, 457 + h(`${item.code}C`, 273)), packs(5, 15, "C")));
     }
