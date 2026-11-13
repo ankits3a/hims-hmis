@@ -74,8 +74,10 @@ describe("stock entry on screen — the grid, the brand search and the new drug"
 
     const rows = [row(), row({ itemId: fx.item.calpol, batch: "K1", packSize: "15", mrpPerPack: "35.50", ratePerPack: "", freePacks: "1", rack: "B2" })];
     const plan = await planOpeningGrid(db, rows, now);
-    expect(plan).toMatchObject({ refusals: 0, newUoms: 1, units: 30 + 60, zeroCost: 1 });
-    expect(plan.rows[1]).toMatchObject({ uom: "strip15", newUom: true });
+    // #1047 / 0093: the blank rate is no longer a zero cost — it is the estimate (₹35.50 ÷ 1.12 × 0.8 = ₹25.35 a strip
+    // of 15, 169 paise a tablet), flagged; `zeroCost` counts only a typed 0.
+    expect(plan).toMatchObject({ refusals: 0, newUoms: 1, units: 30 + 60, zeroCost: 0, estimated: 1 });
+    expect(plan.rows[1]).toMatchObject({ uom: "strip15", newUom: true, estimatedCost: true, costPerBasePaise: 169 });
     const done = await captureOpeningStock(db, fx.incharge.actor, plan, now);
     expect(done).toMatchObject({ uomsAdded: 1, vendorCreated: true, racksSet: 1 });
     expect(done.captured).toHaveLength(1);

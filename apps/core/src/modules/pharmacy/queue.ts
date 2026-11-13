@@ -8,7 +8,7 @@ import { recordPhiAccess } from "../../kernel/phi/audit";
 import { withTx } from "../../kernel/db/client";
 import { counsellingByMedicine, medicinesByIds, saltsByIds, unreviewedSaltIds } from "../formulary";
 import type { Counselling } from "../formulary";
-import { availableQty, getBatch, itemsByIds, itemUomRows, sellableBatchesByItem } from "../materials";
+import { availableQty, getBatch, itemsByIds, sellableBatchesByItem, uomsByItems } from "../materials";
 import { getPatient, getPatientSummaries, listAllergies } from "../patients";
 import { istDateOf } from "./config";
 import { controlledStore, controlOf } from "./controlled";
@@ -249,7 +249,8 @@ export type DispenseLineView = {
   orderedMedicine: { id: string; brandName: string; strengthLabel: string | null; form: string } | null;
   dispensedMedicine: { id: string; brandName: string; strengthLabel: string | null; form: string; scheduleFlag: string | null } | null;
   /** GAP CLOSURE A2 — `lasa` and `highAlert` are the item master's NABH safety flags, shown on the line. `lasaNote` names the look-alikes. */
-  item: { id: string; code: string; name: string; baseUom: string; uoms: UomRow[]; lasa: boolean; highAlert: boolean; lasaNote: string | null } | null;
+  /** `uoms` carry `isIssueUom` (#1047): the desk reads the counter pack from them by the one rule (`counterPackOf`). */
+  item: { id: string; code: string; name: string; baseUom: string; uoms: (UomRow & { isIssueUom: boolean })[]; lasa: boolean; highAlert: boolean; lasaNote: string | null } | null;
   /**
    * OWNER 2026-10-02 — what to tell the patient about the medicine the counter is GIVING (the substitute's, not
    * the ordered brand's): the how-to-take line of its generic's REVIEWED monograph. Null when the product has
@@ -485,11 +486,11 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
     const dm = l.dispensedMedicineId === null ? undefined : medicines.get(l.dispensedMedicineId);
     const item = l.itemId === null ? undefined : items.get(l.itemId);
     const picked = l.batchId === null ? undefined : await getBatch(db, l.batchId);
-    let uoms: UomRow[] = [];
+    let uoms: (UomRow & { isIssueUom: boolean })[] = [];
     let saleable = false;
     let available: number | null = null;
     if (item !== undefined) {
-      uoms = await itemUomRows(db, item.id);
+      uoms = (await uomsByItems(db, [item.id])).get(item.id) ?? [];
       const sale = await getSaleItem(db, item.id);
       saleable = sale !== undefined && sale.active;
       const store = storeOf(item.id);

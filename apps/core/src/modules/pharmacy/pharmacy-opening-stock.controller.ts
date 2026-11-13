@@ -1,14 +1,20 @@
 import { Body, Controller, Get, Inject, Param, Post, Query } from "@nestjs/common";
 import { z } from "zod";
 import { DB } from "../../kernel/tokens";
+import { hasPermission } from "../../kernel/auth/permissions";
+import { SodViolationError } from "../../kernel/auth/sod";
+import { assertNotPoApprover } from "../materials";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
-import { idSchema, parsed, toHttp } from "./pharmacy-http";
-import { PACK_TYPES, captureOpeningStock, openingAuthority, planOpeningGrid, planOpeningStock, readOpeningSheet } from "./opening-stock";
+import { httpError, idSchema, parsed, toHttp } from "./pharmacy-http";
+import {
+  PACK_TYPES, captureOpeningStock, captureSupplierInvoice, invoiceStores, openingAuthority, planOpeningGrid, planOpeningStock,
+  planSupplierInvoice, readOpeningSheet,
+} from "./opening-stock";
 import { createStockDrug, stockEntryItems, stockEntryMedicine, stockEntrySuppliers } from "./stock-drug";
 import type { StockEntryItem } from "./stock-drug";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
-import type { OpeningAuthority, OpeningGrnState, OpeningPlan } from "./opening-stock";
+import type { InvoicePlan, OpeningAuthority, OpeningGrnState, OpeningPlan, OpeningRow } from "./opening-stock";
 import { importPriceList, matchPriceList } from "./price-list-import";
 import type { ImportResult, MatchedRow } from "./price-list-import";
 
@@ -19,13 +25,20 @@ const sheetBody = z.object({ content: z.string().min(1).max(990_000) });
  * planner reads a typo exactly as it reads one in a CSV (`planOpeningGrid`).
  */
 const cell = z.string().max(64);
-const gridBody = z.object({
-  rows: z.array(z.object({
-    itemId: idSchema, batch: cell, expiry: cell, mrpPerPack: cell, packSize: cell, packs: cell,
-    freePacks: cell.optional(), ratePerPack: cell.optional(), discountPct: cell.optional(), packType: cell.optional(),
-    boxes: cell.optional(), packsPerBox: cell.optional(),
-    rack: z.string().max(200).optional(), supplier: z.string().max(200).optional(),
-  })).min(1).max(2000),
+const gridRow = z.object({
+  itemId: idSchema, batch: cell, expiry: cell, mrpPerPack: cell, packSize: cell, packs: cell,
+  freePacks: cell.optional(), ratePerPack: cell.optional(), discountPct: cell.optional(), packType: cell.optional(),
+  boxes: cell.optional(), packsPerBox: cell.optional(),
+  rack: z.string().max(200).optional(), supplier: z.string().max(200).optional(),
+});
+const gridBody = z.object({ rows: z.array(gridRow).min(1).max(2000) });
+/** #1047 — the grid in "Supplier invoice" mode: the invoice's header and its rows (rack and supplier are the opening count's). */
+const invoiceBody = z.object({
+  header: z.object({
+    vendorId: z.string().max(64).nullable(), invoiceNo: z.string().max(64), invoiceDate: z.string().max(10),
+    purchaseOrderId: z.string().max(64).nullish(), storeResourceId: z.string().max(64).nullable(), rateIncludesGst: z.boolean().optional(),
+  }),
+  rows: z.array(gridRow.omit({ rack: true, supplier: true })).min(1).max(2000),
 });
 /** Either a sheet or the grid — one route, one judgement. */
 const entryBody = z.union([sheetBody, gridBody]);
@@ -37,31 +50,58 @@ const newDrugBody = z.object({
   storage: z.enum(["ambient", "cold_2_8"]),
 });
 
+type RowView = {
+  line: number; brand: string; itemCode: string | null; itemName: string | null; batch: string; expiryDate: string;
+  packs: number; packSize: number; uom: string | null; newUom: boolean; near: boolean; mrpPaise: number;
+  costPerBasePaise: number; rack: string; reasons: string[];
+  freePacks: number; ratePaise: number; discountBps: number;
+  /** #1047 / 0093 — the cost is the estimate (no rate given). */
+  estimatedCost: boolean;
+};
+
 export type OpeningCheckView = {
   fileHash: string;
-  rows: {
-    line: number; brand: string; itemCode: string | null; itemName: string | null; batch: string; expiryDate: string;
-    packs: number; packSize: number; uom: string | null; newUom: boolean; near: boolean; mrpPaise: number;
-    costPerBasePaise: number; rack: string; reasons: string[];
-    freePacks: number; ratePaise: number; discountBps: number;
-  }[];
+  rows: RowView[];
   grns: { challanNo: string; near: boolean; lines: number; state: OpeningGrnState; grnNo: string | null }[];
   refusals: number; units: number; newUoms: number; needsVendor: boolean; zeroCost: number; racks: number;
+  /** #1047 — rows valued at the estimate. */
+  estimated: number;
   authority: OpeningAuthority[];
 };
+
+/** #1047 — the invoice mode's check: the header's reasons, the rows (as the opening check shows them), the totals. */
+export type InvoiceCheckView = {
+  headerReasons: string[]; rows: RowView[]; refusals: number; units: number; newUoms: number; costPaise: number;
+  duplicateOf: { grnId: string; grnNo: string } | null;
+  authority: OpeningAuthority[];
+};
+
+function rowView(r: OpeningRow): RowView {
+  return {
+    line: r.line, brand: r.brand, itemCode: r.itemCode ?? null, itemName: r.itemName ?? null, batch: r.batch, expiryDate: r.expiryDate,
+    packs: r.packs, packSize: r.packSize, uom: r.uom ?? null, newUom: r.newUom, near: r.near, mrpPaise: r.mrpPaise,
+    costPerBasePaise: r.costPerBasePaise, rack: r.rack, reasons: r.reasons,
+    freePacks: r.freePacks, ratePaise: r.ratePaise, discountBps: r.discountBps, estimatedCost: r.estimatedCost,
+  };
+}
 
 function view(plan: OpeningPlan, authority: OpeningAuthority[]): OpeningCheckView {
   return {
     fileHash: plan.fileHash,
-    rows: plan.rows.map((r) => ({
-      line: r.line, brand: r.brand, itemCode: r.itemCode ?? null, itemName: r.itemName ?? null, batch: r.batch, expiryDate: r.expiryDate,
-      packs: r.packs, packSize: r.packSize, uom: r.uom ?? null, newUom: r.newUom, near: r.near, mrpPaise: r.mrpPaise,
-      costPerBasePaise: r.costPerBasePaise, rack: r.rack, reasons: r.reasons,
-      freePacks: r.freePacks, ratePaise: r.ratePaise, discountBps: r.discountBps,
-    })),
+    rows: plan.rows.map(rowView),
     grns: plan.grns.map((g) => ({ challanNo: g.challanNo, near: g.near, lines: g.rows.length, state: g.state, grnNo: g.grnNo ?? null })),
     refusals: plan.refusals, units: plan.units, newUoms: plan.newUoms, needsVendor: plan.needsVendor, zeroCost: plan.zeroCost,
-    racks: plan.racks.length, authority,
+    racks: plan.racks.length, estimated: plan.estimated, authority,
+  };
+}
+
+async function invoiceView(db: Db, actor: Actor, plan: InvoicePlan): Promise<InvoiceCheckView> {
+  const authority: OpeningAuthority[] = plan.newUoms === 0 ? [] : [{
+    permission: "materials.items.manage", why: "new_pack_sizes", held: await hasPermission(db, actor.id, "materials.items.manage", "hospital"),
+  }];
+  return {
+    headerReasons: plan.headerReasons, rows: plan.rows.map(rowView), refusals: plan.refusals, units: plan.units, newUoms: plan.newUoms,
+    costPaise: plan.costPaise, duplicateOf: plan.duplicateOf, authority,
   };
 }
 
@@ -101,6 +141,40 @@ export class PharmacyOpeningStockController {
     } catch (e) {
       return toHttp(e);
     }
+  }
+
+  /** #1047 — a supplier invoice typed in the grid, judged: the header and every row. Writes nothing. */
+  @RequirePermission("materials.grn.capture", "hospital")
+  @Post("invoice/check")
+  async invoiceCheck(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<InvoiceCheckView> {
+    const b = parsed(invoiceBody, body);
+    try {
+      return await invoiceView(this.db, actor, await planSupplierInvoice(this.db, b.header, b.rows, new Date()));
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** #1047 — judged again and captured as ONE GRN for the pharmacist's QC; the bill draft will carry the invoice number and date. */
+  @RequirePermission("materials.grn.capture", "hospital")
+  @Post("invoice/capture")
+  async invoiceCapture(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<Awaited<ReturnType<typeof captureSupplierInvoice>>> {
+    const b = parsed(invoiceBody, body);
+    try {
+      // The SoD engine first, on `db` (as `POST /materials/grns`), so an approver's attempt to receive is recorded.
+      if (b.header.purchaseOrderId != null) await assertNotPoApprover(this.db, actor, b.header.purchaseOrderId);
+      return await captureSupplierInvoice(this.db, actor, b.header, b.rows, new Date());
+    } catch (e) {
+      if (e instanceof SodViolationError) throw httpError(403, e.message, "sod_violation", { pairKey: e.pairKey });
+      return toHttp(e);
+    }
+  }
+
+  /** #1047 — the stores a supplier invoice is received into from the grid. */
+  @RequirePermission("materials.grn.capture", "hospital")
+  @Get("invoice/stores")
+  async invoiceStores(): Promise<{ stores: { id: string; code: string; name: string }[] }> {
+    return { stores: await invoiceStores(this.db) };
   }
 
   private plan(b: z.infer<typeof entryBody>, now: Date): Promise<OpeningPlan> {

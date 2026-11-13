@@ -4,7 +4,7 @@ import { anyOfText } from "../../kernel/db/any-of";
 import { pharmacySaleItems } from "../../kernel/db/schema";
 import { medicinesByIds, updateMedicine } from "../formulary";
 import {
-  MaterialsError, effectiveRegulation, findStoreByCode, listItems, listVendors, registerItem, setPriceRegulation, uomsByItems,
+  MaterialsError, effectiveRegulation, findStoreByCode, listItems, listVendors, registerItem, setPriceRegulation, supplierKindOf, uomsByItems,
 } from "../materials";
 import { OPD_PHARMACY_STORE_CODE } from "./config";
 import { PharmacyError } from "./errors";
@@ -96,9 +96,13 @@ export async function stockEntryItems(db: Db, search: string, now: Date = new Da
   return out;
 }
 
-/** The active suppliers a row may name (blank is OPENING STOCK). */
+/**
+ * The active suppliers a row may name (blank is OPENING STOCK), and the invoice mode's supplier list. Never the
+ * hospital's own opening or trial stock (#1047): it is a source, picked by leaving the supplier blank.
+ */
 export async function stockEntrySuppliers(db: Db): Promise<{ id: string; code: string; name: string }[]> {
-  return (await listVendors(db, { status: "active" })).map((v) => ({ id: v.id, code: v.code, name: v.tradeName ?? v.legalName }));
+  return (await listVendors(db, { status: "active" })).filter((v) => supplierKindOf(v) === "supplier")
+    .map((v) => ({ id: v.id, code: v.code, name: v.tradeName ?? v.legalName }));
 }
 
 /** A formulary medicine as the new-drug sheet shows it once picked: its form, strength and schedule. */

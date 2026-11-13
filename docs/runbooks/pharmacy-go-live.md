@@ -249,9 +249,9 @@ A blank slab still bills as exempt.
 >   - a batch with under 30 days to expiry, or recalled. Quarantine that one instead.
 >   - more than was dispensed, net of earlier returns.
 
-## 4. What refuses, and why — all 135 codes
+## 4. What refuses, and why — all 137 codes
 
-`errors.ts` declares 135, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
+`errors.ts` declares 137, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
 table falls behind it. The table used to name 13, and the drill above provokes several of the
 missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/en.json` under
 `pharmacyErrors.*`; that file and `errors.ts` are pinned against each other in BOTH directions by
@@ -291,6 +291,7 @@ missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/e
 | `item_merged` | the item was merged into another (a duplicate record retired by the office): it is not registered for sale again, switched back on or given a shelf | use the item it was merged into — §17 |
 | `messages_stopped` · `invalid_message_setting` | refill reminders asked for a patient who stopped all messages; the pharmacy's reminder phone is not 10–12 digits | ask the patient to resume messages first (§18.3); type the phone with its STD code |
 | `opening_stock_unreadable` · `opening_stock_refused` | the opening-stock sheet is not the template (a column missing or misspelt, empty, over 2,000 rows); or a row was refused, so nothing was captured | download the template at `/materials/grn` → Opening stock; press Check, fix the rows it names, and capture again |
+| `invoice_refused` · `invoice_already_captured` | a supplier invoice typed in the stock-entry grid (Supplier invoice mode) is missing its supplier, invoice number or date, or a store, or a row was refused; or this supplier's invoice number is already a GRN | fill the header and fix the rows the grid names; for a repeat, open the GRN it names (cancel it first if it was typed wrong) |
 | `paper_rx_controlled` | a paper prescription at the desk names a Schedule X or narcotic/psychotropic medicine | back to the doctor for the e-prescription. (A patient with no visit that day no longer refuses: the desk opens a no-fee pharmacy visit itself; an outside doctor's paper is entered with the doctor's name, and for H/H1 the registration number and address — 2026-09-30, owner) |
 | `invalid_shelf_location` | a rack label longer than 24 characters — the line cannot print it | shorten it ("R-12", "rack 3 · shelf 2") |
 | `duplicate_block` · `drug_disease_block` | the medicine chosen for a line nobody could place repeats a moiety already prescribed; or a coded diagnosis forbids a line and no prescriber ruled on it (a reading, or a diagnosis coded after issue) | choose another, decline the line, or back to the doctor |
