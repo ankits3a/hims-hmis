@@ -16,7 +16,7 @@ import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
 import type { DocumentStore } from "../../kernel/documents/store";
 import type {
-  CounterBatch, PharmacyStaffMember, RetailLicenceState, RetailLicenceView, RetailPreview, RetailSaleRow, RetailSaleView,
+  CounterBatch, PharmacyStaffMember, RetailLicenceState, RetailLicenceView, RetailPreview, RetailSaleListRow, RetailSaleRow, RetailSaleView,
   RetailShelfEntry, SheetCheck,
 } from "./retail";
 
@@ -198,7 +198,7 @@ export class PharmacyRetailController {
 
   @RequirePermission("pharmacy.retail.sell", "hospital")
   @Get("sales")
-  async list(@CurrentActor() actor: Actor, @Query("day") day?: string): Promise<{ items: RetailSaleRow[] }> {
+  async list(@CurrentActor() actor: Actor, @Query("day") day?: string): Promise<{ items: RetailSaleListRow[] }> {
     try {
       return { items: await listRetailSales(this.db, actor, day ?? istDateOf(new Date())) };
     } catch (e) {

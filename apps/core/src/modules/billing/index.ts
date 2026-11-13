@@ -23,6 +23,8 @@ export {
   registerEncounterResolver, registeredEncounterPrefixes,
 } from "./invoices";
 export type { EncounterResolver, IssueInvoiceInput, IssueInvoiceResult, InvoiceRow, InvoiceLineRow, PricedDraft } from "./invoices";
+/** The subject an owner-credit approval binds to (its id is the counter's draft): the pharmacy's pick sweep reads it. */
+export { CREDIT_APPROVAL_SUBJECT } from "./invoices";
 /**
  * PLAN 15 T3 / DD12 — `advanceOf` JOINS THIS LIST, and it is a one-line cross-module edit with a
  * reason rather than a convenience.

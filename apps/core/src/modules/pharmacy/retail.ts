@@ -11,7 +11,7 @@ import {
 } from "../../kernel/db/schema";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { appendEvent } from "../../kernel/events/append";
-import { getInvoice, issueInvoice, previewInvoice, withIdempotency } from "../billing";
+import { collectionsBlind, getInvoice, issueInvoice, previewInvoice, withIdempotency } from "../billing";
 import { medicinesByIds, ndpsClassByMedicine, resolveDrugTexts } from "../formulary";
 import {
   MaterialsError, availableQty, availableQtyByItem, balances, fefoPick, findStoreByCode, getBatch, itemsByIds, postMovements,
@@ -1085,18 +1085,28 @@ export type RetailSaleRow = {
 };
 
 /**
+ * OWNER RULINGS 0014 / 0017 — BLIND COUNT. Each row's amount, added up, is what the seller's drawer took, and float +
+ * takings is what it should hold. So a caller who may not see her own "collected today" (an uncounted drawer and no
+ * `billing.session.read`) gets the rows WITHOUT `netPaise`; bill, time, customer, line count and Rx flag stay. Billing's
+ * `collectionsBlind` is the one rule, applied exactly as `counterSummaryFor` applies it.
+ */
+export type RetailSaleListRow = Omit<RetailSaleRow, "netPaise"> & { netPaise?: number };
+
+/**
  * One IST day's walk-in sales, newest first, each with its customer's display name (UX-AUDIT
  * 2026-09-28: a restricted customer is not named). The sale itself is opened, and that read
  * logged, to see anything more.
  */
-export async function listRetailSales(db: Db, actor: Actor, day: string): Promise<RetailSaleRow[]> {
+export async function listRetailSales(db: Db, actor: Actor, day: string): Promise<RetailSaleListRow[]> {
   await requirePermission(db, actor, SELL, "listing walk-in sales");
   if (!isIsoDate(day)) throw new PharmacyError("invalid_day", `"${day}" is not a date`);
   const { start, end } = istDayWindow(new Date(`${day}T12:00:00+05:30`));
   const sales = await db.select().from(pharmacyRetailSales)
     .where(and(eq(pharmacyRetailSales.channel, "walk_in"), gte(pharmacyRetailSales.soldAt, start), lt(pharmacyRetailSales.soldAt, end)))
     .orderBy(desc(pharmacyRetailSales.soldAt), desc(pharmacyRetailSales.id)).limit(500);
-  return saleRows(db, sales, actor);
+  const rows = await saleRows(db, sales, actor);
+  if (!(await collectionsBlind(db, actor, actor, day))) return rows;
+  return rows.map(({ netPaise: _hidden, ...row }) => { void _hidden; return row; });
 }
 
 async function saleRows(db: Db, sales: (typeof pharmacyRetailSales.$inferSelect)[], actor: Actor | null = null): Promise<RetailSaleRow[]> {

@@ -94,6 +94,7 @@ Source: `apps/core/src/modules/billing/`
 - `idempotency.ts`
   - `withIdempotency(db: Db, scope: { actorId: string; route: string; key: string | undefined }, body: unknown, work: () => Promise<T>, now: Dat…`
 - `invoices.ts`
+  - `CREDIT_APPROVAL_SUBJECT`
   - `getInvoice(exec: Db | Tx, invoiceId: string): Promise<{ invoice: InvoiceRow; lines: InvoiceLineRow[] } | null>`
   - `invoiceSettlement(exec: Db | Tx, invoiceId: string): Promise<Settlement>`
   - `issueInvoice(db: Db, actor: Actor, input: IssueInvoiceInput, now: Date = new Date()): Promise<IssueInvoiceResult>`

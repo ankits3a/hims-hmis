@@ -815,6 +815,29 @@ describe("standup:check — the readiness census (11i T2)", () => {
     fx.unregister();
   });
 
+  /**
+   * Decision 0008 — the counter ran first on a TRIAL registration ("the bill and the H1 register say
+   * TRIAL until the owner gives the real registration"). That placeholder is current, so the row read
+   * green and go-live never asked for the real certificate. A TRIAL-only register is RED; the real
+   * pharmacist's council number turns it green.
+   */
+  it("the pharmacist row is RED while every current registration is the TRIAL placeholder, green once a real one is filed", async () => {
+    const fx = await seedPharmacyBase(db);
+    await ensurePharmacyCounter(db, ACTOR);
+    await withTx(db, (tx) => recordPharmacistRegistration(tx, fx.incharge.actor, {
+      userId: fx.pharmacist.id, council: "TRIAL — not a council", registrationNo: "TRIAL-0001", validUntil: null,
+    }, new Date()));
+    let row = (await runCensus(db, "pharmacy")).find((r) => r.code === "pharmacist_council_number");
+    expect(row?.verdict).toBe("RED");
+    expect(row?.fix).toMatch(/real pharmacist.*\/pharmacy\/pharmacists/);
+    await withTx(db, (tx) => recordPharmacistRegistration(tx, fx.pharmacist.actor, {
+      userId: fx.incharge.id, council: "Bihar State Pharmacy Council", registrationNo: "BSPC-4521", validUntil: null,
+    }, new Date()));
+    row = (await runCensus(db, "pharmacy")).find((r) => r.code === "pharmacist_council_number");
+    expect(row?.verdict).toBe("ok");
+    fx.unregister();
+  });
+
   it("the antimicrobial steward row is RED after the deploy, and green only once an active user holds the role (stage D5)", async () => {
     const fx = await seedPharmacyBase(db);
     await ensurePharmacyCounter(db, ACTOR);

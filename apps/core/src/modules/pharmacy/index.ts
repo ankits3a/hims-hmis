@@ -70,7 +70,7 @@ export { PHARMACY_PICK_SWEEP_ACTOR, PICK_EXPIRED_REASON, sweepExpiredPicks } fro
  * the go-live census, which asks whether anyone who may complete a scheduled dispense holds one.
  */
 export {
-  PHARMACIST_ROLE, currentRegistration, endPharmacistRegistration, listPharmacists, recordPharmacistRegistration,
+  PHARMACIST_ROLE, currentRegistration, endPharmacistRegistration, isTrialRegistration, listPharmacists, recordPharmacistRegistration,
   requireRegisteredPharmacist,
 } from "./pharmacists";
 export type { PharmacistRegistration, PharmacistView } from "./pharmacists";
@@ -112,7 +112,7 @@ export {
 } from "./retail";
 export type {
   CounterBatch, PaperDispenseInput, PharmacyStaffMember, SheetCheck, RecordLicenceInput, RetailCustomerInput, RetailLicenceState, RetailLicenceView, RetailLineInput, RetailPrescriptionInput,
-  RetailPreview, RetailSaleInput, RetailSaleRow, RetailSaleView, RetailShelfEntry,
+  RetailPreview, RetailSaleInput, RetailSaleListRow, RetailSaleRow, RetailSaleView, RetailShelfEntry,
 } from "./retail";
 /** P19b — a sealed pack back at the walk-in counter, found by its bill. */
 export { acceptRetailReturn, findRetailSaleByInvoiceNo } from "./retail-returns";

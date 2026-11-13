@@ -11,7 +11,7 @@ import { CUSTODY_PERMISSION, LICENCES_PERMISSION } from "./controlled";
 import { controlledToday } from "./controlled-office";
 import { PharmacyError } from "./errors";
 import { officePay, officeReturns, officeToday } from "./office";
-import { listPharmacists } from "./pharmacists";
+import { isTrialRegistration, listPharmacists } from "./pharmacists";
 import { retailLicenceState } from "./retail";
 import { TRAYS_CHECK_PERMISSION, TRAYS_MANAGE_PERMISSION, traysToday } from "./trays";
 import type { AdrAwaitingPvpi } from "./adr";
@@ -280,7 +280,7 @@ export function buildNeeds(input: NeedInputs, now: Date): OfficeNeeds {
     if (left !== null && left <= LAW_NOTICE_DAYS) {
       push({ id: `people:${p.userId}`, source: "PEOPLE", kind: "pharmacist_expiring", params: { name: p.fullName, username: p.username, no: c.registrationNo, days: left, until: c.validUntil! },
         clock: { code: "days_left", n: left, tone: left <= 7 ? "rd" : "gd" }, ref, facts, tier: 1, key: left });
-    } else if (/^TRIAL-/i.test(c.registrationNo)) {
+    } else if (isTrialRegistration(c.registrationNo)) {
       push({ id: `people:${p.userId}`, source: "PEOPLE", kind: "pharmacist_trial", params: { name: p.fullName, username: p.username, no: c.registrationNo },
         clock: { code: "open", tone: "gd" }, ref, facts, tier: 7, key: 0 });
     }

@@ -1,9 +1,10 @@
 import { and, eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
-import { openSessionFor } from "../../../test/helpers/billing";
+import { openSessionFor, submitCountFor } from "../../../test/helpers/billing";
 import { MON, addAllergy, seedPharmacyBase, stockIn } from "../../../test/helpers/pharmacy";
 import { ensureRole, mkPatient, mkUser } from "../../../test/helpers/opd";
 import { grantPermissionToRole } from "../../kernel/auth/permissions";
+import { istDayString } from "../../kernel/approvals/cumulative";
 import { withTx } from "../../kernel/db/client";
 import {
   events, invoices, patientDocuments, patients, pharmacyRegH1, pharmacyRetailSaleLines, pharmacyRetailSales, stockLedger,
@@ -199,6 +200,34 @@ describe("walk-in retail sales (P19)", () => {
     await db.update(patients).set({ isConfidential: true }).where(eq(patients.id, sale.patient.id));
     const [sealed] = await listRetailSales(db, fx.pharmacist.actor, "2026-08-17");
     expect(sealed?.customer).toMatchObject({ uhid: sale.patient.uhid, name: null });
+  });
+
+  /*
+    OWNER RULINGS 0014 / 0017 — the blind count. The day's list gave a seller each sale's amount, so she could add up her
+    own takings before counting her drawer. Billing's rule (`collectionsBlind`) decides it: a seller whose drawer is still
+    uncounted gets the rows without amounts (bill, time, customer, line count stay); a drawer supervisor
+    (`billing.session.read`) still gets them, and so does the seller once her count is in. The rule compares the drawer's
+    opening day with the listed day, and the drawer opens on the real clock, so this sale and this list do too.
+  */
+  it("the day's list carries no amounts to a seller with an uncounted drawer; a drawer supervisor, and the seller once counted, see them", async () => {
+    await open({ validTo: "2099-12-31" });
+    await stockIn(db, fx, { itemId: fx.item.crocin, batchNo: "R-1", qtyBase: 50, expiryDate: "2099-12-31", resourceId: retailId });
+    const now = new Date();
+    const day = istDayString(now);
+    const lines = [{ medicineId: fx.med.crocin, qtyBase: 10 }];
+    const sale = await sellRetail(db, docs, fx.pharmacist.actor, { customer: newCustomer(), lines, tenders: await pay(undefined, lines) }, undefined, now);
+
+    const [blind] = await listRetailSales(db, fx.pharmacist.actor, day);
+    expect(blind).toMatchObject({ id: sale.id, invoiceNo: sale.invoiceNo, lineCount: 1, customer: { name: "Ramesh Patil" } });
+    expect(blind).not.toHaveProperty("netPaise");
+
+    await ensureRole(db, "drawer_supervisor");
+    for (const p of ["pharmacy.retail.sell", "billing.session.read", "patients.read"]) await grantPermissionToRole(db, fx.registry, "drawer_supervisor", p);
+    const supervisor = await mkUser(db, "drawer.lead", ["drawer_supervisor"]);
+    expect((await listRetailSales(db, supervisor.actor, day)).map((r) => r.netPaise)).toEqual([sale.netPaise]);
+
+    await submitCountFor(db, fx.pharmacist, { "10000": 1, "2000": 1 });
+    expect((await listRetailSales(db, fx.pharmacist.actor, day)).map((r) => r.netPaise)).toEqual([sale.netPaise]);
   });
 
   it("registers a customer only under patients.register", async () => {
