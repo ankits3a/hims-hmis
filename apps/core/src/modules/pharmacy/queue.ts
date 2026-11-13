@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
-import { newId } from "@hmis/contracts";
+import { newId, strengthShown } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { nextEpisodeNo } from "../../kernel/episodes/series";
 import { events, opdPrescriptions, pharmacyDispenseLines, pharmacyDispenses, users } from "../../kernel/db/schema";
@@ -277,7 +277,9 @@ export async function listQueue(db: Db, actor: Actor, filter: { serviceDate: str
   const drugsById = new Map<string, string[]>();
   for (const r of drugRows) {
     const list = drugsById.get(r.dispenseId) ?? [];
-    list.push((r.rxLine as RxLine).drug);
+    /* Re-walk 2026-11-13 — the line read "…oral tablet 40 mg/": the catalogue's empty denominator is not shown (`strengthShown`). */
+    const drug = (r.rxLine as RxLine).drug;
+    list.push(strengthShown(drug) ?? drug);
     drugsById.set(r.dispenseId, list);
   }
   /* ONE query for the whole page, not one per row: the counter's list is polled. */
