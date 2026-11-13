@@ -1,6 +1,6 @@
 ---
 issue: 1047
-status: approved
+status: built
 approved: 2026-11-13
 ---
 # SPEC — Pharmacy stock-in go-live (#1047)
@@ -52,3 +52,24 @@ invoices.
 - **D5** With a control file loaded, the grid flags a medicine whose entered total differs from the control.
 - **D6** The same batch arriving at a new MRP waits for approval, then posts, and the batch sells at the new MRP.
 - **D7** An opening-stock row with no rate is valued at MRP without GST less 20% and shows as estimated.
+
+## Built (2026-11-13)
+
+Built as specified; acceptance tests `spec #1047 D1`–`D7` in `apps/core/src/modules/pharmacy/acceptance/` and
+`apps/web/src/screens/acceptance/`. Migration `0229_pharmacy_stock_in_go_live` (additive). Where the build is more
+precise than the text above:
+
+- **D1** The correction is also refused while any GRN line (captured or posted, not cancelled) names the old pack, and
+  never touches the base unit. Barcodes move to the new name; the current price regulation and open vendor rates are
+  re-issued under it (their history rows stay). With several issue packs, the counter takes the smallest.
+- **D2** A posted GRN is never cancelled; a cancelled one takes no QC, approval or post. A cancelled opening sheet or
+  invoice can be captured again.
+- **D3** The invoice is received into the OPD or walk-in counter's store; the NDPS cabinet keeps its own two-key
+  receipt. The same supplier's invoice number twice is refused while a live GRN carries it. A paid row needs its rate;
+  "rate with GST" needs the item's GST slab.
+- **D4** A credit without a return can be cancelled while no payment run has spent it; it carries an IGST flag and
+  shows on the supplier ledger and the purchase register with its own GST split. One supplier note number is recorded once.
+- **D6** Approval type `materials_mrp_revision` (materials head, 4 hours). A short-dated line at a new MRP needs both approvals.
+- **D7** The estimate ignores a trade discount on the row (there is no rate for it to come off); an item with no GST slab
+  is taken at 0%, as the counter sells it.
+- **Source:** opening-stock GRNs carry source `opening_stock`; a row may name only a real supplier.
