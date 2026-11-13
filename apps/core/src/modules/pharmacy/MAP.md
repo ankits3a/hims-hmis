@@ -134,8 +134,10 @@ module has no view of either. Decision 0012: ward issue, ward returns, IP bill a
 - The FD-27 duplicate-bill guard (`billing/invoices.ts` `liveInvoiceCharging`) is per encounter + service, and each
   sale item is its own service. It bites when a re-issued prescription version on the SAME visit carries a medicine
   already billed. A second paper prescription opens a new pharmacy visit (`paper-rx.ts`), so it escapes the guard.
-- `sweepExpiredPicks` cancels a picked ticket after 30 minutes even while it waits on a discount/credit approval or
-  the patient's cash; redoing it mints a new P-number.
+- `sweepExpiredPicks` spares a picked ticket while a discount or credit approval bound to it (subject = the dispense,
+  same patient) is pending, and renews its hold through `materials.renewReservations` (#1048). An approval nobody
+  decides holds the stock until it is decided or the pharmacist cancels. A ticket waiting only on the patient's cash
+  is still cancelled at 30 minutes; redoing it mints a new P-number.
 - `declineLine` works only in claimed/verified; dropping one line at the bill means cancelling the ticket.
 - The desk prints the bill only after hand-over (`apps/web/src/screens/pharmacy-desk/paper.tsx`), so a patient who
   has paid and waits holds no paper.
@@ -162,7 +164,9 @@ module has no view of either. Decision 0012: ward issue, ward returns, IP bill a
 - An item with no GST slab sells as exempt (`gstCategoryFor(null)`); only standup row `pharmacy_gst_slab_set` notices.
 - `listQueue` has no limit; untouched tickets stay `QUEUED_CARRY_DAYS` (3) and every desk polls it.
 - The walk-in screen takes one tender only; the desk's split is cash + UPI only; UPI has no pending state.
-- `GET /pharmacy/retail/sales` returns `netPaise` per row to the seller before her drawer is counted (0014 tension).
+- `GET /pharmacy/retail/sales` omits `netPaise` for a caller who is collections-blind (`collectionsBlind`, as
+  `summary.ts` `counterSummaryFor` does; #1048). Amounts still reach a seller through the sale detail, the list's
+  Print bill and the downtime list.
 - No bill prints the drug licence number; the server bill (`print.ts`) omits batch and expiry.
 - `copilot-tools.ts` `stock_on_shelf` reads PHARM-OPD only.
 - The store is a constant, not a parameter: `claimDispense` and `planOpeningRows` use `OPD_PHARMACY_STORE_CODE`
@@ -185,5 +189,6 @@ module has no view of either. Decision 0012: ward issue, ward returns, IP bill a
 `config.ts`: `PICK_RESERVATION_MINUTES` 30, `SCHEDULED_FLAGS` H/H1, `REGISTER_FLAGS` H1, `REFUSED_FLAGS` X,
 `DOWNTIME_BACKFILL_DAYS` 7. `materials/config.ts`: near-expiry 6 months / 75% of shelf life, PO head limit Rs 50k,
 receipt tolerance 2%, bill tolerance 1% / Rs 10, MSME 45 days. `opening-stock.ts`: `OPENING_MAX_ROWS` 2000.
-`scripts/standup-check.ts` holds 25 pharmacy readiness rows; none checks that the pharmacist registration is real
-rather than the TRIAL one (0008).
+`scripts/standup-check.ts` holds the pharmacy readiness rows. `pharmacist_council_number` is red while every current
+registration is a TRIAL placeholder (`pharmacists.ts` `isTrialRegistration`, shared with `office-needs.ts`);
+`pharmacist_registration_not_lapsing` still counts a TRIAL registration as current.
