@@ -19,4 +19,11 @@ describe("the drug as the registers name it", () => {
     expect(registerDrugName({ brandName: "Telma 40", strengthLabel: "4 mg", form: "tablet" }, "x")).toBe("Telma 40 4 mg tablet");
     expect(registerDrugName(undefined, "Amoxicillin 500")).toBe("Amoxicillin 500");
   });
+  /* WALK 2026-11-13 — the catalogue's empty denominator ("500 mg/") was printed on the walk-in bill and the register. */
+  it("drops an empty denominator from the strength, and keeps a real one", () => {
+    expect(registerDrugName({ brandName: "Crocin", strengthLabel: "500 mg/", form: "tablet" }, "x")).toBe("Crocin 500 mg tablet");
+    expect(registerDrugName({ brandName: "Crocin", strengthLabel: "500 mg/ ", form: "tablet" }, "x")).toBe("Crocin 500 mg tablet");
+    expect(registerDrugName({ brandName: "Azee 500", strengthLabel: "500 mg/", form: "tablet" }, "x")).toBe("Azee 500 tablet");
+    expect(registerDrugName({ brandName: "Calpol", strengthLabel: "250 mg/5 ml", form: "syrup" }, "x")).toBe("Calpol 250 mg/5 ml syrup");
+  });
 });

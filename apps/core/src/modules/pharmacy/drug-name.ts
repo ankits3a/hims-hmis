@@ -1,3 +1,5 @@
+import { strengthShown } from "@hmis/contracts";
+
 /**
  * The drug as the registers name it (Schedule H1, Rule 65(3); the walk-in sale's H1 row): brand,
  * strength and form, else the doctor's words.
@@ -10,7 +12,8 @@
  */
 export function registerDrugName(med: { brandName: string; strengthLabel: string | null; form: string } | undefined, fallback: string): string {
   if (med === undefined) return fallback;
-  const strength = med.strengthLabel?.trim() ?? "";
+  /* Walk 2026-11-13 — the catalogue's empty denominator ("500 mg/") is not part of the name (`strengthShown`). */
+  const strength = strengthShown(med.strengthLabel) ?? "";
   return strength === "" || brandSaysStrength(med.brandName, strength) ? `${med.brandName} ${med.form}` : `${med.brandName} ${strength} ${med.form}`;
 }
 

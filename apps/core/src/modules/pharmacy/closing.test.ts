@@ -7,7 +7,7 @@ import { claimDispense, findAtCounter } from "./claim";
 import { closingFor } from "./closing";
 import { handOverDispense } from "./handover";
 import { pickDispense } from "./pick";
-import { verifyDispense } from "./verify";
+import { declineLine, verifyDispense } from "./verify";
 import type { PharmacyFixture } from "../../../test/helpers/pharmacy";
 import type { Db } from "../../kernel/db/client";
 
@@ -70,5 +70,29 @@ describe("the closing of a ticket", () => {
     if (found.kind !== "dispense") throw new Error("expected a dispense");
     await expect(closingFor(db, fx.pharmacist.actor, found.dispense.id))
       .rejects.toThrow(expect.objectContaining({ code: "dispense_not_in_state" }));
+  });
+
+  /* WALK 2026-11-13 — "Stock consumed from 3 batches" on a ticket that handed over two: the dropped line still names its batch. */
+  it("counts only the batches stock actually left: a line dropped at the bill is not among them", async () => {
+    await stockIn(db, fx, { itemId: fx.item.crocin, batchNo: "CR-1", mrpPaise: 12_000, qtyBase: 100 });
+    await stockIn(db, fx, { itemId: fx.item.azithro, batchNo: "AZ-1", mrpPaise: 15_000, qtyBase: 100 });
+    const { issued } = await issueRx(db, fx, [
+      line({ drug: "Crocin 500", medicineId: fx.med.crocin, frequency: "1-0-1", durationDays: 5 }),
+      line({ drug: "Azee 500", medicineId: fx.med.azithro, frequency: "OD", durationDays: 3 }),
+    ]);
+    const found = await findAtCounter(db, testCfg, fx.pharmacist.actor, issued.qrPayload, MON2);
+    if (found.kind !== "dispense") throw new Error("expected a dispense");
+    const id = found.dispense.id;
+    await claimDispense(db, fx.pharmacist.actor, { dispenseId: id, door: "rx_qr" }, at(1));
+    await verifyDispense(db, fx.pharmacist.actor, fx.decls, id, { lines: [{ lineIdx: 0, qtyBase: 10 }, { lineIdx: 1, qtyBase: 3 }] }, at(2));
+    await pickDispense(db, fx.pharmacist.actor, fx.decls, id, {}, at(3));
+    await declineLine(db, fx.pharmacist.actor, fx.decls, id, 1, "patient has it at home", at(3));
+    const preview = await previewDispenseBill(db, fx.pharmacist.actor, id, at(4));
+    await billDispense(db, fx.pharmacist.actor, id, { tenders: [{ mode: "cash", amountPaise: preview.totals.netPayablePaise }] }, at(4));
+    await handOverDispense(db, fx.pharmacist.actor, fx.decls, id, { identity: { via: "phone_last4", value: "3210" } }, at(5));
+
+    const closed = await closingFor(db, fx.pharmacist.actor, id);
+    expect(closed.ticket).toMatchObject({ lines: 2, declined: 1, handedOverAt: at(5) });
+    expect(closed.registers.batches).toBe(1);
   });
 });

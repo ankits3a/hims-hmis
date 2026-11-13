@@ -3,7 +3,7 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { openSessionFor } from "../../../test/helpers/billing";
 import { MON2, MON3, addAllergy, openVisitWithoutRx, seedPharmacyBase, stockIn } from "../../../test/helpers/pharmacy";
 import { testCfg } from "../../../test/helpers/opd";
-import { events, opdDoctors, opdEncounters, opdPrescriptions, opdQueueEntries, orders, patientAllergies, patientDocuments, pharmacyRegH1, stockBalances } from "../../kernel/db/schema";
+import { events, formularyMedicines, opdDoctors, opdEncounters, opdPrescriptions, opdQueueEntries, orders, patientAllergies, patientDocuments, pharmacyRegH1, stockBalances } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { registerItem } from "../materials";
 import { chargeOrphans } from "../billing";
@@ -12,6 +12,7 @@ import { registerPatient } from "../patients";
 import { billDispense, previewDispenseBill } from "./bill";
 import { findAtCounter, suggestAtCounter } from "./claim";
 import { handOverDispense } from "./handover";
+import { labelFor } from "./label";
 import { enterPaperPrescription } from "./paper-rx";
 import { pickDispense } from "./pick";
 import { confirmSlip } from "./queue";
@@ -141,6 +142,19 @@ describe("dispense from a paper prescription at the desk (2026-09-30)", () => {
     expect(h.status).toBe("handed_over");
     const bal = await db.select().from(stockBalances).where(eq(stockBalances.itemId, fx.item.crocin));
     expect(bal.reduce((s, b) => s + b.qtyOnHand, 0)).toBe(85);
+  });
+
+  /* WALK 2026-11-13 — "500 mg/" on the counter and the label: the catalogue's empty denominator is not part of the name. */
+  it("a catalogue strength with an empty denominator is written '500 mg', on the prescription line and on the label", async () => {
+    await db.update(formularyMedicines).set({ strengthLabel: "500 mg/" }).where(eq(formularyMedicines.id, fx.med.crocin));
+    await visitWithoutRx();
+    const d = await enterPaperPrescription(db, testCfg, store, fx.pharmacist.actor, {
+      patientId: fx.patient.id, rxDate: RX_DATE, lines: [{ itemId: fx.item.crocin, qtyBase: 10, dose: "1 tab", frequency: "TDS", durationDays: 3 }],
+    }, MON2);
+    expect(d.lines[0]!.rxLine.drug).toBe("Crocin 500 500 mg");
+    await verifyDispense(db, fx.pharmacist.actor, fx.decls, d.id, { lines: [{ lineIdx: 0, qtyBase: 10 }] }, MON2);
+    await pickDispense(db, fx.pharmacist.actor, fx.decls, d.id, {}, MON2);
+    expect((await labelFor(db, fx.pharmacist.actor, d.id)).lines[0]!.strength).toBe("500 mg");
   });
 
   it("the audit event names the door, who typed it, the prescriber, the date and the photo", async () => {
