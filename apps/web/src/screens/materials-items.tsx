@@ -35,6 +35,13 @@ import type { WireMedicineHit } from "../lib/formulary-api";
  */
 export function MaterialsItems(): React.ReactElement {
   const { t } = useTranslation();
+  /*
+    Re-walk 2026-11-13 — "560 tablet": a count in the item's base unit goes through the locale's plural
+    (`materialsItems.unitCount.<unit>`); a unit the locale does not name ("ml") is written as it is.
+  */
+  const countIn = (qty: number, unit: string): string => (/^[a-z]+$/.test(unit)
+    ? t(`materialsItems.unitCount.${unit}`, { count: qty, defaultValue: `{{count}} ${unit}` })
+    : `${String(qty)} ${unit}`);
   const qc = useQueryClient();
 
   const [search, setSearch] = useState("");
@@ -194,7 +201,7 @@ export function MaterialsItems(): React.ReactElement {
                               {onHand.isLoading ? t("common.loading")
                                 : onHand.data === undefined ? t("materialsItems.retireStockUnknown")
                                 : onHand.data === 0 ? t("materialsItems.retireNoStock")
-                                : t("materialsItems.retireOnHand", { qty: onHand.data, unit: it.baseUom })}
+                                : t("materialsItems.retireOnHand", { onHand: countIn(onHand.data, it.baseUom) })}
                             </span>
                             <Button size="sm" variant="destructive" onClick={() => void toggleActive(it)}>{t("materialsItems.retireConfirm")}</Button>
                             <Button size="sm" variant="ghost" onClick={() => setRetiring(null)}>{t("materialsItems.retireKeep")}</Button>

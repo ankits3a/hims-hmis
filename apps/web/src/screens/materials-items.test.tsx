@@ -350,10 +350,28 @@ describe("MaterialsItems", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Retire CROC500" }));
     const ask = await screen.findByTestId("item-retire-confirm");
-    expect(await within(ask).findByText(/120 tablet still on hand/)).toBeInTheDocument();
+    expect(await within(ask).findByText(/120 tablets still on hand/)).toBeInTheDocument();
     expect(bodiesOf("PATCH", "/materials/items/it-1")).toHaveLength(0);
     await user.click(within(ask).getByRole("button", { name: "Retire it" }));
     await waitFor(() => { expect(bodiesOf("PATCH", "/materials/items/it-1")).toEqual([{ active: false }]); });
+  });
+
+  it("re-walk 2026-11-13: the stock on hand is counted in words — one tablet, a unit with no plural kept as it is", async () => {
+    const balances = (qty: number): Handler => ({ status: 200, body: { balances: [{ itemId: "it-1", resourceId: "s1", batchId: "b1", qtyOnHand: qty, qtyReserved: 0, qtyFrozen: 0 }] } });
+    mockRoutes({ ...EDIT_ROUTES({ status: 404, body: {} }), "GET /api/materials/stock/balances": balances(1) });
+    const { unmount } = renderWithProviders(<MaterialsItems />);
+    await userEvent.click(await screen.findByRole("button", { name: "Retire CROC500" }));
+    expect(await within(await screen.findByTestId("item-retire-confirm")).findByText("1 tablet still on hand across the stores.")).toBeInTheDocument();
+    unmount();
+
+    mockRoutes({
+      ...EDIT_ROUTES({ status: 404, body: {} }),
+      "GET /api/materials/items": { status: 200, body: { items: [{ ...ITEMS[0]!, baseUom: "ml" }] } },
+      "GET /api/materials/stock/balances": balances(500),
+    });
+    renderWithProviders(<MaterialsItems />);
+    await userEvent.click(await screen.findByRole("button", { name: "Retire CROC500" }));
+    expect(await within(await screen.findByTestId("item-retire-confirm")).findByText("500 ml still on hand across the stores.")).toBeInTheDocument();
   });
 
   it("walk 2026-11-13: on a phone each item is a card with its acts, every cell under its column's name", async () => {
