@@ -58,7 +58,9 @@ export function PharmacyAuthorise({ authorisationId }: { authorisationId: string
           </div>
         )}
         <div style={{ marginTop: 12, fontSize: 13, color: "var(--red, #b3261e)", fontWeight: 600 }}>
-          {t(`pharmacyAuthorise.book.${a.book}`)} · {a.book === "drug_disease" ? a.about.split(":").reverse().join(" · ") : a.about}
+          {t(`pharmacyAuthorise.book.${a.book}`)} · {a.book === "drug_disease" ? a.about.split(":").reverse().join(" · ")
+            /* 0093 — a brand swap reads as the two brands, never as the substitute's id. */
+            : a.book === "substitution" ? `${detail.data.swap?.from ?? line?.drug ?? ""} → ${detail.data.swap?.to ?? a.about}` : a.about}
         </div>
         {a.requestNote === null ? null : (
           <div style={{ marginTop: 8, fontSize: 12.5 }}>{requestedByName ?? t("pharmacyAuthorise.thePharmacist")}: {a.requestNote}</div>

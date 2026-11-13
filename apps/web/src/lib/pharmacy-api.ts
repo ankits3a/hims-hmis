@@ -78,6 +78,8 @@ export type WireMedicine = { id: string; brandName: string; strengthLabel: strin
 export type WireDispenseLine = {
   /** DESK FIXES 2026-09-30 — a further batch of the prescription line at this index (the pick split it). Absent from an older server. */
   splitFromLineIdx?: number | null;
+  /** Spec #1046 D6 — what a short pick left owed on this line, in base units. Absent from an older server. */
+  owedQtyBase?: number | null;
   lineIdx: number; rxLine: WireRxLine; status: string; declinedReason: string | null; substitutionType: string;
   qtyBase: number | null; scheduleFlag: string | null;
   orderedMedicine: WireMedicine | null; dispensedMedicine: WireMedicine | null;
@@ -147,7 +149,17 @@ export type WireDispense = {
   prescriberName?: string | null;
   /** PHARMACY P6 — the controlled lines' checklist; null when none. Absent from an older server. */
   controlled?: WireControlledChecklist | null;
+  /** Spec #1046 D1 — who collected it, when the hand-over named them. Absent from an older server. */
+  collectedBy?: { who: string; name: string | null; relation: string | null } | null;
+  /** Spec #1046 D6 — a balance ticket: the dispense it completes. Absent from an older server. */
+  balanceOf?: string | null;
+  /** Spec #1046 D6 — a handed-over ticket that still owes a balance the counter may open now. Absent from an older server. */
+  balanceOwed?: { lines: { lineIdx: number; drug: string; qtyBase: number; unit: string | null }[]; until: string } | null;
 };
+/** Spec #1046 D6 — open the balance ticket ("rest tomorrow") of a handed-over dispense; the answer is the new, queued ticket. */
+export async function openBalanceDispense(id: string): Promise<WireDispense> {
+  return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/balance`, {});
+}
 /** FD-31 — the pharmacist's cross-confirmation of a transcribed prescription against the paper. */
 export async function confirmDispenseSlip(id: string): Promise<{ slipConfirmedBy: string | null; slipConfirmedAt: string | null }> {
   return api("POST", `/pharmacy/dispenses/${id}/confirm-slip`, {});
@@ -176,6 +188,8 @@ export type WireFindResult =
     patient?: { id: string; uhid: string; name: string | null; alias: string | null };
     /** 2026-10-02 — today's ticket for this patient was already handed over: that finished ticket. */
     lastDispenseId?: string;
+    /** Spec #1046 D6 — a handed-over ticket of this patient that still owes a balance. Absent from an older server. */
+    balanceDispenseId?: string;
   };
 /** `about` is what the line says; `key` is the hit's identity, which a PD-9 authorisation names. */
 export type WireAlternativeBlock = { book: "allergy" | "interaction" | "duplicate" | "drug_disease"; about: string; key: string };
@@ -293,6 +307,8 @@ export type WireAuthorisationDetail = {
   dispenseNo: string | null;
   patient: { name: string | null; alias: string | null; uhid: string; restricted: boolean } | null;
   line: { drug: string; dose: string; frequency: string; durationDays: number | null; instructions: string | null } | null;
+  /** 0093 — a brand swap request: the brand on the line and the one the pharmacist would give. Absent from an older server. */
+  swap?: { from: string; to: string } | null;
 };
 export async function fetchAuthorisation(id: string): Promise<WireAuthorisationDetail> {
   return api<WireAuthorisationDetail>("GET", `/pharmacy/authorisations/${id}`);
@@ -387,8 +403,16 @@ export type WireDiscountRequest = { approvalId: string; status: string; amountPa
 export async function fetchDiscountRequest(approvalId: string): Promise<WireDiscountRequest> {
   return api<WireDiscountRequest>("GET", `/pharmacy/discount-requests/${approvalId}`);
 }
+/**
+ * D7 — how the person at the window was confirmed. Spec #1046 D1 — the third way: who collected it, the
+ * patient themself or an attendant named with their relation (OPD's "Who came?" list).
+ */
+export type HandoverIdentity =
+  | { via: "token" | "phone_last4"; value: string }
+  | { via: "collected_by"; who: "self" }
+  | { via: "collected_by"; who: "attendant"; name: string; relation: string };
 export async function handOverDispense(
-  id: string, identity: { via: "token" | "phone_last4"; value: string } | null, idempotencyKey: string, controlled?: ControlledHandover,
+  id: string, identity: HandoverIdentity | null, idempotencyKey: string, controlled?: ControlledHandover,
 ): Promise<WireDispense> {
   return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/handover`, {
     ...(identity === null ? {} : { identity }), ...(controlled === undefined ? {} : { controlled }),
@@ -396,7 +420,13 @@ export async function handOverDispense(
 }
 export type WireLabel = {
   dispenseNo: string | null; status: string; patient: { display: string; uhid: string }; handedOverAt: string | null;
-  lines: { lineIdx: number; drug: string; strength: string | null; form: string | null; qtyBase: number; unit: string; packs: string | null; batchNo: string; expiryDate: string | null; directions: string; substitutedFor: string | null }[];
+  lines: {
+    lineIdx: number; drug: string; strength: string | null; form: string | null; qtyBase: number; unit: string; packs: string | null; batchNo: string; expiryDate: string | null; directions: string; substitutedFor: string | null;
+    /** Spec #1046 D5 — the maker on the pack. Absent from an older server. */
+    manufacturer?: string | null;
+  }[];
+  /** Spec #1046 D5 — the current drug licence numbers the bill prints; null when none. Absent from an older server. */
+  licence?: { form20No: string; form21No: string } | null;
   /** P2 — who verified the dispense, and the registration current then. Absent from an older server. */
   pharmacist?: { name: string; council: string | null; registrationNo: string | null } | null;
   /** The issued bill, one row per drug (loose-MRP ruling). Null before the bill; absent from an older server. */
@@ -594,9 +624,14 @@ export type WireRetailSale = {
   invoiceId: string; invoiceNo: string; netPaise: number; scheduled: boolean;
   prescription: { prescriberName: string; prescriberRegNo: string; prescriberAddress: string; rxDate: string; documentId: string | null } | null;
   pharmacistRegNo: string | null;
+  /** Spec #1046 D5 — who sold it and their registration then, and the licence it sold under. Absent from an older server. */
+  pharmacist?: { name: string; registrationNo: string | null };
+  licence?: { form20No: string; form21No: string } | null;
   lines: {
     lineIdx: number; medicineId: string; drugName: string; itemId: string; itemCode: string; itemName: string; batchId: string;
     batchNo: string; expiryDate: string | null; qtyBase: number; baseUom: string; unitPaise: number; scheduleFlag: string | null; fefoOverride: boolean;
+    /** Spec #1046 D5 — the maker on the pack. Absent from an older server. */
+    manufacturer?: string | null;
     /** P19b — absent from an older server. */
     returnedQtyBase?: number;
   }[];
@@ -722,15 +757,19 @@ export type WirePharmacyPrintJob = { id: string; document: string; status: strin
 export type WireSendPaper =
   | { via: "relay"; jobs: WirePharmacyPrintJob[] }
   | { via: "browser"; documents: string[] };
-export async function sendDispensePaper(id: string, reprint = false): Promise<WireSendPaper> {
-  return api<WireSendPaper>("POST", `/pharmacy/dispenses/${id}/print`, reprint ? { reprint: true } : {});
+/** Spec #1046 D3 — the bill prints at payment and the labels at hand-over: `documents` narrows the paper; absent, both. */
+export type PharmacyPaperDoc = "pharmacy_bill" | "pharmacy_labels";
+export async function sendDispensePaper(id: string, reprint = false, documents?: readonly PharmacyPaperDoc[]): Promise<WireSendPaper> {
+  return api<WireSendPaper>("POST", `/pharmacy/dispenses/${id}/print`, {
+    ...(reprint ? { reprint: true } : {}), ...(documents === undefined ? {} : { documents }),
+  });
 }
 export async function fetchDispensePrintJobs(id: string): Promise<{ jobs: WirePharmacyPrintJob[] }> {
   return api<{ jobs: WirePharmacyPrintJob[] }>("GET", `/pharmacy/dispenses/${id}/print`);
 }
 /** The bill and the labels, the relay's own rendering, for the browser's print. */
-export async function fetchDispensePaper(id: string): Promise<{ html: string; title: string; page: { widthMm: number; heightMm: number | null } }> {
-  return api("GET", `/pharmacy/dispenses/${id}/paper`);
+export async function fetchDispensePaper(id: string, documents?: readonly PharmacyPaperDoc[]): Promise<{ html: string; title: string; page: { widthMm: number; heightMm: number | null } }> {
+  return api("GET", `/pharmacy/dispenses/${id}/paper${documents === undefined ? "" : `?documents=${documents.join(",")}`}`);
 }
 
 export type WireShortBookEntry = {

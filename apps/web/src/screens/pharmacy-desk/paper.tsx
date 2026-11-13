@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { fetchDispensePaper, fetchDispensePrintJobs, pharmacyErrorText, sendDispensePaper } from "../../lib/pharmacy-api";
 import { printInFrame } from "../../lib/print-api";
 import { say } from "./log";
-import type { WirePharmacyPrintJob } from "../../lib/pharmacy-api";
+import type { PharmacyPaperDoc, WirePharmacyPrintJob } from "../../lib/pharmacy-api";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -47,8 +47,17 @@ export function paperState(jobs: readonly WirePharmacyPrintJob[], sentAt: number
   return "with_printer";
 }
 
-export function DonePaper({ dispenseId, autoPrint }: { dispenseId: string; autoPrint: boolean }): React.ReactElement {
+/**
+ * Spec #1046 D3 — the bill prints when the money is taken (`documents = ["pharmacy_bill"]`, the billed ticket's
+ * row: every word and the reprint are the bill's), and the hand-over then sends the labels. `documents` narrows the
+ * FIRST send and what "Print here" prints; on the finished ticket ⋯ still prints both.
+ */
+export function DonePaper({ dispenseId, autoPrint, documents }: { dispenseId: string; autoPrint: boolean; documents?: readonly PharmacyPaperDoc[] | undefined }): React.ReactElement {
   const { t } = useTranslation();
+  const billOnly = documents !== undefined && documents.length === 1 && documents[0] === "pharmacy_bill";
+  /* The bill's own words on the billed ticket; the pair's after the hand-over. */
+  const ns = billOnly ? "pharmacyDesk.paper.bill" : "pharmacyDesk.paper";
+  const k = (key: string): string => `${ns}.${key}`;
   const qc = useQueryClient();
   const [mode, setMode] = useState<Mode>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -72,9 +81,10 @@ export function DonePaper({ dispenseId, autoPrint }: { dispenseId: string; autoP
     return () => clearInterval(id);
   }, [mode]);
 
-  const printHere = useCallback(async (): Promise<void> => {
+  const [sent, setSent] = useState<readonly PharmacyPaperDoc[] | undefined>(documents);
+  const printHere = useCallback(async (only: readonly PharmacyPaperDoc[] | undefined = billOnly ? documents : undefined): Promise<void> => {
     try {
-      const doc = await fetchDispensePaper(dispenseId);
+      const doc = await fetchDispensePaper(dispenseId, only);
       if (!printInFrame(doc)) throw new Error(t("pharmacyDesk.paper.frameRefused"));
       setMode("browser");
       setError(null);
@@ -82,22 +92,22 @@ export function DonePaper({ dispenseId, autoPrint }: { dispenseId: string; autoP
       setMode("error");
       setError(pharmacyErrorText(e, t));
     }
-  }, [dispenseId, t]);
+  }, [billOnly, dispenseId, documents, t]);
 
-  const send = useCallback(async (reprint: boolean): Promise<void> => {
-    setMode("sending"); setError(null);
+  const send = useCallback(async (reprint: boolean, only: readonly PharmacyPaperDoc[] | undefined): Promise<void> => {
+    setMode("sending"); setError(null); setSent(only);
     try {
-      const r = await sendDispensePaper(dispenseId, reprint);
+      const r = await sendDispensePaper(dispenseId, reprint, only);
       if (r.via === "relay") {
         setMode("relay");
         setSentAt(Date.now());
         qc.setQueryData(["pharmacy", "print", dispenseId], (old: { jobs: WirePharmacyPrintJob[] } | undefined) => ({
           jobs: [...r.jobs, ...(old?.jobs ?? []).filter((j) => !r.jobs.some((n) => n.id === j.id))],
         }));
-        say(t(reprint ? "pharmacyDesk.paper.logReprint" : "pharmacyDesk.paper.logSent"));
+        say(t(reprint ? `${ns}.logReprint` : `${ns}.logSent`));
         return;
       }
-      await printHere();
+      await printHere(only);
       if (!saidNoRelay) {
         saidNoRelay = true;
         say(t("pharmacyDesk.paper.noRelayOnce"), "warn");
@@ -106,14 +116,14 @@ export function DonePaper({ dispenseId, autoPrint }: { dispenseId: string; autoP
       setMode("error");
       setError(pharmacyErrorText(e, t));
     }
-  }, [dispenseId, printHere, qc, t]);
+  }, [dispenseId, ns, printHere, qc, t]);
 
   const started = useRef(false);
   useEffect(() => {
     if (!autoPrint || started.current) return;
     started.current = true;
-    void send(false);
-  }, [autoPrint, send]);
+    void send(false, documents);
+  }, [autoPrint, documents, send]);
 
   useEffect(() => {
     if (!menu) return;
@@ -124,18 +134,19 @@ export function DonePaper({ dispenseId, autoPrint }: { dispenseId: string; autoP
     return () => { document.removeEventListener("mousedown", onDown); window.removeEventListener("keydown", onKey, true); };
   }, [menu]);
 
-  const rows = jobs.data?.jobs ?? [];
+  /* The bill's row reads the bill's jobs alone; the finished ticket reads them all. */
+  const rows = (jobs.data?.jobs ?? []).filter((j) => !billOnly || j.document === "pharmacy_bill");
   const state = paperState(rows, sentAt, now);
   const failedWhy = rows.find((j) => j.status === "failed")?.lastError ?? null;
   let line: { text: string; tone: string; offerHere: boolean } | null = null;
-  if (mode === "sending") line = { text: t("pharmacyDesk.paper.sending"), tone: "var(--dim)", offerHere: false };
-  else if (mode === "browser") line = { text: t("pharmacyDesk.paper.browser"), tone: "var(--dim)", offerHere: false };
+  if (mode === "sending") line = { text: t(k("sending")), tone: "var(--dim)", offerHere: false };
+  else if (mode === "browser") line = { text: t(k("browser")), tone: "var(--dim)", offerHere: false };
   else if (mode === "error") line = { text: error ?? "", tone: "var(--red)", offerHere: true };
-  else if (state === "printed") line = { text: t("pharmacyDesk.paper.printed"), tone: "var(--green)", offerHere: false };
-  else if (state === "failed") line = { text: failedWhy === null ? t("pharmacyDesk.paper.failed") : t("pharmacyDesk.paper.failedWhy", { why: failedWhy }), tone: "var(--red)", offerHere: true };
-  else if (state === "not_taken") line = { text: t("pharmacyDesk.paper.notTaken"), tone: "var(--gold)", offerHere: true };
+  else if (state === "printed") line = { text: t(k("printed")), tone: "var(--green)", offerHere: false };
+  else if (state === "failed") line = { text: failedWhy === null ? t(k("failed")) : t("pharmacyDesk.paper.failedWhy", { why: failedWhy }), tone: "var(--red)", offerHere: true };
+  else if (state === "not_taken") line = { text: t(k("notTaken")), tone: "var(--gold)", offerHere: true };
   /* Sent, and the jobs read has not caught up yet: the paper is with the printer, not unprinted. */
-  else if (state === "with_printer" || (mode === "relay" && state === "none")) line = { text: t("pharmacyDesk.paper.withPrinter"), tone: "var(--dim)", offerHere: false };
+  else if (state === "with_printer" || (mode === "relay" && state === "none")) line = { text: t(k("withPrinter")), tone: "var(--dim)", offerHere: false };
 
   const printed = rows.length > 0 || mode === "browser" || mode === "relay";
   return (
@@ -144,10 +155,10 @@ export function DonePaper({ dispenseId, autoPrint }: { dispenseId: string; autoP
         <path d="M6 9V3h12v6M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v7H6z" />
       </svg>
       <span role="status" data-testid="desk-paper-status" style={{ flexGrow: 1, fontSize: 12.5, color: line?.tone ?? "var(--dim)" }}>
-        {line?.text ?? t("pharmacyDesk.paper.notYet")}
+        {line?.text ?? t(k("notYet"))}
       </span>
       {line?.offerHere === true ? (
-        <button type="button" className="sec" data-testid="desk-paper-here" onClick={() => void printHere()}>{t("pharmacyDesk.paper.printHere")}</button>
+        <button type="button" className="sec" data-testid="desk-paper-here" onClick={() => void printHere(sent)}>{t("pharmacyDesk.paper.printHere")}</button>
       ) : null}
       <span ref={menuRef} style={{ position: "relative", flexShrink: 0 }}>
         <button
@@ -163,10 +174,10 @@ export function DonePaper({ dispenseId, autoPrint }: { dispenseId: string; autoP
         </button>
         {menu ? (
           <span className="lmenu" style={{ display: "block" }}>
-            <button type="button" disabled={mode === "sending"} onClick={() => { setMenu(false); void send(printed); }}>
-              {printed ? t("pharmacyDesk.paper.reprint") : t("pharmacyDesk.paper.print")}
+            <button type="button" disabled={mode === "sending"} onClick={() => { setMenu(false); void send(printed, billOnly ? documents : undefined); }}>
+              {printed ? t(k("reprint")) : t(k("print"))}
             </button>
-            <button type="button" onClick={() => { setMenu(false); void printHere(); }}>{t("pharmacyDesk.paper.printHere")}</button>
+            <button type="button" onClick={() => { setMenu(false); void printHere(billOnly ? documents : undefined); }}>{t("pharmacyDesk.paper.printHere")}</button>
           </span>
         ) : null}
       </span>
