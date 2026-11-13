@@ -212,6 +212,8 @@ export function StockEntryView(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<WireOpeningCapture | null>(null);
   const [busy, setBusy] = useState(false);
+  const focusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (focusTimer.current !== null) clearTimeout(focusTimer.current); }, []);
   const [newDrug, setNewDrug] = useState<{ rowKey: string; name: string } | null>(null);
   const [editing, setEditing] = useState<{ rowKey: string; item: WireStockItem } | null>(null);
   const [upload, setUpload] = useState(false);
@@ -304,8 +306,9 @@ export function StockEntryView(): React.ReactElement {
 
   const pick = (key: string, item: WireStockItem): void => {
     setRows((rs) => rs.map((r) => (r.key === key ? fromItem(r, item) : r)));
-    // The brand is chosen: the batch is next.
-    setTimeout(() => document.querySelector<HTMLInputElement>(`[data-row="${key}"] [data-col="batch"]`)?.focus(), 0);
+    // The brand is chosen: the batch is next. The timer is cleared if the grid closes first.
+    if (focusTimer.current !== null) clearTimeout(focusTimer.current);
+    focusTimer.current = setTimeout(() => document.querySelector<HTMLInputElement>(`[data-row="${key}"] [data-col="batch"]`)?.focus(), 0);
   };
   const putOnSale = async (key: string, item: WireStockItem): Promise<void> => {
     setError(null);
@@ -620,6 +623,8 @@ function BrandField({ row, index, mayCreate, mayPutOnSale, onQuery, onPick, onPu
   const list = hits.data ?? [];
   const choices = list.length + 1; // the last is "+ New drug"
   const blur = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // A blur timer still pending when the grid closes must not fire into a torn-down page.
+  useEffect(() => () => { if (blur.current !== null) clearTimeout(blur.current); }, []);
   const choose = (i: number): void => {
     setOpen(false);
     if (i < list.length) {
