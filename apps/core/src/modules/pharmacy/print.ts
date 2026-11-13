@@ -48,7 +48,7 @@ import type { LabelData } from "./label";
  */
 export type PharmacyPaper = "pharmacy_bill" | "pharmacy_labels";
 
-const PHARMACY_PAPER: readonly PharmacyPaper[] = ["pharmacy_bill", "pharmacy_labels"];
+export const PHARMACY_PAPER: readonly PharmacyPaper[] = ["pharmacy_bill", "pharmacy_labels"];
 
 /** The roll's extra rules: a table of rows, the summary, and a cut line between labels. */
 const PHARMACY_CSS = `
@@ -116,6 +116,21 @@ export function gstSummary(lines: readonly { rateBps: number; exempt: boolean; t
 
 type Part = { title: string; body: string };
 
+/** `2027-12-31` → `12/27`, the month and year a pack prints. */
+export function mmyy(iso: string | null): string {
+  return iso === null || iso.length < 7 ? "—" : `${iso.slice(5, 7)}/${iso.slice(2, 4)}`;
+}
+
+/** Spec #1046 D5 — the bill header's drug licence line; "—" when no licence is current. */
+export function licenceText(licence: { form20No: string; form21No: string } | null): string {
+  return licence === null ? "D.L. No. —" : `D.L. No. Form 20: ${licence.form20No} · Form 21: ${licence.form21No}`;
+}
+
+/** Spec #1046 D5 — the pharmacist and their council registration; "—" for what is not on record (quick desk, 0022/0093). */
+export function pharmacistText(p: { name: string; registrationNo: string | null } | null): string {
+  return p === null ? "—" : `${p.name} · Reg. ${p.registrationNo ?? "—"}`;
+}
+
 
 
 /** The paper names the patient as the label read does — alias-safe (`labelFor`). No requester reads as nobody. */
@@ -135,9 +150,17 @@ async function billPart(db: Db, requester: Actor | null, dispenseId: string, lab
   // OWNER RULING 2026-09-30 — the paper says why the bill is below MRP: the sale discount's reason, off its line.
   const discountReason = saleDiscountReason(lines);
 
-  const rows = label.billRows.map((r) => `
-      <tr><td>${esc(r.serviceName)}<div class="sub">HSN ${esc(r.sacCode ?? "")}${r.exempt === true ? " · exempt" : r.rateBps === null ? "" : ` · GST ${String(r.rateBps / 100)}%`}${r.pack !== null && r.pack.packs > 0 && r.pack.packPaise !== null ? ` · ${esc(rupees(r.pack.packPaise))}/${esc(r.pack.uom)}` : ""}</div></td>
-      <td class="r">${esc(qtyText(r))}</td><td class="r">${esc(rupees(r.netPaise))}</td></tr>`).join("");
+  /* Spec #1046 D5 — each row's batch, MM/YY expiry and maker, off the dispense line it was billed as. */
+  const particulars = new Map(label.lines.filter((l) => l.invoiceLineId !== null).map((l) => [l.invoiceLineId as string, l]));
+  const rows = label.billRows.map((r) => {
+    const p = particulars.get(r.lineIds[0] ?? "");
+    const batch = p === undefined ? "" : [
+      `Batch ${esc(p.batchNo)}`, `Exp ${esc(mmyy(p.expiryDate))}`, ...(p.manufacturer === null || p.manufacturer.trim() === "" ? [] : [esc(p.manufacturer)]),
+    ].join(" · ");
+    return `
+      <tr><td>${esc(r.serviceName)}${batch === "" ? "" : `<div class="sub">${batch}</div>`}<div class="sub">HSN ${esc(r.sacCode ?? "")}${r.exempt === true ? " · exempt" : r.rateBps === null ? "" : ` · GST ${String(r.rateBps / 100)}%`}${r.pack !== null && r.pack.packs > 0 && r.pack.packPaise !== null ? ` · ${esc(rupees(r.pack.packPaise))}/${esc(r.pack.uom)}` : ""}</div></td>
+      <td class="r">${esc(qtyText(r))}</td><td class="r">${esc(rupees(r.netPaise))}</td></tr>`;
+  }).join("");
   const gst = summary.map((g) => `
       <tr><td>${g.exempt ? "Exempt" : `${String(g.rateBps / 100)}%`}</td><td class="r">${esc(rupees(g.taxableBasePaise))}</td><td class="r">${esc(rupees(g.cgstPaise))}</td><td class="r">${esc(rupees(g.sgstPaise))}</td></tr>`).join("");
   const money = closing.money;
@@ -147,7 +170,7 @@ async function billPart(db: Db, requester: Actor | null, dispenseId: string, lab
   const body = `
     <div class="hd">
       <div class="nm">${esc(letterhead.name)}</div>
-      <div class="ad">${letterhead.legalName === undefined ? "" : `A unit of ${esc(letterhead.legalName)}<br>`}${letterhead.addressLines.map(esc).join("<br>")}${letterhead.gstin === undefined ? "" : `<br>GSTIN ${esc(letterhead.gstin)}`}</div>
+      <div class="ad">${letterhead.legalName === undefined ? "" : `A unit of ${esc(letterhead.legalName)}<br>`}${letterhead.addressLines.map(esc).join("<br>")}${letterhead.gstin === undefined ? "" : `<br>GSTIN ${esc(letterhead.gstin)}`}<br>${esc(licenceText(label.licence))}</div>
     </div>
     <div class="ttl">${documentTitle(lines)}</div>
     <div class="row"><span class="k">Invoice</span><span class="v mo">${esc(invoice.invoiceNo)}</span></div>
@@ -155,6 +178,7 @@ async function billPart(db: Db, requester: Actor | null, dispenseId: string, lab
     <div class="row"><span class="k">Patient</span><span class="v">${esc(label.patient.display)}</span></div>
     <div class="row"><span class="k">UHID</span><span class="v mo">${esc(label.patient.uhid)}</span></div>
     <div class="row"><span class="k">Ticket</span><span class="v mo">${esc(ticketLabel(label.dispenseNo))}</span></div>
+    <div class="row"><span class="k">Pharmacist</span><span class="v">${esc(pharmacistText(pharmacist))}</span></div>
     <div class="sec"><table>
       <thead><tr><th>Medicine</th><th class="r">Qty</th><th class="r">Amount</th></tr></thead>
       <tbody>${rows}</tbody>
@@ -180,7 +204,6 @@ async function billPart(db: Db, requester: Actor | null, dispenseId: string, lab
     </div>`}
     <div class="ft">
       Prices include GST and are never above the printed MRP.<br>
-      ${pharmacist === null ? "" : `Dispensed by ${esc(pharmacist.name)}${pharmacist.registrationNo === null ? "" : ` · Reg. ${esc(pharmacist.registrationNo)}`}<br>`}
       Authorised signatory · ${esc(letterhead.legalName ?? letterhead.name)}
     </div>
   `;
@@ -222,9 +245,15 @@ export async function renderPharmacyPaper(
  * The browser's copy: the bill and the labels as ONE roll, so the fallback is one print dialog, not
  * two. Both parts are the relay's own renderings, joined at a cut line.
  */
-export async function dispensePaper(db: Db, actor: Actor, dispenseId: string, now: Date): Promise<RenderedDocument> {
+export async function dispensePaper(
+  db: Db, actor: Actor, dispenseId: string, now: Date, documents: readonly PharmacyPaper[] = PHARMACY_PAPER,
+): Promise<RenderedDocument> {
   const label = await labelFor(db, actor, dispenseId);
-  const parts = [await billPart(db, actor, dispenseId, label), labelsPart(label, now)].filter((p): p is Part => p !== null);
+  /* Spec #1046 D3 — the bill prints at payment and the labels at hand-over, so each can be asked for alone. */
+  const parts = [
+    documents.includes("pharmacy_bill") ? await billPart(db, actor, dispenseId, label) : null,
+    documents.includes("pharmacy_labels") ? labelsPart(label, now) : null,
+  ].filter((p): p is Part => p !== null);
   if (parts.length === 0) throw new PharmacyError("nothing_to_print", "no bill and no picked medicine on this ticket yet");
   // Owner 2026-10-02 — one print dialog on the 4 × 6 inch stock: the bill first, the labels from a new page.
   return billPage(parts.map((p) => p.title).join(" · "), parts.map((p) => p.body).join('<div class="newpage"></div>'), PHARMACY_BILL_4X6_CSS);
@@ -236,14 +265,17 @@ export type SendPaperResult =
   /** No relay is serving the pharmacy's roll: the desk prints `GET …/paper` itself, and says so once. */
   | { via: "browser"; documents: PharmacyPaper[] };
 
-/** What this dispense has to print now: the bill once there is an invoice, labels once something was picked. */
-async function paperFor(db: Db, dispenseId: string): Promise<{ d: Awaited<ReturnType<typeof getDispenseRow>>; documents: PharmacyPaper[] }> {
+/**
+ * What this dispense has to print now: the bill once there is an invoice, labels once something was picked.
+ * Spec #1046 D3 — `only` narrows it: the desk sends the bill when the money is taken and the labels at hand-over.
+ */
+async function paperFor(db: Db, dispenseId: string, only: readonly PharmacyPaper[] = PHARMACY_PAPER): Promise<{ d: Awaited<ReturnType<typeof getDispenseRow>>; documents: PharmacyPaper[] }> {
   const d = await getDispenseRow(db, dispenseId);
   if (d.status !== "billed" && d.status !== "handed_over") {
     throw new PharmacyError("nothing_to_print", `dispense ${d.id} is ${d.status}; the bill and labels print once it is billed`, { status: d.status });
   }
   const picked = (await linesOf(db, dispenseId)).some((l) => l.status === "open" && l.batchId !== null);
-  const documents = PHARMACY_PAPER.filter((p) => (p === "pharmacy_bill" ? d.invoiceId !== null : picked));
+  const documents = PHARMACY_PAPER.filter((p) => only.includes(p) && (p === "pharmacy_bill" ? d.invoiceId !== null : picked));
   if (documents.length === 0) throw new PharmacyError("nothing_to_print", "no bill and no picked medicine on this ticket");
   return { d, documents };
 }
@@ -253,9 +285,9 @@ async function paperFor(db: Db, dispenseId: string): Promise<{ d: Awaited<Return
  * copy on purpose, recorded against the person who asked for it; without it a repeat is one row.
  */
 export async function sendDispensePaper(
-  db: Db, actor: Actor, dispenseId: string, input: { reprint?: boolean }, now: Date,
+  db: Db, actor: Actor, dispenseId: string, input: { reprint?: boolean; documents?: readonly PharmacyPaper[] }, now: Date,
 ): Promise<SendPaperResult> {
-  const { d, documents } = await paperFor(db, dispenseId);
+  const { d, documents } = await paperFor(db, dispenseId, input.documents);
   if (!(await relayServes(db, "pharmacy_thermal", now))) return { via: "browser", documents };
   const ids = await withTx(db, async (tx) => {
     const out: string[] = [];

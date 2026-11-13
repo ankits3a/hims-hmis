@@ -40,7 +40,13 @@ export function refusalKey(book: RefusalBook, hit: { substance?: string; saltPai
   }
 }
 
-export function authorisationKey(lineIdx: number, book: RefusalBook, key: string): string {
+/**
+ * What a prescriber may be asked to agree to from the counter: one of the four books' refusals, or (0093,
+ * spec #1046 D7) a Schedule H/H1 brand swap — `about` is then the substitute medicine's id.
+ */
+export type AuthorisationBook = RefusalBook | "substitution";
+
+export function authorisationKey(lineIdx: number, book: AuthorisationBook, key: string): string {
   return `${String(lineIdx)}|${book}|${key}`;
 }
 export type Refusals = {

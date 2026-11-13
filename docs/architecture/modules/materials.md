@@ -171,6 +171,7 @@ Source: `apps/core/src/modules/materials/`
   - `recallBatch(tx: Tx, actor: Actor, batchId: string, reason: string, register?: { recallId: string; recallNo: string; source: "cdsco" | "manu…`
   - `refIdsWithMovementBetween(db: Db | Tx, reason: MovementReason, refType: string, start: Date, end: Date): Promise<string[]>`
   - `releaseReservation(tx: Tx, _actor: Actor, reservationId: string): Promise<void>`
+  - `renewReservations(exec: Db | Tx, reservationIds: readonly string[], expiresAt: Date): Promise<number>`
   - `reserveStock(tx: Tx, actor: Actor, input: { resourceId: string; batchId: string; qty: number; refType: string; refId: string; expiresAt?: D…`
   - `returnedQtyByRef(db: Db | Tx, refType: string, refIds: readonly string[]): Promise<Map<string, number>>`
   - `sellableBatchesByItem(db: Db | Tx, resourceId: string, itemIds: readonly string[], asOf: Date = new Date()): Promise<Map<string, { batchId:…`

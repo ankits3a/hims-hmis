@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { newId } from "@hmis/contracts";
+import { GUARDIAN_NAME_MAX, GUARDIAN_RELATIONS, SELF_RELATION, newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { appendEvent } from "../../kernel/events/append";
 import { pharmacyDispenseLines, pharmacyDispenses, pharmacyRegH1 } from "../../kernel/db/schema";
@@ -31,9 +31,25 @@ import type { OrderKindDecl } from "../../kernel/orders/kinds";
 import type { RxLine } from "../opd";
 import type { DispenseView } from "./queue";
 
+/**
+ * D7 — for a scheduled dispense: how the person at the window was confirmed. Spec #1046 D1 (owner 2026-11-13)
+ * adds the third way beside today's token and the phone's last four: COLLECTED BY — the patient themself, or an
+ * attendant named with their relation (the list OPD's "Who came?" uses, `GUARDIAN_RELATIONS`). A paper pharmacy
+ * visit has no token and a phone is optional at registration, so without it a paid ticket could not leave.
+ */
+export type HandoverIdentity =
+  | { via: "token" | "phone_last4"; value: string }
+  /** `who`: `self`, or `attendant` with `name` and `relation` — asked here, as the route's body asks it. */
+  | { via: "collected_by"; who: string; name?: string | null; relation?: string | null };
+
+/** Who collected, as the dispense row and the hand-over event keep it. */
+export type CollectedBy = { who: "self" | "attendant"; name: string | null; relation: string | null };
+
+/** The attendant's relation: OPD's list, less `self` (the patient collecting is `who: "self"`). */
+const ATTENDANT_RELATIONS: readonly string[] = GUARDIAN_RELATIONS.filter((r) => r !== SELF_RELATION);
+
 export type HandoverInput = {
-  /** D7 — for a scheduled dispense: how the person at the window was confirmed. */
-  identity?: { via: "token" | "phone_last4"; value: string };
+  identity?: HandoverIdentity;
   /** PHARMACY P6 — a controlled line's hand-over: the witness, who collected it, the retained prescription. */
   controlled?: ControlledHandoverInput;
 };
@@ -104,7 +120,8 @@ export async function handOverDispense(
   if (visible === null) throw new PharmacyError("unknown_dispense", `dispense ${dispenseId} not found`);
   const patient = visible.patient;
 
-  let identityConfirmedVia: "token" | "phone_last4" | null = null;
+  let identityConfirmedVia: HandoverIdentity["via"] | null = null;
+  let collected: CollectedBy | null = null;
   // P2 — the number the records carry: the scheduled path has just required it; the aide has none.
   const pharmacistRegNo = actor.type === "user" ? await registrationNoOf(db, actor.id, now) : null;
   if (scheduled) {
@@ -114,19 +131,39 @@ export async function handOverDispense(
     // P2 — the permission says the login may; the register says the person is a registered pharmacist today.
     // Owner ruling 2026-10-02 — quick desk mode (`settings.ts`) does not ask for it; the permission above stays.
     if (!(await quickDeskOn(db))) await requireRegisteredPharmacist(db, actor, now);
-    if (input.identity === undefined || input.identity.value.trim() === "") {
-      throw new PharmacyError("identity_confirmation_required", "confirm the person at the window: today's token, or the last four digits of the phone on the record");
+    const identity = input.identity;
+    if (identity === undefined || (identity.via !== "collected_by" && identity.value.trim() === "")) {
+      throw new PharmacyError("identity_confirmation_required", "confirm the person at the window: today's token, the last four digits of the phone on the record, or who is collecting it");
     }
-    const value = input.identity.value.trim();
-    if (input.identity.via === "phone_last4") {
-      const phone = (patient.phone ?? "").replace(/\D/g, "");
-      if (value.length !== 4 || !phone.endsWith(value)) throw new PharmacyError("identity_mismatch", "those four digits do not end the phone on the record");
+    if (identity.via === "collected_by") {
+      /*
+        Spec #1046 D1 — a controlled line (Schedule X, NDPS) keeps the stricter path: its collector, witness and
+        retained prescription are P6's (`prepareControlledHandover`), and the person is still confirmed by token or phone.
+      */
+      if (lines.some((l) => controlOf(l.scheduleFlag, l.ndpsClass).controlled)) {
+        throw new PharmacyError("identity_confirmation_required", "a controlled drug is handed over against today's token or the phone's last four, with the witness");
+      }
+      if (identity.who === "self") collected = { who: "self", name: null, relation: null };
+      else {
+        const name = (identity.name ?? "").trim();
+        const relation = identity.relation ?? "";
+        if (identity.who !== "attendant" || name === "" || name.length > GUARDIAN_NAME_MAX || !ATTENDANT_RELATIONS.includes(relation)) {
+          throw new PharmacyError("identity_confirmation_required", "name the attendant collecting it and how they are related to the patient");
+        }
+        collected = { who: "attendant", name, relation };
+      }
     } else {
-      const visit = await getVisit(db, actor, d.encounterId);
-      const token = visit?.queueEntries.at(-1)?.tokenNo ?? null;
-      if (token === null || String(token) !== value.replace(/^t-?/i, "")) throw new PharmacyError("identity_mismatch", "that is not today's token for this visit");
+      const value = identity.value.trim();
+      if (identity.via === "phone_last4") {
+        const phone = (patient.phone ?? "").replace(/\D/g, "");
+        if (value.length !== 4 || !phone.endsWith(value)) throw new PharmacyError("identity_mismatch", "those four digits do not end the phone on the record");
+      } else {
+        const visit = await getVisit(db, actor, d.encounterId);
+        const token = visit?.queueEntries.at(-1)?.tokenNo ?? null;
+        if (token === null || String(token) !== value.replace(/^t-?/i, "")) throw new PharmacyError("identity_mismatch", "that is not today's token for this visit");
+      }
     }
-    identityConfirmedVia = input.identity.via;
+    identityConfirmedVia = identity.via;
   }
 
   const rx = await getPrescription(db, actor, d.prescriptionId);
@@ -267,7 +304,10 @@ export async function handOverDispense(
       }
     }
     const won = await tx.update(pharmacyDispenses)
-      .set({ status: "handed_over", handedOverBy: actor.id, handedOverAt: now, identityConfirmedVia, scheduled })
+      .set({
+        status: "handed_over", handedOverBy: actor.id, handedOverAt: now, identityConfirmedVia, scheduled,
+        ...(collected === null ? {} : { collectedBy: collected.who, collectorName: collected.name, collectorRelation: collected.relation }),
+      })
       .where(and(eq(pharmacyDispenses.id, d.id), eq(pharmacyDispenses.status, "billed")))
       .returning({ id: pharmacyDispenses.id });
     if (won.length === 0) throw new PharmacyError("dispense_not_in_state", `dispense ${d.id} moved while handing over`);
@@ -276,7 +316,7 @@ export async function handOverDispense(
       occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
       payload: {
         dispenseId: d.id, dispenseNo: d.dispenseNo ?? d.id, patientId: d.patientId, encounterId: d.encounterId, handedOverBy: actor.id,
-        ledgerEntryIds, h1RegisterRows: h1Rows, identityConfirmedVia, pharmacistRegNo,
+        ledgerEntryIds, h1RegisterRows: h1Rows, identityConfirmedVia, collectedBy: collected, pharmacistRegNo,
         controlledRegisterRows: controlledRows, witnessId: controlled?.witnessId ?? null,
       },
     }));

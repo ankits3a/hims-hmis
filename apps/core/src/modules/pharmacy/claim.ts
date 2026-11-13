@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, gte } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { pharmacyDispenseLines, pharmacyDispenses } from "../../kernel/db/schema";
@@ -8,13 +8,13 @@ import { medicinesByIds, ndpsClassByMedicine, resolveDrugTexts } from "../formul
 import { findStoreByCode, listItems } from "../materials";
 import { findVisitByToken, getPrescription, getVisit, listVisits, verifyPrescriptionQr } from "../opd";
 import { getPatientSummaries, searchPatients, verifyQrScan } from "../patients";
-import { OPD_PHARMACY_STORE_CODE, SCHEDULED_FLAGS, istDateOf } from "./config";
+import { BALANCE_WINDOW_DAYS, OPD_PHARMACY_STORE_CODE, SCHEDULED_FLAGS, istDateOf } from "./config";
 import { assertControlledLinesAllowed, controlOf } from "./controlled";
 import { dispenseClaimed, lineMatched } from "./events";
 import { MATCH_ACTOR, chooseMatch, matchesFor, shelfIndex, targetOf } from "./auto-match";
 import type { Matched } from "./auto-match";
 import { PharmacyError } from "./errors";
-import { enqueueDispense, getDispense, getDispenseRow, liveDispenseFor, userNames } from "./queue";
+import { balanceOwedOf, enqueueBalanceDispense, enqueueDispense, getDispense, getDispenseRow, linesOf, liveDispenseFor, userNames } from "./queue";
 import { prefillQtyBase } from "./qty";
 import { PHARMACY_DISPENSE_DEF_KEY } from "./workflow-def";
 import type { Actor } from "@hmis/contracts";
@@ -37,6 +37,11 @@ export type FindResult =
     patient?: FoundPatient | undefined;
     /** 2026-10-02 — today's prescription was already handed over: that finished ticket, for "see it again". */
     lastDispenseId?: string | undefined;
+    /**
+     * Spec #1046 D6 — a handed-over ticket of this patient that still owes a balance the counter may open now
+     * (`openBalanceDispense`): the desk offers "Balance owed" beside the paper door.
+     */
+    balanceDispenseId?: string | undefined;
   };
 
 export type FoundPatient = { id: string; uhid: string; name: string | null; alias: string | null };
@@ -150,10 +155,53 @@ async function todaysDispense(db: Db, actor: Actor, patientId: string, door: Cou
     if (live?.status === "handed_over") { lastDone ??= live.id; continue; }
     return { kind: "dispense", door, dispense: await ensureQueued(db, actor, rx, now) };
   }
+  const owing = await balanceOwingFor(db, patientId, now);
   return {
     kind: "none", door, reason: "no_prescription_today", patient: await foundPatient(db, actor, patientId),
     ...(lastDone === undefined ? {} : { lastDispenseId: lastDone }),
+    ...(owing === null ? {} : { balanceDispenseId: owing }),
   };
+}
+
+/**
+ * Spec #1046 D6 — the newest handed-over ticket of this patient, inside the balance window, that still owes a
+ * balance the counter may open now. The prescription's own day is long past by "tomorrow", so this looks back
+ * across visits rather than at today's.
+ */
+async function balanceOwingFor(db: Db, patientId: string, now: Date): Promise<string | null> {
+  const since = new Date(now.getTime() - BALANCE_WINDOW_DAYS * 24 * 60 * 60_000);
+  const rows = await db.select().from(pharmacyDispenses)
+    .where(and(eq(pharmacyDispenses.patientId, patientId), eq(pharmacyDispenses.status, "handed_over"), gte(pharmacyDispenses.handedOverAt, since)))
+    .orderBy(desc(pharmacyDispenses.handedOverAt)).limit(20);
+  for (const d of rows) {
+    if ((await balanceOwedOf(db, d, await linesOf(db, d.id), now)) !== null) return d.id;
+  }
+  return null;
+}
+
+/**
+ * ═══ SPEC #1046 D6 — OPEN THE BALANCE ("REST TOMORROW") ═══
+ *
+ * The patient comes back for what the shelf could not give: a new ticket for exactly the owed lines and
+ * quantities of `sourceId` (`queue.ts` `balanceOwedOf` decides whether anything is owed and the 30-day window
+ * from the prescription's first hand-over). It is queued; the claim lays out the owed lines (`claimDispense`)
+ * and it runs the normal pipeline from there. The prescription must still be the active one, as for any claim.
+ */
+export async function openBalanceDispense(db: Db, actor: Actor, sourceId: string, now: Date): Promise<DispenseView> {
+  const source = await getDispenseRow(db, sourceId);
+  const rx = await getPrescription(db, actor, source.prescriptionId);
+  if (rx === null) {
+    throw new PharmacyError("permission_denied", "this ticket is a sealed record — a pharmacist who may read sealed records, or break-glass, must take it", { reason: "patient_restricted" });
+  }
+  if (rx.status !== "active") throw new PharmacyError("prescription_superseded", `prescription ${rx.id} v${String(rx.version)} is ${rx.status} — scan the current version`);
+  const id = await withTx(db, async (tx) => {
+    const fresh = await getDispenseRow(tx, sourceId);
+    if ((await balanceOwedOf(tx, fresh, await linesOf(tx, sourceId), now)) === null) {
+      throw new PharmacyError("no_balance_owed", "nothing is owed on this ticket now — nothing was picked short, its balance is already open, or 30 days have passed since it was first handed over", { dispenseId: sourceId });
+    }
+    return enqueueBalanceDispense(tx, actor, fresh, now);
+  });
+  return getDispense(db, actor, id, now);
 }
 
 async function activePrescriptionOf(db: Db, actor: Actor, encounterId: string): Promise<PrescriptionRow | null> {
@@ -230,6 +278,13 @@ export async function claimDispense(
   const store = await findStoreByCode(db, OPD_PHARMACY_STORE_CODE);
   if (store === undefined) throw new PharmacyError("store_missing", `no materials store "${OPD_PHARMACY_STORE_CODE}" — the go-live runbook creates it`);
 
+  /*
+    Spec #1046 D6 — a BALANCE ticket lays out only what its source left owed: the source's line as it was
+    settled there (the medicine and item given, a recorded generic swap with its consent), at the owed quantity.
+  */
+  const owedLines = d.balanceOf === null ? null
+    : (await linesOf(db, d.balanceOf)).filter((l) => l.status === "open" && l.splitFromLineIdx === null && (l.owedQtyBase ?? 0) > 0);
+  if (owedLines !== null && owedLines.length === 0) throw new PharmacyError("no_balance_owed", "the ticket this balance completes owes nothing", { dispenseId: d.id, balanceOf: d.balanceOf });
   const lines = rx.lines as RxLine[];
   /**
    * THE TWO STATEMENTS SWAPPED ORDER, and the compiler now enforces it: the set of medicines this
@@ -249,7 +304,17 @@ export async function claimDispense(
   // PHARMACY P6 — the NDPS class beside the schedule flag: together they say which lines are controlled.
   const ndps = await ndpsClassByMedicine(db, [...medicines.keys()]);
 
-  const laid = lines.map((line, lineIdx) => {
+  type Laid = {
+    id: string; dispenseId: string; lineIdx: number; rxLine: RxLine; orderedMedicineId: string | null; dispensedMedicineId: string | null;
+    substitutionType: "resolved" | "none" | "generic"; consentBy?: string | null; consentAt?: Date | null;
+    itemId: string | null; qtyBase: number | null; scheduleFlag: string | null; ndpsClass: string | null; status: "open";
+  };
+  const laid: Laid[] = owedLines !== null ? owedLines.map((l) => ({
+    id: newId(), dispenseId: d.id, lineIdx: l.lineIdx, rxLine: l.rxLine as RxLine,
+    orderedMedicineId: l.orderedMedicineId, dispensedMedicineId: l.dispensedMedicineId,
+    substitutionType: l.substitutionType as "resolved" | "none" | "generic", consentBy: l.consentBy, consentAt: l.consentAt,
+    itemId: l.itemId, qtyBase: l.owedQtyBase, scheduleFlag: l.scheduleFlag, ndpsClass: l.ndpsClass, status: "open" as const,
+  })) : lines.map((line, lineIdx) => {
     const ordered = line.medicineId ?? null;
     const viaText = ordered === null ? (resolved.get(line.drug)?.medicineId ?? null) : null;
     const dispensedMedicineId = ordered ?? viaText;

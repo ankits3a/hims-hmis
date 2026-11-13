@@ -11,7 +11,7 @@ import {
 } from "../../kernel/db/schema";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { appendEvent } from "../../kernel/events/append";
-import { getInvoice, issueInvoice, previewInvoice, withIdempotency } from "../billing";
+import { collectionsBlind, getInvoice, issueInvoice, previewInvoice, withIdempotency } from "../billing";
 import { medicinesByIds, ndpsClassByMedicine, resolveDrugTexts } from "../formulary";
 import {
   MaterialsError, availableQty, availableQtyByItem, balances, fefoPick, findStoreByCode, getBatch, itemsByIds, postMovements,
@@ -34,7 +34,7 @@ import { PharmacyError } from "./errors";
 import { retailLicenceRecorded, retailSold } from "./events";
 import { PHARMACY_IDEMPOTENT_ROUTES } from "./pharmacy-http";
 import { parseGs1 } from "./gs1";
-import { registrationNoOf, requireRegisteredPharmacist } from "./pharmacists";
+import { registrationAt, registrationNoOf, requireRegisteredPharmacist } from "./pharmacists";
 import { resolveScan } from "./scan";
 import { shelfByMedicine } from "./shelf";
 import type { Actor } from "@hmis/contracts";
@@ -138,6 +138,16 @@ export async function retailLicenceState(db: Db, now: Date): Promise<RetailLicen
   const today = istDateOf(now);
   const state = today < row.validFrom ? "not_yet_valid" : today > row.validTo ? "lapsed" : "current";
   return { storeCode: RETAIL_PHARMACY_STORE_CODE, storePresent: true, state, licence: licenceView(row), daysLeft: daysBetween(today, row.validTo) };
+}
+
+/**
+ * Spec #1046 D5 — the drug licence numbers a pharmacy bill prints in its header (Drugs and Cosmetics Rules: a
+ * sale bill names the licence it sells under): the register's CURRENT Form 20 and Form 21, or null when none is
+ * current (the bill then prints "—"). Desk and walk-in bills read the same register.
+ */
+export async function licenceOnBill(db: Db, now: Date): Promise<{ form20No: string; form21No: string } | null> {
+  const state = await retailLicenceState(db, now);
+  return state.state !== "current" || state.licence === null ? null : { form20No: state.licence.form20No, form21No: state.licence.form21No };
 }
 
 export async function listRetailLicences(db: Db, actor: Actor): Promise<RetailLicenceView[]> {
@@ -1001,9 +1011,17 @@ export type RetailSaleView = {
   scheduled: boolean;
   prescription: { prescriberName: string; prescriberRegNo: string; prescriberAddress: string; rxDate: string; documentId: string | null } | null;
   pharmacistRegNo: string | null;
+  /**
+   * Spec #1046 D5 — the bill's header: the pharmacist who sold it and their council registration current at the
+   * sale (null when none: the bill prints "—", quick desk 0022/0093), and the drug licence numbers it sold under.
+   */
+  pharmacist: { name: string; registrationNo: string | null };
+  licence: { form20No: string; form21No: string } | null;
   lines: {
     lineIdx: number; medicineId: string; drugName: string; itemId: string; itemCode: string; itemName: string; batchId: string; batchNo: string;
     expiryDate: string | null; qtyBase: number; baseUom: string; unitPaise: number; scheduleFlag: string | null; fefoOverride: boolean;
+    /** Spec #1046 D5 — the maker printed on the pack (`items.manufacturer`); null when the item has none. */
+    manufacturer: string | null;
     /** P19b — what has come back of this line so far. */
     returnedQtyBase: number;
   }[];
@@ -1039,9 +1057,11 @@ export async function getRetailSale(db: Db, actor: Actor, saleId: string): Promi
       itemId: l.itemId, itemCode: item?.code ?? "", itemName: item?.name ?? "",
       batchId: l.batchId, batchNo: batch?.batchNo ?? "", expiryDate: batch?.expiryDate ?? null, qtyBase: l.qtyBase,
       baseUom: item?.baseUom ?? "unit", unitPaise: l.unitPaise, scheduleFlag: l.scheduleFlag, fefoOverride: l.fefoOverride,
+      manufacturer: item?.manufacturer ?? null,
       returnedQtyBase: returned.get(l.id) ?? 0,
     });
   }
+  const sellerReg = sale.pharmacistRegNo ?? (await registrationAt(db, sale.soldBy, sale.soldAt))?.registrationNo ?? null;
   return {
     id: sale.id, channel: sale.channel as RetailSaleView["channel"], enteredBy: sale.enteredBy ?? sale.soldBy,
     enteredAt: sale.createdAt.toISOString(),
@@ -1059,6 +1079,8 @@ export async function getRetailSale(db: Db, actor: Actor, saleId: string): Promi
       prescriberAddress: sale.rxPrescriberAddress ?? "", rxDate: sale.rxDate ?? "", documentId: sale.rxDocumentId,
     },
     pharmacistRegNo: sale.pharmacistRegNo,
+    pharmacist: { name: seller?.fullName ?? sale.soldBy, registrationNo: sellerReg },
+    licence: sale.channel === "walk_in" ? await licenceOnBill(db, sale.soldAt) : null,
     lines: out,
     billRows: await billRowsForInvoice(db, sale.invoiceId, lines),
     money: invoice === null ? null : {
@@ -1085,18 +1107,28 @@ export type RetailSaleRow = {
 };
 
 /**
+ * OWNER RULINGS 0014 / 0017 — BLIND COUNT. Each row's amount, added up, is what the seller's drawer took, and float +
+ * takings is what it should hold. So a caller who may not see her own "collected today" (an uncounted drawer and no
+ * `billing.session.read`) gets the rows WITHOUT `netPaise`; bill, time, customer, line count and Rx flag stay. Billing's
+ * `collectionsBlind` is the one rule, applied exactly as `counterSummaryFor` applies it.
+ */
+export type RetailSaleListRow = Omit<RetailSaleRow, "netPaise"> & { netPaise?: number };
+
+/**
  * One IST day's walk-in sales, newest first, each with its customer's display name (UX-AUDIT
  * 2026-09-28: a restricted customer is not named). The sale itself is opened, and that read
  * logged, to see anything more.
  */
-export async function listRetailSales(db: Db, actor: Actor, day: string): Promise<RetailSaleRow[]> {
+export async function listRetailSales(db: Db, actor: Actor, day: string): Promise<RetailSaleListRow[]> {
   await requirePermission(db, actor, SELL, "listing walk-in sales");
   if (!isIsoDate(day)) throw new PharmacyError("invalid_day", `"${day}" is not a date`);
   const { start, end } = istDayWindow(new Date(`${day}T12:00:00+05:30`));
   const sales = await db.select().from(pharmacyRetailSales)
     .where(and(eq(pharmacyRetailSales.channel, "walk_in"), gte(pharmacyRetailSales.soldAt, start), lt(pharmacyRetailSales.soldAt, end)))
     .orderBy(desc(pharmacyRetailSales.soldAt), desc(pharmacyRetailSales.id)).limit(500);
-  return saleRows(db, sales, actor);
+  const rows = await saleRows(db, sales, actor);
+  if (!(await collectionsBlind(db, actor, actor, day))) return rows;
+  return rows.map(({ netPaise: _hidden, ...row }) => { void _hidden; return row; });
 }
 
 async function saleRows(db: Db, sales: (typeof pharmacyRetailSales.$inferSelect)[], actor: Actor | null = null): Promise<RetailSaleRow[]> {

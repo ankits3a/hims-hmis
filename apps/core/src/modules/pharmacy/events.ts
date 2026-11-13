@@ -13,7 +13,9 @@ const id = z.string().min(1);
 /** D11 — a row entered the counter's queue: from the `prescription.issued` consumer, or from a first scan. */
 export const dispenseQueued = defineEvent("dispense.queued", MODULE, z.object({
   dispenseId: id, prescriptionId: id, prescriptionVersion: z.number().int().positive(),
-  patientId: id, encounterId: id, source: z.enum(["prescription_issued", "scan", "paper"]),
+  patientId: id, encounterId: id, source: z.enum(["prescription_issued", "scan", "paper", "balance"]),
+  /** Spec #1046 D6 — a balance ticket names the dispense whose owed quantities it gives. Additive. */
+  balanceOf: id.nullable().default(null),
 }));
 
 /**
@@ -110,7 +112,7 @@ export const shelfLocationSet = defineEvent("shelf.location_set", MODULE, z.obje
  */
 export const authorisationRequested = defineEvent("authorisation.requested", MODULE, z.object({
   authorisationId: id, dispenseId: id, lineIdx: z.number().int().nonnegative(), patientId: id,
-  book: z.enum(["allergy", "interaction", "duplicate", "drug_disease"]), prescriberUserId: id, requestedBy: id,
+  book: z.enum(["allergy", "interaction", "duplicate", "drug_disease", "substitution"]), prescriberUserId: id, requestedBy: id,
 }));
 export const authorisationDecided = defineEvent("authorisation.decided", MODULE, z.object({
   authorisationId: id, dispenseId: id, lineIdx: z.number().int().nonnegative(), patientId: id,
@@ -136,7 +138,9 @@ export const dispenseBilled = defineEvent("dispense.billed", MODULE, z.object({
 /** The drug left the counter: the ledger rows exist, the H1 register rows exist, the order items are `completed`. */
 export const dispenseHandedOver = defineEvent("dispense.handed_over", MODULE, z.object({
   dispenseId: id, dispenseNo: id, patientId: id, encounterId: id, handedOverBy: id,
-  ledgerEntryIds: z.array(id).min(1), h1RegisterRows: z.number().int().nonnegative(), identityConfirmedVia: z.enum(["token", "phone_last4"]).nullable(),
+  ledgerEntryIds: z.array(id).min(1), h1RegisterRows: z.number().int().nonnegative(), identityConfirmedVia: z.enum(["token", "phone_last4", "collected_by"]).nullable(),
+  /** Spec #1046 D1 — who collected it, when that was the identity way: the patient, or an attendant named with a relation. Additive. */
+  collectedBy: z.object({ who: z.enum(["self", "attendant"]), name: z.string().min(1).nullable(), relation: z.string().min(1).nullable() }).nullable().default(null),
   /**
    * P2 — the handing-over pharmacist's registration number, when they have one. A dispense with no
    * scheduled line may be handed over by the aide, who has none, so it is nullable by design.

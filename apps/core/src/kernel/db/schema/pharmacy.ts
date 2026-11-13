@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   bigint, bigserial, boolean, check, date, foreignKey, index, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { roles, users } from "./auth";
 import { invoiceLines, invoices } from "./billing";
 import { formularyMedicines, formularySalts } from "./formulary";
@@ -122,8 +123,23 @@ export const pharmacyDispenses = pgTable(
     billedAt: timestamp("billed_at", { withTimezone: true }),
     handedOverBy: text("handed_over_by"),
     handedOverAt: timestamp("handed_over_at", { withTimezone: true }),
-    /** D7 — how the person at the window was confirmed for a scheduled hand-over: `token` | `phone_last4`. */
+    /** D7 — how the person at the window was confirmed for a scheduled hand-over: `token` | `phone_last4` | `collected_by`. */
     identityConfirmedVia: text("identity_confirmed_via"),
+    /**
+     * Spec #1046 D1 — the third way at a scheduled hand-over: who collected it, as the pharmacist was told.
+     * `self` (the patient) or `attendant`, who then has a name and a relation (the list OPD's "Who came?" uses,
+     * `GUARDIAN_RELATIONS`). Null on every other hand-over; set together with `identity_confirmed_via = 'collected_by'`.
+     */
+    collectedBy: text("collected_by"),
+    collectorName: text("collector_name"),
+    collectorRelation: text("collector_relation"),
+    /**
+     * Spec #1046 D6 — a BALANCE ticket ("rest tomorrow"): the dispense whose owed quantities this one gives.
+     * It holds only the lines the source left owed (`pharmacy_dispense_lines.owed_qty_base`) and runs the
+     * normal pipeline. One live balance per source (`pharmacy_dispenses_live_balance_ux`); a balance row is
+     * outside `pharmacy_dispenses_live_rx_ux`, so it does not collide with the handed-over source.
+     */
+    balanceOf: text("balance_of").references((): AnyPgColumn => pharmacyDispenses.id),
     cancelledBy: text("cancelled_by"),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     cancelReason: text("cancel_reason"),
@@ -134,7 +150,10 @@ export const pharmacyDispenses = pgTable(
     uniqueIndex("pharmacy_dispenses_no_ux").on(t.dispenseNo),
     uniqueIndex("pharmacy_dispenses_live_rx_ux")
       .on(t.prescriptionId, t.prescriptionVersion)
-      .where(sql`${t.status} <> 'cancelled'`),
+      .where(sql`${t.status} <> 'cancelled' and ${t.balanceOf} is null`),
+    uniqueIndex("pharmacy_dispenses_live_balance_ux")
+      .on(t.balanceOf)
+      .where(sql`${t.status} <> 'cancelled' and ${t.balanceOf} is not null`),
     index("pharmacy_dispenses_status_idx").on(t.status, t.createdAt),
     index("pharmacy_dispenses_patient_idx").on(t.patientId),
     index("pharmacy_dispenses_encounter_idx").on(t.encounterId),
@@ -143,7 +162,13 @@ export const pharmacyDispenses = pgTable(
       "pharmacy_dispenses_claimed_has_order_ck",
       sql`${t.status} not in ('verified', 'picked', 'billed', 'handed_over') or (${t.orderId} is not null and ${t.dispenseNo} is not null and ${t.storeResourceId} is not null)`,
     ),
-    check("pharmacy_dispenses_identity_ck", sql`${t.identityConfirmedVia} is null or ${t.identityConfirmedVia} in ('token', 'phone_last4')`),
+    check("pharmacy_dispenses_identity_ck", sql`${t.identityConfirmedVia} is null or ${t.identityConfirmedVia} in ('token', 'phone_last4', 'collected_by')`),
+    check(
+      "pharmacy_dispenses_collected_ck",
+      sql`(${t.collectedBy} is null and ${t.collectorName} is null and ${t.collectorRelation} is null)
+        or (${t.collectedBy} = 'self' and ${t.collectorName} is null and ${t.collectorRelation} is null)
+        or (${t.collectedBy} = 'attendant' and btrim(${t.collectorName}) <> '' and ${t.collectorRelation} is not null)`,
+    ),
   ],
 );
 
@@ -171,6 +196,12 @@ export const pharmacyDispenseLines = pgTable(
     fefoOverride: boolean("fefo_override").notNull().default(false),
     /** T4 — why the quantity picked is less than verified (short stock) — a partial dispense's reason. */
     pickNote: text("pick_note"),
+    /**
+     * Spec #1046 D6 — what a partial pick left owed, in base units: verified minus picked, written by the pick
+     * that took less with a reason. A balance ticket gives it (`pharmacy_dispenses.balance_of`). Null when
+     * nothing is owed.
+     */
+    owedQtyBase: integer("owed_qty_base"),
     orderItemId: text("order_item_id").references(() => orderItems.id),
     invoiceLineId: text("invoice_line_id").references(() => invoiceLines.id),
     unitPaise: bigint("unit_paise", { mode: "number" }),
@@ -203,6 +234,7 @@ export const pharmacyDispenseLines = pgTable(
     check("pharmacy_dispense_lines_substitution_ck", sql`${t.substitutionType} in ('none', 'resolved', 'generic')`),
     check("pharmacy_dispense_lines_generic_consent_ck", sql`${t.substitutionType} <> 'generic' or ${t.consentBy} is not null`),
     check("pharmacy_dispense_lines_qty_ck", sql`${t.qtyBase} is null or ${t.qtyBase} > 0`),
+    check("pharmacy_dispense_lines_owed_ck", sql`${t.owedQtyBase} is null or ${t.owedQtyBase} > 0`),
     check("pharmacy_dispense_lines_winner_ck", sql`${t.priceWinner} is null or ${t.priceWinner} in ('batch_mrp', 'ceiling', 'tariff')`),
     check("pharmacy_dispense_lines_schedule_ck", sql`${t.scheduleFlag} is null or ${t.scheduleFlag} in ('H', 'H1', 'X', 'OTC')`),
     check("pharmacy_dispense_lines_ndps_ck", sql`${t.ndpsClass} is null or ${t.ndpsClass} in ('narcotic', 'psychotropic')`),
@@ -473,6 +505,7 @@ export const pharmacyAuthorisations = pgTable(
     id: text("id").primaryKey(), // ULID via newId()
     dispenseId: text("dispense_id").notNull().references(() => pharmacyDispenses.id),
     lineIdx: integer("line_idx").notNull(),
+    /** The four books `refusalsOf` refuses on, and `substitution` (0093, spec #1046 D7): a Schedule H/H1 brand swap, `about` = the substitute medicine. */
     book: text("book").notNull(),
     about: text("about").notNull(),
     prescriberUserId: text("prescriber_user_id").notNull(),
@@ -487,7 +520,7 @@ export const pharmacyAuthorisations = pgTable(
   (t) => [
     index("pharmacy_authorisations_prescriber_idx").on(t.prescriberUserId, t.status),
     uniqueIndex("pharmacy_authorisations_one_open_ux").on(t.dispenseId, t.lineIdx, t.book, t.about).where(sql`${t.status} = 'pending'`),
-    check("pharmacy_authorisations_book_ck", sql`${t.book} in ('allergy', 'interaction', 'duplicate', 'drug_disease')`),
+    check("pharmacy_authorisations_book_ck", sql`${t.book} in ('allergy', 'interaction', 'duplicate', 'drug_disease', 'substitution')`),
     check("pharmacy_authorisations_status_ck", sql`${t.status} in ('pending', 'authorised', 'declined')`),
     check("pharmacy_authorisations_decided_ck", sql`(${t.status} = 'pending') = (${t.decidedBy} is null and ${t.decidedAt} is null and ${t.decisionReason} is null)`),
     check("pharmacy_authorisations_reason_ck", sql`${t.decisionReason} is null or length(btrim(${t.decisionReason})) >= 3`),

@@ -169,6 +169,16 @@ export type IssueInvoiceInput = {
    */
   roundingRule?: RoundingRule;
   saleDiscount?: SaleDiscountInput;
+  /**
+   * Spec #1046 D6 (owner 2026-11-13) — INTERNAL ONLY, never on an HTTP body (the zod bodies strip it). The
+   * caller's own document this invoice bills, when the CALLER's state machine already guarantees one invoice
+   * per document: the pharmacy bills a dispense exactly once, through its `picked → billed` compare-and-set
+   * (`pharmacy/bill.ts`). With it, FD-27's encounter + service check below is not asked: that check is right
+   * for services (a consult charged twice on one visit) and wrong for goods, where a balance ticket ("rest
+   * tomorrow") or a re-issued prescription legitimately sells the same medicine on the same visit again.
+   * Absent, every invoice is guarded exactly as before.
+   */
+  oneInvoicePerDocument?: { kind: string; id: string };
 };
 
 export type IssueInvoiceResult = {
@@ -1216,7 +1226,9 @@ export async function issueInvoice(
       */
       if (input.encounterId !== undefined) {
         await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`invoice:${input.encounterId}`}))`);
-        const standing = await liveInvoiceCharging(tx, input.encounterId, draft.lines.map((l) => l.serviceId));
+        // Spec #1046 D6 — a caller that bills its own document once by construction is not asked FD-27's question.
+        const standing = input.oneInvoicePerDocument !== undefined ? null
+          : await liveInvoiceCharging(tx, input.encounterId, draft.lines.map((l) => l.serviceId));
         if (standing !== null) {
           throw new BillingError(
             "duplicate_invoice_refused",

@@ -1,5 +1,5 @@
 {
-  "id": "168a402e-60cb-4328-812f-c244db9c67ea",
+  "id": "3b9219be-d518-4b18-8afb-01725e72b7ef",
   "prevId": "4bcdb4ad-5eb8-4890-8459-4f95eb39afa1",
   "version": "7",
   "dialect": "postgresql",
@@ -20284,20 +20284,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
-        },
-        "estimated_cost": {
-          "name": "estimated_cost",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "mrp_revised": {
-          "name": "mrp_revised",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
         }
       },
       "indexes": {
@@ -20446,12 +20432,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "invoice_date": {
-          "name": "invoice_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
         "store_resource_id": {
           "name": "store_resource_id",
           "type": "text",
@@ -20485,30 +20465,6 @@
         },
         "approval_id": {
           "name": "approval_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "mrp_approval_id": {
-          "name": "mrp_approval_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "cancelled_by": {
-          "name": "cancelled_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "cancelled_at": {
-          "name": "cancelled_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "cancel_reason": {
-          "name": "cancel_reason",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -20661,15 +20617,11 @@
       "checkConstraints": {
         "grns_source_ck": {
           "name": "grns_source_ck",
-          "value": "\"grns\".\"source\" in ('challan', 'consignment_challan', 'donation', 'opening_stock')"
+          "value": "\"grns\".\"source\" in ('challan', 'consignment_challan', 'donation')"
         },
         "grns_status_ck": {
           "name": "grns_status_ck",
-          "value": "\"grns\".\"status\" in ('draft', 'gate_qc', 'accepted', 'partially_accepted', 'rejected', 'posted', 'cancelled')"
-        },
-        "grns_cancelled_ck": {
-          "name": "grns_cancelled_ck",
-          "value": "(\"grns\".\"status\" = 'cancelled') = (\"grns\".\"cancelled_at\" is not null) and (\"grns\".\"cancelled_at\" is null) = (\"grns\".\"cancel_reason\" is null)"
+          "value": "\"grns\".\"status\" in ('draft', 'gate_qc', 'accepted', 'partially_accepted', 'rejected', 'posted')"
         }
       },
       "isRLSEnabled": false
@@ -22590,13 +22542,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'[]'::jsonb"
-        },
-        "estimated_cost": {
-          "name": "estimated_cost",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
         },
         "created_by": {
           "name": "created_by",
@@ -24950,38 +24895,7 @@
           "name": "return_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'return'"
-        },
-        "taxable_paise": {
-          "name": "taxable_paise",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "gst_paise": {
-          "name": "gst_paise",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "note": {
-          "name": "note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "inter_state": {
-          "name": "inter_state",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "vendor_id": {
           "name": "vendor_id",
@@ -25163,14 +25077,6 @@
         "supplier_credit_notes_cancelled_ck": {
           "name": "supplier_credit_notes_cancelled_ck",
           "value": "(\"supplier_credit_notes\".\"status\" = 'cancelled') = (\"supplier_credit_notes\".\"cancelled_at\" is not null) and (\"supplier_credit_notes\".\"cancelled_at\" is null) = (\"supplier_credit_notes\".\"cancel_reason\" is null)"
-        },
-        "supplier_credit_notes_kind_ck": {
-          "name": "supplier_credit_notes_kind_ck",
-          "value": "\"supplier_credit_notes\".\"kind\" in ('return', 'rate_difference', 'scheme', 'breakage', 'other') and (\"supplier_credit_notes\".\"kind\" = 'return') = (\"supplier_credit_notes\".\"return_id\" is not null)"
-        },
-        "supplier_credit_notes_parts_ck": {
-          "name": "supplier_credit_notes_parts_ck",
-          "value": "(\"supplier_credit_notes\".\"taxable_paise\" is null) = (\"supplier_credit_notes\".\"gst_paise\" is null) and (\"supplier_credit_notes\".\"taxable_paise\" is null) = (\"supplier_credit_notes\".\"inter_state\" is null) and (\"supplier_credit_notes\".\"taxable_paise\" is null or (\"supplier_credit_notes\".\"taxable_paise\" >= 0 and \"supplier_credit_notes\".\"gst_paise\" >= 0 and \"supplier_credit_notes\".\"amount_paise\" = \"supplier_credit_notes\".\"taxable_paise\" + \"supplier_credit_notes\".\"gst_paise\"))"
         }
       },
       "isRLSEnabled": false
@@ -39775,7 +39681,7 @@
       "checkConstraints": {
         "pharmacy_authorisations_book_ck": {
           "name": "pharmacy_authorisations_book_ck",
-          "value": "\"pharmacy_authorisations\".\"book\" in ('allergy', 'interaction', 'duplicate', 'drug_disease')"
+          "value": "\"pharmacy_authorisations\".\"book\" in ('allergy', 'interaction', 'duplicate', 'drug_disease', 'substitution')"
         },
         "pharmacy_authorisations_status_ck": {
           "name": "pharmacy_authorisations_status_ck",
@@ -40959,6 +40865,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "owed_qty_base": {
+          "name": "owed_qty_base",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "order_item_id": {
           "name": "order_item_id",
           "type": "text",
@@ -41204,6 +41116,10 @@
           "name": "pharmacy_dispense_lines_qty_ck",
           "value": "\"pharmacy_dispense_lines\".\"qty_base\" is null or \"pharmacy_dispense_lines\".\"qty_base\" > 0"
         },
+        "pharmacy_dispense_lines_owed_ck": {
+          "name": "pharmacy_dispense_lines_owed_ck",
+          "value": "\"pharmacy_dispense_lines\".\"owed_qty_base\" is null or \"pharmacy_dispense_lines\".\"owed_qty_base\" > 0"
+        },
         "pharmacy_dispense_lines_winner_ck": {
           "name": "pharmacy_dispense_lines_winner_ck",
           "value": "\"pharmacy_dispense_lines\".\"price_winner\" is null or \"pharmacy_dispense_lines\".\"price_winner\" in ('batch_mrp', 'ceiling', 'tariff')"
@@ -41373,6 +41289,30 @@
           "primaryKey": false,
           "notNull": false
         },
+        "collected_by": {
+          "name": "collected_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "collector_name": {
+          "name": "collector_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "collector_relation": {
+          "name": "collector_relation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "balance_of": {
+          "name": "balance_of",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "cancelled_by": {
           "name": "cancelled_by",
           "type": "text",
@@ -41438,7 +41378,23 @@
             }
           ],
           "isUnique": true,
-          "where": "\"pharmacy_dispenses\".\"status\" <> 'cancelled'",
+          "where": "\"pharmacy_dispenses\".\"status\" <> 'cancelled' and \"pharmacy_dispenses\".\"balance_of\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "pharmacy_dispenses_live_balance_ux": {
+          "name": "pharmacy_dispenses_live_balance_ux",
+          "columns": [
+            {
+              "expression": "balance_of",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"pharmacy_dispenses\".\"status\" <> 'cancelled' and \"pharmacy_dispenses\".\"balance_of\" is not null",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -41573,6 +41529,19 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "pharmacy_dispenses_balance_of_pharmacy_dispenses_id_fk": {
+          "name": "pharmacy_dispenses_balance_of_pharmacy_dispenses_id_fk",
+          "tableFrom": "pharmacy_dispenses",
+          "tableTo": "pharmacy_dispenses",
+          "columnsFrom": [
+            "balance_of"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -41589,7 +41558,11 @@
         },
         "pharmacy_dispenses_identity_ck": {
           "name": "pharmacy_dispenses_identity_ck",
-          "value": "\"pharmacy_dispenses\".\"identity_confirmed_via\" is null or \"pharmacy_dispenses\".\"identity_confirmed_via\" in ('token', 'phone_last4')"
+          "value": "\"pharmacy_dispenses\".\"identity_confirmed_via\" is null or \"pharmacy_dispenses\".\"identity_confirmed_via\" in ('token', 'phone_last4', 'collected_by')"
+        },
+        "pharmacy_dispenses_collected_ck": {
+          "name": "pharmacy_dispenses_collected_ck",
+          "value": "(\"pharmacy_dispenses\".\"collected_by\" is null and \"pharmacy_dispenses\".\"collector_name\" is null and \"pharmacy_dispenses\".\"collector_relation\" is null)\n        or (\"pharmacy_dispenses\".\"collected_by\" = 'self' and \"pharmacy_dispenses\".\"collector_name\" is null and \"pharmacy_dispenses\".\"collector_relation\" is null)\n        or (\"pharmacy_dispenses\".\"collected_by\" = 'attendant' and btrim(\"pharmacy_dispenses\".\"collector_name\") <> '' and \"pharmacy_dispenses\".\"collector_relation\" is not null)"
         }
       },
       "isRLSEnabled": false

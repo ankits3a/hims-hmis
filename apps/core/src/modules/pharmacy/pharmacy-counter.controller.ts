@@ -5,7 +5,7 @@ import { withTx } from "../../kernel/db/client";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { withIdempotency } from "../billing";
-import { claimDispense, findAtCounter, suggestAtCounter } from "./claim";
+import { claimDispense, findAtCounter, openBalanceDispense, suggestAtCounter } from "./claim";
 import { takeOverDispense } from "./takeover";
 import { patientCredit } from "./credit-notes";
 import { patientPharmacyBills } from "./ticket-books";
@@ -53,6 +53,7 @@ import type { H1Register } from "./registers";
 import type { ReturnResult } from "./returns";
 import type { ReorderAdvice } from "./replenishment";
 import type { CancelBilledResult } from "./refund";
+import { GUARDIAN_NAME_MAX, GUARDIAN_RELATIONS } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import type { AppConfig } from "../../kernel/config";
 import type { DocumentStore } from "../../kernel/documents/store";
@@ -147,9 +148,16 @@ const shortBookBody = z.object({
   storeCode: z.string().min(1).max(40).optional(),
 });
 const resolveShortBody = z.object({ resolution: z.enum(["ordered", "received", "dismissed"]) });
-const printBody = z.object({ reprint: z.boolean().optional() });
+/** Spec #1046 D3 — `documents` narrows the paper: the bill at payment, the labels at hand-over; absent, both. */
+const paperDocuments = z.array(z.enum(["pharmacy_bill", "pharmacy_labels"])).min(1).max(2);
+const printBody = z.object({ reprint: z.boolean().optional(), documents: paperDocuments.optional() });
 const handoverBody = z.object({
-  identity: z.object({ via: z.enum(["token", "phone_last4"]), value: z.string().min(1).max(12) }).optional(),
+  /** D7 — token or the phone's last four; spec #1046 D1 — or who collected it: the patient, or a named attendant and their relation. */
+  identity: z.union([
+    z.object({ via: z.enum(["token", "phone_last4"]), value: z.string().min(1).max(12) }),
+    z.object({ via: z.literal("collected_by"), who: z.literal("self") }),
+    z.object({ via: z.literal("collected_by"), who: z.literal("attendant"), name: z.string().trim().min(1).max(GUARDIAN_NAME_MAX), relation: z.enum(GUARDIAN_RELATIONS) }),
+  ]).optional(),
   /** PHARMACY P6 — a controlled line's hand-over (`controlled-dispense.ts`). */
   controlled: z.object({
     witness: z.object({ username: z.string().min(1).max(64), pin: z.string().min(1).max(32) }),
@@ -298,7 +306,7 @@ export class PharmacyCounterController {
   async askPrescriber(@CurrentActor() actor: Actor, @Param("id") id: string, @Param("idx") idx: string, @Body() body: unknown): Promise<AuthorisationRow> {
     const lineIdx = parsed(z.object({ idx: z.coerce.number().int().nonnegative() }), { idx }).idx;
     const input = parsed(z.object({
-      book: z.enum(["allergy", "interaction", "duplicate", "drug_disease"]), about: z.string().min(1).max(200),
+      book: z.enum(["allergy", "interaction", "duplicate", "drug_disease", "substitution"]), about: z.string().min(1).max(200),
       note: z.string().max(500).optional(), medicineId: idSchema.optional(),
     }), body);
     try {
@@ -430,6 +438,20 @@ export class PharmacyCounterController {
     try {
       return await withIdempotency(this.db, { actorId: actor.id, route: PHARMACY_IDEMPOTENT_ROUTES.claim, key }, input,
         () => claimDispense(this.db, actor, input, new Date()));
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * Spec #1046 D6 — open the balance ticket ("rest tomorrow") of a handed-over dispense that still owes
+   * (`claim.ts` `openBalanceDispense`). The answer is the new queued ticket, which the desk then claims.
+   */
+  @RequirePermission("pharmacy.dispense.place", "hospital")
+  @Post("dispenses/:id/balance")
+  async balance(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<DispenseView> {
+    try {
+      return await openBalanceDispense(this.db, actor, id, new Date());
     } catch (e) {
       return toHttp(e);
     }
@@ -615,9 +637,10 @@ export class PharmacyCounterController {
   /** P1 — the same bill and labels, rendered for the browser when no relay serves the roll. */
   @RequirePermission("pharmacy.dispense.read", "hospital")
   @Get("dispenses/:id/paper")
-  async paper(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<RenderedDocument> {
+  async paper(@CurrentActor() actor: Actor, @Param("id") id: string, @Query("documents") documents?: string): Promise<RenderedDocument> {
+    const only = documents === undefined || documents === "" ? undefined : parsed(paperDocuments, documents.split(","));
     try {
-      return await dispensePaper(this.db, actor, id, new Date());
+      return await dispensePaper(this.db, actor, id, new Date(), only);
     } catch (e) {
       return toHttp(e);
     }

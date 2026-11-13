@@ -9,6 +9,7 @@ generated: { by: tools/arch/gen.mjs }
 # module `pharmacy`
 
 Source: `apps/core/src/modules/pharmacy/`
+· Notes: [MAP.md](../../../apps/core/src/modules/pharmacy/MAP.md)
 
 - **Depends on modules:** `billing`, `formulary`, `materials`, `membership`, `opd`, `patients`, `tariff`
 - **Used by modules:** —
@@ -151,6 +152,7 @@ Source: `apps/core/src/modules/pharmacy/`
   - `PHARMACIST_ROLE`
   - `currentRegistration(db: Db | Tx, userId: string, today: string): Promise<PharmacistRegistration | null>`
   - `endPharmacistRegistration(tx: Tx, actor: Actor, registrationId: string, reason: string, now: Date = new Date()): Promise<void>`
+  - `isTrialRegistration(registrationNo: string): boolean`
   - `listPharmacists(db: Db, now: Date = new Date()): Promise<PharmacistView[]>`
   - `recordPharmacistRegistration(tx: Tx, actor: Actor, input: { userId: string; council: string; registrationNo: string; validUntil?: string | …`
   - `renewalDaysLeft(today: string, validUntil: string): number | null`
@@ -204,7 +206,7 @@ Source: `apps/core/src/modules/pharmacy/`
   - `inspectSheet(db: Db, actor: Actor, secretKey: Buffer, qr: string): Promise<SheetCheck>`
   - `listPaperDispenses(db: Db, actor: Actor): Promise<RetailSaleRow[]>`
   - `listRetailLicences(db: Db, actor: Actor): Promise<RetailLicenceView[]>`
-  - `listRetailSales(db: Db, actor: Actor, day: string): Promise<RetailSaleRow[]>`
+  - `listRetailSales(db: Db, actor: Actor, day: string): Promise<RetailSaleListRow[]>`
   - `pharmacyStaff(db: Db, actor: Actor, now: Date): Promise<PharmacyStaffMember[]>`
   - `previewPaperDispense(db: Db, actor: Actor, input: { storeCode: string; occurredAt: Date; patientId?: string; lines: RetailLineInput[] }, no…`
   - `previewRetailSale(db: Db, actor: Actor, input: { patientId?: string; lines: RetailLineInput[]; tender?: TenderKind; discount?: DiscountAsk …`
@@ -214,7 +216,7 @@ Source: `apps/core/src/modules/pharmacy/`
   - `searchCounterShelf(db: Db, actor: Actor, storeCode: string, q: string, now: Date): Promise<RetailShelfEntry[]>`
   - `searchRetailShelf(db: Db, actor: Actor, q: string, now: Date): Promise<RetailShelfEntry[]>`
   - `sellRetail(db: Db, documents: DocumentStore, actor: Actor, input: RetailSaleInput, idempotencyKey: string | undefined, now: Date): Promise<…`
-  - types: `CounterBatch`, `PaperDispenseInput`, `PharmacyStaffMember`, `RecordLicenceInput`, `RetailCustomerInput`, `RetailLicenceState`, `RetailLicenceView`, `RetailLineInput`, `RetailPrescriptionInput`, `RetailPreview`, `RetailSaleInput`, `RetailSaleRow`, `RetailSaleView`, `RetailShelfEntry`, `SheetCheck`
+  - types: `CounterBatch`, `PaperDispenseInput`, `PharmacyStaffMember`, `RecordLicenceInput`, `RetailCustomerInput`, `RetailLicenceState`, `RetailLicenceView`, `RetailLineInput`, `RetailPrescriptionInput`, `RetailPreview`, `RetailSaleInput`, `RetailSaleListRow`, `RetailSaleRow`, `RetailSaleView`, `RetailShelfEntry`, `SheetCheck`
 - `returns.ts`
   - `acceptReturn(db: Db, actor: Actor, _decls: readonly OrderKindDecl[], dispenseId: string, input: ReturnInput, now: Date): Promise<ReturnResu…`
   - types: `ReturnInput`, `ReturnResult`
