@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useDebounced } from "../../lib/format";
 import { fetchPlacements, pharmacyErrorText } from "../../lib/pharmacy-api";
 import { searchSeed, sigOf } from "./work";
+import { strengthShown } from "../../../../../packages/contracts/src/drug-strength";
 import type { WireDispenseLine, WireRetailShelfEntry } from "../../lib/pharmacy-api";
 
 /**
@@ -103,7 +104,7 @@ export function ResolveSheet({
                     {e.scheduleFlag === "H1" ? <span className="pill rd">H1</span> : null}
                   </span>
                   <span style={{ display: "block", fontSize: 11.5, color: "var(--dim)" }}>
-                    {[e.strengthLabel, e.form, e.itemCode].filter((x) => x !== null && x !== "").join(" · ")}
+                    {[strengthShown(e.strengthLabel), e.form, e.itemCode].filter((x) => x !== null && x !== "").join(" · ")}
                   </span>
                 </span>
                 <span className="mo" style={{ fontSize: 12, color: e.available > 0 ? "var(--dim)" : "var(--red)" }}>{t("pharmacyDesk.sub.onShelf", { n: e.available })}</span>

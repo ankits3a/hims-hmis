@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { useRouter } from "@tanstack/react-router";
 import { useAuth } from "../lib/auth";
 import { ApiError, newIdempotencyKey } from "../lib/api";
 import { fmtIst, useDebounced } from "../lib/format";
@@ -25,6 +26,7 @@ import { DiscountSheet, DiscountWait, discountLabel, useDiscountApproval } from 
 import type { AppliedDiscount } from "./pharmacy-desk/discount";
 import { expiryLabel } from "./pharmacy-desk/work";
 import { downscaleToJpeg } from "./slip-capture";
+import { strengthShown } from "../../../../packages/contracts/src/drug-strength";
 import type { WirePatientHit } from "../lib/patients-api";
 import type {
   RetailCustomer, RetailPrescription, WireLabel, WireRetailPreview, WireRetailSale, WireRetailSaleRow, WireRetailShelfEntry,
@@ -54,13 +56,15 @@ import "./pharmacy-retail.css";
  */
 /** #638 — `batchId`: the batch the pharmacist chose by hand; absent = the server's earliest expiry (or the scanned pack). */
 type CartLine = { entry: WireRetailShelfEntry; qty: string; batchId?: string };
-type NewCustomer = { name: string; sex: "male" | "female" | "other"; age: string; phone: string; address: string };
-type Customer = { kind: "existing"; id: string; name: string; uhid: string } | { kind: "new"; draft: NewCustomer };
+type Sex = "male" | "female" | "other";
+/* Walk 2026-11-13 — sex starts UNCHOSEN (""): a wrong default corrupts the record, and sex-specific tests read it (#1045). */
+type NewCustomer = { name: string; sex: Sex | ""; age: string; phone: string; address: string };
+type Customer = { kind: "existing"; id: string; name: string; uhid: string } | { kind: "new"; draft: NewCustomer & { sex: Sex } };
 type RxDraft = { prescriberName: string; prescriberRegNo: string; prescriberAddress: string; rxDate: string; photo: string | null };
 /** Spec #1046 D4 — `split` is cash plus UPI: two amounts that add up to the cash-rounded payable (any cash rounds, 0019). */
 type Mode = "cash" | "upi" | "card" | "split";
 
-const EMPTY_NEW: NewCustomer = { name: "", sex: "female", age: "", phone: "", address: "" };
+const EMPTY_NEW: NewCustomer = { name: "", sex: "", age: "", phone: "", address: "" };
 const EMPTY_RX: RxDraft = { prescriberName: "", prescriberRegNo: "", prescriberAddress: "", rxDate: "", photo: null };
 /** "15/09/2026, 10:30", in the hospital's time whatever the desk machine's zone. */
 const soldOn = (iso: string): string => {
@@ -210,6 +214,23 @@ export function annexOf(sale: WireRetailSale): WireLabel {
 }
 
 /**
+ * Walk 2026-11-13 — "no drawer" was plain text: it is the way to the page that opens one (`/billing/session`, as the desk's
+ * chip). A plain link when the counter is rendered outside the router (a test harness), the router's navigation inside it.
+ */
+function DrawerLink(): React.ReactElement {
+  const { t } = useTranslation();
+  const router = useRouter({ warn: false });
+  return (
+    <a
+      href="/billing/session" className="pill gd" data-testid="retail-no-drawer"
+      onClick={(e) => { if (router === undefined) return; e.preventDefault(); void router.navigate({ to: "/billing/session" }); }}
+    >
+      {t("pharmacyDesk.header.noDrawer")}
+    </a>
+  );
+}
+
+/**
  * UX-AUDIT 2026-09-28 — the medicine field is a typeahead over the walk-in shelf: typing lists what
  * is on it (no Find button), ↑/↓ and Enter add the highlighted one. A scanner types and presses
  * Enter: a pack whose barcode names exactly one batch goes straight into the cart, as before.
@@ -292,7 +313,7 @@ function ShelfSearch({ onAdd }: { onAdd: (entry: WireRetailShelfEntry) => void }
               onMouseEnter={() => setActive(i)}
             >
               <span className="rt-grow">
-                <span className="rt-strong">{f.brandName}</span> <span className="rt-muted">{f.strengthLabel ?? ""} {f.form}</span>
+                <span className="rt-strong">{f.brandName}</span> <span className="rt-muted">{strengthShown(f.strengthLabel) ?? ""} {f.form}</span>
               </span>
               {scheduled(f.scheduleFlag) && <span className="pill rd">{t("pharmacyRetail.schedule", { flag: f.scheduleFlag })}</span>}
               <span className={f.available === 0 ? "rt-muted mo" : "mo"}>{t("pharmacyRetail.available", { count: f.available, unit: f.baseUom })}</span>
@@ -617,7 +638,7 @@ export function PharmacyRetail(): React.ReactElement {
   const rxFuture = rxIso !== null && rxIso > todayIst();
   const rxComplete = rx.prescriberName.trim() !== "" && rx.prescriberRegNo.trim() !== "" && rx.prescriberAddress.trim() !== ""
     && rxIso !== null && !rxFuture && rx.photo !== null;
-  const newValid = newDraft.name.trim() !== "" && (newDraft.phone === "" || /^[6-9]\d{9}$/.test(newDraft.phone)) && (newDraft.age === "" || /^\d{1,3}$/.test(newDraft.age));
+  const newValid = newDraft.name.trim() !== "" && newDraft.sex !== "" && (newDraft.phone === "" || /^[6-9]\d{9}$/.test(newDraft.phone)) && (newDraft.age === "" || /^\d{1,3}$/.test(newDraft.age));
   const blocked = preview?.checks !== null && preview?.checks !== undefined
     && (preview.checks.allergies.length > 0 || preview.checks.interactions.some((i) => i.severity === "severe"));
   const moneyOk = preview !== null && (free || (mode === "cash" ? cashPaise !== undefined && cashPaise >= payable : mode === "split" ? splitTenders !== null : ref.trim() !== ""));
@@ -663,7 +684,7 @@ export function PharmacyRetail(): React.ReactElement {
           {drawer.isPending ? null : drawer.data?.session?.status === "open" ? (
             <span className="pill">{t("pharmacyDesk.header.drawerOpen", { float: rupees(drawer.data.session.openingFloatPaise) })}</span>
           ) : (
-            <span className="pill gd">{t("pharmacyDesk.header.noDrawer")}</span>
+            <DrawerLink />
           )}
           <span className="pill">PHARM-RETAIL</span>
           <div className="rt-grow" />
@@ -687,13 +708,14 @@ export function PharmacyRetail(): React.ReactElement {
               </div>
             )}
             {customer === null && registering && (
-              <form className="rt-stack" onSubmit={(e) => { e.preventDefault(); if (newValid) setCustomer({ kind: "new", draft: newDraft }); }}>
+              <form className="rt-stack" onSubmit={(e) => { e.preventDefault(); if (newValid && newDraft.sex !== "") setCustomer({ kind: "new", draft: { ...newDraft, sex: newDraft.sex } }); }}>
                 <label className="rt-field"><span className="tag">{t("pharmacyRetail.name")}</span>
                   <input className="in" aria-label={t("pharmacyRetail.name")} value={newDraft.name} onChange={(e) => setNewDraft({ ...newDraft, name: e.target.value })} autoFocus />
                 </label>
                 <div className="rt-grid2">
                   <label className="rt-field"><span className="tag">{t("pharmacyRetail.sex")}</span>
                     <select className="in" aria-label={t("pharmacyRetail.sex")} value={newDraft.sex} onChange={(e) => setNewDraft({ ...newDraft, sex: e.target.value as NewCustomer["sex"] })}>
+                      <option value="" disabled>{t("pharmacyRetail.sexChoose")}</option>
                       <option value="female">{t("pharmacyRetail.sex_female")}</option>
                       <option value="male">{t("pharmacyRetail.sex_male")}</option>
                       <option value="other">{t("pharmacyRetail.sex_other")}</option>
@@ -806,7 +828,7 @@ export function PharmacyRetail(): React.ReactElement {
                               return (
                                 <tr key={`${c.entry.itemId}-${String(i)}`} data-testid={`cart-${String(i)}`}>
                                   <td>
-                                    <span className="rt-strong">{c.entry.brandName}</span> <span className="rt-muted">{c.entry.strengthLabel ?? ""} {c.entry.form}</span>
+                                    <span className="rt-strong">{c.entry.brandName}</span> <span className="rt-muted">{strengthShown(c.entry.strengthLabel) ?? ""} {c.entry.form}</span>
                                     {scheduled(c.entry.scheduleFlag) ? <> <span className="pill rd">{t("pharmacyRetail.schedule", { flag: c.entry.scheduleFlag })}</span></> : null}
                                     <CartShelf itemId={c.entry.itemId} idx={i} />
                                   </td>

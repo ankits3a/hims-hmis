@@ -501,7 +501,8 @@ function LineRow({
   const advice = editable && qty !== null && blocked === null && sub === null && res === null ? adviceFor(line, qty, today, tick?.batchId ?? null) : null;
   const partial = tick !== undefined && isPartial(line, tick);
   const declined = line.status === "declined";
-  const chipShown = line.pickedBatch != null || (advice !== null && advice.kind !== "none");
+  /* Walk 2026-11-13 — a line dropped at the bill keeps the batch its pick had held: it reads "declined" only, never also "given". */
+  const chipShown = !declined && (line.pickedBatch != null || (advice !== null && advice.kind !== "none"));
   const shelfBlock = blocked === "empty" || blocked === "not_stocked" || blocked === "not_saleable";
   /* The row's one control for a line the shelf cannot fill as written — the menu never draws it twice (walk finding). */
   const chooseRes = editable && blocked === "unresolved" && placeable(line);
@@ -689,7 +690,8 @@ function LineRow({
           ) : sub !== null || recorded ? (
             <span style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }} data-testid={`${id}-sub`}>
               <span style={{ fontSize: 13.5, fontWeight: 600 }}>{sub?.brandName ?? given.brandName}</span>
-              <span className="pill on">
+              {/* Walk 2026-11-13 — a long catalogue name ran this tag past the card's edge: `.pd-wrap` lets it wrap inside. */}
+              <span className="pill on pd-wrap">
                 {t("pharmacyDesk.generic")} · {t("pharmacyDesk.sub.insteadOf", { brand: sub !== null ? given.brandName : (line.orderedMedicine?.brandName ?? rx.drug) })}
               </span>
               {safetyPills(line, id, t)}

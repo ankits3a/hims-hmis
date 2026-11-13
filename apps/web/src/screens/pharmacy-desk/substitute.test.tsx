@@ -106,6 +106,20 @@ describe("give something else for this line (PD-5)", () => {
     expect(within(screen.getByTestId("desk-line-0")).queryByRole("button", { name: "give an equivalent" })).toBeNull();
   });
 
+  /* WALK 2026-11-13 (k03) — "generic · consent taken · instead of <a long catalogue name>" ran past the card's edge. */
+  it("the 'generic · instead of' tag wraps inside the card: a long name never runs past its edge", async () => {
+    const LONG = { id: "m-pan", brandName: "Pantoprazole (as pantoprazole sodium) 40 mg gastro-resistant oral tablet", strengthLabel: "40 mg/", form: "tablet" };
+    const PAN = { id: "m-pan-b", brandName: "Pan (pantoprazole sodium) 40 mg gastro-resistant oral tablet", strengthLabel: "40 mg/", form: "tablet", scheduleFlag: "OTC" };
+    mockRoutes(base(() => dispense("picked", [amlongLine({
+      rxLine: { ...amlongLine().rxLine, drug: LONG.brandName }, orderedMedicine: LONG, dispensedMedicine: PAN, substitutionType: "generic",
+      batchId: "b", pickedBatch: { batchNo: "PANO1311", expiryDate: "2027-12-31" }, available: 10,
+    })])));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const sub = await screen.findByTestId("desk-line-0-sub");
+    const tag = within(sub).getByText(/instead of Pantoprazole/);
+    expect(tag).toHaveClass("pd-wrap");
+  });
+
   it("E16 — a no-substitution line offers no equivalent, and says why", async () => {
     mockRoutes(base(() => dispense("claimed", [amlongLine({ available: 50, batches: [{ batchId: "b", batchNo: "AM-1", expiryDate: "2028-01-31", available: 50 }], rxLine: { ...amlongLine().rxLine, noSubstitution: true } })])));
     renderWithProviders(<PharmacyDesk ticketId="d1" />);
@@ -193,5 +207,18 @@ describe("give something else for this line (PD-5)", () => {
     await userEvent.click(within(sheet).getByRole("button", { name: /Put Amlodac 5/ }));
     await userEvent.click(within(row).getByRole("checkbox"));
     expect(await within(row).findByRole("alert")).toHaveTextContent(/allergy/i);
+  });
+
+  it("WALK 2026-11-13 — with nothing on the shelf to give instead, the sheet says so and offers no consent box and no 'Put it on the ticket'", async () => {
+    const current = dispense("claimed", [amlongLine(OTC)]);
+    mockRoutes(base(() => current, { "GET /api/pharmacy/dispenses/d1/lines/0/alternatives": { status: 200, body: { items: [] } } }));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const row = await screen.findByTestId("desk-line-0");
+    await userEvent.click(within(row).getByRole("button", { name: "give an equivalent" }));
+    const sheet = await screen.findByRole("dialog", { name: "Give something else for Amlong 5" });
+    expect(await within(sheet).findByRole("status")).toHaveTextContent("Nothing on this shelf is a generic equivalent of Amlong 5");
+    expect(within(sheet).queryByRole("checkbox")).toBeNull();
+    expect(within(sheet).queryByRole("button", { name: /Put/ })).toBeNull();
+    expect(within(sheet).getByRole("button", { name: /Cancel/ })).toBeInTheDocument();
   });
 });

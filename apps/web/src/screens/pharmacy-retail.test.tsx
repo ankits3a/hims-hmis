@@ -2,7 +2,8 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
 import { renderWithProviders } from "../test-utils";
-import { PharmacyRetail } from "./pharmacy-retail";
+import { PharmacyRetail, annexOf } from "./pharmacy-retail";
+import { PharmacyBillAnnex } from "../components/pharmacy-bill-annex";
 import type { WireRetailPreview, WireRetailSale, WireRetailShelfEntry, WireRetailState } from "../lib/pharmacy-api";
 
 type Reply = { status: number; body: unknown };
@@ -416,5 +417,52 @@ describe("PharmacyRetail — the 2026-09-30 money rulings", () => {
       tenders: [{ mode: "upi", amountPaise: 3091, refText: "UTR-1" }],
       discount: { kind: "percent_bps", value: 800, reason: "regular customer" },
     }]);
+  });
+});
+
+/**
+ * WALK 2026-11-13 (spec #1046, before production) — what a real browser found at the walk-in counter.
+ */
+describe("the walk-in counter after the 2026-11-13 walk", () => {
+  beforeEach(() => { setToken("t"); });
+  afterEach(() => { vi.unstubAllGlobals(); });
+  const routes = (extra: Record<string, Handler> = {}): Record<string, Handler> => ({
+    "GET /api/pharmacy/retail/state": { status: 200, body: CURRENT },
+    "GET /api/pharmacy/retail/sales": { status: 200, body: { items: [] } },
+    "GET /api/pharmacy/retail/shelf": { status: 200, body: { items: [{ ...CROCIN, strengthLabel: "500 mg/" }] } },
+    ...extra,
+  });
+
+  it("a new customer's sex starts unchosen, and the customer cannot be used until it is chosen (a wrong default corrupts the record)", async () => {
+    mockRoutes(routes());
+    renderWithProviders(<PharmacyRetail />);
+    await userEvent.click(await screen.findByRole("button", { name: "New customer" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Name" }), "Ramesh Patil");
+    expect(screen.getByRole("combobox", { name: "Sex" })).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Use" })).toBeDisabled();
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Sex" }), "male");
+    expect(screen.getByRole("button", { name: "Use" })).toBeEnabled();
+  });
+
+  it("with no drawer open, the header chip is a link to the page that opens one", async () => {
+    mockRoutes(routes({ "GET /api/billing/sessions/current": { status: 200, body: { session: null } } }));
+    renderWithProviders(<PharmacyRetail />);
+    const chip = await screen.findByRole("link", { name: "no drawer — open one to take money" });
+    expect(chip).toHaveAttribute("href", "/billing/session");
+  });
+
+  it("a catalogue strength with an empty denominator reads '500 mg', not '500 mg/', on the shelf list", async () => {
+    mockRoutes(routes());
+    renderWithProviders(<PharmacyRetail />);
+    await screen.findByRole("button", { name: "New customer" });
+    await userEvent.type(screen.getByRole("combobox", { name: "Medicine name, item code, or scan the pack" }), "Croc");
+    const option = within(await screen.findByRole("listbox", { name: "On the walk-in shelf" })).getByRole("option", { name: /Crocin 500/ });
+    expect(option).toHaveTextContent("500 mg tablet");
+    expect(option).not.toHaveTextContent("500 mg/");
+  });
+
+  it("the bill's batch details keep the batch and its expiry apart: 'R-1 · Exp. 06/27', not 'R-106/27'", () => {
+    renderWithProviders(<PharmacyBillAnnex label={annexOf(SALE)} />);
+    expect(within(screen.getByTestId("bill-batch-0")).getByTestId("bill-batch-exp-0")).toHaveTextContent(/^R-1 · Exp\. 06\/27$/);
   });
 });
