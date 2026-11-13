@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { expiryFromLabel } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { getApproval } from "../../kernel/approvals/worklist";
 import { withTx } from "../../kernel/db/client";
@@ -171,15 +172,12 @@ export function namesFor(item: { code: string; name: string }): string[] {
   return [...new Set(out.map(norm))];
 }
 
-/** MM/YYYY or MM/YY → the last day of that month, YYYY-MM-DD; null when unreadable. */
+/**
+ * MM/YYYY or MM/YY → the last day of that month, YYYY-MM-DD; null when unreadable. The rule itself lives in
+ * `@hmis/contracts` (`expiryFromLabel`), shared with the GRN gate and its screen (2026-11-13).
+ */
 export function expiryOf(text: string): string | null {
-  const m = /^\s*(\d{1,2})\s*[/-]\s*(\d{2}|\d{4})\s*$/.exec(text);
-  if (m === null) return null;
-  const month = Number(m[1]);
-  const year = m[2]!.length === 2 ? 2000 + Number(m[2]) : Number(m[2]);
-  if (month < 1 || month > 12) return null;
-  const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  return `${String(year)}-${String(month).padStart(2, "0")}-${String(last).padStart(2, "0")}`;
+  return expiryFromLabel(text);
 }
 
 /** "35.50" → 3550; null for anything that is not rupees with at most two decimals. */

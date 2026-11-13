@@ -7,6 +7,7 @@ import {
 } from "../lib/materials-api";
 import { useAuth } from "../lib/auth";
 import { fetchPurchaseOrders, fetchReceivable } from "../lib/purchase-api";
+import { expiryFromLabel } from "../../../../packages/contracts/src/drug-expiry";
 import { Button } from "@/components/ui/button";
 import { OpeningStockSheet } from "./materials-grn-opening";
 import { NewButton, OfficeHead, fieldCls, useNewKey } from "./pharmacy-office/office-page";
@@ -44,6 +45,7 @@ import type { CaptureLineInput, WireGrn } from "../lib/materials-api";
 
 type DraftLine = {
   itemId: string; uom: string; qtyInUom: string;
+  /** A medicine's is typed as its label prints it, MM/YY; any other class's is the date picker's YYYY-MM-DD. */
   batchNo: string; expiryDate: string;
   mrpRupees: string; mrpUom: string; costRupees: string; freeGoods: boolean;
   /** B5 — what the supplier's bill says one pack costs. A helper only: it fills `costRupees`, and is never sent. */
@@ -151,13 +153,27 @@ export function MaterialsGrn(): React.ReactElement {
     setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
   };
 
+  /**
+   * 2026-11-13 — a medicine's expiry is a MONTH: its label prints MM/YYYY and means the month's last day, which is
+   * what the opening sheet stores. Its field takes MM/YY (as the stock-entry grid does) and sends that month's last
+   * day, through the one rule both sides share; a reagent, a consumable or an implant keeps its date picker and day.
+   */
+  const expiryIsAMonth = (itemId: string): boolean => (items.data ?? []).find((x) => x.id === itemId)?.class === "drug";
+  const sentExpiry = (l: DraftLine): string | null => {
+    const typed = l.expiryDate.trim();
+    if (typed === "" || !expiryIsAMonth(l.itemId)) return typed;
+    return expiryFromLabel(typed);
+  };
+
   const capture = (): void => void run(async () => {
-    const payload: CaptureLineInput[] = lines
-      .filter((l) => l.itemId !== "" && l.qtyInUom.trim() !== "")
+    const chosen = lines.filter((l) => l.itemId !== "" && l.qtyInUom.trim() !== "");
+    const unreadable = chosen.find((l) => sentExpiry(l) === null);
+    if (unreadable !== undefined) throw new Error(t("materialsGrn.expiryMonthUnreadable", { typed: unreadable.expiryDate.trim() }));
+    const payload: CaptureLineInput[] = chosen
       .map((l) => ({
         itemId: l.itemId, uom: l.uom.trim(), qtyInUom: Number(l.qtyInUom),
         ...(l.batchNo.trim() === "" ? {} : { batchNo: l.batchNo.trim() }),
-        ...(l.expiryDate.trim() === "" ? {} : { expiryDate: l.expiryDate.trim() }),
+        ...(sentExpiry(l) === "" ? {} : { expiryDate: sentExpiry(l)! }),
         ...(toPaise(l.mrpRupees) === null ? {} : { mrpPaise: toPaise(l.mrpRupees), mrpUom: l.mrpUom.trim() }),
         // Free goods are a zero-cost line with FULL batch discipline (DD8), never a discount.
         unitCostPaise: l.freeGoods ? 0 : (toPaise(l.costRupees) ?? 0),
@@ -346,7 +362,11 @@ export function MaterialsGrn(): React.ReactElement {
                   {t("materialsGrn.item")}
                   <select
                     className={fieldCls} value={l.itemId}
-                    onChange={(e) => setLine(i, { itemId: e.target.value, uom: "", mrpUom: "", packRupees: "" })}
+                    onChange={(e) => setLine(i, {
+                      itemId: e.target.value, uom: "", mrpUom: "", packRupees: "",
+                      // A month typed for a medicine is not a date for a reagent, nor the other way round.
+                      ...(expiryIsAMonth(e.target.value) === expiryIsAMonth(l.itemId) ? {} : { expiryDate: "" }),
+                    })}
                   >
                     <option value="">—</option>
                     {(items.data ?? []).map((it) => <option key={it.id} value={it.id}>{`${it.code} · ${it.name}`}</option>)}
@@ -372,7 +392,9 @@ export function MaterialsGrn(): React.ReactElement {
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
                   {t("materialsGrn.expiry")}
-                  <input type="date" className={fieldCls} value={l.expiryDate} onChange={(e) => setLine(i, { expiryDate: e.target.value })} />
+                  {expiryIsAMonth(l.itemId)
+                    ? <input className={fieldCls} placeholder="MM/YY" inputMode="numeric" value={l.expiryDate} onChange={(e) => setLine(i, { expiryDate: e.target.value })} />
+                    : <input type="date" className={fieldCls} value={l.expiryDate} onChange={(e) => setLine(i, { expiryDate: e.target.value })} />}
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
                   {t("materialsGrn.mrp")}

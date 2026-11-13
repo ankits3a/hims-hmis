@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, isNull, or, sql } from "drizzle-orm";
-import { newId } from "@hmis/contracts";
+import { monthEndOf, newId, sameExpiryMonth } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { requestApproval } from "../../kernel/approvals/requests";
 import { getApproval } from "../../kernel/approvals/worklist";
@@ -8,7 +8,7 @@ import {
   consignmentLots, grnLines, grns, purchaseOrders, stockBatches, vendorDocuments, vendors,
 } from "../../kernel/db/schema";
 import { applyReceiptToPo, assertReceivableAgainstPo } from "./purchase-orders";
-import { DEEMED_SUPPLY_DAYS } from "./config";
+import { DEEMED_SUPPLY_DAYS, EXPIRY_IS_A_MONTH_CLASSES } from "./config";
 import { NEAR_EXPIRY_APPROVAL_TYPE } from "./approval-types";
 import { MaterialsError } from "./errors";
 import { grnLineRejected, grnReceived, grnRejected } from "./events";
@@ -69,6 +69,20 @@ const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 const DAY_MS = 86_400_000;
 export function istDay(at: Date): string {
   return new Date(Math.floor((at.getTime() + IST_OFFSET_MS) / DAY_MS) * DAY_MS).toISOString().slice(0, 10);
+}
+
+/**
+ * 2026-11-13 — a DRUG's expiry is a month (`EXPIRY_IS_A_MONTH_CLASSES`): the label's MM/YYYY means its last
+ * day, which is what the opening sheet stores. Every other class keeps the day it was given.
+ */
+function expiryIsAMonth(itemClass: string | undefined): boolean {
+  return itemClass !== undefined && (EXPIRY_IS_A_MONTH_CLASSES as readonly string[]).includes(itemClass);
+}
+
+/** The expiry as it is kept: a drug's at its month's end (one rule, `@hmis/contracts`), any other as given. */
+function keptExpiry(itemClass: string | undefined, expiryDate: string | null): string | null {
+  if (expiryDate === null || !expiryIsAMonth(itemClass)) return expiryDate;
+  return monthEndOf(expiryDate) ?? expiryDate;
 }
 
 /** The context `qcLine` needs, assembled once per GRN rather than once per line. */
@@ -248,6 +262,7 @@ export async function captureGrn(
     createdBy: actor.id, updatedBy: actor.id,
   });
 
+  const classes = await itemsByIds(tx, input.lines.map((l) => l.itemId));
   for (const line of input.lines) {
     const uoms = await itemUomRows(tx, line.itemId);
     if (uoms.length === 0) {
@@ -261,7 +276,8 @@ export async function captureGrn(
       id: newId(), grnId, itemId: line.itemId, uom: line.uom.trim(),
       qtyInUom: line.qtyInUom, qtyBase,
       batchNo: line.batchNo ?? null, mfgDate: line.mfgDate ?? null,
-      expiryDate: line.expiryDate ?? null,
+      // 2026-11-13 — a drug's expiry is kept at its month's end, whatever day the picker or the caller sent.
+      expiryDate: keptExpiry(classes.get(line.itemId)?.class, line.expiryDate ?? null),
       mrpPaise: line.mrpPaise ?? null, mrpUom: line.mrpUom ?? null,
       unitCostPaise: line.unitCostPaise, freeGoods: line.freeGoods ?? false,
       tempLogRef: line.tempLogRef ?? null,
@@ -482,8 +498,9 @@ export async function postGrn(
   const movements: Parameters<typeof postMovements>[2] = [];
   const lots: { line: GrnLineRow; batchId: string }[] = [];
 
+  const classes = await itemsByIds(tx, acceptedLines.map((l) => l.itemId));
   for (const line of acceptedLines) {
-    const batchId = await findOrCreateBatch(tx, actor, grn, line, ownership);
+    const batchId = await findOrCreateBatch(tx, actor, grn, line, ownership, classes.get(line.itemId)?.class);
     /**
      * ═══ CLOSE REVIEW m4 — DD8 RULE 8 IS RE-ASKED AT POST, BECAUSE QC's ANSWER HAS AN AGE ═══
      *
@@ -570,6 +587,10 @@ export async function postGrn(
  * safe automatic answer: taking the newer would let a mis-key overwrite a correct date, taking the
  * older would ignore a genuine correction. So it REFUSES and a human decides — which is what
  * `batch_mismatch` is for.
+ *
+ * **A drug's expiry is compared by MONTH (2026-11-13).** Its label prints MM/YYYY, so June 2028 typed
+ * as the 15th and June 2028 stored as the 30th are one expiry, and the pile is reused; July is still
+ * another expiry and a different MRP is still a mismatch. Every other class compares the exact day.
  */
 async function findOrCreateBatch(
   tx: Tx,
@@ -577,6 +598,7 @@ async function findOrCreateBatch(
   grn: GrnRow,
   line: GrnLineRow,
   ownership: string,
+  itemClass: string | undefined,
 ): Promise<string> {
   const batchNo = (line.batchNo ?? "").trim();
   if (batchNo === "") {
@@ -618,7 +640,9 @@ async function findOrCreateBatch(
    */
   const existing = await findBatch(tx, line.itemId, batchNo, ownership);
   if (existing !== undefined) {
-    const expiryDiffers = (existing.expiryDate ?? null) !== (line.expiryDate ?? null);
+    const expiryDiffers = expiryIsAMonth(itemClass)
+      ? !sameExpiryMonth(existing.expiryDate ?? null, line.expiryDate ?? null)
+      : (existing.expiryDate ?? null) !== (line.expiryDate ?? null);
     const mrpDiffers = (existing.mrpPaise ?? null) !== (line.mrpPaise ?? null)
       || (existing.mrpUom ?? null) !== (line.mrpUom ?? null);
     if (expiryDiffers || mrpDiffers) {

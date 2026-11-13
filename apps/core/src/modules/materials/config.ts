@@ -126,6 +126,14 @@ export const BATCH_MANDATORY_CLASSES = ["drug", "consumable_dated", "reagent", "
  */
 export const MRP_MANDATORY_CLASSES = ["drug", "implant"] as const;
 
+/**
+ * DECIDED 2026-11-13 (not a ruling) — the classes whose expiry is a MONTH. An Indian drug label prints
+ * MM/YYYY and means the month's last day (`@hmis/contracts` `drug-expiry.ts`), so `grn.ts` stores a
+ * drug's expiry as month-end and treats two expiries in one month as the same batch. Reagents,
+ * consumables and implants keep the exact day their label prints. Read by `grn.ts`.
+ */
+export const EXPIRY_IS_A_MONTH_CLASSES = ["drug"] as const;
+
 /*
  * `MRP_MANDATORY_CLASSES` above and `TRANSIT_STORE_CODE` below are NOT in T2's enumerated Produces
  * list. They are here because DD8 rule 6 and DD9 each name a value that would otherwise be a

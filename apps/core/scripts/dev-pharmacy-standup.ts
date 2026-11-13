@@ -29,6 +29,7 @@ import { issuePrescription } from "../src/modules/opd/prescriptions";
 import { recordVitals } from "../src/modules/opd/vitals";
 import { OPD_VISIT_DEFINITION_JSON, OPD_VISIT_DEF_KEY } from "../src/modules/opd/workflow-def";
 import { assertSyntheticDataAllowed } from "./synthetic-door";
+import { monthEndOf } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import type { AppConfig } from "../src/kernel/config";
 import type { Db, Tx } from "../src/kernel/db/client";
@@ -142,12 +143,14 @@ const OUT_OF_STOCK = {
 /**
  * NEAR EXPIRY, HONESTLY: QC rule 5 refuses a short-dated delivery at the bay, so a batch that dies in
  * twelve days can only be on a shelf the way the aged challan's is — accepted long ago, in date then.
+ * A drug's expiry is its label's MONTH, kept as the month's last day (2026-11-13), so the batch dies at
+ * the end of the month twelve days on: 12 to 42 days out, which is why the window below is 45.
  * Its MRP is last year's, a rupee under the fresh batch's, which is the "why is this more than last
  * time" question PD-D19 exists to answer. Re-posted only when no Pan 40 batch is inside the window,
  * keyed by the day, so a re-run the same day finds its own challan.
  */
 const NEAR_EXPIRY = { code: "PAN040", strips: 2, mrpPaisePerStrip: 10400, unitCostPaise: 620, receivedMonthsAgo: 12, daysLeft: 12 };
-const NEAR_EXPIRY_WINDOW_DAYS = 30;
+const NEAR_EXPIRY_WINDOW_DAYS = 45;
 
 type Line = { brand: string | null; drug: string; dose: string; frequency: string; durationDays: number; instructions: string | null };
 const med = (brand: string, dose: string, frequency: string, durationDays: number, instructions: string | null = null): Line =>
@@ -331,7 +334,7 @@ async function topUpShelf(db: Db, now: Date, report: PharmacyDayReport): Promise
     const already = (await listGrns(db, { vendorId: vendor.id, storeResourceId: store.id })).some((g) => g.challanNo === challanNo);
     if (!already) {
       const challanAt = shiftMonths(now, -NEAR_EXPIRY.receivedMonthsAgo);
-      const expiryDate = istDay(new Date(now.getTime() + NEAR_EXPIRY.daysLeft * 86_400_000));
+      const expiryDate = monthEndOf(istDay(new Date(now.getTime() + NEAR_EXPIRY.daysLeft * 86_400_000)))!;
       await withTx(db, async (tx: Tx) => {
         const { grnId } = await captureGrn(tx, materialsHead, {
           vendorId: vendor.id, source: "challan", storeResourceId: store.id, challanNo, challanDate: istDay(challanAt),

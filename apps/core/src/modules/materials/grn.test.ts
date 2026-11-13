@@ -576,6 +576,74 @@ describe("the GRN gate (Plan 14 T6)", () => {
     expect(batches.map((b) => b.batchNo)).toEqual(["B-001", "B-001"]);
   });
 
+  // ══════════════════════════ 2026-11-13 — A MEDICINE EXPIRES IN A MONTH ══════════════════════════
+
+  async function reagentItem(code = "REAGENT"): Promise<string> {
+    const { itemId } = await withTx(db, (tx) => registerItem(tx, HEAD, {
+      code, name: `Item ${code}`, class: "reagent", baseUom: "tablet", batchTracked: true, shelfLifeDays: 1095,
+      uoms: [{ uom: "strip", toBaseMultiplier: 10 }, { uom: "box", toBaseMultiplier: 100 }],
+    }));
+    return itemId;
+  }
+
+  /**
+   * An Indian drug label prints MM/YYYY and means the month's last day; the opening sheet stores it so.
+   * A date picker on the GRN sent whatever day was picked, so the same batch arrived as two expiries.
+   */
+  it("2026-11-13: a DRUG's expiry is captured as the last day of its month; a non-drug keeps its day", async () => {
+    const drug = await drugItem();
+    const reagent = await reagentItem();
+    const storeId = await aStore();
+    const vendorId = await aVendor();
+    const { grnId } = await withTx(db, (tx) => captureGrn(tx, HEAD, {
+      vendorId, source: "challan", storeResourceId: storeId, challanNo: "CH/MONTH", challanDate: CHALLAN, now: T0,
+      lines: [goodLine(drug, { expiryDate: "2028-02-10" }), goodLine(reagent, { batchNo: "RG-1", expiryDate: "2027-03-15" })],
+    }));
+    const lines = (await getGrn(db, grnId))!.lines;
+    // 2028 is a leap year: February ends on the 29th.
+    expect(lines.find((l) => l.itemId === drug)?.expiryDate).toBe("2028-02-29");
+    expect(lines.find((l) => l.itemId === reagent)?.expiryDate).toBe("2027-03-15");
+  });
+
+  it("2026-11-13: a DRUG batch already on the shelf is the same batch in the same expiry MONTH; another month or MRP still refuses", async () => {
+    const drug = await drugItem();
+    const reagent = await reagentItem();
+    const storeId = await aStore();
+    const vendorId = await aVendor();
+    // Piles already on the shelf with a mid-month day (trial stock, or a receipt before the month rule).
+    const [drugBatch, reagentBatch] = [newId(), newId()];
+    await db.insert(stockBatches).values([
+      { id: drugBatch, itemId: drug, batchNo: "B-001", expiryDate: "2028-06-15", mrpPaise: 8500, mrpUom: "strip", landedCostPaise: 700, ownership: "owned", createdBy: HEAD.id },
+      { id: reagentBatch, itemId: reagent, batchNo: "RG-1", expiryDate: "2027-03-15", mrpPaise: 8500, mrpUom: "strip", landedCostPaise: 700, ownership: "owned", createdBy: HEAD.id },
+    ]);
+
+    async function receive(itemId: string, over: Partial<CaptureLine>, challanNo: string): Promise<string> {
+      const { grnId } = await withTx(db, (tx) => captureGrn(tx, HEAD, {
+        vendorId, source: "challan", storeResourceId: storeId, challanNo, challanDate: CHALLAN, lines: [goodLine(itemId, over)], now: T0,
+      }));
+      await withTx(db, (tx) => runGateQc(tx, HEAD, grnId));
+      return grnId;
+    }
+
+    // June 2028 on the label is the June 2028 pile: reused, not a mismatch.
+    const same = await receive(drug, { expiryDate: "2028-06-30" }, "CH/M1");
+    await withTx(db, (tx) => postGrn(tx, HEAD, same, T0));
+    expect((await db.select().from(stockBatches).where(eq(stockBatches.itemId, drug))).map((b) => b.id)).toEqual([drugBatch]);
+    expect((await balances(db, { batchId: drugBatch }))[0]?.qtyOnHand).toBe(300);
+
+    // Another MONTH is another expiry: refused, as before.
+    const otherMonth = await receive(drug, { expiryDate: "2028-07-31" }, "CH/M2");
+    await expect(withTx(db, (tx) => postGrn(tx, HEAD, otherMonth, T0))).rejects.toMatchObject({ code: "batch_mismatch" });
+    // Another MRP in the same month: refused, as before.
+    const otherMrp = await receive(drug, { expiryDate: "2028-06-30", mrpPaise: 9500 }, "CH/M3");
+    await expect(withTx(db, (tx) => postGrn(tx, HEAD, otherMrp, T0))).rejects.toMatchObject({ code: "batch_mismatch" });
+
+    // A reagent keeps its exact day: the 31st is not the 15th.
+    const reagentDay = await receive(reagent, { batchNo: "RG-1", expiryDate: "2027-03-31" }, "CH/M4");
+    await expect(withTx(db, (tx) => postGrn(tx, HEAD, reagentDay, T0))).rejects.toMatchObject({ code: "batch_mismatch" });
+    expect((await balances(db, { batchId: drugBatch }))[0]?.qtyOnHand).toBe(300);
+  });
+
   // ══════════════════════════ A16 — O-8's AGREEMENT WINDOW ══════════════════════════
 
   /**
@@ -695,7 +763,7 @@ describe("the GRN gate (Plan 14 T6)", () => {
   it("A17: a near-expiry line posts only with a GRANTED approval, never a pending one", async () => {
     await seedSodPairs(db);
     await registerMaterialsApprovalTypes(db, { type: "user", id: "seed-materials" });
-    // A 180-day reagent: 75% of 180 is 135 days, so a batch 100 days out is near-expiry.
+    // A 180-day item: 75% of 180 is 135 days, so a batch 126 days out (December's last day) is near-expiry.
     const itemId = await drugItem("REAG", { shelfLifeDays: 180 });
     const storeId = await aStore();
     const vendorId = await aVendor();
@@ -704,7 +772,7 @@ describe("the GRN gate (Plan 14 T6)", () => {
     const { grnId } = await withTx(db, (tx) => captureGrn(tx, HEAD, {
       vendorId, source: "challan", storeResourceId: storeId,
       challanNo: "CH/NEAR", challanDate: CHALLAN, now: T0,
-      lines: [goodLine(itemId, { expiryDate: "2026-12-05" })], // 100 days out
+      lines: [goodLine(itemId, { expiryDate: "2026-12-31" })], // 126 days out
     }));
     const { status, verdicts } = await withTx(db, (tx) => runGateQc(tx, HEAD, grnId));
     // near_expiry is ACCEPTED at the gate — it is not a rejection, it needs an approval.
@@ -760,14 +828,15 @@ describe("the GRN gate (Plan 14 T6)", () => {
     const { grnId } = await withTx(db, (tx) => captureGrn(tx, HEAD, {
       vendorId, source: "challan", storeResourceId: storeId, invoiceNo: "INV/77",
       challanNo: "CH/NEAR2", challanDate: CHALLAN, now: T0,
-      lines: [goodLine(croc), goodLine(reag, { batchNo: "RG-9", expiryDate: "2026-12-05" })],
+      // A drug's expiry is its label's month, kept as the month's last day (2026-11-13).
+      lines: [goodLine(croc), goodLine(reag, { batchNo: "RG-9", expiryDate: "2026-12-31" })],
     }));
     await withTx(db, (tx) => runGateQc(tx, HEAD, grnId));
     const grn = await getGrn(db, grnId);
     const view = await nearExpiryAcceptanceView(db, grnId, T0);
     expect(view).toEqual({
       grnId, grnNo: grn!.grnNo, vendorName: "Acme Pharma Pvt Ltd", challanNo: "CH/NEAR2", invoiceNo: "INV/77",
-      lines: [{ itemCode: "REAG", itemName: "Item REAG", batchNo: "RG-9", expiryDate: "2026-12-05", daysLeft: 100, qtyBase: 300, baseUom: "tablet" }],
+      lines: [{ itemCode: "REAG", itemName: "Item REAG", batchNo: "RG-9", expiryDate: "2026-12-31", daysLeft: 126, qtyBase: 300, baseUom: "tablet" }],
     });
     await expect(nearExpiryAcceptanceView(db, newId(), T0)).rejects.toMatchObject({ code: "unknown_document" });
   });

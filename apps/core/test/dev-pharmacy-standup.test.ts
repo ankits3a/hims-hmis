@@ -92,11 +92,11 @@ describe("dev-pharmacy-standup — the demo QUEUE (PD-0)", () => {
     expect(ticket(report, "unresolved free-text line").shelf[0]).toEqual({ drug: "Ascoril LS syrup", wanted: 150, sellable: null, fefo: null });
     /* PD-5b — the doctor's shorthand no brand is called: unplaced at the claim, placeable at the desk. */
     expect(ticket(report, "a line the catalogue could not place, and the pharmacist can").shelf[0]).toEqual({ drug: "Tab PCM 500", wanted: 6, sellable: null, fefo: null });
-    /* FEFO offers the batch that dies twelve days in — inside a thirty-day course (E8). */
+    /* FEFO offers the batch that dies at the end of the month twelve days on (14 days in) — inside a thirty-day course (E8). */
     const pan = ticket(report, "near-expiry batch").shelf[0]!;
     expect(pan).toMatchObject({ drug: "Pan 40", wanted: 30, sellable: 220 });
     /* the batch number carries its challan's digits whole — `DEMO/NEAR/20260817` — as the shelf seed's do */
-    expect(pan.fefo).toEqual({ batchNo: "PAN040-20260817", expiryDate: "2026-08-29" });
+    expect(pan.fefo).toEqual({ batchNo: "PAN040-20260817", expiryDate: "2026-08-31" });
     /* and the aged challan's expired stock is on the shelf and in none of these numbers */
     expect(ticket(report, "happy path").shelf.map((f) => f.sellable)).toEqual([200, 200]);
   });
