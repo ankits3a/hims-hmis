@@ -265,7 +265,9 @@ export const NEAR_EXPIRY_RETURN_DAYS = 90;
  * DECIDED (not a ruling): the vendor codes that are not suppliers — the hospital's own shelf at
  * go-live (`scripts/import-opening-stock.ts`) and the rehearsal stock (`scripts/load-trial-stock.ts`).
  * Their batches are shown as such on the expiry report and are never drafted onto a return: there is
- * nobody to send them back to. Read by `supplier-returns.ts`.
+ * nobody to send them back to. Read by `supplier-returns.ts`, and (2026-11-13) by `vendors.ts`
+ * `supplierVendorsOnly`, which keeps them out of the last purchase, the rate contracts, the vendors to
+ * buy from and the challans awaiting a bill.
  */
 export const NON_SUPPLIER_VENDOR_CODES = ["OPENING-STOCK", "TRIAL-STOCK"] as const;
 

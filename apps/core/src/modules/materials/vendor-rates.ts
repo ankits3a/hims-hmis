@@ -7,6 +7,7 @@ import { items, vendorItemRates, vendors } from "../../kernel/db/schema";
 import { MaterialsError } from "./errors";
 import { vendorUpdated } from "./events";
 import { assertNotMerged, itemsByIds, uomsByItems } from "./items";
+import { supplierVendorsOnly } from "./vendors";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -168,7 +169,8 @@ export async function vendorRates(db: Db, actor: Actor, vendorId: string): Promi
 /**
  * For each item, the rates in force on `now`'s IST day from vendors that are ACTIVE, cheapest per base unit
  * first (a strip of 10 at ₹20 beats a box of 100 at ₹210). No permission: a read the order paths make for
- * the person who already passed theirs.
+ * the person who already passed theirs. Never a rate against the hospital's own opening or trial stock
+ * (2026-11-13): a contract chooses the vendor a draft is addressed to, and the shelf is no supplier.
  */
 export async function contractRatesFor(db: Db | Tx, itemIds: readonly string[], now: Date = new Date()): Promise<Map<string, ContractRate[]>> {
   const out = new Map<string, ContractRate[]>();
@@ -178,7 +180,7 @@ export async function contractRatesFor(db: Db | Tx, itemIds: readonly string[], 
   const rows = await db.select({ r: vendorItemRates, legal: vendors.legalName, trade: vendors.tradeName })
     .from(vendorItemRates).innerJoin(vendors, eq(vendors.id, vendorItemRates.vendorId))
     .where(and(
-      inArray(vendorItemRates.itemId, wanted), isNull(vendorItemRates.endedAt), eq(vendors.status, "active"),
+      inArray(vendorItemRates.itemId, wanted), isNull(vendorItemRates.endedAt), eq(vendors.status, "active"), supplierVendorsOnly(),
       lte(vendorItemRates.validFrom, today), or(isNull(vendorItemRates.validTo), gte(vendorItemRates.validTo, today)),
     ))
     .orderBy(sql`${vendorItemRates.ratePaise}::numeric / ${vendorItemRates.multiplier}`, asc(vendorItemRates.createdAt));
