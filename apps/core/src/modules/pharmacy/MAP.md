@@ -128,24 +128,47 @@ module has no view of either. Decision 0012: ward issue, ward returns, IP bill a
 - H/H1 hand-over needs a token or the phone's last four (`handover.ts`, `identity_confirmation_required`). A paper
   pharmacy visit has no token and a phone is optional at registration, so a paid ticket for a phone-less patient
   cannot be handed over; the only exit is cancel + refund.
+- One dispense per prescription version, ever: `pharmacy_dispenses_live_rx_ux` excludes only `cancelled`, so a
+  `handed_over` row blocks a follow-on dispense ("rest tomorrow" balance). Partial pick with a reason works
+  (`isPartial`) but nothing records the owed balance.
 - The FD-27 duplicate-bill guard (`billing/invoices.ts` `liveInvoiceCharging`) is per encounter + service, and each
-  sale item is its own service. A second pharmacy bill on the same visit for the same medicine (re-issued Rx after a
-  hand-over, partial supply "rest tomorrow") answers `duplicate_invoice_refused`.
+  sale item is its own service. It bites when a re-issued prescription version on the SAME visit carries a medicine
+  already billed. A second paper prescription opens a new pharmacy visit (`paper-rx.ts`), so it escapes the guard.
 - `sweepExpiredPicks` cancels a picked ticket after 30 minutes even while it waits on a discount/credit approval or
   the patient's cash; redoing it mints a new P-number.
 - `declineLine` works only in claimed/verified; dropping one line at the bill means cancelling the ticket.
+- The desk prints the bill only after hand-over (`apps/web/src/screens/pharmacy-desk/paper.tsx`), so a patient who
+  has paid and waits holds no paper.
+- The web mints a fresh idempotency key for each claim, verify and pick attempt; only bill and hand-over reuse a
+  stable key (`apps/web/src/screens/pharmacy-desk/pharmacy-desk.tsx` `keyFor`).
+- Brand substitution on an H/H1 line needs only the patient's consent (`substitutable` excludes only Schedule X).
 - `enterPaperDispense` (downtime) is not linked to the queued e-Rx ticket for the same prescription: double dispense.
-- `materials/grn.ts`: no edit or cancel of a captured GRN; `findOrCreateBatch` throws `batch_mismatch` when the same
-  batch arrives with a different expiry day or MRP (GRN date picker vs sheet's month-end, MRP revisions).
-- `materials/qc.ts` `qcLine`: a near-expiry verdict returns early and skips the MRP, MRP >= cost and DPCO checks.
+- `materials/grn.ts`: no edit or cancel of a captured GRN (captured GRNs also count in PO headroom);
+  `findOrCreateBatch` throws `batch_mismatch` when the same batch arrives with a different expiry day or MRP (GRN date
+  picker vs the sheet's month-end, MRP revisions).
+- `materials/qc.ts` `qcLine`: a near-expiry verdict returns early and skips MRP-required, MRP >= cost, the DPCO
+  ceiling, recall-frozen and consignment-agreement checks.
+- Pack units can be added, never retired or corrected (`materials/items.ts` has only `addItemUom`). Server and web
+  disagree on "the pack": `bill-rows.ts` `counterPacks` takes the smallest multiplier above 1,
+  `apps/web/src/screens/pharmacy-desk/work.ts` `packOf` the largest.
+- Cost is integer paise per base unit, floored (`costPerBase`), and a batch keeps its first receipt's cost.
+  `planOpeningRows` accepts a zero cost and only counts it (`zeroCost`).
+- The fast keyboard grid (`apps/web/src/screens/pharmacy-office/stock-entry.tsx`) is wired to opening stock only;
+  a supplier delivery goes through the slow card form `apps/web/src/screens/materials-grn.tsx`.
 - The `OPENING-STOCK` vendor is not excluded from last-purchase pricing, PO drafts or `unbilledGrns`.
-- Opening stock and GRN do not route NDPS items to PHARM-NDPS; they can land in PHARM-OPD.
+- NDPS custody keys on `items.storage_class`: `materials/controlled.ts` `planCustody` refuses a narcotic-class item
+  entering a non-cabinet store, but an item not yet classified slips into PHARM-OPD. Desk gates read the formulary
+  NDPS class instead, so both must be classified before stock goes in.
 - An item with no GST slab sells as exempt (`gstCategoryFor(null)`); only standup row `pharmacy_gst_slab_set` notices.
 - `listQueue` has no limit; untouched tickets stay `QUEUED_CARRY_DAYS` (3) and every desk polls it.
 - The walk-in screen takes one tender only; the desk's split is cash + UPI only; UPI has no pending state.
 - `GET /pharmacy/retail/sales` returns `netPaise` per row to the seller before her drawer is counted (0014 tension).
 - No bill prints the drug licence number; the server bill (`print.ts`) omits batch and expiry.
 - `copilot-tools.ts` `stock_on_shelf` reads PHARM-OPD only.
+- The store is a constant, not a parameter: `claimDispense` and `planOpeningRows` use `OPD_PHARMACY_STORE_CODE`
+  although `pharmacy_dispenses.store_resource_id` exists.
+- On the IPD integration branch, IPD and ER issues call `postMovements` directly and skip what a hand-over does:
+  the cold-chain hold, the H1 register, the last-gate expiry check. An IPD narcotic order has no cabinet stock path.
 
 ## 7. Agent surface
 - Copilot intents (`copilot-tools.ts`, registered via `manifest.ts` `copilotTools`): reads `stock_on_shelf`,
