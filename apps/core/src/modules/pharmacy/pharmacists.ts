@@ -47,6 +47,15 @@ function personOf(actor: Actor): string {
   return actor.id;
 }
 
+/**
+ * Decision 0008 — the counter first ran on a clearly marked TRIAL registration, filed so it could work before the
+ * owner gave the real pharmacist's certificate. Its number starts `TRIAL-`. The one spelling of "is this the
+ * placeholder": the back office's needs list and the go-live census both ask it here.
+ */
+export function isTrialRegistration(registrationNo: string): boolean {
+  return /^TRIAL-/i.test(registrationNo);
+}
+
 /** Current = not ended, and not past its `valid_until` on the IST date `today`. */
 export async function currentRegistration(db: Db | Tx, userId: string, today: string): Promise<PharmacistRegistration | null> {
   const rows = await db.select().from(pharmacyPharmacistRegistrations).where(and(

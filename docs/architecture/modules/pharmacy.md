@@ -152,6 +152,7 @@ Source: `apps/core/src/modules/pharmacy/`
   - `PHARMACIST_ROLE`
   - `currentRegistration(db: Db | Tx, userId: string, today: string): Promise<PharmacistRegistration | null>`
   - `endPharmacistRegistration(tx: Tx, actor: Actor, registrationId: string, reason: string, now: Date = new Date()): Promise<void>`
+  - `isTrialRegistration(registrationNo: string): boolean`
   - `listPharmacists(db: Db, now: Date = new Date()): Promise<PharmacistView[]>`
   - `recordPharmacistRegistration(tx: Tx, actor: Actor, input: { userId: string; council: string; registrationNo: string; validUntil?: string | …`
   - `renewalDaysLeft(today: string, validUntil: string): number | null`

@@ -70,7 +70,7 @@ export { PHARMACY_PICK_SWEEP_ACTOR, PICK_EXPIRED_REASON, sweepExpiredPicks } fro
  * the go-live census, which asks whether anyone who may complete a scheduled dispense holds one.
  */
 export {
-  PHARMACIST_ROLE, currentRegistration, endPharmacistRegistration, listPharmacists, recordPharmacistRegistration,
+  PHARMACIST_ROLE, currentRegistration, endPharmacistRegistration, isTrialRegistration, listPharmacists, recordPharmacistRegistration,
   requireRegisteredPharmacist,
 } from "./pharmacists";
 export type { PharmacistRegistration, PharmacistView } from "./pharmacists";
