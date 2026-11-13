@@ -11,6 +11,7 @@ import {
 import {
   captureOpeningStock, captureSupplierInvoice, estimatedPackCostPaise, invoiceStores, planOpeningGrid, planSupplierInvoice, rateWithoutGstPaise,
 } from "../src/modules/pharmacy/opening-stock";
+import { grnWorklist } from "../src/modules/materials/grn";
 import { stockEntrySuppliers } from "../src/modules/pharmacy/stock-drug";
 import { setupTestDb, truncateAll } from "./helpers/db";
 import { seedPharmacyBase } from "./helpers/pharmacy";
@@ -236,5 +237,24 @@ describe("#1047 pharmacy stock-in — sources, the invoice header, credits and p
     expect(await billDraftFromGrn(db, fx.incharge.actor, grnId)).toMatchObject({ vendorBillNo: "TAX/1", billDate: today() });
     // and the accepted bill table is untouched by a draft
     expect(await db.select().from(supplierBills)).toEqual([]);
+  });
+
+  it("walk 2026-11-13: an expiry typed as a phone's number pad types it (0828, 082028) is the label's month, and a refusal names the forms", async () => {
+    const y = yy();
+    const plan = await planOpeningGrid(db, [gridRow({ expiry: `08${y}` }), gridRow({ batch: "S2", expiry: `0820${y}` }), gridRow({ batch: "S3", expiry: `13${y}` })], new Date());
+    expect(plan.rows.map((r) => r.expiryDate)).toEqual([`20${y}-08-31`, `20${y}-08-31`, ""]);
+    expect(plan.rows[0]!.reasons).toEqual([]);
+    expect(plan.rows[2]!.reasons).toContain(`expiry must be a month like 08/28, 0828 or 08/2028, got "13${y}"`);
+  });
+
+  it("walk 2026-11-13: the GRN list names each delivery's supplier and its value at cost", async () => {
+    const vendorId = await aSupplier();
+    const header: InvoiceHeader = { vendorId, invoiceNo: "SI/LIST/1", invoiceDate: today(), storeResourceId: fx.storeId };
+    // 5 strips of 10 at Rs 80.00 a strip (800 paise a tablet) and a free strip at no cost: Rs 400.00.
+    const { grnId } = await captureSupplierInvoice(db, fx.incharge.actor, header, [gridRow({ freePacks: "1" })], new Date());
+    const captured = (await grnWorklist(db)).find((g) => g.id === grnId);
+    expect(captured).toMatchObject({ vendorName: "MEDPLUS", invoiceNo: "SI/LIST/1", status: "gate_qc", valuePaise: 40_000 });
+    await qcAndPost(grnId);
+    expect((await grnWorklist(db, { vendorId })).map((g) => [g.grnNo, g.vendorName, g.valuePaise])).toEqual([[captured!.grnNo, "MEDPLUS", 40_000]]);
   });
 });

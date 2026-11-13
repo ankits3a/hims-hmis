@@ -1001,6 +1001,42 @@ export async function listGrns(
   return clauses.length === 0 ? q : q.where(and(...clauses));
 }
 
+/** A GRN as the deliveries list shows it: its own fields, the supplier's name and its value at cost. */
+export type GrnListRow = GrnRow & {
+  vendorName: string;
+  /**
+   * What the delivery is worth at cost, before GST: each line's quantity × its cost per base unit — the quantity
+   * captured until the GRN posts, then what was accepted. Free goods are at cost 0; an opening-stock estimate is
+   * counted as estimated.
+   */
+  valuePaise: number;
+};
+
+/**
+ * Walk 2026-11-13 — the deliveries list named only the GRN number: no supplier, no invoice, no amount. The same
+ * GRNs as `listGrns`, with the supplier's trade (else legal) name and the value at cost beside each.
+ */
+export async function grnWorklist(
+  db: Db | Tx,
+  filter: { vendorId?: string; storeResourceId?: string; status?: string } = {},
+): Promise<GrnListRow[]> {
+  const clauses = [];
+  if (filter.vendorId !== undefined) clauses.push(eq(grns.vendorId, filter.vendorId));
+  if (filter.storeResourceId !== undefined) clauses.push(eq(grns.storeResourceId, filter.storeResourceId));
+  if (filter.status !== undefined) clauses.push(eq(grns.status, filter.status));
+  const rows = await db.select({
+    g: grns,
+    vendorName: sql<string>`coalesce(${vendors.tradeName}, ${vendors.legalName})`,
+    valuePaise: sql<string>`coalesce(sum(case when ${grns.status} = 'posted' then ${grnLines.qtyAcceptedBase} else ${grnLines.qtyBase} end * ${grnLines.unitCostPaise}), 0)`,
+  }).from(grns)
+    .innerJoin(vendors, eq(vendors.id, grns.vendorId))
+    .leftJoin(grnLines, eq(grnLines.grnId, grns.id))
+    .where(clauses.length === 0 ? undefined : and(...clauses))
+    .groupBy(grns.id, vendors.id)
+    .orderBy(asc(grns.grnNo));
+  return rows.map((r) => ({ ...r.g, vendorName: r.vendorName, valuePaise: Number(r.valuePaise) }));
+}
+
 /** The lots a batch backs. T7's consumption consumer reads it; 14c's reconciliation will too. */
 export async function lotsForBatch(
   db: Db | Tx, batchId: string,

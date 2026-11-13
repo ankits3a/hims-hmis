@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { expiryFromLabel } from "@hmis/contracts";
+import { EXPIRY_LABEL_FORMS, expiryFromLabel } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { getApproval } from "../../kernel/approvals/worklist";
 import { withTx } from "../../kernel/db/client";
@@ -179,7 +179,7 @@ export function namesFor(item: { code: string; name: string }): string[] {
 }
 
 /**
- * MM/YYYY or MM/YY → the last day of that month, YYYY-MM-DD; null when unreadable. The rule itself lives in
+ * MM/YYYY, MM/YY, MMYY or MMYYYY → the last day of that month, YYYY-MM-DD; null when unreadable. The rule itself lives in
  * `@hmis/contracts` (`expiryFromLabel`), shared with the GRN gate and its screen (2026-11-13).
  */
 export function expiryOf(text: string): string | null {
@@ -364,7 +364,7 @@ function judgeRow(ctx: ShelfContext, r: OpeningInputRow, rules: RowRules, seen: 
   }
   if (row.batch === "") row.reasons.push("batch_required");
   const expiry = expiryOf(c.expiry ?? "");
-  if (expiry === null) row.reasons.push(`expiry must be MM/YYYY, got "${c.expiry ?? ""}"`);
+  if (expiry === null) row.reasons.push(`expiry must be a month like ${EXPIRY_LABEL_FORMS}, got "${c.expiry ?? ""}"`);
   else row.expiryDate = expiry;
   const mrp = rupeesToPaise(c.mrp_per_pack ?? "");
   if (mrp === null || mrp <= 0) row.reasons.push(`mrp_per_pack must be rupees like 35.50, got "${c.mrp_per_pack ?? ""}"`);

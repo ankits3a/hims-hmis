@@ -41,7 +41,7 @@ import type {
 import { getWriteOff, listWriteOffs, postWriteOff, raiseWriteOff } from "./write-offs";
 import type { WriteOffSummary, WriteOffView } from "./write-offs";
 import {
-  cancelGrn, captureGrn, getGrn, listGrns, mrpRevisionView, nearExpiryAcceptanceView, postGrn, requestMrpRevisionApproval,
+  cancelGrn, captureGrn, getGrn, grnWorklist, mrpRevisionView, nearExpiryAcceptanceView, postGrn, requestMrpRevisionApproval,
   requestNearExpiryAcceptance, runGateQc,
 } from "./grn";
 import { getTransfer, issueStock, listDiscrepancies, listTransfers, receiveStock, transferWorklist } from "./transfers";
@@ -1113,7 +1113,8 @@ export class MaterialsController {
     const q = parsed(z.object({
       vendorId: id.optional(), storeResourceId: id.optional(), status: z.string().max(32).optional(),
     }), query);
-    return { grns: await listGrns(this.db, q) };
+    // Walk 2026-11-13 — each delivery with its supplier's name and its value at cost (`grnWorklist`).
+    return { grns: await grnWorklist(this.db, q) };
   }
 
   /** M6 — see `grns()` above: the QC signatory must be able to read what it signs. */
