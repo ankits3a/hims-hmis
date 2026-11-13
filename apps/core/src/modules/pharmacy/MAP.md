@@ -179,7 +179,9 @@ module has no view of either. Decision 0012: ward issue, ward returns, IP bill a
 - `copilot-tools.ts` `stock_on_shelf` reads PHARM-OPD only.
 - `shelf.ts` `shelfByMedicine` keeps ONE item per formulary medicine (the medicine may be a generic, so several brands
   per medicine are legitimate): the item with the most sellable stock over all stores, tie -> lowest code. The counter
-  search (`searchCounterShelf` / `searchRetailShelf`) lists every item of a medicine, best-stocked first; walk-in and
+  search (`retail.ts` `searchShelfAt`, behind `searchCounterShelf` / `searchRetailShelf`, paper-Rx, resolve and copilot)
+  lists every item of a medicine, best-stocked AT THE SEARCHED STORE first, each with its own name and code; it is the
+  union of name/code matches then salt matches (a name the formulary resolves to one product is not widened); walk-in and
   downtime lines carry an optional `itemId` (refused `unknown_sale_item` unless it is a sale item of that medicine);
   `claim.ts` takes the shelf's choice and `verify.ts` keeps the line's own item while it is still valid.
 - `sale-items.ts` `registerSaleItem` refuses an item with no GST slab (`gst_slab_unknown`), so nothing new goes on
