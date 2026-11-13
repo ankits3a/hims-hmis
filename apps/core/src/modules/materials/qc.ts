@@ -12,8 +12,15 @@ import type { PackPrice, UomRow } from "./uom";
  * A line that names an item the hospital does not stock cannot meaningfully be checked for a
  * near-expiry bound; a line with no batch number cannot be checked against a recall; a price
  * comparison over a UoM the item does not have is arithmetic on a guess. So the rules run in a
- * fixed order and the FIRST failure is the verdict — the rule code that comes back is the one a
+ * fixed order and the FIRST REJECTION is the verdict — the rule code that comes back is the one a
  * storekeeper must fix first, not the last one that happened to be evaluated.
+ *
+ * **Rule 5 is the one exception, because it is not a rejection (2026-11-13).** A short shelf life
+ * ROUTES the line to an approval; it does not stop the gate. It used to return early, so a
+ * short-dated line was never asked rules 6–9 — its MRP, its cost, its ceiling, its recall freeze, its
+ * agreement — and a real shelf is mostly short-dated. Rule 5 now only REMEMBERS the line is short;
+ * every later rule still runs, any rejection wins, and `near_expiry` is the verdict only when the
+ * line reaches the end with nothing rejected.
  *
  * ═══ THE NINE, IN ORDER (DD8) ═══
  *
@@ -134,11 +141,12 @@ export function nearExpiryMinDays(shelfLifeDays: number | null): number {
 }
 
 /**
- * One line through DD8's nine rules, in order. The first failure is the verdict.
+ * One line through DD8's nine rules, in order. The first REJECTION is the verdict.
  *
  * `near_expiry` is a THIRD outcome and not a rejection: the line may still be posted, but only with
  * a granted `materials_near_expiry_acceptance` on the GRN (DD10, A17). Everything else that fails
- * is `reject`.
+ * is `reject`, and a rejection from ANY rule outranks `near_expiry` — a short-dated line priced below
+ * cost is refused, not sent for approval (2026-11-13).
  */
 export function qcLine(ctx: QcContext, line: QcLine): QcVerdict {
   // ── 1. the item exists and is active ──
@@ -164,15 +172,15 @@ export function qcLine(ctx: QcContext, line: QcLine): QcVerdict {
   // Evaluated only when there IS one: a class exempt from rule 3 may legitimately have none, and
   // "no expiry" is not "expired".
   const expiry = line.expiryDate ?? null;
+  let nearExpiry = false;
   if (expiry !== null) {
     const residual = daysBetween(ctx.challanDate, expiry);
     // `<= 0`: stock expiring ON the day it is received is expired for every purpose that matters.
     if (residual <= 0) return { verdict: "reject", rule: "expired" };
 
     // ── 5. O-2's residual shelf-life bound ──
-    if (residual < nearExpiryMinDays(item.shelfLifeDays)) {
-      return { verdict: "near_expiry", rule: "near_expiry" };
-    }
+    // REMEMBERED, not returned: rules 6–9 still run, and any rejection among them wins (2026-11-13).
+    nearExpiry = residual < nearExpiryMinDays(item.shelfLifeDays);
   }
 
   // ── 6. MRP present where the class demands it, and MRP is NOT below cost ──
@@ -249,5 +257,7 @@ export function qcLine(ctx: QcContext, line: QcLine): QcVerdict {
     return { verdict: "reject", rule: "agreement_missing" };
   }
 
+  // ── 5's verdict, now that nothing has rejected the line: it waits for the near-expiry acceptance ──
+  if (nearExpiry) return { verdict: "near_expiry", rule: "near_expiry" };
   return { verdict: "pass" };
 }
