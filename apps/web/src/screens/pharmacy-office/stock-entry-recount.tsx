@@ -147,6 +147,7 @@ export function RecountPanel({ rows, control, onLoad, onClear }: {
             {t("stockEntry.recount.summary", { name: control.name, count: compared.length, differ: differing })}
             {control.errors.length > 0 && <span className="text-amber-800">{" "}{t("stockEntry.recount.skipped", { lines: control.errors.join(", ") })}</span>}
           </p>
+          <div className="se-recount-scroll">
           <table className="se-recount-table text-sm">
             <thead>
               <tr>
@@ -167,6 +168,7 @@ export function RecountPanel({ rows, control, onLoad, onClear }: {
               ))}
             </tbody>
           </table>
+          </div>
         </>
       )}
     </section>

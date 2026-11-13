@@ -85,6 +85,8 @@ export type WireGrn = {
   lines: WireGrnLine[];
   /** #1047 — the supplier invoice's date, the MRP-revision approval, and a cancel's reason. Absent from an older server. */
   invoiceDate?: string | null; mrpApprovalId?: string | null; cancelReason?: string | null;
+  /** The list's (walk 2026-11-13): the supplier's name and the value at cost before GST. Absent from the detail read. */
+  vendorName?: string; valuePaise?: number;
 };
 
 export type WireExpiringBatch = {

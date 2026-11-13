@@ -3,6 +3,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../lib/auth";
+import { fetchMaterialsSettings } from "../../lib/materials-api";
 import { registerSaleItem } from "../../lib/pharmacy-api";
 import {
   PACK_TYPES, captureInvoiceRows, captureStockRows, checkInvoiceRows, checkStockRows, fetchInvoiceStores, fetchReceivableOrders, fetchStockSuppliers,
@@ -35,10 +36,12 @@ import "./stock-entry.css";
  * through (`planOpeningRows`), and each row shows the server's reasons under it before anything is captured.
  * The only arithmetic here is the live cost per unit and margin, for the eye; the server's figure is captured.
  *
- * ═══ CAPTURE IS NOT RECEIVE — DD8'S TWO PEOPLE ═══
+ * ═══ CAPTURE IS NOT RECEIVE ═══
  *
- * Capture books goods receipts (GRNs). Nothing is sellable until a SECOND person, the pharmacist, checks (QC)
- * and posts them in the GRN worklist — the screen says so before and after, and links there.
+ * Capture books goods receipts (GRNs). Nothing is sellable until each is checked (QC) and posted in the GRN
+ * worklist — the screen says so before and after, and links there. Whether that must be a SECOND person is the
+ * hospital's setting (`grnQcNeedsSecondPerson`, off by default, ruling 0019): the copy says so only when it is on
+ * (walk 2026-11-13 — it claimed a second person while the same login could capture, QC and post).
  *
  * ═══ THE SALE PRICE IS THE MRP ═══
  *
@@ -124,8 +127,20 @@ function fromItem(row: GridRow, item: WireStockItem): GridRow {
 }
 
 export type EntryMode = "opening" | "invoice";
-const blankHeader = (): WireInvoiceHeader => ({
-  vendorId: null, invoiceNo: "", invoiceDate: "", purchaseOrderId: null, storeResourceId: null, rateIncludesGst: false,
+/**
+ * Walk 2026-11-13 — the rate basis switch fell back to "without GST" after every capture, so the next invoice from a
+ * supplier who prints rates with GST was costed wrong unless somebody noticed. The last choice is kept for the rest
+ * of the browser session (this viewer's own convenience; the server is still told on every check and capture).
+ */
+export const RATE_BASIS_KEY = "hmis.pharmacy.stockEntry.rateIncludesGst";
+function lastRateBasis(): boolean {
+  try { return window.sessionStorage.getItem(RATE_BASIS_KEY) === "true"; } catch { return false; }
+}
+function keepRateBasis(withGst: boolean): void {
+  try { window.sessionStorage.setItem(RATE_BASIS_KEY, String(withGst)); } catch { /* storage off: kept until the grid closes */ }
+}
+const blankHeader = (rateIncludesGst = false): WireInvoiceHeader => ({
+  vendorId: null, invoiceNo: "", invoiceDate: "", purchaseOrderId: null, storeResourceId: null, rateIncludesGst,
 });
 /** The invoice's row: the opening row without the opening count's own columns (rack, supplier). */
 function toInvoiceWire(r: GridRow): WireInvoiceRow {
@@ -191,7 +206,7 @@ export function StockEntryView(): React.ReactElement {
   useEffect(() => { saveDraft(rows); }, [rows]);
   const suppliers = useQuery({ queryKey: ["pharmacy", "stock-entry", "suppliers"], queryFn: fetchStockSuppliers });
   const [mode, setMode] = useState<EntryMode>("opening");
-  const [header, setHeader] = useState<WireInvoiceHeader>(blankHeader);
+  const [header, setHeader] = useState<WireInvoiceHeader>(() => blankHeader(lastRateBasis()));
   const [control, setControl] = useState<ControlFile | null>(null);
   const invoice = mode === "invoice";
   const stores = useQuery({ queryKey: ["pharmacy", "stock-entry", "invoice-stores"], queryFn: fetchInvoiceStores, enabled: invoice });
@@ -219,6 +234,12 @@ export function StockEntryView(): React.ReactElement {
   const [upload, setUpload] = useState(false);
   const mayCreate = can("materials.items.manage");
   const mayPutOnSale = can("pharmacy.sale_items.manage");
+  // The two-person GRN setting (0019): the copy claims a second person only when the hospital has turned it on.
+  const settings = useQuery({
+    queryKey: ["materials", "settings"], queryFn: fetchMaterialsSettings, enabled: can("materials.stock.read"), retry: false,
+  });
+  const secondPerson = settings.data?.grnQcNeedsSecondPerson === true;
+  const afterCapture = t(secondPerson ? "stockEntry.afterCapture" : "stockEntry.afterCaptureSelf");
 
   const update = (key: string, patch: Partial<GridRow>): void => {
     setResult(null); setInvResult(null);
@@ -286,7 +307,8 @@ export function StockEntryView(): React.ReactElement {
         setInvResult(await captureInvoiceRows(header, invoicePayload));
         setRowsRaw([blankRow()]);
         setInvCheck(null);
-        setHeader((h) => ({ ...blankHeader(), storeResourceId: h.storeResourceId }));
+        // The store and the rate basis stay for the next invoice; the rest is this invoice's own.
+        setHeader((h) => ({ ...blankHeader(h.rateIncludesGst), storeResourceId: h.storeResourceId }));
         await qc.invalidateQueries({ queryKey: ["materials"] });
         await qc.invalidateQueries({ queryKey: ["pharmacy", "office"] });
         return;
@@ -369,7 +391,8 @@ export function StockEntryView(): React.ReactElement {
 
       {invoice && (
         <InvoiceHeaderForm
-          header={header} onChange={(p) => { setInvResult(null); setHeader((h) => ({ ...h, ...p })); }}
+          header={header}
+          onChange={(p) => { setInvResult(null); if (p.rateIncludesGst !== undefined) keepRateBasis(p.rateIncludesGst); setHeader((h) => ({ ...h, ...p })); }}
           suppliers={suppliers.data ?? []} stores={stores.data ?? []} orders={orders.isError ? null : orders.data ?? []}
           reasons={invFresh?.headerReasons ?? []}
         />
@@ -377,7 +400,7 @@ export function StockEntryView(): React.ReactElement {
 
       <div className="se-notes">
         <p data-testid="se-two-person">
-          {t("stockEntry.twoPerson")}{" "}
+          {t(secondPerson ? "stockEntry.twoPerson" : "stockEntry.twoPersonOff")}{" "}
           <Link to="/pharmacy/office" search={GRN_WORKLIST} className="underline">{t("stockEntry.worklistLink")}</Link>
         </p>
         <p className="text-muted-foreground" data-testid="se-mrp-note">{t("stockEntry.mrpNote")}</p>
@@ -390,7 +413,7 @@ export function StockEntryView(): React.ReactElement {
         <div role="status" className="se-result" data-testid="se-invoice-result">
           <p className="font-semibold">{t("stockEntry.invoice.captured", { grnNo: invResult.grnNo, count: invResult.lines })}</p>
           <p className="mt-2 text-sm">
-            {t("stockEntry.afterCapture")}{" "}
+            {afterCapture}{" "}
             <Link to="/pharmacy/office" search={GRN_WORKLIST} className="font-semibold underline">{t("stockEntry.worklistLink")}</Link>
           </p>
         </div>
@@ -403,12 +426,12 @@ export function StockEntryView(): React.ReactElement {
             {result.captured.map((g) => (
               <li key={g.grnId}>
                 <span className="font-mono">{g.grnNo}</span>{" · "}
-                {t(g.near ? "materialsGrn.opening.capturedNear" : "materialsGrn.opening.capturedLine", { lines: g.lines })}
+                {t(g.near ? "materialsGrn.opening.capturedNear" : "materialsGrn.opening.capturedLine", { count: g.lines })}
               </li>
             ))}
           </ul>
           <p className="mt-2 text-sm">
-            {t("stockEntry.afterCapture")}{" "}
+            {afterCapture}{" "}
             <Link to="/pharmacy/office" search={GRN_WORKLIST} className="font-semibold underline" data-testid="se-worklist">{t("stockEntry.worklistLink")}</Link>
           </p>
         </div>
@@ -457,10 +480,13 @@ export function StockEntryView(): React.ReactElement {
             ? t("stockEntry.empty")
             : judged === null
               ? t("stockEntry.checking")
-              : t("stockEntry.summary", { rows: sendable.length, refused: judged.refusals + unpicked.length, units })}
+              : t("stockEntry.summary", {
+                rows: t("stockEntry.rows", { count: sendable.length }), refused: judged.refusals + unpicked.length, units: t("stockEntry.n.unit", { count: units }),
+              })}
           {invFresh !== null && invFresh.costPaise > 0 && <span data-testid="se-invoice-cost">{" · "}{t("stockEntry.invoice.cost", { amount: rupees(invFresh.costPaise) })}</span>}
         </p>
-        {lacking.map((a) => <p key={a.why} className="text-sm text-red-700">{t(`stockEntry.needs_${a.why}`, { permission: a.permission })}</p>)}
+        {/* Said in words — who to ask — never as a permission key (walk 2026-11-13). */}
+        {lacking.map((a) => <p key={a.why} className="text-sm text-red-700">{t(`stockEntry.needs_${a.why}`)}</p>)}
         {fresh !== null && (fresh.estimated ?? 0) > 0 && (
           <p className="text-sm text-amber-800" data-testid="se-estimated">{t("stockEntry.estimated", { count: fresh.estimated ?? 0 })}</p>
         )}

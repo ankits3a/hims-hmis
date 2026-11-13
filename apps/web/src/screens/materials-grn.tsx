@@ -6,7 +6,7 @@ import {
   fetchVendors, materialsErrorText, postGrn, requestMrpRevision, requestNearExpiry, runGrnQc,
 } from "../lib/materials-api";
 import { useAuth } from "../lib/auth";
-import { fetchPurchaseOrders, fetchReceivable } from "../lib/purchase-api";
+import { fetchPurchaseOrders, fetchReceivable, rupees } from "../lib/purchase-api";
 import { expiryFromLabel } from "../../../../packages/contracts/src/drug-expiry";
 import { Button } from "@/components/ui/button";
 import { OpeningStockSheet } from "./materials-grn-opening";
@@ -104,10 +104,11 @@ export function MaterialsGrn(): React.ReactElement {
   const auth = useAuth();
   const me = auth.actor?.id ?? null;
   const twoPerson = settings.data?.grnQcNeedsSecondPerson === true;
-  const waitingOnQc = (g: WireGrn): boolean => g.status === "gate_qc" || g.status === "draft";
-  /** Checked by its capturer — already (qcBy), or about to be (the capturer has it open, the setting off). */
-  const selfChecked = (g: WireGrn): boolean =>
-    g.qcBy !== null ? g.qcBy === g.capturedBy : !twoPerson && waitingOnQc(g) && me !== null && me === g.capturedBy;
+  /**
+   * Checked by its capturer — once QC has happened. Walk 2026-11-13: it used to say so before QC too (the capturer
+   * having it open), which read as a check that had not happened.
+   */
+  const selfChecked = (g: WireGrn): boolean => g.qcBy !== null && g.qcBy === g.capturedBy;
   const capturerBlocked = (g: WireGrn): boolean => twoPerson && me !== null && me === g.capturedBy && g.status !== "posted" && g.status !== "rejected";
   const orders = useQuery({
     queryKey: ["materials", "purchase-orders", "receivable", vendorId],
@@ -202,8 +203,15 @@ export function MaterialsGrn(): React.ReactElement {
   const [cancelling, setCancelling] = useState(false);
   const [cancelWhy, setCancelWhy] = useState("");
   const isOpen = grn !== undefined && grn.status !== "posted" && grn.status !== "cancelled";
+  /** The opened GRN's columns; each cell carries its column's name for the phone's stacked line. */
+  const cols = [
+    t("materialsGrn.item"), t("materialsGrn.qtyBase"), t("materialsGrn.batchNo"), t("materialsGrn.expiry"), t("materialsGrn.mrp"),
+    t("materialsGrn.cost"), t("materialsGrn.verdict"),
+  ];
   /** Captured and not yet through QC: every line's verdict is still to come, whatever its fields say. */
   const awaitingQc = grn?.status === "gate_qc" || grn?.status === "draft";
+  /** An older server's list carries no supplier name: the code of an active one, else nothing to show. */
+  const vendorCode = (id: string): string => (vendors.data ?? []).find((v) => v.id === id)?.code ?? "";
   const itemLabel = (itemId: string): string => {
     const it = (items.data ?? []).find((i) => i.id === itemId);
     return it === undefined ? itemId : `${it.code} · ${it.name}`;
@@ -269,8 +277,16 @@ export function MaterialsGrn(): React.ReactElement {
                     {g.grnNo}
                   </button>
                   <span className={grnPill(g.status)}>{t(`materialsGrn.status_${g.status}`, { defaultValue: g.status })}</span>
+                  {/* Walk 2026-11-13 — which delivery it is: the supplier, its invoice (else challan) and its value. */}
+                  <span data-testid={`grn-vendor-${g.id}`}>{g.vendorName ?? vendorCode(g.vendorId)}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {g.invoiceNo !== null ? t("materialsGrn.listInvoice", { no: g.invoiceNo }) : t("materialsGrn.listChallan", { no: g.challanNo })}
+                  </span>
                   {selfChecked(g) && (
                     <span className="text-xs text-amber-800" data-testid={`grn-self-checked-${g.id}`}>{t("materialsGrn.sameCapturer")}</span>
+                  )}
+                  {g.valuePaise !== undefined && (
+                    <span className="ml-auto tabular-nums" data-testid={`grn-value-${g.id}`}>{t("materialsGrn.listValue", { amount: rupees(g.valuePaise) })}</span>
                   )}
                 </li>
               ))}
@@ -477,17 +493,13 @@ export function MaterialsGrn(): React.ReactElement {
                 <p role="note" className="text-sm text-red-700" data-testid="grn-cancelled">{t("materialsGrn.cancelledWhy", { reason: grn.cancelReason ?? "" })}</p>
               )}
               {capturerBlocked(grn) && <p role="note" className="text-sm text-amber-800" data-testid="grn-capturer-blocked">{t("materialsGrn.capturerMayNotCheck")}</p>}
+              {/* Walk 2026-11-13 — on a phone the table cut off expiry, MRP, cost and verdict: below 640 px each line
+                  stacks, every cell under its column's name (`data-label`, office-page.css `.grn-lines`). */}
               <div className="ofp-box ofp-scroll">
-              <table className="ofp-table min-w-[48rem]">
+              <table className="ofp-table grn-lines min-w-[48rem]">
                 <thead>
                   <tr>
-                    <th>{t("materialsGrn.item")}</th>
-                    <th>{t("materialsGrn.qtyBase")}</th>
-                    <th>{t("materialsGrn.batchNo")}</th>
-                    <th>{t("materialsGrn.expiry")}</th>
-                    <th>{t("materialsGrn.mrp")}</th>
-                    <th>{t("materialsGrn.cost")}</th>
-                    <th>{t("materialsGrn.verdict")}</th>
+                    {cols.map((c) => <th key={c}>{c}</th>)}
                   </tr>
                 </thead>
                 <tbody>
@@ -495,15 +507,18 @@ export function MaterialsGrn(): React.ReactElement {
                     <tr key={l.id}>
                       {/* The walk of 2026-09-30: the person running QC holds the strip against THIS row, so it
                           names the drug and carries what QC checks — never an id, never a verdict before QC. */}
-                      <td>{itemLabel(l.itemId)}</td>
-                      <td>{l.qtyBase}</td>
-                      <td>{l.batchNo ?? "—"}</td>
-                      <td className="whitespace-nowrap">{l.expiryDate ?? "—"}</td>
-                      <td className="whitespace-nowrap">{l.mrpPaise === null ? "—" : `₹${(l.mrpPaise / 100).toFixed(2)}${l.mrpUom === null ? "" : ` / ${l.mrpUom}`}`}</td>
-                      <td className="whitespace-nowrap">{`₹${(l.unitCostPaise / 100).toFixed(2)}`}</td>
-                      <td>
-                        {/* THE RULE, AS A SENTENCE. Never the raw code — see the header. */}
-                        {awaitingQc
+                      <td data-label={cols[0]}>{itemLabel(l.itemId)}</td>
+                      <td data-label={cols[1]}>{l.qtyBase}</td>
+                      <td data-label={cols[2]}>{l.batchNo ?? "—"}</td>
+                      <td data-label={cols[3]} className="whitespace-nowrap">{l.expiryDate ?? "—"}</td>
+                      <td data-label={cols[4]} className="whitespace-nowrap">{l.mrpPaise === null ? "—" : `₹${(l.mrpPaise / 100).toFixed(2)}${l.mrpUom === null ? "" : ` / ${l.mrpUom}`}`}</td>
+                      <td data-label={cols[5]} className="whitespace-nowrap">{`₹${(l.unitCostPaise / 100).toFixed(2)}`}</td>
+                      <td data-label={cols[6]}>
+                        {/* THE RULE, AS A SENTENCE. Never the raw code — see the header. A cancelled GRN's lines carry
+                            no verdict (walk 2026-11-13: they read "Accepted" although nobody had checked them). */}
+                        {grn.status === "cancelled"
+                          ? <span className="text-neutral-600">{t("materialsGrn.status_cancelled")}</span>
+                          : awaitingQc
                           ? <span className="text-neutral-600">{t("materialsGrn.status_gate_qc")}</span>
                           : l.rejectReason !== null
                           ? <span className="text-red-600">{t(`materialsGrn.rule_${l.rejectReason}`)}</span>

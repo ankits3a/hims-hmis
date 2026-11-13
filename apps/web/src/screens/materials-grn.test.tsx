@@ -321,6 +321,45 @@ describe("MaterialsGrn", () => {
     expect(table).not.toHaveTextContent("Accepted");
   });
 
+  it("walk 2026-11-13: a cancelled GRN's lines claim no verdict, and on a phone each line stacks under its column names", async () => {
+    const cancelled = { ...grnWith(null), status: "cancelled", qcBy: null, cancelReason: "wrong supplier invoice" };
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/materials/grns": { status: 200, body: { grns: [cancelled] } },
+      "GET /api/materials/grns/g-1": { status: 200, body: { grn: cancelled } },
+    });
+    renderWithProviders(<MaterialsGrn />);
+    await userEvent.click(await screen.findByRole("button", { name: "GRN2608270001" }));
+    const table = await screen.findByRole("table");
+    expect(table).toHaveTextContent("Cancelled");
+    expect(table).not.toHaveTextContent("Accepted");
+    // Every cell names its column, so the phone's stacked line still says what each figure is.
+    const heads = within(table).getAllByRole("columnheader").map((h) => h.textContent);
+    for (const row of within(table).getAllByRole("row").slice(1)) {
+      expect(within(row).getAllByRole("cell").map((c) => c.getAttribute("data-label"))).toEqual(heads);
+    }
+    expect(table).toHaveClass("grn-lines");
+  });
+
+  it("walk 2026-11-13: each delivery in the list names its supplier, its invoice (else challan) number and its value", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/materials/grns": { status: 200, body: { grns: [
+        { ...grnWith(null), id: "g-a", grnNo: "GRN-A", invoiceNo: "SI/26/12", vendorName: "Acme Pharma", valuePaise: 110_303 },
+        { ...grnWith(null), id: "g-b", grnNo: "GRN-B", invoiceNo: null, challanNo: "CH/77", vendorName: "Medline", valuePaise: 40_000 },
+      ] } },
+    });
+    renderWithProviders(<MaterialsGrn />);
+    const a = (await screen.findByRole("button", { name: "GRN-A" })).closest("li")!;
+    expect(a).toHaveTextContent("Acme Pharma");
+    expect(a).toHaveTextContent("SI/26/12");
+    expect(a).toHaveTextContent("₹1,103.03");
+    const b = screen.getByRole("button", { name: "GRN-B" }).closest("li")!;
+    expect(b).toHaveTextContent("Medline");
+    expect(b).toHaveTextContent("CH/77");
+    expect(b).toHaveTextContent("₹400.00");
+  });
+
   /**
    * B5 (the same walk) — the dates are date fields, the units are the item's own, and a strip's price
    * off the bill becomes the cost of ONE tablet on screen before anything is sent: ₹26.00 a strip of 10
@@ -380,10 +419,13 @@ describe("MaterialsGrn", () => {
     await user.type(expiry, "13/28");
     await user.click(screen.getByRole("button", { name: "Capture" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("13/28");
+    // Walk 2026-11-13: the refusal names the forms it reads.
+    expect(screen.getByRole("alert")).toHaveTextContent("08/28, 0828 or 08/2028");
     expect(bodiesOf("POST", "/materials/grns")).toHaveLength(0);
 
     await user.clear(expiry);
-    await user.type(expiry, "06/28");
+    // A phone's number pad has no "/": "0628" is June 2028 as "06/28" is.
+    await user.type(expiry, "0628");
     // A second line, a consumable: a date, kept to the day.
     await user.click(screen.getByRole("button", { name: "Add line" }));
     const second = (): HTMLElement => screen.getAllByLabelText("Item")[1]!;
@@ -497,7 +539,7 @@ describe("MaterialsGrn", () => {
   const settingsReply = (on: boolean): Handler => ({ status: 200, body: { settings: { grnQcNeedsSecondPerson: on, updatedBy: null, updatedAt: null } } });
   const grnRow = (id: string, over: { status: string; capturedBy: string; qcBy: string | null }) => ({ ...grnWith(null), id, grnNo: `GRN-${id}`, ...over });
 
-  it("setting OFF: a GRN checked by the person who captured it says so — already checked, or about to be by its capturer — and nothing is blocked", async () => {
+  it("setting OFF: a GRN checked by the person who captured it says so once QC has happened — not before — and nothing is blocked", async () => {
     const open = grnRow("g-mine", { status: "gate_qc", capturedBy: "me", qcBy: null });
     mockRoutes({
       ...baseRoutes(), ...ME,
@@ -512,14 +554,17 @@ describe("MaterialsGrn", () => {
     });
     renderWithProviders(<MaterialsGrn />);
     expect(await screen.findByTestId("grn-self-checked-g-self")).toHaveTextContent("Checked by the same person who captured it");
-    expect(await screen.findByTestId("grn-self-checked-g-mine")).toBeInTheDocument();
     expect(screen.queryByTestId("grn-self-checked-g-two")).toBeNull();
     expect(screen.queryByTestId("grn-self-checked-g-theirs")).toBeNull();
 
     await userEvent.click(screen.getByRole("button", { name: "GRN-g-mine" }));
-    expect(await screen.findByTestId("grn-open-self-checked")).toBeInTheDocument();
-    expect(screen.queryByTestId("grn-capturer-blocked")).toBeNull();
+    // Signed in as its capturer (the cancel act is offered), nothing blocked …
+    expect(await screen.findByTestId("grn-cancel")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Run QC" })).toBeEnabled();
+    expect(screen.queryByTestId("grn-capturer-blocked")).toBeNull();
+    // … and walk 2026-11-13: a GRN still waiting for QC has not been checked by anybody yet, so nothing says it was.
+    expect(screen.queryByTestId("grn-open-self-checked")).toBeNull();
+    expect(screen.queryByTestId("grn-self-checked-g-mine")).toBeNull();
   });
 
   it("setting ON: the capturer's own GRN says somebody else checks it, and its QC and post are not offered", async () => {

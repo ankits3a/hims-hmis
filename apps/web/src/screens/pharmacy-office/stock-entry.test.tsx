@@ -2,15 +2,16 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../../lib/api";
 import { renderWithRouter } from "../../test-utils";
-import { DRAFT_KEY, StockEntryView, blankRow, rowEconomics } from "./stock-entry";
+import { DRAFT_KEY, RATE_BASIS_KEY, StockEntryView, blankRow, rowEconomics } from "./stock-entry";
 import type { WireStockItem } from "../../lib/stock-entry-api";
 
 /**
  * STOCK ENTRY ON SCREEN (2026-09-29) — the grid the owner enters the real shelf in: pick the brand from the item
  * master, type across the row (Enter walks it, a new row appears at the end), see the cost per unit and margin
- * live, see the SERVER's reasons under each row before capture, capture as GRNs and be told plainly that a second
- * person (the pharmacist) QCs and posts them in the GRN worklist. A new drug is one sheet and one call. The rows
- * are a draft that survives a reload.
+ * live, see the SERVER's reasons under each row before capture, capture as GRNs and be told plainly that each is
+ * checked (QC) and posted in the GRN worklist before it sells — by a second person only when the hospital's
+ * two-person setting is on (walk 2026-11-13). A new drug is one sheet and one call. The rows are a draft that
+ * survives a reload.
  */
 type Call = { method: string; path: string; url: string; body: unknown };
 function mock(routes: Record<string, unknown | ((body: unknown, url: string) => unknown)>, perms: string[]): Call[] {
@@ -63,8 +64,8 @@ const ROUTES = {
   "POST /pharmacy/opening-stock/capture": { captured: [{ grnId: "g1", grnNo: "GRN-0007", challanNo: "OPENING/abc", near: false, lines: 1 }], alreadyOnBooks: 0, uomsAdded: 0, vendorCreated: true, racksSet: 0, racksLeft: 0 },
 };
 
-beforeEach(() => { setToken("t"); window.localStorage.removeItem(DRAFT_KEY); });
-afterEach(() => { vi.unstubAllGlobals(); window.localStorage.removeItem(DRAFT_KEY); });
+beforeEach(() => { setToken("t"); window.localStorage.removeItem(DRAFT_KEY); window.sessionStorage.removeItem(RATE_BASIS_KEY); });
+afterEach(() => { vi.unstubAllGlobals(); window.localStorage.removeItem(DRAFT_KEY); window.sessionStorage.removeItem(RATE_BASIS_KEY); });
 
 async function pickDolo(user: ReturnType<typeof userEvent.setup>, row = 0): Promise<void> {
   const brand = await screen.findByRole("combobox", { name: `Brand · row ${String(row + 1)}` });
@@ -105,9 +106,11 @@ describe("stock entry on screen (2026-09-29)", () => {
     expect(screen.getByTestId("se-cost-0")).toHaveTextContent("₹1.44/unit");
     // A new row is always waiting at the end.
     expect(screen.getByRole("combobox", { name: "Brand · row 2" })).toHaveValue("");
-    // The sale price is the MRP, said on the screen; the capture is a GRN a second person posts.
+    // The sale price is the MRP, said on the screen; the capture is a GRN that is checked and posted before it sells.
     expect(screen.getByTestId("se-mrp-note")).toHaveTextContent("No sale price or sale discount is set here");
-    expect(screen.getByTestId("se-two-person")).toHaveTextContent("a second person — the pharmacist — must check (QC) and post each GRN");
+    // Walk 2026-11-13: the two-person check is a setting (off by default, ruling 0019) — unknown, nothing is claimed.
+    expect(screen.getByTestId("se-two-person")).toHaveTextContent("Nothing can be sold until each GRN is checked (QC) and posted in the GRN worklist.");
+    expect(screen.getByTestId("se-two-person")).not.toHaveTextContent("second person");
   });
 
   it("shows the SERVER's reasons under the row before capture, keeps capture off until fixed, then captures and points to the GRN worklist", async () => {
@@ -127,12 +130,15 @@ describe("stock entry on screen (2026-09-29)", () => {
     await user.type(screen.getByLabelText("Batch · row 1"), "OK1");
     await waitFor(() => expect(screen.getByTestId("se-capture")).toBeEnabled(), { timeout: 3000 });
     expect(screen.queryByTestId("se-reasons-0")).toBeNull();
+    // Walk 2026-11-13: one row is "1 row", not "1 rows".
+    expect(screen.getByTestId("se-summary")).toHaveTextContent("1 row · 0 to fix · 150 units");
     await user.click(screen.getByTestId("se-capture"));
 
     const result = await screen.findByTestId("se-result");
     expect(result).toHaveTextContent("1 GRN captured.");
     expect(result).toHaveTextContent("GRN-0007");
-    expect(result).toHaveTextContent("Now the pharmacist must log in, open each GRN, run QC and post it.");
+    expect(result).toHaveTextContent("Now open each GRN, run QC and post it.");
+    expect(result).not.toHaveTextContent("the pharmacist must");
     expect(within(result).getByTestId("se-worklist")).toHaveAttribute("href", "/pharmacy/office?view=stock&page=grn");
     const cap = calls.find((c) => c.path === "/pharmacy/opening-stock/capture")!;
     expect((cap.body as { rows: SentRow[] }).rows[0]).toMatchObject({ itemId: "it-dolo", batch: "OK1" });
@@ -220,6 +226,40 @@ describe("stock entry on screen (2026-09-29)", () => {
     expect(screen.getByLabelText("MRP ₹/pack · row 1")).toHaveValue("35.50");
   });
 
+  it("walk 2026-11-13: the two-person copy follows the hospital's setting — off, nobody else is said to check; on, a second person must", async () => {
+    const settings = (on: boolean): unknown => ({ settings: { grnQcNeedsSecondPerson: on, updatedBy: null, updatedAt: null } });
+    mock({ ...ROUTES, "GET /materials/settings": settings(false) }, [...PERMS, "materials.stock.read"]);
+    const off = renderWithRouter(<StockEntryView />);
+    await screen.findByRole("combobox", { name: "Brand · row 1" });
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    expect(screen.getByTestId("se-two-person")).not.toHaveTextContent("second person");
+    expect(screen.getByTestId("se-two-person")).toHaveTextContent("Nothing can be sold until each GRN is checked (QC) and posted");
+    off.unmount();
+    vi.unstubAllGlobals();
+
+    mock({ ...ROUTES, "GET /materials/settings": settings(true) }, [...PERMS, "materials.stock.read"]);
+    renderWithRouter(<StockEntryView />);
+    await waitFor(() => expect(screen.getByTestId("se-two-person")).toHaveTextContent("a second person — the pharmacist — must check (QC) and post each GRN"));
+  });
+
+  it("walk 2026-11-13: a note about what only the materials head may do says it in words, never as a permission key", async () => {
+    mock({
+      ...ROUTES,
+      "POST /pharmacy/opening-stock/check": (body: unknown) => ({
+        ...(judge(body) as Record<string, unknown>), needsVendor: true,
+        authority: [{ permission: "materials.vendors.manage", why: "opening_vendor", held: false }, { permission: "materials.items.manage", why: "new_pack_sizes", held: false }],
+      }),
+    }, PERMS);
+    renderWithRouter(<StockEntryView />);
+    const user = userEvent.setup();
+    await pickDolo(user);
+    await user.type(screen.getByLabelText("Batch · row 1"), "B1");
+    await user.type(screen.getByLabelText("Packs · row 1"), "2");
+    expect(await screen.findByText(/Ask the materials head to add this supplier/, {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(screen.getByTestId("stock-entry")).not.toHaveTextContent("materials.vendors.manage");
+    expect(screen.getByTestId("stock-entry")).not.toHaveTextContent("materials.items.manage");
+  });
+
   it("without the item master's permission there is no + New drug, only 'ask the materials head'", async () => {
     mock(ROUTES, ["materials.grn.capture"]);
     renderWithRouter(<StockEntryView />);
@@ -287,6 +327,22 @@ describe("#1047 — the invoice mode and the estimate", () => {
     expect(sent.rows[0]).toMatchObject({ itemId: "it-dolo", batch: "B1", expiry: "08/27", packs: "4", ratePerPack: "25.20" });
     expect(sent.rows[0]).not.toHaveProperty("rack");
     expect(calls.some((c) => c.path === "/pharmacy/opening-stock/capture")).toBe(false);
+    // Walk 2026-11-13: the next invoice is typed the same way — the rate basis is kept, not reset to "without GST".
+    expect(screen.getByTestId("se-rate-with-gst")).toBeChecked();
+  });
+
+  it("walk 2026-11-13: the rate basis chosen is kept for the rest of the session, also when the grid is opened again", async () => {
+    mock(INVOICE_ROUTES, PERMS);
+    const first = renderWithRouter(<StockEntryView />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId("se-mode-invoice"));
+    expect(screen.getByTestId("se-rate-without-gst")).toBeChecked();
+    await user.click(screen.getByTestId("se-rate-with-gst"));
+    first.unmount();
+
+    renderWithRouter(<StockEntryView />);
+    await user.click(await screen.findByTestId("se-mode-invoice"));
+    expect(screen.getByTestId("se-rate-with-gst")).toBeChecked();
   });
 
   it("Opening stock: a row with no rate shows the server's estimate, and the foot says how many rows are estimated", async () => {
