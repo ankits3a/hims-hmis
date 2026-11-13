@@ -143,7 +143,7 @@ describe("PharmacyRetail (P19)", () => {
     expect(screen.getByText("A new customer has no allergies on record yet: ask before you sell.")).toBeInTheDocument();
     expect(screen.queryByTestId("retail-rx")).toBeNull();
     // A new customer's preview names nobody: the server has no one to check against yet.
-    expect(bodiesOf("POST", "/pharmacy/retail/preview")).toEqual([{ lines: [{ medicineId: "m-croc", qtyBase: 10 }] }]);
+    expect(bodiesOf("POST", "/pharmacy/retail/preview")).toEqual([{ lines: [{ medicineId: "m-croc", itemId: "i-croc", qtyBase: 10 }] }]);
 
     // UX-AUDIT 2026-09-28 — the cash box is not prefilled: it waits for what the customer hands over.
     const amount = screen.getByRole("textbox", { name: "Cash received (₹)" });
@@ -158,7 +158,7 @@ describe("PharmacyRetail (P19)", () => {
     expect(screen.getByText("Registered as U0000123.")).toBeInTheDocument();
     expect(bodiesOf("POST", "/pharmacy/retail/sales")).toEqual([{
       customer: { register: { name: "Ramesh Patil", sex: "male", ageYears: 52, phone: "9822001122" } },
-      lines: [{ medicineId: "m-croc", qtyBase: 10 }],
+      lines: [{ medicineId: "m-croc", itemId: "i-croc", qtyBase: 10 }],
       tenders: [{ mode: "cash", amountPaise: 20000 }],
       changeGivenPaise: 8000,
     }]);
@@ -272,7 +272,7 @@ describe("PharmacyRetail (P19)", () => {
     // Choosing a person re-prices the cart against their record before anything is sold.
     await userEvent.click(screen.getByRole("button", { name: "Price the cart" }));
     await waitFor(() => { expect(bodiesOf("POST", "/pharmacy/retail/preview")).toHaveLength(2); });
-    expect(bodiesOf("POST", "/pharmacy/retail/preview")[1]).toEqual({ patientId: "p-old", lines: [{ medicineId: "m-croc", qtyBase: 10 }] });
+    expect(bodiesOf("POST", "/pharmacy/retail/preview")[1]).toEqual({ patientId: "p-old", lines: [{ medicineId: "m-croc", itemId: "i-croc", qtyBase: 10 }] });
     await screen.findByTestId("retail-total");
     await userEvent.type(screen.getByRole("textbox", { name: "Cash received (₹)" }), "120");
     await userEvent.click(screen.getByRole("button", { name: "Take payment and sell" }));
@@ -413,7 +413,7 @@ describe("PharmacyRetail — the 2026-09-30 money rulings", () => {
     await screen.findByTestId("retail-sold");
     expect(bodiesOf("POST", "/pharmacy/retail/sales")).toEqual([{
       customer: { register: { name: "Ramesh Patil", sex: "male", ageYears: 52, phone: "9822001122" } },
-      lines: [{ medicineId: "m-croc", qtyBase: 15 }],
+      lines: [{ medicineId: "m-croc", itemId: "i-croc", qtyBase: 15 }],
       tenders: [{ mode: "upi", amountPaise: 3091, refText: "UTR-1" }],
       discount: { kind: "percent_bps", value: 800, reason: "regular customer" },
     }]);

@@ -23,6 +23,8 @@ import type {
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const lineSchema = z.object({
   medicineId: idSchema,
+  /** #1047 — the shelf row chosen, when a medicine has two items; absent, the medicine's own. */
+  itemId: idSchema.optional(),
   qtyBase: z.number().int().positive().max(100_000),
   batchId: idSchema.optional(),
   scan: z.string().min(1).max(200).optional(),

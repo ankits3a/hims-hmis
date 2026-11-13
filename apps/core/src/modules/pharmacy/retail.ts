@@ -36,7 +36,7 @@ import { PHARMACY_IDEMPOTENT_ROUTES } from "./pharmacy-http";
 import { parseGs1 } from "./gs1";
 import { registrationAt, registrationNoOf, requireRegisteredPharmacist } from "./pharmacists";
 import { resolveScan } from "./scan";
-import { shelfByMedicine } from "./shelf";
+import { shelfItemsByMedicine } from "./shelf";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { DocumentStore } from "../../kernel/documents/store";
@@ -284,7 +284,13 @@ export async function counterBatches(db: Db, actor: Actor, storeCode: string, it
 export async function searchShelfAt(db: Db, storeId: string, q: string, now: Date): Promise<RetailShelfEntry[]> {
   const text = q.trim();
   if (text === "") return [];
-  const shelf = await shelfByMedicine(db);
+  /*
+    #1047 — EVERY ITEM, NOT ONE PER MEDICINE. A person is choosing here, so two brands on one formulary
+    medicine are two rows, each with its own stock, the medicine's own item first. One row per medicine
+    hid the second item's whole stock (staging: 380 tablets behind a new item's 75). The row's `itemId`
+    is what the cart and the paper Rx send back, and it is what they sell.
+  */
+  const shelf = [...(await shelfItemsByMedicine(db)).values()].flat();
   let scanned: { itemId: string; batchId: string | null } | null = null;
   const gs1 = parseGs1(text);
   for (const code of gs1 === null ? [text] : [gs1.gtin, gs1.gtin.replace(/^0/, ""), text]) {
@@ -292,7 +298,7 @@ export async function searchShelfAt(db: Db, storeId: string, q: string, now: Dat
     if (hit !== undefined) { scanned = { itemId: hit.itemId, batchId: null }; break; }
   }
   const needle = text.toLowerCase();
-  const entries = [...shelf.values()].filter((e) => scanned === null
+  const entries = shelf.filter((e) => scanned === null
     ? e.item.code.toLowerCase().includes(needle) || e.item.name.toLowerCase().includes(needle)
     : e.item.id === scanned.itemId);
   const medicines = await medicinesByIds(db, entries.slice(0, 200).map((e) => e.medicineId));
@@ -312,8 +318,8 @@ export async function searchShelfAt(db: Db, storeId: string, q: string, now: Dat
     const salts = (await resolveDrugTexts(db, [text])).get(text)?.salts ?? [];
     if (salts.length > 0) {
       const wanted = new Set(salts.map((x) => x.saltId));
-      const onShelf = await medicinesByIds(db, [...shelf.keys()]);
-      offered = [...shelf.values()]
+      const onShelf = await medicinesByIds(db, [...new Set(shelf.map((e) => e.medicineId))]);
+      offered = shelf
         .map((e) => ({ e, m: onShelf.get(e.medicineId) }))
         .filter((x): x is { e: typeof x.e; m: MedicineWithSalts } => x.m !== undefined && !refused(x.m.scheduleFlag))
         .filter((x) => x.m.salts.some((ms) => wanted.has(ms.saltId)))
@@ -336,6 +342,11 @@ export async function searchShelfAt(db: Db, storeId: string, q: string, now: Dat
 
 export type RetailLineInput = {
   medicineId: string;
+  /**
+   * #1047 — the item the person chose from the search, when the medicine has more than one on the
+   * shelf. It must be an active sale item OF this medicine; absent, the medicine's own item (`shelf.ts`).
+   */
+  itemId?: string;
   /** In the item's base unit (tablets, ml). */
   qtyBase: number;
   /** A later batch than FEFO offers, named. */
@@ -361,7 +372,7 @@ function isScheduled(flag: string | null): boolean {
 async function planLines(db: Db, storeId: string, lines: readonly RetailLineInput[], now: Date): Promise<PlannedLine[]> {
   if (lines.length === 0) throw new PharmacyError("nothing_to_dispense", "the cart is empty");
   if (lines.length > 50) throw new PharmacyError("qty_required", "a walk-in sale carries at most 50 lines");
-  const shelf = await shelfByMedicine(db);
+  const shelf = await shelfItemsByMedicine(db);
   const medicines = await medicinesByIds(db, lines.map((l) => l.medicineId));
   // PHARMACY P6 — a narcotic or psychotropic drug (NDPS) is never sold here either: it leaves the cabinet only at the OPD counter.
   const ndps = await ndpsClassByMedicine(db, lines.map((l) => l.medicineId));
@@ -373,9 +384,16 @@ async function planLines(db: Db, storeId: string, lines: readonly RetailLineInpu
     }
     const medicine = medicines.get(line.medicineId);
     if (medicine === undefined) throw new PharmacyError("unresolved_medicine", `line ${n}: unknown medicine`, { lineIdx });
-    const entry = shelf.get(medicine.id);
+    const onShelf = shelf.get(medicine.id) ?? [];
+    const entry = line.itemId === undefined ? onShelf[0] : onShelf.find((e) => e.item.id === line.itemId);
     if (entry === undefined) {
-      throw new PharmacyError("unknown_sale_item", `line ${n}: ${medicine.brandName} is not a stocked sale item`, { lineIdx });
+      throw new PharmacyError(
+        "unknown_sale_item",
+        line.itemId === undefined || onShelf.length === 0
+          ? `line ${n}: ${medicine.brandName} is not a stocked sale item`
+          : `line ${n}: the item chosen is not a stocked sale item of ${medicine.brandName}`,
+        { lineIdx },
+      );
     }
     const scheduleFlag = medicine.scheduleFlag;
     if (refused(scheduleFlag)) {

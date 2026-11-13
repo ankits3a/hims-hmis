@@ -86,7 +86,7 @@ describe("the walk-in desk's gaps (#638)", () => {
     await userEvent.selectOptions(pick, "b-late");
     await userEvent.click(screen.getByRole("button", { name: "Price the cart" }));
     await screen.findByTestId("retail-total");
-    expect(bodiesOf("POST", "/pharmacy/retail/preview").at(-1)).toEqual({ lines: [{ medicineId: "m-croc", qtyBase: 10, batchId: "b-late" }] });
+    expect(bodiesOf("POST", "/pharmacy/retail/preview").at(-1)).toEqual({ lines: [{ medicineId: "m-croc", itemId: "i-croc", qtyBase: 10, batchId: "b-late" }] });
   });
 
   it("an existing customer brings their allergies and current medicines into the lane", async () => {

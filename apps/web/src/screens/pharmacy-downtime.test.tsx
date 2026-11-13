@@ -91,7 +91,7 @@ describe("PharmacyDowntime (P20)", () => {
     expect(await screen.findByTestId("paper-preview")).toHaveTextContent("The bill for this sheet: ₹120.00");
     expect(screen.getByText(/Recorded allergic to Paracetamol. This is recorded, not refused/)).toBeInTheDocument();
     expect(bodiesOf("POST", "/pharmacy/downtime/preview")).toEqual([{
-      storeCode: "PHARM-OPD", occurredAt: "2026-08-17T10:00:00+05:30", lines: [{ medicineId: "m-croc", qtyBase: 10, batchId: "b-7" }],
+      storeCode: "PHARM-OPD", occurredAt: "2026-08-17T10:00:00+05:30", lines: [{ medicineId: "m-croc", itemId: "i-croc", qtyBase: 10, batchId: "b-7" }],
     }]);
     expect(urlsOf("/pharmacy/downtime/batches")).toEqual(["/api/pharmacy/downtime/batches?store=PHARM-OPD&itemId=i-croc"]);
 
@@ -100,7 +100,7 @@ describe("PharmacyDowntime (P20)", () => {
     expect(bodiesOf("POST", "/pharmacy/downtime/dispenses")).toEqual([{
       sheetQr: "dtk1.k1.receipt.1.sig", storeCode: "PHARM-OPD", occurredAt: "2026-08-17T10:00:00+05:30", dispensedBy: "u-ph",
       customer: { register: { name: "Asha Devi", sex: "female" } },
-      lines: [{ medicineId: "m-croc", qtyBase: 10, batchId: "b-7" }],
+      lines: [{ medicineId: "m-croc", itemId: "i-croc", qtyBase: 10, batchId: "b-7" }],
       tenders: [{ mode: "cash", amountPaise: 12000 }],
     }]);
   });

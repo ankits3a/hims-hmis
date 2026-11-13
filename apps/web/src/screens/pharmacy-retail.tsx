@@ -463,9 +463,9 @@ export function PharmacyRetail(): React.ReactElement {
     enabled: printSale.data !== undefined,
   });
 
-  const cartLines = (): { medicineId: string; qtyBase: number; batchId?: string }[] => cart.map((c) => {
+  const cartLines = (): { medicineId: string; itemId: string; qtyBase: number; batchId?: string }[] => cart.map((c) => {
     const batchId = c.batchId ?? c.entry.scannedBatchId ?? undefined;
-    return { medicineId: c.entry.medicineId, qtyBase: Number(c.qty), ...(batchId === undefined ? {} : { batchId }) };
+    return { medicineId: c.entry.medicineId, itemId: c.entry.itemId, qtyBase: Number(c.qty), ...(batchId === undefined ? {} : { batchId }) };
   });
   const cartValid = cart.length > 0 && cart.every((c) => /^\d+$/.test(c.qty) && Number(c.qty) > 0);
   /* A changed cart is a different bill: its preview, and any discount priced on the old one, go. */

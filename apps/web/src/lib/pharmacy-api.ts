@@ -576,7 +576,8 @@ export type WireRetailShelfEntry = {
   medicineId: string; brandName: string; strengthLabel: string | null; form: string; scheduleFlag: string | null;
   itemId: string; itemCode: string; itemName: string; baseUom: string; available: number; scannedBatchId: string | null;
 };
-export type RetailLine = { medicineId: string; qtyBase: number; batchId?: string };
+/** `itemId` — the shelf row chosen (#1047): a medicine may have two items, and the one picked is the one sold. */
+export type RetailLine = { medicineId: string; itemId?: string; qtyBase: number; batchId?: string };
 export type WireRetailPreview = {
   /** Spec #1023 — as on the desk's preview. */
   free?: boolean;

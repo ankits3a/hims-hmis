@@ -1,5 +1,6 @@
-import { eq } from "drizzle-orm";
-import { pharmacySaleItems } from "../../kernel/db/schema";
+import { eq, sql } from "drizzle-orm";
+import { anyOfText } from "../../kernel/db/any-of";
+import { pharmacySaleItems, stockBalances } from "../../kernel/db/schema";
 import { listItems } from "../materials";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { ItemRow } from "../materials";
@@ -15,20 +16,21 @@ export type ShelfEntry = { medicineId: string; item: ItemRow; serviceId: string 
  * not against `formulary_medicines`. That is the whole bound: the cost of a substitution lookup
  * becomes a property of what this hospital stocks rather than of what the nation manufactures.
  *
- * ═══ TWO ITEMS MAY NAME ONE MEDICINE, AND LAST-BY-CODE WINS ═══
+ * ═══ TWO ITEMS MAY NAME ONE MEDICINE: THE ONE HOLDING THE STOCK, THEN THE FIRST CODE (#1047) ═══
  *
  * `items_class_formulary_ck` makes `formulary_medicine_id` present-iff-drug; it does NOT make it
- * unique. So a store may hold two saleable items for one brand, and this map keeps ONE of them.
- *
- * It keeps the LAST BY ITEM CODE, and that is not a choice made here — it is what the code this
- * replaced already did. `listItems` orders by `asc(items.code)` and the old
- * `new Map(drugItems.filter(...).map(...))` therefore kept the last-written key. PRESERVED
- * BYTE-FOR-BYTE and stated out loud, because which of two items a substitution bills is a
- * behaviour with money attached, and changing it has nothing to do with bounding a read. If
- * somebody wants it deterministic-by-intent rather than deterministic-by-accident, that is a
- * separate ruling with a separate test.
+ * unique, and must not: a formulary medicine can be a generic, so two brands on one medicine are
+ * ordinary data. This list holds every one of them, the medicine's OWN item first:
+ *   1. the most sellable stock summed over every store (on hand − reserved − frozen, each row
+ *      floored at 0) — so the item the counter sells, quotes and shows is never the empty one
+ *      while its twin holds the tablets;
+ *   2. a tie (none anywhere, or equal) goes to the item whose code sorts first.
+ * It used to be "last by item code", an accident of `new Map(...)` over a code-ordered list: on
+ * staging (2026-11-13) a second item registered on a medicine hid the first one's 380 tablets
+ * behind its own 75. The stock is read ONLY for medicines with two or more items, in one grouped
+ * query, so the common one-item shelf costs nothing more than it did.
  */
-export async function shelfByMedicine(db: Db | Tx): Promise<Map<string, ShelfEntry>> {
+export async function shelfItemsByMedicine(db: Db | Tx): Promise<Map<string, ShelfEntry[]>> {
   const drugItems = await listItems(db, { class: "drug", active: true });
   if (drugItems.length === 0) return new Map();
 
@@ -36,12 +38,34 @@ export async function shelfByMedicine(db: Db | Tx): Promise<Map<string, ShelfEnt
     .from(pharmacySaleItems).where(eq(pharmacySaleItems.active, true));
   const serviceByItem = new Map(sale.map((s) => [s.itemId, s.serviceId]));
 
-  const out = new Map<string, ShelfEntry>();
+  const out = new Map<string, ShelfEntry[]>();
   for (const item of drugItems) {
     if (item.formularyMedicineId === null) continue;
     const serviceId = serviceByItem.get(item.id);
     if (serviceId === undefined) continue;
-    out.set(item.formularyMedicineId, { medicineId: item.formularyMedicineId, item, serviceId });
+    const entries = out.get(item.formularyMedicineId) ?? [];
+    entries.push({ medicineId: item.formularyMedicineId, item, serviceId });
+    out.set(item.formularyMedicineId, entries);
   }
+
+  const shared = [...out.values()].filter((entries) => entries.length > 1);
+  if (shared.length === 0) return out;
+  const ids = shared.flatMap((entries) => entries.map((e) => e.item.id));
+  const rows = await db.select({
+    itemId: stockBalances.itemId,
+    qty: sql<number>`coalesce(sum(greatest(${stockBalances.qtyOnHand} - ${stockBalances.qtyReserved} - ${stockBalances.qtyFrozen}, 0)), 0)::int`,
+  }).from(stockBalances).where(anyOfText(stockBalances.itemId, ids)).groupBy(stockBalances.itemId);
+  const sellable = new Map(rows.map((r) => [r.itemId, Number(r.qty)]));
+  const byCode = (a: ShelfEntry, b: ShelfEntry): number => (a.item.code < b.item.code ? -1 : a.item.code > b.item.code ? 1 : 0);
+  for (const entries of shared) {
+    entries.sort((a, b) => (sellable.get(b.item.id) ?? 0) - (sellable.get(a.item.id) ?? 0) || byCode(a, b));
+  }
+  return out;
+}
+
+/** One entry per medicine: its own item, as `shelfItemsByMedicine` orders them. */
+export async function shelfByMedicine(db: Db | Tx): Promise<Map<string, ShelfEntry>> {
+  const out = new Map<string, ShelfEntry>();
+  for (const [medicineId, entries] of await shelfItemsByMedicine(db)) out.set(medicineId, entries[0]!);
   return out;
 }
