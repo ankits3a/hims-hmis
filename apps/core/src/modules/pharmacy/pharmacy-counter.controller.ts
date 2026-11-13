@@ -34,6 +34,7 @@ import { handOverDispense } from "./handover";
 import { captureRetainedPrescription } from "./controlled-dispense";
 import { labelFor } from "./label";
 import { pickDispense } from "./pick";
+import { addDispenseLine } from "./add-line";
 import { checkPickScan } from "./scan";
 import { cancelDispense, checkedAlternativesFor, declineLine, placementsFor, precheckTicket, verifyDispense, writtenQuoteFor } from "./verify";
 import { cancelBilledDispense } from "./refund";
@@ -91,6 +92,18 @@ const paperRxBody = z.object({
     durationDays: z.number().int().positive().max(365).nullable().optional(),
     instructions: z.string().max(200).nullable().optional(),
   })).min(1).max(30),
+});
+/** Spec #1055, ruling 0094 — a medicine added to the ticket by hand: not prescribed, or written on the doctor's paper. */
+const addLineBody = z.object({
+  itemId: idSchema,
+  reason: z.enum(["not_prescribed", "paper"]),
+  qtyBase: z.number().int().positive().max(100_000),
+  dose: z.string().max(60).optional(),
+  frequency: z.string().max(60).optional(),
+  durationDays: z.number().int().positive().max(365).nullable().optional(),
+  instructions: z.string().max(200).nullable().optional(),
+  photo: z.object({ mimeType: z.enum(["image/jpeg", "image/png", "application/pdf"]), imageBase64: z.string().min(1) }).optional(),
+  prescriber: z.object({ name: z.string().max(120).nullable().optional(), registrationNo: z.string().max(60).nullable().optional() }).optional(),
 });
 const claimBody = z.object({ dispenseId: idSchema, door: z.enum(["rx_qr", "patient_qr", "token", "uhid"]) });
 const verifyBody = z.object({
@@ -476,6 +489,24 @@ export class PharmacyCounterController {
     try {
       return await withIdempotency(this.db, { actorId: actor.id, route: PHARMACY_IDEMPOTENT_ROUTES.verify, key }, { id, ...input },
         () => verifyDispense(this.db, actor, this.decls(), id, input, new Date()));
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * Spec #1055, ruling 0094 — add a medicine to the ticket by hand (`add-line.ts`): any schedule but X and narcotics,
+   * not prescribed or written on the doctor's paper; the books run on it, and a collected ticket holds it at once.
+   */
+  @RequirePermission("pharmacy.dispense.place", "hospital")
+  @Post("dispenses/:id/lines")
+  async addLine(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown, @Headers("idempotency-key") key?: string): Promise<DispenseView> {
+    const input = parsed(addLineBody, body);
+    try {
+      return await withIdempotency(this.db, { actorId: actor.id, route: PHARMACY_IDEMPOTENT_ROUTES.addLine, key }, { id, ...input },
+        () => addDispenseLine(this.db, this.documents, actor, this.decls(), id, {
+          ...input, photo: input.photo === undefined ? undefined : { mimeType: input.photo.mimeType, bytes: Buffer.from(input.photo.imageBase64, "base64") },
+        }, new Date()));
     } catch (e) {
       return toHttp(e);
     }

@@ -174,7 +174,9 @@ export async function ticketRefusals(
     return id === null ? rxLine : { ...rxLine, medicineId: id, drug: medicines.get(id)?.brandName ?? rxLine.drug };
   });
   const outcome = await runRxChecks(db, d.patientId, checkLines, now, { excludeEncounterId: d.encounterId });
-  const refused = refusalsOf(outcome, (i) => open[i]!.lineIdx, rx, new Set(), await authorisedKeysFor(db, dispenseId));
+  /* Spec #1055 — a line added at the counter is read here, so a hard duplicate against it is said before the check. */
+  const readHere = new Set(open.filter((l) => l.addedReason !== null).map((l) => l.lineIdx));
+  const refused = refusalsOf(outcome, (i) => open[i]!.lineIdx, rx, readHere, await authorisedKeysFor(db, dispenseId));
   return { d, doctorId: rx.doctorId, open, outcome, refused };
 }
 
@@ -428,37 +430,10 @@ export async function verifyDispense(
    * reach this check, and a reading's moieties or a diagnosis coded after the issue are the ways a
    * severe drug×disease hit can arrive unruled-on — see `refusals.ts` (E35–E37).
    */
-  const readHere = new Set(settled.filter((s) => s.resolvedHere).map((s) => s.line.lineIdx));
+  /* Spec #1055 — a medicine added at the counter is the counter's reading too: a hard duplicate against it is refused. */
+  const readHere = new Set(settled.filter((s) => s.resolvedHere || s.line.addedReason !== null).map((s) => s.line.lineIdx));
   /* PD-9 — a refusal the prescriber has authorised from the counter is not a refusal. */
-  const refused = refusalsOf(outcome, origIdx, rx, readHere, authorised);
-  if (refused.allergy.length > 0) {
-    throw new PharmacyError(
-      "allergy_block",
-      `the patient is recorded allergic to ${refused.allergy.map((m) => m.substance).join(", ")} and the prescriber did not override it — back to the doctor`,
-      { hits: refused.allergy },
-    );
-  }
-  if (refused.interaction.length > 0) {
-    throw new PharmacyError(
-      "interaction_block",
-      `a severe interaction the prescriber did not override: ${refused.interaction.map((h) => h.note).join("; ")} — back to the doctor`,
-      { hits: refused.interaction.map(({ lineIdx, saltPair, note }) => ({ lineIdx, saltPair, note })) },
-    );
-  }
-  if (refused.duplicate.length > 0) {
-    throw new PharmacyError(
-      "duplicate_block",
-      `${[...new Set(refused.duplicate.map((h) => h.moiety))].join(", ")} is already on this prescription — the doctor's words cannot be read as a second one; choose another or decline the line`,
-      { hits: refused.duplicate },
-    );
-  }
-  if (refused.drugDisease.length > 0) {
-    throw new PharmacyError(
-      "drug_disease_block",
-      `${refused.drugDisease.map((h) => `${h.moiety} with ${h.icd10Title}`).join("; ")}: contraindicated by a diagnosis this patient carries, and no prescriber has ruled on it — back to the doctor, or decline the line`,
-      { hits: refused.drugDisease },
-    );
-  }
+  assertNoRefusals(refusalsOf(outcome, origIdx, rx, readHere, authorised));
   /*
     STAGE D5 — a restricted antimicrobial (WHO AWaRe Reserve, a carbapenem, or the hospital's own) needs the
     antimicrobial steward's GRANTED approval bound to this dispense and moiety set, by a steward who is not the
@@ -531,6 +506,41 @@ export async function verifyDispense(
     }));
   });
   return getDispense(db, actor, d.id, now);
+}
+
+/**
+ * The four books' refusals, thrown in `verifyDispense`'s order and words — one definition, asked by the verify and
+ * (spec #1055) by a medicine added by hand to the ticket (`add-line.ts`).
+ */
+export function assertNoRefusals(refused: Refusals): void {
+  if (refused.allergy.length > 0) {
+    throw new PharmacyError(
+      "allergy_block",
+      `the patient is recorded allergic to ${refused.allergy.map((m) => m.substance).join(", ")} and the prescriber did not override it — back to the doctor`,
+      { hits: refused.allergy },
+    );
+  }
+  if (refused.interaction.length > 0) {
+    throw new PharmacyError(
+      "interaction_block",
+      `a severe interaction the prescriber did not override: ${refused.interaction.map((h) => h.note).join("; ")} — back to the doctor`,
+      { hits: refused.interaction.map(({ lineIdx, saltPair, note }) => ({ lineIdx, saltPair, note })) },
+    );
+  }
+  if (refused.duplicate.length > 0) {
+    throw new PharmacyError(
+      "duplicate_block",
+      `${[...new Set(refused.duplicate.map((h) => h.moiety))].join(", ")} is already on this prescription — the doctor's words cannot be read as a second one; choose another or decline the line`,
+      { hits: refused.duplicate },
+    );
+  }
+  if (refused.drugDisease.length > 0) {
+    throw new PharmacyError(
+      "drug_disease_block",
+      `${refused.drugDisease.map((h) => `${h.moiety} with ${h.icd10Title}`).join("; ")}: contraindicated by a diagnosis this patient carries, and no prescriber has ruled on it — back to the doctor, or decline the line`,
+      { hits: refused.drugDisease },
+    );
+  }
 }
 
 /**

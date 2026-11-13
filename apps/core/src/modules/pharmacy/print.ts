@@ -10,7 +10,7 @@ import { saleDiscountReason } from "./discount";
 import { loadOpdConfig } from "../opd";
 import { closingFor } from "./closing";
 import { PharmacyError } from "./errors";
-import { labelFor } from "./label";
+import { addedText, labelFor } from "./label";
 import { getDispenseRow, linesOf } from "./queue";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -169,8 +169,10 @@ async function billPart(db: Db, requester: Actor | null, dispenseId: string, lab
       ...(r.exempt === true ? ["exempt"] : r.rateBps === null ? [] : [`GST ${String(r.rateBps / 100)}%`]),
       ...(r.pack !== null && r.pack.packs > 0 && r.pack.packPaise !== null ? [`${esc(rupees(r.pack.packPaise))}/${esc(r.pack.uom)}`] : []),
     ].join(" · ");
+    /* Spec #1055 — a medicine added at the counter by hand says so, and why, on the patient's bill. */
+    const added = p?.added == null ? "" : `<div class="sub">${esc(addedText(p.added))}</div>`;
     return `
-      <tr><td>${esc(r.serviceName)}${batch === "" ? "" : `<div class="sub">${batch}</div>`}${code === "" ? "" : `<div class="sub">${code}</div>`}</td>
+      <tr><td>${esc(r.serviceName)}${batch === "" ? "" : `<div class="sub">${batch}</div>`}${code === "" ? "" : `<div class="sub">${code}</div>`}${added}</td>
       <td class="r">${esc(qtyText(r))}</td><td class="r">${esc(rupees(r.netPaise))}</td></tr>`;
   }).join("");
   /* Spec #1046 D6, walk 2026-11-13 — what is still owed, in one line, so the patient's paper says so too. */

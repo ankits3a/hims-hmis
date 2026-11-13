@@ -16,7 +16,7 @@ import { resolveScan } from "./scan";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { OrderKindDecl } from "../../kernel/orders/kinds";
-import type { DispenseView } from "./queue";
+import type { DispenseLineRow, DispenseView } from "./queue";
 
 export type PickLineInput = {
   lineIdx: number;
@@ -134,32 +134,7 @@ export async function pickDispense(
       plan.push({ lineId: line.id, lineIdx: line.lineIdx, itemId: line.itemId, batchId: named, qtyBase: qty, fefoOverride: offered[0]?.batchId !== named, pickNote: partial ? note : null, scanned, store, splitFrom: null, owed });
       continue;
     }
-    /*
-     * OWNER RULING 2026-10-03 — LOOSE TABLETS FROM THE LOOSE TRAY FIRST. When the quantity is not whole
-     * strips (15 of a strip of 10), the loose part is taken from the store's loose tray, FEFO, before a
-     * fresh strip is cut; whatever the tray cannot cover comes off the shelf as before. Never for a
-     * controlled line (the cabinet has no tray) and never for a named batch (the pharmacist chose a strip).
-     */
-    const fromTray: { batchId: string; qty: number }[] = [];
-    const trayId = store === d.storeResourceId ? (await looseTraysOf(db, store)).loose : undefined;
-    const strip = trayId === undefined ? undefined : await stripSizeOf(db, line.itemId);
-    const looseQty = strip === undefined ? 0 : qty % strip;
-    if (trayId !== undefined && looseQty > 0) fromTray.push(...await fefoPick(db, trayId, line.itemId, looseQty, now));
-    const trayQty = fromTray.reduce((n, o) => n + o.qty, 0);
-    const offered = qty - trayQty > 0 ? await fefoPick(db, store, line.itemId, qty - trayQty, now) : [];
-    const covered = offered.reduce((n, o) => n + o.qty, 0) + trayQty;
-    if ((offered.length === 0 && trayQty === 0) || covered < qty) {
-      // The number in a REFUSAL has to mean the same thing as the number on the screen, or the
-      // sentence reads as a contradiction: "the shelf holds 0 of 20 (50 across batches)" when all
-      // fifty are expired. `availableQty` is the one definition the pick itself obeys.
-      const available = await availableQty(db, store, line.itemId, now);
-      throw new PharmacyError(
-        "short_stock",
-        `line ${String(line.lineIdx + 1)}: the shelf holds ${String(covered)} of ${String(qty)} across its batches — dispense a partial quantity with a reason`,
-        { lineIdx: line.lineIdx, offered, available },
-      );
-    }
-    const parts = [...fromTray.map((o) => ({ ...o, store: trayId! })), ...offered.map((o) => ({ ...o, store }))];
+    const parts = await fefoParts(db, d.storeResourceId, line.lineIdx, line.itemId, qty, store, now);
     for (const [k, part] of parts.entries()) {
       plan.push(k === 0
         ? { lineId: line.id, lineIdx: line.lineIdx, itemId: line.itemId, batchId: part.batchId, qtyBase: part.qty, fefoOverride: false, pickNote: partial ? note : null, scanned, store: part.store, splitFrom: null, owed }
@@ -174,12 +149,7 @@ export async function pickDispense(
       if (p.splitFrom !== null) {
         /* The same prescription line, from a later batch: everything the verify settled is copied; the order item stays with the original. */
         const from = lines.find((l) => l.lineIdx === p.splitFrom)!;
-        await tx.insert(pharmacyDispenseLines).values({
-          id: p.lineId, dispenseId: d.id, lineIdx: p.lineIdx, rxLine: from.rxLine,
-          orderedMedicineId: from.orderedMedicineId, dispensedMedicineId: from.dispensedMedicineId,
-          substitutionType: from.substitutionType, consentBy: from.consentBy, consentAt: from.consentAt,
-          itemId: from.itemId, scheduleFlag: from.scheduleFlag, ndpsClass: from.ndpsClass, splitFromLineIdx: p.splitFrom,
-        });
+        await tx.insert(pharmacyDispenseLines).values({ id: p.lineId, dispenseId: d.id, lineIdx: p.lineIdx, ...splitCopyOf(from), splitFromLineIdx: p.splitFrom });
       }
       const { reservationId } = await reserveStock(tx, actor, { resourceId: p.store, batchId: p.batchId, qty: p.qtyBase, refType: "pharmacy_dispense", refId: p.lineId, expiresAt });
       await tx.update(pharmacyDispenseLines)
@@ -201,4 +171,52 @@ export async function pickDispense(
     }));
   });
   return getDispense(db, actor, d.id, now);
+}
+
+/**
+ * The batches a line of `qty` is held from when nobody named one, FEFO — `pickDispense`'s rule, and (spec #1055) the
+ * rule a medicine added by hand to a collected ticket is held by (`add-line.ts`).
+ *
+ * OWNER RULING 2026-10-03 — LOOSE TABLETS FROM THE LOOSE TRAY FIRST. When the quantity is not whole
+ * strips (15 of a strip of 10), the loose part is taken from the store's loose tray, FEFO, before a
+ * fresh strip is cut; whatever the tray cannot cover comes off the shelf as before. Never for a
+ * controlled line (the cabinet has no tray) and never for a named batch (the pharmacist chose a strip).
+ * More than every batch holds is `short_stock`.
+ */
+export async function fefoParts(
+  db: Db, counterStore: string, lineIdx: number, itemId: string, qty: number, store: string, now: Date,
+): Promise<{ batchId: string; qty: number; store: string }[]> {
+  const fromTray: { batchId: string; qty: number }[] = [];
+  const trayId = store === counterStore ? (await looseTraysOf(db, store)).loose : undefined;
+  const strip = trayId === undefined ? undefined : await stripSizeOf(db, itemId);
+  const looseQty = strip === undefined ? 0 : qty % strip;
+  if (trayId !== undefined && looseQty > 0) fromTray.push(...await fefoPick(db, trayId, itemId, looseQty, now));
+  const trayQty = fromTray.reduce((n, o) => n + o.qty, 0);
+  const offered = qty - trayQty > 0 ? await fefoPick(db, store, itemId, qty - trayQty, now) : [];
+  const covered = offered.reduce((n, o) => n + o.qty, 0) + trayQty;
+  if ((offered.length === 0 && trayQty === 0) || covered < qty) {
+    // The number in a REFUSAL has to mean the same thing as the number on the screen, or the
+    // sentence reads as a contradiction: "the shelf holds 0 of 20 (50 across batches)" when all
+    // fifty are expired. `availableQty` is the one definition the pick itself obeys.
+    const available = await availableQty(db, store, itemId, now);
+    throw new PharmacyError(
+      "short_stock",
+      `line ${String(lineIdx + 1)}: the shelf holds ${String(covered)} of ${String(qty)} across its batches — dispense a partial quantity with a reason`,
+      { lineIdx, offered, available },
+    );
+  }
+  return [...fromTray.map((o) => ({ ...o, store: trayId! })), ...offered.map((o) => ({ ...o, store }))];
+}
+
+/** The marks a split of a prescription line carries from it: the verify's settlement and (spec #1055) "added at the counter". */
+export function splitCopyOf(from: DispenseLineRow): Pick<DispenseLineRow,
+  "rxLine" | "orderedMedicineId" | "dispensedMedicineId" | "substitutionType" | "consentBy" | "consentAt" | "itemId" | "scheduleFlag" | "ndpsClass"
+  | "addedReason" | "addedBy" | "addedAt" | "addedDocumentId" | "addedPrescriberName" | "addedPrescriberRegNo"> {
+  return {
+    rxLine: from.rxLine, orderedMedicineId: from.orderedMedicineId, dispensedMedicineId: from.dispensedMedicineId,
+    substitutionType: from.substitutionType, consentBy: from.consentBy, consentAt: from.consentAt,
+    itemId: from.itemId, scheduleFlag: from.scheduleFlag, ndpsClass: from.ndpsClass,
+    addedReason: from.addedReason, addedBy: from.addedBy, addedAt: from.addedAt, addedDocumentId: from.addedDocumentId,
+    addedPrescriberName: from.addedPrescriberName, addedPrescriberRegNo: from.addedPrescriberRegNo,
+  };
 }
