@@ -388,6 +388,12 @@ export async function billDispense(db: Db, actor: Actor, dispenseId: string, inp
     patientId: d.patientId,
     encounterId: encounter.id,
     lines,
+    /*
+      Spec #1046 D6 — one bill per DISPENSE, held by the `picked → billed` compare-and-set below, so billing's
+      encounter + service duplicate check (FD-27) is not asked: a balance ticket sells the same medicine on the
+      same visit again, and that is a second dispense, not a duplicate bill.
+    */
+    oneInvoicePerDocument: { kind: "pharmacy_dispense", id: d.id },
     // OWNER RULING 2026-09-30 (as amended) — any cash (or no tender: the owner's credit) rounds to the nearest rupee; UPI/card alone to the paisa.
     // Owner ruling 2026-10-02 — a bill settled WHOLLY from pharmacy credit hands no coin across: to the paisa.
     roundingRule: creditPlan.length > 0 && input.tenders.length === 0 ? "exact" : pharmacyRoundingRule(input.tenders),
@@ -411,6 +417,26 @@ export async function billDispense(db: Db, actor: Actor, dispenseId: string, inp
     if (creditPlan.length > 0) await recordCreditUse(tx, actor, { patientId: d.patientId, invoiceId: result.invoiceId, dispenseId: d.id, plan: creditPlan, now });
     // The bill must carry exactly the discount that was judged (and approved): anything else rolls it all back.
     if (judged !== null) assertIssuedDiscount(stored.lines, judged.quote);
+    /*
+      The dispense row first, then its lines — the order `declineLine` takes them in (spec #1046 D2), so a line
+      dropped at the till and this bill never wait on each other's locks.
+    */
+    const won = await tx.update(pharmacyDispenses)
+      .set({ status: "billed", invoiceId: result.invoiceId, billedAt: now })
+      .where(and(eq(pharmacyDispenses.id, d.id), eq(pharmacyDispenses.status, "picked")))
+      .returning({ id: pharmacyDispenses.id });
+    if (won.length === 0) throw new PharmacyError("dispense_not_in_state", `dispense ${d.id} moved while billing`);
+    /*
+      Spec #1046 D2 — a line dropped at the bill while this bill was being priced. Once the compare-and-set above
+      holds the row, the lines read here are final; a planned line that is no longer open means the bill priced
+      something that is not being sold, and everything rolls back.
+    */
+    const current = await tx.select({ id: pharmacyDispenseLines.id, status: pharmacyDispenseLines.status })
+      .from(pharmacyDispenseLines).where(eq(pharmacyDispenseLines.dispenseId, d.id));
+    const open = new Set(current.filter((l) => l.status === "open").map((l) => l.id));
+    if (plan.some((p) => !open.has(p.lineId))) {
+      throw new PharmacyError("dispense_not_in_state", `a line of dispense ${d.id} was dropped while billing — price the bill again`);
+    }
     const rows = mainRowsOf([...stored.lines].sort((a, b) => a.lineNo - b.lineNo), plan);
     for (const [i, p] of plan.entries()) {
       const row = rows[i]!;
@@ -419,11 +445,6 @@ export async function billDispense(db: Db, actor: Actor, dispenseId: string, inp
         .set({ invoiceLineId: row.id, unitPaise: row.unitPaise, priceWinner: winner })
         .where(eq(pharmacyDispenseLines.id, p.lineId));
     }
-    const won = await tx.update(pharmacyDispenses)
-      .set({ status: "billed", invoiceId: result.invoiceId, billedAt: now })
-      .where(and(eq(pharmacyDispenses.id, d.id), eq(pharmacyDispenses.status, "picked")))
-      .returning({ id: pharmacyDispenses.id });
-    if (won.length === 0) throw new PharmacyError("dispense_not_in_state", `dispense ${d.id} moved while billing`);
     if (d.workflowInstanceId !== null) await transition(tx, d.workflowInstanceId, "billed", actor);
     await appendEvent(tx, dispenseBilled.make({
       occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,

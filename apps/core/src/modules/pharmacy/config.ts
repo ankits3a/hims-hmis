@@ -23,6 +23,12 @@ export const RETAIL_REF_TYPE = "pharmacy_retail_sale";
  */
 export const DOWNTIME_BACKFILL_DAYS = 7;
 
+/**
+ * Spec #1046 D6 (owner 2026-11-13) — how long a prescription's owed balance ("rest tomorrow") may be collected,
+ * counted from the FIRST hand-over of that prescription. A balance of a balance stays inside the same window.
+ */
+export const BALANCE_WINDOW_DAYS = 30;
+
 /** D2 — how long a pick holds a batch before the ledger may release it to somebody else. */
 export const PICK_RESERVATION_MINUTES = 30;
 

@@ -257,6 +257,13 @@ export const PHARMACY_ERROR_CODES = [
   /** 2026-09-30 — a Schedule X or NDPS line on a paper prescription at the desk: it needs the doctor's e-prescription. */
   "paper_rx_controlled",
   /* 2026-09-30 (owner) — `paper_rx_no_visit` is RETIRED: the desk now opens a no-fee pharmacy visit itself. */
+  /**
+   * 0093 / spec #1046 D7 — a Schedule H/H1 brand swap waits for the prescriber's agreement (a `substitution`
+   * authorisation); a paper from a doctor who is not a user here cannot get one: give the brand written.
+   */
+  "substitution_needs_prescriber",
+  /** Spec #1046 D6 — no balance is owed on this ticket: nothing was picked short, it is already open, or 30 days have passed. */
+  "no_balance_owed",
 ] as const;
 
 export type PharmacyErrorCode = (typeof PHARMACY_ERROR_CODES)[number];
@@ -408,6 +415,8 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   free_bill_takes_no_money: 409,
   discount_needs_customer: 409,
   paper_rx_controlled: 409,
+  substitution_needs_prescriber: 409,
+  no_balance_owed: 409,
 };
 
 export function pharmacyHttpStatus(code: PharmacyErrorCode): number {
