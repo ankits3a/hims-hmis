@@ -9,6 +9,7 @@ generated: { by: tools/arch/gen.mjs }
 # module `pharmacy`
 
 Source: `apps/core/src/modules/pharmacy/`
+· Notes: [MAP.md](../../../apps/core/src/modules/pharmacy/MAP.md)
 
 - **Depends on modules:** `billing`, `formulary`, `materials`, `membership`, `opd`, `patients`, `tariff`
 - **Used by modules:** —
