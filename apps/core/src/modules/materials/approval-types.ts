@@ -116,6 +116,18 @@ export const MATERIALS_APPROVAL_TYPES: (ApprovalTypeSpec & { closureSlaMinutes: 
     actFirstAllowed: false,
     closureSlaMinutes: 1440,
   },
+  /**
+   * #1047 — the same batch arrived at a NEW MRP (same expiry month). Posting it reprices the whole pile on the
+   * shelf, so the materials head decides, as for near-expiry stock; four hours because a delivery is waiting.
+   */
+  {
+    typeKey: "materials_mrp_revision",
+    title: "Batch MRP Revision",
+    approverRole: "materials_head",
+    urgencyClass: "routine",
+    actFirstAllowed: false,
+    closureSlaMinutes: 240,
+  },
 ];
 
 /** The two type keys, for callers that must not retype a string the engine matches exactly. */
@@ -127,6 +139,8 @@ export const PO_APPROVAL_TYPE = "materials_po_approval";
 export const PO_OWNER_APPROVAL_TYPE = "materials_po_approval_owner";
 /** PARITY P3 — the payment run's authorisation. */
 export const PAYMENT_RUN_APPROVAL_TYPE = "materials_payment_run_approval";
+/** #1047 — a batch's MRP revised by a GRN. */
+export const MRP_REVISION_APPROVAL_TYPE = "materials_mrp_revision";
 
 /**
  * The DRAFTER half of each `approval_<typeKey>` definition. `createDraft` runs no actor-type check,

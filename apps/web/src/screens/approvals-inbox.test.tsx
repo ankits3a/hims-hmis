@@ -417,6 +417,7 @@ describe("the words behind the screen", () => {
     "pharmacy_restricted_antimicrobial", // pharmacy stage D5 — the antimicrobial steward's
     // OWNER RULINGS 2026-09-30 (money) — a sale discount above 10% (the in-charge's) and above 25% or ₹25,000 (the owner's).
     "pharmacy_discount_incharge", "pharmacy_discount_owner",
+    "materials_mrp_revision", // #1047 — the same batch at a new MRP, the materials head's
   ];
 
   it("knows every type the server registers", () => {

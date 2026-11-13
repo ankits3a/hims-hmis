@@ -225,7 +225,8 @@ describe("the materials error union (Plan 14 CLOSE, M8)", () => {
       // "the id names no row of this kind" — GRN, transfer, lot, bank change. `errors.ts`'s F5
       // clause argues this one at length; it is the module's generic 404 by design.
       // Parity P3: a supplier bill naming a GRN that is not there — the same "no such document".
-      unknown_document: ["consumption.ts", "grn.ts", "ledger.ts", "materials.controller.ts", "supplier-bills.ts", "transfers.ts", "vendors.ts"],
+      // #1047: a credit note without a return that is not there — the same "no such document".
+      unknown_document: ["consumption.ts", "grn.ts", "ledger.ts", "materials.controller.ts", "supplier-bills.ts", "supplier-returns.ts", "transfers.ts", "vendors.ts"],
       // "no such item".
       // PHARMACY P6: either item of a merge not found — the same "no such item".
       // PHARMACY GAP A6b: an item on an indent that is not there — the same "no such item".
@@ -246,7 +247,8 @@ describe("the materials error union (Plan 14 CLOSE, M8)", () => {
       // every one is a free-text reason the act refuses to take empty. One meaning, one remedy.
       // Parity P4: a return cancelled or closed, a credit note cancelled, a recall raised — the same.
       // PHARMACY GAP A6b: an indent rejected or cancelled — the same.
-      reason_required: ["counts.ts", "indents.ts", "payments.ts", "purchase-orders.ts", "recalls.ts", "supplier-bills.ts", "supplier-returns.ts"],
+      // #1047: a captured GRN cancelled — the same.
+      reason_required: ["counts.ts", "grn.ts", "indents.ts", "payments.ts", "purchase-orders.ts", "recalls.ts", "supplier-bills.ts", "supplier-returns.ts"],
       // "no such vendor": the master's own 404, reached from a bill, a payment and a ledger.
       // Parity P4: the vendor a return is drafted to — the same master's 404.
       // #635: the vendor a rate contract is quoted by — the same master's 404.

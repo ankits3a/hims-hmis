@@ -315,8 +315,8 @@ async function topUpShelf(db: Db, now: Date, report: PharmacyDayReport): Promise
     (await withTx(db, (tx: Tx) => registerItem(tx, materialsHead, {
       code: OUT_OF_STOCK.code, name: `${OUT_OF_STOCK.brand} ${OUT_OF_STOCK.form}`, class: "drug", baseUom: "tablet",
       batchTracked: true, formularyMedicineId: medicineId, hsnCode: "3004",
-      /* NULL, as every demo item is — `seed-pharmacy-demo.ts` says why at length. */
-      gstRateBps: null, shelfLifeDays: 1095,
+      /* Nil, as every demo item is — `seed-pharmacy-demo.ts` says why at length (a null slab is not put on sale). */
+      gstRateBps: 0, shelfLifeDays: 1095,
       uoms: [{ uom: "strip", toBaseMultiplier: 10, isPurchaseUom: true, isIssueUom: true }],
     }))).itemId;
   if ((await getSaleItem(db, itemId)) === undefined) await withTx(db, (tx: Tx) => registerSaleItem(tx, pharmacist, itemId));

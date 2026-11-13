@@ -9,9 +9,9 @@ import {
 } from "../../kernel/db/schema";
 import { applyReceiptToPo, assertReceivableAgainstPo } from "./purchase-orders";
 import { DEEMED_SUPPLY_DAYS, EXPIRY_IS_A_MONTH_CLASSES } from "./config";
-import { NEAR_EXPIRY_APPROVAL_TYPE } from "./approval-types";
+import { MRP_REVISION_APPROVAL_TYPE, NEAR_EXPIRY_APPROVAL_TYPE } from "./approval-types";
 import { MaterialsError } from "./errors";
-import { grnLineRejected, grnReceived, grnRejected } from "./events";
+import { batchMrpRevised, grnCancelled, grnLineRejected, grnReceived, grnRejected } from "./events";
 import { assertNotMerged, effectiveRegulation, itemUomRows, itemsByIds } from "./items";
 import { getBatch, postMovements } from "./ledger";
 import { qcLine } from "./qc";
@@ -92,6 +92,7 @@ async function qcContextFor(
   itemId: string,
   batchNo: string | null,
   ownership: string,
+  incoming: { expiryDate: string | null; mrpPaise: number | null; mrpUom: string | null } = { expiryDate: null, mrpPaise: null, mrpUom: null },
 ): Promise<QcContext> {
   const items = await itemsByIds(tx, [itemId]);
   const item = items.get(itemId);
@@ -131,9 +132,15 @@ async function qcContextFor(
 
   // Rule 8 — an EXISTING batch of this `(item, batch_no, ownership)` that is already frozen.
   let batchFrozen = false;
+  // #1047 — and the same batch already on the books, same expiry, at ANOTHER printed MRP: held, not refused.
+  let mrpRevised = false;
   if (batchNo !== null && batchNo.trim() !== "") {
     const existing = await findBatch(tx, itemId, batchNo, ownership);
     batchFrozen = existing?.recallStatus === "frozen";
+    if (existing !== undefined && incoming.mrpPaise !== null) {
+      mrpRevised = sameExpiry(item?.class, existing.expiryDate ?? null, incoming.expiryDate)
+        && mrpDiffers(existing, incoming);
+    }
   }
 
   // Rule 9 — O-8, and it is asked ONLY for a consignment challan.
@@ -149,10 +156,21 @@ async function qcContextFor(
     ceiling,
     ceilingUnconvertible,
     batchFrozen,
+    mrpRevised,
     hasConsignmentAgreement,
     source: grn.source,
     challanDate: grn.challanDate,
   };
+}
+
+/** One expiry for a batch's two receipts: a drug's by its month (2026-11-13), any other class's by the day. */
+function sameExpiry(itemClass: string | undefined, a: string | null, b: string | null): boolean {
+  return expiryIsAMonth(itemClass) ? sameExpiryMonth(a, b) : a === b;
+}
+
+/** The printed price differs: another MRP, or the same paise on another pack. */
+function mrpDiffers(a: { mrpPaise: number | null; mrpUom: string | null }, b: { mrpPaise: number | null; mrpUom: string | null }): boolean {
+  return (a.mrpPaise ?? null) !== (b.mrpPaise ?? null) || (a.mrpUom ?? null) !== (b.mrpUom ?? null);
 }
 
 /** The ownership a GRN's source produces. A consignment challan does not transfer title. */
@@ -187,6 +205,8 @@ export type CaptureLine = {
   unitCostPaise: number;
   freeGoods?: boolean;
   tempLogRef?: string | null;
+  /** #1047 / 0093 — the cost is an estimate (an opening-stock row with no rate), carried to the batch it creates. */
+  estimatedCost?: boolean;
 };
 
 /**
@@ -209,6 +229,8 @@ export async function captureGrn(
     challanNo: string;
     challanDate: string;
     invoiceNo?: string | null;
+    /** #1047 — the supplier invoice's own date, when the GRN is typed from one; the bill draft prefills it. */
+    invoiceDate?: string | null;
     poRef?: string | null;
     /** PARITY P2 — the purchase order this delivery is received against (`purchase-orders.ts`). */
     purchaseOrderId?: string | null;
@@ -257,7 +279,7 @@ export async function captureGrn(
   await tx.insert(grns).values({
     id: grnId, grnNo, vendorId: input.vendorId, source: input.source,
     poRef, purchaseOrderId, challanNo: input.challanNo, challanDate: input.challanDate,
-    invoiceNo: input.invoiceNo ?? null, storeResourceId: input.storeResourceId,
+    invoiceNo: input.invoiceNo ?? null, invoiceDate: input.invoiceDate ?? null, storeResourceId: input.storeResourceId,
     status: "gate_qc", capturedBy: actor.id,
     createdBy: actor.id, updatedBy: actor.id,
   });
@@ -281,6 +303,8 @@ export async function captureGrn(
       mrpPaise: line.mrpPaise ?? null, mrpUom: line.mrpUom ?? null,
       unitCostPaise: line.unitCostPaise, freeGoods: line.freeGoods ?? false,
       tempLogRef: line.tempLogRef ?? null,
+      // A free line costs nothing, known: only a paid line's cost can be an estimate.
+      estimatedCost: (line.estimatedCost ?? false) && !(line.freeGoods ?? false),
     });
   }
   return { grnId, grnNo };
@@ -318,6 +342,7 @@ export async function runGateQc(
   grnId: string,
 ): Promise<{ status: string; verdicts: { grnLineId: string; verdict: string; rule?: RuleCode }[] }> {
   const grn = await requireGrn(tx, grnId);
+  refuseCancelled(grn, "run its QC");
   if (grn.status !== "gate_qc" && grn.status !== "accepted" && grn.status !== "partially_accepted") {
     throw new MaterialsError(
       "already_received",
@@ -333,7 +358,9 @@ export async function runGateQc(
   let accepted = 0;
   let rejected = 0;
   for (const line of lines) {
-    const ctx = await qcContextFor(tx, grn, line.itemId, line.batchNo, ownership);
+    const ctx = await qcContextFor(tx, grn, line.itemId, line.batchNo, ownership, {
+      expiryDate: line.expiryDate, mrpPaise: line.mrpPaise, mrpUom: line.mrpUom,
+    });
     const v = qcLine(ctx, {
       itemId: line.itemId, uom: line.uom, qtyBase: line.qtyBase,
       batchNo: line.batchNo, expiryDate: line.expiryDate,
@@ -346,13 +373,15 @@ export async function runGateQc(
       rejected += 1;
       await tx.update(grnLines).set({
         qtyAcceptedBase: 0, qtyRejectedBase: line.qtyBase,
-        rejectReason: v.rule ?? null, nearExpiry: false,
+        rejectReason: v.rule ?? null, nearExpiry: false, mrpRevised: false,
       }).where(eq(grnLines.id, line.id));
     } else {
       accepted += 1;
       await tx.update(grnLines).set({
         qtyAcceptedBase: line.qtyBase, qtyRejectedBase: 0,
         rejectReason: null, nearExpiry: v.verdict === "near_expiry",
+        // #1047 — a short-dated line can ALSO be a revised MRP: both holds are kept, each needs its approval.
+        mrpRevised: ctx.mrpRevised === true,
       }).where(eq(grnLines.id, line.id));
     }
   }
@@ -377,6 +406,7 @@ export async function requestNearExpiryAcceptance(
   note?: string,
 ): Promise<{ approvalId: string }> {
   const grn = await requireGrn(tx, grnId);
+  refuseCancelled(grn, "ask for its near-expiry approval");
   const near = await tx.select({ id: grnLines.id }).from(grnLines)
     .where(and(eq(grnLines.grnId, grnId), eq(grnLines.nearExpiry, true)));
   if (near.length === 0) {
@@ -393,6 +423,78 @@ export async function requestNearExpiryAcceptance(
   await tx.update(grns).set({ approvalId, updatedBy: actor.id, updatedAt: new Date() })
     .where(eq(grns.id, grnId));
   return { approvalId };
+}
+
+/**
+ * #1047 — files the `materials_mrp_revision` approval for a GRN carrying at least one `mrp_revised` line (the
+ * batch is on the books at another MRP, same expiry), and records it on the header (`mrp_approval_id`). The
+ * materials head decides it in /approvals; `postGrn` reads its STATUS (A17's rule), and on posting the batch
+ * takes the new MRP.
+ */
+export async function requestMrpRevisionApproval(
+  tx: Tx,
+  actor: Actor,
+  grnId: string,
+  note?: string,
+): Promise<{ approvalId: string }> {
+  const grn = await requireGrn(tx, grnId);
+  refuseCancelled(grn, "ask for its MRP approval");
+  const revised = await tx.select({ id: grnLines.id }).from(grnLines)
+    .where(and(eq(grnLines.grnId, grnId), eq(grnLines.mrpRevised, true)));
+  if (revised.length === 0) {
+    throw new MaterialsError("unknown_document", `GRN ${grn.grnNo} has no line at a revised MRP — there is nothing to approve`);
+  }
+  const { approvalId } = await requestApproval(tx, actor, {
+    typeKey: MRP_REVISION_APPROVAL_TYPE,
+    subject: { type: "grn", id: grnId },
+    requestNote: note,
+  });
+  await tx.update(grns).set({ mrpApprovalId: approvalId, updatedBy: actor.id, updatedAt: new Date() })
+    .where(eq(grns.id, grnId));
+  return { approvalId };
+}
+
+/**
+ * #1047 — **A CAPTURED GRN CANCELLED, with the reason, before it posts.** A GRN typed against the wrong challan
+ * or order had no way out: it sat in the QC worklist and held its order's headroom for ever (MAP §6). Nothing
+ * had moved — capture and QC write no stock — so cancelling writes none either: the header becomes
+ * `cancelled` with who, when and why, `grn.cancelled` is emitted, and the GRN leaves every worklist and stops
+ * counting against its purchase order (`purchase-orders.ts` `unpostedPaidBase`). A pending near-expiry or MRP
+ * approval on it simply has nothing left to post. A POSTED GRN is never cancelled: its corrections are a return
+ * or an adjustment. Gated by the route on `materials.grn.capture`.
+ */
+export async function cancelGrn(
+  tx: Tx,
+  actor: Actor,
+  grnId: string,
+  reason: string,
+  now: Date,
+): Promise<{ grnId: string; grnNo: string; status: "cancelled" }> {
+  const why = reason.trim();
+  if (why === "") throw new MaterialsError("reason_required", "say why the GRN is cancelled");
+  // The row lock serialises this against a QC or a post of the same GRN.
+  const [grn] = await tx.select().from(grns).where(eq(grns.id, grnId)).for("update");
+  if (grn === undefined) throw new MaterialsError("unknown_document", `GRN ${grnId} not found`);
+  if (grn.status === "posted") {
+    throw new MaterialsError("already_received", `GRN ${grn.grnNo} is posted; a posted GRN is corrected by a return or an adjustment, never cancelled`, { status: grn.status });
+  }
+  refuseCancelled(grn, "cancel it");
+  const text = why.slice(0, 500);
+  await tx.update(grns).set({
+    status: "cancelled", cancelledBy: actor.id, cancelledAt: now, cancelReason: text, updatedBy: actor.id, updatedAt: now,
+  }).where(eq(grns.id, grnId));
+  await appendEvent(tx, grnCancelled.make({
+    occurredAt: now, actor, correlationId: grnId,
+    payload: { grnId, grnNo: grn.grnNo, vendorId: grn.vendorId, fromStatus: grn.status, reason: text, purchaseOrderId: grn.purchaseOrderId },
+  }));
+  return { grnId, grnNo: grn.grnNo, status: "cancelled" };
+}
+
+/** #1047 — a cancelled GRN is QC'd, approved, posted and cancelled no more. */
+function refuseCancelled(grn: GrnRow, doing: string): void {
+  if (grn.status === "cancelled") {
+    throw new MaterialsError("grn_cancelled", `GRN ${grn.grnNo} was cancelled (${grn.cancelReason ?? ""}); nothing can ${doing} now`, { grnNo: grn.grnNo });
+  }
 }
 
 // ═══════════════════════════════════ POST ═══════════════════════════════════
@@ -423,6 +525,7 @@ export async function postGrn(
   if (grn.status === "posted") {
     throw new MaterialsError("already_received", `GRN ${grn.grnNo} is already posted`);
   }
+  refuseCancelled(grn, "post it");
   if (grn.status === "draft" || grn.status === "gate_qc") {
     /**
      * CLOSE REVIEW M8 — this threw `not_in_transit`, which `errors.ts` documents as
@@ -465,6 +568,21 @@ export async function postGrn(
     }
   }
 
+  // ── #1047: a revised MRP reprices a pile already on the shelf — the materials head's GRANTED approval, its STATUS ──
+  let mrpApprovalId: string | null = null;
+  if (acceptedLines.some((l) => l.mrpRevised)) {
+    const approval = grn.mrpApprovalId === null ? null : await getApproval(tx as unknown as Db, grn.mrpApprovalId);
+    if (approval === null || approval.status !== "granted") {
+      throw new MaterialsError(
+        "mrp_revision_unapproved",
+        `GRN ${grn.grnNo} brings a batch already on the shelf at a new MRP and needs a GRANTED ` +
+          `${MRP_REVISION_APPROVAL_TYPE} approval; its approval is "${approval?.status ?? "not requested"}"`,
+        { approvalStatus: approval?.status ?? null },
+      );
+    }
+    mrpApprovalId = approval.id;
+  }
+
   // PARITY P2 — the receipt booked onto its order, under the order's lock, before any stock moves.
   if (grn.purchaseOrderId !== null && acceptedLines.length > 0) {
     await applyReceiptToPo(tx, actor, grn.purchaseOrderId, grnId, acceptedLines.map((l) => ({
@@ -500,7 +618,7 @@ export async function postGrn(
 
   const classes = await itemsByIds(tx, acceptedLines.map((l) => l.itemId));
   for (const line of acceptedLines) {
-    const batchId = await findOrCreateBatch(tx, actor, grn, line, ownership, classes.get(line.itemId)?.class);
+    const batchId = await findOrCreateBatch(tx, actor, grn, line, ownership, classes.get(line.itemId)?.class, mrpApprovalId);
     /**
      * ═══ CLOSE REVIEW m4 — DD8 RULE 8 IS RE-ASKED AT POST, BECAUSE QC's ANSWER HAS AN AGE ═══
      *
@@ -599,6 +717,8 @@ async function findOrCreateBatch(
   line: GrnLineRow,
   ownership: string,
   itemClass: string | undefined,
+  /** #1047 — the GRANTED `materials_mrp_revision` approval, when a line of this GRN was held as `mrp_revised`. */
+  mrpApprovalId: string | null = null,
 ): Promise<string> {
   const batchNo = (line.batchNo ?? "").trim();
   if (batchNo === "") {
@@ -610,7 +730,7 @@ async function findOrCreateBatch(
       id: batchId, itemId: line.itemId, batchNo: `GRN-${grn.grnNo}-${line.id.slice(-6)}`,
       mfgDate: line.mfgDate, expiryDate: line.expiryDate,
       mrpPaise: line.mrpPaise, mrpUom: line.mrpUom,
-      landedCostPaise: line.unitCostPaise, vendorId: grn.vendorId, grnLineId: line.id,
+      landedCostPaise: line.unitCostPaise, estimatedCost: line.estimatedCost, vendorId: grn.vendorId, grnLineId: line.id,
       ownership, createdBy: actor.id,
     });
     return batchId;
@@ -640,12 +760,25 @@ async function findOrCreateBatch(
    */
   const existing = await findBatch(tx, line.itemId, batchNo, ownership);
   if (existing !== undefined) {
-    const expiryDiffers = expiryIsAMonth(itemClass)
-      ? !sameExpiryMonth(existing.expiryDate ?? null, line.expiryDate ?? null)
-      : (existing.expiryDate ?? null) !== (line.expiryDate ?? null);
-    const mrpDiffers = (existing.mrpPaise ?? null) !== (line.mrpPaise ?? null)
-      || (existing.mrpUom ?? null) !== (line.mrpUom ?? null);
-    if (expiryDiffers || mrpDiffers) {
+    const expiryDiffers = !sameExpiry(itemClass, existing.expiryDate ?? null, line.expiryDate ?? null);
+    const priceDiffers = mrpDiffers(existing, line);
+    /**
+     * #1047 — THE SAME BATCH AT A NEW MRP, approved: the pile takes the new printed price, old → new on the
+     * record (`batch.mrp_revised`). Only a line QC held as `mrp_revised` (same expiry) and only under the
+     * granted approval `postGrn` checked; an expiry that differs is still a mismatch below.
+     */
+    if (!expiryDiffers && priceDiffers && line.mrpRevised && mrpApprovalId !== null && line.mrpPaise !== null) {
+      await tx.update(stockBatches).set({ mrpPaise: line.mrpPaise, mrpUom: line.mrpUom }).where(eq(stockBatches.id, existing.id));
+      await appendEvent(tx, batchMrpRevised.make({
+        payload: {
+          batchId: existing.id, itemId: line.itemId, batchNo: existing.batchNo, grnId: grn.id, grnLineId: line.id, approvalId: mrpApprovalId,
+          from: { mrpPaise: existing.mrpPaise, mrpUom: existing.mrpUom }, to: { mrpPaise: line.mrpPaise, mrpUom: line.mrpUom },
+        },
+        actor, correlationId: grn.id,
+      }));
+      return existing.id;
+    }
+    if (expiryDiffers || priceDiffers) {
       throw new MaterialsError(
         "batch_mismatch",
         `batch ${batchNo} of this item already exists with ` +
@@ -667,7 +800,7 @@ async function findOrCreateBatch(
     id: batchId, itemId: line.itemId, batchNo,
     mfgDate: line.mfgDate, expiryDate: line.expiryDate,
     mrpPaise: line.mrpPaise, mrpUom: line.mrpUom,
-    landedCostPaise: line.unitCostPaise, vendorId: grn.vendorId, grnLineId: line.id,
+    landedCostPaise: line.unitCostPaise, estimatedCost: line.estimatedCost, vendorId: grn.vendorId, grnLineId: line.id,
     ownership, createdBy: actor.id,
   });
   return batchId;
@@ -823,6 +956,39 @@ export async function nearExpiryAcceptanceView(db: Db | Tx, grnId: string, now: 
   };
 }
 
+/**
+ * #1047 — WHAT AN MRP-REVISION APPROVER IS SAYING YES TO: the GRN, its supplier and each line held as
+ * `mrp_revised`, with the batch's MRP on the books now and the MRP this delivery prints. A read; `postGrn`
+ * still reads the approval's STATUS.
+ */
+export type MrpRevisionView = {
+  grnId: string; grnNo: string; vendorName: string; challanNo: string; invoiceNo: string | null;
+  lines: {
+    itemCode: string; itemName: string; batchNo: string | null; expiryDate: string | null; qtyBase: number; baseUom: string;
+    current: { mrpPaise: number | null; mrpUom: string | null } | null; incoming: { mrpPaise: number | null; mrpUom: string | null };
+  }[];
+};
+
+export async function mrpRevisionView(db: Db | Tx, grnId: string): Promise<MrpRevisionView> {
+  const grn = await requireGrn(db, grnId);
+  const [vendor] = await db.select({ legalName: vendors.legalName }).from(vendors).where(eq(vendors.id, grn.vendorId));
+  const lines = await db.select().from(grnLines).where(and(eq(grnLines.grnId, grnId), eq(grnLines.mrpRevised, true))).orderBy(asc(grnLines.id));
+  const named = await itemsByIds(db, [...new Set(lines.map((l) => l.itemId))]);
+  const ownership = ownershipFor(grn.source);
+  const out: MrpRevisionView["lines"] = [];
+  for (const l of lines) {
+    const item = named.get(l.itemId);
+    const batch = l.batchNo === null ? undefined : await findBatch(db, l.itemId, l.batchNo, ownership);
+    out.push({
+      itemCode: item?.code ?? l.itemId, itemName: item?.name ?? l.itemId, batchNo: l.batchNo, expiryDate: l.expiryDate,
+      qtyBase: l.qtyAcceptedBase > 0 ? l.qtyAcceptedBase : l.qtyBase, baseUom: item?.baseUom ?? "",
+      current: batch === undefined ? null : { mrpPaise: batch.mrpPaise, mrpUom: batch.mrpUom },
+      incoming: { mrpPaise: l.mrpPaise, mrpUom: l.mrpUom },
+    });
+  }
+  return { grnId, grnNo: grn.grnNo, vendorName: vendor?.legalName ?? grn.vendorId, challanNo: grn.challanNo, invoiceNo: grn.invoiceNo, lines: out };
+}
+
 export async function listGrns(
   db: Db | Tx,
   filter: { vendorId?: string; storeResourceId?: string; status?: string } = {},
@@ -833,6 +999,42 @@ export async function listGrns(
   if (filter.status !== undefined) clauses.push(eq(grns.status, filter.status));
   const q = db.select().from(grns).orderBy(asc(grns.grnNo));
   return clauses.length === 0 ? q : q.where(and(...clauses));
+}
+
+/** A GRN as the deliveries list shows it: its own fields, the supplier's name and its value at cost. */
+export type GrnListRow = GrnRow & {
+  vendorName: string;
+  /**
+   * What the delivery is worth at cost, before GST: each line's quantity × its cost per base unit — the quantity
+   * captured until the GRN posts, then what was accepted. Free goods are at cost 0; an opening-stock estimate is
+   * counted as estimated.
+   */
+  valuePaise: number;
+};
+
+/**
+ * Walk 2026-11-13 — the deliveries list named only the GRN number: no supplier, no invoice, no amount. The same
+ * GRNs as `listGrns`, with the supplier's trade (else legal) name and the value at cost beside each.
+ */
+export async function grnWorklist(
+  db: Db | Tx,
+  filter: { vendorId?: string; storeResourceId?: string; status?: string } = {},
+): Promise<GrnListRow[]> {
+  const clauses = [];
+  if (filter.vendorId !== undefined) clauses.push(eq(grns.vendorId, filter.vendorId));
+  if (filter.storeResourceId !== undefined) clauses.push(eq(grns.storeResourceId, filter.storeResourceId));
+  if (filter.status !== undefined) clauses.push(eq(grns.status, filter.status));
+  const rows = await db.select({
+    g: grns,
+    vendorName: sql<string>`coalesce(${vendors.tradeName}, ${vendors.legalName})`,
+    valuePaise: sql<string>`coalesce(sum(case when ${grns.status} = 'posted' then ${grnLines.qtyAcceptedBase} else ${grnLines.qtyBase} end * ${grnLines.unitCostPaise}), 0)`,
+  }).from(grns)
+    .innerJoin(vendors, eq(vendors.id, grns.vendorId))
+    .leftJoin(grnLines, eq(grnLines.grnId, grns.id))
+    .where(clauses.length === 0 ? undefined : and(...clauses))
+    .groupBy(grns.id, vendors.id)
+    .orderBy(asc(grns.grnNo));
+  return rows.map((r) => ({ ...r.g, vendorName: r.vendorName, valuePaise: Number(r.valuePaise) }));
 }
 
 /** The lots a batch backs. T7's consumption consumer reads it; 14c's reconciliation will too. */

@@ -1,7 +1,7 @@
 import { grantPermissionToRole } from "../src/kernel/auth/permissions";
 import { withTx } from "../src/kernel/db/client";
 import { addMedicine, addSalt, medicineIdsByBrandNames, medicinesByIds, parseComposition, twinFormOf, twinStrengthAgrees } from "../src/modules/formulary";
-import { effectiveRegulation, listItems } from "../src/modules/materials";
+import { effectiveRegulation, getItem, listItems } from "../src/modules/materials";
 import { importPriceList, matchPriceList, parsePack, rupeesToPaise } from "../src/modules/pharmacy/price-list-import";
 import { setupTestDb, truncateAll } from "./helpers/db";
 import { seedPharmacyBase } from "./helpers/pharmacy";
@@ -90,7 +90,7 @@ describe("a vendor's price list into the item master", () => {
 
   it("makes each ticked row an item with its pack and MRP; a duplicate is refused for that row alone", async () => {
     const results = await importPriceList(db, fx.incharge.actor, [
-      { line: 1, medicineId: fx.med.ibuprofen, brand: "Brufen 400", packType: "tablet_strip", packSize: 15, gstRateBps: 500, hsnCode: "3004", mrpPerPackPaise: 4210, storage: "ambient" },
+      { line: 1, medicineId: fx.med.ibuprofen, brand: "Brufen 400", manufacturer: "Abbott", packType: "tablet_strip", packSize: 15, gstRateBps: 500, hsnCode: "3004", mrpPerPackPaise: 4210, storage: "ambient" },
       { line: 2, medicineId: fx.med.crocin, brand: "Crocin 500", packType: "tablet_strip", packSize: 15, gstRateBps: 500, hsnCode: "3004", mrpPerPackPaise: 3000, storage: "ambient" },
     ]);
     expect(results[0]).toMatchObject({ line: 1, ok: true });
@@ -98,6 +98,8 @@ describe("a vendor's price list into the item master", () => {
     const made = results[0]!.ok ? results[0]! : null;
     const reg = await effectiveRegulation(db, made!.itemId, new Date());
     expect(reg).toMatchObject({ mrpDefaultPaise: 4210, mrpUom: "strip" });
+    // Walk 2026-11-13 — the list's Manufacturer column is the item's maker (the bill's Mfr. column).
+    expect((await getItem(db, made!.itemId))?.manufacturer).toBe("Abbott");
   });
 
   it("a person without the sale-item right is refused once, not once per row", async () => {

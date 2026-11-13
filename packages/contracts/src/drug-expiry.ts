@@ -17,9 +17,19 @@ function lastDayOf(year: number, month: number): string {
   return `${String(year)}-${String(month).padStart(2, "0")}-${String(last).padStart(2, "0")}`;
 }
 
-/** The label's `MM/YYYY` or `MM/YY` (a dash also separates) → the last day of that month; null when unreadable. */
+/**
+ * The forms a person may type a label's month in, for the words a refusal uses: `08/28`, `0828`, `08/2028`.
+ * Every one of them, and `8/28` and `082028`, is the same month.
+ */
+export const EXPIRY_LABEL_FORMS = "08/28, 0828 or 08/2028";
+
+/**
+ * The label's `MM/YYYY` or `MM/YY` (a dash also separates) → the last day of that month; null when unreadable.
+ * Walk 2026-11-13: a phone's number pad has no "/", so the month is also read typed without it — `MMYY` (four
+ * digits) or `MMYYYY` (six). Three or five digits are refused rather than guessed at; month 0 or 13 is no month.
+ */
 export function expiryFromLabel(text: string): string | null {
-  const m = /^\s*(\d{1,2})\s*[/-]\s*(\d{2}|\d{4})\s*$/.exec(text);
+  const m = /^\s*(\d{1,2})\s*[/-]\s*(\d{2}|\d{4})\s*$/.exec(text) ?? /^\s*(\d{2})(\d{2}|\d{4})\s*$/.exec(text);
   if (m === null) return null;
   const month = Number(m[1]);
   const year = m[2]!.length === 2 ? 2000 + Number(m[2]) : Number(m[2]);

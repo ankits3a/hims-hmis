@@ -12,7 +12,10 @@ import { registerMaterialsApprovalTypes } from "./approval-types";
 import { registerItem, setPriceRegulation } from "./items";
 import { createStore } from "./stores";
 import { balances, movementsFor, recallBatch } from "./ledger";
-import { captureGrn, getGrn, listGrns, lotsForBatch, nearExpiryAcceptanceView, postGrn, requestNearExpiryAcceptance, runGateQc } from "./grn";
+import {
+  cancelGrn, captureGrn, getGrn, listGrns, lotsForBatch, mrpRevisionView, nearExpiryAcceptanceView, postGrn, requestMrpRevisionApproval,
+  requestNearExpiryAcceptance, runGateQc,
+} from "./grn";
 import { activateVendor, addVendorDocument, blacklistVendor, registerVendor } from "./vendors";
 import type { CaptureLine } from "./grn";
 import type { Actor } from "@hmis/contracts";
@@ -540,9 +543,13 @@ describe("the GRN gate (Plan 14 T6)", () => {
     expect(await db.select().from(stockBatches)).toHaveLength(1);
     expect((await balances(db, { batchId }))[0]?.qtyOnHand).toBe(900);
 
-    // A DIFFERENT MRP is the same refusal from the other side.
+    // A DIFFERENT MRP on the same expiry is no longer a mismatch (#1047): it is the maker's price revision, HELD at
+    // QC as `mrp_revised` for the materials head — the post waits for that approval and changes nothing meanwhile.
     const clash2 = await receive({ mrpPaise: 9500 }, "CH/E");
-    await expect(withTx(db, (tx) => postGrn(tx, HEAD, clash2, T0))).rejects.toThrow(/already exists with/);
+    expect((await getGrn(db, clash2))?.lines[0]?.mrpRevised).toBe(true);
+    await expect(withTx(db, (tx) => postGrn(tx, HEAD, clash2, T0))).rejects.toMatchObject({ code: "mrp_revision_unapproved" });
+    expect((await db.select().from(stockBatches))[0]?.mrpPaise).toBe(8500);
+    expect((await balances(db, { batchId }))[0]?.qtyOnHand).toBe(900);
   });
 
   /**
@@ -605,7 +612,7 @@ describe("the GRN gate (Plan 14 T6)", () => {
     expect(lines.find((l) => l.itemId === reagent)?.expiryDate).toBe("2027-03-15");
   });
 
-  it("2026-11-13: a DRUG batch already on the shelf is the same batch in the same expiry MONTH; another month or MRP still refuses", async () => {
+  it("2026-11-13: a DRUG batch already on the shelf is the same batch in the same expiry MONTH; another month still refuses, another MRP waits (#1047)", async () => {
     const drug = await drugItem();
     const reagent = await reagentItem();
     const storeId = await aStore();
@@ -634,9 +641,9 @@ describe("the GRN gate (Plan 14 T6)", () => {
     // Another MONTH is another expiry: refused, as before.
     const otherMonth = await receive(drug, { expiryDate: "2028-07-31" }, "CH/M2");
     await expect(withTx(db, (tx) => postGrn(tx, HEAD, otherMonth, T0))).rejects.toMatchObject({ code: "batch_mismatch" });
-    // Another MRP in the same month: refused, as before.
+    // Another MRP in the same month: the same batch at a revised price — it waits for the MRP approval (#1047).
     const otherMrp = await receive(drug, { expiryDate: "2028-06-30", mrpPaise: 9500 }, "CH/M3");
-    await expect(withTx(db, (tx) => postGrn(tx, HEAD, otherMrp, T0))).rejects.toMatchObject({ code: "batch_mismatch" });
+    await expect(withTx(db, (tx) => postGrn(tx, HEAD, otherMrp, T0))).rejects.toMatchObject({ code: "mrp_revision_unapproved" });
 
     // A reagent keeps its exact day: the 31st is not the 15th.
     const reagentDay = await receive(reagent, { batchNo: "RG-1", expiryDate: "2027-03-31" }, "CH/M4");
@@ -839,6 +846,63 @@ describe("the GRN gate (Plan 14 T6)", () => {
       lines: [{ itemCode: "REAG", itemName: "Item REAG", batchNo: "RG-9", expiryDate: "2026-12-31", daysLeft: 126, qtyBase: 300, baseUom: "tablet" }],
     });
     await expect(nearExpiryAcceptanceView(db, newId(), T0)).rejects.toMatchObject({ code: "unknown_document" });
+  });
+
+  /**
+   * #1047 — a short-dated line can ALSO bring its batch at a new MRP. The two holds are separate facts with the
+   * same decider: the post waits for BOTH granted approvals, and the MRP-revision view shows the approver the
+   * batch's MRP now and the delivery's.
+   */
+  it("#1047: a short-dated line at a revised MRP waits for both approvals; the MRP view names the old and new MRP", async () => {
+    await seedSodPairs(db);
+    await registerMaterialsApprovalTypes(db, { type: "user", id: "seed-materials" });
+    const itemId = await drugItem("REAG2", { shelfLifeDays: 180 });
+    const storeId = await aStore();
+    const vendorId = await aVendor();
+    const headId = await mkOwner();
+    await db.insert(stockBatches).values({
+      id: newId(), itemId, batchNo: "B-001", expiryDate: "2026-12-31", mrpPaise: 8000, mrpUom: "strip", landedCostPaise: 700, ownership: "owned", createdBy: HEAD.id,
+    });
+    const { grnId } = await withTx(db, (tx) => captureGrn(tx, HEAD, {
+      vendorId, source: "challan", storeResourceId: storeId, challanNo: "CH/BOTH", challanDate: CHALLAN, now: T0,
+      lines: [goodLine(itemId, { expiryDate: "2026-12-31" })], // 126 days out, MRP 8500 against the shelf's 8000
+    }));
+    // Nothing to approve yet: the line is not judged.
+    await expect(withTx(db, (tx) => requestMrpRevisionApproval(tx, HEAD, grnId))).rejects.toThrow(/no line at a revised MRP/);
+    const qc = await withTx(db, (tx) => runGateQc(tx, HEAD, grnId));
+    expect(qc.verdicts[0]?.verdict).toBe("near_expiry");
+    expect((await getGrn(db, grnId))?.lines[0]).toMatchObject({ nearExpiry: true, mrpRevised: true });
+    expect(await mrpRevisionView(db, grnId)).toMatchObject({
+      grnNo: expect.any(String), lines: [{ batchNo: "B-001", current: { mrpPaise: 8000, mrpUom: "strip" }, incoming: { mrpPaise: 8500, mrpUom: "strip" } }],
+    });
+
+    const near = await withTx(db, (tx) => requestNearExpiryAcceptance(tx, HEAD, grnId));
+    await approveRequest(db, { type: "user", id: headId }, { approvalId: near.approvalId, note: "ok" });
+    await expect(withTx(db, (tx) => postGrn(tx, HEAD, grnId, T0))).rejects.toMatchObject({ code: "mrp_revision_unapproved" });
+    const mrp = await withTx(db, (tx) => requestMrpRevisionApproval(tx, HEAD, grnId, "new price list"));
+    await approveRequest(db, { type: "user", id: headId }, { approvalId: mrp.approvalId, note: "ok" });
+    await withTx(db, (tx) => postGrn(tx, HEAD, grnId, T0));
+    expect((await db.select().from(stockBatches))[0]?.mrpPaise).toBe(8500);
+  });
+
+  it("#1047: a cancelled GRN is QC'd, asked about and posted no more; a posted one is never cancelled", async () => {
+    const itemId = await drugItem();
+    const storeId = await aStore();
+    const vendorId = await aVendor();
+    const { grnId } = await withTx(db, (tx) => captureGrn(tx, HEAD, {
+      vendorId, source: "challan", storeResourceId: storeId, challanNo: "CH/X", challanDate: CHALLAN, lines: [goodLine(itemId)], now: T0,
+    }));
+    await withTx(db, (tx) => runGateQc(tx, HEAD, grnId));
+    await withTx(db, (tx) => cancelGrn(tx, HEAD, grnId, "the challan belongs to another hospital", T0));
+    for (const act of [
+      () => withTx(db, (tx) => runGateQc(tx, HEAD, grnId)),
+      () => withTx(db, (tx) => requestNearExpiryAcceptance(tx, HEAD, grnId)),
+      () => withTx(db, (tx) => cancelGrn(tx, HEAD, grnId, "again", T0)),
+    ]) await expect(act()).rejects.toMatchObject({ code: "grn_cancelled" });
+    const cancelled = await getGrn(db, grnId);
+    expect(cancelled).toMatchObject({ status: "cancelled", cancelledBy: HEAD.id, cancelReason: "the challan belongs to another hospital" });
+    expect((await eventsNamed("grn.cancelled"))[0]?.payload).toMatchObject({ grnId, fromStatus: "accepted", purchaseOrderId: null });
+    expect(await balances(db, {})).toEqual([]);
   });
 
   it("requesting a near-expiry acceptance for a GRN with no near-expiry line is refused", async () => {

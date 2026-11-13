@@ -245,6 +245,13 @@ export const PHARMACY_ERROR_CODES = [
   "opening_stock_unreadable",
   /** A row was refused (not on the shelf, expired, a bad MRP…): the sheet is received whole or not at all. */
   "opening_stock_refused",
+  /**
+   * #1047 — a supplier invoice typed in the stock-entry grid was refused: its header (supplier, invoice number and
+   * date, store) or a row; `detail.reasons` / `detail.refusals` say which. Received whole or not at all.
+   */
+  "invoice_refused",
+  /** #1047 — this supplier's invoice number is already on the books as a live GRN: the same invoice twice would double the stock. */
+  "invoice_already_captured",
   // ── OWNER RULINGS 2026-09-30 (money): the sale-side discount (`discount.ts`) ──
   /** Above 10% (the in-charge) or above 25% / ₹25,000 (the owner): the bill waits for a GRANTED approval. */
   "discount_approval_required",
@@ -410,6 +417,8 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   invalid_message_setting: 400,
   opening_stock_unreadable: 400,
   opening_stock_refused: 409,
+  invoice_refused: 409,
+  invoice_already_captured: 409,
   discount_approval_required: 409,
   discount_not_bound: 409,
   free_bill_takes_no_money: 409,

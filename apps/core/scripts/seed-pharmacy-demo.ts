@@ -58,9 +58,10 @@ import type { Db, Tx } from "../src/kernel/db/client";
  * document explains, and the first person to ask "where did this come from?" would find nothing.
  * Its FIXTURE VALUES are worth borrowing (tablet base, strip × 10, ₹120 a strip); its shape is not.
  *
- * ═══ THE GST SLAB IS DELIBERATELY LEFT NULL ═══
+ * ═══ THE GST SLAB IS DELIBERATELY NIL ═══
  *
- * `gstRateBps: null` on every item, which `gstCategoryFor` maps to `pharmacy_exempt`, which
+ * `gstRateBps: 0` (Nil) on every item — it was `null` until 2026-11-13, when `registerSaleItem` began refusing an item
+ * with no slab at all — which `gstCategoryFor` maps to `pharmacy_exempt`, which
  * `seed-tariff` seeds `exempt: true` — so the counter bills exactly the printed MRP. That is the
  * correct amount to the patient and it is what `pharmacy-go-live.md` §2.2 now instructs a human to
  * do, pending the owner's ruling: `pricing.ts:103` computes `net = base + cgst + sgst`, GST ADDED ON
@@ -268,7 +269,7 @@ async function ensureItems(
       /* LEFT NULL ON PURPOSE — see the header. It maps to `pharmacy_exempt`, which bills exactly
          the printed MRP. Setting a real slab before the owner's ruling makes the counter charge
          ABOVE MRP, because GST is added on top of a base that IS the tax-inclusive MRP. */
-      gstRateBps: null,
+      gstRateBps: 0,
       shelfLifeDays: SHELF_LIFE_DAYS,
       uoms: [{ uom: "strip", toBaseMultiplier: STRIP_MULTIPLIER, isPurchaseUom: true, isIssueUom: true }],
     }));

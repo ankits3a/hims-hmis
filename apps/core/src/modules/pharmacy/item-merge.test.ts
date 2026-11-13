@@ -96,6 +96,11 @@ describe("item merge at the counter and in the office (pharmacy P6 hygiene)", ()
     return id;
   }
 
+  /** #1047 — the counter dispenses the item of a medicine holding the most stock: give B more than A's 50. */
+  async function bIsTheCountersPick(): Promise<void> {
+    await stockIn(db, fx, { itemId: dup, batchNo: "CR-B2", expiryDate: "2027-09-30", qtyBase: 40 });
+  }
+
   async function merge(): Promise<void> {
     const m = await officeRaiseMerge(db, head.actor, { survivorItemId: fx.item.crocin, mergedItemId: dup, reason: "Crocin 500 registered twice", source: "agent" }, MON3);
     await approveRequest(db, ms.actor, { approvalId: m.approvalId, note: "the same strip" });
@@ -155,7 +160,8 @@ describe("item merge at the counter and in the office (pharmacy P6 hygiene)", ()
   });
 
   it("a dispense not yet handed over that names B blocks the merge (a handed-over one does not: the sales register case merges after one)", async () => {
-    // Two items over one medicine: the counter picks the last by code — B.
+    // Two items over one medicine: the counter picks the one holding more stock — B (70 against A's 50).
+    await bIsTheCountersPick();
     const id = await claimed(5);
     const [l] = await db.select().from(pharmacyDispenseLines).where(eq(pharmacyDispenseLines.dispenseId, id));
     expect(l!.itemId).toBe(dup);
@@ -165,6 +171,7 @@ describe("item merge at the counter and in the office (pharmacy P6 hygiene)", ()
   });
 
   it("the sales register and the margin show what B sold under A", async () => {
+    await bIsTheCountersPick();
     await sold(10); // sold as B (the counter's pick before the merge)
     await merge();
     await sold(6); // sold as A

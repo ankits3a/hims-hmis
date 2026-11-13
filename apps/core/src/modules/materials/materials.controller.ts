@@ -11,7 +11,7 @@ import { WorkflowError } from "../../kernel/workflow/instances";
 import { ResourceError, resourceHttpStatus } from "../../kernel/resources/errors";
 import { MaterialsError, materialsHttpStatus } from "./errors";
 import {
-  addBarcode, addItemUom, getItem, listItems, registerItem, resolveBarcode, setPriceRegulation,
+  addBarcode, addItemUom, getItem, listItems, registerItem, replaceItemUom, resolveBarcode, setPriceRegulation,
   updateItem,
 } from "./items";
 import { medicinesByIds } from "../formulary";
@@ -31,15 +31,18 @@ import type { StockLedgerView } from "./stock-ledger-view";
 import { closeRecall, getRecall, listRecalls, raiseRecall, recallableBatches } from "./recalls";
 import type { RecallSummary, RecallView } from "./recalls";
 import {
-  approveSupplierReturn, cancelSupplierReturn, cancelVendorCredit, closeSupplierReturn, createSupplierReturn, dispatchSupplierReturn,
-  expiryReport, getSupplierReturn, listSupplierReturns, planSupplierReturns, recordVendorCredit, returnableStock, returnableVendors,
-  updateSupplierReturn,
+  STANDALONE_CREDIT_KINDS, approveSupplierReturn, cancelStandaloneCredit, cancelSupplierReturn, cancelVendorCredit, closeSupplierReturn,
+  createSupplierReturn, dispatchSupplierReturn, expiryReport, getSupplierReturn, listStandaloneCredits, listSupplierReturns,
+  planSupplierReturns, recordStandaloneCredit, recordVendorCredit, returnableStock, returnableVendors, updateSupplierReturn,
 } from "./supplier-returns";
-import type { ExpiryReport, ReturnPlan, ReturnSummary, ReturnView, ReturnableBatch, ReturnableVendor } from "./supplier-returns";
+import type {
+  ExpiryReport, ReturnPlan, ReturnSummary, ReturnView, ReturnableBatch, ReturnableVendor, StandaloneCreditView,
+} from "./supplier-returns";
 import { getWriteOff, listWriteOffs, postWriteOff, raiseWriteOff } from "./write-offs";
 import type { WriteOffSummary, WriteOffView } from "./write-offs";
 import {
-  captureGrn, getGrn, listGrns, nearExpiryAcceptanceView, postGrn, requestNearExpiryAcceptance, runGateQc,
+  cancelGrn, captureGrn, getGrn, grnWorklist, mrpRevisionView, nearExpiryAcceptanceView, postGrn, requestMrpRevisionApproval,
+  requestNearExpiryAcceptance, runGateQc,
 } from "./grn";
 import { getTransfer, issueStock, listDiscrepancies, listTransfers, receiveStock, transferWorklist } from "./transfers";
 import type { TransferView } from "./transfers";
@@ -413,6 +416,21 @@ export class MaterialsController {
     const b = parsed(uomInput, body);
     try {
       return await withTx(this.db, (tx) => addItemUom(tx, actor, itemId, b));
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * #1047 — a pack unit CORRECTED in place (`strip10` was really `strip15`), audited old → new. Refused
+   * (`pack_in_use`) while a batch, a GRN line or an open PO line still counts or prices in it.
+   */
+  @RequirePermission("materials.items.manage", "hospital")
+  @Post("items/:id/uoms/replace")
+  async replaceUom(
+    @CurrentActor() actor: Actor, @Param("id") itemId: string, @Body() body: unknown,
+  ): Promise<{ itemUomId: string; repointed: string[] }> {
+    const b = parsed(z.object({ fromUom: z.string().min(1).max(32), uom: z.string().min(1).max(32), toBaseMultiplier: z.number().int().positive() }), body);
+    try {
+      return await withTx(this.db, (tx) => replaceItemUom(tx, actor, itemId, b, new Date()));
     } catch (e) { toHttp(e); }
   }
 
@@ -985,6 +1003,41 @@ export class MaterialsController {
     } catch (e) { toHttp(e); }
   }
 
+  /**
+   * #1047 — a supplier's credit note WITHOUT a return (rate difference, scheme, breakage, other). It sets off in
+   * the next payment run as a return's credit does. The list is read by whoever reads returns or pays (the act checks).
+   */
+  @RequirePermission("materials.bills.manage", "hospital")
+  @Post("supplier-credits")
+  async standaloneCredit(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ creditNoteId: string; creditNo: string; amountPaise: number }> {
+    const b = parsed(z.object({
+      vendorId: id, kind: z.enum(STANDALONE_CREDIT_KINDS), vendorCreditNoteNo: z.string().min(1).max(64), creditNoteDate: dateStr,
+      taxablePaise: paise, gstPaise: paise, interState: z.boolean().optional(), note: z.string().max(500).nullish(),
+    }), body);
+    try {
+      return await recordStandaloneCredit(this.db, actor, { ...b, note: b.note ?? null });
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.stock.read", "hospital")
+  @Get("supplier-credits")
+  async standaloneCredits(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ credits: StandaloneCreditView[] }> {
+    const q = parsed(z.object({ vendorId: id.optional() }), query);
+    try {
+      return { credits: await listStandaloneCredits(this.db, actor, q.vendorId === undefined ? {} : { vendorId: q.vendorId }) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.bills.manage", "hospital")
+  @Post("supplier-credits/:id/cancel")
+  async cancelStandaloneCredit(@CurrentActor() actor: Actor, @Param("id") creditNoteId: string, @Body() body: unknown): Promise<{ ok: true }> {
+    const b = parsed(reasonBody, body);
+    try {
+      await cancelStandaloneCredit(this.db, actor, creditNoteId, b.reason);
+      return { ok: true };
+    } catch (e) { toHttp(e); }
+  }
+
   @RequirePermission("materials.bills.accept_difference", "hospital")
   @Post("supplier-returns/:id/close")
   async closeReturn(@CurrentActor() actor: Actor, @Param("id") returnId: string, @Body() body: unknown): Promise<{ return: ReturnView }> {
@@ -1060,7 +1113,8 @@ export class MaterialsController {
     const q = parsed(z.object({
       vendorId: id.optional(), storeResourceId: id.optional(), status: z.string().max(32).optional(),
     }), query);
-    return { grns: await listGrns(this.db, q) };
+    // Walk 2026-11-13 — each delivery with its supplier's name and its value at cost (`grnWorklist`).
+    return { grns: await grnWorklist(this.db, q) };
   }
 
   /** M6 — see `grns()` above: the QC signatory must be able to read what it signs. */
@@ -1118,6 +1172,42 @@ export class MaterialsController {
     const b = parsed(z.object({ note: z.string().max(500).optional() }), body);
     try {
       return await withTx(this.db, (tx) => requestNearExpiryAcceptance(tx, actor, grnId, b.note));
+    } catch (e) { toHttp(e); }
+  }
+
+  /** #1047 — the MRP-revision approval for a GRN bringing a batch already on the shelf at a new MRP. */
+  @RequirePermission("materials.grn.qc", "hospital")
+  @Post("grns/:id/mrp-revision-request")
+  async mrpRevision(
+    @CurrentActor() actor: Actor, @Param("id") grnId: string, @Body() body: unknown,
+  ): Promise<{ approvalId: string }> {
+    const b = parsed(z.object({ note: z.string().max(500).optional() }), body);
+    try {
+      return await withTx(this.db, (tx) => requestMrpRevisionApproval(tx, actor, grnId, b.note));
+    } catch (e) { toHttp(e); }
+  }
+
+  /** #1047 — what an MRP-revision approver is saying yes to: each batch, its MRP now and the GRN's. A read, as `grnNearExpiry`. */
+  @RequirePermission("materials.stock.read", "hospital")
+  @Get("grns/:id/mrp-revision")
+  async grnMrpRevision(@Param("id") grnId: string): Promise<unknown> {
+    try {
+      return await mrpRevisionView(this.db, grnId);
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * #1047 — a captured GRN cancelled before posting, with the reason: the storekeeper's own paperwork (`grn.capture`).
+   * A posted GRN refuses (`already_received`); it is corrected by a return or an adjustment.
+   */
+  @RequirePermission("materials.grn.capture", "hospital")
+  @Post("grns/:id/cancel")
+  async cancelGrn(
+    @CurrentActor() actor: Actor, @Param("id") grnId: string, @Body() body: unknown,
+  ): Promise<{ grnId: string; grnNo: string; status: "cancelled" }> {
+    const b = parsed(reasonBody, body);
+    try {
+      return await withTx(this.db, (tx) => cancelGrn(tx, actor, grnId, b.reason, new Date()));
     } catch (e) { toHttp(e); }
   }
 

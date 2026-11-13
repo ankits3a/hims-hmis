@@ -884,6 +884,8 @@ function ValuationReport({ sheet }: Bind): React.ReactElement {
     { key: "uom", label: L("unit"), value: (r) => r.baseUom },
     { key: "rate", label: L("costPerUnit"), money: true, value: (r) => r.landedCostPaise },
     { key: "cost", label: L("costValue"), money: true, value: (r) => r.costValuePaise },
+    // #1047 / 0093 — an opening batch counted with no rate is valued at the estimate; the column says which.
+    { key: "basis", label: L("costBasis"), value: (r) => (r.estimatedCost === true ? L("estimated") : "") },
     { key: "mrp", label: L("mrpValue"), money: true, value: (r) => r.mrpValuePaise },
   ];
   const groupCols: Col<Group>[] = [
@@ -920,6 +922,13 @@ function ValuationReport({ sheet }: Bind): React.ReactElement {
             <span>{L("mrpValue")} <b className="tabular-nums">{money(d.totals.mrpValuePaise)}</b></span>
             {d.vendorOwned.batches > 0 && <span className="text-muted-foreground">{t("pharmacyOffice.reports.vendorOwned", { count: d.vendorOwned.batches })}</span>}
             {d.totals.noMrpBatches > 0 && <span className="text-muted-foreground">{t("pharmacyOffice.reports.noMrp", { count: d.totals.noMrpBatches })}</span>}
+            {(d.totals.estimatedCostValuePaise ?? 0) > 0 && (
+              <span className="text-amber-800" data-testid="valuation-estimated">
+                {t("pharmacyOffice.reports.estimatedSplit", {
+                  known: money(d.totals.knownCostValuePaise ?? 0), estimated: money(d.totals.estimatedCostValuePaise ?? 0), count: d.totals.estimatedBatches ?? 0,
+                })}
+              </span>
+            )}
           </div>
           {view === "batch"
             ? <Table testId="valuation-table" cols={batchCols} rows={d.rows} rowKey={(r) => `${r.storeResourceId}-${r.batchId}`} totals={totals} />

@@ -1,5 +1,6 @@
+import { counterPackOf } from "@hmis/contracts";
 import { getInvoice } from "../billing";
-import { itemUomRows, itemsByIds } from "../materials";
+import { itemsByIds, uomsByItems } from "../materials";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -16,7 +17,7 @@ import type { Db } from "../../kernel/db/client";
  * taxable value and heads still reconcile to the lines exactly.
  */
 
-/** "1 strip + 5 tablets": the smallest pack above one unit, and the price one full pack was charged. */
+/** "1 strip + 5 tablets": the counter pack (`counterPackOf`), and the price one full pack was charged. */
 export type BillRowPack = {
   uom: string; multiplier: number; packs: number; loose: number; baseUom: string;
   /** What each full pack cost on this row (the printed MRP, or the ceiling's), or null when it is not a whole number of paise. */
@@ -97,14 +98,19 @@ export function residueLinesOf<L extends { id: string; serviceId: string; lineNo
   return out;
 }
 
-/** The smallest pack above one unit per item — the pack that crosses the counter (quote, returns). */
+/**
+ * The pack that crosses the counter (quote, returns, the merged bill rows) per item: `@hmis/contracts`
+ * `counterPackOf` — the item's issue pack, else its smallest pack above one unit (#1047). The dispense desk reads
+ * the same rule (`pharmacy-desk/work.ts` `packOf`), so the bill and the screen count in one pack.
+ */
 export async function counterPacks(db: Db, itemIds: readonly string[]): Promise<Map<string, RowGroup["pack"]>> {
   const unique = [...new Set(itemIds)];
   const items = await itemsByIds(db, unique);
+  const uoms = await uomsByItems(db, unique);
   const out = new Map<string, RowGroup["pack"]>();
   for (const id of unique) {
-    const pack = (await itemUomRows(db, id)).filter((u) => u.toBaseMultiplier > 1).sort((a, b) => a.toBaseMultiplier - b.toBaseMultiplier)[0];
-    out.set(id, pack === undefined ? null : { uom: pack.uom, multiplier: pack.toBaseMultiplier, baseUom: items.get(id)?.baseUom ?? "unit" });
+    const pack = counterPackOf(uoms.get(id) ?? []);
+    out.set(id, pack === null ? null : { uom: pack.uom, multiplier: pack.toBaseMultiplier, baseUom: items.get(id)?.baseUom ?? "unit" });
   }
   return out;
 }

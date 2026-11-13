@@ -80,6 +80,18 @@ describe("sale items — the item → service bridge (16c T2)", () => {
     expect(await db.select().from(services).where(eq(services.code, "RX-ODD28"))).toHaveLength(0);
   });
 
+  it("walk 2026-11-13: an item with no GST slab is not put on sale — the slab is set first — and nothing is written", async () => {
+    const itemId = await drug("NOSLAB", null);
+    const refusal = await withTx(db, (tx) => registerSaleItem(tx, PHARMACIST, itemId)).then(() => undefined, (e: unknown) => e as PharmacyError);
+    expect(refusal?.code).toBe("gst_slab_unknown");
+    expect(refusal?.message).toMatch(/set its GST slab/);
+    expect(await db.select().from(services).where(eq(services.code, "RX-NOSLAB"))).toHaveLength(0);
+    expect(await db.select().from(pharmacySaleItems).where(eq(pharmacySaleItems.itemId, itemId))).toHaveLength(0);
+    // Nil is a slab, said out loud: it is sold exempt.
+    const nil = await drug("NILSLAB", 0);
+    expect(await withTx(db, (tx) => registerSaleItem(tx, PHARMACIST, nil))).toMatchObject({ category: "pharmacy_exempt" });
+  });
+
   it("candidates are the active drugs not yet registered; deactivating stops the sale, not the item", async () => {
     const a = await drug("A1");
     const b = await drug("B2");

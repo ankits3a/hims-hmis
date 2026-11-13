@@ -84,7 +84,8 @@ export type WireDispenseLine = {
   qtyBase: number | null; scheduleFlag: string | null;
   orderedMedicine: WireMedicine | null; dispensedMedicine: WireMedicine | null;
   /** GAP CLOSURE A2 — `lasa` / `highAlert`: the item master's NABH safety flags. Absent from an older server. */
-  item: { id: string; code: string; name: string; baseUom: string; uoms: { uom: string; toBaseMultiplier: number }[]; lasa?: boolean; highAlert?: boolean; lasaNote?: string | null } | null;
+  /** `isIssueUom` (#1047): the counter pack is the issue pack (`packOf`). Absent from an older server: the smallest pack then. */
+  item: { id: string; code: string; name: string; baseUom: string; uoms: { uom: string; toBaseMultiplier: number; isIssueUom?: boolean }[]; lasa?: boolean; highAlert?: boolean; lasaNote?: string | null } | null;
   /** What to tell the patient about the medicine being given: from its generic's reviewed monograph. Absent from an older server. */
   counselling?: { en: string; hi: string | null } | null;
   saleable: boolean; available: number | null; batchId: string | null; reservationId: string | null; ledgerEntryId: string | null;
@@ -575,7 +576,8 @@ export type WireRetailShelfEntry = {
   medicineId: string; brandName: string; strengthLabel: string | null; form: string; scheduleFlag: string | null;
   itemId: string; itemCode: string; itemName: string; baseUom: string; available: number; scannedBatchId: string | null;
 };
-export type RetailLine = { medicineId: string; qtyBase: number; batchId?: string };
+/** `itemId` — the shelf row chosen (#1047): a medicine may have two items, and the one picked is the one sold. */
+export type RetailLine = { medicineId: string; itemId?: string; qtyBase: number; batchId?: string };
 export type WireRetailPreview = {
   /** Spec #1023 — as on the desk's preview. */
   free?: boolean;

@@ -66,8 +66,8 @@ export function PharmacyDowntime(): React.ReactElement {
   const [key, setKey] = useState(newIdempotencyKey);
 
   const stale = (): void => { setPreview(null); };
-  const lineBody = (): { medicineId: string; qtyBase: number; batchId: string }[] =>
-    lines.map((l) => ({ medicineId: l.entry.medicineId, qtyBase: Number(l.qty), batchId: l.batchId }));
+  const lineBody = (): { medicineId: string; itemId: string; qtyBase: number; batchId: string }[] =>
+    lines.map((l) => ({ medicineId: l.entry.medicineId, itemId: l.entry.itemId, qtyBase: Number(l.qty), batchId: l.batchId }));
   const linesValid = lines.length > 0 && lines.every((l) => /^\d+$/.test(l.qty) && Number(l.qty) > 0 && l.batchId !== "");
 
   const scan = async (): Promise<void> => {

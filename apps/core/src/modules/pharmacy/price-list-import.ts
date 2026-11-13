@@ -303,6 +303,8 @@ export type ImportRow = {
   twin?: boolean;
   /** The pack size that tells two items of one brand apart ("200 ml"). */
   variant?: string | null;
+  /** The list's Manufacturer column, written onto the item when given (walk 2026-11-13); blank stays blank. */
+  manufacturer?: string | null;
 };
 export type ImportResult = { line: number; ok: true; itemId: string; code: string; name: string } | { line: number; ok: false; code: string; message: string };
 
@@ -329,7 +331,7 @@ export async function importPriceList(db: Db, actor: Actor, rows: readonly Impor
       const made = await createStockDrug(db, actor, {
         brandName: r.variant ? `${brandName} ${r.variant}` : brandName, strength: med?.strengthLabel ?? "", medicineId, form: med?.form ?? "",
         packType: r.packType, packSize: r.packSize, hsnCode: r.hsnCode, gstRateBps: r.gstRateBps,
-        schedule: null, mrpPerPackPaise: r.mrpPerPackPaise, storage: r.storage,
+        schedule: null, mrpPerPackPaise: r.mrpPerPackPaise, storage: r.storage, manufacturer: r.manufacturer ?? null,
       }, now);
       out.push({ line: r.line, ok: true, itemId: made.itemId, code: made.code, name: made.name });
     } catch (e) {

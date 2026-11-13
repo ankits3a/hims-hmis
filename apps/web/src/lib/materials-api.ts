@@ -71,6 +71,10 @@ export type WireGrnLine = {
   /** The RULE CODE that fired, rendered through its locale string — never shown raw (DD16). */
   rejectReason: string | null;
   nearExpiry: boolean; batchId: string | null;
+  /** #1047 — the batch is on the shelf at another MRP: the post waits for the MRP approval. Absent from an older server. */
+  mrpRevised?: boolean;
+  /** #1047 / 0093 — the cost is an estimate (opening stock with no rate). */
+  estimatedCost?: boolean;
 };
 
 export type WireGrn = {
@@ -79,6 +83,10 @@ export type WireGrn = {
   storeResourceId: string; status: string;
   capturedBy: string; qcBy: string | null; postedAt: string | null; approvalId: string | null;
   lines: WireGrnLine[];
+  /** #1047 — the supplier invoice's date, the MRP-revision approval, and a cancel's reason. Absent from an older server. */
+  invoiceDate?: string | null; mrpApprovalId?: string | null; cancelReason?: string | null;
+  /** The list's (walk 2026-11-13): the supplier's name and the value at cost before GST. Absent from the detail read. */
+  vendorName?: string; valuePaise?: number;
 };
 
 export type WireExpiringBatch = {
@@ -243,6 +251,54 @@ export async function requestNearExpiry(grnId: string, note?: string): Promise<{
   return api<{ approvalId: string }>("POST", `/materials/grns/${grnId}/near-expiry-request`, { note });
 }
 
+/** #1047 — ask the materials head to approve a batch's new MRP (a line held as `mrp_revised`). */
+export async function requestMrpRevision(grnId: string, note?: string): Promise<{ approvalId: string }> {
+  return api<{ approvalId: string }>("POST", `/materials/grns/${grnId}/mrp-revision-request`, { note });
+}
+
+/** #1047 — cancel a captured GRN before it posts, with the reason. */
+export async function cancelGrn(grnId: string, reason: string): Promise<{ grnId: string; grnNo: string; status: "cancelled" }> {
+  return api("POST", `/materials/grns/${grnId}/cancel`, { reason });
+}
+
+/** #1047 — what an MRP-revision approval is about: each batch's MRP on the books and the delivery's. */
+export type WireMrpRevisionView = {
+  grnId: string; grnNo: string; vendorName: string; challanNo: string; invoiceNo: string | null;
+  lines: {
+    itemCode: string; itemName: string; batchNo: string | null; expiryDate: string | null; qtyBase: number; baseUom: string;
+    current: { mrpPaise: number | null; mrpUom: string | null } | null; incoming: { mrpPaise: number | null; mrpUom: string | null };
+  }[];
+};
+export async function fetchMrpRevisionView(grnId: string): Promise<WireMrpRevisionView> {
+  return api<WireMrpRevisionView>("GET", `/materials/grns/${grnId}/mrp-revision`);
+}
+
+/** #1047 — correct a pack in place (`strip10` was really `strip15`); refused while anything counts in it. */
+export async function replaceItemUom(itemId: string, input: { fromUom: string; uom: string; toBaseMultiplier: number }): Promise<{ itemUomId: string; repointed: string[] }> {
+  return api("POST", `/materials/items/${encodeURIComponent(itemId)}/uoms/replace`, input);
+}
+
+/** #1047 — a supplier's credit note without a return. */
+export const STANDALONE_CREDIT_KINDS = ["rate_difference", "scheme", "breakage", "other"] as const;
+export type StandaloneCreditKind = (typeof STANDALONE_CREDIT_KINDS)[number];
+export type WireStandaloneCredit = {
+  id: string; creditNo: string; vendorId: string; vendorCode: string; vendorName: string; kind: StandaloneCreditKind;
+  vendorCreditNoteNo: string; creditNoteDate: string; taxablePaise: number; gstPaise: number; amountPaise: number; interState: boolean;
+  note: string | null; status: "accepted" | "cancelled"; recordedAt: string; cancelReason: string | null;
+};
+export async function recordStandaloneCredit(input: {
+  vendorId: string; kind: StandaloneCreditKind; vendorCreditNoteNo: string; creditNoteDate: string; taxablePaise: number; gstPaise: number;
+  interState?: boolean; note?: string | null;
+}): Promise<{ creditNoteId: string; creditNo: string; amountPaise: number }> {
+  return api("POST", "/materials/supplier-credits", input);
+}
+export async function fetchStandaloneCredits(): Promise<WireStandaloneCredit[]> {
+  return (await api<{ credits: WireStandaloneCredit[] }>("GET", "/materials/supplier-credits")).credits;
+}
+export async function cancelStandaloneCredit(id: string, reason: string): Promise<{ ok: true }> {
+  return api("POST", `/materials/supplier-credits/${encodeURIComponent(id)}/cancel`, { reason });
+}
+
 export async function postGrn(grnId: string): Promise<{ status: string; ledgerEntryIds: string[] }> {
   return api<{ status: string; ledgerEntryIds: string[] }>("POST", `/materials/grns/${grnId}/post`, {});
 }
@@ -267,6 +323,13 @@ export type WireTransferView = {
 export async function fetchTransferWorklist(storeId?: string): Promise<{ awaiting: WireTransferView[]; recent: WireTransferView[] }> {
   const q = storeId === undefined || storeId === "" ? "" : `?${new URLSearchParams({ storeId }).toString()}`;
   return api<{ awaiting: WireTransferView[]; recent: WireTransferView[] }>("GET", `/materials/transfers/worklist${q}`);
+}
+/** Walk 2026-11-13 — what an item holds on hand over every store and batch (the item master's retire asks with it). */
+export async function fetchOnHand(itemId: string): Promise<number> {
+  const { balances } = await api<{ balances: { qtyOnHand: number }[] }>(
+    "GET", `/materials/stock/balances?${new URLSearchParams({ itemId }).toString()}`,
+  );
+  return balances.reduce((sum, b) => sum + b.qtyOnHand, 0);
 }
 /** What a store can give of an item now: on hand, less reserved and frozen, over every batch. */
 export async function fetchAvailableAt(resourceId: string, itemId: string): Promise<number> {
@@ -456,9 +519,13 @@ export type WireOpeningCheck = {
     line: number; brand: string; itemCode: string | null; itemName: string | null; batch: string; expiryDate: string;
     packs: number; packSize: number; uom: string | null; newUom: boolean; near: boolean; mrpPaise: number;
     costPerBasePaise: number; rack: string; reasons: string[];
+    /** #1047 / 0093 — the cost is the estimate (no rate given). Absent from an older server. */
+    estimatedCost?: boolean;
   }[];
   grns: { challanNo: string; near: boolean; lines: number; state: WireOpeningGrnState; grnNo: string | null }[];
   refusals: number; units: number; newUoms: number; needsVendor: boolean; zeroCost: number; racks: number;
+  /** #1047 — rows valued at the estimate. Absent from an older server. */
+  estimated?: number;
   authority: { permission: string; held: boolean; why: "new_pack_sizes" | "opening_vendor" | "racks" }[];
 };
 export type WireOpeningCapture = {

@@ -161,7 +161,7 @@ export function PriceListImport(): React.ReactElement {
     try {
       const res = await api<{ results: Result[] }>("POST", "/pharmacy/opening-stock/price-list/import", { rows: chosen.map((r) => ({
         line: r.line, medicineId: r.pick.startsWith(TWIN) ? r.pick.slice(TWIN.length) : r.pick, twin: r.pick.startsWith(TWIN), variant: r.variant,
-        brand: r.brand, packType: r.packType, packSize: r.packSize, gstRateBps: r.gstRateBps,
+        brand: r.brand, manufacturer: r.manufacturer.trim() === "" ? null : r.manufacturer.trim(), packType: r.packType, packSize: r.packSize, gstRateBps: r.gstRateBps,
         hsnCode: r.hsnCode, mrpPerPackPaise: toPaise(r.mrp)!, storage: r.cold ? "cold_2_8" : "ambient",
       })) });
       setResults(res.results);

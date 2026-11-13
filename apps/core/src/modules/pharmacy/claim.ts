@@ -16,6 +16,7 @@ import type { Matched } from "./auto-match";
 import { PharmacyError } from "./errors";
 import { balanceOwedOf, enqueueBalanceDispense, enqueueDispense, getDispense, getDispenseRow, linesOf, liveDispenseFor, userNames } from "./queue";
 import { prefillQtyBase } from "./qty";
+import { shelfByMedicine } from "./shelf";
 import { PHARMACY_DISPENSE_DEF_KEY } from "./workflow-def";
 import type { Actor } from "@hmis/contracts";
 import type { AppConfig } from "../../kernel/config";
@@ -301,6 +302,12 @@ export async function claimDispense(
   ].filter((x): x is string => x !== null));
   const drugItems = await listItems(db, { class: "drug", active: true });
   const itemByMedicine = new Map(drugItems.filter((i) => i.formularyMedicineId !== null).map((i) => [i.formularyMedicineId as string, i]));
+  /*
+    #1047 — a line's item is the medicine's OWN sale item (`shelf.ts`: the most stock, then the first code),
+    never whichever of two items sorts last. The plain item map answers only a medicine nothing on the shelf
+    names, as it always did: the line then carries that item and verify refuses it as not for sale.
+  */
+  const shelf = await shelfByMedicine(db);
   // PHARMACY P6 — the NDPS class beside the schedule flag: together they say which lines are controlled.
   const ndps = await ndpsClassByMedicine(db, [...medicines.keys()]);
 
@@ -321,7 +328,7 @@ export async function claimDispense(
     const med = dispensedMedicineId === null ? undefined : medicines.get(dispensedMedicineId);
     const scheduleFlag = med?.scheduleFlag ?? null;
     const ndpsClass = dispensedMedicineId === null ? null : (ndps.get(dispensedMedicineId) ?? null);
-    const item = dispensedMedicineId === null ? undefined : itemByMedicine.get(dispensedMedicineId);
+    const item = dispensedMedicineId === null ? undefined : (shelf.get(dispensedMedicineId)?.item ?? itemByMedicine.get(dispensedMedicineId));
     return {
       id: newId(), dispenseId: d.id, lineIdx, rxLine: line,
       orderedMedicineId: ordered, dispensedMedicineId,

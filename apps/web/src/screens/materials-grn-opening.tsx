@@ -102,12 +102,13 @@ export function OpeningStockSheet({ onOpenGrn }: { onOpenGrn: (grnId: string) =>
         <div className="space-y-2 text-sm">
           <p role="status">
             {t("materialsGrn.opening.summary", {
-              file: fileName, rows: check.rows.length, refused: check.refusals, units: check.units,
+              file: fileName, rows: t("stockEntry.rows", { count: check.rows.length }), refused: check.refusals,
+              units: t("stockEntry.n.unit", { count: check.units }),
             })}
           </p>
           {check.refusals > 0 && <p className="text-red-600">{t("materialsGrn.opening.refusedWhole")}</p>}
           {lacking.map((a) => (
-            <p key={a.why} className="text-red-600">{t(`materialsGrn.opening.needs_${a.why}`, { permission: a.permission })}</p>
+            <p key={a.why} className="text-red-600">{t(`materialsGrn.opening.needs_${a.why}`)}</p>
           ))}
           {racksLeft && <p className="text-amber-700">{t("materialsGrn.opening.racksLeft", { count: check.racks })}</p>}
           {check.zeroCost > 0 && <p className="text-amber-700">{t("materialsGrn.opening.zeroCost", { count: check.zeroCost })}</p>}
@@ -159,7 +160,7 @@ export function OpeningStockSheet({ onOpenGrn }: { onOpenGrn: (grnId: string) =>
             {result.captured.map((g) => (
               <li key={g.grnId}>
                 <button className="underline" onClick={() => onOpenGrn(g.grnId)}>{g.grnNo}</button>
-                {" · "}{t(g.near ? "materialsGrn.opening.capturedNear" : "materialsGrn.opening.capturedLine", { lines: g.lines })}
+                {" · "}{t(g.near ? "materialsGrn.opening.capturedNear" : "materialsGrn.opening.capturedLine", { count: g.lines })}
               </li>
             ))}
           </ul>

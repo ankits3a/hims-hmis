@@ -17,20 +17,20 @@ export type { MaterialsErrorCode } from "./errors";
 export { MATERIALS_EVENTS, consignmentDeployed, materialConsumed } from "./events";
 export { MATERIALS_RESOURCE_KINDS } from "./kinds";
 export {
-  MATERIALS_APPROVAL_TYPES, NEAR_EXPIRY_APPROVAL_TYPE, VENDOR_BANK_CHANGE_APPROVAL_TYPE,
+  MATERIALS_APPROVAL_TYPES, MRP_REVISION_APPROVAL_TYPE, NEAR_EXPIRY_APPROVAL_TYPE, VENDOR_BANK_CHANGE_APPROVAL_TYPE,
   registerMaterialsApprovalTypes,
 } from "./approval-types";
 export {
   BANK_CHANGE_COOLING_OFF_DAYS, BATCH_MANDATORY_CLASSES, BLACKLIST_REASONS, BLACKLIST_YEARS,
   DEEMED_SUPPLY_DAYS, EXPIRY_THRESHOLD_DAYS, MRP_MANDATORY_CLASSES, NEAR_EXPIRY_MIN_FRACTION,
-  NEAR_EXPIRY_MIN_MONTHS, TRANSIT_STORE_CODE,
+  NEAR_EXPIRY_MIN_MONTHS, OPENING_STOCK_SOURCE, TRANSIT_STORE_CODE,
 } from "./config";
 export type { BlacklistReason } from "./config";
 
 // ── T3 — the item master, UoM conversion, barcodes and price regulations ──
 export {
   addBarcode, addItemUom, effectiveRegulation, getItem, itemUomRows, itemsByIds, listItems,
-  registerItem, resolveBarcode, setPriceRegulation, updateItem, uomsByItems,
+  registerItem, replaceItemUom, resolveBarcode, setPriceRegulation, updateItem, uomsByItems,
 } from "./items";
 export type { ItemBarcodeRow, ItemRow, ItemUomRow, ItemWithUoms, PriceRegulationRow, RegisterItemInput } from "./items";
 /** DD7's one place a multiplier is applied. Pure; T6's gate and 16c's dispense both read it. */
@@ -61,7 +61,7 @@ export type { BalanceRow, BatchRow, LedgerRow, MovementInput, MovementReason, Re
 export { daysBetween, nearExpiryMinDays, qcLine } from "./qc";
 export type { QcContext, QcLine, QcVerdict, RuleCode } from "./qc";
 export {
-  captureGrn, getGrn, listGrns, lotsForBatch, postGrn, requestNearExpiryAcceptance, runGateQc,
+  cancelGrn, captureGrn, getGrn, listGrns, lotsForBatch, postGrn, requestMrpRevisionApproval, requestNearExpiryAcceptance, runGateQc,
 } from "./grn";
 export type { CaptureLine, GrnLineRow, GrnRow, GrnWithLines } from "./grn";
 
@@ -143,15 +143,15 @@ export {
   EXPIRY_REPORT_PRESET_DAYS, EXPIRY_RETURN_WINDOW_DAYS, NEAR_EXPIRY_RETURN_DAYS, NON_SUPPLIER_VENDOR_CODES,
 } from "./config";
 export {
-  EXPIRY_PRESETS, RETURN_LINE_REASONS, approveSupplierReturn, assertNotReturnApprover, cancelSupplierReturn, cancelVendorCredit,
-  closeSupplierReturn, createSupplierReturn, dispatchSupplierReturn, draftReturnFromRecall, draftSupplierReturns, expiryRange,
-  expiryReport, getSupplierReturn, listSupplierReturns, planSupplierReturns, recordVendorCredit, returnVerdict, returnWindowDays,
-  returnableUntil, supplierKindOf, updateSupplierReturn,
+  EXPIRY_PRESETS, RETURN_LINE_REASONS, STANDALONE_CREDIT_KINDS, approveSupplierReturn, assertNotReturnApprover, cancelStandaloneCredit,
+  cancelSupplierReturn, cancelVendorCredit, closeSupplierReturn, createSupplierReturn, dispatchSupplierReturn, draftReturnFromRecall,
+  draftSupplierReturns, expiryRange, expiryReport, getSupplierReturn, listStandaloneCredits, listSupplierReturns, planSupplierReturns,
+  recordStandaloneCredit, recordVendorCredit, returnVerdict, returnWindowDays, returnableUntil, supplierKindOf, updateSupplierReturn,
 } from "./supplier-returns";
 export type {
   CreditInput, DestroyCandidate, ExpiryPreset, ExpiryReport, ExpiryReportRow, ExpirySupplierRow, ReturnFilter, ReturnInput,
   ReturnLineInput, ReturnLineReason, ReturnLineView, ReturnPlan, ReturnPlanGroup, ReturnPlanLine, ReturnSource, ReturnStatus,
-  ReturnSummary, ReturnVerdict, ReturnView, SupplierKind,
+  ReturnSummary, ReturnVerdict, ReturnView, StandaloneCreditInput, StandaloneCreditKind, StandaloneCreditView, SupplierKind,
 } from "./supplier-returns";
 export {
   WRITE_OFF_REASONS, getWriteOff, listWriteOffs, postWriteOff, raiseWriteOff, settleWriteOffs, writeOffsAwaitingApproval, writeOffsReadyToPost,

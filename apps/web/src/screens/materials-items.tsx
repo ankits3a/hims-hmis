@@ -1,12 +1,14 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { createItem, fetchItems, materialsErrorText, patchItem } from "../lib/materials-api";
+import { createItem, fetchItems, fetchOnHand, materialsErrorText, patchItem } from "../lib/materials-api";
 import { Button } from "@/components/ui/button";
 import { ItemEditPanel } from "./materials-item-edit";
+import { MedicinePicker } from "./pharmacy-office/medicine-picker";
 import { NewButton, OfficeHead, fieldCls, labelCls, useNewKey } from "./pharmacy-office/office-page";
 import { Sheet } from "./pharmacy-office/sheet";
 import type { WireItem } from "../lib/materials-api";
+import type { WireMedicineHit } from "../lib/formulary-api";
 
 /**
  * PLAN 14 T9 / DD16 — **THE ITEM MASTER, hand-built (Lane 1).**
@@ -40,7 +42,8 @@ export function MaterialsItems(): React.ReactElement {
   const [name, setName] = useState("");
   const [itemClass, setItemClass] = useState("consumable");
   const [baseUom, setBaseUom] = useState("");
-  const [medicineId, setMedicineId] = useState("");
+  /* Walk 2026-11-13 — picked by name from the formulary (as + New drug does), never typed as an id. */
+  const [medicine, setMedicine] = useState<WireMedicineHit | null>(null);
   const [shelfLifeDays, setShelfLifeDays] = useState("");
   const [packUom, setPackUom] = useState("");
   const [packMultiplier, setPackMultiplier] = useState("");
@@ -70,7 +73,7 @@ export function MaterialsItems(): React.ReactElement {
         batchTracked: ["drug", "consumable_dated", "reagent", "implant"].includes(itemClass),
         // Sent ONLY for a drug. The server refuses the other direction too (A1) — this is the
         // form declining to construct the refusable state, not the form enforcing the rule.
-        ...(isDrug && medicineId.trim() !== "" ? { formularyMedicineId: medicineId.trim() } : {}),
+        ...(isDrug && medicine !== null ? { formularyMedicineId: medicine.id } : {}),
         ...(shelfLifeDays.trim() === "" ? {} : { shelfLifeDays: Number(shelfLifeDays) }),
         ...(packUom.trim() !== "" && Number.isInteger(multiplier) && multiplier > 1
           ? { uoms: [{ uom: packUom.trim(), toBaseMultiplier: multiplier }] }
@@ -78,7 +81,7 @@ export function MaterialsItems(): React.ReactElement {
       });
       setDone(t("materialsItems.created", { code: code.trim() }));
       setNewOpen(false);
-      setCode(""); setName(""); setBaseUom(""); setMedicineId("");
+      setCode(""); setName(""); setBaseUom(""); setMedicine(null);
       setShelfLifeDays(""); setPackUom(""); setPackMultiplier("");
       await qc.invalidateQueries({ queryKey: ["materials", "items"] });
     } catch (e) {
@@ -90,11 +93,20 @@ export function MaterialsItems(): React.ReactElement {
     setError(null);
     try {
       await patchItem(item.id, { active: !item.active });
+      setRetiring(null);
       await qc.invalidateQueries({ queryKey: ["materials", "items"] });
     } catch (e) {
       setError(materialsErrorText(e, t));
     }
   };
+  /*
+   * Walk 2026-11-13 — Retire was one click, even on an item holding stock. It now asks in the page first and says how
+   * much is still on hand (every store), and retires only on the confirm. Reactivate stays one click.
+   */
+  const [retiring, setRetiring] = useState<WireItem | null>(null);
+  const onHand = useQuery({
+    queryKey: ["materials", "on-hand", retiring?.id], queryFn: () => fetchOnHand(retiring!.id), enabled: retiring !== null, retry: false,
+  });
 
   /* GAP-CLOSURE B5 — one list: what is in use first, then what was retired, then what was merged away. */
   const rank = (it: WireItem): number => ((it.mergedIntoItemId ?? null) !== null ? 2 : it.active ? 0 : 1);
@@ -123,7 +135,9 @@ export function MaterialsItems(): React.ReactElement {
         {items.data !== undefined && items.data.length === 0 && <p className="ofp-empty">{t("materialsItems.empty")}</p>}
         {rows.length > 0 && (
           <div className="ofp-scroll">
-            <table className="ofp-table min-w-[44rem]">
+            {/* Walk 2026-11-13 — at 390 px Edit and Retire were off the right edge: below 640 px each item is a card,
+                every cell under its column's name (`data-label`, office-page.css `.item-rows`). */}
+            <table className="ofp-table item-rows min-w-[44rem]">
               <thead>
                 <tr>
                   <th>{t("materialsItems.code")}</th>
@@ -138,16 +152,17 @@ export function MaterialsItems(): React.ReactElement {
                 {rows.map((it) => {
                   const merged = (it.mergedIntoItemId ?? null) !== null;
                   return (
-                    <tr key={it.id} className={merged || !it.active ? "ofp-dim" : ""}>
-                      <td className="ofp-code">{it.code}</td>
-                      <td>
+                    <Fragment key={it.id}>
+                    <tr className={merged || !it.active ? "ofp-dim" : ""}>
+                      <td className="ofp-code" data-label={t("materialsItems.code")}>{it.code}</td>
+                      <td data-label={t("materialsItems.name")}>
                         {it.name}
                         {it.highAlert === true && <span className="pill rd ml-2">{t("materialsItems.edit.highAlertTag")}</span>}
                         {it.lasa === true && <span className="pill gd ml-2">{t("materialsItems.edit.lasaTag")}</span>}
                       </td>
-                      <td>{it.class}</td>
-                      <td>{it.baseUom}</td>
-                      <td data-testid={`item-status-${it.code}`}>
+                      <td data-label={t("materialsItems.class")}>{it.class}</td>
+                      <td data-label={t("materialsItems.baseUom")}>{it.baseUom}</td>
+                      <td data-testid={`item-status-${it.code}`} data-label={t("materialsItems.status")}>
                         {merged
                           ? <span className="pill">{t("materialsItems.mergedInto", { code: items.data?.find((x) => x.id === it.mergedIntoItemId)?.code ?? "—" })}</span>
                           : it.active ? <span className="pill on">{t("materialsItems.active")}</span> : <span className="pill">{t("materialsItems.retired")}</span>}
@@ -159,13 +174,35 @@ export function MaterialsItems(): React.ReactElement {
                             <Button variant="outline" size="sm" aria-label={t("materialsItems.edit.open", { code: it.code })} onClick={() => setEditId(it.id)}>
                               {t("materialsItems.edit.button")}
                             </Button>
-                            <Button variant="outline" size="sm" onClick={() => void toggleActive(it)}>
+                            <Button
+                              variant="outline" size="sm"
+                              aria-label={t(it.active ? "materialsItems.retireNamed" : "materialsItems.reactivateNamed", { code: it.code })}
+                              onClick={() => { if (it.active) { setError(null); setRetiring(it); } else void toggleActive(it); }}
+                            >
                               {it.active ? t("materialsItems.retire") : t("materialsItems.reactivate")}
                             </Button>
                           </div>
                         )}
                       </td>
                     </tr>
+                    {retiring?.id === it.id && (
+                      <tr className="item-confirm">
+                        <td colSpan={6} data-testid="item-retire-confirm">
+                          <div className="flex flex-wrap items-center gap-2 rounded bg-amber-50 p-2 text-sm">
+                            <span className="font-medium">{t("materialsItems.retireAsk", { code: it.code })}</span>
+                            <span>
+                              {onHand.isLoading ? t("common.loading")
+                                : onHand.data === undefined ? t("materialsItems.retireStockUnknown")
+                                : onHand.data === 0 ? t("materialsItems.retireNoStock")
+                                : t("materialsItems.retireOnHand", { qty: onHand.data, unit: it.baseUom })}
+                            </span>
+                            <Button size="sm" variant="destructive" onClick={() => void toggleActive(it)}>{t("materialsItems.retireConfirm")}</Button>
+                            <Button size="sm" variant="ghost" onClick={() => setRetiring(null)}>{t("materialsItems.retireKeep")}</Button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   );
                 })}
               </tbody>
@@ -214,10 +251,8 @@ export function MaterialsItems(): React.ReactElement {
               {/* DD3 — the medicine field exists ONLY for a drug. */}
               {isDrug && (
                 <div className={labelCls}>
-                  <label className="flex flex-col gap-1">
-                    {t("materialsItems.formularyMedicine")}
-                    <input className={fieldCls} value={medicineId} onChange={(e) => setMedicineId(e.target.value)} />
-                  </label>
+                  <span>{t("materialsItems.formularyMedicine")}</span>
+                  <MedicinePicker label={t("materialsItems.formularyMedicine")} value={medicine} onPick={setMedicine} testId="item-medicine" />
                   <span className="text-xs text-muted-foreground">{t("materialsItems.formularyMedicineHint")}</span>
                 </div>
               )}

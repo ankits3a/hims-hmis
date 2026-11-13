@@ -99,7 +99,7 @@ describe("PharmacyItems (16c T2)", () => {
     });
     renderWithProviders(<PharmacyItems />);
     await userEvent.click(await screen.findByRole("button", { name: "Register for sale" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("GST rate is not a medicine slab");
+    expect(await screen.findByRole("alert")).toHaveTextContent("has no medicine GST slab (nil, 5%, 12% or 18%). Set its GST slab first");
 
     await userEvent.click(screen.getByRole("button", { name: "Withdraw" }));
     await waitFor(() => expect(bodiesOf("PATCH", "/pharmacy/sale-items/it-1")).toEqual([{ active: false }]));

@@ -1,6 +1,8 @@
 import type { PickLine, VerifyLine, WireBatch, WireDispenseLine, WireRxLine } from "../../lib/pharmacy-api";
 import { eyeTextOf } from "../../lib/eye-line";
 import { dateLocale } from "../../lib/date-locale";
+import { counterPackOf } from "../../../../../packages/contracts/src/counter-pack";
+import type { CounterPackUnit } from "../../../../../packages/contracts/src/counter-pack";
 
 /**
  * ═══ PD-4 — THE TICK IS THE PICK, AS FAR AS THE SERVER LETS IT BE (PD-D2) ═══
@@ -232,11 +234,14 @@ export function istToday(at: Date = new Date()): string {
  */
 export type Pack = { uom: string; multiplier: number };
 
-/** The pack the shelf counts in — the largest unit above the base ("strip" of 10), or null for loose stock. */
-export function packOf(item: { uoms: readonly { uom: string; toBaseMultiplier: number }[] } | null | undefined): Pack | null {
-  const packs = (item?.uoms ?? []).filter((u) => u.toBaseMultiplier > 1).sort((a, b) => b.toBaseMultiplier - a.toBaseMultiplier);
-  const top = packs[0];
-  return top === undefined ? null : { uom: top.uom, multiplier: top.toBaseMultiplier };
+/**
+ * The pack the counter counts in — the item's issue pack, else its smallest pack above one unit; null for loose
+ * stock. ONE rule with the server's bill rows (`@hmis/contracts` `counterPackOf`, #1047): it used to take the
+ * LARGEST pack, so a strip-and-box item read in boxes here and in strips on the bill.
+ */
+export function packOf(item: { uoms: readonly CounterPackUnit[] } | null | undefined): Pack | null {
+  const pack = counterPackOf(item?.uoms ?? []);
+  return pack === null ? null : { uom: pack.uom, multiplier: pack.toBaseMultiplier };
 }
 
 function unit(uom: string, n: number): string {

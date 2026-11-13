@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, lt, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lt, ne, notInArray, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { assertNotSodPair } from "../../kernel/auth/sod";
@@ -12,7 +12,7 @@ import {
   approvals, grnLines, grns, itemStockLevels, itemUoms, items, purchaseOrderLines, purchaseOrders, resources, users, vendors,
 } from "../../kernel/db/schema";
 import { PO_APPROVAL_TYPE, PO_OWNER_APPROVAL_TYPE } from "./approval-types";
-import { PO_HEAD_APPROVAL_LIMIT_PAISE, PO_RECEIPT_TOLERANCE_BPS } from "./config";
+import { OPENING_STOCK_SOURCE, PO_HEAD_APPROVAL_LIMIT_PAISE, PO_RECEIPT_TOLERANCE_BPS } from "./config";
 import { MaterialsError } from "./errors";
 import {
   purchaseOrderApproved, purchaseOrderCancelled, purchaseOrderDrafted, purchaseOrderReceived, purchaseOrderRejected,
@@ -549,7 +549,8 @@ async function unpostedPaidBase(tx: Tx, poId: string, exceptGrnId?: string): Pro
   const rows = await tx.select({ itemId: grnLines.itemId, qty: sql<string>`sum(${grnLines.qtyBase})` })
     .from(grnLines).innerJoin(grns, eq(grns.id, grnLines.grnId))
     .where(and(
-      eq(grns.purchaseOrderId, poId), ne(grns.status, "posted"), eq(grnLines.freeGoods, false),
+      // #1047 — a cancelled GRN holds nothing: only what is captured and not yet posted waits on the order.
+      eq(grns.purchaseOrderId, poId), notInArray(grns.status, ["posted", "cancelled"]), eq(grnLines.freeGoods, false),
       ...(exceptGrnId === undefined ? [] : [ne(grns.id, exceptGrnId)]),
     ))
     .groupBy(grnLines.itemId);
@@ -881,6 +882,9 @@ export type LastPurchase = {
  * `NON_SUPPLIER_VENDOR_CODES` vendors, and they usually land AFTER the last real purchase — so they
  * became "the last purchase", and the next order went to the hospital's own shelf at the shelf's
  * cost. They are not purchases; an item only ever counted on the shelf has none.
+ *
+ * **And never the opening count by SOURCE (#1047).** An opening-stock row may name the real supplier it was
+ * bought from; its GRN is still the shelf, counted (`source = 'opening_stock'`), at a counted or estimated cost.
  */
 export async function lastPurchaseByItem(db: Db | Tx, itemIds: readonly string[]): Promise<Map<string, LastPurchase>> {
   const out = new Map<string, LastPurchase>();
@@ -895,7 +899,8 @@ export async function lastPurchaseByItem(db: Db | Tx, itemIds: readonly string[]
     .from(grnLines).innerJoin(grns, eq(grns.id, grnLines.grnId)).innerJoin(vendors, eq(vendors.id, grns.vendorId))
     .where(and(
       inArray(grnLines.itemId, readIds), eq(grns.status, "posted"), eq(grnLines.freeGoods, false), sql`${grnLines.qtyAcceptedBase} > 0`,
-      supplierVendorsOnly(),
+      // #1047 — opening stock is a SOURCE, not a purchase, whichever supplier its row names.
+      supplierVendorsOnly(), ne(grns.source, OPENING_STOCK_SOURCE),
     ))
     .orderBy(desc(grns.postedAt), desc(grns.grnNo));
   const packs = await db.select().from(itemUoms).where(inArray(itemUoms.itemId, readIds));

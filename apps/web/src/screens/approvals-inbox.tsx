@@ -7,7 +7,7 @@ import { CircleCheck, Inbox as InboxIcon, CircleX } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { fetchStewardRequest } from "../lib/pharmacy-api";
-import { fetchBankChanges, fetchNearExpiryView, fetchVendor } from "../lib/materials-api";
+import { fetchBankChanges, fetchMrpRevisionView, fetchNearExpiryView, fetchVendor } from "../lib/materials-api";
 import { fmtRupees } from "../lib/format";
 import { PaperScreen, ScreenTitle } from "../components/paper-screen";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -178,6 +178,51 @@ function calendarDate(iso: string): string {
 }
 
 /**
+ * #1047 — what an MRP-revision approver says yes to: the GRN, the supplier, and per batch the MRP on the shelf now
+ * and the MRP this delivery prints (`GET /materials/grns/:id/mrp-revision`). Saying yes reprices the whole pile.
+ */
+function MrpRevisionLines({ approvalId, grnId }: { approvalId: string; grnId: string }): React.ReactElement | null {
+  const { t } = useTranslation();
+  const q = useQuery({ queryKey: ["materials", "grn-mrp-revision", grnId], queryFn: () => fetchMrpRevisionView(grnId), retry: false, staleTime: 60_000 });
+  if (q.data === undefined) return null;
+  const v = q.data;
+  const mrp = (m: { mrpPaise: number | null; mrpUom: string | null } | null): string =>
+    m === null || m.mrpPaise === null ? "—" : `₹${(m.mrpPaise / 100).toFixed(2)}${m.mrpUom === null ? "" : ` / ${m.mrpUom}`}`;
+  const cell: React.CSSProperties = { padding: "5px 10px 5px 0", borderTop: "1px solid var(--line2)", verticalAlign: "top" };
+  return (
+    <div data-testid={`mrp-revision-${approvalId}`} style={{ fontSize: 13, display: "flex", flexDirection: "column", gap: 5 }}>
+      <span>
+        <b className="mo">{v.grnNo}</b>
+        {" · "}{v.vendorName}
+        <span style={{ color: "var(--dim)" }}>{" · "}{v.invoiceNo === null ? t("inbox.nearExpiry.challan", { no: v.challanNo }) : t("inbox.nearExpiry.invoice", { no: v.invoiceNo })}</span>
+      </span>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ borderCollapse: "collapse", minWidth: "100%", fontSize: 12.5 }}>
+          <thead>
+            <tr style={{ textAlign: "left" }}>
+              <th className="tag" style={{ padding: "0 10px 4px 0", fontWeight: 600 }}>{t("inbox.nearExpiry.item")}</th>
+              <th className="tag" style={{ padding: "0 10px 4px 0", fontWeight: 600 }}>{t("inbox.nearExpiry.batch")}</th>
+              <th className="tag" style={{ padding: "0 10px 4px 0", fontWeight: 600 }}>{t("inbox.mrpRevision.now")}</th>
+              <th className="tag" style={{ padding: "0 10px 4px 0", fontWeight: 600 }}>{t("inbox.mrpRevision.new")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {v.lines.map((l, i) => (
+              <tr key={`${l.itemCode}-${l.batchNo ?? ""}-${String(i)}`}>
+                <td style={cell}>{l.itemName}</td>
+                <td className="mo" style={cell}>{l.batchNo ?? "—"}</td>
+                <td className="mo" style={cell}>{mrp(l.current)}</td>
+                <td className="mo" style={{ ...cell, fontWeight: 600 }}>{mrp(l.incoming)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/**
  * WALK FINDING 2026-09-29 — the near-expiry card said only "Accept a delivery of items that expire
  * soon". The approver now sees what the yes puts on the shelf: the GRN, the supplier, and each
  * short-dated line with its batch, expiry, days left and quantity (`GET /materials/grns/:id/near-expiry`).
@@ -345,6 +390,8 @@ function ApprovalCard({
           {item.typeKey === "pharmacy_restricted_antimicrobial" && can("pharmacy.antimicrobial.approve") ? <StewardLine approvalId={item.id} /> : null}
           {item.typeKey === "materials_near_expiry_acceptance" && item.subjectType === "grn" && item.subjectId !== undefined
             ? <NearExpiryLines approvalId={item.id} grnId={item.subjectId} /> : null}
+          {item.typeKey === "materials_mrp_revision" && item.subjectType === "grn" && item.subjectId !== undefined
+            ? <MrpRevisionLines approvalId={item.id} grnId={item.subjectId} /> : null}
           {item.typeKey === "materials_vendor_bank_change" && item.payeeId !== null && item.subjectId !== undefined
             ? <BankChangeLine approvalId={item.id} vendorId={item.payeeId} changeId={item.subjectId} /> : null}
           <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>{kindExplain(item, t)}</p>

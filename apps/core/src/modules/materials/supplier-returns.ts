@@ -14,7 +14,7 @@ import {
 } from "./config";
 import { MaterialsError } from "./errors";
 import {
-  supplierCreditCancelled, supplierCreditRecorded, supplierReturnApproved, supplierReturnCancelled, supplierReturnClosed,
+  supplierCreditCancelled, supplierCreditNoted, supplierCreditRecorded, supplierReturnApproved, supplierReturnCancelled, supplierReturnClosed,
   supplierReturnDispatched, supplierReturnDrafted, supplierReturnUpdated,
 } from "./events";
 import { istDay } from "./grn";
@@ -1046,6 +1046,125 @@ export async function cancelVendorCredit(db: Db, actor: Actor, returnId: string,
     }));
   });
   return (await readSupplierReturn(db, returnId))!;
+}
+
+// ═══════════════════════════════════ #1047 — a credit note with no return ═══════════════════════════════════
+
+export const STANDALONE_CREDIT_KINDS = ["rate_difference", "scheme", "breakage", "other"] as const;
+export type StandaloneCreditKind = (typeof STANDALONE_CREDIT_KINDS)[number];
+export type StandaloneCreditInput = {
+  vendorId: string; kind: StandaloneCreditKind; vendorCreditNoteNo: string; creditNoteDate: string;
+  /** Before GST, and the GST, as the supplier's note prints them (paise). */
+  taxablePaise: number; gstPaise: number;
+  /** IGST (true) or CGST + SGST (false, the default) — how the purchase register and Tally split the GST. */
+  interState?: boolean;
+  note?: string | null;
+};
+export type StandaloneCreditView = {
+  id: string; creditNo: string; vendorId: string; vendorCode: string; vendorName: string; kind: StandaloneCreditKind;
+  vendorCreditNoteNo: string; creditNoteDate: string; taxablePaise: number; gstPaise: number; amountPaise: number; interState: boolean;
+  note: string | null; status: "accepted" | "cancelled"; recordedAt: string; cancelReason: string | null;
+};
+
+/**
+ * #1047 — **THE SUPPLIER'S CREDIT NOTE THAT ANSWERS NO RETURN.** Indian distributors send credit notes for a
+ * rate difference (billed above the agreed rate), a scheme (a quantity or value discount after the fact), a
+ * breakage allowance, or another reason, with no goods coming back. There was nowhere to put one: a credit was
+ * only ever the answer to our debit note. Recorded here under `materials.bills.manage` — our number (`MCN…`),
+ * theirs, its date, the taxable value and GST as printed — it is an ACCEPTED credit like a return's, so the next
+ * payment run sets it off exactly the same way (`vendorCredits`), and the supplier ledger and purchase register
+ * show it. Only to a real supplier; the same supplier note number twice is refused.
+ */
+export async function recordStandaloneCredit(
+  db: Db, actor: Actor, input: StandaloneCreditInput, now: Date = new Date(),
+): Promise<{ creditNoteId: string; creditNo: string; amountPaise: number }> {
+  await requirePerm(db, actor, BILLS_MANAGE, "recording a supplier's credit note");
+  if (!(STANDALONE_CREDIT_KINDS as readonly string[]).includes(input.kind)) {
+    throw new MaterialsError("credit_invalid", `a credit note without a return is one of ${STANDALONE_CREDIT_KINDS.join(", ")}`, { kind: input.kind });
+  }
+  const no = input.vendorCreditNoteNo.trim();
+  if (no === "" || no.length > 64) throw new MaterialsError("credit_invalid", "the vendor's credit note number is 1 to 64 characters");
+  const today = istDay(now);
+  if (!isIsoDate(input.creditNoteDate) || input.creditNoteDate > today) throw new MaterialsError("credit_invalid", `"${input.creditNoteDate}" is not a date on or before today`);
+  for (const [k, v] of [["taxable", input.taxablePaise], ["GST", input.gstPaise]] as const) {
+    if (!Number.isSafeInteger(v) || v < 0) throw new MaterialsError("credit_invalid", `the ${k} amount is a whole number of paise, not below zero`, { [k]: v });
+  }
+  const amountPaise = input.taxablePaise + input.gstPaise;
+  if (amountPaise <= 0) throw new MaterialsError("credit_invalid", "a credit note is for at least ₹0.01");
+  const note = cleanNote(input.note);
+  const out = await withTx(db, async (tx) => {
+    // The vendor's row lock serialises this against a run spending its credit and a second entry of the same note.
+    const [v] = await tx.select().from(vendors).where(eq(vendors.id, input.vendorId)).for("update");
+    if (v === undefined) throw new MaterialsError("unknown_vendor", `vendor ${input.vendorId} not found`);
+    if (supplierKindOf(v) !== "supplier") {
+      throw new MaterialsError("credit_invalid", `${v.tradeName ?? v.legalName} is the hospital's own stock, not a supplier — no credit note comes from it`, { vendorId: v.id });
+    }
+    const [dup] = await tx.select({ creditNo: supplierCreditNotes.creditNo }).from(supplierCreditNotes).where(and(
+      eq(supplierCreditNotes.vendorId, v.id), eq(supplierCreditNotes.status, "accepted"),
+      sql`upper(${supplierCreditNotes.vendorCreditNoteNo}) = ${no.toUpperCase()}`,
+    ));
+    if (dup !== undefined) {
+      throw new MaterialsError("credit_invalid", `the supplier's credit note ${no} is already recorded as ${dup.creditNo}`, { creditNo: dup.creditNo });
+    }
+    const creditNoteId = newId();
+    const creditNo = await nextEpisodeNo(tx, "supplier_credit", today);
+    await tx.insert(supplierCreditNotes).values({
+      id: creditNoteId, creditNo, returnId: null, kind: input.kind, vendorId: v.id, vendorCreditNoteNo: no, creditNoteDate: input.creditNoteDate,
+      taxablePaise: input.taxablePaise, gstPaise: input.gstPaise, interState: input.interState ?? false, note,
+      amountPaise, debitNotePaise: amountPaise, differencePaise: 0, differenceReason: null,
+      status: "accepted", recordedBy: actor.id, recordedAt: now,
+    });
+    await appendEvent(tx, supplierCreditNoted.make({
+      occurredAt: now, actor, correlationId: creditNoteId,
+      payload: {
+        creditNoteId, creditNo, vendorId: v.id, kind: input.kind, vendorCreditNoteNo: no, creditNoteDate: input.creditNoteDate,
+        taxablePaise: input.taxablePaise, gstPaise: input.gstPaise, amountPaise, note,
+      },
+    }));
+    return { creditNoteId, creditNo, amountPaise };
+  });
+  return out;
+}
+
+/** A credit without a return recorded in error, cancelled — only while no payment run has spent it (as `cancelVendorCredit`). */
+export async function cancelStandaloneCredit(db: Db, actor: Actor, creditNoteId: string, reason: string, now: Date = new Date()): Promise<void> {
+  await requirePerm(db, actor, BILLS_MANAGE, "cancelling a supplier's credit note");
+  const why = reason.trim();
+  if (why === "") throw new MaterialsError("reason_required", "say why the credit note is cancelled");
+  await withTx(db, async (tx) => {
+    const [pre] = await tx.select().from(supplierCreditNotes).where(eq(supplierCreditNotes.id, creditNoteId));
+    if (pre === undefined || pre.returnId !== null) throw new MaterialsError("unknown_document", `credit note ${creditNoteId} without a return not found`);
+    await tx.select({ id: vendors.id }).from(vendors).where(eq(vendors.id, pre.vendorId)).for("update");
+    const [c] = await tx.select().from(supplierCreditNotes).where(eq(supplierCreditNotes.id, creditNoteId));
+    if (c!.status !== "accepted") throw new MaterialsError("credit_invalid", `credit note ${c!.creditNo} is already cancelled`);
+    const available = (await vendorCredits(tx, [c!.vendorId])).get(c!.vendorId)?.availablePaise ?? 0;
+    if (available < c!.amountPaise) {
+      throw new MaterialsError("credit_spent", `payment runs have spent ₹${((c!.amountPaise - Math.max(0, available)) / 100).toFixed(2)} of this credit; it cannot be cancelled`, {
+        amountPaise: c!.amountPaise, availablePaise: available,
+      });
+    }
+    await tx.update(supplierCreditNotes).set({ status: "cancelled", cancelledBy: actor.id, cancelledAt: now, cancelReason: why.slice(0, MAX_TEXT) })
+      .where(eq(supplierCreditNotes.id, c!.id));
+    await appendEvent(tx, supplierCreditCancelled.make({
+      occurredAt: now, actor, correlationId: c!.id,
+      payload: { creditNoteId: c!.id, creditNo: c!.creditNo, returnId: null, vendorId: c!.vendorId, amountPaise: c!.amountPaise, reason: why.slice(0, MAX_TEXT) },
+    }));
+  });
+}
+
+/** The credits without a return, newest first — the pay screen's list. Read by whoever reads returns or pays. */
+export async function listStandaloneCredits(db: Db, actor: Actor, filter: { vendorId?: string; limit?: number } = {}): Promise<StandaloneCreditView[]> {
+  await requireReturnsReader(db, actor);
+  const rows = await db.select({ c: supplierCreditNotes, code: vendors.code, legal: vendors.legalName, trade: vendors.tradeName })
+    .from(supplierCreditNotes).innerJoin(vendors, eq(vendors.id, supplierCreditNotes.vendorId))
+    .where(and(sql`${supplierCreditNotes.returnId} is null`, ...(filter.vendorId === undefined ? [] : [eq(supplierCreditNotes.vendorId, filter.vendorId)])))
+    .orderBy(desc(supplierCreditNotes.recordedAt), desc(supplierCreditNotes.creditNo)).limit(Math.min(filter.limit ?? 100, 500));
+  return rows.map(({ c, code, legal, trade }) => ({
+    id: c.id, creditNo: c.creditNo, vendorId: c.vendorId, vendorCode: code, vendorName: trade ?? legal, kind: c.kind as StandaloneCreditKind,
+    vendorCreditNoteNo: c.vendorCreditNoteNo, creditNoteDate: c.creditNoteDate, taxablePaise: c.taxablePaise ?? 0, gstPaise: c.gstPaise ?? 0,
+    amountPaise: c.amountPaise, interState: c.interState ?? false, note: c.note, status: c.status as "accepted" | "cancelled",
+    recordedAt: c.recordedAt.toISOString(), cancelReason: c.cancelReason,
+  }));
 }
 
 /** Dispatched and no credit is coming (the vendor refused it): closed by the head, with the reason. */

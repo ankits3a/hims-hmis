@@ -330,3 +330,44 @@ describe("the office pays (parity P3)", () => {
     expect(within(await screen.findByTestId("bill-sheet")).getByTestId("bill-line-CROC500")).toHaveTextContent("list ₹250.00 − 10%");
   });
 });
+
+/** #1047 — a supplier's credit note without a return: recorded from the pay screen, and set off by the next run. */
+describe("#1047 — a credit note without a return", () => {
+  beforeEach(() => { setToken("t"); });
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("records a rate-difference credit note with its taxable value and GST, and lists it with a cancel", async () => {
+    let credits: unknown[] = [];
+    const calls = mock({
+      "GET /pharmacy/office/pay": officePay(),
+      "GET /materials/vendors": { vendors: [
+        { id: "v-1", code: "ACME", legalName: "Acme Distributors Pvt Ltd", tradeName: "Acme Distributors", status: "active" },
+        { id: "v-o", code: "OPENING-STOCK", legalName: "OPENING STOCK", tradeName: "OPENING STOCK", status: "active" },
+      ] },
+      "GET /materials/supplier-credits": () => ({ credits }),
+      "POST /materials/supplier-credits": (b: unknown) => {
+        credits = [{ id: "c-1", creditNo: "MCN2611130001", vendorId: "v-1", vendorCode: "ACME", vendorName: "Acme Distributors", kind: "rate_difference",
+          vendorCreditNoteNo: (b as { vendorCreditNoteNo: string }).vendorCreditNoteNo, creditNoteDate: "2026-11-13", taxablePaise: 10_000, gstPaise: 1_200,
+          amountPaise: 11_200, interState: false, note: null, status: "accepted", recordedAt: "2026-11-13T05:00:00Z", cancelReason: null }];
+        return { creditNoteId: "c-1", creditNo: "MCN2611130001", amountPaise: 11_200 };
+      },
+    }, HEAD);
+    renderWithRouter(<PayView />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId("pay-credit-record"));
+    const sheet = await screen.findByTestId("pay-credit-sheet");
+    await within(sheet).findByRole("option", { name: "Acme Distributors (ACME)" });
+    // The hospital's own stock is never a supplier of credit notes.
+    expect(within(sheet).queryByRole("option", { name: /OPENING STOCK/ })).toBeNull();
+    await user.selectOptions(within(sheet).getByTestId("pay-credit-vendor"), "v-1");
+    await user.type(within(sheet).getByTestId("pay-credit-no"), "CN/RD/9");
+    await user.type(within(sheet).getByTestId("pay-credit-taxable"), "100");
+    await user.type(within(sheet).getByTestId("pay-credit-gst"), "12");
+    expect(within(sheet).getByTestId("pay-credit-total")).toHaveTextContent("₹112.00");
+    await user.click(within(sheet).getByTestId("pay-credit-save"));
+    expect(await screen.findByText("Credit note MCN2611130001 is recorded; the next payment run sets it off.")).toBeInTheDocument();
+    const sent = calls.find((c) => c.method === "POST" && c.path === "/materials/supplier-credits")!.body as Record<string, unknown>;
+    expect(sent).toMatchObject({ vendorId: "v-1", kind: "rate_difference", vendorCreditNoteNo: "CN/RD/9", taxablePaise: 10_000, gstPaise: 1_200, interState: false, note: null });
+    expect(await screen.findByTestId("pay-credit-MCN2611130001")).toHaveTextContent("Rate difference");
+  });
+});

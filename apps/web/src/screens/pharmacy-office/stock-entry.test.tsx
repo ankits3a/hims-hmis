@@ -2,15 +2,16 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../../lib/api";
 import { renderWithRouter } from "../../test-utils";
-import { DRAFT_KEY, StockEntryView, blankRow, rowEconomics } from "./stock-entry";
+import { DRAFT_KEY, RATE_BASIS_KEY, StockEntryView, blankRow, rowEconomics } from "./stock-entry";
 import type { WireStockItem } from "../../lib/stock-entry-api";
 
 /**
  * STOCK ENTRY ON SCREEN (2026-09-29) — the grid the owner enters the real shelf in: pick the brand from the item
  * master, type across the row (Enter walks it, a new row appears at the end), see the cost per unit and margin
- * live, see the SERVER's reasons under each row before capture, capture as GRNs and be told plainly that a second
- * person (the pharmacist) QCs and posts them in the GRN worklist. A new drug is one sheet and one call. The rows
- * are a draft that survives a reload.
+ * live, see the SERVER's reasons under each row before capture, capture as GRNs and be told plainly that each is
+ * checked (QC) and posted in the GRN worklist before it sells — by a second person only when the hospital's
+ * two-person setting is on (walk 2026-11-13). A new drug is one sheet and one call. The rows are a draft that
+ * survives a reload.
  */
 type Call = { method: string; path: string; url: string; body: unknown };
 function mock(routes: Record<string, unknown | ((body: unknown, url: string) => unknown)>, perms: string[]): Call[] {
@@ -63,8 +64,8 @@ const ROUTES = {
   "POST /pharmacy/opening-stock/capture": { captured: [{ grnId: "g1", grnNo: "GRN-0007", challanNo: "OPENING/abc", near: false, lines: 1 }], alreadyOnBooks: 0, uomsAdded: 0, vendorCreated: true, racksSet: 0, racksLeft: 0 },
 };
 
-beforeEach(() => { setToken("t"); window.localStorage.removeItem(DRAFT_KEY); });
-afterEach(() => { vi.unstubAllGlobals(); window.localStorage.removeItem(DRAFT_KEY); });
+beforeEach(() => { setToken("t"); window.localStorage.removeItem(DRAFT_KEY); window.sessionStorage.removeItem(RATE_BASIS_KEY); });
+afterEach(() => { vi.unstubAllGlobals(); window.localStorage.removeItem(DRAFT_KEY); window.sessionStorage.removeItem(RATE_BASIS_KEY); });
 
 async function pickDolo(user: ReturnType<typeof userEvent.setup>, row = 0): Promise<void> {
   const brand = await screen.findByRole("combobox", { name: `Brand · row ${String(row + 1)}` });
@@ -105,9 +106,11 @@ describe("stock entry on screen (2026-09-29)", () => {
     expect(screen.getByTestId("se-cost-0")).toHaveTextContent("₹1.44/unit");
     // A new row is always waiting at the end.
     expect(screen.getByRole("combobox", { name: "Brand · row 2" })).toHaveValue("");
-    // The sale price is the MRP, said on the screen; the capture is a GRN a second person posts.
+    // The sale price is the MRP, said on the screen; the capture is a GRN that is checked and posted before it sells.
     expect(screen.getByTestId("se-mrp-note")).toHaveTextContent("No sale price or sale discount is set here");
-    expect(screen.getByTestId("se-two-person")).toHaveTextContent("a second person — the pharmacist — must check (QC) and post each GRN");
+    // Walk 2026-11-13: the two-person check is a setting (off by default, ruling 0019) — unknown, nothing is claimed.
+    expect(screen.getByTestId("se-two-person")).toHaveTextContent("Nothing can be sold until each GRN is checked (QC) and posted in the GRN worklist.");
+    expect(screen.getByTestId("se-two-person")).not.toHaveTextContent("second person");
   });
 
   it("shows the SERVER's reasons under the row before capture, keeps capture off until fixed, then captures and points to the GRN worklist", async () => {
@@ -127,12 +130,15 @@ describe("stock entry on screen (2026-09-29)", () => {
     await user.type(screen.getByLabelText("Batch · row 1"), "OK1");
     await waitFor(() => expect(screen.getByTestId("se-capture")).toBeEnabled(), { timeout: 3000 });
     expect(screen.queryByTestId("se-reasons-0")).toBeNull();
+    // Walk 2026-11-13: one row is "1 row", not "1 rows".
+    expect(screen.getByTestId("se-summary")).toHaveTextContent("1 row · 0 to fix · 150 units");
     await user.click(screen.getByTestId("se-capture"));
 
     const result = await screen.findByTestId("se-result");
     expect(result).toHaveTextContent("1 GRN captured.");
     expect(result).toHaveTextContent("GRN-0007");
-    expect(result).toHaveTextContent("Now the pharmacist must log in, open each GRN, run QC and post it.");
+    expect(result).toHaveTextContent("Now open each GRN, run QC and post it.");
+    expect(result).not.toHaveTextContent("the pharmacist must");
     expect(within(result).getByTestId("se-worklist")).toHaveAttribute("href", "/pharmacy/office?view=stock&page=grn");
     const cap = calls.find((c) => c.path === "/pharmacy/opening-stock/capture")!;
     expect((cap.body as { rows: SentRow[] }).rows[0]).toMatchObject({ itemId: "it-dolo", batch: "OK1" });
@@ -208,16 +214,86 @@ describe("stock entry on screen (2026-09-29)", () => {
     await user.clear(within(sheet).getByTestId("nd-pack-size"));
     await user.type(within(sheet).getByTestId("nd-pack-size"), "15");
     await user.type(within(sheet).getByTestId("nd-mrp"), "35.50");
+    // Walk 2026-11-13 — the maker as the strip prints it; the bill's Mfr. column reads it.
+    await user.type(within(sheet).getByTestId("nd-manufacturer"), "Micro Labs");
     await user.click(within(sheet).getByTestId("nd-save"));
 
     await waitFor(() => expect(screen.queryByTestId("se-new-drug-sheet")).toBeNull());
     expect(calls.find((c) => c.path === "/pharmacy/opening-stock/new-drug")?.body).toEqual({
       brandName: "Zolo 650", strength: "650 mg", medicineId: "m-para", form: "tablet", packType: "tablet_strip", packSize: 15,
-      hsnCode: "3004", gstRateBps: 500, schedule: "H", mrpPerPackPaise: 3550, storage: "ambient",
+      hsnCode: "3004", gstRateBps: 500, schedule: "H", mrpPerPackPaise: 3550, storage: "ambient", manufacturer: "Micro Labs",
     });
     expect(screen.getByRole("combobox", { name: "Brand · row 1" })).toHaveValue("Zolo 650 tablet");
     expect(screen.getByLabelText("Per pack · row 1")).toHaveValue("15");
     expect(screen.getByLabelText("MRP ₹/pack · row 1")).toHaveValue("35.50");
+  });
+
+  it("walk 2026-11-13: the two-person copy follows the hospital's setting — off, nobody else is said to check; on, a second person must", async () => {
+    const settings = (on: boolean): unknown => ({ settings: { grnQcNeedsSecondPerson: on, updatedBy: null, updatedAt: null } });
+    mock({ ...ROUTES, "GET /materials/settings": settings(false) }, [...PERMS, "materials.stock.read"]);
+    const off = renderWithRouter(<StockEntryView />);
+    await screen.findByRole("combobox", { name: "Brand · row 1" });
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    expect(screen.getByTestId("se-two-person")).not.toHaveTextContent("second person");
+    expect(screen.getByTestId("se-two-person")).toHaveTextContent("Nothing can be sold until each GRN is checked (QC) and posted");
+    off.unmount();
+    vi.unstubAllGlobals();
+
+    mock({ ...ROUTES, "GET /materials/settings": settings(true) }, [...PERMS, "materials.stock.read"]);
+    renderWithRouter(<StockEntryView />);
+    await waitFor(() => expect(screen.getByTestId("se-two-person")).toHaveTextContent("a second person — the pharmacist — must check (QC) and post each GRN"));
+  });
+
+  it("walk 2026-11-13: a note about what only the materials head may do says it in words, never as a permission key", async () => {
+    mock({
+      ...ROUTES,
+      "POST /pharmacy/opening-stock/check": (body: unknown) => ({
+        ...(judge(body) as Record<string, unknown>), needsVendor: true,
+        authority: [{ permission: "materials.vendors.manage", why: "opening_vendor", held: false }, { permission: "materials.items.manage", why: "new_pack_sizes", held: false }],
+      }),
+    }, PERMS);
+    renderWithRouter(<StockEntryView />);
+    const user = userEvent.setup();
+    await pickDolo(user);
+    await user.type(screen.getByLabelText("Batch · row 1"), "B1");
+    await user.type(screen.getByLabelText("Packs · row 1"), "2");
+    expect(await screen.findByText(/Ask the materials head to add this supplier/, {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(screen.getByTestId("stock-entry")).not.toHaveTextContent("materials.vendors.manage");
+    expect(screen.getByTestId("stock-entry")).not.toHaveTextContent("materials.items.manage");
+  });
+
+  it("walk 2026-11-13: a row just picked shows no refusals until something is typed in it", async () => {
+    const calls = mock({
+      ...ROUTES,
+      "POST /pharmacy/opening-stock/check": (body: unknown) => {
+        const j = judge(body) as { rows: { batch: string; reasons: string[] }[] };
+        return { ...j, rows: j.rows.map((r) => ({ ...r, reasons: r.batch === "" ? ["the batch number is missing"] : r.reasons })), refusals: 1 };
+      },
+    }, PERMS);
+    renderWithRouter(<StockEntryView />);
+    const user = userEvent.setup();
+    await pickDolo(user);
+    await waitFor(() => expect(calls.some((c) => c.path === "/pharmacy/opening-stock/check")).toBe(true), { timeout: 3000 });
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    expect(screen.queryByTestId("se-reasons-0")).toBeNull();
+    await user.type(screen.getByLabelText("Packs · row 1"), "2");
+    expect(await screen.findByTestId("se-reasons-0", {}, { timeout: 3000 })).toHaveTextContent("the batch number is missing");
+  });
+
+  it("walk 2026-11-13: a brand with no GST slab is not put on sale, and the refusal says to set the slab", async () => {
+    const NOSLAB: WireStockItem = { ...DOLO, itemId: "it-noslab", code: "NOSLAB", name: "Noslab 40 tablet", gstRateBps: null, onSale: false };
+    mock({
+      ...ROUTES,
+      "GET /pharmacy/opening-stock/items": { items: [NOSLAB] },
+      "POST /pharmacy/sale-items": new Response(JSON.stringify({ statusCode: 409, code: "gst_slab_unknown", message: "item NOSLAB has no GST slab" }), { status: 409, headers: { "Content-Type": "application/json" } }),
+    }, PERMS);
+    renderWithRouter(<StockEntryView />);
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("combobox", { name: "Brand · row 1" }), "noslab");
+    await within(await screen.findByTestId("se-brand-list-0")).findByText("Noslab 40 tablet");
+    await user.keyboard("{Enter}");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Set its GST slab");
+    expect(screen.getByRole("combobox", { name: "Brand · row 1" })).toHaveValue("noslab");
   });
 
   it("without the item master's permission there is no + New drug, only 'ask the materials head'", async () => {
@@ -229,5 +305,96 @@ describe("stock entry on screen (2026-09-29)", () => {
     expect(screen.queryByTestId("se-new-drug")).toBeNull();
     fireEvent.mouseDown(screen.getByTestId("se-brand-new-0"));
     expect(screen.queryByTestId("se-new-drug-sheet")).toBeNull();
+  });
+});
+
+/**
+ * #1047 — the same grid receives a SUPPLIER INVOICE: a header (supplier, invoice number and date, store, rate
+ * with or without GST) over the rows, judged and captured by the invoice routes as one GRN; rack and supplier
+ * columns are the opening count's and are gone. In opening mode a row with no rate shows the server's estimate.
+ */
+describe("#1047 — the invoice mode and the estimate", () => {
+  const invoiceCheck = (body: unknown): unknown => {
+    const b = body as { header: { vendorId: string | null; invoiceNo: string; invoiceDate: string }; rows: SentRow[] };
+    const opening = judge({ rows: b.rows }) as { rows: unknown[]; refusals: number; units: number };
+    const headerReasons = [
+      ...(b.header.vendorId === null ? ["choose the supplier"] : []),
+      ...(b.header.invoiceNo.trim() === "" ? ["the supplier's invoice number is required (at most 64 characters)"] : []),
+      ...(b.header.invoiceDate === "" ? ["the invoice date is required"] : []),
+    ];
+    return { headerReasons, rows: opening.rows, refusals: opening.refusals, units: opening.units, newUoms: 0, costPaise: 9600, duplicateOf: null, authority: [] };
+  };
+  const INVOICE_ROUTES = {
+    ...ROUTES,
+    "GET /pharmacy/opening-stock/invoice/stores": { stores: [{ id: "s1", code: "PHARM-OPD", name: "OPD pharmacy" }] },
+    "GET /materials/purchase-orders": { purchaseOrders: [{ id: "po1", poNo: "PO-0001" }] },
+    "POST /pharmacy/opening-stock/invoice/check": invoiceCheck,
+    "POST /pharmacy/opening-stock/invoice/capture": { grnId: "g9", grnNo: "GRN-0099", lines: 1, uomsAdded: 0 },
+  };
+
+  it("Supplier invoice: the header is required, rack and supplier columns go, and the capture sends the header with the rows", async () => {
+    const calls = mock(INVOICE_ROUTES, PERMS);
+    renderWithRouter(<StockEntryView />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId("se-mode-invoice"));
+    expect(screen.getByRole("heading", { name: "Supplier invoice — receive a delivery" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Rack" })).toBeNull();
+    expect(screen.queryByTestId("se-recount")).toBeNull();
+    await pickDolo(user);
+    await user.type(screen.getByLabelText("Batch · row 1"), "B1");
+    await user.type(screen.getByLabelText("Expiry · row 1"), "08/27");
+    await user.type(screen.getByLabelText("Packs · row 1"), "4");
+    await user.type(screen.getByLabelText("Rate ₹/pack · row 1"), "25.20");
+    expect(await screen.findByTestId("se-invoice-reasons", {}, { timeout: 3000 })).toHaveTextContent("choose the supplier");
+    expect(screen.getByTestId("se-capture")).toBeDisabled();
+
+    await user.selectOptions(screen.getByTestId("se-invoice-vendor"), "v1");
+    await user.type(screen.getByTestId("se-invoice-no"), "SI/26/12");
+    fireEvent.change(screen.getByTestId("se-invoice-date"), { target: { value: "2026-11-10" } });
+    await user.click(screen.getByTestId("se-rate-with-gst"));
+    // With GST in the rate, the live cost divides it out first: ₹25.20 ÷ 1.05 = ₹24.00 a strip of 15 → ₹1.60 a tablet.
+    expect(screen.getByTestId("se-cost-0")).toHaveTextContent("₹1.60/unit");
+    await waitFor(() => expect(screen.getByTestId("se-capture")).toBeEnabled(), { timeout: 3000 });
+    expect(screen.getByTestId("se-invoice-store")).toHaveValue("s1"); // the only store is picked
+    await user.click(screen.getByTestId("se-capture"));
+    expect(await screen.findByTestId("se-invoice-result")).toHaveTextContent("GRN-0099 captured from the invoice — 1 row.");
+    const sent = calls.find((c) => c.path === "/pharmacy/opening-stock/invoice/capture")!.body as { header: Record<string, unknown>; rows: Record<string, unknown>[] };
+    expect(sent.header).toEqual({ vendorId: "v1", invoiceNo: "SI/26/12", invoiceDate: "2026-11-10", purchaseOrderId: null, storeResourceId: "s1", rateIncludesGst: true });
+    expect(sent.rows[0]).toMatchObject({ itemId: "it-dolo", batch: "B1", expiry: "08/27", packs: "4", ratePerPack: "25.20" });
+    expect(sent.rows[0]).not.toHaveProperty("rack");
+    expect(calls.some((c) => c.path === "/pharmacy/opening-stock/capture")).toBe(false);
+    // Walk 2026-11-13: the next invoice is typed the same way — the rate basis is kept, not reset to "without GST".
+    expect(screen.getByTestId("se-rate-with-gst")).toBeChecked();
+  });
+
+  it("walk 2026-11-13: the rate basis chosen is kept for the rest of the session, also when the grid is opened again", async () => {
+    mock(INVOICE_ROUTES, PERMS);
+    const first = renderWithRouter(<StockEntryView />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId("se-mode-invoice"));
+    expect(screen.getByTestId("se-rate-without-gst")).toBeChecked();
+    await user.click(screen.getByTestId("se-rate-with-gst"));
+    first.unmount();
+
+    renderWithRouter(<StockEntryView />);
+    await user.click(await screen.findByTestId("se-mode-invoice"));
+    expect(screen.getByTestId("se-rate-with-gst")).toBeChecked();
+  });
+
+  it("Opening stock: a row with no rate shows the server's estimate, and the foot says how many rows are estimated", async () => {
+    mock({
+      ...ROUTES,
+      "POST /pharmacy/opening-stock/check": (body: unknown) => {
+        const j = judge(body) as { rows: Record<string, unknown>[] };
+        return { ...j, rows: j.rows.map((r) => ({ ...r, costPerBasePaise: 128, estimatedCost: true })), estimated: 1 };
+      },
+    }, PERMS);
+    renderWithRouter(<StockEntryView />);
+    const user = userEvent.setup();
+    await pickDolo(user);
+    await user.type(screen.getByLabelText("Batch · row 1"), "B1");
+    await user.type(screen.getByLabelText("Packs · row 1"), "2");
+    expect(await screen.findByTestId("se-estimate-0", {}, { timeout: 3000 })).toHaveTextContent("est. ₹1.28/unit");
+    expect(screen.getByTestId("se-estimated")).toHaveTextContent("1 row has no rate");
   });
 });

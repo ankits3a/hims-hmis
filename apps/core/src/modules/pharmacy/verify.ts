@@ -25,7 +25,7 @@ import type { Refusals } from "./refusals";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
 import { searchShelfAt } from "./retail";
 import { getSaleItem } from "./sale-items";
-import { shelfByMedicine } from "./shelf";
+import { shelfByMedicine, shelfItemsByMedicine } from "./shelf";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { OrderKindDecl } from "../../kernel/orders/kinds";
@@ -204,7 +204,13 @@ export async function placementsFor(db: Db, dispenseId: string, lineIdx: number,
   const line = (await linesOf(db, dispenseId)).find((l) => l.lineIdx === lineIdx);
   if (line === undefined) throw new PharmacyError("unknown_line", `line ${String(lineIdx)} not found`);
   if (line.status !== "open" || line.dispensedMedicineId !== null || d.storeResourceId === null) return [];
-  return searchShelfAt(db, d.storeResourceId, q, now);
+  /*
+    #1047 — a placement names a MEDICINE and the verify then takes that medicine's own item, so a second
+    item on the same medicine is not a second choice here: one row per medicine, the first the search
+    lists (its own item, when the brand matched).
+  */
+  const seen = new Set<string>();
+  return (await searchShelfAt(db, d.storeResourceId, q, now)).filter((e) => !seen.has(e.medicineId) && seen.add(e.medicineId) !== undefined);
 }
 
 /** 0093 — a brand swap the prescriber must agree to: either side of it Schedule H or H1. */
@@ -286,6 +292,7 @@ export async function verifyDispense(
   ].filter((x): x is string => x !== null));
   const drugItems = await listItems(db, { class: "drug", active: true });
   const itemByMedicine = new Map(drugItems.filter((i) => i.formularyMedicineId !== null).map((i) => [i.formularyMedicineId as string, i]));
+  const shelf = await shelfItemsByMedicine(db);
   // PHARMACY P6 — the NDPS class of every medicine this dispense may name, beside its schedule flag.
   const ndps = await ndpsClassByMedicine(db, [...medicines.keys()]);
 
@@ -339,7 +346,15 @@ export async function verifyDispense(
     if (dispensedMedicineId === null) {
       throw new PharmacyError("unresolved_medicine", `line ${String(line.lineIdx + 1)} (${rxLine.drug}) resolves to no formulary medicine — resolve it or decline it`, { lineIdx: line.lineIdx });
     }
-    const item = itemByMedicine.get(dispensedMedicineId);
+    /*
+      #1047 — WHICH ITEM, when two sale items name this medicine: the one already on the line (a paper Rx
+      carries the item the pharmacist chose; a claim, the medicine's own) while it is still a sale item OF
+      this medicine — a substitution names another medicine, so it never matches — else the medicine's own
+      item (`shelf.ts`: the most stock, then the first code). Only when nothing on the shelf names it does
+      the plain item map answer, and then the sale-item check below refuses it exactly as before.
+    */
+    const onShelf = shelf.get(dispensedMedicineId) ?? [];
+    const item = (onShelf.find((e) => e.item.id === line.itemId) ?? onShelf[0])?.item ?? itemByMedicine.get(dispensedMedicineId);
     const sale = item === undefined ? undefined : await getSaleItem(db, item.id);
     if (item === undefined || sale === undefined || !sale.active) {
       throw new PharmacyError("unknown_sale_item", `line ${String(line.lineIdx + 1)} (${rxLine.drug}) is not a stocked sale item — substitute or decline it`, { lineIdx: line.lineIdx });

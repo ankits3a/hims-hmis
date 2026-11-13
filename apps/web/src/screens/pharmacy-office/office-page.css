@@ -46,6 +46,41 @@
 /* A card of the page that is not the list (a flow, a figure strip). */
 .d1 .pof-legacy .ofp-card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px; min-width: 0; }
 
+/*
+ * An opened GRN's lines on a phone (walk 2026-11-13: expiry, MRP, cost and verdict were cut off at 390 px): below
+ * 640 px each line is a card, every cell under its column's name (`data-label`); nothing scrolls sideways.
+ */
+@media (max-width: 639px) {
+  .d1 .pof-legacy .grn-lines { min-width: 0 !important; }
+  .d1 .pof-legacy .grn-lines thead { display: none; }
+  .d1 .pof-legacy .grn-lines, .d1 .pof-legacy .grn-lines tbody, .d1 .pof-legacy .grn-lines tr { display: block; }
+  .d1 .pof-legacy .grn-lines tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; padding: 10px 12px; border-top: 1px solid var(--line2); }
+  .d1 .pof-legacy .grn-lines tbody tr:first-child { border-top: none; }
+  .d1 .pof-legacy .grn-lines td { display: block; padding: 0; border: none; min-width: 0; white-space: normal; }
+  .d1 .pof-legacy .grn-lines td:first-child { grid-column: 1 / -1; font-weight: 600; }
+  .d1 .pof-legacy .grn-lines td[data-label]::before {
+    content: attr(data-label); display: block; margin-bottom: 1px;
+    font: 600 9.5px/1.2 "IBM Plex Mono", monospace; letter-spacing: .12em; text-transform: uppercase; color: var(--faint);
+  }
+}
+
+/* The item master on a phone (walk 2026-11-13: Edit and Retire were off the right edge at 390 px): each item a card. */
+@media (max-width: 639px) {
+  .d1 .pof-legacy .item-rows { min-width: 0 !important; }
+  .d1 .pof-legacy .item-rows thead { display: none; }
+  .d1 .pof-legacy .item-rows, .d1 .pof-legacy .item-rows tbody { display: block; }
+  .d1 .pof-legacy .item-rows tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; padding: 10px 12px; border-top: 1px solid var(--line2); }
+  .d1 .pof-legacy .item-rows tbody tr:first-child { border-top: none; }
+  .d1 .pof-legacy .item-rows tr.item-confirm { display: block; border-top: none; padding-top: 0; }
+  .d1 .pof-legacy .item-rows td { display: block; padding: 0; border: none; min-width: 0; }
+  .d1 .pof-legacy .item-rows td:nth-child(2), .d1 .pof-legacy .item-rows td:last-child { grid-column: 1 / -1; }
+  .d1 .pof-legacy .item-rows .ofp-rowacts { justify-content: flex-start; }
+  .d1 .pof-legacy .item-rows td[data-label]::before {
+    content: attr(data-label); display: block; margin-bottom: 1px;
+    font: 600 9.5px/1.2 "IBM Plex Mono", monospace; letter-spacing: .12em; text-transform: uppercase; color: var(--faint);
+  }
+}
+
 /* No keyboard on a phone or tablet: the keycap is noise there. */
 @media (max-width: 768px) { .d1 .pof-legacy .ofp-kb { display: none; } }
 .d1 .pof-legacy .ofp-rows > li.ofp-stack { display: block; }

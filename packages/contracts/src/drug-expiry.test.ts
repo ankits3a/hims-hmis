@@ -9,6 +9,15 @@ describe("a medicine's expiry is a month", () => {
     for (const bad of ["13/2027", "00/27", "2027-08-31", "08/2", "", "aug 27"]) expect(expiryFromLabel(bad)).toBeNull();
   });
 
+  it("reads the label's month typed without the slash, as a phone's number pad types it: MMYY and MMYYYY (walk 2026-11-13)", () => {
+    // "0828" was refused although the grid said MM/YY and its keypad has no "/". Every form is one month-end.
+    for (const typed of ["0828", "08/28", "8/28", "08/2028", "082028", " 0828 "]) expect(expiryFromLabel(typed)).toBe("2028-08-31");
+    expect(expiryFromLabel("0228")).toBe("2028-02-29");
+    expect(expiryFromLabel("122027")).toBe("2027-12-31");
+    // Month 13 or 0 is still no month; three or five digits are not read as a guess.
+    for (const bad of ["1328", "0028", "132028", "828", "82028", "08281", "2028"]) expect(expiryFromLabel(bad)).toBeNull();
+  });
+
   it("turns any day of a month into that month's last day, and refuses what is not a date", () => {
     expect(monthEndOf("2028-02-10")).toBe("2028-02-29");
     expect(monthEndOf("2027-12-31")).toBe("2027-12-31");

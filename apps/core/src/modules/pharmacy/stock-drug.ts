@@ -1,10 +1,11 @@
+import { strengthShown } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { withTx } from "../../kernel/db/client";
 import { anyOfText } from "../../kernel/db/any-of";
 import { pharmacySaleItems } from "../../kernel/db/schema";
 import { medicinesByIds, updateMedicine } from "../formulary";
 import {
-  MaterialsError, effectiveRegulation, findStoreByCode, listItems, listVendors, registerItem, setPriceRegulation, uomsByItems,
+  MaterialsError, effectiveRegulation, findStoreByCode, listItems, listVendors, registerItem, setPriceRegulation, supplierKindOf, uomsByItems,
 } from "../materials";
 import { OPD_PHARMACY_STORE_CODE } from "./config";
 import { PharmacyError } from "./errors";
@@ -89,23 +90,28 @@ export async function stockEntryItems(db: Db, search: string, now: Date = new Da
       itemId: i.id, code: i.code, name: i.name, baseUom: i.baseUom,
       packs: (uoms.get(i.id) ?? []).map((u) => ({ uom: u.uom, multiplier: u.toBaseMultiplier })).sort((a, b) => a.multiplier - b.multiplier),
       gstRateBps: i.gstRateBps, hsnCode: i.hsnCode, onSale: onSale.has(i.id), active: i.active,
-      strength: med?.strengthLabel ?? null, form: med?.form ?? null, schedule: med?.scheduleFlag ?? null,
+      // "500 mg/" is stored for many catalogue rows; the grid shows it as a person reads it (`strengthShown`).
+      strength: strengthShown(med?.strengthLabel), form: med?.form ?? null, schedule: med?.scheduleFlag ?? null,
       rack: racks.get(i.id) ?? null, mrpPaise: reg?.mrpDefaultPaise ?? null, mrpUom: reg?.mrpUom ?? null,
     });
   }
   return out;
 }
 
-/** The active suppliers a row may name (blank is OPENING STOCK). */
+/**
+ * The active suppliers a row may name (blank is OPENING STOCK), and the invoice mode's supplier list. Never the
+ * hospital's own opening or trial stock (#1047): it is a source, picked by leaving the supplier blank.
+ */
 export async function stockEntrySuppliers(db: Db): Promise<{ id: string; code: string; name: string }[]> {
-  return (await listVendors(db, { status: "active" })).map((v) => ({ id: v.id, code: v.code, name: v.tradeName ?? v.legalName }));
+  return (await listVendors(db, { status: "active" })).filter((v) => supplierKindOf(v) === "supplier")
+    .map((v) => ({ id: v.id, code: v.code, name: v.tradeName ?? v.legalName }));
 }
 
 /** A formulary medicine as the new-drug sheet shows it once picked: its form, strength and schedule. */
 export async function stockEntryMedicine(db: Db, medicineId: string): Promise<{ id: string; name: string; form: string; strength: string | null; schedule: string | null }> {
   const med = (await medicinesByIds(db, [medicineId])).get(medicineId);
   if (med === undefined) throw new MaterialsError("unknown_item", `formulary medicine ${medicineId} not found`, { medicineId });
-  return { id: med.id, name: med.brandName, form: med.form, strength: med.strengthLabel, schedule: med.scheduleFlag };
+  return { id: med.id, name: med.brandName, form: med.form, strength: strengthShown(med.strengthLabel), schedule: med.scheduleFlag };
 }
 
 export type NewStockDrug = {
@@ -116,6 +122,8 @@ export type NewStockDrug = {
   schedule: "H" | "H1" | "X" | "OTC" | null;
   mrpPerPackPaise: number;
   storage: "ambient" | "cold_2_8";
+  /** Walk 2026-11-13 — the maker as the strip prints it; the bill's Mfr. column reads `items.manufacturer`. Blank stays blank. */
+  manufacturer?: string | null;
 };
 
 /** "DOLO650" from "Dolo 650" — letters and digits, upper case, at most 24. */
@@ -145,7 +153,8 @@ export async function createStockDrug(
   gstCategoryFor(input.gstRateBps); // a slab the bill cannot tax is refused before the item exists
 
   const brand = input.brandName.trim().replace(/\s+/g, " ");
-  const strength = input.strength.trim();
+  // An empty denominator ("40 mg/", the catalogue's own) never reaches the item's name (`strengthShown`).
+  const strength = strengthShown(input.strength) ?? "";
   const strengthDigits = /[\d.]+/.exec(strength)?.[0];
   const withStrength = strength === "" || (strengthDigits !== undefined && norm(brand).split(" ").includes(norm(strengthDigits))) ? brand : `${brand} ${strength}`;
   const form = input.form.trim();
@@ -167,6 +176,7 @@ export async function createStockDrug(
     const { itemId } = await registerItem(tx, actor, {
       code, name, class: "drug", baseUom, batchTracked: true, formularyMedicineId: med.id,
       hsnCode: input.hsnCode, gstRateBps: input.gstRateBps, storageClass: input.storage,
+      manufacturer: (input.manufacturer ?? "").trim() === "" ? null : input.manufacturer!.trim(),
       uoms: input.packSize > 1 ? [{ uom: packUom, toBaseMultiplier: input.packSize, isPurchaseUom: true, isIssueUom: true }] : [],
     });
     await setPriceRegulation(tx, actor, itemId, { mrpDefaultPaise: input.mrpPerPackPaise, mrpUom: packUom, effectiveFrom: now });

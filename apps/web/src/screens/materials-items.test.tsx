@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
 import { renderWithProviders } from "../test-utils";
@@ -245,5 +245,122 @@ describe("MaterialsItems", () => {
     await user.click(screen.getByRole("button", { name: "Add pack size" }));
     expect(await screen.findByText("Pack strip15 of 15 added.")).toBeInTheDocument();
     expect(bodiesOf("POST", "/materials/items/it-1/uoms")).toEqual([{ uom: "strip15", toBaseMultiplier: 15, isPurchaseUom: true, isIssueUom: true }]);
+  });
+
+  /** #1047 — the loader's `strip10` was really a strip of 15: the pack is CORRECTED in place; a pack in use is refused, in words. */
+  it("corrects a pack in place, and says so in words when the pack is in use", async () => {
+    let refuse = false;
+    mockRoutes({
+      "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: "u1" }, permissions: { hospital: ["materials.items.manage"], scoped: { department: {}, floor: {} } } } },
+      "GET /api/materials/items": { status: 200, body: { items: ITEMS } },
+      "GET /api/materials/items/it-1": {
+        status: 200,
+        body: { item: { ...ITEMS[0], uoms: [{ id: "u-1", itemId: "it-1", uom: "tablet", toBaseMultiplier: 1 }, { id: "u-2", itemId: "it-1", uom: "strip10", toBaseMultiplier: 10 }], barcodes: [], manufacturer: null, leadTimeDays: null, lasa: false, highAlert: false, medicineName: "Crocin 500", scheduleFlag: "OTC" } },
+      },
+      "POST /api/materials/items/it-1/uoms/replace": () => (refuse
+        ? { status: 409, body: { statusCode: 409, code: "pack_in_use", message: "strip10 is in use (batch B1)" } }
+        : { status: 201, body: { itemUomId: "u-2", repointed: [] } }),
+    });
+    renderWithProviders(<MaterialsItems />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Edit CROC500" }));
+    await user.click(await screen.findByTestId("item-edit-correct-strip10"));
+    const name = screen.getByLabelText("Correct pack name");
+    await user.clear(name);
+    await user.type(name, "strip15");
+    const size = screen.getByLabelText("tablet in the correct pack");
+    await user.clear(size);
+    await user.type(size, "15");
+    await user.click(screen.getByTestId("item-edit-correct-save"));
+    expect(await screen.findByText("strip10 is now strip15 of 15.")).toBeInTheDocument();
+    expect(bodiesOf("POST", "/materials/items/it-1/uoms/replace")).toEqual([{ fromUom: "strip10", uom: "strip15", toBaseMultiplier: 15 }]);
+
+    refuse = true;
+    await user.click(await screen.findByTestId("item-edit-correct-strip10"));
+    await user.click(screen.getByTestId("item-edit-correct-save"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("This pack is in use");
+  });
+
+  const EDIT_ROUTES = (replace: Handler): Record<string, Handler> => ({
+    "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: "u1" }, permissions: { hospital: ["materials.items.manage", "materials.stock.read"], scoped: { department: {}, floor: {} } } } },
+    "GET /api/materials/items": { status: 200, body: { items: ITEMS } },
+    "GET /api/materials/items/it-1": {
+      status: 200,
+      body: { item: { ...ITEMS[0], uoms: [{ id: "u-1", itemId: "it-1", uom: "tablet", toBaseMultiplier: 1 }, { id: "u-2", itemId: "it-1", uom: "strip10", toBaseMultiplier: 10 }], barcodes: [], manufacturer: null, leadTimeDays: null, lasa: false, highAlert: false, medicineName: "Crocin 500", scheduleFlag: "OTC" } },
+    },
+    "POST /api/materials/items/it-1/uoms/replace": replace,
+  });
+
+  it("walk 2026-11-13: a pack in use names what holds it, beside the button; both pack forms have a heading and visible labels", async () => {
+    mockRoutes(EDIT_ROUTES({
+      status: 409, body: { statusCode: 409, code: "pack_in_use", message: "strip10 is in use", detail: { uom: "strip10", batches: ["B1"], grns: ["GRN2611130001"], purchaseOrders: [] } },
+    }));
+    renderWithProviders(<MaterialsItems />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Edit CROC500" }));
+    // The sheet names the item once, and starts below the environment banner.
+    expect(await screen.findAllByText(/CROC500 · Crocin 500mg tablet/)).toHaveLength(1);
+    expect(screen.getByTestId("item-edit-sheet-backdrop").style.top).toBe("var(--env-banner-h, 0px)");
+    await user.click(await screen.findByTestId("item-edit-correct-strip10"));
+    const form = screen.getByTestId("item-edit-correct-form");
+    expect(within(form).getByRole("heading", { name: "Correct strip10" })).toBeInTheDocument();
+    expect(within(form).getByText("Correct pack name").tagName).toBe("LABEL");
+    const add = screen.getByTestId("item-edit-add-pack");
+    expect(within(add).getByRole("heading", { name: "Add a pack size" })).toBeInTheDocument();
+    expect(within(add).getByText("New pack name").tagName).toBe("LABEL");
+
+    await user.click(screen.getByTestId("item-edit-correct-save"));
+    const why = await within(form).findByRole("alert");
+    expect(why).toHaveTextContent("This pack is in use");
+    expect(why).toHaveTextContent("batch B1");
+    expect(why).toHaveTextContent("GRN GRN2611130001");
+  });
+
+  it("walk 2026-11-13: a drug's formulary medicine is picked by name, as + New drug picks it — never typed as an id", async () => {
+    mockRoutes({
+      "GET /api/materials/items": { status: 200, body: { items: [] } },
+      "GET /api/formulary/medicines/search": { status: 200, body: { items: [{ id: "med-para", name: "Paracetamol 650 mg oral tablet", form: "tablet", strength: "650 mg", code: "D0230", routeClass: "systemic", salts: ["Paracetamol"], prefix: true, reviewed: true }] } },
+      "POST /api/materials/items": { status: 201, body: { itemId: "it-new" } },
+    });
+    renderWithProviders(<MaterialsItems />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Register an item" }));
+    await user.type(await screen.findByLabelText(/^Code$/), "DOLO650");
+    await user.type(screen.getByLabelText(/^Name$/), "Dolo 650 tablet");
+    await user.selectOptions(screen.getByLabelText(/^Class$/), "drug");
+    await user.type(screen.getByLabelText(/^Base unit$/), "tablet");
+    await user.type(screen.getByLabelText(/^Formulary medicine$/), "para 650");
+    await user.click(await screen.findByText("Paracetamol 650 mg oral tablet"));
+    expect(screen.getByTestId("item-medicine-picked")).toHaveTextContent("Paracetamol 650 mg oral tablet");
+    await user.click(screen.getByRole("button", { name: "Register" }));
+    await waitFor(() => { expect(bodiesOf("POST", "/materials/items")).toHaveLength(1); });
+    expect(bodiesOf("POST", "/materials/items")[0]).toMatchObject({ class: "drug", formularyMedicineId: "med-para" });
+  });
+
+  it("walk 2026-11-13: Retire asks first and says how much stock the item still holds; nothing changes until it is confirmed", async () => {
+    mockRoutes({
+      ...EDIT_ROUTES({ status: 404, body: {} }),
+      "GET /api/materials/stock/balances": { status: 200, body: { balances: [
+        { itemId: "it-1", resourceId: "s1", batchId: "b1", qtyOnHand: 80, qtyReserved: 0, qtyFrozen: 0 },
+        { itemId: "it-1", resourceId: "s2", batchId: "b2", qtyOnHand: 40, qtyReserved: 0, qtyFrozen: 0 },
+      ] } },
+      "PATCH /api/materials/items/it-1": { status: 200, body: { ok: true } },
+    });
+    renderWithProviders(<MaterialsItems />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Retire CROC500" }));
+    const ask = await screen.findByTestId("item-retire-confirm");
+    expect(await within(ask).findByText(/120 tablet still on hand/)).toBeInTheDocument();
+    expect(bodiesOf("PATCH", "/materials/items/it-1")).toHaveLength(0);
+    await user.click(within(ask).getByRole("button", { name: "Retire it" }));
+    await waitFor(() => { expect(bodiesOf("PATCH", "/materials/items/it-1")).toEqual([{ active: false }]); });
+  });
+
+  it("walk 2026-11-13: on a phone each item is a card with its acts, every cell under its column's name", async () => {
+    mockRoutes({ "GET /api/materials/items": { status: 200, body: { items: ITEMS } } });
+    renderWithProviders(<MaterialsItems />);
+    const row = (await screen.findByText("CROC500")).closest("tr")!;
+    expect(row.closest("table")).toHaveClass("item-rows");
+    expect(within(row).getAllByRole("cell").slice(0, 5).map((c) => c.getAttribute("data-label"))).toEqual(["Code", "Name", "Class", "Base unit", "Status"]);
   });
 });

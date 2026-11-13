@@ -78,6 +78,15 @@ export async function registerSaleItem(
   if (existing.length > 0) {
     throw new PharmacyError("sale_item_exists", `item ${item.code} is already a sale item`, { itemId, serviceId: existing[0]!.serviceId });
   }
+  if (item.gstRateBps === null) {
+    // Walk 2026-11-13 — a brand with no slab went on sale as exempt without anyone being asked. Nil is a slab
+    // (it is chosen, and sold exempt); "not set" is not, so the slab is set first.
+    throw new PharmacyError(
+      "gst_slab_unknown",
+      `item ${item.code} has no GST slab — set its GST slab (Edit item: nil, 5%, 12% or 18%) before it is put on sale`,
+      { itemId, gstRateBps: null },
+    );
+  }
   const category = gstCategoryFor(item.gstRateBps);
   const serviceCode = `${SALE_SERVICE_PREFIX}${item.code}`;
   const { serviceId } = await createService(tx, actor, { code: serviceCode, name: item.name, category, regulated: false });

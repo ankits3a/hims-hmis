@@ -58,7 +58,7 @@ describe("stock entry on screen — the grid, the brand search and the new drug"
     const sheet = await planOpeningStock(db, readOpeningSheet(csv), csv, now);
     const judged = (p: typeof grid): unknown[] => p.rows.map((r) => [r.itemId, r.reasons, r.costPerBasePaise, r.uom]);
     expect(judged(grid)).toEqual(judged(sheet));
-    expect(grid.rows[0]!.reasons.join()).toMatch(/mrp_per_pack must be rupees like 35.50, got "35.555"/);
+    expect(grid.rows[0]!.reasons.join()).toMatch(/MRP per pack must be rupees like 35.50, got "35.555"/);
     expect(grid.rows[1]!.reasons.join()).toMatch(/expired/);
     expect(grid.rows[2]).toMatchObject({ reasons: [], costPerBasePaise: 245, discountBps: 1250 });
   });
@@ -74,8 +74,10 @@ describe("stock entry on screen — the grid, the brand search and the new drug"
 
     const rows = [row(), row({ itemId: fx.item.calpol, batch: "K1", packSize: "15", mrpPerPack: "35.50", ratePerPack: "", freePacks: "1", rack: "B2" })];
     const plan = await planOpeningGrid(db, rows, now);
-    expect(plan).toMatchObject({ refusals: 0, newUoms: 1, units: 30 + 60, zeroCost: 1 });
-    expect(plan.rows[1]).toMatchObject({ uom: "strip15", newUom: true });
+    // #1047 / 0093: the blank rate is no longer a zero cost — it is the estimate (₹35.50 ÷ 1.12 × 0.8 = ₹25.35 a strip
+    // of 15, 169 paise a tablet), flagged; `zeroCost` counts only a typed 0.
+    expect(plan).toMatchObject({ refusals: 0, newUoms: 1, units: 30 + 60, zeroCost: 0, estimated: 1 });
+    expect(plan.rows[1]).toMatchObject({ uom: "strip15", newUom: true, estimatedCost: true, costPerBasePaise: 169 });
     const done = await captureOpeningStock(db, fx.incharge.actor, plan, now);
     expect(done).toMatchObject({ uomsAdded: 1, vendorCreated: true, racksSet: 1 });
     expect(done.captured).toHaveLength(1);
@@ -103,10 +105,11 @@ describe("stock entry on screen — the grid, the brand search and the new drug"
   it("a NEW DRUG is item + pack + MRP + sale registration in one call, and the grid can receive it at once", async () => {
     const now = new Date();
     expect(await stockEntryMedicine(db, fx.med.crocin)).toMatchObject({ form: "tablet", strength: "500 mg", schedule: "OTC" });
-    const made = await createStockDrug(db, fx.incharge.actor, { ...DOLO, medicineId: fx.med.crocin }, now);
+    const made = await createStockDrug(db, fx.incharge.actor, { ...DOLO, medicineId: fx.med.crocin, manufacturer: " Micro Labs " }, now);
     expect(made).toMatchObject({ code: "DOLO650", name: "Dolo 650 tablet", uom: "strip", packSize: 15, gstRateBps: 500 });
     const item = await getItem(db, made.itemId);
-    expect(item).toMatchObject({ class: "drug", baseUom: "tablet", formularyMedicineId: fx.med.crocin, hsnCode: "3004", gstRateBps: 500, storageClass: "ambient" });
+    // Walk 2026-11-13 — the maker is written (the bill's Mfr. column reads it); blank stays blank (the syrup below).
+    expect(item).toMatchObject({ class: "drug", baseUom: "tablet", formularyMedicineId: fx.med.crocin, hsnCode: "3004", gstRateBps: 500, storageClass: "ambient", manufacturer: "Micro Labs" });
     expect(item?.uoms.map((u) => [u.uom, u.toBaseMultiplier])).toEqual(expect.arrayContaining([["tablet", 1], ["strip", 15]]));
     expect(await effectiveRegulation(db, made.itemId, new Date(now.getTime() + 1000))).toMatchObject({ mrpDefaultPaise: 3360, mrpUom: "strip" });
     expect(await getSaleItem(db, made.itemId)).toMatchObject({ active: true });
@@ -121,6 +124,15 @@ describe("stock entry on screen — the grid, the brand search and the new drug"
     }, now);
     expect(syrup).toMatchObject({ code: "CALPOLSYRUP", uom: "bottle", packSize: 1, gstRateBps: 0 });
     expect((await getItem(db, syrup.itemId))?.baseUom).toBe("bottle");
+    expect((await getItem(db, syrup.itemId))?.manufacturer).toBeNull();
+  });
+
+  it("walk 2026-11-13: a strength stored with an empty denominator (\"500 mg/\") is shown and named without it", async () => {
+    await db.update(formularyMedicines).set({ strengthLabel: "500 mg/" }).where(eq(formularyMedicines.id, fx.med.crocin));
+    expect(await stockEntryMedicine(db, fx.med.crocin)).toMatchObject({ strength: "500 mg" });
+    expect((await stockEntryItems(db, "crocin"))[0]).toMatchObject({ strength: "500 mg" });
+    const made = await createStockDrug(db, fx.incharge.actor, { ...DOLO, brandName: "Pacimol", strength: "500 mg/", medicineId: fx.med.crocin });
+    expect(made.name).toBe("Pacimol 500 mg tablet");
   });
 
   it("a NEW DRUG asks for the acts' own permissions, changes the schedule only with formulary.manage, and is all or nothing", async () => {

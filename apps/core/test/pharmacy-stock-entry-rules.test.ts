@@ -85,7 +85,7 @@ describe("stock entry — the row rules (loose MRP, trade discount, free packs)"
     // A discount of 100% or more, or a word, is refused by name.
     const bad = sheet([`Crocin 500,D3,08/${year()},40.00,10,1,,,28.00,,,100`, `Crocin 500,D4,08/${year()},40.00,10,1,,,28.00,,,ten`]);
     expect((await planOpeningStock(db, readOpeningSheet(bad), bad, now)).rows.map((r) => r.reasons.join())).toEqual([
-      expect.stringMatching(/trade_discount_pct must be a percentage/), expect.stringMatching(/trade_discount_pct must be a percentage/),
+      expect.stringMatching(/the discount must be a percentage/), expect.stringMatching(/the discount must be a percentage/),
     ]);
 
     const grnId = await receive(text, now);

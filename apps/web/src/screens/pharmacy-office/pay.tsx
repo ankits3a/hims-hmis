@@ -10,6 +10,7 @@ import {
   updateRun,
 } from "../../lib/payables-api";
 import { Button } from "@/components/ui/button";
+import { SupplierCreditsSection } from "./pay-credits";
 import { Sheet } from "./sheet";
 import type {
   PaymentMode, WireBill, WireBillSummary, WirePayableRow, WireRun, WireRunSummary, WireUnbilledGrn,
@@ -148,6 +149,8 @@ export function PayView({ initialOpen }: { initialOpen?: Open } = {}): React.Rea
               </div>
             </section>
           )}
+
+          {can("materials.bills.manage") && <SupplierCreditsSection onDone={setNotice} />}
 
           <div ref={listRef} className="space-y-4">
             <Rows title={t("pharmacyOffice.pay.count.toMatch")} testId="pay-section-toMatch" rows={d.toMatch} render={(g: WireUnbilledGrn) => (

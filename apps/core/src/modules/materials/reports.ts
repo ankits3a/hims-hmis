@@ -4,7 +4,7 @@ import {
   supplierPaymentRunLines, supplierPaymentRuns, supplierPayments, supplierReturnLines, supplierReturns, vendors,
 } from "../../kernel/db/schema";
 import { istDayWindow } from "../../kernel/approvals/cumulative";
-import { TRANSIT_STORE_CODE } from "./config";
+import { OPENING_STOCK_SOURCE, TRANSIT_STORE_CODE } from "./config";
 import { istDay } from "./grn";
 import { survivorsOf, uomsByItems, withMergedAliases } from "./items";
 import { returnVerdict, returnWindowDays, supplierKindOf } from "./supplier-returns";
@@ -127,6 +127,13 @@ function add(m: Money, r: PurchaseRegisterRow): void {
  * is split here in the debit note's proportions, so a credit equal to the debit note reads exactly
  * like it and a short credit reads as the same mix, smaller. The taxable value takes the rounding.
  */
+/** #1047 — a credit note with no return: its own taxable value, and its GST as IGST or CGST + SGST (SGST takes the odd paisa). */
+function standaloneSplit(taxablePaise: number, gstPaise: number, interState: boolean): { taxablePaise: number; cgstPaise: number; sgstPaise: number; igstPaise: number } {
+  if (interState) return { taxablePaise, cgstPaise: 0, sgstPaise: 0, igstPaise: gstPaise };
+  const c = Math.floor(gstPaise / 2);
+  return { taxablePaise, cgstPaise: c, sgstPaise: gstPaise - c, igstPaise: 0 };
+}
+
 export function splitLikeDebitNote(
   amountPaise: number, note: { taxablePaise: number; cgstPaise: number; sgstPaise: number; igstPaise: number; totalPaise: number },
 ): { taxablePaise: number; cgstPaise: number; sgstPaise: number; igstPaise: number } {
@@ -186,9 +193,11 @@ export async function purchaseRegister(db: Db | Tx, from: string, to: string): P
     vendorId: supplierCreditNotes.vendorId, vendorCode: vendors.code, vendorName, gstin: vendors.gstin, debitNoteNo: supplierReturns.debitNoteNo,
     interState: supplierReturns.interState, rTaxable: supplierReturns.taxablePaise, rCgst: supplierReturns.cgstPaise, rSgst: supplierReturns.sgstPaise,
     rIgst: supplierReturns.igstPaise, rTotal: supplierReturns.totalPaise,
+    // #1047 — a credit without a return carries its own taxable value, GST and kind of GST.
+    kind: supplierCreditNotes.kind, ownTaxable: supplierCreditNotes.taxablePaise, ownGst: supplierCreditNotes.gstPaise, ownInterState: supplierCreditNotes.interState,
   }).from(supplierCreditNotes)
     .innerJoin(vendors, eq(vendors.id, supplierCreditNotes.vendorId))
-    .innerJoin(supplierReturns, eq(supplierReturns.id, supplierCreditNotes.returnId))
+    .leftJoin(supplierReturns, eq(supplierReturns.id, supplierCreditNotes.returnId))
     .where(and(eq(supplierCreditNotes.status, "accepted"), gte(supplierCreditNotes.creditNoteDate, from), lte(supplierCreditNotes.creditNoteDate, to)))
     .orderBy(asc(supplierCreditNotes.creditNoteDate), asc(supplierCreditNotes.creditNo));
 
@@ -228,10 +237,13 @@ export async function purchaseRegister(db: Db | Tx, from: string, to: string): P
       totalPaise: n.totalPaise, paidPaise: null, duePaise: null, status: n.status, lines: linesOf(returnLines, "returnId", n.id),
     })),
     ...credits.map((c): PurchaseRegisterRow => {
-      const split = splitLikeDebitNote(c.amountPaise, { taxablePaise: c.rTaxable, cgstPaise: c.rCgst, sgstPaise: c.rSgst, igstPaise: c.rIgst, totalPaise: c.rTotal });
+      const own = c.rTotal === null;
+      const split = own
+        ? standaloneSplit(c.ownTaxable ?? c.amountPaise, c.ownGst ?? 0, c.ownInterState ?? false)
+        : splitLikeDebitNote(c.amountPaise, { taxablePaise: c.rTaxable!, cgstPaise: c.rCgst!, sgstPaise: c.rSgst!, igstPaise: c.rIgst!, totalPaise: c.rTotal! });
       return {
-        kind: "credit_note", id: c.id, docNo: c.creditNo, vendorDocNo: c.vendorCreditNoteNo, ref: c.debitNoteNo, date: c.date,
-        vendorId: c.vendorId, vendorCode: c.vendorCode, vendorName: c.vendorName, gstin: c.gstin, interState: c.interState,
+        kind: "credit_note", id: c.id, docNo: c.creditNo, vendorDocNo: c.vendorCreditNoteNo, ref: own ? c.kind : c.debitNoteNo, date: c.date,
+        vendorId: c.vendorId, vendorCode: c.vendorCode, vendorName: c.vendorName, gstin: c.gstin, interState: own ? c.ownInterState ?? false : c.interState!,
         ...split, roundOffPaise: 0, totalPaise: c.amountPaise, paidPaise: null, duePaise: null, status: c.status, lines: [],
       };
     }),
@@ -263,6 +275,8 @@ export type ValuationRow = {
   itemId: string; itemCode: string; itemName: string; baseUom: string; hsnCode: string | null;
   batchId: string; batchNo: string; expiryDate: string | null; ownership: string;
   qtyBase: number; landedCostPaise: number; costValuePaise: number; mrpPerBasePaise: number | null; mrpValuePaise: number | null;
+  /** #1047 / 0093 — the cost is an estimate (opening stock with no known rate), not a price paid. */
+  estimatedCost: boolean;
 };
 export type ValuationGroup = { key: string; code: string; name: string; batches: number; qtyBase: number | null; costValuePaise: number; mrpValuePaise: number };
 export type StockValuation = {
@@ -270,7 +284,11 @@ export type StockValuation = {
   rows: ValuationRow[];
   byStore: ValuationGroup[];
   byItem: (ValuationGroup & { baseUom: string })[];
-  totals: { batches: number; costValuePaise: number; mrpValuePaise: number; noMrpBatches: number };
+  totals: {
+    batches: number; costValuePaise: number; mrpValuePaise: number; noMrpBatches: number;
+    /** #1047 / 0093 — `costValuePaise` split: what was paid (or counted at a typed rate) and what is an estimate. */
+    knownCostValuePaise: number; estimatedCostValuePaise: number; estimatedBatches: number;
+  };
   /** Consignment and loaner stock held on the day: the vendor's, so outside the value. */
   vendorOwned: { batches: number; qtyBase: number };
   truncated: boolean;
@@ -299,6 +317,7 @@ export async function stockValuationAt(db: Db | Tx, asOf: string, opts: { storeR
   const batchRows = await inChunks(pairs.map((p) => p.batchId), (chunk) => db.select({
     id: stockBatches.id, itemId: stockBatches.itemId, batchNo: stockBatches.batchNo, expiryDate: stockBatches.expiryDate,
     mrpPaise: stockBatches.mrpPaise, mrpUom: stockBatches.mrpUom, landedCostPaise: stockBatches.landedCostPaise, ownership: stockBatches.ownership,
+    estimatedCost: stockBatches.estimatedCost,
     itemCode: items.code, itemName: items.name, baseUom: items.baseUom, hsnCode: items.hsnCode,
   }).from(stockBatches).innerJoin(items, eq(items.id, stockBatches.itemId)).where(inArray(stockBatches.id, chunk)));
   const batches = new Map(batchRows.map((b) => [b.id, b] as const));
@@ -333,6 +352,7 @@ export async function stockValuationAt(db: Db | Tx, asOf: string, opts: { storeR
       batchId: b.id, batchNo: b.batchNo, expiryDate: b.expiryDate, ownership: b.ownership,
       qtyBase, landedCostPaise: b.landedCostPaise, costValuePaise: qtyBase * b.landedCostPaise,
       mrpPerBasePaise, mrpValuePaise: mrpPerBasePaise === null ? null : qtyBase * mrpPerBasePaise,
+      estimatedCost: b.estimatedCost,
     });
   }
   rows.sort((a, b) => a.storeCode.localeCompare(b.storeCode) || a.itemName.localeCompare(b.itemName) || a.batchNo.localeCompare(b.batchNo));
@@ -359,6 +379,9 @@ export async function stockValuationAt(db: Db | Tx, asOf: string, opts: { storeR
     totals: {
       batches: rows.length, costValuePaise: rows.reduce((s, r) => s + r.costValuePaise, 0),
       mrpValuePaise: rows.reduce((s, r) => s + (r.mrpValuePaise ?? 0), 0), noMrpBatches: rows.filter((r) => r.mrpValuePaise === null).length,
+      knownCostValuePaise: rows.filter((r) => !r.estimatedCost).reduce((s, r) => s + r.costValuePaise, 0),
+      estimatedCostValuePaise: rows.filter((r) => r.estimatedCost).reduce((s, r) => s + r.costValuePaise, 0),
+      estimatedBatches: rows.filter((r) => r.estimatedCost).length,
     },
     vendorOwned, truncated,
   };
@@ -528,7 +551,9 @@ export async function findDocumentByNo(db: Db | Tx, typed: string): Promise<Mate
   }
   const credit = (await db.select({ id: supplierCreditNotes.id, no: supplierCreditNotes.creditNo, returnId: supplierCreditNotes.returnId, v: vendorName })
     .from(supplierCreditNotes).innerJoin(vendors, eq(vendors.id, supplierCreditNotes.vendorId)).where(eqNo(supplierCreditNotes.creditNo)).limit(1))[0];
-  if (credit !== undefined) return { kind: "supplier_credit", id: credit.id, no: credit.no, label: `${credit.v} · ${credit.no}`, ids: [credit.returnId, credit.id] };
+  if (credit !== undefined) {
+    return { kind: "supplier_credit", id: credit.id, no: credit.no, label: `${credit.v} · ${credit.no}`, ids: [...(credit.returnId === null ? [] : [credit.returnId]), credit.id] };
+  }
   const wo = (await db.select({ id: stockWriteOffs.id, no: stockWriteOffs.writeOffNo, s: resources.name })
     .from(stockWriteOffs).innerJoin(resources, eq(resources.id, stockWriteOffs.storeResourceId)).where(eqNo(stockWriteOffs.writeOffNo)).limit(1))[0];
   if (wo !== undefined) return { kind: "write_off", id: wo.id, no: wo.no, label: `${wo.s} · ${wo.no}`, ids: [wo.id] };
@@ -607,7 +632,8 @@ export async function purchaseAdjustmentsBetween(db: Db | Tx, from: string, to: 
  * #777 — HOSPITAL NUMBERS: the goods received in an instant window `[start, end)` — GRNs POSTED in it
  * (a draft or a QC that never posted moved no stock), and what was accepted at the GRN's own unit
  * cost per base unit (`qty_accepted_base × unit_cost_paise`, the value the ledger's batch carries).
- * A posted GRN that accepted nothing (every line rejected) received nothing and is not counted.
+ * A posted GRN that accepted nothing (every line rejected) received nothing and is not counted. The opening
+ * count (`source = 'opening_stock'`, #1047) was never purchased, whichever supplier its row named, and is not counted.
  * Every store, as the office's purchase register reads every supplier bill. No actor: the gate is the caller's.
  */
 export async function grnReceivedTotals(db: Db | Tx, start: Date, end: Date): Promise<{ grns: number; valuePaise: number }> {
@@ -616,6 +642,7 @@ export async function grnReceivedTotals(db: Db | Tx, start: Date, end: Date): Pr
       select g.id, sum(gl.qty_accepted_base::bigint * gl.unit_cost_paise) as v
       from grns g join grn_lines gl on gl.grn_id = g.id
       where g.status = 'posted' and g.posted_at >= ${start.toISOString()}::timestamptz and g.posted_at < ${end.toISOString()}::timestamptz
+        and g.source <> ${OPENING_STOCK_SOURCE}
       group by g.id
       having sum(gl.qty_accepted_base) > 0
     ) x`);

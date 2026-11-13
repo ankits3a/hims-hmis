@@ -545,6 +545,12 @@ export const stockBatches = pgTable(
     consignmentLotId: text("consignment_lot_id"), // no FK — see the header (cycle)
     recallStatus: text("recall_status").notNull().default("none"),
     expiryNotifiedThresholds: jsonb("expiry_notified_thresholds").$type<number[]>().notNull().default(sql`'[]'::jsonb`),
+    /**
+     * #1047 / ruling 0093 — `landed_cost_paise` is an ESTIMATE (opening stock counted with no known rate:
+     * MRP without GST less 20%), not a price anybody paid. The valuation shows it apart. Copied from the
+     * GRN line that created the batch.
+     */
+    estimatedCost: boolean("estimated_cost").notNull().default(false),
     createdBy: text("created_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -998,12 +1004,20 @@ export const grns = pgTable(
     challanNo: text("challan_no").notNull(),
     challanDate: date("challan_date", { mode: "string" }).notNull(),
     invoiceNo: text("invoice_no"),
+    /** #1047 — the supplier invoice's own date, as printed (the stock-entry grid's invoice mode); the bill draft prefills it. */
+    invoiceDate: date("invoice_date", { mode: "string" }),
     storeResourceId: text("store_resource_id").notNull().references(() => resources.id),
     status: text("status").notNull().default("draft"),
     capturedBy: text("captured_by").notNull(),
     qcBy: text("qc_by"),
     postedAt: timestamp("posted_at", { withTimezone: true }),
     approvalId: text("approval_id"), // near-expiry acceptance — plain text, see `vendor_bank_changes`
+    /** #1047 — the `materials_mrp_revision` approval a line held as `mrp_revised` waits for. Plain text, as `approval_id`. */
+    mrpApprovalId: text("mrp_approval_id"),
+    /** #1047 — a captured GRN cancelled before posting: who, when, why. A posted GRN is never cancelled. */
+    cancelledBy: text("cancelled_by"),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    cancelReason: text("cancel_reason"),
     ...auditColumns,
   },
   (t) => [
@@ -1011,8 +1025,10 @@ export const grns = pgTable(
     index("grns_vendor_idx").on(t.vendorId, t.challanDate),
     index("grns_store_status_idx").on(t.storeResourceId, t.status),
     index("grns_purchase_order_idx").on(t.purchaseOrderId),
-    check("grns_source_ck", sql`${t.source} in ('challan', 'consignment_challan', 'donation')`),
-    check("grns_status_ck", sql`${t.status} in ('draft', 'gate_qc', 'accepted', 'partially_accepted', 'rejected', 'posted')`),
+    /** `opening_stock` (#1047): the hospital's own shelf counted at go-live — a source, not a purchase. */
+    check("grns_source_ck", sql`${t.source} in ('challan', 'consignment_challan', 'donation', 'opening_stock')`),
+    check("grns_status_ck", sql`${t.status} in ('draft', 'gate_qc', 'accepted', 'partially_accepted', 'rejected', 'posted', 'cancelled')`),
+    check("grns_cancelled_ck", sql`(${t.status} = 'cancelled') = (${t.cancelledAt} is not null) and (${t.cancelledAt} is null) = (${t.cancelReason} is null)`),
   ],
 );
 
@@ -1051,6 +1067,10 @@ export const grnLines = pgTable(
     nearExpiry: boolean("near_expiry").notNull().default(false),
     tempLogRef: text("temp_log_ref"), // cold-chain: the data-logger file for a 2-8 line
     batchId: text("batch_id").references(() => stockBatches.id), // null until post — see the header
+    /** #1047 / 0093 — `unit_cost_paise` is an estimate (an opening-stock row with no rate), not a paid price. */
+    estimatedCost: boolean("estimated_cost").notNull().default(false),
+    /** #1047 — QC found the batch already on the books at another MRP (same expiry): posting waits for `mrp_approval_id`. */
+    mrpRevised: boolean("mrp_revised").notNull().default(false),
   },
   (t) => [
     index("grn_lines_grn_idx").on(t.grnId),
@@ -1571,13 +1591,26 @@ export const supplierReturnLines = pgTable(
  *     carries a reason (and the materials head's hand). Never more.
  *   - An accepted credit is an OFFSET the next payment run spends (`supplier_payment_run_lines.credit_paise`).
  *   - One live credit note per return; a cancelled one (recorded in error, and not yet spent) frees it.
+ *   - #1047 — a credit note may come WITHOUT a return (`return_id` null): a rate difference, a scheme, a
+ *     breakage allowance or another reason (`kind`), with its taxable value and GST as the supplier
+ *     printed them. `debit_note_paise` is then its own amount (no difference); it sets off exactly as a
+ *     return's credit does. `kind = 'return'` is exactly the credit against a return.
  */
 export const supplierCreditNotes = pgTable(
   "supplier_credit_notes",
   {
     id: text("id").primaryKey(),
     creditNo: text("credit_no").notNull(),
-    returnId: text("return_id").notNull().references(() => supplierReturns.id),
+    returnId: text("return_id").references(() => supplierReturns.id),
+    /** #1047 — `return` (against one of our returns) or a standalone `rate_difference` / `scheme` / `breakage` / `other`. */
+    kind: text("kind").notNull().default("return"),
+    /** #1047 — a standalone credit's taxable value and GST, as the supplier printed them (null on a return's credit). */
+    taxablePaise: bigint("taxable_paise", { mode: "number" }),
+    gstPaise: bigint("gst_paise", { mode: "number" }),
+    /** #1047 — what a standalone credit is for, in the person's words. */
+    note: text("note"),
+    /** #1047 — a standalone credit's GST is IGST (true) or CGST + SGST (false); null on a return's credit, which splits like its debit note. */
+    interState: boolean("inter_state"),
     vendorId: text("vendor_id").notNull().references(() => vendors.id),
     vendorCreditNoteNo: text("vendor_credit_note_no").notNull(),
     creditNoteDate: date("credit_note_date", { mode: "string" }).notNull(),
@@ -1600,6 +1633,8 @@ export const supplierCreditNotes = pgTable(
     check("supplier_credit_notes_money_ck", sql`${t.amountPaise} > 0 and ${t.amountPaise} <= ${t.debitNotePaise} and ${t.differencePaise} = ${t.debitNotePaise} - ${t.amountPaise}`),
     check("supplier_credit_notes_reason_ck", sql`(${t.differencePaise} = 0) = (${t.differenceReason} is null)`),
     check("supplier_credit_notes_cancelled_ck", sql`(${t.status} = 'cancelled') = (${t.cancelledAt} is not null) and (${t.cancelledAt} is null) = (${t.cancelReason} is null)`),
+    check("supplier_credit_notes_kind_ck", sql`${t.kind} in ('return', 'rate_difference', 'scheme', 'breakage', 'other') and (${t.kind} = 'return') = (${t.returnId} is not null)`),
+    check("supplier_credit_notes_parts_ck", sql`(${t.taxablePaise} is null) = (${t.gstPaise} is null) and (${t.taxablePaise} is null) = (${t.interState} is null) and (${t.taxablePaise} is null or (${t.taxablePaise} >= 0 and ${t.gstPaise} >= 0 and ${t.amountPaise} = ${t.taxablePaise} + ${t.gstPaise}))`),
   ],
 );
 

@@ -78,11 +78,17 @@ export type WireValuationRow = {
   storeResourceId: string; storeCode: string; storeName: string; itemId: string; itemCode: string; itemName: string; baseUom: string;
   hsnCode: string | null; batchId: string; batchNo: string; expiryDate: string | null; ownership: string; qtyBase: number;
   landedCostPaise: number; costValuePaise: number; mrpPerBasePaise: number | null; mrpValuePaise: number | null;
+  /** #1047 / 0093 — the cost is an estimate (opening stock with no rate). Absent from an older server. */
+  estimatedCost?: boolean;
 };
 export type WireValuationGroup = { key: string; code: string; name: string; batches: number; qtyBase: number | null; costValuePaise: number; mrpValuePaise: number; baseUom?: string };
 export type WireValuation = {
   asOf: string; rows: WireValuationRow[]; byStore: WireValuationGroup[]; byItem: WireValuationGroup[];
-  totals: { batches: number; costValuePaise: number; mrpValuePaise: number; noMrpBatches: number };
+  totals: {
+    batches: number; costValuePaise: number; mrpValuePaise: number; noMrpBatches: number;
+    /** #1047 / 0093 — the cost value split into what is known and what is estimated. Absent from an older server. */
+    knownCostValuePaise?: number; estimatedCostValuePaise?: number; estimatedBatches?: number;
+  };
   vendorOwned: { batches: number; qtyBase: number }; truncated: boolean;
 };
 

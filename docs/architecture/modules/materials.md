@@ -25,6 +25,7 @@ Source: `apps/core/src/modules/materials/`
   - types: `AdjustmentReason`, `AdjustmentView`
 - `approval-types.ts`
   - `MATERIALS_APPROVAL_TYPES: (ApprovalTypeSpec & { closureSlaMinutes: number })[]`
+  - `MRP_REVISION_APPROVAL_TYPE`
   - `NEAR_EXPIRY_APPROVAL_TYPE`
   - `PAYMENT_RUN_APPROVAL_TYPE`
   - `PO_APPROVAL_TYPE`
@@ -51,6 +52,7 @@ Source: `apps/core/src/modules/materials/`
   - `NEAR_EXPIRY_MIN_MONTHS`
   - `NEAR_EXPIRY_RETURN_DAYS`
   - `NON_SUPPLIER_VENDOR_CODES`
+  - `OPENING_STOCK_SOURCE`
   - `PAYMENT_RUN_HORIZON_DAYS`
   - `PO_HEAD_APPROVAL_LIMIT_PAISE`
   - `PO_RECEIPT_TOLERANCE_BPS`
@@ -101,11 +103,13 @@ Source: `apps/core/src/modules/materials/`
   - `thresholdToAnnounce(daysRemaining: number, alreadyNotified: readonly number[]): number | null`
   - types: `ExpiringBatch`
 - `grn.ts`
+  - `cancelGrn(tx: Tx, actor: Actor, grnId: string, reason: string, now: Date): Promise<{ grnId: string; grnNo: string; status: "cancelled" }>`
   - `captureGrn(tx: Tx, actor: Actor, input: { vendorId: string; source: string; storeResourceId: string; challanNo: string; challanDate: string…`
   - `getGrn(db: Db | Tx, grnId: string): Promise<GrnWithLines | undefined>`
   - `listGrns(db: Db | Tx, filter: { vendorId?: string; storeResourceId?: string; status?: string } = {}): Promise<GrnRow[]>`
   - `lotsForBatch(db: Db | Tx, batchId: string): Promise<(typeof consignmentLots.$inferSelect)[]>`
   - `postGrn(tx: Tx, actor: Actor, grnId: string, now: Date, opts: { custody?: Custody } = {}): Promise<{ status: string; ledgerEntryIds: string…`
+  - `requestMrpRevisionApproval(tx: Tx, actor: Actor, grnId: string, note?: string): Promise<{ approvalId: string }>`
   - `requestNearExpiryAcceptance(tx: Tx, actor: Actor, grnId: string, note?: string): Promise<{ approvalId: string }>`
   - `runGateQc(tx: Tx, actor: Actor, grnId: string): Promise<{ status: string; verdicts: { grnLineId: string; verdict: string; rule?: RuleCode }…`
   - types: `CaptureLine`, `GrnLineRow`, `GrnRow`, `GrnWithLines`
@@ -138,6 +142,7 @@ Source: `apps/core/src/modules/materials/`
   - `itemsByIds(db: Db | Tx, itemIds: string[]): Promise<Map<string, ItemRow>>`
   - `listItems(db: Db | Tx, filter: { class?: string; active?: boolean; search?: string } = {}): Promise<ItemRow[]>`
   - `registerItem(tx: Tx, actor: Actor, input: RegisterItemInput): Promise<{ itemId: string }>`
+  - `replaceItemUom(tx: Tx, actor: Actor, itemId: string, input: { fromUom: string; uom: string; toBaseMultiplier: number }, now: Date = new Dat…`
   - `resolveBarcode(db: Db | Tx, code: string): Promise<{ itemId: string; packUom: string } | undefined>`
   - `setPriceRegulation(tx: Tx, actor: Actor, itemId: string, input: { mrpDefaultPaise?: number | null; mrpUom?: string | null; ceilingPaise?: n…`
   - `survivorsOf(db: Db | Tx, itemIds: readonly string[]): Promise<Map<string, string>>`
@@ -297,8 +302,10 @@ Source: `apps/core/src/modules/materials/`
 - `supplier-returns.ts`
   - `EXPIRY_PRESETS: readonly ExpiryPreset[]`
   - `RETURN_LINE_REASONS: readonly ReturnLineReason[]`
+  - `STANDALONE_CREDIT_KINDS`
   - `approveSupplierReturn(db: Db, actor: Actor, returnId: string, now: Date = new Date()): Promise<ReturnView>`
   - `assertNotReturnApprover(db: Db, actor: Actor, returnId: string): Promise<void>`
+  - `cancelStandaloneCredit(db: Db, actor: Actor, creditNoteId: string, reason: string, now: Date = new Date()): Promise<void>`
   - `cancelSupplierReturn(db: Db, actor: Actor, returnId: string, reason: string, now: Date = new Date()): Promise<ReturnView>`
   - `cancelVendorCredit(db: Db, actor: Actor, returnId: string, reason: string, now: Date = new Date()): Promise<ReturnView>`
   - `closeSupplierReturn(db: Db, actor: Actor, returnId: string, reason: string, now: Date = new Date()): Promise<ReturnView>`
@@ -309,15 +316,17 @@ Source: `apps/core/src/modules/materials/`
   - `expiryRange(preset: ExpiryPreset, today: string, custom: { from?: string | null; to?: string | null } = {}): { from: string | null; to: str…`
   - `expiryReport(db: Db, actor: Actor, input: { preset: ExpiryPreset; from?: string | null; to?: string | null; storeResourceId?: string | null…`
   - `getSupplierReturn(db: Db, actor: Actor, returnId: string): Promise<ReturnView>`
+  - `listStandaloneCredits(db: Db, actor: Actor, filter: { vendorId?: string; limit?: number } = {}): Promise<StandaloneCreditView[]>`
   - `listSupplierReturns(db: Db, actor: Actor, filter: ReturnFilter = {}): Promise<ReturnSummary[]>`
   - `planSupplierReturns(db: Db | Tx, now: Date = new Date(), opts: { storeResourceId?: string | null } = {}): Promise<ReturnPlan>`
+  - `recordStandaloneCredit(db: Db, actor: Actor, input: StandaloneCreditInput, now: Date = new Date()): Promise<{ creditNoteId: string; creditN…`
   - `recordVendorCredit(db: Db, actor: Actor, returnId: string, input: CreditInput, now: Date = new Date()): Promise<ReturnView>`
   - `returnVerdict(input: { expiryDate: string | null; windowDays: number; recalled: boolean; today: string }): ReturnVerdict`
   - `returnWindowDays(vendor: { expiryReturnDays: number | null } | null): number`
   - `returnableUntil(expiryDate: string, windowDays: number): string`
   - `supplierKindOf(vendor: { code: string } | null): SupplierKind`
   - `updateSupplierReturn(db: Db, actor: Actor, returnId: string, patch: { lines?: ReturnLineInput[]; note?: string | null; interState?: boolean…`
-  - types: `CreditInput`, `DestroyCandidate`, `ExpiryPreset`, `ExpiryReport`, `ExpiryReportRow`, `ExpirySupplierRow`, `ReturnFilter`, `ReturnInput`, `ReturnLineInput`, `ReturnLineReason`, `ReturnLineView`, `ReturnPlan`, `ReturnPlanGroup`, `ReturnPlanLine`, `ReturnSource`, `ReturnStatus`, `ReturnSummary`, `ReturnVerdict`, `ReturnView`, `SupplierKind`
+  - types: `CreditInput`, `DestroyCandidate`, `ExpiryPreset`, `ExpiryReport`, `ExpiryReportRow`, `ExpirySupplierRow`, `ReturnFilter`, `ReturnInput`, `ReturnLineInput`, `ReturnLineReason`, `ReturnLineView`, `ReturnPlan`, `ReturnPlanGroup`, `ReturnPlanLine`, `ReturnSource`, `ReturnStatus`, `ReturnSummary`, `ReturnVerdict`, `ReturnView`, `StandaloneCreditInput`, `StandaloneCreditKind`, `StandaloneCreditView`, `SupplierKind`
 - `transfers.ts`
   - `getTransfer(db: Db | Tx, transferId: string): Promise<TransferWithLines | undefined>`
   - `issueStock(tx: Tx, actor: Actor, input: { fromResourceId: string; toResourceId: string; lines: IssueLine[]; note?: string | null; occurredA…`
@@ -379,6 +388,6 @@ Foreign keys into: `formulary`, `resources`
 ## HTTP routes
 
 - `materials-indents.controller.ts` — `/materials/indents`
-- `materials.controller.ts` — `/materials/adjustments`, `/materials/bank-changes`, `/materials/barcodes`, `/materials/consumptions`, `/materials/counts`, `/materials/expiring`, `/materials/expiry-report`, `/materials/grns`, `/materials/items`, `/materials/payables`, `/materials/payment-runs`, `/materials/purchase-orders`, `/materials/purchase-vendors`, `/materials/recalls`, `/materials/settings`, `/materials/stock`, `/materials/stock-levels`, `/materials/stores`, `/materials/supplier-bills`, `/materials/supplier-returns`, `/materials/transfers`, `/materials/vendor-rates`, `/materials/vendors`, `/materials/write-offs`
+- `materials.controller.ts` — `/materials/adjustments`, `/materials/bank-changes`, `/materials/barcodes`, `/materials/consumptions`, `/materials/counts`, `/materials/expiring`, `/materials/expiry-report`, `/materials/grns`, `/materials/items`, `/materials/payables`, `/materials/payment-runs`, `/materials/purchase-orders`, `/materials/purchase-vendors`, `/materials/recalls`, `/materials/settings`, `/materials/stock`, `/materials/stock-levels`, `/materials/stores`, `/materials/supplier-bills`, `/materials/supplier-credits`, `/materials/supplier-returns`, `/materials/transfers`, `/materials/vendor-rates`, `/materials/vendors`, `/materials/write-offs`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/materials`

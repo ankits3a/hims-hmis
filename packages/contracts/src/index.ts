@@ -25,6 +25,7 @@ export * from "./lab-ast";
 export * from "./lab-titre";
 export * from "./lab-sex";
 export * from "./drug-expiry";
+export * from "./counter-pack";
 export * from "./doctor-desk";
 export * from "./gst-code";
 export * from "./drug-strength";

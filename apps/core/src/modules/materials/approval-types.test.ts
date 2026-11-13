@@ -4,8 +4,8 @@ import { seedSodPairs } from "../../kernel/auth/sod";
 import { getApprovalType } from "../../kernel/approvals/types";
 import { withTx } from "../../kernel/db/client";
 import {
-  MATERIALS_APPROVAL_TYPES, NEAR_EXPIRY_APPROVAL_TYPE, PAYMENT_RUN_APPROVAL_TYPE, PO_APPROVAL_TYPE, PO_OWNER_APPROVAL_TYPE,
-  STOCK_ADJUSTMENT_APPROVAL_TYPE, VENDOR_BANK_CHANGE_APPROVAL_TYPE,
+  MATERIALS_APPROVAL_TYPES, MRP_REVISION_APPROVAL_TYPE, NEAR_EXPIRY_APPROVAL_TYPE, PAYMENT_RUN_APPROVAL_TYPE, PO_APPROVAL_TYPE,
+  PO_OWNER_APPROVAL_TYPE, STOCK_ADJUSTMENT_APPROVAL_TYPE, VENDOR_BANK_CHANGE_APPROVAL_TYPE,
   registerMaterialsApprovalTypes,
 } from "./approval-types";
 import type { Actor } from "@hmis/contracts";
@@ -54,16 +54,16 @@ describe("the materials approval types (Plan 14 T2 / DD10)", () => {
    * A diff that moved it to `materials_head` would put the person who talks to the vendor daily in
    * charge of where the vendor's money goes, and it would compile.
    */
-  it("declares exactly six types, with DD10's approver roles and SLAs, 14c's write-off to the MS, P2's two PO tiers and P3's payment run", () => {
+  it("declares exactly seven types, with DD10's approver roles and SLAs, 14c's write-off to the MS, P2's two PO tiers, P3's payment run and #1047's MRP revision", () => {
     expect(MATERIALS_APPROVAL_TYPES.map((s) => s.typeKey)).toEqual([
       NEAR_EXPIRY_APPROVAL_TYPE, STOCK_ADJUSTMENT_APPROVAL_TYPE, VENDOR_BANK_CHANGE_APPROVAL_TYPE,
-      PO_APPROVAL_TYPE, PO_OWNER_APPROVAL_TYPE, PAYMENT_RUN_APPROVAL_TYPE,
+      PO_APPROVAL_TYPE, PO_OWNER_APPROVAL_TYPE, PAYMENT_RUN_APPROVAL_TYPE, MRP_REVISION_APPROVAL_TYPE,
     ]);
     // 14c: the write-off is the medical superintendent's, never the materials head who asks for it.
     // Parity P2: a purchase order up to the configured limit is the head's, above it the owner's.
     // Parity P3: the payment run is the owner's to authorise — money leaving the hospital.
-    expect(MATERIALS_APPROVAL_TYPES.map((s) => s.approverRole)).toEqual(["materials_head", "medical_superintendent", "owner", "materials_head", "owner", "owner"]);
-    expect(MATERIALS_APPROVAL_TYPES.map((s) => s.closureSlaMinutes)).toEqual([240, 1440, 1440, 1440, 1440, 1440]);
+    expect(MATERIALS_APPROVAL_TYPES.map((s) => s.approverRole)).toEqual(["materials_head", "medical_superintendent", "owner", "materials_head", "owner", "owner", "materials_head"]);
+    expect(MATERIALS_APPROVAL_TYPES.map((s) => s.closureSlaMinutes)).toEqual([240, 1440, 1440, 1440, 1440, 1440, 240]);
     // Neither is act-first: accepting short-dated stock and moving where money goes are both
     // reversible only on paper. See the file header in `approval-types.ts`.
     expect(MATERIALS_APPROVAL_TYPES.every((s) => s.actFirstAllowed === false)).toBe(true);
@@ -86,6 +86,7 @@ describe("the materials approval types (Plan 14 T2 / DD10)", () => {
     expect((await withTx(db, (tx: Tx) => getApprovalType(tx, PAYMENT_RUN_APPROVAL_TYPE)))?.approverRole).toBe("owner");
 
     expect(await definitionVersions()).toEqual([
+      { key: `approval_${MRP_REVISION_APPROVAL_TYPE}`, versions: 1 },
       { key: `approval_${NEAR_EXPIRY_APPROVAL_TYPE}`, versions: 1 },
       { key: `approval_${PAYMENT_RUN_APPROVAL_TYPE}`, versions: 1 },
       { key: `approval_${PO_APPROVAL_TYPE}`, versions: 1 },
@@ -107,6 +108,7 @@ describe("the materials approval types (Plan 14 T2 / DD10)", () => {
     // No throw is HALF the property; the version count is the other half — see the file header.
     expect(await definitionVersions()).toEqual(after1);
     expect(await definitionVersions()).toEqual([
+      { key: `approval_${MRP_REVISION_APPROVAL_TYPE}`, versions: 1 },
       { key: `approval_${NEAR_EXPIRY_APPROVAL_TYPE}`, versions: 1 },
       { key: `approval_${PAYMENT_RUN_APPROVAL_TYPE}`, versions: 1 },
       { key: `approval_${PO_APPROVAL_TYPE}`, versions: 1 },
@@ -117,6 +119,6 @@ describe("the materials approval types (Plan 14 T2 / DD10)", () => {
     const rows = (await db.execute(sql`
       select count(*)::int as "n" from approval_types where type_key like 'materials_%'
     `)).rows as { n: number }[];
-    expect(rows[0]?.n).toBe(6); // 14c second slice: + materials_stock_adjustment; parity P2: + the two PO tiers; P3: + the payment run
+    expect(rows[0]?.n).toBe(7); // 14c second slice: + materials_stock_adjustment; parity P2: + the two PO tiers; P3: + the payment run; #1047: + the MRP revision
   });
 });
