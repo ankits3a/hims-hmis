@@ -116,8 +116,10 @@ export function railQty(status: string, line: { lineIdx: number; qtyBase: number
 
 export function BillRail({
   dispense, preview, liveQty = null, previewError, drawerOpen, busy, error, now, onTake, onCredit, onDraft, onOpenDrawer,
-  discount = null, onDiscount = null,
+  discount = null, onDiscount = null, paper = null,
 }: {
+  /** Spec #1055 D4 — once paid, the bill's paper (printed / print again) is said here, where the bill is, until hand-over. */
+  paper?: React.ReactNode;
   dispense: WireDispense;
   preview: WirePricedDraft | null;
   /** The quantities typed on the ticket in hand, by line (`railQty`). */
@@ -240,10 +242,8 @@ export function BillRail({
   const ended = dispense.status === "picked" && holdEnded(dispense.pickedAt, now);
 
   return (
-    <aside
-      data-testid="desk-bill"
-      style={{ width: 296, flexShrink: 0, borderLeft: "1px solid var(--line)", background: "var(--card)", display: "flex", flexDirection: "column", overflow: "hidden" }}
-    >
+    /* Spec #1055 D3 — the third column, 296 px as Desk One's rail (252 px at ≤1220 px, `pharmacy-desk.css` `.pd-billcol`). */
+    <aside data-testid="desk-bill" className="pd-billcol" aria-label={t("pharmacyDesk.bill.title")}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 15px 3px 15px" }}>
         <span className="tag" style={{ flexGrow: 1 }}>{t("pharmacyDesk.bill.title")}</span>
         <span className={paid ? "stamp pd" : "stamp un"}>{paid ? t("pharmacyDesk.bill.paid") : t("pharmacyDesk.bill.unpaid")}</span>
@@ -460,11 +460,10 @@ export function BillRail({
           {until !== null && ended ? <p role="status" style={{ margin: "7px 0 0 0", fontSize: 10.5, color: "var(--gold)", lineHeight: "15px" }}>{t("pharmacyDesk.bill.holdEnded", { time: until })}</p> : null}
           {until !== null && !ended ? <p style={{ margin: "7px 0 0 0", fontSize: 10.5, color: "var(--dim)", lineHeight: "15px" }}>{t("pharmacyDesk.bill.heldUntil", { time: until })}</p> : null}
         </div>
-      ) : status === "claimed" || status === "verified" ? (
-        <div style={{ padding: "12px 15px", borderTop: "1px solid var(--line)" }}>
-          <p style={{ margin: 0, fontSize: 11, color: "var(--gold)", lineHeight: "16px" }}>{t("pharmacyDesk.bill.stillOpen")}</p>
-          <button className="sec" style={{ width: "100%", marginTop: 9 }} onClick={onDraft}>{t("pharmacyDesk.bill.draft")}</button>
-          <p style={{ margin: "7px 0 0 0", fontSize: 10.5, color: "var(--dim)", lineHeight: "15px" }}>{t("pharmacyDesk.bill.draftNothingHeld")}</p>
+      ) : paid && paper !== null ? (
+        <div style={{ padding: "12px 15px", borderTop: "1px solid var(--line)" }} data-testid="desk-bill-paper">
+          {paper}
+          <p style={{ margin: "9px 0 0 0", fontSize: 11, color: "var(--dim)", lineHeight: "16px" }}>{t("pharmacyDesk.bill.closesAtHandover")}</p>
         </div>
       ) : null}
       {sheetOpen && onDiscount !== null ? (

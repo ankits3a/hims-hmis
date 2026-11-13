@@ -12,11 +12,12 @@ import {
   pharmacyErrorCode, pharmacyErrorText, pickDispense, previewBill, verifyDispense,
 } from "../../lib/pharmacy-api";
 import { istClock, istDateLabel } from "../desk-one/model";
-import { heldByAnother, holdOf, initialsOf, stageOf, ticketLabel, whoLabel } from "./model";
+import { heldByAnother, holdOf, initialsOf, ticketLabel, whoLabel } from "./model";
 import { BillRail, heldUntil, holdEnded, rupees } from "./bill";
 import type { AppliedDiscount as SheetDiscount } from "./discount";
 import { noteDraftSaved, say, useDeskLog, useDraftNotice } from "./log";
-import { Dossier, QueueOverlay, QueueRail } from "./rails";
+import { Dossier, QueueList, QueueOverlay } from "./rails";
+import { DonePaper } from "./paper";
 import { SlipSheet } from "./slip";
 import { PaperRxSheet } from "./paper-rx";
 import { RegisterSheet } from "./register-sheet";
@@ -36,7 +37,9 @@ import "./pharmacy-desk.css";
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
  *
  * The owner's instruction of 2026-09-18: three columns, one ticket in hand, the line on the right
- * until you claim. The design is the canvas's `Desk.dc.html`; the rules are
+ * until you claim. SUPERSEDED 2026-11-13 (spec #1055): TWO columns, as Desk One — the person in hand on the left
+ * (296 px), the work on the right; with nobody in hand the line sits in the work column under the search, and a third
+ * column, the bill (296 px), opens only when every line is settled and stays until hand-over. The design is the canvas's `Desk.dc.html`; the rules are
  * `docs/superpowers/plans/2026-09-18-phase-pharmacy-desk.md`. This file is the FRAME — header,
  * columns, keys, dock — and the ticket in hand. The line list (PD-4), the substitute sheet (PD-5),
  * the bill (PD-6), the agent (PD-7) and the slip (PD-8) arrive into it.
@@ -484,16 +487,21 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
       if ((e.key === "n" || e.key === "N") && document.querySelector("[role=dialog]") === null) { e.preventDefault(); setOverlay("short"); return; }
       /* `S` exists only where there is paper to see: a ticket typed from the doctor's slip. */
       if ((e.key === "s" || e.key === "S") && ticket.data?.transcribedBy != null && !quick) { e.preventDefault(); setOverlay("slip"); }
+      /* Owner 2026-11-13 — `P`, the find stage's "paper prescription" pill (Desk One's row): open for the patient found. */
+      if ((e.key === "p" || e.key === "P") && inHandId === null && paperFor !== null && document.querySelector("[role=dialog]") === null) { e.preventDefault(); setOverlay("paper"); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [candidates, clearDesk, inHandId, overlay, palette, quick, ticket.data?.transcribedBy]);
+  }, [candidates, clearDesk, inHandId, overlay, palette, paperFor, quick, ticket.data?.transcribedBy]);
 
   const rows = queue.data ?? [];
   const waiting = rows.filter((r) => r.status === "queued" && holdOf(r, me).kind === "free").length;
   const inHand = ticket.data ?? null;
-  /* PD-D5 — the bill takes the line's place once a ticket of MINE is past "found". */
-  const billing = inHand !== null && !heldByAnother(inHand, me) && stageOf(inHand, me) !== "found";
+  /*
+    SPEC #1055 D3/D4 — the bill column opens only when a ticket of MINE has every line settled and something to bill
+    (collected: `picked`), and stays through the payment until the hand-over (`billed`); then the desk is two columns.
+  */
+  const billing = inHand !== null && !heldByAnother(inHand, me) && (inHand.status === "picked" || inHand.status === "billed");
   const inHandLabel = inHand === null ? null : ticketLabel(inHand.dispenseNo);
 
   /*
@@ -560,7 +568,14 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
     </button>
   );
   const dossierEl = <Dossier inHand={inHand} me={me} summary={summary.data ?? null} shift={shift.data ?? null} queued={rows.length} onClear={clearDesk} paletteBound={palette !== null} />;
-  const sideEl = billing && inHand !== null ? (
+  const lineEl = (
+    <QueueList
+      rows={rows} me={me} now={now} inHandId={inHandId}
+      onTake={(id, who, mine) => void takeHere(id, who, mine)}
+      onOpenTab={(id, who, mine) => void openInTab(id, who, mine)}
+    />
+  );
+  const billEl = billing && inHand !== null ? (
       <BillRail
         dispense={inHand}
         preview={preview.data ?? null}
@@ -576,14 +591,10 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
         onOpenDrawer={() => void navigate({ to: "/billing/session" })}
         discount={discount}
         onDiscount={(d) => setDiscount(d === null ? null : { ...d, dispenseId: inHand.id })}
+        /* Spec #1046 D3 — the bill prints when the money is taken; spec #1055 D4 — and says so here until the hand-over. */
+        paper={inHand.status === "billed" ? <DonePaper dispenseId={inHand.id} autoPrint={justBilled === inHand.id} documents={["pharmacy_bill"]} /> : null}
       />
-    ) : (
-      <QueueRail
-        rows={rows} me={me} now={now} inHandId={inHandId}
-        onTake={(id, who, mine) => void takeHere(id, who, mine)}
-        onOpenTab={(id, who, mine) => void openInTab(id, who, mine)}
-      />
-    );
+    ) : null;
 
   return (
     <div className="d1" data-lang={i18n.language.startsWith("hi") ? "hi" : "en"} data-seat="pharmacy-desk">
@@ -666,6 +677,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
           {phone ? (
             <div className="pd-tabs" role="tablist" aria-label={t("pharmacyDesk.wordmark")}>
               <button type="button" role="tab" aria-selected={phoneTab === "work"} onClick={() => setPhoneTab("work")}>{t("pharmacyDesk.phone.tabTicket")}</button>
+              {/* Spec #1055 D6 — the Bill tab exists only when the bill column would; until then this tab is the line. */}
               <button type="button" role="tab" aria-selected={phoneTab === "side"} onClick={() => setPhoneTab("side")}>
                 {billing ? t("pharmacyDesk.phone.tabBill") : t("pharmacyDesk.phone.tabLine")}
                 {billing || rows.length === 0 ? null : <span className="mo pd-tab-n">{rows.length}</span>}
@@ -715,14 +727,25 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
               onTake={(id, who) => void takeHere(id, who, false)}
               onClear={clearDesk}
               autoPrint={inHand !== null && justHandedOver === inHand.id}
-              autoPrintBill={inHand !== null && justBilled === inHand.id}
               labelsOnly={inHand !== null && justBilled === inHand.id}
               onOpenBalance={(id) => void openBalance(id)}
               onFocusDrug={setFocusedDrug}
               onLiveQty={onLiveQty}
+              onDraft={draft}
+              onAdded={(d) => {
+                settle(d);
+                /* A line added to a collected ticket is already held: the bill re-totals with it. */
+                void qc.invalidateQueries({ queryKey: ["pharmacy", "bill", d.id] });
+                const added = [...d.lines].reverse().find((l) => l.added != null && l.splitFromLineIdx == null);
+                if (added !== undefined) say(t("pharmacyDesk.log.added", { drug: added.dispensedMedicine?.brandName ?? added.rxLine.drug }));
+              }}
+              onPaper={paperFor === null ? null : () => setOverlay("paper")}
+              meName={username}
             />
+            {/* Spec #1055 D1 — with nobody in hand the line is listed here, under the search (on a phone it keeps its tab). */}
+            {!phone && inHandId === null ? lineEl : null}
           </main>
-          {/* PD-D5 — the bill takes the line's place once a ticket of MINE is past "found". */}
+          {/* Spec #1055 D3/D4 — the bill column, only at billing and until the hand-over. */}
           {phone ? (
             <div className="pd-pane pd-side" hidden={phoneTab !== "side"}>
               {/* Walk 2026-11-13 — once paid, the Bill tab says where the hand-over is, and goes there. */}
@@ -732,9 +755,9 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
                   <button type="button" className="pri" style={{ height: 32 }} onClick={() => setPhoneTab("work")}>{t("pharmacyDesk.phone.toTicket")}</button>
                 </div>
               ) : null}
-              {sideEl}
+              {billEl ?? lineEl}
             </div>
-          ) : sideEl}
+          ) : billEl}
         </div>
 
         <DeskDock log={log} said={said} busy={copilot.busy} onAsk={ask} onDismiss={() => setSaid(null)} draft={shortBookDraftOf(copilot.payload)} plan={purchasePlanOf(copilot.payload)} payPlan={paymentRunPlanOf(copilot.payload)} returnPlan={returnPlanOf(copilot.payload)} duplicates={duplicateItemsOf(copilot.payload)} onDraftDone={copilot.clearPayload} />

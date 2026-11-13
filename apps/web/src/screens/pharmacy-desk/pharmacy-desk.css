@@ -48,6 +48,76 @@
   background: var(--green-soft); color: var(--green); font-size: 12.5px; font-weight: 600; }
 .d1 .pd-paid-hint > span { flex: 1 1 160px; min-width: 0; }
 
+/* ══ SPEC #1055 — two columns as Desk One; the bill column (296 px) only at billing, until hand-over ══
+   The left rail is Desk One's `.rail` (296 px, 252 px at ≤1220 px); the bill column follows it to the pixel. */
+.d1 .pd-billcol { width: 296px; flex-shrink: 0; border-left: 1px solid var(--line); background: var(--card);
+  display: flex; flex-direction: column; overflow: hidden; }
+@media (max-width: 1220px) { .d1 .pd-billcol { width: 252px; } }
+
+/* The line, in the work column under the search (board 1). */
+.d1 .pd-line { max-width: 860px; margin-top: 26px; }
+.d1 .pd-line-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.d1 .pd-line-box { display: flex; flex-direction: column; overflow: hidden; }
+.d1 .pd-line-row { display: flex; align-items: center; gap: 8px; padding-right: 12px; border-top: 1px solid var(--line2); }
+.d1 .pd-line-row.theirs { opacity: .5; }
+.d1 .pd-line-row.here { background: var(--green-soft); box-shadow: inset 3px 0 0 var(--green); }
+.d1 .pd-line-take { display: flex; align-items: center; gap: 14px; flex-grow: 1; min-width: 0; padding: 12px 4px 12px 16px; text-align: left; }
+.d1 .pd-line-take:hover:not(:disabled) .pd-line-go { border-color: var(--green); color: var(--green); }
+.d1 .pd-line-take:disabled { cursor: not-allowed; }
+.d1 .pd-line-no { width: 60px; flex-shrink: 0; font-size: 13px; font-weight: 600; }
+.d1 .pd-line-who { flex-grow: 1; min-width: 0; }
+.d1 .pd-line-drugs { display: block; margin-top: 2px; font-size: 12px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.d1 .pd-line-wait { width: 64px; flex-shrink: 0; text-align: right; font-size: 12px; }
+.d1 .pd-line-go { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; height: 32px; min-width: 96px; padding: 0 12px; }
+.d1 .pd-line-tab { flex-shrink: 0; width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--line); color: var(--dim);
+  display: flex; align-items: center; justify-content: center; }
+
+/* Desk One's hit cards for the find's suggestions and candidates (owner 2026-11-13: "resembles OPD counter's search box"). */
+.d1 .pd-hits { display: flex; flex-direction: column; gap: 8px; }
+.d1 .pd-hit { display: flex; align-items: center; gap: 13px; padding: 12px 15px; width: 100%; text-align: left; }
+.d1 .pd-hit.first { border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+.d1 .pd-hit-av { width: 38px; height: 38px; border-radius: 6px; background: var(--wash); display: flex; align-items: center;
+  justify-content: center; font-weight: 600; color: var(--dim); flex-shrink: 0; }
+.d1 .pd-hit-who { flex-grow: 1; min-width: 0; }
+.d1 .pd-hit-uhid { font-size: 12px; font-weight: 600; width: 120px; flex-shrink: 0; }
+.d1 .pd-hit-go { flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; }
+
+/* The ticket's foot while the lines are collected: n of m settled · so far · Save draft (board 2). */
+/* The ticket fills the work column, so the foot sits at its bottom (board 2) and stays in view while the lines scroll
+   (`bottom: -30px` — Chromium keeps a sticky box inside the scroller's 30 px padding otherwise, leaving a strip under it). */
+.d1 .pd-ticket { min-height: 100%; display: flex; flex-direction: column; }
+.d1 .pd-ticket > .pd-lines { flex: 1 0 auto; display: flex; flex-direction: column; }
+.d1 .pd-foot { position: sticky; bottom: -30px; z-index: 3; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  margin: auto -30px -30px -30px; padding: 13px 30px 15px 30px; background: var(--card); border-top: 1px solid var(--line); }
+.d1 .pd-foot-progress { display: flex; align-items: center; gap: 10px; }
+.d1 .pd-foot-bar { width: 120px; height: 6px; border-radius: 3px; background: var(--line2); overflow: hidden; }
+.d1 .pd-foot-bar > span { display: block; height: 100%; background: var(--green); }
+.d1 .pd-foot-hint { font-size: 12px; color: var(--dim); min-width: 0; flex: 0 1 auto; }
+.d1 .pd-addrow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 12px 0 22px 0; }
+
+/* "Add a medicine" — the sheet (board 5). Its fields are Desk One's `.in`. */
+.d1 .pd-add, .pd-add { width: 600px; max-width: calc(100vw - 24px); max-height: 88vh; display: flex; flex-direction: column;
+  overflow: hidden; box-shadow: 0 24px 70px rgba(19,36,32,.35); }
+.d1 .pd-add-head { display: flex; align-items: center; gap: 10px; padding: 16px 20px; border-bottom: 1px solid var(--line2); }
+.d1 .pd-add-body { padding: 16px 20px; overflow-y: auto; }
+.d1 .pd-add-chosen { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-top: 8px; padding: 9px 12px; border-radius: 6px;
+  border: 1px solid var(--green-line, #b9dccb); background: var(--green-soft); }
+.d1 .pd-add-why { border: none; padding: 0; margin: 16px 0 0 0; min-width: 0; }
+.d1 .pd-add-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 7px; }
+.d1 .pd-add-opt { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--card); text-align: left; font-size: 13px; }
+.d1 .pd-add-opt > span { font-size: 11.5px; color: var(--dim); line-height: 16px; }
+.d1 .pd-add-opt[aria-checked="true"] { border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+.d1 .pd-add-opt[aria-checked="true"] > strong { color: var(--green); }
+.d1 .pd-add-grid { display: flex; gap: 9px; flex-wrap: wrap; margin-top: 14px; }
+.d1 .pd-add-cell { display: flex; flex-direction: column; gap: 5px; flex: 1 1 110px; min-width: 0; }
+.d1 .pd-add-cell.narrow { flex: 0 1 80px; }
+.d1 .pd-add-cell.wide { flex: 2 1 200px; }
+.d1 .pd-add-paper { margin-top: 14px; padding: 12px; border-radius: 7px; background: var(--wash); border: 1px solid var(--line2); }
+.d1 .pd-add-note { margin: 14px 0 0 0; font-size: 12px; color: var(--dim); line-height: 18px; }
+.d1 .pd-add-foot { display: flex; gap: 9px; padding: 13px 20px; border-top: 1px solid var(--line2); }
+@media (max-width: 600px) { .d1 .pd-add-opts { grid-template-columns: 1fr; } }
+
 /* ══ WALK 2026-10-14 — the desk on a phone (≤900 px): one column, after Desk One's phone desk ══
    The header and the menu reuse Desk One's `.top-compact` / `.d1-menu` rules; these are the desk's own. */
 @media (max-width: 900px) {
@@ -90,6 +160,14 @@
   .d1 .pd-body.phone .pd-lrow > :nth-child(5) { order: 6; width: auto !important; margin-left: 32px; text-align: left !important; }
   .d1 .pd-body.phone .pd-lrow > :nth-child(5) > span { display: inline !important; margin-right: 6px; }
   .d1 .pd-body.phone .pd-lrow > :nth-child(6) { order: 7; width: auto !important; margin-left: auto; }
+  /* Spec #1055 — on a phone the ticket's foot is a plain block at the end of the ticket, and the line's rows wrap. */
+  .d1 .pd-body.phone .pd-foot { position: static; margin: 18px 0 0 0; padding: 12px 0 0 0; background: transparent; }
+  .d1 .pd-body.phone .pd-foot-hint { flex-basis: 100%; }
+  .d1 .pd-pane .pd-line { margin: 0; padding: 14px; }
+  .d1 .pd-line-take { flex-wrap: wrap; }
+  .d1 .pd-body.phone .pd-line-go { display: none; }
+  .d1 .pd-body.phone .pd-hit-uhid { width: auto; }
+  .d1 .pd-body.phone .pd-hit { flex-wrap: wrap; }
   /* the dock's ask box gives way on a narrow screen instead of pushing the page sideways */
   .d1[data-seat="pharmacy-desk"] input[aria-label][style*="width: 290px"] { width: clamp(110px, 38vw, 290px) !important; }
 }

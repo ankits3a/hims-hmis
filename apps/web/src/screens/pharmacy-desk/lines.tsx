@@ -32,8 +32,12 @@ import type { PickLine, VerifyLine, WireAlternativeBlock, WireDispense, WireDisp
 export type CollectResult = { ok: true } | { ok: false; lineErrors: Record<number, string>; message: string | null };
 
 export function LineList({
-  dispense, editable, busy, onCollect, onDecline, onFocusDrug, onLiveQty,
+  dispense, editable, busy, onCollect, onDecline, onFocusDrug, onLiveQty, onDraft = null, addRow = null,
 }: {
+  /** Spec #1055 — "Save draft", at the ticket's foot while the lines are collected. */
+  onDraft?: (() => void) | null;
+  /** Spec #1055 D5 — the "+ Add a medicine" row, drawn under the lines. */
+  addRow?: React.ReactNode;
   dispense: WireDispense;
   /** Claimed or verified, and this desk's to work. Everything else is drawn, not worked. */
   editable: boolean;
@@ -239,19 +243,23 @@ export function LineList({
   const rows = dispense.lines.filter((l) => l.splitFromLineIdx == null);
   const partsOf = (idx: number): WireDispenseLine[] => dispense.lines.filter((l) => l.splitFromLineIdx === idx);
   const settledCount = rows.filter((l) => isSettled(l, ticks[l.lineIdx])).length;
+  /*
+    Spec #1055 D2 — while the lines are collected there is no bill column: the ticket's foot says how far it has come
+    and what it comes to so far, at today's shelf price over the quantities on the screen (`quoteAmountPaise` mirrors the
+    server's sum; the desk does no other arithmetic on money). A declined line is not in it.
+  */
+  const collecting = dispense.status === "claimed" || dispense.status === "verified";
+  const soFar = rows.reduce((n, l) => {
+    if (l.status !== "open" || l.quote == null) return n;
+    const tk = ticks[l.lineIdx];
+    const q = tk === undefined ? l.qtyBase : (qtyOf(tk) ?? null);
+    return q === null ? n : n + quoteAmountPaise(l.quote, q);
+  }, 0);
   /* The co-pilot speaks about the first line the shelf cannot fill as written (the board's `agchip`). */
   const helpLine = firstLineNeedingHelp(dispense.lines);
 
   return (
-    <div data-testid="desk-lines">
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 15 }}>
-        <div style={{ flexGrow: 1, height: 6, borderRadius: 3, background: "var(--line2)", overflow: "hidden" }}>
-          <span style={{ display: "block", width: `${String(rows.length === 0 ? 0 : (settledCount * 100) / rows.length)}%`, height: "100%", background: "var(--green)" }} />
-        </div>
-        <span className="mo" style={{ fontSize: 12, color: "var(--dim)" }} data-testid="desk-settled">
-          {t("pharmacyDesk.settled", { n: settledCount, of: rows.length })}
-        </span>
-      </div>
+    <div data-testid="desk-lines" className="pd-lines">
       {/* ONE scan box for the ticket: a pack scanned here finds its own line (`routeScan`) and ticks it. */}
       {editable && dispense.lines.some((l) => l.status === "open" && l.pickedBatch == null) ? (
         <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 13 }}>
@@ -312,6 +320,7 @@ export function LineList({
           />
         ))}
       </div>
+      {addRow}
       {editable && helpLine !== null ? (
         <CopilotOffer
           dispenseId={dispense.id}
@@ -400,6 +409,21 @@ export function LineList({
       {/* A refusal that landed on its lines is said there, once — not again under the list. */}
       {ticketError !== null && Object.keys(errors).length === 0
         ? <p role="alert" style={{ margin: "12px 0 0 0", fontSize: 12.5, color: "var(--red)" }}>{ticketError}</p> : null}
+      {collecting ? (
+        <div className="pd-foot" data-testid="desk-ticket-foot">
+          <div className="pd-foot-progress">
+            <div className="pd-foot-bar"><span style={{ width: `${String(rows.length === 0 ? 0 : (settledCount * 100) / rows.length)}%` }} /></div>
+            <span className="mo" style={{ fontSize: 12, color: "var(--dim)", whiteSpace: "nowrap" }} data-testid="desk-settled">
+              {t("pharmacyDesk.settled", { n: settledCount, of: rows.length })}
+            </span>
+          </div>
+          <span className="pd-foot-hint">{t("pharmacyDesk.foot.hint")}</span>
+          <span style={{ flexGrow: 1 }} />
+          <span className="tag">{t("pharmacyDesk.foot.soFar")}</span>
+          <strong className="mo" data-testid="desk-sofar" style={{ fontSize: 17, letterSpacing: "-.01em" }}>{rupees(soFar)}</strong>
+          {onDraft === null ? null : <button type="button" className="sec" onClick={onDraft}>{t("pharmacyDesk.bill.draft")}</button>}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -671,6 +695,15 @@ function LineRow({
           {saltLabel(line.salt) === null && !rx.noSubstitution ? null : (
             <span data-testid={`${id}-salt`} style={{ display: "block", fontSize: 10.5, color: "var(--dim)", marginTop: 1 }}>
               {[saltLabel(line.salt), rx.noSubstitution ? t("pharmacyDesk.noSubstitution") : null].filter((x) => x !== null).join(" · ")}
+            </span>
+          )}
+          {/* Spec #1055, ruling 0094 — not the doctor's line: the counter added it by hand, and says who and why. */}
+          {line.added == null ? null : (
+            <span className="pill gd pd-wrap" data-testid={`${id}-added`} style={{ marginTop: 5 }}>
+              {[
+                t("pharmacyDesk.added.mark", { name: line.added.byName ?? "—", reason: t(`pharmacyDesk.added.reason.${line.added.reason}`) }),
+                line.added.prescriberName,
+              ].filter((x) => x !== null && x !== "").join(" · ")}
             </span>
           )}
         </span>

@@ -136,7 +136,7 @@ describe("the line list at the window (PD-4)", () => {
     expect(batch).toHaveTextContent("AZ-2");
     expect(screen.queryByTestId("desk-line-1")).toBeNull(); // the split is the same prescription line, not a second one
     expect(screen.getByTestId("desk-line-0-qty")).toHaveTextContent("10");
-    expect(screen.getByTestId("desk-settled")).toHaveTextContent("1 of 1 settled");
+    expect(screen.getByTestId("desk-ticket-state")).toHaveTextContent("every line settled"); // spec #1055: collected, the foot gives way to the bill column
   });
 
   /* Owner ruling 2026-10-03 — loose tablets come from the loose tray first: the desk says how many. */
@@ -278,7 +278,7 @@ describe("the line list at the window (PD-4)", () => {
     mockRoutes(base(() => dispense("picked", lines, { dispenseNo: "P2609190002" })));
     renderWithProviders(<PharmacyDesk ticketId="d1" />);
     const row = await screen.findByTestId("desk-line-0");
-    expect(screen.getByTestId("desk-settled")).toHaveTextContent("1 of 1 settled");
+    expect(screen.getByTestId("desk-ticket-state")).toHaveTextContent("every line settled"); // spec #1055: collected, the foot gives way to the bill column
     expect(row).toHaveTextContent("given short — only 200 on the shelf");
     expect(row).not.toHaveTextContent(/None on the shelf/);
   });

@@ -74,8 +74,10 @@ describe("Save draft says what it saved, and the draft waits first in the line",
   it("before anything is picked, the confirmation names the ticket and says plainly only the claim is kept", async () => {
     mockRoutes(routes(() => dispense()));
     const first = renderWithProviders(<PharmacyDesk ticketId="d1" />);
-    const rail = await screen.findByTestId("desk-bill");
-    await userEvent.click(within(rail).getByRole("button", { name: "Save draft" }));
+    // Spec #1055 — before the lines are settled there is no bill column; Save draft sits at the ticket's foot.
+    const foot = await screen.findByTestId("desk-ticket-foot");
+    expect(screen.queryByTestId("desk-bill")).toBeNull();
+    await userEvent.click(within(foot).getByRole("button", { name: "Save draft" }));
     /*
       `/pharmacy/desk/<id>` and `/pharmacy/desk` are two routes: clearing the desk REMOUNTS it. The
       browser walk found the confirmation dying in that remount (component state) — so the test does
@@ -86,7 +88,7 @@ describe("Save draft says what it saved, and the draft waits first in the line",
     const saved = await screen.findByTestId("desk-draft-saved");
     expect(saved).toHaveTextContent("P-49 saved — it waits for you in the line, marked “your draft”.");
     expect(saved).toHaveTextContent("Nothing was picked yet, so only your claim is kept.");
-    /* the desk is clear — nobody in hand — and the line is back where the bill was */
+    /* the desk is clear — nobody in hand — and the line is listed under the search (spec #1055) */
     expect(navigate).toHaveBeenCalledWith({ to: "/pharmacy/desk" });
     expect(await screen.findByTestId("desk-queue")).toBeInTheDocument();
   });

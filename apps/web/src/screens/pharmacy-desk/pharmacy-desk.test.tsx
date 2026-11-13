@@ -359,10 +359,12 @@ describe("PharmacyDesk (PD-3)", () => {
     // F2 (PD-7 C8) is bound in the dock and proven to focus the ask box in `ask.test.tsx`; S opens the
     // slip (slip.test), B the FEFO batch & shelf sheet (fefo.test), 1-4 the tenders (bill.test).
     // Parity P1 — N notes a shortage (bound in the desk; proven in `p1.test.tsx`).
-    expect([...drawn].sort()).toEqual(["1-4", "B", "Esc", "F2", "N", "Q", "S", "⏎"].sort());
+    // Spec #1055 — A adds a medicine on the ticket (`acceptance/pharmacy-two-columns-1055`); owner 2026-11-13 — P is the
+    // find stage's paper-prescription pill (Desk One's row), and the find has no separate ⏎ button any more.
+    expect([...drawn].sort()).toEqual(["1-4", "A", "B", "Esc", "F2", "N", "P", "Q", "S"].sort());
     // the idle legend, in the board's order
     const legend = [...screen.getByTestId("desk-keys").querySelectorAll(".kb")].map((k) => k.textContent);
-    expect(legend).toEqual(["Q", "S", "B", "1-4", "N", "F2", "Esc"]);
+    expect(legend).toEqual(["Q", "S", "B", "1-4", "N", "A", "P", "F2", "Esc"]);
     expect(screen.getByTestId("desk-keys")).toHaveTextContent("batch & shelf");
   });
 });

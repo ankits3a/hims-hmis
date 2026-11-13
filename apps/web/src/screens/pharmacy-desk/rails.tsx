@@ -13,7 +13,7 @@ const rupees = (paise: number): string => `₹${(paise / 100).toLocaleString("en
 /**
  * THE LEFT RAIL — nobody in hand: the pharmacist's day and the keys this desk binds; somebody in
  * hand: who they are, what they are allergic to, and how far the ticket has come. PD-D5: the
- * pharmacy's left rail is the PATIENT, because the right rail becomes the bill.
+ * pharmacy's left rail is the PATIENT; spec #1055 — 296 px, Desk One's `.rail`.
  */
 export function Dossier({
   inHand, me, summary, shift = null, queued, onClear, paletteBound,
@@ -71,6 +71,9 @@ export function Dossier({
       { k: "B", what: t("pharmacyDesk.keys.b") },
       { k: "1-4", what: t("pharmacyDesk.keys.tender") },
       { k: "N", what: t("pharmacyDesk.keys.n") },
+      /* Spec #1055 — `A` adds a medicine by hand on the ticket; owner 2026-11-13 — `P` the paper prescription at the find. */
+      { k: "A", what: t("pharmacyDesk.keys.a") },
+      { k: "P", what: t("pharmacyDesk.keys.p") },
       { k: "F2", what: t("pharmacyDesk.keys.f2") },
       { k: "Esc", what: t("pharmacyDesk.keys.esc") },
     ];
@@ -210,11 +213,12 @@ function rowMeta({ row, me, now, yesterday, lang }: RowProps): { who: string; la
 }
 
 /**
- * THE RIGHT RAIL, UNTIL THE BILL TAKES IT (PD-6). Every ticket at this counter today. A ticket
- * somebody else holds is DIMMED AND NAMED — the owner wants the line seen whole (PD-D9) — and a
- * sealed patient's ticket says so before anybody clicks it (PD-1, E3).
+ * THE LINE (PD-6), SINCE SPEC #1055 IN THE WORK COLUMN. Every ticket at this counter today, listed under the search
+ * while nobody is in hand (on a phone, behind its tab); `Q` opens the whole line at any time. A ticket somebody else
+ * holds is DIMMED AND NAMED — the owner wants the line seen whole (PD-D9) — and a sealed patient's ticket says so before
+ * anybody clicks it (PD-1, E3). Two acts per row, as the board draws them: take it here, or open it in its own tab.
  */
-export function QueueRail({
+export function QueueList({
   rows, me, now, inHandId, onTake, onOpenTab,
 }: {
   rows: WireQueueRow[];
@@ -227,73 +231,61 @@ export function QueueRail({
 }): React.ReactElement {
   const { t, i18n } = useTranslation();
   return (
-    <aside
-      data-testid="desk-queue"
-      style={{ width: 296, flexShrink: 0, borderLeft: "1px solid var(--line)", background: "var(--card)", display: "flex", flexDirection: "column", overflow: "hidden" }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 15px 11px 15px" }}>
-        <span className="tag" style={{ flexGrow: 1 }}>{t("pharmacyDesk.line", { count: rows.length })}</span>
+    <section data-testid="desk-queue" className="pd-line" aria-label={t("pharmacyDesk.line", { count: rows.length })}>
+      <div className="pd-line-head">
+        <span className="tag">{t("pharmacyDesk.line", { count: rows.length })}</span>
+        <span style={{ fontSize: 12.5, color: "var(--dim)" }}>{t("pharmacyDesk.lineHint")} · <span className="kb">Q</span> {t("pharmacyDesk.keys.q")}</span>
       </div>
-      <div style={{ flexGrow: 1, overflowY: "auto" }}>
+      <div className="box pd-line-box">
         {rows.length === 0 ? (
-          <p style={{ margin: 0, padding: "9px 15px", fontSize: 12, color: "var(--dim)" }}>{t("pharmacyDesk.lineEmpty")}</p>
+          <p style={{ margin: 0, padding: "14px 16px", fontSize: 12.5, color: "var(--dim)" }}>{t("pharmacyDesk.lineEmpty")}</p>
         ) : null}
-        {draftsFirst(rows, me).map((row) => {
+        {draftsFirst(rows, me).map((row, i) => {
           const m = rowMeta({ row, me, now, yesterday: t("pharmacyDesk.queuedYesterday"), lang: i18n.language });
           const theirs = m.hold.kind === "theirs";
           const draft = isMyDraft(row, me);
           const here = row.dispenseId === inHandId;
           return (
-            /* TWO acts per row, as the board draws them: take it here, or open it in its own tab. A row
-               that was one big button could hold only one, and "Open in a tab" lived in the Q overlay. */
-            <div
-              key={row.dispenseId}
-              style={{
-                display: "flex", alignItems: "flex-start", gap: 9, width: "100%", padding: "9px 15px",
-                borderTop: "1px solid var(--line2)",
-                ...(theirs ? { opacity: 0.5 } : {}),
-                ...(here ? { background: "var(--green-soft)", boxShadow: "inset 2px 0 0 var(--green)" } : {}),
-              }}
-            >
+            <div key={row.dispenseId} className={`pd-line-row${theirs ? " theirs" : ""}${here ? " here" : ""}`} style={i === 0 ? { borderTop: "none" } : undefined}>
               <button
+                type="button"
+                className="pd-line-take"
                 data-testid={`queue-row-${row.dispenseId}`}
                 disabled={theirs}
                 aria-current={here ? "true" : undefined}
                 onClick={() => onTake(row.dispenseId, m.who, m.hold.kind === "mine")}
-                style={{ display: "flex", alignItems: "flex-start", gap: 9, flexGrow: 1, minWidth: 0 }}
               >
-              <span style={{ flexGrow: 1, minWidth: 0 }}>
-                <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                  {m.label === null ? null : <span className="mo" style={{ fontSize: 11.5, fontWeight: 600 }}>{m.label}</span>}
-                  <span style={{ fontSize: 12.5, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.who}</span>
-                  <span className="mo" style={{ fontSize: 10.5, color: m.tone, marginLeft: "auto" }}>{m.wait}</span>
+                <strong className="mo pd-line-no">{m.label ?? ""}</strong>
+                <span className="pd-line-who">
+                  <strong style={{ display: "block", fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.who}</strong>
+                  {(row.drugs ?? []).length === 0 ? null : (
+                    <span data-testid={`queue-row-${row.dispenseId}-drugs`} className="pd-line-drugs">{(row.drugs ?? []).join(", ")}</span>
+                  )}
+                  <span style={{ display: "flex", gap: 5, marginTop: 4, flexWrap: "wrap" }}>
+                    {m.hold.kind === "theirs" ? <span className="pill">{t("pharmacyDesk.heldBy", { name: m.hold.name })}</span> : null}
+                    {draft ? <span className="pill on" data-testid={`queue-row-${row.dispenseId}-draft`}>{t("pharmacyDesk.draftResume")}</span>
+                      : m.hold.kind === "mine" ? <span className="pill on">{t("pharmacyDesk.yours")}</span> : null}
+                    {row.patient.restricted ? <span className="pill gd">{t("pharmacyDesk.sealedRecord")}</span> : null}
+                    <ShelfPill row={row} />
+                    {row.transcribedBy !== null && row.transcribedBy !== undefined && row.slipConfirmedBy === null
+                      ? <span className="pill gd">{t("pharmacyDesk.slipToConfirm")}</span> : null}
+                  </span>
                 </span>
-                {(row.drugs ?? []).length === 0 ? null : (
-                  <span
-                    data-testid={`queue-row-${row.dispenseId}-drugs`}
-                    style={{ display: "block", marginTop: 3, fontSize: 11, color: "var(--dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                  >
-                    {(row.drugs ?? []).join(", ")}
+                <span className="mo pd-line-wait" style={{ color: m.tone }}>{m.wait}</span>
+                {theirs ? null : (
+                  <span className={i === 0 && !draft ? "sec grn pd-line-go" : "sec pd-line-go"} aria-hidden="true">
+                    {draft ? t("pharmacyDesk.resume") : t("pharmacyDesk.take")}
                   </span>
                 )}
-                <span style={{ display: "flex", gap: 5, marginTop: 5, flexWrap: "wrap" }}>
-                  {m.hold.kind === "theirs" ? <span className="pill">{t("pharmacyDesk.heldBy", { name: m.hold.name })}</span> : null}
-                  {draft ? <span className="pill on" data-testid={`queue-row-${row.dispenseId}-draft`}>{t("pharmacyDesk.draftResume")}</span>
-                    : m.hold.kind === "mine" ? <span className="pill on">{t("pharmacyDesk.yours")}</span> : null}
-                  {row.patient.restricted ? <span className="pill gd">{t("pharmacyDesk.sealedRecord")}</span> : null}
-                  <ShelfPill row={row} />
-                  {row.transcribedBy !== null && row.transcribedBy !== undefined && row.slipConfirmedBy === null
-                    ? <span className="pill gd">{t("pharmacyDesk.slipToConfirm")}</span> : null}
-                </span>
-              </span>
               </button>
               {theirs ? null : (
                 <button
+                  type="button"
+                  className="pd-line-tab"
                   data-testid={`queue-row-${row.dispenseId}-tab`}
                   aria-label={t("pharmacyDesk.openInTabFor", { who: m.who })}
                   title={t("pharmacyDesk.openInTab")}
                   onClick={() => onOpenTab(row.dispenseId, m.who, m.hold.kind === "mine")}
-                  style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 5, border: "1px solid var(--line)", color: "var(--dim)", display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1 }}
                 >
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
                     <path d="M14 4h6v6M20 4l-8 8M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5" />
@@ -304,10 +296,8 @@ export function QueueRail({
           );
         })}
       </div>
-      <div style={{ padding: "11px 15px", borderTop: "1px solid var(--line2)", fontSize: 11, color: "var(--dim)", lineHeight: "16px" }}>
-        {t("pharmacyDesk.lineFoot")}
-      </div>
-    </aside>
+      <p style={{ margin: "8px 0 0 0", fontSize: 12, color: "var(--dim)", lineHeight: "17px" }}>{t("pharmacyDesk.lineFoot")}</p>
+    </section>
   );
 }
 
