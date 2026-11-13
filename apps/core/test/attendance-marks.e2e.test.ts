@@ -31,13 +31,37 @@ import type { BioattendStub } from "../scripts/bioattend-stub";
  *
  * The site is the server's DEFAULT setting (the owner's centre, 200 m), so this also pins those values.
  * NO DATE IS PINNED: the route reads the real clock, so "today" is asked of it too.
+ *
+ * MIDNIGHT (main went red 2026-11-13 18:30Z = 00:00 IST): "today" is asked ONCE, before the server
+ * stamps any mark, so a suite that straddles IST midnight compares yesterday's date with today's
+ * mark. The suite takes well under a minute, so when IST midnight is less than two minutes away it
+ * waits for midnight to pass before asking. It never waits otherwise.
  */
+const IST_OFFSET_MS = 330 * 60_000;
+const DAY_MS = 86_400_000;
+const MIDNIGHT_GUARD_MS = 120_000;
+/** Milliseconds until the next IST midnight, from `nowMs`. */
+function msToIstMidnight(nowMs: number): number {
+  return DAY_MS - ((nowMs + IST_OFFSET_MS) % DAY_MS);
+}
+async function clearOfIstMidnight(): Promise<void> {
+  const left = msToIstMidnight(Date.now());
+  if (left < MIDNIGHT_GUARD_MS) await new Promise((r) => setTimeout(r, left + 2_000));
+}
 const PW = "s3cret-pass";
 const CENTRE = { lat: 25.6892879, lng: 85.2301486 };
 const EARTH_M = 6_371_008.8;
 /** A point `m` metres due north of the centre — on the meridian the server's haversine gives back exactly `m`. */
 const north = (m: number, mocked = false) => ({ latitude: CENTRE.lat + (m / EARTH_M) * (180 / Math.PI), longitude: CENTRE.lng, mocked });
 const ENV_KEYS = ["HMIS_BIOATTEND_API_KEY_FILE", "ATTENDANCE_SELF_SHOWS_TIMES", "ATTENDANCE_SITE_LAT", "ATTENDANCE_SITE_LNG", "ATTENDANCE_SITE_RADIUS_M", "DATABASE_URL"] as const;
+
+describe("the IST-midnight guard of this suite", () => {
+  it("counts the time to the next IST midnight (00:00 IST = 18:30 UTC)", () => {
+    expect(msToIstMidnight(Date.UTC(2026, 10, 13, 18, 29, 0))).toBe(60_000);
+    expect(msToIstMidnight(Date.UTC(2026, 10, 13, 18, 30, 0))).toBe(DAY_MS);
+    expect(msToIstMidnight(Date.UTC(2026, 10, 13, 6, 30, 0))).toBe(12 * 3_600_000);
+  });
+});
 
 describe("staff app attendance marks e2e (HTTP)", () => {
   let db: Db;
@@ -61,6 +85,7 @@ describe("staff app attendance marks e2e (HTTP)", () => {
     workerUrl.pathname = `${workerUrl.pathname}_${process.env.JEST_WORKER_ID ?? "1"}`;
     process.env.DATABASE_URL = workerUrl.toString();
     process.env.HMIS_BIOATTEND_API_KEY_FILE = join(dir, "api-key.txt");
+    await clearOfIstMidnight();
     today = istDate(new Date());
     stub = createBioattendStub({ today });
     base = await stub.listen(0);
@@ -68,7 +93,7 @@ describe("staff app attendance marks e2e (HTTP)", () => {
     app = moduleRef.createNestApplication<NestExpressApplication>({ bodyParser: false });
     configureApp(app);
     await app.init();
-  });
+  }, MIDNIGHT_GUARD_MS + 60_000);
   afterAll(async () => {
     await app.close();
     await stub.close();
