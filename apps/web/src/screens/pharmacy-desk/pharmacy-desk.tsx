@@ -8,7 +8,7 @@ import { fetchCurrentSession } from "../../lib/billing-api";
 import { usePaletteOptional } from "../../components/command-palette";
 import { useCopilot } from "../../lib/use-copilot";
 import {
-  billDispense, claimDispense, fetchClosing, confirmDispenseSlip, declineLine, fetchCounterSummary, fetchDispense, fetchMyRegistration, fetchMyShift, fetchPharmacySettings, fetchQueue, findAtCounter, handOverDispense, openBalanceDispense,
+  billDispense, claimDispense, fetchClosing, confirmDispenseSlip, declineLine, fetchCounterSummary, fetchDispense, fetchMyFullName, fetchMyRegistration, fetchMyShift, fetchPharmacySettings, fetchQueue, findAtCounter, handOverDispense, openBalanceDispense,
   pharmacyErrorCode, pharmacyErrorText, pickDispense, previewBill, verifyDispense,
 } from "../../lib/pharmacy-api";
 import { istClock, istDateLabel } from "../desk-one/model";
@@ -24,6 +24,7 @@ import { RegisterSheet } from "./register-sheet";
 import { DraftCard, DuplicateItemsCard, PaymentRunCard, PurchasePlanCard, ReturnPlanCard, ShortBookSheet, duplicateItemsOf, paymentRunPlanOf, purchasePlanOf, returnPlanOf, shortBookDraftOf } from "./short-book";
 import type { DuplicateItemsCardData, PaymentRunCardData, PurchasePlanCardData, ReturnPlanCardData, ShortBookDraft, ShortDrug } from "./short-book";
 import { TicketPanel } from "./ticket";
+import { istToday } from "./work";
 import type { DeskLog } from "./log";
 import type { CollectResult } from "./lines";
 import type { ControlledHandover, HandoverIdentity, PickLine, Tender, VerifyLine, WireDispense, WireFindResult, WirePatientSummary } from "../../lib/pharmacy-api";
@@ -187,6 +188,8 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
   const drawer = useQuery({ queryKey: ["billing", "session", "current"], queryFn: fetchCurrentSession, refetchInterval: 60_000, retry: false });
   /* The header's other precondition: may this login verify (Pharmacy Act 1948 §42)? A 404 (older server) says nothing. */
   const registration = useQuery({ queryKey: ["pharmacy", "pharmacists", "me"], queryFn: fetchMyRegistration, staleTime: 5 * 60_000, retry: false });
+  /* Walk 2026-11-13 (#1055) — the add sheet names the person as the ticket will: by full name, not the login. */
+  const fullName = useQuery({ queryKey: ["auth", "me", "full-name"], queryFn: fetchMyFullName, staleTime: 30 * 60_000, retry: false });
   /* Owner ruling 2026-10-02 — quick desk mode. Unread or failed reads as OFF: the desk as it was. */
   const settings = useQuery({ queryKey: ["pharmacy", "settings"], queryFn: fetchPharmacySettings, staleTime: 60_000, retry: false });
   const quick = settings.data?.quickDesk === true;
@@ -431,10 +434,10 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
     /* E13 — a hold already over keeps nothing but the claim, and the log says only that. */
     const claimOnly = until === null || holdEnded(d?.pickedAt ?? null, new Date());
     say(claimOnly ? t("pharmacyDesk.log.draftClaimOnly") : t("pharmacyDesk.log.draftHeld", { time: until }), "warn");
-    const label = d === undefined ? "" : (ticketLabel(d.dispenseNo) ?? whoLabel(d.patient));
+    const label = d === undefined ? "" : (ticketLabel(d.dispenseNo, istToday(), i18n.language) ?? whoLabel(d.patient));
     clearDesk();
     noteDraftSaved(claimOnly ? t("pharmacyDesk.draftSaved.claimOnly", { ticket: label }) : t("pharmacyDesk.draftSaved.held", { ticket: label, time: until }));
-  }, [clearDesk, t, ticket.data]);
+  }, [clearDesk, i18n.language, t, ticket.data]);
 
   /* FD-31 / E28 — the cross-confirmation, asked for when the ticket is opened rather than at the till. */
   const confirmSlip = useCallback(async (): Promise<void> => {
@@ -495,6 +498,8 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
   }, [candidates, clearDesk, inHandId, overlay, palette, paperFor, quick, ticket.data?.transcribedBy]);
 
   const rows = queue.data ?? [];
+  /* Walk 2026-11-13 (#1055) — the header's chip counts what the line counts (one source: the queue the line lists), so
+     "0 waiting" never stands beside a line holding a ticket; the gold says one is free to take. */
   const waiting = rows.filter((r) => r.status === "queued" && holdOf(r, me).kind === "free").length;
   const inHand = ticket.data ?? null;
   /*
@@ -502,7 +507,8 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
     (collected: `picked`), and stays through the payment until the hand-over (`billed`); then the desk is two columns.
   */
   const billing = inHand !== null && !heldByAnother(inHand, me) && (inHand.status === "picked" || inHand.status === "billed");
-  const inHandLabel = inHand === null ? null : ticketLabel(inHand.dispenseNo);
+  /* Walk 2026-11-13 — an earlier day's ticket says its day ("P-3 · 13 Nov"): yesterday's P-3 is not today's. */
+  const inHandLabel = inHand === null ? null : ticketLabel(inHand.dispenseNo, istToday(), i18n.language);
 
   /*
     ═══ WALK 2026-10-14 — THE DESK ON A PHONE (≤900 px) ═══
@@ -559,7 +565,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
       data-testid="desk-waiting"
       onClick={() => setOverlay("queue")}
     >
-      {t("pharmacyDesk.waiting", { count: waiting })} <span className="kb">Q</span>
+      {t("pharmacyDesk.inLineChip", { count: rows.length })} <span className="kb">Q</span>
     </button>
   );
   const commandEl = palette === null ? null : (
@@ -740,7 +746,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
                 if (added !== undefined) say(t("pharmacyDesk.log.added", { drug: added.dispensedMedicine?.brandName ?? added.rxLine.drug }));
               }}
               onPaper={paperFor === null ? null : () => setOverlay("paper")}
-              meName={username}
+              meName={fullName.data ?? username}
             />
             {/* Spec #1055 D1 — with nobody in hand the line is listed here, under the search (on a phone it keeps its tab). */}
             {!phone && inHandId === null ? lineEl : null}

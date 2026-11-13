@@ -225,8 +225,16 @@ export function TicketPanel({
           </span>
         </div>
       ) : null}
+      {/*
+        Walk 2026-11-13 (#1055) — once paid, the hand-over sat under every line, below the fold. The board ("Handover")
+        puts it at the top of the work column: the act that is left comes first, and the lines follow it, compact.
+        The bill prints when the money is taken (spec #1046 D3; spec #1055: its paper is said in the bill column); the
+        labels wait for the hand-over.
+      */}
+      {inHand.status === "billed" ? <HandOver dispense={inHand} busy={busy} error={handOverError} onHandOver={onHandOver} /> : null}
       <LineList
         dispense={inHand}
+        compact={inHand.status === "billed"}
         editable={(inHand.status === "claimed" || inHand.status === "verified") && !slipOwed}
         busy={busy}
         onCollect={onCollect}
@@ -238,8 +246,6 @@ export function TicketPanel({
           <AddMedicine dispense={inHand} label={label ?? who} quick={quick} me={meName ?? t("pharmacyDesk.thisDesk")} busy={busy} onAdded={onAdded} />
         )}
       />
-      {/* Spec #1046 D3 — the bill prints when the money is taken (spec #1055: its paper is said in the bill column); the labels wait for the hand-over. */}
-      {inHand.status === "billed" ? <HandOver dispense={inHand} busy={busy} error={handOverError} onHandOver={onHandOver} /> : null}
       {error !== null || note !== null ? alerts : null}
     </div>
   );

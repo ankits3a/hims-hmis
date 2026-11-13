@@ -244,7 +244,7 @@ export function BillRail({
   return (
     /* Spec #1055 D3 — the third column, 296 px as Desk One's rail (252 px at ≤1220 px, `pharmacy-desk.css` `.pd-billcol`). */
     <aside data-testid="desk-bill" className="pd-billcol" aria-label={t("pharmacyDesk.bill.title")}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 15px 3px 15px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 15px 3px 15px", flexShrink: 0 }}>
         <span className="tag" style={{ flexGrow: 1 }}>{t("pharmacyDesk.bill.title")}</span>
         <span className={paid ? "stamp pd" : "stamp un"}>{paid ? t("pharmacyDesk.bill.paid") : t("pharmacyDesk.bill.unpaid")}</span>
         {/* OWNER RULING 2026-09-30 — the bill's exceptions live behind ⋯, as the line's do: the discount first. */}
@@ -271,21 +271,38 @@ export function BillRail({
         ) : null}
       </div>
 
-      <div style={{ flexGrow: 1, overflowY: "auto", padding: "4px 15px 0 15px" }}>
+      {/*
+        Walk 2026-11-13 (#1055) — at 1366×768 the "to collect" total sat inside this column's one scroll area, under the
+        lines, out of sight above the Received button. Only the LINES scroll now; the totals and the money keys below
+        them stay in view.
+      */}
+      <div data-testid="desk-bill-lines" style={{ flex: "0 1 auto", minHeight: 52, overflowY: "auto", padding: "4px 15px 0 15px" }}>
+        {preview === null ? priced.map(({ line: l, qty, amount }) => (
+          /* Priced at today's shelf price for the batch the pick would take — the server's quote, never ours. */
+          <div key={l.lineIdx} style={{ display: "flex", alignItems: "baseline", gap: 9, padding: "7px 0", borderTop: "1px solid var(--line2)" }}>
+            <span style={{ flexGrow: 1, minWidth: 0, fontSize: 12, color: l.status === "declined" ? "var(--dim)" : "var(--ink)" }}>
+              {l.dispensedMedicine?.brandName ?? l.rxLine.drug}
+              {qty === null || (amount === null && !paid) || l.status === "declined" ? null : <span className="mo" style={{ color: "var(--dim)" }}> × {qty}</span>}
+              <AddedMark line={l} />
+            </span>
+            <span className="mo" style={{ fontSize: 12, color: amount === null ? "var(--dim)" : "var(--ink)" }}>
+              {l.status === "declined" ? t("pharmacyDesk.bill.declined") : amount === null ? (paid ? null : "—") : rupees(amount)}
+            </span>
+          </div>
+        )) : preview.lines.map((l) => (
+          <div key={l.lineId} style={{ display: "flex", alignItems: "baseline", gap: 9, padding: "7px 0", borderTop: "1px solid var(--line2)" }}>
+            <span data-testid="desk-bill-line" style={{ flexGrow: 1, minWidth: 0, fontSize: 12 }}>
+              {l.serviceName} <span className="mo" style={{ color: "var(--dim)" }}>{billQtyText(t, l.qty, l.pack)}</span>
+              <AddedMark line={l.lineIdx == null ? undefined : dispense.lines.find((x) => x.lineIdx === l.lineIdx)} />
+            </span>
+            <span className="mo" style={{ fontSize: 12 }}>{rupees(l.netPaise)}</span>
+          </div>
+        ))}
+      </div>
+
+      <div data-testid="desk-bill-totals" style={{ flexShrink: 0, padding: "0 15px 10px 15px" }}>
         {preview === null ? (
           <>
-            {priced.map(({ line: l, qty, amount }) => (
-              /* Priced at today's shelf price for the batch the pick would take — the server's quote, never ours. */
-              <div key={l.lineIdx} style={{ display: "flex", alignItems: "baseline", gap: 9, padding: "7px 0", borderTop: "1px solid var(--line2)" }}>
-                <span style={{ flexGrow: 1, minWidth: 0, fontSize: 12, color: l.status === "declined" ? "var(--dim)" : "var(--ink)" }}>
-                  {l.dispensedMedicine?.brandName ?? l.rxLine.drug}
-                  {qty === null || (amount === null && !paid) || l.status === "declined" ? null : <span className="mo" style={{ color: "var(--dim)" }}> × {qty}</span>}
-                </span>
-                <span className="mo" style={{ fontSize: 12, color: amount === null ? "var(--dim)" : "var(--ink)" }}>
-                  {l.status === "declined" ? t("pharmacyDesk.bill.declined") : amount === null ? (paid ? null : "—") : rupees(amount)}
-                </span>
-              </div>
-            ))}
             {taken !== null ? (
               <>
                 {taken.roundingPaise !== undefined && taken.roundingPaise !== 0 ? (
@@ -308,12 +325,6 @@ export function BillRail({
           </>
         ) : (
           <>
-            {preview.lines.map((l) => (
-              <div key={l.lineId} style={{ display: "flex", alignItems: "baseline", gap: 9, padding: "7px 0", borderTop: "1px solid var(--line2)" }}>
-                <span data-testid="desk-bill-line" style={{ flexGrow: 1, minWidth: 0, fontSize: 12 }}>{l.serviceName} <span className="mo" style={{ color: "var(--dim)" }}>{billQtyText(t, l.qty, l.pack)}</span></span>
-                <span className="mo" style={{ fontSize: 12 }}>{rupees(l.netPaise)}</span>
-              </div>
-            ))}
             {preview.totals.discountPaise > 0 ? (
               <Row
                 what={discount === null ? t("pharmacyDesk.bill.discount") : `${t("pharmacyDesk.bill.discount")} ${discountLabel(discount)} · ${discount.reason}`}
@@ -357,7 +368,7 @@ export function BillRail({
       </div>
 
       {collected ? (
-        <div style={{ padding: "12px 15px", borderTop: "1px solid var(--line)" }}>
+        <div style={{ flexShrink: 0, padding: "12px 15px", borderTop: "1px solid var(--line)" }}>
           {free ? (
             <>
               <p role="status" data-testid="desk-free" style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "var(--green)" }}>{t("pharmacyDesk.bill.free")}</p>
@@ -461,7 +472,7 @@ export function BillRail({
           {until !== null && !ended ? <p style={{ margin: "7px 0 0 0", fontSize: 10.5, color: "var(--dim)", lineHeight: "15px" }}>{t("pharmacyDesk.bill.heldUntil", { time: until })}</p> : null}
         </div>
       ) : paid && paper !== null ? (
-        <div style={{ padding: "12px 15px", borderTop: "1px solid var(--line)" }} data-testid="desk-bill-paper">
+        <div style={{ flexShrink: 0, padding: "12px 15px", borderTop: "1px solid var(--line)" }} data-testid="desk-bill-paper">
           {paper}
           <p style={{ margin: "9px 0 0 0", fontSize: 11, color: "var(--dim)", lineHeight: "16px" }}>{t("pharmacyDesk.bill.closesAtHandover")}</p>
         </div>
@@ -484,6 +495,25 @@ export function BillRail({
         />
       ) : null}
     </aside>
+  );
+}
+
+/**
+ * Walk 2026-11-13 (#1055) — the live bill did not say which medicine the counter added by hand, though the printed bill
+ * does ("added at the counter by <name> · <why>"): a short mark beside the line, the whole sentence on hover.
+ */
+function AddedMark({ line }: { line: WireDispense["lines"][number] | undefined }): React.ReactElement | null {
+  const { t } = useTranslation();
+  const added = line?.added ?? null;
+  if (line === undefined || added === null) return null;
+  return (
+    <span
+      className="pill gd" data-testid={`desk-bill-added-${String(line.lineIdx)}`}
+      title={t("pharmacyDesk.added.mark", { name: added.byName ?? "—", reason: t(`pharmacyDesk.added.reason.${added.reason}`) })}
+      style={{ display: "inline-flex", height: 18, padding: "0 6px", fontSize: 10, marginLeft: 5, verticalAlign: "1px" }}
+    >
+      {t("pharmacyDesk.bill.addedMark")}
+    </span>
   );
 }
 

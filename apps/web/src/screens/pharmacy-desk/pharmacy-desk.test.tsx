@@ -153,8 +153,10 @@ describe("PharmacyDesk (PD-3)", () => {
     expect(screen.getByTestId("queue-row-d3")).toHaveTextContent("Patient R-17");
     expect(screen.getByTestId("queue-row-d3")).toHaveTextContent("sealed record");
     expect(screen.getByTestId("queue-row-d3")).not.toHaveTextContent("Real Name");
-    // "waiting" counts what THIS pharmacist can take: Vikas's is not waiting for anybody.
-    expect(screen.getByTestId("desk-waiting")).toHaveTextContent("2 waiting");
+    // Walk 2026-11-13 (#1055) — the chip counts what the line counts (it read "0 waiting" beside a line holding a
+    // ticket): every ticket listed, Vikas's included, and it says "in the line", not "waiting", for that reason.
+    expect(screen.getByTestId("desk-waiting")).toHaveTextContent("3 in the line");
+    expect(screen.getByTestId("desk-queue").querySelectorAll(".pd-line-row")).toHaveLength(3);
   });
 
   it("scanning IS taking — a queued ticket found by the field is claimed at once with the door the server named", async () => {

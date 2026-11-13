@@ -3604,6 +3604,7 @@
     "posted": "Posted — stock has moved",
     "verdict": "Verdict",
     "verdictPass": "Accepted",
+    "costEstimated": "estimated",
     "status_draft": "Draft",
     "status_gate_qc": "Awaiting QC",
     "status_accepted": "Accepted",
@@ -8972,6 +8973,7 @@
     "where": "OPD counter",
     "thisDesk": "this desk",
     "waiting": "{{count}} waiting",
+    "inLineChip": "{{count}} in the line",
     "command": "⌘ command",
     "nobody": "nobody in hand",
     "nobodyHint": "Scan the slip, or take the next ticket from the line. The patient you take stays in this column until Esc.",
@@ -9237,7 +9239,7 @@
       "diesInCourse": "Batch {{batch}} expires {{expiry}}, before the {{days}}-day course ends."
     },
     "partialWhy": "giving {{n}} of {{of}} — why?",
-    "partialPlaceholder": "only this much on the shelf · patient asked for less",
+    "partialPlaceholder": "the reason, in a few words",
     "scanLabel": "Scan the pack for {{line}}",
     "scanPlaceholder": "scan the pack — ⏎ ticks the line",
     "declineWhy": "Why is {{line}} declined?",
@@ -9249,6 +9251,7 @@
     "ofPrescribed": "of {{of}}",
     "lineMenu": "What else for {{line}}",
     "bill": {
+      "addedMark": "added at the counter",
       "closesAtHandover": "This column closes after hand-over. A refund or return of this bill opens from the ticket's ⋯.",
       "title": "the bill · live",
       "paid": "PAID",
@@ -9477,7 +9480,15 @@
       "titleDrug": "Report a reaction — {{drug}}",
       "done": "{{no}} recorded. The allergy is on the patient's record; the office sends it to PvPI."
     },
-    "partialOwed": "giving {{n}} of {{of}} — say why under ⋯ before the tick counts",
+    "partialOwed": "giving {{n}} of {{of}} — say why before the tick counts",
+    "partialSayWhy": "Say why",
+    "partialBy": {
+      "label": "Why is it short?",
+      "shelf": "only this much on the shelf",
+      "patient": "the patient asked for less",
+      "owes": "The rest ({{n}}) is owed — the patient collects it on a balance ticket.",
+      "owesNothing": "Nothing is owed — the patient asked for less."
+    },
     "partialSaid": "giving {{n}} of {{of}} — {{reason}}",
     "qtySheet": {
       "title": "How many of {{drug}}?",

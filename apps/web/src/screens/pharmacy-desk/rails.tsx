@@ -3,6 +3,7 @@ import { fetchPatientRail } from "../../lib/pharmacy-api";
 import { useTranslation } from "react-i18next";
 import { MessagesChip } from "./messages";
 import { FLOW_STEPS, draftsFirst, flowIndex, holdOf, isMyDraft, initialsOf, queuedDay, shelfFlag, stageOf, ticketLabel, waitLabel, waitTone, whoLabel } from "./model";
+import { istToday } from "./work";
 import type { WaitTone } from "./model";
 import type { WireCounterSummary, WireDispense, WireMyShift, WireQueueRow } from "../../lib/pharmacy-api";
 import { CreditChip } from "../../components/patient-credit";
@@ -204,7 +205,9 @@ function rowMeta({ row, me, now, yesterday, lang }: RowProps): { who: string; la
   const day = queuedDay(row.queuedOn, now, lang);
   return {
     who: whoLabel(row.patient),
-    label: ticketLabel(row.dispenseNo),
+    /* Walk 2026-11-13 (#1055) — a ticket carried from an earlier day says its day beside its number ("P-3 · 13 Nov"):
+       yesterday's P-3 and today's P-3 stand on one line. */
+    label: ticketLabel(row.dispenseNo, istToday(), lang),
     hold: holdOf(row, me),
     /* An earlier day's ticket says its DAY: a count of hours past midnight reads as a wait it is not. */
     wait: day === null ? waitLabel(row.createdAt, now) : day.kind === "yesterday" ? yesterday : day.label,
@@ -230,13 +233,15 @@ export function QueueList({
   onOpenTab: (dispenseId: string, who: string, mine: boolean) => void;
 }): React.ReactElement {
   const { t, i18n } = useTranslation();
+  /* A carried ticket's number says its day ("P-3 · 13 Nov"); the number column widens for every row, so the names align. */
+  const carried = rows.some((r) => queuedDay(r.queuedOn, now, i18n.language) !== null);
   return (
     <section data-testid="desk-queue" className="pd-line" aria-label={t("pharmacyDesk.line", { count: rows.length })}>
       <div className="pd-line-head">
         <span className="tag">{t("pharmacyDesk.line", { count: rows.length })}</span>
         <span style={{ fontSize: 12.5, color: "var(--dim)" }}>{t("pharmacyDesk.lineHint")} · <span className="kb">Q</span> {t("pharmacyDesk.keys.q")}</span>
       </div>
-      <div className="box pd-line-box">
+      <div className={carried ? "box pd-line-box carried" : "box pd-line-box"}>
         {rows.length === 0 ? (
           <p style={{ margin: 0, padding: "14px 16px", fontSize: 12.5, color: "var(--dim)" }}>{t("pharmacyDesk.lineEmpty")}</p>
         ) : null}
@@ -331,7 +336,7 @@ export function QueueOverlay({
             const m = rowMeta({ row, me, now, yesterday: t("pharmacyDesk.queuedYesterday"), lang: i18n.language });
             return (
               <div key={row.dispenseId} className="drow" style={{ alignItems: "flex-start" }} data-testid={`overlay-row-${row.dispenseId}`}>
-                {numbered ? <span className="mo" style={{ width: 58, flexShrink: 0, fontSize: 12, fontWeight: 600, paddingTop: 2 }}>{m.label ?? ""}</span> : null}
+                {numbered ? <span className="mo" style={{ minWidth: 58, flexShrink: 0, fontSize: 12, fontWeight: 600, paddingTop: 2, whiteSpace: "nowrap" }}>{m.label ?? ""}</span> : null}
                 <span style={{ flexGrow: 1, minWidth: 0 }}>
                   <span style={{ display: "block", fontSize: 13, fontWeight: 500 }}>{m.who}</span>
                   <span className="mo" style={{ display: "block", fontSize: 11, color: "var(--dim)" }}>{row.patient.uhid}</span>

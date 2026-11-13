@@ -75,15 +75,19 @@ describe("the line rules, pure (PD-4)", () => {
   it("E9 — a short quantity cannot be ticked until it says why; more than prescribed never can", () => {
     const l = lineOf(0, { drug: "Glycomet 500", qtyBase: 270 });
     expect(canTick(l, { ...freshTick(l), qty: "200" })).toBe(false);
-    expect(canTick(l, { ...freshTick(l), qty: "200", reason: "only 200 on the shelf" })).toBe(true);
+    expect(canTick(l, { ...freshTick(l), qty: "200", reason: "only 200 on the shelf" })).toBe(false); // why, in words, but not whose short
+    expect(canTick(l, { ...freshTick(l), qty: "200", reason: "only 200 on the shelf", short: "shelf" })).toBe(true);
+    expect(canTick(l, { ...freshTick(l), qty: "200", reason: "patient asked for less", short: "patient" })).toBe(true);
     expect(canTick(l, { ...freshTick(l), qty: "300", reason: "x" })).toBe(false);
     expect(canTick(lineOf(1, { drug: "Ascoril", dispensedMedicine: null }), freshTick(l))).toBe(false);
   });
   it("verify is told the PRESCRIBED quantity, and the short is the pick's with its reason", () => {
     const l = lineOf(0, { drug: "Glycomet 500", qtyBase: 270 });
-    const ticks = { 0: { ticked: true, qty: "200", reason: "only 200 on the shelf", batchId: null, scan: " 890123 ", sub: null, res: null } };
+    const ticks = { 0: { ticked: true, qty: "200", reason: "only 200 on the shelf", short: "shelf" as const, batchId: null, scan: " 890123 ", sub: null, res: null } };
     expect(verifyBody([l], ticks)).toEqual([{ lineIdx: 0, qtyBase: 270 }]);
-    expect(pickBody([l], ticks)).toEqual([{ lineIdx: 0, qtyBase: 200, pickNote: "only 200 on the shelf", scan: "890123" }]);
+    expect(pickBody([l], ticks)).toEqual([{ lineIdx: 0, qtyBase: 200, pickNote: "only 200 on the shelf", short: "shelf", scan: "890123" }]);
+    // Walk 2026-11-13 — the patient asked for less: the pick says so, and the server owes nothing on it.
+    expect(pickBody([l], { 0: { ...ticks[0], reason: "patient asked for less", short: "patient" as const } })[0]).toMatchObject({ pickNote: "patient asked for less", short: "patient" });
   });
   it("E8 — the earliest batch that dies inside the course is named, with the batch that would not", () => {
     const soon = { batchId: "soon", batchNo: "PAN-NEAR", expiryDate: addDays(TODAY, 12), available: 20 };
@@ -190,13 +194,40 @@ describe("the line list at the window (PD-4)", () => {
     await userEvent.click(within(row).getByRole("button", { name: "give 200" }));
     const tick = within(row).getByRole("checkbox");
     expect(tick).toBeDisabled();
+    await userEvent.click(within(row).getByRole("radio", { name: "only this much on the shelf" }));
+    expect(within(row).getByRole("textbox", { name: /giving 200 of 270/ })).toHaveValue("only this much on the shelf");
+    await userEvent.clear(within(row).getByRole("textbox", { name: /giving 200 of 270/ }));
     await userEvent.type(within(row).getByRole("textbox", { name: /giving 200 of 270/ }), "only 200 on the shelf");
     expect(posted("/pick")).toEqual([]); // typing the reason never fires anything
     await userEvent.click(within(row).getByRole("button", { name: "Done" }));
     expect(within(row).getByTestId("desk-line-0-qty")).toHaveTextContent("200");
     await userEvent.click(tick);
-    await waitFor(() => expect(posted("/pick")).toEqual([{ lines: [{ lineIdx: 0, qtyBase: 200, pickNote: "only 200 on the shelf" }] }]));
+    await waitFor(() => expect(posted("/pick")).toEqual([{ lines: [{ lineIdx: 0, qtyBase: 200, pickNote: "only 200 on the shelf", short: "shelf" }] }]));
     expect(posted("/verify")).toEqual([{ lines: [{ lineIdx: 0, qtyBase: 270 }] }]);
+  });
+
+  it("WALK 2026-11-13 — the hint's 'say why' is one step to the reason; a short the patient asked for is sent as theirs (it owes nothing)", async () => {
+    const lines = [lineOf(0, { drug: "Glycomet 500", qtyBase: 270, available: 400, batches: [{ batchId: "g1", batchNo: "GLY-1", expiryDate: "2028-01-31", available: 400 }] })];
+    let current = dispense("claimed", lines);
+    mockRoutes(base(() => current, {
+      "POST /api/pharmacy/dispenses/d1/verify": () => { current = dispense("verified", lines); return { status: 201, body: current }; },
+      "POST /api/pharmacy/dispenses/d1/pick": () => ({ status: 201, body: dispense("picked", lines) }),
+    }));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const row = await screen.findByTestId("desk-line-0");
+    await userEvent.click(within(row).getByRole("button", { name: /What else for Glycomet 500/ }));
+    await userEvent.click(within(row).getByRole("button", { name: "Change the quantity" }));
+    const box = within(row).getByRole("textbox", { name: /Quantity for Glycomet 500/ });
+    await userEvent.clear(box);
+    await userEvent.type(box, "100");
+    await userEvent.click(within(row).getByRole("button", { name: "Done" }));
+    // the hint names no menu item that is not there: its own button opens the reason, in one step
+    expect(row).not.toHaveTextContent(/under ⋯/);
+    await userEvent.click(within(row).getByRole("button", { name: "Say why" }));
+    await userEvent.click(within(row).getByRole("radio", { name: "the patient asked for less" }));
+    await userEvent.click(within(row).getByRole("button", { name: "Done" }));
+    await userEvent.click(within(row).getByRole("checkbox"));
+    await waitFor(() => expect(posted("/pick")).toEqual([{ lines: [{ lineIdx: 0, qtyBase: 100, pickNote: "the patient asked for less", short: "patient" }] }]));
   });
 
   it("E7 — a pick refused on a line lands ON that line, unticks it, and the next tick re-fires the pick alone", async () => {

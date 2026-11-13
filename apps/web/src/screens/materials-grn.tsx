@@ -512,7 +512,11 @@ export function MaterialsGrn(): React.ReactElement {
                       <td data-label={cols[2]}>{l.batchNo ?? "—"}</td>
                       <td data-label={cols[3]} className="whitespace-nowrap">{l.expiryDate ?? "—"}</td>
                       <td data-label={cols[4]} className="whitespace-nowrap">{l.mrpPaise === null ? "—" : `₹${(l.mrpPaise / 100).toFixed(2)}${l.mrpUom === null ? "" : ` / ${l.mrpUom}`}`}</td>
-                      <td data-label={cols[5]} className="whitespace-nowrap">{`₹${(l.unitCostPaise / 100).toFixed(2)}`}</td>
+                      <td data-label={cols[5]} className="whitespace-nowrap">
+                        {`₹${(l.unitCostPaise / 100).toFixed(2)}`}
+                        {/* #1047 / 0093 — an opening row with no rate is costed at the estimate; the grid said so, and so does the GRN (walk 2026-11-13). */}
+                        {l.estimatedCost === true ? <span className="ml-1 text-xs text-amber-800" data-testid="grn-line-estimated">{t("materialsGrn.costEstimated")}</span> : null}
+                      </td>
                       <td data-label={cols[6]}>
                         {/* THE RULE, AS A SENTENCE. Never the raw code — see the header. A cancelled GRN's lines carry
                             no verdict (walk 2026-11-13: they read "Accepted" although nobody had checked them). */}

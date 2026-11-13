@@ -371,7 +371,8 @@ export async function cancelDispense(id: string, reason: string): Promise<WireDi
 }
 
 // ── T4 — pick, bill, hand over, the label ──
-export type PickLine = { lineIdx: number; qtyBase?: number; pickNote?: string; batchId?: string; scan?: string };
+/** `short` (walk 2026-11-13, #1055): why a partial is short — the shelf (a balance is owed) or the patient's ask (nothing is). */
+export type PickLine = { lineIdx: number; qtyBase?: number; pickNote?: string; short?: "shelf" | "patient"; batchId?: string; scan?: string };
 /** P13 — what the pack in hand is, checked as it is scanned. */
 export async function checkPickScan(id: string, lineIdx: number, code: string): Promise<{ itemCode: string; batchNo: string | null; expiryDate: string | null }> {
   return api("GET", `/pharmacy/dispenses/${id}/lines/${String(lineIdx)}/scan${qs({ code })}`);
@@ -380,7 +381,8 @@ export async function pickDispense(id: string, lines: PickLine[], idempotencyKey
   return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/pick`, { lines }, idempotencyKey);
 }
 /** `pack`: the server folded a pack residue into this drug's line and says how its quantity reads (loose-MRP ruling). Absent from an older server. */
-export type WirePricedLine = { lineId: string; serviceId: string; serviceName: string; qty: number; unitPaise: number; grossPaise: number; discountPaise: number; netPaise: number; gst: { rateBps: number; exempt: boolean }; pack?: WireBillRowPack | null };
+/** `lineIdx` (walk 2026-11-13, #1055): the dispense line the row bills; null on the walk-in cart; absent from an older server. */
+export type WirePricedLine = { lineId: string; serviceId: string; serviceName: string; qty: number; unitPaise: number; grossPaise: number; discountPaise: number; netPaise: number; gst: { rateBps: number; exempt: boolean }; pack?: WireBillRowPack | null; lineIdx?: number | null };
 /**
  * OWNER RULINGS 2026-09-30 (money). `byTender`: the payable under each rounding rule — `cash` (any cash, a split,
  * or the owner's credit: the nearest rupee, halves up) and `digital` (UPI or card alone: to the paisa). `discount`:
@@ -467,6 +469,16 @@ export type WirePharmacist = {
   /** P15 — days left once inside the renewal window; absent from an older server. */
   renewalDueInDays?: number | null;
 };
+/**
+ * Walk 2026-11-13 (#1055) — the caller's full name, read off `/auth/me`'s profile: the name the server writes on a line
+ * the counter adds ("added at the counter by <full name>"), so the sheet that promises it says the same name. Null when
+ * the account has none.
+ */
+export async function fetchMyFullName(): Promise<string | null> {
+  const me = await api<{ profile?: { fullName?: string | null } | null }>("GET", "/auth/me");
+  const name = (me.profile?.fullName ?? "").trim();
+  return name === "" ? null : name;
+}
 /** The desk header's pill: the caller's OWN current registration, or null. 404 from an older server. */
 export async function fetchMyRegistration(): Promise<{ registration: { council: string; registrationNo: string; validUntil: string | null } | null }> {
   return api("GET", "/pharmacy/pharmacists/me");

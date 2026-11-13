@@ -31,14 +31,20 @@ import type { CounterPackUnit } from "../../../../../packages/contracts/src/coun
  * doctor's words are, from this counter's shelf. It is sent as `dispensedMedicineId` WITHOUT consent
  * (nothing the doctor named is replaced), and `verify` judges it as it judges any prescribed line.
  */
+/**
+ * `short` (walk 2026-11-13, #1055) — WHY a partial is short: `shelf` ("only this much on the shelf": the rest is owed on
+ * a balance ticket) or `patient` ("the patient asked for less": nothing is owed). A partial's tick counts only once it
+ * is said, with its reason in words.
+ */
+export type ShortBy = "shelf" | "patient";
 export type Tick = {
-  ticked: boolean; qty: string; reason: string; batchId: string | null; scan: string;
+  ticked: boolean; qty: string; reason: string; short?: ShortBy | null; batchId: string | null; scan: string;
   sub: { medicineId: string; brandName: string; available: number } | null;
   res: { medicineId: string; brandName: string; available: number; baseUom: string } | null;
 };
 
 export function freshTick(line: WireDispenseLine): Tick {
-  return { ticked: false, qty: line.qtyBase === null ? "" : String(line.qtyBase), reason: "", batchId: null, scan: "", sub: null, res: null };
+  return { ticked: false, qty: line.qtyBase === null ? "" : String(line.qtyBase), reason: "", short: null, batchId: null, scan: "", sub: null, res: null };
 }
 
 /**
@@ -106,12 +112,17 @@ export function isPartial(line: WireDispenseLine, tick: Tick): boolean {
   return q !== null && p !== null && q < p;
 }
 
-/** A tick is ACCEPTED only when it could be sent: a quantity, no more than prescribed, a reason if short. */
+/** A partial whose why is said: the reason in words and whose short it is (`short`). */
+export function shortSaid(tick: Tick): boolean {
+  return tick.reason.trim() !== "" && tick.short != null;
+}
+
+/** A tick is ACCEPTED only when it could be sent: a quantity, no more than prescribed, a reason (and whose) if short. */
 export function canTick(line: WireDispenseLine, tick: Tick): boolean {
   const q = qtyOf(tick);
   const p = prescribedOf(line, tick);
   if (blockedFor(line, tick) !== null || q === null || p === null || q > p) return false;
-  return !isPartial(line, tick) || tick.reason.trim() !== "";
+  return !isPartial(line, tick) || shortSaid(tick);
 }
 
 export function isSettled(line: WireDispenseLine, tick: Tick | undefined): boolean {
@@ -142,7 +153,7 @@ export function pickBody(lines: readonly WireDispenseLine[], ticks: Readonly<Rec
     const t = ticks[l.lineIdx]!;
     return {
       lineIdx: l.lineIdx,
-      ...(isPartial(l, t) ? { qtyBase: qtyOf(t)!, pickNote: t.reason.trim() } : {}),
+      ...(isPartial(l, t) ? { qtyBase: qtyOf(t)!, pickNote: t.reason.trim(), ...(t.short == null ? {} : { short: t.short }) } : {}),
       ...(t.batchId === null ? {} : { batchId: t.batchId }),
       ...(t.scan.trim() === "" ? {} : { scan: t.scan.trim() }),
     };

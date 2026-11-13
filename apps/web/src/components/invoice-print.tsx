@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { billingPatientLabel } from "../lib/billing-api";
 import { fmtPaise, SAMAJ_SEVA_AMOUNT } from "../lib/format";
 import { Button } from "@/components/ui/button";
-import { billQtyText } from "../lib/pharmacy-bill";
+import { billQtyText, packWordOf } from "../lib/pharmacy-bill";
 import { gstCodeKind } from "../../../../packages/contracts/src/gst-code";
 import type { WireInvoicePrint } from "../lib/billing-api";
 import type { WireBillRow } from "../lib/pharmacy-bill";
@@ -156,7 +156,7 @@ export function InvoicePrint({ data, annex, rows }: { data: WireInvoicePrint; an
                 <td className="text-right tabular-nums">
                   {billQtyText(t, row.qty, row.pack)}
                   {row.pack !== null && row.pack.packs > 0 && row.pack.packPaise !== null && (
-                    <span className="block text-xs text-neutral-600">{t("pharmacyBill.packRate", { amount: fmtPaise(row.pack.packPaise), pack: row.pack.uom })}</span>
+                    <span className="block text-xs text-neutral-600">{t("pharmacyBill.packRate", { amount: fmtPaise(row.pack.packPaise), pack: packWordOf(row.pack.uom) })}</span>
                   )}
                 </td>
                 <td className="text-right tabular-nums">{fmtPaise(row.grossPaise)}</td>

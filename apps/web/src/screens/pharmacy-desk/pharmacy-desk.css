@@ -50,8 +50,10 @@
 
 /* ══ SPEC #1055 — two columns as Desk One; the bill column (296 px) only at billing, until hand-over ══
    The left rail is Desk One's `.rail` (296 px, 252 px at ≤1220 px); the bill column follows it to the pixel. */
+/* Only the bill's lines scroll (`desk-bill-lines`); the totals and the money keys stay in view (walk 2026-11-13). On a
+   screen too short even for those, the column itself scrolls rather than cutting the Received button off. */
 .d1 .pd-billcol { width: 296px; flex-shrink: 0; border-left: 1px solid var(--line); background: var(--card);
-  display: flex; flex-direction: column; overflow: hidden; }
+  display: flex; flex-direction: column; overflow-x: hidden; overflow-y: auto; }
 @media (max-width: 1220px) { .d1 .pd-billcol { width: 252px; } }
 
 /* The line, in the work column under the search (board 1). */
@@ -64,7 +66,9 @@
 .d1 .pd-line-take { display: flex; align-items: center; gap: 14px; flex-grow: 1; min-width: 0; padding: 12px 4px 12px 16px; text-align: left; }
 .d1 .pd-line-take:hover:not(:disabled) .pd-line-go { border-color: var(--green); color: var(--green); }
 .d1 .pd-line-take:disabled { cursor: not-allowed; }
-.d1 .pd-line-no { width: 60px; flex-shrink: 0; font-size: 13px; font-weight: 600; }
+/* A carried ticket's number says its day ("P-3 · 13 Nov", walk 2026-11-13): the column widens for every row, never wraps. */
+.d1 .pd-line-no { width: 60px; flex-shrink: 0; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.d1 .pd-line-box.carried .pd-line-no { width: 104px; }
 .d1 .pd-line-who { flex-grow: 1; min-width: 0; }
 .d1 .pd-line-drugs { display: block; margin-top: 2px; font-size: 12px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .d1 .pd-line-wait { width: 64px; flex-shrink: 0; text-align: right; font-size: 12px; }
@@ -165,6 +169,8 @@
   .d1 .pd-body.phone .pd-foot-hint { flex-basis: 100%; }
   .d1 .pd-pane .pd-line { margin: 0; padding: 14px; }
   .d1 .pd-line-take { flex-wrap: wrap; }
+  /* On a phone a carried ticket's day goes under its number ("P-3 ·" / "13 Nov"); the column keeps its 60 px. */
+  .d1 .pd-line-box.carried .pd-line-no { width: 60px; white-space: normal; }
   .d1 .pd-body.phone .pd-line-go { display: none; }
   .d1 .pd-body.phone .pd-hit-uhid { width: auto; }
   .d1 .pd-body.phone .pd-hit { flex-wrap: wrap; }
