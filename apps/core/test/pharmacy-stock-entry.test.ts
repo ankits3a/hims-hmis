@@ -127,6 +127,14 @@ describe("stock entry on screen — the grid, the brand search and the new drug"
     expect((await getItem(db, syrup.itemId))?.manufacturer).toBeNull();
   });
 
+  it("walk 2026-11-13: a strength stored with an empty denominator (\"500 mg/\") is shown and named without it", async () => {
+    await db.update(formularyMedicines).set({ strengthLabel: "500 mg/" }).where(eq(formularyMedicines.id, fx.med.crocin));
+    expect(await stockEntryMedicine(db, fx.med.crocin)).toMatchObject({ strength: "500 mg" });
+    expect((await stockEntryItems(db, "crocin"))[0]).toMatchObject({ strength: "500 mg" });
+    const made = await createStockDrug(db, fx.incharge.actor, { ...DOLO, brandName: "Pacimol", strength: "500 mg/", medicineId: fx.med.crocin });
+    expect(made.name).toBe("Pacimol 500 mg tablet");
+  });
+
   it("a NEW DRUG asks for the acts' own permissions, changes the schedule only with formulary.manage, and is all or nothing", async () => {
     const now = new Date();
     // The aide holds neither pharmacy.sale_items.manage nor formulary.manage: refused before anything is written.

@@ -1,3 +1,4 @@
+import { strengthShown } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { withTx } from "../../kernel/db/client";
 import { anyOfText } from "../../kernel/db/any-of";
@@ -89,7 +90,8 @@ export async function stockEntryItems(db: Db, search: string, now: Date = new Da
       itemId: i.id, code: i.code, name: i.name, baseUom: i.baseUom,
       packs: (uoms.get(i.id) ?? []).map((u) => ({ uom: u.uom, multiplier: u.toBaseMultiplier })).sort((a, b) => a.multiplier - b.multiplier),
       gstRateBps: i.gstRateBps, hsnCode: i.hsnCode, onSale: onSale.has(i.id), active: i.active,
-      strength: med?.strengthLabel ?? null, form: med?.form ?? null, schedule: med?.scheduleFlag ?? null,
+      // "500 mg/" is stored for many catalogue rows; the grid shows it as a person reads it (`strengthShown`).
+      strength: strengthShown(med?.strengthLabel), form: med?.form ?? null, schedule: med?.scheduleFlag ?? null,
       rack: racks.get(i.id) ?? null, mrpPaise: reg?.mrpDefaultPaise ?? null, mrpUom: reg?.mrpUom ?? null,
     });
   }
@@ -109,7 +111,7 @@ export async function stockEntrySuppliers(db: Db): Promise<{ id: string; code: s
 export async function stockEntryMedicine(db: Db, medicineId: string): Promise<{ id: string; name: string; form: string; strength: string | null; schedule: string | null }> {
   const med = (await medicinesByIds(db, [medicineId])).get(medicineId);
   if (med === undefined) throw new MaterialsError("unknown_item", `formulary medicine ${medicineId} not found`, { medicineId });
-  return { id: med.id, name: med.brandName, form: med.form, strength: med.strengthLabel, schedule: med.scheduleFlag };
+  return { id: med.id, name: med.brandName, form: med.form, strength: strengthShown(med.strengthLabel), schedule: med.scheduleFlag };
 }
 
 export type NewStockDrug = {
@@ -151,7 +153,8 @@ export async function createStockDrug(
   gstCategoryFor(input.gstRateBps); // a slab the bill cannot tax is refused before the item exists
 
   const brand = input.brandName.trim().replace(/\s+/g, " ");
-  const strength = input.strength.trim();
+  // An empty denominator ("40 mg/", the catalogue's own) never reaches the item's name (`strengthShown`).
+  const strength = strengthShown(input.strength) ?? "";
   const strengthDigits = /[\d.]+/.exec(strength)?.[0];
   const withStrength = strength === "" || (strengthDigits !== undefined && norm(brand).split(" ").includes(norm(strengthDigits))) ? brand : `${brand} ${strength}`;
   const form = input.form.trim();
