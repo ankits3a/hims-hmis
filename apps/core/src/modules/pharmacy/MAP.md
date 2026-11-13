@@ -177,6 +177,16 @@ module has no view of either. Decision 0012: ward issue, ward returns, IP bill a
   `summary.ts` `counterSummaryFor` does; #1048). Amounts still reach a seller through the sale detail, the list's
   Print bill and the downtime list.
 - `copilot-tools.ts` `stock_on_shelf` reads PHARM-OPD only.
+- `shelf.ts` `shelfByMedicine` keeps ONE item per formulary medicine (the medicine may be a generic, so several brands
+  per medicine are legitimate): the item with the most sellable stock over all stores, tie -> lowest code. The counter
+  search (`searchCounterShelf` / `searchRetailShelf`) lists every item of a medicine, best-stocked first; walk-in and
+  downtime lines carry an optional `itemId` (refused `unknown_sale_item` unless it is a sale item of that medicine);
+  `claim.ts` takes the shelf's choice and `verify.ts` keeps the line's own item while it is still valid.
+- `sale-items.ts` `registerSaleItem` refuses an item with no GST slab (`gst_slab_unknown`), so nothing new goes on
+  sale as exempt by omission; items already on sale with a blank slab still bill as exempt.
+- The desk's tender starts on Cash with the cash field at the exact payable (`apps/web/src/screens/pharmacy-desk/bill.tsx` `BillRail`).
+- 'Rate with GST' invoices draft the supplier bill up to a paisa per pack short (per-pack paise rounding;
+  `supplier_bill_lines_money_ck` forces taxable = packs x rate); within the match tolerance. Tracked as #1053.
 - The store is a constant, not a parameter: `claimDispense` and `planOpeningRows` use `OPD_PHARMACY_STORE_CODE`
   although `pharmacy_dispenses.store_resource_id` exists.
 - On the IPD integration branch, IPD and ER issues call `postMovements` directly and skip what a hand-over does:
