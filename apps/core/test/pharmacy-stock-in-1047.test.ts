@@ -1,20 +1,23 @@
 import { and, eq } from "drizzle-orm";
-import { newId } from "@hmis/contracts";
+import { counterPackOf, newId } from "@hmis/contracts";
 import { grantPermissionToRole } from "../src/kernel/auth/permissions";
 import { withTx } from "../src/kernel/db/client";
-import { grns, itemBarcodes, stockBatches, supplierBills, supplierCreditNotes } from "../src/kernel/db/schema";
+import { events, grns, itemBarcodes, stockBatches, supplierBills, supplierCreditNotes } from "../src/kernel/db/schema";
 import {
-  activateVendor, addBarcode, addVendorDocument, billDraftFromGrn, cancelGrn, cancelStandaloneCredit, captureGrn, createPurchaseOrder,
+  activateVendor, addBarcode, addVendorDocument, availableQty, billDraftFromGrn, cancelGrn, cancelStandaloneCredit, captureGrn, createPurchaseOrder,
   effectiveRegulation, getGrn, grnReceivedTotals, itemUomRows, lastPurchaseByItem, listStandaloneCredits, postGrn, purchaseRegister,
-  recordStandaloneCredit, registerItem, registerVendor, replaceItemUom, runGateQc, setPriceRegulation, supplierLedger, unbilledGrns, vendorCredits,
+  recordStandaloneCredit, registerItem, registerVendor, replaceItemUom, runGateQc, setIssueUom, setPriceRegulation, supplierLedger, unbilledGrns, uomsByItems,
+  vendorCredits,
 } from "../src/modules/materials";
+import { registerSaleItem } from "../src/modules/pharmacy";
+import { counterPacks } from "../src/modules/pharmacy/bill-rows";
 import {
   captureOpeningStock, captureSupplierInvoice, estimatedPackCostPaise, invoiceStores, planOpeningGrid, planSupplierInvoice, rateWithoutGstPaise,
 } from "../src/modules/pharmacy/opening-stock";
 import { grnWorklist } from "../src/modules/materials/grn";
 import { stockEntrySuppliers } from "../src/modules/pharmacy/stock-drug";
 import { setupTestDb, truncateAll } from "./helpers/db";
-import { seedPharmacyBase } from "./helpers/pharmacy";
+import { seedPharmacyBase, stockIn } from "./helpers/pharmacy";
 import type { InvoiceHeader, OpeningGridRow } from "../src/modules/pharmacy/opening-stock";
 import type { PharmacyFixture } from "./helpers/pharmacy";
 import type { Db } from "../src/kernel/db/client";
@@ -309,5 +312,76 @@ describe("#1047 pharmacy stock-in — sources, the invoice header, credits and p
     expect(captured).toMatchObject({ vendorName: "MEDPLUS", invoiceNo: "SI/LIST/1", status: "gate_qc", valuePaise: 40_000 });
     await qcAndPost(grnId);
     expect((await grnWorklist(db, { vendorId })).map((g) => [g.grnNo, g.vendorName, g.valuePaise])).toEqual([[captured!.grnNo, "MEDPLUS", 40_000]]);
+  });
+
+  // ── the recount's pack: the counted strip becomes the counter's pack (prod: 350 items made with one `strip10`) ──
+  const loaderDrug = async (code: string): Promise<string> => withTx(db, async (tx) => {
+    const { itemId } = await registerItem(tx, fx.incharge.actor, {
+      code, name: `${code} tablet`, class: "drug", baseUom: "tablet", batchTracked: true, formularyMedicineId: fx.med.crocin, gstRateBps: 1200,
+      uoms: [{ uom: "strip10", toBaseMultiplier: 10, isPurchaseUom: true, isIssueUom: true }],
+    });
+    await registerSaleItem(tx, fx.pharmacist.actor, itemId);
+    return itemId;
+  });
+  const packsOf = async (itemId: string): Promise<string[]> =>
+    ((await uomsByItems(db, [itemId])).get(itemId) ?? []).map((u) => `${u.uom}×${String(u.toBaseMultiplier)}${u.isIssueUom ? " issue" : ""}`).sort();
+  const counterPack = async (itemId: string): Promise<string | undefined> => counterPackOf((await uomsByItems(db, [itemId])).get(itemId) ?? [])?.uom;
+
+  it("the recount's strip of 15 REPLACES an unused default strip10; beside a stocked strip10 it is added and made the counter's pack", async () => {
+    const fresh = await loaderDrug("FRESH650");
+    const stocked = await loaderDrug("STOCK650");
+    await stockIn(db, fx, { itemId: stocked, batchNo: "S1", expiryDate: `20${yy()}-08-31`, mrpPaise: 3550, mrpUom: "strip10", qtyBase: 100 });
+
+    const plan = await planOpeningGrid(db, [
+      gridRow({ itemId: fresh, batch: "F1", packSize: "15", packs: "5", mrpPerPack: "35.50", ratePerPack: "24.00" }),
+      gridRow({ itemId: stocked, batch: "S2", packSize: "15", packs: "2", mrpPerPack: "35.50", ratePerPack: "24.00" }),
+    ], new Date());
+    expect(plan.rows.flatMap((r) => r.reasons)).toEqual([]);
+    const done = await captureOpeningStock(db, fx.incharge.actor, plan, new Date());
+
+    // No stock in strip10: corrected in place, on the record old → new — the item has exactly [base, strip15].
+    expect(await packsOf(fresh)).toEqual(["strip15×15 issue", "tablet×1 issue"]);
+    expect(await counterPack(fresh)).toBe("strip15");
+    expect((await counterPacks(db, [fresh])).get(fresh)?.multiplier).toBe(15);
+    const audit = await db.select({ payload: events.payload }).from(events).where(eq(events.name, "item.uom_replaced"));
+    expect(audit.map((a) => a.payload)).toEqual([expect.objectContaining({ itemId: fresh, from: { uom: "strip10", toBaseMultiplier: 10 }, to: { uom: "strip15", toBaseMultiplier: 15 } })]);
+    // strip10 holds a batch: strip15 is added, and strip10 is no longer the pack the counter sells.
+    expect(await packsOf(stocked)).toEqual(["strip10×10", "strip15×15 issue", "tablet×1 issue"]);
+    expect(await counterPack(stocked)).toBe("strip15");
+    const flipped = await db.select({ payload: events.payload }).from(events).where(eq(events.name, "item.updated"));
+    expect(flipped.map((a) => a.payload)).toContainEqual({ itemId: stocked, changed: ["uoms.strip10.is_issue_uom"] });
+    expect(await codeOf(withTx(db, (tx) => setIssueUom(tx, fx.incharge.actor, stocked, { uom: "tablet", isIssueUom: false })))).toBe("base_uom_required");
+    expect(done).toMatchObject({ uomsAdded: 2, uomsReplaced: 1 });
+
+    // The grid's "= 5 strips · 75 tablets" is what the counter then reads: 75 tablets, 5 strips of its pack.
+    await qcAndPost(done.captured[0]!.grnId);
+    expect(await availableQty(db, fx.storeId, fresh, new Date())).toBe(75);
+  });
+
+  it("the supplier invoice's new strip size corrects an unused default pack the same way", async () => {
+    const fresh = await loaderDrug("INV650");
+    const vendorId = await aSupplier();
+    const inv = await captureSupplierInvoice(db, fx.incharge.actor, { vendorId, invoiceNo: "SI/PACK/1", invoiceDate: today(), storeResourceId: fx.storeId },
+      [gridRow({ itemId: fresh, batch: "I1", packSize: "15", packs: "4", mrpPerPack: "35.50", ratePerPack: "24.00" })], new Date());
+    expect(inv).toMatchObject({ uomsAdded: 1, uomsReplaced: 1 });
+    expect(await packsOf(fresh)).toEqual(["strip15×15 issue", "tablet×1 issue"]);
+    expect(await counterPack(fresh)).toBe("strip15");
+  });
+
+  it("one sheet gives an item ONE strip size: the first row's pack wins and a later different strip is refused in words; loose tablets are not a strip", async () => {
+    const fresh = await loaderDrug("TWO650");
+    const firstNew = await planOpeningGrid(db, [
+      gridRow({ itemId: fresh, batch: "T1", packSize: "15", mrpPerPack: "35.50", ratePerPack: "24.00" }),
+      gridRow({ itemId: fresh, batch: "T2", packSize: "10", mrpPerPack: "24.00", ratePerPack: "16.00" }),
+      gridRow({ itemId: fresh, batch: "T3", packSize: "1", packs: "7", mrpPerPack: "2.40", ratePerPack: "1.60" }),
+    ], new Date());
+    expect(firstNew.rows.map((r) => r.reasons)).toEqual([[], ["line 1 already counts this item in strips of 15 — one strip size per item in a sheet; check this row's pack size"], []]);
+    const firstOld = await planOpeningGrid(db, [
+      gridRow({ itemId: fresh, batch: "T1", packSize: "10", mrpPerPack: "24.00", ratePerPack: "16.00" }),
+      gridRow({ itemId: fresh, batch: "T2", packSize: "15", mrpPerPack: "35.50", ratePerPack: "24.00" }),
+    ], new Date());
+    expect(firstOld.rows.map((r) => r.reasons)).toEqual([[], ["line 1 already counts this item in strips of 10 — one strip size per item in a sheet; check this row's pack size"]]);
+    await expect(captureOpeningStock(db, fx.incharge.actor, firstOld, new Date())).rejects.toMatchObject({ code: "opening_stock_refused" });
+    expect(await packsOf(fresh)).toEqual(["strip10×10 issue", "tablet×1 issue"]);
   });
 });

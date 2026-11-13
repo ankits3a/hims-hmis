@@ -118,7 +118,10 @@ H1 row, `retail.sold`. Returns: sealed pack, 7 days, at least 30 days of shelf l
   or without GST via `rateWithoutGstPaise`); the invoice no./date become the GRN's challan and `invoice_date`, and
   prefill the supplier bill. The same invoice number twice answers `invoice_already_captured`.
 - Corrections (#1047): `materials/items.ts` `replaceItemUom` (refused `pack_in_use` while any batch, GRN line or open
-  PO line uses the pack); `materials/grn.ts` `cancelGrn` before posting (`already_received` after). MRP revision:
+  PO line uses the pack); `materials/grn.ts` `cancelGrn` before posting (`already_received` after). A counted strip
+  size the item lacks becomes the counter's pack (`opening-stock.ts` `putCountedPack`, sheet, grid and invoice): it
+  replaces the item's counter strip through `replaceItemUom`, or, on `pack_in_use`, is added and the old strip loses
+  `isIssueUom` (`materials` `setIssueUom`); one strip size per item in a sheet (`judgeRow`). MRP revision:
   `materials/qc.ts` verdict `mrp_revised` -> `requestMrpRevisionApproval` (type `materials_mrp_revision`, materials head) ->
   `postGrn` refuses `mrp_revision_unapproved` until granted, then `findOrCreateBatch` reprices the batch and emits
   `batch.mrp_revised`. `materials/supplier-returns.ts` `recordStandaloneCredit` (rate_difference, scheme, breakage,

@@ -47,7 +47,7 @@ async function main(): Promise<void> {
     const done = await applyOpeningStock(db, { storekeeper, qc, head }, plan, now);
     process.stdout.write(
       `\nAPPLIED in one transaction: ${String(done.posted)} GRN(s) posted (${String(done.unitsPosted)} units), ${String(done.awaiting)} awaiting near-expiry approval in /approvals, ` +
-      `${String(done.uomsAdded)} pack size(s) added, ${String(done.racksSet)} rack(s) set${done.vendorCreated ? ", OPENING STOCK vendor created" : ""}.\n`,
+      `${String(done.uomsAdded)} pack size(s) added (${String(done.uomsReplaced)} corrected in place), ${String(done.racksSet)} rack(s) set${done.vendorCreated ? ", OPENING STOCK vendor created" : ""}.\n`,
     );
   } finally {
     await pool.end();
