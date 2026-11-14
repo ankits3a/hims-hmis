@@ -46,3 +46,4 @@ Status: APPROVED 2026-11-14 by the owner ("go ahead"), from the imaging module r
 - The desk door's visits of today now include the patient's imaging walk-in (never a lab or pharmacy visit). OPD's refusals map to HTTP in `radiology-http.ts`, as `lab-http.ts` maps them.
 - Web: the door's "no visit today" carries the outside-slip leg (`imaging-walk-in.tsx`), reusing the door's study card with a `place` override; the door then opens the returned visit.
 - Runbook: `RAD` and its radiologist are precondition 8 in `docs/runbooks/radiology-go-live.md`.
+- Seams closed: the lab desk's patient door skips the imaging walk-in (`lab/desk.ts` `todaysEncounterFor`); billing's `feeServiceFor` returns no consult fee for any visit whose type is not `opd` (imaging, lab, pharmacy; decision 0003 ruling 2); the patient profile shows the walk-in as a RAD row (`profile.tl.imagingVisit`).
