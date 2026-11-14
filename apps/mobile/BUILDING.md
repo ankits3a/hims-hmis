@@ -1,7 +1,12 @@
 # Building the staff app
 
-**Android** (owner ruling, 2026-10-05: no Play Store): the app is built on this server, signed with
-our own key, and installed on staff phones from a download link. expo.dev's cloud builder is not
+The app is named **CRKMCH** ("CRKMCH Staging" for staging) on the phone and on both stores (owner
+2026-11-14, decision 0095). HMIS stays the name of the hospital system it signs in to; the app ids
+(`com.crkmch.hmis`, `com.crkmch.hmis.staging`) never change.
+
+**Android** is built on this server, signed with our own key, and reaches phones two ways: the
+download link (since 2026-10-05) and **Google Play** (owner 2026-11-14, decision 0095 — see "Google
+Play"). Both are ONE app: same id, same key, same versionCode counter. expo.dev's cloud builder is not
 used for Android. Everything below, up to "iPhone (EAS)", is about Android.
 
 **iPhone** (owner, 2026-10-08: about 100 iPhone users; Organisation Apple account; keep it unlisted;
@@ -13,8 +18,9 @@ are a record only.
 ## Build
 
 ```
-apps/mobile/scripts/build-apk.sh staging      # → stagehmis.crkmch.com, app id com.crkmch.hmis.staging
-apps/mobile/scripts/build-apk.sh production   # → hmis.crkmch.com,      app id com.crkmch.hmis
+apps/mobile/scripts/build-apk.sh staging            # → stagehmis.crkmch.com, app id com.crkmch.hmis.staging
+apps/mobile/scripts/build-apk.sh production         # → hmis.crkmch.com,      app id com.crkmch.hmis
+apps/mobile/scripts/build-apk.sh production --play  # the same app as a Google Play bundle (.aab) — see "Google Play"
 ```
 
 The APK lands in a folder per environment — staging in `/opt/hmis-context/mobile-apk/`, production
@@ -111,7 +117,12 @@ auth (`docker/prod/Caddyfile.uat` + a read-only mount in `docker-compose.uat.yml
 To install on a phone, open the link in Chrome and tap the APK. When Android asks, allow
 "Install unknown apps" for Chrome, then tap Install.
 
-## The update check (no app store)
+## The update check (phones that have the app from the download link)
+
+A phone that **Google Play** installed never reads this feed and draws no "Check for update" row: Play
+bans an app from updating itself any other way, and Play updates it (spec #1058). The app asks Android
+which app installed it (`src/install-source.ts`, native module `modules/install-source`); an older build
+without the module, or an answer it cannot read, counts as "not Play", so those phones keep the prompt.
 
 After a verified build the script writes `hmis-staff-<env>-latest.json` beside the APK:
 
@@ -298,6 +309,104 @@ The doctor's consult screen can record a note of up to 60 seconds (`expo-audio`,
   `/opt/hmis-context/mobile-tools/serve-consult.mjs` + `shoot-consult.mjs` (Chromium's fake audio
   device); the recording itself must be tried on a real phone.
 
+## Google Play (owner 2026-11-14, decision 0095)
+
+The Android app is also on Google Play, as a **public listing that needs a hospital sign-in** (Play has no
+Unlisted option). It is the same app as the APK: a phone that has the APK updates from Play in place.
+
+### Once: the account, the app, the keys
+
+1. **Play Console account** (owner): <https://play.google.com/console/signup>, type **Organisation**, the same
+   organisation as the Apple team (it reuses that D-U-N-S number), US$25 once. Google verifies the
+   organisation; that can take days.
+2. **Create the app**: name **CRKMCH**, default language English (India), App, Free.
+3. **App signing — choose our existing key BEFORE the first upload.** Play Console → the app → Test and release →
+   App integrity → App signing → "Use a different key" → "Export and upload a key from Java keystore". Play
+   shows a `pepk` command and its encryption key; run it on this server against `hmis-production.jks` (alias
+   and passwords in `/root/.config/hmis/android/hmis-production.env`) and upload the zip it writes. If Play
+   makes its own key instead, Play phones and APK phones become two different apps and every APK phone has
+   to uninstall to move to Play.
+4. **The upload key** (signs the bundle we send; Play re-signs with ours):
+   ```
+   cd /root/.config/hmis/android
+   keytool -genkeypair -v -keystore hmis-production-upload.jks -alias upload -keyalg RSA -keysize 2048 -validity 10000
+   keytool -export -rfc -keystore hmis-production-upload.jks -alias upload -file upload-certificate.pem
+   ```
+   Write `hmis-production-upload.env` (mode 600) the way `hmis-production.env` is written: `HMIS_KEYSTORE`,
+   `HMIS_KEY_ALIAS=upload`, `HMIS_STORE_PASSWORD`, `HMIS_KEY_PASSWORD`. Give Play `upload-certificate.pem` when
+   it asks. Back the upload key up with the others ("Signing keys: back them up"); a lost upload key can be
+   reset through Play support, a lost production key cannot.
+
+### Every release
+
+1. Build from a lane detached at the merge commit: `apps/mobile/scripts/build-apk.sh production --play`.
+   It writes `/opt/hmis-context/mobile-aab-prod/hmis-staff-production-<version>-vc<N>-<sha>.aab` (mode 700
+   folder, served by nothing). Before it keeps the bundle it refuses: no microphone permission, a wrong
+   fingerprint, and everything `scripts/play-checks.js` refuses — installing other apps, background location,
+   photo-library or shared-storage reads, all-files or all-apps access, a target SDK below 35, and a 64-bit
+   native library not aligned to 16 KB.
+2. Play Console → Test and release → **Internal testing** → Create release → upload the `.aab`. Install it on one
+   phone from the testers' link and sign in. Then **Promote release → Production**.
+3. The APK for the download link is built separately (`build-apk.sh production`); both take the next number
+   from the same counter, so the counter only goes up.
+
+### The forms Play asks for (App content)
+
+| Form | Answer |
+|---|---|
+| Privacy policy | `https://hmis.crkmch.com/privacy.html` (also Settings → Privacy policy in the app) |
+| App access | All functionality needs a sign-in → add the reviewer account ("Store review" below) |
+| Ads | No ads |
+| Content rating | Category: utility / productivity; every question "No" |
+| Target audience | 18 and over only; not designed for children |
+| Health apps | It is a health app: hospital staff use it to record and read patients' care in the hospital's records |
+| Data safety — collected | Name and user ID (sign-in); device ID (made up at install, to sign a lost phone out); precise location (once, at Mark attendance; coordinates not stored — "processed ephemerally"); photos (slips, taken in the app); audio (a doctor's spoken note, up to 60 s, not stored); health info (patients' clinical details staff enter); app interactions (the audit trail) |
+| Data safety — every item | Collected, not shared (the speech and AI services work on the hospital's behalf), for app functionality, required to use that feature, encrypted in transit |
+| Data deletion | Accounts belong to the hospital; a person asks the hospital's IT office (as the privacy page says) |
+| Government app, financial features, news | No |
+
+**Store listing**: name CRKMCH; short description "Staff app of CRK Medical College & Hospital. Hospital
+sign-in required."; the 512 px icon and a 1024 × 500 feature graphic; at least two phone screenshots.
+Production blocks screenshots on Android, so take them on the **staging** app or an iPhone, with the DEMO
+patients only.
+
+## Store review (Apple and Google)
+
+### The reviewer account (owner 2026-11-14)
+
+One account on **production**, limited to a **DEMO** department with five made-up patients, switched off
+between reviews. Its rows show in registers and the audit trail; the owner accepted that. An administrator
+makes it in the web app, never in the repository:
+
+1. Masters → departments: add **DEMO** ("Demo — store review"). No real doctor works in it.
+2. Users: add one user for the reviewers, a doctor in DEMO only, with a password that is not "change at first
+   sign-in" and works at any hour (reviewers are not in India).
+3. On the day you send a version for review: at Desk One register **Demo Patient One … Five** into DEMO with
+   no money taken. A visit belongs to its day, so a review that runs past that day may see an empty list:
+   register the visits again and reply to the reviewer.
+4. Type the user name and password only into App Store Connect (App Review Information → Sign-in required) and
+   Play Console (App access). Never into the repository or a chat.
+5. After the decision: switch the user off, and sign its phones out (Admin → Phones) — every reviewer's
+   device counts towards the user's phone limit.
+
+### What to write to the reviewer (both stores)
+
+> CRKMCH is the internal staff app of CRK Medical College & Hospital, India. It is not for patients or the
+> public: every screen needs an account the hospital issues. The demo account is a doctor in a demonstration
+> department with five made-up patients. Location is read once, in the foreground, only when a staff member
+> taps "Mark attendance". The microphone records a doctor's spoken note only when the doctor taps to record.
+> The app cannot create accounts, so it has no account deletion. JavaScript updates change screens and wording
+> only, never what the app is for. The publisher builds and runs this system for the hospital; the hospital's
+> signed authorisation is attached.
+
+### The authorisation letter
+
+The app carries the hospital's name; the seller on both stores is the software organisation. Apple (rules 5.2.1
+and 5.1.1(ix)) and Google (impersonation policy) ask for proof that the seller may publish under that name. The
+owner signs a letter on the hospital's letterhead (the draft is outside this repository) and attaches the PDF:
+App Store Connect → the version → App Review Information → Attachment; Google: the advance-notice form for
+authorised use of another organisation's name, linked from Play's Impersonation policy help page.
+
 ## Fonts and the icon
 
 IBM Plex Sans and Mono are bundled per weight (`src/fonts.ts`); every screen imports `Text` and `TextInput` from
@@ -341,15 +450,17 @@ same server. What differs in this first version:
 4. Send it to Apple: `APP_ENV=production npx eas-cli@latest submit --platform ios --latest`
    (without `APP_ENV=production` the command reads the staging app id — it did, on 2026-10-08)
    - It asks for the Apple ID again, and offers to make an App Store Connect API key — Yes.
-   - The first time, it offers to create the app in App Store Connect. Name: **HMIS Staff**.
+   - The first time, it offers to create the app in App Store Connect. Name: **CRKMCH**. (The entry made
+     before 2026-11-14 is called "HMIS Staff": App Store Connect → the app → App Information → Name →
+     **CRKMCH**, while the version is still "Prepare for Submission".)
    - The build appears in App Store Connect → the app → TestFlight after Apple has processed it
      (10–30 minutes). Install it from TestFlight on one iPhone and sign in before going further.
-5. Fill in App Store Connect (<https://appstoreconnect.apple.com> → Apps → HMIS Staff):
-   - **Name** HMIS Staff. **Primary category** Medical. **Price** Free.
-   - **Privacy Policy URL** — <https://crkmch.com/privacy-policy.html>. It has an HMIS Staff app
-     section, its "Apple iOS App Store Disclosures" and the attendance-location paragraph
-     (checked 2026-10-10). The page is not in this repository: when the app starts collecting
-     something new, the page is changed first.
+5. Fill in App Store Connect (<https://appstoreconnect.apple.com> → Apps → CRKMCH):
+   - **Name** CRKMCH. **Subtitle** CRK Medical College & Hospital staff. **Primary category** Medical. **Price** Free.
+   - **Privacy Policy URL** — <https://hmis.crkmch.com/privacy.html>, the page Settings → Privacy policy opens
+     (`apps/web/public/privacy.html`, #629). When the app starts collecting something new, that page is changed
+     in the same pull request.
+   - **App Review Information** — the reviewer account, the note and the authorisation letter: "Store review" above.
    - **App Privacy** — what the app really collects (read from the code), all "linked to the
      person", all for "App functionality", none used for tracking:
      - *User ID* — the staff member's sign-in name.
@@ -374,7 +485,9 @@ same server. What differs in this first version:
      appear in the public App Store before Apple has made it unlisted.
 6. Press **Add for Review**.
 
-### The sign-in for Apple's reviewer — the owner's choice, not made here
+### The sign-in for Apple's reviewer — RULED 2026-11-14: see "Store review" above
+
+The owner chose the first way below: a DEMO department on production, switched off between reviews.
 
 Apple's reviewer must be able to sign in. The production build talks to production
 (`hmis.crkmch.com`); a demo user on the staging server cannot sign in to it. Two honest ways:
@@ -396,7 +509,7 @@ which role the demo account holds.
 
 1. Wait for the status **"Pending Developer Release"** (approved, not released — step 5 above).
 2. Signed in as the Account Holder, fill in Apple's form:
-   <https://developer.apple.com/contact/request/unlisted-app/> — choose HMIS Staff and say it is for
+   <https://developer.apple.com/contact/request/unlisted-app/> — choose CRKMCH and say it is for
    the hospital's own staff.
 3. Apple answers by e-mail (usually a few days). App Store Connect → Pricing and Availability then
    shows the distribution method **Unlisted App** and a link.
@@ -405,12 +518,32 @@ which role the demo account holds.
 
 Every later version: steps 3, 4 and 6 again. It stays unlisted.
 
-### A test build for a few iPhones, without the App Store
+### Where the iPhone app stands
 
-`npx eas-cli@latest build --platform ios --profile preview` makes the **staging** app
-(`com.crkmch.hmis.staging`, talks to stagehmis). Apple lets it run only on iPhones registered
-beforehand with `npx eas-cli@latest device:create`, at most 100 a year — for trying a change, not
-for giving the app to staff.
+App Store Connect → Apps → CRKMCH:
+- **TestFlight** tab: each uploaded build and whether Apple has processed it. A build Apple's automatic checks
+  refuse never appears; Apple e-mails the reason to the account holder (build 4, `ITMS-90683`, 2026-11-02).
+- **The version** (left column, under iOS App): "Prepare for Submission" (not sent), "Waiting for Review", "In
+  Review", "Rejected" (the reason is in App Review → the message from Apple), "Pending Developer Release"
+  (approved; ask for Unlisted, above).
+
+### The staging app — TestFlight only (owner 2026-11-14)
+
+**CRKMCH Staging** (`com.crkmch.hmis.staging`, talks to stagehmis) never goes to the App Store. It is a store
+build that stays in TestFlight:
+
+```
+APP_ENV=preview npx eas-cli@latest build --platform ios --profile preview
+APP_ENV=preview npx eas-cli@latest submit --platform ios --profile preview --latest
+```
+
+`submit.preview` in `eas.json` names the staging id only, so it can never land on the production app. The
+first submit uses the App Store Connect entry made on 2026-10-08 for that id (called "HMIS Staging"; rename it
+**CRKMCH Staging**). In TestFlight → Internal Testing, add the testers (App Store Connect users, up to 100); they
+install it from Apple's TestFlight app. Internal testing needs no review — never press "Add for Review" on this
+app. A TestFlight build stops working after 90 days: build again before then. For over-the-air updates, record
+its runtime in `/opt/hmis-context/mobile-apk/hmis-staff-staging-ios-runtime.json` and run
+`apps/mobile/scripts/publish-ota.sh staging ios`.
 
 ### What is in the configuration
 
@@ -422,6 +555,6 @@ for giving the app to staff.
 - `withoutApplePush` in the same file removes the push entitlement, so the first build needs no
   Apple push key. Turning iPhone notifications on later is separate work: the server sends through
   Firebase only.
-- `eas.json`: `production.ios` (App Store), `preview.ios` (registered iPhones), Node 22.
+- `eas.json`: `production.ios` (App Store), `preview.ios` (TestFlight only, its own submit profile), Node 22.
 - This server cannot build an iPhone app (that needs a Mac). `npx expo prebuild --platform ios`
   does run here and is how the configuration was checked — in a scratch copy; never commit `ios/`.
