@@ -9,6 +9,7 @@ import { IMAGING_MODALITIES } from "./kinds";
 import { RadiologyError } from "./errors";
 import { imagingOutsideStudyRegistered } from "./events";
 import { requireStudyType } from "./study-types";
+import { activeReadingPools, readingPoolFor } from "./definitions";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { OrderKindDecl } from "../../kernel/orders/kinds";
@@ -215,8 +216,10 @@ export async function registerOutsideStudy(
    * `study_instance_uid`: `resolveStudyInstanceUid` refuses one for `outside` because there is no
    * DICOM study of ours to name.
    */
+  /** #1081 — an outside film is routed to its reading pool exactly as our own acquisition is. */
+  const readingPool = readingPoolFor(await activeReadingPools(tx), studyType);
   await tx.update(imagingStudies)
-    .set({ status: "acquired", acquiredAt: now, imageSource: "outside" })
+    .set({ status: "acquired", acquiredAt: now, imageSource: "outside", readingPool })
     .where(eq(imagingStudies.id, study.id));
 
   await appendEvent(

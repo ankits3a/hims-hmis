@@ -3,6 +3,7 @@ import type {
   ImagingAcquiredBody, ImagingContrastBody, ImagingRescheduleBody, ImagingScheduleBody, ImagingSignBody,
 } from "@hmis/contracts";
 import { messageText } from "./materials-api";
+import type { WireDraftSection } from "./radiology-reading-api";
 
 /**
  * PLAN 18a T9 — the imaging department's wire contract, transcribed from the five
@@ -283,7 +284,9 @@ export const openImages = (studyId: string) =>
 export const proposeDraft = (studyId: string) =>
   api<{
     reportId: string; version: number; templateKey: string;
-    body: Record<string, string>; impression: string | null; provenance: { drafter: string };
+    body: Record<string, string>; impression: string | null;
+    /** #1081 — per drafted section, the rows it was built from (the reading room's chip). */
+    provenance: { drafter: string; sections?: Record<string, WireDraftSection> };
   }>("POST", `/radiology/studies/${studyId}/reports/propose`);
 
 export const draftReport = (studyId: string, body: Record<string, unknown>) =>

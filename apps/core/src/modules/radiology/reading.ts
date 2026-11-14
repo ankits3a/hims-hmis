@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNotNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { recordPhiAccess, recordPhiAccessMany } from "../../kernel/phi/audit";
 import { withTx } from "../../kernel/db/client";
@@ -15,7 +15,7 @@ import { services } from "../../kernel/db/schema/tariff";
 import { displayName, listMergedLoserIds, resolvePatientId } from "../patients";
 import { loadOpdConfig } from "../opd";
 import { codedLine, CODED_SYSTEMS } from "@hmis/contracts";
-import { activeDefinitionRow, parseDefinitionBody, templatesFor } from "./definitions";
+import { activeDefinitionRow, activeReadingPools, parseDefinitionBody, templatesFor } from "./definitions";
 import { RadiologyError } from "./errors";
 import { activeStudyTypes } from "./study-types";
 import { REPORT_TEMPLATES, templateKeyFor } from "./templates";
@@ -26,6 +26,7 @@ import { studySource } from "./study-source";
 import type { StudySource } from "./study-source";
 import type { CodedSystem } from "@hmis/contracts";
 import type { GovernedReportTemplate } from "./definitions";
+import type { DraftSection } from "./drafter";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
 import type { ResidentSignature, SignerBlock } from "./signer";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -47,18 +48,29 @@ import type { Actor } from "@hmis/contracts";
  * read it); `opd` and `walk_in` → OPD, 24 h. The clock starts when the images are in
  * (`acquired_at`); a study still on the table has no clock yet and is listed dimmed.
  *
- * ═══ THE LOCK IS DERIVED, NOT CLICKED (the owner's "presence is derived") ═══
+ * ═══ "DR X IS READING" — A LABEL, NOT A LOCK ═══
  *
- * Opening the images IS the claim: the latest image view on an unsigned study, within the last hour,
- * by somebody ELSE who writes reports, is shown as "Dr X is reading" (a reader's own views are not
- * a lock on themselves). No claim button, no table: the view
- * log (`imaging_image_views`, 18b T3) already records exactly this. It is a label, not a lock — a
- * second radiologist may still read, and sees who was there first.
+ * #1081: opening a study in the reading room claims it (`reading-claim.ts`, the study's
+ * `reading_claimed_by`/`_at`), so the label needs no PACS. The latest image view by another reader
+ * (`imaging_image_views`, 18b T3 — opening the images is still being there) counts too; whichever is
+ * newer is shown. Either lapses an hour after it was written and neither is shown once the report is
+ * signed; a reader's own claim or view is not a lock on themselves. A second radiologist may still
+ * read, and sees who was there first.
+ *
+ * ═══ #1081 — MY LIST AND ALL ═══
+ *
+ * The default list is the reader's own: studies of the reading pools the published signatories book
+ * puts them in, studies a consultant assigned to them, and every unpooled study (no pool published, or
+ * none matched — such a study is everybody's). "All" is the whole list. Both are still the one order
+ * below — sorted, never filtered further.
  */
 
 export const READING_WRITE = "radiology.reports.write";
 const READING_STATUSES = ["in_acquisition", "acquired", "reported"] as const;
-const CLAIM_WINDOW_MS = 60 * 60_000;
+/** A claim or an image view says "is reading" for an hour after it was written (#1081: the claim's lapse). */
+export const CLAIM_WINDOW_MS = 60 * 60_000;
+export const READING_LIST_VIEWS = ["mine", "all"] as const;
+export type ReadingListView = (typeof READING_LIST_VIEWS)[number];
 
 export type TatClass = "stat" | "er" | "ipd" | "opd";
 export const TAT_MINUTES: Record<TatClass, number> = { stat: 30, er: 60, ipd: 360, opd: 1440 };
@@ -102,9 +114,61 @@ export type ReadingRow = {
    * 18-S RS8b `awaiting_cosign` — a resident signed it and a consultant has not yet co-signed.
    */
   reportState: "none" | "draft" | "prelim" | "signed" | "awaiting_cosign";
-  /** Derived from the image-view log (see the header); null when nobody has the study open. */
+  /** The claim or the image-view log (see the header); null when nobody else has the study open. */
   readingBy: { userId: string; name: string; since: Date } | null;
+  /** #1081 — the pool stamped at acquisition (null: unpooled), and the reader a consultant assigned it to. */
+  readingPool: string | null;
+  assignedTo: { userId: string; name: string } | null;
 };
+
+type Presence = { userId: string; name: string; since: Date };
+
+/**
+ * #1081 — "is reading" for a set of studies: each study's live claim by somebody else and its latest
+ * image view by somebody else who writes reports, whichever is newer.
+ */
+async function presenceOf(
+  db: Db, actor: Actor, now: Date,
+  studies: readonly { id: string; readingClaimedBy: string | null; readingClaimedAt: Date | null }[],
+): Promise<Map<string, Presence>> {
+  const out = new Map<string, Presence>();
+  if (studies.length === 0) return out;
+  const since = new Date(now.getTime() - CLAIM_WINDOW_MS);
+  const claimants = [...new Set(studies
+    .filter((s) => s.readingClaimedBy !== null && s.readingClaimedBy !== actor.id && s.readingClaimedAt !== null && s.readingClaimedAt >= since)
+    .map((s) => s.readingClaimedBy!))];
+  const names = new Map(claimants.length === 0 ? [] : (await db.select({ id: users.id, name: users.fullName })
+    .from(users).where(inArray(users.id, claimants))).map((u) => [u.id, u.name]));
+  for (const s of studies) {
+    if (s.readingClaimedBy === null || !names.has(s.readingClaimedBy) || s.readingClaimedAt === null || s.readingClaimedAt < since) continue;
+    out.set(s.id, { userId: s.readingClaimedBy, name: names.get(s.readingClaimedBy)!, since: s.readingClaimedAt });
+  }
+  const views = await db
+    .select({ studyId: imagingImageViews.studyId, viewerId: imagingImageViews.viewerId, viewedAt: imagingImageViews.viewedAt, name: users.fullName })
+    .from(imagingImageViews)
+    .innerJoin(users, eq(users.id, imagingImageViews.viewerId))
+    .where(and(inArray(imagingImageViews.studyId, studies.map((s) => s.id)), gte(imagingImageViews.viewedAt, since)))
+    .orderBy(desc(imagingImageViews.viewedAt));
+  const readers = new Map<string, boolean>();
+  const viewed = new Set<string>();
+  for (const v of views) {
+    /** The reader's own views are not a lock on themselves; the newest view per study is the one compared. */
+    if (viewed.has(v.studyId) || v.viewerId === actor.id) continue;
+    if (!readers.has(v.viewerId)) readers.set(v.viewerId, await hasPermission(db, v.viewerId, READING_WRITE, "hospital"));
+    if (readers.get(v.viewerId) !== true) continue;
+    viewed.add(v.studyId);
+    const claim = out.get(v.studyId);
+    if (claim === undefined || v.viewedAt > claim.since) out.set(v.studyId, { userId: v.viewerId, name: v.name, since: v.viewedAt });
+  }
+  return out;
+}
+
+async function namesOf(db: Db, ids: readonly (string | null)[]): Promise<Map<string, string>> {
+  const wanted = [...new Set(ids.filter((i): i is string => i !== null))];
+  if (wanted.length === 0) return new Map();
+  return new Map((await db.select({ id: users.id, name: users.fullName }).from(users).where(inArray(users.id, wanted)))
+    .map((u) => [u.id, u.name]));
+}
 
 async function assertReader(db: Db, actor: Actor): Promise<void> {
   if (actor.type !== "user") throw new RadiologyError("forbidden", `a ${actor.type} actor does not read images`);
@@ -113,9 +177,21 @@ async function assertReader(db: Db, actor: Actor): Promise<void> {
   }
 }
 
-export async function readingWorklist(db: Db, actor: Actor, now: Date = new Date()): Promise<ReadingRow[]> {
+export async function readingWorklist(
+  db: Db, actor: Actor, now: Date = new Date(), opts: { view?: ReadingListView } = {},
+): Promise<ReadingRow[]> {
   await assertReader(db, actor);
   const clearance = await clearanceOf(db, actor);
+  const view = opts.view ?? "mine";
+  /** #1081 — my list: my pools, studies assigned to me, and the unpooled. In SQL, so the cap drops no study of mine for somebody else's. */
+  let scope: ReturnType<typeof or> | undefined;
+  if (view === "mine") {
+    const pools = (await activeReadingPools(db)).filter((p) => p.readers.includes(actor.id)).map((p) => p.name);
+    scope = or(
+      isNull(imagingStudies.readingPool), eq(imagingStudies.assignedReaderId, actor.id),
+      pools.length > 0 ? inArray(imagingStudies.readingPool, pools) : undefined,
+    );
+  }
   const rows = await db
     .select({
       study: imagingStudies, restricted: orderItems.restricted, authority: orders.authority,
@@ -126,7 +202,7 @@ export async function readingWorklist(db: Db, actor: Actor, now: Date = new Date
     .innerJoin(orderItems, eq(orderItems.id, imagingStudies.orderItemId))
     .innerJoin(orders, eq(orders.id, imagingStudies.orderId))
     .innerJoin(patients, eq(patients.id, imagingStudies.patientId))
-    .where(inArray(imagingStudies.status, [...READING_STATUSES]))
+    .where(and(inArray(imagingStudies.status, [...READING_STATUSES]), scope))
     /** STAT first IN SQL, so the cap can only drop routine work (F43). */
     .orderBy(sql`case when ${imagingStudies.priority} = 'stat' then 0 when ${imagingStudies.priority} = 'urgent' then 1 else 2 end`, imagingStudies.acquiredAt)
     .limit(300);
@@ -151,20 +227,8 @@ export async function readingWorklist(db: Db, actor: Actor, now: Date = new Date
   /** A signed version anywhere in the chain wins over a later unsigned one (an amendment in progress). */
   for (const v of versions) if (v.status === "signed") stateOf.set(v.studyId, "signed");
 
-  const views = studyIds.length === 0 ? [] : await db
-    .select({ studyId: imagingImageViews.studyId, viewerId: imagingImageViews.viewerId, viewedAt: imagingImageViews.viewedAt, name: users.fullName })
-    .from(imagingImageViews)
-    .innerJoin(users, eq(users.id, imagingImageViews.viewerId))
-    .where(and(inArray(imagingImageViews.studyId, studyIds), gte(imagingImageViews.viewedAt, new Date(now.getTime() - CLAIM_WINDOW_MS))))
-    .orderBy(desc(imagingImageViews.viewedAt));
-  const readers = new Map<string, boolean>();
-  const readingBy = new Map<string, ReadingRow["readingBy"]>();
-  for (const v of views) {
-    /** The reader's own views are not a lock on themselves. */
-    if (readingBy.has(v.studyId) || v.viewerId === actor.id) continue;
-    if (!readers.has(v.viewerId)) readers.set(v.viewerId, await hasPermission(db, v.viewerId, READING_WRITE, "hospital"));
-    if (readers.get(v.viewerId) === true) readingBy.set(v.studyId, { userId: v.viewerId, name: v.name, since: v.viewedAt });
-  }
+  const readingBy = await presenceOf(db, actor, now, rows.map((r) => r.study));
+  const assignees = await namesOf(db, rows.map((r) => r.study.assignedReaderId));
 
   /** 18-S RS8b — a consultant sees the residents' reports waiting for them at the TOP of the one list. */
   const consultant = await actorHoldsAnyRole(db as unknown as Tx, actor.id, ["radiologist"]);
@@ -187,6 +251,9 @@ export async function readingWorklist(db: Db, actor: Actor, now: Date = new Date
       dueAt: r.study.acquiredAt === null ? null : new Date(r.study.acquiredAt.getTime() + targetMinutes * 60_000),
       reportState,
       readingBy: reportState === "signed" ? null : readingBy.get(r.study.id) ?? null,
+      readingPool: r.study.readingPool,
+      assignedTo: r.study.assignedReaderId === null ? null
+        : { userId: r.study.assignedReaderId, name: assignees.get(r.study.assignedReaderId) ?? r.study.assignedReaderId },
     };
   });
 
@@ -198,7 +265,7 @@ export async function readingWorklist(db: Db, actor: Actor, now: Date = new Date
     || (a.dueAt?.getTime() ?? Infinity) - (b.dueAt?.getTime() ?? Infinity));
 
   /** #1076 / ruling 0098 — once per reader, patient and surface per 30 minutes, in one statement. */
-  const reason = `reading worklist, ${String(out.length)} rows`;
+  const reason = `reading worklist (${view}), ${String(out.length)} rows`;
   await recordPhiAccessMany(db, { actor, patientIds: out.map((r) => r.patientId), surface: "imaging.worklist", reason, now });
   return out;
 }
@@ -245,8 +312,26 @@ export type ReadingContext = {
   canOpenImages: boolean;
   templates: ReadingTemplate[];
   defaultTemplateKey: string;
-  /** The newest human draft or prelim, to seed the editor; null when there is none. */
-  working: { reportId: string; version: number; status: string; templateKey: string; body: Record<string, unknown>; impression: string | null; criticalCategory: string | null } | null;
+  /**
+   * The newest human draft or prelim, to seed the editor; null when there is none. #1081: who wrote it,
+   * and when it was last autosaved (null: a Save or a prelim) — reopening the study restores it.
+   */
+  working: {
+    reportId: string; version: number; status: string; templateKey: string; body: Record<string, unknown>;
+    impression: string | null; criticalCategory: string | null; draftedBy: string | null; autosavedAt: Date | null;
+  } | null;
+  /**
+   * #1081 — the drafter's newest proposal on an unsigned study, with its per-section sources: the screen
+   * seeds an unreported study from it and shows a chip on each drafted section the reader has not edited.
+   */
+  proposal: {
+    reportId: string; templateKey: string; body: Record<string, unknown>; impression: string | null;
+    sections: Record<string, DraftSection>;
+  } | null;
+  /** #1081 — the study's pool and named reader; and, for a consultant, the readers it may be assigned to. */
+  readingPool: string | null;
+  assignedTo: { userId: string; name: string } | null;
+  readers: { userId: string; name: string }[];
   /**
    * The current signed version, if any, and whether it is published. 18-S RS8b: its text too, so the
    * Amend panel starts from what was signed.
@@ -363,16 +448,12 @@ export async function readingContext(db: Db, actor: Actor, studyId: string, now:
   const consultant = await actorHoldsAnyRole(db as unknown as Tx, actor.id, ["radiologist"]);
   const resident = !consultant && await actorHoldsAnyRole(db as unknown as Tx, actor.id, ["radiology_resident"]);
 
-  const views = await db
-    .select({ viewerId: imagingImageViews.viewerId, viewedAt: imagingImageViews.viewedAt, name: users.fullName })
-    .from(imagingImageViews).innerJoin(users, eq(users.id, imagingImageViews.viewerId))
-    .where(and(eq(imagingImageViews.studyId, study.id), gte(imagingImageViews.viewedAt, new Date(now.getTime() - CLAIM_WINDOW_MS))))
-    .orderBy(desc(imagingImageViews.viewedAt)).limit(5);
-  let readingBy: ReadingRow["readingBy"] = null;
-  for (const v of views) {
-    if (v.viewerId === actor.id) continue;
-    if (await hasPermission(db, v.viewerId, READING_WRITE, "hospital")) { readingBy = { userId: v.viewerId, name: v.name, since: v.viewedAt }; break; }
-  }
+  const readingBy = signedRow === undefined ? (await presenceOf(db, actor, now, [study])).get(study.id) ?? null : null;
+  /** #1081 — the newest proposal, only while nothing is signed (a signed study is not drafted again). */
+  const proposalRow = signedRow === undefined && awaitingRow === undefined
+    ? versions.find((v) => v.status === "draft" && v.provenance !== null) : undefined;
+  const people = await namesOf(db, [study.assignedReaderId]);
+  const readers = consultant ? await assignableReaders(db) : [];
 
   const flags: string[] = [];
   if (row.isConfidential) flags.push("confidential");
@@ -405,6 +486,7 @@ export async function readingContext(db: Db, actor: Actor, studyId: string, now:
     working: workingRow === undefined ? null : {
       reportId: workingRow.id, version: workingRow.version, status: workingRow.status, templateKey: workingRow.templateKey,
       body: workingRow.body as Record<string, unknown>, impression: workingRow.impression, criticalCategory: workingRow.criticalCategory,
+      draftedBy: workingRow.draftedBy, autosavedAt: workingRow.autosavedAt,
     },
     signed: signedRow === undefined ? null : {
       reportId: signedRow.id, version: signedRow.version, publishedAt: signedRow.publishedAt,
@@ -421,7 +503,34 @@ export async function readingContext(db: Db, actor: Actor, studyId: string, now:
     viewer: { consultant, resident },
     prelimAllowed: study.priority === "stat" || study.priority === "urgent",
     readingBy,
+    proposal: proposalRow === undefined ? null : {
+      reportId: proposalRow.id, templateKey: proposalRow.templateKey, body: proposalRow.body as Record<string, unknown>,
+      impression: proposalRow.impression,
+      sections: ((proposalRow.provenance as { sections?: Record<string, DraftSection> } | null)?.sections) ?? {},
+    },
+    readingPool: study.readingPool,
+    assignedTo: study.assignedReaderId === null ? null
+      : { userId: study.assignedReaderId, name: people.get(study.assignedReaderId) ?? study.assignedReaderId },
+    readers,
   };
+}
+
+/**
+ * #1081 — the people a consultant may assign a study to: everyone the published signatories book names
+ * (a signatory or a pool reader) who still writes reports, by name. No book, nobody listed: an empty
+ * list, and the screen offers no assignment.
+ */
+async function assignableReaders(db: Db): Promise<{ userId: string; name: string }[]> {
+  const row = await activeDefinitionRow(db, "report_signatories");
+  if (row === undefined) return [];
+  const body = parseDefinitionBody("report_signatories", row.body);
+  const ids = [...new Set([...body.signatories.map((s) => s.user_id), ...(body.reading_pools ?? []).flatMap((p) => p.readers)])];
+  const names = await namesOf(db, ids);
+  const out: { userId: string; name: string }[] = [];
+  for (const id of ids) {
+    if (names.has(id) && await hasPermission(db, id, READING_WRITE, "hospital")) out.push({ userId: id, name: names.get(id)! });
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 async function referrerOf(db: Db, clinicianId: string | null): Promise<ReadingContext["referrer"]> {

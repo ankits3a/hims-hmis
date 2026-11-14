@@ -17,6 +17,7 @@ import { evaluateReadiness } from "./gates";
 import { assertContrastPermissible } from "./contrast";
 import { authorisationOf, encounterPayer, hasBillDecision, imagingFreeAt, raiseBillDecision } from "./money";
 import { activeDoseReferenceLevels, drlFor, requireStudyType } from "./study-types";
+import { activeReadingPools, readingPoolFor } from "./definitions";
 import { attachHeldAtSend, heldArrivalFor, pendingDoseFor, settlePendingDose } from "./pacs";
 import { assertIrSendable, assertIrStartable, raiseSkinDoseAlerts } from "./ir";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -512,6 +513,13 @@ export async function recordAcquired(
   const lateEntry = Math.abs(now.getTime() - acquiredAt.getTime()) > LATE_ENTRY_MINUTES * 60_000;
 
   /**
+   * #1081 — the study's READING POOL, stamped here (the images are in; this is when a reader needs it):
+   * the first pool of the published signatories book that takes this type. Null with no pool published,
+   * and a later book does not move it — the study was routed by the book of its day.
+   */
+  const readingPool = readingPoolFor(await activeReadingPools(tx), studyType);
+
+  /**
    * A6's CAS. Conditional on the status this call validated against, so two concurrent consoles
    * produce one winner and one `already_acquired` rather than two events and a doubled dose.
    */
@@ -532,6 +540,7 @@ export async function recordAcquired(
       contrastAgent: input.contrastAgent ?? null,
       contrastVolumeMl: input.contrastVolumeMl?.toString() ?? null,
       repeatOfStudyId: repeatOf, repeatReason,
+      readingPool,
     })
     .where(and(eq(imagingStudies.id, study.id), eq(imagingStudies.status, "in_acquisition")))
     .returning({ id: imagingStudies.id });

@@ -1632,6 +1632,13 @@
       "when": 1794682692852,
       "tag": "0233_imaging_studies_encounter_no_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 233,
+      "version": "7",
+      "when": 1794689733534,
+      "tag": "0234_imaging_reading_room",
+      "breakpoints": true
     }
   ]
 }
