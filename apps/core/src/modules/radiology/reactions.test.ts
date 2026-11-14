@@ -65,7 +65,7 @@ describe("contrast reactions (18a-iii T2)", () => {
     signedAt: NOW.toISOString(),
   });
   const evidenceFor = (kind: string, code: string): unknown => ({
-    identity_two_factor: { secondIdentifier: "uhid", value: "HMS-00000001-5" },
+    identity_two_factor: { secondIdentifier: "uhid", value: "HMS-00000001-5", nameStated: true },
     pregnancy_screen: { declared: true, lmpDate: new Date(NOW.getTime() - 10 * 86_400_000).toISOString() },
     contrast_consent: consentFor(code),
     renal_function: { creatinineUmolL: 72, sampledAt: NOW.toISOString(), source: "internal" },

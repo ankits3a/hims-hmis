@@ -8,6 +8,7 @@ import { routeTests } from "./route";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { OrderKindDecl } from "../../kernel/orders/kinds";
+import type { OrderItemLaterality } from "../../kernel/db/schema/orders";
 import type { DeskOrderResult } from "../lab";
 import type { PlaceImagingOrderResult } from "../radiology";
 import type { RoutedTests } from "./route";
@@ -45,6 +46,11 @@ export type OrderTestsInput = {
   protocolRef?: string;
   /** Limit the departments ordered (the free-test order orders only what is free). Default: both. */
   departments?: { lab: boolean; imaging: boolean };
+  /**
+   * #1080 — the side of each sided study, by service id (`{ [serviceId]: "left" }`). Imaging refuses a
+   * side-applicable study without one; the refusal comes back under `skipped` like any other.
+   */
+  laterality?: Readonly<Record<string, OrderItemLaterality>>;
 };
 
 export type SkippedDepartment = { department: "lab" | "imaging"; serviceIds: string[]; code: string; message: string };
@@ -118,7 +124,7 @@ export async function orderTests(
       result.imaging = await placeImagingOrder(db, actor, decls, {
         patientId: input.patientId, encounterNo: input.encounterNo, serviceDate: input.serviceDate,
         orderingClinicianId: input.orderingClinicianId, priority: input.priority, indication: input.indication,
-        items: routed.imaging.map((serviceId) => ({ serviceId })),
+        items: routed.imaging.map((serviceId) => ({ serviceId, laterality: input.laterality?.[serviceId] ?? null })),
         ...protocol,
       }, undefined, now);
     } catch (e) {

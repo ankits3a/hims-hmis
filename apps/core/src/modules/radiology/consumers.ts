@@ -91,6 +91,8 @@ export async function handleOrderPlaced(
        * same dead select this phase deleted from `read.ts` in the same commit.
        */
       id: orderItems.id, serviceId: orderItems.serviceId,
+      /** #1080 — the ordered side, which becomes the study's before any gate is opened. */
+      laterality: orderItems.laterality,
     })
     .from(orderItems)
     .where(inArray(orderItems.id, payload.itemIds));
@@ -203,6 +205,13 @@ export async function handleOrderPlaced(
        * on the effective value, so a fixed CT cannot take this study until the desk clears it.
        */
       bedsideLocation: bedsideByItem.get(itemId) ?? null,
+      /**
+       * #1080 — THE ORDER'S SIDE, written at creation. This is the writer `gates.ts`'s
+       * `laterality_confirm` was missing (F59): the console now compares what the patient points to
+       * against what the doctor ordered, and a disagreement is the referrer's to resolve. An item with
+       * no side (a chest X-ray, or an order placed before the column existed) stays `na`.
+       */
+      laterality: item.laterality ?? "na",
     });
 
     created.push({ studyId, accessionNo, orderItemId: itemId });

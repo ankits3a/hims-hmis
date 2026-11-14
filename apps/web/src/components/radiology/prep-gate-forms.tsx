@@ -36,13 +36,15 @@ function Submit({ busy, disabled, children }: { busy: boolean; disabled?: boolea
 
 const nowIstInput = (): string => isoToIstInput(new Date().toISOString());
 
-/* ── identity — two identifiers, the second compared with the patient master ── */
+/* ── identity — two identifiers, the second compared with the patient master ──
+ * #1080: recording is the attestation that the patient said their name (the first identifier, asked
+ * above); the server refuses identity evidence without `nameStated: true`. */
 function IdentityForm({ ctx, onSubmit, busy }: FormProps): React.ReactElement {
   const { t } = useTranslation();
   const [kind, setKind] = useState<"uhid" | "wristband" | "dob">("uhid");
   const [value, setValue] = useState("");
   return (
-    <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); onSubmit({ secondIdentifier: kind, value: value.trim() }); }}>
+    <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); onSubmit({ secondIdentifier: kind, value: value.trim(), nameStated: true }); }}>
       <p className="m-0 text-xs text-muted-foreground">{t("radiology.bay.identity.first", { name: ctx.patient.name })}</p>
       <div className="grid gap-2 sm:grid-cols-2">
         <Field text={t("radiology.bay.identity.second")}>

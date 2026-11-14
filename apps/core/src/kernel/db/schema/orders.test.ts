@@ -180,6 +180,18 @@ describe("the order envelope — 0044 structure", () => {
       expect(await db.select().from(orderItems)).toHaveLength(1);
     });
 
+    /** #1080 — the side is one of three words or absent; `na` is the study's word for "no side", not the order's. */
+    it("refuses a laterality outside left/right/bilateral, and keeps a null one", async () => {
+      for (const bad of ["na", "Left", "both"]) {
+        await expect(db.insert(orderItems).values(item({ id: `01ITEMBADSIDE${bad.padEnd(11, "0")}`, laterality: bad }) as never))
+          .rejects.toThrow(/order_items_laterality_ck/);
+      }
+      await db.insert(orderItems).values(item({ laterality: "left" }) as never);
+      await db.insert(orderItems).values(item({ id: "01ITEM000000000000000002", laterality: null }) as never);
+      const rows = await db.select().from(orderItems);
+      expect(rows.map((r) => r.laterality).sort()).toEqual(["left", null]);
+    });
+
     it("refuses a duplicate pointer with no reason, and a reason with no pointer (D11)", async () => {
       await expect(db.insert(orderItems).values(item({ duplicateOfItemId: "01ITEM000000000000000009" }) as never))
         .rejects.toThrow(/order_items_duplicate_ck/);

@@ -41,6 +41,8 @@ export const RADIOLOGY_ERROR_CODES = [
   "unknown_study_type",
   /** 18-S RS2 — an outside prescription placed without the referrer's name and registration. */
   "referrer_required",
+  /** #1080 — a study whose type has a side (a knee, a kidney) ordered without saying which. */
+  "laterality_required",
   /** Consult v2 — the patient-scoped reports read: no such patient, or one this reader may not see. */
   "unknown_patient",
   /** Consult v2 — a patient's reports are read by a person, never an agent or device credential. */
@@ -295,6 +297,7 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   unknown_study: 404,
   unknown_study_type: 422,
   referrer_required: 422,
+  laterality_required: 422,
   unknown_patient: 404,
   user_actor_required: 403,
 

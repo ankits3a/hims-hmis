@@ -395,5 +395,5 @@ it("RS5: there is no JSON evidence box — Satisfy opens the gate's own form, wh
   await userEvent.type(value, "HMS-00000001-5");
   await userEvent.click(within(row).getByTestId("gate-submit"));
   await vi.waitFor(() => expect(bodies["POST /api/radiology/studies/S1/gates/identity_two_factor/satisfy"])
-    .toEqual([{ secondIdentifier: "uhid", value: "HMS-00000001-5" }]));
+    .toEqual([{ secondIdentifier: "uhid", value: "HMS-00000001-5", nameStated: true }]));
 });

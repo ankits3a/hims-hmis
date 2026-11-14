@@ -24,6 +24,7 @@ import { recordAcquired, startAcquisition } from "../../src/modules/radiology/ac
 import type { Db } from "../../src/kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 import type { OrderKindDecl } from "../../src/kernel/orders/kinds";
+import type { OrderItemLaterality } from "../../src/kernel/db/schema/orders";
 import type { StudyType } from "../../src/modules/radiology";
 
 /**
@@ -284,13 +285,15 @@ export async function placeAndCreateStudy(
   serviceCode: string,
   idemKey: string,
   now: Date,
+  /** #1080 — the ordered side; a side-applicable study type is refused without one. */
+  opts: { laterality?: OrderItemLaterality } = {},
 ): Promise<{ studyId: string; accessionNo: string; orderId: string; itemId: string }> {
   const placed = await placeImagingOrder(
     db, fx.doctor, fx.decls,
     {
       patientId: fx.patientId, encounterNo: fx.visitNo, serviceDate: fx.serviceDate,
       orderingClinicianId: "dr-consultant", indication: "clinical suspicion",
-      items: [{ serviceId: fx.services[serviceCode]! }],
+      items: [{ serviceId: fx.services[serviceCode]!, laterality: opts.laterality ?? null }],
       /**
        * ═══ FINDING F28 — WITHOUT THIS, EVERY SUITE USING THIS HELPER IS A TIME BOMB ═══
        *
@@ -347,19 +350,20 @@ export async function placeAndCreateStudy(
 export async function startStudyOnMachine(
   db: Db,
   fx: RadiologyFixture,
-  opts: { serviceCode?: string; deviceKey?: string; idemKey: string; now: Date; slot: Date },
+  opts: { serviceCode?: string; deviceKey?: string; idemKey: string; now: Date; slot: Date; laterality?: OrderItemLaterality },
 ): Promise<{ studyId: string; accessionNo: string; orderId: string; itemId: string }> {
   const serviceCode = opts.serviceCode ?? "USG-ABDO";
   const deviceKey = opts.deviceKey ?? "usg";
-  const study = await placeAndCreateStudy(db, fx, serviceCode, opts.idemKey, opts.now);
+  const study = await placeAndCreateStudy(db, fx, serviceCode, opts.idemKey, opts.now, { laterality: opts.laterality });
   await withTx(db, (tx) => scheduleStudy(tx, fx.radiographer, {
     studyId: study.studyId, deviceResourceId: fx.devices[deviceKey]!, scheduledAt: opts.slot,
   }));
   const checked = await withTx(db, (tx) => checkIn(tx, fx.radiographer, { studyId: study.studyId, now: opts.now }));
   const evidence: Record<string, unknown> = {
-    identity_two_factor: { secondIdentifier: "uhid", value: "HMS-00000001-5" },
+    identity_two_factor: { secondIdentifier: "uhid", value: "HMS-00000001-5", nameStated: true },
     pregnancy_screen: { declared: true, lmpDate: new Date(opts.now.getTime() - 10 * 86_400_000).toISOString() },
-    laterality_confirm: { patientStated: "na" },
+    /** #1080 — the patient points to the ORDERED side; a study ordered with none records `na`. */
+    laterality_confirm: { patientStated: opts.laterality ?? "na" },
   };
   for (const kind of checked.gates) {
     const gate = await requireStudyGate(db, study.studyId, kind);
@@ -376,19 +380,20 @@ export async function startStudyOnMachine(
 export async function acquireStudy(
   db: Db,
   fx: RadiologyFixture,
-  opts: { serviceCode?: string; deviceKey?: string; idemKey: string; now: Date; slot: Date; dose?: boolean },
+  opts: { serviceCode?: string; deviceKey?: string; idemKey: string; now: Date; slot: Date; dose?: boolean; laterality?: OrderItemLaterality },
 ): Promise<{ studyId: string; accessionNo: string; orderId: string; itemId: string }> {
   const serviceCode = opts.serviceCode ?? "USG-ABDO";
   const deviceKey = opts.deviceKey ?? "usg";
-  const study = await placeAndCreateStudy(db, fx, serviceCode, opts.idemKey, opts.now);
+  const study = await placeAndCreateStudy(db, fx, serviceCode, opts.idemKey, opts.now, { laterality: opts.laterality });
   await withTx(db, (tx) => scheduleStudy(tx, fx.radiographer, {
     studyId: study.studyId, deviceResourceId: fx.devices[deviceKey]!, scheduledAt: opts.slot,
   }));
   const checked = await withTx(db, (tx) => checkIn(tx, fx.radiographer, { studyId: study.studyId, now: opts.now }));
   const evidence: Record<string, unknown> = {
-    identity_two_factor: { secondIdentifier: "uhid", value: "HMS-00000001-5" },
+    identity_two_factor: { secondIdentifier: "uhid", value: "HMS-00000001-5", nameStated: true },
     pregnancy_screen: { declared: true, lmpDate: new Date(opts.now.getTime() - 10 * 86_400_000).toISOString() },
-    laterality_confirm: { patientStated: "na" },
+    /** #1080 — the patient points to the ORDERED side; a study ordered with none records `na`. */
+    laterality_confirm: { patientStated: opts.laterality ?? "na" },
   };
   for (const kind of checked.gates) {
     const gate = await requireStudyGate(db, study.studyId, kind);
