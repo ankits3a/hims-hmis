@@ -439,7 +439,9 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     // 18b T1 — the worklist pulls above are the third surface, and every one of them is the bridge's.
     expect(new Set(phiRows.map((r) => r.surface))).toEqual(new Set(["imaging.study", "imaging.report", "imaging.worklist"]));
     const pulls = phiRows.filter((r) => r.surface === "imaging.worklist");
-    expect(pulls).toHaveLength(2); // C15 — one patient, two authorised pulls: exactly two
+    // C15 as amended by ruling 0098 (#1076): list reads are logged once per reader, patient and surface per
+    // 30-minute window, so the bridge's two pulls of one patient seconds apart leave exactly one row.
+    expect(pulls).toHaveLength(1);
     expect(new Set(pulls.map((r) => r.actorId))).toEqual(new Set([bridge.id]));
   }, 120_000);
 
