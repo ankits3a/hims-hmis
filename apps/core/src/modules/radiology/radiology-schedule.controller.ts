@@ -8,8 +8,9 @@ import { autoSlotWalkIn, cancelStudy, deviceDiary, markNoShow, rescheduleStudy, 
 import { registerOutsideStudy } from "./outside";
 import { counterView } from "./counter";
 import { IMAGE_ARRIVALS } from "../../kernel/db/schema/radiology";
-import { BEDSIDE_LOCATION_MAX_LENGTH, IMAGING_MODALITIES } from "./kinds";
-import { idSchema, parsed, toHttp } from "./radiology-http";
+import { IMAGING_MODALITIES } from "./kinds";
+import { parsed, toHttp } from "./radiology-http";
+import { imagingRescheduleBody, imagingScheduleBody } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { ModuleRegistry } from "../../kernel/modules/loader";
@@ -30,24 +31,15 @@ import type { ModuleRegistry } from "../../kernel/modules/loader";
  * `cancel` and `no-show` are idempotent by their own state machines — a second cancel of a
  * cancelled study is `bad_transition`, which is the honest answer rather than a silent success.
  */
-const scheduleFields = {
-  deviceResourceId: idSchema,
-  /** An ISO instant. The caller resolves the clock; a route that took a date and a time would be
-   *  a second place that knows about IST. */
-  scheduledAt: z.string().datetime(),
-  /**
-   * 18a-iii T3 / D4 — the ward and bed, when the machine goes to the patient. Absent leaves the
-   * row's value alone; explicit `null` clears it, which is how a study comes back into the
-   * department. Only a portable device accepts one — `resolveBedside` refuses the rest.
-   */
-  bedsideLocation: z.string().min(1).max(BEDSIDE_LOCATION_MAX_LENGTH).nullish(),
-};
-const scheduleBody = z.object(scheduleFields);
 /**
- * 18-S RS3 — a move carries the desk's reason. `nullish` at the wire so the refusal is the domain's
- * `reason_required` (one sentence, one code) rather than a zod 400 the screen would special-case.
+ * #1077 — booking and moving are `@hmis/contracts`'s act bodies (`imagingScheduleBody`,
+ * `imagingRescheduleBody`). `scheduledAt` is an ISO instant: the caller resolves the clock. The
+ * bedside place (18a-iii T3 / D4): absent leaves the row's value alone, explicit `null` clears it,
+ * and only a portable device accepts one — `resolveBedside` refuses the rest. A move's reason is
+ * `nullish` at the wire so the refusal is the domain's `reason_required` (18-S RS3).
  */
-const rescheduleBody = z.object({ ...scheduleFields, reason: z.string().max(400).nullish() });
+const scheduleBody = imagingScheduleBody;
+const rescheduleBody = imagingRescheduleBody;
 const noShowBody = z.object({ reason: z.string().max(400).nullish() });
 
 /**

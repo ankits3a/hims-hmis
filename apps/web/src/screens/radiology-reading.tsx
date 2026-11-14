@@ -7,6 +7,7 @@ import {
   AMEND_REASONS, amendReading, cosignReading, dryRunChecks, fetchCriticalCalls, fetchReadingStudy, fetchReadingWorklist,
   fetchReportPrint, needsSecondFactor, savePrelim, signReading, verifySecondFactor,
 } from "../lib/radiology-reading-api";
+import type { ImagingAmendBody } from "@hmis/contracts";
 import type {
   AmendReason, WireCriticalCall, WirePreSignFinding, WireReadingContext, WireReadingRow, WireReadingTemplate,
 } from "../lib/radiology-reading-api";
@@ -726,7 +727,7 @@ function ReportWorkspace({ ctx, now, pickerRef, signRef, dockRef, onNext, onChan
       if (totp.asked && totp.code.trim() !== "") await verifySecondFactor(totp.code.trim());
       return await amendReading(ctx.studyId, {
         templateKey: ctx.signed?.templateKey ?? ed.templateKey, body: amendBody, impression: amend.impression,
-        laterality: ctx.signed?.laterality ?? ctx.laterality,
+        laterality: (ctx.signed?.laterality ?? ctx.laterality) as ImagingAmendBody["laterality"],
         reason: `${AMEND_REASON_WORDS[amend.reason]}: ${amend.note.trim()}`, acknowledgedWarnings: [...acked],
       });
     },

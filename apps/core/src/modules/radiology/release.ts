@@ -8,7 +8,6 @@ import {
   imagingMediaRequests, imagingReportDelivery, imagingReportHandovers, imagingReports, imagingStudies,
 } from "../../kernel/db/schema/radiology";
 import { orders } from "../../kernel/db/schema/orders";
-import { opdDoctors, opdEncounters } from "../../kernel/db/schema/opd";
 import { patients } from "../../kernel/db/schema/patients";
 import { services } from "../../kernel/db/schema/tariff";
 import { notifications } from "../../kernel/db/schema/notifications";
@@ -17,7 +16,7 @@ import { RadiologyError } from "./errors";
 import { imagingMediaRequested, imagingReportHandedOver, imagingReportReleasedUnpaid } from "./events";
 import { assertPatientCopyReleasable, patientCopyHold, patientCopyHolds, rupees } from "./held";
 import type { HoldRelease } from "./held";
-import { requireReleased, stampFirstRead, treatingDoctorsOf } from "./closed-loop";
+import { requireReleased, stampFirstRead, treatingDoctorsOf, visitDoctorUserId } from "./closed-loop";
 import { CD_SERVICE_CODE, FILM_SERVICE_CODE } from "./counter";
 import { activeStudyTypes, studyTypeNameLookup } from "./study-types";
 import { ageInYearsOn } from "./applicability";
@@ -159,7 +158,7 @@ export async function releaseRegister(
   const rows = await db
     .select({
       report: imagingReports, study: imagingStudies, studyName: services.name,
-      authority: orders.authority, orderingClinicianId: orders.orderingClinicianId, visitDoctorUserId: opdDoctors.userId,
+      authority: orders.authority, orderingClinicianId: orders.orderingClinicianId, visitDoctorUserId,
       name: patients.name, alias: patients.alias, isConfidential: patients.isConfidential, uhid: patients.uhid,
       sex: patients.sex, dob: patients.dob,
       delivery: imagingReportDelivery,
@@ -169,8 +168,6 @@ export async function releaseRegister(
     .innerJoin(orders, eq(orders.id, imagingStudies.orderId))
     .innerJoin(services, eq(services.id, imagingStudies.serviceId))
     .innerJoin(patients, eq(patients.id, imagingStudies.patientId))
-    .leftJoin(opdEncounters, eq(opdEncounters.visitNo, imagingStudies.encounterNo))
-    .leftJoin(opdDoctors, eq(opdDoctors.id, opdEncounters.doctorId))
     .leftJoin(imagingReportDelivery, eq(imagingReportDelivery.reportId, imagingReports.id))
     .where(and(
       eq(imagingReports.status, "signed"), isNotNull(imagingReports.publishedAt),

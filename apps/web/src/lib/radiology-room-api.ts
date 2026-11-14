@@ -1,4 +1,5 @@
 import { api } from "./api";
+import type { ImagingAcquiredBody } from "@hmis/contracts";
 import { setSetupDeviceStatus } from "./radiology-setup-api";
 import type { WireImagingDevice, WireWorklistRow } from "./radiology-api";
 
@@ -80,18 +81,8 @@ export const startAtBedside = (studyId: string, bedsideSafety: string) =>
 export const abortAcquisition = (studyId: string, reason: string) =>
   api<{ studyId: string; status: string }>("POST", `/radiology/studies/${encodeURIComponent(studyId)}/acquisition/abort`, { reason });
 
-/** The controller's `acquiredBody`, transcribed (F57: an untyped body is an invisible 400). */
-export type AcquiredBody = {
-  imageSource: "pacs" | "no_pacs_images";
-  studyInstanceUid?: string | null;
-  doseCtdivol?: number | null; doseDlp?: number | null; doseDap?: number | null; fluoroSeconds?: number | null;
-  doseAgd?: number | null;
-  /** 18-S RS12b — reference-point air kerma Ka,r, mGy (the IR suite). */
-  doseKar?: number | null;
-  doseManual?: boolean;
-  contrastGiven?: boolean; contrastAgent?: string | null; contrastVolumeMl?: number | null;
-  drlReason?: string | null; contrastNotGivenReason?: string | null;
-};
+/** The controller's `acquiredBody` — #1077: the server's own schema (`@hmis/contracts` `imagingAcquiredBody`), not a transcription (F57: an untyped body is an invisible 400). */
+export type AcquiredBody = ImagingAcquiredBody;
 
 export const sendAcquired = (studyId: string, body: AcquiredBody) =>
   api<{ studyId: string; accessionNo: string; studyInstanceUid: string | null; billDecisionIds: string[] }>(

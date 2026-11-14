@@ -5,10 +5,9 @@ import {
 } from "../../../test/helpers/radiology";
 import { events, imagingCriticalFindings, imagingDefinitions, imagingReports, imagingStudies, notifications, orderItems, patients } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
-import {
-  SECOND_FACTOR_WINDOW_MINUTES, acknowledgeCritical, amendReport, draftReport, flagCritical,
-  latestSigned, publishReport, savePrelim, signReport,
-} from "./reports";
+import { draftReport, latestSigned, savePrelim } from "./report-authoring";
+import { SECOND_FACTOR_WINDOW_MINUTES, amendReport, publishReport, signReport } from "./report-signature";
+import { acknowledgeCritical, flagCritical } from "./criticals";
 import type { RadiologyFixture } from "../../../test/helpers/radiology";
 import type { StudyType } from "./definitions";
 import type { Db } from "../../kernel/db/client";

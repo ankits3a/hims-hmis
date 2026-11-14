@@ -3,9 +3,10 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { acquireStudy, setupRadiologyFixture } from "../../../test/helpers/radiology";
 import { imagingStudies, orders } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
-import { draftReport, publishReport, signReport } from "./reports";
+import { draftReport } from "./report-authoring";
+import { publishReport, signReport } from "./report-signature";
 import { markActedUpon, stampFirstRead } from "./closed-loop";
-import { northStar, percentiles, sourceOf } from "./north-star";
+import { northStar, percentiles } from "./north-star";
 import type { RadiologyFixture } from "../../../test/helpers/radiology";
 import type { Db } from "../../kernel/db/client";
 
@@ -80,14 +81,15 @@ describe("the north-star read model (18-S RS9 T2)", () => {
     const ns = await northStar(db, { from: "2026-09-01", to: "2026-09-03", now: AT });
     expect(ns.rows).toEqual([
       {
-        modality: "usg", source: "OPD", ordered: 2,
+        modality: "usg", source: "opd", ordered: 2,
         orderToSigned: { n: 2, medianMin: 30, p90Min: 60 },
         signedToFirstRead: { n: 2, medianMin: 60, p90Min: 60 },
         orderToActed: { n: 1, medianMin: 180, p90Min: 180 },
         signedUnreadOver24h: 0, publishedNotActedOver72h: 1,
       },
       {
-        modality: "xray", source: "ER", ordered: 1,
+        /** #1077 — a STAT order from an OPD visit is an OPD row: STAT is a priority, not a place. */
+        modality: "xray", source: "opd", ordered: 1,
         orderToSigned: { n: 1, medianMin: 10, p90Min: 10 },
         signedToFirstRead: { n: 0, medianMin: null, p90Min: null },
         orderToActed: { n: 0, medianMin: null, p90Min: null },
@@ -110,15 +112,5 @@ describe("the north-star read model (18-S RS9 T2)", () => {
   it("percentiles are nearest-rank over whole minutes, and empty is null rather than zero", () => {
     expect(percentiles([100, 10, 90, 20, 80, 30, 70, 40, 60, 50])).toEqual({ n: 10, medianMin: 50, p90Min: 90 });
     expect(percentiles([])).toEqual({ n: 0, medianMin: null, p90Min: null });
-  });
-
-  it("DECIDED source: outside prescription → OUT, day-care or bedside → IPD, STAT → ER, else OPD", () => {
-    const base = { authority: "clinician", encounterNo: "V2609010001", bedsideLocation: null, priority: "routine" };
-    expect(sourceOf(base)).toBe("OPD");
-    expect(sourceOf({ ...base, priority: "stat" })).toBe("ER");
-    expect(sourceOf({ ...base, bedsideLocation: "Ward 3 · bed 12", priority: "stat" })).toBe("IPD");
-    expect(sourceOf({ ...base, encounterNo: "D2609010001" })).toBe("IPD");
-    expect(sourceOf({ ...base, authority: "external_prescription", priority: "stat" })).toBe("OUT");
-    expect(sourceOf({ ...base, authority: "self" })).toBe("OUT");
   });
 });

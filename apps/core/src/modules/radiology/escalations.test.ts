@@ -11,7 +11,8 @@ import { runDueTimers } from "../../kernel/workflow/timers";
 import { checkIn } from "./checkin";
 import { scheduleStudy } from "./schedule";
 import { requireStudyGate, satisfyGate } from "./gates";
-import { draftReport, publishReport, signReport } from "./reports";
+import { draftReport } from "./report-authoring";
+import { publishReport, signReport } from "./report-signature";
 import { stampFirstRead } from "./closed-loop";
 import {
   ESCALATION_SPECS, IMAGING_ESCALATION_CAUSES, RADIOLOGY_ESCALATION_DEFINITIONS, ensureEscalationDefinitions,

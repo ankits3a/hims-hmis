@@ -8,7 +8,7 @@ import { ModuleRegistry } from "../../kernel/modules/loader";
 import { grantPermissionToRole, syncPermissions } from "../../kernel/auth/permissions";
 import { checkIn } from "./checkin";
 import { scheduleStudy } from "./schedule";
-import { draftReport } from "./reports";
+import { draftReport } from "./report-authoring";
 import { ensureEscalationDefinitions, sweepImagingEscalations } from "./escalations";
 import { ACCESS_LOG_REVIEW_REASON, supervisorAccessLog, supervisorFloor, supervisorQuality, targetFor } from "./supervisor";
 import type { RadiologyFixture } from "../../../test/helpers/radiology";
@@ -115,9 +115,8 @@ describe("the supervisor's floor read model (18-S RS10 T1)", () => {
     expect(floor.turnaround.from).toBe("2026-08-25");
     expect(floor.turnaround.to).toBe(DAY);
     for (const r of floor.turnaround.rows) expect(r.targetMin).toBe(targetFor(r.source));
-    expect(targetFor("ER")).toBe(30);
-    expect(targetFor("IPD")).toBe(360);
-    expect(targetFor("OPD")).toBe(1440);
+    // #1077 — STAT is a priority, not a source: no row carries a STAT target.
+    expect(["ipd", "daycare", "opd", "walk_in"].map((s) => targetFor(s as "ipd"))).toEqual([360, 360, 1440, 1440]);
     // Nothing signed yet: no percentile, so no verdict — never a false "within target".
     expect(floor.turnaround.rows.every((r) => r.withinTarget === null)).toBe(true);
   });

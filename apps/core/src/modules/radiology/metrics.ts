@@ -1,7 +1,9 @@
 import { sql } from "drizzle-orm";
-import { EMPTY_TIMING, STATS, istRange, num, rowsOf, timing } from "../../kernel/report/metrics";
+import { EMPTY_TIMING, STATS, istRange, rowsOf, timing } from "../../kernel/report/metrics";
 import { IMAGING_MODALITIES } from "./kinds";
 import { activeStudyTypes } from "./study-types";
+import { STUDY_SOURCES, studySource } from "./study-source";
+import type { StudySource } from "./study-source";
 import type { MetricsRow, MetricsTiming } from "../../kernel/report/metrics";
 import type { Db } from "../../kernel/db/client";
 
@@ -26,14 +28,17 @@ import type { Db } from "../../kernel/db/client";
  *   · times ............ placed → done for studies done in the range; done → signed, signed →
  *                        delivered and placed → signed for reports first signed in the range.
  *
- * Source: `walk_in` when the order came on an outside slip or the patient's own request
- * (`authority` `external_prescription` / `self` — DD9's walk-in leg, the north star's `OUT`); `opd` when its encounter is an OPD visit (`V…`); `ipd` for every other
- * encounter. Modality is the active study-type book's, by the item's service; a service the book
- * does not name is `other`.
+ * Source: `study-source.ts` `studySource` (#1077), the one rule the north star counts by too —
+ * `walk_in` (an outside slip or the patient's own request), `daycare` (`D…`), `ipd` (a bedside study
+ * or an encounter that is neither a visit nor day care), `opd` otherwise. The rows come back from SQL
+ * with the facts the rule reads and are counted here, so the rule is never restated as a `case`. An
+ * order counts once under each source its items' studies land in (a bedside item and a department
+ * item of one order), as it counts once under each modality. Modality is the active study-type
+ * book's, by the item's service; a service the book does not name is `other`.
  */
 
-export type ImagingSource = "opd" | "ipd" | "walk_in";
-export const IMAGING_SOURCES: readonly ImagingSource[] = ["opd", "ipd", "walk_in"];
+export type ImagingSource = StudySource;
+export const IMAGING_SOURCES: readonly ImagingSource[] = STUDY_SOURCES;
 export const METRIC_MODALITIES: readonly string[] = [...IMAGING_MODALITIES, "other"];
 
 export type ImagingCounts = { orders: number; studies: number; signed: number; delivered: number };
@@ -47,11 +52,11 @@ export type RadiologyMetrics = {
   times: { placedToDone: MetricsTiming; doneToSigned: MetricsTiming; signedToDelivered: MetricsTiming; placedToSigned: MetricsTiming };
 };
 
-/** The order's source, for an `orders` row aliased `o`. */
-const SOURCE_OF_O = sql.raw(`case
-  when o.authority in ('external_prescription', 'self') then 'walk_in'
-  when o.encounter_no like 'V%' then 'opd'
-  else 'ipd' end`);
+/** A row's source, from the facts `studySource` reads (`authority`, `encounter_no`, `bedside_location`). */
+const sourceOfRow = (r: MetricsRow): ImagingSource => studySource(
+  { encounterNo: String(r["encounter_no"]), bedsideLocation: r["bedside_location"] === null || r["bedside_location"] === undefined ? null : String(r["bedside_location"]) },
+  { authority: String(r["authority"]) },
+);
 
 /** service → modality, from the active study-type book; no book is every service `other`. */
 async function modalityMap(db: Db): Promise<{ service_id: string; modality: string }[]> {
@@ -71,34 +76,33 @@ export async function radiologyMetrics(db: Db, range: { from: string; to: string
       select m.service_id, m.modality from jsonb_to_recordset(${JSON.stringify(map)}::jsonb) as m(service_id text, modality text)
     )`;
 
-  /* ── orders, by source and by modality (an order of two modalities counts once under each) ── */
+  /*
+   * ── orders: one row per live item, with the facts its study carries (an order of two modalities
+   *    counts once under each). The bedside place is the item's current study's (a reschedule
+   *    writes a new row and closes the old); an item with no study yet has none. ──
+   */
   const orderRows = await rowsOf(db, sql`
     with ${MOD}
-    select grouping(x.src) as g_src, grouping(x.modality) as g_mod, x.src, x.modality, count(distinct x.order_id) as n
-    from (
-      select o.id as order_id, ${SOURCE_OF_O} as src, coalesce(mm.modality, 'other') as modality
-      from orders o
-      join order_items oi on oi.order_id = o.id
-      left join modmap mm on mm.service_id = oi.service_id
-      where o.kind = 'imaging' and o.status <> 'cancelled' and oi.status <> 'cancelled'
-        and o.created_at >= ${s}::timestamptz and o.created_at < ${e}::timestamptz
-    ) x
-    group by grouping sets ((x.src), (x.modality), ())`);
+    select o.id as order_id, o.authority, o.encounter_no, coalesce(mm.modality, 'other') as modality,
+      (select st.bedside_location from imaging_studies st
+        where st.order_id = o.id and st.order_item_id = oi.id and st.status <> 'rescheduled'
+        order by st.created_at desc limit 1) as bedside_location
+    from orders o
+    join order_items oi on oi.order_id = o.id
+    left join modmap mm on mm.service_id = oi.service_id
+    where o.kind = 'imaging' and o.status <> 'cancelled' and oi.status <> 'cancelled'
+      and o.created_at >= ${s}::timestamptz and o.created_at < ${e}::timestamptz`);
 
-  /* ── studies done ── */
+  /* ── studies done: one row per study ── */
   const studyRows = await rowsOf(db, sql`
     with ${MOD}
-    select grouping(x.src) as g_src, grouping(x.modality) as g_mod, x.src, x.modality, count(*) as n
-    from (
-      select ${SOURCE_OF_O} as src, coalesce(mm.modality, 'other') as modality
-      from imaging_studies st
-      join orders o on o.id = st.order_id
-      join order_items oi on oi.id = st.order_item_id
-      left join modmap mm on mm.service_id = st.service_id
-      where st.status <> 'cancelled' and o.status <> 'cancelled' and oi.status <> 'cancelled'
-        and st.acquired_at >= ${s}::timestamptz and st.acquired_at < ${e}::timestamptz
-    ) x
-    group by grouping sets ((x.src), (x.modality), ())`);
+    select o.authority, st.encounter_no, st.bedside_location, coalesce(mm.modality, 'other') as modality
+    from imaging_studies st
+    join orders o on o.id = st.order_id
+    join order_items oi on oi.id = st.order_item_id
+    left join modmap mm on mm.service_id = st.service_id
+    where st.status <> 'cancelled' and o.status <> 'cancelled' and oi.status <> 'cancelled'
+      and st.acquired_at >= ${s}::timestamptz and st.acquired_at < ${e}::timestamptz`);
 
   /* ── report chains: one row per study, first consultant signature and first hand-over ── */
   const REPS = sql`
@@ -111,7 +115,7 @@ export async function radiologyMetrics(db: Db, range: { from: string; to: string
       group by r.study_id
     ),
     reps as (
-      select st.id as study_id, ${SOURCE_OF_O} as src, coalesce(mm.modality, 'other') as modality,
+      select st.id as study_id, o.authority, st.encounter_no, st.bedside_location, coalesce(mm.modality, 'other') as modality,
              o.created_at as placed, st.acquired_at as done, c.sig,
              (select min(h.handed_at) from imaging_report_handovers h where h.study_id = st.id) as del
       from chain c
@@ -121,12 +125,14 @@ export async function radiologyMetrics(db: Db, range: { from: string; to: string
       left join modmap mm on mm.service_id = st.service_id
       where st.status <> 'cancelled' and o.status <> 'cancelled' and oi.status <> 'cancelled'
     )`;
+  /* one row per study whose first signature or first hand-over falls in the range */
   const reportRows = await rowsOf(db, sql`${REPS}
-    select grouping(src) as g_src, grouping(modality) as g_mod, src, modality,
-           count(*) filter (where sig >= ${s}::timestamptz and sig < ${e}::timestamptz) as signed,
-           count(*) filter (where del >= ${s}::timestamptz and del < ${e}::timestamptz) as delivered
+    select authority, encounter_no, bedside_location, modality,
+           coalesce(sig >= ${s}::timestamptz and sig < ${e}::timestamptz, false) as signed,
+           coalesce(del >= ${s}::timestamptz and del < ${e}::timestamptz, false) as delivered
     from reps
-    group by grouping sets ((src), (modality), ())`);
+    where (sig >= ${s}::timestamptz and sig < ${e}::timestamptz)
+       or (del >= ${s}::timestamptz and del < ${e}::timestamptz)`);
   const timeRows = await rowsOf(db, sql`${REPS}
     select v.step, ${STATS}
     from reps r
@@ -150,22 +156,31 @@ export async function radiologyMetrics(db: Db, range: { from: string; to: string
   const totals = blank();
   const bySource = new Map<ImagingSource, ImagingCounts>(IMAGING_SOURCES.map((src) => [src, blank()]));
   const byModality = new Map<string, ImagingCounts>(METRIC_MODALITIES.map((m) => [m, blank()]));
-  const cell = (r: MetricsRow): ImagingCounts => {
-    if (num(r["g_src"]) === 0) return bySource.get(r["src"] as ImagingSource)!;
-    if (num(r["g_mod"]) === 0) {
-      const m = String(r["modality"]);
-      const c = byModality.get(m) ?? blank();
-      byModality.set(m, c);
-      return c;
-    }
-    return totals;
+  const modalityCell = (r: MetricsRow): ImagingCounts => {
+    const m = String(r["modality"]);
+    const c = byModality.get(m) ?? blank();
+    byModality.set(m, c);
+    return c;
   };
-  for (const r of orderRows) cell(r).orders = num(r["n"]);
-  for (const r of studyRows) cell(r).studies = num(r["n"]);
+  /** Each row adds to the total, its source and its modality. */
+  const cellsOf = (r: MetricsRow): ImagingCounts[] => [totals, bySource.get(sourceOfRow(r))!, modalityCell(r)];
+
+  /** Orders are counted DISTINCT per cell: an order of two items is one order in each cell it reaches. */
+  const ordersIn = new Map<ImagingCounts, Set<string>>();
+  for (const r of orderRows) {
+    for (const c of cellsOf(r)) {
+      const ids = ordersIn.get(c) ?? new Set<string>();
+      ids.add(String(r["order_id"]));
+      ordersIn.set(c, ids);
+    }
+  }
+  for (const [c, ids] of ordersIn) c.orders = ids.size;
+  for (const r of studyRows) for (const c of cellsOf(r)) c.studies += 1;
   for (const r of reportRows) {
-    const c = cell(r);
-    c.signed = num(r["signed"]);
-    c.delivered = num(r["delivered"]);
+    for (const c of cellsOf(r)) {
+      if (r["signed"] === true) c.signed += 1;
+      if (r["delivered"] === true) c.delivered += 1;
+    }
   }
   const step = new Map(timeRows.map((r) => [String(r["step"]), r]));
   const known = new Set(METRIC_MODALITIES);

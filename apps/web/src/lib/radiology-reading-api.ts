@@ -1,4 +1,5 @@
 import { api } from "./api";
+import type { ImagingAmendBody, ImagingSignBody } from "@hmis/contracts";
 import type { CodedSystem } from "./imaging-coded";
 
 /**
@@ -98,9 +99,8 @@ export const dryRunChecks = (studyId: string, body: {
   templateKey?: string; body: Record<string, unknown>; impression?: string | null; criticalCategory?: string | null;
 }) => api<{ findings: WirePreSignFinding[]; signable: boolean }>("POST", `/radiology/studies/${studyId}/reports/checks`, body);
 
-export const signReading = (studyId: string, body: {
-  reportId: string; criticalCategory?: string | null; acknowledgedWarnings?: string[];
-}) => api<{ reportId: string; version: number; awaitingCosign?: boolean }>("POST", `/radiology/studies/${studyId}/reports/sign`, body);
+/** #1077 — the body is the server's own schema (`@hmis/contracts` `imagingSignBody`). */
+export const signReading = (studyId: string, body: ImagingSignBody) => api<{ reportId: string; version: number; awaitingCosign?: boolean }>("POST", `/radiology/studies/${studyId}/reports/sign`, body);
 
 /** 18-S RS8b — the consultant's co-signature on a resident's `awaiting_cosign` version (own second factor). */
 export const cosignReading = (studyId: string, body: { reportId: string; acknowledgedWarnings?: string[] }) =>
@@ -115,10 +115,7 @@ export const savePrelim = (studyId: string, body: {
  * 18-S RS8b — the AMENDMENT: v(n+1) signed under the second factor, v(n) superseded; the server
  * re-publishes it (and tells the patient) when v(n) had been published. First web caller.
  */
-export const amendReading = (studyId: string, body: {
-  templateKey?: string; body: Record<string, unknown>; impression?: string | null; laterality?: string | null;
-  reason: string; criticalCategory?: string | null; acknowledgedWarnings?: string[];
-}) => api<{ reportId: string; version: number; supersededId: string }>("POST", `/radiology/studies/${studyId}/reports/amend`, body);
+export const amendReading = (studyId: string, body: ImagingAmendBody) => api<{ reportId: string; version: number; supersededId: string }>("POST", `/radiology/studies/${studyId}/reports/amend`, body);
 
 /** The amendment's reason codes (board: Amendments). The stored reason is "<code words>: <note>". */
 export const AMEND_REASONS = ["addendum", "laterality", "measurement", "clinical_information", "other"] as const;

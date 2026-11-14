@@ -4,15 +4,15 @@ import { CONFIG, DB, MODULE_REGISTRY } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
-import {
-  acknowledgeCritical, amendReport, cosignReport, draftReport, dryRunPreSign, flagCritical, proposeDraft, publishReport,
-  savePrelim, signReport,
-} from "./reports";
+import { draftReport, proposeDraft, savePrelim } from "./report-authoring";
+import { amendReport, cosignReport, dryRunPreSign, publishReport, signReport } from "./report-signature";
+import { acknowledgeCritical, flagCritical } from "./criticals";
 import { recordCallAttempt } from "./critical-ladder";
 import { reportView, studyView, worklist } from "./read";
 import { patientReportsForDoctor } from "./patient-reports";
 import { idSchema, parsed, toHttp } from "./radiology-http";
 import type { AuthedRequest } from "../../kernel/auth/decorators";
+import { imagingAmendBody, imagingReportContentBody, imagingSignBody } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
@@ -38,32 +38,17 @@ import type { ModuleRegistry } from "../../kernel/modules/loader";
  * `roles-catalog.e2e.test.ts` parses this whole tree as TEXT, so a comment quoting a decorator
  * verbatim is indistinguishable from one, and this file's prose failed that census for real.)
  */
-const contentBody = z.object({
-  templateKey: z.string().min(1).max(40).optional(),
-  body: z.record(z.string(), z.unknown()),
-  impression: z.string().max(8000).nullish(),
-  laterality: z.enum(["left", "right", "bilateral", "na"]).nullish(),
-  /** F66 — the medical superintendent who approved a demographic-tier lockout hit, and why. */
-  lockoutOverride: z.object({
-    approvedBy: z.string().min(1).max(64),
-    reason: z.string().min(1).max(400),
-  }).nullish(),
-});
+/**
+ * #1077 — the draft/prelim content, the signature and the amendment are `@hmis/contracts`'s act
+ * bodies (`imagingReportContentBody`, `imagingSignBody`, `imagingAmendBody`): the web types its calls
+ * with the same schemas, and the copilot will propose acts in them.
+ */
+const contentBody = imagingReportContentBody;
+const signBody = imagingSignBody;
+const amendBody = imagingAmendBody;
 
 /** 18-S RS8a — the warning codes (`checks.ts`) the signer has read and acknowledges. */
 const acknowledged = z.array(z.string().min(1).max(60)).max(20).optional();
-
-const signBody = z.object({
-  reportId: idSchema,
-  criticalCategory: z.enum(["red", "orange", "yellow"]).nullish(),
-  acknowledgedWarnings: acknowledged,
-});
-
-const amendBody = contentBody.extend({
-  reason: z.string().min(1).max(400),
-  criticalCategory: z.enum(["red", "orange", "yellow"]).nullish(),
-  acknowledgedWarnings: acknowledged,
-});
 
 /** 18-S RS8b — the consultant's co-signature on a resident's `awaiting_cosign` version. */
 const cosignBody = z.object({
@@ -110,7 +95,7 @@ export class RadiologyReportsController {
     /**
      * §6.8 — the SAME window `AuthGuard` compared against on this very request. Passing it through
      * is what keeps the route and the function from disagreeing about one signature (see
-     * `reports.ts`'s `SECOND_FACTOR_WINDOW_MINUTES`).
+     * `report-signature.ts`'s `SECOND_FACTOR_WINDOW_MINUTES`).
      */
     @Inject(CONFIG) private readonly cfg: AppConfig,
   ) {}

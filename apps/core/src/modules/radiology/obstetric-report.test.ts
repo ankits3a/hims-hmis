@@ -9,7 +9,8 @@ import { grantPermissionToRole, syncPermissions } from "../../kernel/auth/permis
 import { imagingDefinitions, imagingReports, imagingStudies } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { addMachine, addPerson, createRegistration } from "../pcpndt";
-import { draftReport, publishReport, savePrelim, signReport } from "./reports";
+import { draftReport, savePrelim } from "./report-authoring";
+import { publishReport, signReport } from "./report-signature";
 import { PCPNDT_REPORT_DECLARATION } from "./obstetric-report";
 import type { RadiologyFixture } from "../../../test/helpers/radiology";
 import type { StudyType } from "./definitions";
@@ -17,7 +18,7 @@ import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
 /**
- * PLAN 18-S RS7 — the obstetric report, end to end through `reports.ts`:
+ * PLAN 18-S RS7 — the obstetric report, end to end through the report acts (`report-authoring.ts`, `report-signature.ts`):
  *   T1 the foetal-sex guard (`foetal_sex_disclosure`, no approver), on prelim, sign and publish;
  *   T2 the structured biometry the server recomputes, and the declaration the server writes;
  *   and the Act's membership rule at the SIGNATURE — only a person registered on the machine's

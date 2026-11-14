@@ -13,7 +13,8 @@ import { allocateReceipt, billingManifest, invoiceSettlement, recordReceipt } fr
 import { tariffManifest } from "../tariff";
 import { patientsManifest } from "../patients";
 import { registerRadiologyApprovalTypes } from "./approval-types";
-import { amendReport, draftReport, publishReport, signReport } from "./reports";
+import { draftReport } from "./report-authoring";
+import { amendReport, publishReport, signReport } from "./report-signature";
 import { reportView } from "./read";
 import { handOverReport, handoverPrintView, markMediaPrinted, releaseRegister, requestMedia } from "./release";
 import { requestUnpaidRelease } from "./held";

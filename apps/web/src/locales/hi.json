@@ -16804,6 +16804,7 @@
     "sources": {
       "opd": "OPD",
       "ipd": "IPD",
+      "daycare": "डे केयर",
       "walk_in": "वॉक-इन"
     },
     "modes": {

@@ -14,7 +14,8 @@ import { withTx } from "../../kernel/db/client";
 import { scheduleStudy } from "./schedule";
 import { registerOutsideStudy } from "./outside";
 import { studyView } from "./read";
-import { draftReport, proposeDraft, publishReport, signReport } from "./reports";
+import { draftReport, proposeDraft } from "./report-authoring";
+import { publishReport, signReport } from "./report-signature";
 import { recordAcquired } from "./acquisition";
 import type { RadiologyFixture } from "../../../test/helpers/radiology";
 import type { StudyType } from "./definitions";
@@ -308,7 +309,8 @@ describe("the outside-study register (18a-iii T4)", () => {
    */
   it("only `registerOutsideStudy` transitions a study straight to `acquired`", () => {
     const dir = "src/modules/radiology";
-    const files = ["acquisition.ts", "schedule.ts", "checkin.ts", "reports.ts", "gates.ts", "read.ts", "outside.ts"];
+    // #1077 — `reports.ts` is split into the three report files; the census reads all three.
+    const files = ["acquisition.ts", "schedule.ts", "checkin.ts", "report-authoring.ts", "report-signature.ts", "criticals.ts", "gates.ts", "read.ts", "outside.ts"];
     const callers = files.filter((f) => /transition\([^)]*"acquired"/s.test(readFileSync(`${dir}/${f}`, "utf8")));
     expect(callers).toEqual(["acquisition.ts", "outside.ts"]);
   });

@@ -10,7 +10,7 @@ import type { Db, Tx } from "../../kernel/db/client";
 
 /**
  * PLAN 18-S RS7 T1/T2 — **the obstetric report's three server-owned rules**, in one place so the
- * draft, prelim, sign, amend and publish paths in `reports.ts` cannot each spell them differently.
+ * draft, prelim, sign, amend and publish paths (`report-authoring.ts`, `report-signature.ts`) cannot each spell them differently.
  *
  *   1. **Is this an obstetric report?** The study is PCPNDT-applicable (`form_f_required`), or its
  *      type's body part is obstetric, or the report uses the `usg_obstetric` template.

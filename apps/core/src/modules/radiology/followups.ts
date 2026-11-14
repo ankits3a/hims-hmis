@@ -19,7 +19,7 @@ import { displayName } from "../patients";
 import { RadiologyError } from "./errors";
 import { imagingFollowupBooked, imagingFollowupOverdue } from "./events";
 import { placeImagingOrder } from "./place";
-import { treatingDoctorsOf } from "./closed-loop";
+import { treatingDoctorIs, treatingDoctorsOf } from "./closed-loop";
 import type { FleischnerInputs, TiradsInputs } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -558,11 +558,9 @@ export async function doctorFollowups(db: Db, actor: Actor, now: Date = new Date
     .innerJoin(imagingStudies, eq(imagingStudies.id, imagingFollowups.studyId))
     .innerJoin(orders, eq(orders.id, imagingStudies.orderId))
     .innerJoin(orderItems, eq(orderItems.id, imagingStudies.orderItemId))
-    .leftJoin(opdEncounters, eq(opdEncounters.visitNo, imagingStudies.encounterNo))
-    .leftJoin(opdDoctors, eq(opdDoctors.id, opdEncounters.doctorId))
     .where(and(
       inArray(imagingFollowups.state, ["open", "notified"]),
-      or(eq(orders.orderingClinicianId, actor.id), eq(opdDoctors.userId, actor.id)),
+      treatingDoctorIs(actor.id),
     ))
     .limit(200);
   /** A restricted (PCPNDT-class) study: its ordering clinician or a holder of `orders.read.restricted` only (the inbox's rule). */

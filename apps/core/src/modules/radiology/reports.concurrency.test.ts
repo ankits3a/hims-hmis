@@ -3,7 +3,8 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { acquireStudy, setupRadiologyFixture } from "../../../test/helpers/radiology";
 import { imagingReports } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
-import { amendReport, draftReport, signReport } from "./reports";
+import { draftReport } from "./report-authoring";
+import { amendReport, signReport } from "./report-signature";
 import type { RadiologyFixture } from "../../../test/helpers/radiology";
 import type { Db } from "../../kernel/db/client";
 
