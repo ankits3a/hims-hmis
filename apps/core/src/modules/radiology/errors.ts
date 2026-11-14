@@ -274,6 +274,18 @@ export const RADIOLOGY_ERROR_CODES = [
   "tele_reader_prelim_only",
   "unknown_tele_read",
   "overread_not_consultant",
+  /**
+   * ── #1078 — the desk's collect act (`desk.ts`) ──
+   *
+   * `study_not_on_visit`: a named study is not on the visit being billed, or is another patient's — one
+   * bill names one person and one visit (FD-35), so nothing is priced. `not_collectable`: a named study
+   * is not the desk's to bill (already linked or otherwise authorised, already on the machine, closed),
+   * or a film / CD the tariff does not offer for it. `price_changed`: billing's price is not the amount
+   * the desk showed and collected — the clerk reads the new total before taking money.
+   */
+  "study_not_on_visit",
+  "not_collectable",
+  "price_changed",
 ] as const;
 
 export type RadiologyErrorCode = (typeof RADIOLOGY_ERROR_CODES)[number];
@@ -394,6 +406,10 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   tele_reader_prelim_only: 403,
   unknown_tele_read: 404,
   overread_not_consultant: 403,
+
+  study_not_on_visit: 422,
+  not_collectable: 409,
+  price_changed: 409,
 };
 
 export function radiologyHttpStatus(code: RadiologyErrorCode): number {

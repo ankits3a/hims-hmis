@@ -59,9 +59,13 @@ export {
 } from "./study-types";
 export type { StudyTypeSeed } from "./study-types";
 export {
-  autoSlotWalkIn, cancelStudy, deviceDiary, markNoShow, rescheduleStudy, scheduleStudy,
+  PROPOSAL_HORIZON_DAYS, SLOT_STEP_MINUTES,
+  autoSlotWalkIn, cancelStudy, deviceDiary, markNoShow, proposeFreeSlot, rescheduleStudy, scheduleStudy,
 } from "./schedule";
-export type { ScheduleInput, ScheduleResult } from "./schedule";
+export type { ScheduleInput, ScheduleResult, SlotProposal } from "./schedule";
+// #1078 (IM2) — the imaging desk's server acts: arrival, collect, walk-in now, the slot proposal, today's visits.
+export { DESK_COLLECT_ROUTE, arriveAtDesk, collectAtDesk, deskVisitsToday, proposeSlot, walkInNow } from "./desk";
+export type { DeskArrival, DeskCollectInput, DeskCollectResult, DeskTender, DeskVisit, DeskWalkIn } from "./desk";
 export {
   PCPNDT_AGE_MAX_YEARS, PCPNDT_AGE_MIN_YEARS, ageInYearsOn, pcpndtApplicability,
 } from "./applicability";

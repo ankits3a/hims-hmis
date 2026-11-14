@@ -1,59 +1,60 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { ApiError, newIdempotencyKey } from "../lib/api";
+import { newIdempotencyKey } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { fmtIst, fmtRupees } from "../lib/format";
-import { fetchCurrentSession, issueInvoice, previewInvoice } from "../lib/billing-api";
+import { fetchCurrentSession, previewInvoice } from "../lib/billing-api";
 import {
-  checkInStudy, fetchCounter, fetchImagingDevices, fetchInvoiceLines, fetchWorklist, linkInvoiceLine,
-  radiologyErrorCode, radiologyErrorDetail, radiologyErrorText, scheduleStudy, walkIn,
+  deskArrive, deskCollect, deskWalkInNow, fetchCounter, fetchDeskProposal, fetchImagingDevices, fetchWorklist,
+  radiologyErrorCode, radiologyErrorText, scheduleStudy, walkIn,
 } from "../lib/radiology-api";
-import type { WireCounterView, WireImagingDevice, WireWorklistRow } from "../lib/radiology-api";
+import type { DeskCollectBody, WireCounterView, WireImagingDevice, WireWorklistRow } from "../lib/radiology-api";
 import { RadiologyStation } from "./radiology-station";
 import { PatientFacts } from "../components/radiology/patient-facts";
 import { ImagingDeskDoor } from "../components/radiology/imaging-desk-door";
 import {
   CounterBill, CounterChecks, CounterSlip, CounterSlot, CounterStudies, Refusal, statusWord, useNow,
 } from "../components/radiology/imaging-counter";
-import type { SlotPick, TenderMode } from "../components/radiology/imaging-counter";
-import { istDay, istInputToIso, minutesSince, nextQuarterIstInput } from "../components/radiology/desk-time";
+import type { BillDone, SlotPick, TenderMode } from "../components/radiology/imaging-counter";
+import { istDay, istInputToIso, isoToIstInput, minutesSince } from "../components/radiology/desk-time";
 import { CreditChip } from "../components/patient-credit";
 
 /**
- * PLAN 18-S RS3 — **THE IMAGING COUNTER: Studies → Checks → Bill → Slot & slip.**
+ * PLAN 18-S RS3, #1078 (IM2) — **THE IMAGING COUNTER: Bill → Slot & slip.**
  *
  * The owner's counter layout (25 Sep, the lab's and the pharmacy's): the header carries the menu;
- * the LEFT lane holds the patient in hand; the CENTRE is one numbered flow with a pinned dock that
- * offers the ONE next act (Enter runs it); the RIGHT is ONE list with no filter tabs, then "Clocks
- * running", collapsed unless a clock has run out.
+ * the LEFT lane holds the patient in hand — their studies and what the prep bay will ask; the CENTRE
+ * is two numbered steps with a pinned dock that offers the ONE next act (Enter runs it); the RIGHT is
+ * ONE list with no filter tabs, then "Clocks running", collapsed unless a clock has run out.
+ *
+ * #1078 — the two read-only steps (Studies, Checks) moved into the lane, and every act is ONE server
+ * call (`radiology/desk.ts`): opening a patient on the day checks in every study booked for today
+ * (`POST /radiology/desk/arrive`), collecting issues the invoice AND links it
+ * (`POST /radiology/desk/collect`, retry-safe on its Idempotency-Key — no "relink" button), and a
+ * walk-in is booked and checked in together. The Slot step opens with the server's proposal (the first
+ * free quarter hour on a machine that may take the study), so Enter books it.
  *
  * ═══ PRESENCE IS DERIVED ═══
  *
  * There is no "Check in" button. Opening a patient at the desk on the day of a booked slot IS the
- * arrival: every study of that visit booked for today is checked in by that act (18-S RS3 grants
- * the desk `radiology.checkin`; the workflow edge already named the role). The gate set that opens
- * is SHOWN — the desk can tell the patient "the prep bay will ask for your creatinine" — and there
- * is no control that clears one (the manifest's first separation).
+ * arrival. The gate set that opens is SHOWN in the lane — the desk can tell the patient "the prep bay
+ * will ask for your creatinine" — and there is no control that clears one (the manifest's first
+ * separation). A booked, paid patient who arrives has nothing left at the desk: the dock says Done.
  *
  * ═══ MONEY GOES THROUGH BILLING, NOT A SECOND PATH ═══
  *
- * Self-pay settles here through the house invoice (`/billing/invoices/preview`, then
- * `/billing/invoices` with the tender), and the raised line is then LINKED to the study
- * (`POST /radiology/studies/:id/invoice-line`, `linkInvoiceLine`'s three checks) — which is what
- * makes `authorisationOf` answer `invoice` at the machine. No discount control (ruling 8; the HOD
- * gives up to 10%). No credit: the owner's alone. STAT goes first and the bill follows.
+ * The price shown is billing's preview; the collect act issues billing's own house invoice and links
+ * its line to the study (`linkInvoiceLine`'s three checks), which is what makes `authorisationOf`
+ * answer `invoice` at the machine. No discount control (ruling 8; the HOD gives up to 10%). No
+ * credit: the owner's alone (decision 0015). STAT goes first and the bill follows.
  */
 
 type Hand = { patientId: string; encounterNo: string };
-type BillDone = { invoiceNo: string; receiptNo: string | null; totalPaise: number };
-const STEPS = ["studies", "checks", "bill", "slot"] as const;
+type Step = "bill" | "slot";
+const STEPS: readonly Step[] = ["bill", "slot"];
 const DESK_STATES = ["scheduled", "checked_in"];
 const CLOCK_MINUTES = 30;
-
-function draftId(): string {
-  return `rad-${String(Date.now())}-${Math.random().toString(36).slice(2, 10)}`;
-}
 
 export function RadiologyReception(): React.ReactElement {
   const { t } = useTranslation();
@@ -62,7 +63,8 @@ export function RadiologyReception(): React.ReactElement {
   const now = useNow();
 
   const [hand, setHand] = useState<Hand | null>(null);
-  const [step, setStep] = useState(0);
+  /** `null` follows the patient: Bill while anything is owed, else Slot & slip. A click pins it. */
+  const [step, setStep] = useState<Step | null>(null);
   const [opened, setOpened] = useState<Record<string, string[]>>({});
   const [openErrors, setOpenErrors] = useState<string[]>([]);
   const [picks, setPicks] = useState<Record<string, SlotPick>>({});
@@ -71,9 +73,13 @@ export function RadiologyReception(): React.ReactElement {
   const [refText, setRefText] = useState("");
   const [addOnPick, setAddOnPick] = useState<Record<string, boolean>>({});
   const [paid, setPaid] = useState<BillDone | null>(null);
-  const [billError, setBillError] = useState<{ code: string | null; message: string; relinkInvoiceId?: string } | null>(null);
-  const draft = useRef(draftId());
-  const idem = useRef<string | null>(null);
+  const [billError, setBillError] = useState<{ code: string | null; message: string } | null>(null);
+  /**
+   * The collect's Idempotency-Key, kept for as long as the BODY is the same. A retry of the same bill —
+   * after a dropped answer, or after the server issued and could not link — replays the issue and
+   * completes the links; a changed body (another tender, another add-on) is a new attempt.
+   */
+  const idem = useRef<{ body: string; key: string } | null>(null);
 
   const q = useQuery({ queryKey: ["radiology", "worklist", "floor"], queryFn: () => fetchWorklist("floor") });
   const devicesQ = useQuery({ queryKey: ["radiology", "devices"], queryFn: fetchImagingDevices });
@@ -92,6 +98,7 @@ export function RadiologyReception(): React.ReactElement {
   const mine = hand === null ? [] : rows.filter((r) => r.patientId === hand.patientId && r.encounterNo === hand.encounterNo);
   const desk = mine.filter((r) => DESK_STATES.includes(r.status));
   const inRoom = mine.filter((r) => !DESK_STATES.includes(r.status));
+  const unbooked = desk.filter((r) => r.scheduledAt === null);
 
   const counterQs = useQueries({
     queries: desk.map((r) => ({
@@ -103,16 +110,40 @@ export function RadiologyReception(): React.ReactElement {
   desk.forEach((r, i) => { views[r.studyId] = counterQs[i]?.data?.study; });
   const viewList = desk.map((r) => views[r.studyId]).filter((v): v is WireCounterView => v !== undefined);
   const first = viewList[0];
+  const viewsLoading = counterQs.some((c) => c.isPending);
+
+  /** The Slot step's prefill: the server's first free quarter hour on a machine that may take the study. */
+  const proposalQs = useQueries({
+    queries: unbooked.map((r) => ({
+      queryKey: ["radiology", "desk", "proposal", r.studyId],
+      queryFn: () => fetchDeskProposal(r.studyId),
+      enabled: can("radiology.schedule"),
+      retry: false,
+    })),
+  });
+  const effectivePicks: Record<string, SlotPick> = {};
+  unbooked.forEach((r, i) => {
+    const p = proposalQs[i]?.data?.proposal;
+    const chosen = picks[r.studyId];
+    if (chosen !== undefined) effectivePicks[r.studyId] = chosen;
+    else if (p !== undefined && p !== null) effectivePicks[r.studyId] = { deviceResourceId: p.deviceResourceId, at: isoToIstInput(p.scheduledAt), bedside: "" };
+  });
 
   /* ── the bill: every desk study nothing authorises yet, plus the add-ons the desk ticked ── */
   const toBill = viewList.filter((v) => v.authorisation === null && v.intendedPayer === "self");
+  const pickedAddOns = toBill.flatMap((v) => v.addOns
+    .filter((a) => addOnPick[`${a.kind}:${v.studyId}`] === true)
+    .map((a) => ({ studyId: v.studyId, kind: a.kind, serviceId: a.serviceId })));
   const billLines = toBill.flatMap((v) => [
     { lineId: `study-${v.studyId}`, serviceId: v.serviceId, qty: 1 },
-    ...v.addOns.filter((a) => addOnPick[`${a.kind}:${v.studyId}`] === true)
-      .map((a) => ({ lineId: `${a.kind}-${v.studyId}`, serviceId: a.serviceId, qty: 1 })),
+    ...pickedAddOns.filter((a) => a.studyId === v.studyId).map((a) => ({ lineId: `${a.kind}-${v.studyId}`, serviceId: a.serviceId, qty: 1 })),
   ]);
+  /**
+   * Billing's price, a read. Keyed under `billing`, not `radiology`: the desk's refresh after an act
+   * re-reads the radiology rows and must not re-price a bill that the collect has just closed.
+   */
   const previewQ = useQuery({
-    queryKey: ["radiology", "bill-preview", hand?.encounterNo ?? "", JSON.stringify(billLines)],
+    queryKey: ["billing", "preview", "imaging-desk", hand?.encounterNo ?? "", JSON.stringify(billLines)],
     queryFn: () => previewInvoice({ encounterId: hand?.encounterNo ?? "", lines: billLines }),
     enabled: hand !== null && billLines.length > 0 && paid === null,
   });
@@ -122,10 +153,10 @@ export function RadiologyReception(): React.ReactElement {
   });
   const drawerOpen = sessionQ.data?.session?.status === "open";
 
-  /* ── opening a patient: the arrival, derived ── */
+  /* ── opening a patient: the arrival, derived, in one server act ── */
   const open = async (next: Hand): Promise<void> => {
     setHand(next);
-    setStep(0);
+    setStep(null);
     setOpened({});
     setOpenErrors([]);
     setPicks({});
@@ -134,78 +165,49 @@ export function RadiologyReception(): React.ReactElement {
     setBillError(null);
     setAddOnPick({});
     setRefText("");
-    draft.current = draftId();
     idem.current = null;
     if (!can("radiology.checkin")) return;
     const today = istDay(Date.now());
-    const arriving = rows.filter((r) => r.patientId === next.patientId && r.encounterNo === next.encounterNo
+    const arriving = rows.some((r) => r.patientId === next.patientId && r.encounterNo === next.encounterNo
       && r.status === "scheduled" && r.scheduledAt !== null && istDay(r.scheduledAt) === today);
-    const gates: Record<string, string[]> = {};
-    const errs: string[] = [];
-    for (const r of arriving) {
-      try {
-        gates[r.studyId] = (await checkInStudy(r.studyId)).gates;
-      } catch (e) {
-        errs.push(`${r.accessionNo}: ${radiologyErrorText(e)}`);
-      }
+    if (!arriving) return;
+    try {
+      const arrival = await deskArrive(next.encounterNo);
+      setOpened(Object.fromEntries(arrival.checkedIn.map((c) => [c.studyId, c.gates])));
+      setOpenErrors(arrival.refused.map((r) => `${r.accessionNo}: ${r.message}`));
+      if (arrival.checkedIn.length > 0) void refresh();
+    } catch (e) {
+      setOpenErrors([radiologyErrorText(e)]);
     }
-    setOpened(gates);
-    setOpenErrors(errs);
-    if (arriving.length > 0) void refresh();
   };
-  const clear = (): void => { setHand(null); setStep(0); };
+  const clear = (): void => { setHand(null); setStep(null); };
 
-  /* ── money ── */
-  const linkAll = async (invoiceId: string): Promise<void> => {
-    const inv = await fetchInvoiceLines(invoiceId);
-    const used = new Set<string>();
-    for (const v of toBill) {
-      const line = inv.lines.find((l) => l.serviceId === v.serviceId && !used.has(l.id));
-      if (line === undefined) continue;
-      used.add(line.id);
-      await linkInvoiceLine(v.studyId, line.id);
-    }
-  };
+  /* ── money: one act ── */
   const collect = useMutation({
     mutationFn: async (): Promise<BillDone> => {
       const priced = previewQ.data;
-      if (hand === null || first === undefined || priced === undefined) throw new Error("not priced");
-      const total = priced.totals.netPayablePaise;
-      idem.current ??= newIdempotencyKey();
-      const result = await issueInvoice({
-        draftId: draft.current,
-        patientId: first.patientId,
-        encounterId: hand.encounterNo,
-        lines: priced.lines.map((l) => ({ lineId: l.lineId, serviceId: l.serviceId, qty: l.qty })),
-        receipt: { tenders: [{ mode, amountPaise: total, ...(mode === "cash" ? {} : { refText: refText.trim() }) }] },
-      }, idem.current);
+      if (hand === null || priced === undefined) throw new Error("not priced");
+      const body: DeskCollectBody = {
+        encounterNo: hand.encounterNo,
+        studyIds: toBill.map((v) => v.studyId),
+        addOns: pickedAddOns.map((a) => ({ studyId: a.studyId, kind: a.kind })),
+        tender: { mode, amountPaise: priced.totals.netPayablePaise, ...(mode === "cash" ? {} : { refText: refText.trim() }) },
+      };
+      const json = JSON.stringify(body);
+      if (idem.current?.body !== json) idem.current = { body: json, key: newIdempotencyKey() };
+      const done = await deskCollect(body, idem.current.key);
       idem.current = null;
-      try {
-        await linkAll(result.invoiceId);
-      } catch (e) {
-        throw Object.assign(e instanceof Error ? e : new Error(String(e)), { relinkInvoiceId: result.invoiceId, invoiceNo: result.invoiceNo });
-      }
-      return { invoiceNo: result.invoiceNo, receiptNo: result.receiptNo, totalPaise: total };
+      return { invoiceNo: done.invoiceNo, receiptNo: done.receiptNo, totalPaise: done.totalPaise, adopted: done.adopted };
     },
+    onMutate: () => { setStep("bill"); },
     onSuccess: (done) => { setPaid(done); setBillError(null); void refresh(); },
-    onError: (e) => {
-      /** The server answered: that body's key is spent. A network failure keeps it (the charge may have landed). */
-      if (e instanceof ApiError) idem.current = null;
-      const relink = (e as { relinkInvoiceId?: string }).relinkInvoiceId
-        ?? (radiologyErrorCode(e) === "duplicate_invoice_refused" ? String(radiologyErrorDetail(e)?.invoiceId ?? "") || undefined : undefined);
-      setBillError({ code: radiologyErrorCode(e), message: radiologyErrorText(e), ...(relink === undefined ? {} : { relinkInvoiceId: relink }) });
-    },
-  });
-  const relink = useMutation({
-    mutationFn: (invoiceId: string) => linkAll(invoiceId),
-    onSuccess: () => { setBillError(null); void refresh(); },
-    onError: (e) => { setBillError((prev) => ({ ...(prev ?? {}), code: radiologyErrorCode(e), message: radiologyErrorText(e) })); },
+    onError: (e) => { setBillError({ code: radiologyErrorCode(e), message: radiologyErrorText(e) }); },
   });
 
   /* ── the slot ── */
   const book = useMutation({
     mutationFn: async ({ studyId, clearBed }: { studyId: string; clearBed?: boolean }) => {
-      const pick = picks[studyId];
+      const pick = effectivePicks[studyId];
       if (pick === undefined) throw new Error("no pick");
       const device = devices.find((d) => d.id === pick.deviceResourceId);
       return scheduleStudy(studyId, {
@@ -221,14 +223,13 @@ export function RadiologyReception(): React.ReactElement {
   });
   const walk = useMutation({
     /**
-     * A walk-in is booked NOW on the first free machine — and the patient is standing at the
-     * counter, so the same act is the arrival: check-in follows at once (the board's "now-slots
-     * check in at once"), and the gate set it opens is shown in the lane.
+     * A walk-in is booked NOW on the first free machine — and the patient is standing at the counter,
+     * so the same act is the arrival: one server act books and checks in, in one transaction, and the
+     * gate set it opens is shown in the lane. A desk without `radiology.checkin` only books.
      */
-    mutationFn: async (studyId: string) => {
-      await walkIn(studyId);
-      if (!can("radiology.checkin")) return null;
-      return (await checkInStudy(studyId)).gates;
+    mutationFn: async (studyId: string): Promise<string[] | null> => {
+      if (!can("radiology.checkin")) { await walkIn(studyId); return null; }
+      return (await deskWalkInNow(studyId)).gates;
     },
     onSuccess: (gates, studyId) => {
       setSlotErrors((p) => ({ ...p, [studyId]: undefined }));
@@ -239,30 +240,30 @@ export function RadiologyReception(): React.ReactElement {
   });
 
   /* ── the dock: the ONE next act ── */
-  const unbooked = desk.filter((r) => r.scheduledAt === null);
+  const needMoney = toBill.length > 0 && paid === null;
+  const current: Step = step ?? (needMoney ? "bill" : "slot");
   const ready = unbooked.find((r) => {
-    const p = picks[r.studyId];
+    const p = effectivePicks[r.studyId];
     const d = devices.find((x) => x.id === p?.deviceResourceId);
     return p !== undefined && p.at !== "" && d !== undefined && !(d.ionising && d.licensedNow === false);
   });
   const total = previewQ.data?.totals.netPayablePaise;
-  const needMoney = toBill.length > 0 && paid === null;
   const refMissing = mode !== "cash" && refText.trim() === "";
 
   let dock: { label: string; hint: string; run: (() => void) | null };
   if (hand === null) dock = { label: "", hint: "", run: null };
-  else if (step === 0) dock = { label: t("radiology.counter.dock.toChecks"), hint: t("radiology.counter.dock.studiesHint", { count: desk.length }), run: () => setStep(1) };
-  else if (step === 1) dock = { label: t("radiology.counter.dock.toBill"), hint: t("radiology.counter.dock.checksHint"), run: () => setStep(2) };
-  else if (step === 2 && needMoney) {
+  else if (viewsLoading) dock = { label: t("radiology.counter.loading"), hint: "", run: null };
+  else if (current === "bill" && needMoney) {
     const blocked = !drawerOpen ? t("radiology.counter.drawerClosed") : refMissing ? t("radiology.counter.dock.refMissing") : total === undefined ? t("radiology.counter.pricing") : null;
     dock = {
       label: total === undefined ? t("radiology.counter.dock.collectPending") : t("radiology.counter.dock.collect", { amount: fmtRupees(total), mode: t(`radiology.counter.mode.${mode}`) }),
       hint: blocked ?? t("radiology.counter.dock.collectHint"),
       run: blocked === null && !collect.isPending ? () => collect.mutate() : null,
     };
-  } else if (step === 2) dock = { label: t("radiology.counter.dock.toSlot"), hint: t("radiology.counter.dock.billHint"), run: () => setStep(3) };
+  } else if (!needMoney && unbooked.length === 0) dock = { label: t("radiology.counter.dock.done"), hint: t("radiology.counter.dock.doneHint"), run: clear };
+  else if (current === "bill") dock = { label: t("radiology.counter.dock.toSlot"), hint: t("radiology.counter.dock.billHint"), run: () => setStep("slot") };
   else if (ready !== undefined) {
-    const p = picks[ready.studyId]!;
+    const p = effectivePicks[ready.studyId]!;
     const d = devices.find((x) => x.id === p.deviceResourceId);
     dock = {
       label: t("radiology.counter.dock.book", { machine: d?.code ?? "", time: p.at.slice(11, 16) }),
@@ -270,7 +271,7 @@ export function RadiologyReception(): React.ReactElement {
       run: book.isPending ? null : () => book.mutate({ studyId: ready.studyId }),
     };
   } else if (unbooked.length > 0) dock = { label: t("radiology.counter.dock.pick"), hint: t("radiology.counter.dock.pickHint"), run: null };
-  else dock = { label: t("radiology.counter.dock.done"), hint: t("radiology.counter.dock.doneHint"), run: clear };
+  else dock = { label: t("radiology.counter.dock.toBill"), hint: t("radiology.counter.unpaidWords"), run: () => setStep("bill") };
 
   const dockRun = useRef(dock.run);
   dockRun.current = dock.run;
@@ -334,7 +335,7 @@ export function RadiologyReception(): React.ReactElement {
     </ul>
   );
 
-  /* ── the lane: the patient in hand ── */
+  /* ── the lane: the patient in hand, their studies, and what the prep bay will ask ── */
   const lane = hand === null
     ? <p className="mt-4 text-sm text-muted-foreground" data-testid="nobody-in-hand">{t("radiology.counter.nobody")}</p>
     : (
@@ -347,18 +348,15 @@ export function RadiologyReception(): React.ReactElement {
         </div>
         <div>
           <span className="tag">{t("radiology.counter.today")}</span>
-          <ul className="m-0 mt-1 list-none space-y-1 p-0">
-            {mine.map((r) => (
-              <li key={r.studyId} data-acc={r.accessionNo} data-state={r.status}>
-                {views[r.studyId]?.studyTypeName ?? r.studyTypeCode} — <span className="text-muted-foreground">{statusWord(t, r)}</span>
-              </li>
-            ))}
-          </ul>
+          {desk.length === 0
+            ? <p className="m-0 mt-1 text-muted-foreground">{t("radiology.counter.nothingHere")}</p>
+            : <div className="mt-1"><CounterStudies studies={desk} views={views} inRoom={inRoom} /></div>}
         </div>
         {Object.keys(opened).length > 0 && (
           <p role="status" className="rounded border border-amber-300 bg-amber-50 p-2 text-xs">{t("radiology.counter.arrived")}</p>
         )}
         {openErrors.map((m) => <p key={m} role="alert" className="text-xs text-red-700">{m}</p>)}
+        {desk.length > 0 && <CounterChecks studies={desk} views={views} opened={opened} />}
         <button type="button" className="rounded border px-3 py-1 text-sm" onClick={clear}>
           {t("radiology.counter.clearDesk")} <span className="kb">Esc</span>
         </button>
@@ -399,9 +397,9 @@ export function RadiologyReception(): React.ReactElement {
               {STEPS.map((s, i) => (
                 <li key={s}>
                   <button
-                    type="button" aria-current={step === i ? "step" : undefined}
-                    className={`rounded border px-3 py-1 text-sm ${step === i ? "border-green-700 bg-green-50 font-semibold" : ""}`}
-                    onClick={() => setStep(i)}
+                    type="button" aria-current={current === s ? "step" : undefined}
+                    className={`rounded border px-3 py-1 text-sm ${current === s ? "border-green-700 bg-green-50 font-semibold" : ""}`}
+                    onClick={() => setStep(s)}
                   >
                     <span className="mo text-xs">{String(i + 1).padStart(2, "0")}</span> {t(`radiology.counter.step.${s}`)}
                   </button>
@@ -412,35 +410,25 @@ export function RadiologyReception(): React.ReactElement {
               {desk.length === 0 && (
                 <p className="text-sm">{t("radiology.counter.nothingHere")}</p>
               )}
-              {desk.length > 0 && step === 0 && <CounterStudies studies={desk} views={views} inRoom={inRoom} />}
-              {desk.length > 0 && step === 1 && <CounterChecks studies={desk} views={views} opened={opened} />}
-              {desk.length > 0 && step === 2 && (
+              {desk.length > 0 && current === "bill" && (
                 <CounterBill
                   views={viewList} toBill={paid === null ? toBill : []}
                   addOnPick={addOnPick} onAddOn={(k) => setAddOnPick((p) => ({ ...p, [k]: p[k] !== true }))}
                   preview={previewQ.data} previewError={previewQ.isError ? radiologyErrorText(previewQ.error) : null}
                   drawerOpen={drawerOpen} mode={mode} onMode={setMode} refText={refText} onRef={setRefText}
                   paid={paid}
-                  billError={billError === null ? null : (
-                    <Refusal code={billError.code} message={billError.message}>
-                      {billError.relinkInvoiceId !== undefined && (
-                        <button type="button" className="mt-1 rounded border px-2 py-1 text-xs" onClick={() => relink.mutate(billError.relinkInvoiceId!)}>
-                          {t("radiology.counter.relink")}
-                        </button>
-                      )}
-                    </Refusal>
-                  )}
+                  billError={billError === null ? null : <Refusal code={billError.code} message={billError.message} />}
                 />
               )}
-              {desk.length > 0 && step === 3 && (
+              {desk.length > 0 && current === "slot" && (
                 <div className="space-y-3">
                   <CounterSlot
-                    studies={desk} views={views} devices={devices} picks={picks}
-                    onPick={(id, p) => setPicks((prev) => ({ ...prev, [id]: p.at === "" && prev[id] === undefined ? { ...p, at: nextQuarterIstInput(now) } : p }))}
+                    studies={desk} views={views} devices={devices} picks={effectivePicks}
+                    onPick={(id, p) => setPicks((prev) => ({ ...prev, [id]: p }))}
                     onWalkIn={(id) => walk.mutate(id)}
                     errors={slotErrors}
                     onClearBed={(id) => book.mutate({ studyId: id, clearBed: true })}
-                    onGoBill={() => setStep(2)}
+                    onGoBill={() => setStep("bill")}
                     busy={walk.isPending || book.isPending}
                   />
                   {devicesQ.isError && <Refusal code={null} message={radiologyErrorText(devicesQ.error)} />}

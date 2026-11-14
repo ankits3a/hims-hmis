@@ -6024,11 +6024,7 @@
       "messageQueued": "The appointment message is queued. It goes out when WhatsApp is connected — it has not been sent.",
       "openVisit": "Work this visit at the counter",
       "dock": {
-        "toChecks": "Checks",
-        "studiesHint_one": "{{count}} study at the desk",
-        "studiesHint_other": "{{count}} studies at the desk",
         "toBill": "Bill",
-        "checksHint": "Tell the patient; the prep bay records the answers",
         "refMissing": "Type the UPI reference or the card approval code",
         "collectPending": "Collect",
         "collect": "Collect {{amount}} by {{mode}}",
@@ -6039,8 +6035,8 @@
         "bookHint": "The slip and the appointment message follow the booking",
         "pick": "Pick a machine and a time",
         "pickHint": "Or walk the patient in now",
-        "done": "Clear the desk",
-        "doneHint": "Everything at this desk is booked"
+        "done": "Done",
+        "doneHint": "Nothing left at this desk for this visit"
       },
       "listTitle": "At the desk",
       "clockToBook": "{{name}} · {{study}} waiting to be booked, {{min}} min",
@@ -6052,19 +6048,17 @@
       "nobody": "Nobody in hand. Open a patient from the list, or find a visit. Opening a patient on the day of the slot checks them in.",
       "inHand": "In hand",
       "today": "This visit",
-      "arrived": "Checked in by opening at the desk. The checks it opened are on the Checks step.",
+      "arrived": "Checked in by opening at the desk. The checks it opened are listed below.",
       "clearDesk": "Clear the desk",
       "toBookStat": "Waiting to be booked",
       "startHint": "Or open a patient from the list on the right.",
       "steps": "Counter steps",
       "step": {
-        "studies": "Studies",
-        "checks": "Checks",
         "bill": "Bill",
         "slot": "Slot & slip"
       },
       "nothingHere": "Nothing left at the desk for this visit.",
-      "relink": "Link the paid line to the study"
+      "adopted": "Already paid on invoice {{invoiceNo}} — linked to the study. Nothing collected here."
     },
     "deskGate": {
       "identity_two_factor": "two identifiers are checked in the room — the name and UHID on the slip must match.",
@@ -14767,12 +14761,16 @@
     },
     "desk": {
       "heading": "Order from a visit",
-      "find": "Visit number",
-      "findPlaceholder": "V2609280001",
+      "find": "UHID, phone, name or visit number",
+      "findPlaceholder": "U00110012 · 98… · Asha · V2609280001",
       "findButton": "Find",
       "visitLine": "{{visitNo}} · {{doctor}} · {{department}}",
-      "noVisit": "Type the visit number from the slip or the token.",
-      "advised": "Advised by the doctor"
+      "noVisit": "Type a UHID, a phone number, a name, or the visit number from the slip.",
+      "advised": "Advised by the doctor",
+      "patients": "Patients found",
+      "noPatient": "No patient matches. A new patient is registered at Registration.",
+      "visitsToday": "Today's visits",
+      "noVisitToday": "No visit today. The front desk opens the visit."
     },
     "outside": {
       "heading": "Outside prescription (walk-in slip)",
