@@ -260,7 +260,7 @@ async function existingItem(db: Db, brand: string, form: TwinForm | null): Promi
   const want = brandWordsOf(brand);
   if (want.length === 0) return null;
   const nums = numbers(brandCore(brand));
-  const found = (await stockEntryItems(db, want.join(" "))).find((x) => {
+  const found = (await stockEntryItems(db, want.join(" "), new Date(), { retired: true })).find((x) => {
     const have = brandWordsOf(x.name);
     if (have.length !== want.length || have.some((w, k) => w !== want[k])) return false;
     if (form !== null && x.form !== null) {

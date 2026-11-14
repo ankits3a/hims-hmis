@@ -30,7 +30,7 @@ export type { BlacklistReason } from "./config";
 // ── T3 — the item master, UoM conversion, barcodes and price regulations ──
 export {
   addBarcode, addItemUom, effectiveRegulation, getItem, itemUomRows, itemsByIds, listItems,
-  registerItem, replaceItemUom, resolveBarcode, setPriceRegulation, updateItem, uomsByItems,
+  registerItem, replaceItemUom, resolveBarcode, setIssueUom, setPriceRegulation, updateItem, uomsByItems,
 } from "./items";
 export type { ItemBarcodeRow, ItemRow, ItemUomRow, ItemWithUoms, PriceRegulationRow, RegisterItemInput } from "./items";
 /** DD7's one place a multiplier is applied. Pure; T6's gate and 16c's dispense both read it. */

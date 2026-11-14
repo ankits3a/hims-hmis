@@ -145,6 +145,7 @@ Source: `apps/core/src/modules/materials/`
   - `registerItem(tx: Tx, actor: Actor, input: RegisterItemInput): Promise<{ itemId: string }>`
   - `replaceItemUom(tx: Tx, actor: Actor, itemId: string, input: { fromUom: string; uom: string; toBaseMultiplier: number }, now: Date = new Dat…`
   - `resolveBarcode(db: Db | Tx, code: string): Promise<{ itemId: string; packUom: string } | undefined>`
+  - `setIssueUom(tx: Tx, actor: Actor, itemId: string, input: { uom: string; isIssueUom: boolean }): Promise<void>`
   - `setPriceRegulation(tx: Tx, actor: Actor, itemId: string, input: { mrpDefaultPaise?: number | null; mrpUom?: string | null; ceilingPaise?: n…`
   - `survivorsOf(db: Db | Tx, itemIds: readonly string[]): Promise<Map<string, string>>`
   - `uomsByItems(db: Db | Tx, itemIds: readonly string[]): Promise<Map<string, { uom: string; toBaseMultiplier: number; isIssueUom: boolean }[]>>`

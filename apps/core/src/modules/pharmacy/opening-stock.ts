@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
-import { EXPIRY_LABEL_FORMS, expiryFromLabel } from "@hmis/contracts";
+import { EXPIRY_LABEL_FORMS, counterPackOf, expiryFromLabel } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { getApproval } from "../../kernel/approvals/worklist";
 import { withTx } from "../../kernel/db/client";
 import {
-  OPENING_STOCK_SOURCE, activateVendor, addItemUom, addVendorDocument, captureGrn, daysBetween, findStoreByCode, getGrn, getVendor,
-  itemsByIds, listGrns, listVendors, nearExpiryMinDays, postGrn, priceCheckLines, registerVendor, requestNearExpiryAcceptance, runGateQc,
-  supplierKindOf, uomsByItems, vendorCredits,
+  MaterialsError, OPENING_STOCK_SOURCE, activateVendor, addItemUom, addVendorDocument, captureGrn, daysBetween, findStoreByCode, getGrn, getVendor,
+  itemsByIds, listGrns, listVendors, nearExpiryMinDays, postGrn, priceCheckLines, registerVendor, replaceItemUom, requestNearExpiryAcceptance,
+  runGateQc, setIssueUom, supplierKindOf, uomsByItems, vendorCredits,
 } from "../materials";
 import type { PriceCheck, PriceReasonCode } from "../materials";
 import { OPD_PHARMACY_STORE_CODE, RETAIL_PHARMACY_STORE_CODE } from "./config";
@@ -78,8 +78,10 @@ import type { Db, Tx } from "../../kernel/db/client";
  *   trade_discount_pct     optional: lowers the COST only — cost/unit = rate × (1 − d/100) ÷ pack size,
  *                          rounded down to the paisa. The sale price stays the MRP.
  *
- * A pack size the item does not have yet (the starter list defaults every strip to 10) is added as a
- * new unit `strip<N>` — an item-master act, so it needs `materials.items.manage`. So does creating the
+ * A pack size the item does not have yet (the starter list defaults every strip to 10) is put on the item as
+ * `strip<N>` and, for a strip, becomes the counter's pack (`putCountedPack`): it REPLACES the old strip while
+ * nothing uses that, else it is added and the old strip stops being an issue pack. One strip size per item in a
+ * sheet. An item-master act, so it needs `materials.items.manage`. So does creating the
  * OPENING STOCK vendor (`materials.vendors.manage`) the first time. The screen refuses a sheet that needs
  * either when the uploader does not hold it, and says which; it never borrows someone else's authority.
  *
@@ -344,11 +346,18 @@ export function invoiceLinePaise(packs: number, ratePaise: number, discountBps: 
  */
 type RowRules = { rateIncludesGst: boolean; blankRate: "estimate" | "required" };
 
+/** What the sheet's earlier rows said: each item + batch's line, and the first strip size each item was counted in. */
+type Seen = { batches: Map<string, number>; strips: Map<string, { line: number; packSize: number; newUom: boolean }> };
+const newSeen = (): Seen => ({ batches: new Map(), strips: new Map() });
+
+/** A strip, by its unit's name: `strip` (a new drug's, `stock-drug.ts`), `strip10` (the starter list's), `strip15`. */
+const isStrip = (uom: string | undefined): boolean => uom !== undefined && /^strip/i.test(uom.trim());
+
 /**
  * THE ONE JUDGEMENT OF A ROW — item, batch, MM/YY, MRP, pack, packs (boxes), free packs, discount, rate, cost —
  * for the opening sheet, the grid and the supplier invoice alike. Who the row came from is the caller's.
  */
-function judgeRow(ctx: ShelfContext, r: OpeningInputRow, rules: RowRules, seen: Map<string, number>): OpeningRow {
+function judgeRow(ctx: ShelfContext, r: OpeningInputRow, rules: RowRules, seen: Seen): OpeningRow {
   const c = r.cells;
   const { items, uoms, index } = ctx;
   const row: OpeningRow = {
@@ -458,9 +467,18 @@ function judgeRow(ctx: ShelfContext, r: OpeningInputRow, rules: RowRules, seen: 
       else row.near = left < nearExpiryMinDays(item.shelfLifeDays);
     }
     const key = `${row.itemId}|${row.batch.toLowerCase()}`;
-    const prev = seen.get(key);
+    const prev = seen.batches.get(key);
     if (prev !== undefined) row.reasons.push(`the same brand and batch is also on line ${String(prev)} — add the packs together`);
-    seen.set(key, r.line);
+    seen.batches.set(key, r.line);
+    // A new strip takes the counter's place (`putCountedPack`), so a second strip size of the same item beside it
+    // would name the pack the first just replaced, or flip the counter back. The first row's strip wins.
+    if (row.packSize > 1 && isStrip(row.uom)) {
+      const first = seen.strips.get(row.itemId);
+      if (first === undefined) seen.strips.set(row.itemId, { line: r.line, packSize: row.packSize, newUom: row.newUom });
+      else if (first.packSize !== row.packSize && (first.newUom || row.newUom)) {
+        row.reasons.push(`line ${String(first.line)} already counts this item in strips of ${String(first.packSize)} — one strip size per item in a sheet; check this row's pack size`);
+      }
+    }
   }
   return row;
 }
@@ -479,7 +497,7 @@ export async function planOpeningRows(db: Db, input: readonly OpeningInputRow[],
   const vendorByName = new Map<string, string>();
   for (const v of vendors) for (const n of [v.code, v.legalName, v.tradeName ?? ""]) if (n !== "") vendorByName.set(norm(n), v.id);
   const opening = (await listVendors(db, { search: OPENING_VENDOR_CODE })).find((v) => v.code === OPENING_VENDOR_CODE);
-  const seen = new Map<string, number>();
+  const seen = newSeen();
 
   const rows: OpeningRow[] = input.map((r) => {
     const row = judgeRow(ctx, r, { rateIncludesGst: false, blankRate: "estimate" }, seen);
@@ -562,19 +580,56 @@ async function ensureOpeningVendor(tx: Tx, head: Actor, now: Date): Promise<stri
   return vendorId;
 }
 
+/**
+ * Bug fix 2026-11-13 (#1047) — A COUNTED PACK SIZE THE ITEM LACKS, PUT ON IT AS THE COUNTER'S PACK. The starter list
+ * made every drug one `strip10` (an issue pack); a recount of strips of 15 used to ADD `strip15` beside it, and the
+ * counter's one rule (`counterPackOf`: the smallest issue pack) went on selling Dolo 650 as strips of 10. When the
+ * item's counter pack is a strip of another size and the counted pack is a strip:
+ *   · nothing uses the old strip -> it is CORRECTED in place (`replaceItemUom`, `item.uom_replaced` old -> new): the item
+ *     has its base unit and the counted strip, and its barcodes and MRP on file move with it;
+ *   · something does (`replaceItemUom`'s own `pack_in_use`: a batch, a GRN line, an open order line) -> the counted
+ *     strip is ADDED, and the old one stops being an issue pack (`setIssueUom`); it stays for what uses it.
+ * Any other new pack is added as before. Same actor and permission as the add (`materials.items.manage`).
+ */
+async function putCountedPack(tx: Tx, actor: Actor, itemId: string, uom: string, packSize: number, now: Date): Promise<"replaced" | "added"> {
+  const old = counterPackOf((await uomsByItems(tx, [itemId])).get(itemId) ?? []);
+  const takesOver = old !== null && isStrip(uom) && isStrip(old.uom) && old.toBaseMultiplier !== packSize;
+  if (takesOver) {
+    try {
+      await replaceItemUom(tx, actor, itemId, { fromUom: old.uom, uom, toBaseMultiplier: packSize }, now);
+      return "replaced";
+    } catch (e) {
+      // `pack_in_use` is decided by reads alone, before anything is written: the transaction carries on.
+      if (!(e instanceof MaterialsError && e.code === "pack_in_use")) throw e;
+    }
+  }
+  await addItemUom(tx, actor, itemId, { uom, toBaseMultiplier: packSize, isPurchaseUom: true, isIssueUom: true });
+  if (takesOver) await setIssueUom(tx, actor, itemId, { uom: old.uom, isIssueUom: false });
+  return "added";
+}
+
+/** Every new pack size of the plan, once per item and unit (`putCountedPack`). `uomsReplaced` of `uomsAdded` corrected one in place. */
+async function putNewPacks(tx: Tx, actor: Actor, rows: readonly OpeningRow[], now: Date): Promise<{ uomsAdded: number; uomsReplaced: number }> {
+  const out = { uomsAdded: 0, uomsReplaced: 0 };
+  const added = new Set<string>();
+  for (const r of rows) {
+    const key = `${r.itemId!}|${r.uom!}`;
+    if (!r.newUom || added.has(key)) continue;
+    if ((await putCountedPack(tx, actor, r.itemId!, r.uom!, r.packSize, now)) === "replaced") out.uomsReplaced += 1;
+    added.add(key); out.uomsAdded += 1;
+  }
+  return out;
+}
+
 /** New pack sizes, then the OPENING STOCK vendor, then one GRN per group still `new`. Nothing is QC'd. */
 async function captureGroups(
   tx: Tx, actors: { storekeeper: Actor; head: Actor | null }, plan: OpeningPlan, now: Date,
-): Promise<{ uomsAdded: number; vendorCreated: boolean; captured: { grnId: string; grnNo: string; challanNo: string; near: boolean; lines: number }[] }> {
+): Promise<{ uomsAdded: number; uomsReplaced: number; vendorCreated: boolean; captured: { grnId: string; grnNo: string; challanNo: string; near: boolean; lines: number }[] }> {
   const today = istDay(now);
-  const out = { uomsAdded: 0, vendorCreated: false, captured: [] as { grnId: string; grnNo: string; challanNo: string; near: boolean; lines: number }[] };
-  const added = new Set<string>();
-  for (const r of plan.rows) {
-    const key = `${r.itemId!}|${r.uom!}`;
-    if (!r.newUom || added.has(key)) continue;
-    await addItemUom(tx, actors.head!, r.itemId!, { uom: r.uom!, toBaseMultiplier: r.packSize, isPurchaseUom: true, isIssueUom: true });
-    added.add(key); out.uomsAdded += 1;
-  }
+  const out = {
+    ...(await putNewPacks(tx, actors.head!, plan.rows, now)),
+    vendorCreated: false, captured: [] as { grnId: string; grnNo: string; challanNo: string; near: boolean; lines: number }[],
+  };
   for (const g of plan.grns) {
     if (g.vendorId === null) { g.vendorId = await ensureOpeningVendor(tx, actors.head!, now); out.vendorCreated = true; }
     if (g.state !== "new") continue;
@@ -609,7 +664,7 @@ async function captureGroups(
  */
 export async function captureOpeningStock(
   db: Db, actor: Actor, plan: OpeningPlan, now: Date = new Date(),
-): Promise<{ captured: { grnId: string; grnNo: string; challanNo: string; near: boolean; lines: number }[]; alreadyOnBooks: number; uomsAdded: number; vendorCreated: boolean; racksSet: number; racksLeft: number }> {
+): Promise<{ captured: { grnId: string; grnNo: string; challanNo: string; near: boolean; lines: number }[]; alreadyOnBooks: number; uomsAdded: number; uomsReplaced: number; vendorCreated: boolean; racksSet: number; racksLeft: number }> {
   if (plan.refusals > 0) {
     throw new PharmacyError("opening_stock_refused", `${String(plan.refusals)} row(s) were refused — fix them; the sheet is received whole or not at all`, { refusals: plan.refusals });
   }
@@ -636,15 +691,15 @@ export async function captureOpeningStock(
 /** THE SCRIPT'S ACT — capture (or pick up what the screen captured), QC as `qc`, post, set racks. One transaction. */
 export async function applyOpeningStock(
   db: Db, actors: { storekeeper: Actor; qc: Actor; head: Actor | null }, plan: OpeningPlan, now: Date = new Date(),
-): Promise<{ posted: number; awaiting: number; unitsPosted: number; uomsAdded: number; racksSet: number; vendorCreated: boolean }> {
+): Promise<{ posted: number; awaiting: number; unitsPosted: number; uomsAdded: number; uomsReplaced: number; racksSet: number; vendorCreated: boolean }> {
   if (plan.refusals > 0) throw new Error(`refusing to apply: ${String(plan.refusals)} row(s) were refused`);
   if ((plan.newUoms > 0 || plan.needsVendor) && actors.head === null) {
     throw new Error("--head <materials_head> is needed: this sheet adds pack sizes and/or creates the OPENING STOCK vendor");
   }
   return withTx(db, async (tx) => {
-    const out = { posted: 0, awaiting: 0, unitsPosted: 0, uomsAdded: 0, racksSet: 0, vendorCreated: false };
+    const out = { posted: 0, awaiting: 0, unitsPosted: 0, uomsAdded: 0, uomsReplaced: 0, racksSet: 0, vendorCreated: false };
     const captured = await captureGroups(tx, { storekeeper: actors.storekeeper, head: actors.head }, plan, now);
-    out.uomsAdded = captured.uomsAdded; out.vendorCreated = captured.vendorCreated;
+    out.uomsAdded = captured.uomsAdded; out.uomsReplaced = captured.uomsReplaced; out.vendorCreated = captured.vendorCreated;
     for (const g of plan.grns) {
       if (g.state === "posted" || g.state === "rejected") continue;
       if (g.state === "awaiting_approval") { out.awaiting += 1; continue; }
@@ -761,7 +816,7 @@ export async function planSupplierInvoice(db: Db, header: InvoiceHeader, input: 
   if (duplicateOf !== null) headerReasons.push(`invoice ${invoiceNo} of this supplier is already on the books as GRN ${duplicateOf.grnNo}`);
 
   const ctx = await shelfContext(db, now);
-  const seen = new Map<string, number>();
+  const seen = newSeen();
   const rows: OpeningRow[] = input.map((r, i) => {
     const cells: OpeningInputRow["cells"] = {
       brand: "", batch: r.batch, expiry: r.expiry, mrp_per_pack: r.mrpPerPack, pack_size: r.packSize, packs: r.packs,
@@ -798,12 +853,12 @@ export async function planSupplierInvoice(db: Db, header: InvoiceHeader, input: 
  * the invoice number as the challan's and the invoice's, its date as both dates, the optional purchase order
  * (headroom and the approver rule asked there), the paid packs at the cost the row gives and the free packs
  * as a free-goods line at cost 0. It then waits for QC and post like any delivery, and the supplier bill
- * draft from it carries the invoice number and date (`billDraftFromGrn`). A pack size the item lacks is added
- * first, under the item master's own permission. Refused whole on any header reason or refused row.
+ * draft from it carries the invoice number and date (`billDraftFromGrn`). A pack size the item lacks is put on
+ * it first (`putCountedPack`), under the item master's own permission. Refused whole on any header reason or refused row.
  */
 export async function captureSupplierInvoice(
   db: Db, actor: Actor, header: InvoiceHeader, input: readonly OpeningGridRow[], now: Date = new Date(),
-): Promise<{ grnId: string; grnNo: string; lines: number; uomsAdded: number }> {
+): Promise<{ grnId: string; grnNo: string; lines: number; uomsAdded: number; uomsReplaced: number }> {
   const plan = await planSupplierInvoice(db, header, input, now);
   if (plan.duplicateOf !== null) {
     throw new PharmacyError("invoice_already_captured", `invoice ${header.invoiceNo.trim()} of this supplier is already GRN ${plan.duplicateOf.grnNo}`, plan.duplicateOf);
@@ -822,14 +877,7 @@ export async function captureSupplierInvoice(
   }
   const invoiceNo = header.invoiceNo.trim();
   return withTx(db, async (tx) => {
-    let uomsAdded = 0;
-    const added = new Set<string>();
-    for (const r of plan.rows) {
-      const key = `${r.itemId!}|${r.uom!}`;
-      if (!r.newUom || added.has(key)) continue;
-      await addItemUom(tx, actor, r.itemId!, { uom: r.uom!, toBaseMultiplier: r.packSize, isPurchaseUom: true, isIssueUom: true });
-      added.add(key); uomsAdded += 1;
-    }
+    const packs = await putNewPacks(tx, actor, plan.rows, now);
     const { grnId, grnNo } = await captureGrn(tx, actor, {
       vendorId: header.vendorId!, source: "challan", storeResourceId: header.storeResourceId!,
       challanNo: invoiceNo, challanDate: header.invoiceDate, invoiceNo, invoiceDate: header.invoiceDate,
@@ -850,6 +898,6 @@ export async function captureSupplierInvoice(
         }] : []),
       ]),
     });
-    return { grnId, grnNo, lines: plan.rows.length, uomsAdded };
+    return { grnId, grnNo, lines: plan.rows.length, ...packs };
   });
 }

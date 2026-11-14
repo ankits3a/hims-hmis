@@ -90,6 +90,22 @@ describe("PharmacyItems (16c T2)", () => {
     expect(screen.queryByLabelText("Discount % for AZI500")).toBeNull();
   });
 
+  it("re-walk 2026-11-13: an item with no GST slab reads 'not set', never 'nil'; a real 0% slab stays nil", async () => {
+    mockRoutes({
+      "GET /api/pharmacy/sale-items": { status: 200, body: { items: [
+        { ...REGISTERED[0]!, itemId: "it-3", code: "BLANK1", serviceCode: "RX-BLANK1", gstRateBps: null, active: false },
+        { ...REGISTERED[0]!, itemId: "it-4", code: "ZERO1", serviceCode: "RX-ZERO1", gstRateBps: 0 },
+      ] } },
+      "GET /api/pharmacy/sale-items/candidates": { status: 200, body: { items: [{ ...CANDIDATES[0]!, gstRateBps: null }] } },
+    });
+    renderWithProviders(<PharmacyItems />);
+    expect((await screen.findByText("PARA500")).parentElement).toHaveTextContent(/· GST not set$/);
+    expect(await screen.findByText("RX-BLANK1")).toBeInTheDocument();
+    const cells = (code: string): string[] => [...screen.getByText(code).closest("tr")!.querySelectorAll("td")].map((td) => td.textContent ?? "");
+    expect(cells("BLANK1")).toContain("not set");
+    expect(cells("ZERO1")).toContain("nil");
+  });
+
   it("renders a refusal code as the locale's sentence, and withdraws with active:false", async () => {
     mockRoutes({
       "GET /api/pharmacy/sale-items": { status: 200, body: { items: REGISTERED } },

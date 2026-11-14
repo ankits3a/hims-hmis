@@ -505,6 +505,26 @@ export async function replaceItemUom(
 }
 
 /**
+ * #1047 — **WHETHER A PACK CROSSES THE COUNTER**, set on the record. The counter's pack is read from this flag
+ * (`@hmis/contracts` `counterPackOf`: the smallest issue pack), so a strip of 10 still flagged beside the counted
+ * strip of 15 sells strips of 10. A pack kept only for what already uses it (`replaceItemUom`'s `pack_in_use`) stops
+ * being an issue pack here. The base unit is always issued (a loose tablet) and is never changed (`base_uom_required`).
+ * Gated by the caller on `materials.items.manage`, as `addItemUom`.
+ */
+export async function setIssueUom(tx: Tx, actor: Actor, itemId: string, input: { uom: string; isIssueUom: boolean }): Promise<void> {
+  const item = await requireItem(tx, itemId);
+  const key = input.uom.trim().toLowerCase();
+  const row = (await tx.select().from(itemUoms).where(eq(itemUoms.itemId, itemId))).find((u) => u.uom.trim().toLowerCase() === key);
+  if (row === undefined) throw new MaterialsError("unknown_uom", `"${input.uom}" is not one of this item's units`, { uom: input.uom });
+  if (row.toBaseMultiplier === 1 || key === item.baseUom.trim().toLowerCase()) {
+    throw new MaterialsError("base_uom_required", `"${row.uom}" is this item's base unit; it is always issued`, { uom: row.uom });
+  }
+  if (row.isIssueUom === input.isIssueUom) return;
+  await tx.update(itemUoms).set({ isIssueUom: input.isIssueUom }).where(eq(itemUoms.id, row.id));
+  await appendEvent(tx, itemUpdated.make({ payload: { itemId, changed: [`uoms.${row.uom}.is_issue_uom`] }, actor, correlationId: itemId }));
+}
+
+/**
  * Adds a barcode. `packUom` must be one of the item's units — a barcode naming a pack the item does
  * not have is a scan that resolves to a quantity nobody can compute.
  */

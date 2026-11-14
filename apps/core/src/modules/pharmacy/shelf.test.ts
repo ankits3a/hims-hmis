@@ -86,6 +86,42 @@ describe("two sale items on one medicine (#1047)", () => {
     ]);
   });
 
+  /*
+    RE-WALK 2026-11-13 — the walk-in counter listed "10 available" above "40 available": the rows were in
+    the hospital-wide order (`shelfItemsByMedicine`), and the counter sells only from its own store. A row
+    is ordered by what THIS store can sell, best first, a tie to the code — across medicines too.
+  */
+  it("the counter's search orders rows by the stock at the store searched, not over every store; a tie goes to the code", async () => {
+    const ward = (await withTx(db, (tx) => createStore(tx, HEAD, { code: "WARD-STORE", name: "Ward store" }))).resourceId;
+    await stockIn(db, fx, { itemId: fx.item.crocin, batchNo: "CR-A", qtyBase: 10 });
+    await stockIn(db, fx, { itemId: fx.item.crocin, batchNo: "CR-W", qtyBase: 330, resourceId: ward });
+    await stockIn(db, fx, { itemId: second, batchNo: "CR-X", qtyBase: 40 });
+    await stockIn(db, fx, { itemId: fx.item.calpol, batchNo: "CP-1", qtyBase: 60 });
+    const found = await searchShelfAt(db, fx.storeId, "500", MON);
+    expect(found.map((f) => [f.itemCode, f.available])).toEqual([["CALP500", 60], ["CROC500X", 40], ["CROC500", 10], ["AZEE500", 0]]);
+    expect((await searchShelfAt(db, ward, "crocin", MON)).map((f) => [f.itemCode, f.available])).toEqual([["CROC500", 330], ["CROC500X", 0]]);
+  });
+
+  /*
+    RE-WALK 2026-11-13 — "pantoprazole" did not find Pan 40 on the shelf: the salt was asked only when no
+    item NAME matched, and a generic item called "Pantoprazole 40 mg tablet" matched. The answer is both:
+    the items named so first, then every other item carrying the salt, each group by this store's stock.
+  */
+  it("a salt's name lists the items named so first, then the other brands carrying the salt — once each", async () => {
+    const generic = await withTx(db, async (tx) => {
+      const { itemId } = await registerItem(tx, HEAD, {
+        code: "PCM500", name: "Paracetamol 500 tablet", class: "drug", baseUom: "tablet", batchTracked: true, formularyMedicineId: fx.med.crocin, gstRateBps: 1200,
+        uoms: [{ uom: "strip", toBaseMultiplier: 10, isPurchaseUom: true, isIssueUom: true }],
+      });
+      await registerSaleItem(tx, fx.pharmacist.actor, itemId);
+      return itemId;
+    });
+    await stockIn(db, fx, { itemId: generic, batchNo: "PC-1", qtyBase: 5 });
+    await stockIn(db, fx, { itemId: fx.item.calpol, batchNo: "CP-1", qtyBase: 90 });
+    const found = await searchShelfAt(db, fx.storeId, "paracetamol", MON);
+    expect(found.map((f) => [f.itemCode, f.available])).toEqual([["PCM500", 5], ["CALP500", 90], ["CROC500", 0], ["CROC500X", 0]]);
+  });
+
   it("a paper dispense sells the item the person chose, and the medicine's own item when none is named", async () => {
     await stockIn(db, fx, { itemId: fx.item.crocin, batchNo: "CR-A", qtyBase: 380 });
     await stockIn(db, fx, { itemId: second, batchNo: "CR-X", qtyBase: 75 });
