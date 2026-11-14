@@ -165,6 +165,7 @@ Source: `apps/core/src/modules/radiology/`
   - `imagingOverreadRecorded`
   - `imagingReportActedUpon`
   - `imagingReportHandedOver`
+  - `imagingReportPrinted`
   - `imagingReportPublished`
   - `imagingReportReleasedUnpaid`
   - `imagingReportUnread`
@@ -310,7 +311,7 @@ Source: `apps/core/src/modules/radiology/`
 - `prep-bay.ts`
   - `ROOM_GATE_KINDS: readonly ImagingGateKind[]`
   - `isRoomGate(kind: string): boolean`
-  - `prepBayList(db: Db, actor: Actor): Promise<PrepBayRow[]>`
+  - `prepBayList(db: Db, actor: Actor, now: Date = new Date()): Promise<PrepBayRow[]>`
   - `prepStudyView(db: Db, actor: Actor, studyId: string, now: Date = new Date()): Promise<PrepStudyView>`
   - types: `PrepBayRow`, `PrepGate`, `PrepStudyView`
 - `reactions.ts`
@@ -324,7 +325,7 @@ Source: `apps/core/src/modules/radiology/`
   - `WORKLIST_VIEWS`
   - `reportView(db: Db, actor: Actor, reportId: string): Promise<ReportView | null>`
   - `studyView(db: Db, actor: Actor, studyId: string): Promise<StudyView | null>`
-  - `worklist(db: Db, actor: Actor, opts: { view?: WorklistView; deviceResourceId?: string; limit?: number } = {}): Promise<WorklistRow[]>`
+  - `worklist(db: Db, actor: Actor, opts: { view?: WorklistView; deviceResourceId?: string; limit?: number; now?: Date } = {}): Promise<Worklist…`
   - types: `ReportView`, `StudyView`, `WorklistRow`, `WorklistView`
 - `reading.ts`
   - `TAT_MINUTES: Record<TatClass, number>`

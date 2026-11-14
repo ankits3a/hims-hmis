@@ -1,6 +1,6 @@
 ---
 issue: 1076
-status: approved
+status: built
 approved: 2026-11-14
 ---
 # SPEC — Imaging quick wins: full list rows, contrast prefill, hand-over search and print, quieter access log (#1076)
@@ -55,3 +55,10 @@ Status: APPROVED 2026-11-14 by the owner ("go ahead"), from the imaging module r
 
 - **Files.** `kernel/phi/audit.ts` (SHARED) · radiology `read.ts`, `reading.ts`, `prep-bay.ts`, `bedside.ts`, `schedule.ts`, `ir.ts`, `critical-ladder.ts`, `override-requests.ts`, `mwl.ts`, `tele.ts`, `release.ts`, `room.ts`, `checks.ts`, `events.ts` · `kernel/db/schema/radiology.ts` and a migration (SHARED) · web `radiology-worklist.tsx`, `radiology-reports.tsx`, `room-console.tsx`, the list markup in reception, room and reading, `lib/radiology-api.ts` · locales (SHARED).
 - **Migration** yes (index only). **Permissions** none. **Size** M. **Depends on** nothing.
+
+## As built (2026-11-14)
+
+- The hand-over desk prints through its own route (`GET /radiology/release/reports/:id/print`, on `radiology.schedule`, the desk's grant): the current released version only, refused while the patient's copy is held for dues. Same print view, access row and `imaging.report_printed` event as the reading room.
+- A search reaches every released report, not only the 30-day register: at most 50, newest first. A confidential patient is found by the name the reader is shown.
+- The new list UHID is blank for a confidential patient read without clearance (the room console's rule).
+- The 30-minute window covers the eleven list readers named above. Follow-ups, the doctor's results inbox, the PACS inbox and the access-log review still log every read.
