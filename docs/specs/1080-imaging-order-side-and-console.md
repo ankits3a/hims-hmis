@@ -1,6 +1,6 @@
 ---
 issue: 1080
-status: approved
+status: built
 approved: 2026-11-14
 ---
 # SPEC — Imaging: side (left/right) as an order field, and a shorter scan-room console (#1080)
