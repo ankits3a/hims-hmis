@@ -12,7 +12,7 @@ import { billDispense, previewDispenseBill } from "./bill";
 import { claimDispense, findAtCounter } from "./claim";
 import { handOverDispense } from "./handover";
 import { pickDispense } from "./pick";
-import { dispensePaper, dispensePrintJobs, gstSummary, sendDispensePaper } from "./print";
+import { dispensePaper, dispensePrintJobs, gstSummary, packRateText, qtyText, sendDispensePaper } from "./print";
 import { registerPharmacyPrinting } from "./pharmacy.module";
 import { verifyDispense } from "./verify";
 import type { PharmacyFixture } from "../../../test/helpers/pharmacy";
@@ -141,6 +141,28 @@ describe("the desk's paper (pharmacy P1)", () => {
     await handOverDispense(db, fx.pharmacist.actor, fx.decls, id, {}, MON3);
     const labels = await dispensePaper(db, fx.pharmacist.actor, id, MON3, ["pharmacy_labels"]);
     expect(labels.html).toContain(`Balance owed: 10 tablet — collect by ${day(new Date(MON3.getTime() + 30 * DAY))}`);
+  });
+
+  it("a short the patient asked for prints no balance on the bill or the label (walk 2026-11-13, #1055)", async () => {
+    const { issued } = await issueRx(db, fx, [line({ drug: "Crocin 500", medicineId: fx.med.crocin })]);
+    const r = await findAtCounter(db, testCfg, fx.pharmacist.actor, issued.qrPayload, MON2);
+    if (r.kind !== "dispense") throw new Error("no dispense");
+    const id = r.dispense.id;
+    await claimDispense(db, fx.pharmacist.actor, { dispenseId: id, door: "rx_qr" }, MON2);
+    await verifyDispense(db, fx.pharmacist.actor, fx.decls, id, { lines: [{ lineIdx: 0, qtyBase: 20 }] }, MON2);
+    await pickDispense(db, fx.pharmacist.actor, fx.decls, id, { lines: [{ lineIdx: 0, qtyBase: 10, pickNote: "patient asked for less", short: "patient" }] }, MON2);
+    const preview = await previewDispenseBill(db, fx.pharmacist.actor, id, MON2);
+    await billDispense(db, fx.pharmacist.actor, id, { tenders: [{ mode: "cash", amountPaise: preview.totals.netPayablePaise }] }, MON2);
+    expect((await dispensePaper(db, fx.pharmacist.actor, id, MON2, ["pharmacy_bill"])).html).not.toContain("Balance owed");
+    await handOverDispense(db, fx.pharmacist.actor, fx.decls, id, {}, MON3);
+    expect((await dispensePaper(db, fx.pharmacist.actor, id, MON3, ["pharmacy_labels"])).html).not.toContain("Balance owed");
+  });
+
+  it("a pack's CODE is worded plainly on the patient's bill: strip15 prints as strip (walk 2026-11-13, #1055)", () => {
+    const row = { qty: 20, pack: { uom: "strip15", multiplier: 15, packs: 1, loose: 5, baseUom: "tablet", packPaise: 15000 } } as Parameters<typeof qtyText>[0];
+    expect(qtyText(row)).toBe("1 strip + 5 tablet");
+    expect(packRateText(row)).toBe("₹150.00/strip");
+    expect(qtyText({ ...row, qty: 30, pack: { ...row.pack!, packs: 2, loose: 0 } })).toBe("2 strip");
   });
 
   it("nothing owed, nothing said", async () => {

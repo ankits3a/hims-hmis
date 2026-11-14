@@ -1,4 +1,4 @@
-import { counterPackOf } from "./counter-pack";
+import { counterPackOf, packWordOf } from "./counter-pack";
 
 describe("counterPackOf — the one counter-pack rule (#1047)", () => {
   const base = { uom: "tablet", toBaseMultiplier: 1, isIssueUom: true };
@@ -12,5 +12,19 @@ describe("counterPackOf — the one counter-pack rule (#1047)", () => {
     expect(counterPackOf([base, { uom: "box100", toBaseMultiplier: 100 }, { uom: "strip10", toBaseMultiplier: 10, isIssueUom: false }])?.uom).toBe("strip10");
     expect(counterPackOf([base])).toBeNull();
     expect(counterPackOf([])).toBeNull();
+  });
+});
+
+describe("packWordOf — a pack's CODE as a patient's paper words it (walk 2026-11-13, #1055)", () => {
+  it("drops the size a code carries: strip15 → strip, box10 → box", () => {
+    expect(packWordOf("strip15")).toBe("strip");
+    expect(packWordOf("strip10")).toBe("strip");
+    expect(packWordOf("box100")).toBe("box");
+    expect(packWordOf("Strip 15")).toBe("Strip");
+  });
+  it("leaves a plain word as it is", () => {
+    expect(packWordOf("strip")).toBe("strip");
+    expect(packWordOf("bottle")).toBe("bottle");
+    expect(packWordOf("10x10")).toBe("10x10");
   });
 });

@@ -3604,6 +3604,7 @@
     "posted": "Posted — stock has moved",
     "verdict": "Verdict",
     "verdictPass": "Accepted",
+    "costEstimated": "estimated",
     "status_draft": "Draft",
     "status_gate_qc": "Awaiting QC",
     "status_accepted": "Accepted",
@@ -8787,7 +8788,7 @@
     "free_bill_takes_no_money": "This bill is free — take no money, discount or credit on it",
     "discount_not_bound": "The approval does not cover this bill's discount — the medicines or the discount changed. Ask again.",
     "discount_needs_customer": "Name the customer first — an approval of money is filed against a patient.",
-    "paper_rx_controlled": "Schedule X and narcotic/psychotropic medicines need the doctor's e-prescription — they are not given from a paper prescription at the desk.",
+    "paper_rx_controlled": "Schedule X and narcotic/psychotropic medicines need the doctor's e-prescription — they are not given from a paper prescription, or added by hand, at the desk.",
     "invalid_adr": "The reaction report is incomplete or inconsistent — check the dates and the medicines",
     "unknown_adr": "No such reaction report",
     "adr_closed": "This reaction report is closed",
@@ -8945,6 +8946,13 @@
     "rejected": "{{who}} refused the discount: {{note}}. Remove it, or ask again."
   },
   "pharmacyDesk": {
+    "allSettled": "every line settled",
+    "take": "Take",
+    "resume": "Resume",
+    "lineHint": "oldest first",
+    "foot": {"hint": "Tick, give short or drop each line — the bill opens when every line is settled.", "soFar": "so far"},
+    "added": {"mark": "added at the counter by {{name}} · {{reason}}", "reason": {"not_prescribed": "not prescribed", "paper": "the doctor wrote it on paper"}},
+    "add": {"open": "+ Add a medicine", "hint": "Not on the prescription, or the doctor wrote it on paper only.", "hintAtBill": "Not on the prescription, or written on paper only. A line's ⋯ still works — the bill re-totals.", "title": "Add a medicine to {{ticket}}", "medicine": "Medicine", "search": "brand, salt or code — off this counter's shelf", "none": "Nothing on this counter's shelf matches that.", "schedule": "Schedule {{flag}}", "why": "Why is it being added?", "qty": "Quantity", "photo": "Photo of the slip", "photoRequired": "Needed for a Schedule H or H1 medicine, unless quick desk mode is on.", "photoOptional": "Optional for this medicine.", "prescriber": "Prescriber, as written", "regNo": "Registration no.", "h1Prescriber": "Schedule H1: the prescriber's name and registration number are required — the H1 register writes them.", "prescriberOptional": "Optional — kept on the line when given.", "note": "Allergy, interaction and duplicate checks run on it like any prescribed line. It shows on the ticket and the bill as added at the counter by {{name}}. Schedule X and narcotics cannot be added here.", "save": "Add to the ticket", "adding": "Adding…", "cancel": "Cancel", "reason": {"not_prescribed": "Not prescribed", "paper": "The doctor wrote it on paper"}, "reasonHint": {"not_prescribed": "Asked for at the counter. Any schedule except X and narcotics.", "paper": "On the slip in the patient's hand, not in the system."}},
     "balance": { "owed": "Balance owed: {{what}} · until {{until}}", "open": "Open the balance ticket", "opened": "Balance ticket opened for {{who}}.", "handover": "Balance owed: {{what}} — collect within {{days}} days", "handoverAgain": "Balance still owed: {{what}}" },
     "swap": { "needed": "{{doctor}} must agree to {{brand}}: a Schedule H/H1 brand swap. Ask from ⋯, or give the brand written.", "waiting": "Waiting for {{doctor}} to agree to {{brand}}.", "agreed": "{{doctor}} agreed to {{brand}}: {{reason}}", "ask": "Ask {{doctor}} to agree to the swap" },
     "drop": { "reason": {"notWanted": "patient does not want it", "hasAtHome": "patient has it at home"} },
@@ -8965,6 +8973,7 @@
     "where": "OPD counter",
     "thisDesk": "this desk",
     "waiting": "{{count}} waiting",
+    "inLineChip": "{{count}} in the line",
     "command": "⌘ command",
     "nobody": "nobody in hand",
     "nobodyHint": "Scan the slip, or take the next ticket from the line. The patient you take stays in this column until Esc.",
@@ -8981,6 +8990,8 @@
       "drawerFloat": "drawer float"
     },
     "keys": {
+      "a": "add a medicine",
+      "p": "paper prescription",
       "title": "keys",
       "q": "the whole line",
       "f8": "command",
@@ -9093,10 +9104,15 @@
     "giving": "what you are giving",
     "qty": "qty",
     "idleTitle": "Whose prescription is in your hand?",
-    "idleHint": "Scan it. Typing is the fallback, not the plan — a scanned slip cannot be the wrong patient.",
+    "idleHint": "Scan the slip — typing is the fallback, and a scanned slip cannot be the wrong patient.",
     "findLabel": "slip QR · token · UHID · name",
-    "findPlaceholder": "T-14 · U00110012 · Ramesh",
+    "findPlaceholder": "slip QR · token · mobile · name · UHID",
     "find": {
+      "noSlip": "no slip?",
+      "paperPill": "paper prescription",
+      "lanes": "the slip QR, token, mobile, name and UHID are searched at once",
+      "paperFirst": "Find the patient first — the paper prescription opens for them.",
+      "thisIsThem": "this is them",
       "button": "Find",
       "qrInvalid": "That code is not a prescription this hospital signed.",
       "doneToday": "Today's medicines for that patient are already handed over.",
@@ -9177,6 +9193,7 @@
     "dock": "counter agent",
     "dockQuiet": "watching the line — nothing to report yet",
     "log": {
+      "added": "Added {{drug}} by hand.",
       "claimed": "took {{who}}'s ticket",
       "verified": "checked the prescription — ticket {{no}}",
       "collected_one": "holding one line for 30 minutes",
@@ -9222,7 +9239,7 @@
       "diesInCourse": "Batch {{batch}} expires {{expiry}}, before the {{days}}-day course ends."
     },
     "partialWhy": "giving {{n}} of {{of}} — why?",
-    "partialPlaceholder": "only this much on the shelf · patient asked for less",
+    "partialPlaceholder": "the reason, in a few words",
     "scanLabel": "Scan the pack for {{line}}",
     "scanPlaceholder": "scan the pack — ⏎ ticks the line",
     "declineWhy": "Why is {{line}} declined?",
@@ -9234,6 +9251,8 @@
     "ofPrescribed": "of {{of}}",
     "lineMenu": "What else for {{line}}",
     "bill": {
+      "addedMark": "added at the counter",
+      "closesAtHandover": "This column closes after hand-over. A refund or return of this bill opens from the ticket's ⋯.",
       "title": "the bill · live",
       "paid": "PAID",
       "unpaid": "UNPAID",
@@ -9461,7 +9480,15 @@
       "titleDrug": "Report a reaction — {{drug}}",
       "done": "{{no}} recorded. The allergy is on the patient's record; the office sends it to PvPI."
     },
-    "partialOwed": "giving {{n}} of {{of}} — say why under ⋯ before the tick counts",
+    "partialOwed": "giving {{n}} of {{of}} — say why before the tick counts",
+    "partialSayWhy": "Say why",
+    "partialBy": {
+      "label": "Why is it short?",
+      "shelf": "only this much on the shelf",
+      "patient": "the patient asked for less",
+      "owes": "The rest ({{n}}) is owed — the patient collects it on a balance ticket.",
+      "owesNothing": "Nothing is owed — the patient asked for less."
+    },
     "partialSaid": "giving {{n}} of {{of}} — {{reason}}",
     "qtySheet": {
       "title": "How many of {{drug}}?",
@@ -10878,6 +10905,8 @@
     "sealedNote": "A sealed patient's name and address are withheld from this login. The unredacted copy for an inspector is printed by the pharmacist in charge, the medical superintendent or the owner."
   },
   "pharmacyBill": {
+    "added": "added at the counter by {{name}} · {{reason}}",
+    "addedReason": {"not_prescribed": "not prescribed", "paper": "the doctor wrote it on paper"},
     "manufacturer": "Mfr.",
     "licence": "D.L. No. Form 20: {{form20}} · Form 21: {{form21}}",
     "licenceNone": "D.L. No. —",

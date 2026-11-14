@@ -11,7 +11,7 @@ import { medicinesByIds } from "../formulary";
 import { consumeReservation, effectiveRegulation, getBatch, itemUomRows, itemsByIds, materialConsumed } from "../materials";
 import { getDoctor, getPrescription, getVisit } from "../opd";
 import { getPatient } from "../patients";
-import { REGISTER_FLAGS, SCHEDULED_FLAGS, istDateOf } from "./config";
+import { NO_PRESCRIPTION_PRESCRIBER, REGISTER_FLAGS, SCHEDULED_FLAGS, istDateOf } from "./config";
 import { assertStewardApprovals } from "./antimicrobial";
 import { assertNoColdChainHold } from "./cold-chain";
 import { assertControlledLinesAllowed, controlOf } from "./controlled";
@@ -293,9 +293,15 @@ export async function handOverDispense(
           patientName: patient.name, patientAddress: patient.addressLine ?? null,
           /* 2026-09-30 — an OUTSIDE doctor's paper prescription: Rule 65(3)'s name, registration number and
              address come off the prescription row, where the desk recorded them (all three required for H1). */
-          ...(rx.doctorId === null
-            ? { prescriberName: rx.outsidePrescriberName ?? "outside prescriber", prescriberRegNo: rx.outsidePrescriberRegNo, prescriberAddress: rx.outsidePrescriberAddress }
-            : { prescriberName: doctor?.displayName ?? rx.doctorId, prescriberRegNo: doctor?.registrationNo ?? null }),
+          /* Spec #1055, ruling 0094 — a line added at the counter: no prescription says so where the prescriber goes; a
+             paper slip's prescriber is the one written on it, as typed at the counter. */
+          ...(line.addedReason === "not_prescribed"
+            ? { prescriberName: NO_PRESCRIPTION_PRESCRIBER, prescriberRegNo: null }
+            : line.addedReason === "paper"
+              ? { prescriberName: line.addedPrescriberName ?? "prescriber not named", prescriberRegNo: line.addedPrescriberRegNo }
+              : rx.doctorId === null
+                ? { prescriberName: rx.outsidePrescriberName ?? "outside prescriber", prescriberRegNo: rx.outsidePrescriberRegNo, prescriberAddress: rx.outsidePrescriberAddress }
+                : { prescriberName: doctor?.displayName ?? rx.doctorId, prescriberRegNo: doctor?.registrationNo ?? null }),
           drugName: medicineName(med, (line.rxLine as RxLine).drug),
           medicineId: line.dispensedMedicineId, batchNo: batch.batchNo, qtyBase: line.qtyBase, unit: item?.baseUom ?? "unit", recordedBy: actor.id,
           pharmacistRegNo,

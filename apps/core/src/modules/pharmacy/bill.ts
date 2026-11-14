@@ -200,8 +200,12 @@ export function winnerOf(
       : row.unitPaise === planned.batchUnitPaise ? "batch_mrp" : "tariff";
 }
 
-/** A draft line as a person reads it: a drug's main line with its pack residue folded in, and its quantity in packs. */
-export type DisplayPricedLine = PricedDraft["lines"][number] & { pack: BillRowPack | null };
+/**
+ * A draft line as a person reads it: a drug's main line with its pack residue folded in, and its quantity in packs.
+ * `lineIdx` (walk 2026-11-13, #1055) — the dispense line the row bills, so the desk's live bill can mark a medicine
+ * added at the counter; null where the plan names no dispense line (the walk-in counter's cart).
+ */
+export type DisplayPricedLine = PricedDraft["lines"][number] & { pack: BillRowPack | null; lineIdx: number | null };
 export type DisplayDraft = Omit<PricedDraft, "lines"> & { lines: DisplayPricedLine[] };
 
 /**
@@ -210,10 +214,11 @@ export type DisplayDraft = Omit<PricedDraft, "lines"> & { lines: DisplayPricedLi
  * drug. The totals are billing's, untouched.
  */
 export function displayDraft(
-  draft: PricedDraft, plan: readonly { input: InvoiceLineInput; residual: InvoiceLineInput | null; itemId: string }[],
+  draft: PricedDraft, plan: readonly { input: InvoiceLineInput; residual: InvoiceLineInput | null; itemId: string; lineIdx?: number }[],
   packs: ReadonlyMap<string, RowGroup["pack"]>,
 ): DisplayDraft {
   const groups: RowGroup[] = plan.map((p) => ({ mainId: p.input.lineId, residueId: p.residual?.lineId ?? null, pack: packs.get(p.itemId) ?? null }));
+  const lineIdxOf = new Map(plan.map((p) => [p.input.lineId, p.lineIdx ?? null] as const));
   const rows = mergeBillRows(draft.lines.map((l) => ({
     id: l.lineId, serviceName: l.serviceName, qty: l.qty, unitPaise: l.unitPaise, grossPaise: l.grossPaise,
     discountPaise: l.discountPaise, cgstPaise: l.gst.cgstPaise, sgstPaise: l.gst.sgstPaise, netPaise: l.netPaise,
@@ -229,6 +234,7 @@ export function displayDraft(
         taxableBasePaise: parts.reduce((n, x) => n + x.taxableBasePaise, 0),
         gst: { ...main.gst, cgstPaise: r.cgstPaise, sgstPaise: r.sgstPaise },
         pack: r.pack,
+        lineIdx: lineIdxOf.get(main.lineId) ?? null,
       };
     }),
   };

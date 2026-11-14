@@ -1611,6 +1611,13 @@
       "when": 1794581738956,
       "tag": "0230_pharmacy_stock_in_go_live",
       "breakpoints": true
+    },
+    {
+      "idx": 230,
+      "version": "7",
+      "when": 1794594803593,
+      "tag": "0231_pharmacy_add_medicine_by_hand",
+      "breakpoints": true
     }
   ]
 }

@@ -78,6 +78,21 @@ export const substitutionRecorded = defineEvent("substitution.recorded", MODULE,
 }));
 
 /**
+ * Spec #1055, ruling 0094 — a medicine ADDED to the ticket by hand at the counter: not prescribed, or written on the
+ * doctor's paper only. `addedByName` is said on the ticket and the bill ("added at the counter by <name>"); a paper
+ * line carries its slip's photo and the prescriber as written. `reserved` — added to a ticket already collected, its
+ * stock was held at once (FEFO). Added while claimed, the check gives it an order item; added after the check it has
+ * none (the kernel's order takes no item once placed).
+ */
+export const lineAdded = defineEvent("dispense.line_added", MODULE, z.object({
+  dispenseId: id, lineIdx: z.number().int().nonnegative(), patientId: id, reason: z.enum(["not_prescribed", "paper"]),
+  medicineId: id, itemId: id, qtyBase: z.number().int().positive(), scheduleFlag: z.string().nullable(),
+  addedBy: id, addedByName: z.string().min(1), dispenseStatus: z.enum(["claimed", "verified", "picked"]),
+  documentId: id.nullable(), prescriberName: z.string().nullable(), prescriberRegNo: z.string().nullable(),
+  reserved: z.boolean(),
+}));
+
+/**
  * PD-5b — a line the catalogue could not place, read as a medicine by the pharmacist at the check.
  * Not a substitution: nothing the doctor named was replaced, so there is no consent to name. The
  * resolver is named because a person, not the catalogue, decided what the doctor's words meant.
@@ -364,7 +379,7 @@ export const dispenseTakenOver = defineEvent("dispense.taken_over", MODULE, z.ob
 
 /** The catalog, in source order (`LAB_EVENTS`' discipline). A later task that adds a `defineEvent` above adds it here. */
 export const PHARMACY_EVENTS = [
-  dispenseQueued, paperRxEntered, paperRxVisitOpened, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded, lineResolved, lineMatched, shelfLocationSet,
+  dispenseQueued, paperRxEntered, paperRxVisitOpened, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded, lineResolved, lineMatched, lineAdded, shelfLocationSet,
   authorisationRequested, authorisationDecided,
   dispensePicked, dispenseBilled, dispenseHandedOver, dispenseCancelled,
   pharmacistRegistered, pharmacistRegistrationEnded, dispenseLineReturned,

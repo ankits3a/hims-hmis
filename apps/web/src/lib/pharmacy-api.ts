@@ -80,6 +80,8 @@ export type WireDispenseLine = {
   splitFromLineIdx?: number | null;
   /** Spec #1046 D6 — what a short pick left owed on this line, in base units. Absent from an older server. */
   owedQtyBase?: number | null;
+  /** Spec #1055 — a medicine the counter added by hand: why, who (and their name), when. Absent from an older server. */
+  added?: WireAddedMark | null;
   lineIdx: number; rxLine: WireRxLine; status: string; declinedReason: string | null; substitutionType: string;
   qtyBase: number | null; scheduleFlag: string | null;
   orderedMedicine: WireMedicine | null; dispensedMedicine: WireMedicine | null;
@@ -115,6 +117,11 @@ export type WireDispenseLine = {
   /** PHARMACY P6 — the NDPS Act class, and whether the line is controlled (NDPS or Schedule X). Absent from an older server. */
   ndpsClass?: string | null;
   controlled?: boolean;
+};
+/** Spec #1055, ruling 0094 — "added at the counter by <name>": not prescribed, or written on the doctor's paper only. */
+export type WireAddedMark = {
+  reason: "not_prescribed" | "paper"; by: string; byName: string | null; at: string;
+  documentId: string | null; prescriberName: string | null; prescriberRegNo: string | null;
 };
 /** PHARMACY P6 — what the law asks before a controlled line is handed over, each ok or not (the counter agent's card). */
 export type WireControlledCheck = {
@@ -332,6 +339,16 @@ export type VerifyLine = { lineIdx: number; qtyBase: number; dispensedMedicineId
 export async function verifyDispense(id: string, lines: VerifyLine[], idempotencyKey: string): Promise<WireDispense> {
   return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/verify`, { lines }, idempotencyKey);
 }
+/** Spec #1055, ruling 0094 — add a medicine to the ticket by hand (any schedule but X and narcotics). */
+export type AddLineBody = {
+  itemId: string; reason: "not_prescribed" | "paper"; qtyBase: number;
+  dose?: string; frequency?: string; durationDays?: number;
+  photo?: { mimeType: string; imageBase64: string };
+  prescriber?: { name: string | null; registrationNo: string | null };
+};
+export async function addDispenseLine(id: string, body: AddLineBody, idempotencyKey: string): Promise<WireDispense> {
+  return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/lines`, body, idempotencyKey);
+}
 export async function declineLine(id: string, lineIdx: number, reason: string): Promise<WireDispense> {
   return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/lines/${String(lineIdx)}/decline`, { reason });
 }
@@ -354,7 +371,8 @@ export async function cancelDispense(id: string, reason: string): Promise<WireDi
 }
 
 // ── T4 — pick, bill, hand over, the label ──
-export type PickLine = { lineIdx: number; qtyBase?: number; pickNote?: string; batchId?: string; scan?: string };
+/** `short` (walk 2026-11-13, #1055): why a partial is short — the shelf (a balance is owed) or the patient's ask (nothing is). */
+export type PickLine = { lineIdx: number; qtyBase?: number; pickNote?: string; short?: "shelf" | "patient"; batchId?: string; scan?: string };
 /** P13 — what the pack in hand is, checked as it is scanned. */
 export async function checkPickScan(id: string, lineIdx: number, code: string): Promise<{ itemCode: string; batchNo: string | null; expiryDate: string | null }> {
   return api("GET", `/pharmacy/dispenses/${id}/lines/${String(lineIdx)}/scan${qs({ code })}`);
@@ -363,7 +381,8 @@ export async function pickDispense(id: string, lines: PickLine[], idempotencyKey
   return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/pick`, { lines }, idempotencyKey);
 }
 /** `pack`: the server folded a pack residue into this drug's line and says how its quantity reads (loose-MRP ruling). Absent from an older server. */
-export type WirePricedLine = { lineId: string; serviceId: string; serviceName: string; qty: number; unitPaise: number; grossPaise: number; discountPaise: number; netPaise: number; gst: { rateBps: number; exempt: boolean }; pack?: WireBillRowPack | null };
+/** `lineIdx` (walk 2026-11-13, #1055): the dispense line the row bills; null on the walk-in cart; absent from an older server. */
+export type WirePricedLine = { lineId: string; serviceId: string; serviceName: string; qty: number; unitPaise: number; grossPaise: number; discountPaise: number; netPaise: number; gst: { rateBps: number; exempt: boolean }; pack?: WireBillRowPack | null; lineIdx?: number | null };
 /**
  * OWNER RULINGS 2026-09-30 (money). `byTender`: the payable under each rounding rule — `cash` (any cash, a split,
  * or the owner's credit: the nearest rupee, halves up) and `digital` (UPI or card alone: to the paisa). `discount`:
@@ -425,6 +444,8 @@ export type WireLabel = {
     lineIdx: number; drug: string; strength: string | null; form: string | null; qtyBase: number; unit: string; packs: string | null; batchNo: string; expiryDate: string | null; directions: string; substitutedFor: string | null;
     /** Spec #1046 D5 — the maker on the pack. Absent from an older server. */
     manufacturer?: string | null;
+    /** Spec #1055 — a medicine added at the counter by hand: the bill says so, and why. Absent from an older server. */
+    added?: { reason: "not_prescribed" | "paper"; byName: string } | null;
   }[];
   /** Spec #1046 D5 — the current drug licence numbers the bill prints; null when none. Absent from an older server. */
   licence?: { form20No: string; form21No: string } | null;
@@ -448,6 +469,16 @@ export type WirePharmacist = {
   /** P15 — days left once inside the renewal window; absent from an older server. */
   renewalDueInDays?: number | null;
 };
+/**
+ * Walk 2026-11-13 (#1055) — the caller's full name, read off `/auth/me`'s profile: the name the server writes on a line
+ * the counter adds ("added at the counter by <full name>"), so the sheet that promises it says the same name. Null when
+ * the account has none.
+ */
+export async function fetchMyFullName(): Promise<string | null> {
+  const me = await api<{ profile?: { fullName?: string | null } | null }>("GET", "/auth/me");
+  const name = (me.profile?.fullName ?? "").trim();
+  return name === "" ? null : name;
+}
 /** The desk header's pill: the caller's OWN current registration, or null. 404 from an older server. */
 export async function fetchMyRegistration(): Promise<{ registration: { council: string; registrationNo: string; validUntil: string | null } | null }> {
   return api("GET", "/pharmacy/pharmacists/me");

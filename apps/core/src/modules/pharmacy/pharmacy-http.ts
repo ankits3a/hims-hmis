@@ -76,6 +76,8 @@ export const PHARMACY_IDEMPOTENT_ROUTES = {
   trayCheck: "POST /pharmacy/trays/checks",
   /** 2026-09-30 — a paper prescription entered at the desk: a retried click must not issue it twice. */
   paperRx: "POST /pharmacy/paper-rx",
+  /** Spec #1055 — a medicine added to a ticket by hand: a retried click must not add (or hold) it twice. */
+  addLine: "POST /pharmacy/dispenses/:id/lines",
 } as const;
 
 /**

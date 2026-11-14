@@ -311,12 +311,35 @@ export async function listQueue(db: Db, actor: Actor, filter: { serviceDate: str
   return out;
 }
 
+export type AddedMark = {
+  reason: "not_prescribed" | "paper"; by: string; byName: string | null; at: Date;
+  documentId: string | null; prescriberName: string | null; prescriberRegNo: string | null;
+};
+
+/** Spec #1055 — the line's "added at the counter" mark, or null for a line the prescription laid. */
+export function addedMarkOf(
+  l: Pick<DispenseLineRow, "addedReason" | "addedBy" | "addedAt" | "addedDocumentId" | "addedPrescriberName" | "addedPrescriberRegNo">,
+  names: ReadonlyMap<string, string>,
+): AddedMark | null {
+  if (l.addedReason === null || l.addedBy === null || l.addedAt === null) return null;
+  return {
+    reason: l.addedReason === "paper" ? "paper" : "not_prescribed", by: l.addedBy, byName: names.get(l.addedBy) ?? null, at: l.addedAt,
+    documentId: l.addedDocumentId, prescriberName: l.addedPrescriberName, prescriberRegNo: l.addedPrescriberRegNo,
+  };
+}
+
 export type DispenseLineView = {
   lineIdx: number;
   /** DESK FIXES 2026-09-30 — a further batch of the prescription line at this index (the pick split it); null otherwise. */
   splitFromLineIdx: number | null;
   /** Spec #1046 D6 — what a short pick left owed on this line, in base units; null when nothing is. */
   owedQtyBase: number | null;
+  /**
+   * Spec #1055, ruling 0094 — a medicine the counter added by hand: why, who (and their name, said on the ticket and the
+   * bill as "added at the counter by <name>"), when; for `paper`, the slip's photo and the prescriber as written. Null on
+   * every line the prescription laid.
+   */
+  added: AddedMark | null;
   rxLine: RxLine;
   status: string;
   declinedReason: string | null;
@@ -526,7 +549,7 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
   const prescriber = rxRow === undefined || rxRow.doctorId === null ? null : await getDoctor(db, rxRow.doctorId);
   const asked = await authorisationsOf(db, d.id);
   const transcribedBy = rxRow?.transcribedBy ?? null;
-  const names = await userNames(db, [d.claimedBy, transcribedBy]);
+  const names = await userNames(db, [d.claimedBy, transcribedBy, ...lines.map((l) => l.addedBy)]);
   /**
    * PHARMACY P6 — a controlled line's stock is in the CABINET, not on the counter's shelf: its
    * availability, batches and price are read there (the pick reserves there too, `pick.ts`).
@@ -594,7 +617,7 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
       }
     }
     views.push({
-      lineIdx: l.lineIdx, splitFromLineIdx: l.splitFromLineIdx, owedQtyBase: l.owedQtyBase, rxLine: l.rxLine as RxLine, status: l.status, declinedReason: l.declinedReason,
+      lineIdx: l.lineIdx, splitFromLineIdx: l.splitFromLineIdx, owedQtyBase: l.owedQtyBase, added: addedMarkOf(l, names), rxLine: l.rxLine as RxLine, status: l.status, declinedReason: l.declinedReason,
       substitutionType: l.substitutionType, qtyBase: l.qtyBase, scheduleFlag: l.scheduleFlag,
       ndpsClass: l.ndpsClass, controlled: isControlled(l),
       orderedMedicine: om === undefined ? null : { id: om.id, brandName: om.brandName, strengthLabel: om.strengthLabel, form: om.form },
