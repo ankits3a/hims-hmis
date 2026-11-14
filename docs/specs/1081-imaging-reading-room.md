@@ -1,6 +1,6 @@
 ---
 issue: 1081
-status: approved
+status: built
 approved: 2026-11-14
 ---
 # SPEC — Imaging reading room: draft autosave, reading claim, reading pools, drafted sections with sources (#1081)
