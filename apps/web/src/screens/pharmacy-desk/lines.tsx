@@ -1003,15 +1003,11 @@ function LineRow({
           />
           {/*
             Spec #1064 — the decline's short list: a pill sets the reason code and words the reason (Other leaves the words
-            to the pharmacist). Only "not in stock" records the medicine as asked for. At the bill (drop) the patient's two
-            reasons stay words only.
+            to the pharmacist). Only "not in stock" records the medicine as asked for — at the decline and (follow-up) at
+            the bill's drop alike.
           */}
           <span style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-            {dropping ? (["notWanted", "hasAtHome"] as const).map((k) => (
-              <button key={k} type="button" className="pill" data-testid={`${id}-why-${k}`} onClick={() => setWhy(t(`pharmacyDesk.drop.reason.${k}`))}>
-                {t(`pharmacyDesk.drop.reason.${k}`)}
-              </button>
-            )) : DECLINE_PILLS.map(([k, code]) => (
+            {DECLINE_PILLS.map(([k, code]) => (
               <button
                 key={k}
                 type="button"
@@ -1027,10 +1023,10 @@ function LineRow({
               </button>
             ))}
           </span>
-          {!dropping && declineCode === "not_in_stock" ? (
+          {declineCode === "not_in_stock" ? (
             <p data-testid={`${id}-will-note`} style={{ margin: "8px 0 0 0", fontSize: 12, color: "var(--dim)" }}>{t("pharmacyDesk.short.willNote")}</p>
           ) : null}
-          {!dropping && declineCode === null && ((shortChoice ?? readsAsShortage(why)) || shortChoice === false) ? (
+          {declineCode === null && ((shortChoice ?? readsAsShortage(why)) || shortChoice === false) ? (
             <label data-testid={`${id}-also-short`} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, fontSize: 12.5 }}>
               <input type="checkbox" checked={shortChoice ?? readsAsShortage(why)} onChange={(e) => setShortChoice(e.target.checked)} />
               {t("pharmacyDesk.short.alsoNote", { name: given?.brandName ?? rx.drug })}
@@ -1039,7 +1035,7 @@ function LineRow({
           <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
             <button
               type="button" className="pri" style={{ flexGrow: 1 }} disabled={busy || why.trim() === ""}
-              onClick={() => onDecline(why.trim(), dropping ? undefined : declineCode ?? ((shortChoice ?? readsAsShortage(why)) ? "not_in_stock" : undefined))}
+              onClick={() => onDecline(why.trim(), declineCode ?? ((shortChoice ?? readsAsShortage(why)) ? "not_in_stock" : undefined))}
             >
               {t(dropping ? "pharmacyDesk.dropIt" : "pharmacyDesk.declineIt")}
             </button>

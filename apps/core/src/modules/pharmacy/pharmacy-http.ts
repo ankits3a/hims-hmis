@@ -78,6 +78,8 @@ export const PHARMACY_IDEMPOTENT_ROUTES = {
   paperRx: "POST /pharmacy/paper-rx",
   /** Spec #1055 — a medicine added to a ticket by hand: a retried click must not add (or hold) it twice. */
   addLine: "POST /pharmacy/dispenses/:id/lines",
+  /** Spec #1064 — "Note as asked for": a double tap, or a retry after a lost answer, must not count the ask twice. */
+  askedFor: "POST /pharmacy/retail/asked-for",
 } as const;
 
 /**

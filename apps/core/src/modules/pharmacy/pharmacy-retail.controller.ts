@@ -3,7 +3,8 @@ import { z } from "zod";
 import { CONFIG, DB, DOCUMENT_STORE } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { istDateOf } from "./config";
-import { discountAskSchema, discountOnBillSchema, idSchema, parsed, toHttp } from "./pharmacy-http";
+import { withIdempotency } from "../billing";
+import { PHARMACY_IDEMPOTENT_ROUTES, discountAskSchema, discountOnBillSchema, idSchema, parsed, toHttp } from "./pharmacy-http";
 import { acceptRetailReturn, findRetailSaleByInvoiceNo } from "./retail-returns";
 import {
   counterBatches, enterPaperDispense, getRetailSale, inspectSheet, listPaperDispenses, listRetailLicences, listRetailSales,
@@ -167,13 +168,15 @@ export class PharmacyRetailController {
   /**
    * Spec #1064 — the walk-in counter's "Note as asked for", one tap from a search with no stock (or none at all) and from
    * a `short_stock` refusal: a lost-demand row at PHARM-RETAIL, and for a catalogue item the short book raised.
+   * Idempotent on the `Idempotency-Key` the screen keeps for one press: a replay answers the first note.
    */
   @RequirePermission("pharmacy.retail.sell", "hospital")
   @Post("asked-for")
-  async askedFor(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<DemandResult> {
+  async askedFor(@CurrentActor() actor: Actor, @Body() body: unknown, @Headers("idempotency-key") key?: string): Promise<DemandResult> {
     const input = parsed(askedForBody, body);
     try {
-      return await noteAskedFor(this.db, actor, input, new Date());
+      return await withIdempotency(this.db, { actorId: actor.id, route: PHARMACY_IDEMPOTENT_ROUTES.askedFor, key }, input,
+        () => noteAskedFor(this.db, actor, input, new Date()));
     } catch (e) {
       return toHttp(e);
     }

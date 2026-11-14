@@ -67,7 +67,7 @@ import type { RetailShelfEntry } from "./retail";
 import type { LabelData } from "./label";
 import { dispensePaper, dispensePrintJobs, sendDispensePaper } from "./print";
 import type { PrintJobView, SendPaperResult } from "./print";
-import { addShortBookEntry, listOpenShortBook, resolveShortBookEntry } from "./short-book";
+import { addShortBookEntry, listCounterShortBook, listOpenShortBook, resolveShortBookEntry } from "./short-book";
 import type { ShortBookEntry, ShortBookView } from "./short-book";
 import { myShift } from "./shift";
 import type { MyShift } from "./shift";
@@ -681,12 +681,12 @@ export class PharmacyCounterController {
     }
   }
 
-  /** P1 — the short book's open rows for a counter's store (the OPD counter's by default). */
+  /** P1 — the short book's open rows: a counter's store when named, else both counters' (#1064 follow-up), each with its store. */
   @RequirePermission("pharmacy.dispense.read", "hospital")
   @Get("short-book")
   async shortBook(@Query("store") store?: string): Promise<{ entries: ShortBookView[] }> {
     try {
-      return { entries: await listOpenShortBook(this.db, store) };
+      return { entries: store === undefined || store === "" ? await listCounterShortBook(this.db) : await listOpenShortBook(this.db, store) };
     } catch (e) {
       return toHttp(e);
     }

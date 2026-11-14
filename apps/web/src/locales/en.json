@@ -8640,6 +8640,8 @@
       "notStocked": "not stocked",
       "asked_one": "asked once",
       "asked_other": "asked {{count}} times",
+      "store": "Store",
+      "stores": {"opd": "OPD", "walkIn": "Walk-in"},
       "source": {
         "desk": "the desk",
         "agent": "agent draft",
@@ -8961,7 +8963,6 @@
     "add": {"open": "+ Add a medicine", "hint": "Not on the prescription, or the doctor wrote it on paper only.", "hintAtBill": "Not on the prescription, or written on paper only. A line's ⋯ still works — the bill re-totals.", "title": "Add a medicine to {{ticket}}", "medicine": "Medicine", "search": "brand, salt or code — off this counter's shelf", "none": "Nothing on this counter's shelf matches that.", "schedule": "Schedule {{flag}}", "why": "Why is it being added?", "qty": "Quantity", "photo": "Photo of the slip", "photoRequired": "Needed for a Schedule H or H1 medicine, unless quick desk mode is on.", "photoOptional": "Optional for this medicine.", "prescriber": "Prescriber, as written", "regNo": "Registration no.", "h1Prescriber": "Schedule H1: the prescriber's name and registration number are required — the H1 register writes them.", "prescriberOptional": "Optional — kept on the line when given.", "note": "Allergy, interaction and duplicate checks run on it like any prescribed line. It shows on the ticket and the bill as added at the counter by {{name}}. Schedule X and narcotics cannot be added here.", "save": "Add to the ticket", "adding": "Adding…", "cancel": "Cancel", "reason": {"not_prescribed": "Not prescribed", "paper": "The doctor wrote it on paper"}, "reasonHint": {"not_prescribed": "Asked for at the counter. Any schedule except X and narcotics.", "paper": "On the slip in the patient's hand, not in the system."}},
     "balance": { "owed": "Balance owed: {{what}} · until {{until}}", "open": "Open the balance ticket", "opened": "Balance ticket opened for {{who}}.", "handover": "Balance owed: {{what}} — collect within {{days}} days", "handoverAgain": "Balance still owed: {{what}}" },
     "swap": { "needed": "{{doctor}} must agree to {{brand}}: a Schedule H/H1 brand swap. Ask from ⋯, or give the brand written.", "waiting": "Waiting for {{doctor}} to agree to {{brand}}.", "agreed": "{{doctor}} agreed to {{brand}}: {{reason}}", "ask": "Ask {{doctor}} to agree to the swap" },
-    "drop": { "reason": {"notWanted": "patient does not want it", "hasAtHome": "patient has it at home"} },
     "dropTitle": "Drop {{line}} from the bill",
     "dropIt": "Drop it",
     "wordmark": "PHARMACY DESK",

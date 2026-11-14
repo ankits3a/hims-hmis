@@ -252,6 +252,8 @@ function ShelfSearch({ onAdd }: { onAdd: (entry: WireRetailShelfEntry) => void }
   const [error, setError] = useState<string | null>(null);
   const [askFor, setAskFor] = useState<WireRetailShelfEntry | null>(null);
   const [askQty, setAskQty] = useState("1");
+  /* One idempotency key per press, kept for a retry of the same note (a refusal, a lost answer); a new note, a new key. */
+  const [noteKey, setNoteKey] = useState(newIdempotencyKey);
   const [asking, setAsking] = useState(false);
   const [noted, setNoted] = useState<string | null>(null);
   const debounced = useDebounced(q.trim(), 200);
@@ -270,11 +272,11 @@ function ShelfSearch({ onAdd }: { onAdd: (entry: WireRetailShelfEntry) => void }
   });
   const items = found.data ?? [];
   const fresh = !found.isPlaceholderData;
-  useEffect(() => { setActive(0); setAskFor(null); setAskQty("1"); }, [found.data]);
+  useEffect(() => { setActive(0); setAskFor(null); setAskQty("1"); setNoteKey(newIdempotencyKey()); }, [found.data]);
 
   const add = (entry: WireRetailShelfEntry): void => {
     /* Spec #1064 — none of it here: offer to note it as asked for instead of adding a line that cannot be sold. */
-    if (entry.available === 0) { setAskFor(entry); return; }
+    if (entry.available === 0) { setAskFor(entry); setNoteKey(newIdempotencyKey()); return; }
     onAdd(entry); setQ(""); setOpen(false); setError(null);
   };
   const settled = open && fresh && debounced.length >= 2 && found.data !== undefined && debounced === q.trim();
@@ -293,9 +295,9 @@ function ShelfSearch({ onAdd }: { onAdd: (entry: WireRetailShelfEntry) => void }
     try {
       await noteAskedFor("entry" in ask
         ? { source: "counter_search", itemId: ask.entry.itemId, medicineId: ask.entry.medicineId, qtyBase: askQtyBase }
-        : { source: "counter_search", typedName: ask.typed, qtyBase: askQtyBase });
+        : { source: "counter_search", typedName: ask.typed, qtyBase: askQtyBase }, noteKey);
       setNoted(t("pharmacyRetail.askedNoted", { name: "entry" in ask ? ask.entry.itemName : ask.typed }));
-      setQ(""); setOpen(false); setAskFor(null); setAskQty("1");
+      setQ(""); setOpen(false); setAskFor(null); setAskQty("1"); setNoteKey(newIdempotencyKey());
     } catch (e) {
       setError(pharmacyErrorText(e, t));
     } finally {
@@ -378,7 +380,7 @@ function ShelfSearch({ onAdd }: { onAdd: (entry: WireRetailShelfEntry) => void }
                 inputMode="numeric"
                 aria-label={t("pharmacyRetail.askedQty")}
                 value={askQty}
-                onChange={(e) => setAskQty(e.target.value)}
+                onChange={(e) => { setAskQty(e.target.value); setNoteKey(newIdempotencyKey()); }}
                 onFocus={reopen}
                 onBlur={closeSoon}
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void noteAsked(); } }}
@@ -508,7 +510,7 @@ export function PharmacyRetail(): React.ReactElement {
   const [discount, setDiscount] = useState<AppliedDiscount | null>(null);
   const [cartId, setCartId] = useState(newIdempotencyKey);
   /* Spec #1064 — a cart line larger than this shelf holds (`short_stock`): what was asked for, ready to note. */
-  const [shortAsk, setShortAsk] = useState<{ entry: WireRetailShelfEntry; qty: string } | null>(null);
+  const [shortAsk, setShortAsk] = useState<{ entry: WireRetailShelfEntry; qty: string; key: string } | null>(null);
   const [shortNoted, setShortNoted] = useState<string | null>(null);
   const [billMenu, setBillMenu] = useState(false);
   const [discountSheet, setDiscountSheet] = useState(false);
@@ -547,20 +549,20 @@ export function PharmacyRetail(): React.ReactElement {
     Spec #1064 — a `short_stock` refusal names the line and what the shelf can sell. When the shelf holds less than was
     asked for (not merely less in one batch), the refusal offers "Note as asked for", at the quantity asked.
   */
-  const shortAskOf = (e: unknown): { entry: WireRetailShelfEntry; qty: string } | null => {
+  const shortAskOf = (e: unknown): { entry: WireRetailShelfEntry; qty: string; key: string } | null => {
     if (pharmacyErrorCode(e) !== "short_stock" || !(e instanceof ApiError)) return null;
     const detail = (e.body as { detail?: { lineIdx?: unknown; available?: unknown } } | undefined)?.detail;
     const line = typeof detail?.lineIdx === "number" ? cart[detail.lineIdx] : undefined;
     if (line === undefined || !/^\d+$/.test(line.qty)) return null;
     if (typeof detail?.available === "number" && detail.available >= Number(line.qty)) return null;
-    return { entry: line.entry, qty: line.qty };
+    return { entry: line.entry, qty: line.qty, key: newIdempotencyKey() };
   };
   const noteShort = async (): Promise<void> => {
     const qty = shortAsk === null ? null : askedQtyOf(shortAsk.qty);
     if (shortAsk === null || qty === null) return;
     setBusy(true);
     try {
-      await noteAskedFor({ source: "counter_short", itemId: shortAsk.entry.itemId, medicineId: shortAsk.entry.medicineId, qtyBase: qty });
+      await noteAskedFor({ source: "counter_short", itemId: shortAsk.entry.itemId, medicineId: shortAsk.entry.medicineId, qtyBase: qty }, shortAsk.key);
       setShortNoted(t("pharmacyRetail.askedNoted", { name: shortAsk.entry.itemName }));
       setShortAsk(null);
     } catch (e) {
@@ -900,7 +902,7 @@ export function PharmacyRetail(): React.ReactElement {
                     inputMode="numeric"
                     aria-label={t("pharmacyRetail.askedQty")}
                     value={shortAsk.qty}
-                    onChange={(e) => setShortAsk({ ...shortAsk, qty: e.target.value })}
+                    onChange={(e) => setShortAsk({ ...shortAsk, qty: e.target.value, key: newIdempotencyKey() })}
                   />
                   <button type="button" className="sec grn" disabled={busy || askedQtyOf(shortAsk.qty) === null} onClick={() => void noteShort()}>{t("pharmacyRetail.askedNote")}</button>
                 </div>

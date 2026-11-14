@@ -10,6 +10,9 @@ import { RETAIL_PHARMACY_STORE_CODE } from "./config";
 import { pickDispense } from "./pick";
 import { addShortBookEntry, listOpenShortBook, noteAskedFor } from "./short-book";
 import { declineLine, verifyDispense } from "./verify";
+import { PharmacyCounterController } from "./pharmacy-counter.controller";
+import { PharmacyRetailController } from "./pharmacy-retail.controller";
+import type { DocumentStore } from "../../kernel/documents/store";
 import type { Actor } from "@hmis/contracts";
 import type { PharmacyFixture } from "../../../test/helpers/pharmacy";
 import type { Db } from "../../kernel/db/client";
@@ -23,6 +26,7 @@ import type { RxLine } from "../opd";
  * and the counter's note is gated like a sale.
  */
 const HEAD: Actor = { type: "user", id: "01HMATERIALSHEAD00000000001" };
+const docs: DocumentStore = { put: async () => {}, get: async () => Buffer.alloc(0), remove: async () => {} };
 
 describe("lost demand — the edges (spec #1064)", () => {
   let db: Db;
@@ -102,5 +106,46 @@ describe("lost demand — the edges (spec #1064)", () => {
     await expect(noteAskedFor(db, A, { source: "counter_search", typedName: " x " }, MON)).rejects.toMatchObject({ code: "invalid_short_book_entry" });
     await expect(noteAskedFor(db, A, { source: "counter_search", itemId: "01HNOSUCHITEM0000000000000" }, MON)).rejects.toMatchObject({ code: "unknown_item" });
     expect(await db.select().from(pharmacyDemand)).toEqual([]);
+  });
+
+  /* Follow-up on #1064 — a double tap (or a retry after a lost answer) of "Note as asked for" counts once. */
+  it("the counter's note under one idempotency key is recorded once: one demand row, asked count 1", async () => {
+    await retail();
+    const controller = new PharmacyRetailController(db, docs);
+    const body = { source: "counter_search", itemId: fx.item.calpol, qtyBase: 10 };
+    const first = await controller.askedFor(A, body, "ask-key-1");
+    const again = await controller.askedFor(A, body, "ask-key-1");
+    expect(again.demand.id).toBe(first.demand.id);
+    expect(await db.select().from(pharmacyDemand)).toHaveLength(1);
+    expect(await listOpenShortBook(db, RETAIL_PHARMACY_STORE_CODE)).toEqual([expect.objectContaining({ askedCount: 1, askedQtyBase: 10 })]);
+    // A new press is a new key, and counts.
+    await controller.askedFor(A, body, "ask-key-2");
+    expect(await db.select().from(pharmacyDemand)).toHaveLength(2);
+  });
+
+  /* Follow-up on #1064 — one pharmacy buys for both counters: the short book's read lists both, each with its store. */
+  it("the short book read with no store lists the OPD and the walk-in counters' open rows together, each with its store", async () => {
+    const retailId = await retail();
+    await addShortBookEntry(db, A, { drugName: "Pan 40", source: "desk" }, MON);
+    await noteAskedFor(db, A, { source: "counter_search", itemId: fx.item.calpol, qtyBase: 10 }, MON2);
+    const controller = new PharmacyCounterController(db, testCfg, fx.registry, docs);
+    const both = (await controller.shortBook()).entries;
+    expect(both.map((e) => [e.drugName, e.storeCode])).toEqual([["Pan 40", "PHARM-OPD"], ["Calpol 500 tablet", RETAIL_PHARMACY_STORE_CODE]]);
+    expect(both[1]!.storeResourceId).toBe(retailId);
+    // A store named still reads that store alone.
+    expect((await controller.shortBook(RETAIL_PHARMACY_STORE_CODE)).entries.map((e) => e.drugName)).toEqual(["Calpol 500 tablet"]);
+    expect((await controller.shortBook("PHARM-OPD")).entries.map((e) => e.drugName)).toEqual(["Pan 40"]);
+  });
+
+  /* Follow-up on #1064 — a line dropped at the bill as not in stock (picked, not the last line) records the demand. */
+  it("a line dropped at the bill as not in stock records a demand row and keeps the ticket picked", async () => {
+    await stockIn(db, fx, { itemId: fx.item.crocin, batchNo: "CR-1", qtyBase: 30, expiryDate: "2027-12-31" });
+    await stockIn(db, fx, { itemId: fx.item.azithro, batchNo: "AZ-1", qtyBase: 30, expiryDate: "2027-12-31" });
+    const t = await ticket([line({ drug: "Crocin 500", medicineId: fx.med.crocin }), line({ drug: "Azee 500", medicineId: fx.med.azithro })]);
+    await verifyDispense(db, A, fx.decls, t.id, { lines: [{ lineIdx: 0, qtyBase: 10 }, { lineIdx: 1, qtyBase: 3 }] }, MON2);
+    await pickDispense(db, A, fx.decls, t.id, {}, MON2);
+    const view = await declineLine(db, A, fx.decls, t.id, 1, "not in stock", MON2, { reasonCode: "not_in_stock" });
+    expect(view.status).toBe("picked");
+    expect(await db.select().from(pharmacyDemand)).toEqual([expect.objectContaining({ source: "desk_decline", itemId: fx.item.azithro, qtyAskedBase: 3, dispenseId: t.id })]);
   });
 });

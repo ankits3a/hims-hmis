@@ -34,7 +34,8 @@ import type { Db, Tx } from "../../kernel/db/client";
 export type ShortBookSource = "desk" | "agent" | "reorder" | "counter";
 export type ShortBookResolution = "ordered" | "received" | "dismissed";
 export type ShortBookEntry = typeof pharmacyShortBook.$inferSelect;
-export type ShortBookView = ShortBookEntry & { notedByName: string | null };
+/** `storeCode` — the counter's store the row is open at (#1064 follow-up: the reorder list shows both counters). */
+export type ShortBookView = ShortBookEntry & { notedByName: string | null; storeCode: string };
 
 export type AddShortBookInput = {
   itemId?: string | null;
@@ -100,14 +101,33 @@ export async function addShortBookEntry(
 
 /** The open rows of a counter's store, oldest first — the order they were met in. */
 export async function listOpenShortBook(db: Db | Tx, storeCode?: string): Promise<ShortBookView[]> {
-  const storeResourceId = await storeIdOf(db, storeCode);
+  const code = storeCode ?? OPD_PHARMACY_STORE_CODE;
+  const store = await findStoreByCode(db, code);
+  if (store === undefined) throw new PharmacyError("store_missing", `no store ${code}`);
+  return openRowsAt(db, [{ id: store.id, code: store.code }]);
+}
+
+/**
+ * #1064 follow-up — ONE PHARMACY BUYS FOR BOTH COUNTERS: the open rows of the OPD counter and the walk-in counter
+ * together, oldest first, each with its store. The OPD counter's store must exist (as before); the walk-in one is
+ * read when it does.
+ */
+export async function listCounterShortBook(db: Db | Tx): Promise<ShortBookView[]> {
+  const opd = await findStoreByCode(db, OPD_PHARMACY_STORE_CODE);
+  if (opd === undefined) throw new PharmacyError("store_missing", `no store ${OPD_PHARMACY_STORE_CODE}`);
+  const retail = await findStoreByCode(db, RETAIL_PHARMACY_STORE_CODE);
+  return openRowsAt(db, [{ id: opd.id, code: opd.code }, ...(retail === undefined ? [] : [{ id: retail.id, code: retail.code }])]);
+}
+
+async function openRowsAt(db: Db | Tx, stores: readonly { id: string; code: string }[]): Promise<ShortBookView[]> {
+  const codeOf = new Map(stores.map((s) => [s.id, s.code] as const));
   const rows = await db.select().from(pharmacyShortBook)
-    .where(and(eq(pharmacyShortBook.storeResourceId, storeResourceId), isNull(pharmacyShortBook.resolvedAt)))
+    .where(and(inArray(pharmacyShortBook.storeResourceId, [...codeOf.keys()]), isNull(pharmacyShortBook.resolvedAt)))
     .orderBy(asc(pharmacyShortBook.notedAt), asc(pharmacyShortBook.id));
   const ids = [...new Set(rows.map((r) => r.notedBy))];
   const names = ids.length === 0 ? new Map<string, string>()
     : new Map((await db.select({ id: users.id, fullName: users.fullName }).from(users).where(inArray(users.id, ids))).map((u) => [u.id, u.fullName]));
-  return rows.map((r) => ({ ...r, notedByName: names.get(r.notedBy) ?? null }));
+  return rows.map((r) => ({ ...r, notedByName: names.get(r.notedBy) ?? null, storeCode: codeOf.get(r.storeResourceId) ?? "" }));
 }
 
 export async function resolveShortBookEntry(

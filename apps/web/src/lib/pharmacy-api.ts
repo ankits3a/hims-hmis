@@ -814,6 +814,8 @@ export type WireShortBookEntry = {
   resolvedAt: string | null; resolvedBy: string | null; resolution: string | null;
   /** Spec #1064 — times asked for while open, and the quantity in all (base units). Absent from an older server. */
   askedCount?: number; askedQtyBase?: number;
+  /** #1064 follow-up — the counter's store the row is open at (the list read carries it). */
+  storeCode?: string;
   /** On the list read only. */
   notedByName?: string | null;
 };
@@ -837,8 +839,9 @@ export type WireAskedFor = {
   demand: { id: string; itemId: string | null; typedName: string | null; qtyAskedBase: number; source: string };
   shortBook: { created: boolean; entry: WireShortBookEntry } | null;
 };
-export async function noteAskedFor(body: AskedForBody): Promise<WireAskedFor> {
-  return api<WireAskedFor>("POST", "/pharmacy/retail/asked-for", body);
+/** One `idempotencyKey` per press, kept for a retry: the server answers a replay with the first note. */
+export async function noteAskedFor(body: AskedForBody, idempotencyKey: string): Promise<WireAskedFor> {
+  return api<WireAskedFor>("POST", "/pharmacy/retail/asked-for", body, idempotencyKey);
 }
 export async function resolveShortBook(id: string, resolution: "ordered" | "received" | "dismissed"): Promise<WireShortBookEntry> {
   return api<WireShortBookEntry>("POST", `/pharmacy/short-book/${id}/resolve`, { resolution });

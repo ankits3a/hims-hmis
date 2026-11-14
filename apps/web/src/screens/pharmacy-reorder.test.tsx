@@ -142,6 +142,27 @@ describe("PharmacyReorder — the short book (parity P1)", () => {
     expect(within(row).getByTestId("short-asked-sb3")).toHaveTextContent("asked 3 times");
   });
 
+  /** Follow-up on #1064 — one pharmacy buys for both counters: the short book lists the walk-in counter's rows too, with the store. */
+  it("the short book lists both counters, each row with its store (OPD / Walk-in)", async () => {
+    const entries = [
+      { id: "sb4", storeResourceId: "s-opd", storeCode: "PHARM-OPD", itemId: null, drugName: "Pan 40", qtyWanted: null, source: "desk", dispenseId: null, notedBy: "u1", notedAt: "2026-11-14T05:00:00.000Z", resolvedAt: null, resolvedBy: null, resolution: null, askedCount: 0, askedQtyBase: 0, notedByName: "Kavita Joshi" },
+      { id: "sb5", storeResourceId: "s-ret", storeCode: "PHARM-RETAIL", itemId: "i1", drugName: "Calpol 500 tablet", qtyWanted: null, source: "counter", dispenseId: null, notedBy: "u1", notedAt: "2026-11-14T06:00:00.000Z", resolvedAt: null, resolvedBy: null, resolution: null, askedCount: 1, askedQtyBase: 10, notedByName: "Kavita Joshi" },
+    ];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const raw = (typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url).split("?")[0]!;
+      const json = (body: unknown): Response => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (raw.endsWith("/api/auth/me")) return json({ actor: { type: "user", id: "u1" }, permissions: { hospital: ["pharmacy.dispense.read"], scoped: { department: {}, floor: {} } } });
+      if (raw.endsWith("/api/pharmacy/short-book")) return json({ entries });
+      if (raw.endsWith("/api/pharmacy/reorder")) return json({ asOf: "2026-11-14T06:00:00.000Z", window: { days: 30, minCoverDays: 3, targetCoverDays: 7, nearExpiryDays: 90 }, items: [], expiring: [], expiredOnShelf: [] });
+      return new Response("{}", { status: 404 });
+    }));
+    renderWithProviders(<PharmacyReorder />);
+    const book = await screen.findByTestId("reorder-short-book");
+    expect(within(book).getByRole("columnheader", { name: "Store" })).toBeInTheDocument();
+    expect(within(await within(book).findByTestId("short-sb4")).getByTestId("short-store-sb4")).toHaveTextContent(/^OPD$/);
+    expect(within(within(book).getByTestId("short-sb5")).getByTestId("short-store-sb5")).toHaveTextContent(/^Walk-in$/);
+  });
+
   /** PARITY P2 — the levels are set in place by whoever raises orders, and the list says what is ordered and what to buy. */
   it("shows on-order and to-buy, and saves min / reorder / max on ⏎", async () => {
     const saved: unknown[] = [];

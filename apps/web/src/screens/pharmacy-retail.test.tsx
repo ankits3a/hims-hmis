@@ -530,3 +530,46 @@ describe("the walk-in counter's short line (spec #1064)", () => {
     expect(screen.queryByTestId("retail-short-ask")).toBeNull();
   });
 });
+
+/*
+  Follow-up on #1064 — "Note as asked for" carries ONE idempotency key per press, kept for a retry after a refusal or a
+  lost answer (the server answers a replay with the first note), and a fresh one for the next press.
+*/
+describe("the walk-in counter's note is idempotent (spec #1064 follow-up)", () => {
+  beforeEach(() => { setToken("t"); });
+  afterEach(() => { vi.unstubAllGlobals(); });
+  const keysOf = (path: string): (string | null)[] => vi.mocked(fetch).mock.calls
+    .filter(([input, init]) => init?.method === "POST" && String(input).split("?")[0]!.endsWith(path))
+    .map(([, init]) => new Headers(init?.headers).get("Idempotency-Key"));
+
+  it("a retry after a failed answer reuses the key; the next note gets a new one", async () => {
+    let calls = 0;
+    mockRoutes({
+      "GET /api/pharmacy/retail/state": { status: 200, body: CURRENT },
+      "GET /api/pharmacy/retail/sales": { status: 200, body: { items: [] } },
+      "GET /api/pharmacy/retail/shelf": { status: 200, body: { items: [] } },
+      "POST /api/pharmacy/retail/asked-for": () => {
+        calls += 1;
+        return calls === 1
+          ? { status: 503, body: { statusCode: 503, message: "the connection dropped" } }
+          : { status: 201, body: { demand: { id: `dm${String(calls)}`, itemId: null, typedName: "Ascoril LS", qtyAskedBase: 1, source: "counter_search" }, shortBook: null } };
+      },
+    });
+    renderWithProviders(<PharmacyRetail />);
+    const search = await screen.findByRole("combobox", { name: "Medicine name, item code, or scan the pack" });
+    await userEvent.type(search, "Ascoril LS");
+    const list = await screen.findByRole("listbox", { name: "On the walk-in shelf" });
+    await userEvent.click(await within(list).findByRole("button", { name: "Note as asked for" }));
+    await screen.findByRole("alert");
+    await userEvent.click(within(screen.getByRole("listbox", { name: "On the walk-in shelf" })).getByRole("button", { name: "Note as asked for" }));
+    await screen.findByTestId("retail-asked-noted");
+    const [first, retry] = keysOf("/pharmacy/retail/asked-for");
+    expect(first).toBeTruthy();
+    expect(retry).toBe(first);
+
+    await userEvent.type(search, "Ascoril LS");
+    await userEvent.click(await within(await screen.findByRole("listbox", { name: "On the walk-in shelf" })).findByRole("button", { name: "Note as asked for" }));
+    await waitFor(() => expect(keysOf("/pharmacy/retail/asked-for")).toHaveLength(3));
+    expect(keysOf("/pharmacy/retail/asked-for")[2]).not.toBe(first);
+  });
+});
