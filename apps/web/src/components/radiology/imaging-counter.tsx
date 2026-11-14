@@ -8,15 +8,16 @@ import type { WireCounterView, WireImagingDevice, WireWorklistRow } from "../../
 import { istDay } from "./desk-time";
 
 /**
- * PLAN 18-S RS3 — **THE IMAGING COUNTER'S FOUR STEPS**: Studies → Checks → Bill → Slot & slip.
+ * PLAN 18-S RS3, #1078 — **THE IMAGING COUNTER'S PARTS**: the studies and the checks (in the lane),
+ * then the two steps, Bill → Slot & slip.
  *
  * Every fact on these cards is the server's: the gates check-in WILL open and the prep come from
  * `GET /radiology/studies/:id/counter` (`deriveGateSet`, `prepFor`), the price from the billing
- * preview, the machines from `/radiology/devices`. The steps RENDER; the screen that owns them
- * (`radiology-reception.tsx`) holds the one next act in the dock.
+ * preview, the machines from `/radiology/devices`, the slot prefill from the desk's proposal. The
+ * parts RENDER; the screen that owns them (`radiology-reception.tsx`) holds the one next act in the dock.
  *
- * **The desk never satisfies a gate** (the manifest's first separation): Checks tells the patient
- * what the prep bay will ask for and has no control that records an answer.
+ * **The desk never satisfies a gate** (the manifest's first separation): the checks tell the patient
+ * what the prep bay will ask for and have no control that records an answer.
  */
 
 /** A re-render every 30 s, so the clocks move without a refetch. */
@@ -85,7 +86,7 @@ export function statusWord(t: (k: string, o?: Record<string, unknown>) => string
   return t(`radiology.counter.state.${row.status}`, { defaultValue: row.status });
 }
 
-/* ═══════════════════════════ 01 · STUDIES ═══════════════════════════ */
+/* ═══════════════════════ THE LANE · STUDIES ═══════════════════════ */
 
 export function CounterStudies({ studies, views, inRoom }: {
   studies: WireWorklistRow[];
@@ -122,7 +123,7 @@ export function CounterStudies({ studies, views, inRoom }: {
   );
 }
 
-/* ═══════════════════════════ 02 · CHECKS ═══════════════════════════ */
+/* ═══════════════════════ THE LANE · CHECKS ═══════════════════════ */
 
 export function CounterChecks({ studies, views, opened }: {
   studies: WireWorklistRow[];
@@ -182,9 +183,12 @@ export function CounterChecks({ studies, views, opened }: {
   );
 }
 
-/* ═══════════════════════════ 03 · BILL ═══════════════════════════ */
+/* ═══════════════════════════ 01 · BILL ═══════════════════════════ */
 
 export type TenderMode = "cash" | "upi" | "card";
+
+/** What the collect act answered. `adopted`: an earlier bill already charged the studies, nothing was taken. */
+export type BillDone = { invoiceNo: string; receiptNo: string | null; totalPaise: number; adopted?: boolean };
 
 export function CounterBill({
   views, toBill, addOnPick, onAddOn, preview, previewError, drawerOpen, mode, onMode, refText, onRef, paid, billError,
@@ -200,7 +204,7 @@ export function CounterBill({
   onMode: (m: TenderMode) => void;
   refText: string;
   onRef: (v: string) => void;
-  paid: { invoiceNo: string; receiptNo: string | null; totalPaise: number } | null;
+  paid: BillDone | null;
   billError: React.ReactNode;
 }): React.ReactElement {
   const { t } = useTranslation();
@@ -304,7 +308,9 @@ export function CounterBill({
       )}
       {paid !== null && (
         <p role="status" className="rounded border border-green-300 bg-green-50 p-2 text-sm" data-testid="bill-paid">
-          {t("radiology.counter.paid", { amount: fmtRupees(paid.totalPaise), invoiceNo: paid.invoiceNo, receipt: paid.receiptNo ?? "—" })}
+          {paid.adopted === true
+            ? t("radiology.counter.adopted", { invoiceNo: paid.invoiceNo })
+            : t("radiology.counter.paid", { amount: fmtRupees(paid.totalPaise), invoiceNo: paid.invoiceNo, receipt: paid.receiptNo ?? "—" })}
         </p>
       )}
       {billError}
@@ -315,7 +321,7 @@ export function CounterBill({
   );
 }
 
-/* ═══════════════════════════ 04 · SLOT & SLIP ═══════════════════════════ */
+/* ═══════════════════════════ 02 · SLOT & SLIP ═══════════════════════════ */
 
 export type SlotPick = { deviceResourceId: string; at: string; bedside: string };
 

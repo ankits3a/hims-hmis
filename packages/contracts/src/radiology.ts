@@ -144,6 +144,32 @@ export const imagingScheduleBody = z.object(scheduleFields);
 /** 18-S RS3 — a move carries the desk's reason; `nullish` at the wire so the refusal is the domain's `reason_required`. */
 export const imagingRescheduleBody = z.object({ ...scheduleFields, reason: z.string().max(400).nullish() });
 
+/* ── #1078 — the imaging desk's acts (`modules/radiology/desk.ts`) ── */
+
+export const IMAGING_DESK_TENDER_MODES = ["cash", "upi", "card"] as const;
+export const IMAGING_DESK_ADD_ON_KINDS = ["film", "cd"] as const;
+const encounterNo = z.string().trim().min(1).max(32);
+
+/** Opening the patient at the desk: every study of the visit booked for today is checked in. */
+export const imagingDeskArriveBody = z.object({ encounterNo });
+
+/**
+ * The collect: the studies in hand on ONE visit, the film / CD ticked for each (named by kind — the
+ * server finds the tariff's own service), and the one tender that covers the bill. No discount and no
+ * credit at the counter (decision 0015). The `Idempotency-Key` header is required by the route.
+ */
+export const imagingDeskCollectBody = z.object({
+  encounterNo,
+  studyIds: z.array(id).min(1).max(20),
+  addOns: z.array(z.object({ studyId: id, kind: z.enum(IMAGING_DESK_ADD_ON_KINDS) })).max(40).default([]),
+  tender: z.object({
+    mode: z.enum(IMAGING_DESK_TENDER_MODES),
+    amountPaise: z.number().int().positive(),
+    /** The UPI UTR or the card approval code; billing refuses a non-cash tender without one. */
+    refText: z.string().trim().min(1).max(64).optional(),
+  }),
+});
+
 export type ImagingReportContentBody = z.input<typeof imagingReportContentBody>;
 export type ImagingSignBody = z.input<typeof imagingSignBody>;
 export type ImagingAmendBody = z.input<typeof imagingAmendBody>;
@@ -155,3 +181,5 @@ export type ImagingContrastBody = z.input<typeof imagingContrastBody>;
 export type ImagingHandoverBody = z.input<typeof imagingHandoverBody>;
 export type ImagingScheduleBody = z.input<typeof imagingScheduleBody>;
 export type ImagingRescheduleBody = z.input<typeof imagingRescheduleBody>;
+export type ImagingDeskArriveBody = z.input<typeof imagingDeskArriveBody>;
+export type ImagingDeskCollectBody = z.input<typeof imagingDeskCollectBody>;
