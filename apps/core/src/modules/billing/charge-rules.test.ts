@@ -110,6 +110,11 @@ describe("the OPD fee branch: feeServiceFor and the fee quote (D8)", () => {
     expect(feeServiceFor((await getEncounter(db, await shapeEncounter("new", "pharmacy")))!, cfg.chargeRules)).toBeNull();
   });
 
+  it("#1079: a visit kind nobody has ruled on (teleconsult) keeps the consult fee", async () => {
+    const cfg = await loadBillingConfig(db);
+    expect(feeServiceFor((await getEncounter(db, await shapeEncounter("new", "teleconsult")))!, cfg.chargeRules)).not.toBeNull();
+  });
+
   it("#1079: an OPD visit and a hand-shaped row with no kind still charge the consult fee", async () => {
     const cfg = await loadBillingConfig(db);
     expect(feeServiceFor((await getEncounter(db, await shapeEncounter("new", "opd")))!, cfg.chargeRules)).toBe(base.consultNewServiceId);
