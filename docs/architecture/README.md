@@ -162,7 +162,7 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 | `printing` | billing, lab, opd, pharmacy, roster | auth, crypto, db, events, phi, tokens | yes |
 | `push` | — | alerts, db, events, modules | — |
 | `ratelimit` | — | — | — |
-| `realtime` | lab, opd | auth, db, tokens | — |
+| `realtime` | lab, opd, radiology | auth, db, tokens | — |
 | `reminders` | — | alerts, auth, copilot, db, tokens | yes |
 | `report` | billing, lab, opd, pharmacy, radiology | db | — |
 | `resources` | aerb, lab, materials, opd, ot, pharmacy, radiology | auth, db, events, modules, tokens | yes |

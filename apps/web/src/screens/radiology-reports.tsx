@@ -14,6 +14,7 @@ import type { CollectorKind, WireReleaseRow } from "../lib/radiology-release-api
 import { RadiologyStation } from "./radiology-station";
 import { Refusal, SeatLink, useNow } from "../components/radiology/imaging-counter";
 import { istDay } from "../components/radiology/desk-time";
+import { IMAGING_RELEASE_TOPIC, useImagingLive } from "../lib/radiology-live";
 
 /**
  * PLAN 18-S RS9 T4 — **REPORT HAND-OVER: one release register at the imaging window** (board:
@@ -78,6 +79,7 @@ export function RadiologyReports(): React.ReactElement {
     queryFn: () => fetchReleaseRegister(query),
     enabled: query.length >= 2,
   });
+  useImagingLive(IMAGING_RELEASE_TOPIC, [["radiology", "release"], ["radiology", "release", "search", query]]); // #1083
   const rows = useMemo(() => q.data?.rows ?? [], [q.data]);
   const searching = query.length >= 2;
   const shown = useMemo(() => (searching ? found.data?.rows ?? [] : rows), [searching, found.data, rows]);
