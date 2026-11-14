@@ -283,6 +283,10 @@ function ShelfSearch({ onAdd }: { onAdd: (entry: WireRetailShelfEntry) => void }
       : items.length === 0 ? { typed: debounced }
         : items.every((f) => f.available === 0) ? { entry: items[0]! } : null;
   const askQtyBase = askedQtyOf(askQty);
+  /* On a phone the list runs under the pinned bar: the note's row is brought into view when it appears (walk 2026-11-14). */
+  const askRow = useRef<HTMLLIElement>(null);
+  const askKey = ask === null ? null : "entry" in ask ? ask.entry.itemId : `typed:${ask.typed}`;
+  useEffect(() => { if (askKey !== null) askRow.current?.scrollIntoView?.({ block: "nearest" }); }, [askKey]);
   const noteAsked = async (): Promise<void> => {
     if (ask === null || askQtyBase === null || asking) return;
     setAsking(true); setError(null);
@@ -361,6 +365,7 @@ function ShelfSearch({ onAdd }: { onAdd: (entry: WireRetailShelfEntry) => void }
           ))}
           {ask !== null && (
             <li
+              ref={askRow}
               role="presentation"
               className="rt-option rt-ask"
               data-testid="retail-ask"
@@ -378,6 +383,7 @@ function ShelfSearch({ onAdd }: { onAdd: (entry: WireRetailShelfEntry) => void }
                 onBlur={closeSoon}
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void noteAsked(); } }}
               />
+              {"entry" in ask && <span className="rt-muted rt-unit">{ask.entry.baseUom}</span>}
               <button type="button" className="sec grn" disabled={asking || askQtyBase === null} onClick={() => void noteAsked()}>{t("pharmacyRetail.askedNote")}</button>
             </li>
           )}

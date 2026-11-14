@@ -1,6 +1,6 @@
 ---
 issue: 1064
-status: approved
+status: built
 approved: 2026-11-14
 ---
 # SPEC — Medicines asked for but not supplied: lost demand and the missed-sales report (#1064)
@@ -39,3 +39,33 @@ for most and do not get are never counted. Source: P0 item 3 of the pharmacy sof
 - **D5** A line picked short with a balance owed records a demand for the owed quantity.
 - **D6** The Missed sales report lists each medicine with times asked, quantity, estimated value, stock now and open
   PO quantity, and the typed names apart.
+
+## Built (2026-11-14)
+
+Where the build is more precise than the text above:
+
+- **Migration** `0233_lost_demand` (renumbered at merge): table `pharmacy_demand` (`item_id`, `medicine_id`,
+  `typed_name`, `qty_asked_base`, `source`, `store_resource_id`, `dispense_id`, `short_book_entry_id`, `noted_by`,
+  `noted_at`; no patient column); `pharmacy_short_book.asked_count` and `asked_qty_base` (0 on a row noted by hand)
+  and source `counter`; `pharmacy_dispense_lines.declined_reason_code`.
+- **Decline.** `verify.ts` `declineLine(..., now, { reasonCode })`, codes `not_in_stock`, `patient_declined`, `cost`,
+  `other` (`DECLINE_REASON_CODES`); a caller sending words only declines as before and the words are never read as a
+  code. Only `not_in_stock` records demand (the line's quantity, every batch of it), in the decline's transaction;
+  declining the last line at the bill cancels the ticket and still records it. A line the catalogue cannot place is
+  a typed name (the doctor's words). The code is kept on the line and in `dispense.line_declined`.
+- **Short book.** `short-book.ts` `recordDemand`: one upsert under the open-item index raises the open entry's count
+  and quantity (an entry noted by hand keeps its source) or opens one with source `counter`. Only demand for an item
+  the hospital has raises it.
+- **Walk-in counter.** `POST /pharmacy/retail/asked-for` (`pharmacy.retail.sell`), store PHARM-RETAIL by default. A
+  typed name that is exactly an item's name or code counts as that item. The search's last row offers the note when
+  nothing found can be sold (quantity 1); a tap on a row with none here offers it for that row. A `short_stock`
+  refusal offers it at the quantity asked, and only when the shelf holds less than asked across all its batches.
+- **Balance owed.** `pick.ts`: a line picked short for the shelf (not `short: "patient"`) records the owed quantity.
+- **Report.** `GET /pharmacy/office/reports/missed-sales` (`pharmacy.reports.read`), `office-reports.ts`
+  `officeMissedSales`; the 21st office report, on V, this month by default. Stock now = sellable (expired, recalled,
+  reserved and frozen excluded) at PHARM-OPD, PHARM-RETAIL, PHARM-NDPS and the counters' loose trays; on order =
+  approved, sent and part-received purchase orders to those stores; estimated value = quantity x the latest batch MRP
+  per base unit (loose-MRP rounding), blank when no batch has an MRP. Typed names group by name in any case.
+- **Desk.** The decline sheet's four pills set the code; typed words that read as a shortage are offered "not in
+  stock", ticked. The separate short-book note after a decline is gone (the server does it). The reorder screen's
+  short book says "patients asking · asked N times".

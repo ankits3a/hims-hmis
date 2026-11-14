@@ -170,6 +170,7 @@ describe("the short book at the counter (parity P1)", () => {
     await userEvent.click(await screen.findByTestId("desk-line-0-why-notStocked"));
     expect(screen.getByTestId("desk-line-0-why-notStocked")).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByTestId("desk-line-0-also-short")).toBeNull();
+    expect(screen.getByTestId("desk-line-0-will-note")).toHaveTextContent("Will be noted as asked for.");
     await userEvent.click(screen.getByRole("button", { name: /^Decline/ }));
     await waitFor(() => expect(calls("POST", "/lines/0/decline")).toEqual([{ reason: "not in stock", reasonCode: "not_in_stock" }]));
     expect(calls("POST", "/short-book")).toEqual([]);

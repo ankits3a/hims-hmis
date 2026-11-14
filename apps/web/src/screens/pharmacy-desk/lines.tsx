@@ -1027,6 +1027,9 @@ function LineRow({
               </button>
             ))}
           </span>
+          {!dropping && declineCode === "not_in_stock" ? (
+            <p data-testid={`${id}-will-note`} style={{ margin: "8px 0 0 0", fontSize: 12, color: "var(--dim)" }}>{t("pharmacyDesk.short.willNote")}</p>
+          ) : null}
           {!dropping && declineCode === null && ((shortChoice ?? readsAsShortage(why)) || shortChoice === false) ? (
             <label data-testid={`${id}-also-short`} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, fontSize: 12.5 }}>
               <input type="checkbox" checked={shortChoice ?? readsAsShortage(why)} onChange={(e) => setShortChoice(e.target.checked)} />
