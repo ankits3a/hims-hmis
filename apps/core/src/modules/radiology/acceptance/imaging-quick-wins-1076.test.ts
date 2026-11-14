@@ -18,7 +18,7 @@ import { scheduleStudy } from "../schedule";
 import { evaluateReadiness, requireStudyGate, satisfyGate } from "../gates";
 import { startAcquisition } from "../acquisition";
 import { recordContrastAdministration } from "../contrast";
-import { draftReport, publishReport, signReport } from "../reports";
+import { draftReport, publishReport, signReport } from "../index";
 import type { RadiologyFixture } from "../../../../test/helpers/radiology";
 import type { StudyType } from "../definitions";
 import type { Actor } from "@hmis/contracts";

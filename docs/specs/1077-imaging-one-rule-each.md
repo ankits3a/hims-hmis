@@ -1,6 +1,6 @@
 ---
 issue: 1077
-status: approved
+status: built
 approved: 2026-11-14
 ---
 # SPEC — Imaging: one rule each for study source and treating doctor, reports.ts split, act schemas in contracts (#1077)
