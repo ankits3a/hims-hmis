@@ -60,9 +60,13 @@ it on sale (`pharmacy.sale_items.manage`).
 - **An MRP that does not divide into whole paise is received** (owner ruling 2026-09-22). ₹35.50 on a strip
   of 15 is fine: a full strip bills ₹35.50, a loose tablet ₹2.36.
 - **Cost after discount above MRP is refused** — the GRN gate would refuse it too.
-- **A pack size the item does not have yet** (the starter list assumed 10) is added as a new pack unit
-  (`strip15`, `box10`), which needs `materials.items.manage`. So does creating the OPENING STOCK supplier
+- **A pack size the item does not have yet** (the starter list assumed 10) is put on the item as a new pack
+  unit (`strip15`, `box10`), which needs `materials.items.manage`. So does creating the OPENING STOCK supplier
   (`materials.vendors.manage`). The screen says so before anything is written.
+- **A counted strip becomes the strip the counter sells.** It replaces the old `strip10` while no stock,
+  delivery or order uses that; otherwise it is added and the old strip is kept only for what uses it.
+- **One strip size per item in a sheet.** A second row of the same medicine in strips of another size is
+  refused — check its pack size. Loose tablets (pack size 1) beside the strips are fine.
 - Rack labels are set only when the person capturing holds `pharmacy.sale_items.manage`.
 - Two rows with the same brand and batch are refused — add the packs together.
 - All or nothing, and once: one refused row stops the capture, and the same rows captured twice capture

@@ -312,8 +312,10 @@ function ShelfSearch({ onAdd }: { onAdd: (entry: WireRetailShelfEntry) => void }
               onMouseDown={(e) => { e.preventDefault(); add(f); }}
               onMouseEnter={() => setActive(i)}
             >
+              {/* Re-walk 2026-11-13 — two items of one medicine read alike: each row names its own item and code. */}
               <span className="rt-grow">
-                <span className="rt-strong">{f.brandName}</span> <span className="rt-muted">{strengthShown(f.strengthLabel) ?? ""} {f.form}</span>
+                <span className="rt-strong">{f.itemName}</span> <span className="rt-muted">{strengthShown(f.strengthLabel) ?? ""} {f.form}</span>
+                {" "}<span className="rt-muted mo">{f.itemCode}</span>
               </span>
               {scheduled(f.scheduleFlag) && <span className="pill rd">{t("pharmacyRetail.schedule", { flag: f.scheduleFlag })}</span>}
               <span className={f.available === 0 ? "rt-muted mo" : "mo"}>{t("pharmacyRetail.available", { count: f.available, unit: f.baseUom })}</span>
@@ -828,7 +830,8 @@ export function PharmacyRetail(): React.ReactElement {
                               return (
                                 <tr key={`${c.entry.itemId}-${String(i)}`} data-testid={`cart-${String(i)}`}>
                                   <td>
-                                    <span className="rt-strong">{c.entry.brandName}</span> <span className="rt-muted">{strengthShown(c.entry.strengthLabel) ?? ""} {c.entry.form}</span>
+                                    <span className="rt-strong">{c.entry.itemName}</span> <span className="rt-muted">{strengthShown(c.entry.strengthLabel) ?? ""} {c.entry.form}</span>
+                                    {" "}<span className="rt-muted mo">{c.entry.itemCode}</span>
                                     {scheduled(c.entry.scheduleFlag) ? <> <span className="pill rd">{t("pharmacyRetail.schedule", { flag: c.entry.scheduleFlag })}</span></> : null}
                                     <CartShelf itemId={c.entry.itemId} idx={i} />
                                   </td>

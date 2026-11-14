@@ -71,6 +71,14 @@ describe("the counter's queue — who holds a ticket, and who is on it (PD-1)", 
       });
   });
 
+  /* RE-WALK 2026-11-13 — the desk's line read "…oral tablet 40 mg/": the catalogue's empty denominator (`strengthShown`). */
+  it("the line names each drug as a person reads it: no catalogue '40 mg/'", async () => {
+    const id = await queued("Pantoprazole 40 mg gastro-resistant oral tablet 40 mg/", null);
+    await claimDispense(db, fx.pharmacist.actor, { dispenseId: id, door: "token" }, MON2);
+    const [row] = await listQueue(db, fx.pharmacist.actor, { serviceDate: TODAY });
+    expect(row!.drugs).toEqual(["Pantoprazole 40 mg gastro-resistant oral tablet 40 mg"]);
+  });
+
   it("C1 — a waiting ticket says whether the shelf can fill it, BEFORE anybody claims it", async () => {
     await stockIn(db, fx, { itemId: fx.item.crocin, batchNo: "CR-1", qtyBase: 100 });
     await stockIn(db, fx, { itemId: fx.item.azithro, batchNo: "AZ-1", qtyBase: 2 });

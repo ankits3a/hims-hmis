@@ -37,7 +37,7 @@ const CROCIN: WireRetailShelfEntry = {
   medicineId: "m-croc", brandName: "Crocin 500", strengthLabel: "500 mg", form: "tablet", scheduleFlag: "OTC",
   itemId: "i-croc", itemCode: "CROC500", itemName: "Crocin 500 tablet", baseUom: "tablet", available: 50, scannedBatchId: null,
 };
-const AZEE: WireRetailShelfEntry = { ...CROCIN, medicineId: "m-azee", brandName: "Azee 500", scheduleFlag: "H1", itemId: "i-azee", itemCode: "AZEE500" };
+const AZEE: WireRetailShelfEntry = { ...CROCIN, medicineId: "m-azee", brandName: "Azee 500", scheduleFlag: "H1", itemId: "i-azee", itemCode: "AZEE500", itemName: "Azee 500 tablet" };
 const previewOf = (over: Partial<WireRetailPreview> = {}): WireRetailPreview => ({
   licence: CURRENT, prescriptionRequired: false,
   lines: [{ lineIdx: 0, medicineId: "m-croc", brandName: "Crocin 500", strengthLabel: "500 mg", form: "tablet", scheduleFlag: "OTC", itemId: "i-croc", batchId: "b1", batchNo: "R-1", expiryDate: "2027-06-30", qtyBase: 10, fefoOverride: false,
@@ -459,6 +459,19 @@ describe("the walk-in counter after the 2026-11-13 walk", () => {
     const option = within(await screen.findByRole("listbox", { name: "On the walk-in shelf" })).getByRole("option", { name: /Crocin 500/ });
     expect(option).toHaveTextContent("500 mg tablet");
     expect(option).not.toHaveTextContent("500 mg/");
+  });
+
+  it("re-walk: two items of one medicine read apart — each row names its own item and its code", async () => {
+    const second: WireRetailShelfEntry = { ...CROCIN, itemId: "i-croc-x", itemCode: "CROC500X", itemName: "Crocin 500 new pack", available: 10 };
+    mockRoutes(routes({ "GET /api/pharmacy/retail/shelf": { status: 200, body: { items: [CROCIN, second] } } }));
+    renderWithProviders(<PharmacyRetail />);
+    await screen.findByRole("button", { name: "New customer" });
+    await userEvent.type(screen.getByRole("combobox", { name: "Medicine name, item code, or scan the pack" }), "Croc");
+    const [first, other] = within(await screen.findByRole("listbox", { name: "On the walk-in shelf" })).getAllByRole("option");
+    expect(first).toHaveTextContent("Crocin 500 tablet");
+    expect(first).toHaveTextContent(/CROC500(?!X)/);
+    expect(other).toHaveTextContent("Crocin 500 new pack");
+    expect(other).toHaveTextContent("CROC500X");
   });
 
   it("the bill's batch details keep the batch and its expiry apart: 'R-1 · Exp. 06/27', not 'R-106/27'", () => {
